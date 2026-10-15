@@ -11205,13 +11205,12 @@ com/crystalgraphics/vfx/sparse/CgVfxTiles
   method public poolTiles ()I
   method public previous ()[I
   method public readOccupancy (Lcom/crystalgraphics/render/graph/CgRecording;)V
-  method public starved (I)Z
   method public stepped ()V
   method public tileRows ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public tilesInUse ()I
   method public upload (Lcom/crystalgraphics/render/graph/CgRecording;)V
   method public usedLayers ()I
-  method public want (IIIII)V
+  method public want (IIIII)Z
   method public wantSphere (IFFFFFI)V
   method public,static fit (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Ljava/lang/String;I)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
 com/crystalgraphics/vfx/trail/CgVfxTrail

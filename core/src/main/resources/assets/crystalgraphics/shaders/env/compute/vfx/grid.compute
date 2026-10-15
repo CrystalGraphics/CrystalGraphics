@@ -56,8 +56,9 @@ const int G_LAYER = FX_SPARSE_LAYER;
 const int G_CELLS = G_TILE * G_TILE * G_TILE;
 // Cells over which what a grid holds is drawn fading out toward a face with no tile beyond it.
 const float G_EDGE = 3.0;
-// The least a channel holds that Occupancy counts, and how near a face, in cells, it asks for the neighbour.
-const float G_OCCUPIED = 1.0e-3;
+// The least a channel holds that Occupancy counts, and how near a face, in cells, it asks for the neighbour: below it
+// nothing a layer draws shows, and a lower one keeps diffusion's faint halo past every trail in tiles of air.
+const float G_OCCUPIED = 0.02;
 const int G_NEAR_FACE = 4;
 // Distances up, in cells, the sky's light is taken over, and the five ways toward the sky.
 const float G_UP[6] = float[6](1.0, 2.0, 4.0, 7.0, 11.0, 16.0);

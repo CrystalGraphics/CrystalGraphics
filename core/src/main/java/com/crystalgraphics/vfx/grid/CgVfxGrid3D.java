@@ -54,7 +54,7 @@ import com.crystalgraphics.vfx.look.CgVfxSlot;
  * <ul>
  *   <li>Its cells are {@link #CELL} blocks, wider at lower tiers ({@link CgVfxGridAtlas#cellScale}), reaching
  *       {@code CgVfxGridAtlas.SPAN / 2} cells each way from its place, which moves with the effect. Its tiles come from
- *       a pool every grid shares ({@link CgVfxGridAtlas#tiles}). A grid that runs out at its share coarsens: its cells
+ *       a pool every grid shares ({@link CgVfxGridAtlas#tiles}). A grid whose splats keep landing past its share coarsens: its cells
  *       twice as wide, up to {@link CgVfxGridAtlas#MAX_LEVEL} times ({@link #level}), so it reaches further, softer,
  *       and past that what it holds fades out toward the tiles it lacks rather than stopping at an edge.</li>
  *   <li>A channel fades by its share a second and spreads to its neighbours (blocks² a second). A channel never set

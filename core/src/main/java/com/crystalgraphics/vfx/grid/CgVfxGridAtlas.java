@@ -28,6 +28,8 @@ import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.sparse.CgVfxTiles;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
@@ -55,9 +57,10 @@ import java.util.Arrays;
  *   <li>At most {@link #CAPACITY} grids at once; one asking past that waits, drawing nothing.</li>
  *   <li>The pool holds {@link #tiles(CgQuality)} tiles, a grid's cells {@code CELL} times {@link #cellScale(CgQuality)}:
  *       changing tier starts every grid again empty. Each grid is kept an even share of a full pool
- *       ({@link CgVfxTiles}); one refused tiles at its share coarsens, its cells twice as wide and each 2x2x2 of them
- *       one, up to {@link #MAX_LEVEL} times, so it reaches eight times as far on the same tiles, softer. Past that it
- *       grows no further, and what it holds fades out toward the tiles it lacks.</li>
+ *       ({@link CgVfxTiles}); one whose splats land where it was refused tiles, every frame for a second
+ *       ({@link #STARVED_FRAMES}), coarsens, its cells twice as wide and each 2x2x2 of them one, up to
+ *       {@link #MAX_LEVEL} times, so it reaches eight times as far on the same tiles, softer. Past that it grows no
+ *       further, and what it holds fades out toward the tiles it lacks.</li>
  *   <li>A splat landing where its grid has no tile asks for one, given out by the frame after next: what lands there
  *       meanwhile is lost. Tiles round each instance splatting are asked for ahead of it.</li>
  *   <li>At most {@link #SPLATS} splats a frame, every grid's together; the rest are dropped.</li>
@@ -94,6 +97,8 @@ public final class CgVfxGridAtlas {
     static final int WANTED = 256;
     /** The most times a grid coarsens: its cells up to {@code 2^MAX_LEVEL} times as wide. */
     public static final int MAX_LEVEL = 3;
+    /** Frames in a row splats must land on tiles a grid was refused before it coarsens: a second's worth of loss. */
+    static final int STARVED_FRAMES = 60;
     /** The longest a frame steps it: a hitch fades it no further than this. */
     private static final float LONGEST = 0.1f;
     /** The most a channel spreads in a frame: explicit diffusion past a sixth of its difference a neighbour rings. */
@@ -108,6 +113,7 @@ public final class CgVfxGridAtlas {
             .color(0, CgTextureType.RGBA16F).build();
     private static final CgFrameBufferFormat R32F = CgFrameBufferFormat.builder("vfx.grid.r32f")
             .color(0, CgTextureType.R32F).build();
+    private static final Logger LOG = LogManager.getLogger("CgVfxGridAtlas");
     private static final CgVfxGridAtlas INSTANCE = new CgVfxGridAtlas();
 
     private final CgVfxGrid3D[] tenants = new CgVfxGrid3D[CAPACITY];
@@ -121,6 +127,9 @@ public final class CgVfxGridAtlas {
     private final int[] missed = new int[WANTED];
     /** The grid coarsened this frame, -1 for none, and its page table before, as uploaded. */
     private int coarsened = -1;
+    /** Each grid's frames in a row its missed splats were refused tiles; whether this frame's were. */
+    private final int[] starvedFor = new int[CAPACITY];
+    private final boolean[] refused = new boolean[CAPACITY];
     private final ByteBuffer beforeBytes = ByteBuffer.allocate(PAGE_TABLE * 4).order(ByteOrder.nativeOrder());
     private final CgReadback.Sink wantedSink = data -> {
         int n = Math.min(WANTED, data.remaining() / 4);
@@ -225,6 +234,7 @@ public final class CgVfxGridAtlas {
             grid.level = 0;
             grid.cell = grid.cellSetting() * cellScale(CgGraphicsSettings.QUALITY.get());
             grid.ticked = frame;
+            starvedFor[b] = 0;
             if (registration == null) {
                 registration = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, this::record);
                 CgGraphicsLifecycle.addListener(context);
@@ -391,12 +401,16 @@ public final class CgVfxGridAtlas {
         for (int b = 0; b < live; b++) if (tenants[b] != null) alive |= 1 << b;
         tiles.live(alive);
         tiles.grow(now);
+        Arrays.fill(refused, false);
         for (int i = 0; i < WANTED; i++) {
             int m = missed[i] - 1;
             if (m < 0) continue;
             int b = m / PAGE_TABLE, page = m % PAGE_TABLE, pages = CgVfxTiles.PAGES;
-            if (b < live && tenants[b] != null) tiles.want(b, page % pages, page / pages % pages, page / (pages * pages), now);
+            if (b < live && tenants[b] != null && !tiles.want(b, page % pages, page / pages % pages, page / (pages * pages), now)) {
+                refused[b] = true;
+            }
         }
+        for (int b = 0; b < CAPACITY; b++) starvedFor[b] = refused[b] ? starvedFor[b] + 1 : 0;
         Arrays.fill(missed, 0);
         for (int b = 0; b < live; b++) {
             CgVfxGrid3D grid = tenants[b];
@@ -404,12 +418,15 @@ public final class CgVfxGridAtlas {
         }
         for (int b = 0; b < live && coarsened < 0; b++) {
             CgVfxGrid3D grid = tenants[b];
-            if (grid == null || !tiles.starved(b) || grid.level >= MAX_LEVEL) continue;
-            // Out of tiles at its share: the same tiles over cells twice as wide.
+            if (grid == null || starvedFor[b] < STARVED_FRAMES || grid.level >= MAX_LEVEL) continue;
+            // Its splats landing where it was refused tiles for a second: the same tiles over cells twice as wide.
+            starvedFor[b] = 0;
             tiles.coarsen(b, now);
             grid.level++;
             grid.cell *= 2f;
             coarsened = b;
+            LOG.warn("[vfx.grid] grid {} lost splats past its share of tiles for a second: its cells now {} blocks (level {})",
+                    b, grid.cell, grid.level);
         }
         tiles.finish(now);
         for (int b = 0; b < live; b++) {

@@ -74,8 +74,6 @@ public final class CgVfxTiles {
     private final int[][] pageTable;
     private final boolean[] pagesDirty;
     private final int[] floorTile, held;
-    /** Whether each owner was refused a tile since the last {@link #grow}. */
-    private final boolean[] starved;
     /** A coarsened owner's page table before ({@link #coarsen}); the slots it held, while it does. */
     private final int[] previous = new int[PAGES * PAGES * PAGES];
     private int[] mine = new int[0];
@@ -105,7 +103,6 @@ public final class CgVfxTiles {
         pagesDirty = new boolean[owners];
         floorTile = new int[owners];
         held = new int[owners];
-        starved = new boolean[owners];
         tilesCounter = CgTrace.name(name + ".tiles");
         fullCounter = CgTrace.name(name + ".pool-full");
     }
@@ -208,7 +205,6 @@ public final class CgVfxTiles {
 
     /** Keeps every slot the GPU last found something in, and asks for its neighbour on each face it found something near. */
     public void grow(int now) {
-        Arrays.fill(starved, false);
         for (int s = 0; s < poolTiles; s++) {
             int b = slotOwner[s];
             if (b < 0 || occupied[s * FLAGS] == 0) continue;
@@ -244,14 +240,17 @@ public final class CgVfxTiles {
         }
     }
 
-    /** Owner {@code b}'s tile {@code (tx, ty, tz)} kept this frame, given a slot if it has none; none past its grid or floor. */
-    public void want(int b, int tx, int ty, int tz, int now) {
-        if (tx < 0 || ty < 0 || tz < 0 || tx >= PAGES || ty >= PAGES || tz >= PAGES || ty < floorTile[b]) return;
+    /**
+     * Owner {@code b}'s tile {@code (tx, ty, tz)} kept this frame, given a slot if it has none; none past its grid or
+     * floor. False when it was refused one: at its share of a full pool.
+     */
+    public boolean want(int b, int tx, int ty, int tz, int now) {
+        if (tx < 0 || ty < 0 || tz < 0 || tx >= PAGES || ty >= PAGES || tz >= PAGES || ty < floorTile[b]) return true;
         int page = tx + PAGES * (ty + PAGES * tz);
         int had = pageTable[b][page];
         if (had != 0) {
             slotSeen[had - 1] = now;
-            return;
+            return true;
         }
         int s = slotFor(b);
         if (s >= 0) {
@@ -263,14 +262,14 @@ public final class CgVfxTiles {
             slotFresh[s] = true;
             pageTable[b][page] = s + 1;
             pagesDirty[b] = true;
-            return;
+            return true;
         }
-        starved[b] = true;
         CgVfxTrace.count(fullCounter, 1);
         if (full++ == 0) {
             LOG.warn("[{}] the pool's {} tiles are given out: a volume at its share ({}) was refused one", name, poolTiles,
                     share);
         }
+        return false;
     }
 
     /** Frees every tile nothing asked for in {@link #FREE_AFTER} frames, and sets {@link #usedLayers}. */
@@ -286,11 +285,6 @@ public final class CgVfxTiles {
         }
         usedLayers = highest < 0 ? 0 : highest / (LAYER * LAYER) + 1;
         CgVfxTrace.count(tilesCounter, tilesInUse());
-    }
-
-    /** Whether owner {@code b} was refused a tile since the last {@link #grow}: at its share of a full pool. */
-    public boolean starved(int b) {
-        return starved[b];
     }
 
     /**
