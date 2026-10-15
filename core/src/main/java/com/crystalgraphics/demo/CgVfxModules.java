@@ -79,7 +79,7 @@ public final class CgVfxModules {
     private static final float DEPTH_THICKNESS = 0.4f;
     private static final int SHEETS_ZONE = CgTrace.name("demo.modules.sheets");
     /** The station grid: columns along x, rows along z, toward the camera. */
-    private static final float[] COLUMNS = {-21f, -7f, 7f, 21f}, ROWS = {-14f, 0f, 14f, 28f, 45f, 63f};
+    private static final float[] COLUMNS = {-21f, -7f, 7f, 21f}, ROWS = {-14f, 0f, 14f, 28f, 45f, 63f, 81f};
 
     private static final CgVfxSchema SCHEMA = CgVfxSchema.of("crystalgraphics:demo/modules");
     private static final CgVfxParam.Color GOLD = SCHEMA.color("gold", 0xFFFF8C1F);
@@ -269,6 +269,7 @@ public final class CgVfxModules {
         meteor(COLUMNS[1] + 4f, ROWS[5], smokeSheet);
         sparks(COLUMNS[2] + 6f, ROWS[5]);
         streams(COLUMNS[3] + 10f, ROWS[5]);
+        flocks(COLUMNS[0], ROWS[6]);
         floors = new float[stations.size()];
         for (Station s : stations) LOG.info("[vfx-modules] {} at x {}, z {}", s.name(), s.x(), s.z());
         LOG.info("[vfx-modules] every station replays every {}s; a simulation switch reaches it from the next", PERIOD);
@@ -1434,6 +1435,52 @@ public final class CgVfxModules {
                     p.label(4f, 7f, 0f, 0.42f, "five ribbons", 0xFFFFFFFF);
                     p.label(4f, 6.5f, 0f, 0.26f, "rivers pulled round a vortex into a core", 0xFFB8D8FF);
                 }, spiral, null, null));
+    }
+
+    /**
+     * Reynolds' boids on the neighbour grid, each particle streaking a trail behind it: a flock of ki spirits wheeling
+     * round a glowing heart, splitting and folding back as curling air pushes through it; a tight school of cyan wisps
+     * circling a pillar; and a murmuration of embers, hundreds strong, pulsing over the ground.
+     */
+    private void flocks(float x, float z) {
+        CgVfxEmitter spirits = CgVfxEmitter.builder("flockSpirits").capacity(320).burst(0f, 320).shape(CgSphere.of(4))
+                .speed(1.5f, 3f).life(MOTION, MOTION).size(0.05f, 0.08f).heat(1f).trail(14)
+                .module(new CgVfxModule.Flock(1.6f, 0.5f, 3f, 1.5f, 0.6f))
+                .module(new CgVfxModule.Attract(CgSphere.of(7), 2.5f))
+                .module(new CgVfxModule.Turbulence(1.2f, 0.25f, 0.4f))
+                .module(new CgVfxModule.LimitSpeed(5f))
+                .opacity(FADE).build();
+        CgVfxEmitter school = CgVfxEmitter.builder("flockSchool").capacity(220).burst(0f, 220).shape(CgRing.of(3, 4, 1))
+                .speed(2f, 3f).life(MOTION, MOTION).size(0.04f, 0.06f).heat(1f).trail(10)
+                .module(new CgVfxModule.Flock(0.9f, 0.35f, 6f, 4f, 0.4f, 16))
+                .module(new CgVfxModule.Vortex(0f, 1f, 0f, 3f, -0.8f, 0f, 0f, 0f))
+                .module(new CgVfxModule.LimitSpeed(4f))
+                .opacity(FADE).build();
+        CgVfxEmitter embers = CgVfxEmitter.builder("flockEmbers").capacity(700).burst(0f, 700).shape(CgBox.of(5, 1, 5))
+                .speed(1f, 2f).life(MOTION, MOTION).size(0.03f, 0.05f).heat(1f).trail(8)
+                .module(new CgVfxModule.Flock(1.1f, 0.3f, 4f, 2.5f, 1f, 20))
+                .module(new CgVfxModule.Attract(CgSphere.of(5), 1.5f).at(0f, 3f, 0f))
+                .module(new CgVfxModule.Turbulence(2f, 0.15f, 0.6f))
+                .module(new CgVfxModule.LimitSpeed(6f))
+                .opacity(FADE).build();
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(spirits).emitter(school).emitter(embers)
+                .layer(CgVfxLayer.of(STREAKS).on(spirits).trails().bind("_Color", GOLD).bind("_Core", WHITE).build())
+                .layer(CgVfxLayer.of(STREAKS).on(school).trails().size(0.8f).bind("_Color", CYAN).bind("_Core", WHITE).build())
+                .layer(CgVfxLayer.of(STREAKS).on(embers).trails().size(0.7f).bind("_Color", EMBER).bind("_Core", FLAME)
+                        .set("_Tail", 0.2f).build())
+                .layer(sparkLayer(spirits, GOLD, WHITE))
+                .layer(sparkLayer(school, CYAN, WHITE))
+                .layer(sparkLayer(embers, EMBER, FLAME))
+                .build();
+        float[][] sources = {{-6f, 5f, 0f}, {6f, 3f, 0f}, {0f, 1f, 8f}};
+        stations.add(new Station("flocks: boids on the neighbour grid", x, z, look, List.of(spirits, school, embers),
+                sources, p -> {
+                    p.sphere(-6f, 5f, 0f, 0.3f);
+                    p.label(-6f, 10.5f, 0f, 0.42f, "Flock", 0xFFFFFFFF);
+                    p.label(-6f, 10f, 0f, 0.26f, "separation, alignment, cohesion", 0xFFB8D8FF);
+                    p.label(6f, 8f, 0f, 0.26f, "a school round a vortex", 0xFFB8D8FF);
+                    p.label(0f, 6f, 8f, 0.26f, "a murmuration of embers", 0xFFB8D8FF);
+                }, null, null, null));
     }
 
     /** A flipbook smoke sheet's layer properties, drawn first in its effect. */

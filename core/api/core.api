@@ -10161,6 +10161,28 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Drag
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/vfx/particle/CgVfxModule$Flock
+  access public,final,record
+  extends java/lang/Record
+  implements com/crystalgraphics/vfx/particle/CgVfxModule
+  method public <init> (FFFFF)V
+  method public <init> (FFFFFI)V
+  method public alignment ()F
+  method public apart ()F
+  method public cohesion ()F
+  method public gpuKind ()Ljava/lang/String;
+  method public most ()I
+  method public neighbourRadius ()F
+  method public paramVectors ()I
+  method public pull (F)F
+  method public radius ()F
+  method public scaled (F)Lcom/crystalgraphics/vfx/particle/CgVfxModule;
+  method public separation ()F
+  method public worldInputs ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+  method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/vfx/particle/CgVfxModule$Force
   access public,final,record
   extends java/lang/Record
@@ -10466,6 +10488,7 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxGpuModule
   field public,static,final NO_TEXTURES [Lcom/crystalgraphics/api/texture/CgTexture;
   method public gpuSource ()Ljava/lang/String;
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
+  method public neighbourRadius ()F
   method public paramVectors ()I
   method public textures ()[Lcom/crystalgraphics/api/texture/CgTexture;
   method public worldInputs ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
@@ -10518,6 +10541,7 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput
   field public,static,final DEPTH Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   field public,static,final ENTITIES Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   field public,static,final FLOOR_Y Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+  field public,static,final NEIGHBOURS Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   field public,static,final NONE [Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   field public,static,final WORLD Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   field public,static,final WORLD_DISTANCE Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
@@ -10662,6 +10686,7 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape
   method public usesDepth ()Z
   method public usesDistance ()Z
   method public usesEntities ()Z
+  method public usesNeighbours ()Z
   method public volume (II)Z
   method public worldInputs (I)[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape;

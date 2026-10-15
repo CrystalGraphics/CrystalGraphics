@@ -24,6 +24,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventRows;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
@@ -138,13 +139,17 @@ public final class CgVfxParticlePool {
     private static final CgGpuCount ONE = CgGpuCount.of(1);
     private static final int MIN_STORAGE = 1024;
     private static final String TRAIL_KERNELS = "crystalgraphics:shaders/env/compute/vfx/trail.compute";
+    private static final String NEIGHBOUR_KERNELS = "crystalgraphics:shaders/env/compute/vfx/neighbours.compute";
+    /** A neighbour grid's hashed cells: twice the records, a power of two, within these. */
+    private static final int MIN_CELLS = 64, MAX_CELLS = 1 << 20;
 
     private final CgVfxShape shape;
     /** What event rows name it by: below 2^13, as a feed's key takes it. */
     private final int id = nextId++ & 0x1FFF;
     private final CgVfxWords words = new CgVfxWords();
     private final int paramWords, instanceWords;
-    private final String passName, recordsName, paramsName, curvesName, instancesName, spawnsName, historyName, ringsName;
+    private final String passName, recordsName, paramsName, curvesName, instancesName, spawnsName, historyName, ringsName,
+            gridKeysName, gridValuesName, gridRunsName;
     private final String[] countNames;
 
     /** Each definition playing here: its row, and how many open slots use it. */
@@ -219,8 +224,12 @@ public final class CgVfxParticlePool {
     private int spawnEnd;
 
     // The GPU half: made at the first recording, grown as slots open.
-    private CgKernel step, store;
+    private CgKernel step, store, gridKeys, gridRuns;
     private CgGraphBuffer records, paramBuffer, curveBuffer, instanceBuffer, spawnBuffer, history, ringTable;
+    /** The neighbour grid (CgVfxWorldInput.NEIGHBOURS): each record's key and index, sorted; each hashed cell's run. */
+    private CgGraphBuffer cellKeys, cellValues, cellRuns;
+    private int cells;
+    private float cellWidth = 1f;
     /** Ping-ponged append counts: {@code counts[current]} is how many records the newest version holds. */
     private final CgGraphBuffer[] counts = new CgGraphBuffer[2];
     private int current, storage;
@@ -241,6 +250,9 @@ public final class CgVfxParticlePool {
         countNames = new String[]{name + ".live0", name + ".live1"};
         historyName = name + ".trails";
         ringsName = name + ".rings";
+        gridKeysName = name + ".grid-keys";
+        gridValuesName = name + ".grid-values";
+        gridRunsName = name + ".grid-runs";
     }
 
     /**
@@ -282,6 +294,11 @@ public final class CgVfxParticlePool {
         CgVfxEmitterCompiler.compile(CgVfxShape.of(emitter)).kernel("Step").prepare();
         CgGpuOps.prepareFill();
         if (emitter.trailPoints() > 0) CgCompute.load(TRAIL_KERNELS).kernel("Store").prepare();
+        if (CgVfxShape.of(emitter).usesNeighbours()) {
+            CgCompute.load(NEIGHBOUR_KERNELS).kernel("Keys").prepare();
+            CgCompute.load(NEIGHBOUR_KERNELS).kernel("Runs").prepare();
+            CgGpuOps.prepareSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING);
+        }
     }
 
     /**
@@ -327,6 +344,7 @@ public final class CgVfxParticlePool {
     private void forgetStorage() {
         records = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = feedBuffer = counts[0] = counts[1] = null;
         history = ringTable = historyFrom = null;
+        cellKeys = cellValues = cellRuns = null;
         historyDrops.clear();
         historyFresh = false;
         current = storage = 0;
@@ -481,7 +499,44 @@ public final class CgVfxParticlePool {
         reserve(recording, capacity);
         upload(recording);
         if (ringSlots > 0) reserveRings(recording);
+        if (shape.usesNeighbours()) reserveGrid(recording);
         return true;
+    }
+
+    /**
+     * The neighbour grid's buffers for this storage, its runs cleared when new, and its cells as wide as the widest
+     * {@code neighbourRadius} of the open slots' kinds.
+     */
+    private void reserveGrid(CgRecording recording) {
+        if (gridKeys == null) {
+            CgCompute file = CgCompute.load(NEIGHBOUR_KERNELS);
+            gridKeys = file.kernel("Keys");
+            gridRuns = file.kernel("Runs");
+        }
+        cells = Math.max(MIN_CELLS, Math.min(MAX_CELLS, Integer.highestOneBit(storage * 2 - 1) << 1));
+        cellKeys = fit(recording, cellKeys, gridKeysName, storage);
+        cellValues = fit(recording, cellValues, gridValuesName, storage);
+        CgGraphBuffer runs = fit(recording, cellRuns, gridRunsName, cells * 2);
+        if (runs != cellRuns) recording.fill(runs, 0);
+        cellRuns = runs;
+        float widest = 0f;
+        for (int s = 0; s < slotCount; s++) {
+            if (slotEmitter[s] == null) continue;
+            List<? extends CgVfxGpuModule> modules = slotEmitter[s].modules();
+            for (int m = 0; m < modules.size(); m++) widest = Math.max(widest, modules.get(m).neighbourRadius());
+        }
+        cellWidth = Math.max(widest, 0.05f);
+    }
+
+    /** After a step: the newest records' keys, sorted with their indices, and each hashed cell's run among them. */
+    private void buildGrid(CgComputePass pass) {
+        CgGraphBuffer live = counts[current];
+        pass.dispatch(gridKeys, storage).bind("RECORDS", records).bind("LIVE", live).bind("KEYS", cellKeys)
+                .bind("VALUES", cellValues).set("_Cell", cellWidth).set("_Cells", cells);
+        CgGpuOps.sort(pass, Integer.numberOfTrailingZeros(cells), CgGpuOps.Order.ASCENDING, cellKeys, cellValues,
+                CgGpuCount.at(live, 0, storage));
+        CgGpuOps.fill(pass, cellRuns, 0, CgGpuCount.of(cells * 2));
+        pass.dispatch(gridRuns, storage).bind("LIVE", live).bind("KEYS", cellKeys).bind("RUNS", cellRuns);
     }
 
     /**
@@ -642,10 +697,15 @@ public final class CgVfxParticlePool {
         if (shape.usesDepth()) bindDepth(stepping);
         if (shape.usesEntities()) CgVfxEntityBoxes.bind(stepping);
         if (shape.spawnsOnMesh()) CgVfxSpawnMeshes.bind(stepping);
+        if (shape.usesNeighbours()) {
+            stepping.bind("SORTED", cellValues).bind("CELL_RUNS", cellRuns).set("_NeighbourCell", cellWidth)
+                    .set("_NeighbourCells", cells);
+        }
         for (int i = 0; i < shape.modules(); i++) {
             for (int t = 0; t < shape.textureCount(i); t++) stepping.texture(CgVfxEmitterCompiler.texture(i, t), shape.texture(i, t));
         }
         current = 1 - current;
+        if (shape.usesNeighbours()) buildGrid(pass);
         if (ringSlots > 0) {
             pass.dispatch(store, storage).bind("RECORDS", records).bind("LIVE", counts[current])
                     .bind("RINGS", ringTable).bind("HISTORY", history).set("_Step", stepsStored);
@@ -777,11 +837,12 @@ public final class CgVfxParticlePool {
 
     private void releaseStorage(CgRecording recording) {
         CgGraphBuffer[] owned = {records, counts[0], counts[1], paramBuffer, curveBuffer, instanceBuffer, spawnBuffer,
-                history, ringTable, historyFrom};
+                history, ringTable, historyFrom, cellKeys, cellValues, cellRuns};
         for (CgGraphBuffer buffer : owned) if (buffer != null) recording.release(buffer);
         for (int i = 0; i < historyDrops.size(); i++) recording.release(historyDrops.get(i));
         records = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = counts[0] = counts[1] = null;
         history = ringTable = historyFrom = null;
+        cellKeys = cellValues = cellRuns = null;
         historyDrops.clear();
     }
 

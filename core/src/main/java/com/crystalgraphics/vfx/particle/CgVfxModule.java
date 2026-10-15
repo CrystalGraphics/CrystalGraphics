@@ -558,6 +558,74 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
     }
 
+    /**
+     * Reynolds' boids (1987): each particle steers apart from those nearest it, along with its neighbours' heading and
+     * toward their middle, among its own instance's particles within {@code radius} blocks: a flock of spirits, a swarm
+     * of embers, a school of fish. Reads the pool's neighbour grid, built after every step on every tier.
+     *
+     * <pre>{@code
+     * .module(new CgVfxModule.Flock(1.6f, 0.5f, 3f, 1.5f, 0.8f))      // a loose flock
+     * .module(new CgVfxModule.Flock(0.8f, 0.3f, 6f, 4f, 0.3f, 16))    // a tight school, sixteen neighbours each
+     * .module(new CgVfxModule.LimitSpeed(4f))                          // boids want a top speed
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code separation} pushes a particle from each neighbour nearer than {@code apart} blocks, harder the nearer;
+     *       {@code alignment} matches its velocity to theirs, a rate a second; {@code cohesion} pulls it to their middle,
+     *       blocks a second squared a block.</li>
+     *   <li>Counts at most {@code most} neighbours (24 unless given): a dense flock costs the same as a sparse one.</li>
+     *   <li>A newborn joins the next step: the grid holds last step's particles.</li>
+     * </ul>
+     */
+    record Flock(float radius, float apart, float separation, float alignment, float cohesion, int most)
+            implements CgVfxModule {
+        private static final CgVfxWorldInput[] NEIGHBOURS = {CgVfxWorldInput.NEIGHBOURS};
+
+        public Flock {
+            if (!(radius > 0f)) throw new IllegalArgumentException("a flock's radius " + radius);
+            if (most < 1) throw new IllegalArgumentException("a flock counting " + most + " neighbours");
+        }
+
+        public Flock(float radius, float apart, float separation, float alignment, float cohesion) {
+            this(radius, apart, separation, alignment, cohesion, 24);
+        }
+
+        @Override
+        public float pull(float heat) {
+            return cohesion * radius + separation / Math.max(apart, 0.05f);
+        }
+
+        @Override
+        public CgVfxModule scaled(float scale) {
+            return new Flock(radius * scale, apart * scale, separation * scale * scale, alignment, cohesion, most);
+        }
+
+        @Override
+        public String gpuKind() {
+            return "flock";
+        }
+
+        @Override
+        public int paramVectors() {
+            return 2;
+        }
+
+        @Override
+        public void writeParams(CgVfxWords out) {
+            out.vec4(radius, separation, alignment, cohesion).vec4(apart, most, 0f, 0f);
+        }
+
+        @Override
+        public CgVfxWorldInput[] worldInputs() {
+            return NEIGHBOURS;
+        }
+
+        @Override
+        public float neighbourRadius() {
+            return radius;
+        }
+    }
+
     /** A constant push, blocks a second squared: Niagara's acceleration force, {@link Gravity} in any direction. */
     record Force(float x, float y, float z) implements CgVfxModule {
 

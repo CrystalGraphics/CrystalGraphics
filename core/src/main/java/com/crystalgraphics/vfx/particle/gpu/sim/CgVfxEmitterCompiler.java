@@ -59,6 +59,12 @@ public final class CgVfxEmitterCompiler {
         return CgCompute.fromSource(key(shape), source(shape));
     }
 
+    /** The neighbour grid's properties, for a shape taking {@code NEIGHBOURS}: the pool sets them each step. */
+    private static final String NEIGHBOUR_PROPERTIES = """
+                _NeighbourCell  ("The neighbour grid's cell width, blocks", float) = 1.0
+                _NeighbourCells ("Its hashed cells; 0 before it is built", int)   = 0
+            """;
+
     /** What {@link #compile} registers the source under. */
     public static String key(CgVfxShape shape) {
         return "crystalgraphics:vfx/pool/" + shape.kernelKey();
@@ -75,6 +81,7 @@ public final class CgVfxEmitterCompiler {
         if (shape.readsWorld()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_world_at.glsl\"\n");
         if (shape.usesDepth()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_depth_at.glsl\"\n");
         if (shape.usesEntities()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_entities_at.glsl\"\n");
+        if (shape.usesNeighbours()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_neighbours_at.glsl\"\n");
         Set<String> kinds = new LinkedHashSet<>();
         for (int i = 0; i < shape.modules(); i++) {
             if (!kinds.add(shape.kind(i))) continue;
@@ -97,6 +104,7 @@ public final class CgVfxEmitterCompiler {
         if (shape.readsWorld()) s.append(CgVfxVoxelWindow.PROPERTIES);
         if (shape.usesDepth()) s.append(DEPTH_PROPERTIES);
         if (shape.usesEntities()) s.append(CgVfxEntityBoxes.PROPERTIES);
+        if (shape.usesNeighbours()) s.append(NEIGHBOUR_PROPERTIES);
         for (int i = 0; i < shape.modules(); i++) {
             for (int t = 0; t < shape.textureCount(i); t++) {
                 s.append("    ").append(texture(i, t)).append(" (\"fx_").append(shape.kind(i)).append("'s texture ").append(t)
@@ -119,6 +127,10 @@ public final class CgVfxEmitterCompiler {
         if (shape.reports()) s.append("    REPORT_EVENTS (\"Events the CPU hears\",       FxEvent, append)\n");
         if (shape.usesEntities()) s.append("    ENTITIES      (\"Entity boxes, two rows each\", uvec4,   readonly)\n");
         if (shape.spawnsOnMesh()) s.append("    MESHES        (\"Spawn meshes' triangles and vertices\", uvec4, readonly)\n");
+        if (shape.usesNeighbours()) {
+            s.append("    SORTED        (\"Last step's particles by hashed cell\", uint, readonly)\n");
+            s.append("    CELL_RUNS     (\"Each hashed cell's run in SORTED, first then end\", uint, readonly)\n");
+        }
         if (!shape.spawns()) {
             s.append("    PARENT_EVENTS (\"This step's parents' events\", FxEvent, readonly)\n");
             s.append("    PARENT_COUNT  (\"How many\",                    uint,    readonly)\n");
@@ -551,6 +563,33 @@ public final class CgVfxEmitterCompiler {
                     return ev;
                 }
 """);
+        if (shape.usesNeighbours()) s.append("""
+
+                uvec2 step_cell_run(int h) {
+                    return uvec2(CELL_RUNS(h * 2), CELL_RUNS(h * 2 + 1));
+                }
+
+                FxNeighbour step_neighbour(uint k) {
+                    int i = int(SORTED(int(k)));
+                    FxRecord r = IN(i);
+                    FxNeighbour n;
+                    n.position = r.positionAge.xyz;
+                    n.velocity = r.velocitySize.xyz;
+                    n.slot = r.idSlot.y;
+                    n.index = i;
+                    return n;
+                }
+
+                // The grid as a kind taking NEIGHBOURS reads it: p is last step's particle self, or a newborn (-1).
+                FxNeighbours step_neighbours(int self, uint slot) {
+                    FxNeighbours n;
+                    n.cell = _NeighbourCell;
+                    n.cells = _NeighbourCells;
+                    n.slot = slot;
+                    n.self = self;
+                    return n;
+                }
+                """);
         s.append("""
 
                 void Step() {
@@ -679,6 +718,7 @@ public final class CgVfxEmitterCompiler {
                 case WORLD, WORLD_DISTANCE -> s.append(", step_world(inst)");
                 case DEPTH -> s.append(", step_depth(inst)");
                 case ENTITIES -> s.append(", step_entities(inst)");
+                case NEIGHBOURS -> s.append(", step_neighbours(CG_ELEMENT < live ? CG_ELEMENT : -1, p.slot)");
             }
         }
         for (int t = 0; t < shape.textureCount(i); t++) s.append(", ").append(texture(i, t));

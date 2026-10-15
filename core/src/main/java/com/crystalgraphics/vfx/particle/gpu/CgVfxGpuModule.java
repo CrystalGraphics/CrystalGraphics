@@ -73,6 +73,14 @@ public interface CgVfxGpuModule {
     /** True for a kind that runs after the solver has moved the particles. */
     boolean afterSolve();
 
+    /**
+     * How far it looks for neighbours, in blocks, for a kind taking {@link CgVfxWorldInput#NEIGHBOURS}: the grid's cells
+     * are at least this wide, so the 27 round a particle hold every neighbour within it. 0 for any other kind.
+     */
+    default float neighbourRadius() {
+        return 0f;
+    }
+
     /** How many vec4s of numbers it takes, as {@code m} or {@code m0, m1, ...}. */
     default int paramVectors() {
         return 1;
@@ -83,7 +91,7 @@ public interface CgVfxGpuModule {
         return CgVfxLane.NONE;
     }
 
-    /** The world values it takes after its lanes; only after the solver. */
+    /** The world values it takes after its lanes; only after the solver, but {@link CgVfxWorldInput#NEIGHBOURS}. */
     default CgVfxWorldInput[] worldInputs() {
         return CgVfxWorldInput.NONE;
     }

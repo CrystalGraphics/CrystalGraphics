@@ -1200,6 +1200,7 @@ Modules run in order every step. Forces come first and are integrated together; 
 | `Drag`, `Damping`, `LimitSpeed` | Linear and quadratic drag; velocity decaying by a rate; a speed cap |
 | `Wind`, `Turbulence`, `Buoyancy`, `Updraft` | The system's gusting air; curl noise; hot particles rising as they cool; a column of rising air |
 | `Attract`, `Orbit`, `Vortex`, `Conform` | Pull toward a sphere or box; circling an axis; a vortex's pull; settling onto a sphere's shell |
+| `Flock` | Reynolds' boids among an instance's own particles: apart from the nearest, along with their heading, toward their middle |
 | `VectorField` | A 3D field (`CgVfxField`) in a box, setting velocity |
 | `Spin` | Spin rate decaying |
 | `Ground` | Landing on the effect's ground: bounce, friction, rest |
@@ -1579,6 +1580,7 @@ record Swirl(float strength) implements CgVfxModule {
 | a texture (a field, a heightfield) | `textures()` | a `sampler2D` or `sampler3D` each, after the world |
 | an impact that fires `onCollision` | after the solver; call `fx_hit(p, n, FX_HIT_BLOCK)` on a punctual impact | — |
 | the entities round the camera | `worldInputs()` of `ENTITIES` | `FxEntities` (`fx_entities_at.glsl`) |
+| the particles near it, as a force before the solver | `worldInputs()` of `NEIGHBOURS`, `neighbourRadius()` | `FxNeighbours` (`fx_neighbours_at.glsl`: 27 cells to walk) |
 
 - `fx_types.glsl` defines `FxParticle`, `FxForces` and `FxStep`. Kill a particle with `p.life = p.age`.
 - **Prefix the kind with your mod's name**: two kinds of one name with different source throw.

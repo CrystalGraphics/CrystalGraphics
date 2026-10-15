@@ -43,7 +43,14 @@ public enum CgVfxWorldInput {
      * readers take ({@code fx_entities_enter}): mobs and players a particle can strike from any side, on screen or not.
      * At most {@code CgVfxEntityBoxes.MAX} of them, the living nearest the camera.
      */
-    ENTITIES("FxEntities", "entities");
+    ENTITIES("FxEntities", "entities"),
+    /**
+     * The particles near this one from the last step, as an {@code FxNeighbours} that {@code fx_neighbours_at.glsl}
+     * walks: every particle of its slot in the 27 cells round it, each cell as wide as the widest
+     * {@link CgVfxGpuModule#neighbourRadius} of the pool's kinds. The one input a kind before the solver may take: a
+     * force from its neighbours (boids, a swarm). Built after every step on every tier; a newborn is not in it yet.
+     */
+    NEIGHBOURS("FxNeighbours", "neighbours");
 
     /** No world inputs: what a kind before the solver declares. Never write into it. */
     public static final CgVfxWorldInput[] NONE = {};

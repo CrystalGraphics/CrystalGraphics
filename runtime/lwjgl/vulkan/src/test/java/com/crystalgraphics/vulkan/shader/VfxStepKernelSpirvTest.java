@@ -40,13 +40,16 @@ public class VfxStepKernelSpirvTest {
     /** Spawning on a mesh, whose kernel reads the spawn meshes. */
     private static final CgVfxEmitter ON_MESH = CgVfxEmitter.builder("on_mesh").capacity(64).burst(0f, 64).life(1f, 2f)
             .mesh(CgProceduralMesh.revolve(CgProceduralMesh.cone(1f, 1f)).build()).build();
+    /** Flocking, whose kernel reads the neighbour grid before the solver. */
+    private static final CgVfxEmitter FLOCKING = CgVfxEmitter.builder("flocking").capacity(64).burst(0f, 64).life(1f, 2f)
+            .module(new CgVfxModule.Flock(1.5f, 0.4f, 3f, 1.5f, 0.8f)).module(new CgVfxModule.LimitSpeed(4f)).build();
 
     @AfterClass
     public static void close() { COMPILER.close(); }
 
     @Test
     public void everyShippedEmittersStepKernelCompiles() {
-        CgVfxEmitter[] emitters = {EVERY_KIND, ON_MESH, CgVfxExplosion.BILLOWS, CgVfxExplosion.SURGE, CgVfxExplosion.SPECKS, CgVfxExplosion.DUST, CgVfxExplosion.SPARKLES,
+        CgVfxEmitter[] emitters = {EVERY_KIND, ON_MESH, FLOCKING, CgVfxExplosion.BILLOWS, CgVfxExplosion.SURGE, CgVfxExplosion.SPECKS, CgVfxExplosion.DUST, CgVfxExplosion.SPARKLES,
                 CgVfxExplosion.INK, CgVfxExplosion.RAYS, CgVfxExplosion.RINGS, CgVfxExplosion.SKIRT};
         List<String> failures = new ArrayList<>();
         for (CgVfxEmitter emitter : emitters) {

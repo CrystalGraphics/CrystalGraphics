@@ -1,0 +1,42 @@
+// A pool's neighbour grid (CgVfxWorldInput.NEIGHBOURS), Green's sort-based grid (NVIDIA, "Particle Simulation using
+// CUDA", 2010): after a step Keys hashes each live particle's cell with its slot, CgGpuOps.sort orders the indices by
+// key, and Runs marks where each key's run starts and ends. The next step's kinds walk the 27 cells round a particle.
+// No atomic answers a value, so every tier runs it.
+#pragma kernel Keys map
+#pragma kernel Runs scatter
+
+#include "crystalgraphics:shaders/lib/vfx/sim/fx_neighbour_hash.glsl"
+
+Properties {
+    _Cell  ("A cell's width, blocks",       float) = 1.0
+    _Cells ("Hashed cells: a power of two", int)   = 1
+}
+
+// A particle as a pool stores it: CgVfxRecord.GLSL.
+struct FxRecord { vec4 positionAge; vec4 previousLife; vec4 velocitySize; vec4 seedSpin; uvec4 idSlot; };
+
+Buffers {
+    RECORDS ("Particles, after the step",                            FxRecord, readonly)
+    LIVE    ("How many are alive",                                   uint,     readonly)
+    KEYS    ("Each particle's hashed cell; sorted, the runs' order", uint,     readwrite)
+    VALUES  ("Each particle's index, sorted with its key",           uint,     writeonly)
+    RUNS    ("Each hashed cell's first sorted particle, then its end", uint,   writeonly)
+}
+
+void Keys() {
+    uint key = 0u;
+    if (CG_ELEMENT < int(LIVE(0))) {
+        FxRecord r = RECORDS(CG_ELEMENT);
+        key = uint(fx_neighbour_hash(ivec3(floor(r.positionAge.xyz / _Cell)), r.idSlot.y, _Cells));
+    }
+    KEYS_WRITE(key);
+    VALUES_WRITE(uint(CG_ELEMENT));
+}
+
+void Runs() {
+    int live = int(LIVE(0));
+    if (CG_ELEMENT >= live) return;
+    uint key = KEYS(CG_ELEMENT);
+    if (CG_ELEMENT == 0 || KEYS(CG_ELEMENT - 1) != key) RUNS_STORE(int(key) * 2, uint(CG_ELEMENT));
+    if (CG_ELEMENT == live - 1 || KEYS(CG_ELEMENT + 1) != key) RUNS_STORE(int(key) * 2 + 1, uint(CG_ELEMENT + 1));
+}

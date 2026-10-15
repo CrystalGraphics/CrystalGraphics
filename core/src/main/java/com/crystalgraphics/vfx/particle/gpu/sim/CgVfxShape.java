@@ -58,7 +58,7 @@ public final class CgVfxShape {
     private final CgVfxLane[][] lanes;
     private final CgVfxWorldInput[][] world;
     private final int paramRow, instanceRow;
-    private final boolean readsWorld, usesDistance, usesDepth, usesEntities, floors, spawnsOnMesh;
+    private final boolean readsWorld, usesDistance, usesDepth, usesEntities, usesNeighbours, floors, spawnsOnMesh;
     private final CgVfxEvent.Trigger[] triggers;
     private final boolean[] eventSpawns, eventReports;
     private final int eventsAt;
@@ -101,8 +101,13 @@ public final class CgVfxShape {
             lanes[i] = m.instanceLanes().clone();
             world[i] = m.worldInputs().clone();
             if (params[i] < 0) throw new IllegalArgumentException(emitter.name() + ": fx_" + kind + " declares " + params[i] + " param vectors");
-            if (world[i].length > 0 && !afterSolve[i]) {
-                throw new IllegalArgumentException(emitter.name() + ": fx_" + kind + " takes world inputs but runs before the solver");
+            if (!afterSolve[i]) {
+                for (CgVfxWorldInput input : world[i]) {
+                    if (input != CgVfxWorldInput.NEIGHBOURS) {
+                        throw new IllegalArgumentException(emitter.name() + ": fx_" + kind + " takes " + input
+                                + " but runs before the solver, which takes NEIGHBOURS alone");
+                    }
+                }
             }
             paramAt[i] = param;
             lanesAt[i] = lane;
@@ -146,10 +151,12 @@ public final class CgVfxShape {
         if (triggers.length > 0) param += EVENT_VECTORS;
         paramRow = param;
         instanceRow = lane;
-        boolean reads = false, distance = false, depth = false, entities = false, floor = false;
+        boolean reads = false, distance = false, depth = false, entities = false, neighbours = false, floor = false;
         for (CgVfxWorldInput[] inputs : world) {
             for (CgVfxWorldInput input : inputs) {
-                reads |= input != CgVfxWorldInput.DEPTH && input != CgVfxWorldInput.ENTITIES;
+                reads |= input != CgVfxWorldInput.DEPTH && input != CgVfxWorldInput.ENTITIES
+                        && input != CgVfxWorldInput.NEIGHBOURS;
+                neighbours |= input == CgVfxWorldInput.NEIGHBOURS;
                 distance |= input == CgVfxWorldInput.WORLD_DISTANCE;
                 depth |= input == CgVfxWorldInput.DEPTH;
                 entities |= input == CgVfxWorldInput.ENTITIES;
@@ -160,6 +167,7 @@ public final class CgVfxShape {
         usesDistance = distance;
         usesDepth = depth;
         usesEntities = entities;
+        usesNeighbours = neighbours;
         floors = floor;
         kernelKey = key.toString();
         this.key = kernelKey + identity;
@@ -269,6 +277,11 @@ public final class CgVfxShape {
     /** Whether any module takes {@link CgVfxWorldInput#ENTITIES}: its Step kernel reads the entity boxes. */
     public boolean usesEntities() {
         return usesEntities;
+    }
+
+    /** Whether any module takes {@link CgVfxWorldInput#NEIGHBOURS}: its pool builds a neighbour grid after each step. */
+    public boolean usesNeighbours() {
+        return usesNeighbours;
     }
 
     /** Whether any module takes a voxel window input: its Step kernel reads the window. */
