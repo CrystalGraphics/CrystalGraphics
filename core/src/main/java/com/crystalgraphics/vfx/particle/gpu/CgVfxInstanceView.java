@@ -1,5 +1,9 @@
 package com.crystalgraphics.vfx.particle.gpu;
 
+import com.crystalgraphics.vfx.gas.CgVfxGas;
+
+import javax.annotation.Nullable;
+
 /**
  * One playing emitter instance, as a module kind reads it to work out its per-instance values for a step
  * ({@link CgVfxGpuModule#writeInstance}), and as a pool writes its row. {@code CgVfxEmitterInstance} has every method.
@@ -66,5 +70,11 @@ public interface CgVfxInstanceView {
 
     default float boxHalfZ() {
         return 0f;
+    }
+
+    /** The gas its particles are carried by, for kinds taking {@link CgVfxWorldInput#GAS}; null for none. */
+    @Nullable
+    default CgVfxGas gas() {
+        return null;
     }
 }

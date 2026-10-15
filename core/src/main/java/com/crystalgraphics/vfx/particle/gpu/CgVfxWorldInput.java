@@ -3,7 +3,8 @@ package com.crystalgraphics.vfx.particle.gpu;
 /**
  * A value of the world the Step kernel fetches per particle for a module kind that runs after the solver, passed to its
  * {@code fx_<kind>} function after its lanes, in the order the kind declares ({@link CgVfxGpuModule#worldInputs}).
- * A closed list: a new world value is a change to the compiler, since only the kernel can read the world.
+ * A closed list: a new world value is a change to the compiler, since only the kernel can read the world. Kinds after
+ * the solver take any; kinds before it take {@link #NEIGHBOURS} and {@link #GAS}, the forces from the world.
  *
  * <pre>{@code
  * private static final CgVfxWorldInput[] WORLD = {CgVfxWorldInput.FLOOR_Y};
@@ -50,7 +51,14 @@ public enum CgVfxWorldInput {
      * {@link CgVfxGpuModule#neighbourRadius} of the pool's kinds. The one input a kind before the solver may take: a
      * force from its neighbours (boids, a swarm). Built after every step on every tier; a newborn is not in it yet.
      */
-    NEIGHBOURS("FxNeighbours", "neighbours");
+    NEIGHBOURS("FxNeighbours", "neighbours"),
+    /**
+     * The gas its instance is carried by ({@code CgVfxEmitterInstance.inGas}), as an {@code FxGas} that
+     * {@code fx_gas_at.glsl}'s {@code fx_gas_flow} reads: its velocity at a point from the instance's origin, as its last
+     * step left it, and 1 inside its box (0 outside it, and with no gas). A kind before the solver may take it: a force
+     * from the flow.
+     */
+    GAS("FxGas", "gas");
 
     /** No world inputs: what a kind before the solver declares. Never write into it. */
     public static final CgVfxWorldInput[] NONE = {};

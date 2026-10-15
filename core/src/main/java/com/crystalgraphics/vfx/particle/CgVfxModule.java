@@ -626,6 +626,51 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
     }
 
+    /**
+     * Carried by a gas: each particle's velocity drawn toward the gas's where it is, {@code follow} of the difference a
+     * second, inside the gas's box alone. Embers in a fire's plume, debris whirled through a blast's cloud, sparks curling
+     * in smoke. The gas is the instance's ({@code CgVfxEmitterInstance.inGas}); with none, it does nothing.
+     *
+     * <pre>{@code
+     * .module(new CgVfxModule.Flow(3f))              // embers riding a plume
+     * embers.inGas(smoke);                            // in the effect, after making both
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Read from the gas's last step: a frame behind it, which nothing at 60 Hz shows.</li>
+     *   <li>Around 1 drifts with the gas; past 10 sticks to it like dust.</li>
+     * </ul>
+     */
+    record Flow(float follow) implements CgVfxModule {
+        private static final CgVfxWorldInput[] GAS = {CgVfxWorldInput.GAS};
+        /** The fastest a gas is taken to move, blocks a second: what bounds the pull for culling. */
+        private static final float FASTEST = 20f;
+
+        public Flow {
+            if (!(follow >= 0f)) throw new IllegalArgumentException("a flow followed at " + follow);
+        }
+
+        @Override
+        public float pull(float heat) {
+            return follow * FASTEST;
+        }
+
+        @Override
+        public String gpuKind() {
+            return "flow";
+        }
+
+        @Override
+        public void writeParams(CgVfxWords out) {
+            out.vec4(follow, 0f, 0f, 0f);
+        }
+
+        @Override
+        public CgVfxWorldInput[] worldInputs() {
+            return GAS;
+        }
+    }
+
     /** A constant push, blocks a second squared: Niagara's acceleration force, {@link Gravity} in any direction. */
     record Force(float x, float y, float z) implements CgVfxModule {
 

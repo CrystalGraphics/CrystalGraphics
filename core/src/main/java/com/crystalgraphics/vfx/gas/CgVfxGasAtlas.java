@@ -67,6 +67,12 @@ public final class CgVfxGasAtlas {
     public static final CgGpuBudget GPU_BUDGET = CgGpuBudget.define("vfx.gas", 2f);
     /** What a gas layer's shader declares, and the frame binds: {@link #shade()}. */
     public static final String SHADE_SAMPLER = "_GasShade";
+    /** What a Step kernel taking {@code GAS} declares, all of which {@link #bindFlow} sets. */
+    public static final String FLOW_PROPERTIES = """
+                _GasVel    ("The gas atlas's velocity, as its last step left it", sampler3D) = "black"
+                _GasCells  ("Cells a brick a side; 0 before the first gas",       int)       = 0
+                _GasBricks ("Bricks along the atlas",                             int)       = 1
+            """;
     /**
      * A brick's rows in {@code BRICKS}, a uvec4 each: its state (alive, step seconds, cell width in blocks, fresh), its
      * origin's whole blocks and its floor from the origin, the fraction within and its buoyancy, its forces (weight, vorticity, density and
@@ -108,6 +114,8 @@ public final class CgVfxGasAtlas {
     private final CgGraphTexture[] velocity = new CgGraphTexture[2], scalar = new CgGraphTexture[2],
             pressures = new CgGraphTexture[2];
     private CgGraphTexture ahead, back, divergence, curl, solid;
+    /** What {@link #bindFlow} gives a kernel before the first gas: the smallest volume, never read. */
+    private final CgGraphTexture noFlow = CgGraphTexture.requested("vfx.gas.none", CgTextureDesc.volume(1, 1, 2, RGBA16F));
     private CgGraphBuffer bricks, sourceBuffer;
     private CgKernel solids, advect, curlKernel, forces, divergenceKernel, jacobi, project, carry, carryBack, settle, shadeKernel;
     private CgRenderStage.Registration registration;
@@ -137,6 +145,15 @@ public final class CgVfxGasAtlas {
     @Nullable
     public CgGraphTexture shade() {
         return shade;
+    }
+
+    /**
+     * The velocity as the last step left it, and where it sits, on a dispatch of a kernel declaring
+     * {@link #FLOW_PROPERTIES}: recorded before this frame's steps, it reads the last frame's, which they never write.
+     */
+    public CgDispatch bindFlow(CgDispatch d) {
+        if (shade == null) return d.texture("_GasVel", noFlow).set("_GasCells", 0).set("_GasBricks", 1);
+        return d.texture("_GasVel", velocity[vel]).set("_GasCells", cells).set("_GasBricks", CAPACITY);
     }
 
     /** How many gases hold a brick. */

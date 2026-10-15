@@ -1202,6 +1202,7 @@ Modules run in order every step. Forces come first and are integrated together; 
 | `Wind`, `Turbulence`, `Buoyancy`, `Updraft` | The system's gusting air; curl noise; hot particles rising as they cool; a column of rising air |
 | `Attract`, `Orbit`, `Vortex`, `Conform` | Pull toward a sphere or box; circling an axis; a vortex's pull; settling onto a sphere's shell |
 | `Flock` | Reynolds' boids among an instance's own particles: apart from the nearest, along with their heading, toward their middle |
+| `Flow` | Carried by the gas its instance is in (`instance.inGas(gas)`, [§14](#14-gas)): embers riding a plume, debris whirled through a cloud |
 | `VectorField` | A 3D field (`CgVfxField`) in a box, setting velocity |
 | `Spin` | Spin rate decaying |
 | `Ground` | Landing on the effect's ground: bounce, friction, rest |
@@ -1310,6 +1311,13 @@ smoke.source(0f, 0f, 0f, 0.8f).fuel(3f).heat(2f);   // fuel burns into heat and 
   gas and the blocks (cached by the solver once a frame), the sky's light from the lightmap, a blackbody where it burns,
   blooming. A shader of your own declares `_GasShade (sampler3D)`, includes `lib/vfx/fx_gas.glsl`, and reads what
   `CgVfxSlot.Kind.VOLUME` documents.
+- **Particles ride it** through `CgVfxModule.Flow`: their velocity drawn toward the gas's where they are, inside its
+  box alone. The instance names its gas:
+
+  ```java
+  embers = new CgVfxEmitterInstance(look().emitter("embers"), seed).inGas(smoke);   // and .module(new Flow(2.5f))
+  ```
+
 - Not yet measured on a GPU: `vfx-gas` is the scene to time it in.
 
 ## 15. Writing an effect of your own
@@ -1653,6 +1661,7 @@ record Swirl(float strength) implements CgVfxModule {
 | an impact that fires `onCollision` | after the solver; call `fx_hit(p, n, FX_HIT_BLOCK)` on a punctual impact | — |
 | the entities round the camera | `worldInputs()` of `ENTITIES` | `FxEntities` (`fx_entities_at.glsl`) |
 | the particles near it, as a force before the solver | `worldInputs()` of `NEIGHBOURS`, `neighbourRadius()` | `FxNeighbours` (`fx_neighbours_at.glsl`: 27 cells to walk) |
+| the gas its instance is in, before or after the solver | `worldInputs()` of `GAS` | `FxGas` (`fx_gas_at.glsl`: `fx_gas_flow`, its velocity and 1 inside its box) |
 
 - `fx_types.glsl` defines `FxParticle`, `FxForces` and `FxStep`. Kill a particle with `p.life = p.age`.
 - **Prefix the kind with your mod's name**: two kinds of one name with different source throw.

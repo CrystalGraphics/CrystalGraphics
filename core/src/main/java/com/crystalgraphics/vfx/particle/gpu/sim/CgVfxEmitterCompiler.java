@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
 import com.crystalgraphics.compute.CgCompute;
+import com.crystalgraphics.vfx.gas.CgVfxGasAtlas;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
@@ -82,6 +83,7 @@ public final class CgVfxEmitterCompiler {
         if (shape.usesDepth()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_depth_at.glsl\"\n");
         if (shape.usesEntities()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_entities_at.glsl\"\n");
         if (shape.usesNeighbours()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_neighbours_at.glsl\"\n");
+        if (shape.usesGas()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_gas_at.glsl\"\n");
         Set<String> kinds = new LinkedHashSet<>();
         for (int i = 0; i < shape.modules(); i++) {
             if (!kinds.add(shape.kind(i))) continue;
@@ -105,6 +107,7 @@ public final class CgVfxEmitterCompiler {
         if (shape.usesDepth()) s.append(DEPTH_PROPERTIES);
         if (shape.usesEntities()) s.append(CgVfxEntityBoxes.PROPERTIES);
         if (shape.usesNeighbours()) s.append(NEIGHBOUR_PROPERTIES);
+        if (shape.usesGas()) s.append(CgVfxGasAtlas.FLOW_PROPERTIES);
         for (int i = 0; i < shape.modules(); i++) {
             for (int t = 0; t < shape.textureCount(i); t++) {
                 s.append("    ").append(texture(i, t)).append(" (\"fx_").append(shape.kind(i)).append("'s texture ").append(t)
@@ -204,6 +207,21 @@ public final class CgVfxEmitterCompiler {
                         id = a.w;
                     }
                     """);
+        }
+        if (shape.usesGas()) {
+            s.append("\n// The gas as a kind taking GAS reads it: this instance's origin from the gas's middle.\n")
+                    .append("FxGas step_gas(int inst) {\n")
+                    .append("    vec4 a = step_instance(inst + ").append(shape.gasAt()).append("), b = step_instance(inst + ")
+                    .append(shape.gasAt() + 1).append(");\n")
+                    .append("""
+                                FxGas g;
+                                g.offset = a.xyz;
+                                g.brick = a.w;
+                                g.cell = b.x;
+                                g.live = a.w >= 0.0 && _GasCells > 0;
+                                return g;
+                            }
+                            """);
         }
         if (shape.spawnsOnMesh()) s.append("""
 
@@ -719,6 +737,7 @@ public final class CgVfxEmitterCompiler {
                 case DEPTH -> s.append(", step_depth(inst)");
                 case ENTITIES -> s.append(", step_entities(inst)");
                 case NEIGHBOURS -> s.append(", step_neighbours(CG_ELEMENT < live ? CG_ELEMENT : -1, p.slot)");
+                case GAS -> s.append(", step_gas(inst)");
             }
         }
         for (int t = 0; t < shape.textureCount(i); t++) s.append(", ").append(texture(i, t));

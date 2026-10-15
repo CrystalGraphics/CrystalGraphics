@@ -1,8 +1,10 @@
 package com.crystalgraphics.vfx.particle;
 
+import com.crystalgraphics.vfx.gas.CgVfxGas;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 
+import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.List;
 
@@ -50,6 +52,9 @@ public final class CgVfxEmitterInstance {
     private final boolean local;
     private double anchorX = Double.NaN, anchorY, anchorZ;
     private float driftX, driftY, driftZ;
+    /** The gas its particles are carried by ({@link #inGas}); null for none. */
+    @Nullable
+    private CgVfxGas gas;
     private int spawned, burstsDone;
     private float rateOwed, share = 1f;
     /** When {@link #stop} ended its spawning; infinite until then. What {@link #rateScale} multiplies its rate by. */
@@ -162,6 +167,22 @@ public final class CgVfxEmitterInstance {
      * The height of the ground, relative to the effect's origin now, for {@link CgVfxModule.Ground} where the host has no
      * world (the harness); NaN for none. It is the world's: it stays put if the effect moves.
      */
+    /**
+     * The gas its particles are carried by: what a module taking {@code GAS} reads ({@link CgVfxModule.Flow}). Its
+     * children are carried by it too.
+     *
+     * <pre>{@code
+     * embers.inGas(smoke);                         // a CgVfxGas of the same effect
+     * }</pre>
+     */
+    public CgVfxEmitterInstance inGas(@Nullable CgVfxGas gas) {
+        this.gas = gas;
+        for (CgVfxEmitterInstance child : children) {
+            if (child != null) child.inGas(gas);
+        }
+        return this;
+    }
+
     public CgVfxEmitterInstance ground(float y) {
         groundY = y + driftY;
         for (CgVfxEmitterInstance child : children) {
@@ -587,6 +608,11 @@ public final class CgVfxEmitterInstance {
         @Override
         public float boxHalfZ() {
             return boxHalfZ;
+        }
+
+        @Override
+        public CgVfxGas gas() {
+            return gas;
         }
     }
 

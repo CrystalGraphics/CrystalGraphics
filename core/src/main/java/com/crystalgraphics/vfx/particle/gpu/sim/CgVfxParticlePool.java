@@ -19,6 +19,8 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.vfx.gas.CgVfxGas;
+import com.crystalgraphics.vfx.gas.CgVfxGasAtlas;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxCurveDomain;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
@@ -697,6 +699,7 @@ public final class CgVfxParticlePool {
         if (shape.usesDepth()) bindDepth(stepping);
         if (shape.usesEntities()) CgVfxEntityBoxes.bind(stepping);
         if (shape.spawnsOnMesh()) CgVfxSpawnMeshes.bind(stepping);
+        if (shape.usesGas()) CgVfxGasAtlas.get().bindFlow(stepping);
         if (shape.usesNeighbours()) {
             stepping.bind("SORTED", cellValues).bind("CELL_RUNS", cellRuns).set("_NeighbourCell", cellWidth)
                     .set("_NeighbourCells", cells);
@@ -1047,6 +1050,18 @@ public final class CgVfxParticlePool {
             words.target(instances, at + shape.lanesAt(i) * 4, lanes, who + "'s fx_" + shape.kind(i));
             emitter.modules().get(i).writeInstance(view, words);
             words.finish("its instance lanes");
+        }
+        if (shape.usesGas()) {
+            words.target(instances, at + shape.gasAt() * 4, CgVfxShape.GAS_LANES, who + "'s gas");
+            CgVfxGas gas = view.gas();
+            int cells = CgVfxGasAtlas.get().cells();
+            if (gas == null || gas.brick() < 0 || cells == 0) {
+                words.vec4(0f, 0f, 0f, -1f).vec4(1f, 0f, 0f, 0f);
+            } else {
+                words.vec4((float) (ox - gas.x()), (float) (oy - gas.y()), (float) (oz - gas.z()), gas.brick())
+                        .vec4(gas.extent() / cells, 0f, 0f, 0f);
+            }
+            words.finish("its gas lanes");
         }
     }
 

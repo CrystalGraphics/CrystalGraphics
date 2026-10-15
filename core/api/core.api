@@ -9413,6 +9413,7 @@ com/crystalgraphics/vfx/gas/CgVfxGasAtlas
   access public,final
   extends java/lang/Object
   field public,static,final CAPACITY I
+  field public,static,final FLOW_PROPERTIES Ljava/lang/String;
   field public,static,final GPU_BUDGET Lcom/crystalgraphics/render/CgGpuBudget;
   field public,static,final ITERATIONS I
   field public,static,final MAX_STEPS I
@@ -9426,6 +9427,7 @@ com/crystalgraphics/vfx/gas/CgVfxGasAtlas
   field public,static,final ROW_STATE I
   field public,static,final SHADE_SAMPLER Ljava/lang/String;
   field public,static,final STEP F
+  method public bindFlow (Lcom/crystalgraphics/render/graph/CgDispatch;)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public cells ()I
   method public shade ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public tenants ()I
@@ -9983,6 +9985,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance
   method public finished ()Z
   method public ground (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;
   method public groundY ()F
+  method public inGas (Lcom/crystalgraphics/vfx/gas/CgVfxGas;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;
   method public moveTo (FFF)V
   method public originX ()D
   method public originY ()D
@@ -10011,6 +10014,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance$Books
   method public fromX ()F
   method public fromY ()F
   method public fromZ ()F
+  method public gas ()Lcom/crystalgraphics/vfx/gas/CgVfxGas;
   method public originX ()D
   method public originY ()D
   method public originZ ()D
@@ -10263,6 +10267,19 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Flock
   method public radius ()F
   method public scaled (F)Lcom/crystalgraphics/vfx/particle/CgVfxModule;
   method public separation ()F
+  method public worldInputs ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+  method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/vfx/particle/CgVfxModule$Flow
+  access public,final,record
+  extends java/lang/Record
+  implements com/crystalgraphics/vfx/particle/CgVfxModule
+  method public <init> (F)V
+  method public follow ()F
+  method public gpuKind ()Ljava/lang/String;
+  method public pull (F)F
   method public worldInputs ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public,final equals (Ljava/lang/Object;)Z
@@ -10593,6 +10610,7 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView
   method public fromX ()F
   method public fromY ()F
   method public fromZ ()F
+  method public gas ()Lcom/crystalgraphics/vfx/gas/CgVfxGas;
   method public,abstract originX ()D
   method public,abstract originY ()D
   method public,abstract originZ ()D
@@ -10626,6 +10644,7 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput
   field public,static,final DEPTH Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   field public,static,final ENTITIES Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   field public,static,final FLOOR_Y Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+  field public,static,final GAS Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   field public,static,final NEIGHBOURS Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   field public,static,final NONE [Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   field public,static,final WORLD Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
@@ -10739,6 +10758,7 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape
   access public,final
   extends java/lang/Object
   field public,static,final EVENT_VECTORS I
+  field public,static,final GAS_LANES I
   method public afterSolve (I)Z
   method public equals (Ljava/lang/Object;)Z
   method public eventReports (I)Z
@@ -10746,6 +10766,7 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape
   method public events ()I
   method public eventsAt ()I
   method public floors ()Z
+  method public gasAt ()I
   method public hashCode ()I
   method public instanceRowVectors ()I
   method public kernelKey ()Ljava/lang/String;
@@ -10771,6 +10792,7 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape
   method public usesDepth ()Z
   method public usesDistance ()Z
   method public usesEntities ()Z
+  method public usesGas ()Z
   method public usesNeighbours ()Z
   method public volume (II)Z
   method public worldInputs (I)[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
