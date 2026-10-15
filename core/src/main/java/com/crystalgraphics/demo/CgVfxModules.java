@@ -4,6 +4,7 @@ import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
+import com.crystalgraphics.api.mesh.CgProceduralMesh;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.easing.CgEasings;
@@ -34,6 +35,8 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxField;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
+import com.crystalgraphics.world.CgEntityAttachments;
+import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -102,10 +105,15 @@ public final class CgVfxModules {
 
     /** One station: its emitters started at their sources, its look, what it stands beside, and what moves them. */
     private record Station(String name, float x, float z, CgVfxLook look, List<CgVfxEmitter> emitters, float[][] sources,
-                           Consumer<Props> props, Mover mover) {
+                           Consumer<Props> props, Mover mover, boolean followsPlayer) {
         Station(String name, float x, float z, CgVfxLook look, List<CgVfxEmitter> emitters, float[][] sources,
                 Consumer<Props> props) {
-            this(name, x, z, look, emitters, sources, props, null);
+            this(name, x, z, look, emitters, sources, props, null, false);
+        }
+
+        Station(String name, float x, float z, CgVfxLook look, List<CgVfxEmitter> emitters, float[][] sources,
+                Consumer<Props> props, Mover mover) {
+            this(name, x, z, look, emitters, sources, props, mover, false);
         }
     }
 
@@ -152,6 +160,8 @@ public final class CgVfxModules {
         Play(Station station, double x, double y, double z) {
             super(station.look(), x + station.x(), y, z + station.z());
             mover = station.mover();
+            int player = station.followsPlayer() ? CgEntityQueries.client().localPlayer() : -1;
+            if (player >= 0) follow(player, CgEntityAttachments.FEET);
             for (int i = 0; i < station.emitters().size(); i++) {
                 CgVfxEmitterInstance emitter = new CgVfxEmitterInstance(station.emitters().get(i), seed + i * 0.137f);
                 float[] s = station.sources()[i];
@@ -223,6 +233,8 @@ public final class CgVfxModules {
         shapes(COLUMNS[0], ROWS[3]);
         moving(COLUMNS[1], ROWS[3]);
         wake(COLUMNS[2], ROWS[3]);
+        meshes(COLUMNS[3], ROWS[3]);
+        aura(COLUMNS[3] + 15f, ROWS[3]);
         floors = new float[stations.size()];
         for (Station s : stations) LOG.info("[vfx-modules] {} at x {}, z {}", s.name(), s.x(), s.z());
         LOG.info("[vfx-modules] every station replays every {}s; a simulation switch reaches it from the next", PERIOD);
@@ -295,6 +307,47 @@ public final class CgVfxModules {
         };
         stations.add(new Station("wake: ratePerBlock 8 and inherit 0.4, teleporting at each end", x, z, look,
                 List.of(wake), new float[][]{{-5f, 0.4f, 0f}}, null, run));
+    }
+
+    /**
+     * Meshes, made by {@link CgProceduralMesh}: sparks born across a dome's surface and along its normals, one at each of
+     * 60 vertices of three ribbons spiralling up a cone, in order, and rocks thrown as meshes of their own (a sphere
+     * roughened by curl noise) through the billow shader.
+     */
+    private void meshes(float x, float z) {
+        CgMesh dome = CgProceduralMesh.revolve(CgProceduralMesh.sphere(1.6f, 0f, 1.6f)).divisions(24, 8).build();
+        CgMesh swirl = CgProceduralMesh.ribbons(CgProceduralMesh.cone(1.2f, 3f)).count(3).twist(1.25f)
+                .width(0.3f, 0.05f).build();
+        CgMesh rock = CgProceduralMesh.revolve(CgProceduralMesh.sphere(1f, -1f, 1f)).divisions(12, 8).curl(1.3f, 0.25f)
+                .noiseSeed(7).build();
+        CgVfxEmitter onDome = CgVfxEmitter.builder("meshDome").capacity(1200).rate(300f, 0f, PERIOD - 3f).mesh(dome)
+                .speed(0.2f, 0.5f).life(1f, 1.5f).size(0.04f, 0.06f, 1f).heat(1f).opacity(FADE).build();
+        CgVfxEmitter onSwirl = CgVfxEmitter.builder("meshSwirl").capacity(600).rate(120f, 0f, PERIOD - 3f).mesh(swirl)
+                .vertices().ordered(60).speed(0f, 0f).life(1.2f, 1.2f).size(0.05f, 0.05f, 1f).heat(1f).opacity(FADE).build();
+        CgVfxEmitter rocks = CgVfxEmitter.builder("meshRocks").renderer(CgVfxEmitter.Renderer.MESHES).capacity(40)
+                .burst(0.5f, 24).shape(CgSphere.of(0.5)).launch(0.5f, 1f, 1f).speed(4f, 7f).life(3f, 4f)
+                .size(0.15f, 0.35f, 1f).spin(1f, 4f).module(new CgVfxModule.Gravity(9.8f))
+                .module(new CgVfxModule.Ground(0.2f, 0.4f, 0.6f)).opacity(FADE).build();
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(onDome).emitter(onSwirl).emitter(rocks)
+                .layer(sparkLayer(onDome, CYAN, WHITE)).layer(sparkLayer(onSwirl, MAGENTA, WHITE))
+                .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/smoke/billow.shader").on(rocks).mesh(rock)
+                        .bind("_Color", DEBRIS).bind("_Hot", EMBER).role(CgVfxLayer.Role.SMOKE).build())
+                .build();
+        stations.add(new Station("meshes: a dome's surface, a swirl's vertices in order, rocks as meshes", x, z, look,
+                List.of(onDome, onSwirl, rocks), new float[][]{{-3.5f, 0.2f, 0f}, {0f, 0.2f, 0f}, {3.5f, 0.3f, 0f}}, null));
+    }
+
+    /**
+     * An aura off the local player: motes born on the surface of their box, wherever they walk, rising as they fade.
+     * With no player (the harness) the effect follows nothing and they are born at its source.
+     */
+    private void aura(float x, float z) {
+        CgVfxEmitter motes = CgVfxEmitter.builder("aura").capacity(800).rate(160f, 0f, PERIOD - 3f).entity().surface()
+                .speed(0.1f, 0.4f).life(0.8f, 1.4f).size(0.04f, 0.07f, 1f).heat(1f)
+                .module(new CgVfxModule.Force(0f, 1.5f, 0f)).opacity(FADE).build();
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(motes).layer(sparkLayer(motes, GOLD, WHITE)).build();
+        stations.add(new Station("aura: entity().surface() off the local player", x, z, look, List.of(motes),
+                new float[][]{{0f, 1f, 0f}}, null, null, true));
     }
 
     /**
