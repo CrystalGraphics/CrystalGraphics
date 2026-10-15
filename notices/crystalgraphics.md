@@ -29,6 +29,7 @@ JOML is **not** in this jar. It ships in `crystalgraphics-joml-<version>.jar`, w
 | **Godot Engine** particle attractors, colliders and process material | `com/crystalgraphics/vfx/particle/{CgVfxModule,CgVfxContacts}`, `assets/crystalgraphics/shaders/lib/vfx/sim/fx_*.glsl` | MIT — © 2014-present Godot Engine contributors; © 2007-2014 Juan Linietsky, Ariel Manzur | Ported source, modified. Licence below |
 | **bevy_hanabi** update modifiers | `com/crystalgraphics/vfx/particle/CgVfxModule`, `assets/crystalgraphics/shaders/lib/vfx/sim/fx_{vortex,conform,kill}.glsl` | MIT (of MIT or Apache-2.0) — © 2021 Jerome Humbert | Ported source, modified. Licence below |
 | **Jolt Physics** GJK, EPA and closed-form tests | `com/crystalgraphics/shape/query/` | MIT — © 2021 Jorrit Rouwe | Ported source, modified. Licence below |
+| **Effekseer** procedural models and curl noise | `com/crystalgraphics/api/mesh/CgProceduralMesh`, `CgMeshNoise` | MIT — © 2011 Effekseer Project | Ported source, modified. Licence below |
 
 ## FreeType
 
@@ -264,6 +265,34 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+## Effekseer
+
+The procedural meshes port Effekseer's `Model/Effekseer.ProceduralModelGenerator.cpp` and `SplineGenerator`, and its
+`Noise/Effekseer.PerlinNoise` and `CurlNoise`.
+
+```
+The MIT License (MIT)
+
+Copyright (c) 2011 Effekseer Project
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
 ## Chromium and Skia (BSD-3-Clause)
