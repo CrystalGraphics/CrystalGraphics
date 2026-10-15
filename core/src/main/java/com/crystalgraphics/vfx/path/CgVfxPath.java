@@ -34,6 +34,8 @@ public final class CgVfxPath {
     private float length;
 
     private float[] points = new float[64 * 3];
+    /** Each segment's chord, and its centripetal knot step: the chord's square root. */
+    private float[] chords = new float[64], knots = new float[64];
     private float[] dense = new float[64 * 3 * SUBDIVISIONS];
     private float[] cumulative = new float[64 * SUBDIVISIONS];
 
@@ -82,7 +84,11 @@ public final class CgVfxPath {
     float[] data() { return rings; }
 
     private int merge(float[] xyz, int pointCount) {
-        if (points.length < pointCount * 3) points = new float[pointCount * 3 * 2];
+        if (points.length < pointCount * 3) {
+            points = new float[pointCount * 3 * 2];
+            chords = new float[pointCount * 2];
+            knots = new float[pointCount * 2];
+        }
         int n = 0;
         for (int i = 0; i < pointCount; i++) {
             float x = xyz[i * 3], y = xyz[i * 3 + 1], z = xyz[i * 3 + 2];
@@ -108,13 +114,20 @@ public final class CgVfxPath {
             dense = new float[most * 3 * 2];
             cumulative = new float[most * 2];
         }
-        float chords = 0f;
-        for (int i = 0; i < n - 1; i++) chords += chord(i);
+        float total = 0f;
+        for (int i = 0; i < n - 1; i++) {
+            float dx = points[i * 3 + 3] - points[i * 3], dy = points[i * 3 + 4] - points[i * 3 + 1];
+            float dz = points[i * 3 + 5] - points[i * 3 + 2];
+            float chord = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+            chords[i] = chord;
+            knots[i] = Math.max((float) Math.sqrt(chord), 1.0e-4f);
+            total += chord;
+        }
         // Past MAX_RINGS the rings spread out, and so may the polyline.
-        float step = Math.max(spacing, chords / (MAX_RINGS - 1));
+        float step = Math.max(spacing, total / (MAX_RINGS - 1));
         int d = 0;
         for (int i = 0; i < n - 1; i++) {
-            int cuts = Math.max(1, Math.min(SUBDIVISIONS, (int) Math.ceil(chord(i) / step)));
+            int cuts = Math.max(1, Math.min(SUBDIVISIONS, (int) Math.ceil(chords[i] / step)));
             segment(n, i);
             for (int k = 0; k < cuts; k++) catmullRom((float) k / cuts, d++);
         }
@@ -130,12 +143,6 @@ public final class CgVfxPath {
         return d;
     }
 
-    private float chord(int i) {
-        float dx = points[i * 3 + 3] - points[i * 3], dy = points[i * 3 + 4] - points[i * 3 + 1];
-        float dz = points[i * 3 + 5] - points[i * 3 + 2];
-        return (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
-    }
-
     /** Segment {@code i}'s four control points and its knots, for {@link #catmullRom}. */
     private void segment(int n, int i) {
         for (int c = 0; c < 3; c++) {
@@ -147,9 +154,10 @@ public final class CgVfxPath {
             scratch[c * 4 + 2] = p2;
             scratch[c * 4 + 3] = p3;
         }
-        t1 = knot(0, 1);
-        t2 = t1 + knot(1, 2);
-        t3 = t2 + knot(2, 3);
+        // An end's mirrored point is a chord away, so its knot is the segment's own.
+        t1 = i > 0 ? knots[i - 1] : knots[i];
+        t2 = t1 + knots[i];
+        t3 = t2 + (i + 2 < n ? knots[i + 1] : knots[i]);
         r10 = 1f / t1;
         r21 = 1f / (t2 - t1);
         r32 = 1f / (t3 - t2);
@@ -174,14 +182,6 @@ public final class CgVfxPath {
     }
 
     private final float[] scratch = new float[12];
-
-    /** The centripetal knot step between two of the four points: the square root of their distance. */
-    private float knot(int a, int b) {
-        float dx = scratch[b] - scratch[a];
-        float dy = scratch[4 + b] - scratch[4 + a];
-        float dz = scratch[8 + b] - scratch[8 + a];
-        return Math.max((float) Math.sqrt(Math.sqrt(dx * dx + dy * dy + dz * dz)), 1.0e-4f);
-    }
 
     private void resample(int denseCount) {
         float step = length / (count - 1);
