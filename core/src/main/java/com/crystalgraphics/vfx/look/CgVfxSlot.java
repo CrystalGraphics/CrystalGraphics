@@ -55,7 +55,13 @@ public final class CgVfxSlot {
         /** One camera-facing quad: the customs of {@link #MESH}, the four numbers the particle's own. */
         BILLBOARD,
         /** An emitter's particles ({@code #pragma cg_use particle}): {@code CgVfxFrame.particles} has the customs. */
-        PARTICLES;
+        PARTICLES,
+        /**
+         * A {@code CgVfxTrail}'s strip, built per vertex ({@code fx_trail.glsl}, {@code #type none}): {@code CUSTOM0} its
+         * first texel, its points, the layer's size and its life; {@code CUSTOM1} the draw's centre less the anchor the
+         * points are from; {@code CUSTOM2} its sub-segments, its mode, its head's distance along and its length.
+         */
+        TRAIL;
 
         /** The keyword a shader declares to draw on this kind: {@code FX_ON_TUBE}, {@code FX_ON_MESH} and so on. */
         public String keyword() {
@@ -109,6 +115,10 @@ public final class CgVfxSlot {
 
     public static CgVfxSlot billboard(String name) {
         return of(Kind.BILLBOARD, name);
+    }
+
+    public static CgVfxSlot trail(String name) {
+        return of(Kind.TRAIL, name);
     }
 
     /** The particles of the emitter named {@code emitter}. */

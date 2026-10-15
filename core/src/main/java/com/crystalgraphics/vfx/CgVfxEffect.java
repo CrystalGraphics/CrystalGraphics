@@ -529,6 +529,19 @@ public abstract class CgVfxEffect {
         return look;
     }
 
+    /** Where it is in world coordinates, as its last update placed it ({@link #follow} moves it each frame). */
+    public final double originX() {
+        return originX;
+    }
+
+    public final double originY() {
+        return originY;
+    }
+
+    public final double originZ() {
+        return originZ;
+    }
+
     public final float age() {
         return age;
     }

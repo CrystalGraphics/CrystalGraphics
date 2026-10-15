@@ -30,6 +30,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.path.CgVfxPathTexture;
+import com.crystalgraphics.vfx.trail.CgVfxTrailTexture;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxTube;
 import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
@@ -169,7 +170,7 @@ public final class CgVfxSystem {
     private static final int MAX_TICKS = 12;
     /** GPU steps a pool may hold unrecorded, half a second at 60 Hz, before every effect waits for the world to draw. */
     private static final int MAX_QUEUED_STEPS = 30;
-    private static final String PATH_SAMPLER = "_FxPath";
+    private static final String PATH_SAMPLER = "_FxPath", TRAIL_SAMPLER = "_FxTrail";
 
     private static final CgSortLayer DISTORTION = CgSortLayer.after("crystalgraphics:vfx-distortion", CgSortLayer.EFFECTS);
 
@@ -177,6 +178,7 @@ public final class CgVfxSystem {
     private final List<CgVfxMomentListener> momentListeners = new ArrayList<>();
     private final List<CgVfxEventListener> eventListeners = new ArrayList<>();
     private final CgVfxPathTexture paths = new CgVfxPathTexture();
+    private final CgVfxTrailTexture trails = new CgVfxTrailTexture();
     private final CgVfxTube tube = new CgVfxTube();
     /** Every layer's resolved bindings and materials, and the frame's rows. */
     private final CgVfxMaterials materials = new CgVfxMaterials();
@@ -187,7 +189,7 @@ public final class CgVfxSystem {
     private final List<CgMaterial> warming = new ArrayList<>();
     /** Emitters {@link #prepare} queued whose kernels and slot meshes are still to start, one a step under the budget. */
     private final List<CgVfxEmitter> gpuWarming = new ArrayList<>();
-    private CgTexture2D boundTexture;
+    private CgTexture2D boundTexture, boundTrails;
     // The tube is this system's own; the ribbons, sphere and quads are shared.
     private CgMesh tubeMesh, closedTubeMesh, ribbonMesh, sphereMesh, volumeMesh;
     private final CgVfxAir air = new CgVfxAir();
@@ -681,6 +683,7 @@ public final class CgVfxSystem {
             frame.begin(world, alpha, Math.min((sinceParticleTick + alpha) / drawnStep, 1f), gx / n, gy / n, gz / n);
             gpuSteps.frame(frame.particleAlpha(), frame.particleAlpha() * particleDt);
             paths.begin();
+            trails.begin();
             for (int i = 0; i < effects.size(); i++) {
                 CgVfxEffect effect = effects.get(i);
                 // Killed since the update: cleared by its owner, or failed.
@@ -697,6 +700,7 @@ public final class CgVfxSystem {
             materials.upload();
             try (CgTrace.Zone upload = CgTrace.zone(CgVfxTrace.CHANNEL, PATHS_ZONE)) {
                 paths.upload();
+                trails.upload();
                 bindPaths();
             }
         }
@@ -854,6 +858,7 @@ public final class CgVfxSystem {
         eventListeners.clear();
         gpuSteps.clear();
         paths.delete();
+        trails.delete();
         if (tubeMesh != null) tubeMesh.release();
         if (closedTubeMesh != null) closedTubeMesh.release();
         if (volumeMesh != null && volumeMesh != sphereMesh) volumeMesh.release();
@@ -863,6 +868,7 @@ public final class CgVfxSystem {
         sphereMesh = null;
         volumeMesh = null;
         boundTexture = null;
+        boundTrails = null;
         pathsBound = 0;
         warming.clear();
         gpuWarming.clear();
@@ -870,6 +876,10 @@ public final class CgVfxSystem {
 
     CgVfxPathTexture paths() {
         return paths;
+    }
+
+    CgVfxTrailTexture trails() {
+        return trails;
     }
 
     CgVfxTube tube() {
@@ -923,17 +933,21 @@ public final class CgVfxSystem {
         return ribbonMesh;
     }
 
-    /** Points every material at the path texture: once each, and again if the texture was made anew. */
+    /** Points every material at the path and trail textures: once each, and again if either was made anew. */
     private void bindPaths() {
-        CgTexture2D texture = paths.texture();
-        if (texture == null) return;
-        if (texture != boundTexture) {
-            boundTexture = texture;
+        CgTexture2D path = paths.texture(), trail = trails.texture();
+        if (path == null && trail == null) return;
+        if (path != boundTexture || trail != boundTrails) {
+            boundTexture = path;
+            boundTrails = trail;
             pathsBound = 0;
         }
         List<CgMaterial> all = materials.all();
         for (; pathsBound < all.size(); pathsBound++) {
-            all.get(pathsBound).applyProperties(b -> b.sampler(PATH_SAMPLER, 0, texture));
+            all.get(pathsBound).applyProperties(b -> {
+                if (path != null) b.sampler(PATH_SAMPLER, 0, path);
+                if (trail != null) b.sampler(TRAIL_SAMPLER, 0, trail);
+            });
         }
     }
 }

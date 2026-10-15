@@ -8850,6 +8850,9 @@ com/crystalgraphics/vfx/CgVfxEffect
   method public,final look ()Lcom/crystalgraphics/vfx/look/CgVfxLook;
   method public,final onHit (Lcom/crystalgraphics/collision/hit/CgHitPart;Ljava/util/function/Consumer;)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final onHit (Ljava/util/function/Consumer;)Lcom/crystalgraphics/vfx/CgVfxEffect;
+  method public,final originX ()D
+  method public,final originY ()D
+  method public,final originZ ()D
   method public,final owner ()Lcom/crystalgraphics/vfx/CgVfxOwner;
   method public,final presence ()F
   method public,final scalability ()Lcom/crystalgraphics/vfx/CgVfxScalability;
@@ -8919,6 +8922,7 @@ com/crystalgraphics/vfx/CgVfxFrame
   method public path (Lcom/crystalgraphics/vfx/path/CgVfxPath;FF)I
   method public pathRibbons (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/look/CgVfxSlot;Lcom/crystalgraphics/vfx/path/CgVfxPath;IF)V
   method public ribbons (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/look/CgVfxSlot;FFFLorg/joml/Matrix4fc;FFFF)V
+  method public trail (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/look/CgVfxSlot;Lcom/crystalgraphics/vfx/trail/CgVfxTrail;)V
   method public tube (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/look/CgVfxSlot;Lcom/crystalgraphics/vfx/path/CgVfxPath;I)V
   method public world ()Lcom/crystalgraphics/render/world/CgWorldRenderer;
 com/crystalgraphics/vfx/CgVfxMomentListener
@@ -9595,6 +9599,7 @@ com/crystalgraphics/vfx/look/CgVfxSlot
   method public,static particles (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxSlot;
   method public,static pathRibbons (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxSlot;
   method public,static ribbons (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxSlot;
+  method public,static trail (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxSlot;
   method public,static tube (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxSlot;
 com/crystalgraphics/vfx/look/CgVfxSlot$Kind
   access public,final,enum
@@ -9604,6 +9609,7 @@ com/crystalgraphics/vfx/look/CgVfxSlot$Kind
   field public,static,final PARTICLES Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
   field public,static,final PATH_RIBBONS Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
   field public,static,final RIBBONS Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
+  field public,static,final TRAIL Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
   field public,static,final TUBE Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
   method public keyword ()Ljava/lang/String;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
@@ -10682,17 +10688,6 @@ com/crystalgraphics/vfx/render/CgVfxRibbons
   field public,static,final SEGMENTS I
   field public,static,final VERTICES I
   method public,static mesh ()Lcom/crystalgraphics/api/mesh/CgMesh;
-com/crystalgraphics/vfx/render/CgVfxTrail
-  access public,final
-  extends java/lang/Object
-  method public <init> (I)V
-  method public clear ()V
-  method public count ()I
-  method public push (DDDF)V
-  method public release ()V
-  method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;Lcom/crystalgraphics/api/material/CgMaterial;FFFF)V
-  method public widest ()F
-  method public writeTo (Lcom/crystalgraphics/api/mesh/CgMeshWriter;DDD)V
 com/crystalgraphics/vfx/render/CgVfxTube
   access public,final
   extends java/lang/Object
@@ -10721,6 +10716,58 @@ com/crystalgraphics/vfx/sim/CgVfxStream
   method public tick (FFFF)V
   method public via (FFF)V
   method public viaReached ()Z
+com/crystalgraphics/vfx/trail/CgVfxTrail
+  access public,final
+  extends java/lang/Object
+  field public,static,final MAX_POINTS I
+  method public anchorX ()D
+  method public anchorY ()D
+  method public anchorZ ()D
+  method public clear ()V
+  method public count ()I
+  method public done ()Z
+  method public emitting (Z)Lcom/crystalgraphics/vfx/trail/CgVfxTrail;
+  method public facing (FFF)Lcom/crystalgraphics/vfx/trail/CgVfxTrail;
+  method public head (DDD)V
+  method public head (DDDDDD)V
+  method public intensity (F)Lcom/crystalgraphics/vfx/trail/CgVfxTrail;
+  method public life ()F
+  method public life (F)Lcom/crystalgraphics/vfx/trail/CgVfxTrail;
+  method public maxPoints (I)Lcom/crystalgraphics/vfx/trail/CgVfxTrail;
+  method public maxStep (F)Lcom/crystalgraphics/vfx/trail/CgVfxTrail;
+  method public mode ()Lcom/crystalgraphics/vfx/trail/CgVfxTrail$Mode;
+  method public spacing (F)Lcom/crystalgraphics/vfx/trail/CgVfxTrail;
+  method public subdivisions ()I
+  method public subdivisions (I)Lcom/crystalgraphics/vfx/trail/CgVfxTrail;
+  method public tick (F)V
+  method public tick (FDDD)V
+  method public tick (FDDDDDD)V
+  method public user (FF)Lcom/crystalgraphics/vfx/trail/CgVfxTrail;
+  method public widest ()F
+  method public width (F)Lcom/crystalgraphics/vfx/trail/CgVfxTrail;
+  method public,static blade (F)Lcom/crystalgraphics/vfx/trail/CgVfxTrail;
+  method public,static flat (F)Lcom/crystalgraphics/vfx/trail/CgVfxTrail;
+  method public,static ribbon (F)Lcom/crystalgraphics/vfx/trail/CgVfxTrail;
+com/crystalgraphics/vfx/trail/CgVfxTrail$Mode
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final AXIS Lcom/crystalgraphics/vfx/trail/CgVfxTrail$Mode;
+  field public,static,final BLADE Lcom/crystalgraphics/vfx/trail/CgVfxTrail$Mode;
+  field public,static,final CAMERA Lcom/crystalgraphics/vfx/trail/CgVfxTrail$Mode;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/trail/CgVfxTrail$Mode;
+  method public,static values ()[Lcom/crystalgraphics/vfx/trail/CgVfxTrail$Mode;
+com/crystalgraphics/vfx/trail/CgVfxTrailTexture
+  access public,final
+  extends java/lang/Object
+  field public,static,final POINT_TEXELS I
+  field public,static,final WIDTH I
+  method public <init> ()V
+  method public add (Lcom/crystalgraphics/vfx/trail/CgVfxTrail;FDDD[F)I
+  method public begin ()V
+  method public delete ()V
+  method public points (I)I
+  method public texture ()Lcom/crystalgraphics/gl/texture/CgTexture2D;
+  method public upload ()V
 com/crystalgraphics/vfx/world/CgVfxVoxelWindow
   access public,final
   extends java/lang/Object

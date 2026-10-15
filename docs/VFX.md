@@ -444,6 +444,7 @@ public static final CgVfxSlot ARCS = CgVfxSlot.pathRibbons("crystalgraphics:wave
 | `PATH_RIBBONS` | ribbons riding a path | `frame.pathRibbons(this, slot, path, row, intensity)` |
 | `BILLBOARD` | one camera-facing quad | `frame.billboard(...)` |
 | `PARTICLES` | an emitter's particles: the emitter is its slot (`emitter.slot()`) | `frame.particles(this, instance)` |
+| `TRAIL` | a strip behind something moving, built on the GPU from a `CgVfxTrail`'s points | `frame.trail(this, slot, trail)` |
 
 - **A frame draws a slot, not a layer**: every layer of the look on that slot draws, in the look's order. A slot no
   layer draws on costs nothing, and `frame.draws(this, slot)` skips the work of preparing it.
@@ -1291,6 +1292,7 @@ public final class Bolt extends CgVfxEffect {
 | `frame.billboard(this, slot, x, y, z, size, ex, ey, ez, ew)` | a camera-facing quad |
 | `int row = frame.path(path, seed, age)`, then `frame.tube(this, slot, path, row)` | a tube along a path |
 | `frame.ribbons(...)`, `frame.pathRibbons(this, slot, path, row, intensity)` | ribbons a shader places |
+| `frame.trail(this, slot, trail)` | a trail behind something moving ([below](#trails)) |
 
 ### Particles in an effect
 
@@ -1316,6 +1318,72 @@ public Sparks(CgVfxLook look, double x, double y, double z) {
 Take the emitter from the look (`look.emitter(name)`), so a look that replaced it plays its own. One instance per
 emitter per effect; `moveTo(x, y, z)` moves a source without restarting it, `rateScale(s)` scales its rate, `stop()`
 ends an open-ended rate.
+
+### Trails
+
+A trail is where something moving has been: a fist's ki streak, a sword's swoosh, a dash's wake, a meteor's smoke. The
+effect moves a `CgVfxTrail` each tick, in world coordinates, so the trail stays behind as the effect moves; a trail
+slot's layers draw it.
+
+```java
+public static final CgVfxSlot STREAK = CgVfxSlot.trail("mymod:dash/streak");
+public static final CgVfxKit KIT = CgVfxKit.of("mymod:dash")
+        .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/trail/haze.shader").on(STREAK).size(1.1f)
+                .role(CgVfxLayer.Role.DISTORTION).from(CgQuality.MEDIUM).build())
+        .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/trail/glow.shader").on(STREAK).size(0.45f)   // half-width, blocks
+                .bind("_Color", KI).bind("_Core", CORE).build())
+        .build();
+
+private final CgVfxTrail streak = CgVfxTrail.ribbon(0.5f);         // each point lasts half a second
+
+@Override protected void tick(float dt) {
+    streak.tick(dt, handX, handY, handZ);                           // world coordinates
+    if (finishing) streak.emitting(false);                          // it runs out, then done()
+}
+
+@Override protected void submit(CgVfxFrame frame) {
+    frame.trail(this, STREAK, streak);
+}
+```
+
+A swing's swoosh is a blade between two points; a scorch along the ground lies flat across a normal:
+
+```java
+private final CgVfxTrail swoosh = CgVfxTrail.blade(0.2f).spacing(0.04f);
+swoosh.tick(dt, elbowX, elbowY, elbowZ, fistX, fistY, fistZ);       // base, then tip
+
+private final CgVfxTrail scorch = CgVfxTrail.flat(4f).facing(0, 1, 0);
+scorch.tick(dt, x, groundY + 0.02, z);
+```
+
+| Call | Does |
+|---|---|
+| `ribbon(life)`, `blade(life)`, `flat(life)` | facing the eye from one point; a sheet between a base and a tip; lying across a normal |
+| `spacing(blocks)` | a point kept each that far (0.12): a still thing leaves none, and its trail runs out |
+| `subdivisions(n)` | quads between two points (4): more for a fast swing's sparse points |
+| `width(s)`, `intensity(s)`, `user(a, b)` | carried by the points kept from then on: a streak swelling with speed |
+| `head(x, y, z)` | its head exactly where something is this frame (a hand marked as the model drew it); else between its last two ticks |
+| `emitting(false)`, `done()` | stop keeping points, and whether all have run out; `clear()` forgets them |
+| `maxStep(blocks)` | a step farther than this (8) is a teleport: it starts again there rather than streak across |
+
+- **Its strip is built on the GPU**: every trail's points go up once a frame, and each vertex is placed on a centripetal
+  Catmull-Rom curve through them (`fx_trail.glsl`), so a fast swing stays round and nothing is meshed on the CPU.
+- **Its head never lags**: drawn between its last two ticks at the frame's alpha, as the effect's own parts are. Its tail
+  is cut exactly where a point's age reaches its life, so it shrinks smoothly rather than dropping a point at a time.
+- A layer's size is a ribbon's half-width in blocks, or how far a blade reaches toward its tip (1 to the tip).
+- One trail drawn on several layers (a glow and its haze) uploads its points once.
+
+| Shader (`shaders/vfx/trail/`) | Draws |
+|---|---|
+| `glow` | a ki streak: white-hot core (`_Core`), its colour (`_Color`) to soft edges, energy flowing back, its tail eaten away; `_Wobble` shakes it into lightning |
+| `bands` | anime cel bands (`_Bands`, a palette: core, middle, edge), each narrowing toward the tail, which breaks into brushed strands; `_Ink` an outline |
+| `swoosh` | a blade's sheet: a hot leading edge (`_Hot`), streaks along the swing, faded edge-on |
+| `haze` | the air bent behind it: a Distortion pass only (`Role.DISTORTION`) |
+| `smoke` | lit smoke billowing wider and drifting up as it ages; `_Glow` a fire's hot head |
+| `scorch` | burnt ground with embers cooling in its cracks: for a `flat` trail facing up |
+
+A shader of your own declares `_FxTrail ("Trail points", sampler2D) = "black"`, has no vertex data (`#type none`), and
+places each vertex with `fx_trail_vertex`; `fx_trail_place(v, scale)` scales its width by a taper of its own.
 
 ### Built from elements
 

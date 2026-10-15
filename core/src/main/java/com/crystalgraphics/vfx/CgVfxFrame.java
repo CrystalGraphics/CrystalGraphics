@@ -24,6 +24,8 @@ import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.path.CgVfxPath;
 import com.crystalgraphics.vfx.render.CgVfxQuads;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
+import com.crystalgraphics.vfx.trail.CgVfxTrail;
+import com.crystalgraphics.vfx.trail.CgVfxTrailTexture;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
@@ -57,6 +59,7 @@ public final class CgVfxFrame {
 
     private static final int DRAWS_MESH = CgTrace.name("vfx.draws.mesh"), DRAWS_RIBBONS = CgTrace.name("vfx.draws.ribbons"),
             DRAWS_BILLBOARD = CgTrace.name("vfx.draws.billboard"), DRAWS_PATH_RIBBONS = CgTrace.name("vfx.draws.path-ribbons"),
+            DRAWS_TRAIL = CgTrace.name("vfx.draws.trail"),
             DRAWS_PARTICLE_GPU = CgTrace.name("vfx.draws.particle-gpu"), DRAWS_PARTICLE_SETS = CgTrace.name("vfx.draws.particle-sets"),
             GPU_ZONE = CgTrace.name("vfx.particles.gpu");
     /**
@@ -71,6 +74,7 @@ public final class CgVfxFrame {
     private final CgVfxMaterials materials;
     private final Matrix4f scaled = new Matrix4f(), sized = new Matrix4f();
     private final Vector3f scale = new Vector3f();
+    private final float[] trailBounds = new float[8];
     /** How far the unit cube's corners are from its middle: what a ribbons or billboard draw reaches. */
     private static final float CUBE_REACH = 1.7320508f;
     private CgWorldRenderer world;
@@ -498,6 +502,56 @@ public final class CgVfxFrame {
                     .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
             CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
             CgVfxTrace.count(DRAWS_PATH_RIBBONS, 1);
+        }
+    }
+
+    /**
+     * Draws every layer on {@code slot}, a trail slot, along {@code trail}: a strip each layer's shader builds per vertex
+     * from the trail's points ({@code fx_trail.glsl}), its head where the trail's thing is this frame. A layer's size is
+     * a ribbon's half-width in blocks, or how far a blade reaches from its base toward its tip (1 to the tip). What its
+     * shader reads is {@link CgVfxSlot.Kind#TRAIL}'s.
+     *
+     * <pre>{@code
+     * frame.trail(this, STREAK, streak);
+     * }</pre>
+     */
+    public void trail(CgVfxEffect effect, CgVfxSlot slot, CgVfxTrail trail) {
+        kind(slot, CgVfxSlot.Kind.TRAIL);
+        CgVfxLook look = effect.look();
+        CgVfxLook.Placed[] on = look.on(slot);
+        if (on.length == 0) return;
+        double ax = trail.anchorX(), ay = trail.anchorY(), az = trail.anchorZ();
+        CgVfxTrailTexture trails = system.trails();
+        int first = trails.add(trail, alpha, ax, ay, az, trailBounds);
+        if (first < 0) return;
+        int points = trails.points(first);
+        float[] b = trailBounds;
+        float cx = (b[0] + b[3]) * 0.5f, cy = (b[1] + b[4]) * 0.5f, cz = (b[2] + b[5]) * 0.5f;
+        float hx = (b[3] - b[0]) * 0.5f, hy = (b[4] - b[1]) * 0.5f, hz = (b[5] - b[2]) * 0.5f;
+        boolean blade = trail.mode() == CgVfxTrail.Mode.BLADE;
+        int quads = (points - 1) * trail.subdivisions();
+        CgMesh mesh = CgMesh.vertices(sizeClass(quads, 16) * 6, CgMeshTopology.TRIANGLES);
+        float ox = (float) (ax - effect.originX), oy = (float) (ay - effect.originY), oz = (float) (az - effect.originZ);
+        for (CgVfxLook.Placed placed : on) {
+            if (skips(effect, placed.layer())) continue;
+            CgVfxMaterials.Resolved r = materials.resolve(look, placed);
+            float size = CgVfxMaterials.size(effect, r);
+            // A ribbon reaches its widest half-width past its points; a blade past its tips as far as its size goes.
+            float reach = blade ? Math.max(size - 1f, 0f) * 2f * Math.max(hx, Math.max(hy, hz)) : size * trail.widest();
+            reach += 0.05f;
+            effect.boundBox(ox + b[0] - reach, oy + b[1] - reach, oz + b[2] - reach,
+                    ox + b[3] + reach, oy + b[4] + reach, oz + b[5] + reach);
+            scaled.scaling(hx + reach, hy + reach, hz + reach);
+            CgWorldRenderer.Draw draw = world.draw(mesh, materials.material(r, CgVfxSlot.Kind.TRAIL))
+                    .bounds(CgAABBc.UNIT)
+                    .at(ax + cx, ay + cy, az + cz).transform(scaled)
+                    .subject(effect.subject)
+                    .custom(0, first, points, size, trail.life())
+                    .custom(1, cx, cy, cz, 0f)
+                    .custom(2, trail.subdivisions(), trail.mode().ordinal(), b[6], b[6] - b[7])
+                    .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
+            CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
+            CgVfxTrace.count(DRAWS_TRAIL, 1);
         }
     }
 
