@@ -449,7 +449,7 @@ public final class CgVfxCue {
         }
 
         /** Sets parameter {@code i} onto {@code effect} from {@code play}, where the server set it. */
-        void apply(int i, Play play, CgVfxEffect effect) {
+        void apply(int i, Play play, CgVfxEffect<?> effect) {
             CgNetField<Float>[] f = fields[i];
             if (!play.has(f[0])) return;
             CgVfxParam param = params[i];
@@ -486,7 +486,7 @@ public final class CgVfxCue {
     }
 
     /** Plays a {@link #TWEEN} on a viewer's {@code effect}. */
-    static void play(@Nullable LookFields look, CgVfxEffect effect, List<Float> tween) {
+    static void play(@Nullable LookFields look, CgVfxEffect<?> effect, List<Float> tween) {
         if (look == null || effect.look().layout() != look.layout || tween.size() < 4) return;
         int index = Math.round(tween.get(0));
         List<CgVfxParam> params = look.layout.params();
@@ -519,7 +519,7 @@ public final class CgVfxCue {
     }
 
     /** On a client: {@code field} changed on a viewer's {@code effect}; whether it was a look parameter, now set. */
-    boolean applyLook(Play play, CgVfxEffect effect, CgNetField<?> field) {
+    boolean applyLook(Play play, CgVfxEffect<?> effect, CgNetField<?> field) {
         if (look == null) return false;
         Integer i = look.byField.get(field);
         if (i == null) return false;
@@ -795,7 +795,7 @@ public final class CgVfxCue {
 
         /** On a client: plays it here alone. Null where nothing is registered under its id. */
         @Nullable
-        public CgVfxEffect play() {
+        public CgVfxEffect<?> play() {
             return CgVfxCueClient.play(this);
         }
 
@@ -804,7 +804,7 @@ public final class CgVfxCue {
          * Refused, it plays on here alone. Null where nothing is registered under its id.
          */
         @Nullable
-        public CgVfxEffect predict() {
+        public CgVfxEffect<?> predict() {
             if (obj != null) throw new IllegalStateException("a play is sent once");
             CgNetObject predicted = cue.type.predict(followId >= 0 ? CgAnchor.onEntity(followId) : CgAnchor.at(x, y, z));
             attach(predicted);
@@ -814,8 +814,8 @@ public final class CgVfxCue {
         }
 
         /** Its effect, as {@code entry} makes it: seeded, following what it follows, its look's values set, at its age. */
-        CgVfxEffect build(CgVfxRegistry.Entry entry) {
-            CgVfxEffect effect = CgVfxEffect.seeded(seedUnit(), () -> entry.spawn(this));
+        CgVfxEffect<?> build(CgVfxRegistry.Entry entry) {
+            CgVfxEffect<?> effect = CgVfxEffect.seeded(seedUnit(), () -> entry.spawn(this));
             if (followId >= 0) {
                 int at = point == null ? CgEntityAttachments.FEET : CgEntityAttachments.declare(point, CgEntityAttachments.CENTRE);
                 if ((flags & KEEP_OFFSET) != 0) effect.followKeepingOffset(followId, at);
@@ -1151,7 +1151,7 @@ public final class CgVfxCue {
             return this;
         }
 
-        private CgVfxEffect running() {
+        private CgVfxEffect<?> running() {
             if (authority == null) {
                 throw new IllegalStateException("cue '" + play.cue.id + "' runs nowhere on the server: declare it authoritative()");
             }
@@ -1165,7 +1165,7 @@ public final class CgVfxCue {
          */
         @Nullable
         @SuppressWarnings("unchecked")
-        public <E extends CgVfxEffect> E effect() {
+        public <E extends CgVfxEffect<?>> E effect() {
             return authority == null ? null : (E) authority.effect();
         }
 

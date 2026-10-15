@@ -60,7 +60,7 @@ public final class CgVfxTrail {
     private final Mode mode;
     private float life;
     private float spacing = 0.12f, maxStep = 8f;
-    private int capacity = 128, subdivisions = 4;
+    private int capacity = 128;
     private boolean emitting = true;
 
     // Kept points, a ring from `first`, oldest first; the head is (prev, cur), never kept until it has moved on.
@@ -122,13 +122,6 @@ public final class CgVfxTrail {
             capacity = points;
             grow(points);
         }
-        return this;
-    }
-
-    /** Quads drawn between two points, 4 unless given: 1 for dense points, more for a fast swing's sparse ones. */
-    public CgVfxTrail subdivisions(int quads) {
-        if (quads < 1 || quads > 16) throw new IllegalArgumentException("subdivisions " + quads + ", 1 to 16");
-        subdivisions = quads;
         return this;
     }
 
@@ -278,10 +271,6 @@ public final class CgVfxTrail {
 
     public float life() {
         return life;
-    }
-
-    public int subdivisions() {
-        return subdivisions;
     }
 
     /** Points kept, the head not counted. */

@@ -174,7 +174,7 @@ public final class CgVfxSystem {
 
     private static final CgSortLayer DISTORTION = CgSortLayer.after("crystalgraphics:vfx-distortion", CgSortLayer.EFFECTS);
 
-    private final List<CgVfxEffect> effects = new ArrayList<>();
+    private final List<CgVfxEffect<?>> effects = new ArrayList<>();
     private final List<CgVfxMomentListener> momentListeners = new ArrayList<>();
     private final List<CgVfxEventListener> eventListeners = new ArrayList<>();
     private final CgVfxPathTexture paths = new CgVfxPathTexture();
@@ -194,9 +194,9 @@ public final class CgVfxSystem {
     private CgMesh tubeMesh, closedTubeMesh, ribbonMesh, sphereMesh, volumeMesh;
     private final CgVfxAir air = new CgVfxAir();
     /** The effects that queued emitter ticks this tick: what the workers run. */
-    private final List<CgVfxEffect> emitting = new ArrayList<>();
+    private final List<CgVfxEffect<?>> emitting = new ArrayList<>();
     private final IntConsumer tickEach = i -> {
-        CgVfxEffect effect = emitting.get(i);
+        CgVfxEffect<?> effect = emitting.get(i);
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, EFFECT_EMITTERS_ZONE)) {
             effect.tickEmitters();
         } catch (RuntimeException e) {
@@ -221,9 +221,9 @@ public final class CgVfxSystem {
     private final CgVfxCulling culling = new CgVfxCulling();
     /** Load on its budgets, smoothed: 1 at rest, above while over; and the CPU nanoseconds this frame's update took. */
     private float pressure = 1f;
-    private long updateNanos;
+    private long updateNanos, submitNanos;
 
-    public <E extends CgVfxEffect> E play(E effect) {
+    public <E extends CgVfxEffect<?>> E play(E effect) {
         if (effect.system != null) throw new IllegalStateException("already played: " + effect);
         effect.system = this;
         effects.add(effect);
@@ -280,7 +280,7 @@ public final class CgVfxSystem {
         return !momentListeners.isEmpty();
     }
 
-    void moment(CgVfxEffect effect, String name, double x, double y, double z, float radius) {
+    void moment(CgVfxEffect<?> effect, String name, double x, double y, double z, float radius) {
         for (int i = 0; i < momentListeners.size(); i++) momentListeners.get(i).moment(effect, name, x, y, z, radius);
     }
 
@@ -337,7 +337,7 @@ public final class CgVfxSystem {
                         drawnStep = step;
                     }
                     for (int i = 0; i < effects.size(); i++) {
-                        CgVfxEffect effect = effects.get(i);
+                        CgVfxEffect<?> effect = effects.get(i);
                         if (effect.state() != CgVfxEffect.State.DEAD && !effect.asleep) {
                             int zone = effect.owner != null ? effect.owner.tickZone : EFFECT_TICK_ZONE;
                             try (CgTrace.Zone stepping = CgTrace.zone(CgVfxTrace.CHANNEL, zone)) {
@@ -358,7 +358,7 @@ public final class CgVfxSystem {
                         }
                         try (CgTrace.Zone admitting = CgTrace.zone(CgVfxTrace.CHANNEL, ADMIT_ZONE)) {
                             for (int i = 0; i < emitting.size(); i++) {
-                                CgVfxEffect effect = emitting.get(i);
+                                CgVfxEffect<?> effect = emitting.get(i);
                                 if (effect.failure != null) {
                                     fail(effect, effect.failure);
                                     effect.failure = null;
@@ -401,7 +401,7 @@ public final class CgVfxSystem {
     private void removeDead() {
         int kept = 0;
         for (int i = 0; i < effects.size(); i++) {
-            CgVfxEffect effect = effects.get(i);
+            CgVfxEffect<?> effect = effects.get(i);
             if (effect.state() == CgVfxEffect.State.DEAD) {
                 // Killed, its particles go with it; one that died on its own lets them finish.
                 if (effect.killed) effect.killSlots(gpuSteps);
@@ -420,7 +420,7 @@ public final class CgVfxSystem {
     }
 
     /** Kills {@code effect} over what it threw, logged under its owner; the rest play on. */
-    private static void fail(CgVfxEffect effect, RuntimeException e) {
+    private static void fail(CgVfxEffect<?> effect, RuntimeException e) {
         LOGGER.error("[CgVfxSystem] {} played by {} threw, and is killed", effect.getClass().getName(),
                 effect.owner != null ? effect.owner : "its system", e);
         effect.kill();
@@ -434,7 +434,7 @@ public final class CgVfxSystem {
         CgEntityQuery entities = null;
         float partialTick = 0f;
         for (int i = 0; i < effects.size(); i++) {
-            CgVfxEffect effect = effects.get(i);
+            CgVfxEffect<?> effect = effects.get(i);
             if (effect.followEntity < 0 || effect.state() == CgVfxEffect.State.DEAD) continue;
             if (entities == null) {
                 entities = CgEntityQueries.client();
@@ -468,7 +468,7 @@ public final class CgVfxSystem {
         culling.run(effects, passed, CgEntityQueries.client().localPlayer(), reach());
         int asleep = 0;
         for (int i = 0; i < effects.size(); i++) {
-            CgVfxEffect effect = effects.get(i);
+            CgVfxEffect<?> effect = effects.get(i);
             if (effect.state() == CgVfxEffect.State.DEAD) continue;
             if (effect.asleep) {
                 if (effect.wanted) {
@@ -495,7 +495,7 @@ public final class CgVfxSystem {
     }
 
     /** A play the camera is past its scalability's distance from never starts, or starts asleep. */
-    private void precull(CgVfxEffect effect) {
+    private void precull(CgVfxEffect<?> effect) {
         if (effect.authoritative() || !culling.viewed()) return;
         CgVfxScalability s = effect.scalability();
         if (!s.culls() || culling.distanceTo(effect.originX, effect.originY, effect.originZ) <= s.maxDistance * reach()) return;
@@ -508,9 +508,9 @@ public final class CgVfxSystem {
         }
     }
 
-    /** Its load: the CPU its updates took against {@code cpuBudgetMs}, or the particles' GPU scale's shortfall. */
+    /** Its load: the CPU its last update and draw took against {@code cpuBudgetMs}, or the particles' GPU scale's shortfall. */
     private float load() {
-        float cpu = updateNanos / 1.0e6f / CPU_BUDGET_MS.get();
+        float cpu = (updateNanos + submitNanos) / 1.0e6f / CPU_BUDGET_MS.get();
         float gpu = 1f / Math.max(CgVfxParticlePool.GPU_BUDGET.scale(), 0.25f);
         return Math.max(1f, Math.max(cpu, gpu));
     }
@@ -523,7 +523,7 @@ public final class CgVfxSystem {
     /** Steps each effect played with a start age to it, ahead of this update's ticks. */
     private void startLate() {
         for (int i = 0; i < effects.size(); i++) {
-            CgVfxEffect effect = effects.get(i);
+            CgVfxEffect<?> effect = effects.get(i);
             if (effect.startAge <= 0f || effect.asleep) continue;
             float target = effect.startAge;
             effect.startAge = 0f;
@@ -549,7 +549,7 @@ public final class CgVfxSystem {
      * books throughout and take slots only for the last {@link #PREWARM_SECONDS}, stepped in at most
      * {@link #PREWARM_STEPS} steps while every other slot holds still: older particles would be dead by now.
      */
-    private void fastForward(CgVfxEffect effect, float target) {
+    private void fastForward(CgVfxEffect<?> effect, float target) {
         float from = effect.age, stepped = Math.min(target, MAX_START_SECONDS);
         int ticks = Math.round(stepped / TICK), windowTicks = Math.round(Math.min(stepped, PREWARM_SECONDS) / TICK);
         int windowFrom = ticks - windowTicks;
@@ -655,13 +655,25 @@ public final class CgVfxSystem {
 
     /** Draws every playing effect into {@code world}, interpolated between the last two ticks. Render thread. */
     public void submit(CgWorldRenderer world) {
-        if (effects.isEmpty()) return;
+        if (effects.isEmpty()) {
+            submitNanos = 0L;
+            return;
+        }
+        long began = System.nanoTime();
+        try {
+            submitTimed(world);
+        } finally {
+            submitNanos = System.nanoTime() - began;
+        }
+    }
+
+    private void submitTimed(CgWorldRenderer world) {
         if (tubeMesh == null) {
             tubeMesh = CgVfxTube.mesh(false);
             closedTubeMesh = CgVfxTube.mesh(true);
             ribbonMesh = CgVfxRibbons.mesh();
             sphereMesh = CgMeshShapes.sphere(48, 96);
-            // 12 x 24 faces come within cos(15Â°) cos(7.5Â°) of the centre: at radius 1.05 they still enclose the unit sphere.
+            // 12 x 24 faces come within cos(15 deg) cos(7.5 deg) of the centre: at radius 1.05 they still enclose the unit sphere.
             volumeMesh = COARSE_VOLUMES.get()
                     ? CgMesh.build(CgVertexFormat.SPATIAL, m -> CgMeshShapes.sphere(m, 12, 24, 1.05f)) : sphereMesh;
         }
@@ -673,7 +685,7 @@ public final class CgVfxSystem {
             // Particles hold their last two steps, a step apart: drawn one step behind, as the rest is a tick behind.
             double gx = 0, gy = 0, gz = 0;
             for (int i = 0; i < effects.size(); i++) {
-                CgVfxEffect effect = effects.get(i);
+                CgVfxEffect<?> effect = effects.get(i);
                 gx += effect.originX;
                 gy += effect.originY;
                 gz += effect.originZ;
@@ -685,7 +697,7 @@ public final class CgVfxSystem {
             paths.begin();
             trails.begin();
             for (int i = 0; i < effects.size(); i++) {
-                CgVfxEffect effect = effects.get(i);
+                CgVfxEffect<?> effect = effects.get(i);
                 // Killed since the update: cleared by its owner, or failed.
                 if (effect.state() == CgVfxEffect.State.DEAD || effect.asleep) continue;
                 int zone = effect.owner != null ? effect.owner.submitZone : EFFECT_ZONE;
@@ -713,7 +725,7 @@ public final class CgVfxSystem {
      */
     private void warm(CgWorldRenderer world) {
         for (int i = 0; i < effects.size(); i++) {
-            CgVfxEffect effect = effects.get(i);
+            CgVfxEffect<?> effect = effects.get(i);
             if (!effect.gpuPrepared) {
                 effect.gpuPrepared = true;
                 prepareGpu(effect.look(), true);
@@ -846,7 +858,7 @@ public final class CgVfxSystem {
         return false;
     }
 
-    public List<CgVfxEffect> effects() {
+    public List<CgVfxEffect<?>> effects() {
         return effects;
     }
 

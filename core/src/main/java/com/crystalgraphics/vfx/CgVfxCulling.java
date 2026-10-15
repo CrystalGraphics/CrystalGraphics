@@ -25,13 +25,13 @@ final class CgVfxCulling {
 
     /** The effects sharing one cap: those wanted this update, and their distances, nearest kept. */
     private static final class Cap {
-        CgVfxEffect[] members = new CgVfxEffect[8];
+        CgVfxEffect<?>[] members = new CgVfxEffect<?>[8];
         long[] keys = new long[8];
         int count;
         /** How many it keeps at rest. */
         int most;
 
-        void add(CgVfxEffect effect) {
+        void add(CgVfxEffect<?> effect) {
             if (count == members.length) {
                 members = Arrays.copyOf(members, count * 2);
                 keys = Arrays.copyOf(keys, count * 2);
@@ -48,7 +48,7 @@ final class CgVfxCulling {
             if (count > kept) {
                 Arrays.sort(keys, 0, count);
                 for (int i = kept; i < count; i++) {
-                    CgVfxEffect e = members[(int) keys[i]];
+                    CgVfxEffect<?> e = members[(int) keys[i]];
                     if (localPlayer < 0 || e.followEntity != localPlayer) e.wanted = false;
                 }
             }
@@ -90,9 +90,9 @@ final class CgVfxCulling {
      * Decides every effect's {@code wanted}, {@code lowered} and {@code distanceShare} for this update, {@code dt}
      * seconds after the last, every distance and cap shrunk by {@code reach} (1 at rest, down to a quarter under load).
      */
-    void run(List<CgVfxEffect> effects, float dt, int localPlayer, float reach) {
+    void run(List<CgVfxEffect<?>> effects, float dt, int localPlayer, float reach) {
         for (int i = 0; i < effects.size(); i++) {
-            CgVfxEffect e = effects.get(i);
+            CgVfxEffect<?> e = effects.get(i);
             if (e.state() == CgVfxEffect.State.DEAD) continue;
             CgVfxScalability s = e.scalability();
             if (!viewed || !s.culls() || e.authoritative()) {
@@ -121,7 +121,7 @@ final class CgVfxCulling {
      * Sets {@code e}'s distance from the camera to its bounds (0 inside them), its origin where it has drawn nothing yet;
      * answers whether any of them is in view.
      */
-    private boolean measure(CgVfxEffect e) {
+    private boolean measure(CgVfxEffect<?> e) {
         double ox = e.originX - eyeX, oy = e.originY - eyeY, oz = e.originZ - eyeZ;
         if (!e.bounded()) {
             e.cullDistance = (float) Math.sqrt(ox * ox + oy * oy + oz * oz);

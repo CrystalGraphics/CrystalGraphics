@@ -27,7 +27,7 @@ import org.joml.Matrix4f;
  *       nothing at the Low quality tier.</li>
  * </ul>
  */
-public final class CgVfxHeatHaze extends CgVfxEffect {
+public final class CgVfxHeatHaze extends CgVfxEffect<CgVfxHeatHaze> {
 
     public static final CgVfxSchema SCHEMA = CgVfxSchema.of("crystalgraphics:heat_haze");
     /** The haze's radius. */

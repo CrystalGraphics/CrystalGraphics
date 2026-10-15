@@ -75,14 +75,14 @@ public class CgVfxCueTest {
         return wave;
     }).authoritative().build();
 
-    private static CgVfxEffect probe(CgVfxLook look, CgVfxCue.Play cue) {
+    private static CgVfxEffect<?> probe(CgVfxLook look, CgVfxCue.Play cue) {
         CUES.add(cue);
         Probe probe = new Probe(cue.x(), cue.y(), cue.z());
         BUILT.add(probe);
         return probe;
     }
 
-    static final class Probe extends CgVfxEffect {
+    static final class Probe extends CgVfxEffect<Probe> {
         Probe(double x, double y, double z) {
             super(LOOK, x, y, z);
         }
@@ -97,7 +97,7 @@ public class CgVfxCueTest {
     }
 
     /** Goes along its direction to the first block: found on the server, given to its viewers. */
-    static final class Seeker extends CgVfxEffect implements CgVfxCue.Live, CgVfxCue.Authoritative {
+    static final class Seeker extends CgVfxEffect<Seeker> implements CgVfxCue.Live, CgVfxCue.Authoritative {
         private final CgHit hit = new CgHit();
         private double endX = Double.NaN, endY, endZ;
 

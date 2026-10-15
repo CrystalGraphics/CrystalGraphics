@@ -29,7 +29,7 @@ public class CgVfxStartAtTest {
     private static final int FRAMES = 24;
 
     /** An effect whose phase accumulates every tick, so a jump in age would show. */
-    static final class Phased extends CgVfxEffect {
+    static final class Phased extends CgVfxEffect<Phased> {
         final CgVfxEmitterInstance embers = new CgVfxEmitterInstance(EMBERS, 0.37f);
         float phase;
         int ticks;

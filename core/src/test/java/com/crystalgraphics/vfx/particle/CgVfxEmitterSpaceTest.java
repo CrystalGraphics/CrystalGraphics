@@ -18,8 +18,8 @@ public class CgVfxEmitterSpaceTest {
     private static CgVfxEmitterInstance stepAcross(CgVfxEmitter emitter) {
         CgVfxEmitterInstance instance = new CgVfxEmitterInstance(emitter, 0.37f);
         instance.start(0f, 0f, 0f);
-        instance.schedule(CgVfxSystem.TICK, 0.0, 64.0, 0.0);
-        instance.schedule(CgVfxSystem.TICK, 10.0, 64.0, 0.0);
+        instance.books().schedule(CgVfxSystem.TICK, 0.0, 64.0, 0.0);
+        instance.books().schedule(CgVfxSystem.TICK, 10.0, 64.0, 0.0);
         return instance;
     }
 

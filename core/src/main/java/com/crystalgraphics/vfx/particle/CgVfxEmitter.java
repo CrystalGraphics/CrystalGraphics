@@ -290,7 +290,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
     /**
      * The most children event {@code event} (its index in {@link #events()}) of one instance can have alive at once:
-     * what its child slot is sized by, and its CPU set.
+     * what its child slot is sized by.
      *
      * <pre>{@code
      * int childSlot = childPool.open(DUST, DEBRIS.peakChildren(0));
@@ -476,6 +476,18 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             burstTimes.add(time);
             burstCounts.add(count);
             return this;
+        }
+
+        /**
+         * {@code perSecond} particles a second from the start until the instance is {@link CgVfxEmitterInstance#stop
+         * stopped}: an aura, a fire, a wake. Give it a {@link #capacity}.
+         *
+         * <pre>{@code
+         * CgVfxEmitter.builder("embers").capacity(400).rate(60f)...
+         * }</pre>
+         */
+        public Builder rate(float perSecond) {
+            return rate(perSecond, 0f, Float.POSITIVE_INFINITY);
         }
 
         /**
@@ -760,6 +772,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
+        /** Starting size in blocks, evenly between. */
+        public Builder size(float min, float max) {
+            return size(min, max, 1f);
+        }
+
         /** Starting size in blocks; a {@code skew} over 1 makes most small and a few large. */
         public Builder size(float min, float max, float skew) {
             sizeMin = min;
@@ -793,7 +810,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
         /**
          * Reacts to what its particles do: children spawned where one lands, dies or reaches an age, rows to the CPU, or
-         * both ({@link CgVfxEvent}). On both simulations.
+         * both ({@link CgVfxEvent}).
          *
          * <pre>{@code
          * .event(CgVfxEvent.onLanding().spawn(DUST, 3).inherit(0.2f))   // debris raising dust
@@ -812,7 +829,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
                 throw new IllegalArgumentException(name + " has " + CgVfxEvent.MAX_EVENTS + " events already");
             }
             if (event.child() != null && !(event.child() instanceof CgVfxEmitter)) {
-                // The CPU path runs the child too, from its numbers and modules.
+                // Its instance books the child's spawns from its numbers.
                 throw new IllegalArgumentException(name + "'s child " + event.child().name() + " is not a CgVfxEmitter");
             }
             events.add(event);

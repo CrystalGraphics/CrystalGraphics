@@ -207,7 +207,7 @@ public final class CgVfxBlast extends CgVfxElement {
     private boolean burst, released, emitted, showing;
 
     /** A blast whose front hitbox's hits are {@code front}'s. */
-    public CgVfxBlast(CgVfxEffect effect, CgHitPart front) {
+    public CgVfxBlast(CgVfxEffect<?> effect, CgHitPart front) {
         super(effect);
         this.front = front;
     }

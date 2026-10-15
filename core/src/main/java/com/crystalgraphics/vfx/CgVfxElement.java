@@ -48,10 +48,10 @@ import org.joml.Matrix4f;
  */
 public abstract class CgVfxElement {
 
-    protected final CgVfxEffect effect;
+    protected final CgVfxEffect<?> effect;
     private long announced;
 
-    protected CgVfxElement(CgVfxEffect effect) {
+    protected CgVfxElement(CgVfxEffect<?> effect) {
         this.effect = effect;
     }
 

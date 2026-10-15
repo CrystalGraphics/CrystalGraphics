@@ -22,5 +22,5 @@ package com.crystalgraphics.vfx;
 @FunctionalInterface
 public interface CgVfxMomentListener {
 
-    void moment(CgVfxEffect effect, String name, double x, double y, double z, float radius);
+    void moment(CgVfxEffect<?> effect, String name, double x, double y, double z, float radius);
 }

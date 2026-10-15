@@ -47,15 +47,15 @@ public class CgVfxEmitterScheduleTest {
         stopped.start(0f, 0f, 0f);
         coasting.start(0f, 0f, 0f);
         for (int i = 0; i < 120; i++) {
-            stopped.schedule(DT, 0.0, 0.0, 0.0);
-            coasting.schedule(DT, 0.0, 0.0, 0.0);
+            stopped.books().schedule(DT, 0.0, 0.0, 0.0);
+            coasting.books().schedule(DT, 0.0, 0.0, 0.0);
         }
         assertFalse(stopped.finished());
         stopped.stop();
         for (int i = 0; i < 90; i++) {
-            stopped.schedule(DT, 0.0, 0.0, 0.0);
-            coasting.coast(DT);
-            assertEquals(0, stopped.stepCandidates());
+            stopped.books().schedule(DT, 0.0, 0.0, 0.0);
+            coasting.books().coast(DT);
+            assertEquals(0, stopped.books().stepCandidates());
         }
         assertTrue(stopped.finished());
         assertTrue(coasting.finished());
@@ -67,13 +67,13 @@ public class CgVfxEmitterScheduleTest {
                 .burst(0f, 10).life(1f, 1f).build();
         CgVfxEmitterInstance instance = new CgVfxEmitterInstance(definition, 0.3f).rateScale(0f);
         instance.start(0f, 0f, 0f);
-        instance.schedule(DT, 0.0, 0.0, 0.0);
-        assertEquals(10, instance.stepCandidates());
+        instance.books().schedule(DT, 0.0, 0.0, 0.0);
+        assertEquals(10, instance.books().stepCandidates());
         int spawned = 0;
         instance.rateScale(3f);
         for (int i = 0; i < 60; i++) {
-            instance.schedule(DT, 0.0, 0.0, 0.0);
-            spawned += instance.stepCandidates();
+            instance.books().schedule(DT, 0.0, 0.0, 0.0);
+            spawned += instance.books().stepCandidates();
         }
         assertEquals(360, spawned, 1);
     }
@@ -85,9 +85,9 @@ public class CgVfxEmitterScheduleTest {
                 .event(CgVfxEvent.onCollision().spawn(flash, 1)).build();
         CgVfxEmitterInstance parent = new CgVfxEmitterInstance(sparks, 0.5f);
         parent.start(0f, 7f, 0f);
-        parent.schedule(DT, -21.0, 0.0, 14.0);
+        parent.books().schedule(DT, -21.0, 0.0, 14.0);
         CgVfxEmitterInstance child = parent.child(0);
-        assertTrue(child.scheduled());
+        assertTrue(child.books().scheduled());
         assertEquals(-21.0, child.originX(), 0.0);
         assertEquals(14.0, child.originZ(), 0.0);
     }
@@ -113,15 +113,15 @@ public class CgVfxEmitterScheduleTest {
                 .burst(0.04f, 5).life(1f, 1f).build();
         CgVfxEmitterInstance instance = new CgVfxEmitterInstance(trail, 0.3f);
         instance.start(0f, 0f, 0f);
-        instance.schedule(DT, 0.0, 0.0, 0.0);
-        assertEquals("the first step has no motion", instance.sourceX(), instance.fromX(), 0f);
+        instance.books().schedule(DT, 0.0, 0.0, 0.0);
+        assertEquals("the first step has no motion", instance.sourceX(), instance.books().fromX(), 0f);
         for (int step = 1; step < 6; step++) {
             instance.moveTo(step, 0f, 0f);
-            instance.schedule(DT, 0.0, 0.0, 0.0);
-            assertEquals(step - 1f, instance.fromX(), 0f);
+            instance.books().schedule(DT, 0.0, 0.0, 0.0);
+            assertEquals(step - 1f, instance.books().fromX(), 0f);
             assertEquals(step, instance.sourceX(), 0f);
-            assertEquals(step == 3 ? 5 : 0, instance.stepBursts());
-            assertEquals(instance.stepBursts() + 10, instance.stepCandidates(), 1);
+            assertEquals(step == 3 ? 5 : 0, instance.books().stepBursts());
+            assertEquals(instance.books().stepBursts() + 10, instance.books().stepCandidates(), 1);
         }
     }
 
@@ -130,19 +130,19 @@ public class CgVfxEmitterScheduleTest {
         CgVfxEmitter wake = CgVfxEmitter.builder("wake").capacity(5000).ratePerBlock(4f).maxStep(8f).life(1f, 1f).build();
         CgVfxEmitterInstance instance = new CgVfxEmitterInstance(wake, 0.3f);
         instance.start(0f, 0f, 0f);
-        instance.schedule(DT, 0.0, 0.0, 0.0);
-        assertEquals(0, instance.stepCandidates());
+        instance.books().schedule(DT, 0.0, 0.0, 0.0);
+        assertEquals(0, instance.books().stepCandidates());
         int spawned = 0;
         for (int step = 1; step <= 10; step++) {
             instance.moveTo(step * 0.5f, 0f, 0f);
-            instance.schedule(DT, 0.0, 0.0, 0.0);
-            spawned += instance.stepCandidates();
+            instance.books().schedule(DT, 0.0, 0.0, 0.0);
+            spawned += instance.books().stepCandidates();
         }
         assertEquals("four a block over five blocks", 20, spawned);
         instance.moveTo(100f, 0f, 0f);
-        instance.schedule(DT, 0.0, 0.0, 0.0);
-        assertEquals("a teleport spawns nothing", 0, instance.stepCandidates());
-        assertEquals(100f, instance.fromX(), 0f);
+        instance.books().schedule(DT, 0.0, 0.0, 0.0);
+        assertEquals("a teleport spawns nothing", 0, instance.books().stepCandidates());
+        assertEquals(100f, instance.books().fromX(), 0f);
         assertFalse("by distance alone it spawns until stopped", instance.finished());
     }
 
@@ -155,8 +155,8 @@ public class CgVfxEmitterScheduleTest {
         instance.start(0f, 0f, 0f);
         int[] candidates = new int[120];
         for (int step = 0; step < candidates.length; step++) {
-            instance.schedule(DT, 0.0, 0.0, 0.0);
-            candidates[step] = instance.stepCandidates();
+            instance.books().schedule(DT, 0.0, 0.0, 0.0);
+            candidates[step] = instance.books().stepCandidates();
         }
         assertEquals("the first burst up to the capacity", 100, candidates[0]);
         assertEquals("full half a second later", 0, candidates[30]);
@@ -169,17 +169,18 @@ public class CgVfxEmitterScheduleTest {
      * draws it by. What is alive at each step, from those deaths, stays within {@code peakAlive}.
      */
     private static void check(CgVfxEmitter definition, int expected, float share) {
-        CgVfxEmitterInstance instance = new CgVfxEmitterInstance(definition, 0.71f).share(share);
+        CgVfxEmitterInstance instance = new CgVfxEmitterInstance(definition, 0.71f);
+        instance.books().share(share);
         instance.start(0f, 0f, 0f);
-        int seed = instance.seedBits(), handed = 0, peak = 0, finishedAt = -1;
+        int seed = instance.books().seedBits(), handed = 0, peak = 0, finishedAt = -1;
         List<Float> deaths = new ArrayList<>();
         float lastDeath = 0f;
         for (int step = 0; step < 600 && finishedAt < 0; step++) {
             float now = step * DT;
-            instance.schedule(DT, 10.0, 64.0, -5.0);
-            assertEquals(definition.name() + " step " + step + "'s first spawn", handed, instance.stepFirstSpawn());
-            int bursts = instance.stepBursts(), spread = instance.stepCandidates() - bursts;
-            for (int k = handed; k < handed + instance.stepCandidates(); k++) {
+            instance.books().schedule(DT, 10.0, 64.0, -5.0);
+            assertEquals(definition.name() + " step " + step + "'s first spawn", handed, instance.books().stepFirstSpawn());
+            int bursts = instance.books().stepBursts(), spread = instance.books().stepCandidates() - bursts;
+            for (int k = handed; k < handed + instance.books().stepCandidates(); k++) {
                 if (share < 1f && CgVfxEmitterInstance.rand(seed, k, 10) >= share) continue;
                 float life = definition.lifeMin + (definition.lifeMax - definition.lifeMin)
                         * CgVfxEmitterInstance.rand(seed, k, 4);
@@ -190,7 +191,7 @@ public class CgVfxEmitterScheduleTest {
                 deaths.add(death);
                 lastDeath = Math.max(lastDeath, death);
             }
-            handed += instance.stepCandidates();
+            handed += instance.books().stepCandidates();
             int alive = 0;
             for (float death : deaths) if (death > now + DT) alive++;
             peak = Math.max(peak, alive);

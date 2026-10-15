@@ -50,7 +50,7 @@ public final class CgBeamWake extends CgVfxElement {
     private int spots;
 
     /** A wake played from {@code kit}, which holds {@link #EMITTER} and scales it. */
-    public CgBeamWake(CgVfxEffect effect, CgVfxKit kit) {
+    public CgBeamWake(CgVfxEffect<?> effect, CgVfxKit kit) {
         super(effect);
         this.kit = kit;
     }

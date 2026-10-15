@@ -17,7 +17,7 @@ public class CgVfxOwnerTest {
 
     private static final CgVfxLook LOOK = CgVfxLook.builder(CgVfxSchema.of("test:owner")).build();
 
-    static class Quiet extends CgVfxEffect {
+    static class Quiet extends CgVfxEffect<Quiet> {
         int ticks;
 
         Quiet(double x) {
@@ -140,7 +140,7 @@ public class CgVfxOwnerTest {
         CgVfxRegistry.Entry entry = owner.register("ping", "Ping", "Tests", LOOK, (look, x, y, z, tx, ty, tz) -> new Quiet(x));
         assertEquals("owner_ids:ping", entry.id());
         assertSame(entry, CgVfxRegistry.get("owner_ids:ping"));
-        CgVfxEffect played = owner.play("ping", 5, 0, 0, 0, 0, 0);
+        CgVfxEffect<?> played = owner.play("ping", 5, 0, 0, 0, 0, 0);
         assertNotNull(played);
         assertEquals(5.0, played.originX, 0.0);
         assertSame(vfx, played.system);

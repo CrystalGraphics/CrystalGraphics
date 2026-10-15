@@ -9865,11 +9865,13 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter$Builder
   method public ordered (I)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public outward ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public pointing (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
+  method public rate (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public rate (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public ratePerBlock (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public ratePerBlock (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public renderer (Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public shape (Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
+  method public size (FF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public size (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public size (Lcom/crystalgraphics/easing/CgKeyframes;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public speed (FF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
@@ -9889,23 +9891,11 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer
 com/crystalgraphics/vfx/particle/CgVfxEmitterInstance
   access public,final
   extends java/lang/Object
-  implements com/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView
   method public <init> (Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;F)V
-  method public boxHalfX ()F
-  method public boxHalfY ()F
-  method public boxHalfZ ()F
-  method public boxX ()F
-  method public boxY ()F
-  method public boxZ ()F
+  method public books ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance$Books;
   method public child (I)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;
-  method public coast (F)V
   method public emitter ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
-  method public entityBox (FFFFFF)V
-  method public entityBoxReach ()F
   method public finished ()Z
-  method public fromX ()F
-  method public fromY ()F
-  method public fromZ ()F
   method public ground (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;
   method public groundY ()F
   method public moveTo (FFF)V
@@ -9913,24 +9903,47 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance
   method public originY ()D
   method public originZ ()D
   method public rateScale (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;
+  method public sourceX ()F
+  method public sourceY ()F
+  method public sourceZ ()F
+  method public start (FFF)V
+  method public stop ()V
+  method public time ()F
+  method public,static rand (III)F
+com/crystalgraphics/vfx/particle/CgVfxEmitterInstance$Books
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView
+  method public boxHalfX ()F
+  method public boxHalfY ()F
+  method public boxHalfZ ()F
+  method public boxX ()F
+  method public boxY ()F
+  method public boxZ ()F
+  method public coast (F)V
+  method public entityBox (FFFFFF)V
+  method public entityBoxReach ()F
+  method public fromX ()F
+  method public fromY ()F
+  method public fromZ ()F
+  method public originX ()D
+  method public originY ()D
+  method public originZ ()D
   method public schedule (FDDD)V
   method public scheduled ()Z
   method public seedBits ()I
   method public share ()F
-  method public share (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;
+  method public share (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance$Books;
   method public slotLost ()V
   method public sourceX ()F
   method public sourceY ()F
   method public sourceZ ()F
   method public spawnedSoFar ()I
-  method public start (FFF)V
   method public stepBursts ()I
   method public stepCandidates ()I
   method public stepFirstSpawn ()I
   method public stepTime ()F
-  method public stop ()V
   method public time ()F
-  method public,static rand (III)F
 com/crystalgraphics/vfx/particle/CgVfxField
   access public,final
   extends java/lang/Object
@@ -10759,8 +10772,6 @@ com/crystalgraphics/vfx/trail/CgVfxTrail
   method public maxStep (F)Lcom/crystalgraphics/vfx/trail/CgVfxTrail;
   method public mode ()Lcom/crystalgraphics/vfx/trail/CgVfxTrail$Mode;
   method public spacing (F)Lcom/crystalgraphics/vfx/trail/CgVfxTrail;
-  method public subdivisions ()I
-  method public subdivisions (I)Lcom/crystalgraphics/vfx/trail/CgVfxTrail;
   method public tick (F)V
   method public tick (FDDD)V
   method public tick (FDDDDDD)V

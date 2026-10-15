@@ -59,14 +59,14 @@ public final class CgVfxOwner {
     private final CgVfxSystem fixed;
     final int tickZone, submitZone, effectsCounter;
     /** Into the world system: plays waiting for its next frame, from any thread. */
-    private final ConcurrentLinkedQueue<CgVfxEffect> pending = new ConcurrentLinkedQueue<>();
+    private final ConcurrentLinkedQueue<CgVfxEffect<?>> pending = new ConcurrentLinkedQueue<>();
     private final AtomicInteger pendingCount = new AtomicInteger();
     private volatile boolean warnedFull;
     private volatile boolean enabled = true;
     /** Turned off: clear at the next drain, on the render thread. */
     private volatile boolean clearRequested;
     /** Its effects in its system, each at its {@code ownerSlot}, until the system removes it. Render thread. */
-    private final List<CgVfxEffect> effects = new ArrayList<>();
+    private final List<CgVfxEffect<?>> effects = new ArrayList<>();
     /** The system whose owner list holds it. */
     CgVfxSystem listedIn;
 
@@ -94,7 +94,7 @@ public final class CgVfxOwner {
      * Plays {@code effect} as this owner's. Into the world system it starts at the next world frame. While the owner is
      * {@linkplain #enabled(boolean) disabled} it is returned dead instead, so later calls on it do nothing.
      */
-    public <E extends CgVfxEffect> E play(E effect) {
+    public <E extends CgVfxEffect<?>> E play(E effect) {
         if (effect.system != null || effect.owner != null) throw new IllegalStateException("already played: " + effect);
         effect.owner = this;
         if (!enabled) {
@@ -118,7 +118,7 @@ public final class CgVfxOwner {
             clearRequested = false;
             clear();
         }
-        for (CgVfxEffect effect; (effect = pending.poll()) != null; ) {
+        for (CgVfxEffect<?> effect; (effect = pending.poll()) != null; ) {
             pendingCount.decrementAndGet();
             if (enabled) {
                 system.play(effect);
@@ -134,15 +134,15 @@ public final class CgVfxOwner {
     }
 
     /** {@code effect}, just played into its system, joins its list. */
-    void adopt(CgVfxEffect effect) {
+    void adopt(CgVfxEffect<?> effect) {
         effect.ownerSlot = effects.size();
         effects.add(effect);
     }
 
     /** {@code effect}, removed from its system, leaves its list. */
-    void release(CgVfxEffect effect) {
+    void release(CgVfxEffect<?> effect) {
         int slot = effect.ownerSlot, last = effects.size() - 1;
-        CgVfxEffect moved = effects.remove(last);
+        CgVfxEffect<?> moved = effects.remove(last);
         if (slot != last) {
             effects.set(slot, moved);
             moved.ownerSlot = slot;
@@ -161,7 +161,7 @@ public final class CgVfxOwner {
      * {@code "namespace:path"} for another's, the engine's included ({@code "crystalgraphics:explosion"}). Null, playing
      * nothing and warning once, when no such effect is registered.
      */
-    public CgVfxEffect play(String id, double x, double y, double z, double tx, double ty, double tz) {
+    public CgVfxEffect<?> play(String id, double x, double y, double z, double tx, double ty, double tz) {
         String full = id(id);
         CgVfxRegistry.Entry entry = CgVfxRegistry.get(full);
         if (entry == null) {

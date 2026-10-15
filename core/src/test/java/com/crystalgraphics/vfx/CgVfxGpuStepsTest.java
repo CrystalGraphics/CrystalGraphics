@@ -34,7 +34,7 @@ public class CgVfxGpuStepsTest {
         CgVfxParticlePool pool = CgVfxParticlePool.of(steps, SPARKS);
         int queued = pool.queuedSteps(), stepped = 0;
         for (int n = 0; n < 600 && (n == 0 || !steps.isEmpty()); n++) {
-            instance.schedule(DT, 4.0, 64.0, -2.0);
+            instance.books().schedule(DT, 4.0, 64.0, -2.0);
             if (n == 0) steps.admit(instance);
             assertEquals(1, pool.openSlots());
             assertNotNull(steps.of(instance));
@@ -61,7 +61,7 @@ public class CgVfxGpuStepsTest {
         CgVfxParticlePool parents = CgVfxParticlePool.of(steps, flares), children = CgVfxParticlePool.of(steps, dust);
         int stepped = 0;
         for (int n = 0; n < 600 && (n == 0 || !steps.isEmpty()); n++) {
-            instance.schedule(DT, 0.0, 0.0, 0.0);
+            instance.books().schedule(DT, 0.0, 0.0, 0.0);
             if (n == 0) {
                 steps.admit(instance);
                 assertEquals(flares.peakChildren(0), children.capacity(steps.of(instance.child(0)).slot));
@@ -86,15 +86,15 @@ public class CgVfxGpuStepsTest {
         CgVfxEmitterInstance killed = new CgVfxEmitterInstance(EMBERS, 0.1f), kept = new CgVfxEmitterInstance(EMBERS, 0.2f);
         killed.start(0f, 0f, 0f);
         kept.start(0f, 0f, 0f);
-        killed.schedule(DT, 0.0, 0.0, 0.0);
-        kept.schedule(DT, 0.0, 0.0, 0.0);
+        killed.books().schedule(DT, 0.0, 0.0, 0.0);
+        kept.books().schedule(DT, 0.0, 0.0, 0.0);
         steps.admit(killed);
         steps.admit(kept);
         steps.step(DT, air);
         CgVfxParticlePool pool = CgVfxParticlePool.of(steps, EMBERS);
         assertEquals(2, pool.openSlots());
         steps.kill(killed);
-        kept.schedule(DT, 0.0, 0.0, 0.0);
+        kept.books().schedule(DT, 0.0, 0.0, 0.0);
         steps.step(DT, air);
         assertNull(steps.of(killed));
         assertNotNull(steps.of(kept));
@@ -107,16 +107,16 @@ public class CgVfxGpuStepsTest {
         CgVfxAir air = new CgVfxAir().wind(0f, 0f, 0f);
         CgVfxEmitterInstance instance = new CgVfxEmitterInstance(EMBERS, 0.8f);
         instance.start(0f, 0f, 0f);
-        instance.schedule(DT, 0.0, 0.0, 0.0);
+        instance.books().schedule(DT, 0.0, 0.0, 0.0);
         steps.admit(instance);
         steps.step(DT, air);
-        int spawned = instance.stepFirstSpawn() + instance.stepCandidates(), coasted = 0;
+        int spawned = instance.books().stepFirstSpawn() + instance.books().stepCandidates(), coasted = 0;
         // Its effect is gone: nothing schedules it again, and the queue steps it alone.
         while (!steps.isEmpty() && coasted < 600) {
             steps.step(DT, air);
             coasted++;
-            assertEquals(0, instance.stepCandidates());
-            assertEquals(spawned, instance.stepFirstSpawn());
+            assertEquals(0, instance.books().stepCandidates());
+            assertEquals(spawned, instance.books().stepFirstSpawn());
         }
         assertTrue(steps.isEmpty());
         assertTrue("coasted " + coasted + " steps", coasted <= Math.ceil(0.6f / DT) + 1);

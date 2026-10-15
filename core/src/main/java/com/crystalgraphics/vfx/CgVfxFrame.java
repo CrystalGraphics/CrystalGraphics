@@ -75,6 +75,8 @@ public final class CgVfxFrame {
     private final Matrix4f scaled = new Matrix4f(), sized = new Matrix4f();
     private final Vector3f scale = new Vector3f();
     private final float[] trailBounds = new float[8];
+    /** Quads between two points unless a layer gives its own: a trail slot's sparse points, a particle's dense ones. */
+    private static final int TRAIL_QUADS = 4, PARTICLE_STRIP_QUADS = 2;
     /** How far the unit cube's corners are from its middle: what a ribbons or billboard draw reaches. */
     private static final float CUBE_REACH = 1.7320508f;
     private CgWorldRenderer world;
@@ -105,11 +107,13 @@ public final class CgVfxFrame {
         for (int i = 0; i < setsUsed; i++) {
             SlotSet set = sets.get(i);
             CgVfxRange range = CgVfxRange.of(set.pool);
-            boolean arcs = set.renderer == CgVfxEmitter.Renderer.ARCS;
-            CgWorldRenderer.Draw draw = world.draw(slotMesh(set.renderer, set.capacity), set.material)
+            CgMesh mesh = set.strip == CgVfxLayer.Strip.NONE ? slotMesh(set.renderer, set.capacity)
+                    : CgMesh.vertices(sizeClass(set.capacity, 1) * set.factor, CgMeshTopology.TRIANGLES);
+            // Captured per draw: each pool's merged trails read its own history.
+            if (set.strip == CgVfxLayer.Strip.TRAILS) set.material.buffer("HISTORY", set.pool.history());
+            CgWorldRenderer.Draw draw = world.draw(mesh, set.material)
                     .buffer(CgBindingPoints.PARTICLES, range.drawn())
-                    .indirectEach(range.visible(), arcs ? CgIndirect.VERTICES : CgIndirect.INDICES,
-                            arcs ? CgVfxRibbons.VERTICES : 6)
+                    .indirectEach(range.visible(), set.mode, set.factor)
                     .gpuCulled()
                     .at(groupX, groupY, groupZ);
             CgVfxSystem.place(draw, set.placed, groupX, groupY, groupZ);
@@ -126,11 +130,18 @@ public final class CgVfxFrame {
         }
     }
 
-    /** {@code pool}'s set for {@code material} this frame, begun empty the first time it is asked for. */
-    private SlotSet set(CgVfxParticlePool pool, CgMaterial material, CgVfxLook.Placed placed, CgVfxEmitter.Renderer renderer) {
+    /**
+     * {@code pool}'s set for {@code material} this frame, drawing {@code factor} elements of {@code mode} a visible
+     * particle, begun empty the first time it is asked for.
+     */
+    private SlotSet set(CgVfxParticlePool pool, CgMaterial material, CgVfxLook.Placed placed, CgVfxEmitter.Renderer renderer,
+                        CgVfxLayer.Strip strip, CgIndirect mode, int factor) {
         for (int i = 0; i < setsUsed; i++) {
             SlotSet set = sets.get(i);
-            if (set.pool == pool && set.material == material && set.renderer == renderer) return set;
+            if (set.pool == pool && set.material == material && set.renderer == renderer && set.strip == strip
+                    && set.factor == factor) {
+                return set;
+            }
         }
         if (setsUsed == sets.size()) sets.add(new SlotSet());
         SlotSet set = sets.get(setsUsed++);
@@ -138,6 +149,9 @@ public final class CgVfxFrame {
         set.material = material;
         set.placed = placed;
         set.renderer = renderer;
+        set.strip = strip;
+        set.mode = mode;
+        set.factor = factor;
         set.capacity = 0;
         set.records = 0;
         return set;
@@ -150,6 +164,10 @@ public final class CgVfxFrame {
         /** The first layer drawn through it: what places the set's draw. */
         CgVfxLook.Placed placed;
         CgVfxEmitter.Renderer renderer;
+        /** How it draws its particles, and each one's elements: quads' indices, an arc's or a strip's vertices. */
+        CgVfxLayer.Strip strip;
+        CgIndirect mode;
+        int factor;
         /** The largest slot's: the mesh is sized for it. */
         int capacity;
         int records;
@@ -192,7 +210,7 @@ public final class CgVfxFrame {
     }
 
     /** Whether {@code effect}'s look draws anything on {@code slot}: skip working out a slot nothing draws. */
-    public boolean draws(CgVfxEffect effect, CgVfxSlot slot) {
+    public boolean draws(CgVfxEffect<?> effect, CgVfxSlot slot) {
         return effect.look().draws(slot);
     }
 
@@ -200,7 +218,7 @@ public final class CgVfxFrame {
      * Whether {@code effect}'s tier this frame (the system's, lowered by its distance) is below {@code layer}'s, or
      * {@link CgVfxSystem#skipped()} names it.
      */
-    private boolean skips(CgVfxEffect effect, CgVfxLayer layer) {
+    private boolean skips(CgVfxEffect<?> effect, CgVfxLayer layer) {
         if (!system.quality(effect.lowered).atLeast(layer.from())) return true;
         for (String token : CgVfxSystem.skippedParts()) {
             if (layer.shader().contains(token)) return true;
@@ -218,12 +236,12 @@ public final class CgVfxFrame {
     }
 
     /** Grows {@code effect}'s bounds by {@code path}'s rings, each {@code size} times its own radius across. */
-    private static void boundPath(CgVfxEffect effect, CgVfxPath path, float size) {
+    private static void boundPath(CgVfxEffect<?> effect, CgVfxPath path, float size) {
         for (int i = 0; i < path.count(); i++) effect.bound(path.x(i), path.y(i), path.z(i), path.radius(i) * size);
     }
 
     /** Draws every layer on {@code slot}, a tube slot, as tubes along {@code path} at {@code row}, round the origin. */
-    public void tube(CgVfxEffect effect, CgVfxSlot slot, CgVfxPath path, int row) {
+    public void tube(CgVfxEffect<?> effect, CgVfxSlot slot, CgVfxPath path, int row) {
         kind(slot, CgVfxSlot.Kind.TUBE);
         CgVfxLook look = effect.look();
         CgVfxLook.Placed[] on = look.on(slot);
@@ -249,7 +267,7 @@ public final class CgVfxFrame {
      * </ul>
      * The model matrix's columns are the sphere's axes, its +z the effect's forward where it has one.
      */
-    public void mesh(CgVfxEffect effect, CgVfxSlot slot, float x, float y, float z, Matrix4fc transform,
+    public void mesh(CgVfxEffect<?> effect, CgVfxSlot slot, float x, float y, float z, Matrix4fc transform,
                      float ex, float ey, float ez, float ew) {
         kind(slot, CgVfxSlot.Kind.MESH);
         CgVfxLook look = effect.look();
@@ -269,7 +287,7 @@ public final class CgVfxFrame {
      * by {@code transform} at {@code (x, y, z)} from the origin and scaled by each layer's size: stateless particles the
      * shader places inside that cube. Its shader reads the same per-draw data as {@link #mesh}'s.
      */
-    public void ribbons(CgVfxEffect effect, CgVfxSlot slot, float x, float y, float z, Matrix4fc transform,
+    public void ribbons(CgVfxEffect<?> effect, CgVfxSlot slot, float x, float y, float z, Matrix4fc transform,
                         float ex, float ey, float ez, float ew) {
         kind(slot, CgVfxSlot.Kind.RIBBONS);
         CgVfxLook look = effect.look();
@@ -302,13 +320,13 @@ public final class CgVfxFrame {
      * for (CgVfxEmitterInstance e : emitters) frame.particles(this, e);
      * }</pre>
      */
-    public void particles(CgVfxEffect effect, CgVfxEmitterInstance emitter) {
+    public void particles(CgVfxEffect<?> effect, CgVfxEmitterInstance emitter) {
         // Its particles' bounds: a sphere round the source no particle can leave, as Niagara gives a GPU emitter fixed ones.
         CgVfxEmitter def = emitter.emitter();
         effect.bound((float) (emitter.originX() - effect.originX) + emitter.sourceX(),
                 (float) (emitter.originY() - effect.originY) + emitter.sourceY(),
                 (float) (emitter.originZ() - effect.originZ) + emitter.sourceZ(),
-                def.reach(system.air().maxSpeed()) + def.largestSize() + emitter.entityBoxReach());
+                def.reach(system.air().maxSpeed()) + def.largestSize() + emitter.books().entityBoxReach());
         for (int e = 0; e < emitter.emitter().events().size(); e++) {
             CgVfxEmitterInstance child = emitter.child(e);
             if (child != null) particles(effect, child);
@@ -319,7 +337,7 @@ public final class CgVfxFrame {
     }
 
     /** {@code emitter}'s own slot, per layer: one draw of its records, or one record of the merged draw. */
-    private void slotParticles(CgVfxEffect effect, CgVfxEmitterInstance emitter) {
+    private void slotParticles(CgVfxEffect<?> effect, CgVfxEmitterInstance emitter) {
         CgVfxGpuSteps.Tenant tenant = system.gpuTenant(emitter);
         if (tenant == null) return;
         CgVfxParticlePool pool = tenant.pool;
@@ -368,7 +386,8 @@ public final class CgVfxFrame {
             }
             reach = Math.max(reach, Math.max(size, 1f) * 4f);
             if (MERGED.get()) {
-                SlotSet set = set(pool, material, placed, renderer);
+                SlotSet set = set(pool, material, placed, renderer, CgVfxLayer.Strip.NONE,
+                        arcs ? CgIndirect.VERTICES : CgIndirect.INDICES, arcs ? CgVfxRibbons.VERTICES : 6);
                 set.capacity = Math.max(set.capacity, capacity);
                 int f = set.add(ox + cx, oy + cy, oz + cz, range.visibleWord(slot) * 4L);
                 float[] c = set.custom;
@@ -403,7 +422,7 @@ public final class CgVfxFrame {
         if (arcs || strips) {
             // An arc reaches from its source to its particle, which no radius about the particle covers.
             CgVfxEmitter def = emitter.emitter();
-            pool.cullAbout(slot, def.reach(system.air().maxSpeed()) + emitter.entityBoxReach() + def.largestSize() * reach);
+            pool.cullAbout(slot, def.reach(system.air().maxSpeed()) + emitter.books().entityBoxReach() + def.largestSize() * reach);
         } else {
             pool.cullScale(slot, reach);
         }
@@ -411,7 +430,8 @@ public final class CgVfxFrame {
 
     /**
      * One strip layer's draw of {@code slot}, vertex-pulled ({@code fx_trail.glsl}): a trail behind each visible particle
-     * through its ring, or one ribbon through them newest first. What its shader reads:
+     * through its ring, or one ribbon through them newest first; a record of its pool's merged draw unless
+     * {@code mergeParticles} is off. What its shader reads:
      * <ul>
      *   <li>{@code CG_OBJECT_CUSTOM0}: the first record, the slot's capacity, the layer's size, quads a segment.</li>
      *   <li>{@code CG_OBJECT_CUSTOM1}: the particle alpha, the particle step's seconds, 0, the effect's age.</li>
@@ -419,36 +439,57 @@ public final class CgVfxFrame {
      * </ul>
      * Drawn at the instance's origin; culled as one sphere about it, the slot whole.
      */
-    private void strip(CgVfxEffect effect, CgVfxEmitterInstance emitter, CgVfxLook.Placed placed, CgMaterial material,
+    private void strip(CgVfxEffect<?> effect, CgVfxEmitterInstance emitter, CgVfxLook.Placed placed, CgMaterial material,
                        float size, int row, CgVfxParticlePool pool, CgVfxRange range, int slot, int capacity, double ox,
                        double oy, double oz) {
         CgVfxLayer layer = placed.layer();
-        int subs = layer.subdivisions(), per;
-        CgWorldRenderer.Draw draw;
-        if (layer.strip() == CgVfxLayer.Strip.TRAILS) {
-            int points = pool.ringPoints(slot);
+        boolean trails = layer.strip() == CgVfxLayer.Strip.TRAILS;
+        int subs = layer.subdivisions() > 0 ? layer.subdivisions() : PARTICLE_STRIP_QUADS, points = 0;
+        if (trails) {
+            points = pool.ringPoints(slot);
             if (points < 2) {
                 throw new IllegalStateException(layer + " draws trails, but " + emitter.emitter().name()
                         + " keeps no positions: give it trail(points)");
             }
-            per = (points - 1) * subs * 6;
-            material.buffer("HISTORY", pool.history());
-            draw = world.draw(CgMesh.vertices(sizeClass(capacity, 1) * per, CgMeshTopology.TRIANGLES), material)
-                    .custom(2, pool.ringFirst(slot), capacity, points, pool.lastStep());
         } else {
-            per = subs * 6;
-            range.ribbon(slot, emitter.spawnedSoFar());
-            draw = world.draw(CgMesh.vertices(sizeClass(capacity, 1) * per, CgMeshTopology.TRIANGLES), material);
+            range.ribbon(slot, emitter.books().spawnedSoFar());
         }
-        draw.buffer(CgBindingPoints.PARTICLES, range.drawn())
+        int per = (trails ? points - 1 : 1) * subs * 6;
+        float firstRing = trails ? pool.ringFirst(slot) : 0f, step = trails ? pool.lastStep() : 0f;
+        CgVfxTrace.count(DRAWS_PARTICLE_GPU, 1);
+        if (MERGED.get()) {
+            SlotSet set = set(pool, material, placed, CgVfxEmitter.Renderer.QUADS, layer.strip(), CgIndirect.VERTICES, per);
+            set.capacity = Math.max(set.capacity, capacity);
+            int f = set.add(ox, oy, oz, range.visibleWord(slot) * 4L);
+            float[] c = set.custom;
+            c[f] = range.base(slot);
+            c[f + 1] = capacity;
+            c[f + 2] = size;
+            c[f + 3] = subs;
+            c[f + 4] = particleAlpha;
+            c[f + 5] = system.particleDt();
+            c[f + 7] = effect.age;
+            c[f + 8] = firstRing;
+            c[f + 9] = capacity;
+            c[f + 10] = points;
+            c[f + 11] = step;
+            c[f + 12] = row;
+            c[f + 13] = effect.age;
+            c[f + 14] = effect.seed;
+            c[f + 15] = effect.presence();
+            return;
+        }
+        if (trails) material.buffer("HISTORY", pool.history());
+        CgWorldRenderer.Draw draw = world.draw(CgMesh.vertices(sizeClass(capacity, 1) * per, CgMeshTopology.TRIANGLES), material)
+                .buffer(CgBindingPoints.PARTICLES, range.drawn())
                 .indirect(range.visible(), range.visibleWord(slot) * 4L, CgIndirect.VERTICES, per)
                 .gpuCulled()
                 .at(ox, oy, oz)
                 .custom(0, range.base(slot), capacity, size, subs)
                 .custom(1, particleAlpha, system.particleDt(), 0f, effect.age)
+                .custom(2, firstRing, capacity, points, step)
                 .custom(3, row, effect.age, effect.seed, effect.presence());
         CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
-        CgVfxTrace.count(DRAWS_PARTICLE_GPU, 1);
     }
 
     /**
@@ -493,7 +534,7 @@ public final class CgVfxFrame {
      *         + (right * FX_QUAD_CORNER.x + up * FX_QUAD_CORNER.y) * length(CG_OBJECT_TO_WORLD[0].xyz);
      * }</pre>
      */
-    public void billboard(CgVfxEffect effect, CgVfxSlot slot, float x, float y, float z, float size,
+    public void billboard(CgVfxEffect<?> effect, CgVfxSlot slot, float x, float y, float z, float size,
                           float ex, float ey, float ez, float ew) {
         kind(slot, CgVfxSlot.Kind.BILLBOARD);
         CgVfxLook look = effect.look();
@@ -519,7 +560,7 @@ public final class CgVfxFrame {
      * </ul>
      * The draw's bounds are the path's, grown by its widest ring times the layer's size.
      */
-    public void pathRibbons(CgVfxEffect effect, CgVfxSlot slot, CgVfxPath path, int row, float intensity) {
+    public void pathRibbons(CgVfxEffect<?> effect, CgVfxSlot slot, CgVfxPath path, int row, float intensity) {
         kind(slot, CgVfxSlot.Kind.PATH_RIBBONS);
         int count = path.count();
         CgVfxLook look = effect.look();
@@ -564,7 +605,7 @@ public final class CgVfxFrame {
      * frame.trail(this, STREAK, streak);
      * }</pre>
      */
-    public void trail(CgVfxEffect effect, CgVfxSlot slot, CgVfxTrail trail) {
+    public void trail(CgVfxEffect<?> effect, CgVfxSlot slot, CgVfxTrail trail) {
         kind(slot, CgVfxSlot.Kind.TRAIL);
         CgVfxLook look = effect.look();
         CgVfxLook.Placed[] on = look.on(slot);
@@ -578,13 +619,13 @@ public final class CgVfxFrame {
         float cx = (b[0] + b[3]) * 0.5f, cy = (b[1] + b[4]) * 0.5f, cz = (b[2] + b[5]) * 0.5f;
         float hx = (b[3] - b[0]) * 0.5f, hy = (b[4] - b[1]) * 0.5f, hz = (b[5] - b[2]) * 0.5f;
         boolean blade = trail.mode() == CgVfxTrail.Mode.BLADE;
-        int quads = (points - 1) * trail.subdivisions();
-        CgMesh mesh = CgMesh.vertices(sizeClass(quads, 16) * 6, CgMeshTopology.TRIANGLES);
         float ox = (float) (ax - effect.originX), oy = (float) (ay - effect.originY), oz = (float) (az - effect.originZ);
         for (CgVfxLook.Placed placed : on) {
             if (skips(effect, placed.layer())) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             float size = CgVfxMaterials.size(effect, r);
+            int subs = placed.layer().subdivisions() > 0 ? placed.layer().subdivisions() : TRAIL_QUADS;
+            CgMesh mesh = CgMesh.vertices(sizeClass((points - 1) * subs, 16) * 6, CgMeshTopology.TRIANGLES);
             // A ribbon reaches its widest half-width past its points; a blade past its tips as far as its size goes.
             float reach = blade ? Math.max(size - 1f, 0f) * 2f * Math.max(hx, Math.max(hy, hz)) : size * trail.widest();
             reach += 0.05f;
@@ -597,7 +638,7 @@ public final class CgVfxFrame {
                     .subject(effect.subject)
                     .custom(0, first, points, size, trail.life())
                     .custom(1, cx, cy, cz, 0f)
-                    .custom(2, trail.subdivisions(), trail.mode().ordinal(), b[6], b[6] - b[7])
+                    .custom(2, subs, trail.mode().ordinal(), b[6], b[6] - b[7])
                     .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
             CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
             CgVfxTrace.count(DRAWS_TRAIL, 1);
@@ -608,7 +649,7 @@ public final class CgVfxFrame {
      * {@code draw} placed and given the per-draw data every mesh-like slot's shader reads, for the caller to submit; its
      * mesh, {@code radius} across before its transform, grows the effect's bounds.
      */
-    private CgWorldRenderer.Draw dress(CgWorldRenderer.Draw draw, CgVfxEffect effect, CgVfxMaterials.Resolved r, float x,
+    private CgWorldRenderer.Draw dress(CgWorldRenderer.Draw draw, CgVfxEffect<?> effect, CgVfxMaterials.Resolved r, float x,
                                        float y, float z, Matrix4fc transform, float radius, float ex, float ey, float ez,
                                        float ew) {
         float size = CgVfxMaterials.size(effect, r);

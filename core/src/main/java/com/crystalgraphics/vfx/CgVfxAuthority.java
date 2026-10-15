@@ -41,7 +41,7 @@ public final class CgVfxAuthority {
 
     /** What its effect's hitboxes and queries test ({@link CgVfxEffect#world}). */
     final CgCollisionWorld world;
-    private final CgVfxEffect effect;
+    private final CgVfxEffect<?> effect;
     private final double[] pose = new double[CgEntityQuery.POSE_LENGTH], point = new double[3];
     private float pending;
     private boolean started;
@@ -68,14 +68,14 @@ public final class CgVfxAuthority {
     }
 
     /** Takes {@code effect}, unplayed, to run against {@code world}: one level's. */
-    public CgVfxAuthority(CgVfxEffect effect, CgCollisionWorld world) {
+    public CgVfxAuthority(CgVfxEffect<?> effect, CgCollisionWorld world) {
         if (effect.system != null || effect.authority != null) throw new IllegalStateException("an effect plays once");
         this.effect = effect;
         this.world = world;
         effect.authority = this;
     }
 
-    public CgVfxEffect effect() {
+    public CgVfxEffect<?> effect() {
         return effect;
     }
 

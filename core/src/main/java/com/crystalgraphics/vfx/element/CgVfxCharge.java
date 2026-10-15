@@ -99,7 +99,7 @@ public final class CgVfxCharge extends CgVfxElement {
     private float x, y, z, aimX = 1f, aimY, aimZ, releaseAge = Float.POSITIVE_INFINITY, stopAge = Float.NaN;
     private boolean released;
 
-    public CgVfxCharge(CgVfxEffect effect) {
+    public CgVfxCharge(CgVfxEffect<?> effect) {
         super(effect);
     }
 

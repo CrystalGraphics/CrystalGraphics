@@ -56,7 +56,7 @@ final class CgVfxGpuSteps {
             this.pool = pool;
             this.slot = slot;
             this.parent = parent;
-            timeAfter = instance.stepTime();
+            timeAfter = instance.books().stepTime();
         }
     }
 
@@ -70,19 +70,19 @@ final class CgVfxGpuSteps {
         public double originX() { return of.originX(); }
         public double originY() { return of.originY(); }
         public double originZ() { return of.originZ(); }
-        public float time() { return of.stepTime(); }
+        public float time() { return of.books().stepTime(); }
         public float sourceX() { return of.sourceX(); }
         public float sourceY() { return of.sourceY(); }
         public float sourceZ() { return of.sourceZ(); }
-        public float fromX() { return of.fromX(); }
-        public float fromY() { return of.fromY(); }
-        public float fromZ() { return of.fromZ(); }
-        public float boxX() { return of.boxX(); }
-        public float boxY() { return of.boxY(); }
-        public float boxZ() { return of.boxZ(); }
-        public float boxHalfX() { return of.boxHalfX(); }
-        public float boxHalfY() { return of.boxHalfY(); }
-        public float boxHalfZ() { return of.boxHalfZ(); }
+        public float fromX() { return of.books().fromX(); }
+        public float fromY() { return of.books().fromY(); }
+        public float fromZ() { return of.books().fromZ(); }
+        public float boxX() { return of.books().boxX(); }
+        public float boxY() { return of.books().boxY(); }
+        public float boxZ() { return of.books().boxZ(); }
+        public float boxHalfX() { return of.books().boxHalfX(); }
+        public float boxHalfY() { return of.books().boxHalfY(); }
+        public float boxHalfZ() { return of.books().boxHalfZ(); }
     }
 
     private final List<Tenant> tenants = new ArrayList<>();
@@ -185,17 +185,17 @@ final class CgVfxGpuSteps {
             CgVfxEmitterInstance instance = tenant.instance;
             view.of = instance;
             if (tenant.killed || warmOnly && !tenant.warm) {
-                tenant.pool.instance(tenant.slot, instance.seedBits(), instance.share(), instance.groundY(), view, 0f,
+                tenant.pool.instance(tenant.slot, instance.books().seedBits(), instance.books().share(), instance.groundY(), view, 0f,
                         tenant.killed);
                 continue;
             }
-            if (instance.time() == tenant.timeAfter) instance.coast(dt);
+            if (instance.time() == tenant.timeAfter) instance.books().coast(dt);
             tenant.timeAfter = instance.time();
-            tenant.pool.instance(tenant.slot, instance.seedBits(), instance.share(), instance.groundY(), view);
+            tenant.pool.instance(tenant.slot, instance.books().seedBits(), instance.books().share(), instance.groundY(), view);
             // A fed slot spawns only what its parent's events spawn.
             if (tenant.parent == null) {
-                tenant.pool.spawn(tenant.slot, instance.stepFirstSpawn(), instance.stepCandidates(),
-                        instance.stepCandidates() - instance.stepBursts());
+                tenant.pool.spawn(tenant.slot, instance.books().stepFirstSpawn(), instance.books().stepCandidates(),
+                        instance.books().stepCandidates() - instance.books().stepBursts());
             }
         }
         view.of = null;

@@ -25,7 +25,7 @@ public class CgVfxEndingTest {
             .animate(RADIUS, 0f, CgEasings.LINEAR).fadeOut(CgEasings.LINEAR).build();
 
     /** An effect that would play for ever, and hears its ending. */
-    static final class Endless extends CgVfxEffect {
+    static final class Endless extends CgVfxEffect<Endless> {
         CgVfxEnding heard;
 
         Endless() {

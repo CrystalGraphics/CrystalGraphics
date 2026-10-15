@@ -65,7 +65,7 @@ import org.apache.logging.log4j.Logger;
  *   <li>Its look must carry its elements' schemas: derive it from one of the three, or add them with {@code params}.</li>
  * </ul>
  */
-public final class CgEnergyWave extends CgVfxEffect implements CgVfxCue.Live, CgVfxCue.Authoritative {
+public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgVfxCue.Live, CgVfxCue.Authoritative {
 
     public static final CgVfxSchema SCHEMA = CgVfxSchema.of("crystalgraphics:wave");
 

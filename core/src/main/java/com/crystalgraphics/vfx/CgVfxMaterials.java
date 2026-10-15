@@ -285,7 +285,7 @@ final class CgVfxMaterials {
     }
 
     /** {@code r}'s size for {@code effect}: its own, times its size parameter's value when it has one. */
-    static float size(CgVfxEffect effect, Resolved r) {
+    static float size(CgVfxEffect<?> effect, Resolved r) {
         return r.sizeAt < 0 ? r.layer.size() : r.layer.size() * effect.values().raw(r.sizeAt);
     }
 
@@ -299,7 +299,7 @@ final class CgVfxMaterials {
      * Where {@code effect}'s row for {@code r} starts this frame, in vec4s, writing it at its first ask; 0 for a layer
      * binding nothing, whose shader reads no row.
      */
-    int row(CgVfxEffect effect, Resolved r) {
+    int row(CgVfxEffect<?> effect, Resolved r) {
         if (r.vec4s == 0) return 0;
         int index = r.placed.order();
         if (effect.rowsFrame != frame) {

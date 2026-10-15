@@ -24,9 +24,9 @@ public class CgVfxEmitterEventsTest {
         instance.start(0f, 0f, 0f);
         int finished = -1;
         for (int step = 0; step < 200 && finished < 0; step++) {
-            instance.schedule(DT, 0.0, 0.0, 0.0);
-            assertTrue(instance.child(0).scheduled());
-            assertEquals(0, instance.child(0).stepCandidates());
+            instance.books().schedule(DT, 0.0, 0.0, 0.0);
+            assertTrue(instance.child(0).books().scheduled());
+            assertEquals(0, instance.child(0).books().stepCandidates());
             if (instance.finished()) finished = step;
         }
         // Its own last particle goes at 0.2 s; a child it spawns then lives a second more.

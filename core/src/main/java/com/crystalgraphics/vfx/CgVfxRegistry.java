@@ -36,13 +36,13 @@ public final class CgVfxRegistry {
     /** Starts an effect of a look at a world point, aimed at a world target. */
     @FunctionalInterface
     public interface Factory {
-        CgVfxEffect spawn(CgVfxLook look, double x, double y, double z, double tx, double ty, double tz);
+        CgVfxEffect<?> spawn(CgVfxLook look, double x, double y, double z, double tx, double ty, double tz);
     }
 
     /** Starts an effect of a look from a cue the server sent, reading its parameters and where it aims. */
     @FunctionalInterface
     public interface CueFactory {
-        CgVfxEffect spawn(CgVfxLook look, CgVfxCue.Play cue);
+        CgVfxEffect<?> spawn(CgVfxLook look, CgVfxCue.Play cue);
     }
 
     public static final class Entry {
@@ -78,7 +78,7 @@ public final class CgVfxRegistry {
             return look;
         }
 
-        public CgVfxEffect spawn(CgVfxLook look, double x, double y, double z, double tx, double ty, double tz) {
+        public CgVfxEffect<?> spawn(CgVfxLook look, double x, double y, double z, double tx, double ty, double tz) {
             return factory.spawn(look, x, y, z, tx, ty, tz);
         }
 
@@ -86,7 +86,7 @@ public final class CgVfxRegistry {
          * The effect a cue plays: its cue factory's, else the point factory's, aimed at the cue's target, else
          * {@link #CUE_REACH} along its direction, else at its own point.
          */
-        public CgVfxEffect spawn(CgVfxCue.Play cue) {
+        public CgVfxEffect<?> spawn(CgVfxCue.Play cue) {
             if (cueFactory != null) return cueFactory.spawn(look, cue);
             double tx = cue.tx(), ty = cue.ty(), tz = cue.tz();
             if (!cue.hasTarget() && cue.hasDirection()) {
@@ -170,7 +170,7 @@ public final class CgVfxRegistry {
         add(new Entry(id, name, "Beams", look, CgVfxRegistry::wave, CgEnergyWave::fromCue));
     }
 
-    private static CgVfxEffect wave(CgVfxLook look, double x, double y, double z, double tx, double ty, double tz) {
+    private static CgVfxEffect<?> wave(CgVfxLook look, double x, double y, double z, double tx, double ty, double tz) {
         return new CgEnergyWave(look, x, y, z).aim((float) (tx - x), (float) (ty - y), (float) (tz - z)).target(tx, ty, tz);
     }
 }

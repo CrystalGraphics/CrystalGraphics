@@ -1063,6 +1063,7 @@ public final class CgVfxParticlePool {
      * Every trail ring's points, a {@code vec4} each: position from its slot's origin, and 1 + its particle's id (low 24
      * bits), 0 where none has stored. Slot {@code s}'s particle {@code id} keeps its ring at
      * {@code ringFirst(s) + (id % capacity(s)) * ringPoints(s)}, and step {@code k}'s point at {@code k % ringPoints(s)}
+     * (where a capacity binds and the share thins spawns, two live ids can share a ring: the later shortens the earlier)
      * of it. A new handle when slots keeping trails grew it, so ask each frame; render thread, between steps.
      */
     public CgGraphBuffer history() {

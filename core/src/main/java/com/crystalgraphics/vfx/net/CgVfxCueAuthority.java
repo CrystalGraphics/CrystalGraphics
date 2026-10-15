@@ -44,7 +44,7 @@ final class CgVfxCueAuthority implements CgNetBehaviour, Consumer<CgVfxParam> {
                     + " declare it with what it plays, CgVfxOwner.cue(path, look, factory), in common code");
         }
         this.play = play;
-        CgVfxEffect effect;
+        CgVfxEffect<?> effect;
         play.authoritative = true;
         try {
             effect = play.build(entry);
@@ -60,19 +60,19 @@ final class CgVfxCueAuthority implements CgNetBehaviour, Consumer<CgVfxParam> {
         effect.onHit(this::hit);
     }
 
-    CgVfxEffect effect() {
+    CgVfxEffect<?> effect() {
         return authority.effect();
     }
 
     /** The cue changed through its {@code Playing}: the effect takes it as a viewer's would. */
     void cueChanged() {
-        CgVfxEffect effect = authority.effect();
+        CgVfxEffect<?> effect = authority.effect();
         if (effect instanceof CgVfxCue.Live) ((CgVfxCue.Live) effect).cueChanged(play);
     }
 
     @Override
     public void tick(CgNetObject obj) {
-        CgVfxEffect effect = authority.effect();
+        CgVfxEffect<?> effect = authority.effect();
         try {
             authority.advance(SERVER_TICK);
         } catch (RuntimeException e) {
@@ -98,7 +98,7 @@ final class CgVfxCueAuthority implements CgNetBehaviour, Consumer<CgVfxParam> {
         CgVfxCue.LookFields look = play.cue.look;
         CgNetField<Float>[] fields = look == null ? null : look.of(param);
         if (fields == null) return;
-        CgVfxEffect effect = authority.effect();
+        CgVfxEffect<?> effect = authority.effect();
         int at = effect.values().layout().offset(param);
         for (int k = 0; k < fields.length; k++) play.setFloat(fields[k], effect.values().raw(at + k));
     }

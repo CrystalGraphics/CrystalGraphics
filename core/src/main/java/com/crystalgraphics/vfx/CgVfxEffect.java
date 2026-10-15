@@ -32,18 +32,22 @@ import java.util.function.Supplier;
  * {@link CgVfxSystem}'s fixed tick, and drawn each frame through a {@link CgVfxFrame}.
  *
  * <pre>{@code
- * public final class MyEffect extends CgVfxEffect {
+ * public final class MyEffect extends CgVfxEffect<MyEffect> {
  *     public MyEffect(CgVfxLook look, double x, double y, double z) { super(look, x, y, z); }
  *     @Override protected void tick(float dt) { ... }          // CgVfxSystem.TICK seconds of simulation
  *     @Override protected void submit(CgVfxFrame frame) { ... } // draw, interpolated by frame.alpha() (particles:
  *                                                               // frame.particleAlpha())
  * }
- * CgVfxEffect effect = vfx.play(new MyEffect(look, x, y, z));
+ * MyEffect effect = vfx.play(new MyEffect(look, x, y, z));
  * effect.stop();                                                // finishes what is in flight, then dies
  *
  * // Bound to an entity, and joined late: its origin follows the entity's hands, and it starts 2.5 s into its life
- * owner.play(new MyEffect(look, x, y, z).follow(entityId, CgEntityAttachments.HANDS_FORWARD).startAt(2.5f));
+ * MyEffect late = owner.play(new MyEffect(look, x, y, z).follow(entityId, CgEntityAttachments.HANDS_FORWARD).startAt(2.5f));
  * }</pre>
+ *
+ * <p>Name the class in its own declaration ({@code extends CgVfxEffect<MyEffect>}): then every setter here
+ * ({@code follow}, {@code startAt}, {@code set}, {@code onHit}, ...) answers a {@code MyEffect}, and a chain can end
+ * in the effect's own methods. Code holding any effect writes {@code CgVfxEffect<?>}.</p>
  *
  * <ul>
  *   <li>Its values start as its look's; {@link #set} changes this effect alone, {@link #animate} tweens one there.</li>
@@ -58,7 +62,7 @@ import java.util.function.Supplier;
  *       and weighs each tick; it closes when the effect dies.</li>
  * </ul>
  */
-public abstract class CgVfxEffect {
+public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
 
     private static final Logger LOGGER = LogManager.getLogger("CgVfx");
 
@@ -176,12 +180,12 @@ public abstract class CgVfxEffect {
      * cue draws the same effect.
      *
      * <pre>{@code
-     * CgVfxEffect effect = CgVfxEffect.seeded(0.37f, () -> new HitSpark(HitSpark.LOOK, x, y, z));
+     * HitSpark spark = CgVfxEffect.seeded(0.37f, () -> new HitSpark(HitSpark.LOOK, x, y, z));
      * }</pre>
      *
      * Only the first effect {@code make} constructs takes it; one it constructs inside that is random.
      */
-    public static <E extends CgVfxEffect> E seeded(float seed, Supplier<E> make) {
+    public static <T extends CgVfxEffect<?>> T seeded(float seed, Supplier<T> make) {
         float[] pending = PENDING_SEED.get();
         pending[0] = seed;
         try {
@@ -189,6 +193,12 @@ public abstract class CgVfxEffect {
         } finally {
             pending[0] = Float.NaN;
         }
+    }
+
+    /** This effect as its own class, for the setters' chains. */
+    @SuppressWarnings("unchecked")
+    private E self() {
+        return (E) this;
     }
 
     /** Its stable random number, 0..1. */
@@ -223,11 +233,11 @@ public abstract class CgVfxEffect {
      * owner.play(new Spark(look, x, y, z).follow(playerId, MyMod.RIGHT_PALM));   // a point of the mod's own
      * }</pre>
      */
-    public final CgVfxEffect follow(int entity, int point) {
+    public final E follow(int entity, int point) {
         followEntity = entity;
         followPoint = point;
         followKeep = false;
-        return this;
+        return self();
     }
 
     /**
@@ -238,11 +248,11 @@ public abstract class CgVfxEffect {
      * owner.play(new HitSpark(look, contactX, contactY, contactZ).followKeepingOffset(targetId, CgEntityAttachments.CHEST));
      * }</pre>
      */
-    public final CgVfxEffect followKeepingOffset(int entity, int point) {
+    public final E followKeepingOffset(int entity, int point) {
         follow(entity, point);
         followKeep = true;
         followDx = Double.NaN;
-        return this;
+        return self();
     }
 
     /** Places it at the point it follows, now at {@code (px, py, pz)}, or at its kept offset from it. */
@@ -260,7 +270,7 @@ public abstract class CgVfxEffect {
     }
 
     /** As {@link #follow(int, int)}, at the entity's feet. */
-    public final CgVfxEffect follow(int entity) {
+    public final E follow(int entity) {
         return follow(entity, 0);
     }
 
@@ -272,9 +282,9 @@ public abstract class CgVfxEffect {
      * VFX.play(new Aura(Aura.LOOK, x, y, z).follow(playerId, CgEntityAttachments.FEET)).scalability(CgVfxScalability.HERO);
      * }</pre>
      */
-    public final CgVfxEffect scalability(CgVfxScalability scalability) {
+    public final E scalability(CgVfxScalability scalability) {
         this.scalability = scalability;
-        return this;
+        return self();
     }
 
     /**
@@ -285,14 +295,14 @@ public abstract class CgVfxEffect {
      * VFX.play(new Aura(LOOK, x, y, z).spawnBox(x, y + 0.9, z, 0.3f, 0.9f, 0.3f));   // round a mannequin
      * }</pre>
      */
-    public final CgVfxEffect spawnBox(double x, double y, double z, float halfX, float halfY, float halfZ) {
+    public final E spawnBox(double x, double y, double z, float halfX, float halfY, float halfZ) {
         followBoxX = x;
         followBoxY = y;
         followBoxZ = z;
         followHalfX = halfX;
         followHalfY = halfY;
         followHalfZ = halfZ;
-        return this;
+        return self();
     }
 
     /** What culls it: its own, else its look's. */
@@ -332,10 +342,10 @@ public abstract class CgVfxEffect {
      *       saw it.</li>
      * </ul>
      */
-    public final CgVfxEffect startAt(float seconds) {
+    public final E startAt(float seconds) {
         if (age > 0f) throw new IllegalStateException("startAt after its first tick: it has started");
         startAge = Math.max(0f, seconds);
-        return this;
+        return self();
     }
 
     /**
@@ -442,11 +452,11 @@ public abstract class CgVfxEffect {
      *   <li>One that throws is logged, and the others still hear.</li>
      * </ul>
      */
-    public final CgVfxEffect onHit(Consumer<? super CgHit> listener) {
+    public final E onHit(Consumer<? super CgHit> listener) {
         if (listener == null) throw new IllegalArgumentException("listener");
         if (hitListeners == null) hitListeners = new ArrayList<>(2);
         hitListeners.add(listener);
-        return this;
+        return self();
     }
 
     /**
@@ -457,7 +467,7 @@ public abstract class CgVfxEffect {
      *     .onHit(CgEnergyWave.PART_BLAST, h -> damage(h.entity()));
      * }</pre>
      */
-    public final CgVfxEffect onHit(CgHitPart part, Consumer<? super CgHit> listener) {
+    public final E onHit(CgHitPart part, Consumer<? super CgHit> listener) {
         if (part == null) throw new IllegalArgumentException("part");
         if (listener == null) throw new IllegalArgumentException("listener");
         return onHit(h -> {
@@ -564,46 +574,46 @@ public abstract class CgVfxEffect {
      * Sets a number for this effect alone, stopping a tween of it; what follows it follows. On a server, an effect a
      * lasting cue runs sends it to every viewer at the tick's end, as it does a colour ({@code CgVfxCue.authoritative()}).
      */
-    public final CgVfxEffect set(CgVfxParam.Scalar param, float value) {
+    public final E set(CgVfxParam.Scalar param, float value) {
         untween(values.layout().offset(param), 1);
         values.set(param, value);
         if (authority != null) authority.set(param);
-        return this;
+        return self();
     }
 
-    public final CgVfxEffect set(CgVfxParam.Color param, float r, float g, float b, float a) {
+    public final E set(CgVfxParam.Color param, float r, float g, float b, float a) {
         untween(values.layout().offset(param), 4);
         values.set(param, r, g, b, a);
         if (authority != null) authority.set(param);
-        return this;
+        return self();
     }
 
     /** Sets colour {@code entry} of a palette. */
-    public final CgVfxEffect set(CgVfxParam.Palette param, int entry, float r, float g, float b, float a) {
+    public final E set(CgVfxParam.Palette param, int entry, float r, float g, float b, float a) {
         untween(values.layout().offset(param) + entry * 4, 4);
         values.set(param, entry, r, g, b, a);
         if (authority != null) authority.set(param);
-        return this;
+        return self();
     }
 
     /** {@code 0xAARRGGBB}. */
-    public final CgVfxEffect set(CgVfxParam.Color param, int argb) {
+    public final E set(CgVfxParam.Color param, int argb) {
         return set(param, argb, 1f);
     }
 
     /** {@code 0xAARRGGBB}, its rgb times {@code intensity}: past white where above 1. */
-    public final CgVfxEffect set(CgVfxParam.Color param, int argb, float intensity) {
+    public final E set(CgVfxParam.Color param, int argb, float intensity) {
         return set(param, CgVfxParam.Color.red(argb) * intensity, CgVfxParam.Color.green(argb) * intensity,
                 CgVfxParam.Color.blue(argb) * intensity, CgVfxParam.Color.alpha(argb));
     }
 
     /** Colour {@code entry} of a palette, {@code 0xAARRGGBB}. */
-    public final CgVfxEffect set(CgVfxParam.Palette param, int entry, int argb) {
+    public final E set(CgVfxParam.Palette param, int entry, int argb) {
         return set(param, entry, argb, 1f);
     }
 
     /** Colour {@code entry} of a palette, {@code 0xAARRGGBB}, its rgb times {@code intensity}. */
-    public final CgVfxEffect set(CgVfxParam.Palette param, int entry, int argb, float intensity) {
+    public final E set(CgVfxParam.Palette param, int entry, int argb, float intensity) {
         return set(param, entry, CgVfxParam.Color.red(argb) * intensity, CgVfxParam.Color.green(argb) * intensity,
                 CgVfxParam.Color.blue(argb) * intensity, CgVfxParam.Color.alpha(argb));
     }
@@ -612,18 +622,18 @@ public abstract class CgVfxEffect {
         return values.curve(param);
     }
 
-    public final CgVfxEffect set(CgVfxParam.Curve param, CgKeyframes curve) {
+    public final E set(CgVfxParam.Curve param, CgKeyframes curve) {
         values.set(param, curve);
-        return this;
+        return self();
     }
 
     public final CgCameraShake shake(CgVfxParam.Shake param) {
         return values.shake(param);
     }
 
-    public final CgVfxEffect set(CgVfxParam.Shake param, CgCameraShake shake) {
+    public final E set(CgVfxParam.Shake param, CgCameraShake shake) {
         values.set(param, shake);
-        return this;
+        return self();
     }
 
     /**
@@ -638,26 +648,26 @@ public abstract class CgVfxEffect {
      * A later tween of the same value replaces it from where it has got to; a {@link #set} of it stops it. It breaks the
      * value's own link.
      */
-    public final CgVfxEffect animate(CgVfxParam.Scalar param, float to, float seconds, CgEasing easing) {
+    public final E animate(CgVfxParam.Scalar param, float to, float seconds, CgEasing easing) {
         int at = values.layout().offset(param);
         values.set(param, values.get(param));   // breaks the link it followed: the tween drives it now
         tween(at, to, seconds, easing);
         if (authority != null) authority.animated(param, new float[] {to}, seconds, easing);
-        return this;
+        return self();
     }
 
     /** Eases a colour to {@code (r, g, b, a)} over {@code seconds}. */
-    public final CgVfxEffect animate(CgVfxParam.Color param, float r, float g, float b, float a, float seconds,
+    public final E animate(CgVfxParam.Color param, float r, float g, float b, float a, float seconds,
                                      CgEasing easing) {
         int at = values.layout().offset(param);
         float[] to = {r, g, b, a};
         for (int i = 0; i < 4; i++) tween(at + i, to[i], seconds, easing);
         if (authority != null) authority.animated(param, to, seconds, easing);
-        return this;
+        return self();
     }
 
     /** Eases a colour to {@code 0xAARRGGBB} over {@code seconds}. */
-    public final CgVfxEffect animate(CgVfxParam.Color param, int argb, float seconds, CgEasing easing) {
+    public final E animate(CgVfxParam.Color param, int argb, float seconds, CgEasing easing) {
         return animate(param, CgVfxParam.Color.red(argb), CgVfxParam.Color.green(argb), CgVfxParam.Color.blue(argb),
                 CgVfxParam.Color.alpha(argb), seconds, easing);
     }
@@ -671,8 +681,8 @@ public abstract class CgVfxEffect {
      * wave.end(CgEnergyWave.FADE);
      * }</pre>
      */
-    public final CgVfxEffect end(CgVfxEnding ending) {
-        if (state == State.DEAD || this.ending != null) return this;
+    public final E end(CgVfxEnding ending) {
+        if (state == State.DEAD || this.ending != null) return self();
         this.ending = ending;
         endingAge = age;
         for (CgVfxEnding.Target target : ending.targets()) {
@@ -684,7 +694,7 @@ public abstract class CgVfxEffect {
         if (authority != null) authority.ended(ending);
         ending(ending);
         stop();
-        return this;
+        return self();
     }
 
     /** The ending it plays, or null: an effect asks to skip what its graceful end would have played. */
@@ -798,9 +808,9 @@ public abstract class CgVfxEffect {
      * Where its particles land where the host has no world (the harness), as a world height; NaN, the default, for no
      * ground. In a world they land on its blocks (the voxel window).
      */
-    public final CgVfxEffect ground(double worldY) {
+    public final E ground(double worldY) {
         groundY = worldY;
-        return this;
+        return self();
     }
 
     /** The ground's height relative to its origin, or NaN: what an emitter instance takes. */
@@ -832,14 +842,14 @@ public abstract class CgVfxEffect {
     protected final void tick(CgVfxEmitterInstance emitter, float dt) {
         if (authority != null) return;
         if (system == null) {
-            emitter.schedule(dt, originX, originY, originZ);
+            emitter.books().schedule(dt, originX, originY, originZ);
             return;
         }
         if (!system.particleTick()) return;
-        emitter.share(system.spawnShare(emitter.emitter(), lowered) * distanceShare);
+        emitter.books().share(system.spawnShare(emitter.emitter(), lowered) * distanceShare);
         for (int e = 0; e < emitter.emitter().events().size(); e++) {
             CgVfxEmitterInstance child = emitter.child(e);
-            if (child != null) child.share(system.spawnShare(child.emitter(), lowered) * distanceShare);
+            if (child != null) child.books().share(system.spawnShare(child.emitter(), lowered) * distanceShare);
         }
         if (dueCount == due.length) {
             due = Arrays.copyOf(due, Math.max(4, dueCount * 2));
@@ -861,10 +871,10 @@ public abstract class CgVfxEffect {
     final void tickEmitters() {
         for (int i = 0; i < dueCount; i++) {
             CgVfxEmitterInstance emitter = due[i];
-            boolean fresh = !emitter.scheduled();
-            emitter.entityBox((float) (followBoxX - originX), (float) (followBoxY - originY), (float) (followBoxZ - originZ),
+            boolean fresh = !emitter.books().scheduled();
+            emitter.books().entityBox((float) (followBoxX - originX), (float) (followBoxY - originY), (float) (followBoxZ - originZ),
                     followHalfX, followHalfY, followHalfZ);
-            emitter.schedule(dueDts[i], originX, originY, originZ);
+            emitter.books().schedule(dueDts[i], originX, originY, originZ);
             if (fresh) {
                 if (admitted.length == admittedCount) admitted = Arrays.copyOf(admitted, Math.max(4, admittedCount * 2));
                 admitted[admittedCount++] = emitter;
@@ -885,7 +895,7 @@ public abstract class CgVfxEffect {
     final void sleep(CgVfxGpuSteps steps) {
         killSlots(steps);
         for (int i = 0; i < scheduledCount; i++) {
-            scheduled[i].slotLost();
+            scheduled[i].books().slotLost();
             scheduled[i] = null;
         }
         scheduledCount = 0;

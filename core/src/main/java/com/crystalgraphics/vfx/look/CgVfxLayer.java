@@ -222,7 +222,7 @@ public final class CgVfxLayer {
         return strip;
     }
 
-    /** Quads between two points of a {@link Strip} ({@link Builder#subdivisions}). */
+    /** Quads between two points of a trail or a {@link Strip} ({@link Builder#subdivisions}); 0 for the slot's own. */
     public int subdivisions() {
         return subdivisions;
     }
@@ -332,7 +332,7 @@ public final class CgVfxLayer {
         private CgQuality from = CgQuality.LOW;
         private boolean volume, closed;
         private Strip strip = Strip.NONE;
-        private int subdivisions = 2;
+        private int subdivisions;
         private final Map<String, float[]> constants = new LinkedHashMap<>();
         private final List<Binding> bindings = new ArrayList<>();
         private final Map<String, CgTexture> textures = new LinkedHashMap<>();
@@ -434,7 +434,14 @@ public final class CgVfxLayer {
             return this;
         }
 
-        /** Quads between two points of its trails or ribbon, 2 unless given: more where points are far apart. */
+        /**
+         * Quads it draws between two points of a trail slot or of its particles' trails or ribbon: 4 on a trail slot
+         * and 2 on particles unless given. More where points are far apart (a fast swing), fewer for a haze under a glow.
+         *
+         * <pre>{@code
+         * CgVfxLayer.of("crystalgraphics:shaders/vfx/trail/swoosh.shader").on(SWING).subdivisions(8)
+         * }</pre>
+         */
         public Builder subdivisions(int quads) {
             if (quads < 1 || quads > 16) throw new IllegalArgumentException("subdivisions " + quads + ", 1 to 16");
             this.subdivisions = quads;

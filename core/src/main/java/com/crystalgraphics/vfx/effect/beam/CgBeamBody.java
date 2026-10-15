@@ -79,7 +79,7 @@ public final class CgBeamBody extends CgVfxElement {
     private float swell = 1f;
     private float normalX, normalY = 1f, normalZ;
 
-    public CgBeamBody(CgVfxEffect effect) {
+    public CgBeamBody(CgVfxEffect<?> effect) {
         super(effect);
     }
 

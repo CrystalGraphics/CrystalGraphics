@@ -157,7 +157,7 @@ public final class CgVfxBlasts {
     }
 
     /** One burst of {@link #PLAYED} at its origin, landing on a floor at {@code floorY}; dies when they all have. */
-    private static final class Burst extends CgVfxEffect {
+    private static final class Burst extends CgVfxEffect<Burst> {
         private final List<CgVfxEmitterInstance> emitters = new ArrayList<>();
 
         Burst(CgVfxLook look, double x, double y, double z, double floorY) {

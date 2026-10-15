@@ -21,7 +21,7 @@ public class CgVfxScalabilityTest {
     private static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).build();
 
     /** Counts its ticks; drawn nowhere. */
-    static final class Dot extends CgVfxEffect {
+    static final class Dot extends CgVfxEffect<Dot> {
         int ticks;
 
         Dot(double z, CgVfxScalability scalability) {

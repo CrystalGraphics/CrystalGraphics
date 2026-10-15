@@ -51,7 +51,7 @@ public final class CgBeamContact extends CgVfxElement {
     private final Matrix4f placed = new Matrix4f();
     private float x, y, z, level, since = Float.NaN;
 
-    public CgBeamContact(CgVfxEffect effect) {
+    public CgBeamContact(CgVfxEffect<?> effect) {
         super(effect);
     }
 

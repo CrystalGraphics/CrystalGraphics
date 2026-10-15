@@ -125,9 +125,9 @@ public final class CgVfxModules {
 
     /** What a station draws on its slots each frame of a play, beside its particles, and what it moves each tick. */
     private interface Show {
-        void draw(CgVfxEffect effect, CgVfxFrame frame, float age);
+        void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age);
 
-        default void tick(CgVfxEffect effect, float dt, float age) {
+        default void tick(CgVfxEffect<?> effect, float dt, float age) {
         }
 
         /** Whether it has nothing more to draw: the play ends once this and its emitters are done. */
@@ -171,7 +171,7 @@ public final class CgVfxModules {
      * A station playing: its emitters ticked until the period ends and they have all finished. Its particles land on the
      * world's ground, wherever the station stands, else on the station's floor.
      */
-    private static final class Play extends CgVfxEffect {
+    private static final class Play extends CgVfxEffect<Play> {
         private final List<CgVfxEmitterInstance> emitters = new ArrayList<>();
         private final Mover mover;
         private final Show show;
@@ -468,7 +468,7 @@ public final class CgVfxModules {
             private final float[] fx = new float[3];
 
             @Override
-            public void draw(CgVfxEffect effect, CgVfxFrame frame, float age) {
+            public void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age) {
                 mesh(effect, frame, slashSlot, slashX, slashes, age);
                 mesh(effect, frame, swirlSlot, swirlX, turning, age);
                 mesh(effect, frame, innerSlot, swirlX, counter, age);
@@ -482,7 +482,7 @@ public final class CgVfxModules {
                 }
             }
 
-            private void mesh(CgVfxEffect effect, CgVfxFrame frame, CgVfxSlot slot, float at, MeshMotion motion, float age) {
+            private void mesh(CgVfxEffect<?> effect, CgVfxFrame frame, CgVfxSlot slot, float at, MeshMotion motion, float age) {
                 if (!motion.at(age, m, fx)) return;
                 frame.mesh(effect, slot, at, 0f, 0f, m, fx[0], fx[1], fx[2], 0f);
             }
@@ -550,7 +550,7 @@ public final class CgVfxModules {
     }
 
     /** {@code trail} moved to {@code (x, y, z)} from {@code effect}'s origin. */
-    private static void move(CgVfxTrail trail, CgVfxEffect effect, float dt, float x, float y, float z) {
+    private static void move(CgVfxTrail trail, CgVfxEffect<?> effect, float dt, float x, float y, float z) {
         trail.tick(dt, effect.originX() + x, effect.originY() + y, effect.originZ() + z);
     }
 
@@ -611,18 +611,18 @@ public final class CgVfxModules {
         };
         float[][] offsets = {{-0.1f, 0.45f, 0.15f}, {-0.1f, -0.45f, 0.15f}, {-0.35f, 0.18f, -0.85f}, {-0.35f, -0.18f, -0.85f}};
         Supplier<Show> show = () -> new Show() {
-            private final CgVfxTrail wake = CgVfxTrail.ribbon(0.5f).spacing(0.2f).subdivisions(3);
-            private final CgVfxTrail scorch = CgVfxTrail.flat(4f).spacing(0.25f).subdivisions(2);
+            private final CgVfxTrail wake = CgVfxTrail.ribbon(0.5f).spacing(0.2f);
+            private final CgVfxTrail scorch = CgVfxTrail.flat(4f).spacing(0.25f);
             private final CgVfxTrail[] limbs = new CgVfxTrail[4];
             private final Rig rig = new Rig();
             private final Matrix4f m = new Matrix4f();
 
             {
-                for (int k = 0; k < limbs.length; k++) limbs[k] = CgVfxTrail.ribbon(0.3f).spacing(0.15f).subdivisions(3);
+                for (int k = 0; k < limbs.length; k++) limbs[k] = CgVfxTrail.ribbon(0.3f).spacing(0.15f);
             }
 
             @Override
-            public void tick(CgVfxEffect effect, float dt, float age) {
+            public void tick(CgVfxEffect<?> effect, float dt, float age) {
                 boolean flying = age < MOTION;
                 wake.emitting(flying);
                 for (CgVfxTrail limb : limbs) limb.emitting(flying);
@@ -646,7 +646,7 @@ public final class CgVfxModules {
             }
 
             @Override
-            public void draw(CgVfxEffect effect, CgVfxFrame frame, float age) {
+            public void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age) {
                 frame.trail(effect, scorchSlot, scorch);
                 frame.trail(effect, wakeSlot, wake);
                 for (CgVfxTrail limb : limbs) frame.trail(effect, limbSlot, limb);
@@ -773,17 +773,17 @@ public final class CgVfxModules {
         };
         Supplier<Show> show = () -> new Show() {
             private final CgVfxTrail[] swooshes = new CgVfxTrail[3];
-            private final CgVfxTrail fist = CgVfxTrail.ribbon(0.45f).spacing(0.15f).subdivisions(2);
+            private final CgVfxTrail fist = CgVfxTrail.ribbon(0.45f).spacing(0.15f);
             private final CgVfxTrail[] coils = {CgVfxTrail.ribbon(0.5f).spacing(0.08f), CgVfxTrail.ribbon(0.5f).spacing(0.08f)};
             private final Matrix4f m = new Matrix4f();
             private final Quaternionf turn = new Quaternionf();
 
             {
-                for (int k = 0; k < swooshes.length; k++) swooshes[k] = CgVfxTrail.blade(0.22f).spacing(0.04f).subdivisions(4);
+                for (int k = 0; k < swooshes.length; k++) swooshes[k] = CgVfxTrail.blade(0.22f).spacing(0.04f);
             }
 
             @Override
-            public void tick(CgVfxEffect effect, float dt, float age) {
+            public void tick(CgVfxEffect<?> effect, float dt, float age) {
                 for (int k = 0; k < swooshes.length; k++) {
                     // The swing this trail sweeps now, or the last it swept, running out.
                     int swing = -1;
@@ -822,7 +822,7 @@ public final class CgVfxModules {
             }
 
             @Override
-            public void draw(CgVfxEffect effect, CgVfxFrame frame, float age) {
+            public void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age) {
                 for (CgVfxTrail swoosh : swooshes) frame.trail(effect, swooshSlot, swoosh);
                 frame.trail(effect, fistSlot, fist);
                 for (CgVfxTrail coil : coils) frame.trail(effect, coilSlot, coil);
@@ -832,7 +832,7 @@ public final class CgVfxModules {
             }
 
             /** A shock ring {@code t} seconds after a hit at {@code (x, y, z)}, in the plane across {@code n}. */
-            private void ring(CgVfxEffect effect, CgVfxFrame frame, float t, float x, float y, float z, float nx, float ny,
+            private void ring(CgVfxEffect<?> effect, CgVfxFrame frame, float t, float x, float y, float z, float nx, float ny,
                               float nz, float scale) {
                 if (t < 0f || t > 0.3f) return;
                 float r = (0.25f + 2f * t / 0.3f) * scale;
@@ -941,13 +941,13 @@ public final class CgVfxModules {
 
             {
                 for (int i = 0; i < n; i++) {
-                    streaks[i] = CgVfxTrail.ribbon(0.28f).spacing(0.12f).subdivisions(3);
-                    smokes[i] = CgVfxTrail.ribbon(1.6f).spacing(0.2f).subdivisions(2);
+                    streaks[i] = CgVfxTrail.ribbon(0.28f).spacing(0.12f);
+                    smokes[i] = CgVfxTrail.ribbon(1.6f).spacing(0.2f);
                 }
             }
 
             @Override
-            public void tick(CgVfxEffect effect, float dt, float age) {
+            public void tick(CgVfxEffect<?> effect, float dt, float age) {
                 for (int i = 0; i < n; i++) {
                     boolean flying = age >= launch[i] && age < launch[i] + fly;
                     streaks[i].emitting(flying);
@@ -964,7 +964,7 @@ public final class CgVfxModules {
             }
 
             @Override
-            public void draw(CgVfxEffect effect, CgVfxFrame frame, float age) {
+            public void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age) {
                 for (int i = 0; i < n; i++) {
                     frame.trail(effect, smokeSlot, smokes[i]);
                     frame.trail(effect, streakSlot, streaks[i]);
@@ -1021,16 +1021,16 @@ public final class CgVfxModules {
         int lines = 12;
         float cycle = 0.55f, rise = 0.22f;
         Supplier<Show> show = () -> new Show() {
-            private final CgVfxTrail flash = CgVfxTrail.ribbon(0.45f).spacing(0.1f).subdivisions(4);
+            private final CgVfxTrail flash = CgVfxTrail.ribbon(0.45f).spacing(0.1f);
             private final CgVfxTrail[] power = new CgVfxTrail[lines];
             private final float[] p = new float[3];
 
             {
-                for (int j = 0; j < lines; j++) power[j] = CgVfxTrail.ribbon(0.16f).spacing(0.1f).subdivisions(2);
+                for (int j = 0; j < lines; j++) power[j] = CgVfxTrail.ribbon(0.16f).spacing(0.1f);
             }
 
             @Override
-            public void tick(CgVfxEffect effect, float dt, float age) {
+            public void tick(CgVfxEffect<?> effect, float dt, float age) {
                 boolean on = age < MOTION;
                 flash.emitting(on);
                 if (on) {
@@ -1056,7 +1056,7 @@ public final class CgVfxModules {
             }
 
             @Override
-            public void draw(CgVfxEffect effect, CgVfxFrame frame, float age) {
+            public void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age) {
                 frame.trail(effect, stepSlot, flash);
                 for (CgVfxTrail line : power) frame.trail(effect, lineSlot, line);
             }
@@ -1101,11 +1101,11 @@ public final class CgVfxModules {
             private final CgVfxTrail[] trails = new CgVfxTrail[bolts];
 
             {
-                for (int j = 0; j < bolts; j++) trails[j] = CgVfxTrail.ribbon(0.11f).spacing(0.05f).subdivisions(2);
+                for (int j = 0; j < bolts; j++) trails[j] = CgVfxTrail.ribbon(0.11f).spacing(0.05f);
             }
 
             @Override
-            public void tick(CgVfxEffect effect, float dt, float age) {
+            public void tick(CgVfxEffect<?> effect, float dt, float age) {
                 for (int j = 0; j < bolts; j++) {
                     // On and off in flickers, each its own: a spark, not a light.
                     boolean on = age < MOTION && hash((int) (age * 9f), j * 17 + 3) > 0.35f;
@@ -1124,7 +1124,7 @@ public final class CgVfxModules {
             }
 
             @Override
-            public void draw(CgVfxEffect effect, CgVfxFrame frame, float age) {
+            public void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age) {
                 for (CgVfxTrail bolt : trails) frame.trail(effect, boltSlot, bolt);
             }
 
@@ -1250,14 +1250,14 @@ public final class CgVfxModules {
             }
         };
         Supplier<Show> show = () -> new Show() {
-            private final CgVfxTrail fire = CgVfxTrail.ribbon(0.22f).spacing(0.15f).subdivisions(3);
-            private final CgVfxTrail smoke = CgVfxTrail.ribbon(3.2f).spacing(0.25f).subdivisions(2);
-            private final CgVfxTrail scorch = CgVfxTrail.flat(4.5f).spacing(0.15f).subdivisions(2);
+            private final CgVfxTrail fire = CgVfxTrail.ribbon(0.22f).spacing(0.15f);
+            private final CgVfxTrail smoke = CgVfxTrail.ribbon(3.2f).spacing(0.25f);
+            private final CgVfxTrail scorch = CgVfxTrail.flat(4.5f).spacing(0.15f);
             private final float[] p = new float[3];
             private final Matrix4f m = new Matrix4f();
 
             @Override
-            public void tick(CgVfxEffect effect, float dt, float age) {
+            public void tick(CgVfxEffect<?> effect, float dt, float age) {
                 meteorPath(age, p);
                 boolean falling = age < rest, skidding = age >= impact && age < rest;
                 fire.emitting(falling);
@@ -1275,7 +1275,7 @@ public final class CgVfxModules {
             }
 
             @Override
-            public void draw(CgVfxEffect effect, CgVfxFrame frame, float age) {
+            public void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age) {
                 frame.trail(effect, scorchSlot, scorch);
                 frame.trail(effect, smokeSlot, smoke);
                 frame.trail(effect, fireSlot, fire);
@@ -1501,7 +1501,7 @@ public final class CgVfxModules {
             private final Matrix4f m = new Matrix4f();
 
             @Override
-            public void draw(CgVfxEffect effect, CgVfxFrame frame, float age) {
+            public void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age) {
                 // Surges every 1.4 s: the flames swell and flare, then settle while flickering.
                 float surge = (age % 1.4f) / 1.4f, swell = (float) Math.exp(-surge * 5f);
                 float flicker = 0.85f + 0.15f * (float) Math.sin(age * 37f) * (float) Math.sin(age * 23f + 1f);

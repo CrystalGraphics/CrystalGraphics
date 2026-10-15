@@ -56,7 +56,7 @@ public final class CgVfxCueClient {
 
     /** Builds {@code p} and plays it under its namespace's owner; null where nothing is registered under its id. */
     @Nullable
-    static CgVfxEffect play(CgVfxCue.Play p) {
+    static CgVfxEffect<?> play(CgVfxCue.Play p) {
         String id = p.id();
         CgVfxRegistry.Entry entry = CgVfxRegistry.get(id);
         if (entry == null) {
@@ -71,7 +71,7 @@ public final class CgVfxCueClient {
         private final CgVfxCue cue;
         private CgVfxCue.Play play;
         @Nullable
-        CgVfxEffect effect;
+        CgVfxEffect<?> effect;
         private boolean changed;
 
         View(CgVfxCue cue) {

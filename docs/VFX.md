@@ -925,7 +925,7 @@ Most effects need nothing: declare the cue `authoritative()` and values sync by 
 must reach viewers (the wave's end point) adds two interfaces:
 
 ```java
-public final class Bolt extends CgVfxEffect implements CgVfxCue.Live, CgVfxCue.Authoritative {
+public final class Bolt extends CgVfxEffect<Bolt> implements CgVfxCue.Live, CgVfxCue.Authoritative {
     private final CgHit hit = new CgHit();
     private final CgSphere bolt = CgSphere.of(0.3);
     private double endX = Double.NaN, endY, endZ;
@@ -1078,7 +1078,7 @@ static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks")   // its name 
         .launch(0.2f, 1f, 1f)                  // each flies a random way whose upward share is 0.2 to 1: up and out
         .speed(0.5f, 2f)                       // blocks a second, a random speed between
         .life(2.5f, 3f)                        // seconds
-        .size(0.08f, 0.14f, 1f)                // blocks; the third, above 1, makes most small and a few large
+        .size(0.08f, 0.14f)                    // blocks; a third number above 1 makes most small and a few large
         .heat(1f)                              // 0 to 1, which Buoyancy turns into lift
         .module(new CgVfxModule.Gravity(9.8f))
         .module(new CgVfxModule.CollideWorld(0.35f, 0.4f, 0.4f))   // bounces off blocks
@@ -1245,7 +1245,7 @@ An effect has two jobs: `tick` (logic, on a fixed 120 Hz clock) and `submit` (ha
 slot). How it looks is its look's.
 
 ```java
-public final class Bolt extends CgVfxEffect {
+public final class Bolt extends CgVfxEffect<Bolt> {
     public static final CgVfxSchema SCHEMA = CgVfxSchema.of("mymod:bolt");
     public static final CgVfxParam.Scalar RADIUS = SCHEMA.length("radius", 0.4f);
     public static final CgVfxParam.Scalar LIFE = SCHEMA.time("life", 2f);
@@ -1282,6 +1282,9 @@ public final class Bolt extends CgVfxEffect {
 - **`age`** is seconds since it started; **`seed`** a stable random number in 0..1 that shaders read too.
 - **Die** with `die()` when done; `stop()` from outside lets it finish gracefully.
 - **Read every number from its parameters**, never a constant in code: then a look, a tuning and a cue reach it.
+- **Name the class in its declaration** (`extends CgVfxEffect<Bolt>`): every setter (`follow`, `startAt`, `set`,
+  `onHit`, ...) then answers a `Bolt`, so `VFX.play(new Bolt(LOOK, x, y, z).follow(id, CHEST).charge(2f))` chains into
+  its own methods and stays a `Bolt`. Code holding any effect writes `CgVfxEffect<?>`.
 
 ### What a frame draws
 
@@ -1360,7 +1363,6 @@ scorch.tick(dt, x, groundY + 0.02, z);
 |---|---|
 | `ribbon(life)`, `blade(life)`, `flat(life)` | facing the eye from one point; a sheet between a base and a tip; lying across a normal |
 | `spacing(blocks)` | a point kept each that far (0.12): a still thing leaves none, and its trail runs out |
-| `subdivisions(n)` | quads between two points (4): more for a fast swing's sparse points |
 | `width(s)`, `intensity(s)`, `user(a, b)` | carried by the points kept from then on: a streak swelling with speed |
 | `head(x, y, z)` | its head exactly where something is this frame (a hand marked as the model drew it); else between its last two ticks |
 | `emitting(false)`, `done()` | stop keeping points, and whether all have run out; `clear()` forgets them |
@@ -1370,7 +1372,8 @@ scorch.tick(dt, x, groundY + 0.02, z);
   Catmull-Rom curve through them (`fx_trail.glsl`), so a fast swing stays round and nothing is meshed on the CPU.
 - **Its head never lags**: drawn between its last two ticks at the frame's alpha, as the effect's own parts are. Its tail
   is cut exactly where a point's age reaches its life, so it shrinks smoothly rather than dropping a point at a time.
-- A layer's size is a ribbon's half-width in blocks, or how far a blade reaches toward its tip (1 to the tip).
+- A layer's size is a ribbon's half-width in blocks, or how far a blade reaches toward its tip (1 to the tip). Its
+  `subdivisions(n)` are the quads it draws between two points (4): more for a fast swing's sparse points.
 - One trail drawn on several layers (a glow and its haze) uploads its points once.
 
 | Shader (`shaders/vfx/trail/`) | Draws |
@@ -1412,6 +1415,9 @@ CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/ribbon.shader").on(STREAM).r
 - **The slot is culled whole**, as one sphere round its source, rather than particle by particle.
 - A particle's trail lives in a ring its pool keeps per slot, written after each step at every tier; each point carries
   its particle's id, so a reused ring never joins two particles. `layer.subdivisions(n)` sets quads between points (2).
+- Every slot drawing one strip layer from one pool is a record of one draw, as particles are: a hundred sparks' effects
+  cost one draw. A ring is keyed by its particle's spawn id, so where an emitter's capacity binds and the density
+  setting thins its spawns, two particles alive at once may share one, the later shortening the earlier's trail.
 
 ### Built from elements
 
@@ -1419,7 +1425,7 @@ Reuse what the engine has: a charge, a blast, a beam's body. An element reaches 
 volumes, hits and moments as code inside the effect would, and the effect calls it in the order it wants:
 
 ```java
-public final class KiBlast extends CgVfxEffect {
+public final class KiBlast extends CgVfxEffect<KiBlast> {
     public static final CgHitPart PART_BLAST = SCHEMA.part("blast");
     private final CgVfxCharge charge = new CgVfxCharge(this);
     private final CgVfxBlast blast = new CgVfxBlast(this, PART_BLAST);

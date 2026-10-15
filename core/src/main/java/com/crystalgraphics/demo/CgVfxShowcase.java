@@ -374,7 +374,7 @@ public final class CgVfxShowcase {
     }
 
     /** Which lane's wave {@code effect} is, or null: what a capture names its moments by. */
-    public String laneOf(CgVfxEffect effect) {
+    public String laneOf(CgVfxEffect<?> effect) {
         for (Lane lane : lanes) {
             if (effect.look() == lane.look) return lane.name;
         }

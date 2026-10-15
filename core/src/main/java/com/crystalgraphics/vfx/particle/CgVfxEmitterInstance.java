@@ -36,9 +36,10 @@ import java.util.List;
  *   <li>Its emitter's capacity holds what is alive: a spawn past it is dropped here, so the GPU never gets it.</li>
  * </ul>
  */
-public final class CgVfxEmitterInstance implements CgVfxInstanceView {
+public final class CgVfxEmitterInstance {
 
     private final CgVfxEmitter emitter;
+    private final Books books = new Books();
     private final int seed;
     private float time = -1f, sourceX, sourceY, sourceZ, groundY = Float.NaN;
     private double originX, originY, originZ;
@@ -136,26 +137,6 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
     }
 
     /**
-     * The box of the entity its effect follows, its centre relative to the effect's origin: what an {@code entity()}
-     * emitter spawns in. The effect sets it each tick it steps this instance; all 0 while it follows none.
-     */
-    public void entityBox(float x, float y, float z, float halfX, float halfY, float halfZ) {
-        boxX = x;
-        boxY = y;
-        boxZ = z;
-        boxHalfX = halfX;
-        boxHalfY = halfY;
-        boxHalfZ = halfZ;
-    }
-
-    /** How far the {@link #entityBox} reaches from the source: what an arc's cull adds. */
-    public float entityBoxReach() {
-        if (boxHalfX == 0f && boxHalfY == 0f && boxHalfZ == 0f) return 0f;
-        float x = Math.abs(boxX()) + boxHalfX, y = Math.abs(boxY()) + boxHalfY, z = Math.abs(boxZ()) + boxHalfZ;
-        return (float) Math.sqrt(x * x + y * y + z * z);
-    }
-
-    /**
      * Ends its spawning now, bursts and rate alike, leaving what it spawned to live out: for a rate that runs until
      * something stops it ({@code rate(n, 0f, Float.POSITIVE_INFINITY)}), which never {@link #finished finishes} until
      * then. {@link #start} spawns again.
@@ -187,57 +168,6 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
             if (child != null) child.ground(y);
         }
         return this;
-    }
-
-    /** The share of its particles to spawn, 0 to 1: the player's density, applied by the system. */
-    public CgVfxEmitterInstance share(float share) {
-        this.share = share;
-        return this;
-    }
-
-    /**
-     * One step: books what spawns this step, which the pool's Step kernel spawns and moves. Read the spawns after it,
-     * for the pool's queue: the step's bursts first, born where the source was at its start, then its rate, spread along
-     * where the source went.
-     *
-     * <pre>{@code
-     * instance.schedule(dt, originX, originY, originZ);
-     * pool.instance(slot, instance.seedBits(), instance.share(), instance.groundY(), stepView);  // time() = stepTime()
-     * pool.spawn(slot, instance.stepFirstSpawn(), instance.stepCandidates(), instance.stepCandidates() - instance.stepBursts());
-     * if (instance.finished()) pool.close(slot);
-     * }</pre>
-     *
-     * After it, {@link #time()} is the step's end; the pool's view of the step reads {@link #stepTime()}.
-     */
-    public void schedule(float dt, double originX, double originY, double originZ) {
-        if (time < 0f) return;
-        scheduled = true;
-        place(originX, originY, originZ);
-        float travelled = travel();
-        stepDt = dt;
-        stepTime = time;
-        stepFirst = spawned;
-        retire(time);
-        CgVfxEmitter e = emitter;
-        while (time < stoppedAt && burstsDone < e.burstTimes.length && e.burstTimes[burstsDone] <= time) {
-            int fit = fit(e.burstCounts[burstsDone]);
-            for (int n = 0; n < fit; n++) scheduleOne(dt, 0f);
-            burstsDone++;
-        }
-        stepBursts = spawned - stepFirst;
-        boolean byTime = time >= e.rateFrom && time < Math.min(e.rateUntil, stoppedAt);
-        boolean byDistance = time >= e.blockFrom && time < Math.min(e.blockUntil, stoppedAt);
-        if (byTime || byDistance) {
-            rateOwed += ((byTime ? e.rate * dt : 0f) + (byDistance ? e.perBlock * travelled : 0f)) * rateScale;
-            int n = (int) rateOwed;
-            rateOwed -= n;
-            // Spawn i of n is born (i + 1) / n of the way through the step, so the last is at its end.
-            int fit = fit(n);
-            for (int i = 0; i < fit; i++) scheduleOne(dt, (float) (i + 1) / fit);
-        }
-        stepCandidates = spawned - stepFirst;
-        time += dt;
-        coastChildren(dt);
     }
 
     /** The source's start this step, from where the last ended: how far it went, or 0 for none or a teleport. */
@@ -346,23 +276,6 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
     }
 
     /**
-     * A {@link #schedule}d step that spawns nothing, for an instance whose effect has stopped stepping it (killed, or
-     * gone): its particles in the pool still move and age until they die, and {@link #finished} says when.
-     */
-    public void coast(float dt) {
-        if (time < 0f) return;
-        // Spawning nothing from here on: an open rate finishes too.
-        stoppedAt = Math.min(stoppedAt, time);
-        scheduled = true;
-        stepDt = dt;
-        stepTime = time;
-        stepFirst = spawned;
-        stepCandidates = 0;
-        time += dt;
-        coastChildren(dt);
-    }
-
-    /**
      * Its children's step, where the pool spawns them from the parent's fires. The last fire is at its latest-dying
      * particle's death, and a child spawned then lives its longest life after it.
      */
@@ -373,59 +286,9 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
             child.originX = originX;
             child.originY = originY;
             child.originZ = originZ;
-            child.coast(dt);
+            child.books.coast(dt);
             child.lastDeath = Math.max(child.lastDeath, lastDeath + dt * (float) Math.ceil(child.emitter.lifeMax / dt));
         }
-    }
-
-    /** Whether {@link #schedule} has run since it was made: its slot is open. */
-    public boolean scheduled() {
-        return scheduled;
-    }
-
-    /**
-     * Its slot was freed with every particle in it, by its effect's system putting the effect to sleep: its next
-     * {@link #schedule} asks for a slot again, its capacity's books start empty, and its first step after has no motion.
-     */
-    public void slotLost() {
-        scheduled = false;
-        stepped = false;
-        alive = 0;
-        retired = -1;
-        lastDeath = -1f;
-        if (dying != null) Arrays.fill(dying, 0);
-        for (CgVfxEmitterInstance child : children) {
-            if (child != null) child.slotLost();
-        }
-    }
-
-    /** When {@link #schedule}'s last step began: the time the pool's view of that step reads. */
-    public float stepTime() {
-        return stepTime;
-    }
-
-    /** The first spawn index {@link #schedule}'s last step queued. */
-    public int stepFirstSpawn() {
-        return stepFirst;
-    }
-
-    /** How many spawn candidates {@link #schedule}'s last step queued, before the share thins them. */
-    public int stepCandidates() {
-        return stepCandidates;
-    }
-
-    /** How many of {@link #stepCandidates} are bursts, first: born where the source was at the step's start. */
-    public int stepBursts() {
-        return stepBursts;
-    }
-
-    /** Its seed's bits: what {@code fx_rand} and {@link #rand(int, int, int)} take. */
-    public int seedBits() {
-        return seed;
-    }
-
-    public float share() {
-        return share;
     }
 
     /** True once it has spawned everything it will and every particle has died: a step after its latest death. */
@@ -442,11 +305,6 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
     /** The instance event {@code e}'s children run in, or null where it spawns none. */
     public CgVfxEmitterInstance child(int e) {
         return children[e];
-    }
-
-    /** The spawn index its next particle takes: the spawn indices handed out so far, kept or thinned. */
-    public int spawnedSoFar() {
-        return spawned;
     }
 
     public CgVfxEmitter emitter() {
@@ -487,50 +345,249 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         return groundY;
     }
 
-    /** Where the source was at the last step's start, relative to its origin: the source itself the first step. */
-    @Override
-    public float fromX() {
-        return fromX;
+    /**
+     * Its books as its system keeps them: each step's spawns, its share, the box it spawns in, the step the GPU reads. The
+     * system's and the pool's, never an effect's: an effect starts, moves and stops its instance, and ticks it through
+     * {@code CgVfxEffect.tick(instance, dt)}.
+     *
+     * <pre>{@code
+     * instance.books().schedule(dt, originX, originY, originZ);
+     * pool.spawn(slot, instance.books().stepFirstSpawn(), instance.books().stepCandidates(), ...);
+     * }</pre>
+     */
+    public Books books() {
+        return books;
     }
 
-    @Override
-    public float fromY() {
-        return fromY;
-    }
+    /** {@link #books()}: what the system books, steps and draws an instance by. */
+    public final class Books implements CgVfxInstanceView {
 
-    @Override
-    public float fromZ() {
-        return fromZ;
-    }
+        private Books() {
+        }
 
-    @Override
-    public float boxX() {
-        return boxX - sourceX();
-    }
+        @Override
+        public double originX() {
+            return originX;
+        }
 
-    @Override
-    public float boxY() {
-        return boxY - sourceY();
-    }
+        @Override
+        public double originY() {
+            return originY;
+        }
 
-    @Override
-    public float boxZ() {
-        return boxZ - sourceZ();
-    }
+        @Override
+        public double originZ() {
+            return originZ;
+        }
 
-    @Override
-    public float boxHalfX() {
-        return boxHalfX;
-    }
+        @Override
+        public float time() {
+            return time;
+        }
 
-    @Override
-    public float boxHalfY() {
-        return boxHalfY;
-    }
+        @Override
+        public float sourceX() {
+            return CgVfxEmitterInstance.this.sourceX();
+        }
 
-    @Override
-    public float boxHalfZ() {
-        return boxHalfZ;
+        @Override
+        public float sourceY() {
+            return CgVfxEmitterInstance.this.sourceY();
+        }
+
+        @Override
+        public float sourceZ() {
+            return CgVfxEmitterInstance.this.sourceZ();
+        }
+
+        /**
+         * The box of the entity its effect follows, its centre relative to the effect's origin: what an {@code entity()}
+         * emitter spawns in. The effect sets it each tick it steps this instance; all 0 while it follows none.
+         */
+        public void entityBox(float x, float y, float z, float halfX, float halfY, float halfZ) {
+            boxX = x;
+            boxY = y;
+            boxZ = z;
+            boxHalfX = halfX;
+            boxHalfY = halfY;
+            boxHalfZ = halfZ;
+        }
+
+        /** How far the {@link #entityBox} reaches from the source: what an arc's cull adds. */
+        public float entityBoxReach() {
+            if (boxHalfX == 0f && boxHalfY == 0f && boxHalfZ == 0f) return 0f;
+            float x = Math.abs(boxX()) + boxHalfX, y = Math.abs(boxY()) + boxHalfY, z = Math.abs(boxZ()) + boxHalfZ;
+            return (float) Math.sqrt(x * x + y * y + z * z);
+        }
+
+        /** The share of its particles to spawn, 0 to 1: the player's density, applied by the system. */
+        public Books share(float share) {
+            CgVfxEmitterInstance.this.share = share;
+            return this;
+        }
+
+        /**
+         * One step: books what spawns this step, which the pool's Step kernel spawns and moves. Read the spawns after it,
+         * for the pool's queue: the step's bursts first, born where the source was at its start, then its rate, spread along
+         * where the source went.
+         *
+         * <pre>{@code
+         * instance.schedule(dt, originX, originY, originZ);
+         * pool.instance(slot, instance.seedBits(), instance.share(), instance.groundY(), stepView);  // time() = stepTime()
+         * pool.spawn(slot, instance.stepFirstSpawn(), instance.stepCandidates(), instance.stepCandidates() - instance.stepBursts());
+         * if (instance.finished()) pool.close(slot);
+         * }</pre>
+         *
+         * After it, {@link #time()} is the step's end; the pool's view of the step reads {@link #stepTime()}.
+         */
+        public void schedule(float dt, double originX, double originY, double originZ) {
+            if (time < 0f) return;
+            scheduled = true;
+            place(originX, originY, originZ);
+            float travelled = travel();
+            stepDt = dt;
+            stepTime = time;
+            stepFirst = spawned;
+            retire(time);
+            CgVfxEmitter e = emitter;
+            while (time < stoppedAt && burstsDone < e.burstTimes.length && e.burstTimes[burstsDone] <= time) {
+                int fit = fit(e.burstCounts[burstsDone]);
+                for (int n = 0; n < fit; n++) scheduleOne(dt, 0f);
+                burstsDone++;
+            }
+            stepBursts = spawned - stepFirst;
+            boolean byTime = time >= e.rateFrom && time < Math.min(e.rateUntil, stoppedAt);
+            boolean byDistance = time >= e.blockFrom && time < Math.min(e.blockUntil, stoppedAt);
+            if (byTime || byDistance) {
+                rateOwed += ((byTime ? e.rate * dt : 0f) + (byDistance ? e.perBlock * travelled : 0f)) * rateScale;
+                int n = (int) rateOwed;
+                rateOwed -= n;
+                // Spawn i of n is born (i + 1) / n of the way through the step, so the last is at its end.
+                int fit = fit(n);
+                for (int i = 0; i < fit; i++) scheduleOne(dt, (float) (i + 1) / fit);
+            }
+            stepCandidates = spawned - stepFirst;
+            time += dt;
+            coastChildren(dt);
+        }
+
+        /**
+         * A {@link #schedule}d step that spawns nothing, for an instance whose effect has stopped stepping it (killed, or
+         * gone): its particles in the pool still move and age until they die, and {@link #finished} says when.
+         */
+        public void coast(float dt) {
+            if (time < 0f) return;
+            // Spawning nothing from here on: an open rate finishes too.
+            stoppedAt = Math.min(stoppedAt, time);
+            scheduled = true;
+            stepDt = dt;
+            stepTime = time;
+            stepFirst = spawned;
+            stepCandidates = 0;
+            time += dt;
+            coastChildren(dt);
+        }
+
+        /** Whether {@link #schedule} has run since it was made: its slot is open. */
+        public boolean scheduled() {
+            return scheduled;
+        }
+
+        /**
+         * Its slot was freed with every particle in it, by its effect's system putting the effect to sleep: its next
+         * {@link #schedule} asks for a slot again, its capacity's books start empty, and its first step after has no motion.
+         */
+        public void slotLost() {
+            scheduled = false;
+            stepped = false;
+            alive = 0;
+            retired = -1;
+            lastDeath = -1f;
+            if (dying != null) Arrays.fill(dying, 0);
+            for (CgVfxEmitterInstance child : children) {
+                if (child != null) child.books.slotLost();
+            }
+        }
+
+        /** When {@link #schedule}'s last step began: the time the pool's view of that step reads. */
+        public float stepTime() {
+            return stepTime;
+        }
+
+        /** The first spawn index {@link #schedule}'s last step queued. */
+        public int stepFirstSpawn() {
+            return stepFirst;
+        }
+
+        /** How many spawn candidates {@link #schedule}'s last step queued, before the share thins them. */
+        public int stepCandidates() {
+            return stepCandidates;
+        }
+
+        /** How many of {@link #stepCandidates} are bursts, first: born where the source was at the step's start. */
+        public int stepBursts() {
+            return stepBursts;
+        }
+
+        /** Its seed's bits: what {@code fx_rand} and {@link #rand(int, int, int)} take. */
+        public int seedBits() {
+            return seed;
+        }
+
+        public float share() {
+            return share;
+        }
+
+        /** The spawn index its next particle takes: the spawn indices handed out so far, kept or thinned. */
+        public int spawnedSoFar() {
+            return spawned;
+        }
+
+        /** Where the source was at the last step's start, relative to its origin: the source itself the first step. */
+        @Override
+        public float fromX() {
+            return fromX;
+        }
+
+        @Override
+        public float fromY() {
+            return fromY;
+        }
+
+        @Override
+        public float fromZ() {
+            return fromZ;
+        }
+
+        @Override
+        public float boxX() {
+            return boxX - sourceX();
+        }
+
+        @Override
+        public float boxY() {
+            return boxY - sourceY();
+        }
+
+        @Override
+        public float boxZ() {
+            return boxZ - sourceZ();
+        }
+
+        @Override
+        public float boxHalfX() {
+            return boxHalfX;
+        }
+
+        @Override
+        public float boxHalfY() {
+            return boxHalfY;
+        }
+
+        @Override
+        public float boxHalfZ() {
+            return boxHalfZ;
+        }
     }
 
     private float rand(int n, int k) {

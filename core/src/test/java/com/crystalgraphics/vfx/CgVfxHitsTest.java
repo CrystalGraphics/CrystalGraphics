@@ -22,7 +22,7 @@ public class CgVfxHitsTest {
     private static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).build();
 
     /** Strikes entity 7 with its bolt, then block 3,0,4 with its arc, each tick. */
-    static final class Striker extends CgVfxEffect {
+    static final class Striker extends CgVfxEffect<Striker> {
         private final CgHit struck = new CgHit();
 
         Striker() {

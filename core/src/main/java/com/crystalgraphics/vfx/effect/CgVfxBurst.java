@@ -24,7 +24,7 @@ import java.util.List;
  *   <li>An emitter with an open rate never finishes, so neither does the burst until it is stopped.</li>
  * </ul>
  */
-public class CgVfxBurst extends CgVfxEffect {
+public class CgVfxBurst extends CgVfxEffect<CgVfxBurst> {
 
     /** A burst reads no parameter of its own: its kits' layers read theirs. */
     public static final CgVfxSchema SCHEMA = CgVfxSchema.of("crystalgraphics:burst");
