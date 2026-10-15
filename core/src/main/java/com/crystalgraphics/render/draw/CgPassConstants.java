@@ -3,6 +3,7 @@ package com.crystalgraphics.render.draw;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
 /**
@@ -33,7 +34,10 @@ public final class CgPassConstants {
     /** The GLSL block, declared by {@code cg_env.glsl}. */
     public static final String BLOCK_NAME = "CgFrameBlock";
 
-    /** {@code CgFrameBlock} in std140: view, projection, time, resolution (+2 pad), camera, depth parameters, origin, sun, fog. */
+    /**
+     * {@code CgFrameBlock} in std140: view, projection, time, resolution (+2 pad), camera, depth parameters, origin, sun,
+     * fog, the previous frame's view-projection and the frame's index and history validity.
+     */
     public static final CgBufferFormat FORMAT = CgBufferFormat
             .builder(BLOCK_NAME, CgBufferFormat.MemoryLayout.STD140)
             .mat4("cg_ViewMatrix")
@@ -46,15 +50,19 @@ public final class CgPassConstants {
             .vec4("cg_SunDirection")
             .vec4("cg_FogColor")
             .vec4("cg_FogParams")
+            .mat4("cg_PrevViewProj")
+            .vec4("cg_FrameParams")
             .build();
 
-    public static final int FLOATS = 64;
+    public static final int FLOATS = 84;
 
     /** {@link #sun}'s direction until set: high, toward +x and +z. */
     private static final float SUN_X = 0.3f, SUN_Y = 0.906f, SUN_Z = 0.3f;
 
     public final Matrix4f view = new Matrix4f();
     public final Matrix4f projection = new Matrix4f();
+    /** Where this pass's camera-relative points were on screen last frame: {@link #history}'s. */
+    private final Matrix4f previous = new Matrix4f();
 
     private float time;
     private float width;
@@ -72,6 +80,8 @@ public final class CgPassConstants {
     private float sunX = SUN_X, sunY = SUN_Y, sunZ = SUN_Z, daylight = 1f;
     private float fogRed, fogGreen, fogBlue, fogStart, fogEnd;
     private boolean fog;
+    private int frameIndex;
+    private boolean historyValid;
 
     private final float[] packed = new float[FLOATS];
     private final Vector3f eye = new Vector3f();
@@ -172,6 +182,18 @@ public final class CgPassConstants {
     }
 
     /**
+     * What a temporal effect reprojects by: the matrix taking this pass's camera-relative points to last frame's clip
+     * space ({@code cg_PreviousClip}), the host frame's index ({@code CG_FRAME_INDEX}) and whether the last frame is
+     * one of this view ({@code CG_HISTORY_VALID}). {@code CgStageFrame.constants} fills it for the host's camera.
+     */
+    public CgPassConstants history(Matrix4fc previousViewProjection, int frameIndex, boolean valid) {
+        previous.set(previousViewProjection);
+        this.frameIndex = frameIndex;
+        this.historyValid = valid;
+        return this;
+    }
+
+    /**
      * Takes every value from a block laid out as {@link #write} lays it out: what an immediate draw does with the
      * frame block a caller already prepared. {@link #write} reproduces the same floats.
      */
@@ -201,6 +223,9 @@ public final class CgPassConstants {
         fog = block[at + 59] != 0f;
         fogStart = block[at + 60];
         fogEnd = block[at + 61];
+        previous.set(block, at + 64);
+        frameIndex = (int) block[at + 80];
+        historyValid = block[at + 81] != 0f;
         return this;
     }
 
@@ -250,6 +275,11 @@ public final class CgPassConstants {
         out[at + 61] = fogEnd;
         out[at + 62] = 0f;
         out[at + 63] = 0f;
+        previous.get(out, at + 64);
+        out[at + 80] = frameIndex & 0xFFFF;
+        out[at + 81] = historyValid ? 1f : 0f;
+        out[at + 82] = 0f;
+        out[at + 83] = 0f;
     }
 
     /** Snapshots the block into {@code table} at the frame block's binding, and answers its id. */

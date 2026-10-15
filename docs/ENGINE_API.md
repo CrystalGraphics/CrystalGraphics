@@ -151,9 +151,12 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   into the host's framebuffer is overwritten and `cg_SceneColor` reads linear HDR. Materials' sRGB colour is decoded as
   it is written (`docs/SHADERS.md` § *Lighting and fog*). Glows add into the scene itself, with no emission target, and
   bloom takes the scene's light past `CgPostStack.get().bloom().threshold(t)` (1). Flipped live, it takes effect at the next firing: the harness and the demo bind it to G.
-- **Half resolution**: a transparent draw of soft light that adds (`Blend ONE ONE`: a glow, a volume) marked
-  `.halfResolution()` draws into a half-size target before the transparent pass and is added over the target by a
-  depth-aware upsample, at a quarter of the pixels. Its shader hides itself behind the scene from `cg_DepthBuffer`
+- **Half resolution**: a transparent draw marked `.halfResolution()` draws into a half-size target before the
+  transparent pass, at a quarter of the pixels. Soft light that adds (`Blend ONE ONE`: a glow) is added over the target
+  by a depth-aware upsample. A volume that covers (`Blend ONE ONE_MINUS_SRC_ALPHA`: smoke) is blended with its last
+  frame, reprojected by the depth its fragment names (`CG_VOLUME_DEPTH(eye)`) and held to this frame's neighbourhood,
+  then laid over the target in the transparent pass at the farthest volume's place in the sort: a march can then take
+  fewer steps, starting each frame elsewhere (`CG_FRAME_INDEX`), and the frames average out its grain. Its shader hides itself behind the scene from `cg_DepthBuffer`
   with `DepthTest ALWAYS`, since that target has no depth. `world.halfResolution(false)` draws them at full size.
 - **Distortion**: a transparent draw whose material has a Distortion pass (`docs/SHADERS.md` § *The Distortion pass*)
   adds an offset into a layer of an RGBA16F array half the world's size (`world.distortionScale(scale)`) after the

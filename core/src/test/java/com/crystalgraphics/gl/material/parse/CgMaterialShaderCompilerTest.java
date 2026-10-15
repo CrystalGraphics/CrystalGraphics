@@ -160,6 +160,25 @@ public class CgMaterialShaderCompilerTest {
         assertFalse(plain.contains("_cg_fragColor.rgb = _cg_glowRgb;"));
     }
 
+    @Test
+    public void volumeTarget_writesTheNamedDepthAtLocationOne() {
+        CgParsedShader shader = parse(MINIMAL.replace("Pass {\n", "Pass {\n    RenderState { Blend ONE ONE_MINUS_SRC_ALPHA }\n")
+                .replace("fragColor = vec4(1.0); }", "fragColor = vec4(1.0); CG_VOLUME_DEPTH(12.0); }"));
+        CgParsedPass forward = shader.passes().get(0);
+        String volume = CgMaterialShaderCompiler.compile(shader, forward, NO_BUFFERS, null,
+                new CgMaterialShaderCompiler.CompileConfig(Collections.singleton(CgMaterialShaderCompiler.VOLUME_TARGET)))
+                .fragmentSource();
+        assertTrue(volume.contains("layout(location = 1) out vec4 _cg_volumeDepth;"));
+        assertTrue(volume.contains("#define CG_VOLUME_DEPTH(eye) _cg_volumeEye = (eye)"));
+        int wrapped = volume.indexOf("_cg_main();"), written = volume.indexOf("_cg_volumeDepth = vec4(_cg_volumeEye");
+        assertTrue("the generated main runs first", wrapped >= 0 && written > wrapped);
+        // Drawn anywhere else it names nothing.
+        String plain = CgMaterialShaderCompiler.compile(shader, forward, NO_BUFFERS, null,
+                CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();
+        assertTrue(plain.contains("#define CG_VOLUME_DEPTH(eye)\n"));
+        assertFalse(plain.contains("_cg_volumeDepth"));
+    }
+
     @Test(expected = CgShaderParseException.class)
     public void emissivePass_withNoCode_needsAForwardPassBeforeIt() {
         parse("#type spatial\nPass { Tags { \"LightMode\" = \"Emissive\" } }\n" + MINIMAL.substring(MINIMAL.indexOf("Pass")));

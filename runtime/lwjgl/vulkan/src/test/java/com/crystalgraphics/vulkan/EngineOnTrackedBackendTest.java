@@ -130,6 +130,17 @@ public class EngineOnTrackedBackendTest {
                 if (shader.getOrCompile(pass, Set.of(CgMaterialShaderCompiler.MULTI_DRAW)) == null)
                     failures.add(path + " pass " + pass + " multi-draw: did not link (see log)");
             }
+            if (forward != null && !forward.fragOutput().isMrt()) {   // the world renderer's volume pass, folded or not
+                List<Set<String>> volumes = new ArrayList<>(List.of(Set.of(CgMaterialShaderCompiler.VOLUME_TARGET)));
+                if (CgMaterialShaderCompiler.sceneFolds(parsed)) {
+                    volumes.add(Set.of(CgMaterialShaderCompiler.VOLUME_TARGET, CgMaterialShaderCompiler.SCENE_FOLD));
+                }
+                for (Set<String> keywords : volumes) {
+                    programs++;
+                    if (shader.getOrCompile(forward.name(), keywords) == null)
+                        failures.add(path + " pass " + forward.name() + " " + keywords + ": did not link (see log)");
+                }
+            }
             CgMaterial material = CgMaterial.newInstance(path);
             if (CgMaterialShader.SHADOWS_SUPPORTED && material.hasShadowCasterPass() && !shader.hasCompiledPass(CgRenderPassVariant.SHADOW.lightModeName()))
                 failures.add(path + ": the generated shadow pass did not link (see log)");

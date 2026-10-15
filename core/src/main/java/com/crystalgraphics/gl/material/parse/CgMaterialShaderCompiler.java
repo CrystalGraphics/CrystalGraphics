@@ -138,6 +138,15 @@ public final class CgMaterialShaderCompiler {
      */
     public static final String DEPTH_PREPASS = "CG_DEPTH_PREPASS";
 
+    /**
+     * The engine's keyword for a Forward pass drawn into the world renderer's volume target: what its fragment names
+     * with {@code CG_VOLUME_DEPTH(eye)} written at location 1, the depth its temporal resolve reprojects it by.
+     */
+    public static final String VOLUME_TARGET = "CG_VOLUME_TARGET";
+
+    /** A fragment naming the depth it marched to ({@code CG_VOLUME_DEPTH(eye)}). */
+    private static final Pattern NAMES_VOLUME_DEPTH = Pattern.compile("\\bCG_VOLUME_DEPTH\\b");
+
     /** Code applying {@code CG_EMISSION} itself; not {@code CG_EMISSION_TARGET}. */
     private static final Pattern READS_EMISSION = Pattern.compile("\\bCG_EMISSION\\b");
 
@@ -701,10 +710,14 @@ public final class CgMaterialShaderCompiler {
             merge = emissionMerge(shader);
             if (merge == EmissionMerge.NONE && !pass.fragOutput().isMrt()) merge = EmissionMerge.COVER;
         }
+        boolean volume = config.activeKeywords().contains(VOLUME_TARGET) && merge == EmissionMerge.NONE
+                && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) && !pass.fragOutput().isMrt();
         appendFragmentOutputDeclarations(sb, pass, merge);
+        if (volume) sb.append("layout(location = 1) out vec4 _cg_volumeDepth;\n");
 
         // User fragment function
         sb.append("// User fragment function\n");
+        appendVolumeDepth(sb, pass, volume);
         appendFragmentUserFunction(sb, pass);
 
         // Generated main()
@@ -713,8 +726,22 @@ public final class CgMaterialShaderCompiler {
         boolean fold = config.activeKeywords().contains(SCENE_FOLD) && merge == EmissionMerge.NONE && !cover
                 && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) && sceneFolds(shader);
         appendFragmentMain(sb, v2fFields, pass, shader, config.activeKeywords().contains(DEBUG_OVERDRAW), merge, cover, fold);
+        if (volume) sb.append("#undef main\nvoid main() {\n  _cg_volumeEye = 0.0;\n  _cg_main();\n  _cg_volumeDepth = vec4(_cg_volumeEye, 0.0, 0.0, _cg_volumeEye > 0.0 ? 1.0 : 0.0);\n}\n");
 
         return sb.toString();
+    }
+
+    /**
+     * {@code CG_VOLUME_DEPTH(eye)} for a fragment naming it: under {@link #VOLUME_TARGET} it keeps the eye distance the
+     * generated {@code main} writes at location 1, elsewhere it does nothing. The volume variant's own {@code main}
+     * wraps the generated one, renamed {@code _cg_main}.
+     */
+    private static void appendVolumeDepth(StringBuilder sb, CgParsedPass pass, boolean volume) {
+        if (volume) {
+            sb.append("float _cg_volumeEye;\n#define CG_VOLUME_DEPTH(eye) _cg_volumeEye = (eye)\n#define main _cg_main\n");
+        } else if (NAMES_VOLUME_DEPTH.matcher(pass.fragmentBody()).find()) {
+            sb.append("#define CG_VOLUME_DEPTH(eye)\n");
+        }
     }
 
     // ── Shared section builders ───────────────────────────────────────────────
@@ -764,6 +791,7 @@ public final class CgMaterialShaderCompiler {
         if (activeKeywords.contains(MULTI_DRAW)) sb.append("#define ").append(MULTI_DRAW).append(" 1\n");
         if (activeKeywords.contains(DEBUG_OVERDRAW)) sb.append("#define ").append(DEBUG_OVERDRAW).append(" 1\n");
         if (activeKeywords.contains(DEPTH_PREPASS)) sb.append("#define ").append(DEPTH_PREPASS).append(" 1\n");
+        if (activeKeywords.contains(VOLUME_TARGET)) sb.append("#define ").append(VOLUME_TARGET).append(" 1\n");
     }
 
     /**

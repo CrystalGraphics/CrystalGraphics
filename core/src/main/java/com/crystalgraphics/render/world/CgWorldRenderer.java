@@ -111,7 +111,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *       into the emission target ({@link #emissionScale} of the world's size), where the scene's depth hides it, and
  *       published as {@code CgFrameKeys.EMISSION} for the post stack to bloom.</li>
  *   <li>A transparent draw marked {@link Draw#halfResolution()} draws at half the target's size before the transparent
- *       pass and is added over the target, depth-aware ({@link #halfResolution(boolean)} turns it off).</li>
+ *       pass ({@link #halfResolution(boolean)} turns it off): light that adds is added over the target, depth-aware; a
+ *       volume that covers (premultiplied) is blended with its last frame and laid over the target in the transparent
+ *       pass, at its farthest draw's place.</li>
  * </ul>
  */
 public final class CgWorldRenderer {
@@ -155,6 +157,16 @@ public final class CgWorldRenderer {
     private static final int GPU_HALF = CgGpuTrace.name("world.half"), GPU_HALF_ADD = CgGpuTrace.name("world.halfAdd");
     private static final CgFrameBufferFormat OVERDRAW_FORMAT = CgFrameBufferFormat.builder("cg_world_overdraw")
             .color(0, CgTextureType.R16F).build();
+    /** Half-size volumes: premultiplied light, and the eye depth each was marched to (0 for none). */
+    private static final CgFrameBufferFormat VOLUME_FORMAT = CgFrameBufferFormat.builder("cg_world_volume")
+            .color(0, CgTextureType.RGBA16F).color(1, CgTextureType.R16F).build();
+    private static final CgFrameBufferFormat VOLUME_HISTORY_FORMAT = CgFrameBufferFormat.builder("cg_world_volume_history")
+            .color(0, CgTextureType.RGBA16F).build();
+    private static final String RESOLVE_SHADER = "crystalgraphics:shaders/world_volume_resolve.shader";
+    private static final String COMPOSITE_SHADER = "crystalgraphics:shaders/world_volume_composite.shader";
+    private static final int GPU_VOLUME = CgGpuTrace.name("world.volume"), GPU_VOLUME_RESOLVE = CgGpuTrace.name("world.volumeResolve");
+    /** Firings of a host frame with a volume history of their own; a later one composites this frame's alone. */
+    private static final int VOLUME_HISTORIES = 4;
 
     /** Called once a frame, before the first world stage records, with the host's camera. */
     @FunctionalInterface
@@ -282,6 +294,20 @@ public final class CgWorldRenderer {
     private CgMaterial upsample;
     private CgTexture upsampleBound;
 
+    // Volumes: half-size premultiplied draws, blended with their last frame per firing ordinal, then laid over the
+    // target in the transparent pass at the farthest one's key.
+    private CgGraphTexture volumeTarget;
+    private final CgGraphTexture[] volumeHistories = new CgGraphTexture[VOLUME_HISTORIES];
+    /** Per ordinal: the ring frame its history was made in, which holds nothing of a frame before. */
+    private final long[] volumeMade = new long[VOLUME_HISTORIES];
+    private CgMaterial resolve, composite;
+    private CgTexture resolveBound, compositeBound;
+    @Nullable
+    private CgTexture volumeOut;
+    private long volumeKey;
+    /** Whether a volume's glow is folded into its light this firing: the HDR scene, merging glows. */
+    private boolean volumeFolds;
+
     // Distortion: what plans and records it, and the distorting draws this firing.
     private final CgWorldDistortion distortion = new CgWorldDistortion();
     private final CgWorldText text = new CgWorldText();
@@ -347,6 +373,13 @@ public final class CgWorldRenderer {
         depthOnly.clear();
         upsample = null;
         upsampleBound = null;
+        resolve = null;
+        composite = null;
+        resolveBound = null;
+        compositeBound = null;
+        volumeTarget = null;
+        volumeOut = null;
+        Arrays.fill(volumeHistories, null);
         distortion.release();
         text.release();
         sceneTarget.release();
@@ -718,19 +751,31 @@ public final class CgWorldRenderer {
         }
 
         /**
-         * Draws it at half the target's size, then adds it over the target where the scene's depth agrees: for soft
-         * light that adds (a glow, a volume), at a quarter of the pixels. A transparent draw only, before the
-         * transparent pass; with {@link CgWorldRenderer#halfResolution(boolean)} off it draws in that pass as any other.
+         * Draws it at half the target's size, at a quarter of the pixels, before the transparent pass. Its material's
+         * blend picks the route: light that adds (Blend ONE ONE: a glow) is added over the target where the scene's
+         * depth agrees; a volume that covers (Blend ONE ONE_MINUS_SRC_ALPHA: smoke, a cloud) is blended with its last
+         * frame, reprojected, then laid over the target in the transparent pass at its place in the sort. With
+         * {@link CgWorldRenderer#halfResolution(boolean)} off it draws in that pass as any other. A transparent draw only.
          *
          * <pre>{@code
-         * world.draw(sphere, glow).at(x, y, z).transform(scale).halfResolution().submit();
+         * world.draw(sphere, glow).at(x, y, z).transform(scale).halfResolution().submit();       // added
+         * world.draw(cube, smoke).at(x, y, z).transform(box).halfResolution().submit();          // a volume
+         * }</pre>
+         *
+         * <pre>{@code
+         * // a volume's fragment: the eye depth it marched to, which its last frame is reprojected by
+         * CG_VOLUME_DEPTH(FX_EYE_DEPTH(ray, weightedDistance));
+         * if (CG_HISTORY_VALID) jitter = fract(jitter + 0.618034 * float(CG_FRAME_INDEX % 64));   // a new sample each frame
          * }</pre>
          *
          * <ul>
-         *   <li>Its material adds (Blend ONE ONE): what it draws is added over the target, never blended.</li>
          *   <li>The half-size target has no depth: a material that hides itself behind the scene does it from
          *       {@code cg_DepthBuffer} ({@code CG_SCENE_EYE_DEPTH} at {@code gl_FragCoord.xy / CG_RESOLUTION}), with
          *       {@code DepthTest ALWAYS}.</li>
+         *   <li>A volume naming no depth is reprojected at the scene's, which smears it as the camera moves past it.</li>
+         *   <li>Every volume of a firing is laid over the target at once, at the farthest one's key: a transparent draw
+         *       sorted between two volumes draws over both.</li>
+         *   <li>Under the HDR scene a volume's codeless Emissive pass is folded into its light, so it marches once.</li>
          * </ul>
          */
         public Draw halfResolution() {
@@ -1247,7 +1292,7 @@ public final class CgWorldRenderer {
     // ── Recording ────────────────────────────────────────────────────────────────────────────────
 
     private static final int OPAQUE = 0, TRANSPARENT = 1;
-    private static final byte SKIP = -1, FORWARD = 0, FORWARD_AND_PREPASS = 1, HALF = 2, AFTER = 3;
+    private static final byte SKIP = -1, FORWARD = 0, FORWARD_AND_PREPASS = 1, HALF = 2, AFTER = 3, VOLUME = 4;
     /** The clip-space w a draw's screen rect is cut at: nearer than any host's near plane (Minecraft's is 0.05). */
     private static final float NEAR_W = 0.01f;
 
@@ -1295,14 +1340,20 @@ public final class CgWorldRenderer {
                 prepass |= p == FORWARD_AND_PREPASS;
             }
             CgTrace.counter(CgChannels.WORLD, which == OPAQUE ? "world.opaqueDraws" : "world.transparentDraws", drawn);
-            int halfDrawn = 0;
+            int halfDrawn = 0, volumeDrawn = 0;
             if (which == TRANSPARENT && halfResolution) {
                 for (int i = 0; i < count; i++) {
                     if (phase[i] == SKIP || !halves[i]) continue;
-                    phase[i] = HALF;
-                    halfDrawn++;
+                    if (covers(materials[i])) {
+                        phase[i] = VOLUME;
+                        volumeDrawn++;
+                    } else {
+                        phase[i] = HALF;
+                        halfDrawn++;
+                    }
                 }
                 CgTrace.counter(CgChannels.WORLD, "world.halfDraws", halfDrawn);
+                CgTrace.counter(CgChannels.WORLD, "world.volumeDraws", volumeDrawn);
             }
             int afterDrawn = 0;
             if (which == TRANSPARENT) {
@@ -1323,7 +1374,7 @@ public final class CgWorldRenderer {
             int distorting = 0;
             if (drawn > 0 && which == TRANSPARENT) {
                 if (distorts.length < meshes.length) distorts = new boolean[meshes.length];
-                for (int i = 0; i < count; i++) distorts[i] = phase[i] != SKIP && phase[i] != HALF && distortsScene(materials[i]);
+                for (int i = 0; i < count; i++) distorts[i] = phase[i] != SKIP && !halfSize(i) && distortsScene(materials[i]);
                 hazes.view = view;
                 distorting = distortion.plan(hazes, targetWidth, targetHeight);
                 afterDrawn = 0;
@@ -1331,6 +1382,7 @@ public final class CgWorldRenderer {
             }
             // Under the HDR scene a glow is light added into the scene itself, where what draws in front covers it.
             boolean scene = which == TRANSPARENT && stage.resources().has(CgFrameKeys.SCENE);
+            volumeFolds = scene && mergeEmission;
             // Before any glow: a label's text then hides the glows behind it from the emission, as from the colour.
             if (which == TRANSPARENT) text.recordDepth(stage, view);
             CgGraphTexture emission = which == TRANSPARENT && drawn > 0 ? mergedEmission(stage, recording) : null;
@@ -1339,9 +1391,10 @@ public final class CgWorldRenderer {
                 cullSets(stage, recording, view, false);
                 if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, false, view, null, false);
                 if (halfDrawn > 0) recordHalf(stage, recording, view);
+                volumeOut = volumeDrawn > 0 ? recordVolumes(stage, recording, view) : null;
                 if (emission != null) recordEmission(stage, recording, view, emission, EMIT_BEFORE);
                 if (distorting > 0) distortion.recordBends(stage, recording, hazes);
-                if (drawn > halfDrawn + afterDrawn) {
+                if (drawn > halfDrawn + volumeDrawn + afterDrawn || volumeOut != null) {
                     recordPass(stage, recording, constants, which == OPAQUE ? OPAQUE_STATE : TRANSPARENT_STATE, false, false,
                             view, emission, scene);
                 }
@@ -1650,7 +1703,9 @@ public final class CgWorldRenderer {
                     && (queue >= CgRenderQueue.TRANSPARENT_THRESHOLD ? phase[i] != SKIP : classify(i, OPAQUE, view) != SKIP)
                     && (merged == null || !allMerged(i));
             if (e) emitting++;
-            boolean before = queue < CgRenderQueue.TRANSPARENT_THRESHOLD || phase[i] == HALF;
+            // A volume's glow folded into its light is drawn there.
+            if (phase[i] == VOLUME && volumeFolds && allFold(i)) e = false;
+            boolean before = queue < CgRenderQueue.TRANSPARENT_THRESHOLD || halfSize(i);
             e &= part == EMIT_ALL || (part == EMIT_BEFORE) == before;
             emits[i] = e;
             if (e) recorded++;
@@ -1796,6 +1851,115 @@ public final class CgWorldRenderer {
         upsampled.instance();
         add.add(upsampled.end());
         add.end();
+    }
+
+    /** Whether draw {@code i} draws at half size this firing, added or as a volume. */
+    private boolean halfSize(int i) {
+        return phase[i] == HALF || phase[i] == VOLUME;
+    }
+
+    /** Whether a material's Forward pass covers what is behind it, premultiplied: a volume's blend. */
+    private static boolean covers(CgMaterial material) {
+        CgPipeline forward = material.pipeline(CgInstanceKind.OBJECT);
+        CgBlendState blend = forward == null ? null : forward.state().getBlend();
+        return blend != null && blend.enabled() && blend.srcRgb() == CgGL.GL_ONE
+                && blend.dstRgb() == CgGL.GL_ONE_MINUS_SRC_ALPHA;
+    }
+
+    /** Whether every Emissive pass of draw {@code i}'s chain folds into its Forward draw under the scene. */
+    private boolean allFold(int i) {
+        for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+            if (!link.hasEmissivePass()) continue;
+            CgPipeline forward = link.pipeline(CgInstanceKind.OBJECT);
+            if (forward == null || forward.sceneFold() == null) return false;
+        }
+        return true;
+    }
+
+    /**
+     * The volumes ({@link #VOLUME}) into a half-size target, cleared: their light, premultiplied, and the eye depth
+     * each marched to ({@code CG_VOLUME_DEPTH}). Then resolved into this firing ordinal's history: last frame's,
+     * reprojected through {@code cg_PrevViewProj} and held to this frame's neighbourhood, blended with this one. Answers
+     * what the transparent pass lays over the target: the history, or this frame's alone past the last ordinal kept.
+     */
+    @Nullable
+    private CgTexture recordVolumes(CgStageFrame stage, CgRecording recording, CgHostView view) {
+        int w = Math.max(1, (int) (targetWidth * 0.5f)), h = Math.max(1, (int) (targetHeight * 0.5f));
+        if (volumeTarget == null || volumeTarget.getWidth() != w || volumeTarget.getHeight() != h) {
+            volumeTarget = CgGraphTexture.transientTexture("cg_world_volume", new CgTextureDesc(w, h, VOLUME_FORMAT));
+        }
+        stage.constants().write(constantsBlock, 0);
+        halfConstants.read(constantsBlock, 0).resolution(w, h);
+        CgRasterPass pass = recording.raster(volumeTarget, CgLoad.clear(0f, 0f, 0f, 0f), halfConstants, TRANSPARENT_STATE,
+                        CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
+                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_VOLUME);
+        CgChunkBuilder chunks = recording.chunks().begin();
+        volumeKey = Long.MAX_VALUE;
+        for (int i = 0; i < count; i++) {
+            if (phase[i] != VOLUME) continue;
+            volumeKey = Math.min(volumeKey, keys[i]);
+            modelOf(i, view);
+            model.normal(normal);
+            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+                CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
+                if (pipeline == null) continue;
+                CgPipeline folded = volumeFolds && link.hasEmissivePass() ? pipeline.sceneFold() : null;
+                CgPipeline marching = (folded != null ? folded : pipeline).volumeTarget();
+                if (marching == null) continue;
+                if (sets[i] != null) {
+                    drawSet(chunks, marching, bindingOf(link, recording), i);
+                    continue;
+                }
+                chunks.draw(marching, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
+                group(chunks, i);
+                writeInstance(chunks, i);
+            }
+        }
+        pass.add(chunks.end());
+        pass.end();
+
+        int ordinal = stage.ordinal();
+        if (ordinal >= VOLUME_HISTORIES) return volumeTarget.attachment(0);
+        CgGraphTexture history = volumeHistories[ordinal];
+        if (history == null || history.getWidth() != w || history.getHeight() != h) {
+            if (history != null) recording.release(history);
+            history = CgGraphTexture.history("cg_world_volume_history" + ordinal,
+                    new CgTextureDesc(w, h, VOLUME_HISTORY_FORMAT));
+            volumeHistories[ordinal] = history;
+            volumeMade[ordinal] = CgFrameRing.frame();
+        }
+        if (resolve == null) resolve = CgMaterial.newInstance(RESOLVE_SHADER);
+        if (resolveBound != history) {
+            CgTexture now = volumeTarget.attachment(0), depth = volumeTarget.attachment(1), last = history.previous();
+            resolve.applyProperties(b -> b.sampler("_Now", 0, now).sampler("_NowDepth", 1, depth).sampler("_Last", 2, last));
+            resolveBound = history;
+        }
+        boolean fresh = volumeMade[ordinal] == CgFrameRing.frame();
+        resolve.applyProperties(b -> b.set1f("_Fresh", fresh ? 1f : 0f));
+        CgPipeline pipeline = resolve.pipeline(CgInstanceKind.OBJECT);
+        if (pipeline == null) return volumeTarget.attachment(0);
+        CgRasterPass resolving = recording.raster(history, CgLoad.clear(0f, 0f, 0f, 0f), halfConstants, null, CgOrder.SORTED)
+                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target()).timed(GPU_VOLUME_RESOLVE);
+        CgChunkBuilder resolved = recording.chunks().begin();
+        resolved.draw(pipeline, resolve.captureBindings(recording.bindings()), FULLSCREEN);
+        resolved.instance();
+        resolving.add(resolved.end());
+        resolving.end();
+        return history;
+    }
+
+    /** The volumes {@link #recordVolumes} resolved, laid over the target in the transparent pass at the farthest's key. */
+    private void addComposite(CgChunkBuilder chunks, CgRecording recording) {
+        if (composite == null) composite = CgMaterial.newInstance(COMPOSITE_SHADER);
+        if (compositeBound != volumeOut) {
+            CgTexture volumes = volumeOut;
+            composite.applyProperties(b -> b.sampler("_Volumes", 0, volumes));
+            compositeBound = volumes;
+        }
+        CgPipeline pipeline = composite.pipeline(CgInstanceKind.OBJECT);
+        if (pipeline == null) return;
+        chunks.draw(pipeline, composite.captureBindings(recording.bindings()), FULLSCREEN).sortKey(volumeKey);
+        chunks.instance();
     }
 
     /** Whether any link of a material chain has an Emissive pass. */
@@ -1971,7 +2135,7 @@ public final class CgWorldRenderer {
         if (emission != null) pass.attachmentIfTaken(emission);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
-            if (phase[i] == SKIP || phase[i] == HALF) continue;
+            if (phase[i] == SKIP || halfSize(i)) continue;
             if (depthOnlyPass ? phase[i] != FORWARD_AND_PREPASS && !prepassed(i) : (phase[i] == AFTER) != after) continue;
             modelOf(i, view);
             model.normal(normal);
@@ -2001,7 +2165,10 @@ public final class CgWorldRenderer {
                 passDraw(chunks, pipeline, link, recording, i);
             }
         }
-        if (state == TRANSPARENT_STATE && !depthOnlyPass && !after) distortion.addApplies(chunks, recording);
+        if (state == TRANSPARENT_STATE && !depthOnlyPass && !after) {
+            distortion.addApplies(chunks, recording);
+            if (volumeOut != null) addComposite(chunks, recording);
+        }
         pass.add(chunks.end());
         pass.end();
     }

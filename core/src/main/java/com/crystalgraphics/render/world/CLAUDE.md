@@ -82,6 +82,15 @@
   the target, each pixel weighing the four texels round it by bilinear distance and by how near the depth each was
   drawn at is to its own (a joint bilateral upsample), the nearest in depth where none agrees. Only for light that
   adds: the upsample adds. GPU zones `world.half` and `world.halfAdd`.
+- **Volumes** (`recordVolumes`, a half-size draw whose Forward pass blends `ONE ONE_MINUS_SRC_ALPHA`): drawn through
+  `CgPipeline.volumeTarget()` (folded first under the HDR scene, so their glow needs no march of its own) into a
+  transient half-size target of two slots, RGBA16F light and the R16F eye depth each names with `CG_VOLUME_DEPTH`; then
+  `world_volume_resolve.shader` blends it over this firing ordinal's `CgGraphTexture.history` (four kept: a fifth
+  firing composites its frame alone), last frame reprojected through `cg_PrevViewProj` at that depth (the scene's where
+  it names none) and clipped to the 3x3 neighbourhood's spread (Salvi's variance clipping). `CgStageFrame` decides
+  validity; a history's first frame blends nothing. `world_volume_composite.shader` lays it over the target as one draw
+  in the transparent pass at the farthest volume's key, upsampled like the added light. GPU zones `world.volume` and
+  `world.volumeResolve`.
 - **Distortion** (`CgWorldDistortion`, reading the draws through its `Draws` view): every transparent draw of the stage whose chain has a
   Distortion pass draws it into a layer of a transient RGBA16F array of `distortionScale` (0.5) of the stage's size, its
   constants' resolution that size, reading the target's depth through `sceneDepth(unit, from)`, and

@@ -74,6 +74,8 @@ A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available
 | `cg_SunDirection` | `vec4` | `xyz` the direction toward the sun (the moon while it is down), `w` daylight 0..1. Read through `CG_SUN_DIRECTION`, `CG_DAYLIGHT` |
 | `cg_FogColor` | `vec4` | The world's fog colour, `a` 1 when there is fog |
 | `cg_FogParams` | `vec4` | `x` fog start, `y` fog end, in blocks from the eye. Read through `cg_FogAmount` |
+| `cg_PrevViewProj` | `mat4` | This pass's camera-relative points to last frame's clip space, for a temporal effect. Read through `cg_PreviousClip(p)` |
+| `cg_FrameParams` | `vec4` | `x` the host frame's index (0 to 65535), `y` 1 while last frame was one of this view. Read through `CG_FRAME_INDEX`, `CG_HISTORY_VALID` |
 
 **Scene samplers** — auto-bound by the engine before every material draw; do not declare or bind these yourself:
 
@@ -379,7 +381,7 @@ fragColor = _Color * _Bands(1);    // read as always: the row's value where boun
   place in the row, `CgMaterialProperty.rowSlotName(name)`, an `int` the compiler adds; -1 is unbound.
 - **An array** is `color[n]` or `vec4[n]`, n at most 16, its default each element's in order; read as `_Name(i)` in
   every shader, with `rows` or without.
-- The VFX engine is the binder: a layer's `bind` and its colours bound by name ([`VFX.md`](VFX.md) §6, §16).
+- The VFX engine is the binder: a layer's `bind` and its colours bound by name ([`VFX.md`](VFX.md) § *Kits, layers and slots: how a look draws* and § *Writing a layer's shader*).
 
 ### Reading a kernel's buffers
 

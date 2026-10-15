@@ -18,6 +18,8 @@ public class CgPassConstantsTest {
                 .origin(100.5, 64, -2000.25).sun(0f, 2f, 0f, 0.5f).fog(0.1f, 0.2f, 0.3f, 8f, 64f);
         constants.view.set(view);
         constants.projection.set(projection);
+        Matrix4f previous = new Matrix4f().perspective(1f, 1.5f, 0.05f, 100f).translate(0.5f, 0f, -1f);
+        constants.history(previous, 70000, true);
         float[] ours = new float[CgPassConstants.FLOATS];
         constants.write(ours, 0);
 
@@ -28,11 +30,13 @@ public class CgPassConstantsTest {
                 .vec4("cg_Time", 0.1f, 2f, 4f, 6f)
                 .vec2("cg_Resolution", 640, 480)
                 .vec4("cg_CameraPos", 4, 5, 6, 1)
-                .vec4("cg_DepthParams", 1, 0, 0, 0)
+                .vec4("cg_DepthParams", 1, 0, 0, 1)
                 .vec4("cg_WorldOrigin", 100.5f, 64, -2000.25f, 0)
                 .vec4("cg_SunDirection", 0, 1, 0, 0.5f)
                 .vec4("cg_FogColor", 0.1f, 0.2f, 0.3f, 1)
-                .vec4("cg_FogParams", 8, 64, 0, 0);
+                .vec4("cg_FogParams", 8, 64, 0, 0)
+                .mat4("cg_PrevViewProj", previous)
+                .vec4("cg_FrameParams", 70000 & 0xFFFF, 1, 0, 0);
 
         assertEquals(CgPassConstants.FLOATS, CgPassConstants.FORMAT.getFloatCount());
         float[] theirs = new float[CgPassConstants.FLOATS];

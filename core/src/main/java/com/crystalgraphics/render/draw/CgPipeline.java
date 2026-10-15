@@ -67,6 +67,7 @@ public final class CgPipeline {
     private final boolean cover;
     private final boolean fold;
     private final boolean depth;
+    private final boolean volume;
     /** What the program is compiled with: the pass's keywords, and the multi-draw's. */
     private final Set<String> compiled;
     @Nullable
@@ -81,6 +82,8 @@ public final class CgPipeline {
     private CgPipeline folding;
     @Nullable
     private CgPipeline depthOnly;
+    @Nullable
+    private CgPipeline volumed;
     /** {@link #slotWrites()}, for the shader revision {@link #slotsRevision}. */
     private int slots, slotsRevision = -1;
 
@@ -109,8 +112,9 @@ public final class CgPipeline {
         this.cover = (key.flags & COVER) != 0;
         this.fold = (key.flags & FOLD) != 0;
         this.depth = (key.flags & DEPTH) != 0;
+        this.volume = (key.flags & VOLUME) != 0;
         Set<String> passKeywords = takesKeywords(pass) ? keywords : Collections.emptySet();
-        if (multiDraw || overdraw || emission || cover || fold || depth) {
+        if (multiDraw || overdraw || emission || cover || fold || depth || volume) {
             Set<String> more = new TreeSet<>(passKeywords);
             if (multiDraw) more.add(CgMaterialShaderCompiler.MULTI_DRAW);
             if (overdraw) more.add(CgMaterialShaderCompiler.DEBUG_OVERDRAW);
@@ -118,6 +122,7 @@ public final class CgPipeline {
             if (cover) more.add(CgMaterialShaderCompiler.EMISSION_COVER);
             if (fold) more.add(CgMaterialShaderCompiler.SCENE_FOLD);
             if (depth) more.add(CgMaterialShaderCompiler.DEPTH_PREPASS);
+            if (volume) more.add(CgMaterialShaderCompiler.VOLUME_TARGET);
             passKeywords = Collections.unmodifiableSet(more);
         }
         this.compiled = passKeywords;
@@ -138,11 +143,11 @@ public final class CgPipeline {
         return INTERNED.computeIfAbsent(new Key(shader, pass, variant, state, kind, 0), CgPipeline::register);
     }
 
-    private static final int MULTI = 1, OVERDRAW = 2, EMISSION = 4, COVER = 8, FOLD = 16, DEPTH = 32;
+    private static final int MULTI = 1, OVERDRAW = 2, EMISSION = 4, COVER = 8, FOLD = 16, DEPTH = 32, VOLUME = 64;
 
     private int flags() {
         return (multiDraw ? MULTI : 0) | (overdraw ? OVERDRAW : 0) | (emission ? EMISSION : 0) | (cover ? COVER : 0)
-                | (fold ? FOLD : 0) | (depth ? DEPTH : 0);
+                | (fold ? FOLD : 0) | (depth ? DEPTH : 0) | (volume ? VOLUME : 0);
     }
 
     /** The passes a material's keywords reach: the ones a material authors for the frame it draws into. */
@@ -270,6 +275,32 @@ public final class CgPipeline {
     }
 
     /**
+     * This Forward pipeline as the world renderer's volume pass draws it: what its fragment names with
+     * {@code CG_VOLUME_DEPTH(eye)} written at location 1 ({@link CgMaterialShaderCompiler#VOLUME_TARGET}), the depth a
+     * temporal resolve reprojects it by; 0 where it names none. Under its own blend and state, folded or not. Null for
+     * any other pass, or an MRT one. Any thread.
+     *
+     * <pre>{@code
+     * CgPipeline marching = material.pipeline(CgInstanceKind.OBJECT).volumeTarget();
+     * if (marching != null) chunks.draw(marching, bindings, cube);   // into recording.raster(volume, ...).attachment(depth)
+     * }</pre>
+     */
+    @Nullable
+    public CgPipeline volumeTarget() {
+        if (volume) return this;
+        if (pass != CgRenderPassVariant.FORWARD || overdraw || emission || cover || depth) return null;
+        CgPipeline made = volumed;
+        if (made == null) {
+            CgParsedShader parsed = shader.ensureParsed();
+            CgParsedPass own = parsed == null ? null : parsed.getPassByLightMode(pass.lightModeName());
+            if (own == null || own.fragOutput().isMrt()) return null;
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, state, kind, flags() | VOLUME), CgPipeline::register);
+            volumed = made;
+        }
+        return made;
+    }
+
+    /**
      * This Forward pipeline as a pass with an emission attachment draws a surface glowing nothing: it writes black at
      * its colour's alpha at location 1, so its blend covers the glows drawn behind it as it covers their colour, and
      * bloom does not lay them back over it. Null where it covers nothing: it adds ({@code dst} factor ONE), or is not a
@@ -338,7 +369,7 @@ public final class CgPipeline {
         int revision = shader.getRevisionNumber();
         if (slotsRevision == revision) return slots;
         int bits = 1;
-        if (emission) bits |= 2;
+        if (emission || volume) bits |= 2;
         CgParsedShader parsed = shader.ensureParsed();
         CgParsedPass own = parsed == null ? null : parsed.getPassByLightMode(pass.lightModeName());
         if (own != null && own.fragOutput().isMrt()) {

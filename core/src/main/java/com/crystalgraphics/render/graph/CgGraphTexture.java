@@ -19,12 +19,15 @@ import java.util.Arrays;
  * CgGraphTexture view  = CgGraphTexture.requested("preview", desc);               // kept across frames
  * CgGraphTexture here  = CgGraphTexture.current();                                // what is bound when execution begins
  * CgGraphTexture grid  = CgGraphTexture.requested("grid", CgTextureDesc.volume(64, 64, 64, r16f));   // 3D
+ * CgGraphTexture taa   = CgGraphTexture.history("taa", desc);                    // this frame's and the last
  * }</pre>
  *
  * <ul>
  *   <li><b>Transient</b>: storage from a pool for the passes between its first and last use in one frame; its
  *       contents do not survive the frame. Two that never live at once may share storage.</li>
  *   <li><b>Requested</b>: storage made on first use and kept until {@code recording.release(texture)}.</li>
+ *   <li><b>History</b>: two storages kept until released, each raster pass into it drawing the next version
+ *       ({@link #history}).</li>
  *   <li>A kernel binds one as a storage image (a {@code CgDispatch}'s {@code image}) where its format is the image's:
  *       a volume as a {@code 3d} image, any other as a {@code 2d} one. A draw samples a volume as a {@code sampler3D}.</li>
  *   <li>Binding one outside the passes that resolve it binds nothing. {@link #delete()} refuses: the graph owns it.</li>
@@ -33,9 +36,9 @@ import java.util.Arrays;
 public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
     /** Where its storage comes from. */
-    public enum Kind { IMPORTED, CURRENT, TRANSIENT, REQUESTED }
+    public enum Kind { IMPORTED, CURRENT, TRANSIENT, REQUESTED, HISTORY }
 
-    private static final CgGraphTexture CURRENT = new CgGraphTexture(Kind.CURRENT, "current", null, null);
+    private static final CgGraphTexture CURRENT = new CgGraphTexture(Kind.CURRENT, "current", null, null, null);
 
     private final Kind kind;
     @Nullable
@@ -46,21 +49,33 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     /** Render thread only: the storage while resolved. */
     @Nullable
     private CgFrameBuffer framebuffer;
+    /** For {@link #previous()}'s view: the history it reads, else null. */
+    @Nullable
+    private final CgGraphTexture of;
+    @Nullable
+    private CgGraphTexture previous;
+    /** Render thread only: a history's two storages, made at its first use, and which is the newest. */
+    @Nullable
+    private final CgFrameBuffer[] versions;
+    private int newest;
 
     /** Its {@link #level} and {@link #attachment} views, made at first ask. */
     private Level[] levelViews = new Level[0];
     private Attachment[] attachmentViews = new Attachment[0];
 
-    private CgGraphTexture(Kind kind, String name, @Nullable CgTextureDesc desc, @Nullable CgFrameBuffer framebuffer) {
+    private CgGraphTexture(Kind kind, String name, @Nullable CgTextureDesc desc, @Nullable CgFrameBuffer framebuffer,
+                           @Nullable CgGraphTexture of) {
         super(name);
         this.kind = kind;
         this.desc = desc;
         this.framebuffer = framebuffer;
+        this.of = of;
+        this.versions = kind == Kind.HISTORY && of == null ? new CgFrameBuffer[2] : null;
     }
 
     /** A framebuffer someone else owns, used as it is: the host's main target, a retained surface. */
     public static CgGraphTexture imported(String name, CgFrameBuffer framebuffer) {
-        return new CgGraphTexture(Kind.IMPORTED, name, null, framebuffer);
+        return new CgGraphTexture(Kind.IMPORTED, name, null, framebuffer, null);
     }
 
     /** The framebuffer and viewport bound when the frame's execution began, kept across passes into other targets. */
@@ -70,12 +85,75 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
     /** Storage for this frame only, from the pool. */
     public static CgGraphTexture transientTexture(String name, CgTextureDesc desc) {
-        return new CgGraphTexture(Kind.TRANSIENT, name, desc, null);
+        return new CgGraphTexture(Kind.TRANSIENT, name, desc, null, null);
     }
 
     /** Storage made on first use and kept until released. */
     public static CgGraphTexture requested(String name, CgTextureDesc desc) {
-        return new CgGraphTexture(Kind.REQUESTED, name, desc, null);
+        return new CgGraphTexture(Kind.REQUESTED, name, desc, null, null);
+    }
+
+    /**
+     * The newest two versions of a picture drawn every frame, kept until released: what a temporal effect blends its
+     * new frame into. Each raster pass into it draws the next version, which becomes the newest; {@link #previous()}
+     * samples the one before. Sampled itself, it is the newest.
+     *
+     * <pre>{@code
+     * CgGraphTexture smoke = CgGraphTexture.history("smoke", new CgTextureDesc(w, h, rgba16f));
+     * resolve.applyProperties(b -> b.sampler("_Now", 0, current).sampler("_Last", 1, smoke.previous()));
+     * CgRasterPass pass = rec.raster(smoke, CgLoad.load(), constants, null, CgOrder.SORTED);   // draws the next version
+     * // ... the resolve's draw: this frame blended over the last, by a validity the caller keeps ...
+     * pass.end();
+     * composite.applyProperties(b -> b.sampler("_Smoke", 0, smoke));   // a later pass: what that one drew
+     * }</pre>
+     *
+     * <pre>{@code
+     * rec.release(smoke);          // both versions, once nothing draws it: unused for a while, or resized
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Both versions start cleared to 0. Whether the previous one holds a frame of yours is yours to keep: blend by
+     *       a validity false at its first frame and after a cut, and select rather than multiply by it, since a frame of
+     *       another view is no zero.</li>
+     *   <li>Raster passes write it, level 0 and layer 0: never a kernel's image, an upload or a copy.</li>
+     *   <li>A frame executed again draws into it once: its passes are taken once, as a simulation's are.</li>
+     *   <li>Never transient, never aliased, never culled; its storage is made at its first use, a read included.</li>
+     *   <li>A history of one view a firing: a second firing of another camera drawing into it blends the two.</li>
+     * </ul>
+     */
+    public static CgGraphTexture history(String name, CgTextureDesc desc) {
+        if (desc.levels() != 1 || desc.isArray() || desc.isVolume()) {
+            throw new IllegalArgumentException(name + ": a history is one level of a 2D texture");
+        }
+        return new CgGraphTexture(Kind.HISTORY, name, desc, null, null);
+    }
+
+    /** A history's version before its newest: what this frame blends over. Sampled only. */
+    public CgGraphTexture previous() {
+        if (kind != Kind.HISTORY || of != null) throw new IllegalStateException("only a history has a previous version: " + this);
+        if (previous == null) previous = new CgGraphTexture(Kind.HISTORY, name + ".previous", desc, null, this);
+        return previous;
+    }
+
+    /** Whether this is a history's {@link #previous()} view. */
+    public boolean isPreviousVersion() {
+        return of != null;
+    }
+
+    /** The resource its reads and writes are ordered on: a previous view's history. */
+    CgGraphTexture resource() {
+        return of != null ? of : this;
+    }
+
+    /** Render thread: a history's storages, made by the executor at its first use; null for any other. */
+    @Nullable
+    CgFrameBuffer[] versions() {
+        return of != null ? of.versions : versions;
+    }
+
+    /** Render thread: the next version becomes the newest, before a pass draws it. */
+    void advance() {
+        newest = 1 - newest;
     }
 
     /**
@@ -101,7 +179,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
                 || desc.isVolume()) {
             throw new IllegalArgumentException(name + ": a texture beside the current depth is one level of colour alone");
         }
-        CgGraphTexture texture = new CgGraphTexture(Kind.TRANSIENT, name, desc, null);
+        CgGraphTexture texture = new CgGraphTexture(Kind.TRANSIENT, name, desc, null, null);
         texture.currentDepth = true;
         return texture;
     }
@@ -206,9 +284,11 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         return kind != Kind.TRANSIENT;
     }
 
-    /** Render thread: its storage now, or null outside the passes that resolve it. */
+    /** Render thread: its storage now, or null outside the passes that resolve it: a history's newest, or its previous. */
     @Nullable
     public CgFrameBuffer framebuffer() {
+        if (of != null) return of.versions[1 - of.newest];
+        if (versions != null) return versions[newest];
         return framebuffer;
     }
 
@@ -218,7 +298,8 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
     @Nullable
     private CgTexture color() {
-        return framebuffer == null ? null : framebuffer.getColorTexture(0);
+        CgFrameBuffer storage = framebuffer();
+        return storage == null ? null : storage.getColorTexture(0);
     }
 
     @Override
@@ -388,14 +469,14 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
         @Nullable
         private CgTexture color() {
-            CgFrameBuffer framebuffer = texture.framebuffer;
+            CgFrameBuffer framebuffer = texture.framebuffer();
             return framebuffer == null ? null : framebuffer.getColorTexture(slot);
         }
 
         /** Its texture to bind; throws where the storage has none, rather than leave the unit as it was. */
         @Nullable
         private CgTexture bound() {
-            if (texture.framebuffer == null) return null;
+            if (texture.framebuffer() == null) return null;
             CgTexture color = color();
             if (color == null) throw new IllegalStateException(this + ": its storage has no colour texture in that slot");
             return color;

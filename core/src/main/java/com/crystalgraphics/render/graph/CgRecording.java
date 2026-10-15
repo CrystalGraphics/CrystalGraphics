@@ -495,8 +495,9 @@ public final class CgRecording {
     /** Frees a {@linkplain CgGraphTexture#requested requested} texture's storage once everything before it read it. */
     public void release(CgGraphTexture requested) {
         requireOpen();
-        if (requested.kind() != CgGraphTexture.Kind.REQUESTED) {
-            throw new IllegalArgumentException("only a requested texture is released: " + requested);
+        if (requested.kind() != CgGraphTexture.Kind.REQUESTED
+                && (requested.kind() != CgGraphTexture.Kind.HISTORY || requested.isPreviousVersion())) {
+            throw new IllegalArgumentException("only a requested texture or a history is released: " + requested);
         }
         CgPass.Release pass = new CgPass.Release(requested);
         add(pass);
@@ -694,7 +695,8 @@ public final class CgRecording {
 
     /** The slot of what {@code view} is ordered on: a previous version's history. */
     private int slot(CgGraphResource view) {
-        CgGraphResource resource = view instanceof CgGraphBuffer buffer ? buffer.resource() : view;
+        CgGraphResource resource = view instanceof CgGraphBuffer buffer ? buffer.resource()
+                : view instanceof CgGraphTexture texture ? texture.resource() : view;
         Integer slot = slots.get(resource);
         if (slot != null) return slot;
         int s = resources.size();

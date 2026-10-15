@@ -460,6 +460,7 @@ public final class CgExecutor {
             return frame.outlives[s];
         }
         if (pass instanceof CgComputePass compute) return frame.outlives[s] && !compute.runsAgain();
+        if (pass.target != null && pass.target.kind() == CgGraphTexture.Kind.HISTORY) return true;   // one version a frame
         return keepRequested && pass.target != null && pass.target.kind() == CgGraphTexture.Kind.REQUESTED;
     }
 
@@ -540,13 +541,16 @@ public final class CgExecutor {
                     else compile.request.fail(String.valueOf(compile.pipeline.shader().lastCompileError()));
                 }
             } else if (pass instanceof CgPass.Release) {
-                CgFrameBuffer storage = pass.target.framebuffer();
-                if (storage != null) {
-                    CgTexture color = storage.getColorTexture(0);
-                    if (color != null) HAZARDS.forget(CgHazards.texture(color.getId()));
-                    storage.delete();
+                CgFrameBuffer[] versions = pass.target.versions();
+                if (versions != null) {
+                    for (int v = 0; v < versions.length; v++) {
+                        free(versions[v]);
+                        versions[v] = null;
+                    }
+                } else {
+                    free(pass.target.framebuffer());
+                    pass.target.resolve(null);
                 }
-                pass.target.resolve(null);
             }
         } catch (RuntimeException failure) {
             if (pass.request == null) throw failure;
@@ -1680,6 +1684,11 @@ public final class CgExecutor {
             }
             return;
         }
+        if (target.kind() == CgGraphTexture.Kind.HISTORY) {
+            if (target.isPreviousVersion()) throw new IllegalStateException(target + " is sampled only: draw into its history");
+            storage(target);
+            target.advance();
+        }
         CgFrameBuffer storage = storage(target);
         if (layer != 0) storage.bindLayer(layer);
         else storage.bindLevel(level);
@@ -1702,8 +1711,26 @@ public final class CgExecutor {
         }
     }
 
-    /** A texture's storage now: a requested one's is made on first use. */
+    /** A released storage's framebuffer deleted and its texture forgotten by the hazards. */
+    private static void free(@Nullable CgFrameBuffer storage) {
+        if (storage == null) return;
+        CgTexture color = storage.getColorTexture(0);
+        if (color != null) HAZARDS.forget(CgHazards.texture(color.getId()));
+        storage.delete();
+    }
+
+    /** A texture's storage now: a requested one's is made on first use, a history's both versions, cleared. */
     private static CgFrameBuffer storage(CgGraphTexture texture) {
+        CgFrameBuffer[] versions = texture.versions();
+        if (versions != null && versions[0] == null) {
+            CgTrace.add(CgChannels.GL, "graph.history.made", 1);
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, MAKE_STORAGE)) {
+                for (int v = 0; v < 2; v++) {
+                    versions[v] = CgTexturePool.create("cg_graph_" + texture.resource().name() + v, texture.desc());
+                    versions[v].clearColor(0f, 0f, 0f, 0f);
+                }
+            }
+        }
         CgFrameBuffer storage = texture.framebuffer();
         if (storage == null && texture.kind() == CgGraphTexture.Kind.REQUESTED) {
             // At a requested texture's first use; made again later, the picture it held was lost.

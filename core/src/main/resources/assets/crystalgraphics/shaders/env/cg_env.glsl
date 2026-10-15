@@ -16,6 +16,8 @@ layout(std140) uniform CgFrameBlock {
     vec4 cg_SunDirection; // xyz toward the sun, or the moon while the sun is down; w the daylight, 0 to 1
     vec4 cg_FogColor;     // the host's fog colour; a 1 while there is fog, 0 for none
     vec4 cg_FogParams;    // x where the fog starts, y where it is whole, in blocks from the camera
+    mat4 cg_PrevViewProj; // this pass's camera-relative points to last frame's clip space: cg_PreviousClip
+    vec4 cg_FrameParams;  // x the host frame's index, 0 to 65535; y 1 while last frame is one of this view
 };
 
 // -- Per-Instance Object Data (SSBO path: GL 4.3+/ARB) ----------------------
@@ -192,6 +194,15 @@ float cg_SceneCoverage(float a) {
 // -- Sun and fog --------------------------------------------------------------
 #define CG_SUN_DIRECTION (cg_SunDirection.xyz)
 #define CG_DAYLIGHT      (cg_SunDirection.w)
+
+// -- The last frame -----------------------------------------------------------
+// What a temporal effect reprojects by (CgPassConstants.history): the host frame's index, whether last frame was one
+// of this view, and where a camera-relative point was in last frame's clip space.
+#define CG_FRAME_INDEX   int(cg_FrameParams.x)
+#define CG_HISTORY_VALID (cg_FrameParams.y > 0.5)
+vec4 cg_PreviousClip(vec3 worldPos) {
+    return cg_PrevViewProj * vec4(worldPos, 1.0);
+}
 
 // How much of the host's fog lies between the camera and a point this far from it: 0 to 1, 0 with no fog.
 float cg_FogAmount(float distance) {

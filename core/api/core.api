@@ -3852,6 +3852,7 @@ com/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler
   field public,static,final EMISSION_TARGET Ljava/lang/String;
   field public,static,final MULTI_DRAW Ljava/lang/String;
   field public,static,final SCENE_FOLD Ljava/lang/String;
+  field public,static,final VOLUME_TARGET Ljava/lang/String;
   method public,static compile (Lcom/crystalgraphics/gl/material/parse/CgParsedShader;Lcom/crystalgraphics/gl/material/parse/CgParsedPass;Ljava/util/List;Lcom/crystalgraphics/gl/buffer/shader/CgUniformBuffer;Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompileConfig;)Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompiledSource;
   method public,static compile (Lcom/crystalgraphics/gl/material/parse/CgParsedShader;Lcom/crystalgraphics/platform/gl/CgCapabilities$ShaderBufferPath;Ljava/util/List;Lcom/crystalgraphics/gl/buffer/shader/CgUniformBuffer;)Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompiledSource;
   method public,static compile (Lcom/crystalgraphics/gl/material/parse/CgParsedShader;Ljava/util/List;)Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompiledSource;
@@ -5514,6 +5515,7 @@ com/crystalgraphics/render/draw/CgPassConstants
   method public defaultSun ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public depth (ZZ)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public fog (FFFFF)Lcom/crystalgraphics/render/draw/CgPassConstants;
+  method public history (Lorg/joml/Matrix4fc;IZ)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public linearScene (Z)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public noFog ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public origin (DDD)Lcom/crystalgraphics/render/draw/CgPassConstants;
@@ -5551,6 +5553,7 @@ com/crystalgraphics/render/draw/CgPipeline
   method public state ()Lcom/crystalgraphics/api/state/CgRenderState;
   method public toString ()Ljava/lang/String;
   method public vertexBase (I)V
+  method public volumeTarget ()Lcom/crystalgraphics/render/draw/CgPipeline;
   method public withState (Lcom/crystalgraphics/api/state/CgRenderState;)Lcom/crystalgraphics/render/draw/CgPipeline;
   method public,static byId (I)Lcom/crystalgraphics/render/draw/CgPipeline;
   method public,static of (Lcom/crystalgraphics/gl/material/CgMaterialShader;Lcom/crystalgraphics/api/material/CgRenderPassVariant;Ljava/util/Set;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/render/draw/CgInstanceKind;)Lcom/crystalgraphics/render/draw/CgPipeline;
@@ -5726,12 +5729,15 @@ com/crystalgraphics/render/graph/CgGraphTexture
   method public getWidth ()I
   method public isArray ()Z
   method public isDeleted ()Z
+  method public isPreviousVersion ()Z
   method public isVolume ()Z
   method public kind ()Lcom/crystalgraphics/render/graph/CgGraphTexture$Kind;
   method public level (I)Lcom/crystalgraphics/render/graph/CgGraphTexture$Level;
+  method public previous ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public toString ()Ljava/lang/String;
   method public,static besideCurrentDepth (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgTextureDesc;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public,static current ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public,static history (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgTextureDesc;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public,static imported (Ljava/lang/String;Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public,static requested (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgTextureDesc;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public,static takesCurrentDepth (I)Z
@@ -5755,6 +5761,7 @@ com/crystalgraphics/render/graph/CgGraphTexture$Kind
   access public,final,enum
   extends java/lang/Enum
   field public,static,final CURRENT Lcom/crystalgraphics/render/graph/CgGraphTexture$Kind;
+  field public,static,final HISTORY Lcom/crystalgraphics/render/graph/CgGraphTexture$Kind;
   field public,static,final IMPORTED Lcom/crystalgraphics/render/graph/CgGraphTexture$Kind;
   field public,static,final REQUESTED Lcom/crystalgraphics/render/graph/CgGraphTexture$Kind;
   field public,static,final TRANSIENT Lcom/crystalgraphics/render/graph/CgGraphTexture$Kind;
@@ -6465,7 +6472,9 @@ com/crystalgraphics/render/stage/CgStageFrame
   method public constants ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public defaults (Lcom/crystalgraphics/render/draw/CgPassConstants;)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public depthPyramid ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public historyValid ()Z
   method public host ()Lcom/crystalgraphics/render/stage/CgHostFrame;
+  method public ordinal ()I
   method public pass (Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/render/draw/CgOrder;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public recording ()Lcom/crystalgraphics/render/graph/CgRecording;
   method public resources ()Lcom/crystalgraphics/render/stage/CgFrameResources;
