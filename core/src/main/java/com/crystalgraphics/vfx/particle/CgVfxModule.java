@@ -684,7 +684,8 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * <ul>
      *   <li>Lands where the gas holds tiles: the engine asks for tiles round each instance feeding it, as far as its
      *       particles reach (16 blocks at most).</li>
-     *   <li>Deposits are summed in cells four of the gas's own a side, so a single particle's mark is soft.</li>
+     *   <li>A deposit is spread over the cells round the particle by distance, so its mark is a soft cloud about a
+     *       block across at a 0.25 cell.</li>
      *   <li>At most {@code CgVfxGasAtlas.DEPOSITS} particles pour a frame, every instance's together; the rest pour nothing.</li>
      * </ul>
      */
@@ -723,7 +724,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      *
      * <ul>
      *   <li>The grid is the instance's ({@code CgVfxEmitterInstance.inGrid}); with none, it does nothing.</li>
-     *   <li>A splat lands in its nearest cell; the grid's spread smooths them ({@code CgVfxGrid3D.channel}).</li>
+     *   <li>A splat is spread over the eight cells about it by distance; one outside the grid is lost.</li>
      *   <li>At most {@code CgVfxGridAtlas.SPLATS} particles splat a frame, every instance's together; the rest splat
      *       nothing.</li>
      * </ul>

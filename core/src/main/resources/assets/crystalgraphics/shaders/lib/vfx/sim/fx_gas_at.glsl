@@ -22,7 +22,7 @@ struct FxGas {
 vec4 fx_gas_flow(FxGas g, vec3 p) {
     if (!g.live) return vec4(0.0);
     vec3 c = (p + g.offset) / g.cell;
-    int slot = fx_gas_slot(_GasPages, g.gas, c);
+    int slot = fx_sparse_slot(_GasPages, g.gas, c);
     if (slot < 0) return vec4(0.0);
-    return vec4(textureLod(_GasVel, fx_gas_pool_uvw(_GasVel, slot, c), 0.0).xyz, 1.0);
+    return vec4(textureLod(_GasVel, fx_sparse_pool_uvw(_GasVel, slot, c), 0.0).xyz, 1.0);
 }

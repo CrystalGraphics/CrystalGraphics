@@ -71,7 +71,7 @@ Pass {
         t.x = max(t.x, 0.0);
         t.y = min(t.y, FX_SCENE_DISTANCE(ray));
         if (t.y <= t.x) discard;
-        float dt = max((t.y - t.x) / _Steps, 0.5 * cell), tile = float(FX_GAS_TILE) * cell;
+        float dt = max((t.y - t.x) / _Steps, 0.5 * cell), tile = float(FX_SPARSE_TILE) * cell;
         // Interleaved gradient noise (Jimenez, 2014): each pixel's steps start apart, so banding becomes grain.
         float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
 #ifdef CG_VOLUME_TARGET
@@ -93,21 +93,21 @@ Pass {
         for (int k = 0; k < 512 && at < t.y; k++) {
             vec3 p = eye + ray * at;
             vec3 c = (p - grid) / cell;
-            ivec3 held = fx_gas_tile(c);
-            int slot = fx_gas_slot_of(_GasPages, gas, held);
+            ivec3 held = fx_sparse_tile(c);
+            int slot = fx_sparse_slot_of(_GasPages, gas, held);
             if (slot < 0) {
                 // Still air: on to the first step past where the ray leaves this tile, keeping the steps' phase.
                 vec3 from = grid + vec3(held) * tile;
                 at += max(ceil((fx_gas_box(eye, ray, from, from + tile).y - at) / dt), 1.0) * dt;
                 continue;
             }
-            vec3 uvw = fx_gas_pool_uvw(_GasShade, slot, c);
+            vec3 uvw = fx_sparse_pool_uvw(_GasShade, slot, c);
             vec4 s = textureLod(_GasShade, uvw, 0.0);
             if (s.x < 1.0e-4 && s.y < 1.0e-3) {
                 at += dt;
                 continue;
             }
-            s = fx_gas_smooth(_GasShade, slot, c);
+            s = fx_sparse_smooth(_GasShade, slot, c);
             vec4 f = textureLod(_GasFlow, uvw, 0.0);
             float density = s.x;
             // Only an edge thin enough to see through is worn: a body's inside is hidden anyway.

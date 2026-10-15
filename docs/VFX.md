@@ -1328,8 +1328,10 @@ How the four of `CgVfxGasDemo` (`vfx-gas`) are set up:
 - **At most four gases at once** (`CgVfxGasAtlas.CAPACITY`); one asking past that waits, drawing nothing.
 - **Every gas shares one pool of tiles**: 1024 at Ultra, 512 at High, 256 at Medium, 128 at Low
   (`CgVfxGasAtlas.tiles`). A tile is given out where gas arrives, on the face the GPU found it near a frame or two
-  before, and taken back half a second after it empties. A gas finding the pool full grows no further, and what flows
-  past its last tiles is lost there; a coarser `CELL` spends fewer tiles on the same smoke. The counters
+  before, and taken back half a second after it empties. Once the pool is full each gas alive is kept an even share
+  of it: one under its share takes back the least needed tile of the gas furthest over, and one at its share grows no
+  further, what flows past its last tiles lost there; a coarser `CELL` spends fewer tiles on the same smoke. The
+  pool is `CgVfxTiles`, which the grids hold one of too. The counters
   `vfx.gas.tiles` and `vfx.gas.pool-full` say how full it runs. Changing tier starts every gas again empty.
 - **It steps 60 times a second on its effect's clock**, so pause and slow motion reach it, and an effect left unticked
   for two seconds gives its tiles back. Under the GPU's budget (`CgVfxGasAtlas.GPU_BUDGET`, 2 ms) its pressure solve
@@ -1341,8 +1343,8 @@ How the four of `CgVfxGasDemo` (`vfx-gas`) are set up:
 ### Particles and entities in it
 
 **Particles ride it, and pour into it.** `CgVfxModule.Flow` draws their velocity toward the gas's where they are;
-`CgVfxModule.Feed` makes each pour density and heat a second where it is, summed in cells four of the gas's a side and
-taken at the gas's next step. The instance names its gas:
+`CgVfxModule.Feed` makes each pour density and heat a second where it is, spread over the cells round it by distance
+and taken at the gas's next step. The instance names its gas:
 
 ```java
 embers = new CgVfxEmitterInstance(look().emitter("embers"), seed).inGas(smoke);   // .module(new Flow(2.5f))
@@ -1368,6 +1370,9 @@ one every material reads, so a host with no sky has the default's. It skips the 
   § *CgWorldRenderer*): each frame its march starts elsewhere, and the frames average out its grain. `H` in the
   harness draws it at full size, frame by frame.
 - Its colours are the look's `SMOKE_COLOR` and `FIRE`, which `_Smoke` and `_Fire` bind by name.
+- **What is inside it is hidden by it**: the volumes draw first, and every particle, trail and glow drawn over them is
+  dimmed by the smoke between it and the eye (the world's media, [`SHADERS.md`](SHADERS.md) § *Dimmed by the smoke
+  in front*), so a firefly deep in a cloud fades as it goes. `EXTINCTION` sets how fast.
 - A shader of your own for it: [§20](#a-volumes-shader).
 
 ---
@@ -2063,6 +2068,8 @@ Properties {
   ```
 
 - **Hide it behind the scene** from `cg_DepthBuffer` with `DepthTest ALWAYS`: its half-size target has no depth.
+- **What it hides from the layers drawn over it** comes from the gas's density through the world's media, not from
+  this shader: naming `CG_VOLUME_DEPTH` keeps it from being dimmed by itself.
 - `vfx/gas/smoke.shader` is the whole of one, from the box's back faces through the page table.
 
 ---

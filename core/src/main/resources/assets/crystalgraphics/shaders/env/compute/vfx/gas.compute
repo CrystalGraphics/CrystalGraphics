@@ -9,7 +9,8 @@
 // projection with free slip at the world's solid octants; then density, temperature, fuel and flame carried by
 // MacCormack with the eight-texel limiter (Selle et al. 2008), and fuel burnt into flame, heat and smoke; a smoke's
 // density held to its cells (CgVfxSmoke), less the holes carved in it. Entities in a gas push it (Forces), and what
-// particles pour into it (CgVfxModule.Feed) Deposit sums into cells of four, which a frame's first Settle adds.
+// particles pour into it (CgVfxModule.Feed) Deposit spreads over nodes two cells apart, which a frame's first Settle
+// reads back between them.
 // First, Solids, once a frame: which cells are blocks or below the floor, so a step reads one texel for each.
 // Last, Shade, once a frame: what the renderer reads, in two pools of tiles with two cells of apron round each, so a
 // cubic read inside a tile never needs its neighbour: SHADE (density, flame, the transmittance toward the sun
@@ -77,7 +78,7 @@ Buffers {
     OCCUPIED ("Each slot's eight flags: gas in it, then gas near its -x, +x, -y, +y, -z, +z face", uint,  readwrite)
     DEPOSITS      ("What particles poured: a gas's cell and the gas, then density and heat", FxDeposit, readonly)
     DEPOSIT_COUNT ("How many DEPOSITS",                                                        uint,      readonly)
-    DEPOSIT_GRID  ("DEPOSITS summed per slot, in cells of four: density then heat",           float,     readwrite)
+    DEPOSIT_GRID  ("DEPOSITS summed per slot, at nodes two cells apart: density then heat",   float,     readwrite)
     ENTITY_ROWS   ("Each entity in a gas: its gas and low corner in cells; high corner; velocity", vec4, readonly)
 }
 
@@ -172,6 +173,32 @@ int g_slot_near(G g, ivec3 c) {
 
 ivec3 g_texel(int slot, ivec3 c) {
     return g_pool_tile(slot) * G_TILE + (c & (G_TILE - 1));
+}
+
+// Where node n (two cells apart, its middle at cell 2n + 1) of gas b keeps its density and heat in DEPOSIT_GRID; -1
+// where the gas has no tile there.
+int g_deposit_at(int b, ivec3 n) {
+    int slot = g_slot(b, n * 2);
+    if (slot < 0) return -1;
+    ivec3 l = n & 7;
+    return (slot * 512 + l.x + 8 * (l.y + 8 * l.z)) * 2;
+}
+
+// What particles poured round cell c, read between the eight nodes about it: a deposit's cloud of cells, never a
+// block of them.
+vec2 g_deposit(int b, ivec3 c) {
+    vec3 q = vec3(c) * 0.5 - 0.25;
+    ivec3 base = ivec3(floor(q));
+    vec3 f = q - vec3(base);
+    vec2 sum = vec2(0.0);
+    for (int k = 0; k < 8; k++) {
+        ivec3 o = ivec3(k & 1, (k >> 1) & 1, k >> 2);
+        int at = g_deposit_at(b, base + o);
+        if (at < 0) continue;
+        vec3 w = mix(1.0 - f, f, vec3(o));
+        sum += vec2(DEPOSIT_GRID(at), DEPOSIT_GRID(at + 1)) * (w.x * w.y * w.z);
+    }
+    return sum;
 }
 
 // v at cell c: nothing where the gas has no tile; old state, the last step's, reads nothing in a fresh tile.
@@ -512,12 +539,7 @@ void Settle() {
         }
     }
     // What particles poured since the last frame's step, on this frame's first.
-    if (_Deposit != 0) {
-        ivec3 l = (c & (G_TILE - 1)) / 4;
-        int d = (g.slot * 64 + l.x + 4 * (l.y + 4 * l.z)) * 2;
-        s.x += DEPOSIT_GRID(d);
-        s.y += DEPOSIT_GRID(d + 1);
-    }
+    if (_Deposit != 0) s.xy += g_deposit(b, c);
     // Row 7: a smoke's middle in its cells' window, the density its cells hold (0: no smoke); row 8: the cost revealed,
     // how much is left, how fast density is pulled to its cells. Inside its revealed cells density is pulled to theirs,
     // less what its carves (kind 3: an end, how open, radius, the other end) hold open; outside them it drains, so its
@@ -613,18 +635,25 @@ void Shade() {
     FLOW_OUT_WRITE(vec4(solid ? vec3(0.0) : g_get(_Vel, g, c, true).xyz, s.y));
 }
 
-// A particle's deposit added into its cell of four in its gas's tile (CgVfxModule.Feed); none where the gas has no tile.
+// A particle's deposit (CgVfxModule.Feed) spread over the eight nodes about it by distance (cloud-in-cell), none where
+// the gas has no tile. Eight times its amount, since each node is read by eight cells' worth: what it pours in all is
+// what a block of 4x4x4 cells took when each took the whole of it.
 void Deposit() {
     if (uint(CG_ELEMENT) >= min(DEPOSIT_COUNT(0), uint(DEPOSITS_LENGTH()))) return;
     FxDeposit d = DEPOSITS(CG_ELEMENT);
     int b = int(d.cell.w + 0.5);
-    ivec3 c = ivec3(floor(d.cell.xyz));
-    int slot = g_slot(b, c);
-    if (slot < 0) return;
-    ivec3 l = (c & (G_TILE - 1)) / 4;
-    int at = (slot * 64 + l.x + 4 * (l.y + 4 * l.z)) * 2;
-    DEPOSIT_GRID_ADD(at, d.amounts.x);
-    DEPOSIT_GRID_ADD(at + 1, d.amounts.y);
+    vec3 q = d.cell.xyz * 0.5 - 0.5;
+    ivec3 base = ivec3(floor(q));
+    vec3 f = q - vec3(base);
+    for (int k = 0; k < 8; k++) {
+        ivec3 o = ivec3(k & 1, (k >> 1) & 1, k >> 2);
+        int at = g_deposit_at(b, base + o);
+        if (at < 0) continue;
+        vec3 w = mix(1.0 - f, f, vec3(o));
+        float share = 8.0 * w.x * w.y * w.z;
+        DEPOSIT_GRID_ADD(at, d.amounts.x * share);
+        DEPOSIT_GRID_ADD(at + 1, d.amounts.y * share);
+    }
 }
 
 void Occupancy() {

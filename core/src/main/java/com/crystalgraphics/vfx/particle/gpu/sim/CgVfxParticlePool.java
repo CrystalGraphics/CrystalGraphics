@@ -1072,13 +1072,13 @@ public final class CgVfxParticlePool {
         if (shape.usesGrid()) {
             words.target(instances, at + shape.gridAt() * 4, CgVfxShape.GRID_LANES, who + "'s grid");
             CgVfxGrid3D grid = view.grid();
-            if (grid == null || grid.index() < 0 || grid.cells() == 0 || CgVfxGridAtlas.get().view() == null) {
-                words.vec4(0f, 0f, 0f, -1f).vec4(1f, 1f, 0f, 0f);
+            if (grid == null || grid.index() < 0 || grid.cellSize() <= 0f || CgVfxGridAtlas.get().view() == null) {
+                words.vec4(0f, 0f, 0f, -1f).vec4(1f, 0f, 0f, 0f);
             } else {
-                // The instance's origin from its grid's low corner, in blocks.
-                float half = grid.cells() * grid.cellSize() * 0.5f;
+                // The instance's origin from its grid's low corner, in blocks: its middle less half its span.
+                float half = CgVfxGridAtlas.SPAN * 0.5f * grid.cellSize();
                 words.vec4((float) (ox - grid.x()) + half, (float) (oy - grid.y()) + half, (float) (oz - grid.z()) + half,
-                        grid.index()).vec4(grid.cellSize(), grid.cells(), 0f, 0f);
+                        grid.index()).vec4(grid.cellSize(), 0f, 0f, 0f);
             }
             words.finish("its grid lanes");
         }

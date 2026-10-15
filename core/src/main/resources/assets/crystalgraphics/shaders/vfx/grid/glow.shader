@@ -1,10 +1,11 @@
-// A grid's channel (CgVfxGrid3D) as light, marched through the box it spans (CgVfxFrame.grid): each step's value glows
-// from _Glow where it is faint to _Hot where it reaches _HotAt, and dims what is behind it by _Absorb a unit, so a
-// tangle of trails reads as a body. Blooming, through its codeless Emissive pass. Drawn at half size as a volume, each
-// frame's march starts elsewhere and names the depth its light came from, so the resolve blends a frame's steps with the
-// last ones'.
-// CG_OBJECT_TO_WORLD: the box, a unit cube scaled. CG_OBJECT_CUSTOM0: the grid's brick, its cell in blocks, its cells a
-// side, the layer's size (a brightness scale).
+// A grid's channel (CgVfxGrid3D) as light, marched through the box round its tiles (CgVfxFrame.grid), a tile it has not
+// skipped in one step: each step's value glows from _Glow where it is faint to _Hot where it reaches _HotAt, and dims
+// what is behind it by _Absorb a unit, so a tangle of trails reads as a body. Its faint reaches are worn into filaments
+// by noise finer than its cells, as the smoke's edges are, where a layer asks (_Detail). Blooming, through its codeless
+// Emissive pass. Drawn at half size as a volume, each frame's march starts elsewhere and names the depth its light came
+// from, so the resolve blends a frame's steps with the last ones'.
+// CG_OBJECT_TO_WORLD: the box, a unit cube scaled. CG_OBJECT_CUSTOM0: the grid's place in the atlas, its cell in blocks,
+// 0, the layer's size (a brightness scale); CG_OBJECT_CUSTOM1.xyz: its grid's low corner from the box's middle.
 #type spatial
 #pragma cg_use rows
 #include "crystalgraphics:shaders/lib/color.glsl"
@@ -18,15 +19,20 @@ Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "ColorSpace" = "Linear"
 Queue = "Transparent"
 
 Properties {
-    _GridView  ("The grid atlas's channels (CgVfxGridAtlas)", sampler3D) = "black"
-    _GridLight ("Its light: unread here",                     sampler3D) = "white"
-    _Glow      ("Its light where the channel is faint",       color)     = (0.16, 0.42, 1.0, 1)
-    _Hot       ("Its light where it is strong",               color)     = (0.75, 0.95, 1.0, 1)
-    _Channel   ("Which channel it draws: 0 to 3",             float)     = 0.0
-    _HotAt     ("The value it is hot at",                     float)     = 1.0
-    _Gain      ("Its light a unit a block",                   float)     = 1.0
-    _Absorb    ("What a unit dims behind it, a block",        float)     = 0.15
-    _Steps     ("Steps across the box, at most; never under half a cell", float) = 96.0
+    _GridView   ("The grid atlas's channels (CgVfxGridAtlas)", sampler3D) = "black"
+    _GridLight  ("Its light: unread here",                     sampler3D) = "white"
+    _GridPages  ("Each grid's page table",                     sampler3D) = "black"
+    _Glow       ("Its light where the channel is faint",       color)     = (0.16, 0.42, 1.0, 1)
+    _Hot        ("Its light where it is strong",               color)     = (0.75, 0.95, 1.0, 1)
+    _Channel    ("Which channel it draws: 0 to 3",             float)     = 0.0
+    _HotAt      ("The value it is hot at",                     float)     = 1.0
+    _Gain       ("Its light a unit a block",                   float)     = 1.0
+    _Absorb     ("What a unit dims behind it, a block",        float)     = 0.15
+    _Noise      ("Gradient noise",                             sampler3D) = "cg_noise"
+    _Voronoi    ("Voronoi",                                    sampler3D) = "cg_voronoi"
+    _Detail     ("Its faint reaches worn into filaments, 0 to 1", float)  = 0.0
+    _DetailSize ("That noise's size, blocks",                  float)     = 1.0
+    _Steps      ("Steps across the box, at most; never under half a cell", float) = 96.0
 }
 
 struct v2f { vec3 world; };
@@ -48,15 +54,17 @@ Pass {
 
     void fragment(in v2f i, out vec4 fragColor) {
         vec3 eye = CG_CAMERA_WORLD_POS, ray = FX_PIXEL_RAY;
-        int brick = int(CG_OBJECT_CUSTOM0.x + 0.5);
-        float cell = CG_OBJECT_CUSTOM0.y, cells = CG_OBJECT_CUSTOM0.z, scale = CG_OBJECT_CUSTOM0.w;
+        int grid = int(CG_OBJECT_CUSTOM0.x + 0.5);
+        float cell = CG_OBJECT_CUSTOM0.y, scale = CG_OBJECT_CUSTOM0.w;
         vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
-        vec3 lo = centre - vec3(0.5 * cells * cell);
-        vec2 t = fx_gas_box(eye, ray, lo, lo + vec3(cells * cell));
+        vec3 size = vec3(length(CG_OBJECT_TO_WORLD[0].xyz), length(CG_OBJECT_TO_WORLD[1].xyz),
+                length(CG_OBJECT_TO_WORLD[2].xyz));
+        vec3 lo = centre - 0.5 * size, corner = centre + CG_OBJECT_CUSTOM1.xyz;
+        vec2 t = fx_gas_box(eye, ray, lo, lo + size);
         t.x = max(t.x, 0.0);
         t.y = min(t.y, FX_SCENE_DISTANCE(ray));
         if (t.y <= t.x) discard;
-        float dt = max((t.y - t.x) / _Steps, 0.5 * cell);
+        float dt = max((t.y - t.x) / _Steps, 0.5 * cell), tile = float(FX_SPARSE_TILE) * cell;
         float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
 #ifdef CG_VOLUME_TARGET
         jitter = fract(jitter + 0.618034 * float(CG_FRAME_INDEX % 64));
@@ -64,14 +72,29 @@ Pass {
         int ch = int(_Channel + 0.5);
         vec4 mask = vec4(ch == 0 ? 1.0 : 0.0, ch == 1 ? 1.0 : 0.0, ch == 2 ? 1.0 : 0.0, ch == 3 ? 1.0 : 0.0);
         vec3 faint = srgb_to_linear(_Glow.rgb) * _Glow.a, hot = srgb_to_linear(_Hot.rgb) * _Hot.a;
+        float hotAt = max(_HotAt, 1.0e-3);
         float transmit = 1.0, weight = 0.0, depth = 0.0;
         vec3 emit = vec3(0.0);
         float at = t.x + jitter * dt;
-        for (int k = 0; k < 256 && at < t.y; k++) {
+        for (int k = 0; k < 512 && at < t.y; k++) {
             vec3 p = eye + ray * at;
-            float v = max(dot(textureLod(_GridView, fx_grid_uvw(_GridView, brick, cells, (p - lo) / cell), 0.0), mask), 0.0);
+            vec3 c = (p - corner) / cell;
+            ivec3 held = fx_sparse_tile(c);
+            int slot = fx_sparse_slot_of(_GridPages, grid, held);
+            if (slot < 0) {
+                // Nothing here: on to the first step past where the ray leaves this tile, keeping the steps' phase.
+                vec3 from = corner + vec3(held) * tile;
+                at += max(ceil((fx_gas_box(eye, ray, from, from + tile).y - at) / dt), 1.0) * dt;
+                continue;
+            }
+            float v = max(dot(textureLod(_GridView, fx_sparse_pool_uvw(_GridView, slot, c), 0.0), mask), 0.0);
+            if (v > 1.0e-4 && _Detail > 0.0 && v < 2.0 * hotAt) {
+                // Eroded as a share of its hot value: what is faint frays, what is hot keeps itself.
+                v = hotAt * fx_gas_erode(v / hotAt, fx_gas_carried_detail(_Noise, _Voronoi,
+                        (p - corner) / max(_DetailSize, 0.05), vec3(0.0), FX_AGE, 0.0), _Detail);
+            }
             if (v > 1.0e-4) {
-                vec3 colour = mix(faint, hot, smoothstep(0.0, max(_HotAt, 1.0e-3), v));
+                vec3 colour = mix(faint, hot, smoothstep(0.0, hotAt, v));
                 vec3 step = colour * v * _Gain * scale * dt * transmit;
                 emit += step;
                 float bright = max(step.r, max(step.g, step.b));

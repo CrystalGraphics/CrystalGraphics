@@ -4,7 +4,6 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
-import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.compute.ops.CgGpuCount;
@@ -24,16 +23,14 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.render.world.CgWorldMedia;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgGpuTrace;
-import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxEffect;
-import com.crystalgraphics.vfx.CgVfxTrace;
+import com.crystalgraphics.vfx.sparse.CgVfxTiles;
 import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
@@ -75,12 +72,12 @@ public final class CgVfxGasAtlas {
 
     /** The most gases at once. */
     public static final int CAPACITY = 4;
-    /** Cells a tile side; tiles a gas's page table side; cells a gas's grid side, its origin in the middle. */
-    public static final int TILE = 16, PAGES = 32, SPAN = TILE * PAGES;
+    /** Cells a tile side; tiles a gas's page table side; cells a gas's grid side, its origin in the middle: {@link CgVfxTiles}'. */
+    public static final int TILE = CgVfxTiles.TILE, PAGES = CgVfxTiles.PAGES, SPAN = CgVfxTiles.SPAN;
     /** Pool tiles a layer side: slot s is pool tile (s % LAYER, s / LAYER % LAYER, s / LAYER²). */
-    public static final int LAYER = 8;
+    public static final int LAYER = CgVfxTiles.LAYER;
     /** A tile's side in {@link #shade()} and {@link #flow()}: two cells of apron round it, a cubic read's reach. */
-    public static final int SHADE_TILE = TILE + 4;
+    public static final int SHADE_TILE = CgVfxTiles.APRON_TILE;
     /** Seconds a step, and the most a frame. */
     public static final float STEP = 1f / 60f;
     public static final int MAX_STEPS = 2;
@@ -118,21 +115,15 @@ public final class CgVfxGasAtlas {
     public static final String DEPOSIT_GLSL = "struct FxDeposit { vec4 cell; vec4 amounts; };";
     /** The most deposits particles make between two steps, every instance's together; the rest are dropped. */
     public static final int DEPOSITS = 32768;
-    /** Deposits are summed in cells this many of a gas's own a side, two floats each: density, heat. */
-    static final int DEPOSIT_CELL = 4, DEPOSIT_CELLS = (TILE / DEPOSIT_CELL) * (TILE / DEPOSIT_CELL) * (TILE / DEPOSIT_CELL);
+    /** Deposits are spread over nodes this many of a gas's cells apart, two floats each: density, heat. */
+    static final int DEPOSIT_CELL = 2, DEPOSIT_CELLS = (TILE / DEPOSIT_CELL) * (TILE / DEPOSIT_CELL) * (TILE / DEPOSIT_CELL);
     /** The most entities that push the gases a frame, every gas's together, the first found kept. */
     public static final int MAX_ENTITIES = 16;
     /** Frames a gas's effect may go unticked before its tiles are given back: asleep, cleared or dropped. */
     static final int STALE_FRAMES = 120;
-    /** Frames a tile stays once nothing asks for it: gas thinning past the occupancy line keeps it a moment. */
-    static final int FREE_AFTER = 30;
-    /** Each slot's flags in {@code OCCUPIED}: gas in it, then gas near its -x, +x, -y, +y, -z, +z face. */
-    private static final int FLAGS = 8;
 
-    private static final Logger LOG = LogManager.getLogger("CgVfxGasAtlas");
     private static final String KERNELS = "crystalgraphics:shaders/env/compute/vfx/gas.compute";
     private static final int GPU_ZONE = CgGpuTrace.name("vfx.gas");
-    private static final int TILES_COUNTER = CgTrace.name("vfx.gas.tiles"), FULL_COUNTER = CgTrace.name("vfx.gas.pool-full");
     private static final CgFrameBufferFormat RGBA16F = CgFrameBufferFormat.builder("vfx.gas.rgba16f")
             .color(0, CgTextureType.RGBA16F).build();
     private static final CgFrameBufferFormat R16F = CgFrameBufferFormat.builder("vfx.gas.r16f")
@@ -141,18 +132,11 @@ public final class CgVfxGasAtlas {
             .color(0, CgTextureType.R32F).build();
     private static final CgFrameBufferFormat R8 = CgFrameBufferFormat.builder("vfx.gas.r8")
             .color(0, CgTextureType.R8).build();
-    private static final int MOST_TILES = tiles(CgQuality.ULTRA);
     private static final CgVfxGasAtlas INSTANCE = new CgVfxGasAtlas();
 
     private final CgVfxGas[] tenants = new CgVfxGas[CAPACITY];
-    /** Each gas's page table: a tile's slot + 1, 0 for none; and whether it changed since its upload. */
-    private final int[][] pageTable = new int[CAPACITY][PAGES * PAGES * PAGES];
-    private final boolean[] pagesDirty = new boolean[CAPACITY];
-    /** Each slot's gas (-1 free), its tile's place in that gas's page table, the frame last asked for, fresh. */
-    private final int[] slotGas = new int[MOST_TILES], slotPage = new int[MOST_TILES], slotSeen = new int[MOST_TILES];
-    private final boolean[] slotFresh = new boolean[MOST_TILES];
-    /** What Occupancy found, FLAGS a slot, as the last readback delivered it. */
-    private final int[] occupied = new int[MOST_TILES * FLAGS];
+    /** Every gas's tiles in the one pool. */
+    private final CgVfxTiles tiles = new CgVfxTiles("vfx.gas", CAPACITY);
     /** Each gas's step seconds this frame, a step a column. */
     private final float[] stepSeconds = new float[CAPACITY * MAX_STEPS];
     private int[] rows = new int[0];
@@ -160,28 +144,18 @@ public final class CgVfxGasAtlas {
     /** This frame's words of rows, and sources: those on first, then the blasts, which only the first step takes. */
     private int rowWords, sourceCount, continuous;
     private ByteBuffer staging = ByteBuffer.allocate(0);
-    private final ByteBuffer pageBytes = ByteBuffer.allocate(PAGES * PAGES * PAGES * 4).order(ByteOrder.nativeOrder());
     /** The pass's frame block: its time, and the sun its layers light it by. */
     private final CgPassConstants constants = new CgPassConstants();
     private final float[] box = new float[6];
-    /** Occupancy's words as read back: the slots of the frame that asked, FLAGS each. */
-    private int readSlots;
-    private final CgReadback.Sink occupancySink = data -> {
-        int n = Math.min(readSlots * FLAGS, data.remaining() / 4);
-        for (int i = 0; i < n; i++) occupied[i] = data.getInt(i * 4);
-        Arrays.fill(occupied, n, occupied.length, 0);
-    };
 
     @Nullable
     private CgQuality quality;
-    private int poolTiles, layers, usedLayers;
     private long frame;
-    private int full;
     /** Which of each pair is current: velocity, scalars, pressure. */
     private int vel, scalars, pressure;
     private boolean reshade;
     @Nullable
-    private CgGraphTexture shade, flow, pages;
+    private CgGraphTexture shade, flow;
     private final CgGraphTexture[] velocity = new CgGraphTexture[2], scalar = new CgGraphTexture[2],
             pressures = new CgGraphTexture[2];
     private CgGraphTexture ahead, back, divergence, curl, solid;
@@ -209,13 +183,17 @@ public final class CgVfxGasAtlas {
     /** What {@link #bindFlow} gives a kernel before the first gas: the smallest volumes, never read. */
     private final CgGraphTexture noFlow = CgGraphTexture.requested("vfx.gas.none", CgTextureDesc.volume(1, 1, 2, RGBA16F)),
             noPages = CgGraphTexture.requested("vfx.gas.nopages", CgTextureDesc.volume(1, 1, 2, R32F));
-    private CgGraphBuffer gasRows, tileRows, sourceBuffer, occupancy;
+    private CgGraphBuffer gasRows, sourceBuffer;
     private CgKernel solids, advect, curlKernel, forces, divergenceKernel, jacobi, project, carry, carryBack, settle, shadeKernel,
             occupancyKernel, depositKernel;
     private CgRenderStage.Registration registration;
+    /** Each gas's place in the world's media: its grid's low corner from the camera and its extinction, its cell. */
+    private final float[] mediaRows = new float[CAPACITY * 4], mediaCells = new float[CAPACITY];
+    @Nullable
+    private CgKernel mediaKernel;
+    private static final String MEDIA_KERNELS = "crystalgraphics:shaders/env/compute/vfx/media.compute";
 
     private CgVfxGasAtlas() {
-        Arrays.fill(slotGas, -1);
         Arrays.fill(lastIds, -1);
     }
 
@@ -257,7 +235,7 @@ public final class CgVfxGasAtlas {
     /** Each gas's page table, {@link #PAGES} cubed texels a gas stacked along z: a tile's slot + 1, 0 for none. */
     @Nullable
     public CgGraphTexture pages() {
-        return pages;
+        return tiles.pages();
     }
 
     /**
@@ -266,7 +244,7 @@ public final class CgVfxGasAtlas {
      */
     public CgDispatch bindFlow(CgDispatch d) {
         if (flow == null) return d.texture("_GasVel", noFlow).texture("_GasPages", noPages).set("_GasLive", 0);
-        return d.texture("_GasVel", flow).texture("_GasPages", pages).set("_GasLive", 1);
+        return d.texture("_GasVel", flow).texture("_GasPages", tiles.pages()).set("_GasLive", 1);
     }
 
     /**
@@ -287,9 +265,7 @@ public final class CgVfxGasAtlas {
 
     /** Tiles given out now, every gas's. */
     public int tilesInUse() {
-        int n = 0;
-        for (int s = 0; s < poolTiles; s++) if (slotGas[s] >= 0) n++;
-        return n;
+        return tiles.tilesInUse();
     }
 
     /** A place for {@code gas}, the lowest free one, or -1 with none free; the first registers the recording. */
@@ -302,11 +278,37 @@ public final class CgVfxGasAtlas {
             if (registration == null) {
                 registration = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, this::record);
                 CgGraphicsLifecycle.addListener(context);
+                CgWorldRenderer.get().media().add(this::inject);
                 prepare();
             }
             return b;
         }
         return -1;
+    }
+
+    /** Every gas's density in the world's media, so what is drawn behind it is dimmed by it. */
+    private boolean inject(CgComputePass pass, CgWorldMedia media) {
+        if (shade == null) return false;
+        boolean any = false;
+        for (int b = 0; b < CAPACITY; b++) {
+            CgVfxGas gas = tenants[b];
+            boolean live = gas != null && gas.index() == b && gas.cellSize() > 0f;
+            float half = live ? SPAN * 0.5f * gas.cellSize() : 0f;
+            mediaRows[b * 4] = live ? (float) (gas.x() - media.cameraX()) - half : 0f;
+            mediaRows[b * 4 + 1] = live ? (float) (gas.y() - media.cameraY()) - half : 0f;
+            mediaRows[b * 4 + 2] = live ? (float) (gas.z() - media.cameraZ()) - half : 0f;
+            mediaRows[b * 4 + 3] = live ? gas.extinction() : 0f;
+            mediaCells[b] = live ? gas.cellSize() : 1f;
+            any |= live;
+        }
+        if (!any) return false;
+        if (mediaKernel == null) mediaKernel = CgCompute.load(MEDIA_KERNELS).kernel("Gas");
+        float[] r = mediaRows;
+        media.dispatch(pass, mediaKernel).texture(SHADE_SAMPLER, shade).texture(PAGES_SAMPLER, tiles.pages())
+                .set("_Gas0", r[0], r[1], r[2], r[3]).set("_Gas1", r[4], r[5], r[6], r[7])
+                .set("_Gas2", r[8], r[9], r[10], r[11]).set("_Gas3", r[12], r[13], r[14], r[15])
+                .set("_GasCells", mediaCells[0], mediaCells[1], mediaCells[2], mediaCells[3]);
+        return true;
     }
 
     void release(int b) {
@@ -324,15 +326,16 @@ public final class CgVfxGasAtlas {
     private final CgLifecycleListener context = new CgLifecycleListener() {
         @Override
         public void onDestroy() {
-            shade = flow = pages = ahead = back = divergence = curl = solid = fills = null;
+            shade = flow = ahead = back = divergence = curl = solid = fills = null;
             deposits = depositCount = depositGrid = entityRows = null;
             Arrays.fill(filled, null);
             Arrays.fill(velocity, null);
             Arrays.fill(scalar, null);
             Arrays.fill(pressures, null);
-            gasRows = tileRows = sourceBuffer = occupancy = null;
+            gasRows = sourceBuffer = null;
             quality = null;
             for (int b = 0; b < CAPACITY; b++) freeAll(b);
+            tiles.lost();
         }
     };
 
@@ -376,7 +379,7 @@ public final class CgVfxGasAtlas {
         CgQuality want = CgGraphicsSettings.QUALITY.get();
         if (want != quality || shade == null) remake(recording, want);
         grow(live);
-        if (usedLayers == 0) return;
+        if (tiles.usedLayers() == 0) return;
         float scale = GPU_BUDGET.scale();
         int most = scale < 0.5f ? 1 : MAX_STEPS;
         int steps = 0;
@@ -398,14 +401,14 @@ public final class CgVfxGasAtlas {
         upload(recording);
         CgVfxVoxelWindow window = CgVfxVoxelWindow.get().use();
         int iterations = Math.max(MIN_ITERATIONS, Math.round(ITERATIONS * scale));
-        if (steps > 0) recording.fill(occupancy, 0);
+        if (steps > 0) recording.fill(tiles.occupancy(), 0);
         gatherEntities(live, recording);
         CgComputePass pass = recording.compute("vfx.gas", stage.defaults(constants)).timed(GPU_ZONE).timed(GPU_BUDGET)
                 .async();
         dispatch(pass, window, solids, 0, 0).image("SOLID_OUT", solid);
         if (steps > 0) {
             // What particles poured since the last step, summed per deposit cell for its first step to take.
-            CgGpuOps.fill(pass, depositGrid, 0, CgGpuCount.of(layers * LAYER * LAYER * DEPOSIT_CELLS * 2));
+            CgGpuOps.fill(pass, depositGrid, 0, CgGpuCount.of(tiles.layers() * LAYER * LAYER * DEPOSIT_CELLS * 2));
             bind(pass.dispatch(depositKernel, DEPOSITS), 0, 0).bind("DEPOSITS", deposits).bind("DEPOSIT_COUNT", depositCount)
                     .bind("DEPOSIT_GRID", depositGrid);
         }
@@ -413,20 +416,20 @@ public final class CgVfxGasAtlas {
             step(pass, window, s * CAPACITY * ROWS, s == 0 ? sourceCount : continuous, iterations, s == 0 ? 1 : 0, s == 0);
         }
         int fresh = steps == 0 ? 1 : 0, rowBase = steps * CAPACITY * ROWS;
-        window.bind(bind(pass.dispatch(shadeKernel, LAYER * SHADE_TILE, LAYER * SHADE_TILE, usedLayers * SHADE_TILE), rowBase, fresh))
+        window.bind(bind(pass.dispatch(shadeKernel, LAYER * SHADE_TILE, LAYER * SHADE_TILE, tiles.usedLayers() * SHADE_TILE),
+                rowBase, fresh))
                 .texture("_Scalars", scalar[scalars]).texture("_Vel", velocity[vel]).texture("_Solid", solid)
                 .image("SHADE_OUT", shade).image("FLOW_OUT", flow);
         if (steps > 0) {
             dispatch(pass, window, occupancyKernel, rowBase, fresh).texture("_Scalars", scalar[scalars])
-                    .bind("OCCUPIED", occupancy);
+                    .bind("OCCUPIED", tiles.occupancy());
             CgGpuOps.fill(pass, depositCount, 0, CgGpuCount.of(1));
         }
         pass.end();
         reshade = false;
         if (steps == 0) return;
-        readSlots = usedLayers * LAYER * LAYER;
-        recording.readback(occupancy, 0, (long) readSlots * FLAGS * 4, occupancySink);
-        for (int s = 0; s < poolTiles; s++) slotFresh[s] = false;
+        tiles.readOccupancy(recording);
+        tiles.stepped();
         for (int b = 0; b < live; b++) {
             CgVfxGas gas = tenants[b];
             if (gas == null) continue;
@@ -442,40 +445,24 @@ public final class CgVfxGasAtlas {
      */
     private void grow(int live) {
         int now = (int) frame;
-        for (int s = 0; s < poolTiles; s++) {
-            int b = slotGas[s];
-            if (b < 0 || occupied[s * FLAGS] == 0) continue;
-            slotSeen[s] = now;
-            int page = slotPage[s], tx = page % PAGES, ty = page / PAGES % PAGES, tz = page / (PAGES * PAGES);
-            int at = s * FLAGS;
-            int x0 = occupied[at + 1] != 0 ? -1 : 0, x1 = occupied[at + 2] != 0 ? 1 : 0;
-            int y0 = occupied[at + 3] != 0 ? -1 : 0, y1 = occupied[at + 4] != 0 ? 1 : 0;
-            int z0 = occupied[at + 5] != 0 ? -1 : 0, z1 = occupied[at + 6] != 0 ? 1 : 0;
-            for (int dz = z0; dz <= z1; dz++) {
-                for (int dy = y0; dy <= y1; dy++) {
-                    for (int dx = x0; dx <= x1; dx++) {
-                        if (dx != 0 || dy != 0 || dz != 0) want(b, tx + dx, ty + dy, tz + dz, now);
-                    }
-                }
-            }
+        int alive = 0;
+        for (int b = 0; b < live; b++) if (tenants[b] != null) alive |= 1 << b;
+        tiles.live(alive);
+        for (int b = 0; b < live; b++) {
+            CgVfxGas gas = tenants[b];
+            // Wholly under its floor, a tile holds nothing: refused.
+            if (gas != null) tiles.floorTile(b, (int) Math.ceil(((gas.floor() - gas.cell) / gas.cell + SPAN * 0.5f) / TILE - 1));
         }
+        tiles.grow(now);
         for (int b = 0; b < live; b++) {
             CgVfxGas gas = tenants[b];
             if (gas != null) gas.wantTiles(this, b, now);
         }
-        int highest = -1;
-        for (int s = 0; s < poolTiles; s++) {
-            int b = slotGas[s];
-            if (b < 0) continue;
-            if (now - slotSeen[s] > FREE_AFTER) {
-                free(s);
-                continue;
-            }
-            highest = s;
+        tiles.finish(now);
+        for (int b = 0; b < live; b++) {
+            CgVfxGas gas = tenants[b];
+            if (gas != null) gas.box(tiles.bounds(b, gas.cell, box) ? box : null);
         }
-        usedLayers = highest < 0 ? 0 : highest / (LAYER * LAYER) + 1;
-        for (int b = 0; b < live; b++) if (tenants[b] != null) bounds(b);
-        CgVfxTrace.count(TILES_COUNTER, tilesInUse());
     }
 
     /**
@@ -483,90 +470,12 @@ public final class CgVfxGasAtlas {
      * this frame: a source's or a blast's.
      */
     void wantSphere(int b, float x, float y, float z, float radius, int now) {
-        CgVfxGas gas = tenants[b];
-        float cell = gas.cell, half = SPAN * 0.5f, r = radius + cell;
-        int x0 = tile((x - r) / cell + half), x1 = tile((x + r) / cell + half);
-        int y0 = tile((y - r) / cell + half), y1 = tile((y + r) / cell + half);
-        int z0 = tile((z - r) / cell + half), z1 = tile((z + r) / cell + half);
-        for (int tz = z0; tz <= z1; tz++) {
-            for (int ty = y0; ty <= y1; ty++) {
-                for (int tx = x0; tx <= x1; tx++) want(b, tx, ty, tz, now);
-            }
-        }
-    }
-
-    private static int tile(float cell) {
-        return (int) Math.floor(cell / TILE);
-    }
-
-    /** Tile {@code (tx, ty, tz)} of gas {@code b} kept this frame, given a slot if it has none: none past its grid or wholly under its floor. */
-    private void want(int b, int tx, int ty, int tz, int now) {
-        if (tx < 0 || ty < 0 || tz < 0 || tx >= PAGES || ty >= PAGES || tz >= PAGES) return;
-        CgVfxGas gas = tenants[b];
-        if (((ty + 1) * TILE - SPAN * 0.5f) * gas.cell < gas.floor() - gas.cell) return;
-        int page = tx + PAGES * (ty + PAGES * tz);
-        int held = pageTable[b][page];
-        if (held != 0) {
-            slotSeen[held - 1] = now;
-            return;
-        }
-        for (int s = 0; s < poolTiles; s++) {
-            if (slotGas[s] >= 0) continue;
-            slotGas[s] = b;
-            slotPage[s] = page;
-            slotSeen[s] = now;
-            slotFresh[s] = true;
-            pageTable[b][page] = s + 1;
-            pagesDirty[b] = true;
-            return;
-        }
-        CgVfxTrace.count(FULL_COUNTER, 1);
-        if (full++ == 0) LOG.warn("[vfx.gas] the pool's {} tiles are all given out: gases grow no further", poolTiles);
-    }
-
-    private void free(int s) {
-        int b = slotGas[s];
-        if (b < 0) return;
-        pageTable[b][slotPage[s]] = 0;
-        pagesDirty[b] = true;
-        slotGas[s] = -1;
-        slotFresh[s] = false;
-        for (int f = 0; f < FLAGS; f++) occupied[s * FLAGS + f] = 0;
+        tiles.wantSphere(b, x, y, z, radius, tenants[b].cell, now);
     }
 
     private void freeAll(int b) {
         filled[b] = null;
-        for (int s = 0; s < poolTiles; s++) if (slotGas[s] == b) free(s);
-        Arrays.fill(pageTable[b], 0);
-        pagesDirty[b] = true;
-    }
-
-    /** Gas {@code b}'s box: the tiles it holds, from its middle in blocks. */
-    private void bounds(int b) {
-        int lx = PAGES, ly = PAGES, lz = PAGES, hx = -1, hy = -1, hz = -1;
-        for (int s = 0; s < poolTiles; s++) {
-            if (slotGas[s] != b) continue;
-            int page = slotPage[s], tx = page % PAGES, ty = page / PAGES % PAGES, tz = page / (PAGES * PAGES);
-            lx = Math.min(lx, tx);
-            ly = Math.min(ly, ty);
-            lz = Math.min(lz, tz);
-            hx = Math.max(hx, tx);
-            hy = Math.max(hy, ty);
-            hz = Math.max(hz, tz);
-        }
-        CgVfxGas gas = tenants[b];
-        if (hx < 0) {
-            gas.box(null);
-            return;
-        }
-        float cell = gas.cell, half = SPAN * 0.5f;
-        box[0] = (lx * TILE - half) * cell;
-        box[1] = (ly * TILE - half) * cell;
-        box[2] = (lz * TILE - half) * cell;
-        box[3] = ((hx + 1) * TILE - half) * cell;
-        box[4] = ((hy + 1) * TILE - half) * cell;
-        box[5] = ((hz + 1) * TILE - half) * cell;
-        gas.box(box);
+        tiles.freeAll(b);
     }
 
     /**
@@ -607,13 +516,13 @@ public final class CgVfxGasAtlas {
      * textures.
      */
     private CgDispatch dispatch(CgComputePass pass, CgVfxVoxelWindow window, CgKernel kernel, int rowBase, int fresh) {
-        CgDispatch d = bind(pass.dispatch(kernel, LAYER * TILE, LAYER * TILE, usedLayers * TILE), rowBase, fresh);
+        CgDispatch d = bind(pass.dispatch(kernel, LAYER * TILE, LAYER * TILE, tiles.usedLayers() * TILE), rowBase, fresh);
         if (kernel == solids) return window.bind(d);
         return d.texture("_Solid", solid);
     }
 
     private CgDispatch bind(CgDispatch d, int rowBase, int fresh) {
-        return d.bind("GASES", gasRows).bind("TILES", tileRows).texture("_Pages", pages).set("_RowBase", rowBase)
+        return d.bind("GASES", gasRows).bind("TILES", tiles.tileRows()).texture("_Pages", tiles.pages()).set("_RowBase", rowBase)
                 .set("_Fresh", fresh);
     }
 
@@ -622,7 +531,6 @@ public final class CgVfxGasAtlas {
         if (shade != null) {
             recording.release(shade);
             recording.release(flow);
-            recording.release(pages);
             recording.release(fills);
             for (int i = 0; i < 2; i++) {
                 recording.release(velocity[i]);
@@ -631,17 +539,14 @@ public final class CgVfxGasAtlas {
             }
         }
         quality = want;
-        poolTiles = tiles(want);
-        layers = poolTiles / (LAYER * LAYER);
+        tiles.pool(recording, tiles(want));
+        int layers = tiles.layers();
         for (int b = 0; b < CAPACITY; b++) {
-            freeAll(b);
             if (tenants[b] != null) tenants[b].cell = tenants[b].cellSetting() * cellScale(want);
         }
-        Arrays.fill(occupied, 0);
         int w = LAYER * TILE, d = layers * TILE, sw = LAYER * SHADE_TILE, sd = layers * SHADE_TILE;
         shade = CgGraphTexture.requested("vfx.gas.shade", CgTextureDesc.volume(sw, sw, sd, RGBA16F));
         flow = CgGraphTexture.requested("vfx.gas.flow", CgTextureDesc.volume(sw, sw, sd, RGBA16F));
-        pages = CgGraphTexture.requested("vfx.gas.pages", CgTextureDesc.volume(PAGES, PAGES, PAGES * CAPACITY, R32F));
         fills = CgGraphTexture.requested("vfx.gas.fills", CgTextureDesc.volume(FILL, FILL, FILL * CAPACITY, R8));
         Arrays.fill(filled, null);
         if (depositGrid != null) recording.release(depositGrid);
@@ -654,7 +559,7 @@ public final class CgVfxGasAtlas {
                     CgBufferDesc.of(256, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
             recording.fill(depositCount, 0);
         }
-        if (entityRows == null) entityRows = fit(recording, null, "vfx.gas.entities", MAX_ENTITIES * 12);
+        if (entityRows == null) entityRows = CgVfxTiles.fit(recording, null, "vfx.gas.entities", MAX_ENTITIES * 12);
         for (int i = 0; i < 2; i++) {
             velocity[i] = CgGraphTexture.requested("vfx.gas.velocity" + i, CgTextureDesc.volume(w, w, d, RGBA16F));
             scalar[i] = CgGraphTexture.requested("vfx.gas.scalars" + i, CgTextureDesc.volume(w, w, d, RGBA16F));
@@ -720,13 +625,11 @@ public final class CgVfxGasAtlas {
     }
 
     private void upload(CgRecording recording) {
-        int slots = Math.max(1, usedLayers) * LAYER * LAYER;
-        int words = rowWords, floats = Math.max(12, sourceCount * 12), tileWords = slots * 4;
-        gasRows = fit(recording, gasRows, "vfx.gas.rows", words);
-        sourceBuffer = fit(recording, sourceBuffer, "vfx.gas.sources", floats);
-        tileRows = fit(recording, tileRows, "vfx.gas.tiles", layers * LAYER * LAYER * 4);
-        occupancy = fit(recording, occupancy, "vfx.gas.occupancy", layers * LAYER * LAYER * FLAGS);
-        int bytes = Math.max(Math.max(words, floats), tileWords) * 4;
+        int words = rowWords, floats = Math.max(12, sourceCount * 12);
+        gasRows = CgVfxTiles.fit(recording, gasRows, "vfx.gas.rows", words);
+        sourceBuffer = CgVfxTiles.fit(recording, sourceBuffer, "vfx.gas.sources", floats);
+        tiles.upload(recording);
+        int bytes = Math.max(words, floats) * 4;
         if (staging.capacity() < bytes) staging = ByteBuffer.allocate(bytes * 2).order(ByteOrder.nativeOrder());
         staging.clear();
         for (int i = 0; i < words; i++) staging.putInt(i * 4, rows[i]);
@@ -736,17 +639,6 @@ public final class CgVfxGasAtlas {
         for (int i = 0; i < floats; i++) staging.putFloat(i * 4, i < sourceCount * 12 ? sources[i] : 0f);
         staging.limit(floats * 4);
         recording.update(sourceBuffer, 0, staging);
-        staging.clear();
-        for (int s = 0; s < slots; s++) {
-            int b = s < poolTiles ? slotGas[s] : -1, page = b < 0 ? 0 : slotPage[s];
-            int tx = page % PAGES, ty = page / PAGES % PAGES, tz = page / (PAGES * PAGES);
-            staging.putInt(s * 16, b + 1);
-            staging.putInt(s * 16 + 4, tx | ty << 8 | tz << 16);
-            staging.putInt(s * 16 + 8, b >= 0 && slotFresh[s] ? 1 : 0);
-            staging.putInt(s * 16 + 12, 0);
-        }
-        staging.limit(tileWords * 4);
-        recording.update(tileRows, 0, staging);
         for (int b = 0; b < CAPACITY; b++) {
             CgVfxSmoke smoke = tenants[b] == null ? null : tenants[b].smoke;
             CgVfxSmokeFill fill = smoke == null ? null : smoke.fill();
@@ -756,15 +648,6 @@ public final class CgVfxGasAtlas {
             fillUpload.clear();
             fillUpload.put(fillBytes).flip();
             recording.update(fills, 0, 0, 0, b * FILL, FILL, FILL, FILL, fillUpload);
-        }
-        for (int b = 0; b < CAPACITY; b++) {
-            if (!pagesDirty[b]) continue;
-            pagesDirty[b] = false;
-            pageBytes.clear();
-            int[] table = pageTable[b];
-            for (int i = 0; i < table.length; i++) pageBytes.putFloat(i * 4, table[i]);
-            pageBytes.limit(table.length * 4);
-            recording.update(pages, 0, 0, 0, b * PAGES, PAGES, PAGES, PAGES, pageBytes);
         }
     }
 
@@ -859,13 +742,5 @@ public final class CgVfxGasAtlas {
 
     private static float frac(double v) {
         return (float) (v - Math.floor(v));
-    }
-
-    private static CgGraphBuffer fit(CgRecording recording, @Nullable CgGraphBuffer buffer, String name, int words) {
-        long bytes = Math.max(256L, words * 4L);
-        if (buffer != null && buffer.size() >= bytes) return buffer;
-        if (buffer != null) recording.release(buffer);
-        return CgGraphBuffer.persistent(name, CgBufferDesc.of(Long.highestOneBit(bytes - 1) << 1,
-                CgBufferUsage.STORAGE, CgBufferUsage.COPY));
     }
 }

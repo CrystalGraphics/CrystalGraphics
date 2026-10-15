@@ -71,10 +71,11 @@ public final class CgVfxSlot {
          */
         VOLUME,
         /**
-         * A {@code CgVfxGrid3D}, marched through the box it spans ({@code fx_grid.glsl}), reading
-         * {@code CgVfxGridAtlas.view()} as {@code _GridView} and {@code light()} as {@code _GridLight}, declared first and in
-         * that order: the box a unit cube scaled by the transform; {@code CUSTOM0} the grid's brick, its cell in blocks,
-         * its cells a side and the layer's size; {@code CUSTOM1} its extinction a block, then 0s.
+         * A {@code CgVfxGrid3D}, marched through a box round the tiles it holds ({@code fx_grid.glsl},
+         * {@code fx_sparse.glsl}), reading {@code CgVfxGridAtlas.view()} as {@code _GridView}, {@code light()} as
+         * {@code _GridLight} and {@code pages()} as {@code _GridPages}, declared first and in that order: the box a unit
+         * cube scaled by the transform; {@code CUSTOM0} the grid's place in the atlas, its cell in blocks, 0 and the
+         * layer's size; {@code CUSTOM1} its grid's low corner from the box's middle, and its extinction a block.
          */
         GRID;
 

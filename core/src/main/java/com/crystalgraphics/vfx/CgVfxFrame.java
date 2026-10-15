@@ -700,26 +700,27 @@ public final class CgVfxFrame {
     public void grid(CgVfxEffect<?> effect, CgVfxSlot slot, CgVfxGrid3D grid) {
         kind(slot, CgVfxSlot.Kind.GRID);
         CgVfxGridAtlas atlas = CgVfxGridAtlas.get();
-        CgGraphTexture view = atlas.view(), light = atlas.light();
+        CgGraphTexture view = atlas.view(), light = atlas.light(), pages = atlas.pages();
         int index = grid.index();
-        if (index < 0 || view == null || grid.cells() == 0) return;
+        if (index < 0 || view == null || !grid.bounds(gasBox)) return;
         CgVfxLook look = effect.look();
-        float extent = grid.cells() * grid.cellSize(), half = extent * 0.5f;
+        float cell = grid.cellSize(), low = -CgVfxGridAtlas.SPAN * 0.5f * cell;
+        float cx = (gasBox[0] + gasBox[3]) * 0.5f, cy = (gasBox[1] + gasBox[4]) * 0.5f, cz = (gasBox[2] + gasBox[5]) * 0.5f;
         float ox = (float) (grid.x() - effect.originX), oy = (float) (grid.y() - effect.originY),
                 oz = (float) (grid.z() - effect.originZ);
         for (CgVfxLook.Placed placed : look.on(slot)) {
             if (skips(effect, placed.layer())) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             CgMaterial material = materials.material(r, CgVfxSlot.Kind.GRID);
-            materials.grid(material, view, light);
-            effect.boundBox(ox - half, oy - half, oz - half, ox + half, oy + half, oz + half);
+            materials.grid(material, view, light, pages);
+            effect.boundBox(ox + gasBox[0], oy + gasBox[1], oz + gasBox[2], ox + gasBox[3], oy + gasBox[4], oz + gasBox[5]);
             CgWorldRenderer.Draw draw = world.draw(system.cubeMesh(), material)
-                    .at(grid.x(), grid.y(), grid.z())
-                    .transform(sized.scaling(extent, extent, extent))
+                    .at(grid.x() + cx, grid.y() + cy, grid.z() + cz)
+                    .transform(sized.scaling(gasBox[3] - gasBox[0], gasBox[4] - gasBox[1], gasBox[5] - gasBox[2]))
                     .subject(effect.subject)
                     .halfResolution()
-                    .custom(0, index, grid.cellSize(), grid.cells(), CgVfxMaterials.size(effect, r))
-                    .custom(1, grid.extinction(), 0f, 0f, 0f)
+                    .custom(0, index, cell, 0f, CgVfxMaterials.size(effect, r))
+                    .custom(1, low - cx, low - cy, low - cz, grid.extinction())
                     .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
             CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
             CgVfxTrace.count(DRAWS_VOLUME, 1);

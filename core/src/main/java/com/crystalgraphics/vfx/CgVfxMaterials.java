@@ -276,11 +276,12 @@ final class CgVfxMaterials {
     /** The grid view each grid material was last pointed at: the atlas makes it anew in a new context. */
     private final Map<CgMaterial, CgTexture> views = new IdentityHashMap<>();
 
-    /** Points grid {@code material} at the atlas's view and light, once each time the atlas made them. */
-    void grid(CgMaterial material, CgTexture view, CgTexture light) {
+    /** Points grid {@code material} at the atlas's view, light and page tables, once each time the atlas made them. */
+    void grid(CgMaterial material, CgTexture view, CgTexture light, CgTexture pages) {
         if (views.get(material) == view) return;
         views.put(material, view);
-        material.applyProperties(b -> b.sampler(CgVfxGridAtlas.VIEW_SAMPLER, 0, view).sampler(CgVfxGridAtlas.LIGHT_SAMPLER, 1, light));
+        material.applyProperties(b -> b.sampler(CgVfxGridAtlas.VIEW_SAMPLER, 0, view).sampler(CgVfxGridAtlas.LIGHT_SAMPLER, 1, light)
+                .sampler(CgVfxGridAtlas.PAGES_SAMPLER, 2, pages));
     }
 
     /** Each material's batch key, in the order they were made: draws of one material given one key sort together. */

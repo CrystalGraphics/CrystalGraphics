@@ -258,7 +258,6 @@ public final class CgVfxEmitterCompiler {
                                 g.offset = a.xyz;
                                 g.brick = int(a.w + 0.5);
                                 g.cell = b.x;
-                                g.cells = b.y;
                                 g.live = a.w >= 0.0 && _GridLive != 0;
                                 return g;
                             }

@@ -1,12 +1,13 @@
-// A grid's channel x (CgVfxGrid3D) as smoke, marched through the box it spans (CgVfxFrame.grid): each step reads its
+// A grid's channel x (CgVfxGrid3D) as smoke, marched through the box round its tiles (CgVfxFrame.grid), a tile it has
+// not skipped in one step: each step reads its
 // density and the light the grid's Shade left there (the transmittance toward the sun, the sky's light), wears the
 // thin edges with noise finer than the cells (Schneider's erosion), and adds the light scattered toward the eye by
 // Hillaire's energy-conserving step through a two-lobe phase with Horizon's powder: the gas's smoke, for a body that
 // particles splat. Drawn at half size as a volume, each frame's march starts elsewhere and names the depth its light came
 // from, so the resolve blends a frame's steps with the last ones'.
-// CG_OBJECT_TO_WORLD: the box, a unit cube scaled. CG_OBJECT_CUSTOM0: the grid's brick, its cell in blocks, its cells a
-// side, the layer's size (a density scale); CG_OBJECT_CUSTOM1.x its extinction a block. _Smoke is its colour in full
-// light.
+// CG_OBJECT_TO_WORLD: the box, a unit cube scaled. CG_OBJECT_CUSTOM0: the grid's place in the atlas, its cell in blocks,
+// 0, the layer's size (a density scale); CG_OBJECT_CUSTOM1: its grid's low corner from the box's middle, its extinction
+// a block. _Smoke is its colour in full light.
 #type spatial
 #pragma cg_use rows
 #include "crystalgraphics:shaders/lib/color.glsl"
@@ -22,6 +23,7 @@ Queue = "Transparent"
 Properties {
     _GridView   ("The grid atlas's channels (CgVfxGridAtlas)",  sampler3D) = "black"
     _GridLight  ("Its light: sun transmittance, sky",          sampler3D) = "white"
+    _GridPages  ("Each grid's page table",                     sampler3D) = "black"
     _Noise      ("Gradient noise",                             sampler3D) = "cg_noise"
     _Voronoi    ("Voronoi",                                    sampler3D) = "cg_voronoi"
     _Smoke      ("The smoke in full light",                    color)     = (0.72, 0.71, 0.7, 1)
@@ -52,16 +54,18 @@ Pass {
 
     void fragment(in v2f i, out vec4 fragColor) {
         vec3 eye = CG_CAMERA_WORLD_POS, ray = FX_PIXEL_RAY;
-        int brick = int(CG_OBJECT_CUSTOM0.x + 0.5);
-        float cell = CG_OBJECT_CUSTOM0.y, cells = CG_OBJECT_CUSTOM0.z, scale = CG_OBJECT_CUSTOM0.w;
-        float extinction = CG_OBJECT_CUSTOM1.x;
+        int grid = int(CG_OBJECT_CUSTOM0.x + 0.5);
+        float cell = CG_OBJECT_CUSTOM0.y, scale = CG_OBJECT_CUSTOM0.w;
+        float extinction = CG_OBJECT_CUSTOM1.w;
         vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
-        vec3 lo = centre - vec3(0.5 * cells * cell);
-        vec2 t = fx_gas_box(eye, ray, lo, lo + vec3(cells * cell));
+        vec3 size = vec3(length(CG_OBJECT_TO_WORLD[0].xyz), length(CG_OBJECT_TO_WORLD[1].xyz),
+                length(CG_OBJECT_TO_WORLD[2].xyz));
+        vec3 lo = centre - 0.5 * size, corner = centre + CG_OBJECT_CUSTOM1.xyz;
+        vec2 t = fx_gas_box(eye, ray, lo, lo + size);
         t.x = max(t.x, 0.0);
         t.y = min(t.y, FX_SCENE_DISTANCE(ray));
         if (t.y <= t.x) discard;
-        float dt = max((t.y - t.x) / _Steps, 0.5 * cell);
+        float dt = max((t.y - t.x) / _Steps, 0.5 * cell), tile = float(FX_SPARSE_TILE) * cell;
         // Interleaved gradient noise (Jimenez, 2014): each pixel's steps start apart, so banding becomes grain.
         float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
 #ifdef CG_VOLUME_TARGET
@@ -76,10 +80,18 @@ Pass {
         float transmit = 1.0, depth = 0.0;
         vec3 light = vec3(0.0);
         float at = t.x + jitter * dt;
-        for (int k = 0; k < 256 && at < t.y; k++) {
+        for (int k = 0; k < 512 && at < t.y; k++) {
             vec3 p = eye + ray * at;
-            vec3 c = (p - lo) / cell;
-            vec3 uvw = fx_grid_uvw(_GridView, brick, cells, c);
+            vec3 c = (p - corner) / cell;
+            ivec3 held = fx_sparse_tile(c);
+            int slot = fx_sparse_slot_of(_GridPages, grid, held);
+            if (slot < 0) {
+                // Still air: on to the first step past where the ray leaves this tile, keeping the steps' phase.
+                vec3 from = corner + vec3(held) * tile;
+                at += max(ceil((fx_gas_box(eye, ray, from, from + tile).y - at) / dt), 1.0) * dt;
+                continue;
+            }
+            vec3 uvw = fx_sparse_pool_uvw(_GridView, slot, c);
             float density = max(textureLod(_GridView, uvw, 0.0).x, 0.0) * scale;
             if (density < 1.0e-4) {
                 at += dt;
@@ -87,7 +99,7 @@ Pass {
             }
             vec2 lit = textureLod(_GridLight, uvw, 0.0).xy;
             if (_Detail > 0.0 && density < 2.0) {
-                density = fx_gas_erode(density, fx_gas_carried_detail(_Noise, _Voronoi, (p - lo) / max(_DetailSize, 0.05),
+                density = fx_gas_erode(density, fx_gas_carried_detail(_Noise, _Voronoi, (p - corner) / max(_DetailSize, 0.05),
                         vec3(0.0), FX_AGE, 0.0), _Detail);
             }
             float sigma = density * extinction;

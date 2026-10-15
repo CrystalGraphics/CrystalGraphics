@@ -177,7 +177,7 @@ public final class CgVfxParticleSmokeDemo {
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxGrid3D.GLOW).emitter(agents)
                 .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(agents).size(0.6f).bind("_Color", CYAN).bind("_Hot", WHITE)
                         .build())
-                .set(CgVfxGrid3D.CELLS, 48f).set(CgVfxGrid3D.CELL, 0.2f)
+                .set(CgVfxGrid3D.CELL, 0.2f)
                 .set(CgVfxGrid3D.GLOW_COLOR, 0xFF1E5BFF, 1.3f).set(CgVfxGrid3D.HOT, 0xFFAEF4FF, 3f)
                 .set(CgVfxGrid3D.GLOW_GAIN, 0.35f).set(CgVfxGrid3D.HOT_AT, 2.5f).build();
         stations.add(new Station("slime mould: twenty thousand agents laying trails and following them", x, z, look, 10f,
@@ -199,7 +199,7 @@ public final class CgVfxParticleSmokeDemo {
                 .module(new CgVfxModule.Drag(0.7f, 0f))
                 .module(new CgVfxModule.Splat(1.4f, 0f, 0f, 0f)).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxGrid3D.SMOKE).emitter(puffs)
-                .set(CgVfxGrid3D.CELLS, 40f).set(CgVfxGrid3D.CELL, 0.28f).set(CgVfxGrid3D.EXTINCTION, 2.2f)
+                .set(CgVfxGrid3D.CELL, 0.28f).set(CgVfxGrid3D.EXTINCTION, 2.2f)
                 .set(CgVfxGrid3D.SMOKE_COLOR, 0xFFC9C6C2).build();
         stations.add(new Station("smoke made of particles: eight thousand splatting a lit, billowing body", x, z, look, 13f,
                 List.of(puffs), new float[][] {{0f, 0.5f, 0f}},
@@ -214,22 +214,23 @@ public final class CgVfxParticleSmokeDemo {
     private void nebula(float x, float z) {
         CgVfxEmitter stars = CgVfxEmitter.builder("nebulaStars").capacity(12000).burst(0f, 12000).shape(CgRing.of(1.2, 5.2, 0.5))
                 .speed(0.5f, 1.2f).life(LIFE, LIFE).size(0.015f, 0.03f, 2f).heat(1f)
-                .module(new CgVfxModule.Vortex(0f, 1f, 0f, 2.6f, -0.35f, 0f, 0f, 0f))
+                // At the speed limit the pull holds an orbit of 2.5² / 1.2, 5.2 blocks: inside the grid's 7.7.
+                .module(new CgVfxModule.Vortex(0f, 1f, 0f, 1.2f, -1.2f, 0f, 0f, 0f))
                 .module(new CgVfxModule.Attract(CgSphere.of(1), 0.6f))
                 .module(new CgVfxModule.Turbulence(0.9f, 0.35f, 0.3f))
-                .module(new CgVfxModule.LimitSpeed(4f))
-                .module(new CgVfxModule.Splat(0.5f, 1.5f, 0f, 0f)).opacity(FADE).build();
+                .module(new CgVfxModule.LimitSpeed(2.5f))
+                .module(new CgVfxModule.Splat(0.1f, 0.4f, 0f, 0f)).opacity(FADE).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).params(CgVfxGrid3D.SCHEMA).emitter(stars)
                 .layer(CgVfxLayer.of(GRID_GLOW).on(CgVfxGrid3D.SLOT).set("_Channel", 0f).set("_Gain", 0.5f).set("_HotAt", 3f)
-                        .bind("_Glow", NEBULA).bind("_Hot", NEBULA_HOT).build())
+                        .set("_Detail", 0.75f).set("_DetailSize", 0.8f).bind("_Glow", NEBULA).bind("_Hot", NEBULA_HOT).build())
                 .layer(CgVfxLayer.of(GRID_GLOW).on(CgVfxGrid3D.SLOT).set("_Channel", 1f).set("_Gain", 0.25f).set("_HotAt", 2f)
                         .set("_Absorb", 0f).bind("_Glow", STARLIGHT).bind("_Hot", WHITE).build())
                 .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(stars).size(0.7f).bind("_Color", STARLIGHT).bind("_Hot", WHITE)
                         .build())
-                .set(CgVfxGrid3D.CELLS, 48f).set(CgVfxGrid3D.CELL, 0.32f).build();
+                .set(CgVfxGrid3D.CELL, 0.32f).build();
         stations.add(new Station("nebula: stars wheeling round a core, splatting gas and starlight", x, z, look, 10f,
                 List.of(stars), new float[][] {{0f, 5f, 0f}},
-                p -> p.grid = new CgVfxGrid3D(p).place(0f, 5f, 0f).channel(0, 0.25f, 0.1f).channel(1, 3f, 0.01f).lit(false),
+                p -> p.grid = new CgVfxGrid3D(p).place(0f, 5f, 0f).channel(0, 0.5f, 0.1f).channel(1, 3f, 0.01f).lit(false),
                 NOTHING));
     }
 
@@ -245,7 +246,7 @@ public final class CgVfxParticleSmokeDemo {
                 .module(new CgVfxModule.Vortex(0f, 1f, 0f, 7f, -1.2f, 0f, 0f, 0f))
                 .module(new CgVfxModule.Force(0f, 3f, 0f))
                 .module(new CgVfxModule.Flow(1.8f))
-                .module(new CgVfxModule.Feed(0.5f, 1.4f))
+                .module(new CgVfxModule.Feed(0.15f, 0.6f))
                 .module(new CgVfxModule.Turbulence(1.2f, 0.4f, 0.6f)).opacity(FADE).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE).emitter(embers)
                 .layer(CgVfxLayer.of(PARTICLE + "streaks.shader").on(embers).trails().size(0.6f).bind("_Color", EMBER)
@@ -284,11 +285,11 @@ public final class CgVfxParticleSmokeDemo {
      * smoke heals.
      */
     private void fireflies(float x, float z) {
-        CgVfxEmitter flies = CgVfxEmitter.builder("smokeFireflies").capacity(450).burst(0.5f, 450).shape(CgSphere.of(3))
+        CgVfxEmitter flies = CgVfxEmitter.builder("smokeFireflies").capacity(450).burst(0.5f, 450).shape(CgSphere.of(2.5))
                 .speed(1f, 2f).life(LIFE, LIFE).size(0.04f, 0.06f).heat(1f).trail(12)
                 .module(new CgVfxModule.Flock(1.4f, 0.45f, 3f, 1.5f, 0.7f))
                 .module(new CgVfxModule.Flow(1.2f))
-                .module(new CgVfxModule.Attract(CgSphere.of(3.5), 1.2f))
+                .module(new CgVfxModule.Attract(CgSphere.of(2.5), 1.2f))
                 .module(new CgVfxModule.Turbulence(0.8f, 0.3f, 0.5f))
                 .module(new CgVfxModule.LimitSpeed(3.5f)).opacity(FADE).build();
         CgVfxLook look = CgSmokeGrenade.LOOK.derive().emitter(flies)
@@ -298,7 +299,8 @@ public final class CgVfxParticleSmokeDemo {
                         .build())
                 .params(SCHEMA).build();
         stations.add(new Station("fireflies in a smoke grenade: a flock carried by its churn, shot through", x, z, look, 9f,
-                List.of(flies), new float[][] {{0f, 2f, 0f}},
+                // Inside the dome: open ground floods about 4 blocks tall, its top 1.5 the soft shell.
+                List.of(flies), new float[][] {{0f, 1.5f, 0f}},
                 p -> p.smoke = new CgVfxSmoke(p),
                 (play, before, age) -> {
                     for (int k = 0; k < 4; k++) {
@@ -314,34 +316,35 @@ public final class CgVfxParticleSmokeDemo {
 
     /**
      * A comet racing round a loop: a white-hot head shedding sparks by the block it travels, each spark falling away and
-     * pouring smoke and a little heat into the gas, so a trail of smoke hangs where it has been and curls as the gas
-     * churns it, lit by the sun.
+     * pouring a little smoke into the gas, so a thin trail hangs where it has been, curls as the gas churns it and thins
+     * away before the head comes round again.
      */
     private void comet(float x, float z) {
         CgVfxEmitter head = CgVfxEmitter.builder("cometHead").capacity(1500).ratePerBlock(60f, 0f, PERIOD - 3f)
                 .shape(CgSphere.of(0.25)).speed(0.2f, 0.6f).life(0.15f, 0.3f).size(0.12f, 0.2f).heat(1f).opacity(FADE).build();
-        CgVfxEmitter sparks = CgVfxEmitter.builder("cometSparks").capacity(5000).ratePerBlock(45f, 0f, PERIOD - 3f)
-                .shape(CgSphere.of(0.3)).speed(0.5f, 2f).inherit(0.25f).life(1.2f, 2f).size(0.03f, 0.05f).heat(1f).trail(8)
-                .module(new CgVfxModule.Gravity(2.5f))
-                .module(new CgVfxModule.Drag(1.2f, 0f))
-                .module(new CgVfxModule.Feed(2.2f, 0.4f)).opacity(FADE).build();
+        CgVfxEmitter sparks = CgVfxEmitter.builder("cometSparks").capacity(2500).ratePerBlock(16f, 0f, PERIOD - 3f)
+                .shape(CgSphere.of(0.2)).speed(0.3f, 1.2f).inherit(0.1f).life(0.8f, 1.4f).size(0.03f, 0.05f).heat(1f).trail(8)
+                .module(new CgVfxModule.Gravity(1.5f))
+                .module(new CgVfxModule.Drag(2f, 0f))
+                .module(new CgVfxModule.Feed(0.25f, 0f)).opacity(FADE).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE).emitter(head).emitter(sparks)
                 .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(head).size(1.4f).bind("_Color", FLAME).bind("_Hot", WHITE).build())
                 .layer(CgVfxLayer.of(PARTICLE + "streaks.shader").on(sparks).trails().size(0.6f).bind("_Color", EMBER)
                         .bind("_Core", FLAME).build())
                 .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(sparks).bind("_Color", EMBER).bind("_Hot", FLAME).build())
-                .set(CgVfxGas.CELL, 0.3f).set(CgVfxGas.BUOYANCY, 0.6f).set(CgVfxGas.WEIGHT, 0.05f)
-                .set(CgVfxGas.VORTICITY, 2f).set(CgVfxGas.DISSIPATION, 0.1f).set(CgVfxGas.COOLING, 0.8f)
-                .set(CgVfxGas.DAMPING, 0.4f).set(CgVfxGas.TURBULENCE, 1.5f).set(CgVfxGas.TURBULENCE_SIZE, 2f)
-                .set(CgVfxGas.EXTINCTION, 2.4f).set(CgVfxGas.SCATTERING, 0.6f).set(CgVfxGas.SOOT, 0.2f)
-                .set(CgVfxGas.SMOKE_COLOR, 0xFFB9B4AE).build();
-        stations.add(new Station("comet: a racing head whose sparks feed a smoke trail that lingers", x, z, look, 12f,
-                List.of(head, sparks), new float[][] {{6f, 4f, 0f}, {6f, 4f, 0f}},
+                .set(CgVfxGas.CELL, 0.25f).set(CgVfxGas.BUOYANCY, 0.2f).set(CgVfxGas.WEIGHT, 0f)
+                .set(CgVfxGas.VORTICITY, 2.5f).set(CgVfxGas.DISSIPATION, 0.45f).set(CgVfxGas.DAMPING, 0.6f)
+                .set(CgVfxGas.TURBULENCE, 1.2f).set(CgVfxGas.TURBULENCE_SIZE, 1.2f)
+                .set(CgVfxGas.EXTINCTION, 3f).set(CgVfxGas.SCATTERING, 0.6f).set(CgVfxGas.SOOT, 0f)
+                .set(CgVfxGas.SMOKE_COLOR, 0xFF9A9690).build();
+        stations.add(new Station("comet: a racing head whose sparks feed a smoke trail that thins behind it", x, z, look, 12f,
+                List.of(head, sparks), new float[][] {{9f, 4f, 0f}, {9f, 4f, 0f}},
                 p -> p.gas = new CgVfxGas(p).place(0f, 4f, 0f),
                 (play, before, age) -> {
-                    // A tilted loop, six blocks round, once every four seconds.
-                    double a = age * Math.PI * 0.5;
-                    float cx = (float) Math.cos(a) * 6f, cz = (float) Math.sin(a) * 6f, cy = 4f + (float) Math.sin(a * 2) * 1.5f;
+                    // A tilted loop nine blocks round, once every three seconds: about nineteen blocks a second, so the
+                    // trail is a line that thins away before the head comes round again.
+                    double a = age * Math.PI * 2 / 3;
+                    float cx = (float) Math.cos(a) * 9f, cz = (float) Math.sin(a) * 9f, cy = 4f + (float) Math.sin(a * 2) * 2f;
                     for (CgVfxEmitterInstance e : play.emitters) e.moveTo(cx, cy, cz);
                 }));
     }

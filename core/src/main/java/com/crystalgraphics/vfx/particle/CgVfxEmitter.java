@@ -95,7 +95,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final CgKeyframes sizeOverLife, opacityOverLife;
     /** The size curve's peak at the curve row's samples: what the GPU path draws at most. */
     private final float sizePeak;
-    private final boolean feedsGas;
+    private final boolean feedsGas, splatsGrid;
     /** {@link #scaled} copies, one per scale asked for. */
     private final Map<Float, CgVfxEmitter> scaledCopies = new ConcurrentHashMap<>();
 
@@ -141,9 +141,13 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         spinMax = b.spinMax;
         heat = b.heat;
         modules = Collections.unmodifiableList(new ArrayList<>(b.modules));
-        boolean feeds = false;
-        for (CgVfxModule m : modules) feeds |= Arrays.asList(m.worldInputs()).contains(CgVfxWorldInput.GAS_FEED);
+        boolean feeds = false, splats = false;
+        for (CgVfxModule m : modules) {
+            feeds |= Arrays.asList(m.worldInputs()).contains(CgVfxWorldInput.GAS_FEED);
+            splats |= Arrays.asList(m.worldInputs()).contains(CgVfxWorldInput.GRID_SPLAT);
+        }
         feedsGas = feeds;
+        splatsGrid = splats;
         events = Collections.unmodifiableList(new ArrayList<>(b.events));
         sizeOverLife = b.sizeOverLife;
         opacityOverLife = b.opacityOverLife;
@@ -243,6 +247,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     /** Whether a module of it pours into its instance's gas ({@link CgVfxModule.Feed}). */
     public boolean feedsGas() {
         return feedsGas;
+    }
+
+    /** Whether a module of it splats into its instance's grid ({@link CgVfxModule.Splat}). */
+    public boolean splatsGrid() {
+        return splatsGrid;
     }
 
     @Override

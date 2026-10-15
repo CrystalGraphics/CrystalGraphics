@@ -1,11 +1,10 @@
-// Reading and marching a sparse gas (CgVfxGas, CgVfxGasAtlas): which pool slot holds a cell, where a cell is read in
-// the atlas's pools, the span of a ray through a box, how smoke scatters light, the light of what burns in it, and the
+// Marching a sparse gas (CgVfxGas, CgVfxGasAtlas), read through fx_sparse.glsl: the span of a ray through a box, how smoke scatters light, the light of what burns in it, and the
 // detail finer than its cells. Every value is an argument; the volumes are passed in, as noise_volume.glsl's are.
 //
 //     vec3 c = (p - gridLo) / cell;                                             // the gas's grid cells
-//     int slot = fx_gas_slot(_GasPages, gas, c);                                // -1: no tile, still air
-//     vec3 uvw = fx_gas_pool_uvw(_GasShade, slot, c);
-//     vec4 s = fx_gas_smooth(_GasShade, slot, c);                               // density, flame, sun, sky
+//     int slot = fx_sparse_slot(_GasPages, gas, c);                                // -1: no tile, still air
+//     vec3 uvw = fx_sparse_pool_uvw(_GasShade, slot, c);
+//     vec4 s = fx_sparse_smooth(_GasShade, slot, c);                               // density, flame, sun, sky
 //     vec4 f = textureLod(_GasFlow, uvw, 0.0);                                  // velocity, temperature
 //     float lit = fx_gas_phase(dot(ray, sun), 0.6) * s.z;
 //     float d = fx_gas_carried_detail(_Noise, _Voronoi, p / 1.2, f.xyz / 1.2, age, 0.4);
@@ -13,66 +12,7 @@
 //     vec3 fire = fx_gas_emission(300.0 + 600.0 * f.w);
 #pragma once
 #include "crystalgraphics:shaders/lib/noise_volume.glsl"
-
-// CgVfxGasAtlas's layout: cells a tile side, tiles a page table side, cells a grid side, pool tiles a layer side, a
-// tile's side in the apron'd pools, and the apron.
-#define FX_GAS_TILE 16
-#define FX_GAS_PAGES 32
-#define FX_GAS_SPAN 512
-#define FX_GAS_LAYER 8
-#define FX_GAS_SHADE_TILE 20
-#define FX_GAS_APRON 2
-
-// The tile holding cell c (the gas's grid cells), in tiles.
-ivec3 fx_gas_tile(vec3 c) {
-    return ivec3(floor(c / float(FX_GAS_TILE)));
-}
-
-// The pool slot of gas g's tile t: -1 where it has no tile, and past its grid.
-int fx_gas_slot_of(sampler3D pages, int g, ivec3 t) {
-    if (any(lessThan(t, ivec3(0))) || any(greaterThanEqual(t, ivec3(FX_GAS_PAGES)))) return -1;
-    return int(texelFetch(pages, ivec3(t.x, t.y, t.z + FX_GAS_PAGES * g), 0).x + 0.5) - 1;
-}
-
-int fx_gas_slot(sampler3D pages, int g, vec3 c) {
-    return fx_gas_slot_of(pages, g, fx_gas_tile(c));
-}
-
-// Where cell c of slot s's tile is in an apron'd pool (shade, flow), in texels.
-vec3 fx_gas_pool_texel(int s, vec3 c) {
-    ivec3 p = ivec3(s % FX_GAS_LAYER, (s / FX_GAS_LAYER) % FX_GAS_LAYER, s / (FX_GAS_LAYER * FX_GAS_LAYER));
-    return vec3(p * FX_GAS_SHADE_TILE + FX_GAS_APRON) + c - vec3(fx_gas_tile(c) * FX_GAS_TILE);
-}
-
-// Where cell c of slot s's tile is read, filtered, in an apron'd pool: never its neighbour's texels.
-vec3 fx_gas_pool_uvw(sampler3D pool, int s, vec3 c) {
-    return fx_gas_pool_texel(s, c) / vec3(textureSize(pool, 0));
-}
-
-// The pool's value at cell c of slot s's tile under a cubic B-spline, from eight filtered reads (Sigg and Hadwiger,
-// GPU Gems 2 ch. 20): smooth across cell faces, where a trilinear read bends and shows the grid. Its reach is the
-// two cells of apron.
-vec4 fx_gas_smooth(sampler3D pool, int s, vec3 c) {
-    vec3 size = vec3(textureSize(pool, 0));
-    vec3 x = fx_gas_pool_texel(s, c) - 0.5;
-    vec3 i = floor(x), f = x - i, f2 = f * f, f3 = f2 * f;
-    vec3 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0;
-    vec3 w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
-    vec3 w3 = f3 / 6.0;
-    vec3 g1 = 1.0 - w0 - w1;
-    vec3 h0 = (i - 0.5 + w1 / (w0 + w1)) / size, h1 = (i + 1.5 + w3 / max(g1, 1.0e-6)) / size;
-    vec4 a = mix(textureLod(pool, h0, 0.0), textureLod(pool, vec3(h1.x, h0.y, h0.z), 0.0), g1.x);
-    vec4 b = mix(textureLod(pool, vec3(h0.x, h1.y, h0.z), 0.0), textureLod(pool, vec3(h1.x, h1.y, h0.z), 0.0), g1.x);
-    vec4 d = mix(textureLod(pool, vec3(h0.x, h0.y, h1.z), 0.0), textureLod(pool, vec3(h1.x, h0.y, h1.z), 0.0), g1.x);
-    vec4 e = mix(textureLod(pool, vec3(h0.x, h1.y, h1.z), 0.0), textureLod(pool, h1, 0.0), g1.x);
-    return mix(mix(a, b, g1.y), mix(d, e, g1.y), g1.z);
-}
-
-// A pool's value at cell c of gas g, filtered; 0 where it has no tile.
-vec4 fx_gas_read(sampler3D pool, sampler3D pages, int g, vec3 c) {
-    int s = fx_gas_slot(pages, g, c);
-    return s < 0 ? vec4(0.0) : textureLod(pool, fx_gas_pool_uvw(pool, s, c), 0.0);
-}
+#include "crystalgraphics:shaders/lib/vfx/fx_sparse.glsl"
 
 // Where a ray from o along unit d enters and leaves the box lo to hi; y below x for a miss.
 vec2 fx_gas_box(vec3 o, vec3 d, vec3 lo, vec3 hi) {

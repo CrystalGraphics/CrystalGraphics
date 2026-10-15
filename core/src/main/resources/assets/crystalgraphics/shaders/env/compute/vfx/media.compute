@@ -1,0 +1,65 @@
+// Gas and grids in the world's media (CgWorldMedia): each one's extinction a block where each froxel is, added to what
+// came before, so what is drawn behind smoke is dimmed by it. CgVfxGasAtlas dispatches Gas, CgVfxGridAtlas Grid (lit
+// grids alone: a glowing one hides nothing). Positions are camera-relative.
+#pragma kernel Gas 4 4 4 image
+#pragma kernel Grid 4 4 4 image
+
+#include "crystalgraphics:shaders/lib/media.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_gas.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_grid.glsl"
+
+Properties {
+    _MediaIn    ("The extinction added before this kernel", sampler3D) = "black"
+    _MediaFirst ("1 for the first kernel: nothing before it",  int)       = 1
+    _MediaRay00 ("The view ray at the bottom left, a unit of eye depth", vec4) = (0, 0, -1, 0)
+    _MediaRay10 ("At the bottom right",                    vec4)      = (0, 0, -1, 0)
+    _MediaRay01 ("At the top left",                        vec4)      = (0, 0, -1, 0)
+    _MediaRay11 ("At the top right",                       vec4)      = (0, 0, -1, 0)
+    _GasShade   ("The gas pool's shade: density in x",     sampler3D) = "black"
+    _GasPages   ("Each gas's page table",                  sampler3D) = "black"
+    _Gas0       ("Gas 0's grid's low corner, then its extinction a unit; w 0 for none", vec4) = (0, 0, 0, 0)
+    _Gas1       ("Gas 1's",                                vec4)      = (0, 0, 0, 0)
+    _Gas2       ("Gas 2's",                                vec4)      = (0, 0, 0, 0)
+    _Gas3       ("Gas 3's",                                vec4)      = (0, 0, 0, 0)
+    _GasCells   ("Each gas's cell, blocks",                vec4)      = (1, 1, 1, 1)
+    _GridView   ("The grid atlas's channels",              sampler3D) = "black"
+    _GridPages  ("Each grid's page table",                  sampler3D) = "black"
+    _Grid0      ("Grid 0's low corner (its middle less half its span), then its extinction a unit; w 0 for none", vec4) = (0, 0, 0, 0)
+    _Grid1      ("Grid 1's",                               vec4)      = (0, 0, 0, 0)
+    _Grid2      ("Grid 2's",                               vec4)      = (0, 0, 0, 0)
+    _Grid3      ("Grid 3's",                               vec4)      = (0, 0, 0, 0)
+    _GridCells  ("Each grid's cell, blocks",               vec4)      = (1, 1, 1, 1)
+}
+
+Images {
+    MEDIA_OUT ("Extinction a block so far", r16f, writeonly, 3d)
+}
+
+// Gas g's extinction at p: its density through its page table, times its extinction a unit.
+float m_gas(int g, vec4 at, float cell, vec3 p) {
+    if (at.w <= 0.0) return 0.0;
+    vec3 c = (p - at.xyz) / cell;
+    int slot = fx_sparse_slot(_GasPages, g, c);
+    if (slot < 0) return 0.0;
+    return max(textureLod(_GasShade, fx_sparse_pool_uvw(_GasShade, slot, c), 0.0).x, 0.0) * at.w;
+}
+
+// Grid b's extinction at p: its channel x, times its extinction a unit.
+float m_grid(int b, vec4 at, float cell, vec3 p) {
+    if (at.w <= 0.0) return 0.0;
+    return max(fx_grid_read(_GridView, _GridPages, b, (p - at.xyz) / cell).x, 0.0) * at.w;
+}
+
+void Gas() {
+    vec3 p = media_point(CG_TEXEL, MEDIA_OUT_SIZE(), _MediaRay00, _MediaRay10, _MediaRay01, _MediaRay11);
+    float sigma = m_gas(0, _Gas0, _GasCells.x, p) + m_gas(1, _Gas1, _GasCells.y, p) + m_gas(2, _Gas2, _GasCells.z, p)
+            + m_gas(3, _Gas3, _GasCells.w, p);
+    MEDIA_OUT_WRITE(vec4(media_before(_MediaIn, _MediaFirst, CG_TEXEL) + sigma, 0.0, 0.0, 0.0));
+}
+
+void Grid() {
+    vec3 p = media_point(CG_TEXEL, MEDIA_OUT_SIZE(), _MediaRay00, _MediaRay10, _MediaRay01, _MediaRay11);
+    float sigma = m_grid(0, _Grid0, _GridCells.x, p) + m_grid(1, _Grid1, _GridCells.y, p)
+            + m_grid(2, _Grid2, _GridCells.z, p) + m_grid(3, _Grid3, _GridCells.w, p);
+    MEDIA_OUT_WRITE(vec4(media_before(_MediaIn, _MediaFirst, CG_TEXEL) + sigma, 0.0, 0.0, 0.0));
+}

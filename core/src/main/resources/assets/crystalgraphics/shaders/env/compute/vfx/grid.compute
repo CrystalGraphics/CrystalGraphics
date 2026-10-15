@@ -1,139 +1,276 @@
-// Every grid's step (CgVfxGrid3D, CgVfxGridAtlas), once a frame: four channels a cell, in a brick of the atlas each.
-// Splat sums what particles splatted (CgVfxModule.Splat) into its cell; Step fades each channel, spreads it to its
-// neighbours (explicit diffusion, outside the grid empty) and adds the splats; Shade writes what layers and particles
-// read, and the light of channel x's density: the transmittance toward the sun and the sky's light the grid over a
-// cell leaves. Every kernel but Splat runs over the used bricks, a texel a cell; a texel past its grid's cells, or of a
-// grid not live, writes nothing there. A fresh grid reads its brick's old cells as nothing.
+// Every grid's step (CgVfxGrid3D, CgVfxGridAtlas), once a frame: four channels a cell, sparse, in tiles of a pool
+// (CgVfxTiles) found through each grid's page table, so a grid holds cells only where something is and reaches as far
+// as it goes. Splat spreads what particles splatted (CgVfxModule.Splat) over the eight cells about each by distance,
+// marking each page it found no tile in, which Wanted lists for the atlas to give out; Step fades each channel and
+// spreads it to its neighbours (explicit diffusion; a cell with no tile is empty) and adds the splats; Shade writes what
+// layers and particles read, with two cells of apron round each tile for filtered reads, faded out over three cells
+// toward a face with no tile beyond it, so a missing tile never shows as an edge; Light, for lit grids, the sun's
+// transmittance and the sky's light through channel x; Occupancy, what each tile holds and which faces it nears.
+// Coarsen, on a frame a grid ran out of tiles, refills that grid's tiles on cells twice as wide from the 2x2x2 cells
+// under each, through its page table before, and copies every other grid's as they were.
 #pragma kernel Splat scatter
+#pragma kernel Wanted append
 #pragma kernel Step 4 4 4 image
 #pragma kernel Shade 4 4 4 image
+#pragma kernel Light 4 4 4 image
+#pragma kernel Occupancy 4 4 4 scatter
+#pragma kernel Coarsen 4 4 4 image
 
-#include "crystalgraphics:shaders/lib/vfx/fx_grid.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_sparse.glsl"
 
 Properties {
-    _View ("The channels as the last frame left them", sampler3D) = "black"
-    _Next ("The channels this frame",                 sampler3D) = "black"
+    _State ("The channels as the last frame's step left them", sampler3D) = "black"
+    _View  ("The channels as drawn, this frame",               sampler3D) = "black"
+    _Pages ("Each grid's page table",                          sampler3D) = "black"
+    _Before ("The coarsened grid's page table before",         sampler3D) = "black"
+    _Coarsened ("The grid coarsened this frame",               int)       = -1
 }
 
 struct FxSplat { vec4 cell; vec4 amounts; };
 
 Buffers {
-    GRIDS       ("Each grid's four rows (CgVfxGridAtlas.ROW_*)",                              vec4,    readonly)
-    SPLATS      ("What particles splatted: a grid's cell and the grid, then the four amounts", FxSplat, readonly)
-    SPLAT_COUNT ("How many SPLATS",                                                         uint,    readonly)
-    SPLAT_SUM   ("SPLATS summed a cell, four channels",                                     float,   readwrite)
+    GRIDS       ("Each grid's four rows (CgVfxGridAtlas.ROW_*)",                                     vec4,    readonly)
+    TILES       ("Each slot: its grid + 1 (0 free), its tile x | y << 8 | z << 16, 1 while fresh",   uvec4,   readonly)
+    SPLATS      ("What particles splatted: a grid's cell and the grid, then the four amounts",       FxSplat, readonly)
+    SPLAT_COUNT ("How many SPLATS",                                                                uint,    readonly)
+    SPLAT_SUM   ("SPLATS spread over each slot's cells, four channels",                            float,   readwrite)
+    WANT        ("1 for each page a splat found no tile in, a page table's worth a grid",           uint,    readwrite)
+    WANTED      ("The pages WANT marked, each grid * PAGES³ + page + 1",                           uint,    append)
+    OCCUPIED    ("Each slot's eight flags: something in it, then near its -x, +x, -y, +y, -z, +z face", uint, readwrite)
 }
 
 Images {
-    NEXT_OUT  ("The channels, next",         rgba16f, writeonly, 3d)
-    VIEW_OUT  ("What layers read",           rgba16f, writeonly, 3d)
-    LIGHT_OUT ("Sun transmittance, sky light", rgba16f, writeonly, 3d)
+    STATE_OUT ("The channels, stepped",          rgba16f, writeonly, 3d)
+    VIEW_OUT  ("What layers read",               rgba16f, writeonly, 3d)
+    LIGHT_OUT ("Sun transmittance, sky light",   rgba16f, writeonly, 3d)
 }
 
-// Rows of a grid in GRIDS: its state (live, fresh, cells a side, a cell in blocks), what each channel keeps this frame,
-// what each spreads to its neighbours, and its light (channel x's extinction a block, 1 to light it).
+// Rows of a grid in GRIDS: its state (live, what a splat is scaled by: an eighth a coarsening, so a particle adds the
+// same density whatever the cells, 0, a cell in blocks), what each channel keeps this frame, what each
+// spreads to its neighbours, and its light (channel x's extinction a block, 1 to light it).
 const int G_ROWS = 4;
-const int G_BRICK = FX_GRID_BRICK;
+const int G_TILE = FX_SPARSE_TILE;
+const int G_PAGES = FX_SPARSE_PAGES;
+const int G_SPAN = FX_SPARSE_SPAN;
+const int G_LAYER = FX_SPARSE_LAYER;
+const int G_CELLS = G_TILE * G_TILE * G_TILE;
+// Cells over which what a grid holds is drawn fading out toward a face with no tile beyond it.
+const float G_EDGE = 3.0;
+// The least a channel holds that Occupancy counts, and how near a face, in cells, it asks for the neighbour.
+const float G_OCCUPIED = 1.0e-3;
+const int G_NEAR_FACE = 4;
 // Distances up, in cells, the sky's light is taken over, and the five ways toward the sky.
 const float G_UP[6] = float[6](1.0, 2.0, 4.0, 7.0, 11.0, 16.0);
 const vec3 G_DOME[5] = vec3[5](vec3(0.0, 1.0, 0.0), vec3(0.7071, 0.7071, 0.0), vec3(-0.7071, 0.7071, 0.0),
         vec3(0.0, 0.7071, 0.7071), vec3(0.0, 0.7071, -0.7071));
-// Optical depth past which a cell is dark: the march toward the sun stops.
+// Cells toward the sun the light is taken over, and the optical depth past which a cell is dark.
+const int G_SUN_CELLS = 48;
 const float G_DARK = 8.0;
 // The largest a channel holds: half floats past it are infinite.
 const float G_MOST = 60000.0;
 
-// The texel's grid, its cell and its cells a side; false for a texel past them or a grid not live.
-bool g_at(ivec3 t, out int b, out ivec3 c, out int n) {
-    b = t.z / G_BRICK;
-    c = ivec3(t.x, t.y, t.z - b * G_BRICK);
-    vec4 state = GRIDS(b * G_ROWS);
-    n = int(state.z + 0.5);
-    return state.x > 0.5 && all(lessThan(c, ivec3(n)));
+// This invocation: its grid (-1 for a free slot), its slot, the tile that slot holds and its cell.
+struct G {
+    int b;
+    int slot;
+    ivec3 tile;
+    ivec3 cell;
+};
+
+// The invocation at texel t of a pool whose tiles are n texels a side, apron cells round each.
+G g_at(ivec3 t, int n, int apron) {
+    G g;
+    ivec3 p = t / n;
+    g.slot = p.x + G_LAYER * (p.y + G_LAYER * p.z);
+    uvec4 w = TILES(g.slot);
+    g.b = int(w.x) - 1;
+    g.tile = ivec3(int(w.y & 255u), int((w.y >> 8u) & 255u), int((w.y >> 16u) & 255u));
+    g.cell = g.tile * G_TILE + (t - p * n) - apron;
+    return g;
 }
 
-// Cell c of grid b, as the last frame left it; nothing outside its n cells.
-vec4 g_last(int b, int n, ivec3 c) {
-    if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(n)))) return vec4(0.0);
-    return texelFetch(_View, ivec3(c.x, c.y, c.z + b * G_BRICK), 0);
+bool g_live(G g) {
+    return g.b >= 0 && GRIDS(g.b * G_ROWS).x > 0.5;
+}
+
+// The slot holding cell c of grid b: -1 where it has no tile, and past its grid.
+int g_slot(int b, ivec3 c) {
+    if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(G_SPAN)))) return -1;
+    return fx_sparse_slot_of(_Pages, b, c >> 4);
+}
+
+int g_slot_near(G g, ivec3 c) {
+    return all(equal(c >> 4, g.tile)) ? g.slot : g_slot(g.b, c);
+}
+
+ivec3 g_pool_tile(int slot) {
+    return ivec3(slot % G_LAYER, (slot / G_LAYER) % G_LAYER, slot / (G_LAYER * G_LAYER));
+}
+
+// Cell c's channels as the last step left them: nothing where it has no tile, or in a tile given out this frame,
+// whose texels hold what the pool held there before.
+vec4 g_last(G g, ivec3 c) {
+    int s = g_slot_near(g, c);
+    if (s < 0 || TILES(s).z != 0u) return vec4(0.0);
+    return texelFetch(_State, g_pool_tile(s) * G_TILE + (c & (G_TILE - 1)), 0);
+}
+
+// Cell c's channels as this frame's step left them: nothing where it has no tile.
+vec4 g_now(G g, ivec3 c) {
+    int s = g_slot_near(g, c);
+    if (s < 0) return vec4(0.0);
+    return texelFetch(_State, g_pool_tile(s) * G_TILE + (c & (G_TILE - 1)), 0);
+}
+
+int g_sum_at(int slot, ivec3 c) {
+    ivec3 l = c & (G_TILE - 1);
+    return (slot * G_CELLS + l.x + G_TILE * (l.y + G_TILE * l.z)) * 4;
 }
 
 void Splat() {
     if (uint(CG_ELEMENT) >= min(SPLAT_COUNT(0), uint(SPLATS_LENGTH()))) return;
     FxSplat s = SPLATS(CG_ELEMENT);
     int b = int(s.cell.w + 0.5);
-    vec4 state = GRIDS(b * G_ROWS);
-    int n = int(state.z + 0.5);
-    ivec3 c = ivec3(floor(s.cell.xyz));
-    if (state.x < 0.5 || any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(n)))) return;
-    int at = (c.x + G_BRICK * (c.y + G_BRICK * (c.z + G_BRICK * b))) * 4;
-    if (s.amounts.x != 0.0) SPLAT_SUM_ADD(at, s.amounts.x);
-    if (s.amounts.y != 0.0) SPLAT_SUM_ADD(at + 1, s.amounts.y);
-    if (s.amounts.z != 0.0) SPLAT_SUM_ADD(at + 2, s.amounts.z);
-    if (s.amounts.w != 0.0) SPLAT_SUM_ADD(at + 3, s.amounts.w);
+    if (GRIDS(b * G_ROWS).x < 0.5) return;
+    vec3 q = s.cell.xyz - 0.5;
+    ivec3 base = ivec3(floor(q));
+    vec3 f = q - vec3(base);
+    vec4 amounts = s.amounts * GRIDS(b * G_ROWS).y;
+    for (int k = 0; k < 8; k++) {
+        ivec3 o = ivec3(k & 1, (k >> 1) & 1, k >> 2);
+        ivec3 c = base + o;
+        if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(G_SPAN)))) continue;
+        vec3 w = mix(1.0 - f, f, vec3(o));
+        vec4 a = amounts * (w.x * w.y * w.z);
+        int slot = fx_sparse_slot_of(_Pages, b, c >> 4);
+        if (slot < 0) {
+            // No tile here yet: asked for, and given out by the frame after next. What lands meanwhile is lost.
+            ivec3 t = c >> 4;
+            WANT_MAX(b * G_PAGES * G_PAGES * G_PAGES + t.x + G_PAGES * (t.y + G_PAGES * t.z), 1u);
+            continue;
+        }
+        int at = g_sum_at(slot, c);
+        if (a.x != 0.0) SPLAT_SUM_ADD(at, a.x);
+        if (a.y != 0.0) SPLAT_SUM_ADD(at + 1, a.y);
+        if (a.z != 0.0) SPLAT_SUM_ADD(at + 2, a.z);
+        if (a.w != 0.0) SPLAT_SUM_ADD(at + 3, a.w);
+    }
+}
+
+void Wanted() {
+    if (uint(CG_ELEMENT) >= uint(WANT_LENGTH())) return;
+    if (WANT(CG_ELEMENT) != 0u) WANTED_APPEND(uint(CG_ELEMENT) + 1u);
 }
 
 void Step() {
-    int b, n;
-    ivec3 c;
-    if (!g_at(CG_TEXEL, b, c, n)) {
-        NEXT_OUT_WRITE(vec4(0.0));
+    G g = g_at(CG_TEXEL, G_TILE, 0);
+    if (!g_live(g)) {
+        STATE_OUT_WRITE(vec4(0.0));
         return;
     }
-    vec4 v = vec4(0.0);
-    if (GRIDS(b * G_ROWS).y < 0.5) {
-        v = g_last(b, n, c);
-        vec4 around = g_last(b, n, c + ivec3(1, 0, 0)) + g_last(b, n, c - ivec3(1, 0, 0))
-                + g_last(b, n, c + ivec3(0, 1, 0)) + g_last(b, n, c - ivec3(0, 1, 0))
-                + g_last(b, n, c + ivec3(0, 0, 1)) + g_last(b, n, c - ivec3(0, 0, 1));
-        v = (v + GRIDS(b * G_ROWS + 2) * (around - 6.0 * v)) * GRIDS(b * G_ROWS + 1);
-    }
-    int at = (c.x + G_BRICK * (c.y + G_BRICK * (c.z + G_BRICK * b))) * 4;
+    ivec3 c = g.cell;
+    vec4 v = g_last(g, c);
+    vec4 around = g_last(g, c + ivec3(1, 0, 0)) + g_last(g, c - ivec3(1, 0, 0))
+            + g_last(g, c + ivec3(0, 1, 0)) + g_last(g, c - ivec3(0, 1, 0))
+            + g_last(g, c + ivec3(0, 0, 1)) + g_last(g, c - ivec3(0, 0, 1));
+    v = (v + GRIDS(g.b * G_ROWS + 2) * (around - 6.0 * v)) * GRIDS(g.b * G_ROWS + 1);
+    int at = g_sum_at(g.slot, c);
     v += vec4(SPLAT_SUM(at), SPLAT_SUM(at + 1), SPLAT_SUM(at + 2), SPLAT_SUM(at + 3));
-    NEXT_OUT_WRITE(clamp(v, vec4(-G_MOST), vec4(G_MOST)));
+    STATE_OUT_WRITE(clamp(v, vec4(-G_MOST), vec4(G_MOST)));
 }
 
-// Channel x's optical depth from p (cells) along d, a cell a step, up to its edge or dark.
-float g_depth(int b, int n, vec3 p, vec3 d, float sigma) {
-    float tau = 0.0;
-    for (int i = 1; i <= G_BRICK && tau < G_DARK; i++) {
-        vec3 q = p + d * float(i);
-        if (any(lessThan(q, vec3(0.0))) || any(greaterThan(q, vec3(float(n))))) break;
-        tau += max(textureLod(_Next, fx_grid_uvw(_Next, b, float(n), q), 0.0).x, 0.0) * sigma;
-    }
-    return tau;
+// 1 inside, easing to 0 over G_EDGE cells toward each face of cell c's tile with no tile beyond it.
+float g_edge(int b, ivec3 c) {
+    ivec3 t = c >> 4;
+    vec3 l = vec3(c & (G_TILE - 1)) + 0.5;
+    float d = 1.0e4;
+    if (g_slot(b, (t - ivec3(1, 0, 0)) * G_TILE) < 0) d = min(d, l.x);
+    if (g_slot(b, (t + ivec3(1, 0, 0)) * G_TILE) < 0) d = min(d, float(G_TILE) - l.x);
+    if (g_slot(b, (t - ivec3(0, 1, 0)) * G_TILE) < 0) d = min(d, l.y);
+    if (g_slot(b, (t + ivec3(0, 1, 0)) * G_TILE) < 0) d = min(d, float(G_TILE) - l.y);
+    if (g_slot(b, (t - ivec3(0, 0, 1)) * G_TILE) < 0) d = min(d, l.z);
+    if (g_slot(b, (t + ivec3(0, 0, 1)) * G_TILE) < 0) d = min(d, float(G_TILE) - l.z);
+    return smoothstep(0.0, G_EDGE, d);
 }
 
 void Shade() {
-    int b, n;
-    ivec3 c;
-    if (!g_at(CG_TEXEL, b, c, n)) {
+    G g = g_at(CG_TEXEL, FX_SPARSE_APRON_TILE, FX_SPARSE_APRON);
+    if (!g_live(g)) {
         VIEW_OUT_WRITE(vec4(0.0));
-        LIGHT_OUT_WRITE(vec4(1.0, 1.0, 0.0, 0.0));
         return;
     }
-    vec4 v = texelFetch(_Next, CG_TEXEL, 0);
-    VIEW_OUT_WRITE(v);
-    vec4 light = GRIDS(b * G_ROWS + 3);
-    if (light.y < 0.5 || v.x < 1.0e-4) {
+    ivec3 c = g.cell;
+    if (g_slot_near(g, c) < 0) {
+        VIEW_OUT_WRITE(vec4(0.0));
+        return;
+    }
+    VIEW_OUT_WRITE(g_now(g, c) * g_edge(g.b, c));
+}
+
+// Channel x of grid b at cell point q, as drawn, filtered; 0 where it has no tile.
+float g_drawn(int b, vec3 q) {
+    return max(fx_sparse_read(_View, _Pages, b, q).x, 0.0);
+}
+
+void Light() {
+    G g = g_at(CG_TEXEL, FX_SPARSE_APRON_TILE, FX_SPARSE_APRON);
+    vec4 light = g.b >= 0 ? GRIDS(g.b * G_ROWS + 3) : vec4(0.0);
+    vec3 p = vec3(g.cell) + 0.5;
+    if (!g_live(g) || light.y < 0.5 || g_drawn(g.b, p) < 1.0e-4) {
         LIGHT_OUT_WRITE(vec4(1.0, 1.0, 0.0, 0.0));
         return;
     }
     // A cell's extinction: channel x's a block times the cell's width.
-    float sigma = light.x * GRIDS(b * G_ROWS).w;
-    vec3 p = vec3(c) + 0.5;
-    float sun = exp(-g_depth(b, n, p, CG_SUN_DIRECTION, sigma));
+    float sigma = light.x * GRIDS(g.b * G_ROWS).w;
+    float tau = 0.0;
+    for (int i = 1; i <= G_SUN_CELLS && tau < G_DARK; i++) tau += g_drawn(g.b, p + CG_SUN_DIRECTION * float(i)) * sigma;
     // The sky over the cell, averaged over the dome's five ways: smoke's underside darkens under its own body.
     float sky = 0.0;
     for (int d = 0; d < 5; d++) {
         float depth = 0.0, last = 0.0;
         for (int k = 0; k < 6; k++) {
-            vec3 q = p + G_DOME[d] * G_UP[k];
-            if (any(lessThan(q, vec3(0.0))) || any(greaterThan(q, vec3(float(n))))) break;
-            depth += max(textureLod(_Next, fx_grid_uvw(_Next, b, float(n), q), 0.0).x, 0.0) * (G_UP[k] - last);
+            depth += g_drawn(g.b, p + G_DOME[d] * G_UP[k]) * (G_UP[k] - last);
             last = G_UP[k];
         }
         sky += exp(-depth * sigma);
     }
-    LIGHT_OUT_WRITE(vec4(sun, sky * 0.2, 0.0, 0.0));
+    LIGHT_OUT_WRITE(vec4(exp(-tau), sky * 0.2, 0.0, 0.0));
+}
+
+void Coarsen() {
+    G g = g_at(CG_TEXEL, G_TILE, 0);
+    if (g.b < 0) {
+        STATE_OUT_WRITE(vec4(0.0));
+        return;
+    }
+    if (g.b != _Coarsened) {
+        STATE_OUT_WRITE(texelFetch(_State, CG_TEXEL, 0));
+        return;
+    }
+    // New cell c covers old cells 2(c - SPAN / 2) + SPAN / 2 and the seven past it: their average, the same density.
+    ivec3 o = 2 * g.cell - G_SPAN / 2;
+    vec4 sum = vec4(0.0);
+    for (int k = 0; k < 8; k++) {
+        ivec3 c = o + ivec3(k & 1, (k >> 1) & 1, k >> 2);
+        if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(G_SPAN)))) continue;
+        int s = fx_sparse_slot_of(_Before, 0, c >> 4);
+        if (s >= 0) sum += texelFetch(_State, g_pool_tile(s) * G_TILE + (c & (G_TILE - 1)), 0);
+    }
+    STATE_OUT_WRITE(sum * 0.125);
+}
+
+void Occupancy() {
+    G g = g_at(CG_DISPATCH_ID, G_TILE, 0);
+    if (!g_live(g)) return;
+    vec4 v = abs(g_now(g, g.cell));
+    if (v.x + v.y + v.z + v.w < G_OCCUPIED) return;
+    int at = g.slot * 8;
+    OCCUPIED_MAX(at, 1u);
+    ivec3 l = g.cell & (G_TILE - 1);
+    if (l.x < G_NEAR_FACE) OCCUPIED_MAX(at + 1, 1u);
+    if (l.x >= G_TILE - G_NEAR_FACE) OCCUPIED_MAX(at + 2, 1u);
+    if (l.y < G_NEAR_FACE) OCCUPIED_MAX(at + 3, 1u);
+    if (l.y >= G_TILE - G_NEAR_FACE) OCCUPIED_MAX(at + 4, 1u);
+    if (l.z < G_NEAR_FACE) OCCUPIED_MAX(at + 5, 1u);
+    if (l.z >= G_TILE - G_NEAR_FACE) OCCUPIED_MAX(at + 6, 1u);
 }

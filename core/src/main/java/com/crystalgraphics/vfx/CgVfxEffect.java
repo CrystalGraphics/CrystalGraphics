@@ -14,6 +14,8 @@ import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.gas.CgVfxGas;
 import com.crystalgraphics.vfx.gas.CgVfxGasAtlas;
+import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
+import com.crystalgraphics.vfx.sparse.CgVfxTiles;
 import com.crystalgraphics.vfx.look.CgVfxEnding;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
@@ -850,6 +852,13 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
             fed.wantTiles(emitter.originX() + emitter.sourceX(), emitter.originY() + emitter.sourceY(),
                     emitter.originZ() + emitter.sourceZ(),
                     Math.min(CgVfxGasAtlas.TILE * fed.cellSize(), emitter.emitter().reach(0f)));
+        }
+        CgVfxGrid3D painted = emitter.books().grid();
+        if (painted != null && emitter.emitter().splatsGrid()) {
+            // As a gas's: the tiles round the source ahead of its splats; a splat landing past them asks for its own.
+            painted.wantTiles(emitter.originX() + emitter.sourceX(), emitter.originY() + emitter.sourceY(),
+                    emitter.originZ() + emitter.sourceZ(),
+                    Math.min(CgVfxTiles.TILE * painted.cellSize(), emitter.emitter().reach(0f)));
         }
         if (system == null) {
             emitter.books().schedule(dt, originX, originY, originZ);
