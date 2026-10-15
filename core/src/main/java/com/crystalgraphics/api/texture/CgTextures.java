@@ -71,17 +71,17 @@ public final class CgTextures {
      * <p>{@code pattern} is a {@link String#format} pattern taking one int: {@code %02d} names {@code flame_00.png}.</p>
      */
     public static CgTexture2DArray frames(String pattern, int count) {
-        return frames(CgTextureSpec.RGBA8_LINEAR, pattern, count);
+        return frames(pattern, count, CgTextureSpec.RGBA8_LINEAR);
     }
 
     /**
      * {@code pattern} formatted with 0 to {@code count - 1}, a layer each, sampled as {@code spec}.
      *
      * <pre>{@code
-     * static final CgTexture2DArray TILES = CgTextures.frames(CgTextureSpec.RGBA8_NEAREST, "mymod:textures/tiles/%d.png", 16);
+     * static final CgTexture2DArray TILES = CgTextures.frames("mymod:textures/tiles/%d.png", 16, CgTextureSpec.RGBA8_NEAREST);
      * }</pre>
      */
-    public static CgTexture2DArray frames(CgTextureSpec spec, String pattern, int count) {
+    public static CgTexture2DArray frames(String pattern, int count, CgTextureSpec spec) {
         return CgTexture2DArray.create(spec, numbered(pattern, count));
     }
 
@@ -126,17 +126,17 @@ public final class CgTextures {
      * }</pre>
      */
     public static CgTexture3D volume(String pattern, int count) {
-        return volume(CgTextureSpec.RGBA8_LINEAR, pattern, count);
+        return volume(pattern, count, CgTextureSpec.RGBA8_LINEAR);
     }
 
     /**
      * {@code pattern} formatted with 0 to {@code count - 1}, a slice each, sampled as {@code spec}.
      *
      * <pre>{@code
-     * static final CgTexture3D SMOKE = CgTextures.volume(CgTextureSpec.RGBA8_LINEAR_REPEAT, "mymod:textures/smoke/%02d.png", 32);
+     * static final CgTexture3D SMOKE = CgTextures.volume("mymod:textures/smoke/%02d.png", 32, CgTextureSpec.RGBA8_LINEAR_REPEAT);
      * }</pre>
      */
-    public static CgTexture3D volume(CgTextureSpec spec, String pattern, int count) {
+    public static CgTexture3D volume(String pattern, int count, CgTextureSpec spec) {
         return CgTexture3D.create(spec, numbered(pattern, count));
     }
 
