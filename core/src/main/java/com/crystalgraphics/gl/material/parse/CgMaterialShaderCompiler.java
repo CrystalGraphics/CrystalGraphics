@@ -861,7 +861,7 @@ public final class CgMaterialShaderCompiler {
         if (!useSsbo && CgBindingPoints.isInitialized()) {
             int samplers = 0;
             for (CgMaterialProperty p : shader.properties()) if (p.getType().isSampler()) samplers++;
-            int free = CgBindingPoints.LIGHTMAP_TEXTURE_UNIT;   // the lowest reserved unit
+            int free = CgBindingPoints.MEDIA_TEXTURE_UNIT;   // the lowest reserved unit
             if (samplers + shader.buffers().size() > free) {
                 throw new CgShaderParseException("'Buffers': " + samplers + " samplers and " + shader.buffers().size()
                         + " buffers read as textures need " + (samplers + shader.buffers().size())
@@ -1052,6 +1052,28 @@ public final class CgMaterialShaderCompiler {
         }
     }
 
+    /**
+     * Whether a pass is dimmed by the smoke and gas in front of it ({@code cg_Media}): a transparent world material's
+     * ({@link CgParsedShader#mediated}), not a volume's, which is the smoke itself.
+     */
+    static boolean dimsInMedia(CgParsedShader shader, CgParsedPass pass) {
+        return shader.mediated() && !NAMES_VOLUME_DEPTH.matcher(pass.fragmentBody()).find();
+    }
+
+    /**
+     * Dims the pass's output by what gets through the world's media between the eye and the fragment, as its blend
+     * takes it: light added or premultiplied whole, a colour blended by its alpha through that alpha.
+     */
+    private static void appendMediaDim(StringBuilder sb, CgParsedPass pass, boolean emissive, EmissionMerge merge) {
+        CgBlendState blend = pass.renderState().getBlend();
+        boolean whole = emissive || blend != null && blend.enabled() && blend.srcRgb() == CgGL.GL_ONE;
+        boolean alpha = !emissive && blend != null && blend.enabled() && blend.srcRgb() == CgGL.GL_SRC_ALPHA;
+        if (!whole && !alpha) return;
+        sb.append("  float _cg_media = cg_MediaTransmit(gl_FragCoord.xy / CG_RESOLUTION, cg_LinearEyeDepth(gl_FragCoord.z));\n");
+        sb.append(whole ? "  _cg_fragColor *= _cg_media;\n" : "  _cg_fragColor.a *= _cg_media;\n");
+        if (merge == EmissionMerge.SAME_BLEND || merge == EmissionMerge.ADDED) sb.append("  _cg_emission.rgb *= _cg_media;\n");
+    }
+
     private static void appendFragmentMain(StringBuilder sb, List<CgShaderParser.V2fField> fields,
                                             CgParsedPass pass, CgParsedShader shader, boolean overdraw,
                                             EmissionMerge merge, boolean cover, boolean fold) {
@@ -1126,6 +1148,7 @@ public final class CgMaterialShaderCompiler {
             } else if (fold) {
                 sb.append("  _cg_fragColor.rgb += _cg_glow.rgb;\n");
             }
+            if ((forward || emissive) && dimsInMedia(shader, pass)) appendMediaDim(sb, pass, emissive, merge);
         } else {
             sb.append("  ").append(pass.fragOutput().mrtStructName()).append(" _cg_mrtOut;\n");
             sb.append("  fragment(_v2f_local, _cg_mrtOut);\n");

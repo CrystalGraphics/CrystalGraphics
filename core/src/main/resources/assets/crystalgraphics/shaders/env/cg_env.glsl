@@ -164,6 +164,21 @@ float cg_LinearEyeDepth(float windowDepth) {
     return p32 / (ndc + p22);
 }
 #define CG_SCENE_EYE_DEPTH(uv) cg_LinearEyeDepth(texture(cg_DepthBuffer, (uv)).r)
+
+// cg_Media: the world's froxel transmittance (CgWorldMedia), a volume over the screen whose slices run exponentially in
+// eye depth from CG_MEDIA_NEAR to CG_MEDIA_FAR, each texel what gets through from the eye to its slice's far edge;
+// white in a pass that binds none. Bound to CgBindingPoints.MEDIA_TEXTURE_UNIT; do NOT use that unit in Properties.
+uniform sampler3D cg_Media;
+#define CG_MEDIA_NEAR 0.5
+#define CG_MEDIA_FAR 256.0
+#define CG_MEDIA_SLICES 64.0
+
+// What of the light from eye depth `eye` at screen `uv` reaches the eye through smoke and gas, 0 to 1.
+float cg_MediaTransmit(vec2 uv, float eye) {
+    float k = CG_MEDIA_SLICES * log(max(eye, 1.0e-3) / CG_MEDIA_NEAR) / log(CG_MEDIA_FAR / CG_MEDIA_NEAR);
+    float t = textureLod(cg_Media, vec3(uv, (k - 0.5) / CG_MEDIA_SLICES), 0.0).r;
+    return mix(1.0, t, clamp(k, 0.0, 1.0));
+}
 // A Distortion pass's output: the offset in UV units, the chromatic split, and the eye depth the haze starts at. The
 // apply pulls nothing nearer than that depth into the bend. Alpha is the closeness, kept by a MAX blend.
 #define CG_DISTORTION(offset, split, eyeDepth) vec4((offset), (split), 1.0 / max((eyeDepth), 0.01))

@@ -201,7 +201,7 @@ Authoring: `docs/SHADERS.md` § *The Emissive pass*. What this package does with
   (`appendFragmentUserFunction`), and every glow its `main` makes (merge, fold, its own Emissive draw) takes
   `_cg_glowRgb` with the colour's alpha in place of the colour.
 - **`CgMaterialShader.requireUnits`** refuses at load a shader with more samplers than fit below
-  `CgBindingPoints.LIGHTMAP_TEXTURE_UNIT`.
+  `CgBindingPoints.MEDIA_TEXTURE_UNIT`, the lowest the engine reserves.
 
 ## Depth from a transparent material
 
@@ -219,6 +219,14 @@ A single-output Forward pass, not overdraw, cover or merged, ends its generated 
 `ONE ONE_MINUS_SRC_ALPHA`. In a material with an Emissive pass it then clamps the colour to 1, so a fold or its own
 Emissive draw adds the glow over white, not over an excess. `"ColorSpace" = "Linear"` (`CgParsedShader.linearColor`)
 leaves it out.
+
+## Dimmed by the media
+
+Authoring: `docs/SHADERS.md` § *Dimmed by the smoke in front*. `CgParsedShader.mediated()` is a transparent queue
+below Overlay reading the object record, unless tagged `"Media" = "Off"` (`unmediated`). `dimsInMedia(shader, pass)`
+adds that the fragment names no `CG_VOLUME_DEPTH`. Then `appendMediaDim` ends a single-output Forward or Emissive
+`main`, after the scene decode: `_cg_fragColor *= cg_MediaTransmit(...)` for an Emissive pass or a source blend of
+ONE, `.a *=` for SRC_ALPHA, nothing for any other; a merged emission (`SAME_BLEND`, `ADDED`) is dimmed with it.
 
 ## The Distortion pass
 

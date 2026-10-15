@@ -219,6 +219,10 @@ public final class CgShaderParser {
         if (!"On".equals(fog) && !"Off".equals(fog)) {
             throw new CgShaderParseException("[" + resourcePath + "] Fog is \"On\" or \"Off\", not \"" + fog + "\"");
         }
+        String media = topTags.getOrDefault("Media", "On");
+        if (!"On".equals(media) && !"Off".equals(media)) {
+            throw new CgShaderParseException("[" + resourcePath + "] Media is \"On\" or \"Off\", not \"" + media + "\"");
+        }
         String colorSpace = topTags.getOrDefault("ColorSpace", "sRGB");
         if (!"sRGB".equals(colorSpace) && !"Linear".equals(colorSpace)) {
             throw new CgShaderParseException("[" + resourcePath + "] ColorSpace is \"sRGB\" or \"Linear\", not \""
@@ -411,7 +415,8 @@ public final class CgShaderParser {
         // ── Step 8: return assembled parsed shader ─────────────────────────
         return new CgParsedShader(shaderType, props, featureNames, engineBuffers, renderQueue,
                 renderType, castShadows, sceneColorMargin, "Unlit".equals(lighting), "Off".equals(fog),
-                "Linear".equals(colorSpace), depthMode, Collections.unmodifiableList(passes), buffers.buffers(),
+                "Linear".equals(colorSpace), "Off".equals(media), depthMode, Collections.unmodifiableList(passes),
+                buffers.buffers(),
                 buffers.structs());
     }
 

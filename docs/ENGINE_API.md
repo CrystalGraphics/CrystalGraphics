@@ -155,9 +155,23 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   transparent pass, at a quarter of the pixels. Soft light that adds (`Blend ONE ONE`: a glow) is added over the target
   by a depth-aware upsample. A volume that covers (`Blend ONE ONE_MINUS_SRC_ALPHA`: smoke) is blended with its last
   frame, reprojected by the depth its fragment names (`CG_VOLUME_DEPTH(eye)`) and held to this frame's neighbourhood,
-  then laid over the target in the transparent pass at the farthest volume's place in the sort: a march can then take
+  then laid over the target first in the transparent pass, under every other transparent draw: a march can then take
   fewer steps, starting each frame elsewhere (`CG_FRAME_INDEX`), and the frames average out its grain. Its shader hides itself behind the scene from `cg_DepthBuffer`
   with `DepthTest ALWAYS`, since that target has no depth. `world.halfResolution(false)` draws them at full size.
+- **Media: smoke dims what is inside it.** What is drawn over the volumes is dimmed by the smoke in front of it instead
+  (`docs/SHADERS.md` § *Dimmed by the smoke in front*): at the top of each transparent firing every injector
+  (`world.media().add(injector)`) adds its extinction into a froxel grid over the view (`CgWorldMedia`: 16 pixels
+  across, 64 slices from 0.5 to 256 blocks, as Frostbite's and Unreal's volumetric fog), which is summed from the eye
+  out into what gets through, bound as `cg_Media` to every transparent pass. The gas and lit grids inject themselves.
+  GPU zone `world.media`; a firing with nothing in the air records nothing.
+
+```java
+CgWorldRenderer.get().media().add((pass, media) -> {             // a volume of your own hiding what is behind it
+    if (clouds.isEmpty()) return false;
+    media.dispatch(pass, inject).texture("_Clouds", clouds);      // a kernel declaring CgWorldMedia.PROPERTIES
+    return true;
+});
+```
 - **Distortion**: a transparent draw whose material has a Distortion pass (`docs/SHADERS.md` § *The Distortion pass*)
   adds an offset into a layer of an RGBA16F array half the world's size (`world.distortionScale(scale)`) after the
   transparent pass, hidden by the scene's depth; an apply over the hazes' rect then bends the target by it, reading the offsets

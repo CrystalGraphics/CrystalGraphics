@@ -304,12 +304,15 @@ public final class CgWorldRenderer {
     private CgTexture resolveBound, compositeBound;
     @Nullable
     private CgTexture volumeOut;
-    private long volumeKey;
     /** Whether a volume's glow is folded into its light this firing: the HDR scene, merging glows. */
     private boolean volumeFolds;
 
     // Distortion: what plans and records it, and the distorting draws this firing.
     private final CgWorldDistortion distortion = new CgWorldDistortion();
+    private final CgWorldMedia media = new CgWorldMedia();
+    /** This transparent firing's froxel transmittance, bound at {@code MEDIA_TEXTURE_UNIT}; null with nothing in the air. */
+    @Nullable
+    private CgGraphTexture mediaOut;
     private final CgWorldText text = new CgWorldText();
     private final Hazes hazes = new Hazes();
     private boolean[] distorts = new boolean[64];
@@ -431,6 +434,18 @@ public final class CgWorldRenderer {
 
     public boolean halfResolution() {
         return halfResolution;
+    }
+
+    /**
+     * The smoke and gas in the air, which every transparent world draw is dimmed by at its depth: where whatever
+     * holds some adds an injector.
+     *
+     * <pre>{@code
+     * CgWorldRenderer.get().media().add((pass, media) -> clouds.inject(pass, media));
+     * }</pre>
+     */
+    public CgWorldMedia media() {
+        return media;
     }
 
     /**
@@ -1386,6 +1401,8 @@ public final class CgWorldRenderer {
             // Before any glow: a label's text then hides the glows behind it from the emission, as from the colour.
             if (which == TRANSPARENT) text.recordDepth(stage, view);
             CgGraphTexture emission = which == TRANSPARENT && drawn > 0 ? mergedEmission(stage, recording) : null;
+            mediaOut = which == TRANSPARENT && drawn > 0
+                    ? media.record(recording, stage.constants(), view, toWorld, targetWidth, targetHeight) : null;
             if (scene) recordSceneGlows(stage, recording, view);
             if (drawn > 0) {
                 cullSets(stage, recording, view, false);
@@ -1665,6 +1682,7 @@ public final class CgWorldRenderer {
         CgRasterPass glow = recording.raster(into, merged ? CgLoad.load() : CgLoad.clear(0f, 0f, 0f, 0f),
                 emissionConstants, EMISSIVE_STATE, CgOrder.SORTED)
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target()).timed(GPU_EMISSION);
+        mediated(glow);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
             // Drawn on its own, the emission takes each transparent surface's cover too, in the glows' order: what
@@ -1725,6 +1743,7 @@ public final class CgWorldRenderer {
         CgRasterPass glow = recording.raster(stage.target(), CgLoad.load(), stage.constants().sceneGlow(sceneEmission),
                         EMISSIVE_STATE, CgOrder.SORTED)
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT).timed(GPU_EMISSION);
+        mediated(glow);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
             if (!emits[i]) continue;
@@ -1816,6 +1835,7 @@ public final class CgWorldRenderer {
         CgRasterPass pass = recording.raster(halfTarget, CgLoad.clear(0f, 0f, 0f, 0f), halfConstants, TRANSPARENT_STATE,
                         CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_HALF);
+        mediated(pass);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
             if (phase[i] != HALF) continue;
@@ -1894,10 +1914,8 @@ public final class CgWorldRenderer {
                         CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_VOLUME);
         CgChunkBuilder chunks = recording.chunks().begin();
-        volumeKey = Long.MAX_VALUE;
         for (int i = 0; i < count; i++) {
             if (phase[i] != VOLUME) continue;
-            volumeKey = Math.min(volumeKey, keys[i]);
             modelOf(i, view);
             model.normal(normal);
             for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
@@ -1948,7 +1966,7 @@ public final class CgWorldRenderer {
         return history;
     }
 
-    /** The volumes {@link #recordVolumes} resolved, laid over the target in the transparent pass at the farthest's key. */
+    /** The volumes {@link #recordVolumes} resolved, laid over the target first in the transparent pass. */
     private void addComposite(CgChunkBuilder chunks, CgRecording recording) {
         if (composite == null) composite = CgMaterial.newInstance(COMPOSITE_SHADER);
         if (compositeBound != volumeOut) {
@@ -1958,7 +1976,9 @@ public final class CgWorldRenderer {
         }
         CgPipeline pipeline = composite.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
-        chunks.draw(pipeline, composite.captureBindings(recording.bindings()), FULLSCREEN).sortKey(volumeKey);
+        // First of the pass: every surface after it is dimmed by the smoke in front of it (CgWorldMedia), so one
+        // behind the smoke must not have been covered by it too.
+        chunks.draw(pipeline, composite.captureBindings(recording.bindings()), FULLSCREEN).sortKey(Long.MIN_VALUE);
         chunks.instance();
     }
 
@@ -2132,6 +2152,7 @@ public final class CgWorldRenderer {
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
+        if (!depthOnlyPass) mediated(pass);
         if (emission != null) pass.attachmentIfTaken(emission);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
@@ -2171,6 +2192,11 @@ public final class CgWorldRenderer {
         }
         pass.add(chunks.end());
         pass.end();
+    }
+
+    /** {@code pass} reading this firing's media, where anything is in the air. */
+    private void mediated(CgRasterPass pass) {
+        if (mediaOut != null) pass.texture(CgBindingPoints.MEDIA_TEXTURE_UNIT, mediaOut);
     }
 
     /** Draw {@code i} through {@code pipeline} into a world pass, at its key and within its screen rect. */

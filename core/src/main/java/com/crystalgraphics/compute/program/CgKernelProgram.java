@@ -202,6 +202,7 @@ public final class CgKernelProgram {
         unit(id, CgBindingPoints.DEPTH_TEXTURE_UNIFORM, CgBindingPoints.DEPTH_TEXTURE_UNIT);
         unit(id, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIFORM, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
         unit(id, CgBindingPoints.LIGHTMAP_TEXTURE_UNIFORM, CgBindingPoints.LIGHTMAP_TEXTURE_UNIT);
+        unit(id, CgBindingPoints.MEDIA_TEXTURE_UNIFORM, CgBindingPoints.MEDIA_TEXTURE_UNIT);
     }
 
     private static void storageBlock(int program, String name, int point) {

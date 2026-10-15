@@ -2,6 +2,7 @@ package com.crystalgraphics.gl.texture;
 
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
+import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
 
@@ -31,10 +32,13 @@ public final class CgFallbackTextures {
     /** 1×1 fully transparent black ({@code RGBA = 0, 0, 0, 0}). */
     public static CgTexture TRANSPARENT;
 
+    /** A 1×1×1 opaque white volume: what a pass with no world media reads through {@code cg_Media}, everything let through. */
+    public static CgTexture WHITE_VOLUME;
+
     private CgFallbackTextures() {}
 
     /**
-     * Allocates all four fallback textures. Must be called once on the GL thread
+     * Allocates the fallback textures. Must be called once on the GL thread
      * after the GL context is available, before any material bind that may need fallbacks.
      */
     public static void init() {
@@ -42,10 +46,15 @@ public final class CgFallbackTextures {
         BLACK_1x1 = createPixel(0, 0, 0, 255);
         FLAT_NORMAL = createPixel(128, 128, 255, 255);
         TRANSPARENT = createPixel(0, 0, 0, 0);
+        CgTexture3D volume = CgTexture3D.createEmpty(1, 1, 1, CgTextureSpec.RGBA8_LINEAR);
+        ByteBuffer white = ByteBuffer.allocateDirect(4);
+        white.put((byte) 255).put((byte) 255).put((byte) 255).put((byte) 255).flip();
+        volume.uploadRegion(0, 0, 0, 0, 1, 1, 1, white, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE);
+        WHITE_VOLUME = volume;
     }
 
     /**
-     * Frees all four fallback textures and sets the fields to {@code null}.
+     * Frees the fallback textures and sets the fields to {@code null}.
      * Called automatically by {@code CgGraphicsLifecycle.destroyContext()}.
      */
     public static void destroy() {
@@ -57,6 +66,8 @@ public final class CgFallbackTextures {
         FLAT_NORMAL = null;
         deleteAndNull(TRANSPARENT);
         TRANSPARENT = null;
+        deleteAndNull(WHITE_VOLUME);
+        WHITE_VOLUME = null;
     }
 
     private static CgTexture createPixel(int r, int g, int b, int a) {

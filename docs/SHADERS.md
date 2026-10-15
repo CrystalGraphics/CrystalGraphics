@@ -25,6 +25,7 @@ Built-in types: `spatial` (`CgVertexFormat.SPATIAL` — pos3/uv2/normal3), `pos3
 
 Tags { "RenderType" = "Opaque" }      // controls shadow auto-generation; "Lighting" = "Unlit", "Fog" = "Off" opt out;
                                       // "Depth" = "Clip" | "Prepass": a transparent material writing depth (below)
+                                      // "Media" = "Off": a transparent world material not dimmed by smoke (below)
 Queue = "Geometry"                    // Background|Geometry|AlphaTest|Transparent|Overlay
 
 Properties {
@@ -84,6 +85,7 @@ A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available
 | `cg_DepthBuffer` | `uniform sampler2D` | `CgBindingPoints.DEPTH_TEXTURE_UNIT` | The target's depth as it stands at the draw, in its own depth format: a copy the frame graph takes before the first reader and again after a draw that wrote depth (`render/graph/CLAUDE.md` § *Reading the target*). An opaque material sees the host's world and the opaque draws sorted before it, a transparent one every opaque draw. **Raw values are the host's convention** — reversed-Z on 26.2 — so compare depths as eye distances: `CG_SCENE_EYE_DEPTH(uv)` against `cg_LinearEyeDepth(gl_FragCoord.z)`. Valid in both vertex and fragment stages of all passes. **Do not bind user Properties samplers to `CgBindingPoints.DEPTH_TEXTURE_UNIT`.** |
 | `cg_SceneColor` | `uniform sampler2D` | `CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT` | The target's colour as it stands at the draw, copied the same way: everything sorted before the reader, transparent draws included, but other readers in a row with it, which share its copy. RGBA8, linearly filtered, for a material that bends what is behind it (heat haze, a shockwave). **Do not bind user Properties samplers to that unit either.** |
 | `cg_Lightmap` | `uniform sampler2D` | `CgBindingPoints.LIGHTMAP_TEXTURE_UNIT` | The host's lightmap in a world pass, block light along u and sky light along v; 1x1 white in any other pass. Read through `CG_LIGHTMAP(light)`. **Do not bind user Properties samplers to that unit.** |
+| `cg_Media` | `uniform sampler3D` | `CgBindingPoints.MEDIA_TEXTURE_UNIT` | What gets through the smoke and gas in front, a froxel volume over the screen (`CgWorldMedia`); 1x1x1 white where nothing is in the air or the pass is not a world pass. Read through `cg_MediaTransmit(uv, eyeDepth)`. The lowest unit the engine reserves: user samplers stay below it. |
 
 Convenience macros over the frame block:
 
@@ -638,6 +640,28 @@ void fragment(in v2f i, out vec4 fragColor) {
 - **Clip before a fade into an opaque surface.** Where it thins only to meet the ground, call `cg_Clip` on the density
   before that fade: the ground, drawn already, shows through it, and what draws later behind it stays hidden. Clipped
   after it, that band has no depth, and every later draw behind it (a glow, a dome, its own back lobes) paints over it.
+
+#### Dimmed by the smoke in front
+
+Smoke and gas are drawn as volumes, so a spark inside a cloud would draw over it. Every transparent world material is
+dimmed instead by what gets through between the eye and its fragment, read from the world's media
+(`CgWorldMedia`, a froxel grid the gas and grids fill): the generated `main` multiplies its output by
+`cg_MediaTransmit` after `fragment()`, as its blend takes it.
+
+| Pass and blend | Dimmed |
+|---|---|
+| Emissive, or a Forward pass blending `ONE ...` (added or premultiplied) | the whole colour |
+| A Forward pass blending `SRC_ALPHA ...` | its alpha |
+| Anything else (opaque, a Distortion pass) | nothing |
+
+```glsl
+Tags { "RenderType" = "Transparent" "Media" = "Off" }    // drawn over smoke undimmed: a HUD marker in the world
+float t = cg_MediaTransmit(gl_FragCoord.xy / CG_RESOLUTION, cg_LinearEyeDepth(gl_FragCoord.z));   // by hand
+```
+
+- **Which materials**: a transparent queue below Overlay that reads the object record (every world draw's).
+- **A volume naming `CG_VOLUME_DEPTH`** is never dimmed: it draws the smoke itself.
+- The grid is 16 pixels a froxel across, so a dimmed edge is soft at that size.
 
 #### Pass Types vs. Multi-Draw Chains — Two Orthogonal Axes
 

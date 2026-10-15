@@ -9,6 +9,7 @@ com/crystalgraphics/api/CgBindingPoints
   field public,static LIGHTMAP_TEXTURE_UNIT I
   field public,static MATERIAL_BUFFERS_SSBO I
   field public,static MATERIAL_PROPERTIES_UBO I
+  field public,static MEDIA_TEXTURE_UNIT I
   field public,static OBJECT_DATA Lcom/crystalgraphics/api/CgBindingPoints$Binding;
   field public,static PALETTE Lcom/crystalgraphics/api/CgBindingPoints$Binding;
   field public,static PARTICLES Lcom/crystalgraphics/api/CgBindingPoints$Binding;
@@ -21,6 +22,7 @@ com/crystalgraphics/api/CgBindingPoints
   field public,static,final DEPTH_TEXTURE_UNIFORM Ljava/lang/String;
   field public,static,final LIGHTMAP_TEXTURE_UNIFORM Ljava/lang/String;
   field public,static,final MATERIAL_BUFFER_COUNT I
+  field public,static,final MEDIA_TEXTURE_UNIFORM Ljava/lang/String;
   field public,static,final SCENE_COLOR_TEXTURE_UNIFORM Ljava/lang/String;
   field public,static,final USER_START_SSBO I
   field public,static,final USER_START_TBO I
@@ -3921,7 +3923,7 @@ com/crystalgraphics/gl/material/parse/CgParsedPass
 com/crystalgraphics/gl/material/parse/CgParsedShader
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/List;ILjava/lang/String;ZFZZZLcom/crystalgraphics/gl/material/parse/CgParsedShader$DepthMode;Ljava/util/List;Ljava/util/List;Ljava/lang/String;)V
+  method public <init> (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/List;ILjava/lang/String;ZFZZZZLcom/crystalgraphics/gl/material/parse/CgParsedShader$DepthMode;Ljava/util/List;Ljava/util/List;Ljava/lang/String;)V
   method public buffer (Ljava/lang/String;)Lcom/crystalgraphics/compute/source/CgBufferDecl;
   method public bufferStructs ()Ljava/lang/String;
   method public buffers ()Ljava/util/List;
@@ -3934,6 +3936,7 @@ com/crystalgraphics/gl/material/parse/CgParsedShader
   method public getPassByName (Ljava/lang/String;)Lcom/crystalgraphics/gl/material/parse/CgParsedPass;
   method public linearColor ()Z
   method public lit ()Z
+  method public mediated ()Z
   method public passes ()Ljava/util/List;
   method public properties ()Ljava/util/List;
   method public readsObjectRecord ()Z
@@ -3943,6 +3946,7 @@ com/crystalgraphics/gl/material/parse/CgParsedShader
   method public shaderType ()Ljava/lang/String;
   method public unfogged ()Z
   method public unlit ()Z
+  method public unmediated ()Z
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -4208,6 +4212,7 @@ com/crystalgraphics/gl/texture/CgFallbackTextures
   field public,static FLAT_NORMAL Lcom/crystalgraphics/api/texture/CgTexture;
   field public,static TRANSPARENT Lcom/crystalgraphics/api/texture/CgTexture;
   field public,static WHITE_1x1 Lcom/crystalgraphics/api/texture/CgTexture;
+  field public,static WHITE_VOLUME Lcom/crystalgraphics/api/texture/CgTexture;
   method public,static destroy ()V
   method public,static init ()V
 com/crystalgraphics/gl/texture/CgHostSamplers
@@ -6522,6 +6527,27 @@ com/crystalgraphics/render/world/CgWorldLight
   method public,static at (DDD)I
   method public,static block (I)F
   method public,static sky (I)F
+com/crystalgraphics/render/world/CgWorldMedia
+  access public,final
+  extends java/lang/Object
+  field public,static,final FAR F
+  field public,static,final NEAR F
+  field public,static,final OUT Ljava/lang/String;
+  field public,static,final PROPERTIES Ljava/lang/String;
+  field public,static,final SLICES I
+  field public,static,final TILE I
+  method public add (Lcom/crystalgraphics/render/world/CgWorldMedia$Injector;)V
+  method public cameraX ()D
+  method public cameraY ()D
+  method public cameraZ ()D
+  method public dispatch (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/CgKernel;)Lcom/crystalgraphics/render/graph/CgDispatch;
+  method public height ()I
+  method public remove (Lcom/crystalgraphics/render/world/CgWorldMedia$Injector;)V
+  method public width ()I
+com/crystalgraphics/render/world/CgWorldMedia$Injector
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract inject (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/world/CgWorldMedia;)Z
 com/crystalgraphics/render/world/CgWorldRenderer
   access public,final
   extends java/lang/Object
@@ -6538,6 +6564,7 @@ com/crystalgraphics/render/world/CgWorldRenderer
   method public hdrScene ()Z
   method public hdrScene (Z)V
   method public install ()V
+  method public media ()Lcom/crystalgraphics/render/world/CgWorldMedia;
   method public mergeEmission ()Z
   method public mergeEmission (Z)V
   method public mergedDraws ()I

@@ -1235,7 +1235,7 @@ public final class CgMaterialShader implements CgReloadable {
         for (CgMaterialProperty property : parsed.properties()) {
             if (property.getType().isSampler()) samplers++;
         }
-        int free = CgBindingPoints.LIGHTMAP_TEXTURE_UNIT;
+        int free = CgBindingPoints.MEDIA_TEXTURE_UNIT;
         if (samplers > free) {
             throw new CgShaderParseException("[" + resourcePath + "] declares " + samplers + " samplers, and this GPU "
                     + "leaves materials " + free + " texture units below the engine's reserved ones");
@@ -1278,6 +1278,8 @@ public final class CgMaterialShader implements CgReloadable {
         if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
         loc = shader.getUniformLocation(CgBindingPoints.LIGHTMAP_TEXTURE_UNIFORM);
         if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.LIGHTMAP_TEXTURE_UNIT);
+        loc = shader.getUniformLocation(CgBindingPoints.MEDIA_TEXTURE_UNIFORM);
+        if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.MEDIA_TEXTURE_UNIT);
         CgParsedShader parsed = lastParsed;
         if (parsed == null) return;
         int unit = 0;

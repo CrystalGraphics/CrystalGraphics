@@ -473,14 +473,18 @@ public final class CgFrameBuilder {
         packed.palette = frame.paletteOf(pass.recording, valuesOf.get(pass.recording));
         CgBindingTable constants = frame.bindings.begin()
                 .block(CgBindingPoints.FRAME_DATA_UBO, pass.constants, 0, CgPassConstants.FLOATS);
-        boolean lightmap = false;
+        boolean lightmap = false, media = false;
         for (int i = 0; i < pass.textureCount(); i++) {
             constants.texture(pass.textureUnit(i), pass.texture(i));
             lightmap |= pass.textureUnit(i) == CgBindingPoints.LIGHTMAP_TEXTURE_UNIT;
+            media |= pass.textureUnit(i) == CgBindingPoints.MEDIA_TEXTURE_UNIT;
         }
-        // A pass with no world lights nothing: cg_Lightmap reads white.
+        // A pass with no world lights nothing, and nothing in the air dims it: cg_Lightmap and cg_Media read white.
         if (!lightmap && CgBindingPoints.LIGHTMAP_TEXTURE_UNIT >= 0 && CgFallbackTextures.WHITE_1x1 != null) {
             constants.texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, CgFallbackTextures.WHITE_1x1);
+        }
+        if (!media && CgBindingPoints.MEDIA_TEXTURE_UNIT >= 0 && CgFallbackTextures.WHITE_VOLUME != null) {
+            constants.texture(CgBindingPoints.MEDIA_TEXTURE_UNIT, CgFallbackTextures.WHITE_VOLUME);
         }
         if (pass.sceneColorUnit() >= 0) constants.texture(pass.sceneColorUnit(), pass.targetCopy().color);
         if (pass.sceneDepthUnit() >= 0) constants.texture(pass.sceneDepthUnit(), pass.targetCopy().depth);

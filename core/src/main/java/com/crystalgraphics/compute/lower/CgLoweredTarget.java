@@ -33,7 +33,7 @@ public record CgLoweredTarget(CgCapabilities.ShaderBufferPath bufferPath, int ma
     public static CgLoweredTarget current() {
         CgCapabilities caps = CgCapabilities.detect();
         boolean g33 = caps.computeTier() == CgCapabilities.ComputeTier.G33;
-        int reserved = CgBindingPoints.LIGHTMAP_TEXTURE_UNIT;
+        int reserved = CgBindingPoints.MEDIA_TEXTURE_UNIT;
         return new CgLoweredTarget(caps.shaderBufferPath(), CgGL.glGetInteger(CgGL.GL_MAX_GEOMETRY_OUTPUT_VERTICES),
                 CgGL.glGetInteger(CgGL.GL_MAX_GEOMETRY_TOTAL_OUTPUT_COMPONENTS), CgGL.glGetInteger(CgGL.GL_MAX_TEXTURE_SIZE),
                 caps.getMaxTextureBufferSize(), caps.drawIndirect() && !g33, g33 ? 330 : 400,

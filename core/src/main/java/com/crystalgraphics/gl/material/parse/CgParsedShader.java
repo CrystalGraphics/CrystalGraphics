@@ -58,6 +58,9 @@ import java.util.List;
  * @param linearColor
  *     {@code true} for {@code "ColorSpace" = "Linear"}: its Forward colour is linear already (a post pass, a copy of
  *     the scene), so it is not decoded from sRGB when drawn into the HDR scene ({@code CG_LINEAR_SCENE}).
+ * @param unmediated
+ *     {@code true} for {@code "Media" = "Off"}: a transparent pass is not dimmed by the smoke and gas in front of it
+ *     ({@code cg_Media}), as a transparent world material's otherwise is: the engine's own composites, already dimmed.
  * @param depthMode
  *     The material-level {@code "Depth"} tag: how a transparent material writes depth, {@link DepthMode#NONE} when
  *     absent.
@@ -76,7 +79,7 @@ import java.util.List;
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties,
                               List<String> featureNames, List<String> engineBuffers, int renderQueue,
                               String renderType, boolean castShadows, float sceneColorMargin, boolean unlit,
-                              boolean unfogged, boolean linearColor, DepthMode depthMode,
+                              boolean unfogged, boolean linearColor, boolean unmediated, DepthMode depthMode,
                               List<CgParsedPass> passes, List<CgBufferDecl> buffers, String bufferStructs) {
 
     /**
@@ -128,6 +131,12 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
     /** Whether the compiler puts its Forward colour behind the host's fog. */
     public boolean fogged() {
         return !unfogged && readsObjectRecord();
+    }
+
+    /** Whether the compiler dims its passes by the smoke and gas in front of them: a transparent world material's, below the overlays. */
+    public boolean mediated() {
+        return !unmediated && readsObjectRecord() && renderQueue >= CgRenderQueue.TRANSPARENT_THRESHOLD
+                && renderQueue < CgRenderQueue.OVERLAY_THRESHOLD;
     }
 
     /**

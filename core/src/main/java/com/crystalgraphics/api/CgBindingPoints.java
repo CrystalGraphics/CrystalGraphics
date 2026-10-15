@@ -180,12 +180,20 @@ public final class CgBindingPoints {
 
     /**
      * GL texture unit reserved for {@code cg_Lightmap}, the host's lightmap: what every raster pass binds there, the
-     * host's in a world pass and white elsewhere. The lowest reserved unit. Shader authors must not use it in material
-     * Properties.
+     * host's in a world pass and white elsewhere. Shader authors must not use it in material Properties.
      */
     public static int LIGHTMAP_TEXTURE_UNIT = -1;
 
     public static final String LIGHTMAP_TEXTURE_UNIFORM = "cg_Lightmap";
+
+    /**
+     * GL texture unit reserved for {@code cg_Media}, the world's froxel transmittance ({@code CgWorldMedia}): the world
+     * renderer's transparent passes bind it, every other pass a white volume. The lowest reserved unit: a material's
+     * own samplers and buffers read as textures sit below it. Shader authors must not use it in material Properties.
+     */
+    public static int MEDIA_TEXTURE_UNIT = -1;
+
+    public static final String MEDIA_TEXTURE_UNIFORM = "cg_Media";
 
     // ── User buffers — allocated from bottom of available range ──────────────
 
@@ -250,6 +258,7 @@ public final class CgBindingPoints {
         DEPTH_TEXTURE_UNIT = --maxTextureUnits;
         SCENE_COLOR_TEXTURE_UNIT = --maxTextureUnits;
         LIGHTMAP_TEXTURE_UNIT = --maxTextureUnits;
+        MEDIA_TEXTURE_UNIT = --maxTextureUnits;
     }
 
     /**

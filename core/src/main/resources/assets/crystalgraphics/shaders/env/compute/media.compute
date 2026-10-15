@@ -1,0 +1,21 @@
+// The world's media (CgWorldMedia): what gets through from the eye to each froxel's far edge, summed from the eye
+// outward through the extinction the injectors added. What cg_MediaTransmit reads.
+#pragma kernel Integrate 4 4 4 image
+
+#include "crystalgraphics:shaders/lib/media.glsl"
+
+Properties {
+    _Media ("Extinction a block, each froxel", sampler3D) = "black"
+}
+
+Images {
+    MEDIA_TRANSMIT ("What gets through to each froxel's far edge", r16f, writeonly, 3d)
+}
+
+void Integrate() {
+    float tau = 0.0;
+    for (int s = 0; s <= CG_TEXEL.z; s++) {
+        tau += max(texelFetch(_Media, ivec3(CG_TEXEL.xy, s), 0).x, 0.0) * (media_eye(float(s + 1)) - media_eye(float(s)));
+    }
+    MEDIA_TRANSMIT_WRITE(vec4(exp(-tau), 0.0, 0.0, 1.0));
+}
