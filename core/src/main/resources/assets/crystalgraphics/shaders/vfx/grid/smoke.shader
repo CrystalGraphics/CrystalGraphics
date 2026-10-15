@@ -27,8 +27,8 @@ Properties {
     _Smoke      ("The smoke in full light",                    color)     = (0.72, 0.71, 0.7, 1)
     _Steps      ("Steps across the box, at most; never under half a cell", float) = 96.0
     _Scattering ("Forward scattering, 0 to 0.9",               float)     = 0.6
-    _Sun        ("The sun's strength in it",                   float)     = 3.0
-    _Ambient    ("The sky's strength in it",                   float)     = 1.0
+    _Sun        ("The sun's strength in it",                   float)     = 1.0
+    _Ambient    ("The sky's strength in it",                   float)     = 0.6
     _Detail     ("Its edges worn by finer noise, 0 to 1",      float)     = 0.5
     _DetailSize ("That noise's size, blocks",                  float)     = 0.6
 }
@@ -93,7 +93,7 @@ Pass {
             float sigma = density * extinction;
             float through = exp(-sigma * dt);
             if (sigma > 1.0e-4) {
-                float scattered = (p0 * lit.x + 0.5 * p1 * sqrt(lit.x)) * fx_gas_powder(sigma, cosine);
+                float scattered = (p0 * lit.x + 0.5 * p1 * sqrt(lit.x)) / 1.5 * fx_gas_powder(sigma, cosine);
                 float taken = transmit * (1.0 - through);
                 depth += at * taken;
                 light += albedo * (sun * scattered + sky * lit.y) * taken;

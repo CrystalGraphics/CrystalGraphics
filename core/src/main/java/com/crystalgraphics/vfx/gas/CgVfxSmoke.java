@@ -69,6 +69,8 @@ public final class CgVfxSmoke extends CgVfxElement {
     private static final float BLAST_HEAL_FROM = 0.5f, BLAST_HEAL_TO = 5f, BLAST_HEAL_POWER = 1.8f;
     /** Floats a carve: its ends from the effect's origin, its radius, when, and whether a blast. */
     private static final int CARVE = 9;
+    /** The cost over which it thickens inward from the reveal's front: three cells, as gas.compute's G_FILL_EDGE. */
+    static final float EDGE = 3 * CgVfxSmokeFill.ACROSS;
 
     private final CgVfxGas gas;
     private CgVfxSmokeFill fill;
@@ -230,11 +232,12 @@ public final class CgVfxSmoke extends CgVfxElement {
         while (at < length) {
             double next = Math.min(Math.min(tx, ty), Math.min(tz, length));
             int cost = fill.cost(x, y, z);
-            if (cost >= 0 && cost <= reveal) {
+            float thick = cost < 0 ? 0f : Math.max(0f, Math.min(1f, (reveal - cost) / EDGE));
+            if (thick > 0f) {
                 double mid = (at + next) * 0.5;
                 float w = uncarved((float) (ax + ux * mid - originX()), (float) (ay + uy * mid - originY()),
                         (float) (az + uz * mid - originZ()));
-                smoke += (next - at) * w;
+                smoke += (next - at) * w * thick * thick * (3f - 2f * thick);
             }
             at = next;
             if (tx <= ty && tx <= tz) {

@@ -32,8 +32,14 @@ public final class CgVfxSmokeFill {
 
     /** A cell's side in blocks: CS2's 20 units, half a metre. */
     public static final float CELL = 0.5f;
-    /** What a step to a neighbour costs: across, down, up. */
-    public static final int ACROSS = 2, DOWN = 1, UP = 3;
+    /** What a straight step to a neighbour costs: across, down, up. A diagonal step costs its length so weighted. */
+    public static final int ACROSS = 4, DOWN = 2, UP = 6;
+    /**
+     * Its 18 steps: the six faces and the twelve edges, each {@code dx, dy, dz, cost}. The cost is the step's length with
+     * its rise weighted by {@link #UP} or {@link #DOWN} (a chamfer distance, Borgefors 1986), so in the open it spreads
+     * as a squat dome; six faces alone made a diamond pyramid.
+     */
+    private static final int[] STEPS = steps();
     /** The dearest cell a fill reaches, and the farthest from its first cell along an axis, in cells. */
     public static final int MOST_COST = 254, MOST_OFFSET = 127;
 
@@ -100,12 +106,17 @@ public final class CgVfxSmokeFill {
                 out[n * 4 + 2] = (byte) dz;
                 out[n * 4 + 3] = (byte) cost;
                 n++;
-                for (int d = 0; d < 6; d++) {
-                    int nx = dx + (d == 0 ? 1 : d == 1 ? -1 : 0), ny = dy + (d == 2 ? 1 : d == 3 ? -1 : 0);
-                    int nz = dz + (d == 4 ? 1 : d == 5 ? -1 : 0);
+                for (int d = 0; d < STEPS.length; d += 4) {
+                    int sx = STEPS[d], sy = STEPS[d + 1], sz = STEPS[d + 2];
+                    int nx = dx + sx, ny = dy + sy, nz = dz + sz;
                     if (Math.abs(nx) > MOST_OFFSET || Math.abs(ny) > MOST_OFFSET || Math.abs(nz) > MOST_OFFSET) continue;
-                    int next = cost + (d == 2 ? UP : d == 3 ? DOWN : ACROSS);
+                    int next = cost + STEPS[d + 3];
                     if (next > most) continue;
+                    // An edge step never cuts a corner: both cells it passes beside are open.
+                    if (Math.abs(sx) + Math.abs(sy) + Math.abs(sz) == 2
+                            && (sx != 0 && solids.solid(ox + dx + sx, oy + dy, oz + dz)
+                                || sy != 0 && solids.solid(ox + dx, oy + dy + sy, oz + dz)
+                                || sz != 0 && solids.solid(ox + dx, oy + dy, oz + dz + sz))) continue;
                     int nk = pack(nx, ny, nz);
                     int known = lookup(seenKeys, best, nk);
                     if (known != -1 && known <= next || known == SETTLED) continue;
@@ -244,6 +255,25 @@ public final class CgVfxSmokeFill {
             if (x < 0 || y < 0 || z < 0 || x >= side || y >= side || z >= side) continue;
             out[x + side * (y + side * z)] = (byte) Math.min(255, cost(i) + 1);
         }
+    }
+
+    private static int[] steps() {
+        int[] out = new int[18 * 4];
+        int n = 0;
+        for (int x = -1; x <= 1; x++) {
+            for (int y = -1; y <= 1; y++) {
+                for (int z = -1; z <= 1; z++) {
+                    int axes = Math.abs(x) + Math.abs(y) + Math.abs(z);
+                    if (axes == 0 || axes == 3) continue;
+                    double across = Math.sqrt(x * x + z * z) * ACROSS, rise = y > 0 ? UP : y < 0 ? DOWN : 0;
+                    out[n++] = x;
+                    out[n++] = y;
+                    out[n++] = z;
+                    out[n++] = (int) Math.round(Math.sqrt(across * across + rise * rise));
+                }
+            }
+        }
+        return out;
     }
 
     // A flood's table: a packed offset + 1, and its best cost so far, or SETTLED once a cell is taken or solid.

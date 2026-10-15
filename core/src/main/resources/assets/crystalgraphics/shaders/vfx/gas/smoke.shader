@@ -33,8 +33,8 @@ Properties {
     _Fire       ("A tint on what burns in it",                      color)     = (1, 1, 1, 1)
     _Steps      ("Steps across the box, at most; never under half a cell", float) = 160.0
     _Scattering ("Forward scattering, 0 to 0.9",                    float)     = 0.6
-    _Sun        ("The sun's strength in it",                        float)     = 3.0
-    _Ambient    ("The sky's strength in it",                        float)     = 1.0
+    _Sun        ("The sun's strength in it",                        float)     = 1.0
+    _Ambient    ("The sky's strength in it",                        float)     = 0.6
     _Detail     ("Its edges worn by finer noise, 0 to 1",           float)     = 0.5
     _DetailSize ("That noise's size, blocks",                       float)     = 1.2
     _Kelvin     ("Kelvin a unit of temperature, over the air's 300", float)    = 600.0
@@ -120,7 +120,9 @@ Pass {
             vec3 fire = fx_gas_emission(300.0 + _Kelvin * f.w) * fireTint;
             float through = exp(-sigma * dt);
             if (sigma > 1.0e-4) {
-                float lit = (p0 * s.z + 0.5 * p1 * sqrt(s.z) + 0.25 * p2 * sqrt(sqrt(s.z))) * fx_gas_powder(sigma, cosine);
+                // Over 1.75, the octaves' weights: together they scatter what one would, never more.
+                float lit = (p0 * s.z + 0.5 * p1 * sqrt(s.z) + 0.25 * p2 * sqrt(sqrt(s.z))) / 1.75
+                        * fx_gas_powder(sigma, cosine);
                 // What a step scatters and its soot emits toward the eye, integrated against its own extinction.
                 float taken = transmit * (1.0 - through);
                 depth += at * taken;

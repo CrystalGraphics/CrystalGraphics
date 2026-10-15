@@ -113,6 +113,9 @@ const int G_NEAR_FACE = 4;
 // A smoke's cells: a cube this many a side a gas, each this many blocks (CgVfxGasAtlas.FILL, CgVfxSmokeFill.CELL).
 const int G_FILL = 64;
 const float G_FILL_CELL = 0.5;
+// The cost over which its density rises inward from the reveal's front, a shell its edges are worn in: three cells
+// across (CgVfxSmoke.EDGE, which its sight reads the same).
+const float G_FILL_EDGE = 12.0;
 
 // This invocation: its gas (-1 for a free slot), its slot, the tile that slot holds and its cell.
 struct G {
@@ -529,7 +532,7 @@ void Settle() {
         }
         float target = 0.0;
         if (cost > 0.5) {
-            target = fill.w * reveal.y * clamp(reveal.x - (cost - 1.0) + 0.5, 0.0, 1.0);
+            target = fill.w * reveal.y * smoothstep(0.0, G_FILL_EDGE, reveal.x - (cost - 1.0));
             for (int i = 0; i < _Sources; i++) {
                 vec4 where = SOURCES(i * 3), amounts = SOURCES(i * 3 + 1), move = SOURCES(i * 3 + 2);
                 if (move.w < 2.5 || int(where.x + 0.5) != b) continue;

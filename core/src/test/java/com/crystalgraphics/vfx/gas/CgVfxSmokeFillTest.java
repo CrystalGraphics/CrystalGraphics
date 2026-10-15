@@ -27,9 +27,18 @@ public class CgVfxSmokeFillTest {
         int beyond = 0;
         for (int i = 0; i < fill.count(); i++) if (fill.originX() + fill.offsetX(i) > 8) beyond++;
         assertTrue("cells past the door", beyond > 0);
-        // As far past the wall as into the open, but round through the door: 27 steps across, not 9.
+        // As far past the wall as into the open, but round through the door: more than twice as dear.
         assertEquals(9 * CgVfxSmokeFill.ACROSS, fill.cost(-9, 0, 10));
-        assertEquals(27 * CgVfxSmokeFill.ACROSS, fill.cost(9, 0, 10));
+        assertTrue(fill.cost(9, 0, 10) > 2 * fill.cost(-9, 0, 10));
+    }
+
+    @Test
+    public void itSpreadsRoundInTheOpen() {
+        CgVfxSmokeFill fill = CgVfxSmokeFill.flood((x, y, z) -> y < 0, 0.25, 0.25, 0.25, 20000, 30f);
+        // A cell 20 out along an axis and one 20 out along the diagonal cost what their distances do, within a tenth.
+        float axis = fill.cost(20, 0, 0), diagonal = fill.cost(14, 0, 14);
+        assertEquals(20f * CgVfxSmokeFill.ACROSS, axis, 0f);
+        assertEquals(axis * (float) Math.hypot(14, 14) / 20f, diagonal, axis * 0.1f);
     }
 
     @Test

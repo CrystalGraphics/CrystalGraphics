@@ -1376,8 +1376,9 @@ one every material reads, so a host with no sky has the default's. It skips the 
 
 `CgSmokeGrenade` floods smoke from where it lands as Counter-Strike 2's does: half-block cells (`CgVfxSmokeFill.CELL`,
 a block's eighth, CS2's twenty units) spreading round walls, down stairs and through doors, never through a block,
-cheaper down than up, until a budget of cells is spent. It holds for eighteen seconds and thins away; shots and blasts
-carve it open and it heals. A gas fills the cells and gives them motion: its density is held to the cells revealed and
+cheaper down than up, until a budget of cells is spent; in the open it settles as a squat dome. It holds for eighteen
+seconds and thins away; shots and blasts carve it open and it heals. A gas fills the cells and gives them motion: its
+density is held to the cells revealed, thinning over its outer three cells so noise wears its surface into billows, and
 drained outside them, so the shape is the flood's and the churn the gas's ([§14](#14-gas)).
 
 ### Playing one
