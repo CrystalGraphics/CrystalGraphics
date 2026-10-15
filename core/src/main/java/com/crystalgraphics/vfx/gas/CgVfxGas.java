@@ -148,6 +148,8 @@ public final class CgVfxGas extends CgVfxElement {
 
     /** The most sources a gas pours from, and blasts it takes between two steps. */
     public static final int MAX_SOURCES = 8, MAX_BLASTS = 8;
+    /** The most spheres {@link #wantTiles} keeps between two frames: the latest. */
+    public static final int MAX_WANTED = 8;
     /** The density it thins to before {@link #faded()}: a share of a unit. */
     private static final float FADED = 0.02f;
 
@@ -171,6 +173,11 @@ public final class CgVfxGas extends CgVfxElement {
     float clock;
     /** Seconds since a source was on or a blast went off. */
     private float quiet;
+    /** The smoke whose cells hold its density ({@link CgVfxSmoke}), else null. */
+    CgVfxSmoke smoke;
+    /** Spheres asked for since the atlas last read them: absolute middle and radius, four floats each, a ring. */
+    private final double[] wanted = new double[MAX_WANTED * 4];
+    private int wantedCount, wantedNext;
 
     /** A gas drawn on {@link #SLOT}. */
     public CgVfxGas(CgVfxEffect<?> effect) {
@@ -252,6 +259,25 @@ public final class CgVfxGas extends CgVfxElement {
         return quiet > Math.min(60f, (float) Math.log(1f / FADED) / rate);
     }
 
+    /**
+     * Asks for its tiles round {@code radius} blocks of the absolute point {@code (x, y, z)} this frame: where something
+     * will pour into it, so what it pours lands. The engine asks round each emitter instance feeding it
+     * ({@code CgVfxModule.Feed}); a source of your own asks by itself.
+     *
+     * <pre>{@code
+     * smoke.wantTiles(muzzleX, muzzleY, muzzleZ, 3f);   // each tick a jet is about to fire into it
+     * }</pre>
+     */
+    public void wantTiles(double x, double y, double z, float radius) {
+        int at = wantedNext * 4;
+        wanted[at] = x;
+        wanted[at + 1] = y;
+        wanted[at + 2] = z;
+        wanted[at + 3] = radius;
+        wantedNext = (wantedNext + 1) % MAX_WANTED;
+        wantedCount = Math.min(MAX_WANTED, wantedCount + 1);
+    }
+
     /** Gives its place and tiles back now: it draws nothing from here, and a later tick takes a place again, empty. */
     public void release() {
         CgVfxGasAtlas.get().release(index);
@@ -316,6 +342,18 @@ public final class CgVfxGas extends CgVfxElement {
         for (int i = 0; i < blastCount; i++) {
             int k = i * 6;
             atlas.wantSphere(b, ox + blasts[k], oy + blasts[k + 1], oz + blasts[k + 2], blasts[k + 3] * 1.5f, now);
+        }
+        for (int i = 0; i < wantedCount; i++) {
+            int k = i * 4;
+            atlas.wantSphere(b, (float) (wanted[k] - worldX), (float) (wanted[k + 1] - worldY), (float) (wanted[k + 2] - worldZ),
+                    (float) wanted[k + 3], now);
+        }
+        wantedCount = 0;
+        if (smoke != null && smoke.fill() != null) {
+            CgVfxSmokeFill fill = smoke.fill();
+            float c = CgVfxSmokeFill.CELL;
+            atlas.wantSphere(b, (float) ((fill.originX() + 0.5) * c - worldX), (float) ((fill.originY() + 0.5) * c - worldY),
+                    (float) ((fill.originZ() + 0.5) * c - worldZ), smoke.revealedRadius(), now);
         }
     }
 
@@ -400,17 +438,19 @@ public final class CgVfxGas extends CgVfxElement {
         blastCount = 0;
     }
 
-    /** Rows it writes into {@code SOURCES}: its sources pouring, and its blasts. */
+    /** Rows it writes into {@code SOURCES}: its sources pouring, its smoke's carves, and its blasts. */
     int sourceRows() {
         int n = blastCount;
         for (int i = 0; i < sourceCount; i++) if (sources[i].pours()) n++;
+        if (smoke != null) n += smoke.carveRows();
         return n;
     }
 
     /**
-     * Its sources pouring, or its blasts, into {@code out} from float {@code at}, three vec4s each, positions in its
-     * grid's cells: {@code (place, centre)}, {@code (density, temperature, fuel, radius)} (a blast's carve in x) and
-     * {@code (velocity, kind)}, kind 1 a source and 2 a blast (its speed in x). Answers the float after.
+     * Its sources pouring and its smoke's carves, or its blasts, into {@code out} from float {@code at}, three vec4s each,
+     * positions in its grid's cells: {@code (place, centre)}, {@code (density, temperature, fuel, radius)} (a blast's
+     * carve, a smoke carve's openness, in x) and {@code (velocity, kind)}, kind 1 a source, 2 a blast (its speed in x)
+     * and 3 a smoke's carve (its other end in xyz). Answers the float after.
      */
     int writeSources(float[] out, int at, int b, boolean blastRows) {
         float half = CgVfxGasAtlas.SPAN * 0.5f;
@@ -429,7 +469,7 @@ public final class CgVfxGas extends CgVfxElement {
             at = row(out, at, b, (ox + s.x) / cell + half, (oy + s.y) / cell + half, (oz + s.z) / cell + half,
                     s.density, s.heat, s.fuel, s.radius / cell, s.vx, s.vy, s.vz, 1f);
         }
-        return at;
+        return smoke == null ? at : smoke.writeCarves(out, at, b, ox, oy, oz, cell);
     }
 
     private static int row(float[] out, int at, int b, float cx, float cy, float cz, float density, float heat, float fuel,

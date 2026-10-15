@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.vfx.effect.CgSmokeGrenade;
 import com.crystalgraphics.vfx.effect.CgVfxBurst;
 import com.crystalgraphics.vfx.effect.air.CgVfxHeatHaze;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
@@ -118,6 +119,8 @@ public final class CgVfxRegistry {
                 (look, x, y, z, tx, ty, tz) -> new CgVfxBurst(look, x, y, z));
         register("crystalgraphics:heat_haze", "Heat haze", "Air", CgVfxHeatHaze.standard(),
                 (look, x, y, z, tx, ty, tz) -> new CgVfxHeatHaze(look, x, y, z));
+        register("crystalgraphics:smoke_grenade", "Smoke grenade", "Gas", CgSmokeGrenade.LOOK,
+                (look, x, y, z, tx, ty, tz) -> new CgSmokeGrenade(look, x, y, z));
     }
 
     private CgVfxRegistry() {

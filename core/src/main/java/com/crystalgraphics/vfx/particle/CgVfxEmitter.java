@@ -7,9 +7,11 @@ import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -93,6 +95,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final CgKeyframes sizeOverLife, opacityOverLife;
     /** The size curve's peak at the curve row's samples: what the GPU path draws at most. */
     private final float sizePeak;
+    private final boolean feedsGas;
     /** {@link #scaled} copies, one per scale asked for. */
     private final Map<Float, CgVfxEmitter> scaledCopies = new ConcurrentHashMap<>();
 
@@ -138,6 +141,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         spinMax = b.spinMax;
         heat = b.heat;
         modules = Collections.unmodifiableList(new ArrayList<>(b.modules));
+        boolean feeds = false;
+        for (CgVfxModule m : modules) feeds |= Arrays.asList(m.worldInputs()).contains(CgVfxWorldInput.GAS_FEED);
+        feedsGas = feeds;
         events = Collections.unmodifiableList(new ArrayList<>(b.events));
         sizeOverLife = b.sizeOverLife;
         opacityOverLife = b.opacityOverLife;
@@ -232,6 +238,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     @Override
     public boolean spawnsOnMesh() {
         return spawn.kind() == CgVfxSpawnShape.MESH;
+    }
+
+    /** Whether a module of it pours into its instance's gas ({@link CgVfxModule.Feed}). */
+    public boolean feedsGas() {
+        return feedsGas;
     }
 
     @Override

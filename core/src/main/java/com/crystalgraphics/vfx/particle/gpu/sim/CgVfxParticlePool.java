@@ -700,6 +700,7 @@ public final class CgVfxParticlePool {
         if (shape.usesEntities()) CgVfxEntityBoxes.bind(stepping);
         if (shape.spawnsOnMesh()) CgVfxSpawnMeshes.bind(stepping);
         if (shape.usesGas()) CgVfxGasAtlas.get().bindFlow(stepping);
+        if (shape.feedsGas()) CgVfxGasAtlas.get().bindDeposits(stepping);
         if (shape.usesNeighbours()) {
             stepping.bind("SORTED", cellValues).bind("CELL_RUNS", cellRuns).set("_NeighbourCell", cellWidth)
                     .set("_NeighbourCells", cells);

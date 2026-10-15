@@ -4,7 +4,7 @@ package com.crystalgraphics.vfx.particle.gpu;
  * A value of the world the Step kernel fetches per particle for a module kind that runs after the solver, passed to its
  * {@code fx_<kind>} function after its lanes, in the order the kind declares ({@link CgVfxGpuModule#worldInputs}).
  * A closed list: a new world value is a change to the compiler, since only the kernel can read the world. Kinds after
- * the solver take any; kinds before it take {@link #NEIGHBOURS} and {@link #GAS}, the forces from the world.
+ * the solver take any; kinds before it take {@link #NEIGHBOURS}, {@link #GAS} and {@link #GAS_FEED}.
  *
  * <pre>{@code
  * private static final CgVfxWorldInput[] WORLD = {CgVfxWorldInput.FLOOR_Y};
@@ -58,7 +58,13 @@ public enum CgVfxWorldInput {
      * step left it, and 1 inside its box (0 outside it, and with no gas). A kind before the solver may take it: a force
      * from the flow.
      */
-    GAS("FxGas", "gas");
+    GAS("FxGas", "gas"),
+    /**
+     * {@link #GAS}, which the kind also pours into: {@code step_feed(gas, p.position, density, heat, s.dt)} deposits a
+     * second's density and heat where a particle is, which the gas takes at its next step ({@code CgVfxModule.Feed}).
+     * Lands only where the gas holds tiles; the engine asks for tiles round an instance feeding it.
+     */
+    GAS_FEED("FxGas", "gas");
 
     /** No world inputs: what a kind before the solver declares. Never write into it. */
     public static final CgVfxWorldInput[] NONE = {};

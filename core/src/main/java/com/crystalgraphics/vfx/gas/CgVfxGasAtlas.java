@@ -7,6 +7,11 @@ import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
+import com.crystalgraphics.compute.ops.CgGpuCount;
+import com.crystalgraphics.compute.ops.CgGpuOps;
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.render.CgFrameClock;
+import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.graph.CgBufferDesc;
@@ -34,6 +39,7 @@ import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
+import java.util.function.IntConsumer;
 
 /**
  * Every gas's simulation, sparse: each gas a grid of {@link #SPAN} cells a side about where it was placed, holding cells
@@ -48,8 +54,8 @@ import java.util.Arrays;
  * <pre>{@code
  * CgVfxGasAtlas atlas = CgVfxGasAtlas.get();
  * CgGraphTexture pages = atlas.pages();     // a sampler3D: gas g's tile (x, y, z) at texel (x, y, z + PAGES * g), slot + 1
- * CgGraphTexture shade = atlas.shade();     // density, flame, sun, sky: slot s's tile at (s % 8, s / 8 % 8, s / 64) * 18
- * CgGraphTexture flow = atlas.flow();       // velocity, temperature, laid out as shade, a cell of apron round each tile
+ * CgGraphTexture shade = atlas.shade();     // density, flame, sun, sky: slot s's tile at (s % 8, s / 8 % 8, s / 64) * 20
+ * CgGraphTexture flow = atlas.flow();       // velocity, temperature, laid out as shade, two cells of apron round each tile
  * }</pre>
  *
  * <ul>
@@ -73,8 +79,8 @@ public final class CgVfxGasAtlas {
     public static final int TILE = 16, PAGES = 32, SPAN = TILE * PAGES;
     /** Pool tiles a layer side: slot s is pool tile (s % LAYER, s / LAYER % LAYER, s / LAYER²). */
     public static final int LAYER = 8;
-    /** A tile's side in {@link #shade()} and {@link #flow()}: a cell of apron round it. */
-    public static final int SHADE_TILE = TILE + 2;
+    /** A tile's side in {@link #shade()} and {@link #flow()}: two cells of apron round it, a cubic read's reach. */
+    public static final int SHADE_TILE = TILE + 4;
     /** Seconds a step, and the most a frame. */
     public static final float STEP = 1f / 60f;
     public static final int MAX_STEPS = 2;
@@ -97,10 +103,25 @@ public final class CgVfxGasAtlas {
      * whole blocks and its floor from the origin, the fraction within and its buoyancy, its forces (weight, vorticity,
      * density and temperature fades a second), its fades (velocity damping a second, the share of fuel burnt a second,
      * the temperature it burns at, extinction a block a unit of density), its motion (expansion, turbulence, turbulence
-     * size, the gas's clock) and the rest (disturbance, its size, the smoke a unit of fuel leaves).
+     * size, the gas's clock), the rest (disturbance, its size, the smoke a unit of fuel leaves), and a smoke's cells
+     * (its middle from its fill window's low corner in cells and the density its cells hold, 0 for none; then the cost
+     * revealed, how much is left and how fast density is pulled to its cells).
      */
     public static final int ROW_STATE = 0, ROW_ORIGIN = 1, ROW_PLACE = 2, ROW_FORCES = 3, ROW_FADES = 4, ROW_MOTION = 5,
-            ROW_DISTURB = 6, ROWS = 7;
+            ROW_DISTURB = 6, ROW_FILL = 7, ROW_REVEAL = 8, ROWS = 9;
+    /** A smoke's cells on the GPU: a cube this many {@link CgVfxSmokeFill#CELL}s a side, centred on its first, a gas each. */
+    public static final int FILL = 64;
+    /**
+     * What a particle step pouring into a gas appends ({@code GAS_DEPOSITS}, {@link #bindDeposits}): where in a gas's
+     * cells and which gas, then the density and heat poured.
+     */
+    public static final String DEPOSIT_GLSL = "struct FxDeposit { vec4 cell; vec4 amounts; };";
+    /** The most deposits particles make between two steps, every instance's together; the rest are dropped. */
+    public static final int DEPOSITS = 32768;
+    /** Deposits are summed in cells this many of a gas's own a side, two floats each: density, heat. */
+    static final int DEPOSIT_CELL = 4, DEPOSIT_CELLS = (TILE / DEPOSIT_CELL) * (TILE / DEPOSIT_CELL) * (TILE / DEPOSIT_CELL);
+    /** The most entities that push the gases a frame, every gas's together, the first found kept. */
+    public static final int MAX_ENTITIES = 16;
     /** Frames a gas's effect may go unticked before its tiles are given back: asleep, cleared or dropped. */
     static final int STALE_FRAMES = 120;
     /** Frames a tile stays once nothing asks for it: gas thinning past the occupancy line keeps it a moment. */
@@ -164,29 +185,51 @@ public final class CgVfxGasAtlas {
     private final CgGraphTexture[] velocity = new CgGraphTexture[2], scalar = new CgGraphTexture[2],
             pressures = new CgGraphTexture[2];
     private CgGraphTexture ahead, back, divergence, curl, solid;
+    /** Each gas's smoke cells ({@link #FILL} cubed, stacked along z): cost + 1, 0 for none; and the fill each holds. */
+    @Nullable
+    private CgGraphTexture fills;
+    private final CgVfxSmokeFill[] filled = new CgVfxSmokeFill[CAPACITY];
+    private final byte[] fillBytes = new byte[FILL * FILL * FILL];
+    private final ByteBuffer fillUpload = ByteBuffer.allocate(FILL * FILL * FILL);
+    /** What particles poured ({@link #bindDeposits}), how many, and their sum per deposit cell; what binds before any gas. */
+    @Nullable
+    private CgGraphBuffer deposits, depositCount, depositGrid;
+    private final CgGraphBuffer noDeposits = CgGraphBuffer.persistent("vfx.gas.nodeposits",
+            CgBufferDesc.of(256, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+    /** The entities in the gases this frame, three vec4s each; and each one's last position, to tell its velocity. */
+    private CgGraphBuffer entityRows;
+    private final float[] entityWords = new float[MAX_ENTITIES * 12];
+    private int entityCount;
+    private final int[] lastIds = new int[MAX_ENTITIES];
+    private final double[] lastPlaces = new double[MAX_ENTITIES * 3];
+    private final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
+    private float lastSeconds = Float.NaN;
+    private int gatheringGas;
+    private final EntityGather entityGather = new EntityGather();
     /** What {@link #bindFlow} gives a kernel before the first gas: the smallest volumes, never read. */
     private final CgGraphTexture noFlow = CgGraphTexture.requested("vfx.gas.none", CgTextureDesc.volume(1, 1, 2, RGBA16F)),
             noPages = CgGraphTexture.requested("vfx.gas.nopages", CgTextureDesc.volume(1, 1, 2, R32F));
     private CgGraphBuffer gasRows, tileRows, sourceBuffer, occupancy;
     private CgKernel solids, advect, curlKernel, forces, divergenceKernel, jacobi, project, carry, carryBack, settle, shadeKernel,
-            occupancyKernel;
+            occupancyKernel, depositKernel;
     private CgRenderStage.Registration registration;
 
     private CgVfxGasAtlas() {
         Arrays.fill(slotGas, -1);
+        Arrays.fill(lastIds, -1);
     }
 
     public static CgVfxGasAtlas get() {
         return INSTANCE;
     }
 
-    /** Tiles in the pool at {@code quality}: 768 at Ultra, 384 at High, 256 at Medium, 128 at Low. */
+    /** Tiles in the pool at {@code quality}: 1024 at Ultra, 512 at High, 256 at Medium, 128 at Low. */
     public static int tiles(CgQuality quality) {
         return switch (quality) {
             case LOW -> 128;
             case MEDIUM -> 256;
-            case HIGH -> 384;
-            default -> 768;
+            case HIGH -> 512;
+            default -> 1024;
         };
     }
 
@@ -224,6 +267,15 @@ public final class CgVfxGasAtlas {
     public CgDispatch bindFlow(CgDispatch d) {
         if (flow == null) return d.texture("_GasVel", noFlow).texture("_GasPages", noPages).set("_GasLive", 0);
         return d.texture("_GasVel", flow).texture("_GasPages", pages).set("_GasLive", 1);
+    }
+
+    /**
+     * Where a particle step pouring into a gas appends ({@code GAS_DEPOSITS}, the Step of a shape taking
+     * {@code GAS_FEED}): taken by the gases' next step, then emptied.
+     */
+    public CgDispatch bindDeposits(CgDispatch d) {
+        CgGraphBuffer into = deposits != null ? deposits : noDeposits;
+        return d.bind("GAS_DEPOSITS", into).counter("GAS_DEPOSITS", depositCount != null ? depositCount : noDeposits, 0);
     }
 
     /** How many gases hold a place. */
@@ -272,7 +324,9 @@ public final class CgVfxGasAtlas {
     private final CgLifecycleListener context = new CgLifecycleListener() {
         @Override
         public void onDestroy() {
-            shade = flow = pages = ahead = back = divergence = curl = solid = null;
+            shade = flow = pages = ahead = back = divergence = curl = solid = fills = null;
+            deposits = depositCount = depositGrid = entityRows = null;
+            Arrays.fill(filled, null);
             Arrays.fill(velocity, null);
             Arrays.fill(scalar, null);
             Arrays.fill(pressures, null);
@@ -294,10 +348,11 @@ public final class CgVfxGasAtlas {
         carry = file.kernel("Carry");
         carryBack = file.kernel("CarryBack");
         settle = file.kernel("Settle");
+        depositKernel = file.kernel("Deposit");
         shadeKernel = file.kernel("Shade");
         occupancyKernel = file.kernel("Occupancy");
         for (CgKernel k : new CgKernel[] {solids, advect, curlKernel, forces, divergenceKernel, jacobi, project, carry, carryBack,
-                settle, shadeKernel, occupancyKernel}) {
+                settle, shadeKernel, occupancyKernel, depositKernel}) {
             k.prepare();
         }
     }
@@ -344,11 +399,18 @@ public final class CgVfxGasAtlas {
         CgVfxVoxelWindow window = CgVfxVoxelWindow.get().use();
         int iterations = Math.max(MIN_ITERATIONS, Math.round(ITERATIONS * scale));
         if (steps > 0) recording.fill(occupancy, 0);
+        gatherEntities(live, recording);
         CgComputePass pass = recording.compute("vfx.gas", stage.defaults(constants)).timed(GPU_ZONE).timed(GPU_BUDGET)
                 .async();
         dispatch(pass, window, solids, 0, 0).image("SOLID_OUT", solid);
+        if (steps > 0) {
+            // What particles poured since the last step, summed per deposit cell for its first step to take.
+            CgGpuOps.fill(pass, depositGrid, 0, CgGpuCount.of(layers * LAYER * LAYER * DEPOSIT_CELLS * 2));
+            bind(pass.dispatch(depositKernel, DEPOSITS), 0, 0).bind("DEPOSITS", deposits).bind("DEPOSIT_COUNT", depositCount)
+                    .bind("DEPOSIT_GRID", depositGrid);
+        }
         for (int s = 0; s < steps; s++) {
-            step(pass, window, s * CAPACITY * ROWS, s == 0 ? sourceCount : continuous, iterations, s == 0 ? 1 : 0);
+            step(pass, window, s * CAPACITY * ROWS, s == 0 ? sourceCount : continuous, iterations, s == 0 ? 1 : 0, s == 0);
         }
         int fresh = steps == 0 ? 1 : 0, rowBase = steps * CAPACITY * ROWS;
         window.bind(bind(pass.dispatch(shadeKernel, LAYER * SHADE_TILE, LAYER * SHADE_TILE, usedLayers * SHADE_TILE), rowBase, fresh))
@@ -357,6 +419,7 @@ public final class CgVfxGasAtlas {
         if (steps > 0) {
             dispatch(pass, window, occupancyKernel, rowBase, fresh).texture("_Scalars", scalar[scalars])
                     .bind("OCCUPIED", occupancy);
+            CgGpuOps.fill(pass, depositCount, 0, CgGpuCount.of(1));
         }
         pass.end();
         reshade = false;
@@ -472,6 +535,7 @@ public final class CgVfxGasAtlas {
     }
 
     private void freeAll(int b) {
+        filled[b] = null;
         for (int s = 0; s < poolTiles; s++) if (slotGas[s] == b) free(s);
         Arrays.fill(pageTable[b], 0);
         pagesDirty[b] = true;
@@ -505,13 +569,18 @@ public final class CgVfxGasAtlas {
         gas.box(box);
     }
 
-    /** One step: velocity carried, confined, forced and projected; then the scalars carried by MacCormack. */
-    private void step(CgComputePass pass, CgVfxVoxelWindow window, int rowBase, int count, int iterations, int fresh) {
+    /**
+     * One step: velocity carried, confined, forced (entities pushing it among the forces) and projected; then the scalars
+     * carried by MacCormack, the frame's deposits added on its {@code first} step.
+     */
+    private void step(CgComputePass pass, CgVfxVoxelWindow window, int rowBase, int count, int iterations, int fresh,
+                      boolean first) {
         CgGraphTexture v0 = velocity[vel], v1 = velocity[1 - vel];
         dispatch(pass, window, advect, rowBase, fresh).texture("_Vel", v0).image("VEL_OUT", v1);
         dispatch(pass, window, curlKernel, rowBase, fresh).texture("_Vel", v1).image("CURL_OUT", curl);
         dispatch(pass, window, forces, rowBase, fresh).texture("_Vel", v1).texture("_Scalars", scalar[scalars])
-                .texture("_Curl", curl).bind("SOURCES", sourceBuffer).set("_Sources", count).image("VEL_OUT", v0);
+                .texture("_Curl", curl).bind("SOURCES", sourceBuffer).set("_Sources", count)
+                .bind("ENTITY_ROWS", entityRows).set("_Entities", entityCount).image("VEL_OUT", v0);
         dispatch(pass, window, divergenceKernel, rowBase, fresh).texture("_Vel", v0).texture("_Scalars", scalar[scalars])
                 .bind("SOURCES", sourceBuffer).set("_Sources", count).image("DIV_OUT", divergence);
         for (int i = 0; i < iterations; i++) {
@@ -527,7 +596,8 @@ public final class CgVfxGasAtlas {
         dispatch(pass, window, carryBack, rowBase, fresh).texture("_Vel", v1).texture("_Ahead", ahead)
                 .image("SCALARS_OUT", back);
         dispatch(pass, window, settle, rowBase, fresh).texture("_Vel", v1).texture("_Scalars", s0).texture("_Ahead", ahead)
-                .texture("_Back", back).bind("SOURCES", sourceBuffer).set("_Sources", count).image("SCALARS_OUT", s1);
+                .texture("_Back", back).texture("_Fill", fills).bind("SOURCES", sourceBuffer).set("_Sources", count)
+                .bind("DEPOSIT_GRID", depositGrid).set("_Deposit", first ? 1 : 0).image("SCALARS_OUT", s1);
         scalars = 1 - scalars;
     }
 
@@ -553,6 +623,7 @@ public final class CgVfxGasAtlas {
             recording.release(shade);
             recording.release(flow);
             recording.release(pages);
+            recording.release(fills);
             for (int i = 0; i < 2; i++) {
                 recording.release(velocity[i]);
                 recording.release(scalar[i]);
@@ -571,6 +642,19 @@ public final class CgVfxGasAtlas {
         shade = CgGraphTexture.requested("vfx.gas.shade", CgTextureDesc.volume(sw, sw, sd, RGBA16F));
         flow = CgGraphTexture.requested("vfx.gas.flow", CgTextureDesc.volume(sw, sw, sd, RGBA16F));
         pages = CgGraphTexture.requested("vfx.gas.pages", CgTextureDesc.volume(PAGES, PAGES, PAGES * CAPACITY, R32F));
+        fills = CgGraphTexture.requested("vfx.gas.fills", CgTextureDesc.volume(FILL, FILL, FILL * CAPACITY, R8));
+        Arrays.fill(filled, null);
+        if (depositGrid != null) recording.release(depositGrid);
+        depositGrid = CgGraphBuffer.persistent("vfx.gas.depositGrid",
+                CgBufferDesc.of((long) layers * LAYER * LAYER * DEPOSIT_CELLS * 2 * 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+        if (deposits == null) {
+            // Made, and their count zeroed, before any gas is live: a step pours only into a live one.
+            deposits = CgGraphBuffer.persistent("vfx.gas.deposits", CgBufferDesc.of(DEPOSITS * 32L, CgBufferUsage.STORAGE));
+            depositCount = CgGraphBuffer.persistent("vfx.gas.depositCount",
+                    CgBufferDesc.of(256, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+            recording.fill(depositCount, 0);
+        }
+        if (entityRows == null) entityRows = fit(recording, null, "vfx.gas.entities", MAX_ENTITIES * 12);
         for (int i = 0; i < 2; i++) {
             velocity[i] = CgGraphTexture.requested("vfx.gas.velocity" + i, CgTextureDesc.volume(w, w, d, RGBA16F));
             scalar[i] = CgGraphTexture.requested("vfx.gas.scalars" + i, CgTextureDesc.volume(w, w, d, RGBA16F));
@@ -611,6 +695,14 @@ public final class CgVfxGasAtlas {
                 putf(at + 16, gas.damping(), gas.burn(), gas.heat(), gas.extinction());
                 putf(at + 20, gas.expansion(), gas.turbulence(), gas.turbulenceSize(), clock);
                 putf(at + 24, gas.disturbance(), gas.disturbanceSize(), gas.smokeAmount(), 0f);
+                CgVfxSmoke smoke = gas.smoke;
+                if (smoke != null && smoke.fill() != null) {
+                    CgVfxSmokeFill fill = smoke.fill();
+                    double c = CgVfxSmokeFill.CELL, low = FILL / 2;
+                    putf(at + 28, (float) (gas.worldX / c - (fill.originX() - low)), (float) (gas.worldY / c - (fill.originY() - low)),
+                            (float) (gas.worldZ / c - (fill.originZ() - low)), smoke.density());
+                    putf(at + 32, smoke.revealed(), smoke.presence(), smoke.hold(), 0f);
+                }
             }
         }
     }
@@ -656,6 +748,16 @@ public final class CgVfxGasAtlas {
         staging.limit(tileWords * 4);
         recording.update(tileRows, 0, staging);
         for (int b = 0; b < CAPACITY; b++) {
+            CgVfxSmoke smoke = tenants[b] == null ? null : tenants[b].smoke;
+            CgVfxSmokeFill fill = smoke == null ? null : smoke.fill();
+            if (fill == null || fill == filled[b]) continue;
+            filled[b] = fill;
+            fill.window(fillBytes, FILL);
+            fillUpload.clear();
+            fillUpload.put(fillBytes).flip();
+            recording.update(fills, 0, 0, 0, b * FILL, FILL, FILL, FILL, fillUpload);
+        }
+        for (int b = 0; b < CAPACITY; b++) {
             if (!pagesDirty[b]) continue;
             pagesDirty[b] = false;
             pageBytes.clear();
@@ -664,6 +766,88 @@ public final class CgVfxGasAtlas {
             pageBytes.limit(table.length * 4);
             recording.update(pages, 0, 0, 0, b * PAGES, PAGES, PAGES, PAGES, pageBytes);
         }
+    }
+
+    /**
+     * The living entities in each gas's box, the first {@link #MAX_ENTITIES} found: their boxes in the gas's cells and
+     * their velocity, from where each was last frame. None on a host with no level.
+     */
+    private void gatherEntities(int live, CgRecording recording) {
+        float now = CgFrameClock.seconds();
+        float frameDt = Float.isNaN(lastSeconds) ? 0f : Math.max(1e-3f, now - lastSeconds);
+        lastSeconds = now;
+        entityCount = 0;
+        CgEntityQuery entities = CgEntityQueries.client();
+        entityGather.query = entities;
+        entityGather.dt = frameDt;
+        for (int b = 0; b < live && entityCount < MAX_ENTITIES; b++) {
+            CgVfxGas gas = tenants[b];
+            if (gas == null || !gas.bounds(box)) continue;
+            gatheringGas = b;
+            entities.within(gas.worldX + box[0], gas.worldY + box[1], gas.worldZ + box[2],
+                    gas.worldX + box[3], gas.worldY + box[4], gas.worldZ + box[5], entityGather);
+        }
+        entityGather.query = null;
+        // Each entity's place, for its velocity next frame.
+        for (int k = 0; k < MAX_ENTITIES; k++) lastIds[k] = k < entityCount ? entityGather.ids[k] : -1;
+        System.arraycopy(entityGather.places, 0, lastPlaces, 0, MAX_ENTITIES * 3);
+        if (staging.capacity() < MAX_ENTITIES * 12 * 4) staging = ByteBuffer.allocate(MAX_ENTITIES * 12 * 8).order(ByteOrder.nativeOrder());
+        staging.clear();
+        for (int i = 0; i < MAX_ENTITIES * 12; i++) staging.putFloat(i * 4, i < entityCount * 12 ? entityWords[i] : 0f);
+        staging.limit(MAX_ENTITIES * 12 * 4);
+        recording.update(entityRows, 0, staging);
+    }
+
+    /** What {@link #gatherEntities} hands {@code within}: one entity's rows. */
+    private final class EntityGather implements IntConsumer {
+        CgEntityQuery query;
+        float dt;
+        final int[] ids = new int[MAX_ENTITIES];
+        final double[] places = new double[MAX_ENTITIES * 3];
+
+        @Override
+        public void accept(int id) {
+            if (entityCount >= MAX_ENTITIES || (query.flags(id) & CgEntityQuery.ALIVE) == 0) return;
+            int kind = query.kind(id);
+            if (kind == CgEntityQuery.KIND_ITEM || kind == CgEntityQuery.KIND_PROJECTILE) return;
+            if (!query.pose(id, 1f, pose)) return;
+            CgVfxGas gas = tenants[gatheringGas];
+            double x = pose[CgEntityQuery.X], y = pose[CgEntityQuery.Y], z = pose[CgEntityQuery.Z];
+            float vx = 0f, vy = 0f, vz = 0f;
+            for (int k = 0; k < MAX_ENTITIES; k++) {
+                if (lastIds[k] != id || dt <= 0f) continue;
+                vx = clampSpeed((float) (x - lastPlaces[k * 3]) / dt);
+                vy = clampSpeed((float) (y - lastPlaces[k * 3 + 1]) / dt);
+                vz = clampSpeed((float) (z - lastPlaces[k * 3 + 2]) / dt);
+                break;
+            }
+            ids[entityCount] = id;
+            places[entityCount * 3] = x;
+            places[entityCount * 3 + 1] = y;
+            places[entityCount * 3 + 2] = z;
+            float cell = gas.cell, half = SPAN * 0.5f, w = (float) (pose[CgEntityQuery.WIDTH] * 0.5);
+            float cx = (float) (x - gas.worldX) / cell + half, cy = (float) (y - gas.worldY) / cell + half;
+            float cz = (float) (z - gas.worldZ) / cell + half, r = w / cell, h = (float) pose[CgEntityQuery.HEIGHT] / cell;
+            int at = entityCount * 12;
+            entityWords[at] = gatheringGas;
+            entityWords[at + 1] = cx - r;
+            entityWords[at + 2] = cy;
+            entityWords[at + 3] = cz - r;
+            entityWords[at + 4] = cx + r;
+            entityWords[at + 5] = cy + h;
+            entityWords[at + 6] = cz + r;
+            entityWords[at + 7] = 0f;
+            entityWords[at + 8] = vx;
+            entityWords[at + 9] = vy;
+            entityWords[at + 10] = vz;
+            entityWords[at + 11] = 0f;
+            entityCount++;
+        }
+    }
+
+    /** An entity's speed along an axis, held under the gas's fastest: a teleport is no gust. */
+    private static float clampSpeed(float v) {
+        return Math.max(-20f, Math.min(20f, v));
     }
 
     private void putf(int at, float x, float y, float z, float w) {

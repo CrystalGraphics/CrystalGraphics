@@ -678,6 +678,7 @@ public final class CgVfxFrame {
                     .at(gas.x() + cx, gas.y() + cy, gas.z() + cz)
                     .transform(sized.scaling(gasBox[3] - gasBox[0], gasBox[4] - gasBox[1], gasBox[5] - gasBox[2]))
                     .subject(effect.subject)
+                    .halfResolution()
                     .custom(0, index, cell, 0f, CgVfxMaterials.size(effect, r))
                     .custom(1, grid - cx, grid - cy, grid - cz, gas.extinction())
                     .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());

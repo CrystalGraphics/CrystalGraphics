@@ -7,11 +7,13 @@
 // expansion: burnt fuel and blasts push outward, so a fireball bursts and billows, by what it burns and no more);
 // Jacobi pressure warm-started from the last step;
 // projection with free slip at the world's solid octants; then density, temperature, fuel and flame carried by
-// MacCormack with the eight-texel limiter (Selle et al. 2008), and fuel burnt into flame, heat and smoke.
+// MacCormack with the eight-texel limiter (Selle et al. 2008), and fuel burnt into flame, heat and smoke; a smoke's
+// density held to its cells (CgVfxSmoke), less the holes carved in it. Entities in a gas push it (Forces), and what
+// particles pour into it (CgVfxModule.Feed) Deposit sums into cells of four, which a frame's first Settle adds.
 // First, Solids, once a frame: which cells are blocks or below the floor, so a step reads one texel for each.
-// Last, Shade, once a frame: what the renderer reads, in two pools of tiles with a cell of apron round each, so a
-// filtered read inside a tile never needs its neighbour: SHADE (density, flame, the transmittance toward the sun
-// through the gas and the blocks, the sky light the gas above leaves) and FLOW (velocity, temperature). Then
+// Last, Shade, once a frame: what the renderer reads, in two pools of tiles with two cells of apron round each, so a
+// cubic read inside a tile never needs its neighbour: SHADE (density, flame, the transmittance toward the sun
+// through the gas and the blocks, the sky light the gas over it leaves) and FLOW (velocity, temperature). Then
 // Occupancy: which tiles hold gas, and which of their faces it is near, for CgVfxGasAtlas to grow and free tiles by.
 //
 // Every kernel runs over the pool's used layers, a texel each; a texel's slot is its tile in the pool, and TILES names
@@ -32,6 +34,7 @@
 #pragma kernel Settle 4 4 4 image
 #pragma kernel Shade 4 4 4 image
 #pragma kernel Occupancy 4 4 4 scatter
+#pragma kernel Deposit scatter
 
 #include "crystalgraphics:shaders/lib/vfx/fx_curl.glsl"
 #include "crystalgraphics:shaders/lib/vfx/sim/fx_world_at.glsl"
@@ -56,17 +59,26 @@ Properties {
     _Div      ("Divergence",                                sampler3D) = "black"
     _Curl     ("Curl and its length",                       sampler3D) = "black"
     _Solid    ("Solid cells, 1 where blocked",              sampler3D) = "black"
+    _Fill     ("Each gas's smoke cells: cost + 1 over 255, 0 for none", sampler3D) = "black"
     _Sources  ("How many SOURCES rows of three",            int)       = 0
     _Iter     ("Jacobi's iteration: 0 reads no warm start in a fresh tile", int) = 1
     _Fresh    ("1 while a fresh tile's old state reads as nothing: a frame's first step, and Shade or Occupancy after none", int) = 1
     _RowBase  ("This step's first GASES row",               int)       = 0
+    _Deposit  ("1 on a frame's first step: what particles poured is added", int) = 0
+    _Entities ("How many ENTITY_ROWS rows of three",        int)       = 0
 }
+
+struct FxDeposit { vec4 cell; vec4 amounts; };
 
 Buffers {
     GASES    ("A block a step: each gas's seven rows (CgVfxGasAtlas.ROW_*)",                       uvec4, readonly)
     TILES    ("Each slot: its gas + 1 (0 free), its tile x | y << 8 | z << 16, 1 while fresh",     uvec4, readonly)
-    SOURCES  ("Each injection: gas, centre (cells), radius (cells); its four amounts; its velocity and kind", vec4, readonly)
+    SOURCES  ("Each injection: gas, centre (cells), radius (cells); its four amounts; its velocity and kind (1 source, 2 blast, 3 carve)", vec4, readonly)
     OCCUPIED ("Each slot's eight flags: gas in it, then gas near its -x, +x, -y, +y, -z, +z face", uint,  readwrite)
+    DEPOSITS      ("What particles poured: a gas's cell and the gas, then density and heat", FxDeposit, readonly)
+    DEPOSIT_COUNT ("How many DEPOSITS",                                                        uint,      readonly)
+    DEPOSIT_GRID  ("DEPOSITS summed per slot, in cells of four: density then heat",           float,     readwrite)
+    ENTITY_ROWS   ("Each entity in a gas: its gas and low corner in cells; high corner; velocity", vec4, readonly)
 }
 
 Images {
@@ -81,7 +93,7 @@ Images {
 }
 
 // Rows of a gas in GASES (CgVfxGasAtlas.ROWS).
-const int G_ROWS = 7;
+const int G_ROWS = 9;
 // Cells a tile side, tiles a page table side, cells a grid side, pool tiles a layer side: CgVfxGasAtlas's.
 const int G_TILE = 16;
 const int G_PAGES = 32;
@@ -98,6 +110,9 @@ const float G_FASTEST = 40.0;
 // The least density, fuel or flame Occupancy counts as gas, and how near a face, in cells, it asks for the neighbour.
 const float G_OCCUPIED = 0.002;
 const int G_NEAR_FACE = 4;
+// A smoke's cells: a cube this many a side a gas, each this many blocks (CgVfxGasAtlas.FILL, CgVfxSmokeFill.CELL).
+const int G_FILL = 64;
+const float G_FILL_CELL = 0.5;
 
 // This invocation: its gas (-1 for a free slot), its slot, the tile that slot holds and its cell.
 struct G {
@@ -259,6 +274,13 @@ float g_reach(vec4 centre, vec3 p) {
     return clamp(1.0 - distance(centre.xyz, p) / max(centre.w, 1.0e-3), 0.0, 1.0);
 }
 
+// How far p is from the segment a to b.
+float g_segment(vec3 p, vec3 a, vec3 b) {
+    vec3 ab = b - a;
+    float t = dot(ab, ab) > 0.0 ? clamp(dot(p - a, ab) / dot(ab, ab), 0.0, 1.0) : 0.0;
+    return distance(p, a + ab * t);
+}
+
 // Where the shaping forces act, 0 to 1: where there is smoke or heat, as Pyro's control fields default.
 float g_presence(vec4 s) {
     return clamp(s.x * 3.0 + s.y * 0.5 + s.w, 0.0, 1.0);
@@ -306,7 +328,7 @@ void Forces() {
     v += force * dt;
     for (int i = 0; i < _Sources; i++) {
         vec4 where = SOURCES(i * 3), amounts = SOURCES(i * 3 + 1), move = SOURCES(i * 3 + 2);
-        if (int(where.x + 0.5) != b) continue;
+        if (int(where.x + 0.5) != b || move.w > 2.5) continue;
         vec4 centre = vec4(where.yzw, amounts.w);
         float w = g_reach(centre, at);
         if (w <= 0.0) continue;
@@ -319,6 +341,18 @@ void Forces() {
             // A source steers what is in it toward its velocity.
             v = mix(v, move.xyz, clamp(w * dt * 8.0, 0.0, 1.0));
         }
+    }
+    // An entity in the gas drags it along and shoves it aside, within a cell and a half of its box.
+    for (int i = 0; i < _Entities; i++) {
+        vec4 lo = ENTITY_ROWS(i * 3), hi = ENTITY_ROWS(i * 3 + 1), moving = ENTITY_ROWS(i * 3 + 2);
+        if (int(lo.x + 0.5) != b) continue;
+        vec3 near = clamp(at, lo.yzw, hi.xyz);
+        float w = 1.0 - smoothstep(0.0, 1.5, distance(at, near));
+        if (w <= 0.0) continue;
+        vec3 away = at - (lo.yzw + hi.xyz) * 0.5;
+        away.y *= 0.3;
+        vec3 push = moving.xyz + away * inversesqrt(max(dot(away, away), 1.0e-4)) * (0.5 * length(moving.xyz) + 1.0);
+        v = mix(v, push, clamp(w * dt * 12.0, 0.0, 1.0));
     }
     float speed = length(v);
     if (speed > G_FASTEST) v *= G_FASTEST / speed;
@@ -354,7 +388,7 @@ void Divergence() {
     vec3 at = vec3(c) + 0.5;
     for (int i = 0; i < _Sources; i++) {
         vec4 where = SOURCES(i * 3), move = SOURCES(i * 3 + 2);
-        if (move.w < 1.5 || int(where.x + 0.5) != b) continue;
+        if (move.w < 1.5 || move.w > 2.5 || int(where.x + 0.5) != b) continue;
         float radius = SOURCES(i * 3 + 1).w;
         goal += 3.0 * length(move.xyz) / max(radius * cell, 1.0e-3) * min(1.0, 2.0 * g_reach(vec4(where.yzw, radius), at));
     }
@@ -464,7 +498,7 @@ void Settle() {
     s.w = max(s.w * exp(-dt / G_FLAME_LIFE), flame);
     for (int i = 0; i < _Sources; i++) {
         vec4 where = SOURCES(i * 3), amounts = SOURCES(i * 3 + 1), move = SOURCES(i * 3 + 2);
-        if (int(where.x + 0.5) != b) continue;
+        if (int(where.x + 0.5) != b || move.w > 2.5) continue;
         float w = g_reach(vec4(where.yzw, amounts.w), at);
         if (w <= 0.0) continue;
         if (move.w > 1.5) {
@@ -473,6 +507,37 @@ void Settle() {
         } else {
             s.xyz += amounts.xyz * w * dt;
         }
+    }
+    // What particles poured since the last frame's step, on this frame's first.
+    if (_Deposit != 0) {
+        ivec3 l = (c & (G_TILE - 1)) / 4;
+        int d = (g.slot * 64 + l.x + 4 * (l.y + 4 * l.z)) * 2;
+        s.x += DEPOSIT_GRID(d);
+        s.y += DEPOSIT_GRID(d + 1);
+    }
+    // Row 7: a smoke's middle in its cells' window, the density its cells hold (0: no smoke); row 8: the cost revealed,
+    // how much is left, how fast density is pulled to its cells. Inside its revealed cells density is pulled to theirs,
+    // less what its carves (kind 3: an end, how open, radius, the other end) hold open; outside them it drains, so its
+    // shape is its cells' and its motion the gas's.
+    vec4 fill = g_row(b, 7);
+    if (fill.w > 0.0) {
+        vec4 reveal = g_row(b, 8);
+        ivec3 t = ivec3(floor(fill.xyz + g_offset(b, at) / G_FILL_CELL));
+        float cost = 0.0;
+        if (all(greaterThanEqual(t, ivec3(0))) && all(lessThan(t, ivec3(G_FILL)))) {
+            cost = texelFetch(_Fill, ivec3(t.x, t.y, t.z + G_FILL * b), 0).x * 255.0;
+        }
+        float target = 0.0;
+        if (cost > 0.5) {
+            target = fill.w * reveal.y * clamp(reveal.x - (cost - 1.0) + 0.5, 0.0, 1.0);
+            for (int i = 0; i < _Sources; i++) {
+                vec4 where = SOURCES(i * 3), amounts = SOURCES(i * 3 + 1), move = SOURCES(i * 3 + 2);
+                if (move.w < 2.5 || int(where.x + 0.5) != b) continue;
+                float r = amounts.w;
+                target *= 1.0 - amounts.x * (1.0 - smoothstep(r * 0.6, r, g_segment(at, where.yzw, move.xyz)));
+            }
+        }
+        s.x = mix(s.x, target, 1.0 - exp(-reveal.z * (cost > 0.5 ? 1.0 : 4.0) * dt));
     }
     s.x *= exp(-r3.z * dt);
     s.y = min(s.y * exp(-r3.w * dt), G_HOTTEST);
@@ -484,11 +549,14 @@ const int G_SUN_CELLS = 48;
 const int G_SUN_REACH = 16;
 // The optical depth past which a cell is dark to the sun: the march toward it stops there.
 const float G_DARK = 8.0;
-// Cells above a cell where Shade weighs the gas shading it from the sky.
+// Cells from a cell where Shade weighs the gas shading it from the sky, along each of five ways up: straight, and four
+// tilted 45 degrees.
 const float G_UP[6] = float[6](1.0, 2.0, 4.0, 7.0, 11.0, 16.0);
+const vec3 G_DOME[5] = vec3[5](vec3(0.0, 1.0, 0.0), vec3(0.7071, 0.7071, 0.0), vec3(-0.7071, 0.7071, 0.0),
+        vec3(0.0, 0.7071, 0.7071), vec3(0.0, 0.7071, -0.7071));
 
 void Shade() {
-    G g = g_at(CG_TEXEL, G_TILE + 2, 1);
+    G g = g_at(CG_TEXEL, G_TILE + 4, 2);
     if (!g_live(g)) {
         SHADE_OUT_WRITE(vec4(0.0, 0.0, 1.0, 1.0));
         FLOW_OUT_WRITE(vec4(0.0));
@@ -502,33 +570,58 @@ void Shade() {
     vec3 p = vec3(c) + 0.5, dir = CG_SUN_DIRECTION;
     float tau = 0.0;
     if (s.x > 1.0e-4) {
-        // Toward the sun a cell a step through the gas's tiles, then a block a step past them: a block stops it dead.
+        // Toward the sun a cell a step through the gas's tiles, filtered (a nearest read rounds each neighbour's path
+        // apart, and its shadow comes out in cell-sized blocks), then a block a step past them: a block stops it dead.
         float i = 1.0;
         for (; i <= float(G_SUN_CELLS) && tau < G_DARK; i += 1.0) {
-            ivec3 q = ivec3(floor(p + dir * i));
-            int at = g_slot_near(g, q);
-            if (at < 0) break;
-            if (texelFetch(_Solid, g_texel(at, q), 0).x > 0.5) {
+            vec3 q = p + dir * i;
+            ivec3 at = ivec3(floor(q));
+            int slot = g_slot_near(g, at);
+            if (slot < 0) break;
+            if (texelFetch(_Solid, g_texel(slot, at), 0).x > 0.5) {
                 tau = 1.0e4;
                 break;
             }
-            if (!g_fresh(at)) tau += texelFetch(_Scalars, g_texel(at, q), 0).x * extinction * cell;
+            tau += g_sample(_Scalars, g, q, true).x * extinction * cell;
         }
         float step = 1.0 / cell;
         for (int k = 1; k <= G_SUN_REACH && tau < G_DARK; k++) {
             if (g_blocked(b, g_offset(b, p + dir * (i + float(k) * step)))) tau = 1.0e4;
         }
     }
-    // The sky's light over the cell, less what the gas above takes: half of the straight-up depth, as the sky is a
-    // dome rather than a ray. Smoke's underside darkens under its own body.
-    float up = 0.0, last = 0.0;
-    for (int k = 0; k < 6; k++) {
-        up += g_get(_Scalars, g, c + ivec3(0, int(G_UP[k]), 0), true).x * extinction * cell * (G_UP[k] - last);
-        last = G_UP[k];
+    // The sky's light over the cell, less what the gas toward the sky takes, averaged over the dome's five ways and
+    // filtered: smoke's underside darkens under its own body. A straight-up column alone casts each blob's shadow down
+    // as a streak its own width.
+    float dome = 1.0;
+    if (s.x > 1.0e-4) {
+        dome = 0.0;
+        for (int d = 0; d < 5; d++) {
+            float depth = 0.0, last = 0.0;
+            for (int k = 0; k < 6; k++) {
+                depth += g_sample(_Scalars, g, p + G_DOME[d] * G_UP[k], true).x * (G_UP[k] - last);
+                last = G_UP[k];
+            }
+            dome += exp(-0.5 * depth * extinction * cell);
+        }
+        dome *= 0.2;
     }
-    float sky = fx_world_light(g_world(b), g_offset(b, p), vec2(0.0, 15.0)).y / 15.0 * exp(-0.5 * up);
+    float sky = fx_world_light(g_world(b), g_offset(b, p), vec2(0.0, 15.0)).y / 15.0 * dome;
     SHADE_OUT_WRITE(vec4(s.x, s.w, exp(-tau), sky));
     FLOW_OUT_WRITE(vec4(solid ? vec3(0.0) : g_get(_Vel, g, c, true).xyz, s.y));
+}
+
+// A particle's deposit added into its cell of four in its gas's tile (CgVfxModule.Feed); none where the gas has no tile.
+void Deposit() {
+    if (uint(CG_ELEMENT) >= min(DEPOSIT_COUNT(0), uint(DEPOSITS_LENGTH()))) return;
+    FxDeposit d = DEPOSITS(CG_ELEMENT);
+    int b = int(d.cell.w + 0.5);
+    ivec3 c = ivec3(floor(d.cell.xyz));
+    int slot = g_slot(b, c);
+    if (slot < 0) return;
+    ivec3 l = (c & (G_TILE - 1)) / 4;
+    int at = (slot * 64 + l.x + 4 * (l.y + 4 * l.z)) * 2;
+    DEPOSIT_GRID_ADD(at, d.amounts.x);
+    DEPOSIT_GRID_ADD(at + 1, d.amounts.y);
 }
 
 void Occupancy() {

@@ -1,11 +1,14 @@
 // A gas (CgVfxGas) marched through the box round its tiles (CgVfxFrame.volume), a tile it has not skipped in one step.
 // Each step reads the solver's shade (density, flame, the transmittance toward the sun it cached, the sky light the gas
-// above leaves) and flow (velocity, temperature) through the gas's page table; wears the density's thin edges with noise finer than the cells, carried along the flow (Schneider's
-// erosion over Vlachos's flow maps); and adds the light scattered toward the eye by Hillaire's energy-conserving step
+// above leaves, smoothed by a cubic B-spline so the cells never show) and flow (velocity, temperature) through the
+// gas's page table; wears the density's thin edges with
+// noise finer than the cells, dragged a short way along the flow (Schneider's erosion); and adds the light scattered toward the eye by Hillaire's energy-conserving step
 // (Frostbite, 2015): the sun through a two-lobe phase with Wrenninge's octaves standing in for light scattered more
 // than once (2013) and Horizon's powder at thin edges, the sky cooler than the sun, hot smoke's blackbody glow by
 // Kirchhoff's law (it emits as it absorbs), and its flames' own light, which needs no smoke to shine. The march stops at
-// the scene's depth, and draws from inside the box as from outside: back faces, its own depth test.
+// the scene's depth, and draws from inside the box as from outside: back faces, its own depth test. Drawn at half size
+// as a volume (CgWorldRenderer.Draw.halfResolution), each frame starts its steps elsewhere and names the depth its light
+// came from, so the resolve blends a frame's steps with the last ones'.
 // CG_OBJECT_TO_WORLD: the box, a unit cube scaled. CG_OBJECT_CUSTOM0: the gas's place in the atlas, its cell in blocks,
 // 0, the layer's size (a density scale); CG_OBJECT_CUSTOM1: its grid's low corner from the box's middle, its extinction a
 // block. _Smoke is its colour in full light, _Fire a tint on what burns.
@@ -24,7 +27,7 @@ Properties {
     _GasShade   ("The gas atlas's shade: density, flame, sun, sky (CgVfxGasAtlas)", sampler3D) = "black"
     _GasFlow    ("Its flow: velocity, temperature",                 sampler3D) = "black"
     _GasPages   ("Each gas's page table",                           sampler3D) = "black"
-    _ValueNoise ("Value noise",                                     sampler3D) = "cg_value_noise"
+    _Noise      ("Gradient noise",                                  sampler3D) = "cg_noise"
     _Voronoi    ("Voronoi",                                         sampler3D) = "cg_voronoi"
     _Smoke      ("The smoke in full light",                         color)     = (0.7, 0.7, 0.68, 1)
     _Fire       ("A tint on what burns in it",                      color)     = (1, 1, 1, 1)
@@ -71,6 +74,10 @@ Pass {
         float dt = max((t.y - t.x) / _Steps, 0.5 * cell), tile = float(FX_GAS_TILE) * cell;
         // Interleaved gradient noise (Jimenez, 2014): each pixel's steps start apart, so banding becomes grain.
         float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+#ifdef CG_VOLUME_TARGET
+        // A new start each frame, by the golden ratio, for the resolve to average.
+        jitter = fract(jitter + 0.618034 * float(CG_FRAME_INDEX % 64));
+#endif
         float cosine = dot(ray, CG_SUN_DIRECTION);
         // Each octave a dimmer copy of the light scattered once, less shadowed and less forward.
         float g = clamp(_Scattering, 0.0, 0.9);
@@ -81,6 +88,7 @@ Pass {
         vec3 albedo = srgb_to_linear(_Smoke.rgb), fireTint = _Fire.rgb * _Glow;
         float transmit = 1.0;
         vec3 light = vec3(0.0), emit = vec3(0.0), glow = vec3(0.0);
+        float depth = 0.0;
         float at = t.x + jitter * dt;
         for (int k = 0; k < 512 && at < t.y; k++) {
             vec3 p = eye + ray * at;
@@ -99,13 +107,14 @@ Pass {
                 at += dt;
                 continue;
             }
+            s = fx_gas_smooth(_GasShade, slot, c);
             vec4 f = textureLod(_GasFlow, uvw, 0.0);
             float density = s.x;
             // Only an edge thin enough to see through is worn: a body's inside is hidden anyway.
             if (_Detail > 0.0 && density < 2.0) {
                 vec3 q = (p - grid) / max(_DetailSize, 0.05);
-                density = fx_gas_erode(density, fx_gas_flowing_detail(_ValueNoise, _Voronoi, q,
-                        f.xyz / max(_DetailSize, 0.05), FX_AGE, 0.6), _Detail);
+                density = fx_gas_erode(density, fx_gas_carried_detail(_Noise, _Voronoi, q,
+                        f.xyz / max(_DetailSize, 0.05), FX_AGE, 0.4), _Detail);
             }
             float sigma = density * extinction;
             vec3 fire = fx_gas_emission(300.0 + _Kelvin * f.w) * fireTint;
@@ -114,6 +123,7 @@ Pass {
                 float lit = (p0 * s.z + 0.5 * p1 * sqrt(s.z) + 0.25 * p2 * sqrt(sqrt(s.z))) * fx_gas_powder(sigma, cosine);
                 // What a step scatters and its soot emits toward the eye, integrated against its own extinction.
                 float taken = transmit * (1.0 - through);
+                depth += at * taken;
                 vec3 soot = fire * _Soot;
                 light += (albedo * (sun * lit + sky * s.w) + soot) * taken;
                 glow += soot * taken;
@@ -126,6 +136,8 @@ Pass {
             if (transmit < 0.01) break;
             at += dt;
         }
+        // Where its light came from, weighed by what each step took: what the resolve reprojects last frame by.
+        CG_VOLUME_DEPTH(transmit < 0.99 ? FX_EYE_DEPTH(ray, depth / (1.0 - transmit)) : 0.0);
         float alpha = (1.0 - transmit) * FX_PRESENCE;
         light *= FX_PRESENCE;
         emit *= FX_PRESENCE;

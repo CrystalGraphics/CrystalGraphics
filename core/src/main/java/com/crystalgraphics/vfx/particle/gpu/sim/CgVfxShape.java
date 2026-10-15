@@ -58,7 +58,8 @@ public final class CgVfxShape {
     private final CgVfxLane[][] lanes;
     private final CgVfxWorldInput[][] world;
     private final int paramRow, instanceRow;
-    private final boolean readsWorld, usesDistance, usesDepth, usesEntities, usesNeighbours, usesGas, floors, spawnsOnMesh;
+    private final boolean readsWorld, usesDistance, usesDepth, usesEntities, usesNeighbours, usesGas, feedsGas, floors,
+            spawnsOnMesh;
     /** Where the gas's two lanes start in the instance row, after every module's: written by the pool, not a kind. */
     private final int gasAt;
     private final CgVfxEvent.Trigger[] triggers;
@@ -105,9 +106,9 @@ public final class CgVfxShape {
             if (params[i] < 0) throw new IllegalArgumentException(emitter.name() + ": fx_" + kind + " declares " + params[i] + " param vectors");
             if (!afterSolve[i]) {
                 for (CgVfxWorldInput input : world[i]) {
-                    if (input != CgVfxWorldInput.NEIGHBOURS && input != CgVfxWorldInput.GAS) {
+                    if (input != CgVfxWorldInput.NEIGHBOURS && input != CgVfxWorldInput.GAS && input != CgVfxWorldInput.GAS_FEED) {
                         throw new IllegalArgumentException(emitter.name() + ": fx_" + kind + " takes " + input
-                                + " but runs before the solver, which takes NEIGHBOURS and GAS alone");
+                                + " but runs before the solver, which takes NEIGHBOURS, GAS and GAS_FEED alone");
                     }
                 }
             }
@@ -153,13 +154,15 @@ public final class CgVfxShape {
         if (triggers.length > 0) param += EVENT_VECTORS;
         paramRow = param;
         boolean reads = false, distance = false, depth = false, entities = false, neighbours = false, gas = false,
-                floor = false;
+                feeds = false, floor = false;
         for (CgVfxWorldInput[] inputs : world) {
             for (CgVfxWorldInput input : inputs) {
                 reads |= input != CgVfxWorldInput.DEPTH && input != CgVfxWorldInput.ENTITIES
-                        && input != CgVfxWorldInput.NEIGHBOURS && input != CgVfxWorldInput.GAS;
+                        && input != CgVfxWorldInput.NEIGHBOURS && input != CgVfxWorldInput.GAS
+                        && input != CgVfxWorldInput.GAS_FEED;
                 neighbours |= input == CgVfxWorldInput.NEIGHBOURS;
-                gas |= input == CgVfxWorldInput.GAS;
+                gas |= input == CgVfxWorldInput.GAS || input == CgVfxWorldInput.GAS_FEED;
+                feeds |= input == CgVfxWorldInput.GAS_FEED;
                 distance |= input == CgVfxWorldInput.WORLD_DISTANCE;
                 depth |= input == CgVfxWorldInput.DEPTH;
                 entities |= input == CgVfxWorldInput.ENTITIES;
@@ -172,6 +175,7 @@ public final class CgVfxShape {
         usesEntities = entities;
         usesNeighbours = neighbours;
         usesGas = gas;
+        feedsGas = feeds;
         gasAt = lane;
         instanceRow = lane + (gas ? GAS_LANES : 0);
         floors = floor;
@@ -290,9 +294,17 @@ public final class CgVfxShape {
         return usesNeighbours;
     }
 
-    /** Whether any module takes {@link CgVfxWorldInput#GAS}: its instance rows carry {@link #GAS_LANES} at {@link #gasAt()}. */
+    /**
+     * Whether any module takes {@link CgVfxWorldInput#GAS} or {@link CgVfxWorldInput#GAS_FEED}: its instance rows carry
+     * {@link #GAS_LANES} at {@link #gasAt()}.
+     */
     public boolean usesGas() {
         return usesGas;
+    }
+
+    /** Whether any module takes {@link CgVfxWorldInput#GAS_FEED}: its Step appends deposits into the gas. */
+    public boolean feedsGas() {
+        return feedsGas;
     }
 
     /** The gas's lanes: the instance's origin from the gas's middle and its brick, then a cell's width. */

@@ -84,6 +84,8 @@ public final class CgVfxEmitterCompiler {
         if (shape.usesEntities()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_entities_at.glsl\"\n");
         if (shape.usesNeighbours()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_neighbours_at.glsl\"\n");
         if (shape.usesGas()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_gas_at.glsl\"\n");
+        // Declared ahead of the kinds' functions that call it; defined with the other step_ functions.
+        if (shape.feedsGas()) s.append("void step_feed(FxGas g, vec3 p, float density, float heat, float dt);\n");
         Set<String> kinds = new LinkedHashSet<>();
         for (int i = 0; i < shape.modules(); i++) {
             if (!kinds.add(shape.kind(i))) continue;
@@ -117,6 +119,7 @@ public final class CgVfxEmitterCompiler {
         s.append("}\n\n");
         s.append(CgVfxRecord.GLSL).append("\n");
         s.append(CgVfxParticlePool.EVENT_GLSL).append("\n\n");
+        if (shape.feedsGas()) s.append(CgVfxGasAtlas.DEPOSIT_GLSL).append("\n\n");
         s.append("""
                 Buffers {
                     IN        ("Particles",       FxRecord, readonly)
@@ -129,6 +132,7 @@ public final class CgVfxEmitterCompiler {
         if (shape.spawns()) s.append("    SPAWN_EVENTS  (\"Events that spawn children\", FxEvent, append)\n");
         if (shape.reports()) s.append("    REPORT_EVENTS (\"Events the CPU hears\",       FxEvent, append)\n");
         if (shape.usesEntities()) s.append("    ENTITIES      (\"Entity boxes, two rows each\", uvec4,   readonly)\n");
+        if (shape.feedsGas()) s.append("    GAS_DEPOSITS  (\"What particles pour into the gas\", FxDeposit, append)\n");
         if (shape.spawnsOnMesh()) s.append("    MESHES        (\"Spawn meshes' triangles and vertices\", uvec4, readonly)\n");
         if (shape.usesNeighbours()) {
             s.append("    SORTED        (\"Last step's particles by hashed cell\", uint, readonly)\n");
@@ -222,6 +226,18 @@ public final class CgVfxEmitterCompiler {
                                 return g;
                             }
                             """);
+        }
+        if (shape.feedsGas()) {
+            s.append("""
+
+                    // What a kind taking GAS_FEED pours: density and heat a second into the gas at p (from the instance's
+                    // origin), for this step's dt, as a deposit its next step takes.
+                    void step_feed(FxGas g, vec3 p, float density, float heat, float dt) {
+                        if (!g.live) return;
+                        GAS_DEPOSITS_APPEND(FxDeposit(vec4((p + g.offset) / g.cell, float(g.gas)),
+                                vec4(density * dt, heat * dt, 0.0, 0.0)));
+                    }
+                    """);
         }
         if (shape.spawnsOnMesh()) s.append("""
 
@@ -737,7 +753,7 @@ public final class CgVfxEmitterCompiler {
                 case DEPTH -> s.append(", step_depth(inst)");
                 case ENTITIES -> s.append(", step_entities(inst)");
                 case NEIGHBOURS -> s.append(", step_neighbours(CG_ELEMENT < live ? CG_ELEMENT : -1, p.slot)");
-                case GAS -> s.append(", step_gas(inst)");
+                case GAS, GAS_FEED -> s.append(", step_gas(inst)");
             }
         }
         for (int t = 0; t < shape.textureCount(i); t++) s.append(", ").append(texture(i, t));

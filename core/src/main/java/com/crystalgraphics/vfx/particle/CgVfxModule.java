@@ -671,6 +671,46 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
     }
 
+    /**
+     * Pours into a gas: each particle adds {@code density} and {@code heat} a second where it is, which the gas takes at
+     * its next step, so a jet's particles leave smoke along their paths and embers warm the air they rise through. The
+     * gas is the instance's ({@code CgVfxEmitterInstance.inGas}); with none, it does nothing.
+     *
+     * <pre>{@code
+     * .module(new CgVfxModule.Feed(4f, 0.5f))         // each spark trailing smoke and a little heat
+     * sparks.inGas(smoke);                             // in the effect, after making both
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Lands where the gas holds tiles: the engine asks for tiles round each instance feeding it, as far as its
+     *       particles reach (16 blocks at most).</li>
+     *   <li>Deposits are summed in cells four of the gas's own a side, so a single particle's mark is soft.</li>
+     *   <li>At most {@code CgVfxGasAtlas.DEPOSITS} particles pour a frame, every instance's together; the rest pour nothing.</li>
+     * </ul>
+     */
+    record Feed(float density, float heat) implements CgVfxModule {
+        private static final CgVfxWorldInput[] FEEDS = {CgVfxWorldInput.GAS_FEED};
+
+        public Feed {
+            if (!(density >= 0f) || !(heat >= 0f)) throw new IllegalArgumentException("a feed of " + density + ", " + heat);
+        }
+
+        @Override
+        public String gpuKind() {
+            return "gas_feed";
+        }
+
+        @Override
+        public void writeParams(CgVfxWords out) {
+            out.vec4(density, heat, 0f, 0f);
+        }
+
+        @Override
+        public CgVfxWorldInput[] worldInputs() {
+            return FEEDS;
+        }
+    }
+
     /** A constant push, blocks a second squared: Niagara's acceleration force, {@link Gravity} in any direction. */
     record Force(float x, float y, float z) implements CgVfxModule {
 

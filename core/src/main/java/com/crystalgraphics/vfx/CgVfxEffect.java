@@ -12,6 +12,7 @@ import com.crystalgraphics.render.post.volume.CgPostVolume;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
+import com.crystalgraphics.vfx.gas.CgVfxGas;
 import com.crystalgraphics.vfx.look.CgVfxEnding;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
@@ -841,6 +842,12 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
      */
     protected final void tick(CgVfxEmitterInstance emitter, float dt) {
         if (authority != null) return;
+        CgVfxGas fed = emitter.books().gas();
+        if (fed != null && emitter.emitter().feedsGas()) {
+            // Its particles' deposits land only where the gas holds tiles.
+            fed.wantTiles(emitter.originX() + emitter.sourceX(), emitter.originY() + emitter.sourceY(),
+                    emitter.originZ() + emitter.sourceZ(), Math.min(16f, emitter.emitter().reach(0f)));
+        }
         if (system == null) {
             emitter.books().schedule(dt, originX, originY, originZ);
             return;

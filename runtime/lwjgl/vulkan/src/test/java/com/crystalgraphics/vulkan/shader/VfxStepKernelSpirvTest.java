@@ -46,13 +46,16 @@ public class VfxStepKernelSpirvTest {
     /** Carried by a gas, whose kernel reads the gas atlas before the solver. */
     private static final CgVfxEmitter IN_GAS = CgVfxEmitter.builder("inGas").capacity(64).burst(0f, 64).life(1f, 2f)
             .module(new CgVfxModule.Flow(3f)).module(new CgVfxModule.Gravity(2f)).build();
+    /** Pouring into a gas, whose kernel appends deposits. */
+    private static final CgVfxEmitter FEEDING = CgVfxEmitter.builder("feeding").capacity(64).burst(0f, 64).life(1f, 2f)
+            .module(new CgVfxModule.Feed(4f, 0.5f)).build();
 
     @AfterClass
     public static void close() { COMPILER.close(); }
 
     @Test
     public void everyShippedEmittersStepKernelCompiles() {
-        CgVfxEmitter[] emitters = {EVERY_KIND, ON_MESH, FLOCKING, IN_GAS, CgVfxExplosion.BILLOWS, CgVfxExplosion.SURGE, CgVfxExplosion.SPECKS, CgVfxExplosion.DUST, CgVfxExplosion.SPARKLES,
+        CgVfxEmitter[] emitters = {EVERY_KIND, ON_MESH, FLOCKING, IN_GAS, FEEDING, CgVfxExplosion.BILLOWS, CgVfxExplosion.SURGE, CgVfxExplosion.SPECKS, CgVfxExplosion.DUST, CgVfxExplosion.SPARKLES,
                 CgVfxExplosion.INK, CgVfxExplosion.RAYS, CgVfxExplosion.RINGS, CgVfxExplosion.SKIRT};
         List<String> failures = new ArrayList<>();
         for (CgVfxEmitter emitter : emitters) {
