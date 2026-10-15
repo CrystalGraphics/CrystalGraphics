@@ -30,13 +30,12 @@ import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
+import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxField;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
-import com.crystalgraphics.world.CgEntityAttachments;
-import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -105,16 +104,21 @@ public final class CgVfxModules {
 
     /** One station: its emitters started at their sources, its look, what it stands beside, and what moves them. */
     private record Station(String name, float x, float z, CgVfxLook look, List<CgVfxEmitter> emitters, float[][] sources,
-                           Consumer<Props> props, Mover mover, boolean followsPlayer) {
+                           Consumer<Props> props, Mover mover, Show show, float[] box) {
         Station(String name, float x, float z, CgVfxLook look, List<CgVfxEmitter> emitters, float[][] sources,
                 Consumer<Props> props) {
-            this(name, x, z, look, emitters, sources, props, null, false);
+            this(name, x, z, look, emitters, sources, props, null, null, null);
         }
 
         Station(String name, float x, float z, CgVfxLook look, List<CgVfxEmitter> emitters, float[][] sources,
                 Consumer<Props> props, Mover mover) {
-            this(name, x, z, look, emitters, sources, props, mover, false);
+            this(name, x, z, look, emitters, sources, props, mover, null, null);
         }
+    }
+
+    /** What a station draws on its slots each frame of a play, beside its particles. */
+    private interface Show {
+        void draw(CgVfxEffect effect, CgVfxFrame frame, float age);
     }
 
     /** Where emitter {@code i}'s source is at {@code age}, written into {@code at}: a station whose sources travel. */
@@ -155,13 +159,15 @@ public final class CgVfxModules {
     private static final class Play extends CgVfxEffect {
         private final List<CgVfxEmitterInstance> emitters = new ArrayList<>();
         private final Mover mover;
+        private final Show show;
         private final float[] at = new float[3];
 
         Play(Station station, double x, double y, double z) {
             super(station.look(), x + station.x(), y, z + station.z());
             mover = station.mover();
-            int player = station.followsPlayer() ? CgEntityQueries.client().localPlayer() : -1;
-            if (player >= 0) follow(player, CgEntityAttachments.FEET);
+            show = station.show();
+            float[] b = station.box();
+            if (b != null) spawnBox(originX + b[0], originY + b[1], originZ + b[2], b[3], b[4], b[5]);
             for (int i = 0; i < station.emitters().size(); i++) {
                 CgVfxEmitterInstance emitter = new CgVfxEmitterInstance(station.emitters().get(i), seed + i * 0.137f);
                 float[] s = station.sources()[i];
@@ -188,6 +194,7 @@ public final class CgVfxModules {
         @Override
         protected void submit(CgVfxFrame frame) {
             for (int i = 0; i < emitters.size(); i++) frame.particles(this, emitters.get(i));
+            if (show != null) show.draw(this, frame, age);
         }
     }
 
@@ -243,32 +250,40 @@ public final class CgVfxModules {
     // ── stations ──────────────────────────────────────────────────────────────
 
     /**
-     * Where particles are born, one shape each, left to right: a cone's spray aimed up, a ring's edge 24 even places
-     * round, a dome's surface flying outward, a thin box's sheet launched up within 10 degrees, and a capsule's segment
-     * 12 even places along it.
+     * Where particles are born, one shape each and a colour each, labelled under it, left to right: a cone's spray aimed
+     * up, 24 even places round a ring's edge, a dome's surface flying outward, a thin box's sheet launched up within 10
+     * degrees, and 12 even places along a capsule's segment.
      */
     private void shapes(float x, float z) {
-        CgVfxEmitter cone = CgVfxEmitter.builder("shapeCone").capacity(600).rate(160f, 0f, PERIOD - 3f)
-                .shape(CgCone.of(0.6, Math.toRadians(18))).pointing(0f, 1f, 0f).speed(4f, 7f).life(0.9f, 1.3f)
-                .size(0.05f, 0.09f, 1f).heat(1f).module(new CgVfxModule.Gravity(5f)).opacity(FADE).build();
-        CgVfxEmitter ring = CgVfxEmitter.builder("shapeRing").capacity(600).rate(48f, 0f, PERIOD - 3f)
-                .shape(CgRing.of(1.6, 1.6, 0)).edge().ordered(24).speed(0f, 0f).life(2f, 2f)
-                .size(0.08f, 0.08f, 1f).heat(1f).module(new CgVfxModule.Force(0f, 0.8f, 0f)).opacity(FADE).build();
-        CgVfxEmitter dome = CgVfxEmitter.builder("shapeDome").capacity(800).rate(220f, 0f, PERIOD - 3f)
-                .shape(CgSphere.of(1.4)).surface().hemisphere().speed(0.4f, 0.8f).life(1.2f, 1.8f)
-                .size(0.04f, 0.07f, 1f).heat(1f).opacity(FADE).build();
-        CgVfxEmitter sheet = CgVfxEmitter.builder("shapeSheet").capacity(600).rate(160f, 0f, PERIOD - 3f)
-                .shape(CgBox.of(1.4, 0.02, 1.4)).direction(0f, 1f, 0f, 10f).speed(1.5f, 2.5f).life(1f, 1.4f)
-                .size(0.04f, 0.07f, 1f).heat(1f).opacity(FADE).build();
-        CgVfxEmitter line = CgVfxEmitter.builder("shapeLine").capacity(400).rate(60f, 0f, PERIOD - 3f)
-                .shape(CgCapsule.between(0, 0, -1.6, 0, 0, 1.6, 0)).edge().ordered(12).outward().speed(0.3f, 0.3f)
-                .life(1.6f, 1.6f).size(0.06f, 0.06f, 1f).heat(1f).opacity(FADE).build();
+        CgVfxEmitter cone = CgVfxEmitter.builder("shapeCone").capacity(900).rate(260f, 0f, PERIOD - 3f)
+                .shape(CgCone.of(0.4, Math.toRadians(14))).pointing(0f, 1f, 0f).speed(5f, 7f).life(0.8f, 1.1f)
+                .size(0.05f, 0.08f, 1f).heat(1f).module(new CgVfxModule.Gravity(6f)).opacity(FADE).build();
+        CgVfxEmitter ring = CgVfxEmitter.builder("shapeRing").capacity(600).rate(72f, 0f, PERIOD - 3f)
+                .shape(CgRing.of(1.1, 1.1, 0)).edge().ordered(24).speed(0f, 0f).life(2.2f, 2.2f)
+                .size(0.08f, 0.08f, 1f).heat(1f).module(new CgVfxModule.Force(0f, 0.9f, 0f)).opacity(FADE).build();
+        CgVfxEmitter dome = CgVfxEmitter.builder("shapeDome").capacity(1200).rate(420f, 0f, PERIOD - 3f)
+                .shape(CgSphere.of(1.1)).surface().hemisphere().speed(0.05f, 0.15f).life(1f, 1.4f)
+                .size(0.04f, 0.06f, 1f).heat(1f).opacity(FADE).build();
+        CgVfxEmitter sheet = CgVfxEmitter.builder("shapeSheet").capacity(800).rate(220f, 0f, PERIOD - 3f)
+                .shape(CgBox.of(1, 0.02, 1)).direction(0f, 1f, 0f, 8f).speed(1.6f, 2.2f).life(0.9f, 1.2f)
+                .size(0.04f, 0.06f, 1f).heat(1f).opacity(FADE).build();
+        CgVfxEmitter line = CgVfxEmitter.builder("shapeLine").capacity(500).rate(90f, 0f, PERIOD - 3f)
+                .shape(CgCapsule.between(0, 0, -1.2, 0, 0, 1.2, 0)).edge().ordered(12).speed(0.25f, 0.25f)
+                .life(1.6f, 1.6f).size(0.07f, 0.07f, 1f).heat(1f).opacity(FADE).build();
         List<CgVfxEmitter> emitters = List.of(cone, ring, dome, sheet, line);
+        CgVfxParam.Color[] colours = {GOLD, CYAN, MAGENTA, ICE, VIOLET};
+        String[] names = {"cone", "ring", "sphere", "box", "capsule"};
+        String[] hints = {"pointed up", "edge, 24 ordered", "surface, hemisphere", "a sheet, upward", "segment, 12 ordered"};
+        float[] at = {-6f, -3f, 0f, 3f, 6f};
         CgVfxLook.Builder look = CgVfxLook.builder(SCHEMA);
-        for (CgVfxEmitter e : emitters) look.emitter(e).layer(sparkLayer(e, CYAN, WHITE));
-        float[][] sources = {{-6f, 0.3f, 0f}, {-3f, 0.6f, 0f}, {0f, 0.3f, 0f}, {3f, 0.6f, 0f}, {6f, 1.2f, 0f}};
-        stations.add(new Station("shapes: cone, ring edge ordered, dome surface, box sheet, capsule segment", x, z,
-                look.build(), emitters, sources, null));
+        for (int i = 0; i < emitters.size(); i++) look.emitter(emitters.get(i)).layer(sparkLayer(emitters.get(i), colours[i], WHITE));
+        float[][] sources = {{at[0], 0.3f, 0f}, {at[1], 0.5f, 0f}, {at[2], 0.2f, 0f}, {at[3], 0.4f, 0f}, {at[4], 1f, 0f}};
+        stations.add(new Station("shapes: where particles are born", x, z, look.build(), emitters, sources, p -> {
+            for (int i = 0; i < names.length; i++) {
+                p.label(at[i], 5.2f, 0f, 0.42f, names[i], 0xFFFFFFFF);
+                p.label(at[i], 4.7f, 0f, 0.26f, hints[i], 0xFFB8D8FF);
+            }
+        }));
     }
 
     /**
@@ -285,18 +300,18 @@ public final class CgVfxModules {
             at[1] = 1.5f;
             at[2] = 3.5f * (float) Math.sin(a);
         };
-        stations.add(new Station("moving: a source at 30 blocks a second, its rate spread along its path", x, z, look,
-                List.of(trail), new float[][]{{3.5f, 1.5f, 0f}}, null, round));
+        stations.add(new Station("moving: 30 blocks a second, no gaps", x, z, look, List.of(trail),
+                new float[][]{{3.5f, 1.5f, 0f}}, null, round));
     }
 
     /**
-     * A wake by distance: eight particles a block its source travels, each taking 40% of its velocity, along a line it
-     * runs back and forth on, faster each way; at each end it teleports across, spawning nothing over the jump.
+     * A wake by distance: sixteen particles a block its source travels, each taking 40% of its velocity, along a line it
+     * runs on, faster as it goes; at the end it teleports back, spawning nothing over the jump.
      */
     private void wake(float x, float z) {
-        CgVfxEmitter wake = CgVfxEmitter.builder("wake").capacity(1500).ratePerBlock(8f, 0f, PERIOD - 3f).inherit(0.4f)
-                .shape(CgShell.of(0.1, 0.3)).launch(0.2f, 0.8f, 1f).speed(0.3f, 0.8f).life(1.4f, 2f)
-                .size(0.05f, 0.08f, 1f).heat(1f).module(new CgVfxModule.Drag(1.5f, 0f)).opacity(FADE).build();
+        CgVfxEmitter wake = CgVfxEmitter.builder("wake").capacity(3000).ratePerBlock(16f, 0f, PERIOD - 3f).inherit(0.4f)
+                .shape(CgShell.of(0.05, 0.25)).launch(0.2f, 0.8f, 1f).speed(0.2f, 0.6f).life(1.6f, 2.4f)
+                .size(0.06f, 0.1f, 1f).heat(1f).module(new CgVfxModule.Drag(1.5f, 0f)).opacity(FADE).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(wake).layer(sparkLayer(wake, CYAN, WHITE)).build();
         Mover run = (i, age, at) -> {
             // A run of 1.4 s from x -5 to 5, quicker as it goes; then it is back at -5 at once.
@@ -305,49 +320,241 @@ public final class CgVfxModules {
             at[1] = 0.4f;
             at[2] = 0f;
         };
-        stations.add(new Station("wake: ratePerBlock 8 and inherit 0.4, teleporting at each end", x, z, look,
-                List.of(wake), new float[][]{{-5f, 0.4f, 0f}}, null, run));
+        stations.add(new Station("wake: 16 a block travelled", x, z, look, List.of(wake),
+                new float[][]{{-5f, 0.4f, 0f}}, p -> {
+                    p.label(-5f, 5.2f, 0f, 0.42f, "start", 0xFFFFFFFF);
+                    p.label(-5f, 4.7f, 0f, 0.26f, "teleported back to", 0xFFB8D8FF);
+                    p.label(5f, 5.2f, 0f, 0.42f, "end", 0xFFFFFFFF);
+                    p.label(5f, 4.7f, 0f, 0.26f, "fastest here", 0xFFB8D8FF);
+                }, run));
+    }
+
+    /** One mesh drawn by the meshes station: its slot, where it stands, and how it moves and reveals over a play. */
+    private interface MeshMotion {
+        /** Writes its transform at {@code age} into {@code m} and answers its reveal, strength and trail into {@code fx}. */
+        boolean at(float age, Matrix4f m, float[] fx);
     }
 
     /**
-     * Meshes, made by {@link CgProceduralMesh}: sparks born across a dome's surface and along its normals, one at each of
-     * 60 vertices of three ribbons spiralling up a cone, in order, and rocks thrown as meshes of their own (a sphere
-     * roughened by curl noise) through the billow shader.
+     * Meshes made by {@link CgProceduralMesh} and drawn on mesh slots through the flow shader, with particles born on
+     * them: a combo of crescent slashes at changing tilts, each swept in along its arc and fading behind; twin swirls
+     * of ribbons turning up a cone, the inner one against the outer; a shield dome rippling under shock rings that run
+     * out from its foot over a turning rune circle; sparks born on the dome's surface and at the swirl's vertices in
+     * order; and rocks thrown as meshes of their own.
      */
     private void meshes(float x, float z) {
-        CgMesh dome = CgProceduralMesh.revolve(CgProceduralMesh.sphere(1.6f, 0f, 1.6f)).divisions(24, 8).build();
-        CgMesh swirl = CgProceduralMesh.ribbons(CgProceduralMesh.cone(1.2f, 3f)).count(3).twist(1.25f)
-                .width(0.3f, 0.05f).build();
+        CgMesh slash = CgProceduralMesh.revolve(CgProceduralMesh.cylinder(1.25f, 1.6f, 0.06f)).angles(-75f, 75f)
+                .divisions(48, 3).build();
+        CgMesh swirl = CgProceduralMesh.ribbons(CgProceduralMesh.cone(1.3f, 3.2f)).count(3).twist(1.25f)
+                .width(0.45f, 0.05f).vertices(48).build();
+        CgMesh inner = CgProceduralMesh.ribbons(CgProceduralMesh.cylinder(0.35f, 0.9f, 3.6f)).count(2).twist(-2f)
+                .width(0.2f, 0.08f).vertices(48).build();
+        CgMesh dome = CgProceduralMesh.revolve(CgProceduralMesh.sphere(1.6f, 0f, 1.6f)).divisions(40, 12)
+                .wave(2.4f, 0.06f).build();
+        CgMesh shock = CgProceduralMesh.revolve(CgProceduralMesh.cylinder(1f, 1f, 0.12f)).divisions(64, 2).build();
+        CgMesh rune = CgProceduralMesh.revolve(CgProceduralMesh.cylinder(2f, 2.3f, 0f)).divisions(64, 2).build();
         CgMesh rock = CgProceduralMesh.revolve(CgProceduralMesh.sphere(1f, -1f, 1f)).divisions(12, 8).curl(1.3f, 0.25f)
                 .noiseSeed(7).build();
-        CgVfxEmitter onDome = CgVfxEmitter.builder("meshDome").capacity(1200).rate(300f, 0f, PERIOD - 3f).mesh(dome)
-                .speed(0.2f, 0.5f).life(1f, 1.5f).size(0.04f, 0.06f, 1f).heat(1f).opacity(FADE).build();
-        CgVfxEmitter onSwirl = CgVfxEmitter.builder("meshSwirl").capacity(600).rate(120f, 0f, PERIOD - 3f).mesh(swirl)
-                .vertices().ordered(60).speed(0f, 0f).life(1.2f, 1.2f).size(0.05f, 0.05f, 1f).heat(1f).opacity(FADE).build();
+
+        CgVfxSlot slashSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/slash");
+        CgVfxSlot swirlSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/swirl");
+        CgVfxSlot innerSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/swirl_inner");
+        CgVfxSlot domeSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/dome");
+        CgVfxSlot shockSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/shock");
+        CgVfxSlot runeSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/rune");
+
+        CgVfxEmitter onDome = CgVfxEmitter.builder("meshDome").capacity(1200).rate(260f, 0f, PERIOD - 2f).mesh(dome)
+                .speed(0.3f, 0.7f).life(0.8f, 1.2f).size(0.03f, 0.05f, 1f).heat(1f).opacity(FADE).build();
+        CgVfxEmitter onSwirl = CgVfxEmitter.builder("meshSwirl").capacity(900).rate(180f, 0f, PERIOD - 2f).mesh(swirl)
+                .vertices().ordered(96).speed(0.4f, 0.8f).life(0.7f, 1f).size(0.04f, 0.04f, 1f).heat(1f)
+                .module(new CgVfxModule.Drag(1f, 0f)).opacity(FADE).build();
         CgVfxEmitter rocks = CgVfxEmitter.builder("meshRocks").renderer(CgVfxEmitter.Renderer.MESHES).capacity(40)
                 .burst(0.5f, 24).shape(CgSphere.of(0.5)).launch(0.5f, 1f, 1f).speed(4f, 7f).life(3f, 4f)
-                .size(0.15f, 0.35f, 1f).spin(1f, 4f).module(new CgVfxModule.Gravity(9.8f))
+                .size(0.12f, 0.3f, 1f).spin(1f, 4f).module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Ground(0.2f, 0.4f, 0.6f)).opacity(FADE).build();
+
+        String flow = "crystalgraphics:shaders/vfx/mesh/flow.shader";
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(onDome).emitter(onSwirl).emitter(rocks)
-                .layer(sparkLayer(onDome, CYAN, WHITE)).layer(sparkLayer(onSwirl, MAGENTA, WHITE))
+                .layer(CgVfxLayer.of(flow).on(slashSlot).mesh(slash).bind("_Color", CYAN).bind("_Hot", WHITE)
+                        .set("_Scroll", 2.5f, 0f, 0f, 0f).set("_Tiling", 5f, 1f, 0f, 0f).set("_Erosion", 0.35f).build())
+                .layer(CgVfxLayer.of(flow).on(swirlSlot).mesh(swirl).bind("_Color", VIOLET).bind("_Hot", WHITE)
+                        .set("_Scroll", 0f, -1.4f, 0f, 0f).set("_Tiling", 1.5f, 5f, 0f, 0f).set("_Edges", 0.3f).build())
+                .layer(CgVfxLayer.of(flow).on(innerSlot).mesh(inner).bind("_Color", MAGENTA).bind("_Hot", WHITE)
+                        .set("_Scroll", 0f, 2f, 0f, 0f).set("_Tiling", 1.5f, 4f, 0f, 0f).set("_Edges", 0.3f).build())
+                .layer(CgVfxLayer.of(flow).on(domeSlot).mesh(dome).bind("_Color", CYAN).bind("_Hot", ICE)
+                        .set("_Scroll", 0.15f, 0.5f, 0f, 0f).set("_Tiling", 10f, 4f, 0f, 0f).set("_Erosion", 0.55f)
+                        .set("_Edges", 0f).set("_Rim", 1.6f).build())
+                .layer(CgVfxLayer.of(flow).on(shockSlot).mesh(shock).bind("_Color", ICE).bind("_Hot", WHITE)
+                        .set("_Scroll", 0.6f, 0f, 0f, 0f).set("_Tiling", 12f, 1f, 0f, 0f).set("_Erosion", 0.3f).build())
+                .layer(CgVfxLayer.of(flow).on(runeSlot).mesh(rune).bind("_Color", GOLD).bind("_Hot", FLAME)
+                        .set("_Scroll", 0.08f, 0f, 0f, 0f).set("_Tiling", 24f, 1f, 0f, 0f).set("_Erosion", 0.5f)
+                        .set("_Edges", 0.2f).build())
                 .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/smoke/billow.shader").on(rocks).mesh(rock)
                         .bind("_Color", DEBRIS).bind("_Hot", EMBER).role(CgVfxLayer.Role.SMOKE).build())
                 .build();
-        stations.add(new Station("meshes: a dome's surface, a swirl's vertices in order, rocks as meshes", x, z, look,
-                List.of(onDome, onSwirl, rocks), new float[][]{{-3.5f, 0.2f, 0f}, {0f, 0.2f, 0f}, {3.5f, 0.3f, 0f}}, null));
+
+        float slashX = -5f, swirlX = 0f, domeX = 5f;
+        // The slash combo: one every 0.7 s, each its own tilt and turn, swept in over 0.15 s and gone by 0.6 s.
+        float[] tilts = {25f, -35f, 70f, -10f, 45f, -60f};
+        MeshMotion slashes = (age, m, fx) -> {
+            int k = (int) (age / 0.7f);
+            float t = age - k * 0.7f;
+            if (k >= tilts.length || t > 0.6f) return false;
+            m.identity().translate(0f, 1.6f, 0f).rotateY((float) Math.toRadians(30f + 50f * k))
+                    .rotateX((float) Math.toRadians(tilts[k])).scale(1f + 0.25f * t);
+            fx[0] = t / 0.15f;
+            fx[1] = 1f - smooth(0.2f, 0.6f, t);
+            fx[2] = 0.8f;
+            return true;
+        };
+        MeshMotion turning = (age, m, fx) -> {
+            m.identity().rotateY(age * 3f);
+            fx[0] = 2f;
+            fx[1] = fade(age);
+            fx[2] = 0f;
+            return true;
+        };
+        MeshMotion counter = (age, m, fx) -> {
+            m.identity().rotateY(-age * 4.5f);
+            fx[0] = 2f;
+            fx[1] = fade(age);
+            fx[2] = 0f;
+            return true;
+        };
+        MeshMotion shield = (age, m, fx) -> {
+            m.identity();
+            fx[0] = age / 0.6f;   // swept in round it
+            fx[1] = fade(age) * (0.75f + 0.25f * (float) Math.sin(age * 5f));
+            fx[2] = 0f;
+            return true;
+        };
+        MeshMotion runeTurn = (age, m, fx) -> {
+            m.identity().translate(0f, 0.02f, 0f).rotateY(age * 0.5f);
+            fx[0] = age / 0.8f;
+            fx[1] = fade(age);
+            fx[2] = 0f;
+            return true;
+        };
+        // Shock rings: one every 1.2 s, running from the dome's foot out to three times its radius.
+        Show show = new Show() {
+            private final Matrix4f m = new Matrix4f();
+            private final float[] fx = new float[3];
+
+            @Override
+            public void draw(CgVfxEffect effect, CgVfxFrame frame, float age) {
+                mesh(effect, frame, slashSlot, slashX, slashes, age);
+                mesh(effect, frame, swirlSlot, swirlX, turning, age);
+                mesh(effect, frame, innerSlot, swirlX, counter, age);
+                mesh(effect, frame, domeSlot, domeX, shield, age);
+                mesh(effect, frame, runeSlot, domeX, runeTurn, age);
+                for (int k = 0; k < 4; k++) {
+                    float t = age - 0.4f - k * 1.2f;
+                    if (t < 0f || t > 1.1f || age > PERIOD - 1.5f) continue;
+                    m.identity().scale(1.6f + 3.2f * t, 1f, 1.6f + 3.2f * t);
+                    frame.mesh(effect, shockSlot, domeX, 0.05f, 0f, m, 2f, 1f - t / 1.1f, 0f, 0f);
+                }
+            }
+
+            private void mesh(CgVfxEffect effect, CgVfxFrame frame, CgVfxSlot slot, float at, MeshMotion motion, float age) {
+                if (!motion.at(age, m, fx)) return;
+                frame.mesh(effect, slot, at, 0f, 0f, m, fx[0], fx[1], fx[2], 0f);
+            }
+        };
+        stations.add(new Station("meshes: procedural meshes on mesh slots", x, z, look, List.of(onDome, onSwirl, rocks),
+                new float[][]{{domeX, 0f, 0f}, {swirlX, 0f, 0f}, {swirlX, 0.3f, 2.5f}}, p -> {
+                    p.label(slashX, 5.2f, 0f, 0.42f, "slashes", 0xFFFFFFFF);
+                    p.label(slashX, 4.7f, 0f, 0.26f, "a revolved band, swept in", 0xFFB8D8FF);
+                    p.label(swirlX, 5.2f, 0f, 0.42f, "swirls", 0xFFFFFFFF);
+                    p.label(swirlX, 4.7f, 0f, 0.26f, "ribbons, sparks at vertices", 0xFFB8D8FF);
+                    p.label(domeX, 5.2f, 0f, 0.42f, "shield", 0xFFFFFFFF);
+                    p.label(domeX, 4.7f, 0f, 0.26f, "dome, shocks, rune ring", 0xFFB8D8FF);
+                }, null, show, null));
+    }
+
+    /** A play's strength: up over its first 0.3 s, down over the period's last 1.5. */
+    private static float fade(float age) {
+        return smooth(0f, 0.3f, age) * (1f - smooth(PERIOD - 2.5f, PERIOD - 1f, age));
     }
 
     /**
-     * An aura off the local player: motes born on the surface of their box, wherever they walk, rising as they fade.
-     * With no player (the harness) the effect follows nothing and they are born at its source.
+     * A Super Saiyan's aura round a mannequin, from its box as an entity's ({@code entity()} reads the effect's
+     * {@code spawnBox}): flame tongues of a revolved teardrop licking up past its head, gold outside and white-hot
+     * within, flickering as they pulse; hot streaks shooting up off its faces; lightning crackling round it; pebbles
+     * lifting off the ground under it and drifting up; and a shock running out from its feet with each surge.
      */
     private void aura(float x, float z) {
-        CgVfxEmitter motes = CgVfxEmitter.builder("aura").capacity(800).rate(160f, 0f, PERIOD - 3f).entity().surface()
-                .speed(0.1f, 0.4f).life(0.8f, 1.4f).size(0.04f, 0.07f, 1f).heat(1f)
-                .module(new CgVfxModule.Force(0f, 1.5f, 0f)).opacity(FADE).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(motes).layer(sparkLayer(motes, GOLD, WHITE)).build();
-        stations.add(new Station("aura: entity().surface() off the local player", x, z, look, List.of(motes),
-                new float[][]{{0f, 1f, 0f}}, null, null, true));
+        CgMesh flame = CgProceduralMesh.revolve(CgProceduralMesh.spline(0.35f, -0.05f, 0.95f, 0.9f, 0.7f, 2.2f, 0f, 3.4f))
+                .divisions(48, 20).curl(1.1f, 0.12f).noiseSeed(3).build();
+        CgMesh core = CgProceduralMesh.revolve(CgProceduralMesh.spline(0.25f, 0f, 0.6f, 0.8f, 0.45f, 1.9f, 0f, 2.7f))
+                .divisions(40, 16).curl(1.6f, 0.08f).noiseSeed(9).build();
+        CgMesh shock = CgProceduralMesh.revolve(CgProceduralMesh.cylinder(1f, 1f, 0.1f)).divisions(64, 2).build();
+        CgMesh pebble = CgProceduralMesh.revolve(CgProceduralMesh.sphere(1f, -1f, 1f)).divisions(10, 6).curl(1.4f, 0.3f)
+                .noiseSeed(4).build();
+        CgVfxSlot flameSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/aura_flame");
+        CgVfxSlot coreSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/aura_core");
+        CgVfxSlot shockSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/aura_shock");
+
+        CgVfxEmitter streaks = CgVfxEmitter.builder("auraStreaks").renderer(CgVfxEmitter.Renderer.ARCS).capacity(1200)
+                .rate(260f, 0.2f, PERIOD - 2f).entity().surface().direction(0f, 1f, 0f, 12f).speed(3f, 6f).life(0.25f, 0.45f).size(0.05f, 0.09f, 1f)
+                .heat(1f).opacity(FADE).build();
+        CgVfxEmitter crackle = CgVfxEmitter.builder("auraCrackle").capacity(600).rate(140f, 0.4f, PERIOD - 2f)
+                .entity().surface().speed(2f, 5f).life(0.06f, 0.16f).size(0.02f, 0.04f, 1.5f).heat(1f)
+                .module(new CgVfxModule.Turbulence(22f, 2.5f, 3f)).module(new CgVfxModule.Drag(6f, 0f))
+                .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
+        CgVfxEmitter motes = CgVfxEmitter.builder("auraMotes").capacity(800).rate(120f, 0.2f, PERIOD - 2f)
+                .entity().surface().speed(0.1f, 0.3f).life(0.8f, 1.4f).size(0.03f, 0.06f, 1.4f).heat(1f)
+                .module(new CgVfxModule.Force(0f, 2.2f, 0f)).module(new CgVfxModule.Turbulence(2f, 0.5f, 0.6f))
+                .opacity(FADE).build();
+        CgVfxEmitter pebbles = CgVfxEmitter.builder("auraPebbles").renderer(CgVfxEmitter.Renderer.MESHES).capacity(60)
+                .rate(9f, 0.3f, PERIOD - 3f).shape(CgRing.of(0.5, 1.8, 0)).speed(0f, 0.1f).life(2.5f, 3.5f)
+                .size(0.04f, 0.1f, 1.5f).spin(0.5f, 2f).module(new CgVfxModule.Force(0f, 0.9f, 0f))
+                .module(new CgVfxModule.Turbulence(1f, 0.15f, 0.2f)).opacity(FADE).build();
+
+        String flow = "crystalgraphics:shaders/vfx/mesh/flow.shader";
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(streaks).emitter(crackle).emitter(motes).emitter(pebbles)
+                .layer(CgVfxLayer.of(flow).on(flameSlot).mesh(flame).bind("_Color", GOLD).bind("_Hot", FLAME)
+                        .set("_Scroll", 0.12f, -2.6f, 0f, 0f).set("_Tiling", 7f, 3f, 0f, 0f).set("_Erosion", 0.5f)
+                        .set("_Edges", 1f).set("_Rim", 1.2f).build())
+                .layer(CgVfxLayer.of(flow).on(coreSlot).mesh(core).bind("_Color", FLAME).bind("_Hot", WHITE)
+                        .set("_Scroll", -0.2f, -3.4f, 0f, 0f).set("_Tiling", 6f, 3f, 0f, 0f).set("_Erosion", 0.45f)
+                        .set("_Edges", 1f).set("_Rim", 0.8f).build())
+                .layer(CgVfxLayer.of(flow).on(shockSlot).mesh(shock).bind("_Color", GOLD).bind("_Hot", WHITE)
+                        .set("_Scroll", 0.8f, 0f, 0f, 0f).set("_Tiling", 14f, 1f, 0f, 0f).set("_Erosion", 0.3f).build())
+                .layer(layer("ray", streaks, GOLD, WHITE, 1f, null))
+                .layer(sparkLayer(crackle, CYAN, WHITE))
+                .layer(sparkLayer(motes, FLAME, WHITE))
+                .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/smoke/billow.shader").on(pebbles).mesh(pebble)
+                        .bind("_Color", DEBRIS).bind("_Hot", GOLD).role(CgVfxLayer.Role.SMOKE).build())
+                .build();
+        Show show = new Show() {
+            private final Matrix4f m = new Matrix4f();
+
+            @Override
+            public void draw(CgVfxEffect effect, CgVfxFrame frame, float age) {
+                // Surges every 1.4 s: the flames swell and flare, then settle while flickering.
+                float surge = (age % 1.4f) / 1.4f, swell = (float) Math.exp(-surge * 5f);
+                float flicker = 0.85f + 0.15f * (float) Math.sin(age * 37f) * (float) Math.sin(age * 23f + 1f);
+                float on = fade(age);
+                m.identity().rotateY(age * 1.3f).scale(1f + 0.12f * swell, 1f + 0.22f * swell, 1f + 0.12f * swell);
+                frame.mesh(effect, flameSlot, 0f, 0f, 0f, m, 2f, on * flicker * (0.8f + 0.5f * swell), 0f, 0f);
+                m.identity().rotateY(-age * 2.1f).scale(1f + 0.08f * swell);
+                frame.mesh(effect, coreSlot, 0f, 0f, 0f, m, 2f, on * flicker, 0f, 0f);
+                if (surge < 0.45f && age < PERIOD - 1.5f) {
+                    float t = surge / 0.45f, r = 0.8f + 3.5f * t;
+                    m.identity().scale(r, 1f, r);
+                    frame.mesh(effect, shockSlot, 0f, 0.04f, 0f, m, 2f, on * (1f - t), 0f, 0f);
+                }
+            }
+        };
+        float[] box = {0f, 0.9f, 0f, 0.3f, 0.9f, 0.3f};
+        Matrix4f body = new Matrix4f().scale(0.6f, 1.8f, 0.6f);
+        float[] middle = {0f, 0.9f, 0f};
+        stations.add(new Station("aura: a Super Saiyan's, round a mannequin", x, z, look,
+                List.of(streaks, crackle, motes, pebbles), new float[][]{middle, middle, middle, {0f, 0.05f, 0f}}, p -> {
+                    p.box(0f, 0.9f, 0f, body);
+                    p.label(0f, 5.2f, 0f, 0.42f, "entity()", 0xFFFFFFFF);
+                    p.label(0f, 4.7f, 0f, 0.26f, "born on the box it follows", 0xFFB8D8FF);
+                }, null, show, box));
     }
 
     /**
