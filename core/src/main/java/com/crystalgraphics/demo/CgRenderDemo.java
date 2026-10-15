@@ -104,7 +104,7 @@ public final class CgRenderDemo {
     private static final Logger LOGGER = LogManager.getLogger("CgRenderDemo");
 
     private static final String MODE = CgVar.text("crystalgraphics.demo", "", CgVar.DEV | CgVar.RESTART,
-            "false draws no world demo; a scene's name (blasts, beams, modules, gas, blast, collision) starts on it; empty on"
+            "false draws no world demo; a scene's name (blasts, beams, modules, gas, smoke, blast, collision) starts on it; empty on"
                     + " blasts.").get();
     private static final boolean ENABLED = !"false".equals(MODE);
     private static final boolean SKY = CgVar.bool("crystalgraphics.demo.sky", true, CgVar.DEV | CgVar.RESTART,
@@ -159,6 +159,7 @@ public final class CgRenderDemo {
             new Kind("beams", 12, this::beams),
             new Kind("modules", 34, this::modules),
             new Kind("gas", 90, this::gas),
+            new Kind("smoke", 80, this::particleSmoke),
             new Kind("blasts", (int) CgVfxBlasts.REACH + 10, this::blasts),
             new Kind("collision", 24, this::collision),
     };
@@ -367,6 +368,37 @@ public final class CgRenderDemo {
             @Override
             public void delete() {
                 gas.delete();
+            }
+        };
+    }
+
+    private Scene particleSmoke() {
+        if (labelFont == null) labelFont = sansSerif(48);
+        CgVfxParticleSmokeDemo demo = new CgVfxParticleSmokeDemo(labelFont, VFX);
+        return new Scene() {
+            @Override
+            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, float seconds) {
+                demo.submit(world, x, y, z, seconds);
+            }
+
+            @Override
+            public void prepare() {
+                demo.prepare();
+            }
+
+            @Override
+            public boolean warmed() {
+                return demo.warmed();
+            }
+
+            @Override
+            public void clear() {
+                demo.clear();
+            }
+
+            @Override
+            public void delete() {
+                demo.delete();
             }
         };
     }
