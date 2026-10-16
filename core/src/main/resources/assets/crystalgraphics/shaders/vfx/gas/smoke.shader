@@ -108,7 +108,9 @@ Pass {
                 continue;
             }
             s = fx_sparse_smooth(_GasShade, slot, c);
-            vec4 f = textureLod(_GasFlow, uvw, 0.0);
+            // Its temperature and velocity by the same spline: the flame is a steep curve of temperature, and read linearly
+            // every cell face showed in it as a tile.
+            vec4 f = fx_sparse_smooth(_GasFlow, slot, c);
             float density = s.x;
             // Only an edge thin enough to see through is worn: a body's inside is hidden anyway.
             if (_Detail > 0.0 && density < 2.0) {
