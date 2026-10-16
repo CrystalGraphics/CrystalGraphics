@@ -1,11 +1,11 @@
 // Gas and grids in the world's media (CgWorldMedia): each one's extinction a block where each froxel is, added to what
-// came before, so what is drawn behind smoke is dimmed by it. CgVfxGasAtlas dispatches Gas, CgVfxGridAtlas Grid (lit
+// came before, so what is drawn behind smoke is dimmed by it. CgVfxFluidAtlas dispatches Gas, CgVfxGridAtlas Grid (lit
 // grids alone: a glowing one hides nothing). Positions are camera-relative.
 #pragma kernel Gas 4 4 4 image
 #pragma kernel Grid 4 4 4 image
 
 #include "crystalgraphics:shaders/lib/media.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_gas.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_sparse.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_grid.glsl"
 
 Properties {

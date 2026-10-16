@@ -1,4 +1,4 @@
-package com.crystalgraphics.vfx.gas;
+package com.crystalgraphics.vfx.fluid;
 
 import org.junit.Test;
 

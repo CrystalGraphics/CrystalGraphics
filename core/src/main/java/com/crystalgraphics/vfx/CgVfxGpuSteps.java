@@ -1,7 +1,7 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.trace.CgTrace;
-import com.crystalgraphics.vfx.gas.CgVfxGas;
+import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
 import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
@@ -88,7 +88,7 @@ final class CgVfxGpuSteps {
         public float boxHalfX() { return of.books().boxHalfX(); }
         public float boxHalfY() { return of.books().boxHalfY(); }
         public float boxHalfZ() { return of.books().boxHalfZ(); }
-        public CgVfxGas gas() { return of.books().gas(); }
+        public CgVfxFluid gas() { return of.books().gas(); }
         public CgVfxGrid3D grid() { return of.books().grid(); }
     }
 

@@ -63,14 +63,6 @@ public final class CgVfxSlot {
          */
         TRAIL,
         /**
-         * A {@code CgVfxGas}, marched through a box round the tiles it holds ({@code fx_gas.glsl}), reading
-         * {@code CgVfxGasAtlas.shade()} as {@code _GasShade}, {@code flow()} as {@code _GasFlow} and {@code pages()} as
-         * {@code _GasPages}, declared first and in that order: the box a unit cube scaled by the transform;
-         * {@code CUSTOM0} the gas's place in the atlas, its cell in blocks, 0 and the layer's size; {@code CUSTOM1} its
-         * grid's low corner from the box's middle, and its extinction a block.
-         */
-        VOLUME,
-        /**
          * A {@code CgVfxFluid}, marched through a box round the tiles it holds ({@code fx_fluid.glsl}), reading
          * {@code CgVfxFluidAtlas.shade()} as {@code _FluidShade}, {@code restA()} and {@code restB()} as
          * {@code _FluidRestA} and {@code _FluidRestB}, and {@code pages()} as {@code _FluidPages}, declared first and in
@@ -144,10 +136,6 @@ public final class CgVfxSlot {
 
     public static CgVfxSlot trail(String name) {
         return of(Kind.TRAIL, name);
-    }
-
-    public static CgVfxSlot volume(String name) {
-        return of(Kind.VOLUME, name);
     }
 
     public static CgVfxSlot fluid(String name) {

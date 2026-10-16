@@ -12,7 +12,6 @@ import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.look.CgVfxValues;
 import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
-import com.crystalgraphics.vfx.gas.CgVfxGasAtlas;
 import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 
@@ -262,17 +261,6 @@ final class CgVfxMaterials {
     }
 
     private int nextPool;
-
-    /** The gas shade each volume material was last pointed at: the atlas makes it anew when its bricks change size. */
-    private final Map<CgMaterial, CgTexture> shades = new IdentityHashMap<>();
-
-    /** Points volume {@code material} at the atlas's shade, flow and page tables, once each time the atlas remade them. */
-    void shade(CgMaterial material, CgTexture shade, CgTexture flow, CgTexture pages) {
-        if (shades.get(material) == shade) return;
-        shades.put(material, shade);
-        material.applyProperties(b -> b.sampler(CgVfxGasAtlas.SHADE_SAMPLER, 0, shade).sampler(CgVfxGasAtlas.FLOW_SAMPLER, 1, flow)
-                .sampler(CgVfxGasAtlas.PAGES_SAMPLER, 2, pages));
-    }
 
     /** The fluid shade each fluid material was last pointed at: the atlas makes it anew when its pool changes size. */
     private final Map<CgMaterial, CgTexture> fluidShades = new IdentityHashMap<>();

@@ -12,7 +12,8 @@
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_gas.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_detail.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_scatter.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_grid.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "ColorSpace" = "Linear" }
@@ -60,7 +61,7 @@ Pass {
         vec3 size = vec3(length(CG_OBJECT_TO_WORLD[0].xyz), length(CG_OBJECT_TO_WORLD[1].xyz),
                 length(CG_OBJECT_TO_WORLD[2].xyz));
         vec3 lo = centre - 0.5 * size, corner = centre + CG_OBJECT_CUSTOM1.xyz;
-        vec2 t = fx_gas_box(eye, ray, lo, lo + size);
+        vec2 t = fx_scatter_box(eye, ray, lo, lo + size);
         t.x = max(t.x, 0.0);
         t.y = min(t.y, FX_SCENE_DISTANCE(ray));
         if (t.y <= t.x) discard;
@@ -88,7 +89,7 @@ Pass {
             if (slot < 0) {
                 // Nothing here: on to the first step past where the ray leaves this tile, keeping the steps' phase.
                 vec3 lo = corner + vec3(held) * tile;
-                at += max(ceil((fx_gas_box(eye, ray, lo, lo + tile).y - at) / dt), 1.0) * dt;
+                at += max(ceil((fx_scatter_box(eye, ray, lo, lo + tile).y - at) / dt), 1.0) * dt;
                 continue;
             }
             float v = max(dot(textureLod(_GridView, fx_sparse_pool_uvw(_GridView, slot, c), 0.0), mask), 0.0);
@@ -96,7 +97,7 @@ Pass {
             if (v > 1.0e-4) v = max(dot(fx_sparse_smooth(_GridView, slot, c), mask), 0.0);
             if (v > 1.0e-4 && _Detail > 0.0 && v < 2.0 * hotAt) {
                 // Eroded as a share of its hot value: what is faint frays, what is hot keeps itself.
-                v = hotAt * fx_gas_erode(v / hotAt, fx_gas_carried_detail(_Noise, _Voronoi,
+                v = hotAt * fx_erode(v / hotAt, fx_detail_carried(_Noise, _Voronoi,
                         (p - corner) / max(_DetailSize, 0.05), vec3(0.0), FX_AGE, 0.0), _Detail);
             }
             if (v > 1.0e-4) {

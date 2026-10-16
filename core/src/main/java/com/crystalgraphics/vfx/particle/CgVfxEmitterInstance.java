@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx.particle;
 
-import com.crystalgraphics.vfx.gas.CgVfxGas;
+import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
@@ -53,9 +53,9 @@ public final class CgVfxEmitterInstance {
     private final boolean local;
     private double anchorX = Double.NaN, anchorY, anchorZ;
     private float driftX, driftY, driftZ;
-    /** The gas its particles are carried by ({@link #inGas}); null for none. */
+    /** The fluid its particles are carried by ({@link #inGas}); null for none. */
     @Nullable
-    private CgVfxGas gas;
+    private CgVfxFluid gas;
     /** The grid its particles are in ({@link #inGrid}); null for none. */
     @Nullable
     private CgVfxGrid3D grid;
@@ -172,10 +172,10 @@ public final class CgVfxEmitterInstance {
      * children are carried by it too.
      *
      * <pre>{@code
-     * embers.inGas(smoke);                         // a CgVfxGas of the same effect
+     * embers.inGas(smoke);                         // a CgVfxFluid of the same effect
      * }</pre>
      */
-    public CgVfxEmitterInstance inGas(@Nullable CgVfxGas gas) {
+    public CgVfxEmitterInstance inGas(@Nullable CgVfxFluid gas) {
         this.gas = gas;
         for (CgVfxEmitterInstance child : children) {
             if (child != null) child.inGas(gas);
@@ -631,7 +631,7 @@ public final class CgVfxEmitterInstance {
         }
 
         @Override
-        public CgVfxGas gas() {
+        public CgVfxFluid gas() {
             return gas;
         }
 

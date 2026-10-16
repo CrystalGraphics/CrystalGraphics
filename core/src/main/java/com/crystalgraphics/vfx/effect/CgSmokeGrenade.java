@@ -4,9 +4,9 @@ import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
-import com.crystalgraphics.vfx.gas.CgVfxGas;
-import com.crystalgraphics.vfx.gas.CgVfxSmoke;
-import com.crystalgraphics.vfx.gas.CgVfxSmokeFill;
+import com.crystalgraphics.vfx.fluid.CgVfxFluid;
+import com.crystalgraphics.vfx.fluid.CgVfxSmoke;
+import com.crystalgraphics.vfx.fluid.CgVfxSmokeFill;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.net.CgVfxCue;
@@ -35,8 +35,8 @@ import com.crystalgraphics.vfx.net.CgVfxCue;
  *
  * <ul>
  *   <li>A plain cue (not authoritative) floods each client's own world, which can differ where chunks differ.</li>
- *   <li>Its look is its smoke's ({@link CgVfxSmoke#SCHEMA}) and its gas's: tune how far it spreads, how long it holds
- *       and how it churns there.</li>
+ *   <li>Its look is its smoke's ({@link CgVfxSmoke#SCHEMA}) and its fluid's ({@link CgVfxFluid#SCHEMA}): tune how far
+ *       it spreads, how long it holds and how it churns there.</li>
  * </ul>
  */
 public final class CgSmokeGrenade extends CgVfxEffect<CgSmokeGrenade> implements CgVfxCue.Live, CgVfxCue.Authoritative {
@@ -50,14 +50,16 @@ public final class CgSmokeGrenade extends CgVfxEffect<CgSmokeGrenade> implements
         SCHEMA.networked(CELLS, CARVES);
     }
 
-    /** Grey smoke on half-block cells, held thick and churning slowly. */
-    public static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE).params(CgVfxSmoke.SCHEMA)
-            .set(CgVfxGas.CELL, CgVfxSmokeFill.CELL).set(CgVfxGas.BUOYANCY, 0.15f).set(CgVfxGas.WEIGHT, 0f)
-            .set(CgVfxGas.DISSIPATION, 0f).set(CgVfxGas.DAMPING, 1.2f).set(CgVfxGas.VORTICITY, 2f)
-            .set(CgVfxGas.TURBULENCE, 1.6f).set(CgVfxGas.TURBULENCE_SIZE, 2.2f)
-            .set(CgVfxGas.DISTURBANCE, 0.8f).set(CgVfxGas.DISTURBANCE_SIZE, 1.2f)
-            .set(CgVfxGas.EXTINCTION, 3f).set(CgVfxGas.SCATTERING, 0.5f).set(CgVfxGas.SOOT, 0f)
-            .set(CgVfxGas.DETAIL, 0.6f).set(CgVfxGas.DETAIL_SIZE, 1f).set(CgVfxGas.SMOKE_COLOR, 0xFFC4C6C8)
+    /**
+     * Flow's grey smoke on half-block cells, held thick by its cells (no fade), churning slowly; no fire, and cold smoke
+     * read at the colour map's middle.
+     */
+    public static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(CgVfxFluid.SMOKE).params(CgVfxSmoke.SCHEMA)
+            .set(CgVfxFluid.CELL, CgVfxSmokeFill.CELL).set(CgVfxFluid.COMBUSTION, 0f)
+            .set(CgVfxFluid.SMOKE_DAMPING, 0f).set(CgVfxFluid.SMOKE_FADE, 0f).set(CgVfxFluid.VELOCITY_DAMPING, 0.7f)
+            .set(CgVfxFluid.VORTICITY, 1f).set(CgVfxFluid.TURBULENCE, 1.6f).set(CgVfxFluid.TURBULENCE_SIZE, 2.2f)
+            .set(CgVfxFluid.ATTENUATION, 3f).set(CgVfxFluid.SCATTERING, 0.5f).set(CgVfxFluid.COLORMAP_MIN, -1f)
+            .set(CgVfxFluid.DETAIL, 0.6f).set(CgVfxFluid.DETAIL_SIZE, 1f)
             .build();
 
     private final CgVfxSmoke smoke = new CgVfxSmoke(this);
@@ -80,7 +82,7 @@ public final class CgSmokeGrenade extends CgVfxEffect<CgSmokeGrenade> implements
         return grenade;
     }
 
-    /** Its smoke: what it hides, its cells, its gas. */
+    /** Its smoke: what it hides, its cells, its fluid. */
     public CgVfxSmoke smoke() {
         return smoke;
     }

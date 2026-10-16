@@ -1,4 +1,4 @@
-package com.crystalgraphics.vfx.gas;
+package com.crystalgraphics.vfx.fluid;
 
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxElement;
@@ -12,8 +12,9 @@ import java.nio.ByteBuffer;
 /**
  * A smoke grenade's cloud as Counter-Strike 2 makes one: the cells a {@link CgVfxSmokeFill} floods from where it lands,
  * revealed outward over {@link #SPREAD}, held for {@link #DURATION}, then thinning away over {@link #FADE}; shots and
- * blasts carve it open and it heals. A gas fills the cells and gives them motion: its density is held to the cells
- * revealed, drained outside them, and churned by the gas's look. What it hides is gameplay, so {@link #blocksSight}
+ * blasts carve it open and it heals. A fluid ({@link CgVfxFluid}) fills the cells and gives them motion: its smoke is
+ * held to the cells revealed, drained outside them, and churned by the fluid's look. What it hides is gameplay, so
+ * {@link #blocksSight}
  * answers the same on the server and on every client.
  *
  * <pre>{@code
@@ -37,10 +38,11 @@ import java.nio.ByteBuffer;
  * }</pre>
  *
  * <ul>
- *   <li>Its look carries {@link #SCHEMA} and {@link CgVfxGas#SCHEMA}: the gas's {@code CELL} at {@link CgVfxSmokeFill#CELL}
- *       draws the cells as they are; {@code DISSIPATION} 0, since the cells hold its density.</li>
+ *   <li>Its look carries {@link #SCHEMA} and {@link CgVfxFluid#SCHEMA}: the fluid's {@code CELL} at
+ *       {@link CgVfxSmokeFill#CELL} draws the cells as they are; {@code SMOKE_DAMPING} and {@code SMOKE_FADE} 0, since the
+ *       cells hold its smoke; {@code COLORMAP_MIN} -1, so smoke with no heat reads the colour map's middle.</li>
  *   <li>Positions here are absolute world coordinates, as gameplay holds them.</li>
- *   <li>A server's copy (an authoritative cue's) runs no gas: it floods, carves and answers sight alone.</li>
+ *   <li>A server's copy (an authoritative cue's) runs no fluid: it floods, carves and answers sight alone.</li>
  *   <li>At most {@link #MAX_CARVES} carves at once: a new one takes the oldest's place.</li>
  * </ul>
  */
@@ -69,24 +71,24 @@ public final class CgVfxSmoke extends CgVfxElement {
     private static final float BLAST_HEAL_FROM = 0.5f, BLAST_HEAL_TO = 5f, BLAST_HEAL_POWER = 1.8f;
     /** Floats a carve: its ends from the effect's origin, its radius, when, and whether a blast. */
     private static final int CARVE = 9;
-    /** The cost over which it thickens inward from the reveal's front: three cells, as gas.compute's G_FILL_EDGE. */
+    /** The cost over which it thickens inward from the reveal's front: three cells, as fluid.compute's F_FILL_EDGE. */
     static final float EDGE = 3 * CgVfxSmokeFill.ACROSS;
 
-    private final CgVfxGas gas;
+    private final CgVfxFluid fluid;
     private CgVfxSmokeFill fill;
     private float time;
     private final float[] carves = new float[MAX_CARVES * CARVE];
     private int carveCount, carveNext, carveRevision;
 
-    /** A smoke drawn on {@link CgVfxGas#SLOT}. */
+    /** A smoke drawn on {@link CgVfxFluid#SLOT}. */
     public CgVfxSmoke(CgVfxEffect<?> effect) {
-        this(effect, CgVfxGas.SLOT);
+        this(effect, CgVfxFluid.SLOT);
     }
 
     public CgVfxSmoke(CgVfxEffect<?> effect, CgVfxSlot slot) {
         super(effect);
-        gas = new CgVfxGas(effect, slot);
-        gas.smoke = this;
+        fluid = new CgVfxFluid(effect, slot);
+        fluid.smoke = this;
     }
 
     /** Floods its cells from the effect's origin through the effect's world, standing on its ground where it has one. */
@@ -109,22 +111,22 @@ public final class CgVfxSmoke extends CgVfxElement {
         return fill;
     }
 
-    /** The gas that moves in its cells. */
-    public CgVfxGas gas() {
-        return gas;
+    /** The fluid that moves in its cells. */
+    public CgVfxFluid fluid() {
+        return fluid;
     }
 
     /** Its tick: from the effect's, every tick, once it has cells. */
     public void tick(float dt) {
         if (fill == null) return;
-        if (time == 0f && !authoritative()) gas.blast(0f, 0.5f, 0f, 2.5f, 5f, 0f);   // the burst it lands with
+        if (time == 0f && !authoritative()) fluid.blast(0f, 0.5f, 0f, 2.5f, 5f, 0f);   // the burst it lands with
         time += dt;
-        if (!authoritative()) gas.tick(dt);
+        if (!authoritative()) fluid.tick(dt);
     }
 
     /** Draws it: from the effect's {@code submit}. */
     public void submit(CgVfxFrame frame) {
-        if (fill != null) gas.submit(frame);
+        if (fill != null) fluid.submit(frame);
     }
 
     /** Whether it has spread, held and thinned away: what its effect dies after. */
@@ -158,11 +160,11 @@ public final class CgVfxSmoke extends CgVfxElement {
         carve(ax, ay, az, bx, by, bz, SHOT_RADIUS, false);
     }
 
-    /** A blast at {@code (x, y, z)}: its cells within {@code radius} cleared and healing over five seconds, its gas thrown out. */
+    /** A blast at {@code (x, y, z)}: its cells within {@code radius} cleared and healing over five seconds, its fluid thrown out. */
     public void blast(double x, double y, double z, float radius) {
         carve(x, y, z, x, y, z, radius, true);
         if (!authoritative()) {
-            gas.blast((float) (x - originX()), (float) (y - originY()), (float) (z - originZ()), radius * 1.3f, 30f, 1f);
+            fluid.blast((float) (x - originX()), (float) (y - originY()), (float) (z - originZ()), radius * 1.3f, 30f, 1f);
         }
     }
 
@@ -293,9 +295,9 @@ public final class CgVfxSmoke extends CgVfxElement {
         return (float) Math.sqrt(qx * qx + qy * qy + qz * qz);
     }
 
-    // ── What its gas reads, through the atlas ────────────────────────────────────────────────────────────────────────
+    // ── What its fluid reads, through the atlas ──────────────────────────────────────────────────────────────────────
 
-    /** Carves still open: rows of the gas's sources. */
+    /** Carves still open: rows of the atlas's {@code CARVES}. */
     int carveRows() {
         int n = 0;
         for (int k = 0; k < carveCount; k++) if (open(k) > 0f) n++;
@@ -303,11 +305,12 @@ public final class CgVfxSmoke extends CgVfxElement {
     }
 
     /**
-     * Its open carves into {@code out} from float {@code at}, three vec4s each in gas {@code b}'s cells: (place, one
-     * end), (how open, 0, 0, radius), (the other end, kind 3). Answers the float after.
+     * Its open carves into {@code out} from float {@code at}, three vec4s each ({@code fluid.compute}'s CARVES) with
+     * positions in fluid {@code b}'s cells: (b, one end), (the other end, radius), (how open, 0, 0, 0). {@code (ox, oy,
+     * oz)} is the effect's origin from the fluid's middle. Answers the float after.
      */
     int writeCarves(float[] out, int at, int b, float ox, float oy, float oz, float cell) {
-        float half = CgVfxGasAtlas.SPAN * 0.5f;
+        float half = CgVfxFluidAtlas.SPAN * 0.5f;
         for (int k = 0; k < carveCount; k++) {
             float open = open(k);
             if (open <= 0f) continue;
@@ -316,20 +319,20 @@ public final class CgVfxSmoke extends CgVfxElement {
             out[at + 1] = (ox + carves[c]) / cell + half;
             out[at + 2] = (oy + carves[c + 1]) / cell + half;
             out[at + 3] = (oz + carves[c + 2]) / cell + half;
-            out[at + 4] = open;
-            out[at + 5] = 0f;
-            out[at + 6] = 0f;
+            out[at + 4] = (ox + carves[c + 3]) / cell + half;
+            out[at + 5] = (oy + carves[c + 4]) / cell + half;
+            out[at + 6] = (oz + carves[c + 5]) / cell + half;
             out[at + 7] = carves[c + 6] / cell;
-            out[at + 8] = (ox + carves[c + 3]) / cell + half;
-            out[at + 9] = (oy + carves[c + 4]) / cell + half;
-            out[at + 10] = (oz + carves[c + 5]) / cell + half;
-            out[at + 11] = 3f;
+            out[at + 8] = open;
+            out[at + 9] = 0f;
+            out[at + 10] = 0f;
+            out[at + 11] = 0f;
             at += 12;
         }
         return at;
     }
 
-    /** Blocks from its first cell's middle out to the farthest cell revealed now: the tiles its gas asks for. */
+    /** Blocks from its first cell's middle out to the farthest cell revealed now: the tiles its fluid asks for. */
     float revealedRadius() {
         if (fill == null) return 0f;
         float reveal = revealed(), most = 0f;

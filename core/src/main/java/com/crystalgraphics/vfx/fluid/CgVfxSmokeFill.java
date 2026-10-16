@@ -1,4 +1,4 @@
-package com.crystalgraphics.vfx.gas;
+package com.crystalgraphics.vfx.fluid;
 
 import com.crystalgraphics.platform.world.CgWorldQuery;
 

@@ -90,6 +90,12 @@ public final class CgVfxFluidAtlas {
     public static final float INSTANT = 1.0e6f;
     /** A smoke's cells on the GPU: a cube this many half blocks a side, a fluid each. */
     public static final int FILL = 64;
+    /** What a Step kernel taking {@code GAS} declares, all of which {@link #bindFlow} sets. */
+    public static final String FLOW_PROPERTIES = """
+                _GasVel   ("The fluids' velocity, as the last frame left it", sampler3D) = "black"
+                _GasPages ("Each fluid's page table",                         sampler3D) = "black"
+                _GasLive  ("1 once there is a fluid",                         int)       = 0
+            """;
     /** What a particle step pouring into a fluid appends: where in its cells and which, then the smoke and heat poured. */
     public static final String DEPOSIT_GLSL = "struct FxDeposit { vec4 cell; vec4 amounts; };";
     public static final int DEPOSITS = 32768;
@@ -134,6 +140,17 @@ public final class CgVfxFluidAtlas {
     @Nullable
     private CgGraphBuffer deposits, depositCount, depositGrid;
     private CgGraphBuffer fluidRows, emitterBuffer, carveBuffer;
+    /** What {@link #bindFlow} and {@link #bindDeposits} give a kernel before the first fluid: the smallest, never read. */
+    private final CgGraphTexture noFlow = CgGraphTexture.requested("vfx.fluid.none", CgTextureDesc.volume(1, 1, 2, RGBA16F)),
+            noPages = CgGraphTexture.requested("vfx.fluid.nopages", CgTextureDesc.volume(1, 1, 2, R8));
+    private final CgGraphBuffer noDeposits = CgGraphBuffer.persistent("vfx.fluid.nodeposits",
+            CgBufferDesc.of(256, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+    /** Each fluid's smoke cells as last uploaded ({@link #FILL} cubed, stacked along z), and its open carves. */
+    private final CgVfxSmokeFill[] filled = new CgVfxSmokeFill[CAPACITY];
+    private final byte[] fillBytes = new byte[FILL * FILL * FILL];
+    private final ByteBuffer fillUpload = ByteBuffer.allocate(FILL * FILL * FILL);
+    private float[] carves = new float[0];
+    private int carveCount;
     private final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
     private final int[] lastIds = new int[MAX_ENTITIES];
     private final double[] lastPlaces = new double[MAX_ENTITIES * 3];
@@ -207,6 +224,24 @@ public final class CgVfxFluidAtlas {
         return tiles.pages();
     }
 
+    /**
+     * The fluids' velocity as the last frame left it, and the page tables, on a dispatch of a kernel declaring
+     * {@link #FLOW_PROPERTIES}: {@link #flow()}, which this frame's steps do not write until their end.
+     */
+    public CgDispatch bindFlow(CgDispatch d) {
+        if (flow == null) return d.texture("_GasVel", noFlow).texture("_GasPages", noPages).set("_GasLive", 0);
+        return d.texture("_GasVel", flow).texture("_GasPages", tiles.pages()).set("_GasLive", 1);
+    }
+
+    /**
+     * Where a particle step pouring into a fluid appends ({@code GAS_DEPOSITS}, the Step of a shape taking
+     * {@code GAS_FEED}): taken by the fluids' next step, then emptied.
+     */
+    public CgDispatch bindDeposits(CgDispatch d) {
+        CgGraphBuffer into = deposits != null ? deposits : noDeposits;
+        return d.bind("GAS_DEPOSITS", into).counter("GAS_DEPOSITS", depositCount != null ? depositCount : noDeposits, 0);
+    }
+
     public int tenants() {
         int n = 0;
         for (CgVfxFluid t : tenants) if (t != null) n++;
@@ -239,6 +274,7 @@ public final class CgVfxFluidAtlas {
     void release(int b) {
         if (b < 0 || b >= CAPACITY) return;
         tenants[b] = null;
+        filled[b] = null;
         tiles.freeAll(b);
     }
 
@@ -285,6 +321,7 @@ public final class CgVfxFluidAtlas {
             Arrays.fill(pressures, null);
             Arrays.fill(restAs, null);
             Arrays.fill(restBs, null);
+            Arrays.fill(filled, null);
             quality = null;
             for (int b = 0; b < CAPACITY; b++) tiles.freeAll(b);
             tiles.lost();
@@ -326,6 +363,7 @@ public final class CgVfxFluidAtlas {
             if (fluid.effect().state() == CgVfxEffect.State.DEAD || frame - fluid.ticked > STALE_FRAMES) {
                 fluid.lost();
                 tenants[b] = null;
+                filled[b] = null;
                 tiles.freeAll(b);
                 continue;
             }
@@ -347,7 +385,9 @@ public final class CgVfxFluidAtlas {
         }
         writeRows(most, live);
         writeEmitters(live);
+        writeCarves(live);
         upload(recording);
+        uploadFills(recording, live);
         CgVfxVoxelWindow window = CgVfxVoxelWindow.get().use();
         int iterations = Math.max(MIN_ITERATIONS, Math.round(ITERATIONS * GPU_BUDGET.scale()));
         if (most > 0) recording.fill(tiles.occupancy(), 0);
@@ -400,7 +440,7 @@ public final class CgVfxFluidAtlas {
         den = 1 - den;
         dispatch(pass, emitDensity, rowBase, fresh).texture("_Density", density[den]).texture("_Fill", fills)
                 .texture("_Wavelet", CgEngineTextures.resolve(CgWaveletNoise.NAME)).bind("EMITTERS", emitterBuffer)
-                .set("_Emitters", emitterCount).bind("CARVES", carveBuffer).set("_Carves", 0)
+                .set("_Emitters", emitterCount).bind("CARVES", carveBuffer).set("_Carves", carveCount)
                 .bind("DEPOSIT_GRID", depositGrid).set("_Deposit", fresh).image("DENSITY_OUT", density[1 - den]);
         den = 1 - den;
         dispatch(pass, advectVelocity1, rowBase, fresh).texture("_Vel", velocity[vel]).image("PREDICT_OUT", predict);
@@ -489,6 +529,7 @@ public final class CgVfxFluidAtlas {
         restA = CgGraphTexture.requested("vfx.fluid.restA", CgTextureDesc.volume(sw, sw, sd, RGBA16F));
         restB = CgGraphTexture.requested("vfx.fluid.restB", CgTextureDesc.volume(sw, sw, sd, RGBA16F));
         fills = CgGraphTexture.requested("vfx.fluid.fills", CgTextureDesc.volume(FILL, FILL, FILL * CAPACITY, R8));
+        Arrays.fill(filled, null);
         if (depositGrid != null) recording.release(depositGrid);
         depositGrid = CgGraphBuffer.persistent("vfx.fluid.depositGrid",
                 CgBufferDesc.of((long) layers * LAYER * LAYER * DEPOSIT_CELLS * 2 * 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
@@ -557,7 +598,17 @@ public final class CgVfxFluidAtlas {
                 f.value(CgVfxFluid.VORTICITY_FUEL_MASK));
         putf(at + 44, f.value(CgVfxFluid.VORTICITY_BURN_MASK), f.value(CgVfxFluid.VORTICITY_SMOKE_MASK), f.value(CgVfxFluid.TURBULENCE),
                 f.value(CgVfxFluid.TURBULENCE_SIZE));
-        // Rows 12 and 13, a smoke's cells: none here. Row 14: Mantaflow's updateUvWeight, a grid reset as its phase wraps.
+        // Rows 12 and 13, a smoke's cells: its fluid's middle from its fill window's low corner in cells and the smoke its
+        // cells hold; the cost revealed, how much is left and how fast smoke is pulled to its cells.
+        CgVfxSmoke smoke = f.smoke;
+        if (smoke != null && smoke.fill() != null) {
+            CgVfxSmokeFill fill = smoke.fill();
+            double c = CgVfxSmokeFill.CELL, low = FILL / 2;
+            putf(at + 48, (float) (f.worldX / c - (fill.originX() - low)), (float) (f.worldY / c - (fill.originY() - low)),
+                    (float) (f.worldZ / c - (fill.originZ() - low)), smoke.density());
+            putf(at + 52, smoke.revealed(), smoke.presence(), smoke.hold(), 0f);
+        }
+        // Row 14: Mantaflow's updateUvWeight, a grid reset as its phase wraps.
         boolean resetA = seconds > 0f && CgVfxFluid.phase(clock + seconds, period) < CgVfxFluid.phase(clock, period);
         float half = period * 0.5f;
         boolean resetB = seconds > 0f && CgVfxFluid.phase(clock + seconds + half, period) < CgVfxFluid.phase(clock + half, period);
@@ -576,6 +627,34 @@ public final class CgVfxFluidAtlas {
         emitterCount = at / EMITTER;
     }
 
+    /** Every smoke's open carves, three vec4s each ({@code fluid.compute}'s CARVES). */
+    private void writeCarves(int live) {
+        int n = 0;
+        for (int b = 0; b < live; b++) if (tenants[b] != null && tenants[b].smoke != null) n += tenants[b].smoke.carveRows();
+        if (carves.length < Math.max(1, n) * 12) carves = new float[Math.max(1, n) * 24];
+        int at = 0;
+        for (int b = 0; b < live; b++) {
+            CgVfxFluid f = tenants[b];
+            if (f == null || f.smoke == null) continue;
+            at = f.writeCarves(carves, at, b);
+        }
+        carveCount = at / 12;
+    }
+
+    /** Each smoke's cells into its slab of {@code fills}, once each time its fill changes. */
+    private void uploadFills(CgRecording recording, int live) {
+        for (int b = 0; b < live; b++) {
+            CgVfxSmoke smoke = tenants[b] == null ? null : tenants[b].smoke;
+            CgVfxSmokeFill fill = smoke == null ? null : smoke.fill();
+            if (fill == null || fill == filled[b]) continue;
+            filled[b] = fill;
+            fill.window(fillBytes, FILL);
+            fillUpload.clear();
+            fillUpload.put(fillBytes).flip();
+            recording.update(fills, 0, 0, 0, b * FILL, FILL, FILL, FILL, fillUpload);
+        }
+    }
+
     private void upload(CgRecording recording) {
         int floats = Math.max(EMITTER, emitterCount * EMITTER);
         fluidRows = CgVfxTiles.fit(recording, fluidRows, "vfx.fluid.rows", rowWords);
@@ -591,6 +670,13 @@ public final class CgVfxFluidAtlas {
         for (int i = 0; i < floats; i++) staging.putFloat(i * 4, i < emitterCount * EMITTER ? emitters[i] : 0f);
         staging.limit(floats * 4);
         recording.update(emitterBuffer, 0, staging);
+        int carveFloats = Math.max(12, carveCount * 12);
+        carveBuffer = CgVfxTiles.fit(recording, carveBuffer, "vfx.fluid.carves", carveFloats);
+        if (staging.capacity() < carveFloats * 4) staging = ByteBuffer.allocate(carveFloats * 8).order(ByteOrder.nativeOrder());
+        staging.clear();
+        for (int i = 0; i < carveFloats; i++) staging.putFloat(i * 4, i < carveCount * 12 ? carves[i] : 0f);
+        staging.limit(carveFloats * 4);
+        recording.update(carveBuffer, 0, staging);
     }
 
     /**

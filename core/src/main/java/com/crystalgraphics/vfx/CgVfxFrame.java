@@ -17,8 +17,6 @@ import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
-import com.crystalgraphics.vfx.gas.CgVfxGas;
-import com.crystalgraphics.vfx.gas.CgVfxGasAtlas;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
 import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
@@ -82,7 +80,7 @@ public final class CgVfxFrame {
     private final CgVfxMaterials materials;
     private final Matrix4f scaled = new Matrix4f(), sized = new Matrix4f();
     /** A gas's box, from its middle: lo xyz then hi xyz. */
-    private final float[] gasBox = new float[6];
+    private final float[] volumeBox = new float[6];
     private final Vector3f scale = new Vector3f();
     private final float[] trailBounds = new float[8];
     /** Quads between two points unless a layer gives its own: a trail slot's sparse points, a particle's dense ones. */
@@ -654,45 +652,6 @@ public final class CgVfxFrame {
     }
 
     /**
-     * Draws every layer on {@code slot}, a volume slot, through {@code gas}: a box round the tiles it holds, which each
-     * layer's shader marches. What its shader reads is {@link CgVfxSlot.Kind#VOLUME}'s. A gas holding no tile draws
-     * nothing.
-     *
-     * <pre>{@code
-     * frame.volume(this, SMOKE, smoke);      // what CgVfxGas.submit does
-     * }</pre>
-     */
-    public void volume(CgVfxEffect<?> effect, CgVfxSlot slot, CgVfxGas gas) {
-        kind(slot, CgVfxSlot.Kind.VOLUME);
-        CgVfxGasAtlas atlas = CgVfxGasAtlas.get();
-        CgGraphTexture shade = atlas.shade(), flow = atlas.flow(), pages = atlas.pages();
-        int index = gas.index();
-        if (index < 0 || shade == null || !gas.bounds(gasBox)) return;
-        CgVfxLook look = effect.look();
-        float cell = gas.cellSize(), grid = -CgVfxGasAtlas.SPAN * 0.5f * cell;
-        float cx = (gasBox[0] + gasBox[3]) * 0.5f, cy = (gasBox[1] + gasBox[4]) * 0.5f, cz = (gasBox[2] + gasBox[5]) * 0.5f;
-        float ox = (float) (gas.x() - effect.originX), oy = (float) (gas.y() - effect.originY),
-                oz = (float) (gas.z() - effect.originZ);
-        for (CgVfxLook.Placed placed : look.on(slot)) {
-            if (skips(effect, placed.layer())) continue;
-            CgVfxMaterials.Resolved r = materials.resolve(look, placed);
-            CgMaterial material = materials.material(r, CgVfxSlot.Kind.VOLUME);
-            materials.shade(material, shade, flow, pages);
-            effect.boundBox(ox + gasBox[0], oy + gasBox[1], oz + gasBox[2], ox + gasBox[3], oy + gasBox[4], oz + gasBox[5]);
-            CgWorldRenderer.Draw draw = world.draw(system.cubeMesh(), material)
-                    .at(gas.x() + cx, gas.y() + cy, gas.z() + cz)
-                    .transform(sized.scaling(gasBox[3] - gasBox[0], gasBox[4] - gasBox[1], gasBox[5] - gasBox[2]))
-                    .subject(effect.subject)
-                    .halfResolution()
-                    .custom(0, index, cell, 0f, CgVfxMaterials.size(effect, r))
-                    .custom(1, grid - cx, grid - cy, grid - cz, gas.extinction())
-                    .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
-            CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
-            CgVfxTrace.count(DRAWS_VOLUME, 1);
-        }
-    }
-
-    /**
      * Draws every layer on {@code slot}, a fluid slot, through {@code fluid}: a box round the tiles it holds, which each
      * layer's shader marches. What its shader reads is {@link CgVfxSlot.Kind#FLUID}'s. A fluid holding no tile draws
      * nothing.
@@ -706,10 +665,10 @@ public final class CgVfxFrame {
         CgVfxFluidAtlas atlas = CgVfxFluidAtlas.get();
         CgGraphTexture shade = atlas.shade(), restA = atlas.restA(), restB = atlas.restB(), pages = atlas.pages();
         int index = fluid.index();
-        if (index < 0 || shade == null || !fluid.bounds(gasBox)) return;
+        if (index < 0 || shade == null || !fluid.bounds(volumeBox)) return;
         CgVfxLook look = effect.look();
         float cell = fluid.cellSize(), grid = -CgVfxFluidAtlas.SPAN * 0.5f * cell, weight = fluid.detailWeight();
-        float cx = (gasBox[0] + gasBox[3]) * 0.5f, cy = (gasBox[1] + gasBox[4]) * 0.5f, cz = (gasBox[2] + gasBox[5]) * 0.5f;
+        float cx = (volumeBox[0] + volumeBox[3]) * 0.5f, cy = (volumeBox[1] + volumeBox[4]) * 0.5f, cz = (volumeBox[2] + volumeBox[5]) * 0.5f;
         float ox = (float) (fluid.x() - effect.originX), oy = (float) (fluid.y() - effect.originY),
                 oz = (float) (fluid.z() - effect.originZ);
         for (CgVfxLook.Placed placed : look.on(slot)) {
@@ -717,10 +676,10 @@ public final class CgVfxFrame {
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             CgMaterial material = materials.material(r, CgVfxSlot.Kind.FLUID);
             materials.fluid(material, shade, restA, restB, pages);
-            effect.boundBox(ox + gasBox[0], oy + gasBox[1], oz + gasBox[2], ox + gasBox[3], oy + gasBox[4], oz + gasBox[5]);
+            effect.boundBox(ox + volumeBox[0], oy + volumeBox[1], oz + volumeBox[2], ox + volumeBox[3], oy + volumeBox[4], oz + volumeBox[5]);
             CgWorldRenderer.Draw draw = world.draw(system.cubeMesh(), material)
                     .at(fluid.x() + cx, fluid.y() + cy, fluid.z() + cz)
-                    .transform(sized.scaling(gasBox[3] - gasBox[0], gasBox[4] - gasBox[1], gasBox[5] - gasBox[2]))
+                    .transform(sized.scaling(volumeBox[3] - volumeBox[0], volumeBox[4] - volumeBox[1], volumeBox[5] - volumeBox[2]))
                     .subject(effect.subject)
                     .halfResolution()
                     .custom(0, index, cell, weight, CgVfxMaterials.size(effect, r))
@@ -744,10 +703,10 @@ public final class CgVfxFrame {
         CgVfxGridAtlas atlas = CgVfxGridAtlas.get();
         CgGraphTexture view = atlas.view(), light = atlas.light(), pages = atlas.pages();
         int index = grid.index();
-        if (index < 0 || view == null || !grid.bounds(gasBox)) return;
+        if (index < 0 || view == null || !grid.bounds(volumeBox)) return;
         CgVfxLook look = effect.look();
         float cell = grid.cellSize(), low = -CgVfxGridAtlas.SPAN * 0.5f * cell;
-        float cx = (gasBox[0] + gasBox[3]) * 0.5f, cy = (gasBox[1] + gasBox[4]) * 0.5f, cz = (gasBox[2] + gasBox[5]) * 0.5f;
+        float cx = (volumeBox[0] + volumeBox[3]) * 0.5f, cy = (volumeBox[1] + volumeBox[4]) * 0.5f, cz = (volumeBox[2] + volumeBox[5]) * 0.5f;
         float ox = (float) (grid.x() - effect.originX), oy = (float) (grid.y() - effect.originY),
                 oz = (float) (grid.z() - effect.originZ);
         for (CgVfxLook.Placed placed : look.on(slot)) {
@@ -755,10 +714,10 @@ public final class CgVfxFrame {
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             CgMaterial material = materials.material(r, CgVfxSlot.Kind.GRID);
             materials.grid(material, view, light, pages);
-            effect.boundBox(ox + gasBox[0], oy + gasBox[1], oz + gasBox[2], ox + gasBox[3], oy + gasBox[4], oz + gasBox[5]);
+            effect.boundBox(ox + volumeBox[0], oy + volumeBox[1], oz + volumeBox[2], ox + volumeBox[3], oy + volumeBox[4], oz + volumeBox[5]);
             CgWorldRenderer.Draw draw = world.draw(system.cubeMesh(), material)
                     .at(grid.x() + cx, grid.y() + cy, grid.z() + cz)
-                    .transform(sized.scaling(gasBox[3] - gasBox[0], gasBox[4] - gasBox[1], gasBox[5] - gasBox[2]))
+                    .transform(sized.scaling(volumeBox[3] - volumeBox[0], volumeBox[4] - volumeBox[1], volumeBox[5] - volumeBox[2]))
                     .subject(effect.subject)
                     .halfResolution()
                     .custom(0, index, cell, 0f, CgVfxMaterials.size(effect, r))

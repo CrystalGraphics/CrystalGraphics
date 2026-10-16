@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx.particle.gpu;
 
-import com.crystalgraphics.vfx.gas.CgVfxGas;
+import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
 
 import javax.annotation.Nullable;
@@ -73,9 +73,9 @@ public interface CgVfxInstanceView {
         return 0f;
     }
 
-    /** The gas its particles are carried by, for kinds taking {@link CgVfxWorldInput#GAS}; null for none. */
+    /** The fluid its particles are carried by, for kinds taking {@link CgVfxWorldInput#GAS}; null for none. */
     @Nullable
-    default CgVfxGas gas() {
+    default CgVfxFluid gas() {
         return null;
     }
 

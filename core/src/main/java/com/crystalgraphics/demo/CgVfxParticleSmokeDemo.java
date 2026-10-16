@@ -12,8 +12,8 @@ import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.CgVfxOwner;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.effect.CgSmokeGrenade;
-import com.crystalgraphics.vfx.gas.CgVfxGas;
-import com.crystalgraphics.vfx.gas.CgVfxSmoke;
+import com.crystalgraphics.vfx.fluid.CgVfxFluid;
+import com.crystalgraphics.vfx.fluid.CgVfxSmoke;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
@@ -34,7 +34,7 @@ import java.util.function.Consumer;
  * Particles and smoke together, each station a pairing of G's parts: a slime mould of agents laying glowing trails and
  * following them ({@link CgVfxGrid3D}, {@code Splat}, {@code Follow}); a column of smoke made of particles, splatting a
  * lit body that pushes them apart ({@code Gradient}); a nebula of stars orbiting a core, splatting gas and starlight into
- * two channels; a fire whirl of embers spiralling up, feeding the flames they ride ({@link CgVfxGas}, {@code Feed},
+ * two channels; a fire whirl of embers spiralling up, feeding the flames they ride ({@link CgVfxFluid}, {@code Feed},
  * {@code Flow}); fireflies flocking inside a smoke grenade's smoke, carried by its churn as shots tunnel through it
  * ({@link CgVfxSmoke}, {@code Flock}); and a comet racing round a loop, its sparks feeding a smoke trail that lingers and
  * curls. Every station plays again every {@link #PERIOD} seconds, each standing on the world's ground under it, else on
@@ -71,7 +71,7 @@ public final class CgVfxParticleSmokeDemo {
 
     /**
      * One station: where it stands, its look, how high its label stands, its emitters and their sources, what it makes on
-     * a play (its gas, grid or smoke) and what it does each tick.
+     * a play (its fluid, grid or smoke) and what it does each tick.
      */
     private record Station(String name, float x, float z, CgVfxLook look, float label, List<CgVfxEmitter> emitters,
                            float[][] sources, Consumer<Play> setup, Driver driver) {
@@ -92,13 +92,13 @@ public final class CgVfxParticleSmokeDemo {
     private float[] floors;
     private float nextPlay;
 
-    /** A station playing: its gas, grid or smoke, and its emitters in them, ticked and drawn until the next play. */
+    /** A station playing: its fluid, grid or smoke, and its emitters in them, ticked and drawn until the next play. */
     private static final class Play extends CgVfxEffect<Play> {
-        CgVfxGas gas;
+        CgVfxFluid fluid;
         CgVfxGrid3D grid;
         CgVfxSmoke smoke;
-        /** Its gas's sources, in the order its setup made them, for its driver to move. */
-        final List<CgVfxGas.Source> sources = new ArrayList<>();
+        /** Its fluid's emitters, in the order its setup made them, for its driver to move. */
+        final List<CgVfxFluid.Emitter> sources = new ArrayList<>();
         final List<CgVfxEmitterInstance> emitters = new ArrayList<>();
         private final Driver driver;
 
@@ -106,7 +106,7 @@ public final class CgVfxParticleSmokeDemo {
             super(station.look(), x + station.x(), y, z + station.z());
             ground(y);
             station.setup().accept(this);
-            if (smoke != null) gas = smoke.gas();
+            if (smoke != null) fluid = smoke.fluid();
             driver = station.driver();
             for (int i = 0; i < station.emitters().size(); i++) {
                 CgVfxEmitterInstance e = new CgVfxEmitterInstance(look().emitter(station.emitters().get(i).name()),
@@ -114,7 +114,7 @@ public final class CgVfxParticleSmokeDemo {
                 float[] s = station.sources()[i];
                 e.start(s[0], s[1], s[2]);
                 e.ground(0f);
-                if (gas != null) e.inGas(gas);
+                if (fluid != null) e.inGas(fluid);
                 if (grid != null) e.inGrid(grid);
                 emitters.add(e);
             }
@@ -126,8 +126,8 @@ public final class CgVfxParticleSmokeDemo {
             if (smoke != null) {
                 if (smoke.fill() == null) smoke.flood();
                 smoke.tick(dt);
-            } else if (gas != null) {
-                gas.tick(dt);
+            } else if (fluid != null) {
+                fluid.tick(dt);
             }
             if (grid != null) grid.tick(dt);
             for (int i = 0; i < emitters.size(); i++) tick(emitters.get(i), dt);
@@ -137,7 +137,7 @@ public final class CgVfxParticleSmokeDemo {
         @Override
         protected void submit(CgVfxFrame frame) {
             if (smoke != null) smoke.submit(frame);
-            else if (gas != null) gas.submit(frame);
+            else if (fluid != null) fluid.submit(frame);
             if (grid != null) grid.submit(frame);
             for (int i = 0; i < emitters.size(); i++) frame.particles(this, emitters.get(i));
         }
@@ -262,7 +262,7 @@ public final class CgVfxParticleSmokeDemo {
 
     /**
      * A fire whirl: three fuel jets spinning tangentially round a burning core so the flames twist up into a column, and
-     * embers spiralling up through it in a vortex, carried by the gas's flow and pouring heat and smoke where they go, so
+     * embers spiralling up through it in a vortex, carried by the fluid's flow and pouring heat and smoke where they go, so
      * the column is fed by what rides it.
      */
     private void fireWhirl(float x, float z) {
@@ -274,31 +274,27 @@ public final class CgVfxParticleSmokeDemo {
                 .module(new CgVfxModule.Flow(1.8f))
                 .module(new CgVfxModule.Feed(0.15f, 0.6f))
                 .module(new CgVfxModule.Turbulence(1.2f, 0.4f, 0.6f)).opacity(FADE).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE).emitter(embers)
+        // Flow's fire, its confinement raised for the whirl, curl noise to break it up.
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxFluid.FIRE).emitter(embers)
                 .layer(CgVfxLayer.of(PARTICLE + "streaks.shader").on(embers).trails().size(0.6f).bind("_Color", EMBER)
                         .bind("_Core", FLAME).build())
                 .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(embers).bind("_Color", EMBER).bind("_Hot", FLAME).build())
-                .set(CgVfxGas.CELL, 0.25f).set(CgVfxGas.BUOYANCY, 3.2f).set(CgVfxGas.WEIGHT, 0f)
-                .set(CgVfxGas.VORTICITY, 4f).set(CgVfxGas.DISSIPATION, 0.12f).set(CgVfxGas.COOLING, 1f)
-                .set(CgVfxGas.DAMPING, 0.2f).set(CgVfxGas.BURN, 4f).set(CgVfxGas.HEAT, 3.8f).set(CgVfxGas.SMOKE_AMOUNT, 0.35f)
-                .set(CgVfxGas.EXPANSION, 0.3f).set(CgVfxGas.TURBULENCE, 2f).set(CgVfxGas.TURBULENCE_SIZE, 1.6f)
-                .set(CgVfxGas.DISTURBANCE, 5f).set(CgVfxGas.DISTURBANCE_SIZE, 0.8f)
-                .set(CgVfxGas.EXTINCTION, 2f).set(CgVfxGas.SCATTERING, 0.45f).set(CgVfxGas.SOOT, 0.55f).set(CgVfxGas.GLOW, 1.3f)
-                .set(CgVfxGas.SMOKE_COLOR, 0xFF4E4945).set(CgVfxGas.FIRE, 0xFFFFE0B0).build();
+                .set(CgVfxFluid.CELL, 0.25f).set(CgVfxFluid.VORTICITY, 2f)
+                .set(CgVfxFluid.TURBULENCE, 2f).set(CgVfxFluid.TURBULENCE_SIZE, 1.6f).build();
         stations.add(new Station("fire whirl: embers spiralling up, feeding the flames they ride", x, z, look, 16f,
                 List.of(embers), new float[][] {{0f, 0.3f, 0f}},
                 p -> {
-                    p.gas = new CgVfxGas(p).place(0f, 2f, 0f);
-                    p.sources.add(p.gas.source(0f, 0.4f, 0f, 0.9f).fuel(4f).heat(1f).velocity(0f, 3f, 0f));
-                    for (int i = 0; i < 3; i++) p.sources.add(p.gas.source(0f, 0.4f, 0f, 0.6f).fuel(2.5f).heat(1f));
+                    p.fluid = new CgVfxFluid(p).place(0f, 2f, 0f);
+                    p.sources.add(p.fluid.emitter(0f, 0.4f, 0f, 0.9f).velocity(0f, 3f, 0f, 2f));
+                    for (int i = 0; i < 3; i++) p.sources.add(p.fluid.emitter(0f, 0.4f, 0f, 0.6f));
                 },
                 (play, before, age) -> {
                     // Three jets on a turning ring, each blowing along it: the flame twists into a whirl.
                     for (int i = 0; i < 3; i++) {
                         double a = age * 2.2 + i * Math.PI * 2 / 3;
                         float c = (float) Math.cos(a), s = (float) Math.sin(a);
-                        CgVfxGas.Source jet = play.sources.get(i + 1);
-                        jet.at(c * 1.6f, 0.4f, s * 1.6f).velocity(-s * 9f, 2f, c * 9f);
+                        CgVfxFluid.Emitter jet = play.sources.get(i + 1);
+                        jet.at(c * 1.6f, 0.4f, s * 1.6f).velocity(-s * 9f, 2f, c * 9f, 4f);
                         if (age > PERIOD - 4f) jet.off();
                     }
                     if (age > PERIOD - 4f) play.sources.get(0).off();
@@ -306,7 +302,7 @@ public final class CgVfxParticleSmokeDemo {
     }
 
     /**
-     * Fireflies in a smoke grenade's smoke: a flock wheeling through CS2's flood, carried by the gas's churn as it holds
+     * Fireflies in a smoke grenade's smoke: a flock wheeling through CS2's flood, carried by the fluid's churn as it holds
      * them, trailing light; at nine seconds a burst of shots tunnels through, and they stream through the holes as the
      * smoke heals.
      */
@@ -342,7 +338,7 @@ public final class CgVfxParticleSmokeDemo {
 
     /**
      * A comet racing round a loop: a white-hot head shedding sparks by the block it travels, each spark falling away and
-     * pouring a little smoke into the gas, so a thin trail hangs where it has been, curls as the gas churns it and thins
+     * pouring a little smoke into the fluid, so a thin trail hangs where it has been, curls as the fluid churns it and thins
      * away before the head comes round again.
      */
     private void comet(float x, float z) {
@@ -353,19 +349,18 @@ public final class CgVfxParticleSmokeDemo {
                 .module(new CgVfxModule.Gravity(1.5f))
                 .module(new CgVfxModule.Drag(2f, 0f))
                 .module(new CgVfxModule.Feed(0.25f, 0f)).opacity(FADE).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE).emitter(head).emitter(sparks)
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxFluid.SMOKE).emitter(head).emitter(sparks)
                 .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(head).size(1.4f).bind("_Color", FLAME).bind("_Hot", WHITE).build())
                 .layer(CgVfxLayer.of(PARTICLE + "streaks.shader").on(sparks).trails().size(0.6f).bind("_Color", EMBER)
                         .bind("_Core", FLAME).build())
                 .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(sparks).bind("_Color", EMBER).bind("_Hot", FLAME).build())
-                .set(CgVfxGas.CELL, 0.25f).set(CgVfxGas.BUOYANCY, 0.2f).set(CgVfxGas.WEIGHT, 0f)
-                .set(CgVfxGas.VORTICITY, 2.5f).set(CgVfxGas.DISSIPATION, 0.45f).set(CgVfxGas.DAMPING, 0.6f)
-                .set(CgVfxGas.TURBULENCE, 1.2f).set(CgVfxGas.TURBULENCE_SIZE, 1.2f)
-                .set(CgVfxGas.EXTINCTION, 3f).set(CgVfxGas.SCATTERING, 0.6f).set(CgVfxGas.SOOT, 0f)
-                .set(CgVfxGas.SMOKE_COLOR, 0xFF9A9690).build();
+                // Flow's smoke with no fire, cold, read at its colour map's middle.
+                .set(CgVfxFluid.CELL, 0.25f).set(CgVfxFluid.COMBUSTION, 0f).set(CgVfxFluid.COLORMAP_MIN, -1f)
+                .set(CgVfxFluid.TURBULENCE, 1.2f).set(CgVfxFluid.TURBULENCE_SIZE, 1.2f).set(CgVfxFluid.ATTENUATION, 3f)
+                .build();
         stations.add(new Station("comet: a racing head whose sparks feed a smoke trail that thins behind it", x, z, look, 12f,
                 List.of(head, sparks), new float[][] {{9f, 4f, 0f}, {9f, 4f, 0f}},
-                p -> p.gas = new CgVfxGas(p).place(0f, 4f, 0f),
+                p -> p.fluid = new CgVfxFluid(p).place(0f, 4f, 0f),
                 (play, before, age) -> {
                     // A tilted loop nine blocks round, once every three seconds: about nineteen blocks a second, so the
                     // trail is a line that thins away before the head comes round again.
@@ -381,7 +376,7 @@ public final class CgVfxParticleSmokeDemo {
      */
     public void submit(CgWorldRenderer world, double x, double y, double z, float seconds) {
         if (seconds >= nextPlay) {
-            // A gas or grid holds its place until its play dies: the last plays go first, so the new ones find places.
+            // A fluid or grid holds its place until its play dies: the last plays go first, so the new ones find places.
             vfx.clear();
             for (int i = 0; i < stations.size(); i++) {
                 Station s = stations.get(i);

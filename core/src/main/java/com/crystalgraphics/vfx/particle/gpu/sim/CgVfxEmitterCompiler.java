@@ -1,7 +1,7 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
 import com.crystalgraphics.compute.CgCompute;
-import com.crystalgraphics.vfx.gas.CgVfxGasAtlas;
+import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
 import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
@@ -115,7 +115,7 @@ public final class CgVfxEmitterCompiler {
         if (shape.usesDepth()) s.append(DEPTH_PROPERTIES);
         if (shape.usesEntities()) s.append(CgVfxEntityBoxes.PROPERTIES);
         if (shape.usesNeighbours()) s.append(NEIGHBOUR_PROPERTIES);
-        if (shape.usesGas()) s.append(CgVfxGasAtlas.FLOW_PROPERTIES);
+        if (shape.usesGas()) s.append(CgVfxFluidAtlas.FLOW_PROPERTIES);
         if (shape.usesGrid()) s.append(CgVfxGridAtlas.VIEW_PROPERTIES);
         for (int i = 0; i < shape.modules(); i++) {
             for (int t = 0; t < shape.textureCount(i); t++) {
@@ -126,7 +126,7 @@ public final class CgVfxEmitterCompiler {
         s.append("}\n\n");
         s.append(CgVfxRecord.GLSL).append("\n");
         s.append(CgVfxParticlePool.EVENT_GLSL).append("\n\n");
-        if (shape.feedsGas()) s.append(CgVfxGasAtlas.DEPOSIT_GLSL).append("\n\n");
+        if (shape.feedsGas()) s.append(CgVfxFluidAtlas.DEPOSIT_GLSL).append("\n\n");
         if (shape.splatsGrid()) s.append(CgVfxGridAtlas.SPLAT_GLSL).append("\n\n");
         s.append("""
                 Buffers {

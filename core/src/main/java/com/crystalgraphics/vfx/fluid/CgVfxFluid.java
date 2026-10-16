@@ -182,6 +182,8 @@ public final class CgVfxFluid extends CgVfxElement {
     private float quiet;
     private final double[] wanted = new double[MAX_WANTED * 4];
     private int wantedCount, wantedNext;
+    /** The smoke whose cells hold its smoke ({@link CgVfxSmoke}), else null. */
+    CgVfxSmoke smoke;
 
     /** A fluid drawn on {@link #SLOT}. */
     public CgVfxFluid(CgVfxEffect<?> effect) {
@@ -417,6 +419,19 @@ public final class CgVfxFluid extends CgVfxElement {
                     (float) wanted[k + 3], now);
         }
         wantedCount = 0;
+        if (smoke != null && smoke.fill() != null) {
+            CgVfxSmokeFill fill = smoke.fill();
+            float c = CgVfxSmokeFill.CELL;
+            atlas.wantSphere(b, (float) ((fill.originX() + 0.5) * c - worldX), (float) ((fill.originY() + 0.5) * c - worldY),
+                    (float) ((fill.originZ() + 0.5) * c - worldZ), smoke.revealedRadius(), now);
+        }
+    }
+
+    /** Its smoke's open carves into {@code out} from float {@code at}, as {@link CgVfxSmoke#writeCarves}; none without one. */
+    int writeCarves(float[] out, int at, int b) {
+        if (smoke == null) return at;
+        return smoke.writeCarves(out, at, b, (float) (originX() - worldX), (float) (originY() - worldY),
+                (float) (originZ() - worldZ), cell);
     }
 
     /** The emitter rows it writes: its emitters on and its blasts. */

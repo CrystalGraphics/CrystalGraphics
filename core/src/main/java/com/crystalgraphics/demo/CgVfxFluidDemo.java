@@ -7,6 +7,7 @@ import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.CgVfxOwner;
 import com.crystalgraphics.vfx.CgVfxSystem;
+import com.crystalgraphics.vfx.effect.CgSmokeGrenade;
 import com.crystalgraphics.vfx.fluid.CgVfxColormap;
 import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
@@ -23,12 +24,12 @@ import java.util.function.Function;
 
 /**
  * The fluid engine ({@link CgVfxFluid}) playing scenes the engines it ports ship as code, a station each: NVIDIA Flow's
- * editor stages {@code sphere} and {@code box} ({@code flow/source/nvfloweditor/EditorFlowStages.cpp}: its default
- * simulation, a default emitter, its fire colour map at colour scale 1), at a block for every 10 cm and the editor's cell
- * size override at 1 cm; and Mantaflow's {@code scenes/fire.py} and {@code scenes/simpleplume.py}: their sources, noisy
- * inflow and vorticity, in their grids' cells, under Flow's model. Every station plays again every {@link #PERIOD}
- * seconds, standing on the world's ground under it, else on the origin's height. The harness's {@code vfx-fluid}, and a
- * scene of {@link CgRenderDemo}.
+ * editor stage {@code sphere} ({@code flow/source/nvfloweditor/EditorFlowStages.cpp}: its default simulation, a default
+ * sphere emitter, its fire colour map at colour scale 1), at a block for every 10 cm and the editor's cell size override
+ * at 1 cm; Mantaflow's {@code scenes/fire.py} and {@code scenes/simpleplume.py}: their sources, noisy inflow and
+ * vorticity, in their grids' cells, under Flow's model; and a smoke grenade as CS2's ({@link CgSmokeGrenade}), shot
+ * through and blasted open, healing. Every station plays again every {@link #PERIOD} seconds, standing on the world's
+ * ground under it, else on the origin's height. The harness's {@code vfx-fluid}, and a scene of {@link CgRenderDemo}.
  *
  * <pre>{@code
  * CgVfxFluidDemo fluid = new CgVfxFluidDemo(font);     // on the render thread
@@ -48,9 +49,12 @@ public final class CgVfxFluidDemo {
     private static final CgVfxKit EDITOR_FIRE = CgVfxFluid.kit("crystalgraphics:demo/fluid/editor",
             CgVfxColormap.FIRE.withColorScale(1f));
 
-    /** One station: where it stands, its look, how high its label stands, and what sets up its emitters. */
+    /** One station: where it stands, its look, how high its label stands, and what sets up its emitters; none: the grenade. */
     private record Station(String name, float x, float z, CgVfxLook look, float label, float placeY,
                            Function<CgVfxFluid, Driver> driver) {
+        boolean grenade() {
+            return driver == null;
+        }
     }
 
     /** A play's emitters, set up on its fluid and changed each tick by its age. */
@@ -64,6 +68,10 @@ public final class CgVfxFluidDemo {
     private final List<Station> stations = new ArrayList<>();
     private final float[] floors;
     private float nextPlay;
+    /** The smoke grenade playing, which the demo shoots and blasts; where it stands. */
+    private CgSmokeGrenade grenade;
+    private double grenadeX, grenadeY, grenadeZ;
+    private float grenadeBefore;
 
     /** A station playing: its fluid, ticked and drawn until the next play. */
     private static final class Play extends CgVfxEffect<Play> {
@@ -99,8 +107,8 @@ public final class CgVfxFluidDemo {
         drives = owner == null;
         vfx = drives ? CgVfx.owner("crystalgraphics", new CgVfxSystem()) : owner;
         this.font = font;
-        flowStage("Flow: sphere: the editor's default stage, fuel burning as it jets up", -30f, false);
-        flowStage("Flow: box: the editor's box stage", -12f, true);
+        grenade(-32f);
+        flowSphere(-12f);
         mantaflowFire(8f);
         mantaflowPlume(26f);
         // -Dcrystalgraphics.demo.station=<words>: only the stations whose names hold them, for measuring one alone.
@@ -112,19 +120,44 @@ public final class CgVfxFluidDemo {
     }
 
     /**
-     * One of Flow's editor stages: its default simulation and a default sphere or box emitter (10 cm round or each way,
-     * jetting up at 400 cm a second, temperature 0.5 and fuel 0.8 coupled at 2), its axis +z made our +y. At a block for
-     * every 10 cm, every length, speed and acceleration of Flow's is a tenth of its centimetres, so in cells and seconds
-     * it runs as Flow's does at the editor's cell size override of 1 cm.
+     * A smoke grenade, as CS2's ({@link CgSmokeGrenade}): smoke flooding out over the ground round whatever stands in its
+     * way, held thick and churning; a burst of shots through it at eight seconds, each a tunnel that heals in a second
+     * and a half, then a grenade going off in it at ten, clearing a hole that heals over five.
      */
-    private void flowStage(String name, float x, boolean box) {
+    private void grenade(float x) {
+        stations.add(new Station("CS2: smoke grenade: its flood, shot through and blasted open, healing", x, 0f,
+                CgSmokeGrenade.LOOK, 8f, 0f, null));
+    }
+
+    /** The grenade's shots and its blast, as its age passes each. */
+    private void driveGrenade() {
+        if (grenade == null || grenade.state() == CgVfxEffect.State.DEAD) return;
+        float before = grenadeBefore, age = grenade.age();
+        grenadeBefore = age;
+        for (int k = 0; k < 5; k++) {
+            float at = 8f + k * 0.12f;
+            if (before < at && age >= at) {
+                double y = grenadeY + 1.2 + k * 0.15;
+                grenade.shot(grenadeX - 10, y, grenadeZ - 3 + k * 1.5, grenadeX + 10, y, grenadeZ - 2 + k * 1.5);
+            }
+        }
+        if (before < 10f && age >= 10f) grenade.blast(grenadeX + 2, grenadeY + 1, grenadeZ + 1.5, 3.5f);
+    }
+
+    /**
+     * Flow's editor stage {@code sphere}: its default simulation and a default sphere emitter (10 cm round, jetting up at
+     * 400 cm a second, temperature 0.5 and fuel 0.8 coupled at 2), its axis +z made our +y. At a block for every 10 cm,
+     * every length, speed and acceleration of Flow's is a tenth of its centimetres, so in cells and seconds it runs as
+     * Flow's does at the editor's cell size override of 1 cm.
+     */
+    private void flowSphere(float x) {
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(EDITOR_FIRE)
                 .set(CgVfxFluid.CELL, 0.1f).set(CgVfxFluid.GRAVITY, 10f).set(CgVfxFluid.VELOCITY_FADE, 0.1f)
                 .set(CgVfxFluid.SHADOW_ATTENUATION, 0.45f).set(CgVfxFluid.ATTENUATION, 0.5f).build();
-        stations.add(new Station(name, x, 0f, look, 22f, 10f, fluid -> {
+        stations.add(new Station("Flow: sphere: the editor's default stage, fuel burning as it jets up", x, 0f, look, 22f,
+                10f, fluid -> {
             // Flow's emitter stands at its origin with nothing under it; here a block over the ground.
             CgVfxFluid.Emitter e = fluid.emitter(0f, 1.2f, 0f, 1f).velocity(0f, 40f, 0f, 2f);
-            if (box) e.box(1f, 1f, 1f);
             return age -> {
                 if (age > PERIOD - 6f) e.off();
             };
@@ -164,7 +197,8 @@ public final class CgVfxFluidDemo {
      */
     private void mantaflowPlume(float x) {
         float cell = 0.15f, res = 64f, height = 1.5f * res;
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxFluid.SMOKE)
+        // Smoke with no heat reads the colour map's middle: at temperature 0 Flow's smoke map is nearly clear.
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxFluid.SMOKE).set(CgVfxFluid.COLORMAP_MIN, -1f)
                 .set(CgVfxFluid.CELL, cell).set(CgVfxFluid.COMBUSTION, 0f).set(CgVfxFluid.BUOYANCY_PER_SMOKE, 2f)
                 .set(CgVfxFluid.SMOKE_DAMPING, 0f).set(CgVfxFluid.SMOKE_FADE, 0f).set(CgVfxFluid.VORTICITY, 0f).build();
         stations.add(new Station("Mantaflow: simpleplume.py: a noisy disc of smoke rising", x, 0f, look, 20f,
@@ -190,10 +224,19 @@ public final class CgVfxFluidDemo {
                 Station s = stations.get(i);
                 double floor = CgWorldQueries.groundBelow(x + s.x(), y + 16.0, z + s.z(), 48);
                 floors[i] = (float) (Double.isNaN(floor) ? y : floor);
-                vfx.play(new Play(s, x, floors[i], z));
+                if (s.grenade()) {
+                    grenadeX = x + s.x();
+                    grenadeY = floors[i];
+                    grenadeZ = z + s.z();
+                    grenadeBefore = 0f;
+                    grenade = vfx.play(new CgSmokeGrenade(s.look(), grenadeX, grenadeY, grenadeZ).ground(grenadeY));
+                } else {
+                    vfx.play(new Play(s, x, floors[i], z));
+                }
             }
             nextPlay = seconds + PERIOD;
         }
+        driveGrenade();
         if (drives) {
             vfx.system().update(seconds);
             vfx.system().submit(world);

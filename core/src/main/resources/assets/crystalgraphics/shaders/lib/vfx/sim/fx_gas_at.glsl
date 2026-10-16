@@ -1,13 +1,13 @@
-// The gas a particle's instance is carried by (CgVfxWorldInput.GAS, CgVfxEmitterInstance.inGas): its velocity where a
-// particle is, as the gas's last frame left it. The Step kernel includes this when its shape takes GAS, after the
-// atlas's properties (_GasVel, _GasPages, _GasLive).
+// The fluid a particle's instance is carried by (CgVfxWorldInput.GAS, CgVfxEmitterInstance.inGas): its velocity where a
+// particle is, as the fluid's last frame left it. The Step kernel includes this when its shape takes GAS, after
+// CgVfxFluidAtlas.FLOW_PROPERTIES (_GasVel, _GasPages, _GasLive).
 //
 //   void fx_flow(inout FxParticle p, inout FxForces f, FxStep s, vec4 m, FxGas gas) {
 //       vec4 u = fx_gas_flow(gas, p.position);           // xyz blocks a second; w 1 where the gas holds a tile, else 0
 //       f.accel += (u.xyz - p.velocity) * m.x * u.w;
 //   }
 #pragma once
-#include "crystalgraphics:shaders/lib/vfx/fx_gas.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_sparse.glsl"
 
 // offset: the instance's origin from the gas's grid's low corner, in blocks; gas: its place in the atlas; cell: a cell's
 // width in blocks; live: false with no gas, which every reader answers with nothing.

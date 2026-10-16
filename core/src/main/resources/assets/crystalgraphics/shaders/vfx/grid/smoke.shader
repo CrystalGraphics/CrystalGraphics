@@ -2,7 +2,7 @@
 // not skipped in one step: each step reads its
 // density and the light the grid's Shade left there (the transmittance toward the sun, the sky's light), wears the
 // thin edges with noise finer than the cells (Schneider's erosion), and adds the light scattered toward the eye by
-// Hillaire's energy-conserving step through a two-lobe phase with Horizon's powder: the gas's smoke, for a body that
+// Hillaire's energy-conserving step through a two-lobe phase with Horizon's powder, for a body that
 // particles splat. Drawn at half size as a volume, each frame's march starts elsewhere and names the depth its light came
 // from, so the resolve blends a frame's steps with the last ones'.
 // CG_OBJECT_TO_WORLD: the box, a unit cube scaled. CG_OBJECT_CUSTOM0: the grid's place in the atlas, its cell in blocks,
@@ -14,7 +14,8 @@
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_gas.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_detail.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_scatter.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_grid.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "ColorSpace" = "Linear" }
@@ -61,7 +62,7 @@ Pass {
         vec3 size = vec3(length(CG_OBJECT_TO_WORLD[0].xyz), length(CG_OBJECT_TO_WORLD[1].xyz),
                 length(CG_OBJECT_TO_WORLD[2].xyz));
         vec3 lo = centre - 0.5 * size, corner = centre + CG_OBJECT_CUSTOM1.xyz;
-        vec2 t = fx_gas_box(eye, ray, lo, lo + size);
+        vec2 t = fx_scatter_box(eye, ray, lo, lo + size);
         t.x = max(t.x, 0.0);
         t.y = min(t.y, FX_SCENE_DISTANCE(ray));
         if (t.y <= t.x) discard;
@@ -75,7 +76,7 @@ Pass {
 #endif
         float cosine = dot(ray, CG_SUN_DIRECTION);
         float g = clamp(_Scattering, 0.0, 0.9);
-        float p0 = fx_gas_phase(cosine, g), p1 = fx_gas_phase(cosine, g * 0.5);
+        float p0 = fx_scatter_phase(cosine, g), p1 = fx_scatter_phase(cosine, g * 0.5);
         vec3 sun = mix(vec3(0.05, 0.06, 0.1), vec3(1.0, 0.95, 0.88), CG_DAYLIGHT) * _Sun;
         vec3 sky = srgb_to_linear(CG_LIGHTMAP(vec2(0.0, 15.0))) * vec3(0.78, 0.87, 1.0) * _Ambient;
         vec3 albedo = srgb_to_linear(_Smoke.rgb);
@@ -93,7 +94,7 @@ Pass {
             if (slot < 0) {
                 // Still air: on to the first step past where the ray leaves this tile, keeping the steps' phase.
                 vec3 lo = corner + vec3(held) * tile;
-                at += max(ceil((fx_gas_box(eye, ray, lo, lo + tile).y - at) / dt), 1.0) * dt;
+                at += max(ceil((fx_scatter_box(eye, ray, lo, lo + tile).y - at) / dt), 1.0) * dt;
                 continue;
             }
             vec3 uvw = fx_sparse_pool_uvw(_GridView, slot, c);
@@ -101,18 +102,18 @@ Pass {
                 at += dt;
                 continue;
             }
-            // Between cells by a cubic B-spline, as the gas reads its density: linear, a thin edge showed the cells.
+            // Between cells by a cubic B-spline, as the fluid reads its smoke: linear, a thin edge showed the cells.
             float density = max(fx_sparse_smooth(_GridView, slot, c).x, 0.0) * scale;
             // Its light by the same spline: read linearly, its slope broke at every cell face and the shading showed the grid.
             vec2 lit = clamp(fx_sparse_smooth(_GridLight, slot, c).xy, 0.0, 1.0);
             if (_Detail > 0.0 && density < 2.0) {
-                density = fx_gas_erode(density, fx_gas_carried_detail(_Noise, _Voronoi, (p - corner) / max(_DetailSize, 0.05),
+                density = fx_erode(density, fx_detail_carried(_Noise, _Voronoi, (p - corner) / max(_DetailSize, 0.05),
                         vec3(0.0), FX_AGE, 0.0), _Detail);
             }
             float sigma = density * extinction;
             float through = exp(-sigma * span);
             if (sigma > 1.0e-4) {
-                float scattered = (p0 * lit.x + 0.5 * p1 * sqrt(lit.x)) / 1.5 * fx_gas_powder(sigma, cosine);
+                float scattered = (p0 * lit.x + 0.5 * p1 * sqrt(lit.x)) / 1.5 * fx_scatter_powder(sigma, cosine);
                 float taken = transmit * (1.0 - through);
                 depth += at * taken;
                 light += albedo * (sun * scattered + sky * lit.y) * taken;

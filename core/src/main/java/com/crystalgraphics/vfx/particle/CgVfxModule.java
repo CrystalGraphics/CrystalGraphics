@@ -686,7 +686,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      *       particles reach (16 blocks at most).</li>
      *   <li>A deposit is spread over the cells round the particle by distance, so its mark is a soft cloud about a
      *       block across at a 0.25 cell.</li>
-     *   <li>At most {@code CgVfxGasAtlas.DEPOSITS} particles pour a frame, every instance's together; the rest pour nothing.</li>
+     *   <li>At most {@code CgVfxFluidAtlas.DEPOSITS} particles pour a frame, every instance's together; the rest pour nothing.</li>
      * </ul>
      */
     record Feed(float density, float heat) implements CgVfxModule {

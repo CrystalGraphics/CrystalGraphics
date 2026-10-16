@@ -19,8 +19,8 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
-import com.crystalgraphics.vfx.gas.CgVfxGas;
-import com.crystalgraphics.vfx.gas.CgVfxGasAtlas;
+import com.crystalgraphics.vfx.fluid.CgVfxFluid;
+import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
 import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxCurveDomain;
@@ -707,8 +707,8 @@ public final class CgVfxParticlePool {
         if (shape.usesDepth()) bindDepth(stepping);
         if (shape.usesEntities()) CgVfxEntityBoxes.bind(stepping);
         if (shape.spawnsOnMesh()) CgVfxSpawnMeshes.bind(stepping);
-        if (shape.usesGas()) CgVfxGasAtlas.get().bindFlow(stepping);
-        if (shape.feedsGas()) CgVfxGasAtlas.get().bindDeposits(stepping);
+        if (shape.usesGas()) CgVfxFluidAtlas.get().bindFlow(stepping);
+        if (shape.feedsGas()) CgVfxFluidAtlas.get().bindDeposits(stepping);
         if (shape.usesGrid()) CgVfxGridAtlas.get().bindView(stepping);
         if (shape.splatsGrid()) CgVfxGridAtlas.get().bindSplats(stepping);
         if (shape.usesNeighbours()) {
@@ -1066,12 +1066,12 @@ public final class CgVfxParticlePool {
         }
         if (shape.usesGas()) {
             words.target(instances, at + shape.gasAt() * 4, CgVfxShape.GAS_LANES, who + "'s gas");
-            CgVfxGas gas = view.gas();
-            if (gas == null || gas.index() < 0 || CgVfxGasAtlas.get().flow() == null) {
+            CgVfxFluid gas = view.gas();
+            if (gas == null || gas.index() < 0 || CgVfxFluidAtlas.get().flow() == null) {
                 words.vec4(0f, 0f, 0f, -1f).vec4(1f, 0f, 0f, 0f);
             } else {
-                // The instance's origin from its gas's grid's low corner, in blocks.
-                float cell = gas.cellSize(), grid = CgVfxGasAtlas.SPAN * 0.5f * cell;
+                // The instance's origin from its fluid's grid's low corner, in blocks.
+                float cell = gas.cellSize(), grid = CgVfxFluidAtlas.SPAN * 0.5f * cell;
                 words.vec4((float) (ox - gas.x()) + grid, (float) (oy - gas.y()) + grid, (float) (oz - gas.z()) + grid,
                         gas.index()).vec4(cell, 0f, 0f, 0f);
             }
