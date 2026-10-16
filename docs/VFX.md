@@ -1035,6 +1035,7 @@ sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debr
 | `life(min, max)` | seconds |
 | `size(min, max)`, `size(min, max, skew)`, `size(curve)` | blocks; a skew above 1 makes most small and a few large; a curve over life, a share of the starting size |
 | `opacity(curve)` | 0 to 1 over life |
+| `color`, `colorOverLife`, `intensityOverLife`, `scale`, `scaleOverLife` | its colour and its size on each axis, multiplying its layers' ([`vfx/particles.md`](vfx/particles.md) § *How each particle looks*) |
 | `spin(min, max)` | radians a second, either way: a quad's turn, a mesh's tumble |
 | `heat(h)` | 0 to 1 at birth: `Buoyancy` lifts it, and hot shaders (`spark`) glow by it |
 | `module(m)`, `clearModules()` | a physics piece, run in order ([§12](#12-modules-and-events)) |

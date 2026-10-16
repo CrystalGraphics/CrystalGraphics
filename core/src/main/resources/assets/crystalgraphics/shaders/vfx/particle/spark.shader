@@ -20,7 +20,7 @@ Properties {
     _CameraOffset ("Drawn this many of its sizes toward the eye, so one resting on a surface is not cut by it", float) = 1
 }
 
-struct v2f { vec3 world; vec3 spark; };
+struct v2f { vec3 world; vec3 spark; vec3 tint; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
@@ -46,12 +46,13 @@ Pass {
         // Drawn out along its motion in the eye's plane, the faster the longer.
         float onScreen = length(vec2(dot(velocity, right), dot(velocity, up)));
         float streak = min(1.0 + onScreen * _Stretch, _MaxStretch);
-        vec2 extent = vec2(size * streak, size);
+        vec2 extent = size * CG_PARTICLE_SCALE(i).xy * vec2(streak, 1.0);
         float angle = fx_particle_heading(velocity, right, up);
         vec3 world = fx_particle_corner(centre, corner, extent, angle, right, up);
         float glow = (0.35 + 0.65 * CG_PARTICLE_HEAT(i)) * CG_PARTICLE_OPACITY(i);
         o.world = world;
         o.spark = vec3(corner, glow);
+        o.tint = CG_PARTICLE_COLOR(i).rgb;
         gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(world, 1.0);
     }
 
@@ -64,7 +65,7 @@ Pass {
         float bloom = exp(-r * r * 9.0) * (1.0 - smoothstep(0.7, 1.0, r));
         vec3 col = mix(_Color.rgb, _Hot.rgb, exp(-r * r * 60.0)) * disc * 1.8
                  + _Color.rgb * bloom * 0.9;
-        fragColor = vec4(col * i.spark.z * _Color.a * FX_PRESENCE, 1.0);
+        fragColor = vec4(col * i.tint * i.spark.z * _Color.a * FX_PRESENCE, 1.0);
     }
 }
 

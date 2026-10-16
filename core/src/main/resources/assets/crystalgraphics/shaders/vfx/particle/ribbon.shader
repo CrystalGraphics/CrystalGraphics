@@ -28,7 +28,7 @@ Properties {
     _Noise  ("Noise", sampler3D) = "cg_noise"
 }
 
-struct v2f { vec4 trail; vec3 shape; };
+struct v2f { vec4 trail; vec3 shape; vec3 tint; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
@@ -68,6 +68,10 @@ Pass {
         }
         o.trail = vec4(v.uv.x, v.side, v.along, v.fromHead);
         o.shape = vec3(v.extra.y, v.alive, 0.0);
+        // Its two particles' colours, blended along the segment between them.
+        int i1 = int(CG_OBJECT_CUSTOM0.x + 0.5) + c.x;
+        o.tint = alive ? mix(CG_PARTICLE_COLOR(i1).rgb, CG_PARTICLE_COLOR(i1 + 1).rgb, (float(c.y) + float(c.z)) / float(subs))
+                : vec3(0.0);
         gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(v.world, 1.0);
     }
 
@@ -79,8 +83,8 @@ Pass {
         vec3 light = fx_trail_glow(g, _Noise, i.trail, 1.0, FX_AGE, FX_SEED, glow);
         if (dot(light, light) == 0.0) discard;
         float strength = i.shape.x * _Color.a * FX_PRESENCE;
-        fragColor = vec4(light * strength, 0.0);
-        CG_GLOW(glow * strength * _GlowGain);
+        fragColor = vec4(light * i.tint * strength, 0.0);
+        CG_GLOW(glow * i.tint * strength * _GlowGain);
     }
 }
 

@@ -8,8 +8,10 @@ import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -97,18 +99,50 @@ public class CgVfxEmitterScheduleTest {
     }
 
     @Test
-    public void curveRowSamplesSizeThenOpacity() {
-        CgVfxEmitter definition = CgVfxEmitter.builder("curves")
-                .size(CgKeyframes.start(0f, 0.5f).to(1f, 2f, CgEasings.LINEAR).build()).build();
-        float[] row = new float[2 + 2 * CgVfxGpuEmitter.CURVE_TEXELS];
-        definition.writeCurves(row, 2, CgVfxGpuEmitter.CURVE_TEXELS);
-        for (int i = 0; i < CgVfxGpuEmitter.CURVE_TEXELS; i++) {
-            float progress = i / (CgVfxGpuEmitter.CURVE_TEXELS - 1f);
-            assertEquals(definition.sizeAt(progress), row[2 + 2 * i], 0f);
-            assertEquals(definition.opacityAt(progress), row[3 + 2 * i], 0f);
+    public void curveRowSamplesShapeThenTintThenStarts() {
+        CgKeyframes rising = CgKeyframes.start(0f, 0.5f).to(1f, 2f, CgEasings.LINEAR).build();
+        CgKeyframes falling = CgKeyframes.start(0f, 1f).to(1f, 0.25f, CgEasings.LINEAR).build();
+        CgVfxEmitter definition = CgVfxEmitter.builder("curves").size(rising)
+                .scale(1f, 2f, 6f, 1f, 3f, 9f).scaleOverLife(falling, CgKeyframes.constant(1f), rising)
+                .color(0x80FF8000, 2f, 0xFF0000FF, 1f).colorOverLife(falling, rising, CgKeyframes.constant(1f))
+                .intensityOverLife(CgKeyframes.constant(3f)).build();
+        int texels = CgVfxGpuEmitter.CURVE_TEXELS, starts = 8 * texels;
+        float[] row = new float[4 * (2 * texels + CgVfxGpuEmitter.CURVE_STARTS)];
+        definition.writeCurves(row, 0, texels);
+        for (int i = 0; i < texels; i++) {
+            float p = i / (texels - 1f);
+            assertEquals(falling.at(p), row[4 * i], 0f);
+            assertEquals(1f, row[4 * i + 1], 0f);
+            assertEquals(rising.at(p), row[4 * i + 2], 0f);
+            assertEquals(definition.sizeAt(p), row[4 * i + 3], 0f);
+            assertEquals(falling.at(p) * 3f, row[4 * texels + 4 * i], 1e-6f);
+            assertEquals(rising.at(p) * 3f, row[4 * texels + 4 * i + 1], 1e-6f);
+            assertEquals(3f, row[4 * texels + 4 * i + 2], 0f);
+            assertEquals(definition.opacityAt(p), row[4 * texels + 4 * i + 3], 0f);
         }
-        assertEquals(0.5f, row[2], 0f);
-        assertEquals(2f, row[row.length - 2], 1e-6f);
+        // 0x80FF8000 times 2: orange past white, half its alpha; then blue
+        assertArrayEquals(new float[]{2f, 128f / 255f * 2f, 0f, 128f / 255f, 0f, 0f, 1f, 1f},
+                Arrays.copyOfRange(row, starts, starts + 8), 1e-6f);
+        assertArrayEquals(new float[]{1f, 2f, 6f, 0f, 1f, 3f, 9f, 0f}, Arrays.copyOfRange(row, starts + 8, starts + 16), 0f);
+        // Its largest: size 2 at the end, times z's 2 there, times the widest start, 9
+        assertEquals(2f * 2f * 9f, definition.largestSize(), 1e-4f);
+    }
+
+    @Test
+    public void unsetLooksDrawAsBefore() {
+        CgVfxEmitter plain = CgVfxEmitter.builder("plain").size(0.2f, 0.4f).build();
+        int texels = CgVfxGpuEmitter.CURVE_TEXELS, starts = 8 * texels;
+        float[] row = new float[4 * (2 * texels + CgVfxGpuEmitter.CURVE_STARTS)];
+        plain.writeCurves(row, 0, texels);
+        for (int i = 0; i < texels; i++) {
+            for (int a = 0; a < 3; a++) {
+                assertEquals(1f, row[4 * i + a], 0f);
+                assertEquals(1f, row[4 * texels + 4 * i + a], 0f);
+            }
+        }
+        assertArrayEquals(new float[]{1f, 1f, 1f, 1f, 1f, 1f, 1f, 1f, 1f, 1f, 1f, 0f, 1f, 1f, 1f, 0f},
+                Arrays.copyOfRange(row, starts, starts + 16), 0f);
+        assertEquals(0.4f, plain.largestSize(), 1e-6f);
     }
 
     @Test

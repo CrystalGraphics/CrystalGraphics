@@ -56,6 +56,14 @@ import java.util.concurrent.ConcurrentHashMap;
  * CgVfxEmitter.builder("aura").entity().surface().local()                                // off whoever its effect follows
  * }</pre>
  *
+ * Its colour and its size on each axis, multiplying what its layers draw:
+ *
+ * <pre>{@code
+ * CgVfxEmitter.builder("sparks").color(0xFFFFD27A, 0xFFFF5A1F)                           // gold to red-orange
+ *         .intensityOverLife(CgKeyframes.start(0f, 4f).to(0.2f, 1f, CgEasings.OUT_QUAD).build())
+ * CgVfxEmitter.builder("streak").renderer(MESHES).size(0.4f, 0.4f).scale(1f, 1f, 6f)     // a mesh six times as long
+ * }</pre>
+ *
  * <ul>
  *   <li>{@link Builder#capacity} bounds the live particles; a spawn into a full set is dropped.</li>
  *   <li>A source that moves within a step spreads that step's rate along its path, each particle stepped for the part of
@@ -102,11 +110,17 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final List<CgVfxModule> modules;
     final List<CgVfxEvent> events;
     final CgKeyframes sizeOverLife, opacityOverLife;
-    /** The size curve's peak at the curve row's samples: what the GPU path draws at most. */
+    /** Each axis's scale over life, then the colour's channels and intensity over life. */
+    final CgKeyframes scaleX, scaleY, scaleZ, red, green, blue, intensity;
+    /** Its start colour's two ends (rgb times intensity, alpha) and its start scale's two ends (xyz). */
+    final float[] colorFrom, colorTo, scaleFrom, scaleTo;
+    /** Its largest axis times its size curve's peak at the curve row's samples: what the GPU path draws at most. */
     private final float sizePeak;
     private final boolean feedsGas, splatsGrid;
     /** {@link #scaled} copies, one per scale asked for. */
     private final Map<Float, CgVfxEmitter> scaledCopies = new ConcurrentHashMap<>();
+    private static final CgKeyframes ONE = CgKeyframes.constant(1f);
+    private static final float[] WHITE = {1f, 1f, 1f, 1f}, UNIT = {1f, 1f, 1f};
 
     private CgVfxEmitter(Builder b) {
         name = b.name;
@@ -128,7 +142,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         rasterized = b.rasterized != null ? b.rasterized.clone() : null;
         sweep = b.sweep;
         // Spawn k is born k / rate into its one loop of T: the front, sweep (t - t^2 / 2T), in k.
-        float span = b.state.loopDuration(), perSecond = b.rate.perSecond();
+        float span = b.state.durationMax(), perSecond = b.rate.perSecond();
         frontA = sweep != 0f ? sweep / perSecond : 0f;
         frontB = sweep != 0f ? sweep / (2f * span * perSecond * perSecond) : 0f;
         upMin = b.upMin;
@@ -155,11 +169,26 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         events = Collections.unmodifiableList(new ArrayList<>(b.events));
         sizeOverLife = b.sizeOverLife;
         opacityOverLife = b.opacityOverLife;
+        scaleX = b.scaleX;
+        scaleY = b.scaleY;
+        scaleZ = b.scaleZ;
+        red = b.red;
+        green = b.green;
+        blue = b.blue;
+        intensity = b.intensity;
+        colorFrom = b.colorFrom;
+        colorTo = b.colorTo;
+        scaleFrom = b.scaleFrom;
+        scaleTo = b.scaleTo;
+        float start = 0f;
+        for (int a = 0; a < 3; a++) start = Math.max(start, Math.max(Math.abs(scaleFrom[a]), Math.abs(scaleTo[a])));
         float peak = 0f;
         for (int i = 0; i < CgVfxGpuEmitter.CURVE_TEXELS; i++) {
-            peak = Math.max(peak, sizeAt((float) i / (CgVfxGpuEmitter.CURVE_TEXELS - 1)));
+            float p = (float) i / (CgVfxGpuEmitter.CURVE_TEXELS - 1);
+            float axis = Math.max(Math.abs(scaleX.at(p)), Math.max(Math.abs(scaleY.at(p)), Math.abs(scaleZ.at(p))));
+            peak = Math.max(peak, sizeAt(p) * axis);
         }
-        sizePeak = peak;
+        sizePeak = peak * start;
     }
 
     public static Builder builder(String name) {
@@ -299,11 +328,24 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
     @Override
     public void writeCurves(float[] out, int at, int texels) {
+        int tint = at + 4 * texels, starts = at + 8 * texels;
         for (int i = 0; i < texels; i++) {
-            float progress = texels > 1 ? (float) i / (texels - 1) : 0f;
-            out[at + 2 * i] = sizeAt(progress);
-            out[at + 2 * i + 1] = opacityAt(progress);
+            float progress = texels > 1 ? (float) i / (texels - 1) : 0f, k = intensity.at(progress);
+            out[at + 4 * i] = scaleX.at(progress);
+            out[at + 4 * i + 1] = scaleY.at(progress);
+            out[at + 4 * i + 2] = scaleZ.at(progress);
+            out[at + 4 * i + 3] = sizeAt(progress);
+            out[tint + 4 * i] = red.at(progress) * k;
+            out[tint + 4 * i + 1] = green.at(progress) * k;
+            out[tint + 4 * i + 2] = blue.at(progress) * k;
+            out[tint + 4 * i + 3] = opacityAt(progress);
         }
+        System.arraycopy(colorFrom, 0, out, starts, 4);
+        System.arraycopy(colorTo, 0, out, starts + 4, 4);
+        System.arraycopy(scaleFrom, 0, out, starts + 8, 3);
+        out[starts + 11] = 0f;
+        System.arraycopy(scaleTo, 0, out, starts + 12, 3);
+        out[starts + 15] = 0f;
     }
 
     /** How much of its starting size a particle is at {@code progress} 0..1 through its life. */
@@ -366,7 +408,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
     /** The most spawn candidates within any {@code span} seconds. */
     private int spawnsWithin(float span) {
-        float duration = state.loopDuration();
+        float duration = state.durationMax();
         int loops = state.loops();
         long fromBursts = 0;
         if (loops == 1) {
@@ -406,7 +448,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             pull += modules.get(i).pull(heat);
             wind |= modules.get(i) instanceof CgVfxModule.Wind;
         }
-        float swept = sweep != 0f ? 0.5f * Math.abs(sweep) * state.loopDuration() : 0f;
+        float swept = sweep != 0f ? 0.5f * Math.abs(sweep) * state.durationMax() : 0f;
         return spawn.extent() + swept + speedMax * lifeMax + 0.5f * pull * lifeMax * lifeMax + (wind ? windSpeed * lifeMax : 0f);
     }
 
@@ -445,6 +487,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private CgKeyframes sizeOverLife = CgKeyframes.constant(1f);
         private CgKeyframes opacityOverLife = CgKeyframes.start(0f, 1f).to(0.8f, 1f, CgEasings.LINEAR)
                 .to(1f, 0f, CgEasings.OUT_QUAD).build();
+        private CgKeyframes scaleX = ONE, scaleY = ONE, scaleZ = ONE, red = ONE, green = ONE, blue = ONE, intensity = ONE;
+        private float[] colorFrom = WHITE, colorTo = WHITE, scaleFrom = UNIT, scaleTo = UNIT;
 
         private Builder(String name) {
             this.name = name;
@@ -483,6 +527,17 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             events.addAll(e.events);
             sizeOverLife = e.sizeOverLife;
             opacityOverLife = e.opacityOverLife;
+            scaleX = e.scaleX;
+            scaleY = e.scaleY;
+            scaleZ = e.scaleZ;
+            red = e.red;
+            green = e.green;
+            blue = e.blue;
+            intensity = e.intensity;
+            colorFrom = e.colorFrom;
+            colorTo = e.colorTo;
+            scaleFrom = e.scaleFrom;
+            scaleTo = e.scaleTo;
         }
 
         /** Renames it: a look holds one emitter per name, and replaces by it. */
@@ -952,11 +1007,130 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
+        /**
+         * Its start colour, which multiplies the colours of every layer drawing it: Niagara's Initialize Particle colour.
+         * White unless given. An {@code 0xAARRGGBB} colour as shaders author colour; its alpha multiplies the opacity.
+         *
+         * <pre>{@code
+         * .color(0xFFFF8A3D)                     // orange embers on a white-hot spark shader
+         * .color(0xFF66D9FF, 3f)                 // past white: rgb times 3, which blooms
+         * }</pre>
+         */
+        public Builder color(int argb) {
+            return color(argb, 1f);
+        }
+
+        /** Its start colour, {@code argb}'s rgb times {@code intensity}. */
+        public Builder color(int argb, float intensity) {
+            return color(argb, intensity, argb, intensity);
+        }
+
+        /**
+         * A start colour between two, each channel rolled on its own a particle: Niagara's non-uniform range. Each end's
+         * alpha bounds its opacity multiplier.
+         *
+         * <pre>{@code
+         * .color(0xFFFFD27A, 0xFFFF5A1F)                   // gold to red-orange sparks: green and blue vary apart
+         * .color(0xFFFFFFFF, 4f, 0xFF3A7BFF, 1.5f)         // white-hot to blue, each with its own intensity
+         * }</pre>
+         */
+        public Builder color(int a, int b) {
+            return color(a, 1f, b, 1f);
+        }
+
+        /** A start colour mixed between {@code a} times {@code intensityA} and {@code b} times {@code intensityB}. */
+        public Builder color(int a, float intensityA, int b, float intensityB) {
+            colorFrom = rgba(a, intensityA);
+            colorTo = rgba(b, intensityB);
+            return this;
+        }
+
+        /**
+         * Its colour over life, each channel multiplying the start colour's: Niagara's Scale Color. 1 throughout unless
+         * given; alpha is {@link #opacity(CgKeyframes)}.
+         *
+         * <pre>{@code
+         * // white-hot, cooling through orange to a dull red
+         * .colorOverLife(CgKeyframes.constant(1f),
+         *         CgKeyframes.start(0f, 1f).to(0.4f, 0.55f, CgEasings.LINEAR).to(1f, 0.15f, CgEasings.LINEAR).build(),
+         *         CgKeyframes.start(0f, 1f).to(0.3f, 0.2f, CgEasings.LINEAR).to(1f, 0.05f, CgEasings.LINEAR).build())
+         * }</pre>
+         */
+        public Builder colorOverLife(CgKeyframes red, CgKeyframes green, CgKeyframes blue) {
+            this.red = red;
+            this.green = green;
+            this.blue = blue;
+            return this;
+        }
+
+        /**
+         * Its colour's intensity over life, multiplying its rgb: a flash at birth fading to its plain colour, HDR. 1
+         * throughout unless given.
+         *
+         * <pre>{@code
+         * .intensityOverLife(CgKeyframes.start(0f, 6f).to(0.15f, 1f, CgEasings.OUT_QUAD).build())
+         * }</pre>
+         */
+        public Builder intensityOverLife(CgKeyframes overLife) {
+            intensity = overLife;
+            return this;
+        }
+
+        /**
+         * Its start scale on each axis, times its {@link #size(float, float) size}: Niagara's non-uniform sprite size and
+         * mesh scale. A quad takes x across and y up; a mesh all three in its own axes. 1 unless given.
+         *
+         * <pre>{@code
+         * .size(0.3f, 0.5f).scale(1f, 1f, 6f)             // a mesh stretched six times along z: a beam's streak
+         * .size(0.1f, 0.2f).scale(0.5f, 2f, 1f)           // tall thin quads: rain
+         * }</pre>
+         */
+        public Builder scale(float x, float y, float z) {
+            return scale(x, y, z, x, y, z);
+        }
+
+        /**
+         * A start scale between two, each axis rolled on its own a particle: Niagara's non-uniform range. For one roll
+         * scaling every axis together, keep the scale fixed and give {@link #size(float, float)} the range.
+         *
+         * <pre>{@code
+         * .scale(1f, 1f, 4f, 1.2f, 1.2f, 9f)               // streaks 4 to 9 times their width
+         * }</pre>
+         */
+        public Builder scale(float x0, float y0, float z0, float x1, float y1, float z1) {
+            scaleFrom = new float[]{x0, y0, z0};
+            scaleTo = new float[]{x1, y1, z1};
+            return this;
+        }
+
+        /**
+         * Its scale on each axis over life, times its start scale: Niagara's Scale Mesh Size and Scale Sprite Size. 1
+         * throughout unless given; {@link #size(CgKeyframes)} scales all three.
+         *
+         * <pre>{@code
+         * // a shock ring flattening as it spreads
+         * CgKeyframes wide = CgKeyframes.start(0f, 1f).to(1f, 3f, CgEasings.OUT_QUAD).build();
+         * .scaleOverLife(wide, CgKeyframes.start(0f, 1f).to(1f, 0.2f, CgEasings.LINEAR).build(), wide)
+         * }</pre>
+         */
+        public Builder scaleOverLife(CgKeyframes x, CgKeyframes y, CgKeyframes z) {
+            scaleX = x;
+            scaleY = y;
+            scaleZ = z;
+            return this;
+        }
+
+        private static float[] rgba(int argb, float intensity) {
+            return new float[]{(argb >> 16 & 0xFF) / 255f * intensity, (argb >> 8 & 0xFF) / 255f * intensity,
+                    (argb & 0xFF) / 255f * intensity, (argb >>> 24) / 255f};
+        }
+
         public CgVfxEmitter build() {
             if (sweep != 0f && (!bursts.isEmpty() || rate.perSecond() <= 0f || state.loops() != 1
-                    || !(state.loopDuration() > 0f && state.loopDuration() < Float.POSITIVE_INFINITY))) {
+                    || state.durationMin() != state.durationMax()
+                    || !(state.durationMax() > 0f && state.durationMax() < Float.POSITIVE_INFINITY))) {
                 throw new IllegalStateException(name
-                        + " sweeps its shape, which needs one loop of a duration, a rate and no bursts");
+                        + " sweeps its shape, which needs one loop of a fixed duration, a rate and no bursts");
             }
             if (state.loops() > 1 && !(state.shortestPeriod() > 0f)) {
                 throw new IllegalStateException(name + " loops in no time: give its loops a duration or a delay");

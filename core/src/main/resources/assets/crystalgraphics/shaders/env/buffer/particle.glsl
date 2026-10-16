@@ -28,3 +28,7 @@
 #define CG_PARTICLE_ID(n) (PARTICLE_DATA(n).light.y)
 // Its height over the floor under it, and 1; (0, 0) for none: written for kinds that land on a floor (Ground).
 #define CG_PARTICLE_FLOOR(n) (PARTICLE_DATA(n).light.zw)
+// Its colour, multiplying a look's own (rgb past 1 where it glows), and its opacity: white unless its emitter says.
+#define CG_PARTICLE_COLOR(n) (PARTICLE_DATA(n).color)
+// Its scale on each axis, times its size: a quad is size * scale.x across and size * scale.y up. 1 unless its emitter says.
+#define CG_PARTICLE_SCALE(n) (PARTICLE_DATA(n).scale.xyz)

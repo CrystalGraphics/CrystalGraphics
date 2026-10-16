@@ -1,7 +1,7 @@
 package com.crystalgraphics.vfx.particle.gpu;
 
 /**
- * What a definition's size and opacity curves are sampled by: progress through a particle's life, or its speed between
+ * What a definition's curves over life (size, scale, colour, opacity) are sampled by: progress through a particle's life, or its speed between
  * two thresholds (Niagara's Scale Sprite Size by Speed, Unity's Size by Speed). Range applies it per parameter row.
  *
  * <pre>{@code

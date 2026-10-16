@@ -68,7 +68,7 @@ public final class CgVfxEmitterInstance {
     private int spawned, burstsDone;
     /** The loop under way (its emitter's state), when its time began after its delay, and whether every loop is spent. */
     private int loop;
-    private float loopStart;
+    private float loopStart, loopLength;
     private boolean loopsOver;
     private float rateOwed, share = 1f;
     /** When {@link #stop} ended its spawning; infinite until then. What {@link #rateScale} multiplies its rate by. */
@@ -136,6 +136,7 @@ public final class CgVfxEmitterInstance {
         burstsDone = 0;
         loop = 0;
         loopStart = emitter.state.delayBefore(seed, 0);
+        loopLength = emitter.state.durationOf(seed, 0);
         loopsOver = false;
         rateOwed = 0f;
         lastDeath = -1f;
@@ -402,15 +403,14 @@ public final class CgVfxEmitterInstance {
 
     /**
      * Fires every burst whose time in its loop has come, at this step's start, and moves on to each loop whose time has
-     * come: its delay picked, its bursts armed again. A step longer than a loop crosses several.
+     * come: its delay and length picked, its bursts armed again. A step longer than a loop crosses several.
      */
     private void fireBursts() {
         CgVfxEmitterState state = emitter.state;
         CgVfxSpawnBurst[] bursts = emitter.bursts;
-        float duration = state.loopDuration();
         int loops = state.loops();
         while (!loopsOver && time < stoppedAt) {
-            float age = time - loopStart;
+            float age = time - loopStart, duration = loopLength;
             // A burst past the loop's end never fires; in the delay, age is negative and none does.
             while (burstsDone < bursts.length && bursts[burstsDone].time() <= Math.min(age, duration)) {
                 int fit = fit(bursts[burstsDone].count(seed, loop, burstsDone));
@@ -428,6 +428,7 @@ public final class CgVfxEmitterInstance {
             }
             loop++;
             loopStart += duration + state.delayBefore(seed, loop);
+            loopLength = state.durationOf(seed, loop);
             burstsDone = 0;
         }
     }
@@ -665,7 +666,7 @@ public final class CgVfxEmitterInstance {
             fireBursts();
             stepBursts = spawned - stepFirst;
             float age = time - loopStart;
-            if (!loopsOver && time < stoppedAt && age >= 0f && age < e.state.loopDuration()) {
+            if (!loopsOver && time < stoppedAt && age >= 0f && age < loopLength) {
                 rateOwed += (e.rate.at(age) * dt + e.perUnit.perBlock() * travelled) * rateScale;
                 int n = (int) rateOwed;
                 rateOwed -= n;

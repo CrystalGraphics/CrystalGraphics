@@ -86,17 +86,28 @@ public interface CgVfxGpuEmitter {
         return List.of();
     }
 
-    /** Samples a curve row holds: the atlas's width. */
+    /** Samples each of a curve row's two curves holds. */
     int CURVE_TEXELS = 256;
 
+    /** The vec4s a curve row holds after its two curves: the two start colours, then the two start scales. */
+    int CURVE_STARTS = 4;
+
     /**
-     * Writes its curve row, {@code texels} pairs from {@code out[at]}: sample i, at progress {@code i / (texels - 1)}, is
-     * its size multiplier then its opacity, what the CPU path applies at that point of its {@link #curveDomain()}. The pool calls
-     * it when its parameter row opens; the row is one RG32F row of the curve atlas.
+     * Writes its curve row from {@code out[at]}, vec4s: {@code texels} shape samples, {@code texels} tint samples, then
+     * {@link #CURVE_STARTS} start values. Sample i is at progress {@code i / (texels - 1)} of its {@link #curveDomain()}.
+     * The pool calls it when its parameter row opens.
+     *
+     * <ul>
+     *   <li>a shape sample is each axis's scale, then the size multiplier;</li>
+     *   <li>a tint sample is the colour multiplier's red, green and blue (times its intensity), then the opacity;</li>
+     *   <li>the starts are the two colours a particle's start colour is mixed between (rgb times intensity, alpha), then
+     *   the two scales its start axis scales are mixed between (xyz, 0).</li>
+     * </ul>
      *
      * <pre>{@code
-     * float[] row = new float[2 * CgVfxGpuEmitter.CURVE_TEXELS];
-     * EMBERS.writeCurves(row, 0, CgVfxGpuEmitter.CURVE_TEXELS);   // row[0] size at birth, row[1] opacity at birth
+     * float[] row = new float[4 * (2 * CgVfxGpuEmitter.CURVE_TEXELS + CgVfxGpuEmitter.CURVE_STARTS)];
+     * EMBERS.writeCurves(row, 0, CgVfxGpuEmitter.CURVE_TEXELS);
+     * float sizeAtBirth = row[3], opacityAtBirth = row[4 * CgVfxGpuEmitter.CURVE_TEXELS + 3];
      * }</pre>
      */
     void writeCurves(float[] out, int at, int texels);

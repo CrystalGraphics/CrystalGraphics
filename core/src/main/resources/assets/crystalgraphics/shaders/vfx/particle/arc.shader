@@ -18,7 +18,7 @@ Properties {
     _Span ("Arc a stroke spans, radians, before its seed varies it", float) = 0.9
 }
 
-struct v2f { vec3 world; vec2 stroke; };
+struct v2f { vec3 world; vec2 stroke; vec3 tint; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
@@ -46,10 +46,11 @@ Pass {
         vec3 p = source + (right * cos(a) + up * sin(a)) * radius;
         vec3 tangent = right * -sin(a) + up * cos(a);
         float taper = pow(sin(3.14159265 * along), 0.8);
-        float width = n < 0 ? 0.0 : CG_PARTICLE_SIZE(i) * CG_OBJECT_CUSTOM0.z * taper;
+        float width = n < 0 ? 0.0 : CG_PARTICLE_SIZE(i) * CG_PARTICLE_SCALE(i).x * CG_OBJECT_CUSTOM0.z * taper;
         vec3 world = fx_ribbon_vertex(p, tangent, FX_CAMERA, width, side);
         o.world = world;
         o.stroke = vec2(side, CG_PARTICLE_OPACITY(i));
+        o.tint = CG_PARTICLE_COLOR(i).rgb;
         gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(world, 1.0);
     }
 
@@ -60,6 +61,6 @@ Pass {
         float cover = 1.0 - smoothstep(1.0 - 2.0 * aa, 1.0, across);
         cg_Clip(cover);
         float alpha = cover * i.stroke.y * _Color.a * FX_PRESENCE;
-        fragColor = vec4(_Color.rgb * alpha, alpha);
+        fragColor = vec4(_Color.rgb * i.tint * alpha, alpha);
     }
 }

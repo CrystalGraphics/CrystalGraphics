@@ -67,7 +67,7 @@ public class CgVfxEmitterStateTest {
 
     @Test
     public void aDelayRangeIsPickedEachLoopTheSameOnEverySide() {
-        CgVfxEmitterState state = CgVfxEmitterState.infinite(1f).delay(0.2f, 0.8f);
+        CgVfxEmitterState state = CgVfxEmitterState.infinite(1f).delay(0.2f, 0.8f).recalculateDelayEachLoop();
         CgVfxEmitter ticks = CgVfxEmitter.builder("ticks").state(state).capacity(100).burst(0f, 1).life(0.1f, 0.1f).build();
         CgVfxEmitterInstance a = new CgVfxEmitterInstance(ticks, 0.7f), b = new CgVfxEmitterInstance(ticks, 0.7f);
         a.start(0f, 0f, 0f);
@@ -149,6 +149,32 @@ public class CgVfxEmitterStateTest {
         assertEquals(120, overlap.peakAlive());
         CgVfxEmitter once = overlap.toBuilder().state(CgVfxEmitterState.ONCE).build();
         assertEquals(40, once.peakAlive());
+    }
+
+    @Test
+    public void theDefaultIsNiagarasALoopASecondForEver() {
+        // FNiagaraEmitterStateData: LoopBehavior Infinite, LoopDuration 1, no delay, Complete.
+        CgVfxEmitter puff = CgVfxEmitter.builder("puff").capacity(100).burst(0f, 3).life(0.1f, 0.1f).build();
+        CgVfxEmitterInstance instance = new CgVfxEmitterInstance(puff, 0.5f);
+        instance.start(0f, 0f, 0f);
+        List<Integer> at = burstSteps(instance, 200);
+        assertEquals(4, at.size());
+        for (int loop = 0; loop < at.size(); loop++) assertEquals(loop, at.get(loop) * DT, DT * 1.01f);
+    }
+
+    @Test
+    public void aDurationRangeIsRolledOnceUnlessRecalculatedEachLoop() {
+        CgVfxEmitterState once = CgVfxEmitterState.infinite(0.5f, 1.5f), each = once.recalculateDurationEachLoop();
+        int seed = new CgVfxEmitterInstance(CgVfxEmitter.builder("seed").build(), 0.42f).books().seedBits();
+        float first = once.durationOf(seed, 0);
+        boolean varies = false;
+        for (int loop = 0; loop < 8; loop++) {
+            assertEquals(first, once.durationOf(seed, loop), 0f);
+            float d = each.durationOf(seed, loop);
+            assertTrue(d >= 0.5f && d <= 1.5f);
+            varies |= d != each.durationOf(seed, 0);
+        }
+        assertTrue("a recalculated duration varies by loop", varies);
     }
 
     @Test(expected = IllegalStateException.class)

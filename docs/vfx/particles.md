@@ -23,8 +23,8 @@ State module) says how long a loop lasts, how many run, and how long to wait bef
 
 ### The default loops for ever
 
-An emitter that says nothing loops for ever, a loop every `CgVfxEmitterState.DEFAULT_DURATION` seconds, as
-Niagara's default does. A rate then simply runs until the instance is stopped. **Bursts fire again every loop**, so
+An emitter that says nothing loops for ever, a loop a second (`CgVfxEmitterState.DEFAULT_DURATION`), as Niagara's
+default does. A rate then simply runs until the instance is stopped. **Bursts fire again every loop**, so
 an emitter meant to burst once says so:
 
 ```java
@@ -62,14 +62,20 @@ static final CgVfxEmitter CORE = CgVfxEmitter.builder("core").state(CgVfxEmitter
 static final CgVfxEmitter PUFFS = CgVfxEmitter.builder("puffs").state(CgVfxEmitterState.loops(3, 0.5f))
         .capacity(60).burst(0f, 15).life(0.4f, 0.6f).build();
 
-// A crackle at uneven intervals: a wait of 0.2 to 0.8 s before each one-second loop, picked anew each loop
+// A crackle at uneven intervals: a wait of 0.2 to 0.8 s before each one-second loop, rolled again each loop
 static final CgVfxEmitter CRACKLE = CgVfxEmitter.builder("crackle")
-        .state(CgVfxEmitterState.infinite(1f).delay(0.2f, 0.8f))
+        .state(CgVfxEmitterState.infinite(1f).delay(0.2f, 0.8f).recalculateDelayEachLoop())
         .capacity(40).burst(0f, 8).life(0.1f, 0.2f).build();
+
+// Loops of 0.8 to 1.4 s, each its own length
+CgVfxEmitterState.infinite(0.8f, 1.4f).recalculateDurationEachLoop()
 
 // Waits half a second, once, then loops every second
 CgVfxEmitterState.infinite(1f).delay(0.5f).delayFirstLoopOnly()
 ```
+
+A duration or a delay given as a range is rolled once, when the instance starts, and kept for every loop, as
+Niagara's are; `recalculateDurationEachLoop()` and `recalculateDelayEachLoop()` roll it again for each.
 
 ### A rate that changes, and bursts that vary
 
@@ -99,6 +105,53 @@ A burst can roll its count each loop, and fire in only some loops:
   same instance spawns the same.
 - **Loops of no time are refused**: a looping state needs a duration or a delay, or `build()` throws.
 - **`sweep(speed)` needs one loop of a set length**, a rate and no burst: its front runs over that loop.
+
+## How each particle looks: colour and size per axis
+
+An emitter gives each particle a colour and a size on each axis, which **multiply what its layers draw**, as Niagara's
+Initialize Particle and its Scale modules do. A layer's `_Color` stays the look's palette; the emitter's colour tints
+it per particle and over its life.
+
+| Niagara | Here | What it is |
+|---|---|---|
+| Initialize Particle colour | `color(argb[, intensity])`, `color(a, b)` | its start colour; between two, each channel its own roll |
+| Scale Color | `colorOverLife(r, g, b)`, `intensityOverLife(curve)`, `opacity(curve)` | its colour, its HDR intensity and its alpha over life |
+| Initialize Particle sprite size, mesh scale | `size(min, max)` times `scale(x, y, z)` or `scale(min xyz, max xyz)` | its start size, then each axis's share of it |
+| Scale Sprite Size, Scale Mesh Size | `size(curve)`, `scaleOverLife(x, y, z)` | all axes over life, then each one |
+
+```java
+// Sparks from gold to red-orange, a white flash at birth fading to their colour, cooling as they die
+static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks").state(CgVfxEmitterState.ONCE)
+        .capacity(300).burst(0f, 200).speed(4f, 9f).life(0.5f, 1f).size(0.04f, 0.08f)
+        .color(0xFFFFD27A, 0xFFFF5A1F)
+        .intensityOverLife(CgKeyframes.start(0f, 5f).to(0.15f, 1f, CgEasings.OUT_QUAD).build())
+        .colorOverLife(CgKeyframes.constant(1f),
+                CgKeyframes.start(0f, 1f).to(1f, 0.4f, CgEasings.LINEAR).build(),
+                CgKeyframes.start(0f, 1f).to(1f, 0.2f, CgEasings.LINEAR).build())
+        .build();
+
+// A beam's streak: one mesh particle six times as long as it is wide, stretching to nine as it lives
+static final CgVfxEmitter STREAK = CgVfxEmitter.builder("streak").renderer(CgVfxEmitter.Renderer.MESHES)
+        .state(CgVfxEmitterState.ONCE).capacity(4).burst(0f, 1).life(1f, 1f).size(0.5f, 0.5f).scale(1f, 1f, 6f)
+        .scaleOverLife(CgKeyframes.constant(1f), CgKeyframes.constant(1f),
+                CgKeyframes.start(0f, 1f).to(1f, 1.5f, CgEasings.OUT_QUAD).build())
+        .build();
+
+// Rain: quads twice as tall as wide, each a little different
+CgVfxEmitter.builder("rain").size(0.03f, 0.05f).scale(0.8f, 2f, 1f, 1.2f, 3f, 1f)
+```
+
+- **A quad takes x across and y up**; a mesh takes all three in its own axes, before it turns. Strokes (`ray`, `arc`)
+  take x as their width.
+- **White and 1 change nothing**: an emitter that says none of this draws as it always has.
+- **A range between two rolls each channel and each axis on its own**, as Niagara's non-uniform ranges: two colours'
+  in-betweens mix channels, so `color(0xFFFF0000, 0xFF0000FF)` gives purples, reds, blues and black. For one roll that
+  keeps proportions, give `size(min, max)` the range and `scale` one value.
+- **Colours are `0xAARRGGBB`** as shaders author them; an intensity past 1 blooms. The start colour's alpha multiplies
+  the opacity.
+- **A shader of your own** reads `CG_PARTICLE_COLOR(i)` and `CG_PARTICLE_SCALE(i)` on a quad, or `CG_OBJECT_CUSTOM2.rgb`
+  on a mesh particle, and multiplies them in: a shader that ignores them draws every particle the same.
+- **The grids' rasterize keeps the uniform size**: a particle splats a ball whatever its axes.
 
 ## Turning an emitter: its effect's orientation
 

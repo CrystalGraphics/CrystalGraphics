@@ -4,7 +4,8 @@
 // shock_ring.shader on the same particle. A mesh particle (CgVfxFrame.particles, MESHES) whose sphere the vertex stage
 // bends into the wall (fx_ring.glsl), its radius the particle's drawn size; the line is where the wall comes within
 // _Width of the scene behind it, so it finds a floor anywhere within _Below under the centre. CG_OBJECT_CUSTOM1: x its
-// life 0..1, y its seed, z its opacity. _Color is the glow, its alpha a strength; _Hot its middle.
+// life 0..1, y its seed, z its opacity; CG_OBJECT_CUSTOM2.rgb its colour. _Color is the glow, its alpha a strength; _Hot
+// its middle.
 #type spatial
 #pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
@@ -67,7 +68,7 @@ Pass {
         float flash = 1.0 - smoothstep(0.4 * _FlashFor, _FlashFor, life);
         float glow = (contact + veil) * whole * flash * opacity * _Color.a * FX_PRESENCE;
         if (glow < 0.003) discard;
-        vec3 col = mix(_Color.rgb, _Hot.rgb, contact * contact * contact) * _Bright;
+        vec3 col = mix(_Color.rgb, _Hot.rgb, contact * contact * contact) * CG_OBJECT_CUSTOM2.rgb * _Bright;
         fragColor = vec4(col * glow, 1.0);
     }
 }

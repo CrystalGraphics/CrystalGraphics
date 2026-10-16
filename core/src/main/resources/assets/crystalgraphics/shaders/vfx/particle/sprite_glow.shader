@@ -26,7 +26,7 @@ Properties {
     _CameraOffset ("Drawn this many of its sizes toward the eye: a solid piece resting on a surface", float) = 0
 }
 
-struct v2f { vec4 uv; float blend; vec2 glow; };
+struct v2f { vec4 uv; float blend; vec2 glow; vec3 tint; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
@@ -54,19 +54,20 @@ Pass {
         fx_particle_facing(mode, centre, velocity, _Axis.xyz, eye, eyeRight, eyeUp, right, up);
         bool streak = mode == FX_FACE_VELOCITY;
         float length_ = streak ? min(1.0 + length(velocity) * _Stretch, _MaxStretch) : 1.0;
-        vec3 world = fx_particle_corner(centre, corner, vec2(size * length_, size), streak ? 0.0 : CG_PARTICLE_SPIN(i),
-                right, up);
+        vec2 extent = size * CG_PARTICLE_SCALE(i).xy * vec2(length_, 1.0);
+        vec3 world = fx_particle_corner(centre, corner, extent, streak ? 0.0 : CG_PARTICLE_SPIN(i), right, up);
         float blend;
         o.uv = fx_particle_flipbook(corner * 0.5 + 0.5, CG_PARTICLE_PROGRESS(i), CG_PARTICLE_SEED(i) * _Flip.x, _Frames,
                 _Flip.y > 0.5, blend);
         o.blend = _Flip.z > 0.5 ? blend : 0.0;
         o.glow = vec2(CG_PARTICLE_HEAT(i), CG_PARTICLE_OPACITY(i));
+        o.tint = CG_PARTICLE_COLOR(i).rgb;
         gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(world, 1.0);
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
         vec4 texel = mix(texture(_Sheet, i.uv.xy), texture(_Sheet, i.uv.zw), i.blend);
-        vec3 tint = mix(_Color.rgb, _Hot.rgb, i.glow.x);
+        vec3 tint = mix(_Color.rgb, _Hot.rgb, i.glow.x) * i.tint;
         float soft = fx_particle_soft(CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / CG_RESOLUTION),
                 cg_LinearEyeDepth(gl_FragCoord.z), _SoftDistance);
         float strength = texel.a * i.glow.y * _Color.a * FX_PRESENCE * (0.35 + 0.65 * i.glow.x) * soft;

@@ -46,7 +46,7 @@ Buffers {
     OCCUPIED    ("Each slot's eight flags: something in it, then near its -x, +x, -y, +y, -z, +z face", uint, readwrite)
     RECORDS     ("A pool's particles",                                                             FxRecord, readonly)
     LIVE        ("How many are alive",                                                             uint,    readonly)
-    CURVES      ("Each parameter row's size and opacity curves",                                   vec2,    readonly)
+    CURVES      ("Each parameter row's curves and start values (range.compute's)",                 vec4,    readonly)
     RASTER      ("Each pool slot's: its origin from its grid's low corner and the grid, 0s, its densities", vec4, readonly)
 }
 
@@ -171,18 +171,20 @@ void Splat() {
     }
 }
 
-// Row row's size and opacity multipliers at t, between its two nearest samples (range.compute's range_curve).
+// Row row's size and opacity multipliers at t, between their two nearest samples: its shape curve's last lane and its
+// tint curve's (range.compute's range_row and range_curve).
 vec2 g_curve(uint row, float t) {
     float x = clamp(t, 0.0, 1.0) * float(_Texels - 1);
     int i0 = int(floor(x));
     int i1 = min(i0 + 1, _Texels - 1);
-    int at = int(row) * (_Texels + 1);
-    return mix(CURVES(at + i0), CURVES(at + i1), x - float(i0));
+    int at = int(row) * (2 * _Texels + 5);
+    float f = x - float(i0);
+    return vec2(mix(CURVES(at + i0).w, CURVES(at + i1).w, f), mix(CURVES(at + _Texels + i0).w, CURVES(at + _Texels + i1).w, f));
 }
 
 // Where r samples its curves: life progress, or its speed between its row's two (range.compute's range_curve_at).
 float g_curve_at(FxRecord r, float progress) {
-    vec2 speeds = CURVES(int(r.idSlot.w) * (_Texels + 1) + _Texels);
+    vec4 speeds = CURVES(int(r.idSlot.w) * (2 * _Texels + 5) + 2 * _Texels + 4);
     if (speeds.x < 0.0) return progress;
     return clamp((length(r.velocitySize.xyz) - speeds.x) / (speeds.y - speeds.x), 0.0, 1.0);
 }

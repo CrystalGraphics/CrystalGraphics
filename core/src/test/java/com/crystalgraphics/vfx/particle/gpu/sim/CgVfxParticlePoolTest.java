@@ -134,7 +134,7 @@ public class CgVfxParticlePoolTest {
         }
 
         public void writeCurves(float[] out, int at, int texels) {
-            Arrays.fill(out, at, at + 2 * texels, 1f);
+            Arrays.fill(out, at, at + 4 * (2 * texels + CgVfxGpuEmitter.CURVE_STARTS), 1f);
         }
 
         public int trailPoints() {

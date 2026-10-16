@@ -6,6 +6,7 @@ import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgReadback;
+import com.crystalgraphics.gl.buffer.shader.CgParticleBuffer;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
@@ -82,7 +83,7 @@ public final class CgVfxRange {
     private static final String KERNELS = "crystalgraphics:shaders/env/compute/vfx/range.compute";
     private static final String[] PLANES = {"_Plane0", "_Plane1", "_Plane2", "_Plane3", "_Plane4", "_Plane5"};
     private static final int GPU_RANGE = CgGpuTrace.name("vfx.pool.range");
-    private static final int DRAWN_BYTES = 64;
+    private static final int DRAWN_BYTES = CgParticleBuffer.RECORD_FLOATS * 4;
     /** The low key bits a sorting slot's view depth takes. */
     private static final int DEPTH_BITS = 16;
     /** Each pool's records start at a multiple of this in the shared buffers: a binding offset is a whole 256 bytes. */

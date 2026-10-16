@@ -24,7 +24,7 @@ Properties {
     _Bright ("Its light", float) = 2.5
 }
 
-struct v2f { vec3 world; vec3 stroke; };
+struct v2f { vec3 world; vec3 stroke; vec3 tint; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
@@ -51,10 +51,11 @@ Pass {
         vec3 p = head - dir * span * (1.0 - along);
         // Thickest just behind the head, a hair at the tail; the long ones a little wider.
         float taper = pow(sin(3.14159265 * pow(along, 1.6)), 0.7);
-        float width = n < 0 ? 0.0 : CG_PARTICLE_SIZE(i) * CG_OBJECT_CUSTOM0.z * taper * (0.7 + 0.6 * long3);
+        float width = n < 0 ? 0.0 : CG_PARTICLE_SIZE(i) * CG_PARTICLE_SCALE(i).x * CG_OBJECT_CUSTOM0.z * taper * (0.7 + 0.6 * long3);
         vec3 world = fx_ribbon_vertex(p, dir, FX_CAMERA, width, side);
         o.world = world;
         o.stroke = vec3(side, along, CG_PARTICLE_OPACITY(i));
+        o.tint = CG_PARTICLE_COLOR(i).rgb;
         gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(world, 1.0);
     }
 
@@ -65,7 +66,7 @@ Pass {
         // Dying out down its tail.
         float fade = along * along;
         vec3 col = (_Color.rgb * glow + _Hot.rgb * core) * fade * _Bright;
-        fragColor = vec4(col * i.stroke.z * _Color.a * FX_PRESENCE, 1.0);
+        fragColor = vec4(col * i.tint * i.stroke.z * _Color.a * FX_PRESENCE, 1.0);
     }
 }
 

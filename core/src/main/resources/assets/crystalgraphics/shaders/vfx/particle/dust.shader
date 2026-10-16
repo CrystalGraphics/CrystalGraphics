@@ -46,7 +46,7 @@ Properties {
 
 // where on it, its seed, how far through its life; its height over the floor (huge for none), its half height;
 // its velocity's heading, its speed
-struct v2f { vec3 world; vec4 puff; float opacity; vec2 light; vec2 ground; vec3 motion; };
+struct v2f { vec3 world; vec4 puff; float opacity; vec2 light; vec2 ground; vec3 motion; vec3 tint; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
@@ -65,7 +65,7 @@ Pass {
         vec3 up = vec3(cg_ViewMatrix[0][1], cg_ViewMatrix[1][1], cg_ViewMatrix[2][1]);
         int k = max(n, 0);
         float size = n < 0 ? 0.0 : CG_PARTICLE_SIZE(k) * CG_OBJECT_CUSTOM0.z;
-        vec2 extent = vec2(size, size * _Aspect);
+        vec2 extent = size * CG_PARTICLE_SCALE(k).xy * vec2(1.0, _Aspect);
         vec3 centre = origin + CG_PARTICLE_POSITION(k);
         // Standing on its floor: a puff held low by the ground is lifted so its foot, not its middle, meets it.
         vec2 floorAt = CG_PARTICLE_FLOOR(k);
@@ -77,6 +77,7 @@ Pass {
         o.puff = vec4(corner, CG_PARTICLE_SEED(k), CG_PARTICLE_PROGRESS(k));
         o.opacity = CG_PARTICLE_OPACITY(k);
         o.light = CG_PARTICLE_LIGHT(k);
+        o.tint = CG_PARTICLE_COLOR(k).rgb;
         o.ground = vec2(floored ? floorAt.x + raise + (world.y - centre.y) : 1.0e4, extent.y);
         vec3 velocity = CG_PARTICLE_VELOCITY(k);
         float speed = length(velocity.xz);
@@ -124,6 +125,6 @@ Pass {
         float faces = dot(normal, toBlast) * 0.5 + 0.5;
         float young = 1.0 - smoothstep(0.0, _GlowFor, life);
         col += _Hot.rgb * faces * faces * young * _Glow;
-        fragColor = vec4(col * alpha, alpha);
+        fragColor = vec4(col * i.tint * alpha, alpha);
     }
 }

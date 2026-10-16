@@ -11,7 +11,7 @@
 // shaded, and its own back lobes, what is behind it and the blast stay hidden. Shape and density are fx_billow.glsl's.
 // Drawn on CgVfxFrame.mesh's sphere, turned and sized per billow. CG_OBJECT_CUSTOM0.xyz: its velocity, which points away
 // from the blast it rolls out of. CG_OBJECT_CUSTOM1: x its life 0..1, y its seed, z its opacity, w how hot it still is
-// 0..1. _Color is the body, _Hot the blast's light. Where it meets a floor or a wall (CG_OBJECT_SPARE: the
+// 0..1; CG_OBJECT_CUSTOM2.rgb its colour. _Color is the body, _Hot the blast's light. Where it meets a floor or a wall (CG_OBJECT_SPARE: the
 // surface's normal and its centre's height over it, Range's) it squashes against it, and its underside's shade climbs
 // the lobes near it.
 #type spatial
@@ -142,10 +142,10 @@ Pass {
         // Backlit round its silhouette on the blast's side, through its thin edge.
         vec3 rim = glow * pow(1.0 - facing, 3.0) * hot * _Rim * smoothstep(-0.2, 0.5, faces);
 #ifdef CG_EMISSIVE_PASS
-        fragColor = vec4((glow * band * hot * hot * _Bloom + rim) * alpha, 0.0);
+        fragColor = vec4((glow * band * hot * hot * _Bloom + rim) * CG_OBJECT_CUSTOM2.rgb * alpha, 0.0);
         return;
 #endif
-        fragColor = vec4((col + light + rim) * alpha, alpha);
+        fragColor = vec4((col + light + rim) * CG_OBJECT_CUSTOM2.rgb * alpha, alpha);
     }
 }
 

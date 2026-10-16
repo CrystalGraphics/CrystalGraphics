@@ -15,6 +15,7 @@
 
 #include "crystalgraphics:shaders/lib/occlusion.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_world.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_rand.glsl"
 
 Properties {
     _Plane0 ("The frustum's planes, JOML's order, camera-relative", vec4)  = (0, 0, 0, 1)
@@ -28,7 +29,7 @@ Properties {
     _AllSlots  ("Every pool's slots: a culled particle's key",       int)   = 0
     _Alpha  ("How far the frame is from the last step to the next", float) = 1
     _Ahead  ("How far spin is pushed ahead, in seconds",            float) = 0
-    _Texels ("Samples a curve row holds",                           int)   = 256
+    _Texels ("Samples each curve of a row holds",                   int)   = 256
     _Floors ("1 when the pool's kinds land on a floor: Place writes it", int) = 0
     _DepthBits   ("0, or 16 when a slot sorts by view depth",        int)       = 0
     _ClipX       ("Projection times view: row 0",                    vec4)      = (1, 0, 0, 0)
@@ -60,6 +61,8 @@ struct FxDrawn {
     vec4 motion;
     vec4 state;
     vec4 light;
+    vec4 color;
+    vec4 scale;
 };
 
 // A slot's origin, absolute: its whole blocks, and where in that block; within.w its ground from there, NaN for none.
@@ -83,7 +86,7 @@ Buffers {
     STARTS  ("Where each slot's run starts in INDICES",           uint,     readonly)
     BASES   ("Where each slot's records start in its pool's DRAWN", uint,   readonly)
     ORIGINS ("Each slot's origin, absolute",                      FxOrigin, readonly)
-    CURVES  ("Each parameter row's size and opacity curves",      vec2,     readonly)
+    CURVES  ("Each parameter row's curves and start values",      vec4,     readonly)
     DRAWN   ("The particles a look draws",                        FxDrawn,  writeonly)
     OBJECTS ("The particles a mesh draws",                        FxObject, writeonly)
 }
@@ -125,21 +128,43 @@ void Key() {
     INDICES_WRITE(uint(CG_ELEMENT));
 }
 
-// Row row's size and opacity multipliers at t, between its two nearest samples. A row is _Texels samples, then its
-// domain's speeds.
-vec2 range_curve(uint row, float t) {
+// Where row's vec4s start: _Texels shape samples (each axis's scale, size), _Texels tint samples (rgb times intensity,
+// opacity), its two start colours, its two start scales, then its domain's speeds (CgVfxGpuEmitter.writeCurves).
+int range_row(uint row) {
+    return int(row) * (2 * _Texels + 5);
+}
+
+// The curve from vec4 `at` at t, between its two nearest samples.
+vec4 range_curve(int at, float t) {
     float x = clamp(t, 0.0, 1.0) * float(_Texels - 1);
     int i0 = int(floor(x));
     int i1 = min(i0 + 1, _Texels - 1);
-    int at = int(row) * (_Texels + 1);
     return mix(CURVES(at + i0), CURVES(at + i1), x - float(i0));
 }
 
 // Where r samples its curves (CgVfxCurveDomain.at): life progress, or its speed between its row's two.
 float range_curve_at(FxRecord r, float progress) {
-    vec2 speeds = CURVES(int(r.idSlot.w) * (_Texels + 1) + _Texels);
+    vec4 speeds = CURVES(range_row(r.idSlot.w) + 2 * _Texels + 4);
     if (speeds.x < 0.0) return progress;
     return clamp((length(r.velocitySize.xyz) - speeds.x) / (speeds.y - speeds.x), 0.0, 1.0);
+}
+
+// What r draws as at life progress t: its size, each axis's scale of it, and its colour, alpha its opacity. Its starts
+// are Niagara's non-uniform ranges: each channel and axis rolled on its own from its seed, between its row's two ends.
+struct FxLook { float size; vec3 scale; vec4 color; };
+
+FxLook range_look(FxRecord r, float t) {
+    int at = range_row(r.idSlot.w), starts = at + 2 * _Texels;
+    float u = range_curve_at(r, t);
+    vec4 shape = range_curve(at, u), tint = range_curve(at + _Texels, u);
+    uint bits = floatBitsToUint(r.seedSpin.x);
+    vec4 colorRoll = vec4(fx_rand(bits, 0u, 20u), fx_rand(bits, 0u, 21u), fx_rand(bits, 0u, 22u), fx_rand(bits, 0u, 23u));
+    vec3 scaleRoll = vec3(fx_rand(bits, 0u, 24u), fx_rand(bits, 0u, 25u), fx_rand(bits, 0u, 26u));
+    FxLook l;
+    l.size = r.velocitySize.w * shape.w;
+    l.scale = mix(CURVES(starts + 2).xyz, CURVES(starts + 3).xyz, scaleRoll) * shape.xyz;
+    l.color = mix(CURVES(starts), CURVES(starts + 1), colorRoll) * tint;
+    return l;
 }
 
 // The slot whose records hold element e of this pool's, numbered across every pool: the last base at or below it,
@@ -188,13 +213,17 @@ void Place() {
     d.motion = vec4(0.0);
     d.state = vec4(0.0);
     d.light = vec4(range_light_word(vec2(15.0)), 0.0, 0.0, 0.0);
+    d.color = vec4(0.0);
+    d.scale = vec4(0.0);
     if (rank < int(VISIBLE(lo))) {
         FxRecord r = RECORDS(int(INDICES(int(STARTS(lo)) + rank)));
         float t = min(r.positionAge.w / r.previousLife.w, 1.0);
-        vec2 curve = range_curve(r.idSlot.w, range_curve_at(r, t));
-        d.place = vec4(r.previousLife.xyz + (r.positionAge.xyz - r.previousLife.xyz) * _Alpha, r.velocitySize.w * curve.x);
+        FxLook look = range_look(r, t);
+        d.place = vec4(r.previousLife.xyz + (r.positionAge.xyz - r.previousLife.xyz) * _Alpha, look.size);
         d.motion = vec4(r.velocitySize.xyz, t);
-        d.state = vec4(r.seedSpin.x, r.seedSpin.y + r.seedSpin.z * _Ahead, r.seedSpin.w, curve.y);
+        d.state = vec4(r.seedSpin.x, r.seedSpin.y + r.seedSpin.z * _Ahead, r.seedSpin.w, look.color.a);
+        d.color = look.color;
+        d.scale = vec4(look.scale, 0.0);
         // Light packed into one lane, its spawn id in the next: what a trail or ribbon of it reads (CG_PARTICLE_ID).
         vec2 ground = _Floors != 0 ? range_floor(lo, d.place.xyz, r.previousLife.y) : vec2(0.0);
         d.light = vec4(range_light_word(range_light(lo, d.place.xyz)), float(r.idSlot.x & 16777215u), ground);
@@ -235,23 +264,26 @@ void Objects() {
     if (rank < int(VISIBLE(lo))) {
         FxRecord r = RECORDS(int(INDICES(int(STARTS(lo)) + rank)));
         float t = min(r.positionAge.w / r.previousLife.w, 1.0);
-        vec2 curve = range_curve(r.idSlot.w, range_curve_at(r, t));
-        // CgVfxFrame.particleMeshes: turned by its seed and spin, sized by its size over life
+        FxLook look = range_look(r, t);
+        // CgVfxFrame.particleMeshes: turned by its seed and spin, sized on each of its own axes by its size over life
         float turn = r.seedSpin.x * 6.2831853 + r.seedSpin.y;
         mat3 turned = range_turn(turn * 1.7, turn * 2.3, turn);
-        float size = r.velocitySize.w * curve.x, inverse = size > 0.0 ? 1.0 / size : 0.0;
-        o.model0 = vec4(turned[0] * size, 0.0);
-        o.model1 = vec4(turned[1] * size, 0.0);
-        o.model2 = vec4(turned[2] * size, 0.0);
+        vec3 size = look.size * look.scale;
+        vec3 inverse = vec3(size.x != 0.0 ? 1.0 / size.x : 0.0, size.y != 0.0 ? 1.0 / size.y : 0.0,
+                size.z != 0.0 ? 1.0 / size.z : 0.0);
+        o.model0 = vec4(turned[0] * size.x, 0.0);
+        o.model1 = vec4(turned[1] * size.y, 0.0);
+        o.model2 = vec4(turned[2] * size.z, 0.0);
         o.model3 = vec4(r.previousLife.xyz + (r.positionAge.xyz - r.previousLife.xyz) * _Alpha, 1.0);
-        // Matrix4f.normal: the inverse transpose, a rotation over its size; its spare lanes what the particle rests on
+        // Matrix4f.normal: the inverse transpose, the rotation over each axis's size; its spare lanes what it rests on
         vec4 contact = range_contact(lo, o.model3.xyz);
-        o.normal0 = vec4(turned[0] * inverse, contact.x);
-        o.normal1 = vec4(turned[1] * inverse, contact.y);
-        o.normal2 = vec4(turned[2] * inverse, contact.z);
+        o.normal0 = vec4(turned[0] * inverse.x, contact.x);
+        o.normal1 = vec4(turned[1] * inverse.y, contact.y);
+        o.normal2 = vec4(turned[2] * inverse.z, contact.z);
         o.normal3 = vec4(range_light(lo, o.model3.xyz), 0.0, contact.w);
         o.custom0 = vec4(r.velocitySize.xyz, 0.0);
-        o.custom1 = vec4(t, r.seedSpin.x, curve.y, r.seedSpin.w);
+        o.custom1 = vec4(t, r.seedSpin.x, look.color.a, r.seedSpin.w);
+        o.custom2 = vec4(look.color.rgb, 0.0);
     }
     OBJECTS_WRITE(o);
 }

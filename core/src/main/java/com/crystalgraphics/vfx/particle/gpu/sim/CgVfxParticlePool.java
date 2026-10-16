@@ -112,11 +112,10 @@ public final class CgVfxParticlePool {
             "struct FxEvent { vec4 position; vec4 velocityAge; vec4 normal; ivec4 block; uvec4 ids; };";
     public static final int EVENT_BYTES = 80;
 
-    /**
-     * A curve row's words: {@link CgVfxGpuEmitter#CURVE_TEXELS} pairs of size and opacity multipliers, then its
-     * {@link CgVfxCurveDomain}'s speeds, (-1, -1) over life.
-     */
-    public static final int CURVE_WORDS = 2 * (CgVfxGpuEmitter.CURVE_TEXELS + 1);
+    /** A curve row's vec4s: what {@link CgVfxGpuEmitter#writeCurves} writes, then its {@link CgVfxCurveDomain}'s speeds. */
+    public static final int CURVE_VECTORS = 2 * CgVfxGpuEmitter.CURVE_TEXELS + CgVfxGpuEmitter.CURVE_STARTS + 1;
+    /** A curve row's words; its speeds are (-1, -1) over life. */
+    public static final int CURVE_WORDS = 4 * CURVE_VECTORS;
 
     /** Where the pools record their steps on {@link CgRenderStage#WORLD_OPAQUE}: ahead of the world renderer and Range. */
     public static final int ORDER = CgWorldRenderer.ORDER - 100;
@@ -1516,14 +1515,20 @@ public final class CgVfxParticlePool {
         }
         emitter.writeCurves(curveScratch, 0, CgVfxGpuEmitter.CURVE_TEXELS);
         CgVfxCurveDomain domain = emitter.curveDomain();
-        curveScratch[CURVE_WORDS - 2] = domain.min();
-        curveScratch[CURVE_WORDS - 1] = domain.max();
-        float most = 0f;
-        for (int w = 0; w < CURVE_WORDS; w++) {
-            curves[index * CURVE_WORDS + w] = Float.floatToRawIntBits(curveScratch[w]);
-            if ((w & 1) == 0 && w < CURVE_WORDS - 2) most = Math.max(most, curveScratch[w]);
+        curveScratch[CURVE_WORDS - 4] = domain.min();
+        curveScratch[CURVE_WORDS - 3] = domain.max();
+        curveScratch[CURVE_WORDS - 2] = 0f;
+        curveScratch[CURVE_WORDS - 1] = 0f;
+        for (int w = 0; w < CURVE_WORDS; w++) curves[index * CURVE_WORDS + w] = Float.floatToRawIntBits(curveScratch[w]);
+        // The largest a particle draws: its size times its widest axis, at its widest start scale.
+        float most = 0f, start = 0f;
+        for (int i = 0; i < CgVfxGpuEmitter.CURVE_TEXELS; i++) {
+            float axis = Math.max(Math.abs(curveScratch[4 * i]), Math.max(Math.abs(curveScratch[4 * i + 1]), Math.abs(curveScratch[4 * i + 2])));
+            most = Math.max(most, curveScratch[4 * i + 3] * axis);
         }
-        rowSizeMax[index] = most;
+        int starts = 8 * CgVfxGpuEmitter.CURVE_TEXELS + 8;
+        for (int w = starts; w < starts + 8; w++) if ((w & 3) != 3) start = Math.max(start, Math.abs(curveScratch[w]));
+        rowSizeMax[index] = most * start;
         if (shape.events() > 0) {
             List<CgVfxEvent> events = emitter.events();
             for (int e = 0; e < CgVfxEvent.MAX_EVENTS; e++) {

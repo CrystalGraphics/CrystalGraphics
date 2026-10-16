@@ -19,7 +19,7 @@ Properties {
     _CameraOffset ("Drawn this many of its sizes toward the eye, so one resting on a surface is not cut by it", float) = 1
 }
 
-struct v2f { vec3 world; vec4 speck; vec4 tone; float opacity; vec2 light; vec3 across; vec3 along; vec3 facing; };
+struct v2f { vec3 world; vec4 speck; vec4 tone; float opacity; vec2 light; vec3 across; vec3 along; vec3 facing; vec3 tint; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
@@ -44,7 +44,7 @@ Pass {
         vec3 centre = fx_particle_toward_eye(origin + CG_PARTICLE_POSITION(i), eye, _CameraOffset * size, keep);
         size *= keep;
         // From chunks to slivers.
-        vec2 extent = vec2(size, size * mix(0.25, 1.0, m.x * m.x));
+        vec2 extent = size * CG_PARTICLE_SCALE(i).xy * vec2(1.0, mix(0.25, 1.0, m.x * m.x));
         vec3 world = fx_particle_corner(centre, corner, extent, spin, right, up);
         o.world = world;
         // where on it, its shape seed, how spiky its edge is
@@ -58,6 +58,7 @@ Pass {
         o.facing = normalize(eye - centre);
         o.opacity = CG_PARTICLE_OPACITY(i);
         o.light = CG_PARTICLE_LIGHT(i);
+        o.tint = CG_PARTICLE_COLOR(i).rgb;
         gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(world, 1.0);
     }
 
@@ -93,7 +94,7 @@ Pass {
         float sky = 0.3 + 0.2 * normal.y;
         float occlusion = mix(0.55, 1.0, dome);
         float glint = pow(max(dot(reflect(-key, normal), i.facing), 0.0), 24.0) * i.tone.z;
-        vec3 rock = _Color.rgb * i.tone.y * (sky + 0.95 * diffuse) * occlusion + vec3(0.35 * glint);
+        vec3 rock = _Color.rgb * i.tint * i.tone.y * (sky + 0.95 * diffuse) * occlusion + vec3(0.35 * glint);
         fragColor = vec4(rock * alpha, alpha);
     }
 }

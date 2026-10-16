@@ -31,8 +31,9 @@ Buffers {
     HISTORY ("Every trail ring's points: CgVfxParticlePool.history()", vec4, readonly)
 }
 
-// trail: life 0..1, across -1..1, seconds along, back from the particle; shape: the cap's seconds, intensity, alive, seed
-struct v2f { vec4 trail; vec4 shape; };
+// trail: life 0..1, across -1..1, seconds along, back from the particle; shape: the cap's seconds, intensity, alive, seed;
+// tint: the particle's colour
+struct v2f { vec4 trail; vec4 shape; vec3 tint; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
@@ -84,6 +85,7 @@ Pass {
         float taper = mix(1.0, _Tail, v.uv.x);
         o.trail = vec4(v.uv.x, v.side, v.along, v.fromHead);
         o.shape = vec4(dt * 0.75, v.extra.y, v.alive, v.extra.z);
+        o.tint = CG_PARTICLE_COLOR(i).rgb;
         gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(fx_trail_place(v, taper), 1.0);
     }
 
@@ -94,8 +96,8 @@ Pass {
         vec3 light = fx_trail_glow(g, _Noise, i.trail, i.shape.x, FX_AGE, i.shape.w * 37.0, glow);
         if (dot(light, light) == 0.0) discard;
         float strength = i.shape.y * _Color.a * FX_PRESENCE;
-        fragColor = vec4(light * strength, 0.0);
-        CG_GLOW(glow * strength * _GlowGain);
+        fragColor = vec4(light * i.tint * strength, 0.0);
+        CG_GLOW(glow * i.tint * strength * _GlowGain);
     }
 }
 
