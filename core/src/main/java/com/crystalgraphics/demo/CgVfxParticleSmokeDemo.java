@@ -153,11 +153,14 @@ public final class CgVfxParticleSmokeDemo {
         vfx = drives ? CgVfx.owner("crystalgraphics", new CgVfxSystem()) : owner;
         this.font = font;
         slimeMould(-50f, 0f);
-        particleSmoke(-30f, 0f);
+        particleSmoke(-34f, -26f, 0f);
         nebula(-10f, 0f);
         fireWhirl(10f, 0f);
         fireflies(30f, 0f);
         comet(50f, 0f);
+        // -Dcrystalgraphics.demo.station=<words>: only the stations whose names hold them, for measuring one alone.
+        String only = System.getProperty("crystalgraphics.demo.station");
+        if (only != null) stations.removeIf(s -> !s.name().contains(only));
         floors = new float[stations.size()];
         for (Station s : stations) LOG.info("[vfx-particle-smoke] {} at x {}, z {}", s.name(), s.x(), s.z());
     }
@@ -191,24 +194,37 @@ public final class CgVfxParticleSmokeDemo {
     }
 
     /**
-     * Smoke made of particles: eight thousand rising from a vent through curl noise, each splatting density into the
-     * grid, which fades fast so the volume is where they are, drawn as lit smoke; the grid's slope pushes them out of where
-     * they crowd, so the column billows.
+     * Smoke made of particles, beside the same particles as sprites: puffs rising from a vent through billow-sized curl
+     * noise. The first station rasterizes them into a grid each frame, a soft ball each where it is drawn, and draws the
+     * grid as one lit body (the sun's shadow and the sky through all of it: a bright crown, a dark core). The second draws
+     * them as soft lit cards, the usual way.
      */
-    private void particleSmoke(float x, float z) {
-        CgVfxEmitter puffs = CgVfxEmitter.builder("smokeParticles").capacity(9000).rate(1700f, 0f, PERIOD - 5f)
-                .shape(CgSphere.of(0.7)).launch(0.6f, 1f, 1f).speed(1f, 2.2f).life(4f, 5.2f).size(0.05f, 0.05f)
+    private void particleSmoke(float volumeX, float spritesX, float z) {
+        CgVfxEmitter.Builder rising = CgVfxEmitter.builder("smokeSprites").capacity(2400).rate(700f, 0f, PERIOD - 5f)
+                .shape(CgSphere.of(0.7)).launch(0.6f, 1f, 1f).speed(1f, 2.2f).life(2.8f, 3.4f).size(0.7f, 0.7f)
                 .module(new CgVfxModule.Force(0f, 1.6f, 0f))
-                .module(new CgVfxModule.Turbulence(2.6f, 0.45f, 0.6f))
-                .module(new CgVfxModule.Gradient(0, 2.5f))
-                .module(new CgVfxModule.Drag(0.7f, 0f))
-                .module(new CgVfxModule.Splat(1.4f, 0f, 0f, 0f)).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxGrid3D.SMOKE).emitter(puffs)
-                .set(CgVfxGrid3D.CELL, 0.28f).set(CgVfxGrid3D.EXTINCTION, 2.2f)
+                // Swirls of a billow's size, gently: fine strong noise scattered the column into a haze.
+                .module(new CgVfxModule.Turbulence(1.2f, 1.5f, 0.6f))
+                .module(new CgVfxModule.Drag(0.7f, 0f));
+        CgVfxEmitter cards = rising.build();
+        // A hundred or so overlap at any point of the column: each faint, together opaque.
+        CgVfxEmitter puffs = rising.name("smokeParticles").capacity(4500).rate(1200f, 0f, PERIOD - 5f)
+                .rasterize(0.02f, 0f, 0f, 0f).build();
+        // Opaque in its core, so it shades as a body: the sun bright on its crown, its middle and underside dark.
+        CgVfxLook volume = CgVfxLook.builder(SCHEMA).params(CgVfxGrid3D.SCHEMA).emitter(puffs)
+                .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/grid/smoke.shader").on(CgVfxGrid3D.SLOT)
+                        .role(CgVfxLayer.Role.SMOKE).set("_Detail", 0f).build())
+                .set(CgVfxGrid3D.CELL, 0.28f).set(CgVfxGrid3D.EXTINCTION, 4f)
                 .set(CgVfxGrid3D.SMOKE_COLOR, 0xFFC9C6C2).build();
-        stations.add(new Station("smoke made of particles: eight thousand splatting a lit, billowing body", x, z, look, 13f,
+        stations.add(new Station("smoke made of particles: one lit, self-shadowed body they splat", volumeX, z, volume, 13f,
                 List.of(puffs), new float[][] {{0f, 0.5f, 0f}},
-                p -> p.grid = new CgVfxGrid3D(p).place(0f, 5.6f, 0f).channel(0, 2.2f, 0.08f), NOTHING));
+                p -> p.grid = new CgVfxGrid3D(p).place(0f, 5.6f, 0f).channel(0), NOTHING));
+        CgVfxLook sprites = CgVfxLook.builder(SCHEMA).emitter(cards)
+                .layer(CgVfxLayer.of(PARTICLE + "dust.shader").on(cards).set("_Aspect", 1f).set("_Thin", 0f)
+                        .set("_Color", 0.79f, 0.78f, 0.76f, 0.35f).role(CgVfxLayer.Role.SMOKE).build())
+                .build();
+        stations.add(new Station("the same particles as sprites: soft cards, each lit alone", spritesX, z, sprites, 10f,
+                List.of(cards), new float[][] {{0f, 0.5f, 0f}}, p -> { }, NOTHING));
     }
 
     /**

@@ -854,7 +854,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
                     Math.min(CgVfxGasAtlas.TILE * fed.cellSize(), emitter.emitter().reach(0f)));
         }
         CgVfxGrid3D painted = emitter.books().grid();
-        if (painted != null && emitter.emitter().splatsGrid()) {
+        if (painted != null && (emitter.emitter().splatsGrid() || emitter.emitter().rasterized() != null)) {
             // As a gas's: the tiles round the source ahead of its splats; a splat landing past them asks for its own.
             painted.wantTiles(emitter.originX() + emitter.sourceX(), emitter.originY() + emitter.sourceY(),
                     emitter.originZ() + emitter.sourceZ(),

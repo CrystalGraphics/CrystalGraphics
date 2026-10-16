@@ -179,6 +179,12 @@ public final class CgVfxParticlePool {
     private float[] slotGround = new float[0];
     /** Per slot: the radius it is culled as one sphere of about its origin, or 0 to cull each particle by its size. */
     private float[] slotSourceReach = new float[0];
+    /** Per slot: the grid its particles are drawn into each frame ({@code CgVfxEmitter.Builder.rasterize}), or null. */
+    private CgVfxGrid3D[] slotGrid = new CgVfxGrid3D[0];
+    /** {@link #rasterRows}: three vec4s a slot, uploaded each frame. */
+    @Nullable
+    private CgGraphBuffer rasterBuffer;
+    private ByteBuffer rasterBytes = ByteBuffer.allocate(0).order(ByteOrder.nativeOrder());
     /** Per slot: the parent slot and event it is fed by, and the parent's definition then; null pool for none. */
     private CgVfxParticlePool[] feedPool = new CgVfxParticlePool[0];
     private CgVfxGpuEmitter[] feedParent = new CgVfxGpuEmitter[0];
@@ -916,6 +922,7 @@ public final class CgVfxParticlePool {
         slotEmitter[slot] = null;
         slotOwner[slot] = null;
         slotCapacity[slot] = 0;
+        slotGrid[slot] = null;
         feedPool[slot] = null;
         openSlots--;
         while (slotCount > 0 && slotEmitter[slotCount - 1] == null) slotCount--;
@@ -1035,6 +1042,7 @@ public final class CgVfxParticlePool {
         slotOrigin[slot * 3 + 1] = view.originY();
         slotOrigin[slot * 3 + 2] = view.originZ();
         slotGround[slot] = groundY;
+        slotGrid[slot] = emitter.rasterized() != null ? view.grid() : null;
         int at = stepInstanceAt[s] + slot * instanceWords;
         String who = emitter.name();
         words.target(instances, at, INSTANCE_HEADER, who);
@@ -1205,6 +1213,53 @@ public final class CgVfxParticlePool {
     /** Each parameter row's curves, {@link #CURVE_WORDS} floats a row; null before the first step is recorded. */
     public CgGraphBuffer curves() {
         return curveBuffer;
+    }
+
+    /** Every pool alive: what the grids rasterize from ({@link #rasterRows}). Render thread. */
+    public static List<CgVfxParticlePool> pools() {
+        return Collections.unmodifiableList(ALL);
+    }
+
+    /** Whether a slot draws its particles into a grid each frame, with records to draw. */
+    public boolean rasterizes() {
+        if (records == null) return false;
+        for (int s = 0; s < slotCount; s++) if (slotGrid[s] != null && slotGrid[s].index() >= 0) return true;
+        return false;
+    }
+
+    /**
+     * Each slot's rasterizing this frame, uploaded into {@code recording}: three vec4s a slot, its origin from its grid's
+     * low corner in blocks and the grid's place (-1 for none), then 0s, then the density its particles hold in each
+     * channel. Read by {@code grid.compute}'s Rasterize as {@code RASTER}.
+     */
+    public CgGraphBuffer rasterRows(CgRecording recording) {
+        int bytes = Math.max(1, slotCount) * 48;
+        if (rasterBuffer == null || rasterBytes.capacity() < bytes) {
+            int size = Math.max(bytes, rasterBytes.capacity() * 2);
+            rasterBytes = ByteBuffer.allocate(size).order(ByteOrder.nativeOrder());
+            rasterBuffer = CgGraphBuffer.persistent("vfx.pool.raster", CgBufferDesc.of(size, CgBufferUsage.STORAGE,
+                    CgBufferUsage.COPY));
+        }
+        rasterBytes.clear();
+        for (int s = 0; s < Math.max(1, slotCount); s++) {
+            CgVfxGrid3D grid = s < slotCount ? slotGrid[s] : null;
+            int at = s * 48;
+            if (grid == null || grid.index() < 0 || grid.cellSize() <= 0f) {
+                for (int k = 0; k < 12; k++) rasterBytes.putFloat(at + k * 4, k == 3 ? -1f : 0f);
+                continue;
+            }
+            float half = CgVfxGridAtlas.SPAN * 0.5f * grid.cellSize();
+            float[] amounts = slotEmitter[s].rasterized();
+            rasterBytes.putFloat(at, (float) (slotOrigin[s * 3] - grid.x()) + half)
+                    .putFloat(at + 4, (float) (slotOrigin[s * 3 + 1] - grid.y()) + half)
+                    .putFloat(at + 8, (float) (slotOrigin[s * 3 + 2] - grid.z()) + half)
+                    .putFloat(at + 12, grid.index());
+            for (int k = 4; k < 8; k++) rasterBytes.putFloat(at + k * 4, 0f);
+            for (int c = 0; c < 4; c++) rasterBytes.putFloat(at + 32 + c * 4, amounts[c]);
+        }
+        rasterBytes.limit(Math.max(1, slotCount) * 48);
+        recording.update(rasterBuffer, 0, rasterBytes);
+        return rasterBuffer;
     }
 
     /** Whether {@code slot} is open. */
@@ -1496,6 +1551,7 @@ public final class CgVfxParticlePool {
         slotScale = Arrays.copyOf(slotScale, size);
         slotGround = Arrays.copyOf(slotGround, size);
         slotSourceReach = Arrays.copyOf(slotSourceReach, size);
+        slotGrid = Arrays.copyOf(slotGrid, size);
         ringFirst = Arrays.copyOf(ringFirst, size);
         ringPoints = Arrays.copyOf(ringPoints, size);
         feedPool = Arrays.copyOf(feedPool, size);

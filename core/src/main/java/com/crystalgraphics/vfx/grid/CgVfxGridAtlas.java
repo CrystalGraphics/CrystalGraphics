@@ -27,6 +27,9 @@ import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.vfx.CgVfxEffect;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
+import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
+import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.sparse.CgVfxTiles;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -34,7 +37,9 @@ import org.apache.logging.log4j.Logger;
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Every grid's cells on the GPU ({@link CgVfxGrid3D}), sparse: each grid {@link #SPAN} cells a side about its middle,
@@ -42,7 +47,8 @@ import java.util.Arrays;
  * as the gases hold theirs. A tile is given out where particles splat and where what a grid holds spreads, and taken
  * back once it has been empty a while, so a grid reaches as far as its particles go. Stepped once a frame by
  * {@code env/compute/vfx/grid.compute} on {@link CgRenderStage#WORLD_OPAQUE}, after the particles that splat into it and
- * the gases. A grid's layers and the particles reading it take {@link #view()} and {@link #pages()}; its light (the sun's
+ * the gases: each pool's particles that rasterize are drawn into their grids where Range draws them this frame, then
+ * every channel steps, a rebuilt one taking that frame's alone. A grid's layers and the particles reading it take {@link #view()} and {@link #pages()}; its light (the sun's
  * transmittance and the sky's light through channel x) is {@link #light()}.
  *
  * <pre>{@code
@@ -89,8 +95,8 @@ public final class CgVfxGridAtlas {
             """;
     /** What a particle step splatting into a grid appends ({@code GRID_SPLATS}): which cell and grid, then the amounts. */
     public static final String SPLAT_GLSL = "struct FxSplat { vec4 cell; vec4 amounts; };";
-    /** A grid's rows in {@code GRIDS}: its state, what each channel keeps, what each spreads, its light. */
-    static final int ROW_STATE = 0, ROW_KEEP = 1, ROW_SPREAD = 2, ROW_LIGHT = 3, ROWS = 4;
+    /** A grid's rows in {@code GRIDS}: its state, what each channel keeps, what each spreads, its light, which are rebuilt. */
+    static final int ROW_STATE = 0, ROW_KEEP = 1, ROW_SPREAD = 2, ROW_LIGHT = 3, ROW_REBUILT = 4, ROWS = 5;
     /** Frames a grid's effect may go unticked before its tiles are given back: asleep, cleared or dropped. */
     static final int STALE_FRAMES = 120;
     /** The most pages missed splats ask for in a frame. */
@@ -151,7 +157,10 @@ public final class CgVfxGridAtlas {
             noPages = CgGraphTexture.requested("vfx.grid.nopages", CgTextureDesc.volume(1, 1, 2, R32F));
     private final CgGraphBuffer noSplats = CgGraphBuffer.persistent("vfx.grid.nosplats",
             CgBufferDesc.of(256, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-    private CgKernel splat, wantedKernel, step, shade, lightKernel, occupancyKernel, coarsenKernel;
+    private CgKernel splat, rasterize, wantedKernel, step, shade, lightKernel, occupancyKernel, coarsenKernel;
+    /** This frame's pools that rasterize into a grid, and the rows each uploaded. */
+    private final List<CgVfxParticlePool> rasterizing = new ArrayList<>();
+    private final List<CgGraphBuffer> rasterRows = new ArrayList<>();
     private CgRenderStage.Registration registration;
     /** Each grid's place in the world's media: its low corner from the camera and its extinction, its cell. */
     private final float[] mediaRows = new float[CAPACITY * 4], mediaCells = new float[CAPACITY];
@@ -241,13 +250,15 @@ public final class CgVfxGridAtlas {
                 CgWorldRenderer.get().media().add(this::inject);
                 CgCompute file = CgCompute.load(KERNELS);
                 splat = file.kernel("Splat");
+                rasterize = file.kernel("Rasterize");
                 wantedKernel = file.kernel("Wanted");
                 step = file.kernel("Step");
                 shade = file.kernel("Shade");
                 lightKernel = file.kernel("Light");
                 occupancyKernel = file.kernel("Occupancy");
                 coarsenKernel = file.kernel("Coarsen");
-                for (CgKernel k : new CgKernel[] {splat, wantedKernel, step, shade, lightKernel, occupancyKernel, coarsenKernel}) {
+                for (CgKernel k : new CgKernel[] {splat, rasterize, wantedKernel, step, shade, lightKernel, occupancyKernel,
+                        coarsenKernel}) {
                     k.prepare();
                 }
             }
@@ -346,6 +357,17 @@ public final class CgVfxGridAtlas {
         recording.update(gridRows, 0, staging);
         tiles.upload(recording);
         recording.fill(tiles.occupancy(), 0);
+        rasterizing.clear();
+        rasterRows.clear();
+        if (coarsened < 0) {
+            List<CgVfxParticlePool> pools = CgVfxParticlePool.pools();
+            for (int i = 0; i < pools.size(); i++) {
+                CgVfxParticlePool p = pools.get(i);
+                if (!p.rasterizes() || p.curves() == null) continue;
+                rasterizing.add(p);
+                rasterRows.add(p.rasterRows(recording));
+            }
+        }
         if (coarsened >= 0) {
             beforeBytes.clear();
             int[] table = tiles.previous();
@@ -369,6 +391,14 @@ public final class CgVfxGridAtlas {
         } else {
             bind(pass.dispatch(splat, SPLATS)).bind("SPLATS", splats).bind("SPLAT_COUNT", splatCount)
                     .bind("SPLAT_SUM", splatSum).bind("WANT", this.want);
+            // Each pool's particles where Range draws them this frame: the same records, the same alpha.
+            for (int i = 0; i < rasterizing.size(); i++) {
+                CgVfxParticlePool p = rasterizing.get(i);
+                bind(pass.dispatch(rasterize, p.storage())).bind("RECORDS", p.records()).bind("LIVE", p.live())
+                        .bind("CURVES", p.curves()).bind("RASTER", rasterRows.get(i)).bind("SPLAT_SUM", splatSum)
+                        .bind("WANT", this.want).set("_Alpha", CgVfxRange.of(p).alpha())
+                        .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS);
+            }
         }
         pass.dispatch(wantedKernel, CAPACITY * PAGE_TABLE).bind("WANT", this.want).bind("WANTED", wanted)
                 .counter("WANTED", wantedCount, 0);
@@ -449,6 +479,7 @@ public final class CgVfxGridAtlas {
                 rows[at + ROW_SPREAD * 4 + c] = Math.min(MOST_SPREAD, grid.spread[c] * dt / (cell * cell));
             }
             put(at + ROW_LIGHT * 4, grid.extinction(), grid.lights() ? 1f : 0f, 0f, 0f);
+            for (int c = 0; c < 4; c++) rows[at + ROW_REBUILT * 4 + c] = grid.rebuilt[c] ? 1f : 0f;
         }
     }
 

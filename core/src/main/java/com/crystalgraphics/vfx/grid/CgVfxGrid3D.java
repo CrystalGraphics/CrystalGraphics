@@ -11,11 +11,17 @@ import com.crystalgraphics.vfx.look.CgVfxSlot;
 
 /**
  * A grid of cells an effect owns, riding with it, four channels a cell (x, y, z, w), on the GPU: what particles write
- * into and read back, and what a layer draws as a volume. Niagara's Grid3D: particles splat amounts into it
- * ({@code CgVfxModule.Splat}), each channel fades and spreads to its neighbours every frame, and particles steer by it
- * ({@code CgVfxModule.Follow}, {@code Gradient}). It is sparse, as the gas is: it holds cells only where something is,
- * so it reaches as far as its particles go. Its layers draw a channel as lit smoke ({@link #SMOKE}) or as glowing light
- * ({@link #GLOW}).
+ * into and read back, and what a layer draws as a volume. Niagara's Grid3D, with two kinds of channel:
+ * <ul>
+ *   <li><b>A trail</b> ({@link #channel(int, float, float)}): particles splat amounts into it each step
+ *       ({@code CgVfxModule.Splat}), it fades and spreads to its neighbours every frame, and particles steer by it
+ *       ({@code CgVfxModule.Follow}, {@code Gradient}). What particles leave behind.</li>
+ *   <li><b>Rebuilt</b> ({@link #channel(int)}): cleared every frame and filled from the particles that rasterize into it
+ *       ({@code CgVfxEmitter.Builder.rasterize}), each a soft ball where it is drawn this frame. A body made of
+ *       particles, moving exactly as they are drawn: Niagara's rasterization grid.</li>
+ * </ul>
+ * It is sparse, as the gas is: it holds cells only where something is, so it reaches as far as its particles go. Its
+ * layers draw a channel as lit smoke ({@link #SMOKE}) or as glowing light ({@link #GLOW}).
  *
  * <pre>{@code
  * public final class SlimeMould extends CgVfxEffect<SlimeMould> {
@@ -50,8 +56,9 @@ import com.crystalgraphics.vfx.look.CgVfxSlot;
  * }</pre>
  *
  * <pre>{@code
- * // particles as one body of smoke: each splats density, which fades fast, so the volume is where they are
- * new CgVfxGrid3D(this).place(0f, 4f, 0f).channel(0, 4f, 0.05f);         // and the look takes CgVfxGrid3D.SMOKE
+ * // particles as one body of smoke, lit through itself: channel x rebuilt each frame from soft balls where they are drawn
+ * CgVfxEmitter.builder("smoke").capacity(6000).rate(1500f).size(0.6f, 0.6f)...rasterize(0.3f, 0f, 0f, 0f).build();
+ * new CgVfxGrid3D(this).place(0f, 4f, 0f).channel(0);                   // and the look takes CgVfxGrid3D.SMOKE
  * }</pre>
  *
  * <ul>
@@ -60,11 +67,12 @@ import com.crystalgraphics.vfx.look.CgVfxSlot;
  *       a pool every grid shares ({@link CgVfxGridAtlas#tiles}). A grid whose splats keep landing past its share coarsens: its cells
  *       twice as wide, up to {@link CgVfxGridAtlas#MAX_LEVEL} times ({@link #level}), so it reaches further, softer,
  *       and past that what it holds fades out toward the tiles it lacks rather than stopping at an edge.</li>
- *   <li>A channel fades by its share a second and spreads to its neighbours (blocks² a second). A channel never set
+ *   <li>A trail fades by its share a second and spreads to its neighbours (blocks² a second). A channel never set
  *       keeps all it is given.</li>
- *   <li>Splats land a frame's particles' worth at a time, each spread over the eight cells about it by distance. One
- *       landing where the grid has no tile yet asks for it, and is lost until it arrives, two frames on; the tiles round
- *       each instance splatting are asked for ahead of it, and {@link #wantTiles} asks for more.</li>
+ *   <li>Splats land a frame's particles' worth at a time, each spread over the eight cells about it by distance; a
+ *       rasterized particle covers the cells within its size. One landing where the grid has no tile yet asks for it,
+ *       and is lost until it arrives, two frames on; the tiles round each instance writing it are asked for ahead of
+ *       it, and {@link #wantTiles} asks for more.</li>
  *   <li>Channel x is what {@link #SMOKE} draws and what the grid lights itself by ({@link #EXTINCTION}); {@link #lit}
  *       false skips that light for a grid drawn as glow, or not drawn at all.</li>
  *   <li>Call {@link #tick} every effect tick; one left unticked gives its place back. At most
@@ -104,8 +112,9 @@ public final class CgVfxGrid3D extends CgVfxElement {
             .build();
 
     private final CgVfxSlot slot;
-    /** Each channel's share lost a second, and blocks² spread a second. */
+    /** Each channel's share lost a second, and blocks² spread a second; whether it is rebuilt each frame instead. */
     final float[] fade = new float[4], spread = new float[4];
+    final boolean[] rebuilt = new boolean[4];
     private boolean lit = true;
     private float placeX, placeY, placeZ;
     /** Its place in the atlas, -1 for none; a cell in blocks there, and how many times it coarsened; its middle in the world. */
@@ -143,14 +152,30 @@ public final class CgVfxGrid3D extends CgVfxElement {
     }
 
     /**
-     * How channel {@code c} (0 to 3: x, y, z, w) changes each frame: {@code fade}, the share it loses a second, and
-     * {@code spread}, how far it diffuses, blocks² a second. Unless set, it keeps what it is given and stays put.
+     * Channel {@code c} (0 to 3: x, y, z, w) as a trail: {@code fade}, the share it loses a second, and {@code spread},
+     * how far it diffuses, blocks² a second. Unless set, it keeps what it is given and stays put.
      */
     public CgVfxGrid3D channel(int c, float fade, float spread) {
-        if (c < 0 || c > 3) throw new IllegalArgumentException("a grid's channel " + c + ": 0 to 3");
+        check(c);
         this.fade[c] = Math.max(0f, fade);
         this.spread[c] = Math.max(0f, spread);
+        rebuilt[c] = false;
         return this;
+    }
+
+    /**
+     * Channel {@code c} (0 to 3: x, y, z, w) rebuilt every frame: only what rasterizes into it this frame
+     * ({@code CgVfxEmitter.Builder.rasterize}), where it is drawn. What {@code Splat} adds lasts one frame.
+     */
+    public CgVfxGrid3D channel(int c) {
+        check(c);
+        fade[c] = spread[c] = 0f;
+        rebuilt[c] = true;
+        return this;
+    }
+
+    private static void check(int c) {
+        if (c < 0 || c > 3) throw new IllegalArgumentException("a grid's channel " + c + ": 0 to 3");
     }
 
     /** Whether it lights channel x's density by the sun and the sky ({@link #SMOKE} reads it): true unless set. */

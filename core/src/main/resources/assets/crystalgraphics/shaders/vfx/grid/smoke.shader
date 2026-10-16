@@ -27,7 +27,7 @@ Properties {
     _Noise      ("Gradient noise",                             sampler3D) = "cg_noise"
     _Voronoi    ("Voronoi",                                    sampler3D) = "cg_voronoi"
     _Smoke      ("The smoke in full light",                    color)     = (0.72, 0.71, 0.7, 1)
-    _Steps      ("Steps across the box, at most; never under half a cell", float) = 96.0
+    _StepCells  ("A step's length in cells",                  float)     = 0.5
     _Scattering ("Forward scattering, 0 to 0.9",               float)     = 0.6
     _Sun        ("The sun's strength in it",                   float)     = 1.0
     _Ambient    ("The sky's strength in it",                   float)     = 0.6
@@ -65,7 +65,9 @@ Pass {
         t.x = max(t.x, 0.0);
         t.y = min(t.y, FX_SCENE_DISTANCE(ray));
         if (t.y <= t.x) discard;
-        float dt = max((t.y - t.x) / _Steps, 0.5 * cell), tile = float(FX_SPARSE_TILE) * cell;
+        // Steps a cell's share long on a lattice fixed along the ray from the eye: the box round the tiles grows and
+        // shrinks as tiles come and go, and a march spread across it moved every sample at once.
+        float dt = max(_StepCells, 0.05) * cell, tile = float(FX_SPARSE_TILE) * cell;
         // Interleaved gradient noise (Jimenez, 2014): each pixel's steps start apart, so banding becomes grain.
         float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
 #ifdef CG_VOLUME_TARGET
@@ -79,7 +81,7 @@ Pass {
         vec3 albedo = srgb_to_linear(_Smoke.rgb);
         float transmit = 1.0, depth = 0.0;
         vec3 light = vec3(0.0);
-        float at = t.x + jitter * dt;
+        float at = (ceil(t.x / dt - jitter) + jitter) * dt;
         for (int k = 0; k < 512 && at < t.y; k++) {
             vec3 p = eye + ray * at;
             vec3 c = (p - corner) / cell;

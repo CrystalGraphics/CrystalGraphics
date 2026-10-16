@@ -87,6 +87,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final float perBlock, blockFrom, blockUntil, maxStep, inherit;
     /** Each particle's last positions its pool keeps for a {@code trails()} layer; 0 for none. */
     final int trailPoints;
+    /** The density each particle draws into its grid's four channels each frame; null for none. */
+    final float[] rasterized;
     /** The sweep as spawn k's front, {@code frontA k - frontB k^2} blocks, k held at its peak: what both paths read. */
     final float frontA, frontB;
     final float sizeMin, sizeMax, sizeSkew, spinMin, spinMax, heat;
@@ -122,6 +124,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         maxStep = b.maxStep;
         inherit = b.inherit;
         trailPoints = b.trailPoints;
+        rasterized = b.rasterized != null ? b.rasterized.clone() : null;
         sweep = b.sweep;
         // Spawn k is born k / rate into the rate's span T: the front, sweep (t - t^2 / 2T), in k.
         float span = b.rateUntil - b.rateFrom;
@@ -237,6 +240,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     @Override
     public int trailPoints() {
         return trailPoints;
+    }
+
+    @Override
+    public float[] rasterized() {
+        return rasterized;
     }
 
     @Override
@@ -395,6 +403,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private CgVfxSpawnShape.Builder spawn = new CgVfxSpawnShape.Builder();
         private float sweep, perBlock, blockFrom, blockUntil, inherit, maxStep = 8f;
         private int trailPoints;
+        private float[] rasterized;
         private float upMin = -1f, upMax = 1f, upBias = 1f;
         private float speedMin, speedMax;
         private float lifeMin = 1f, lifeMax = 1f;
@@ -431,6 +440,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             maxStep = e.maxStep;
             inherit = e.inherit;
             trailPoints = e.trailPoints;
+            rasterized = e.rasterized;
             sweep = e.sweep;
             upMin = e.upMin;
             upMax = e.upMax;
@@ -775,6 +785,27 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         public Builder trail(int points) {
             if (points < 2 || points > 64) throw new IllegalArgumentException("trail(" + points + "): 2 to 64 points");
             this.trailPoints = points;
+            return this;
+        }
+
+        /**
+         * Draws its particles into their instance's grid each frame ({@code CgVfxEmitterInstance.inGrid}): each a soft
+         * ball as wide as it is drawn, holding this density at its middle in the grid's four channels, scaled by its
+         * opacity over life. The grid's rebuilt channels ({@code CgVfxGrid3D.channel(c)}) hold only this frame's balls, so
+         * a volume drawn from them is where the particles are drawn, as a sprite is: Niagara's rasterization grid.
+         *
+         * <pre>{@code
+         * CgVfxEmitter.builder("smoke").capacity(6000).rate(1500f).size(0.6f, 0.6f)...rasterize(0.3f, 0f, 0f, 0f).build();
+         * new CgVfxGrid3D(effect).place(0f, 5f, 0f).channel(0);   // channel x rebuilt each frame from them
+         * }</pre>
+         *
+         * <ul>
+         *   <li>A particle under a cell wide is drawn a cell wide: give it a size of a few cells.</li>
+         *   <li>Into a channel that fades ({@code channel(c, fade, spread)}) it draws nothing: that is {@code Splat}'s.</li>
+         * </ul>
+         */
+        public Builder rasterize(float x, float y, float z, float w) {
+            this.rasterized = new float[] {x, y, z, w};
             return this;
         }
 

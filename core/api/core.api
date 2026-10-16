@@ -9614,6 +9614,7 @@ com/crystalgraphics/vfx/grid/CgVfxGrid3D
   method public <init> (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/look/CgVfxSlot;)V
   method public bounds ([F)Z
   method public cellSize ()F
+  method public channel (I)Lcom/crystalgraphics/vfx/grid/CgVfxGrid3D;
   method public channel (IFF)Lcom/crystalgraphics/vfx/grid/CgVfxGrid3D;
   method public extinction ()F
   method public index ()I
@@ -10133,6 +10134,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter
   method public optional ()Z
   method public peakAlive ()I
   method public peakChildren (I)I
+  method public rasterized ()[F
   method public reach (F)F
   method public renderer ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer;
   method public scaled (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
@@ -10175,6 +10177,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter$Builder
   method public ordered (I)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public outward ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public pointing (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
+  method public rasterize (FFFF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public rate (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public rate (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public ratePerBlock (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
@@ -10865,6 +10868,7 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter
   field public,static,final SPAWN_VECTORS I
   method public curveDomain ()Lcom/crystalgraphics/vfx/particle/gpu/CgVfxCurveDomain;
   method public events ()Ljava/util/List;
+  method public rasterized ()[F
   method public spawnsOnMesh ()Z
   method public trailPoints ()I
   method public,abstract modules ()Ljava/util/List;
@@ -10950,6 +10954,7 @@ com/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange
   access public,final
   extends java/lang/Object
   field public,static,final ORDER I
+  method public alpha ()F
   method public base (I)I
   method public drawn ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public frame (FF)Lcom/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange;
@@ -11005,6 +11010,8 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   method public origin (II)D
   method public paramRow (I)I
   method public queuedSteps ()I
+  method public rasterRows (Lcom/crystalgraphics/render/graph/CgRecording;)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
+  method public rasterizes ()Z
   method public record (Lcom/crystalgraphics/render/graph/CgRecording;)V
   method public records ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public ringFirst (I)I
@@ -11019,6 +11026,7 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   method public,static entities (DDDF)V
   method public,static listen (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEventListener;)V
   method public,static of (Ljava/lang/Object;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;
+  method public,static pools ()Ljava/util/List;
   method public,static prepare (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)V
   method public,static record (Lcom/crystalgraphics/render/graph/CgRecording;Ljava/util/List;)V
   method public,static release (Ljava/lang/Object;)V

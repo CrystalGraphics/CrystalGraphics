@@ -251,6 +251,11 @@ public final class CgVfxRange {
         return this;
     }
 
+    /** How far this frame is from the pool's last step to its next, as {@link #frame} set it: where a particle is drawn. */
+    public float alpha() {
+        return alpha;
+    }
+
     /** The particle records every pool's draws read, {@code CgParticleBuffer}'s layout, a slot's from {@link #base}. */
     public CgGraphBuffer drawn() {
         int need = Math.max(1, drawnBefore(ALL.size()));

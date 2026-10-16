@@ -1,14 +1,17 @@
 // Every grid's step (CgVfxGrid3D, CgVfxGridAtlas), once a frame: four channels a cell, sparse, in tiles of a pool
 // (CgVfxTiles) found through each grid's page table, so a grid holds cells only where something is and reaches as far
-// as it goes. Splat spreads what particles splatted (CgVfxModule.Splat) over the eight cells about each by distance,
-// marking each page it found no tile in, which Wanted lists for the atlas to give out; Step fades each channel and
-// spreads it to its neighbours (explicit diffusion; a cell with no tile is empty) and adds the splats; Shade writes what
+// as it goes. Splat spreads what particles splatted (CgVfxModule.Splat) over the eight cells about each by distance;
+// Rasterize, once per pool, draws each particle that rasterizes (CgVfxEmitter.Builder.rasterize) as a soft ball as wide
+// as it is drawn, where Range draws it this frame; both mark each page they found no tile in, which Wanted lists for the
+// atlas to give out. Step fades each trail channel and spreads it to its neighbours (explicit diffusion; a cell with no
+// tile is empty) and adds the splats, and gives each rebuilt channel this frame's sum alone; Shade writes what
 // layers and particles read, with two cells of apron round each tile for filtered reads, faded out over three cells
 // toward a face with no tile beyond it, so a missing tile never shows as an edge; Light, for lit grids, the sun's
 // transmittance and the sky's light through channel x; Occupancy, what each tile holds and which faces it nears.
 // Coarsen, on a frame a grid ran out of tiles, refills that grid's tiles on cells twice as wide from the 2x2x2 cells
 // under each, through its page table before, and copies every other grid's as they were.
 #pragma kernel Splat scatter
+#pragma kernel Rasterize scatter
 #pragma kernel Wanted append
 #pragma kernel Step 4 4 4 image
 #pragma kernel Shade 4 4 4 image
@@ -24,9 +27,13 @@ Properties {
     _Pages ("Each grid's page table",                          sampler3D) = "black"
     _Before ("The coarsened grid's page table before",         sampler3D) = "black"
     _Coarsened ("The grid coarsened this frame",               int)       = -1
+    _Alpha  ("How far the frame is from the pool's last step to its next, as Range draws it", float) = 1
+    _Texels ("Samples a curve row holds",                       int)       = 256
 }
 
 struct FxSplat { vec4 cell; vec4 amounts; };
+// A particle as a pool stores it: CgVfxRecord.GLSL.
+struct FxRecord { vec4 positionAge; vec4 previousLife; vec4 velocitySize; vec4 seedSpin; uvec4 idSlot; };
 
 Buffers {
     GRIDS       ("Each grid's four rows (CgVfxGridAtlas.ROW_*)",                                     vec4,    readonly)
@@ -37,6 +44,10 @@ Buffers {
     WANT        ("1 for each page a splat found no tile in, a page table's worth a grid",           uint,    readwrite)
     WANTED      ("The pages WANT marked, each grid * PAGES³ + page + 1",                           uint,    append)
     OCCUPIED    ("Each slot's eight flags: something in it, then near its -x, +x, -y, +y, -z, +z face", uint, readwrite)
+    RECORDS     ("A pool's particles",                                                             FxRecord, readonly)
+    LIVE        ("How many are alive",                                                             uint,    readonly)
+    CURVES      ("Each parameter row's size and opacity curves",                                   vec2,    readonly)
+    RASTER      ("Each pool slot's: its origin from its grid's low corner and the grid, 0s, its densities", vec4, readonly)
 }
 
 Images {
@@ -47,8 +58,10 @@ Images {
 
 // Rows of a grid in GRIDS: its state (live, what a splat is scaled by: an eighth a coarsening, so a particle adds the
 // same density whatever the cells, 0, a cell in blocks), what each channel keeps this frame, what each
-// spreads to its neighbours, and its light (channel x's extinction a block, 1 to light it).
-const int G_ROWS = 4;
+// spreads to its neighbours, its light (channel x's extinction a block, 1 to light it), and 1 for each channel rebuilt.
+const int G_ROWS = 5;
+// The widest a rasterized particle is drawn, in cells: a larger one is drawn this wide.
+const float G_RASTER_CELLS = 4.0;
 const int G_TILE = FX_SPARSE_TILE;
 const int G_PAGES = FX_SPARSE_PAGES;
 const int G_SPAN = FX_SPARSE_SPAN;
@@ -158,6 +171,68 @@ void Splat() {
     }
 }
 
+// Row row's size and opacity multipliers at t, between its two nearest samples (range.compute's range_curve).
+vec2 g_curve(uint row, float t) {
+    float x = clamp(t, 0.0, 1.0) * float(_Texels - 1);
+    int i0 = int(floor(x));
+    int i1 = min(i0 + 1, _Texels - 1);
+    int at = int(row) * (_Texels + 1);
+    return mix(CURVES(at + i0), CURVES(at + i1), x - float(i0));
+}
+
+// Where r samples its curves: life progress, or its speed between its row's two (range.compute's range_curve_at).
+float g_curve_at(FxRecord r, float progress) {
+    vec2 speeds = CURVES(int(r.idSlot.w) * (_Texels + 1) + _Texels);
+    if (speeds.x < 0.0) return progress;
+    return clamp((length(r.velocitySize.xyz) - speeds.x) / (speeds.y - speeds.x), 0.0, 1.0);
+}
+
+void Rasterize() {
+    if (uint(CG_ELEMENT) >= LIVE(0)) return;
+    FxRecord r = RECORDS(CG_ELEMENT);
+    int slot = int(r.idSlot.y);
+    vec4 into = RASTER(slot * 3);
+    if (into.w < 0.0) return;
+    int b = int(into.w + 0.5);
+    vec4 state = GRIDS(b * G_ROWS);
+    if (state.x < 0.5) return;
+    float t = min(r.positionAge.w / r.previousLife.w, 1.0);
+    vec2 curve = g_curve(r.idSlot.w, g_curve_at(r, t));
+    // Into rebuilt channels alone: a trail takes what Splat adds a step, never a frame's worth.
+    vec4 density = RASTER(slot * 3 + 2) * GRIDS(b * G_ROWS + 4) * curve.y;
+    if (all(equal(density, vec4(0.0)))) return;
+    // Where Range draws it, as wide as it is drawn (its size over life), never under a cell nor past G_RASTER_CELLS.
+    vec3 p = r.previousLife.xyz + (r.positionAge.xyz - r.previousLife.xyz) * _Alpha;
+    float cell = state.w;
+    float radius = clamp(r.velocitySize.w * curve.x / cell, 1.0, G_RASTER_CELLS);
+    vec3 q = (p + into.xyz) / cell;
+    ivec3 lo = ivec3(floor(q - radius)), hi = ivec3(floor(q + radius));
+    for (int z = lo.z; z <= hi.z; z++) {
+        for (int y = lo.y; y <= hi.y; y++) {
+            for (int x = lo.x; x <= hi.x; x++) {
+                ivec3 c = ivec3(x, y, z);
+                if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(G_SPAN)))) continue;
+                vec3 d = (vec3(c) + 0.5 - q) / radius;
+                float k = 1.0 - dot(d, d);
+                if (k <= 0.0) continue;
+                int at = fx_sparse_slot_of(_Pages, b, c >> 4);
+                if (at < 0) {
+                    ivec3 tile = c >> 4;
+                    WANT_MAX(b * G_PAGES * G_PAGES * G_PAGES + tile.x + G_PAGES * (tile.y + G_PAGES * tile.z), 1u);
+                    continue;
+                }
+                // A ball easing to nothing at its edge (Unreal's falloff): density at its middle, overlaps adding.
+                vec4 a = density * (k * k);
+                int sum = g_sum_at(at, c);
+                if (a.x != 0.0) SPLAT_SUM_ADD(sum, a.x);
+                if (a.y != 0.0) SPLAT_SUM_ADD(sum + 1, a.y);
+                if (a.z != 0.0) SPLAT_SUM_ADD(sum + 2, a.z);
+                if (a.w != 0.0) SPLAT_SUM_ADD(sum + 3, a.w);
+            }
+        }
+    }
+}
+
 void Wanted() {
     if (uint(CG_ELEMENT) >= uint(WANT_LENGTH())) return;
     if (WANT(CG_ELEMENT) != 0u) WANTED_APPEND(uint(CG_ELEMENT) + 1u);
@@ -176,7 +251,9 @@ void Step() {
             + g_last(g, c + ivec3(0, 0, 1)) + g_last(g, c - ivec3(0, 0, 1));
     v = (v + GRIDS(g.b * G_ROWS + 2) * (around - 6.0 * v)) * GRIDS(g.b * G_ROWS + 1);
     int at = g_sum_at(g.slot, c);
-    v += vec4(SPLAT_SUM(at), SPLAT_SUM(at + 1), SPLAT_SUM(at + 2), SPLAT_SUM(at + 3));
+    vec4 sum = vec4(SPLAT_SUM(at), SPLAT_SUM(at + 1), SPLAT_SUM(at + 2), SPLAT_SUM(at + 3));
+    // A trail keeps what it held, faded and spread, plus this frame's; a rebuilt channel this frame's alone.
+    v = mix(v + sum, sum, GRIDS(g.b * G_ROWS + 4));
     STATE_OUT_WRITE(clamp(v, vec4(-G_MOST), vec4(G_MOST)));
 }
 

@@ -1036,6 +1036,7 @@ sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debr
 | `module(m)`, `clearModules()` | a physics piece, run in order ([§12](#12-modules-and-events)) |
 | `event(e)` | children spawned or rows reported when something happens to a particle ([§12](#12-modules-and-events)) |
 | `trail(points)` | its last positions kept, for a `trails()` layer ([§13](#13-trails-and-ribbons)) |
+| `rasterize(x, y, z, w)` | drawn into its instance's grid each frame, a soft ball as wide as it is drawn holding that density in each channel: a body of particles a grid layer draws lit through itself (`CgVfxGrid3D.channel(c)`) |
 | `sweep(speed)` | born on a front running out at that speed; rate spawns only |
 | `local()` | its particles ride the effect as it moves, rather than staying where they were born |
 | `optional()` | detail: halved at the Low quality tier |

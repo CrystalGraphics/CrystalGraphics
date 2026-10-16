@@ -32,7 +32,7 @@ Properties {
     _Voronoi    ("Voronoi",                                    sampler3D) = "cg_voronoi"
     _Detail     ("Its faint reaches worn into filaments, 0 to 1", float)  = 0.0
     _DetailSize ("That noise's size, blocks",                  float)     = 1.0
-    _Steps      ("Steps across the box, at most; never under half a cell", float) = 96.0
+    _StepCells  ("A step's length in cells",                  float)     = 0.5
 }
 
 struct v2f { vec3 world; };
@@ -64,7 +64,9 @@ Pass {
         t.x = max(t.x, 0.0);
         t.y = min(t.y, FX_SCENE_DISTANCE(ray));
         if (t.y <= t.x) discard;
-        float dt = max((t.y - t.x) / _Steps, 0.5 * cell), tile = float(FX_SPARSE_TILE) * cell;
+        // Steps a cell's share long on a lattice fixed along the ray from the eye: the box round the tiles grows and
+        // shrinks as tiles come and go, and a march spread across it moved every sample at once.
+        float dt = max(_StepCells, 0.05) * cell, tile = float(FX_SPARSE_TILE) * cell;
         float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
 #ifdef CG_VOLUME_TARGET
         jitter = fract(jitter + 0.618034 * float(CG_FRAME_INDEX % 64));
@@ -75,7 +77,7 @@ Pass {
         float hotAt = max(_HotAt, 1.0e-3);
         float transmit = 1.0, weight = 0.0, depth = 0.0;
         vec3 emit = vec3(0.0);
-        float at = t.x + jitter * dt;
+        float at = (ceil(t.x / dt - jitter) + jitter) * dt;
         for (int k = 0; k < 512 && at < t.y; k++) {
             vec3 p = eye + ray * at;
             vec3 c = (p - corner) / cell;

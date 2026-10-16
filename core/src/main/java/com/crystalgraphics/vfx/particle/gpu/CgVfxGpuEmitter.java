@@ -64,6 +64,14 @@ public interface CgVfxGpuEmitter {
     }
 
     /**
+     * The density each particle holds at its middle in the four channels of its instance's grid, drawn there each frame
+     * where the particle is drawn; null for none. The array itself, read every frame: never written.
+     */
+    default float[] rasterized() {
+        return null;
+    }
+
+    /**
      * What its particles do that it reacts to, in order: an event's index here is what {@link CgVfxEvent#childKey} and
      * {@link CgVfxEventListener} name it by. The triggers' kinds join its {@link CgVfxShape}; at most
      * {@link CgVfxEvent#MAX_EVENTS}.
