@@ -43,10 +43,11 @@ import java.util.Arrays;
  *   <li>A slot's tile is fresh from {@link #want} until {@link #stepped}: its kernels read nothing of what the pool held
  *       there before.</li>
  *   <li>A tile nothing asks for, and the GPU found nothing in, goes after {@link #FREE_AFTER} frames.</li>
- *   <li>Free tiles go to whoever asks. Once the pool is full, a volume under its even share among those alive
- *       ({@link #live}) takes the least recently needed tile of the volume furthest past its own, whose cells there are
- *       lost: one spreading without end never starves the rest, and one alone may take the whole pool. A volume refused
- *       a tile grows no further there: the counter {@code <name>.pool-full} and one warning say so.</li>
+ *   <li>Free tiles go to whoever asks, until a volume is refused one; for {@link #FREE_AFTER} frames after, only to a
+ *       volume under its even share among those alive ({@link #live}). Once the pool is full, a volume under its share
+ *       takes a tile of the volume furthest past its own, an empty one first, else the least recently needed, whose
+ *       cells there are lost: one spreading without end never starves the rest, and one alone may take the whole pool.
+ *       A volume refused a tile grows no further there: the counter {@code <name>.pool-full} and one warning say so.</li>
  *   <li>Render thread.</li>
  * </ul>
  */
@@ -83,6 +84,8 @@ public final class CgVfxTiles {
     /** What the GPU found, FLAGS a slot, as the last readback delivered it. */
     private int[] occupied = new int[0];
     private int poolTiles, usedLayers, readSlots, full, share, inUse;
+    /** The frame a volume was last refused a tile: the pool is contended until FREE_AFTER past it. */
+    private int contended = Integer.MIN_VALUE / 2;
     private final ByteBuffer pageBytes = ByteBuffer.allocate(PAGES * PAGES * PAGES * 4).order(ByteOrder.nativeOrder());
     private ByteBuffer staging = ByteBuffer.allocate(0);
     @Nullable
@@ -157,23 +160,28 @@ public final class CgVfxTiles {
     }
 
     /**
-     * A slot for volume {@code b}: a free one, else, while it is under its share, the least recently needed tile of the
-     * volume furthest past its own, taken back; -1 for none.
+     * A slot for volume {@code b}: a free one, else, while it is under its share, a tile of the volume furthest past its
+     * own, taken back; -1 for none. Contended, one at its share takes no free slot: a volume climbing past its share on
+     * a slot freed a moment ago was taken back by the next under it, its live tiles swapped out and in every second.
      */
-    private int slotFor(int b) {
-        if (inUse < poolTiles) {
+    private int slotFor(int b, int now) {
+        if (inUse < poolTiles && (held[b] < share || now - contended > FREE_AFTER)) {
             for (int s = 0; s < poolTiles; s++) if (slotOwner[s] < 0) return s;
         }
         if (held[b] >= share) return -1;
         int over = -1;
         for (int o = 0; o < owners; o++) if (o != b && held[o] > share && (over < 0 || held[o] > held[over])) over = o;
         if (over < 0) return -1;
-        int oldest = -1;
-        for (int s = 0; s < poolTiles; s++) {
-            if (slotOwner[s] == over && (oldest < 0 || slotSeen[s] < slotSeen[oldest])) oldest = s;
-        }
-        free(oldest);
-        return oldest;
+        // An empty tile first: every live one was asked for this frame, so by age alone a live one ties with the rest.
+        int taken = -1;
+        for (int s = 0; s < poolTiles; s++) if (slotOwner[s] == over && (taken < 0 || before(s, taken))) taken = s;
+        free(taken);
+        return taken;
+    }
+
+    private boolean before(int s, int than) {
+        boolean empty = occupied[s * FLAGS] == 0, thanEmpty = occupied[than * FLAGS] == 0;
+        return empty != thanEmpty ? empty : slotSeen[s] < slotSeen[than];
     }
 
     /** Owner {@code b}'s tiles under tile row {@code ty} are refused: a gas wholly under its floor. */
@@ -252,7 +260,7 @@ public final class CgVfxTiles {
             slotSeen[had - 1] = now;
             return true;
         }
-        int s = slotFor(b);
+        int s = slotFor(b, now);
         if (s >= 0) {
             held[b]++;
             inUse++;
@@ -264,6 +272,7 @@ public final class CgVfxTiles {
             pagesDirty[b] = true;
             return true;
         }
+        contended = now;
         CgVfxTrace.count(fullCounter, 1);
         if (full++ == 0) {
             LOG.warn("[{}] the pool's {} tiles are given out: a volume at its share ({}) was refused one", name, poolTiles,
