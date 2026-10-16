@@ -1345,7 +1345,7 @@ static final CgVfxKit EMBERS_KIT = CgVfxFluid.kit("mymod:fluid/embers", EMBERS);
 - **Every fluid shares one pool of tiles**: 1024 at Ultra, 512 at High, 256 at Medium, 128 at Low. Once the pool is
   full each fluid alive is kept an even share of it; the counters `vfx.fluid.tiles` and `vfx.fluid.pool-full` say how
   full it runs. Changing tier starts every fluid again empty. Give each fluid a `domain` that holds what it shows, and
-  many share the pool with none refused.
+  many share the pool with none refused: `vfx-fluid`'s nine fit Ultra's 1024 tiles.
 - **It steps 60 times a second on its effect's clock** (Flow's time stepper), and draws the time past its last step by
   carrying its smoke on (Flow's interpolation), so slow motion moves every frame. An effect left unticked for two
   seconds gives its tiles back. Under the GPU's budget (`CgVfxFluidAtlas.GPU_BUDGET`, 2 ms) its pressure solve takes
@@ -1374,9 +1374,16 @@ sparks = new CgVfxEmitterInstance(look().emitter("sparks"), seed).inGas(fire);  
 
 ### Showcases
 
-`CgVfxFluidDemo` (the harness's `vfx-fluid`) plays scenes the ported engines ship as code: Flow's editor stage
-`sphere` at a block for every 10 cm, Mantaflow's `fire.py` and `simpleplume.py`, and a CS2 smoke grenade
-([§15](#15-smoke-that-fills-a-space-cs2s-grenades)). Each station's javadoc names the file it is set up from.
+`CgVfxFluidDemo` (the harness's `vfx-fluid`; N and Shift+N fly between stations, M back to the whole grid) plays:
+
+- scenes the ported engines ship as code: Flow's editor stage `sphere` at a block for every 10 cm, Mantaflow's
+  `fire.py` and `simpleplume.py` in their grids' sizes, each station's javadoc naming the file it is set up from;
+- a CS2 smoke grenade ([§15](#15-smoke-that-fills-a-space-cs2s-grenades)) with fireflies riding its churn;
+- particles and fluids pushing each other: a fire whirl fed by its embers, a dragon's breath that is only particles
+  feeding and pushing, spirits carving wakes through a fog bank, a comet's sparks feeding its trail;
+- particles splatting grids: a slime mould, smoke made of particles beside the same particles as sprites, a nebula;
+- a mushroom cloud: a fireball expanding as it burns, rising into a ring, its stem lifted by afterwinds, debris riding
+  the updraft, a surge of dust particles pushing the fluid out along the ground.
 
 ## 15. Smoke that fills a space: CS2's grenades
 
@@ -2291,8 +2298,8 @@ Harness gates (`./gradlew :gl-debug-harness:runHarness --args="--mode=<gate>"`, 
 
 Each must pass at every forced tier (`-Dcrystalgraphics.compute.tier=G43|G40|G33`) and on `--device=vulkan`. Scenes to
 look at: `vfx-spheres` (the waves' lanes, `crystalgraphics.harness.vfx.moments` for a contact sheet of every moment),
-`vfx-showcase`, `vfx-modules` (a station per feature, below), `vfx-fluid` (the fluid: Flow's sphere stage, Mantaflow's
-fire and plume, a smoke grenade shot through and blasted open), `vfx-blasts` (360,000 particles), `vfx-lab` (CrystalGUI's
+`vfx-showcase`, `vfx-modules` (a station per feature, below), `vfx-fluid` (gas and smoke: the ported engines' scenes,
+a smoke grenade, particles pushing fluids, grids, a mushroom cloud), `vfx-blasts` (360,000 particles), `vfx-lab` (CrystalGUI's
 inspector, every look's values grouped by schema).
 
 In game and in the harness, `vfx-modules` is a station per feature, replayed every few seconds:

@@ -3109,25 +3109,25 @@ com/crystalgraphics/demo/CgVfxFluidDemo
   method public clear ()V
   method public delete ()V
   method public prepare ()V
+  method public shots ()Ljava/util/List;
   method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;DDDF)V
   method public vfx ()Lcom/crystalgraphics/vfx/CgVfxSystem;
   method public warmed ()Z
+com/crystalgraphics/demo/CgVfxFluidDemo$Shot
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;FFFF)V
+  method public distance ()F
+  method public title ()Ljava/lang/String;
+  method public x ()F
+  method public y ()F
+  method public z ()F
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/demo/CgVfxModules
   access public,final
   extends java/lang/Object
-  method public <init> (Lcom/crystalgraphics/api/font/CgFont;)V
-  method public <init> (Lcom/crystalgraphics/api/font/CgFont;Lcom/crystalgraphics/vfx/CgVfxOwner;)V
-  method public clear ()V
-  method public delete ()V
-  method public prepare ()V
-  method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;DDDF)V
-  method public vfx ()Lcom/crystalgraphics/vfx/CgVfxSystem;
-  method public warmed ()Z
-com/crystalgraphics/demo/CgVfxParticleSmokeDemo
-  access public,final
-  extends java/lang/Object
-  field public,static,final PERIOD F
-  field public,static,final REACH F
   method public <init> (Lcom/crystalgraphics/api/font/CgFont;)V
   method public <init> (Lcom/crystalgraphics/api/font/CgFont;Lcom/crystalgraphics/vfx/CgVfxOwner;)V
   method public clear ()V
