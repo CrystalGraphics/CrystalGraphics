@@ -11,6 +11,7 @@ import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.look.CgVfxValues;
+import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
 import com.crystalgraphics.vfx.gas.CgVfxGasAtlas;
 import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
@@ -271,6 +272,18 @@ final class CgVfxMaterials {
         shades.put(material, shade);
         material.applyProperties(b -> b.sampler(CgVfxGasAtlas.SHADE_SAMPLER, 0, shade).sampler(CgVfxGasAtlas.FLOW_SAMPLER, 1, flow)
                 .sampler(CgVfxGasAtlas.PAGES_SAMPLER, 2, pages));
+    }
+
+    /** The fluid shade each fluid material was last pointed at: the atlas makes it anew when its pool changes size. */
+    private final Map<CgMaterial, CgTexture> fluidShades = new IdentityHashMap<>();
+
+    /** Points fluid {@code material} at the atlas's shade, UV grids and page tables, once each time the atlas made them. */
+    void fluid(CgMaterial material, CgTexture shade, CgTexture restA, CgTexture restB, CgTexture pages) {
+        if (fluidShades.get(material) == shade) return;
+        fluidShades.put(material, shade);
+        material.applyProperties(b -> b.sampler(CgVfxFluidAtlas.SHADE_SAMPLER, 0, shade)
+                .sampler(CgVfxFluidAtlas.REST_A_SAMPLER, 1, restA).sampler(CgVfxFluidAtlas.REST_B_SAMPLER, 2, restB)
+                .sampler(CgVfxFluidAtlas.PAGES_SAMPLER, 3, pages));
     }
 
     /** The grid view each grid material was last pointed at: the atlas makes it anew in a new context. */

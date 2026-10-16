@@ -15,6 +15,8 @@ import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.render.graph.CgGraphTexture;
+import com.crystalgraphics.vfx.fluid.CgVfxFluid;
+import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
 import com.crystalgraphics.vfx.gas.CgVfxGas;
 import com.crystalgraphics.vfx.gas.CgVfxGasAtlas;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
@@ -65,6 +67,7 @@ public final class CgVfxFrame {
     private static final int DRAWS_MESH = CgTrace.name("vfx.draws.mesh"), DRAWS_RIBBONS = CgTrace.name("vfx.draws.ribbons"),
             DRAWS_BILLBOARD = CgTrace.name("vfx.draws.billboard"), DRAWS_PATH_RIBBONS = CgTrace.name("vfx.draws.path-ribbons"),
             DRAWS_TRAIL = CgTrace.name("vfx.draws.trail"), DRAWS_VOLUME = CgTrace.name("vfx.draws.volume"),
+            DRAWS_FLUID = CgTrace.name("vfx.draws.fluid"),
             DRAWS_PARTICLE_GPU = CgTrace.name("vfx.draws.particle-gpu"), DRAWS_PARTICLE_SETS = CgTrace.name("vfx.draws.particle-sets"),
             GPU_ZONE = CgTrace.name("vfx.particles.gpu");
     /**
@@ -686,6 +689,45 @@ public final class CgVfxFrame {
                     .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
             CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
             CgVfxTrace.count(DRAWS_VOLUME, 1);
+        }
+    }
+
+    /**
+     * Draws every layer on {@code slot}, a fluid slot, through {@code fluid}: a box round the tiles it holds, which each
+     * layer's shader marches. What its shader reads is {@link CgVfxSlot.Kind#FLUID}'s. A fluid holding no tile draws
+     * nothing.
+     *
+     * <pre>{@code
+     * frame.fluid(this, CgVfxFluid.SLOT, fire);      // what CgVfxFluid.submit does
+     * }</pre>
+     */
+    public void fluid(CgVfxEffect<?> effect, CgVfxSlot slot, CgVfxFluid fluid) {
+        kind(slot, CgVfxSlot.Kind.FLUID);
+        CgVfxFluidAtlas atlas = CgVfxFluidAtlas.get();
+        CgGraphTexture shade = atlas.shade(), restA = atlas.restA(), restB = atlas.restB(), pages = atlas.pages();
+        int index = fluid.index();
+        if (index < 0 || shade == null || !fluid.bounds(gasBox)) return;
+        CgVfxLook look = effect.look();
+        float cell = fluid.cellSize(), grid = -CgVfxFluidAtlas.SPAN * 0.5f * cell, weight = fluid.detailWeight();
+        float cx = (gasBox[0] + gasBox[3]) * 0.5f, cy = (gasBox[1] + gasBox[4]) * 0.5f, cz = (gasBox[2] + gasBox[5]) * 0.5f;
+        float ox = (float) (fluid.x() - effect.originX), oy = (float) (fluid.y() - effect.originY),
+                oz = (float) (fluid.z() - effect.originZ);
+        for (CgVfxLook.Placed placed : look.on(slot)) {
+            if (skips(effect, placed.layer())) continue;
+            CgVfxMaterials.Resolved r = materials.resolve(look, placed);
+            CgMaterial material = materials.material(r, CgVfxSlot.Kind.FLUID);
+            materials.fluid(material, shade, restA, restB, pages);
+            effect.boundBox(ox + gasBox[0], oy + gasBox[1], oz + gasBox[2], ox + gasBox[3], oy + gasBox[4], oz + gasBox[5]);
+            CgWorldRenderer.Draw draw = world.draw(system.cubeMesh(), material)
+                    .at(fluid.x() + cx, fluid.y() + cy, fluid.z() + cz)
+                    .transform(sized.scaling(gasBox[3] - gasBox[0], gasBox[4] - gasBox[1], gasBox[5] - gasBox[2]))
+                    .subject(effect.subject)
+                    .halfResolution()
+                    .custom(0, index, cell, weight, CgVfxMaterials.size(effect, r))
+                    .custom(1, grid - cx, grid - cy, grid - cz, 0f)
+                    .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
+            CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
+            CgVfxTrace.count(DRAWS_FLUID, 1);
         }
     }
 

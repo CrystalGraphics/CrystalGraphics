@@ -36,6 +36,7 @@ import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.gl.texture.CgTextureCopy;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.noise.CgNoiseVolumes;
+import com.crystalgraphics.noise.CgWaveletNoise;
 import com.crystalgraphics.gl.texture.CgTextureManager;
 import com.crystalgraphics.settings.CgSettings;
 import com.crystalgraphics.text.cache.CgFontRegistry;
@@ -222,6 +223,7 @@ public final class CgGraphicsLifecycle {
                     CgBindingPoints.init(CgCapabilities.detect());
                     CgFallbackTextures.init();
                     CgNoiseVolumes.install();
+                    CgWaveletNoise.install();
                     warmUpDeferredStartupCosts();
                 }
                 // From here warm-ups spread over frames: the demo's first scene took the first frame 0.7-10 s on 1.7.10.
@@ -534,6 +536,7 @@ public final class CgGraphicsLifecycle {
         // Step 5b: Free engine fallback textures and the noise volumes (their baked bytes stay for the next context).
         CgFallbackTextures.destroy();
         CgNoiseVolumes.release();
+        CgWaveletNoise.release();
 
 
         // Step 7a: Material instances (property UBOs) + their backing shader assets (GL programs).

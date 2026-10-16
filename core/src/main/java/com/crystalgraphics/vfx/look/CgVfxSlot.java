@@ -71,6 +71,15 @@ public final class CgVfxSlot {
          */
         VOLUME,
         /**
+         * A {@code CgVfxFluid}, marched through a box round the tiles it holds ({@code fx_fluid.glsl}), reading
+         * {@code CgVfxFluidAtlas.shade()} as {@code _FluidShade}, {@code restA()} and {@code restB()} as
+         * {@code _FluidRestA} and {@code _FluidRestB}, and {@code pages()} as {@code _FluidPages}, declared first and in
+         * that order: the box a unit cube scaled by the transform; {@code CUSTOM0} the fluid's place in the atlas, its
+         * cell in blocks, its first UV grid's weight and the layer's size; {@code CUSTOM1} its grid's low corner from the
+         * box's middle, and 0.
+         */
+        FLUID,
+        /**
          * A {@code CgVfxGrid3D}, marched through a box round the tiles it holds ({@code fx_grid.glsl},
          * {@code fx_sparse.glsl}), reading {@code CgVfxGridAtlas.view()} as {@code _GridView}, {@code light()} as
          * {@code _GridLight} and {@code pages()} as {@code _GridPages}, declared first and in that order: the box a unit
@@ -139,6 +148,10 @@ public final class CgVfxSlot {
 
     public static CgVfxSlot volume(String name) {
         return of(Kind.VOLUME, name);
+    }
+
+    public static CgVfxSlot fluid(String name) {
+        return of(Kind.FLUID, name);
     }
 
     public static CgVfxSlot grid(String name) {

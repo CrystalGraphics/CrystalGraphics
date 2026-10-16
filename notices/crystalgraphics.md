@@ -30,6 +30,8 @@ JOML is **not** in this jar. It ships in `crystalgraphics-joml-<version>.jar`, w
 | **bevy_hanabi** update modifiers | `com/crystalgraphics/vfx/particle/CgVfxModule`, `assets/crystalgraphics/shaders/lib/vfx/sim/fx_{vortex,conform,kill}.glsl` | MIT (of MIT or Apache-2.0) — © 2021 Jerome Humbert | Ported source, modified. Licence below |
 | **Jolt Physics** GJK, EPA and closed-form tests | `com/crystalgraphics/shape/query/` | MIT — © 2021 Jorrit Rouwe | Ported source, modified. Licence below |
 | **Effekseer** procedural models and curl noise | `com/crystalgraphics/api/mesh/CgProceduralMesh`, `CgMeshNoise` | MIT — © 2011 Effekseer Project | Ported source, modified. Licence below |
+| **NVIDIA Flow** grid fluid | `com/crystalgraphics/vfx/fluid/`, `assets/crystalgraphics/shaders/env/compute/vfx/fluid.compute`, `assets/crystalgraphics/shaders/vfx/fluid/fluid.shader` | BSD-3-Clause — © 2014-2025 NVIDIA CORPORATION & AFFILIATES | Ported source, modified. Licence below |
+| **Mantaflow** wavelet noise, inflow and UV grids | `com/crystalgraphics/noise/CgWaveletNoise`, `assets/crystalgraphics/shaders/lib/vfx/fx_wavelet.glsl`, `com/crystalgraphics/vfx/fluid/` | Apache 2.0 — © 2011 Tobias Pfaff, Nils Thuerey | Ported source, modified. Licence text: `META-INF/LICENSE` |
 
 ## FreeType
 
@@ -295,11 +297,12 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-## Chromium and Skia (BSD-3-Clause)
+## Chromium, Skia and NVIDIA Flow (BSD-3-Clause)
 
 The same terms cover each ported source above, with its own copyright line:
 Copyright (c) 2006-2012 Google Inc. (Chromium font fallback); Copyright (c) 2017 Google LLC (Skia mask
-blur); Copyright (c) 2023-2024 Google LLC (Skia Graphite rect blur).
+blur); Copyright (c) 2023-2024 Google LLC (Skia Graphite rect blur); Copyright (c) 2014-2025 NVIDIA
+CORPORATION & AFFILIATES. All rights reserved. (NVIDIA Flow).
 
 ```
 Redistribution and use in source and binary forms, with or without

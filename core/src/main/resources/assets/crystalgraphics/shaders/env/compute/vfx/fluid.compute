@@ -1,0 +1,781 @@
+// The fluid solver (CgVfxFluid, CgVfxFluidAtlas): NVIDIA Flow's grid simulation, ported from its shaders (BSD-3-Clause,
+// NVIDIA-Omniverse/PhysX flow/source/nvflow/shaders and nvflowext/shaders), over CgVfxTiles' sparse tiles in place of
+// Flow's block table. A step is Flow's simulateStep: density advected (AdvectionDensity1CS, AdvectionDensity2CS:
+// semi-Lagrangian, then MacCormack's correction blended per channel, held within the eight cells it came from, damped
+// and faded) and burnt (combustSimulate); emitters coupled into it (EmitterSimpleCS); velocity advected the same way and
+// lifted (combustVelocity: buoyancy, and the burn's expansion in .w); emitters coupled into it; vorticity confinement
+// masked by speed and by what the cell holds (Vorticity1CS, Vorticity2CS); pressure from rest by Jacobi
+// (PressureDivergenceCS, PressureJacobiCS, PressureSubtractCS). Then Mantaflow's UV grids (Apache-2.0, source/grid.cpp)
+// carried with the flow for the renderer's detail.
+//
+// What is the engine's own, not Flow's: the world's blocks as solids with free slip, which Flow does not have; curl-noise
+// turbulence (Bridson 2007) beside Flow's confinement; particles' deposits; a CS2 smoke's cells (CgVfxSmoke). Shade
+// bakes the light as Flow's ShadowUpdateCS does, marching toward the sun from each cell, and adds the sky.
+//
+// Every kernel runs over the pool's used layers, a texel a cell; a texel's slot is its tile in the pool, and TILES names
+// the fluid and tile each slot holds. Cells are a fluid's grid coordinates, 0 to 511, centres at i + 0.5; a cell is
+// FLUIDS' cell size in blocks; velocity is blocks a second. Where a fluid has no tile it is still air. A tile given out
+// since the last step is fresh: what the pool held there before is read as nothing.
+#pragma kernel Solids 4 4 4 image
+#pragma kernel AdvectDensity1 4 4 4 image
+#pragma kernel AdvectDensity2 4 4 4 image
+#pragma kernel EmitDensity 4 4 4 image
+#pragma kernel AdvectVelocity1 4 4 4 image
+#pragma kernel AdvectVelocity2 4 4 4 image
+#pragma kernel EmitVelocity 4 4 4 image
+#pragma kernel Vorticity1 4 4 4 image
+#pragma kernel Vorticity2 4 4 4 image
+#pragma kernel Divergence 4 4 4 image
+#pragma kernel Jacobi 4 4 4 image
+#pragma kernel Subtract 4 4 4 image
+#pragma kernel Rest 4 4 4 image
+#pragma kernel Shade 4 4 4 image
+#pragma kernel Detail 4 4 4 image
+#pragma kernel Occupancy 4 4 4 scatter
+#pragma kernel Deposit scatter
+
+#include "crystalgraphics:shaders/lib/vfx/fx_curl.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_wavelet.glsl"
+#include "crystalgraphics:shaders/lib/vfx/sim/fx_world_at.glsl"
+
+Properties {
+    _World         ("The voxel window: a block a texel",    sampler3D) = "black"
+    _WorldSections ("Which of its sections are filled",     sampler3D) = "black"
+    _WorldBaseX    ("Its lowest block, absolute: x",        int)       = 0
+    _WorldBaseY    ("y",                                    int)       = 0
+    _WorldBaseZ    ("z",                                    int)       = 0
+    _WorldWrapX    ("That block's texel: x",                int)       = 0
+    _WorldWrapY    ("y",                                    int)       = 0
+    _WorldWrapZ    ("z",                                    int)       = 0
+    _WorldLive     ("1 with a level, else 0: read nothing", int)       = 0
+    _WorldDistance ("Distance to solid over FX_WORLD_FAR",  sampler3D) = "white"
+    _Pages    ("Each fluid's page table: a tile's slot + 1, 0 for none", sampler3D) = "black"
+    _Vel      ("Velocity, blocks a second; the burn's expansion",      sampler3D) = "black"
+    _Density  ("Temperature, fuel, burn, smoke: Flow's density",        sampler3D) = "black"
+    _Predict  ("The semi-Lagrangian step MacCormack corrects",          sampler3D) = "black"
+    _Curl     ("Curl and its length",                                   sampler3D) = "black"
+    _Lowpass  ("Velocity averaged over a cell's six neighbours",        sampler3D) = "black"
+    _Pressure ("Pressure, divergence",                                  sampler3D) = "black"
+    _Solid    ("Solid cells, 1 where blocked",                          sampler3D) = "black"
+    _RestA    ("Mantaflow's first UV grid: cells moved since its reset", sampler3D) = "black"
+    _RestB    ("Its second, half a period apart",                       sampler3D) = "black"
+    _Fill     ("Each fluid's smoke cells: cost + 1 over 255, 0 for none", sampler3D) = "black"
+    _Wavelet  ("Wavelet noise (Mantaflow's tile)",                      sampler3D) = "cg_wavelet_noise"
+    _Emitters ("How many EMITTERS rows of six",                         int)       = 0
+    _Carves   ("How many CARVES rows of three",                         int)       = 0
+    _Fresh    ("1 while a fresh tile's old state reads as nothing: a frame's first step, and Shade after none", int) = 1
+    _RowBase  ("This step's first FLUIDS row",                          int)       = 0
+    _Deposit  ("1 on a frame's first step: what particles poured is added", int) = 0
+}
+
+struct FxDeposit { vec4 cell; vec4 amounts; };
+
+Buffers {
+    FLUIDS   ("A block a step: each fluid's rows (CgVfxFluidAtlas.ROW_*)",                      uvec4, readonly)
+    TILES    ("Each slot: its fluid + 1 (0 free), its tile x | y << 8 | z << 16, 1 while fresh", uvec4, readonly)
+    EMITTERS ("Each emitter: fluid and centre; extent and shape; velocity, divergence; temperature, fuel, burn, smoke targets; their couple rates", vec4, readonly)
+    CARVES   ("Each carve in a smoke: fluid and one end; the other end and radius; how open",   vec4, readonly)
+    OCCUPIED ("Each slot's eight flags: active, then active in its -x, +x, -y, +y, -z, +z half", uint,  readwrite)
+    DEPOSITS      ("What particles poured: a fluid's cell and the fluid, then density and heat", FxDeposit, readonly)
+    DEPOSIT_COUNT ("How many DEPOSITS",                                                          uint,      readonly)
+    DEPOSIT_GRID  ("DEPOSITS summed per slot, at nodes two cells apart: smoke then heat",       float,     readwrite)
+}
+
+Images {
+    SOLID_OUT    ("Solid cells",                      r8,      writeonly, 3d)
+    DENSITY_OUT  ("Density, next",                    rgba16f, writeonly, 3d)
+    VEL_OUT      ("Velocity, next",                   rgba16f, writeonly, 3d)
+    PREDICT_OUT  ("The semi-Lagrangian step",         rgba16f, writeonly, 3d)
+    PRESSURE_OUT ("Pressure, divergence",             rg16f,   writeonly, 3d)
+    OUT_A        ("Curl; the first UV grid; smoke, temperature, sun, sky", rgba16f, writeonly, 3d)
+    OUT_B        ("Velocity averaged; the second UV grid; velocity, temperature", rgba16f, writeonly, 3d)
+}
+
+// Rows of a fluid in FLUIDS (CgVfxFluidAtlas.ROWS) and the layout's sizes (CgVfxTiles').
+const int F_ROWS = 16;
+const int F_TILE = 16;
+const int F_PAGES = 32;
+const int F_SPAN = 512;
+const int F_LAYER = 8;
+// Flow's MacCormack per channel (NvFlowAdvectionCombustionParams_default): the size past which a value is corrected, and
+// how much of the correction it takes. Velocity and divergence take half, the density's channels nine tenths.
+const float F_BLEND_THRESHOLD = 0.001;
+const float F_VELOCITY_BLEND = 0.5;
+const float F_DENSITY_BLEND = 0.9;
+// Flow's velocityMaxDisplacement: a block's side less one, cells a step. A tile's, here.
+const float F_MAX_DISPLACEMENT = 15.0;
+// Flow's PressureJacobiCS takes 40 iterations on one level; the atlas dispatches them.
+// Flow's SummaryCS: a half block holding more smoke than this, or any smoke moving faster than this (blocks a second
+// here, Flow's units a second there), is active, and asks for its neighbour on that side.
+const float F_SMOKE_THRESHOLD = 0.02;
+const float F_SPEED_THRESHOLD = 1.0;
+const float F_SPEED_MIN_SMOKE = 0.0;
+// A smoke's cells: a cube this many a side a fluid, each this many blocks (CgVfxFluidAtlas.FILL, CgVfxSmokeFill.CELL),
+// and the cost over which its density rises inward from the reveal's front (CgVfxSmoke.EDGE).
+const int F_FILL = 64;
+const float F_FILL_CELL = 0.5;
+const float F_FILL_EDGE = 12.0;
+
+// This invocation: its fluid (-1 for a free slot), its slot, the tile that slot holds and its cell.
+struct F {
+    int b;
+    int slot;
+    ivec3 tile;
+    ivec3 cell;
+};
+
+uvec4 f_words(int b, int r) {
+    return FLUIDS(_RowBase + b * F_ROWS + r);
+}
+
+vec4 f_row(int b, int r) {
+    return uintBitsToFloat(f_words(b, r));
+}
+
+ivec3 f_pool_tile(int slot) {
+    return ivec3(slot % F_LAYER, (slot / F_LAYER) % F_LAYER, slot / (F_LAYER * F_LAYER));
+}
+
+// The invocation at texel t of a pool whose tiles are n texels a side, apron cells round each.
+F f_at(ivec3 t, int n, int apron) {
+    F f;
+    ivec3 p = t / n;
+    f.slot = p.x + F_LAYER * (p.y + F_LAYER * p.z);
+    uvec4 w = TILES(f.slot);
+    f.b = int(w.x) - 1;
+    f.tile = ivec3(int(w.y & 255u), int((w.y >> 8u) & 255u), int((w.y >> 16u) & 255u));
+    f.cell = f.tile * F_TILE + (t - p * n) - apron;
+    return f;
+}
+
+// Row 0: alive (1, 0 a slot nothing holds), this step's seconds, a cell's width in blocks.
+bool f_live(F f) {
+    return f.b >= 0 && f_row(f.b, 0).x > 0.0;
+}
+
+bool f_fresh(int slot) {
+    return _Fresh != 0 && TILES(slot).z != 0u;
+}
+
+// The slot holding cell c of fluid b: -1 where it has no tile, and past its grid.
+int f_slot(int b, ivec3 c) {
+    if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(F_SPAN)))) return -1;
+    ivec3 t = c >> 4;
+    return int(texelFetch(_Pages, ivec3(t.x, t.y, t.z + F_PAGES * b), 0).x + 0.5) - 1;
+}
+
+// As f_slot, without the page table for a cell of the invocation's own tile.
+int f_slot_near(F f, ivec3 c) {
+    return all(equal(c >> 4, f.tile)) ? f.slot : f_slot(f.b, c);
+}
+
+ivec3 f_texel(int slot, ivec3 c) {
+    return f_pool_tile(slot) * F_TILE + (c & (F_TILE - 1));
+}
+
+// v at cell c: nothing where the fluid has no tile; old state, the last step's, reads nothing in a fresh tile.
+vec4 f_get(sampler3D v, F f, ivec3 c, bool old) {
+    int s = f_slot_near(f, c);
+    if (s < 0 || (old && f_fresh(s))) return vec4(0.0);
+    return texelFetch(v, f_texel(s, c), 0);
+}
+
+// v filtered at p (cells): the hardware's inside a tile, eight fetches across tiles. Flow's NvFlowLocalReadLinear4f.
+vec4 f_sample(sampler3D v, F f, vec3 p, bool old) {
+    vec3 q = p - 0.5;
+    ivec3 i = ivec3(floor(q));
+    vec3 t = q - vec3(i);
+    int s = f_slot_near(f, i);
+    if (s >= 0 && all(equal(i >> 4, (i + 1) >> 4)) && !(old && f_fresh(s))) {
+        return textureLod(v, (vec3(f_texel(s, i)) + 0.5 + t) / vec3(textureSize(v, 0)), 0.0);
+    }
+    vec4 c000 = f_get(v, f, i, old), c100 = f_get(v, f, i + ivec3(1, 0, 0), old);
+    vec4 c010 = f_get(v, f, i + ivec3(0, 1, 0), old), c110 = f_get(v, f, i + ivec3(1, 1, 0), old);
+    vec4 c001 = f_get(v, f, i + ivec3(0, 0, 1), old), c101 = f_get(v, f, i + ivec3(1, 0, 1), old);
+    vec4 c011 = f_get(v, f, i + ivec3(0, 1, 1), old), c111 = f_get(v, f, i + ivec3(1, 1, 1), old);
+    return mix(mix(mix(c000, c100, t.x), mix(c010, c110, t.x), t.y),
+            mix(mix(c001, c101, t.x), mix(c011, c111, t.x), t.y), t.z);
+}
+
+// Row 1: the fluid's origin, whole blocks, then its floor's height from the origin (its effect's ground where the host
+// has no world; far below for none); row 2: the fraction within that block, then the fluid's clock.
+FxWorld f_world(int b) {
+    FxWorld w;
+    w.originBlock = ivec3(f_words(b, 1).xyz);
+    w.originFrac = f_row(b, 2).xyz;
+    w.live = _WorldLive != 0;
+    w.floorY = 0.0;
+    return w;
+}
+
+// The point p (cells) from the fluid's origin, in blocks.
+vec3 f_offset(int b, vec3 p) {
+    return (p - 0.5 * float(F_SPAN)) * f_row(b, 0).z;
+}
+
+// Whether the point offset blocks from the fluid's origin is solid: below its floor, or in a solid octant of the world.
+bool f_blocked(int b, vec3 offset) {
+    return offset.y < f_row(b, 1).w || fx_world_solid(f_world(b), offset);
+}
+
+// Whether cell c is solid: as Solids found it in a tile, below the floor where the fluid has none.
+bool f_solid(F f, ivec3 c) {
+    int s = f_slot_near(f, c);
+    if (s < 0) return f_offset(f.b, vec3(c) + 0.5).y < f_row(f.b, 1).w;
+    return texelFetch(_Solid, f_texel(s, c), 0).x > 0.5;
+}
+
+bool f_has(F f, ivec3 c) {
+    return f_slot_near(f, c) >= 0;
+}
+
+void Solids() {
+    F f = f_at(CG_TEXEL, F_TILE, 0);
+    SOLID_OUT_WRITE(vec4(f_live(f) && f_blocked(f.b, f_offset(f.b, vec3(f.cell) + 0.5)) ? 1.0 : 0.0));
+}
+
+// ---- Advection (Flow's AdvectionCommon.hlsli) -------------------------------------------------------------------------
+
+// computeDisplacement: cells moved this step at velocity v, held to a tile.
+vec3 f_displacement(int b, vec3 v) {
+    vec4 r0 = f_row(b, 0);
+    return clamp(r0.y * v / r0.z, vec3(-F_MAX_DISPLACEMENT), vec3(F_MAX_DISPLACEMENT));
+}
+
+// semiLagrangian4f: v carried from where this cell's velocity came from.
+vec4 f_semi_lagrangian(sampler3D value, F f, bool oldValue, bool oldVelocity) {
+    vec3 at = vec3(f.cell) + 0.5;
+    vec3 velocity = f_get(_Vel, f, f.cell, oldVelocity).xyz;
+    return f_sample(value, f, at - f_displacement(f.b, velocity), oldValue);
+}
+
+// macCormackCorrection4f: the predict corrected by half its round trip's error where it is large enough, blended per
+// channel and held within the eight cells it came from; then damping and fade, the larger of the two, never past 0.
+// damping is the share lost a step (Flow's dampingRate), fade the amount a step.
+vec4 f_maccormack(sampler3D value, F f, bool oldValue, bool oldVelocity, vec4 blend, vec4 damping, vec4 fade) {
+    vec4 predict = f_get(_Predict, f, f.cell, false);
+    vec4 v = predict;
+    if (any(greaterThanEqual(abs(predict), vec4(F_BLEND_THRESHOLD)))) {
+        vec3 at = vec3(f.cell) + 0.5;
+        vec3 d = f_displacement(f.b, f_get(_Vel, f, f.cell, oldVelocity).xyz);
+        vec4 predictRev = f_sample(_Predict, f, at + d, false);
+        vec4 valueOld = f_get(value, f, f.cell, oldValue);
+        v = predict + 0.5 * blend * (valueOld - predictRev);
+        ivec3 c = ivec3(floor(at - d - 0.5));
+        vec4 least = vec4(1.0e9), most = vec4(-1.0e9);
+        for (int k = 0; k < 8; k++) {
+            vec4 corner = f_get(value, f, c + ivec3(k & 1, (k >> 1) & 1, k >> 2), oldValue);
+            least = min(least, corner);
+            most = max(most, corner);
+        }
+        v = clamp(v, least, most);
+    }
+    vec4 correction = sign(v) * min(abs(v), max(abs(v * damping), abs(fade)));
+    return v - correction;
+}
+
+// Flow's dampingRate: a share lost a second as the share lost over dt.
+vec4 f_damping(vec4 perSecond, float dt) {
+    return 1.0 - pow(1.0 - min(perSecond, vec4(1.0)), vec4(dt));
+}
+
+// Rows 6 to 8: damping and fade a second of velocity, divergence, temperature, fuel, burn and smoke.
+void f_channels(int b, out vec4 velocityDamping, out vec4 velocityFade, out vec4 densityDamping, out vec4 densityFade) {
+    float dt = f_row(b, 0).y;
+    vec4 r6 = f_row(b, 6), r7 = f_row(b, 7), r8 = f_row(b, 8);
+    velocityDamping = f_damping(vec4(r6.xxx, r6.z), dt);
+    velocityFade = vec4(r6.yyy, r6.w) * dt;
+    densityDamping = f_damping(vec4(r7.x, r7.z, r8.x, r8.z), dt);
+    densityFade = vec4(r7.y, r7.w, r8.y, r8.w) * dt;
+}
+
+// combustSimulate, on Flow's normalized temperature (0 neutral buoyancy, 1 the fastest burn). Rows 3 to 5.
+vec4 f_combust(int b, vec4 density) {
+    vec4 r3 = f_row(b, 3), r4 = f_row(b, 4), r5 = f_row(b, 5);
+    if (r5.w == 0.0) return density;
+    float dt = f_row(b, 0).y;
+    float temp = density.x, fuel = density.y, burn = density.z, smoke = density.w;
+    if (temp >= r3.x && fuel > 0.0) {
+        burn = r3.y * (min(max(temp, 0.0), 1.0) - r3.x) * dt;
+        burn = min(burn, r3.z > 0.0 ? fuel / r3.z : burn);
+        fuel -= r3.z * burn;
+        temp += r3.w * burn;
+        smoke += r4.x * burn;
+    }
+    temp -= r5.y * dt * temp;
+    temp = clamp(temp, -1.0, 1.0);
+    return vec4(temp, fuel, burn, smoke);
+}
+
+// combustVelocity: lift by temperature and by smoke along gravity (down), and the burn's expansion into .w, which the
+// pressure solve leaves as divergence.
+vec4 f_combust_velocity(int b, vec4 velocity, vec4 density) {
+    vec4 r4 = f_row(b, 4), r5 = f_row(b, 5);
+    float dt = f_row(b, 0).y, gravity = r5.z;
+    if (r5.w != 0.0) {
+        velocity.y += dt * r4.z * density.x * gravity;
+        velocity.w = r4.y * density.z;
+    }
+    if (r4.w != 0.0) velocity.y += dt * r4.w * clamp(density.w, 0.0, r5.x) * gravity;
+    return velocity;
+}
+
+void AdvectDensity1() {
+    F f = f_at(CG_TEXEL, F_TILE, 0);
+    if (!f_live(f) || f_solid(f, f.cell)) {
+        PREDICT_OUT_WRITE(vec4(0.0));
+        return;
+    }
+    // Density moves first in Flow's step, on the last step's velocity: old state, as the density is.
+    PREDICT_OUT_WRITE(f_semi_lagrangian(_Density, f, true, true));
+}
+
+void AdvectDensity2() {
+    F f = f_at(CG_TEXEL, F_TILE, 0);
+    if (!f_live(f) || f_solid(f, f.cell)) {
+        DENSITY_OUT_WRITE(vec4(0.0));
+        return;
+    }
+    vec4 vd, vf, dd, df;
+    f_channels(f.b, vd, vf, dd, df);
+    vec4 v = f_maccormack(_Density, f, true, true, vec4(F_DENSITY_BLEND), dd, df);
+    DENSITY_OUT_WRITE(f_combust(f.b, v));
+}
+
+// ---- Emitters (Flow's EmitterSimpleCS) ---------------------------------------------------------------------------------
+
+// Emitter e's share of cell p (cells) it covers: eight samples a cell (Flow's multisample), inside its sphere, box or
+// cylinder. Row 0: fluid and centre; row 1: extent (a sphere's radius in x, a box's half extents, a cylinder's half axis)
+// and shape (0 sphere, 1 box, 2 cylinder); row 5's w a cylinder's radius.
+float f_coverage(int e, vec3 p) {
+    vec4 e0 = EMITTERS(e * 6), e1 = EMITTERS(e * 6 + 1);
+    float covered = 0.0;
+    for (int k = 0; k < 8; k++) {
+        vec3 q = p + vec3(float(k & 1), float((k >> 1) & 1), float(k >> 2)) * 0.5 - 0.25 - e0.yzw;
+        bool inside;
+        if (e1.w < 0.5) {
+            inside = dot(q, q) < e1.x * e1.x;
+        } else if (e1.w < 1.5) {
+            inside = all(lessThan(abs(q), e1.xyz));
+        } else {
+            // Mantaflow's Cylinder (source/shapes.cpp): within its half axis along it, within its radius of it.
+            float along = dot(q, e1.xyz) / max(dot(e1.xyz, e1.xyz), 1.0e-6);
+            vec3 d = q - e1.xyz * along;
+            float r = EMITTERS(e * 6 + 5).w;
+            inside = abs(along) < 1.0 && dot(d, d) < r * r;
+        }
+        covered += inside ? 0.125 : 0.0;
+    }
+    return covered;
+}
+
+// Mantaflow's densityInflow (source/plugin/initplugins.cpp, KnApplyNoiseInfl): the target modulated by wavelet noise,
+// clamped to 0..1 after its offset. Its scenes' NoiseField (posScale 45 over a grid of about 50) is a lattice unit a
+// cell; timeAnim 0.2 a unit of their time, a step, is 12 lattice units a second at 60 steps.
+float f_inflow_noise(int b, vec3 p, float offset) {
+    float clock = f_row(b, 2).w;
+    return clamp(fx_wavelet(_Wavelet, p + vec3(clock * 12.0)) + offset, 0.0, 1.0);
+}
+
+// Particles' deposits round cell c, read between the eight nodes about it (cloud-in-cell): smoke and heat.
+int f_deposit_at(int b, ivec3 n) {
+    int slot = f_slot(b, n * 2);
+    if (slot < 0) return -1;
+    ivec3 l = n & 7;
+    return (slot * 512 + l.x + 8 * (l.y + 8 * l.z)) * 2;
+}
+
+vec2 f_deposit(int b, ivec3 c) {
+    vec3 q = vec3(c) * 0.5 - 0.25;
+    ivec3 base = ivec3(floor(q));
+    vec3 t = q - vec3(base);
+    vec2 sum = vec2(0.0);
+    for (int k = 0; k < 8; k++) {
+        ivec3 o = ivec3(k & 1, (k >> 1) & 1, k >> 2);
+        int at = f_deposit_at(b, base + o);
+        if (at < 0) continue;
+        vec3 w = mix(1.0 - t, t, vec3(o));
+        sum += vec2(DEPOSIT_GRID(at), DEPOSIT_GRID(at + 1)) * (w.x * w.y * w.z);
+    }
+    return sum;
+}
+
+float f_segment(vec3 p, vec3 a, vec3 b) {
+    vec3 ab = b - a;
+    float t = dot(ab, ab) > 0.0 ? clamp(dot(p - a, ab) / dot(ab, ab), 0.0, 1.0) : 0.0;
+    return distance(p, a + ab * t);
+}
+
+// A smoke's cells (CgVfxSmoke): the smoke its cells hold at p, less what its carves hold open. Rows 12 and 13.
+float f_fill_target(int b, vec3 p, out bool inside) {
+    vec4 fill = f_row(b, 12), reveal = f_row(b, 13);
+    ivec3 t = ivec3(floor(fill.xyz + f_offset(b, p) / F_FILL_CELL));
+    float cost = 0.0;
+    if (all(greaterThanEqual(t, ivec3(0))) && all(lessThan(t, ivec3(F_FILL)))) {
+        cost = texelFetch(_Fill, ivec3(t.x, t.y, t.z + F_FILL * b), 0).x * 255.0;
+    }
+    inside = cost > 0.5;
+    if (!inside) return 0.0;
+    float target = fill.w * reveal.y * smoothstep(0.0, F_FILL_EDGE, reveal.x - (cost - 1.0));
+    for (int i = 0; i < _Carves; i++) {
+        vec4 a = CARVES(i * 3), c = CARVES(i * 3 + 1), open = CARVES(i * 3 + 2);
+        if (int(a.x + 0.5) != b) continue;
+        target *= 1.0 - open.x * (1.0 - smoothstep(c.w * 0.6, c.w, f_segment(p, a.yzw, c.xyz)));
+    }
+    return target;
+}
+
+// Rows 3 to 5 of the emitter: targets and couple rates of temperature, fuel, burn and smoke; row 5's z the inflow
+// noise's offset, below 0 for none. With noise it is Mantaflow's inflow: each channel it couples raised to its noisy
+// target where below it, never lowered, its rate unused.
+void EmitDensity() {
+    F f = f_at(CG_TEXEL, F_TILE, 0);
+    if (!f_live(f) || f_solid(f, f.cell)) {
+        DENSITY_OUT_WRITE(vec4(0.0));
+        return;
+    }
+    int b = f.b;
+    float dt = f_row(b, 0).y;
+    vec3 p = vec3(f.cell) + 0.5;
+    vec4 value = f_get(_Density, f, f.cell, false);
+    for (int e = 0; e < _Emitters; e++) {
+        if (int(EMITTERS(e * 6).x + 0.5) != b) continue;
+        float coverage = f_coverage(e, p);
+        if (coverage <= 0.0) continue;
+        vec4 target = EMITTERS(e * 6 + 3), e4 = EMITTERS(e * 6 + 4), e5 = EMITTERS(e * 6 + 5);
+        vec4 couple = vec4(e4.z, e4.w, e5.x, e5.y);
+        if (e5.z >= 0.0) {
+            vec4 coupled = vec4(greaterThan(couple, vec4(0.0)));
+            value = max(value, target * coupled * (f_inflow_noise(b, p, e5.z) * coverage));
+            continue;
+        }
+        vec4 rate = clamp(dt * couple * coverage, vec4(0.0), vec4(1.0));
+        value += rate * (target - value);
+    }
+    // What particles poured since the last frame's step, on this frame's first: smoke and heat.
+    if (_Deposit != 0) {
+        vec2 poured = f_deposit(b, f.cell);
+        value.w += poured.x;
+        value.x += poured.y;
+    }
+    // A smoke's cells pull its smoke to theirs at its hold a second, and drain it outside them four times as fast.
+    if (f_row(b, 12).w > 0.0) {
+        bool inside;
+        float target = f_fill_target(b, p, inside);
+        value.w = mix(value.w, target, 1.0 - exp(-f_row(b, 13).z * (inside ? 1.0 : 4.0) * dt));
+    }
+    DENSITY_OUT_WRITE(value);
+}
+
+void AdvectVelocity1() {
+    F f = f_at(CG_TEXEL, F_TILE, 0);
+    if (!f_live(f) || f_solid(f, f.cell)) {
+        PREDICT_OUT_WRITE(vec4(0.0));
+        return;
+    }
+    PREDICT_OUT_WRITE(f_semi_lagrangian(_Vel, f, true, true));
+}
+
+void AdvectVelocity2() {
+    F f = f_at(CG_TEXEL, F_TILE, 0);
+    if (!f_live(f) || f_solid(f, f.cell)) {
+        VEL_OUT_WRITE(vec4(0.0));
+        return;
+    }
+    vec4 vd, vf, dd, df;
+    f_channels(f.b, vd, vf, dd, df);
+    vec4 v = f_maccormack(_Vel, f, true, true, vec4(F_VELOCITY_BLEND), vd, vf);
+    VEL_OUT_WRITE(f_combust_velocity(f.b, v, f_get(_Density, f, f.cell, false)));
+}
+
+// Rows 2 and 4 of the emitter: target velocity and divergence, and their couple rates.
+void EmitVelocity() {
+    F f = f_at(CG_TEXEL, F_TILE, 0);
+    if (!f_live(f) || f_solid(f, f.cell)) {
+        VEL_OUT_WRITE(vec4(0.0));
+        return;
+    }
+    int b = f.b;
+    float dt = f_row(b, 0).y;
+    vec3 p = vec3(f.cell) + 0.5;
+    vec4 value = f_get(_Vel, f, f.cell, false);
+    for (int e = 0; e < _Emitters; e++) {
+        if (int(EMITTERS(e * 6).x + 0.5) != b) continue;
+        float coverage = f_coverage(e, p);
+        if (coverage <= 0.0) continue;
+        vec4 target = EMITTERS(e * 6 + 2), couple = EMITTERS(e * 6 + 4);
+        vec4 rate = clamp(dt * vec4(couple.xxx, couple.y) * coverage, vec4(0.0), vec4(1.0));
+        value += rate * (target - value);
+    }
+    VEL_OUT_WRITE(value);
+}
+
+// ---- Vorticity (Flow's Vorticity1CS and Vorticity2CS) ------------------------------------------------------------------
+
+void Vorticity1() {
+    F f = f_at(CG_TEXEL, F_TILE, 0);
+    if (!f_live(f)) {
+        OUT_A_WRITE(vec4(0.0));
+        OUT_B_WRITE(vec4(0.0));
+        return;
+    }
+    ivec3 c = f.cell;
+    vec4 curl = vec4(0.0), sum = vec4(0.0), t;
+    t = f_get(_Vel, f, c + ivec3(-1, 0, 0), false); curl.y += t.z; curl.z -= t.y; sum += t;
+    t = f_get(_Vel, f, c + ivec3(+1, 0, 0), false); curl.y -= t.z; curl.z += t.y; sum += t;
+    t = f_get(_Vel, f, c + ivec3(0, -1, 0), false); curl.x -= t.z; curl.z += t.x; sum += t;
+    t = f_get(_Vel, f, c + ivec3(0, +1, 0), false); curl.x += t.z; curl.z -= t.x; sum += t;
+    t = f_get(_Vel, f, c + ivec3(0, 0, -1), false); curl.y -= t.x; curl.x += t.y; sum += t;
+    t = f_get(_Vel, f, c + ivec3(0, 0, +1), false); curl.y += t.x; curl.x -= t.y; sum += t;
+    sum += f_get(_Vel, f, c, false);
+    curl.w = length(curl.xyz);
+    OUT_A_WRITE(curl);
+    OUT_B_WRITE(sum * (1.0 / 7.0));
+}
+
+// Curl noise at size blocks, drifting through the fluid at its swirls' size a second, never looping: two octaves. The
+// engine's turbulence, not Flow's: Unreal's fluids churn by bands of noise beside confinement.
+vec3 f_churn(vec3 offset, float size, float clock) {
+    vec3 q = offset / max(size, 0.05) + clock * vec3(0.3, -1.0, 0.2);
+    return fx_curl(ivec3(0), q, ivec3(0), q * 2.03 + vec3(5.2, 1.3, 7.9));
+}
+
+// Rows 9 to 11: the force scale, and its masks by speed (log and linear), constant, temperature, fuel, burn and smoke;
+// then the turbulence and its size in blocks.
+void Vorticity2() {
+    F f = f_at(CG_TEXEL, F_TILE, 0);
+    if (!f_live(f) || f_solid(f, f.cell)) {
+        VEL_OUT_WRITE(vec4(0.0));
+        return;
+    }
+    int b = f.b;
+    ivec3 c = f.cell;
+    vec4 r9 = f_row(b, 9), r10 = f_row(b, 10), r11 = f_row(b, 11);
+    float dt = f_row(b, 0).y;
+    vec4 n = vec4(0.0);
+    n.x = f_get(_Curl, f, c + ivec3(1, 0, 0), false).w - f_get(_Curl, f, c - ivec3(1, 0, 0), false).w;
+    n.y = f_get(_Curl, f, c + ivec3(0, 1, 0), false).w - f_get(_Curl, f, c - ivec3(0, 1, 0), false).w;
+    n.z = f_get(_Curl, f, c + ivec3(0, 0, 1), false).w - f_get(_Curl, f, c - ivec3(0, 0, 1), false).w;
+    n.w = length(n.xyz);
+    if (n.w > 0.0) n.xyz /= n.w;
+    vec4 curl = f_get(_Curl, f, c, false);
+    vec3 impulse = cross(n.xyz, curl.xyz);
+    float speed = 0.0, speedLog = 0.0;
+    if (r9.y != 0.0 || r10.x != 0.0) {
+        vec4 lowpass = f_get(_Lowpass, f, c, false);
+        lowpass += f_get(_Lowpass, f, c + ivec3(-1, 0, 0), false) + f_get(_Lowpass, f, c + ivec3(1, 0, 0), false);
+        lowpass += f_get(_Lowpass, f, c + ivec3(0, -1, 0), false) + f_get(_Lowpass, f, c + ivec3(0, 1, 0), false);
+        lowpass += f_get(_Lowpass, f, c + ivec3(0, 0, -1), false) + f_get(_Lowpass, f, c + ivec3(0, 0, 1), false);
+        speed = length(lowpass.xyz * (1.0 / 7.0));
+        speedLog = speed > 0.0 ? log2(max(r9.z, 0.0) * speed + 1.0) : 0.0;
+    }
+    vec4 velocity = f_get(_Vel, f, c, false);
+    vec4 density = f_get(_Density, f, c, false);
+    float weight = r9.x * dt * max(0.0, r9.y * speedLog + r10.x * speed + r10.y * velocity.w + r9.w
+            + r10.z * density.x + r10.w * density.y + r11.x * density.z + r11.y * density.w);
+    velocity.xyz += weight * impulse;
+    if (r11.z > 0.0 && density.w > 0.0) {
+        velocity.xyz += f_churn(f_offset(b, vec3(c) + 0.5), r11.w, f_row(b, 2).w) * (r11.z * min(density.w, 1.0) * dt);
+    }
+    VEL_OUT_WRITE(velocity);
+}
+
+// ---- Pressure (Flow's PressureDivergenceCS, PressureJacobiCS, PressureSubtractCS) --------------------------------------
+// In velocity units, no cell size: d is half the sum of the face differences, and the expansion in .w comes off it.
+// The engine's blocks: a solid neighbour's face is still (free slip), a neighbour with no tile is open air.
+
+vec3 f_face(F f, ivec3 n, vec3 own) {
+    if (!f_has(f, n)) return own;
+    if (f_solid(f, n)) return vec3(0.0);
+    return f_get(_Vel, f, n, false).xyz;
+}
+
+void Divergence() {
+    F f = f_at(CG_TEXEL, F_TILE, 0);
+    if (!f_live(f) || f_solid(f, f.cell)) {
+        PRESSURE_OUT_WRITE(vec4(0.0));
+        return;
+    }
+    ivec3 c = f.cell;
+    vec4 own = f_get(_Vel, f, c, false);
+    float d = 0.5 * (f_face(f, c + ivec3(1, 0, 0), own.xyz).x - f_face(f, c - ivec3(1, 0, 0), own.xyz).x
+            + f_face(f, c + ivec3(0, 1, 0), own.xyz).y - f_face(f, c - ivec3(0, 1, 0), own.xyz).y
+            + f_face(f, c + ivec3(0, 0, 1), own.xyz).z - f_face(f, c - ivec3(0, 0, 1), own.xyz).z);
+    PRESSURE_OUT_WRITE(vec4(0.0, d - own.w, 0.0, 0.0));
+}
+
+float f_pressure(F f, ivec3 n, float own) {
+    if (!f_has(f, n)) return 0.0;
+    if (f_solid(f, n)) return own;
+    return f_get(_Pressure, f, n, false).x;
+}
+
+void Jacobi() {
+    F f = f_at(CG_TEXEL, F_TILE, 0);
+    if (!f_live(f) || f_solid(f, f.cell)) {
+        PRESSURE_OUT_WRITE(vec4(0.0));
+        return;
+    }
+    ivec3 c = f.cell;
+    vec2 pd = f_get(_Pressure, f, c, false).xy;
+    float sum = f_pressure(f, c + ivec3(1, 0, 0), pd.x) + f_pressure(f, c - ivec3(1, 0, 0), pd.x)
+            + f_pressure(f, c + ivec3(0, 1, 0), pd.x) + f_pressure(f, c - ivec3(0, 1, 0), pd.x)
+            + f_pressure(f, c + ivec3(0, 0, 1), pd.x) + f_pressure(f, c - ivec3(0, 0, 1), pd.x);
+    PRESSURE_OUT_WRITE(vec4((sum - pd.y) * (1.0 / 6.0), pd.y, 0.0, 0.0));
+}
+
+void Subtract() {
+    F f = f_at(CG_TEXEL, F_TILE, 0);
+    if (!f_live(f) || f_solid(f, f.cell)) {
+        VEL_OUT_WRITE(vec4(0.0));
+        return;
+    }
+    ivec3 c = f.cell;
+    float own = f_get(_Pressure, f, c, false).x;
+    vec4 v = f_get(_Vel, f, c, false);
+    v.x -= 0.5 * (f_pressure(f, c + ivec3(1, 0, 0), own) - f_pressure(f, c - ivec3(1, 0, 0), own));
+    v.y -= 0.5 * (f_pressure(f, c + ivec3(0, 1, 0), own) - f_pressure(f, c - ivec3(0, 1, 0), own));
+    v.z -= 0.5 * (f_pressure(f, c + ivec3(0, 0, 1), own) - f_pressure(f, c - ivec3(0, 0, 1), own));
+    if (f_solid(f, c - ivec3(1, 0, 0))) v.x = max(v.x, 0.0);
+    if (f_solid(f, c + ivec3(1, 0, 0))) v.x = min(v.x, 0.0);
+    if (f_solid(f, c - ivec3(0, 1, 0))) v.y = max(v.y, 0.0);
+    if (f_solid(f, c + ivec3(0, 1, 0))) v.y = min(v.y, 0.0);
+    if (f_solid(f, c - ivec3(0, 0, 1))) v.z = max(v.z, 0.0);
+    if (f_solid(f, c + ivec3(0, 0, 1))) v.z = min(v.z, 0.0);
+    VEL_OUT_WRITE(v);
+}
+
+// ---- Mantaflow's UV grids (source/grid.cpp: resetUvGrid, updateUvWeight) ------------------------------------------------
+// Each holds where its cell's texture came from, kept as the cells moved since its reset rather than as the position
+// itself, which a half float could not hold to a sixty-fourth of a cell at 512. Carried semi-Lagrangian as Mantaflow's
+// order-1 advection carries a UV grid; a reset (row 14) puts it back where it is.
+
+void Rest() {
+    F f = f_at(CG_TEXEL, F_TILE, 0);
+    vec4 r14 = f_live(f) ? f_row(f.b, 14) : vec4(1.0);
+    if (!f_live(f) || f_solid(f, f.cell)) {
+        OUT_A_WRITE(vec4(0.0));
+        OUT_B_WRITE(vec4(0.0));
+        return;
+    }
+    vec3 at = vec3(f.cell) + 0.5;
+    vec3 d = f_displacement(f.b, f_get(_Vel, f, f.cell, false).xyz);
+    vec3 a = f_sample(_RestA, f, at - d, true).xyz + d, bb = f_sample(_RestB, f, at - d, true).xyz + d;
+    OUT_A_WRITE(vec4(r14.x > 0.5 ? vec3(0.0) : a, 0.0));
+    OUT_B_WRITE(vec4(r14.y > 0.5 ? vec3(0.0) : bb, 0.0));
+}
+
+// ---- What the renderer reads -------------------------------------------------------------------------------------------
+
+// Flow's ShadowUpdateCS with coarsePropagate: from each cell toward the sun, 16 steps of three quarters of a coarse cell
+// (two of the fluid's), each taking 1 - exp(-attenuation * step) of what is left where there is smoke, an ambient floor
+// under what gets through. Flow marches its half-resolution density; this marches the full one at the coarse step. A
+// block stops the light, as Flow's fluids have no world to meet. Row 15: attenuation a block, the floor, steps.
+const int F_SUN_STEPS = 16;
+// Cells from a cell where Shade weighs the fluid shading it from the sky, along each of five ways up.
+const float F_UP[6] = float[6](1.0, 2.0, 4.0, 7.0, 11.0, 16.0);
+const vec3 F_DOME[5] = vec3[5](vec3(0.0, 1.0, 0.0), vec3(0.7071, 0.7071, 0.0), vec3(-0.7071, 0.7071, 0.0),
+        vec3(0.0, 0.7071, 0.7071), vec3(0.0, 0.7071, -0.7071));
+
+void Shade() {
+    F f = f_at(CG_TEXEL, F_TILE + 4, 2);
+    if (!f_live(f)) {
+        OUT_A_WRITE(vec4(0.0, 0.0, 1.0, 1.0));
+        OUT_B_WRITE(vec4(0.0));
+        return;
+    }
+    int b = f.b;
+    ivec3 c = f.cell;
+    bool solid = f_solid(f, c);
+    vec4 density = solid ? vec4(0.0) : f_get(_Density, f, c, true);
+    vec4 r15 = f_row(b, 15);
+    float cell = f_row(b, 0).z;
+    vec3 p = vec3(c) + 0.5, dir = CG_SUN_DIRECTION;
+    float light = 1.0;
+    if (density.w > 1.0e-4) {
+        float step = 1.5, alphaScale = 1.0 - exp(-r15.x * step * cell), sum = 1.0;
+        for (int k = 1; k <= F_SUN_STEPS && sum > 1.0e-4; k++) {
+            vec3 q = p + dir * (float(k) * step);
+            ivec3 at = ivec3(floor(q));
+            int slot = f_slot_near(f, at);
+            if (slot >= 0 && texelFetch(_Solid, f_texel(slot, at), 0).x > 0.5) {
+                sum = 0.0;
+                break;
+            }
+            if (slot < 0) {
+                if (f_blocked(b, f_offset(b, q))) sum = 0.0;
+                continue;
+            }
+            float alpha = min(1.0, f_sample(_Density, f, q, true).w) * alphaScale;
+            sum *= 1.0 - alpha;
+        }
+        light = (1.0 - r15.y) * sum + r15.y;
+    }
+    // The sky over the cell, less what the fluid toward the sky takes, averaged over the dome's five ways.
+    float dome = 1.0;
+    if (density.w > 1.0e-4) {
+        dome = 0.0;
+        for (int d = 0; d < 5; d++) {
+            float depth = 0.0, last = 0.0;
+            for (int k = 0; k < 6; k++) {
+                depth += min(1.0, f_sample(_Density, f, p + F_DOME[d] * F_UP[k], true).w) * (F_UP[k] - last);
+                last = F_UP[k];
+            }
+            dome += exp(-0.5 * depth * r15.x * cell);
+        }
+        dome *= 0.2;
+    }
+    float sky = fx_world_light(f_world(b), f_offset(b, p), vec2(0.0, 15.0)).y / 15.0 * dome;
+    OUT_A_WRITE(vec4(density.w, density.x, light, sky));
+    OUT_B_WRITE(vec4(solid ? vec3(0.0) : f_get(_Vel, f, c, true).xyz, density.x));
+}
+
+// The UV grids into the apron'd pools the renderer reads, as Shade lays them out.
+void Detail() {
+    F f = f_at(CG_TEXEL, F_TILE + 4, 2);
+    if (!f_live(f)) {
+        OUT_A_WRITE(vec4(0.0));
+        OUT_B_WRITE(vec4(0.0));
+        return;
+    }
+    OUT_A_WRITE(f_get(_RestA, f, f.cell, true));
+    OUT_B_WRITE(f_get(_RestB, f, f.cell, true));
+}
+
+// A particle's deposit (CgVfxModule.Feed) spread over the eight nodes about it by distance (cloud-in-cell), none where
+// the fluid has no tile. Eight times its amount, since each node is read by eight cells' worth.
+void Deposit() {
+    if (uint(CG_ELEMENT) >= min(DEPOSIT_COUNT(0), uint(DEPOSITS_LENGTH()))) return;
+    FxDeposit d = DEPOSITS(CG_ELEMENT);
+    int b = int(d.cell.w + 0.5);
+    vec3 q = d.cell.xyz * 0.5 - 0.5;
+    ivec3 base = ivec3(floor(q));
+    vec3 t = q - vec3(base);
+    for (int k = 0; k < 8; k++) {
+        ivec3 o = ivec3(k & 1, (k >> 1) & 1, k >> 2);
+        int at = f_deposit_at(b, base + o);
+        if (at < 0) continue;
+        vec3 w = mix(1.0 - t, t, vec3(o));
+        float share = 8.0 * w.x * w.y * w.z;
+        DEPOSIT_GRID_ADD(at, d.amounts.x * share);
+        DEPOSIT_GRID_ADD(at + 1, d.amounts.y * share);
+    }
+}
+
+// Flow's SummaryCS: a cell holding smoke past the threshold, or any smoke moving fast, makes its tile active and asks for
+// the neighbour on the side of each half it is in. Flow halves its blocks along x alone and always asks for y and z; a
+// tile here is a cube, so each axis is halved.
+void Occupancy() {
+    F f = f_at(CG_DISPATCH_ID, F_TILE, 0);
+    if (!f_live(f)) return;
+    float smoke = f_get(_Density, f, f.cell, true).w;
+    float speed = length(f_get(_Vel, f, f.cell, true).xyz);
+    if (!(smoke > F_SMOKE_THRESHOLD || (smoke > F_SPEED_MIN_SMOKE && speed > F_SPEED_THRESHOLD))) return;
+    int at = f.slot * 8;
+    OCCUPIED_MAX(at, 1u);
+    ivec3 l = f.cell & (F_TILE - 1);
+    int mid = F_TILE / 2;
+    OCCUPIED_MAX(at + (l.x < mid ? 1 : 2), 1u);
+    OCCUPIED_MAX(at + (l.y < mid ? 3 : 4), 1u);
+    OCCUPIED_MAX(at + (l.z < mid ? 5 : 6), 1u);
+}

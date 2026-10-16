@@ -5291,6 +5291,14 @@ com/crystalgraphics/noise/CgNoiseVolumes
   field public,static,final VORONOI_NEAREST Ljava/lang/String;
   method public,static install ()V
   method public,static release ()V
+com/crystalgraphics/noise/CgWaveletNoise
+  access public,final
+  extends java/lang/Object
+  field public,static,final NAME Ljava/lang/String;
+  field public,static,final TILE I
+  method public,static install ()V
+  method public,static release ()V
+  method public,static tile ()[F
 com/crystalgraphics/probe/CgCollisionProbe
   access public,final
   extends java/lang/Object
@@ -8978,6 +8986,7 @@ com/crystalgraphics/vfx/CgVfxFrame
   method public alpha ()F
   method public billboard (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/look/CgVfxSlot;FFFFFFFF)V
   method public draws (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/look/CgVfxSlot;)Z
+  method public fluid (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/look/CgVfxSlot;Lcom/crystalgraphics/vfx/fluid/CgVfxFluid;)V
   method public grid (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/look/CgVfxSlot;Lcom/crystalgraphics/vfx/grid/CgVfxGrid3D;)V
   method public mesh (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/look/CgVfxSlot;FFFLorg/joml/Matrix4fc;FFFF)V
   method public particleAlpha ()F
@@ -9429,6 +9438,159 @@ com/crystalgraphics/vfx/element/CgVfxExplosion
   method public drawn (Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;)Z
   method public emitters ()Ljava/util/List;
   method public kit ()Lcom/crystalgraphics/vfx/look/CgVfxKit;
+com/crystalgraphics/vfx/fluid/CgVfxColormap
+  access public,final
+  extends java/lang/Object
+  field public,static,final FIRE Lcom/crystalgraphics/vfx/fluid/CgVfxColormap;
+  field public,static,final SMOKE Lcom/crystalgraphics/vfx/fluid/CgVfxColormap;
+  method public resolution ()I
+  method public sample (F[F)V
+  method public texture ()Lcom/crystalgraphics/gl/texture/CgTexture2D;
+  method public withColorScale (F)Lcom/crystalgraphics/vfx/fluid/CgVfxColormap;
+  method public,static builder ()Lcom/crystalgraphics/vfx/fluid/CgVfxColormap$Builder;
+com/crystalgraphics/vfx/fluid/CgVfxColormap$Builder
+  access public,final
+  extends java/lang/Object
+  method public at (FFFFF)Lcom/crystalgraphics/vfx/fluid/CgVfxColormap$Builder;
+  method public at (FIFF)Lcom/crystalgraphics/vfx/fluid/CgVfxColormap$Builder;
+  method public build ()Lcom/crystalgraphics/vfx/fluid/CgVfxColormap;
+  method public colorScale (F)Lcom/crystalgraphics/vfx/fluid/CgVfxColormap$Builder;
+  method public resolution (I)Lcom/crystalgraphics/vfx/fluid/CgVfxColormap$Builder;
+com/crystalgraphics/vfx/fluid/CgVfxFluid
+  access public,final
+  extends com/crystalgraphics/vfx/CgVfxElement
+  field public,static,final ATTENUATION Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final BUOYANCY_MAX_SMOKE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final BUOYANCY_PER_SMOKE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final BUOYANCY_PER_TEMP Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final BURN_PER_TEMP Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final CELL Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final COLORMAP_MAX Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final COLORMAP_MIN Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final COMBUSTION Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final COOLING_RATE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final DETAIL Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final DETAIL_PERIOD Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final DETAIL_SIZE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final DIVERGENCE_PER_BURN Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final FIRE Lcom/crystalgraphics/vfx/look/CgVfxKit;
+  field public,static,final FUEL_DAMPING Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final FUEL_FADE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final FUEL_PER_BURN Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final GRAVITY Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final IGNITION_TEMP Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final MAX_BLASTS I
+  field public,static,final MAX_EMITTERS I
+  field public,static,final MAX_WANTED I
+  field public,static,final SCATTERING Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final SCHEMA Lcom/crystalgraphics/vfx/look/CgVfxSchema;
+  field public,static,final SHADOW_ATTENUATION Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final SHADOW_FACTOR Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final SHADOW_MIN_INTENSITY Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final SLOT Lcom/crystalgraphics/vfx/look/CgVfxSlot;
+  field public,static,final SMOKE Lcom/crystalgraphics/vfx/look/CgVfxKit;
+  field public,static,final SMOKE_DAMPING Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final SMOKE_FADE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final SMOKE_PER_BURN Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final TEMPERATURE_DAMPING Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final TEMPERATURE_FADE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final TEMP_PER_BURN Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final TURBULENCE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final TURBULENCE_SIZE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final VELOCITY_DAMPING Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final VELOCITY_FADE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final VORTICITY Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final VORTICITY_BURN_MASK Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final VORTICITY_CONSTANT_MASK Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final VORTICITY_FUEL_MASK Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final VORTICITY_SMOKE_MASK Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final VORTICITY_TEMPERATURE_MASK Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final VORTICITY_VELOCITY_LINEAR_MASK Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final VORTICITY_VELOCITY_LOG_SCALE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final VORTICITY_VELOCITY_MASK Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  method public <init> (Lcom/crystalgraphics/vfx/CgVfxEffect;)V
+  method public <init> (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/look/CgVfxSlot;)V
+  method public blast (FFFFFF)V
+  method public bounds ([F)Z
+  method public cellSize ()F
+  method public detailWeight ()F
+  method public emitter (FFFF)Lcom/crystalgraphics/vfx/fluid/CgVfxFluid$Emitter;
+  method public faded ()Z
+  method public index ()I
+  method public place (FFF)Lcom/crystalgraphics/vfx/fluid/CgVfxFluid;
+  method public release ()V
+  method public slot ()Lcom/crystalgraphics/vfx/look/CgVfxSlot;
+  method public submit (Lcom/crystalgraphics/vfx/CgVfxFrame;)V
+  method public tick (F)V
+  method public wantTiles (DDDF)V
+  method public x ()D
+  method public y ()D
+  method public z ()D
+  method public,static kit (Ljava/lang/String;Lcom/crystalgraphics/vfx/fluid/CgVfxColormap;)Lcom/crystalgraphics/vfx/look/CgVfxKit;
+com/crystalgraphics/vfx/fluid/CgVfxFluid$Emitter
+  access public,final
+  extends java/lang/Object
+  method public at (FFF)Lcom/crystalgraphics/vfx/fluid/CgVfxFluid$Emitter;
+  method public box (FFF)Lcom/crystalgraphics/vfx/fluid/CgVfxFluid$Emitter;
+  method public burn (FF)Lcom/crystalgraphics/vfx/fluid/CgVfxFluid$Emitter;
+  method public combustible (Z)Lcom/crystalgraphics/vfx/fluid/CgVfxFluid$Emitter;
+  method public cylinder (FF)Lcom/crystalgraphics/vfx/fluid/CgVfxFluid$Emitter;
+  method public divergence (FF)Lcom/crystalgraphics/vfx/fluid/CgVfxFluid$Emitter;
+  method public fuel (FF)Lcom/crystalgraphics/vfx/fluid/CgVfxFluid$Emitter;
+  method public isOn ()Z
+  method public noise (F)Lcom/crystalgraphics/vfx/fluid/CgVfxFluid$Emitter;
+  method public off ()Lcom/crystalgraphics/vfx/fluid/CgVfxFluid$Emitter;
+  method public on ()Lcom/crystalgraphics/vfx/fluid/CgVfxFluid$Emitter;
+  method public radius (F)Lcom/crystalgraphics/vfx/fluid/CgVfxFluid$Emitter;
+  method public smoke (FF)Lcom/crystalgraphics/vfx/fluid/CgVfxFluid$Emitter;
+  method public temperature (FF)Lcom/crystalgraphics/vfx/fluid/CgVfxFluid$Emitter;
+  method public velocity (FFFF)Lcom/crystalgraphics/vfx/fluid/CgVfxFluid$Emitter;
+com/crystalgraphics/vfx/fluid/CgVfxFluidAtlas
+  access public,final
+  extends java/lang/Object
+  field public,static,final CAPACITY I
+  field public,static,final DEPOSITS I
+  field public,static,final DEPOSIT_GLSL Ljava/lang/String;
+  field public,static,final EMITTER I
+  field public,static,final FILL I
+  field public,static,final GPU_BUDGET Lcom/crystalgraphics/render/CgGpuBudget;
+  field public,static,final INSTANT F
+  field public,static,final ITERATIONS I
+  field public,static,final LAYER I
+  field public,static,final MAX_ENTITIES I
+  field public,static,final MIN_ITERATIONS I
+  field public,static,final ORDER I
+  field public,static,final PAGES I
+  field public,static,final PAGES_SAMPLER Ljava/lang/String;
+  field public,static,final REST_A_SAMPLER Ljava/lang/String;
+  field public,static,final REST_B_SAMPLER Ljava/lang/String;
+  field public,static,final ROWS I
+  field public,static,final SHADE_SAMPLER Ljava/lang/String;
+  field public,static,final SHADE_TILE I
+  field public,static,final SPAN I
+  field public,static,final TILE I
+  method public flow ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public pages ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public restA ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public restB ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public shade ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public tenants ()I
+  method public tilesInUse ()I
+  method public,static cellScale (Lcom/crystalgraphics/settings/CgQuality;)F
+  method public,static get ()Lcom/crystalgraphics/vfx/fluid/CgVfxFluidAtlas;
+  method public,static tiles (Lcom/crystalgraphics/settings/CgQuality;)I
+com/crystalgraphics/vfx/fluid/CgVfxTimeStepper
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public configure (FI)Lcom/crystalgraphics/vfx/fluid/CgVfxTimeStepper;
+  method public fixedDt ()F
+  method public maxSteps ()I
+  method public maxTimeError ()F
+  method public numSteps ()I
+  method public reset ()V
+  method public timeError ()F
+  method public update (F)I
 com/crystalgraphics/vfx/gas/CgVfxGas
   access public,final
   extends com/crystalgraphics/vfx/CgVfxElement
@@ -9913,6 +10075,7 @@ com/crystalgraphics/vfx/look/CgVfxSlot
   method public name ()Ljava/lang/String;
   method public toString ()Ljava/lang/String;
   method public,static billboard (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxSlot;
+  method public,static fluid (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxSlot;
   method public,static grid (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxSlot;
   method public,static mesh (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxSlot;
   method public,static of (Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxSlot;
@@ -9926,6 +10089,7 @@ com/crystalgraphics/vfx/look/CgVfxSlot$Kind
   access public,final,enum
   extends java/lang/Enum
   field public,static,final BILLBOARD Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
+  field public,static,final FLUID Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
   field public,static,final GRID Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
   field public,static,final MESH Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
   field public,static,final PARTICLES Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
