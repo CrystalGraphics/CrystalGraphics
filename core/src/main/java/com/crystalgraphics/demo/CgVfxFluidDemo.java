@@ -198,7 +198,7 @@ public final class CgVfxFluidDemo {
         mantaflowPlume(b, -ROW);
         fireWhirl(c, -ROW);
         comet(d, -ROW);
-        mushroomCloud(0f, -ROW - 70f);
+        mushroomCloud(0f, -ROW - 50f);
         // -Dcrystalgraphics.demo.station=<words>: only the stations whose titles hold them, for measuring one alone.
         String only = System.getProperty("crystalgraphics.demo.station");
         if (only != null) stations.removeIf(s -> !(s.title() + ": " + s.subtitle()).contains(only));
@@ -588,32 +588,35 @@ public final class CgVfxFluidDemo {
     // ---- The mushroom cloud -------------------------------------------------------------------------------------------
 
     /**
-     * A mushroom cloud, as a buoyant fireball makes one: a flash; a ball of fuel ten blocks across burning in a second,
-     * its burn expanding it (Flow's divergence per burn); the fireball, far hotter than the air and slow to cool, rising
-     * and rolling into a ring as it goes, its cap spreading where its heat runs out; afterwinds drawing a column of dust
-     * up under it for nine seconds, the stem. Three thousand fragments thrown out trail smoke and ride the updraft; a
-     * ring of dust particles racing out along the ground pours dust and pushes the fluid with it (Flow's point emitter),
-     * so the base surge is the fluid's. Its colour map cools it from white through orange and a dull red to brown soot
-     * and the pale tan of dust and condensed cloud.
+     * A mushroom cloud, as a buoyant fireball makes one: a flash; a ball of fuel twelve blocks across, clear of the
+     * ground, burning in a second and expanding as it burns (Flow's divergence per burn); the fireball, far hotter than
+     * the air, rising and rolling (confinement weighted by heat and speed), with afterwinds lifting a narrow stem of dust
+     * up under it. What makes the cap: a real one stalls where it meets a stable layer of air and is pushed out sideways
+     * by the updraft still rising beneath it, its edges sinking back as the rim. Flow's air has no layers, so a slab at
+     * cap height cools what reaches it to a little below the air's temperature, coupling nothing else: the fireball
+     * loses its lift there, spreads into the cap and rolls under at its edge. A brief low skirt of dust runs out along
+     * the ground, its particles pushing the fluid with them (Flow's point emitter); a few fragments ride the updraft
+     * with thin trails. Its colour map cools it from white through orange and a dull red to brown soot and the pale tan
+     * of dust and condensed cloud.
      */
     private void mushroomCloud(float x, float z) {
         CgVfxEmitter flash = CgVfxEmitter.builder("mushroomFlash").capacity(4).burst(0f, 1).life(0.6f, 0.6f)
                 .size(9f, 9f).heat(1f)
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter debris = CgVfxEmitter.builder("mushroomDebris").capacity(3000).burst(0.05f, 3000)
-                .shape(CgSphere.of(3)).launch(0.35f, 1f, 1f).speed(12f, 32f).life(4f, 7f).size(0.05f, 0.12f, 2f).heat(1f)
+        CgVfxEmitter debris = CgVfxEmitter.builder("mushroomDebris").capacity(400).burst(0.05f, 400)
+                .shape(CgSphere.of(3)).launch(0.5f, 1f, 1f).speed(8f, 20f).life(2.5f, 4f).size(0.05f, 0.1f, 2f).heat(1f)
                 .trail(14)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Drag(0.25f, 0f))
                 .module(new CgVfxModule.Flow(0.6f))
-                .module(new CgVfxModule.Feed(0.35f, 0.2f))
+                .module(new CgVfxModule.Feed(0.06f, 0f))
                 .module(new CgVfxModule.Ground(0.2f, 0.6f, 0.6f, 0f))
                 .opacity(FADE).build();
-        CgVfxEmitter surge = CgVfxEmitter.builder("mushroomSurge").capacity(3000).burst(0.15f, 3000)
-                .shape(CgRing.of(3, 6, 0)).edge().outward().speed(18f, 26f).life(5f, 7f).size(0.06f, 0.1f)
-                .module(new CgVfxModule.Drag(1.6f, 0f))
+        CgVfxEmitter surge = CgVfxEmitter.builder("mushroomSurge").capacity(600).burst(0.2f, 600)
+                .shape(CgRing.of(4, 7, 0)).edge().outward().speed(14f, 18f).life(2f, 3f).size(0.06f, 0.1f)
+                .module(new CgVfxModule.Drag(2.6f, 0f))
                 .module(new CgVfxModule.Ground(0f, 0.8f, 0.6f, 0f))
-                .module(new CgVfxModule.Feed(0.9f, 0f, 3.5f)).opacity(FADE).build();
+                .module(new CgVfxModule.Feed(0.15f, 0f, 2f)).opacity(FADE).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(MUSHROOM).emitter(flash).emitter(debris).emitter(surge)
                 .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(flash).bind("_Color", FLASH).bind("_Hot", FLASH).build())
                 .layer(CgVfxLayer.of(PARTICLE + "streaks.shader").on(debris).trails().size(0.7f).bind("_Color", EMBER)
@@ -621,28 +624,31 @@ public final class CgVfxFluidDemo {
                 .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(debris).bind("_Color", EMBER).bind("_Hot", FLAME).build())
                 .layer(CgVfxLayer.of(PARTICLE + "dust.shader").on(surge).set("_Color", 0.66f, 0.6f, 0.52f, 0.25f)
                         .role(CgVfxLayer.Role.SMOKE).build())
-                .set(CgVfxFluid.CELL, 0.9f).set(CgVfxFluid.BUOYANCY_PER_TEMP, 1.3f).set(CgVfxFluid.COOLING_RATE, 0.32f)
+                .set(CgVfxFluid.CELL, 0.6f).set(CgVfxFluid.BUOYANCY_PER_TEMP, 2.2f).set(CgVfxFluid.COOLING_RATE, 0.3f)
                 .set(CgVfxFluid.DIVERGENCE_PER_BURN, 3f)
-                .set(CgVfxFluid.VELOCITY_DAMPING, 0.02f).set(CgVfxFluid.SMOKE_DAMPING, 0.015f)
-                .set(CgVfxFluid.SMOKE_FADE, 0.004f)
-                .set(CgVfxFluid.VORTICITY, 0.9f).set(CgVfxFluid.VORTICITY_TEMPERATURE_MASK, 1f)
-                .set(CgVfxFluid.TURBULENCE, 1.2f).set(CgVfxFluid.TURBULENCE_SIZE, 6f)
-                .set(CgVfxFluid.DETAIL, 0.8f).set(CgVfxFluid.DETAIL_SIZE, 2f)
+                .set(CgVfxFluid.VELOCITY_DAMPING, 0.02f).set(CgVfxFluid.SMOKE_DAMPING, 0.02f)
+                .set(CgVfxFluid.SMOKE_FADE, 0.01f)
+                .set(CgVfxFluid.VORTICITY, 1.5f).set(CgVfxFluid.VORTICITY_TEMPERATURE_MASK, 1f)
+                .set(CgVfxFluid.TURBULENCE, 0.4f).set(CgVfxFluid.TURBULENCE_SIZE, 4f)
+                .set(CgVfxFluid.DETAIL, 0.8f).set(CgVfxFluid.DETAIL_SIZE, 1.5f)
                 .set(CgVfxFluid.ATTENUATION, 1.2f).set(CgVfxFluid.SHADOW_ATTENUATION, 0.8f)
                 .set(CgVfxFluid.SHADOW_MIN_INTENSITY, 0.15f).set(CgVfxFluid.SCATTERING, 0.5f).build();
         stations.add(new Station("mushroom cloud", "a fireball rising into a ring, its stem of dust, its surge along the ground",
-                x, z, look, 62f, 150f, List.of(flash, debris, surge), new float[][] {{0f, 5f, 0f}, {0f, 4f, 0f}, {0f, 0.4f, 0f}},
+                x, z, look, 64f, 110f, List.of(flash, debris, surge), new float[][] {{0f, 8f, 0f}, {0f, 6f, 0f}, {0f, 0.4f, 0f}},
                 p -> {
-                    p.fluid = new CgVfxFluid(p).place(0f, 40f, 0f).domain(30f, 40f, 30f);
-                    p.sources.add(p.fluid.emitter(0f, 5f, 0f, 5f).temperature(1f, 30f).fuel(1f, 30f).smoke(0.5f, 10f)
-                            .velocity(0f, 6f, 0f, 5f).divergence(12f, 30f));
-                    p.sources.add(p.fluid.emitter(0f, 1.5f, 0f, 1f).cylinder(2.5f, 1.5f).temperature(0.55f, 3f)
-                            .smoke(0.8f, 3f).combustible(false).velocity(0f, 10f, 0f, 3f).off());
+                    p.fluid = new CgVfxFluid(p).place(0f, 30f, 0f).domain(20f, 30f, 20f);
+                    p.sources.add(p.fluid.emitter(0f, 8f, 0f, 6f).temperature(1f, 40f).fuel(0.6f, 40f).smoke(1f, 20f)
+                            .velocity(0f, 14f, 0f, 10f).divergence(8f, 30f));
+                    p.sources.add(p.fluid.emitter(0f, 1.5f, 0f, 1f).cylinder(1.6f, 1.5f).temperature(0.55f, 2f)
+                            .smoke(0.7f, 2f).combustible(false).velocity(0f, 12f, 0f, 3f).off());
+                    // The stable layer the cap stalls under: temperature alone, a little below the air's.
+                    p.sources.add(p.fluid.emitter(0f, 42f, 0f, 1f).box(20f, 7f, 20f).temperature(-0.15f, 1.5f)
+                            .fuel(0f, 0f).velocity(0f, 0f, 0f, 0f));
                 },
                 (play, before, age) -> {
-                    if (before < 0.5f && age >= 0.5f) play.sources.get(0).off();
-                    if (before < 0.4f && age >= 0.4f) play.sources.get(1).on();
-                    if (before < 9f && age >= 9f) play.sources.get(1).off();
+                    if (before < 0.35f && age >= 0.35f) play.sources.get(0).off();
+                    if (before < 0.3f && age >= 0.3f) play.sources.get(1).on();
+                    if (before < 14f && age >= 14f) play.sources.get(1).off();
                 }));
     }
 
