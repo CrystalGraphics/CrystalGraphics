@@ -37,8 +37,8 @@ import java.util.function.Consumer;
 /**
  * The engine's gas and smoke, a station each in a grid with a mushroom cloud towering behind it: the fluid engine
  * ({@link CgVfxFluid}) playing scenes the engines it ports ship as code (NVIDIA Flow's editor stage {@code sphere},
- * Mantaflow's {@code fire.py} and {@code simpleplume.py}); a CS2 smoke grenade with fireflies riding its churn;
- * particles and fluids pushing each other (a fire whirl fed by its embers, a dragon's breath of particles driving the
+ * Mantaflow's {@code fire.py} and {@code simpleplume.py}); a CS2 smoke grenade with fireflies riding its churn; a fire
+ * whirl spun up by its inflow; particles and fluids pushing each other (a dragon's breath of particles driving the
  * flame, spirits carving wakes through a fog bank, a comet's sparks feeding its trail); and particles splatting grids
  * ({@link CgVfxGrid3D}: a slime mould, smoke made of particles beside the same particles as sprites, a nebula). Every
  * station plays again every {@link #PERIOD} seconds, standing on the world's ground under it, else on the origin's
@@ -339,9 +339,10 @@ public final class CgVfxFluidDemo {
     }
 
     /**
-     * A fire whirl: three fuel jets spinning tangentially round a burning core so the flames twist up into a column, and
-     * embers spiralling up through it in a vortex, carried by the fluid's flow and pouring heat and smoke where they go, so
-     * the column is fed by what rides it.
+     * A fire whirl, as one forms over a burning pool: fuel burns only in a small core at the base, while three jets on a
+     * ring round it blow air along the ring and a little inward, carrying no fuel or heat. The swirl drawn in and up
+     * spins faster as it narrows, so the flame stretches into a thin, tall, turning column with smoke above it; embers
+     * spiral up through it, carried by its flow and leaving a little smoke where they go.
      */
     private void fireWhirl(float x, float z) {
         CgVfxEmitter embers = CgVfxEmitter.builder("whirlEmbers").capacity(4000).rate(600f, 0f, PERIOD - 4f)
@@ -350,29 +351,33 @@ public final class CgVfxFluidDemo {
                 .module(new CgVfxModule.Vortex(0f, 1f, 0f, 7f, -1.2f, 0f, 0f, 0f))
                 .module(new CgVfxModule.Force(0f, 3f, 0f))
                 .module(new CgVfxModule.Flow(1.8f))
-                .module(new CgVfxModule.Feed(0.15f, 0.6f))
+                .module(new CgVfxModule.Feed(0.03f, 0f))
                 .module(new CgVfxModule.Turbulence(1.2f, 0.4f, 0.6f)).opacity(FADE).build();
-        // Flow's fire, its confinement raised for the whirl, curl noise to break it up.
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxFluid.FIRE).emitter(embers)
+        // Flow's fire at its editor's colour scale, its confinement raised to hold the whirl together.
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(EDITOR_FIRE).emitter(embers)
                 .layer(CgVfxLayer.of(PARTICLE + "streaks.shader").on(embers).trails().size(0.6f).bind("_Color", EMBER)
                         .bind("_Core", FLAME).build())
                 .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(embers).bind("_Color", EMBER).bind("_Hot", FLAME).build())
-                .set(CgVfxFluid.CELL, 0.25f).set(CgVfxFluid.VORTICITY, 2f)
-                .set(CgVfxFluid.TURBULENCE, 2f).set(CgVfxFluid.TURBULENCE_SIZE, 1.6f).build();
-        stations.add(new Station("fire whirl", "embers spiralling up, feeding the flames they ride", x, z, look, 16f, 26f,
+                .set(CgVfxFluid.CELL, 0.2f).set(CgVfxFluid.VORTICITY, 2f)
+                .set(CgVfxFluid.TURBULENCE, 0.6f).set(CgVfxFluid.TURBULENCE_SIZE, 1f).build();
+        stations.add(new Station("fire whirl", "a burning pool's swirl, drawn in and spun up into a column", x, z, look, 16f, 26f,
                 List.of(embers), new float[][] {{0f, 0.3f, 0f}},
                 p -> {
                     p.fluid = new CgVfxFluid(p).place(0f, 8f, 0f).domain(5f, 8.5f, 5f);
-                    p.sources.add(p.fluid.emitter(0f, 0.4f, 0f, 0.9f).velocity(0f, 3f, 0f, 2f));
-                    for (int i = 0; i < 3; i++) p.sources.add(p.fluid.emitter(0f, 0.4f, 0f, 0.6f));
+                    p.sources.add(p.fluid.emitter(0f, 0.4f, 0f, 0.6f).fuel(1f, 3f).temperature(0.6f, 3f)
+                            .velocity(0f, 2f, 0f, 1f));
+                    for (int i = 0; i < 3; i++) {
+                        p.sources.add(p.fluid.emitter(0f, 0.6f, 0f, 0.9f).temperature(0f, 0f).fuel(0f, 0f));
+                    }
                 },
                 (play, before, age) -> {
-                    // Three jets on a turning ring, each blowing along it: the flame twists into a whirl.
+                    // Three jets on a turning ring, each blowing along it and a little inward: the swirl the
+                    // updraft draws in and narrows, so it spins up.
                     for (int i = 0; i < 3; i++) {
-                        double a = age * 2.2 + i * Math.PI * 2 / 3;
+                        double a = age * 1.4 + i * Math.PI * 2 / 3;
                         float c = (float) Math.cos(a), s = (float) Math.sin(a);
                         CgVfxFluid.Emitter jet = play.sources.get(i + 1);
-                        jet.at(c * 1.6f, 0.4f, s * 1.6f).velocity(-s * 9f, 2f, c * 9f, 4f);
+                        jet.at(c * 2.6f, 0.6f, s * 2.6f).velocity(-s * 7f - c * 2.5f, 0.5f, c * 7f - s * 2.5f, 3f);
                         if (age > PERIOD - 4f) jet.off();
                     }
                     if (age > PERIOD - 4f) play.sources.get(0).off();
@@ -393,13 +398,14 @@ public final class CgVfxFluidDemo {
                 .module(new CgVfxModule.Drag(1.4f, 0f))
                 .module(new CgVfxModule.Gravity(2f))
                 .module(new CgVfxModule.Ground(0.1f, 0.5f, 0.3f, 0f))
-                .module(new CgVfxModule.Feed(0.2f, 3f, 9f))
+                .module(new CgVfxModule.Feed(0.25f, 1.5f, 9f))
                 .opacity(CgKeyframes.start(0f, 1f).to(0.7f, 0.8f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxFluid.FIRE).emitter(breath)
+        // Flow's fire at its editor's colour scale: white only where it is hottest, at the mouth.
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(EDITOR_FIRE).emitter(breath)
                 .layer(CgVfxLayer.of(PARTICLE + "streaks.shader").on(breath).trails().size(0.5f).bind("_Color", EMBER)
                         .bind("_Core", FLAME).build())
-                .set(CgVfxFluid.CELL, 0.22f).set(CgVfxFluid.BUOYANCY_PER_TEMP, 2.5f).set(CgVfxFluid.COOLING_RATE, 1.2f)
+                .set(CgVfxFluid.CELL, 0.22f).set(CgVfxFluid.BUOYANCY_PER_TEMP, 2.5f)
                 .set(CgVfxFluid.VORTICITY, 1.5f).set(CgVfxFluid.TURBULENCE, 1.4f).set(CgVfxFluid.TURBULENCE_SIZE, 1.2f)
                 .set(CgVfxFluid.VELOCITY_DAMPING, 0.1f).set(CgVfxFluid.SMOKE_DAMPING, 0.4f).set(CgVfxFluid.SMOKE_FADE, 0.5f)
                 .build();

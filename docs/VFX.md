@@ -1379,8 +1379,8 @@ sparks = new CgVfxEmitterInstance(look().emitter("sparks"), seed).inGas(fire);  
 - scenes the ported engines ship as code: Flow's editor stage `sphere` at a block for every 10 cm, Mantaflow's
   `fire.py` and `simpleplume.py` in their grids' sizes, each station's javadoc naming the file it is set up from;
 - a CS2 smoke grenade ([§15](#15-smoke-that-fills-a-space-cs2s-grenades)) with fireflies riding its churn;
-- particles and fluids pushing each other: a fire whirl fed by its embers, a dragon's breath that is only particles
-  feeding and pushing, spirits carving wakes through a fog bank, a comet's sparks feeding its trail;
+- a fire whirl: a burning pool's swirl drawn in and spun up into a thin turning column;
+- particles and fluids pushing each other: a dragon's breath that is only particles feeding and pushing, spirits carving wakes through a fog bank, a comet's sparks feeding its trail;
 - particles splatting grids: a slime mould, smoke made of particles beside the same particles as sprites, a nebula;
 - a mushroom cloud: a fireball expanding as it burns, rising into a ring, its stem lifted by afterwinds, debris riding
   the updraft, a surge of dust particles pushing the fluid out along the ground.
