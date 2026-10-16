@@ -9756,6 +9756,7 @@ com/crystalgraphics/vfx/look/CgVfxLayer$Builder
   method public size (Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public subdivisions (I)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public texture (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
+  method public texture (Ljava/lang/String;Ljava/util/function/Supplier;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public trails ()Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public unbound (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public volume ()Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;

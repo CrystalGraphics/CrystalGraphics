@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 /**
  * One draw of a look: a {@code .shader} on one or more slots, its properties set, bound to the look's parameters, or
@@ -109,7 +110,8 @@ public final class CgVfxLayer {
     final int subdivisions;
     final Map<String, float[]> constants;
     final List<Binding> bindings;
-    final Map<String, CgTexture> textures;
+    final Map<String, Supplier<? extends CgTexture>> textures;
+    private volatile Map<String, CgTexture> madeTextures;
     final Set<String> keywords, unbound;
     /** What it draws on a mesh slot or per particle of a MESHES emitter instead of the sphere; a path loads at first draw. */
     private final CgMeshLods meshLods;
@@ -256,8 +258,17 @@ public final class CgVfxLayer {
         return bindings;
     }
 
+    /** Its textures by property, each made at the first call: what its materials bind, at its first draw. */
     public Map<String, CgTexture> textures() {
-        return textures;
+        Map<String, CgTexture> made = madeTextures;
+        if (made == null) {
+            Map<String, CgTexture> m = new LinkedHashMap<>();
+            for (Map.Entry<String, Supplier<? extends CgTexture>> t : textures.entrySet()) {
+                m.put(t.getKey(), Objects.requireNonNull(t.getValue().get(), t.getKey()));
+            }
+            madeTextures = made = Collections.unmodifiableMap(m);
+        }
+        return made;
     }
 
     /** The {@code cg_feature} keywords set on its materials, beside its slot kind's {@code FX_ON_*}. */
@@ -335,7 +346,7 @@ public final class CgVfxLayer {
         private int subdivisions;
         private final Map<String, float[]> constants = new LinkedHashMap<>();
         private final List<Binding> bindings = new ArrayList<>();
-        private final Map<String, CgTexture> textures = new LinkedHashMap<>();
+        private final Map<String, Supplier<? extends CgTexture>> textures = new LinkedHashMap<>();
         private final Set<String> keywords = new LinkedHashSet<>(), unbound = new LinkedHashSet<>();
         private CgMeshLods meshLods;
         private String meshPath;
@@ -504,6 +515,19 @@ public final class CgVfxLayer {
          * }</pre>
          */
         public Builder texture(String property, CgTexture texture) {
+            Objects.requireNonNull(texture, "texture");
+            return texture(property, () -> texture);
+        }
+
+        /**
+         * A texture made at the layer's first draw, never before: one generated in code (a colour map, a lookup table)
+         * named in common code, which a server then never makes.
+         *
+         * <pre>{@code
+         * layer.texture("_Colormap", CgVfxColormap.FIRE::texture)
+         * }</pre>
+         */
+        public Builder texture(String property, Supplier<? extends CgTexture> texture) {
             textures.put(Objects.requireNonNull(property, "property"), Objects.requireNonNull(texture, "texture"));
             return this;
         }
