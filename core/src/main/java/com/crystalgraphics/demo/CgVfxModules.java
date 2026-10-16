@@ -270,6 +270,8 @@ public final class CgVfxModules {
         sparks(COLUMNS[2] + 6f, ROWS[5]);
         streams(COLUMNS[3] + 10f, ROWS[5]);
         flocks(COLUMNS[0], ROWS[6]);
+        String probeOnly = System.getProperty("crystalgraphics.demo.modules.only");   // PROBE
+        if (probeOnly != null) stations.removeIf(s -> java.util.Arrays.stream(probeOnly.split(",")).noneMatch(s.name()::startsWith));   // PROBE
         floors = new float[stations.size()];
         for (Station s : stations) LOG.info("[vfx-modules] {} at x {}, z {}", s.name(), s.x(), s.z());
         LOG.info("[vfx-modules] every station replays every {}s; a simulation switch reaches it from the next", PERIOD);
@@ -2504,6 +2506,7 @@ public final class CgVfxModules {
         }
     };
     private double currentX, currentY, currentZ;
+    private int probeFrames;   // PROBE
 
     /**
      * Plays every station round {@code (x, y, z)} each {@link #PERIOD} seconds and submits this frame's draws: once a
@@ -2524,6 +2527,7 @@ public final class CgVfxModules {
             vfx.system().update(seconds);
             vfx.system().submit(world);
         }
+        if (++probeFrames % 120 == 0) System.out.println("[probe] frame " + probeFrames + " stations " + stations.size() + " particlesDrawn " + CgVfxSystem.particlesDrawn());   // PROBE
         for (int i = 0; i < stations.size(); i++) {
             Station s = stations.get(i);
             currentX = x + s.x();
