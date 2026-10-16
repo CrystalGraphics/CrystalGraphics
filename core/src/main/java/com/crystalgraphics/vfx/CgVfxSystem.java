@@ -508,11 +508,12 @@ public final class CgVfxSystem {
         }
     }
 
-    /** Its load: the CPU its last update and draw took against {@code cpuBudgetMs}, or the particles' GPU scale's shortfall. */
+    /**
+     * Its load: the CPU its last update and draw took against {@code cpuBudgetMs}. Never the GPU's time, as Niagara's
+     * budget is the game thread's: a GPU cost no spawn count removes (a device's fixed overhead) would starve every effect.
+     */
     private float load() {
-        float cpu = (updateNanos + submitNanos) / 1.0e6f / CPU_BUDGET_MS.get();
-        float gpu = 1f / Math.max(CgVfxParticlePool.GPU_BUDGET.scale(), 0.25f);
-        return Math.max(1f, Math.max(cpu, gpu));
+        return Math.max(1f, (updateNanos + submitNanos) / 1.0e6f / CPU_BUDGET_MS.get());
     }
 
     /** How far every distance and cap reaches under the pressure: 1 at rest, a quarter at the most. */
@@ -603,8 +604,7 @@ public final class CgVfxSystem {
 
     /** As {@link #spawnShare(CgVfxEmitter)}, for an effect drawn {@code lowered} tiers below this update's. */
     float spawnShare(CgVfxEmitter emitter, int lowered) {
-        float share = density * CgVfxParticlePool.GPU_BUDGET.scale();
-        return emitter.optional() && quality(lowered) == CgQuality.LOW ? share * 0.5f : share;
+        return emitter.optional() && quality(lowered) == CgQuality.LOW ? density * 0.5f : density;
     }
 
     /** The quality tier this update draws at. */

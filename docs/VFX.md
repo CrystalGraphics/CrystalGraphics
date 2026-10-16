@@ -2170,9 +2170,10 @@ VFX.play(new Aura(LOOK, x, y, z)).scalability(CgVfxScalability.HERO);   // one e
   then never starts, or starts asleep.
 - A particle's bounds are a sphere round its source it cannot leave (its emitter's speed, life and pull), as Niagara gives
   a GPU emitter fixed bounds: no readback, nothing late.
-- **Under load everything shrinks together**: past `crystalgraphics.vfx.cpuBudgetMs` (4) of CPU a frame, or when the
-  particles' GPU budget (`CgVfxParticlePool.GPU_BUDGET`, 3 ms) scales them down, every distance and cap shrinks, to a
-  quarter at most, and spawn shares follow the GPU's scale. Counters `vfx.culled`, `vfx.asleep`, `vfx.pressure-percent`.
+- **Under load everything shrinks together**: past `crystalgraphics.vfx.cpuBudgetMs` (4) of CPU a frame, every
+  distance and cap shrinks, to a quarter at most. Counters `vfx.culled`, `vfx.asleep`, `vfx.pressure-percent`.
+- **Particles never thin by GPU time**, as Niagara's budget is the game thread's: an effect spawns what it asks, at
+  the player's density, on every device. Their GPU cost is the quality tier's and scalability's to bound.
 - Asleep past `MAX_SLEEP_SECONDS` (120) an effect is killed, so a one-off culled for good never lingers.
 - A server's copy of an authoritative effect is never culled.
 
@@ -2180,10 +2181,10 @@ VFX.play(new Aura(LOOK, x, y, z)).scalability(CgVfxScalability.HERO);   // one e
 
 | What | Budget | Over it |
 |---|---|---|
-| Particles (`CgVfxParticlePool.GPU_BUDGET`) | 3 ms a frame | spawn shares, and every scalability distance and cap, shrink |
 | Fluid (`CgVfxFluidAtlas.GPU_BUDGET`) | 2 ms a frame | fewer pressure iterations |
 
-Each is measured on the GPU a frame or two late and eased, so a heavy moment thins gradually rather than popping.
+It is measured on the GPU a frame or two late and eased, so a heavy moment loses detail gradually. It lowers a
+solver's quality, never what appears.
 
 ### On the server
 

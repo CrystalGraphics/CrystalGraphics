@@ -440,7 +440,7 @@ public final class CgVfxRange {
         Matrix4fc projection = view.projection();
         Matrix4f vp = VIEW_PROJECTION;
 
-        CgComputePass pass = recording.compute("vfx.range").timed(GPU_RANGE).timed(CgVfxParticlePool.GPU_BUDGET);
+        CgComputePass pass = recording.compute("vfx.range").timed(GPU_RANGE);
         for (int i = 0, keyFirst = 0, slotFirst = 0; i < ALL.size(); i++) {
             CgVfxParticlePool p = ALL.get(i).pool;
             if (p.isReleased()) continue;
