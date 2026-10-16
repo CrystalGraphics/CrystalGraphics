@@ -87,7 +87,9 @@ public final class CgVfxEmitterCompiler {
         if (shape.usesGas()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_gas_at.glsl\"\n");
         if (shape.usesGrid()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/grid/fx_grid_at.glsl\"\n");
         // Declared ahead of the kinds' functions that call them; defined with the other step_ functions.
-        if (shape.feedsGas()) s.append("void step_feed(FxGas g, vec3 p, float density, float heat, float dt);\n");
+        if (shape.feedsGas()) {
+            s.append("void step_feed(FxGas g, vec3 p, vec3 velocity, float density, float heat, float couple, float dt);\n");
+        }
         if (shape.splatsGrid()) s.append("void step_splat(FxGrid g, vec3 p, vec4 amounts, float dt);\n");
         Set<String> kinds = new LinkedHashSet<>();
         for (int i = 0; i < shape.modules(); i++) {
@@ -240,11 +242,12 @@ public final class CgVfxEmitterCompiler {
             s.append("""
 
                     // What a kind taking GAS_FEED pours: density and heat a second into the gas at p (from the instance's
-                    // origin), for this step's dt, as a deposit its next step takes.
-                    void step_feed(FxGas g, vec3 p, float density, float heat, float dt) {
+                    // origin), for this step's dt, and its velocity coupled at couple a second (Flow's point emitter), as
+                    // a deposit its next step takes.
+                    void step_feed(FxGas g, vec3 p, vec3 velocity, float density, float heat, float couple, float dt) {
                         if (!g.live) return;
                         GAS_DEPOSITS_APPEND(FxDeposit(vec4((p + g.offset) / g.cell, float(g.gas)),
-                                vec4(density * dt, heat * dt, 0.0, 0.0)));
+                                vec4(density * dt, heat * dt, couple, 0.0), vec4(velocity, 0.0)));
                     }
                     """);
         }

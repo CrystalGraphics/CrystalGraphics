@@ -1068,7 +1068,7 @@ Modules run in order every step. Forces come first and are integrated together; 
 | `Wind`, `Turbulence`, `Buoyancy`, `Updraft` | The system's gusting air; curl noise; hot particles rising as they cool; a column of rising air |
 | `Attract`, `Orbit`, `Vortex`, `Conform` | Pull toward a sphere or box; circling an axis; a vortex's pull; settling onto a sphere's shell |
 | `Flock` | Reynolds' boids among an instance's own particles: apart from the nearest, along with their heading, toward their middle |
-| `Feed` | Pours smoke and heat into the fluid its instance is in, where each particle is: sparks trailing smoke ([§14](#14-gas)) |
+| `Feed` | Pours smoke and heat into the fluid its instance is in, where each particle is, and pushes it: sparks trailing smoke, a flock carving wakes ([§14](#14-gas)) |
 | `Flow` | Carried by the fluid its instance is in (`instance.inGas(fluid)`, [§14](#14-gas)): embers riding a plume, debris whirled through a cloud |
 | `VectorField` | A 3D field (`CgVfxField`) in a box, setting velocity |
 | `Spin` | Spin rate decaying |
@@ -1284,6 +1284,7 @@ fluid.blast(x, y, z, 4f, 25f, 1f);      // thrown out at 25 blocks a second, cle
 |---|---|
 | `new CgVfxFluid(effect)`, `(effect, slot)` | A fluid drawn on `CgVfxFluid.SLOT`, or on a fluid slot of the effect's own (`CgVfxSlot.fluid(name)`) |
 | `place(x, y, z)` | Where its grid's middle goes, from the effect's origin; taken when it first gets a place in the atlas, fixed in the world after |
+| `domain(hx, hy, hz)` | The box round its middle it may hold cells in, as Mantaflow's scenes size their grids: smoke leaving it is gone, as through open boundaries. Unset, a fluid whose smoke lingers follows it across the pool |
 | `emitter(x, y, z, radius)` | Flow's sphere emitter: everything in it coupled toward its targets. `box(hx, hy, hz)`, `cylinder(radius, halfHeight)` for other shapes; `at`, `on()`, `off()`. At most 8 |
 | `velocity(vx, vy, vz, couple)`, `temperature`, `fuel`, `burn`, `smoke`, `divergence` | A target and the rate it is coupled at a second (Flow's `coupleRate`: the share of the way there a second, so it holds a region at a value and never overfills it). Unset: Flow's defaults, rising at 4 blocks a second, temperature 0.5 and fuel 0.8, each coupled at 2 |
 | `combustible(false)` | No fuel: what it emits only rises and thins |
@@ -1340,10 +1341,11 @@ static final CgVfxKit EMBERS_KIT = CgVfxFluid.kit("mymod:fluid/embers", EMBERS);
 
 ### Where it lives: the pool, the clock, the world
 
-- **At most four fluids at once** (`CgVfxFluidAtlas.CAPACITY`); one asking past that waits, drawing nothing.
+- **At most sixteen fluids at once** (`CgVfxFluidAtlas.CAPACITY`); one asking past that waits, drawing nothing.
 - **Every fluid shares one pool of tiles**: 1024 at Ultra, 512 at High, 256 at Medium, 128 at Low. Once the pool is
   full each fluid alive is kept an even share of it; the counters `vfx.fluid.tiles` and `vfx.fluid.pool-full` say how
-  full it runs. Changing tier starts every fluid again empty.
+  full it runs. Changing tier starts every fluid again empty. Give each fluid a `domain` that holds what it shows, and
+  many share the pool with none refused.
 - **It steps 60 times a second on its effect's clock** (Flow's time stepper), and draws the time past its last step by
   carrying its smoke on (Flow's interpolation), so slow motion moves every frame. An effect left unticked for two
   seconds gives its tiles back. Under the GPU's budget (`CgVfxFluidAtlas.GPU_BUDGET`, 2 ms) its pressure solve takes
@@ -1352,13 +1354,16 @@ static final CgVfxKit EMBERS_KIT = CgVfxFluid.kit("mymod:fluid/embers", EMBERS);
 
 ### Particles and entities in it
 
-**Particles ride it, and pour into it.** `CgVfxModule.Flow` draws their velocity toward the fluid's where they are;
-`CgVfxModule.Feed` makes each pour smoke and heat a second where it is, spread over the cells round it and taken at the
-fluid's next step. The instance names its fluid:
+**Particles ride it, pour into it and push it.** `CgVfxModule.Flow` draws their velocity toward the fluid's where they
+are; `CgVfxModule.Feed` makes each pour smoke and heat a second where it is, spread over the cells round it and taken at
+the fluid's next step, and with a push pulls the fluid there toward the particle's own velocity (NVIDIA Flow's point
+emitter: where many push one cell it takes their mean, weighted by nearness). The instance names its fluid:
 
 ```java
 embers = new CgVfxEmitterInstance(look().emitter("embers"), seed).inGas(fire);   // .module(new Flow(2.5f))
 sparks = new CgVfxEmitterInstance(look().emitter("sparks"), seed).inGas(fire);   // .module(new Feed(4f, 0.5f))
+.module(new CgVfxModule.Feed(0f, 0f, 10f))      // pushing alone: a flock dragging wakes through fog
+.module(new CgVfxModule.Feed(0.2f, 3f, 9f))     // a stream of particles that is the flame: hot, and driving it
 ```
 
 - What particles pour lands where the fluid holds tiles: the engine asks for tiles round each instance feeding it, and
@@ -2104,7 +2109,7 @@ record Swirl(float strength) implements CgVfxModule {
 | the entities round the camera | `worldInputs()` of `ENTITIES` | `FxEntities` (`fx_entities_at.glsl`) |
 | the particles near it, as a force before the solver | `worldInputs()` of `NEIGHBOURS`, `neighbourRadius()` | `FxNeighbours` (`fx_neighbours_at.glsl`: 27 cells to walk) |
 | the fluid its instance is in, before or after the solver | `worldInputs()` of `GAS` | `FxGas` (`fx_gas_at.glsl`: `fx_gas_flow`, its velocity and 1 inside its box) |
-| to pour into that fluid | `worldInputs()` of `GAS_FEED` | `FxGas`, and `step_feed(gas, p.position, density, heat, s.dt)` (`fx_gas_feed.glsl`) |
+| to pour into that fluid, or push it | `worldInputs()` of `GAS_FEED` | `FxGas`, and `step_feed(gas, p.position, p.velocity, density, heat, couple, s.dt)` (`fx_gas_feed.glsl`) |
 
 - `fx_types.glsl` defines `FxParticle`, `FxForces` and `FxStep`. Kill a particle with `p.life = p.age`.
 - **Prefix the kind with your mod's name**: two kinds of one name with different source throw.

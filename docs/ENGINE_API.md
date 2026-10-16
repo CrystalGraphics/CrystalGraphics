@@ -162,7 +162,7 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   (`docs/SHADERS.md` § *Dimmed by the smoke in front*): at the top of each transparent firing every injector
   (`world.media().add(injector)`) adds its extinction into a froxel grid over the view (`CgWorldMedia`: 16 pixels
   across, 64 slices from 0.5 to 256 blocks, as Frostbite's and Unreal's volumetric fog), which is summed from the eye
-  out into what gets through, bound as `cg_Media` to every transparent pass. The gas and lit grids inject themselves.
+  out into what gets through, bound as `cg_Media` to every transparent pass. The fluids and lit grids inject themselves.
   GPU zone `world.media`; a firing with nothing in the air records nothing.
 
 ```java
@@ -172,6 +172,9 @@ CgWorldRenderer.get().media().add((pass, media) -> {             // a volume of 
     return true;
 });
 ```
+
+  An injector with rows of its own placed from the firing's eye (camera-relative corners, as the fluids') uploads them
+  in `Injector.upload(recording, media)`, which runs before the firing's pass opens, and binds them in `inject`.
 - **Distortion**: a transparent draw whose material has a Distortion pass (`docs/SHADERS.md` § *The Distortion pass*)
   adds an offset into a layer of an RGBA16F array half the world's size (`world.distortionScale(scale)`) after the
   transparent pass, hidden by the scene's depth; an apply over the hazes' rect then bends the target by it, reading the offsets

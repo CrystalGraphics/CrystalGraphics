@@ -672,12 +672,16 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
     }
 
     /**
-     * Pours into a gas: each particle adds {@code density} and {@code heat} a second where it is, which the gas takes at
-     * its next step, so a jet's particles leave smoke along their paths and embers warm the air they rise through. The
-     * gas is the instance's ({@code CgVfxEmitterInstance.inGas}); with none, it does nothing.
+     * Pours into a gas and pushes it: each particle adds {@code density} and {@code heat} a second where it is, and pulls
+     * the gas's velocity there toward its own at {@code push} a second (NVIDIA Flow's point emitter and its velocity
+     * couple rate). The gas takes it at its next step, so a jet's particles leave smoke along their paths, embers warm the
+     * air they rise through, and a flock flying through smoke drags wakes behind it. The gas is the instance's
+     * ({@code CgVfxEmitterInstance.inGas}); with none, it does nothing.
      *
      * <pre>{@code
      * .module(new CgVfxModule.Feed(4f, 0.5f))         // each spark trailing smoke and a little heat
+     * .module(new CgVfxModule.Feed(0f, 0f, 6f))       // pushing alone: wakes in the smoke behind each
+     * .module(new CgVfxModule.Feed(0.2f, 1.2f, 8f))   // a flamethrower's stream: hot, and driving the flame with it
      * sparks.inGas(smoke);                             // in the effect, after making both
      * }</pre>
      *
@@ -685,15 +689,25 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      *   <li>Lands where the gas holds tiles: the engine asks for tiles round each instance feeding it, as far as its
      *       particles reach (16 blocks at most).</li>
      *   <li>A deposit is spread over the cells round the particle by distance, so its mark is a soft cloud about a
-     *       block across at a 0.25 cell.</li>
+     *       block across at a 0.25 cell. Where many push one cell, it takes their velocities' mean, weighted by how near
+     *       each is, as Flow's does.</li>
+     *   <li>{@code push} is a share of the way a second, as an emitter's couple rates are: past about 60 a step takes the
+     *       particles' velocity whole.</li>
      *   <li>At most {@code CgVfxFluidAtlas.DEPOSITS} particles pour a frame, every instance's together; the rest pour nothing.</li>
      * </ul>
      */
-    record Feed(float density, float heat) implements CgVfxModule {
+    record Feed(float density, float heat, float push) implements CgVfxModule {
         private static final CgVfxWorldInput[] FEEDS = {CgVfxWorldInput.GAS_FEED};
 
         public Feed {
-            if (!(density >= 0f) || !(heat >= 0f)) throw new IllegalArgumentException("a feed of " + density + ", " + heat);
+            if (!(density >= 0f) || !(heat >= 0f) || !(push >= 0f)) {
+                throw new IllegalArgumentException("a feed of " + density + ", " + heat + ", " + push);
+            }
+        }
+
+        /** Pouring alone: no push. */
+        public Feed(float density, float heat) {
+            this(density, heat, 0f);
         }
 
         @Override
@@ -703,7 +717,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeParams(CgVfxWords out) {
-            out.vec4(density, heat, 0f, 0f);
+            out.vec4(density, heat, push, 0f);
         }
 
         @Override

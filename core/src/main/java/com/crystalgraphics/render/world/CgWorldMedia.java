@@ -78,9 +78,23 @@ public final class CgWorldMedia {
     /** The image an injecting kernel writes its sum into. */
     public static final String OUT = "MEDIA_OUT";
 
-    /** What adds to the grid each firing that draws transparent world draws. */
+    /**
+     * What adds to the grid each firing that draws transparent world draws.
+     *
+     * <pre>{@code
+     * media.add((pass, m) -> clouds.inject(pass, m));          // uniforms alone
+     * media.add(new CgWorldMedia.Injector() {                   // rows of its own, placed from this firing's eye
+     *     public void upload(CgRecording recording, CgWorldMedia m) { recording.update(rows, 0, from(m.cameraX())); }
+     *     public boolean inject(CgComputePass pass, CgWorldMedia m) { m.dispatch(pass, kernel).bind("ROWS", rows); return true; }
+     * });
+     * }</pre>
+     */
     @FunctionalInterface
     public interface Injector {
+        /** Before the firing's pass opens, its eye known: uploads what {@link #inject} binds. */
+        default void upload(CgRecording recording, CgWorldMedia media) {
+        }
+
         /** Adds what it holds in the air: {@link #dispatch} once per kernel; false when it adds nothing this firing. */
         boolean inject(CgComputePass pass, CgWorldMedia media);
     }
@@ -181,6 +195,7 @@ public final class CgWorldMedia {
         }
         current = null;
         first = true;
+        for (Injector injector : injectors) injector.upload(recording, this);
         CgComputePass pass = recording.compute("world.media", stage).timed(GPU_ZONE);
         boolean added = false;
         for (Injector injector : injectors) added |= injector.inject(pass, this);

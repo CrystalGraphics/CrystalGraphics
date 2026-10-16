@@ -9,7 +9,7 @@
 // carried with the flow for the renderer's detail.
 //
 // What is the engine's own, not Flow's: the world's blocks as solids with free slip, which Flow does not have; curl-noise
-// turbulence (Bridson 2007) beside Flow's confinement; particles' deposits; a CS2 smoke's cells (CgVfxSmoke). Shade
+// turbulence (Bridson 2007) beside Flow's confinement; particles' smoke and heat; a CS2 smoke's cells (CgVfxSmoke). Shade
 // bakes the light as Flow's ShadowUpdateCS does, marching toward the sun from each cell, and adds the sky.
 //
 // Every kernel runs over the pool's used layers, a texel a cell; a texel's slot is its tile in the pool, and TILES names
@@ -68,7 +68,7 @@ Properties {
     _Deposit  ("1 on a frame's first step: what particles poured is added", int) = 0
 }
 
-struct FxDeposit { vec4 cell; vec4 amounts; };
+struct FxDeposit { vec4 cell; vec4 amounts; vec4 velocity; };
 
 Buffers {
     FLUIDS   ("A block a step: each fluid's rows (CgVfxFluidAtlas.ROW_*)",                      uvec4, readonly)
@@ -76,9 +76,9 @@ Buffers {
     EMITTERS ("Each emitter: fluid and centre; extent and shape; velocity, divergence; temperature, fuel, burn, smoke targets; their couple rates", vec4, readonly)
     CARVES   ("Each carve in a smoke: fluid and one end; the other end and radius; how open",   vec4, readonly)
     OCCUPIED ("Each slot's eight flags: active, then active in its -x, +x, -y, +y, -z, +z half", uint,  readwrite)
-    DEPOSITS      ("What particles poured: a fluid's cell and the fluid, then density and heat", FxDeposit, readonly)
+    DEPOSITS      ("What particles poured: a fluid's cell and the fluid; smoke, heat, couple rate; velocity", FxDeposit, readonly)
     DEPOSIT_COUNT ("How many DEPOSITS",                                                          uint,      readonly)
-    DEPOSIT_GRID  ("DEPOSITS summed per slot, at nodes two cells apart: smoke then heat",       float,     readwrite)
+    DEPOSIT_GRID  ("DEPOSITS summed per slot, at nodes two cells apart: F_DEPOSIT_WORDS a node", float,     readwrite)
 }
 
 Images {
@@ -115,6 +115,9 @@ const float F_SPEED_MIN_SMOKE = 0.0;
 const int F_FILL = 64;
 const float F_FILL_CELL = 0.5;
 const float F_FILL_EDGE = 12.0;
+// A deposit node's floats: smoke, heat, then Flow's point emitter sums (EmitterPoint3CS): weight times velocity,
+// weight squared times couple rate, weight. Its nodes are two cells apart, as Flow's velocity grid is coarser.
+const int F_DEPOSIT_WORDS = 7;
 
 // This invocation: its fluid (-1 for a free slot), its slot, the tile that slot holds and its cell.
 struct F {
@@ -377,15 +380,16 @@ float f_inflow_noise(int b, vec3 p, float offset) {
     return clamp(fx_wavelet(_Wavelet, p + vec3(clock * 12.0)) + offset, 0.0, 1.0);
 }
 
-// Particles' deposits round cell c, read between the eight nodes about it (cloud-in-cell): smoke and heat.
+// Particles' deposits round cell c, read between the eight nodes about it (cloud-in-cell).
 int f_deposit_at(int b, ivec3 n) {
     int slot = f_slot(b, n * 2);
     if (slot < 0) return -1;
     ivec3 l = n & 7;
-    return (slot * 512 + l.x + 8 * (l.y + 8 * l.z)) * 2;
+    return (slot * 512 + l.x + 8 * (l.y + 8 * l.z)) * F_DEPOSIT_WORDS;
 }
 
-vec2 f_deposit(int b, ivec3 c) {
+// What particles poured round cell c: smoke, heat.
+vec2 f_poured(int b, ivec3 c) {
     vec3 q = vec3(c) * 0.5 - 0.25;
     ivec3 base = ivec3(floor(q));
     vec3 t = q - vec3(base);
@@ -396,6 +400,25 @@ vec2 f_deposit(int b, ivec3 c) {
         if (at < 0) continue;
         vec3 w = mix(1.0 - t, t, vec3(o));
         sum += vec2(DEPOSIT_GRID(at), DEPOSIT_GRID(at + 1)) * (w.x * w.y * w.z);
+    }
+    return sum;
+}
+
+// Flow's point sums round cell c: weighted velocity and weighted couple rate, and the weight in weight.
+vec4 f_pushed(int b, ivec3 c, out float weight) {
+    vec3 q = vec3(c) * 0.5 - 0.25;
+    ivec3 base = ivec3(floor(q));
+    vec3 t = q - vec3(base);
+    vec4 sum = vec4(0.0);
+    weight = 0.0;
+    for (int k = 0; k < 8; k++) {
+        ivec3 o = ivec3(k & 1, (k >> 1) & 1, k >> 2);
+        int at = f_deposit_at(b, base + o);
+        if (at < 0) continue;
+        vec3 w3 = mix(1.0 - t, t, vec3(o));
+        float w = w3.x * w3.y * w3.z;
+        sum += vec4(DEPOSIT_GRID(at + 2), DEPOSIT_GRID(at + 3), DEPOSIT_GRID(at + 4), DEPOSIT_GRID(at + 5)) * w;
+        weight += DEPOSIT_GRID(at + 6) * w;
     }
     return sum;
 }
@@ -454,7 +477,7 @@ void EmitDensity() {
     }
     // What particles poured since the last frame's step, on this frame's first: smoke and heat.
     if (_Deposit != 0) {
-        vec2 poured = f_deposit(b, f.cell);
+        vec2 poured = f_poured(b, f.cell);
         value.w += poured.x;
         value.x += poured.y;
     }
@@ -506,6 +529,16 @@ void EmitVelocity() {
         vec4 target = EMITTERS(e * 6 + 2), couple = EMITTERS(e * 6 + 4);
         vec4 rate = clamp(dt * vec4(couple.xxx, couple.y) * coverage, vec4(0.0), vec4(1.0));
         value += rate * (target - value);
+    }
+    // Particles pushing it (CgVfxModule.Feed): Flow's EmitterPoint3CS, the weighted mean of their velocities and couple
+    // rates where they are, applied twice as Flow does. On every step of the frame whose deposits these are.
+    float weight;
+    vec4 sums = f_pushed(b, f.cell, weight);
+    if (weight > 1.0e-6) {
+        vec3 target = sums.xyz / weight;
+        float rate = clamp(dt * sums.w / weight, 0.0, 1.0);
+        value.xyz += rate * (target - value.xyz);
+        value.xyz += rate * (target - value.xyz);
     }
     VEL_OUT_WRITE(value);
 }
@@ -743,7 +776,9 @@ void Detail() {
 }
 
 // A particle's deposit (CgVfxModule.Feed) spread over the eight nodes about it by distance (cloud-in-cell), none where
-// the fluid has no tile. Eight times its amount, since each node is read by eight cells' worth.
+// the fluid has no tile: its smoke and heat eight times over, since each node is read by eight cells' worth; and, where
+// it pushes, Flow's EmitterPoint1CS weights, each node taking weight times its velocity, weight squared times its
+// couple rate, and the weight, which EmitVelocity divides out.
 void Deposit() {
     if (uint(CG_ELEMENT) >= min(DEPOSIT_COUNT(0), uint(DEPOSITS_LENGTH()))) return;
     FxDeposit d = DEPOSITS(CG_ELEMENT);
@@ -755,10 +790,17 @@ void Deposit() {
         ivec3 o = ivec3(k & 1, (k >> 1) & 1, k >> 2);
         int at = f_deposit_at(b, base + o);
         if (at < 0) continue;
-        vec3 w = mix(1.0 - t, t, vec3(o));
-        float share = 8.0 * w.x * w.y * w.z;
-        DEPOSIT_GRID_ADD(at, d.amounts.x * share);
-        DEPOSIT_GRID_ADD(at + 1, d.amounts.y * share);
+        vec3 w3 = mix(1.0 - t, t, vec3(o));
+        float weight = w3.x * w3.y * w3.z;
+        if (d.amounts.x > 0.0) DEPOSIT_GRID_ADD(at, d.amounts.x * 8.0 * weight);
+        if (d.amounts.y > 0.0) DEPOSIT_GRID_ADD(at + 1, d.amounts.y * 8.0 * weight);
+        if (d.amounts.z > 0.0 && weight > 0.0) {
+            DEPOSIT_GRID_ADD(at + 2, weight * d.velocity.x);
+            DEPOSIT_GRID_ADD(at + 3, weight * d.velocity.y);
+            DEPOSIT_GRID_ADD(at + 4, weight * d.velocity.z);
+            DEPOSIT_GRID_ADD(at + 5, weight * weight * d.amounts.z);
+            DEPOSIT_GRID_ADD(at + 6, weight);
+        }
     }
 }
 

@@ -17,11 +17,7 @@ Properties {
     _MediaRay11 ("At the top right",                       vec4)      = (0, 0, -1, 0)
     _GasShade   ("The gas pool's shade: density in x",     sampler3D) = "black"
     _GasPages   ("Each gas's page table",                  sampler3D) = "black"
-    _Gas0       ("Gas 0's grid's low corner, then its extinction a unit; w 0 for none", vec4) = (0, 0, 0, 0)
-    _Gas1       ("Gas 1's",                                vec4)      = (0, 0, 0, 0)
-    _Gas2       ("Gas 2's",                                vec4)      = (0, 0, 0, 0)
-    _Gas3       ("Gas 3's",                                vec4)      = (0, 0, 0, 0)
-    _GasCells   ("Each gas's cell, blocks",                vec4)      = (1, 1, 1, 1)
+    _Gases      ("How many GASES pairs",                   int)       = 0
     _GridView   ("The grid atlas's channels",              sampler3D) = "black"
     _GridPages  ("Each grid's page table",                  sampler3D) = "black"
     _Grid0      ("Grid 0's low corner (its middle less half its span), then its extinction a unit; w 0 for none", vec4) = (0, 0, 0, 0)
@@ -29,6 +25,10 @@ Properties {
     _Grid2      ("Grid 2's",                               vec4)      = (0, 0, 0, 0)
     _Grid3      ("Grid 3's",                               vec4)      = (0, 0, 0, 0)
     _GridCells  ("Each grid's cell, blocks",               vec4)      = (1, 1, 1, 1)
+}
+
+Buffers {
+    GASES ("Each gas: its grid's low corner and its extinction a unit, w 0 for none; then its cell, blocks", vec4, readonly)
 }
 
 Images {
@@ -52,8 +52,8 @@ float m_grid(int b, vec4 at, float cell, vec3 p) {
 
 void Gas() {
     vec3 p = media_point(CG_TEXEL, MEDIA_OUT_SIZE(), _MediaRay00, _MediaRay10, _MediaRay01, _MediaRay11);
-    float sigma = m_gas(0, _Gas0, _GasCells.x, p) + m_gas(1, _Gas1, _GasCells.y, p) + m_gas(2, _Gas2, _GasCells.z, p)
-            + m_gas(3, _Gas3, _GasCells.w, p);
+    float sigma = 0.0;
+    for (int g = 0; g < _Gases; g++) sigma += m_gas(g, GASES(g * 2), GASES(g * 2 + 1).x, p);
     MEDIA_OUT_WRITE(vec4(media_before(_MediaIn, _MediaFirst, CG_TEXEL) + sigma, 0.0, 0.0, 0.0));
 }
 

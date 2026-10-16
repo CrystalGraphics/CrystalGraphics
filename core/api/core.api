@@ -6555,6 +6555,7 @@ com/crystalgraphics/render/world/CgWorldMedia
 com/crystalgraphics/render/world/CgWorldMedia$Injector
   access public,abstract,interface
   extends java/lang/Object
+  method public upload (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/world/CgWorldMedia;)V
   method public,abstract inject (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/world/CgWorldMedia;)Z
 com/crystalgraphics/render/world/CgWorldRenderer
   access public,final
@@ -9513,6 +9514,7 @@ com/crystalgraphics/vfx/fluid/CgVfxFluid
   method public bounds ([F)Z
   method public cellSize ()F
   method public detailWeight ()F
+  method public domain (FFF)Lcom/crystalgraphics/vfx/fluid/CgVfxFluid;
   method public emitter (FFFF)Lcom/crystalgraphics/vfx/fluid/CgVfxFluid$Emitter;
   method public faded ()Z
   method public index ()I
@@ -10543,9 +10545,11 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Feed
   extends java/lang/Record
   implements com/crystalgraphics/vfx/particle/CgVfxModule
   method public <init> (FF)V
+  method public <init> (FFF)V
   method public density ()F
   method public gpuKind ()Ljava/lang/String;
   method public heat ()F
+  method public push ()F
   method public worldInputs ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public,final equals (Ljava/lang/Object;)Z
@@ -11262,9 +11266,9 @@ com/crystalgraphics/vfx/sparse/CgVfxTiles
   field public,static,final TILE I
   method public <init> (Ljava/lang/String;I)V
   method public bounds (IF[F)Z
+  method public bounds (IIIIIII)V
   method public coarsen (II)V
   method public finish (I)V
-  method public floorTile (II)V
   method public freeAll (I)V
   method public grow (I)V
   method public layers ()I
@@ -11284,6 +11288,7 @@ com/crystalgraphics/vfx/sparse/CgVfxTiles
   method public want (IIIII)Z
   method public wantSphere (IFFFFFI)V
   method public,static fit (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Ljava/lang/String;I)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
+  method public,static tile (F)I
 com/crystalgraphics/vfx/trail/CgVfxTrail
   access public,final
   extends java/lang/Object

@@ -74,7 +74,9 @@ public final class CgVfxTiles {
     /** Each owner's page table: a tile's slot + 1, 0 for none; whether it changed since its upload; its lowest tile y. */
     private final int[][] pageTable;
     private final boolean[] pagesDirty;
-    private final int[] floorTile, held;
+    /** Each owner's tile rows it may hold, inclusive: x0, y0, z0, x1, y1, z1. */
+    private final int[] bounds;
+    private final int[] held;
     /** A coarsened owner's page table before ({@link #coarsen}); the slots it held, while it does. */
     private final int[] previous = new int[PAGES * PAGES * PAGES];
     private int[] mine = new int[0];
@@ -104,7 +106,8 @@ public final class CgVfxTiles {
         this.owners = owners;
         pageTable = new int[owners][PAGES * PAGES * PAGES];
         pagesDirty = new boolean[owners];
-        floorTile = new int[owners];
+        bounds = new int[owners * 6];
+        for (int b = 0; b < owners; b++) bounds(b, 0, 0, 0, PAGES - 1, PAGES - 1, PAGES - 1);
         held = new int[owners];
         tilesCounter = CgTrace.name(name + ".tiles");
         fullCounter = CgTrace.name(name + ".pool-full");
@@ -184,9 +187,19 @@ public final class CgVfxTiles {
         return empty != thanEmpty ? empty : slotSeen[s] < slotSeen[than];
     }
 
-    /** Owner {@code b}'s tiles under tile row {@code ty} are refused: a gas wholly under its floor. */
-    public void floorTile(int b, int ty) {
-        floorTile[b] = ty;
+    /**
+     * Owner {@code b}'s tiles outside rows {@code x0} to {@code x1}, {@code y0} to {@code y1} and {@code z0} to
+     * {@code z1} (inclusive) are refused: a gas wholly under its floor, or outside its domain. Those it holds there are
+     * freed once nothing keeps them.
+     */
+    public void bounds(int b, int x0, int y0, int z0, int x1, int y1, int z1) {
+        int at = b * 6;
+        bounds[at] = x0;
+        bounds[at + 1] = y0;
+        bounds[at + 2] = z0;
+        bounds[at + 3] = x1;
+        bounds[at + 4] = y1;
+        bounds[at + 5] = z1;
     }
 
     /** Every owner's page table, {@link #PAGES} cubed texels each stacked along z: a tile's slot + 1, 0 for none. */
@@ -253,7 +266,12 @@ public final class CgVfxTiles {
      * floor. False when it was refused one: at its share of a full pool.
      */
     public boolean want(int b, int tx, int ty, int tz, int now) {
-        if (tx < 0 || ty < 0 || tz < 0 || tx >= PAGES || ty >= PAGES || tz >= PAGES || ty < floorTile[b]) return true;
+        int at = b * 6;
+        if (tx < Math.max(0, bounds[at]) || ty < Math.max(0, bounds[at + 1]) || tz < Math.max(0, bounds[at + 2])
+                || tx > Math.min(PAGES - 1, bounds[at + 3]) || ty > Math.min(PAGES - 1, bounds[at + 4])
+                || tz > Math.min(PAGES - 1, bounds[at + 5])) {
+            return true;
+        }
         int page = tx + PAGES * (ty + PAGES * tz);
         int had = pageTable[b][page];
         if (had != 0) {
@@ -418,7 +436,8 @@ public final class CgVfxTiles {
         Arrays.fill(slotFresh, false);
     }
 
-    private static int tile(float cell) {
+    /** The tile row holding cell {@code cell} of a volume's grid. */
+    public static int tile(float cell) {
         return (int) Math.floor(cell / TILE);
     }
 

@@ -70,7 +70,7 @@ import java.util.function.IntConsumer;
 public final class CgVfxFluidAtlas {
 
     /** The most fluids at once. */
-    public static final int CAPACITY = 4;
+    public static final int CAPACITY = 16;
     public static final int TILE = CgVfxTiles.TILE, PAGES = CgVfxTiles.PAGES, SPAN = CgVfxTiles.SPAN, LAYER = CgVfxTiles.LAYER;
     /** A tile's side in the pools the renderer reads: two cells of apron round it, a cubic read's reach. */
     public static final int SHADE_TILE = CgVfxTiles.APRON_TILE;
@@ -96,10 +96,15 @@ public final class CgVfxFluidAtlas {
                 _GasPages ("Each fluid's page table",                         sampler3D) = "black"
                 _GasLive  ("1 once there is a fluid",                         int)       = 0
             """;
-    /** What a particle step pouring into a fluid appends: where in its cells and which, then the smoke and heat poured. */
-    public static final String DEPOSIT_GLSL = "struct FxDeposit { vec4 cell; vec4 amounts; };";
+    /**
+     * What a particle step pouring into a fluid appends: where in its cells and which; the smoke and heat poured; its
+     * velocity and the rate the fluid's is coupled to it (Flow's point emitter).
+     */
+    public static final String DEPOSIT_GLSL = "struct FxDeposit { vec4 cell; vec4 amounts; vec4 velocity; };";
     public static final int DEPOSITS = 32768;
     static final int DEPOSIT_CELL = 2, DEPOSIT_CELLS = (TILE / DEPOSIT_CELL) * (TILE / DEPOSIT_CELL) * (TILE / DEPOSIT_CELL);
+    /** A deposit node's floats: smoke, heat, then Flow's point sums: weighted velocity, weighted couple rate, weight. */
+    static final int DEPOSIT_WORDS = 7, DEPOSIT_BYTES = 48;
     /** The most entities that push the fluids a frame, as box emitters coupling the velocity to theirs. */
     public static final int MAX_ENTITIES = 16;
     /** How fast an entity drags the fluid in its box to its velocity, a second. */
@@ -162,7 +167,22 @@ public final class CgVfxFluidAtlas {
     @Nullable
     private CgKernel mediaKernel;
     private CgRenderStage.Registration registration;
-    private final float[] mediaRows = new float[CAPACITY * 4], mediaCells = new float[CAPACITY];
+    /** Each fluid's two rows in the world's media ({@code GASES}), camera-relative, and how many are live. */
+    private final ByteBuffer mediaUpload = ByteBuffer.allocate(CAPACITY * 32).order(ByteOrder.nativeOrder());
+    private int mediaCount;
+    @Nullable
+    private CgGraphBuffer mediaRows;
+    private final CgWorldMedia.Injector media = new CgWorldMedia.Injector() {
+        @Override
+        public void upload(CgRecording recording, CgWorldMedia into) {
+            uploadMedia(recording, into);
+        }
+
+        @Override
+        public boolean inject(CgComputePass pass, CgWorldMedia into) {
+            return injectMedia(pass, into);
+        }
+    };
 
     private CgVfxFluidAtlas() {
         Arrays.fill(lastIds, -1);
@@ -263,7 +283,7 @@ public final class CgVfxFluidAtlas {
             if (registration == null) {
                 registration = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, this::record);
                 CgGraphicsLifecycle.addListener(context);
-                CgWorldRenderer.get().media().add(this::inject);
+                CgWorldRenderer.get().media().add(media);
                 prepare();
             }
             return b;
@@ -286,28 +306,37 @@ public final class CgVfxFluidAtlas {
         tiles.wantSphere(b, x, y, z, radius, tenants[b].cell, now);
     }
 
-    /** Every fluid's smoke in the world's media, so what is drawn behind it is dimmed by it. */
-    private boolean inject(CgComputePass pass, CgWorldMedia media) {
-        if (shade == null) return false;
-        boolean any = false;
+    /**
+     * Each fluid's rows for the world's media, from this firing's eye: its grid's low corner and its extinction a unit,
+     * then its cell. A fluid with none is written with no extinction, which the kernel skips.
+     */
+    private void uploadMedia(CgRecording recording, CgWorldMedia into) {
+        mediaCount = 0;
+        if (shade == null) return;
+        mediaUpload.clear();
         for (int b = 0; b < CAPACITY; b++) {
             CgVfxFluid fluid = tenants[b];
             boolean live = fluid != null && fluid.index() == b && fluid.cellSize() > 0f;
             float half = live ? SPAN * 0.5f * fluid.cellSize() : 0f;
-            mediaRows[b * 4] = live ? (float) (fluid.x() - media.cameraX()) - half : 0f;
-            mediaRows[b * 4 + 1] = live ? (float) (fluid.y() - media.cameraY()) - half : 0f;
-            mediaRows[b * 4 + 2] = live ? (float) (fluid.z() - media.cameraZ()) - half : 0f;
-            mediaRows[b * 4 + 3] = live ? fluid.value(CgVfxFluid.ATTENUATION) : 0f;
-            mediaCells[b] = live ? fluid.cellSize() : 1f;
-            any |= live;
+            mediaUpload.putFloat(live ? (float) (fluid.x() - into.cameraX()) - half : 0f)
+                    .putFloat(live ? (float) (fluid.y() - into.cameraY()) - half : 0f)
+                    .putFloat(live ? (float) (fluid.z() - into.cameraZ()) - half : 0f)
+                    .putFloat(live ? fluid.value(CgVfxFluid.ATTENUATION) : 0f)
+                    .putFloat(live ? fluid.cellSize() : 1f).putFloat(0f).putFloat(0f).putFloat(0f);
+            if (live) mediaCount = b + 1;
         }
-        if (!any) return false;
+        if (mediaCount == 0) return;
+        mediaRows = CgVfxTiles.fit(recording, mediaRows, "vfx.fluid.media", CAPACITY * 8);
+        mediaUpload.flip();
+        recording.update(mediaRows, 0, mediaUpload);
+    }
+
+    /** Every fluid's smoke in the world's media, so what is drawn behind it is dimmed by it. */
+    private boolean injectMedia(CgComputePass pass, CgWorldMedia into) {
+        if (mediaCount == 0 || shade == null) return false;
         if (mediaKernel == null) mediaKernel = CgCompute.load(MEDIA_KERNELS).kernel("Gas");
-        float[] r = mediaRows;
-        media.dispatch(pass, mediaKernel).texture("_GasShade", shade).texture("_GasPages", tiles.pages())
-                .set("_Gas0", r[0], r[1], r[2], r[3]).set("_Gas1", r[4], r[5], r[6], r[7])
-                .set("_Gas2", r[8], r[9], r[10], r[11]).set("_Gas3", r[12], r[13], r[14], r[15])
-                .set("_GasCells", mediaCells[0], mediaCells[1], mediaCells[2], mediaCells[3]);
+        into.dispatch(pass, mediaKernel).texture("_GasShade", shade).texture("_GasPages", tiles.pages())
+                .bind("GASES", mediaRows).set("_Gases", mediaCount);
         return true;
     }
 
@@ -315,7 +344,7 @@ public final class CgVfxFluidAtlas {
         @Override
         public void onDestroy() {
             shade = flow = restA = restB = predict = curl = lowpass = solid = interpolated = fills = null;
-            deposits = depositCount = depositGrid = fluidRows = emitterBuffer = carveBuffer = null;
+            deposits = depositCount = depositGrid = fluidRows = emitterBuffer = carveBuffer = mediaRows = null;
             Arrays.fill(velocity, null);
             Arrays.fill(density, null);
             Arrays.fill(pressures, null);
@@ -396,7 +425,7 @@ public final class CgVfxFluidAtlas {
         window.bind(bind(pass.dispatch(solids, LAYER * TILE, LAYER * TILE, tiles.usedLayers() * TILE), 0, 0))
                 .image("SOLID_OUT", solid);
         if (most > 0) {
-            CgGpuOps.fill(pass, depositGrid, 0, CgGpuCount.of(tiles.layers() * LAYER * LAYER * DEPOSIT_CELLS * 2));
+            CgGpuOps.fill(pass, depositGrid, 0, CgGpuCount.of(tiles.layers() * LAYER * LAYER * DEPOSIT_CELLS * DEPOSIT_WORDS));
             bind(pass.dispatch(depositKernel, DEPOSITS), 0, 0).bind("DEPOSITS", deposits).bind("DEPOSIT_COUNT", depositCount)
                     .bind("DEPOSIT_GRID", depositGrid);
         }
@@ -448,7 +477,7 @@ public final class CgVfxFluidAtlas {
                 .texture("_Density", density[den]).image("VEL_OUT", velocity[1 - vel]);
         vel = 1 - vel;
         dispatch(pass, emitVelocity, rowBase, fresh).texture("_Vel", velocity[vel]).bind("EMITTERS", emitterBuffer)
-                .set("_Emitters", emitterCount).image("VEL_OUT", velocity[1 - vel]);
+                .set("_Emitters", emitterCount).bind("DEPOSIT_GRID", depositGrid).image("VEL_OUT", velocity[1 - vel]);
         vel = 1 - vel;
         dispatch(pass, vorticity1, rowBase, fresh).texture("_Vel", velocity[vel]).image("OUT_A", curl)
                 .image("OUT_B", lowpass);
@@ -489,7 +518,12 @@ public final class CgVfxFluidAtlas {
         for (int b = 0; b < live; b++) {
             CgVfxFluid fluid = tenants[b];
             if (fluid != null) {
-                tiles.floorTile(b, (int) Math.ceil(((fluid.floor() - fluid.cell) / fluid.cell + SPAN * 0.5f) / TILE - 1));
+                float half = SPAN * 0.5f, c = fluid.cell;
+                int floor = (int) Math.ceil(((fluid.floor() - c) / c + half) / TILE - 1);
+                tiles.bounds(b, CgVfxTiles.tile(half - fluid.domainX / c),
+                        Math.max(floor, CgVfxTiles.tile(half - fluid.domainY / c)), CgVfxTiles.tile(half - fluid.domainZ / c),
+                        CgVfxTiles.tile(half + fluid.domainX / c), CgVfxTiles.tile(half + fluid.domainY / c),
+                        CgVfxTiles.tile(half + fluid.domainZ / c));
             }
         }
         tiles.grow(now);
@@ -532,9 +566,11 @@ public final class CgVfxFluidAtlas {
         Arrays.fill(filled, null);
         if (depositGrid != null) recording.release(depositGrid);
         depositGrid = CgGraphBuffer.persistent("vfx.fluid.depositGrid",
-                CgBufferDesc.of((long) layers * LAYER * LAYER * DEPOSIT_CELLS * 2 * 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+                CgBufferDesc.of((long) layers * LAYER * LAYER * DEPOSIT_CELLS * DEPOSIT_WORDS * 4, CgBufferUsage.STORAGE,
+                        CgBufferUsage.COPY));
         if (deposits == null) {
-            deposits = CgGraphBuffer.persistent("vfx.fluid.deposits", CgBufferDesc.of(DEPOSITS * 32L, CgBufferUsage.STORAGE));
+            deposits = CgGraphBuffer.persistent("vfx.fluid.deposits",
+                    CgBufferDesc.of((long) DEPOSITS * DEPOSIT_BYTES, CgBufferUsage.STORAGE));
             depositCount = CgGraphBuffer.persistent("vfx.fluid.depositCount",
                     CgBufferDesc.of(256, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
             recording.fill(depositCount, 0);

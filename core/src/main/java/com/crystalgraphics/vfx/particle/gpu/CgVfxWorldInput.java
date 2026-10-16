@@ -61,9 +61,10 @@ public enum CgVfxWorldInput {
      */
     GAS("FxGas", "gas"),
     /**
-     * {@link #GAS}, which the kind also pours into: {@code step_feed(gas, p.position, density, heat, s.dt)} deposits a
-     * second's density and heat where a particle is, which the gas takes at its next step ({@code CgVfxModule.Feed}).
-     * Lands only where the gas holds tiles; the engine asks for tiles round an instance feeding it.
+     * {@link #GAS}, which the kind also pours into: {@code step_feed(gas, p.position, p.velocity, density, heat, couple,
+     * s.dt)} deposits a second's density and heat where a particle is, and couples the gas's velocity there to its own at
+     * {@code couple} a second, which the gas takes at its next step ({@code CgVfxModule.Feed}). Lands only where the gas
+     * holds tiles; the engine asks for tiles round an instance feeding it.
      */
     GAS_FEED("FxGas", "gas"),
     /**

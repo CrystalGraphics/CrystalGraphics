@@ -168,6 +168,8 @@ public final class CgVfxFluid extends CgVfxElement {
     private int blastCount;
     private static final int BLAST = 7;
     private float placeX, placeY, placeZ;
+    /** Half its domain's sides, blocks: its whole reach unless {@link #domain} says less. */
+    float domainX = Float.MAX_VALUE, domainY = Float.MAX_VALUE, domainZ = Float.MAX_VALUE;
     /** Its middle in the world once it holds a place, and its cell in blocks there. */
     double worldX, worldY, worldZ;
     float cell;
@@ -219,6 +221,26 @@ public final class CgVfxFluid extends CgVfxElement {
         placeX = x;
         placeY = y;
         placeZ = z;
+        return this;
+    }
+
+    /**
+     * The box it may hold cells in, {@code halfX}, {@code halfY} and {@code halfZ} blocks each way from its middle, as
+     * Mantaflow's scenes give their grid a size: smoke that leaves it is gone, as through open boundaries, so a fluid
+     * whose smoke lingers keeps to the tiles of its box rather than following its smoke out across the pool. Rounded out
+     * to whole tiles. Unset: its whole reach.
+     *
+     * <pre>{@code
+     * new CgVfxFluid(this).place(0f, 3.1f, 0f).domain(3.1f, 3.1f, 3.1f);   // fire.py's 52 cells of 0.12, a cube
+     * }</pre>
+     */
+    public CgVfxFluid domain(float halfX, float halfY, float halfZ) {
+        if (!(halfX > 0f) || !(halfY > 0f) || !(halfZ > 0f)) {
+            throw new IllegalArgumentException("a domain of " + halfX + ", " + halfY + ", " + halfZ);
+        }
+        domainX = halfX;
+        domainY = halfY;
+        domainZ = halfZ;
         return this;
     }
 
