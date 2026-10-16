@@ -520,9 +520,10 @@ public final class CgVfxEmitterCompiler {
                     }
                 }
 
-                // Spawn k of the instance at inst from seed with the row's numbers, at `at`, its frame's up turned to n (an event's normal), front
-                // blocks further out.
-                void step_launch(uint seed, uint k, int row, int inst, vec3 at, vec3 n, float front, out FxParticle p) {
+                // Spawn k of the instance at inst from seed with the row's numbers, at `at`, its frame turned by `turn` (the
+                // instance's rotation, a quaternion) then its up turned to n (an event's normal), front blocks further out.
+                void step_launch(uint seed, uint k, int row, int inst, vec3 at, vec3 n, vec4 turn, float front,
+                                 out FxParticle p) {
                     vec4 s0 = step_param(row), s1 = step_param(row + 1), s2 = step_param(row + 2), s4 = step_param(row + 4);
                     vec4 q = step_param(row + 8);
                     float up = s4.x + (s4.y - s4.x) * pow(fx_rand(seed, k, 0u), s4.z);
@@ -544,9 +545,9 @@ public final class CgVfxEmitterCompiler {
                     }
                     vec3 place = step_rotate(q, local) + step_param(row + 9).xyz;
                     float speed = s0.x + (s0.y - s0.x) * fx_rand(seed, k, 3u);
-                    p.position = at + step_orient(place + outward * front, n);
+                    p.position = at + step_orient(step_rotate(turn, place + outward * front), n);
                     p.previous = p.position;
-                    p.velocity = step_orient(dir, n) * speed;
+                    p.velocity = step_orient(step_rotate(turn, dir), n) * speed;
                     p.age = 0.0;
                     p.life = s0.z + (s0.w - s0.z) * fx_rand(seed, k, 4u);
                     p.size = s1.x + (s1.y - s1.x) * pow(fx_rand(seed, k, 5u), s1.z);
@@ -575,7 +576,8 @@ public final class CgVfxEmitterCompiler {
                     vec4 to = step_instance(inst + 1), from = step_instance(inst + 5);
                     int bursts = int(from.w);
                     if (i >= bursts) born = float(i - bursts + 1) / float(n - bursts);
-                    step_launch(seed, k, row, inst, mix(from.xyz, to.xyz, born), vec3(0.0, 1.0, 0.0), step_front(k, row), p);
+                    step_launch(seed, k, row, inst, mix(from.xyz, to.xyz, born), vec3(0.0, 1.0, 0.0), step_instance(inst + 8),
+                            step_front(k, row), p);
                     p.velocity += step_param(row + 2).z * (to.xyz - from.xyz) / _Step.x;
                     p.id = k;
                     p.slot = slot;
@@ -609,7 +611,8 @@ public final class CgVfxEmitterCompiler {
                     if (share < 1.0 && fx_rand(seed, k, 10u) >= share) return false;
                     // From the parent's block and the place within it to this slot's origin.
                     vec3 at = vec3(ev.block.xyz - ivec3(INSTANCES(inst + 3).xyz)) + ev.position.xyz - step_instance(inst + 4).xyz;
-                    step_launch(seed, k, int(head.x) * STEP_PARAM_ROW, inst, at, ev.normal.xyz, 0.0, p);
+                    // Launched about the event's normal: the instance's rotation turned its parent already.
+                    step_launch(seed, k, int(head.x) * STEP_PARAM_ROW, inst, at, ev.normal.xyz, vec4(0.0, 0.0, 0.0, 1.0), 0.0, p);
                     p.velocity += uintBitsToFloat(feed.w) * ev.velocityAge.xyz;
                     p.id = k;
                     p.slot = slot;
@@ -692,6 +695,16 @@ public final class CgVfxEmitterCompiler {
                     int inst = _InstanceAt + int(p.slot) * STEP_INSTANCE_ROW;
                     // A killed slot: its particles end here, firing nothing.
                     if (step_instance(inst + 2).w > 0.0) return;
+                    // A local slot's live particles turn with it about its origin (Niagara's Local Space); the identity
+                    // for any other.
+                    if (CG_ELEMENT < live) {
+                        vec4 turn = step_instance(inst + 9);
+                        if (turn.w < 1.0) {
+                            p.position = step_rotate(turn, p.position);
+                            p.previous = step_rotate(turn, p.previous);
+                            p.velocity = step_rotate(turn, p.velocity);
+                        }
+                    }
                     uint paramRow = INSTANCES(inst).x;
                     int row = int(paramRow) * STEP_PARAM_ROW;
                     FxStep s;

@@ -94,11 +94,15 @@ public final class CgVfxParticlePool {
      * An instance row's own vec4s ahead of its modules' lanes: {@code uvec4(param row, seed bits, slot, 0)},
      * {@code vec4(source xyz, time)}, {@code vec4(share, ground height or NaN, step scale, 1 to kill)}, {@code ivec4(origin's whole
      * blocks, 0)}, {@code vec4(origin within its block, 0)}, {@code vec4(the source at the step's start, its bursts)},
-     * {@code vec4(the followed entity's box's centre from the source, 0)}, {@code vec4(its half extents, 0)}: the fourth
-     * and fifth place a particle in the world's blocks; the step's first bursts candidates are born at the sixth's
-     * source, the rest spread from it to the second's.
+     * {@code vec4(the followed entity's box's centre from the source, 0)}, {@code vec4(its half extents, 0)},
+     * {@code vec4(its rotation, a quaternion)}, {@code vec4(its rotation's change since the last step, the identity unless
+     * local)}: the fourth and fifth place a particle in the world's blocks; the step's first bursts candidates are born
+     * at the sixth's source, the rest spread from it to the second's; spawns turn by the ninth, and a local slot's live
+     * particles by the tenth.
      */
-    public static final int INSTANCE_HEADER = 8;
+    public static final int INSTANCE_HEADER = 10;
+    /** The header vec4 whose w holds the step's bursts: the source at the step's start. */
+    private static final int BURSTS_ROW = 5;
 
     /**
      * An event row, as a Step kernel appends it and a child's reads it: where it fired within its slot's origin's block,
@@ -1048,7 +1052,9 @@ public final class CgVfxParticlePool {
                 .vec4((float) (ox - bx), (float) (oy - by), (float) (oz - bz), 0f)
                 .vec4(view.fromX(), view.fromY(), view.fromZ(), 0f)
                 .vec4(view.boxX(), view.boxY(), view.boxZ(), 0f)
-                .vec4(view.boxHalfX(), view.boxHalfY(), view.boxHalfZ(), 0f);
+                .vec4(view.boxHalfX(), view.boxHalfY(), view.boxHalfZ(), 0f)
+                .vec4(view.rotationX(), view.rotationY(), view.rotationZ(), view.rotationW())
+                .vec4(view.turnX(), view.turnY(), view.turnZ(), view.turnW());
         words.finish("its instance row's header");
         for (int i = 0; i < shape.modules(); i++) {
             int lanes = shape.laneCount(i);
@@ -1108,7 +1114,7 @@ public final class CgVfxParticlePool {
         if (candidates == 0) return;
         int s = steps;
         if (written[slot] != s + 1) throw new IllegalStateException("slot " + slot + " spawned before its instance row");
-        int bursts = stepInstanceAt[s] + slot * instanceWords + (INSTANCE_HEADER - 1) * 4 + 3;
+        int bursts = stepInstanceAt[s] + slot * instanceWords + BURSTS_ROW * 4 + 3;
         instances[bursts] = Float.floatToRawIntBits(candidates - spread);
         if (spawns.length < spawnEnd + 4) spawns = Arrays.copyOf(spawns, Math.max(spawnEnd + 4, spawns.length * 2));
         spawns[spawnEnd] = slot;

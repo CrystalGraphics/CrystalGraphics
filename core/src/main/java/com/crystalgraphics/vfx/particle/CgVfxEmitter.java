@@ -9,12 +9,17 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnPerUnit;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnRate;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -24,7 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <pre>{@code
  * static final CgVfxEmitter EMBERS = CgVfxEmitter.builder("embers")
- *         .capacity(400).burst(0f, 360)
+ *         .state(CgVfxEmitterState.ONCE).capacity(400).burst(0f, 360)       // once: unset, it loops for ever
  *         .shape(CgSphere.of(0.5)).launch(-0.1f, 1f, 0.6f).speed(6f, 18f)   // up-biased, 6..18 blocks a second
  *         .life(4f, 7f).size(0.05f, 0.25f, 2f).heat(1f)
  *         .module(new CgVfxModule.Gravity(9.8f))
@@ -77,14 +82,16 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     private final CgVfxSlot slot;
     final Renderer renderer;
     final boolean optional, local;
+    final CgVfxEmitterState state;
     final int capacity;
-    final float[] burstTimes;
-    final int[] burstCounts;
-    final float rate, rateFrom, rateUntil;
+    /** Its bursts, by time. */
+    final CgVfxSpawnBurst[] bursts;
+    final CgVfxSpawnRate rate;
+    final CgVfxSpawnPerUnit perUnit;
     final float sweep, upMin, upMax, upBias, speedMin, speedMax, lifeMin, lifeMax;
     final CgVfxSpawnShape spawn;
-    /** Spawns a block the source moves and when, the most blocks a step may move and still count, its velocity's share. */
-    final float perBlock, blockFrom, blockUntil, maxStep, inherit;
+    /** The most blocks a step may move and still spread its spawns and give its velocity; its velocity's share. */
+    final float maxStep, inherit;
     /** Each particle's last positions its pool keeps for a {@code trails()} layer; 0 for none. */
     final int trailPoints;
     /** The density each particle draws into its grid's four channels each frame; null for none. */
@@ -107,29 +114,23 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         renderer = b.renderer;
         optional = b.optional;
         local = b.local;
+        state = b.state;
         capacity = b.capacity;
-        burstTimes = new float[b.burstTimes.size()];
-        burstCounts = new int[b.burstCounts.size()];
-        for (int i = 0; i < burstTimes.length; i++) {
-            burstTimes[i] = b.burstTimes.get(i);
-            burstCounts[i] = b.burstCounts.get(i);
-        }
+        bursts = b.bursts.toArray(new CgVfxSpawnBurst[0]);
+        // Stable: two at one time fire in the order given.
+        Arrays.sort(bursts, (x, y) -> Float.compare(x.time(), y.time()));
         rate = b.rate;
-        rateFrom = b.rateFrom;
-        rateUntil = b.rateUntil;
         spawn = b.spawn.build(b.name);
-        perBlock = b.perBlock;
-        blockFrom = b.blockFrom;
-        blockUntil = b.blockUntil;
+        perUnit = b.perUnit;
         maxStep = b.maxStep;
         inherit = b.inherit;
         trailPoints = b.trailPoints;
         rasterized = b.rasterized != null ? b.rasterized.clone() : null;
         sweep = b.sweep;
-        // Spawn k is born k / rate into the rate's span T: the front, sweep (t - t^2 / 2T), in k.
-        float span = b.rateUntil - b.rateFrom;
-        frontA = sweep != 0f ? sweep / b.rate : 0f;
-        frontB = sweep != 0f ? sweep / (2f * span * b.rate * b.rate) : 0f;
+        // Spawn k is born k / rate into its one loop of T: the front, sweep (t - t^2 / 2T), in k.
+        float span = b.state.loopDuration(), perSecond = b.rate.perSecond();
+        frontA = sweep != 0f ? sweep / perSecond : 0f;
+        frontB = sweep != 0f ? sweep / (2f * span * perSecond * perSecond) : 0f;
         upMin = b.upMin;
         upMax = b.upMax;
         upBias = b.upBias;
@@ -187,7 +188,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         return scaledCopies.computeIfAbsent(scale, s -> {
             Builder b = toBuilder();
             b.spawn = new CgVfxSpawnShape.Builder(spawn.scaled(s, name));
-            b.perBlock /= s;
+            b.perUnit = perUnit.scaled(s);
             b.maxStep *= s;
             b.sweep *= s;
             b.speedMin *= s;
@@ -225,6 +226,24 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     /** Whether its particles ride the effect rather than stay in the world ({@link Builder#local}). */
     public boolean local() {
         return local;
+    }
+
+    /** Its life cycle: loops, their duration and delay, and its inactive response ({@link Builder#state}). */
+    public CgVfxEmitterState state() {
+        return state;
+    }
+
+    public CgVfxSpawnRate rate() {
+        return rate;
+    }
+
+    /** Its bursts, by time. A copy. */
+    public CgVfxSpawnBurst[] bursts() {
+        return bursts.clone();
+    }
+
+    public CgVfxSpawnPerUnit perUnit() {
+        return perUnit;
     }
 
     @Override
@@ -313,7 +332,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     /** The most alive at once if nothing held it to its capacity: unbounded for a rate per block. */
     int uncappedPeak() {
         // A particle can outlast its life by its last step: a tenth of a second covers any particle step.
-        return perBlock > 0f ? Integer.MAX_VALUE : spawnsWithin(lifeMax + 0.1f);
+        return perUnit.perBlock() > 0f ? Integer.MAX_VALUE : spawnsWithin(lifeMax + 0.1f);
     }
 
     /**
@@ -347,16 +366,28 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
     /** The most spawn candidates within any {@code span} seconds. */
     private int spawnsWithin(float span) {
-        int bursts = 0;
-        for (float from : burstTimes) {
-            int alive = 0;
-            for (int j = 0; j < burstTimes.length; j++) {
-                if (burstTimes[j] >= from && burstTimes[j] < from + span) alive += burstCounts[j];
+        float duration = state.loopDuration();
+        int loops = state.loops();
+        long fromBursts = 0;
+        if (loops == 1) {
+            // One loop: the most its bursts put inside any window of the span.
+            for (CgVfxSpawnBurst from : bursts) {
+                long alive = 0;
+                for (CgVfxSpawnBurst b : bursts) {
+                    if (b.time() >= from.time() && b.time() < from.time() + span && b.time() <= duration) alive += b.countMax();
+                }
+                fromBursts = Math.max(fromBursts, alive);
             }
-            bursts = Math.max(bursts, alive);
+        } else {
+            long perLoop = 0;
+            for (CgVfxSpawnBurst b : bursts) if (b.time() <= duration) perLoop += b.countMax();
+            // Every loop that can begin within the span, the one under way at its start too.
+            fromBursts = perLoop * Math.min(loops, (long) Math.ceil(span / state.shortestPeriod()) + 1);
         }
-        int fromRate = rate > 0f ? (int) Math.ceil(rate * Math.min(span, rateUntil - rateFrom)) + 2 : 0;
-        return bursts + fromRate;
+        float active = loops == Integer.MAX_VALUE ? Float.POSITIVE_INFINITY : duration * loops;
+        float peak = rate.peak(duration);
+        long fromRate = peak > 0f ? (long) Math.ceil(peak * Math.min(span, active)) + 2 : 0;
+        return (int) Math.min(Integer.MAX_VALUE, fromBursts + fromRate);
     }
 
     /**
@@ -375,7 +406,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             pull += modules.get(i).pull(heat);
             wind |= modules.get(i) instanceof CgVfxModule.Wind;
         }
-        float swept = sweep != 0f ? 0.5f * Math.abs(sweep) * (rateUntil - rateFrom) : 0f;
+        float swept = sweep != 0f ? 0.5f * Math.abs(sweep) * state.loopDuration() : 0f;
         return spawn.extent() + swept + speedMax * lifeMax + 0.5f * pull * lifeMax * lifeMax + (wind ? windSpeed * lifeMax : 0f);
     }
 
@@ -384,11 +415,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         return sizeMax * sizePeak;
     }
 
-    /** Seconds from the instance's start after which this emitter spawns nothing more. */
-    float lastSpawn() {
-        float last = Math.max(rate > 0f ? rateUntil : 0f, perBlock > 0f ? blockUntil : 0f);
-        for (float t : burstTimes) last = Math.max(last, t);
-        return last;
+    /** Whether its loops spawn by time or distance, not by bursts alone. */
+    boolean spawnsContinuously() {
+        return rate.perSecond() > 0f || perUnit.perBlock() > 0f;
     }
 
     public static final class Builder {
@@ -396,12 +425,13 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private String name;
         private Renderer renderer = Renderer.QUADS;
         private boolean optional, local;
+        private CgVfxEmitterState state = CgVfxEmitterState.DEFAULT;
         private int capacity = 256;
-        private final List<Float> burstTimes = new ArrayList<>();
-        private final List<Integer> burstCounts = new ArrayList<>();
-        private float rate, rateFrom, rateUntil;
+        private final List<CgVfxSpawnBurst> bursts = new ArrayList<>();
+        private CgVfxSpawnRate rate = CgVfxSpawnRate.NONE;
+        private CgVfxSpawnPerUnit perUnit = CgVfxSpawnPerUnit.NONE;
         private CgVfxSpawnShape.Builder spawn = new CgVfxSpawnShape.Builder();
-        private float sweep, perBlock, blockFrom, blockUntil, inherit, maxStep = 8f;
+        private float sweep, inherit, maxStep = 8f;
         private int trailPoints;
         private float[] rasterized;
         private float upMin = -1f, upMax = 1f, upBias = 1f;
@@ -425,18 +455,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             renderer = e.renderer;
             optional = e.optional;
             local = e.local;
+            state = e.state;
             capacity = e.capacity;
-            for (int i = 0; i < e.burstTimes.length; i++) {
-                burstTimes.add(e.burstTimes[i]);
-                burstCounts.add(e.burstCounts[i]);
-            }
+            bursts.addAll(Arrays.asList(e.bursts));
             rate = e.rate;
-            rateFrom = e.rateFrom;
-            rateUntil = e.rateUntil;
             spawn = new CgVfxSpawnShape.Builder(e.spawn);
-            perBlock = e.perBlock;
-            blockFrom = e.blockFrom;
-            blockUntil = e.blockUntil;
+            perUnit = e.perUnit;
             maxStep = e.maxStep;
             inherit = e.inherit;
             trailPoints = e.trailPoints;
@@ -484,11 +508,27 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
          * simulation space and Niagara's Local Space; an event's children take their parent's.
          *
          * <pre>{@code
-         * CgVfxEmitter.builder("auraSparkles").local().rate(40f, 0f, Float.POSITIVE_INFINITY).shape(CgShell.of(0.6f, 0.9f))...
+         * CgVfxEmitter.builder("auraSparkles").local().rate(40f).shape(CgShell.of(0.6f, 0.9f))...
          * }</pre>
          */
         public Builder local() {
             this.local = true;
+            return this;
+        }
+
+        /**
+         * Its life cycle: how long a loop lasts, how many run, the wait before each, and what its live particles do once
+         * it stops. Niagara's Emitter State. {@link CgVfxEmitterState#DEFAULT} unless given: loops for ever, so an
+         * emitter that bursts once says {@link CgVfxEmitterState#ONCE}.
+         *
+         * <pre>{@code
+         * CgVfxEmitter.builder("sparks").state(CgVfxEmitterState.ONCE).burst(0f, 120)...
+         * CgVfxEmitter.builder("smoke").state(CgVfxEmitterState.once(1.6f)).rate(400f)...       // 1.6 s of it
+         * CgVfxEmitter.builder("core").state(CgVfxEmitterState.infinite(2.9f)).burst(0f, 1)...  // renewed every 2.9 s
+         * }</pre>
+         */
+        public Builder state(CgVfxEmitterState state) {
+            this.state = Objects.requireNonNull(state, "state");
             return this;
         }
 
@@ -501,34 +541,54 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
-        /** {@code count} particles at once, {@code time} seconds after the instance starts. */
+        /**
+         * {@code count} particles at once, {@code time} seconds into each loop ({@link CgVfxSpawnBurst}). Unless its
+         * {@link #state} is once, it fires again every loop.
+         */
         public Builder burst(float time, int count) {
-            burstTimes.add(time);
-            burstCounts.add(count);
+            return burst(CgVfxSpawnBurst.at(time, count));
+        }
+
+        /**
+         * A burst: a count range rolled each loop, a probability.
+         *
+         * <pre>{@code
+         * .burst(CgVfxSpawnBurst.at(0.25f, 8, 16).probability(0.5f))
+         * }</pre>
+         */
+        public Builder burst(CgVfxSpawnBurst burst) {
+            bursts.add(Objects.requireNonNull(burst, "burst"));
             return this;
         }
 
         /**
-         * {@code perSecond} particles a second from the start until the instance is {@link CgVfxEmitterInstance#stop
-         * stopped}: an aura, a fire, a wake. Give it a {@link #capacity}.
+         * {@code perSecond} particles a second for as long as each loop runs ({@link CgVfxSpawnRate}): an aura, a fire.
+         * Under the default {@link #state} that is until the instance is {@link CgVfxEmitterInstance#stop stopped}; give
+         * it a {@link #capacity}.
          *
          * <pre>{@code
-         * CgVfxEmitter.builder("embers").capacity(400).rate(60f)...
+         * CgVfxEmitter.builder("embers").capacity(400).rate(60f)...                                  // until stopped
+         * CgVfxEmitter.builder("smoke").state(CgVfxEmitterState.once(1.6f)).rate(400f)...           // for 1.6 s
          * }</pre>
          */
         public Builder rate(float perSecond) {
-            return rate(perSecond, 0f, Float.POSITIVE_INFINITY);
+            return rate(CgVfxSpawnRate.of(perSecond));
         }
 
         /**
-         * {@code perSecond} particles a second, from {@code from} to {@code until} seconds after the start. An
-         * {@code until} of {@code Float.POSITIVE_INFINITY} spawns until the instance is
-         * {@link CgVfxEmitterInstance#stop stopped}, and give it a {@link #capacity}.
+         * {@code perSecond} particles a second times {@code scale} at each second of the loop: a rate that swells and
+         * thins, or one that starts part-way through (a step: two keys at one time).
+         *
+         * <pre>{@code
+         * .rate(300f, CgKeyframes.start(0.15f, 0f).to(0.15f, 1f, CgEasings.LINEAR).build())   // from 0.15 s in
+         * }</pre>
          */
-        public Builder rate(float perSecond, float from, float until) {
-            rate = perSecond;
-            rateFrom = from;
-            rateUntil = until;
+        public Builder rate(float perSecond, CgKeyframes scale) {
+            return rate(new CgVfxSpawnRate(perSecond, scale));
+        }
+
+        public Builder rate(CgVfxSpawnRate rate) {
+            this.rate = Objects.requireNonNull(rate, "rate");
             return this;
         }
 
@@ -700,18 +760,18 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         }
 
         /**
-         * The shape runs outward at {@code speed} blocks a second from the rate's start, easing to a stop at its end, so
+         * The shape runs outward at {@code speed} blocks a second from its loop's start, easing to a stop at its end, so
          * particles are born on a front sweeping out: a shock front lifting dust off the ground as it passes. It covers
-         * {@code speed} times the rate's span, halved; a size curve of {@code OUT_QUAD} over that span follows it.
+         * {@code speed} times the loop's duration, halved; a size curve of {@code OUT_QUAD} over it follows it.
          *
          * <pre>{@code
-         * CgVfxEmitter.builder("skirt").rate(400f, 0f, 1.6f).shape(CgShell.of(9f, 9.5f)).launch(0f, 0.15f, 1f)
-         *         .sweep(46f)                                    // 9 blocks out at the start, 46 at 1.6 s
+         * CgVfxEmitter.builder("skirt").state(CgVfxEmitterState.once(1.6f)).rate(400f).shape(CgShell.of(9f, 9.5f))
+         *         .launch(0f, 0.15f, 1f).sweep(46f)              // 9 blocks out at the start, 46 at 1.6 s
          *         ...
          * }</pre>
          *
          * <ul>
-         *   <li>Rate spawns only, so a sweeping emitter takes no burst: {@link #build} throws.</li>
+         *   <li>One loop of a finite duration, a constant rate and no burst: {@link #build} throws otherwise.</li>
          *   <li>An event's children spawn where the event fired, never on the front.</li>
          * </ul>
          */
@@ -738,10 +798,10 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         }
 
         /**
-         * {@code perBlock} particles for each block its source moves, from the start until it is
-         * {@link CgVfxEmitterInstance#stop stopped}, beside its {@link #rate}: a wake, a trail of footsteps. A step moving
-         * farther than {@link #maxStep} is a teleport and spawns nothing by distance. How fast its source travels is
-         * unbounded, so its {@link #capacity} is what holds it: give it one.
+         * {@code perBlock} particles for each block its source moves while each loop runs, beside its {@link #rate}: a
+         * wake, a trail of footsteps ({@link CgVfxSpawnPerUnit}). A step moving farther than {@link #maxStep} is a
+         * teleport and spawns nothing by distance. How fast its source travels is unbounded, so its {@link #capacity} is
+         * what holds it: give it one.
          *
          * <pre>{@code
          * CgVfxEmitter.builder("wake").capacity(600).ratePerBlock(6f).inherit(0.4f)...
@@ -749,14 +809,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
          * }</pre>
          */
         public Builder ratePerBlock(float perBlock) {
-            return ratePerBlock(perBlock, 0f, Float.POSITIVE_INFINITY);
-        }
-
-        /** {@code perBlock} particles for each block its source moves from {@code from} to {@code until} seconds after its start. */
-        public Builder ratePerBlock(float perBlock, float from, float until) {
-            this.perBlock = perBlock;
-            blockFrom = from;
-            blockUntil = until;
+            this.perUnit = new CgVfxSpawnPerUnit(perBlock);
             return this;
         }
 
@@ -900,8 +953,13 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         }
 
         public CgVfxEmitter build() {
-            if (sweep != 0f && (!burstTimes.isEmpty() || rate <= 0f || rateUntil <= rateFrom)) {
-                throw new IllegalStateException(name + " sweeps its shape, which needs a rate span and no bursts");
+            if (sweep != 0f && (!bursts.isEmpty() || rate.perSecond() <= 0f || state.loops() != 1
+                    || !(state.loopDuration() > 0f && state.loopDuration() < Float.POSITIVE_INFINITY))) {
+                throw new IllegalStateException(name
+                        + " sweeps its shape, which needs one loop of a duration, a rate and no bursts");
+            }
+            if (state.loops() > 1 && !(state.shortestPeriod() > 0f)) {
+                throw new IllegalStateException(name + " loops in no time: give its loops a duration or a delay");
             }
             return new CgVfxEmitter(this);
         }

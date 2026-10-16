@@ -11,6 +11,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -22,7 +23,8 @@ import static org.junit.Assert.assertTrue;
 public class CgVfxEmitterCompilerTest {
 
     /** Every module kind, the ground the one after the solver, and drag twice. */
-    private static final CgVfxEmitter EVERY_KIND = CgVfxEmitter.builder("every").renderer(CgVfxEmitter.Renderer.QUADS)
+    private static final CgVfxEmitter EVERY_KIND = CgVfxEmitter.builder("every").state(CgVfxEmitterState.ONCE)
+            .renderer(CgVfxEmitter.Renderer.QUADS)
             .capacity(64).burst(0f, 64).life(1f, 2f)
             .module(new CgVfxModule.Gravity(9.8f))
             .module(new CgVfxModule.Drag(0.3f, 0.15f))
@@ -119,7 +121,8 @@ public class CgVfxEmitterCompilerTest {
     public void theCatalogueCompilesOnEveryTier() {
         CgSphere sphere = CgSphere.of(2);
         CgVfxField field = CgVfxField.of(4, 4, 4, true, (x, y, z, out) -> out[0] = x);
-        CgVfxEmitter catalogue = CgVfxEmitter.builder("catalogue").renderer(CgVfxEmitter.Renderer.QUADS)
+        CgVfxEmitter catalogue = CgVfxEmitter.builder("catalogue").state(CgVfxEmitterState.ONCE)
+                .renderer(CgVfxEmitter.Renderer.QUADS)
                 .capacity(64).burst(0f, 64).life(1f, 2f)
                 .module(new CgVfxModule.Attract(sphere, 20f).attenuation(2f).directed(0.3f, 0f, 1f, 0f).at(0f, 1f, 0f))
                 .module(new CgVfxModule.Vortex(0f, 1f, 0f, 10f, -3f, 0f, 0f, 0f))

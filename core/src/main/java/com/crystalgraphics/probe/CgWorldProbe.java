@@ -21,6 +21,7 @@ import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.world.CgCamera;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgSounds;
@@ -307,7 +308,8 @@ public final class CgWorldProbe {
         CgGraphicsSettings.DENSITY.set(0.5f);
         CgVfxSystem vfx = new CgVfxSystem();
         vfx.update(0.0);
-        float share = vfx.spawnShare(CgVfxEmitter.builder("probe").capacity(1000).burst(0f, 1000).build());
+        float share = vfx.spawnShare(CgVfxEmitter.builder("probe").state(CgVfxEmitterState.ONCE)
+                .capacity(1000).burst(0f, 1000).build());
         vfx.delete();
         CgGraphicsSettings.DENSITY.set(before);
         boolean followed = CgGraphicsSettings.FOLLOW_MINECRAFT_PARTICLES.get();

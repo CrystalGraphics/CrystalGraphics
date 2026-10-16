@@ -9,6 +9,7 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxInactiveResponse;
 
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -88,6 +89,14 @@ final class CgVfxGpuSteps {
         public float boxHalfX() { return of.books().boxHalfX(); }
         public float boxHalfY() { return of.books().boxHalfY(); }
         public float boxHalfZ() { return of.books().boxHalfZ(); }
+        public float rotationX() { return of.books().rotationX(); }
+        public float rotationY() { return of.books().rotationY(); }
+        public float rotationZ() { return of.books().rotationZ(); }
+        public float rotationW() { return of.books().rotationW(); }
+        public float turnX() { return of.books().turnX(); }
+        public float turnY() { return of.books().turnY(); }
+        public float turnZ() { return of.books().turnZ(); }
+        public float turnW() { return of.books().turnW(); }
         public CgVfxFluid gas() { return of.books().gas(); }
         public CgVfxGrid3D grid() { return of.books().grid(); }
     }
@@ -190,6 +199,13 @@ final class CgVfxGpuSteps {
         for (int i = 0; i < tenants.size(); i++) {
             Tenant tenant = tenants.get(i);
             CgVfxEmitterInstance instance = tenant.instance;
+            if (tenant.parent == null && !tenant.killed && !(warmOnly && !tenant.warm)) {
+                // Its effect no longer steps it: deactivated, so its emitter's inactive response applies.
+                boolean coasting = instance.time() == tenant.timeAfter;
+                if (coasting && instance.emitter().state().inactiveResponse() == CgVfxInactiveResponse.KILL) instance.kill();
+                // Its children come after it in the list, so they see the kill this step.
+                if (instance.books().takeKill()) kill(instance);
+            }
             view.of = instance;
             if (tenant.killed || warmOnly && !tenant.warm) {
                 tenant.pool.instance(tenant.slot, instance.books().seedBits(), instance.books().share(), instance.groundY(), view, 0f,
@@ -212,9 +228,10 @@ final class CgVfxGpuSteps {
         for (int i = tenants.size() - 1; i >= 0; i--) {
             if (i >= tenants.size()) continue;
             Tenant tenant = tenants.get(i);
-            // Killed: this step ended its particles, so its slot holds none to hand on.
+            // Killed: this step ended its particles, so its slot holds none to hand on. Started again, it asks anew.
             if (tenant.killed) {
                 release(i);
+                if (tenant.parent == null) tenant.instance.books().slotLost();
                 continue;
             }
             // A parent finishes once its children have; a child alone may look finished before its parent spawns any.

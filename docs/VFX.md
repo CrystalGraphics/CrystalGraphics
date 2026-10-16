@@ -677,7 +677,7 @@ frame.mesh(this, SLASH, 0f, 1.2f, 0f, transform, reveal, 1f, 0.3f, 0f);
 
 ```java
 static final CgVfxEmitter ROCKS = CgVfxEmitter.builder("rocks").renderer(CgVfxEmitter.Renderer.MESHES).capacity(40)
-        .burst(0.5f, 24).shape(CgSphere.of(0.5)).launch(0.5f, 1f, 1f).speed(4f, 7f).life(3f, 4f)
+        .state(CgVfxEmitterState.ONCE).burst(0.5f, 24).shape(CgSphere.of(0.5)).launch(0.5f, 1f, 1f).speed(4f, 7f).life(3f, 4f)
         .size(0.12f, 0.3f, 1f).spin(1f, 4f)
         .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0.2f, 0.4f, 0.6f)).build();
 
@@ -900,7 +900,8 @@ emitter), and the engine compiles that into GPU programs.
 static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks")   // its name in a look
         .renderer(CgVfxEmitter.Renderer.QUADS) // a camera-facing quad each; MESHES a mesh each, ARCS a stroke each
         .capacity(1200)                        // the most alive at once
-        .rate(120f, 0f, 4f)                    // 120 a second, from 0 s to 4 s
+        .state(CgVfxEmitterState.once(4f))     // one loop of 4 s: unset, an emitter loops for ever
+        .rate(120f)                            // 120 a second while it runs
         .shape(CgSphere.of(1.2))               // born anywhere in a ball 1.2 blocks round the source
         .launch(0.2f, 1f, 1f)                  // each flies a random way whose upward share is 0.2 to 1: up and out
         .speed(0.5f, 2f)                       // blocks a second, a random speed between
@@ -914,6 +915,9 @@ static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks")   // its name 
 ```
 
 Every range (`speed(min, max)`, `life`, `size`) is a random value between, a different one each particle.
+
+**When particles spawn** (its loops, their duration and delay, rates, bursts, and stopping or killing it) is
+[`vfx/particles.md`](vfx/particles.md) § *When particles spawn: emitter time*.
 
 ### Where particles are born, and which way they fly
 
@@ -959,9 +963,8 @@ wake.moveTo(x, y, z);       // in the effect's tick, before tick(wake, dt)
 
 - **A moving source leaves an even line**: each step's rate spawns are spread from where the source was as the step
   began to where it ended, each stepped for the part of the step after its birth. Bursts are born where the step began.
-- **`ratePerBlock(n)`** spawns by distance, until stopped (`ratePerBlock(n, from, until)` gives it a window, as `rate`
-  takes one). A step farther than `maxStep(blocks)`, 8 unless given, is a teleport: it spawns nothing by distance and
-  spreads nothing.
+- **`ratePerBlock(n)`** spawns by distance while its loops run. A step farther than `maxStep(blocks)`, 8 unless given,
+  is a teleport: it spawns nothing by distance and spreads nothing.
 - **`inherit(share)`** gives each particle that share of its source's velocity, as an event's `inherit` gives children
   their parent's.
 - What a source follows moves it too: an effect that `follow`s an entity carries its emitters' sources with it.
@@ -1022,9 +1025,10 @@ sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debr
 |---|---|
 | `renderer(QUADS \| MESHES \| ARCS)` | a camera-facing quad each (unless given), a mesh each ([§8](#8-meshes)), a stroke round the source |
 | `capacity(n)` | the most alive at once: 256 unless given |
-| `rate(perSecond)`, `rate(perSecond, from, until)` | a steady rate, for ever or between two of its seconds |
-| `burst(time, count)` | `count` at once at `time` seconds; call it again for more |
-| `ratePerBlock(n)`, `ratePerBlock(n, from, until)`, `maxStep(blocks)` | spawns by the distance its source moves ([above](#a-source-that-moves)) |
+| `state(state)` | its loops, their duration and delay, and what stopping does ([`vfx/particles.md`](vfx/particles.md)) |
+| `rate(perSecond)`, `rate(perSecond, curve)` | a rate while each loop runs, scaled by a curve over the loop's seconds |
+| `burst(time, count)`, `burst(CgVfxSpawnBurst)` | `count` at once at `time` seconds into each loop; a count range, a probability |
+| `ratePerBlock(n)`, `maxStep(blocks)` | spawns by the distance its source moves ([above](#a-source-that-moves)) |
 | `shape`, `surface`, `edge`, `hemisphere`, `arc`, `ordered`, `pointing`, `at`, `mesh`, `vertices`, `entity` | where they are born ([above](#where-particles-are-born-and-which-way-they-fly)) |
 | `launch`, `outward`, `inward`, `direction` | which way they fly |
 | `speed(min, max)`, `inherit(share)` | blocks a second; a share of the source's velocity |
@@ -1093,7 +1097,7 @@ their heading and toward their middle. A flock of spirits round a heart, a schoo
 of embers.
 
 ```java
-static final CgVfxEmitter SPIRITS = CgVfxEmitter.builder("spirits").capacity(300).burst(0f, 300)
+static final CgVfxEmitter SPIRITS = CgVfxEmitter.builder("spirits").state(CgVfxEmitterState.ONCE).capacity(300).burst(0f, 300)
         .shape(CgSphere.of(3)).speed(1f, 2f).life(30f, 30f).trail(16)
         .module(new CgVfxModule.Flock(1.6f, 0.5f, 3f, 1.5f, 0.8f))       // radius, apart, separation, alignment, cohesion
         .module(new CgVfxModule.Attract(CgSphere.of(1), 2f))             // round a heart

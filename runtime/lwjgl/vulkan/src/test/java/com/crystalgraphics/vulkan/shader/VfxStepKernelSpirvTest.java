@@ -11,6 +11,7 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxEmitterCompiler;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import org.junit.AfterClass;
 import org.junit.Test;
 
@@ -26,7 +27,8 @@ public class VfxStepKernelSpirvTest {
     private static final ShadercGlslCompiler COMPILER = new ShadercGlslCompiler();
 
     /** Every module kind, the current and the ground the ones after the solver. */
-    private static final CgVfxEmitter EVERY_KIND = CgVfxEmitter.builder("every").capacity(64).burst(0f, 64).life(1f, 2f)
+    private static final CgVfxEmitter EVERY_KIND = CgVfxEmitter.builder("every").state(CgVfxEmitterState.ONCE)
+            .capacity(64).burst(0f, 64).life(1f, 2f)
             .module(new CgVfxModule.Gravity(9.8f))
             .module(new CgVfxModule.Drag(0.3f, 0.15f))
             .module(new CgVfxModule.Wind(0.2f))
@@ -38,19 +40,24 @@ public class VfxStepKernelSpirvTest {
             .module(new CgVfxModule.Spin(0.5f))
             .build();
     /** Spawning on a mesh, whose kernel reads the spawn meshes. */
-    private static final CgVfxEmitter ON_MESH = CgVfxEmitter.builder("on_mesh").capacity(64).burst(0f, 64).life(1f, 2f)
+    private static final CgVfxEmitter ON_MESH = CgVfxEmitter.builder("on_mesh").state(CgVfxEmitterState.ONCE)
+            .capacity(64).burst(0f, 64).life(1f, 2f)
             .mesh(CgProceduralMesh.revolve(CgProceduralMesh.cone(1f, 1f)).build()).build();
     /** Flocking, whose kernel reads the neighbour grid before the solver. */
-    private static final CgVfxEmitter FLOCKING = CgVfxEmitter.builder("flocking").capacity(64).burst(0f, 64).life(1f, 2f)
+    private static final CgVfxEmitter FLOCKING = CgVfxEmitter.builder("flocking").state(CgVfxEmitterState.ONCE)
+            .capacity(64).burst(0f, 64).life(1f, 2f)
             .module(new CgVfxModule.Flock(1.5f, 0.4f, 3f, 1.5f, 0.8f)).module(new CgVfxModule.LimitSpeed(4f)).build();
     /** Carried by a gas, whose kernel reads the gas atlas before the solver. */
-    private static final CgVfxEmitter IN_GAS = CgVfxEmitter.builder("inGas").capacity(64).burst(0f, 64).life(1f, 2f)
+    private static final CgVfxEmitter IN_GAS = CgVfxEmitter.builder("inGas").state(CgVfxEmitterState.ONCE)
+            .capacity(64).burst(0f, 64).life(1f, 2f)
             .module(new CgVfxModule.Flow(3f)).module(new CgVfxModule.Gravity(2f)).build();
     /** Pouring into a gas, whose kernel appends deposits. */
-    private static final CgVfxEmitter FEEDING = CgVfxEmitter.builder("feeding").capacity(64).burst(0f, 64).life(1f, 2f)
+    private static final CgVfxEmitter FEEDING = CgVfxEmitter.builder("feeding").state(CgVfxEmitterState.ONCE)
+            .capacity(64).burst(0f, 64).life(1f, 2f)
             .module(new CgVfxModule.Feed(4f, 0.5f)).build();
     /** In a grid: steering by it, pushed down its slope, and splatting into it. */
-    private static final CgVfxEmitter IN_GRID = CgVfxEmitter.builder("inGrid").capacity(64).burst(0f, 64).life(1f, 2f)
+    private static final CgVfxEmitter IN_GRID = CgVfxEmitter.builder("inGrid").state(CgVfxEmitterState.ONCE)
+            .capacity(64).burst(0f, 64).life(1f, 2f)
             .speed(1f, 2f).module(new CgVfxModule.Follow(0, 0.6f, 0.5f, 6f)).module(new CgVfxModule.Gradient(1, 2f))
             .module(new CgVfxModule.Splat(1f, 0.5f, 0f, 0f)).build();
 

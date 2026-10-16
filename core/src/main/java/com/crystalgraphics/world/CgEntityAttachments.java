@@ -7,6 +7,7 @@ import com.crystalgraphics.platform.world.CgModelSpace;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
+import org.joml.Quaternionf;
 import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
@@ -101,9 +102,11 @@ public final class CgEntityAttachments {
     // Each declared point's fallback, by id - BUILT_IN: a built-in point as -1 - point, else a share of the height.
     private static volatile double[] fallbacks = new double[0];
 
-    // Marks, render thread only: an open-addressed table keyed by entity and point.
+    // Marks, render thread only: an open-addressed table keyed by entity and point. A matrix mark's rotation too, its w
+    // NaN for a mark of a position alone.
     private static long[] markKeys = new long[64], markFrames = new long[64];
     private static double[] markPoints = new double[64 * 3];
+    private static float[] markRotations = new float[64 * 4];
     private static int markCount;
     private static final long EMPTY = Long.MIN_VALUE;
 
@@ -112,8 +115,9 @@ public final class CgEntityAttachments {
     private static boolean spaceKnown;
     private static final double[] CAMERA = new double[3];
     private static final float[] BASE = new float[16];
-    private static final Matrix4f UNBASE = new Matrix4f();
+    private static final Matrix4f UNBASE = new Matrix4f(), WORLD_POSE = new Matrix4f();
     private static final Vector3f SCRATCH = new Vector3f();
+    private static final Quaternionf TURN = new Quaternionf();
     private static final double[] GUARD_POSE = new double[CgEntityQuery.POSE_LENGTH];
 
     static {
@@ -179,8 +183,17 @@ public final class CgEntityAttachments {
         return point >= 0 && point < NAMES.size() ? NAMES.get(point) : "unknown point " + point;
     }
 
-    /** Point {@code point} of {@code entity} is at world {@code (x, y, z)} this frame. Render thread. */
+    /**
+     * Point {@code point} of {@code entity} is at world {@code (x, y, z)} this frame. Render thread. A position alone:
+     * its {@link #rotation} comes from the proportions.
+     */
     public static void mark(int entity, int point, double x, double y, double z) {
+        int slot = markAt(entity, point, x, y, z);
+        markRotations[slot * 4 + 3] = Float.NaN;
+    }
+
+    /** Records a mark's position, answering its slot. */
+    private static int markAt(int entity, int point, double x, double y, double z) {
         long key = key(entity, point);
         int slot = find(key);
         if (markKeys[slot] == EMPTY) {
@@ -195,6 +208,7 @@ public final class CgEntityAttachments {
         markPoints[slot * 3] = x;
         markPoints[slot * 3 + 1] = y;
         markPoints[slot * 3 + 2] = z;
+        return slot;
     }
 
     /** As {@link #mark(int, int, double, double, double)}, from a world position: GeckoLib's {@code getWorldPosition()}. */
@@ -204,7 +218,7 @@ public final class CgEntityAttachments {
 
     /**
      * Point {@code point} of {@code entity} is the origin of {@code pose}, the matrix its model is being drawn with in
-     * the world right now: {@code poseStack.last().pose()}. Render thread.
+     * the world right now: {@code poseStack.last().pose()}, and turned as the pose is. Render thread.
      */
     public static void mark(int entity, int point, Matrix4fc pose) {
         mark(entity, point, pose, 0f, 0f, 0f);
@@ -227,7 +241,13 @@ public final class CgEntityAttachments {
         double reach = 2.0 * Math.max(GUARD_POSE[CgEntityQuery.HEIGHT], GUARD_POSE[CgEntityQuery.WIDTH]) + 2.0;
         double dx = wx - GUARD_POSE[CgEntityQuery.X], dy = wy - GUARD_POSE[CgEntityQuery.Y], dz = wz - GUARD_POSE[CgEntityQuery.Z];
         if (dx * dx + dy * dy + dz * dz > reach * reach) return;
-        mark(entity, point, wx, wy, wz);
+        int slot = markAt(entity, point, wx, wy, wz);
+        // The pose's turn in the world, its scale (a model's mirroring, a baby's size) taken out.
+        UNBASE.mul(pose, WORLD_POSE).getNormalizedRotation(TURN);
+        markRotations[slot * 4] = TURN.x;
+        markRotations[slot * 4 + 1] = TURN.y;
+        markRotations[slot * 4 + 2] = TURN.z;
+        markRotations[slot * 4 + 3] = TURN.w;
     }
 
     /** Registers {@code provider} after those already registered; the first that answers a point wins. */
@@ -296,6 +316,48 @@ public final class CgEntityAttachments {
         return set(out, sx + out[0] * reach, sy - drop + out[1] * reach, sz + out[2] * reach);
     }
 
+    /**
+     * How point {@code which} of {@code entity}, posed by {@code pose} at {@code partialTick}, is turned in the world,
+     * into {@code out}: a matrix mark's from this frame or the last, else the proportions'. What an effect following
+     * the point takes as its rotation, as Unreal's socket transform. Render thread.
+     *
+     * <pre>{@code
+     * CgEntityAttachments.rotation(entity, CgEntityAttachments.RIGHT_HAND, partialTick, pose, turn);
+     * turn.transform(0f, 1f, 0f, up);   // the point's +Y in the world
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A matrix mark turns as the model part it was taken from: a vanilla arm's +Y runs down the arm.</li>
+     *   <li>A position-only mark and a {@link Provider} carry no rotation: the proportions answer.</li>
+     * </ul>
+     */
+    public static Quaternionf rotation(int entity, int which, float partialTick, double[] pose, Quaternionf out) {
+        int slot = find(key(entity, which));
+        if (markKeys[slot] != EMPTY && markFrames[slot] >= CgFrameRing.frame() - 1 && !Float.isNaN(markRotations[slot * 4 + 3])) {
+            return out.set(markRotations[slot * 4], markRotations[slot * 4 + 1], markRotations[slot * 4 + 2],
+                    markRotations[slot * 4 + 3]);
+        }
+        return rotation(which, pose, out);
+    }
+
+    /**
+     * How point {@code which} of the entity posed by {@code pose} is turned, from its proportions alone, into
+     * {@code out}: its local +Z along the way it faces. The look (yaw and pitch) for the head, the eyes and the hands
+     * held forward; the body's yaw for the rest.
+     */
+    public static Quaternionf rotation(int which, double[] pose, Quaternionf out) {
+        if (which >= BUILT_IN) {
+            double[] declared = fallbacks;
+            double fallback = which - BUILT_IN < declared.length ? declared[which - BUILT_IN] : -1 - FEET;
+            which = fallback >= 0 ? FEET : (int) (-1 - fallback);
+        }
+        boolean looks = which == HEAD || which == EYES || which == RIGHT_HAND_FORWARD || which == LEFT_HAND_FORWARD
+                || which == HANDS_FORWARD;
+        // Yaw 0 faces +z and turns toward -x, so +Z maps to forward() under a turn of -yaw about +Y, then the pitch.
+        out.rotationY((float) -Math.toRadians(pose[looks ? CgEntityQuery.YAW : CgEntityQuery.BODY_YAW]));
+        return looks ? out.rotateX((float) Math.toRadians(pose[CgEntityQuery.PITCH])) : out;
+    }
+
     /** The way the entity looks, a unit vector, into {@code out}. */
     public static double[] forward(double[] pose, double[] out) {
         double yaw = Math.toRadians(pose[CgEntityQuery.YAW]), pitch = Math.toRadians(pose[CgEntityQuery.PITCH]);
@@ -318,6 +380,7 @@ public final class CgEntityAttachments {
     private static void rebuild() {
         long[] keys = markKeys, frames = markFrames;
         double[] points = markPoints;
+        float[] rotations = markRotations;
         long oldest = CgFrameRing.frame() - 1;
         int live = 0;
         for (int i = 0; i < keys.length; i++) if (keys[i] != EMPTY && frames[i] >= oldest) live++;
@@ -326,6 +389,7 @@ public final class CgEntityAttachments {
         markKeys = new long[size];
         markFrames = new long[size];
         markPoints = new double[size * 3];
+        markRotations = new float[size * 4];
         Arrays.fill(markKeys, EMPTY);
         markCount = 0;
         for (int i = 0; i < keys.length; i++) {
@@ -334,6 +398,7 @@ public final class CgEntityAttachments {
             markKeys[slot] = keys[i];
             markFrames[slot] = frames[i];
             System.arraycopy(points, i * 3, markPoints, slot * 3, 3);
+            System.arraycopy(rotations, i * 4, markRotations, slot * 4, 4);
             markCount++;
         }
     }

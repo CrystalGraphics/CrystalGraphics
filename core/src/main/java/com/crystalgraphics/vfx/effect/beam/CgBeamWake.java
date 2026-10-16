@@ -10,6 +10,7 @@ import com.crystalgraphics.vfx.look.CgVfxKit;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.path.CgVfxPath;
 
 /**
@@ -31,8 +32,9 @@ import com.crystalgraphics.vfx.path.CgVfxPath;
 public final class CgBeamWake extends CgVfxElement {
 
     public static final CgVfxEmitter EMITTER = CgVfxEmitter.builder("crystalgraphics:wave/wake")
+            .state(CgVfxEmitterState.ONCE)
             .renderer(CgVfxEmitter.Renderer.QUADS)
-            .optional().capacity(1200).rate(36f, 0f, Float.POSITIVE_INFINITY).shape(CgShell.of(0.4f, 1.4f))
+            .optional().capacity(1200).rate(36f).shape(CgShell.of(0.4f, 1.4f))
             .launch(0.05f, 0.45f, 1.4f).speed(4f, 11f).life(0.9f, 1.8f).size(0.3f, 0.7f, 1.4f)
             .module(new CgVfxModule.Gravity(1.5f))
             .module(new CgVfxModule.Drag(1.3f, 0.05f))

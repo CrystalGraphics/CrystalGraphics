@@ -39,6 +39,7 @@ import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.Quaternionf;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -206,6 +207,7 @@ public final class CgVfxSystem {
     /** The owners whose effects it has played, for their counters. */
     private final List<CgVfxOwner> owners = new ArrayList<>();
     private final double[] pose = new double[CgEntityQuery.POSE_LENGTH], point = new double[3];
+    private final Quaternionf turn = new Quaternionf();
     private float timeScale = 1f;
     private final CgVfxGpuSteps gpuSteps = new CgVfxGpuSteps();
     private boolean rangePrepared;
@@ -443,6 +445,7 @@ public final class CgVfxSystem {
             if (entities.pose(effect.followEntity, partialTick, pose)) {
                 CgEntityAttachments.point(effect.followEntity, effect.followPoint, partialTick, pose, point);
                 effect.moveToFollowed(point[0], point[1], point[2]);
+                effect.turnToFollowed(CgEntityAttachments.rotation(effect.followEntity, effect.followPoint, partialTick, pose, turn));
                 double half = pose[CgEntityQuery.HEIGHT] * 0.5;
                 effect.followBoxX = pose[CgEntityQuery.X];
                 effect.followBoxY = pose[CgEntityQuery.Y] + half;

@@ -37,6 +37,7 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxField;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.trail.CgVfxTrail;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
@@ -261,6 +262,8 @@ public final class CgVfxModules {
         wake(COLUMNS[2], ROWS[3]);
         meshes(COLUMNS[3], ROWS[3]);
         aura(COLUMNS[3] + 15f, ROWS[3]);
+        // Past the aura, the row's far end.
+        turning(COLUMNS[3] + 30f, ROWS[3]);
         dash(COLUMNS[0], ROWS[4], smokeSheet);
         rush(COLUMNS[1], ROWS[4]);
         volley(COLUMNS[2], ROWS[4], smokeSheet);
@@ -285,19 +288,24 @@ public final class CgVfxModules {
      * degrees, and 12 even places along a capsule's segment.
      */
     private void shapes(float x, float z) {
-        CgVfxEmitter cone = CgVfxEmitter.builder("shapeCone").capacity(900).rate(260f, 0f, PERIOD - 3f)
+        CgVfxEmitter cone = CgVfxEmitter.builder("shapeCone").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .capacity(900).rate(260f)
                 .shape(CgCone.of(0.4, Math.toRadians(14))).pointing(0f, 1f, 0f).speed(5f, 7f).life(0.8f, 1.1f)
                 .size(0.05f, 0.08f, 1f).heat(1f).module(new CgVfxModule.Gravity(6f)).opacity(FADE).build();
-        CgVfxEmitter ring = CgVfxEmitter.builder("shapeRing").capacity(600).rate(72f, 0f, PERIOD - 3f)
+        CgVfxEmitter ring = CgVfxEmitter.builder("shapeRing").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .capacity(600).rate(72f)
                 .shape(CgRing.of(1.1, 1.1, 0)).edge().ordered(24).speed(0f, 0f).life(2.2f, 2.2f)
                 .size(0.08f, 0.08f, 1f).heat(1f).module(new CgVfxModule.Force(0f, 0.9f, 0f)).opacity(FADE).build();
-        CgVfxEmitter dome = CgVfxEmitter.builder("shapeDome").capacity(1200).rate(420f, 0f, PERIOD - 3f)
+        CgVfxEmitter dome = CgVfxEmitter.builder("shapeDome").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .capacity(1200).rate(420f)
                 .shape(CgSphere.of(1.1)).surface().hemisphere().speed(0.05f, 0.15f).life(1f, 1.4f)
                 .size(0.04f, 0.06f, 1f).heat(1f).opacity(FADE).build();
-        CgVfxEmitter sheet = CgVfxEmitter.builder("shapeSheet").capacity(800).rate(220f, 0f, PERIOD - 3f)
+        CgVfxEmitter sheet = CgVfxEmitter.builder("shapeSheet").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .capacity(800).rate(220f)
                 .shape(CgBox.of(1, 0.02, 1)).direction(0f, 1f, 0f, 8f).speed(1.6f, 2.2f).life(0.9f, 1.2f)
                 .size(0.04f, 0.06f, 1f).heat(1f).opacity(FADE).build();
-        CgVfxEmitter line = CgVfxEmitter.builder("shapeLine").capacity(500).rate(90f, 0f, PERIOD - 3f)
+        CgVfxEmitter line = CgVfxEmitter.builder("shapeLine").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .capacity(500).rate(90f)
                 .shape(CgCapsule.between(0, 0, -1.2, 0, 0, 1.2, 0)).edge().ordered(12).speed(0.25f, 0.25f)
                 .life(1.6f, 1.6f).size(0.07f, 0.07f, 1f).heat(1f).opacity(FADE).build();
         List<CgVfxEmitter> emitters = List.of(cone, ring, dome, sheet, line);
@@ -321,7 +329,8 @@ public final class CgVfxModules {
      * stepped for the rest of the step from its birth, so it leaves an even line rather than clumps a step apart.
      */
     private void moving(float x, float z) {
-        CgVfxEmitter trail = CgVfxEmitter.builder("movingTrail").capacity(2000).rate(600f, 0f, PERIOD - 3f)
+        CgVfxEmitter trail = CgVfxEmitter.builder("movingTrail").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .capacity(2000).rate(600f)
                 .speed(0f, 0.15f).life(1.2f, 1.6f).size(0.05f, 0.05f, 1f).heat(1f).opacity(FADE).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(trail).layer(sparkLayer(trail, GOLD, WHITE)).build();
         Mover round = (i, age, at) -> {
@@ -335,11 +344,47 @@ public final class CgVfxModules {
     }
 
     /**
+     * An emitter's orientation at run time (aaa-design §2.16): each station's effect turned every tick, as a hand turns
+     * a charge it holds. Left, a world emitter: a cone's spray swept round as the effect turns, what it sprayed keeping
+     * its course. Right, a local one: a ring of particles turning as one body with the effect, about its origin.
+     */
+    private void turning(float x, float z) {
+        CgVfxEmitter spray = CgVfxEmitter.builder("turningSpray").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .capacity(1200).rate(300f).shape(CgCone.of(0.3, Math.toRadians(8))).speed(5f, 6f).life(0.9f, 1.1f)
+                .size(0.05f, 0.07f, 1f).heat(1f).module(new CgVfxModule.Gravity(3f)).opacity(FADE).build();
+        CgVfxEmitter ring = CgVfxEmitter.builder("turningRing").state(CgVfxEmitterState.ONCE).local()
+                .capacity(48).burst(0f, 48).shape(CgRing.of(1.6, 1.6, 0)).edge().ordered(48).speed(0f, 0f)
+                .life(PERIOD - 3f, PERIOD - 3f).size(0.09f, 0.09f, 1f).heat(1f).opacity(FADE).build();
+        // A wrist's turn: round the vertical, rocking about its own side.
+        Supplier<Show> turns = () -> new Show() {
+            private final Quaternionf turn = new Quaternionf();
+
+            @Override
+            public void tick(CgVfxEffect<?> effect, float dt, float age) {
+                effect.orient(turn.rotationY(age * 1.3f).rotateX((float) Math.sin(age * 0.9f) * 0.7f));
+            }
+
+            @Override
+            public void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age) {
+            }
+        };
+        CgVfxLook sprayLook = CgVfxLook.builder(SCHEMA).emitter(spray).layer(sparkLayer(spray, GOLD, WHITE)).build();
+        CgVfxLook ringLook = CgVfxLook.builder(SCHEMA).emitter(ring).layer(sparkLayer(ring, CYAN, WHITE)).build();
+        stations.add(new Station("turning: a world emitter", x - 4f, z, sprayLook, List.of(spray),
+                new float[][]{{0f, 2f, 0f}}, p -> p.label(0f, 5.2f, 0f, 0.36f, "world: sprayed turned", 0xFFFFFFFF),
+                null, turns, null));
+        stations.add(new Station("turning: a local emitter", x + 4f, z, ringLook, List.of(ring),
+                new float[][]{{0f, 2f, 0f}}, p -> p.label(0f, 5.2f, 0f, 0.36f, "local: turns with it", 0xFFFFFFFF),
+                null, turns, null));
+    }
+
+    /**
      * A wake by distance: sixteen particles a block its source travels, each taking 40% of its velocity, along a line it
      * runs on, faster as it goes; at the end it teleports back, spawning nothing over the jump.
      */
     private void wake(float x, float z) {
-        CgVfxEmitter wake = CgVfxEmitter.builder("wake").capacity(3000).ratePerBlock(16f, 0f, PERIOD - 3f).inherit(0.4f)
+        CgVfxEmitter wake = CgVfxEmitter.builder("wake").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .capacity(3000).ratePerBlock(16f).inherit(0.4f)
                 .shape(CgShell.of(0.05, 0.25)).launch(0.2f, 0.8f, 1f).speed(0.2f, 0.6f).life(1.6f, 2.4f)
                 .size(0.06f, 0.1f, 1f).heat(1f).module(new CgVfxModule.Drag(1.5f, 0f)).opacity(FADE).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(wake).layer(sparkLayer(wake, CYAN, WHITE)).build();
@@ -393,12 +438,15 @@ public final class CgVfxModules {
         CgVfxSlot shockSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/shock");
         CgVfxSlot runeSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/rune");
 
-        CgVfxEmitter onDome = CgVfxEmitter.builder("meshDome").capacity(1200).rate(260f, 0f, PERIOD - 2f).mesh(dome)
+        CgVfxEmitter onDome = CgVfxEmitter.builder("meshDome").state(CgVfxEmitterState.once(PERIOD - 2f))
+                .capacity(1200).rate(260f).mesh(dome)
                 .speed(0.3f, 0.7f).life(0.8f, 1.2f).size(0.03f, 0.05f, 1f).heat(1f).opacity(FADE).build();
-        CgVfxEmitter onSwirl = CgVfxEmitter.builder("meshSwirl").capacity(900).rate(180f, 0f, PERIOD - 2f).mesh(swirl)
+        CgVfxEmitter onSwirl = CgVfxEmitter.builder("meshSwirl").state(CgVfxEmitterState.once(PERIOD - 2f))
+                .capacity(900).rate(180f).mesh(swirl)
                 .vertices().ordered(96).speed(0.4f, 0.8f).life(0.7f, 1f).size(0.04f, 0.04f, 1f).heat(1f)
                 .module(new CgVfxModule.Drag(1f, 0f)).opacity(FADE).build();
-        CgVfxEmitter rocks = CgVfxEmitter.builder("meshRocks").renderer(CgVfxEmitter.Renderer.MESHES).capacity(40)
+        CgVfxEmitter rocks = CgVfxEmitter.builder("meshRocks").state(CgVfxEmitterState.ONCE)
+                .renderer(CgVfxEmitter.Renderer.MESHES).capacity(40)
                 .burst(0.5f, 24).shape(CgSphere.of(0.5)).launch(0.5f, 1f, 1f).speed(4f, 7f).life(3f, 4f)
                 .size(0.12f, 0.3f, 1f).spin(1f, 4f).module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Ground(0.2f, 0.4f, 0.6f)).opacity(FADE).build();
@@ -577,10 +625,12 @@ public final class CgVfxModules {
         CgVfxSlot auraSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/dash_aura");
         CgMesh shell = CgProceduralMesh.revolve(CgProceduralMesh.sphere(1f, -1f, 1f)).divisions(32, 16)
                 .curl(1.4f, 0.12f).noiseSeed(5).build();
-        CgVfxEmitter sparks = CgVfxEmitter.builder("dashSparks").capacity(1600).ratePerBlock(12f, 0f, MOTION).maxStep(4f)
+        CgVfxEmitter sparks = CgVfxEmitter.builder("dashSparks").state(CgVfxEmitterState.once(MOTION))
+                .capacity(1600).ratePerBlock(12f).maxStep(4f)
                 .inherit(0.2f).shape(CgSphere.of(0.4)).speed(0.5f, 2f).life(0.35f, 0.8f).size(0.03f, 0.06f, 1.4f).heat(1f)
                 .module(new CgVfxModule.Turbulence(3f, 0.8f, 1f)).module(new CgVfxModule.Drag(2.5f, 0f)).opacity(FADE).build();
-        CgVfxEmitter dust = CgVfxEmitter.builder("dashDust").capacity(400).ratePerBlock(5f, 0f, MOTION).maxStep(4f)
+        CgVfxEmitter dust = CgVfxEmitter.builder("dashDust").state(CgVfxEmitterState.once(MOTION))
+                .capacity(400).ratePerBlock(5f).maxStep(4f)
                 .shape(CgRing.of(0.2, 0.7, 0)).launch(0.35f, 0.9f, 1f).speed(1.5f, 4f).life(1.4f, 2.2f)
                 .size(0.4f, 0.7f, 1f).spin(0.1f, 0.5f).module(new CgVfxModule.Drag(1.6f, 0f))
                 .module(new CgVfxModule.Gravity(0.8f))
@@ -734,12 +784,14 @@ public final class CgVfxModules {
                 Swing.of(1.98f, 0.4f, 1.5f, 0f, 0f, 0.4f, -1f, 0f, -1f, -0.4f, 1.7f),
                 Swing.of(2.40f, 0.6f, 1.6f, 0f, 0f, 1f, 0f, 0f, 0f, -1f, 2f)};
         float fistFrom = 3.2f, fistTo = 3.75f, fistReach = 9f;
-        CgVfxEmitter.Builder hits = CgVfxEmitter.builder("rushHits").capacity(900).shape(CgSphere.of(0.15))
+        CgVfxEmitter.Builder hits = CgVfxEmitter.builder("rushHits").state(CgVfxEmitterState.ONCE)
+                .capacity(900).shape(CgSphere.of(0.15))
                 .launch(-0.3f, 1f, 1f).speed(3f, 10f).life(0.25f, 0.6f).size(0.025f, 0.05f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0.3f, 0.5f, 0.6f))
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build());
-        CgVfxEmitter.Builder flashes = CgVfxEmitter.builder("rushFlash").capacity(16).speed(0f, 0f).life(0.06f, 0.08f)
-                .size(0.8f, 1f, 1f).heat(1f)
+        CgVfxEmitter.Builder flashes = CgVfxEmitter.builder("rushFlash").state(CgVfxEmitterState.ONCE)
+                .capacity(16).speed(0f, 0f)
+                .life(0.06f, 0.08f).size(0.8f, 1f, 1f).heat(1f)
                 .size(CgKeyframes.start(0f, 0.4f).to(1f, 1.6f, CgEasings.OUT_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build());
         for (Swing s : combo) {
@@ -885,17 +937,23 @@ public final class CgVfxModules {
             targets[i] = new float[]{5f, 0.15f, (i - 2) * 1.7f};
             controls[i] = new float[]{-1.5f, 4.2f + 1.4f * (float) Math.sin(i * 2.1f), (i - 2) * 3.4f};
             float lands = launch[i] + fly;
-            balls[i] = CgVfxEmitter.builder("volleyBall" + i).capacity(60).rate(320f, launch[i], lands).speed(0f, 0f)
+            balls[i] = CgVfxEmitter.builder("volleyBall" + i)
+                    .state(CgVfxEmitterState.once(lands - launch[i]).delay(launch[i]))
+                    .capacity(60).rate(320f).speed(0f, 0f)
                     .life(0.05f, 0.07f).size(0.3f, 0.34f, 1f).heat(1f).build();
-            crumbs[i] = CgVfxEmitter.builder("volleyCrumbs" + i).capacity(300).ratePerBlock(10f, launch[i], lands)
+            crumbs[i] = CgVfxEmitter.builder("volleyCrumbs" + i)
+                    .state(CgVfxEmitterState.once(lands - launch[i]).delay(launch[i]))
+                    .capacity(300).ratePerBlock(10f)
                     .shape(CgSphere.of(0.15)).speed(0.2f, 0.8f).life(0.3f, 0.6f).size(0.02f, 0.04f, 1.4f).heat(1f)
                     .module(new CgVfxModule.Turbulence(2.5f, 0.6f, 0.7f)).module(new CgVfxModule.Drag(2f, 0f))
                     .opacity(FADE).build();
-            sprays[i] = CgVfxEmitter.builder("volleySpray" + i).capacity(120).burst(lands, 80).shape(CgSphere.of(0.2))
+            sprays[i] = CgVfxEmitter.builder("volleySpray" + i).state(CgVfxEmitterState.ONCE)
+                    .capacity(120).burst(lands, 80).shape(CgSphere.of(0.2))
                     .launch(0.15f, 1f, 1f).speed(3f, 8f).life(0.3f, 0.7f).size(0.025f, 0.05f, 1.5f).heat(1f)
                     .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0.3f, 0.5f, 0.6f))
                     .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-            puffs[i] = CgVfxEmitter.builder("volleyPuff" + i).capacity(16).burst(lands, 10).shape(CgRing.of(0.2, 0.8, 0))
+            puffs[i] = CgVfxEmitter.builder("volleyPuff" + i).state(CgVfxEmitterState.ONCE)
+                    .capacity(16).burst(lands, 10).shape(CgRing.of(0.2, 0.8, 0))
                     .launch(0.1f, 0.6f, 1f).speed(1f, 3f).life(1.5f, 2.5f).size(0.6f, 0.9f, 1f).spin(0.1f, 0.4f)
                     .module(new CgVfxModule.Drag(1.8f, 0f))
                     .size(CgKeyframes.start(0f, 0.5f).to(1f, 2.4f, CgEasings.OUT_CUBIC).build())
@@ -1085,10 +1143,13 @@ public final class CgVfxModules {
      */
     private void storm(float x, float z) {
         CgVfxSlot boltSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/storm_bolts");
-        CgVfxEmitter streaks = CgVfxEmitter.builder("stormStreaks").renderer(CgVfxEmitter.Renderer.ARCS).capacity(1000)
-                .rate(200f, 0.2f, MOTION).entity().surface().direction(0f, 1f, 0f, 12f).speed(3f, 6f).life(0.25f, 0.45f)
+        CgVfxEmitter streaks = CgVfxEmitter.builder("stormStreaks")
+                .state(CgVfxEmitterState.once(MOTION - 0.2f).delay(0.2f))
+                .renderer(CgVfxEmitter.Renderer.ARCS).capacity(1000)
+                .rate(200f).entity().surface().direction(0f, 1f, 0f, 12f).speed(3f, 6f).life(0.25f, 0.45f)
                 .size(0.05f, 0.09f, 1f).heat(1f).opacity(FADE).build();
-        CgVfxEmitter motes = CgVfxEmitter.builder("stormMotes").capacity(600).rate(90f, 0.2f, MOTION)
+        CgVfxEmitter motes = CgVfxEmitter.builder("stormMotes").state(CgVfxEmitterState.once(MOTION - 0.2f).delay(0.2f))
+                .capacity(600).rate(90f)
                 .entity().surface().speed(0.1f, 0.3f).life(0.8f, 1.4f).size(0.03f, 0.06f, 1.4f).heat(1f)
                 .module(new CgVfxModule.Force(0f, 2.2f, 0f)).module(new CgVfxModule.Turbulence(2f, 0.5f, 0.6f))
                 .opacity(FADE).build();
@@ -1181,34 +1242,43 @@ public final class CgVfxModules {
         CgMesh chunk = CgProceduralMesh.revolve(CgProceduralMesh.sphere(1f, -1f, 1f)).divisions(10, 6).curl(1.4f, 0.3f)
                 .noiseSeed(4).build();
         float impact = 1.1f, rest = 1.7f;
-        CgVfxEmitter embers = CgVfxEmitter.builder("meteorEmbers").capacity(700).ratePerBlock(5f, 0f, impact).maxStep(6f)
+        CgVfxEmitter embers = CgVfxEmitter.builder("meteorEmbers").state(CgVfxEmitterState.once(impact))
+                .capacity(700).ratePerBlock(5f).maxStep(6f)
                 .inherit(0.3f).shape(CgSphere.of(0.4)).speed(0.5f, 2f).life(0.6f, 1.3f).size(0.03f, 0.06f, 1.4f).heat(1f)
                 .module(new CgVfxModule.Gravity(6f)).module(new CgVfxModule.Drag(0.8f, 0f))
                 .module(new CgVfxModule.Ground(0.3f, 0.5f, 0.6f)).opacity(FADE).build();
-        CgVfxEmitter debris = CgVfxEmitter.builder("meteorDebris").renderer(CgVfxEmitter.Renderer.MESHES).capacity(40)
+        CgVfxEmitter debris = CgVfxEmitter.builder("meteorDebris").state(CgVfxEmitterState.ONCE)
+                .renderer(CgVfxEmitter.Renderer.MESHES).capacity(40)
                 .burst(impact, 28).shape(CgSphere.of(0.5)).launch(0.35f, 1f, 1f).speed(4f, 9f).life(2.5f, 3.5f)
                 .size(0.08f, 0.22f, 1.4f).spin(2f, 6f).module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Ground(0.25f, 0.4f, 0.6f)).opacity(FADE).build();
-        CgVfxEmitter sparks = CgVfxEmitter.builder("meteorSparks").capacity(300).burst(impact, 220).shape(CgSphere.of(0.3))
+        CgVfxEmitter sparks = CgVfxEmitter.builder("meteorSparks").state(CgVfxEmitterState.ONCE)
+                .capacity(300).burst(impact, 220).shape(CgSphere.of(0.3))
                 .launch(0.1f, 1f, 1f).speed(4f, 12f).life(0.4f, 0.9f).size(0.03f, 0.06f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0.3f, 0.4f, 0.6f))
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter flash = CgVfxEmitter.builder("meteorFlash").capacity(4).burst(impact, 2).speed(0f, 0f).life(0.1f, 0.12f)
+        CgVfxEmitter flash = CgVfxEmitter.builder("meteorFlash").state(CgVfxEmitterState.ONCE)
+                .capacity(4).burst(impact, 2).speed(0f, 0f).life(0.1f, 0.12f)
                 .size(2.4f, 2.6f, 1f).heat(1f).size(CgKeyframes.start(0f, 0.5f).to(1f, 1.4f, CgEasings.OUT_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter wall = CgVfxEmitter.builder("meteorDust").capacity(40).burst(impact, 22).shape(CgRing.of(0.3, 1.2, 0))
+        CgVfxEmitter wall = CgVfxEmitter.builder("meteorDust").state(CgVfxEmitterState.ONCE)
+                .capacity(40).burst(impact, 22).shape(CgRing.of(0.3, 1.2, 0))
                 .launch(0.15f, 0.7f, 1f).speed(2f, 6f).life(2f, 3.2f).size(0.8f, 1.3f, 1f).spin(0.1f, 0.4f)
                 .module(new CgVfxModule.Drag(1.5f, 0f))
                 .size(CgKeyframes.start(0f, 0.5f).to(1f, 2.8f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 0.9f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        CgVfxEmitter skid = CgVfxEmitter.builder("meteorSkid").capacity(120).ratePerBlock(5f, impact, rest).maxStep(6f)
+        CgVfxEmitter skid = CgVfxEmitter.builder("meteorSkid")
+                .state(CgVfxEmitterState.once(rest - impact).delay(impact))
+                .capacity(120).ratePerBlock(5f).maxStep(6f)
                 .shape(CgRing.of(0.2, 0.6, 0)).launch(0.3f, 0.8f, 1f).speed(1f, 2.5f).life(1.2f, 2f).size(0.5f, 0.8f, 1f)
                 .spin(0.1f, 0.4f).module(new CgVfxModule.Drag(1.8f, 0f))
                 .size(CgKeyframes.start(0f, 0.5f).to(1f, 2.2f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 0.8f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        CgVfxEmitter smoulder = CgVfxEmitter.builder("meteorSmoulder").capacity(60).rate(7f, rest, MOTION + 0.5f)
+        CgVfxEmitter smoulder = CgVfxEmitter.builder("meteorSmoulder")
+                .state(CgVfxEmitterState.once(MOTION + 0.5f - rest).delay(rest))
+                .capacity(60).rate(7f)
                 .shape(CgSphere.of(0.3)).launch(0.85f, 1f, 1f).speed(0.4f, 0.8f).life(2.5f, 3.5f).size(0.5f, 0.8f, 1f)
                 .spin(0.1f, 0.4f).heat(0.5f).module(new CgVfxModule.Buoyancy(2.5f, 2f))
                 .module(new CgVfxModule.Turbulence(1.2f, 0.35f, 0.3f)).module(new CgVfxModule.Drag(0.6f, 0f))
@@ -1323,18 +1393,21 @@ public final class CgVfxModules {
      * air, and a firework bursting overhead every two seconds into drooping streamers.
      */
     private void sparks(float x, float z) {
-        CgVfxEmitter grinder = CgVfxEmitter.builder("sparksGrinder").capacity(1500).rate(320f, 0f, MOTION).trail(10)
+        CgVfxEmitter grinder = CgVfxEmitter.builder("sparksGrinder").state(CgVfxEmitterState.once(MOTION))
+                .capacity(1500).rate(320f).trail(10)
                 .shape(CgCone.of(0.05, Math.toRadians(22))).pointing(1f, 0.55f, 0f).speed(6f, 11f).life(0.7f, 1.5f)
                 .size(0.03f, 0.05f, 1.4f).heat(1f).module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Drag(0.4f, 0f)).module(new CgVfxModule.Ground(0.45f, 0.3f, 0.5f))
                 .opacity(CgKeyframes.start(0f, 1f).to(0.7f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        CgVfxEmitter embers = CgVfxEmitter.builder("sparksEmbers").capacity(500).rate(80f, 0f, MOTION).trail(30)
+        CgVfxEmitter embers = CgVfxEmitter.builder("sparksEmbers").state(CgVfxEmitterState.once(MOTION))
+                .capacity(500).rate(80f).trail(30)
                 .shape(CgRing.of(0.3, 1.4, 0)).speed(0.2f, 0.6f).life(2.4f, 3.4f).size(0.035f, 0.06f, 1.4f).heat(1f)
                 .module(new CgVfxModule.Vortex(0f, 1f, 0f, 5f, -1.2f, 0f, 0f, 0f))
                 .module(new CgVfxModule.Force(0f, 2.2f, 0f)).module(new CgVfxModule.Turbulence(2.2f, 0.7f, 0.9f))
                 .module(new CgVfxModule.Drag(1f, 0f)).opacity(FADE).build();
-        CgVfxEmitter firework = CgVfxEmitter.builder("sparksFirework").capacity(900).burst(0.5f, 280).burst(2.5f, 280)
+        CgVfxEmitter firework = CgVfxEmitter.builder("sparksFirework").state(CgVfxEmitterState.ONCE)
+                .capacity(900).burst(0.5f, 280).burst(2.5f, 280)
                 .burst(4.5f, 280).trail(24).shape(CgSphere.of(0.1)).speed(5f, 6.5f).life(1.6f, 2.3f)
                 .size(0.03f, 0.05f, 1.2f).heat(1f).module(new CgVfxModule.Gravity(3.2f))
                 .module(new CgVfxModule.Drag(1.3f, 0f))
@@ -1375,7 +1448,8 @@ public final class CgVfxModules {
      * rivers of energy pulled in round a vortex to a swelling core, a spirit bomb gathering.
      */
     private void streams(float x, float z) {
-        CgVfxEmitter helix = CgVfxEmitter.builder("streamHelix").capacity(700).ratePerBlock(16f, 0f, MOTION)
+        CgVfxEmitter helix = CgVfxEmitter.builder("streamHelix").state(CgVfxEmitterState.once(MOTION))
+                .capacity(700).ratePerBlock(16f)
                 .maxStep(4f).speed(0.1f, 0.3f).life(1.4f, 1.4f).size(1f, 1f, 1f).heat(1f)
                 .module(new CgVfxModule.Turbulence(1.4f, 0.9f, 1.2f)).module(new CgVfxModule.Drag(1.2f, 0f))
                 .size(CgKeyframes.start(0f, 0.15f).to(0.12f, 1f, CgEasings.OUT_QUAD).to(0.6f, 0.7f, CgEasings.LINEAR)
@@ -1394,7 +1468,9 @@ public final class CgVfxModules {
             float a = k * (float) (2.0 * Math.PI / rivers);
             float[] at = {core[0] + 6.5f * (float) Math.cos(a), 0.6f + 1.8f * (k % 2), core[2] + 6.5f * (float) Math.sin(a)};
             float dx = core[0] - at[0], dy = core[1] - at[1], dz = core[2] - at[2];
-            CgVfxEmitter river = CgVfxEmitter.builder("streamRiver" + k).capacity(500).rate(90f, 0.2f, MOTION - 0.5f)
+            CgVfxEmitter river = CgVfxEmitter.builder("streamRiver" + k)
+                    .state(CgVfxEmitterState.once(MOTION - 0.5f - 0.2f).delay(0.2f))
+                    .capacity(500).rate(90f)
                     .speed(0.2f, 0.5f).life(3f, 3f).size(1f, 1f, 1f).heat(1f)
                     .module(new CgVfxModule.Attract(CgSphere.of(8f), 26f).at(dx, dy, dz))
                     .module(new CgVfxModule.Vortex(0f, 1f, 0f, 6f, 0f, dx, dy, dz))
@@ -1408,7 +1484,8 @@ public final class CgVfxModules {
             emitters.add(river);
             sources.add(at);
         }
-        CgVfxEmitter ball = CgVfxEmitter.builder("streamCore").capacity(4).burst(0f, 1).speed(0f, 0f)
+        CgVfxEmitter ball = CgVfxEmitter.builder("streamCore").state(CgVfxEmitterState.ONCE)
+                .capacity(4).burst(0f, 1).speed(0f, 0f)
                 .life(MOTION, MOTION).size(1.4f, 1.4f, 1f).heat(1f)
                 .size(CgKeyframes.start(0f, 0.2f).to(0.9f, 1f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.08f, 1f, CgEasings.OUT_QUAD).to(1f, 1f, CgEasings.LINEAR).build())
@@ -1445,20 +1522,23 @@ public final class CgVfxModules {
      * circling a pillar; and a murmuration of embers, hundreds strong, pulsing over the ground.
      */
     private void flocks(float x, float z) {
-        CgVfxEmitter spirits = CgVfxEmitter.builder("flockSpirits").capacity(320).burst(0f, 320).shape(CgSphere.of(4))
+        CgVfxEmitter spirits = CgVfxEmitter.builder("flockSpirits").state(CgVfxEmitterState.ONCE)
+                .capacity(320).burst(0f, 320).shape(CgSphere.of(4))
                 .speed(1.5f, 3f).life(MOTION, MOTION).size(0.05f, 0.08f).heat(1f).trail(14)
                 .module(new CgVfxModule.Flock(1.6f, 0.5f, 3f, 1.5f, 0.6f))
                 .module(new CgVfxModule.Attract(CgSphere.of(7), 2.5f))
                 .module(new CgVfxModule.Turbulence(1.2f, 0.25f, 0.4f))
                 .module(new CgVfxModule.LimitSpeed(5f))
                 .opacity(FADE).build();
-        CgVfxEmitter school = CgVfxEmitter.builder("flockSchool").capacity(220).burst(0f, 220).shape(CgRing.of(3, 4, 1))
+        CgVfxEmitter school = CgVfxEmitter.builder("flockSchool").state(CgVfxEmitterState.ONCE)
+                .capacity(220).burst(0f, 220).shape(CgRing.of(3, 4, 1))
                 .speed(2f, 3f).life(MOTION, MOTION).size(0.04f, 0.06f).heat(1f).trail(10)
                 .module(new CgVfxModule.Flock(0.9f, 0.35f, 6f, 4f, 0.4f, 16))
                 .module(new CgVfxModule.Vortex(0f, 1f, 0f, 3f, -0.8f, 0f, 0f, 0f))
                 .module(new CgVfxModule.LimitSpeed(4f))
                 .opacity(FADE).build();
-        CgVfxEmitter embers = CgVfxEmitter.builder("flockEmbers").capacity(700).burst(0f, 700).shape(CgBox.of(5, 1, 5))
+        CgVfxEmitter embers = CgVfxEmitter.builder("flockEmbers").state(CgVfxEmitterState.ONCE)
+                .capacity(700).burst(0f, 700).shape(CgBox.of(5, 1, 5))
                 .speed(1f, 2f).life(MOTION, MOTION).size(0.03f, 0.05f).heat(1f).trail(8)
                 .module(new CgVfxModule.Flock(1.1f, 0.3f, 4f, 2.5f, 1f, 20))
                 .module(new CgVfxModule.Attract(CgSphere.of(5), 1.5f).at(0f, 3f, 0f))
@@ -1514,19 +1594,27 @@ public final class CgVfxModules {
         CgVfxSlot coreSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/aura_core");
         CgVfxSlot shockSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/aura_shock");
 
-        CgVfxEmitter streaks = CgVfxEmitter.builder("auraStreaks").renderer(CgVfxEmitter.Renderer.ARCS).capacity(1200)
-                .rate(260f, 0.2f, PERIOD - 2f).entity().surface().direction(0f, 1f, 0f, 12f).speed(3f, 6f).life(0.25f, 0.45f).size(0.05f, 0.09f, 1f)
+        CgVfxEmitter streaks = CgVfxEmitter.builder("auraStreaks")
+                .state(CgVfxEmitterState.once(PERIOD - 2f - 0.2f).delay(0.2f))
+                .renderer(CgVfxEmitter.Renderer.ARCS).capacity(1200)
+                .rate(260f).entity().surface().direction(0f, 1f, 0f, 12f).speed(3f, 6f).life(0.25f, 0.45f).size(0.05f, 0.09f, 1f)
                 .heat(1f).opacity(FADE).build();
-        CgVfxEmitter crackle = CgVfxEmitter.builder("auraCrackle").capacity(600).rate(140f, 0.4f, PERIOD - 2f)
+        CgVfxEmitter crackle = CgVfxEmitter.builder("auraCrackle")
+                .state(CgVfxEmitterState.once(PERIOD - 2f - 0.4f).delay(0.4f))
+                .capacity(600).rate(140f)
                 .entity().surface().speed(2f, 5f).life(0.06f, 0.16f).size(0.02f, 0.04f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Turbulence(22f, 2.5f, 3f)).module(new CgVfxModule.Drag(6f, 0f))
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter motes = CgVfxEmitter.builder("auraMotes").capacity(800).rate(120f, 0.2f, PERIOD - 2f)
+        CgVfxEmitter motes = CgVfxEmitter.builder("auraMotes")
+                .state(CgVfxEmitterState.once(PERIOD - 2f - 0.2f).delay(0.2f))
+                .capacity(800).rate(120f)
                 .entity().surface().speed(0.1f, 0.3f).life(0.8f, 1.4f).size(0.03f, 0.06f, 1.4f).heat(1f)
                 .module(new CgVfxModule.Force(0f, 2.2f, 0f)).module(new CgVfxModule.Turbulence(2f, 0.5f, 0.6f))
                 .opacity(FADE).build();
-        CgVfxEmitter pebbles = CgVfxEmitter.builder("auraPebbles").renderer(CgVfxEmitter.Renderer.MESHES).capacity(60)
-                .rate(9f, 0.3f, PERIOD - 3f).shape(CgRing.of(0.5, 1.8, 0)).speed(0f, 0.1f).life(2.5f, 3.5f)
+        CgVfxEmitter pebbles = CgVfxEmitter.builder("auraPebbles")
+                .state(CgVfxEmitterState.once(PERIOD - 3f - 0.3f).delay(0.3f))
+                .renderer(CgVfxEmitter.Renderer.MESHES).capacity(60)
+                .rate(9f).shape(CgRing.of(0.5, 1.8, 0)).speed(0f, 0.1f).life(2.5f, 3.5f)
                 .size(0.04f, 0.1f, 1.5f).spin(0.5f, 2f).module(new CgVfxModule.Force(0f, 0.9f, 0f))
                 .module(new CgVfxModule.Turbulence(1f, 0.15f, 0.2f)).opacity(FADE).build();
 
@@ -1583,8 +1671,9 @@ public final class CgVfxModules {
      * core, which swells as it charges and crackles with sparks.
      */
     private void gather(float x, float z) {
-        CgVfxEmitter motes = CgVfxEmitter.builder("gather").renderer(CgVfxEmitter.Renderer.QUADS).capacity(2500)
-                .rate(380f, 0f, PERIOD - 3f).shape(CgSphere.of(6.5f)).launch(-0.4f, 0.4f, 1f).speed(0f, 0.3f).life(3f, 4f)
+        CgVfxEmitter motes = CgVfxEmitter.builder("gather").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(2500)
+                .rate(380f).shape(CgSphere.of(6.5f)).launch(-0.4f, 0.4f, 1f).speed(0f, 0.3f).life(3f, 4f)
                 .size(0.04f, 0.1f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Attract(CgSphere.of(9f), 30f).attenuation(1.6f))
                 .module(new CgVfxModule.Vortex(0.15f, 1f, 0.1f, 7f, 0f, 0f, 0f, 0f))
@@ -1594,14 +1683,17 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.6f).to(0.15f, 1f, CgEasings.OUT_QUAD).to(1f, 0.5f, CgEasings.IN_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.12f, 1f, CgEasings.OUT_QUAD).to(0.85f, 1f, CgEasings.LINEAR)
                         .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter core = CgVfxEmitter.builder("gatherCore").renderer(CgVfxEmitter.Renderer.QUADS).capacity(4)
+        CgVfxEmitter core = CgVfxEmitter.builder("gatherCore").state(CgVfxEmitterState.ONCE)
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(4)
                 .burst(0f, 1).speed(0f, 0f).life(PERIOD - 1.5f, PERIOD - 1.5f).size(0.7f, 0.7f, 1f).heat(1f)
                 .size(CgKeyframes.start(0f, 0.2f).to(0.85f, 1.6f, CgEasings.IN_QUAD).to(0.92f, 2.4f, CgEasings.OUT_QUAD)
                         .to(1f, 0f, CgEasings.IN_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 1f, CgEasings.OUT_QUAD).to(1f, 1f, CgEasings.LINEAR).build())
                 .build();
-        CgVfxEmitter crackle = CgVfxEmitter.builder("gatherCrackle").renderer(CgVfxEmitter.Renderer.QUADS).capacity(600)
-                .rate(90f, 0.8f, PERIOD - 2f).shape(CgSphere.of(0.4f)).launch(-1f, 1f, 1f).speed(2f, 5f).life(0.08f, 0.2f)
+        CgVfxEmitter crackle = CgVfxEmitter.builder("gatherCrackle")
+                .state(CgVfxEmitterState.once(PERIOD - 2f - 0.8f).delay(0.8f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(600)
+                .rate(90f).shape(CgSphere.of(0.4f)).launch(-1f, 1f, 1f).speed(2f, 5f).life(0.08f, 0.2f)
                 .size(0.02f, 0.04f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Turbulence(20f, 2f, 3f))
                 .module(new CgVfxModule.Drag(6f, 0f))
@@ -1627,8 +1719,9 @@ public final class CgVfxModules {
         CgVfxField air = tornadoField();
         CgBox box = CgBox.of(TORNADO_HALF, TORNADO_TOP / 2f, TORNADO_HALF);
         float boxY = TORNADO_TOP / 2f - 0.3f;
-        CgVfxEmitter funnel = CgVfxEmitter.builder("tornado").renderer(CgVfxEmitter.Renderer.QUADS).capacity(2000)
-                .rate(320f, 0f, PERIOD - 2.5f).shape(CgSphere.of(0.6f)).launch(0f, 1f, 1f).speed(0f, 0.5f).life(3f, 4f)
+        CgVfxEmitter funnel = CgVfxEmitter.builder("tornado").state(CgVfxEmitterState.once(PERIOD - 2.5f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(2000)
+                .rate(320f).shape(CgSphere.of(0.6f)).launch(0f, 1f, 1f).speed(0f, 0.5f).life(3f, 4f)
                 .size(0.25f, 0.4f, 1f).spin(0.5f, 1.5f)
                 .module(new CgVfxModule.VectorField(air, box, drag, 1f).at(0f, boxY, 0f))
                 .module(new CgVfxModule.Turbulence(10f, 0.6f, 0.8f))
@@ -1636,16 +1729,18 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.6f).to(1f, 4f, CgEasings.IN_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 0.9f, CgEasings.OUT_QUAD).to(0.75f, 0.8f, CgEasings.LINEAR)
                         .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter debris = CgVfxEmitter.builder("tornadoDebris").renderer(CgVfxEmitter.Renderer.QUADS).capacity(800)
-                .rate(120f, 0f, PERIOD - 2.5f).shape(CgSphere.of(2.5f)).launch(0f, 0.3f, 1f).speed(0.5f, 2f).life(2f, 3f)
+        CgVfxEmitter debris = CgVfxEmitter.builder("tornadoDebris").state(CgVfxEmitterState.once(PERIOD - 2.5f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(800)
+                .rate(120f).shape(CgSphere.of(2.5f)).launch(0f, 0.3f, 1f).speed(0.5f, 2f).life(2f, 3f)
                 .size(0.05f, 0.12f, 1.5f).spin(2f, 8f)
                 .module(new CgVfxModule.VectorField(air, box, 1.2f, 1f).at(0f, boxY, 0f))
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Drag(0.7f, 0f))
                 .module(new CgVfxModule.Ground(0.2f, 0.05f, 0.3f))
                 .opacity(FADE).build();
-        CgVfxEmitter dust = CgVfxEmitter.builder("tornadoDust").renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
-                .rate(45f, 0f, PERIOD - 2.5f).shape(CgSphere.of(2.5f)).launch(0f, 0.1f, 1f).speed(0.2f, 0.8f).life(1.6f, 2.4f)
+        CgVfxEmitter dust = CgVfxEmitter.builder("tornadoDust").state(CgVfxEmitterState.once(PERIOD - 2.5f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
+                .rate(45f).shape(CgSphere.of(2.5f)).launch(0f, 0.1f, 1f).speed(0.2f, 0.8f).life(1.6f, 2.4f)
                 .size(0.9f, 1.4f, 1f).spin(0.2f, 0.8f)
                 .module(new CgVfxModule.VectorField(air, box, 1.5f, 1f).at(0f, boxY, 0f))
                 .module(new CgVfxModule.Force(0f, -2f, 0f))
@@ -1712,8 +1807,9 @@ public final class CgVfxModules {
         List<CgVfxEmitter> emitters = new ArrayList<>();
         List<float[]> sources = new ArrayList<>();
         for (int s = 0; s < shares.length; s++) {
-            CgVfxEmitter shell = CgVfxEmitter.builder("fieldShell" + s).renderer(CgVfxEmitter.Renderer.QUADS)
-                    .capacity(900).rate(110f, 0f, PERIOD - 3.5f).shape(CgSphere.of(0.35f)).launch(shares[s], shares[s] + 0.02f, 1f)
+            CgVfxEmitter shell = CgVfxEmitter.builder("fieldShell" + s).state(CgVfxEmitterState.once(PERIOD - 3.5f))
+                    .renderer(CgVfxEmitter.Renderer.QUADS)
+                    .capacity(900).rate(110f).shape(CgSphere.of(0.35f)).launch(shares[s], shares[s] + 0.02f, 1f)
                     .speed(0.5f, 1f).life(4.5f, 5.5f).size(0.022f, 0.032f, 1.5f).heat(1f)
                     .module(new CgVfxModule.VectorField(air, box, drag, 1f).at(0f, boxY, 0f))
                     .module(new CgVfxModule.Vortex(0f, 1f, 0f, 6f, 0f, 0f, -MAGNET_POLE, 0f))
@@ -1731,8 +1827,10 @@ public final class CgVfxModules {
         }
         CgVfxEmitter north = pole("fieldNorth"), south = pole("fieldSouth");
         CgVfxEmitter northCrackle = crackle("fieldNorthCrackle"), southCrackle = crackle("fieldSouthCrackle");
-        CgVfxEmitter pulse = CgVfxEmitter.builder("fieldPulse").renderer(CgVfxEmitter.Renderer.QUADS).capacity(8)
-                .rate(0.8f, 0.5f, PERIOD - 3f).speed(0f, 0f).life(1.6f, 1.6f).size(1f, 1f, 1f).heat(1f)
+        CgVfxEmitter pulse = CgVfxEmitter.builder("fieldPulse")
+                .state(CgVfxEmitterState.once(PERIOD - 3f - 0.5f).delay(0.5f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(8)
+                .rate(0.8f).speed(0f, 0f).life(1.6f, 1.6f).size(1f, 1f, 1f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(0f, 1f))
                 .size(CgKeyframes.start(0f, 0.3f).to(1f, 3.6f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0.8f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
@@ -1752,8 +1850,9 @@ public final class CgVfxModules {
 
     /** Sparks crackling round a pole: short-lived, torn about by fast noise. */
     private static CgVfxEmitter crackle(String name) {
-        return CgVfxEmitter.builder(name).renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
-                .rate(70f, 0f, PERIOD - 2.5f).shape(CgSphere.of(0.25f)).speed(2f, 5f).life(0.08f, 0.22f).size(0.02f, 0.04f, 1.5f)
+        return CgVfxEmitter.builder(name).state(CgVfxEmitterState.once(PERIOD - 2.5f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
+                .rate(70f).shape(CgSphere.of(0.25f)).speed(2f, 5f).life(0.08f, 0.22f).size(0.02f, 0.04f, 1.5f)
                 .heat(1f)
                 .module(new CgVfxModule.Turbulence(20f, 2f, 3f))
                 .module(new CgVfxModule.Drag(6f, 0f))
@@ -1790,7 +1889,8 @@ public final class CgVfxModules {
 
     /** A pole's glow, beating as it charges and fading as the station's period ends. */
     private static CgVfxEmitter pole(String name) {
-        return CgVfxEmitter.builder(name).renderer(CgVfxEmitter.Renderer.QUADS).capacity(4)
+        return CgVfxEmitter.builder(name).state(CgVfxEmitterState.ONCE)
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(4)
                 .burst(0f, 1).speed(0f, 0f).life(PERIOD - 2f, PERIOD - 2f).size(0.45f, 0.45f, 1f).heat(1f)
                 .size(CgKeyframes.start(0f, 0.6f).to(0.15f, 1.25f, CgEasings.OUT_QUAD).to(0.3f, 0.9f, CgEasings.IN_OUT_QUAD)
                         .to(0.45f, 1.25f, CgEasings.IN_OUT_QUAD).to(0.6f, 0.9f, CgEasings.IN_OUT_QUAD)
@@ -1804,8 +1904,9 @@ public final class CgVfxModules {
      * curl-noise currents, which flow and part as one field, round a slow drift.
      */
     private void shield(float x, float z, CgTexture dot) {
-        CgVfxEmitter motes = CgVfxEmitter.builder("shield").renderer(CgVfxEmitter.Renderer.QUADS).capacity(2500)
-                .rate(520f, 0f, PERIOD - 3f).shape(CgSphere.of(5.5f)).launch(-0.5f, 0.5f, 1f).speed(0.3f, 1.5f).life(2.6f, 3.4f)
+        CgVfxEmitter motes = CgVfxEmitter.builder("shield").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(2500)
+                .rate(520f).shape(CgSphere.of(5.5f)).launch(-0.5f, 0.5f, 1f).speed(0.3f, 1.5f).life(2.6f, 3.4f)
                 .size(0.06f, 0.14f, 1.5f).heat(0.7f)
                 .module(new CgVfxModule.Conform(CgSphere.of(2.6f), 4.5f, 40f, 6f))
                 .module(new CgVfxModule.Turbulence(9f, 0.9f, 0.6f))
@@ -1833,8 +1934,9 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.Drag(1.2f, 0f))
                 .module(new CgVfxModule.CollideDepth(0.4f, 0.2f, 0.3f, DEPTH_THICKNESS))
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter sparks = CgVfxEmitter.builder("boulder").renderer(CgVfxEmitter.Renderer.QUADS).capacity(1200)
-                .rate(120f, 0f, PERIOD - 3f).shape(CgSphere.of(1.2f)).launch(-1f, -0.7f, 1f).speed(0.5f, 2f).life(2.5f, 3f)
+        CgVfxEmitter sparks = CgVfxEmitter.builder("boulder").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(1200)
+                .rate(120f).shape(CgSphere.of(1.2f)).launch(-1f, -0.7f, 1f).speed(0.5f, 2f).life(2.5f, 3f)
                 .size(0.08f, 0.14f, 1f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Collide(CgSphere.of(1.8f), 0.6f, 0.05f, 0.3f).at(0f, -5.2f, 0f))
@@ -1859,7 +1961,8 @@ public final class CgVfxModules {
         CgVfxEmitter glint = CgVfxEmitter.builder("cageGlint").renderer(CgVfxEmitter.Renderer.QUADS).capacity(256)
                 .speed(0f, 0f).life(0.06f, 0.12f).size(0.18f, 0.3f, 1f).heat(1f)
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.OUT_QUAD).build()).build();
-        CgVfxEmitter balls = CgVfxEmitter.builder("cage").renderer(CgVfxEmitter.Renderer.QUADS).capacity(500)
+        CgVfxEmitter balls = CgVfxEmitter.builder("cage").state(CgVfxEmitterState.ONCE)
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(500)
                 .burst(0f, 300).burst(3.5f, 150).shape(CgSphere.of(1f)).launch(-1f, 1f, 1f).speed(4f, 9f)
                 .life(PERIOD - 1f, PERIOD - 0.5f).size(0.1f, 0.2f, 1f).heat(0.9f)
                 .module(new CgVfxModule.Gravity(9.8f))
@@ -1902,8 +2005,9 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.5f).to(1f, 2.2f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.15f, 0.6f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        CgVfxEmitter shards = CgVfxEmitter.builder("slope").renderer(CgVfxEmitter.Renderer.QUADS).capacity(1500)
-                .rate(200f, 0f, PERIOD - 3f).shape(CgSphere.of(2.5f)).launch(-1f, -0.8f, 1f).speed(0.5f, 1.5f).life(3f, 4f)
+        CgVfxEmitter shards = CgVfxEmitter.builder("slope").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(1500)
+                .rate(200f).shape(CgSphere.of(2.5f)).launch(-1f, -0.8f, 1f).speed(0.5f, 1.5f).life(3f, 4f)
                 .size(0.08f, 0.2f, 1.5f).spin(2f, 8f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Buoyancy(0f, 1.5f))
@@ -1968,9 +2072,9 @@ public final class CgVfxModules {
                                      CgVfxEmitter ripple) {
         // Still at launch, so gravity alone sets them falling straight down; the launch only spreads where they start.
         // Long enough lived to fall 90 blocks, to the ground under a station standing in the air.
-        CgVfxEmitter.Builder rain = CgVfxEmitter.builder(name).renderer(CgVfxEmitter.Renderer.QUADS).capacity(1000)
-                .rate(rate, 0f, PERIOD - 3f).shape(CgSphere.of(spread)).launch(-1f, 0f, 1f).speed(0f, 0f).life(3f, 3f)
-                .size(0.025f, 0.035f, 1f).heat(0.4f)
+        CgVfxEmitter.Builder rain = CgVfxEmitter.builder(name).state(CgVfxEmitterState.once(PERIOD - 3f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(1000).rate(rate).shape(CgSphere.of(spread))
+                .launch(-1f, 0f, 1f).speed(0f, 0f).life(3f, 3f).size(0.025f, 0.035f, 1f).heat(0.4f)
                 .module(new CgVfxModule.Gravity(20f))
                 .module(new CgVfxModule.Collide(CgBox.of(1.5f, 1f, 1.5f), 0f, 0f, 0f).at(0f, 1f - source, 0f))
                 // Just past the block's surface: a drop is killed the step it lands, after its collision fired.
@@ -2003,8 +2107,9 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Drag(1.5f, 0f))
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter beads = CgVfxEmitter.builder("obstacles").renderer(CgVfxEmitter.Renderer.QUADS).capacity(1500)
-                .rate(220f, 0f, PERIOD - 3f).shape(CgSphere.of(0.4f)).launch(-1f, -0.9f, 1f).speed(0f, 0f).life(4.5f, 5.5f)
+        CgVfxEmitter beads = CgVfxEmitter.builder("obstacles").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(1500)
+                .rate(220f).shape(CgSphere.of(0.4f)).launch(-1f, -0.9f, 1f).speed(0f, 0f).life(4.5f, 5.5f)
                 .size(0.05f, 0.08f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Buoyancy(0f, 2.5f))
@@ -2045,6 +2150,7 @@ public final class CgVfxModules {
             for (int c = 0; c < BRAKE_COLUMNS; c++) {
                 float speed = c + 1f;
                 CgVfxEmitter puck = CgVfxEmitter.builder((damping ? "damping" : "drag") + c)
+                        .state(CgVfxEmitterState.ONCE)
                         .renderer(CgVfxEmitter.Renderer.QUADS).capacity(8)
                         .burst(0f, 1).burst(1.3f, 1).burst(2.6f, 1).burst(3.9f, 1).launch(1f, 1f, 1f).speed(speed, speed)
                         .life(2.6f, 2.6f).size(0.12f, 0.12f, 1f).heat(1f)
@@ -2082,8 +2188,9 @@ public final class CgVfxModules {
 
     /** Godot's velocity limit: the same fountain with (gold) and without (cyan) a 3 blocks a second ceiling. */
     private void limit(float x, float z) {
-        CgVfxEmitter free = CgVfxEmitter.builder("free").renderer(CgVfxEmitter.Renderer.QUADS).capacity(1500)
-                .rate(120f, 0f, PERIOD - 3f).launch(0.85f, 1f, 1f).speed(9f, 12f).life(3f, 3.5f)
+        CgVfxEmitter free = CgVfxEmitter.builder("free").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(1500)
+                .rate(120f).launch(0.85f, 1f, 1f).speed(9f, 12f).life(3f, 3.5f)
                 .size(0.08f, 0.12f, 1f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Ground(0.3f, 0.3f, 0.5f))
@@ -2101,8 +2208,9 @@ public final class CgVfxModules {
      * heat and reddening as they cool, with embers and its own smoke rising off it.
      */
     private void flipbooks(float x, float z, CgTexture smokeSheet, CgTexture fireSheet) {
-        CgVfxEmitter puffs = CgVfxEmitter.builder("puffs").renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
-                .rate(18f, 0f, PERIOD - 3f).shape(CgSphere.of(0.5f)).launch(0.8f, 1f, 1f).speed(0.8f, 1.5f).life(3f, 4f)
+        CgVfxEmitter puffs = CgVfxEmitter.builder("puffs").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
+                .rate(18f).shape(CgSphere.of(0.5f)).launch(0.8f, 1f, 1f).speed(0.8f, 1.5f).life(3f, 4f)
                 .size(0.7f, 1.1f, 1f).spin(0.05f, 0.35f).heat(0.7f)
                 .module(new CgVfxModule.Buoyancy(3f, 1.5f))
                 .module(new CgVfxModule.Turbulence(1.4f, 0.3f, 0.35f))
@@ -2110,8 +2218,9 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.55f).to(1f, 3f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.15f, 0.95f, CgEasings.OUT_QUAD).to(0.6f, 0.75f, CgEasings.LINEAR)
                         .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter fire = CgVfxEmitter.builder("fire").renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
-                .rate(55f, 0f, PERIOD - 3f).shape(CgSphere.of(0.4f)).launch(0.85f, 1f, 1f).speed(0.4f, 1f).life(0.6f, 1f)
+        CgVfxEmitter fire = CgVfxEmitter.builder("fire").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
+                .rate(55f).shape(CgSphere.of(0.4f)).launch(0.85f, 1f, 1f).speed(0.4f, 1f).life(0.6f, 1f)
                 .size(0.55f, 0.9f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(5f, 1.2f))
                 .module(new CgVfxModule.Turbulence(2.5f, 0.9f, 1.4f))
@@ -2119,15 +2228,18 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.7f).to(0.3f, 1.1f, CgEasings.OUT_QUAD).to(1f, 0.55f, CgEasings.IN_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 1f, CgEasings.OUT_QUAD).to(0.7f, 0.9f, CgEasings.LINEAR)
                         .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter embers = CgVfxEmitter.builder("fireEmbers").renderer(CgVfxEmitter.Renderer.QUADS).capacity(200)
-                .rate(18f, 0f, PERIOD - 3f).shape(CgSphere.of(0.3f)).launch(0.8f, 1f, 1f).speed(1f, 2.5f).life(1.2f, 2.2f)
+        CgVfxEmitter embers = CgVfxEmitter.builder("fireEmbers").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(200)
+                .rate(18f).shape(CgSphere.of(0.3f)).launch(0.8f, 1f, 1f).speed(1f, 2.5f).life(1.2f, 2.2f)
                 .size(0.025f, 0.05f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(7f, 0.9f))
                 .module(new CgVfxModule.Turbulence(7f, 1.1f, 1.5f))
                 .module(new CgVfxModule.Drag(0.8f, 0f))
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter soot = CgVfxEmitter.builder("fireSmoke").renderer(CgVfxEmitter.Renderer.QUADS).capacity(100)
-                .rate(9f, 0.4f, PERIOD - 3f).shape(CgSphere.of(0.3f)).launch(0.9f, 1f, 1f).speed(0.4f, 0.8f).life(2.5f, 3.5f)
+        CgVfxEmitter soot = CgVfxEmitter.builder("fireSmoke")
+                .state(CgVfxEmitterState.once(PERIOD - 3f - 0.4f).delay(0.4f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(100)
+                .rate(9f).shape(CgSphere.of(0.3f)).launch(0.9f, 1f, 1f).speed(0.4f, 0.8f).life(2.5f, 3.5f)
                 .size(0.6f, 0.9f, 1f).spin(0.1f, 0.4f).heat(0.5f)
                 .module(new CgVfxModule.Buoyancy(2.5f, 2f))
                 .module(new CgVfxModule.Turbulence(1.2f, 0.35f, 0.3f))
@@ -2157,23 +2269,26 @@ public final class CgVfxModules {
      */
     private void facings(float x, float z, CgTexture star, CgTexture rune, CgTexture wisp, CgTexture dot,
                          CgTexture ring) {
-        CgVfxEmitter glints = CgVfxEmitter.builder("faceCamera").renderer(CgVfxEmitter.Renderer.QUADS).capacity(120)
-                .rate(16f, 0f, PERIOD - 3f).shape(CgSphere.of(1f)).speed(0.05f, 0.2f).life(1.5f, 2.5f).size(0.2f, 0.45f, 1.5f)
+        CgVfxEmitter glints = CgVfxEmitter.builder("faceCamera").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(120)
+                .rate(16f).shape(CgSphere.of(1f)).speed(0.05f, 0.2f).life(1.5f, 2.5f).size(0.2f, 0.45f, 1.5f)
                 .spin(0.3f, 1.2f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(0.4f, 1.5f))
                 .module(new CgVfxModule.Drag(1f, 0f))
                 .opacity(CgKeyframes.start(0f, 0f).to(0.2f, 1f, CgEasings.OUT_QUAD).to(0.45f, 0.35f, CgEasings.IN_OUT_QUAD)
                         .to(0.7f, 1f, CgEasings.IN_OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter runes = CgVfxEmitter.builder("facePosition").renderer(CgVfxEmitter.Renderer.QUADS).capacity(40)
-                .rate(4f, 0f, PERIOD - 3.5f).shape(CgSphere.of(0.9f)).launch(-0.2f, 0.2f, 1f).speed(0f, 0f).life(3f, 3.5f)
+        CgVfxEmitter runes = CgVfxEmitter.builder("facePosition").state(CgVfxEmitterState.once(PERIOD - 3.5f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(40)
+                .rate(4f).shape(CgSphere.of(0.9f)).launch(-0.2f, 0.2f, 1f).speed(0f, 0f).life(3f, 3.5f)
                 .size(0.4f, 0.55f, 1f).spin(0.2f, 0.5f).heat(1f)
                 .module(new CgVfxModule.Vortex(0f, 1f, 0f, 1.2f, -0.8f, 0f, 0f, 0f))
                 .module(new CgVfxModule.Force(0f, 0.35f, 0f))
                 .module(new CgVfxModule.Buoyancy(0f, 2f))
                 .module(new CgVfxModule.Drag(1f, 0f))
                 .opacity(FADE).build();
-        CgVfxEmitter flames = CgVfxEmitter.builder("faceUpright").renderer(CgVfxEmitter.Renderer.QUADS).capacity(150)
-                .rate(30f, 0f, PERIOD - 3f).shape(CgSphere.of(0.3f)).launch(0.85f, 1f, 1f).speed(0.3f, 0.8f).life(0.6f, 1f)
+        CgVfxEmitter flames = CgVfxEmitter.builder("faceUpright").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(150)
+                .rate(30f).shape(CgSphere.of(0.3f)).launch(0.85f, 1f, 1f).speed(0.3f, 0.8f).life(0.6f, 1f)
                 .size(0.55f, 0.85f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(4f, 1f))
                 .module(new CgVfxModule.Turbulence(2.5f, 0.6f, 1.2f))
@@ -2182,8 +2297,9 @@ public final class CgVfxModules {
                 .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 1f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
         // Near upright, so the fountain stays in its lane: 1.5 blocks out at most, bounces included.
-        CgVfxEmitter sparks = CgVfxEmitter.builder("faceVelocity").renderer(CgVfxEmitter.Renderer.QUADS).capacity(250)
-                .rate(90f, 0f, PERIOD - 3f).shape(CgSphere.of(0.05f)).launch(0.99f, 1f, 1f).speed(5f, 7f).life(1.2f, 1.8f)
+        CgVfxEmitter sparks = CgVfxEmitter.builder("faceVelocity").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(250)
+                .rate(90f).shape(CgSphere.of(0.05f)).launch(0.99f, 1f, 1f).speed(5f, 7f).life(1.2f, 1.8f)
                 .size(0.045f, 0.07f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Buoyancy(0f, 0.6f))
@@ -2191,8 +2307,9 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.Ground(0.35f, 0.1f, 0.2f))
                 .opacity(CgKeyframes.start(0f, 1f).to(0.8f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        CgVfxEmitter waves = CgVfxEmitter.builder("faceAxis").renderer(CgVfxEmitter.Renderer.QUADS).capacity(8)
-                .rate(1.6f, 0f, PERIOD - 3f).speed(0f, 0f).life(1.4f, 1.4f).size(1f, 1f, 1f).heat(1f)
+        CgVfxEmitter waves = CgVfxEmitter.builder("faceAxis").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(8)
+                .rate(1.6f).speed(0f, 0f).life(1.4f, 1.4f).size(1f, 1f, 1f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(0f, 0.8f))
                 .size(CgKeyframes.start(0f, 0.15f).to(1f, 1.5f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();

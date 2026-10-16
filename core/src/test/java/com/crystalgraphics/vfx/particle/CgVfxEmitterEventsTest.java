@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -18,7 +19,7 @@ public class CgVfxEmitterEventsTest {
     @Test
     public void aParentFinishesWithItsChildren() {
         CgVfxEmitter smoke = CgVfxEmitter.builder("smoke").life(1f, 1f).speed(0f, 1f).build();
-        CgVfxEmitter flash = CgVfxEmitter.builder("flash").burst(0f, 20).life(0.2f, 0.2f)
+        CgVfxEmitter flash = CgVfxEmitter.builder("flash").state(CgVfxEmitterState.ONCE).burst(0f, 20).life(0.2f, 0.2f)
                 .event(CgVfxEvent.onAge(0.1f).spawn(smoke, 1)).build();
         CgVfxEmitterInstance instance = new CgVfxEmitterInstance(flash, 0.5f);
         instance.start(0f, 0f, 0f);

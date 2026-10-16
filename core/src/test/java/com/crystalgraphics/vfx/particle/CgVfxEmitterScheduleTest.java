@@ -4,6 +4,7 @@ import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -23,25 +24,27 @@ public class CgVfxEmitterScheduleTest {
 
     @Test
     public void burstsScheduleTheSpawnsTickMakes() {
-        check(CgVfxEmitter.builder("bursts").capacity(4000).burst(0f, 300).burst(0.5f, 200).burst(2.4f, 120)
+        check(CgVfxEmitter.builder("bursts").state(CgVfxEmitterState.ONCE)
+                .capacity(4000).burst(0f, 300).burst(0.5f, 200).burst(2.4f, 120)
                 .life(1f, 2f).speed(2f, 6f).module(new CgVfxModule.Gravity(9.8f)).build(), 620, 1f);
     }
 
     @Test
     public void ratesAndBurstsThinnedByShare() {
-        check(CgVfxEmitter.builder("rate").capacity(4000).rate(400f, 0f, 1.5f).burst(0.2f, 50)
+        check(CgVfxEmitter.builder("rate").state(CgVfxEmitterState.once(1.5f)).capacity(4000).rate(400f).burst(0.2f, 50)
                 .life(0.5f, 1.2f).speed(1f, 3f).module(new CgVfxModule.Drag(2f, 0f)).build(), 650, 0.6f);
     }
 
     @Test
     public void groundedParticlesStillDieOfAge() {
-        check(CgVfxEmitter.builder("debris").capacity(4000).burst(0f, 400).life(2f, 3.5f).speed(4f, 12f)
+        check(CgVfxEmitter.builder("debris").state(CgVfxEmitterState.ONCE)
+                .capacity(4000).burst(0f, 400).life(2f, 3.5f).speed(4f, 12f)
                 .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0.3f, 0.5f, 0.6f)).build(), 400, 1f);
     }
 
     @Test
     public void anOpenRateFinishesOnceStoppedOrCoasting() {
-        CgVfxEmitter wake = CgVfxEmitter.builder("wake").capacity(400).rate(60f, 0f, Float.POSITIVE_INFINITY)
+        CgVfxEmitter wake = CgVfxEmitter.builder("wake").state(CgVfxEmitterState.ONCE).capacity(400).rate(60f)
                 .life(0.5f, 1f).build();
         CgVfxEmitterInstance stopped = new CgVfxEmitterInstance(wake, 0.3f), coasting = new CgVfxEmitterInstance(wake, 0.3f);
         stopped.start(0f, 0f, 0f);
@@ -63,7 +66,7 @@ public class CgVfxEmitterScheduleTest {
 
     @Test
     public void rateScaleScalesTheRateAlone() {
-        CgVfxEmitter definition = CgVfxEmitter.builder("scaled").capacity(4000).rate(120f, 0f, Float.POSITIVE_INFINITY)
+        CgVfxEmitter definition = CgVfxEmitter.builder("scaled").state(CgVfxEmitterState.ONCE).capacity(4000).rate(120f)
                 .burst(0f, 10).life(1f, 1f).build();
         CgVfxEmitterInstance instance = new CgVfxEmitterInstance(definition, 0.3f).rateScale(0f);
         instance.start(0f, 0f, 0f);
@@ -81,7 +84,8 @@ public class CgVfxEmitterScheduleTest {
     @Test
     public void childrenStepAtTheirParentsOrigin() {
         CgVfxEmitter flash = CgVfxEmitter.builder("flash").capacity(64).life(0.1f, 0.1f).build();
-        CgVfxEmitter sparks = CgVfxEmitter.builder("sparks").capacity(64).burst(0f, 10).life(1f, 1f)
+        CgVfxEmitter sparks = CgVfxEmitter.builder("sparks").state(CgVfxEmitterState.ONCE)
+                .capacity(64).burst(0f, 10).life(1f, 1f)
                 .event(CgVfxEvent.onCollision().spawn(flash, 1)).build();
         CgVfxEmitterInstance parent = new CgVfxEmitterInstance(sparks, 0.5f);
         parent.start(0f, 7f, 0f);
@@ -109,7 +113,7 @@ public class CgVfxEmitterScheduleTest {
 
     @Test
     public void aMovingSourceSpreadsItsRateFromWhereTheStepBegan() {
-        CgVfxEmitter trail = CgVfxEmitter.builder("trail").capacity(2000).rate(600f, 0f, Float.POSITIVE_INFINITY)
+        CgVfxEmitter trail = CgVfxEmitter.builder("trail").state(CgVfxEmitterState.ONCE).capacity(2000).rate(600f)
                 .burst(0.04f, 5).life(1f, 1f).build();
         CgVfxEmitterInstance instance = new CgVfxEmitterInstance(trail, 0.3f);
         instance.start(0f, 0f, 0f);
@@ -148,7 +152,8 @@ public class CgVfxEmitterScheduleTest {
 
     @Test
     public void capacityDropsWhatWouldPassIt() {
-        CgVfxEmitter capped = CgVfxEmitter.builder("capped").capacity(100).burst(0f, 500).burst(0.49f, 50)
+        CgVfxEmitter capped = CgVfxEmitter.builder("capped").state(CgVfxEmitterState.ONCE)
+                .capacity(100).burst(0f, 500).burst(0.49f, 50)
                 .burst(1.49f, 50).life(1f, 1f).build();
         assertEquals(100, capped.peakAlive());
         CgVfxEmitterInstance instance = new CgVfxEmitterInstance(capped, 0.3f);
@@ -198,7 +203,7 @@ public class CgVfxEmitterScheduleTest {
             if (instance.finished()) finishedAt = step;
         }
         // A rate's window may end a step late, as its clock adds up step lengths in float.
-        assertEquals(definition.name() + " spawned", expected, handed, definition.rate * DT + 1f);
+        assertEquals(definition.name() + " spawned", expected, handed, definition.rate.perSecond() * DT + 1f);
         assertTrue(definition.name() + " finished", finishedAt >= 0);
         assertTrue(definition.name() + " finished at step " + finishedAt + " for its last death at " + lastDeath,
                 Math.abs((finishedAt + 1) * DT - (lastDeath + DT)) <= DT * 1.01f);

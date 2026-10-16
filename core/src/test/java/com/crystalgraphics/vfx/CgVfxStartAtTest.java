@@ -6,6 +6,7 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -19,8 +20,9 @@ public class CgVfxStartAtTest {
 
     private static final CgVfxLook LOOK = CgVfxLook.builder(CgVfxSchema.of("test:start_at")).build();
     /** A rate for 4 s and a burst at 1 s: both the books and what is alive depend on the whole past. */
-    private static final CgVfxEmitter EMBERS = CgVfxEmitter.builder("start_at_embers").capacity(2000)
-            .rate(150f, 0f, 4f).burst(1f, 60).life(0.5f, 1.2f).speed(1f, 3f)
+    private static final CgVfxEmitter EMBERS = CgVfxEmitter.builder("start_at_embers").state(CgVfxEmitterState.once(4f))
+            .capacity(2000)
+            .rate(150f).burst(1f, 60).life(0.5f, 1.2f).speed(1f, 3f)
             .module(new CgVfxModule.Gravity(9.8f)).build();
     /**
      * Frames of the from-zero run: a sixtieth of a second each, two ticks; fewer particle steps than a system queues

@@ -12,6 +12,7 @@ import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 
 import java.util.List;
 
@@ -61,8 +62,10 @@ public final class CgVfxExplosion {
      * away within a few blocks of the camera, so a player standing in the blast still sees out (the billow shader's
      * {@code _NearFrom} and {@code _NearTo}).
      */
-    public static final CgVfxEmitter BILLOWS = CgVfxEmitter.builder("billows").renderer(CgVfxEmitter.Renderer.MESHES)
-            .capacity(130).rate(300f, 0.15f, 0.55f).shape(CgShell.of(9f, 11f)).launch(-0.05f, 0.3f, 2.2f).speed(5f, 12f)
+    public static final CgVfxEmitter BILLOWS = CgVfxEmitter.builder("billows")
+            .state(CgVfxEmitterState.once(0.4f).delay(0.15f))
+            .renderer(CgVfxEmitter.Renderer.MESHES)
+            .capacity(130).rate(300f).shape(CgShell.of(9f, 11f)).launch(-0.05f, 0.3f, 2.2f).speed(5f, 12f)
             .life(3.5f, 5.5f).size(0.6f, 1.4f, 1.6f).spin(0.1f, 0.6f).heat(1f)
             .module(new CgVfxModule.Drag(0.8f, 0.08f))
             .module(new CgVfxModule.Buoyancy(1.2f, 2.5f))
@@ -76,7 +79,8 @@ public final class CgVfxExplosion {
             .build();
 
     /** Dark debris: heavy and ballistic, it lands, bounces a little, tumbles to a stop and fades. */
-    public static final CgVfxEmitter SPECKS = CgVfxEmitter.builder("specks").renderer(CgVfxEmitter.Renderer.QUADS)
+    public static final CgVfxEmitter SPECKS = CgVfxEmitter.builder("specks").state(CgVfxEmitterState.ONCE)
+            .renderer(CgVfxEmitter.Renderer.QUADS)
             .optional().capacity(820).burst(0f, 800).shape(CgSphere.of(3f)).launch(0.05f, 1f, 0.7f).speed(6f, 16f)
             .life(4f, 6f).size(0.035f, 0.25f, 2.4f).spin(4f, 14f)
             .module(new CgVfxModule.Gravity(9.8f))
@@ -111,8 +115,10 @@ public final class CgVfxExplosion {
      * skirt of it rather than on a hard line. None starts inside the dome, where it would brown the blast seen through its
      * wall; like {@link #BILLOWS}, the ring suits a dome about ten blocks in radius.
      */
-    public static final CgVfxEmitter SURGE = CgVfxEmitter.builder("surge").renderer(CgVfxEmitter.Renderer.QUADS)
-            .optional().capacity(360).rate(980f, 0.08f, 0.42f).shape(CgShell.of(9f, 11f)).launch(0f, 0.04f, 1f).speed(9f, 19f)
+    public static final CgVfxEmitter SURGE = CgVfxEmitter.builder("surge")
+            .state(CgVfxEmitterState.once(0.34f).delay(0.08f))
+            .renderer(CgVfxEmitter.Renderer.QUADS)
+            .optional().capacity(360).rate(980f).shape(CgShell.of(9f, 11f)).launch(0f, 0.04f, 1f).speed(9f, 19f)
             .life(2.6f, 4f).size(0.25f, 0.55f, 1.4f)
             .module(new CgVfxModule.Gravity(1.5f))
             .module(new CgVfxModule.Drag(0.9f, 0.05f))
@@ -130,8 +136,9 @@ public final class CgVfxExplosion {
      * ({@code sweep}), thrown out flat behind it, sliding on the floor and lofting as it stalls, swelling and thinning
      * into a low skirt that settles behind the front. What makes the front, invisible itself, read.
      */
-    public static final CgVfxEmitter SKIRT = CgVfxEmitter.builder("skirt").renderer(CgVfxEmitter.Renderer.QUADS)
-            .optional().capacity(560).rate(240f, 0f, 2.2f).shape(CgShell.of(9.2f, 9.6f)).sweep(33.5f).launch(0f, 0.02f, 1f)
+    public static final CgVfxEmitter SKIRT = CgVfxEmitter.builder("skirt").state(CgVfxEmitterState.once(2.2f))
+            .renderer(CgVfxEmitter.Renderer.QUADS)
+            .optional().capacity(560).rate(240f).shape(CgShell.of(9.2f, 9.6f)).sweep(33.5f).launch(0f, 0.02f, 1f)
             .speed(3f, 9f).life(1.1f, 2.2f).size(0.35f, 0.8f, 1.4f)
             .module(new CgVfxModule.Gravity(1.5f))
             .module(new CgVfxModule.Drag(1.2f, 0.05f))
@@ -148,7 +155,8 @@ public final class CgVfxExplosion {
      * Embers: thrown out fast past the cloud and braked mostly by quadratic drag, so they clear the billows, then held up
      * by their heat, swirled by turbulence and carried by the wind, sinking to the ground as they cool and dim.
      */
-    public static final CgVfxEmitter SPARKLES = CgVfxEmitter.builder("sparkles").renderer(CgVfxEmitter.Renderer.QUADS)
+    public static final CgVfxEmitter SPARKLES = CgVfxEmitter.builder("sparkles").state(CgVfxEmitterState.ONCE)
+            .renderer(CgVfxEmitter.Renderer.QUADS)
             .optional().capacity(520).burst(0f, 500).shape(CgSphere.of(3f)).launch(-0.05f, 0.8f, 1.6f).speed(18f, 36f)
             .life(4f, 7f).size(0.1f, 0.5f, 2f).heat(1f)
             .module(new CgVfxModule.Gravity(9.8f))
@@ -167,8 +175,9 @@ public final class CgVfxExplosion {
      * cuts into the ground, braked by the air, thinning to nothing. A drawn mark, so an effect starts them only with an
      * impact frame ({@link #drawn}).
      */
-    public static final CgVfxEmitter INK = CgVfxEmitter.builder("ink").renderer(CgVfxEmitter.Renderer.ARCS)
-            .capacity(34).rate(36f, 0f, 0.8f).shape(CgShell.of(7f, 10f)).launch(0.15f, 1f, 0.8f).speed(22f, 55f)
+    public static final CgVfxEmitter INK = CgVfxEmitter.builder("ink").state(CgVfxEmitterState.once(0.8f))
+            .renderer(CgVfxEmitter.Renderer.ARCS)
+            .capacity(34).rate(36f).shape(CgShell.of(7f, 10f)).launch(0.15f, 1f, 0.8f).speed(22f, 55f)
             .life(0.5f, 1.2f).size(0.25f, 0.45f, 1f)
             .module(new CgVfxModule.Drag(0f, 0.08f))
             .size(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build())
@@ -180,8 +189,9 @@ public final class CgVfxExplosion {
      * (the ray shader's length by seed), the low ones skimming the ground; each drawn out along its velocity by its speed,
      * so it shortens as the air brakes it, drooping as it slows and dying out as it cools.
      */
-    public static final CgVfxEmitter RAYS = CgVfxEmitter.builder("rays").renderer(CgVfxEmitter.Renderer.ARCS)
-            .capacity(120).rate(200f, 0f, 0.5f).shape(CgShell.of(2f, 5f)).launch(0f, 0.95f, 1.6f).speed(18f, 60f)
+    public static final CgVfxEmitter RAYS = CgVfxEmitter.builder("rays").state(CgVfxEmitterState.once(0.5f))
+            .renderer(CgVfxEmitter.Renderer.ARCS)
+            .capacity(120).rate(200f).shape(CgShell.of(2f, 5f)).launch(0f, 0.95f, 1.6f).speed(18f, 60f)
             .life(0.6f, 1.4f).size(0.18f, 0.45f, 2f)
             .module(new CgVfxModule.Gravity(6f))
             .module(new CgVfxModule.Drag(0f, 0.04f))
@@ -195,7 +205,8 @@ public final class CgVfxExplosion {
      * ({@code shock_ring.shader}) over its foot glowing on the ground for the first part of its run ({@code ring.shader}). One particle at the
      * burst's centre, its drawn size the ring's radius: the burst must be on the ground, or within the flash's reach.
      */
-    public static final CgVfxEmitter RINGS = CgVfxEmitter.builder("rings").renderer(CgVfxEmitter.Renderer.MESHES)
+    public static final CgVfxEmitter RINGS = CgVfxEmitter.builder("rings").state(CgVfxEmitterState.ONCE)
+            .renderer(CgVfxEmitter.Renderer.MESHES)
             .capacity(1).burst(0f, 1).launch(1f, 1f, 1f).speed(0f, 0f)
             .life(2.2f, 2.2f).size(46f, 46f, 1f)
             .size(CgKeyframes.start(0f, 0.2f).to(1f, 1f, CgEasings.OUT_QUAD).build())

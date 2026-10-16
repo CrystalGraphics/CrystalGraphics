@@ -8,6 +8,7 @@ import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 
 /**
  * A grid of cells an effect owns, riding with it, four channels a cell (x, y, z, w), on the GPU: what particles write
@@ -48,7 +49,8 @@ import com.crystalgraphics.vfx.look.CgVfxSlot;
  *
  * // agents splat into channel x and steer toward where it is strongest, inside a sphere: Physarum's trails, Jones's
  * // ratios at 0.15-block cells (sensors 6 cells out, 45 degrees, a domain ten sensor reaches across)
- * CgVfxEmitter.builder("agents").capacity(20000).burst(0f, 20000).shape(CgSphere.of(4)).speed(2.5f, 2.5f).life(1e6f, 1e6f)
+ * CgVfxEmitter.builder("agents").state(CgVfxEmitterState.ONCE).capacity(20000).burst(0f, 20000)
+ *         .shape(CgSphere.of(4)).speed(2.5f, 2.5f).life(1e6f, 1e6f)
  *         .module(new CgVfxModule.Follow(0, 0.9f, 0.785f, 13f, 1.5f))
  *         .module(new CgVfxModule.Collide(CgSphere.of(4.5), 1f, 0f, 0f).container())
  *         .module(new CgVfxModule.Splat(1f, 0f, 0f, 0f)).build();

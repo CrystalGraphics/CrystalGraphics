@@ -25,6 +25,7 @@ import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -302,7 +303,8 @@ public final class CgVfxFluidDemo {
      * then a grenade going off in it at ten, clearing a hole that heals over five.
      */
     private void grenade(float x, float z) {
-        CgVfxEmitter flies = CgVfxEmitter.builder("smokeFireflies").capacity(450).burst(0.5f, 450).shape(CgSphere.of(2.5))
+        CgVfxEmitter flies = CgVfxEmitter.builder("smokeFireflies").state(CgVfxEmitterState.ONCE)
+                .capacity(450).burst(0.5f, 450).shape(CgSphere.of(2.5))
                 .speed(1f, 2f).life(LIFE, LIFE).size(0.04f, 0.06f).heat(1f).trail(12)
                 .module(new CgVfxModule.Flock(1.4f, 0.45f, 3f, 1.5f, 0.7f))
                 .module(new CgVfxModule.Flow(1.2f))
@@ -345,7 +347,8 @@ public final class CgVfxFluidDemo {
      * spiral up through it, carried by its flow and leaving a little smoke where they go.
      */
     private void fireWhirl(float x, float z) {
-        CgVfxEmitter embers = CgVfxEmitter.builder("whirlEmbers").capacity(4000).rate(600f, 0f, PERIOD - 4f)
+        CgVfxEmitter embers = CgVfxEmitter.builder("whirlEmbers").state(CgVfxEmitterState.once(PERIOD - 4f))
+                .capacity(4000).rate(600f)
                 .shape(CgRing.of(1.2, 2.4, 0)).launch(0.7f, 1f, 1f).speed(1f, 3f).life(2.5f, 4f).size(0.03f, 0.06f).heat(1f)
                 .trail(10)
                 .module(new CgVfxModule.Vortex(0f, 1f, 0f, 7f, -1.2f, 0f, 0f, 0f))
@@ -392,7 +395,9 @@ public final class CgVfxFluidDemo {
      * stream fans like a hose; it breathes in bursts of three seconds.
      */
     private void dragonBreath(float x, float z) {
-        CgVfxEmitter breath = CgVfxEmitter.builder("dragonBreath").capacity(2400).rate(1400f, 1f, PERIOD - 6f)
+        CgVfxEmitter breath = CgVfxEmitter.builder("dragonBreath")
+                .state(CgVfxEmitterState.once(PERIOD - 6f - 1f).delay(1f))
+                .capacity(2400).rate(1400f)
                 .direction(0f, -0.2f, -1f, 7f).speed(20f, 26f).inherit(0.6f).life(0.7f, 1f).size(0.08f, 0.14f).heat(1f)
                 .trail(6)
                 .module(new CgVfxModule.Drag(1.4f, 0f))
@@ -426,7 +431,8 @@ public final class CgVfxFluidDemo {
      * answering what moved through it, and it settles again once they pass.
      */
     private void fogWakes(float x, float z) {
-        CgVfxEmitter spirits = CgVfxEmitter.builder("fogSpirits").capacity(260).burst(0.3f, 260).shape(CgSphere.of(5))
+        CgVfxEmitter spirits = CgVfxEmitter.builder("fogSpirits").state(CgVfxEmitterState.ONCE)
+                .capacity(260).burst(0.3f, 260).shape(CgSphere.of(5))
                 .speed(4f, 6f).life(LIFE, LIFE).size(0.05f, 0.08f).heat(1f).trail(16)
                 .module(new CgVfxModule.Flock(1.6f, 0.5f, 3f, 1.5f, 0.8f))
                 .module(new CgVfxModule.Attract(CgBox.of(6, 0.4, 6), 1.5f).at(0f, 1f, 0f))
@@ -460,9 +466,11 @@ public final class CgVfxFluidDemo {
      * away before the head comes round again.
      */
     private void comet(float x, float z) {
-        CgVfxEmitter head = CgVfxEmitter.builder("cometHead").capacity(1500).ratePerBlock(60f, 0f, PERIOD - 3f)
+        CgVfxEmitter head = CgVfxEmitter.builder("cometHead").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .capacity(1500).ratePerBlock(60f)
                 .shape(CgSphere.of(0.25)).speed(0.2f, 0.6f).life(0.15f, 0.3f).size(0.12f, 0.2f).heat(1f).opacity(FADE).build();
-        CgVfxEmitter sparks = CgVfxEmitter.builder("cometSparks").capacity(2500).ratePerBlock(16f, 0f, PERIOD - 3f)
+        CgVfxEmitter sparks = CgVfxEmitter.builder("cometSparks").state(CgVfxEmitterState.once(PERIOD - 3f))
+                .capacity(2500).ratePerBlock(16f)
                 .shape(CgSphere.of(0.2)).speed(0.3f, 1.2f).inherit(0.1f).life(0.8f, 1.4f).size(0.03f, 0.05f).heat(1f).trail(8)
                 .module(new CgVfxModule.Gravity(1.5f))
                 .module(new CgVfxModule.Drag(2f, 0f))
@@ -525,8 +533,9 @@ public final class CgVfxFluidDemo {
      * them as soft lit cards, the usual way.
      */
     private void particleSmoke(float volumeX, float spritesX, float z) {
-        CgVfxEmitter.Builder rising = CgVfxEmitter.builder("smokeSprites").capacity(2400).rate(700f, 0f, PERIOD - 5f)
-                .shape(CgSphere.of(0.7)).launch(0.6f, 1f, 1f).speed(1f, 2.2f).life(2.8f, 3.4f).size(0.7f, 0.7f)
+        CgVfxEmitter.Builder rising = CgVfxEmitter.builder("smokeSprites").state(CgVfxEmitterState.once(PERIOD - 5f))
+                .capacity(2400).rate(700f).shape(CgSphere.of(0.7)).launch(0.6f, 1f, 1f).speed(1f, 2.2f)
+                .life(2.8f, 3.4f).size(0.7f, 0.7f)
                 // Each puff eases in and swells as it leaves the vent: born whole, a step's batch at a time, the base was
                 // mostly newborns and pulsed with each.
                 .size(CgKeyframes.start(0f, 0.4f).to(0.25f, 1f, CgEasings.OUT_QUAD).build())
@@ -538,7 +547,7 @@ public final class CgVfxFluidDemo {
                 .module(new CgVfxModule.Drag(0.7f, 0f));
         CgVfxEmitter cards = rising.build();
         // A hundred or so overlap at any point of the column: each faint, together opaque.
-        CgVfxEmitter puffs = rising.name("smokeParticles").capacity(4500).rate(1200f, 0f, PERIOD - 5f)
+        CgVfxEmitter puffs = rising.name("smokeParticles").capacity(4500).rate(1200f)
                 .rasterize(0.02f, 0f, 0f, 0f).build();
         // Opaque in its core, so it shades as a body: the sun bright on its crown, its middle and underside dark.
         CgVfxLook volume = CgVfxLook.builder(SCHEMA).params(CgVfxGrid3D.SCHEMA).emitter(puffs)
@@ -563,7 +572,8 @@ public final class CgVfxFluidDemo {
      * draw them, the gas pink to orange where it is thick, the starlight blue.
      */
     private void nebula(float x, float z) {
-        CgVfxEmitter stars = CgVfxEmitter.builder("nebulaStars").capacity(12000).burst(0f, 12000).shape(CgRing.of(1.2, 5.2, 0.5))
+        CgVfxEmitter stars = CgVfxEmitter.builder("nebulaStars").state(CgVfxEmitterState.ONCE)
+                .capacity(12000).burst(0f, 12000).shape(CgRing.of(1.2, 5.2, 0.5))
                 .speed(0.5f, 1.2f).life(LIFE, LIFE).size(0.015f, 0.03f, 2f).heat(1f)
                 // At the speed limit the pull holds an orbit of 2.5² / 1.2, 5.2 blocks: inside the grid's 7.7.
                 .module(new CgVfxModule.Vortex(0f, 1f, 0f, 1.2f, -1.2f, 0f, 0f, 0f))
@@ -600,10 +610,12 @@ public final class CgVfxFluidDemo {
      * of dust and condensed cloud.
      */
     private void mushroomCloud(float x, float z) {
-        CgVfxEmitter flash = CgVfxEmitter.builder("mushroomFlash").capacity(4).burst(0f, 1).life(0.6f, 0.6f)
+        CgVfxEmitter flash = CgVfxEmitter.builder("mushroomFlash").state(CgVfxEmitterState.ONCE)
+                .capacity(4).burst(0f, 1).life(0.6f, 0.6f)
                 .size(9f, 9f).heat(1f)
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter debris = CgVfxEmitter.builder("mushroomDebris").capacity(400).burst(0.05f, 400)
+        CgVfxEmitter debris = CgVfxEmitter.builder("mushroomDebris").state(CgVfxEmitterState.ONCE)
+                .capacity(400).burst(0.05f, 400)
                 .shape(CgSphere.of(3)).launch(0.5f, 1f, 1f).speed(8f, 20f).life(2.5f, 4f).size(0.05f, 0.1f, 2f).heat(1f)
                 .trail(14)
                 .module(new CgVfxModule.Gravity(9.8f))
@@ -612,7 +624,8 @@ public final class CgVfxFluidDemo {
                 .module(new CgVfxModule.Feed(0.06f, 0f))
                 .module(new CgVfxModule.Ground(0.2f, 0.6f, 0.6f, 0f))
                 .opacity(FADE).build();
-        CgVfxEmitter surge = CgVfxEmitter.builder("mushroomSurge").capacity(600).burst(0.2f, 600)
+        CgVfxEmitter surge = CgVfxEmitter.builder("mushroomSurge").state(CgVfxEmitterState.ONCE)
+                .capacity(600).burst(0.2f, 600)
                 .shape(CgRing.of(4, 7, 0)).edge().outward().speed(14f, 18f).life(2f, 3f).size(0.06f, 0.1f)
                 .module(new CgVfxModule.Drag(2.6f, 0f))
                 .module(new CgVfxModule.Ground(0f, 0.8f, 0.6f, 0f))

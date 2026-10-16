@@ -4,6 +4,9 @@ import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxInactiveResponse;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -21,6 +24,9 @@ import java.util.List;
  * // every tick, in the effect's tick
  * tick(embers, dt);
  * if (embers.finished()) ...                       // spawned everything and every particle has died
+ *
+ * embers.stop();                                   // no more spawns; what is alive lives out (or dies: inactiveResponse)
+ * embers.kill();                                   // no more spawns, and every live particle gone at the next step
  * }</pre>
  *
  * <ul>
@@ -60,17 +66,29 @@ public final class CgVfxEmitterInstance {
     @Nullable
     private CgVfxGrid3D grid;
     private int spawned, burstsDone;
+    /** The loop under way (its emitter's state), when its time began after its delay, and whether every loop is spent. */
+    private int loop;
+    private float loopStart;
+    private boolean loopsOver;
     private float rateOwed, share = 1f;
     /** When {@link #stop} ended its spawning; infinite until then. What {@link #rateScale} multiplies its rate by. */
     private float stoppedAt = Float.POSITIVE_INFINITY, rateScale = 1f;
     /** Stepped by {@link #schedule} at least once: its slot is open. */
     private boolean scheduled;
+    /** {@link #kill}ed since its last {@link #start}; a kill of its slot not yet taken by its system ({@link Books#takeKill}). */
+    private boolean killed, killPending;
     private int stepFirst, stepCandidates, stepBursts;
     /** Where the source was at the step's start, and at the last step's end; whether there was a last step. */
     private float fromX, fromY, fromZ, lastX, lastY, lastZ;
     private boolean stepped;
     /** The followed entity's box, relative to the origin: its centre and half extents, 0 for none. */
     private float boxX, boxY, boxZ, boxHalfX, boxHalfY, boxHalfZ;
+    /**
+     * Its effect's rotation ({@link Books#orientation}), the one its last step was taken at, and their difference for a
+     * local instance: unit quaternions, the identity unless turned. {@code turned} once a step has been taken at one.
+     */
+    private float rotX, rotY, rotZ, rotW = 1f, lastRotX, lastRotY, lastRotZ, lastRotW = 1f, turnX, turnY, turnZ, turnW = 1f;
+    private boolean turned;
     /**
      * What is alive, by when each dies, in buckets of {@link #BUCKET} seconds round a ring: null unless its capacity can
      * bind ({@code CgVfxEmitter.uncappedPeak}). Deaths are booked a step late, so the GPU never holds more.
@@ -116,9 +134,14 @@ public final class CgVfxEmitterInstance {
         time = 0f;
         spawned = 0;
         burstsDone = 0;
+        loop = 0;
+        loopStart = emitter.state.delayBefore(seed, 0);
+        loopsOver = false;
         rateOwed = 0f;
         lastDeath = -1f;
         stoppedAt = Float.POSITIVE_INFINITY;
+        // A kill not yet taken still ends the old slot's particles; this start spawns in a fresh one.
+        killed = false;
         stepped = false;
         alive = 0;
         retired = -1;
@@ -146,12 +169,46 @@ public final class CgVfxEmitterInstance {
     }
 
     /**
-     * Ends its spawning now, bursts and rate alike, leaving what it spawned to live out: for a rate that runs until
-     * something stops it ({@code rate(n, 0f, Float.POSITIVE_INFINITY)}), which never {@link #finished finishes} until
-     * then. {@link #start} spawns again.
+     * Ends its spawning now, bursts and rate alike: for a rate that runs until something stops it
+     * ({@code rate(n, 0f, Float.POSITIVE_INFINITY)}), which never {@link #finished finishes} until then. What it spawned
+     * lives out, or is {@link #kill}ed where its emitter's {@link CgVfxInactiveResponse} is {@code KILL}: Niagara's
+     * deactivation. {@link #start} spawns again.
      */
     public void stop() {
+        if (emitter.state.inactiveResponse() == CgVfxInactiveResponse.KILL) {
+            kill();
+            return;
+        }
         if (time >= 0f) stoppedAt = Math.min(stoppedAt, time);
+    }
+
+    /**
+     * Ends its spawning and every particle it has alive, its event children's too, in the next particle step, firing no
+     * event: Niagara's {@code InactiveClear}, Cascade's {@code clear}. {@link #finished} is true from now on, and
+     * {@link #start} spawns again, in a fresh slot.
+     *
+     * <pre>{@code
+     * if (interrupted) aura.kill();     // gone at once, where stop() would let it fall out
+     * ...
+     * aura.start(0f, 1f, 0f);           // later: plays again
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Nothing before its first {@link #start}.</li>
+     *   <li>Spawns booked in the tick of the kill are dropped with it; a {@link #start} in that same tick spawns from
+     *       the tick after.</li>
+     *   <li>One emitter's: {@code CgVfxEffect.kill()} ends a whole effect and every particle of it.</li>
+     * </ul>
+     */
+    public void kill() {
+        if (time < 0f) return;
+        stoppedAt = Math.min(stoppedAt, time);
+        killed = true;
+        // Without a slot nothing is alive on the GPU to end.
+        killPending |= scheduled;
+        for (CgVfxEmitterInstance child : children) {
+            if (child != null) child.killed = true;
+        }
     }
 
     /**
@@ -288,6 +345,7 @@ public final class CgVfxEmitterInstance {
             driftY = (float) (y - anchorY);
             driftZ = (float) (z - anchorZ);
         }
+        turn();
         for (CgVfxEmitterInstance child : children) {
             if (child == null) continue;
             child.originX = originX;
@@ -296,7 +354,33 @@ public final class CgVfxEmitterInstance {
             child.driftX = driftX;
             child.driftY = driftY;
             child.driftZ = driftZ;
+            child.rotX = rotX;
+            child.rotY = rotY;
+            child.rotZ = rotZ;
+            child.rotW = rotW;
+            child.turnX = turnX;
+            child.turnY = turnY;
+            child.turnZ = turnZ;
+            child.turnW = turnW;
         }
+    }
+
+    /** Its rotation's change since its last step, {@code rot * conj(lastRot)}, for a local instance; else the identity. */
+    private void turn() {
+        if (local && turned) {
+            turnX = lastRotW * rotX - rotW * lastRotX - (rotY * lastRotZ - rotZ * lastRotY);
+            turnY = lastRotW * rotY - rotW * lastRotY - (rotZ * lastRotX - rotX * lastRotZ);
+            turnZ = lastRotW * rotZ - rotW * lastRotZ - (rotX * lastRotY - rotY * lastRotX);
+            turnW = rotW * lastRotW + rotX * lastRotX + rotY * lastRotY + rotZ * lastRotZ;
+        } else {
+            turnX = turnY = turnZ = 0f;
+            turnW = 1f;
+        }
+        lastRotX = rotX;
+        lastRotY = rotY;
+        lastRotZ = rotZ;
+        lastRotW = rotW;
+        turned = true;
     }
 
     /**
@@ -317,6 +401,38 @@ public final class CgVfxEmitterInstance {
     }
 
     /**
+     * Fires every burst whose time in its loop has come, at this step's start, and moves on to each loop whose time has
+     * come: its delay picked, its bursts armed again. A step longer than a loop crosses several.
+     */
+    private void fireBursts() {
+        CgVfxEmitterState state = emitter.state;
+        CgVfxSpawnBurst[] bursts = emitter.bursts;
+        float duration = state.loopDuration();
+        int loops = state.loops();
+        while (!loopsOver && time < stoppedAt) {
+            float age = time - loopStart;
+            // A burst past the loop's end never fires; in the delay, age is negative and none does.
+            while (burstsDone < bursts.length && bursts[burstsDone].time() <= Math.min(age, duration)) {
+                int fit = fit(bursts[burstsDone].count(seed, loop, burstsDone));
+                for (int n = 0; n < fit; n++) scheduleOne(stepDt, 0f);
+                burstsDone++;
+            }
+            if (age < duration) {
+                // Once its last loop's bursts are spent, one spawning by bursts alone has spawned everything.
+                if (loop + 1 >= loops && burstsDone == bursts.length && !emitter.spawnsContinuously()) loopsOver = true;
+                return;
+            }
+            if (loop + 1 >= loops) {
+                loopsOver = true;
+                return;
+            }
+            loop++;
+            loopStart += duration + state.delayBefore(seed, loop);
+            burstsDone = 0;
+        }
+    }
+
+    /**
      * Its children's step, where the pool spawns them from the parent's fires. The last fire is at its latest-dying
      * particle's death, and a child spawned then lives its longest life after it.
      */
@@ -332,14 +448,17 @@ public final class CgVfxEmitterInstance {
         }
     }
 
-    /** True once it has spawned everything it will and every particle has died: a step after its latest death. */
+    /**
+     * True once it has spawned everything it will and every particle has died: a step after its latest death. True at
+     * once after a {@link #kill}.
+     */
     public boolean finished() {
+        if (killed) return true;
         for (CgVfxEmitterInstance child : children) {
             if (child != null && !child.finished()) return false;
         }
         // A child spawns from its parent alone, which waits for it: its own schedule never runs.
-        boolean spawnedAll = feed != null || time >= 0f && (time > stoppedAt
-                || time > emitter.lastSpawn() && burstsDone == emitter.burstTimes.length);
+        boolean spawnedAll = feed != null || time >= 0f && (time > stoppedAt || loopsOver);
         return spawnedAll && time >= lastDeath + stepDt;
     }
 
@@ -454,6 +573,58 @@ public final class CgVfxEmitterInstance {
             boxHalfZ = halfZ;
         }
 
+        /**
+         * How its effect is turned in the world, a unit quaternion: the effect sets it each tick it steps this instance,
+         * from {@code CgVfxEffect.orientation()}. Its next step's spawns turn by it, and a local instance's live particles
+         * by its change since the last.
+         */
+        public void orientation(float x, float y, float z, float w) {
+            rotX = x;
+            rotY = y;
+            rotZ = z;
+            rotW = w;
+        }
+
+        @Override
+        public float rotationX() {
+            return rotX;
+        }
+
+        @Override
+        public float rotationY() {
+            return rotY;
+        }
+
+        @Override
+        public float rotationZ() {
+            return rotZ;
+        }
+
+        @Override
+        public float rotationW() {
+            return rotW;
+        }
+
+        @Override
+        public float turnX() {
+            return turnX;
+        }
+
+        @Override
+        public float turnY() {
+            return turnY;
+        }
+
+        @Override
+        public float turnZ() {
+            return turnZ;
+        }
+
+        @Override
+        public float turnW() {
+            return turnW;
+        }
+
         /** How far the {@link #entityBox} reaches from the source: what an arc's cull adds. */
         public float entityBoxReach() {
             if (boxHalfX == 0f && boxHalfY == 0f && boxHalfZ == 0f) return 0f;
@@ -491,16 +662,11 @@ public final class CgVfxEmitterInstance {
             stepFirst = spawned;
             retire(time);
             CgVfxEmitter e = emitter;
-            while (time < stoppedAt && burstsDone < e.burstTimes.length && e.burstTimes[burstsDone] <= time) {
-                int fit = fit(e.burstCounts[burstsDone]);
-                for (int n = 0; n < fit; n++) scheduleOne(dt, 0f);
-                burstsDone++;
-            }
+            fireBursts();
             stepBursts = spawned - stepFirst;
-            boolean byTime = time >= e.rateFrom && time < Math.min(e.rateUntil, stoppedAt);
-            boolean byDistance = time >= e.blockFrom && time < Math.min(e.blockUntil, stoppedAt);
-            if (byTime || byDistance) {
-                rateOwed += ((byTime ? e.rate * dt : 0f) + (byDistance ? e.perBlock * travelled : 0f)) * rateScale;
+            float age = time - loopStart;
+            if (!loopsOver && time < stoppedAt && age >= 0f && age < e.state.loopDuration()) {
+                rateOwed += (e.rate.at(age) * dt + e.perUnit.perBlock() * travelled) * rateScale;
                 int n = (int) rateOwed;
                 rateOwed -= n;
                 // Spawn i of n is born (i + 1) / n of the way through the step, so the last is at its end.
@@ -525,6 +691,9 @@ public final class CgVfxEmitterInstance {
             stepTime = time;
             stepFirst = spawned;
             stepCandidates = 0;
+            // Its effect no longer turns it: nor do its particles.
+            turnX = turnY = turnZ = 0f;
+            turnW = 1f;
             time += dt;
             coastChildren(dt);
         }
@@ -535,12 +704,23 @@ public final class CgVfxEmitterInstance {
         }
 
         /**
+         * Whether it was {@link CgVfxEmitterInstance#kill}ed since the last call: its system then ends its slot's
+         * particles in the coming step. True once a kill.
+         */
+        public boolean takeKill() {
+            boolean pending = killPending;
+            killPending = false;
+            return pending;
+        }
+
+        /**
          * Its slot was freed with every particle in it, by its effect's system putting the effect to sleep: its next
          * {@link #schedule} asks for a slot again, its capacity's books start empty, and its first step after has no motion.
          */
         public void slotLost() {
             scheduled = false;
             stepped = false;
+            turned = false;
             alive = 0;
             retired = -1;
             lastDeath = -1f;

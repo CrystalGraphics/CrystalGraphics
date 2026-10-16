@@ -22,6 +22,8 @@ import com.crystalgraphics.vfx.look.CgVfxValues;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.Quaternionf;
+import org.joml.Quaternionfc;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -89,6 +91,10 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     /** The followed entity's box this frame: its centre in the world and half extents; halves 0 while it follows none. */
     double followBoxX, followBoxY, followBoxZ;
     float followHalfX, followHalfY, followHalfZ;
+    /** How the point it follows is turned this frame; the identity while it follows nothing. */
+    final Quaternionf followTurn = new Quaternionf();
+    /** Its own turn ({@link #orient}), and the two together: its orientation in the world. */
+    private final Quaternionf ownTurn = new Quaternionf(), orientation = new Quaternionf();
     /** Seconds into its life it starts at, for its system's first update to fast-forward to; 0 once there. */
     float startAge;
     /** Fast-forwarding to its start age: shakes and moments are not played. */
@@ -270,6 +276,38 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
             followDz = originZ - pz;
         }
         moveTo(px + followDx, py + followDy, pz + followDz);
+    }
+
+    /**
+     * Turns it by {@code turn}, after the point it follows: Unreal's component rotation, a socket's times its own. Its
+     * emitters' shapes, offsets and launches spawn turned, and a {@code local()} emitter's particles turn with it; what a
+     * world emitter already spawned stays as it was. The identity unless given.
+     *
+     * <pre>{@code
+     * VFX.play(new Charge(look, x, y, z).follow(playerId, CgEntityAttachments.RIGHT_HAND));   // turns with the hand
+     * VFX.play(new Fan(look, x, y, z).orient(new Quaternionf().rotationY(yaw)));             // faces a way of its own
+     * fan.orient(spin.rotateY(rate * dt));                                                     // each tick, spinning
+     * }</pre>
+     *
+     * <ul>
+     *   <li>The turn is copied: change it again with another call.</li>
+     *   <li>Its own drawing (tubes, meshes) is placed by its code; this turns its particles alone.</li>
+     * </ul>
+     */
+    public final E orient(Quaternionfc turn) {
+        ownTurn.set(turn);
+        followTurn.mul(ownTurn, orientation);
+        return self();
+    }
+
+    /** How it is turned in the world: what it follows times its own ({@link #orient}). The identity unless turned. */
+    public final Quaternionfc orientation() {
+        return orientation;
+    }
+
+    /** The point it follows is turned by {@code turn} this frame. */
+    final void turnToFollowed(Quaternionfc turn) {
+        followTurn.set(turn).mul(ownTurn, orientation);
     }
 
     /** As {@link #follow(int, int)}, at the entity's feet. */
@@ -892,16 +930,26 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
             boolean fresh = !emitter.books().scheduled();
             emitter.books().entityBox((float) (followBoxX - originX), (float) (followBoxY - originY), (float) (followBoxZ - originZ),
                     followHalfX, followHalfY, followHalfZ);
+            emitter.books().orientation(orientation.x, orientation.y, orientation.z, orientation.w);
             emitter.books().schedule(dueDts[i], originX, originY, originZ);
-            if (fresh) {
+            // Not started, it booked nothing and needs no slot.
+            if (fresh && emitter.books().scheduled()) {
                 if (admitted.length == admittedCount) admitted = Arrays.copyOf(admitted, Math.max(4, admittedCount * 2));
                 admitted[admittedCount++] = emitter;
-                if (scheduled.length == scheduledCount) scheduled = Arrays.copyOf(scheduled, Math.max(4, scheduledCount * 2));
-                scheduled[scheduledCount++] = emitter;
+                if (!isScheduled(emitter)) {
+                    if (scheduled.length == scheduledCount) scheduled = Arrays.copyOf(scheduled, Math.max(4, scheduledCount * 2));
+                    scheduled[scheduledCount++] = emitter;
+                }
             }
             due[i] = null;
         }
         dueCount = 0;
+    }
+
+    /** Whether it has scheduled {@code emitter} before: one killed and started again asks for a slot anew. */
+    private boolean isScheduled(CgVfxEmitterInstance emitter) {
+        for (int i = 0; i < scheduledCount; i++) if (scheduled[i] == emitter) return true;
+        return false;
     }
 
     /** Ends the slots of every instance it scheduled, particles and all, at {@code steps}' next step. Render thread. */

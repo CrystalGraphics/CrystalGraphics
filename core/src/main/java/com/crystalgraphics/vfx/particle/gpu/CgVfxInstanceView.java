@@ -73,6 +73,46 @@ public interface CgVfxInstanceView {
         return 0f;
     }
 
+    /**
+     * How the instance is turned in the world at the step's end, a unit quaternion: its effect's orientation. Its spawns'
+     * shape, offset and launch turn by it; the identity unless its effect is turned or follows a turned point.
+     */
+    default float rotationX() {
+        return 0f;
+    }
+
+    default float rotationY() {
+        return 0f;
+    }
+
+    default float rotationZ() {
+        return 0f;
+    }
+
+    default float rotationW() {
+        return 1f;
+    }
+
+    /**
+     * Its rotation's change over the step, a unit quaternion, by which a {@code local()} instance's live particles turn
+     * about its origin; the identity for one that is not local, or did not turn.
+     */
+    default float turnX() {
+        return 0f;
+    }
+
+    default float turnY() {
+        return 0f;
+    }
+
+    default float turnZ() {
+        return 0f;
+    }
+
+    default float turnW() {
+        return 1f;
+    }
+
     /** The fluid its particles are carried by, for kinds taking {@link CgVfxWorldInput#GAS}; null for none. */
     @Nullable
     default CgVfxFluid gas() {

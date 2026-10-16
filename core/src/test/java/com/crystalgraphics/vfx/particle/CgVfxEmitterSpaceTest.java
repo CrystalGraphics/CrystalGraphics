@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.vfx.CgVfxSystem;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -11,8 +12,8 @@ import static org.junit.Assert.assertEquals;
  */
 public class CgVfxEmitterSpaceTest {
 
-    private static final CgVfxEmitter STILL = CgVfxEmitter.builder("still").capacity(64)
-            .rate(120f, 0f, Float.POSITIVE_INFINITY).speed(0f, 0f).life(5f, 5f).build();
+    private static final CgVfxEmitter STILL = CgVfxEmitter.builder("still").state(CgVfxEmitterState.ONCE).capacity(64)
+            .rate(120f).speed(0f, 0f).life(5f, 5f).build();
 
     /** A step at x 0, then one at x 10. */
     private static CgVfxEmitterInstance stepAcross(CgVfxEmitter emitter) {
