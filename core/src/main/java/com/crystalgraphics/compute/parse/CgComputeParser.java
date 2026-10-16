@@ -86,6 +86,9 @@ public final class CgComputeParser {
         }
     }
 
+    /** Image i binds at image unit i, and the engine binds units 0 to 7: GL's guaranteed minimum. */
+    private static final int MAX_IMAGES = 8;
+
     private final String source;
     private final String path;
     private final String blanked;
@@ -276,6 +279,11 @@ public final class CgComputeParser {
                         + ": upper case, digits and '_', not starting CG_");
             }
             if (buffer(name) != null || image(name) != null) throw fail(at, "declares " + name + " twice");
+            if (!isBuffers && images.size() == MAX_IMAGES) {
+                throw fail(at, "declares more than " + MAX_IMAGES + " images: image i binds at unit i, and the engine "
+                        + "binds units 0 to " + (MAX_IMAGES - 1) + ". Kernels writing alike may share one image, each "
+                        + "dispatch binding its own texture to it");
+            }
             if (isBuffers) buffers.add(buffer(m, at, block.start()));
             else images.add(image(m, at));
         }

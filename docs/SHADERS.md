@@ -1033,7 +1033,9 @@ Images {
 }
 ```
 
-Image `i` is bound at image unit `i`, and the texture bound must have the declared format. Formats are GLSL's layout
+Image `i` is bound at image unit `i`, so a file declares at most 8 images (units 0 to 7, GL's guaranteed minimum);
+kernels writing alike share one, each dispatch binding its own texture to it. The texture bound must have the declared
+format. Formats are GLSL's layout
 qualifiers: `rgba32f`, `rgba16f`, `rg32f`, `rg16f`, `r11f_g11f_b10f`, `r32f`, `r16f`, `rgba16`, `rgb10_a2`, `rgba8`,
 `rg16`, `rg8`, `r16`, `r8`, the `_snorm` forms of the 16- and 8-bit ones, and the `i` and `ui` integer formats.
 
