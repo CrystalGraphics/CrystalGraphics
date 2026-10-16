@@ -3099,6 +3099,19 @@ com/crystalgraphics/demo/CgVfxDemoControls$Flash
   field public,static,final SINGLE Lcom/crystalgraphics/demo/CgVfxDemoControls$Flash;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/demo/CgVfxDemoControls$Flash;
   method public,static values ()[Lcom/crystalgraphics/demo/CgVfxDemoControls$Flash;
+com/crystalgraphics/demo/CgVfxFluidDemo
+  access public,final
+  extends java/lang/Object
+  field public,static,final PERIOD F
+  field public,static,final REACH F
+  method public <init> (Lcom/crystalgraphics/api/font/CgFont;)V
+  method public <init> (Lcom/crystalgraphics/api/font/CgFont;Lcom/crystalgraphics/vfx/CgVfxOwner;)V
+  method public clear ()V
+  method public delete ()V
+  method public prepare ()V
+  method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;DDDF)V
+  method public vfx ()Lcom/crystalgraphics/vfx/CgVfxSystem;
+  method public warmed ()Z
 com/crystalgraphics/demo/CgVfxGasDemo
   access public,final
   extends java/lang/Object
