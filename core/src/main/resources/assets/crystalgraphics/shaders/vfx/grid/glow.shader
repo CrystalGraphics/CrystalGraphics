@@ -77,19 +77,23 @@ Pass {
         float hotAt = max(_HotAt, 1.0e-3);
         float transmit = 1.0, weight = 0.0, depth = 0.0;
         vec3 emit = vec3(0.0);
-        float at = (ceil(t.x / dt - jitter) + jitter) * dt;
-        for (int k = 0; k < 512 && at < t.y; k++) {
-            vec3 p = eye + ray * at;
+        // Each step stands for the half-step either side of it, clipped to where the ray is inside (smoke.shader's).
+        float at = (ceil(t.x / dt - jitter - 0.5) + jitter) * dt;
+        for (int k = 0; k < 512 && at - 0.5 * dt < t.y; k++) {
+            float from = max(at - 0.5 * dt, t.x), to = min(at + 0.5 * dt, t.y), span = to - from;
+            vec3 p = eye + ray * (0.5 * (from + to));
             vec3 c = (p - corner) / cell;
             ivec3 held = fx_sparse_tile(c);
             int slot = fx_sparse_slot_of(_GridPages, grid, held);
             if (slot < 0) {
                 // Nothing here: on to the first step past where the ray leaves this tile, keeping the steps' phase.
-                vec3 from = corner + vec3(held) * tile;
-                at += max(ceil((fx_gas_box(eye, ray, from, from + tile).y - at) / dt), 1.0) * dt;
+                vec3 lo = corner + vec3(held) * tile;
+                at += max(ceil((fx_gas_box(eye, ray, lo, lo + tile).y - at) / dt), 1.0) * dt;
                 continue;
             }
             float v = max(dot(textureLod(_GridView, fx_sparse_pool_uvw(_GridView, slot, c), 0.0), mask), 0.0);
+            // Between cells by a cubic B-spline where it holds anything, as smoke.shader reads it.
+            if (v > 1.0e-4) v = max(dot(fx_sparse_smooth(_GridView, slot, c), mask), 0.0);
             if (v > 1.0e-4 && _Detail > 0.0 && v < 2.0 * hotAt) {
                 // Eroded as a share of its hot value: what is faint frays, what is hot keeps itself.
                 v = hotAt * fx_gas_erode(v / hotAt, fx_gas_carried_detail(_Noise, _Voronoi,
@@ -97,12 +101,12 @@ Pass {
             }
             if (v > 1.0e-4) {
                 vec3 colour = mix(faint, hot, smoothstep(0.0, hotAt, v));
-                vec3 step = colour * v * _Gain * scale * dt * transmit;
+                vec3 step = colour * v * _Gain * scale * span * transmit;
                 emit += step;
                 float bright = max(step.r, max(step.g, step.b));
                 depth += at * bright;
                 weight += bright;
-                transmit *= exp(-v * _Absorb * dt);
+                transmit *= exp(-v * _Absorb * span);
             }
             if (transmit < 0.01) break;
             at += dt;

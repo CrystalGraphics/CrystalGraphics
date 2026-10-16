@@ -81,31 +81,36 @@ Pass {
         vec3 albedo = srgb_to_linear(_Smoke.rgb);
         float transmit = 1.0, depth = 0.0;
         vec3 light = vec3(0.0);
-        float at = (ceil(t.x / dt - jitter) + jitter) * dt;
-        for (int k = 0; k < 512 && at < t.y; k++) {
-            vec3 p = eye + ray * at;
+        // Each step stands for the half-step either side of it, clipped to where the ray is inside: the last one before the
+        // ground counted whole took up to a step of smoke past it, by where the lattice fell, in the jitter's pattern.
+        float at = (ceil(t.x / dt - jitter - 0.5) + jitter) * dt;
+        for (int k = 0; k < 512 && at - 0.5 * dt < t.y; k++) {
+            float from = max(at - 0.5 * dt, t.x), to = min(at + 0.5 * dt, t.y), span = to - from;
+            vec3 p = eye + ray * (0.5 * (from + to));
             vec3 c = (p - corner) / cell;
             ivec3 held = fx_sparse_tile(c);
             int slot = fx_sparse_slot_of(_GridPages, grid, held);
             if (slot < 0) {
                 // Still air: on to the first step past where the ray leaves this tile, keeping the steps' phase.
-                vec3 from = corner + vec3(held) * tile;
-                at += max(ceil((fx_gas_box(eye, ray, from, from + tile).y - at) / dt), 1.0) * dt;
+                vec3 lo = corner + vec3(held) * tile;
+                at += max(ceil((fx_gas_box(eye, ray, lo, lo + tile).y - at) / dt), 1.0) * dt;
                 continue;
             }
             vec3 uvw = fx_sparse_pool_uvw(_GridView, slot, c);
-            float density = max(textureLod(_GridView, uvw, 0.0).x, 0.0) * scale;
-            if (density < 1.0e-4) {
+            if (textureLod(_GridView, uvw, 0.0).x < 1.0e-4) {
                 at += dt;
                 continue;
             }
-            vec2 lit = textureLod(_GridLight, uvw, 0.0).xy;
+            // Between cells by a cubic B-spline, as the gas reads its density: linear, a thin edge showed the cells.
+            float density = max(fx_sparse_smooth(_GridView, slot, c).x, 0.0) * scale;
+            // Its light by the same spline: read linearly, its slope broke at every cell face and the shading showed the grid.
+            vec2 lit = clamp(fx_sparse_smooth(_GridLight, slot, c).xy, 0.0, 1.0);
             if (_Detail > 0.0 && density < 2.0) {
                 density = fx_gas_erode(density, fx_gas_carried_detail(_Noise, _Voronoi, (p - corner) / max(_DetailSize, 0.05),
                         vec3(0.0), FX_AGE, 0.0), _Detail);
             }
             float sigma = density * extinction;
-            float through = exp(-sigma * dt);
+            float through = exp(-sigma * span);
             if (sigma > 1.0e-4) {
                 float scattered = (p0 * lit.x + 0.5 * p1 * sqrt(lit.x)) / 1.5 * fx_gas_powder(sigma, cosine);
                 float taken = transmit * (1.0 - through);
