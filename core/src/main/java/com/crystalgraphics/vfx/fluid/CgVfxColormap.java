@@ -40,15 +40,18 @@ public final class CgVfxColormap {
             .minFilter(CgGL.GL_LINEAR).magFilter(CgGL.GL_LINEAR)
             .wrapS(CgGL.GL_CLAMP_TO_EDGE).wrapT(CgGL.GL_CLAMP_TO_EDGE).build();
 
-    /** Flow's {@code rgbaPoints_smoke} at its default colour scale, 2.5: grey smoke, its opacity rising off zero. */
-    public static final CgVfxColormap SMOKE = flow(new float[][]{
+    /**
+     * Flow's {@code rgbaPoints_smoke} at colour scale 1: grey smoke scattering 0.9 of its light, its opacity rising off
+     * zero. Flow's 2.5 stands in for a light it does not have; here the sun and sky light it.
+     */
+    public static final CgVfxColormap SMOKE = flow(1f, new float[][]{
             {0.9f, 0.9f, 0.9f, 0.004902f}, {0.9f, 0.9f, 0.9f, 0.904902f}, {0.9f, 0.9f, 0.9f, 0.904902f},
             {0.9f, 0.9f, 0.9f, 0.904902f}, {0.9f, 0.9f, 0.9f, 0.904902f}, {0.9f, 0.9f, 0.9f, 0.904902f}});
     /**
      * Flow's {@code rgbaPoints_fire} at its default colour scale: dark soot while cool, then orange, then white-hot far
      * past 1, which blooms.
      */
-    public static final CgVfxColormap FIRE = flow(new float[][]{
+    public static final CgVfxColormap FIRE = flow(2.5f, new float[][]{
             {0.015400f, 0.017700f, 0.015400f, 0.004902f}, {0.035750f, 0.035750f, 0.035750f, 0.504902f},
             {0.035750f, 0.035750f, 0.035750f, 0.504902f}, {1f, 0.1594125f, 0.0135315f, 0.8f},
             {13.534992f, 2.986956f, 0.125991f, 0.8f}, {78.08f, 39.04f, 6.1f, 0.7f}});
@@ -66,10 +69,10 @@ public final class CgVfxColormap {
         this.resolution = resolution;
     }
 
-    private static CgVfxColormap flow(float[][] rgba) {
+    private static CgVfxColormap flow(float colorScale, float[][] rgba) {
         Builder b = builder();
         for (int i = 0; i < FLOW_X.length; i++) b.at(FLOW_X[i], rgba[i][0], rgba[i][1], rgba[i][2], rgba[i][3]);
-        return b.colorScale(2.5f).build();
+        return b.colorScale(colorScale).build();
     }
 
     /** This map with its colours times {@code scale} instead: Flow's editor draws its fire at 1. */

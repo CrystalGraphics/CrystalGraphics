@@ -1320,8 +1320,9 @@ Temperature is Flow's, normalized: 0 is the air's, 1 the hottest.
 
 A layer on its fluid slot draws it. `CgVfxFluid.SMOKE` and `FIRE` are Flow's two colour maps on `vfx/fluid/fluid.shader`,
 Flow's ray march: steps of three quarters of a cell, each taking the colour map's colour and opacity at its temperature,
-the opacity times its smoke and `1 - exp(-ATTENUATION * step)`, lit by the sun through the fluid under a two-lobe phase
-and by the sky, white-hot fire blooming. A colour map of your own is a kit of its own:
+the opacity times its smoke and `1 - exp(-ATTENUATION * step)`. A colour up to 1 is what the fluid scatters, lit by the
+sun through the fluid under a two-lobe phase and by the sky; past 1 it is light the fluid gives off, the same by day and
+night, and only that blooms: white-hot fire does, smoke never. A colour map of your own is a kit of its own:
 
 ```java
 static final CgVfxColormap EMBERS = CgVfxColormap.builder()

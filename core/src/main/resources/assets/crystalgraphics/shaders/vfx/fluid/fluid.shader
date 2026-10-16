@@ -113,12 +113,15 @@ Pass {
                 smoke *= clamp(1.0 + 2.0 * _Detail * n, 0.0, 2.0);
             }
             vec4 color = textureLod(_Colormap, vec2((s.y - _ColormapMin) / range, 0.5), 0.0);
+            // Flow's colour is radiance, scaled by its shadow alone. Here up to 1 it is what the fluid scatters, lit by
+            // the sun and sky; past 1, what it gives off: never dimmed by the sun, and all that blooms.
+            vec3 albedo = min(color.rgb, vec3(1.0)), emit = color.rgb - albedo;
             vec3 light = sun * (phase * s.z) + sky * s.w;
-            color.rgb *= mix(vec3(1.0), light, _ShadowFactor);
+            color.rgb = albedo * mix(vec3(1.0), light, _ShadowFactor) + emit;
             color.a = min(1.0, max(color.a, 0.0) * smoke) * (1.0 - exp(-_Attenuation * span));
             nominal += sum.a * color.a * at;
             sum.rgb += sum.a * color.a * color.rgb;
-            glow += sum.a * color.a * max(color.rgb - 1.0, 0.0);
+            glow += sum.a * color.a * emit;
             sum.a *= 1.0 - color.a;
             if (sum.a < 0.00005) break;
             at += dt;
