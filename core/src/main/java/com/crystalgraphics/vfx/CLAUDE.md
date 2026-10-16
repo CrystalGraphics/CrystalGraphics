@@ -10,6 +10,20 @@ CgEnergyWave wave = VFX.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z
 wave.aim(dx, dy, dz).target(tx, ty, tz);
 ```
 
+## AAA parity: binding rules
+
+Work toward Unreal parity (plan `crystalgraphics/vfx-aaa`) obeys `plan/crystalgraphics/vfx-aaa/aaa-rules.md`, set
+by the user. Where `plan/` is absent, these are its essentials:
+
+- **One implementation**: rewrite and delete the old in the same milestone; never wrap it or build beside it.
+- **Unreal is the north star**, its code read for shape only; port MIT, BSD or Apache code, attributed.
+- **Inventory before writing**; a class per concept; ids, tags, slots and sections typed, never strings.
+- **New work goes into a subsystem package**, never the `vfx` root; Unreal's names with the `Cg` prefix; renaming a
+  public type is asked of the user first.
+- **Every asset type**: a Java builder, a round-trip test, docs in both forms; javadoc on every public member.
+- **New user docs go to `docs/vfx/`**, never `VFX.md`.
+- **Work only on a step in `aaa-milestones`**; decisions live in `aaa-design`; when stuck, stop and ask.
+
 ## Where things go
 
 **A new file lands in the package that owns its concern; the root holds only what runs effects.**
