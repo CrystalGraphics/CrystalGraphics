@@ -149,6 +149,9 @@ public final class CgVfxGasDemo {
         bonfire(-26f, 0f);
         vent(-2f, 0f);
         mushroom(36f, 0f);
+        // -Dcrystalgraphics.demo.station=<words>: only the stations whose names hold them, for measuring one alone.
+        String only = System.getProperty("crystalgraphics.demo.station");
+        if (only != null) stations.removeIf(s -> !s.name().contains(only));
         floors = new float[stations.size()];
         for (Station s : stations) LOG.info("[vfx-gas] {} at x {}, z {}", s.name(), s.x(), s.z());
         if (stations.size() > CgVfxGasAtlas.CAPACITY) throw new IllegalStateException("more stations than the atlas holds");

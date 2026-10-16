@@ -65,9 +65,19 @@ public final class CgVfxDemoControls {
 
     private static final CgVfxDemoControls INSTANCE = new CgVfxDemoControls();
 
+    private static int startSpeed() {
+        String rate = System.getProperty("crystalgraphics.demo.time");
+        if (rate == null) return REAL_TIME;
+        float want = Float.parseFloat(rate);
+        int best = REAL_TIME;
+        for (int i = 0; i < SPEEDS.length; i++) if (Math.abs(SPEEDS[i] - want) < Math.abs(SPEEDS[best] - want)) best = i;
+        return best;
+    }
+
     private Flash flash = Flash.OFF;
     private boolean impact = false, billows = true;
-    private int speed = REAL_TIME;
+    /** {@code -Dcrystalgraphics.demo.time=<rate>}: the time switch at the nearest of its rates at start, unattended. */
+    private int speed = startSpeed();
     private float wait = 4f;
     /** The clock slowed by the time switch, and the host seconds it last advanced to. */
     private float clock;
