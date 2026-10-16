@@ -202,6 +202,11 @@ public final class CgVfxParticleSmokeDemo {
     private void particleSmoke(float volumeX, float spritesX, float z) {
         CgVfxEmitter.Builder rising = CgVfxEmitter.builder("smokeSprites").capacity(2400).rate(700f, 0f, PERIOD - 5f)
                 .shape(CgSphere.of(0.7)).launch(0.6f, 1f, 1f).speed(1f, 2.2f).life(2.8f, 3.4f).size(0.7f, 0.7f)
+                // Each puff eases in and swells as it leaves the vent: born whole, a step's batch at a time, the base was
+                // mostly newborns and pulsed with each.
+                .size(CgKeyframes.start(0f, 0.4f).to(0.25f, 1f, CgEasings.OUT_QUAD).build())
+                .opacity(CgKeyframes.start(0f, 0f).to(0.12f, 1f, CgEasings.OUT_QUAD).to(0.75f, 1f, CgEasings.LINEAR)
+                        .to(1f, 0f, CgEasings.IN_QUAD).build())
                 .module(new CgVfxModule.Force(0f, 1.6f, 0f))
                 // Swirls of a billow's size, gently: fine strong noise scattered the column into a haze.
                 .module(new CgVfxModule.Turbulence(1.2f, 1.5f, 0.6f))
