@@ -299,14 +299,14 @@ public class CgVertexAttributeInjectionTest {
     @Test
     public void spatial_vertexSource_attributesAppearInDefinitionOrder() {
         String vert = compile(shaderOf("spatial")).vertexSource();
-        int posIdx  = vert.indexOf("in vec3 cg_Position;");
-        int uvIdx   = vert.indexOf("in vec2 cg_TexCoord0;");
-        int normIdx = vert.indexOf("in vec3 cg_Normal;");
-        assertTrue("cg_Position must appear",    posIdx >= 0);
-        assertTrue("cg_TexCoord0 must appear",   uvIdx >= 0);
-        assertTrue("cg_Normal must appear",      normIdx >= 0);
-        assertTrue("cg_Position (loc 0) must precede cg_TexCoord0 (loc 1)", posIdx < uvIdx);
-        assertTrue("cg_TexCoord0 (loc 1) must precede cg_Normal (loc 2)",   uvIdx < normIdx);
+        // Unreal's local vertex factory's order: position, normal, colour, then the UV sets.
+        int posIdx    = vert.indexOf("in vec3 cg_Position;");
+        int normIdx   = vert.indexOf("in vec3 cg_Normal;");
+        int colourIdx = vert.indexOf("in vec4 cg_Color;");
+        int uvIdx     = vert.indexOf("in vec2 cg_TexCoord0;");
+        int uv1Idx    = vert.indexOf("in vec2 cg_TexCoord1;");
+        assertTrue("every attribute must appear", posIdx >= 0 && normIdx >= 0 && colourIdx >= 0 && uvIdx >= 0 && uv1Idx >= 0);
+        assertTrue("location order 0 to 4", posIdx < normIdx && normIdx < colourIdx && colourIdx < uvIdx && uvIdx < uv1Idx);
     }
     /**
      * Verifies attribute ordering for the custom 3-attribute format:

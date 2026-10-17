@@ -41,8 +41,8 @@ public class CgMeshTest {
 
     @Test
     public void attributesGoInAnyOrderAndOnesTheFormatLacksAreDropped() {
-        CgMesh a = CgMesh.build(CgVertexFormat.SPATIAL, m -> m.vertex().normal(0, 1, 0).color(0xFF00FF00).uv(1, 2).position(3, 4, 5).end());
-        CgMesh b = CgMesh.build(CgVertexFormat.SPATIAL, m -> m.vertex().position(3, 4, 5).uv(1, 2).normal(0, 1, 0).end());
+        CgMesh a = CgMesh.build(CgVertexFormat.POS3_UV2_COL4UB, m -> m.vertex().normal(0, 1, 0).color(0xFF00FF00).uv(1, 2).position(3, 4, 5).end());
+        CgMesh b = CgMesh.build(CgVertexFormat.POS3_UV2_COL4UB, m -> m.vertex().position(3, 4, 5).uv(1, 2).color(0xFF00FF00).end());
         assertEquals(bytes(a), bytes(b));
     }
 

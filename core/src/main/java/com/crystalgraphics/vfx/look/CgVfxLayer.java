@@ -6,7 +6,6 @@ import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.settings.CgQuality;
@@ -329,7 +328,7 @@ public final class CgVfxLayer {
         if (meshLods != null) return meshLods;
         if (meshPath == null) return null;
         CgMeshLods lods = loaded;
-        if (lods == null) loaded = lods = single(CgMeshLoader.load(meshPath, CgVertexFormat.SPATIAL));
+        if (lods == null) loaded = lods = single(CgMeshLoader.load(meshPath));
         return lods;
     }
 

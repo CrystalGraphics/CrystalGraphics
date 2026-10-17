@@ -1,5 +1,8 @@
 package com.crystalgraphics.api.mesh;
 
+import com.crystalgraphics.api.vertex.CgVertexAttribute;
+import com.crystalgraphics.api.vertex.CgVertexFormat;
+
 import org.junit.Test;
 
 import java.nio.ByteBuffer;
@@ -10,7 +13,9 @@ import static org.junit.Assert.assertTrue;
 
 public class CgProceduralMeshTest {
 
-    /** SPATIAL: position at 0, UV at 12, normal at 20, 32 bytes a vertex. */
+    private static final CgVertexAttribute NORMAL = CgVertexFormat.SPATIAL.getAttribute(CgVertexFormat.SPATIAL.indexOf("cg_Normal"));
+
+    /** SPATIAL: 32 bytes a vertex, position as floats at 0; the normal read through its attribute. */
     private static ByteBuffer vertices(CgMesh mesh) {
         ByteBuffer bytes = ByteBuffer.allocate(mesh.vertexCount() * 32).order(ByteOrder.nativeOrder());
         mesh.readVertices(0, mesh.vertexCount(), bytes);
@@ -35,7 +40,7 @@ public class CgProceduralMeshTest {
         for (int i = 0; i < mesh.vertexCount(); i++) {
             float[] p = position(v, i);
             if (Math.abs(p[1]) > 1.99f) continue;
-            float[] n = {v.getFloat(i * 32 + 20), v.getFloat(i * 32 + 24), v.getFloat(i * 32 + 28)};
+            float[] n = {NORMAL.read(v, i * 32, 0), NORMAL.read(v, i * 32, 1), NORMAL.read(v, i * 32, 2)};
             assertTrue("vertex " + i + "'s normal is not radial", dot(n, CgProceduralMesh.normalize(p)) > 0.95f);
         }
     }
@@ -48,7 +53,7 @@ public class CgProceduralMeshTest {
             float[] first = position(v, row * 16), last = position(v, row * 16 + 15);
             assertEquals(first[0], last[0], 1e-6f);
             assertEquals(first[2], last[2], 1e-6f);
-            assertEquals(v.getFloat(row * 16 * 32 + 20), v.getFloat((row * 16 + 15) * 32 + 20), 1e-5f);
+            assertEquals(NORMAL.read(v, row * 16 * 32, 0), NORMAL.read(v, (row * 16 + 15) * 32, 0), 1e-4f);
         }
     }
 

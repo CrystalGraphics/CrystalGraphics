@@ -74,27 +74,40 @@ public final class CgVertexFormat {
             .build();
 
     /**
-     * Standard spatial vertex format for the CrystalShader material pipeline:
-     * POSITION(vec3) + UV(vec2) + NORMAL(vec3) = 32 bytes stride.
+     * The vertex of every mesh a material draws: position, normal, colour and two UV sets in 32 bytes, Unreal's local
+     * vertex factory's streams at its default precision. {@code #type spatial}.
      *
-     * <p>Registered under the {@code #type} key {@code "spatial"} so that any
-     * {@code .shader} file declaring {@code #type spatial} uses this format.</p>
+     * <pre>{@code
+     * CgMesh tri = CgMesh.build(CgVertexFormat.SPATIAL, m -> {
+     *     int a = m.vertex().position(0, 0, 0).normal(0, 1, 0).uv(0, 0).end();               // white, uv1 = uv
+     *     int b = m.vertex().position(1, 0, 0).normal(0, 1, 0).uv(1, 0).color(0xFFFF8000).end();
+     *     int c = m.vertex().position(0, 0, 1).normal(0, 1, 0).uv(0, 1).uv1(0.5f, 0.5f).end();
+     *     m.triangle(a, b, c);
+     * });
+     * }</pre>
      *
-     * <p>Attribute locations are assigned sequentially in declaration order:</p>
+     * <table>
+     *   <tr><th>Location</th><th>Shader reads</th><th>Stored</th><th>Unreal</th></tr>
+     *   <tr><td>0</td><td>{@code vec3 cg_Position}</td><td>3 floats</td><td>{@code Position}</td></tr>
+     *   <tr><td>1</td><td>{@code vec3 cg_Normal}</td><td>4 snorm16, w padding</td><td>{@code TangentZ}</td></tr>
+     *   <tr><td>2</td><td>{@code vec4 cg_Color}</td><td>4 unorm8</td><td>{@code Color}</td></tr>
+     *   <tr><td>3</td><td>{@code vec2 cg_TexCoord0}</td><td>2 halves</td><td>{@code TexCoords0}</td></tr>
+     *   <tr><td>4</td><td>{@code vec2 cg_TexCoord1}</td><td>2 halves</td><td>{@code TexCoords1}</td></tr>
+     * </table>
+     *
      * <ul>
-     *   <li>Location 0 — {@code cg_Position} (vec3)</li>
-     *   <li>Location 1 — {@code cg_TexCoord0} (vec2)</li>
-     *   <li>Location 2 — {@code cg_Normal} (vec3)</li>
+     *   <li>A vertex given no colour is white, and no second UV its first: Unreal's null colour stream and its
+     *       repeated last UV channel. Every attribute is always there, so one pool and one VAO serve every mesh.</li>
+     *   <li>UVs are halves: steps of 1/2048 below 1, 1/1024 to 2, 1/16 at 64. A UV tiled far past that needs a format of its own.</li>
+     *   <li>Read stored bytes back with {@link CgVertexAttribute#read}, never {@code getFloat}.</li>
      * </ul>
-     *
-     * <p>Pass to {@code CgShaderFactory.fromSource(vert, frag, CgVertexFormat.SPATIAL)}
-     * so that {@code glBindAttribLocation} wires each attribute to the correct index
-     * before shader link.</p>
      */
     public static final CgVertexFormat SPATIAL = builder("spatial")
             .add(CgVertexSemantic.POSITION, "cg_Position",  3, CgAttribType.FLOAT)
-            .add(CgVertexSemantic.UV,       "cg_TexCoord0", 2, CgAttribType.FLOAT)
-            .add(CgVertexSemantic.NORMAL,   "cg_Normal",    3, CgAttribType.FLOAT)
+            .add(CgVertexSemantic.NORMAL, 0, "cg_Normal",   4, 3, CgAttribType.SHORT, true)
+            .add(CgVertexSemantic.COLOR,    "cg_Color",     4, CgAttribType.UNSIGNED_BYTE, true)
+            .add(CgVertexSemantic.UV,       "cg_TexCoord0", 2, CgAttribType.HALF_FLOAT)
+            .add(CgVertexSemantic.UV, 1,    "cg_TexCoord1", 2, CgAttribType.HALF_FLOAT, false)
             .build();
 
     /**
@@ -263,6 +276,19 @@ public final class CgVertexFormat {
         public Builder add(CgVertexSemantic semantic, int semanticIndex, String name, int components,
                            CgAttribType type, boolean normalized) {
             attrs.add(new CgVertexAttribute(name, components, type, normalized, currentOffset,
+                    semantic, semanticIndex));
+            currentOffset += components * type.getByteSize();
+            return this;
+        }
+
+        /**
+         * A semantic attribute stored as {@code components} but declared to a shader as its first
+         * {@code shaderComponents}: a normal padded to four snorm16s (a three-component 16-bit vertex format is
+         * optional on Vulkan) and read as {@code vec3}.
+         */
+        public Builder add(CgVertexSemantic semantic, int semanticIndex, String name, int components,
+                           int shaderComponents, CgAttribType type, boolean normalized) {
+            attrs.add(new CgVertexAttribute(name, components, shaderComponents, type, normalized, currentOffset,
                     semantic, semanticIndex));
             currentOffset += components * type.getByteSize();
             return this;

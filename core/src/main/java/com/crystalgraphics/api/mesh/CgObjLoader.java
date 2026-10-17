@@ -22,7 +22,9 @@ final class CgObjLoader {
     private CgObjLoader() {
     }
 
+    /** {@code format} null: {@link CgVertexFormat#SPATIAL}. */
     static CgMeshLoader.Model read(InputStream in, CgVertexFormat format, boolean shared) throws IOException {
+        CgVertexFormat into = format != null ? format : CgVertexFormat.SPATIAL;
         Obj obj = ObjUtils.convertToRenderable(ObjReader.read(in));   // triangles, one index per vertex
         float[] positions = ObjData.getVerticesArray(obj);
         float[] uvs = ObjData.getTexCoordsArray(obj, 2);
@@ -38,7 +40,7 @@ final class CgObjLoader {
         }
 
         int[] local = new int[obj.getNumVertices()];
-        CgMesh mesh = CgMeshLoader.mesh(format, shared, m -> {
+        CgMesh mesh = CgMeshLoader.mesh(into, shared, m -> {
             boolean first = true;
             for (List<ObjFace> faces : parts.values()) {
                 if (!first) m.submesh();
@@ -60,6 +62,6 @@ final class CgObjLoader {
         float u = uvs.length >= v * 2 + 2 ? uvs[v * 2] : 0f, t = uvs.length >= v * 2 + 2 ? uvs[v * 2 + 1] : 0f;
         boolean n = normals.length >= v * 3 + 3;
         return CgMeshLoader.vertex(m, positions[v * 3], positions[v * 3 + 1], positions[v * 3 + 2], u, t,
-                n ? normals[v * 3] : 0f, n ? normals[v * 3 + 1] : 1f, n ? normals[v * 3 + 2] : 0f, 1f, 1f, 1f, 1f);
+                n ? normals[v * 3] : 0f, n ? normals[v * 3 + 1] : 1f, n ? normals[v * 3 + 2] : 0f, 1f, 1f, 1f, 1f, Float.NaN, 0f);
     }
 }

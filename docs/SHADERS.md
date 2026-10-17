@@ -15,7 +15,7 @@ Structural skeleton (all sections are optional except `#type` and at least one `
 
 **`#type <name>`** selects the vertex format by its registered `key`. The compiler resolves the name against `CgVertexFormat.REGISTRY` at parse time and injects the format's vertex attribute declarations (`in <glslType> <name>;`) into the generated vertex GLSL immediately after the `cg_env.glsl` include. Unknown names throw `CgShaderParseException` at parse time listing all registered types.
 
-Built-in types: `spatial` (`CgVertexFormat.SPATIAL` — pos3/uv2/normal3), `pos3_uv2_col4ub`, `pos2_uv2_col4ub`, and `none` (`CgVertexFormat.NONE`, no attributes: every quad, curve and text shader, drawn on `CgMesh.quads(1)`). Custom formats self-register on `CgVertexFormat.build()` under their `debugName` and become immediately usable as a `#type`.
+Built-in types: `spatial` (`CgVertexFormat.SPATIAL` — position, normal, colour and two UV sets, packed in 32 bytes: every mesh a material draws), `pos3_uv2_col4ub`, `pos2_uv2_col4ub`, and `none` (`CgVertexFormat.NONE`, no attributes: every quad, curve and text shader, drawn on `CgMesh.quads(1)`). Custom formats self-register on `CgVertexFormat.build()` under their `debugName` and become immediately usable as a `#type`.
 
 ```glsl
 #type spatial
@@ -189,8 +189,14 @@ Available in the vertex stage only. Locations are bound by `CgShaderFactory` bef
 | Alias | Type | Location |
 |---|---|---|
 | `cg_Position` | `vec3` | 0 |
-| `cg_TexCoord0` | `vec2` | 1 |
-| `cg_Normal` | `vec3` | 2 |
+| `cg_Normal` | `vec3` | 1 |
+| `cg_Color` | `vec4` | 2 |
+| `cg_TexCoord0` | `vec2` | 3 |
+| `cg_TexCoord1` | `vec2` | 4 |
+
+Unreal's local vertex factory's slots, in its order. A mesh written with no colour reads white, and with no second
+UV set its first: Unreal's null colour stream and its repeated UV channel. A `SECOND_LAYER` material reads
+`cg_TexCoord1` (`CgVertexFormat.SPATIAL`'s javadoc has the storage).
 
 #### Why the Engine's Blocks Must NOT Be Attached
 

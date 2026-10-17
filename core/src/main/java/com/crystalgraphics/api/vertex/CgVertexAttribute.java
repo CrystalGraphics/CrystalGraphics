@@ -1,5 +1,7 @@
 package com.crystalgraphics.api.vertex;
 
+import java.nio.ByteBuffer;
+
 /**
  * Describes a single vertex attribute within a {@link CgVertexFormat}.
  *
@@ -28,6 +30,8 @@ public final class CgVertexAttribute {
 
     private final String name;
     private final int components;
+    /** What a shader declares: {@link #components}, or fewer where the rest is padding (a normal's w). */
+    private final int shaderComponents;
     private final CgAttribType type;
     private final boolean normalized;
     private final int byteSize;
@@ -41,13 +45,21 @@ public final class CgVertexAttribute {
 
     CgVertexAttribute(String name, int components, CgAttribType type, boolean normalized, int offset,
                       CgVertexSemantic semantic, int semanticIndex) {
+        this(name, components, components, type, normalized, offset, semantic, semanticIndex);
+    }
+
+    CgVertexAttribute(String name, int components, int shaderComponents, CgAttribType type, boolean normalized,
+                      int offset, CgVertexSemantic semantic, int semanticIndex) {
         if (name == null || name.isEmpty()) throw new IllegalArgumentException("name must not be null or empty");
         if (components < 1 || components > 4) throw new IllegalArgumentException("components must be 1..4, got " + components);
+        if (shaderComponents < 1 || shaderComponents > components)
+            throw new IllegalArgumentException("a shader reads 1 to " + components + " components, not " + shaderComponents);
         if (type == null) throw new IllegalArgumentException("type must not be null");
         if (semantic == null) throw new IllegalArgumentException("semantic must not be null");
         if (semanticIndex < 0) throw new IllegalArgumentException("semanticIndex must be >= 0, got " + semanticIndex);
         this.name = name;
         this.components = components;
+        this.shaderComponents = shaderComponents;
         this.type = type;
         this.normalized = normalized;
         this.byteSize = components * type.getByteSize();
@@ -61,6 +73,42 @@ public final class CgVertexAttribute {
 
     /** Returns the number of components (1..4). */
     public int getComponents() { return components; }
+
+    /** The components a shader declares: {@link #getComponents()} unless the last are padding. */
+    public int getShaderComponents() { return shaderComponents; }
+
+    /**
+     * Component {@code c} of the vertex starting at byte {@code vertex} of {@code bytes}, decoded to a float as a shader
+     * reads it: halves widened, normalised integers scaled.
+     *
+     * <pre>{@code
+     * CgVertexAttribute normal = format.getAttribute(format.indexOf("cg_Normal"));
+     * float ny = normal.read(bytes, v * format.getStride(), 1);
+     * }</pre>
+     */
+    public float read(ByteBuffer bytes, int vertex, int c) {
+        int at = vertex + offset + c * type.getByteSize();
+        switch (type) {
+            case FLOAT: return bytes.getFloat(at);
+            case HALF_FLOAT: return half(bytes.getShort(at));
+            case BYTE: return normalized ? Math.max(bytes.get(at) / 127f, -1f) : bytes.get(at);
+            case UNSIGNED_BYTE: return normalized ? (bytes.get(at) & 0xFF) / 255f : bytes.get(at) & 0xFF;
+            case SHORT: return normalized ? Math.max(bytes.getShort(at) / 32767f, -1f) : bytes.getShort(at);
+            case UNSIGNED_SHORT: return normalized ? (bytes.getShort(at) & 0xFFFF) / 65535f : bytes.getShort(at) & 0xFFFF;
+            case INT: return bytes.getInt(at);
+            case UNSIGNED_INT: return bytes.getInt(at) & 0xFFFFFFFFL;
+            default: throw new IllegalStateException("no reader for " + type);
+        }
+    }
+
+    /** An IEEE 754 binary16 as a float. */
+    private static float half(short h) {
+        int sign = (h >>> 15) & 1, exponent = (h >>> 10) & 0x1F, mantissa = h & 0x3FF;
+        float magnitude = exponent == 0 ? mantissa / 1024f / 16384f
+                : exponent == 31 ? (mantissa == 0 ? Float.POSITIVE_INFINITY : Float.NaN)
+                : (1f + mantissa / 1024f) * (float) Math.pow(2, exponent - 15);
+        return sign == 0 ? magnitude : -magnitude;
+    }
 
     /** Returns the primitive data type. */
     public CgAttribType getType() { return type; }
@@ -106,6 +154,7 @@ public final class CgVertexAttribute {
         if (o == null || getClass() != o.getClass()) return false;
         CgVertexAttribute that = (CgVertexAttribute) o;
         return components == that.components
+                && shaderComponents == that.shaderComponents
                 && normalized == that.normalized
                 && offset == that.offset
                 && type == that.type
@@ -118,6 +167,7 @@ public final class CgVertexAttribute {
     public int hashCode() {
         int result = name.hashCode();
         result = 31 * result + components;
+        result = 31 * result + shaderComponents;
         result = 31 * result + type.hashCode();
         result = 31 * result + (normalized ? 1 : 0);
         result = 31 * result + offset;
@@ -155,7 +205,7 @@ public final class CgVertexAttribute {
         // Float family: FLOAT always maps to float; any normalized integer also maps to float because
         // the GPU normalizes the integer value to [0,1] or [-1,1] before presenting it to GLSL.
         if (!isInteger()) {
-            switch (components) {
+            switch (shaderComponents) {
                 case 1: return "float";
                 case 2: return "vec2";
                 case 3: return "vec3";

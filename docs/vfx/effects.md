@@ -140,6 +140,28 @@ compression: none       # bc7 (default) | none: no .cgtex, load the PNG
   four times the memory.
 - **The mips are the file's**: a spec's own mipmaps are not generated over them.
 
+## Meshes carry colour and a second UV
+
+A layer's mesh (`mesh(path)`, a `MESHES` emitter's) is `SPATIAL`: position, normal, vertex colour and two UV sets,
+as Unreal's static meshes are. A glTF's `COLOR_0` and `TEXCOORD_1` load into it; where a file has none, colour is white
+and the second UV the first. A shader reads them as `cg_Color` and `cg_TexCoord1`:
+
+```glsl
+#pragma cg_feature SECOND_LAYER
+
+void vertex(out v2f o) {
+#ifdef SECOND_LAYER
+    o.detailUv = cg_TexCoord1;          // a second texture laid out on its own UVs: CC2's two-texture layers
+#endif
+    o.tint = cg_Color.rgb;
+    ...
+}
+```
+
+```java
+CgVfxLayer.of("mymod:shaders/vfx/layered.shader").on(SLASH).mesh("mymod:models/slash.glb").keyword("SECOND_LAYER")
+```
+
 ## Where a layer draws: its order and its sort layer
 
 Within its effect, a layer draws by its role (smoke, light, distortion, surface), then by its order hint, then in

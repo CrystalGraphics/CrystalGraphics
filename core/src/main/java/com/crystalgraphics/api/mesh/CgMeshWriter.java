@@ -3,6 +3,7 @@ package com.crystalgraphics.api.mesh;
 import com.crystalgraphics.api.vertex.CgAttribType;
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.api.vertex.CgVertexSemantic;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -55,7 +56,7 @@ public final class CgMeshWriter {
     private final CgVertexFormat format;
     private final int stride;
     private final CgVertexAttribute[] attributes;
-    private final int positionAttribute, uvAttribute, normalAttribute, colorAttribute;
+    private final int positionAttribute, uvAttribute, normalAttribute, colorAttribute, uv1Attribute;
     private final int required;
 
     private final byte[] scratchBytes;
@@ -80,10 +81,11 @@ public final class CgMeshWriter {
         this.format = format;
         this.stride = format.getStride();
         this.attributes = new CgVertexAttribute[format.getAttributeCount()];
-        int position = -1, uv = -1, normal = -1, color = -1;
+        int position = -1, uv = -1, normal = -1, color = -1, uv1 = -1;
         for (int i = 0; i < attributes.length; i++) {
             CgVertexAttribute a = format.getAttribute(i);
             attributes[i] = a;
+            if (a.getSemantic() == CgVertexSemantic.UV && a.getSemanticIndex() == 1) uv1 = i;
             if (a.getSemanticIndex() != 0) continue;
             switch (a.getSemantic()) {
                 case POSITION: position = i; break;
@@ -98,6 +100,7 @@ public final class CgMeshWriter {
         this.uvAttribute = uv;
         this.normalAttribute = normal;
         this.colorAttribute = color;
+        this.uv1Attribute = uv1;
         this.required = (1 << attributes.length) - 1;
         this.scratchBytes = new byte[stride];
         this.scratch = ByteBuffer.wrap(scratchBytes).order(ByteOrder.nativeOrder());
@@ -166,6 +169,11 @@ public final class CgMeshWriter {
         return uvAttribute < 0 ? this : floats(uvAttribute, u, v, 0f, 1f, 2);
     }
 
+    /** The second UV set (`cg_TexCoord1`); nothing where the format has none. */
+    public CgMeshWriter uv1(float u, float v) {
+        return uv1Attribute < 0 ? this : floats(uv1Attribute, u, v, 0f, 1f, 2);
+    }
+
     public CgMeshWriter normal(float x, float y, float z) {
         return normalAttribute < 0 ? this : floats(normalAttribute, x, y, z, 1f, 3);
     }
@@ -215,6 +223,15 @@ public final class CgMeshWriter {
     /** Ends the vertex. @return its index in the current submesh, for {@link #triangle} and the rest */
     public int end() {
         if (!open) throw new IllegalStateException("end() with no vertex() open");
+        // Unreal's streams: a null colour stream reads white, and a missing UV channel repeats the last.
+        if (colorAttribute >= 0 && (given & (1 << colorAttribute)) == 0) floats(colorAttribute, 1f, 1f, 1f, 1f, 4);
+        if (uv1Attribute >= 0 && (given & (1 << uv1Attribute)) == 0 && uvAttribute >= 0 && (given & (1 << uvAttribute)) != 0) {
+            CgVertexAttribute from = attributes[uvAttribute], to = attributes[uv1Attribute];
+            if (from.getByteSize() == to.getByteSize()) {
+                System.arraycopy(scratchBytes, from.getOffset(), scratchBytes, to.getOffset(), to.getByteSize());
+                given |= 1 << uv1Attribute;
+            }
+        }
         if (given != required) throw new IllegalStateException(missing());
         int at = vertexCount * stride;
         if (at + stride > vertices.length) vertices = Arrays.copyOf(vertices, Math.max(at + stride, vertices.length * 2));

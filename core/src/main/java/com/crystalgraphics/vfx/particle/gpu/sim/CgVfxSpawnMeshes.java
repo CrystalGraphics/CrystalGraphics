@@ -106,15 +106,15 @@ public final class CgVfxSpawnMeshes {
         if (position == null || position.getType() != CgAttribType.FLOAT || position.getComponents() != 3) {
             throw new IllegalArgumentException("particles spawn on a mesh with float xyz positions, not " + format);
         }
-        boolean ownNormals = normal != null && normal.getType() == CgAttribType.FLOAT && normal.getComponents() == 3;
+        boolean ownNormals = normal != null && normal.getShaderComponents() == 3;
         int vertexCount = mesh.vertexCount(), stride = format.getStride();
         ByteBuffer bytes = ByteBuffer.allocate(vertexCount * stride).order(ByteOrder.nativeOrder());
         mesh.readVertices(0, vertexCount, bytes);
         float[] p = new float[vertexCount * 3], n = new float[vertexCount * 3];
         for (int v = 0; v < vertexCount; v++) {
             for (int c = 0; c < 3; c++) {
-                p[v * 3 + c] = bytes.getFloat(v * stride + position.getOffset() + c * 4);
-                if (ownNormals) n[v * 3 + c] = bytes.getFloat(v * stride + normal.getOffset() + c * 4);
+                p[v * 3 + c] = position.read(bytes, v * stride, c);
+                if (ownNormals) n[v * 3 + c] = normal.read(bytes, v * stride, c);
             }
         }
         int[] indices = new int[mesh.indexCount()];

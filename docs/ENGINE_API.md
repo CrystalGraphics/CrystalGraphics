@@ -406,7 +406,17 @@ for (int i = 0; i < ship.mesh().submeshCount(); i++) {
 
 ### Vertex Formats
 
-`CgVertexFormat.SPATIAL` — the canonical format for spatial materials: `cg_Position` (vec3) + `cg_TexCoord0` (vec2) + `cg_Normal` (vec3), stride 32 bytes. It is the format `CgMeshShapes` builds when asked for none. Two formats with identical attribute lists are value-equal.
+`CgVertexFormat.SPATIAL` — every mesh a material draws, Unreal's local vertex factory in 32 bytes: `cg_Position` (3 floats), `cg_Normal` (snorm16, read as `vec3`), `cg_Color` (4 bytes), `cg_TexCoord0` and `cg_TexCoord1` (halves). One format, so one pool and one VAO serve every mesh. It is the format `CgMeshShapes` builds when asked for none and `CgMeshLoader.load(path)` loads into, glTF's `COLOR_0` and `TEXCOORD_1` included. Two formats with identical attribute lists are value-equal.
+
+```java
+CgMesh tinted = CgMesh.build(CgVertexFormat.SPATIAL, m ->
+        m.vertex().position(0, 0, 0).normal(0, 1, 0).uv(0, 0).color(0xFFFF8000).uv1(0.5f, 0.5f).end());
+CgMesh plain = CgMesh.build(CgVertexFormat.SPATIAL, m ->
+        m.vertex().position(0, 0, 0).normal(0, 1, 0).uv(0, 0).end());              // white, uv1 = uv
+```
+
+- Read its bytes through `CgVertexAttribute.read`, never `getFloat`: the normal and UVs are packed.
+- UVs are halves: steps of 1/2048 below 1, 1/16 at 64.
 
 **Per-instance data is never a vertex attribute**: it is an engine buffer's record (`CgInstanceKind` -- `OBJECT`, `QUAD`, `CURVE`), read through `CG_INSTANCE_ID`.
 

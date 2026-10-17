@@ -20,20 +20,22 @@ import java.util.function.Consumer;
  * of one mesh, in file order, so each part draws with its own material.
  *
  * <pre>{@code
- * CgMeshLoader.Model ship = CgMeshLoader.model("mymod:models/ship.glb", CgVertexFormat.SPATIAL);
+ * CgMeshLoader.Model ship = CgMeshLoader.model("mymod:models/ship.glb");   // SPATIAL
  * for (int i = 0; i < ship.mesh().submeshCount(); i++) {
  *     world.draw(ship.mesh(), materialNamed(ship.material(i))).submesh(i).at(x, y, z).submit();
  * }
  *
- * CgMesh rock = CgMeshLoader.load("mymod:models/rock.obj", CgVertexFormat.SPATIAL);   // every part, drawn whole
+ * CgMesh rock = CgMeshLoader.load("mymod:models/rock.obj");                          // every part, drawn whole
+ * CgMesh points = CgMeshLoader.load("mymod:models/cloud.glb", CgVertexFormat.POS3_UV2_COL4UB);   // a format named
  * }</pre>
  *
  * <ul>
  *   <li>Loaded once per path and format and shared, like a {@link CgMeshShapes} shape: edits and
  *       {@link CgMesh#release()} refuse.</li>
  *   <li>Any thread. Paths resolve through {@link CgIO}, so resource packs and the override directory apply.</li>
- *   <li>Positions, UVs, normals and glTF's {@code COLOR_0} fill what the format has; colour is white where the file
- *       has none. A format with other attributes needs a reader of its own.</li>
+ *   <li>Positions, normals, glTF's {@code COLOR_0}, {@code TEXCOORD_0} and {@code TEXCOORD_1} fill what the format has;
+ *       colour is white and the second UV the first where the file has none. A format with other attributes needs a
+ *       reader of its own.</li>
  *   <li>glTF is read in mesh space: node transforms are not applied. Strips, fans and loops become lists; a file
  *       mixing triangles with lines or points, a skinned primitive, or one with external buffers throws.</li>
  * </ul>
@@ -50,12 +52,23 @@ public final class CgMeshLoader {
         }
     }
 
-    private record Key(String path, CgVertexFormat format) {
+    /** {@code format} null: {@link CgVertexFormat#SPATIAL}. */
+    private record Key(String path, @Nullable CgVertexFormat format) {
     }
 
     private static final Map<Key, Model> LOADED = new ConcurrentHashMap<>();
 
     private CgMeshLoader() {
+    }
+
+    /** The mesh in {@code path}, {@link CgVertexFormat#SPATIAL}. @throws UncheckedIOException if it cannot be read */
+    public static CgMesh load(String path) {
+        return model(path).mesh();
+    }
+
+    /** The mesh in {@code path}, {@link CgVertexFormat#SPATIAL}, with its submeshes' material names. */
+    public static Model model(String path) {
+        return LOADED.computeIfAbsent(new Key(path, null), k -> read(k.path(), null));
     }
 
     /** The mesh in {@code path}. @throws UncheckedIOException if it cannot be read */
@@ -68,8 +81,11 @@ public final class CgMeshLoader {
         return LOADED.computeIfAbsent(new Key(path, format), k -> read(k.path(), k.format()));
     }
 
-    /** Reads {@code in} as {@code extension} ({@code obj}, {@code gltf} or {@code glb}) into a mesh of its own: not cached. */
-    public static Model read(InputStream in, String extension, CgVertexFormat format) throws IOException {
+    /**
+     * Reads {@code in} as {@code extension} ({@code obj}, {@code gltf} or {@code glb}) into a mesh of its own: not cached.
+     * A null {@code format} is {@link CgVertexFormat#SPATIAL}.
+     */
+    public static Model read(InputStream in, String extension, @Nullable CgVertexFormat format) throws IOException {
         return switch (extension.toLowerCase(Locale.ROOT)) {
             case "obj" -> CgObjLoader.read(in, format, false);
             case "gltf", "glb" -> CgGltfLoader.read(in, format, false);
@@ -77,7 +93,7 @@ public final class CgMeshLoader {
         };
     }
 
-    private static Model read(String path, CgVertexFormat format) {
+    private static Model read(String path, @Nullable CgVertexFormat format) {
         int dot = path.lastIndexOf('.');
         if (dot < 0) throw new IllegalArgumentException("no extension to read a mesh by: " + path);
         try (CgTrace.Zone zone = CgTrace.zone(CgChannels.GL, "mesh.load"); InputStream in = CgIO.openStream(path)) {
@@ -97,9 +113,11 @@ public final class CgMeshLoader {
         return shared ? CgMesh.shared(format, body) : CgMesh.build(format, body);
     }
 
-    /** One vertex, every attribute the format has of these. */
+    /** One vertex, every attribute the format has of these; a NaN {@code u1} leaves the second UV the writer's default. */
     static int vertex(CgMeshWriter m, float x, float y, float z, float u, float v, float nx, float ny, float nz,
-                      float r, float g, float b, float a) {
-        return m.vertex().position(x, y, z).uv(u, v).normal(nx, ny, nz).color(r, g, b, a).end();
+                      float r, float g, float b, float a, float u1, float v1) {
+        m.vertex().position(x, y, z).uv(u, v).normal(nx, ny, nz).color(r, g, b, a);
+        if (!Float.isNaN(u1)) m.uv1(u1, v1);
+        return m.end();
     }
 }

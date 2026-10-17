@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.mesh;
 
+import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import org.junit.Test;
 
@@ -126,7 +127,7 @@ public class CgRevolvedShapesTest {
         return CgMesh.build(FORMAT, m -> CgMeshShapes.capsule(m, sectors, capRings, radius, height));
     }
 
-    /** SPATIAL is pos3 + uv2 + normal3, tightly packed floats. */
+    /** SPATIAL: position as floats at 0, the normal snorm16, read through its attribute. */
     private static void forEachVertex(CgMesh data, VertexVisitor visitor) {
         int stride = data.format().getStride();
         ByteBuffer vbo = ByteBuffer.allocate(data.vertexCount() * stride).order(ByteOrder.nativeOrder());
@@ -136,9 +137,10 @@ public class CgRevolvedShapesTest {
             float x = vbo.getFloat(base);
             float y = vbo.getFloat(base + 4);
             float z = vbo.getFloat(base + 8);
-            float nx = vbo.getFloat(base + 20);
-            float ny = vbo.getFloat(base + 24);
-            float nz = vbo.getFloat(base + 28);
+            CgVertexAttribute normal = FORMAT.getAttribute(FORMAT.indexOf("cg_Normal"));
+            float nx = normal.read(vbo, base, 0);
+            float ny = normal.read(vbo, base, 1);
+            float nz = normal.read(vbo, base, 2);
             visitor.visit(x, y, z, nx, ny, nz);
         }
     }
