@@ -43,7 +43,10 @@ import org.apache.logging.log4j.Logger;
 import org.joml.Quaternionf;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.function.IntConsumer;
 
 /**
@@ -189,6 +192,8 @@ public final class CgVfxSystem {
     private int pathsBound;
     /** Materials compiling ahead of their first draw, so a layer that appears late does not stall its frame. */
     private final List<CgMaterial> warming = new ArrayList<>();
+    /** Those of them drawn at half size, whose half-size passes warm too. */
+    private final Set<CgMaterial> halved = Collections.newSetFromMap(new IdentityHashMap<>());
     /** Emitters {@link #prepare} queued whose kernels and slot meshes are still to start, one a step under the budget. */
     private final List<CgVfxEmitter> gpuWarming = new ArrayList<>();
     private CgTexture2D boundTexture, boundTrails;
@@ -754,13 +759,21 @@ public final class CgVfxSystem {
      * // ...later, at once:
      * vfx.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z));
      * }</pre>
+     *
+     * <p>A move made of several effects prepares every look it plays at once, then waits on {@link #warmed}:</p>
+     *
+     * <pre>{@code
+     * vfx.prepare(SPIRAL, SHOCKWAVE, FLASH);
+     * }</pre>
      */
-    public void prepare(CgVfxLook look) {
-        List<CgVfxEmitter> emitters = look.emitters();
-        for (int k = 0; k < emitters.size(); k++) {
-            if (!gpuWarming.contains(emitters.get(k))) gpuWarming.add(emitters.get(k));
+    public void prepare(CgVfxLook... looks) {
+        for (CgVfxLook look : looks) {
+            List<CgVfxEmitter> emitters = look.emitters();
+            for (int k = 0; k < emitters.size(); k++) {
+                if (!gpuWarming.contains(emitters.get(k))) gpuWarming.add(emitters.get(k));
+            }
+            prepareDraws(look);
         }
-        prepareDraws(look);
         pollWarming(CgWorldRenderer.get());
     }
 
@@ -840,7 +853,7 @@ public final class CgVfxSystem {
             // The particle sphere's levels are built on first ask: here, not in the first burst's frame.
             if (looked.get(k).renderer() == CgVfxEmitter.Renderer.MESHES) particleSphere();
         }
-        materials.prepare(look, warming);
+        materials.prepare(look, warming, halved);
     }
 
     /**
@@ -855,7 +868,11 @@ public final class CgVfxSystem {
             CgWarmBudget.spend(System.nanoTime() - start);
         }
         for (int i = warming.size() - 1; i >= 0; i--) {
-            if (world.prepare(warming.get(i))) warming.remove(i);
+            CgMaterial material = warming.get(i);
+            if (world.prepare(material, halved.contains(material))) {
+                warming.remove(i);
+                halved.remove(material);
+            }
         }
     }
 
@@ -892,6 +909,7 @@ public final class CgVfxSystem {
         boundTrails = null;
         pathsBound = 0;
         warming.clear();
+        halved.clear();
         gpuWarming.clear();
     }
 

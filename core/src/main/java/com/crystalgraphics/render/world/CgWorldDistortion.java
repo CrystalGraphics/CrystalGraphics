@@ -330,6 +330,13 @@ final class CgWorldDistortion {
         return offsets;
     }
 
+    /** Starts the apply's program, which every slot shares; whether it is built. */
+    boolean prepare() {
+        if (applyMaterials[SLOTS] == null) applyMaterials[SLOTS] = CgMaterial.newInstance(APPLY_SHADER);
+        CgPipeline pipeline = applyMaterials[SLOTS].pipeline(CgInstanceKind.OBJECT);
+        return pipeline == null || pipeline.prepare();
+    }
+
     /** Slot {@code slot}'s apply, reading its layer. */
     private CgMaterial apply(int slot) {
         CgMaterial material = applyMaterials[slot];

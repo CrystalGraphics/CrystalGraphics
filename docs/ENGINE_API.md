@@ -188,7 +188,10 @@ CgWorldRenderer.get().media().add((pass, media) -> {             // a volume of 
   once all are built. Poll it from a warm-up list before a material's first draw: a program compiled at its first
   draw is 7-110 ms of that frame on GL. Warm-ups share `CgWarmBudget`, a few milliseconds a frame
   (`crystalgraphics.warmBudget`): one that would pass it waits for the next frame, so a scene's warm-up spreads over
-  frames rather than taking the first one. A draw never waits on the budget.
+  frames rather than taking the first one. A draw never waits on the budget. It starts the renderer's own passes a
+  material brings in too: the distortion apply for a Distortion pass, and with `prepare(material, true)`, for a draw
+  marked `.halfResolution()`, the half-size upsample and the volume resolve and composite. A program a draw had to
+  wait for anyway is counted, `CgMaterialShader.compileWaits()` and the trace counter `material.compile-waits`.
 - **GPU time by group**: under `crystalgraphics.gpu.groups` a pass's GPU time lands per material
   (`gpu:world.transparent/<shader path>`); `.gpuGroup(label)` charges a draw to a label of its own instead
   (`docs/PROFILING.md`).

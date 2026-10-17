@@ -649,9 +649,27 @@ public final class CgWorldRenderer {
                 ready &= prepared(forward.emissionCover(), joins);
                 ready &= prepared(forward.emissionOccluder(), joins);
             }
-            if (link.hasDistortionPass()) ready &= prepared(link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT), joins);
+            if (link.hasDistortionPass()) {
+                ready &= prepared(link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT), joins);
+                ready &= distortion.prepare();
+            }
         }
         return ready;
+    }
+
+    /**
+     * {@link #prepare(CgMaterial)}, for a material drawn {@code .halfResolution()} as well: the half-size passes that
+     * lay it over the target (the upsample, the volume resolve and composite) are started too.
+     */
+    public boolean prepare(CgMaterial material, boolean halfResolution) {
+        boolean ready = prepare(material);
+        if (!halfResolution) return ready;
+        if (upsample == null) upsample = CgMaterial.newInstance(UPSAMPLE_SHADER);
+        if (resolve == null) resolve = CgMaterial.newInstance(RESOLVE_SHADER);
+        if (composite == null) composite = CgMaterial.newInstance(COMPOSITE_SHADER);
+        ready &= prepared(upsample.pipeline(CgInstanceKind.OBJECT), false);
+        ready &= prepared(resolve.pipeline(CgInstanceKind.OBJECT), false);
+        return prepared(composite.pipeline(CgInstanceKind.OBJECT), false) & ready;
     }
 
     /** {@code pipeline} and, where draws join, its multi-draw form, both started; whether both are built. */

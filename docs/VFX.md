@@ -219,12 +219,15 @@ VFX.clear();            // every effect of this mod at once, particles and all
 VFX.enabled(false);     // a dev switch: ends them, and play() does nothing until enabled again
 VFX.playing();          // how many of this mod's effects are alive
 VFX.prepare(LOOK);      // builds a look's shaders, meshes and kernels ahead of its first play
+VFX.prepare(SPIRAL, SHOCKWAVE, FLASH);   // every look a move plays, before the move
 ```
 
 - **An effect plays once.** Playing the same object again, or into a second system, throws. Make a new one.
 - **An effect that throws is killed and logged under your mod**; every other effect keeps playing.
 - A look played cold compiles on its first frame and can hitch: `prepare` spreads the work over frames within
-  `crystalgraphics.warmBudget`, and `VFX.warmed()` says when it is done.
+  `crystalgraphics.warmBudget`, and `VFX.warmed()` says when it is done. Once it is, the looks' first frames compile
+  nothing: `CgMaterialShader.compileWaits()` (the trace counter `material.compile-waits`) counts every program a draw
+  had to wait for, and `--mode=vfx-prepare` holds a move to 0.
 - On a dedicated server, or a client with no world yet, `play` plays nothing.
 
 ### Ending an effect

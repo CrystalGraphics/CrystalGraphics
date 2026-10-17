@@ -236,9 +236,12 @@ public final class CgVfxOwner {
         return id.indexOf(':') >= 0 ? id : namespace + ":" + id;
     }
 
-    /** Warms what {@code look} draws and simulates before it first plays (as {@link CgVfxSystem#prepare}). Render thread. */
-    public void prepare(CgVfxLook look) {
-        system().prepare(look);
+    /**
+     * Warms what {@code looks} draw and simulate before they first play (as {@link CgVfxSystem#prepare}): one look, or
+     * every look a move plays. Render thread.
+     */
+    public void prepare(CgVfxLook... looks) {
+        system().prepare(looks);
     }
 
     /** Whether every look prepared or played has built (as {@link CgVfxSystem#warmed}). Render thread. */

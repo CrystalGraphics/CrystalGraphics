@@ -22,6 +22,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * A system's layers made drawable: each layer's properties resolved against each look it is in (set, bound, bound by
@@ -386,15 +387,21 @@ final class CgVfxMaterials {
         CgPropertyRows.upload(rows, rowCount);
     }
 
-    /** Warms {@code look}'s materials: one per layer and kind it draws on. */
-    void prepare(CgVfxLook look, List<CgMaterial> warming) {
+    /** Warms {@code look}'s materials: one per layer and kind it draws on; those drawn at half size also in {@code halved}. */
+    void prepare(CgVfxLook look, List<CgMaterial> warming, Set<CgMaterial> halved) {
         for (CgVfxLook.Placed placed : look.placed()) {
             Resolved r = resolve(look, placed);
             for (CgVfxSlot slot : placed.layer().slots()) {
                 CgMaterial material = material(r, slot.kind());
                 if (!warming.contains(material)) warming.add(material);
+                if (halfResolution(placed.layer(), slot.kind())) halved.add(material);
             }
         }
+    }
+
+    /** Whether {@code CgVfxFrame} draws {@code layer} on a slot of {@code kind} {@code .halfResolution()}. */
+    private static boolean halfResolution(CgVfxLayer layer, CgVfxSlot.Kind kind) {
+        return kind == CgVfxSlot.Kind.FLUID || kind == CgVfxSlot.Kind.GRID || kind == CgVfxSlot.Kind.TUBE && layer.isVolume();
     }
 
 }
