@@ -631,6 +631,25 @@ public final class CgVfxLayer {
         }
 
         /**
+         * Which frame of its sheet each particle shows: a grid or a rect table, over its life, looping or at random.
+         * For a shader reading {@code _SubImage}, {@code _SubUV} and {@code _SubImages} ({@code sprite},
+         * {@code sprite_glow}).
+         *
+         * <pre>{@code
+         * layer.texture("_Sheet", FIRE).flipbook(CgVfxFlipbook.grid(4, 4).loop(24f).randomStart())
+         * }</pre>
+         */
+        public Builder flipbook(CgVfxFlipbook flipbook) {
+            Objects.requireNonNull(flipbook, "flipbook");
+            float[] subImage = flipbook.subImage(), subUv = flipbook.subUv();
+            set("_SubImage", subImage[0], subImage[1], subImage[2], subImage[3]);
+            set("_SubUV", subUv[0], subUv[1], subUv[2], subUv[3]);
+            if (flipbook.isTable()) texture("_SubImages", flipbook::table);
+            else textures.remove("_SubImages");
+            return this;
+        }
+
+        /**
          * Draws {@code mesh} instead of the unit sphere: on a mesh slot placed by the slot's transform, or per particle
          * of a {@code MESHES} emitter, turned and sized as each. On any other slot it throws at its first draw.
          *

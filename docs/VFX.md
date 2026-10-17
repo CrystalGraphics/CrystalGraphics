@@ -561,6 +561,7 @@ CgVfxLayer flames = CgVfxLayer.of("mymod:shaders/vfx/ends_aura.shader")
 | `volume()` | A tube chunk drawn on a sphere round it, for a shader summing its own chunk's light (`body_light`) |
 | `closed()` | A tube chunk closed at both ends, for a shader tracing the view ray through it (`body_core`) |
 | `keyword(name)` | A `#pragma cg_feature` keyword on its materials |
+| `flipbook(flipbook)` | Which frame of its sheet a sprite particle shows: a grid or a rect table, over its life, looping or at random ([`vfx/effects.md`](vfx/effects.md) § *Flipbooks*) |
 | `mesh(mesh)`, `mesh(lods)`, `mesh(path)` | Draws that mesh instead of the unit sphere: on a mesh slot, or per particle of a `MESHES` emitter. A path loads at its first draw; any other slot throws. `CgProceduralMesh` makes crescents, domes and swirls from a few numbers ([§8](#8-meshes)) |
 | `unbound(property)` | Keeps a colour the shader's own, never bound by name |
 | `named(name)` | What tools and tunings call it; its shader's file name unless given |
@@ -999,7 +1000,7 @@ VFX.play(new CgVfxBurst(LOOK, x, y, z));   // particles alone need no effect cla
 | `arc` | an ink stroke |
 | `ray` | a hot streak along its velocity |
 | `ring` | a shock front's foot glowing as it runs out |
-| `sprite`, `sprite_glow` | a frame of a flipbook sheet, lit or glowing (`_Color` only) |
+| `sprite`, `sprite_glow` | a frame of a flipbook sheet, lit or glowing (`_Color` only); which frame is the layer's `flipbook(...)` ([`vfx/effects.md`](vfx/effects.md) § *Flipbooks*) |
 
 The explosion (`CgVfxBlast.EXPLOSION`, a `CgVfxExplosion`) is a whole kit of them: billows, surge, specks, puffs,
 sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debris`, `dust`, `sparkCore`).

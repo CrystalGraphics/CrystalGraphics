@@ -3,7 +3,7 @@
 // record (CgVfxFrame.particles, QUADS). _Color tints the sheet, its alpha a strength.
 //
 //     CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/sprite.shader").on(PUFFS).bind("_Color", TINT)
-//             .texture("_Sheet", SHEET).set("_Frames", 8f, 8f, 64f, 1f).set("_Facing", 2f).build()
+//             .texture("_Sheet", SHEET).flipbook(CgVfxFlipbook.grid(8, 8)).set("_Facing", 2f).build()
 #type none
 #pragma cg_use particle
 #pragma cg_use rows
@@ -18,8 +18,9 @@ Queue = "Transparent"
 Properties {
     _Color ("Tints the sheet; its alpha a strength", color) = (1, 1, 1, 1)
     _Sheet ("The flipbook sheet, straight alpha, frame 0 at the top left", sampler2D) = "white"
-    _Frames ("Columns, rows, frames, cycles over a life", vec4) = (1, 1, 1, 1)
-    _Flip ("Start-frame spread by seed (0..1), loops, blends frames", vec4) = (0, 1, 1, 0)
+    _SubImage ("CgVfxFlipbook: columns (a table's frames), rows (0: a table), blends, random start", vec4) = (1, 1, 1, 0)
+    _SubUV ("CgVfxFlipbook: mode, first frame, last frame (-1: the last), rate", vec4) = (0, 0, -1, 0)
+    _SubImages ("CgVfxFlipbook: a rect table, a rect a texel", sampler2D) = "white"
     _Facing ("FX_FACE_*: camera, camera position, upright, velocity, axis", float) = 0
     _Axis ("The AXIS mode's normal", vec4) = (0, 1, 0, 0)
     _Stretch ("VELOCITY mode: how much longer per block a second", float) = 0.1
@@ -58,10 +59,9 @@ Pass {
         float length_ = streak ? min(1.0 + length(velocity) * _Stretch, _MaxStretch) : 1.0;
         vec2 extent = size * CG_PARTICLE_SCALE(i).xy * vec2(length_, 1.0);
         vec3 world = fx_particle_corner(centre, corner, extent, streak ? 0.0 : CG_PARTICLE_SPIN(i), right, up);
-        float blend;
-        o.uv = fx_particle_flipbook(corner * 0.5 + 0.5, CG_PARTICLE_PROGRESS(i), CG_PARTICLE_SEED(i) * _Flip.x, _Frames,
-                _Flip.y > 0.5, blend);
-        o.blend = _Flip.z > 0.5 ? blend : 0.0;
+        float a, b;
+        fx_subuv_frames(_SubUV, _SubImage, CG_PARTICLE_AGE(i), CG_PARTICLE_PROGRESS(i), CG_PARTICLE_SEED(i), a, b, o.blend);
+        o.uv = vec4(fx_subimage_uv(_SubImages, _SubImage, a, corner), fx_subimage_uv(_SubImages, _SubImage, b, corner));
         o.opacity = CG_PARTICLE_OPACITY(i);
         o.light = CG_PARTICLE_LIGHT(i);
         o.tint = CG_PARTICLE_COLOR(i).rgb;

@@ -27,6 +27,7 @@ import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxOwner;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.CgVfxTrace;
+import com.crystalgraphics.vfx.look.CgVfxFlipbook;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
@@ -76,6 +77,8 @@ public final class CgVfxModules {
     private static final Logger LOG = LogManager.getLogger("CgVfxModules");
     private static final String PARTICLE = "crystalgraphics:shaders/vfx/particle/";
     private static final float PERIOD = 7f, FOREVER = 1.0e6f;
+    /** A 4x4 flame sheet looping twice through a flame's life of about 0.8 s, each flame at its own frame. */
+    private static final CgVfxFlipbook FLAMES = CgVfxFlipbook.grid(4, 4).loop(40f).randomStart();
     /** How deep behind the scene's depth a particle still counts as hitting it: under half a block, so one passing behind a mob is not snapped onto it. */
     private static final float DEPTH_THICKNESS = 0.4f;
     private static final int SHEETS_ZONE = CgTrace.name("demo.modules.sheets");
@@ -1567,7 +1570,7 @@ public final class CgVfxModules {
 
     /** A flipbook smoke sheet's layer properties, drawn first in its effect. */
     private static Consumer<CgVfxLayer.Builder> smokeOf(CgTexture smokeSheet) {
-        return b -> b.texture("_Sheet", smokeSheet).set("_Frames", 8f, 8f, 64f, 1f).set("_Flip", 0f, 0f, 1f, 0f)
+        return b -> b.texture("_Sheet", smokeSheet).flipbook(CgVfxFlipbook.grid(8, 8))
                 .role(CgVfxLayer.Role.SMOKE);
     }
 
@@ -1749,8 +1752,7 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.6f).to(1f, 2.4f, CgEasings.OUT_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.2f, 0.55f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        Consumer<CgVfxLayer.Builder> sheet = b -> b.texture("_Sheet", smokeSheet).set("_Frames", 8f, 8f, 64f, 1f)
-                .set("_Flip", 0.3f, 0f, 1f, 0f);
+        Consumer<CgVfxLayer.Builder> sheet = b -> b.texture("_Sheet", smokeSheet).flipbook(CgVfxFlipbook.grid(8, 8));
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(funnel).emitter(debris).emitter(dust)
                 .layer(layerOf("sprite", dust, DUST, DUST, sheet)).layer(layerOf("sprite", funnel, FUNNEL, FUNNEL, sheet))
                 .layer(layer("speck", debris, DEBRIS, DEBRIS, 1f, null)).build();
@@ -1820,7 +1822,7 @@ public final class CgVfxModules {
                     .opacity(CgKeyframes.start(0f, 0f).to(0.05f, 1f, CgEasings.OUT_QUAD).to(0.85f, 1f, CgEasings.LINEAR)
                             .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
             look.emitter(shell).layer(layerOf("sprite_glow", shell, colours[s][0], colours[s][1], b -> b
-                    .texture("_Sheet", dot).set("_Frames", 1f, 1f, 1f, 1f).set("_Facing", 3f)
+                    .texture("_Sheet", dot).set("_Facing", 3f)
                     .set("_Stretch", 3f).set("_MaxStretch", 40f)));
             emitters.add(shell);
             sources.add(new float[]{0f, top, 0f});
@@ -1916,7 +1918,7 @@ public final class CgVfxModules {
                         .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
         add("shield: Conform + Turbulence", x, z, List.of(motes), new float[][]{{0f, 3.2f, 0f}},
                 layer("sprite_glow", motes, VIOLET, WHITE, 1f,
-                        b -> b.texture("_Sheet", dot).set("_Frames", 1f, 1f, 1f, 1f)), null);
+                        b -> b.texture("_Sheet", dot)), null);
     }
 
     /**
@@ -2019,7 +2021,7 @@ public final class CgVfxModules {
                 .opacity(FADE).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(shards).emitter(snow)
                 .layer(layerOf("sprite", snow, SNOW, SNOW, b -> b.texture("_Sheet", smokeSheet)
-                        .set("_Frames", 8f, 8f, 64f, 1f).set("_Flip", 0.3f, 0f, 1f, 0f)))
+                        .flipbook(CgVfxFlipbook.grid(8, 8))))
                 // Solid pieces: pulled toward the eye to rest on the ramp whole, never faded into it.
                 .layer(facing(shards, ICE, WHITE, shard, 0, b -> b.set("_SoftDistance", 0f).set("_CameraOffset", 1f)))
                 .build();
@@ -2247,13 +2249,12 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.6f).to(1f, 3.2f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.2f, 1f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        Consumer<CgVfxLayer.Builder> smoke = b -> b.texture("_Sheet", smokeSheet).set("_Frames", 8f, 8f, 64f, 1f)
-                .set("_Flip", 0f, 0f, 1f, 0f);
+        Consumer<CgVfxLayer.Builder> smoke = b -> b.texture("_Sheet", smokeSheet).flipbook(CgVfxFlipbook.grid(8, 8));
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(puffs).emitter(fire).emitter(embers).emitter(soot)
                 .layer(layerOf("sprite", puffs, SMOKE, SMOKE, smoke))
                 .layer(layerOf("sprite", soot, SOOT, SOOT, smoke))
                 .layer(layerOf("sprite_glow", fire, FIRE_COOL, FIRE_HOT,
-                        b -> b.texture("_Sheet", fireSheet).set("_Frames", 4f, 4f, 16f, 2f).set("_Flip", 1f, 1f, 1f, 0f)
+                        b -> b.texture("_Sheet", fireSheet).flipbook(FLAMES)
                                 .set("_Facing", 2f)))
                 .layer(sparkLayer(embers, EMBER, FLAME))
                 .build();
@@ -2317,8 +2318,7 @@ public final class CgVfxModules {
                 .emitter(waves)
                 .layer(facing(glints, GOLD, WHITE, star, 0, null))
                 .layer(facing(runes, VIOLET, WHITE, rune, 1, null))
-                .layer(facing(flames, SPIRIT_COOL, SPIRIT_HOT, wisp, 2, b -> b.set("_Frames", 4f, 4f, 16f, 2f)
-                        .set("_Flip", 1f, 1f, 1f, 0f)))
+                .layer(facing(flames, SPIRIT_COOL, SPIRIT_HOT, wisp, 2, b -> b.flipbook(FLAMES)))
                 .layer(facing(sparks, GOLD, WHITE, dot, 3, b -> b.set("_Stretch", 0.6f).set("_MaxStretch", 10f)))
                 .layer(facing(waves, CYAN, WHITE, ring, 4, null)).build();
         stations.add(new Station("facing: camera, camera position, upright, velocity, axis", x, z, look,
@@ -2341,7 +2341,7 @@ public final class CgVfxModules {
     private static CgVfxLayer facing(CgVfxEmitter e, CgVfxParam.Color cool, CgVfxParam.Color hot, CgTexture sheet, int mode,
                                      Consumer<CgVfxLayer.Builder> more) {
         return layerOf("sprite_glow", e, cool, hot, b -> {
-            b.texture("_Sheet", sheet).set("_Frames", 1f, 1f, 1f, 1f).set("_Facing", mode)
+            b.texture("_Sheet", sheet).set("_Facing", mode)
                     .set("_Axis", 0f, 1f, 0f, 0f);
             // Lying on a surface on purpose: a soft fade would fade it out.
             if (mode == 4) b.set("_SoftDistance", 0f);
@@ -2393,10 +2393,10 @@ public final class CgVfxModules {
             ByteBuffer pixels = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder());
             float[] out = new float[4];
             for (int y = 0; y < h; y++) {
-                int row = rows - 1 - y / cell;
+                int row = y / cell;                  // the image's top row first, as the flipbook reads it
                 for (int x = 0; x < w; x++) {
                     int frame = row * columns + x / cell;
-                    texel.at(frame, (x % cell + 0.5f) / cell, (y % cell + 0.5f) / cell, out);
+                    texel.at(frame, (x % cell + 0.5f) / cell, 1f - (y % cell + 0.5f) / cell, out);   // v up the cell
                     for (int c = 0; c < 4; c++) pixels.put((byte) Math.round(Math.max(0f, Math.min(1f, out[c])) * 255f));
                 }
             }

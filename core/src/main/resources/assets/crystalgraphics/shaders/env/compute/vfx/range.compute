@@ -223,7 +223,7 @@ void Place() {
         d.motion = vec4(r.velocitySize.xyz, t);
         d.state = vec4(r.seedSpin.x, r.seedSpin.y + r.seedSpin.z * _Ahead, r.seedSpin.w, look.color.a);
         d.color = look.color;
-        d.scale = vec4(look.scale, 0.0);
+        d.scale = vec4(look.scale, r.positionAge.w);
         // Light packed into one lane, its spawn id in the next: what a trail or ribbon of it reads (CG_PARTICLE_ID).
         vec2 ground = _Floors != 0 ? range_floor(lo, d.place.xyz, r.previousLife.y) : vec2(0.0);
         d.light = vec4(range_light_word(range_light(lo, d.place.xyz)), float(r.idSlot.x & 16777215u), ground);

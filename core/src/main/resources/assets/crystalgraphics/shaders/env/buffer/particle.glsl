@@ -32,3 +32,5 @@
 #define CG_PARTICLE_COLOR(n) (PARTICLE_DATA(n).color)
 // Its scale on each axis, times its size: a quad is size * scale.x across and size * scale.y up. 1 unless its emitter says.
 #define CG_PARTICLE_SCALE(n) (PARTICLE_DATA(n).scale.xyz)
+// Its age in seconds: what a flipbook's loop and random frames run on (progress alone is a fraction of its life).
+#define CG_PARTICLE_AGE(n) (PARTICLE_DATA(n).scale.w)

@@ -162,6 +162,44 @@ void vertex(out v2f o) {
 CgVfxLayer.of("mymod:shaders/vfx/layered.shader").on(SLASH).mesh("mymod:models/slash.glb").keyword("SECOND_LAYER")
 ```
 
+## Flipbooks: which frame of a sheet a particle shows
+
+A `sprite` or `sprite_glow` layer draws a frame of its sheet on each particle. Its `CgVfxFlipbook` says where the
+frames are and which one each particle shows: Niagara's Sub UV Animation over its sprite renderer's sub-images.
+
+```java
+static final CgTexture2D SMOKE = CgTextures.of("mymod:textures/vfx/smoke_8x8.png");
+static final CgVfxLayer PUFF = CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/sprite.shader").on(PUFFS)
+        .texture("_Sheet", SMOKE).flipbook(CgVfxFlipbook.grid(8, 8))      // 64 frames over each puff's life, blended
+        .build();
+```
+
+```java
+CgVfxFlipbook.grid(4, 4).loop(24f).randomStart()               // flames: 24 frames a second, each at its own frame
+CgVfxFlipbook.grid(4, 4).random(8f)                            // a new frame 8 times a second
+CgVfxFlipbook.grid(8, 8).frames(16, 31)                        // rows 2 and 3 alone
+CgVfxFlipbook.rects(0f, 0f, 0.5f, 0.25f,  0.5f, 0f, 1f, 0.25f) // frames anywhere in the image: u0, v0, u1, v1 each
+        .loop(30f).blend(false)                                 // a CC2 billboard's window, frame for frame
+```
+
+| Call | Plays | Unreal |
+|---|---|---|
+| `linear()` (the default) | first to last over each particle's life | Linear |
+| `loop(framesPerSecond)` | round the range at that rate, last back to first | Infinite Loop, by frames a second |
+| `random(changesPerSecond)` | a whole frame of the range, drawn again that often; 0 keeps the first | Random |
+| `frames(first, last)` | only those frames, both included | Start and End Frame Range Override |
+| `blend(on)` | each frame fading into the next; on unless set, never for random | Sub UV Blending Enabled |
+| `randomStart()` | each particle's loop at a frame of its own | Random Start Frame |
+
+- **Frame 0 is the image's top left**, rows going down; a rect's v runs down from the image's top. A sheet exported
+  from Unreal, Effekseer or a CC2 dump plays as authored.
+- **A rect table** is any number of frames, each a rectangle anywhere in the image; it goes up once, at its first
+  draw, as a small texture kept for the session.
+- **A loop and random run on the particle's age in seconds**, so a long-lived particle loops more times than a
+  short-lived one; linear runs on its life.
+- A shader of your own reads the same: `_SubImage`, `_SubUV` and `_SubImages`, through `fx_particle.glsl`'s
+  `fx_subuv_frames` and `fx_subimage_uv`, as `sprite.shader` does.
+
 ## Where a layer draws: its order and its sort layer
 
 Within its effect, a layer draws by its role (smoke, light, distortion, surface), then by its order hint, then in

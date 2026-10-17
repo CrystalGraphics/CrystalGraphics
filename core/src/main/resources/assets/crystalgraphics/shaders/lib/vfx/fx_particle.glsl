@@ -1,9 +1,10 @@
 // What a particle shader needs to place a CgVfxQuads quad or a CgVfxRibbons stroke from a particle record. Pure
-// functions: nothing here names cg_* or CG_*, so the record itself is read by the shader through CG_PARTICLE_*.
+// functions: nothing here reads the record, which the shader reads through CG_PARTICLE_* and passes in.
 //
 //     int n = fx_particle_index(FX_QUAD_INDEX, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM0.y);   // -1 past the draw's count
 //     vec3 world = fx_particle_corner(centre, corner, vec2(length, width), angle, right, up);
 #pragma once
+#include "crystalgraphics:shaders/lib/rng.glsl"
 
 // The record a vertex's quad or stroke reads: base + its index, or -1 when the draw has fewer particles than slots.
 int fx_particle_index(float slot, float base, float count) {
@@ -89,26 +90,56 @@ void fx_particle_facing(int mode, vec3 centre, vec3 velocity, vec3 axis, vec3 ey
     }
 }
 
-// A flipbook frame: Godot's (frame = floor((offset + progress * cycles) * frames), looping or held at the last) laid
-// out as bevy_hanabi's (column frame % columns, row frame / columns, the first row at the top). sheet: columns, rows,
-// frames, cycles over the particle's life; uv 0..1 across the quad, y up. Answers the sheet's uv of this frame in xy and
-// of the next in zw, and in blend how far between them: Unity's flipbook blending, for a sheet with few frames.
-vec4 fx_particle_flipbook(vec2 uv, float progress, float offset, vec4 sheet, bool loops, out float blend) {
-    float frames = max(sheet.z, 1.0);
-    float at = (offset + progress * sheet.w) * frames;
-    float first = floor(at);
-    blend = at - first;
-    float second = first + 1.0;
-    if (loops) {
-        first = mod(first, frames);
-        second = mod(second, frames);
+// A flipbook (CgVfxFlipbook): Niagara's sub-image index, then the rect of each frame it names (aaa-design §2.26).
+// subImage: columns, rows, blends (0 or 1), a loop's random start (0 or 1); rows 0 is a rect table of `columns` frames,
+// read from the table texture. subUv: mode (FX_SUBUV_*), first frame, last frame (-1 the last), rate (a loop's frames a
+// second, a random frame's changes a second, 0 for once at birth).
+#define FX_SUBUV_LINEAR 0
+#define FX_SUBUV_LOOP 1
+#define FX_SUBUV_RANDOM 2
+// A rect table's texels to a row: GL 3.3's smallest texture limit.
+#define FX_SUBIMAGE_ROW 1024
+
+float fx_subimage_count(vec4 subImage) {
+    return max(subImage.y > 0.5 ? subImage.x * subImage.y : subImage.x, 1.0);
+}
+
+// The frames a particle shows, a and b, and how far it is from a to b: Niagara's stateless Sub UV Animation from its age
+// (seconds), progress (0..1) and seed. Linear runs first to last over the life; a loop wraps inside the range once every
+// count / rate seconds; random holds a whole frame between changes and never blends.
+void fx_subuv_frames(vec4 subUv, vec4 subImage, float age, float progress, float seed,
+                     out float a, out float b, out float blend) {
+    float frames = fx_subimage_count(subImage);
+    float first = clamp(floor(subUv.y + 0.5), 0.0, frames - 1.0);
+    float last = subUv.z < 0.0 ? frames - 1.0 : clamp(floor(subUv.z + 0.5), first, frames - 1.0);
+    float count = last - first + 1.0;
+    int mode = int(subUv.x + 0.5);
+    float at;
+    if (mode == FX_SUBUV_RANDOM) {
+        uint step = subUv.w > 0.0 ? uint(max(age, 0.0) * subUv.w) : 0u;
+        at = min(floor(cg_rng_unit(cg_rng(floatBitsToUint(seed), 0u, step, 7u)) * count), count - 1.0);
+    } else if (mode == FX_SUBUV_LOOP) {
+        at = mod(max(age, 0.0) * subUv.w + (subImage.w > 0.5 ? seed * count : 0.0), count);
     } else {
-        first = min(first, frames - 1.0);
-        second = min(second, frames - 1.0);
-        if (first >= frames - 1.0) blend = 0.0;
+        at = clamp(progress, 0.0, 1.0) * (count - 1.0);
     }
-    vec2 cell = vec2(1.0) / sheet.xy;
-    vec2 a = vec2(mod(first, sheet.x), sheet.y - 1.0 - floor((first + 0.5) / sheet.x));
-    vec2 b = vec2(mod(second, sheet.x), sheet.y - 1.0 - floor((second + 0.5) / sheet.x));
-    return vec4((a + uv) * cell, (b + uv) * cell);
+    float whole = min(floor(at), count - 1.0);
+    blend = subImage.z > 0.5 && mode != FX_SUBUV_RANDOM ? at - whole : 0.0;
+    a = first + whole;
+    b = mode == FX_SUBUV_LOOP ? first + mod(whole + 1.0, count) : min(a + 1.0, last);
+}
+
+// Frame f's rect in the image, (u0, v0, u1, v1) with v down from its top: a cell of the grid, frame 0 at the top left
+// and rows going down (Niagara's SubImageSize), or rect f of the table.
+vec4 fx_subimage_rect(sampler2D table, vec4 subImage, float f) {
+    int i = int(f + 0.5);
+    if (subImage.y < 0.5) return texelFetch(table, ivec2(i % FX_SUBIMAGE_ROW, i / FX_SUBIMAGE_ROW), 0);
+    float column = mod(float(i), subImage.x), row = floor((float(i) + 0.5) / subImage.x);
+    return vec4(column, row, column + 1.0, row + 1.0) / subImage.xyxy;
+}
+
+// Where in the image a quad's point samples frame f: corner -1..1 across the quad, y up, the quad's top the rect's top.
+vec2 fx_subimage_uv(sampler2D table, vec4 subImage, float f, vec2 corner) {
+    vec4 rect = fx_subimage_rect(table, subImage, f);
+    return mix(rect.xy, rect.zw, vec2(corner.x * 0.5 + 0.5, 0.5 - corner.y * 0.5));
 }
