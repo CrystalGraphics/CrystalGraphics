@@ -5,6 +5,7 @@ the engine moves toward Unreal's (Niagara's) model; what it does not cover yet i
 
 | Page | For |
 |---|---|
+| [`effects.md`](effects.md) | how a layer draws: its blend, two-sidedness, depth and clip, and where it draws among the rest |
 | [`particles.md`](particles.md) | emitters and their particles: when they spawn (loops, rates, bursts), turning them with their effect, stopping and killing them |
 
 Each page is written for someone who has never used the engine: every example is complete and checked against the

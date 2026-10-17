@@ -125,6 +125,9 @@ public final class CgMaterial {
      */
     private final CgMaterialShader cgMaterialShader;
 
+    /** Its render state where it is not its shader's: the blend and clip are its shader asset's, cull and depth write applied per pass here. */
+    private final CgMaterialState state;
+
     /**
      * Last shader revision seen by this material instance.
      * Starts at {@code -1}; set to {@link CgMaterialShader#getRevisionNumber()} after
@@ -279,11 +282,17 @@ public final class CgMaterial {
     /** Private no-arg constructor used by {@link #forTest} overloads. */
     private CgMaterial() {
         this.cgMaterialShader = null;
+        this.state = CgMaterialState.SHADER;
     }
 
     /** Private constructor used by {@link #create(String)}, {@link #newInstance(String)}, and {@link #fromShader(CgMaterialShader)}. */
     private CgMaterial(CgMaterialShader asset) {
+        this(asset, CgMaterialState.SHADER);
+    }
+
+    private CgMaterial(CgMaterialShader asset, CgMaterialState state) {
         this.cgMaterialShader = asset;
+        this.state = state;
     }
 
     // ── Factory ───────────────────────────────────────────────────────────────
@@ -344,6 +353,25 @@ public final class CgMaterial {
     }
 
     /**
+     * {@link #newInstance(String)} drawn under {@code state} where it is not the shader's: Unreal's material instance
+     * overriding its parent's blend mode or two-sidedness.
+     *
+     * <pre>{@code
+     * CgMaterial glow = CgMaterial.newInstance("mymod:shaders/fx/soft.shader",
+     *         CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).twoSided().build());
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Materials of one path and one blend and clip share programs, whatever their cull and depth write.</li>
+     *   <li>A state the shader refuses (a depth write under its {@code "Depth"} tag) fails at its parse, logged like
+     *       any parse error: {@link #pipeline} answers null.</li>
+     * </ul>
+     */
+    public static CgMaterial newInstance(String resourcePath, CgMaterialState state) {
+        return new CgMaterial(CgMaterialShaderRegistry.get().getOrCreate(resourcePath, state), state);
+    }
+
+    /**
      * Creates a new {@code CgMaterial} from an explicit {@link CgMaterialShader} asset.
      * Intended for shader-graph-generated or programmatically constructed shaders that have
      * no backing resource path.
@@ -385,6 +413,16 @@ public final class CgMaterial {
      */
     public static CgMaterial fromSource(String source) {
         return new CgMaterial(CgMaterialShaderRegistry.get().getOrCreateGenerated(source));
+    }
+
+    /** {@link #fromSource(String)} drawn under {@code state}, as {@link #newInstance(String, CgMaterialState)} is. */
+    public static CgMaterial fromSource(String source, CgMaterialState state) {
+        return new CgMaterial(CgMaterialShaderRegistry.get().getOrCreateGenerated(source, state), state);
+    }
+
+    /** Its render state where it is not its shader's; {@link CgMaterialState#SHADER} for none. */
+    public CgMaterialState state() {
+        return state;
     }
 
     /**
@@ -1074,18 +1112,32 @@ public final class CgMaterial {
      */
     public CgRenderState getPassRenderState(CgRenderPassVariant variant) {
         if (cgMaterialShader == null) return renderState;
-        CgParsedShader parsed = cgMaterialShader.getLastParsed();
+        CgParsedShader parsed = cgMaterialShader.ensureParsed();
         if (parsed == null) return CgRenderState.DEFAULT;
         if (variant == CgRenderPassVariant.FORWARD) {
             if (forwardRenderState != null && forwardRenderStateParse == parsed) return forwardRenderState;
             CgParsedPass forwardPass = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-            CgRenderState state = forwardPass == null ? CgRenderState.DEFAULT : forwardPass.renderState();
-            forwardRenderState = state;
+            CgRenderState own = forwardPass == null ? CgRenderState.DEFAULT : forwardPass.renderState();
+            forwardRenderState = state.onPass(own, true);
             forwardRenderStateParse = parsed;
-            return state;
+            return forwardRenderState;
         }
-        return cgMaterialShader.getRenderState(variant.lightModeName());
+        CgRenderState own = cgMaterialShader.getRenderState(variant.lightModeName());
+        if (state.cull() == null) return own;
+        // One derived state per pass's own, so its pipeline is the same object every frame.
+        CgRenderState[] held = passStates;
+        int at = variant.ordinal() * 2;
+        if (held != null && held[at] == own) return held[at + 1];
+        CgRenderState[] next = held == null ? new CgRenderState[CgRenderPassVariant.values().length * 2] : held.clone();
+        next[at] = own;
+        next[at + 1] = state.onPass(own, false);
+        passStates = next;
+        return next[at + 1];
     }
+
+    /** Each pass's own state and its state under {@link #state}'s cull, by variant: replaced whole, never edited. */
+    @Nullable
+    private volatile CgRenderState[] passStates;
 
     /**
      * Binds the compiled program for the given pass variant.

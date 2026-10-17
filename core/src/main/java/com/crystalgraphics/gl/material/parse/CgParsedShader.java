@@ -1,12 +1,19 @@
 package com.crystalgraphics.gl.material.parse;
 
 import com.github.bsideup.jabel.Desugar;
+import com.crystalgraphics.api.material.CgBlendMode;
+import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
+import com.crystalgraphics.api.state.CgDepthState;
+import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Immutable structural representation of a parsed {@code .shader} file.
@@ -110,6 +117,70 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
          * is solid in its middle and soft at its edge: smoke. One more draw for each of its draws.
          */
         PREPASS
+    }
+
+    /**
+     * This parse as a material under {@code state} compiles it: each Forward pass under its blend, and with its clip
+     * the {@link DepthMode#CLIP} mode, as if the shader had authored them. Cull and depth write are left to the
+     * pipeline ({@link CgMaterialState#onPass}); only their refusals are checked here.
+     *
+     * <pre>{@code
+     * CgParsedShader additive = parsed.withState(CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).build(), path);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A codeless Emissive pass that took the Forward pass's blend takes the new one; under
+     *       {@link CgBlendMode#SUBTRACT} it adds, since light is never subtracted from the glow. One with a blend of its
+     *       own keeps it, and a Distortion pass keeps the engine's.</li>
+     *   <li>The pass bodies are the same strings, so a codeless Emissive pass is still recognised as one.</li>
+     * </ul>
+     *
+     * @throws CgShaderParseException for a state the shader refuses: a depth write where its {@code "Depth"} tag owns
+     *                                depth, or a clip on a {@code "Prepass"} shader
+     */
+    public CgParsedShader withState(CgMaterialState state, String resourcePath) {
+        if (state.depthWrite() != null && depthMode != DepthMode.NONE) {
+            throw new CgShaderParseException("[" + resourcePath + "] Its \"Depth\" = \"" + (depthMode == DepthMode.CLIP
+                    ? "Clip" : "Prepass") + "\" owns its depth write: a material state may not set depthWrite");
+        }
+        if (state.clip() && depthMode == DepthMode.PREPASS) {
+            throw new CgShaderParseException("[" + resourcePath + "] A \"Depth\" = \"Prepass\" shader draws its depth "
+                    + "first; a material state may not clip it");
+        }
+        if (!state.changesProgram()) return this;
+        CgParsedPass firstForward = getPassByLightMode(CgParsedPass.LIGHT_MODE_FORWARD);
+        CgRenderState authored = firstForward == null ? null : firstForward.renderState();
+        CgBlendMode mode = state.blend();
+        List<CgParsedPass> out = new ArrayList<>(passes.size());
+        for (CgParsedPass pass : passes) {
+            CgRenderState rs = pass.renderState();
+            if (CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode())) {
+                rs = forwardUnder(rs, state);
+            } else if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode()) && authored != null
+                    && pass.fragmentBody() == firstForward.fragmentBody()) {
+                // A codeless pass copied the Forward pass's state where it authored none: what it copied follows.
+                CgRenderState forward = forwardUnder(authored, state);
+                if (mode != null && Objects.equals(rs.getBlend(), authored.getBlend())) {
+                    rs = rs.withBlend((mode == CgBlendMode.SUBTRACT ? CgBlendMode.ADDITIVE : mode).state());
+                }
+                if (Objects.equals(rs.getDepth(), authored.getDepth())) rs = rs.withDepth(forward.getDepth());
+            }
+            out.add(rs == pass.renderState() ? pass : new CgParsedPass(pass.lightMode(), pass.name(), rs,
+                    pass.v2fStructBody(), pass.globalDecls(), pass.vertexBody(), pass.fragmentBody(), pass.fragOutput()));
+        }
+        return new CgParsedShader(shaderType, properties, featureNames, engineBuffers, renderQueue, renderType,
+                castShadows, sceneColorMargin, unlit, unfogged, linearColor, unmediated,
+                state.clip() ? DepthMode.CLIP : depthMode, Collections.unmodifiableList(out), buffers, bufferStructs);
+    }
+
+    /** A Forward pass's {@code rs} under {@code state}'s blend, and with its clip writing depth as the parser makes it. */
+    private static CgRenderState forwardUnder(CgRenderState rs, CgMaterialState state) {
+        if (state.blend() != null) rs = rs.withBlend(state.blend().state());
+        if (state.clip()) {
+            CgDepthState depth = rs.getDepth() != null ? rs.getDepth() : CgDepthState.TEST_WRITE;
+            rs = rs.withDepth(new CgDepthState(depth.test(), true, depth.compareFunc()));
+        }
+        return rs;
     }
 
     /** The declared buffer of that name, or null. */

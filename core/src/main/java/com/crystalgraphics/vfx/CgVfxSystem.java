@@ -930,10 +930,12 @@ public final class CgVfxSystem {
     }
 
     /**
-     * The sort layer an effect's draw of {@code layer} goes in: {@link CgSortLayer#EFFECTS}, or with
-     * {@code -Dcrystalgraphics.vfx.sharedDistortion=true} every distortion layer after all of them.
+     * The sort layer an effect's draw of {@code layer} goes in: its own ({@code CgVfxLayer.Builder.sortLayer}), else
+     * {@link CgSortLayer#EFFECTS}, or with {@code -Dcrystalgraphics.vfx.sharedDistortion=true} every distortion layer
+     * after all of them.
      */
     public static CgSortLayer sortLayer(CgVfxLayer layer) {
+        if (layer.sortLayer() != null) return layer.sortLayer();
         return SHARED_DISTORTION.get() && layer.role() == CgVfxLayer.Role.DISTORTION ? DISTORTION : CgSortLayer.EFFECTS;
     }
 

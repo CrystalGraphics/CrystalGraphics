@@ -45,6 +45,18 @@ public class CgVfxLookTest {
     }
 
     @Test
+    public void anOrderHintSortsWithinItsRoleAndTiesKeepTheLooksOrder() {
+        CgVfxLayer late = CgVfxLayer.of("test:late.shader").on(BODY).order(12).build();
+        CgVfxLayer early = CgVfxLayer.of("test:early.shader").on(BODY).order(3).build();
+        CgVfxLayer tie = CgVfxLayer.of("test:tie.shader").on(BODY).order(3).build();
+        CgVfxLayer smoke = CgVfxLayer.of("test:smoke2.shader").on(BODY).role(CgVfxLayer.Role.SMOKE).order(200).build();
+        CgVfxKit kit = CgVfxKit.of("test:look/hints").layer(late).layer(early).layer(tie).layer(smoke).build();
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(kit).build();
+        assertEquals("a role still comes first", List.of(smoke, early, tie, late), look.layers());
+        assertEquals(3, look.on(BODY)[3].order());
+    }
+
+    @Test
     public void aKitDroppedTakesItsLayersAndEmittersAndAReplacementTakesItsPlace() {
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(BODY_KIT, HEAD_KIT, BLAST_KIT).build();
         CgVfxLook without = look.derive().without(HEAD_KIT).build();

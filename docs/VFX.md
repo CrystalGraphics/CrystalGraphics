@@ -611,7 +611,8 @@ public static final CgVfxSlot ARCS = CgVfxSlot.pathRibbons("crystalgraphics:wave
 
 ### Draw order
 
-Within an effect, layers draw by **role**, then in the order the look holds them. Nothing is numbered by hand.
+Within an effect, layers draw by **role**, then by an order hint where a layer gives one, then in the order the look
+holds them ([`vfx/effects.md`](vfx/effects.md) § *Where a layer draws*).
 
 | Role | Draws | For |
 |---|---|---|

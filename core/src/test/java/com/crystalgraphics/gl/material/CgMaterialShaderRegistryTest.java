@@ -1,5 +1,7 @@
 package com.crystalgraphics.gl.material;
 
+import com.crystalgraphics.api.material.CgBlendMode;
+import com.crystalgraphics.api.material.CgMaterialState;
 import org.junit.After;
 import org.junit.Test;
 
@@ -22,6 +24,22 @@ public class CgMaterialShaderRegistryTest {
         CgMaterialShader a = CgMaterialShaderRegistry.get().getOrCreate("test:shaders/foo.shader");
         CgMaterialShader b = CgMaterialShaderRegistry.get().getOrCreate("test:shaders/foo.shader");
         assertSame("Same path must return the same CgMaterialShader instance", a, b);
+    }
+
+    @Test
+    public void aBlendOrClipIsAnAssetOfItsOwnAndCullIsNot() {
+        CgMaterialShaderRegistry registry = CgMaterialShaderRegistry.get();
+        CgMaterialShader shaders = registry.getOrCreate("test:shaders/foo.shader");
+        CgMaterialState additive = CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).build();
+        CgMaterialShader added = registry.getOrCreate("test:shaders/foo.shader", additive);
+        assertNotSame(shaders, added);
+        assertEquals(additive, added.getState());
+        assertSame("two-sided shares the shader's programs", shaders,
+                registry.getOrCreate("test:shaders/foo.shader", CgMaterialState.builder().twoSided().build()));
+        assertSame("cull is dropped from the program's state", added, registry.getOrCreate("test:shaders/foo.shader",
+                CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).twoSided().depthWrite(false).build()));
+        assertNotSame(added, registry.getOrCreate("test:shaders/foo.shader",
+                CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).clip().build()));
     }
 
     @Test

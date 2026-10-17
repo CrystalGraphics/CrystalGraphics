@@ -643,6 +643,9 @@ CgCullState.BACK               // GL_BACK face culling
 
 `state.apply()` / `state.clear()` — always bracket render work to prevent GL state leaks.
 
+A material drawn under another blend, cull, depth write or clip than its shader's is a `CgMaterialState`
+(`CgMaterial.newInstance(path, state)`): [`SHADERS.md`](SHADERS.md) § *A material's state*.
+
 **Package guide**: `api/state/CLAUDE.md`
 
 ### Instanced renderers

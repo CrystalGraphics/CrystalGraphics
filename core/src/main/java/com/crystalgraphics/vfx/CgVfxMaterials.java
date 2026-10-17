@@ -229,7 +229,7 @@ final class CgVfxMaterials {
         String key = kind + "|" + r.signature;
         material = mine.get(key);
         if (material == null) {
-            material = CgMaterial.newInstance(r.layer.shader());
+            material = CgMaterial.newInstance(r.layer.shader(), r.layer.state());
             configure(material, r, kind);
             mine.put(key, material);
             all.add(material);
@@ -249,7 +249,7 @@ final class CgVfxMaterials {
         material(r, CgVfxSlot.Kind.PARTICLES);
         CgMaterial material = r.byPool.get(pool);
         if (material == null) {
-            material = CgMaterial.newInstance(r.layer.shader());
+            material = CgMaterial.newInstance(r.layer.shader(), r.layer.state());
             configure(material, r, CgVfxSlot.Kind.PARTICLES);
             materials.get(r.layer).put(CgVfxSlot.Kind.PARTICLES + "|" + r.signature + "|pool" + (nextPool++), material);
             all.add(material);

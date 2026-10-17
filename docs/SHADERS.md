@@ -746,6 +746,36 @@ boolean on = mat.isKeywordEnabled("FOG_ON");  // false by default
 // Throws IllegalArgumentException for undeclared names
 ```
 
+### A material's state: drawing one shader several ways
+
+A material may draw its shader under another blend, cull, depth write or clip than the shader authors: Unreal's
+material instance overriding its parent's blend mode and two-sidedness. A shader written with no `Blend` of its own
+draws under each as if it had authored it.
+
+```java
+CgMaterial glow = CgMaterial.newInstance("mymod:shaders/fx/soft.shader",
+        CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).twoSided().build());
+CgMaterial ink = CgMaterial.newInstance("mymod:shaders/fx/ink.shader",
+        CgMaterialState.builder().blend(CgBlendMode.ALPHA).clip().build());   // "Depth" = "Clip", threshold _Clip
+```
+
+| `CgBlendMode` | Stands for |
+|---|---|
+| `OPAQUE` | `Blend OFF` |
+| `ALPHA` | `Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA` |
+| `PREMULTIPLIED` | `Blend ONE ONE_MINUS_SRC_ALPHA` |
+| `ADDITIVE` | `Blend ONE ONE` |
+| `SUBTRACT` | `Blend ONE ONE` with `BlendEquation REV_SUB`: fogged and decoded as `ADDITIVE`, its glow added |
+
+- **A blend or a clip is a shader asset of its own** (`CgMaterialShaderRegistry.getOrCreate(path, state)`): the
+  generated fragment `main` is built from them, so each compiles once, on first use. **Cull and depth write are
+  pipeline state** on the shader's own programs (`CgMaterialState.onPass`).
+- Applied to the parse (`CgParsedShader.withState`): each Forward pass takes the blend; a codeless Emissive pass takes
+  whatever it copied from the Forward pass (blend, depth), a blend of its own kept; a Distortion pass keeps the engine's.
+- Refused at parse: `depthWrite` under a `"Depth"` tag or with `clip()`; `clip()` on a `"Prepass"` shader.
+- The queue stays the shader's.
+- In a look: `CgVfxLayer.Builder.state` ([`vfx/effects.md`](vfx/effects.md)).
+
 ### GLSL Standard Library
 
 Located at `src/main/resources/assets/crystalgraphics/shaders/lib/`. All files use `#pragma once`.

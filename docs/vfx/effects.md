@@ -1,0 +1,105 @@
+# Effects: how a layer draws
+
+A look draws through its layers: each a `.shader` on one or more slots (see [`../VFX.md`](../VFX.md) § *Kits, layers
+and slots*). This page is how a layer draws: how it blends with what is behind it, which faces it shows, whether it
+writes depth, and where it draws among the rest. In Unreal these are a material instance's base property overrides
+and a Niagara renderer's sort order.
+
+## A layer's render state: blend, two-sided, depth, clip
+
+A shader authors its own `RenderState`. A layer can draw it under another one, so one shader serves every way a kit
+draws it: the same soft sprite added for fire and blended over for smoke.
+
+```java
+static final String SOFT = "mymod:shaders/vfx/soft.shader";
+
+static final CgVfxLayer FIRE = CgVfxLayer.of(SOFT).on(FLAMES)
+        .state(CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).twoSided().build())
+        .build();
+
+static final CgVfxLayer SMOKE = CgVfxLayer.of(SOFT).on(PUFFS)
+        .state(CgMaterialState.builder().blend(CgBlendMode.PREMULTIPLIED).build())
+        .build();
+```
+
+The same state on a material of your own, outside a look:
+
+```java
+CgMaterial glow = CgMaterial.newInstance(SOFT, CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).build());
+CgWorldRenderer.get().draw(mesh, glow).at(x, y, z).submit();
+```
+
+### The blend modes
+
+| `CgBlendMode` | The shader's line it stands for | Unreal | The fragment writes |
+|---|---|---|---|
+| `OPAQUE` | `Blend OFF` | Opaque | its colour |
+| `ALPHA` | `Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA` | Translucent | straight colour and its alpha |
+| `PREMULTIPLIED` | `Blend ONE ONE_MINUS_SRC_ALPHA` | AlphaComposite | colour already times its coverage, and the coverage |
+| `ADDITIVE` | `Blend ONE ONE` | Additive | light; its alpha is unused |
+| `SUBTRACT` | `Blend ONE ONE`, `BlendEquation REV_SUB` | (none) | what it takes away from behind it |
+
+A shader drawn under a mode draws exactly as if it had authored that line: its fog, its decode into the HDR scene,
+how smoke in front dims it, and whether its glow merges into its own draw all follow the mode. `SUBTRACT` is fogged
+as `ADDITIVE` is, and its glow (a codeless Emissive pass) adds rather than subtracts.
+
+### Two-sided and depth
+
+```java
+CgMaterialState.builder().twoSided().build();                  // both faces: Unreal's Two Sided
+CgMaterialState.builder().cull(CgCullState.FRONT).build();     // the inside of a dome
+CgMaterialState.builder().depthWrite(true).build();            // its Forward pass writes depth
+```
+
+Two-sided applies to every pass of the material, its glow and its haze included.
+
+### Clipped: solid where it covers
+
+`clip()` is Unreal's Masked: a fragment below the threshold is discarded, the rest writes depth, so what draws later
+behind it stays hidden. The threshold is the material's `_Clip` (0.5 where the shader declares none). The shader says
+where it is solid with `cg_Clip(value)` ([`../SHADERS.md`](../SHADERS.md) § *Depth from a transparent material*).
+
+```java
+static final CgVfxLayer INK = CgVfxLayer.of("mymod:shaders/vfx/ink.shader").on(STROKES)
+        .state(CgMaterialState.builder().blend(CgBlendMode.ALPHA).clip().build())
+        .set("_Clip", 0.33f)
+        .build();
+```
+
+### What it costs
+
+- **Each blend mode, and a clip, compiles once**: the shader's programs under that mode, made the first time a layer
+  draws with it, and shared by every layer and material asking for it. Warm them with the look (`VFX.prepare(LOOK)`).
+- **Cull and depth write compile nothing**: they are the draw's pipeline state, on the same programs.
+
+## Where a layer draws: its order and its sort layer
+
+Within its effect, a layer draws by its role (smoke, light, distortion, surface), then by its order hint, then in
+the order the look holds it. The hint is Niagara's renderer sort order: lowest first, 0 unless given.
+
+```java
+static final CgVfxKit RINGS = CgVfxKit.of("mymod:rings")
+        .layer(CgVfxLayer.of(GLOW).on(RING).order(12).build())     // over everything of order 0 to 11
+        .layer(CgVfxLayer.of(CORE).on(RING).order(4).build())      // drawn before it, though added after
+        .build();
+```
+
+A layer can also leave its effect's place among every other translucent draw in the world, by a sort layer: Unreal's
+translucency sort priority. A later sort layer draws after an earlier one whatever their distances.
+
+```java
+CgVfxLayer.of(FLASH).on(BALL).sortLayer(CgSortLayer.OVERLAY).build()      // over every effect
+```
+
+An imported kit's render layers are order hints: a kit converted from another engine keeps its draw order this way.
+
+## Easy to get wrong
+
+- **The mode is not the shader's queue.** A shader in the opaque queue drawn `ADDITIVE` still draws with the opaque
+  pass; give a blended shader `Queue = "Transparent"`.
+- **The fragment writes for its mode.** A shader whose colour is straight drawn `PREMULTIPLIED` comes out too bright at
+  its edges: multiply by the alpha, or draw it `ALPHA`.
+- **A depth write and a clip are refused together**, and either on a shader whose `"Depth"` tag already owns its depth
+  (`Clip` or `Prepass`): the shader fails to load, the log naming the state.
+- **An order hint orders within a role**: a `SURFACE` layer of order 0 still draws after a `SMOKE` layer of order 200.
+- **An order hint is 0 to 255**; `order(n)` throws for another.

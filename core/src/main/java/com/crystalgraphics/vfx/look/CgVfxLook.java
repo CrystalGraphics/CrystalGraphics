@@ -7,6 +7,7 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -34,8 +35,8 @@ import java.util.function.Consumer;
  * }</pre>
  *
  * <ul>
- *   <li>Layers draw by role ({@link CgVfxLayer.Role}), then in the order they were added; nothing is numbered by
- *       hand.</li>
+ *   <li>Layers draw by role ({@link CgVfxLayer.Role}), then by their order hint ({@code CgVfxLayer.Builder.order}, 0
+ *       unless given), then in the order they were added.</li>
  *   <li>{@code set}, {@code link} and {@code scaled} apply in the order written: {@code scaled(0.5f)} after
  *       {@code set(RADIUS, 1f)} leaves RADIUS 0.5.</li>
  *   <li>A layer's material is made once per layer object, so looks built from the same kits share them.</li>
@@ -100,9 +101,12 @@ public final class CgVfxLook {
         }
         List<CgVfxLayer> ordered = new ArrayList<>();
         for (CgVfxLayer.Role role : CgVfxLayer.Role.values()) {
+            List<CgVfxLayer> ofRole = new ArrayList<>();
             for (Entry e : b.entries) {
-                if (e.part instanceof CgVfxLayer && ((CgVfxLayer) e.part).role == role) ordered.add((CgVfxLayer) e.part);
+                if (e.part instanceof CgVfxLayer && ((CgVfxLayer) e.part).role == role) ofRole.add((CgVfxLayer) e.part);
             }
+            ofRole.sort(Comparator.comparingInt(CgVfxLayer::order));   // stable: ties keep the look's order
+            ordered.addAll(ofRole);
         }
         if (ordered.size() > 256) throw new IllegalStateException("A look draws at most 256 layers, not " + ordered.size());
         List<Placed> all = new ArrayList<>();
@@ -146,7 +150,7 @@ public final class CgVfxLook {
         return layout;
     }
 
-    /** Its layers in draw order: by role, then as added. */
+    /** Its layers in draw order: by role, then order hint, then as added. */
     public List<CgVfxLayer> layers() {
         return layers;
     }

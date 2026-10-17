@@ -11,6 +11,7 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.shader.CgPreprocessorException;
@@ -138,6 +139,13 @@ public final class CgMaterialShader implements CgReloadable {
      */
     private final String generatedSource;
 
+    /**
+     * The blend and clip its programs are compiled under ({@link CgMaterialState#changesProgram}): applied to every
+     * parse, so each is a shader asset of its own beside the shader's. {@link CgMaterialState#SHADER} for the shader's.
+     */
+    @Getter
+    private final CgMaterialState state;
+
     /** Whether this shader's source came from memory rather than from a resource. */
     public boolean isGenerated() {
         return generatedSource != null;
@@ -246,18 +254,23 @@ public final class CgMaterialShader implements CgReloadable {
 
     // ── Constructor (package-private — use CgMaterialShaderRegistry) ─────────
 
-    private CgMaterialShader(String resourcePath, String generatedSource) {
+    private CgMaterialShader(String resourcePath, String generatedSource, CgMaterialState state) {
         this.resourcePath = resourcePath;
         this.generatedSource = generatedSource;
+        this.state = state;
     }
 
     /**
      * Creates a new {@code CgMaterialShader} for the given resource path, marked dirty
      * so it will compile on first use.
-     * Called exclusively by {@link CgMaterialShaderRegistry#getOrCreate(String)}.
+     * Called exclusively by {@link CgMaterialShaderRegistry#getOrCreate(String, CgMaterialState)}.
      */
     static CgMaterialShader create(String resourcePath) {
-        CgMaterialShader s = new CgMaterialShader(resourcePath, null);
+        return create(resourcePath, CgMaterialState.SHADER);
+    }
+
+    static CgMaterialShader create(String resourcePath, CgMaterialState state) {
+        CgMaterialShader s = new CgMaterialShader(resourcePath, null, state);
         s.markDirty();
         return s;
     }
@@ -268,10 +281,10 @@ public final class CgMaterialShader implements CgReloadable {
      * <p>{@code label} is only ever a name: it appears in log lines and is handed to the parser so a
      * syntax error has something to point at. It is not a path and nothing tries to load it.</p>
      *
-     * <p>Called exclusively by {@link CgMaterialShaderRegistry#getOrCreateGenerated(String)}.</p>
+     * <p>Called exclusively by {@link CgMaterialShaderRegistry#getOrCreateGenerated(String, CgMaterialState)}.</p>
      */
-    static CgMaterialShader createGenerated(String label, String source) {
-        CgMaterialShader s = new CgMaterialShader(label, source);
+    static CgMaterialShader createGenerated(String label, String source, CgMaterialState state) {
+        CgMaterialShader s = new CgMaterialShader(label, source, state);
         s.markDirty();
         return s;
     }
@@ -318,7 +331,7 @@ public final class CgMaterialShader implements CgReloadable {
                 return null;
             }
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.parse")) {
-                parsed = CgShaderParser.parse(source, resourcePath);
+                parsed = CgShaderParser.parse(source, resourcePath).withState(state, resourcePath);
                 requireMargin(parsed, source);
                 requireUnits(parsed);
             } catch (CgShaderParseException e) {
@@ -461,7 +474,7 @@ public final class CgMaterialShader implements CgReloadable {
             parsed = lastParsed;
             if (parsed == null || !source.equals(parsedSource)) {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.parse")) {
-                    parsed = CgShaderParser.parse(source, resourcePath);
+                    parsed = CgShaderParser.parse(source, resourcePath).withState(state, resourcePath);
                     requireMargin(parsed, source);
                     requireUnits(parsed);
                 } catch (CgShaderParseException e) {

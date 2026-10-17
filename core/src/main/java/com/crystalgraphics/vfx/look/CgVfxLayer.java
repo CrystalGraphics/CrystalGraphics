@@ -1,10 +1,12 @@
 package com.crystalgraphics.vfx.look;
 
+import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
@@ -52,7 +54,10 @@ import java.util.function.Supplier;
  *   <li>Bound values are read per draw from the effect's own values, so effects playing different values still batch;
  *       constants are the layer's material, made once per layer.</li>
  *   <li>A name the shader does not declare, or of the wrong kind, throws when the layer's first material is made.</li>
- *   <li>Order within an effect is the look's list order within a {@link Role}: no numbers.</li>
+ *   <li>Order within an effect is by {@link Role}, then {@link Builder#order} (Niagara's sort order hint, 0 unless
+ *       given), then the look's list order.</li>
+ *   <li>{@link Builder#state} draws its shader under another blend, cull or depth write, as a kit's material
+ *       authors it: one shader for every state a kit asks of it.</li>
  *   <li>Immutable, and shared: a look built from kits shares their layers' materials. A {@link CgVfxTuning} may change
  *       its constants for the run, in every look drawing it.</li>
  * </ul>
@@ -104,6 +109,9 @@ public final class CgVfxLayer {
     final float size;
     final CgVfxParam.Scalar sizeParam;
     final Role role;
+    final int order;
+    final CgSortLayer sortLayer;
+    final CgMaterialState state;
     final CgQuality from;
     final boolean volume, closed;
     final Strip strip;
@@ -129,6 +137,9 @@ public final class CgVfxLayer {
         this.size = b.size;
         this.sizeParam = b.sizeParam;
         this.role = b.role;
+        this.order = b.order;
+        this.sortLayer = b.sortLayer;
+        this.state = b.state;
         this.from = b.from;
         this.volume = b.volume;
         this.closed = b.closed;
@@ -161,6 +172,9 @@ public final class CgVfxLayer {
         b.size = size;
         b.sizeParam = sizeParam;
         b.role = role;
+        b.order = order;
+        b.sortLayer = sortLayer;
+        b.state = state;
         b.from = from;
         b.volume = volume;
         b.closed = closed;
@@ -202,6 +216,21 @@ public final class CgVfxLayer {
 
     public Role role() {
         return role;
+    }
+
+    /** Its sort order hint within its role ({@link Builder#order}): lowest draws first; 0 unless given. */
+    public int order() {
+        return order;
+    }
+
+    /** The sort layer it draws in among every translucent draw ({@link Builder#sortLayer}), or null for the engine's. */
+    public CgSortLayer sortLayer() {
+        return sortLayer;
+    }
+
+    /** The render state its materials draw under where it is not its shader's ({@link Builder#state}). */
+    public CgMaterialState state() {
+        return state;
     }
 
     /** The lowest quality tier that draws it. */
@@ -340,6 +369,9 @@ public final class CgVfxLayer {
         private float size = 1f;
         private CgVfxParam.Scalar sizeParam;
         private Role role = Role.SURFACE;
+        private int order;
+        private CgSortLayer sortLayer;
+        private CgMaterialState state = CgMaterialState.SHADER;
         private CgQuality from = CgQuality.LOW;
         private boolean volume, closed;
         private Strip strip = Strip.NONE;
@@ -389,6 +421,46 @@ public final class CgVfxLayer {
 
         public Builder role(Role role) {
             this.role = Objects.requireNonNull(role, "role");
+            return this;
+        }
+
+        /**
+         * Where it draws among its role's layers, lowest first, ties in the look's order: Niagara's renderer sort order
+         * hint. An imported kit's render layers are this.
+         *
+         * <pre>{@code
+         * CgVfxLayer.of(GLOW).on(BALL).order(12).build()      // over the layers of order 0 to 11
+         * }</pre>
+         */
+        public Builder order(int hint) {
+            if (hint < 0 || hint > 255) throw new IllegalArgumentException("order " + hint + ", 0 to 255");
+            this.order = hint;
+            return this;
+        }
+
+        /**
+         * The sort layer its draws go in among every translucent draw in the world, Unreal's translucency sort
+         * priority: drawn after every draw of an earlier layer, whatever their distances. The effects' own unless given.
+         *
+         * <pre>{@code
+         * CgVfxLayer.of(FLASH).on(BALL).sortLayer(CgSortLayer.OVERLAY).build()
+         * }</pre>
+         */
+        public Builder sortLayer(CgSortLayer layer) {
+            this.sortLayer = Objects.requireNonNull(layer, "layer");
+            return this;
+        }
+
+        /**
+         * Draws its shader under {@code state} where it is not the shader's: another blend, two-sided, a depth write,
+         * a clip. One shader serves every state a kit asks of it; each blend compiles once.
+         *
+         * <pre>{@code
+         * CgVfxLayer.of(SOFT).on(BALL).state(CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).twoSided().build())
+         * }</pre>
+         */
+        public Builder state(CgMaterialState state) {
+            this.state = Objects.requireNonNull(state, "state");
             return this;
         }
 

@@ -3,8 +3,11 @@ package com.crystalgraphics.vulkan;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
+import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
+import com.crystalgraphics.api.state.CgCullState;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
@@ -151,6 +154,62 @@ public class EngineOnTrackedBackendTest {
         }
         assertTrue(String.join("\n", failures), failures.isEmpty());
         assertTrue("no program was linked: the test proves nothing", programs > materials.size());
+    }
+
+    /**
+     * A material's state compiles: two shipped VFX shaders under every blend mode, clipped and not, each pass and the
+     * multi-draw and volume forms linked; and a draw under a two-sided additive state reaches the device.
+     */
+    @Test
+    public void everyMaterialStateLinksAndDraws() {
+        List<String> failures = new ArrayList<>();
+        for (String path : List.of("crystalgraphics:shaders/vfx/particle/sprite_glow.shader",
+                "crystalgraphics:shaders/vfx/mesh/flow.shader")) {
+            for (CgBlendMode mode : CgBlendMode.values()) {
+                for (boolean clip : new boolean[] {false, true}) {
+                    CgMaterialState.Builder state = CgMaterialState.builder().blend(mode);
+                    if (clip) state.clip();
+                    CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreate(path, state.build());
+                    if (shader.getLastParsed() == null || shader.hasCompileFailed()) shader.recompile();
+                    if (shader.hasCompileFailed()) {
+                        failures.add(path + " " + state.build() + ": " + shader.lastCompileError());
+                        continue;
+                    }
+                    CgParsedShader parsed = shader.getLastParsed();
+                    for (CgParsedPass pass : parsed.passes()) {
+                        for (Set<String> keywords : List.of(Set.<String>of(), Set.of(CgMaterialShaderCompiler.MULTI_DRAW))) {
+                            if (shader.getOrCompile(pass.name(), keywords) == null)
+                                failures.add(path + " " + state.build() + " pass " + pass.name() + " " + keywords);
+                        }
+                    }
+                    CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
+                    if (shader.getOrCompile(forward.name(), Set.of(CgMaterialShaderCompiler.VOLUME_TARGET)) == null)
+                        failures.add(path + " " + state.build() + " volume");
+                }
+            }
+        }
+        assertTrue(String.join("\n", failures), failures.isEmpty());
+
+        long draws = device.draws();
+        int mark = device.mark();
+        CgPassConstants constants = CgImmediate.constants();
+        constants.view.identity();
+        constants.projection.identity().ortho(0, 64, 64, 0, -1, 1);
+        constants.resolution(64, 64).cameraFromView();
+        CgMaterial added = CgMaterial.newInstance("crystalgraphics:shaders/demo_render.shader",
+                CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).twoSided().depthWrite(false).build());
+        assertEquals(CgCullState.NONE, added.getPassRenderState(CgRenderPassVariant.FORWARD).getCull());
+        try (CgImmediate draw = CgImmediate.begin(constants)) {
+            draw.chunks().draw(added.pipeline(CgInstanceKind.OBJECT), added.captureBindings(draw.bindings()), CgMeshShapes.cube());
+            int at = draw.chunks().instance();
+            float[] data = draw.chunks().data();
+            new Matrix4f().translation(32, 32, 0).scale(16).get(data, at);
+            new Matrix4f().get(data, at + 16);
+        }
+        gl.endFrame();
+        assertTrue("the stated draw was refused: " + gl.stats() + System.lineSeparator()
+                + String.join(System.lineSeparator(), device.logSince(mark)), device.draws() > draws);
+        added.delete();
     }
 
     @Test
