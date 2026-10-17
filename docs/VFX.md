@@ -603,6 +603,7 @@ public static final CgVfxSlot ARCS = CgVfxSlot.pathRibbons("crystalgraphics:wave
 | `PATH_RIBBONS` | ribbons riding a path | `frame.pathRibbons(this, slot, path, row, intensity)` |
 | `BILLBOARD` | one camera-facing quad | `frame.billboard(...)` |
 | `PARTICLES` | an emitter's particles: the emitter is its slot (`emitter.slot()`) | `frame.particles(this, instance)` |
+| `SEQUENCE` | a prefab's part on each particle of a `sequence(clip)` emitter, where its node is at the particle's age ([`vfx/sequences.md`](vfx/sequences.md)) | `frame.particles(this, instance)` |
 | `TRAIL` | a strip behind something moving, built on the GPU from a `CgVfxTrail`'s points | `frame.trail(this, slot, trail)` |
 
 - **A frame draws a slot, not a layer**: every layer of the look on that slot draws, in the look's order. A slot no
@@ -744,7 +745,8 @@ UVs land.
 
 Meshes that move and fade together as one model (a lens of nested balls, a shuriken's rings and blades) are a
 `CgVfxPrefab`: a node tree, each node's meshes drawn with a material, a node's opacity fading its subtree. The look takes
-its `kit()`, and an effect plays it through a `CgVfxPrefabInstance`: [`vfx/prefabs.md`](vfx/prefabs.md).
+its `kit()`, and an effect plays it through a `CgVfxPrefabInstance`: [`vfx/prefabs.md`](vfx/prefabs.md). A prefab
+moving over frames on every particle of an emitter is a clip: [`vfx/sequences.md`](vfx/sequences.md).
 
 ### Particles born on a mesh
 
@@ -1037,6 +1039,7 @@ sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debr
 | Call | Sets |
 |---|---|
 | `renderer(QUADS \| MESHES \| ARCS)` | a camera-facing quad each (unless given), a mesh each ([§8](#8-meshes)), a stroke round the source |
+| `sequence(clip)`, `sequence(clip, playRate)` | a clip on each particle: its prefab's parts where its nodes are at the particle's age, its bursts and streams spawning children ([`vfx/sequences.md`](vfx/sequences.md)) |
 | `capacity(n)` | the most alive at once: 256 unless given |
 | `state(state)` | its loops, their duration and delay, and what stopping does ([`vfx/particles.md`](vfx/particles.md)) |
 | `rate(perSecond)`, `rate(perSecond, curve)` | a rate while each loop runs, scaled by a curve over the loop's seconds |
@@ -1143,7 +1146,9 @@ emitter where it fired, reports to the CPU, or both:
 .event(CgVfxEvent.onLanding().readback(64))                      // each landing reported, a few frames later
 ```
 
-- **One level deep**: a child may report rows, never spawn children of its own.
+- **Two levels deep**: a child's events may spawn children of their own; a grandchild's may report rows, never spawn.
+- **At a clip's node, inside a window**: on a `sequence(clip)` emitter an event fires `at(node)`, and a rate
+  `between(from, until)` seconds of the particle's age ([`vfx/sequences.md`](vfx/sequences.md)).
 - **Add every child to the look** (its emitter and a layer on it), or it simulates and draws nothing.
 - At most `CgVfxEvent.MAX_EVENTS` events an emitter and `MAX_CHILDREN` children an event.
 
@@ -2315,6 +2320,7 @@ Harness gates (`./gradlew :gl-debug-harness:runHarness --args="--mode=<gate>"`, 
 |---|---|
 | `vfx-hashes` | the spawn hash, `fx_rand`, bit for bit against the Java the books use |
 | `vfx-events` | events: every row heard once, every child where expected |
+| `vfx-sequence` | clips on particles: each part where its node is, a node's event, children and grandchildren from the clip |
 | `vfx-collide` | collisions and rates off a ground and a wall |
 | `vfx-inputs` | vector fields, heightfields, the depth pyramid |
 | `vfx-world` | the voxel window, its distance field and per-particle light |
