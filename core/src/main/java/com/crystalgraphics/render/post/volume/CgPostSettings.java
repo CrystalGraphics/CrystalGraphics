@@ -13,18 +13,20 @@ import java.util.Objects;
  *
  * <ul>
  *   <li>Written from any thread, read on the render thread: floats, read at most a frame late.</li>
- *   <li>Neutral values are a look's absence: bloom 1, flash 0, vignette 0, chromatic 0, impact 0.</li>
+ *   <li>Neutral values are a look's absence: bloom 1, flash 0, vignette 0, chromatic 0, impact 0, fade 0.</li>
  *   <li>The focus (where chromatic aberration and speed lines centre) defaults to the volume's position on screen,
  *       or the screen's centre for a volume with none.</li>
  * </ul>
  */
 public final class CgPostSettings {
 
-    public static final int BLOOM = 1, FLASH = 1 << 1, VIGNETTE = 1 << 2, CHROMATIC = 1 << 3, IMPACT = 1 << 4, FOCUS = 1 << 5;
+    public static final int BLOOM = 1, FLASH = 1 << 1, VIGNETTE = 1 << 2, CHROMATIC = 1 << 3, IMPACT = 1 << 4, FOCUS = 1 << 5,
+            FADE = 1 << 6;
 
     // Volatile: written on any thread, read on the render thread.
     volatile int overrides;
     volatile float bloom = 1f, flash, vignette, chromatic, impact;
+    volatile float fade, fadeR, fadeG, fadeB;
     volatile CgImpactFrame impactLook = CgImpactFrame.NEGATIVE;
     volatile int impactSeed, impactSubject;
     volatile float focusX = 0.5f, focusY = 0.5f;
@@ -49,6 +51,24 @@ public final class CgPostSettings {
     public CgPostSettings vignette(float amount) {
         vignette = clamp(amount);
         overrides |= VIGNETTE;
+        return this;
+    }
+
+    /**
+     * Fades the whole picture {@code amount} (0 to 1) of the way to {@code argb} ({@code 0xAARRGGBB}, its alpha unused),
+     * as the last thing the composite does: a cut to black, a white-out. Unreal's camera fade.
+     *
+     * <pre>{@code
+     * CgPostVolume black = CgPostStack.get().volume(100, new CgPostSettings().fade(0xFF000000, 1f));
+     * black.weight(t);   // 0 to 1 over the fade
+     * }</pre>
+     */
+    public CgPostSettings fade(int argb, float amount) {
+        fadeR = (argb >> 16 & 0xFF) / 255f;
+        fadeG = (argb >> 8 & 0xFF) / 255f;
+        fadeB = (argb & 0xFF) / 255f;
+        fade = clamp(amount);
+        overrides |= FADE;
         return this;
     }
 
@@ -124,6 +144,24 @@ public final class CgPostSettings {
         return impact;
     }
 
+    /** How far the picture fades to {@link #fadeR()} and on, 0 to 1. */
+    public float fade() {
+        return fade;
+    }
+
+    /** The colour it fades to, 0 to 1, in the target's encoding. */
+    public float fadeR() {
+        return fadeR;
+    }
+
+    public float fadeG() {
+        return fadeG;
+    }
+
+    public float fadeB() {
+        return fadeB;
+    }
+
     public CgImpactFrame impactLook() {
         return impactLook;
     }
@@ -148,7 +186,7 @@ public final class CgPostSettings {
     public void reset() {
         overrides = 0;
         bloom = 1f;
-        flash = vignette = chromatic = impact = 0f;
+        flash = vignette = chromatic = impact = fade = fadeR = fadeG = fadeB = 0f;
         impactLook = CgImpactFrame.NEGATIVE;
         impactSeed = impactSubject = 0;
         focusX = focusY = 0.5f;
@@ -165,6 +203,14 @@ public final class CgPostSettings {
         if ((o & FLASH) != 0) flash += (from.flash - flash) * weight;
         if ((o & VIGNETTE) != 0) vignette += (from.vignette - vignette) * weight;
         if ((o & CHROMATIC) != 0) chromatic += (from.chromatic - chromatic) * weight;
+        if ((o & FADE) != 0) {
+            // Over no fade yet, the colour is this volume's outright, not a mix from black.
+            float t = fade > 0f ? weight : 1f;
+            fadeR += (from.fadeR - fadeR) * t;
+            fadeG += (from.fadeG - fadeG) * t;
+            fadeB += (from.fadeB - fadeB) * t;
+            fade += (from.fade - fade) * weight;
+        }
         if ((o & IMPACT) != 0) {
             if (weight * from.impact >= impact) {
                 impactLook = from.impactLook;

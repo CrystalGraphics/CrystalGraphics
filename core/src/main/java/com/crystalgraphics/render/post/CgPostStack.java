@@ -58,10 +58,12 @@ public final class CgPostStack {
     private final CgPostContext context = new CgPostContext(composite, distortion);
     private final CgBloom bloom = new CgBloom();
     private final CgPostLooks looks = new CgPostLooks();
+    private final CgPostCrossfade crossfade = new CgPostCrossfade();
     /** {@code -Dcrystalgraphics.post.debug}'s view; null when unset. */
     private final CgPostDebug debug = CgPostDebug.fromProperty();
     /** Every effect, by point then order then when it was added: replaced whole, so recording reads a snapshot. */
-    private volatile CgPostEffect[] effects = debug == null ? new CgPostEffect[]{bloom, looks} : new CgPostEffect[]{bloom, looks, debug};
+    private volatile CgPostEffect[] effects = debug == null ? new CgPostEffect[]{bloom, looks, crossfade}
+            : new CgPostEffect[]{bloom, looks, crossfade, debug};
     /** Every volume, by priority ascending then when it was made: replaced whole, as the effects are. */
     private volatile CgPostVolume[] volumes = new CgPostVolume[0];
     /** The volumes blended at the camera, this firing. */
@@ -110,6 +112,18 @@ public final class CgPostStack {
     /** The built-in bloom, and its settings. */
     public CgBloom bloom() {
         return bloom;
+    }
+
+    /**
+     * A cut's crossfade: the next firing's final picture is held, and the frames after it draw it over theirs, fading
+     * out linearly over {@code seconds} of the frame clock. Call it on the old shot's last frame. Any thread.
+     *
+     * <pre>{@code
+     * CgPostStack.get().crossfade(0.5f);   // this frame is held; the cut comes next frame
+     * }</pre>
+     */
+    public void crossfade(float seconds) {
+        crossfade.crossfade(seconds);
     }
 
     /** Adds {@code effect} at its point; closing the registration removes it. */
@@ -171,6 +185,7 @@ public final class CgPostStack {
         composite.release();
         distortion.release();
         bloom.release();
+        crossfade.release();
         if (debug != null) debug.release();
     }
 

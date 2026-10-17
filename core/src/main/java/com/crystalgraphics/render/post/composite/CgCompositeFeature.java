@@ -16,7 +16,9 @@ public enum CgCompositeFeature {
     /** Red and blue split from a focus ({@link CgPostComposite#chromatic}): it reads neighbours. */
     CHROMATIC("CHROMATIC", false),
     /** An impact frame ({@link CgPostComposite#impact}): it reads the picture. */
-    IMPACT("IMPACT", false);
+    IMPACT("IMPACT", false),
+    /** The picture faded toward a colour ({@link CgPostComposite#fade}), last: a mix the blend form draws as its alpha. */
+    FADE("FADE", true);
 
     final String keyword;
     final boolean blend;

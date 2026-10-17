@@ -72,7 +72,8 @@ public final class CgPostComposite {
                 .vec4("_ImpactMore", f.cross() ? 1f : 0f, f.jitter(), 0f, 0f)
                 .vec4("_ImpactLight", f.lightR(), f.lightG(), f.lightB(), 1f)
                 .vec4("_ImpactDark", f.darkR(), f.darkG(), f.darkB(), 1f)
-                .vec4("_Focus", inputs.focusX, inputs.focusY, 0f, 0f);
+                .vec4("_Focus", inputs.focusX, inputs.focusY, 0f, 0f)
+                .vec4("_Fade", inputs.fadeR, inputs.fadeG, inputs.fadeB, inputs.fade);
     };
 
     /** What the composite's properties hold. */
@@ -81,6 +82,7 @@ public final class CgPostComposite {
         float intensity = Float.NaN, r, g, b;
         boolean conserve;
         float exposure = 1f, vignette, chromatic, impact, focusX = 0.5f, focusY = 0.5f;
+        float fade, fadeR, fadeG, fadeB;
         CgImpactFrame frame = CgImpactFrame.NEGATIVE;
         int seed;
 
@@ -88,7 +90,8 @@ public final class CgPostComposite {
             return scene == o.scene && bloom == o.bloom && subject == o.subject && intensity == o.intensity && r == o.r && g == o.g
                     && b == o.b && conserve == o.conserve && exposure == o.exposure && vignette == o.vignette
                     && chromatic == o.chromatic && impact == o.impact && frame == o.frame && seed == o.seed
-                    && focusX == o.focusX && focusY == o.focusY;
+                    && focusX == o.focusX && focusY == o.focusY && fade == o.fade && fadeR == o.fadeR
+                    && fadeG == o.fadeG && fadeB == o.fadeB;
         }
 
         void copyFrom(Inputs o) {
@@ -108,6 +111,10 @@ public final class CgPostComposite {
             impact = o.impact;
             focusX = o.focusX;
             focusY = o.focusY;
+            fade = o.fade;
+            fadeR = o.fadeR;
+            fadeG = o.fadeG;
+            fadeB = o.fadeB;
         }
     }
 
@@ -182,6 +189,18 @@ public final class CgPostComposite {
         inputs.focusY = y;
         inputs.subject = subject;
         return on(CgCompositeFeature.IMPACT);
+    }
+
+    /**
+     * Fades the picture {@code amount} (0 to 1) toward {@code (r, g, b)}, in the target's encoding, after every other
+     * look: drawn by either form.
+     */
+    public CgPostComposite fade(float amount, float r, float g, float b) {
+        inputs.fade = amount;
+        inputs.fadeR = r;
+        inputs.fadeG = g;
+        inputs.fadeB = b;
+        return on(CgCompositeFeature.FADE);
     }
 
     /** Composites this firing in linear light ({@link CgCompositeForm#COPY}), at the cost of a copy of the target. */

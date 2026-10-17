@@ -12,6 +12,7 @@
 //              lines over the picture, drawn), .z its seed, .w 1 on light paper; _ImpactDraw the subject filled in
 //              ink, focus lines, hatching's length, the star's size; _ImpactMore the cross and the jitter in pixels;
 //              _ImpactLight and _ImpactDark its two tones, linear
+//   FADE       _Fade.a of the way to _Fade.rgb, in the target's encoding, after every other look
 //   SUBJECT    a drawn frame's subject is _Subject (CgFrameKeys.SUBJECT: what the effect glows with); without it, the
 //              scene's light past white
 //   SCENE      reads the linear HDR scene (_Scene) instead of the target, past white rolled toward white keeping its
@@ -25,6 +26,7 @@
 #pragma cg_feature CHROMATIC
 #pragma cg_feature IMPACT
 #pragma cg_feature SUBJECT
+#pragma cg_feature FADE
 #include "crystalgraphics:shaders/lib/post/impact.glsl"
 
 Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.02" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
@@ -46,6 +48,7 @@ Properties {
     _ImpactDark ("The dark tone, linear", color) = (0, 0, 0, 1)
     _Subject   ("What the effect glows with", sampler2D) = "black"
     _Focus     ("xy: where aberration and focus lines centre, 0 to 1", vec4) = (0.5, 0.5, 0, 0)
+    _Fade      ("rgb: the colour it fades to, in the target's encoding; a: how far", vec4) = (0, 0, 0, 0)
 }
 
 struct v2f { vec2 uv; };
@@ -120,6 +123,9 @@ Pass {
                                     uint(_Impact.z), 1.0 / CG_RESOLUTION.y);
         }
         encoded = mix(encoded, impact, _Impact.x);
+#endif
+#ifdef FADE
+        encoded = mix(encoded, _Fade.rgb, _Fade.a);
 #endif
 #ifdef SCENE
         vec3 e = clamp(encoded, 0.0, 1.0) * 255.0;

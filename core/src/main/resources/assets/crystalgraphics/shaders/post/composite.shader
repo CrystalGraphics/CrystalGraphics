@@ -4,8 +4,10 @@
 // CgPostComposite draws it; nothing else should. composite_copy.shader is the form that reads the target.
 //
 //   BLOOM  the bloom chain's level 0 (every level already summed into it), tinted, added; or mixed in, energy-conserving
+//   FADE   _Fade.a of the way to _Fade.rgb, last: dst * (1 - a) + rgb with the fade's share in both
 #type none
 #pragma cg_feature BLOOM
+#pragma cg_feature FADE
 #include "crystalgraphics:shaders/lib/post/composite.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
@@ -16,6 +18,7 @@ Properties {
     _Intensity ("Bloom's strength; its mix share when conserving", float) = 1.0
     _Tint      ("Bloom's tint", color) = (1, 1, 1, 1)
     _Conserve  ("1 to mix the bloom in, keeping the picture's energy; 0 to add it", float) = 0.0
+    _Fade      ("rgb: the colour it fades to, in the target's encoding; a: how far", vec4) = (0, 0, 0, 0)
 }
 
 struct v2f { vec2 uv; };
@@ -44,6 +47,10 @@ Pass {
         float share = mix(_Intensity, clamp(_Intensity, 0.0, 1.0), _Conserve);
         added += bloom * share;
         lost = _Conserve * share;
+#endif
+#ifdef FADE
+        added = added * (1.0 - _Fade.a) + _Fade.rgb * _Fade.a;
+        lost = 1.0 - (1.0 - lost) * (1.0 - _Fade.a);
 #endif
         fragColor = vec4(post_round8(added, gl_FragCoord.xy, floor(CG_TIME * 60.0)), lost);
     }

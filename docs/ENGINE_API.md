@@ -225,8 +225,9 @@ burst.close();
 CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));   // an impact frame, everywhere
 ```
 
-- The looks: flash (exposure in stops), vignette, chromatic aberration round the focus, impact frames. Flash and
-  impact frames are scaled by the player's `FLASHES` comfort setting.
+- The looks: flash (exposure in stops), vignette, chromatic aberration round the focus, impact frames, and a fade to a
+  colour (`fade(0xFF000000, 1f)`, Unreal's camera fade: the composite's last step, in the target's encoding). Flash and
+  impact frames are scaled by the player's `FLASHES` comfort setting; a fade is not.
 - **An impact frame is a `CgImpactFrame`**: a look from the picture alone (negative, black and white, focus lines over
   it) or a drawn one: two-tone paper, the subject (what the effect glows with, `CgFrameKeys.SUBJECT`) filled in ink,
   focus lines, hatching off its edge, a flash star with a cross, and a jitter that redraws it per beat. `CgImpact`
@@ -255,6 +256,20 @@ if (look != null) settings.impact(look, HIT.amount(sinceHit), HIT.seed(sinceHit)
 - **A mod's effect** implements `CgPostEffect` (its javadoc has the example): a raster pass into `post.target()` at
   `AFTER_WORLD` or `AFTER_COMPOSITE`, or composite inputs at `BEFORE_COMPOSITE`. `render/post/CLAUDE.md` § *Writing an
   effect* has the rules; `--mode=post-effects` is one at each point.
+- **An effect that is only a material** is a `CgPostMaterial` (Unreal's post-process material): its `.shader` drawn over
+  the screen at `AFTER_WORLD` or `AFTER_COMPOSITE`, at a weight its shader reads as `POST_WEIGHT`
+  (`lib/post/post_material.glsl`); 0 draws nothing.
+- **A cut's crossfade**: `CgPostStack.get().crossfade(seconds)` on the old shot's last frame holds what that firing
+  draws, and the frames after it show it over theirs, fading out linearly on the frame clock, before the HUD.
+
+```java
+CgPostMaterial thermal = CgPostMaterial.of("mymod:shaders/post/thermal.shader", CgPostPoint.AFTER_COMPOSITE);
+CgRenderStage.Registration on = CgPostStack.get().add(thermal);
+thermal.weight(0.8f);
+CgPostStack.get().crossfade(0.5f);
+```
+
+`--mode=post-transitions` is the gate for all three.
 
 **Object record** (`CgInstanceKind.OBJECT`, STD430, 48 floats): `modelMatrix` 0–15, `normalMatrix` 16–31 (the
 shader reads its 3×3; 28–29 the light, `CG_OBJECT_LIGHT`; 30 the emission scale less 1, `CG_OBJECT_EMISSION`;
