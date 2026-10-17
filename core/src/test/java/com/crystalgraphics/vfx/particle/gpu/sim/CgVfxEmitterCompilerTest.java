@@ -12,12 +12,16 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
+import com.crystalgraphics.vfx.look.CgVfxLayer;
+import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
+import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 public class CgVfxEmitterCompilerTest {
@@ -108,7 +112,9 @@ public class CgVfxEmitterCompilerTest {
         assertEquals(1, count(glsl, "void fx_test_bounce("));                                   // inlined, once
         assertTrue(glsl.contains("fx_test_bounce(p, s, step_param(row + " + shape.paramAt(modules.size() - 1) + "), step_world(inst));"));
         assertTrue(glsl.contains("if (p.hit.w > 0.0 && float(p.collisions) <= step_param(") && glsl.contains("p.collisions);"));
-        assertTrue(glsl.contains("floor((p.age - s.dt) / step_param(row + " + shape.eventsAt() + ")[1])"));
+        // A rate's periods count from its window's start, from birth unless given.
+        assertTrue(glsl.contains("floor(((p.age - step_param(row + " + (shape.eventsAt() + CgVfxShape.EVENT_FROM)
+                + ")[1]) - s.dt) / step_param(row + " + shape.eventsAt() + ")[1])"));
         CgVfxEmitterCompiler.compile(shape).kernel("Step").check();
     }
 
@@ -148,6 +154,38 @@ public class CgVfxEmitterCompilerTest {
         assertTrue("a row carries what was struck and its entity", glsl.contains("ev.normal = vec4(n, hit)")
                 && glsl.contains("int(p.hitEntity)") && glsl.contains(", step_entities(inst));"));
         CgVfxEmitterCompiler.compile(shape).kernel("Step").check();
+    }
+
+    @Test
+    public void aClipsEventsFireAtItsNodesAndTheirChildrenSpawnTwoLevelsDeep() {
+        CgVfxEmitter leaf = CgVfxEmitter.builder("leaf").capacity(64).life(0.5f, 0.5f).event(CgVfxEvent.onDeath().readback(4))
+                .build();
+        CgVfxEmitter middle = CgVfxEmitter.builder("middle").capacity(64).life(1f, 1f)
+                .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0.3f, 0.5f, 0.8f))
+                .event(CgVfxEvent.onLanding().spawn(leaf, 2)).build();
+        CgVfxPrefab prefab = CgVfxPrefab.builder("test:spinner").node("hub").node("tip").parent("hub").at(0f, 1f, 0f)
+                .part(CgVfxLayer.of("test:blade.shader")).build();
+        CgVfxNodeClip clip = CgVfxNodeClip.of(prefab, 30).channel("hub", CgVfxNodeClip.Channel.ROTATION_Y,
+                CgVfxNodeClip.Interp.LINEAR, 0, 0f, 30, 360f).burst("tip", middle, 10, 3).stream("tip", middle, 5, 25, 20f).build();
+        CgVfxEmitter root = CgVfxEmitter.builder("root").sequence(clip).state(CgVfxEmitterState.ONCE).capacity(4)
+                .burst(0f, 1).life(1f, 1f).build();
+
+        CgVfxShape top = CgVfxShape.of(root), mid = CgVfxShape.of(middle, 1), low = CgVfxShape.of(leaf, 2);
+        assertTrue(top.readsClips() && top.spawns() && top.eventAtNode(0) && top.eventAtNode(1));
+        String glsl = CgVfxEmitterCompiler.source(top);
+        assertTrue(glsl.contains("step_node(p, inst, row, 0, at, n);") && glsl.contains("FX_CLIPS"));
+        assertTrue("a root reads no parents", !glsl.contains("PARENT_EVENTS"));
+        assertTrue(CgVfxEmitterCompiler.source(mid).contains("fx_child_key_at(ev.ids.x"));
+        assertTrue(CgVfxEmitterCompiler.source(low).contains("fx_grandchild_key(ev.ids.x"));
+        assertTrue("each tier its own pool", !mid.key().equals(CgVfxShape.of(middle).key()));
+        for (CgVfxShape shape : new CgVfxShape[]{top, mid, low}) CgVfxEmitterCompiler.compile(shape).kernel("Step").check();
+
+        // root already has children's children: spawning it would be a third level
+        assertThrows(IllegalArgumentException.class, () -> CgVfxEvent.onDeath().spawn(root, 1));
+        assertThrows(IllegalStateException.class, () -> CgVfxEmitter.builder("grounded").sequence(clip)
+                .module(new CgVfxModule.Ground(0.3f, 0.5f, 0.8f)).build());
+        assertThrows(IllegalStateException.class, () -> CgVfxEmitter.builder("loose")
+                .event(CgVfxEvent.onDeath().at(prefab.node("tip"))).build());
     }
 
     private static int count(String text, String part) {

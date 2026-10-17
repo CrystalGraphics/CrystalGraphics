@@ -115,22 +115,32 @@ final class CgVfxGpuSteps {
         admit(instance, null);
     }
 
-    /** As {@link #admit(CgVfxEmitterInstance)}, its slots and its children's reporting rows as {@code owner}'s. */
+    /**
+     * As {@link #admit(CgVfxEmitterInstance)}, its slots and its children's reporting rows as {@code owner}'s. Children's
+     * children too: each in the pool of its feed tier, after its parent in the list.
+     */
     void admit(CgVfxEmitterInstance instance, Object owner) {
         if (byInstance.containsKey(instance)) return;
-        CgVfxEmitter definition = instance.emitter();
-        Tenant tenant = add(instance, definition.peakAlive(), null, owner);
+        int alive = instance.emitter().peakAlive();
+        admitChildren(add(instance, alive, null, owner, 0), alive, owner);
+    }
+
+    private void admitChildren(Tenant tenant, int alive, Object owner) {
+        CgVfxEmitter definition = tenant.instance.emitter();
+        int tier = tenant.pool.shape().tier() + 1;
         for (int e = 0; e < definition.events().size(); e++) {
-            CgVfxEmitterInstance child = instance.child(e);
+            CgVfxEmitterInstance child = tenant.instance.child(e);
             if (child == null) continue;
-            Tenant fed = add(child, definition.peakChildren(e), tenant, owner);
+            int capacity = tenant.parent == null ? definition.peakChildren(e) : definition.peakChildren(e, alive);
+            Tenant fed = add(child, capacity, tenant, owner, tier);
             fed.pool.feed(fed.slot, tenant.pool, tenant.slot, e);
+            admitChildren(fed, capacity, owner);
         }
     }
 
-    private Tenant add(CgVfxEmitterInstance instance, int capacity, Tenant parent, Object owner) {
+    private Tenant add(CgVfxEmitterInstance instance, int capacity, Tenant parent, Object owner, int tier) {
         CgVfxEmitter definition = instance.emitter();
-        CgVfxParticlePool pool = CgVfxParticlePool.of(this, definition);
+        CgVfxParticlePool pool = CgVfxParticlePool.of(this, definition, tier);
         if (!pools.contains(pool)) pools.add(pool);
         Tenant tenant = new Tenant(instance, pool, pool.open(definition, capacity, owner), parent);
         tenant.warm = warming;
@@ -173,8 +183,14 @@ final class CgVfxGpuSteps {
         if (parent == null) return;
         for (int i = 0; i < tenants.size(); i++) {
             Tenant tenant = tenants.get(i);
-            if (tenant == parent || tenant.parent == parent) tenant.killed = true;
+            if (descends(tenant, parent)) tenant.killed = true;
         }
+    }
+
+    /** Whether {@code tenant} is {@code root} or fed by it, at any depth. */
+    private static boolean descends(Tenant tenant, Tenant root) {
+        for (Tenant t = tenant; t != null; t = t.parent) if (t == root) return true;
+        return false;
     }
 
     /** Starts marking what {@link #admit} opens warm: the instances of an effect starting at an age. */
@@ -241,8 +257,7 @@ final class CgVfxGpuSteps {
 
     private void releaseWithChildren(Tenant parent) {
         for (int i = tenants.size() - 1; i >= 0; i--) {
-            Tenant tenant = tenants.get(i);
-            if (tenant == parent || tenant.parent == parent) release(i);
+            if (descends(tenants.get(i), parent)) release(i);
         }
     }
 

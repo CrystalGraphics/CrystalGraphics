@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx.sequence;
 
-import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
+import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
@@ -69,11 +69,11 @@ public final class CgVfxNodeClip {
     /** A child emitter the clip starts at a node: a burst at a frame, or a stream between two frames. */
     public static final class Spawn {
         private final int node;
-        private final CgVfxGpuEmitter child;
+        private final CgVfxEmitter child;
         private final float from, until, perSecond;
         private final int count;
 
-        Spawn(int node, CgVfxGpuEmitter child, float from, float until, float perSecond, int count) {
+        Spawn(int node, CgVfxEmitter child, float from, float until, float perSecond, int count) {
             this.node = node;
             this.child = child;
             this.from = from;
@@ -87,7 +87,7 @@ public final class CgVfxNodeClip {
             return node;
         }
 
-        public CgVfxGpuEmitter child() {
+        public CgVfxEmitter child() {
             return child;
         }
 
@@ -260,7 +260,7 @@ public final class CgVfxNodeClip {
         }
 
         /** {@code count} children of {@code child} born at {@code node} on {@code frame}. */
-        public Builder burst(String node, CgVfxGpuEmitter child, float frame, int count) {
+        public Builder burst(String node, CgVfxEmitter child, float frame, int count) {
             if (frame < 0f || frame > frames) throw new IllegalArgumentException("a burst on frame " + frame + " of " + frames);
             if (count < 1) throw new IllegalArgumentException("a burst of " + count);
             spawns.add(new Spawn(node(node), Objects.requireNonNull(child, "child"), frame, frame, 0f, count));
@@ -268,7 +268,7 @@ public final class CgVfxNodeClip {
         }
 
         /** Children of {@code child} born at {@code node}, {@code perSecond} a clip second from frame {@code from} to {@code until}. */
-        public Builder stream(String node, CgVfxGpuEmitter child, float from, float until, float perSecond) {
+        public Builder stream(String node, CgVfxEmitter child, float from, float until, float perSecond) {
             if (from < 0f || until <= from || until > frames) {
                 throw new IllegalArgumentException("a stream from frame " + from + " to " + until + " of " + frames);
             }

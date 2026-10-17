@@ -207,8 +207,14 @@ public final class CgVfxEmitterInstance {
         killed = true;
         // Without a slot nothing is alive on the GPU to end.
         killPending |= scheduled;
+        killChildren();
+    }
+
+    private void killChildren() {
         for (CgVfxEmitterInstance child : children) {
-            if (child != null) child.killed = true;
+            if (child == null) continue;
+            child.killed = true;
+            child.killChildren();
         }
     }
 
@@ -347,6 +353,11 @@ public final class CgVfxEmitterInstance {
             driftZ = (float) (z - anchorZ);
         }
         turn();
+        placeChildren();
+    }
+
+    /** Hands its origin, drift and rotation down to its children, and theirs. */
+    private void placeChildren() {
         for (CgVfxEmitterInstance child : children) {
             if (child == null) continue;
             child.originX = originX;
@@ -363,6 +374,7 @@ public final class CgVfxEmitterInstance {
             child.turnY = turnY;
             child.turnZ = turnZ;
             child.turnW = turnW;
+            child.placeChildren();
         }
     }
 
@@ -444,8 +456,9 @@ public final class CgVfxEmitterInstance {
             child.originX = originX;
             child.originY = originY;
             child.originZ = originZ;
-            child.books.coast(dt);
+            // Booked before it coasts, which coasts its own children from it.
             child.lastDeath = Math.max(child.lastDeath, lastDeath + dt * (float) Math.ceil(child.emitter.lifeMax / dt));
+            child.books.coast(dt);
         }
     }
 

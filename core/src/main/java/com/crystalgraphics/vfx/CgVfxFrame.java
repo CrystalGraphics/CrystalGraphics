@@ -529,14 +529,14 @@ public final class CgVfxFrame {
 
     /**
      * The shared mesh a GPU slot of {@code capacity} draws a {@code QUADS} or {@code ARCS} layer on, made on its first
-     * ask; null for {@code MESHES}, which draw the particle sphere.
+     * ask; null for {@code MESHES} and {@code SEQUENCE}, which draw meshes as instances.
      */
     static CgMesh slotMesh(CgVfxEmitter.Renderer renderer, int capacity) {
         return switch (renderer) {
             case QUADS -> CgMesh.quads(sizeClass(capacity, CgVfxQuads.COUNT));
             case ARCS -> CgMesh.vertices(sizeClass(capacity, CgVfxRibbons.COUNT) * CgVfxRibbons.VERTICES,
                     CgMeshTopology.TRIANGLES);
-            case MESHES -> null;
+            case MESHES, SEQUENCE -> null;
         };
     }
 

@@ -31,6 +31,8 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
+import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
+import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
 import org.joml.Matrix4f;
 
@@ -127,7 +129,11 @@ public final class CgVfxParticlePool {
     private static final List<CgVfxEventListener> LISTENERS = new ArrayList<>();
     /** The pools stepping in this recording, and the event streams between them: shared, as one step crosses pools. */
     private static final List<CgVfxParticlePool> STEPPING = new ArrayList<>();
-    private static CgGraphBuffer spawnStream, spawnCount, reportStream, reportCounts, unfed;
+    /** Each spawning tier's rows this step, which the next tier's children spawn from, and their counts. */
+    private static final CgGraphBuffer[] SPAWN_STREAMS = new CgGraphBuffer[CgVfxShape.TIERS - 1],
+            SPAWN_COUNTS = new CgGraphBuffer[CgVfxShape.TIERS - 1];
+    private static final int[] SPAWN_ROWS = new int[CgVfxShape.TIERS - 1];
+    private static CgGraphBuffer reportStream, reportCounts, unfed;
     private static final ArrayDeque<Report> REPORTS = new ArrayDeque<>();
     private static int nextId;
     /** What the next recording's steps see of the scene's depth: none without a pyramid. */
@@ -272,7 +278,15 @@ public final class CgVfxParticlePool {
      * }</pre>
      */
     public static CgVfxParticlePool of(Object owner, CgVfxGpuEmitter emitter) {
-        CgVfxShape shape = CgVfxShape.of(emitter);
+        return of(owner, emitter, 0);
+    }
+
+    /**
+     * As {@link #of(Object, CgVfxGpuEmitter)}, for {@code emitter} spawned at feed {@code tier} ({@link CgVfxShape#of(
+     * CgVfxGpuEmitter, int)}): a child's slot is opened in its tier's pool, which steps after its parents'.
+     */
+    public static CgVfxParticlePool of(Object owner, CgVfxGpuEmitter emitter, int tier) {
+        CgVfxShape shape = CgVfxShape.of(emitter, tier);
         Map<String, CgVfxParticlePool> owned = POOLS.get(owner);
         if (owned == null) POOLS.put(owner, owned = new HashMap<>());
         CgVfxParticlePool pool = owned.get(shape.key());
@@ -292,15 +306,17 @@ public final class CgVfxParticlePool {
      * kernel is several lowered programs, otherwise built on the frame the first burst plays. Render thread.
      *
      * <pre>{@code
-     * CgVfxParticlePool.prepare(EMBERS);   // as a look is made, or on a loading screen
-     * CgVfxRange.prepare();                // and what draws it
+     * CgVfxParticlePool.prepare(EMBERS, 0);   // as a look is made, or on a loading screen
+     * CgVfxParticlePool.prepare(SPARKS, 1);   // EMBERS' events' children, at their tier
+     * CgVfxRange.prepare();                   // and what draws it
      * }</pre>
      */
-    public static void prepare(CgVfxGpuEmitter emitter) {
-        CgVfxEmitterCompiler.compile(CgVfxShape.of(emitter)).kernel("Step").prepare();
+    public static void prepare(CgVfxGpuEmitter emitter, int tier) {
+        CgVfxShape shape = CgVfxShape.of(emitter, tier);
+        CgVfxEmitterCompiler.compile(shape).kernel("Step").prepare();
         CgGpuOps.prepareFill();
         if (emitter.trailPoints() > 0) CgCompute.load(TRAIL_KERNELS).kernel("Store").prepare();
-        if (CgVfxShape.of(emitter).usesNeighbours()) {
+        if (shape.usesNeighbours()) {
             CgCompute.load(NEIGHBOUR_KERNELS).kernel("Keys").prepare();
             CgCompute.load(NEIGHBOUR_KERNELS).kernel("Runs").prepare();
             CgGpuOps.prepareSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING);
@@ -341,9 +357,12 @@ public final class CgVfxParticlePool {
         public void onDestroy() {
             for (int i = 0; i < ALL.size(); i++) ALL.get(i).forgetStorage();
             RELEASED.clear();
-            unfed = spawnStream = spawnCount = reportStream = reportCounts = null;
+            unfed = reportStream = reportCounts = null;
+            Arrays.fill(SPAWN_STREAMS, null);
+            Arrays.fill(SPAWN_COUNTS, null);
             CgVfxEntityBoxes.forget();
             CgVfxSpawnMeshes.forget();
+            CgVfxClipAtlas.forget();
         }
     };
 
@@ -415,19 +434,20 @@ public final class CgVfxParticlePool {
     }
 
     /**
-     * Records {@code pools}' queued steps step by step, in one compute pass: each step, the pools whose events spawn
-     * children first, then the rest, whose child slots spawn from the rows the first appended. Then each step's rows
+     * Records {@code pools}' queued steps step by step, in one compute pass: each step, the pools tier by tier, each
+     * tier's child slots spawning from the rows the tier before appended in a stream of its own. Then each step's rows
      * for the CPU are read back.
      */
     private static void recordPools(CgRecording recording, List<CgVfxParticlePool> pools) {
         STEPPING.clear();
-        int maxSteps = 0, spawnRows = 0, reportRows = 0;
+        int maxSteps = 0, reportRows = 0;
+        Arrays.fill(SPAWN_ROWS, 0);
         for (int i = 0; i < pools.size(); i++) {
             CgVfxParticlePool pool = pools.get(i);
             if (!pool.begin(recording)) continue;
             STEPPING.add(pool);
             maxSteps = Math.max(maxSteps, pool.steps);
-            spawnRows += pool.eventRows(true);
+            if (pool.shape.spawns()) SPAWN_ROWS[pool.shape.tier()] += pool.eventRows(true);
             reportRows += pool.eventRows(false);
         }
         if (STEPPING.isEmpty()) {
@@ -442,15 +462,16 @@ public final class CgVfxParticlePool {
             unfed = CgGraphBuffer.persistent("vfx.pool.unfed", CgBufferDesc.of(256, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
             recording.fill(unfed, 0);
         }
-        if (spawnRows > 0) {
-            spawnStream = fitRows(recording, spawnStream, "vfx.pool.spawn-events", spawnRows);
-            if (spawnCount == null) spawnCount = counter("vfx.pool.spawn-count");
+        for (int t = 0; t < SPAWN_ROWS.length; t++) {
+            if (SPAWN_ROWS[t] == 0) continue;
+            SPAWN_STREAMS[t] = fitRows(recording, SPAWN_STREAMS[t], "vfx.pool.spawn-events" + t, SPAWN_ROWS[t]);
+            if (SPAWN_COUNTS[t] == null) SPAWN_COUNTS[t] = counter("vfx.pool.spawn-count" + t);
         }
         if (reportRows > 0) {
             reportStream = fitRows(recording, reportStream, "vfx.pool.report-events", reportRows * maxSteps);
             reportCounts = fit(recording, reportCounts, "vfx.pool.report-counts", maxSteps);
         }
-        for (int i = 0; i < STEPPING.size(); i++) STEPPING.get(i).uploadFeeds(recording, spawnRows);
+        for (int i = 0; i < STEPPING.size(); i++) STEPPING.get(i).uploadFeeds(recording);
         for (int i = 0; i < STEPPING.size(); i++) {
             if (STEPPING.get(i).shape.usesEntities()) {
                 CgVfxEntityBoxes.upload(recording);
@@ -463,18 +484,29 @@ public final class CgVfxParticlePool {
                 break;
             }
         }
+        for (int i = 0; i < STEPPING.size(); i++) {
+            if (STEPPING.get(i).shape.readsClips()) {
+                CgVfxClipAtlas.upload(recording);
+                break;
+            }
+        }
         CgComputePass pass = recording.compute("vfx.pool.step").timed(GPU_STEP).async();
         if (reportRows > 0) CgGpuOps.fill(pass, reportCounts, 0, CgGpuCount.of(maxSteps));
         for (int s = 0; s < maxSteps; s++) {
-            boolean parents = false;
-            for (int i = 0; i < STEPPING.size(); i++) parents |= STEPPING.get(i).shape.spawns() && s < STEPPING.get(i).steps;
-            if (parents && spawnRows > 0) CgGpuOps.fill(pass, spawnCount, 0, ONE);
-            for (int phase = 0; phase < 2; phase++) {
+            // A tier's stream holds only this step's rows: cleared where a pool of that tier spawns this step.
+            int parents = 0;
+            for (int i = 0; i < STEPPING.size(); i++) {
+                CgVfxParticlePool pool = STEPPING.get(i);
+                if (pool.shape.spawns() && s < pool.steps) parents |= 1 << pool.shape.tier();
+            }
+            for (int t = 0; t < SPAWN_ROWS.length; t++) {
+                if ((parents >> t & 1) != 0 && SPAWN_ROWS[t] > 0) CgGpuOps.fill(pass, SPAWN_COUNTS[t], 0, ONE);
+            }
+            for (int tier = 0; tier < CgVfxShape.TIERS; tier++) {
+                int childRows = tier > 0 && (parents >> (tier - 1) & 1) != 0 ? SPAWN_ROWS[tier - 1] : 0;
                 for (int i = 0; i < STEPPING.size(); i++) {
                     CgVfxParticlePool pool = STEPPING.get(i);
-                    if (pool.shape.spawns() == (phase == 0) && s < pool.steps) {
-                        pool.dispatchStep(pass, s, parents ? spawnRows : 0, reportRows);
-                    }
+                    if (pool.shape.tier() == tier && s < pool.steps) pool.dispatchStep(pass, s, childRows, reportRows);
                 }
             }
         }
@@ -640,9 +672,9 @@ public final class CgVfxParticlePool {
     }
 
     /** This recording's feeds, sorted by key, of slots whose parent is stepping: what {@code step_child} searches. */
-    private void uploadFeeds(CgRecording recording, int spawnRows) {
+    private void uploadFeeds(CgRecording recording) {
         feeds = childMax = 0;
-        if (shape.spawns() || spawnRows == 0) return;
+        if (shape.tier() == 0 || SPAWN_ROWS[shape.tier() - 1] == 0) return;
         for (int slot = 0; slot < slotCount; slot++) {
             CgVfxParticlePool parent = feedPool[slot];
             if (parent == null || !STEPPING.contains(parent) || !parent.isOpen(feedSlot[slot])
@@ -672,7 +704,7 @@ public final class CgVfxParticlePool {
         put(recording, feedBuffer, feedWords, feeds * 4);
     }
 
-    /** Step {@code s}'s dispatch, its children read from {@code spawnRows} rows when its parents stepped. */
+    /** Step {@code s}'s dispatch, its children read from {@code spawnRows} rows of the tier before when its parents stepped. */
     private void dispatchStep(CgComputePass pass, int s, int spawnRows, int reportRows) {
         CgGraphBuffer next = counts[1 - current];
         CgGpuOps.fill(pass, next, 0, ONE);
@@ -686,15 +718,17 @@ public final class CgVfxParticlePool {
                 .set("_SpawnRows", stepSpawnRows[s]).set("_Spawned", stepSpawned[s]).set("_PoolId", id)
                 .set("_ChildRows", children ? spawnRows : 0).set("_ChildMax", children ? childMax : 0)
                 .set("_Feeds", children ? feeds : 0);
-        if (shape.spawns()) stepping.bind("SPAWN_EVENTS", spawnStream).counter("SPAWN_EVENTS", spawnCount, 0);
+        int tier = shape.tier();
+        if (shape.spawns()) stepping.bind("SPAWN_EVENTS", SPAWN_STREAMS[tier]).counter("SPAWN_EVENTS", SPAWN_COUNTS[tier], 0);
         if (shape.reports()) {
             stepping.bind("REPORT_EVENTS", reportStream, (long) s * reportRows * EVENT_BYTES, (long) reportRows * EVENT_BYTES)
                     .counter("REPORT_EVENTS", reportCounts, s * 4L);
         }
-        if (!shape.spawns()) {
-            stepping.bind("PARENT_EVENTS", children ? spawnStream : unfed).bind("PARENT_COUNT", children ? spawnCount : unfed)
-                    .bind("FEEDS", children ? feedBuffer : unfed);
+        if (tier > 0) {
+            stepping.bind("PARENT_EVENTS", children ? SPAWN_STREAMS[tier - 1] : unfed)
+                    .bind("PARENT_COUNT", children ? SPAWN_COUNTS[tier - 1] : unfed).bind("FEEDS", children ? feedBuffer : unfed);
         }
+        if (shape.readsClips()) CgVfxClipAtlas.bind(stepping);
         if (shape.readsWorld()) {
             CgVfxVoxelWindow window = CgVfxVoxelWindow.get().use();
             if (shape.usesDistance()) window.useDistance();
@@ -874,7 +908,7 @@ public final class CgVfxParticlePool {
     public int open(CgVfxGpuEmitter emitter, int capacity, @Nullable Object owner) {
         betweenSteps("open");
         if (capacity < 0) throw new IllegalArgumentException("capacity " + capacity);
-        String key = CgVfxShape.of(emitter).key();
+        String key = CgVfxShape.of(emitter, shape.tier()).key();
         if (!key.equals(shape.key())) {
             throw new IllegalArgumentException(emitter.name() + " has shape " + key + ", not this pool's " + shape.key());
         }
@@ -1529,17 +1563,37 @@ public final class CgVfxParticlePool {
         int starts = 8 * CgVfxGpuEmitter.CURVE_TEXELS + 8;
         for (int w = starts; w < starts + 8; w++) if ((w & 3) != 3) start = Math.max(start, Math.abs(curveScratch[w]));
         rowSizeMax[index] = most * start;
-        if (shape.events() > 0) {
-            List<CgVfxEvent> events = emitter.events();
-            for (int e = 0; e < CgVfxEvent.MAX_EVENTS; e++) {
-                params[at + shape.eventsAt() * 4 + e] = Float.floatToRawIntBits(e < events.size() ? events.get(e).age() : 0f);
-                params[at + shape.eventsAt() * 4 + CgVfxEvent.MAX_EVENTS + e] =
-                        Float.floatToRawIntBits(e < events.size() ? (float) events.get(e).firings() : 0f);
-            }
-        }
+        if (shape.events() > 0) writeEvents(emitter, at + shape.eventsAt() * 4);
         rows.put(emitter, new int[]{index, 1});
         paramsChanged = true;
         return index;
+    }
+
+    /** {@code emitter}'s event vec4s from word {@code at}, laid out as {@link CgVfxShape#EVENT_VECTORS} says. */
+    private void writeEvents(CgVfxGpuEmitter emitter, int at) {
+        List<CgVfxEvent> events = emitter.events();
+        CgVfxNodeClip clip = emitter.clip();
+        CgVfxClipAtlas.Section section = clip == null ? null : CgVfxClipAtlas.of(clip);
+        int m = CgVfxEvent.MAX_EVENTS;
+        for (int e = 0; e < m; e++) {
+            CgVfxEvent event = e < events.size() ? events.get(e) : null;
+            params[at + CgVfxShape.EVENT_AGES * 4 + e] = Float.floatToRawIntBits(event == null ? 0f : event.age());
+            params[at + CgVfxShape.EVENT_FIRINGS * 4 + e] = Float.floatToRawIntBits(event == null ? 0f : event.firings());
+            params[at + CgVfxShape.EVENT_FROM * 4 + e] = Float.floatToRawIntBits(event == null ? 0f : event.from());
+            params[at + CgVfxShape.EVENT_UNTIL * 4 + e] = Float.floatToRawIntBits(event == null ? 0f : event.until());
+            int word = 0;
+            if (event != null && event.node() != CgVfxEvent.NO_NODE) {
+                int base = section.base(event.node());
+                boolean steps = (section.stepMask(event.node()) & 0b111) != 0;
+                word = base | (steps ? 1 << 31 : 0);
+            }
+            params[at + CgVfxShape.EVENT_NODES * 4 + e] = word;
+        }
+        int c = at + CgVfxShape.EVENT_CLIP * 4;
+        params[c] = Float.floatToRawIntBits(section == null ? 0f : section.rowLength());
+        params[c + 1] = Float.floatToRawIntBits(clip == null ? 0f : CgVfxNodeClip.FRAMES_PER_SECOND * emitter.playRate());
+        params[c + 2] = Float.floatToRawIntBits(clip == null ? 0f : clip.frames());
+        params[c + 3] = 0;
     }
 
     private void growSlots(int n) {

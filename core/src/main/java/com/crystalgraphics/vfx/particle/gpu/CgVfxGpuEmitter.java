@@ -2,7 +2,9 @@ package com.crystalgraphics.vfx.particle.gpu;
 
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
+import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 
+import javax.annotation.Nullable;
 import java.util.List;
 
 /**
@@ -121,5 +123,19 @@ public interface CgVfxGpuEmitter {
      */
     default CgVfxCurveDomain curveDomain() {
         return CgVfxCurveDomain.LIFE;
+    }
+
+    /**
+     * The clip each particle plays, which its events at a node ({@link CgVfxEvent#at}) read: a {@code SEQUENCE}
+     * emitter's; null for none.
+     */
+    @Nullable
+    default CgVfxNodeClip clip() {
+        return null;
+    }
+
+    /** How fast its particles play their {@link #clip}: 1 plays it at its 30 frames a second of age. */
+    default float playRate() {
+        return 1f;
     }
 }

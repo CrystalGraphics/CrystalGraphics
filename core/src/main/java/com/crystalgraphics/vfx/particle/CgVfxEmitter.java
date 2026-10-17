@@ -13,7 +13,10 @@ import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnPerUnit;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnRate;
+import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
+import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -83,7 +86,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         /** A mesh per particle, each its own sorted draw: billows. */
         MESHES,
         /** A stroke per particle, an arc round the source through the particle: ink streaks. */
-        ARCS
+        ARCS,
+        /**
+         * A clip per particle ({@link Builder#sequence}): its prefab's parts drawn where its nodes are at the particle's
+         * age, a draw a part: a shuriken's spinning blades and rings.
+         */
+        SEQUENCE
     }
 
     final String name;
@@ -108,7 +116,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final float frontA, frontB;
     final float sizeMin, sizeMax, sizeSkew, spinMin, spinMax, heat;
     final List<CgVfxModule> modules;
+    /** Its own events, then its clip's bursts and streams as events; how many are its own. */
     final List<CgVfxEvent> events;
+    private final int ownEvents;
+    @Nullable
+    private final CgVfxNodeClip clip;
+    private final float playRate;
     final CgKeyframes sizeOverLife, opacityOverLife;
     /** Each axis's scale over life, then the colour's channels and intensity over life. */
     final CgKeyframes scaleX, scaleY, scaleZ, red, green, blue, intensity;
@@ -166,7 +179,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         }
         feedsGas = feeds;
         splatsGrid = splats;
-        events = Collections.unmodifiableList(new ArrayList<>(b.events));
+        clip = b.clip;
+        playRate = b.playRate;
+        ownEvents = b.events.size();
+        List<CgVfxEvent> all = new ArrayList<>(b.events);
+        if (clip != null) all.addAll(clipEvents(clip, playRate));
+        events = Collections.unmodifiableList(all);
         sizeOverLife = b.sizeOverLife;
         opacityOverLife = b.opacityOverLife;
         scaleX = b.scaleX;
@@ -194,6 +212,25 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     public static Builder builder(String name) {
         return new Builder(name);
     }
+
+    /**
+     * A clip's bursts and streams as events at their nodes, on the particle's age: a burst an age event at its frame
+     * (just past birth for frame 0), a stream a rate within its frames.
+     */
+    private static List<CgVfxEvent> clipEvents(CgVfxNodeClip clip, float playRate) {
+        float perSecond = CgVfxNodeClip.FRAMES_PER_SECOND * playRate;
+        List<CgVfxEvent> out = new ArrayList<>();
+        for (CgVfxNodeClip.Spawn s : clip.spawns()) {
+            CgVfxEvent e = s.isStream()
+                    ? CgVfxEvent.every(1f / (s.perSecond() * playRate)).between(s.from() / perSecond, s.until() / perSecond)
+                    : CgVfxEvent.onAge(Math.max(s.from() / perSecond, FIRST_FRAME));
+            out.add(e.spawn(s.child(), s.count()).at(s.node()));
+        }
+        return out;
+    }
+
+    /** A burst on a clip's frame 0 fires in the particle's first step: an age event never fires at birth itself. */
+    private static final float FIRST_FRAME = 1e-6f;
 
     public Builder toBuilder() {
         return new Builder(this);
@@ -241,6 +278,18 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
     public Renderer renderer() {
         return renderer;
+    }
+
+    /** The clip each particle plays, a {@link Renderer#SEQUENCE} emitter's; null for any other. */
+    @Override
+    @Nullable
+    public CgVfxNodeClip clip() {
+        return clip;
+    }
+
+    @Override
+    public float playRate() {
+        return playRate;
     }
 
     public int capacity() {
@@ -386,6 +435,20 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
      * }</pre>
      */
     public int peakChildren(int event) {
+        return peakChildren(event, -1);
+    }
+
+    /**
+     * {@link #peakChildren(int)} for an instance that is itself a child, at most {@code fedAlive} of its particles alive
+     * at once (its own slot's size): a grandchild slot's size. Its births within a span are bounded by that many, renewed
+     * once per its shortest life.
+     *
+     * <pre>{@code
+     * int middle = ROOT.peakChildren(0);
+     * int grandchildren = MIDDLE.peakChildren(0, middle);
+     * }</pre>
+     */
+    public int peakChildren(int event, int fedAlive) {
         CgVfxEvent e = events.get(event);
         CgVfxEmitter child = (CgVfxEmitter) e.child();
         if (child == null) return 0;
@@ -395,7 +458,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             float within = child.lifeMax + 0.1f;
             double often = Math.ceil(e.trigger() == CgVfxEvent.Trigger.RATE ? within / e.age() : within * 60f);
             int per = (int) Math.min(e.firings(), often);
-            return spawnsWithin(lifeMax + within) * per * e.count();
+            return saturate((long) births(lifeMax + within, fedAlive) * per * e.count());
         }
         // A parent fires once, this long after its birth at most; its children then live up to the child's longest life.
         float spread = switch (e.trigger()) {
@@ -403,7 +466,17 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             case DEATH -> lifeMax - lifeMin;
             case LANDING, COLLISION, RATE -> lifeMax;
         };
-        return spawnsWithin(spread + child.lifeMax + 0.1f) * e.count();
+        return saturate((long) births(spread + child.lifeMax + 0.1f, fedAlive) * e.count());
+    }
+
+    /** The particles born within {@code span} seconds: its own spawns, or a fed instance's renewals of {@code fedAlive}. */
+    private int births(float span, int fedAlive) {
+        if (fedAlive < 0) return spawnsWithin(span);
+        return saturate((long) fedAlive * (1L + (long) Math.ceil(span / Math.max(lifeMin, 1f / 60f))));
+    }
+
+    private static int saturate(long n) {
+        return (int) Math.min(n, Integer.MAX_VALUE);
     }
 
     /** The most spawn candidates within any {@code span} seconds. */
@@ -484,6 +557,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private float heat;
         private final List<CgVfxModule> modules = new ArrayList<>();
         private final List<CgVfxEvent> events = new ArrayList<>();
+        private CgVfxNodeClip clip;
+        private float playRate = 1f;
         private CgKeyframes sizeOverLife = CgKeyframes.constant(1f);
         private CgKeyframes opacityOverLife = CgKeyframes.start(0f, 1f).to(0.8f, 1f, CgEasings.LINEAR)
                 .to(1f, 0f, CgEasings.OUT_QUAD).build();
@@ -524,7 +599,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             spinMax = e.spinMax;
             heat = e.heat;
             modules.addAll(e.modules);
-            events.addAll(e.events);
+            events.addAll(e.events.subList(0, e.ownEvents));
+            clip = e.clip;
+            playRate = e.playRate;
             sizeOverLife = e.sizeOverLife;
             opacityOverLife = e.opacityOverLife;
             scaleX = e.scaleX;
@@ -548,6 +625,37 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
         public Builder renderer(Renderer renderer) {
             this.renderer = renderer;
+            return this;
+        }
+
+        /**
+         * Each particle plays {@code clip} at its age, drawn by {@link Renderer#SEQUENCE}: its prefab's parts where its
+         * nodes are, sized by the particle's size, turned with its effect; its bursts and streams spawn their children
+         * at their nodes, as events after this emitter's own.
+         *
+         * <pre>{@code
+         * static final CgVfxEmitter SHURIKEN = CgVfxEmitter.builder("shuriken").sequence(SPIN).capacity(4)
+         *         .state(CgVfxEmitterState.ONCE).burst(0f, 1).life(2f, 2f).size(1.5f, 1.5f).build();
+         * CgVfxEmitter.builder("slow").sequence(SPIN, 0.5f)...                // the clip at half speed
+         * }</pre>
+         *
+         * <ul>
+         *   <li>Its particles are a pure function of their seed and age: a module reading the world (floor, voxels,
+         *       depth, entities, neighbours, gas, grid) is refused at {@link #build}. Its children take any.</li>
+         *   <li>Its layers are the clip's prefab's materials: the look takes {@code clip.prefab().kit()}.</li>
+         *   <li>Its clip's bursts and streams count toward {@link CgVfxEvent#MAX_EVENTS}.</li>
+         * </ul>
+         */
+        public Builder sequence(CgVfxNodeClip clip) {
+            return sequence(clip, 1f);
+        }
+
+        /** As {@link #sequence(CgVfxNodeClip)}, the clip played {@code playRate} times as fast. */
+        public Builder sequence(CgVfxNodeClip clip, float playRate) {
+            if (!(playRate > 0f)) throw new IllegalArgumentException(name + " plays its clip at " + playRate);
+            this.clip = Objects.requireNonNull(clip, "clip");
+            this.playRate = playRate;
+            this.renderer = Renderer.SEQUENCE;
             return this;
         }
 
@@ -978,7 +1086,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
          *
          * <ul>
          *   <li>At most {@link CgVfxEvent#MAX_EVENTS}, in the order given: an event's index is its place here.</li>
-         *   <li>A child definition may report rows but not spawn children of its own.</li>
+         *   <li>Two levels: a child's events may spawn children of their own, a grandchild's may not.</li>
+         *   <li>An event {@link CgVfxEvent#at at} a node needs a {@link #sequence} whose clip bakes that node.</li>
          *   <li>A child spawns only from its parent's events: its own bursts and rate are ignored, so one definition can
          *       play alone and as a child.</li>
          * </ul>
@@ -1134,6 +1243,28 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             }
             if (state.loops() > 1 && !(state.shortestPeriod() > 0f)) {
                 throw new IllegalStateException(name + " loops in no time: give its loops a duration or a delay");
+            }
+            if ((renderer == Renderer.SEQUENCE) != (clip != null)) {
+                throw new IllegalStateException(name + ": a SEQUENCE emitter plays a clip, and only one does: use sequence(clip)");
+            }
+            if (clip != null) {
+                for (CgVfxModule m : modules) {
+                    if (m.worldInputs().length > 0) {
+                        throw new IllegalStateException(name + " plays a clip, so its particles read no world, but "
+                                + m.getClass().getSimpleName() + " takes " + Arrays.toString(m.worldInputs()));
+                    }
+                }
+                if (events.size() + clip.spawns().size() > CgVfxEvent.MAX_EVENTS) {
+                    throw new IllegalStateException(name + " has " + events.size() + " events and its clip "
+                            + clip.spawns().size() + " bursts and streams, past " + CgVfxEvent.MAX_EVENTS);
+                }
+            }
+            for (CgVfxEvent e : events) {
+                if (e.node() == CgVfxEvent.NO_NODE) continue;
+                if (clip == null || e.node() >= clip.prefab().nodes() || !CgVfxClipAtlas.bakes(clip, e.node())) {
+                    throw new IllegalStateException(name + ": an event at node " + e.node() + " needs a clip that bakes it: "
+                            + "a node with parts, or one its bursts and streams start at");
+                }
             }
             return new CgVfxEmitter(this);
         }

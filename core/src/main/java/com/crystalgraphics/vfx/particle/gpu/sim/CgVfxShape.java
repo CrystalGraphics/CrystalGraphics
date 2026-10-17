@@ -21,7 +21,8 @@ import java.util.regex.Pattern;
 /**
  * What makes two emitter definitions share a pool and its kernels: their module kinds in stack order, what each kind
  * declares it takes, the renderer, and their events' triggers with whether each spawns children and reports to the
- * CPU. Never a number, so tuning a definition recompiles nothing. Also the layout of a pool's rows, which follows from
+ * CPU (and whether each fires at a clip node), and its feed tier: how many events deep its particles are spawned. Never a
+ * number, so tuning a definition recompiles nothing. Also the layout of a pool's rows, which follows from
  * it. A module's textures are part of it too, so each sampled texture has a pool of its own; its kernels are keyed by
  * {@link #kernelKey()}, which names only whether each is 2D or 3D.
  *
@@ -30,6 +31,7 @@ import java.util.regex.Pattern;
  * shape.key();                  // "QUADS|gravity:1|drag:1|buoyancy:1|turbulence:1:IVEC4,VEC4,IVEC4,VEC4|wind:1"
  * shape.paramRowVectors();      // spawn numbers then each module's numbers
  * shape.instanceRowVectors();   // the row's header then each module's lanes
+ * CgVfxShape.of(SPARKS, 1);     // SPARKS spawned by another's events: a pool of its own, reading its parents' rows
  * }</pre>
  *
  * <ul>
@@ -44,10 +46,15 @@ public final class CgVfxShape {
     private static final Set<CgVfxWorldInput> BEFORE_SOLVER = EnumSet.of(CgVfxWorldInput.NEIGHBOURS, CgVfxWorldInput.GAS,
             CgVfxWorldInput.GAS_FEED, CgVfxWorldInput.GRID, CgVfxWorldInput.GRID_SPLAT);
     /**
-     * The vec4s a parameter row gives its events, when it has any: each event's age or period, then each one's most
-     * firings, {@link CgVfxEvent#MAX_EVENTS} of each.
+     * The vec4s a parameter row gives its events, when it has any, {@link CgVfxEvent#MAX_EVENTS} of each in two vec4s
+     * from these offsets: each one's age or period, its most firings, its window's start and end, and its clip node's
+     * word ({@code base | 1 << 31} where the node's matrix steps); then one vec4 of its clip, {@code (row length,
+     * frames a second of age, frames, 0)}.
      */
-    public static final int EVENT_VECTORS = CgVfxEvent.MAX_EVENTS / 2;
+    public static final int EVENT_AGES = 0, EVENT_FIRINGS = 2, EVENT_FROM = 4, EVENT_UNTIL = 6, EVENT_NODES = 8,
+            EVENT_CLIP = 10, EVENT_VECTORS = 11;
+    /** Feed tiers: a definition spawned by nothing, by a root's events, by a child's. */
+    public static final int TIERS = 3;
     /** Each custom kind's text, as first seen: a kind name means one text. */
     private static final Map<String, String> SOURCES = new ConcurrentHashMap<>();
     /** A number per texture a shape has sampled, for the pool key: by identity. */
@@ -68,11 +75,13 @@ public final class CgVfxShape {
     /** Where the gas's and the grid's two lanes each start in the instance row, after every module's: the pool's, not a kind's. */
     private final int gasAt, gridAt;
     private final CgVfxEvent.Trigger[] triggers;
-    private final boolean[] eventSpawns, eventReports;
-    private final int eventsAt;
-    private final boolean spawns, reports;
+    private final boolean[] eventSpawns, eventReports, eventNodes;
+    private final int eventsAt, tier;
+    private final boolean spawns, reports, readsClips;
 
-    private CgVfxShape(CgVfxGpuEmitter emitter) {
+    private CgVfxShape(CgVfxGpuEmitter emitter, int tier) {
+        if (tier < 0 || tier >= TIERS) throw new IllegalArgumentException(emitter.name() + " at feed tier " + tier);
+        this.tier = tier;
         List<? extends CgVfxGpuModule> modules = emitter.modules();
         int n = modules.size();
         renderer = emitter.renderer();
@@ -145,18 +154,27 @@ public final class CgVfxShape {
         triggers = new CgVfxEvent.Trigger[events.size()];
         eventSpawns = new boolean[events.size()];
         eventReports = new boolean[events.size()];
-        boolean anySpawns = false, anyReports = false;
+        eventNodes = new boolean[events.size()];
+        boolean anySpawns = false, anyReports = false, anyNodes = false;
         for (int e = 0; e < triggers.length; e++) {
             CgVfxEvent event = events.get(e);
             triggers[e] = event.trigger();
             eventSpawns[e] = event.child() != null;
             eventReports[e] = event.readback() > 0;
+            eventNodes[e] = event.node() != CgVfxEvent.NO_NODE;
             anySpawns |= eventSpawns[e];
             anyReports |= eventReports[e];
-            key.append(e == 0 ? "|ev:" : ",").append(triggers[e].name()).append(eventSpawns[e] ? "+s" : "").append(eventReports[e] ? "+r" : "");
+            anyNodes |= eventNodes[e];
+            key.append(e == 0 ? "|ev:" : ",").append(triggers[e].name()).append(eventSpawns[e] ? "+s" : "")
+                    .append(eventReports[e] ? "+r" : "").append(eventNodes[e] ? "@n" : "");
         }
+        if (anySpawns && tier == TIERS - 1) {
+            throw new IllegalArgumentException(emitter.name() + " is a grandchild that spawns: two levels of children");
+        }
+        if (tier > 0) key.append("|tier").append(tier);
         spawns = anySpawns;
         reports = anyReports;
+        readsClips = anyNodes;
         eventsAt = param;
         if (triggers.length > 0) param += EVENT_VECTORS;
         paramRow = param;
@@ -201,9 +219,14 @@ public final class CgVfxShape {
         }
     }
 
-    /** {@code emitter}'s shape. */
+    /** {@code emitter}'s shape as a definition spawned by nothing. */
     public static CgVfxShape of(CgVfxGpuEmitter emitter) {
-        return new CgVfxShape(emitter);
+        return new CgVfxShape(emitter, 0);
+    }
+
+    /** {@code emitter}'s shape at feed {@code tier}: 0 for a root, 1 for a root's events' children, 2 for theirs. */
+    public static CgVfxShape of(CgVfxGpuEmitter emitter, int tier) {
+        return new CgVfxShape(emitter, tier);
     }
 
     /** One string naming the shape: equal for definitions that share a pool. */
@@ -383,9 +406,24 @@ public final class CgVfxShape {
         return eventReports[e];
     }
 
-    /** Whether any event spawns children: its pool steps ahead of the pools of its children. */
+    /** Whether event {@code e} fires at a clip node ({@link CgVfxEvent#at}). */
+    public boolean eventAtNode(int e) {
+        return eventNodes[e];
+    }
+
+    /** Whether any event spawns children: its rows feed the next tier. */
     public boolean spawns() {
         return spawns;
+    }
+
+    /** Its feed tier: what it steps after, and which spawn rows its children read ({@link #TIERS}). */
+    public int tier() {
+        return tier;
+    }
+
+    /** Whether an event fires at a clip node: its Step kernel reads {@code CgVfxClipAtlas}. */
+    public boolean readsClips() {
+        return readsClips;
     }
 
     /** Whether any event reports rows to the CPU. */

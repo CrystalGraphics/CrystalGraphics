@@ -834,15 +834,24 @@ public final class CgVfxSystem {
         CgVfxRange.prepare();
     }
 
-    /** {@code emitter}'s Step kernels and slot meshes, its children's too: built here, not in the first burst's frame. */
+    /**
+     * {@code emitter}'s Step kernels and slot meshes, its children's and theirs too, each at its feed tier: built here, not
+     * in the first burst's frame.
+     */
     private static void prepareEmitter(CgVfxEmitter emitter) {
-        CgVfxParticlePool.prepare(emitter);
+        CgVfxParticlePool.prepare(emitter, 0);
         CgVfxFrame.slotMesh(emitter.renderer(), emitter.peakAlive());
-        for (int e = 0; e < emitter.events().size(); e++) {
-            CgVfxGpuEmitter child = emitter.events().get(e).child();
+        prepareChildren(emitter, -1, 1);
+    }
+
+    private static void prepareChildren(CgVfxEmitter parent, int fedAlive, int tier) {
+        for (int e = 0; e < parent.events().size(); e++) {
+            CgVfxEmitter child = (CgVfxEmitter) parent.events().get(e).child();
             if (child == null) continue;
-            CgVfxParticlePool.prepare(child);
-            CgVfxFrame.slotMesh(child.renderer(), emitter.peakChildren(e));
+            int alive = parent.peakChildren(e, fedAlive);
+            CgVfxParticlePool.prepare(child, tier);
+            CgVfxFrame.slotMesh(child.renderer(), alive);
+            prepareChildren(child, alive, tier + 1);
         }
     }
 

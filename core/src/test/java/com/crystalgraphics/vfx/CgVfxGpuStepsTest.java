@@ -64,7 +64,8 @@ public class CgVfxGpuStepsTest {
         CgVfxAir air = new CgVfxAir().wind(0f, 0f, 0f);
         CgVfxEmitterInstance instance = new CgVfxEmitterInstance(flares, 0.6f);
         instance.start(0f, 0f, 0f);
-        CgVfxParticlePool parents = CgVfxParticlePool.of(steps, flares), children = CgVfxParticlePool.of(steps, dust);
+        // The children's slot is in their feed tier's pool.
+        CgVfxParticlePool parents = CgVfxParticlePool.of(steps, flares), children = CgVfxParticlePool.of(steps, dust, 1);
         int stepped = 0;
         for (int n = 0; n < 600 && (n == 0 || !steps.isEmpty()); n++) {
             instance.books().schedule(DT, 0.0, 0.0, 0.0);
@@ -83,6 +84,35 @@ public class CgVfxGpuStepsTest {
         assertEquals(0, children.openSlots());
         // The last flare dies by 2.1 s and its dust a step after 0.8 s more.
         assertTrue("finished after " + stepped + " steps", stepped >= Math.floor(2.1f / DT) && stepped <= Math.ceil(2.9f / DT) + 3);
+    }
+
+    @Test
+    public void grandchildrenHoldASlotInTheirTiersPoolUntilTheRootFinishes() {
+        CgVfxEmitter leaf = CgVfxEmitter.builder("leaf").life(0.2f, 0.3f).build();
+        CgVfxEmitter middle = CgVfxEmitter.builder("middle").life(0.3f, 0.5f).event(CgVfxEvent.onDeath().spawn(leaf, 2)).build();
+        CgVfxEmitter root = CgVfxEmitter.builder("root").state(CgVfxEmitterState.ONCE).capacity(20).burst(0.2f, 10)
+                .life(0.3f, 0.4f).event(CgVfxEvent.onDeath().spawn(middle, 1)).build();
+        CgVfxGpuSteps steps = new CgVfxGpuSteps();
+        CgVfxAir air = new CgVfxAir().wind(0f, 0f, 0f);
+        CgVfxEmitterInstance instance = new CgVfxEmitterInstance(root, 0.3f);
+        instance.start(0f, 0f, 0f);
+        CgVfxParticlePool leaves = CgVfxParticlePool.of(steps, leaf, 2);
+        int stepped = 0;
+        for (int n = 0; n < 600 && (n == 0 || !steps.isEmpty()); n++) {
+            instance.books().schedule(DT, 0.0, 0.0, 0.0);
+            if (n == 0) {
+                steps.admit(instance);
+                assertEquals(3, steps.tenants());
+                int middles = root.peakChildren(0);
+                assertEquals(middle.peakChildren(0, middles), leaves.capacity(steps.of(instance.child(0).child(0)).slot));
+            }
+            assertEquals(1, leaves.openSlots());
+            steps.step(DT, air);
+            stepped++;
+        }
+        assertEquals(0, leaves.openSlots());
+        // The last root particle dies by 0.6 s, its middle child by 1.1 s and the leaf by 1.4 s.
+        assertTrue("finished after " + stepped + " steps", stepped >= Math.floor(1.4f / DT));
     }
 
     @Test

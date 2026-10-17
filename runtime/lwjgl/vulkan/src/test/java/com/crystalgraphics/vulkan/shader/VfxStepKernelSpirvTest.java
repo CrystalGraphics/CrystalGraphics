@@ -9,9 +9,13 @@ import com.crystalgraphics.compute.source.CgComputeSource;
 import com.crystalgraphics.vfx.element.CgVfxExplosion;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
+import com.crystalgraphics.vfx.look.CgVfxLayer;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxEmitterCompiler;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
+import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
+import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import org.junit.AfterClass;
 import org.junit.Test;
 
@@ -61,6 +65,18 @@ public class VfxStepKernelSpirvTest {
             .speed(1f, 2f).module(new CgVfxModule.Follow(0, 0.6f, 0.5f, 6f)).module(new CgVfxModule.Gradient(1, 2f))
             .module(new CgVfxModule.Splat(1f, 0.5f, 0f, 0f)).build();
 
+    /** A clip's particles firing at its nodes, their children spawning grandchildren: one shape a feed tier. */
+    private static final CgVfxEmitter LEAF = CgVfxEmitter.builder("leaf").capacity(64).life(0.5f, 0.5f)
+            .event(CgVfxEvent.onDeath().readback(4)).build();
+    private static final CgVfxEmitter MIDDLE = CgVfxEmitter.builder("middle").capacity(64).life(1f, 1f)
+            .module(new CgVfxModule.Gravity(9.8f)).event(CgVfxEvent.every(0.1f).between(0.2f, 0.8f).spawn(LEAF, 2)).build();
+    private static final CgVfxPrefab SPINNER = CgVfxPrefab.builder("test:spinner").node("hub").node("tip").parent("hub")
+            .at(0f, 1f, 0f).part(CgVfxLayer.of("test:blade.shader")).build();
+    private static final CgVfxEmitter SEQUENCE = CgVfxEmitter.builder("sequence").state(CgVfxEmitterState.ONCE).capacity(4)
+            .burst(0f, 1).life(1f, 1f).sequence(CgVfxNodeClip.of(SPINNER, 30).channel("hub", CgVfxNodeClip.Channel.ROTATION_Y,
+                    CgVfxNodeClip.Interp.LINEAR, 0, 0f, 30, 360f).burst("tip", MIDDLE, 10, 3).stream("tip", MIDDLE, 5, 25, 20f)
+                    .build()).build();
+
     @AfterClass
     public static void close() { COMPILER.close(); }
 
@@ -69,8 +85,12 @@ public class VfxStepKernelSpirvTest {
         CgVfxEmitter[] emitters = {EVERY_KIND, ON_MESH, FLOCKING, IN_GAS, FEEDING, IN_GRID, CgVfxExplosion.BILLOWS, CgVfxExplosion.SURGE, CgVfxExplosion.SPECKS, CgVfxExplosion.DUST, CgVfxExplosion.SPARKLES,
                 CgVfxExplosion.INK, CgVfxExplosion.RAYS, CgVfxExplosion.RINGS, CgVfxExplosion.SKIRT};
         List<String> failures = new ArrayList<>();
-        for (CgVfxEmitter emitter : emitters) {
-            CgVfxShape shape = CgVfxShape.of(emitter);
+        List<CgVfxShape> shapes = new ArrayList<>();
+        for (CgVfxEmitter emitter : emitters) shapes.add(CgVfxShape.of(emitter));
+        shapes.add(CgVfxShape.of(SEQUENCE));
+        shapes.add(CgVfxShape.of(MIDDLE, 1));
+        shapes.add(CgVfxShape.of(LEAF, 2));
+        for (CgVfxShape shape : shapes) {
             String key = CgVfxEmitterCompiler.key(shape);
             CgComputeSource source = CgComputeParser.parse(CgVfxEmitterCompiler.source(shape), key);
             String glsl = new CgShaderPreprocessor().process(
@@ -78,7 +98,7 @@ public class VfxStepKernelSpirvTest {
             try {
                 COMPILER.compileCompute(glsl, key);
             } catch (RuntimeException e) {
-                failures.add(emitter.name() + " (" + shape + "): " + e.getMessage());
+                failures.add(shape.key() + ": " + e.getMessage());
             }
         }
         assertTrue(String.join("\n", failures), failures.isEmpty());
