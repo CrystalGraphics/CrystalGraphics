@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.buffer.shader;
 
+import com.crystalgraphics.api.material.CgParameterCollection;
 import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.gl.render.CgShapeTable;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
@@ -71,6 +72,8 @@ public final class CgEngineBufferRegistry {
                 "crystalgraphics:shaders/env/buffer/particle.glsl");
         register("rows", CgPropertyRows::buffer, CgPropertyRows.MACRO_NAME,
                 "crystalgraphics:shaders/env/buffer/rows.glsl");
+        registerGenerated("globals", CgParameterCollectionBuffer::buffer, CgParameterCollectionBuffer.MACRO_NAME,
+                "crystalgraphics:shaders/env/buffer/globals.glsl", CgParameterCollection::glsl);
     }
 
     private CgEngineBufferRegistry() {}
@@ -105,14 +108,29 @@ public final class CgEngineBufferRegistry {
      */
     public static synchronized void register(String token, Supplier<CgShaderBuffer> buffer, String macroName,
                                              String envPath, String... requires) {
-        for (String required : requires) {
+        put(new Provider(token, buffer, macroName, envPath, List.of(requires), null, false));
+    }
+
+    /**
+     * As {@link #register(String, Supplier, String, String, String...)}, with GLSL made from what is registered when a
+     * shader compiles, appended after the env file: {@code globals}' place for each parameter. A shader reading it is
+     * tracked by {@link Provider#generatedPath()}, so {@code CgAssetReloader.changed} on that path recompiles it. No
+     * executor owns its binding, so each draw's snapshot binds it ({@link Provider#perDraw()}).
+     */
+    public static synchronized void registerGenerated(String token, Supplier<CgShaderBuffer> buffer, String macroName,
+                                                      String envPath, Supplier<String> generated) {
+        put(new Provider(token, buffer, macroName, envPath, List.of(), generated, true));
+    }
+
+    private static void put(Provider provider) {
+        for (String required : provider.requires()) {
             if (!PROVIDERS.containsKey(required)) {
-                throw new IllegalStateException("cg_use token '" + token + "' requires unregistered '" + required + "'");
+                throw new IllegalStateException("cg_use token '" + provider.token() + "' requires unregistered '"
+                        + required + "'");
             }
         }
-        Provider existing = PROVIDERS.putIfAbsent(token, new Provider(token, buffer, macroName, envPath, List.of(requires)));
-        if (existing != null) {
-            throw new IllegalStateException("cg_use token '" + token + "' is already registered");
+        if (PROVIDERS.putIfAbsent(provider.token(), provider) != null) {
+            throw new IllegalStateException("cg_use token '" + provider.token() + "' is already registered");
         }
     }
 
@@ -151,10 +169,18 @@ public final class CgEngineBufferRegistry {
      * @param macroName the {@code attach()} macro the shader's GLSL refers to (e.g. {@code QUAD_DATA})
      */
     /**
-     * @param envPath GLSL macros written against this buffer, included right after its declaration,
-     *                or null when the declaration is all there is
+     * @param envPath   GLSL macros written against this buffer, included right after its declaration,
+     *                  or null when the declaration is all there is
+     * @param generated GLSL made at each compile, after the env file, or null
+     * @param perDraw   bound by each draw's binding snapshot, as a material's own attached buffer is, rather than left to
+     *                  an executor: a texture-buffer unit does not survive from the upload to the draw
      */
     public record Provider(String token, Supplier<CgShaderBuffer> buffer, String macroName, String envPath,
-                           List<String> requires) {
+                           List<String> requires, Supplier<String> generated, boolean perDraw) {
+
+        /** What a shader reading {@link #generated} is tracked by: no file, a name for {@code CgAssetReloader}. */
+        public String generatedPath() {
+            return "crystalgraphics:shaders/env/buffer/" + token + ".generated";
+        }
     }
 }

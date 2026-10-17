@@ -200,6 +200,28 @@ CgVfxFlipbook.rects(0f, 0f, 0.5f, 0.25f,  0.5f, 0f, 1f, 0.25f) // frames anywher
 - A shader of your own reads the same: `_SubImage`, `_SubUV` and `_SubImages`, through `fx_particle.glsl`'s
   `fx_subuv_frames` and `fx_subimage_uv`, as `sprite.shader` does.
 
+## Global parameters: one value every layer reads
+
+A value set once and read by every layer whose shader reads it: a skill darkening the whole stage, the light of a
+move's backdrop. Unreal's material parameter collections, which Niagara's systems and a sequence's `global` track set.
+
+```java
+public static final CgParameterCollection SKILL = CgParameterCollection.of("skill");
+public static final CgParameterCollection.Scalar DARKEN = SKILL.scalar("darken", 0f);
+
+DARKEN.set(0.6f);                    // from an effect's tick: every layer reading it, this frame
+```
+
+```glsl
+#pragma cg_use globals
+...
+fragColor.rgb *= 1.0 - CG_GLOBAL_skill_darken;
+```
+
+- A value is the same for every effect and every layer, unlike a layer's `bind`, which is per effect.
+- Declare the parameters before the first set. The shader side is [`../SHADERS.md`](../SHADERS.md)
+  § *Global parameters*.
+
 ## Where a layer draws: its order and its sort layer
 
 Within its effect, a layer draws by its role (smoke, light, distortion, surface), then by its order hint, then in

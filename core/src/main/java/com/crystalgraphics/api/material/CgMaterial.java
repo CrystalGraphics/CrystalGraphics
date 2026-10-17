@@ -975,6 +975,7 @@ public final class CgMaterial {
             propStore.captureSamplers(table);
         }
         if (cgMaterialShader != null) captureAttachedBuffers(table);
+        capturePerDrawEngineBuffers(table);
         boolean texels = CgBindingPoints.PATH == CgCapabilities.ShaderBufferPath.TBO;
         for (int i = 0; i < declared.size(); i++) {
             CgBufferDecl b = declared.get(i);
@@ -1098,6 +1099,18 @@ public final class CgMaterial {
             if (CgEngineBufferRegistry.get(token).macroName().equals(macroName)) return true;
         }
         return false;
+    }
+
+    /**
+     * The engine buffers no executor binds ({@code CgEngineBufferRegistry.Provider.perDraw}), from the parse: a draw
+     * captured before its material's first compile, which attaches them, binds them too.
+     */
+    private void capturePerDrawEngineBuffers(CgBindingTable table) {
+        if (propsParse == null) return;
+        for (String token : propsParse.engineBuffers()) {
+            CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(token);
+            if (provider.perDraw()) table.buffer(provider.buffer().get());
+        }
     }
 
     // ── Accessors ─────────────────────────────────────────────────────────────

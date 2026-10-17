@@ -112,6 +112,12 @@ public final class CgBindingPoints {
      */
     public static Binding PROPERTY_ROWS;
 
+    /**
+     * Reserved binding pair for {@code CgParameterCollectionBuffer}, every parameter collection's values (one below
+     * {@link #PROPERTY_ROWS}'s). Read from both stages.
+     */
+    public static Binding GLOBALS;
+
     /** How many buffers a material's {@code Buffers { }} may declare. */
     public static final int MATERIAL_BUFFER_COUNT = 4;
 
@@ -246,6 +252,7 @@ public final class CgBindingPoints {
         PALETTE = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         SHAPE_TABLE = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         PROPERTY_ROWS = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
+        GLOBALS = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         maxSsboBindings -= MATERIAL_BUFFER_COUNT;
         MATERIAL_BUFFERS_SSBO = maxSsboBindings;
 

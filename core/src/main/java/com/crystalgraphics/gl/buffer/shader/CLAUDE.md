@@ -60,6 +60,7 @@ without casts.
 | `CgShaderStorageBuffer` | SSBO backend. GL 4.3 core or `ARB_shader_storage_buffer_object`. `wireShader` calls `glGetProgramResourceIndex`+`glShaderStorageBlockBinding` to wire the named block to `bindingLocation`. Not a no-op. |
 | `CgTextureBuffer` | TBO backend. Manages a `GL_TEXTURE_BUFFER` texture. `bindingLocation` IS the texture unit (no separate constant). `wireShader` calls `glUniform1i(getName(), bindingLocation)` to wire the `samplerBuffer` uniform. `bindInternal()` includes an Intel sampler object workaround: unbinds any sampler object from the unit before binding the TBO texture. |
 | `CgUniformBuffer` | UBO for a uniform block, with a `CgBufferLifetime`: `FRAME` for every engine block — material properties (`CgMaterial` uploads at every bind), the text block (`getOrCreateUboInternal`) — or `RETAINED`, the default for `getOrCreateUbo(format, name, index)`. `upload()` passes `CgShaderBuffer.uploadData`'s skip. Constructors `(name, format, bindingLocation[, lifetime])`. `getName()` is the GLSL block name. `wireShader` calls `glUniformBlockBinding(programId, blockIndex, bindingLocation)`. Uses unified `endRecord()` from parent. |
+| `CgParameterCollectionBuffer` | The `globals` engine buffer: every `CgParameterCollection`'s values, a vec4 each (`GLOBAL_DATA`), FRAME lifetime, at `CgBindingPoints.GLOBALS`. Uploaded once a frame by `CgParameterCollection.upload()`, which the world renderer calls |
 | `CgShaderBufferRegistry` | Singleton registry for user-created SSBO/TBO/UBO buffers. Two caches: `ShaderBufferKey(name, format, bindingPoint)` (covers both SSBO and TBO) and `UboKey(name, format, bindingPoint)`. `getOrCreate(String name, CgBufferFormat format, int userIndex)` and `getOrCreateUbo(CgBufferFormat format, String name, int userIndex)` take 0-based `userIndex`; per-type USER_START is added internally. `deleteAll()` called by `CgGraphicsLifecycle.destroyContext()`. Engine-internal pipeline buffers bypass this registry. |
 
 ## Binding Point and Texture Unit Namespaces
@@ -133,6 +134,13 @@ when a GL context exists.
 
 **Adding one:** `CgEngineBufferRegistry.register(token, supplier, macroName)`, before any shader
 referencing the token is parsed. Registering a duplicate token throws.
+
+**Generated GLSL** (`registerGenerated`, `globals`): a provider may carry GLSL made at each compile, appended after
+its env file, and a parse naming the token records its `generatedPath()` as read, so `CgAssetReloader.changed` on that
+path recompiles every shader using it. Such a buffer is **bound per draw** (`perDraw`): `CgMaterial.captureBindings`
+puts it in each snapshot from the parse. The other engine buffers are their executors', and on the SSBO path a FRAME
+upload re-binds its own; but a texture buffer is not re-bound by an upload, and a draw captured before its material's
+first compile has no attached buffers yet, so a buffer nothing else binds would read unit 0's nothing in that frame.
 
 **Built-ins are seeded in this class's own static block**, not by the provider registering itself.
 That was tried: self-registration only takes effect once something touches the provider class, which

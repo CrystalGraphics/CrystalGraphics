@@ -9,6 +9,7 @@ import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.util.io.CgIO;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -193,6 +194,7 @@ public final class CgShaderParser {
         List<String> engineBuffers     = CgEngineBufferRegistry.withRequirements(
                 CgStructureParser.parseUsePragmas(source, resourcePath));
         validateEngineBufferUsage(source, engineBuffers, resourcePath);
+        noteGeneratedReads(engineBuffers);
         List<CgMaterialProperty> props = CgPropertiesParser.parse(source, resourcePath);
         if (engineBuffers.contains(ROWS)) props = withRowSlots(props);
         CgStructureParser.MaterialBuffers buffers = CgStructureParser.parseBuffers(stripGlslComments(source), resourcePath);
@@ -466,6 +468,14 @@ public final class CgShaderParser {
      * made {@code example.shader}, the reference file this project tells authors to read first,
      * unparseable by the very feature it describes.</p>
      */
+    /** A buffer whose GLSL is generated is read as its generated path, so what generates it can recompile this shader. */
+    private static void noteGeneratedReads(List<String> declared) {
+        for (String token : declared) {
+            CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(token);
+            if (provider != null && provider.generated() != null) CgIO.noteRead(provider.generatedPath());
+        }
+    }
+
     private static void validateEngineBufferUsage(String source, List<String> declared, String resourcePath) {
         for (String token : declared) {
             if (CgEngineBufferRegistry.get(token) == null) {

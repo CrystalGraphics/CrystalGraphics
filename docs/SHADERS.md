@@ -301,6 +301,7 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 | `clip` | `CLIP_DATA(n)` + `CG_CLIP_QUAD_COVERAGE` / `CG_CLIP_CURVE_COVERAGE` — the coverage of the `CgClipTable` entry the instance names (`Quad.clip`, `Curve.clip`, `CgTextRenderer.clip`), 1 for entry 0. Fragment stage only; read it before any `discard` | Any quad or curve material a rounded clip must reach: every CrystalGUI UI material, and `text.shader`. A material that does not multiply by it draws past the corners |
 | `rows` | Every numeric property (`float`, `Range`, `vec2`, `vec4`, `color`, and arrays of `vec4` or `color`) read per draw: the material's value, or the draw's row in `CgPropertyRows` (FRAME lifetime, a vec4 a value) where its binder says so. The shader reads `_X` as before; an array is `_X(i)` in every shader. A draw's row starts at `CG_PROPERTY_ROW`, `int(CG_OBJECT_CUSTOM3.x)` unless the shader defines it | The VFX layers, whose properties a look binds to its parameters ([below](#per-draw-properties-cg_use-rows)) |
 | `particle` | `PARTICLE_DATA(n)` + `CG_PARTICLE_POSITION` / `CG_PARTICLE_SIZE` / `CG_PARTICLE_VELOCITY` / `CG_PARTICLE_PROGRESS` / `CG_PARTICLE_SEED` / `CG_PARTICLE_SPIN` / `CG_PARTICLE_HEAT` / `CG_PARTICLE_OPACITY` / `CG_PARTICLE_LIGHT` / `CG_PARTICLE_ID` / `CG_PARTICLE_FLOOR` / `CG_PARTICLE_COLOR` / `CG_PARTICLE_SCALE` / `CG_PARTICLE_AGE` (seconds, what a flipbook loops on) — the frame's particle records (`CgParticleBuffer`, FRAME lifetime, four vec4s each, the fourth its light packed as block + 16 sky, its spawn id and its floor), written once a frame by whatever simulates particles; a draw reads its own range `[base, base + count)`. Write it every frame any particle draws | Particle renderers: the vfx engine's quads and arcs (plan `vfx-particles`) |
+| `globals` | `CG_GLOBAL_<namespace>_<name>` for every parameter of every `CgParameterCollection`, a `float` or a `vec4`: Unreal's material parameter collections ([below](#global-parameters-cg_use-globals)) | Any material reading values set once for every material: a skill darkening the stage, a tint |
 
 > **A screen-space quad material antialiases its own edges — without MSAA.** `env/buffer/quad.glsl`
 > (injected by `#pragma cg_use quad`) provides
@@ -390,6 +391,32 @@ fragColor = _Color * _Bands(1);    // read as always: the row's value where boun
 - **An array** is `color[n]` or `vec4[n]`, n at most 16, its default each element's in order; read as `_Name(i)` in
   every shader, with `rows` or without.
 - The VFX engine is the binder: a layer's `bind` and its colours bound by name ([`VFX.md`](VFX.md) § *Kits, layers and slots: how a look draws* and § *Writing a layer's shader*).
+
+#### Global parameters: `cg_use globals`
+
+Values set once and read by every material declaring the buffer: Unreal's material parameter collections. A
+collection is declared in Java, its parameters typed handles; the compiler defines each by namespace and name.
+
+```java
+public static final CgParameterCollection SKILL = CgParameterCollection.of("skill");
+public static final CgParameterCollection.Scalar DARKEN = SKILL.scalar("darken", 0f);
+public static final CgParameterCollection.Vector TINT = SKILL.vector("tint", 0xFFFFFFFF);
+DARKEN.set(0.6f);   // every material reading it, from this frame's world draws
+```
+
+```glsl
+#pragma cg_use globals
+...
+fragColor.rgb *= (1.0 - CG_GLOBAL_skill_darken) * CG_GLOBAL_skill_tint.rgb;   // a float, a vec4; either stage
+```
+
+- **Declare a collection's parameters before its first use** (a set, a read, the first frame, a compile against it):
+  it is placed then, scalars packed four to a vec4 and vectors after, as Unreal lays a collection out, and a
+  declaration after throws. A collection defined after a shader compiled recompiles that shader at the next frame.
+- **Uploaded once a frame by the world renderer**, after its `onFrame` listeners: a pass outside the world reads the
+  values of the last frame the world drew.
+- At most `CgParameterCollection.MAX_VEC4S` (1024) vec4s for every collection together. On the TBO path it takes a
+  texture unit, as each engine buffer does.
 
 ### Reading a kernel's buffers
 

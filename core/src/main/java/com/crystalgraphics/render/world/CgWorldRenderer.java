@@ -8,6 +8,7 @@ import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.material.CgParameterCollection;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.state.CgBlendState;
@@ -366,6 +367,7 @@ public final class CgWorldRenderer {
         if (now != notified) {
             notified = now;
             for (FrameListener listener : listeners) listener.frame(view);
+            CgParameterCollection.upload();   // after the listeners, where effects and sequences set them
         }
     }
 

@@ -808,8 +808,9 @@ public final class CgMaterialShaderCompiler {
     private static void appendEngineBufferEnv(StringBuilder sb, java.util.List<String> tokens) {
         for (String token : tokens) {
             CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(token);
-            if (provider == null || provider.envPath() == null) continue;
-            sb.append("#include \"").append(provider.envPath()).append("\"").append("\n");
+            if (provider == null) continue;
+            if (provider.envPath() != null) sb.append("#include \"").append(provider.envPath()).append("\"").append("\n");
+            if (provider.generated() != null) sb.append(provider.generated().get());
         }
     }
 
