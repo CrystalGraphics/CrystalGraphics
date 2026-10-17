@@ -123,6 +123,15 @@ public final class CgVfxPrefab {
         return i == null ? -1 : i;
     }
 
+    /**
+     * {@code node}'s rest transform into {@code out} (10 floats): location xyz, rotation as a unit quaternion xyzw, scale
+     * xyz, in its parent's space. Answers {@code out}.
+     */
+    public float[] rest(int node, float[] out) {
+        System.arraycopy(rest, node * REST, out, 0, REST);
+        return out;
+    }
+
     /** {@code node}'s own opacity at rest, before its ancestors'. */
     public float opacity(int node) {
         return opacity[node];
