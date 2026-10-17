@@ -740,6 +740,12 @@ UVs land.
 - **Faces wind counter-clockwise seen from outside**. A ribbon has two sides, so its shader draws with culling off.
 - **Data only**: build it once, as a constant, on any thread. Each `build()` makes a new mesh.
 
+### A model of parts: prefabs
+
+Meshes that move and fade together as one model (a lens of nested balls, a shuriken's rings and blades) are a
+`CgVfxPrefab`: a node tree, each node's meshes drawn with a material, a node's opacity fading its subtree. The look takes
+its `kit()`, and an effect plays it through a `CgVfxPrefabInstance`: [`vfx/prefabs.md`](vfx/prefabs.md).
+
 ### Particles born on a mesh
 
 An emitter's `mesh(...)` spawns on a mesh's surface, a triangle picked by area and launched along its normal, and

@@ -1,5 +1,7 @@
 package com.crystalgraphics.api.mesh;
 
+import com.crystalgraphics.shape.bounds.CgAABB;
+
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,6 +33,7 @@ public final class CgMeshLods {
 
     private final CgMesh[] levels;
     private final float[] heights;
+    private float reach = Float.NaN;
 
     private CgMeshLods(CgMesh[] levels, float[] heights) {
         this.levels = levels;
@@ -39,6 +42,23 @@ public final class CgMeshLods {
 
     public static Builder builder() {
         return new Builder();
+    }
+
+    /** One mesh at every screen height. */
+    public static CgMeshLods of(CgMesh mesh) {
+        return builder().level(mesh, 0f).build();
+    }
+
+    /** The farthest the finest level's bounds reach from its origin, read once: what a draw of it is culled by. */
+    public float reach() {
+        float r = reach;
+        if (r == r) return r;
+        CgAABB box = finest().bounds(new CgAABB());
+        double x = Math.max(Math.abs(box.minX()), Math.abs(box.maxX()));
+        double y = Math.max(Math.abs(box.minY()), Math.abs(box.maxY()));
+        double z = Math.max(Math.abs(box.minZ()), Math.abs(box.maxZ()));
+        reach = r = (float) Math.sqrt(x * x + y * y + z * z);
+        return r;
     }
 
     /** The level for a draw covering {@code screenHeight} of the screen's height, or null when it is culled. */

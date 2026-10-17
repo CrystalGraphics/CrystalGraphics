@@ -7,7 +7,6 @@ import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.render.world.CgSortLayer;
-import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 
@@ -126,7 +125,6 @@ public final class CgVfxLayer {
     private final CgMeshLods meshLods;
     private final String meshPath;
     private volatile CgMeshLods loaded;
-    private volatile float meshRadius = Float.NaN;
     /** Constants a tuning changed: the layer's for as long as the run. */
     private final Map<String, float[]> tuned = new ConcurrentHashMap<>();
     private volatile int tunings;
@@ -328,30 +326,14 @@ public final class CgVfxLayer {
         if (meshLods != null) return meshLods;
         if (meshPath == null) return null;
         CgMeshLods lods = loaded;
-        if (lods == null) loaded = lods = single(CgMeshLoader.load(meshPath));
+        if (lods == null) loaded = lods = CgMeshLods.of(CgMeshLoader.load(meshPath));
         return lods;
     }
 
     /** The farthest its mesh reaches from its origin, at size 1: what a particle drawn with it is culled by; 1 for none. */
     public float meshRadius() {
-        float r = meshRadius;
-        if (r == r) return r;
         CgMeshLods lods = mesh();
-        if (lods == null) {
-            r = 1f;
-        } else {
-            CgAABB box = lods.finest().bounds(new CgAABB());
-            double x = Math.max(Math.abs(box.minX()), Math.abs(box.maxX()));
-            double y = Math.max(Math.abs(box.minY()), Math.abs(box.maxY()));
-            double z = Math.max(Math.abs(box.minZ()), Math.abs(box.maxZ()));
-            r = (float) Math.sqrt(x * x + y * y + z * z);
-        }
-        meshRadius = r;
-        return r;
-    }
-
-    private static CgMeshLods single(CgMesh mesh) {
-        return CgMeshLods.builder().level(mesh, 0f).build();
+        return lods == null ? 1f : lods.reach();
     }
 
     @Override
@@ -659,7 +641,7 @@ public final class CgVfxLayer {
          * }</pre>
          */
         public Builder mesh(CgMesh mesh) {
-            this.meshLods = single(Objects.requireNonNull(mesh, "mesh"));
+            this.meshLods = CgMeshLods.of(Objects.requireNonNull(mesh, "mesh"));
             this.meshPath = null;
             return this;
         }

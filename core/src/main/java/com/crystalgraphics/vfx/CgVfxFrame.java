@@ -35,6 +35,7 @@ import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -274,6 +275,25 @@ public final class CgVfxFrame {
      */
     public void mesh(CgVfxEffect<?> effect, CgVfxSlot slot, float x, float y, float z, Matrix4fc transform,
                      float ex, float ey, float ez, float ew) {
+        mesh(effect, slot, x, y, z, transform, 1f, ex, ey, ez, ew);
+    }
+
+    /**
+     * {@link #mesh(CgVfxEffect, CgVfxSlot, float, float, float, Matrix4fc, float, float, float, float)} at {@code presence}
+     * of the effect's own: what {@code FX_PRESENCE} reads is their product, so a prefab node fades with its subtree.
+     */
+    public void mesh(CgVfxEffect<?> effect, CgVfxSlot slot, float x, float y, float z, Matrix4fc transform,
+                     float presence, float ex, float ey, float ez, float ew) {
+        mesh(effect, slot, null, x, y, z, transform, presence, ex, ey, ez, ew);
+    }
+
+    /**
+     * {@link #mesh(CgVfxEffect, CgVfxSlot, float, float, float, Matrix4fc, float, float, float, float, float)} with
+     * {@code mesh} in place of each layer's own: one material's layer drawing many shapes, as a prefab's nodes do. Null
+     * draws each layer's own.
+     */
+    public void mesh(CgVfxEffect<?> effect, CgVfxSlot slot, @Nullable CgMeshLods mesh, float x, float y, float z,
+                     Matrix4fc transform, float presence, float ex, float ey, float ez, float ew) {
         kind(slot, CgVfxSlot.Kind.MESH);
         CgVfxLook look = effect.look();
         for (CgVfxLook.Placed placed : look.on(slot)) {
@@ -281,9 +301,9 @@ public final class CgVfxFrame {
             CgVfxTrace.count(DRAWS_MESH, 1);
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             CgMaterial material = materials.material(r, CgVfxSlot.Kind.MESH);
-            CgMeshLods own = placed.layer().mesh();
+            CgMeshLods own = mesh != null ? mesh : placed.layer().mesh();
             dress(own != null ? world.draw(own, material) : world.draw(system.sphereMesh(), material), effect, r, x, y, z,
-                    transform, placed.layer().meshRadius(), ex, ey, ez, ew).submit();
+                    transform, own != null ? own.reach() : 1f, presence, ex, ey, ez, ew).submit();
         }
     }
 
@@ -301,7 +321,7 @@ public final class CgVfxFrame {
             CgVfxTrace.count(DRAWS_RIBBONS, 1);
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             dress(world.draw(system.ribbonMesh(), materials.material(r, CgVfxSlot.Kind.RIBBONS)), effect, r, x, y, z,
-                    transform, CUBE_REACH, ex, ey, ez, ew).bounds(CgAABBc.UNIT).submit();
+                    transform, CUBE_REACH, 1f, ex, ey, ez, ew).bounds(CgAABBc.UNIT).submit();
         }
     }
 
@@ -549,7 +569,7 @@ public final class CgVfxFrame {
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             // Its bounds: the cube its transform scales, whichever way the shader turns it.
             dress(world.draw(CgMesh.quads(1), materials.material(r, CgVfxSlot.Kind.BILLBOARD)), effect, r, x, y, z,
-                    sized.scaling(size), CUBE_REACH, ex, ey, ez, ew).bounds(CgAABBc.UNIT).submit();
+                    sized.scaling(size), CUBE_REACH, 1f, ex, ey, ez, ew).bounds(CgAABBc.UNIT).submit();
         }
     }
 
@@ -732,8 +752,8 @@ public final class CgVfxFrame {
      * mesh, {@code radius} across before its transform, grows the effect's bounds.
      */
     private CgWorldRenderer.Draw dress(CgWorldRenderer.Draw draw, CgVfxEffect<?> effect, CgVfxMaterials.Resolved r, float x,
-                                       float y, float z, Matrix4fc transform, float radius, float ex, float ey, float ez,
-                                       float ew) {
+                                       float y, float z, Matrix4fc transform, float radius, float presence, float ex,
+                                       float ey, float ez, float ew) {
         float size = CgVfxMaterials.size(effect, r);
         scaled.set(transform).scale(size);
         scaled.getScale(scale);
@@ -741,7 +761,7 @@ public final class CgVfxFrame {
         draw.at(effect.originX + x, effect.originY + y, effect.originZ + z).transform(scaled).subject(effect.subject)
                 .custom(0, size, 0f, effect.age, effect.seed)
                 .custom(1, ex, ey, ez, ew)
-                .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
+                .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence() * presence);
         return CgVfxSystem.place(draw, r.placed, effect);
     }
 }
