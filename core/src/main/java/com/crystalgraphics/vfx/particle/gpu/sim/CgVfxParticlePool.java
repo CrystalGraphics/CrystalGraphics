@@ -22,6 +22,7 @@ import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
 import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
+import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxCurveDomain;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
@@ -176,6 +177,8 @@ public final class CgVfxParticlePool {
     private int[] slotCapacity = new int[0], slotRow = new int[0], slotBase = new int[0];
     /** Per slot: its origin as its last step gave it (3), and how far past its particles' size a look reaches. */
     private double[] slotOrigin = new double[0];
+    /** Per slot: its instance's rotation as its last step gave it, a quaternion: what a SEQUENCE particle's clip turns by. */
+    private float[] slotTurn = new float[0];
     private float[] slotScale = new float[0];
     /** Per slot: its ground as its last step gave it, relative to its origin; NaN for none. */
     private float[] slotGround = new float[0];
@@ -306,11 +309,16 @@ public final class CgVfxParticlePool {
      * kernel is several lowered programs, otherwise built on the frame the first burst plays. Render thread.
      *
      * <pre>{@code
-     * CgVfxParticlePool.prepare(EMBERS, 0);   // as a look is made, or on a loading screen
+     * CgVfxParticlePool.prepare(EMBERS);      // as a look is made, or on a loading screen
      * CgVfxParticlePool.prepare(SPARKS, 1);   // EMBERS' events' children, at their tier
      * CgVfxRange.prepare();                   // and what draws it
      * }</pre>
      */
+    public static void prepare(CgVfxGpuEmitter emitter) {
+        prepare(emitter, 0);
+    }
+
+    /** As {@link #prepare(CgVfxGpuEmitter)}, for {@code emitter} spawned at feed {@code tier}. */
     public static void prepare(CgVfxGpuEmitter emitter, int tier) {
         CgVfxShape shape = CgVfxShape.of(emitter, tier);
         CgVfxEmitterCompiler.compile(shape).kernel("Step").prepare();
@@ -485,7 +493,8 @@ public final class CgVfxParticlePool {
             }
         }
         for (int i = 0; i < STEPPING.size(); i++) {
-            if (STEPPING.get(i).shape.readsClips()) {
+            CgVfxShape s = STEPPING.get(i).shape;
+            if (s.readsClips() || s.renderer() == CgVfxEmitter.Renderer.SEQUENCE) {
                 CgVfxClipAtlas.upload(recording);
                 break;
             }
@@ -963,13 +972,17 @@ public final class CgVfxParticlePool {
      * Makes {@code slot} the child slot of {@code parent}'s slot {@code parentSlot}'s event {@code event}: each step its
      * children spawn here, in the step the event fired. Closing either slot ends it. Render thread, between steps.
      *
-     * @throws IllegalArgumentException if that event does not spawn this slot's definition, or the parent's pool is
-     *                                  not one whose events spawn
+     * @throws IllegalArgumentException if that event does not spawn this slot's definition, or this pool is not the
+     *                                  feed tier after the parent's ({@link #of(Object, CgVfxGpuEmitter, int)})
      */
     public void feed(int slot, CgVfxParticlePool parent, int parentSlot, int event) {
         betweenSteps("feed");
         CgVfxGpuEmitter child = openSlot(slot, "feed");
         CgVfxGpuEmitter from = parent.openSlot(parentSlot, "feed's parent");
+        if (shape.tier() != parent.shape.tier() + 1) {
+            throw new IllegalArgumentException(child.name() + "'s pool is at feed tier " + shape.tier() + ", its parent "
+                    + from.name() + "'s at " + parent.shape.tier() + ": a child spawns in the tier after its parent's");
+        }
         List<CgVfxEvent> events = from.events();
         if (event < 0 || event >= events.size() || events.get(event).child() != child) {
             throw new IllegalArgumentException(from.name() + "'s event " + event + " does not spawn " + child.name());
@@ -1071,6 +1084,10 @@ public final class CgVfxParticlePool {
         slotOrigin[slot * 3] = view.originX();
         slotOrigin[slot * 3 + 1] = view.originY();
         slotOrigin[slot * 3 + 2] = view.originZ();
+        slotTurn[slot * 4] = view.rotationX();
+        slotTurn[slot * 4 + 1] = view.rotationY();
+        slotTurn[slot * 4 + 2] = view.rotationZ();
+        slotTurn[slot * 4 + 3] = view.rotationW();
         slotGround[slot] = groundY;
         slotGrid[slot] = emitter.rasterized() != null ? view.grid() : null;
         int at = stepInstanceAt[s] + slot * instanceWords;
@@ -1309,6 +1326,12 @@ public final class CgVfxParticlePool {
     public double origin(int slot, int axis) {
         openSlot(slot, "origin");
         return slotOrigin[slot * 3 + axis];
+    }
+
+    /** Component {@code i} (x, y, z, w) of {@code slot}'s rotation as its last step gave it, a unit quaternion. */
+    public float rotation(int slot, int i) {
+        openSlot(slot, "rotation");
+        return slotTurn[slot * 4 + i];
     }
 
     /** {@code slot}'s ground as its last step gave it, relative to its origin; NaN for none. */
@@ -1564,6 +1587,8 @@ public final class CgVfxParticlePool {
         for (int w = starts; w < starts + 8; w++) if ((w & 3) != 3) start = Math.max(start, Math.abs(curveScratch[w]));
         rowSizeMax[index] = most * start;
         if (shape.events() > 0) writeEvents(emitter, at + shape.eventsAt() * 4);
+        // Its draws read the clip's rows from its first step's upload on.
+        if (emitter.clip() != null) CgVfxClipAtlas.of(emitter.clip());
         rows.put(emitter, new int[]{index, 1});
         paramsChanged = true;
         return index;
@@ -1606,6 +1631,9 @@ public final class CgVfxParticlePool {
         slotBase = Arrays.copyOf(slotBase, size);
         written = Arrays.copyOf(written, size);
         slotOrigin = Arrays.copyOf(slotOrigin, size * 3);
+        int was = slotTurn.length / 4;
+        slotTurn = Arrays.copyOf(slotTurn, size * 4);
+        for (int s = was; s < size; s++) slotTurn[s * 4 + 3] = 1f;
         slotScale = Arrays.copyOf(slotScale, size);
         slotGround = Arrays.copyOf(slotGround, size);
         slotSourceReach = Arrays.copyOf(slotSourceReach, size);

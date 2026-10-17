@@ -262,11 +262,11 @@ final class CgVfxGpuSteps {
     }
 
     /**
-     * Where this frame draws every pool's particles: {@code alpha} of the way between their last two steps, spin pushed
-     * {@code aheadSeconds} on, as the CPU path writes its records. Before the world records.
+     * Where this frame draws every pool's particles: {@code alpha} of the way between their last two steps, which are
+     * {@code stepSeconds} apart. Before the world records.
      */
-    void frame(float alpha, float aheadSeconds) {
-        for (int i = 0; i < pools.size(); i++) CgVfxRange.of(pools.get(i)).frame(alpha, aheadSeconds);
+    void frame(float alpha, float stepSeconds) {
+        for (int i = 0; i < pools.size(); i++) CgVfxRange.of(pools.get(i)).frame(alpha, stepSeconds);
     }
 
     /** Gives every slot back and drops its pools, their particles with them; what plays next makes new ones. Between steps. */

@@ -57,6 +57,14 @@ public final class CgVfxSlot {
         /** An emitter's particles ({@code #pragma cg_use particle}): {@code CgVfxFrame.particles} has the customs. */
         PARTICLES,
         /**
+         * A prefab part on each particle of a {@code SEQUENCE} emitter, its node where the particle's clip has it
+         * ({@code fx_sequence.glsl}, reading {@code FX_CLIPS} from its {@code Buffers { }}): Range's object records, so
+         * {@code CUSTOM0} the particle's velocity and age and {@code CUSTOM1} its life 0..1, seed, opacity and heat;
+         * {@code CUSTOM2} the node's first vec4, its row's length, the clip's frames a second of age and the node's step
+         * mask. A shader drawing here declares {@code FX_ON_SEQUENCE}.
+         */
+        SEQUENCE,
+        /**
          * A {@code CgVfxTrail}'s strip, built per vertex ({@code fx_trail.glsl}, {@code #type none}): {@code CUSTOM0} its
          * first texel, its points, the layer's size and its life; {@code CUSTOM1} the draw's centre less the anchor the
          * points are from; {@code CUSTOM2} its sub-segments, its mode, its head's distance along and its length.

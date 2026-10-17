@@ -13,7 +13,11 @@ import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.look.CgVfxValues;
 import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
 import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
+import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
+import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
+import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
+import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -222,8 +226,9 @@ final class CgVfxMaterials {
     CgMaterial material(Resolved r, CgVfxSlot.Kind kind) {
         if (r.tunings != r.layer.tunings()) retune(r);
         CgMaterial material = r.byKind[kind.ordinal()];
-        if (material != null) return material;
-        if (r.layer.hasMesh() && kind != CgVfxSlot.Kind.MESH && kind != CgVfxSlot.Kind.PARTICLES) {
+        if (material != null) return withClips(material);
+        if (r.layer.hasMesh() && kind != CgVfxSlot.Kind.MESH && kind != CgVfxSlot.Kind.PARTICLES
+                && kind != CgVfxSlot.Kind.SEQUENCE) {
             throw new IllegalStateException(r.layer + " draws a mesh, which a " + kind + " slot does not take");
         }
         Map<String, CgMaterial> mine = materials.computeIfAbsent(r.layer, l -> new HashMap<>());
@@ -235,9 +240,21 @@ final class CgVfxMaterials {
             mine.put(key, material);
             all.add(material);
             keys.put(material, nextKey++ & 0xFFF);
+            if (material.declaresBuffer(CLIPS)) clipReaders.put(material, Boolean.TRUE);
         }
         r.byKind[kind.ordinal()] = material;
         r.keyByKind[kind.ordinal()] = keys.get(material);
+        return withClips(material);
+    }
+
+    /** The baked clips, as a shader declaring them reads them ({@code fx_sequence.glsl}). */
+    private static final String CLIPS = "FX_CLIPS";
+    /** Materials whose shader declares {@link #CLIPS}: each is pointed at the atlas's buffer as it is asked for. */
+    private final Map<CgMaterial, Boolean> clipReaders = new IdentityHashMap<>();
+
+    /** {@code material}, pointed at the baked clips' buffer where its shader reads them: the atlas grows it as it bakes. */
+    private CgMaterial withClips(CgMaterial material) {
+        if (clipReaders.containsKey(material)) material.buffer(CLIPS, CgVfxClipAtlas.buffer());
         return material;
     }
 
@@ -317,6 +334,11 @@ final class CgVfxMaterials {
         CgVfxLayer layer = r.layer;
         List<String> declared = material.declaredKeywords();
         if (declared.contains(kind.keyword())) material.enableKeyword(kind.keyword());
+        else if (kind == CgVfxSlot.Kind.SEQUENCE) {
+            // Without it a part draws at its particle, its node's place and opacity never read.
+            throw new IllegalStateException(layer + " draws a part a clip plays, but its shader declares no "
+                    + kind.keyword() + ": place its vertices by FX_SEQUENCE_TO_WORLD (fx_sequence.glsl)");
+        }
         for (String keyword : layer.keywords()) material.enableKeyword(keyword);
         material.applyProperties(b -> {
             constants(b, layer);
@@ -395,6 +417,18 @@ final class CgVfxMaterials {
                 CgMaterial material = material(r, slot.kind());
                 if (!warming.contains(material)) warming.add(material);
                 if (halfResolution(placed.layer(), slot.kind())) halved.add(material);
+            }
+        }
+        // A clip's parts draw their prefab's layers on SEQUENCE materials: their own programs.
+        for (CgVfxEmitter emitter : look.emitters()) {
+            CgVfxNodeClip clip = emitter.clip();
+            if (clip == null) continue;
+            CgVfxPrefab prefab = clip.prefab();
+            for (int part = 0; part < prefab.firstPart(prefab.nodes()); part++) {
+                for (CgVfxLook.Placed placed : look.on(prefab.partSlot(part))) {
+                    CgMaterial material = material(resolve(look, placed), CgVfxSlot.Kind.SEQUENCE);
+                    if (!warming.contains(material)) warming.add(material);
+                }
             }
         }
     }

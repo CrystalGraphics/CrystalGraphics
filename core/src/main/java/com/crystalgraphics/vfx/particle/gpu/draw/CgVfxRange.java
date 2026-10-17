@@ -22,6 +22,7 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
@@ -47,7 +48,7 @@ import java.util.Map;
  *
  * <pre>{@code
  * CgVfxRange range = CgVfxRange.of(pool);
- * range.frame(frame.particleAlpha(), frame.particleAlpha() * particleDt);   // each frame, before the world records
+ * range.frame(frame.particleAlpha(), particleDt);   // each frame, before the world records
  * world.draw(quads, spark)                                                  // per slot and layer
  *      .buffer(CgBindingPoints.PARTICLES, range.drawn())
  *      .indirect(range.visible(), range.visibleWord(slot) * 4L, CgIndirect.INDICES, 6)
@@ -84,6 +85,8 @@ public final class CgVfxRange {
     private static final String[] PLANES = {"_Plane0", "_Plane1", "_Plane2", "_Plane3", "_Plane4", "_Plane5"};
     private static final int GPU_RANGE = CgGpuTrace.name("vfx.pool.range");
     private static final int DRAWN_BYTES = CgParticleBuffer.RECORD_FLOATS * 4;
+    /** A slot's ORIGINS entry: its block, where within it with its ground, its rotation. */
+    private static final int ORIGIN_BYTES = 48;
     /** The low key bits a sorting slot's view depth takes. */
     private static final int DEPTH_BITS = 16;
     /** Each pool's records start at a multiple of this in the shared buffers: a binding offset is a whole 256 bytes. */
@@ -181,7 +184,7 @@ public final class CgVfxRange {
     private final CgVfxParticlePool pool;
     /** Per slot, this frame's order: 0 the pool's, 1 far to near, 2 + its newest spawn's id for a ribbon. */
     private int[] slotOrder = new int[8];
-    private float alpha = 1f, ahead;
+    private float alpha = 1f, ahead, step = 1f / 60f;
 
     private CgVfxRange(CgVfxParticlePool pool) {
         this.pool = pool;
@@ -243,12 +246,13 @@ public final class CgVfxRange {
 
     /**
      * Where this frame draws the pool's particles: {@code alpha} of the way from their last step to the next, the CPU
-     * path's particle alpha, with spin pushed {@code aheadSeconds} past the last step. Each frame, before the world
-     * records.
+     * path's particle alpha, steps of {@code stepSeconds} apart: spin is pushed {@code alpha * stepSeconds} past the
+     * last step, and an object record's age is drawn between its last two. Each frame, before the world records.
      */
-    public CgVfxRange frame(float alpha, float aheadSeconds) {
+    public CgVfxRange frame(float alpha, float stepSeconds) {
         this.alpha = alpha;
-        this.ahead = aheadSeconds;
+        this.ahead = alpha * stepSeconds;
+        this.step = stepSeconds;
         return this;
     }
 
@@ -494,7 +498,8 @@ public final class CgVfxRange {
                             .bind("CURVES", p.curves())
                             .bind("OBJECTS", objects, drawnFirst * bytes, capacity * bytes)
                             .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst).set("_Alpha", range.alpha)
-                            .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS));
+                            .set("_StepSeconds", range.step).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
+                            .set("_Sequence", p.shape().renderer() == CgVfxEmitter.Renderer.SEQUENCE ? 1 : 0));
                 }
             }
             drawnFirst += align(capacity, RECORD_ALIGN);
@@ -523,14 +528,16 @@ public final class CgVfxRange {
 
     /**
      * Each slot's origin from the camera and its reach, its list base in its pool, whether it sorts, for this view, and
-     * its origin in whole blocks and within one, with its ground.
+     * its origin in whole blocks and within one, with its ground and its rotation.
      */
     private static void uploadSlots(CgRecording recording, CgHostView view, int allSlots) {
         slots = fit(recording, slots, "vfx.range.slots", allSlots * 16L);
         bases = fit(recording, bases, "vfx.range.bases", allSlots * 4L);
         sorts = fit(recording, sorts, "vfx.range.sorts", allSlots * 4L);
-        origins = fit(recording, origins, "vfx.range.origins", allSlots * 32L);
-        if (staging.capacity() < allSlots * 32) staging = ByteBuffer.allocate(Math.max(allSlots * 32, staging.capacity() * 2)).order(ByteOrder.nativeOrder());
+        origins = fit(recording, origins, "vfx.range.origins", allSlots * (long) ORIGIN_BYTES);
+        if (staging.capacity() < allSlots * ORIGIN_BYTES) {
+            staging = ByteBuffer.allocate(Math.max(allSlots * ORIGIN_BYTES, staging.capacity() * 2)).order(ByteOrder.nativeOrder());
+        }
         staging.clear();
         for (int i = 0, g = 0; i < ALL.size(); i++) {
             CgVfxParticlePool p = ALL.get(i).pool;
@@ -572,15 +579,17 @@ public final class CgVfxRange {
             CgVfxParticlePool p = ALL.get(i).pool;
             if (p.isReleased()) continue;
             for (int s = 0; s < p.slotCount(); s++, g++) {
+                int o = g * ORIGIN_BYTES;
                 for (int axis = 0; axis < 3; axis++) {
                     double at = p.isOpen(s) ? p.origin(s, axis) : 0.0, whole = Math.floor(at);
-                    staging.putInt(g * 32 + axis * 4, (int) whole);
-                    staging.putFloat(g * 32 + 16 + axis * 4, (float) (at - whole));
+                    staging.putInt(o + axis * 4, (int) whole);
+                    staging.putFloat(o + 16 + axis * 4, (float) (at - whole));
                 }
-                staging.putFloat(g * 32 + 28, p.isOpen(s) ? p.ground(s) : Float.NaN);
+                staging.putFloat(o + 28, p.isOpen(s) ? p.ground(s) : Float.NaN);
+                for (int c = 0; c < 4; c++) staging.putFloat(o + 32 + c * 4, p.isOpen(s) ? p.rotation(s, c) : c == 3 ? 1f : 0f);
             }
         }
-        staging.limit(allSlots * 32);
+        staging.limit(allSlots * ORIGIN_BYTES);
         recording.update(origins, 0, staging);
     }
 

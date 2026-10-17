@@ -12,8 +12,10 @@ import org.joml.Vector3f;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -21,7 +23,9 @@ import java.util.Map;
  * per baked node, {@link #ROWS} rows of {@code frames + 1} vec4s, a vec4 a frame. Rows 0 to 2 are the node's matrix
  * from the clip's root (a 3x4, row by row), row 3 its opacity times its ancestors' and the material slots the clip
  * gives it ({@link CgVfxNodeClip#keys}), rows 4 to 7 its sixteen material scalars. A clip is baked once, the first time
- * it is asked, and kept for the run: emitters' rows name it by place. Any thread bakes; the render thread uploads.
+ * it is asked, and kept for the run: emitters' rows name it by place. Any thread bakes; the render thread uploads. The
+ * buffer is made, or grown, by the bake, so {@link #buffer()} holds a clip's rows from its bake on, filled by the next
+ * {@link #upload} (the pools', before anything draws).
  *
  * <pre>{@code
  * CgVfxClipAtlas.Section s = CgVfxClipAtlas.of(clip);   // where its nodes sit
@@ -87,6 +91,8 @@ public final class CgVfxClipAtlas {
     private static int[] words = new int[0];
     private static int end, uploaded;
     private static CgGraphBuffer buffer;
+    /** Buffers a bake outgrew, released at the next upload. */
+    private static final List<CgGraphBuffer> RETIRED = new ArrayList<>();
     private static ByteBuffer staging = ByteBuffer.allocate(0);
 
     private CgVfxClipAtlas() {
@@ -107,16 +113,12 @@ public final class CgVfxClipAtlas {
         return false;
     }
 
-    /** Uploads what was baked since the last upload, growing the buffer as it needs. Render thread. */
+    /** Uploads what was baked since the last upload into {@link #buffer()}. Render thread. */
     public static synchronized void upload(CgRecording recording) {
-        long bytes = Math.max(256L, end * 4L);
+        for (int i = 0; i < RETIRED.size(); i++) recording.release(RETIRED.get(i));
+        RETIRED.clear();
+        fit();
         int from = uploaded;
-        if (buffer == null || buffer.size() < bytes) {
-            if (buffer != null) recording.release(buffer);
-            buffer = CgGraphBuffer.persistent("vfx.clips", CgBufferDesc.of(Long.highestOneBit(bytes - 1) << 1,
-                    CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-            from = 0;
-        }
         if (from == end) return;
         int n = end - from;
         if (staging.capacity() < n * 4) staging = ByteBuffer.allocate(n * 4).order(ByteOrder.nativeOrder());
@@ -132,14 +134,26 @@ public final class CgVfxClipAtlas {
         d.bind("FX_CLIPS", buffer);
     }
 
-    /** The buffer, for a draw's bindings; null before the first upload. */
+    /** The buffer, for a material's {@code FX_CLIPS}: every clip baked so far, from the next {@link #upload}. */
     public static synchronized CgGraphBuffer buffer() {
+        fit();
         return buffer;
     }
 
     /** A dying context took the buffer: everything is uploaded again into the next one. */
     public static synchronized void forget() {
         buffer = null;
+        RETIRED.clear();
+        uploaded = 0;
+    }
+
+    /** A buffer holding every baked word, a new one (uploaded from the start) where the last is too small. */
+    private static void fit() {
+        long bytes = Math.max(256L, end * 4L);
+        if (buffer != null && buffer.size() >= bytes) return;
+        if (buffer != null) RETIRED.add(buffer);
+        buffer = CgGraphBuffer.persistent("vfx.clips", CgBufferDesc.of(Long.highestOneBit(bytes - 1) << 1,
+                CgBufferUsage.STORAGE, CgBufferUsage.COPY));
         uploaded = 0;
     }
 
@@ -196,6 +210,7 @@ public final class CgVfxClipAtlas {
             }
         }
         assert end == first + baked * ROWS * rowLength * 4;
+        fit();
         return new Section(base, stepMask, rowLength, distance, stretch);
     }
 

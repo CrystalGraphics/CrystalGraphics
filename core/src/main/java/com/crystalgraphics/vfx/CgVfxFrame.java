@@ -27,8 +27,11 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.path.CgVfxPath;
+import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
 import com.crystalgraphics.vfx.render.CgVfxQuads;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
+import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
+import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import com.crystalgraphics.vfx.trail.CgVfxTrail;
 import com.crystalgraphics.vfx.trail.CgVfxTrailTexture;
 import org.joml.Matrix4f;
@@ -332,6 +335,10 @@ public final class CgVfxFrame {
      *   <li>{@code MESHES}: a mesh per particle, Range's object records, turned by its spin and sized by its size over
      *       life; {@code CG_OBJECT_CUSTOM0.xyz} is its velocity, {@code CG_OBJECT_CUSTOM1} its life 0..1, its seed, its
      *       opacity and its heat.</li>
+     *   <li>{@code SEQUENCE}: each part of its clip's prefab on every particle, a draw a part and layer of Range's object
+     *       records ({@link CgVfxSlot.Kind#SEQUENCE}), through the layers on the part's slot: the look holds the
+     *       prefab's {@code kit()}. Each record is the particle's place, turned with its effect and sized by its size;
+     *       the part's node moves it from there at the particle's age.</li>
      *   <li>{@code QUADS} and {@code ARCS}: the slot's particle records ({@code #pragma cg_use particle}), as many as
      *       Range kept. {@code CG_OBJECT_CUSTOM0}: the first record, the slot's capacity, the layer's size and 0;
      *       {@code CG_OBJECT_CUSTOM1}: the draw's centre minus the instance's origin, and the effect's age, so
@@ -351,7 +358,8 @@ public final class CgVfxFrame {
         effect.bound((float) (emitter.originX() - effect.originX) + emitter.sourceX(),
                 (float) (emitter.originY() - effect.originY) + emitter.sourceY(),
                 (float) (emitter.originZ() - effect.originZ) + emitter.sourceZ(),
-                def.reach(system.air().maxSpeed()) + def.largestSize() + emitter.books().entityBoxReach());
+                def.reach(system.air().maxSpeed()) + def.largestSize() + emitter.books().entityBoxReach()
+                        + (def.clip() != null ? def.largestSize() * CgVfxClipAtlas.of(def.clip()).reach(1f) : 0f));
         for (int e = 0; e < emitter.emitter().events().size(); e++) {
             CgVfxEmitterInstance child = emitter.child(e);
             if (child != null) particles(effect, child);
@@ -368,6 +376,10 @@ public final class CgVfxFrame {
         CgVfxParticlePool pool = tenant.pool;
         int slot = tenant.slot, capacity = pool.capacity(slot);
         CgVfxEmitter.Renderer renderer = emitter.emitter().renderer();
+        if (renderer == CgVfxEmitter.Renderer.SEQUENCE) {
+            sequence(effect, emitter, pool, slot, capacity);
+            return;
+        }
         boolean arcs = renderer == CgVfxEmitter.Renderer.ARCS, meshes = renderer == CgVfxEmitter.Renderer.MESHES;
         float cx = arcs ? emitter.sourceX() : 0f, cy = arcs ? emitter.sourceY() : 0f, cz = arcs ? emitter.sourceZ() : 0f;
         // The instance's origin, not the effect's: a world-space instance stays where it was first stepped.
@@ -452,6 +464,45 @@ public final class CgVfxFrame {
         } else {
             pool.cullScale(slot, reach);
         }
+    }
+
+    /**
+     * A {@code SEQUENCE} slot's draws: every part of every node of its clip's prefab, through each layer on the part's
+     * slot, its instances the slot's object records, its node's constants in {@code CUSTOM2}. Each pads its culling by
+     * how far the clip carries the part from its particle, which is the slot's cull scale too.
+     */
+    private void sequence(CgVfxEffect<?> effect, CgVfxEmitterInstance emitter, CgVfxParticlePool pool, int slot, int capacity) {
+        CgVfxEmitter def = emitter.emitter();
+        CgVfxNodeClip clip = def.clip();
+        CgVfxPrefab prefab = clip.prefab();
+        CgVfxClipAtlas.Section section = CgVfxClipAtlas.of(clip);
+        CgVfxLook look = effect.look();
+        CgVfxRange range = CgVfxRange.of(pool);
+        float rate = CgVfxNodeClip.FRAMES_PER_SECOND * def.playRate(), reach = 0f;
+        for (int node = 0; node < prefab.nodes(); node++) {
+            for (int part = prefab.firstPart(node), end = prefab.firstPart(node + 1); part < end; part++) {
+                CgMeshLods mesh = prefab.partMesh(part);
+                for (CgVfxLook.Placed placed : look.on(prefab.partSlot(part))) {
+                    if (skips(effect, placed.layer())) continue;
+                    CgVfxMaterials.Resolved r = materials.resolve(look, placed);
+                    CgMaterial material = materials.material(r, CgVfxSlot.Kind.SEQUENCE);
+                    CgMeshLods own = mesh != null ? mesh : placed.layer().mesh();
+                    float size = CgVfxMaterials.size(effect, r), carried = section.reach(own != null ? own.reach() : 1f) * size;
+                    reach = Math.max(reach, carried);
+                    CgWorldRenderer.Draw draw = own != null ? world.draw(own, material) : world.draw(system.sphereMesh(), material);
+                    draw.instances(range.objects(), range.base(slot), CgGpuCount.at(range.visible(), range.visibleWord(slot), capacity))
+                            .instanceScale(size)
+                            .gpuCulled()
+                            .pad(carried * def.largestSize())
+                            .at(emitter.originX(), emitter.originY(), emitter.originZ())
+                            .custom(2, section.base(node), section.rowLength(), rate, section.stepMask(node))
+                            .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
+                    CgVfxSystem.place(draw, placed, effect).submit();
+                    CgVfxTrace.count(DRAWS_PARTICLE_GPU, 1);
+                }
+            }
+        }
+        if (reach > 0f) pool.cullScale(slot, reach);
     }
 
     /**

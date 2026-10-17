@@ -31,6 +31,8 @@ Properties {
     _Ahead  ("How far spin is pushed ahead, in seconds",            float) = 0
     _Texels ("Samples each curve of a row holds",                   int)   = 256
     _Floors ("1 when the pool's kinds land on a floor: Place writes it", int) = 0
+    _StepSeconds ("A particle step's length: an object's age between its last two", float) = 0.0166667
+    _Sequence    ("1 for a SEQUENCE pool: objects turned with their slot, sized by their size alone", int) = 0
     _DepthBits   ("0, or 16 when a slot sorts by view depth",        int)       = 0
     _ClipX       ("Projection times view: row 0",                    vec4)      = (1, 0, 0, 0)
     _ClipY       ("Row 1",                                           vec4)      = (0, 1, 0, 0)
@@ -65,8 +67,9 @@ struct FxDrawn {
     vec4 scale;
 };
 
-// A slot's origin, absolute: its whole blocks, and where in that block; within.w its ground from there, NaN for none.
-struct FxOrigin { ivec4 block; vec4 within; };
+// A slot's origin, absolute: its whole blocks, and where in that block; within.w its ground from there, NaN for none;
+// and its instance's rotation, a quaternion.
+struct FxOrigin { ivec4 block; vec4 within; vec4 turn; };
 
 // A particle as a mesh draws it: CgInstanceKind.OBJECT's record.
 struct FxObject {
@@ -244,6 +247,15 @@ vec4 range_contact(int slot, vec3 p) {
     return isnan(o.within.w) ? vec4(0.0) : vec4(0.0, 1.0, 0.0, p.y - o.within.w);
 }
 
+// A unit quaternion's rotation, JOML's Matrix3f.set(Quaternionfc): its three columns.
+mat3 range_quat(vec4 q) {
+    float xx = q.x * q.x, yy = q.y * q.y, zz = q.z * q.z, xy = q.x * q.y, xz = q.x * q.z, yz = q.y * q.z;
+    float wx = q.w * q.x, wy = q.w * q.y, wz = q.w * q.z;
+    return mat3(vec3(1.0 - 2.0 * (yy + zz), 2.0 * (xy + wz), 2.0 * (xz - wy)),
+                vec3(2.0 * (xy - wz), 1.0 - 2.0 * (xx + zz), 2.0 * (yz + wx)),
+                vec3(2.0 * (xz + wy), 2.0 * (yz - wx), 1.0 - 2.0 * (xx + yy)));
+}
+
 // JOML's rotationXYZ(ax, ay, az), term for term: its three columns.
 mat3 range_turn(float ax, float ay, float az) {
     float sx = sin(ax), cx = cos(ax), sy = sin(ay), cy = cos(ay), sz = sin(az), cz = cos(az);
@@ -265,10 +277,11 @@ void Objects() {
         FxRecord r = RECORDS(int(INDICES(int(STARTS(lo)) + rank)));
         float t = min(r.positionAge.w / r.previousLife.w, 1.0);
         FxLook look = range_look(r, t);
-        // CgVfxFrame.particleMeshes: turned by its seed and spin, sized on each of its own axes by its size over life
+        // CgVfxFrame.particleMeshes: turned by its seed and spin, sized on each of its own axes by its size over life.
+        // A clip's particle plays in its effect's frame at its own size, as the Step places its events there.
         float turn = r.seedSpin.x * 6.2831853 + r.seedSpin.y;
-        mat3 turned = range_turn(turn * 1.7, turn * 2.3, turn);
-        vec3 size = look.size * look.scale;
+        mat3 turned = _Sequence != 0 ? range_quat(ORIGINS(lo).turn) : range_turn(turn * 1.7, turn * 2.3, turn);
+        vec3 size = _Sequence != 0 ? vec3(r.velocitySize.w) : look.size * look.scale;
         vec3 inverse = vec3(size.x != 0.0 ? 1.0 / size.x : 0.0, size.y != 0.0 ? 1.0 / size.y : 0.0,
                 size.z != 0.0 ? 1.0 / size.z : 0.0);
         o.model0 = vec4(turned[0] * size.x, 0.0);
@@ -281,7 +294,8 @@ void Objects() {
         o.normal1 = vec4(turned[1] * inverse.y, contact.y);
         o.normal2 = vec4(turned[2] * inverse.z, contact.z);
         o.normal3 = vec4(range_light(lo, o.model3.xyz), 0.0, contact.w);
-        o.custom0 = vec4(r.velocitySize.xyz, 0.0);
+        // Its age between its last two steps, as its place is: what a clip plays at.
+        o.custom0 = vec4(r.velocitySize.xyz, max(r.positionAge.w - (1.0 - _Alpha) * _StepSeconds, 0.0));
         o.custom1 = vec4(t, r.seedSpin.x, look.color.a, r.seedSpin.w);
         o.custom2 = vec4(look.color.rgb, 0.0);
     }

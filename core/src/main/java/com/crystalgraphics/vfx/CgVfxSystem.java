@@ -703,7 +703,7 @@ public final class CgVfxSystem {
             int n = effects.size();
             materials.begin(CgFrameRing.frame());
             frame.begin(world, alpha, Math.min((sinceParticleTick + alpha) / drawnStep, 1f), gx / n, gy / n, gz / n);
-            gpuSteps.frame(frame.particleAlpha(), frame.particleAlpha() * particleDt);
+            gpuSteps.frame(frame.particleAlpha(), particleDt);
             paths.begin();
             trails.begin();
             for (int i = 0; i < effects.size(); i++) {

@@ -660,6 +660,20 @@ public final class CgMaterial {
         return getDeclaredFeatureNames();
     }
 
+    /**
+     * Whether its shader's {@code Buffers { }} declares {@code name}, from the parse alone: what {@link #buffer} must bind
+     * before its first draw.
+     *
+     * <pre>{@code
+     * if (material.declaresBuffer("FX_CLIPS")) material.buffer("FX_CLIPS", clips);
+     * }</pre>
+     */
+    public boolean declaresBuffer(String name) {
+        checkNotDeleted();
+        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        return parsed != null && parsed.buffer(name) != null;
+    }
+
     // ── Keyword API ───────────────────────────────────────────────────────────
 
     /**
