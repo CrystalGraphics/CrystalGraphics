@@ -19,6 +19,7 @@ import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.render.CgVectorRenderer;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
+import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.gl.texture.CgTexture2D;
@@ -51,6 +52,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -211,6 +213,64 @@ public class EngineOnTrackedBackendTest {
                 + String.join(System.lineSeparator(), device.logSince(mark)), device.draws() > draws);
         added.delete();
     }
+
+    /** One texture bound with two samplers in one frame: one image, two device samplers, both draws drawn. */
+    @Test
+    public void oneTextureSampledTwoWaysIsOneImage() {
+        CgTexture2D checker = CgTexture2D.createEmpty(4, 4, CgTextureSpec.RGBA8_LINEAR);
+        checker.uploadRegion(0, 0, 0, 4, 4, ByteBuffer.allocateDirect(4 * 4 * 4), CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE);
+        CgMaterial tiled = CgMaterial.fromSource(OBJECT_SHADER), clamped = CgMaterial.fromSource(OBJECT_SHADER);
+        tiled.applyProperties(b -> b.sampler("_MainTex", 0, checker, CgSampler.NEAREST_WRAP));
+        clamped.applyProperties(b -> b.sampler("_MainTex", 0, checker, CgSampler.BILINEAR_CLAMP));
+        long draws = device.draws();
+        int mark = device.mark();
+        CgPassConstants constants = CgImmediate.constants();
+        constants.view.identity();
+        constants.projection.identity().ortho(0, 64, 64, 0, -1, 1);
+        constants.resolution(64, 64).cameraFromView();
+        try (CgImmediate draw = CgImmediate.begin(constants)) {
+            for (CgMaterial m : List.of(tiled, clamped)) {
+                draw.chunks().draw(m.pipeline(CgInstanceKind.OBJECT), m.captureBindings(draw.bindings()), CgMeshShapes.cube());
+                int at = draw.chunks().instance();
+                new Matrix4f().translation(32, 32, 0).scale(16).get(draw.chunks().data(), at);
+                new Matrix4f().get(draw.chunks().data(), at + 16);
+            }
+        }
+        gl.endFrame();
+        List<String> log = device.logSince(mark);
+        assertTrue("both draws drawn: " + log, device.draws() - draws >= 2);
+        Set<String> sampled = new LinkedHashSet<>();
+        for (String line : log) {
+            if (!line.startsWith("pushBindings")) continue;
+            for (String b : line.split(" ")) if (b.indexOf('/') > 0) sampled.add(b.substring(b.indexOf(':') + 1));
+        }
+        Map<String, Set<String>> samplersOf = new HashMap<>();
+        for (String s : sampled) {
+            samplersOf.computeIfAbsent(s.substring(0, s.indexOf('/')), k -> new LinkedHashSet<>())
+                    .add(s.substring(s.indexOf('/') + 1));
+        }
+        assertTrue("an image sampled by two samplers: " + sampled,
+                samplersOf.values().stream().anyMatch(s -> s.size() >= 2));
+        tiled.delete();
+        clamped.delete();
+        checker.delete();
+    }
+
+    private static final String OBJECT_SHADER = """
+            #type spatial
+            Tags { "Lighting" = "Unlit" "Fog" = "Off" }
+            Properties {
+                _MainTex ("Texture", sampler2D) = "white"
+            }
+            struct v2f { vec2 uv; };
+            Pass {
+                void vertex(out v2f o) {
+                    gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);
+                    o.uv = cg_TexCoord0 * 3.0 - 1.0;
+                }
+                void fragment(in v2f i, out vec4 fragColor) { fragColor = texture(_MainTex, i.uv); }
+            }
+            """;
 
     @Test
     public void everyRawShaderLinks() {

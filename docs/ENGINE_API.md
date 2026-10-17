@@ -314,11 +314,29 @@ wrote (§ *Async*).
   asks, and a bind uploads it. So a constant in common code costs a dedicated server nothing.
 - **`CgTextures` is the shorthand for every texture from files**: `of` (2D), `frames` and `array` (2D array),
   `volume` (3D), `cubemap`. Each type's own `create` is what it calls.
-- **`create` is cached by the paths and the spec**: one image sampled two ways is two textures. `createDirect` decodes
+- **`create` is cached by the paths and the spec**, and the spec's filter and wrap are the texture's own sampling. To
+  sample one image two ways, load it once and give a binding a `CgSampler` (below). `createDirect` decodes
   at once and is the caller's.
 - **A file that will not load** is logged and drawn as the 8x8 checkerboard (`CgTexture2D.missing()`), a missing
   array layer as clear; `isMissing()` says so. An array's images of different sizes are each centred on a layer the
   largest one's size.
+
+**A sampler per binding** (`CgSampler`, Unreal's shared sampler source): a binding samples its texture through a
+sampler of its own, in place of the texture's filter and wrap, so one upload is clamped by one draw and tiled by
+another. GL 3.3's sampler objects, one per distinct sampler for the session; Vulkan's natively.
+
+```java
+static final CgTexture2D NOISE = CgTextures.of("mymod:textures/fx/noise.png");
+material.applyProperties(b -> b.sampler("_Mask", 0, NOISE, CgSampler.BILINEAR_CLAMP));
+other.applyProperties(b -> b.sampler("_Scroll", 0, NOISE, CgSampler.TRILINEAR_WRAP));
+CgSampler strip = CgSampler.builder().filter(CgSampler.Filter.TRILINEAR)
+        .address(CgSampler.Address.WRAP, CgSampler.Address.CLAMP).anisotropy(8).build();
+```
+
+- A binding with none samples as the texture's spec says. On a texture with no mips a filter samples its base level.
+- Anisotropy is clamped to the device's most. A raw `CgShader`'s bindings take no sampler: a material's do.
+- Each execution unbinds what it bound, so a sampler never reaches the host's textures. `--mode=sampler-binding`
+  is the gate.
 
 `CgTextureType` — typed enum of ~42 GL format constants; single source of truth for (internalFormat, baseFormat, type). `CgTextureSpec` — immutable `@Builder` describing format + filter + wrap + optional shadow compare. `CgMipmapConfig` — `NONE` / `TRILINEAR` / `NEAREST`. Concrete impls: `CgTexture2D`, `CgTexture2DArray`, `CgTexture3D`, `CgTextureCubemap`.
 

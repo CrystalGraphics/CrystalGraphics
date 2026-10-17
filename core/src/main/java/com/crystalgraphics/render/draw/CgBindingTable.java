@@ -1,6 +1,8 @@
 package com.crystalgraphics.render.draw;
 
+import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.gl.texture.CgSamplers;
 import com.crystalgraphics.gl.texture.CgTextureMutable;
 import com.crystalgraphics.gl.buffer.CgBufferTextures;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
@@ -12,6 +14,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * A recording's binding snapshots: what a draw reads besides its instances, interned by content so two draws that
@@ -23,6 +26,7 @@ import java.util.Arrays;
  * <pre>{@code
  * int bindings = table.begin()
  *         .texture(0, atlasPage)
+ *         .texture(1, noise, CgSampler.BILINEAR_WRAP)   // its own sampling replaced, for this draw
  *         .block(CgBindingPoints.MATERIAL_PROPERTIES_UBO, props, 0, propFloats)
  *         .end();                  // equal content answers the same id
  *
@@ -64,10 +68,11 @@ public final class CgBindingTable {
     private static final int TEXELS_AT = STORAGE_AT + MAX_STORAGE;
     private static final int ENTRY_INTS = TEXELS_AT + MAX_TEXEL_BUFFERS * 2;
 
-    /** Per entry: the textures, the buffers, the storage handles, then the texel buffers. */
+    /** Per entry: the textures, the buffers, the storage handles, the texel buffers, then each texture's sampler. */
     private static final int STORAGE_REFS = MAX_TEXTURES + MAX_BUFFERS;
     private static final int TEXEL_REFS = STORAGE_REFS + MAX_STORAGE;
-    private static final int ENTRY_REFS = TEXEL_REFS + MAX_TEXEL_BUFFERS;
+    private static final int SAMPLER_REFS = TEXEL_REFS + MAX_TEXEL_BUFFERS;
+    private static final int ENTRY_REFS = SAMPLER_REFS + MAX_TEXTURES;
 
     /** {@code GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT} is at most 256 on every GL and Vulkan device we run on. */
     private static final int BLOCK_ALIGNMENT = 256;
@@ -113,14 +118,20 @@ public final class CgBindingTable {
         return this;
     }
 
-    /** {@code texture} bound to {@code unit} for the draw, as it is when the draw executes. */
+    /** {@code texture} bound to {@code unit} for the draw, as it is when the draw executes, sampled as its own. */
     public CgBindingTable texture(int unit, CgTexture texture) {
+        return texture(unit, texture, null);
+    }
+
+    /** {@code texture} bound to {@code unit}, sampled by {@code sampler} in place of its own; null for its own. */
+    public CgBindingTable texture(int unit, CgTexture texture, CgSampler sampler) {
         int e = building * ENTRY_INTS;
         int n = entries[e];
         if (n == MAX_TEXTURES) throw new IllegalStateException("more than " + MAX_TEXTURES + " textures in one snapshot");
         entries[e + HEADER + n] = unit;
         // A repointable view is kept as what it points at now: by execution it may point elsewhere.
         refs[building * ENTRY_REFS + n] = texture instanceof CgTextureMutable view ? view.current() : texture;
+        refs[building * ENTRY_REFS + SAMPLER_REFS + n] = sampler;
         entries[e] = n + 1;
         return this;
     }
@@ -211,7 +222,9 @@ public final class CgBindingTable {
         begin();
         int e = id * ENTRY_INTS;
         int r = id * ENTRY_REFS;
-        for (int t = 0; t < from.entries[e]; t++) texture(from.entries[e + HEADER + t], (CgTexture) from.refs[r + t]);
+        for (int t = 0; t < from.entries[e]; t++) {
+            texture(from.entries[e + HEADER + t], (CgTexture) from.refs[r + t], (CgSampler) from.refs[r + SAMPLER_REFS + t]);
+        }
         for (int b = 0; b < from.entries[e + 1]; b++) {
             int block = e + BLOCKS_AT + b * BLOCK_INTS;
             block(from.entries[block], from.floats, from.entries[block + 1], from.entries[block + 2]);
@@ -237,7 +250,9 @@ public final class CgBindingTable {
         int e = id * ENTRY_INTS;
         int r = id * ENTRY_REFS;
         for (int t = 0; t < entries[e]; t++) {
-            if (entries[e + HEADER + t] != unit) texture(entries[e + HEADER + t], (CgTexture) refs[r + t]);
+            if (entries[e + HEADER + t] != unit) {
+                texture(entries[e + HEADER + t], (CgTexture) refs[r + t], (CgSampler) refs[r + SAMPLER_REFS + t]);
+            }
         }
         texture(unit, texture);
         for (int b = 0; b < entries[e + 1]; b++) {
@@ -275,6 +290,11 @@ public final class CgBindingTable {
     /** Snapshot {@code id}'s {@code i}th texture. */
     public CgTexture texture(int id, int i) {
         return (CgTexture) refs[id * ENTRY_REFS + i];
+    }
+
+    /** The sampler snapshot {@code id}'s {@code i}th texture is sampled by; null for its own. */
+    public CgSampler sampler(int id, int i) {
+        return (CgSampler) refs[id * ENTRY_REFS + SAMPLER_REFS + i];
     }
 
     /** How many uniform blocks snapshot {@code id} binds. */
@@ -377,7 +397,12 @@ public final class CgBindingTable {
         if (!uploaded) throw new IllegalStateException("bind() before upload()");
         int e = id * ENTRY_INTS;
         int r = id * ENTRY_REFS;
-        for (int t = 0; t < entries[e]; t++) ((CgTexture) refs[r + t]).bind(entries[e + HEADER + t]);
+        for (int t = 0; t < entries[e]; t++) {
+            CgTexture texture = (CgTexture) refs[r + t];
+            int unit = entries[e + HEADER + t];
+            texture.bind(unit);
+            CgSamplers.bind(unit, (CgSampler) refs[r + SAMPLER_REFS + t], texture);
+        }
         for (int b = 0; b < entries[e + 4]; b++) {
             int at = e + TEXELS_AT + b * 2;
             CgBufferTextures.bind(entries[at], entries[at + 1], ((CgBufferHandle) refs[r + TEXEL_REFS + b]).bufferId());
@@ -404,7 +429,10 @@ public final class CgBindingTable {
         int e = id * ENTRY_INTS;
         int r = id * ENTRY_REFS;
         int h = (((entries[e] * 31 + entries[e + 1]) * 31 + entries[e + 2]) * 31 + entries[e + 3]) * 31 + entries[e + 4];
-        for (int t = 0; t < entries[e]; t++) h = (h * 31 + entries[e + HEADER + t]) * 31 + System.identityHashCode(refs[r + t]);
+        for (int t = 0; t < entries[e]; t++) {
+            h = ((h * 31 + entries[e + HEADER + t]) * 31 + System.identityHashCode(refs[r + t])) * 31
+                    + Objects.hashCode(refs[r + SAMPLER_REFS + t]);
+        }
         for (int b = 0; b < entries[e + 1]; b++) {
             int block = e + BLOCKS_AT + b * BLOCK_INTS;
             h = h * 31 + entries[block];
@@ -427,7 +455,8 @@ public final class CgBindingTable {
         int ra = a * ENTRY_REFS, rb = b * ENTRY_REFS;
         for (int i = 0; i < HEADER; i++) if (entries[ea + i] != entries[eb + i]) return false;
         for (int t = 0; t < entries[ea]; t++) {
-            if (entries[ea + HEADER + t] != entries[eb + HEADER + t] || refs[ra + t] != refs[rb + t]) return false;
+            if (entries[ea + HEADER + t] != entries[eb + HEADER + t] || refs[ra + t] != refs[rb + t]
+                    || !Objects.equals(refs[ra + SAMPLER_REFS + t], refs[rb + SAMPLER_REFS + t])) return false;
         }
         for (int k = 0; k < entries[ea + 1]; k++) {
             int ba = ea + BLOCKS_AT + k * BLOCK_INTS, bb = eb + BLOCKS_AT + k * BLOCK_INTS;

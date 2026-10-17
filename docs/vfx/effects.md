@@ -72,6 +72,43 @@ static final CgVfxLayer INK = CgVfxLayer.of("mymod:shaders/vfx/ink.shader").on(S
   draws with it, and shared by every layer and material asking for it. Warm them with the look (`VFX.prepare(LOOK)`).
 - **Cull and depth write compile nothing**: they are the draw's pipeline state, on the same programs.
 
+## Textures and samplers
+
+A texture samples as its spec says (`CgTextureSpec`: its filter and wrap). A layer can sample it another way
+instead, so one image is loaded once and used clamped by one layer and tiled by another. Unreal calls this a
+material's sampler source.
+
+```java
+static final CgTexture2D NOISE = CgTextures.of("mymod:textures/vfx/noise.png");
+
+static final CgVfxLayer MASK = CgVfxLayer.of("mymod:shaders/vfx/mask.shader").on(BALL)
+        .texture("_Mask", NOISE, CgSampler.BILINEAR_CLAMP)          // a soft edge that never wraps
+        .build();
+static final CgVfxLayer SCROLL = CgVfxLayer.of("mymod:shaders/vfx/scroll.shader").on(BALL)
+        .texture("_Scroll", NOISE, CgSampler.TRILINEAR_WRAP)         // the same upload, tiled
+        .build();
+```
+
+A sampler of your own, axis by axis:
+
+```java
+CgSampler strip = CgSampler.builder()
+        .filter(CgSampler.Filter.TRILINEAR)                           // NEAREST, BILINEAR or TRILINEAR
+        .address(CgSampler.Address.WRAP, CgSampler.Address.CLAMP)     // along u, then v (and w)
+        .anisotropy(8)                                                // sharper at a slant; 1 is none
+        .build();
+```
+
+| `CgSampler.Address` | A coordinate past 0 to 1 reads | Unreal |
+|---|---|---|
+| `WRAP` | the texture again | Wrap |
+| `CLAMP` | the edge texel | Clamp |
+| `MIRROR` | the texture again, every other copy flipped | Mirror |
+
+- **Without a sampler** a texture samples as its spec says, as before.
+- **On a texture with no mips**, `BILINEAR` and `TRILINEAR` sample its base level.
+- **Anisotropy is clamped** to what the player's GPU has.
+
 ## Where a layer draws: its order and its sort layer
 
 Within its effect, a layer draws by its role (smoke, light, distortion, surface), then by its order hint, then in

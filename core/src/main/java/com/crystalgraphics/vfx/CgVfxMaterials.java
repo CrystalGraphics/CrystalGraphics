@@ -324,7 +324,7 @@ final class CgVfxMaterials {
             }
             int unit = 0;
             for (Map.Entry<String, CgTexture> t : layer.textures().entrySet()) {
-                b.sampler(t.getKey(), unit++, t.getValue());
+                b.sampler(t.getKey(), unit++, t.getValue(), layer.samplers().get(t.getKey()));
             }
         });
     }

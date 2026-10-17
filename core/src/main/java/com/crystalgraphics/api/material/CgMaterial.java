@@ -24,6 +24,7 @@ import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.gl.texture.CgSamplers;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;
@@ -878,6 +879,7 @@ public final class CgMaterial {
         if (deleted) return;
         if (lastBoundShader != null) lastBoundShader.unbind();
         if (matPropsUbo != null) matPropsUbo.unbind();
+        CgSamplers.unbindOwn();   // a binding's sampler never reaches what the host draws next
     }
 
     // ── Recording ─────────────────────────────────────────────────────────────

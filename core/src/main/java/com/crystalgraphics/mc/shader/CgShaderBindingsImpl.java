@@ -6,6 +6,7 @@ import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 
+import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 
 import org.apache.logging.log4j.LogManager;
@@ -171,6 +172,12 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
     @Override
     public CgShaderBindings sampler(String name, int unit, int glTextureId, int glTarget) {
         return put(name, new SamplerOp(name, unit, glTextureId, glTarget));
+    }
+
+    @Override
+    public CgShaderBindings sampler(String name, int unit, CgTexture texture, CgSampler sampler) {
+        throw new UnsupportedOperationException("A sampler per binding is a material's: a raw shader's texture samples "
+                + "as its spec says, '" + name + "' included");
     }
 
     @Override

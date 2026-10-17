@@ -302,7 +302,7 @@ public final class CgRecordingDevice implements CgDevice {
                 case SAMPLED_TEXTURE -> {
                     use(from.view(i).texture(), from.sampler(i));
                     into.texture(from.binding(i), from.view(i), from.sampler(i));
-                    s.append(ref(from.view(i).texture()));
+                    s.append(ref(from.view(i).texture())).append('/').append(ref(from.sampler(i)));
                 }
                 case STORAGE_IMAGE -> {
                     use(from.view(i).texture());

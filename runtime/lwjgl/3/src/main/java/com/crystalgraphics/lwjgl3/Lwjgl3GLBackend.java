@@ -840,6 +840,26 @@ public class Lwjgl3GLBackend extends CgGLBackend {
         GL33C.glBindSampler(unit, sampler);
     }
 
+    @Override
+    public int glGenSamplers() {
+        return GL33C.glGenSamplers();
+    }
+
+    @Override
+    public void glDeleteSamplers(int sampler) {
+        GL33C.glDeleteSamplers(sampler);
+    }
+
+    @Override
+    public void glSamplerParameteri(int sampler, int pname, int param) {
+        GL33C.glSamplerParameteri(sampler, pname, param);
+    }
+
+    @Override
+    public void glSamplerParameterf(int sampler, int pname, float param) {
+        GL33C.glSamplerParameterf(sampler, pname, param);
+    }
+
     // -------------------------------------------------------------------------
     // Buffer mapping — Tier 3 (raw GL30C / GL15C)
     // -------------------------------------------------------------------------

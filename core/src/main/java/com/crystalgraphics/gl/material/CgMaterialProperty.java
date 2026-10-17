@@ -2,7 +2,9 @@ package com.crystalgraphics.gl.material;
 
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.shader.CgShader;
+import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.gl.texture.CgSamplers;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.texture.CgEngineTextures;
@@ -166,6 +168,9 @@ public final class CgMaterialProperty {
     private int       samplerUnit    = -1;   // -1 = not yet set
     @Getter
     private CgTexture samplerTexture = null;
+    /** What samples it in place of the texture's own filter and wrap; null for its own. */
+    @Getter
+    private CgSampler sampler;
     /** The engine texture the default names ({@link CgEngineTextures}), found at first use. */
     private Supplier<CgTexture> namedDefault;
 
@@ -320,7 +325,14 @@ public final class CgMaterialProperty {
         floatValue[i] = v;
         return true;
     }
-    public void setTexture(int unit, CgTexture texture)  { this.samplerUnit = unit; this.samplerTexture = texture; }
+    public void setTexture(int unit, CgTexture texture)  { setTexture(unit, texture, null); }
+
+    /** {@code texture} at {@code unit}, sampled by {@code sampler} in place of its own; null for its own. */
+    public void setTexture(int unit, CgTexture texture, CgSampler sampler) {
+        this.samplerUnit = unit;
+        this.samplerTexture = texture;
+        this.sampler = sampler;
+    }
 
     /** Sets the Range bounds. Use alongside {@link #set(float)} to set both bounds and current value. */
     public void setRange(float min, float max) {
@@ -443,8 +455,10 @@ public final class CgMaterialProperty {
     public void bindSamplerTexture() {
         if (!type.isSampler()) throw new IllegalStateException("bindSamplerTexture() called on non-sampler property: " + name);
 
-        if (samplerUnit >= 0 && samplerTexture != null)
+        if (samplerUnit >= 0 && samplerTexture != null) {
             samplerTexture.bind(samplerUnit);
+            CgSamplers.bind(samplerUnit, sampler, samplerTexture);
+        }
     }
 
     /**
@@ -504,6 +518,7 @@ public final class CgMaterialProperty {
         if (type.isSampler()) {
             this.samplerUnit    = src.samplerUnit;
             this.samplerTexture = src.samplerTexture;
+            this.sampler        = src.sampler;
         } else if (type == Type.INT || type == Type.BOOLEAN) {
             this.intValue = src.intValue;
         } else {

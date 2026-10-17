@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.shader;
 
+import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 
@@ -264,6 +265,18 @@ public interface CgShaderBindings {
      * @return this instance for chaining
      */
     CgShaderBindings sampler(String name, int unit, CgTexture texture);
+
+    /**
+     * As {@link #sampler(String, int, CgTexture)}, sampled by {@code sampler} in place of the texture's own filter and
+     * wrap: one image clamped here and tiled elsewhere, from one upload.
+     *
+     * <pre>{@code
+     * material.applyProperties(b -> b.sampler("_Mask", 0, NOISE, CgSampler.BILINEAR_CLAMP));
+     * }</pre>
+     *
+     * <p>A material's binding only: a raw {@code CgShader}'s throws, since nothing there unbinds it after.</p>
+     */
+    CgShaderBindings sampler(String name, int unit, CgTexture texture, CgSampler sampler);
 
     /**
      * Records a sampler binding for a raw GL texture id with target GL_TEXTURE_2D.

@@ -4,6 +4,7 @@ import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgMeshLods;
+import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.render.world.CgSortLayer;
@@ -119,6 +120,7 @@ public final class CgVfxLayer {
     final Map<String, float[]> constants;
     final List<Binding> bindings;
     final Map<String, Supplier<? extends CgTexture>> textures;
+    final Map<String, CgSampler> samplers;
     private volatile Map<String, CgTexture> madeTextures;
     final Set<String> keywords, unbound;
     /** What it draws on a mesh slot or per particle of a MESHES emitter instead of the sphere; a path loads at first draw. */
@@ -148,6 +150,7 @@ public final class CgVfxLayer {
         this.constants = Collections.unmodifiableMap(new LinkedHashMap<>(b.constants));
         this.bindings = Collections.unmodifiableList(new ArrayList<>(b.bindings));
         this.textures = Collections.unmodifiableMap(new LinkedHashMap<>(b.textures));
+        this.samplers = Collections.unmodifiableMap(new LinkedHashMap<>(b.samplers));
         this.keywords = Collections.unmodifiableSet(new LinkedHashSet<>(b.keywords));
         this.unbound = Collections.unmodifiableSet(new LinkedHashSet<>(b.unbound));
         this.meshLods = b.meshLods;
@@ -183,6 +186,7 @@ public final class CgVfxLayer {
         b.constants.putAll(constants);
         b.bindings.addAll(bindings);
         b.textures.putAll(textures);
+        b.samplers.putAll(samplers);
         b.keywords.addAll(keywords);
         b.unbound.addAll(unbound);
         b.meshLods = meshLods;
@@ -300,6 +304,11 @@ public final class CgVfxLayer {
         return made;
     }
 
+    /** The sampler each texture is sampled by in place of its own, by property; a texture absent samples as its own. */
+    public Map<String, CgSampler> samplers() {
+        return samplers;
+    }
+
     /** The {@code cg_feature} keywords set on its materials, beside its slot kind's {@code FX_ON_*}. */
     public Set<String> keywords() {
         return keywords;
@@ -379,6 +388,7 @@ public final class CgVfxLayer {
         private final Map<String, float[]> constants = new LinkedHashMap<>();
         private final List<Binding> bindings = new ArrayList<>();
         private final Map<String, Supplier<? extends CgTexture>> textures = new LinkedHashMap<>();
+        private final Map<String, CgSampler> samplers = new LinkedHashMap<>();
         private final Set<String> keywords = new LinkedHashSet<>(), unbound = new LinkedHashSet<>();
         private CgMeshLods meshLods;
         private String meshPath;
@@ -601,6 +611,23 @@ public final class CgVfxLayer {
          */
         public Builder texture(String property, Supplier<? extends CgTexture> texture) {
             textures.put(Objects.requireNonNull(property, "property"), Objects.requireNonNull(texture, "texture"));
+            samplers.remove(property);
+            return this;
+        }
+
+        /**
+         * A texture sampled by {@code sampler} in place of its own filter and wrap: one image loaded once, clamped by
+         * one layer and tiled by another. Unreal's shared sampler source.
+         *
+         * <pre>{@code
+         * static final CgTexture2D NOISE = CgTextures.of("mymod:textures/vfx/noise.png");
+         * layer.texture("_Mask", NOISE, CgSampler.BILINEAR_CLAMP)      // a soft edge
+         * other.texture("_Scroll", NOISE, CgSampler.BILINEAR_WRAP)     // the same image, tiled
+         * }</pre>
+         */
+        public Builder texture(String property, CgTexture texture, CgSampler sampler) {
+            texture(property, texture);
+            samplers.put(property, Objects.requireNonNull(sampler, "sampler"));
             return this;
         }
 

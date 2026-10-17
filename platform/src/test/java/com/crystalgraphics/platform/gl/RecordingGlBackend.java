@@ -212,6 +212,10 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glGetFloat(int pname, FloatBuffer params) { record("glGetFloat"); }
     @Override public float glGetFloat(int pname) { record("glGetFloat"); return 0f; }
     @Override public void glBindSampler(int unit, int sampler) { record("glBindSampler"); }
+    @Override public int glGenSamplers() { record("glGenSamplers"); return 0; }
+    @Override public void glDeleteSamplers(int sampler) { record("glDeleteSamplers"); }
+    @Override public void glSamplerParameteri(int sampler, int pname, int param) { record("glSamplerParameteri"); }
+    @Override public void glSamplerParameterf(int sampler, int pname, float param) { record("glSamplerParameterf"); }
     @Override public ByteBuffer glMapBufferRange(int target, long offset, long length, int access, ByteBuffer oldBuffer) { record("glMapBufferRange"); return null; }
     @Override public boolean glUnmapBuffer(int target) { record("glUnmapBuffer"); return false; }
     @Override public void glFlushMappedBufferRange(int target, long offset, long length) { record("glFlushMappedBufferRange"); }

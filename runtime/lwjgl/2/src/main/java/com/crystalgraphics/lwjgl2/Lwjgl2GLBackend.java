@@ -754,6 +754,26 @@ public class Lwjgl2GLBackend extends CgGLBackend {
         GL33.glBindSampler(unit, sampler);
     }
 
+    @Override
+    public int glGenSamplers() {
+        return GL33.glGenSamplers();
+    }
+
+    @Override
+    public void glDeleteSamplers(int sampler) {
+        GL33.glDeleteSamplers(sampler);
+    }
+
+    @Override
+    public void glSamplerParameteri(int sampler, int pname, int param) {
+        GL33.glSamplerParameteri(sampler, pname, param);
+    }
+
+    @Override
+    public void glSamplerParameterf(int sampler, int pname, float param) {
+        GL33.glSamplerParameterf(sampler, pname, param);
+    }
+
     // -------------------------------------------------------------------------
     // Buffer mapping
     // -------------------------------------------------------------------------

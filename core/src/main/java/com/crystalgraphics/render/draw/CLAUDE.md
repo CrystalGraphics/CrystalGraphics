@@ -31,7 +31,8 @@ if (p.bind()) { table.bind(bindings); p.instanceBase(first); /* draw */ }
 - **A recorder never reaches GL.** `pipeline()` parses at most (`CgMaterialShader.ensureParsed()`); it never
   compiles. `captureBindings()` reads no GL name.
 - **A texture in a snapshot is a handle**, resolved at `bind`: one reallocated before execution binds its new
-  storage. Never capture a `CgTextureMutable` whose id another thread rewrites.
+  storage. Never capture a `CgTextureMutable` whose id another thread rewrites. Its `CgSampler`, if any, is part of
+  the snapshot (`texture(unit, texture, sampler)`): equal samplers intern to one id, another makes another.
 - **A buffer in a snapshot is a `CgBufferHandle`**, resolved at `bind` the same way; a `CgGraphBuffer` is read by the
   raster pass the chunk is added to, so the graph orders the draw after the pass writing it. A buffer texture
   (`texelBuffer(unit, format, buffer)`) binds through `CgBufferTextures`, one texture per unit.

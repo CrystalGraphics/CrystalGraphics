@@ -24,6 +24,7 @@ import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.gl.buffer.CgBufferReadback;
 import com.crystalgraphics.gl.buffer.CgBufferTextures;
 import com.crystalgraphics.gl.buffer.CgReadback;
+import com.crystalgraphics.gl.texture.CgSamplers;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
@@ -237,8 +238,10 @@ public final class CgExecutor {
             // A compatibility host's fixed-function alpha test discards our fragments too, and only a material
             // declaring AlphaTest means one: 1.7.10 leaves GREATER 0.1 on, which drops every faint additive draw.
             if (restoreState) CgAlphaState.DISABLED.apply();
+            CgSamplers.forget();   // the host may have bound samplers of its own since
             executor.run(frame);
         } finally {
+            CgSamplers.unbindOwn();   // ours never reach the host's textures, nor an outer execution's next draw
             depth--;
             if (depth == 0) CgCpuMirrors.endFrame();   // copies of buffers written outside the graph
         }

@@ -24,7 +24,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Texture objects, texture units, image units and samplers. A texture's image is made when level 0 is specified,
+ * Texture objects, texture units, image units and sampler objects (a unit's bound one replaces its texture's own
+ * sampling). A texture's image is made when level 0 is specified,
  * with room for its whole mip chain; a draw samples the levels specified so far, and a texture with none samples as
  * GL's incomplete texture does, black and opaque.
  */
@@ -64,6 +65,18 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         void paramsChanged() { sampler = null; view = null; }
     }
 
+    /** One GL sampler object: what a texture unit samples with in place of its texture's own parameters. */
+    static final class GlSampler {
+        final int name;
+        int minFilter = CgGL.GL_NEAREST_MIPMAP_LINEAR, magFilter = CgGL.GL_LINEAR;
+        int wrapS = CgGL.GL_REPEAT, wrapT = CgGL.GL_REPEAT, wrapR = CgGL.GL_REPEAT;
+        int compareMode = CgGL.GL_NONE, compareFunc = CgGL.GL_LEQUAL;
+        float minLod = -1000, maxLod = 1000, anisotropy = 1f;
+        CgGpuSampler sampler;
+
+        GlSampler(int name) { this.name = name; }
+    }
+
     private final CgTracker tracker;
     private static final CgTraceChannel TRACE = CgTrace.channel("crystalgraphics.gl");
     /** Texel uploads recorded into the frame's commands: their staged bytes, and the passes they ended. */
@@ -79,6 +92,9 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
     private final TrackedGlErrors errors;
     private final TrackedBuffers buffers;
     private final GlNames<GlTexture> names = new GlNames<>("Texture");
+    private final GlNames<GlSampler> samplerNames = new GlNames<>("Sampler");
+    /** The sampler object bound to each unit, 0 for none. */
+    private final int[] unitSamplers;
     private final Map<CgGpuSampler.Desc, CgGpuSampler> samplers = new HashMap<>();
     private final int[][] units;
     private final CgTextureView[] incomplete = new CgTextureView[KINDS];
@@ -93,6 +109,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         this.errors = errors;
         this.buffers = buffers;
         this.units = new int[tracker.device().info().limits().maxTextureUnits()][KINDS];
+        this.unitSamplers = new int[units.length];
     }
 
     public int activeUnit() { return active; }
@@ -285,8 +302,44 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         t.texelFormat = GlPixels.device(internalFormat);
     }
 
+    public int genSampler() {
+        return samplerNames.add(new GlSampler(samplerNames.next()));
+    }
+
+    public void deleteSampler(int name) {
+        if (samplerNames.remove(name) == null) return;
+        for (int u = 0; u < unitSamplers.length; u++) if (unitSamplers[u] == name) unitSamplers[u] = 0;
+    }
+
     public void bindSampler(int unit, int sampler) {
-        if (sampler != 0) throw new UnsupportedOperationException("Sampler objects: glBindSampler only unbinds here");
+        if (unit < 0 || unit >= unitSamplers.length) { errors.invalidValue("glBindSampler unit " + unit); return; }
+        if (sampler != 0 && !samplerNames.exists(sampler)) {
+            errors.invalidOperation("glBindSampler: sampler " + sampler + " was never generated");
+            return;
+        }
+        unitSamplers[unit] = sampler;
+    }
+
+    /** {@code glSamplerParameteri}/{@code f}: an enum arrives as its exact float. */
+    public void samplerParameter(int name, int pname, float value) {
+        GlSampler s = name == 0 ? null : samplerNames.get(name);
+        if (s == null) { errors.invalidOperation("glSamplerParameter on sampler " + name + ", never generated"); return; }
+        int param = (int) value;
+        switch (pname) {
+            case CgGL.GL_TEXTURE_MIN_FILTER: s.minFilter = param; break;
+            case CgGL.GL_TEXTURE_MAG_FILTER: s.magFilter = param; break;
+            case CgGL.GL_TEXTURE_WRAP_S: s.wrapS = param; break;
+            case CgGL.GL_TEXTURE_WRAP_T: s.wrapT = param; break;
+            case CgGL.GL_TEXTURE_WRAP_R: s.wrapR = param; break;
+            case CgGL.GL_TEXTURE_COMPARE_MODE: s.compareMode = param; break;
+            case CgGL.GL_TEXTURE_COMPARE_FUNC: s.compareFunc = param; break;
+            case CgGL.GL_TEXTURE_MIN_LOD: s.minLod = value; break;
+            case CgGL.GL_TEXTURE_MAX_LOD: s.maxLod = value; break;
+            case GL_TEXTURE_MAX_ANISOTROPY: s.anisotropy = value; break;
+            case GL_TEXTURE_LOD_BIAS: break;
+            default: errors.invalidEnum("glSamplerParameter", pname); return;
+        }
+        s.sampler = null;
     }
 
     public void pixelStore(int pname, int param) {
@@ -333,7 +386,34 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
             state.texture(sampler.binding(), incomplete(kind), sampler(CgGpuSampler.Desc.GL_DEFAULT));
             return;
         }
-        state.texture(sampler.binding(), view(t), sampler(t));
+        GlSampler bound = unitSamplers[unit] == 0 ? null : samplerNames.get(unitSamplers[unit]);
+        if (bound == null) {
+            state.texture(sampler.binding(), view(t), sampler(t));
+        } else {
+            // A sampler object replaces every sampling parameter, the levels a mipmap filter reaches included.
+            CgTextureView v = mipmapped(bound.minFilter) == mipmapped(t.minFilter) ? view(t)
+                    : new CgTextureView(t.image, t.baseLevel, levels(t, bound.minFilter), 0, t.kind == KIND_3D ? 1 : t.depth);
+            state.texture(sampler.binding(), v, sampler(bound));
+        }
+    }
+
+    private CgGpuSampler sampler(GlSampler s) {
+        if (s.sampler == null) {
+            float most = tracker.device().info().limits().maxAnisotropy();
+            s.sampler = sampler(desc(s.minFilter, s.magFilter, s.wrapS, s.wrapT, s.wrapR, s.compareMode, s.compareFunc,
+                    s.minLod, s.maxLod, Math.max(1f, Math.min(s.anisotropy, most))));
+        }
+        return s.sampler;
+    }
+
+    private static boolean mipmapped(int minFilter) {
+        return minFilter != CgGL.GL_NEAREST && minFilter != CgGL.GL_LINEAR;
+    }
+
+    /** The levels a view of {@code t} samples under {@code minFilter}: its specified chain, or the base alone. */
+    private static int levels(GlTexture t, int minFilter) {
+        int top = Math.min(Math.min(t.maxLevel, t.mips - 1), t.specifiedLevels - 1);
+        return mipmapped(minFilter) ? Math.max(1, top - t.baseLevel + 1) : 1;
     }
 
     @Override
@@ -358,29 +438,31 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
 
     private CgTextureView view(GlTexture t) {
         if (t.view == null) {
-            boolean mipmapped = t.minFilter != CgGL.GL_NEAREST && t.minFilter != CgGL.GL_LINEAR;
-            int top = Math.min(Math.min(t.maxLevel, t.mips - 1), t.specifiedLevels - 1);
-            int mips = mipmapped ? Math.max(1, top - t.baseLevel + 1) : 1;
-            int layers = t.kind == KIND_3D ? 1 : t.depth;
-            t.view = new CgTextureView(t.image, t.baseLevel, mips, 0, layers);
+            t.view = new CgTextureView(t.image, t.baseLevel, levels(t, t.minFilter), 0, t.kind == KIND_3D ? 1 : t.depth);
         }
         return t.view;
     }
 
     private CgGpuSampler sampler(GlTexture t) {
         if (t.sampler == null) {
-            CgGpuSampler.MipFilter mip = t.minFilter == CgGL.GL_NEAREST || t.minFilter == CgGL.GL_LINEAR
-                    ? CgGpuSampler.MipFilter.NONE
-                    : t.minFilter == CgGL.GL_NEAREST_MIPMAP_NEAREST || t.minFilter == CgGL.GL_LINEAR_MIPMAP_NEAREST
-                    ? CgGpuSampler.MipFilter.NEAREST : CgGpuSampler.MipFilter.LINEAR;
-            CgGpuSampler.Filter min = t.minFilter == CgGL.GL_LINEAR || t.minFilter == CgGL.GL_LINEAR_MIPMAP_NEAREST
-                    || t.minFilter == CgGL.GL_LINEAR_MIPMAP_LINEAR ? CgGpuSampler.Filter.LINEAR : CgGpuSampler.Filter.NEAREST;
-            CgGpuSampler.Filter mag = t.magFilter == CgGL.GL_NEAREST ? CgGpuSampler.Filter.NEAREST : CgGpuSampler.Filter.LINEAR;
-            CgCompare compare = t.compareMode == CgGL.GL_COMPARE_R_TO_TEXTURE ? GlEnums.compare(t.compareFunc) : null;
-            t.sampler = sampler(new CgGpuSampler.Desc(min, mag, mip, wrap(t.wrapS), wrap(t.wrapT), wrap(t.wrapR),
-                    compare, t.minLod, t.maxLod, 1f));
+            t.sampler = sampler(desc(t.minFilter, t.magFilter, t.wrapS, t.wrapT, t.wrapR, t.compareMode, t.compareFunc,
+                    t.minLod, t.maxLod, 1f));
         }
         return t.sampler;
+    }
+
+    /** GL's sampling parameters as a device sampler's. */
+    private static CgGpuSampler.Desc desc(int minFilter, int magFilter, int wrapS, int wrapT, int wrapR, int compareMode,
+                                          int compareFunc, float minLod, float maxLod, float anisotropy) {
+        CgGpuSampler.MipFilter mip = !mipmapped(minFilter) ? CgGpuSampler.MipFilter.NONE
+                : minFilter == CgGL.GL_NEAREST_MIPMAP_NEAREST || minFilter == CgGL.GL_LINEAR_MIPMAP_NEAREST
+                ? CgGpuSampler.MipFilter.NEAREST : CgGpuSampler.MipFilter.LINEAR;
+        CgGpuSampler.Filter min = minFilter == CgGL.GL_LINEAR || minFilter == CgGL.GL_LINEAR_MIPMAP_NEAREST
+                || minFilter == CgGL.GL_LINEAR_MIPMAP_LINEAR ? CgGpuSampler.Filter.LINEAR : CgGpuSampler.Filter.NEAREST;
+        CgGpuSampler.Filter mag = magFilter == CgGL.GL_NEAREST ? CgGpuSampler.Filter.NEAREST : CgGpuSampler.Filter.LINEAR;
+        CgCompare compare = compareMode == CgGL.GL_COMPARE_R_TO_TEXTURE ? GlEnums.compare(compareFunc) : null;
+        return new CgGpuSampler.Desc(min, mag, mip, wrap(wrapS), wrap(wrapT), wrap(wrapR), compare, minLod, maxLod,
+                anisotropy);
     }
 
     private CgGpuSampler sampler(CgGpuSampler.Desc desc) {
@@ -528,7 +610,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
             case GL_TEXTURE_BINDING_3D: return TrackedRenderState.one(out, units[active][KIND_3D]);
             case GL_TEXTURE_BINDING_CUBE_MAP: return TrackedRenderState.one(out, units[active][KIND_CUBE]);
             case GL_TEXTURE_BINDING_BUFFER: return TrackedRenderState.one(out, units[active][KIND_BUFFER]);
-            case GL_SAMPLER_BINDING: return TrackedRenderState.one(out, 0);
+            case GL_SAMPLER_BINDING: return TrackedRenderState.one(out, unitSamplers[active]);
             case CgGL.GL_UNPACK_ALIGNMENT: return TrackedRenderState.one(out, unpack.alignment);
             case CgGL.GL_UNPACK_ROW_LENGTH: return TrackedRenderState.one(out, unpack.rowLength);
             case CgGL.GL_UNPACK_SKIP_ROWS: return TrackedRenderState.one(out, unpack.skipRows);

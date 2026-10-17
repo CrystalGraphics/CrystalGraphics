@@ -222,6 +222,9 @@ public final class CgGL {
     public static final int GL_REPEAT                 = 0x2901;
     public static final int GL_CLAMP_TO_EDGE          = 0x812F;
     public static final int GL_MIRRORED_REPEAT        = 0x8370;
+    /** A sampler's or texture's anisotropy: GL 4.6 core, {@code EXT_texture_filter_anisotropic} below. */
+    public static final int GL_TEXTURE_MAX_ANISOTROPY = 0x84FE;
+    public static final int GL_MAX_TEXTURE_MAX_ANISOTROPY = 0x84FF;
     public static final int GL_CLAMP_TO_BORDER        = 0x812D;
     public static final int GL_COMPARE_R_TO_TEXTURE   = 0x884E;
     public static final int GL_NONE                   = 0;
@@ -1687,6 +1690,25 @@ public final class CgGL {
     /** Binds a sampler object to a texture unit (ARB_sampler_objects / GL 3.3). */
     public static void glBindSampler(int unit, int sampler) {
         gl().glBindSampler(unit, sampler);
+    }
+
+    /** Makes a sampler object (GL 3.3), at GL's default parameters. */
+    public static int glGenSamplers() {
+        return gl().glGenSamplers();
+    }
+
+    public static void glDeleteSamplers(int sampler) {
+        gl().glDeleteSamplers(sampler);
+    }
+
+    /** A filter, wrap or compare parameter of a sampler object: {@code GL_TEXTURE_MIN_FILTER} and the rest. */
+    public static void glSamplerParameteri(int sampler, int pname, int param) {
+        gl().glSamplerParameteri(sampler, pname, param);
+    }
+
+    /** A sampler object's LOD range or anisotropy ({@link #GL_TEXTURE_MAX_ANISOTROPY}). */
+    public static void glSamplerParameterf(int sampler, int pname, float param) {
+        gl().glSamplerParameterf(sampler, pname, param);
     }
 
     // =========================================================================

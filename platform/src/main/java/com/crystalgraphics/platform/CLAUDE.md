@@ -221,7 +221,9 @@ What is easy to get wrong:
   black, an FBO with nothing attached raises `GL_INVALID_FRAMEBUFFER_OPERATION` at the draw, a colour clear
   under a partial write mask is drawn through the mask (a device's clear writes every channel), and a fence
   waited on with `GL_SYNC_FLUSH_COMMANDS_BIT` submits its frame.
-- **What GL allows and a device cannot do throws** naming it — sampler objects, texture swizzles, 8-bit
+- **Sampler objects** are carried: a unit's bound one replaces its texture's sampling at the draw, the levels a
+  mipmap filter reaches included (`TrackedTextures`).
+- **What GL allows and a device cannot do throws** naming it — texture swizzles, 8-bit
   indices, a draw buffer after `GL_NONE`, `glReadPixels` into a pack buffer in a layout other than the
   texture's own.
 - **A copy from or into device-local storage is a device copy at the call**, ending the pass like an upload;

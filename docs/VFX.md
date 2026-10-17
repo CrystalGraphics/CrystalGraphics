@@ -635,7 +635,8 @@ layer.texture("_Strip", SLEEVE).texture("_Aura", FLAMES).texture("_Sheet", madeA
 
 - A layer takes any `CgTexture`. `CgTextures` makes one from files (`of`, `frames`, `array`, `volume`, `cubemap`):
   named in common code, it loads at its first use, so a server that names it never decodes it.
-- Its sampling is its spec's: a file is cached once per spec, so one image sampled two ways is two textures.
+- Its sampling is its spec's, unless the layer names a sampler (`texture(property, texture, CgSampler)`): one image
+  loaded once, clamped here and tiled there ([`vfx/effects.md`](vfx/effects.md) § *Textures and samplers*).
 - `frames(pattern, count)`, or `array(spec, paths...)`, makes one `sampler2DArray`: a flipbook, or a set of paintings
   to pick from, past a material's sampler limit. Images of different sizes are each centred on a layer the largest
   one's size.

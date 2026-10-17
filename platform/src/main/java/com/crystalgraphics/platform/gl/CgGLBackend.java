@@ -477,6 +477,13 @@ public abstract class CgGLBackend {
 
     /** Binds a sampler object to a texture unit (GL 3.3). */
     public abstract void glBindSampler(int unit, int sampler);
+    /** Makes a sampler object (GL 3.3), at GL's default parameters. */
+    public abstract int glGenSamplers();
+    public abstract void glDeleteSamplers(int sampler);
+    /** {@code glSamplerParameteri}: a filter, wrap or compare parameter of a sampler object. */
+    public abstract void glSamplerParameteri(int sampler, int pname, int param);
+    /** {@code glSamplerParameterf}: a sampler object's LOD range or anisotropy. */
+    public abstract void glSamplerParameterf(int sampler, int pname, float param);
 
     // -------------------------------------------------------------------------
     // Buffer mapping

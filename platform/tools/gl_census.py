@@ -32,7 +32,7 @@ DOMAINS = [
         'glEnable', 'glDisable', 'glBlendFunc', 'glBlendFuncSeparate', 'glBlendEquationSeparate', 'glDepthMask',
         'glDepthFunc', 'glCullFace', 'glFrontFace', 'glColorMask', 'glColorMaski', 'glStencilFunc', 'glStencilOp',
         'glStencilMask', 'glPolygonOffset', 'glViewport', 'glScissor', 'glClearColor', 'glClearDepth',
-        'glClearStencil']),
+        'glClearStencil', 'cgClipZeroToOne']),
     ('Buffers and vertex arrays', 'every draw reads them; the frame ring and orphan-as-rename live here', [
         'glGenBuffers', 'glDeleteBuffers', 'glBindBuffer', 'glBufferData', 'glBufferSubData', 'glBufferStorage',
         'glMapBufferRange', 'glFlushMappedBufferRange', 'glUnmapBuffer', 'glBindBufferBase', 'glBindBufferRange',
@@ -48,7 +48,8 @@ DOMAINS = [
         'glUniformMatrix4fv', 'glGetUniformBlockIndex', 'glUniformBlockBinding', 'glGetProgramResourceIndex',
         'glShaderStorageBlockBinding', 'glTransformFeedbackVaryings']),
     ('Textures and samplers', 'uploads are encoder work outside a pass', [
-        'glGenTextures', 'glDeleteTextures', 'glActiveTexture', 'glBindTexture', 'glBindSampler', 'glTexImage2D',
+        'glGenTextures', 'glDeleteTextures', 'glActiveTexture', 'glBindTexture', 'glBindSampler', 'glGenSamplers',
+        'glDeleteSamplers', 'glSamplerParameteri', 'glSamplerParameterf', 'glTexImage2D',
         'glTexSubImage2D', 'glTexImage3D', 'glTexSubImage3D', 'glTexImage2DMultisample', 'glTexParameteri',
         'glGenerateMipmap', 'glPixelStorei', 'copyImageSubData', 'importHostTexture']),
     ('Framebuffers and renderbuffers', 'attachment sets; a bind picks the next pass\'s target', [

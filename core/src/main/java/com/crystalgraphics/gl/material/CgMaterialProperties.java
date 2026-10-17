@@ -3,7 +3,9 @@ package com.crystalgraphics.gl.material;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.gl.texture.CgSamplers;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.render.draw.CgBindingTable;
@@ -137,7 +139,7 @@ public final class CgMaterialProperties implements CgShaderBindings {
     public void captureSamplers(CgBindingTable table) {
         for (int i = 0; i < samplerProps.size(); i++) {
             CgTexture texture = samplerProps.get(i).boundTexture();
-            if (texture != null) table.texture(i, texture);
+            if (texture != null) table.texture(i, texture, samplerProps.get(i).getSampler());
         }
     }
 
@@ -152,7 +154,11 @@ public final class CgMaterialProperties implements CgShaderBindings {
                 p.bindSamplerTexture();
             } else {
                 CgTexture named = p.boundTexture();
-                if (named != null) named.bind(p.getSamplerUnit() >= 0 ? p.getSamplerUnit() : i);
+                int unit = p.getSamplerUnit() >= 0 ? p.getSamplerUnit() : i;
+                if (named != null) {
+                    named.bind(unit);
+                    CgSamplers.bind(unit, p.getSampler(), named);
+                }
             }
         }
     }
@@ -249,10 +255,15 @@ public final class CgMaterialProperties implements CgShaderBindings {
 
     @Override
     public CgShaderBindings sampler(String name, int unit, CgTexture texture) {
+        return sampler(name, unit, texture, null);
+    }
+
+    @Override
+    public CgShaderBindings sampler(String name, int unit, CgTexture texture, CgSampler sampler) {
         CgMaterialProperty p = propsByName.get(name);
         if (p != null && p.getType().isSampler()) {
             if (p.getSamplerUnit() != unit) samplerUnitChanged = true;
-            p.setTexture(unit, texture);
+            p.setTexture(unit, texture, sampler);
         }
         return this;
     }

@@ -623,6 +623,10 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     @Override public void glActiveTexture(int texture) { textures.active(texture); }
 
     @Override public void glBindSampler(int unit, int sampler) { textures.bindSampler(unit, sampler); }
+    @Override public int glGenSamplers() { return textures.genSampler(); }
+    @Override public void glDeleteSamplers(int sampler) { textures.deleteSampler(sampler); }
+    @Override public void glSamplerParameteri(int sampler, int pname, int param) { textures.samplerParameter(sampler, pname, param); }
+    @Override public void glSamplerParameterf(int sampler, int pname, float param) { textures.samplerParameter(sampler, pname, param); }
 
     @Override public void glTexParameteri(int target, int pname, int param) { textures.parameter(target, pname, param); }
 

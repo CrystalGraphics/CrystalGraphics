@@ -6,7 +6,7 @@ it -- statically, with every Stonecutter branch counted as live. `platform` is t
 restores, the providers and the trace; `harness` is the GL debug harness, listed apart since it is a
 test application.
 
-**161 methods** (175 declarations with overloads): **149 reached** by core, CrystalGUI, the hosts or `platform`; **2 by the harness only**; **10 by nothing** -- `isAvailable`, `getPriority`, `glVertexAttribDivisor`, `glDrawElementsInstanced`, `glMultiDrawArraysIndirect`, `glMultiDrawArraysIndirectCount`, `glMultiDrawElementsIndirectCount`, `glMemoryBarrier`, `isContextCurrent`, `glTexImage2DMultisample`.
+**166 methods** (180 declarations with overloads): **154 reached** by core, CrystalGUI, the hosts or `platform`; **2 by the harness only**; **10 by nothing** -- `isAvailable`, `getPriority`, `glVertexAttribDivisor`, `glDrawElementsInstanced`, `glMultiDrawArraysIndirect`, `glMultiDrawArraysIndirectCount`, `glMultiDrawElementsIndirectCount`, `glMemoryBarrier`, `isContextCurrent`, `glTexImage2DMultisample`.
 
 **What it orders** (D3.4): the tracked backend is built domain by domain in the order below, reached
 methods first within each. An unreached method is still built -- `CgGL` is public API outside mods
@@ -21,11 +21,11 @@ What `CgCapabilities.detect()` and the state providers read before anything draw
 | `initContext` | direct | 1 |  |  |  |  |
 | `glGetInteger` ×2 | `glGetInteger` | 4 | 10 |  | 28 | 12 |
 | `glGetBoolean` ×2 | `glGetBoolean` |  | 2 |  | 2 | 5 |
-| `glGetFloat` ×2 | `glGetFloat` |  |  |  | 1 |  |
+| `glGetFloat` ×2 | `glGetFloat` | 1 |  |  | 1 |  |
 | `glGetString` | `glGetString` |  |  |  | 4 |  |
 | `glGetStringi` | `glGetStringi` |  |  |  | 1 |  |
 | `glGetIntegeri` | `glGetIntegeri` |  |  |  | 6 |  |
-| `glGetError` | `glGetError` | 2 | 6 |  |  | 3 |
+| `glGetError` | `glGetError` | 3 | 6 |  |  | 3 |
 | `ownedByCurrentThread` | `mayIssueGl`, `ownedByCurrentThread` | 2 |  |  |  |  |
 | `isContextCurrent` | `isContextCurrent` |  |  |  |  |  |
 
@@ -35,22 +35,23 @@ The pipeline key, and what the scope suite (D3.5) restores.
 
 | Method | via `CgGL` | core | CrystalGUI | hosts | platform | harness |
 |---|---|---:|---:|---:|---:|---:|
+| `cgClipZeroToOne` | `setDepthReversed` | 2 |  | 1 |  |  |
 | `glEnable` | `glEnable` | 10 |  |  | 2 | 6 |
-| `glDisable` | `glDisable` | 31 | 3 |  | 2 | 6 |
+| `glDisable` | `glDisable` | 32 | 3 |  | 2 | 6 |
 | `glBlendFunc` | `glBlendFunc` | 1 |  |  |  | 1 |
 | `glBlendFuncSeparate` | `glBlendFuncSeparate` | 1 |  |  | 1 |  |
-| `glDepthMask` | `glDepthMask` | 3 |  |  | 1 | 3 |
+| `glDepthMask` | `glDepthMask` | 4 |  |  | 1 | 3 |
 | `glCullFace` | `glCullFace` | 1 |  |  | 1 |  |
-| `glViewport` | `glViewport` | 12 |  | 2 | 1 | 6 |
+| `glViewport` | `glViewport` | 13 |  | 2 | 1 | 6 |
 | `glScissor` | `glScissor` | 5 |  |  | 1 |  |
-| `glColorMask` | `glColorMask` | 4 | 2 |  | 1 |  |
+| `glColorMask` | `glColorMask` | 5 | 2 |  | 1 |  |
 | `glStencilFunc` | `glStencilFunc` | 1 |  |  | 1 |  |
 | `glStencilOp` | `glStencilOp` | 1 |  |  | 1 |  |
 | `glClearDepth` | `glClearDepth` | 2 |  | 2 |  |  |
 | `glClearColor` | `glClearColor` | 4 |  |  |  | 5 |
 | `glClearStencil` | `glClearStencil` | 1 |  |  |  |  |
 | `glDepthFunc` | `glDepthFunc` | 2 |  |  | 1 | 2 |
-| `glStencilMask` | `glStencilMask` | 2 |  |  | 1 |  |
+| `glStencilMask` | `glStencilMask` | 3 |  |  | 1 |  |
 | `glBlendEquationSeparate` | `glBlendEquationSeparate` | 3 |  |  | 1 |  |
 | `glColorMaski` | `glColorMaski` | 2 |  |  | 1 |  |
 | `glFrontFace` | `glFrontFace` | 1 |  |  | 1 |  |
@@ -130,8 +131,8 @@ Uploads are encoder work outside a pass.
 | Method | via `CgGL` | core | CrystalGUI | hosts | platform | harness |
 |---|---|---:|---:|---:|---:|---:|
 | `copyImageSubData` | `glCopyImageSubData` | 1 |  |  |  |  |
-| `glGenTextures` | `glGenTextures` | 10 |  |  |  | 5 |
-| `glBindTexture` | `glBindTexture` | 50 |  |  | 1 | 11 |
+| `glGenTextures` | `glGenTextures` | 9 |  |  |  | 5 |
+| `glBindTexture` | `glBindTexture` | 54 |  |  | 1 | 11 |
 | `glDeleteTextures` | `glDeleteTextures` | 9 |  |  |  | 3 |
 | `glTexImage2D` ×2 | `glTexImage2D` | 4 |  |  |  | 3 |
 | `glTexSubImage2D` ×3 | `glTexSubImage2D` | 6 |  |  |  |  |
@@ -140,8 +141,12 @@ Uploads are encoder work outside a pass.
 | `glGenerateMipmap` | `glGenerateMipmap` | 2 |  |  |  |  |
 | `glActiveTexture` | `glActiveTexture` | 7 | 2 |  | 3 | 1 |
 | `glTexParameteri` | `glTexParameteri` | 21 |  |  |  | 14 |
-| `glPixelStorei` | `glPixelStorei` | 8 |  |  |  | 4 |
-| `glBindSampler` | `glBindSampler` | 2 |  |  |  |  |
+| `glPixelStorei` | `glPixelStorei` | 8 |  |  |  | 5 |
+| `glBindSampler` | `glBindSampler` | 4 |  |  |  |  |
+| `glGenSamplers` | `glGenSamplers` | 1 |  |  |  |  |
+| `glDeleteSamplers` | `glDeleteSamplers` | 1 |  |  |  |  |
+| `glSamplerParameteri` | `glSamplerParameteri` | 5 |  |  |  |  |
+| `glSamplerParameterf` | `glSamplerParameterf` | 1 |  |  |  |  |
 | `importHostTexture` | `importHostTexture` | 2 |  |  |  |  |
 | `glTexImage2DMultisample` | `glTexImage2DMultisample` |  |  |  |  |  |
 
@@ -151,7 +156,7 @@ Attachment sets; a bind picks the next pass's target.
 
 | Method | via `CgGL` | core | CrystalGUI | hosts | platform | harness |
 |---|---|---:|---:|---:|---:|---:|
-| `bindFramebuffer` | `glBindFramebuffer` | 38 | 2 | 3 | 3 | 17 |
+| `bindFramebuffer` | `glBindFramebuffer` | 39 | 2 | 3 | 3 | 17 |
 | `blitFramebuffer` | `glBlitFramebuffer` | 4 |  |  |  |  |
 | `framebufferTextureLayer` | `glFramebufferTextureLayer` | 8 |  |  |  | 1 |
 | `framebufferTexture` | `glFramebufferTexture` | 1 |  |  |  |  |
@@ -223,7 +228,7 @@ Fences on the frame that recorded them; a readback stalls.
 | `glGetQueryResultNanos` | `glGetQueryResultNanos` |  |  |  | 1 |  |
 | `glDeleteQuery` | `glDeleteQuery` |  |  |  | 3 |  |
 | `glGetTexImage` | `glGetTexImage` | 2 |  |  |  | 2 |
-| `glReadPixels` ×2 | `glReadPixels` | 6 | 1 |  |  | 3 |
+| `glReadPixels` ×2 | `glReadPixels` | 6 | 1 |  |  | 4 |
 | `glFenceSync` | `glFenceSync` | 2 |  |  |  |  |
 | `glClientWaitSync` | `glClientWaitSync` | 2 |  |  |  |  |
 | `glDeleteSync` | `glDeleteSync` | 5 |  |  |  |  |

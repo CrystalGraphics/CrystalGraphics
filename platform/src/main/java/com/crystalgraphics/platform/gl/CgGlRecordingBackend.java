@@ -866,6 +866,10 @@ final class CgGlRecordingBackend extends CgGLBackend {
     // ── Samplers, mapping, sync ───────────────────────────────────────────────
 
     @Override public void glBindSampler(int unit, int sampler) { op(BIND_SAMPLER); i(unit); i(sampler); }
+    @Override public int glGenSamplers() { throw refused("glGenSamplers", CREATES); }
+    @Override public void glDeleteSamplers(int sampler) { throw refused("glDeleteSamplers", CREATES); }
+    @Override public void glSamplerParameteri(int sampler, int pname, int param) { throw refused("glSamplerParameteri", CREATES); }
+    @Override public void glSamplerParameterf(int sampler, int pname, float param) { throw refused("glSamplerParameterf", CREATES); }
 
     /** Hands out scratch memory; what was written is taped at the flush or unmap that follows. */
     @Override

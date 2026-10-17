@@ -33,6 +33,7 @@ import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.render.mesh.CgMeshStore;
+import com.crystalgraphics.gl.texture.CgSamplers;
 import com.crystalgraphics.gl.texture.CgTextureCopy;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.noise.CgNoiseVolumes;
@@ -547,6 +548,7 @@ public final class CgGraphicsLifecycle {
         CgCompute.releaseAll();
         CgBufferTextures.releaseAll();
         CgReadback.releaseAll();
+        CgSamplers.releaseAll();   // the sampler objects bindings named
 
         // Step 7b: User-created SSBO/TBO/UBO resources managed by CgShaderBufferRegistry.
         //   Must be freed before the GL context is lost.

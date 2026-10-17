@@ -23,6 +23,7 @@ directly.
 | `CgTextureType` | Typed enum of ~42 GL format constants. Single source of truth for the (internalFormat, baseFormat, type) triple. Used by `CgTextureSpec` and `CgFrameBufferFormat`. |
 | `CgTextureSpec` | Immutable Lombok `@Builder` describing format (`CgTextureType`), mipmap policy (`CgMipmapConfig`), filter, wrap, and optional shadow comparison. Pre-built constants: `RGBA8_LINEAR`, `RGBA8_NEAREST`, `RGBA16F_LINEAR`, `DEPTH24_SHADOW`, and more. |
 | `CgMipmapConfig` | Mipmap policy: whether to generate mipmaps and which filters to use. Named constants: `NONE`, `TRILINEAR`, `NEAREST`. |
+| `CgSampler` | A binding's sampling in place of the texture's own (Unreal's shared sampler source): `Filter` (`NEAREST`, `BILINEAR`, `TRILINEAR`), `Address` per axis (`WRAP`, `CLAMP`, `MIRROR`), `anisotropy(n)`. A value; `builder()`, presets (`BILINEAR_CLAMP`, `TRILINEAR_WRAP`, ...). Bound through `CgShaderBindings.sampler(name, unit, texture, sampler)`; the GL objects are `gl/texture/CgSamplers`'. |
 
 ## CgTextureType
 
