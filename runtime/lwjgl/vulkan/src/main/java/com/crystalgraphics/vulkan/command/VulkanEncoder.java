@@ -767,7 +767,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
     public void readTexture(CgGpuTexture src, CgTextureRegion region, ByteBuffer out) {
         outsidePass("readTexture");
         VulkanTexture t = (VulkanTexture) src;
-        long size = region.texels() * t.desc().format().bytes();
+        long size = t.desc().format().bytes(region.width(), region.height(), region.depth());
         VulkanStaging.Region r = device.staging().take(size, 16);
         copyOut(t, region, r.buffer(), r.offset());
         device.host().submitAndWait();

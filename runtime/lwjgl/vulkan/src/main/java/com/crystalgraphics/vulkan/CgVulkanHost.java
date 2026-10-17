@@ -119,6 +119,9 @@ public interface CgVulkanHost {
     /** Whether the device was created with {@code independentBlend}: attachments of one pipeline may differ in write mask. */
     boolean independentBlend();
 
+    /** Whether the device was created with {@code textureCompressionBC}: BC7 images may be made and sampled. */
+    boolean textureCompressionBC();
+
     /** Whether {@link #beginAsync} records onto a compute queue of its own, overlapping the frame's other work. */
     boolean asyncCompute();
 

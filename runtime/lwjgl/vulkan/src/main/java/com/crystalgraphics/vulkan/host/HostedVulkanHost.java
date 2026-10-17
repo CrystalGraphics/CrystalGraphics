@@ -467,6 +467,7 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
 
     /** Off unless the host says its device was created with it: a host's own features leave it off. */
     @Override public boolean independentBlend() { return false; }
+    @Override public boolean textureCompressionBC() { return false; }
 
     @Override public final boolean asyncCompute() { return asyncQueue != null; }
 

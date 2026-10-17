@@ -47,6 +47,7 @@ import java.lang.management.ManagementFactory;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -254,6 +255,48 @@ public class EngineOnTrackedBackendTest {
         tiled.delete();
         clamped.delete();
         checker.delete();
+    }
+
+    /** A cooked texture lands as one BC7 image holding the file's chain, every level its blocks, and draws. */
+    @Test
+    public void aCookedTextureIsOneBc7ImageOfItsLevels() throws Exception {
+        int[] sizes = {4 * 16, 16, 16, 16};                 // 8x8, 4x4, 2x2, 1x1: whole blocks of 16 bytes
+        ByteBuffer file = ByteBuffer.allocate(16 + 8 * 4 + 112).order(ByteOrder.LITTLE_ENDIAN);
+        file.put("CGTX".getBytes(StandardCharsets.US_ASCII)).putShort((short) 1).putShort((short) 2)
+                .putShort((short) 8).putShort((short) 8).putInt(4);
+        for (int l = 0, at = 48; l < 4; at += sizes[l++]) file.putInt(at).putInt(sizes[l]);
+        Path cooked = Files.createTempFile("cooked", ".cgtex");
+        Files.write(cooked, file.array());
+        int mark = device.mark();
+        CgTexture2D texture = CgTexture2D.createDirect(cooked.toString(), CgTextureSpec.RGBA8_LINEAR_REPEAT);
+        CgMaterial material = CgMaterial.fromSource(OBJECT_SHADER);
+        material.applyProperties(b -> b.sampler("_MainTex", 0, texture));
+        long draws = device.draws();
+        CgPassConstants constants = CgImmediate.constants();
+        constants.view.identity();
+        constants.projection.identity().ortho(0, 64, 64, 0, -1, 1);
+        constants.resolution(64, 64).cameraFromView();
+        try (CgImmediate draw = CgImmediate.begin(constants)) {
+            draw.chunks().draw(material.pipeline(CgInstanceKind.OBJECT), material.captureBindings(draw.bindings()),
+                    CgMeshShapes.cube());
+            int at = draw.chunks().instance();
+            new Matrix4f().translation(32, 32, 0).scale(16).get(draw.chunks().data(), at);
+            new Matrix4f().get(draw.chunks().data(), at + 16);
+        }
+        gl.endFrame();
+        List<String> log = device.logSince(mark);
+        String image = log.stream().filter(l -> l.startsWith("createTexture") && l.contains("BC7_RGBA_UNORM_SRGB"))
+                .findFirst().orElseThrow(() -> new AssertionError("no BC7 image: " + log));
+        assertTrue(image, image.contains("8x8x1 mips=4"));
+        String id = image.split(" ")[1];
+        long writes = log.stream().filter(l -> (l.startsWith("writeTexture") || l.startsWith("copyBufferToTexture"))
+                && l.contains(" " + id + " ")).count();
+        assertEquals("a write per level: " + log, 4, writes);
+        assertTrue("the draw sampling it was refused: " + log, device.draws() > draws);
+        assertEquals(4, texture.getLevels());
+        material.delete();
+        texture.delete();
+        Files.delete(cooked);
     }
 
     private static final String OBJECT_SHADER = """

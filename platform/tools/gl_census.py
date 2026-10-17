@@ -50,7 +50,7 @@ DOMAINS = [
     ('Textures and samplers', 'uploads are encoder work outside a pass', [
         'glGenTextures', 'glDeleteTextures', 'glActiveTexture', 'glBindTexture', 'glBindSampler', 'glGenSamplers',
         'glDeleteSamplers', 'glSamplerParameteri', 'glSamplerParameterf', 'glTexImage2D',
-        'glTexSubImage2D', 'glTexImage3D', 'glTexSubImage3D', 'glTexImage2DMultisample', 'glTexParameteri',
+        'glTexSubImage2D', 'glTexImage3D', 'glTexSubImage3D', 'glCompressedTexImage2D', 'glTexImage2DMultisample', 'glTexParameteri',
         'glGenerateMipmap', 'glPixelStorei', 'copyImageSubData', 'importHostTexture']),
     ('Framebuffers and renderbuffers', 'attachment sets; a bind picks the next pass\'s target', [
         'genFramebuffers', 'deleteFramebuffers', 'bindFramebuffer', 'framebufferTexture2D',

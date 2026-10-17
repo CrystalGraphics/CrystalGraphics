@@ -109,6 +109,37 @@ CgSampler strip = CgSampler.builder()
 - **On a texture with no mips**, `BILINEAR` and `TRILINEAR` sample its base level.
 - **Anisotropy is clamped** to what the player's GPU has.
 
+### Cooked textures: BC7, cooked once
+
+An effect kit ships its textures cooked: BC7 with every mip, a quarter of RGBA8's memory, and nothing encoded at load.
+Name the `.cgtex` where you would name the PNG:
+
+```java
+static final CgTexture2D SMOKE = CgTextures.of("mymod:cooked/fx/smoke.cgtex", CgTextureSpec.RGBA8_LINEAR_REPEAT);
+static final CgVfxLayer PUFF = CgVfxLayer.of("mymod:shaders/vfx/smoke.shader").on(BALL)
+        .texture("_MainTex", SMOKE, CgSampler.TRILINEAR_WRAP)         // samplers work on it as on any texture
+        .build();
+```
+
+Cook a folder of PNGs with CrystalGraphics' task (Windows, as texconv is):
+
+```bash
+./gradlew cookTextures -Pcook.from=<kit>/textures -Pcook.to=<kit>/cooked
+```
+
+```yaml
+# smoke_normal.texture.yaml, beside smoke_normal.png: only what differs from the defaults
+colour: linear          # srgb (default) | linear: data, not colour
+mips: false             # default true
+compression: none       # bc7 (default) | none: no .cgtex, load the PNG
+```
+
+- **Colour is sRGB by default**, as Unreal's `SRGB` flag is. A normal map, a flow map or any mask read as numbers is
+  `linear`.
+- **Where the GPU cannot sample BC7** (macOS) the blocks are decoded to RGBA8 as the texture loads: the same picture,
+  four times the memory.
+- **The mips are the file's**: a spec's own mipmaps are not generated over them.
+
 ## Where a layer draws: its order and its sort layer
 
 Within its effect, a layer draws by its role (smoke, light, distortion, surface), then by its order hint, then in

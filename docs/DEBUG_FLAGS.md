@@ -70,7 +70,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
-| `crystalgraphics.demo` | text | empty | false draws no world demo; a scene's name (blasts, beams, modules, blast, collision) starts on it; empty on blasts. Read at launch. |
+| `crystalgraphics.demo` | text | empty | false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision) starts on it; empty on blasts. Read at launch. |
 | `crystalgraphics.demo.blasts` | 1 to 100000 | `120` | Blasts in the demo's blasts scene; 120 keep about 360,000 particles alive. Read at launch. |
 | `crystalgraphics.demo.capture` | text | empty | A PNG path: the world, with no GUI over it, written there captureAt world frames after the demo was placed. Read at launch. |
 | `crystalgraphics.demo.captureAt` | 1 to 2147483647 | `300` | World frames after the demo was placed that its capture is written. Read at launch. |
@@ -229,6 +229,12 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.text.retainedLabels` | true, false | `true` | World labels captured once and kept on the GPU; false draws every label every frame as any text: the comparison for the retained path. Read at launch. |
 | `crystalgraphics.text.traceQuadLoop` | true, false | `false` | Time every iteration of text's quad-submission loop and report the slowest: tells a blocking call inside the loop from the render thread being descheduled. Costs a fifth of the loop. Read at launch. |
 
+## `crystalgraphics.texture`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.texture.bc7` | true, false | `true` | Cooked BC7 textures uploaded as their blocks where the context has BPTC; false decodes them to RGBA8 as they load. Taken at each context's capability probe. |
+
 ## `crystalgraphics.trace`
 
 | Variable | Takes | Default | |
@@ -252,10 +258,10 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.vfx.coarseVolumes` | true, false | `false` | Measurement: volume layers on a 12 x 24 sphere instead of 48 x 96. Read at launch. |
+| `crystalgraphics.vfx.cpuBudgetMs` | 0.1 to 1000.0 | `4.0` | CPU milliseconds a frame a system's updates and draws may take before its scalability shrinks every distance and cap. |
 | `crystalgraphics.vfx.mergeParticles` | true, false | `true` | GPU particles one draw a pool and layer (indirectEach); false draws a slot a draw, sorted per effect: the comparison for overlaps. |
 | `crystalgraphics.vfx.particleStep` | 1 to 64 | `2` | Ticks a particle step spans: 2 steps particles at 60 Hz while effects tick at 120, 1 every tick. |
 | `crystalgraphics.vfx.sharedDistortion` | true, false | `false` | Measurement: distortion layers after every effect's draws, so they share one copy of the target. |
-| `crystalgraphics.vfx.sim` | cpu, gpu | `gpu` | Where effects' particles simulate; V switches it in any harness scene with a 3D camera. cpu is the Java path, kept as the comparison until it is removed. |
 | `crystalgraphics.vfx.simBudgetMs` | 0.0 to 1000.0 | `12.0` | Wall milliseconds an update may spend catching up ticks before it drops the rest and effects slow down. |
 | `crystalgraphics.vfx.skip` | text | empty | Comma-separated: layers whose shader path contains any of these draw nothing, to see what a frame's GPU time is spent on, one profile per group (body_light,haze). |
 | `crystalgraphics.vfx.traceAuthority` | true, false | `false` | Logs each cast a server's wave makes for its beam: from where, along what, what it met, and every entity its level lists along the first 32 blocks. |

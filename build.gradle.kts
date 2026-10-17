@@ -37,6 +37,9 @@ subprojects {
     }
 }
 
+// cookTextures: PNG to BC7 .cgtex through a pinned texconv.
+apply(from = "gradle/cook-textures.gradle.kts")
+
 // Published from here: the bindings also build standalone, where cgbuildlogic does not exist.
 project(":freetype-msdfgen-harfbuzz-bindings") {
     pluginManager.withPlugin("java-library") {

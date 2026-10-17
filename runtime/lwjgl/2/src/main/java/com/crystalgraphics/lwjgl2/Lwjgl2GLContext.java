@@ -85,4 +85,5 @@ public final class Lwjgl2GLContext implements CgGLContext {
     @Override public boolean GL_KHR_shader_subgroup() { caps(); return subgroups; }
     @Override public boolean GL_NV_shader_atomic_float() { return caps().GL_NV_shader_atomic_float; }
     @Override public boolean GL_ARB_bindless_texture() { return caps().GL_ARB_bindless_texture; }
+    @Override public boolean GL_ARB_texture_compression_bptc() { return caps().GL_ARB_texture_compression_bptc; }
 }

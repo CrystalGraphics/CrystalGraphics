@@ -121,6 +121,7 @@ public record CgGpuReport(String api, Map<String, String> facts) {
             new Feature("feedbackCount", 40, "GL_ARB_transform_feedback2"),
             new Feature("feedbackStreams", 40, "GL_ARB_transform_feedback3"),
             new Feature("bindless", 0, "GL_ARB_bindless_texture", "GL_NV_bindless_texture"),
+            new Feature("bc7", 42, "GL_ARB_texture_compression_bptc"),
             new Feature("parallelCompile", 0, "GL_KHR_parallel_shader_compile", "GL_ARB_parallel_shader_compile"),
             new Feature("programBinary", 41, "GL_ARB_get_program_binary"),
             new Feature("bufferStorage", 44, "GL_ARB_buffer_storage"),

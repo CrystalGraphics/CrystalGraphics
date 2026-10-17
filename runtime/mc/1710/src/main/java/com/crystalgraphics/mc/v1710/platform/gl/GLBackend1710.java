@@ -8,6 +8,7 @@ import com.crystalgraphics.platform.gl.state.CgGlState;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
+import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL20;
 
 import java.lang.invoke.MethodHandle;
@@ -21,7 +22,7 @@ import java.nio.ShortBuffer;
 import java.nio.charset.StandardCharsets;
 
 /**
- * The 1.7.10 GL backend: {@link Lwjgl2GLBackend}, with the eight calls Angelica cannot take routed
+ * The 1.7.10 GL backend: {@link Lwjgl2GLBackend}, with the ten calls Angelica cannot take routed
  * through ones it can.
  *
  * <p>Angelica rewrites every GL call site in every class to its own {@code GLStateManager}, by name
@@ -33,7 +34,9 @@ import java.nio.charset.StandardCharsets;
  *       {@code type} already names the element, so the bytes mean the same thing;</li>
  *   <li>{@code glGetActiveUniform}'s four-argument form, which takes the six-argument one;</li>
  *   <li>{@code glReadPixels} into a pack buffer and {@code glTexSubImage} from an unpack buffer, which
- *       Angelica has no form of, so they are reached through method handles its rewrite cannot see.
+ *       Angelica has no form of, so they are reached through method handles its rewrite cannot see;</li>
+ *   <li>{@code glCompressedTexImage2D} in both forms, reached the same way, since its rewrite would name a form
+ *       Angelica may not have.
  *       Neither changes state Angelica tracks.</li>
  * </ul>
  *
@@ -51,6 +54,8 @@ public final class GLBackend1710 extends Lwjgl2GLBackend {
     private static final MethodHandle READ_PIXELS_TO_PACK_BUFFER = readPixelsToPackBuffer();
     private static final MethodHandle TEX_SUB_IMAGE_2D_FROM_UNPACK = staticHandle(GL11.class, "glTexSubImage2D", 8);
     private static final MethodHandle TEX_SUB_IMAGE_3D_FROM_UNPACK = staticHandle(GL12.class, "glTexSubImage3D", 10);
+    private static final MethodHandle COMPRESSED_FROM_UNPACK = staticHandle(GL13.class, "glCompressedTexImage2D", 7);
+    private static final MethodHandle COMPRESSED = compressed();
 
     private final boolean oneBindingPerUnit = AngelicaStateProvider.isAvailable();
 
@@ -139,6 +144,38 @@ public final class GLBackend1710 extends Lwjgl2GLBackend {
             throw e;
         } catch (Throwable t) {
             throw new IllegalStateException(t);
+        }
+    }
+
+    @Override
+    public void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height, ByteBuffer data) {
+        try {
+            COMPRESSED.invokeExact(target, level, internalFormat, width, height, 0, data);
+        } catch (RuntimeException | Error e) {
+            throw e;
+        } catch (Throwable t) {
+            throw new IllegalStateException(t);
+        }
+    }
+
+    @Override
+    public void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height,
+                                       int imageSize, long unpackOffset) {
+        try {
+            COMPRESSED_FROM_UNPACK.invokeExact(target, level, internalFormat, width, height, 0, imageSize, unpackOffset);
+        } catch (RuntimeException | Error e) {
+            throw e;
+        } catch (Throwable t) {
+            throw new IllegalStateException(t);
+        }
+    }
+
+    private static MethodHandle compressed() {
+        try {
+            return MethodHandles.publicLookup().findStatic(GL13.class, "glCompressedTexImage2D", MethodType.methodType(
+                    void.class, int.class, int.class, int.class, int.class, int.class, int.class, ByteBuffer.class));
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
         }
     }
 

@@ -39,6 +39,8 @@ public final class GlPixels {
             case CgGL.GL_RGBA8UI:                           return CgFormat.RGBA8_UINT;
             case CgGL.GL_RGBA8I:                            return CgFormat.RGBA8_SINT;
             case CgGL.GL_SRGB8_ALPHA8: case GL_SRGB8: case GL_SRGB: case GL_SRGB_ALPHA: return CgFormat.RGBA8_SRGB;
+            case CgGL.GL_COMPRESSED_RGBA_BPTC_UNORM:        return CgFormat.BC7_RGBA_UNORM;
+            case CgGL.GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM:  return CgFormat.BC7_RGBA_UNORM_SRGB;
             case CgGL.GL_R16F:                              return CgFormat.R16_FLOAT;
             case CgGL.GL_R16UI:                             return CgFormat.R16_UINT;
             case CgGL.GL_R16I:                              return CgFormat.R16_SINT;

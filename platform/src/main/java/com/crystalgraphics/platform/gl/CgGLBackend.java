@@ -250,6 +250,12 @@ public abstract class CgGLBackend {
                                           int xOffset, int yOffset, int zOffset,
                                           int width, int height, int depth,
                                           int format, int type, long unpackOffset);
+    /** {@code glCompressedTexImage2D}: a level as its format's blocks, {@code data}'s remaining bytes; border 0. */
+    public abstract void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height,
+                                                ByteBuffer data);
+    /** {@code glCompressedTexImage2D} from the bound {@code GL_PIXEL_UNPACK_BUFFER}, {@code unpackOffset} bytes in. */
+    public abstract void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height,
+                                                int imageSize, long unpackOffset);
     public abstract void glGenerateMipmap(int target);
     public abstract void glActiveTexture(int texture);
     public abstract void glTexParameteri(int target, int pname, int param);

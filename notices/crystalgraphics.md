@@ -31,6 +31,7 @@ JOML is **not** in this jar. It ships in `crystalgraphics-joml-<version>.jar`, w
 | **Jolt Physics** GJK, EPA and closed-form tests | `com/crystalgraphics/shape/query/` | MIT — © 2021 Jorrit Rouwe | Ported source, modified. Licence below |
 | **Effekseer** procedural models and curl noise | `com/crystalgraphics/api/mesh/CgProceduralMesh`, `CgMeshNoise` | MIT — © 2011 Effekseer Project | Ported source, modified. Licence below |
 | **NVIDIA Flow** grid fluid | `com/crystalgraphics/vfx/fluid/`, `assets/crystalgraphics/shaders/env/compute/vfx/fluid.compute`, `assets/crystalgraphics/shaders/vfx/fluid/fluid.shader` | BSD-3-Clause — © 2014-2025 NVIDIA CORPORATION & AFFILIATES | Ported source, modified. Licence below |
+| **bcdec** BC7 decoder | `com/crystalgraphics/util/io/CgBc7` | MIT (of MIT or the Unlicense) — © 2022 Sergii Kudlai | Ported source, modified. Licence below |
 | **Mantaflow** wavelet noise, inflow and UV grids | `com/crystalgraphics/noise/CgWaveletNoise`, `assets/crystalgraphics/shaders/lib/vfx/fx_wavelet.glsl`, `com/crystalgraphics/vfx/fluid/` | Apache 2.0 — © 2011 Tobias Pfaff, Nils Thuerey | Ported source, modified. Licence text: `META-INF/LICENSE` |
 
 ## FreeType
@@ -295,6 +296,34 @@ FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+## bcdec
+
+`CgBc7` ports `bcdec_bc7` from bcdec (github.com/iOrange/bcdec), taken under its MIT alternative.
+
+```
+MIT License
+
+Copyright (c) 2022 Sergii Kudlai
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
 ## Chromium, Skia and NVIDIA Flow (BSD-3-Clause)

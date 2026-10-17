@@ -221,6 +221,7 @@ What is easy to get wrong:
   black, an FBO with nothing attached raises `GL_INVALID_FRAMEBUFFER_OPERATION` at the draw, a colour clear
   under a partial write mask is drawn through the mask (a device's clear writes every channel), and a fence
   waited on with `GL_SYNC_FLUSH_COMMANDS_BIT` submits its frame.
+- **BC7 images** (`glCompressedTexImage2D`) are a block format on the device (`CgFormat.block()` 4, sizes from `bytes(w, h, d)`), sampled and copied into only, each level its blocks as they are; `glTexSubImage` into one throws. Vulkan takes them where the device was created with `textureCompressionBC` (`CgVulkanHost`), which `CgCapabilities.bc7()` reads through `supports`.
 - **Sampler objects** are carried: a unit's bound one replaces its texture's sampling at the draw, the levels a
   mipmap filter reaches included (`TrackedTextures`).
 - **What GL allows and a device cannot do throws** naming it — texture swizzles, 8-bit

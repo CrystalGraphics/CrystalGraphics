@@ -156,6 +156,40 @@ public final class CgUploadLease implements Runnable {
         }
     }
 
+    /**
+     * Engine, render thread: level {@code mip} of the bound texture, {@code w} x {@code h}, from byte {@code from} of
+     * this lease in its format and type. For a lease holding several levels one after another.
+     */
+    public void texSubImage2D(int target, int mip, int w, int h, int from) {
+        if (block.buffer == 0) {
+            CgGL.glTexSubImage2D(target, mip, 0, 0, w, h, format, type, range(from, size - from));
+            return;
+        }
+        CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, block.buffer);
+        try {
+            CgGL.glTexSubImage2D(target, mip, 0, 0, w, h, format, type, (long) offset + from);
+        } finally {
+            CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, 0);
+        }
+    }
+
+    /**
+     * Engine, render thread: level {@code mip} of the bound texture as {@code internalFormat}'s blocks, {@code length}
+     * bytes from byte {@code from} of this lease, as {@code glCompressedTexImage2D}.
+     */
+    public void compressedTexImage2D(int target, int mip, int internalFormat, int w, int h, int from, int length) {
+        if (block.buffer == 0) {
+            CgGL.glCompressedTexImage2D(target, mip, internalFormat, w, h, range(from, length));
+            return;
+        }
+        CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, block.buffer);
+        try {
+            CgGL.glCompressedTexImage2D(target, mip, internalFormat, w, h, length, (long) offset + from);
+        } finally {
+            CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, 0);
+        }
+    }
+
     /** Engine, render thread: the bound texture's box from this lease, as {@code glTexSubImage3D}. */
     public void texSubImage3D(int target) {
         if (block.buffer == 0) {
@@ -199,6 +233,14 @@ public final class CgUploadLease implements Runnable {
         this.size = size;
         this.exposed = null;
         this.sink = null;
+    }
+
+    /** The block's memory positioned at byte {@code from} of this lease, {@code length} bytes. */
+    private ByteBuffer range(int from, int length) {
+        ByteBuffer m = at();
+        m.position(offset + from);
+        m.limit(offset + from + length);
+        return m;
     }
 
     /** The block's memory positioned at this lease, limited to it. */

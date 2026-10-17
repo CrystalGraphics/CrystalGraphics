@@ -131,7 +131,8 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     private final VkDevice device;
     private final int family;
     private boolean bresenhamLines;
-    private boolean multiDrawIndirect, indirectCount, indirectFirstInstance, drawParameters, independentBlend;
+    private boolean multiDrawIndirect, indirectCount, indirectFirstInstance, drawParameters, independentBlend,
+            textureCompressionBC;
     private final VkQueue queue;
     /** Async compute's queue and its family; null and -1 where there is none, or it is turned off. */
     private final VkQueue asyncQueue;
@@ -250,6 +251,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     @Override public boolean drawParameters() { return drawParameters; }
 
     @Override public boolean independentBlend() { return independentBlend; }
+    @Override public boolean textureCompressionBC() { return textureCompressionBC; }
 
     @Override public boolean asyncCompute() { return asyncQueue != null; }
 
@@ -996,10 +998,12 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         indirectFirstInstance = has.drawIndirectFirstInstance();
         multiDrawIndirect = has.multiDrawIndirect();
         independentBlend = has.independentBlend();
+        textureCompressionBC = has.textureCompressionBC();
 
         VkPhysicalDeviceFeatures enable = VkPhysicalDeviceFeatures.calloc(stack)
                 .samplerAnisotropy(has.samplerAnisotropy()).fillModeNonSolid(has.fillModeNonSolid())
                 .independentBlend(independentBlend).imageCubeArray(has.imageCubeArray())
+                .textureCompressionBC(textureCompressionBC)
                 // What GL 4.x gives a shader: doubles and 64-bit integers, where the hardware has them.
                 .shaderFloat64(has.shaderFloat64()).shaderInt64(has.shaderInt64())
                 // GPU-driven draws: several commands per call, a first instance, and image writes in kernels.

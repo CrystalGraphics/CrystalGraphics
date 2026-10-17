@@ -212,9 +212,88 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         t.view = null;
     }
 
+    /** {@code glCompressedTexImage2D}: a level as its blocks, copied as they are. */
+    public void compressedImage(int target, int level, int internalFormat, int width, int height, ByteBuffer data) {
+        GlTexture t = compressedLevel(target, level, internalFormat, width, height, data.remaining());
+        if (t == null) return;
+        ByteBuffer blocks = data.duplicate();
+        blocks.limit(blocks.position() + (int) t.format.bytes(width, height, 1));
+        write(t, level, width, height, blocks);
+    }
+
+    /** {@code glCompressedTexImage2D} from the bound unpack buffer: a device copy from the buffer. */
+    public void compressedImageFromBuffer(int target, int level, int internalFormat, int width, int height, int imageSize,
+                                          long offset) {
+        GlTexture t = compressedLevel(target, level, internalFormat, width, height, imageSize);
+        if (t == null) return;
+        TrackedBuffers.GlBuffer b = buffers.get(buffers.pixelUnpack);
+        CgAllocation a = b == null ? null : b.storage.allocation();
+        if (a == null) { errors.invalidOperation("glCompressedTexImage2D from an unpack buffer with none bound"); return; }
+        long at = a.offset() + offset;
+        if (at % t.format.bytes() != 0) {
+            if (!a.hostVisible()) throw new UnsupportedOperationException("Texture " + t.name
+                    + ": blocks at an unaligned offset of a device-local unpack buffer");
+            ByteBuffer blocks = a.memory();
+            blocks.position((int) offset).limit((int) offset + imageSize);
+            write(t, level, width, height, blocks);
+            return;
+        }
+        CgTrackerStats stats = tracker.stats();
+        long breaks = stats.passBreaks;
+        CgCommandEncoder encoder = tracker.transfer();
+        renameIfReplaced(encoder, t, level, 0, 0, 0, width, height, 1);
+        encoder.copyBufferToTexture(a.buffer(), at, t.image, new CgTextureRegion(level, 0, 0, 0, width, height, 1));
+        tracker.markUsed(a);
+        stats.textureWrites++;
+        stats.textureWriteBytes += imageSize;
+        stats.uploadBreaks += stats.passBreaks - breaks;
+        CgTrace.add(TRACE, BUFFER_COPIES, 1);
+        CgTrace.add(TRACE, UPLOAD_BREAKS, stats.passBreaks - breaks);
+    }
+
+    /** The bound texture with {@code level} specified in a block format, its image made at level 0; null on an error. */
+    private GlTexture compressedLevel(int target, int level, int internalFormat, int width, int height, int imageSize) {
+        GlTexture t = boundFor(target, "glCompressedTexImage2D");
+        if (t == null) return null;
+        CgFormat f = GlPixels.device(internalFormat);
+        if (!f.compressed()) { errors.invalidEnum("glCompressedTexImage2D", internalFormat); return null; }
+        if (imageSize != f.bytes(width, height, 1)) {
+            errors.invalidValue("glCompressedTexImage2D: " + imageSize + " bytes for a " + width + "x" + height + " " + f);
+            return null;
+        }
+        if (level == 0) {
+            if (t.image == null || t.format != f || t.width != width || t.height != height || t.depth != 1) {
+                allocate(t, f, width, height, 1, 1);
+            }
+        } else if (t.image == null || t.format != f) {
+            errors.invalidOperation("glCompressedTexImage2D: level " + level + " before level 0 in " + f);
+            return null;
+        }
+        if (level == t.specifiedLevels) t.specifiedLevels = level + 1;
+        t.view = null;
+        return t;
+    }
+
+    /** {@code texels} into a whole level, as they are. */
+    private void write(GlTexture t, int level, int width, int height, ByteBuffer texels) {
+        CgTrackerStats stats = tracker.stats();
+        long breaks = stats.passBreaks;
+        int bytes = texels.remaining();
+        CgCommandEncoder encoder = tracker.transfer();
+        renameIfReplaced(encoder, t, level, 0, 0, 0, width, height, 1);
+        encoder.writeTexture(t.image, new CgTextureRegion(level, 0, 0, 0, width, height, 1), texels);
+        stats.textureWrites++;
+        stats.textureWriteBytes += bytes;
+        stats.uploadBreaks += stats.passBreaks - breaks;
+        CgTrace.add(TRACE, WRITES, 1);
+        CgTrace.add(TRACE, WRITE_BYTES, bytes);
+        CgTrace.add(TRACE, UPLOAD_BREAKS, stats.passBreaks - breaks);
+    }
+
     public void subImage(int target, int level, int x, int y, int z, int width, int height, int depth, int format, int type, ByteBuffer pixels) {
         GlTexture t = boundFor(target, "glTexSubImage");
         if (t == null) return;
+        if (t.format != null && t.format.compressed()) throw new UnsupportedOperationException("glTexSubImage into " + t.format);
         if (t.image == null) { errors.invalidOperation("glTexSubImage on texture " + t.name + " with no image"); return; }
         upload(t, level, x, y, t.kind == KIND_CUBE ? face(target) : z, width, height, depth, format, type, pixels);
     }
@@ -503,7 +582,8 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         t.format = format;
         t.width = width; t.height = height; t.depth = layers; t.samples = samples;
         t.mips = samples > 1 ? 1 : chain;
-        Set<CgGpuTexture.Usage> usage = samples == 1 && tracker.device().supports(format, CgGpuTexture.Usage.STORAGE)
+        Set<CgGpuTexture.Usage> usage = format.compressed() ? CgGpuTexture.Usage.SAMPLED_UPLOADED
+                : samples == 1 && tracker.device().supports(format, CgGpuTexture.Usage.STORAGE)
                 ? CgGpuTexture.Usage.ALL : NOT_STORAGE;
         t.image = tracker.device().createTexture(new CgGpuTexture.Desc("texture " + t.name, kind, format, width, height,
                 layers, t.mips, samples, usage));
@@ -544,7 +624,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
                                   int d) {
         if (level != 0 || x != 0 || y != 0 || z != 0 || w != t.width || h != t.height || d != t.depth
                 || t.imported || t.samples > 1 || t.specifiedLevels > 1
-                || (long) w * h * d * t.format.bytes() < RENAME_BYTES || !encoder.writeWaitsForFrame(t.image)) {
+                || t.format.bytes(w, h, d) < RENAME_BYTES || !encoder.writeWaitsForFrame(t.image)) {
             return;
         }
         CgGpuTexture old = t.image;

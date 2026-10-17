@@ -460,6 +460,17 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     }
 
     @Override
+    public void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height, ByteBuffer data) {
+        GL13C.glCompressedTexImage2D(target, level, internalFormat, width, height, 0, data);
+    }
+
+    @Override
+    public void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height,
+                                       int imageSize, long unpackOffset) {
+        GL13C.glCompressedTexImage2D(target, level, internalFormat, width, height, 0, imageSize, unpackOffset);
+    }
+
+    @Override
     public void glTexSubImage3D(int target, int level, int xOffset, int yOffset, int zOffset,
                                  int width, int height, int depth, int format, int type, long unpackOffset) {
         GL12C.glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, unpackOffset);

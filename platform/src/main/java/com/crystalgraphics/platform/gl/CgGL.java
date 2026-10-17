@@ -258,6 +258,9 @@ public final class CgGL {
     public static final int GL_RGBA16F        = 0x881A;
     public static final int GL_RGBA32F        = 0x8814;
     public static final int GL_SRGB8_ALPHA8   = 0x8C43;
+    /** BC7 ({@code ARB_texture_compression_bptc}, GL 4.2): 4x4 blocks of 16 bytes, linear and sRGB. */
+    public static final int GL_COMPRESSED_RGBA_BPTC_UNORM       = 0x8E8C;
+    public static final int GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM = 0x8E8D;
     public static final int GL_RGB10_A2       = 0x8059;
     public static final int GL_RGBA4          = 0x8056;
     public static final int GL_RGB5_A1        = 0x8057;
@@ -1151,6 +1154,30 @@ public final class CgGL {
                                         int format, int type, long unpackOffset) {
         long t = CgTrace.stamp(TRACE);
         gl().glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, unpackOffset);
+        unpacked(t);
+    }
+
+    /**
+     * A level as its format's blocks: {@code data}'s remaining bytes, border 0. BC7 is the one compressed format the
+     * engine uploads ({@link CgCapabilities#bc7()}).
+     *
+     * <pre>{@code
+     * CgGL.glCompressedTexImage2D(GL_TEXTURE_2D, level, GL_COMPRESSED_RGBA_BPTC_UNORM, w, h, blocks);
+     * }</pre>
+     */
+    public static void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height,
+                                              ByteBuffer data) {
+        long t = CgTrace.stamp(TRACE);
+        int bytes = data.remaining();
+        gl().glCompressedTexImage2D(target, level, internalFormat, width, height, data);
+        uploaded(t, bytes);
+    }
+
+    /** {@link #glCompressedTexImage2D(int, int, int, int, int, ByteBuffer)} from the bound unpack buffer, {@code unpackOffset} bytes in. */
+    public static void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height,
+                                              int imageSize, long unpackOffset) {
+        long t = CgTrace.stamp(TRACE);
+        gl().glCompressedTexImage2D(target, level, internalFormat, width, height, imageSize, unpackOffset);
         unpacked(t);
     }
 

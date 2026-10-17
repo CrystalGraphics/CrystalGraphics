@@ -1,9 +1,14 @@
 package com.crystalgraphics.gl.texture;
 
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.api.texture.CgMipmapConfig;
 import com.crystalgraphics.api.texture.CgTextureSpec;
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.gpu.CgUploads;
+import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.util.io.CgBc7;
+import com.crystalgraphics.util.io.CgCookedTexture;
 import com.crystalgraphics.util.io.CgTextureIO;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 
@@ -42,6 +47,15 @@ import java.util.logging.Logger;
  *       ({@code createEmpty}, {@code createFromPixels}) has nothing to reload.</li>
  * </ul>
  *
+ * <h3>Cooked</h3>
+ * <p>A path ending in {@code .cgtex} is a cooked texture ({@link CgCookedTexture}): BC7 with its mips, uploaded as
+ * blocks where the context samples BC7 ({@link CgCapabilities#bc7()}), else decoded to RGBA8 as it loads. The file
+ * decides the format and the levels; the spec, the filter and the wrap.</p>
+ *
+ * <pre>{@code
+ * static final CgTexture2D SMOKE = CgTextures.of("mymod:cooked/fx/smoke.cgtex", CgTextureSpec.RGBA8_LINEAR_REPEAT);
+ * }</pre>
+ *
  * <h3>Upload</h3>
  * <p>Two {@code upload()} instance methods allow callers to push fresh pixel
  * data into a live texture without re-allocating the GL object:
@@ -72,6 +86,9 @@ public final class CgTexture2D extends CgTextureAbstract {
 
     /** Levels specified at allocation; a spec that generates mipmaps has its full chain instead. */
     private int levels = 1;
+
+    /** Whether its levels came from a cooked file rather than the spec. */
+    private boolean cooked;
 
     /** Whether {@link #bindLevel} narrowed what it samples. Render thread. */
     private boolean pinned;
@@ -321,14 +338,18 @@ public final class CgTexture2D extends CgTextureAbstract {
                         Math.max(1, height >> l), 0, pixelFormat, pixelType, (ByteBuffer) null);
             }
             spec.applyTo(GL_TEXTURE_2D);
-            if (levels > 1) {
-                CgGL.glTexParameteri(GL_TEXTURE_2D, CgGL.GL_TEXTURE_MAX_LEVEL, levels - 1);
-                CgGL.glTexParameteri(GL_TEXTURE_2D, CgGL.GL_TEXTURE_MIN_FILTER, spec.getMinFilter() == CgGL.GL_NEAREST
-                        ? CgGL.GL_NEAREST_MIPMAP_NEAREST : CgGL.GL_LINEAR_MIPMAP_LINEAR);
-            }
+            sampleChain(levels);
         } finally {
             CgGL.glBindTexture(GL_TEXTURE_2D, 0);
         }
+    }
+
+    /** With {@code levels} above 1, samples through them all, mipmapped by the spec's filter. */
+    private void sampleChain(int levels) {
+        if (levels <= 1) return;
+        CgGL.glTexParameteri(GL_TEXTURE_2D, CgGL.GL_TEXTURE_MAX_LEVEL, levels - 1);
+        CgGL.glTexParameteri(GL_TEXTURE_2D, CgGL.GL_TEXTURE_MIN_FILTER, spec.getMinFilter() == CgGL.GL_NEAREST
+                ? CgGL.GL_NEAREST_MIPMAP_NEAREST : CgGL.GL_LINEAR_MIPMAP_LINEAR);
     }
 
     // ── Files ─────────────────────────────────────────────────────────
@@ -336,16 +357,92 @@ public final class CgTexture2D extends CgTextureAbstract {
     @Override
     protected void load() {
         if (sourcePath == null) return;
-        CgImageData data = CgTextureIO.load(sourcePath);
-        if (data != null) {
+        if (CgCookedTexture.is(sourcePath) ? loadCooked() : loadImage()) {
             missing = false;
-            upload(data);
             return;
         }
         LOGGER.log(Level.WARNING, "[CgTexture2D] {0} would not load", sourcePath);
         if (width != 0) return;
         missing = true;
+        cooked = false;
         upload(8, 8, checkerboard(), GL_RGBA, GL_UNSIGNED_BYTE);
+    }
+
+    private boolean loadImage() {
+        CgImageData data = CgTextureIO.load(sourcePath);
+        if (data == null) return false;
+        cooked = false;
+        upload(data);
+        return true;
+    }
+
+    /** A cooked file's levels into one lease: its blocks where the context samples BC7, else decoded here. */
+    private boolean loadCooked() {
+        CgCookedTexture file = CgCookedTexture.read(sourcePath);
+        if (file == null) return false;
+        checkUsable();
+        checkOwned();
+        // Before any probe, off the render thread, the answer is unknown: decoding draws the same, only larger.
+        CgCapabilities caps = CgGL.mayIssueGl() ? CgCapabilities.detect() : CgCapabilities.detected();
+        boolean blocks = caps != null && caps.bc7();
+        CgTextureType type = file.srgb() ? CgTextureType.BC7_SRGB : CgTextureType.BC7;
+        int w = file.width(), h = file.height(), n = file.levels();
+        int[] at = new int[n], lengths = new int[n];
+        int total = 0;
+        for (int l = 0; l < n; l++) {
+            int lw = Math.max(1, w >> l), lh = Math.max(1, h >> l);
+            at[l] = total;
+            lengths[l] = blocks ? CgBc7.levelBytes(lw, lh) : 4 * lw * lh;
+            total += lengths[l];
+        }
+        CgUploadLease lease = CgUploads.lease(total);
+        ByteBuffer out = lease.bytes();
+        if (blocks) {
+            file.putBlocks(out);
+        } else {
+            for (int l = 0; l < n; l++) {
+                out.position(at[l]);
+                CgBc7.decode(file.level(l), Math.max(1, w >> l), Math.max(1, h >> l), out);
+            }
+        }
+        int internal = (blocks ? type : type.decoded()).glInternalFormat;
+        this.width = w;
+        this.height = h;
+        this.levels = n;
+        this.cooked = true;
+        gpu.run(lease.into(l -> landCooked(l, internal, blocks, at, lengths), 0, 0, 0, 0, w, h, 1, GL_RGBA,
+                GL_UNSIGNED_BYTE));
+        return true;
+    }
+
+    private void landCooked(CgUploadLease lease, int internal, boolean blocks, int[] at, int[] lengths) {
+        boolean made = textureId == 0;
+        if (made) textureId = CgGL.glGenTextures();
+        CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
+        try (CgTightUnpack ignored = CgTightUnpack.begin()) {
+            for (int l = 0; l < at.length; l++) {
+                int lw = Math.max(1, lease.width() >> l), lh = Math.max(1, lease.height() >> l);
+                if (blocks) {
+                    lease.compressedTexImage2D(GL_TEXTURE_2D, l, internal, lw, lh, at[l], lengths[l]);
+                } else {
+                    CgGL.glTexImage2D(GL_TEXTURE_2D, l, internal, lw, lh, 0, GL_RGBA, GL_UNSIGNED_BYTE, (ByteBuffer) null);
+                    lease.texSubImage2D(GL_TEXTURE_2D, l, lw, lh, at[l]);
+                }
+            }
+            // The cooked chain is the file's: a spec's mipmaps would be generated over it.
+            (spec.getMipmaps().isEnabled() ? spec.toBuilder().mipmaps(CgMipmapConfig.NONE).build() : spec)
+                    .applyTo(GL_TEXTURE_2D);
+            CgGL.glTexParameteri(GL_TEXTURE_2D, CgGL.GL_TEXTURE_MAX_LEVEL, at.length - 1);
+            sampleChain(at.length);
+        } catch (RuntimeException e) {
+            if (made) {
+                CgGL.glDeleteTextures(textureId);
+                textureId = 0;
+            }
+            throw e;
+        } finally {
+            CgGL.glBindTexture(GL_TEXTURE_2D, 0);
+        }
     }
 
     /** Binds it sampling every level, undoing a {@link #bindLevel}. */
@@ -401,7 +498,7 @@ public final class CgTexture2D extends CgTextureAbstract {
     @Override
     public int getLevels() {
         ensureLoaded();
-        return spec.getMipmaps().isEnabled() ? CgTexture.fullChain(width, height) : levels;
+        return !cooked && spec.getMipmaps().isEnabled() ? CgTexture.fullChain(width, height) : levels;
     }
 
     // ── Internal factory ──────────────────────────────────────────────

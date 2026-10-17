@@ -148,6 +148,8 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glTexSubImage3D(int target, int level, int xOffset, int yOffset, int zOffset, int width, int height, int depth, int format, int type, ShortBuffer pixels) { record("glTexSubImage3D"); }
     @Override public void glTexSubImage2D(int target, int level, int xOffset, int yOffset, int width, int height, int format, int type, long unpackOffset) { record("glTexSubImage2D"); }
     @Override public void glTexSubImage3D(int target, int level, int xOffset, int yOffset, int zOffset, int width, int height, int depth, int format, int type, long unpackOffset) { record("glTexSubImage3D"); }
+    @Override public void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height, ByteBuffer data) { record("glCompressedTexImage2D"); }
+    @Override public void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height, int imageSize, long unpackOffset) { record("glCompressedTexImage2D"); }
     @Override public void glGenerateMipmap(int target) { record("glGenerateMipmap"); }
     @Override public void glActiveTexture(int texture) { record("glActiveTexture"); }
     @Override public void glTexParameteri(int target, int pname, int param) { record("glTexParameteri"); }

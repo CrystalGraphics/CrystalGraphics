@@ -102,5 +102,8 @@ public final class CgDisabledExtensions {
         @Override public boolean GL_KHR_shader_subgroup() { return on(gl.GL_KHR_shader_subgroup(), "GL_KHR_shader_subgroup"); }
         @Override public boolean GL_NV_shader_atomic_float() { return on(gl.GL_NV_shader_atomic_float(), "GL_NV_shader_atomic_float"); }
         @Override public boolean GL_ARB_bindless_texture() { return on(gl.GL_ARB_bindless_texture(), "GL_ARB_bindless_texture"); }
+        @Override public boolean GL_ARB_texture_compression_bptc() {
+            return on(gl.GL_ARB_texture_compression_bptc(), "GL_ARB_texture_compression_bptc");
+        }
     }
 }

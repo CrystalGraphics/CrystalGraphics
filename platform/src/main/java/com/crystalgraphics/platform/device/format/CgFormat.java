@@ -9,6 +9,10 @@ import com.crystalgraphics.platform.device.CgDevice;
  * <p>{@code DEPTH24_PLUS} and {@code DEPTH24_PLUS_STENCIL8} leave the depth precision to the device: 24-bit
  * where it has it, 32-bit float where it does not (Apple GPUs). There are no 3-channel formats; the tracked
  * backend expands RGB uploads to RGBA.</p>
+ *
+ * <p>A block format ({@link #block()} 4: BC7) counts {@link #bytes()} per 4x4 block, and a region's size is
+ * {@link #bytes(int, int, int)}: a level whose edge is not a multiple of 4 still takes whole blocks. It is sampled
+ * and copied into, never drawn to or stored to.</p>
  */
 public enum CgFormat {
     R8_UNORM(1), R8_SNORM(1), R8_UINT(1, Numeric.INT), R8_SINT(1, Numeric.INT),
@@ -25,7 +29,8 @@ public enum CgFormat {
     RGBA4_UNORM(2), RGB5A1_UNORM(2),
     DEPTH16_UNORM(2, Aspect.DEPTH), DEPTH24_PLUS(4, Aspect.DEPTH), DEPTH32_FLOAT(4, Aspect.DEPTH),
     DEPTH24_PLUS_STENCIL8(4, Aspect.DEPTH_STENCIL), DEPTH32_FLOAT_STENCIL8(8, Aspect.DEPTH_STENCIL),
-    STENCIL8(1, Aspect.STENCIL);
+    STENCIL8(1, Aspect.STENCIL),
+    BC7_RGBA_UNORM(16, 4), BC7_RGBA_UNORM_SRGB(16, 4);
 
     public enum Aspect { COLOR, DEPTH, STENCIL, DEPTH_STENCIL }
 
@@ -35,8 +40,16 @@ public enum CgFormat {
     private final int bytes;
     private final Aspect aspect;
     private final Numeric numeric;
+    private final int block;
 
     CgFormat(int bytes) { this(bytes, Aspect.COLOR, Numeric.FLOAT); }
+
+    CgFormat(int bytes, int block) {
+        this.bytes = bytes;
+        this.aspect = Aspect.COLOR;
+        this.numeric = Numeric.FLOAT;
+        this.block = block;
+    }
 
     CgFormat(int bytes, Numeric numeric) { this(bytes, Aspect.COLOR, numeric); }
 
@@ -46,10 +59,22 @@ public enum CgFormat {
         this.bytes = bytes;
         this.aspect = aspect;
         this.numeric = numeric;
+        this.block = 1;
     }
 
-    /** Bytes per texel as an upload lays them out. */
+    /** Bytes per texel as an upload lays them out; per block for a block format. */
     public int bytes() { return bytes; }
+
+    /** Texels across a block's side: 4 for a compressed format, 1 for any other. */
+    public int block() { return block; }
+
+    public boolean compressed() { return block > 1; }
+
+    /** Bytes of a {@code width} x {@code height} x {@code depth} region, in whole blocks. */
+    public long bytes(int width, int height, int depth) {
+        long across = (width + block - 1) / block, down = (height + block - 1) / block;
+        return across * down * depth * bytes;
+    }
 
     public Aspect aspect() { return aspect; }
 

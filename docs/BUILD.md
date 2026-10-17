@@ -106,6 +106,7 @@ node real (hours and tens of GB on a clean machine).
 ./gradlew :runtime:mc:modern:<branch>:<version>:checkStubEquivalence   # real vs stub, byte for byte
 ./gradlew -p singlejar-logic generateStubDatabase                      # regenerate stubs.zip
 python singlejar-logic/mcapi.py <Class> [member]                       # any node's API, as version runs
+./gradlew cookTextures -Pcook.from=<pngs> -Pcook.to=<out>              # PNG to BC7 .cgtex (Windows: texconv)
 ```
 
 `serverSmoke`, `prodSmoke` and useful dev runs are driven from CrystalGUI: this mod alone draws nothing.

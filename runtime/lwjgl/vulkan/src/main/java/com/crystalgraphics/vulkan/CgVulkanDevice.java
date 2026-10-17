@@ -293,6 +293,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
 
     @Override
     public boolean supports(CgFormat format, CgGpuTexture.Usage usage) {
+        if (format.compressed() && !host.textureCompressionBC()) return false;
         int f = formats.features(formats.vk(format));
         switch (usage) {
             case SAMPLED: return (f & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) != 0;

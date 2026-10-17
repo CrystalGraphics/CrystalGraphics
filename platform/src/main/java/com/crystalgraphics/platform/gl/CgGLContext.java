@@ -124,4 +124,7 @@ public interface CgGLContext {
 
     boolean GL_ARB_bindless_texture();
 
+    /** BC7 textures (BPTC): core from 4.2. */
+    boolean GL_ARB_texture_compression_bptc();
+
 }

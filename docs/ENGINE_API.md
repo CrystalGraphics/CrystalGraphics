@@ -338,6 +338,30 @@ CgSampler strip = CgSampler.builder().filter(CgSampler.Filter.TRILINEAR)
 - Each execution unbinds what it bound, so a sampler never reaches the host's textures. `--mode=sampler-binding`
   is the gate.
 
+**Cooked textures** (`.cgtex`, `util/io/CgCookedTexture`): BC7 with every mip, cooked once from PNG, so a load reads
+blocks and encodes nothing (Unreal's compression settings). A path ending in `.cgtex` loads through the same calls.
+
+```java
+static final CgTexture2D SMOKE = CgTextures.of("mymod:cooked/fx/smoke.cgtex", CgTextureSpec.RGBA8_LINEAR_REPEAT);
+```
+
+```bash
+# CrystalGraphics' task, Windows: every PNG under from, mirrored as .cgtex under to
+./gradlew cookTextures -Pcook.from=<mod>/src/main/resources/assets/mymod/textures -Pcook.to=<...>/assets/mymod/cooked
+```
+
+- The file decides the format and the levels; the spec, the filter and the wrap. A spec's mipmaps are not generated
+  over the cooked chain.
+- `CgCapabilities.bc7()` (GL 4.2, `ARB_texture_compression_bptc`, or a Vulkan device created with
+  `textureCompressionBC`) uploads the blocks as they are; without it (macOS's 4.1) they are decoded to RGBA8 as the
+  texture loads, on the loading thread. `-Dcrystalgraphics.texture.bc7=false` forces the decode.
+- sRGB by default; a sidecar `<image>.texture.yaml` beside the PNG says `colour: linear`, `mips: false` or
+  `compression: none` (no `.cgtex`: load the PNG).
+- The cook runs texconv (DirectXTex, MIT), fetched once and pinned. It encodes on the GPU: the 154-texture kit in 6 s,
+  32 MB. `-Pcook.cpu` uses its CPU encoder, minutes long and on every core. Mips are 2x2 averages of colour and alpha
+  apart, as GL's and Unreal's.
+- `--mode=cooked-texture` is the gate: blocks on `gl` and `vulkan`, the decode on `mac41`.
+
 `CgTextureType` — typed enum of ~42 GL format constants; single source of truth for (internalFormat, baseFormat, type). `CgTextureSpec` — immutable `@Builder` describing format + filter + wrap + optional shadow compare. `CgMipmapConfig` — `NONE` / `TRILINEAR` / `NEAREST`. Concrete impls: `CgTexture2D`, `CgTexture2DArray`, `CgTexture3D`, `CgTextureCubemap`.
 
 **Package guides**: `api/texture/CLAUDE.md` · `gl/texture/CLAUDE.md`
@@ -774,7 +798,7 @@ CgAssetReloader.addListener(new CgReloadListener() {        // or a cache keyed 
 
 #### `CgTextureIO` — Image Loader
 
-`util/io/CgTextureIO` decodes image files into direct `ByteBuffer`s ready for GL upload. Path resolution delegates to `CgIO.openStream()`. Returns `CgImageData(pixels, width, height, channels)` or `null` on failure — never throws. Channel count (1/3/4) is preserved from the source image so callers can derive the correct `GL_RED`/`GL_RGB`/`GL_RGBA` upload format. Pixels are bottom-left row order (GL convention).
+`util/io/CgTextureIO` decodes image files into direct `ByteBuffer`s ready for GL upload. Path resolution delegates to `CgIO.openStream()`. Returns `CgImageData(pixels, width, height, channels)` or `null` on failure — never throws. Channel count (1/3/4) is preserved from the source image so callers can derive the correct `GL_RED`/`GL_RGB`/`GL_RGBA` upload format. Rows are top first (`CgTextureIO.FOLLOW_MC_CONVENTION`, Minecraft's convention), as a cooked texture's are.
 
 The checkerboard drawn for a texture that will not load is `CgTexture2D.missing()`.
 

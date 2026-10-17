@@ -73,4 +73,5 @@ public final class CgTrackedGLContext implements CgGLContext {
     @Override public boolean GL_NV_shader_atomic_float() { return false; }
 
     @Override public boolean GL_ARB_bindless_texture() { return false; }
+    @Override public boolean GL_ARB_texture_compression_bptc() { return false; }
 }

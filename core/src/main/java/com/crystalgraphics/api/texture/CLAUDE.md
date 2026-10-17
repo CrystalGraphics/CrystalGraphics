@@ -42,6 +42,7 @@ Single source of truth for all GL format descriptions. Used for regular textures
 | Depth | `DEPTH16`, `DEPTH24`, `DEPTH32F` |
 | Depth + stencil | `DEPTH24_STENCIL8`, `DEPTH32F_STENCIL8` |
 | Stencil-only | `STENCIL8` |
+| Block-compressed | `BC7`, `BC7_SRGB`: a cooked texture's (`.cgtex`), uploaded as blocks, never a framebuffer's. `isCompressed()`; `decoded()` is the RGBA8 type it becomes where the context has no BPTC |
 
 ### Public Fields
 

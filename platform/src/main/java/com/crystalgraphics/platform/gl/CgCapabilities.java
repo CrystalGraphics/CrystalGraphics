@@ -4,6 +4,8 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.device.CgDeviceInfo;
+import com.crystalgraphics.platform.device.format.CgFormat;
+import com.crystalgraphics.platform.device.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.state.CgGlStateShadow;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 import com.crystalgraphics.variable.CgVar;
@@ -52,6 +54,9 @@ public final class CgCapabilities {
     public static final CgVar.Text STREAM_TIER = CgVar.text("crystalgraphics.stream.tier", "", CgVar.DEV,
             "persistent, ring, orphan or subdata: how streamed vertex buffers upload, refused where the context lacks it;"
                     + " empty for the best. Taken at each context's capability probe.");
+    public static final CgVar.Bool BC7 = CgVar.bool("crystalgraphics.texture.bc7", true, CgVar.DEV,
+            "Cooked BC7 textures uploaded as their blocks where the context has BPTC; false decodes them to RGBA8 as they"
+                    + " load. Taken at each context's capability probe.");
     public static final CgVar.Bool MULTI_DRAW = CgVar.bool("crystalgraphics.mesh.multiDraw", true, CgVar.DEV,
             "Runs of draws sharing pipeline, bindings and a slab joined into one multi-draw; false draws a call a draw, for"
                     + " a picture that must not change. Taken at each context's capability probe.");
@@ -227,7 +232,7 @@ public final class CgCapabilities {
     // backend, the device. @see #computeTier
     @Getter(AccessLevel.NONE)
     boolean compute, storageImages, subgroups, floatAtomics, drawIndirect, multiDrawIndirect, indirectCount,
-            drawParameters, multiDraw, feedbackCount, asyncCompute, bindless, independentBlend;
+            drawParameters, multiDraw, feedbackCount, asyncCompute, bindless, independentBlend, bc7;
     @Getter(AccessLevel.NONE) ComputeTier computeTier;
     /** What a kernel may ask for; zeros without compute. @see #maxComputeWorkGroupSize */
     @Getter(AccessLevel.NONE) int maxComputeSharedMemory, maxComputeInvocations;
@@ -370,6 +375,8 @@ public final class CgCapabilities {
         caps.asyncCompute      = device != null && device.asyncCompute();
         caps.bindless          = device == null && gl.GL_ARB_bindless_texture();
         caps.independentBlend  = device == null || device.independentBlend();
+        caps.bc7               = (device != null ? tracked(CgFormat.BC7_RGBA_UNORM_SRGB)
+                : gl.OpenGL42() || gl.GL_ARB_texture_compression_bptc()) && BC7.get();
         caps.computeTier       = computeTier(caps, device != null);
         caps.storageOffsetAlignment = ssbo || device != null ? CgGL.glGetInteger(CgGL.GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT) : 0;
         if (caps.compute) {
@@ -389,6 +396,11 @@ public final class CgCapabilities {
 
         caps.shaderBufferPath = shaderBufferPath(caps);
         return caps;
+    }
+
+    /** Whether the tracked backend's device samples {@code format}. */
+    private static boolean tracked(CgFormat format) {
+        return ((CgTrackedGLBackend) CgGL.backend()).device().supports(format, CgGpuTexture.Usage.SAMPLED);
     }
 
     /** The best path, or {@code -Dcrystalgraphics.shaderBuffer.tier}'s where this context has it. */
@@ -529,6 +541,13 @@ public final class CgCapabilities {
      * created with {@code independentBlend}: the owned device, and Minecraft 26.2's where the GPU has it.
      */
     public boolean independentBlend() { return independentBlend; }
+
+    /**
+     * BC7 textures uploaded as their blocks: GL 4.2 or {@code ARB_texture_compression_bptc}, or a device created with
+     * {@code textureCompressionBC}. Where false a cooked texture is decoded to RGBA8 as it loads (macOS's 4.1);
+     * {@code -Dcrystalgraphics.texture.bc7=false} forces that.
+     */
+    public boolean bc7() { return bc7; }
 
     /** The GLSL version the context compiles: 330 to 460, 450 on a device. */
     public int glslVersion() { return glslVersion; }

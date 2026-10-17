@@ -430,7 +430,7 @@ public final class CgRecordingDevice implements CgDevice {
         public void writeTexture(CgGpuTexture dst, CgTextureRegion r, ByteBuffer data) {
             outsidePass("writeTexture");
             use(dst);
-            long need = r.texels() * dst.desc().format().bytes();
+            long need = dst.desc().format().bytes(r.width(), r.height(), r.depth());
             if (data.remaining() < need)
                 throw new IllegalArgumentException("writeTexture needs " + need + " bytes, got " + data.remaining());
             record("writeTexture " + ref(dst) + " " + region(r));
@@ -440,7 +440,7 @@ public final class CgRecordingDevice implements CgDevice {
         public void copyBufferToTexture(CgGpuBuffer src, long srcOffset, CgGpuTexture dst, CgTextureRegion r) {
             outsidePass("copyBufferToTexture");
             use(src, dst);
-            long need = r.texels() * dst.desc().format().bytes();
+            long need = dst.desc().format().bytes(r.width(), r.height(), r.depth());
             if (srcOffset % 4 != 0 || srcOffset % dst.desc().format().bytes() != 0)
                 throw new IllegalArgumentException("copyBufferToTexture from offset " + srcOffset);
             if (srcOffset + need > src.size())

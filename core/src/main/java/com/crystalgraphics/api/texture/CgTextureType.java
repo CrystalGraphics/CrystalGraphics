@@ -30,6 +30,7 @@ import com.crystalgraphics.platform.gl.CgGL;
  *   <li>Depth: {@link #DEPTH16}, {@link #DEPTH24}, {@link #DEPTH32F}</li>
  *   <li>Depth + stencil: {@link #DEPTH24_STENCIL8}, {@link #DEPTH32F_STENCIL8}</li>
  *   <li>Stencil-only: {@link #STENCIL8}</li>
+ *   <li>Block-compressed: {@link #BC7}, {@link #BC7_SRGB}: a cooked texture's, never a framebuffer's</li>
  * </ul>
  */
 public enum CgTextureType {
@@ -88,7 +89,11 @@ public enum CgTextureType {
     DEPTH32F_STENCIL8(CgGL.GL_DEPTH32F_STENCIL8, CgGL.GL_DEPTH_STENCIL, CgGL.GL_FLOAT_32_UNSIGNED_INT_24_8_REV, true, true),
 
     // ── Stencil-only ───────────────────────────────────────────────────────────
-    STENCIL8(CgGL.GL_STENCIL_INDEX8, CgGL.GL_STENCIL_INDEX, CgGL.GL_UNSIGNED_BYTE, false, true);
+    STENCIL8(CgGL.GL_STENCIL_INDEX8, CgGL.GL_STENCIL_INDEX, CgGL.GL_UNSIGNED_BYTE, false, true),
+
+    // ── Block-compressed: sampled only, uploaded as blocks (CgGL.glCompressedTexImage2D) ──────────────────────
+    BC7     (CgGL.GL_COMPRESSED_RGBA_BPTC_UNORM,       CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE, false, false),
+    BC7_SRGB(CgGL.GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE, false, false);
 
     // ── Fields ─────────────────────────────────────────────────────────────────
 
@@ -120,6 +125,16 @@ public enum CgTextureType {
      */
     public boolean isColor() {
         return !isDepth && !isStencil;
+    }
+
+    /** Whether it is stored as 4x4 blocks (BC7): uploaded with {@code glCompressedTexImage2D}, never drawn to. */
+    public boolean isCompressed() {
+        return this == BC7 || this == BC7_SRGB;
+    }
+
+    /** What its blocks decode to where the context cannot sample them: {@link #RGBA8} or {@link #SRGB8_ALPHA8}. */
+    public CgTextureType decoded() {
+        return this == BC7 ? RGBA8 : this == BC7_SRGB ? SRGB8_ALPHA8 : this;
     }
 
     /**

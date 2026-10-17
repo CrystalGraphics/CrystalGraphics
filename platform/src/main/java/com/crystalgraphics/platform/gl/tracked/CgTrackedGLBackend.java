@@ -647,6 +647,17 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     }
 
     @Override
+    public void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height, ByteBuffer data) {
+        textures.compressedImage(target, level, internalFormat, width, height, data);
+    }
+
+    @Override
+    public void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height, int imageSize,
+                                       long unpackOffset) {
+        textures.compressedImageFromBuffer(target, level, internalFormat, width, height, imageSize, unpackOffset);
+    }
+
+    @Override
     public void glTexSubImage2D(int target, int level, int xOffset, int yOffset, int width, int height,
                                 int format, int type, ByteBuffer pixels) {
         textures.subImage(target, level, xOffset, yOffset, 0, width, height, 1, format, type, pixels);

@@ -21,7 +21,7 @@ import java.util.logging.Logger;
  * Supported channel counts: 1 (grayscale), 3 (RGB), 4 (RGBA). The returned
  * {@link CgImageData} carries the actual {@code channels} value so callers can
  * derive the correct {@code GL_RED / GL_RGB / GL_RGBA} upload format without
- * hard-coding assumptions. Bottom-left row order (GL convention).</p>
+ * hard-coding assumptions. Rows top first ({@link #FOLLOW_MC_CONVENTION}, Minecraft's), else bottom first.</p>
  *
  * <p>Returns {@code null} on any failure (logged at WARNING).</p>
  */
@@ -64,7 +64,7 @@ public final class CgTextureIO {
     /**
      * Converts a {@link BufferedImage} into a direct {@link ByteBuffer} preserving
      * the source's native channel count (1 = grayscale, 3 = RGB, 4 = RGBA).
-     * Bottom-left row order (GL convention). Always 8-bit per channel (GL_UNSIGNED_BYTE).
+     * Rows top first unless {@link #FOLLOW_MC_CONVENTION} is off. Always 8-bit per channel (GL_UNSIGNED_BYTE).
      */
     private static CgImageData convertNative(BufferedImage src) {
         int w = src.getWidth();

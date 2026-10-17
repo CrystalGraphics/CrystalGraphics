@@ -45,7 +45,7 @@ final class CgGlRecordingBackend extends CgGLBackend {
             DISPATCH_COMPUTE_INDIRECT = 113, MEMORY_BARRIER = 114, BIND_IMAGE_TEXTURE = 115, CG_BUFFER_BARRIER = 116,
             CG_IMAGE_BARRIER = 117, CG_FILL_BUFFER = 118, BEGIN_TRANSFORM_FEEDBACK = 119,
             END_TRANSFORM_FEEDBACK = 120, QUERY_TIMESTAMP = 121, TEX_SUB_IMAGE_2D_O = 122, TEX_SUB_IMAGE_3D_O = 123,
-            FRAMEBUFFER_TEXTURE = 124;
+            FRAMEBUFFER_TEXTURE = 124, COMPRESSED_TEX_IMAGE_2D_B = 125, COMPRESSED_TEX_IMAGE_2D_O = 126;
 
     private static final int MAX_SCOPES = 32;
     private static final CgVar.Bool DEBUG_SCOPES = CgVar.bool("crystalgraphics.recording.debugScopes", false, CgVar.DEV,
@@ -223,6 +223,8 @@ final class CgGlRecordingBackend extends CgGLBackend {
                 case TEX_SUB_IMAGE_3D_S:
                     CgGL.glTexSubImage3D(ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), rshorts()); break;
                 case TEX_SUB_IMAGE_2D_O: CgGL.glTexSubImage2D(ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), rl()); break;
+                case COMPRESSED_TEX_IMAGE_2D_B: CgGL.glCompressedTexImage2D(ri(), ri(), ri(), ri(), ri(), rbytes()); break;
+                case COMPRESSED_TEX_IMAGE_2D_O: CgGL.glCompressedTexImage2D(ri(), ri(), ri(), ri(), ri(), ri(), rl()); break;
                 case TEX_SUB_IMAGE_3D_O:
                     CgGL.glTexSubImage3D(ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), rl()); break;
                 case GENERATE_MIPMAP: CgGL.glGenerateMipmap(ri()); break;
@@ -677,6 +679,18 @@ final class CgGlRecordingBackend extends CgGLBackend {
     public void glTexSubImage2D(int target, int level, int xOffset, int yOffset, int width, int height, int format, int type,
                                 long unpackOffset) {
         op(TEX_SUB_IMAGE_2D_O); i(target); i(level); i(xOffset); i(yOffset); i(width); i(height); i(format); i(type);
+        l(unpackOffset);
+    }
+
+    @Override
+    public void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height, ByteBuffer data) {
+        op(COMPRESSED_TEX_IMAGE_2D_B); i(target); i(level); i(internalFormat); i(width); i(height); bytes(data);
+    }
+
+    @Override
+    public void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height, int imageSize,
+                                       long unpackOffset) {
+        op(COMPRESSED_TEX_IMAGE_2D_O); i(target); i(level); i(internalFormat); i(width); i(height); i(imageSize);
         l(unpackOffset);
     }
 

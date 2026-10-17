@@ -32,13 +32,16 @@ import static org.lwjgl.vulkan.VK10.vkGetPhysicalDeviceFeatures;
  *       world's merged emission needs ({@code CgCapabilities.independentBlend()}).</li>
  *   <li>{@code drawIndirectFirstInstance}, where the GPU has it: with Minecraft's own {@code multiDrawIndirect} and
  *       {@code shaderDrawParameters}, what joins a run of draws into one call ({@code CgCapabilities.multiDraw()}).</li>
+ *   <li>{@code textureCompressionBC}, where the GPU has it: cooked BC7 textures uploaded as they are, rather than
+ *       decoded ({@code CgCapabilities.bc7()}).</li>
  *   <li>Nothing is required: a GPU without a feature gets Minecraft's set unchanged, never refused.</li>
  *   <li>False until Minecraft creates its device, and on every version but 26.2.</li>
  * </ul>
  */
 public final class MinecraftDeviceFeatures {
 
-    private static volatile boolean independentBlend, multiDrawIndirect, drawParameters, indirectFirstInstance;
+    private static volatile boolean independentBlend, multiDrawIndirect, drawParameters, indirectFirstInstance,
+            textureCompressionBC;
 
     private MinecraftDeviceFeatures() {
     }
@@ -46,6 +49,11 @@ public final class MinecraftDeviceFeatures {
     /** Whether Minecraft's Vulkan device was created with {@code independentBlend}. */
     public static boolean independentBlend() {
         return independentBlend;
+    }
+
+    /** Whether Minecraft's Vulkan device was created with {@code textureCompressionBC}: cooked BC7 textures. */
+    public static boolean textureCompressionBC() {
+        return textureCompressionBC;
     }
 
     /** Whether Minecraft's Vulkan device was created with {@code multiDrawIndirect}. */
@@ -83,6 +91,11 @@ public final class MinecraftDeviceFeatures {
                 more.add(new VulkanFeature(VulkanBackend.VK10_FEATURES_STRUCT, "drawIndirectFirstInstance",
                         VkPhysicalDeviceFeatures.DRAWINDIRECTFIRSTINSTANCE));
                 indirectFirstInstance = true;
+            }
+            if (supported.textureCompressionBC()) {
+                more.add(new VulkanFeature(VulkanBackend.VK10_FEATURES_STRUCT, "textureCompressionBC",
+                        VkPhysicalDeviceFeatures.TEXTURECOMPRESSIONBC));
+                textureCompressionBC = true;
             }
         }
         return more;
