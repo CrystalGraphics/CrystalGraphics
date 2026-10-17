@@ -20,6 +20,7 @@ import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxValues;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
+import com.crystalgraphics.vfx.render.CgVfxSortGroup;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Quaternionf;
@@ -108,6 +109,8 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     private int scheduledCount;
     /** Its own over its look's ({@link #scalability(CgVfxScalability)}); null for the look's. */
     private CgVfxScalability scalability;
+    /** The group its draws sort in with other effects' ({@link #sortGroup(CgVfxSortGroup)}); null for its own. */
+    private CgVfxSortGroup sortGroup;
     /** What it drew last frame, relative to its origin: min then max; empty (min above max) until it submits. */
     float boundMinX = Float.POSITIVE_INFINITY, boundMinY, boundMinZ, boundMaxX = Float.NEGATIVE_INFINITY, boundMaxY, boundMaxZ;
     /** Culled and holding: seconds asleep, and seconds since anything of it was in view. */
@@ -326,6 +329,35 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     public final E scalability(CgVfxScalability scalability) {
         this.scalability = scalability;
         return self();
+    }
+
+    /**
+     * Sorts its draws with the other effects in {@code group}, at the group's place, its layers ranked with theirs by
+     * role and order hint: a move's effects keep their authored layering whatever their distances; {@code null} sorts it
+     * alone again. Render thread.
+     *
+     * <pre>{@code
+     * CgVfxSortGroup move = new CgVfxSortGroup();
+     * VFX.play(new CgVfxBurst(SPIRAL, x, y, z).sortGroup(move));
+     * VFX.play(new CgVfxBurst(RINGS, x, y, z).sortGroup(move));
+     * }</pre>
+     */
+    public final E sortGroup(CgVfxSortGroup group) {
+        leaveGroup();
+        this.sortGroup = group;
+        if (group != null) group.join(this);
+        return self();
+    }
+
+    /** The group it sorts in, or null for its own. */
+    public final CgVfxSortGroup sortGroup() {
+        return sortGroup;
+    }
+
+    /** Out of its group: when its system drops it. */
+    final void leaveGroup() {
+        if (sortGroup != null) sortGroup.leave(this);
+        sortGroup = null;
     }
 
     /**

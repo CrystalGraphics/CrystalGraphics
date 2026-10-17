@@ -257,9 +257,8 @@ public final class CgVfxFrame {
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             boundPath(effect, path, CgVfxMaterials.size(effect, r));
             CgMesh mesh = layer.isVolume() ? system.volumeMesh() : layer.isClosed() ? system.closedTubeMesh() : system.tubeMesh();
-            system.tube().submit(world, mesh, materials.material(r, CgVfxSlot.Kind.TUBE), placed, path, row,
-                    effect.originX, effect.originY, effect.originZ, CgVfxMaterials.size(effect, r),
-                    materials.row(effect, r), effect.age, effect.seed, effect.presence());
+            system.tube().submit(world, mesh, materials.material(r, CgVfxSlot.Kind.TUBE), placed, path, row, effect,
+                    CgVfxMaterials.size(effect, r), materials.row(effect, r), effect.age, effect.seed, effect.presence());
         }
     }
 
@@ -387,7 +386,7 @@ public final class CgVfxFrame {
                         .gpuCulled()
                         .at(ox, oy, oz)
                         .custom(3, row, effect.age, effect.seed, effect.presence());
-                CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
+                CgVfxSystem.place(draw, placed, effect).submit();
                 CgVfxTrace.count(DRAWS_PARTICLE_GPU, 1);
                 continue;
             }
@@ -422,7 +421,7 @@ public final class CgVfxFrame {
                     .custom(0, range.base(slot), capacity, size, 0f)
                     .custom(1, cx, cy, cz, effect.age)
                     .custom(3, row, effect.age, effect.seed, effect.presence());
-            CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
+            CgVfxSystem.place(draw, placed, effect).submit();
             CgVfxTrace.count(DRAWS_PARTICLE_GPU, 1);
         }
         if (reach <= 0f) return;
@@ -495,7 +494,7 @@ public final class CgVfxFrame {
                 .custom(1, particleAlpha, system.particleDt(), 0f, effect.age)
                 .custom(2, firstRing, capacity, points, step)
                 .custom(3, row, effect.age, effect.seed, effect.presence());
-        CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
+        CgVfxSystem.place(draw, placed, effect).submit();
     }
 
     /**
@@ -596,7 +595,7 @@ public final class CgVfxFrame {
                     .custom(0, row, 0f, size, 0f)
                     .custom(1, cx, cy, cz, intensity)
                     .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
-            CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
+            CgVfxSystem.place(draw, placed, effect).submit();
             CgVfxTrace.count(DRAWS_PATH_RIBBONS, 1);
         }
     }
@@ -646,7 +645,7 @@ public final class CgVfxFrame {
                     .custom(1, cx, cy, cz, 0f)
                     .custom(2, subs, trail.mode().ordinal(), b[6], b[6] - b[7])
                     .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
-            CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
+            CgVfxSystem.place(draw, placed, effect).submit();
             CgVfxTrace.count(DRAWS_TRAIL, 1);
         }
     }
@@ -685,7 +684,7 @@ public final class CgVfxFrame {
                     .custom(0, index, cell, weight, CgVfxMaterials.size(effect, r))
                     .custom(1, grid - cx, grid - cy, grid - cz, 0f)
                     .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
-            CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
+            CgVfxSystem.place(draw, placed, effect).submit();
             CgVfxTrace.count(DRAWS_FLUID, 1);
         }
     }
@@ -723,7 +722,7 @@ public final class CgVfxFrame {
                     .custom(0, index, cell, 0f, CgVfxMaterials.size(effect, r))
                     .custom(1, low - cx, low - cy, low - cz, grid.extinction())
                     .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
-            CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
+            CgVfxSystem.place(draw, placed, effect).submit();
             CgVfxTrace.count(DRAWS_VOLUME, 1);
         }
     }
@@ -743,6 +742,6 @@ public final class CgVfxFrame {
                 .custom(0, size, 0f, effect.age, effect.seed)
                 .custom(1, ex, ey, ez, ew)
                 .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
-        return CgVfxSystem.place(draw, r.placed, effect.originX, effect.originY, effect.originZ);
+        return CgVfxSystem.place(draw, r.placed, effect);
     }
 }

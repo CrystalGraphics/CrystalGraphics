@@ -243,6 +243,33 @@ CgVfxLayer.of(FLASH).on(BALL).sortLayer(CgSortLayer.OVERLAY).build()      // ove
 
 An imported kit's render layers are order hints: a kit converted from another engine keeps its draw order this way.
 
+### Effects that sort as one: a sort group
+
+A move is often several effects (a spiral, a shockwave, a flash) whose layers are authored to stack in one order.
+Apart, each sorts by its own distance, so whichever is farther draws first and the stacking flips as the camera moves.
+In one `CgVfxSortGroup` they draw as one: at one place, their layers ranked together by role, then order hint, then
+the effect that joined first. Unreal's components sharing a translucency sort priority, and CC2's render layer numbers
+held across a whole clip.
+
+```java
+CgVfxSortGroup move = new CgVfxSortGroup();                     // one per move played
+VFX.play(new CgVfxBurst(SPIRAL, x, y, z).sortGroup(move));
+VFX.play(new CgVfxBurst(SHOCKWAVE, x, y, z).sortGroup(move));   // a hint of 4 here draws before SPIRAL's 12
+```
+
+```java
+move.at(casterX, casterY + 1, casterZ);                         // sorts at the caster, not its members' middle
+effect.sortGroup(null);                                          // that effect sorts alone again
+```
+
+- **Where it sorts** among other effects is the middle of its members' origins, worked out once a frame, unless
+  `at(...)` fixes it; `atMembers()` goes back to the middle.
+- **A hint means the same in every member's look**, so author one numbering across the move.
+- **At most 256 layers** across every look its members play; a look past that throws as it joins.
+- **GPU particles keep their system's group**: their layers draw as one batch for the whole system, ordered by depth.
+  What a group orders is every other layer.
+- A member leaves when it dies. Render thread.
+
 ## Easy to get wrong
 
 - **The mode is not the shader's queue.** A shader in the opaque queue drawn `ADDITIVE` still draws with the opaque
@@ -253,3 +280,5 @@ An imported kit's render layers are order hints: a kit converted from another en
   (`Clip` or `Prepass`): the shader fails to load, the log naming the state.
 - **An order hint orders within a role**: a `SURFACE` layer of order 0 still draws after a `SMOKE` layer of order 200.
 - **An order hint is 0 to 255**; `order(n)` throws for another.
+- **Sorting together needs a group.** Two effects played at one point still sort apart, each by its own distance;
+  only a `CgVfxSortGroup` ranks their layers together.

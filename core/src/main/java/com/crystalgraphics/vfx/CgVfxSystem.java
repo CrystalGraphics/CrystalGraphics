@@ -32,6 +32,7 @@ import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.path.CgVfxPathTexture;
 import com.crystalgraphics.vfx.trail.CgVfxTrailTexture;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
+import com.crystalgraphics.vfx.render.CgVfxSortGroup;
 import com.crystalgraphics.vfx.render.CgVfxTube;
 import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
 import com.crystalgraphics.world.CgEntityAttachments;
@@ -408,6 +409,7 @@ public final class CgVfxSystem {
                 // Killed, its particles go with it; one that died on its own lets them finish.
                 if (effect.killed) effect.killSlots(gpuSteps);
                 if (effect.owner != null) effect.owner.release(effect);
+                effect.leaveGroup();
                 continue;
             }
             if (kept != i) effects.set(kept, effect);
@@ -788,7 +790,10 @@ public final class CgVfxSystem {
      * unupdated meanwhile does not fast-forward the time it missed. Between frames, on the render thread.
      */
     public void clear() {
-        for (int i = 0; i < effects.size(); i++) effects.get(i).kill();
+        for (int i = 0; i < effects.size(); i++) {
+            effects.get(i).kill();
+            effects.get(i).leaveGroup();
+        }
         effects.clear();
         releaseOwners();
         // Drops the pools, not just their slots: a slot reopened over live particles hands them to its next owner.
@@ -867,6 +872,7 @@ public final class CgVfxSystem {
 
     /** Releases its meshes and frees the path texture; materials belong to the material registry. */
     public void delete() {
+        for (int i = 0; i < effects.size(); i++) effects.get(i).leaveGroup();
         effects.clear();
         releaseOwners();
         for (int i = 0; i < eventListeners.size(); i++) CgVfxParticlePool.stopListening(eventListeners.get(i));
@@ -949,6 +955,18 @@ public final class CgVfxSystem {
         CgVfxLayer layer = placed.layer();
         draw.layer(sortLayer(layer)).group(ox, oy, oz).order(placed.order());
         return layer.role() == CgVfxLayer.Role.SURFACE ? draw.afterDistortion() : draw;
+    }
+
+    /**
+     * {@code draw} placed as {@code effect}'s draw of {@code placed}: in the effect's group at its origin, or in its
+     * {@link CgVfxSortGroup} at the group's place with the group's rank for the layer.
+     */
+    public static CgWorldRenderer.Draw place(CgWorldRenderer.Draw draw, CgVfxLook.Placed placed, CgVfxEffect<?> effect) {
+        CgVfxSortGroup group = effect.sortGroup();
+        if (group == null) return place(draw, placed, effect.originX, effect.originY, effect.originZ);
+        long frame = CgFrameRing.frame();
+        place(draw, placed, group.x(frame), group.y(frame), group.z(frame));
+        return draw.order(group.order(effect.look(), placed));
     }
 
     CgMesh ribbonMesh() {

@@ -6,6 +6,7 @@ import com.crystalgraphics.api.mesh.CgMeshWriter;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
@@ -76,14 +77,14 @@ public final class CgVfxTube {
 
     /**
      * Submits {@code path}, already in the frame's path texture at {@code row}, as one layer's chunks around the
-     * effect origin {@code (ox, oy, oz)}, {@code size} times its rings: what {@code CgVfxFrame.tube} calls, with the
-     * system's mesh and the layer's material, and the effect's header.
+     * origin of {@code effect}, sorted in its group, {@code size} times its rings: what {@code CgVfxFrame.tube} calls,
+     * with the system's mesh and the layer's material, and the effect's header.
      */
     public void submit(CgWorldRenderer world, CgMesh mesh, CgMaterial material, CgVfxLook.Placed placed, CgVfxPath path,
-                       int row, double ox, double oy, double oz, float size, int valuesRow, float age, float seed,
-                       float presence) {
+                       int row, CgVfxEffect<?> effect, float size, int valuesRow, float age, float seed, float presence) {
         int count = path.count();
         if (count < 2) return;
+        double ox = effect.originX(), oy = effect.originY(), oz = effect.originZ();
         CgVfxLayer layer = placed.layer();
         float scaleOf = size;
         for (int first = 0; first < count - 1; first += SPANS) {
@@ -112,7 +113,7 @@ public final class CgVfxTube {
                     .custom(0, row, first, scaleOf, 0f)
                     .custom(1, cx, cy, cz, owned)
                     .custom(3, valuesRow, age, seed, presence);
-            CgVfxSystem.place(draw, placed, ox, oy, oz);
+            CgVfxSystem.place(draw, placed, effect);
             // A volume is soft light that adds: a quarter of the pixels draws it as well.
             if (layer.isVolume()) draw.halfResolution();
             draw.submit();

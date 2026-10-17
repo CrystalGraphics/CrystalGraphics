@@ -613,7 +613,8 @@ public static final CgVfxSlot ARCS = CgVfxSlot.pathRibbons("crystalgraphics:wave
 ### Draw order
 
 Within an effect, layers draw by **role**, then by an order hint where a layer gives one, then in the order the look
-holds them ([`vfx/effects.md`](vfx/effects.md) § *Where a layer draws*).
+holds them ([`vfx/effects.md`](vfx/effects.md) § *Where a layer draws*). Effects that must stack as one, a move made
+of several, share a `CgVfxSortGroup`, which ranks all their layers together.
 
 | Role | Draws | For |
 |---|---|---|
@@ -2323,7 +2324,7 @@ In game and in the harness, `vfx-modules` is a station per feature, replayed eve
 
 Unit tests (`./gradlew :core:test --tests "<class>"`): `CgVfxLookTest`, `CgVfxTuningTest`, `CgVfxEndingTest`,
 `CgPropertyRowsTest`, `CgVfxCueTest`, `CgVfxAuthorityTest`, `CgVfxHitsTest`, `CgVfxOwnerTest`, `CgVfxStartAtTest`,
-`CgVfxSmokeFillTest`.
+`CgVfxSmokeFillTest`, `CgVfxSortGroupTest`.
 Every shipped shader, each keyword variant, links under shaderc in `:runtime:lwjgl:vulkan:test --tests
 com.crystalgraphics.vulkan.EngineOnTrackedBackendTest`.
 
