@@ -144,6 +144,8 @@ dependencies {
     "headlessTestImplementation"("org.yaml:snakeyaml:2.7")
     "headlessTestImplementation"("org.joml:joml-jdk8:$jomlVer")
     "headlessTestImplementation"("org.apache.logging.log4j:log4j-core:2.26.1")
+    // The bible gate reads the spec's JSON schemas.
+    "headlessTestImplementation"("com.google.code.gson:gson:2.11.0")
     "headlessTestCompileOnly"("com.google.code.findbugs:jsr305:3.0.2")
     "headlessTestCompileOnly"("org.projectlombok:lombok:1.18.44")
     "headlessTestAnnotationProcessor"("org.projectlombok:lombok:1.18.44")
@@ -155,6 +157,9 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
     testClassesDirs = headlessTest.output.classesDirs
     classpath = headlessTest.runtimeClasspath
     useJUnit()
+    // The spec lives in the private plan repository beside CrystalGUI's checkout; the bible gate skips without it.
+    val spec = rootProject.file("../plan/crystalgraphics/vfx-aaa/spec")
+    if (spec.isDirectory) systemProperty("crystalgraphics.spec", spec.absolutePath)
 }
 
 tasks.named("check") { dependsOn(headlessTestTask) }

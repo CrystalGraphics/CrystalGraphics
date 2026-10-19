@@ -348,6 +348,15 @@ public final class CgSequenceKinds {
             .property("full_revert_on_detach", BOOL)
             .register());
 
+    static final CgType PATH = track("path", section("path")
+            .property("path", CgValueType.struct(PATH_SPLINE))
+            .property("timing", CURVE)
+            .property("follow_rotation", BOOL)
+            .property("reverse", BOOL)
+            .property("front_axis", CgValueType.enumOf("x", "y", "z", "-x", "-y", "-z"))
+            .property("up_axis", CgValueType.enumOf("x", "y", "z", "-x", "-y", "-z"))
+            .register());
+
     static final CgType SPAWNED = track("spawned", section("spawned")
             .property("spawned", CURVE).flags(CgPropertyFlag.HEADLESS)
             .register());
@@ -376,15 +385,6 @@ public final class CgSequenceKinds {
 
     /** One channel of the property's type, named by component ({@code x}, {@code y}, {@code z}). */
     static final CgType PROPERTY = track("property", section("property").register());
-
-    static final CgType PATH = track("path", section("path")
-            .property("path", CgValueType.struct(PATH_SPLINE))
-            .property("timing", CURVE)
-            .property("follow_rotation", BOOL)
-            .property("reverse", BOOL)
-            .property("front_axis", CgValueType.enumOf("x", "y", "z", "-x", "-y", "-z"))
-            .property("up_axis", CgValueType.enumOf("x", "y", "z", "-x", "-y", "-z"))
-            .register());
 
     static final CgType VISIBILITY = track("visibility", section("visibility")
             .property("visible", CURVE)
@@ -454,16 +454,6 @@ public final class CgSequenceKinds {
             .property("args", TREE).flags(CgPropertyFlag.HEADLESS)
             .register());
 
-    static final CgType NOTIFY = track("notify", section("notify")
-            .property("at", INT)
-            .property("kind", STRING).required()
-            .property("properties", TREE)
-            .property("chance", FLOAT).defaultValue(1.0).range(0, 1)
-            .property("weight_threshold", FLOAT)
-            .property("filter", CgValueType.struct(NOTIFY_FILTER))
-            .property("branching_point", BOOL)
-            .register());
-
     static final CgType SUBSEQUENCE = track("subsequence", section("subsequence")
             .property("sequence", hard("sequence")).flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
             .property("start_offset", INT)
@@ -479,6 +469,16 @@ public final class CgSequenceKinds {
 
     static final CgType TIME_DILATION = track("time_dilation", section("time_dilation")
             .property("rate", CURVE).flags(CgPropertyFlag.HEADLESS)
+            .register());
+
+    static final CgType NOTIFY = track("notify", section("notify")
+            .property("at", INT)
+            .property("kind", STRING).required()
+            .property("properties", TREE)
+            .property("chance", FLOAT).defaultValue(1.0).range(0, 1)
+            .property("weight_threshold", FLOAT)
+            .property("filter", CgValueType.struct(NOTIFY_FILTER))
+            .property("branching_point", BOOL)
             .register());
 
     // ── The kind ─────────────────────────────────────────────────────────────────────────

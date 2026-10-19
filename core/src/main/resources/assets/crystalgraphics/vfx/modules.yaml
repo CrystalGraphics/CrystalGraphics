@@ -1,0 +1,289 @@
+# The built-in modules' declarations (spec/modules.md as data): what aaa_validate.py checks a module entry's inputs
+# against, and what the codecs are generated from. A number takes every form unless `forms` narrows it (modules.md).
+# Every module that rolls also takes `seed` (modules.md § Declaration).
+_v: 1
+modules:
+  # emitter update
+  - { id: emitter_state, groups: [emitter_update], once: true, order: emitter, analytic: true, unreal: { niagara: EmitterState, cascade: [Required, Spawn] }, inputs: [
+      { name: loop, type: enum, values: [infinite, multiple, once], default: infinite },
+      { name: loop_count, type: int, default: 1, timeline: loop_count },
+      { name: duration, type: float, quantity: time, default: 1 },
+      { name: recalculate_each_loop, type: bool },
+      { name: delay, type: float, quantity: time, default: 0 },
+      { name: delay_first_loop_only, type: bool }, { name: recalculate_delay_each_loop, type: bool },
+      { name: inactive, type: enum, values: [complete, kill], default: complete },
+      { name: kill_on_complete, type: bool } ] }
+  - { id: spawn_rate, groups: [emitter_update], analytic: true, unreal: { niagara: SpawnRate, cascade: [Spawn] }, inputs: [
+      { name: rate, type: float, quantity: rate, by: [loop] },
+      { name: probability, type: float, default: 1 },
+      { name: scale, type: float, by: [loop], default: 1 },
+      { name: apply_global_scale, type: bool, default: true } ] }
+  - { id: spawn_burst, groups: [emitter_update], analytic: true, unreal: { niagara: SpawnBurst_Instantaneous, cascade: [Spawn] }, inputs: [
+      { name: time, type: float, quantity: time, default: 0, timeline: key_time },
+      { name: count, type: int, forms: [constant, range], rolls: loop, timeline: key_value },
+      { name: probability, type: float, default: 1 }, { name: loop_count_limit, type: int },
+      { name: scale, type: float, by: [loop], default: 1 } ] }
+  - { id: spawn_per_unit, groups: [emitter_update], unreal: { niagara: SpawnPerUnit, cascade: [SpawnPerUnit] }, inputs: [
+      { name: spacing, type: float, quantity: length },
+      { name: max_step, type: float, quantity: length },
+      { name: per_unit, type: float, by: [loop] },
+      { name: unit, type: float, quantity: length },
+      { name: movement_tolerance, type: float }, { name: ignore_axes, type: string },
+      { name: ignore_spawn_rate_when_moving, type: bool } ] }
+
+  # particle spawn
+  - { id: initialize_particle, groups: [particle_spawn], once: true, order: spawn_init, analytic: true, unreal: { niagara: InitializeParticle, cascade: [Lifetime, Size, Color, Rotation] }, inputs: [
+      { name: lifetime, type: float, quantity: time },
+      { name: color, type: colour, rolls: draw },
+      { name: alpha, type: float, by: [loop], rolls: draw },
+      { name: clamp_alpha, type: bool, default: true },
+      { name: intensity, type: float },
+      { name: sprite_size, type: vec2, quantity: length }, { name: uniform, type: bool },
+      { name: mesh_scale, type: vec3, rolls: draw }, { name: per_axis, type: bool },
+      { name: sprite_rotation, type: float, quantity: angle },
+      { name: mass, type: float }, { name: heat, type: float } ] }
+  - { id: shape_location, groups: [particle_spawn], order: spawn_place, analytic: true, unreal: { niagara: ShapeLocation, cascade: [Location, LocationWorldOffset, LocationPrimitiveSphere, LocationPrimitiveCylinder, LocationPrimitiveTriangle] }, inputs: [
+      { name: shape, type: enum, values: [point, sphere, box, cylinder, ring, cone, capsule, plane, triangle, torus, mesh], default: point },
+      { name: sphere_radius, type: float, quantity: length },
+      { name: box_size, type: vec3, quantity: length },
+      { name: cylinder_radius, type: float, quantity: length },
+      { name: cylinder_height, type: float, quantity: length },
+      { name: cylinder_axis, type: enum, values: [x, y, z], default: z },
+      { name: ring_radius, type: float, quantity: length },
+      { name: cone_length, type: float, quantity: length },
+      { name: cone_angle, type: float, quantity: angle },
+      { name: capsule_radius, type: float, quantity: length }, { name: capsule_height, type: float, quantity: length },
+      { name: plane_size, type: vec2, quantity: length }, { name: triangle, type: array, quantity: position },
+      { name: torus_radius, type: float, quantity: length },
+      { name: surface_only, type: bool }, { name: surface_thickness, type: float, quantity: length },
+      { name: edge_only, type: bool }, { name: hemisphere, type: bool }, { name: arc, type: float, quantity: angle },
+      { name: directions, type: string },
+      { name: ordered, type: int },
+      { name: rotation, type: rotation }, { name: scale, type: vec3 },
+      { name: offset, type: vec3, quantity: offset, by: [loop] },
+      { name: space, type: enum, values: [emitter, world], default: emitter },
+      { name: mesh, type: mesh, forms: [data] }, { name: vertices, type: bool },
+      { name: add_velocity, type: struct } ] }
+  - { id: socket_location, groups: [particle_spawn], order: spawn_place, unreal: { niagara: SkeletalMeshLocation, cascade: [LocationBoneSocket] }, inputs: [
+      { name: points, type: array }, { name: source, type: enum, values: [sockets, bones], default: sockets },
+      { name: mesh, type: struct, forms: [constant, binding] },
+      { name: offsets, type: array, quantity: offset }, { name: universal_offset, type: vec3, quantity: offset },
+      { name: selection, type: enum, values: [random, sequential], default: random },
+      { name: update_each_frame, type: bool }, { name: orient_meshes, type: bool },
+      { name: inherit_velocity, type: float },
+      { name: segments, type: bool }, { name: offset, type: float, quantity: length },
+      { name: bias, type: enum, values: [none, along, against, away_from_end], default: none } ] }
+  - { id: skeletal_mesh_location, groups: [particle_spawn], order: spawn_place, unreal: { niagara: SkeletalMeshLocation, cascade: [LocationSkelVertSurface] }, inputs: [
+      { name: mesh, type: struct, forms: [constant, binding] }, { name: source, type: enum, values: [vertices, surface] }, { name: bones, type: array },
+      { name: orient, type: bool }, { name: inherit_velocity, type: float }, { name: normal_tolerance, type: float, quantity: angle },
+      { name: normal_to_compare, type: vec3 }, { name: update_each_frame, type: bool }, { name: universal_offset, type: vec3, quantity: offset } ] }
+  - { id: static_mesh_location, groups: [particle_spawn], order: spawn_place, unreal: { niagara: StaticMeshLocation }, inputs: [
+      { name: mesh, type: struct, forms: [constant, binding] }, { name: source, type: enum, values: [vertices, surface, triangles] },
+      { name: orient, type: bool }, { name: inherit_velocity, type: float }, { name: normal_tolerance, type: float, quantity: angle },
+      { name: normal_to_compare, type: vec3 }, { name: universal_offset, type: vec3, quantity: offset } ] }
+  - { id: spawn_from_emitter, groups: [particle_spawn], order: spawn_place, unreal: { niagara: SpawnParticlesFromOtherEmitter, cascade: [LocationEmitter, LocationEmitterDirect] }, inputs: [
+      { name: source, type: string }, { name: selection, type: enum, values: [random, sequential], default: random },
+      { name: inherit_velocity, type: float }, { name: inherit_rotation, type: float }, { name: follow, type: bool } ] }
+  - { id: add_velocity, groups: [particle_spawn], order: spawn_launch, analytic: true, unreal: { niagara: AddVelocity, cascade: [Velocity, VelocityCone, VelocityInheritParent] }, inputs: [
+      { name: mode, type: enum, values: [linear, in_cone, from_point, outward, inward], default: linear },
+      { name: linear, type: vec3, quantity: speed, by: [loop] },
+      { name: outward, type: float, quantity: speed, by: [loop] },
+      { name: cone_axis, type: vec3, quantity: direction }, { name: cone_angle, type: float, quantity: angle, by: [loop] },
+      { name: inner_cone, type: float, quantity: angle }, { name: falloff_from_axis, type: bool },
+      { name: point_origin, type: vec3, quantity: position },
+      { name: speed, type: float, quantity: speed, by: [loop] },
+      { name: inherit, type: float, by: [loop] },
+      { name: space, type: enum, values: [emitter, world], default: emitter },
+      { name: owner_scale, type: bool } ] }
+  - { id: initial_mesh_orientation, groups: [particle_spawn], analytic: true, unreal: { niagara: InitialMeshOrientation, cascade: [MeshRotation] }, inputs: [
+      { name: mode, type: enum, values: [none, orient_to_vector, random], default: none },
+      { name: orientation_vector, type: vec3, quantity: direction },
+      { name: mesh_axis, type: vec3, quantity: direction },
+      { name: rotation, type: rotation, by: [loop] },
+      { name: inherit_parent, type: bool } ] }
+  - { id: sprite_facing_and_alignment, groups: [particle_spawn, particle_update], analytic: true, unreal: { niagara: SpriteFacingAndAlignment, cascade: [OrientationAxisLock] }, inputs: [
+      { name: facing, type: vec3 }, { name: alignment, type: vec3 },
+      { name: lock_axis, type: enum, values: [none, x, y, z, -x, -y, -z, rotate_x, rotate_y, rotate_z] } ] }
+  - { id: mesh_index, groups: [particle_spawn], analytic: true, unreal: { niagara: MeshIndex }, inputs: [
+      { name: index, type: int, forms: [constant, range, array] }, { name: weights, type: array } ] }
+  - { id: generate_event, groups: [particle_spawn, particle_update], order: events, unreal: { niagara: GenerateEvent, cascade: [EventGenerator] }, inputs: [
+      { name: type, type: enum, values: [spawn, death, collision, burst, location] }, { name: name, type: string },
+      { name: frequency, type: int }, { name: particle_frequency, type: int },
+      { name: first_time_only, type: bool }, { name: last_time_only, type: bool }, { name: use_reflected_impact_vector, type: bool } ] }
+
+  # particle update: forces and motion
+  - { id: gravity, groups: [particle_update], order: forces, analytic: true, unreal: { niagara: GravityForce }, inputs: [
+      { name: gravity, type: vec3, quantity: acceleration } ] }
+  - { id: acceleration, groups: [particle_update], order: forces, analytic: true, unreal: { niagara: AccelerationForce, cascade: [Acceleration, AccelerationConstant, AccelerationOverLifetime] }, inputs: [
+      { name: acceleration, type: vec3, quantity: acceleration, by: [age, loop] },
+      { name: space, type: enum, values: [emitter, world], default: emitter },
+      { name: owner_scale, type: bool } ] }
+  - { id: drag, groups: [particle_update], order: forces, analytic: true, unreal: { niagara: Drag, cascade: [AccelerationDrag, AccelerationDragScaleOverLife] }, inputs: [
+      { name: drag, type: float, quantity: rate, by: [age, loop] },
+      { name: scale, type: float, by: [age] },
+      { name: use_quadratic, type: bool, toggle_for: quadratic }, { name: quadratic, type: float, quantity: rate } ] }
+  - { id: limit_speed, groups: [particle_update], order: forces, unreal: { niagara: LimitVelocity }, inputs: [
+      { name: max_speed, type: float, quantity: speed } ] }
+  - { id: curl_noise, groups: [particle_update], order: forces, unreal: { niagara: CurlNoiseForce }, inputs: [
+      { name: strength, type: float, quantity: acceleration }, { name: frequency, type: float },
+      { name: evolve, type: float, quantity: rate }, { name: bias, type: vec3 } ] }
+  - { id: point_attractor, groups: [particle_update], order: forces, unreal: { niagara: PointAttractionForce, cascade: [AttractorPoint, AttractorPointGravity] }, inputs: [
+      { name: position, type: vec3, quantity: position, by: [loop] },
+      { name: strength, type: float, quantity: acceleration, by: [age, loop] },
+      { name: radius, type: float, quantity: length, by: [loop] },
+      { name: falloff, type: float }, { name: kill_radius, type: float, quantity: length },
+      { name: by_distance, type: bool }, { name: affect_base_velocity, type: bool }, { name: override_velocity, type: bool },
+      { name: positive_only, type: bool }, { name: directions, type: string },
+      { name: space, type: enum, values: [emitter, world], default: emitter } ] }
+  - { id: line_attractor, groups: [particle_update], order: forces, unreal: { niagara: LineAttractionForce, cascade: [AttractorLine] }, inputs: [
+      { name: start, type: vec3, quantity: position }, { name: end, type: vec3, quantity: position },
+      { name: strength, type: float, quantity: acceleration }, { name: radius, type: float, quantity: length } ] }
+  - { id: particle_attractor, groups: [particle_update], order: forces, unreal: { cascade: [AttractorParticle] }, inputs: [
+      { name: source, type: string }, { name: range, type: float, quantity: length },
+      { name: strength, type: float, quantity: acceleration }, { name: strength_by_distance, type: bool },
+      { name: selection, type: enum, values: [random, sequential] }, { name: renew_source, type: bool },
+      { name: inherit_velocity, type: bool }, { name: affect_base_velocity, type: bool } ] }
+  - { id: vortex, groups: [particle_update], order: forces, unreal: { niagara: VortexForce }, inputs: [
+      { name: axis, type: vec3, quantity: direction }, { name: tangential, type: float, quantity: acceleration },
+      { name: radial, type: float, quantity: acceleration }, { name: origin, type: vec3, quantity: position } ] }
+  - { id: rotate_around_point, groups: [particle_update], order: forces, analytic: true, unreal: { niagara: RotateAroundPoint }, inputs: [
+      { name: rate, type: float, quantity: angular_speed }, { name: radius, type: float, quantity: length },
+      { name: phase, type: float, quantity: angle }, { name: center, type: vec3, quantity: position }, { name: axis, type: vec3, quantity: direction } ] }
+  - { id: orbit, groups: [particle_update], unreal: { niagara: SolveOrbit, cascade: [Orbit] }, inputs: [
+      { name: chain, type: enum, values: [add, scale, link], default: add },
+      { name: offset, type: vec3, quantity: offset, by: [age, loop] },
+      { name: offset_options, type: struct },
+      { name: rotation, type: vec3, quantity: angle, by: [age, loop] },
+      { name: rotation_options, type: struct },
+      { name: rotation_rate, type: vec3, quantity: angular_speed, by: [age, loop] },
+      { name: rotation_rate_options, type: struct } ] }
+  - { id: source_movement, groups: [particle_update], unreal: { cascade: [SourceMovement] }, inputs: [
+      { name: scale, type: vec3, by: [loop, age], default: [1, 1, 1] } ] }
+  - { id: set_position, groups: [particle_update], unreal: { cascade: [LocationDirect] }, inputs: [
+      { name: position, type: vec3, quantity: position, by: [age] },
+      { name: offset, type: vec3, quantity: offset, by: [age] },
+      { name: scale, type: vec3, by: [age] },
+      { name: direction, type: vec3, quantity: direction, by: [age] } ] }
+  - { id: scale_velocity, groups: [particle_update], unreal: { niagara: ScaleVelocity, cascade: [VelocityOverLifetime] }, inputs: [
+      { name: scale, type: vec3, by: [age] }, { name: absolute, type: bool },
+      { name: space, type: enum, values: [emitter, world], default: emitter },
+      { name: owner_scale, type: bool } ] }
+  - { id: vector_field, groups: [particle_update], order: forces, unreal: { niagara: ApplyVectorField, cascade: [VectorFieldLocal, VectorFieldRotation, VectorFieldRotationRate, VectorFieldScaleOverLife, VectorFieldScale, VectorFieldGlobal] }, inputs: [
+      { name: field, type: field, forms: [data, constant] }, { name: global, type: bool },
+      { name: intensity, type: float }, { name: scale, type: float, by: [age] },
+      { name: tightness, type: float },
+      { name: translation, type: vec3, quantity: offset }, { name: rotation, type: vec3, quantity: angle },
+      { name: rotation_rate, type: vec3, quantity: angular_speed },
+      { name: tile, type: string }, { name: ignore_component_transform, type: bool }, { name: use_fix_dt, type: bool } ] }
+  - { id: physics_field, groups: [particle_update], order: forces, unreal: { niagara: PhysicsField }, inputs: [
+      { name: group, type: string },
+      { name: target, type: enum, values: [linear_force, linear_velocity, kill, orbit, speed_scale, angular_velocity, scale, strain] },
+      { name: scale, type: float, rolls: particle, default: 1 } ] }
+  - { id: wind, groups: [particle_update], order: forces, inputs: [ { name: resistance, type: float } ] }
+  - { id: buoyancy, groups: [particle_update], order: forces, inputs: [] }
+  - { id: updraft, groups: [particle_update], order: forces, inputs: [] }
+  - { id: flock, groups: [particle_update], order: forces, inputs: [] }
+  - { id: conform, groups: [particle_update], order: forces, inputs: [] }
+  - { id: ground, groups: [particle_update], order: after_solve, inputs: [] }
+  - { id: current, groups: [particle_update], order: forces, inputs: [] }
+  - { id: flow, groups: [particle_update], order: forces, inputs: [] }
+  - { id: gas_feed, groups: [particle_update], order: forces, inputs: [] }
+  - { id: grid_splat, groups: [particle_update], order: after_solve, inputs: [] }
+  - { id: grid_follow, groups: [particle_update], order: forces, inputs: [] }
+  - { id: grid_gradient, groups: [particle_update], order: forces, inputs: [] }
+
+  # particle update: appearance
+  - { id: color, groups: [particle_update], analytic: true, unreal: { niagara: Color, cascade: [ColorOverLife] }, inputs: [
+      { name: color, type: colour, by: [age] },
+      { name: alpha, type: float, by: [age] }, { name: clamp_alpha, type: bool, default: true } ] }
+  - { id: scale_color, groups: [particle_update], analytic: true, unreal: { niagara: ScaleColor, cascade: [ColorScaleOverLife] }, inputs: [
+      { name: scale, type: colour, by: [age, loop] },
+      { name: alpha, type: float, by: [age, loop] }, { name: intensity, type: float, by: [age] } ] }
+  - { id: scale_sprite_size, groups: [particle_update], analytic: true, unreal: { niagara: ScaleSpriteSize, cascade: [SizeMultiplyLife, SizeScale] }, inputs: [
+      { name: scale, type: vec2, by: [age] },
+      { name: mode, type: enum, values: [multiply, set], default: multiply }, { name: axes, type: string } ] }
+  - { id: scale_mesh_size, groups: [particle_update], analytic: true, unreal: { niagara: ScaleMeshSize, cascade: [SizeMultiplyLife, SizeScale] }, inputs: [
+      { name: scale, type: vec3, by: [age] },
+      { name: mode, type: enum, values: [multiply, set], default: multiply }, { name: axes, type: string } ] }
+  - { id: scale_size_by_speed, groups: [particle_update], unreal: { niagara: ScaleSpriteSizeBySpeed, cascade: [SizeScaleBySpeed] }, inputs: [
+      { name: speed_scale, type: vec2 }, { name: max_scale, type: vec2 }, { name: curve, type: curve, forms: [curve, range, pick, binding] } ] }
+  - { id: sprite_rotation, groups: [particle_update], analytic: true, unreal: { cascade: [RotationOverLifetime] }, inputs: [
+      { name: rotation, type: float, quantity: angle, by: [age] },
+      { name: mode, type: enum, values: [add, scale], default: add } ] }
+  - { id: sprite_rotation_rate, groups: [particle_update], analytic: true, unreal: { niagara: SpriteRotationRate, cascade: [RotationRate, RotationRateMultiplyLife] }, inputs: [
+      { name: rate, type: float, quantity: angular_speed, by: [loop] },
+      { name: rate_scale, type: float, by: [age] },
+      { name: mode, type: enum, values: [add, scale], default: add } ] }
+  - { id: mesh_rotation_rate, groups: [particle_update], analytic: true, unreal: { niagara: MeshRotationRate, cascade: [MeshRotationRate, MeshRotationRateMultiplyLife, MeshRotationRateOverLife] }, inputs: [
+      { name: rate, type: vec3, quantity: angular_speed, by: [loop, age] },
+      { name: rate_scale, type: vec3, by: [age] },
+      { name: mode, type: enum, values: [add, scale], default: add } ] }
+  - { id: sub_uv_animation, groups: [particle_update], analytic: true, unreal: { niagara: SubUVAnimation, cascade: [SubUV, SubUVMovie] }, inputs: [
+      { name: mode, type: enum, values: [linear, loop, random, direct], default: linear },
+      { name: frame, type: float, by: [age] },
+      { name: frame_rate, type: float, quantity: rate, by: [age, loop] },
+      { name: start_frame, type: int }, { name: use_emitter_time, type: bool }, { name: use_real_time, type: bool },
+      { name: interpolation, type: enum, values: [none, linear_blend, random, random_blend] } ] }
+  - { id: camera_offset, groups: [particle_update], analytic: true, unreal: { niagara: CameraOffset, cascade: [CameraOffset] }, inputs: [
+      { name: offset, type: float, quantity: length, by: [age] },
+      { name: update, type: enum, values: [direct, additive, scalar], default: direct }, { name: spawn_only, type: bool } ] }
+  - { id: dynamic_material_parameters, groups: [particle_update], analytic: true, unreal: { niagara: DynamicMaterialParameters, cascade: [ParameterDynamic] }, inputs: [
+      { name: dynamic_0, type: struct }, { name: dynamic_1, type: struct }, { name: dynamic_2, type: struct }, { name: dynamic_3, type: struct },
+      { name: use_emitter_time, type: bool } ] }
+  - { id: light_attributes, groups: [particle_update], analytic: true, unreal: { niagara: LightAttributes, cascade: [Light] }, inputs: [
+      { name: radius, type: float, quantity: length, by: [age] },
+      { name: brightness, type: float, by: [age] },
+      { name: color_scale, type: colour, by: [age] },
+      { name: exponent, type: float }, { name: spawn_fraction, type: float },
+      { name: inverse_squared_falloff, type: bool }, { name: affects_translucency, type: bool } ] }
+
+  # contacts and kills
+  - { id: collision, groups: [particle_update], order: after_solve, unreal: { niagara: Collision, cascade: [Collision] }, inputs: [
+      { name: against, type: enum, values: [depth, world, shape, entities], default: world },
+      { name: restitution, type: vec3 }, { name: rotation_restitution, type: vec3 },
+      { name: restitution_scale, type: float, by: [age] }, { name: radius_bias, type: float, quantity: length },
+      { name: friction, type: float },
+      { name: max_collisions, type: int, forms: [constant, range] },
+      { name: on_complete, type: enum, values: [kill, freeze, halt, freeze_translation, freeze_rotation, freeze_movement], default: kill },
+      { name: delay, type: float, quantity: time }, { name: max_distance, type: float, quantity: length },
+      # Cascade's own: what its world trace reads
+      { name: apply_physics, type: bool }, { name: ignore_triggers, type: bool, default: true },
+      { name: ignore_source, type: bool }, { name: drop_detail, type: bool }, { name: object_types, type: array },
+      { name: radius_scale, type: float, default: 3.5 }, { name: vertical_fudge, type: float, default: 0.1 },
+      { name: pawns_keep_count, type: bool, default: true }, { name: only_vertical_counts, type: bool },
+      { name: only_if_visible, type: bool }, { name: mass, type: float } ] }
+  - { id: kill_volume, groups: [particle_update], order: after_solve, unreal: { niagara: KillParticlesInVolume, cascade: [KillBox, KillHeight] }, inputs: [
+      { name: shape, type: enum, values: [sphere, box, plane] }, { name: inside, type: bool }, { name: offset, type: vec3, quantity: offset },
+      { name: sphere_radius, type: float, quantity: length }, { name: box_size, type: vec3, quantity: length },
+      { name: plane_normal, type: vec3, quantity: direction }, { name: world_space, type: bool } ] }
+
+  # beams and ribbons
+  - { id: beam_source, groups: [particle_spawn], unreal: { cascade: [BeamSource] }, inputs: &beam_end [
+      { name: method, type: enum, values: [default, user_set, emitter, particle, actor], default: default },
+      { name: name, type: string }, { name: absolute, type: bool },
+      { name: point, type: vec3, quantity: position, by: [loop] }, { name: lock, type: bool },
+      { name: tangent_method, type: enum, values: [direct, user_set, distribution, emitter], default: direct },
+      { name: tangent, type: vec3, quantity: direction, by: [loop] }, { name: lock_tangent, type: bool },
+      { name: strength, type: float, by: [loop] }, { name: lock_strength, type: bool },
+      { name: lock_radius, type: float, quantity: length } ] }
+  - { id: beam_target, groups: [particle_spawn], unreal: { cascade: [BeamTarget] }, inputs: *beam_end }
+  - { id: beam_noise, groups: [particle_update], unreal: { cascade: [BeamNoise] }, inputs: [
+      { name: frequency, type: int }, { name: frequency_low, type: int }, { name: enabled_low_frequency, type: bool },
+      { name: range, type: vec3, quantity: length },
+      { name: range_scale, type: float, by: [age, loop] },
+      { name: speed, type: vec3 }, { name: smooth, type: bool },
+      { name: lock, type: bool }, { name: lock_radius, type: float, quantity: length }, { name: lock_time, type: float, quantity: time },
+      { name: oscillate, type: bool }, { name: tension, type: float }, { name: tangents, type: bool },
+      { name: tangent_strength, type: float }, { name: tessellation, type: int },
+      { name: target_noise, type: bool }, { name: frequency_distance, type: float, quantity: length },
+      { name: scale, type: float, by: [age] } ] }
+  - { id: beam_modifier, groups: [particle_update], unreal: { cascade: [BeamModifier] }, inputs: [
+      { name: end, type: enum, values: [source, target] },
+      { name: position, type: struct }, { name: tangent, type: struct }, { name: strength, type: struct },
+      { name: absolute_tangent, type: bool } ] }
+  - { id: ribbon_source, groups: [particle_spawn], unreal: { cascade: [TrailSource] }, inputs: [
+      { name: method, type: enum, values: [default, particle, actor], default: default }, { name: name, type: string },
+      { name: strength, type: float }, { name: lock_strength, type: bool },
+      { name: offsets, type: array }, { name: offset_count, type: int },
+      { name: selection, type: enum, values: [random, sequential] },
+      { name: inherit_rotation, type: bool } ] }

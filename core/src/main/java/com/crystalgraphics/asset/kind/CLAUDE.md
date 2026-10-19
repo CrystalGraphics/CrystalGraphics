@@ -13,7 +13,11 @@ them.
 | `CgCameraKinds` | `camera_rig`, `shake`; camera nodes (`NODES`), blends, shake patterns, and the post block (`POST`) |
 | `CgGameplayKinds` | `cue` and its effects block |
 | `CgFieldKinds` | `field`; graph nodes (`NODES`) |
-| `CgCommonStructs` | what several kinds share: placement, binding, condition, mesh slot, transform, input declaration |
+| `CgCommonStructs` | what several kinds share: placement, binding, condition, socket, mesh slot, transform, input declaration |
+| `CgModuleTypes` | the built-in modules, read from the shipped `vfx/modules.yaml` (a byte copy of the spec's) into a struct of inputs each |
+
+**The bible gate** is `CgBibleGateTest` (`:core:headlessTest`): every declaration against `spec/schema` both ways, and
+the shipped `modules.yaml` against the spec's. It skips without the plan repository beside the checkout.
 
 ## Rules
 

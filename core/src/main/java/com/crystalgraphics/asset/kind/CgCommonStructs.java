@@ -51,9 +51,9 @@ public final class CgCommonStructs {
     public static final CgValueType TIERS = CgValueType.listOf(TIER);
 
     /** A quantity's spec name ({@code spec/core.md} § Units). */
-    public static final CgValueType QUANTITY = CgValueType.enumOf("none", "length", "position", "offset", "speed",
-            "acceleration", "direction", "scale", "angle", "angular_speed", "rotation", "time", "frequency", "rate",
-            "per_length", "colour");
+    public static final CgValueType QUANTITY = CgValueType.enumOf("length", "position", "offset", "speed", "acceleration",
+            "direction", "scale", "angle", "angular_speed", "rotation", "time", "frequency", "rate", "per_length",
+            "colour", "none");
 
     /**
      * An input's declaration: a built-in module's in {@code modules.yaml}, a data module's in its asset
@@ -62,8 +62,8 @@ public final class CgCommonStructs {
      */
     public static final CgType INPUT_DECLARATION = CgTypes.struct("crystalgraphics:input")
             .property("name", STRING).required()
-            .property("type", CgValueType.enumOf("float", "int", "bool", "string", "enum", "vec2", "vec3", "vec4", "colour",
-                    "rotation", "position", "curve", "mesh", "texture", "material", "socket", "field", "array", "struct")).required()
+            .property("type", CgValueType.enumOf("float", "int", "bool", "enum", "vec2", "vec3", "vec4", "colour", "rotation",
+                    "position", "curve", "mesh", "texture", "material", "socket", "string", "field", "array", "struct")).required()
             .property("quantity", QUANTITY).defaultValue("none")
             .property("default", VALUE)
             .property("values", CgValueType.listOf(STRING))
@@ -76,6 +76,12 @@ public final class CgCommonStructs {
             .property("toggle_for", STRING)
             .property("visible_when", CgValueType.mapOf(VALUE))
             .property("description", STRING)
+            .register();
+
+    /** A role's socket, the value of a {@code socket} input or parameter ({@code spec/core.md} § Values). */
+    static final CgType SOCKET = CgTypes.struct("crystalgraphics:socket")
+            .property("role", STRING).required()
+            .property("socket", STRING).required()
             .register();
 
     /**

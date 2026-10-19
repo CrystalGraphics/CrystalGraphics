@@ -63,7 +63,7 @@ public final class CgLookKinds {
             .register();
 
     static final CgType TEXTURE_BINDING = CgTypes.struct("crystalgraphics:material.texture")
-            .property("texture", CgValueType.binaryRef("textures")).flags(CgPropertyFlag.STRUCTURAL)
+            .property("texture", CgValueType.binaryRef("textures")).required().flags(CgPropertyFlag.STRUCTURAL)
             .property("sampler", CgValueType.struct(SAMPLER))
             .register();
 

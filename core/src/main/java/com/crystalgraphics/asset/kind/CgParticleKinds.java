@@ -457,7 +457,7 @@ public final class CgParticleKinds {
             .register();
 
     static final CgType ANIMATE = CgTypes.element("crystalgraphics:ending.animate")
-            .property("param", STRING).required()
+            .property("param", STRING)
             .property("to", VALUE)
             .property("easing", STRING)
             .register();
