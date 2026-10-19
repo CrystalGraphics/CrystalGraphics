@@ -85,20 +85,20 @@ public final class CgVfxBlasts {
     }
 
     /** Fires the bursts due at {@code seconds} round {@code (x, z)} over a floor at {@code y}, and submits every one alive. */
-    public void submit(CgWorldRenderer world, double x, double y, double z, float seconds) {
+    public void submit(CgWorldRenderer world, double x, double y, double z, double seconds) {
         int count = shots.length;
         if (!started) {
             // Taken up mid-cycle (a host's clock is far from 0, or after a clear): each spot waits for its own next
             // burst, as the stagger has it, rather than all of them firing in this frame.
             for (int i = 0; i < count; i++) {
-                float t = seconds - i * CYCLE / count;
-                shots[i] = t < 0f ? -1 : (int) (t / CYCLE);
+                double t = seconds - i * CYCLE / count;
+                shots[i] = t < 0 ? -1 : (int) (t / CYCLE);
             }
             started = true;
         }
         for (int i = 0; i < count; i++) {
-            float t = seconds - i * CYCLE / count;
-            if (t < 0f) continue;
+            double t = seconds - i * CYCLE / count;
+            if (t < 0) continue;
             int shot = (int) (t / CYCLE);
             if (shot == shots[i]) continue;
             shots[i] = shot;

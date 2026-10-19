@@ -80,7 +80,7 @@ public final class CgVfxDemoControls {
     private int speed = startSpeed();
     private float wait = 4f;
     /** The clock slowed by the time switch, and the host seconds it last advanced to. */
-    private float clock;
+    private double clock;
     private double last = Double.NaN;
     /** Each wave {@link #apply} set and its own flash, the double; pruned once dead. */
     private record Live(CgEnergyWave wave, CgKeyframes flash) {
@@ -160,8 +160,8 @@ public final class CgVfxDemoControls {
     }
 
     /** The scene's seconds at host time {@code seconds}: advanced since the last call at the time switch's rate. */
-    public float time(double seconds) {
-        if (!Double.isNaN(last)) clock += (float) (seconds - last) * SPEEDS[speed];
+    public double time(double seconds) {
+        if (!Double.isNaN(last)) clock += (seconds - last) * SPEEDS[speed];
         last = seconds;
         return clock;
     }

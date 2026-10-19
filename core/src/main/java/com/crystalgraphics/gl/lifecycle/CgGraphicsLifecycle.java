@@ -103,7 +103,6 @@ public final class CgGraphicsLifecycle {
     private static int currentHeight = -1;
 
     // ── Canonical per-frame tick ────────────────────────────────────────────
-    private static long frameCounter = 0;
     private static final int SETTINGS = CgTrace.name("lifecycle.settings"), CHECK = CgTrace.name("lifecycle.computeCheck"),
             READBACK = CgTrace.name("lifecycle.readback"), UPLOADS = CgTrace.name("lifecycle.uploads"),
             BUDGET = CgTrace.name("lifecycle.budget"), HOT_RELOAD = CgTrace.name("lifecycle.hotReload"), LISTENERS = CgTrace.name("lifecycle.listeners"),
@@ -387,7 +386,7 @@ public final class CgGraphicsLifecycle {
      * onFrameRendered()} straight here. That is the only place this method should be
      * invoked from — see {@link CgLifecycleService#onFrameRendered()}'s contract.
      * Feature-level code ({@code CgUiPaintContext}, demo overlays, scenes, etc.) must
-     * never call this directly; doing so would tick the frame counter and the MSDF
+     * never call this directly; doing so would advance {@code CgFrameClock} and the MSDF
      * per-frame generation budget an extra time outside the platform's actual frame
      * cadence.</p>
      *
@@ -401,7 +400,7 @@ public final class CgGraphicsLifecycle {
         // As onResize: a host keeps calling this until the process exits. @see CgRenderStage#fire
         if (destroyed || stoodDown) return;
 
-        frameCounter++;
+        CgFrameClock.advance();
 
         CgGlCensus.at("frame");
         CgGL.fromHost();
@@ -410,7 +409,7 @@ public final class CgGraphicsLifecycle {
             // frames, so anything could have written state through an API we cannot observe.
             CgGlState.invalidateAllIfPresent();
 
-            CgFontRegistry.get().tickFrame(frameCounter);
+            CgFontRegistry.get().tickFrame(CgFrameClock.frameIndex());
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, SETTINGS)) {
                 CgSettings.tickFrame();
             }
@@ -433,7 +432,7 @@ public final class CgGraphicsLifecycle {
                 CgCompute.finishPrepared();   // ahead of the dispatches that take them
             }
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, LISTENERS)) {
-                listeners.dispatch("onFrame", l -> l.onFrame(frameCounter));
+                listeners.dispatch("onFrame", l -> l.onFrame(CgFrameClock.frameIndex()));
             }
             if (initialized) {
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, SELF_TESTS)) {
@@ -453,7 +452,6 @@ public final class CgGraphicsLifecycle {
                     CgFrameRing.endFrame();
                 }
             }
-            CgFrameClock.advanceToNow();
             CgWarmBudget.nextFrame();
         } finally {
             CgGL.toHost();
@@ -469,16 +467,6 @@ public final class CgGraphicsLifecycle {
 
     /** The trace frame index as {@link #tickFrame()} last left it. */
     private static long traceFramed = -1L;
-
-    /**
-     * Returns the current authoritative frame number, as last advanced by
-     * {@link #tickFrame()}. Callers that need a {@code frame} argument for
-     * {@code CgTextRenderer.draw(...)}'s atlas-LRU bookkeeping should read this instead
-     * of maintaining their own local frame counter.
-     */
-    public static long getCurrentFrame() {
-        return frameCounter;
-    }
 
     /**
      * Destroys all CrystalGraphics GL resources in canonical dependency order,
@@ -604,7 +592,6 @@ public final class CgGraphicsLifecycle {
         // (initialized was cleared at the top of this method.)
         currentWidth = -1;
         currentHeight = -1;
-        frameCounter = 0;
         
         shutdown();
     }

@@ -136,7 +136,7 @@ final class CgShakeRuntime {
         float screen = enabled ? (Float.isNaN(world.screenEffects()) ? 1f : world.screenEffects()) * CgGraphicsSettings.SHAKE.get() : 0f;
         float fovEffects = enabled ? (Float.isNaN(world.fovEffects()) ? 1f : world.fovEffects()) * CgGraphicsSettings.FOV_KICK.get() : 0f;
         float fov = kicks(now);
-        float s = shake * screen, t = (float) now;
+        float s = shake * screen;
         float px = 0f, py = 0f, pz = 0f, pYaw = 0f, pPitch = 0f, pRoll = 0f;
         if (punches > 0) {
             Matrix4fc view = host.view().view();
@@ -174,8 +174,8 @@ final class CgShakeRuntime {
             }
         }
         CgCamera.offset(
-                px + SHIFT * s * bands(t, 3), py + SHIFT * s * bands(t, 4), pz + SHIFT * s * bands(t, 5),
-                pYaw + YAW * s * bands(t, 0), pPitch + PITCH * s * bands(t, 1), pRoll + ROLL * s * bands(t * 0.7f, 2),
+                px + SHIFT * s * bands(now, 3), py + SHIFT * s * bands(now, 4), pz + SHIFT * s * bands(now, 5),
+                pYaw + YAW * s * bands(now, 0), pPitch + PITCH * s * bands(now, 1), pRoll + ROLL * s * bands(now * 0.7, 2),
                 1f + fov * fovEffects);
         // One more frame of zeros once everything has settled, so the host lets the camera go.
         moving = shake > 0f || kicks > 0 || punches > 0;
@@ -220,7 +220,7 @@ final class CgShakeRuntime {
     }
 
     /** The shake's noise {@code t} seconds in: a slow lurch under a fast rattle. */
-    private static float bands(float t, int channel) {
+    private static float bands(double t, int channel) {
         return LURCH_SHARE * CgShakeModel.noise(t * LURCH, channel)
                 + (1f - LURCH_SHARE) * CgShakeModel.noise(t * RATTLE, channel + 8);
     }

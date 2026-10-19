@@ -139,9 +139,9 @@ final class CgShakeModel {
     }
 
     /** Smooth gradient noise in about -1..1 along {@code t}, a different curve per {@code channel}. */
-    static float noise(float t, int channel) {
+    static float noise(double t, int channel) {
         int i = (int) Math.floor(t);
-        float f = t - i;
+        float f = (float) (t - i);
         float g0 = gradient(i, channel), g1 = gradient(i + 1, channel);
         float u = f * f * f * (f * (f * 6f - 15f) + 10f);
         return 2f * ((1f - u) * g0 * f + u * g1 * (f - 1f));

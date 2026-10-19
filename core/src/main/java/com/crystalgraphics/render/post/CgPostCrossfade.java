@@ -33,7 +33,8 @@ final class CgPostCrossfade implements CgPostEffect {
     private CgMaterial hold, fade;
     private CgGraphTexture held, bound;
     private volatile float asked = Float.NaN;
-    private float seconds, start = Float.NaN;
+    private float seconds;
+    private double start = Double.NaN;
 
     /** Holds the next firing's final picture and fades it out over {@code seconds}. Any thread. */
     void crossfade(float seconds) {
@@ -58,7 +59,7 @@ final class CgPostCrossfade implements CgPostEffect {
     /** How much of the held picture shows now. */
     private float share() {
         if (start != start) return 0f;
-        float t = (CgFrameClock.seconds() - start) / seconds;
+        float t = (float) (CgFrameClock.seconds() - start) / seconds;
         return t <= 0f ? 0f : Math.max(0f, 1f - t);
     }
 
@@ -75,7 +76,7 @@ final class CgPostCrossfade implements CgPostEffect {
                 start = CgFrameClock.seconds();
             }
         } else if (share <= 0f) {
-            start = Float.NaN;
+            start = Double.NaN;
         }
     }
 

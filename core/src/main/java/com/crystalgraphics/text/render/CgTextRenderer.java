@@ -26,6 +26,7 @@ import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.texture.CgTextureMutable;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgChunkSink;
@@ -138,7 +139,7 @@ import java.util.logging.Logger;
  * layer or buffer source is required. The renderer is frame-agnostic: {@link #beginBatch()}/
  * {@link #endBatch()} mark a batching window, not a render frame. The atlas LRU
  * clock used internally for glyph bookkeeping is read directly from
- * {@link CgGraphicsLifecycle#getCurrentFrame()} — callers no longer supply a
+ * {@link CgFrameClock#frameIndex()} — callers no longer supply a
  * {@code frame} argument. Callers that issue several
  * {@code draw()} calls that should share one upload+draw wrap them in
  * {@link #beginBatch()}/{@link #endBatch()}. {@code draw()} also tolerates being called
@@ -1556,7 +1557,7 @@ public class CgTextRenderer {
             return;
         }
 
-        long frame = CgGraphicsLifecycle.getCurrentFrame();
+        long frame = CgFrameClock.frameIndex();
         int glyphCount;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "glyph.resolveGlyphs")) {
             // The pose's own sub-pixel phase. A CSS transform moves text through the POSE, not

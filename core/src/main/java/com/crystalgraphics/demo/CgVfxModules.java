@@ -163,7 +163,7 @@ public final class CgVfxModules {
     private final List<Runnable> fills = new ArrayList<>();
     private volatile boolean deleted;
     private final Matrix4f transform = new Matrix4f();
-    private float nextPlay;
+    private double nextPlay;
     private CgMesh sphere, cube;
     private CgMaterial mercury, copper;
     private CgWorldRenderer world;
@@ -2629,7 +2629,7 @@ public final class CgVfxModules {
      * Plays every station round {@code (x, y, z)} each {@link #PERIOD} seconds and submits this frame's draws: once a
      * frame, before the world stages record.
      */
-    public void submit(CgWorldRenderer world, double x, double y, double z, float seconds) {
+    public void submit(CgWorldRenderer world, double x, double y, double z, double seconds) {
         this.world = world;
         if (seconds >= nextPlay) {
             for (int i = 0; i < stations.size(); i++) {

@@ -159,7 +159,7 @@ public final class CgVfxFluidAtlas {
     private final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
     private final int[] lastIds = new int[MAX_ENTITIES];
     private final double[] lastPlaces = new double[MAX_ENTITIES * 3];
-    private float lastSeconds = Float.NaN;
+    private double lastSeconds = Double.NaN;
     private final EntityGather entityGather = new EntityGather();
     private CgKernel solids, advectDensity1, advectDensity2, emitDensity, advectVelocity1, advectVelocity2, emitVelocity,
             vorticity1, vorticity2, divergence, jacobi, subtract, restKernel, shadeKernel, detailKernel, occupancyKernel,
@@ -758,8 +758,8 @@ public final class CgVfxFluidAtlas {
      * {@code physicsVelocityScale}. None on a host with no level.
      */
     private int gatherEntities(int live, int at) {
-        float now = CgFrameClock.seconds();
-        entityGather.dt = Float.isNaN(lastSeconds) ? 0f : Math.max(1e-3f, now - lastSeconds);
+        double now = CgFrameClock.seconds();
+        entityGather.dt = Double.isNaN(lastSeconds) ? 0f : (float) Math.max(1e-3, now - lastSeconds);
         lastSeconds = now;
         entityGather.count = 0;
         entityGather.at = at;

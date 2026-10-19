@@ -136,7 +136,7 @@ public final class CgRenderDemo {
         /** Whether what {@link #prepare} started compiling is built: it draws nothing until then. */
         boolean warmed();
 
-        void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, float seconds);
+        void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds);
 
         /** Ends what it plays at once, keeping what it built; its next submit starts over. */
         void clear();
@@ -278,7 +278,7 @@ public final class CgRenderDemo {
         CgVfxBlasts blasts = new CgVfxBlasts(BLASTS, VFX);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, float seconds) {
+            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
                 blasts.submit(world, x, y, z, seconds);
             }
 
@@ -308,7 +308,7 @@ public final class CgRenderDemo {
         CgVfxShowcase showcase = new CgVfxShowcase(VFX);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, float seconds) {
+            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
                 showcase.submit(world, x, y, z, seconds);
                 if (SKY) showcase.submitSky(world, view.x(), view.y(), view.z());
             }
@@ -345,7 +345,7 @@ public final class CgRenderDemo {
         CgVfxFluidDemo fluid = new CgVfxFluidDemo(labelFont, VFX);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, float seconds) {
+            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
                 fluid.submit(world, x, y, z, seconds);
             }
 
@@ -376,7 +376,7 @@ public final class CgRenderDemo {
         CgVfxModules modules = new CgVfxModules(labelFont, VFX);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, float seconds) {
+            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
                 modules.submit(world, x, y, z, seconds);
             }
 
@@ -406,7 +406,7 @@ public final class CgRenderDemo {
         CgVfxBlastFlash blast = new CgVfxBlastFlash(VFX);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, float seconds) {
+            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
                 blast.submit(world, x, y, z, aheadX, aheadZ, seconds);
             }
 
@@ -441,7 +441,7 @@ public final class CgRenderDemo {
         CgCollisionDemo demo = new CgCollisionDemo();
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, float seconds) {
+            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
                 float partialTick = CgRenderStage.WORLD_OPAQUE.host().partialTick();
                 demo.submit(CgCollisionWorld.client(partialTick), x, y, z, seconds);
             }
@@ -492,7 +492,7 @@ public final class CgRenderDemo {
         // Nothing drawn until its programs are built, so no frame waits on a compile at its first draw.
         if (!warm(current)) return;
         // Through the time switch, whichever scene shows, so its value carries across N.
-        float seconds = CgVfxDemoControls.get().time(CgFrameClock.seconds());
+        double seconds = CgVfxDemoControls.get().time(CgFrameClock.seconds());
         // The scenes play on the world's system, which keeps the host's clock: the time switch reaches it as a scale.
         CgVfx.world().timeScale(CgVfxDemoControls.get().speed());
         scenes[current].submit(CgWorldRenderer.get(), view, anchorX + 0.5, anchorY, anchorZ + 0.5, seconds);

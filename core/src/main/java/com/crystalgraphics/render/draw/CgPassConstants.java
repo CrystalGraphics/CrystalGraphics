@@ -86,9 +86,12 @@ public final class CgPassConstants {
     private final float[] packed = new float[FLOATS];
     private final Vector3f eye = new Vector3f();
 
-    /** Seconds; the block carries {@code (t/20, t, 2t, 3t)}. */
-    public CgPassConstants time(float seconds) {
-        this.time = seconds;
+    /**
+     * Seconds; the block carries {@code (t/20, t, 2t, 3t)}. Narrowed to the shader's float here and nowhere else: what
+     * wraps, and how, is blueprint 05's.
+     */
+    public CgPassConstants time(double seconds) {
+        this.time = (float) seconds;
         return this;
     }
 

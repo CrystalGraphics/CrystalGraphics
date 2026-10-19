@@ -102,6 +102,8 @@ public final class CgVfxShowcase {
     private static final float STRESS_STAGGER = 0.1f;
     /** Seconds a wave fires before it stops; its lane's next follows CgVfxDemoControls' wait after that. */
     private static final float WAVE_HOLD = 5.4f;
+    /** A whole turn: an angle from the clock wraps by it before it narrows to a float. */
+    private static final double TURN = 2 * Math.PI;
     /** Heat haze on its own, at the spheres' height just in front of the front row, two spheres behind it. */
     private static final float HAZE_RADIUS = 4f;
     private static final float[] HAZE_AT = {0f, HEIGHT, 1.5f * SPACING + HAZE_RADIUS};
@@ -149,7 +151,7 @@ public final class CgVfxShowcase {
     /** Each lane's wave, the shot it is on, when it fired and when the next fires (NaN: not yet scheduled). */
     private final CgEnergyWave[] waves;
     private final int[] shots;
-    private final float[] firedAt, nextShot;
+    private final double[] firedAt, nextShot;
     private CgVfxHeatHaze haze;
     private double waveX = Double.NaN, waveY, waveZ;
 
@@ -169,9 +171,9 @@ public final class CgVfxShowcase {
         this.lanes = lanes;
         this.waves = new CgEnergyWave[lanes.length];
         this.shots = filled(lanes.length, -1);
-        this.firedAt = new float[lanes.length];
-        this.nextShot = new float[lanes.length];
-        Arrays.fill(nextShot, Float.NaN);
+        this.firedAt = new double[lanes.length];
+        this.nextShot = new double[lanes.length];
+        Arrays.fill(nextShot, Double.NaN);
     }
 
     /**
@@ -223,7 +225,7 @@ public final class CgVfxShowcase {
     }
 
     /** Submits the sixteen spheres and their glow, on a floor point {@code (x, y, z)}, as they are at {@code seconds}. */
-    public void submit(CgWorldRenderer world, double x, double y, double z, float seconds) {
+    public void submit(CgWorldRenderer world, double x, double y, double z, double seconds) {
         ensureResources();
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, SPHERES_ZONE)) {
             spheres(world, x, y, z, seconds);
@@ -231,7 +233,7 @@ public final class CgVfxShowcase {
         waves(world, x, y, z, seconds);
     }
 
-    private void spheres(CgWorldRenderer world, double x, double y, double z, float seconds) {
+    private void spheres(CgWorldRenderer world, double x, double y, double z, double seconds) {
         for (int k = 0; k < COUNT; k++) {
             int row = k / 4, column = k % 4;
             double cx = x + (column - 1.5) * SPACING;
@@ -258,7 +260,7 @@ public final class CgVfxShowcase {
                         .custom(3, above, 0f, 0f, 0f).layer(CgSortLayer.EFFECTS).submit();
                 boltsInFlight(world, cx, cy, cz);
                 // What the field protects: a small gold core turning inside it.
-                transform.identity().rotateY(-seconds * 0.6f).scale(0.45f);
+                transform.identity().rotateY((float) (-seconds * 0.6 % TURN)).scale(0.45f);
                 world.draw(sphere, materials[0]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).layer(CgSortLayer.EFFECTS).submit();
             } else {
                 world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).layer(CgSortLayer.EFFECTS).submit();
@@ -333,7 +335,7 @@ public final class CgVfxShowcase {
         clearPlays();
         Arrays.fill(waves, null);
         Arrays.fill(shots, -1);
-        Arrays.fill(nextShot, Float.NaN);
+        Arrays.fill(nextShot, Double.NaN);
         haze = null;
         waveX = Double.NaN;
     }
@@ -387,13 +389,13 @@ public final class CgVfxShowcase {
      * alternating between its two targets, each charging, growing out, bending at the waypoint, holding, running out and
      * bursting. Starts over when the grid moves.
      */
-    private void waves(CgWorldRenderer world, double x, double y, double z, float seconds) {
+    private void waves(CgWorldRenderer world, double x, double y, double z, double seconds) {
         if (x != waveX || y != waveY || z != waveZ) {
             for (int k = 0; k < waves.length; k++) {
                 if (waves[k] != null) waves[k].kill();
                 waves[k] = null;
                 shots[k] = -1;
-                nextShot[k] = Float.NaN;
+                nextShot[k] = Double.NaN;
             }
             if (haze != null) haze.kill();
             haze = vfx.play(new CgVfxHeatHaze(CgVfxHeatHaze.standard(), x + HAZE_AT[0], y + HAZE_AT[1], z + HAZE_AT[2]));
@@ -406,7 +408,7 @@ public final class CgVfxShowcase {
         CgVfxDemoControls controls = CgVfxDemoControls.get();
         for (int k = 0; k < lanes.length; k++) {
             Lane lane = lanes[k];
-            if (Float.isNaN(nextShot[k])) nextShot[k] = seconds + lane.offset;
+            if (Double.isNaN(nextShot[k])) nextShot[k] = seconds + lane.offset;
             if (seconds >= nextShot[k]) {
                 shots[k]++;
                 firedAt[k] = seconds;
@@ -431,8 +433,8 @@ public final class CgVfxShowcase {
     }
 
     /** Sphere {@code k}'s turn at {@code seconds}, into {@link #transform}: each at its own pace, two of them tilted. */
-    private void spin(int k, float seconds) {
-        float turn = seconds * (0.18f + 0.06f * (k % 3));
+    private void spin(int k, double seconds) {
+        float turn = (float) (seconds * (0.18 + 0.06 * (k % 3)) % TURN);
         transform.identity();
         if (k == BLACK_HOLE) transform.rotateX(0.38f).rotateZ(0.12f).scale(BLACK_HOLE_SIZE);
         if (k == GALAXY) transform.rotateX(0.55f).rotateZ(-0.2f);
@@ -443,10 +445,10 @@ public final class CgVfxShowcase {
      * The shield's impacts at {@code seconds}, into {@link #impacts}: three lanes, each struck once a period from a
      * direction of its own, mostly from above. The age is negative while that lane's bolt is still in flight.
      */
-    private void shieldImpacts(float seconds) {
+    private void shieldImpacts(double seconds) {
         for (int lane = 0; lane < 3; lane++) {
             float period = 2.2f + 0.7f * lane;
-            float shifted = seconds + lane * period * 0.37f;
+            double shifted = seconds + lane * period * 0.37f;
             float cycle = (float) Math.floor(shifted / period);
             float x = hash(cycle, lane, 1) * 2f - 1f;
             float y = hash(cycle, lane, 2) * 0.9f - 0.1f;
@@ -462,7 +464,7 @@ public final class CgVfxShowcase {
             impacts[at] = x / length;
             impacts[at + 1] = y / length;
             impacts[at + 2] = z / length;
-            impacts[at + 3] = shifted - cycle * period - BOLT_FLIGHT;
+            impacts[at + 3] = (float) (shifted - cycle * period) - BOLT_FLIGHT;
         }
     }
 
@@ -493,7 +495,7 @@ public final class CgVfxShowcase {
     }
 
     /** A lightning flicker: a new level about thirteen times a second. */
-    private static float flicker(float seconds, int k) {
+    private static float flicker(double seconds, int k) {
         long tick = (long) Math.floor(seconds * 13f) * 31L + k;
         tick ^= tick << 13;
         tick ^= tick >>> 7;

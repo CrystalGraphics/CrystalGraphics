@@ -86,7 +86,7 @@ import java.util.logging.Logger;
  *
  * <p><strong>Resolved:</strong> {@link #tickFrame(long)} still takes a caller-supplied
  * frame number, but {@code CgTextRenderer.draw(...)} no longer exposes a {@code frame}
- * parameter — it reads {@code CgGraphicsLifecycle.getCurrentFrame()} internally, the
+ * parameter — it reads {@code CgFrameClock.frameIndex()} internally, the
  * single authoritative per-real-frame counter incremented by
  * {@code CgGraphicsLifecycle.tickFrame()} (see that class's javadoc). All production
  * draw call sites therefore stamp glyphs from the same clock. {@link #tickFrame(long)}

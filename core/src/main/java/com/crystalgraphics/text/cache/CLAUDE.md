@@ -59,7 +59,7 @@ executor forever after the first context teardown.
 
 **Resolved**: `CgTextRenderer`'s draw path (`Draw.submit()` — see `text/render/CLAUDE.md`,
 there is no fixed-arity `draw(...)` method anymore) never takes a `frame` parameter — it
-reads `CgGraphicsLifecycle.getCurrentFrame()` internally, the single authoritative
+reads `CgFrameClock.frameIndex()` internally, the single authoritative
 per-real-frame counter incremented by `CgGraphicsLifecycle.tickFrame()` (wired via
 `CgLifecycleService.onFrameRendered()`). Every production draw call site now stamps
 glyphs from that same shared clock. `tickFrame(long frame)` itself is still a public,

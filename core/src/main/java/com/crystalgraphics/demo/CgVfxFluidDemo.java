@@ -123,7 +123,7 @@ public final class CgVfxFluidDemo {
     private final List<Station> stations = new ArrayList<>();
     private final List<Shot> shots = new ArrayList<>();
     private float[] floors;
-    private float nextPlay;
+    private double nextPlay;
 
     /** A station playing: its fluid, grid or smoke, and its emitters in them, ticked and drawn until the next play. */
     private static final class Play extends CgVfxEffect<Play> {
@@ -669,7 +669,7 @@ public final class CgVfxFluidDemo {
      * Plays every station round {@code (x, y, z)} each {@link #PERIOD} seconds and submits this frame's draws: once a
      * frame, before the world stages record.
      */
-    public void submit(CgWorldRenderer world, double x, double y, double z, float seconds) {
+    public void submit(CgWorldRenderer world, double x, double y, double z, double seconds) {
         if (seconds >= nextPlay) {
             // A fluid or grid holds its place until its play dies: the last plays go first, so the new ones find places.
             vfx.clear();

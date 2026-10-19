@@ -355,7 +355,7 @@ Package-level description of render-side responsibilities.
   other draw-list commands
 - there is no fixed-arity `draw(...)` method anymore — `Draw.submit()` is the only path into
   `drawInternal(...)`; `CgTextRenderContext` and `frame` are both renderer-owned state now,
-  never draw-call parameters (see `context()`/`poseStack()`/`CgGraphicsLifecycle.getCurrentFrame()`)
+  never draw-call parameters (see `context()`/`poseStack()`/`CgFrameClock.frameIndex()`)
 - `CgTextRendererRegistry` tracks every renderer for teardown, and additionally auto-resizes
   screen-sized (`create()`, the default) ones — see its section above before adding a new
   `CgTextRenderer`-owning class, to decide whether it should stay screen-sized or opt into
@@ -381,7 +381,7 @@ Package-level description of render-side responsibilities.
   `draw()` call anywhere resets it. Use `renderer.retainedDraw()` for anything held across frames.
 - Do not add a `CgTextRenderContext` or `frame` parameter back onto any draw-time method —
   the renderer owns both (`context()`/`context(CgTextRenderContext)`,
-  `CgGraphicsLifecycle.getCurrentFrame()` read internally by `drawInternal`).
+  `CgFrameClock.frameIndex()` read internally by `drawInternal`).
 - Do not assume every new `CgTextRenderer` consumer wants screen-sized resize tracking.
   `create()` (screen-sized) is the default and only correct when the consumer's dimensions are
   proven to come from the same source driving `CgGraphicsLifecycle.onResize()` — otherwise use

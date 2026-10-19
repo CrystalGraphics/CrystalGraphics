@@ -40,7 +40,7 @@ public final class CgVfxBlastFlash {
     private final List<CgEnergyWave> flying = new ArrayList<>();
     /** The wave in play, and when the scene clears: NaN until it bursts. */
     private CgEnergyWave current;
-    private float clock, clearAt = Float.NaN;
+    private double clock, clearAt = Double.NaN;
     private int fired;
 
     /** On a system of its own. */
@@ -64,7 +64,7 @@ public final class CgVfxBlastFlash {
 
     /** Plays the scene round the target {@code (x, y, z)} at {@code seconds}, firing across the view's horizontal {@code forward}. */
     public void submit(CgWorldRenderer world, double x, double y, double z, double forwardX, double forwardZ,
-                       float seconds) {
+                       double seconds) {
         clock = seconds;
         cycle(x, y, z, forwardX, forwardZ);
         for (Iterator<CgEnergyWave> it = flying.iterator(); it.hasNext(); ) {
@@ -82,8 +82,8 @@ public final class CgVfxBlastFlash {
     private void cycle(double x, double y, double z, double forwardX, double forwardZ) {
         if (current != null) {
             // From the burst, after the impact frame when it has one, so a frame switched off midway waits on nothing.
-            if (Float.isNaN(clearAt) && current.burst()) clearAt = clock + CgVfxDemoControls.get().waitSeconds();
-            if (Float.isNaN(clearAt) || clock < clearAt) return;
+            if (Double.isNaN(clearAt) && current.burst()) clearAt = clock + CgVfxDemoControls.get().waitSeconds();
+            if (Double.isNaN(clearAt) || clock < clearAt) return;
             clearPlays();
             flying.clear();
         }
