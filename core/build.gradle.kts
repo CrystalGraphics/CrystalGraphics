@@ -130,6 +130,35 @@ dependencies {
     testImplementation(project(":platform"))
 }
 
+// ── headlessTest: what a dedicated server runs ───────────────────────────────
+// core and platform with no LWJGL, no font bindings and no GL context: a test that needs one of those cannot
+// compile here, which is the assertion (blueprint 01's spine, 03's tick schedule, 09's cues).
+val headlessTest: SourceSet by sourceSets.creating {
+    compileClasspath += sourceSets["main"].output
+    runtimeClasspath += sourceSets["main"].output
+}
+
+dependencies {
+    "headlessTestImplementation"(project(":platform"))
+    "headlessTestImplementation"("junit:junit:$junitVer")
+    "headlessTestImplementation"("org.yaml:snakeyaml:2.7")
+    "headlessTestImplementation"("org.joml:joml-jdk8:$jomlVer")
+    "headlessTestImplementation"("org.apache.logging.log4j:log4j-core:2.26.1")
+    "headlessTestCompileOnly"("com.google.code.findbugs:jsr305:3.0.2")
+    "headlessTestCompileOnly"("org.projectlombok:lombok:1.18.44")
+    "headlessTestAnnotationProcessor"("org.projectlombok:lombok:1.18.44")
+}
+
+val headlessTestTask = tasks.register<Test>("headlessTest") {
+    description = "Server-side tests: core and platform with no LWJGL, fonts or GL context on the classpath."
+    group = "verification"
+    testClassesDirs = headlessTest.output.classesDirs
+    classpath = headlessTest.runtimeClasspath
+    useJUnit()
+}
+
+tasks.named("check") { dependsOn(headlessTestTask) }
+
 // ── Import guard ─────────────────────────────────────────────────────────────
 //
 // ENABLED 2026-08-21. Its own AGENTS.md warned that the guard below was commented out and that

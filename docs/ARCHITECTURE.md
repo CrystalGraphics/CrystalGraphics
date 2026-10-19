@@ -161,6 +161,8 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 |---|---|
 | `vfx/CLAUDE.md` | The VFX engine: effects, looks, particles on the GPU, cues; imports `docs/VFX.md` |
 | `net/CLAUDE.md` | Messages, requests, connections and networked objects; imports `docs/NETWORKING.md` |
+| `object/CLAUDE.md` | Types declared once (Unreal's reflection, blueprint 01): `CgType`, `CgProperty`, `CgTypes`, `CgValueType`, and `value`'s forms and quantities |
+| `asset/kind/CLAUDE.md` | The format's 20 asset kinds, their structs and dispatch families, declared against `object` |
 | `serialization/CLAUDE.md` | Codecs and decoding into a live object; `format`: files in binary, JSON and YAML, and the NBT bridge (`format.file`, `format.nbt`); imports `docs/SERIALIZATION.md` |
 | `job/CLAUDE.md` | Work off the caller's thread: `CgJob` handed back at its loop's drain, keyed and debounced, by lane; `CgJobLoop`; `forEach` across threads; `CgReply` answers and `CgProgress`; imports `docs/JOBS.md` |
 | `collision/CLAUDE.md` | Worlds and queries, hits, hitboxes and hitbox types, the entity and block tables behind snapshots and batches, the debug show; imports `docs/COLLISION.md` |
