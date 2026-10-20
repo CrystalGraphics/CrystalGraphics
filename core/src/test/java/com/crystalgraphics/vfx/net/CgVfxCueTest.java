@@ -6,7 +6,6 @@ import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.net.CgNetTesting;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.object.CgNetField;
-import com.crystalgraphics.net.object.CgNetObjects;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.platform.world.CgLevels;
@@ -318,7 +317,7 @@ public class CgVfxCueTest {
 
         assertEquals(CgVfxEffect.State.STOPPING, BUILT.get(0).state());
         assertEquals(CgVfxEffect.State.DEAD, BUILT.get(1).state());
-        assertEquals(0, CgNetObjects.serverCount());
+        assertEquals(0, SPARK.type().size());
     }
 
     @Test
@@ -339,10 +338,10 @@ public class CgVfxCueTest {
     public void aPersistedOneResumesAfterARestart() {
         KEPT.at(body, 0, 64, 0).lifetime(600f).start();
         CgNetwork.closeAll("server stopping");
-        assertEquals(0, CgNetObjects.serverCount());
+        assertEquals(0, KEPT.type().size());
 
         CgNetwork.serverStarting(null);
-        assertEquals(1, CgNetObjects.serverCount());
+        assertEquals(1, KEPT.type().size());
         join();
         assertEquals(1, BUILT.size());
     }
@@ -396,7 +395,7 @@ public class CgVfxCueTest {
         playing.stop();
         settle();
         assertEquals(CgVfxEffect.State.DEAD, playing.effect().state());
-        assertEquals(0, CgNetObjects.serverCount());
+        assertEquals(0, SEEKER.type().size());
     }
 
     @Test
@@ -422,7 +421,7 @@ public class CgVfxCueTest {
         settle();
         assertFalse("stopping it ended the cue", playing.playing());
         ticks(200 + 2);   // the type's linger
-        assertEquals("and its object, once the effect played out", 0, CgNetObjects.serverCount());
+        assertEquals("and its object, once the effect played out", 0, WAVE.type().size());
     }
 
     @Test
