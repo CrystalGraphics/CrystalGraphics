@@ -139,7 +139,7 @@ public final class CgCommonStructs {
             .property("name", STRING)
             .property("material", hard("material")).flags(CgPropertyFlag.STRUCTURAL)
             .property("materials", CgValueType.listOf(hard("material"))).flags(CgPropertyFlag.STRUCTURAL)
-            .property("overlay", CgValueType.oneOf(hard("material"), CgValueType.listOf(hard("material"))))
+            .property("overlay", CgValueType.oneOf(hard("material"), CgValueType.listOf(CgValueType.oneOf(hard("material"), CgValueType.NULL))))   // null: a slot with no overlay
             .property("cast_shadow", VALUE)
             .property("motion_vectors", VALUE)
             .property("clears_mask", CgValueType.oneOf(BOOL, CgValueType.listOf(BOOL)))
