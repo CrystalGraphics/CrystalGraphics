@@ -254,9 +254,13 @@ public final class CgVfxAssets {
 
     /**
      * The frame boundary's publish, after {@link #drain}: each change whose recompiles and GPU work are done swaps its
-     * definitions together, bumping each ref's generation. Never call it between two firings of one frame.
+     * definitions together, bumping each ref's generation.
+     *
+     * @throws IllegalStateException inside a stage firing: the frame's other firings would see another generation
      */
     public void publish() {
+        if (swaps.isEmpty()) return;
+        if (CgRenderStage.firing()) throw new IllegalStateException("definitions publish at the frame boundary, never inside a stage firing");
         for (int i = 0; i < swaps.size(); ) {
             Swap s = swaps.get(i);
             if (!s.prepared) {

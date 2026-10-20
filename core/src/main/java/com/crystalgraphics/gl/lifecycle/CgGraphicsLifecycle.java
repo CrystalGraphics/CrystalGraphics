@@ -6,6 +6,7 @@ import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgComputeSelfTest;
 import com.crystalgraphics.compute.ops.CgGpuOpsCheck;
 import com.crystalgraphics.compute.program.CgComputeCheck;
+import com.crystalgraphics.frame.CgFrameBoundary;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.CgWarmBudget;
@@ -429,6 +430,7 @@ public final class CgGraphicsLifecycle {
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, HOT_RELOAD)) {
                     CgHotReload.tick();   // before the dispatches and binds that take what it refreshed
                 }
+                CgFrameBoundary.run();        // after hot reload queued its saves; swaps land between frames
                 CgCompute.finishPrepared();   // ahead of the dispatches that take them
             }
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, LISTENERS)) {
