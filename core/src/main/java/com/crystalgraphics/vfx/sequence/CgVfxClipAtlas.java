@@ -6,6 +6,8 @@ import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.vfx.CgVfxTrace;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -172,6 +174,7 @@ public final class CgVfxClipAtlas {
             stepMask[i] = stepMask(clip, i, stepMask);
         }
         int first = end;
+        CgVfxTrace.count(BAKES, 1);
         grow(end + baked * ROWS * rowLength * 4);
         end += baked * ROWS * rowLength * 4;
 
@@ -231,6 +234,9 @@ public final class CgVfxClipAtlas {
         }
         return mask;
     }
+
+    /** Counts a clip baked: a move playing finds its clips baked by its preparing, so a nonzero count is a hitch named. */
+    private static final int BAKES = CgTrace.name("vfx.clips.bakes");
 
     private static void grow(int need) {
         if (words.length < need) words = Arrays.copyOf(words, Math.max(need, words.length * 2));

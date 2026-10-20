@@ -18,6 +18,8 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
@@ -1522,6 +1524,7 @@ public final class CgVfxParticlePool {
         } else if (need > storage) {
             storage = sizeClass(need);
             records = recording.resize(records, recordsDesc(storage));
+            CgVfxTrace.count(STORAGE_GROWS, 1);
         }
     }
 
@@ -1631,6 +1634,12 @@ public final class CgVfxParticlePool {
         Arrays.fill(written, 0);
     }
 
+    /**
+     * Counts of a pool outgrowing what it was sized for: its record storage, its slot and row tables. Preparing sizes them
+     * ahead, so a move playing never grows one; a nonzero count in a frame is a hitch named.
+     */
+    private static final int STORAGE_GROWS = CgTrace.name("vfx.pool.storage-grows"), TABLE_GROWS = CgTrace.name("vfx.pool.table-grows");
+
     private int useRow(CgVfxGpuEmitter emitter) {
         int[] row = rows.get(emitter);
         if (row != null) {
@@ -1638,7 +1647,10 @@ public final class CgVfxParticlePool {
             return row[0];
         }
         int index = freeRowCount > 0 ? freeRows[--freeRowCount] : rowCount++;
-        if (params.length < (index + 1) * paramWords) params = Arrays.copyOf(params, Math.max((index + 1) * paramWords, params.length * 2));
+        if (params.length < (index + 1) * paramWords) {
+            params = Arrays.copyOf(params, Math.max((index + 1) * paramWords, params.length * 2));
+            CgVfxTrace.count(TABLE_GROWS, 1);
+        }
         int at = index * paramWords;
         words.target(params, at, CgVfxGpuEmitter.SPAWN_VECTORS, emitter.name());
         emitter.writeSpawn(words);
@@ -1706,6 +1718,7 @@ public final class CgVfxParticlePool {
 
     private void growSlots(int n) {
         if (n <= slotEmitter.length) return;
+        CgVfxTrace.count(TABLE_GROWS, 1);
         int size = Math.max(n, Math.max(4, slotEmitter.length * 2));
         slotEmitter = Arrays.copyOf(slotEmitter, size);
         slotOwner = Arrays.copyOf(slotOwner, size);
