@@ -233,9 +233,7 @@ public final class CgRenderStage {
             CgGpuTrace.begin(gpuName);
             firing++;
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, path)) {
-                frame.begin(host);
-                record(CgFrameRing.frame());
-                frame.execute();
+                recordAndExecute();
             } finally {
                 firing--;
                 CgGpuTrace.end();
@@ -243,6 +241,13 @@ public final class CgRenderStage {
         } finally {
             CgGL.toHost();
         }
+    }
+
+    /** One firing's work once the engine runs: the renderers record into the stage's frame, which executes. */
+    void recordAndExecute() {
+        frame.begin(host);
+        record(CgFrameRing.frame());
+        frame.execute();
     }
 
     /** Lets every renderer due in host frame {@code hostFrame} record into the stage's frame, in order. */

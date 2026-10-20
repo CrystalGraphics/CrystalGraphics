@@ -60,6 +60,7 @@ public final class CgRecordingDevice implements CgDevice {
     private static final CgDeviceInfo INFO = new CgDeviceInfo("recording", "CrystalGraphics", "0",
             new CgDeviceInfo.Limits(16384, 2048, 2048, 8, 8, 16, 32, 65536, 24, 16, 1 << 26,
                     256, 256, 16, 16384, 16f, CgDeviceInfo.Compute.MINIMUM), true, true, true, true, true, true, true, true, true);
+    private CgDeviceInfo info = INFO;
 
     private final List<String> log = new ArrayList<>();
     private final List<CgPassDesc> passes = new ArrayList<>();
@@ -107,6 +108,26 @@ public final class CgRecordingDevice implements CgDevice {
     public int draws() { return draws; }
 
     /**
+     * Answers {@code compute} for its compute limits in place of Vulkan's minimums: a test of work sized for a desktop
+     * GPU, where a kernel wider than 128 would be refused.
+     *
+     * <pre>{@code
+     * new CgRecordingDevice(64, 64).withCompute(new CgDeviceInfo.Compute(49152, 1024, 1024, 1024, 64, 65535, 65535, 65535, 32, 0xFF));
+     * }</pre>
+     */
+    public CgRecordingDevice withCompute(CgDeviceInfo.Compute compute) {
+        CgDeviceInfo.Limits l = INFO.limits();
+        info = new CgDeviceInfo(INFO.name(), INFO.vendor(), INFO.driver(), new CgDeviceInfo.Limits(l.maxTextureSize(),
+                l.max3DTextureSize(), l.maxArrayLayers(), l.maxColorAttachments(), l.maxSamples(), l.maxVertexAttributes(),
+                l.maxTextureUnits(), l.maxUniformBlockSize(), l.maxUniformBufferBindings(), l.maxStorageBufferBindings(),
+                l.maxTexelBufferElements(), l.uniformOffsetAlignment(), l.storageOffsetAlignment(), l.texelOffsetAlignment(),
+                l.maxViewportSize(), l.maxAnisotropy(), compute), INFO.timestamps(), INFO.anisotropy(), INFO.nonSolidFill(),
+                INFO.multiDrawIndirect(), INFO.indirectCount(), INFO.indirectFirstInstance(), INFO.asyncCompute(),
+                INFO.drawParameters(), INFO.independentBlend());
+        return this;
+    }
+
+    /**
      * Stops keeping the log and the pass list, for a long run: every command is still validated. A harness
      * scene on the tracked backend makes thousands a frame.
      */
@@ -144,7 +165,7 @@ public final class CgRecordingDevice implements CgDevice {
 
     // ── CgDevice ───────────────────────────────────────────────────────────────
 
-    @Override public CgDeviceInfo info() { return INFO; }
+    @Override public CgDeviceInfo info() { return info; }
 
     @Override public void describe(BiConsumer<String, String> fact) { fact.accept("version", "recording"); }
 
