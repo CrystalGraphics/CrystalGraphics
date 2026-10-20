@@ -42,8 +42,8 @@ final class CgPropertiesParser {
 
     /** An array type, {@code color[3]}: group 1 the element type, group 2 the length. */
     private static final Pattern ARRAY_TYPE_PATTERN = Pattern.compile("^(\\w+)\\s*\\[\\s*(\\d+)\\s*\\]$");
-    /** The longest array property: a palette's colours, a row's worth. */
-    static final int MAX_ARRAY = 16;
+    /** The longest array property: 4 KB of the material block, read a chunk at a time past 16 (a table). */
+    static final int MAX_ARRAY = 256;
 
     /** Valid property types accepted in the {@code Properties { }} block. */
     private static final Set<String> VALID_PROPERTY_TYPES;

@@ -828,6 +828,28 @@ public final class CgMaterialShaderCompiler {
     /** A line's end in emitted source. */
     private static final char NL = 10;
 
+    /** Elements a table reads through one local array: a longer table branches to its chunk of this many first. */
+    static final int TABLE_CHUNK = 16;
+
+    /**
+     * Element {@code k} of array {@code p}'s {@code n} block fields. A table past {@link #TABLE_CHUNK} reads the chunk
+     * holding {@code k}: a local array of every field would be n vec4s of registers a read, where GLSL 3.30 indexes a
+     * block's separate fields only through one.
+     */
+    static void appendTableRead(StringBuilder sb, CgMaterialProperty p, int n) {
+        for (int from = 0; from < n; from += TABLE_CHUNK) {
+            int m = Math.min(TABLE_CHUNK, n - from);
+            boolean last = from + m >= n;
+            String pad = last && from == 0 ? "    " : "        ";
+            if (!last) sb.append("    if (k < ").append(from + m).append(") {").append(NL);
+            else if (from > 0) sb.append("    {").append(NL);
+            sb.append(pad).append("vec4 a[").append(m).append("] = vec4[").append(m).append("](");
+            for (int i = 0; i < m; i++) sb.append(i == 0 ? "" : ", ").append(p.blockName(from + i));
+            sb.append(");").append(NL).append(pad).append("return a[k - ").append(from).append("];").append(NL);
+            if (!last || from > 0) sb.append("    }").append(NL);
+        }
+    }
+
     static void appendPropertyAccessors(StringBuilder sb, List<CgMaterialProperty> properties, boolean rows) {
         for (CgMaterialProperty p : properties) {
             if (p.getType().isSampler() || p.isHidden()) continue;
@@ -840,9 +862,8 @@ public final class CgMaterialShaderCompiler {
                     sb.append("    if (").append(slot).append(" >= 0) return CG_ROW(CG_PROPERTY_ROW + ").append(slot)
                             .append(" + k);").append(NL);
                 }
-                sb.append("    vec4 a[").append(n).append("] = vec4[").append(n).append("](");
-                for (int i = 0; i < n; i++) sb.append(i == 0 ? "" : ", ").append(p.blockName(i));
-                sb.append(");").append(NL).append("    return a[k];").append(NL).append('}').append(NL);
+                appendTableRead(sb, p, n);
+                sb.append('}').append(NL);
                 sb.append("#define ").append(name).append("(i) _cg_arr").append(name).append("(i)").append(NL);
             } else if (rows && p.isRows()) {
                 String swizzle = p.getType().getComponents() == 1 ? ".x" : p.getType().getComponents() == 2 ? ".xy" : "";
