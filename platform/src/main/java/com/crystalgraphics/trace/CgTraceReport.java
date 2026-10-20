@@ -977,6 +977,43 @@ public final class CgTraceReport {
         }
     }
 
+    private static final int JVM_ROWS = 8;
+
+    /**
+     * The JVM's own events in the frame: a count for each kind, a kind the running source cannot see printing
+     * {@code unavailable} rather than 0, then a row for each deoptimisation, safepoint and class load, capped.
+     */
+    private void jvmLines(StringBuilder out, CgFrameRecord frame) {
+        if (!snapshot.hasJvmEvents()) return;
+        out.append("  jvm ");
+        String[] names = {"compilations", "deoptimisations", "safepoints", "class loads"};
+        for (CgJvmEventKind kind : CgJvmEventKind.values()) {
+            long count = snapshot.jvmEventCountIn(frame, kind);
+            out.append("  ").append(names[kind.ordinal()]).append(' ')
+                    .append(count == CgFrameRecord.ABSENT ? "unavailable" : String.valueOf(count));
+        }
+        out.append('\n');
+        int rows = 0;
+        int more = 0;
+        for (CgTraceSnapshot.JvmEventView view : snapshot.jvmEventsIn(frame)) {
+            if (view.kind() == CgJvmEventKind.COMPILATION) continue;
+            if (rows == JVM_ROWS) {
+                more++;
+                continue;
+            }
+            rows++;
+            out.append("    ").append(names[view.kind().ordinal()]).append("  ");
+            if (view.kind() == CgJvmEventKind.SAFEPOINT) {
+                out.append(view.detail()).append(String.format(Locale.ROOT, "  %.2f ms", view.durationNanos() / 1e6d));
+            } else {
+                out.append(view.subject());
+                if (!view.detail().isEmpty()) out.append("  ").append(view.detail());
+            }
+            out.append(String.format(Locale.ROOT, "  at +%.1f ms%n", (view.startNanos() - frame.beginNanos()) / 1e6d));
+        }
+        if (more > 0) out.append("    (+").append(more).append(" more)\n");
+    }
+
     private static String bytes(long value) {
         if (value >= 1L << 20) return String.format(Locale.ROOT, "%.1f MB", value / (double) (1L << 20));
         if (value >= 1L << 10) return String.format(Locale.ROOT, "%.1f KB", value / (double) (1L << 10));
@@ -991,6 +1028,7 @@ public final class CgTraceReport {
                     .append(" zone(s) were still open at the frame boundary and were force-closed\n");
         }
         memoryLines(out, frame);
+        jvmLines(out, frame);
         if (!a.held[at]) {
             out.append("  zones   none held -- older than every zone the frame thread still holds (overwritten, or "
                     + "recorded before its channels were on); its time is unknown, not unzoned\n");

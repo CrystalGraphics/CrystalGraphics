@@ -15,11 +15,8 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * T1's gate (blueprint 19 §4.2): allocated bytes per group and thread, GC pauses with their cause, and direct memory,
- * each per frame and each shown by the report.
- *
- * <p>Written by vfx design before the step was handed out. Copy it into {@code platform/src/test/java/com/crystalgraphics/trace/}
- * unchanged; a test that looks wrong goes back to vfx design.</p>
+ * Allocated bytes per group and thread, GC pauses with their cause, and direct memory, each per frame and each shown
+ * by the report.
  */
 public class CgTraceAllocationGcTest {
 

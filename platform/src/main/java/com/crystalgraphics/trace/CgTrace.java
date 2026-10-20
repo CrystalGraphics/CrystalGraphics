@@ -69,6 +69,9 @@ public final class CgTrace {
     public static final CgVar.Text RECORDED_CHANNELS = CgVar.text("crystalgraphics.trace.channels", "", CgVar.DEV,
             "Comma-separated channel prefixes recorded from the first frame, as enable takes them; a later value adds"
                     + " its channels, never removes one.");
+    private static final CgVar.Bool JVM_EVENTS = CgVar.bool("crystalgraphics.trace.jvm", true, CgVar.DEV,
+            "Stream the JVM's compilations, deoptimisations, safepoints and class loads when the trace records its first"
+                    + " frame; explicit startJvmEvents calls work either way.");
     private static final CgVar.Int KEPT_FRAMES = CgVar.integer("crystalgraphics.trace.frames", 600, 0, 1 << 20,
             CgVar.DEV | CgVar.RESTART, "Newest frames the trace keeps, overwriting the oldest; 0 stops once the first are full.");
     private static final CgVar.Int KEPT_FIRST_FRAMES = CgVar.integer("crystalgraphics.trace.firstFrames", 0, 0, 1 << 20,
@@ -775,6 +778,55 @@ public final class CgTrace {
         return CgTraceGc.directAvailable();
     }
 
+    // ── The JVM's own events: compilations, deoptimisations, safepoints, class loads ────────
+
+    /**
+     * Starts recording the JVM's compilations, deoptimisations, safepoints and class loads, each against the frame it
+     * started in. Returns true when the JVM streams them (Java 14+ with {@code jdk.jfr}); otherwise starts the
+     * fallback, which counts class loads per frame, and returns false. Never throws, and a second call changes
+     * nothing.
+     *
+     * <pre>{@code
+     * CgTrace.startJvmEvents();
+     * // ... frames run ...
+     * for (CgTraceSnapshot.JvmEventView e : CgTrace.jvmEventsIn(frame)) {
+     *     System.out.println(e.kind() + " " + e.subject() + " " + e.detail());   // DEOPTIMIZATION Foo.bar unstable_if/reinterpret
+     * }
+     * }</pre>
+     *
+     * <p>A host's trace starts it by itself when it records its first frame, unless {@code crystalgraphics.trace.jvm}
+     * is off. Easy to get wrong: events reach the trace about a second after they happen, so a frame read at once
+     * has none yet.</p>
+     */
+    public static boolean startJvmEvents() {
+        return CgJvmEvents.start();
+    }
+
+    /** Starts the fallback whatever the JVM offers: class loads counted per frame, the rest unavailable. Returns false. */
+    public static boolean startJvmEventsFallback() {
+        return CgJvmEvents.startFallback();
+    }
+
+    /** Stops either source. Events already recorded stay readable until {@link #clear}. */
+    public static void stopJvmEvents() {
+        CgJvmEvents.stop();
+    }
+
+    /** Whether the running source can see {@code kind} at all; false before a start and after a stop. */
+    public static boolean jvmEventsAvailable(CgJvmEventKind kind) {
+        return CgJvmEvents.available(kind);
+    }
+
+    /** The events that started inside {@code frame}, by start. Empty under the fallback, which only counts. */
+    public static List<CgTraceSnapshot.JvmEventView> jvmEventsIn(CgFrameRecord frame) {
+        return CgJvmEvents.held().eventsIn(frame);
+    }
+
+    /** How many {@code kind} events started in {@code frame}, or {@link CgFrameRecord#ABSENT} where it cannot be seen. */
+    public static long jvmEventCountIn(CgFrameRecord frame, CgJvmEventKind kind) {
+        return CgJvmEvents.held().countIn(frame, kind);
+    }
+
     /** The frame being recorded, or -1 before the first {@link #frameBegin}. */
     public static long currentFrameIndex() {
         return openIndex;
@@ -934,6 +986,8 @@ public final class CgTrace {
     /** The frame thread's allocation counter at the open frame's start, and the thread it was read on. */
     private static long openAlloc = CgFrameRecord.ABSENT;
     private static Thread openAllocThread;
+    /** Under the class-load fallback, the loaded-class total at the open frame's start; -1 otherwise. */
+    private static long openClassLoads = -1L;
     private static long openDropped;
     private static int openLeaked;
 
@@ -956,6 +1010,7 @@ public final class CgTrace {
      */
     public static void frameBegin(long now) {
         if (enabledMask == 0L) return;
+        if (JVM_EVENTS.get()) CgJvmEvents.autoStart();
         CgGpuTrace.closeLeaked();
         CgTraceZones local = local();
         frameThread = Thread.currentThread();
@@ -970,6 +1025,7 @@ public final class CgTrace {
         openGcCount = gcCount();
         openAlloc = CgThreadAllocation.available() ? CgThreadAllocation.current() : CgFrameRecord.ABSENT;
         openAllocThread = frameThread;
+        openClassLoads = CgJvmEvents.loadedClasses();
         openDropped = local.dropped;
         openLeaked = 0;
         // After the boundary moves, so the frame just committed counts as closed to the GPU track.
@@ -996,6 +1052,7 @@ public final class CgTrace {
     }
 
     private static void commit(long now, CgTraceZones local) {
+        CgJvmEvents.frameCommitted(openIndex, openClassLoads);
         CgFrameRecord record = new CgFrameRecord(openIndex, openBegin, now, openCpu,
                 CgFrameRecord.ABSENT, Math.max(0L, gcMillis() - openGc),
                 (int) Math.max(0L, gcCount() - openGcCount), openLeaked,
@@ -1280,6 +1337,7 @@ public final class CgTrace {
         headEvents = newEvents(firstFrames);
         CgTraceAllocations.clear();
         CgTraceGc.clear();
+        CgJvmEvents.clear();
         // Indices start again from 0, so an image kept would sit under a different frame.
         CgFrameImages.clear();
     }

@@ -378,6 +378,36 @@ FRAME #4312 ...
 Easy to get wrong: begin and end on one thread; a pause is attributed by its time, so one that arrives after its
 frame committed still lands on it; the pause's duration has the JVM's millisecond resolution.
 
+### The JVM's compilations, deoptimisations, safepoints and class loads
+
+A hitch with no zone under it is often the JVM's own work. The trace records four kinds against the frame each
+started in, from the JVM's flight-recorder stream, and a host's trace starts it with its first frame
+(`-Dcrystalgraphics.trace.jvm=false` turns that off).
+
+```java
+CgTrace.startJvmEvents();                                  // true: streamed; false: the fallback below. Never throws
+// ... frames run; events reach the trace about a second after they happen ...
+CgFrameRecord frame = CgTrace.frame(index);
+CgTrace.jvmEventCountIn(frame, CgJvmEventKind.DEOPTIMIZATION);   // ABSENT where the source cannot see the kind
+for (CgTraceSnapshot.JvmEventView e : CgTrace.jvmEventsIn(frame)) {
+    // kind, subject (Type.method, or the class), detail (level 4, unstable_if/reinterpret, id 12), start, duration
+}
+```
+
+```
+FRAME #4312 ...
+  jvm   compilations 2  deoptimisations 1  safepoints 1  class loads 3
+    deoptimisations  com.mymod.Effects.step  unstable_if/reinterpret  at +3.4 ms
+    safepoints  id 12  1.20 ms  at +7.0 ms
+```
+
+- **A deoptimisation** is compiled code abandoned for the interpreter: the method runs slowly until it compiles again.
+  `unstable_if` is a branch the compiler had pruned because it had never been taken.
+- **A safepoint's duration** is the whole stop, begin to end, not the time threads took to reach it.
+- **Without the module** (Java 8, a runtime built without `jdk.jfr`) `startJvmEvents()` runs the fallback: class loads
+  counted per frame, and every other kind `unavailable` in the report. `startJvmEventsFallback()` forces it.
+- Events are kept by their start time on the stream's thread, so the frame thread does nothing per event.
+
 **Comparing a change**: two ranges of one ring are the honest comparison (same process, same JIT). Across
 runs, run each build back to back on one machine, twice; differences smaller than run-to-run spread are
 not findings.

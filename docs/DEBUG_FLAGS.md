@@ -252,6 +252,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.trace.countersPerFrame` | 32 to 1048576 | `1024` | Counter values a frame may hold: a ceiling, the store growing as it is written. Read at launch. |
 | `crystalgraphics.trace.firstFrames` | 0 to 1048576 | `0` | Frames kept from the start of a recording, never overwritten: startup and first opens. Read at launch. |
 | `crystalgraphics.trace.frames` | 0 to 1048576 | `600` | Newest frames the trace keeps, overwriting the oldest; 0 stops once the first are full. Read at launch. |
+| `crystalgraphics.trace.jvm` | true, false | `true` | Stream the JVM's compilations, deoptimisations, safepoints and class loads when the trace records its first frame; explicit startJvmEvents calls work either way. |
 | `crystalgraphics.trace.zones` | 1 to 268435456 | `65536` | Zones a thread keeps at most, for each of the newest and the first frames; raise it when a report warns of dropped zones. Read at launch. |
 
 ## `crystalgraphics.uploads`

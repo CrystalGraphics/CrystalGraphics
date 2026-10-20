@@ -66,6 +66,13 @@ public final class CgTraceSnapshot {
         }
     }
 
+    /**
+     * A JVM event; times are {@code System.nanoTime()}. See {@link CgJvmEventKind} for what subject and detail hold.
+     * A safepoint's duration is its whole stop.
+     */
+    public record JvmEventView(CgJvmEventKind kind, String subject, String detail, long startNanos, long durationNanos) {
+    }
+
     /** An allocation row with the frame it belongs to. */
     record FrameAllocation(long frame, AllocationView view) {
     }
@@ -101,13 +108,15 @@ public final class CgTraceSnapshot {
     private final long droppedZones;
     private final List<FrameAllocation> allocations;
     private final List<GcPauseView> pauses;
+    private final CgJvmEvents.Held jvm;
     /** The counter views an {@link #incremental} snapshot carries forward; null on any other. */
     private final CounterRun headRun, ringRun;
 
     private CgTraceSnapshot(List<CgFrameRecord> frames, List<ZoneView> zones,
                             List<CounterView> counters, List<MarkerView> markers,
                             List<SpanView> spans, long droppedZones,
-                            List<FrameAllocation> allocations, List<GcPauseView> pauses) {
+                            List<FrameAllocation> allocations, List<GcPauseView> pauses, CgJvmEvents.Held jvm) {
+        this.jvm = jvm;
         this.allocations = List.copyOf(allocations);
         this.pauses = List.copyOf(pauses);
         this.frames = List.copyOf(frames);
@@ -125,6 +134,7 @@ public final class CgTraceSnapshot {
                             List<MarkerView> markers, List<SpanView> spans, long droppedZones) {
         this.allocations = CgTraceAllocations.all();
         this.pauses = CgTraceGc.all();
+        this.jvm = CgJvmEvents.held();
         this.frames = Collections.unmodifiableList(frames);
         this.zones = List.of();
         this.counters = new Joined<>(headRun.view(), ringRun.view());
@@ -342,7 +352,7 @@ public final class CgTraceSnapshot {
     public static CgTraceSnapshot of(List<CgFrameRecord> frames, List<ZoneView> zones,
                                      List<CounterView> counters, List<MarkerView> markers,
                                      List<SpanView> spans) {
-        return new CgTraceSnapshot(frames, zones, counters, markers, spans, 0L, List.of(), List.of());
+        return new CgTraceSnapshot(frames, zones, counters, markers, spans, 0L, List.of(), List.of(), CgJvmEvents.Held.NONE);
     }
 
     /**
@@ -405,7 +415,7 @@ public final class CgTraceSnapshot {
         CgTrace.add(CgTrace.TRACE, "trace-snapshot-counters", counters.size());
 
         return new CgTraceSnapshot(frames, zones, counters, markers, spans, dropped,
-                CgTraceAllocations.all(), CgTraceGc.all());
+                CgTraceAllocations.all(), CgTraceGc.all(), CgJvmEvents.held());
     }
 
     /** Every marker and span {@code events} holds. The caller holds {@code events}' lock. */
@@ -604,6 +614,20 @@ public final class CgTraceSnapshot {
         return zones;
     }
 
+    boolean hasJvmEvents() {
+        return jvm.active();
+    }
+
+    /** The JVM events that started inside {@code frame}; empty for a snapshot read back from a file. */
+    public List<JvmEventView> jvmEventsIn(CgFrameRecord frame) {
+        return jvm.eventsIn(frame);
+    }
+
+    /** As {@link CgTrace#jvmEventCountIn}, over the events this snapshot holds. */
+    public long jvmEventCountIn(CgFrameRecord frame, CgJvmEventKind kind) {
+        return jvm.countIn(frame, kind);
+    }
+
     /** What each group allocated in {@code frame}, per thread. Empty for a snapshot read back from a file. */
     public List<AllocationView> allocationsIn(CgFrameRecord frame) {
         List<AllocationView> out = new ArrayList<>();
@@ -658,7 +682,7 @@ public final class CgTraceSnapshot {
         for (MarkerView marker : markers) if (marker.nanos() >= from && marker.nanos() < to) inMarkers.add(marker);
         List<SpanView> inSpans = new ArrayList<>();
         for (SpanView span : spans) if (span.startNanos() >= from && span.startNanos() < to) inSpans.add(span);
-        return of(held, inZones, inCounters, inMarkers, inSpans);
+        return new CgTraceSnapshot(held, inZones, inCounters, inMarkers, inSpans, droppedZones, allocations, pauses, jvm);
     }
 
     /** The frames holding a marker named {@code name}, oldest first, each once; empty for none. */
