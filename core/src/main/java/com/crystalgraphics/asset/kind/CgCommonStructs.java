@@ -85,8 +85,8 @@ public final class CgCommonStructs {
             .register();
 
     /**
-     * Where something is placed: at a locator, a role's socket or a spawnable's node, following it or not
-     * ({@code common.schema.json#/$defs/place}). Exactly one of {@code locator}, {@code role} and {@code spawnable}.
+     * Where something is placed: at a locator, a role's socket or a spawnable's node, following it or not.
+     * Exactly one of {@code locator}, {@code role} and {@code spawnable}.
      */
     public static final CgType PLACE = CgTypes.struct("crystalgraphics:place")
             .property("locator", STRING)
@@ -116,23 +116,24 @@ public final class CgCommonStructs {
 
     /**
      * What a track or a placement binds: a role, a socket or material of it, a
-     * locator, a spawnable or a node or material of it, a camera; or the host's {@code environment}, or an id.
+     * locator, a spawnable or a node or material of it, a camera; or the host's {@code environment}, or an id. The
+     * subject comes first, then the part of it: {@code { spawnable: s1, material: blur }}.
      */
     static final CgType BINDING_STRUCT = CgTypes.struct("crystalgraphics:binding")
             .property("role", STRING)
-            .property("socket", STRING)
-            .property("material", STRING)
-            .property("value", CgValueType.enumOf("velocity"))
             .property("locator", STRING)
             .property("spawnable", STRING)
-            .property("node", STRING)
             .property("camera", STRING)
+            .property("socket", STRING)
+            .property("node", STRING)
+            .property("material", STRING)
+            .property("value", CgValueType.enumOf("velocity"))
             .register();
 
     /** A binding as a file writes it: a struct, {@code environment}, or a bare id. */
     public static final CgValueType BINDING = CgValueType.oneOf(CgValueType.struct(BINDING_STRUCT), STRING);
 
-    /** A mesh in a prefab node with its materials and outline fields ({@code common.schema.json#/$defs/mesh_slot}). */
+    /** A mesh in a prefab node with its materials and outline fields. */
     static final CgType MESH_SLOT = CgTypes.struct("crystalgraphics:mesh_slot")
             .property("mesh", CgValueType.binaryRef("models")).flags(CgPropertyFlag.STRUCTURAL)
             .property("name", STRING)
@@ -149,7 +150,7 @@ public final class CgCommonStructs {
                     "bit6", "bit7", "bit8", "low4", "high4"))
             .register();
 
-    /** A retarget pose: the root's offset and bone rotations ({@code common.schema.json#/$defs/retarget_pose}). */
+    /** A retarget pose: the root's offset and bone rotations. */
     static final CgType RETARGET_POSE = CgTypes.struct("crystalgraphics:retarget_pose")
             .property("root_offset", VEC3).quantity(CgQuantity.OFFSET)
             .property("rotations", CgValueType.mapOf(VEC3))
@@ -162,7 +163,7 @@ public final class CgCommonStructs {
             .property("scale", VEC3).quantity(CgQuantity.SCALE).defaultValue(1)
             .register();
 
-    // ── How a value is written ({@code common.schema.json#/$defs/value} and {@code curve}) ─────────────────────────────
+    // ── How a value is written ───────────────────────────────────────────────────────────────────────────────────────
 
     /** A curve's keys, or its baked samples. */
     static final CgType CURVE_KEYS = CgTypes.struct("crystalgraphics:curve.keys")
