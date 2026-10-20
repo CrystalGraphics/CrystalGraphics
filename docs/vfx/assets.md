@@ -84,8 +84,9 @@ remove: [h3]                                                   # drops the paren
   curve, never merges into it.
 - **An element's id is permanent.** Renaming one breaks every child that overrides it; change its `name` instead.
 
-Every resolved value knows where it came from (`CgOrigin`): `DEFAULT`, `INHERITED`, `OVERRIDDEN`, `ADDED`,
-`DISABLED` or `REMOVED`. That is what an editor greys out, and what "reset to parent" clears.
+Every resolved value knows where it came from (`CgOrigin`): `DEFAULT`, `INHERITED`, `MODIFIED` (inherited, with
+something inside it changed), `OVERRIDDEN`, `ADDED`, `DISABLED` or `REMOVED`. That is what an editor greys out, and
+what "reset to parent" clears.
 
 ## How a file is written
 
