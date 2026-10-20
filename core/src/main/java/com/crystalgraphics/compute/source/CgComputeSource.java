@@ -23,12 +23,12 @@ public record CgComputeSource(String path, List<CgKernelDecl> kernels, List<CgBu
 
     /** The kernel of that name, or null. */
     public CgKernelDecl kernel(String name) {
-        for (CgKernelDecl k : kernels) if (k.name().equals(name)) return k;
+        for (int i = 0; i < kernels.size(); i++) if (kernels.get(i).name().equals(name)) return kernels.get(i);
         return null;
     }
 
     public CgBufferDecl buffer(String name) {
-        for (CgBufferDecl b : buffers) if (b.name().equals(name)) return b;
+        for (int i = 0; i < buffers.size(); i++) if (buffers.get(i).name().equals(name)) return buffers.get(i);
         return null;
     }
 

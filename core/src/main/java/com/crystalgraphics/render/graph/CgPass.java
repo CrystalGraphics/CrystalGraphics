@@ -6,6 +6,7 @@ import com.crystalgraphics.render.draw.CgPipeline;
 
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 /**
  * One unit of graph work, made through a {@link CgRecording}: a raster pass ({@link CgRasterPass}), a compute pass
@@ -31,6 +32,28 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
     /** What its GPU time is charged to, or null. */
     @Nullable
     CgGpuBudget budget;
+    /**
+     * Frames built with this pass and not yet recycled: a frame reads its passes when it executes, so its recording
+     * reuses a pass only once no frame holds it. Any thread: a frame may be recycled on another.
+     */
+    private volatile int holds;
+    private static final AtomicIntegerFieldUpdater<CgPass> HOLDS = AtomicIntegerFieldUpdater.newUpdater(CgPass.class, "holds");
+
+    void hold() {
+        HOLDS.incrementAndGet(this);
+    }
+
+    void release() {
+        HOLDS.decrementAndGet(this);
+    }
+
+    boolean held() {
+        return holds > 0;
+    }
+
+    /** Drops what a reusable pass names once its recording resets; nothing for a kind never reused. */
+    void clearReferences() {
+    }
 
     CgPass(String name, @Nullable CgGraphTexture target, @Nullable CgRequest request) {
         this.name = name;
@@ -110,51 +133,98 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
         }
     }
 
-    /** A buffer range set to one 32-bit value. */
+    /** A buffer range set to one 32-bit value. Reused by its recording after a reset. */
     static final class Fill extends CgPass {
-        final CgGraphBuffer buffer;
-        final long offset, size;
-        final int value;
+        CgGraphBuffer buffer;
+        /** The buffer name {@link #name} was made from: kept past {@link #clearReferences}. */
+        private String namedFor;
+        long offset, size;
+        int value;
 
         Fill(CgGraphBuffer buffer, long offset, long size, int value) {
             super("fill " + buffer.name(), null, null);
+            reuse(buffer, offset, size, value);
+        }
+
+        void reuse(CgGraphBuffer buffer, long offset, long size, int value) {
+            if (!buffer.name().equals(namedFor)) {
+                name = "fill " + buffer.name();
+                namedFor = buffer.name();
+            }
             this.buffer = buffer;
             this.offset = offset;
             this.size = size;
             this.value = value;
         }
+
+        @Override
+        void clearReferences() {
+            buffer = null;
+        }
     }
 
     /** Bytes into a buffer, copied when recorded; or a caller's floats, read when executed. */
     static final class Update extends CgPass {
-        final CgGraphBuffer buffer;
-        final long offset;
+        CgGraphBuffer buffer;
+        long offset;
         @Nullable
-        final byte[] bytes;
+        byte[] bytes;
         @Nullable
-        final float[] floats;
-        final int from;
+        float[] floats;
+        @Nullable
+        int[] ints;
+        int from;
         /** In bytes. */
-        final int size;
+        int size;
+        /** The buffer name {@link #name} was made from: kept past {@link #clearReferences}. */
+        private String namedFor;
+        /** The bytes a reused update copies into, grown as needed: {@link #bytes} while it holds bytes. */
+        @Nullable
+        private byte[] owned;
 
         Update(CgGraphBuffer buffer, long offset, byte[] bytes) {
             super("update " + buffer.name(), null, null);
             this.buffer = buffer;
             this.offset = offset;
             this.bytes = bytes;
-            this.floats = null;
-            this.from = 0;
             this.size = bytes.length;
         }
 
-        Update(CgGraphBuffer buffer, long offset, float[] floats, int from, int count) {
+        /** Words read when executed, {@code floats} or {@code ints}: one is null. Reused by its recording after a reset. */
+        Update(CgGraphBuffer buffer, long offset, @Nullable float[] floats, @Nullable int[] ints, int from, int count) {
             super("update " + buffer.name(), null, null);
+            reuse(buffer, offset, floats, ints, from, count);
+        }
+
+        void reuse(CgGraphBuffer buffer, long offset, @Nullable float[] floats, @Nullable int[] ints, int from, int count) {
+            if (!buffer.name().equals(namedFor)) {
+                name = "update " + buffer.name();
+                namedFor = buffer.name();
+            }
             this.buffer = buffer;
             this.offset = offset;
             this.bytes = null;
             this.floats = floats;
+            this.ints = ints;
             this.from = from;
-            this.size = count * Float.BYTES;
+            this.size = count * 4;
+        }
+
+        /** Bytes copied now into its own array, reused after a reset: {@code data}'s remaining bytes. */
+        void reuse(CgGraphBuffer buffer, long offset, ByteBuffer data) {
+            reuse(buffer, offset, null, null, 0, 0);
+            int n = data.remaining();
+            if (owned == null || owned.length < n) owned = new byte[Math.max(n, owned == null ? 0 : owned.length * 2)];
+            data.duplicate().get(owned, 0, n);
+            bytes = owned;
+            size = n;
+        }
+
+        @Override
+        void clearReferences() {
+            buffer = null;
+            floats = null;
+            ints = null;
         }
     }
 

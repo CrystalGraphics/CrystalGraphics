@@ -19,7 +19,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 /**
  * Chunks drawn into one target: its load, its pass constants, the render state its pipelines' unset slots take,
@@ -167,6 +166,7 @@ public final class CgRasterPass extends CgPass {
     }
 
     /** Drops what the pass names once its recording is reset, keeping its arrays for the next reuse. */
+    @Override
     void clearReferences() {
         chunks.clear();
         target = null;
@@ -177,26 +177,6 @@ public final class CgRasterPass extends CgPass {
         targetCopy = depthFromCopy = colorFromCopy = null;
         textureUnits = NO_UNITS;
         textures = NO_TEXTURES;
-    }
-
-    /**
-     * Frames built with this pass and not yet recycled: a frame reads its passes when it executes, so a held pass is
-     * never reused. Any thread: a frame may be recycled on another.
-     */
-    private volatile int holds;
-    private static final AtomicIntegerFieldUpdater<CgRasterPass> HOLDS =
-            AtomicIntegerFieldUpdater.newUpdater(CgRasterPass.class, "holds");
-
-    void hold() {
-        HOLDS.incrementAndGet(this);
-    }
-
-    void release() {
-        HOLDS.decrementAndGet(this);
-    }
-
-    boolean held() {
-        return holds > 0;
     }
 
     /** Whether {@link #name} is already what a pass into {@code target} at this level and layer is called. */
@@ -415,7 +395,7 @@ public final class CgRasterPass extends CgPass {
         if (ended) throw new IllegalStateException(this + " has ended");
         requireLevelZero();
         sceneColorUnit = unit;
-        if (targetCopy == null) targetCopy = new CgTargetCopy();
+        if (targetCopy == null) targetCopy = keptCopy();
         return this;
     }
 
@@ -424,9 +404,17 @@ public final class CgRasterPass extends CgPass {
         if (ended) throw new IllegalStateException(this + " has ended");
         requireLevelZero();
         sceneDepthUnit = unit;
-        if (targetCopy == null) targetCopy = new CgTargetCopy();
+        if (targetCopy == null) targetCopy = keptCopy();
         return this;
     }
+
+    /** The copy this pass made once, reused by its later uses: its storage goes back to the pool as each ends. */
+    private CgTargetCopy keptCopy() {
+        if (kept == null) kept = new CgTargetCopy();
+        return kept;
+    }
+
+    private CgTargetCopy kept, keptDepthFrom, keptColorFrom;
 
     /** A target copy is of level 0 and layer 0: a pass drawing another would read the wrong picture. */
     private void requireLevelZero() {
@@ -462,7 +450,7 @@ public final class CgRasterPass extends CgPass {
         }
         depthFrom = from;
         depthFromUnit = unit;
-        if (depthFromCopy == null) depthFromCopy = new CgTargetCopy();
+        if (depthFromCopy == null) depthFromCopy = keptDepthFrom != null ? keptDepthFrom : (keptDepthFrom = new CgTargetCopy());
         recording.read(this, from, CgAccess.SAMPLED_READ);
         return this;
     }
@@ -486,7 +474,7 @@ public final class CgRasterPass extends CgPass {
         if (from == target) throw new IllegalArgumentException(this + " reads its own target: use sceneColor(unit)");
         colorFrom = from;
         colorFromUnit = unit;
-        if (colorFromCopy == null) colorFromCopy = new CgTargetCopy();
+        if (colorFromCopy == null) colorFromCopy = keptColorFrom != null ? keptColorFrom : (keptColorFrom = new CgTargetCopy());
         recording.read(this, from, CgAccess.SAMPLED_READ);
         return this;
     }

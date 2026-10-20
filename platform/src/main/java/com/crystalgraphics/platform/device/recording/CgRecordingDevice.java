@@ -299,6 +299,16 @@ public final class CgRecordingDevice implements CgDevice {
 
     // ── validation ─────────────────────────────────────────────────────────────
 
+    private void use(CgDeviceObject object) {
+        if (object != null && ((Obj) object).destroyed)
+            throw new IllegalStateException("#" + ((Obj) object).id + " " + object.label() + " used after it was destroyed");
+    }
+
+    private void use(CgDeviceObject a, CgDeviceObject b) {
+        use(a);
+        use(b);
+    }
+
     private void use(CgDeviceObject... objects) {
         for (CgDeviceObject o : objects) {
             if (o != null && ((Obj) o).destroyed)
@@ -314,36 +324,36 @@ public final class CgRecordingDevice implements CgDevice {
         if (openCompute != null) throw new IllegalStateException(what + " inside compute pass '" + openCompute.label + "'");
     }
 
-    /** {@code from} copied into {@code into}, every resource checked live; the bindings as a log line. */
-    private String push(CgBindings from, CgBindings into) {
+    /** {@code from} copied into {@code into}, every resource checked live; the bindings logged as a line. */
+    private void push(CgBindings from, CgBindings into) {
         into.clear();
-        StringBuilder s = new StringBuilder("pushBindings");
+        StringBuilder s = logging ? new StringBuilder("pushBindings") : null;
         for (int i = 0; i < from.count(); i++) {
-            s.append(' ').append(from.binding(i)).append(':');
+            if (s != null) s.append(' ').append(from.binding(i)).append(':');
             switch (from.type(i)) {
                 case SAMPLED_TEXTURE -> {
                     use(from.view(i).texture(), from.sampler(i));
                     into.texture(from.binding(i), from.view(i), from.sampler(i));
-                    s.append(ref(from.view(i).texture())).append('/').append(ref(from.sampler(i)));
+                    if (s != null) s.append(ref(from.view(i).texture())).append('/').append(ref(from.sampler(i)));
                 }
                 case STORAGE_IMAGE -> {
                     use(from.view(i).texture());
                     into.image(from.binding(i), from.view(i));
-                    s.append(ref(from.view(i).texture()));
+                    if (s != null) s.append(ref(from.view(i).texture()));
                 }
                 case TEXEL_BUFFER -> {
                     use(from.buffer(i));
                     into.texel(from.binding(i), from.buffer(i), from.offset(i), from.size(i), from.texelFormat(i));
-                    s.append(ref(from.buffer(i))).append('+').append(from.offset(i));
+                    if (s != null) s.append(ref(from.buffer(i))).append('+').append(from.offset(i));
                 }
                 default -> {
                     use(from.buffer(i));
                     into.buffer(from.binding(i), from.type(i), from.buffer(i), from.offset(i), from.size(i));
-                    s.append(ref(from.buffer(i))).append('+').append(from.offset(i));
+                    if (s != null) s.append(ref(from.buffer(i))).append('+').append(from.offset(i));
                 }
             }
         }
-        return s.toString();
+        if (s != null) record(s.toString());
     }
 
     /** Every slot of {@code layout} pushed with its type. */
@@ -390,7 +400,10 @@ public final class CgRecordingDevice implements CgDevice {
             outsidePass("beginCompute");
             noCompute("beginCompute");
             if (transfer) throw new IllegalStateException("A compute pass inside a transfer");
-            openCompute = new ComputePass(label);
+            // One pass object reused once ended: a steady frame allocates none.
+            if (spareCompute == null || !spareCompute.ended) spareCompute = new ComputePass(label);
+            else spareCompute.reuse(label);
+            openCompute = spareCompute;
             if (logging) record("beginCompute " + label);
             return openCompute;
         }
@@ -439,12 +452,11 @@ public final class CgRecordingDevice implements CgDevice {
         public void copyBuffer(CgGpuBuffer src, long srcOffset, CgGpuBuffer dst, long dstOffset, long size) {
             outsidePass("copyBuffer");
             use(src, dst);
-            ByteBuffer from = ((Buffer) src).memory.duplicate();
-            from.limit((int) (srcOffset + size));
-            from.position((int) srcOffset);
-            ByteBuffer to = ((Buffer) dst).memory.duplicate();
-            to.position((int) dstOffset);
-            to.put(from);
+            // Absolute reads and writes: a view of either buffer would allocate each copy.
+            ByteBuffer from = ((Buffer) src).memory, to = ((Buffer) dst).memory;
+            int s = (int) srcOffset, d = (int) dstOffset, n = (int) size, i = 0;
+            if (from.order() == to.order()) for (; i + 8 <= n; i += 8) to.putLong(d + i, from.getLong(s + i));
+            for (; i < n; i++) to.put(d + i, from.get(s + i));
             if (logging) record("copyBuffer " + ref(src) + "+" + srcOffset + " " + ref(dst) + "+" + dstOffset + " " + size);
         }
 
@@ -544,7 +556,8 @@ public final class CgRecordingDevice implements CgDevice {
             if (!async) throw new IllegalStateException("endAsync with no async work open");
             if (openCompute != null) throw new IllegalStateException("endAsync with a compute pass open");
             async = false;
-            if (logging) record("endAsync " + ++asyncPoint);
+            ++asyncPoint;
+            if (logging) record("endAsync " + asyncPoint);
             return asyncPoint;
         }
 
@@ -644,7 +657,7 @@ public final class CgRecordingDevice implements CgDevice {
         @Override
         public void pushBindings(CgBindings b) {
             live();
-            if (logging) record(push(b, pushed));
+            push(b, pushed);
         }
 
         @Override
@@ -874,13 +887,22 @@ public final class CgRecordingDevice implements CgDevice {
         @Override public CgPipelineDesc desc() { return desc; }
     }
 
+    private ComputePass spareCompute;
+
     private final class ComputePass implements CgComputePass {
-        final String label;
+        String label;
         final CgBindings pushed = new CgBindings();
         ComputePipeline pipeline;
         boolean ended;
 
         ComputePass(String label) { this.label = label; }
+
+        void reuse(String label) {
+            this.label = label;
+            pushed.clear();
+            pipeline = null;
+            ended = false;
+        }
 
         private void live() {
             if (ended || openCompute != this) throw new IllegalStateException("Compute pass '" + label + "' has ended");
@@ -897,7 +919,7 @@ public final class CgRecordingDevice implements CgDevice {
         @Override
         public void pushBindings(CgBindings b) {
             live();
-            if (logging) record(push(b, pushed));
+            push(b, pushed);
         }
 
         @Override

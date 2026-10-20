@@ -92,6 +92,27 @@ public final class CgRecording {
     /** Raster passes made so far, reused after a {@link #reset()}; the first {@link #rastersUsed} are this use's. */
     private final List<CgRasterPass> rasters = new ArrayList<>();
     private int rastersUsed;
+    /** As {@link #rasters}, for compute passes, fills and updates. */
+    private final List<CgComputePass> computes = new ArrayList<>();
+    private int computesUsed;
+    private final List<CgPass.Fill> fills = new ArrayList<>();
+    private int fillsUsed;
+    private final List<CgPass.Update> updates = new ArrayList<>();
+    private int updatesUsed;
+    /** {@link #compute(String)}'s frame block: identity, its time set per call. */
+    private final CgPassConstants identity = new CgPassConstants();
+
+    /** A pass a built frame still holds stays that frame's; the pool keeps the rest, cleared, for the next use. */
+    private static <P extends CgPass> void recycle(List<P> pool, int used) {
+        int kept = 0;
+        for (int i = 0; i < pool.size(); i++) {
+            P pass = pool.get(i);
+            if (i < used && pass.held()) continue;
+            pass.clearReferences();
+            pool.set(kept++, pass);
+        }
+        while (pool.size() > kept) pool.remove(pool.size() - 1);
+    }
 
     private boolean sealed;
 
@@ -239,17 +260,21 @@ public final class CgRecording {
 
     /** A compute pass whose kernels read the frame block as identity matrices and the time now. */
     public CgComputePass compute(String name) {
-        return compute(name, new CgPassConstants().time(CgFrameClock.seconds()));
+        return compute(name, identity.time(CgFrameClock.seconds()));
     }
 
     /** A compute pass whose kernels read {@code constants} as the frame block: time, camera, resolution. */
     public CgComputePass compute(String name, CgPassConstants constants) {
         requireOpen();
-        return compute(name, block(constants));
-    }
-
-    private CgComputePass compute(String name, float[] block) {
-        CgComputePass pass = new CgComputePass(this, name, block);
+        CgComputePass pass;
+        if (computesUsed < computes.size()) {
+            pass = computes.get(computesUsed);
+            pass.reuse(name, constants);
+        } else {
+            pass = new CgComputePass(this, name, constants);
+            computes.add(pass);
+        }
+        computesUsed++;
         add(pass);
         return pass;
     }
@@ -291,7 +316,10 @@ public final class CgRecording {
         requireOpen();
         requireWritable(buffer, CgBufferUsage.COPY);
         if (((offset | size) & 3) != 0) throw new IllegalArgumentException("a fill covers whole 32-bit words");
-        CgPass.Fill fill = new CgPass.Fill(buffer, offset, size, value);
+        CgPass.Fill fill;
+        if (fillsUsed < fills.size()) (fill = fills.get(fillsUsed)).reuse(buffer, offset, size, value);
+        else fills.add(fill = new CgPass.Fill(buffer, offset, size, value));
+        fillsUsed++;
         add(fill);
         write(fill, buffer, CgAccess.COPY_WRITE);
     }
@@ -300,9 +328,14 @@ public final class CgRecording {
     public void update(CgGraphBuffer buffer, long offset, ByteBuffer data) {
         requireOpen();
         requireWritable(buffer, CgBufferUsage.COPY);
-        byte[] bytes = new byte[data.remaining()];
-        data.duplicate().get(bytes);
-        CgPass.Update update = new CgPass.Update(buffer, offset, bytes);
+        // A reused update's own array: no allocation a frame once warm.
+        CgPass.Update update;
+        if (updatesUsed < updates.size()) (update = updates.get(updatesUsed)).reuse(buffer, offset, data);
+        else {
+            updates.add(update = new CgPass.Update(buffer, offset, null, null, 0, 0));
+            update.reuse(buffer, offset, data);
+        }
+        updatesUsed++;
         add(update);
         write(update, buffer, CgAccess.COPY_WRITE);
     }
@@ -325,7 +358,32 @@ public final class CgRecording {
         if (from < 0 || count < 0 || from + count > src.length) {
             throw new IndexOutOfBoundsException("floats " + from + " to " + (from + count) + " of " + src.length);
         }
-        CgPass.Update update = new CgPass.Update(buffer, offset, src, from, count);
+        updateWords(buffer, offset, src, null, from, count);
+    }
+
+    /**
+     * Writes {@code count} words of {@code src} from {@code from} into {@code buffer} at {@code offset}, read when the
+     * frame executes: as the float form, for words a CPU writes as ints (a GPU table's rows).
+     *
+     * <ul>
+     *   <li>{@code src} must not change until the recording has executed.</li>
+     * </ul>
+     */
+    public void update(CgGraphBuffer buffer, long offset, int[] src, int from, int count) {
+        updateWords(buffer, offset, null, src, from, count);
+    }
+
+    private void updateWords(CgGraphBuffer buffer, long offset, float[] floats, int[] ints, int from, int count) {
+        requireOpen();
+        requireWritable(buffer, CgBufferUsage.COPY);
+        int length = floats != null ? floats.length : ints.length;
+        if (from < 0 || count < 0 || from + count > length) {
+            throw new IndexOutOfBoundsException("words " + from + " to " + (from + count) + " of " + length);
+        }
+        CgPass.Update update;
+        if (updatesUsed < updates.size()) (update = updates.get(updatesUsed)).reuse(buffer, offset, floats, ints, from, count);
+        else updates.add(update = new CgPass.Update(buffer, offset, floats, ints, from, count));
+        updatesUsed++;
         add(update);
         write(update, buffer, CgAccess.COPY_WRITE);
     }
@@ -615,16 +673,14 @@ public final class CgRecording {
         eventCount = 0;
         for (int i = 0; i < readsSeen.size(); i++) spareSeen.add(readsSeen.get(i));
         readsSeen.clear();
-        // A pass a built frame still holds stays that frame's; the pool keeps the rest.
-        int kept = 0;
-        for (int i = 0; i < rasters.size(); i++) {
-            CgRasterPass pass = rasters.get(i);
-            if (i < rastersUsed && pass.held()) continue;
-            pass.clearReferences();
-            rasters.set(kept++, pass);
-        }
-        while (rasters.size() > kept) rasters.remove(rasters.size() - 1);
+        recycle(rasters, rastersUsed);
         rastersUsed = 0;
+        recycle(computes, computesUsed);
+        computesUsed = 0;
+        recycle(fills, fillsUsed);
+        fillsUsed = 0;
+        recycle(updates, updatesUsed);
+        updatesUsed = 0;
         chunks.reset();
         chunks.recycle();
         bindings.reset();

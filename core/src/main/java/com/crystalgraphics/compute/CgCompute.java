@@ -136,10 +136,11 @@ public final class CgCompute implements CgReloadable {
 
     /** The kernel {@code name}, with no keywords: the same instance every call, so a per-frame caller makes nothing. */
     public CgKernel kernel(String name) {
+        CgKernel kernel = kernels.get(name);
+        if (kernel != null && kernel.decl() != null) return kernel;   // decl() looks again only after a reload
         if (source.kernel(name) == null) {
             throw new IllegalArgumentException("[" + path + "] has no kernel '" + name + "': " + kernelNames());
         }
-        CgKernel kernel = kernels.get(name);
         return kernel != null ? kernel : kernels.computeIfAbsent(name, n -> new CgKernel(this, n, Set.of()));
     }
 

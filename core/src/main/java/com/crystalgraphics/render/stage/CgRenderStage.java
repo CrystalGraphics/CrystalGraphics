@@ -252,7 +252,9 @@ public final class CgRenderStage {
 
     /** Lets every renderer due in host frame {@code hostFrame} record into the stage's frame, in order. */
     void record(long hostFrame) {
-        for (Entry entry : renderers) {
+        List<Entry> due = renderers;
+        for (int i = 0; i < due.size(); i++) {
+            Entry entry = due.get(i);
             if (entry.oncePerFrame) {
                 if (entry.lastFrame == hostFrame) continue;
                 entry.lastFrame = hostFrame;

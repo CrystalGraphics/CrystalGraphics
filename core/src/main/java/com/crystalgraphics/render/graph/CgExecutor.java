@@ -950,11 +950,12 @@ public final class CgExecutor {
         if (staging == null) staging = CgStreamBuffer.create(CgGL.GL_COPY_READ_BUFFER, Math.max(bytes, 1 << 16));
         int at;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, UPDATE_STAGE)) {
-            ByteBuffer mapped = staging.map(bytes);
             if (update.floats != null) {
-                mapped.order(ByteOrder.nativeOrder()).asFloatBuffer().put(update.floats, update.from, bytes / Float.BYTES);
+                staging.mapFloats(bytes).put(update.floats, update.from, bytes / Float.BYTES);
+            } else if (update.ints != null) {
+                staging.mapInts(bytes).put(update.ints, update.from, bytes / Integer.BYTES);
             } else {
-                mapped.put(update.bytes);
+                staging.map(bytes).put(update.bytes, 0, bytes);
             }
             at = staging.commit(bytes);
         }

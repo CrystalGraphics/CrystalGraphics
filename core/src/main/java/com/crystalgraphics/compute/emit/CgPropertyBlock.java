@@ -78,6 +78,11 @@ public final class CgPropertyBlock {
         return defaults.clone();
     }
 
+    /** The defaults written over {@code into}, which holds {@link #floats()}: a reused dispatch's values. */
+    public void defaultsInto(float[] into) {
+        System.arraycopy(defaults, 0, into, 0, defaults.length);
+    }
+
     /**
      * Where value {@code name} starts, in floats, for a write of {@code components}: 1 for a float, int or bool, 2 for a
      * vec2, 4 for a vec4 or colour.

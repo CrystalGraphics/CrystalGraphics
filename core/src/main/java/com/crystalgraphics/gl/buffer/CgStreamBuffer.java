@@ -12,6 +12,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
 
 /**
  * A GL buffer rewritten while the GPU may still be reading earlier contents -- vertex streams, and the
@@ -251,6 +252,20 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
     /** The mapping {@link #floatView} was made over. Compared by identity, never written through. */
     private ByteBuffer floatSource;
     private FloatBuffer floatView;
+
+    /** {@link #mapFloats} for words a CPU writes as ints: positioned at the first int to write. */
+    public IntBuffer mapInts(int sizeBytes) {
+        ByteBuffer mapped = map(sizeBytes);
+        if (mapped != intSource) {
+            intSource = mapped;
+            intView = mapped.order(ByteOrder.nativeOrder()).asIntBuffer();
+        }
+        intView.clear();
+        return intView;
+    }
+
+    private ByteBuffer intSource;
+    private IntBuffer intView;
 
     /** Size of the latest {@link #uploadFloats}: with {@link #getWriteOffset()}, the range a draw reads. */
     @Getter

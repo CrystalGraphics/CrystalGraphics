@@ -27,6 +27,8 @@ public final class CgVfxWords {
     private int[] words;
     private int start, at, end;
     private String writer;
+    /** A module kind {@link #writer} writes for, named in the messages only: no label is built a step. */
+    private String kind;
 
     /** A writer pointed nowhere, re-pointed row by row with {@link #target}: a pool's, which allocates nothing a step. */
     public CgVfxWords() {
@@ -49,6 +51,16 @@ public final class CgVfxWords {
         return words;
     }
 
+    /** As {@link #target(int[], int, int, String)}, for {@code writer}'s module of {@code kind}: the pool's, each step. */
+    public void target(int[] into, int from, int vectors, String writer, String kind) {
+        target(into, from, vectors, writer);
+        this.kind = kind;
+    }
+
+    private String writer() {
+        return kind == null ? writer : writer + "'s fx_" + kind;
+    }
+
     /** Points it at {@code vectors} vec4s of {@code into} from word {@code from}; {@code writer} names who writes. */
     public void target(int[] into, int from, int vectors, String writer) {
         this.words = into;
@@ -56,12 +68,13 @@ public final class CgVfxWords {
         this.at = from;
         this.end = from + vectors * 4;
         this.writer = writer;
+        this.kind = null;
     }
 
     /** Throws unless every word it was pointed at was written; {@code what} names the row. */
     public void finish(String what) {
         if (at != end) {
-            throw new IllegalStateException(writer + " wrote " + (at - start) / 4 + " of the " + (end - start) / 4
+            throw new IllegalStateException(writer() + " wrote " + (at - start) / 4 + " of the " + (end - start) / 4
                     + " vec4s it declared for " + what);
         }
         words = null;
@@ -83,7 +96,7 @@ public final class CgVfxWords {
 
     private CgVfxWords put(int x, int y, int z, int w) {
         if (words == null || at + 4 > end) {
-            throw new IllegalStateException(writer + " wrote more vec4s than it declared");
+            throw new IllegalStateException(writer() + " wrote more vec4s than it declared");
         }
         words[at] = x;
         words[at + 1] = y;

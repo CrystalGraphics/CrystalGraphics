@@ -26,7 +26,6 @@ import com.crystalgraphics.vulkan.shader.ShadercGlslCompiler;
 import org.joml.Matrix4f;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -97,7 +96,6 @@ public class CgVfxSubmitAllocationTest {
     }
 
     @Test
-    @Ignore("an async dispatch reads uniform binding 0 the recording device was never pushed: the executor's or the tracked backend's, not yet named")
     public void aFrameOfPlayingEffectsAllocatesNothing() {
         assumeTrue(CgThreadAllocation.available());
         CgVfxSystem vfx = new CgVfxSystem();

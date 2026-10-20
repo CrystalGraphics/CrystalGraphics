@@ -1134,7 +1134,7 @@ public final class CgVfxParticlePool {
         for (int i = 0; i < shape.modules(); i++) {
             int lanes = shape.laneCount(i);
             if (lanes == 0) continue;
-            words.target(instances, at + shape.lanesAt(i) * 4, lanes, who + "'s fx_" + shape.kind(i));
+            words.target(instances, at + shape.lanesAt(i) * 4, lanes, who, shape.kind(i));
             emitter.modules().get(i).writeInstance(view, words);
             words.finish("its instance lanes");
         }
@@ -1553,13 +1553,10 @@ public final class CgVfxParticlePool {
                 CgBufferUsage.STORAGE, CgBufferUsage.COPY));
     }
 
+    /** {@code n} words of {@code words}, read when the frame executes: the tables are not written again before then. */
     private void put(CgRecording recording, CgGraphBuffer buffer, int[] words, int n) {
         if (n == 0) return;
-        if (staging.capacity() < n * 4) staging = ByteBuffer.allocate(Math.max(n * 4, staging.capacity() * 2)).order(ByteOrder.nativeOrder());
-        staging.clear();
-        for (int i = 0; i < n; i++) staging.putInt(i * 4, words[i]);
-        staging.limit(n * 4);
-        recording.update(buffer, 0, staging);
+        recording.update(buffer, 0, words, 0, n);
     }
 
     private static int sizeClass(int records) {

@@ -193,7 +193,8 @@ public final class CgParameterCollection {
     /** Every collection not yet placed takes its range, in the order they were defined. */
     private static synchronized void placeAll() {
         boolean grew = false;
-        for (CgParameterCollection c : COLLECTIONS) {
+        for (int i = 0; i < COLLECTIONS.size(); i++) {
+            CgParameterCollection c = COLLECTIONS.get(i);
             if (c.base >= 0) continue;
             int need = (c.scalars.size() + 3) / 4 + c.vectors.size();
             if (vec4s + need > MAX_VEC4S) {

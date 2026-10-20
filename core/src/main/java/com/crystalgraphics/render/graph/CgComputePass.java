@@ -36,16 +36,41 @@ import java.util.Objects;
 public final class CgComputePass extends CgPass {
 
     final CgRecording recording;
-    final float[] constants;
+    final float[] constants = new float[CgPassConstants.FLOATS];
     private final List<CgDispatch> dispatches = new ArrayList<>();
+    private final List<CgDispatch> dispatchView = Collections.unmodifiableList(dispatches);
+    /** Dispatches made so far, refilled after a reset when they run the same kernel; the first {@link #shellsUsed} are this use's. */
+    private final List<CgDispatch> shells = new ArrayList<>();
+    private int shellsUsed;
     private boolean again;
     private boolean async;
     private boolean ended;
 
-    CgComputePass(CgRecording recording, String name, float[] constants) {
+    CgComputePass(CgRecording recording, String name, CgPassConstants constants) {
         super(name, null, null);
         this.recording = recording;
-        this.constants = constants;
+        reuse(name, constants);
+    }
+
+    /** Makes this pass a new one: its recording's, after a reset, so a steady frame allocates none. */
+    void reuse(String name, CgPassConstants constants) {
+        this.name = name;
+        constants.write(this.constants, 0);
+        gpuZone = -1;
+        budget = null;
+        dispatches.clear();
+        shellsUsed = 0;
+        again = false;
+        async = false;
+        ended = false;
+    }
+
+    @Override
+    void clearReferences() {
+        dispatches.clear();
+        for (int i = 0; i < shells.size(); i++) shells.get(i).clearReferences();
+        shellsUsed = 0;
+        budget = null;
     }
 
     /** The recording it belongs to: where an op takes its {@linkplain CgRecording#scratch scratch}. */
@@ -61,19 +86,19 @@ public final class CgComputePass extends CgPass {
     /** {@code x * y * z} elements: {@code CG_DISPATCH_COUNT}, with groups rounded up. */
     public CgDispatch dispatch(CgKernel kernel, int x, int y, int z) {
         requireOpen();
-        return add(new CgDispatch(this, kernel, CgDispatch.Form.ELEMENTS, x, y, z, null, 0));
+        return add(kernel, CgDispatch.Form.ELEMENTS, x, y, z, null, 0);
     }
 
     /** Whole work groups: every invocation they hold is an element. */
     public CgDispatch dispatchGroups(CgKernel kernel, int x, int y, int z) {
         requireOpen();
-        return add(new CgDispatch(this, kernel, CgDispatch.Form.GROUPS, x, y, z, null, 0));
+        return add(kernel, CgDispatch.Form.GROUPS, x, y, z, null, 0);
     }
 
     /** Group counts from three {@code uint}s at {@code offset} in {@code args}, which a pass before it wrote. */
     public CgDispatch dispatchIndirect(CgKernel kernel, CgGraphBuffer args, long offset) {
         requireOpen();
-        return add(new CgDispatch(this, kernel, CgDispatch.Form.INDIRECT, 0, 0, 0, args, offset));
+        return add(kernel, CgDispatch.Form.INDIRECT, 0, 0, 0, args, offset);
     }
 
     /** Runs when the frame executes again, even writing what outlives the frame: a cull, a derivation. */
@@ -145,7 +170,8 @@ public final class CgComputePass extends CgPass {
     /** Ends the pass: every dispatch's bindings complete, its values and samplers captured. */
     public void end() {
         requireOpen();
-        for (CgDispatch dispatch : dispatches) {
+        for (int d = 0; d < dispatches.size(); d++) {
+            CgDispatch dispatch = dispatches.get(d);
             dispatch.requireBound();
             CgBindingTable table = recording.bindings().begin();
             table.block(CgBindingPoints.FRAME_DATA_UBO, constants, 0, CgPassConstants.FLOATS);
@@ -161,7 +187,7 @@ public final class CgComputePass extends CgPass {
     }
 
     public List<CgDispatch> dispatches() {
-        return Collections.unmodifiableList(dispatches);
+        return dispatchView;
     }
 
     boolean ended() {
@@ -181,7 +207,18 @@ public final class CgComputePass extends CgPass {
         recording.requireOpen();
     }
 
-    private CgDispatch add(CgDispatch dispatch) {
+    /** A dispatch of {@code kernel}: the shell made for it last use when the kernel and its file are the same. */
+    private CgDispatch add(CgKernel kernel, CgDispatch.Form form, int x, int y, int z, CgGraphBuffer args, long offset) {
+        CgDispatch dispatch;
+        if (shellsUsed < shells.size() && shells.get(shellsUsed).reusableFor(kernel)) {
+            dispatch = shells.get(shellsUsed);
+            dispatch.reuse(form, x, y, z, args, offset);
+        } else {
+            dispatch = new CgDispatch(this, kernel, form, x, y, z, args, offset);
+            if (shellsUsed < shells.size()) shells.set(shellsUsed, dispatch);
+            else shells.add(dispatch);
+        }
+        shellsUsed++;
         dispatches.add(dispatch);
         return dispatch;
     }

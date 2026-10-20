@@ -112,7 +112,7 @@ public final class CgFrameBuilder {
             for (int s = 0; s < steps; s++) {
                 CgPass pass = passes[order[s]];
                 frame.steps[s] = pass;
-                if (pass instanceof CgRasterPass raster) raster.hold();
+                pass.hold();
                 frame.outlives[s] = writesOutliving[order[s]];
                 frame.kernels |= pass instanceof CgComputePass || pass instanceof CgPass.Fill
                         || pass instanceof CgPass.Update || pass instanceof CgPass.BufferCopy;
@@ -149,7 +149,7 @@ public final class CgFrameBuilder {
 
     /** Takes back a frame once it has executed; it must not be used again. Any thread. */
     public void recycle(CgFrame frame) {
-        for (int s = 0; s < frame.stepCount; s++) if (frame.steps[s] instanceof CgRasterPass raster) raster.release();
+        for (int s = 0; s < frame.stepCount; s++) frame.steps[s].release();
         frame.clear();
         synchronized (this) {
             if (recycledCount == recycled.length) recycled = Arrays.copyOf(recycled, recycledCount * 2);

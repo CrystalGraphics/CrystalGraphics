@@ -8,6 +8,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
 
 /**
  * A vertex stream, or a {@code CgBufferLifetime.FRAME} SSBO or UBO ({@link CgStreamBuffer#createFrameLocal}), on the frame ring: one region per frame in flight, filled by bump allocation, each upload
@@ -43,6 +44,7 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
     private ByteBuffer persistentMapping;
     /** {@link #persistentMapping} as floats; rebuilt with it on every {@link #allocate}. */
     private FloatBuffer persistentFloats;
+    private IntBuffer persistentInts;
     /** The mapped tier's last mapping, offered back to the driver so its wrapper can be reused. */
     private ByteBuffer lastMapping;
 
@@ -87,6 +89,15 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
         persistentFloats.clear();
         persistentFloats.position(mappedAt >> 2);
         return persistentFloats;
+    }
+
+    @Override
+    public IntBuffer mapInts(int sizeBytes) {
+        if (!persistent) return super.mapInts(sizeBytes);
+        reserve(sizeBytes);   // may allocate(), which rebuilds the view
+        persistentInts.clear();
+        persistentInts.position(mappedAt >> 2);
+        return persistentInts;
     }
 
     @Override
@@ -192,6 +203,7 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
                 throw new IllegalStateException("persistent glMapBufferRange returned null (size=" + capacityBytes + ")");
             }
             persistentFloats = persistentMapping.order(ByteOrder.nativeOrder()).asFloatBuffer();
+            persistentInts = persistentMapping.asIntBuffer();
         } else {
             bind();
             CgGL.glBufferData(target, capacityBytes, CgGL.GL_STREAM_DRAW);

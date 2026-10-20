@@ -91,8 +91,16 @@ public final class CgKernel {
 
     /** What the file declares about it: size, shape, what it reaches. */
     public CgKernelDecl decl() {
-        return compute.source().kernel(name);
+        CgComputeSource source = compute.source();
+        if (source != declSource) {   // looked up again once a reload replaced the file's source
+            declHeld = source.kernel(name);
+            declSource = source;
+        }
+        return declHeld;
     }
+
+    private CgComputeSource declSource;
+    private CgKernelDecl declHeld;
 
     /**
      * Per buffer of its file, by {@code CgBufferDecl.index()}: the {@link CgBufferAccessor}s this kernel uses, bit

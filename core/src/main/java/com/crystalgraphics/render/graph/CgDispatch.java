@@ -17,6 +17,7 @@ import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 
 import javax.annotation.Nullable;
+import java.util.Arrays;
 
 /**
  * One kernel run in a {@link CgComputePass}: what it is bound to, its property values and how many it runs. Made by the
@@ -47,11 +48,12 @@ public final class CgDispatch {
     final CgKernel kernel;
     final CgKernelDecl decl;
     final CgComputeSource source;
-    final Form form;
-    final int x, y, z;
+    // Not final: its pass refills it after a reset (reuse).
+    Form form;
+    int x, y, z;
     @Nullable
-    final CgGraphBuffer args;
-    final long argsOffset;
+    CgGraphBuffer args;
+    long argsOffset;
 
     /** Per declared buffer: the buffer bound, its range (size 0 for the whole), and the kernel's access to it. */
     final CgGraphBuffer[] buffers;
@@ -83,16 +85,6 @@ public final class CgDispatch {
         this.kernel = kernel;
         this.decl = kernel.decl();
         this.source = kernel.compute().source();
-        this.form = form;
-        this.x = x;
-        this.y = y;
-        this.z = z;
-        this.args = args;
-        this.argsOffset = argsOffset;
-        // A kernel some tier cannot run fails here, at the caller's line, on any machine; one this context cannot run
-        // too, not in the frame that executes it.
-        kernel.check();
-        if (CgCapabilities.detected() != null) kernel.form();
         bufferUse = kernel.bufferAccessors();
         imageUse = kernel.imageAccessors();
         int n = source.buffers().size(), m = source.images().size();
@@ -110,6 +102,50 @@ public final class CgDispatch {
         CgPropertyBlock block = kernel.compute().properties();
         samplers = new CgTexture[block.samplers().size()];
         values = block.hasValues() ? block.defaults() : null;
+        start(form, x, y, z, args, argsOffset);
+    }
+
+    /** Whether this dispatch's arrays fit {@code kernel} as it stands: the same kernel, its file not reloaded since. */
+    boolean reusableFor(CgKernel kernel) {
+        return kernel == this.kernel && kernel.compute().source() == source && kernel.decl() == decl;
+    }
+
+    /** Makes it a new dispatch of its kernel, every binding cleared and its values back to the file's defaults. */
+    void reuse(Form form, int x, int y, int z, @Nullable CgGraphBuffer args, long argsOffset) {
+        Arrays.fill(buffers, null);
+        Arrays.fill(counters, null);
+        Arrays.fill(images, null);
+        Arrays.fill(samplers, null);
+        Arrays.fill(offsets, 0L);
+        Arrays.fill(sizes, 0L);
+        Arrays.fill(bufferAccess, 0);
+        Arrays.fill(counterAccess, 0);
+        Arrays.fill(imageAccess, 0);
+        if (values != null) kernel.compute().properties().defaultsInto(values);
+        bindings = -1;
+        start(form, x, y, z, args, argsOffset);
+    }
+
+    /** Drops what it names once its recording resets. */
+    void clearReferences() {
+        Arrays.fill(buffers, null);
+        Arrays.fill(counters, null);
+        Arrays.fill(images, null);
+        Arrays.fill(samplers, null);
+        args = null;
+    }
+
+    private void start(Form form, int x, int y, int z, @Nullable CgGraphBuffer args, long argsOffset) {
+        this.form = form;
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.args = args;
+        this.argsOffset = argsOffset;
+        // A kernel some tier cannot run fails here, at the caller's line, on any machine; one this context cannot run
+        // too, not in the frame that executes it.
+        kernel.check();
+        if (CgCapabilities.detected() != null) kernel.form();
         if (args != null) {
             if (args.desc() != null && !args.desc().has(CgBufferUsage.INDIRECT)) {
                 throw new IllegalArgumentException(args + " has no INDIRECT use, so it cannot size a dispatch");
@@ -129,7 +165,7 @@ public final class CgDispatch {
         pass.requireOpen();
         CgBufferDecl b = bufferDecl(name);
         int access = bufferAccess(b);
-        checkHistory(buffer, access, name);
+        checkHistory(buffer, access, name, "");
         if (buffer.desc() != null && !buffer.desc().has(CgBufferUsage.STORAGE)) {
             throw new IllegalArgumentException(buffer + " has no STORAGE use, so a kernel cannot bind it as " + name);
         }
@@ -149,7 +185,7 @@ public final class CgDispatch {
         int use = bufferUse[b.index()];
         int access = ((use & APPEND) != 0 ? CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE : 0)
                 | ((use & COUNT) != 0 ? CgAccess.COMPUTE_READ : 0);
-        checkHistory(counter, access, name + "'s count");
+        checkHistory(counter, access, name, "'s count");
         counters[b.index()] = counter;
         counterOffsets[b.index()] = offset;
         counterAccess[b.index()] = access;
@@ -291,13 +327,14 @@ public final class CgDispatch {
         return access;
     }
 
-    private void checkHistory(CgGraphBuffer buffer, int access, String binding) {
+    /** {@code binding} and {@code suffix} name what it checks, joined only to throw. */
+    private void checkHistory(CgGraphBuffer buffer, int access, String binding, String suffix) {
         boolean writes = (access & CgAccess.COMPUTE_WRITE) != 0;
         if (buffer.isPreviousVersion() && writes) {
-            throw new IllegalArgumentException(binding + " writes " + buffer + ": a previous version is read-only");
+            throw new IllegalArgumentException(binding + suffix + " writes " + buffer + ": a previous version is read-only");
         }
         if (buffer.kind() == CgGraphBuffer.Kind.HISTORY && writes && (access & CgAccess.COMPUTE_READ) != 0) {
-            throw new IllegalArgumentException(binding + " reads and writes history " + buffer.name()
+            throw new IllegalArgumentException(binding + suffix + " reads and writes history " + buffer.name()
                     + ": read it through one binding and write it through another");
         }
     }
