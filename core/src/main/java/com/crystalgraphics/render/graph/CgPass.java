@@ -20,9 +20,10 @@ import java.nio.ByteBuffer;
 public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.Copy, CgPass.Upload, CgPass.Callback,
         CgPass.Compile, CgPass.Release, CgPass.Fill, CgPass.Update, CgPass.BufferCopy, CgPass.BufferRelease, CgPass.Readback {
 
-    final String name;
+    /** Not final for a raster pass, which its recording reuses after a reset. */
+    String name;
     @Nullable
-    final CgGraphTexture target;
+    CgGraphTexture target;
     @Nullable
     final CgRequest request;
     /** Its GPU zone's name id ({@code CgGpuTrace.name}), or -1 when it is not timed on its own. */

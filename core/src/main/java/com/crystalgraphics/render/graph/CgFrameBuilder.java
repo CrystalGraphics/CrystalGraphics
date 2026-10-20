@@ -17,12 +17,12 @@ import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * Turns a {@link CgFrameGraph} into a {@link CgFrame}: orders the passes by what they read and write, culls those
@@ -58,7 +58,9 @@ public final class CgFrameBuilder {
     private static final int CLASS_SHIFT = 28, INDEX = (1 << CLASS_SHIFT) - 1;
 
     private final CgBatcher batcher = new CgBatcher();
-    private final ConcurrentLinkedQueue<CgFrame> recycled = new ConcurrentLinkedQueue<>();
+    /** Frames given back, any thread; a stack under its own lock, since a queue's node is an allocation a frame. */
+    private CgFrame[] recycled = new CgFrame[4];
+    private int recycledCount;
 
     // Scratch, kept between builds.
     private CgPass[] passes = new CgPass[16];
@@ -104,12 +106,13 @@ public final class CgFrameBuilder {
             cull(total);
             int steps = topological(total);
 
-            CgFrame frame = recycled.poll();
+            CgFrame frame = takeRecycled();
             if (frame == null) frame = new CgFrame();
             frame.steps(steps);
             for (int s = 0; s < steps; s++) {
                 CgPass pass = passes[order[s]];
                 frame.steps[s] = pass;
+                if (pass instanceof CgRasterPass raster) raster.hold();
                 frame.outlives[s] = writesOutliving[order[s]];
                 frame.kernels |= pass instanceof CgComputePass || pass instanceof CgPass.Fill
                         || pass instanceof CgPass.Update || pass instanceof CgPass.BufferCopy;
@@ -146,13 +149,25 @@ public final class CgFrameBuilder {
 
     /** Takes back a frame once it has executed; it must not be used again. Any thread. */
     public void recycle(CgFrame frame) {
+        for (int s = 0; s < frame.stepCount; s++) if (frame.steps[s] instanceof CgRasterPass raster) raster.release();
         frame.clear();
-        recycled.add(frame);
+        synchronized (this) {
+            if (recycledCount == recycled.length) recycled = Arrays.copyOf(recycled, recycledCount * 2);
+            recycled[recycledCount++] = frame;
+        }
+    }
+
+    @Nullable
+    private synchronized CgFrame takeRecycled() {
+        if (recycledCount == 0) return null;
+        CgFrame frame = recycled[--recycledCount];
+        recycled[recycledCount] = null;
+        return frame;
     }
 
     private int flatten(List<CgRecording> recordings) {
         int total = 0;
-        for (CgRecording r : recordings) total += r.passCount();
+        for (int r = 0; r < recordings.size(); r++) total += recordings.get(r).passCount();
         if (passes.length < total) passes = new CgPass[Math.max(total, passes.length * 2)];
         if (base.length < recordings.size()) base = new int[Math.max(recordings.size(), base.length * 2)];
         for (int r = 0, at = 0; r < recordings.size(); r++) {

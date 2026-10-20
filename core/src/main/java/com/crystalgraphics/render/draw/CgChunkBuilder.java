@@ -10,7 +10,7 @@ import java.util.Objects;
 
 /**
  * Writes {@link CgDrawChunk}s: open a chunk under a property state, open draws in it, write each draw's instance
- * records, end the chunk. Reusable — {@link #end()} hands the arrays to the chunk and starts fresh ones. CPU only.
+ * records, end the chunk. Reusable: {@link #end()} copies what the chunk holds and starts again. CPU only.
  *
  * <pre>{@code
  * CgChunkBuilder c = recording.chunks();
@@ -94,8 +94,36 @@ public final class CgChunkBuilder {
     private int drawingKind;
     private int drawingFloats;
 
+    /** The chunks {@link #end()} filled since the last {@link #recycle()}, for a recording's own builder; else null. */
+    @Nullable
+    private CgDrawChunk[] shells;
+    private int shellsUsed;
+
     public CgChunkBuilder(CgBindingTable bindings) {
         this.bindings = bindings;
+    }
+
+    /**
+     * A recording's own builder: {@link #end()} refills chunks it keeps rather than making new ones, so a steady frame
+     * allocates none. Its chunks live until {@link #recycle()}, which the recording's reset calls.
+     *
+     * <pre>{@code
+     * CgChunkBuilder chunks = CgChunkBuilder.pooling(bindings);   // what CgRecording holds
+     * pass.add(chunks.begin().draw(pipeline, id).end());
+     * chunks.recycle();                                           // once nothing holds the chunks: the recording reset
+     * }</pre>
+     */
+    public static CgChunkBuilder pooling(CgBindingTable bindings) {
+        CgChunkBuilder b = new CgChunkBuilder(bindings);
+        b.shells = new CgDrawChunk[16];
+        return b;
+    }
+
+    /** Makes every chunk {@link #end()} filled reusable. Only once nothing holds them; a builder that pools nothing ignores it. */
+    public void recycle() {
+        if (shells == null) return;
+        for (int i = 0; i < shellsUsed; i++) shells[i].clearReferences();
+        shellsUsed = 0;
     }
 
     /** The table binding ids given to {@link #draw} must come from. */
@@ -420,10 +448,14 @@ public final class CgChunkBuilder {
         return this;
     }
 
-    /** Ends the chunk and answers it; the builder is ready for the next. */
+    /**
+     * Ends the chunk and answers it; the builder is ready for the next. A {@link #pooling} builder's chunk is one it
+     * refills after {@link #recycle()}.
+     */
     public CgDrawChunk end() {
         if (!open) throw new IllegalStateException("end() outside a chunk");
         closeDraw();
+        if (shells != null) return endPooled();
         float[][] kept = new float[instances.length][];
         for (int k = 0; k < instances.length; k++) {
             kept[k] = instances[k] == null ? new float[0]
@@ -441,6 +473,21 @@ public final class CgChunkBuilder {
                 Arrays.copyOf(sortKeys, count), groups == null ? null : Arrays.copyOf(groups, count), kept,
                 each == null ? null : Arrays.copyOf(each, count),
                 each == null ? null : Arrays.copyOf(recordCounts, records[CgInstanceKind.OBJECT.ordinal()]));
+        open = false;
+        count = 0;
+        Arrays.fill(records, 0);
+        dropReferences();
+        return chunk;
+    }
+
+    private CgDrawChunk endPooled() {
+        if (shellsUsed == shells.length) shells = Arrays.copyOf(shells, shellsUsed * 2);
+        CgDrawChunk chunk = shells[shellsUsed];
+        if (chunk == null) shells[shellsUsed] = chunk = new CgDrawChunk();
+        shellsUsed++;
+        chunk.fill(spatial, clip, effect, bindings, count, pipelines, bindingIds, kinds, firsts, instanceCounts, meshes,
+                ranges, counts, countOffsets, countModes, objects, buffers, bufferAt, bounds, sortKeys, groups, instances,
+                records, each, recordCounts);
         open = false;
         count = 0;
         Arrays.fill(records, 0);

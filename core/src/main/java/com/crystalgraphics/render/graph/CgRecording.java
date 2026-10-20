@@ -71,7 +71,7 @@ public final class CgRecording {
     private final CgShapeTable shapes = new CgShapeTable();
     private final CgSpatialTree spatial = new CgSpatialTree();
     private final CgEffectTree effects = new CgEffectTree();
-    private final CgChunkBuilder chunks = new CgChunkBuilder(bindings);
+    private final CgChunkBuilder chunks = CgChunkBuilder.pooling(bindings);
     private final List<CgPass> passes = new ArrayList<>();
 
     private final List<CgGraphResource> resources = new ArrayList<>();
@@ -87,6 +87,11 @@ public final class CgRecording {
 
     /** Per pass, the (slot, write count, access) of each read it logged, so a read is logged once per version. */
     private final List<int[]> readsSeen = new ArrayList<>();
+    /** Arrays {@link #readsSeen} held before the last {@link #reset()}, for the next passes. */
+    private final List<int[]> spareSeen = new ArrayList<>();
+    /** Raster passes made so far, reused after a {@link #reset()}; the first {@link #rastersUsed} are this use's. */
+    private final List<CgRasterPass> rasters = new ArrayList<>();
+    private int rastersUsed;
 
     private boolean sealed;
 
@@ -213,10 +218,23 @@ public final class CgRecording {
         if (layer < 0 || layer >= target.getLayers()) {
             throw new IllegalArgumentException(target + " has " + target.getLayers() + " layers, not layer " + layer);
         }
-        String name = "raster " + target.name() + (level == 0 ? "" : " level " + level) + (layer == 0 ? "" : " layer " + layer);
-        CgRasterPass pass = new CgRasterPass(this, name, target, level, layer, load, block(constants), state, order);
+        CgRasterPass pass;
+        if (rastersUsed < rasters.size()) {
+            pass = rasters.get(rastersUsed);
+            pass.reuse(pass.named(target, level, layer) ? pass.name : rasterName(target, level, layer), target, level,
+                    layer, load, constants, state, order);
+        } else {
+            pass = new CgRasterPass(this, rasterName(target, level, layer), target, level, layer, load, constants, state,
+                    order);
+            rasters.add(pass);
+        }
+        rastersUsed++;
         add(pass);
         return pass;
+    }
+
+    private static String rasterName(CgGraphTexture target, int level, int layer) {
+        return "raster " + target.name() + (level == 0 ? "" : " level " + level) + (layer == 0 ? "" : " layer " + layer);
     }
 
     /** A compute pass whose kernels read the frame block as identity matrices and the time now. */
@@ -567,7 +585,8 @@ public final class CgRecording {
     /** Freezes it: every raster and compute pass must have ended. Answers itself, for {@code graph.add(rec.seal())}. */
     public CgRecording seal() {
         if (sealed) return this;
-        for (CgPass pass : passes) {
+        for (int i = 0; i < passes.size(); i++) {
+            CgPass pass = passes.get(i);
             if (pass instanceof CgRasterPass raster && !raster.ended()) {
                 throw new IllegalStateException(raster + " was never ended");
             }
@@ -594,8 +613,20 @@ public final class CgRecording {
         Arrays.fill(writes, 0);
         Arrays.fill(eventViews, 0, eventCount, null);
         eventCount = 0;
+        for (int i = 0; i < readsSeen.size(); i++) spareSeen.add(readsSeen.get(i));
         readsSeen.clear();
+        // A pass a built frame still holds stays that frame's; the pool keeps the rest.
+        int kept = 0;
+        for (int i = 0; i < rasters.size(); i++) {
+            CgRasterPass pass = rasters.get(i);
+            if (i < rastersUsed && pass.held()) continue;
+            pass.clearReferences();
+            rasters.set(kept++, pass);
+        }
+        while (rasters.size() > kept) rasters.remove(rasters.size() - 1);
+        rastersUsed = 0;
         chunks.reset();
+        chunks.recycle();
         bindings.reset();
         clips.reset();
         shapes.reset();
@@ -684,7 +715,9 @@ public final class CgRecording {
 
     private void add(CgPass pass) {
         passes.add(pass);
-        readsSeen.add(new int[]{1, 0, 0, 0, 0, 0, 0});
+        int[] seen = spareSeen.isEmpty() ? new int[7] : spareSeen.remove(spareSeen.size() - 1);
+        seen[0] = 1;
+        readsSeen.add(seen);
     }
 
     private int indexOf(CgPass pass) {

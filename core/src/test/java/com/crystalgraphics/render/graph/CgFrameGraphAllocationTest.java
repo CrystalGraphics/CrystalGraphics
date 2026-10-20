@@ -9,7 +9,6 @@ import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.trace.CgAllocationProof;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 /**
@@ -83,7 +82,6 @@ public class CgFrameGraphAllocationTest {
     }
 
     @Test
-    @Ignore("36.9 KB a frame, from CgChunkBuilder.end's copy of each chunk's records (the float[] at line 430): T0 debt, the render graph's")
     public void recordingAndBuildingAFrameAllocatesNothing() {
         CgAllocationProof.assertZero("record + CgFrameBuilder.build", 2_000, 500, this::frame);
     }

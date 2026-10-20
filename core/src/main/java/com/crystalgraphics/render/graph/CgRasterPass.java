@@ -11,6 +11,7 @@ import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgOrder;
+import com.crystalgraphics.render.draw.CgPassConstants;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -18,6 +19,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 /**
  * Chunks drawn into one target: its load, its pass constants, the render state its pipelines' unset slots take,
@@ -57,15 +59,16 @@ import java.util.Objects;
 public final class CgRasterPass extends CgPass {
 
     final CgRecording recording;
+    // Not final: the recording reuses the pass after a reset (reuse).
     /** The mip level of the target it draws into. */
-    final int level;
+    int level;
     /** The layer of an array target it draws into; 0 for any other. */
-    final int layer;
-    final CgLoad load;
-    final float[] constants;
+    int layer;
+    CgLoad load;
+    final float[] constants = new float[CgPassConstants.FLOATS];
     @Nullable
-    final CgRenderState state;
-    final CgOrder order;
+    CgRenderState state;
+    CgOrder order;
     private final List<CgDrawChunk> chunks = new ArrayList<>();
     private boolean ended;
     /** What changed in the target, in its bottom-left pixels -- x, y, width, height -- or null for all of it. */
@@ -111,23 +114,101 @@ public final class CgRasterPass extends CgPass {
     private boolean attachmentOptional;
 
     /** Textures bound with the pass's constants: units and textures, in parallel. */
-    private int[] textureUnits = new int[0];
-    private CgTexture[] textures = new CgTexture[0];
+    private int[] textureUnits = NO_UNITS;
+    private CgTexture[] textures = NO_TEXTURES;
 
     CgRasterPass(CgRecording recording, String name, CgGraphTexture target, int level, int layer, CgLoad load,
-                 float[] constants, @Nullable CgRenderState state, CgOrder order) {
+                 CgPassConstants constants, @Nullable CgRenderState state, CgOrder order) {
         super(name, target, null);
+        this.recording = recording;
+        reuse(name, target, level, layer, load, constants, state, order);
+    }
+
+    /** Makes this pass a new one into {@code target}: its recording's, after a reset, so a steady frame allocates none. */
+    void reuse(String name, CgGraphTexture target, int level, int layer, CgLoad load, CgPassConstants constants,
+               @Nullable CgRenderState state, CgOrder order) {
         if (target.drawsBesideCurrentDepth() && (load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0) {
             throw new IllegalArgumentException(name + " would clear the host's depth: " + target + " draws beside it");
         }
-        this.recording = recording;
+        this.name = name;
+        this.target = target;
+        namedFor = target.name();
         this.level = level;
         this.layer = layer;
         this.load = load;
-        this.constants = constants;
+        constants.write(this.constants, 0);
         this.state = state;
         this.order = order;
+        gpuZone = -1;
+        budget = null;
+        chunks.clear();
+        ended = false;
+        damage = null;
+        scissorCount = 0;
+        scissor = INHERIT;
+        viewOwner = 0;
+        viewX = 0f;
+        viewY = 0f;
+        sceneColorUnit = -1;
+        sceneDepthUnit = -1;
+        targetCopy = null;
+        depthFrom = null;
+        depthFromUnit = -1;
+        depthFromCopy = null;
+        colorFrom = null;
+        colorFromUnit = -1;
+        colorFromCopy = null;
+        attachment = null;
+        attachmentOptional = false;
+        if (textures.length > 0) {
+            textureUnits = NO_UNITS;
+            textures = NO_TEXTURES;
+        }
     }
+
+    /** Drops what the pass names once its recording is reset, keeping its arrays for the next reuse. */
+    void clearReferences() {
+        chunks.clear();
+        target = null;
+        state = null;
+        depthFrom = null;
+        colorFrom = null;
+        attachment = null;
+        targetCopy = depthFromCopy = colorFromCopy = null;
+        textureUnits = NO_UNITS;
+        textures = NO_TEXTURES;
+    }
+
+    /**
+     * Frames built with this pass and not yet recycled: a frame reads its passes when it executes, so a held pass is
+     * never reused. Any thread: a frame may be recycled on another.
+     */
+    private volatile int holds;
+    private static final AtomicIntegerFieldUpdater<CgRasterPass> HOLDS =
+            AtomicIntegerFieldUpdater.newUpdater(CgRasterPass.class, "holds");
+
+    void hold() {
+        HOLDS.incrementAndGet(this);
+    }
+
+    void release() {
+        HOLDS.decrementAndGet(this);
+    }
+
+    boolean held() {
+        return holds > 0;
+    }
+
+    /** Whether {@link #name} is already what a pass into {@code target} at this level and layer is called. */
+    boolean named(CgGraphTexture target, int level, int layer) {
+        return level == this.level && layer == this.layer && target.name().equals(namedFor);
+    }
+
+    /** The target name {@link #name} was made from. */
+    private String namedFor;
+
+    private static final int[] NO_UNITS = new int[0];
+    private static final CgTexture[] NO_TEXTURES = new CgTexture[0];
 
     /** Appends a chunk, in painter's order. */
     public CgRasterPass add(CgDrawChunk chunk) {

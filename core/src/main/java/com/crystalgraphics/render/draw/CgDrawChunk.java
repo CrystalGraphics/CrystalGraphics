@@ -4,10 +4,11 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.mesh.CgMesh;
 
 import javax.annotation.Nullable;
+import java.util.Arrays;
 
 /**
- * An immutable run of recorded draws under one property state — spatial node, clip node, effect node — with the
- * instance records they draw: Blink's paint chunk. What a recorder hands over, and what a box's paint is made of.
+ * A run of recorded draws under one property state — spatial node, clip node, effect node — with the instance records
+ * they draw: Blink's paint chunk. What a recorder hands over, and what a box's paint is made of.
  *
  * <pre>{@code
  * CgChunkBuilder c = recording.chunks().begin();
@@ -25,49 +26,77 @@ import javax.annotation.Nullable;
  *       included. A draw recorded without bounds covers everything.</li>
  *   <li>Nothing in it changes after {@link CgChunkBuilder#end()}; the arrays the accessors return are its own and
  *       must not be written.</li>
+ *   <li>One ended by a recording's own builder ({@code recording.chunks()}) is that recording's, refilled once the
+ *       recording is reset: keep one past that through {@link #with}, which copies it. Its {@link #data} arrays may run
+ *       past the records its draws name.</li>
  * </ul>
  */
 public final class CgDrawChunk {
 
-    private final int spatial;
-    private final int clip;
-    private final int effect;
-    private final CgBindingTable bindings;
+    int spatial;
+    int clip;
+    int effect;
+    CgBindingTable bindings;
 
-    private final int count;
-    private final int[] pipelines;
-    private final int[] bindingIds;
-    private final int[] kinds;
-    private final int[] firsts;
-    private final int[] instanceCounts;
+    int count;
+    int[] pipelines;
+    int[] bindingIds;
+    int[] kinds;
+    int[] firsts;
+    int[] instanceCounts;
     @Nullable
-    private final CgMesh[] meshes;
+    CgMesh[] meshes;
     @Nullable
-    private final int[] ranges;
+    int[] ranges;
     @Nullable
-    private final CgBufferHandle[] counts;
+    CgBufferHandle[] counts;
     @Nullable
-    private final long[] countOffsets;
+    long[] countOffsets;
     @Nullable
-    private final int[] countModes;
+    int[] countModes;
     @Nullable
-    private final CgBufferHandle[] objects;
+    CgBufferHandle[] objects;
     @Nullable
-    private final CgBufferHandle[] buffers;
+    CgBufferHandle[] buffers;
     @Nullable
-    private final CgBindingPoints.Binding[] bufferAt;
-    private final float[] bounds;
-    private final long[] sortKeys;
+    CgBindingPoints.Binding[] bufferAt;
+    float[] bounds;
+    long[] sortKeys;
     @Nullable
-    private final int[] groups;
+    int[] groups;
 
     /** Instance records per kind ordinal, each trimmed to what the chunk wrote. */
-    private final float[][] instances;
+    float[][] instances;
     /** Per draw, whether each record is its own command; per OBJECT record of such a draw, its count's offset. */
     @Nullable
-    private final boolean[] each;
+    boolean[] each;
     @Nullable
-    private final long[] recordCounts;
+    long[] recordCounts;
+
+    /** Whether a recording's builder owns it, refilling it after the recording's reset. */
+    final boolean pooled;
+    /** A shell's own arrays, kept across refills; the fields above point at them, or are null where no draw had one. */
+    private CgMesh[] ownMeshes;
+    private int[] ownRanges, ownCountModes, ownGroups;
+    private CgBufferHandle[] ownCounts, ownObjects, ownBuffers;
+    private long[] ownCountOffsets, ownRecordCounts;
+    private CgBindingPoints.Binding[] ownBufferAt;
+    private boolean[] ownEach;
+
+    private static final float[] NO_RECORDS = new float[0];
+
+    /** An empty shell for a recording builder's pool. */
+    CgDrawChunk() {
+        pooled = true;
+        pipelines = new int[0];
+        bindingIds = new int[0];
+        kinds = new int[0];
+        firsts = new int[0];
+        instanceCounts = new int[0];
+        bounds = new float[0];
+        sortKeys = new long[0];
+        instances = new float[CgInstanceKind.values().length][];
+    }
 
     CgDrawChunk(int spatial, int clip, int effect, CgBindingTable bindings, int count, int[] pipelines, int[] bindingIds,
                 int[] kinds, int[] firsts, int[] instanceCounts, @Nullable CgMesh[] meshes, @Nullable int[] ranges,
@@ -75,6 +104,7 @@ public final class CgDrawChunk {
                 @Nullable CgBufferHandle[] objects, @Nullable CgBufferHandle[] buffers,
                 @Nullable CgBindingPoints.Binding[] bufferAt, float[] bounds, long[] sortKeys,
                 @Nullable int[] groups, float[][] instances, @Nullable boolean[] each, @Nullable long[] recordCounts) {
+        this.pooled = false;
         this.spatial = spatial;
         this.clip = clip;
         this.effect = effect;
@@ -249,10 +279,129 @@ public final class CgDrawChunk {
      */
     public CgDrawChunk with(int spatial, CgBindingTable bindings, @Nullable int[] bindingIds,
                             @Nullable float[][] instances) {
+        if (pooled) return copy().with(spatial, bindings, bindingIds, instances);
         return new CgDrawChunk(spatial, clip, effect, bindings, count, pipelines,
                 bindingIds != null ? bindingIds : this.bindingIds, kinds, firsts, instanceCounts, meshes, ranges, counts,
                 countOffsets, countModes, objects, buffers, bufferAt, bounds, sortKeys, groups,
                 instances != null ? instances : this.instances, each, recordCounts);
+    }
+
+    /** This chunk with arrays of its own, trimmed to what it holds: what outlives a pooled chunk's recording. */
+    private CgDrawChunk copy() {
+        float[][] kept = new float[instances.length][];
+        for (int k = 0; k < instances.length; k++) kept[k] = instances[k] == null ? NO_RECORDS : instances[k].clone();
+        return new CgDrawChunk(spatial, clip, effect, bindings, count, Arrays.copyOf(pipelines, count),
+                Arrays.copyOf(bindingIds, count), Arrays.copyOf(kinds, count), Arrays.copyOf(firsts, count),
+                Arrays.copyOf(instanceCounts, count), meshes == null ? null : Arrays.copyOf(meshes, count),
+                ranges == null ? null : Arrays.copyOf(ranges, count * 3), counts == null ? null : Arrays.copyOf(counts, count),
+                countOffsets == null ? null : Arrays.copyOf(countOffsets, count),
+                countModes == null ? null : Arrays.copyOf(countModes, count),
+                objects == null ? null : Arrays.copyOf(objects, count), buffers == null ? null : Arrays.copyOf(buffers, count),
+                bufferAt == null ? null : Arrays.copyOf(bufferAt, count), Arrays.copyOf(bounds, count * 4),
+                Arrays.copyOf(sortKeys, count), groups == null ? null : Arrays.copyOf(groups, count), kept,
+                each == null ? null : Arrays.copyOf(each, count), recordCounts == null ? null : recordCounts.clone());
+    }
+
+    /**
+     * Refills a shell from a builder's arrays: copied into arrays it keeps, grown only when a chunk holds more than any
+     * before it. {@code records} is each kind's record count; a null source leaves its field null.
+     */
+    void fill(int spatial, int clip, int effect, CgBindingTable bindings, int count, int[] pipelines, int[] bindingIds,
+              int[] kinds, int[] firsts, int[] instanceCounts, @Nullable CgMesh[] meshes, @Nullable int[] ranges,
+              @Nullable CgBufferHandle[] counts, @Nullable long[] countOffsets, @Nullable int[] countModes,
+              @Nullable CgBufferHandle[] objects, @Nullable CgBufferHandle[] buffers,
+              @Nullable CgBindingPoints.Binding[] bufferAt, float[] bounds, long[] sortKeys, @Nullable int[] groups,
+              float[][] instances, int[] records, @Nullable boolean[] each, @Nullable long[] recordCounts) {
+        this.spatial = spatial;
+        this.clip = clip;
+        this.effect = effect;
+        this.bindings = bindings;
+        this.count = count;
+        this.pipelines = ints(this.pipelines, pipelines, count);
+        this.bindingIds = ints(this.bindingIds, bindingIds, count);
+        this.kinds = ints(this.kinds, kinds, count);
+        this.firsts = ints(this.firsts, firsts, count);
+        this.instanceCounts = ints(this.instanceCounts, instanceCounts, count);
+        if (this.bounds.length < count * 4) this.bounds = new float[Math.max(count * 4, this.bounds.length * 2)];
+        System.arraycopy(bounds, 0, this.bounds, 0, count * 4);
+        if (this.sortKeys.length < count) this.sortKeys = new long[Math.max(count, this.sortKeys.length * 2)];
+        System.arraycopy(sortKeys, 0, this.sortKeys, 0, count);
+        if (meshes == null) {
+            this.meshes = null;
+            this.ranges = null;
+        } else {
+            if (ownMeshes == null || ownMeshes.length < count) ownMeshes = new CgMesh[Math.max(count, 16)];
+            System.arraycopy(meshes, 0, ownMeshes, 0, count);
+            this.meshes = ownMeshes;
+            this.ranges = ownRanges = ints(ownRanges, ranges, count * 3);
+        }
+        if (counts == null) {
+            this.counts = null;
+            this.countOffsets = null;
+            this.countModes = null;
+        } else {
+            this.counts = ownCounts = handles(ownCounts, counts, count);
+            if (ownCountOffsets == null || ownCountOffsets.length < count) ownCountOffsets = new long[Math.max(count, 16)];
+            System.arraycopy(countOffsets, 0, ownCountOffsets, 0, count);
+            this.countOffsets = ownCountOffsets;
+            this.countModes = ownCountModes = ints(ownCountModes, countModes, count);
+        }
+        this.objects = objects == null ? null : (ownObjects = handles(ownObjects, objects, count));
+        if (buffers == null) {
+            this.buffers = null;
+            this.bufferAt = null;
+        } else {
+            this.buffers = ownBuffers = handles(ownBuffers, buffers, count);
+            if (ownBufferAt == null || ownBufferAt.length < count) ownBufferAt = new CgBindingPoints.Binding[Math.max(count, 16)];
+            System.arraycopy(bufferAt, 0, ownBufferAt, 0, count);
+            this.bufferAt = ownBufferAt;
+        }
+        this.groups = groups == null ? null : (ownGroups = ints(ownGroups, groups, count));
+        for (int k = 0; k < instances.length; k++) {
+            int n = records[k] * CgInstanceKind.of(k).floats();
+            if (n == 0) {
+                this.instances[k] = NO_RECORDS;
+                continue;
+            }
+            float[] own = this.instances[k];
+            if (own == null || own.length < n) own = new float[Math.max(n, own == null ? 0 : own.length * 2)];
+            System.arraycopy(instances[k], 0, own, 0, n);
+            this.instances[k] = own;
+        }
+        if (each == null) {
+            this.each = null;
+            this.recordCounts = null;
+        } else {
+            if (ownEach == null || ownEach.length < count) ownEach = new boolean[Math.max(count, 16)];
+            System.arraycopy(each, 0, ownEach, 0, count);
+            this.each = ownEach;
+            int n = records[CgInstanceKind.OBJECT.ordinal()];
+            if (ownRecordCounts == null || ownRecordCounts.length < n) ownRecordCounts = new long[Math.max(n, 64)];
+            System.arraycopy(recordCounts, 0, ownRecordCounts, 0, n);
+            this.recordCounts = ownRecordCounts;
+        }
+    }
+
+    /** Drops what a shell names, so a reset recording keeps no mesh, buffer or table alive. */
+    void clearReferences() {
+        bindings = null;
+        if (ownMeshes != null) Arrays.fill(ownMeshes, null);
+        if (ownCounts != null) Arrays.fill(ownCounts, null);
+        if (ownObjects != null) Arrays.fill(ownObjects, null);
+        if (ownBuffers != null) Arrays.fill(ownBuffers, null);
+        if (ownBufferAt != null) Arrays.fill(ownBufferAt, null);
+    }
+
+    private static int[] ints(@Nullable int[] own, int[] from, int n) {
+        if (own == null || own.length < n) own = new int[Math.max(n, own == null ? 16 : own.length * 2)];
+        System.arraycopy(from, 0, own, 0, n);
+        return own;
+    }
+
+    private static CgBufferHandle[] handles(@Nullable CgBufferHandle[] own, CgBufferHandle[] from, int n) {
+        if (own == null || own.length < n) own = new CgBufferHandle[Math.max(n, own == null ? 16 : own.length * 2)];
+        System.arraycopy(from, 0, own, 0, n);
+        return own;
     }
 
     /** The instance records of {@code kind}, every draw of that kind's in turn. Read only. */

@@ -381,7 +381,9 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
   draws each batch's range through `cg_InstanceBase`. A nested execution (an immediate inside a callback) gets its
   own buffers and ring.
 - **A recording is a value once sealed**: nothing changes it, nothing in it refers to its recorder.
-  `CgRecording.reset()` is only for an owner that knows nobody else holds it.
+  `CgRecording.reset()` is only for an owner that knows nobody else holds it: it refills its chunks and raster passes
+  after a reset, so a steady frame allocates none: a chunk kept past it (a `CgReplay`) is a copy, and a raster
+  pass a built frame still holds is left to that frame until `CgFrameBuilder.recycle`.
 
 ## Gate scene
 

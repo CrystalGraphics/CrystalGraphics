@@ -22,6 +22,7 @@ import java.util.List;
 public final class CgFrameGraph {
 
     private final List<CgRecording> recordings = new ArrayList<>();
+    private final List<CgRecording> view = Collections.unmodifiableList(recordings);
     private final List<CgPropertyValues> values = new ArrayList<>();
 
     /** Adds a sealed recording after those already added, drawn with its recorded values. */
@@ -41,7 +42,7 @@ public final class CgFrameGraph {
     }
 
     public List<CgRecording> recordings() {
-        return Collections.unmodifiableList(recordings);
+        return view;
     }
 
     /** The values the recording at {@code index} is drawn with, or null. */
