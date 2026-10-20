@@ -112,7 +112,7 @@ public final class CgFieldKinds {
             .register();
 
     /** A force graph written inline where a field is placed (a spawnable, a system's field), as kits write it. */
-    static final CgType INLINE_GRAPH = CgTypes.struct("crystalgraphics:field.inline_graph")
+    static final CgType INLINE_GRAPH = CgTypes.struct("crystalgraphics:field.inline_graph").ownsIds()
             .property("kind", CgValueType.enumOf("graph")).required()
             .property("target", CgValueType.enumOf("linear_force", "linear_velocity", "kill", "orbit", "speed_scale",
                     "angular_velocity", "scale", "strain")).required()

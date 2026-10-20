@@ -161,6 +161,40 @@ stop.run();
   never touched.
 - Every edit re-resolves the asset; a child of it re-resolves when you rebuild its `CgAssetData` over the new parent.
 
+## Checking an asset
+
+An asset is checked whole, with what it inherits, as Unreal's data validation checks an object: every key one its
+type declares, every required key present, every value of its declared shape, enum and form, every element id
+well-formed and used once. A type adds its own checks (a module's inputs are its module's, a spawnable is one kind).
+
+```java
+CgValidation v = big.validate(CgValidation.Usecase.LOAD);
+for (CgIssue i : v.issues()) System.out.println(i);
+// ERROR mymod:kamehameha/charge_big /emitters[h2]/emitter/properties/simulation: 'cpu' is not one of [gpu, analytic] (enum)
+if (!v.valid()) refuse(big);
+```
+
+- **An error refuses the asset at load** and fails a cook; a warning only reports. Each issue has a stable `code`
+  (`unknown_key`, `required`, `shape`, `enum`, `form`, `id`, `duplicate_id`, `ref`, `member`, `unsupported`) and the
+  path of the node it is about, which an editor selects.
+- **`unsupported` entries** (what an importer could not map) warn once and are skipped.
+
+Your type checks its own values with a validator, reporting under the path it is given:
+
+```java
+CgTypes.element("mymod:renderer.arc")
+        .property("min_width", CgValueType.FLOAT)
+        .property("max_width", CgValueType.FLOAT)
+        .validator((value, at, into) -> {
+            Object min = value.get("min_width"), max = value.get("max_width");
+            if (min instanceof Number && max instanceof Number && ((Number) min).doubleValue() > ((Number) max).doubleValue()) {
+                into.error(at.key("min_width"), "width_order", "min_width is above max_width");
+            }
+        })
+        .onRegister(t -> CgParticleKinds.RENDERERS.member("mymod:arc", t))
+        .register();
+```
+
 ## Your own types
 
 Kinds and their structs are declared once, in Java, and everything (reading, writing, inheritance, the editor)

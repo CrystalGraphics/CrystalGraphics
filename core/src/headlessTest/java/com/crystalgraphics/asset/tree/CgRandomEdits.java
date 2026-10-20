@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
+import com.crystalgraphics.object.CgPropertyPath;
 import com.crystalgraphics.object.CgType;
 
 /** Random edits on an asset, for the undo gates: every value, element and list it can find, set, reset, moved or dropped. */

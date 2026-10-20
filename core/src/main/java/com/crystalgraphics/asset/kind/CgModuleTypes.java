@@ -36,14 +36,19 @@ import lombok.experimental.Accessors;
  *
  * <ul>
  *   <li>A module's id may be written with or without {@code crystalgraphics:}; built-ins are the engine's.</li>
- *   <li>An input whose type, quantity or form the spec does not name fails the load, naming the module and input.</li>
+ *   <li>An input whose type, quantity or form the format does not name fails the load, naming the module and input.</li>
  *   <li>Each module's inputs type is a struct {@code crystalgraphics:module.<id>}, registered in the registry given.</li>
  * </ul>
  */
 public final class CgModuleTypes {
 
-    /** Where the engine ships its copy of the spec's {@code modules.yaml}. */
+    /** Where the engine ships its copy of the format's {@code modules.yaml}. */
     public static final String RESOURCE = "crystalgraphics:vfx/modules.yaml";
+
+    /** A {@code crystalgraphics:} module the catalogue does not have. */
+    public static final String UNKNOWN_MODULE = "unknown_module";
+    /** An input its module does not declare. */
+    public static final String UNKNOWN_INPUT = "unknown_input";
 
     private static volatile CgModuleTypes builtIn;
 
@@ -55,7 +60,7 @@ public final class CgModuleTypes {
         String id;
         /** The stacks it may sit in: {@code emitter_update}, {@code particle_spawn}, {@code particle_update}. */
         List<String> groups;
-        /** Where in its stack it runs ({@code forces}, {@code spawn_place}…); null where the spec gives none. */
+        /** Where in its stack it runs ({@code forces}, {@code spawn_place}…); null where the format gives none. */
         String order;
         /** At most one per stack. */
         boolean once;

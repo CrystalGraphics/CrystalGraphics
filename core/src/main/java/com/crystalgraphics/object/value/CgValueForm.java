@@ -2,6 +2,7 @@ package com.crystalgraphics.object.value;
 
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -70,6 +71,25 @@ public enum CgValueForm {
             if (f.spec.equals(name)) return f;
         }
         return null;
+    }
+
+    /**
+     * The form {@code value} is written in: the form its map's key names, else {@link #CONSTANT}, a map naming none
+     * included (a struct written as a value).
+     *
+     * <pre>{@code
+     * CgValueForm.of(0.5);                                      // CONSTANT
+     * CgValueForm.of(Map.of("range", List.of(0.2, 0.4)));       // RANGE
+     * }</pre>
+     */
+    public static CgValueForm of(Object value) {
+        if (value instanceof Map) {
+            for (Object k : ((Map<?, ?>) value).keySet()) {
+                CgValueForm f = k instanceof String ? byKey((String) k) : null;
+                if (f != null) return f;
+            }
+        }
+        return CONSTANT;
     }
 
     /** The form whose map key {@code key} is ({@code bind} → {@link #BINDING}), or null for any other key. */

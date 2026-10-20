@@ -9,7 +9,7 @@ import lombok.Value;
 import lombok.experimental.Accessors;
 
 /**
- * What a property tells the editor and the systems that read it, beyond its type and flags: the spec's words for
+ * What a property tells the editor and the systems that read it, beyond its type and flags: the format's words for
  * Unreal's property metadata ({@code UM::ToolTip}, {@code ClampMin}, {@code EditCondition}…), one to one.
  *
  * <p>Set through the {@link CgType} builder, never built by hand:</p>

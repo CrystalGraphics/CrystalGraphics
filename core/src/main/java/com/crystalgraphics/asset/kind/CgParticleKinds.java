@@ -1,11 +1,16 @@
 package com.crystalgraphics.asset.kind;
 
 import java.util.Arrays;
+import java.util.Map;
 
+import com.crystalgraphics.object.CgProperty;
 import com.crystalgraphics.object.CgPropertyFlag;
+import com.crystalgraphics.object.CgPropertyPath;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgTypes;
 import com.crystalgraphics.object.CgValueType;
+import com.crystalgraphics.object.validate.CgIssue;
+import com.crystalgraphics.object.validate.CgValidation;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgValueForm;
 
@@ -56,6 +61,7 @@ public final class CgParticleKinds {
             .property("seed", CgValueType.struct(SEED))
             .property("after", STRING)
             .property("before", STRING)
+            .validator(CgParticleKinds::builtInModule)
             .register();
 
     static final CgType DETERMINISM = CgTypes.struct("crystalgraphics:determinism")
@@ -78,8 +84,8 @@ public final class CgParticleKinds {
 
     static final CgType SPAWN = CgTypes.struct("crystalgraphics:emitter.event.spawn")
             .property("emitter", STRING).description("The handle spawned at each event's place.")
-            .property("count", INT).forms(CgValueForm.CONSTANT, CgValueForm.RANGE)
-            .property("inherit_velocity", FLOAT)
+            .property("count", FLOAT)   // Cascade's EventReceiverSpawn: a float distribution
+            .property("inherit_velocity", VEC3)
             .property("use_emitter_location", BOOL)
             .register();
 
@@ -469,5 +475,37 @@ public final class CgParticleKinds {
 
     /** Loads this class, which registers its types; {@link CgAssetKinds#register()} calls it in order. */
     static void register() {
+    }
+
+    /**
+     * A {@code crystalgraphics:} module is one the catalogue has, and each input one it declares, written in a form
+     * it takes. {@code seed} is every module's, and a struct or array input checks its own shape.
+     */
+    private static void builtInModule(Map<?, ?> entry, CgPropertyPath at, CgValidation into) {
+        Object id = entry.get("module");
+        if (!(id instanceof String) || !((String) id).startsWith("crystalgraphics:")) return;
+        CgModuleTypes.Module module = CgModuleTypes.builtIn().get((String) id);
+        if (module == null) {
+            into.error(at.key("module"), CgModuleTypes.UNKNOWN_MODULE, id + " is not a built-in module");
+            return;
+        }
+        Object inputs = entry.get("inputs");
+        if (!(inputs instanceof Map)) return;
+        for (Map.Entry<?, ?> e : ((Map<?, ?>) inputs).entrySet()) {
+            String name = String.valueOf(e.getKey());
+            if (name.equals("seed")) continue;
+            CgPropertyPath here = at.key("inputs").key(name);
+            CgProperty p = module.inputs().property(name);
+            if (p == null) {
+                into.error(here, CgModuleTypes.UNKNOWN_INPUT, id + " has no input " + name);
+                continue;
+            }
+            CgValueType.Kind k = p.type().kind();
+            CgValueForm form = CgValueForm.of(e.getValue());
+            if (k != CgValueType.Kind.STRUCT && k != CgValueType.Kind.ARRAY && !p.forms().contains(form)) {
+                into.error(here, CgIssue.FORM, id + "'s " + name + " is written as a " + form.specName() + ", and takes "
+                        + p.forms());
+            }
+        }
     }
 }

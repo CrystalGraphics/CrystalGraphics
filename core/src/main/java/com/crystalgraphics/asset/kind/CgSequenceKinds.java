@@ -1,16 +1,21 @@
 package com.crystalgraphics.asset.kind;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+
 import com.crystalgraphics.object.CgPropertyFlag;
+import com.crystalgraphics.object.CgPropertyPath;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgTypes;
 import com.crystalgraphics.object.CgValueType;
+import com.crystalgraphics.object.validate.CgValidation;
 import com.crystalgraphics.object.value.CgQuantity;
 
 import static com.crystalgraphics.asset.kind.CgCommonStructs.BINDING;
 import static com.crystalgraphics.asset.kind.CgCommonStructs.hard;
 import static com.crystalgraphics.asset.kind.CgCommonStructs.mapOfValues;
 import static com.crystalgraphics.object.CgValueType.BOOL;
-import static com.crystalgraphics.object.CgValueType.CURVE;
 import static com.crystalgraphics.object.CgValueType.FLOAT;
 import static com.crystalgraphics.object.CgValueType.INT;
 import static com.crystalgraphics.object.CgValueType.STRING;
@@ -109,6 +114,9 @@ public final class CgSequenceKinds {
 
     /** A node's rest for this sequence: a constant is a rest, never a track. */
     static final CgType REST = CgTypes.struct("crystalgraphics:sequence.rest")
+            .property("location", VEC3).quantity(CgQuantity.POSITION)
+            .property("rotation", CgValueType.ROTATION).quantity(CgQuantity.ROTATION)
+            .property("scale", VEC3).quantity(CgQuantity.SCALE)
             .property("opacity", FLOAT)
             .property("values", mapOfValues())
             .register();
@@ -212,6 +220,7 @@ public final class CgSequenceKinds {
             .property("spline_mesh", CgValueType.struct(SPLINE_MESH)).flags(CgPropertyFlag.STRUCTURAL)
             .property("capture", CgValueType.struct(CAPTURE)).flags(CgPropertyFlag.STRUCTURAL)
             .property("colour_region", CgValueType.struct(COLOUR_REGION)).flags(CgPropertyFlag.STRUCTURAL)
+            .validator(CgSequenceKinds::oneKind)
             .register();
 
     static final CgType COMPOSITE_SECTION = CgTypes.element("crystalgraphics:sequence.composite_section")
@@ -281,8 +290,39 @@ public final class CgSequenceKinds {
     static final CgType PANELS = CgTypes.struct("crystalgraphics:track.camera_cut.panels")
             .property("direction", VALUE)
             .property("split", VALUE)
-            .property("cameras", CgValueType.listOf(STRING))
+            .property("cameras", CgValueType.listOf(CgValueType.oneOf(STRING, CgValueType.struct(CUT_CAMERA))))
             .register();
+
+    // ── Channels ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * A channel written as a map: a curve on the sequence's ticks ({@code keys} or {@code samples}, with
+     * {@code default}, {@code pre}, {@code post}), a held {@code default} alone, or one channel per axis
+     * ({@code x}, {@code y}, {@code z}; a colour's {@code r}, {@code g}, {@code b}, {@code a}). Which keys are
+     * present says which; a key's value is the channel's kind's
+     * ({@code [tick, activate]}, {@code [tick, { event, args }]}, {@code [tick, 0.5]}).
+     */
+    static final CgType CHANNEL_MAP = CgTypes.struct("crystalgraphics:channel")
+            .property("default", VALUE)
+            .property("pre", STRING)
+            .property("post", STRING)
+            .property("interp", CgValueType.enumOf("constant", "linear", "cubic"))
+            .property("keys", CgValueType.ARRAY)
+            .property("samples", CgValueType.struct(CgCommonStructs.CURVE_SAMPLES_RANGE))
+            .property("x", CgValueType.SELF)
+            .property("y", CgValueType.SELF)
+            .property("z", CgValueType.SELF)
+            .property("r", CgValueType.SELF)
+            .property("g", CgValueType.SELF)
+            .property("b", CgValueType.SELF)
+            .property("a", CgValueType.SELF)
+            .register();
+
+    /** A channel: its map, or its keys alone ({@code [[tick, value], ...]}). */
+    static final CgValueType CHANNEL = CgValueType.oneOf(CgValueType.struct(CHANNEL_MAP), CgValueType.ARRAY);
+
+    /** Three channels: a list {@code [x, y, z]}, or a map, by axis or as one channel. */
+    static final CgValueType CHANNELS = CgValueType.oneOf(CgValueType.listOf(CHANNEL), CgValueType.struct(CHANNEL_MAP));
 
     static final CgType NOTIFY_FILTER = CgTypes.struct("crystalgraphics:track.notify.filter")
             .property("significance", CgCommonStructs.TIER)
@@ -294,7 +334,7 @@ public final class CgSequenceKinds {
      */
     private static CgType.Builder section(String kind) {
         return CgTypes.element("crystalgraphics:track." + kind + ".section").open()
-                .property("range", CgValueType.listOf(INT)).flags(CgPropertyFlag.HEADLESS)
+                .property("range", CgValueType.listOf(CgValueType.oneOf(INT, CgValueType.NULL))).flags(CgPropertyFlag.HEADLESS)
                 .property("start", CgValueType.struct(START)).flags(CgPropertyFlag.HEADLESS)
                 .property("condition", CgValueType.struct(CgCommonStructs.CONDITION))
                 .property("row", INT).defaultValue(0)
@@ -305,7 +345,7 @@ public final class CgSequenceKinds {
                 .property("pre_roll", INT).defaultValue(0)
                 .property("post_roll", INT).defaultValue(0)
                 .property("active", BOOL).defaultValue(true)
-                .property("weight", CURVE);
+                .property("weight", CHANNEL);
     }
 
     /** A track of {@code kind}: the envelope, then {@code sections} of {@code sectionType}. */
@@ -328,9 +368,9 @@ public final class CgSequenceKinds {
     }
 
     static final CgType TRANSFORM = track("transform", section("transform")
-            .property("translation", CgValueType.listOf(CURVE)).quantity(CgQuantity.POSITION).flags(CgPropertyFlag.KEYABLE)
-            .property("rotation", CgValueType.listOf(CURVE)).quantity(CgQuantity.ROTATION).flags(CgPropertyFlag.KEYABLE)
-            .property("scale", CgValueType.listOf(CURVE)).quantity(CgQuantity.SCALE).flags(CgPropertyFlag.KEYABLE)
+            .property("translation", CHANNELS).quantity(CgQuantity.POSITION).flags(CgPropertyFlag.KEYABLE)
+            .property("rotation", CHANNELS).quantity(CgQuantity.ROTATION).flags(CgPropertyFlag.KEYABLE)
+            .property("scale", CHANNELS).quantity(CgQuantity.SCALE).flags(CgPropertyFlag.KEYABLE)
             .property("mask", VALUE)
             .property("quaternion", BOOL)
             .register());
@@ -344,7 +384,7 @@ public final class CgSequenceKinds {
 
     static final CgType PATH = track("path", section("path")
             .property("path", CgValueType.struct(PATH_SPLINE))
-            .property("timing", CURVE)
+            .property("timing", CHANNEL)
             .property("follow_rotation", BOOL)
             .property("reverse", BOOL)
             .property("front_axis", CgValueType.enumOf("x", "y", "z", "-x", "-y", "-z"))
@@ -352,11 +392,11 @@ public final class CgSequenceKinds {
             .register());
 
     static final CgType SPAWNED = track("spawned", section("spawned")
-            .property("spawned", CURVE).flags(CgPropertyFlag.HEADLESS)
+            .property("spawned", CHANNEL).flags(CgPropertyFlag.HEADLESS)
             .register());
 
     static final CgType SYSTEM = track("system", section("system")
-            .property("keys", CURVE)
+            .property("keys", CHANNEL)
             .property("evaluate", CgValueType.enumOf("activate_if_inactive", "none"))
             .property("end", CgValueType.enumOf("set_inactive", "deactivate", "none"))
             .property("age", CgValueType.enumOf("tick_delta", "desired_age", "desired_age_no_seek"))
@@ -368,10 +408,10 @@ public final class CgSequenceKinds {
 
     static final CgType MATERIAL = track("material", section("material")
             .property("slot", CgValueType.struct(MATERIAL_SLOT))
-            .property("scalars", CgValueType.mapOf(CURVE))
-            .property("vectors", CgValueType.mapOf(VALUE))
-            .property("colours", CgValueType.mapOf(VALUE))
-            .property("bools", CgValueType.mapOf(CURVE))
+            .property("scalars", CgValueType.mapOf(CHANNEL))
+            .property("vectors", CgValueType.mapOf(CHANNELS))
+            .property("colours", CgValueType.mapOf(CHANNEL))
+            .property("bools", CgValueType.mapOf(CHANNEL))
             .register());
 
     /** Channels by parameter name. */
@@ -381,22 +421,22 @@ public final class CgSequenceKinds {
     static final CgType PROPERTY = track("property", section("property").register());
 
     static final CgType VISIBILITY = track("visibility", section("visibility")
-            .property("visible", CURVE)
+            .property("visible", CHANNEL)
             .register());
 
     static final CgType WORLD_VISIBILITY = track("world_visibility", section("world_visibility")
-            .property("visible", CURVE)
+            .property("visible", CHANNEL)
             .register());
 
     static final CgType STENCIL = track("stencil", section("stencil")
-            .property("value", CURVE)
+            .property("value", CHANNEL)
             .register());
 
     static final CgType ANIMATION = track("animation", section("animation")
             .property("clip", VALUE).flags(CgPropertyFlag.STRUCTURAL)
             .property("start_offset", INT)
             .property("play_rate", FLOAT).defaultValue(1.0)
-            .property("loop", BOOL)
+            .property("loop", CgValueType.oneOf(BOOL, INT))   // a montage segment's LoopingCount
             .property("slot", STRING)
             .property("interpolation", CgValueType.enumOf("smooth", "step")).defaultValue("smooth")
             .register());
@@ -427,7 +467,7 @@ public final class CgSequenceKinds {
             .register());
 
     static final CgType FADE = track("fade", section("fade")
-            .property("amount", CURVE)
+            .property("amount", CHANNEL)
             .property("colour", CgValueType.COLOUR)
             .property("fade_audio", BOOL)
             .register());
@@ -435,15 +475,15 @@ public final class CgSequenceKinds {
     static final CgType SOUND = track("sound", section("sound")
             .property("sound", VALUE)
             .property("start_offset", INT)
-            .property("volume", CURVE)
-            .property("pitch", CURVE)
+            .property("volume", CHANNEL)
+            .property("pitch", CHANNEL)
             .property("looping", BOOL)
             .property("play_until_finished", BOOL)
             .property("attenuation", VALUE)
             .register());
 
     static final CgType EVENT = track("event", section("event")
-            .property("keys", CURVE).flags(CgPropertyFlag.HEADLESS)
+            .property("keys", CHANNEL).flags(CgPropertyFlag.HEADLESS)
             .property("event", STRING).flags(CgPropertyFlag.HEADLESS)
             .property("args", TREE).flags(CgPropertyFlag.HEADLESS)
             .register());
@@ -462,7 +502,7 @@ public final class CgSequenceKinds {
             .register());
 
     static final CgType TIME_DILATION = track("time_dilation", section("time_dilation")
-            .property("rate", CURVE).flags(CgPropertyFlag.HEADLESS)
+            .property("rate", CHANNEL).flags(CgPropertyFlag.HEADLESS)
             .register());
 
     static final CgType NOTIFY = track("notify", section("notify")
@@ -493,5 +533,18 @@ public final class CgSequenceKinds {
             .register();
 
     static void register() {
+    }
+
+    /** A spawnable holding no kind key, or more than one. */
+    public static final String SPAWNABLE_KIND = "spawnable_kind";
+
+    private static final List<String> SPAWNABLE_KINDS = Arrays.asList("system", "prefab", "puppet", "pose_copy", "camera",
+            "light", "post", "field", "decal", "spline_mesh", "capture", "colour_region");
+
+    /** A spawnable is one kind of object: exactly one kind key. */
+    private static void oneKind(Map<?, ?> spawnable, CgPropertyPath at, CgValidation into) {
+        int kinds = 0;
+        for (String k : SPAWNABLE_KINDS) if (spawnable.containsKey(k)) kinds++;
+        if (kinds != 1) into.error(at, SPAWNABLE_KIND, "holds " + kinds + " kind keys of " + SPAWNABLE_KINDS + ", not one");
     }
 }

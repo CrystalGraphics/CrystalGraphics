@@ -1,4 +1,4 @@
-package com.crystalgraphics.asset.tree;
+package com.crystalgraphics.object;
 
 import java.util.ArrayList;
 import java.util.Collections;

@@ -13,6 +13,7 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgValueType;
+import com.crystalgraphics.object.validate.CgValidation;
 
 /**
  * An asset in memory: its file resolved over its parent's, every node knowing where its value comes from
@@ -192,6 +193,21 @@ public final class CgAssetData {
     @SuppressWarnings("unchecked")
     public Map<Object, Object> resolved() {
         return (Map<Object, Object>) root.toPlain();
+    }
+
+    /**
+     * Checks the resolved asset against its declarations and its types' validators. A child's issues include what it
+     * inherits: an asset is valid only whole.
+     *
+     * <pre>{@code
+     * CgValidation v = big.validate(CgValidation.Usecase.LOAD);
+     * if (!v.valid()) throw new CgAssetException(big.id() + ": " + v.issues());
+     * }</pre>
+     */
+    public CgValidation validate(CgValidation.Usecase usecase) {
+        CgValidation into = new CgValidation(usecase);
+        CgAssetValidation.run(id, kind, resolved(), into);
+        return into;
     }
 
     /** What this asset's file says: its overrides and additions, in the file's order, and nothing it inherits. */

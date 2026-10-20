@@ -37,7 +37,7 @@ public final class CgValueType {
     public enum Kind {
         FLOAT, INT, BOOL, STRING, ENUM, VEC2, VEC3, VEC4, COLOUR, ROTATION, POSITION, CURVE,
         MESH, TEXTURE, FIELD, ARRAY, REF, ELEMENT_REF, BINARY_REF, STRUCT, LIST, ID_LIST, MAP, DISPATCH, TREE,
-        VALUE, ONE_OF, SELF
+        VALUE, ONE_OF, SELF, NULL
     }
 
     /** Whether a reference loads with its referrer or on first use. */
@@ -87,6 +87,8 @@ public final class CgValueType {
      * {@code all}. The type does not exist yet while it is declared, so it names itself this way.
      */
     public static final CgValueType SELF = new CgValueType(Kind.SELF);
+    /** {@code null}, written where a value may be left open: a section's {@code range: [0, null]}, running to the end. */
+    public static final CgValueType NULL = new CgValueType(Kind.NULL);
 
     private final Kind kind;
     private final List<String> enumValues;

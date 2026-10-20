@@ -12,6 +12,7 @@ import org.junit.Test;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
+import com.crystalgraphics.object.CgPropertyPath;
 import com.crystalgraphics.object.CgType;
 
 import static org.junit.Assert.assertEquals;

@@ -1,5 +1,6 @@
 package com.crystalgraphics.asset.codec;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -13,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -25,6 +27,8 @@ import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgEdit;
 import com.crystalgraphics.asset.tree.CgRandomEdits;
 import com.crystalgraphics.object.CgType;
+import com.crystalgraphics.object.validate.CgIssue;
+import com.crystalgraphics.object.validate.CgValidation;
 
 import static org.junit.Assert.assertTrue;
 
@@ -122,6 +126,58 @@ public class CgAssetRoundTripGateTest {
         }
         assertTrue(bad.size() + " of " + checked + " assets:\n" + String.join("\n", bad.subList(0, Math.min(20, bad.size()))),
                 bad.isEmpty());
+    }
+
+    /** Every asset that resolves validates with no error; the report counts them by code, then lists the first. */
+    @Test
+    public void everyAssetValidates() throws IOException {
+        Set<String> parents = new HashSet<>();
+        for (Path p : FILES.values()) {
+            String parent = parentOf(p);
+            if (parent != null) parents.add(parent);
+        }
+        Map<String, CgAssetData> loaded = new HashMap<>();
+        Map<String, Integer> byWhat = new TreeMap<>();
+        Map<String, String> first = new HashMap<>();
+        int checked = 0, errors = 0;
+        List<String> ids = new ArrayList<>(FILES.keySet());
+        Collections.sort(ids);
+        for (String id : ids) {
+            CgAssetData data;
+            try {
+                data = load(id, loaded, new HashSet<String>());
+            } catch (RuntimeException unloadable) {
+                continue;   // the delta test names it
+            }
+            if (!parents.contains(id)) loaded.remove(id);   // the kits do not fit in memory resolved
+            checked++;
+            for (CgIssue i : data.validate(CgValidation.Usecase.LOAD).issues()) {
+                if (i.getSeverity() != CgIssue.Severity.ERROR) continue;
+                errors++;
+                // Alike when the code and the path agree but for ids: one line per kind of failure.
+                String what = i.getCode() + " " + KINDS.get(id).id() + " "
+                        + i.getPath().toString().substring(id.length()).replaceAll("\\[[^\\]]*\\]", "[]");
+                byWhat.merge(what, 1, Integer::sum);
+                first.putIfAbsent(what, i.toString());
+            }
+        }
+        StringBuilder report = new StringBuilder();
+        for (Map.Entry<String, Integer> e : byWhat.entrySet()) {
+            report.append(String.format("%7d  %s%n         %s%n", e.getValue(), e.getKey(), first.get(e.getKey())));
+        }
+        assertTrue(errors + " errors in " + checked + " assets:\n" + report, errors == 0);
+    }
+
+    /** The parent a file names on its first lines, where the writer puts it; null for none. */
+    private static String parentOf(Path file) throws IOException {
+        try (BufferedReader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            for (int i = 0; i < 4; i++) {
+                String line = r.readLine();
+                if (line == null) return null;
+                if (line.startsWith(CgType.PARENT + ": ")) return line.substring(CgType.PARENT.length() + 2).trim();
+            }
+        }
+        return null;
     }
 
     private static CgAssetData load(String id, Map<String, CgAssetData> loaded, Set<String> loading) throws IOException {

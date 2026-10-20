@@ -4,6 +4,8 @@ import java.util.Map;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.object.CgPropertyPath;
+
 /**
  * One change to an asset: what it touches, how, and the values before and after. Applying one
  * answers its inverse, which undoes it to the byte.

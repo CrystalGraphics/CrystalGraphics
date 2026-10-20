@@ -11,6 +11,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 
+import com.crystalgraphics.object.validate.CgValidator;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgValueForm;
 
@@ -62,6 +63,8 @@ public final class CgType {
     private final String dispatchKey;
     private final boolean dispatchInline;
     private final boolean open;
+    private final boolean ownsIds;
+    private final List<CgValidator> validators;
     private final List<CgProperty> properties;
     private final Map<String, CgProperty> byName;
     private final Map<String, CgType> members = new LinkedHashMap<>();
@@ -75,6 +78,8 @@ public final class CgType {
         this.dispatchKey = b.dispatchKey;
         this.dispatchInline = b.dispatchInline;
         this.open = b.open;
+        this.ownsIds = b.ownsIds;
+        this.validators = Collections.unmodifiableList(new ArrayList<>(b.validators));
         List<CgProperty> props = new ArrayList<>(b.props.size());
         Map<String, CgProperty> names = new LinkedHashMap<>();
         for (int i = 0; i < b.props.size(); i++) {
@@ -113,6 +118,19 @@ public final class CgType {
      */
     public boolean open() {
         return open;
+    }
+
+    /**
+     * Whether the element ids inside one of its values are unique among themselves rather than across the asset: an
+     * inline field graph's node ids, which a field asset of its own would hold.
+     */
+    public boolean ownsIds() {
+        return ownsIds;
+    }
+
+    /** The checks it makes of its own values, in declaration order. */
+    public List<CgValidator> validators() {
+        return validators;
     }
 
     /** Its properties in declaration order: the order a file writes them. */
@@ -195,6 +213,8 @@ public final class CgType {
         private String dispatchKey;
         private boolean dispatchInline;
         private boolean open;
+        private boolean ownsIds;
+        private final List<CgValidator> validators = new ArrayList<>();
         private final List<PropertyBuilder> props = new ArrayList<>();
         private final List<Consumer<CgType>> onRegister = new ArrayList<>();
         private PropertyBuilder last;
@@ -237,6 +257,18 @@ public final class CgType {
                 throw new IllegalStateException(id + ": only a struct or an element is open");
             }
             this.open = true;
+            return this;
+        }
+
+        /** Scopes the element ids inside its values to each value ({@link CgType#ownsIds()}). */
+        public Builder ownsIds() {
+            this.ownsIds = true;
+            return this;
+        }
+
+        /** Adds a check of its values beyond what its properties declare; see {@link CgValidator}. */
+        public Builder validator(CgValidator validator) {
+            validators.add(Objects.requireNonNull(validator));
             return this;
         }
 

@@ -28,7 +28,7 @@ import com.crystalgraphics.object.value.CgValueForm;
  *
  * <ul>
  *   <li>{@link #defaultValue()} is the value as a file would write it (a number, a list, a string), or null where
- *       the spec gives none.</li>
+ *       the format gives none.</li>
  *   <li>Immutable once its type is registered.</li>
  * </ul>
  */
@@ -94,7 +94,7 @@ public final class CgProperty {
         return forms.contains(form);
     }
 
-    /** Its value with nothing written, as a file would write it; null where the spec gives none. */
+    /** Its value with nothing written, as a file would write it; null where the format gives none. */
     public Object defaultValue() {
         return defaultValue;
     }

@@ -5,7 +5,7 @@ the engine moves toward Unreal's (Niagara's) model; what it does not cover yet i
 
 | Page | For |
 |---|---|
-| [`assets.md`](assets.md) | the files an effect is made of: kinds, ids, values, inheritance, editing and undo in Java |
+| [`assets.md`](assets.md) | the files an effect is made of: kinds, ids, values, inheritance, editing and undo, validation |
 | [`effects.md`](effects.md) | how a layer draws: its blend, two-sidedness, depth and clip, and where it draws among the rest |
 | [`particles.md`](particles.md) | emitters and their particles: when they spawn (loops, rates, bursts), turning them with their effect, stopping and killing them |
 | [`prefabs.md`](prefabs.md) | models made of parts: a node tree an effect plays, moving and fading its nodes |
