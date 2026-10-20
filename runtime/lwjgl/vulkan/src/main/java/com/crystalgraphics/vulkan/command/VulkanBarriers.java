@@ -1,6 +1,5 @@
 package com.crystalgraphics.vulkan.command;
 
-import org.lwjgl.vulkan.VkBufferMemoryBarrier;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkImageMemoryBarrier;
 import org.lwjgl.vulkan.VkImageSubresourceRange;
@@ -53,24 +52,10 @@ public final class VulkanBarriers {
         nvkCmdPipelineBarrier(cmd, src, dst, 0, 0, 0L, 0, 0L, 1, s.address);
     }
 
-    /** One buffer's writes at {@code srcStage} made visible to {@code dstStage}: a compute pass's precise barrier. */
-    static void buffer(VkCommandBuffer cmd, long buffer, int srcStage, int srcAccess, int dstStage, int dstAccess) {
-        int src = stage(cmd, srcStage, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
-        int dst = stage(cmd, dstStage, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
-        VulkanScratch s = VulkanScratch.get(VkBufferMemoryBarrier.SIZEOF);
-        s.bytes.putInt(VkBufferMemoryBarrier.STYPE, VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER)
-                .putLong(VkBufferMemoryBarrier.PNEXT, 0L)
-                .putInt(VkBufferMemoryBarrier.SRCACCESSMASK, access(cmd, srcAccess, src))
-                .putInt(VkBufferMemoryBarrier.DSTACCESSMASK, access(cmd, dstAccess, dst))
-                .putInt(VkBufferMemoryBarrier.SRCQUEUEFAMILYINDEX, VK_QUEUE_FAMILY_IGNORED)
-                .putInt(VkBufferMemoryBarrier.DSTQUEUEFAMILYINDEX, VK_QUEUE_FAMILY_IGNORED)
-                .putLong(VkBufferMemoryBarrier.BUFFER, buffer)
-                .putLong(VkBufferMemoryBarrier.OFFSET, 0L)
-                .putLong(VkBufferMemoryBarrier.SIZE, VK_WHOLE_SIZE);
-        nvkCmdPipelineBarrier(cmd, src, dst, 0, 0, 0L, 1, s.address, 0, 0L);
-    }
-
-    /** Every earlier write visible to every later access: what a transfer is fenced with on each side. */
+    /**
+     * Every earlier write visible to every later access: what a transfer is fenced with on each side, and what buffer
+     * barriers are recorded as.
+     */
     static void global(VkCommandBuffer cmd, int srcStage, int srcAccess, int dstStage, int dstAccess) {
         int src = stage(cmd, srcStage, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
         int dst = stage(cmd, dstStage, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);

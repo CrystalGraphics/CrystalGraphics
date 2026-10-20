@@ -95,6 +95,13 @@ public final class VulkanEncoder implements CgCommandEncoder {
     private final VulkanTexture[] writtenIn = new VulkanTexture[RUN_WRITTEN];
     private final int[] written = new int[RUN_WRITTEN * 9];
     private int writtenCount;
+    /**
+     * Buffer and memory barriers since the last command, held as one global memory barrier and recorded before the
+     * next: Unreal's Vulkan RHI does the same (VulkanBarriers.cpp, GVulkanUseMemoryBarrierOpt), drivers treating a
+     * buffer barrier as global anyway. A kernel reading three buffers cost three barrier calls.
+     */
+    private boolean held;
+    private int heldSrcStage, heldSrcAccess, heldDstStage, heldDstAccess;
 
     public VulkanEncoder(CgVulkanDevice device) {
         this.device = device;
@@ -225,9 +232,25 @@ public final class VulkanEncoder implements CgCommandEncoder {
     public void bufferBarrier(CgGpuBuffer buffer, int from, int to) {
         outsidePass("bufferBarrier");
         use((VulkanBuffer) buffer);
-        VulkanBarriers.buffer(cmd(), ((VulkanBuffer) buffer).buffer, VulkanAccess.stage(from), VulkanAccess.access(from),
-                VulkanAccess.stage(to), VulkanAccess.access(to));
+        hold(from, to);
+    }
+
+    /** Into the held barrier, after closing the copy run: what was recorded before it stays before it. */
+    private void hold(int from, int to) {
+        if (runOpen) endCopies();
+        held = true;
+        heldSrcStage |= VulkanAccess.stage(from);
+        heldSrcAccess |= VulkanAccess.access(from);
+        heldDstStage |= VulkanAccess.stage(to);
+        heldDstAccess |= VulkanAccess.access(to);
+    }
+
+    private void release(VkCommandBuffer cmd) {
+        if (!held) return;
+        held = false;
+        VulkanBarriers.global(cmd, heldSrcStage, heldSrcAccess, heldDstStage, heldDstAccess);
         device.barriers++;
+        heldSrcStage = heldSrcAccess = heldDstStage = heldDstAccess = 0;
     }
 
     @Override
@@ -241,9 +264,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
     @Override
     public void memoryBarrier(int from, int to) {
         outsidePass("memoryBarrier");
-        VulkanBarriers.global(cmd(), VulkanAccess.stage(from), VulkanAccess.access(from), VulkanAccess.stage(to),
-                VulkanAccess.access(to));
-        device.barriers++;
+        hold(from, to);
     }
 
     @Override
@@ -493,6 +514,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
     private void runCopy(VulkanBuffer src, long srcOffset, VulkanTexture t, CgTextureRegion region, int layer, int layers) {
         VkCommandBuffer cmd = device.host().commandBuffer();
         if (!runOpen) {
+            release(cmd);
             before(cmd);
             runOpen = true;
         } else if (writtenCount == RUN_WRITTEN || overlapsWritten(t, region, layer, layers)) {
@@ -545,9 +567,11 @@ public final class VulkanEncoder implements CgCommandEncoder {
 
     /**
      * Ends the run of texture copies on the frame's queue, if one is open: records what waits, rests its textures and
-     * fences it from what follows. Before anything else is recorded into, or done with, the frame's command buffer.
+     * fences it from what follows; and records the held barrier. Before anything else is recorded into, or done with,
+     * the frame's command buffer.
      */
     public void endCopies() {
+        if (held) release(device.host().commandBuffer());
         if (!runOpen) return;
         runOpen = false;
         VkCommandBuffer cmd = device.host().commandBuffer();
