@@ -1573,6 +1573,7 @@ public final class CgVfxParticlePool {
 
     /** Makes the records and counts the first time, and grows the records to hold {@code need}. */
     private void reserve(CgRecording recording, int need) {
+        need = Math.max(need, expectedCapacity);
         if (records == null) {
             storage = sizeClass(need);
             records = CgGraphBuffer.history(recordsName, recordsDesc(storage));
@@ -1696,6 +1697,33 @@ public final class CgVfxParticlePool {
      * ahead, so a move playing never grows one; a nonzero count in a frame is a hitch named.
      */
     private static final int STORAGE_GROWS = CgTrace.name("vfx.pool.storage-grows"), TABLE_GROWS = CgTrace.name("vfx.pool.table-grows");
+    /** What {@link #expect} sized it for: slots, records, and the definitions given rows. */
+    private int expectedSlots, expectedCapacity;
+    private final Set<CgVfxGpuEmitter> expectedRows = Collections.newSetFromMap(new IdentityHashMap<>());
+
+    /**
+     * Sizes this pool for a slot of {@code emitter} at {@code capacity} that a move will open: its slot table, its row
+     * tables and its record storage, so the move's first frame grows none of them. Called as a look is prepared, once
+     * per slot it will hold; between steps.
+     *
+     * <pre>{@code
+     * CgVfxParticlePool.of(steps, EMBERS, 0).expect(EMBERS, EMBERS.peakAlive());
+     * }</pre>
+     */
+    public void expect(CgVfxGpuEmitter emitter, int capacity) {
+        betweenSteps("expect");
+        expectedSlots++;
+        expectedCapacity += capacity;
+        if (slotEmitter.length < expectedSlots) growSlots(expectedSlots);
+        if (expectedRows.add(emitter)) {
+            int rows = rowCount + expectedRows.size();
+            if (params.length < rows * paramWords) params = Arrays.copyOf(params, rows * paramWords);
+            if (curves.length < rows * CURVE_WORDS) {
+                curves = Arrays.copyOf(curves, rows * CURVE_WORDS);
+                rowSizeMax = Arrays.copyOf(rowSizeMax, rows);
+            }
+        }
+    }
 
     private int useRow(CgVfxGpuEmitter emitter) {
         int[] row = rows.get(emitter);

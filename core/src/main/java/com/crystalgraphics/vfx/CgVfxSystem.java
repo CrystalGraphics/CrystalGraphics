@@ -811,6 +811,8 @@ public final class CgVfxSystem {
      */
     public void prepare(CgVfxLook... looks) {
         for (CgVfxLook look : looks) {
+            // Prepared here, its play only starts the window: its pools are sized once.
+            if (!gpuLooks.add(look)) continue;
             List<CgVfxEmitter> emitters = look.emitters();
             for (int k = 0; k < emitters.size(); k++) {
                 if (!gpuWarming.contains(emitters.get(k))) gpuWarming.add(emitters.get(k));
@@ -967,18 +969,20 @@ public final class CgVfxSystem {
      * {@code emitter}'s Step kernels and slot meshes, its children's and theirs too, each at its feed tier: built here, not
      * in the first burst's frame.
      */
-    private static void prepareEmitter(CgVfxEmitter emitter) {
+    private void prepareEmitter(CgVfxEmitter emitter) {
         CgVfxParticlePool.prepare(emitter, 0);
+        CgVfxParticlePool.of(gpuSteps, emitter, 0).expect(emitter, emitter.peakAlive());
         CgVfxFrame.slotMesh(emitter.renderer(), emitter.peakAlive());
         prepareChildren(emitter, -1, 1);
     }
 
-    private static void prepareChildren(CgVfxEmitter parent, int fedAlive, int tier) {
+    private void prepareChildren(CgVfxEmitter parent, int fedAlive, int tier) {
         for (int e = 0; e < parent.events().size(); e++) {
             CgVfxEmitter child = (CgVfxEmitter) parent.events().get(e).child();
             if (child == null) continue;
             int alive = parent.peakChildren(e, fedAlive);
             CgVfxParticlePool.prepare(child, tier);
+            CgVfxParticlePool.of(gpuSteps, child, tier).expect(child, alive);
             CgVfxFrame.slotMesh(child.renderer(), alive);
             prepareChildren(child, alive, tier + 1);
         }
