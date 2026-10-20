@@ -18,6 +18,10 @@ package com.crystalgraphics.trace;
  * last. Under vsync the first sits at the refresh rate while the second says how much headroom is left,
  * so a readout showing only the first reports 60fps right up until it collapses.</p>
  *
+ * <p>{@link #allocatedBytes()} is what the frame thread allocated between this frame's {@code frameBegin} and the
+ * next, read once a frame; {@link #directBytes()} is the JVM's direct-buffer memory in use when the frame
+ * committed. Each is {@link #ABSENT} where the JVM does not report it.</p>
+ *
  * <h3>Absent is not zero</h3>
  *
  * <p>{@link #cpuNanos()} is {@code -1} when the host never called {@code frameEnd} — a document framed
@@ -35,10 +39,27 @@ public record CgFrameRecord(
         long gcMillis,
         int gcCollections,
         int leakedZones,
-        long droppedZones) {
+        long droppedZones,
+        long allocatedBytes,
+        long directBytes) {
 
     /** No CPU mark arrived for this frame. @see #cpuNanos() */
     public static final long ABSENT = -1L;
+
+    /**
+     * A frame with no allocation or direct-memory figure: one read back from a trace file, or from a JVM that counts
+     * neither. Both read {@link #ABSENT}, never 0.
+     */
+    public CgFrameRecord(long index, long beginNanos, long endNanos, long cpuNanos, long gpuNanos, long gcMillis,
+                         int gcCollections, int leakedZones, long droppedZones) {
+        this(index, beginNanos, endNanos, cpuNanos, gpuNanos, gcMillis, gcCollections, leakedZones, droppedZones,
+                ABSENT, ABSENT);
+    }
+
+    /** Whether {@link #allocatedBytes()} was counted. */
+    public boolean hasAllocation() {
+        return allocatedBytes != ABSENT;
+    }
 
     /** The interval to the next frame's start. */
     public long wallNanos() {

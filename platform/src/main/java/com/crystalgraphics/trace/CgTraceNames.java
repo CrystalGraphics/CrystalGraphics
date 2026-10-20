@@ -60,6 +60,7 @@ public final class CgTraceNames {
             "com.crystalgraphics.trace.CgTraceNames",
             "com.crystalgraphics.trace.CgTraceZones",
             "com.crystalgraphics.trace.CgTraceEvents",
+            "com.crystalgraphics.trace.CgTraceAllocations",
             "com.crystalgraphics.trace.CgTrace$Zone");
 
     /**

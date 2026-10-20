@@ -347,6 +347,37 @@ r.frame(412);  r.worst(5);  r.zone("paint:tree");
 r.compare(0, 299, 300, 599);  r.regressions(0, 299, 300, 599);   // two ranges of ONE ring
 ```
 
+### Allocation, collections and direct memory
+
+Every frame record carries what the frame thread allocated (`allocatedBytes()`, read once a frame) and the JVM's
+direct-buffer memory when it committed (`directBytes()`); each is `ABSENT` where the JVM does not report it, and the
+report then says `unavailable`, never 0. Collection pauses come from the JVM's notifications, with their cause.
+`FRAME #n` prints all three; the world's tick groups report their allocation by group and thread with no code of
+yours.
+
+```java
+private static final CgTraceChannel TRACE = CgTrace.channel("mymod.render");
+
+long mark = CgTrace.allocationBegin(TRACE);                  // -1 while the channel is off: one mask test
+runTheGroup();
+CgTrace.allocationEnd(TRACE, "mymod:frame.EFFECTS", mark);   // summed per thread and group, written once a frame
+
+CgFrameRecord frame = CgTrace.frame(index);
+CgTrace.allocationsIn(frame);   // [AllocationView(group, thread, bytes)]
+CgTrace.gcPausesIn(frame);      // [GcPauseView(collector, action, cause, startNanos, durationNanos)]
+```
+
+```
+FRAME #4312 ...
+  allocation  2.1 MB on the frame thread
+    mymod:frame.EFFECTS  [Render thread]  1.9 MB
+  direct memory  412.0 MB
+  GC  G1 Old Generation  end of major GC  pause 6.0 ms  cause System.gc()  at +3.4 ms
+```
+
+Easy to get wrong: begin and end on one thread; a pause is attributed by its time, so one that arrives after its
+frame committed still lands on it; the pause's duration has the JVM's millisecond resolution.
+
 **Comparing a change**: two ranges of one ring are the honest comparison (same process, same JIT). Across
 runs, run each build back to back on one machine, twice; differences smaller than run-to-run spread are
 not findings.

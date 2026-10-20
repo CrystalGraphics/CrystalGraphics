@@ -953,6 +953,36 @@ public final class CgTraceReport {
     /** ...or under this, whichever is larger. */
     private static final long FOLD_FLOOR_NANOS = 20_000L;
 
+    /**
+     * The frame's allocation by group and thread, its direct memory and its collection pauses. Where the JVM does not
+     * count allocation the line says unavailable, never 0.
+     */
+    private void memoryLines(StringBuilder out, CgFrameRecord frame) {
+        if (!frame.hasAllocation()) {
+            out.append("  allocation  unavailable (this JVM does not count a thread's allocation, or the frame thread changed)\n");
+        } else {
+            out.append("  allocation  ").append(bytes(frame.allocatedBytes())).append(" on the frame thread\n");
+        }
+        for (CgTraceSnapshot.AllocationView view : snapshot.allocationsIn(frame)) {
+            out.append("    ").append(view.group()).append("  [").append(view.thread()).append("]  ")
+                    .append(bytes(view.bytes())).append('\n');
+        }
+        if (frame.directBytes() != CgFrameRecord.ABSENT) {
+            out.append("  direct memory  ").append(bytes(frame.directBytes())).append('\n');
+        }
+        for (CgTraceSnapshot.GcPauseView pause : snapshot.gcPausesIn(frame)) {
+            out.append(String.format(Locale.ROOT, "  GC  %s  %s  pause %.1f ms  cause %s  at +%.1f ms%n",
+                    pause.collector(), pause.action(), pause.millis(), pause.cause(),
+                    (pause.startNanos() - frame.beginNanos()) / 1e6d));
+        }
+    }
+
+    private static String bytes(long value) {
+        if (value >= 1L << 20) return String.format(Locale.ROOT, "%.1f MB", value / (double) (1L << 20));
+        if (value >= 1L << 10) return String.format(Locale.ROOT, "%.1f KB", value / (double) (1L << 10));
+        return value + " B";
+    }
+
     private void frameBlock(StringBuilder out, Analysis a, int at, String why, int maxRows) {
         CgFrameRecord frame = a.frames.get(at);
         out.append("\nFRAME ").append(headline(a, at)).append("  -- ").append(why).append('\n');
@@ -960,6 +990,7 @@ public final class CgTraceReport {
             out.append("  note      ").append(frame.leakedZones())
                     .append(" zone(s) were still open at the frame boundary and were force-closed\n");
         }
+        memoryLines(out, frame);
         if (!a.held[at]) {
             out.append("  zones   none held -- older than every zone the frame thread still holds (overwritten, or "
                     + "recorded before its channels were on); its time is unknown, not unzoned\n");

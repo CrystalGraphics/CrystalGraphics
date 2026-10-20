@@ -55,6 +55,21 @@ public final class CgTraceSnapshot {
         }
     }
 
+    /** Bytes one thread allocated inside one group of a frame. */
+    public record AllocationView(String group, String thread, long bytes) {
+    }
+
+    /** A collection pause; times are {@code System.nanoTime()}, and the cause is the JVM's own ({@code "System.gc()"}). */
+    public record GcPauseView(String collector, String action, String cause, long startNanos, long durationNanos) {
+        public double millis() {
+            return durationNanos / 1_000_000d;
+        }
+    }
+
+    /** An allocation row with the frame it belongs to. */
+    record FrameAllocation(long frame, AllocationView view) {
+    }
+
     public record CounterView(String name, long frameIndex, long value) {
     }
 
@@ -84,12 +99,17 @@ public final class CgTraceSnapshot {
     private final List<MarkerView> markers;
     private final List<SpanView> spans;
     private final long droppedZones;
+    private final List<FrameAllocation> allocations;
+    private final List<GcPauseView> pauses;
     /** The counter views an {@link #incremental} snapshot carries forward; null on any other. */
     private final CounterRun headRun, ringRun;
 
     private CgTraceSnapshot(List<CgFrameRecord> frames, List<ZoneView> zones,
                             List<CounterView> counters, List<MarkerView> markers,
-                            List<SpanView> spans, long droppedZones) {
+                            List<SpanView> spans, long droppedZones,
+                            List<FrameAllocation> allocations, List<GcPauseView> pauses) {
+        this.allocations = List.copyOf(allocations);
+        this.pauses = List.copyOf(pauses);
         this.frames = List.copyOf(frames);
         this.zones = List.copyOf(zones);
         this.counters = List.copyOf(counters);
@@ -103,6 +123,8 @@ public final class CgTraceSnapshot {
     /** An {@link #incremental} snapshot: the counters are windows over views earlier snapshots made, not a copy. */
     private CgTraceSnapshot(List<CgFrameRecord> frames, CounterRun headRun, CounterRun ringRun,
                             List<MarkerView> markers, List<SpanView> spans, long droppedZones) {
+        this.allocations = CgTraceAllocations.all();
+        this.pauses = CgTraceGc.all();
         this.frames = Collections.unmodifiableList(frames);
         this.zones = List.of();
         this.counters = new Joined<>(headRun.view(), ringRun.view());
@@ -320,7 +342,7 @@ public final class CgTraceSnapshot {
     public static CgTraceSnapshot of(List<CgFrameRecord> frames, List<ZoneView> zones,
                                      List<CounterView> counters, List<MarkerView> markers,
                                      List<SpanView> spans) {
-        return new CgTraceSnapshot(frames, zones, counters, markers, spans, 0L);
+        return new CgTraceSnapshot(frames, zones, counters, markers, spans, 0L, List.of(), List.of());
     }
 
     /**
@@ -382,7 +404,8 @@ public final class CgTraceSnapshot {
         // After the lock: a counter written inside it would be the snapshot measuring itself.
         CgTrace.add(CgTrace.TRACE, "trace-snapshot-counters", counters.size());
 
-        return new CgTraceSnapshot(frames, zones, counters, markers, spans, dropped);
+        return new CgTraceSnapshot(frames, zones, counters, markers, spans, dropped,
+                CgTraceAllocations.all(), CgTraceGc.all());
     }
 
     /** Every marker and span {@code events} holds. The caller holds {@code events}' lock. */
@@ -579,6 +602,20 @@ public final class CgTraceSnapshot {
     /** Every zone held, ordered by start. */
     public List<ZoneView> zones() {
         return zones;
+    }
+
+    /** What each group allocated in {@code frame}, per thread. Empty for a snapshot read back from a file. */
+    public List<AllocationView> allocationsIn(CgFrameRecord frame) {
+        List<AllocationView> out = new ArrayList<>();
+        for (FrameAllocation row : allocations) if (row.frame() == frame.index()) out.add(row.view());
+        return out;
+    }
+
+    /** The pauses that began inside {@code frame}, by start. Empty for a snapshot read back from a file. */
+    public List<GcPauseView> gcPausesIn(CgFrameRecord frame) {
+        List<GcPauseView> out = new ArrayList<>();
+        for (GcPauseView pause : pauses) if (frame.contains(pause.startNanos())) out.add(pause);
+        return out;
     }
 
     public List<CounterView> counters() {

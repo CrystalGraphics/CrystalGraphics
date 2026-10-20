@@ -111,9 +111,11 @@ public final class CgTickSchedule {
         boolean paused = world.paused(), server = world.server();
         for (CgTickFunction[] group : groups) {
             if (group.length == 0) continue;
+            long mark = CgTrace.allocationBegin(CgChannels.WORLD);
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, group[0].groupZoneId)) {
                 for (CgTickFunction f : group) runOne(f, now, paused, server);
             }
+            CgTrace.allocationEnd(CgChannels.WORLD, group[0].groupZoneId, mark);
         }
     }
 

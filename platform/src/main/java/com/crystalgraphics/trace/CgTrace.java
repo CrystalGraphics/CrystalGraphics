@@ -718,6 +718,63 @@ public final class CgTrace {
         (frameIndex < firstFrames ? headEvents : events).counter(nameId, frameIndex, value);
     }
 
+    // ── Allocation, collections and direct memory ───────────────────────────────────────────
+
+    /**
+     * A mark for {@link #allocationEnd}: the calling thread's allocation counter, or -1 while {@code channel} is off
+     * or the JVM does not count. Off costs the same mask test as a zone and reads nothing.
+     *
+     * <pre>{@code
+     * long mark = CgTrace.allocationBegin(CHANNEL);
+     * runTheGroup();
+     * CgTrace.allocationEnd(CHANNEL, "mymod:frame.EFFECTS", mark);   // a -1 mark records nothing
+     * }</pre>
+     */
+    public static long allocationBegin(CgTraceChannel channel) {
+        if ((enabledMask & channel.bit()) == 0L || !CgThreadAllocation.available()) return -1L;
+        return CgThreadAllocation.current();
+    }
+
+    /**
+     * Adds what the calling thread allocated since {@code mark} to {@code group}, for the open frame. Summed per
+     * thread, per group and per frame, and written once a frame; read back with {@link #allocationsIn}. Use the
+     * {@code int} form with a name interned once on a hot path.
+     *
+     * <p>Easy to get wrong: begin and end on the same thread, or the difference is another thread's.</p>
+     */
+    public static void allocationEnd(CgTraceChannel channel, String group, long mark) {
+        if (mark < 0L || (enabledMask & channel.bit()) == 0L) return;
+        allocationEnd(channel, CgTraceNames.intern(group), mark);
+    }
+
+    /** {@link #allocationEnd(CgTraceChannel, String, long)} with the group's interned id. */
+    public static void allocationEnd(CgTraceChannel channel, int groupId, long mark) {
+        if (mark < 0L || (enabledMask & channel.bit()) == 0L) return;
+        long frame = openIndex;
+        if (frame < 0L) return;
+        CgTraceAllocations.add(groupId, frame, CgThreadAllocation.current() - mark, generation);
+    }
+
+    /** What each group allocated in {@code frame}, per thread. Totals appear once the frame thread has begun the frame after. */
+    public static List<CgTraceSnapshot.AllocationView> allocationsIn(CgFrameRecord frame) {
+        return CgTraceAllocations.in(frame.index());
+    }
+
+    /** The collection pauses that began inside {@code frame}, with their cause. */
+    public static List<CgTraceSnapshot.GcPauseView> gcPausesIn(CgFrameRecord frame) {
+        return CgTraceGc.in(frame);
+    }
+
+    /** Collection notifications received since the last {@link #clear}: a reader waits on this for a pause's report. */
+    public static long pendingGcNotifications() {
+        return CgTraceGc.pending();
+    }
+
+    /** Whether the JVM reports direct-buffer memory ({@link CgFrameRecord#directBytes()}). */
+    public static boolean directMemoryAvailable() {
+        return CgTraceGc.directAvailable();
+    }
+
     /** The frame being recorded, or -1 before the first {@link #frameBegin}. */
     public static long currentFrameIndex() {
         return openIndex;
@@ -874,6 +931,9 @@ public final class CgTrace {
     private static long openCpu = CgFrameRecord.ABSENT;
     private static long openGc;
     private static long openGcCount;
+    /** The frame thread's allocation counter at the open frame's start, and the thread it was read on. */
+    private static long openAlloc = CgFrameRecord.ABSENT;
+    private static Thread openAllocThread;
     private static long openDropped;
     private static int openLeaked;
 
@@ -908,12 +968,15 @@ public final class CgTrace {
         openCpu = CgFrameRecord.ABSENT;
         openGc = gcMillis();
         openGcCount = gcCount();
+        openAlloc = CgThreadAllocation.available() ? CgThreadAllocation.current() : CgFrameRecord.ABSENT;
+        openAllocThread = frameThread;
         openDropped = local.dropped;
         openLeaked = 0;
         // After the boundary moves, so the frame just committed counts as closed to the GPU track.
         CgGpuTrace.collect();
         // The frame thread's totals land with the frame they belong to, not at its next add.
         TALLY.get().flushBefore(openIndex, generation);
+        CgTraceAllocations.flushBefore(openIndex, generation);
     }
 
     /**
@@ -936,7 +999,7 @@ public final class CgTrace {
         CgFrameRecord record = new CgFrameRecord(openIndex, openBegin, now, openCpu,
                 CgFrameRecord.ABSENT, Math.max(0L, gcMillis() - openGc),
                 (int) Math.max(0L, gcCount() - openGcCount), openLeaked,
-                Math.max(0L, local.dropped - openDropped));
+                Math.max(0L, local.dropped - openDropped), allocatedThisFrame(), CgTraceGc.directBytes());
         CgFrameRecord[] head = HEAD;
         if (framesWritten < head.length) {
             head[(int) framesWritten] = record;
@@ -966,6 +1029,12 @@ public final class CgTrace {
             }
         }
         if (isFull()) stopBecause(keptFirst(head.length));
+    }
+
+    /** The frame thread's bytes since this frame's {@code frameBegin}, read now, or ABSENT. */
+    private static long allocatedThisFrame() {
+        if (openAlloc == CgFrameRecord.ABSENT || openAllocThread != Thread.currentThread()) return CgFrameRecord.ABSENT;
+        return Math.max(0L, CgThreadAllocation.current() - openAlloc);
     }
 
     private static String keptFirst(int frames) {
@@ -1018,7 +1087,8 @@ public final class CgTrace {
         CgFrameRecord was = frameAt(index);
         if (was == null) return;
         CgFrameRecord now = new CgFrameRecord(was.index(), was.beginNanos(), was.endNanos(), was.cpuNanos(),
-                gpuNanos, was.gcMillis(), was.gcCollections(), was.leakedZones(), was.droppedZones());
+                gpuNanos, was.gcMillis(), was.gcCollections(), was.leakedZones(), was.droppedZones(),
+                was.allocatedBytes(), was.directBytes());
         CgFrameRecord[] head = HEAD;
         if (index < head.length) {
             head[(int) index] = now;
@@ -1208,6 +1278,8 @@ public final class CgTrace {
         generation++;
         events = newEvents(newestFrames);
         headEvents = newEvents(firstFrames);
+        CgTraceAllocations.clear();
+        CgTraceGc.clear();
         // Indices start again from 0, so an image kept would sit under a different frame.
         CgFrameImages.clear();
     }
@@ -1231,6 +1303,7 @@ public final class CgTrace {
     // LAST IN THE CLASS: it enables, and enabling reads the events and the mask declared above. Later values add
     // channels as enableAll does.
     static {
+        CgTraceGc.install();
         enableAll(RECORDED_CHANNELS.get());
         RECORDED_CHANNELS.onChange(CgTrace::enableAll);
     }

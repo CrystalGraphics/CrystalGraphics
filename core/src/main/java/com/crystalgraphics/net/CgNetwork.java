@@ -13,6 +13,7 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.collision.debug.CgCollisionShow;
 import com.crystalgraphics.tag.CgTagNet;
+import com.crystalgraphics.trace.CgThreadAllocation;
 import com.crystalgraphics.net.object.CgNetObjects;
 import com.crystalgraphics.net.object.CgNetProbe;
 import com.crystalgraphics.net.object.CgNetStress;
