@@ -1,6 +1,7 @@
 package com.crystalgraphics.asset.load;
 
 import java.util.Collections;
+import java.util.List;
 
 import javax.annotation.Nullable;
 
@@ -40,8 +41,10 @@ public final class CgAssetRef<D> {
     @Nullable CgAssetLoad load;
     @Nullable CgLoadPriority priority;
     boolean loggedSync, loggedRefused;
-    /** Its prepare's upload bytes, in all and gone up; both 0 until it compiles. */
-    volatile long totalBytes, uploadedBytes;
+    /** Its GPU work, from when it compiled. */
+    @Nullable CgPreparePlan plan;
+    /** Its hard dependencies, READY before it is. */
+    List<CgAssetRef<?>> hard = Collections.emptyList();
 
     CgAssetRef(CgVfxAssets assets, CgType kind, String id) {
         this.assets = assets;
@@ -97,11 +100,13 @@ public final class CgAssetRef<D> {
     }
 
     long weight() {
-        return totalBytes;
+        CgPreparePlan p = plan;
+        return p == null ? 0 : p.bytes;
     }
 
     long doneBytes() {
-        return uploadedBytes;
+        CgPreparePlan p = plan;
+        return p == null ? 0 : p.uploaded;
     }
 
     public CgType kind() {
