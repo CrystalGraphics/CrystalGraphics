@@ -67,6 +67,14 @@ tasks.test {
     forkEvery = 1
 }
 
+// -Ptest.bytecode=8: the tests against core's and platform's Java 8 copies, the bytecode the shipped jars carry,
+// on the same JVM: what an allocation proof must also pass on.
+(findProperty("test.bytecode") as String?)?.toInt()?.let { level ->
+    configurations.named("testRuntimeClasspath") {
+        attributes { attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, level) }
+    }
+}
+
 // The tier boundary, as in runtime/lwjgl/3.
 tasks.named<JavaCompile>("compileJava") {
     val srcRoot: String = layout.projectDirectory.dir("src/main/java").asFile.absolutePath
