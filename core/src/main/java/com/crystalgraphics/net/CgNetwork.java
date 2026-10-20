@@ -12,6 +12,7 @@ import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.collision.debug.CgCollisionShow;
+import com.crystalgraphics.frame.CgFrameBoundary;
 import com.crystalgraphics.tag.CgTagNet;
 import com.crystalgraphics.trace.CgThreadAllocation;
 import com.crystalgraphics.net.object.CgNetObjects;
@@ -129,6 +130,7 @@ public final class CgNetwork {
      */
     public static synchronized boolean install(CgNetworkChannel channel, Function<Object, UUID> playerIds) {
         CgPlatform.provide(CgNetworkChannel.SERVICE, channel);
+        CgFrameBoundary.installServerTick();   // a dedicated server's boundary: it has no host frame
         if (!channel.isAvailable()) {
             LOGGER.warn("[cg-net] no network channel; connections will not be opened");
             return false;

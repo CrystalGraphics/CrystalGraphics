@@ -9,6 +9,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.crystalgraphics.asset.load.CgVfxAssets;
+import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -28,7 +29,8 @@ import com.crystalgraphics.util.trace.CgChannels;
  *       functions follow by name, never by registration order.</li>
  *   <li>A function that throws is disabled and logged once; the rest run on.</li>
  *   <li>Each phase is a trace zone, {@code frame.drain} and {@code frame.publish}.</li>
- *   <li>A dedicated server has no host frame: it drains and publishes its assets at its own tick.</li>
+ *   <li>A dedicated server has no host frame: its server tick runs the boundary ({@link #installServerTick}). A client's
+ *       integrated server never does, once a host frame has run one.</li>
  * </ul>
  */
 public final class CgFrameBoundary {
@@ -99,8 +101,37 @@ public final class CgFrameBoundary {
         plan = next;
     }
 
-    /** Runs the boundary: the assets' drain, the drain functions, the assets' publish, the publish functions. */
+    /** Whether a host frame ever ran the boundary: then a server tick never does (an integrated server's thread). */
+    private static volatile boolean framed;
+    private static boolean serverTickInstalled;
+
+    /**
+     * Runs the boundary from the server's tick while no host frame has: a dedicated server's. Idempotent; from
+     * {@code CgNetwork.install}, at init on both sides.
+     */
+    public static synchronized void installServerTick() {
+        if (serverTickInstalled) return;
+        serverTickInstalled = true;
+        CgNetwork.onServerTick(CgFrameBoundary::serverTick);
+    }
+
+    /** The server tick's boundary: nothing once a host frame has run one. */
+    static void serverTick() {
+        if (!framed) phases();
+    }
+
+    /** For tests: forget that a host frame ran. */
+    static void unframed() {
+        framed = false;
+    }
+
+    /** Runs the boundary, from the host's frame end: the assets' drain, the drain functions, then the publishes. */
     public static void run() {
+        framed = true;
+        phases();
+    }
+
+    private static void phases() {
         Function[][] p = plan;
         CgVfxAssets assets = CgVfxAssets.instance();
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, Phase.DRAIN.zone)) {

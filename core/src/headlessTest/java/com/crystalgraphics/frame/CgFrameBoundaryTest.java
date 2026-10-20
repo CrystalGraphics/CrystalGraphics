@@ -53,4 +53,14 @@ public class CgFrameBoundaryTest {
         CgFrameBoundary.run();
         assertEquals("[boom, next, next]", ran.toString());
     }
+
+    @Test
+    public void aServerTickRunsTheBoundaryOnlyWhereNoHostFrameDoes() {
+        add(CgFrameBoundary.Phase.PUBLISH, "test:tick", () -> ran.add("tick"));
+        CgFrameBoundary.unframed();
+        CgFrameBoundary.serverTick();                  // a dedicated server
+        CgFrameBoundary.run();                         // a client's frame
+        CgFrameBoundary.serverTick();                  // its integrated server: skipped
+        assertEquals("[tick, tick]", ran.toString());
+    }
 }
