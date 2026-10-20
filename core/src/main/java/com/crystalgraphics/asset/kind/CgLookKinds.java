@@ -4,6 +4,7 @@ import com.crystalgraphics.object.CgPropertyFlag;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgTypes;
 import com.crystalgraphics.object.CgValueType;
+import com.crystalgraphics.object.value.CgValueForm;
 
 import static com.crystalgraphics.asset.kind.CgCommonStructs.hard;
 import static com.crystalgraphics.asset.kind.CgCommonStructs.mapOfValues;
@@ -69,10 +70,10 @@ public final class CgLookKinds {
 
     /** {@code materials/} ({@code UMaterialInstanceConstant}). */
     public static final CgType MATERIAL = CgTypes.kind("crystalgraphics:material").folder("materials").version(1)
-            .property("shader", STRING).flags(CgPropertyFlag.STRUCTURAL)
+            .property("shader", CgValueType.NAMESPACED_ID).flags(CgPropertyFlag.STRUCTURAL)
             .property("state", CgValueType.struct(STATE))
             .property("post", CgValueType.struct(POST))
-            .property("order", INT)
+            .property("order", INT).forms(CgValueForm.CONSTANT).range(0, 255)
             .property("sort_layer", CgValueType.enumOf("background", "default", "effects", "overlay"))
             .property("keywords", CgValueType.listOf(STRING)).flags(CgPropertyFlag.STRUCTURAL)
             .property("values", mapOfValues())
@@ -124,7 +125,7 @@ public final class CgLookKinds {
 
     /** {@code parameters/}: global values sequences key and shaders read ({@code UMaterialParameterCollection}). */
     public static final CgType PARAMETERS = CgTypes.kind("crystalgraphics:parameters").folder("parameters").version(1)
-            .property("namespace", STRING).required().flags(CgPropertyFlag.STRUCTURAL)
+            .property("namespace", CgValueType.string("^(?!.*__)[A-Za-z_][A-Za-z0-9_]*$")).required().flags(CgPropertyFlag.STRUCTURAL)
             .property("base", hard("parameters")).flags(CgPropertyFlag.STRUCTURAL)
             .property("scalars", CgValueType.idList(SCALAR)).flags(CgPropertyFlag.STRUCTURAL)
             .property("vectors", CgValueType.idList(VECTOR)).flags(CgPropertyFlag.STRUCTURAL)

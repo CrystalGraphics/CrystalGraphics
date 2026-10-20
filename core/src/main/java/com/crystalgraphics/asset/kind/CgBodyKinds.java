@@ -5,6 +5,7 @@ import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgTypes;
 import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.object.value.CgQuantity;
+import com.crystalgraphics.object.value.CgValueForm;
 
 import static com.crystalgraphics.asset.kind.CgCommonStructs.hard;
 import static com.crystalgraphics.asset.kind.CgCommonStructs.mapOfValues;
@@ -78,11 +79,11 @@ public final class CgBodyKinds {
 
     static final CgType CHAIN = CgTypes.element("crystalgraphics:springs.chain")
             .property("root", STRING).required()
-            .property("bones", INT)
-            .property("inertia", FLOAT)
-            .property("length_strength", FLOAT)
-            .property("direction_strength", FLOAT)
-            .property("movement_strength", FLOAT)
+            .property("bones", INT).forms(CgValueForm.CONSTANT)
+            .property("inertia", FLOAT).forms(CgValueForm.CONSTANT)
+            .property("length_strength", FLOAT).forms(CgValueForm.CONSTANT)
+            .property("direction_strength", FLOAT).forms(CgValueForm.CONSTANT)
+            .property("movement_strength", FLOAT).forms(CgValueForm.CONSTANT)
             .property("offset", VEC3).quantity(CgQuantity.OFFSET)
             .register();
 

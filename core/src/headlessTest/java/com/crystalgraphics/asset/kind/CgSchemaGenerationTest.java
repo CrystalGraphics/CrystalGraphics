@@ -8,8 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,7 +43,6 @@ public class CgSchemaGenerationTest {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
     private static Path spec;
-    private static final Map<String, String> DEF_BY_MEMBER = new HashMap<>();
 
     @BeforeClass
     public static void spec() throws IOException {
@@ -54,29 +51,15 @@ public class CgSchemaGenerationTest {
                 dir != null && Files.isDirectory(Paths.get(dir)));
         spec = Paths.get(dir);
         CgAssetKinds.register();
-        JsonObject defs = schema("common").getAsJsonObject("$defs");
-        for (Map.Entry<String, JsonElement> d : defs.entrySet()) {
-            JsonObject def = d.getValue().getAsJsonObject();
-            if (!def.has("oneOf")) continue;
-            for (JsonElement m : def.getAsJsonArray("oneOf")) {
-                if (m.isJsonObject() && m.getAsJsonObject().has("$comment")) {
-                    DEF_BY_MEMBER.put(m.getAsJsonObject().get("$comment").getAsString(), d.getKey());
-                }
-            }
-        }
     }
 
     @Test
     public void generatedSchemasEqualTheCheckedInOnes() throws IOException {
-        CgSchemaWriter writer = CgSchemaWriter.of(family -> {
-            Iterator<CgType> members = family.members().values().iterator();
-            return members.hasNext() ? DEF_BY_MEMBER.get(members.next().id()) : null;
-        });
         List<String> diffs = new ArrayList<>();
         Map<String, Integer> byShape = new TreeMap<>();
         for (CgType kind : CgAssetKinds.all()) {
             String name = kind.id().substring(kind.id().indexOf(':') + 1);
-            Map<String, Object> generated = writer.kind(kind);
+            Map<String, Object> generated = CgSchemaWriter.kind(kind);
             Files.createDirectories(OUT);
             Files.write(OUT.resolve(name + ".schema.json"), GSON.toJson(generated).getBytes(StandardCharsets.UTF_8));
             diff(name, plain(schema(name)), generated, diffs, byShape);

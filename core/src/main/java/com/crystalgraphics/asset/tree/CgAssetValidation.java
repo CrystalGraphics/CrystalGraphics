@@ -3,6 +3,7 @@ package com.crystalgraphics.asset.tree;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 import javax.annotation.Nullable;
@@ -25,6 +26,8 @@ final class CgAssetValidation {
 
     private static final Pattern ID = Pattern.compile("[a-z0-9_]{1,32}");
     private static final Pattern REF = Pattern.compile("[a-z0-9_]+:\\S.*");
+    /** Each patterned string type's pattern, compiled once. */
+    private static final Map<String, Pattern> PATTERNS = new ConcurrentHashMap<>();
 
     private final CgValidation into;
 
@@ -102,8 +105,12 @@ final class CgAssetValidation {
                 if (v instanceof Map) form(p, (Map<?, ?>) v, at);
                 else if (!(v instanceof List || v instanceof Number)) shape(at, "a number or a list of them", v);
                 return;
-            case STRING: case ELEMENT_REF:
+            case ELEMENT_REF:
                 if (!(v instanceof String)) shape(at, "a string", v);
+                return;
+            case STRING:
+                if (!(v instanceof String)) shape(at, "a string", v);
+                else if (t.pattern() != null && !matches(t, (String) v)) shape(at, "text matching " + t.pattern(), v);
                 return;
             case REF:
                 if (!(v instanceof String)) shape(at, "an id", v);
@@ -223,6 +230,10 @@ final class CgAssetValidation {
     }
 
     /** Whether {@code v} is written in {@code alt}'s shape, as a {@code oneOf} picks: a map holding its required keys. */
+    private static boolean matches(CgValueType t, String v) {
+        return PATTERNS.computeIfAbsent(t.pattern(), Pattern::compile).matcher(v).find();
+    }
+
     private static boolean accepts(CgValueType alt, Object v) {
         switch (alt.kind()) {
             case STRUCT:
@@ -240,7 +251,9 @@ final class CgAssetValidation {
                 return v instanceof List;
             case ENUM:
                 return alt.enumValues().contains(v);
-            case STRING: case REF: case BINARY_REF: case ELEMENT_REF:
+            case STRING:
+                return v instanceof String && (alt.pattern() == null || matches(alt, (String) v));
+            case REF: case BINARY_REF: case ELEMENT_REF:
                 return v instanceof String;
             case BOOL:
                 return v instanceof Boolean;

@@ -116,7 +116,7 @@ public final class CgFieldKinds {
             .property("kind", CgValueType.enumOf("graph")).required()
             .property("target", CgValueType.enumOf("linear_force", "linear_velocity", "kill", "orbit", "speed_scale",
                     "angular_velocity", "scale", "strain")).required()
-            .property("root", STRING).required()
+            .property("root", CgValueType.LOCAL_ID).required()
             .property("magnitude_var", FLOAT)
             .property("nodes", CgValueType.idList(NODES)).required()
             .register();
@@ -131,7 +131,7 @@ public final class CgFieldKinds {
             .property("tiles", BOOL)
             .property("target", CgValueType.enumOf("linear_force", "linear_velocity", "kill", "orbit", "speed_scale",
                     "angular_velocity", "scale", "strain")).flags(CgPropertyFlag.STRUCTURAL)
-            .property("root", STRING).flags(CgPropertyFlag.STRUCTURAL)
+            .property("root", CgValueType.LOCAL_ID).flags(CgPropertyFlag.STRUCTURAL)
             .property("magnitude_var", FLOAT)
             .property("nodes", CgValueType.idList(NODES)).flags(CgPropertyFlag.STRUCTURAL)
             .register();

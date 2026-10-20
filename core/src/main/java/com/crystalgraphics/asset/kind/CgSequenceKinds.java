@@ -11,6 +11,7 @@ import com.crystalgraphics.object.CgTypes;
 import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.object.validate.CgValidation;
 import com.crystalgraphics.object.value.CgQuantity;
+import com.crystalgraphics.object.value.CgValueForm;
 
 import static com.crystalgraphics.asset.kind.CgCommonStructs.BINDING;
 import static com.crystalgraphics.asset.kind.CgCommonStructs.hard;
@@ -521,7 +522,7 @@ public final class CgSequenceKinds {
     /** {@code sequences/} ({@code ULevelSequence}). */
     public static final CgType SEQUENCE = CgTypes.kind("crystalgraphics:sequence").folder("sequences").version(1)
             .property("tick_resolution", FLOAT).required().flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
-            .property("display_rate", FLOAT).required()
+            .property("display_rate", FLOAT).required().forms(CgValueForm.CONSTANT)
             .property("range", CgValueType.listOf(INT)).flags(CgPropertyFlag.HEADLESS)
             .property("evaluation", CgValueType.enumOf("sub_frames", "frame_locked"))
             .property("marked_frames", CgValueType.listOf(CgValueType.struct(MARKED_FRAME)))

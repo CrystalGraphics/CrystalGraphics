@@ -59,8 +59,8 @@ public final class CgParticleKinds {
             .property("enabled", BOOL).defaultValue(true).flags(CgPropertyFlag.STRUCTURAL)
             .property("inputs", mapOfValues())
             .property("seed", CgValueType.struct(SEED))
-            .property("after", STRING)
-            .property("before", STRING)
+            .property("after", CgValueType.LOCAL_ID)
+            .property("before", CgValueType.LOCAL_ID)
             .validator(CgParticleKinds::builtInModule)
             .register();
 
@@ -93,11 +93,11 @@ public final class CgParticleKinds {
     /** An event handler ({@code FNiagaraEventScriptProperties}). */
     static final CgType EVENT = CgTypes.element("crystalgraphics:emitter.event")
             .property("trigger", CgValueType.enumOf("spawn", "death", "collision", "location", "burst")).required()
-            .property("source", STRING)
+            .property("source", CgValueType.LOCAL_ID)
             .property("name", STRING)
             .property("spawn", CgValueType.struct(SPAWN))
             .property("kill", BOOL)
-            .property("max_per_frame", INT)
+            .property("max_per_frame", INT).forms(CgValueForm.CONSTANT)
             .register();
 
     // ── Renderers ────────────────────────────────────────────────────────────────────────
@@ -320,8 +320,8 @@ public final class CgParticleKinds {
             .property("name", STRING).flags(CgPropertyFlag.LOCKED)
             .property("emitter", CgValueType.oneOf(hard("emitter"), CgValueType.struct(INLINE_EMITTER))).flags(CgPropertyFlag.STRUCTURAL)
             .property("enabled", BOOL).defaultValue(true).flags(CgPropertyFlag.STRUCTURAL)
-            .property("after", STRING)
-            .property("before", STRING)
+            .property("after", CgValueType.LOCAL_ID)
+            .property("before", CgValueType.LOCAL_ID)
             .register();
 
     static final CgType CHILD = CgTypes.element("crystalgraphics:system.child")
@@ -352,10 +352,10 @@ public final class CgParticleKinds {
 
     /** What a native behaviour's slot draws (ours, with no Unreal counterpart). */
     static final CgType SLOT = CgTypes.element("crystalgraphics:system.slot")
-            .property("slot", STRING).required()
+            .property("slot", CgValueType.NAMESPACED_ID).required()
             .property("material", hard("material")).flags(CgPropertyFlag.STRUCTURAL)
             .property("bind", mapOfValues())
-            .property("size", FLOAT).quantity(CgQuantity.LENGTH)
+            .property("size", FLOAT).quantity(CgQuantity.LENGTH).forms(CgValueForm.CONSTANT)
             .property("mesh", VALUE)
             .property("quality", TIER)
             .register();
@@ -372,7 +372,7 @@ public final class CgParticleKinds {
             .property("delay", FLOAT).quantity(CgQuantity.TIME).defaultValue(0.0)
             .property("determinism", CgValueType.struct(DETERMINISM))
             .property("fixed_bounds", CgValueType.listOf(VEC3)).quantity(CgQuantity.POSITION)
-            .property("effect", STRING).flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
+            .property("effect", CgValueType.NAMESPACED_ID).flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
             .property("slots", CgValueType.idList(SLOT)).flags(CgPropertyFlag.STRUCTURAL)
             .register();
 
@@ -469,7 +469,7 @@ public final class CgParticleKinds {
 
     /** {@code vfx/endings/}: how an effect eases out (ours). Its id is its network name. */
     public static final CgType ENDING = CgTypes.kind("crystalgraphics:ending").folder("vfx/endings").version(1)
-            .property("seconds", FLOAT).required().quantity(CgQuantity.TIME)
+            .property("seconds", FLOAT).required().quantity(CgQuantity.TIME).forms(CgValueForm.CONSTANT)
             .property("animate", CgValueType.idList(ANIMATE))
             .property("fade_out", STRING)
             .register();

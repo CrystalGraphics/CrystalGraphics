@@ -51,6 +51,14 @@ public final class CgValueType {
     public static final CgValueType BOOL = new CgValueType(Kind.BOOL);
     /** Text: a name, an id, an event. */
     public static final CgValueType STRING = new CgValueType(Kind.STRING);
+    /** What {@link #NAMESPACED_ID} matches: {@code namespace:path}. */
+    public static final String NAMESPACED_PATTERN = "^[a-z0-9_]+:\\S.*$";
+    /** What {@link #LOCAL_ID} matches: an element id. */
+    public static final String LOCAL_ID_PATTERN = "^[a-z0-9_]{1,32}$";
+    /** An id written {@code namespace:path} but never loaded as an asset: a tag, a shader, a behaviour, a slot. */
+    public static final CgValueType NAMESPACED_ID = string(NAMESPACED_PATTERN);
+    /** An element's id named as text, as a module entry's {@code after} names a sibling: not checked to exist. */
+    public static final CgValueType LOCAL_ID = string(LOCAL_ID_PATTERN);
     /** Two numbers. */
     public static final CgValueType VEC2 = new CgValueType(Kind.VEC2);
     /** Three numbers. */
@@ -98,6 +106,7 @@ public final class CgValueType {
     private final CgValueType element;
     private final CgValueType key;
     private final List<CgValueType> alternatives;
+    private final String pattern;
 
     private CgValueType(Kind kind) {
         this(kind, Collections.<String>emptyList(), null, null, null, null, null);
@@ -110,6 +119,12 @@ public final class CgValueType {
 
     private CgValueType(Kind kind, List<String> enumValues, String refKind, Strength strength, CgType type,
                         CgValueType element, CgValueType key, List<CgValueType> alternatives) {
+        this(kind, enumValues, refKind, strength, type, element, key, alternatives, null);
+    }
+
+    private CgValueType(Kind kind, List<String> enumValues, String refKind, Strength strength, CgType type,
+                        CgValueType element, CgValueType key, List<CgValueType> alternatives, String pattern) {
+        this.pattern = pattern;
         this.alternatives = alternatives;
         this.kind = kind;
         this.enumValues = enumValues;
@@ -118,6 +133,12 @@ public final class CgValueType {
         this.type = type;
         this.element = element;
         this.key = key;
+    }
+
+    /** Text matching {@code pattern}, a Java regular expression the schema writes as its {@code pattern}. */
+    public static CgValueType string(String pattern) {
+        return new CgValueType(Kind.STRING, Collections.<String>emptyList(), null, null, null, null, null,
+                Collections.<CgValueType>emptyList(), Objects.requireNonNull(pattern));
     }
 
     /** One of {@code values}, written as its name. */
@@ -220,6 +241,11 @@ public final class CgValueType {
         return element;
     }
 
+    /** The pattern a string must match; null for any text, and for every other kind. */
+    public String pattern() {
+        return pattern;
+    }
+
     /** A {@link #oneOf}'s alternatives, in the order they are tried; empty otherwise. */
     public List<CgValueType> alternatives() {
         return alternatives;
@@ -245,19 +271,20 @@ public final class CgValueType {
         CgValueType t = (CgValueType) o;
         return kind == t.kind && enumValues.equals(t.enumValues) && Objects.equals(refKind, t.refKind)
                 && strength == t.strength && type == t.type && Objects.equals(element, t.element)
-                && Objects.equals(key, t.key) && alternatives.equals(t.alternatives);
+                && Objects.equals(key, t.key) && alternatives.equals(t.alternatives) && Objects.equals(pattern, t.pattern);
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(kind, enumValues, refKind, strength, type == null ? 0 : System.identityHashCode(type), element,
-                alternatives);
+                alternatives, pattern);
     }
 
     @Override
     public String toString() {
         switch (kind) {
             case ENUM: return "enum" + enumValues;
+            case STRING: return pattern == null ? "string" : "string<" + pattern + ">";
             case REF: return "ref<" + refKind + ", " + strength.name().toLowerCase() + ">";
             case ELEMENT_REF: return "element<" + refKind + ">";
             case BINARY_REF: return "binary<" + refKind + ">";
