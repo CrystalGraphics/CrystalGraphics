@@ -43,9 +43,11 @@ import org.apache.logging.log4j.Logger;
 import org.joml.Quaternionf;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.IntConsumer;
 
@@ -168,10 +170,12 @@ public final class CgVfxSystem {
         SKIP.onChange(list -> skipped = parts(list));
     }
     /**
-     * Fewer effects with emitters due than this book them on the render thread alone, about a millisecond (0.25 us
-     * each): workers woken for less could take the render thread's core on a loaded machine (33 ms, mc-perf-notes).
+     * Fewer effects with emitters due than this book them on the render thread alone (0.25 us each): workers woken
+     * for less could take the render thread's core on a loaded machine (33 ms, mc-perf-notes).
      */
-    private static final int PARALLEL_EFFECTS = 4096;
+    private static final CgVar.Int PARALLEL_BOOKS = CgVar.integer("crystalgraphics.vfx.parallelBooks", 4096, 1,
+            Integer.MAX_VALUE, CgVar.DEV, "Effects with emitters due a tick past which their books run on the workers,"
+                    + " one definition a worker; fewer book on the render thread alone.");
     private static final int MAX_TICKS = 12;
     /** GPU steps a pool may hold unrecorded, half a second at 60 Hz, before every effect waits for the world to draw. */
     private static final int MAX_QUEUED_STEPS = 30;
@@ -200,16 +204,46 @@ public final class CgVfxSystem {
     // The tube is this system's own; the ribbons, sphere and quads are shared.
     private CgMesh tubeMesh, closedTubeMesh, ribbonMesh, sphereMesh, volumeMesh;
     private final CgVfxAir air = new CgVfxAir();
-    /** The effects that queued emitter ticks this tick: what the workers run. */
+    /** The effects that queued emitter ticks this tick, in play order: the order they are admitted in. */
     private final List<CgVfxEffect<?>> emitting = new ArrayList<>();
-    private final IntConsumer tickEach = i -> {
-        CgVfxEffect<?> effect = emitting.get(i);
-        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, EFFECT_EMITTERS_ZONE)) {
-            effect.tickEmitters();
-        } catch (RuntimeException e) {
-            effect.failure = e;
+    /** One simulation per definition playing, Unreal's world manager's map; a definition is a look until 07 P4. */
+    private final Map<CgVfxLook, Simulation> simulations = new IdentityHashMap<>();
+    /** The simulations with books due this tick: what the workers run, one each. */
+    private final List<Simulation> booking = new ArrayList<>();
+    private final IntConsumer bookEach = i -> booking.get(i).book();
+
+    /**
+     * One definition's playing effects, booked together: a loop over its instances with the definition read once,
+     * Unreal's {@code FNiagaraSystemSimulation}. Its effects step in the system's play order; only the books run here.
+     */
+    static final class Simulation {
+        /** Its effects alive, so the system drops it with the last. */
+        int playing;
+        CgVfxEffect<?>[] due = new CgVfxEffect<?>[4];
+        int dueCount;
+
+        /** Queues {@code effect}'s books this tick; the first of a tick also queues the simulation on {@code booking}. */
+        void due(CgVfxEffect<?> effect, List<Simulation> booking) {
+            if (dueCount == due.length) due = Arrays.copyOf(due, dueCount * 2);
+            if (dueCount == 0) booking.add(this);
+            due[dueCount++] = effect;
         }
-    };
+
+        void book() {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, EFFECT_EMITTERS_ZONE)) {
+                for (int i = 0; i < dueCount; i++) {
+                    CgVfxEffect<?> effect = due[i];
+                    try {
+                        effect.tickEmitters();
+                    } catch (RuntimeException e) {
+                        effect.failure = e;
+                    }
+                    due[i] = null;
+                }
+                dueCount = 0;
+            }
+        }
+    }
     /** The owners whose effects it has played, for their counters. */
     private final List<CgVfxOwner> owners = new ArrayList<>();
     private final double[] pose = new double[CgEntityQuery.POSE_LENGTH], point = new double[3];
@@ -235,6 +269,7 @@ public final class CgVfxSystem {
         if (effect.system != null) throw new IllegalStateException("already played: " + effect);
         effect.system = this;
         effects.add(effect);
+        (effect.simulation = simulations.computeIfAbsent(effect.look(), l -> new Simulation())).playing++;
         precull(effect);
         CgVfxOwner owner = effect.owner;
         if (owner != null) {
@@ -354,15 +389,18 @@ public final class CgVfxSystem {
                                 fail(effect, e);
                             }
                         }
-                        if (effect.hasEmitterTicks()) emitting.add(effect);
+                        if (effect.hasEmitterTicks()) {
+                            emitting.add(effect);
+                            effect.simulation.due(effect, booking);
+                        }
                     }
                     try (CgTrace.Zone run = CgTrace.zone(CgVfxTrace.CHANNEL, EMITTERS_ZONE)) {
-                        if (emitting.size() >= PARALLEL_EFFECTS) {
+                        if (booking.size() > 1 && emitting.size() >= PARALLEL_BOOKS.get()) {
                             try (CgTrace.Zone ticking = CgTrace.zone(CgVfxTrace.CHANNEL, WORKERS_ZONE)) {
-                                CgJob.forEach(emitting.size(), tickEach);
+                                CgJob.forEach(booking.size(), bookEach);
                             }
                         } else {
-                            for (int i = 0; i < emitting.size(); i++) tickEach.accept(i);
+                            for (int i = 0; i < booking.size(); i++) booking.get(i).book();
                         }
                         try (CgTrace.Zone admitting = CgTrace.zone(CgVfxTrace.CHANNEL, ADMIT_ZONE)) {
                             for (int i = 0; i < emitting.size(); i++) {
@@ -377,6 +415,7 @@ public final class CgVfxSystem {
                         }
                     } finally {
                         emitting.clear();
+                        booking.clear();
                     }
                     if (particleTick) {
                         try (CgTrace.Zone steps = CgTrace.zone(CgVfxTrace.CHANNEL, GPU_STEPS_ZONE)) {
@@ -415,12 +454,18 @@ public final class CgVfxSystem {
                 if (effect.killed) effect.killSlots(gpuSteps);
                 if (effect.owner != null) effect.owner.release(effect);
                 effect.leaveGroup();
+                leaveSimulation(effect);
                 continue;
             }
             if (kept != i) effects.set(kept, effect);
             kept++;
         }
         for (int i = effects.size() - 1; i >= kept; i--) effects.remove(i);
+    }
+
+    /** Its simulation is dropped with its last effect. */
+    private void leaveSimulation(CgVfxEffect<?> effect) {
+        if (--effect.simulation.playing == 0) simulations.remove(effect.look());
     }
 
     /** Every owner it lists lets go of its effects at once. */
@@ -808,6 +853,7 @@ public final class CgVfxSystem {
             effects.get(i).leaveGroup();
         }
         effects.clear();
+        simulations.clear();
         releaseOwners();
         // Drops the pools, not just their slots: a slot reopened over live particles hands them to its next owner.
         gpuSteps.clear();
@@ -900,6 +946,7 @@ public final class CgVfxSystem {
     public void delete() {
         for (int i = 0; i < effects.size(); i++) effects.get(i).leaveGroup();
         effects.clear();
+        simulations.clear();
         releaseOwners();
         for (int i = 0; i < eventListeners.size(); i++) CgVfxParticlePool.stopListening(eventListeners.get(i));
         eventListeners.clear();

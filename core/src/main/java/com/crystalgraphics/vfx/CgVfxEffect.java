@@ -79,6 +79,8 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     protected double originX, originY, originZ;
     /** The system playing it, set by {@link CgVfxSystem#play}. */
     CgVfxSystem system;
+    /** Its look's simulation in {@link #system}: where its emitters' books are queued. */
+    CgVfxSystem.Simulation simulation;
     /** Who played it, or null for a system played into directly. */
     CgVfxOwner owner;
     /** What runs it on a server, or null on a client: {@link #authoritative}. */
