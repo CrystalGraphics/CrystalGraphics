@@ -1086,6 +1086,18 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
+        /** Clears its bursts: an asset's {@code spawn_burst} entries set them again ({@link CgVfxEmitterAssets}). */
+        Builder clearBursts() {
+            bursts.clear();
+            return this;
+        }
+
+        /** Rides the effect or not, as an asset's {@code local_space} says. */
+        Builder local(boolean local) {
+            this.local = local;
+            return this;
+        }
+
         /**
          * Binds one of its inputs to a user parameter, read from its effect's values each step ({@link CgVfxUserBinding}).
          *
