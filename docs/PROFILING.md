@@ -408,6 +408,36 @@ FRAME #4312 ...
   counted per frame, and every other kind `unavailable` in the report. `startJvmEventsFallback()` forces it.
 - Events are kept by their start time on the stream's thread, so the frame thread does nothing per event.
 
+### Hitches: which frames, and what each was
+
+The report's `HITCHES` section lists the frames that were slow *for their run* and what the trace saw in each.
+
+```java
+for (CgHitch hitch : CgTrace.snapshot().hitches(16_700_000L)) {          // the frame time the run should hold
+    System.out.println(hitch.frame().index() + " " + (hitch.explained() ? hitch.top().detail() : "unexplained"));
+}
+long p999 = CgHitches.percentile(wallNanos, 999);                          // nearest rank, exact
+```
+
+```
+HITCHES  1 over max(2 x the rolling median, 16.7 ms + 4.0 ms) in 300 frames   wall p99 9.8 ms  p99.9 41.2 ms
+HITCH #4312  41.2 ms wall (median 7.9)   bound: frame thread
+   GC_PAUSE        31.00 ms  G1 Young Generation end of minor GC cause G1 Evacuation Pause
+   ALLOCATION       0.00 ms  96.0 MiB on the frame thread, 0.0 MiB of it in named groups
+   => not ours
+```
+
+- **A hitch** is a frame whose wall time is strictly over `max(2 x the median of the previous 120 frames,
+  target + 4 ms)`; nothing is judged before 20 frames. A run that stays slow stops hitching once the median catches up.
+- **Causes are ranked**: stopping causes (GC pause, safepoint, class load) by overlap with the frame, but only those at
+  least a tenth of the frame's excess over its median; then engine waits (`.compile-waits`, `.sync-loads` counters),
+  an allocation burst (8 MiB or more on the frame thread), deoptimisations; then the stopping causes under the floor;
+  then compilations, which run beside the frame thread and never explain a hitch alone.
+- **Ours** is an engine wait, or a burst whose bytes were inside named allocation groups. A collection never is.
+- **`=> unexplained`** means the trace saw nothing. With the JVM stream off the report says so; it never guesses.
+- **The bound** is the larger of the frame thread's CPU time and the GPU time, a tie going to the frame thread.
+- **Percentiles** are nearest rank in integers (`ceil(permille x n / 1000)`), so p99.9 of ten frames is the slowest.
+
 **Comparing a change**: two ranges of one ring are the honest comparison (same process, same JIT). Across
 runs, run each build back to back on one machine, twice; differences smaller than run-to-run spread are
 not findings.

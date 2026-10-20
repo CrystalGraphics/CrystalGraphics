@@ -635,6 +635,32 @@ public final class CgTraceSnapshot {
         return out;
     }
 
+    /** The pauses that overlap {@code frame}, whether or not they began in it. */
+    List<GcPauseView> gcPausesOverlapping(CgFrameRecord frame) {
+        List<GcPauseView> out = new ArrayList<>();
+        for (GcPauseView pause : pauses) {
+            if (pause.startNanos() < frame.endNanos() && pause.startNanos() + pause.durationNanos() > frame.beginNanos()) out.add(pause);
+        }
+        return out;
+    }
+
+    List<JvmEventView> jvmEventsOverlapping(CgFrameRecord frame) {
+        return jvm.overlapping(frame);
+    }
+
+    /**
+     * The hitches in this snapshot's frames, each with its causes ranked; see {@link CgHitches}.
+     *
+     * <pre>{@code
+     * for (CgHitch h : CgTrace.snapshot().hitches(16_700_000L)) System.out.println(h.frame().index() + " " + h.top());
+     * }</pre>
+     *
+     * @param targetNanos the frame time the run is meant to hold, such as 16.7 ms
+     */
+    public List<CgHitch> hitches(long targetNanos) {
+        return CgHitches.find(this, targetNanos);
+    }
+
     /** The pauses that began inside {@code frame}, by start. Empty for a snapshot read back from a file. */
     public List<GcPauseView> gcPausesIn(CgFrameRecord frame) {
         List<GcPauseView> out = new ArrayList<>();

@@ -116,6 +116,7 @@ public final class CgTraceReport {
         waits(out, a);
         selfTime(out, a, full ? Integer.MAX_VALUE : 15);
         counters(out, a);
+        hitchLines(out);
         gpuGroups(out, a);
         markers(out, a, full ? Integer.MAX_VALUE : 8);
         hints(out, a, Integer.MAX_VALUE);
@@ -978,6 +979,51 @@ public final class CgTraceReport {
     }
 
     private static final int JVM_ROWS = 8;
+    private static final int HITCH_ROWS = 20;
+
+    /**
+     * The HITCHES section on its own: the tail of the wall times, then each hitch against the {@link #budget} with its
+     * causes ranked and a verdict line, {@code => ours}, {@code => not ours} or {@code => unexplained}.
+     */
+    public String hitches() {
+        StringBuilder out = new StringBuilder(1024);
+        hitchLines(out);
+        return out.toString();
+    }
+
+    private void hitchLines(StringBuilder out) {
+        List<CgFrameRecord> frames = snapshot.frames();
+        if (frames.isEmpty()) return;
+        long target = Math.round(budgetMillis * 1e6d);
+        long[] walls = new long[frames.size()];
+        for (int i = 0; i < walls.length; i++) walls[i] = frames.get(i).wallNanos();
+        List<CgHitch> found = CgHitches.find(snapshot, target);
+        out.append(String.format(Locale.ROOT, "%sHITCHES  %s over max(2 x the rolling median, %.1f ms + %.1f ms) in %d frames"
+                        + "   wall p99 %.1f ms  p99.9 %.1f ms%s", "\n",
+                found.isEmpty() ? "none" : String.valueOf(found.size()), budgetMillis, CgHitches.MARGIN_NANOS / 1e6d,
+                walls.length, CgHitches.percentile(walls, 990) / 1e6d, CgHitches.percentile(walls, 999) / 1e6d, "\n"));
+        List<CgHitch> shown = found;
+        if (found.size() > HITCH_ROWS) {
+            shown = new ArrayList<>(found);
+            shown.sort((x, y) -> Long.compare(y.frame().wallNanos(), x.frame().wallNanos()));
+            shown = new ArrayList<>(shown.subList(0, HITCH_ROWS));
+            shown.sort((x, y) -> Long.compare(x.frame().index(), y.frame().index()));
+        }
+        for (CgHitch hitch : shown) {
+            out.append(String.format(Locale.ROOT, "HITCH #%d  %.1f ms wall (median %.1f)   bound: %s%s", hitch.frame().index(),
+                    hitch.frame().wallMillis(), hitch.medianNanos() / 1e6d, hitch.bound().label(), "\n"));
+            for (CgHitch.Cause cause : hitch.causes()) {
+                out.append(String.format(Locale.ROOT, "   %-14s %7.2f ms  %s%s", cause.kind(), cause.overlapNanos() / 1e6d,
+                        cause.detail(), "\n"));
+            }
+            if (!hitch.explained()) {
+                out.append("   => unexplained").append(snapshot.hasJvmEvents() ? "" : " (JVM events were not recorded)").append('\n');
+            } else {
+                out.append(hitch.ours() ? "   => ours" : "   => not ours").append('\n');
+            }
+        }
+        if (found.size() > shown.size()) out.append("  (+").append(found.size() - shown.size()).append(" more not shown)").append('\n');
+    }
 
     /**
      * The JVM's own events in the frame: a count for each kind, a kind the running source cannot see printing

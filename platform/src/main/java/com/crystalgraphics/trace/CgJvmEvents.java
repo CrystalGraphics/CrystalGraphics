@@ -231,6 +231,16 @@ final class CgJvmEvents {
             return out;
         }
 
+        /** The events overlapping {@code frame}, not only those that started in it: a stop that began earlier still held it. */
+        List<CgTraceSnapshot.JvmEventView> overlapping(CgFrameRecord frame) {
+            List<CgTraceSnapshot.JvmEventView> out = new ArrayList<>();
+            for (CgTraceSnapshot.JvmEventView view : events) {
+                long end = view.startNanos() + view.durationNanos();
+                if (view.startNanos() < frame.endNanos() && (end > frame.beginNanos() || frame.contains(view.startNanos()))) out.add(view);
+            }
+            return out;
+        }
+
         /** The kind's count in {@code frame}, or {@link CgFrameRecord#ABSENT} where the source cannot see it. */
         long countIn(CgFrameRecord frame, CgJvmEventKind kind) {
             if (!available(kind)) return CgFrameRecord.ABSENT;
