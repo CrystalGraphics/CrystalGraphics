@@ -68,7 +68,7 @@ itself for anyone editing a VFX file.
 
 | Word | What it is | Class |
 |---|---|---|
-| **Effect** | One thing playing in the world: one Kamehameha, one explosion. A position, an age, and code that runs every tick. It dies when it is done. | `CgVfxEffect`: `CgEnergyWave`, `CgVfxBurst`, yours |
+| **Effect** | One thing playing in the world: one Kamehameha, one explosion. A position, an age, and code that runs every tick. It dies when it is done. | `CgVfxEffect`: `CgEnergyWave`, `CgVfxSystemInstance`, yours |
 | **Element** | A part many effects share, with its own parameters and slots: a charge ball, a blast, a beam's body. An effect is made of elements. | `CgVfxElement`: `CgVfxCharge`, `CgVfxBlast`, `CgBeamBody`, ... |
 | **Look** | How an effect looks: its parameters' values, the kits that draw it, its emitters. Shared, never changed by playing. | `CgVfxLook` |
 | **Schema**, **parameter** | A named set of typed values an effect, element or kit reads: a length, a colour, a palette, a curve, a camera shake. | `CgVfxSchema`, `CgVfxParam` |
@@ -148,11 +148,12 @@ public static final CgVfxLook MINE = CgEnergyWave.kamehameha().derive()
 
 ### An effect that is only particles
 
-A look with emitters and layers on them needs no effect class: `CgVfxBurst` starts every emitter once and dies when
+A look with emitters and layers on them needs no effect class: a `CgVfxSystemInstance` (`vfx.system`) of it starts
+every emitter once and dies when
 they finish. Building `PUFF_LOOK` is [§11](#11-particles).
 
 ```java
-VFX.play(new CgVfxBurst(PUFF_LOOK, x, y, z));
+VFX.play(new CgVfxSystemInstance(PUFF_LOOK, x, y, z));
 ```
 
 ### Show it to every player
@@ -160,7 +161,7 @@ VFX.play(new CgVfxBurst(PUFF_LOOK, x, y, z));
 ```java
 // common, at init: a cue, with what each side plays
 public static final CgVfxCue PUFF = VFX.cue("puff", PUFF_LOOK,
-        (look, cue) -> new CgVfxBurst(look, cue.x(), cue.y(), cue.z())).build();
+        (look, cue) -> new CgVfxSystemInstance(look, cue.x(), cue.y(), cue.z())).build();
 
 PUFF.at(level, x, y, z).send();   // server, whenever
 ```
@@ -316,7 +317,7 @@ The engine ships these, each registered by id, so a tool, a command or a test pl
 | Id | Class | What it is |
 |---|---|---|
 | `crystalgraphics:kamehameha`, `final_flash`, `galick_gun`, `kamehameha_toon` | `CgEnergyWave` | a beam charged at a muzzle, fired, homing or steered, bursting into a blast ([below](#the-energy-wave)) |
-| `crystalgraphics:explosion` | `CgVfxBurst` | the realistic explosion on its own: billows, a base surge of dust, debris, embers and a shock front ([below](#an-explosion-on-its-own)) |
+| `crystalgraphics:explosion` | `CgVfxSystemInstance` | the realistic explosion on its own: billows, a base surge of dust, debris, embers and a shock front ([below](#an-explosion-on-its-own)) |
 | `crystalgraphics:heat_haze` | `CgVfxHeatHaze` | the air shimmering over a point for as long as it plays ([below](#heat-haze)) |
 | `crystalgraphics:smoke_grenade` | `CgSmokeGrenade` | Counter-Strike 2's smoke, flooding round what stands in its way, shot through and healing ([§15](#15-smoke-that-fills-a-space-cs2s-grenades)) |
 
@@ -410,8 +411,8 @@ public static final CgVfxLook KAMEHAMEHA = CgEnergyWave.kamehameha().derive()
 The blast a wave bursts into, as a burst of its own: every emitter of `CgVfxBlast.EXPLOSION`'s kit started once.
 
 ```java
-static final CgVfxLook EXPLOSION = CgVfxLook.builder(CgVfxBurst.SCHEMA).with(CgVfxBlast.EXPLOSION.kit()).build();
-VFX.play(new CgVfxBurst(EXPLOSION, x, y, z));
+static final CgVfxLook EXPLOSION = CgVfxLook.builder(CgVfxSystemDefinition.SCHEMA).with(CgVfxBlast.EXPLOSION.kit()).build();
+VFX.play(new CgVfxSystemInstance(EXPLOSION, x, y, z));
 ```
 
 Its colours are its own schema's (`body`, `hot`, `debris`, `dust`, `sparkCore`); [§11](#in-a-look) lists what it is
@@ -1007,7 +1008,7 @@ static final CgVfxKit KIT = CgVfxKit.of("mymod:sparks").emitter(SPARKS)
         .build();
 static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(KIT).build();
 
-VFX.play(new CgVfxBurst(LOOK, x, y, z));   // particles alone need no effect class
+VFX.play(new CgVfxSystemInstance(LOOK, x, y, z));   // particles alone need no effect class
 ```
 
 **Shared particle shaders** in `shaders/vfx/particle/`, each reading `_Color` and, where it has one, `_Hot`:
@@ -1037,9 +1038,9 @@ sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debr
   layers order as wholes. A solid look writes depth (`"Depth" = "Clip"`); soft smoke a depth prepass where it is
   solid (`"Depth" = "Prepass"`); only something soft throughout relies on blending
   ([`SHADERS.md`](SHADERS.md) § *Depth from a transparent material*).
-- Particles step 60 times a second while effects tick 120 times. A particle is drawn between its last two steps, at
-  `frame.particleAlpha()` (how far this frame is between them, 0 to 1), never `frame.alpha()`, the effects' own.
-- A particle always belongs to an effect: one-off particles are a `CgVfxBurst` each. A shared emit call for
+- Effects and their emitters' books tick 120 times a second; the GPU steps the particles once a frame, over the
+  frame's time, each tick's births at their own moment within it. A particle is drawn where that step left it.
+- A particle always belongs to an effect: one-off particles are a `CgVfxSystemInstance` each. A shared emit call for
   Minecraft-style spam is planned (plan `vfx-gpu` X15).
 
 ### Every emitter call
@@ -1844,7 +1845,7 @@ WAVE.on(caster, CgEntityAttachments.HANDS_FORWARD).start()
         .onHit(CgEnergyWave.PART_BLAST, h -> damage(h.entity()));
 
 // client, at init
-WAVE.onConfirmedHit(CgEnergyWave.PART_BLAST, h -> VFX.play(new CgVfxBurst(SPARKS, h.x(), h.y(), h.z())));
+WAVE.onConfirmedHit(CgEnergyWave.PART_BLAST, h -> VFX.play(new CgVfxSystemInstance(SPARKS, h.x(), h.y(), h.z())));
 ```
 
 A confirmed hit arrives a network trip after the server's. For feedback timed to what this client draws, listen to the
