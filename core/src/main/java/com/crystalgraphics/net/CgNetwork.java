@@ -12,6 +12,7 @@ import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.collision.debug.CgCollisionShow;
+import com.crystalgraphics.tag.CgTagNet;
 import com.crystalgraphics.net.object.CgNetObjects;
 import com.crystalgraphics.net.object.CgNetProbe;
 import com.crystalgraphics.net.object.CgNetStress;
@@ -152,6 +153,7 @@ public final class CgNetwork {
         if (CgNetProbe.ENABLED) CgNetProbe.install();
         if (CgCollisionProbe.ENABLED) CgCollisionProbe.install();
         CgCollisionShow.install();
+        CgTagNet.install();
         return true;
     }
 
@@ -448,6 +450,7 @@ public final class CgNetwork {
     public static synchronized void resetForTesting() {
         closeAll("reset");
         CgNetObjects.resetForTesting();
+        CgTagNet.resetForTesting();
         CLOSED.clear();
         SERVER_TICK.clear();
         CLIENT_TICK.clear();
