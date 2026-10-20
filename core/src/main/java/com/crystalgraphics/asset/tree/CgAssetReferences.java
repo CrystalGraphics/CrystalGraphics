@@ -1,6 +1,7 @@
 package com.crystalgraphics.asset.tree;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -11,9 +12,6 @@ import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgTypeKind;
 import com.crystalgraphics.object.CgTypes;
 import com.crystalgraphics.object.CgValueType;
-
-import lombok.Value;
-import lombok.experimental.Accessors;
 
 /**
  * The assets a resolved asset names, found through its declarations: Unreal's {@code GetDependencies}, hard and soft.
@@ -35,13 +33,7 @@ import lombok.experimental.Accessors;
 public final class CgAssetReferences {
 
     /** One reference: the kind and id it names, how strongly, and where it is written. */
-    @Value
-    @Accessors(fluent = true)
-    public static class Reference {
-        CgType kind;
-        String id;
-        CgValueType.Strength strength;
-        CgPropertyPath at;
+    public record Reference(CgType kind, String id, CgValueType.Strength strength, CgPropertyPath at) {
     }
 
     private final List<Reference> out = new ArrayList<>();
@@ -51,14 +43,26 @@ public final class CgAssetReferences {
 
     /** Every reference {@code data}'s resolved tree holds, in tree order; a parent is its first, hard. */
     public static List<Reference> of(CgAssetData data) {
+        return of(data.id(), data.kind(), data.resolved(), data.parent() == null ? null : data.parent().id());
+    }
+
+    /**
+     * Every reference a file names itself, without resolving it: what the registry reads at scan, as Unreal's gatherer
+     * reads a package's own imports. Its parent, if it names one, is first and hard.
+     */
+    public static List<Reference> ofFile(String id, CgType kind, Map<?, ?> file) {
+        Object parent = file.get(CgType.PARENT);
+        return of(id, kind, file, parent instanceof String ? (String) parent : null);
+    }
+
+    private static List<Reference> of(String id, CgType kind, Map<?, ?> tree, @Nullable String parent) {
         CgAssetReferences refs = new CgAssetReferences();
-        if (data.parent() != null) {
-            refs.out.add(new Reference(data.kind(), data.parent().id(), CgValueType.Strength.HARD,
-                    CgPropertyPath.of(data.id()).key(CgType.PARENT)));
+        if (parent != null) {
+            refs.out.add(new Reference(kind, parent, CgValueType.Strength.HARD, CgPropertyPath.of(id).key(CgType.PARENT)));
         }
-        Map<Object, Object> tree = data.resolved();
-        tree.remove(CgType.PARENT);
-        refs.walk(CgValueType.struct(data.kind()), tree, CgPropertyPath.of(data.id()));
+        Map<Object, Object> own = new LinkedHashMap<>(tree);
+        own.remove(CgType.PARENT);
+        refs.walk(CgValueType.struct(kind), own, CgPropertyPath.of(id));
         return refs.out;
     }
 

@@ -19,9 +19,6 @@ import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.format.CgFormats;
 import com.crystalgraphics.util.io.CgIO;
 
-import lombok.Value;
-import lombok.experimental.Accessors;
-
 /**
  * The built-in modules' declarations, read from {@code modules.yaml} into one type per module: its inputs as
  * properties a module entry's {@code inputs} are checked and decoded against. Niagara's module scripts are data,
@@ -52,22 +49,17 @@ public final class CgModuleTypes {
 
     private static volatile CgModuleTypes builtIn;
 
-    /** A module's declaration: where it may sit in a stack, and its inputs. */
-    @Value
-    @Accessors(fluent = true)
-    public static class Module {
-        /** {@code crystalgraphics:drag}. */
-        String id;
-        /** The stacks it may sit in: {@code emitter_update}, {@code particle_spawn}, {@code particle_update}. */
-        List<String> groups;
-        /** Where in its stack it runs ({@code forces}, {@code spawn_place}…); null where the format gives none. */
-        String order;
-        /** At most one per stack. */
-        boolean once;
-        /** Allowed on an {@code analytic} emitter: a closed form of seed and age. */
-        boolean analytic;
-        /** Its inputs as a struct's properties, in declaration order. */
-        CgType inputs;
+    /**
+     * A module's declaration: where it may sit in a stack, and its inputs.
+     *
+     * @param id       {@code crystalgraphics:drag}
+     * @param groups   the stacks it may sit in: {@code emitter_update}, {@code particle_spawn}, {@code particle_update}
+     * @param order    where in its stack it runs ({@code forces}, {@code spawn_place}…); null where the format gives none
+     * @param once     at most one per stack
+     * @param analytic allowed on an {@code analytic} emitter: a closed form of seed and age
+     * @param inputs   its inputs as a struct's properties, in declaration order
+     */
+    public record Module(String id, List<String> groups, String order, boolean once, boolean analytic, CgType inputs) {
     }
 
     private final Map<String, Module> modules;

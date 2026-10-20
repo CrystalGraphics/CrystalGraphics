@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -33,15 +34,19 @@ import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgModuleTypes;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.tree.CgAssetException;
+import com.crystalgraphics.asset.tree.CgAssetReferences;
+import com.crystalgraphics.job.CgJob;
+import com.crystalgraphics.object.CgPropertyPath;
 import com.crystalgraphics.object.CgType;
+import com.crystalgraphics.object.CgValueType;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * Every asset by kind and id, known without reading one: Unreal's {@code IAssetRegistry}. A dev run fills it from
- * its source folders' listings; a builder's assets register themselves. A dedicated server builds the same registry,
- * so both sides agree on every id before the first connection.
+ * Every asset by kind and id, with what each refers to: Unreal's {@code IAssetRegistry}. A dev run fills it from its
+ * source folders; a builder's assets register themselves. A dedicated server builds the same registry, so both sides
+ * agree on every id before the first connection.
  *
  * <p>An id is unique within its kind, not across kinds: a reference's field declares the kind, so a cue and the
  * sequence it plays may share {@code mymod:nova_cannon}. A binary's id keeps its folder and extension, so it is
@@ -49,21 +54,32 @@ import org.apache.logging.log4j.Logger;
  *
  * <pre>{@code
  * CgAssetRegistry registry = new CgAssetRegistry();
+ * registry.cache(gameDir.resolve("crystalgraphics/asset-registry.bin"));     // optional: unchanged files are not read again
  * registry.registerCode("mymod:kamehameha/charge", CgParticleKinds.SYSTEM);   // a builder's, at init
  * for (File root : CgDevResourceRoots.discover(System::getProperty, System::getenv)) registry.scanResources(root);
  *
  * CgAssetEntry e = registry.resolve(CgParticleKinds.SYSTEM, "mymod:old/charge");   // a redirect followed, warned once
+ * e.references();                                                             // what its file names, parent first
+ * registry.referencers(CgParticleKinds.EMITTER, "mymod:kamehameha/core");     // every entry naming it
  * registry.binary("mymod:textures/fx/noise.png");
- * registry.entries("mymod");                                 // every entry of a namespace, by id
- * registry.hash("mymod");                                    // what a client compares with its server's
+ * registry.hash("mymod");                                                     // what a client compares with its server's
+ * }</pre>
+ *
+ * Listening: a scan's {@code ADDED}s come to {@link #onEvents} as one list, then to {@link #onEvent} one by one, then
+ * {@code SCANNED}:
+ *
+ * <pre>{@code
+ * registry.onEvents(batch -> browser.addAll(batch));                         // OnAssetsAdded
+ * registry.onEvent(e -> { if (e.type() == CgAssetRegistryEvent.Type.SCANNED) browser.refresh(e.namespace()); });
  * }</pre>
  *
  * <ul>
- *   <li>A scan reads a folder listing, plus files small enough to be redirects; nothing else is read.</li>
- *   <li>A builder's id and a file's id colliding is an error naming both, whichever registers second.</li>
+ *   <li>A scan reads every YAML file once, on the workers, for its redirect and references; a cached file whose
+ *       modification time and kind are unchanged is not read.</li>
+ *   <li>A scan adds all its entries or none: a builder's id and a file's id colliding is an error naming both.</li>
  *   <li>Files that are not the format's (an importer's report, a stray) are kept in {@link #strays()}, never
  *       registered.</li>
- *   <li>Events run on the thread that registers; a scan's {@code ADDED}s come before its {@code SCANNED}.</li>
+ *   <li>Events run on the thread that registers.</li>
  * </ul>
  */
 public final class CgAssetRegistry {
@@ -75,8 +91,6 @@ public final class CgAssetRegistry {
     private static final Set<String> NOT_ASSETS = new HashSet<>(Arrays.asList("import", "roles"));
     /** Binary folders and the extensions they hold. */
     private static final Map<String, List<String>> BINARIES = new HashMap<>();
-    /** A file this size or smaller is read at scan, in case it is a redirect ({@code { _v: 1, redirect: <id> }}). */
-    private static final long REDIRECT_BYTES = 160;
     private static final String REDIRECT = "redirect";
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 
@@ -87,11 +101,20 @@ public final class CgAssetRegistry {
         BINARIES.put("sounds/", Collections.singletonList(".ogg"));
     }
 
+    /** A YAML file the listing found, before it is read. */
+    private record Listed(String id, CgType kind, Path file, long modified) {
+    }
+
     private final Map<String, CgAssetEntry> entries = new ConcurrentHashMap<>();
+    /** Each referenced key to the keys of the entries naming it. */
+    private final Map<String, Set<String>> referencers = new ConcurrentHashMap<>();
     private final Map<String, Map<String, String>> contentIndex = new ConcurrentHashMap<>();
     private final List<Path> strays = new CopyOnWriteArrayList<>();
     private final List<Consumer<CgAssetRegistryEvent>> listeners = new CopyOnWriteArrayList<>();
+    private final List<Consumer<List<CgAssetRegistryEvent>>> batchListeners = new CopyOnWriteArrayList<>();
     private final Set<String> warned = ConcurrentHashMap.newKeySet();
+    @Nullable private Path cacheFile;
+    @Nullable private CgAssetRegistryCache cache;
 
     // ── Filling it ───────────────────────────────────────────────────────────────────────
 
@@ -108,12 +131,14 @@ public final class CgAssetRegistry {
 
     /**
      * Registers every asset of {@code namespace} under {@code root}, its {@code assets/<namespace>/} folder, then
-     * fires {@code SCANNED}.
+     * announces them: Unreal's gatherer. The listing is walked, each YAML file's redirect and references are read on
+     * the workers, or taken from the cache, and nothing is added unless every id is free.
      *
      * @throws CgAssetException if an id is already registered from another file or by a builder
      */
     public synchronized void scan(String namespace, Path root, CgAssetSource source) {
         CgAssetKinds.register();
+        List<Listed> yaml = new ArrayList<>();
         List<CgAssetEntry> found = new ArrayList<>();
         try {
             Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
@@ -127,20 +152,65 @@ public final class CgAssetRegistry {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                     String rel = root.relativize(file).toString().replace('\\', '/');
-                    CgAssetEntry e = entryOf(namespace, rel, file, attrs.size(), source);
-                    if (e != null) found.add(e);
-                    else if (!(rel.indexOf('/') < 0 && ROOT_FILES.contains(rel))) strays.add(file);
+                    long modified = attrs.lastModifiedTime().toMillis();
+                    CgType kind = rel.endsWith(".yaml") ? kindOf(rel) : null;
+                    if (kind != null) {
+                        String id = namespace + ":" + rel.substring(kind.folder().length() + 1, rel.length() - ".yaml".length());
+                        yaml.add(new Listed(id, kind, file, modified));
+                    } else if (isBinary(rel)) {
+                        found.add(new CgAssetEntry(namespace + ":" + rel, null, source, file, null, null,
+                                Collections.emptyList(), modified));
+                    } else if (!(rel.indexOf('/') < 0 && ROOT_FILES.contains(rel))) {
+                        strays.add(file);
+                    }
                     return FileVisitResult.CONTINUE;
                 }
             });
         } catch (IOException e) {
             throw new UncheckedIOException("scanning " + namespace + " at " + root, e);
         }
+
+        CgAssetRegistryCache records = cache();
+        CgAssetEntry[] gathered = new CgAssetEntry[yaml.size()];
+        AtomicReference<RuntimeException> failed = new AtomicReference<>();
+        CgJob.forEach(yaml.size(), i -> {
+            try {
+                gathered[i] = gather(yaml.get(i), source, records);
+            } catch (RuntimeException e) {
+                failed.compareAndSet(null, e);
+            }
+        });
+        if (failed.get() != null) throw failed.get();
+        Collections.addAll(found, gathered);
+        found.sort((a, b) -> a.id().compareTo(b.id()));
+
+        for (CgAssetEntry e : found) {
+            CgAssetEntry was = entries.get(key(e.kind(), e.id()));
+            if (was != null) {
+                throw new CgAssetException(key(e.kind(), e.id()) + " is registered twice: " + where(was) + " and " + where(e));
+            }
+        }
         Path index = root.resolve("content.yaml");
         if (Files.isRegularFile(index)) contentIndex.put(namespace, readIndex(index));
-        found.sort((a, b) -> a.id().compareTo(b.id()));
-        for (CgAssetEntry e : found) add(e);
-        fire(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.SCANNED, namespace, null, null));
+        List<CgAssetRegistryEvent> added = new ArrayList<>(found.size());
+        for (CgAssetEntry e : found) {
+            entries.put(key(e.kind(), e.id()), e);
+            link(e, true);
+            added.add(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.ADDED, namespace, e, null));
+        }
+        saveCache();
+        broadcast(added);
+        broadcast(Collections.singletonList(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.SCANNED, namespace, null, null)));
+    }
+
+    /**
+     * Keeps what a scan reads in {@code file}, so the next run reads only the files that changed: Unreal's
+     * {@code CachedAssetRegistry.bin}. Set it before the first scan; without one, the cache lasts as long as the
+     * registry.
+     */
+    public synchronized void cache(Path file) {
+        cacheFile = Objects.requireNonNull(file);
+        cache = CgAssetRegistryCache.load(file);
     }
 
     /**
@@ -149,21 +219,21 @@ public final class CgAssetRegistry {
      * @throws CgAssetException if {@code id} is already registered
      */
     public synchronized CgAssetEntry registerCode(String id, CgType kind) {
-        CgAssetEntry e = new CgAssetEntry(id, Objects.requireNonNull(kind), CgAssetSource.CODE, null, null, null);
-        add(e);
-        return e;
+        return registerCode(id, kind, null);
     }
 
     /**
      * Registers a builder's asset whose definition code makes, compiled by calling {@code definition} on a worker:
-     * the engine's built-in modules, declared in Java.
+     * the engine's built-in modules, declared in Java. A null {@code definition} is a builder's tree.
      *
      * @throws CgAssetException if {@code id} is already registered
      */
-    public synchronized CgAssetEntry registerCode(String id, CgType kind, Supplier<?> definition) {
-        CgAssetEntry e = new CgAssetEntry(id, Objects.requireNonNull(kind), CgAssetSource.CODE, null, null,
-                Objects.requireNonNull(definition));
-        add(e);
+    public synchronized CgAssetEntry registerCode(String id, CgType kind, @Nullable Supplier<?> definition) {
+        CgAssetEntry e = new CgAssetEntry(id, Objects.requireNonNull(kind), CgAssetSource.CODE, null, null, definition,
+                Collections.emptyList(), 0);
+        CgAssetEntry was = entries.putIfAbsent(key(kind, id), e);
+        if (was != null) throw new CgAssetException(key(kind, id) + " is registered twice: " + where(was) + " and " + where(e));
+        fire(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.ADDED, e.namespace(), e, null));
         return e;
     }
 
@@ -176,13 +246,32 @@ public final class CgAssetRegistry {
     /** Drops {@code id} of {@code kind} (null: a binary), its file deleted; nothing if it is not registered. */
     public synchronized void remove(@Nullable CgType kind, String id) {
         CgAssetEntry e = entries.remove(key(kind, id));
-        if (e != null) fire(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.REMOVED, e.namespace(), e, null));
+        if (e == null) return;
+        link(e, false);
+        fire(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.REMOVED, e.namespace(), e, null));
     }
 
-    /** Announces that {@code id}'s file changed; nothing if it is not registered. */
-    public void changed(@Nullable CgType kind, String id) {
+    /**
+     * Reads {@code id}'s file again, for its redirect and references, and announces the new entry; nothing if it is
+     * not registered. A builder's asset or a binary is announced as it is.
+     */
+    public synchronized void changed(@Nullable CgType kind, String id) {
         CgAssetEntry e = entries.get(key(kind, id));
-        if (e != null) fire(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.CHANGED, e.namespace(), e, null));
+        if (e == null) return;
+        if (kind != null && e.file() != null) {
+            long modified;
+            try {
+                modified = Files.getLastModifiedTime(e.file()).toMillis();
+            } catch (IOException missing) {
+                throw new UncheckedIOException(missing);
+            }
+            CgAssetEntry now = gather(new Listed(id, kind, e.file(), modified), e.source(), cache());
+            link(e, false);
+            entries.put(key(kind, id), now);
+            link(now, true);
+            e = now;
+        }
+        fire(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.CHANGED, e.namespace(), e, null));
     }
 
     /**
@@ -194,9 +283,12 @@ public final class CgAssetRegistry {
         CgAssetEntry old = entries.get(key(kind, from));
         if (old == null) throw new CgAssetException("rename: " + from + " is not registered");
         if (entries.containsKey(key(kind, to))) throw new CgAssetException("rename: " + to + " is already registered");
-        CgAssetEntry moved = new CgAssetEntry(to, old.kind(), old.source(), file, null, old.definition());
+        CgAssetEntry moved = new CgAssetEntry(to, old.kind(), old.source(), file, null, old.definition(), old.references(),
+                old.modified());
         entries.remove(key(kind, from));
+        link(old, false);
         entries.put(key(kind, to), moved);
+        link(moved, true);
         fire(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.RENAMED, moved.namespace(), moved, from));
         return moved;
     }
@@ -232,6 +324,23 @@ public final class CgAssetRegistry {
                     ? " redirects to an id that is not registered" : " is not registered"));
         }
         return e;
+    }
+
+    /**
+     * Every entry whose file names the {@code kind} asset {@code id}, hard or soft, by id: Unreal's
+     * {@code GetReferencers}. The asset need not be registered; a redirect's referencers are its own, not followed.
+     */
+    public List<CgAssetEntry> referencers(CgType kind, String id) {
+        Set<String> keys = referencers.get(key(Objects.requireNonNull(kind), id));
+        List<CgAssetEntry> out = new ArrayList<>();
+        if (keys != null) {
+            for (String k : keys) {
+                CgAssetEntry e = entries.get(k);
+                if (e != null) out.add(e);
+            }
+        }
+        out.sort((a, b) -> a.id().compareTo(b.id()));
+        return out;
     }
 
     /** Every entry of {@code namespace}, by id. */
@@ -293,21 +402,22 @@ public final class CgAssetRegistry {
         }
     }
 
-    /** Hears every event, on the registering thread; run the answer to stop. */
+    /** Hears every event one at a time, on the registering thread; run the answer to stop. */
     public Runnable onEvent(Consumer<CgAssetRegistryEvent> listener) {
         listeners.add(listener);
         return () -> listeners.remove(listener);
     }
 
-    // ── Internals ────────────────────────────────────────────────────────────────────────
-
-    private void add(CgAssetEntry e) {
-        CgAssetEntry was = entries.putIfAbsent(key(e.kind(), e.id()), e);
-        if (was != null) {
-            throw new CgAssetException(key(e.kind(), e.id()) + " is registered twice: " + where(was) + " and " + where(e));
-        }
-        fire(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.ADDED, e.namespace(), e, null));
+    /**
+     * Hears events in batches, before {@link #onEvent}'s listeners hear them one by one: a scan's {@code ADDED}s as
+     * one list, anything else as a list of one. Unreal's {@code OnAssetsAdded}. Run the answer to stop.
+     */
+    public Runnable onEvents(Consumer<List<CgAssetRegistryEvent>> listener) {
+        batchListeners.add(listener);
+        return () -> batchListeners.remove(listener);
     }
+
+    // ── Internals ────────────────────────────────────────────────────────────────────────
 
     /** A {@code kind}'s {@code id}, or a binary's: ids are unique within a kind. */
     private static String key(@Nullable CgType kind, String id) {
@@ -318,26 +428,54 @@ public final class CgAssetRegistry {
         return e.file() != null ? e.file().toString() : "a builder (" + e.source() + ")";
     }
 
-    private void fire(CgAssetRegistryEvent event) {
-        for (Consumer<CgAssetRegistryEvent> l : listeners) l.accept(event);
-    }
-
-    /** The entry a file is, or null for a file that is not an asset. */
-    @Nullable
-    private static CgAssetEntry entryOf(String namespace, String rel, Path file, long size, CgAssetSource source) {
-        if (rel.endsWith(".yaml")) {
-            CgType kind = kindOf(rel);
-            if (kind == null) return null;
-            String id = namespace + ":" + rel.substring(kind.folder().length() + 1, rel.length() - ".yaml".length());
-            return new CgAssetEntry(id, kind, source, file, size <= REDIRECT_BYTES ? redirectOf(file) : null, null);
-        }
-        for (Map.Entry<String, List<String>> b : BINARIES.entrySet()) {
-            if (!rel.startsWith(b.getKey())) continue;
-            for (String ext : b.getValue()) {
-                if (rel.endsWith(ext)) return new CgAssetEntry(namespace + ":" + rel, null, source, file, null, null);
+    private void link(CgAssetEntry e, boolean add) {
+        String from = key(e.kind(), e.id());
+        for (CgAssetReferences.Reference r : e.references()) {
+            String to = key(r.kind(), r.id());
+            if (add) {
+                referencers.computeIfAbsent(to, k -> ConcurrentHashMap.newKeySet()).add(from);
+            } else {
+                Set<String> s = referencers.get(to);
+                if (s != null) s.remove(from);
             }
         }
-        return null;
+    }
+
+    private void fire(CgAssetRegistryEvent event) {
+        broadcast(Collections.singletonList(event));
+    }
+
+    /** Unreal's broadcast order: the batch, then each event alone. */
+    private void broadcast(List<CgAssetRegistryEvent> events) {
+        if (events.isEmpty()) return;
+        List<CgAssetRegistryEvent> batch = Collections.unmodifiableList(events);
+        for (Consumer<List<CgAssetRegistryEvent>> l : batchListeners) l.accept(batch);
+        for (CgAssetRegistryEvent e : events) {
+            for (Consumer<CgAssetRegistryEvent> l : listeners) l.accept(e);
+        }
+    }
+
+    private CgAssetRegistryCache cache() {
+        if (cache == null) cache = CgAssetRegistryCache.load(null);
+        return cache;
+    }
+
+    private void saveCache() {
+        if (cacheFile == null) return;
+        try {
+            cache().save(cacheFile);
+        } catch (IOException e) {
+            LOGGER.warn("The asset registry's cache could not be written to {}: {}", cacheFile, e.toString());
+        }
+    }
+
+    /** Whether {@code rel} is a binary: a file of a binary folder with that folder's extension. */
+    private static boolean isBinary(String rel) {
+        for (Map.Entry<String, List<String>> b : BINARIES.entrySet()) {
+            if (!rel.startsWith(b.getKey())) continue;
+            for (String ext : b.getValue()) if (rel.endsWith(ext)) return true;
+        }
+        return false;
     }
 
     /** The kind whose folder starts {@code rel}; the longest when two do. */
@@ -352,17 +490,42 @@ public final class CgAssetRegistry {
         return best;
     }
 
-    @Nullable
-    private static String redirectOf(Path file) {
+    /** A YAML file's entry: its redirect and references from the cache while its file is unchanged, else read. */
+    private static CgAssetEntry gather(Listed f, CgAssetSource source, CgAssetRegistryCache records) {
+        String key = f.file().toAbsolutePath().toString();
+        CgAssetRegistryCache.Record r = records.find(key, f.modified(), f.kind());
+        if (r == null) {
+            r = read(f);
+            records.put(key, r);
+        }
+        return new CgAssetEntry(f.id(), f.kind(), source, f.file(), r.redirect(), null, r.references(), f.modified());
+    }
+
+    /** What {@code f} says of itself: a redirect, hard on where it points as Unreal's redirector is, or its references. */
+    private static CgAssetRegistryCache.Record read(Listed f) {
+        String text;
         try {
-            Object tree = CgAssetYaml.read(new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
-            Object to = tree instanceof Map ? ((Map<?, ?>) tree).get(REDIRECT) : null;
-            return to instanceof String ? (String) to : null;
+            text = new String(Files.readAllBytes(f.file()), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
-        } catch (RuntimeException notYaml) {
-            return null;   // validation names it when the file is read
         }
+        try {
+            Object tree = CgAssetYaml.read(text);
+            if (tree instanceof Map) {
+                Map<?, ?> file = (Map<?, ?>) tree;
+                Object to = file.get(REDIRECT);
+                if (to instanceof String) {
+                    return new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), (String) to, Collections.singletonList(
+                            new CgAssetReferences.Reference(f.kind(), (String) to, CgValueType.Strength.HARD,
+                                    CgPropertyPath.of(f.id()).key(REDIRECT))));
+                }
+                return new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), null,
+                        Collections.unmodifiableList(CgAssetReferences.ofFile(f.id(), f.kind(), file)));
+            }
+        } catch (RuntimeException unreadable) {
+            // validation names it when the asset loads
+        }
+        return new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), null, Collections.emptyList());
     }
 
     private static Map<String, String> readIndex(Path index) {

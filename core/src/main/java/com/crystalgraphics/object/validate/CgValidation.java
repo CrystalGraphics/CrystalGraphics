@@ -66,8 +66,8 @@ public final class CgValidation {
     /** Reports {@code issue} as it is. */
     public void add(CgIssue issue) {
         issues.add(issue);
-        if (issue.getSeverity() == CgIssue.Severity.ERROR) errors++;
-        else if (issue.getSeverity() == CgIssue.Severity.WARNING) warnings++;
+        if (issue.severity() == CgIssue.Severity.ERROR) errors++;
+        else if (issue.severity() == CgIssue.Severity.WARNING) warnings++;
     }
 
     /** Every issue, in the order found. */

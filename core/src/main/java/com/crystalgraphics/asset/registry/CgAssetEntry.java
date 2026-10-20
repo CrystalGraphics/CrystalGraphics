@@ -1,18 +1,18 @@
 package com.crystalgraphics.asset.registry;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.function.Supplier;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.asset.tree.CgAssetReferences;
 import com.crystalgraphics.object.CgType;
 
-import lombok.Value;
-import lombok.experimental.Accessors;
-
 /**
- * One asset the registry knows, without its file read: Unreal's {@code FAssetData}. A YAML asset has a kind; a binary
- * (a glTF, a PNG, an FGA grid) has none and keeps its folder and extension in its id.
+ * One asset the registry knows: Unreal's {@code FAssetData} with its package's dependency data. A YAML asset has a
+ * kind and the references its file names; a binary (a glTF, a PNG, an FGA grid) has neither and keeps its folder
+ * and extension in its id.
  *
  * <pre>{@code
  * CgAssetEntry e = registry.entry(CgParticleKinds.SYSTEM, "kakarot_kit:Art/EFF/e/skill/a/Cpl001/Particles/PS_skill_cpl001_kameha_bullet_01_00_LP");
@@ -28,23 +28,22 @@ import lombok.experimental.Accessors;
  *   <li>A redirect's entry is the old id with {@link #redirect()} set; {@link CgAssetRegistry#resolve} follows it.</li>
  *   <li>Immutable: a changed file is a new entry, announced as {@code CHANGED}.</li>
  * </ul>
+ *
+ * @param id         {@code namespace:path}: a YAML asset's path without its kind's folder or extension, a binary's with
+ *                   both
+ * @param kind       its kind; null for a binary
+ * @param source     where its bytes come from
+ * @param file       its file; null for a builder's asset
+ * @param redirect   the id a moved asset now has; null for any other
+ * @param definition a builder's asset's definition, made when it is first compiled; null for a file's, or a builder's
+ *                   tree
+ * @param references the assets its file names, hard and soft, its parent first: Unreal's package dependencies; empty
+ *                   for a binary or a builder's asset
+ * @param modified   its file's modification time, in milliseconds; 0 for a builder's asset
  */
-@Value
-@Accessors(fluent = true)
-public class CgAssetEntry {
-
-    /** {@code namespace:path}: a YAML asset's path without its kind's folder or extension, a binary's with both. */
-    String id;
-    /** Its kind; null for a binary. */
-    @Nullable CgType kind;
-    /** Where its bytes come from. */
-    CgAssetSource source;
-    /** Its file; null for a builder's asset. */
-    @Nullable Path file;
-    /** The id a moved asset now has; null for any other. */
-    @Nullable String redirect;
-    /** A builder's asset's definition, made when it is first compiled; null for a file's, or a builder's tree. */
-    @Nullable Supplier<?> definition;
+public record CgAssetEntry(String id, @Nullable CgType kind, CgAssetSource source, @Nullable Path file,
+        @Nullable String redirect, @Nullable Supplier<?> definition, List<CgAssetReferences.Reference> references,
+        long modified) {
 
     /** The namespace before the id's colon. */
     public String namespace() {

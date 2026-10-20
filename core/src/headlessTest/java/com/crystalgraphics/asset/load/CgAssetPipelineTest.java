@@ -75,7 +75,7 @@ public class CgAssetPipelineTest {
         settle();
         CgAssetLoad bad = pipeline.load(CgParticleKinds.EMITTER, "mymod:kamehameha/bad");
         assertEquals(CgAssetState.FAILED, bad.state());
-        assertEquals("enum", bad.issues().get(0).getCode());
+        assertEquals("enum", bad.issues().get(0).code());
         assertEquals(CgAssetState.FAILED, broken.state());
         assertTrue(broken.failure(), broken.failure().contains("mymod:kamehameha/bad"));
     }

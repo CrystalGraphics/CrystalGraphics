@@ -40,7 +40,7 @@ public class CgAssetValidationTest {
         CgAssetData d = CgAssetData.of(ID, kind, (Map<?, ?>) CgAssetYaml.read(yaml), null);
         List<String> out = new ArrayList<>();
         for (CgIssue i : d.validate(CgValidation.Usecase.LOAD).issues()) {
-            out.add(i.getSeverity() + " " + i.getCode() + " " + i.getPath());
+            out.add(i.severity() + " " + i.code() + " " + i.path());
         }
         return out;
     }
@@ -140,7 +140,7 @@ public class CgAssetValidationTest {
             assertEquals("not for this use case", "[]", ran.toString());
             CgValidation cooked = CgAssetData.of(ID, CgParticleKinds.EMITTER, good, null).validate(CgValidation.Usecase.COOK);
             assertEquals("[" + ID + "]", ran.toString());
-            assertEquals("house_rule", cooked.issues().get(0).getCode());
+            assertEquals("house_rule", cooked.issues().get(0).code());
             CgAssetData.of(ID, CgParticleKinds.EMITTER, bad, null).validate(CgValidation.Usecase.COOK);
             assertEquals("not on an asset already failing", 1, ran.size());
         } finally {

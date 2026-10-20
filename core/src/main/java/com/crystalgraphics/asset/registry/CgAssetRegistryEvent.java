@@ -2,9 +2,6 @@ package com.crystalgraphics.asset.registry;
 
 import javax.annotation.Nullable;
 
-import lombok.Value;
-import lombok.experimental.Accessors;
-
 /**
  * Something the registry learned: Unreal's {@code OnAssetAdded}, {@code OnAssetRemoved}, {@code OnAssetRenamed},
  * {@code OnAssetUpdated} and {@code OnFilesLoaded}.
@@ -14,10 +11,13 @@ import lombok.experimental.Accessors;
  *     if (e.type() == CgAssetRegistryEvent.Type.SCANNED) browser.refresh(e.namespace());
  * });
  * }</pre>
+ *
+ * @param type      what happened
+ * @param namespace the namespace it happened in
+ * @param entry     the entry; null for {@link Type#SCANNED}
+ * @param previous  the id it had before a {@link Type#RENAMED}; null otherwise
  */
-@Value
-@Accessors(fluent = true)
-public class CgAssetRegistryEvent {
+public record CgAssetRegistryEvent(Type type, String namespace, @Nullable CgAssetEntry entry, @Nullable String previous) {
 
     /** What happened. */
     public enum Type {
@@ -32,12 +32,4 @@ public class CgAssetRegistryEvent {
         /** A namespace's scan finished: every entry it found has been added. */
         SCANNED
     }
-
-    Type type;
-    /** The namespace it happened in. */
-    String namespace;
-    /** The entry; null for {@link Type#SCANNED}. */
-    @Nullable CgAssetEntry entry;
-    /** The id it had before a {@link Type#RENAMED}; null otherwise. */
-    @Nullable String previous;
 }

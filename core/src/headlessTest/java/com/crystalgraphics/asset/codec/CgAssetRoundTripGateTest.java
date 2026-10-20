@@ -242,11 +242,11 @@ public class CgAssetRoundTripGateTest {
             if (!parentKeys.contains(id)) loaded.remove(id);   // the kits do not fit in memory resolved
             checked++;
             for (CgIssue i : data.validate(CgValidation.Usecase.LOAD).issues()) {
-                if (i.getSeverity() != CgIssue.Severity.ERROR) continue;
+                if (i.severity() != CgIssue.Severity.ERROR) continue;
                 errors++;
                 // Alike when the code and the path agree but for ids: one line per kind of failure.
-                String what = i.getCode() + " " + KINDS.get(id).id() + " "
-                        + i.getPath().toString().substring(IDS.get(id).length()).replaceAll("\\[[^\\]]*\\]", "[]");
+                String what = i.code() + " " + KINDS.get(id).id() + " "
+                        + i.path().toString().substring(IDS.get(id).length()).replaceAll("\\[[^\\]]*\\]", "[]");
                 byWhat.merge(what, 1, Integer::sum);
                 first.putIfAbsent(what, i.toString());
             }

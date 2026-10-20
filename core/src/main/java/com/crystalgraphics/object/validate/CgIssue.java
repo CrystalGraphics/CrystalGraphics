@@ -2,21 +2,23 @@ package com.crystalgraphics.object.validate;
 
 import com.crystalgraphics.object.CgPropertyPath;
 
-import lombok.Value;
-
 /**
  * One problem an asset's validation found: where, how bad, a stable code a tool can match on, and a message for a
  * person. Unreal's {@code FDataValidationContext::FIssue}, with the property path its tokenized message links to.
  *
  * <pre>{@code
  * for (CgIssue i : data.validate(CgValidation.Usecase.LOAD).issues()) {
- *     if (i.getCode().equals(CgIssue.UNKNOWN_KEY)) log.warn("{}", i);
+ *     if (i.code().equals(CgIssue.UNKNOWN_KEY)) log.warn("{}", i);
  * }
  * // ERROR mymod:kamehameha/charge /emitters[h1]/sise: not a key of crystalgraphics:system.emitter (unknown_key)
  * }</pre>
+ *
+ * @param path     the node it is about, which an editor selects
+ * @param severity how bad it is
+ * @param code     a stable code a tool matches on
+ * @param message  what a person reads
  */
-@Value
-public class CgIssue {
+public record CgIssue(CgPropertyPath path, Severity severity, String code, String message) {
 
     /** How bad it is: an error refuses the asset at load and fails a cook; a warning and an info only report. */
     public enum Severity { ERROR, WARNING, INFO }
@@ -41,11 +43,6 @@ public class CgIssue {
     public static final String MEMBER = "member";
     /** An entry an importer could not map, kept in {@code unsupported}. */
     public static final String UNSUPPORTED = "unsupported";
-
-    CgPropertyPath path;
-    Severity severity;
-    String code;
-    String message;
 
     @Override
     public String toString() {
