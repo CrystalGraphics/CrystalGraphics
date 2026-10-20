@@ -12,7 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * GLSL builtins newer than 3.30, the oldest GLSL a kernel compiles at (gpu-compute §6.6): the version each arrived in,
+ * GLSL builtins newer than 3.30, the oldest GLSL a kernel compiles at: the version each arrived in,
  * and an exact polyfill in 3.30 where one exists. A kernel calling one its target's GLSL lacks has the call renamed to
  * {@code _cg_<name>} and the polyfill emitted; one with no polyfill is refused.
  *

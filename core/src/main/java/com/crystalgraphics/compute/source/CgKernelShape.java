@@ -2,7 +2,7 @@ package com.crystalgraphics.compute.source;
 
 /**
  * What a kernel writes, declared by its author in {@code #pragma kernel}, and so which tiers can run it: every shape
- * but {@link #GENERAL} lowers to fixed-function GL where there is no compute (gpu-compute §6.2). The accessor macros
+ * but {@link #GENERAL} lowers to fixed-function GL where there is no compute. The accessor macros
  * a kernel is given follow from its shape, and the parser refuses a kernel whose code reaches past it.
  *
  * <pre>{@code
@@ -27,7 +27,7 @@ public enum CgKernelShape {
     /** Anything compute can do: shared memory, barriers, subgroups, raw atomics, any access. Not lowerable. */
     GENERAL;
 
-    /** Whether a tier without compute can run it, rewritten (gpu-compute C5). */
+    /** Whether a tier without compute can run it, rewritten. */
     public boolean lowerable() { return this != GENERAL; }
 
     /** {@code NAME_WRITE(v)}: this element of a writable buffer. */

@@ -16,7 +16,7 @@ import java.util.List;
  *
  * @param element   the GLSL type of one element: a scalar, a vector or a struct the file declares
  * @param stride    bytes from one element to the next, by std430
- * @param lowerable whether a tier below compute can hold the element (gpu-compute §6.2): a 4-, 8- or 16-byte scalar
+ * @param lowerable whether a tier below compute can hold the element: a 4-, 8- or 16-byte scalar
  *                  or vector, or a struct of only 16-byte vectors
  * @param scalar    whether the element is one {@code float}, {@code int} or {@code uint}: what {@code NAME_ADD},
  *                  {@code NAME_MIN} and {@code NAME_MAX} take
