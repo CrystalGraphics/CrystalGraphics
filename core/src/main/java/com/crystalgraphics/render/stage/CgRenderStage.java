@@ -108,6 +108,13 @@ public final class CgRenderStage {
     private final CgStageFrame frame = new CgStageFrame(this);
     private volatile List<Entry> renderers = List.of();
     private long sequence;
+    /** Stages firing now on the render thread; nested for a stage fired from another's renderer. */
+    private static int firing;
+
+    /** Whether a stage is firing: what an asset swap or a synchronous load must never happen inside. Render thread. */
+    public static boolean firing() {
+        return firing > 0;
+    }
 
     private CgRenderStage(String id) {
         this.id = id;
@@ -224,11 +231,13 @@ public final class CgRenderStage {
             CgGraphicsLifecycle.ensureContext(host.width(), host.height());
             if (renderers.isEmpty() || !CgGraphicsLifecycle.isInitialized()) return;
             CgGpuTrace.begin(gpuName);
+            firing++;
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, path)) {
                 frame.begin(host);
                 record(CgFrameRing.frame());
                 frame.execute();
             } finally {
+                firing--;
                 CgGpuTrace.end();
             }
         } finally {
