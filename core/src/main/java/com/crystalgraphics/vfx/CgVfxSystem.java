@@ -50,6 +50,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.function.IntConsumer;
 
 /**
@@ -209,6 +210,9 @@ public final class CgVfxSystem {
     private CgWorld world;
     private final CgVfxGpuSteps gpuSteps = new CgVfxGpuSteps();
     private boolean rangePrepared;
+    /** Looks whose kernels and slot meshes, and whose materials, this system has queued: held weakly. */
+    private final Set<CgVfxLook> gpuLooks = Collections.newSetFromMap(new WeakHashMap<>()),
+            drawLooks = Collections.newSetFromMap(new WeakHashMap<>());
     private double clock = Double.NaN;
     private float owed, simulated;
     private float density = 1f;
@@ -771,11 +775,13 @@ public final class CgVfxSystem {
             CgVfxEffect<?> effect = effects.get(i);
             if (!effect.gpuPrepared) {
                 effect.gpuPrepared = true;
-                prepareGpu(effect.look(), true);
+                // A look this system prepared already only starts the window: a cast prepares nothing twice.
+                if (gpuLooks.add(effect.look())) prepareGpu(effect.look(), true);
+                else useWindow(effect.look());
             }
             if (effect.warmed) continue;
             effect.warmed = true;
-            prepareDraws(effect.look());
+            if (drawLooks.add(effect.look())) prepareDraws(effect.look());
         }
         pollWarming(world);
     }
@@ -857,8 +863,15 @@ public final class CgVfxSystem {
         for (int k = 0; k < emitters.size(); k++) {
             CgVfxEmitter emitter = emitters.get(k);
             prepareEmitter(emitter);
-            // The window's first use starts its kernels and its filling: at play, not on the first landing.
-            if (useWindow && readsWorld(emitter)) CgVfxVoxelWindow.get().use();
+        }
+        if (useWindow) useWindow(look);
+    }
+
+    /** The window's first use starts its kernels and its filling: at play, not on the first landing. */
+    private static void useWindow(CgVfxLook look) {
+        List<CgVfxEmitter> emitters = look.emitters();
+        for (int k = 0; k < emitters.size(); k++) {
+            if (readsWorld(emitters.get(k))) CgVfxVoxelWindow.get().use();
         }
     }
 

@@ -5,6 +5,7 @@ import com.crystalgraphics.platform.device.resource.CgGpuTexture;
 import com.crystalgraphics.platform.device.resource.CgTextureView;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * What a draw renders into: a framebuffer's attachments, colour attachment {@code i} receiving fragment output
@@ -32,6 +33,22 @@ public record CgTarget(List<CgTextureView> colors, CgTextureView depth) {
         int h = Integer.MAX_VALUE;
         for (int i = 0; i < colors.size(); i++) h = Math.min(h, colors.get(i).height());
         return depth == null ? h : Math.min(h, depth.height());
+    }
+
+    /** By value, index by index: a record's would walk the list with an iterator, and a draw compares its target. */
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof CgTarget t) || !Objects.equals(depth, t.depth) || colors.size() != t.colors.size()) return false;
+        for (int i = 0; i < colors.size(); i++) if (!colors.get(i).equals(t.colors.get(i))) return false;
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        int h = Objects.hashCode(depth);
+        for (int i = 0; i < colors.size(); i++) h = 31 * h + colors.get(i).hashCode();
+        return h;
     }
 
     /** Whether {@code view} reads what an attachment renders to: another level of the same texture does not. */

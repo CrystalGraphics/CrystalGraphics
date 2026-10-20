@@ -19,6 +19,8 @@ import org.lwjgl.vulkan.VkOffset2D;
 import org.lwjgl.vulkan.VkRect2D;
 import org.lwjgl.vulkan.VkViewport;
 
+import java.util.List;
+
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.KHRDynamicRendering.vkCmdEndRenderingKHR;
 import static org.lwjgl.vulkan.VK10.*;
@@ -193,7 +195,8 @@ final class VulkanPass implements CgRenderPass {
     public void end() {
         VkCommandBuffer cmd = cmd();
         vkCmdEndRenderingKHR(cmd);
-        for (CgPassDesc.Color c : desc.colors()) settle(cmd, (VulkanTexture) c.view().texture(), c);
+        List<CgPassDesc.Color> colors = desc.colors();
+        for (int i = 0; i < colors.size(); i++) settle(cmd, (VulkanTexture) colors.get(i).view().texture(), colors.get(i));
         if (desc.depth() != null) {
             VulkanTexture t = (VulkanTexture) desc.depth().view().texture();
             device.barriers += t.transition(cmd, desc.depth().view().baseMip(), 1, desc.depth().view().baseLayer(), 1,

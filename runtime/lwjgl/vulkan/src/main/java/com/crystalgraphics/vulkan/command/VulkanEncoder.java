@@ -498,6 +498,17 @@ public final class VulkanEncoder implements CgCommandEncoder {
      * themselves: a layout's usual last use is a stage that queue does not have, and two copies into one image
      * there must still be ordered. On the frame's queue it joins the run ({@link #runCopy}).
      */
+    /** A {@code VkImageSubresourceLayers} of one layer at {@code at}. */
+    private static void layers(ByteBuffer b, int at, int aspect, int mip, int layer) {
+        b.putInt(at + VkImageSubresourceLayers.ASPECTMASK, aspect).putInt(at + VkImageSubresourceLayers.MIPLEVEL, mip)
+                .putInt(at + VkImageSubresourceLayers.BASEARRAYLAYER, layer).putInt(at + VkImageSubresourceLayers.LAYERCOUNT, 1);
+    }
+
+    /** A {@code VkOffset3D} or {@code VkExtent3D}, three ints, at {@code at}. */
+    private static void offset(ByteBuffer b, int at, int x, int y, int z) {
+        b.putInt(at, x).putInt(at + 4, y).putInt(at + 8, z);
+    }
+
     /** One {@code VkBufferCopy}, written through the scratch: a struct per copy built a segment per field. */
     private static void copyRegion(VkCommandBuffer cmd, long src, long dst, long srcOffset, long dstOffset, long size) {
         VulkanScratch s = VulkanScratch.get(VkBufferCopy.SIZEOF);
@@ -674,26 +685,26 @@ public final class VulkanEncoder implements CgCommandEncoder {
         before(cmd);
         to(cmd, s, src.baseMip(), 1, src.baseLayer(), 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
         to(cmd, d, dst.baseMip(), 1, dst.baseLayer(), 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-        try (MemoryStack stack = stackPush()) {
-            if (copy) {
-                VkImageCopy.Buffer c = VkImageCopy.calloc(1, stack);
-                c.srcSubresource().aspectMask(s.aspect).mipLevel(src.baseMip()).baseArrayLayer(src.baseLayer()).layerCount(1);
-                c.srcOffset().set(sx0, sy0, 0);
-                c.dstSubresource().aspectMask(d.aspect).mipLevel(dst.baseMip()).baseArrayLayer(dst.baseLayer()).layerCount(1);
-                c.dstOffset().set(dx0, dy0, 0);
-                c.extent().set(sx1 - sx0, sy1 - sy0, 1);
-                vkCmdCopyImage(cmd, s.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, d.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, c);
-            } else {
-                VkImageBlit.Buffer b = VkImageBlit.calloc(1, stack);
-                b.srcSubresource().aspectMask(s.aspect).mipLevel(src.baseMip()).baseArrayLayer(src.baseLayer()).layerCount(1);
-                b.srcOffsets(0).set(sx0, sy0, 0);
-                b.srcOffsets(1).set(sx1, sy1, 1);
-                b.dstSubresource().aspectMask(d.aspect).mipLevel(dst.baseMip()).baseArrayLayer(dst.baseLayer()).layerCount(1);
-                b.dstOffsets(0).set(dx0, dy0, 0);
-                b.dstOffsets(1).set(dx1, dy1, 1);
-                vkCmdBlitImage(cmd, s.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, d.image,
-                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, b, VulkanFormats.filter(filter));
-            }
+        // Through the scratch, every field written: a struct per blit built a segment per field.
+        if (copy) {
+            VulkanScratch k = VulkanScratch.get(VkImageCopy.SIZEOF);
+            layers(k.bytes, VkImageCopy.SRCSUBRESOURCE, s.aspect, src.baseMip(), src.baseLayer());
+            offset(k.bytes, VkImageCopy.SRCOFFSET, sx0, sy0, 0);
+            layers(k.bytes, VkImageCopy.DSTSUBRESOURCE, d.aspect, dst.baseMip(), dst.baseLayer());
+            offset(k.bytes, VkImageCopy.DSTOFFSET, dx0, dy0, 0);
+            offset(k.bytes, VkImageCopy.EXTENT, sx1 - sx0, sy1 - sy0, 1);
+            nvkCmdCopyImage(cmd, s.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, d.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    1, k.address);
+        } else {
+            VulkanScratch k = VulkanScratch.get(VkImageBlit.SIZEOF);
+            layers(k.bytes, VkImageBlit.SRCSUBRESOURCE, s.aspect, src.baseMip(), src.baseLayer());
+            offset(k.bytes, VkImageBlit.SRCOFFSETS, sx0, sy0, 0);
+            offset(k.bytes, VkImageBlit.SRCOFFSETS + VkOffset3D.SIZEOF, sx1, sy1, 1);
+            layers(k.bytes, VkImageBlit.DSTSUBRESOURCE, d.aspect, dst.baseMip(), dst.baseLayer());
+            offset(k.bytes, VkImageBlit.DSTOFFSETS, dx0, dy0, 0);
+            offset(k.bytes, VkImageBlit.DSTOFFSETS + VkOffset3D.SIZEOF, dx1, dy1, 1);
+            nvkCmdBlitImage(cmd, s.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, d.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    1, k.address, VulkanFormats.filter(filter));
         }
         rest(cmd, s, src.baseMip(), 1, src.baseLayer(), 1);
         rest(cmd, d, dst.baseMip(), 1, dst.baseLayer(), 1);
