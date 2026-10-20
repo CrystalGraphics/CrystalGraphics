@@ -8,6 +8,7 @@ import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.render.property.CgPropertyValues;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgBufferHandle;
+import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 
 import javax.annotation.Nullable;
@@ -305,9 +306,12 @@ public final class CgFrame {
         int eachCount;
         /** Per batch, the buffer a batch of {@code objects()} reads its records from, else null. Such a batch is one draw. */
         CgBufferHandle[] objects = new CgBufferHandle[16];
-        /** Per batch, the buffer a batch of {@code buffer()} reads in place of an engine buffer, and where; else null. */
-        CgBufferHandle[] buffers = new CgBufferHandle[16];
-        CgBindingPoints.Binding[] bufferAt = new CgBindingPoints.Binding[16];
+        /**
+         * Per batch, {@code CgDrawChunk.BUFFERS} slots: the buffers a batch of {@code buffer()} reads in place of engine
+         * buffers, and where; else null.
+         */
+        CgBufferHandle[] buffers = new CgBufferHandle[16 * CgDrawChunk.BUFFERS];
+        CgBindingPoints.Binding[] bufferAt = new CgBindingPoints.Binding[16 * CgDrawChunk.BUFFERS];
         /** Per batch, the {@code CgTargetCopy} bits of what to copy from the target before drawing it; 0 for none. */
         int[] copyBefore = new int[16];
         /**
@@ -348,16 +352,16 @@ public final class CgFrame {
                 countModes = new int[n];
                 eachFrom = new int[n];
                 objects = new CgBufferHandle[n];
-                buffers = new CgBufferHandle[n];
-                bufferAt = new CgBindingPoints.Binding[n];
+                buffers = new CgBufferHandle[n * CgDrawChunk.BUFFERS];
+                bufferAt = new CgBindingPoints.Binding[n * CgDrawChunk.BUFFERS];
                 copyBefore = new int[n];
                 copyRect = new int[n * 4];
             } else {
                 Arrays.fill(mesh, 0, count, null);
                 Arrays.fill(counts, 0, count, null);
                 Arrays.fill(objects, 0, count, null);
-                Arrays.fill(buffers, 0, count, null);
-                Arrays.fill(bufferAt, 0, count, null);
+                Arrays.fill(buffers, 0, count * CgDrawChunk.BUFFERS, null);
+                Arrays.fill(bufferAt, 0, count * CgDrawChunk.BUFFERS, null);
             }
             count = batches;
             kinds = 0;

@@ -192,9 +192,9 @@ public final class CgWorldRenderer {
     private long[] countOffsets = new long[64];
     private CgIndirect[] countModes = new CgIndirect[64];
     private int[] countFactors = new int[64];
-    /** Per draw: a buffer it reads in place of an engine buffer, and where; else null. */
-    private CgBufferHandle[] buffers = new CgBufferHandle[64];
-    private CgBindingPoints.Binding[] bufferAt = new CgBindingPoints.Binding[64];
+    /** Per draw, two slots: the buffers it reads in place of engine buffers, and where; else null. */
+    private CgBufferHandle[] buffers = new CgBufferHandle[64 * 2];
+    private CgBindingPoints.Binding[] bufferAt = new CgBindingPoints.Binding[64 * 2];
     /** Per draw: the object records a set of instances draws, else null, and how many of them. */
     private CgGraphBuffer[] sets = new CgGraphBuffer[64];
     private int[] setFirsts = new int[64];
@@ -787,8 +787,8 @@ public final class CgWorldRenderer {
         private int stated;
         private float setScale;
         private CgGpuCount setCount;
-        private CgBufferHandle buffer;
-        private CgBindingPoints.Binding bufferPoint;
+        private CgBufferHandle buffer, buffer2;
+        private CgBindingPoints.Binding bufferPoint, bufferPoint2;
         private final CgAABB meshBox = new CgAABB();
         /** Block and sky light; NaN block for the world's at its position. */
         private float blockLight, skyLight;
@@ -821,8 +821,8 @@ public final class CgWorldRenderer {
             stated = 0;
             setScale = 1f;
             setCount = null;
-            buffer = null;
-            bufferPoint = null;
+            buffer = buffer2 = null;
+            bufferPoint = bufferPoint2 = null;
             blockLight = Float.NaN;
             emission = 1f;
             half = false;
@@ -981,12 +981,23 @@ public final class CgWorldRenderer {
          *
          * <ul>
          *   <li>A graph buffer is read after the pass writing it, so the draw waits for that kernel.</li>
-         *   <li>One a draw; object records take {@link #instances} instead.</li>
+         *   <li>Two a draw at most, at different bindings: a particle draw reads its pool's records and its order.
+         *       Object records take {@link #instances} instead.</li>
          * </ul>
          */
         public Draw buffer(CgBindingPoints.Binding at, CgBufferHandle records) {
-            bufferPoint = Objects.requireNonNull(at, "at");
-            buffer = Objects.requireNonNull(records, "records");
+            Objects.requireNonNull(at, "at");
+            Objects.requireNonNull(records, "records");
+            if (at.equals(bufferPoint) || at.equals(bufferPoint2)) throw new IllegalArgumentException("a second buffer() at " + at);
+            if (bufferPoint == null) {
+                bufferPoint = at;
+                buffer = records;
+            } else if (bufferPoint2 == null) {
+                bufferPoint2 = at;
+                buffer2 = records;
+            } else {
+                throw new IllegalStateException("a draw reads at most two buffers");
+            }
             return this;
         }
 
@@ -1319,8 +1330,10 @@ public final class CgWorldRenderer {
         customsStated[count] = d.stated;
         setScales[count] = d.setScale;
         setCounts[count] = d.setCount;
-        buffers[count] = d.buffer;
-        bufferAt[count] = d.bufferPoint;
+        buffers[count * 2] = d.buffer;
+        bufferAt[count * 2] = d.bufferPoint;
+        buffers[count * 2 + 1] = d.buffer2;
+        bufferAt[count * 2 + 1] = d.bufferPoint2;
         recordCounts[count] = d.each ? d.records : 0;
         if (d.each) {
             recordFirsts[count] = records;
@@ -1348,8 +1361,8 @@ public final class CgWorldRenderer {
         Arrays.fill(layers, 0, count, null);
         Arrays.fill(sets, 0, count, null);
         Arrays.fill(setCounts, 0, count, null);
-        Arrays.fill(buffers, 0, count, null);
-        Arrays.fill(bufferAt, 0, count, null);
+        Arrays.fill(buffers, 0, count * 2, null);
+        Arrays.fill(bufferAt, 0, count * 2, null);
         Arrays.fill(culled, 0, count, null);
         Arrays.fill(culledCounts, 0, count, null);
         count = 0;
@@ -1391,8 +1404,8 @@ public final class CgWorldRenderer {
         customsStated = Arrays.copyOf(customsStated, n);
         setScales = Arrays.copyOf(setScales, n);
         setCounts = Arrays.copyOf(setCounts, n);
-        buffers = Arrays.copyOf(buffers, n);
-        bufferAt = Arrays.copyOf(bufferAt, n);
+        buffers = Arrays.copyOf(buffers, n * 2);
+        bufferAt = Arrays.copyOf(bufferAt, n * 2);
         culled = Arrays.copyOf(culled, n);
         culledCounts = Arrays.copyOf(culledCounts, n);
         culledFirst = Arrays.copyOf(culledFirst, n);
@@ -2392,6 +2405,12 @@ public final class CgWorldRenderer {
     }
 
     /** Draw {@code i}'s range, count and object record into the draw just begun, under {@link #model} and {@link #normal}. */
+    /** Draw {@code i}'s buffers read in place of engine buffers, both slots. */
+    private void readBuffers(CgChunkBuilder chunks, int i) {
+        if (buffers[i * 2] != null) chunks.buffer(bufferAt[i * 2], buffers[i * 2]);
+        if (buffers[i * 2 + 1] != null) chunks.buffer(bufferAt[i * 2 + 1], buffers[i * 2 + 1]);
+    }
+
     private void writeInstance(CgChunkBuilder chunks, int i) {
         if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
         if (recordCounts[i] > 0) {
@@ -2399,7 +2418,7 @@ public final class CgWorldRenderer {
             return;
         }
         if (counts[i] != null) chunks.indirect(counts[i], countOffsets[i], countModes[i], countFactors[i]);
-        if (buffers[i] != null) chunks.buffer(bufferAt[i], buffers[i]);
+        readBuffers(chunks, i);
         int at = chunks.instance();
         float[] data = chunks.data();
         model.get(data, at);
@@ -2416,7 +2435,7 @@ public final class CgWorldRenderer {
      */
     private void writeRecords(CgChunkBuilder chunks, int i) {
         chunks.indirectEach(counts[i], countModes[i], countFactors[i]);
-        if (buffers[i] != null) chunks.buffer(bufferAt[i], buffers[i]);
+        readBuffers(chunks, i);
         int first = recordFirsts[i], n = recordCounts[i];
         if (recordOrder.length < n) recordOrder = new long[Math.max(n, recordOrder.length * 2)];
         double vx = recordView.x(), vy = recordView.y(), vz = recordView.z();

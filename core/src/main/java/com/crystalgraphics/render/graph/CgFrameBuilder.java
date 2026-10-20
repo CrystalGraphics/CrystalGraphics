@@ -416,7 +416,7 @@ public final class CgFrameBuilder {
                 tree.boundsInDomain(chunk.spatial(), chunk.x0(d), chunk.y0(d), chunk.x1(d), chunk.y1(d), domainBounds);
                 batcher.add(chunk.pipeline(d), map[local], chunk.kind(d), chunk.mesh(d), chunk.rangeSubmesh(d),
                         chunk.rangeFirst(d), chunk.rangeCount(d),
-                        chunk.indirectCount(d) != null || chunk.objects(d) != null || chunk.buffer(d) != null,
+                        chunk.indirectCount(d) != null || chunk.objects(d) != null || chunk.buffer(d, 0) != null,
                         groups ? chunk.gpuGroup(d) : -1,
                         domain, scissor,
                         domainBounds[0], domainBounds[1], domainBounds[2], domainBounds[3], chunk.sortKey(d), refs);
@@ -457,9 +457,10 @@ public final class CgFrameBuilder {
                     packed.kinds |= 1 << ki;
                 }
                 packed.instances[b] += chunk.instances(d);
-                if (chunk.buffer(d) != null) {
-                    packed.buffers[b] = chunk.buffer(d);
-                    packed.bufferAt[b] = chunk.bufferAt(d);
+                for (int slot = 0; slot < CgDrawChunk.BUFFERS; slot++) {
+                    if (chunk.buffer(d, slot) == null) continue;
+                    packed.buffers[b * CgDrawChunk.BUFFERS + slot] = chunk.buffer(d, slot);
+                    packed.bufferAt[b * CgDrawChunk.BUFFERS + slot] = chunk.bufferAt(d, slot);
                 }
                 if (chunk.indirectCount(d) != null) {
                     packed.counts[b] = chunk.indirectCount(d);

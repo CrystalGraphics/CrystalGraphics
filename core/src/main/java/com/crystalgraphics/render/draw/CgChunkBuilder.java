@@ -189,8 +189,10 @@ public final class CgChunkBuilder {
         if (each != null) each[d] = false;
         if (objects != null) objects[d] = null;
         if (buffers != null) {
-            buffers[d] = null;
-            bufferAt[d] = null;
+            for (int k = 0; k < CgDrawChunk.BUFFERS; k++) {
+                buffers[d * CgDrawChunk.BUFFERS + k] = null;
+                bufferAt[d * CgDrawChunk.BUFFERS + k] = null;
+            }
         }
         if (groups != null) groups[d] = -1;
         sortKeys[d] = 0;
@@ -407,7 +409,8 @@ public final class CgChunkBuilder {
      * }</pre>
      *
      * <ul>
-     *   <li>One a draw. Object records take {@link #objects}, never {@code OBJECT_DATA} here.</li>
+     *   <li>Two a draw at most, at different bindings: a particle draw reads its pool's records and its order.
+     *       Object records take {@link #objects}, never {@code OBJECT_DATA} here.</li>
      *   <li>A graph buffer is read after the pass writing it; it needs {@code STORAGE}.</li>
      *   <li>The draw batches alone.</li>
      * </ul>
@@ -416,11 +419,17 @@ public final class CgChunkBuilder {
         if (drawing < 0) throw new IllegalStateException("buffer() with no draw open: draw() first");
         if (at.equals(CgBindingPoints.OBJECT_DATA)) throw new IllegalArgumentException("object records take objects()");
         if (buffers == null) {
-            buffers = new CgBufferHandle[pipelines.length];
-            bufferAt = new CgBindingPoints.Binding[pipelines.length];
+            buffers = new CgBufferHandle[pipelines.length * CgDrawChunk.BUFFERS];
+            bufferAt = new CgBindingPoints.Binding[pipelines.length * CgDrawChunk.BUFFERS];
         }
-        buffers[drawing] = Objects.requireNonNull(buffer, "buffer");
-        bufferAt[drawing] = at;
+        int slot = drawing * CgDrawChunk.BUFFERS, end = slot + CgDrawChunk.BUFFERS;
+        while (slot < end && bufferAt[slot] != null) {
+            if (bufferAt[slot].equals(at)) throw new IllegalArgumentException("a second buffer() at " + at);
+            slot++;
+        }
+        if (slot == end) throw new IllegalStateException("a draw reads at most " + CgDrawChunk.BUFFERS + " buffers");
+        buffers[slot] = Objects.requireNonNull(buffer, "buffer");
+        bufferAt[slot] = at;
         return this;
     }
 
@@ -468,8 +477,8 @@ public final class CgChunkBuilder {
                 counts == null ? null : Arrays.copyOf(counts, count), counts == null ? null : Arrays.copyOf(countOffsets, count),
                 counts == null ? null : Arrays.copyOf(countModes, count),
                 objects == null ? null : Arrays.copyOf(objects, count),
-                buffers == null ? null : Arrays.copyOf(buffers, count),
-                buffers == null ? null : Arrays.copyOf(bufferAt, count), Arrays.copyOf(bounds, count * 4),
+                buffers == null ? null : Arrays.copyOf(buffers, count * CgDrawChunk.BUFFERS),
+                buffers == null ? null : Arrays.copyOf(bufferAt, count * CgDrawChunk.BUFFERS), Arrays.copyOf(bounds, count * 4),
                 Arrays.copyOf(sortKeys, count), groups == null ? null : Arrays.copyOf(groups, count), kept,
                 each == null ? null : Arrays.copyOf(each, count),
                 each == null ? null : Arrays.copyOf(recordCounts, records[CgInstanceKind.OBJECT.ordinal()]));
@@ -594,8 +603,8 @@ public final class CgChunkBuilder {
         if (each != null) each = Arrays.copyOf(each, n);
         if (objects != null) objects = Arrays.copyOf(objects, n);
         if (buffers != null) {
-            buffers = Arrays.copyOf(buffers, n);
-            bufferAt = Arrays.copyOf(bufferAt, n);
+            buffers = Arrays.copyOf(buffers, n * CgDrawChunk.BUFFERS);
+            bufferAt = Arrays.copyOf(bufferAt, n * CgDrawChunk.BUFFERS);
         }
         if (groups != null) groups = Arrays.copyOf(groups, n);
         bounds = Arrays.copyOf(bounds, n * 4);

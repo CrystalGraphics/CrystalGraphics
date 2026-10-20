@@ -234,16 +234,19 @@ public final class CgDrawChunk {
         return objects == null ? null : objects[draw];
     }
 
-    /** The buffer a draw of {@code buffer()} reads in place of an engine buffer; null for none. */
+    /** How many buffers a draw may read in place of engine buffers ({@code CgChunkBuilder.buffer}). */
+    public static final int BUFFERS = 2;
+
+    /** The {@code slot}th buffer a draw of {@code buffer()} reads in place of an engine buffer; null for none. */
     @Nullable
-    public CgBufferHandle buffer(int draw) {
-        return buffers == null ? null : buffers[draw];
+    public CgBufferHandle buffer(int draw, int slot) {
+        return buffers == null ? null : buffers[draw * BUFFERS + slot];
     }
 
-    /** Where {@link #buffer} is read: the engine buffer's binding it stands in for. */
+    /** Where {@link #buffer} is read: the engine buffer's binding it stands in for; null for none. */
     @Nullable
-    public CgBindingPoints.Binding bufferAt(int draw) {
-        return bufferAt == null ? null : bufferAt[draw];
+    public CgBindingPoints.Binding bufferAt(int draw, int slot) {
+        return bufferAt == null ? null : bufferAt[draw * BUFFERS + slot];
     }
 
     public float x0(int draw) {
@@ -296,8 +299,9 @@ public final class CgDrawChunk {
                 ranges == null ? null : Arrays.copyOf(ranges, count * 3), counts == null ? null : Arrays.copyOf(counts, count),
                 countOffsets == null ? null : Arrays.copyOf(countOffsets, count),
                 countModes == null ? null : Arrays.copyOf(countModes, count),
-                objects == null ? null : Arrays.copyOf(objects, count), buffers == null ? null : Arrays.copyOf(buffers, count),
-                bufferAt == null ? null : Arrays.copyOf(bufferAt, count), Arrays.copyOf(bounds, count * 4),
+                objects == null ? null : Arrays.copyOf(objects, count),
+                buffers == null ? null : Arrays.copyOf(buffers, count * BUFFERS),
+                bufferAt == null ? null : Arrays.copyOf(bufferAt, count * BUFFERS), Arrays.copyOf(bounds, count * 4),
                 Arrays.copyOf(sortKeys, count), groups == null ? null : Arrays.copyOf(groups, count), kept,
                 each == null ? null : Arrays.copyOf(each, count), recordCounts == null ? null : recordCounts.clone());
     }
@@ -351,9 +355,10 @@ public final class CgDrawChunk {
             this.buffers = null;
             this.bufferAt = null;
         } else {
-            this.buffers = ownBuffers = handles(ownBuffers, buffers, count);
-            if (ownBufferAt == null || ownBufferAt.length < count) ownBufferAt = new CgBindingPoints.Binding[Math.max(count, 16)];
-            System.arraycopy(bufferAt, 0, ownBufferAt, 0, count);
+            int n = count * BUFFERS;
+            this.buffers = ownBuffers = handles(ownBuffers, buffers, n);
+            if (ownBufferAt == null || ownBufferAt.length < n) ownBufferAt = new CgBindingPoints.Binding[Math.max(n, 32)];
+            System.arraycopy(bufferAt, 0, ownBufferAt, 0, n);
             this.bufferAt = ownBufferAt;
         }
         this.groups = groups == null ? null : (ownGroups = ints(ownGroups, groups, count));
