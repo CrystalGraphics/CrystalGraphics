@@ -175,7 +175,14 @@ public final class CgVfxSystem {
      */
     private static final CgVar.Int PARALLEL_BOOKS = CgVar.integer("crystalgraphics.vfx.parallelBooks", 4096, 1,
             Integer.MAX_VALUE, CgVar.DEV, "Effects with emitters due a tick past which their books run on the workers,"
-                    + " one definition a worker; fewer book on the render thread alone.");
+                    + " in batches of one simulation's effects; fewer book on the render thread alone.");
+    /**
+     * Effects a worker books in one task: Niagara cuts each simulation's instances into batches of
+     * {@code fx.Niagara.SystemSimulation.TickBatchSize} (NiagaraSystemSimulation.cpp:104). A book is ~0.25 us, so a
+     * batch this size is ~64 us, long enough to be worth waking a worker for.
+     */
+    private static final CgVar.Int BOOK_BATCH = CgVar.integer("crystalgraphics.vfx.bookBatch", 256, 1,
+            Integer.MAX_VALUE, CgVar.DEV, "Effects of one simulation a worker books in one task.");
     private static final int MAX_TICKS = 12;
     /** GPU steps a pool may hold unrecorded, half a second at 60 Hz, before every effect waits for the world to draw. */
     private static final int MAX_QUEUED_STEPS = 30;
@@ -206,11 +213,14 @@ public final class CgVfxSystem {
     private final CgVfxAir air = new CgVfxAir();
     /** The effects that queued emitter ticks this tick, in play order: the order they are admitted in. */
     private final List<CgVfxEffect<?>> emitting = new ArrayList<>();
-    /** One simulation per definition playing, Unreal's world manager's map; a definition is a look until 07 P4. */
+    /** One simulation per look playing: Unreal's world manager keeps one per system asset (NiagaraWorldManager.cpp:719-742). */
     private final Map<CgVfxLook, Simulation> simulations = new IdentityHashMap<>();
-    /** The simulations with books due this tick: what the workers run, one each. */
+    /** The simulations with books due this tick. */
     private final List<Simulation> booking = new ArrayList<>();
-    private final IntConsumer bookEach = i -> booking.get(i).book();
+    /** This tick's batches, parallel: the simulation, and the first of its due effects the batch books. */
+    private Simulation[] batchSimulation = new Simulation[8];
+    private int[] batchFrom = new int[8];
+    private final IntConsumer bookEach = i -> batchSimulation[i].book(batchFrom[i], BOOK_BATCH.get());
 
     /**
      * One definition's playing effects, booked together: a loop over its instances with the definition read once,
@@ -229,19 +239,25 @@ public final class CgVfxSystem {
             due[dueCount++] = effect;
         }
 
-        void book() {
+        /** Books up to {@code count} due effects from {@code from}; batches of one simulation touch disjoint effects. */
+        void book(int from, int count) {
+            int to = Math.min(dueCount, from + count);
             try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, EFFECT_EMITTERS_ZONE)) {
-                for (int i = 0; i < dueCount; i++) {
+                for (int i = from; i < to; i++) {
                     CgVfxEffect<?> effect = due[i];
                     try {
                         effect.tickEmitters();
                     } catch (RuntimeException e) {
                         effect.failure = e;
                     }
-                    due[i] = null;
                 }
-                dueCount = 0;
             }
+        }
+
+        /** Forgets this tick's queue, whether or not it was booked. */
+        void clearDue() {
+            Arrays.fill(due, 0, dueCount, null);
+            dueCount = 0;
         }
     }
     /** The owners whose effects it has played, for their counters. */
@@ -395,12 +411,17 @@ public final class CgVfxSystem {
                         }
                     }
                     try (CgTrace.Zone run = CgTrace.zone(CgVfxTrace.CHANNEL, EMITTERS_ZONE)) {
-                        if (booking.size() > 1 && emitting.size() >= PARALLEL_BOOKS.get()) {
-                            try (CgTrace.Zone ticking = CgTrace.zone(CgVfxTrace.CHANNEL, WORKERS_ZONE)) {
-                                CgJob.forEach(booking.size(), bookEach);
+                        if (emitting.size() >= PARALLEL_BOOKS.get()) {
+                            int batches = batchesOf(booking);
+                            if (batches > 1) {
+                                try (CgTrace.Zone ticking = CgTrace.zone(CgVfxTrace.CHANNEL, WORKERS_ZONE)) {
+                                    CgJob.forEach(batches, bookEach);
+                                }
+                            } else {
+                                bookAll();
                             }
                         } else {
-                            for (int i = 0; i < booking.size(); i++) booking.get(i).book();
+                            bookAll();
                         }
                         try (CgTrace.Zone admitting = CgTrace.zone(CgVfxTrace.CHANNEL, ADMIT_ZONE)) {
                             for (int i = 0; i < emitting.size(); i++) {
@@ -415,6 +436,7 @@ public final class CgVfxSystem {
                         }
                     } finally {
                         emitting.clear();
+                        for (int i = 0; i < booking.size(); i++) booking.get(i).clearDue();
                         booking.clear();
                     }
                     if (particleTick) {
@@ -464,6 +486,28 @@ public final class CgVfxSystem {
     }
 
     /** Its simulation is dropped with its last effect. */
+    private void bookAll() {
+        for (int i = 0; i < booking.size(); i++) booking.get(i).book(0, Integer.MAX_VALUE);
+    }
+
+    /** Cuts every queued simulation into batches of {@link #BOOK_BATCH} effects; fills the batch arrays. */
+    private int batchesOf(List<Simulation> queued) {
+        int n = 0;
+        int size = BOOK_BATCH.get();
+        for (int i = 0; i < queued.size(); i++) {
+            Simulation simulation = queued.get(i);
+            for (int from = 0; from < simulation.dueCount; from += size) {
+                if (n == batchSimulation.length) {
+                    batchSimulation = Arrays.copyOf(batchSimulation, n * 2);
+                    batchFrom = Arrays.copyOf(batchFrom, n * 2);
+                }
+                batchSimulation[n] = simulation;
+                batchFrom[n++] = from;
+            }
+        }
+        return n;
+    }
+
     private void leaveSimulation(CgVfxEffect<?> effect) {
         if (--effect.simulation.playing == 0) simulations.remove(effect.look());
     }
