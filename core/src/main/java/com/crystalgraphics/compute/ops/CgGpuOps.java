@@ -32,7 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * What every GPU-driven consumer otherwise writes for itself (gpu-compute C7): fills, sequences, copies, reductions,
+ * What every GPU-driven consumer otherwise writes for itself: fills, sequences, copies, reductions,
  * scans, compaction, sorting, histograms and bounds over buffers, culling instances (C9b), and mip chains, depth
  * pyramids and blurs over textures, dispatched
  * into the caller's compute pass and run on every tier (as compute, lowered below it, or by Java bodies on the CPU

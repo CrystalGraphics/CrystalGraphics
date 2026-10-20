@@ -25,7 +25,7 @@ import javax.annotation.Nullable;
 import java.util.Set;
 
 /**
- * One pass of a kernel lowered below compute (gpu-compute C5) as GLSL 3.30 stages: the kernel's own code, unchanged,
+ * One pass of a kernel lowered below compute as GLSL 3.30 stages: the kernel's own code, unchanged,
  * run as a fragment stage over the texels of the buffers it writes, a geometry stage emitting points, or a fragment
  * stage over an image, with its accessors rewritten for that stage. {@code #include} lines are left for
  * {@code CgShaderPreprocessor}.

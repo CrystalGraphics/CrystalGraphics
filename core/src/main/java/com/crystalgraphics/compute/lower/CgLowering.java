@@ -18,7 +18,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * How a kernel runs below compute (gpu-compute C5): the passes its shape lowers to, each a draw every GL from 3.3 has,
+ * How a kernel runs below compute: the passes its shape lowers to, each a draw every GL from 3.3 has,
  * or the construct that stops it. GL-free.
  *
  * <pre>{@code

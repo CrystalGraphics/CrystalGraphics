@@ -17,7 +17,7 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * What every lowered dispatch shares (gpu-compute C5): scratch buffers and texel targets pooled by size, an empty
+ * What every lowered dispatch shares: scratch buffers and texel targets pooled by size, an empty
  * vertex array to draw with, and which counters a fill zeroed this frame. Buffers are read through
  * {@code CgBufferTextures}. Render thread; {@link #releaseAll} at context teardown. Nothing here allocates once its
  * pools hold what a frame uses.

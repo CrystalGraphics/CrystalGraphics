@@ -30,7 +30,7 @@ import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.RecursiveAction;
 
 /**
- * Runs a dispatch as its kernel's Java body: the CPU tier (gpu-compute C6), where no GPU tier can run the kernel or the
+ * Runs a dispatch as its kernel's Java body: the CPU tier, where no GPU tier can run the kernel or the
  * tier is forced. The buffers it binds are the CPU copies {@link CgCpuMirrors} keeps; what the body writes is uploaded
  * before the next pass, so the GPU and the CPU see one buffer. Render thread, at the dispatch's place in the frame.
  *

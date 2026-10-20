@@ -43,7 +43,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * One kernel and keyword set lowered below compute (gpu-compute C5), compiled for the current context and wired: a
+ * One kernel and keyword set lowered below compute, compiled for the current context and wired: a
  * program per pass {@link CgLowering} plans, and the dispatch that runs them. What a GL context without compute runs
  * where a compute context runs a {@code CgKernelProgram}.
  *

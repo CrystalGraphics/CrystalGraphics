@@ -7,7 +7,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * The engine's own small programs a lowered dispatch runs around a kernel's passes (gpu-compute C5), compiled once per
+ * The engine's own small programs a lowered dispatch runs around a kernel's passes, compiled once per
  * variant: drawing a buffer into a scatter target and its floats back into bits, placing appended elements at their
  * counter, adding to a counter, and turning a dispatch's group counts into a draw command. Render thread.
  *
