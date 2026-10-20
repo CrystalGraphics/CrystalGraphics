@@ -288,6 +288,8 @@ public class CgBibleGateTest {
         private void element(String path, JsonObject items, CgType type, Set<String> seen) {
             if (type.kind() == CgTypeKind.DISPATCH) {
                 family(path, items, type, seen);
+            } else if (items.has("oneOf") && allStructs(items)) {
+                flatUnion(path, items, type, type, seen);   // members chosen by the key present: a spawnable
             } else {
                 struct(path, items, type, seen, null);
             }
