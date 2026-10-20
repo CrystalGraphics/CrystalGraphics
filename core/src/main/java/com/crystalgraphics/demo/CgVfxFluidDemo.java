@@ -175,7 +175,6 @@ public final class CgVfxFluidDemo {
             if (smoke != null) smoke.submit(frame);
             else if (fluid != null) fluid.submit(frame);
             if (grid != null) grid.submit(frame);
-            for (int i = 0; i < emitters.size(); i++) frame.particles(this, emitters.get(i));
         }
     }
 

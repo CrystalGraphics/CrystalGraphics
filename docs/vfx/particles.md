@@ -238,11 +238,7 @@ public final class Aura extends CgVfxEffect<Aura> {
         tick(sparkles, dt);
         if (ending && sparkles.finished()) die();            // once the last one has died
     }
-
-    @Override protected void submit(CgVfxFrame frame) {
-        frame.particles(this, sparkles);
-    }
-}
+}                                                            // drawn by the system: no submit needed
 ```
 
 ### Killing

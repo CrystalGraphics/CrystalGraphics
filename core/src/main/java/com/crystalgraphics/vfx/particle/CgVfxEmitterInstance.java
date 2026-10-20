@@ -486,6 +486,26 @@ public final class CgVfxEmitterInstance {
         return lastDeath >= 0f && time < lastDeath + 2f * stepDt;
     }
 
+    private boolean drawn = true;
+
+    /**
+     * Whether its system draws its particles, and its events' children's: true unless its effect hides it. Hidden, it
+     * still steps; Niagara's renderer enable.
+     *
+     * <pre>{@code
+     * billows.drawn(get(BILLOWS) > 0f);   // in the effect's tick: a look turns the billows off
+     * }</pre>
+     */
+    public boolean drawn() {
+        return drawn;
+    }
+
+    /** Sets {@link #drawn()}. Render thread. */
+    public CgVfxEmitterInstance drawn(boolean drawn) {
+        this.drawn = drawn;
+        return this;
+    }
+
     /** The instance event {@code e}'s children run in, or null where it spawns none. */
     public CgVfxEmitterInstance child(int e) {
         return children[e];

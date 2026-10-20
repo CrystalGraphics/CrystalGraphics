@@ -602,8 +602,8 @@ public static final CgVfxSlot ARCS = CgVfxSlot.pathRibbons("crystalgraphics:wave
 | `RIBBONS` | stateless ribbons a shader places, in a unit cube at a transform | `frame.ribbons(...)` |
 | `PATH_RIBBONS` | ribbons riding a path | `frame.pathRibbons(this, slot, path, row, intensity)` |
 | `BILLBOARD` | one camera-facing quad | `frame.billboard(...)` |
-| `PARTICLES` | an emitter's particles: the emitter is its slot (`emitter.slot()`) | `frame.particles(this, instance)` |
-| `SEQUENCE` | a prefab's part on each particle of a `sequence(clip)` emitter, where its node is at the particle's age ([`vfx/sequences.md`](vfx/sequences.md)) | `frame.particles(this, instance)` |
+| `PARTICLES` | an emitter's particles: the emitter is its slot (`emitter.slot()`) | the system, for every instance the effect steps |
+| `SEQUENCE` | a prefab's part on each particle of a `sequence(clip)` emitter, where its node is at the particle's age ([`vfx/sequences.md`](vfx/sequences.md)) | the system, as `PARTICLES` |
 | `TRAIL` | a strip behind something moving, built on the GPU from a `CgVfxTrail`'s points | `frame.trail(this, slot, trail)` |
 
 - **A frame draws a slot, not a layer**: every layer of the look on that slot draws, in the look's order. A slot no
@@ -1908,7 +1908,6 @@ public final class Bolt extends CgVfxEffect<Bolt> {
 
 | Call | Draws |
 |---|---|
-| `frame.particles(this, instance)` | an emitter's particles, through every layer on it |
 | `frame.mesh(this, slot, x, y, z, transform, ex, ey, ez, ew)` | a sphere at a transform, or its layers' own mesh ([§8](#8-meshes)); four numbers the slot documents |
 | `frame.billboard(this, slot, x, y, z, size, ex, ey, ez, ew)` | a camera-facing quad |
 | `int row = frame.path(path, seed, age)`, then `frame.tube(this, slot, path, row)` | a tube along a path |
@@ -1931,15 +1930,17 @@ public Sparks(CgVfxLook look, double x, double y, double z) {
     tick(sparks, dt);                                   // never sparks.tick(...): this schedules it on the GPU
     if (sparks.finished() && age > 1f) die();
 }
-
-@Override protected void submit(CgVfxFrame frame) {
-    frame.particles(this, sparks);
-}
 ```
 
 Take the emitter from the look (`look.emitter(name)`), so a look that replaced it plays its own. One instance per
 emitter per effect; `moveTo(x, y, z)` moves a source without restarting it, `rateScale(s)` scales its rate, `stop()`
 ends an open-ended rate.
+
+- **The system draws its particles**, through every layer on its emitter's slot, as long as the effect steps it and
+  after its effect stops stepping it until its last particle dies. An effect of particles alone needs no `submit`.
+- **Hide one** with `sparks.drawn(false)`: it still simulates, its events' children hidden with it.
+- Its draws are made once, when it first draws, and kept until its slot closes: each frame writes only its values,
+  and an emitter with no particle alive writes nothing.
 
 ### Built from elements
 

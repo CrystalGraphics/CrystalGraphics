@@ -5,7 +5,6 @@ import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.shape.primitive.CgShell;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxElement;
-import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.look.CgVfxKit;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
@@ -20,8 +19,7 @@ import com.crystalgraphics.vfx.path.CgVfxPath;
  *
  * <pre>{@code
  * private final CgBeamWake wake = new CgBeamWake(this, CgEnergyWave.WAKE);
- * wake.tick(dt, body.path(), firing);     // every tick
- * wake.submit(frame);
+ * wake.tick(dt, body.path(), firing);     // every tick; its dust is the system's to draw
  * }</pre>
  *
  * <ul>
@@ -83,10 +81,6 @@ public final class CgBeamWake extends CgVfxElement {
             }
         }
         tick(wake, dt);
-    }
-
-    public void submit(CgVfxFrame frame) {
-        if (wake != null) frame.particles(effect, wake);
     }
 
     /** How much ring {@code i} tears up the ground: 1 within its radius of it, nothing past {@link #REACH} radii. */

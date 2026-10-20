@@ -42,8 +42,8 @@ import java.util.function.Supplier;
  * public final class MyEffect extends CgVfxEffect<MyEffect> {
  *     public MyEffect(CgVfxLook look, double x, double y, double z) { super(look, x, y, z); }
  *     @Override protected void tick(float dt) { ... }          // CgVfxSystem.TICK seconds of simulation
- *     @Override protected void submit(CgVfxFrame frame) { ... } // draw, interpolated by frame.alpha() (particles:
- *                                                               // frame.particleAlpha())
+ *     @Override protected void submit(CgVfxFrame frame) { ... } // what it draws itself, interpolated by frame.alpha();
+ *                                                               // the particles of what it steps are the system's
  * }
  * MyEffect effect = vfx.play(new MyEffect(look, x, y, z));
  * effect.stop();                                                // finishes what is in flight, then dies
@@ -226,7 +226,12 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
 
     protected abstract void tick(float dt);
 
-    protected abstract void submit(CgVfxFrame frame);
+    /**
+     * Draws what it draws itself this frame, interpolated by {@code frame.alpha()}: its tubes, meshes, trails, fluids.
+     * Its emitters' particles are the system's to draw, from the instances it steps; an effect of particles alone draws
+     * nothing here.
+     */
+    protected void submit(CgVfxFrame frame) {}
 
     /** Ends emission; what is in flight plays out. */
     public void stop() {

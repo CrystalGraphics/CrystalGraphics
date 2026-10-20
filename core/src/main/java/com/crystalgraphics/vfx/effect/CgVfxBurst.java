@@ -1,7 +1,6 @@
 package com.crystalgraphics.vfx.effect;
 
 import com.crystalgraphics.vfx.CgVfxEffect;
-import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
@@ -60,10 +59,5 @@ public class CgVfxBurst extends CgVfxEffect<CgVfxBurst> {
             done &= emitters.get(i).finished();
         }
         if (done && age > 1f) die();
-    }
-
-    @Override
-    protected void submit(CgVfxFrame frame) {
-        for (int i = 0; i < emitters.size(); i++) frame.particles(this, emitters.get(i));
     }
 }

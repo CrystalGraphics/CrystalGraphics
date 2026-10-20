@@ -2,7 +2,6 @@ package com.crystalgraphics.demo;
 
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.CgVfxEffect;
-import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxOwner;
 import com.crystalgraphics.vfx.CgVfxSystem;
@@ -178,11 +177,6 @@ public final class CgVfxBlasts {
                 done &= emitters.get(i).finished();
             }
             if (done && age > 1f) die();
-        }
-
-        @Override
-        protected void submit(CgVfxFrame frame) {
-            for (int i = 0; i < emitters.size(); i++) frame.particles(this, emitters.get(i));
         }
     }
 

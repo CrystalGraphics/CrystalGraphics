@@ -677,7 +677,6 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
             contact.submit(frame, body.normalX(), body.normalY(), body.normalZ());
             blast.submit(frame);
         }
-        wake.submit(frame);
         body.submit(frame, state() == State.PLAYING && age >= releaseAge, drawnX, drawnY, drawnZ, releaseAge, stopAge);
     }
 

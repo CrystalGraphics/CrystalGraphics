@@ -42,8 +42,7 @@ import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
  *     }
  *
  *     @Override protected void submit(CgVfxFrame frame) {
- *         trail.submit(frame);
- *         frame.particles(this, agents);
+ *         trail.submit(frame);                    // the agents' particles are the system's to draw
  *     }
  * }
  *

@@ -807,6 +807,7 @@ public final class CgVfxSystem {
                     fail(effect, e);
                 }
             }
+            frame.particles();
             frame.end();
             materials.upload();
             try (CgTrace.Zone upload = CgTrace.zone(CgVfxTrace.CHANNEL, PATHS_ZONE)) {
@@ -901,6 +902,7 @@ public final class CgVfxSystem {
         releaseOwners();
         // Drops the pools, not just their slots: a slot reopened over live particles hands them to its next owner.
         gpuSteps.clear();
+        frame.clear();
         clock = Double.NaN;
         owed = 0f;
     }
@@ -995,6 +997,7 @@ public final class CgVfxSystem {
         for (int i = 0; i < eventListeners.size(); i++) CgVfxParticlePool.stopListening(eventListeners.get(i));
         eventListeners.clear();
         gpuSteps.clear();
+        frame.clear();
         paths.delete();
         trails.delete();
         if (tubeMesh != null) tubeMesh.release();

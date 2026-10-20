@@ -220,7 +220,6 @@ public final class CgVfxModules {
 
         @Override
         protected void submit(CgVfxFrame frame) {
-            for (int i = 0; i < emitters.size(); i++) frame.particles(this, emitters.get(i));
             if (show != null) show.draw(this, frame, age);
         }
     }

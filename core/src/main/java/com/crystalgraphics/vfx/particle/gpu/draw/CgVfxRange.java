@@ -362,6 +362,37 @@ public final class CgVfxRange {
         return drawnBefore(ALL.indexOf(this)) + pool.listBase(slot);
     }
 
+    /** This range's first slot word and first drawn record, as {@link #layOut} last fixed them. */
+    private int laidWord, laidDrawn;
+
+    /**
+     * Fixes every range's place among the others for this frame's draws, so {@link #laidWord} and {@link #laidBase}
+     * answer without walking every pool. After slots open and close, before the frame's draws; render thread.
+     */
+    public static void layOut() {
+        int word = 0, drawn = 0;
+        for (int i = 0; i < ALL.size(); i++) {
+            CgVfxRange range = ALL.get(i);
+            CgVfxParticlePool p = range.pool;
+            range.laidWord = word;
+            range.laidDrawn = drawn;
+            if (!p.isReleased()) {
+                word += p.slotCount();
+                drawn += align(p.capacity(), RECORD_ALIGN);
+            }
+        }
+    }
+
+    /** {@link #visibleWord} as of the last {@link #layOut}: the same, in constant time. */
+    public int laidWord(int slot) {
+        return laidWord + slot;
+    }
+
+    /** {@link #base} as of the last {@link #layOut}: the same, in constant time. */
+    public int laidBase(int slot) {
+        return laidDrawn + pool.listBase(slot);
+    }
+
     /** The slots of the pools before the {@code n}th. */
     private static int slotsBefore(int n) {
         int at = 0;

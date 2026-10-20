@@ -239,10 +239,12 @@ public final class CgVfxBlast extends CgVfxElement {
     public boolean tick(float dt) {
         boolean now = false;
         if (!Float.isNaN(ignited)) now = timeline();
-        boolean finished = true;
+        boolean finished = true, billows = get(BILLOWS) > 0f;
         for (int i = 0; i < emitters.size(); i++) {
-            tick(emitters.get(i), dt);
-            finished &= emitters.get(i).finished();
+            CgVfxEmitterInstance e = emitters.get(i);
+            tick(e, dt);
+            if (e.emitter().name().equals(EXPLOSION.billows.name())) e.drawn(billows);
+            finished &= e.finished();
         }
         emitted = finished;
         if (momentsHeard() && !Float.isNaN(ignited)) moments();
@@ -376,11 +378,5 @@ public final class CgVfxBlast extends CgVfxElement {
         float debris = radius * 2f;
         facing(placed, nx, ny, nz).scale(debris);
         frame.ribbons(effect, DEBRIS, x, y, z, placed, debris, 0f, 1f, since);
-        boolean billows = get(BILLOWS) > 0f;
-        for (int i = 0; i < emitters.size(); i++) {
-            CgVfxEmitterInstance e = emitters.get(i);
-            if (!billows && e.emitter().name().equals(EXPLOSION.billows.name())) continue;
-            frame.particles(effect, e);
-        }
     }
 }

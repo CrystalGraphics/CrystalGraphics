@@ -11,6 +11,7 @@ import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxInactiveResponse;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -53,13 +54,26 @@ final class CgVfxGpuSteps {
         boolean warm;
         /** Its particles end in the next step, and then its slot closes. */
         boolean killed;
+        /** The effect that stepped it, whose look draws it; null for an instance admitted without one (a test's). */
+        @Nullable
+        final CgVfxEffect<?> effect;
+        /** Its renderers, made at its first drawn frame ({@link CgVfxFrame#particles}). */
+        CgVfxFrame.Renderers renderers;
 
-        private Tenant(CgVfxEmitterInstance instance, CgVfxParticlePool pool, int slot, Tenant parent) {
+        private Tenant(CgVfxEmitterInstance instance, CgVfxParticlePool pool, int slot, Tenant parent,
+                       @Nullable CgVfxEffect<?> effect) {
             this.instance = instance;
             this.pool = pool;
             this.slot = slot;
             this.parent = parent;
+            this.effect = effect;
             timeAfter = instance.books().stepTime();
+        }
+
+        /** Whether it is drawn: it and every instance feeding it are {@link CgVfxEmitterInstance#drawn()}. */
+        boolean drawn() {
+            for (Tenant t = this; t != null; t = t.parent) if (!t.instance.drawn()) return false;
+            return true;
         }
     }
 
@@ -142,7 +156,8 @@ final class CgVfxGpuSteps {
         CgVfxEmitter definition = instance.emitter();
         CgVfxParticlePool pool = CgVfxParticlePool.of(this, definition, tier);
         if (!pools.contains(pool)) pools.add(pool);
-        Tenant tenant = new Tenant(instance, pool, pool.open(definition, capacity, owner), parent);
+        Tenant tenant = new Tenant(instance, pool, pool.open(definition, capacity, owner), parent,
+                owner instanceof CgVfxEffect<?> effect ? effect : null);
         tenant.warm = warming;
         tenants.add(tenant);
         byInstance.put(instance, tenant);
@@ -160,6 +175,11 @@ final class CgVfxGpuSteps {
 
     int tenants() {
         return tenants.size();
+    }
+
+    /** Every tenant, parents before the children they feed, in the order admitted: what the frame draws. */
+    List<Tenant> tenantList() {
+        return tenants;
     }
 
     /** The most steps any of its pools holds, queued and not yet recorded. */
