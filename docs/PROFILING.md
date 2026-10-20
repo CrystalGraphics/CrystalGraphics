@@ -438,6 +438,33 @@ HITCH #4312  41.2 ms wall (median 7.9)   bound: frame thread
 - **The bound** is the larger of the frame thread's CPU time and the GPU time, a tie going to the frame thread.
 - **Percentiles** are nearest rank in integers (`ceil(permille x n / 1000)`), so p99.9 of ten frames is the slowest.
 
+### Result files and baselines
+
+Every profiled harness run writes `result.json` beside its report: the run's numbers as integer nanoseconds and bytes
+(`CgTraceResult`, format version 1: median, p99, p99.9, max and sum of wall, cpu, gpu, frame-thread allocation and
+direct memory; hitches by `ours` and `unexplained`; collections; the JVM's events; every counter). `bench.py`, beside
+the harness, runs a scene and compares that file with a stored baseline.
+
+```bash
+python gl-debug-harness/bench.py run vfx-blasts --cell gl-g43 --repeat 3     # median of three runs, then the comparison
+python gl-debug-harness/bench.py accept gl-debug-harness/harness-output/vfx-blasts/bench-gl-g43.json     --reason "first baseline"                                                 # a baseline moves only with its why
+python gl-debug-harness/bench.py compare <result.json>                        # exit 0 within noise, 1 regression, 2 unusable, 3 no baseline
+```
+
+```
+  note wall.p99.9: 41.2 ms -> 44.0 ms (not judged)
+REGRESSION wall.p99: 9.8 ms -> 12.5 ms (+27.6%)
+FAILED: 1 regression
+```
+
+- **Noise**: a time is worse only when it is over the baseline by more than 10% *and* by more than 0.25 ms. Only wall
+  median and p99 are judged; p99.9 and max are one frame's luck in a run this size. Take a baseline from `--repeat 3`.
+- **Also flagged**: frame-thread allocation (median per frame, over by more than 1 KiB), any hitch of ours beyond the
+  baseline's, a `.compile-waits`, `.sync-loads` or `.pipeline-creations` counter that rose, and a measure the baseline
+  had that the run lost.
+- A cell is a label for the matrix coordinates (`-Dcrystalgraphics.harness.cell=`); a result and its baseline must agree
+  on scene, cell and version or the comparison refuses, by name. Run by hand on the reference machine, not in CI.
+
 **Comparing a change**: two ranges of one ring are the honest comparison (same process, same JIT). Across
 runs, run each build back to back on one machine, twice; differences smaller than run-to-run spread are
 not findings.
