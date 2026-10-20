@@ -112,6 +112,7 @@ public final class CgVfxAssets {
     public CgVfxAssets(CgAssetRegistry registry, CgJobLoop loop) {
         this.registry = registry;
         this.loop = loop;
+        CgBuiltInCompilers.register();
         this.pipeline = new CgAssetPipeline(registry, loop);
     }
 
