@@ -196,6 +196,9 @@ public final class CgVfxParticlePool {
     /** Per slot: its instance's rotation as its last step gave it, a quaternion: what a SEQUENCE particle's clip turns by. */
     private float[] slotTurn = new float[0];
     private float[] slotScale = new float[0];
+    /** Each open slot's opening, numbered from 1 in the pool's order; 0 once closed. */
+    private long[] slotOpened = new long[0];
+    private long openings;
     /** Per slot: its ground as its last step gave it, relative to its origin; NaN for none. */
     private float[] slotGround = new float[0];
     /** Per slot: the radius it is culled as one sphere of about its origin, or 0 to cull each particle by its size. */
@@ -1001,6 +1004,7 @@ public final class CgVfxParticlePool {
         slotOwner[slot] = owner;
         slotCapacity[slot] = capacity;
         slotRow[slot] = useRow(emitter);
+        slotOpened[slot] = ++openings;
         slotScale[slot] = 1f;
         slotSourceReach[slot] = 0f;
         ringPoints[slot] = emitter.trailPoints();
@@ -1064,6 +1068,14 @@ public final class CgVfxParticlePool {
         feedParent[slot] = from;
         feedSlot[slot] = parentSlot;
         feedEvent[slot] = event;
+    }
+
+    /**
+     * Which opening of the pool {@code slot} now holds, numbered from 1; 0 for a slot that is closed or was never open.
+     * Two readings that differ mean the slot was closed between them, whatever opened it since.
+     */
+    public long opening(int slot) {
+        return slot < slotOpened.length && slotEmitter[slot] != null ? slotOpened[slot] : 0L;
     }
 
     /** The particles {@code slot} can have alive. */
@@ -1776,6 +1788,7 @@ public final class CgVfxParticlePool {
         slotTurn = Arrays.copyOf(slotTurn, size * 4);
         for (int s = was; s < size; s++) slotTurn[s * 4 + 3] = 1f;
         slotScale = Arrays.copyOf(slotScale, size);
+        slotOpened = Arrays.copyOf(slotOpened, size);
         slotGround = Arrays.copyOf(slotGround, size);
         slotSourceReach = Arrays.copyOf(slotSourceReach, size);
         slotGrid = Arrays.copyOf(slotGrid, size);
