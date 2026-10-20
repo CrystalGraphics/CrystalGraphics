@@ -17,6 +17,7 @@ import com.crystalgraphics.vulkan.resource.VulkanBuffer;
 import com.crystalgraphics.vulkan.resource.VulkanStaging;
 import com.crystalgraphics.vulkan.resource.VulkanTexture;
 import com.crystalgraphics.vulkan.resource.VulkanTimerQuery;
+import com.crystalgraphics.vulkan.resource.VulkanUploadSplit;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.VkBufferCopy;
@@ -411,8 +412,17 @@ public final class VulkanEncoder implements CgCommandEncoder {
     public void writeBuffer(CgGpuBuffer dst, long dstOffset, ByteBuffer data) {
         outsidePass("writeBuffer");
         int n = data.remaining();
-        VulkanStaging.Region r = device.staging().take(n, 16);
-        r.bytes().put(data.duplicate());
+        if (n > VulkanStaging.CHUNK) {
+            for (int from = 0; from < n; from += (int) VulkanStaging.CHUNK) {
+                int piece = (int) Math.min(VulkanStaging.CHUNK, n - from);
+                ByteBuffer part = data.duplicate();
+                part.position(data.position() + from).limit(data.position() + from + piece);
+                writeBuffer(dst, dstOffset + from, part);
+            }
+            return;
+        }
+        long at = device.staging().put(data, 16);
+        VulkanBuffer src = device.staging().chunk();
         VulkanBuffer d = (VulkanBuffer) dst;
         boolean transfer = buffersViaTransfer();
         VkCommandBuffer cmd;
@@ -424,8 +434,8 @@ public final class VulkanEncoder implements CgCommandEncoder {
             before(cmd);
         }
         try (MemoryStack stack = stackPush()) {
-            vkCmdCopyBuffer(cmd, r.buffer().buffer, d.buffer,
-                    VkBufferCopy.calloc(1, stack).srcOffset(r.offset()).dstOffset(dstOffset).size(n));
+            vkCmdCopyBuffer(cmd, src.buffer, d.buffer,
+                    VkBufferCopy.calloc(1, stack).srcOffset(at).dstOffset(dstOffset).size(n));
         }
         if (transfer) wroteOnTransfer(d);
         else after(cmd);
@@ -468,9 +478,19 @@ public final class VulkanEncoder implements CgCommandEncoder {
     public void writeTexture(CgGpuTexture dst, CgTextureRegion region, ByteBuffer data) {
         outsidePass("writeTexture");
         VulkanTexture t = (VulkanTexture) dst;
-        VulkanStaging.Region r = device.staging().take(data.remaining(), Math.max(16, t.desc().format().bytes()));
-        r.bytes().put(data.duplicate());
-        copyIn(r.buffer(), r.offset(), t, region);
+        if (data.remaining() > VulkanStaging.CHUNK) {
+            VulkanUploadSplit split = new VulkanUploadSplit(VulkanStaging.CHUNK);
+            split.begin(t.desc().format(), region);
+            while (split.next()) {
+                ByteBuffer part = data.duplicate();
+                part.position(data.position() + (int) split.sourceOffset())
+                        .limit(data.position() + (int) (split.sourceOffset() + split.bytes()));
+                writeTexture(dst, split.region(region.mip()), part);
+            }
+            return;
+        }
+        long at = device.staging().put(data, Math.max(16, t.desc().format().bytes()));
+        copyIn(device.staging().chunk(), at, t, region);
     }
 
     @Override
