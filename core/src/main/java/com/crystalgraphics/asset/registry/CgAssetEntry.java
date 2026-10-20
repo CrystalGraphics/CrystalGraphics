@@ -1,6 +1,7 @@
 package com.crystalgraphics.asset.registry;
 
 import java.nio.file.Path;
+import java.util.function.Supplier;
 
 import javax.annotation.Nullable;
 
@@ -42,6 +43,8 @@ public class CgAssetEntry {
     @Nullable Path file;
     /** The id a moved asset now has; null for any other. */
     @Nullable String redirect;
+    /** A builder's asset's definition, made when it is first compiled; null for a file's, or a builder's tree. */
+    @Nullable Supplier<?> definition;
 
     /** The namespace before the id's colon. */
     public String namespace() {

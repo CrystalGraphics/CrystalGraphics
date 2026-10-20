@@ -24,11 +24,14 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
+import com.crystalgraphics.asset.kind.CgModuleTypes;
+import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.object.CgType;
 
@@ -146,9 +149,28 @@ public final class CgAssetRegistry {
      * @throws CgAssetException if {@code id} is already registered
      */
     public synchronized CgAssetEntry registerCode(String id, CgType kind) {
-        CgAssetEntry e = new CgAssetEntry(id, Objects.requireNonNull(kind), CgAssetSource.CODE, null, null);
+        CgAssetEntry e = new CgAssetEntry(id, Objects.requireNonNull(kind), CgAssetSource.CODE, null, null, null);
         add(e);
         return e;
+    }
+
+    /**
+     * Registers a builder's asset whose definition code makes, compiled by calling {@code definition} on a worker:
+     * the engine's built-in modules, declared in Java.
+     *
+     * @throws CgAssetException if {@code id} is already registered
+     */
+    public synchronized CgAssetEntry registerCode(String id, CgType kind, Supplier<?> definition) {
+        CgAssetEntry e = new CgAssetEntry(id, Objects.requireNonNull(kind), CgAssetSource.CODE, null, null,
+                Objects.requireNonNull(definition));
+        add(e);
+        return e;
+    }
+
+    /** Registers the engine's own assets: its built-in modules, each compiled to its {@code CgModuleTypes.Module}. */
+    public synchronized void registerEngine() {
+        CgModuleTypes modules = CgModuleTypes.builtIn();
+        for (CgModuleTypes.Module m : modules.all()) registerCode(m.id(), CgParticleKinds.MODULE, () -> m);
     }
 
     /** Drops {@code id} of {@code kind} (null: a binary), its file deleted; nothing if it is not registered. */
@@ -172,7 +194,7 @@ public final class CgAssetRegistry {
         CgAssetEntry old = entries.get(key(kind, from));
         if (old == null) throw new CgAssetException("rename: " + from + " is not registered");
         if (entries.containsKey(key(kind, to))) throw new CgAssetException("rename: " + to + " is already registered");
-        CgAssetEntry moved = new CgAssetEntry(to, old.kind(), old.source(), file, null);
+        CgAssetEntry moved = new CgAssetEntry(to, old.kind(), old.source(), file, null, old.definition());
         entries.remove(key(kind, from));
         entries.put(key(kind, to), moved);
         fire(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.RENAMED, moved.namespace(), moved, from));
@@ -307,12 +329,12 @@ public final class CgAssetRegistry {
             CgType kind = kindOf(rel);
             if (kind == null) return null;
             String id = namespace + ":" + rel.substring(kind.folder().length() + 1, rel.length() - ".yaml".length());
-            return new CgAssetEntry(id, kind, source, file, size <= REDIRECT_BYTES ? redirectOf(file) : null);
+            return new CgAssetEntry(id, kind, source, file, size <= REDIRECT_BYTES ? redirectOf(file) : null, null);
         }
         for (Map.Entry<String, List<String>> b : BINARIES.entrySet()) {
             if (!rel.startsWith(b.getKey())) continue;
             for (String ext : b.getValue()) {
-                if (rel.endsWith(ext)) return new CgAssetEntry(namespace + ":" + rel, null, source, file, null);
+                if (rel.endsWith(ext)) return new CgAssetEntry(namespace + ":" + rel, null, source, file, null, null);
             }
         }
         return null;

@@ -161,7 +161,10 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
     val spec = rootProject.file("../plan/crystalgraphics/vfx-aaa/spec")
     if (spec.isDirectory) systemProperty("crystalgraphics.spec", spec.absolutePath)
     // The kits' round-trip gate, asked for: -Pkits=<namespace>=<dir>;...
-    providers.gradleProperty("kits").orNull?.let { systemProperty("crystalgraphics.kits", it) }
+    providers.gradleProperty("kits").orNull?.let {
+        systemProperty("crystalgraphics.kits", it)
+        maxHeapSize = "3g"   // a batch of resolved kit assets and their closures
+    }
 }
 
 tasks.named("check") { dependsOn(headlessTestTask) }

@@ -24,12 +24,16 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.crystalgraphics.asset.kind.CgAssetKinds;
+import com.crystalgraphics.asset.load.CgAssetLoad;
+import com.crystalgraphics.asset.load.CgAssetPipeline;
+import com.crystalgraphics.asset.load.CgAssetState;
 import com.crystalgraphics.asset.registry.CgAssetEntry;
 import com.crystalgraphics.asset.registry.CgAssetRegistry;
 import com.crystalgraphics.asset.registry.CgAssetSource;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgEdit;
 import com.crystalgraphics.asset.tree.CgRandomEdits;
+import com.crystalgraphics.job.CgJobLoop;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.validate.CgIssue;
 import com.crystalgraphics.object.validate.CgValidation;
@@ -150,6 +154,65 @@ public class CgAssetRoundTripGateTest {
         assertTrue(missing.size() + " of " + FILES.size() + " assets unregistered: " + missing.subList(0, Math.min(20, missing.size())),
                 missing.isEmpty());
         assertTrue(extra.size() + " registered that are not assets: " + extra.subList(0, Math.min(20, extra.size())), extra.isEmpty());
+    }
+
+    /**
+     * Every asset reaches COMPILED or fails with a message: a validator's, a missing parent's, a dependency's. A step
+     * that threw (unreadable, does not resolve, does not compile) is the engine's bug. No step runs off the workers.
+     * Batches of 1,000 requests, each its own pipeline, keep the resolved trees in memory.
+     */
+    @Test
+    public void everyAssetCompilesOrFailsByPath() throws InterruptedException {
+        CgAssetRegistry registry = new CgAssetRegistry();
+        registry.registerEngine();
+        for (Map.Entry<String, Path> kit : KITS.entrySet()) registry.scan(kit.getKey(), kit.getValue(), CgAssetSource.DEV);
+        List<String> keys = new ArrayList<>(FILES.keySet());
+        Collections.sort(keys);
+        Map<String, Integer> why = new TreeMap<>();
+        Map<String, Integer> roots = new TreeMap<>();
+        Map<String, String> rootExample = new HashMap<>();
+        List<String> crashed = new ArrayList<>();
+        int compiled = 0, failed = 0, offWorkers = 0;
+        for (int from = 0; from < keys.size(); from += 1000) {
+            CgAssetPipeline pipeline = new CgAssetPipeline(registry, CgJobLoop.create("assets-gate"));
+            List<CgAssetLoad> asked = new ArrayList<>();
+            for (String key : keys.subList(from, Math.min(keys.size(), from + 1000))) {
+                asked.add(pipeline.request(KINDS.get(key), IDS.get(key)));
+            }
+            while (!pipeline.idle()) {
+                pipeline.drain();
+                Thread.sleep(1);
+            }
+            pipeline.drain();
+            offWorkers += pipeline.stepsOffWorkers();
+            for (CgAssetLoad l : asked) {
+                if (l.state() == CgAssetState.COMPILED) {
+                    compiled++;
+                    continue;
+                }
+                failed++;
+                String f = String.valueOf(l.failure());
+                String reason = f.replaceAll("[a-z0-9_]+:[^ ]+", "<id>").replaceAll("\\d+", "n");
+                why.merge(reason.substring(0, Math.min(90, reason.length())), 1, Integer::sum);
+                // The innermost cause, by its kind and namespace: what to fix.
+                String root = f.substring(f.lastIndexOf(" failed: ") < 0 ? 0 : f.lastIndexOf(" failed: ") + 9);
+                String group = root.replaceAll(" ([a-z0-9_]+):[^ ]+", " $1:…");   // the kind kept, the id by namespace
+                roots.merge(group, 1, Integer::sum);
+                rootExample.putIfAbsent(group, root);
+                if (f.startsWith("unreadable") || f.startsWith("does not resolve") || f.startsWith("does not compile")) {
+                    if (crashed.size() < 20) crashed.add(l.toString());
+                }
+            }
+        }
+        StringBuilder report = new StringBuilder(compiled + " compiled, " + failed + " failed:\n");
+        for (Map.Entry<String, Integer> e : why.entrySet()) report.append(String.format("%7d  %s%n", e.getValue(), e.getKey()));
+        report.append("by the innermost cause:\n");
+        for (Map.Entry<String, Integer> e : roots.entrySet()) {
+            report.append(String.format("%7d  %s%n         %s%n", e.getValue(), e.getKey(), rootExample.get(e.getKey())));
+        }
+        assertTrue(report + "steps off the workers: " + offWorkers, offWorkers == 0);
+        assertTrue(report + "threw:\n" + String.join("\n", crashed), crashed.isEmpty());
+        System.out.println(report);
     }
 
     /** Every asset that resolves validates with no error; the report counts them by code, then lists the first. */
