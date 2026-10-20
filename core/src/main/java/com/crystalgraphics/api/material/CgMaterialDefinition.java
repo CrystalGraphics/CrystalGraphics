@@ -4,6 +4,7 @@ import java.util.Map;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.asset.tree.CgAssetException;
 import com.github.bsideup.jabel.Desugar;
 
 /**
@@ -66,5 +67,34 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
     /** Whether it draws with {@code other}'s programs: the same permutation. */
     public boolean sharesProgramsWith(CgMaterialDefinition other) {
         return permutation == other.permutation;
+    }
+
+    /** How {@code property} reaches a draw from this material alone: its {@code bind} form's route, else a constant. */
+    public CgMaterialRoute route(String property) {
+        Object form = forms.get(property);
+        if (form instanceof Map && ((Map<?, ?>) form).get("bind") instanceof String) {
+            return CgMaterialRoute.of((String) ((Map<?, ?>) form).get("bind"));
+        }
+        return CgMaterialRoute.CONSTANT;
+    }
+
+    /**
+     * {@code property}'s first vec4 in a draw's row, for {@code who} keying it per draw: a track, a renderer's bind.
+     *
+     * <pre>{@code
+     * int at = definition.requireRow("_Glow", "track glow of sequence kakarot_kit:moves/kamehameha");   // at load
+     * }</pre>
+     *
+     * @throws CgAssetException naming both when its archetype cannot read it per draw (no {@code cg_use rows}, a
+     *                          sampler, an int): a track keying it would move nothing
+     */
+    public int requireRow(String property, String who) {
+        int slot = rows.slot(property);
+        if (slot < 0) {
+            throw new CgAssetException(who + " keys " + property + " of " + id + ", which " + permutation.shader()
+                    + " cannot read per draw: only a number, vector or colour of a shader declaring #pragma cg_use rows"
+                    + " is a row property; its row properties are " + rows.properties());
+        }
+        return slot;
     }
 }

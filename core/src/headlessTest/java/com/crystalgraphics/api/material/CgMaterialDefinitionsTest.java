@@ -141,6 +141,39 @@ public class CgMaterialDefinitionsTest {
     }
 
     @Test
+    public void aKeyedChannelMovesOneDrawsValueWithoutANewMaterial() {
+        CgMaterialDefinition d = CgMaterialDefinitions.compile(root(), ARCHETYPES);
+        int color = d.requireRow("_Color", "track colour");
+        CgMaterialRow a = new CgMaterialRow(d), b = new CgMaterialRow(d);
+        a.set(color, 0f, 1f, 0f, 1f);
+        assertEquals(1f, a.get(color, 1), 0f);
+        assertEquals("the other draw keeps the material's value", 0.5f, b.get(color, 1), 0f);
+        assertSame(a.definition(), b.definition());
+        float[] frame = new float[4 * (a.vec4s() + b.vec4s())];
+        a.copyTo(frame, 0);
+        b.copyTo(frame, a.vec4s());
+        assertEquals(1f, frame[color * 4 + 1], 0f);
+        assertEquals(0.5f, frame[(a.vec4s() + color) * 4 + 1], 0f);
+        assertEquals(2f, a.get(d.rows().slot("_Speed"), 0), 0f);
+    }
+
+    @Test
+    public void routesAndRefusals() {
+        CgMaterialDefinition d = CgMaterialDefinitions.compile(asset("test:bound", tree("shader", FX,
+                "values", map("_Color", map("bind", "user.tint"), "_Speed", map("bind", "global.skill.speed"))), null),
+                ARCHETYPES);
+        assertEquals(CgMaterialRoute.ROW, d.route("_Color"));
+        assertEquals(CgMaterialRoute.GLOBAL, d.route("_Speed"));
+        assertEquals(CgMaterialRoute.CONSTANT, d.route("_Bands"));
+        try {
+            d.requireRow("_MainTex", "track tex");
+            fail("a track keyed a sampler");
+        } catch (CgAssetException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("_MainTex") && e.getMessage().contains("track tex"));
+        }
+    }
+
+    @Test
     public void permutationsIntern() {
         assertSame(CgMaterialPermutation.of(FX, Arrays.asList("B", "A"), "opaque", false, null),
                 CgMaterialPermutation.of(FX, Arrays.asList("A", "B"), "opaque", false, null));

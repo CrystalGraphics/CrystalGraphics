@@ -132,10 +132,14 @@ public final class CgMaterialDefinitions {
                         : null);
         int order = m.get("order") instanceof Number ? ((Number) m.get("order")).intValue() : 0;
         String sortLayer = m.get("sort_layer") instanceof String ? (String) m.get("sort_layer") : "default";
-        return new CgMaterialDefinition(id, asset.parent() == null ? null : asset.parent().id(), permutation,
-                Collections.unmodifiableMap(constants), Collections.unmodifiableMap(forms),
+        CgMaterialDefinition d = new CgMaterialDefinition(id, asset.parent() == null ? null : asset.parent().id(),
+                permutation, Collections.unmodifiableMap(constants), Collections.unmodifiableMap(forms),
                 Collections.unmodifiableMap(textures), CgMaterialRowLayout.of(parsed.properties()), draw, order,
                 sortLayer, map(m.get("post")));
+        for (String name : forms.keySet()) {
+            if (d.route(name) == CgMaterialRoute.ROW) d.requireRow(name, "its bind");
+        }
+        return d;
     }
 
     private static CgMaterialProperty declared(String id, String shader, Map<String, CgMaterialProperty> props,

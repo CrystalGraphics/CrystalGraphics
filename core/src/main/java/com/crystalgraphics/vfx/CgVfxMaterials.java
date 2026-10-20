@@ -18,9 +18,11 @@ import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
 import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
+import com.crystalgraphics.variable.CgVar;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -34,6 +36,15 @@ import java.util.Set;
  * written once a frame per effect and layer into {@link CgPropertyRows}. Render thread.
  */
 final class CgVfxMaterials {
+
+    /**
+     * Binding a colour by its property's name: retired by the format, whose per-draw values arrive only through a
+     * {@code bind} ({@code CgMaterialRoute}). Kept on until the engine's kits bind explicitly, or every engine beam,
+     * explosion and haze draws white.
+     */
+    static final CgVar.Bool BIND_BY_NAME = CgVar.bool("crystalgraphics.vfx.bindByName", true, CgVar.DEV,
+            "A layer's colour or palette property reads the look's colour of its name when nothing binds it; false"
+                    + " takes values only through explicit binds, as the format's materials do.");
 
     /** What a layer resolved to in one look: where each bound value comes from, and its materials by kind. */
     static final class Resolved {
@@ -125,7 +136,7 @@ final class CgVfxMaterials {
             factors.put(b.property(), b.factor());
         }
         CgVfxLayout layout = look.layout();
-        for (CgMaterialProperty p : props) {
+        for (CgMaterialProperty p : BIND_BY_NAME.get() ? props : Collections.<CgMaterialProperty>emptyList()) {
             String name = p.getName();
             if (!p.isRows() || bound.containsKey(name) || layer.constants().containsKey(name)
                     || layer.unbound().contains(name)) {
