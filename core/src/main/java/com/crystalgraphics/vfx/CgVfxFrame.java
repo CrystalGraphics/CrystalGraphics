@@ -80,6 +80,14 @@ public final class CgVfxFrame {
     private static final CgVar.Bool MERGED = CgVar.bool("crystalgraphics.vfx.mergeParticles", true, CgVar.DEV,
             "GPU particles one draw a pool and layer (indirectEach); false draws a slot a draw, sorted per effect: the"
                     + " comparison for overlaps.");
+    /**
+     * An emitter whose books rule out a live particle submits no draws. Niagara makes no render data for an emitter it
+     * knows is empty (NiagaraRendererSprites.cpp GenerateDynamicData, NiagaraSystemRenderData.cpp for complete ones);
+     * it submits a GPU emitter's batch regardless only because the count would need a readback, which these books
+     * do not. False is the measurement switch.
+     */
+    private static final CgVar.Bool SKIP_IDLE = CgVar.bool("crystalgraphics.vfx.skipIdleEmitters", true, CgVar.DEV,
+            "An emitter before its first spawn or after its last death submits no draws.");
     private final CgVfxSystem system;
     private final CgVfxMaterials materials;
     private final Matrix4f scaled = new Matrix4f(), sized = new Matrix4f();
@@ -373,6 +381,7 @@ public final class CgVfxFrame {
     private void slotParticles(CgVfxEffect<?> effect, CgVfxEmitterInstance emitter) {
         CgVfxGpuSteps.Tenant tenant = system.gpuTenant(emitter);
         if (tenant == null) return;
+        if (SKIP_IDLE.get() && !emitter.mayHaveParticles()) return;
         CgVfxParticlePool pool = tenant.pool;
         int slot = tenant.slot, capacity = pool.capacity(slot);
         CgVfxEmitter.Renderer renderer = emitter.emitter().renderer();

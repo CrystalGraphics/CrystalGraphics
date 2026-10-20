@@ -476,6 +476,16 @@ public final class CgVfxEmitterInstance {
         return spawnedAll && time >= lastDeath + stepDt;
     }
 
+    /**
+     * False only when the books rule out a live particle: before its first spawn, or two steps past its latest death.
+     * True otherwise, a killed slot (its last step still ends particles) and a child (its own books follow its parent's)
+     * included. A frame draws between the last two steps, hence the two.
+     */
+    public boolean mayHaveParticles() {
+        if (killed) return true;
+        return lastDeath >= 0f && time < lastDeath + 2f * stepDt;
+    }
+
     /** The instance event {@code e}'s children run in, or null where it spawns none. */
     public CgVfxEmitterInstance child(int e) {
         return children[e];
