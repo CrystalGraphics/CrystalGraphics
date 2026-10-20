@@ -1,10 +1,12 @@
 package com.crystalgraphics.asset.tree;
 
 /**
- * Where a resolved value comes from: Unreal's {@code FOverridableManager} states, made the rule.
+ * Where a resolved value comes from: Unreal's overridden-property operations ({@code EOverriddenPropertyOperation}:
+ * {@code None}, {@code Modified}, {@code Replace}, {@code Add}, {@code Remove}), made the rule.
  *
  * <pre>{@code
  * data.origin("emitters", "h1", "enabled");   // OVERRIDDEN: this asset set it, even to its parent's value
+ * data.origin("emitters", "h1");              // MODIFIED: inherited, with something under it overridden
  * data.origin("emitters", "r7");              // ADDED: an id the parent lacks
  * data.from("emitters", "h1", "name");        // dragonforge:kamehameha/charge, for INHERITED
  * }</pre>
@@ -20,7 +22,9 @@ public enum CgOrigin {
     DEFAULT,
     /** A parent's value, untouched here. */
     INHERITED,
-    /** Set by this asset, even where it equals the parent's: overrides are explicit. */
+    /** A parent's map, list or element with something under it overridden here: Unreal's {@code Modified}. */
+    MODIFIED,
+    /** Set by this asset whole, even where it equals the parent's: Unreal's {@code Replace}. */
     OVERRIDDEN,
     /** An element this asset added: an id its parent lacks. */
     ADDED,

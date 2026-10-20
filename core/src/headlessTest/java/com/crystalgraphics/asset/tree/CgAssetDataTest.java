@@ -74,6 +74,8 @@ public class CgAssetDataTest {
         assertEquals(CgOrigin.REMOVED, big.origin("emitters", "p0fr8m1c"));
         assertEquals(CgOrigin.OVERRIDDEN, big.origin("emitters", "h1", "emitter", "particle_spawn", "k3q9x2ab", "inputs", "sprite_size"));
         assertEquals(CgOrigin.INHERITED, big.origin("emitters", "h1", "name"));
+        assertEquals("an override below makes its holders modified", CgOrigin.MODIFIED, big.origin("emitters", "h1"));
+        assertEquals(CgOrigin.MODIFIED, big.origin("emitters", "h1", "emitter", "particle_spawn"));
         assertEquals(CgOrigin.DEFAULT, big.origin("emitters", "h1", "enabled"));
     }
 

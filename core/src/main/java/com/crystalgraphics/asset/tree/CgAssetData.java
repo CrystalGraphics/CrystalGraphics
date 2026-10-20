@@ -223,7 +223,7 @@ public final class CgAssetData {
     public CgOrigin origin(String... path) {
         CgAssetNode n = at(path);
         if (n == null) return CgOrigin.DEFAULT;
-        if (n.origin == CgOrigin.INHERITED && n.kind() == CgAssetNode.Kind.MAP && n.id() != null) {
+        if (n.origin == CgOrigin.MODIFIED && n.kind() == CgAssetNode.Kind.MAP && n.id() != null) {
             CgAssetNode enabled = n.get("enabled");
             if (enabled != null && enabled.origin == CgOrigin.OVERRIDDEN && Boolean.FALSE.equals(enabled.value)) {
                 return CgOrigin.DISABLED;
@@ -252,6 +252,7 @@ public final class CgAssetData {
     // ── The merge ────────────────────────────────────────────────────────────────────────
 
     private void merge(CgAssetNode target, Map<?, ?> child, CgShape shape, boolean top) {
+        modified(target, child.isEmpty());
         for (Map.Entry<?, ?> e : child.entrySet()) {
             Object k = e.getKey();
             Object v = e.getValue();
@@ -274,6 +275,7 @@ public final class CgAssetData {
     }
 
     private void mergeList(CgAssetNode list, List<?> child, @Nullable CgValueType elementType) {
+        modified(list, child.isEmpty());
         for (Object o : child) {
             Map<?, ?> e = (Map<?, ?>) o;
             String eid = String.valueOf(e.get(CgType.ID));
@@ -287,6 +289,11 @@ public final class CgAssetData {
             n.replaced = true;
             list.elements.add(place(list, e), n);
         }
+    }
+
+    /** An inherited node this asset writes under becomes {@link CgOrigin#MODIFIED}. */
+    private static void modified(CgAssetNode n, boolean nothing) {
+        if (!nothing && n.origin == CgOrigin.INHERITED) n.origin = CgOrigin.MODIFIED;
     }
 
     /** Where a new element goes: after or before the id it names, else at the end. */
