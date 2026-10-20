@@ -753,7 +753,8 @@ public final class CgVfxParticlePool {
         // Every Step lights its drawn part from the window; only a kind reading the world keeps it in use.
         CgVfxVoxelWindow window = shape.readsWorld() ? CgVfxVoxelWindow.get().use() : CgVfxVoxelWindow.get();
         if (shape.usesDistance()) window.useDistance();
-        window.bind(stepping);
+        if (shape.readsWorld()) window.bind(stepping);
+        else window.bindBlocks(stepping);
         if (shape.usesDepth()) bindDepth(stepping);
         if (shape.usesEntities()) CgVfxEntityBoxes.bind(stepping);
         if (shape.spawnsOnMesh()) CgVfxSpawnMeshes.bind(stepping);

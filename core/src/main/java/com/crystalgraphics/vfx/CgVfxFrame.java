@@ -134,6 +134,8 @@ public final class CgVfxFrame {
     void end() {
         for (int i = 0; i < used.size(); i++) {
             Proxy proxy = used.get(i);
+            // A pool that has not recorded its first step has no storage yet, and no particle to draw.
+            if (proxy.key.pool().records() == null) continue;
             CgVfxRange range = CgVfxRange.of(proxy.key.pool());
             CgMesh mesh = proxy.key.strip() == CgVfxLayer.Strip.NONE ? slotMesh(proxy.key.renderer(), proxy.capacity)
                     : CgMesh.vertices(sizeClass(proxy.capacity, 1) * proxy.key.factor(), CgMeshTopology.TRIANGLES);

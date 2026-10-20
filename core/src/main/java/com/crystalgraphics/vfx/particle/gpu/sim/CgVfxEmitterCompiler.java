@@ -118,7 +118,8 @@ public final class CgVfxEmitterCompiler {
                     _Feeds      ("Feed rows",                        int)  = 0
                     _Texels     ("Samples each curve of a row holds", int) = 256
                 """);
-        s.append(CgVfxVoxelWindow.PROPERTIES);
+        // Only a kind reading the world takes the distance field: below compute every sampler declared is a unit.
+        s.append(shape.readsWorld() ? CgVfxVoxelWindow.PROPERTIES : CgVfxVoxelWindow.BLOCK_PROPERTIES);
         if (shape.usesDepth()) s.append(DEPTH_PROPERTIES);
         if (shape.usesEntities()) s.append(CgVfxEntityBoxes.PROPERTIES);
         if (shape.usesNeighbours()) s.append(NEIGHBOUR_PROPERTIES);
