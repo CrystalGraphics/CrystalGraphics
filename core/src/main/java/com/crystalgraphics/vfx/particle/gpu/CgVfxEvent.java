@@ -107,6 +107,27 @@ public final class CgVfxEvent {
         this(trigger, age, null, 0, 0f, 0, firings, NO_NODE, 0f, Float.POSITIVE_INFINITY);
     }
 
+    /**
+     * The event the asset format's trigger names: {@code spawn} (the particle's first step), {@code death},
+     * {@code collision}, {@code location} (every {@code seconds} of its life, Niagara's location event). The format's
+     * {@code burst} has no GPU trigger yet and throws, naming it.
+     *
+     * <pre>{@code
+     * CgVfxEvent.ofSpec("collision", 0f).spawn(CHIPS, 4);
+     * CgVfxEvent.ofSpec("location", 0.1f).spawn(SMOKE, 1);   // a puff every tenth of a second of flight
+     * }</pre>
+     */
+    public static CgVfxEvent ofSpec(String trigger, float seconds) {
+        return switch (trigger) {
+            case "spawn" -> new CgVfxEvent(Trigger.AGE, 0f, 1);
+            case "death" -> onDeath();
+            case "collision" -> onCollision();
+            case "location" -> every(seconds);
+            default -> throw new IllegalArgumentException("event trigger '" + trigger + "': the GPU events take spawn, death, "
+                    + "collision and location");
+        };
+    }
+
     public static CgVfxEvent onLanding() {
         return new CgVfxEvent(Trigger.LANDING, 0f, 1);
     }
