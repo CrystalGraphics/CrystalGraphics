@@ -134,6 +134,10 @@ public final class CgWorldRenderer {
     private static final CgVar.Text HDR_SCENE = CgVar.text("crystalgraphics.world.hdrScene", "", CgVar.DEV,
             "true or false forces the HDR scene for the run over the player's HDR setting, unsaved; empty follows the"
                     + " setting (G in the harness, hdrScene(boolean) live).");
+    private static final CgVar.Bool SKIP_UNREADY = CgVar.bool("crystalgraphics.world.skipUnready", false, CgVar.DEV,
+            "Skips a draw whose program is not built yet, counting it as world.unready-draws, rather than compiling at"
+                    + " the draw (skipUnready(boolean) live).");
+    private static final int UNREADY_DRAWS = CgTrace.name("world.unready-draws");
     private static final CgWorldRenderer INSTANCE = new CgWorldRenderer();
 
     private static final CgRenderState OPAQUE_STATE = CgRenderState.builder()
@@ -271,8 +275,17 @@ public final class CgWorldRenderer {
     private CgGraphTexture ownedSubject;
     private long ownedSubjectFrame = -1;
     private final CgPassConstants emissionConstants = new CgPassConstants();
-    /** Whether the transparent passes write glows beside the target ({@link #mergeEmission(boolean)}). */
+    /** Whether the transparent passes write glows beside the target: {@link #mergeEmission(boolean)}, once warm. */
     private boolean mergeEmission = MERGE_EMISSION.get();
+    /** What {@link #mergeEmission(boolean)} asked for; applied once the program list is warm under it. */
+    private boolean mergeRequested = mergeEmission;
+    /** The HDR scene as drawn: {@link #hdrScene()}, once the program list is warm under it. */
+    private boolean hdrApplied;
+    @Nullable
+    private CgWorldPrograms.Settings applied;
+    private final CgWorldPrograms programs = new CgWorldPrograms(this::prepare);
+    private boolean skipUnready = SKIP_UNREADY.get();
+    private long unreadyDraws;
     /** The target-sized emission those passes write into, and per draw whether its glows were drawn there. */
     private CgGraphTexture emissionFull;
     private boolean[] merged = new boolean[64];
@@ -360,7 +373,71 @@ public final class CgWorldRenderer {
             notified = now;
             CgWorld.client().frame(view);
             CgParameterCollection.upload();   // after the schedule, where effects and sequences set them
+            settle();
         }
+    }
+
+    /** Warms the program list under the settings asked for, and applies them once it is warm. */
+    private void settle() {
+        CgWorldPrograms.Settings requested = requestedSettings();
+        if (applied == null) applied = requested;
+        if (programs.frame(requested, applied)) {
+            applied = requested;
+            hdrApplied = requested.hdrScene();
+            mergeEmission = mergeRequested;
+        }
+    }
+
+    /** The settings asked for now: what the next frames draw under once the program list is warm. */
+    public CgWorldPrograms.Settings requestedSettings() {
+        boolean hdr = hdrScene(), merge = mergeRequested && CgCapabilities.detect().independentBlend();
+        boolean joins = CgCapabilities.detect().multiDraw() && CgMeshStore.get().multiDraw();
+        CgWorldPrograms.Settings r = requested;
+        if (r == null || r.hdrScene() != hdr || r.mergeEmission() != merge || r.joins() != joins
+                || r.halfResolution() != halfResolution) {
+            requested = r = new CgWorldPrograms.Settings(hdr, merge, joins, halfResolution);
+        }
+        return r;
+    }
+
+    @Nullable
+    private CgWorldPrograms.Settings requested;
+
+    /**
+     * The program list: every material kept warm under the settings in force, re-warmed before a change applies.
+     *
+     * <pre>{@code
+     * CgWorldPrograms.Warming move = CgWorldRenderer.get().programs().warm(manifest);
+     * }</pre>
+     */
+    public CgWorldPrograms programs() {
+        return programs;
+    }
+
+    /** Whether the HDR scene is drawn now: {@link #hdrScene()}, applied once the program list is warm under it. */
+    public boolean hdrSceneDrawn() {
+        return hdrApplied;
+    }
+
+    /**
+     * Whether a draw whose program is not built is skipped and counted ({@link #unreadyDraws()}, trace counter
+     * {@code world.unready-draws}) rather than compiled at the draw, off by default. A draw skipped starts its compile.
+     *
+     * <pre>{@code
+     * CgWorldRenderer.get().skipUnready(true);   // a move warmed through a manifest: a miss is a cook bug, counted
+     * }</pre>
+     */
+    public void skipUnready(boolean on) {
+        skipUnready = on;
+    }
+
+    public boolean skipUnready() {
+        return skipUnready;
+    }
+
+    /** How many draws were skipped for an unbuilt program since start. */
+    public long unreadyDraws() {
+        return unreadyDraws;
     }
 
     /** Drops every draw. At context teardown. */
@@ -502,11 +579,12 @@ public final class CgWorldRenderer {
      * }</pre>
      */
     public void mergeEmission(boolean on) {
-        mergeEmission = on;
+        mergeRequested = on;
     }
 
+    /** What {@link #mergeEmission(boolean)} asked for; drawn so once the program list is warm under it. */
     public boolean mergeEmission() {
-        return mergeEmission;
+        return mergeRequested;
     }
 
     /** How many draws the last transparent firing recorded with their glow in their own draw: for gates and readouts. */
@@ -618,7 +696,25 @@ public final class CgWorldRenderer {
      * </ul>
      */
     public boolean prepare(CgMaterial material) {
-        boolean joins = CgCapabilities.detect().multiDraw() && CgMeshStore.get().multiDraw();
+        return prepare(material, false, requestedSettings());
+    }
+
+    /**
+     * {@link #prepare(CgMaterial)}, for a material drawn {@code .halfResolution()} as well: the half-size passes that
+     * lay it over the target (the upsample, the volume resolve and composite) are started too.
+     */
+    public boolean prepare(CgMaterial material, boolean halfResolution) {
+        return prepare(material, halfResolution, requestedSettings());
+    }
+
+    /**
+     * {@link #prepare(CgMaterial, boolean)} for {@code settings} rather than those asked for now: only the variants
+     * those settings draw. Under the HDR scene, a glow folded into its colour ({@code sceneFold}); without it, the
+     * merged glow and what covers it ({@code emissionTarget}, {@code emissionCover}) or, unmerged, what hides the glows
+     * behind a transparent draw ({@code emissionOccluder}). What {@link CgWorldPrograms} re-warms a toggle by.
+     */
+    public boolean prepare(CgMaterial material, boolean halfResolution, CgWorldPrograms.Settings settings) {
+        boolean joins = settings.joins();
         boolean ready = true;
         for (CgMaterial link = material; link != null; link = link.getNextPass()) {
             ready &= prepared(link.pipeline(CgInstanceKind.OBJECT), joins);
@@ -627,12 +723,14 @@ public final class CgWorldRenderer {
             if (forward != null) ready &= prepared(forward.depthPrepass(), joins);
             if (link.hasEmissivePass()) {
                 ready &= prepared(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), joins);
-                if (forward != null) ready &= prepared(forward.emissionTarget(), joins);
-                if (forward != null) ready &= prepared(forward.sceneFold(), joins);
+                if (forward != null && settings.mergeEmission()) {
+                    ready &= prepared(settings.hdrScene() ? forward.sceneFold() : forward.emissionTarget(), joins);
+                }
             }
-            // What a transparent draw covers the glows behind it with: merged, and in an emission drawn on its own.
-            if (forward != null && link.getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
-                ready &= prepared(forward.emissionCover(), joins);
+            if (forward != null && !settings.hdrScene() && link.getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
+                // The merged emission's cover; the occluder where the emission is drawn on its own, which a host
+                // framebuffer taking no second attachment falls back to as well.
+                if (settings.mergeEmission()) ready &= prepared(forward.emissionCover(), joins);
                 ready &= prepared(forward.emissionOccluder(), joins);
             }
             if (link.hasDistortionPass()) {
@@ -640,16 +738,7 @@ public final class CgWorldRenderer {
                 ready &= distortion.prepare();
             }
         }
-        return ready;
-    }
-
-    /**
-     * {@link #prepare(CgMaterial)}, for a material drawn {@code .halfResolution()} as well: the half-size passes that
-     * lay it over the target (the upsample, the volume resolve and composite) are started too.
-     */
-    public boolean prepare(CgMaterial material, boolean halfResolution) {
-        boolean ready = prepare(material);
-        if (!halfResolution) return ready;
+        if (!halfResolution || !settings.halfResolution()) return ready;
         if (upsample == null) upsample = CgMaterial.newInstance(UPSAMPLE_SHADER);
         if (resolve == null) resolve = CgMaterial.newInstance(RESOLVE_SHADER);
         if (composite == null) composite = CgMaterial.newInstance(COMPOSITE_SHADER);
@@ -2207,6 +2296,11 @@ public final class CgWorldRenderer {
 
     /** Draw {@code i} through {@code pipeline} into a world pass, at its key and within its screen rect. */
     private void passDraw(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterial link, CgRecording recording, int i) {
+        if (skipUnready && !pipeline.prepare()) {
+            unreadyDraws++;
+            CgTrace.add(CgChannels.GL, UNREADY_DRAWS, 1);
+            return;
+        }
         if (sets[i] != null) {
             drawSet(chunks, pipeline, bindingOf(link, recording), i);
             return;

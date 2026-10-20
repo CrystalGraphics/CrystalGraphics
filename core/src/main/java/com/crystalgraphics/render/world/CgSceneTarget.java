@@ -62,7 +62,7 @@ final class CgSceneTarget {
     private CgTextureType probedDepth;
 
     void record(CgStageFrame stage) {
-        if (!CgWorldRenderer.get().hdrScene()) return;
+        if (!CgWorldRenderer.get().hdrSceneDrawn()) return;
         int fb = stage.host().mainFramebuffer(), w = Math.max(1, stage.host().width()), h = Math.max(1, stage.host().height());
         boolean beside = CgGraphTexture.takesCurrentDepth(fb);
         CgTextureType depth = null;
