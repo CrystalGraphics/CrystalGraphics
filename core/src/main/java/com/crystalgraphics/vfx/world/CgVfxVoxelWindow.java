@@ -94,12 +94,8 @@ public final class CgVfxVoxelWindow {
     private static final long UNHASHED = Long.MIN_VALUE;
     private static final CgVfxVoxelWindow INSTANCE = new CgVfxVoxelWindow();
 
-    /**
-     * What a kernel reading only the window's blocks (light, floors) declares in its {@code Properties}, all of which
-     * {@link #bindBlocks} sets. Below compute every declared sampler takes a unit, so a kernel never reading the
-     * distance field declares this rather than {@link #PROPERTIES}.
-     */
-    public static final String BLOCK_PROPERTIES = """
+    /** What a kernel reading the window declares in its {@code Properties}, all of which {@link #bind} sets. */
+    public static final String PROPERTIES = """
                 _World         ("The voxel window: a block a texel",    sampler3D) = "black"
                 _WorldSections ("Which of its sections are filled",     sampler3D) = "black"
                 _WorldBaseX    ("Its lowest block, absolute: x",        int)       = 0
@@ -109,10 +105,6 @@ public final class CgVfxVoxelWindow {
                 _WorldWrapY    ("y",                                    int)       = 0
                 _WorldWrapZ    ("z",                                    int)       = 0
                 _WorldLive     ("1 with a level, else 0: read nothing", int)       = 0
-            """;
-
-    /** What a kernel reading the window and its distance field declares in its {@code Properties}, all of which {@link #bind} sets. */
-    public static final String PROPERTIES = BLOCK_PROPERTIES + """
                 _WorldDistance ("Distance to solid over FX_WORLD_FAR",  sampler3D) = "white"
             """;
 
@@ -213,7 +205,11 @@ public final class CgVfxVoxelWindow {
         return bindBlocks(d).texture("_WorldDistance", live ? distances[current] : noSections);
     }
 
-    /** The volume and where it sits, on a dispatch of a kernel declaring {@link #BLOCK_PROPERTIES}. */
+    /**
+     * The volume and where it sits, without its distance field, on a dispatch of a kernel declaring {@link #PROPERTIES}
+     * less {@code _WorldDistance}: one reading only light and floors ({@code env/compute/vfx/look.compute}), since below
+     * compute every sampler a kernel declares takes a unit.
+     */
     public CgDispatch bindBlocks(CgDispatch d) {
         if (!live) return d.texture("_World", noVolume).texture("_WorldSections", noSections).set("_WorldLive", 0);
         return place(d).set("_WorldLive", 1);

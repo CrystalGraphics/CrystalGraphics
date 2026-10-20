@@ -82,8 +82,6 @@ public final class CgVfxEmitterCompiler {
         s.append("#include \"crystalgraphics:shaders/lib/vfx/fx_rand.glsl\"\n");
         s.append("#include \"crystalgraphics:shaders/lib/vfx/fx_event.glsl\"\n");
         if (shape.readsClips()) s.append("#include \"crystalgraphics:shaders/lib/vfx/fx_clip.glsl\"\n");
-        // Every Step lights what it draws from the window, as its last stage writes the drawn part.
-        s.append("#include \"crystalgraphics:shaders/lib/vfx/fx_world.glsl\"\n");
         if (shape.readsWorld()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_world_at.glsl\"\n");
         if (shape.usesDepth()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_depth_at.glsl\"\n");
         if (shape.usesEntities()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_entities_at.glsl\"\n");
@@ -116,10 +114,8 @@ public final class CgVfxEmitterCompiler {
                     _ChildRows  ("Parent event rows read at most",   int)  = 0
                     _ChildMax   ("Children an event spawns at most", int)  = 0
                     _Feeds      ("Feed rows",                        int)  = 0
-                    _Texels     ("Samples each curve of a row holds", int) = 256
                 """);
-        // Only a kind reading the world takes the distance field: below compute every sampler declared is a unit.
-        s.append(shape.readsWorld() ? CgVfxVoxelWindow.PROPERTIES : CgVfxVoxelWindow.BLOCK_PROPERTIES);
+        if (shape.readsWorld()) s.append(CgVfxVoxelWindow.PROPERTIES);
         if (shape.usesDepth()) s.append(DEPTH_PROPERTIES);
         if (shape.usesEntities()) s.append(CgVfxEntityBoxes.PROPERTIES);
         if (shape.usesNeighbours()) s.append(NEIGHBOUR_PROPERTIES);
@@ -144,7 +140,6 @@ public final class CgVfxEmitterCompiler {
                     PARAMS    ("Parameter rows",  uvec4,    readonly)
                     INSTANCES ("Instance rows",   uvec4,    readonly)
                     SPAWNS    ("Spawn rows",      uvec4,    readonly)
-                    CURVES    ("Each parameter row's curves and start values", vec4, readonly)
                 """);
         if (shape.spawns()) s.append("    SPAWN_EVENTS  (\"Events that spawn children\", FxEvent, append)\n");
         if (shape.reports()) s.append("    REPORT_EVENTS (\"Events the CPU hears\",       FxEvent, append)\n");
@@ -166,7 +161,6 @@ public final class CgVfxEmitterCompiler {
         s.append("const int STEP_PARAM_ROW = ").append(shape.paramRowVectors()).append(";\n");
         s.append("const int STEP_INSTANCE_ROW = ").append(shape.instanceRowVectors()).append(";\n");
         s.append("const int STEP_SPAWN_ROW = ").append(CgVfxParticlePool.SPAWN_ROW_WORDS / 4).append(";\n");
-        s.append("const bool STEP_FLOORS = ").append(shape.floors()).append(";\n");
         if (shape.events() > 0) {
             s.append("const int STEP_EVENT_NODES = ").append(shape.eventsAt() + CgVfxShape.EVENT_NODES).append(";\n");
             s.append("const int STEP_EVENT_CLIP = ").append(shape.eventsAt() + CgVfxShape.EVENT_CLIP).append(";\n");
@@ -355,63 +349,15 @@ public final class CgVfxEmitterCompiler {
                     return p;
                 }
 
-                // A curve row's vec4s: _Texels shape samples, _Texels tint samples, two start colours, two start
-                // scales, then its domain's speeds (CgVfxGpuEmitter.writeCurves).
-                int step_curve_row(uint row) {
-                    return int(row) * (2 * _Texels + 5);
-                }
-
-                vec4 step_curve(int at, float t) {
-                    float x = clamp(t, 0.0, 1.0) * float(_Texels - 1);
-                    int i0 = int(floor(x));
-                    int i1 = min(i0 + 1, _Texels - 1);
-                    return mix(CURVES(at + i0), CURVES(at + i1), x - float(i0));
-                }
-
-                // The record a draw reads: the drawn part, at the step's end. Its look over life or speed; its starts are
-                // Niagara's non-uniform ranges, each channel rolled from its seed; lit from the window at its block.
-                FxRecord step_pack(FxParticle p, uint paramRow, int inst) {
+                // The simulated part; the drawn part is the Look stage's (env/compute/vfx/look.compute).
+                FxRecord step_pack(FxParticle p, uint paramRow) {
                     FxRecord r;
                     r.positionAge = vec4(p.position, p.age);
                     r.previousLife = vec4(p.previous, p.life);
                     r.velocitySize = vec4(p.velocity, p.size);
                     r.seedSpin = vec4(p.seed, p.spin, p.spinRate, p.heat);
                     r.idSlot = uvec4(p.id, p.slot, (p.resting ? 1u : 0u) | p.collisions << 16u, paramRow);
-                    float t = min(p.age / p.life, 1.0);
-                    int at = step_curve_row(paramRow), starts = at + 2 * _Texels;
-                    vec4 speeds = CURVES(starts + 4);
-                    float u = speeds.x < 0.0 ? t : clamp((length(p.velocity) - speeds.x) / (speeds.y - speeds.x), 0.0, 1.0);
-                    vec4 shape = step_curve(at, u), tint = step_curve(at + _Texels, u);
-                    uint bits = floatBitsToUint(p.seed);
-                    vec4 colorRoll = vec4(fx_rand(bits, 0u, 20u), fx_rand(bits, 0u, 21u), fx_rand(bits, 0u, 22u),
-                            fx_rand(bits, 0u, 23u));
-                    vec3 scaleRoll = vec3(fx_rand(bits, 0u, 24u), fx_rand(bits, 0u, 25u), fx_rand(bits, 0u, 26u));
-                    vec4 color = mix(CURVES(starts), CURVES(starts + 1), colorRoll) * tint;
-                    r.place = vec4(p.position, p.size * shape.w);
-                    r.motion = vec4(p.velocity, t);
-                    r.state = vec4(p.seed, p.spin, p.heat, color.a);
-                    r.color = color;
-                    r.scale = vec4(mix(CURVES(starts + 2).xyz, CURVES(starts + 3).xyz, scaleRoll) * shape.xyz, p.age);
-                    vec2 light = vec2(15.0);
-                    ivec3 originBlock = ivec3(INSTANCES(inst + 3).xyz);
-                    vec3 originFrac = step_instance(inst + 4).xyz;
-                    if (_WorldLive != 0) {
-                        light = fx_world_light(_World, _WorldSections, ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ),
-                                ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ),
-                                fx_world_block(originBlock, originFrac, p.position), vec2(15.0));
-                    }
-                    vec2 ground = vec2(0.0);
-                    if (STEP_FLOORS) {
-                        float floorY = step_instance(inst + 2).y;
-                        if (_WorldLive != 0) {
-                            floorY = fx_world_floor(_World, _WorldSections, ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ),
-                                    ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ), originBlock, originFrac, p.position,
-                                    p.previous.y);
-                        }
-                        if (!isnan(floorY)) ground = vec2(p.position.y - floorY, 1.0);
-                    }
-                    // Light packed into one lane (block + 16 sky), its spawn id's low 24 bits in the next.
-                    r.light = vec4(floor(light.x + 0.5) + 16.0 * floor(light.y + 0.5), float(p.id & 16777215u), ground);
+                    r.place = r.motion = r.state = r.light = r.color = r.scale = vec4(0.0);
                     return r;
                 }
 
@@ -861,7 +807,7 @@ public final class CgVfxEmitterCompiler {
         s.append("""
                         return;
                     }
-                    OUT_APPEND(step_pack(p, paramRow, inst));
+                    OUT_APPEND(step_pack(p, paramRow));
                 }
                 """);
         return s.toString();

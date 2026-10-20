@@ -1,0 +1,93 @@
+// The Step's last stage (CgVfxParticlePool, P14): after a step, every live particle's drawn part written into its own
+// record, which draws read through Range's order: its look over life or speed from its row's curves, its starts rolled
+// per channel from its seed (Niagara's non-uniform ranges), its light from the voxel window at its block, and the floor
+// under it. A stage of its own rather than the Step's tail, so the Step keeps its units below compute; a map, so it runs
+// at every tier.
+#pragma kernel Look map
+
+#include "crystalgraphics:shaders/lib/vfx/fx_rand.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_world.glsl"
+
+Properties {
+    _InstanceAt    ("This step's instance rows",                          int)       = 0
+    _InstanceRow   ("An instance row's vec4s",                            int)       = 0
+    _Floors        ("1 when the pool's kinds land on a floor",           int)       = 0
+    _Texels        ("Samples each curve of a row holds",                  int)       = 256
+    _World         ("The voxel window: a block a texel",                  sampler3D) = "black"
+    _WorldSections ("Which of its sections are filled",                   sampler3D) = "black"
+    _WorldBaseX    ("Its lowest block, absolute: x",                      int)       = 0
+    _WorldBaseY    ("y",                                                  int)       = 0
+    _WorldBaseZ    ("z",                                                  int)       = 0
+    _WorldWrapX    ("That block's texel: x",                              int)       = 0
+    _WorldWrapY    ("y",                                                  int)       = 0
+    _WorldWrapZ    ("z",                                                  int)       = 0
+    _WorldLive     ("1 with a level, else 0: read nothing",               int)       = 0
+}
+
+// A particle as a pool stores it: CgVfxRecord.GLSL.
+struct FxRecord { vec4 positionAge; vec4 previousLife; vec4 velocitySize; vec4 seedSpin; uvec4 idSlot; vec4 place; vec4 motion; vec4 state; vec4 light; vec4 color; vec4 scale; };
+
+Buffers {
+    IN        ("Particles, after the step",                         FxRecord, readonly)
+    OUT       ("The same, their drawn part written",                FxRecord, writeonly)
+    LIVE      ("How many are alive",                                uint,     readonly)
+    INSTANCES ("Instance rows",                                     uvec4,    readonly)
+    CURVES    ("Each parameter row's curves and start values",      vec4,     readonly)
+}
+
+vec4 look_instance(int at) {
+    return uintBitsToFloat(INSTANCES(at));
+}
+
+// A curve row's vec4s: _Texels shape samples, _Texels tint samples, two start colours, two start scales, then its
+// domain's speeds (CgVfxGpuEmitter.writeCurves).
+vec4 look_curve(int at, float t) {
+    float x = clamp(t, 0.0, 1.0) * float(_Texels - 1);
+    int i0 = int(floor(x));
+    int i1 = min(i0 + 1, _Texels - 1);
+    return mix(CURVES(at + i0), CURVES(at + i1), x - float(i0));
+}
+
+void Look() {
+    FxRecord r = IN(CG_ELEMENT);
+    if (CG_ELEMENT < int(LIVE(0))) {
+        vec3 position = r.positionAge.xyz, velocity = r.velocitySize.xyz;
+        float age = r.positionAge.w, life = r.previousLife.w, size = r.velocitySize.w;
+        float seed = r.seedSpin.x, spin = r.seedSpin.y, heat = r.seedSpin.w;
+        int inst = _InstanceAt + int(r.idSlot.y) * _InstanceRow;
+        float t = min(age / life, 1.0);
+        int at = int(r.idSlot.w) * (2 * _Texels + 5), starts = at + 2 * _Texels;
+        vec4 speeds = CURVES(starts + 4);
+        float u = speeds.x < 0.0 ? t : clamp((length(velocity) - speeds.x) / (speeds.y - speeds.x), 0.0, 1.0);
+        vec4 shape = look_curve(at, u), tint = look_curve(at + _Texels, u);
+        uint bits = floatBitsToUint(seed);
+        vec4 colorRoll = vec4(fx_rand(bits, 0u, 20u), fx_rand(bits, 0u, 21u), fx_rand(bits, 0u, 22u), fx_rand(bits, 0u, 23u));
+        vec3 scaleRoll = vec3(fx_rand(bits, 0u, 24u), fx_rand(bits, 0u, 25u), fx_rand(bits, 0u, 26u));
+        vec4 color = mix(CURVES(starts), CURVES(starts + 1), colorRoll) * tint;
+        r.place = vec4(position, size * shape.w);
+        r.motion = vec4(velocity, t);
+        r.state = vec4(seed, spin, heat, color.a);
+        r.color = color;
+        r.scale = vec4(mix(CURVES(starts + 2).xyz, CURVES(starts + 3).xyz, scaleRoll) * shape.xyz, age);
+        ivec3 base = ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ), wrap = ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ);
+        ivec3 originBlock = ivec3(INSTANCES(inst + 3).xyz);
+        vec3 originFrac = look_instance(inst + 4).xyz;
+        vec2 light = vec2(15.0);
+        if (_WorldLive != 0) {
+            light = fx_world_light(_World, _WorldSections, base, wrap, fx_world_block(originBlock, originFrac, position),
+                    vec2(15.0));
+        }
+        vec2 ground = vec2(0.0);
+        if (_Floors != 0) {
+            float floorY = look_instance(inst + 2).y;
+            if (_WorldLive != 0) {
+                floorY = fx_world_floor(_World, _WorldSections, base, wrap, originBlock, originFrac, position,
+                        r.previousLife.y);
+            }
+            if (!isnan(floorY)) ground = vec2(position.y - floorY, 1.0);
+        }
+        // Light packed into one lane (block + 16 sky), its spawn id's low 24 bits in the next.
+        r.light = vec4(floor(light.x + 0.5) + 16.0 * floor(light.y + 0.5), float(r.idSlot.x & 16777215u), ground);
+    }
+    OUT_WRITE(r);
+}

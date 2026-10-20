@@ -152,6 +152,8 @@ public final class CgVfxParticlePool {
     private static final CgGpuCount ONE = CgGpuCount.of(1);
     private static final int MIN_STORAGE = 1024;
     private static final String TRAIL_KERNELS = "crystalgraphics:shaders/env/compute/vfx/trail.compute";
+    /** The Step's last stage: each live particle's drawn part, written into its record. */
+    private static final String LOOK_KERNELS = "crystalgraphics:shaders/env/compute/vfx/look.compute";
     private static final String NEIGHBOUR_KERNELS = "crystalgraphics:shaders/env/compute/vfx/neighbours.compute";
     /** A neighbour grid's hashed cells: twice the records, a power of two, within these. */
     private static final int MIN_CELLS = 64, MAX_CELLS = 1 << 20;
@@ -250,7 +252,7 @@ public final class CgVfxParticlePool {
     private int spawnEnd;
 
     // The GPU half: made at the first recording, grown as slots open.
-    private CgKernel step, store, gridKeys, gridRuns;
+    private CgKernel step, look, store, gridKeys, gridRuns;
     private CgGraphBuffer records, paramBuffer, curveBuffer, instanceBuffer, spawnBuffer, history, ringTable;
     /** The neighbour grid (CgVfxWorldInput.NEIGHBOURS): each record's key and index, sorted; each hashed cell's run. */
     private CgGraphBuffer cellKeys, cellValues, cellRuns;
@@ -333,6 +335,7 @@ public final class CgVfxParticlePool {
     public static void prepare(CgVfxGpuEmitter emitter, int tier) {
         CgVfxShape shape = CgVfxShape.of(emitter, tier);
         CgVfxEmitterCompiler.compile(shape).kernel("Step").prepare();
+        CgCompute.load(LOOK_KERNELS).kernel("Look").prepare();
         CgGpuOps.prepareFill();
         if (emitter.trailPoints() > 0) CgCompute.load(TRAIL_KERNELS).kernel("Store").prepare();
         if (shape.usesNeighbours()) {
@@ -554,6 +557,7 @@ public final class CgVfxParticlePool {
             return false;
         }
         if (step == null) step = CgVfxEmitterCompiler.compile(shape).kernel("Step");
+        if (look == null) look = CgCompute.load(LOOK_KERNELS).kernel("Look");
         reserve(recording, capacity);
         upload(recording);
         if (ringSlots > 0) reserveRings(recording);
@@ -733,7 +737,6 @@ public final class CgVfxParticlePool {
         CgDispatch stepping = pass.dispatch(step, live + stepSpawned[s] + (children ? spawnRows * childMax : 0))
                 .bind("IN", records).bind("OUT", records).counter("OUT", next, 0).bind("LIVE", counts[current])
                 .bind("PARAMS", paramBuffer).bind("INSTANCES", instanceBuffer).bind("SPAWNS", spawnBuffer)
-                .bind("CURVES", curveBuffer).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
                 .set("_Step", stepBlock[s * 4], stepBlock[s * 4 + 1], stepBlock[s * 4 + 2], stepBlock[s * 4 + 3])
                 .set("_InstanceAt", stepInstanceAt[s] / 4).set("_SpawnAt", stepSpawnAt[s] / 4)
                 .set("_SpawnRows", stepSpawnRows[s]).set("_Spawned", stepSpawned[s]).set("_PoolId", id)
@@ -750,11 +753,11 @@ public final class CgVfxParticlePool {
                     .bind("PARENT_COUNT", children ? SPAWN_COUNTS[tier - 1] : unfed).bind("FEEDS", children ? feedBuffer : unfed);
         }
         if (shape.readsClips()) CgVfxClipAtlas.bind(stepping);
-        // Every Step lights its drawn part from the window; only a kind reading the world keeps it in use.
-        CgVfxVoxelWindow window = shape.readsWorld() ? CgVfxVoxelWindow.get().use() : CgVfxVoxelWindow.get();
-        if (shape.usesDistance()) window.useDistance();
-        if (shape.readsWorld()) window.bind(stepping);
-        else window.bindBlocks(stepping);
+        if (shape.readsWorld()) {
+            CgVfxVoxelWindow window = CgVfxVoxelWindow.get().use();
+            if (shape.usesDistance()) window.useDistance();
+            window.bind(stepping);
+        }
         if (shape.usesDepth()) bindDepth(stepping);
         if (shape.usesEntities()) CgVfxEntityBoxes.bind(stepping);
         if (shape.spawnsOnMesh()) CgVfxSpawnMeshes.bind(stepping);
@@ -770,6 +773,11 @@ public final class CgVfxParticlePool {
             for (int t = 0; t < shape.textureCount(i); t++) stepping.texture(CgVfxEmitterCompiler.texture(i, t), shape.texture(i, t));
         }
         current = 1 - current;
+        // The Step's last stage: what draws read, written into each live record in place.
+        CgVfxVoxelWindow.get().bindBlocks(pass.dispatch(look, storage).bind("IN", records).bind("OUT", records)
+                .bind("LIVE", counts[current]).bind("INSTANCES", instanceBuffer).bind("CURVES", curveBuffer)
+                .set("_InstanceAt", stepInstanceAt[s] / 4).set("_InstanceRow", shape.instanceRowVectors())
+                .set("_Floors", shape.floors() ? 1 : 0).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS));
         if (shape.usesNeighbours()) buildGrid(pass);
         if (stepStores[s]) {
             if (ringSlots > 0) {
