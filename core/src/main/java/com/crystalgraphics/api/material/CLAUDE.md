@@ -22,6 +22,11 @@ This is the top of the CrystalShader material stack.
 | `CgAttachedBuffer` | Immutable descriptor for a user-attached SSBO/TBO or UBO buffer. Created via `CgAttachedBuffer.of(buffer, macroName)` (SSBO/TBO, STD430) or `CgAttachedBuffer.of(CgUniformBuffer)` (UBO, STD140). `isUbo()` returns `true` for UBO entries (macroName is null). SSBO/TBO fields: `buffer`, `macroName`, `structName` (= `format.getGlslName()`), `ssboArrayName` (`_cg_{lowerFirst}Arr`), `tboGetterName` (`_cg_get{structName}`). UBO entries: only `buffer` is set; macroName/structName/ssboArrayName/tboGetterName are all null. Block/sampler/UBO block name is always `buffer.getName()` — required for `wireShader()`. |
 | `CgMaterialRegistry` | Singleton load/reload/delete lifecycle manager. `get()` returns the singleton. `getOrCreate(String)` / `getOrCreate(CgMaterialKey)` check cache; on miss call `CgMaterial.create()` (which uses `CgMaterialShaderRegistry` internally), cache, and return. `reloadAll()` delegates to `CgMaterialShaderRegistry.get().reloadAll()` — marks all shader assets dirty; materials detect revision change on next `bind()`. `deleteAll()` deletes all cached material instances (freeing per-instance UBOs), then cascades to `CgMaterialShaderRegistry.get().deleteAll()` to free GL shader programs. Registered for teardown in `CgGraphicsLifecycle.destroyContext()`. |
 | `CgMaterialKey` | `@Desugar record` wrapping a resource-path string. `of(String)` factory. Value equality. Used as a typed alternative to raw strings. |
+| `CgMaterialDefinition`, `CgMaterialDefinitions` | A `material` asset compiled (`CgMaterialDefinitions.register()` makes it the kind's compiler): its parent chain merged, every `values`/`textures` key and keyword checked against the archetype, its `CgMaterialPermutation` (interned program key: archetype, keywords, blend class, clip, shading; a value-only child shares its parent's), constants, row layout (`CgMaterialRowLayout`), `Draw` state, domain and shading model. `route(p)` and `requireRow(p, who)` (a key refused on a non-row property), `requireDomain(d, who)` |
+| `CgMaterialArchetypes` | Where an archetype is read: `FILES` through `CgIO`, a kit's `<ns>:shaders/<name>.shader` falling back to the engine's `crystalgraphics:shaders/vfx/archetype/<name>.shader` (`resolve`); its domain from `Tags { "Domain" = ... }` |
+| `CgMaterialManifest` | A move's permutations by slot-kind keyword and half size: what `CgWorldRenderer.programs().warm(manifest)` warms |
+| `CgMaterialRoute`, `CgMaterialRow` | The three routes a value takes (constant, row, global) and one draw's row of a definition, written by slot |
+| `CgShadingModel`, `CgShadingModels`, `CgMaterialDomain` | Shading models by registry (`unlit`, `lit`, `subsurface`, and a kit's `registerKit(namespace, ...)`); `SURFACE`, `POST`, `DECAL` |
 | `CgRenderQueue` | Final utility class (not an enum). Static `int` constants: `BACKGROUND` (1000), `GEOMETRY` (2000), `ALPHA_TEST` (2450), `TRANSPARENT` (3000), `AFTER_DISTORTION` (3500: transparent, drawn after the distortion apply), `OVERLAY` (4000). Threshold constants: `ALPHA_TEST_THRESHOLD` (2450), `TRANSPARENT_THRESHOLD` (2500), `AFTER_DISTORTION_THRESHOLD` (3500), `OVERLAY_THRESHOLD` (4000). `fromName(String)` maps PascalCase or SCREAMING_SNAKE names to int value; throws for unknown names. |
 | `package-info.java` | Package-level Javadoc describing the material API and lifecycle contract. |
 
@@ -154,7 +159,7 @@ boolean on = material.isKeywordEnabled("FOG_ON");  // false by default
 ```
 
 **Rules and limits:**
-- Maximum **8 keywords** per shader. Exceeding this throws `CgShaderParseException` at parse time.
+- Maximum **16 keywords** per shader (a game archetype carries its feature mask); past 8 a program is resolved uncached. Exceeding this throws `CgShaderParseException` at parse time.
 - Keyword names must match `[A-Z][A-Z0-9_]*` — all uppercase, start with a letter.
 - Only names declared with `#pragma cg_feature` in that shader are accepted — `enableKeyword()`
   throws `IllegalArgumentException` for undeclared names.

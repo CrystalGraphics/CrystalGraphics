@@ -386,6 +386,12 @@ final class CgStructureParser {
      * @return unmodifiable ordered list of feature names; empty if none declared
      * @throws CgShaderParseException on any validation failure
      */
+    /**
+     * The most keywords a shader declares: a kit's archetype carries a game's feature mask (CC2's effect family, 11).
+     * A material past 8 resolves its program uncached ({@code CgMaterial.keywordMask}).
+     */
+    static final int MAX_FEATURES = 16;
+
     static List<String> parseFeaturePragmas(String source, String resourcePath) {
         List<String> names = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
@@ -422,11 +428,10 @@ final class CgStructureParser {
                 throw new CgShaderParseException(
                         "[" + resourcePath + "] #pragma cg_feature: duplicate feature name '" + rest + "'");
             }
-            // Enforce max 8 declarations
-            if (names.size() >= 8) {
+            if (names.size() >= MAX_FEATURES) {
                 throw new CgShaderParseException(
-                        "[" + resourcePath + "] #pragma cg_feature: maximum of 8 feature names exceeded"
-                        + " (found '" + rest + "' as 9th declaration)");
+                        "[" + resourcePath + "] #pragma cg_feature: maximum of " + MAX_FEATURES
+                        + " feature names exceeded (found '" + rest + "' past them)");
             }
             names.add(rest);
             seen.add(rest);

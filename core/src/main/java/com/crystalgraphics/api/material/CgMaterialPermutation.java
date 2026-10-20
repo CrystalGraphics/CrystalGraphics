@@ -51,7 +51,8 @@ public record CgMaterialPermutation(String shader, List<String> keywords, String
     }
 
     /**
-     * The engine's state for it: blend and clip; a shading model is not state.
+     * The engine's state for it: blend, clip and depth write; a shading model is not state. An archetype with a
+     * {@code "Depth"} tag refuses the depth write: give it none.
      *
      * @throws UnsupportedOperationException for {@code modulate}, which no {@link CgBlendMode} draws yet
      */
@@ -77,7 +78,9 @@ public record CgMaterialPermutation(String shader, List<String> keywords, String
             default:
                 throw new UnsupportedOperationException("blend '" + blend + "' has no CgBlendMode");
         }
+        // Unreal's rule: opaque writes depth, a blended draw never does; masked writes it by its clip.
         if (clip) b.clip();
+        else b.depthWrite(blend.equals("opaque"));
         return b.build();
     }
 }

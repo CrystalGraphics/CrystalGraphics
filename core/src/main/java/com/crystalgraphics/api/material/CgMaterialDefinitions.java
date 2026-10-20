@@ -109,8 +109,8 @@ public final class CgMaterialDefinitions {
             throw new CgAssetException(id + " has a post block, but " + shader + " is a "
                     + domain.name().toLowerCase(Locale.ROOT) + " archetype: a post material's is tagged \"Domain\" = \"Post\"");
         }
-        CgMaterialPermutation permutation = CgMaterialPermutation.of(shader, new TreeSet<>(keywords), blend,
-                "masked".equals(blend), shading);
+        CgMaterialPermutation permutation = CgMaterialPermutation.of(archetypes.resolve(shader),
+                new TreeSet<>(keywords), blend, "masked".equals(blend), shading);
 
         Map<String, float[]> constants = new LinkedHashMap<>();
         Map<String, Object> forms = new LinkedHashMap<>();

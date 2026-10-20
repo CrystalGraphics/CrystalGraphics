@@ -19,7 +19,7 @@ Built-in types: `spatial` (`CgVertexFormat.SPATIAL` — position, normal, colour
 
 ```glsl
 #type spatial
-#pragma cg_feature RECEIVE_SHADOWS    // compile-time keyword; max 8 per shader
+#pragma cg_feature RECEIVE_SHADOWS    // compile-time keyword; max 16 per shader
 #pragma cg_feature FOG_ON
 #pragma cg_use quad                   // opt into an engine buffer (see below); omit if unused
 
@@ -263,12 +263,12 @@ Each `#pragma cg_feature` declares a compile-time flag. Enabling a keyword at ru
 ```glsl
 #pragma cg_feature RECEIVE_SHADOWS
 #pragma cg_feature FOG_ON
-#pragma cg_feature NORMAL_MAP   // max 8 per shader
+#pragma cg_feature NORMAL_MAP   // max 16 per shader
 ```
 
 | Rule | Detail |
 |---|---|
-| Max 8 per shader | Exceeding throws `CgShaderParseException` at parse time |
+| Max 16 per shader | Exceeding throws `CgShaderParseException` at parse time; past 8 a material resolves its program uncached |
 | Uppercase only | Names must match `[A-Z][A-Z0-9_]*` |
 | Declared names only | `enableKeyword()` throws `IllegalArgumentException` for undeclared names |
 | Lazy compilation | Variant compiled on first `bind()` with that keyword set, then cached under a flat `ProgramKey` |
@@ -388,7 +388,7 @@ fragColor = _Color * _Bands(1);    // read as always: the row's value where boun
 
 - **Java sets a material's value by its declared name**, as for any property. Who binds a property per draw sets its
   place in the row, `CgMaterialProperty.rowSlotName(name)`, an `int` the compiler adds; -1 is unbound.
-- **An array** is `color[n]` or `vec4[n]`, n at most 16, its default each element's in order; read as `_Name(i)` in
+- **An array** is `color[n]` or `vec4[n]`, n at most 256 (past 16 read a chunk of 16 at a time), its default each element's in order; read as `_Name(i)` in
   every shader, with `rows` or without.
 - The VFX engine is the binder: a layer's `bind` and its colours bound by name ([`VFX.md`](VFX.md) § *Kits, layers and slots: how a look draws* and § *Writing a layer's shader*).
 
