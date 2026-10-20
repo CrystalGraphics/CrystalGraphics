@@ -394,6 +394,8 @@ public final class CgVfxFrame {
         }
         if (rs.count == 0) return;
         CgVfxParticlePool pool = tenant.pool;
+        // A pool that has not recorded its first step has no storage yet, and no particle to draw.
+        if (pool.records() == null) return;
         int slot = tenant.slot, capacity = pool.capacity(slot);
         CgVfxRange range = CgVfxRange.of(pool);
         if (def.renderer() == CgVfxEmitter.Renderer.SEQUENCE) {
