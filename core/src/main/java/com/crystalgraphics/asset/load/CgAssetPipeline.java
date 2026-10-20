@@ -27,6 +27,8 @@ import com.crystalgraphics.job.CgJobLoop;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.object.validate.CgValidation;
+import com.crystalgraphics.asset.kind.CgAssetKinds;
+import com.crystalgraphics.object.CgTypes;
 
 /**
  * Loads assets to {@link CgAssetState#COMPILED} on workers: read, merge over the parent, validate, then compile once
@@ -71,6 +73,7 @@ public final class CgAssetPipeline {
 
     /** {@code kind}'s {@code id}, loading toward {@link CgAssetState#COMPILED}. */
     public CgAssetLoad request(CgType kind, String id) {
+        endInit();
         String key = key(kind, id);
         CgAssetLoad load = loads.get(key);
         if (load != null) return load;
@@ -101,6 +104,13 @@ public final class CgAssetPipeline {
             return CgAssetVersions.upgrade(tree, kind);
         }, tree -> read(reading, (Map<?, ?>) tree), "unreadable");
         return load;
+    }
+
+    /** The first request ends the engine's init: every native kind declared, then the type registry frozen. */
+    private static void endInit() {
+        if (CgTypes.global().isFrozen()) return;
+        CgAssetKinds.register();
+        CgTypes.freeze();
     }
 
     /** The load of {@code kind}'s {@code id}, or null if none was requested. */

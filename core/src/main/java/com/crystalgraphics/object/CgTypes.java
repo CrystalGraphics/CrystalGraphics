@@ -20,14 +20,18 @@ import java.util.regex.Pattern;
  *
  * CgTypes.get("crystalgraphics:system");         // the system kind
  * CgTypes.kinds();                               // every asset kind, in registration order
- * CgTypes.freeze();                              // the engine's init is over: natives change no more
  * }</pre>
+ *
+ * <p>The engine's init ends at the first asset a pipeline requests: every native kind is declared then
+ * ({@code CgAssetKinds.register()}) and the registry {@linkplain #freeze() freezes}, so a class compiled against a
+ * family never meets a member that arrived after it.</p>
  *
  * <ul>
  *   <li>Register at init on both sides: a dedicated server registers every type too, since layouts must agree.</li>
  *   <li>An id is {@code namespace:path}, lower-case; a second type of one id throws, naming it.</li>
- *   <li>{@link #freeze()} freezes every type registered so far: no family takes a member after it. Data types
- *       declared by assets register later, and freeze one by one as definitions compile against them.</li>
+ *   <li>Once frozen, a native declaration ({@link #kind}, {@link #struct}, {@link #element}, {@link #dispatch}) or
+ *       a family's new member throws, naming the type and the class that declared it late. Data types declared by
+ *       assets ({@link #declare}) still register, and freeze one by one as definitions compile against them.</li>
  * </ul>
  */
 public final class CgTypes {
@@ -95,17 +99,17 @@ public final class CgTypes {
 
     /** An asset kind: one file each, in its folder, with a version. */
     public static CgType.Builder kind(String id) {
-        return GLOBAL.declare(id, CgTypeKind.KIND);
+        return GLOBAL.declareNative(id, CgTypeKind.KIND);
     }
 
     /** A struct: a value with named fields. */
     public static CgType.Builder struct(String id) {
-        return GLOBAL.declare(id, CgTypeKind.STRUCT);
+        return GLOBAL.declareNative(id, CgTypeKind.STRUCT);
     }
 
     /** An id list's element: carries an {@code id}, merged by it. */
     public static CgType.Builder element(String id) {
-        return GLOBAL.declare(id, CgTypeKind.ELEMENT);
+        return GLOBAL.declareNative(id, CgTypeKind.ELEMENT);
     }
 
     /**
@@ -113,7 +117,7 @@ public final class CgTypes {
      * ({@code { kind: perlin, amplitude: 2 }}). Add members with {@link CgType#member(String, CgType)}.
      */
     public static CgType.Builder dispatch(String id, String key) {
-        return GLOBAL.declare(id, CgTypeKind.DISPATCH).dispatchKey(key, true);
+        return GLOBAL.declareNative(id, CgTypeKind.DISPATCH).dispatchKey(key, true);
     }
 
     /** The engine's type of {@code id}, or null. */
@@ -130,12 +134,30 @@ public final class CgTypes {
         return out;
     }
 
-    /** Ends the engine's init: every type registered so far freezes, so no family takes a member after it. */
+    /**
+     * Ends the engine's init: every type registered so far freezes, so no family takes a member after it. The asset
+     * pipeline calls it at its first request.
+     */
     public static void freeze() {
         GLOBAL.freezeAll();
     }
 
     // ── A registry ─────────────────────────────────────────────────────────────────────
+
+    /** A native declaration: refused once the engine's init is over. */
+    private CgType.Builder declareNative(String id, CgTypeKind kind) {
+        if (frozen) throw new IllegalStateException(id + " is declared by " + registrant() + " after the engine's init"
+                + " froze its types: declare it at init, before the first asset loads");
+        return declare(id, kind);
+    }
+
+    /** The class outside this package whose call is on the stack: who is declaring. Only to throw. */
+    static String registrant() {
+        for (StackTraceElement e : new Throwable().getStackTrace()) {
+            if (!e.getClassName().startsWith("com.crystalgraphics.object.")) return e.getClassName();
+        }
+        return "an unknown class";
+    }
 
     /** Starts declaring a type in this registry. */
     public CgType.Builder declare(String id, CgTypeKind kind) {

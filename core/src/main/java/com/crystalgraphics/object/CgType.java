@@ -174,7 +174,8 @@ public final class CgType {
      */
     public synchronized CgType member(String key, CgType member) {
         if (kind != CgTypeKind.DISPATCH) throw new IllegalArgumentException(id + " is not a dispatch family");
-        if (frozen) throw new IllegalStateException(id + " is frozen: member " + key + " comes too late");
+        if (frozen) throw new IllegalStateException(id + " is frozen: member " + key + " comes too late, from "
+                + CgTypes.registrant());
         if (dispatchInline && member.property(dispatchKey) != null) {
             throw new IllegalArgumentException(member.id() + " declares '" + dispatchKey + "', the key of " + id
                     + ", which keeps its members inline");

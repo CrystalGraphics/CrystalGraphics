@@ -89,7 +89,7 @@ public class CgRehearsalTest {
 
         int mark = device.mark();
         int draws = device.draws();
-        CgRehearsal rehearsal = CgRehearsal.of(cast).freezesRegistries(false).minPasses(64).window(32).maxPasses(50_000)
+        CgRehearsal rehearsal = CgRehearsal.of(cast).minPasses(64).window(32).maxPasses(50_000)
                 .runAll();
         assertEquals("nothing reached the device", mark, device.mark());
         assertEquals(draws, device.draws());
@@ -97,7 +97,7 @@ public class CgRehearsalTest {
         assertTrue("ran at least its least passes", rehearsal.passes() >= 64);
 
         long loaded = ManagementFactory.getClassLoadingMXBean().getTotalLoadedClassCount();
-        CgRehearsal cue = CgRehearsal.of(cast).freezesRegistries(false).minPasses(1).window(1).maxPasses(1).runAll();
+        CgRehearsal cue = CgRehearsal.of(cast).minPasses(1).window(1).maxPasses(1).runAll();
         assertEquals(1, cue.passes());
         assertEquals("the rehearsed path loads no class once rehearsed", loaded,
                 ManagementFactory.getClassLoadingMXBean().getTotalLoadedClassCount());
@@ -105,7 +105,7 @@ public class CgRehearsalTest {
 
     @Test
     public void stepRunsUnderTheWarmBudgetAndEnds() {
-        CgRehearsal rehearsal = CgRehearsal.of(rec -> { }).freezesRegistries(false).minPasses(8).window(4).maxPasses(500);
+        CgRehearsal rehearsal = CgRehearsal.of(rec -> { }).minPasses(8).window(4).maxPasses(500);
         int frames = 0;
         while (!rehearsal.step()) frames++;
         assertTrue(rehearsal.done());

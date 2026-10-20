@@ -28,4 +28,7 @@ codec, inheritance, validation, units, undo, the editor and replication. The spi
 - **A check the declarations cannot state is a `validator(...)` on its type**, reporting at the path it is given;
   the declared checks (keys, required, shapes, enums, forms, ids) run first, in `asset.tree`.
 - **A family member joins with `onRegister(t -> FAMILY.member(key, t))`**, before `CgTypes.freeze()`.
+- **The engine's init ends at the first asset a pipeline requests** (`CgAssetPipeline.request`): every native kind
+  is declared (`CgAssetKinds.register()`), then the global registry freezes. A native declaration or a family member
+  after that throws, naming the type and the class declaring it. Data types (`declare`) still register.
 - **Headless**: nothing here draws; tests are `core/src/headlessTest/`.

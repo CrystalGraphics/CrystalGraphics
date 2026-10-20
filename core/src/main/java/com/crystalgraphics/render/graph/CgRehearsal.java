@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.object.CgTypes;
 import com.crystalgraphics.render.CgWarmBudget;
 
 import java.lang.management.ClassLoadingMXBean;
@@ -28,8 +27,6 @@ import java.lang.management.ManagementFactory;
  * <ul>
  *   <li>The act must record exactly what the cast will, with the definitions it will use: synthetic ones shape the
  *       JIT's inlining for the wrong types, and the first real cast deoptimises.</li>
- *   <li>The first step freezes the type registry ({@link CgTypes#freeze()}): a class registered later would invalidate
- *       what was compiled.</li>
  *   <li>Render thread; one rehearsal's recording at a time.</li>
  * </ul>
  */
@@ -51,7 +48,7 @@ public final class CgRehearsal {
     private int minPasses = 64, maxPasses = 20_000, window = 32;
     private int passes, quiet;
     private long compiledMillis = -1, loadedClasses = -1, lastPassNanos;
-    private boolean done, freezes = true;
+    private boolean done;
 
     private CgRehearsal(Act act) {
         this.act = act;
@@ -80,16 +77,9 @@ public final class CgRehearsal {
         return this;
     }
 
-    /** Whether its first pass freezes the type registry: true unless a test, sharing a JVM, says otherwise. */
-    public CgRehearsal freezesRegistries(boolean freezes) {
-        this.freezes = freezes;
-        return this;
-    }
-
     /** Runs passes while this frame's warm budget allows, at least one; true once it is done. Render thread. */
     public boolean step() {
         if (done) return true;
-        if (passes == 0) freeze();
         do {
             long start = System.nanoTime();
             pass();
@@ -102,16 +92,11 @@ public final class CgRehearsal {
 
     /** Runs it to the end at once: for a test, or a loading screen with no frame to keep. */
     public CgRehearsal runAll() {
-        if (passes == 0) freeze();
         while (!done) {
             pass();
             if (settled()) done = true;
         }
         return this;
-    }
-
-    private void freeze() {
-        if (freezes && !CgTypes.global().isFrozen()) CgTypes.freeze();
     }
 
     private void pass() {
