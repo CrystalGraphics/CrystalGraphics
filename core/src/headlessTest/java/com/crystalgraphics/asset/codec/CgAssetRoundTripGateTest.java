@@ -6,10 +6,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -20,6 +22,8 @@ import org.junit.Test;
 
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
+import com.crystalgraphics.asset.tree.CgEdit;
+import com.crystalgraphics.asset.tree.CgRandomEdits;
 import com.crystalgraphics.object.CgType;
 
 import static org.junit.Assert.assertTrue;
@@ -87,6 +91,37 @@ public class CgAssetRoundTripGateTest {
         }
         assertTrue(bad.size() + " of " + children + " children:\n" + String.join("\n",
                 bad.subList(0, Math.min(20, bad.size()))), bad.isEmpty());
+    }
+
+    /** O4's gate: random edits on every 25th asset, undone in full, give its original bytes. */
+    @Test
+    public void randomEditsUndoneGiveTheOriginalBytes() throws IOException {
+        Map<String, CgAssetData> loaded = new HashMap<>();
+        List<String> bad = new ArrayList<>();
+        List<String> ids = new ArrayList<>(FILES.keySet());
+        Collections.sort(ids);
+        int checked = 0;
+        for (int i = 0; i < ids.size(); i += 25) {
+            String id = ids.get(i);
+            CgAssetData data;
+            try {
+                data = load(id, loaded, new HashSet<String>());
+            } catch (RuntimeException unloadable) {
+                continue;   // the delta test names it
+            }
+            CgType kind = KINDS.get(id);
+            String before = CgAssetYaml.write(data.delta(), kind);
+            try {
+                List<CgEdit> undo = CgRandomEdits.run(data, new Random(i), 30);
+                for (int u = undo.size() - 1; u >= 0; u--) data.apply(undo.get(u));
+                if (!before.equals(CgAssetYaml.write(data.delta(), kind))) bad.add(id + ": not its bytes after undo");
+            } catch (RuntimeException ex) {
+                bad.add(id + ": " + ex);
+            }
+            checked++;
+        }
+        assertTrue(bad.size() + " of " + checked + " assets:\n" + String.join("\n", bad.subList(0, Math.min(20, bad.size()))),
+                bad.isEmpty());
     }
 
     private static CgAssetData load(String id, Map<String, CgAssetData> loaded, Set<String> loading) throws IOException {

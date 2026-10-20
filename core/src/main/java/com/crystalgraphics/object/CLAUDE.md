@@ -18,7 +18,7 @@ the codec, inheritance, validation, units, undo, the editor and replication. The
 - **Native types by builder, never by annotations read through reflection** (01 §3.2): the Java 8 copy carries
   builders unchanged, and registration costs nothing at run time.
 - **Declaration order is file order** and a layout's slot order. A kind gets `_v`, `parent`, `units` first and
-  `unsupported`, `editor`, `remove` last; an element gets `id` first and declares its own merge keys and `editor`.
+  `unsupported`, `editor`, `remove` last; an element gets `id` first, declares its own merge keys, and gets `editor` last unless it declares it.
 - **Open types** (`open()`) take keys they do not declare, as values, after the declared ones in read order: the
   schema's `additionalProperties: true` (a section's channels, a node's own fields). Anything else unknown is
   `unsupported`.

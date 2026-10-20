@@ -36,6 +36,8 @@ public final class CgShape {
     /** A shape that orders nothing and types nothing. */
     public static final CgShape NONE = new CgShape(Collections.<String, CgValueType>emptyMap(), null, null, false);
 
+    private final Map<String, CgProperty> declared = new LinkedHashMap<>();
+
     private final Map<String, CgValueType> props;
     @Nullable private final CgValueType extra;
     @Nullable private final CgValueType items;
@@ -92,6 +94,12 @@ public final class CgShape {
         return t != null ? t : extra;
     }
 
+    /** The property that declares {@code key} here, or null: a name-keyed map's keys, an open struct's own. */
+    @Nullable
+    public CgProperty property(Object key) {
+        return key instanceof String ? declared.get(key) : null;
+    }
+
     /** A list's items' type; null where it is not a list or types nothing. */
     @Nullable
     public CgValueType items() {
@@ -106,7 +114,9 @@ public final class CgShape {
     private static CgShape ofType(CgType t) {
         Map<String, CgValueType> props = new LinkedHashMap<>();
         for (CgProperty p : t.properties()) props.put(p.name(), self(p.type(), t));
-        return new CgShape(props, null, null, false);
+        CgShape shape = new CgShape(props, null, null, false);
+        for (CgProperty p : t.properties()) shape.declared.put(p.name(), p);
+        return shape;
     }
 
     /** {@code type} with {@link CgValueType#SELF} as {@code owner}: a condition's {@code not}, its {@code all}. */
@@ -129,7 +139,11 @@ public final class CgShape {
                 if (!props.containsKey(p.name())) props.put(p.name(), self(p.type(), member));
             }
         }
-        return new CgShape(props, null, null, false);
+        CgShape shape = new CgShape(props, null, null, false);
+        if (member != null) {
+            for (CgProperty p : member.properties()) shape.declared.put(p.name(), p);
+        }
+        return shape;
     }
 
     /** Whether {@code value} is written in alternative {@code alt}'s shape: a map holding its required keys. */

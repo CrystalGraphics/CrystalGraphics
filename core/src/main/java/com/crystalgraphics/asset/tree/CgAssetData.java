@@ -1,10 +1,13 @@
 package com.crystalgraphics.asset.tree;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 
 import javax.annotation.Nullable;
 
@@ -38,50 +41,130 @@ public final class CgAssetData {
     private final String id;
     private final CgType kind;
     @Nullable private final CgAssetData parent;
-    private final CgAssetNode root;
+    /** This asset's file: its overrides and additions alone, which edits change. */
+    final Map<Object, Object> file;
+    private CgAssetNode root;
+    private final List<Consumer<CgAssetChanged>> listeners = new CopyOnWriteArrayList<>();
 
-    private CgAssetData(String id, CgType kind, @Nullable CgAssetData parent, CgAssetNode root) {
+    private CgAssetData(String id, CgType kind, @Nullable CgAssetData parent, Map<Object, Object> file) {
         this.id = id;
         this.kind = kind;
         this.parent = parent;
-        this.root = root;
+        this.file = file;
     }
 
     /**
-     * {@code tree}, a file's plain tree, resolved over {@code parent}.
+     * {@code tree}, a file's plain tree, resolved over {@code parent}. The tree is copied: later changes to it do not
+     * reach the asset.
      *
      * @throws CgAssetException if the file names another parent, declares other units, or removes an id it does not
      *                          inherit
      */
     public static CgAssetData of(String id, CgType kind, Map<?, ?> tree, @Nullable CgAssetData parent) {
-        Object named = tree.get(CgType.PARENT);
+        if (parent != null && parent.kind != kind) {
+            throw new CgAssetException(id + " is a " + kind.id() + "; its parent " + parent.id + " is not");
+        }
+        @SuppressWarnings("unchecked") Map<Object, Object> file = (Map<Object, Object>) copy(tree);
+        CgAssetData data = new CgAssetData(id, kind, parent, file);
+        data.resolve();
+        return data;
+    }
+
+    /** Rebuilds the resolved tree from the parent's and this asset's file. */
+    void resolve() {
+        Object named = file.get(CgType.PARENT);
         if (parent == null) {
             if (named != null) throw new CgAssetException(id + " names parent " + named + ", which is not loaded");
-            CgAssetNode root = build(tree, CgValueType.struct(kind), CgOrigin.OVERRIDDEN, id);
-            return new CgAssetData(id, kind, null, root);
+            root = build(file, CgValueType.struct(kind), CgOrigin.OVERRIDDEN, id);
+            return;
         }
-        if (!parent.id.equals(named)) {
-            throw new CgAssetException(id + " names parent " + named + ", not " + parent.id);
-        }
-        if (parent.kind != kind) throw new CgAssetException(id + " is a " + kind.id() + "; its parent " + parent.id + " is not");
-        CgAssetNode root = parent.root.inherit(parent.id);
-        Object units = tree.get(CgType.UNITS);
-        CgAssetNode theirs = root.get(CgType.UNITS);
+        if (!parent.id.equals(named)) throw new CgAssetException(id + " names parent " + named + ", not " + parent.id);
+        CgAssetNode merged = parent.root.inherit(parent.id);
+        Object units = file.get(CgType.UNITS);
+        CgAssetNode theirs = merged.get(CgType.UNITS);
         if (units != null && theirs != null && !units.equals(theirs.toPlain())) {
             throw new CgAssetException(id + " declares units " + units + "; its parent " + parent.id + "'s are "
                     + theirs.toPlain() + ", and a child's units are its parent's");
         }
-        CgAssetData data = new CgAssetData(id, kind, parent, root);
-        data.apply(root, tree, CgShape.of(CgValueType.struct(kind), tree), true);
-        Object remove = tree.get(CgType.REMOVE);
+        merge(merged, file, CgShape.of(CgValueType.struct(kind), file), true);
+        Object remove = file.get(CgType.REMOVE);
         if (remove instanceof List) {
             for (Object r : (List<?>) remove) {
-                if (!(r instanceof String) || !data.removeElement(root, (String) r)) {
+                if (!(r instanceof String) || !removeElement(merged, (String) r)) {
                     throw new CgAssetException(id + " removes " + r + ", which " + parent.id + " does not hold");
                 }
             }
         }
-        return data;
+        root = merged;
+    }
+
+    // ── Edits ────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Applies {@code edit}, fires one {@link CgAssetChanged}, and answers the edit that undoes it to the byte.
+     *
+     * @throws CgAssetException if the path names nothing it can edit, or the result does not resolve; the asset is
+     *                          then as it was
+     */
+    public CgEdit apply(CgEdit edit) {
+        List<CgEdit> inverse = apply(Collections.singletonList(edit));
+        return inverse.get(0);
+    }
+
+    /**
+     * Applies {@code edits} in order as one transaction: one {@link CgAssetChanged}, and the inverses in the order that
+     * undoes them. If one fails, those before it are undone.
+     */
+    public List<CgEdit> apply(List<CgEdit> edits) {
+        List<CgEdit> applied = new ArrayList<>(edits.size());
+        List<CgEdit> inverses = new ArrayList<>(edits.size());
+        CgChange change = CgChange.VALUE;
+        for (CgEdit e : edits) {
+            CgEdit[] done;
+            try {
+                done = CgAssetEdits.apply(this, e);
+            } catch (RuntimeException failed) {
+                for (CgEdit undo : inverses) CgAssetEdits.apply(this, undo);
+                throw failed;
+            }
+            applied.add(done[0]);
+            inverses.add(0, done[1]);
+            change = change.max(CgAssetEdits.change(this, e));
+        }
+        CgAssetChanged event = new CgAssetChanged(this, applied, change);
+        for (Consumer<CgAssetChanged> l : listeners) l.accept(event);
+        return inverses;
+    }
+
+    /** Hears every change to this asset, undos included; run the answer to stop. */
+    public Runnable onChanged(Consumer<CgAssetChanged> listener) {
+        listeners.add(listener);
+        return () -> listeners.remove(listener);
+    }
+
+    @SuppressWarnings("unchecked")
+    static Map<Object, Object> map(Object o) {
+        return (Map<Object, Object>) o;
+    }
+
+    @SuppressWarnings("unchecked")
+    static List<Object> list(Object o) {
+        return (List<Object>) o;
+    }
+
+    /** A deep copy of a plain tree: maps keep their order. */
+    static Object copy(Object v) {
+        if (v instanceof Map) {
+            Map<Object, Object> out = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : ((Map<?, ?>) v).entrySet()) out.put(e.getKey(), copy(e.getValue()));
+            return out;
+        }
+        if (v instanceof List) {
+            List<Object> out = new ArrayList<>(((List<?>) v).size());
+            for (Object x : (List<?>) v) out.add(copy(x));
+            return out;
+        }
+        return v;
     }
 
     /** Its id, {@code namespace:path}. */
@@ -141,7 +224,7 @@ public final class CgAssetData {
     }
 
     @Nullable
-    private CgAssetNode at(String... path) {
+    CgAssetNode at(String... path) {
         CgAssetNode n = root;
         for (String p : path) {
             if (n == null) return null;
@@ -152,7 +235,7 @@ public final class CgAssetData {
 
     // ── The merge ────────────────────────────────────────────────────────────────────────
 
-    private void apply(CgAssetNode target, Map<?, ?> child, CgShape shape, boolean top) {
+    private void merge(CgAssetNode target, Map<?, ?> child, CgShape shape, boolean top) {
         for (Map.Entry<?, ?> e : child.entrySet()) {
             Object k = e.getKey();
             Object v = e.getValue();
@@ -165,7 +248,7 @@ public final class CgAssetData {
                 mergeList(existing, (List<?>) v, sub.items());
             } else if (v instanceof Map && existing != null && existing.kind() == CgAssetNode.Kind.MAP
                     && !(top && CgType.REMOVE.equals(k)) && mergeable(type, existing, (Map<?, ?>) v)) {
-                apply(existing, (Map<?, ?>) v, CgShape.of(type, merged(existing, (Map<?, ?>) v)), false);
+                merge(existing, (Map<?, ?>) v, CgShape.of(type, merged(existing, (Map<?, ?>) v)), false);
             } else {
                 CgAssetNode n = build(v, type, CgOrigin.OVERRIDDEN, id);
                 n.replaced = true;
@@ -181,7 +264,7 @@ public final class CgAssetData {
             list.said.add(eid);
             CgAssetNode existing = list.element(eid);
             if (existing != null) {
-                apply(existing, e, CgShape.of(elementType, merged(existing, e)), false);
+                merge(existing, e, CgShape.of(elementType, merged(existing, e)), false);
                 continue;
             }
             CgAssetNode n = build(e, elementType, CgOrigin.ADDED, id);
@@ -234,7 +317,7 @@ public final class CgAssetData {
     }
 
     /** Whether {@code type} holds a value, where a map naming a form is that value: untyped counts. */
-    private static boolean valueLike(@Nullable CgValueType type) {
+    static boolean valueLike(@Nullable CgValueType type) {
         if (type == null) return true;
         switch (type.kind()) {
             case STRUCT: case DISPATCH: case MAP: case ID_LIST: case LIST:
@@ -249,7 +332,7 @@ public final class CgAssetData {
         }
     }
 
-    private static boolean isForm(Map<?, ?> m) {
+    static boolean isForm(Map<?, ?> m) {
         for (String k : FORM_KEYS) {
             if (m.containsKey(k)) return true;
         }

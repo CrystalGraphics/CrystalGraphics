@@ -35,11 +35,11 @@ public class CgTypeTest {
     }
 
     @Test
-    public void anElementStartsWithItsIdAndHoldsOnlyWhatItDeclares() {
+    public void anElementOpensWithItsIdAndClosesWithEditor() {
         CgType emitter = types.declare("test:system.emitter", CgTypeKind.ELEMENT)
                 .property("name", CgValueType.STRING)
                 .register();
-        assertEquals(Arrays.asList("id", "name"), names(emitter));
+        assertEquals(Arrays.asList("id", "name", "editor"), names(emitter));
         assertTrue(emitter.property("id").required());
     }
 

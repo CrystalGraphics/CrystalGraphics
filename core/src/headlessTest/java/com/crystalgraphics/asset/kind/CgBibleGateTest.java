@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -138,6 +139,7 @@ public class CgBibleGateTest {
         private final List<String> found;
         /** Each resolved allOf once, so a schema keeps one identity and a cycle is seen as one. */
         private final Map<JsonObject, JsonObject> merged = new IdentityHashMap<>();
+        private final Map<JsonObject, JsonObject> required = new IdentityHashMap<>();
 
         Walk(JsonObject defs, List<String> found) {
             this.defs = defs;
@@ -172,7 +174,10 @@ public class CgBibleGateTest {
             List<String> declaredOrder = new ArrayList<>();
             for (CgProperty p : type.properties()) {
                 if (props.has(p.name())) declaredOrder.add(p.name());
-                else if (!open && !p.name().equals(skip)) found.add(path + "." + p.name() + ": declared, not in the schema");
+                else if (!p.name().equals(skip)) {
+                    // An open schema still orders nothing it leaves undeclared, so the writers would disagree.
+                    found.add(path + "." + p.name() + (open ? ": declared, the schema leaves it open" : ": declared, not in the schema"));
+                }
             }
             if (!declaredOrder.equals(schemaOrder)) found.add(path + ": key order " + declaredOrder + ", the schema's " + schemaOrder);
             if (!open && type.open()) found.add(path + ": declared open, the schema is closed");
@@ -184,6 +189,10 @@ public class CgBibleGateTest {
             if (t.kind() == CgValueType.Kind.SELF) {
                 t = CgValueType.struct(owner);
             }
+            if (s.entrySet().isEmpty() && ordered(t)) {
+                found.add(path + ": declared " + t + ", the schema leaves it untyped");
+                return;
+            }
             if (s.entrySet().isEmpty() || t.kind() == CgValueType.Kind.VALUE) return;
             if (t.kind() == CgValueType.Kind.TREE) {
                 if (s.has("properties")) found.add(path + ": the schema types a struct, declared an untyped tree");
@@ -194,12 +203,17 @@ public class CgBibleGateTest {
                 found.add(path + ": no alternative of " + t + " matches the schema's " + shape(s));
                 return;
             }
+            if (s.has("oneOf") && t.kind() == CgValueType.Kind.DISPATCH) {
+                family(path, s, t.type(), seen);
+                return;
+            }
             if (s.has("oneOf") && t.kind() == CgValueType.Kind.STRUCT && t.type() != null && allStructs(s)) {
                 flatUnion(path, s, t.type(), owner, seen);
                 return;
             }
-            if (s.has("oneOf")) {
-                for (JsonElement alt : s.getAsJsonArray("oneOf")) if (matches(path, alt.getAsJsonObject(), t, owner, seen)) return;
+            String choice = s.has("oneOf") ? "oneOf" : s.has("anyOf") ? "anyOf" : null;
+            if (choice != null) {
+                for (JsonElement alt : s.getAsJsonArray(choice)) if (matches(path, alt.getAsJsonObject(), t, owner, seen)) return;
                 found.add(path + ": " + t + " matches none of the schema's alternatives " + shape(s));
                 return;
             }
@@ -236,6 +250,21 @@ public class CgBibleGateTest {
                     object(path, s, t, owner, seen);
                     return;
                 default:
+            }
+        }
+
+        /** Whether the writer orders keys inside a value of {@code t}: what an untyped schema leaves in read order. */
+        private static boolean ordered(CgValueType t) {
+            switch (t.kind()) {
+                case STRUCT: case DISPATCH: case ID_LIST: case CURVE:
+                    return true;
+                case MAP: case LIST:
+                    return ordered(t.element());
+                case ONE_OF:
+                    for (CgValueType alt : t.alternatives()) if (ordered(alt)) return true;
+                    return false;
+                default:
+                    return false;
             }
         }
 
@@ -285,9 +314,38 @@ public class CgBibleGateTest {
             }
         }
 
-        /** A family against a schema whose key property lists the members; each member holds the schema's keys. */
+        /**
+         * A family against a {@code oneOf} whose alternatives are its members, each chosen by its key's {@code const};
+         * or, flat, one object whose key's {@code enum} lists the members and whose keys every member holds.
+         */
         private void family(String path, JsonObject s, CgType family, Set<String> seen) {
             s = resolve(s);
+            String key = family.dispatchKey();
+            if (!s.has("oneOf")) {
+                flatFamily(path, s, family, seen);
+                return;
+            }
+            Map<String, JsonObject> alternatives = new LinkedHashMap<>();
+            for (JsonElement a : s.getAsJsonArray("oneOf")) {
+                JsonObject alt = withRequired(resolve(a.getAsJsonObject()), s);
+                JsonObject chooser = alt.has("properties") ? alt.getAsJsonObject("properties").getAsJsonObject(key) : null;
+                if (chooser == null || !chooser.has("const")) {
+                    found.add(path + ": an alternative without a const '" + key + "': " + shape(alt));
+                    continue;
+                }
+                alternatives.put(chooser.get("const").getAsString(), alt);
+            }
+            List<String> members = new ArrayList<>(family.members().keySet());
+            if (!members.equals(new ArrayList<>(alternatives.keySet()))) {
+                found.add(path + "." + key + ": members " + members + ", the schema's " + alternatives.keySet());
+            }
+            for (Map.Entry<String, CgType> m : family.members().entrySet()) {
+                JsonObject alt = alternatives.get(m.getKey());
+                if (alt != null) struct(path + "<" + m.getKey() + ">", alt, m.getValue(), seen, key);
+            }
+        }
+
+        private void flatFamily(String path, JsonObject s, CgType family, Set<String> seen) {
             String key = family.dispatchKey();
             JsonObject props = s.has("properties") ? s.getAsJsonObject("properties") : new JsonObject();
             if (!props.has(key)) {
@@ -304,6 +362,19 @@ public class CgBibleGateTest {
             for (Map.Entry<String, CgType> m : family.members().entrySet()) {
                 struct(path + "<" + m.getKey() + ">", s, m.getValue(), seen, key);
             }
+        }
+
+        /** {@code alt} with the keys {@code outer} requires: a list's {@code required: [id]} beside its family's {@code oneOf}. */
+        private JsonObject withRequired(JsonObject alt, JsonObject outer) {
+            if (!outer.has("required") || outer.getAsJsonArray("required").size() == 0) return alt;
+            JsonObject copy = required.get(alt);   // one copy, so the seen-guard knows it on a recursive family
+            if (copy != null) return copy;
+            copy = alt.deepCopy();
+            required.put(alt, copy);
+            JsonArray keys = copy.has("required") ? copy.getAsJsonArray("required") : new JsonArray();
+            for (JsonElement r : outer.getAsJsonArray("required")) if (!keys.contains(r)) keys.add(r);
+            copy.add("required", keys);
+            return copy;
         }
 
         private boolean allStructs(JsonObject s) {

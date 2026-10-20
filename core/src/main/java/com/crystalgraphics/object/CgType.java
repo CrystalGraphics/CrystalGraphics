@@ -379,10 +379,17 @@ public final class CgType {
                 property(UNSUPPORTED, CgValueType.TREE);
                 property(EDITOR, CgValueType.TREE).flags(CgPropertyFlag.EDITOR_ONLY);
                 property(REMOVE, CgValueType.listOf(CgValueType.STRING));
+            } else if (kind == CgTypeKind.ELEMENT && !declares(EDITOR)) {
+                property(EDITOR, CgValueType.TREE).flags(CgPropertyFlag.EDITOR_ONLY);
             }
             CgType type = registry.add(new CgType(this));
             for (Consumer<CgType> then : onRegister) then.accept(type);
             return type;
+        }
+
+        private boolean declares(String name) {
+            for (PropertyBuilder p : props) if (p.name.equals(name)) return true;
+            return false;
         }
 
         private PropertyBuilder current() {
