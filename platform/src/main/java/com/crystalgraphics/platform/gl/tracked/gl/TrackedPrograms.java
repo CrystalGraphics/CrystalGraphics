@@ -22,6 +22,7 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -109,6 +110,10 @@ public final class TrackedPrograms {
     /** The last {@link #feedDisabledInputs}: the program table and layouts it was given, and the layouts it answered. */
     private CgGlslCompiler.Reflection fedTable;
     private List<CgPipelineDesc.VertexBuffer> fedBase, fedLayouts;
+    /** {@link #layoutsFeeding}'s answer per program, then per layout list: worked out once. */
+    private final Map<CgGlslCompiler.Reflection, Map<List<CgPipelineDesc.VertexBuffer>, Object>> fedBy = new IdentityHashMap<>();
+    /** The answer for layouts feeding every input: no binding added. */
+    private static final Object FEEDS_ALL = new Object();
     /** Where links run shaderc, from {@link #compileInBackground}; null: at the link. */
     private ExecutorService worker;
 
@@ -643,12 +648,20 @@ public final class TrackedPrograms {
      * An input the vertex array leaves disabled reads GL's current attribute value, {@code (0, 0, 0, 1)}. A device has
      * no such thing, so those inputs read one constant at stride 0 from a binding of their own.
      */
+    @SuppressWarnings("unchecked")
     public void feedDisabledInputs(CgDrawState state) {
         // The last draw's answer while its program and layouts hold: a draw allocates nothing.
         if (current.table != fedTable || state.vertexLayouts != fedBase) {
             fedTable = current.table;
             fedBase = state.vertexLayouts;
-            fedLayouts = layoutsFeeding(fedBase);
+            Map<List<CgPipelineDesc.VertexBuffer>, Object> byBase = fedBy.get(fedTable);
+            if (byBase == null) fedBy.put(fedTable, byBase = new HashMap<>());
+            Object answer = byBase.get(fedBase);
+            if (answer == null) {
+                List<CgPipelineDesc.VertexBuffer> computed = layoutsFeeding(fedBase);
+                byBase.put(fedBase, answer = computed == null ? FEEDS_ALL : computed);
+            }
+            fedLayouts = answer == FEEDS_ALL ? null : (List<CgPipelineDesc.VertexBuffer>) answer;
         }
         if (fedLayouts == null) return;
         state.vertexLayouts = fedLayouts;

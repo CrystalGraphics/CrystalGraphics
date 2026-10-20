@@ -17,6 +17,7 @@ import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.property.CgEffectTree;
 import com.crystalgraphics.render.property.CgSpatialTree;
+import com.crystalgraphics.util.CgBoxedInts;
 import com.crystalgraphics.util.CgBufferUtils;
 
 import javax.annotation.Nullable;
@@ -790,7 +791,7 @@ public final class CgRecording {
         if (slot != null) return slot;
         int s = resources.size();
         resources.add(resource);
-        slots.put(resource, s);
+        slots.put(resource, CgBoxedInts.of(s));
         if (s == writes.length) writes = Arrays.copyOf(writes, s * 2);
         return s;
     }

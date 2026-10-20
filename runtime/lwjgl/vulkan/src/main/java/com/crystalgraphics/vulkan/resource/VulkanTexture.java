@@ -13,8 +13,6 @@ import org.lwjgl.vulkan.VkImageViewCreateInfo;
 
 import java.nio.LongBuffer;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
 
 import static com.crystalgraphics.vulkan.format.VulkanCheck.check;
 import static org.lwjgl.system.MemoryStack.stackPush;
@@ -45,7 +43,9 @@ public final class VulkanTexture implements CgGpuTexture {
     /** Whether its mipmaps are owed once that batch lands. */
     public boolean mipmapsOwed;
     private final int[] layouts;
-    private final Map<Long, Long> views = new HashMap<>();
+    /** Its views by range key, a handful each: parallel arrays, so a lookup boxes nothing. */
+    private long[] viewKeys = new long[4], viewIds = new long[4];
+    private int viewCount;
 
     public VulkanTexture(Desc desc, long image, long allocation, int format, int aspect) {
         this(desc, image, allocation, format, aspect, restingFor(desc, aspect), VK_IMAGE_LAYOUT_UNDEFINED);
@@ -266,8 +266,7 @@ public final class VulkanTexture implements CgGpuTexture {
     public long view(VkDevice device, CgTextureView v, boolean attachment) {
         long key = ((long) v.baseMip() << 48) | ((long) v.mips() << 32) | ((long) v.baseLayer() << 16)
                 | ((long) v.layers() << 1) | (attachment ? 1 : 0);
-        Long cached = views.get(key);
-        if (cached != null) return cached;
+        for (int i = 0; i < viewCount; i++) if (viewKeys[i] == key) return viewIds[i];
         int type;
         if (attachment) type = VK_IMAGE_VIEW_TYPE_2D;
         else if (desc.kind() == Kind.D3) type = VK_IMAGE_VIEW_TYPE_3D;
@@ -284,13 +283,18 @@ public final class VulkanTexture implements CgGpuTexture {
                     .baseArrayLayer(v.baseLayer()).layerCount(v.layers());
             LongBuffer lp = stack.mallocLong(1);
             check(vkCreateImageView(device, ci, null, lp), "vkCreateImageView");
-            views.put(key, lp.get(0));
+            if (viewCount == viewKeys.length) {
+                viewKeys = Arrays.copyOf(viewKeys, viewCount * 2);
+                viewIds = Arrays.copyOf(viewIds, viewCount * 2);
+            }
+            viewKeys[viewCount] = key;
+            viewIds[viewCount++] = lp.get(0);
             return lp.get(0);
         }
     }
 
     public void destroyViews(VkDevice device) {
-        for (long v : views.values()) vkDestroyImageView(device, v, null);
-        views.clear();
+        for (int i = 0; i < viewCount; i++) vkDestroyImageView(device, viewIds[i], null);
+        viewCount = 0;
     }
 }

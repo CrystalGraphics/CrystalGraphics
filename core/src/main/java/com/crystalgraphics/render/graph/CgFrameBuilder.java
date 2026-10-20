@@ -15,6 +15,7 @@ import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.CgBoxedInts;
 import com.crystalgraphics.util.trace.CgChannels;
 
 import javax.annotation.Nullable;
@@ -206,7 +207,7 @@ public final class CgFrameBuilder {
                 eventIndex[p].add(e);
                 Integer slot = slots.get(resource);
                 if (slot == null) {
-                    slot = resources.size();
+                    slot = CgBoxedInts.of(resources.size());
                     slots.put(resource, slot);
                     resources.add(resource);
                     if (readers.size() <= slot) readers.add(new IntList());

@@ -219,8 +219,11 @@ public final class CgDrawChunk {
         return recordCounts[firsts[draw] + k];
     }
 
+    /** {@code CgIndirect.values()}, once: {@code values()} copies its array each call. */
+    private static final CgIndirect[] INDIRECT_MODES = CgIndirect.values();
+
     public CgIndirect indirectMode(int draw) {
-        return CgIndirect.values()[countModes[draw] & 3];
+        return INDIRECT_MODES[countModes[draw] & 3];
     }
 
     /** What the count is multiplied by. */
