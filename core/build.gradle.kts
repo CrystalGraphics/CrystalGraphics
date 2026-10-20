@@ -160,6 +160,8 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
     // The spec lives in the private plan repository beside CrystalGUI's checkout; the bible gate skips without it.
     val spec = rootProject.file("../plan/crystalgraphics/vfx-aaa/spec")
     if (spec.isDirectory) systemProperty("crystalgraphics.spec", spec.absolutePath)
+    // O3's round-trip gate, asked for: -Pkits=<namespace>=<dir>;...
+    providers.gradleProperty("kits").orNull?.let { systemProperty("crystalgraphics.kits", it) }
 }
 
 tasks.named("check") { dependsOn(headlessTestTask) }

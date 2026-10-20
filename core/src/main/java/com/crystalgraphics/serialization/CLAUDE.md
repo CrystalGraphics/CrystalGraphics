@@ -14,7 +14,8 @@ for storage, a `CgFormat`. **Using it: `docs/SERIALIZATION.md`, the guide**, imp
 
 - **Gson is Minecraft's**: compile against 2.2.4, 1.7.10's. No static `JsonParser.parseString` (2.8.6), no API newer.
 - **SnakeYAML is ours, relocated** in the shipped jar (`com.crystalgraphics.shadow.org.yaml.snakeyaml`). Only
-  `YamlFileFormat` names it; nothing outside `core/` may import `org.yaml`. A YAML file loads through
+  `format.file` names it (`YamlFileFormat`, and `YamlDocument`, a text with each key's and element's line); nothing
+  outside `core/` may import `org.yaml`. A YAML file loads through
   `SafeConstructor` only: it never instantiates a class it names.
 - **A codec that can update in place overrides `decode(ops, in, target)`** and answers the target. Every other codec
   inherits the default, a new value; never answer a half-new mix.

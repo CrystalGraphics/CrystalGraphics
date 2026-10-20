@@ -162,6 +162,97 @@ public final class CgCommonStructs {
             .property("scale", VEC3).quantity(CgQuantity.SCALE).defaultValue(1)
             .register();
 
+    // ── How a value is written ({@code common.schema.json#/$defs/value} and {@code curve}) ─────────────────────────────
+
+    /** A curve's keys, or its baked samples ({@code core.md} § Curves). */
+    static final CgType CURVE_KEYS = CgTypes.struct("crystalgraphics:curve.keys")
+            .property("keys", CgValueType.ARRAY).required()
+            .property("default", CgValueType.TREE)
+            .property("pre", STRING)
+            .property("post", STRING)
+            .register();
+    static final CgType CURVE_SAMPLES_RANGE = CgTypes.struct("crystalgraphics:curve.samples.range")
+            .property("range", CgValueType.ARRAY).required()
+            .property("values", CgValueType.ARRAY).required()
+            .register();
+    static final CgType CURVE_SAMPLES = CgTypes.struct("crystalgraphics:curve.samples")
+            .property("samples", CgValueType.struct(CURVE_SAMPLES_RANGE)).required()
+            .property("default", CgValueType.TREE)
+            .property("pre", STRING)
+            .property("post", STRING)
+            .register();
+
+    /** A curve as a file writes it: an asset's id, its keys or its samples. */
+    public static final CgValueType CURVE = CgValueType.oneOf(STRING, CgValueType.struct(CURVE_KEYS),
+            CgValueType.struct(CURVE_SAMPLES));
+
+    private static CgType form(String key, CgValueType value) {
+        return CgTypes.struct("crystalgraphics:value." + key).property(key, value).required().register();
+    }
+
+    static final CgType RANGE_FORM = CgTypes.struct("crystalgraphics:value.range")
+            .property("range", CgValueType.ARRAY).required()
+            .property("per_channel", BOOL)
+            .property("locked", STRING)
+            .register();
+    static final CgType PICK_FORM = form("pick", CgValueType.ARRAY);
+    static final CgType CURVE_FORM = CgTypes.struct("crystalgraphics:value.curve")
+            .property("curve", CURVE).required()
+            .property("by", STRING)
+            .register();
+    static final CgType CURVES_FORM = CgTypes.struct("crystalgraphics:value.curves")
+            .property("curves", CgValueType.listOf(CURVE)).required()
+            .property("by", STRING)
+            .register();
+    static final CgType GRADIENT_FORM = CgTypes.struct("crystalgraphics:value.gradient")
+            .property("gradient", CURVE).required()
+            .property("by", STRING)
+            .register();
+    static final CgType ARRAY_FORM = CgTypes.struct("crystalgraphics:value.array")
+            .property("array", CgValueType.ARRAY).required()
+            .property("by", STRING)
+            .property("interpolate", BOOL)
+            .property("address", STRING)
+            .register();
+    static final CgType REMAP = CgTypes.struct("crystalgraphics:value.bind.remap")
+            .property("in", CgValueType.ARRAY).required()
+            .property("out", CgValueType.ARRAY).required()
+            .register();
+    static final CgType BIND_FORM = CgTypes.struct("crystalgraphics:value.bind")
+            .property("bind", STRING).required()
+            .property("scale", CgValueType.TREE)
+            .property("default", CgValueType.TREE)
+            .property("component", STRING)
+            .property("remap", CgValueType.struct(REMAP))
+            .property("mode", CgValueType.oneOf(STRING, CgValueType.listOf(STRING)))
+            .register();
+    static final CgType FN_FORM = CgTypes.struct("crystalgraphics:value.fn")
+            .property("fn", STRING).required()
+            .property("inputs", mapOfValues())
+            .register();
+    static final CgType MESH_FORM = form("mesh", STRING);
+    static final CgType TEXTURE_FORM = form("texture", STRING);
+    static final CgType FIELD_FORM = form("field", CgValueType.TREE);
+    static final CgType UNIT_FORM = CgTypes.struct("crystalgraphics:value.unit").open()
+            .property("unit", STRING).required()
+            .property("value", CgValueType.TREE)
+            .property("range", CgValueType.TREE)
+            .property("curve", CgValueType.TREE)
+            .property("by", CgValueType.TREE)
+            .register();
+
+    /**
+     * A value as a file writes it ({@code core.md} § Values): a constant, a list, or a map naming its form, else a
+     * struct of values. Alternatives in the schema's order: a map takes the first whose required key it holds, so
+     * {@code { unit: turns, range: [...] }} is a range with a unit beside it.
+     */
+    public static final CgValueType VALUE_FORMS = CgValueType.oneOf(STRING, CgValueType.ARRAY,
+            CgValueType.struct(RANGE_FORM), CgValueType.struct(PICK_FORM), CgValueType.struct(CURVE_FORM),
+            CgValueType.struct(CURVES_FORM), CgValueType.struct(GRADIENT_FORM), CgValueType.struct(ARRAY_FORM),
+            CgValueType.struct(BIND_FORM), CgValueType.struct(FN_FORM), CgValueType.struct(MESH_FORM),
+            CgValueType.struct(TEXTURE_FORM), CgValueType.struct(FIELD_FORM), CgValueType.struct(UNIT_FORM),
+            mapOfValues());
+
     static void register() {
     }
 }
