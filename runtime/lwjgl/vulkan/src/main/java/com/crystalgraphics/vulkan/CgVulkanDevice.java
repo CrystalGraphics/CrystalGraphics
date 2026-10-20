@@ -140,7 +140,8 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     private final int maxPushDescriptors;
     private final Thread owner = Thread.currentThread();
     private final Map<CgGpuSampler.Desc, VulkanSampler> samplers = new HashMap<>();
-    private final Set<Object> live = Collections.newSetFromMap(new IdentityHashMap<>());
+    /** Every object made and not yet released: synchronized, since kernels' are made on the compile worker. */
+    private final Set<Object> live = Collections.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
     private final Map<VulkanBuffer, Map<Long, Long>> texelViews = new IdentityHashMap<>();
     private final VulkanStaging staging;
     private final VulkanEncoder encoder;
@@ -456,6 +457,12 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
             samplers.put(desc, s);
             return s;
         }
+    }
+
+    /** Its pipeline cache is internally synchronized and {@code live} is too: modules, layouts and pipelines from any thread. */
+    @Override
+    public boolean createsOnAnyThread() {
+        return true;
     }
 
     @Override

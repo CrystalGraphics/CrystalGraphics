@@ -84,6 +84,8 @@ public final class TrackedPrograms {
         /** A link whose shaderc runs on the worker; the first use of the program finishes it. */
         Future<CgGlslCompiler.Reflection> pending;
         String pendingLabel;
+        /** A kernel's device objects the worker built for the pending link, where the device allows it. */
+        Prebuilt prebuilt;
 
         Program(int name) { this.name = name; }
     }
@@ -245,23 +247,66 @@ public final class TrackedPrograms {
             } catch (Exception e) {
                 throw new IllegalStateException(e);
             }
-            install(p, t, label);
+            install(p, t, label, null);
             return;
         }
+        Prebuilt pre = device.createsOnAnyThread() ? new Prebuilt() : null;
+        p.prebuilt = pre;
         p.pending = worker.submit(() -> {
+            CgGlslCompiler.Reflection t;
             try (CgTrace.Zone ignored = CgTrace.zone(GL, SPIRV)) {
-                return spirv.call();
+                t = spirv.call();
             }
+            if (pre != null && t instanceof CgGlslCompiler.ComputeProgram kernel) pre.build(device, kernel, label);
+            return t;
         });
         p.pendingLabel = label;
+    }
+
+    /**
+     * A kernel's binding layout, module and pipeline made on the compile worker, so the frame that takes the link only
+     * installs them (render-shader-compile K4). A link dropped first releases whatever it made.
+     */
+    private static final class Prebuilt {
+        private CgBindingLayout layout;
+        private CgShaderModule module;
+        private CgComputePipeline pipeline;
+        private boolean dropped;
+
+        synchronized void build(CgDevice device, CgGlslCompiler.ComputeProgram t, String label) {
+            if (dropped) return;
+            layout = device.createBindingLayout(label, t.slots());
+            module = device.createShaderModule(CgShaderModule.Stage.COMPUTE, t.spirv(), label);
+            try (CgTrace.Zone ignored = CgTrace.zone(GL, PIPELINE)) {
+                pipeline = device.createComputePipeline(label, module, layout);
+            }
+        }
+
+        /** Its objects for the owner to install, or null where the worker made none. */
+        synchronized boolean ready() {
+            return pipeline != null;
+        }
+
+        /** The link will never install: what was made is released. */
+        synchronized void drop(CgTracker tracker) {
+            dropped = true;
+            if (pipeline != null) {
+                tracker.release(pipeline);
+                tracker.release(module);
+                tracker.release(layout);
+                pipeline = null;
+            }
+        }
     }
 
     /** Waits for a link's shaderc, then makes its modules and pipeline: here, on the owner thread. */
     private void finish(Program p) {
         Future<CgGlslCompiler.Reflection> pending = p.pending;
         String label = p.pendingLabel;
+        Prebuilt pre = p.prebuilt;
         p.pending = null;
         p.pendingLabel = null;
+        p.prebuilt = null;
         CgGlslCompiler.Reflection t;
         try (CgTrace.Zone ignored = pending.isDone() ? null : CgTrace.zone(GL, SPIRV_WAIT)) {
             t = pending.get();
@@ -275,11 +320,15 @@ public final class TrackedPrograms {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(label + ": interrupted waiting for shaderc", e);
         }
-        install(p, t, label);
+        install(p, t, label, pre);
     }
 
     /** A link nobody will finish: superseded by another, or the program deleted. */
-    private static void drop(Program p) {
+    private void drop(Program p) {
+        if (p.prebuilt != null) {
+            p.prebuilt.drop(tracker);
+            p.prebuilt = null;
+        }
         if (p.pending == null) return;
         p.pending.cancel(false);
         p.pending = null;
@@ -287,13 +336,21 @@ public final class TrackedPrograms {
     }
 
     /** The device's half of a link: the binding layout, the modules and, for a kernel, its pipeline. */
-    private void install(Program p, CgGlslCompiler.Reflection reflection, String label) {
+    private void install(Program p, CgGlslCompiler.Reflection reflection, String label, Prebuilt pre) {
         releaseLinked(p);
         if (reflection instanceof CgGlslCompiler.ComputeProgram t) {
-            CgBindingLayout layout = device.createBindingLayout(label, t.slots());
-            CgShaderModule module = device.createShaderModule(CgShaderModule.Stage.COMPUTE, t.spirv(), label);
-            try (CgTrace.Zone ignored = CgTrace.zone(GL, PIPELINE)) {
-                p.pipeline = device.createComputePipeline(label, module, layout);
+            CgBindingLayout layout;
+            CgShaderModule module;
+            if (pre != null && pre.ready()) {
+                layout = pre.layout;
+                module = pre.module;
+                p.pipeline = pre.pipeline;
+            } else {
+                layout = device.createBindingLayout(label, t.slots());
+                module = device.createShaderModule(CgShaderModule.Stage.COMPUTE, t.spirv(), label);
+                try (CgTrace.Zone ignored = CgTrace.zone(GL, PIPELINE)) {
+                    p.pipeline = device.createComputePipeline(label, module, layout);
+                }
             }
             p.objects.addAll(List.of(p.pipeline, module, layout));
             p.vertexData = uniformBlock(t.uniformBinding(), t.uniformSize());
