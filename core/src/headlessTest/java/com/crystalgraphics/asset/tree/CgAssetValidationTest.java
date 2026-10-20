@@ -12,6 +12,7 @@ import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgModuleTypes;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
+import com.crystalgraphics.object.CgPropertyPath;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.validate.CgIssue;
 import com.crystalgraphics.object.validate.CgValidation;
@@ -110,6 +111,41 @@ public class CgAssetValidationTest {
         CgValidation v = d.validate(CgValidation.Usecase.LOAD);
         assertTrue(v.valid());
         assertEquals("[WARNING unsupported " + ID + " /unsupported[0]]", issues(CgParticleKinds.EMITTER, yaml).toString());
+    }
+
+    @Test
+    public void aRegisteredValidatorRunsOnlyOnAValidAssetItTakes() {
+        List<String> ran = new ArrayList<>();
+        Runnable stop = CgAssetValidator.register(new CgAssetValidator() {
+            @Override
+            public boolean canValidate(CgValidation.Usecase usecase) {
+                return usecase == CgValidation.Usecase.COOK;
+            }
+
+            @Override
+            public boolean canValidate(CgAssetData asset) {
+                return asset.kind() == CgParticleKinds.EMITTER;
+            }
+
+            @Override
+            public void validate(CgAssetData asset, CgValidation into) {
+                ran.add(asset.id());
+                into.warning(CgPropertyPath.of(asset.id()), "house_rule", "checked");
+            }
+        });
+        try {
+            Map<?, ?> good = (Map<?, ?>) CgAssetYaml.read(EMITTER);
+            Map<?, ?> bad = (Map<?, ?>) CgAssetYaml.read(EMITTER.replace("simulation: gpu", "simulation: cpu"));
+            CgAssetData.of(ID, CgParticleKinds.EMITTER, good, null).validate(CgValidation.Usecase.LOAD);
+            assertEquals("not for this use case", "[]", ran.toString());
+            CgValidation cooked = CgAssetData.of(ID, CgParticleKinds.EMITTER, good, null).validate(CgValidation.Usecase.COOK);
+            assertEquals("[" + ID + "]", ran.toString());
+            assertEquals("house_rule", cooked.issues().get(0).getCode());
+            CgAssetData.of(ID, CgParticleKinds.EMITTER, bad, null).validate(CgValidation.Usecase.COOK);
+            assertEquals("not on an asset already failing", 1, ran.size());
+        } finally {
+            stop.run();
+        }
     }
 
     @Test

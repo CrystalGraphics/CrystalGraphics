@@ -196,8 +196,9 @@ public final class CgAssetData {
     }
 
     /**
-     * Checks the resolved asset against its declarations and its types' validators. A child's issues include what it
-     * inherits: an asset is valid only whole.
+     * Checks the resolved asset: its declarations and its types' validators first (Unreal's {@code IsDataValid}), then,
+     * only if those found no error, every registered {@link CgAssetValidator} that takes it. A child's issues include
+     * what it inherits: an asset is valid only whole.
      *
      * <pre>{@code
      * CgValidation v = big.validate(CgValidation.Usecase.LOAD);
@@ -207,6 +208,10 @@ public final class CgAssetData {
     public CgValidation validate(CgValidation.Usecase usecase) {
         CgValidation into = new CgValidation(usecase);
         CgAssetValidation.run(id, kind, resolved(), into);
+        if (!into.valid()) return into;
+        for (CgAssetValidator v : CgAssetValidator.all()) {
+            if (v.canValidate(usecase) && v.canValidate(this)) v.validate(this, into);
+        }
         return into;
     }
 

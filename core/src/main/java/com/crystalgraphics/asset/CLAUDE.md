@@ -29,7 +29,8 @@ edited there with undo, validated, and written back by one writer. The 20 kinds 
   `registerEngine()` registers the engine's own assets (its built-in modules) as code with their definitions.
 - **A load's state changes only on its pipeline's loop**: workers parse, merge, validate and compile; `drain`
   publishes. Hard references (`CgAssetReferences`) compile first; a failure fails its referrers, naming it.
-- **Validation reads the resolved asset**: a child is valid only with what it inherits. An error refuses it at load
+- **Validation reads the resolved asset**: a child is valid only with what it inherits. Its own checks run first (the
+  declared ones, then its types' validators); registered `CgAssetValidator`s only if those passed. An error refuses it at load
   and fails a cook; `unsupported` entries warn and are skipped.
 - Gates: `CgAssetYamlTest`, `CgAssetDataTest`, `CgAssetEditTest`, `CgAssetValidationTest`, `CgAssetRegistryTest`,
   `CgAssetPipelineTest`; the kits' round trip, random-edit undo, registration, validation and loading are `CgAssetRoundTripGateTest`, run with `-Pkits=<namespace>=<dir>;...`.

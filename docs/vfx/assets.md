@@ -200,6 +200,22 @@ CgTypes.element("mymod:renderer.arc")
         .register();
 ```
 
+To hold assets of any kind, yours or another mod's, to a rule of your own, register a `CgAssetValidator`, as Unreal's
+editor validators do. It runs only on an asset whose own checks passed, for the use cases it accepts:
+
+```java
+CgAssetValidator.register(new CgAssetValidator() {
+    public boolean canValidate(CgValidation.Usecase usecase) { return usecase == CgValidation.Usecase.COOK; }
+    public boolean canValidate(CgAssetData asset) { return asset.kind() == CgParticleKinds.SYSTEM; }
+    public void validate(CgAssetData asset, CgValidation into) {
+        Object emitters = asset.resolved().get("emitters");
+        if (emitters instanceof List && ((List<?>) emitters).size() > 32) {
+            into.warning(CgPropertyPath.of(asset.id()).key("emitters"), "many_emitters", "more than 32 emitters");
+        }
+    }
+});
+```
+
 ## Your own types
 
 Kinds and their structs are declared once, in Java, and everything (reading, writing, inheritance, the editor)
