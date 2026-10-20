@@ -12,6 +12,7 @@ import com.crystalgraphics.render.post.volume.CgPostVolume;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.util.CgRandom;
+import com.crystalgraphics.world.CgCharacterClock;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
@@ -89,6 +90,11 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     int ownerSlot = -1;
     /** The entity it follows and the attachment point on it ({@code CgEntityAttachments}); -1 for none. */
     int followEntity = -1, followPoint;
+    /** The character clock it runs on, or null for the world's; and the registry version it was looked up at. */
+    private CgCharacterClock clock;
+    private int clockVersion = -1;
+    /** This frame's pace of its time, set by the system: 1 on the world's clock, 0 held. */
+    float timeRate = 1f;
     /** Keeps its offset from the point ({@link #followKeepingOffset}): NaN until its first placement measures it. */
     boolean followKeep;
     double followDx = Double.NaN, followDy, followDz;
@@ -397,6 +403,42 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     /** Whether it is culled and holding ({@link CgVfxScalability.Reaction#SLEEP}): ticking and drawing nothing. */
     public final boolean asleep() {
         return asleep;
+    }
+
+    /**
+     * Runs this effect on a character's clock instead of the world's: it holds while the character is frozen and runs
+     * slow under its rate. An effect that follows an entity takes that entity's clock by itself, if one exists.
+     *
+     * <pre>{@code
+     * VFX.play(new Aura(look, x, y, z).clock(CgCharacterClock.of(attackerId)));
+     * clock.freeze(6);   // the aura holds six game ticks; effects of other characters play on
+     * }</pre>
+     */
+    public final E clock(CgCharacterClock clock) {
+        this.clock = clock;
+        return self();
+    }
+
+    /**
+     * The pace of this effect's time against the world's: 1 normally, 0 held by its character's freeze. Set once an
+     * update, before its ticks.
+     */
+    public final float timeRate() {
+        return timeRate;
+    }
+
+    final boolean hasClock() {
+        return clock != null;
+    }
+
+    /** Resolves {@link #timeRate} for this update; true if it runs on a character's clock. */
+    final boolean resolveRate(float partialTick) {
+        if (clock == null && followEntity >= 0 && clockVersion != CgCharacterClock.version()) {
+            clockVersion = CgCharacterClock.version();
+            clock = CgCharacterClock.find(followEntity);
+        }
+        timeRate = clock == null ? 1f : clock.pace(partialTick);
+        return clock != null;
     }
 
     /** The entity it follows by network id, or -1. */

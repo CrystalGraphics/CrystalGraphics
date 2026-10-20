@@ -282,7 +282,15 @@ until it gets there. This is how a player joining late sees a lasting cue.
 ### Other controls
 
 - **`effect.ground(y)`** gives particles a floor where the host has no world (the debug harness).
-- **`system.timeScale(s)`** slows or speeds every effect in a system.
+- **`CgWorld.timeDilation(s)`** slows or speeds every effect on a world (0.25 is slow motion, 0 holds them).
+- **A character's clock** holds and slows the effects that follow it, and only those:
+
+  ```java
+  CgCharacterClock clock = CgCharacterClock.of(attackerId);   // effects following attackerId find it by themselves
+  clock.freeze(6);                                            // hitstop: their effects and particles hold six game ticks
+  clock.rate(0.5f);                                           // slow motion for them alone
+  VFX.play(new Aura(look, x, y, z).clock(clock));             // or name the clock
+  ```
 - **The player's settings apply by themselves**: particle density, quality tier, pause, tick rate. An effect never
   reads them.
 

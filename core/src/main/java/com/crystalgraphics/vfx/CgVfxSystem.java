@@ -11,6 +11,7 @@ import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.render.CgWarmBudget;
+import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgSortLayer;
@@ -264,7 +265,8 @@ public final class CgVfxSystem {
     private final List<CgVfxOwner> owners = new ArrayList<>();
     private final double[] pose = new double[CgEntityQuery.POSE_LENGTH], point = new double[3];
     private final Quaternionf turn = new Quaternionf();
-    private float timeScale = 1f;
+    /** The world whose time dilation scales every effect's time; null for a system that runs on real pace alone. */
+    private CgWorld world;
     private final CgVfxGpuSteps gpuSteps = new CgVfxGpuSteps();
     private boolean rangePrepared;
     /** Ticks since the particles' last step, and how many ticks that step spanned. */
@@ -299,20 +301,17 @@ public final class CgVfxSystem {
     }
 
     /**
-     * Multiplies the pace of everything this system plays: 0.25 is slow motion, 0 holds it. For tools and showcases; the
-     * world's pause and tick rate apply on top.
+     * Runs this system on {@code world}'s clock: its {@link CgWorld#timeDilation} scales everything it plays, on top of
+     * the host's pause and tick rate.
      *
      * <pre>{@code
-     * CgVfx.world().timeScale(0.25f);
+     * CgVfx.world().world(preview);
+     * preview.timeDilation(0.25f);   // slow motion for everything on the system
      * }</pre>
      */
-    public CgVfxSystem timeScale(float scale) {
-        timeScale = Math.max(0f, scale);
+    public CgVfxSystem world(CgWorld world) {
+        this.world = world;
         return this;
-    }
-
-    public float timeScale() {
-        return timeScale;
     }
 
     /** Hears every effect's named moments from now on: the visual debugging hook ({@link CgVfxMomentListener}). */
@@ -365,11 +364,12 @@ public final class CgVfxSystem {
         CgHostEnvironment world = CgRenderStage.WORLD_OPAQUE.host().environment();
         readSettings(world);
         follow();
+        resolveRates();
         if (Double.isNaN(clock)) {
             clock = seconds;
             return;
         }
-        float passed = (float) (seconds - clock) * pace(world) * timeScale;
+        float passed = (float) (seconds - clock) * pace(world) * (this.world == null ? 1f : this.world.timeDilation());
         owed = Math.max(0f, owed + passed);
         clock = seconds;
         cull(passed);
@@ -397,10 +397,10 @@ public final class CgVfxSystem {
                     }
                     for (int i = 0; i < effects.size(); i++) {
                         CgVfxEffect<?> effect = effects.get(i);
-                        if (effect.state() != CgVfxEffect.State.DEAD && !effect.asleep) {
+                        if (effect.state() != CgVfxEffect.State.DEAD && !effect.asleep && effect.timeRate > 0f) {
                             int zone = effect.owner != null ? effect.owner.tickZone : EFFECT_TICK_ZONE;
                             try (CgTrace.Zone stepping = CgTrace.zone(CgVfxTrace.CHANNEL, zone)) {
-                                effect.step(TICK);
+                                effect.step(TICK * effect.timeRate);
                             } catch (RuntimeException e) {
                                 fail(effect, e);
                             }
@@ -522,6 +522,17 @@ public final class CgVfxSystem {
         LOGGER.error("[CgVfxSystem] {} played by {} threw, and is killed", effect.getClass().getName(),
                 effect.owner != null ? effect.owner : "its system", e);
         effect.kill();
+    }
+
+    /** Each effect's pace this update: its character's clock, else 1. */
+    private void resolveRates() {
+        float partialTick = Float.NaN;
+        for (int i = 0; i < effects.size(); i++) {
+            CgVfxEffect<?> effect = effects.get(i);
+            if (effect.followingId() < 0 && !effect.hasClock()) continue;
+            if (Float.isNaN(partialTick)) partialTick = CgRenderStage.WORLD_OPAQUE.host().partialTick();
+            effect.resolveRate(partialTick);
+        }
     }
 
     /**

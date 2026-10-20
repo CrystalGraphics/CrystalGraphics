@@ -41,6 +41,7 @@ public final class CgWorld implements AutoCloseable {
     private BooleanSupplier paused = () -> false;
     private CgHostView view;
     private boolean closed;
+    private volatile float timeDilation = 1f;
 
     /** A world for a client: a preview, a test. */
     public CgWorld() {
@@ -83,6 +84,23 @@ public final class CgWorld implements AutoCloseable {
     public CgWorld paused(BooleanSupplier paused) {
         this.paused = paused;
         return this;
+    }
+
+    /**
+     * Scales the time of everything on this world: 0.25 is slow motion, 0 holds it. Unreal's {@code TimeDilation}; the
+     * host's pause and tick rate apply on top, and a character's own clock under it.
+     *
+     * <pre>{@code
+     * CgWorld.client().timeDilation(0.25f);
+     * }</pre>
+     */
+    public CgWorld timeDilation(float dilation) {
+        timeDilation = Math.max(0f, dilation);
+        return this;
+    }
+
+    public float timeDilation() {
+        return timeDilation;
     }
 
     /** The host's camera for the frame being run; null before the first. */

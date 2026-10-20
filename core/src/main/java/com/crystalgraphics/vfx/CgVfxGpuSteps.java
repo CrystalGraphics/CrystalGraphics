@@ -3,6 +3,8 @@ package com.crystalgraphics.vfx;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
+import com.crystalgraphics.vfx.look.CgVfxParam;
+import com.crystalgraphics.vfx.look.CgVfxValues;
 import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
@@ -70,6 +72,15 @@ final class CgVfxGpuSteps {
             timeAfter = instance.books().stepTime();
         }
 
+        /**
+         * Its step's share of the pool's time: its effect's pace (0 holds its particles still and unaged), 1 for one
+         * admitted without an effect and for a prewarm's.
+         */
+        float timeRate(boolean prewarm) {
+            if (parent != null) return parent.timeRate(prewarm);
+            return effect == null || prewarm ? 1f : effect.timeRate();
+        }
+
         /** Whether it is drawn: it and every instance feeding it are {@link CgVfxEmitterInstance#drawn()}. */
         boolean drawn() {
             for (Tenant t = this; t != null; t = t.parent) if (!t.instance.drawn()) return false;
@@ -86,6 +97,8 @@ final class CgVfxGpuSteps {
      */
     private static final class StepView implements CgVfxInstanceView {
         CgVfxEmitterInstance of;
+        /** Its effect's values, which its user bindings read; null for one admitted without an effect. */
+        @Nullable CgVfxValues values;
 
         public double originX() { return of.originX(); }
         public double originY() { return of.originY(); }
@@ -113,6 +126,7 @@ final class CgVfxGpuSteps {
         public float turnW() { return of.books().turnW(); }
         public CgVfxFluid gas() { return of.books().gas(); }
         public CgVfxGrid3D grid() { return of.books().grid(); }
+        public float user(CgVfxParam.Scalar param) { return values == null ? param.defaultValue() : values.get(param); }
     }
 
     private final List<Tenant> tenants = new ArrayList<>();
@@ -235,7 +249,8 @@ final class CgVfxGpuSteps {
         for (int i = 0; i < tenants.size(); i++) {
             Tenant tenant = tenants.get(i);
             CgVfxEmitterInstance instance = tenant.instance;
-            if (tenant.parent == null && !tenant.killed && !(warmOnly && !tenant.warm)) {
+            float scale = tenant.timeRate(warmOnly);
+            if (tenant.parent == null && !tenant.killed && scale > 0f && !(warmOnly && !tenant.warm)) {
                 // Its effect no longer steps it: deactivated, so its emitter's inactive response applies.
                 boolean coasting = instance.time() == tenant.timeAfter;
                 if (coasting && instance.emitter().state().inactiveResponse() == CgVfxInactiveResponse.KILL) instance.kill();
@@ -243,14 +258,16 @@ final class CgVfxGpuSteps {
                 if (instance.books().takeKill()) kill(instance);
             }
             view.of = instance;
-            if (tenant.killed || warmOnly && !tenant.warm) {
+            view.values = tenant.effect == null ? null : tenant.effect.values();
+            if (tenant.killed || warmOnly && !tenant.warm || scale == 0f) {
                 tenant.pool.instance(tenant.slot, instance.books().seedBits(), instance.books().share(), instance.groundY(), view, 0f,
                         tenant.killed);
                 continue;
             }
-            if (instance.time() == tenant.timeAfter) instance.books().coast(dt);
+            if (instance.time() == tenant.timeAfter) instance.books().coast(dt * scale);
             tenant.timeAfter = instance.time();
-            tenant.pool.instance(tenant.slot, instance.books().seedBits(), instance.books().share(), instance.groundY(), view);
+            tenant.pool.instance(tenant.slot, instance.books().seedBits(), instance.books().share(), instance.groundY(), view,
+                    scale, false);
             // A fed slot spawns only what its parent's events spawn.
             if (tenant.parent == null) {
                 tenant.pool.spawn(tenant.slot, instance.books().stepFirstSpawn(), instance.books().stepCandidates(),
@@ -258,6 +275,7 @@ final class CgVfxGpuSteps {
             }
         }
         view.of = null;
+        view.values = null;
         for (int i = 0; i < pools.size(); i++) pools.get(i).endStep();
         CgVfxTrace.count(POOLS, pools.size());
         CgVfxTrace.count(SLOTS, tenants.size());

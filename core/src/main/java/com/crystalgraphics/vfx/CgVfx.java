@@ -64,7 +64,7 @@ public final class CgVfx {
 
     /** The client world's system, made on first ask. Render thread. */
     public static CgVfxSystem world() {
-        if (world == null) world = new CgVfxSystem();
+        if (world == null) world = new CgVfxSystem().world(CgWorld.client());
         return world;
     }
 

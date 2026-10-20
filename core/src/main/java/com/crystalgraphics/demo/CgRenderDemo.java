@@ -498,7 +498,7 @@ public final class CgRenderDemo {
         // Through the time switch, whichever scene shows, so its value carries across N.
         double seconds = CgVfxDemoControls.get().time(CgFrameClock.seconds());
         // The scenes play on the world's system, which keeps the host's clock: the time switch reaches it as a scale.
-        CgVfx.world().timeScale(CgVfxDemoControls.get().speed());
+        CgWorld.client().timeDilation(CgVfxDemoControls.get().speed());
         scenes[current].submit(CgWorldRenderer.get(), view, anchorX + 0.5, anchorY, anchorZ + 0.5, seconds);
     }
 
