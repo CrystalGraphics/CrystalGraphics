@@ -729,6 +729,8 @@ public final class CgMaterial {
 
     /** Keyword sets cached in a dense table, 2^n of them; past this, {@link SparseVariants}. */
     private static final int DENSE_KEYWORDS = 8;
+    /** {@code CgInstanceKind.values().length}, once: {@code values()} copies its array each call. */
+    private static final int KINDS = CgInstanceKind.values().length;
     /** The most keywords a shader declares (the parser's cap): a mask's width. */
     private static final int MAX_KEYWORDS = 16;
 
@@ -999,7 +1001,7 @@ public final class CgMaterial {
         if (slot < 0 || mask < 0) {
             return CgPipeline.of(cgMaterialShader, pass, enabledKeywords, getPassRenderState(pass), kind);
         }
-        int kinds = CgInstanceKind.values().length;
+        int kinds = KINDS;
         if (declared.size() > DENSE_KEYWORDS) {
             // Past eight keywords a dense table would be 2^n entries a kind: a sparse one, keyed by slot, kind and mask.
             if (pipelinesParse != parsed || sparsePipelines == null) {
