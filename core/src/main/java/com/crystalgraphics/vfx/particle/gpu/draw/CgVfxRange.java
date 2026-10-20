@@ -22,7 +22,7 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
-import com.crystalgraphics.util.CgRandom;
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
@@ -383,9 +383,23 @@ public final class CgVfxRange {
     }
 
     /**
+     * Ties in the draw order broken by spawn id, for a capture that must repeat. Off by default, even in the harness
+     * whose seed is fixed: it costs a dispatch a pool and a sort, and Niagara's GPU sort leaves ties too.
+     */
+    static final class Ties {
+        /** Its own class: the range's statics need a context, and a variable must load without one. */
+        private static final CgVar.Bool ORDERED = CgVar.bool("crystalgraphics.vfx.orderedTies", false, CgVar.DEV,
+                "Break ties in the particle draw order by spawn id, so a capture repeats byte for byte: a dispatch per"
+                        + " pool and a sort a frame. Capture runs only, beside crystalgraphics.fixedSeed.");
+
+        static boolean ordered() {
+            return ORDERED.get();
+        }
+    }
+
+    /**
      * Sorts each keyed pool's live particles by spawn id into {@code indices}, which Key then reads: the sort after keeps
-     * that order among equal keys, so captures repeat. Under a fixed seed only (Unreal's {@code -deterministic}), since
-     * Niagara's GPU sort leaves ties in its emitters' append order too.
+     * that order among equal keys, so captures repeat.
      */
     private static void order(CgComputePass pass, CgKernel order, CgGraphBuffer keyBuffer, CgGraphBuffer indices, int keys) {
         int pools = 0;
@@ -469,7 +483,7 @@ public final class CgVfxRange {
         Matrix4f vp = VIEW_PROJECTION;
 
         CgComputePass pass = recording.compute("vfx.range").timed(GPU_RANGE);
-        boolean ordered = CgRandom.fixedSeed();
+        boolean ordered = Ties.ordered();
         if (ordered) order(pass, kernels.kernel("Order"), keyBuffer, indices, keys);
         for (int i = 0, keyFirst = 0, slotFirst = 0; i < ALL.size(); i++) {
             CgVfxParticlePool p = ALL.get(i).pool;
