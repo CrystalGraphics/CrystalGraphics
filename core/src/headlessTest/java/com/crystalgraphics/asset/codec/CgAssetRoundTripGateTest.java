@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -23,6 +24,9 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.crystalgraphics.asset.kind.CgAssetKinds;
+import com.crystalgraphics.asset.registry.CgAssetEntry;
+import com.crystalgraphics.asset.registry.CgAssetRegistry;
+import com.crystalgraphics.asset.registry.CgAssetSource;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgEdit;
 import com.crystalgraphics.asset.tree.CgRandomEdits;
@@ -41,9 +45,12 @@ import static org.junit.Assert.assertTrue;
  */
 public class CgAssetRoundTripGateTest {
 
+    /** By {@code kind|id}: an id is unique within its kind, so a cue and a sequence may share one. */
     private static final Map<String, Path> FILES = new HashMap<>();
     private static final Map<String, CgType> KINDS = new HashMap<>();
+    private static final Map<String, String> IDS = new HashMap<>();
     private static final List<Path> ALL = new ArrayList<>();
+    private static final Map<String, Path> KITS = new LinkedHashMap<>();
 
     @BeforeClass
     public static void kits() throws IOException {
@@ -52,6 +59,7 @@ public class CgAssetRoundTripGateTest {
         CgAssetKinds.register();
         for (String kit : kits.split(";")) {
             String[] nd = kit.split("=", 2);
+            KITS.put(nd[0], Paths.get(nd[1]));
             index(nd[0], Paths.get(nd[1]));
         }
     }
@@ -87,10 +95,10 @@ public class CgAssetRoundTripGateTest {
                 CgAssetData data = load(e.getKey(), loaded, new HashSet<String>());
                 CgType kind = KINDS.get(e.getKey());
                 if (!CgAssetYaml.write(tree, kind).equals(CgAssetYaml.write(data.delta(), kind))) {
-                    bad.add(e.getKey() + ": its delta is not its file");
+                    bad.add(IDS.get(e.getKey()) + ": its delta is not its file");
                 }
             } catch (RuntimeException ex) {
-                bad.add(e.getKey() + ": " + ex.getMessage());
+                bad.add(IDS.get(e.getKey()) + ": " + ex.getMessage());
             }
         }
         assertTrue(bad.size() + " of " + children + " children:\n" + String.join("\n",
@@ -128,6 +136,22 @@ public class CgAssetRoundTripGateTest {
                 bad.isEmpty());
     }
 
+    /** Every kit's every asset registers from its listing alone, each id once; this classpath is a dedicated server's. */
+    @Test
+    public void everyIdRegisters() {
+        CgAssetRegistry registry = new CgAssetRegistry();
+        for (Map.Entry<String, Path> kit : KITS.entrySet()) registry.scan(kit.getKey(), kit.getValue(), CgAssetSource.DEV);
+        List<String> missing = new ArrayList<>();
+        for (String key : FILES.keySet()) if (registry.entry(KINDS.get(key), IDS.get(key)) == null) missing.add(key);
+        List<String> extra = new ArrayList<>();
+        for (String ns : KITS.keySet()) {
+            for (CgAssetEntry e : registry.entries(ns)) if (!e.binary() && !FILES.containsKey(key(e.kind(), e.id()))) extra.add(e.file().toString());
+        }
+        assertTrue(missing.size() + " of " + FILES.size() + " assets unregistered: " + missing.subList(0, Math.min(20, missing.size())),
+                missing.isEmpty());
+        assertTrue(extra.size() + " registered that are not assets: " + extra.subList(0, Math.min(20, extra.size())), extra.isEmpty());
+    }
+
     /** Every asset that resolves validates with no error; the report counts them by code, then lists the first. */
     @Test
     public void everyAssetValidates() throws IOException {
@@ -136,6 +160,9 @@ public class CgAssetRoundTripGateTest {
             String parent = parentOf(p);
             if (parent != null) parents.add(parent);
         }
+        // A parent's key: its child's kind and the id it names.
+        Set<String> parentKeys = new HashSet<>();
+        for (String key : FILES.keySet()) if (parents.contains(IDS.get(key))) parentKeys.add(key);
         Map<String, CgAssetData> loaded = new HashMap<>();
         Map<String, Integer> byWhat = new TreeMap<>();
         Map<String, String> first = new HashMap<>();
@@ -149,14 +176,14 @@ public class CgAssetRoundTripGateTest {
             } catch (RuntimeException unloadable) {
                 continue;   // the delta test names it
             }
-            if (!parents.contains(id)) loaded.remove(id);   // the kits do not fit in memory resolved
+            if (!parentKeys.contains(id)) loaded.remove(id);   // the kits do not fit in memory resolved
             checked++;
             for (CgIssue i : data.validate(CgValidation.Usecase.LOAD).issues()) {
                 if (i.getSeverity() != CgIssue.Severity.ERROR) continue;
                 errors++;
                 // Alike when the code and the path agree but for ids: one line per kind of failure.
                 String what = i.getCode() + " " + KINDS.get(id).id() + " "
-                        + i.getPath().toString().substring(id.length()).replaceAll("\\[[^\\]]*\\]", "[]");
+                        + i.getPath().toString().substring(IDS.get(id).length()).replaceAll("\\[[^\\]]*\\]", "[]");
                 byWhat.merge(what, 1, Integer::sum);
                 first.putIfAbsent(what, i.toString());
             }
@@ -180,18 +207,24 @@ public class CgAssetRoundTripGateTest {
         return null;
     }
 
-    private static CgAssetData load(String id, Map<String, CgAssetData> loaded, Set<String> loading) throws IOException {
-        CgAssetData done = loaded.get(id);
+    /** The asset {@code key} ({@code kind|id}) names, resolved over its parents. */
+    private static CgAssetData load(String key, Map<String, CgAssetData> loaded, Set<String> loading) throws IOException {
+        CgAssetData done = loaded.get(key);
         if (done != null) return done;
-        Path file = FILES.get(id);
-        if (file == null) throw new IllegalStateException("its parent " + id + " is not in the kits");
-        if (!loading.add(id)) throw new IllegalStateException("a parent cycle through " + id);
+        Path file = FILES.get(key);
+        if (file == null) throw new IllegalStateException("its parent " + key + " is not in the kits");
+        if (!loading.add(key)) throw new IllegalStateException("a parent cycle through " + key);
         Map<?, ?> tree = tree(file);
         Object parent = tree.get(CgType.PARENT);
-        CgAssetData data = CgAssetData.of(id, KINDS.get(id), tree,
-                parent instanceof String ? load((String) parent, loaded, loading) : null);
-        loaded.put(id, data);
+        CgType kind = KINDS.get(key);
+        CgAssetData data = CgAssetData.of(IDS.get(key), kind, tree,
+                parent instanceof String ? load(key(kind, (String) parent), loaded, loading) : null);
+        loaded.put(key, data);
         return data;
+    }
+
+    private static String key(CgType kind, String id) {
+        return kind.id() + '|' + id;
     }
 
     private static Map<?, ?> tree(Path file) throws IOException {
@@ -209,8 +242,9 @@ public class CgAssetRoundTripGateTest {
             CgType kind = CgAssetYaml.kindOf(rel);
             if (kind == null || !rel.startsWith(kind.folder() + "/")) continue;
             String id = namespace + ":" + rel.substring(kind.folder().length() + 1, rel.length() - ".yaml".length());
-            FILES.put(id, p);
-            KINDS.put(id, kind);
+            FILES.put(key(kind, id), p);
+            KINDS.put(key(kind, id), kind);
+            IDS.put(key(kind, id), id);
         }
     }
 

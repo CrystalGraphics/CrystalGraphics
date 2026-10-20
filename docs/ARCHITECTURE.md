@@ -162,7 +162,7 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 | `vfx/CLAUDE.md` | The VFX engine: effects, looks, particles on the GPU, cues; imports `docs/VFX.md` |
 | `net/CLAUDE.md` | Messages, requests, connections and networked objects; imports `docs/NETWORKING.md` |
 | `object/CLAUDE.md` | Types declared once (Unreal's reflection): `CgType`, `CgProperty`, `CgTypes`, `CgValueType`, and `value`'s forms and quantities |
-| `asset/CLAUDE.md` | An asset file's text and tree (`codec`: the one writer, the cooked form, `_v` steps) and its resolution over its parent (`tree`: `CgAssetData`, origins, the merge by id) |
+| `asset/CLAUDE.md` | An asset file's text and tree (`codec`: the one writer, the cooked form, `_v` steps) and its resolution over its parent (`tree`: `CgAssetData`, origins, the merge by id, edits, validation); the registry of every asset by kind and id (`registry`) |
 | `asset/kind/CLAUDE.md` | The format's 20 asset kinds, their structs and dispatch families, declared against `object` |
 | `serialization/CLAUDE.md` | Codecs and decoding into a live object; `format`: files in binary, JSON and YAML, and the NBT bridge (`format.file`, `format.nbt`); imports `docs/SERIALIZATION.md` |
 | `job/CLAUDE.md` | Work off the caller's thread: `CgJob` handed back at its loop's drain, keyed and debounced, by lane; `CgJobLoop`; `forEach` across threads; `CgReply` answers and `CgProgress`; imports `docs/JOBS.md` |

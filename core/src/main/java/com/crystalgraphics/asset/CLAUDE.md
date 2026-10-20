@@ -7,6 +7,7 @@ edited there with undo, validated, and written back by one writer. The 20 kinds 
 |---|---|
 | `codec` | `CgAssetYaml` (a file's text and tree: comments into `editor` on read, the writer's rules on write; a port of the format's reference writer, byte for byte), `CgAssetComments` (where each comment goes), `CgAssetBinary` (the cooked form: the tree less its `editor` blocks), `CgAssetVersions` (a kind's `_v` steps) |
 | `tree` | `CgAssetData` (a file resolved over its parent: maps merge by key, id lists by `id`, `after`/`before`, `remove`; its `delta()` is the file; `apply(CgEdit)` edits it and answers the inverse; `validate(usecase)` checks it), `CgEdit`, `CgChange`, `CgAssetChanged`, `CgAssetNode`, `CgOrigin` (where a value comes from), `CgShape` (what a declaration says of a value: its key order, its children's types, whether it is an id list), `CgAssetException`; `CgAssetValidation`, the declared checks behind `validate` |
+| `registry` | `CgAssetRegistry` (every asset by kind and id from folder listings and builders, redirects, the content index, a namespace's hash; Unreal's `IAssetRegistry`), `CgAssetEntry`, `CgAssetSource`, `CgAssetRegistryEvent` |
 | `kind` | the 20 kinds, their structs and families, and the value forms' shapes (`CgCommonStructs.VALUE_FORMS`, `CURVE`) |
 
 ## Rules
@@ -21,7 +22,10 @@ edited there with undo, validated, and written back by one writer. The 20 kinds 
 - **The file is the delta.** `CgAssetData.delta()` writes exactly what the child's file says, overrides kept even where
   they equal the parent's; opening never resaves.
 - **An edit changes the file, never the resolved tree**, then re-resolves; its inverse restores the file to the byte.
+- **An id is unique within its kind**, never across kinds: a cue and the sequence it plays may share one, since a
+  reference's field declares the kind. Key anything by kind and id; a binary's id (folder and extension kept) alone.
+- **The registry reads listings, not files**: only a file small enough to be a redirect is opened at scan.
 - **Validation reads the resolved asset**: a child is valid only with what it inherits. An error refuses it at load
   and fails a cook; `unsupported` entries warn and are skipped.
-- Gates: `CgAssetYamlTest`, `CgAssetDataTest`, `CgAssetEditTest`, `CgAssetValidationTest`; the kits' round trip,
-  random-edit undo and validation are `CgAssetRoundTripGateTest`, run with `-Pkits=<namespace>=<dir>;...`.
+- Gates: `CgAssetYamlTest`, `CgAssetDataTest`, `CgAssetEditTest`, `CgAssetValidationTest`, `CgAssetRegistryTest`; the
+  kits' round trip, random-edit undo, registration and validation are `CgAssetRoundTripGateTest`, run with `-Pkits=<namespace>=<dir>;...`.
