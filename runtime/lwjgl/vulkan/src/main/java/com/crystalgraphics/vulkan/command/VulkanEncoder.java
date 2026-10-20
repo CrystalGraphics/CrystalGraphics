@@ -433,10 +433,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
             cmd = cmd();
             before(cmd);
         }
-        try (MemoryStack stack = stackPush()) {
-            vkCmdCopyBuffer(cmd, src.buffer, d.buffer,
-                    VkBufferCopy.calloc(1, stack).srcOffset(at).dstOffset(dstOffset).size(n));
-        }
+        copyRegion(cmd, src.buffer, d.buffer, at, dstOffset, n);
         if (transfer) wroteOnTransfer(d);
         else after(cmd);
     }
@@ -466,10 +463,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
             cmd = cmd();
             before(cmd);
         }
-        try (MemoryStack stack = stackPush()) {
-            vkCmdCopyBuffer(cmd, s.buffer, d.buffer,
-                    VkBufferCopy.calloc(1, stack).srcOffset(srcOffset).dstOffset(dstOffset).size(size));
-        }
+        copyRegion(cmd, s.buffer, d.buffer, srcOffset, dstOffset, size);
         if (transfer) wroteOnTransfer(d);
         else after(cmd);
     }
@@ -504,6 +498,14 @@ public final class VulkanEncoder implements CgCommandEncoder {
      * themselves: a layout's usual last use is a stage that queue does not have, and two copies into one image
      * there must still be ordered. On the frame's queue it joins the run ({@link #runCopy}).
      */
+    /** One {@code VkBufferCopy}, written through the scratch: a struct per copy built a segment per field. */
+    private static void copyRegion(VkCommandBuffer cmd, long src, long dst, long srcOffset, long dstOffset, long size) {
+        VulkanScratch s = VulkanScratch.get(VkBufferCopy.SIZEOF);
+        s.bytes.putLong(VkBufferCopy.SRCOFFSET, srcOffset).putLong(VkBufferCopy.DSTOFFSET, dstOffset)
+                .putLong(VkBufferCopy.SIZE, size);
+        nvkCmdCopyBuffer(cmd, src, dst, 1, s.address);
+    }
+
     private void copyIn(VulkanBuffer src, long srcOffset, VulkanTexture t, CgTextureRegion region) {
         int layer = volume(t) ? 0 : region.z(), layers = volume(t) ? 1 : region.depth();
         if (!viaTransfer(t, srcOffset)) {

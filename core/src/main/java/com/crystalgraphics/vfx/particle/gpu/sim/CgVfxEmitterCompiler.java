@@ -9,7 +9,9 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
 
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Writes a shape's Step kernel: one {@code append} kernel that runs a particle step for every particle of a pool
@@ -57,9 +59,14 @@ public final class CgVfxEmitterCompiler {
     private CgVfxEmitterCompiler() {
     }
 
+    /** Each kernel key's kernels, so a cast that prepares its shape again writes no source. */
+    private static final Map<String, CgCompute> COMPILED = new ConcurrentHashMap<>();
+
     /** {@code shape}'s kernels, parsed once per shape. Any thread; its programs are the render thread's. */
     public static CgCompute compile(CgVfxShape shape) {
-        return CgCompute.fromSource(key(shape), source(shape));
+        CgCompute compiled = COMPILED.get(shape.kernelKey());
+        return compiled != null ? compiled
+                : COMPILED.computeIfAbsent(shape.kernelKey(), k -> CgCompute.fromSource(key(shape), source(shape)));
     }
 
     /** The neighbour grid's properties, for a shape taking {@code NEIGHBOURS}: the pool sets them each step. */

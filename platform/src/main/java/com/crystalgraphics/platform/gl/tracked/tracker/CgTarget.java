@@ -24,13 +24,13 @@ public record CgTarget(List<CgTextureView> colors, CgTextureView depth) {
 
     public int width() {
         int w = Integer.MAX_VALUE;
-        for (CgTextureView v : colors) w = Math.min(w, v.width());
+        for (int i = 0; i < colors.size(); i++) w = Math.min(w, colors.get(i).width());
         return depth == null ? w : Math.min(w, depth.width());
     }
 
     public int height() {
         int h = Integer.MAX_VALUE;
-        for (CgTextureView v : colors) h = Math.min(h, v.height());
+        for (int i = 0; i < colors.size(); i++) h = Math.min(h, colors.get(i).height());
         return depth == null ? h : Math.min(h, depth.height());
     }
 

@@ -310,7 +310,9 @@ public final class CgTracker {
             }
         }
         pass.pushBindings(state.bindings);
-        for (CgPipelineDesc.VertexBuffer vb : state.vertexLayouts) {
+        List<CgPipelineDesc.VertexBuffer> layouts = state.vertexLayouts;
+        for (int i = 0; i < layouts.size(); i++) {
+            CgPipelineDesc.VertexBuffer vb = layouts.get(i);
             CgAllocation a = state.vertexAllocations[vb.binding()];
             if (a == null) throw new IllegalStateException("Vertex binding " + vb.binding() + " has no buffer");
             pass.setVertexBuffer(vb.binding(), a.buffer, a.offset + state.vertexOffsets[vb.binding()]);
