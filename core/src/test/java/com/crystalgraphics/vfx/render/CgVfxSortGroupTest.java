@@ -1,12 +1,13 @@
 package com.crystalgraphics.vfx.render;
 
-import com.crystalgraphics.vfx.effect.CgVfxBurst;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
+import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 
 public class CgVfxSortGroupTest {
 
@@ -20,12 +21,12 @@ public class CgVfxSortGroupTest {
     public void twoLooksRankTheirLayersByRoleThenHintTogether() {
         CgVfxLayer a1 = layer("a1", 10), a2 = layer("a2", 30), b1 = layer("b1", 20), b2 = layer("b2", 30);
         CgVfxLayer a0 = CgVfxLayer.of("test:a0.shader").on(BODY).order(50).role(CgVfxLayer.Role.SMOKE).build();
-        CgVfxLook a = CgVfxLook.builder(CgVfxBurst.SCHEMA).layer(a2).layer(a1).layer(a0).build();
-        CgVfxLook b = CgVfxLook.builder(CgVfxBurst.SCHEMA).layer(b2).layer(b1).build();
+        CgVfxLook a = CgVfxLook.builder(CgVfxSystemDefinition.SCHEMA).layer(a2).layer(a1).layer(a0).build();
+        CgVfxLook b = CgVfxLook.builder(CgVfxSystemDefinition.SCHEMA).layer(b2).layer(b1).build();
 
         CgVfxSortGroup group = new CgVfxSortGroup();
-        CgVfxBurst first = new CgVfxBurst(a, 0, 0, 0).sortGroup(group);
-        CgVfxBurst second = new CgVfxBurst(b, 10, 0, 0).sortGroup(group);
+        CgVfxSystemInstance first = new CgVfxSystemInstance(a, 0, 0, 0).sortGroup(group);
+        CgVfxSystemInstance second = new CgVfxSystemInstance(b, 10, 0, 0).sortGroup(group);
         assertEquals(2, group.members());
 
         // Smoke first by role; then surfaces by hint across both looks, the earlier look first on a tie

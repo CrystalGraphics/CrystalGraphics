@@ -251,6 +251,15 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     }
 
     /**
+     * Its scalability culled it: {@code kill} for its {@code KILL} reaction, else {@code STOP}'s. Stopped or killed
+     * unless it weighs the request against its owner's, as a system instance does.
+     */
+    protected void culled(boolean kill) {
+        if (kill) kill();
+        else stop();
+    }
+
+    /**
      * Follows entity {@code entity} ({@code CgEntityQuery}'s id): each frame, before it ticks, its origin moves to the
      * attachment point {@code point} of the entity as drawn: a built-in one ({@code CgEntityAttachments.FEET},
      * {@code HANDS_FORWARD}, ...) or one a mod declared and answers from its model ({@code CgEntityAttachments.declare},
@@ -355,8 +364,8 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
      *
      * <pre>{@code
      * CgVfxSortGroup move = new CgVfxSortGroup();
-     * VFX.play(new CgVfxBurst(SPIRAL, x, y, z).sortGroup(move));
-     * VFX.play(new CgVfxBurst(RINGS, x, y, z).sortGroup(move));
+     * VFX.play(new CgVfxSystemInstance(SPIRAL, x, y, z).sortGroup(move));
+     * VFX.play(new CgVfxSystemInstance(RINGS, x, y, z).sortGroup(move));
      * }</pre>
      */
     public final E sortGroup(CgVfxSortGroup group) {

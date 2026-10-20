@@ -567,8 +567,8 @@ public final class CgVfxSystem {
                     effect.sleep(gpuSteps);
                     asleep++;
                 }
-                case STOP -> effect.stop();
-                case KILL -> effect.kill();
+                case STOP -> effect.culled(false);
+                case KILL -> effect.culled(true);
             }
         }
         CgTrace.counter(CgVfxTrace.CHANNEL, ASLEEP, asleep);
@@ -584,7 +584,7 @@ public final class CgVfxSystem {
             effect.asleep = true;
             effect.wanted = false;
         } else {
-            effect.kill();
+            effect.culled(true);
         }
     }
 

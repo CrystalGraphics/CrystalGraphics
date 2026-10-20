@@ -31,7 +31,7 @@ import java.util.function.Consumer;
  *         .build();
  *
  * // From nothing: an effect's schema, a kit
- * CgVfxLook puff = CgVfxLook.builder(CgVfxBurst.SCHEMA).with(PUFF_KIT).build();
+ * CgVfxLook puff = CgVfxLook.builder(CgVfxSystemDefinition.SCHEMA).with(PUFF_KIT).build();
  * }</pre>
  *
  * <ul>

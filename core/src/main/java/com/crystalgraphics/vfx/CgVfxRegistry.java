@@ -1,7 +1,6 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.vfx.effect.CgSmokeGrenade;
-import com.crystalgraphics.vfx.effect.CgVfxBurst;
 import com.crystalgraphics.vfx.effect.air.CgVfxHeatHaze;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import com.crystalgraphics.vfx.element.CgVfxBlast;
@@ -11,6 +10,8 @@ import com.crystalgraphics.vfx.net.CgVfxCue;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
+import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 
 /**
  * Every effect a tool can list, spawn and tweak by name: an id, a display name, the category a tool groups it under, a
@@ -115,8 +116,8 @@ public final class CgVfxRegistry {
         wave("crystalgraphics:galick_gun", "Galick Gun", CgEnergyWave.galickGun());
         wave("crystalgraphics:kamehameha_toon", "Kamehameha (toon)", CgEnergyWave.toon());
         register("crystalgraphics:explosion", "Explosion", "Bursts",
-                CgVfxLook.builder(CgVfxBurst.SCHEMA).with(CgVfxBlast.EXPLOSION.kit()).build(),
-                (look, x, y, z, tx, ty, tz) -> new CgVfxBurst(look, x, y, z));
+                CgVfxLook.builder(CgVfxSystemDefinition.SCHEMA).with(CgVfxBlast.EXPLOSION.kit()).build(),
+                (look, x, y, z, tx, ty, tz) -> new CgVfxSystemInstance(look, x, y, z));
         register("crystalgraphics:heat_haze", "Heat haze", "Air", CgVfxHeatHaze.standard(),
                 (look, x, y, z, tx, ty, tz) -> new CgVfxHeatHaze(look, x, y, z));
         register("crystalgraphics:smoke_grenade", "Smoke grenade", "Gas", CgSmokeGrenade.LOOK,
