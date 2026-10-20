@@ -10,6 +10,8 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import com.crystalgraphics.asset.curve.CgCurveDefinition;
+import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.registry.CgAssetRegistry;
 import com.crystalgraphics.asset.tree.CgAssetData;
@@ -18,6 +20,7 @@ import com.crystalgraphics.job.CgJobLoop;
 import com.crystalgraphics.object.CgPropertyPath;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 /** Publishing by swap at the boundary: VALUE adopted, STRUCTURAL restarted, referrers following, bad edits kept out. */
@@ -36,6 +39,8 @@ public class CgAssetPublishTest {
         Path ns = tmp.newFolder("assets", "mymod").toPath();
         CgVfxAssetsTest.write(ns, "vfx/emitters/kamehameha/core.yaml", "_v: 1\nproperties: { capacity: 100 }\n");
         CgVfxAssetsTest.write(ns, "vfx/systems/kamehameha/charge.yaml", "_v: 1\ndelay: 0.5\nemitters:\n  - { id: h1, name: core, emitter: mymod:kamehameha/core }\n");
+        CgVfxAssetsTest.write(ns, "curves/fade.yaml", "_v: 1\ntype: float\ncurves:\n  - keys: [[0, 0], [1, 1]]\n");
+        CgCurveDefinition.register();
         CgAssetRegistry registry = new CgAssetRegistry();
         registry.scanResources(tmp.getRoot());
         assets = new CgVfxAssets(registry, CgJobLoop.create("assets-test"));
@@ -47,6 +52,26 @@ public class CgAssetPublishTest {
             Thread.sleep(1);
         }
         assertTrue(h.ready());
+    }
+
+    @Test
+    public void aValueEditOfAPatchableDefinitionPatchesItInPlaceAtPublish() throws InterruptedException {
+        CgAssetRef<CgCurveDefinition> fade = assets.declare(CgLookKinds.CURVE_KIND, "mymod:fade");
+        CgLoadHandle h = fade.request(CgLoadPriority.MOVE);
+        for (int i = 0; i < 2000 && !h.ready(); i++) {
+            assets.drain();
+            Thread.sleep(1);
+        }
+        CgCurveDefinition before = fade.loaded();
+        CgAssetFollower<CgCurveDefinition> playing = new CgAssetFollower<>(fade);
+        assets.edit(fade, Collections.singletonList(CgEdit.set(
+                CgPropertyPath.of("mymod:fade").key("curves").index(0).key("keys").index(1).index(1), 3.0)));
+        assertEquals(0.5f, before.eval(0, 0.5f), 1e-5f);              // nothing changes before the boundary
+        assets.publish();
+        assertEquals(0, assets.swapsPending());
+        assertSame(before, fade.loaded());                             // patched, never recompiled
+        assertEquals(1.5f, before.eval(0, 0.5f), 1e-5f);
+        assertEquals(CgAssetFollower.Adoption.VALUE, playing.poll());
     }
 
     /** Frames until every change published: drain, then publish, as the boundary does. */

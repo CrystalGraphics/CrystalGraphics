@@ -269,7 +269,12 @@ public final class CgVfxAssets {
             }
             for (int k = 0, n = s.refs.size(); k < n; k++) {
                 CgAssetRef<?> r = s.refs.get(k);
-                r.definition = s.definitions.get(k);
+                if (s.patches != null) {
+                    CgPatchable p = (CgPatchable) r.definition;
+                    for (int e = 0; e < s.patches.length; e++) p.patch(s.patches[e], s.values[e]);
+                } else {
+                    r.definition = s.definitions.get(k);
+                }
                 int g = r.generation + 1;
                 if (s.structural) r.structural = g;
                 r.generation = g;
@@ -280,8 +285,9 @@ public final class CgVfxAssets {
 
     /**
      * Applies {@code edits} to {@code ref}'s tree as one transaction and recompiles it and what follows it (children
-     * of it, definitions inlining it); their swap publishes at a later frame boundary. Answers the inverses. The asset
-     * loop's thread; the asset must have compiled from a file.
+     * of it, definitions inlining it); their swap publishes at a later frame boundary. A value-only edit of a
+     * {@link CgPatchable} definition's table instead patches it in place at the next publish, with no recompile.
+     * Answers the inverses. The asset loop's thread; the asset must have compiled from a file.
      *
      * <pre>{@code
      * assets.edit(SHURIKEN, List.of(CgEdit.set(SHURIKEN_PATH.key("delay"), 0.25)));   // VALUE: patched next step
@@ -304,7 +310,7 @@ public final class CgVfxAssets {
         } finally {
             stop.run();
         }
-        recompile(ref, change[0]);
+        if (change[0] == CgChange.STRUCTURAL || !patchInPlace(ref, edits)) recompile(ref, change[0]);
         return inverses;
     }
 
@@ -460,12 +466,41 @@ public final class CgVfxAssets {
         final List<CgPreparePlan> plans = new ArrayList<>();
         final boolean structural;
         boolean prepared;
+        /** A patch in place instead of a new definition: each entry with its value; null for a swap. */
+        @Nullable CgPatchTable.Entry[] patches;
+        @Nullable double[] values;
 
         Swap(List<CgAssetRef<?>> refs, List<Object> definitions, boolean structural) {
             this.refs = refs;
             this.definitions = definitions;
             this.structural = structural;
         }
+    }
+
+    /**
+     * Queues {@code edits} as a patch of {@code ref}'s live definition at the next publish, when they can be: a
+     * {@link CgPatchable} whose table holds every edited path, set to a number, with nothing following it and no
+     * recompile of it in flight. Answers whether it did.
+     */
+    private boolean patchInPlace(CgAssetRef<?> ref, List<CgEdit> edits) {
+        if (!(ref.definition instanceof CgPatchable p) || compiling > 0) return false;
+        for (Swap s : swaps) if (s.refs.contains(ref)) return false;
+        if (affected(ref).size() != 1) return false;   // an inliner holds its own copy: recompile it
+        CgPatchTable.Entry[] entries = new CgPatchTable.Entry[edits.size()];
+        double[] values = new double[edits.size()];
+        for (int i = 0; i < edits.size(); i++) {
+            CgEdit e = edits.get(i);
+            CgPatchTable.Entry entry = p.patches().entry(e.path());
+            if (e.op() != CgEdit.Op.SET || !(e.after() instanceof Number n) || entry == null) return false;
+            entries[i] = entry;
+            values[i] = n.doubleValue();
+        }
+        Swap s = new Swap(Collections.<CgAssetRef<?>>singletonList(ref), Collections.singletonList(ref.definition), false);
+        s.patches = entries;
+        s.values = values;
+        s.prepared = true;
+        swaps.add(s);
+        return true;
     }
 
     /**
