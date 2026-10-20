@@ -90,7 +90,7 @@ void fx_particle_facing(int mode, vec3 centre, vec3 velocity, vec3 axis, vec3 ey
     }
 }
 
-// A flipbook (CgVfxFlipbook): Niagara's sub-image index, then the rect of each frame it names (aaa-design §2.26).
+// A flipbook (CgVfxFlipbook): Niagara's sub-image index, then the rect of each frame it names.
 // subImage: columns, rows, blends (0 or 1), a loop's random start (0 or 1); rows 0 is a rect table of `columns` frames,
 // read from the table texture. subUv: mode (FX_SUBUV_*), first frame, last frame (-1 the last), rate (a loop's frames a
 // second, a random frame's changes a second, 0 for once at birth).
