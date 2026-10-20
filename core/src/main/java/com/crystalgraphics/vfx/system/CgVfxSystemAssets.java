@@ -28,8 +28,8 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitterAssets;
  * }</pre>
  *
  * <ul>
- *   <li>Fails naming the emitter and what it could not read: a module the emitter reader does not know, a required
- *       input missing ({@code emitter_state}'s {@code duration}), an {@code effect} nothing registered.</li>
+ *   <li>An input the asset leaves out takes the default {@code modules.yaml} declares; with none declared it fails
+ *       naming the emitter, as do a module the reader does not know and an {@code effect} nothing registered.</li>
  *   <li>Renderers are not layers yet: a compiled system simulates its emitters and draws none of them.</li>
  *   <li>Runs on a worker: reads only the asset and its dependencies.</li>
  * </ul>
@@ -94,24 +94,10 @@ public final class CgVfxSystemAssets {
         } else {
             throw new IllegalArgumentException(at + ": no emitter");
         }
-        require(at, tree);
         try {
             return CgVfxEmitterAssets.compile(name, tree, null);
         } catch (RuntimeException failed) {
             throw new IllegalArgumentException(at + ": " + failed.getMessage(), failed);
-        }
-    }
-
-    /** Fails naming an input the reader needs and the asset leaves out, rather than defaulting it. */
-    private static void require(String at, Map<?, ?> tree) {
-        if (!(tree.get("emitter_update") instanceof List<?> stack)) return;
-        for (Object o : stack) {
-            Map<?, ?> entry = (Map<?, ?>) o;
-            if (!String.valueOf(entry.get("module")).endsWith(":emitter_state")) continue;
-            Map<?, ?> in = entry.get("inputs") instanceof Map<?, ?> m ? m : Map.of();
-            if (!in.containsKey("duration")) {
-                throw new IllegalArgumentException(at + ": emitter_update." + entry.get("id") + ".inputs.duration is required");
-            }
         }
     }
 

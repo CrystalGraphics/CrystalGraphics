@@ -80,30 +80,35 @@ public class CgSequenceDefinitionTest {
             String[] nd = kit.split("=", 2);
             registry.scan(nd[0], Paths.get(nd[1]), CgAssetSource.DEV);
         }
-        CgAssetPipeline pipeline = new CgAssetPipeline(registry, CgJobLoop.create("sequences"));
-        List<CgAssetLoad> loads = new ArrayList<>();
+        List<CgAssetEntry> all = new ArrayList<>();
         for (String ns : registry.namespaces()) {
             for (CgAssetEntry e : registry.entries(ns)) {
-                if (e.kind() == CgSequenceKinds.SEQUENCE && e.redirect() == null) loads.add(pipeline.request(e.kind(), e.id()));
+                if (e.kind() == CgSequenceKinds.SEQUENCE && e.redirect() == null) all.add(e);
             }
         }
-        for (int i = 0; i < 600_000 && !pipeline.idle(); i++) {
-            pipeline.drain();
-            Thread.sleep(1);
-        }
-        pipeline.drain();
         int compiled = 0, failed = 0;
         StringBuilder report = new StringBuilder();
-        for (CgAssetLoad l : loads) {
-            if (l.state() == CgAssetState.COMPILED) compiled++;
-            else {
-                failed++;
-                assertEquals(l.toString(), CgAssetState.FAILED, l.state());
-                assertTrue(l.toString(), l.failure() != null && !l.failure().isEmpty());
-                if (failed <= 20) report.append(l).append('\n');
+        // A pipeline a batch, dropped after it: nothing is released, so one over every kit holds every tree.
+        for (int from = 0; from < all.size(); from += 100) {
+            CgAssetPipeline pipeline = new CgAssetPipeline(registry, CgJobLoop.create("sequences"));
+            List<CgAssetLoad> loads = new ArrayList<>();
+            for (CgAssetEntry e : all.subList(from, Math.min(all.size(), from + 100))) loads.add(pipeline.request(e.kind(), e.id()));
+            for (int i = 0; i < 600_000 && !pipeline.idle(); i++) {
+                pipeline.drain();
+                Thread.sleep(1);
+            }
+            pipeline.drain();
+            for (CgAssetLoad l : loads) {
+                if (l.state() == CgAssetState.COMPILED) compiled++;
+                else {
+                    failed++;
+                    assertEquals(l.toString(), CgAssetState.FAILED, l.state());
+                    assertTrue(l.toString(), l.failure() != null && !l.failure().isEmpty());
+                    if (failed <= 20) report.append(l).append('\n');
+                }
             }
         }
-        System.out.println("[sequences] " + loads.size() + " sequences: " + compiled + " compiled, " + failed + " failed\n" + report);
+        System.out.println("[sequences] " + all.size() + " sequences: " + compiled + " compiled, " + failed + " failed\n" + report);
         new File("build/kit-gates").mkdirs();
         try {
             Files.write(Paths.get("build/kit-gates/sequences.txt"), (compiled + " compiled, " + failed + " failed\n" + report).getBytes(StandardCharsets.UTF_8));

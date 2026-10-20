@@ -10,7 +10,9 @@ import java.util.function.Function;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.asset.kind.CgModuleTypes;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
+import com.crystalgraphics.object.CgProperty;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.shape.primitive.CgSphere;
@@ -257,8 +259,16 @@ public final class CgVfxEmitterAssets {
         return out;
     }
 
+    /** Its inputs, each one absent taking the default {@code modules.yaml} declares for it. */
     private static Map<?, ?> inputs(Map<?, ?> entry) {
-        return entry.get("inputs") instanceof Map<?, ?> m ? m : Map.of();
+        Map<Object, Object> in = new LinkedHashMap<>(entry.get("inputs") instanceof Map<?, ?> m ? m : Map.of());
+        CgModuleTypes.Module declared = CgModuleTypes.builtIn().get(moduleId(entry));
+        if (declared != null) {
+            for (CgProperty p : declared.inputs().properties()) {
+                if (!in.containsKey(p.name()) && p.defaultValue() != null) in.put(p.name(), p.defaultValue());
+            }
+        }
+        return in;
     }
 
     private static String moduleId(Map<?, ?> entry) {

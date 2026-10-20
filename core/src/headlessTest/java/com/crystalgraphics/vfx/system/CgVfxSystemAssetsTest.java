@@ -63,8 +63,7 @@ public class CgVfxSystemAssetsTest {
             CgVfxSystemDefinition d = compile("novamod:nova_cannon/charge", yaml);
             assertEquals(2, d.look().emitters().size());
         } catch (IllegalArgumentException e) {
-            assertTrue(e.getMessage(), e.getMessage().startsWith("novamod:nova_cannon/charge: emitters.h1 (glow)"));
-            assertTrue(e.getMessage(), e.getMessage().contains("duration is required"));
+            assertTrue(e.getMessage(), e.getMessage().startsWith("novamod:nova_cannon/charge: emitters."));
         }
     }
 }
