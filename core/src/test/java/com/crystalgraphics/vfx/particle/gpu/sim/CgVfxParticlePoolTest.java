@@ -301,11 +301,18 @@ public class CgVfxParticlePoolTest {
         assertEquals(0, pool.ringFirst(d));                            // into a's run, first fit
         int e = pool.open(kept, 200);
         assertEquals(960, pool.ringFirst(e));                          // too big for what is left of it: past the end
-        // A draw submitted now reads the step the queued ones will have stored last.
+        // A draw submitted now reads the point the queued steps will have stored last: one each TRAIL_INTERVAL of
+        // particle time, whatever the frame rate.
+        pool.beginStep(0.01f, 0f, 0f, 0f);
+        for (int s : new int[]{b, c, d, e}) pool.instance(s, 0, 1f, 0f, new At(0, 0f));
+        pool.endStep();
+        assertEquals(-1, pool.lastStep());
+        assertEquals(0.01f, pool.trailSince(), 1e-6f);
         pool.beginStep(0.01f, 0f, 0f, 0f);
         for (int s : new int[]{b, c, d, e}) pool.instance(s, 0, 1f, 0f, new At(0, 0f));
         pool.endStep();
         assertEquals(0, pool.lastStep());
+        assertEquals(0.02f - CgVfxParticlePool.TRAIL_INTERVAL, pool.trailSince(), 1e-6f);
     }
 
     @Test
@@ -332,10 +339,15 @@ public class CgVfxParticlePoolTest {
         assertEquals(2, pool.stepSpawnRows(0));
         assertEquals(35, pool.stepSpawned(0));
         int[] rows = pool.spawnWords();
-        int at = pool.stepSpawnAt(0);
+        int at = pool.stepSpawnAt(0), next = at + CgVfxParticlePool.SPAWN_ROW_WORDS;
         assertEquals(Arrays.asList(s1, 40, 25, 0, s0, 0, 10, 25),
-                Arrays.asList(rows[at], rows[at + 1], rows[at + 2], rows[at + 3], rows[at + 4], rows[at + 5], rows[at + 6],
-                        rows[at + 7]));
+                Arrays.asList(rows[at], rows[at + 1], rows[at + 2], rows[at + 3], rows[next], rows[next + 1], rows[next + 2],
+                        rows[next + 3]));
+        // A row is one tick's: born at its start, its bursts all of it here, from and to the instance row's source.
+        assertEquals(0f, Float.intBitsToFloat(rows[at + 4]), 0f);
+        assertEquals(25f, Float.intBitsToFloat(rows[at + 6]), 0f);
+        assertEquals(3f, Float.intBitsToFloat(rows[at + 10]), 0f);
+        assertEquals(3f, Float.intBitsToFloat(rows[at + 14]), 0f);
         try {
             pool.open(def, 1);
             pool.beginStep(0.01f, 0f, 0f, 0f);
@@ -343,5 +355,27 @@ public class CgVfxParticlePoolTest {
             fail("open mid-step");
         } catch (IllegalStateException expected) {
         }
+    }
+
+    @Test
+    public void oneStepAFrameHoldsEachTicksSpawnsAtTheirOffsets() {
+        Def def = new Def("a", CgVfxEmitter.Renderer.QUADS, new Pull(1f));
+        CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, def);
+        int slot = pool.open(def, 100);
+        float tick = 1f / 120f;
+        pool.beginStep(3 * tick, 0f, 0f, 0f);
+        pool.instance(slot, 0, 1f, 0f, new At(0, 0f));
+        pool.spawn(slot, 0, 4, 1, 0f, tick, 0f, 0f, 0f, 1f, 0f, 0f);
+        pool.spawn(slot, 4, 2, 0, 2 * tick, tick, 1f, 0f, 0f, 2f, 0f, 0f);
+        pool.endStep();
+        int[] rows = pool.spawnWords();
+        int second = pool.stepSpawnAt(0) + CgVfxParticlePool.SPAWN_ROW_WORDS;
+        assertEquals(4, rows[second + 3]);                                       // after the first tick's candidates
+        assertEquals(2 * tick, Float.intBitsToFloat(rows[second + 4]), 0f);       // born from its tick's offset
+        assertEquals(3 * tick, Float.intBitsToFloat(rows[second + 5]), 1e-7f);   // to its end
+        assertEquals(2f, Float.intBitsToFloat(rows[second + 12]), 0f);           // the source at its end
+        String glsl = CgVfxEmitterCompiler.source(pool.shape());
+        assertTrue(glsl.contains("s.dt = max(_Step.x - born, 0.0)"));
+        assertTrue(glsl.contains("born = mix(when.x, when.y, along);"));
     }
 }

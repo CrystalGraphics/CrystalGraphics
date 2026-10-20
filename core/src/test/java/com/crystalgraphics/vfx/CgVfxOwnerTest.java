@@ -126,11 +126,17 @@ public class CgVfxOwnerTest {
         CgVfxSystem vfx = new CgVfxSystem();
         CgVfxOwner owner = CgVfx.owner("owner_slots", vfx);
         CgVfxStartAtTest.Phased effect = owner.play(new CgVfxStartAtTest.Phased());
-        for (int f = 0; f <= 4; f++) vfx.update(f / 60.0);
+        for (int f = 0; f <= 4; f++) frame(vfx, f / 60.0);
         assertNotNull(vfx.gpuSteps().of(effect.embers));
         owner.clear();
-        for (int f = 5; f <= 7; f++) vfx.update(f / 60.0);
+        for (int f = 5; f <= 7; f++) frame(vfx, f / 60.0);
         assertNull(vfx.gpuSteps().of(effect.embers));
+    }
+
+    /** An update, its one GPU step taken as the world's recording would. */
+    private static void frame(CgVfxSystem vfx, double seconds) {
+        vfx.update(seconds);
+        vfx.gpuSteps().discardQueued();
     }
 
     @Test

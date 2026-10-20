@@ -1,5 +1,5 @@
 // A trail behind every particle (a trails() layer on an emitter with trail(points)): a ki streak through the places its
-// pool kept, one a particle step, so it follows every curve the particle flew; white-hot down its middle to its colour
+// pool kept, one each 60th of a second of its flight, so it follows every curve the particle flew; white-hot down its middle to its colour
 // at soft edges, rounded at the particle, fading and eaten away toward its tail, tapering. Its width is the particle's
 // size times the layer's; its brightness the particle's opacity. Each particle's own seed varies its streaks. Added; it
 // blooms. CgVfxFrame.strip has its customs.
@@ -44,24 +44,26 @@ Pass {
         Cull OFF
     }
 
-    // Point k of particle i's trail, from its slot's origin: 0 where it is this frame, then its pool's step k back. False
-    // where the ring holds another particle's, or none yet.
+    // Point k of particle i's trail, from its slot's origin: 0 where it is this frame, then its ring's points back, one
+    // each dt of particle time. A point stored this frame is where the particle is, so it is skipped. False where the
+    // ring holds another particle's, or none yet.
     bool streak_point(int i, int k, out FxTrailPoint p) {
-        float alpha = CG_OBJECT_CUSTOM1.x, dt = CG_OBJECT_CUSTOM1.y, newest = CG_OBJECT_CUSTOM2.w;
+        float since = CG_OBJECT_CUSTOM1.x, dt = CG_OBJECT_CUSTOM1.y, newest = CG_OBJECT_CUSTOM2.w;
+        int skip = since <= 0.0 ? 1 : 0;
         p.b = vec3(0.0);
         p.extra = vec4(CG_PARTICLE_SIZE(i), CG_PARTICLE_OPACITY(i), CG_PARTICLE_SEED(i), CG_PARTICLE_HEAT(i));
         if (k == 0) {
             p.a = CG_PARTICLE_POSITION(i);
             p.age = 0.0;
-            p.along = (newest - 1.0 + alpha) * dt;
+            p.along = newest * dt + since;
             return true;
         }
         int points = int(CG_OBJECT_CUSTOM2.z + 0.5), id = int(CG_PARTICLE_ID(i) + 0.5);
-        int back = int(newest + 0.5) - k;
+        int back = int(newest + 0.5) - k + 1 - skip;
         int ring = int(CG_OBJECT_CUSTOM2.x + 0.5) + (id % int(CG_OBJECT_CUSTOM2.y + 0.5)) * points;
         vec4 h = HISTORY(ring + ((back % points) + points) % points);
         p.a = h.xyz;
-        p.age = (alpha + float(k - 1)) * dt;
+        p.age = since + float(k - 1 + skip) * dt;
         p.along = float(back) * dt;
         return k < points && back >= 0 && abs(h.w - float(id) - 1.0) < 0.5;
     }

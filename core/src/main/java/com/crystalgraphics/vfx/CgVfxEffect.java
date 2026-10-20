@@ -947,8 +947,8 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     /**
      * Advances one of its emitters by a tick, at its spawn share: books what it spawns, which its GPU slot steps. Played,
      * the emitter runs after {@link #tick(float)} returns, with this effect's other emitters, in the order they were
-     * asked, on whichever thread takes the effect, and only every {@link CgVfxSystem#particleStep()}th tick, by that many
-     * ticks' time; unplayed, its books alone, at once, by {@code dt}. Call it every tick either way.
+     * asked, on whichever thread takes the effect; unplayed, its books alone, at once, by {@code dt}. Call it every tick
+     * either way: the GPU steps once a frame over the ticks booked.
      *
      * <pre>{@code
      * for (CgVfxEmitterInstance e : blast) {
@@ -986,7 +986,6 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
             emitter.books().schedule(dt, originX, originY, originZ);
             return;
         }
-        if (!system.particleTick()) return;
         emitter.books().share(system.spawnShare(emitter.emitter(), lowered) * distanceShare);
         for (int e = 0; e < emitter.emitter().events().size(); e++) {
             CgVfxEmitterInstance child = emitter.child(e);
@@ -996,7 +995,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
             due = Arrays.copyOf(due, Math.max(4, dueCount * 2));
             dueDts = Arrays.copyOf(dueDts, due.length);
         }
-        dueDts[dueCount] = dt / CgVfxSystem.TICK * system.particleDt();
+        dueDts[dueCount] = dt;
         due[dueCount++] = emitter;
     }
 

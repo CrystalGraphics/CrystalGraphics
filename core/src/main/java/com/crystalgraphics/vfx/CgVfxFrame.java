@@ -102,7 +102,7 @@ public final class CgVfxFrame {
     /** How far the unit cube's corners are from its middle: what a ribbons or billboard draw reaches. */
     private static final float CUBE_REACH = 1.7320508f;
     private CgWorldRenderer world;
-    private float alpha, particleAlpha;
+    private float alpha;
     /** Where the merged particle draws sort as one group: the middle of the system's effects. */
     private double groupX, groupY, groupZ;
     /** Every particle proxy made, by what it draws: a renderer finds its own once, when it is made. */
@@ -117,10 +117,9 @@ public final class CgVfxFrame {
         this.materials = materials;
     }
 
-    void begin(CgWorldRenderer world, float alpha, float particleAlpha, double groupX, double groupY, double groupZ) {
+    void begin(CgWorldRenderer world, float alpha, double groupX, double groupY, double groupZ) {
         this.world = world;
         this.alpha = alpha;
-        this.particleAlpha = particleAlpha;
         this.groupX = groupX;
         this.groupY = groupY;
         this.groupZ = groupZ;
@@ -224,14 +223,6 @@ public final class CgVfxFrame {
     /** How far this frame is between the last tick and the next, 0..1: draw positions moved on by this much. */
     public float alpha() {
         return alpha;
-    }
-
-    /**
-     * How far this frame is between a particle's last two steps, 0..1: what Range draws a particle at.
-     * Particles step every {@link CgVfxSystem#particleStep()} ticks, so this is not {@link #alpha()}.
-     */
-    public float particleAlpha() {
-        return particleAlpha;
     }
 
     public CgWorldRenderer world() {
@@ -656,7 +647,8 @@ public final class CgVfxFrame {
      * {@code mergeParticles} is off. What its shader reads:
      * <ul>
      *   <li>{@code CG_OBJECT_CUSTOM0}: the first record, the slot's capacity, the layer's size, quads a segment.</li>
-     *   <li>{@code CG_OBJECT_CUSTOM1}: the particle alpha, the particle step's seconds, 0, the effect's age.</li>
+     *   <li>{@code CG_OBJECT_CUSTOM1}: particle seconds since the newest ring point, seconds between two points, 0, the
+     *       effect's age.</li>
      *   <li>{@code CG_OBJECT_CUSTOM2}, trails: the slot's first ring point, rings, points a ring, the newest step.</li>
      * </ul>
      * Drawn at the instance's origin; culled as one sphere about it, the slot whole.
@@ -674,8 +666,8 @@ public final class CgVfxFrame {
             c[f + 1] = capacity;
             c[f + 2] = size;
             c[f + 3] = rd.subs;
-            c[f + 4] = particleAlpha;
-            c[f + 5] = system.particleDt();
+            c[f + 4] = pool.trailSince();
+            c[f + 5] = CgVfxParticlePool.TRAIL_INTERVAL;
             c[f + 7] = effect.age;
             c[f + 8] = rd.firstRing;
             c[f + 9] = capacity;
@@ -694,7 +686,7 @@ public final class CgVfxFrame {
                 .gpuCulled()
                 .at(ox, oy, oz)
                 .custom(0, base, capacity, size, rd.subs)
-                .custom(1, particleAlpha, system.particleDt(), 0f, effect.age)
+                .custom(1, pool.trailSince(), CgVfxParticlePool.TRAIL_INTERVAL, 0f, effect.age)
                 .custom(2, rd.firstRing, capacity, rd.points, step)
                 .custom(3, row, effect.age, effect.seed, effect.presence());
         CgVfxSystem.place(draw, rd.placed, effect).submit();

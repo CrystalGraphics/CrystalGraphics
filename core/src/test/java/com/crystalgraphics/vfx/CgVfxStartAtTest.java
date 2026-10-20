@@ -75,7 +75,10 @@ public class CgVfxStartAtTest {
     public void itsParticlesArriveInACappedPrewarm() {
         CgVfxSystem vfx = new CgVfxSystem();
         Phased early = vfx.play(new Phased());
-        for (int f = 0; f <= 6; f++) vfx.update(f / 60.0);
+        for (int f = 0; f <= 6; f++) {
+            vfx.update(f / 60.0);
+            vfx.gpuSteps().discardQueued();
+        }
         float earlyTime = early.embers.time();
         CgVfxParticlePool pool = CgVfxParticlePool.of(vfx.gpuSteps(), EMBERS);
         int queued = pool.queuedSteps();

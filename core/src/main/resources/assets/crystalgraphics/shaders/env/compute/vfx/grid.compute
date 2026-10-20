@@ -27,7 +27,6 @@ Properties {
     _Pages ("Each grid's page table",                          sampler3D) = "black"
     _Before ("The coarsened grid's page table before",         sampler3D) = "black"
     _Coarsened ("The grid coarsened this frame",               int)       = -1
-    _Alpha  ("How far the frame is from the pool's last step to its next, as Range draws it", float) = 1
     _Texels ("Samples a curve row holds",                       int)       = 256
 }
 
@@ -204,7 +203,7 @@ void Rasterize() {
     vec4 density = RASTER(slot * 3 + 2) * GRIDS(b * G_ROWS + 4) * curve.y;
     if (all(equal(density, vec4(0.0)))) return;
     // Where Range draws it, as wide as it is drawn (its size over life), never under a cell nor past G_RASTER_CELLS.
-    vec3 p = r.previousLife.xyz + (r.positionAge.xyz - r.previousLife.xyz) * _Alpha;
+    vec3 p = r.positionAge.xyz;
     float cell = state.w;
     float radius = clamp(r.velocitySize.w * curve.x / cell, 1.0, G_RASTER_CELLS);
     vec3 q = (p + into.xyz) / cell;

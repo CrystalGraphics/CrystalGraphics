@@ -29,11 +29,8 @@ Properties {
     _Slots     ("The pool's slots",                                  int)   = 0
     _SlotFirst ("Its first slot among every pool's",                 int)   = 0
     _AllSlots  ("Every pool's slots: a culled particle's key",       int)   = 0
-    _Alpha  ("How far the frame is from the last step to the next", float) = 1
-    _Ahead  ("How far spin is pushed ahead, in seconds",            float) = 0
     _Texels ("Samples each curve of a row holds",                   int)   = 256
     _Floors ("1 when the pool's kinds land on a floor: Place writes it", int) = 0
-    _StepSeconds ("A particle step's length: an object's age between its last two", float) = 0.0166667
     _Sequence    ("1 for a SEQUENCE pool: objects turned with their slot, sized by their size alone", int) = 0
     _DepthBits   ("0, or 16 when a slot sorts by view depth",        int)       = 0
     _Ordered     ("1 when Order sorted INDICES by spawn id first",   int)       = 0
@@ -125,11 +122,11 @@ void Key() {
         uint owner = uint(_SlotFirst) + r.idSlot.y;
         vec4 slot = SLOTS(int(owner));
         vec3 p = slot.xyz + r.positionAge.xyz;
-        // Its size, and its last step's motion: a frame draws it anywhere between its last two steps. A slot culled
-        // about its source (w below 0) is one sphere of radius -w at its origin.
+        // Its size: a frame draws it where its step left it. A slot culled about its source (w below 0) is one sphere
+        // of radius -w at its origin.
         bool source = slot.w < 0.0;
         vec3 c = source ? slot.xyz : p;
-        float reach = source ? -slot.w : r.velocitySize.w * slot.w + distance(r.positionAge.xyz, r.previousLife.xyz);
+        float reach = source ? -slot.w : r.velocitySize.w * slot.w;
         bool outside = range_outside(_Plane0, c, reach) || range_outside(_Plane1, c, reach)
                 || range_outside(_Plane2, c, reach) || range_outside(_Plane3, c, reach)
                 || range_outside(_Plane4, c, reach) || range_outside(_Plane5, c, reach);
@@ -236,9 +233,9 @@ void Place() {
         FxRecord r = RECORDS(int(INDICES(int(STARTS(lo)) + rank)));
         float t = min(r.positionAge.w / r.previousLife.w, 1.0);
         FxLook look = range_look(r, t);
-        d.place = vec4(r.previousLife.xyz + (r.positionAge.xyz - r.previousLife.xyz) * _Alpha, look.size);
+        d.place = vec4(r.positionAge.xyz, look.size);
         d.motion = vec4(r.velocitySize.xyz, t);
-        d.state = vec4(r.seedSpin.x, r.seedSpin.y + r.seedSpin.z * _Ahead, r.seedSpin.w, look.color.a);
+        d.state = vec4(r.seedSpin.x, r.seedSpin.y, r.seedSpin.w, look.color.a);
         d.color = look.color;
         d.scale = vec4(look.scale, r.positionAge.w);
         // Light packed into one lane, its spawn id in the next: what a trail or ribbon of it reads (CG_PARTICLE_ID).
@@ -301,15 +298,15 @@ void Objects() {
         o.model0 = vec4(turned[0] * size.x, 0.0);
         o.model1 = vec4(turned[1] * size.y, 0.0);
         o.model2 = vec4(turned[2] * size.z, 0.0);
-        o.model3 = vec4(r.previousLife.xyz + (r.positionAge.xyz - r.previousLife.xyz) * _Alpha, 1.0);
+        o.model3 = vec4(r.positionAge.xyz, 1.0);
         // Matrix4f.normal: the inverse transpose, the rotation over each axis's size; its spare lanes what it rests on
         vec4 contact = range_contact(lo, o.model3.xyz);
         o.normal0 = vec4(turned[0] * inverse.x, contact.x);
         o.normal1 = vec4(turned[1] * inverse.y, contact.y);
         o.normal2 = vec4(turned[2] * inverse.z, contact.z);
         o.normal3 = vec4(range_light(lo, o.model3.xyz), 0.0, contact.w);
-        // Its age between its last two steps, as its place is: what a clip plays at.
-        o.custom0 = vec4(r.velocitySize.xyz, max(r.positionAge.w - (1.0 - _Alpha) * _StepSeconds, 0.0));
+        // Its age: what a clip plays at.
+        o.custom0 = vec4(r.velocitySize.xyz, r.positionAge.w);
         o.custom1 = vec4(t, r.seedSpin.x, look.color.a, r.seedSpin.w);
         o.custom2 = vec4(look.color.rgb, 0.0);
     }

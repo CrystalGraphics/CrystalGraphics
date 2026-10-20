@@ -43,13 +43,12 @@ import java.util.Map;
 /**
  * Range (vfx-gpu §13.4): every particle pool's draws for one view. Each live particle is culled against the view;
  * those left are grouped by slot and written as the particle records a look reads through {@code CG_PARTICLE_*}, each
- * slot's from its base, interpolated and given its curves as the CPU path's records are. Every pool shares one sort and
+ * slot's from its base, where its step left it, given its curves. Every pool shares one sort and
  * one set of buffers, so a frame costs the same few dispatches however many pools draw. A slot's draws read
  * {@link #drawn()} from {@link #base} and draw as many as {@link #visible()} counted at {@link #visibleWord}.
  *
  * <pre>{@code
  * CgVfxRange range = CgVfxRange.of(pool);
- * range.frame(frame.particleAlpha(), particleDt);   // each frame, before the world records
  * world.draw(quads, spark)                                                  // per slot and layer
  *      .buffer(CgBindingPoints.PARTICLES, range.drawn())
  *      .indirect(range.visible(), range.visibleWord(slot) * 4L, CgIndirect.INDICES, 6)
@@ -185,7 +184,6 @@ public final class CgVfxRange {
     private final CgVfxParticlePool pool;
     /** Per slot, this frame's order: 0 the pool's, 1 far to near, 2 + its newest spawn's id for a ribbon. */
     private int[] slotOrder = new int[8];
-    private float alpha = 1f, ahead, step = 1f / 60f;
 
     private CgVfxRange(CgVfxParticlePool pool) {
         this.pool = pool;
@@ -243,23 +241,6 @@ public final class CgVfxRange {
             registration.close();
             registration = null;
         }
-    }
-
-    /**
-     * Where this frame draws the pool's particles: {@code alpha} of the way from their last step to the next, the CPU
-     * path's particle alpha, steps of {@code stepSeconds} apart: spin is pushed {@code alpha * stepSeconds} past the
-     * last step, and an object record's age is drawn between its last two. Each frame, before the world records.
-     */
-    public CgVfxRange frame(float alpha, float stepSeconds) {
-        this.alpha = alpha;
-        this.ahead = alpha * stepSeconds;
-        this.step = stepSeconds;
-        return this;
-    }
-
-    /** How far this frame is from the pool's last step to its next, as {@link #frame} set it: where a particle is drawn. */
-    public float alpha() {
-        return alpha;
     }
 
     /** The particle records every pool's draws read, {@code CgParticleBuffer}'s layout, a slot's from {@link #base}. */
@@ -559,8 +540,8 @@ public final class CgVfxRange {
                         .bind("VISIBLE", visible).bind("STARTS", starts).bind("BASES", bases).bind("ORIGINS", origins)
                         .bind("CURVES", p.curves())
                         .bind("DRAWN", drawn, (long) drawnFirst * DRAWN_BYTES, (long) capacity * DRAWN_BYTES)
-                        .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst).set("_Alpha", range.alpha)
-                        .set("_Ahead", range.ahead).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
+                        .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst)
+                        .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
                         .set("_Floors", p.shape().floors() ? 1 : 0));
                 if (objects != null) {
                     long bytes = CgGpuOps.cullRecordBytes();
@@ -568,8 +549,8 @@ public final class CgVfxRange {
                             .bind("VISIBLE", visible).bind("STARTS", starts).bind("BASES", bases).bind("ORIGINS", origins)
                             .bind("CURVES", p.curves())
                             .bind("OBJECTS", objects, drawnFirst * bytes, capacity * bytes)
-                            .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst).set("_Alpha", range.alpha)
-                            .set("_StepSeconds", range.step).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
+                            .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst)
+                            .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
                             .set("_Sequence", p.shape().renderer() == CgVfxEmitter.Renderer.SEQUENCE ? 1 : 0));
                 }
             }

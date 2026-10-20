@@ -28,7 +28,6 @@ import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
-import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.sparse.CgVfxTiles;
 import org.apache.logging.log4j.LogManager;
@@ -396,8 +395,7 @@ public final class CgVfxGridAtlas {
                 CgVfxParticlePool p = rasterizing.get(i);
                 bind(pass.dispatch(rasterize, p.storage())).bind("RECORDS", p.records()).bind("LIVE", p.live())
                         .bind("CURVES", p.curves()).bind("RASTER", rasterRows.get(i)).bind("SPLAT_SUM", splatSum)
-                        .bind("WANT", this.want).set("_Alpha", CgVfxRange.of(p).alpha())
-                        .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS);
+                        .bind("WANT", this.want).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS);
             }
         }
         pass.dispatch(wantedKernel, CAPACITY * PAGE_TABLE).bind("WANT", this.want).bind("WANTED", wanted)

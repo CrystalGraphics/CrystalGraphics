@@ -9,24 +9,27 @@ import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
-import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxInactiveResponse;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
 
 /**
- * A system's GPU simulation queue (vfx-gpu §13.7): every emitter instance stepped by {@code schedule} holds a slot in
- * its shape's pool from its first step until its last particle has died, and each particle step queues one step of
- * every pool those slots are in.
+ * A system's GPU simulation queue: every emitter instance stepped by {@code schedule} holds a slot in its shape's pool
+ * from its first step until its last particle has died. The CPU books every 120 Hz tick; the GPU steps once a frame
+ * over the frame's particle time, each tick's births placed at their own offset within it (Niagara's GPU emitters step
+ * once a frame at the frame's dt, {@code NiagaraEmitterInstance.cpp}'s {@code Tick}).
  *
  * <pre>{@code
- * // each particle tick, after the emitter workers have joined; render thread
+ * // each tick, after the emitter workers have joined; render thread
  * steps.admit(instance);            // each instance whose first schedule ran this tick
- * steps.step(particleDt, air);      // every tenant's row and spawns, then closes the finished
+ * steps.book(ticks * TICK);         // the tick's spawns, at its offset into the frame's step
+ * // once an update, after its ticks
+ * steps.step(ticks * TICK, air);    // every tenant's row and the frame's spawns, then closes the finished
  * }</pre>
  *
  * <ul>
@@ -61,6 +64,10 @@ final class CgVfxGpuSteps {
         final CgVfxEffect<?> effect;
         /** Its renderers, made at its first drawn frame ({@link CgVfxFrame#particles}). */
         CgVfxFrame.Renderers renderers;
+        /** Its time as this frame's step began; NaN before its first book in the frame. */
+        float stepTime = Float.NaN;
+        /** Its rotation's change over this frame's ticks, a quaternion: what a local slot's live particles turn by. */
+        float turnX, turnY, turnZ, turnW = 1f;
 
         private Tenant(CgVfxEmitterInstance instance, CgVfxParticlePool pool, int slot, Tenant parent,
                        @Nullable CgVfxEffect<?> effect) {
@@ -97,13 +104,14 @@ final class CgVfxGpuSteps {
      */
     private static final class StepView implements CgVfxInstanceView {
         CgVfxEmitterInstance of;
+        Tenant tenant;
         /** Its effect's values, which its user bindings read; null for one admitted without an effect. */
         @Nullable CgVfxValues values;
 
         public double originX() { return of.originX(); }
         public double originY() { return of.originY(); }
         public double originZ() { return of.originZ(); }
-        public float time() { return of.books().stepTime(); }
+        public float time() { return Float.isNaN(tenant.stepTime) ? of.books().stepTime() : tenant.stepTime; }
         public float sourceX() { return of.sourceX(); }
         public float sourceY() { return of.sourceY(); }
         public float sourceZ() { return of.sourceZ(); }
@@ -120,10 +128,10 @@ final class CgVfxGpuSteps {
         public float rotationY() { return of.books().rotationY(); }
         public float rotationZ() { return of.books().rotationZ(); }
         public float rotationW() { return of.books().rotationW(); }
-        public float turnX() { return of.books().turnX(); }
-        public float turnY() { return of.books().turnY(); }
-        public float turnZ() { return of.books().turnZ(); }
-        public float turnW() { return of.books().turnW(); }
+        public float turnX() { return tenant.turnX; }
+        public float turnY() { return tenant.turnY; }
+        public float turnZ() { return tenant.turnZ; }
+        public float turnW() { return tenant.turnW; }
         public CgVfxFluid gas() { return of.books().gas(); }
         public CgVfxGrid3D grid() { return of.books().grid(); }
         public float user(CgVfxParam.Scalar param) { return values == null ? param.defaultValue() : values.get(param); }
@@ -134,6 +142,11 @@ final class CgVfxGpuSteps {
     /** The pools with tenants, in the order first used. */
     private final List<CgVfxParticlePool> pools = new ArrayList<>();
     private final StepView view = new StepView();
+    /** This frame's booked spawns, a CPU tick's each: its tenant, (first, candidates, bursts), (born, from xyz, to xyz). */
+    private Tenant[] pendingTenant = new Tenant[0];
+    private int[] pendingInts = new int[0];
+    private float[] pendingFloats = new float[0];
+    private int pending;
 
     /**
      * Opens a slot for {@code instance}, whose first {@code schedule} has just run, and one for each event's children,
@@ -196,14 +209,22 @@ final class CgVfxGpuSteps {
         return tenants;
     }
 
-    /** The most steps any of its pools holds, queued and not yet recorded. */
+    /** The most steps any of its pools holds, queued and not yet recorded: one a frame, more only while prewarming. */
     int queuedSteps() {
         int most = 0;
         for (int i = 0; i < pools.size(); i++) most = Math.max(most, pools.get(i).queuedSteps());
         return most;
     }
 
-    /** Queues one step of {@code dt} seconds in {@code air}'s wind into every pool with tenants, then closes the finished. */
+    /**
+     * Books this tick for every tenant: each one its effect did not step coasts, kills land, and the tick's spawns are
+     * kept for the frame's step at {@code at} seconds into it. Every tick, after admission.
+     */
+    void book(float at) {
+        book(at, false);
+    }
+
+    /** Queues the frame's one step of {@code dt} seconds in {@code air}'s wind into every pool with tenants, then closes the finished. */
     void step(float dt, CgVfxAir air) {
         step(dt, air, false);
     }
@@ -232,6 +253,11 @@ final class CgVfxGpuSteps {
         warming = true;
     }
 
+    /** As {@link #book}, booking the warm tenants alone. */
+    void prewarmBook(float at) {
+        book(at, true);
+    }
+
     /** As {@link #step}, stepping the warm tenants alone: every other slot holds still, spawning nothing. */
     void prewarmStep(float dt, CgVfxAir air) {
         step(dt, air, true);
@@ -243,9 +269,7 @@ final class CgVfxGpuSteps {
         for (int i = 0; i < tenants.size(); i++) tenants.get(i).warm = false;
     }
 
-    private void step(float dt, CgVfxAir air, boolean warmOnly) {
-        if (tenants.isEmpty()) return;
-        for (int i = 0; i < pools.size(); i++) pools.get(i).beginStep(dt, air.windX(), air.windY(), air.windZ());
+    private void book(float at, boolean warmOnly) {
         for (int i = 0; i < tenants.size(); i++) {
             Tenant tenant = tenants.get(i);
             CgVfxEmitterInstance instance = tenant.instance;
@@ -254,28 +278,95 @@ final class CgVfxGpuSteps {
                 // Its effect no longer steps it: deactivated, so its emitter's inactive response applies.
                 boolean coasting = instance.time() == tenant.timeAfter;
                 if (coasting && instance.emitter().state().inactiveResponse() == CgVfxInactiveResponse.KILL) instance.kill();
-                // Its children come after it in the list, so they see the kill this step.
+                // Its children come after it in the list, so they see the kill this tick.
                 if (instance.books().takeKill()) kill(instance);
             }
-            view.of = instance;
-            view.values = tenant.effect == null ? null : tenant.effect.values();
-            if (tenant.killed || warmOnly && !tenant.warm || scale == 0f) {
-                tenant.pool.instance(tenant.slot, instance.books().seedBits(), instance.books().share(), instance.groundY(), view, 0f,
-                        tenant.killed);
-                continue;
+            if (tenant.killed || warmOnly && !tenant.warm || scale == 0f) continue;
+            float began;
+            if (instance.time() == tenant.timeAfter) {
+                began = instance.time();
+                instance.books().coast(CgVfxSystem.TICK * scale);
+            } else {
+                began = instance.books().stepTime();
             }
-            if (instance.time() == tenant.timeAfter) instance.books().coast(dt * scale);
             tenant.timeAfter = instance.time();
-            tenant.pool.instance(tenant.slot, instance.books().seedBits(), instance.books().share(), instance.groundY(), view,
-                    scale, false);
+            if (Float.isNaN(tenant.stepTime)) tenant.stepTime = began;
+            turn(tenant, instance.books());
             // A fed slot spawns only what its parent's events spawn.
-            if (tenant.parent == null) {
-                tenant.pool.spawn(tenant.slot, instance.books().stepFirstSpawn(), instance.books().stepCandidates(),
-                        instance.books().stepCandidates() - instance.books().stepBursts());
-            }
+            if (tenant.parent == null && instance.books().stepCandidates() > 0) keep(tenant, at);
+        }
+    }
+
+    /** {@code tenant}'s frame turn, this tick's change composed after the ticks' before it. */
+    private static void turn(Tenant t, CgVfxEmitterInstance.Books b) {
+        float ax = b.turnX(), ay = b.turnY(), az = b.turnZ(), aw = b.turnW();
+        float x = aw * t.turnX + ax * t.turnW + ay * t.turnZ - az * t.turnY;
+        float y = aw * t.turnY - ax * t.turnZ + ay * t.turnW + az * t.turnX;
+        float z = aw * t.turnZ + ax * t.turnY - ay * t.turnX + az * t.turnW;
+        float w = aw * t.turnW - ax * t.turnX - ay * t.turnY - az * t.turnZ;
+        t.turnX = x;
+        t.turnY = y;
+        t.turnZ = z;
+        t.turnW = w;
+    }
+
+    /** Keeps {@code tenant}'s booked tick for the frame's step, born from {@code at} seconds into it. */
+    private void keep(Tenant tenant, float at) {
+        if (pending == pendingTenant.length) {
+            int n = Math.max(16, pending * 2);
+            pendingTenant = Arrays.copyOf(pendingTenant, n);
+            pendingInts = Arrays.copyOf(pendingInts, n * 3);
+            pendingFloats = Arrays.copyOf(pendingFloats, n * 7);
+        }
+        CgVfxEmitterInstance.Books b = tenant.instance.books();
+        pendingTenant[pending] = tenant;
+        int i = pending * 3, f = pending * 7;
+        pendingInts[i] = b.stepFirstSpawn();
+        pendingInts[i + 1] = b.stepCandidates();
+        pendingInts[i + 2] = b.stepBursts();
+        pendingFloats[f] = at;
+        pendingFloats[f + 1] = b.fromX();
+        pendingFloats[f + 2] = b.fromY();
+        pendingFloats[f + 3] = b.fromZ();
+        pendingFloats[f + 4] = tenant.instance.sourceX();
+        pendingFloats[f + 5] = tenant.instance.sourceY();
+        pendingFloats[f + 6] = tenant.instance.sourceZ();
+        pending++;
+    }
+
+    private void step(float dt, CgVfxAir air, boolean warmOnly) {
+        if (tenants.isEmpty()) {
+            dropPending();
+            return;
+        }
+        for (int i = 0; i < pools.size(); i++) pools.get(i).beginStep(dt, air.windX(), air.windY(), air.windZ());
+        for (int i = 0; i < tenants.size(); i++) {
+            Tenant tenant = tenants.get(i);
+            CgVfxEmitterInstance instance = tenant.instance;
+            float scale = tenant.timeRate(warmOnly);
+            view.of = instance;
+            view.tenant = tenant;
+            view.values = tenant.effect == null ? null : tenant.effect.values();
+            boolean held = tenant.killed || warmOnly && !tenant.warm || scale == 0f;
+            tenant.pool.instance(tenant.slot, instance.books().seedBits(), instance.books().share(), instance.groundY(), view,
+                    held ? 0f : scale, tenant.killed);
+            tenant.stepTime = Float.NaN;
+            tenant.turnX = tenant.turnY = tenant.turnZ = 0f;
+            tenant.turnW = 1f;
         }
         view.of = null;
+        view.tenant = null;
         view.values = null;
+        for (int k = 0; k < pending; k++) {
+            Tenant tenant = pendingTenant[k];
+            if (!tenant.killed && byInstance.get(tenant.instance) == tenant) {
+                int i = k * 3, f = k * 7;
+                tenant.pool.spawn(tenant.slot, pendingInts[i], pendingInts[i + 1], pendingInts[i + 2], pendingFloats[f],
+                        CgVfxSystem.TICK, pendingFloats[f + 1], pendingFloats[f + 2], pendingFloats[f + 3],
+                        pendingFloats[f + 4], pendingFloats[f + 5], pendingFloats[f + 6]);
+            }
+        }
+        dropPending();
         for (int i = 0; i < pools.size(); i++) pools.get(i).endStep();
         CgVfxTrace.count(POOLS, pools.size());
         CgVfxTrace.count(SLOTS, tenants.size());
@@ -293,22 +384,25 @@ final class CgVfxGpuSteps {
         }
     }
 
+    private void dropPending() {
+        Arrays.fill(pendingTenant, 0, pending, null);
+        pending = 0;
+    }
+
     private void releaseWithChildren(Tenant parent) {
         for (int i = tenants.size() - 1; i >= 0; i--) {
             if (descends(tenants.get(i), parent)) release(i);
         }
     }
 
-    /**
-     * Where this frame draws every pool's particles: {@code alpha} of the way between their last two steps, which are
-     * {@code stepSeconds} apart. Before the world records.
-     */
-    void frame(float alpha, float stepSeconds) {
-        for (int i = 0; i < pools.size(); i++) CgVfxRange.of(pools.get(i)).frame(alpha, stepSeconds);
+    /** Drops every pool's queued step unrecorded: tests, which have no world to record it. */
+    void discardQueued() {
+        for (int i = 0; i < pools.size(); i++) pools.get(i).discardQueued();
     }
 
     /** Gives every slot back and drops its pools, their particles with them; what plays next makes new ones. Between steps. */
     void clear() {
+        dropPending();
         for (int i = tenants.size() - 1; i >= 0; i--) release(i);
         CgVfxParticlePool.release(this);
     }

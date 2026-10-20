@@ -22,7 +22,8 @@ import static org.junit.Assert.assertTrue;
  */
 public class CgVfxGpuStepsTest {
 
-    private static final float DT = 1f / 60f;
+    /** A frame of one tick: the books' tick, booked then stepped. */
+    private static final float DT = CgVfxSystem.TICK;
     private static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks").state(CgVfxEmitterState.ONCE)
             .capacity(400).burst(0f, 120)
             .life(0.4f, 0.9f).speed(2f, 5f).module(new CgVfxModule.Gravity(9.8f)).build();
@@ -43,7 +44,7 @@ public class CgVfxGpuStepsTest {
             if (n == 0) steps.admit(instance);
             assertEquals(1, pool.openSlots());
             assertNotNull(steps.of(instance));
-            steps.step(DT, air);
+            frame(steps, air);
             stepped++;
         }
         assertTrue(instance.finished());
@@ -75,7 +76,7 @@ public class CgVfxGpuStepsTest {
             }
             assertEquals(1, parents.openSlots());
             assertEquals(1, children.openSlots());
-            steps.step(DT, air);
+            frame(steps, air);
             stepped++;
         }
         assertTrue(instance.finished());
@@ -107,7 +108,7 @@ public class CgVfxGpuStepsTest {
                 assertEquals(middle.peakChildren(0, middles), leaves.capacity(steps.of(instance.child(0).child(0)).slot));
             }
             assertEquals(1, leaves.openSlots());
-            steps.step(DT, air);
+            frame(steps, air);
             stepped++;
         }
         assertEquals(0, leaves.openSlots());
@@ -126,12 +127,12 @@ public class CgVfxGpuStepsTest {
         kept.books().schedule(DT, 0.0, 0.0, 0.0);
         steps.admit(killed);
         steps.admit(kept);
-        steps.step(DT, air);
+        frame(steps, air);
         CgVfxParticlePool pool = CgVfxParticlePool.of(steps, EMBERS);
         assertEquals(2, pool.openSlots());
         steps.kill(killed);
         kept.books().schedule(DT, 0.0, 0.0, 0.0);
-        steps.step(DT, air);
+        frame(steps, air);
         assertNull(steps.of(killed));
         assertNotNull(steps.of(kept));
         assertEquals(1, pool.openSlots());
@@ -142,13 +143,19 @@ public class CgVfxGpuStepsTest {
             .capacity(400).rate(200f)
             .life(2f, 3f).speed(1f, 2f).build();
 
+    /** One frame of one tick: the tick booked, then the frame's step. */
+    private static void frame(CgVfxGpuSteps steps, CgVfxAir air) {
+        steps.book(0f);
+        steps.step(DT, air);
+    }
+
     /** Steps {@code instance} as its effect would, {@code n} times, admitting it at its first. */
     private static void play(CgVfxGpuSteps steps, CgVfxAir air, CgVfxEmitterInstance instance, int n) {
         for (int i = 0; i < n; i++) {
             boolean fresh = !instance.books().scheduled();
             instance.books().schedule(DT, 0.0, 0.0, 0.0);
             if (fresh) steps.admit(instance);
-            steps.step(DT, air);
+            frame(steps, air);
         }
     }
 
@@ -207,12 +214,12 @@ public class CgVfxGpuStepsTest {
                 instance.books().schedule(DT, 0.0, 0.0, 0.0);
                 if (fresh) steps.admit(instance);
             }
-            steps.step(DT, air);
+            frame(steps, air);
         }
         stopped.stop();
         assertTrue(stopped.finished());
         // Neither is stepped again: one stopped, the other's effect gone. Each goes in one step, where COMPLETE coasts.
-        steps.step(DT, air);
+        frame(steps, air);
         assertNull(steps.of(stopped));
         assertNull(steps.of(dropped));
         assertTrue(dropped.finished());
@@ -227,11 +234,11 @@ public class CgVfxGpuStepsTest {
         instance.start(0f, 0f, 0f);
         instance.books().schedule(DT, 0.0, 0.0, 0.0);
         steps.admit(instance);
-        steps.step(DT, air);
+        frame(steps, air);
         int spawned = instance.books().stepFirstSpawn() + instance.books().stepCandidates(), coasted = 0;
         // Its effect is gone: nothing schedules it again, and the queue steps it alone.
         while (!steps.isEmpty() && coasted < 600) {
-            steps.step(DT, air);
+            frame(steps, air);
             coasted++;
             assertEquals(0, instance.books().stepCandidates());
             assertEquals(spawned, instance.books().stepFirstSpawn());

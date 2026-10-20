@@ -63,10 +63,10 @@ import java.util.Map;
  * CgVfxParticlePool pool = CgVfxParticlePool.of(system, EMBERS);
  * int slot = pool.open(EMBERS, EMBERS.peakAlive());  // at play: the most this instance can have alive
  *
- * // each particle step, after the emitters' ticks, for every pool
+ * // once a frame, over the frame's particle time, for every pool
  * pool.beginStep(dt, wind.x, wind.y, wind.z);
  * pool.instance(slot, seedBits, share, groundY, instance);   // every open slot, once
- * pool.spawn(slot, firstSpawn, candidates);                  // only a slot that spawns this step
+ * pool.spawn(slot, first, candidates, bursts, bornFrom, TICK, fx, fy, fz, tx, ty, tz);   // a row per CPU tick that spawned
  * pool.endStep();
  *
  * pool.close(slot);                                  // once its last particle has died
@@ -97,16 +97,21 @@ public final class CgVfxParticlePool {
     /**
      * An instance row's own vec4s ahead of its modules' lanes: {@code uvec4(param row, seed bits, slot, 0)},
      * {@code vec4(source xyz, time)}, {@code vec4(share, ground height or NaN, step scale, 1 to kill)}, {@code ivec4(origin's whole
-     * blocks, 0)}, {@code vec4(origin within its block, 0)}, {@code vec4(the source at the step's start, its bursts)},
-     * {@code vec4(the followed entity's box's centre from the source, 0)}, {@code vec4(its half extents, 0)},
-     * {@code vec4(its rotation, a quaternion)}, {@code vec4(its rotation's change since the last step, the identity unless
-     * local)}: the fourth and fifth place a particle in the world's blocks; the step's first bursts candidates are born
-     * at the sixth's source, the rest spread from it to the second's; spawns turn by the ninth, and a local slot's live
-     * particles by the tenth.
+     * blocks, 0)}, {@code vec4(origin within its block, 0)}, {@code vec4(the followed entity's box's centre from the source, 0)},
+     * {@code vec4(its half extents, 0)}, {@code vec4(its rotation, a quaternion)}, {@code vec4(its rotation's change since
+     * the last step, the identity unless local)}: the fourth and fifth place a particle in the world's blocks; spawns turn
+     * by the eighth, and a local slot's live particles by the ninth.
      */
-    public static final int INSTANCE_HEADER = 10;
-    /** The header vec4 whose w holds the step's bursts: the source at the step's start. */
-    private static final int BURSTS_ROW = 5;
+    public static final int INSTANCE_HEADER = 9;
+    /**
+     * A spawn row's words: {@code uvec4(slot, first spawn, candidates, first element)}, {@code vec4(born from, born to,
+     * bursts, tick seconds)}, {@code vec4(source at the tick's start, 0)}, {@code vec4(source at its end, 0)}. The born
+     * window is seconds into the step: a row is one CPU tick's spawns, its bursts born at its start and the rest spread
+     * across it.
+     */
+    public static final int SPAWN_ROW_WORDS = 16;
+    /** Seconds of particle time between two trail points: trails sample by time, whatever the frame rate. */
+    public static final float TRAIL_INTERVAL = 1f / 60f;
 
     /**
      * An event row, as a Step kernel appends it and a child's reads it: where it fired within its slot's origin's block,
@@ -214,8 +219,11 @@ public final class CgVfxParticlePool {
     private int ringClearCount;
     /** Each slot's ring words, four a slot: what {@code trail.compute} reads as RINGS. */
     private int[] ringWords = new int[0];
-    /** Steps this pool has recorded: each step's place in every ring. */
+    /** Trail points this pool has stored: each point's place in every ring. */
     private int stepsStored;
+    /** Particle seconds since the newest trail point, once the queued steps record; queued steps that store one. */
+    private float trailSince;
+    private int pendingStores;
     /** Whether the history is new since the last recording; the one it replaced, and any between, to release there. */
     private boolean historyFresh;
     private CgGraphBuffer historyFrom;
@@ -231,11 +239,13 @@ public final class CgVfxParticlePool {
      */
     private int[] stepInstanceAt = new int[0], stepSlots = new int[0], stepSpawnAt = new int[0], stepSpawnRows = new int[0],
             stepSpawned = new int[0], stepCapacity = new int[0];
+    /** Per step: whether it stores a trail point. */
+    private boolean[] stepStores = new boolean[0];
     private int[] instances = new int[0];
     private int instanceEnd;
     /** Which step last wrote each slot's row, as 1 + its index. */
     private int[] written = new int[0];
-    /** Four words a spawn row: slot, first spawn index, candidates, first element (after the step's live particles). */
+    /** {@link #SPAWN_ROW_WORDS} a spawn row. */
     private int[] spawns = new int[0];
     private int spawnEnd;
 
@@ -760,11 +770,14 @@ public final class CgVfxParticlePool {
         }
         current = 1 - current;
         if (shape.usesNeighbours()) buildGrid(pass);
-        if (ringSlots > 0) {
-            pass.dispatch(store, storage).bind("RECORDS", records).bind("LIVE", counts[current])
-                    .bind("RINGS", ringTable).bind("HISTORY", history).set("_Step", stepsStored);
+        if (stepStores[s]) {
+            if (ringSlots > 0) {
+                pass.dispatch(store, storage).bind("RECORDS", records).bind("LIVE", counts[current])
+                        .bind("RINGS", ringTable).bind("HISTORY", history).set("_Step", stepsStored);
+            }
+            stepsStored++;
+            pendingStores--;
         }
-        stepsStored++;
     }
 
     /** The scene's depth as {@code fx_depth_at.glsl} reads it, or none. */
@@ -1045,6 +1058,7 @@ public final class CgVfxParticlePool {
             stepSpawnRows = Arrays.copyOf(stepSpawnRows, n);
             stepSpawned = Arrays.copyOf(stepSpawned, n);
             stepCapacity = Arrays.copyOf(stepCapacity, n);
+            stepStores = Arrays.copyOf(stepStores, n);
         }
         stepCapacity[s] = capacity;
         stepBlock[s * 4] = dt;
@@ -1101,7 +1115,6 @@ public final class CgVfxParticlePool {
                 .vec4(share, groundY, stepScale, kill ? 1f : 0f)
                 .ivec4((int) bx, (int) by, (int) bz, 0)
                 .vec4((float) (ox - bx), (float) (oy - by), (float) (oz - bz), 0f)
-                .vec4(view.fromX(), view.fromY(), view.fromZ(), 0f)
                 .vec4(view.boxX(), view.boxY(), view.boxZ(), 0f)
                 .vec4(view.boxHalfX(), view.boxHalfY(), view.boxHalfZ(), 0f)
                 .vec4(view.rotationX(), view.rotationY(), view.rotationZ(), view.rotationW())
@@ -1152,37 +1165,61 @@ public final class CgVfxParticlePool {
         }
     }
 
-    /** Queues {@code candidates} spawns for {@code slot} this step, spawn indices from {@code firstSpawn}, all bursts. */
+    /**
+     * Queues {@code candidates} spawns for {@code slot} this step, spawn indices from {@code firstSpawn}, all bursts born
+     * at the step's start where its instance row puts the source. After the slot's {@link #instance} row.
+     */
     public void spawn(int slot, int firstSpawn, int candidates) {
-        spawn(slot, firstSpawn, candidates, 0);
+        int at = stepInstanceAt[steps] + slot * instanceWords + 4;
+        float x = Float.intBitsToFloat(instances[at]), y = Float.intBitsToFloat(instances[at + 1]),
+                z = Float.intBitsToFloat(instances[at + 2]);
+        spawn(slot, firstSpawn, candidates, candidates, 0f, 1f, x, y, z, x, y, z);
     }
 
     /**
-     * Queues {@code candidates} spawns for {@code slot} this step, spawn indices from {@code firstSpawn}: the first
-     * {@code candidates - spread} born at the source where the step began, the last {@code spread} spread along where it
-     * went, each stepped for the rest of the step. After the slot's {@link #instance} row, once a step.
+     * Queues one CPU tick's spawns for {@code slot} this step: {@code candidates} spawn indices from {@code firstSpawn},
+     * the first {@code bursts} born at {@code bornFrom} seconds into the step where the source was as the tick began
+     * ({@code from}), the rest spread from there to {@code bornFrom + tickSeconds} and the source at its end ({@code to}),
+     * each stepped for the rest of the step. After the slot's {@link #instance} row; a row per tick that spawned.
      *
      * <pre>{@code
-     * pool.spawn(slot, i.stepFirstSpawn(), i.stepCandidates(), i.stepCandidates() - i.stepBursts());
+     * pool.spawn(slot, b.stepFirstSpawn(), b.stepCandidates(), b.stepBursts(), tickStart, TICK,
+     *         b.fromX(), b.fromY(), b.fromZ(), b.sourceX(), b.sourceY(), b.sourceZ());
      * }</pre>
      */
-    public void spawn(int slot, int firstSpawn, int candidates, int spread) {
+    public void spawn(int slot, int firstSpawn, int candidates, int bursts, float bornFrom, float tickSeconds,
+                      float fromX, float fromY, float fromZ, float toX, float toY, float toZ) {
         inStep("spawn");
         openSlot(slot, "spawn");
-        if (firstSpawn < 0 || candidates < 0 || spread < 0 || spread > candidates) {
-            throw new IllegalArgumentException("spawn " + firstSpawn + " + " + candidates + ", " + spread + " spread");
+        if (firstSpawn < 0 || candidates < 0 || bursts < 0 || bursts > candidates || !(tickSeconds > 0f) || !(bornFrom >= 0f)) {
+            throw new IllegalArgumentException("spawn " + firstSpawn + " + " + candidates + ", " + bursts + " bursts at "
+                    + bornFrom + " for " + tickSeconds + " s");
         }
         if (candidates == 0) return;
         int s = steps;
         if (written[slot] != s + 1) throw new IllegalStateException("slot " + slot + " spawned before its instance row");
-        int bursts = stepInstanceAt[s] + slot * instanceWords + BURSTS_ROW * 4 + 3;
-        instances[bursts] = Float.floatToRawIntBits(candidates - spread);
-        if (spawns.length < spawnEnd + 4) spawns = Arrays.copyOf(spawns, Math.max(spawnEnd + 4, spawns.length * 2));
-        spawns[spawnEnd] = slot;
-        spawns[spawnEnd + 1] = firstSpawn;
-        spawns[spawnEnd + 2] = candidates;
-        spawns[spawnEnd + 3] = stepSpawned[s];
-        spawnEnd += 4;
+        if (spawns.length < spawnEnd + SPAWN_ROW_WORDS) {
+            spawns = Arrays.copyOf(spawns, Math.max(spawnEnd + SPAWN_ROW_WORDS, spawns.length * 2));
+        }
+        int[] w = spawns;
+        int at = spawnEnd;
+        w[at] = slot;
+        w[at + 1] = firstSpawn;
+        w[at + 2] = candidates;
+        w[at + 3] = stepSpawned[s];
+        w[at + 4] = Float.floatToRawIntBits(bornFrom);
+        w[at + 5] = Float.floatToRawIntBits(bornFrom + tickSeconds);
+        w[at + 6] = Float.floatToRawIntBits(bursts);
+        w[at + 7] = Float.floatToRawIntBits(tickSeconds);
+        w[at + 8] = Float.floatToRawIntBits(fromX);
+        w[at + 9] = Float.floatToRawIntBits(fromY);
+        w[at + 10] = Float.floatToRawIntBits(fromZ);
+        w[at + 11] = 0;
+        w[at + 12] = Float.floatToRawIntBits(toX);
+        w[at + 13] = Float.floatToRawIntBits(toY);
+        w[at + 14] = Float.floatToRawIntBits(toZ);
+        w[at + 15] = 0;
+        spawnEnd += SPAWN_ROW_WORDS;
         stepSpawnRows[s]++;
         stepSpawned[s] += candidates;
     }
@@ -1201,7 +1238,28 @@ public final class CgVfxParticlePool {
                 throw new IllegalStateException(slotEmitter[slot].name() + "'s slot " + slot + " got no instance row this step");
             }
         }
+        // A trail point each TRAIL_INTERVAL of particle time, at most one a step.
+        trailSince += stepBlock[s * 4];
+        stepStores[s] = trailSince >= TRAIL_INTERVAL;
+        if (stepStores[s]) {
+            trailSince = Math.min(trailSince - TRAIL_INTERVAL, TRAIL_INTERVAL);
+            pendingStores++;
+        }
         steps++;
+    }
+
+    /**
+     * Drops the queued steps unrecorded, as if the world had recorded them: a headless system's stand-in for
+     * {@link CgRenderStage#WORLD_OPAQUE}, which never fires there. Never on a client, whose slots would then hold
+     * particles their books count as dead. Render thread, between steps.
+     */
+    public void discardQueued() {
+        betweenSteps("discardQueued");
+        while (pendingStores > 0) {
+            stepsStored++;
+            pendingStores--;
+        }
+        takeSteps();
     }
 
     /** Steps queued and not yet taken. */
@@ -1258,11 +1316,16 @@ public final class CgVfxParticlePool {
     }
 
     /**
-     * The step whose points are the newest in every ring once this frame's queued steps record: what a draw submitted
-     * now reads as its head's last step.
+     * The trail point that is the newest in every ring once this frame's queued steps record: what a draw submitted now
+     * reads as its head's last point. Points are {@link #TRAIL_INTERVAL} of particle time apart.
      */
     public int lastStep() {
-        return stepsStored + steps - 1;
+        return stepsStored + pendingStores - 1;
+    }
+
+    /** Particle seconds from {@link #lastStep()}'s point to where the particles are once this frame's steps record. */
+    public float trailSince() {
+        return trailSince;
     }
 
     /** The records {@link #records()} has room for. */

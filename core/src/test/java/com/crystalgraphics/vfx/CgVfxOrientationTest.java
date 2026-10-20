@@ -63,11 +63,17 @@ public class CgVfxOrientationTest {
                 effect.orientation().w());
     }
 
+    /** An update, its one GPU step taken as the world's recording would. */
+    private static void frame(CgVfxSystem system, double seconds) {
+        system.update(seconds);
+        system.gpuSteps().discardQueued();
+    }
+
     @Test
     public void everyInstanceSpawnsTurnedAndALocalOneTurnsByTheChange() {
         CgVfxSystem system = new CgVfxSystem();
         Turned effect = system.play(new Turned().orient(new Quaternionf().rotationY(0.3f)));
-        for (int f = 0; f <= 6; f++) system.update(f / 60.0);
+        for (int f = 0; f <= 6; f++) frame(system, f / 60.0);
         CgVfxEmitterInstance.Books world = effect.world.books(), local = effect.local.books();
         Quaternionf first = new Quaternionf().rotationY(0.3f);
         assertQuaternion(first, world.rotationX(), world.rotationY(), world.rotationZ(), world.rotationW());
@@ -76,7 +82,7 @@ public class CgVfxOrientationTest {
 
         // Turned further between two particle steps: the local instance turns by the difference, the world one never.
         effect.orient(new Quaternionf().rotationY(0.8f));
-        for (int f = 7; f <= 10; f++) system.update(f / 60.0);
+        for (int f = 7; f <= 10; f++) frame(system, f / 60.0);
         assertQuaternion(new Quaternionf().rotationY(0.8f), world.rotationX(), world.rotationY(), world.rotationZ(),
                 world.rotationW());
         assertQuaternion(new Quaternionf(), world.turnX(), world.turnY(), world.turnZ(), world.turnW());

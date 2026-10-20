@@ -105,7 +105,7 @@ public final class CgVfxEmitterCompiler {
         s.append("""
 
                 Properties {
-                    _Step       ("Step length, then the wind",       vec4) = (0, 0, 0, 0)
+                    _Step       ("Step seconds, then the wind",      vec4) = (0, 0, 0, 0)
                     _InstanceAt ("This step's instance rows",        int)  = 0
                     _SpawnAt    ("This step's spawn rows",           int)  = 0
                     _SpawnRows  ("How many spawn rows",              int)  = 0
@@ -160,6 +160,7 @@ public final class CgVfxEmitterCompiler {
         s.append("}\n\n");
         s.append("const int STEP_PARAM_ROW = ").append(shape.paramRowVectors()).append(";\n");
         s.append("const int STEP_INSTANCE_ROW = ").append(shape.instanceRowVectors()).append(";\n");
+        s.append("const int STEP_SPAWN_ROW = ").append(CgVfxParticlePool.SPAWN_ROW_WORDS / 4).append(";\n");
         if (shape.events() > 0) {
             s.append("const int STEP_EVENT_NODES = ").append(shape.eventsAt() + CgVfxShape.EVENT_NODES).append(";\n");
             s.append("const int STEP_EVENT_CLIP = ").append(shape.eventsAt() + CgVfxShape.EVENT_CLIP).append(";\n");
@@ -446,8 +447,8 @@ public final class CgVfxEmitterCompiler {
                     }
                     if (kind == 7) {
                         // The followed entity's box, from the instance row: its centre from the source, its halves.
-                        step_box(step_instance(inst + 7).xyz, placement, upper, u1, u2, u3, u4, pos, way);
-                        pos += step_instance(inst + 6).xyz;
+                        step_box(step_instance(inst + 6).xyz, placement, upper, u1, u2, u3, u4, pos, way);
+                        pos += step_instance(inst + 5).xyz;
                         return;
                     }
                 """);
@@ -578,10 +579,11 @@ public final class CgVfxEmitterCompiler {
                     p.hitEntity = 0u;
                 }
 
-                // Spawn k, the i-th of its spawn row's n, of the instance in slot, unless its share thins it out: a burst
-                // where the source was as the step began, else a rate spawn (i - bursts + 1) / (n - bursts) of the way to
-                // where it ended. `born` is how far through the step it was born: it is stepped for the rest.
-                bool step_spawn(uint slot, uint k, int i, int n, out FxParticle p, out float born) {
+                // Spawn k, the i-th of the n of the spawn row at `at` (one CPU tick's), of the instance in slot, unless its
+                // share thins it out: a burst where the source was as the tick began, else a rate spawn (i - bursts + 1) /
+                // (n - bursts) of the way across the tick to where it ended. `born` is the seconds into the step it was
+                // born at: it is stepped for the rest.
+                bool step_spawn(int at, uint slot, uint k, int i, int n, out FxParticle p, out float born) {
                     born = 0.0;
                     int inst = _InstanceAt + int(slot) * STEP_INSTANCE_ROW;
                     uvec4 head = INSTANCES(inst);
@@ -589,12 +591,14 @@ public final class CgVfxEmitterCompiler {
                     uint seed = head.y;
                     if (share < 1.0 && fx_rand(seed, k, 10u) >= share) return false;
                     int row = int(head.x) * STEP_PARAM_ROW;
-                    vec4 to = step_instance(inst + 1), from = step_instance(inst + 5);
-                    int bursts = int(from.w);
-                    if (i >= bursts) born = float(i - bursts + 1) / float(n - bursts);
-                    step_launch(seed, k, row, inst, mix(from.xyz, to.xyz, born), vec3(0.0, 1.0, 0.0), step_instance(inst + 8),
+                    vec4 when = uintBitsToFloat(SPAWNS(at + 1)), from = uintBitsToFloat(SPAWNS(at + 2));
+                    vec4 to = uintBitsToFloat(SPAWNS(at + 3));
+                    int bursts = int(when.z);
+                    float along = i >= bursts ? float(i - bursts + 1) / float(n - bursts) : 0.0;
+                    born = mix(when.x, when.y, along);
+                    step_launch(seed, k, row, inst, mix(from.xyz, to.xyz, along), vec3(0.0, 1.0, 0.0), step_instance(inst + 7),
                             step_front(k, row, inst), p);
-                    p.velocity += step_vector(row, inst, 2).z * (to.xyz - from.xyz) / _Step.x;
+                    p.velocity += step_vector(row, inst, 2).z * (to.xyz - from.xyz) / when.w;
                     p.id = k;
                     p.slot = slot;
                     return true;
@@ -647,7 +651,7 @@ public final class CgVfxEmitterCompiler {
                     vec4 r0 = mix(FX_CLIPS(base + a), FX_CLIPS(base + b), t);
                     vec4 r1 = mix(FX_CLIPS(base + len + a), FX_CLIPS(base + len + b), t);
                     vec4 r2 = mix(FX_CLIPS(base + 2 * len + a), FX_CLIPS(base + 2 * len + b), t);
-                    vec4 turn = step_instance(inst + 8);
+                    vec4 turn = step_instance(inst + 7);
                     at = p.position + step_rotate(turn, fx_clip_origin(r0, r1, r2) * p.size);
                     vec3 up = step_rotate(turn, fx_clip_up(r0, r1, r2));
                     float d = dot(up, up);
@@ -720,11 +724,12 @@ public final class CgVfxEmitterCompiler {
                             int lo = 0, hi = _SpawnRows - 1;
                             while (lo < hi) {
                                 int mid = (lo + hi + 1) >> 1;
-                                if (int(SPAWNS(_SpawnAt + mid).w) <= j) lo = mid; else hi = mid - 1;
+                                if (int(SPAWNS(_SpawnAt + mid * STEP_SPAWN_ROW).w) <= j) lo = mid; else hi = mid - 1;
                             }
-                            uvec4 spawn = SPAWNS(_SpawnAt + lo);
+                            int at = _SpawnAt + lo * STEP_SPAWN_ROW;
+                            uvec4 spawn = SPAWNS(at);
                             int i = j - int(spawn.w);
-                            if (!step_spawn(spawn.x, spawn.y + uint(i), i, int(spawn.z), p, born)) return;
+                            if (!step_spawn(at, spawn.x, spawn.y + uint(i), i, int(spawn.z), p, born)) return;
                         }
                     }
                     bool wasResting = p.resting;
@@ -734,7 +739,7 @@ public final class CgVfxEmitterCompiler {
                     // A local slot's live particles turn with it about its origin (Niagara's Local Space); the identity
                     // for any other.
                     if (CG_ELEMENT < live) {
-                        vec4 turn = step_instance(inst + 9);
+                        vec4 turn = step_instance(inst + 8);
                         if (turn.w < 1.0) {
                             p.position = step_rotate(turn, p.position);
                             p.previous = step_rotate(turn, p.previous);
@@ -746,7 +751,7 @@ public final class CgVfxEmitterCompiler {
                     FxStep s;
                     // A slot held still while another effect prewarms steps by 0: unmoved, unaged. A newborn steps for
                     // the part of the step after its birth.
-                    s.dt = _Step.x * step_instance(inst + 2).z * (1.0 - born);
+                    s.dt = max(_Step.x - born, 0.0) * step_instance(inst + 2).z;
                     s.wind = _Step.yzw;
                     FxForces f;
                     f.accel = vec3(0.0);

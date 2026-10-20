@@ -85,8 +85,6 @@ import java.util.function.IntConsumer;
  */
 public final class CgVfxSystem {
 
-    private static final CgVar.Int PARTICLE_STEP = CgVar.integer("crystalgraphics.vfx.particleStep", 2, 1, 64, CgVar.DEV,
-            "Ticks a particle step spans: 2 steps particles at 60 Hz while effects tick at 120, 1 every tick.");
     private static final CgVar.Text SKIP = CgVar.text("crystalgraphics.vfx.skip", "", CgVar.DEV,
             "Comma-separated: layers whose shader path contains any of these draw nothing, to see what a frame's GPU"
                     + " time is spent on, one profile per group (body_light,haze).");
@@ -99,24 +97,6 @@ public final class CgVfxSystem {
             CgVar.DEV | CgVar.RESTART, "Measurement: volume layers on a 12 x 24 sphere instead of 48 x 96.");
     private static final CgVar.Bool SHARED_DISTORTION = CgVar.bool("crystalgraphics.vfx.sharedDistortion", false, CgVar.DEV,
             "Measurement: distortion layers after every effect's draws, so they share one copy of the target.");
-
-    /**
-     * Ticks a particle step spans in every system: particles move every {@code particleStep()}th tick, by that many
-     * ticks' time. 2 by default, so 60 Hz while effects tick at 120; {@code -Dcrystalgraphics.vfx.particleStep} sets it
-     * at launch and {@link #particleStep(int)} live.
-     *
-     * <pre>{@code
-     * CgVfxSystem.particleStep(1);   // every tick, 120 Hz
-     * }</pre>
-     */
-    public static int particleStep() {
-        return PARTICLE_STEP.get();
-    }
-
-    /** Sets {@link #particleStep()} for every system, from its next update; at least 1. A person's switch, outranking {@code -D}. */
-    public static void particleStep(int ticks) {
-        PARTICLE_STEP.set(CgVar.Source.CONSOLE, ticks);
-    }
 
     /**
      * Layers whose shader path contains any of these draw nothing, in every system: to see or time a frame without
@@ -185,8 +165,6 @@ public final class CgVfxSystem {
     private static final CgVar.Int BOOK_BATCH = CgVar.integer("crystalgraphics.vfx.bookBatch", 256, 1,
             Integer.MAX_VALUE, CgVar.DEV, "Effects of one simulation a worker books in one task.");
     private static final int MAX_TICKS = 12;
-    /** GPU steps a pool may hold unrecorded, half a second at 60 Hz, before every effect waits for the world to draw. */
-    private static final int MAX_QUEUED_STEPS = 30;
     private static final String PATH_SAMPLER = "_FxPath", TRAIL_SAMPLER = "_FxTrail";
 
     private static final CgSortLayer DISTORTION = CgSortLayer.after("crystalgraphics:vfx-distortion", CgSortLayer.EFFECTS);
@@ -269,11 +247,6 @@ public final class CgVfxSystem {
     private CgWorld world;
     private final CgVfxGpuSteps gpuSteps = new CgVfxGpuSteps();
     private boolean rangePrepared;
-    /** Ticks since the particles' last step, and how many ticks that step spanned. */
-    private int tickCount, sinceParticleTick, drawnStep = 1;
-    private boolean particleTick = true;
-    /** Seconds the particles' last step moved them by: what a frame draws between. */
-    private float particleDt = TICK;
     private double clock = Double.NaN;
     private float owed, simulated;
     private float density = 1f;
@@ -373,15 +346,16 @@ public final class CgVfxSystem {
         owed = Math.max(0f, owed + passed);
         clock = seconds;
         cull(passed);
-        // WORLD_OPAQUE records the GPU's steps. While it does not fire, every effect holds, as Niagara and VFX Graph
-        // pause what is not drawn: dropped steps would leave particles alive in a slot its books close as finished.
-        if (gpuSteps.queuedSteps() >= MAX_QUEUED_STEPS) {
+        // WORLD_OPAQUE records the GPU's one step a frame. While it has not, every effect holds, as Niagara and VFX
+        // Graph pause what is not drawn: a second step would need recording, and a dropped one would leave particles
+        // alive in a slot its books close as finished.
+        if (gpuSteps.queuedSteps() > 0) {
             owed = 0f;
             CgVfxTrace.count(HELD, 1);
             return;
         }
         startLate();
-        int ticks = 0, step = PARTICLE_STEP.get();
+        int ticks = 0;
         long budget = (long) (SIM_BUDGET_MS.get() * 1_000_000L), start = System.nanoTime();
         boolean overBudget = false;
         // one batch: every effect's queries and hitboxes this update share what they learn of the entities
@@ -390,11 +364,6 @@ public final class CgVfxSystem {
             while (owed >= TICK && ticks < MAX_TICKS && !overBudget) {
                 try (CgTrace.Zone tick = CgTrace.zone(CgVfxTrace.CHANNEL, TICK_ZONE)) {
                     air.tick(simulated);
-                    particleTick = tickCount++ % step == 0;
-                    if (particleTick) {
-                        particleDt = TICK * step;
-                        drawnStep = step;
-                    }
                     for (int i = 0; i < effects.size(); i++) {
                         CgVfxEffect<?> effect = effects.get(i);
                         if (effect.state() != CgVfxEffect.State.DEAD && !effect.asleep && effect.timeRate > 0f) {
@@ -439,17 +408,18 @@ public final class CgVfxSystem {
                         for (int i = 0; i < booking.size(); i++) booking.get(i).clearDue();
                         booking.clear();
                     }
-                    if (particleTick) {
-                        try (CgTrace.Zone steps = CgTrace.zone(CgVfxTrace.CHANNEL, GPU_STEPS_ZONE)) {
-                            gpuSteps.step(particleDt, air);
-                        }
-                    }
-                    sinceParticleTick = particleTick ? 0 : sinceParticleTick + 1;
+                    gpuSteps.book(ticks * TICK);
                 }
                 simulated += TICK;
                 owed -= TICK;
                 ticks++;
                 overBudget = System.nanoTime() - start >= budget;
+            }
+        }
+        if (ticks > 0) {
+            // One GPU step over the update's particle time; each tick's births at their offsets within it.
+            try (CgTrace.Zone steps = CgTrace.zone(CgVfxTrace.CHANNEL, GPU_STEPS_ZONE)) {
+                gpuSteps.step(ticks * TICK, air);
             }
         }
         CgVfxTrace.count(TICKS, ticks);
@@ -639,8 +609,6 @@ public final class CgVfxSystem {
             float target = effect.startAge;
             effect.startAge = 0f;
             if (effect.state() == CgVfxEffect.State.DEAD) continue;
-            boolean wasTick = particleTick;
-            float wasDt = particleDt;
             effect.seeking = true;
             try {
                 fastForward(effect, target);
@@ -649,8 +617,6 @@ public final class CgVfxSystem {
             } finally {
                 effect.seeking = false;
                 gpuSteps.endPrewarm();
-                particleTick = wasTick;
-                particleDt = wasDt;
             }
         }
     }
@@ -664,17 +630,13 @@ public final class CgVfxSystem {
         float from = effect.age, stepped = Math.min(target, MAX_START_SECONDS);
         int ticks = Math.round(stepped / TICK), windowTicks = Math.round(Math.min(stepped, PREWARM_SECONDS) / TICK);
         int windowFrom = ticks - windowTicks;
-        int particleStep = PARTICLE_STEP.get();
-        int coarse = Math.max(particleStep, (windowTicks + PREWARM_STEPS - 1) / PREWARM_STEPS);
+        int coarse = Math.max(1, (windowTicks + PREWARM_STEPS - 1) / PREWARM_STEPS), booked = 0;
         for (int t = 0; t < ticks && effect.state() != CgVfxEffect.State.DEAD; t++) {
             boolean inWindow = t >= windowFrom;
             if (t == windowFrom) {
                 gpuSteps.beginPrewarm();
                 effect.admitScheduled(gpuSteps);
             }
-            int step = inWindow ? coarse : particleStep;
-            particleTick = (inWindow ? t - windowFrom : t) % step == 0;
-            if (particleTick) particleDt = TICK * step;
             effect.step(TICK);
             if (effect.hasEmitterTicks()) {
                 effect.tickEmitters();
@@ -682,7 +644,13 @@ public final class CgVfxSystem {
                 // Before the window its instances keep their books alone: admitted at its start.
                 if (inWindow) effect.admitScheduled(gpuSteps);
             }
-            if (inWindow && particleTick) gpuSteps.prewarmStep(particleDt, air);
+            if (!inWindow) continue;
+            // The window's ticks booked, then stepped in at most PREWARM_STEPS steps of coarse ticks each.
+            gpuSteps.prewarmBook(booked * TICK);
+            if (++booked == coarse || t == ticks - 1) {
+                gpuSteps.prewarmStep(booked * TICK, air);
+                booked = 0;
+            }
         }
         if (target > stepped) effect.age = from + target;
     }
@@ -695,16 +663,6 @@ public final class CgVfxSystem {
     /** {@code emitter}'s slot in a GPU pool, or null when it holds none: stepped on the CPU, or every particle dead. */
     CgVfxGpuSteps.Tenant gpuTenant(CgVfxEmitterInstance emitter) {
         return gpuSteps.of(emitter);
-    }
-
-    /** Whether this tick moves particles: one in {@link #particleStep()}. */
-    boolean particleTick() {
-        return particleTick;
-    }
-
-    /** Seconds this tick's particle step moves particles by. */
-    float particleDt() {
-        return particleDt;
     }
 
     /** The share of {@code emitter}'s particles to spawn: the player's density, halved again at Low for an optional one. */
@@ -792,7 +750,6 @@ public final class CgVfxSystem {
                 warm(world);
             }
             float alpha = Math.min(owed / TICK, 1f);
-            // Particles hold their last two steps, a step apart: drawn one step behind, as the rest is a tick behind.
             double gx = 0, gy = 0, gz = 0;
             for (int i = 0; i < effects.size(); i++) {
                 CgVfxEffect<?> effect = effects.get(i);
@@ -802,8 +759,7 @@ public final class CgVfxSystem {
             }
             int n = effects.size();
             materials.begin(CgFrameRing.frame());
-            frame.begin(world, alpha, Math.min((sinceParticleTick + alpha) / drawnStep, 1f), gx / n, gy / n, gz / n);
-            gpuSteps.frame(frame.particleAlpha(), particleDt);
+            frame.begin(world, alpha, gx / n, gy / n, gz / n);
             paths.begin();
             trails.begin();
             for (int i = 0; i < effects.size(); i++) {
