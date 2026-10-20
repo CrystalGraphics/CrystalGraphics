@@ -3,6 +3,7 @@ package com.crystalgraphics.demo;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.platform.input.CgKeyCodes;
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import com.crystalgraphics.vfx.element.CgVfxBlast;
@@ -63,11 +64,14 @@ public final class CgVfxDemoControls {
     private static final int REAL_TIME = 5;
     private static final float MIN_WAIT = 0.5f, MAX_WAIT = 8f;
 
+    // Before INSTANCE: its constructor reads it.
+    private static final CgVar.Text START_TIME = CgVar.text("crystalgraphics.demo.time", "", CgVar.DEV,
+            "The VFX demos' time switch at start: the nearest of its rates to this one, for a run left unattended.");
     private static final CgVfxDemoControls INSTANCE = new CgVfxDemoControls();
 
     private static int startSpeed() {
-        String rate = System.getProperty("crystalgraphics.demo.time");
-        if (rate == null) return REAL_TIME;
+        String rate = START_TIME.get();
+        if (rate.isEmpty()) return REAL_TIME;
         float want = Float.parseFloat(rate);
         int best = REAL_TIME;
         for (int i = 0; i < SPEEDS.length; i++) if (Math.abs(SPEEDS[i] - want) < Math.abs(SPEEDS[best] - want)) best = i;
@@ -76,7 +80,7 @@ public final class CgVfxDemoControls {
 
     private Flash flash = Flash.OFF;
     private boolean impact = false, billows = true;
-    /** {@code -Dcrystalgraphics.demo.time=<rate>}: the time switch at the nearest of its rates at start, unattended. */
+    /** The time switch, at {@link #START_TIME}'s rate at start. */
     private int speed = startSpeed();
     private float wait = 4f;
     /** The clock slowed by the time switch, and the host seconds it last advanced to. */

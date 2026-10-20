@@ -74,9 +74,12 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.demo.blasts` | 1 to 100000 | `120` | Blasts in the demo's blasts scene; 120 keep about 360,000 particles alive. Read at launch. |
 | `crystalgraphics.demo.capture` | text | empty | A PNG path: the world, with no GUI over it, written there captureAt world frames after the demo was placed. Read at launch. |
 | `crystalgraphics.demo.captureAt` | 1 to 2147483647 | `300` | World frames after the demo was placed that its capture is written. Read at launch. |
+| `crystalgraphics.demo.modules.only` | text | empty | The modules demo shows only the stations whose names start with one of these, comma-separated. |
 | `crystalgraphics.demo.profile` | 0 to 2147483647 | `0` | Frames of the demo's scene to profile, written to crystalgraphics/profile-<scene>-<n>f/ in the game directory; 0 for none. Read at launch. |
 | `crystalgraphics.demo.profile.warmup` | 0 to 2147483647 | `600` | Frames on the ground before the demo's profile starts. Read at launch. |
 | `crystalgraphics.demo.sky` | true, false | `true` | The demo's beams scene under the showcase's sky; false keeps the world's own. Read at launch. |
+| `crystalgraphics.demo.station` | text | empty | The fluid demo shows only the stations whose titles hold these words, for measuring one alone. |
+| `crystalgraphics.demo.time` | text | empty | The VFX demos' time switch at start: the nearest of its rates to this one, for a run left unattended. |
 
 ## `crystalgraphics.fixedSeed`
 

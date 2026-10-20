@@ -21,6 +21,7 @@ import com.crystalgraphics.shape.primitive.CgRing;
 import com.crystalgraphics.shape.primitive.CgShell;
 import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.CgVfx;
@@ -49,6 +50,7 @@ import org.joml.Quaternionf;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -75,6 +77,8 @@ import java.util.function.Supplier;
 public final class CgVfxModules {
 
     private static final Logger LOG = LogManager.getLogger("CgVfxModules");
+    private static final CgVar.Text ONLY = CgVar.text("crystalgraphics.demo.modules.only", "", CgVar.DEV,
+            "The modules demo shows only the stations whose names start with one of these, comma-separated.");
     private static final String PARTICLE = "crystalgraphics:shaders/vfx/particle/";
     private static final float PERIOD = 7f, FOREVER = 1.0e6f;
     /** A 4x4 flame sheet looping twice through a flame's life of about 0.8 s, each flame at its own frame. */
@@ -276,8 +280,8 @@ public final class CgVfxModules {
         sparks(COLUMNS[2] + 6f, ROWS[5]);
         streams(COLUMNS[3] + 10f, ROWS[5]);
         flocks(COLUMNS[0], ROWS[6]);
-        String probeOnly = System.getProperty("crystalgraphics.demo.modules.only");   // PROBE
-        if (probeOnly != null) stations.removeIf(s -> java.util.Arrays.stream(probeOnly.split(",")).noneMatch(s.name()::startsWith));   // PROBE
+        String only = ONLY.get();
+        if (!only.isEmpty()) stations.removeIf(s -> Arrays.stream(only.split(",")).noneMatch(s.name()::startsWith));
         floors = new float[stations.size()];
         for (Station s : stations) LOG.info("[vfx-modules] {} at x {}, z {}", s.name(), s.x(), s.z());
         LOG.info("[vfx-modules] every station replays every {}s; a simulation switch reaches it from the next", PERIOD);

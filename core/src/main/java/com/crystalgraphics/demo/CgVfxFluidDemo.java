@@ -7,6 +7,7 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgRing;
 import com.crystalgraphics.shape.primitive.CgSphere;
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
@@ -55,6 +56,8 @@ import java.util.function.Consumer;
 public final class CgVfxFluidDemo {
 
     private static final Logger LOG = LogManager.getLogger("CgVfxFluidDemo");
+    private static final CgVar.Text ONLY = CgVar.text("crystalgraphics.demo.station", "", CgVar.DEV,
+            "The fluid demo shows only the stations whose titles hold these words, for measuring one alone.");
     /** Seconds between plays: long enough for the mushroom cloud to rise and spread. */
     public static final float PERIOD = 30f;
     /** How far the grid reaches either side of the origin along x, in blocks. */
@@ -200,9 +203,8 @@ public final class CgVfxFluidDemo {
         fireWhirl(c, -ROW);
         comet(d, -ROW);
         mushroomCloud(0f, -ROW - 50f);
-        // -Dcrystalgraphics.demo.station=<words>: only the stations whose titles hold them, for measuring one alone.
-        String only = System.getProperty("crystalgraphics.demo.station");
-        if (only != null) stations.removeIf(s -> !(s.title() + ": " + s.subtitle()).contains(only));
+        String only = ONLY.get();
+        if (!only.isEmpty()) stations.removeIf(s -> !(s.title() + ": " + s.subtitle()).contains(only));
         floors = new float[stations.size()];
         for (Station s : stations) {
             LOG.info("[vfx-fluid] {} at x {}, z {}", s.title(), s.x(), s.z());

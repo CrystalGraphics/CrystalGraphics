@@ -27,8 +27,12 @@ public class RawPropertyReadsTest {
 
     private static final Pattern RAW = Pattern.compile(
             "(?:System\\.getProperty|Boolean\\.getBoolean|Integer\\.getInteger|Long\\.getLong)\\(\\s*\"(crystalgraphics\\.[^\"]*)\"");
-    /** Read before the engine loads: the 1.7.10 hotswap plugin and integration test. */
-    private static final List<String> ALLOWED = Arrays.asList("crystalgraphics.hotswap.", "crystalgraphics.integration.");
+    /**
+     * Not engine flags: read before the engine loads (the 1.7.10 hotswap plugin and integration test), or a gate test's
+     * input the build hands it (the kits, the format's schemas).
+     */
+    private static final List<String> ALLOWED = Arrays.asList("crystalgraphics.hotswap.", "crystalgraphics.integration.",
+            "crystalgraphics.kits", "crystalgraphics.spec");
     private static final Set<String> SKIPPED_DIRS = new HashSet<>(Arrays.asList("build", ".gradle", "run", "runs", "out"));
 
     @Test
