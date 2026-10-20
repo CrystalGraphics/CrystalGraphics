@@ -1,5 +1,8 @@
 package com.crystalgraphics.asset.load;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -11,7 +14,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
@@ -20,6 +25,8 @@ import javax.annotation.Nullable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.crystalgraphics.asset.codec.CgAssetVersions;
+import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.registry.CgAssetEntry;
 import com.crystalgraphics.asset.registry.CgAssetRegistry;
 import com.crystalgraphics.asset.tree.CgAssetData;
@@ -29,6 +36,8 @@ import com.crystalgraphics.asset.tree.CgChange;
 import com.crystalgraphics.asset.tree.CgEdit;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLoop;
+import com.crystalgraphics.mc.CgAssetReloader;
+import com.crystalgraphics.mc.CgReloadListener;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.object.validate.CgValidation;
@@ -89,6 +98,8 @@ public final class CgVfxAssets {
     /** Changes compiled, waiting on their GPU work or the next publish. */
     private final List<Swap> swaps = new ArrayList<>();
     private final CgJobLoop loop;
+    /** Files saved since the last drain, as {@code ns:path}. */
+    private final Queue<String> saved = new ConcurrentLinkedQueue<>();
     private int compiling;
     private long syncLoads;
 
@@ -109,10 +120,26 @@ public final class CgVfxAssets {
         CgVfxAssets a = instance;
         if (a != null) return a;
         synchronized (CgVfxAssets.class) {
-            if (instance == null) instance = new CgVfxAssets(new CgAssetRegistry());
+            if (instance == null) {
+                instance = new CgVfxAssets(new CgAssetRegistry());
+                CgAssetReloader.addListener(SAVES);
+            }
             return instance;
         }
     }
+
+    /** Hot reload's saves, handed to whichever assets are the process's then. */
+    private static final CgReloadListener SAVES = new CgReloadListener() {
+        @Override
+        public void onReload() {
+        }
+
+        @Override
+        public void onChanged(String id) {
+            CgVfxAssets a = instance;
+            if (a != null) a.saved(id);
+        }
+    };
 
     /** Replaces the process's assets: a host with a registry of its own, or a test. */
     public static synchronized void install(CgVfxAssets assets) {
@@ -196,6 +223,9 @@ public final class CgVfxAssets {
      * the frame's budgets, handles that became ready told. Allocates nothing when nothing finished.
      */
     public void drain() {
+        if (!saved.isEmpty()) {
+            for (String id; (id = saved.poll()) != null; ) reread(id);
+        }
         pipeline.drain();
         for (int i = loading.size() - 1; i >= 0; i--) {
             if (settle(loading.get(i))) removeAt(loading, i);
@@ -272,6 +302,64 @@ public final class CgVfxAssets {
         }
         recompile(ref, change[0]);
         return inverses;
+    }
+
+    /**
+     * A file saved, as {@code ns:path} ({@code mymod:vfx/systems/charge.yaml}): at the next drain each loaded asset read
+     * from it is re-read on a worker, diffed against the file it replaces into edits, and published as {@link #edit}
+     * would. A file that no longer decodes, resolves or validates keeps the last good definition, logged. Any thread;
+     * {@code CgHotReload}'s saves arrive here.
+     */
+    public void saved(String id) {
+        saved.add(id);
+    }
+
+    private void reread(String saved) {
+        String tail = "/assets/" + saved.replace(':', '/');
+        List<CgAssetRef<?>> hit = new ArrayList<>();
+        synchronized (this) {
+            for (CgAssetRef<?> r : refs.values()) {
+                if (r.load == null || r.load.asset() == null || !r.load.state().atLeast(CgAssetState.COMPILED)) continue;
+                CgAssetEntry e = registry.entry(r.kind(), r.id());
+                if (e != null && e.file() != null && e.file().toString().replace('\\', '/').endsWith(tail)) hit.add(r);
+            }
+        }
+        for (CgAssetRef<?> r : hit) {
+            Path file = registry.entry(r.kind(), r.id()).file();
+            CgJob.on(loop).run(() -> {
+                try {
+                    Map<?, ?> tree = (Map<?, ?>) CgAssetYaml.read(new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
+                    return CgAssetVersions.upgrade(tree, r.kind());
+                } catch (Exception e) {
+                    throw new CgAssetException(file + ": " + e);
+                }
+            }).then(tree -> reload(r, tree)).failed(t -> LOGGER.error(
+                    "[hot reload] {} no longer decodes; the last good definition plays on: {}", r.id(), t.getMessage()));
+        }
+    }
+
+    /** {@code ref}'s file replaced by {@code file}: its diff as edits, or the whole file where edits cannot say it. */
+    void reload(CgAssetRef<?> ref, Map<?, ?> file) {
+        CgAssetData live = tree(ref);
+        List<CgEdit> edits = CgAssetFileDiff.diff(ref.id(), live.delta(), file);
+        if (edits != null && edits.isEmpty()) return;
+        if (edits != null) {
+            try {
+                edit(ref, edits);
+                return;
+            } catch (CgAssetException e) {
+                LOGGER.warn("[hot reload] {}: its diff did not apply ({}); reloading it whole", ref.id(), e.getMessage());
+            }
+        }
+        CgAssetData whole;
+        try {
+            whole = CgAssetData.of(ref.id(), ref.kind(), file, live.parent());
+        } catch (CgAssetException e) {
+            LOGGER.error("[hot reload] {} no longer resolves; the last good definition plays on: {}", ref.id(), e.getMessage());
+            return;
+        }
+        ref.load.asset = whole;
+        recompile(ref, CgChange.STRUCTURAL);
     }
 
     /** {@code ref}'s editable tree: the asset its load resolved. */
