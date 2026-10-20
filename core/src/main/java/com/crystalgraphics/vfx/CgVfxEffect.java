@@ -11,6 +11,7 @@ import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.post.volume.CgPostVolume;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.shape.CgShape;
+import com.crystalgraphics.util.CgRandom;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
@@ -165,7 +166,10 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     long rowsFrame = -1;
     /** Seconds simulated since it started. */
     protected float age;
-    /** A stable random number for this effect, 0..1, which shaders read to tell two effects apart. */
+    /**
+     * A stable random number for this effect, 0..1, which shaders read to tell two effects apart. Drawn from the
+     * engine's stream ({@link CgRandom}) unless {@link #seeded} gave it one: Niagara's system instance does the same.
+     */
     protected final float seed;
     /**
      * Its draws' impact frame subject key ({@code CgWorldRenderer.Draw.subject}), never 0: an impact frame it opens
@@ -183,7 +187,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         this.originY = y;
         this.originZ = z;
         float[] pending = PENDING_SEED.get();
-        this.seed = Float.isNaN(pending[0]) ? (float) Math.random() : pending[0];
+        this.seed = Float.isNaN(pending[0]) ? CgRandom.unit() : pending[0];
         pending[0] = Float.NaN;
     }
 

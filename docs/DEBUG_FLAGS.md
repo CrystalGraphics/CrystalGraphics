@@ -78,6 +78,12 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.demo.profile.warmup` | 0 to 2147483647 | `600` | Frames on the ground before the demo's profile starts. Read at launch. |
 | `crystalgraphics.demo.sky` | true, false | `true` | The demo's beams scene under the showcase's sky; false keeps the world's own. Read at launch. |
 
+## `crystalgraphics.fixedSeed`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.fixedSeed` | true, false | `false` | Seed the engine's random stream from a constant, not the clock (Unreal's -FixedSeed): a capture repeats run to run. Read at launch. |
+
 ## `crystalgraphics.gl`
 
 | Variable | Takes | Default | |

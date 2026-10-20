@@ -12,6 +12,7 @@ import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgNetType;
 import com.crystalgraphics.serialization.CgCodecs;
+import com.crystalgraphics.util.CgRandom;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxRegistry;
 import com.crystalgraphics.vfx.look.CgVfxEnding;
@@ -32,7 +33,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 
 /**
@@ -542,7 +542,7 @@ public final class CgVfxCue {
         int followId = -1;
         @Nullable
         String point;
-        int seed = ThreadLocalRandom.current().nextInt();
+        int seed = CgRandom.nextInt();
         float age, lifetime;
         int struck = -1;
         boolean authoritative;
