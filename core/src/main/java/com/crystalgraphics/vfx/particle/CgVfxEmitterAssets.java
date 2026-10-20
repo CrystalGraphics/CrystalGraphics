@@ -13,6 +13,7 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.asset.kind.CgModuleTypes;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.object.CgProperty;
+import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.shape.primitive.CgSphere;
@@ -259,16 +260,34 @@ public final class CgVfxEmitterAssets {
         return out;
     }
 
-    /** Its inputs, each one absent taking the default {@code modules.yaml} declares for it. */
+    /**
+     * Its inputs: each one absent taking the default {@code modules.yaml} declares, which is in Unreal's units
+     * ({@code modules.md} § Declaration), and each one its {@code visible_when} gate leaves unread dropped.
+     */
     private static Map<?, ?> inputs(Map<?, ?> entry) {
         Map<Object, Object> in = new LinkedHashMap<>(entry.get("inputs") instanceof Map<?, ?> m ? m : Map.of());
         CgModuleTypes.Module declared = CgModuleTypes.builtIn().get(moduleId(entry));
-        if (declared != null) {
-            for (CgProperty p : declared.inputs().properties()) {
-                if (!in.containsKey(p.name()) && p.defaultValue() != null) in.put(p.name(), p.defaultValue());
+        if (declared == null) return in;
+        for (CgProperty p : declared.inputs().properties()) {
+            if (!in.containsKey(p.name()) && p.defaultValue() != null) {
+                in.put(p.name(), CgUnits.UNREAL.toHost(p.defaultValue(), p.quantity()));
             }
         }
+        for (CgProperty p : declared.inputs().properties()) {
+            if (!gateHolds(p, in)) in.remove(p.name());
+        }
         return in;
+    }
+
+    /** Whether every input {@code p}'s gate names holds the value it asks for; a list is any of its values. */
+    private static boolean gateHolds(CgProperty p, Map<?, ?> in) {
+        for (Map.Entry<String, Object> gate : p.meta().visibleWhen().entrySet()) {
+            Object actual = in.get(gate.getKey());
+            Object want = gate.getValue();
+            boolean held = want instanceof List<?> any ? any.contains(actual) : want.equals(actual);
+            if (!held) return false;
+        }
+        return true;
     }
 
     private static String moduleId(Map<?, ?> entry) {

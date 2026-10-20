@@ -1,27 +1,29 @@
 # The built-in modules' declarations (spec/modules.md as data): what aaa_validate.py checks a module entry's inputs
 # against, and what the codecs are generated from. A number takes every form unless `forms` narrows it (modules.md).
 # Every module that rolls also takes `seed` (modules.md § Declaration).
+# An absent input takes its `default`, Unreal's, in Unreal's units: cm, Unreal's axes, degrees, seconds, linear colour.
+# An input whose `visible_when` does not hold is not read; a list there is any of its values (modules.md § Declaration).
 _v: 1
 modules:
   # emitter update
   - { id: emitter_state, groups: [emitter_update], once: true, order: emitter, analytic: true, unreal: { niagara: EmitterState, cascade: [Required, Spawn] }, inputs: [
       { name: loop, type: enum, values: [infinite, multiple, once], default: infinite },
-      { name: loop_count, type: int, default: 1, timeline: loop_count },
+      { name: loop_count, type: int, default: 1, timeline: loop_count, visible_when: { loop: multiple } },
       { name: duration, type: float, quantity: time, default: 1 },
-      { name: recalculate_each_loop, type: bool },
+      { name: recalculate_each_loop, type: bool, default: false, visible_when: { loop: [infinite, multiple] } },
       { name: delay, type: float, quantity: time, default: 0 },
-      { name: delay_first_loop_only, type: bool }, { name: recalculate_delay_each_loop, type: bool },
+      { name: delay_first_loop_only, type: bool, default: false, visible_when: { loop: [infinite, multiple] } }, { name: recalculate_delay_each_loop, type: bool, default: false, visible_when: { loop: [infinite, multiple] } },
       { name: inactive, type: enum, values: [complete, kill], default: complete },
-      { name: kill_on_complete, type: bool } ] }
+      { name: kill_on_complete, type: bool, default: false } ] }
   - { id: spawn_rate, groups: [emitter_update], analytic: true, unreal: { niagara: SpawnRate, cascade: [Spawn] }, inputs: [
-      { name: rate, type: float, quantity: rate, by: [loop] },
+      { name: rate, type: float, quantity: rate, by: [loop], default: 1 },
       { name: probability, type: float, default: 1 },
       { name: scale, type: float, by: [loop], default: 1 },
       { name: apply_global_scale, type: bool, default: true } ] }
   - { id: spawn_burst, groups: [emitter_update], analytic: true, unreal: { niagara: SpawnBurst_Instantaneous, cascade: [Spawn] }, inputs: [
       { name: time, type: float, quantity: time, default: 0, timeline: key_time },
-      { name: count, type: int, forms: [constant, range], rolls: loop, timeline: key_value },
-      { name: probability, type: float, default: 1 }, { name: loop_count_limit, type: int },
+      { name: count, type: int, forms: [constant, range], rolls: loop, timeline: key_value, default: 0 },
+      { name: probability, type: float, default: 1 }, { name: loop_count_limit, type: int, default: 0 },
       { name: scale, type: float, by: [loop], default: 1 } ] }
   - { id: spawn_per_unit, groups: [emitter_update], unreal: { niagara: SpawnPerUnit, cascade: [SpawnPerUnit] }, inputs: [
       { name: spacing, type: float, quantity: length },
@@ -33,37 +35,37 @@ modules:
 
   # particle spawn
   - { id: initialize_particle, groups: [particle_spawn], once: true, order: spawn_init, analytic: true, unreal: { niagara: InitializeParticle, cascade: [Lifetime, Size, Color, Rotation] }, inputs: [
-      { name: lifetime, type: float, quantity: time },
-      { name: color, type: colour, rolls: draw },
-      { name: alpha, type: float, by: [loop], rolls: draw },
+      { name: lifetime, type: float, quantity: time, default: 1 },
+      { name: color, type: colour, rolls: draw, default: { argb: 0xFFFFFFFF } },
+      { name: alpha, type: float, by: [loop], rolls: draw, default: 1 },
       { name: clamp_alpha, type: bool, default: true },
-      { name: intensity, type: float },
-      { name: sprite_size, type: vec2, quantity: length }, { name: uniform, type: bool },
-      { name: mesh_scale, type: vec3, rolls: draw }, { name: per_axis, type: bool },
-      { name: sprite_rotation, type: float, quantity: angle },
-      { name: mass, type: float }, { name: heat, type: float } ] }
+      { name: intensity, type: float, default: 1 },
+      { name: sprite_size, type: vec2, quantity: length, default: [50, 50] }, { name: uniform, type: bool, default: false },
+      { name: mesh_scale, type: vec3, rolls: draw, default: [1, 1, 1] }, { name: per_axis, type: bool, default: true },
+      { name: sprite_rotation, type: float, quantity: angle, default: 0 },
+      { name: mass, type: float, default: 1 }, { name: heat, type: float, default: 0 } ] }
   - { id: shape_location, groups: [particle_spawn], order: spawn_place, analytic: true, unreal: { niagara: ShapeLocation, cascade: [Location, LocationWorldOffset, LocationPrimitiveSphere, LocationPrimitiveCylinder, LocationPrimitiveTriangle] }, inputs: [
       { name: shape, type: enum, values: [point, sphere, box, cylinder, ring, cone, capsule, plane, triangle, torus, mesh], default: point },
-      { name: sphere_radius, type: float, quantity: length },
-      { name: box_size, type: vec3, quantity: length },
-      { name: cylinder_radius, type: float, quantity: length },
-      { name: cylinder_height, type: float, quantity: length },
-      { name: cylinder_axis, type: enum, values: [x, y, z], default: z },
-      { name: ring_radius, type: float, quantity: length },
-      { name: cone_length, type: float, quantity: length },
-      { name: cone_angle, type: float, quantity: angle },
-      { name: capsule_radius, type: float, quantity: length }, { name: capsule_height, type: float, quantity: length },
-      { name: plane_size, type: vec2, quantity: length }, { name: triangle, type: array, quantity: position },
-      { name: torus_radius, type: float, quantity: length },
-      { name: surface_only, type: bool }, { name: surface_thickness, type: float, quantity: length },
-      { name: edge_only, type: bool }, { name: hemisphere, type: bool }, { name: arc, type: float, quantity: angle },
-      { name: directions, type: string },
-      { name: ordered, type: int },
-      { name: rotation, type: rotation }, { name: scale, type: vec3 },
-      { name: offset, type: vec3, quantity: offset, by: [loop] },
+      { name: sphere_radius, type: float, quantity: length, default: 100, visible_when: { shape: sphere } },
+      { name: box_size, type: vec3, quantity: length, default: [100, 100, 100], visible_when: { shape: box } },
+      { name: cylinder_radius, type: float, quantity: length, default: 100, visible_when: { shape: cylinder } },
+      { name: cylinder_height, type: float, quantity: length, default: 100, visible_when: { shape: cylinder } },
+      { name: cylinder_axis, type: enum, values: [x, y, z], default: z, visible_when: { shape: cylinder } },
+      { name: ring_radius, type: float, quantity: length, default: 100, visible_when: { shape: ring } },
+      { name: cone_length, type: float, quantity: length, default: 50, visible_when: { shape: cone } },
+      { name: cone_angle, type: float, quantity: angle, default: 30, visible_when: { shape: cone } },
+      { name: capsule_radius, type: float, quantity: length, visible_when: { shape: capsule } }, { name: capsule_height, type: float, quantity: length, visible_when: { shape: capsule } },
+      { name: plane_size, type: vec2, quantity: length, default: [100, 100], visible_when: { shape: plane } }, { name: triangle, type: array, quantity: position, visible_when: { shape: triangle } },
+      { name: torus_radius, type: float, quantity: length, default: 100, visible_when: { shape: torus } },
+      { name: surface_only, type: bool, default: false }, { name: surface_thickness, type: float, quantity: length, default: 0, visible_when: { surface_only: true } },
+      { name: edge_only, type: bool, default: false }, { name: hemisphere, type: bool, default: false }, { name: arc, type: float, quantity: angle, default: 360 },
+      { name: directions, type: string, default: "+x-x+y-y+z-z" },
+      { name: ordered, type: int, default: 0 },
+      { name: rotation, type: rotation, default: [0, 0, 0] }, { name: scale, type: vec3, default: [1, 1, 1] },
+      { name: offset, type: vec3, quantity: offset, by: [loop], default: [0, 0, 0] },
       { name: space, type: enum, values: [emitter, world], default: emitter },
-      { name: mesh, type: mesh, forms: [data] }, { name: vertices, type: bool },
-      { name: add_velocity, type: struct } ] }
+      { name: mesh, type: mesh, forms: [data], visible_when: { shape: mesh } }, { name: vertices, type: bool, default: false, visible_when: { shape: mesh } },
+      { name: add_velocity, type: struct, default: { outward: 0 } } ] }
   - { id: socket_location, groups: [particle_spawn], order: spawn_place, unreal: { niagara: SkeletalMeshLocation, cascade: [LocationBoneSocket] }, inputs: [
       { name: points, type: array }, { name: source, type: enum, values: [sockets, bones], default: sockets },
       { name: mesh, type: struct, forms: [constant, binding] },
@@ -86,15 +88,15 @@ modules:
       { name: inherit_velocity, type: float }, { name: inherit_rotation, type: float }, { name: follow, type: bool } ] }
   - { id: add_velocity, groups: [particle_spawn], order: spawn_launch, analytic: true, unreal: { niagara: AddVelocity, cascade: [Velocity, VelocityCone, VelocityInheritParent] }, inputs: [
       { name: mode, type: enum, values: [linear, in_cone, from_point, outward, inward], default: linear },
-      { name: linear, type: vec3, quantity: speed, by: [loop] },
-      { name: outward, type: float, quantity: speed, by: [loop] },
-      { name: cone_axis, type: vec3, quantity: direction }, { name: cone_angle, type: float, quantity: angle, by: [loop] },
-      { name: inner_cone, type: float, quantity: angle }, { name: falloff_from_axis, type: bool },
-      { name: point_origin, type: vec3, quantity: position },
-      { name: speed, type: float, quantity: speed, by: [loop] },
-      { name: inherit, type: float, by: [loop] },
+      { name: linear, type: vec3, quantity: speed, by: [loop], default: [0, 0, 0], visible_when: { mode: linear } },
+      { name: outward, type: float, quantity: speed, by: [loop], default: 0 },
+      { name: cone_axis, type: vec3, quantity: direction, default: [1, 0, 0], visible_when: { mode: in_cone } }, { name: cone_angle, type: float, quantity: angle, by: [loop], default: 45, visible_when: { mode: in_cone } },
+      { name: inner_cone, type: float, quantity: angle, default: 0, visible_when: { mode: in_cone } }, { name: falloff_from_axis, type: bool, default: false, visible_when: { mode: in_cone } },
+      { name: point_origin, type: vec3, quantity: position, default: [0, 0, 0], visible_when: { mode: from_point } },
+      { name: speed, type: float, quantity: speed, by: [loop], default: 25, visible_when: { mode: [in_cone, from_point, outward, inward] } },
+      { name: inherit, type: float, by: [loop], default: 0 },
       { name: space, type: enum, values: [emitter, world], default: emitter },
-      { name: owner_scale, type: bool } ] }
+      { name: owner_scale, type: bool, default: false } ] }
   - { id: initial_mesh_orientation, groups: [particle_spawn], analytic: true, unreal: { niagara: InitialMeshOrientation, cascade: [MeshRotation] }, inputs: [
       { name: mode, type: enum, values: [none, orient_to_vector, random], default: none },
       { name: orientation_vector, type: vec3, quantity: direction },
@@ -113,15 +115,15 @@ modules:
 
   # particle update: forces and motion
   - { id: gravity, groups: [particle_update], order: forces, analytic: true, unreal: { niagara: GravityForce }, inputs: [
-      { name: gravity, type: vec3, quantity: acceleration } ] }
+      { name: gravity, type: vec3, quantity: acceleration, default: [0, 0, -980] } ] }
   - { id: acceleration, groups: [particle_update], order: forces, analytic: true, unreal: { niagara: AccelerationForce, cascade: [Acceleration, AccelerationConstant, AccelerationOverLifetime] }, inputs: [
       { name: acceleration, type: vec3, quantity: acceleration, by: [age, loop] },
       { name: space, type: enum, values: [emitter, world], default: emitter },
       { name: owner_scale, type: bool } ] }
   - { id: drag, groups: [particle_update], order: forces, analytic: true, unreal: { niagara: Drag, cascade: [AccelerationDrag, AccelerationDragScaleOverLife] }, inputs: [
-      { name: drag, type: float, quantity: rate, by: [age, loop] },
-      { name: scale, type: float, by: [age] },
-      { name: use_quadratic, type: bool, toggle_for: quadratic }, { name: quadratic, type: float, quantity: rate } ] }
+      { name: drag, type: float, quantity: rate, by: [age, loop], default: 1 },
+      { name: scale, type: float, by: [age], default: 1 },
+      { name: use_quadratic, type: bool, toggle_for: quadratic, default: false }, { name: quadratic, type: float, quantity: rate, default: 0, visible_when: { use_quadratic: true } } ] }
   - { id: limit_speed, groups: [particle_update], order: forces, unreal: { niagara: LimitVelocity }, inputs: [
       { name: max_speed, type: float, quantity: speed } ] }
   - { id: curl_noise, groups: [particle_update], order: forces, unreal: { niagara: CurlNoiseForce }, inputs: [
@@ -197,11 +199,11 @@ modules:
       { name: color, type: colour, by: [age] },
       { name: alpha, type: float, by: [age] }, { name: clamp_alpha, type: bool, default: true } ] }
   - { id: scale_color, groups: [particle_update], analytic: true, unreal: { niagara: ScaleColor, cascade: [ColorScaleOverLife] }, inputs: [
-      { name: scale, type: colour, by: [age, loop] },
-      { name: alpha, type: float, by: [age, loop] }, { name: intensity, type: float, by: [age] } ] }
+      { name: scale, type: colour, by: [age, loop], default: { argb: 0xFFFFFFFF } },
+      { name: alpha, type: float, by: [age, loop], default: 1 }, { name: intensity, type: float, by: [age], default: 1 } ] }
   - { id: scale_sprite_size, groups: [particle_update], analytic: true, unreal: { niagara: ScaleSpriteSize, cascade: [SizeMultiplyLife, SizeScale] }, inputs: [
-      { name: scale, type: vec2, by: [age] },
-      { name: mode, type: enum, values: [multiply, set], default: multiply }, { name: axes, type: string } ] }
+      { name: scale, type: vec2, by: [age], default: [1, 1] },
+      { name: mode, type: enum, values: [multiply, set], default: multiply }, { name: axes, type: string, default: xy } ] }
   - { id: scale_mesh_size, groups: [particle_update], analytic: true, unreal: { niagara: ScaleMeshSize, cascade: [SizeMultiplyLife, SizeScale] }, inputs: [
       { name: scale, type: vec3, by: [age] },
       { name: mode, type: enum, values: [multiply, set], default: multiply }, { name: axes, type: string } ] }
