@@ -84,16 +84,29 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         return this;
     }
 
-    /** A constant pull down, in blocks a second squared: 9.8 is Earth's. */
-    record Gravity(float strength) implements CgVfxModule {
+    /**
+     * A constant acceleration, in blocks a second squared: Niagara's Gravity Force, whose {@code Gravity} is a vector.
+     *
+     * <pre>{@code
+     * new CgVfxModule.Gravity(9.8f)               // Earth's, straight down
+     * new CgVfxModule.Gravity(0f, -4f, 1.5f)      // down and drifting along +Z
+     * }</pre>
+     */
+    record Gravity(float x, float y, float z) implements CgVfxModule {
+
+        /** {@code strength} straight down. */
+        public Gravity(float strength) {
+            this(0f, -strength, 0f);
+        }
+
         @Override
         public CgVfxModule scaled(float scale) {
-            return new Gravity(strength * scale);
+            return new Gravity(x * scale, y * scale, z * scale);
         }
 
         @Override
         public float pull(float heat) {
-            return Math.abs(strength);
+            return (float) Math.sqrt(x * x + y * y + z * z);
         }
 
         @Override
@@ -103,7 +116,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeParams(CgVfxWords out) {
-            out.vec4(strength, 0f, 0f, 0f);
+            out.vec4(x, y, z, 0f);
         }
     }
 

@@ -177,11 +177,13 @@ public final class CgVfxModuleTypes {
     }
 
     static {
-        kind("gravity", CgVfxModule.Gravity.class, t -> fl(t, "strength"),
-                (m, in) -> in.f("strength", m.strength()), r -> new CgVfxModule.Gravity(r.f("strength")));
-        kind("drag", CgVfxModule.Drag.class, t -> fl(t, "linear", "quadratic"),
-                (m, in) -> in.f("linear", m.linear()).f("quadratic", m.quadratic()),
-                r -> new CgVfxModule.Drag(r.f("linear"), r.f("quadratic")));
+        // Inputs by the format's names (Niagara's Gravity Force and Drag), so a file's module reads as written.
+        kind("gravity", CgVfxModule.Gravity.class, t -> v3(t, "gravity"),
+                (m, in) -> in.v3("gravity", m.x(), m.y(), m.z()),
+                r -> new CgVfxModule.Gravity(r.f("gravity", 0), r.f("gravity", 1), r.f("gravity", 2)));
+        kind("drag", CgVfxModule.Drag.class, t -> fl(t, "drag", "quadratic"),
+                (m, in) -> in.f("drag", m.linear()).f("quadratic", m.quadratic()),
+                r -> new CgVfxModule.Drag(r.f("drag"), r.f("quadratic")));
         kind("wind", CgVfxModule.Wind.class, t -> fl(t, "resistance"),
                 (m, in) -> in.f("resistance", m.resistance()), r -> new CgVfxModule.Wind(r.f("resistance")));
         kind("turbulence", CgVfxModule.Turbulence.class, t -> fl(t, "strength", "frequency", "evolve"),
