@@ -80,7 +80,7 @@ Buffers {
     STARTS  ("Where each slot's run starts in INDICES",           uint,     readonly)
     BASES   ("Where each slot's records start in its pool's DRAWN", uint,   readonly)
     ORIGINS ("Each slot's origin, absolute",                      FxOrigin, readonly)
-    ORDER   ("Each drawn particle's record in its pool",          uint,     writeonly)
+    ORDER   ("Each drawn particle's record in its pool, -1 for none: a float, as a buffer texture reads it", float, writeonly)
     OBJECTS ("The particles a mesh draws",                        FxObject, writeonly)
 }
 
@@ -145,7 +145,7 @@ int range_slot(int e, out int rank) {
 void Place() {
     int rank;
     int lo = range_slot(CG_ELEMENT, rank);
-    ORDER_WRITE(rank < int(VISIBLE(lo)) ? INDICES(int(STARTS(lo)) + rank) : 0xFFFFFFFFu);
+    ORDER_WRITE(rank < int(VISIBLE(lo)) ? float(INDICES(int(STARTS(lo)) + rank)) : -1.0);
 }
 
 // What a mesh particle at p from slot's origin rests against (CG_OBJECT_SPARE): the nearest solid's surface in the

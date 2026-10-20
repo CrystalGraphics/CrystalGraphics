@@ -1498,6 +1498,15 @@ public final class CgWorldRenderer {
             if (drawn > 0 && which == TRANSPARENT) {
                 if (distorts.length < meshes.length) distorts = new boolean[meshes.length];
                 for (int i = 0; i < count; i++) distorts[i] = phase[i] != SKIP && !halfSize(i) && distortsScene(materials[i]);
+                // The apply is a pass of the renderer's own: skipped while unbuilt, its hazes with it, each counted.
+                if (skipUnready && !distortion.prepare()) {
+                    for (int i = 0; i < count; i++) {
+                        if (!distorts[i]) continue;
+                        distorts[i] = false;
+                        unreadyDraws++;
+                        CgTrace.add(CgChannels.GL, UNREADY_DRAWS, 1);
+                    }
+                }
                 hazes.view = view;
                 distorting = distortion.plan(hazes, targetWidth, targetHeight);
                 afterDrawn = 0;
@@ -1589,7 +1598,7 @@ public final class CgWorldRenderer {
             for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
                 if (!link.hasDistortionPass()) continue;
                 CgPipeline pipeline = link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT);
-                if (pipeline == null) continue;
+                if (pipeline == null || unready(pipeline)) continue;
                 if (sets[i] != null) {
                     drawSet(chunks, pipeline, bindingOf(link, recording), i);
                     continue;
@@ -1868,6 +1877,7 @@ public final class CgWorldRenderer {
 
     /** Draw {@code i} through {@code pipeline} into the emission pass, sorted by its key. */
     private void emissionDraw(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterial link, CgRecording recording, int i) {
+        if (unready(pipeline)) return;
         if (sets[i] != null) {
             drawSet(chunks, pipeline, bindingOf(link, recording), i);
             return;
@@ -1951,7 +1961,7 @@ public final class CgWorldRenderer {
             model.normal(normal);
             for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
                 CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
-                if (pipeline == null) continue;
+                if (pipeline == null || unready(pipeline)) continue;
                 if (sets[i] != null) {
                     drawSet(chunks, pipeline, bindingOf(link, recording), i);
                     continue;
@@ -2031,7 +2041,7 @@ public final class CgWorldRenderer {
                 if (pipeline == null) continue;
                 CgPipeline folded = volumeFolds && link.hasEmissivePass() ? pipeline.sceneFold() : null;
                 CgPipeline marching = (folded != null ? folded : pipeline).volumeTarget();
-                if (marching == null) continue;
+                if (marching == null || unready(marching)) continue;
                 if (sets[i] != null) {
                     drawSet(chunks, marching, bindingOf(link, recording), i);
                     continue;
@@ -2307,13 +2317,21 @@ public final class CgWorldRenderer {
         if (mediaOut != null) pass.texture(CgBindingPoints.MEDIA_TEXTURE_UNIT, mediaOut);
     }
 
+    /**
+     * Whether a draw through {@code pipeline} is skipped, its program not built while {@link #skipUnready} is on: counted,
+     * and its compile started. Every pass a material draws in asks it: forward, emission, distortion, half size, volumes.
+     */
+    private boolean unready(CgPipeline pipeline) {
+        // Its joined form too: a draw that joins a multi-draw runs that program.
+        if (!skipUnready || prepared(pipeline, applied != null && applied.joins())) return false;
+        unreadyDraws++;
+        CgTrace.add(CgChannels.GL, UNREADY_DRAWS, 1);
+        return true;
+    }
+
     /** Draw {@code i} through {@code pipeline} into a world pass, at its key and within its screen rect. */
     private void passDraw(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterial link, CgRecording recording, int i) {
-        if (skipUnready && !pipeline.prepare()) {
-            unreadyDraws++;
-            CgTrace.add(CgChannels.GL, UNREADY_DRAWS, 1);
-            return;
-        }
+        if (unready(pipeline)) return;
         if (sets[i] != null) {
             drawSet(chunks, pipeline, bindingOf(link, recording), i);
             return;

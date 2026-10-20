@@ -36,7 +36,8 @@ public final class CgParticleBuffer {
             .vec4("previousLife")
             .vec4("velocitySize")
             .vec4("seedSpin")
-            .uvec4("idSlot")
+            // The kernels' uvec4 (id, slot, flags, row): no draw reads it, and a buffer texture holds floats only.
+            .vec4("idSlot")
             .vec4("place")
             .vec4("motion")
             .vec4("state")

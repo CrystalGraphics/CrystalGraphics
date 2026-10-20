@@ -23,7 +23,7 @@ public final class CgParticleOrderBuffer {
     /** The {@code attach()} macro the particle macros read the order through. */
     public static final String MACRO_NAME = "PARTICLE_ORDER_DATA";
 
-    public static final CgBufferFormat FORMAT = CgBufferFormat.builder("CgParticleOrder", STD430).uint("index").build();
+    public static final CgBufferFormat FORMAT = CgBufferFormat.builder("CgParticleOrder", STD430).float_("index").build();
 
     private static final CgShaderBuffer BUFFER = CgShaderBufferRegistry.get()
             .getOrCreateInternal("CgParticleOrderBuffer", FORMAT, CgBindingPoints.PARTICLE_ORDER, CgBufferLifetime.FRAME);

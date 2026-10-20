@@ -96,4 +96,28 @@ public class CgArchetypeKitGateTest {
         assertEquals(failed.size() > 0 ? failed.subList(0, Math.min(20, failed.size())).toString() : "", 0,
                 failed.size());
     }
+
+    /**
+     * M1's gate: every kit material compiles, or fails with a message naming it and what it lacks (a property, a
+     * keyword, or an archetype not yet written, M7's). None fails silently or without its id.
+     */
+    @Test
+    public void everyKitMaterialCompilesOrFailsNamingWhatItLacks() throws IOException {
+        int compiled = 0, unbuilt = 0;
+        List<String> unnamed = new ArrayList<>();
+        for (String id : FILES.keySet()) {
+            try {
+                CgMaterialDefinitions.compile(resolve(id), CgMaterialArchetypes.FILES);
+                compiled++;
+            } catch (RuntimeException e) {
+                String message = String.valueOf(e.getMessage());
+                if (!message.contains(id)) unnamed.add(id + ": " + message);
+                else unbuilt++;
+            }
+        }
+        System.out.println("[material gate] " + FILES.size() + " kit materials: " + compiled + " compiled, " + unbuilt
+                + " failed naming what they lack, " + unnamed.size() + " failed without their id");
+        assertEquals(unnamed.size() > 0 ? unnamed.subList(0, Math.min(20, unnamed.size())).toString() : "", 0,
+                unnamed.size());
+    }
 }
