@@ -11,6 +11,9 @@ import java.util.function.Function;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.asset.load.CgAssetCompiler;
+import com.crystalgraphics.easing.CgEasings;
+import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxInactiveResponse;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxLoopBehavior;
@@ -126,12 +129,23 @@ public final class CgVfxEmitterAssets {
                     float[] life = rangeOf(in.get("lifetime"));
                     b.life(life[0], life[1]);
                     if (in.get("heat") instanceof Number h) b.heat(h.floatValue());
+                    if (in.get("sprite_size") != null) {
+                        float[] size = rangeOf(in.get("sprite_size"));
+                        b.size(size[0], size[1]);
+                    }
                     break;
                 }
                 case "add_velocity": {
                     float[] speed = rangeOf(in.get("speed"));
                     b.speed(speed[0], speed[1]);
                     if (in.get("inherit") instanceof Number i) b.inherit(i.floatValue());
+                    if ("inward".equals(in.get("mode"))) b.inward();
+                    break;
+                }
+                case "shape_location": {
+                    if (!"sphere".equals(in.get("shape"))) throw new IllegalArgumentException(name + ": shape_location's shape " + in.get("shape") + " is not read yet");
+                    b.shape(CgSphere.of(num(in.get("sphere_radius"))));
+                    if (Boolean.TRUE.equals(in.get("surface_only"))) b.surface();
                     break;
                 }
                 default:
@@ -140,6 +154,15 @@ public final class CgVfxEmitterAssets {
         }
         for (Map<?, ?> entry : entries(tree, "particle_update")) {
             if (Boolean.FALSE.equals(entry.get("enabled"))) continue;
+            switch (moduleId(entry)) {   // over life by age: the builder's curves, not modules
+                case "scale_sprite_size":
+                    b.size(ageCurve(name, inputs(entry).get("scale")));
+                    continue;
+                case "scale_color":
+                    b.opacity(ageCurve(name, inputs(entry).get("alpha")));
+                    continue;
+                default:
+            }
             CgVfxModuleTypes.Kind<?> kind = CgVfxModuleTypes.kind(moduleId(entry));
             if (kind == null) throw new IllegalArgumentException(name + ": no module " + entry.get("module"));
             b.module(kind.compile(inputs(entry)));
@@ -205,6 +228,22 @@ public final class CgVfxEmitterAssets {
         if (value instanceof Number n) return new float[]{n.floatValue(), n.floatValue()};
         if (value instanceof Map<?, ?> m && m.get("range") instanceof List<?> r) return new float[]{num(r.get(0)), num(r.get(1))};
         throw new IllegalArgumentException("a number or a range, not " + value);
+    }
+
+    /** {@code { curve: { keys: [[t, v], ...] }, by: age }}, linear between keys. */
+    private static CgKeyframes ageCurve(String name, Object value) {
+        if (!(value instanceof Map<?, ?> form) || !(form.get("curve") instanceof Map<?, ?> curve)
+                || !(curve.get("keys") instanceof List<?> keys) || keys.isEmpty()) {
+            throw new IllegalArgumentException(name + ": a curve over age, not " + value);
+        }
+        if (form.get("by") != null && !"age".equals(form.get("by"))) throw new IllegalArgumentException(name + ": a curve by " + form.get("by") + " is not read yet");
+        List<?> first = (List<?>) keys.get(0);
+        CgKeyframes.Builder k = CgKeyframes.start(num(first.get(0)), num(first.get(1)));
+        for (int i = 1; i < keys.size(); i++) {
+            List<?> key = (List<?>) keys.get(i);
+            k.to(num(key.get(0)), num(key.get(1)), CgEasings.LINEAR);
+        }
+        return k.build();
     }
 
     private static float num(Object o) {

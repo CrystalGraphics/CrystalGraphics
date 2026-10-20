@@ -9,6 +9,7 @@ import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.net.CgVfxCueClient;
+import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.world.CgWorldQueries;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -77,6 +78,7 @@ public final class CgVfx {
         CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "crystalgraphics:vfx.submit", dt -> submit())
                 .after(effects).whilePaused(true);
         CgVfxCueClient.install();
+        CgVfxSystemAssets.register();   // system assets compile to playable definitions
         // Every frame's end, the title screen's too: a logout clears before the next world.
         CgGraphicsLifecycle.addListener(new CgLifecycleListener() {
             @Override
