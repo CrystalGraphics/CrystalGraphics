@@ -20,6 +20,8 @@ public enum CgFormClass {
     CURVE_BLOCK,
     /** {@code PER_INSTANCE}, a binding, a per-instance roll: a lane in the instance row. */
     INSTANCE_LANE,
+    /** A binding to a particle's own attribute ({@code particles.*}): read in the kernel, no word. */
+    ATTRIBUTE,
     /** An engine or world value, a texture, a mesh: outside the layout's words. */
     WORLD;
 
