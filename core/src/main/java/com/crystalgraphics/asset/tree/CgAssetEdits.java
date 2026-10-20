@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import javax.annotation.Nullable;
 
@@ -33,24 +34,25 @@ final class CgAssetEdits {
         if (segs.isEmpty() || segs.get(0).item()) throw new CgAssetException(e + ": an edit starts at a key of the asset");
         Map<Object, Object> snapshot = snapshot(d.file, segs.get(0).name());
         Object before = valueAt(d, e);
+        Object after = e.after();
         try {
             if (e.restore != null) restore(d.file, e.restore);
-            else perform(d, e);
+            else after = perform(d, e);
             d.resolve();
         } catch (RuntimeException failed) {
             restore(d.file, snapshot);
             d.resolve();
             throw failed instanceof CgAssetException ? failed : new CgAssetException(e + ": " + failed.getMessage());
         }
-        CgEdit applied = new CgEdit(e.path(), e.op(), before, e.after(), e.anchor(), e.anchorAfter(), e.isInteractive(), null);
-        return new CgEdit[] {applied, inverse(e, before, snapshot)};
+        CgEdit applied = new CgEdit(e.path(), e.op(), before, after, e.anchor(), e.anchorAfter(), e.isInteractive(), null);
+        return new CgEdit[] {applied, inverse(applied, before, snapshot)};
     }
 
     /** What {@code e} costs a player of the asset: the deepest declared property it touches, by its flags. */
     static CgChange change(CgAssetData d, CgEdit e) {
         List<CgPropertyPath.Segment> segs = e.path().segments();
-        if (e.op() != CgEdit.Op.SET && e.op() != CgEdit.Op.RESET && e.op() != CgEdit.Op.INSERT) {
-            segs = segs.subList(0, segs.size() - 1);   // an element's move, removal or switch is its list's change
+        if (e.op() != CgEdit.Op.SET && e.op() != CgEdit.Op.RESET && e.op() != CgEdit.Op.INSERT && e.op() != CgEdit.Op.CLEAR) {
+            segs = segs.subList(0, segs.size() - 1);   // an element's move, removal, copy or switch is its list's change
         }
         CgValueType type = CgValueType.struct(d.kind());
         CgAssetNode n = d.root();
@@ -70,50 +72,57 @@ final class CgAssetEdits {
         return deepest != null && deepest.has(CgPropertyFlag.STRUCTURAL) ? CgChange.STRUCTURAL : CgChange.VALUE;
     }
 
-    private static void perform(CgAssetData d, CgEdit e) {
+    /** Performs {@code e} on the file; answers what the applied edit's {@code after} is. */
+    @Nullable
+    private static Object perform(CgAssetData d, CgEdit e) {
         List<CgPropertyPath.Segment> segs = e.path().segments();
         List<CgPropertyPath.Segment> up = segs.subList(0, segs.size() - 1);
         CgPropertyPath.Segment last = segs.get(segs.size() - 1);
         switch (e.op()) {
             case SET:
                 set(walk(d, up, true, e), last, CgAssetData.copy(e.after()), e);
-                return;
+                return e.after();
             case RESET: {
                 Object c = walk(d, up, false, e);
                 if (c != null) unset(c, last);
-                return;
+                return null;
             }
             case ENABLE: case DISABLE: {
                 Object el = walk(d, segs, true, e);
                 if (!(el instanceof Map)) throw new CgAssetException(e + ": not an element");
                 CgAssetData.map(el).put("enabled", e.op() == CgEdit.Op.ENABLE);
-                return;
+                return null;
             }
             case INSERT:
-                insert(d, e);
-                return;
+                insert(d, e, e.after());
+                return e.after();
             case REMOVE:
                 remove(d, e, up, last);
-                return;
+                return null;
             case MOVE:
                 move(d, e, up, last);
-                return;
+                return null;
+            case DUPLICATE:
+                return duplicate(d, e, up, last);
+            case CLEAR:
+                clear(d, e);
+                return null;
             default:
                 throw new IllegalStateException(e.op().name());
         }
     }
 
-    private static void insert(CgAssetData d, CgEdit e) {
-        if (!(e.after() instanceof Map) || !(((Map<?, ?>) e.after()).get(CgType.ID) instanceof String)) {
+    private static void insert(CgAssetData d, CgEdit e, Object inserted) {
+        if (!(inserted instanceof Map) || !(((Map<?, ?>) inserted).get(CgType.ID) instanceof String)) {
             throw new CgAssetException(e + ": an inserted element is a map with an id");
         }
         CgAssetNode list = node(d, e.path().segments());
-        String id = (String) ((Map<?, ?>) e.after()).get(CgType.ID);
+        String id = (String) ((Map<?, ?>) inserted).get(CgType.ID);
         if (list != null && list.element(id) != null) throw new CgAssetException(e + ": the list already holds " + id);
         Object c = walk(d, e.path().segments(), true, e);
         if (!(c instanceof List)) throw new CgAssetException(e + ": not a list");
         List<Object> l = CgAssetData.list(c);
-        Map<Object, Object> element = CgAssetData.map(CgAssetData.copy(e.after()));
+        Map<Object, Object> element = CgAssetData.map(CgAssetData.copy(inserted));
         if (e.anchor() == null) {
             l.add(element);
             return;
@@ -126,6 +135,52 @@ final class CgAssetEdits {
             l.add(element);
         } else {
             throw new CgAssetException(e + ": the list holds no " + e.anchor());
+        }
+    }
+
+    /** The element's resolved copy before it, the copy and its own elements under fresh ids; answers the copy. */
+    private static Map<Object, Object> duplicate(CgAssetData d, CgEdit e, List<CgPropertyPath.Segment> up, CgPropertyPath.Segment last) {
+        CgAssetNode el = node(d, e.path().segments());
+        if (el == null || el.id() == null || el.origin == CgOrigin.REMOVED) throw new CgAssetException(e + ": no such element");
+        Map<Object, Object> copy = CgAssetData.map(CgAssetData.copy(el.toPlain()));
+        copy.remove("after");
+        copy.remove("before");
+        Set<String> taken = CgElementIds.of(d);
+        copy.put(CgType.ID, CgElementIds.fresh(taken));
+        renewIds(copy, taken);
+        insert(d, new CgEdit(e.path().parent(), CgEdit.Op.INSERT, null, copy, last.name(), false, false, null), copy);
+        return copy;
+    }
+
+    /** Fresh ids for every element inside {@code tree}: a copy's elements are its own, as a deep copy's subobjects are. */
+    private static void renewIds(Object tree, Set<String> taken) {
+        if (tree instanceof Map) {
+            for (Object v : ((Map<?, ?>) tree).values()) renewIds(v, taken);
+        } else if (tree instanceof List) {
+            for (Object v : (List<?>) tree) {
+                if (v instanceof Map && ((Map<?, ?>) v).get(CgType.ID) instanceof String) {
+                    CgAssetData.map(v).put(CgType.ID, CgElementIds.fresh(taken));
+                }
+                renewIds(v, taken);
+            }
+        }
+    }
+
+    /** Every element dropped: the file's own entries go, and an inherited element is listed in {@code remove:}. */
+    private static void clear(CgAssetData d, CgEdit e) {
+        CgAssetNode list = node(d, e.path().segments());
+        if (list == null || list.kind() != CgAssetNode.Kind.ID_LIST) throw new CgAssetException(e + ": not an id list");
+        Object c = walk(d, e.path().segments(), false, e);
+        if (c instanceof List) CgAssetData.list(c).clear();
+        if (d.parent() == null) return;
+        for (CgAssetNode el : list.elements) {
+            if (el.origin == CgOrigin.ADDED || el.origin == CgOrigin.REMOVED || el.id() == null) continue;
+            Object remove = d.file.get(CgType.REMOVE);
+            if (!(remove instanceof List)) {
+                remove = new ArrayList<>();
+                d.file.put(CgType.REMOVE, remove);
+            }
+            CgAssetData.list(remove).add(el.id());
         }
     }
 
@@ -333,6 +388,13 @@ final class CgAssetEdits {
             case INSERT:
                 op = CgEdit.Op.REMOVE;
                 path = path.item(String.valueOf(((Map<?, ?>) e.after()).get(CgType.ID)));
+                break;
+            case DUPLICATE:
+                op = CgEdit.Op.REMOVE;
+                path = path.parent().item(String.valueOf(((Map<?, ?>) e.after()).get(CgType.ID)));
+                break;
+            case CLEAR:
+                op = CgEdit.Op.SET;   // the list as it was, which its restore writes back
                 break;
             case REMOVE:
                 op = CgEdit.Op.INSERT;

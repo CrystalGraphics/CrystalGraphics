@@ -34,7 +34,12 @@ public final class CgRandomEdits {
     }
 
     private static CgEdit pick(CgAssetData d, Random r, List<CgPropertyPath> values, List<CgPropertyPath> elements, int n) {
-        int what = r.nextInt(6);
+        int what = r.nextInt(8);
+        if (what >= 6) {
+            if (elements.isEmpty()) return null;
+            CgPropertyPath el = elements.get(r.nextInt(elements.size()));
+            return what == 6 ? CgEdit.duplicate(el) : CgEdit.clear(el.parent());
+        }
         if ((what < 2 || elements.isEmpty()) && !values.isEmpty()) {
             CgPropertyPath p = values.get(r.nextInt(values.size()));
             if (what == 1) return CgEdit.reset(p);

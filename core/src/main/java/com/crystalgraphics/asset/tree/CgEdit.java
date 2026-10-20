@@ -16,6 +16,7 @@ import com.crystalgraphics.object.CgPropertyPath;
  * data.apply(CgEdit.reset(h1.key("name")));                                // back to the parent's
  * data.apply(CgEdit.insertAfter(h1.parent(), ring, "h1"));                 // a new element, placed by id
  * data.apply(CgEdit.disable(h1));                                          // kept, so the parent still reaches it
+ * data.apply(CgEdit.duplicate(h1));                                        // a copy before h1, under a fresh id
  * data.apply(undo);                                                        // the bytes before the first edit
  * }</pre>
  *
@@ -43,7 +44,11 @@ public final class CgEdit {
         /** An element turned back on. */
         ENABLE,
         /** An element turned off and kept. */
-        DISABLE
+        DISABLE,
+        /** A copy of an element put before it, the copy and every element in it under fresh ids. */
+        DUPLICATE,
+        /** Every element of a list dropped: this asset's own, and its parent's through {@code remove:}. */
+        CLEAR
     }
 
     private final CgPropertyPath path;
@@ -116,6 +121,19 @@ public final class CgEdit {
     /** Turns the element at {@code element} off, keeping it. */
     public static CgEdit disable(CgPropertyPath element) {
         return new CgEdit(element, Op.DISABLE, null, null, null, true, false, null);
+    }
+
+    /**
+     * Copies the element at {@code element} and puts the copy before it, as Unreal's details panel duplicates an array
+     * entry. The copy and every element inside it take fresh ids; {@link #after()} of the applied edit is the copy.
+     */
+    public static CgEdit duplicate(CgPropertyPath element) {
+        return new CgEdit(element, Op.DUPLICATE, null, null, null, false, false, null);
+    }
+
+    /** Drops every element of the id list at {@code list}. */
+    public static CgEdit clear(CgPropertyPath list) {
+        return new CgEdit(list, Op.CLEAR, null, null, null, true, false, null);
     }
 
     /** This edit as one frame of a drag. */

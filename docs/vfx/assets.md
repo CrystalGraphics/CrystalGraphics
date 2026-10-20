@@ -142,7 +142,12 @@ big.apply(undo);                                     // back to the same bytes
 big.apply(CgEdit.reset(name));                       // drop the override: inherited again
 big.apply(CgEdit.remove(CgPropertyPath.of(big.id()).key("emitters").item("h3")));   // writes remove: [h3]
 big.apply(CgEdit.insertAfter(CgPropertyPath.of(big.id()).key("emitters"), ring, "h1"));
+big.apply(CgEdit.duplicate(CgPropertyPath.of(big.id()).key("emitters").item("h1")));   // a copy before h1, fresh ids
+big.apply(CgEdit.clear(CgPropertyPath.of(big.id()).key("emitters")));                 // every emitter dropped
 ```
+
+A duplicate is Unreal's: the copy goes where the original was and the original moves down one, and the copy and
+every element inside it get new ids, so nothing that names the original ends up naming the copy.
 
 A list of edits is one transaction: one change event, and one list of inverses to undo it whole. An edit that fails
 leaves the asset as it was.

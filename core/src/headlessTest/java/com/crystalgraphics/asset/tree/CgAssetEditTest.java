@@ -100,6 +100,36 @@ public class CgAssetEditTest {
     }
 
     @Test
+    public void aDuplicateGoesBeforeItsOriginalWithFreshIdsAllTheWayDown() {
+        CgAssetData d = parent();
+        String before = bytes(d);
+        CgPropertyPath h1 = CgPropertyPath.of(PARENT_ID).key("emitters").item("h1");
+        List<CgAssetChanged> events = new ArrayList<>();
+        d.onChanged(events::add);
+        CgEdit undo = d.apply(CgEdit.duplicate(h1));
+        Map<?, ?> copy = (Map<?, ?>) events.get(0).edits().get(0).after();
+        List<?> emitters = (List<?>) d.resolved().get("emitters");
+        assertEquals("the copy where the original was", copy.get(CgType.ID), ((Map<?, ?>) emitters.get(0)).get(CgType.ID));
+        assertEquals("h1", ((Map<?, ?>) emitters.get(1)).get(CgType.ID));
+        Map<?, ?> module = (Map<?, ?>) ((List<?>) ((Map<?, ?>) copy.get("emitter")).get("particle_spawn")).get(0);
+        assertTrue("its own elements renamed", !"k3q9x2ab".equals(module.get(CgType.ID)));
+        assertTrue(String.valueOf(copy.get(CgType.ID)).matches("[a-z][a-z0-9]{7}"));
+        d.apply(undo);
+        assertEquals(before, bytes(d));
+    }
+
+    @Test
+    public void aClearDropsOwnElementsAndRemovesInheritedOnes() {
+        CgAssetData big = child();
+        String before = bytes(big);
+        CgEdit undo = big.apply(CgEdit.clear(CgPropertyPath.of(CHILD_ID).key("emitters")));
+        assertEquals("[]", big.resolved().get("emitters").toString());
+        assertTrue(bytes(big), bytes(big).contains("remove: [h1, h2, p0fr8m1c]"));
+        big.apply(undo);
+        assertEquals(before, bytes(big));
+    }
+
+    @Test
     public void eachEditIsClassedByWhatItTouches() {
         CgAssetData d = parent();
         List<CgChange> changes = new ArrayList<>();
