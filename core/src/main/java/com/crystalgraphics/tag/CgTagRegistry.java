@@ -3,6 +3,10 @@ package com.crystalgraphics.tag;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 
 import javax.annotation.Nullable;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -119,6 +123,26 @@ public final class CgTagRegistry {
             names.add(name);
         }
         for (String name : names) register(name);
+    }
+
+    /**
+     * Declares a kit folder's tags: its {@code tags.yaml}, or nothing when the kit has none (a kit that names no tag
+     * ships no file).
+     *
+     * <pre>{@code
+     * registry.registerKit("mymod", Paths.get("assets/mymod"));   // reads assets/mymod/tags.yaml if it exists
+     * }</pre>
+     *
+     * @throws CgTagException as {@link #registerFile}, or if the file cannot be read
+     */
+    public synchronized void registerKit(String namespace, Path folder) {
+        Path file = folder.resolve("tags.yaml");
+        if (!Files.isRegularFile(file)) return;
+        try {
+            registerFile(namespace, new String(Files.readAllBytes(file), StandardCharsets.UTF_8), file.toString());
+        } catch (IOException e) {
+            throw new CgTagException(file + ": " + e.getMessage());
+        }
     }
 
     /** The tag called {@code name}, or null. */
