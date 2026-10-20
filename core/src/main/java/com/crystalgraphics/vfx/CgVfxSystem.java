@@ -898,6 +898,9 @@ public final class CgVfxSystem {
             if (looked.get(k).renderer() == CgVfxEmitter.Renderer.MESHES) particleSphere();
         }
         materials.prepare(look, warming, halved);
+        // Kept warm by the world renderer too, so a settings change (the HDR scene, half size) re-warms them first.
+        CgWorldRenderer world = CgWorldRenderer.get();
+        for (int i = 0; i < warming.size(); i++) world.programs().add(warming.get(i), halved.contains(warming.get(i)));
     }
 
     /**

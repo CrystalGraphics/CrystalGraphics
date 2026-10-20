@@ -15,6 +15,8 @@ import org.joml.Vector4f;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.render.world.CgWorldPrograms;
+import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -86,6 +88,38 @@ public final class CgPostStack {
         CgRenderStage.WORLD_OPAQUE.register(DEMAND_ORDER, this::demandSubject);
         CgRenderStage.WORLD_TRANSPARENT.register(DEMAND_ORDER, this::demand);
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::record);
+        warmVariants(CgWorldRenderer.get().programs());
+    }
+
+    /**
+     * Every keyword set of bloom's and the composite's passes a setting can switch to: the tier's {@code CHEAP} filters,
+     * Karis on the first step, the composite's blend form (the HDR scene off) and copy form with {@code SCENE} (on), each
+     * with bloom and a fade or without. The looks' keywords follow volumes, not settings, and are not among them.
+     */
+    private static void warmVariants(CgWorldPrograms programs) {
+        String bloom = "crystalgraphics:shaders/post/bloom/", post = "crystalgraphics:shaders/post/";
+        programs.add(bloom + "down.shader");
+        programs.add(bloom + "down.shader", "CHEAP");
+        programs.add(bloom + "down.shader", "KARIS");
+        programs.add(bloom + "up.shader");
+        programs.add(bloom + "up.shader", "CHEAP");
+        programs.add(bloom + "prefilter.shader");
+        programs.add(bloom + "prefilter.shader", "KARIS");
+        programs.add(bloom + "excess.shader");
+        for (String fade : new String[] {null, "FADE"}) {
+            programs.add(post + "composite.shader", with(fade));
+            programs.add(post + "composite.shader", with(fade, "BLOOM"));
+            programs.add(post + "composite_copy.shader", with(fade, "SCENE"));
+            programs.add(post + "composite_copy.shader", with(fade, "SCENE", "BLOOM"));
+            programs.add(post + "composite_copy.shader", with(fade, "BLOOM"));
+        }
+    }
+
+    private static String[] with(String extra, String... keywords) {
+        if (extra == null) return keywords;
+        String[] all = Arrays.copyOf(keywords, keywords.length + 1);
+        all[keywords.length] = extra;
+        return all;
     }
 
     /** Before the world renderer: where the volumes blend, so it knows whether bloom will read the emission. */

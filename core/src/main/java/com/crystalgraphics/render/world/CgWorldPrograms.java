@@ -118,6 +118,26 @@ public final class CgWorldPrograms {
         }
     }
 
+    /**
+     * Keeps {@code shader}'s program for {@code keywords} warm: a pass of the renderer's own whose keywords follow a
+     * setting (bloom's {@code CHEAP} by the tier, the composite's form by the HDR scene), so changing the setting compiles
+     * nothing. A program is the shader's and its keywords', so a probe material warms the pass's own.
+     *
+     * <pre>{@code
+     * programs.add("crystalgraphics:shaders/post/bloom/down.shader", "CHEAP");
+     * }</pre>
+     */
+    public void add(String shader, String... keywords) {
+        String key = shader + String.join(",", keywords);
+        if (variants.containsKey(key)) return;
+        CgMaterial m = CgMaterial.newInstance(shader);
+        for (String k : keywords) m.enableKeyword(k);
+        variants.put(key, m);
+        add(m, false);
+    }
+
+    private final Map<String, CgMaterial> variants = new HashMap<>();
+
     /** How many materials are not yet built under the settings in force. */
     public int pending() {
         return pending.size();
