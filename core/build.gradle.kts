@@ -187,6 +187,28 @@ tasks.register<Test>("allocationProofsOnJava8Copy") {
     filter { includeTestsMatching("*AllocationTest") }
 }
 
+// T9: JMH for the innermost loops (GPL-2.0 with the classpath exception: a development tool, never shipped). By hand
+// when a loop changes, B/op from -prof gc reading 0: ./gradlew :core:jmh [-Pjmh.include=CgCurveBench]
+val jmh: SourceSet by sourceSets.creating {
+    compileClasspath += sourceSets["main"].output
+    runtimeClasspath += sourceSets["main"].output
+}
+dependencies {
+    "jmhImplementation"(project(":platform"))
+    "jmhImplementation"("org.openjdk.jmh:jmh-core:1.37")
+    "jmhImplementation"("org.joml:joml-jdk8:$jomlVer")
+    "jmhImplementation"("org.apache.logging.log4j:log4j-core:2.26.1")
+    "jmhAnnotationProcessor"("org.openjdk.jmh:jmh-generator-annprocess:1.37")
+}
+tasks.register<JavaExec>("jmh") {
+    description = "The JMH benchmarks, with the GC profiler: B/op must read 0."
+    group = "verification"
+    classpath = jmh.runtimeClasspath
+    mainClass.set("org.openjdk.jmh.Main")
+    args(providers.gradleProperty("jmh.include").orElse(".*Bench.*").get(), "-prof", "gc", "-f", "1",
+            "-wi", "3", "-i", "5", "-w", "1s", "-r", "1s")
+}
+
 // ── Import guard ─────────────────────────────────────────────────────────────
 //
 // ENABLED 2026-08-21. Its own AGENTS.md warned that the guard below was commented out and that
