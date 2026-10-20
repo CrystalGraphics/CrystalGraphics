@@ -725,13 +725,70 @@ public final class CgMaterial {
     @Nullable
     private List<String> variantsDeclared;
 
-    /** The enabled keywords as bits over the declared features, or -1 past the eight a shader may declare. */
+    /** Keyword sets cached in a dense table, 2^n of them; past this, {@link SparseVariants}. */
+    private static final int DENSE_KEYWORDS = 8;
+    /** The most keywords a shader declares (the parser's cap): a mask's width. */
+    private static final int MAX_KEYWORDS = 16;
+
+    /**
+     * A sparse int-keyed cache of keyword variants: open addressing, so a lookup allocates nothing. For a shader past
+     * {@link #DENSE_KEYWORDS}, whose 2^n table would be mostly empty.
+     */
+    private static final class SparseVariants {
+        private int[] keys = new int[16];
+        private Object[] values = new Object[16];
+        private int size;
+
+        Object get(int key) {
+            int mask = keys.length - 1;
+            for (int i = mix(key) & mask; ; i = (i + 1) & mask) {
+                if (values[i] == null) return null;
+                if (keys[i] == key) return values[i];
+            }
+        }
+
+        void put(int key, Object value) {
+            if ((size + 1) * 2 > keys.length) grow();
+            int mask = keys.length - 1;
+            for (int i = mix(key) & mask; ; i = (i + 1) & mask) {
+                if (values[i] == null) {
+                    keys[i] = key;
+                    values[i] = value;
+                    size++;
+                    return;
+                }
+                if (keys[i] == key) {
+                    values[i] = value;
+                    return;
+                }
+            }
+        }
+
+        private void grow() {
+            int[] k = keys;
+            Object[] v = values;
+            keys = new int[k.length * 2];
+            values = new Object[k.length * 2];
+            size = 0;
+            for (int i = 0; i < k.length; i++) if (v[i] != null) put(k[i], v[i]);
+        }
+
+        private static int mix(int key) {
+            int h = key * 0x9E3779B9;
+            return h ^ (h >>> 16);
+        }
+    }
+
+    @Nullable
+    private SparseVariants sparseVariants, sparsePipelines;
+
+    /** The enabled keywords as bits over the declared features, or -1 past the sixteen a shader may declare. */
     private int keywordMask() {
         return keywordMask(getDeclaredFeatureNames());
     }
 
     private int keywordMask(List<String> declared) {
-        if (declared.size() > 8) return -1;
+        if (declared.size() > MAX_KEYWORDS) return -1;
         int mask = 0;
         for (int i = 0; i < declared.size(); i++) {
             if (enabledKeywords.contains(declared.get(i))) mask |= 1 << i;
@@ -853,12 +910,16 @@ public final class CgMaterial {
             // The declared list too: a reload that parses and then fails to compile moves it without the revision,
             // and a bit would then name another keyword than the one its variant was cached under.
             List<String> declared = getDeclaredFeatureNames();
-            if (variantsRevision != revision || variantsDeclared != declared || variants == null) {
-                variants = mask < 0 ? null : new CgShader[1 << declared.size()];
+            boolean sparse = declared.size() > DENSE_KEYWORDS;
+            if (variantsRevision != revision || variantsDeclared != declared
+                    || (variants == null && sparseVariants == null)) {
+                variants = mask < 0 || sparse ? null : new CgShader[1 << declared.size()];
+                sparseVariants = mask >= 0 && sparse ? new SparseVariants() : null;
                 variantsRevision = revision;
                 variantsDeclared = declared;
             }
-            CgShader shader = mask >= 0 && variants != null && mask < variants.length ? variants[mask] : null;
+            CgShader shader = mask < 0 ? null : sparseVariants != null ? (CgShader) sparseVariants.get(mask)
+                    : variants != null && mask < variants.length ? variants[mask] : null;
             if (shader == null) {
                 // Compiles-and-caches the variant for this exact keyword set on first use, so the
                 // first bind after a keyword toggle pays a full GLSL compile+link. Scoped because
@@ -869,6 +930,7 @@ public final class CgMaterial {
                 }
                 if (shader == null) return;
                 if (mask >= 0 && variants != null && mask < variants.length) variants[mask] = shader;
+                else if (mask >= 0 && sparseVariants != null) sparseVariants.put(mask, shader);
             }
             lastBoundShader = shader;
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.doBind")) {
@@ -935,7 +997,22 @@ public final class CgMaterial {
         if (slot < 0 || mask < 0) {
             return CgPipeline.of(cgMaterialShader, pass, enabledKeywords, getPassRenderState(pass), kind);
         }
-        int kinds = CgInstanceKind.values().length, variants = 1 << declared.size();
+        int kinds = CgInstanceKind.values().length;
+        if (declared.size() > DENSE_KEYWORDS) {
+            // Past eight keywords a dense table would be 2^n entries a kind: a sparse one, keyed by slot, kind and mask.
+            if (pipelinesParse != parsed || sparsePipelines == null) {
+                sparsePipelines = new SparseVariants();
+                pipelinesParse = parsed;
+            }
+            int key = (slot * kinds + kind.ordinal()) << MAX_KEYWORDS | mask;
+            CgPipeline pipeline = (CgPipeline) sparsePipelines.get(key);
+            if (pipeline == null) {
+                pipeline = CgPipeline.of(cgMaterialShader, pass, enabledKeywords, getPassRenderState(pass), kind);
+                sparsePipelines.put(key, pipeline);
+            }
+            return pipeline;
+        }
+        int variants = 1 << declared.size();
         if (pipelinesParse != parsed || pipelines == null) {
             pipelines = new CgPipeline[3 * kinds * variants];
             pipelinesParse = parsed;
