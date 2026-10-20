@@ -11,6 +11,7 @@ import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
+import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.material.parse.CgShaderParser;
 
 import static org.junit.Assert.assertArrayEquals;
@@ -42,9 +43,32 @@ public class CgMaterialDefinitionsTest {
             "    void fragment(in v2f i, out vec4 fragColor) { fragColor = _Color * _Bands(1) * _Speed; }",
             "}");
 
-    private static final CgMaterialArchetypes ARCHETYPES = path -> {
-        if (!path.equals(FX)) throw new IllegalArgumentException(path + " is not a shader");
-        return CgShaderParser.parse(SOURCE, path);
+    private static final String POST = "test:shaders/post.shader", DECAL = "test:shaders/decal.shader";
+    private static final String DECAL_SOURCE = String.join("\n",
+            "#type spatial",
+            "#pragma cg_feature CELL_TONE",
+            "Tags { \"Domain\" = \"Decal\" }",
+            "Properties {",
+            "    _Clip (\"Clip\", float) = 0.5",
+            "}",
+            "Pass {",
+            "    void vertex(out v2f o) { gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0); }",
+            "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(_Clip); }",
+            "}");
+
+    static final CgMaterialArchetypes ARCHETYPES = new CgMaterialArchetypes() {
+        @Override
+        public CgParsedShader parse(String path) {
+            if (path.equals(FX) || path.equals(POST)) return CgShaderParser.parse(SOURCE, path);
+            if (path.equals(DECAL)) return CgShaderParser.parse(DECAL_SOURCE, path);
+            throw new IllegalArgumentException(path + " is not a shader");
+        }
+
+        @Override
+        public CgMaterialDomain domain(String path) {
+            return path.equals(POST) ? CgMaterialDomain.POST : path.equals(DECAL)
+                    ? CgMaterialDomain.ofSource(DECAL_SOURCE) : CgMaterialDomain.SURFACE;
+        }
     };
 
     @BeforeClass
@@ -135,7 +159,7 @@ public class CgMaterialDefinitionsTest {
 
     @Test
     public void aChildMayNotMoveAPostMaterial() {
-        CgAssetData post = asset("test:post", tree("shader", FX, "post", map("priority", 1)), null);
+        CgAssetData post = asset("test:post", tree("shader", POST, "post", map("priority", 1)), null);
         CgMaterialDefinitions.compile(post, ARCHETYPES);
         fails("post", asset("test:post_child", tree("parent", "test:post", "post", map("priority", 2)), post));
     }

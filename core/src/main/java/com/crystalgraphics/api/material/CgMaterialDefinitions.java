@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeSet;
 
@@ -35,6 +36,8 @@ import com.crystalgraphics.gl.material.parse.CgParsedShader;
 public final class CgMaterialDefinitions {
 
     private static volatile CgMaterialArchetypes archetypes = CgMaterialArchetypes.FILES;
+    /** The threshold a {@code masked} material's {@code mask_clip} sets: what {@code CG_CLIP_THRESHOLD} reads. */
+    static final String CLIP = "_Clip";
 
     private CgMaterialDefinitions() {
     }
@@ -88,6 +91,24 @@ public final class CgMaterialDefinitions {
         Map<Object, Object> state = map(m.get("state"));
         String blend = state != null && state.get("blend") instanceof String ? (String) state.get("blend") : "opaque";
         String shading = state != null && state.get("shading") instanceof String ? (String) state.get("shading") : null;
+        CgShadingModel model = null;
+        if (shading != null) {
+            model = CgShadingModels.get(shading);
+            if (model == null) {
+                throw new CgAssetException(id + " names shading model " + shading + ", which nothing registered: a kit "
+                        + "registers its own (CgShadingModels.registerKit)");
+            }
+            String k = model.keyword();
+            if (k != null && parsed.featureNames().contains(k) && !keywords.contains(k)) {
+                keywords = new ArrayList<>(keywords);
+                keywords.add(k);
+            }
+        }
+        CgMaterialDomain domain = archetypes.domain(shader);
+        if (m.get("post") != null && domain != CgMaterialDomain.POST) {
+            throw new CgAssetException(id + " has a post block, but " + shader + " is a "
+                    + domain.name().toLowerCase(Locale.ROOT) + " archetype: a post material's is tagged \"Domain\" = \"Post\"");
+        }
         CgMaterialPermutation permutation = CgMaterialPermutation.of(shader, new TreeSet<>(keywords), blend,
                 "masked".equals(blend), shading);
 
@@ -130,12 +151,20 @@ public final class CgMaterialDefinitions {
                 bool(state, "depth_test"), bool(state, "depth_write"),
                 state != null && state.get("mask_clip") instanceof Number ? ((Number) state.get("mask_clip")).floatValue()
                         : null);
+        if (permutation.clip() && draw.maskClip() != null && !constants.containsKey(CLIP)) {
+            CgMaterialProperty clip = props.get(CLIP);
+            if (clip == null) {
+                throw new CgAssetException(id + " sets mask_clip, but " + shader + " declares no " + CLIP
+                        + " for the threshold to reach");
+            }
+            constants.put(CLIP, floats(id, CLIP, clip, draw.maskClip()));
+        }
         int order = m.get("order") instanceof Number ? ((Number) m.get("order")).intValue() : 0;
         String sortLayer = m.get("sort_layer") instanceof String ? (String) m.get("sort_layer") : "default";
         CgMaterialDefinition d = new CgMaterialDefinition(id, asset.parent() == null ? null : asset.parent().id(),
                 permutation, Collections.unmodifiableMap(constants), Collections.unmodifiableMap(forms),
                 Collections.unmodifiableMap(textures), CgMaterialRowLayout.of(parsed.properties()), draw, order,
-                sortLayer, map(m.get("post")));
+                sortLayer, map(m.get("post")), domain, model);
         for (String name : forms.keySet()) {
             if (d.route(name) == CgMaterialRoute.ROW) d.requireRow(name, "its bind");
         }

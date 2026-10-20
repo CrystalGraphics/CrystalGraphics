@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.material;
 
+import java.util.Locale;
 import java.util.Map;
 
 import javax.annotation.Nullable;
@@ -32,12 +33,32 @@ import com.github.bsideup.jabel.Desugar;
  * @param order       its order among its effect's draws
  * @param sortLayer   the world renderer's sort layer
  * @param post        its root's {@code post} block, null when it is not a post material
+ * @param domain      where it is drawn: its archetype's
+ * @param shading     the shading model it names, null for its archetype's own
  */
 @Desugar
 public record CgMaterialDefinition(String id, @Nullable String parent, CgMaterialPermutation permutation,
                                    Map<String, float[]> constants, Map<String, Object> forms,
                                    Map<String, Texture> textures, CgMaterialRowLayout rows, Draw draw, int order,
-                                   String sortLayer, @Nullable Map<Object, Object> post) {
+                                   String sortLayer, @Nullable Map<Object, Object> post, CgMaterialDomain domain,
+                                   @Nullable CgShadingModel shading) {
+
+    /**
+     * Checks it is drawn where {@code who} draws it.
+     *
+     * <pre>{@code
+     * definition.requireDomain(CgMaterialDomain.SURFACE, "renderer sprite of emitter kakarot_kit:sparks");   // at load
+     * }</pre>
+     *
+     * @throws CgAssetException naming both when its domain is another
+     */
+    public void requireDomain(CgMaterialDomain expected, String who) {
+        if (domain != expected) {
+            throw new CgAssetException(who + " draws " + id + " as a " + expected.name().toLowerCase(Locale.ROOT)
+                    + " material, but it is a " + domain.name().toLowerCase(Locale.ROOT) + " material ("
+                    + permutation.shader() + ")");
+        }
+    }
 
     /**
      * A texture binding: a {@code textures} asset's id and the sampler it is read with.
