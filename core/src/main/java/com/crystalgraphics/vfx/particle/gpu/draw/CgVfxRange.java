@@ -45,12 +45,12 @@ import java.util.Map;
  * those left are grouped by slot and written as the particle records a look reads through {@code CG_PARTICLE_*}, each
  * slot's from its base, where its step left it, given its curves. Every pool shares one sort and
  * one set of buffers, so a frame costs the same few dispatches however many pools draw. A slot's draws read
- * {@link #drawn()} from {@link #base} and draw as many as {@link #visible()} counted at {@link #visibleWord}.
+ * {@link #order()} from {@link #base} and draw as many as {@link #visible()} counted at {@link #visibleWord}.
  *
  * <pre>{@code
  * CgVfxRange range = CgVfxRange.of(pool);
  * world.draw(quads, spark)                                                  // per slot and layer
- *      .buffer(CgBindingPoints.PARTICLES, range.drawn())
+ *      .buffer(CgBindingPoints.PARTICLES, pool.records()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
  *      .indirect(range.visible(), range.visibleWord(slot) * 4L, CgIndirect.INDICES, 6)
  *      .custom(0, range.base(slot), capacity, radius, parameter)
  *      .at(ox, oy, oz).gpuCulled().group(ox, oy, oz).submit();
@@ -69,7 +69,7 @@ import java.util.Map;
  * <ul>
  *   <li>It records on every firing of {@link CgRenderStage#WORLD_OPAQUE} at {@link #ORDER}, after the pools step and
  *       before the world renderer: a second firing with another view culls again.</li>
- *   <li>Ask {@link #drawn()}, {@link #visible()}, {@link #base} and {@link #visibleWord} after the frame's slots open:
+ *   <li>Ask {@link #order()}, {@link #visible()}, {@link #base} and {@link #visibleWord} after the frame's slots open:
  *       each pool's place in the shared buffers follows every pool's slots, and a draw holding an older answer reads
  *       another slot's particles.</li>
  *   <li>{@code visibleWord(slot)}, never {@code slot}: the counts of every pool's slots share {@link #visible()}.</li>
@@ -84,13 +84,14 @@ public final class CgVfxRange {
     private static final String KERNELS = "crystalgraphics:shaders/env/compute/vfx/range.compute";
     private static final String[] PLANES = {"_Plane0", "_Plane1", "_Plane2", "_Plane3", "_Plane4", "_Plane5"};
     private static final int GPU_RANGE = CgGpuTrace.name("vfx.pool.range");
-    private static final int DRAWN_BYTES = CgParticleBuffer.RECORD_FLOATS * 4;
+    /** An index into its pool's records: what {@link #order()} holds per drawn particle. */
+    private static final int DRAWN_BYTES = 4;
     /** A slot's ORIGINS entry: its block, where within it with its ground, its rotation. */
     private static final int ORIGIN_BYTES = 48;
     /** The low key bits a sorting slot's view depth takes. */
     private static final int DEPTH_BITS = 16;
     /** Each pool's records start at a multiple of this in the shared buffers: a binding offset is a whole 256 bytes. */
-    private static final int RECORD_ALIGN = 4;
+    private static final int RECORD_ALIGN = 64;
     /** And its keys at a multiple of this. */
     private static final int KEY_ALIGN = 64;
 
@@ -244,18 +245,18 @@ public final class CgVfxRange {
     }
 
     /** The particle records every pool's draws read, {@code CgParticleBuffer}'s layout, a slot's from {@link #base}. */
-    public CgGraphBuffer drawn() {
+    public CgGraphBuffer order() {
         int need = Math.max(1, drawnBefore(ALL.size()));
         if (drawn == null || drawn.size() < (long) need * DRAWN_BYTES) {
             if (drawn != null) RETIRED.add(drawn);
-            drawn = CgGraphBuffer.persistent("vfx.range.drawn",
+            drawn = CgGraphBuffer.persistent("vfx.range.order",
                     CgBufferDesc.elements(sizeClass(need), DRAWN_BYTES, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
         }
         return drawn;
     }
 
     /**
-     * The same particles as {@link #drawn()}, as {@code CgInstanceKind.OBJECT} records from {@link #base}: each turned
+     * The same particles as {@link #order()}, as {@code CgInstanceKind.OBJECT} records from {@link #base}: each turned
      * by its seed and spin and sized by its size over life, as {@code CgVfxFrame.particleMeshes} draws them, custom 1
      * its progress, seed, opacity and heat. Written only in a frame that asks for it.
      */
@@ -271,7 +272,7 @@ public final class CgVfxRange {
     }
 
     /**
-     * Has this frame's {@link #drawn()} hold {@code slot}'s particles far to near, for a layer that blends them in
+     * Has this frame's {@link #order()} hold {@code slot}'s particles far to near, for a layer that blends them in
      * order. The other slots keep the pool's order, and the sort takes 16 more bits in a frame any slot asks. Each
      * frame, before the world records.
      */
@@ -280,7 +281,7 @@ public final class CgVfxRange {
     }
 
     /**
-     * Has this frame's {@link #drawn()} hold {@code slot}'s particles in spawn order, newest first, for a ribbon through
+     * Has this frame's {@link #order()} hold {@code slot}'s particles in spawn order, newest first, for a ribbon through
      * them: {@code newest} is the id the slot's next spawn takes ({@code CgVfxEmitterInstance.spawnedSoFar}). Spawns more
      * than 65,535 back share the last place. Cull such a slot as one sphere ({@code CgVfxParticlePool.cullAbout}), or a
      * particle culled mid-ribbon joins its neighbours across the gap. Each frame, before the world records.
@@ -338,7 +339,7 @@ public final class CgVfxRange {
         return slotsBefore(ALL.indexOf(this)) + slot;
     }
 
-    /** Where {@code slot}'s records start in {@link #drawn()} and {@link #objects()}: its draws' base. */
+    /** Where {@code slot}'s records start in {@link #order()} and {@link #objects()}: its draws' base. */
     public int base(int slot) {
         return drawnBefore(ALL.indexOf(this)) + pool.listBase(slot);
     }
@@ -469,7 +470,7 @@ public final class CgVfxRange {
         RETIRED.clear();
         if (ALL.isEmpty()) return;
         CgVfxRange first = ALL.get(0);
-        CgGraphBuffer drawn = first.drawn(), visible = first.visible();
+        CgGraphBuffer drawn = first.order(), visible = first.visible();
         CgGraphBuffer objects = objectsAsked ? first.objects() : null;
         int allSlots = slotsBefore(ALL.size()), keys = 0;
         for (int i = 0; i < ALL.size(); i++) {
@@ -538,8 +539,7 @@ public final class CgVfxRange {
             if (keyed(p) && capacity > 0) {
                 window.bind(pass.dispatch(place, capacity).bind("RECORDS", p.records()).bind("INDICES", indices)
                         .bind("VISIBLE", visible).bind("STARTS", starts).bind("BASES", bases).bind("ORIGINS", origins)
-                        .bind("CURVES", p.curves())
-                        .bind("DRAWN", drawn, (long) drawnFirst * DRAWN_BYTES, (long) capacity * DRAWN_BYTES)
+                        .bind("ORDER", drawn, (long) drawnFirst * DRAWN_BYTES, (long) capacity * DRAWN_BYTES)
                         .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst)
                         .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
                         .set("_Floors", p.shape().floors() ? 1 : 0));
@@ -547,7 +547,6 @@ public final class CgVfxRange {
                     long bytes = CgGpuOps.cullRecordBytes();
                     window.bind(pass.dispatch(objected, capacity).bind("RECORDS", p.records()).bind("INDICES", indices)
                             .bind("VISIBLE", visible).bind("STARTS", starts).bind("BASES", bases).bind("ORIGINS", origins)
-                            .bind("CURVES", p.curves())
                             .bind("OBJECTS", objects, drawnFirst * bytes, capacity * bytes)
                             .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst)
                             .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)

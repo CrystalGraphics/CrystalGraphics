@@ -118,6 +118,12 @@ public final class CgBindingPoints {
      */
     public static Binding GLOBALS;
 
+    /**
+     * Reserved binding pair for {@code CgParticleOrderBuffer}, each drawn particle's record in its pool's
+     * {@link #PARTICLES} (one below {@link #GLOBALS}'s). Read from the vertex stage.
+     */
+    public static Binding PARTICLE_ORDER;
+
     /** How many buffers a material's {@code Buffers { }} may declare. */
     public static final int MATERIAL_BUFFER_COUNT = 4;
 
@@ -253,6 +259,7 @@ public final class CgBindingPoints {
         SHAPE_TABLE = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         PROPERTY_ROWS = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         GLOBALS = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
+        PARTICLE_ORDER = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         maxSsboBindings -= MATERIAL_BUFFER_COUNT;
         MATERIAL_BUFFERS_SSBO = maxSsboBindings;
 

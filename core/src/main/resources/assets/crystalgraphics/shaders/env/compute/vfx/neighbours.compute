@@ -13,7 +13,7 @@ Properties {
 }
 
 // A particle as a pool stores it: CgVfxRecord.GLSL.
-struct FxRecord { vec4 positionAge; vec4 previousLife; vec4 velocitySize; vec4 seedSpin; uvec4 idSlot; };
+struct FxRecord { vec4 positionAge; vec4 previousLife; vec4 velocitySize; vec4 seedSpin; uvec4 idSlot; vec4 place; vec4 motion; vec4 state; vec4 light; vec4 color; vec4 scale; };
 
 Buffers {
     RECORDS ("Particles, after the step",                            FxRecord, readonly)

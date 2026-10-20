@@ -733,6 +733,7 @@ public final class CgVfxParticlePool {
         CgDispatch stepping = pass.dispatch(step, live + stepSpawned[s] + (children ? spawnRows * childMax : 0))
                 .bind("IN", records).bind("OUT", records).counter("OUT", next, 0).bind("LIVE", counts[current])
                 .bind("PARAMS", paramBuffer).bind("INSTANCES", instanceBuffer).bind("SPAWNS", spawnBuffer)
+                .bind("CURVES", curveBuffer).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
                 .set("_Step", stepBlock[s * 4], stepBlock[s * 4 + 1], stepBlock[s * 4 + 2], stepBlock[s * 4 + 3])
                 .set("_InstanceAt", stepInstanceAt[s] / 4).set("_SpawnAt", stepSpawnAt[s] / 4)
                 .set("_SpawnRows", stepSpawnRows[s]).set("_Spawned", stepSpawned[s]).set("_PoolId", id)
@@ -749,11 +750,10 @@ public final class CgVfxParticlePool {
                     .bind("PARENT_COUNT", children ? SPAWN_COUNTS[tier - 1] : unfed).bind("FEEDS", children ? feedBuffer : unfed);
         }
         if (shape.readsClips()) CgVfxClipAtlas.bind(stepping);
-        if (shape.readsWorld()) {
-            CgVfxVoxelWindow window = CgVfxVoxelWindow.get().use();
-            if (shape.usesDistance()) window.useDistance();
-            window.bind(stepping);
-        }
+        // Every Step lights its drawn part from the window; only a kind reading the world keeps it in use.
+        CgVfxVoxelWindow window = shape.readsWorld() ? CgVfxVoxelWindow.get().use() : CgVfxVoxelWindow.get();
+        if (shape.usesDistance()) window.useDistance();
+        window.bind(stepping);
         if (shape.usesDepth()) bindDepth(stepping);
         if (shape.usesEntities()) CgVfxEntityBoxes.bind(stepping);
         if (shape.spawnsOnMesh()) CgVfxSpawnMeshes.bind(stepping);

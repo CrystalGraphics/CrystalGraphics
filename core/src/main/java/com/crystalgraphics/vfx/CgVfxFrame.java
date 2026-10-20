@@ -138,7 +138,8 @@ public final class CgVfxFrame {
             CgMesh mesh = proxy.key.strip() == CgVfxLayer.Strip.NONE ? slotMesh(proxy.key.renderer(), proxy.capacity)
                     : CgMesh.vertices(sizeClass(proxy.capacity, 1) * proxy.key.factor(), CgMeshTopology.TRIANGLES);
             CgWorldRenderer.Draw draw = world.draw(mesh, proxy.key.material())
-                    .buffer(CgBindingPoints.PARTICLES, range.drawn())
+                    .buffer(CgBindingPoints.PARTICLES, proxy.key.pool().records())
+                    .buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
                     .indirectEach(range.visible(), proxy.mode, proxy.key.factor())
                     .gpuCulled()
                     .at(groupX, groupY, groupZ);
@@ -450,7 +451,7 @@ public final class CgVfxFrame {
                     if (blendsInOrder(rd.material)) range.sorted(slot);
                     reach = Math.max(reach, Math.max(size, 1f) * 4f);
                     CgWorldRenderer.Draw draw = world.draw(slotMesh(def.renderer(), capacity), rd.material)
-                            .buffer(CgBindingPoints.PARTICLES, range.drawn())
+                            .buffer(CgBindingPoints.PARTICLES, pool.records()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
                             .indirect(range.visible(), word, arcs ? CgIndirect.VERTICES : CgIndirect.INDICES,
                                     arcs ? CgVfxRibbons.VERTICES : 6)
                             .gpuCulled()
@@ -681,7 +682,7 @@ public final class CgVfxFrame {
         }
         CgWorldRenderer.Draw draw = world.draw(CgMesh.vertices(sizeClass(capacity, 1) * rd.per, CgMeshTopology.TRIANGLES),
                         rd.material)
-                .buffer(CgBindingPoints.PARTICLES, range.drawn())
+                .buffer(CgBindingPoints.PARTICLES, pool.records()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
                 .indirect(range.visible(), word, CgIndirect.VERTICES, rd.per)
                 .gpuCulled()
                 .at(ox, oy, oz)

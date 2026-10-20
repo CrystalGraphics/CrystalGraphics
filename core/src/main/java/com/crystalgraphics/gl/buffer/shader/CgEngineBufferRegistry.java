@@ -68,8 +68,10 @@ public final class CgEngineBufferRegistry {
                 "crystalgraphics:shaders/env/buffer/clip.glsl", "palette");
         register("shape", CgShapeTable::buffer, CgShapeTable.MACRO_NAME,
                 "crystalgraphics:shaders/env/buffer/shape.glsl");
+        // A particle is read through the culled, sorted order Range writes, so the order comes with it.
+        register("particle_order", CgParticleOrderBuffer::buffer, CgParticleOrderBuffer.MACRO_NAME, null);
         register("particle", CgParticleBuffer::buffer, CgParticleBuffer.MACRO_NAME,
-                "crystalgraphics:shaders/env/buffer/particle.glsl");
+                "crystalgraphics:shaders/env/buffer/particle.glsl", "particle_order");
         register("rows", CgPropertyRows::buffer, CgPropertyRows.MACRO_NAME,
                 "crystalgraphics:shaders/env/buffer/rows.glsl");
         registerGenerated("globals", CgParameterCollectionBuffer::buffer, CgParameterCollectionBuffer.MACRO_NAME,
