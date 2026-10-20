@@ -53,7 +53,6 @@ final class CgVfxMaterials {
         final CgMaterial[] byKind = new CgMaterial[CgVfxSlot.Kind.values().length];
         /** Its trails layer's materials by pool, each bound to that pool's history ({@link #material(Resolved, CgVfxParticlePool)}). */
         final Map<CgVfxParticlePool, CgMaterial> byPool = new IdentityHashMap<>();
-        final int[] keyByKind = new int[CgVfxSlot.Kind.values().length];
         /** The layer's {@code tunings()} its materials' constants were last set at. */
         int tunings;
 
@@ -76,7 +75,6 @@ final class CgVfxMaterials {
     /** A probe material per layer, made to read what its shader declares. */
     private final Map<CgVfxLayer, CgMaterial> probes = new IdentityHashMap<>();
     private final List<CgMaterial> all = new ArrayList<>();
-    private int nextKey;
     /** This frame's rows, four floats a vec4, and how many vec4s are written. */
     private float[] rows = new float[256];
     private int rowCount;
@@ -239,11 +237,10 @@ final class CgVfxMaterials {
             configure(material, r, kind);
             mine.put(key, material);
             all.add(material);
-            keys.put(material, nextKey++ & 0xFFF);
+            keys.put(material, batchKey(r, kind, ""));
             if (material.declaresBuffer(CLIPS)) clipReaders.put(material, Boolean.TRUE);
         }
         r.byKind[kind.ordinal()] = material;
-        r.keyByKind[kind.ordinal()] = keys.get(material);
         return withClips(material);
     }
 
@@ -271,7 +268,7 @@ final class CgVfxMaterials {
             configure(material, r, CgVfxSlot.Kind.PARTICLES);
             materials.get(r.layer).put(CgVfxSlot.Kind.PARTICLES + "|" + r.signature + "|pool" + (nextPool++), material);
             all.add(material);
-            keys.put(material, nextKey++ & 0xFFF);
+            keys.put(material, batchKey(r, CgVfxSlot.Kind.PARTICLES, pool.shape().key()));
             r.byPool.put(pool, material);
         }
         material.buffer("HISTORY", pool.history());
@@ -303,8 +300,18 @@ final class CgVfxMaterials {
                 .sampler(CgVfxGridAtlas.PAGES_SAMPLER, 2, pages));
     }
 
-    /** Each material's batch key, in the order they were made: draws of one material given one key sort together. */
+    /** Each material's batch key: draws of one material given one key sort together. */
     private final Map<CgMaterial, Integer> keys = new IdentityHashMap<>();
+
+    /**
+     * A material's batch key, from what it is rather than when it was made, so a warm budget reordering creation never
+     * reorders blending. Strings only: an enum's hash differs run to run. Two materials sharing a key only batch less.
+     */
+    private static int batchKey(Resolved r, CgVfxSlot.Kind kind, String pool) {
+        int h = (r.layer.shader() + '|' + r.layer.state() + '|' + kind.name() + '|' + r.signature + '|' + pool).hashCode();
+        h ^= h >>> 16;
+        return (h ^ h >>> 12) & 0xFFF;
+    }
 
     /** {@code material}'s batch key, 0 to 4095. */
     int key(CgMaterial material) {

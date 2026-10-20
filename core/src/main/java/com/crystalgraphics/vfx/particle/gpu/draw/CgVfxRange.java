@@ -22,6 +22,7 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.util.CgRandom;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
@@ -381,6 +382,28 @@ public final class CgVfxRange {
         return at;
     }
 
+    /**
+     * Sorts each keyed pool's live particles by spawn id into {@code indices}, which Key then reads: the sort after keeps
+     * that order among equal keys, so captures repeat. Under a fixed seed only (Unreal's {@code -deterministic}), since
+     * Niagara's GPU sort leaves ties in its emitters' append order too.
+     */
+    private static void order(CgComputePass pass, CgKernel order, CgGraphBuffer keyBuffer, CgGraphBuffer indices, int keys) {
+        int pools = 0;
+        for (int i = 0; i < ALL.size(); i++) if (keyed(ALL.get(i).pool)) pools++;
+        int poolBits = 32 - Integer.numberOfLeadingZeros(pools), idBits = Math.min(24, 31 - poolBits);
+        for (int i = 0, keyFirst = 0, place = 0; i < ALL.size(); i++) {
+            CgVfxParticlePool p = ALL.get(i).pool;
+            if (!keyed(p)) continue;
+            keyFirst = align(keyFirst, KEY_ALIGN);
+            pass.dispatch(order, p.storage()).bind("RECORDS", p.records()).bind("LIVE", p.live())
+                    .bind("KEYS", keyBuffer, keyFirst * 4L, p.storage() * 4L)
+                    .bind("INDICES", indices, keyFirst * 4L, p.storage() * 4L)
+                    .set("_Pool", place++).set("_IdBits", idBits);
+            keyFirst += p.storage();
+        }
+        CgGpuOps.sort(pass, poolBits + idBits + 1, CgGpuOps.Order.ASCENDING, keyBuffer, indices, CgGpuCount.of(keys));
+    }
+
     /** Whether {@code p}'s particles are keyed this frame: it has records, and a slot to draw them. */
     private static boolean keyed(CgVfxParticlePool p) {
         return !p.isReleased() && p.records() != null && p.openSlots() > 0;
@@ -446,6 +469,8 @@ public final class CgVfxRange {
         Matrix4f vp = VIEW_PROJECTION;
 
         CgComputePass pass = recording.compute("vfx.range").timed(GPU_RANGE);
+        boolean ordered = CgRandom.fixedSeed();
+        if (ordered) order(pass, kernels.kernel("Order"), keyBuffer, indices, keys);
         for (int i = 0, keyFirst = 0, slotFirst = 0; i < ALL.size(); i++) {
             CgVfxParticlePool p = ALL.get(i).pool;
             if (p.isReleased()) continue;
@@ -456,6 +481,7 @@ public final class CgVfxRange {
                         .bind("KEYS", keyBuffer, keyFirst * 4L, p.storage() * 4L)
                         .bind("INDICES", indices, keyFirst * 4L, p.storage() * 4L)
                         .set("_SlotFirst", slotFirst).set("_AllSlots", allSlots).set("_DepthBits", depthBits)
+                        .set("_Ordered", ordered ? 1 : 0)
                         .set("_ClipX", vp.m00(), vp.m10(), vp.m20(), vp.m30()).set("_ClipY", vp.m01(), vp.m11(), vp.m21(), vp.m31())
                         .set("_ClipZ", vp.m02(), vp.m12(), vp.m22(), vp.m32()).set("_ClipW", vp.m03(), vp.m13(), vp.m23(), vp.m33())
                         .set("_Eye", projection.m22(), projection.m23(), projection.m32(), projection.m33());

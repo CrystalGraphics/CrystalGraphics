@@ -8,7 +8,9 @@
 // slot's visible particles and scans the counts into each slot's start. Place, once per pool, writes the particles a
 // slot's draws read, in CgParticleBuffer's layout, from the slot's list base. Objects writes the same particles as
 // object records, for a mesh drawn per particle. Both light each particle from the voxel window at its block
-// (CgVfxVoxelWindow).
+// (CgVfxVoxelWindow). Under a fixed seed, Order first sorts each pool's live particles by spawn id, which the sort then
+// keeps among equal keys: the atomics that append a pool's survivors leave them in a different order each run.
+#pragma kernel Order map
 #pragma kernel Key map
 #pragma kernel Place gather
 #pragma kernel Objects gather
@@ -34,6 +36,9 @@ Properties {
     _StepSeconds ("A particle step's length: an object's age between its last two", float) = 0.0166667
     _Sequence    ("1 for a SEQUENCE pool: objects turned with their slot, sized by their size alone", int) = 0
     _DepthBits   ("0, or 16 when a slot sorts by view depth",        int)       = 0
+    _Ordered     ("1 when Order sorted INDICES by spawn id first",   int)       = 0
+    _Pool        ("The pool's place among those keyed: Order's high bits", int) = 0
+    _IdBits      ("The spawn id's bits Order keys by",               int)       = 24
     _ClipX       ("Projection times view: row 0",                    vec4)      = (1, 0, 0, 0)
     _ClipY       ("Row 1",                                           vec4)      = (0, 1, 0, 0)
     _ClipZ       ("Row 2",                                           vec4)      = (0, 0, 1, 0)
@@ -104,10 +109,19 @@ uint range_depth(vec3 c) {
     return uint(clamp((log2(w) + 6.0) / 16.0, 0.0, 1.0) * 65535.0);
 }
 
+// The pool, then dead after live, then the spawn id's low bits.
+void Order() {
+    bool live = CG_ELEMENT < int(LIVE(0));
+    uint id = live ? RECORDS(CG_ELEMENT).idSlot.x & ((1u << uint(_IdBits)) - 1u) : 0u;
+    KEYS_WRITE((uint(_Pool) << uint(_IdBits + 1)) | (live ? 0u : 1u << uint(_IdBits)) | id);
+    INDICES_WRITE(uint(CG_ELEMENT));
+}
+
 void Key() {
     uint key = uint(_AllSlots) << _DepthBits;
+    uint e = _Ordered != 0 ? INDICES(CG_ELEMENT) : uint(CG_ELEMENT);
     if (CG_ELEMENT < int(LIVE(0))) {
-        FxRecord r = RECORDS(CG_ELEMENT);
+        FxRecord r = RECORDS(int(e));
         uint owner = uint(_SlotFirst) + r.idSlot.y;
         vec4 slot = SLOTS(int(owner));
         vec3 p = slot.xyz + r.positionAge.xyz;
@@ -128,7 +142,7 @@ void Key() {
         }
     }
     KEYS_WRITE(key);
-    INDICES_WRITE(uint(CG_ELEMENT));
+    INDICES_WRITE(e);
 }
 
 // Where row's vec4s start: _Texels shape samples (each axis's scale, size), _Texels tint samples (rgb times intensity,
