@@ -151,11 +151,12 @@ public final class CgSequenceKinds {
             .register();
 
     static final CgType LIGHT = CgTypes.struct("crystalgraphics:sequence.light")
-            .property("type", CgValueType.enumOf("point", "spot", "directional")).required()
+            .property("type", CgValueType.enumOf("point", "spot", "directional", "sky")).required()
             .property("colour", CgValueType.COLOUR)
             .property("intensity", FLOAT)
             .property("radius", FLOAT).quantity(CgQuantity.LENGTH)
             .property("cone", FLOAT).quantity(CgQuantity.ANGLE)
+            .property("cubemap", CgValueType.binaryRef("textures"))   // a sky's alone; without one, one colour: colour × intensity
             .property("cast_shadows", BOOL)
             .property("shadow_colour", CgValueType.COLOUR)
             .register();

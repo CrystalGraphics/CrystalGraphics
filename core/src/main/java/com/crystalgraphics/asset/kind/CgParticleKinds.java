@@ -87,6 +87,7 @@ public final class CgParticleKinds {
             .property("count", FLOAT)   // Cascade's EventReceiverSpawn: a float distribution
             .property("inherit_velocity", VEC3)
             .property("use_emitter_location", BOOL)
+            .property("use_particle_time", BOOL)
             .register();
 
     /** An event handler ({@code FNiagaraEventScriptProperties}). */
