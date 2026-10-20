@@ -56,7 +56,7 @@ import java.util.function.IntConsumer;
  * <pre>{@code
  * CgVfxSystem vfx = new CgVfxSystem();
  * CgEnergyWave wave = vfx.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z));
- * // every frame, before the world stages record (a CgWorldRenderer.onFrame listener, or ahead of a harness's fire):
+ * // every frame, before the world stages record (a tick function in CgWorld.client().schedule(), or ahead of a harness's fire):
  * vfx.update(seconds);
  * vfx.submit(CgWorldRenderer.get());
  * // once, when the context goes:

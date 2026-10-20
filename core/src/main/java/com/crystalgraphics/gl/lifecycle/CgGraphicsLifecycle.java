@@ -231,7 +231,7 @@ public final class CgGraphicsLifecycle {
                 CgWorldRenderer.get().install();
                 CgPostStack.get().install();
                 CgRenderDemo.INSTANCE.install();
-                // After the demo's onFrame listener: what it plays starts the same frame.
+                // The demo plays in PLAYS, ahead of the VFX system's EFFECTS: what it plays starts the same frame.
                 CgVfx.install();
                 CgCollisionDebug.install();
                 CgWorldProbe.installIfEnabled();

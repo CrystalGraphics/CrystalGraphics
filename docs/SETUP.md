@@ -159,7 +159,7 @@ renderer records into one frame on the game's target, executed there and then.
 ```java
 // Meshes in the world: CgWorldRenderer sorts, culls and instances them at both world stages
 CgWorldRenderer world = CgWorldRenderer.get();
-world.onFrame(view -> world.draw(mesh, material).at(x, y, z).submit());
+CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "mymod:rune", dt -> world.draw(mesh, material).at(x, y, z).submit());
 
 // Anything else at a stage: record into its frame
 CgRenderStage.Registration drawing = CgRenderStage.WORLD_OPAQUE.register(0, frame -> {

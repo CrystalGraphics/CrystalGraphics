@@ -68,7 +68,7 @@ import java.util.function.Supplier;
  * <pre>{@code
  * CgVfxModules modules = new CgVfxModules(font);    // on the render thread: its textures and materials; the
  *                                                   // flipbook sheets fill from a worker a moment later
- * world.onFrame(view -> modules.submit(world, x, y, z, CgFrameClock.seconds()));
+ * CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "mymod:modules", dt -> modules.submit(world, x, y, z, CgFrameClock.seconds()));
  * modules.delete();
  * }</pre>
  *

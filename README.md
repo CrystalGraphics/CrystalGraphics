@@ -114,7 +114,8 @@ CgWorldRenderer world = CgWorldRenderer.get();
 CgMaterial glass = CgMaterial.load("mymod:shaders/glass.shader");
 glass.applyProperties(p -> p.vec4("_Tint", 1.0f, 0.5f, 0.8f, 0.4f));   // pink glass instead of blue
 
-world.onFrame(view -> world.draw(CgMeshShapes.sphere(24, 32), glass).at(x, y, z).submit());
+CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "mymod:glass",
+        dt -> world.draw(CgMeshShapes.sphere(24, 32), glass).at(x, y, z).submit());
 ```
 
 The material it draws with:

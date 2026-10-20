@@ -23,6 +23,7 @@ import com.crystalgraphics.compute.ops.CgCull;
 import com.crystalgraphics.compute.ops.CgCullSets;
 import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
+import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -68,9 +69,7 @@ import org.joml.Vector3f;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
-import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Draws meshes into a host's world at its two world stages, under the host's own camera: submitted at absolute
@@ -78,7 +77,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * <pre>{@code
  * CgWorldRenderer world = CgWorldRenderer.get();
- * world.onFrame(view -> {                                // once a frame, before the world records
+ * CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "mymod:rune", dt -> {   // once a frame, before the world records
  *     world.draw(mesh, material)                         // scratch: build and submit in one expression
  *          .at(x, y, z)                                  // absolute, in doubles
  *          .transform(rotationScale)                     // optional, about that position
@@ -121,7 +120,7 @@ public final class CgWorldRenderer {
 
     /** Where the world renderer records in each world stage: after renderers at the default order, which may submit. */
     public static final int ORDER = 1000;
-    /** Where a firing starts the world renderer's frame and runs its {@code onFrame} listeners: after camera shake only. */
+    /** Where a firing starts the world renderer's frame and runs the client world's schedule: after camera shake only. */
     private static final int FRAME_ORDER = Integer.MIN_VALUE + 1;
 
     private static final Logger LOGGER = LogManager.getLogger("CgWorldRenderer");
@@ -169,13 +168,6 @@ public final class CgWorldRenderer {
     /** Firings of a host frame with a volume history of their own; a later one composites this frame's alone. */
     private static final int VOLUME_HISTORIES = 4;
 
-    /** Called once a frame, before the first world stage records, with the host's camera. */
-    @FunctionalInterface
-    public interface FrameListener {
-        void frame(CgHostView view);
-    }
-
-    private final List<FrameListener> listeners = new CopyOnWriteArrayList<>();
     private final Draw scratch = new Draw();
 
     // The frame's draws, flat: what a pooled command object per draw used to hold.
@@ -348,7 +340,7 @@ public final class CgWorldRenderer {
     public void install() {
         if (installed) return;
         installed = true;
-        // Before anything else records (camera shake apart), so what onFrame submits reaches the renderers below ORDER
+        // Before anything else records (camera shake apart), so what the schedule submits reaches the renderers below ORDER
         // that read it in the same firing: VFX pools and Range lay out slots from it.
         CgRenderStage.WORLD_OPAQUE.register(FRAME_ORDER, stage -> beginFrame(stage.host().view()));
         CgRenderStage.WORLD_TRANSPARENT.register(FRAME_ORDER, stage -> beginFrame(stage.host().view()));
@@ -357,7 +349,7 @@ public final class CgWorldRenderer {
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::recordTransparent);
     }
 
-    /** Drops the previous ring frame's draws and runs the {@link #onFrame} listeners, once a ring frame. */
+    /** Drops the previous ring frame's draws and runs the client world's schedule, once a ring frame. */
     private void beginFrame(CgHostView view) {
         long now = CgFrameRing.frame();
         if (now != frame) {
@@ -366,8 +358,8 @@ public final class CgWorldRenderer {
         }
         if (now != notified) {
             notified = now;
-            for (FrameListener listener : listeners) listener.frame(view);
-            CgParameterCollection.upload();   // after the listeners, where effects and sequences set them
+            CgWorld.client().frame(view);
+            CgParameterCollection.upload();   // after the schedule, where effects and sequences set them
         }
     }
 
@@ -543,12 +535,6 @@ public final class CgWorldRenderer {
         if (emissionScale > 0f) return emissionScale;
         CgQuality tier = CgGraphicsSettings.QUALITY.get();
         return tier == CgQuality.LOW ? 0.25f : tier == CgQuality.ULTRA ? 1f : 0.5f;
-    }
-
-    /** Calls {@code listener} once a frame, before the first world stage records. Closing the registration stops it. */
-    public CgRenderStage.Registration onFrame(FrameListener listener) {
-        listeners.add(listener);
-        return () -> listeners.remove(listener);
     }
 
     /** Starts a draw of {@code mesh} under {@code material}: the shared scratch, so build and submit in one expression. */

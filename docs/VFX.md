@@ -294,7 +294,7 @@ A preview viewport, a test or a harness scene keeps its own and drives it:
 CgVfxSystem vfx = new CgVfxSystem();
 CgVfxOwner lab = CgVfx.owner("mymod", vfx);
 lab.play(effect);
-// every frame, before the world stages record (a CgWorldRenderer.onFrame listener):
+// every frame, before the world stages record (a tick function in `CgWorld.client().schedule()`):
 vfx.update(seconds);
 vfx.submit(CgWorldRenderer.get());
 ```

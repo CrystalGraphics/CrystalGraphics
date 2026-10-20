@@ -80,6 +80,7 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 ### Demo / Benchmarks
 | Path | What it covers |
 |---|---|
+| `frame/CLAUDE.md` | `CgWorld`, `CgTickGroup`, `CgTickFunction` — the world's per-frame schedule |
 | `demo/CLAUDE.md` | `CgFontDemo` — platform-agnostic font benchmark and atlas diagnostic viewer |
 
 ### CrystalShader Pipeline

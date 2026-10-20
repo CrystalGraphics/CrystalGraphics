@@ -71,7 +71,7 @@ submitted in.
 
 ```java
 CgWorldRenderer world = CgWorldRenderer.get();
-world.onFrame(view -> {                                // once a frame, before the world records
+CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "mymod:rune", dt -> {   // once a frame, before the world records
     world.draw(mesh, material)                         // scratch: build and submit in one expression
          .at(x, y, z)                                  // absolute, in doubles
          .transform(rotationScale)                     // optional, about that position
@@ -203,7 +203,7 @@ CgWorldRenderer.get().media().add((pass, media) -> {             // a volume of 
 A mod plays effects through its owner on the client world's system, which the engine updates and draws each world
 frame and clears with the level: `CgVfx.owner("mymod").play(effect)`. A system of the caller's own
 (`new CgVfxSystem()`, a preview or a test) is driven by its caller: `vfx.update(seconds)` then `vfx.submit(world)` each
-frame, from an `onFrame` listener. Particles simulate on the GPU at every compute tier. Writing effects, emitters,
+frame, from tick functions of the client world's schedule ([below](#the-world-and-its-schedule)). Particles simulate on the GPU at every compute tier. Writing effects, emitters,
 events and modules: [`VFX.md`](VFX.md).
 
 ### The post stack — what runs after the world
@@ -290,6 +290,49 @@ try (CgImmediate draw = CgImmediate.begin(camera)) {
     model.get(draw.chunks().data(), at);                       // then the normal matrix at +16, custom at +32
 }
 ```
+
+## The world and its schedule
+
+Everything that runs once a frame, in order, is a **tick function** in a **group** of a `CgWorld`'s schedule
+(`com.crystalgraphics.frame`). The client's world is `CgWorld.client()`; `CgWorldRenderer` runs it once per ring frame,
+before the world draws.
+
+```java
+CgWorld world = CgWorld.client();
+CgTickFunction spawn = world.schedule().add(CgTickGroup.PLAYS, "mymod:spawn", dt -> spawnWaves(dt));
+world.schedule().add(CgTickGroup.EFFECTS, "mymod:trail", dt -> moveTrail(dt))
+        .after(spawn)                 // runs after spawn, in the later of the two groups
+        .whilePaused(true);           // by default a function is skipped while the game is paused
+spawn.close();                        // removes it
+```
+
+A function that needs state and a lifetime is a `CgWorldSubsystem`, added with `world.add(...)`; it registers its
+functions in `initialize()` and closes them in `deinitialize()`:
+
+```java
+final class Cutscenes extends CgWorldSubsystem {
+    private CgTickFunction evaluate;
+    @Override protected void initialize() {
+        evaluate = world().schedule().add(CgTickGroup.SEQUENCES, "mymod:cutscenes", this::evaluate);
+    }
+    @Override protected void deinitialize() { evaluate.close(); }
+    private void evaluate(float dt) { /* ... */ }
+}
+```
+
+- **Groups** run in order: `BEGIN, PLAYS, SEQUENCES, POSE, ATTACH, CAMERA, SCALABILITY, EFFECTS, SHAKE, LATE_ATTACH, SUBMIT`.
+  A play queued in `SEQUENCES` starts the same frame, in `EFFECTS`.
+- **Order within a group** follows prerequisites, then name. Never registration order, so a name is
+  `"<mod>:<function>"` and unique. A prerequisite in a later group moves the function there (Unreal's tick demotion); a
+  cycle is logged and ignored.
+- **`dt`** is the seconds since the function last ran (0 on the first run), from `CgFrameClock`. `.interval(s)` runs it
+  at most every `s` seconds.
+- **A function that throws is disabled** for that world and logged once with its name; the rest run.
+- `.onServer(true)` runs it in a dedicated server's world (`new CgWorld(true)`), which skips every other function.
+- Each group is a trace zone `frame.<group>`, with a zone per function inside.
+
+Easy to get wrong: `effectiveGroup()` is valid only after the schedule has run; a stage renderer
+(`CgRenderStage`) is still the way to draw, a tick function only prepares and submits.
 
 ## Core Framework Systems
 

@@ -8,6 +8,8 @@ import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
+import com.crystalgraphics.frame.CgTickGroup;
+import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldRenderer;
@@ -113,7 +115,8 @@ public final class CgCollisionDebug {
         installed = true;
         transparent = CgCollisionShow.transparent();
         CgCollisionShow.installClient();
-        CgWorldRenderer.get().onFrame(CgCollisionDebug::frame);
+        CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "crystalgraphics:collision-debug",
+                dt -> frame(CgWorld.client().view())).whilePaused(true);
     }
 
     /** Frees the mesh and material with the context. */

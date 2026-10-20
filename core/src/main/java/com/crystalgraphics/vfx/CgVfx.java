@@ -1,10 +1,12 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.frame.CgTickFunction;
+import com.crystalgraphics.frame.CgTickGroup;
+import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.CgFrameClock;
-import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.net.CgVfxCueClient;
 import com.crystalgraphics.world.CgWorldQueries;
@@ -25,8 +27,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * }</pre>
  *
  * <ul>
- *   <li>Played effects start at the next world frame, after the frame's {@code onFrame} listeners that ran before the
- *       system's: a play from an {@code onFrame} listener registered later starts a frame after.</li>
+ *   <li>Played effects start at the next world frame, in the {@code EFFECTS} group: a play queued by an earlier group
+ *       of the same frame ({@code PLAYS}, {@code SEQUENCES}) starts that frame; one from a later group, a frame after.</li>
  *   <li>A dimension change or a new level clears it; warmed programs and meshes stay. Effects played in the tick that
  *       changed the level are kept.</li>
  *   <li>{@link #world()} is for what the engine owns (a HUD, a dev tool); a mod plays through its owner.</li>
@@ -70,7 +72,10 @@ public final class CgVfx {
     public static void install() {
         if (installed) return;
         installed = true;
-        CgWorldRenderer.get().onFrame(CgVfx::frame);
+        CgTickFunction effects = CgWorld.client().schedule().add(CgTickGroup.EFFECTS, "crystalgraphics:vfx", dt -> effects())
+                .whilePaused(true);
+        CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "crystalgraphics:vfx.submit", dt -> submit())
+                .after(effects).whilePaused(true);
         CgVfxCueClient.install();
         // Every frame's end, the title screen's too: a logout clears before the next world.
         CgGraphicsLifecycle.addListener(new CgLifecycleListener() {
@@ -87,12 +92,16 @@ public final class CgVfx {
         world = null;
     }
 
-    private static void frame(CgHostView view) {
+    /** Starts what owners queued, since the last frame and by earlier groups this one, then steps the system. */
+    private static void effects() {
         CgVfxSystem vfx = world();
         followLevel();
         for (int i = 0; i < WORLD_OWNERS.size(); i++) WORLD_OWNERS.get(i).drain(vfx);
         vfx.update(CgFrameClock.seconds());
-        vfx.submit(CgWorldRenderer.get());
+    }
+
+    private static void submit() {
+        world().submit(CgWorldRenderer.get());
     }
 
     /** Clears the world's system when the level changed; when there is none any more, what waits to play too. */

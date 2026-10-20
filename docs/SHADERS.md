@@ -413,7 +413,7 @@ fragColor.rgb *= (1.0 - CG_GLOBAL_skill_darken) * CG_GLOBAL_skill_tint.rgb;   //
 - **Declare a collection's parameters before its first use** (a set, a read, the first frame, a compile against it):
   it is placed then, scalars packed four to a vec4 and vectors after, as Unreal lays a collection out, and a
   declaration after throws. A collection defined after a shader compiled recompiles that shader at the next frame.
-- **Uploaded once a frame by the world renderer**, after its `onFrame` listeners: a pass outside the world reads the
+- **Uploaded once a frame by the world renderer**, after the client world's schedule: a pass outside the world reads the
   values of the last frame the world drew.
 - At most `CgParameterCollection.MAX_VEC4S` (1024) vec4s for every collection together. On the TBO path it takes a
   texture unit, as each engine buffer does.

@@ -48,7 +48,7 @@ import java.util.function.Consumer;
  *
  * <pre>{@code
  * CgVfxFluidDemo fluid = new CgVfxFluidDemo(font);     // on the render thread
- * world.onFrame(view -> fluid.submit(world, x, y, z, CgFrameClock.seconds()));
+ * CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "mymod:fluid", dt -> fluid.submit(world, x, y, z, CgFrameClock.seconds()));
  * CgVfxFluidDemo.Shot shot = fluid.shots().get(3);     // where a camera stands to frame the fourth station
  * fluid.delete();
  * }</pre>

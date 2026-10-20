@@ -36,8 +36,8 @@ import java.util.regex.Pattern;
  *   <li><b>Declare every parameter before the collection's first use</b>: a set, a read, the first frame or the first
  *       shader compiled against it places it, and a declaration after that throws. Declare them as constants.</li>
  *   <li>A collection defined after shaders compiled against the buffer recompiles them at the next frame.</li>
- *   <li>Set and read on the render thread. Values go up once a frame, after the world renderer's {@code onFrame}
- *       listeners: a draw outside the world reads them only in a frame the world drew.</li>
+ *   <li>Set and read on the render thread. Values go up once a frame, after the client world's schedule:
+ *       a draw outside the world reads them only in a frame the world drew.</li>
  *   <li>Every collection together holds at most {@link #MAX_VEC4S} vec4s: four scalars or one vector each.</li>
  *   <li>Names are GLSL identifiers without {@code __}: a letter, then letters, digits and underscores.</li>
  * </ul>
