@@ -144,6 +144,12 @@ public final class CgVfxSystemInstance extends CgVfxEffect<CgVfxSystemInstance> 
         request(CgVfxExecutionState.INACTIVE_CLEAR, CgVfxExecutionSource.OWNER);
     }
 
+    /** Its definition: every instance of it shares one simulation. */
+    @Override
+    protected Object definitionKey() {
+        return definition;
+    }
+
     @Override
     protected void culled(boolean kill) {
         request(kill ? CgVfxExecutionState.INACTIVE_CLEAR : CgVfxExecutionState.INACTIVE, CgVfxExecutionSource.SCALABILITY);

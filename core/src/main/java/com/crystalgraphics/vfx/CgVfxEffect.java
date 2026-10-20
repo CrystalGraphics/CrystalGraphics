@@ -80,8 +80,9 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     protected double originX, originY, originZ;
     /** The system playing it, set by {@link CgVfxSystem#play}. */
     CgVfxSystem system;
-    /** Its look's simulation in {@link #system}: where its emitters' books are queued. */
-    CgVfxSystem.Simulation simulation;
+    /** Its definition's simulation in {@link #system}: where its emitters' books are queued; its place there. */
+    CgVfxSystemSimulation simulation;
+    int simulationSlot = -1;
     /** Who played it, or null for a system played into directly. */
     CgVfxOwner owner;
     /** What runs it on a server, or null on a client: {@link #authoritative}. */
@@ -257,6 +258,15 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     protected void culled(boolean kill) {
         if (kill) kill();
         else stop();
+    }
+
+    /**
+     * What its system simulates it with ({@code CgVfxSystemSimulation}, one per definition): its look, unless it plays a
+     * definition of its own, as a system instance does. Asked once, as it is played; answer the same object for every
+     * instance of one definition.
+     */
+    protected Object definitionKey() {
+        return look;
     }
 
     /**

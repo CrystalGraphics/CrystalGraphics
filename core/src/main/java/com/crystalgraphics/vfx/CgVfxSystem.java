@@ -130,7 +130,7 @@ public final class CgVfxSystem {
             CULLED = CgTrace.name("vfx.culled"), ASLEEP = CgTrace.name("vfx.asleep"), PRESSURE = CgTrace.name("vfx.pressure-percent"),
             TICKS = CgTrace.name("vfx.ticks"), CAPPED = CgTrace.name("vfx.ticks.capped"), HELD = CgTrace.name("vfx.ticks.held"),
             EMITTERS_ZONE = CgTrace.name("vfx.emitters"), EFFECT_TICK_ZONE = CgTrace.name("vfx.effect.tick"),
-            WORKERS_ZONE = CgTrace.name("vfx.emitters.workers"), EFFECT_EMITTERS_ZONE = CgTrace.name("vfx.effect.emitters"), ADMIT_ZONE = CgTrace.name("vfx.emitters.admit"),
+            WORKERS_ZONE = CgTrace.name("vfx.emitters.workers"), ADMIT_ZONE = CgTrace.name("vfx.emitters.admit"),
             GPU_STEPS_ZONE = CgTrace.name("vfx.gpu.steps"),
             EFFECTS = CgTrace.name("vfx.effects");
 
@@ -192,53 +192,15 @@ public final class CgVfxSystem {
     private final CgVfxAir air = new CgVfxAir();
     /** The effects that queued emitter ticks this tick, in play order: the order they are admitted in. */
     private final List<CgVfxEffect<?>> emitting = new ArrayList<>();
-    /** One simulation per look playing: Unreal's world manager keeps one per system asset (NiagaraWorldManager.cpp:719-742). */
-    private final Map<CgVfxLook, Simulation> simulations = new IdentityHashMap<>();
+    /** One simulation per definition playing ({@link CgVfxEffect#definitionKey}), by identity. */
+    private final Map<Object, CgVfxSystemSimulation> simulations = new IdentityHashMap<>();
     /** The simulations with books due this tick. */
-    private final List<Simulation> booking = new ArrayList<>();
+    private final List<CgVfxSystemSimulation> booking = new ArrayList<>();
     /** This tick's batches, parallel: the simulation, and the first of its due effects the batch books. */
-    private Simulation[] batchSimulation = new Simulation[8];
+    private CgVfxSystemSimulation[] batchSimulation = new CgVfxSystemSimulation[8];
     private int[] batchFrom = new int[8];
     private final IntConsumer bookEach = i -> batchSimulation[i].book(batchFrom[i], BOOK_BATCH.get());
 
-    /**
-     * One definition's playing effects, booked together: a loop over its instances with the definition read once,
-     * Unreal's {@code FNiagaraSystemSimulation}. Its effects step in the system's play order; only the books run here.
-     */
-    static final class Simulation {
-        /** Its effects alive, so the system drops it with the last. */
-        int playing;
-        CgVfxEffect<?>[] due = new CgVfxEffect<?>[4];
-        int dueCount;
-
-        /** Queues {@code effect}'s books this tick; the first of a tick also queues the simulation on {@code booking}. */
-        void due(CgVfxEffect<?> effect, List<Simulation> booking) {
-            if (dueCount == due.length) due = Arrays.copyOf(due, dueCount * 2);
-            if (dueCount == 0) booking.add(this);
-            due[dueCount++] = effect;
-        }
-
-        /** Books up to {@code count} due effects from {@code from}; batches of one simulation touch disjoint effects. */
-        void book(int from, int count) {
-            int to = Math.min(dueCount, from + count);
-            try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, EFFECT_EMITTERS_ZONE)) {
-                for (int i = from; i < to; i++) {
-                    CgVfxEffect<?> effect = due[i];
-                    try {
-                        effect.tickEmitters();
-                    } catch (RuntimeException e) {
-                        effect.failure = e;
-                    }
-                }
-            }
-        }
-
-        /** Forgets this tick's queue, whether or not it was booked. */
-        void clearDue() {
-            Arrays.fill(due, 0, dueCount, null);
-            dueCount = 0;
-        }
-    }
     /** The owners whose effects it has played, for their counters. */
     private final List<CgVfxOwner> owners = new ArrayList<>();
     private final double[] pose = new double[CgEntityQuery.POSE_LENGTH], point = new double[3];
@@ -260,7 +222,11 @@ public final class CgVfxSystem {
         if (effect.system != null) throw new IllegalStateException("already played: " + effect);
         effect.system = this;
         effects.add(effect);
-        (effect.simulation = simulations.computeIfAbsent(effect.look(), l -> new Simulation())).playing++;
+        Object key = effect.definitionKey();
+        CgVfxSystemSimulation simulation = simulations.get(key);
+        if (simulation == null) simulations.put(key, simulation = new CgVfxSystemSimulation(key));
+        simulation.add(effect);
+        effect.simulation = simulation;
         precull(effect);
         CgVfxOwner owner = effect.owner;
         if (owner != null) {
@@ -461,12 +427,12 @@ public final class CgVfxSystem {
     }
 
     /** Cuts every queued simulation into batches of {@link #BOOK_BATCH} effects; fills the batch arrays. */
-    private int batchesOf(List<Simulation> queued) {
+    private int batchesOf(List<CgVfxSystemSimulation> queued) {
         int n = 0;
         int size = BOOK_BATCH.get();
         for (int i = 0; i < queued.size(); i++) {
-            Simulation simulation = queued.get(i);
-            for (int from = 0; from < simulation.dueCount; from += size) {
+            CgVfxSystemSimulation simulation = queued.get(i);
+            for (int from = 0; from < simulation.dueCount(); from += size) {
                 if (n == batchSimulation.length) {
                     batchSimulation = Arrays.copyOf(batchSimulation, n * 2);
                     batchFrom = Arrays.copyOf(batchFrom, n * 2);
@@ -479,7 +445,7 @@ public final class CgVfxSystem {
     }
 
     private void leaveSimulation(CgVfxEffect<?> effect) {
-        if (--effect.simulation.playing == 0) simulations.remove(effect.look());
+        if (effect.simulation.remove(effect)) simulations.remove(effect.simulation.key());
     }
 
     /** Every owner it lists lets go of its effects at once. */
@@ -653,6 +619,16 @@ public final class CgVfxSystem {
             }
         }
         if (target > stepped) effect.age = from + target;
+    }
+
+    /** {@code effect}'s simulation: one per definition playing. */
+    CgVfxSystemSimulation simulation(CgVfxEffect<?> effect) {
+        return effect.simulation;
+    }
+
+    /** How many simulations it runs: one per definition playing. */
+    int simulations() {
+        return simulations.size();
     }
 
     /** Its GPU queue: the pools' owner. */
