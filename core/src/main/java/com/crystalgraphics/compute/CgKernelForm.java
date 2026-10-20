@@ -10,8 +10,8 @@ import javax.annotation.Nullable;
 import java.util.function.Predicate;
 
 /**
- * How a context runs a kernel (gpu-compute §6.5): as compute, lowered below compute, or by its Java body on the forced
- * CPU tier; and which kernel that is, itself or the {@code #pragma fallback} it names. A frame never mixes forms for one
+ * How a context runs a kernel: as compute, lowered below compute, or by its Java body under the CPU oracle; and which
+ * kernel that is, itself or the {@code #pragma fallback} it names. A frame never mixes forms for one
  * kernel.
  *
  * <pre>{@code
@@ -25,8 +25,8 @@ import java.util.function.Predicate;
  *   <li>On V and G43 every kernel runs as compute.</li>
  *   <li>On G40 and G33: the kernel lowered; else its fallback lowered. A {@code compute_only} kernel is never
  *       lowered.</li>
- *   <li>On CPU, which is only ever forced: its Java body, else its fallback's. A player's tier never runs a body, so
- *       a shipped kernel needs none (decision 11).</li>
+ *   <li>Under the CPU oracle ({@code CgCapabilities.cpuOracle}, tests and the harness only): its Java body, else its
+ *       fallback's. A player's tier never runs a body, so a shipped kernel needs none.</li>
  *   <li>A kernel that can run nowhere throws when its form is chosen, which is before any dispatch of it runs,
  *       naming what stops it.</li>
  * </ul>
@@ -37,7 +37,7 @@ public record CgKernelForm(How how, ComputeTier tier, CgKernelDecl runs) {
 
     public enum How { COMPUTE, LOWERED, CPU }
 
-    /** The tiers a player's context may be at, which {@link #check} asks: CPU is only ever forced. */
+    /** The tiers a player's context may be at, which {@link #check} asks: CPU is the oracle's alone. */
     private static final ComputeTier[] PLAYER_TIERS = {ComputeTier.G43, ComputeTier.G40, ComputeTier.G33};
 
     /**
@@ -80,7 +80,7 @@ public record CgKernelForm(How how, ComputeTier tier, CgKernelDecl runs) {
     }
 
     /**
-     * Asks every tier a player's context may be at, not only this one's (decision 13): the form each takes, and that
+     * Asks every tier a player's context may be at, not only this one's: the form each takes, and that
      * each compiles the builtins the kernel it runs names, polyfilled where its GLSL lacks them. GL-free, so the
      * author's machine finds what a player's would. A {@code compute_only} kernel is asked only of compute, and a Java
      * body answers nothing here: no player's tier runs one.

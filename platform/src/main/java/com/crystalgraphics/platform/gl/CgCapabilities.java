@@ -46,7 +46,7 @@ import java.util.Locale;
 public final class CgCapabilities {
 
     public static final CgVar.Text COMPUTE_TIER = CgVar.text("crystalgraphics.compute.tier", "", CgVar.DEV,
-            "V, G43, G40, G33 or CPU: kernels run as that tier would, where the context has what it needs, refused naming"
+            "V, G43, G40 or G33: kernels run as that tier would, where the context has what it needs, refused naming"
                     + " what is missing where not; empty for the best. Taken at each context's capability probe.");
     public static final CgVar.Text SHADER_BUFFER_TIER = CgVar.text("crystalgraphics.shaderBuffer.tier", "", CgVar.DEV,
             "SSBO_GL43, SSBO_ARB or TBO: engine buffers read that way (TBO: buffer textures, GLSL 3.30, as a 3.3 context);"
@@ -67,6 +67,7 @@ public final class CgCapabilities {
     private static String cachedParsedVersionKey   = null;
     private static int[]  cachedParsedVersionValue = null;
     private static volatile CgCapabilities cachedCaps = null;
+    private static volatile boolean cpuOracle;
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Enums
@@ -109,7 +110,10 @@ public final class CgCapabilities {
         G40,
         /** As {@code G40}, but a count a kernel wrote is read back before the draw that takes it: a stall. */
         G33,
-        /** Kernels' Java bodies on worker threads. */
+        /**
+         * Kernels' Java bodies on worker threads: the gates' oracle, never a context's tier. No property selects it;
+         * {@link CgCapabilities#cpuOracle(boolean)} does, from a test or the harness.
+         */
         CPU;
 
         /** What this tier needs that the context lacks, or null. */
@@ -120,7 +124,8 @@ public final class CgCapabilities {
                 case G40: return device ? "transform feedback, which a device does not carry"
                         : caps.feedbackCount ? null : "transform feedback 2 (GL 4.0)";
                 case G33: return device ? "transform feedback, which a device does not carry" : null;
-                default:  return null;
+                default:  return "the CPU oracle, which only a test or the harness turns on (CgCapabilities.cpuOracle;"
+                        + " -Dcrystalgraphics.harness.oracle=true)";
             }
         }
     }
@@ -567,8 +572,22 @@ public final class CgCapabilities {
     /** The most work groups one dispatch may launch along {@code axis}, 0 to 2. */
     public int maxComputeWorkGroupCount(int axis) { return maxComputeWorkGroupCount[axis]; }
 
-    /** The highest tier this context runs kernels at, or {@code -Dcrystalgraphics.compute.tier}'s. */
-    public ComputeTier computeTier() { return computeTier; }
+    /**
+     * The highest tier this context runs kernels at, or {@code -Dcrystalgraphics.compute.tier}'s; {@link ComputeTier#CPU}
+     * while {@link #cpuOracle(boolean)} is on.
+     */
+    public ComputeTier computeTier() { return cpuOracle ? ComputeTier.CPU : computeTier; }
+
+    /**
+     * Runs every kernel's Java body instead of its GPU form, the reference a gate checks the GPU forms against: for tests
+     * and the harness ({@code -Dcrystalgraphics.harness.oracle=true}), never a client, so no property reaches it. Takes
+     * effect at each kernel's next form; switch it before the first dispatch.
+     *
+     * <pre>{@code
+     * CgCapabilities.cpuOracle(true);    // every dispatch from here runs its kernel's kernel.cpu(...) body
+     * }</pre>
+     */
+    public static void cpuOracle(boolean on) { cpuOracle = on; }
 
 
     // ─────────────────────────────────────────────────────────────────────────

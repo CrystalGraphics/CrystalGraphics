@@ -392,7 +392,8 @@ built on a worker, matched against the CPU's picture, executed again too; with s
 `--mode=indirect-draw` is the indirect half: four indirect draws, one per mode and one past its mesh, each matched
 against a direct draw of what its count means, in a graph, executed again and through the world renderer.
 `--mode=material-buffer` is a material reading a kernel's buffers through `Buffers { }`, drawn indirect. All three pass
-forced to every tier (`-Dcrystalgraphics.compute.tier=G40|G33|CPU`), as does `--mode=compute-tiers`
+forced to every tier (`-Dcrystalgraphics.compute.tier=G40|G33`) and under the CPU oracle
+(`-Dcrystalgraphics.harness.oracle=true`), as does `--mode=compute-tiers`
 (`compute/CLAUDE.md` § *Tests*). `--mode=raster-levels` is a chain drawn level by level through raster passes, each
 level reading the one above through a level view, every texel checked; on `gl`, `vulkan` with synchronization
 validation, and both downlevel contexts. `--mode=raster-layers` is arrays': 2 to 5 layers of one array drawn each

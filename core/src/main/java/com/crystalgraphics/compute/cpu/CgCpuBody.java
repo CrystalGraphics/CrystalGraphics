@@ -1,8 +1,8 @@
 package com.crystalgraphics.compute.cpu;
 
 /**
- * A kernel's Java body: what the CPU tier runs where no GPU tier can run the kernel, or where the CPU tier is forced
- * (gpu-compute §6.4). It is handed a range of elements and reaches the dispatch's buffers, images and properties
+ * A kernel's Java body: what the CPU oracle runs ({@code CgCapabilities.cpuOracle}, tests and the harness only), the
+ * reference a gate checks the kernel's GPU forms against. It is handed a range of elements and reaches the dispatch's buffers, images and properties
  * through {@link CgCpuDispatch}, by the names the {@code .compute} declares.
  *
  * <pre>{@code

@@ -81,7 +81,9 @@ execution ends. A dispatch outside a graph lands at once. G40 sizes an indirect 
 (`glDrawArraysIndirect`); G33 reads the count back, a stall counted as `buffer.readbacks`. A device has no transform feedback, so a lowered tier forced on one is
 refused at startup.
 
-**The CPU tier** (`cpu`, §6.4): the body runs over CPU copies of the bound buffers (`CgCpuMirrors`), read back the
+**The CPU oracle** (`cpu`, §6.4): never a context's tier, only what a test or the harness turns on
+(`CgCapabilities.cpuOracle`), the reference the gates check every GPU form against. The body runs over CPU copies of
+the bound buffers (`CgCpuMirrors`), read back the
 first time and kept while nothing else writes the buffer; what it writes is uploaded through the frame ring before the
 next pass. A map, gather, append or image body runs as ranges on a pool of daemon workers (`crystalgraphics-compute-*`),
 a scatter or general body once, in order. Images are read whole before the body and written whole after; a sampler
@@ -90,7 +92,7 @@ render thread before it.
 
 **The every-tier check** (§6.6): `CgKernelForm.check`, GL-free, asks G43, G40 and G33 for the form each would choose
 and compiles the builtins it reaches at each one's lowest GLSL (`lowestGlsl`: 4.20, 4.00, 3.30) against
-`CgGlslBuiltins`. A Java body answers nothing there: G40 and G33 never choose one, only the forced CPU tier does
+`CgGlslBuiltins`. A Java body answers nothing there: G40 and G33 never choose one, only the CPU oracle does
 (decision 11). `CgKernel` caches the answer per file generation; a reload asks again.
 
 ## Ops, inside

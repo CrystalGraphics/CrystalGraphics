@@ -32,8 +32,8 @@ import java.util.TreeSet;
  * wide.program().use().image("OUT", target, 0).dispatch(width, height, 1);
  * }</pre>
  *
- * <p>Where the CPU tier is forced, for debugging and tests, a Java body runs instead. No player's tier runs one, so a
- * shipped kernel has none:</p>
+ * <p>Under the CPU oracle ({@code CgCapabilities.cpuOracle}), in tests and the harness, a Java body runs instead. No
+ * player's tier runs one, so a shipped kernel has none:</p>
  * <pre>{@code
  * CgKernel simulate = particles.kernel("Simulate").cpu(d -> { ... });   // every keyword set shares it
  * CgKernelForm form = simulate.form();                                  // COMPUTE, LOWERED or CPU, on this context
@@ -212,8 +212,9 @@ public final class CgKernel {
     }
 
     /**
-     * Whether the current context runs this kernel: false for a {@code compute_only} kernel below compute (and on the
-     * forced CPU tier, without a Java body), which a feature built on it asks before it is offered. Render thread, or once capabilities are known.
+     * Whether the current context runs this kernel: false for a {@code compute_only} kernel below compute (and under
+     * the CPU oracle, without a Java body), which a feature built on it asks before it is offered. Render thread, or once
+     * capabilities are known.
      */
     public boolean runs() {
         return choice().refusal == null;

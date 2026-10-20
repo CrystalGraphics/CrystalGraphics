@@ -525,7 +525,7 @@ against 0.221 on Vulkan, inside the 5% it allows over.
 | What a kernel wrote | the Frame Profiler's **Buffers** tab, or `CgBufferInspector` (`render/graph/CLAUDE.md`) |
 | An index out of range | `-Dcrystalgraphics.compute.checked=true`: the kernel, the line and the index |
 | A missing barrier | the Vulkan device with `-Dcrystalgraphics.vulkan.syncValidation=true`; `-Dcrystalgraphics.graph.asyncAll=true` checks every async wait |
-| Every tier | `-Dcrystalgraphics.compute.tier=G43|G40|G33|CPU` on your GPU; `-Pharness.downlevel=mac41|gl33` for a context that lacks the features |
+| Every tier | `-Dcrystalgraphics.compute.tier=G43|G40|G33` on your GPU, and `-Dcrystalgraphics.harness.oracle=true` for every kernel's Java body; `-Pharness.downlevel=mac41|gl33` for a context that lacks the features |
 | Its cost | the `profiling` skill; a pass's CPU zone is its name, its GPU zone on `crystalgraphics.gl.detail` |
 | Its budget holds | `budget.spent()` against `budget.millis()` while `scale()` settles; `--mode=gpu-budget` for the mechanism on a context (§13) |
 

@@ -1410,11 +1410,11 @@ compute, which only fight for the same units.
 | `G43` | GL 4.3, or 4.2 with the compute and storage-image extensions | as compute |
 | `G40` | GL 4.0 and up without compute: macOS's 4.1 | lowered; else its fallback lowered; else not at all (`runs()` is false) |
 | `G33` | GL 3.3 | as `G40`, a count a draw takes read back first |
-| `CPU` | forced | its Java body, else its fallback's |
 
-A context runs at the best tier it has; `-Dcrystalgraphics.compute.tier=V|G43|G40|G33|CPU` forces one, and forcing one
+A context runs at the best tier it has; `-Dcrystalgraphics.compute.tier=V|G43|G40|G33` forces one, and forcing one
 the context lacks throws naming what it lacks. `kernel.form()` answers how this context runs a kernel (`COMPUTE`,
-`LOWERED` or `CPU`, and which kernel: itself or its fallback).
+`LOWERED` or `CPU`, and which kernel: itself or its fallback). `CPU` is the gates' oracle, never a tier a context runs
+at ([A Java body](#a-java-body)).
 
 **Lowered**, a `map` or `gather` kernel is a fragment pass over a render target laid out as the buffer's words, read
 into the buffer on the GPU; an `image` kernel is a fragment pass into the image; what an `append` kernel appends is
@@ -1456,9 +1456,15 @@ the tiers below its version. A function of the file's own named as a builtin kee
 
 #### A Java body
 
-**For debugging and tests, never shipped.** Forcing the CPU tier (`-Dcrystalgraphics.compute.tier=CPU`) runs a
-kernel's Java body: a breakpoint inside a kernel, or a reference to check a GPU form against. A shipped kernel carries
-none: below compute it runs lowered, as its fallback lowered, or not at all behind `runs()`.
+**For debugging and tests, never shipped.** The CPU oracle runs every kernel's Java body: a breakpoint inside a
+kernel, or the reference a gate checks a GPU form against. Only a test or the harness turns it on, never a client:
+
+```java
+CgCapabilities.cpuOracle(true);   // a test; the harness: -Dcrystalgraphics.harness.oracle=true
+```
+
+A shipped kernel carries no body: below compute it runs lowered, as its fallback lowered, or not at all behind
+`runs()`.
 
 ```java
 particles.kernel("Simulate").cpu(d -> {                     // every keyword set of the kernel shares it
@@ -1618,7 +1624,7 @@ refuses the first on the author's machine; the second is the design's to answer.
 ```
 
 A kernel with no lowerable form is `compute_only`, and below compute the feature is absent or done another way: a
-Java body (`kernel.cpu(...)`) runs only when the CPU tier is forced, for debugging.
+Java body (`kernel.cpu(...)`) runs only under the CPU oracle, in tests and the harness.
 
 **2. Lay records out in `vec4`s.** Below `general` a struct holds `vec4`, `ivec4` and `uvec4` only: pack scalars into
 lanes rather than adding fields.
@@ -1677,8 +1683,9 @@ body; floats agree to a rounding. A decision, a count or a seed that must match 
 **8. Run it on the tiers you do not have.**
 
 ```bash
-# your GPU, forced to each tier's form: G43, G40, G33, CPU
+# your GPU, forced to each tier's form: G43, G40, G33; and every kernel's Java body, the oracle
 ./gradlew :gl-debug-harness:runHarness --args="--mode=<scene>" -Dcrystalgraphics.compute.tier=G40
+./gradlew :gl-debug-harness:runHarness --args="--mode=<scene>" -Dcrystalgraphics.harness.oracle=true
 # a context that lacks compute: Mesa as macOS's GL 4.1, or a bare 3.3 (gl33)
 ./gradlew :gl-debug-harness:runHarness -Pharness.downlevel=mac41 --args="--mode=<scene>"
 ```
