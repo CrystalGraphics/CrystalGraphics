@@ -97,9 +97,9 @@ public final class CgFieldKinds {
     /** Two earlier nodes combined; {@code left} and {@code right} are their ids. */
     static final CgType OPERATOR = done(node("operator")
             .property("magnitude", FLOAT).defaultValue(1.0)
-            .property("right", STRING)
+            .property("op", CgValueType.enumOf("multiply", "divide", "add", "subtract")).defaultValue("multiply")
             .property("left", STRING)
-            .property("op", CgValueType.enumOf("multiply", "divide", "add", "subtract")).defaultValue("multiply"));
+            .property("right", STRING));
 
     /** An earlier node evaluated only inside (or outside) another; {@code culling} and {@code field} are their ids. */
     static final CgType CULLING = done(node("culling")
