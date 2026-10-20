@@ -15,6 +15,7 @@ import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.gl.buffer.CgBufferReadback;
 import com.crystalgraphics.mc.CgAssetReloader;
 import com.crystalgraphics.mc.CgReloadable;
+import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.io.CgIO;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -72,8 +73,8 @@ public final class CgCompute implements CgReloadable {
     private static final int FINISH = CgTrace.name("compute.finishPrepared");
     /** Files holding a program {@link CgKernel#prepare} started that nothing has finished yet. */
     private static final Set<CgCompute> PREPARING = ConcurrentHashMap.newKeySet();
-    /** What {@link #finishPrepared} spends a frame. */
-    private static final long FINISH_NANOS = 1_000_000L;
+    /** What {@link #finishPrepared} spends a frame at most, and at least whatever the warm budget has left. */
+    private static final long FINISH_NANOS = 1_000_000L, FINISH_LEAST = 200_000L;
 
     private final String path;
     private final boolean generated;
@@ -344,13 +345,17 @@ public final class CgCompute implements CgReloadable {
      */
     public static void finishPrepared() {
         if (PREPARING.isEmpty()) return;
-        long until = System.nanoTime() + FINISH_NANOS;
+        long start = System.nanoTime();
+        // Inside the frame's warm budget, with a floor so finishing never starves while warming spends it.
+        long until = start + Math.max(FINISH_LEAST, Math.min(FINISH_NANOS, CgWarmBudget.remaining()));
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, FINISH)) {
             for (Iterator<CgCompute> it = PREPARING.iterator(); it.hasNext(); ) {
                 CgCompute compute = it.next();
                 if (compute.finishPrepared(until)) it.remove();
                 if (System.nanoTime() > until) return;
             }
+        } finally {
+            CgWarmBudget.spend(System.nanoTime() - start);
         }
     }
 
