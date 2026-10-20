@@ -261,6 +261,9 @@ public final class CgStageFrame {
         return n > 0f ? (ax * bx + ay * by + az * bz) / n : 0f;
     }
 
+    /** The slot an execution saves, as an array once: varargs make one a call. */
+    private static final CgGlSlot[] SCISSOR = {CgGlSlot.SCISSOR};
+
     /** Builds and executes what was recorded, then resets for the next firing. */
     void execute() {
         try {
@@ -269,7 +272,7 @@ public final class CgStageFrame {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "stage.parkSamplers")) {
                 CgHostSamplers.park();
             }
-            try (CgGlScope ignored = CgGlState.save(CgGlSlot.SCISSOR)) {
+            try (CgGlScope ignored = CgGlState.save(SCISSOR)) {
                 CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
                 CgExecutor.execute(frame);
             } finally {

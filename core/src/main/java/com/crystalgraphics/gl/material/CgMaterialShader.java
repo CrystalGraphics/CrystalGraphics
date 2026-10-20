@@ -197,6 +197,18 @@ public final class CgMaterialShader implements CgReloadable {
      * Cleared and rebuilt from scratch on hot-reload.
      */
     private final Map<ProgramKey, CgShader> programCache = new LinkedHashMap<>();
+    /**
+     * The last programs {@link #getOrCompile} found, by the identity of the pass name and keyword set a pipeline passes
+     * each frame, so a hit builds no {@link ProgramKey}. Valid while {@link #cacheVersion} is the one it was found at.
+     */
+    private static final int HITS = 4;
+    private final String[] hitPass = new String[HITS];
+    private final Object[] hitKeywords = new Object[HITS];
+    private final CgShader[] hitShader = new CgShader[HITS];
+    private final int[] hitVersion = new int[HITS];
+    private int hitNext;
+    /** Bumped whenever {@link #programCache} changes. */
+    private int cacheVersion;
 
     /**
      * Template UBO created from the parsed properties for GLSL block emission and post-link wiring.
@@ -227,6 +239,7 @@ public final class CgMaterialShader implements CgReloadable {
      * Mirrors the attach API on {@code CgMaterial}.
      */
     private final List<CgAttachedBuffer> attachedBuffers = new ArrayList<>();
+    private final List<CgAttachedBuffer> attachedView = Collections.unmodifiableList(attachedBuffers);
 
     /**
      * Whether the shader needs a full recompile on the next {@code bind()} call.
@@ -651,6 +664,7 @@ public final class CgMaterialShader implements CgReloadable {
         }
         for (CgShader shader : generated.values()) wireShader(shader);
         programCache.putAll(generated);
+        cacheVersion++;
     }
 
     /** Set for the length of a forward-only {@link #submitRecompile}. */
@@ -668,10 +682,12 @@ public final class CgMaterialShader implements CgReloadable {
         if (!isFirst) {
             for (CgShader s : programCache.values()) s.delete();
             programCache.clear();
+            cacheVersion++;
         }
 
         // ── Step 8: Commit new state ───────────────────────────────────────────
         programCache.putAll(newCache);
+        cacheVersion++;
 
         if (this.matPropsUbo != null) this.matPropsUbo.delete();
         this.matPropsUbo = newMatPropsUbo;
@@ -846,9 +862,15 @@ public final class CgMaterialShader implements CgReloadable {
      */
     public CgShader getOrCompile(String passName, Set<String> activeKeywords) {
         awaitPending();
+        for (int i = 0; i < HITS; i++) {
+            if (hitPass[i] == passName && hitKeywords[i] == activeKeywords && hitVersion[i] == cacheVersion) return hitShader[i];
+        }
         ProgramKey key = new ProgramKey(passName, activeKeywords);
         CgShader cached = programCache.get(key);
-        if (cached != null) return cached;
+        if (cached != null) {
+            remember(passName, activeKeywords, cached);
+            return cached;
+        }
         CgShader submitted = pendingVariants.remove(key);
         if (submitted != null) {
             if (!submitted.isReady()) waited();
@@ -859,9 +881,9 @@ public final class CgMaterialShader implements CgReloadable {
             cached = programCache.get(key);
             if (cached != null) return cached;
         }
-        if (failedVariants.contains(key)) return null;
+        if (failedVariants.contains(key)) return remember(passName, activeKeywords, null);
         CgMaterialShaderCompiler.CompiledSource compiled = variantSource(key);
-        if (compiled == null) return null;
+        if (compiled == null) return remember(passName, activeKeywords, null);
         waited();
         String processedVert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
         String processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
@@ -941,6 +963,7 @@ public final class CgMaterialShader implements CgReloadable {
         }
         wireShader(program);
         programCache.put(key, program);
+        cacheVersion++;
         return program;
     }
 
@@ -949,6 +972,7 @@ public final class CgMaterialShader implements CgReloadable {
         for (CgShader s : pendingVariants.values()) s.delete();
         pendingVariants.clear();
         failedVariants.clear();
+        cacheVersion++;
     }
 
     /** Variants {@link #prepareVariant} submitted, not yet kept. Dropped by a recompile, which clears the cache. */
@@ -1020,7 +1044,19 @@ public final class CgMaterialShader implements CgReloadable {
 
     /** Returns an unmodifiable view of the attached SSBO/TBO and UBO buffers. */
     public List<CgAttachedBuffer> getAttachedBuffers() {
-        return Collections.unmodifiableList(attachedBuffers);
+        return attachedView;
+    }
+
+    /** Notes a lookup's answer, a failure's null too, until the cache next changes; answers {@code shader}. */
+    @Nullable
+    private CgShader remember(String passName, Set<String> keywords, @Nullable CgShader shader) {
+        int i = hitNext;
+        hitNext = (hitNext + 1) % HITS;
+        hitPass[i] = passName;
+        hitKeywords[i] = keywords;
+        hitShader[i] = shader;
+        hitVersion[i] = cacheVersion;
+        return shader;
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -1099,6 +1135,7 @@ public final class CgMaterialShader implements CgReloadable {
             dropVariants();
             for (CgShader s : programCache.values()) s.delete();
             programCache.clear();
+            cacheVersion++;
             if (matPropsUbo != null) {
                 matPropsUbo.delete();
                 matPropsUbo = null;

@@ -205,6 +205,8 @@ public final class CgMaterial {
      * Only names present in {@link CgParsedShader#featureNames()} are accepted.
      */
     private final Set<String> enabledKeywords = new LinkedHashSet<>();
+    /** One view of {@link #enabledKeywords} for every bind: a program lookup hits by its identity. */
+    private final Set<String> enabledView = Collections.unmodifiableSet(enabledKeywords);
 
     /**
      * Programs that have had per-instance state wired: matPropsUbo block binding and sampler
@@ -926,7 +928,7 @@ public final class CgMaterial {
                 // that cost is otherwise invisible: it surfaces inside whatever draw happened to
                 // trigger the toggle, not at any obvious "compiling now" call site.
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.getOrCompileVariant")) {
-                    shader = cgMaterialShader.getOrCompileForwardPass(Collections.unmodifiableSet(enabledKeywords));
+                    shader = cgMaterialShader.getOrCompileForwardPass(enabledView);
                 }
                 if (shader == null) return;
                 if (mask >= 0 && variants != null && mask < variants.length) variants[mask] = shader;
@@ -1198,8 +1200,9 @@ public final class CgMaterial {
      */
     private void capturePerDrawEngineBuffers(CgBindingTable table) {
         if (propsParse == null) return;
-        for (String token : propsParse.engineBuffers()) {
-            CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(token);
+        List<String> tokens = propsParse.engineBuffers();
+        for (int i = 0; i < tokens.size(); i++) {
+            CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(tokens.get(i));
             if (provider.perDraw()) table.buffer(provider.buffer().get());
         }
     }
@@ -1274,7 +1277,7 @@ public final class CgMaterial {
 
         CgShader shader;
         if (variant == CgRenderPassVariant.FORWARD) {
-            shader = cgMaterialShader.getOrCompileForwardPass(Collections.unmodifiableSet(enabledKeywords));
+            shader = cgMaterialShader.getOrCompileForwardPass(enabledView);
         } else {
             shader = cgMaterialShader.getOrCompile(variant.lightModeName(), Collections.emptySet());
         }

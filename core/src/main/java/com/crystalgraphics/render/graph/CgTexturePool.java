@@ -2,27 +2,29 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 
-import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 
 /**
  * Framebuffers for transient graph textures, kept between frames by description: a layer the same size as last
- * frame's reuses its storage, and one idle for {@value #IDLE_FRAMES} frames is freed. Render thread only.
+ * frame's reuses its storage, and one idle for {@value #IDLE_FRAMES} frames is freed. Render thread only; a steady
+ * frame allocates nothing.
  */
 final class CgTexturePool {
 
     static final int IDLE_FRAMES = 120;
 
-    private final Map<CgTextureDesc, ArrayDeque<Entry>> free = new HashMap<>();
+    private final Map<CgTextureDesc, Bucket> free = new HashMap<>();
+    /** Every bucket made, kept when empty, so the idle sweep walks them by index. */
+    private final List<Bucket> buckets = new ArrayList<>();
     private long frame;
     private int created;
 
     CgFrameBuffer acquire(CgTextureDesc desc) {
-        ArrayDeque<Entry> bucket = free.get(desc);
-        Entry entry = bucket == null ? null : bucket.pollLast();
-        if (entry != null) return entry.framebuffer;
+        Bucket bucket = free.get(desc);
+        if (bucket != null && bucket.size > 0) return bucket.takeNewest();
         return create("cg_graph_" + desc.width() + "x" + desc.height() + "_" + created++, desc);
     }
 
@@ -34,26 +36,77 @@ final class CgTexturePool {
     }
 
     void release(CgTextureDesc desc, CgFrameBuffer framebuffer) {
-        free.computeIfAbsent(desc, d -> new ArrayDeque<>()).addLast(new Entry(framebuffer, frame));
+        Bucket bucket = free.get(desc);
+        if (bucket == null) {
+            free.put(desc, bucket = new Bucket());
+            buckets.add(bucket);
+        }
+        bucket.add(framebuffer, frame);
     }
 
     /** Frees what has sat unused for {@link #IDLE_FRAMES} frames. Once a frame. */
     void endFrame() {
         frame++;
-        for (Iterator<ArrayDeque<Entry>> buckets = free.values().iterator(); buckets.hasNext(); ) {
-            ArrayDeque<Entry> bucket = buckets.next();
-            while (!bucket.isEmpty() && frame - bucket.peekFirst().releasedAt > IDLE_FRAMES) {
-                bucket.pollFirst().framebuffer.delete();
-            }
-            if (bucket.isEmpty()) buckets.remove();
+        for (int i = 0; i < buckets.size(); i++) {
+            Bucket bucket = buckets.get(i);
+            while (bucket.size > 0 && frame - bucket.oldestAt() > IDLE_FRAMES) bucket.takeOldest().delete();
         }
     }
 
     void delete() {
-        for (ArrayDeque<Entry> bucket : free.values()) for (Entry entry : bucket) entry.framebuffer.delete();
+        for (int i = 0; i < buckets.size(); i++) {
+            Bucket bucket = buckets.get(i);
+            while (bucket.size > 0) bucket.takeOldest().delete();
+        }
         free.clear();
+        buckets.clear();
     }
 
-    private record Entry(CgFrameBuffer framebuffer, long releasedAt) {
+    /** One description's free framebuffers, oldest first, as a ring of parallel arrays. */
+    private static final class Bucket {
+        private CgFrameBuffer[] framebuffers = new CgFrameBuffer[4];
+        private long[] releasedAt = new long[4];
+        private int head, size;
+
+        void add(CgFrameBuffer framebuffer, long at) {
+            if (size == framebuffers.length) grow();
+            int i = (head + size) % framebuffers.length;
+            framebuffers[i] = framebuffer;
+            releasedAt[i] = at;
+            size++;
+        }
+
+        long oldestAt() {
+            return releasedAt[head];
+        }
+
+        CgFrameBuffer takeOldest() {
+            CgFrameBuffer fb = framebuffers[head];
+            framebuffers[head] = null;
+            head = (head + 1) % framebuffers.length;
+            size--;
+            return fb;
+        }
+
+        CgFrameBuffer takeNewest() {
+            int i = (head + size - 1) % framebuffers.length;
+            CgFrameBuffer fb = framebuffers[i];
+            framebuffers[i] = null;
+            size--;
+            return fb;
+        }
+
+        private void grow() {
+            int n = framebuffers.length;
+            CgFrameBuffer[] f = new CgFrameBuffer[n * 2];
+            long[] a = new long[n * 2];
+            for (int k = 0; k < size; k++) {
+                f[k] = framebuffers[(head + k) % n];
+                a[k] = releasedAt[(head + k) % n];
+            }
+            framebuffers = f;
+            releasedAt = a;
+            head = 0;
+        }
     }
 }

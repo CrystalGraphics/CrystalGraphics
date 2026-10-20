@@ -10,8 +10,6 @@ import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.platform.gl.CgGL;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.Arrays;
 import java.util.Objects;
@@ -374,14 +372,14 @@ public final class CgBindingTable {
             for (int b = 0; b < entries[e + 1]; b++) bytes += align(entries[e + BLOCKS_AT + b * BLOCK_INTS + 2] * 4);
         }
         if (bytes == 0) return;
-        ByteBuffer out = ring.map(bytes).order(ByteOrder.nativeOrder());
-        FloatBuffer view = out.asFloatBuffer();
+        FloatBuffer view = ring.mapFloats(bytes);
+        int from = view.position();
         int at = 0;
         for (int id = 0; id < count; id++) {
             int e = id * ENTRY_INTS;
             for (int b = 0; b < entries[e + 1]; b++) {
                 int block = e + BLOCKS_AT + b * BLOCK_INTS;
-                view.position(at >> 2);
+                view.position(from + (at >> 2));
                 view.put(floats, entries[block + 1], entries[block + 2]);
                 ringOffsets[id * MAX_BLOCKS + b] = at;
                 at += align(entries[block + 2] * 4);

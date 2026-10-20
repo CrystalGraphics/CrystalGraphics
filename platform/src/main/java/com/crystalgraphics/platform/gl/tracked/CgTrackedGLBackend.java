@@ -33,7 +33,7 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
-import java.util.HashMap;
+import java.util.Arrays;
 import java.util.Map;
 
 /**
@@ -75,7 +75,9 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     private final CgGlslCompiler compiler;
     private final CgTrackedProgram[] clearPrograms = new CgTrackedProgram[8];
     private final double[] q = new double[16];
-    private final Map<Long, Long> syncs = new HashMap<>();
+    /** Per fence id from {@link #syncBase}, the frame that placed it, -1 once deleted: no boxing per fence. */
+    private long[] syncFrames = new long[64];
+    private long syncBase = 1;
     private final GlNames<CgTimerQuery> queries = new GlNames<>("Query");
     private long nextSync = 1;
     private CgTimerQuery timing;
@@ -982,7 +984,8 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     @Override
     public long glFenceSync(int condition, int flags) {
         long id = nextSync++;
-        syncs.put(id, device.frameIndex());
+        if (id - syncBase >= syncFrames.length) compactSyncs();
+        syncFrames[(int) (id - syncBase)] = device.frameIndex();
         return id;
     }
 
@@ -992,8 +995,8 @@ public final class CgTrackedGLBackend extends CgGLBackend {
      */
     @Override
     public int glClientWaitSync(long sync, int flags, long timeout) {
-        Long frame = syncs.get(sync);
-        if (frame == null) {
+        long frame = sync >= syncBase && sync < nextSync ? syncFrames[(int) (sync - syncBase)] : -1;
+        if (frame < 0) {
             errors.invalidValue("glClientWaitSync on a fence that does not exist");
             return CgGL.GL_WAIT_FAILED;
         }
@@ -1008,7 +1011,18 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         return CgGL.GL_CONDITION_SATISFIED;
     }
 
-    @Override public void glDeleteSync(long sync) { syncs.remove(sync); }
+    @Override public void glDeleteSync(long sync) {
+        if (sync >= syncBase && sync < nextSync) syncFrames[(int) (sync - syncBase)] = -1;
+    }
+
+    /** Drops the deleted fences below the oldest live one, growing the table only when every slot is live. */
+    private void compactSyncs() {
+        int used = (int) (nextSync - 1 - syncBase), first = 0;
+        while (first < used && syncFrames[first] < 0) first++;
+        System.arraycopy(syncFrames, first, syncFrames, 0, used - first);
+        syncBase += first;
+        if (nextSync - 1 - syncBase >= syncFrames.length) syncFrames = Arrays.copyOf(syncFrames, syncFrames.length * 2);
+    }
 
     @Override public int glGenQuery() { return queries.add(device.createTimerQuery("query")); }
 

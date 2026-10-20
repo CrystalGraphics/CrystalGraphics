@@ -81,7 +81,7 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
 
     /** The persistent tier writes through one view of the whole mapping, positioned per upload. */
     @Override
-    protected FloatBuffer mapFloats(int sizeBytes) {
+    public FloatBuffer mapFloats(int sizeBytes) {
         if (!persistent) return super.mapFloats(sizeBytes);
         reserve(sizeBytes);   // may allocate(), which rebuilds the view
         persistentFloats.clear();

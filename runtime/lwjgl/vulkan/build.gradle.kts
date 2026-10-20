@@ -61,7 +61,11 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 // The natives load through System.load, which JDK 25 warns about unless native access is granted.
-tasks.test { jvmArgs("--enable-native-access=ALL-UNNAMED") }
+tasks.test {
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    // Each class installs its own backend under the engine's static buffers and fences: one JVM a class.
+    forkEvery = 1
+}
 
 // The tier boundary, as in runtime/lwjgl/3.
 tasks.named<JavaCompile>("compileJava") {

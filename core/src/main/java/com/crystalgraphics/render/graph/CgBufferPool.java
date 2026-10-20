@@ -3,53 +3,65 @@ package com.crystalgraphics.render.graph;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 
-import java.util.ArrayDeque;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.Arrays;
 import java.util.function.IntConsumer;
 
 /**
  * GL buffers for transient graph buffers, kept between frames by size class: a buffer released after its last use is
  * the next transient's of that class, in the same frame or a later one, and one idle for {@value #IDLE_FRAMES} frames is
- * freed. Render thread only.
+ * freed. Render thread only; a steady frame allocates nothing.
  */
 final class CgBufferPool {
 
     static final int IDLE_FRAMES = 120;
 
-    private final Map<Long, ArrayDeque<long[]>> free = new HashMap<>();
+    /** Size classes seen and their free buffers, searched in order: a frame names a handful of classes. */
+    private long[] sizes = new long[8];
+    private Bucket[] buckets = new Bucket[8];
+    private int classes;
     private long frame;
 
     /** A buffer of at least {@code desc}'s bytes. */
     int acquire(CgBufferDesc desc) {
         long size = desc.sizeClass();
-        ArrayDeque<long[]> bucket = free.get(size);
-        long[] entry = bucket == null ? null : bucket.pollLast();
-        return entry != null ? (int) entry[0] : create(size);
+        Bucket bucket = bucket(size, false);
+        return bucket != null && bucket.size > 0 ? bucket.takeNewest() : create(size);
     }
 
     void release(CgBufferDesc desc, int buffer) {
-        free.computeIfAbsent(desc.sizeClass(), s -> new ArrayDeque<>()).addLast(new long[]{buffer, frame});
+        bucket(desc.sizeClass(), true).add(buffer, frame);
     }
 
     /** Frees what has sat unused for {@link #IDLE_FRAMES} frames, telling {@code freed}. Once a frame. */
     void endFrame(IntConsumer freed) {
         frame++;
-        for (Iterator<ArrayDeque<long[]>> buckets = free.values().iterator(); buckets.hasNext(); ) {
-            ArrayDeque<long[]> bucket = buckets.next();
-            while (!bucket.isEmpty() && frame - bucket.peekFirst()[1] > IDLE_FRAMES) {
-                int buffer = (int) bucket.pollFirst()[0];
+        for (int c = 0; c < classes; c++) {
+            Bucket bucket = buckets[c];
+            while (bucket.size > 0 && frame - bucket.oldestAt() > IDLE_FRAMES) {
+                int buffer = bucket.takeOldest();
                 CgGL.glDeleteBuffers(buffer);
                 freed.accept(buffer);
             }
-            if (bucket.isEmpty()) buckets.remove();
         }
     }
 
     void delete() {
-        for (ArrayDeque<long[]> bucket : free.values()) for (long[] entry : bucket) CgGL.glDeleteBuffers((int) entry[0]);
-        free.clear();
+        for (int c = 0; c < classes; c++) {
+            Bucket bucket = buckets[c];
+            while (bucket.size > 0) CgGL.glDeleteBuffers(bucket.takeOldest());
+        }
+        classes = 0;
+    }
+
+    private Bucket bucket(long size, boolean make) {
+        for (int c = 0; c < classes; c++) if (sizes[c] == size) return buckets[c];
+        if (!make) return null;
+        if (classes == sizes.length) {
+            sizes = Arrays.copyOf(sizes, classes * 2);
+            buckets = Arrays.copyOf(buckets, classes * 2);
+        }
+        sizes[classes] = size;
+        return buckets[classes++] = new Bucket();
     }
 
     /** Device-local storage of {@code bytes}: immutable where the context has buffer storage. */
@@ -60,5 +72,49 @@ final class CgBufferPool {
         else CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, bytes, CgGL.GL_DYNAMIC_COPY);
         CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
         return buffer;
+    }
+
+    /** One size class's free buffers, oldest first, as a ring of parallel arrays. */
+    private static final class Bucket {
+        private int[] buffers = new int[4];
+        private long[] releasedAt = new long[4];
+        private int head, size;
+
+        void add(int buffer, long at) {
+            if (size == buffers.length) grow();
+            int i = (head + size) % buffers.length;
+            buffers[i] = buffer;
+            releasedAt[i] = at;
+            size++;
+        }
+
+        long oldestAt() {
+            return releasedAt[head];
+        }
+
+        int takeOldest() {
+            int buffer = buffers[head];
+            head = (head + 1) % buffers.length;
+            size--;
+            return buffer;
+        }
+
+        int takeNewest() {
+            size--;
+            return buffers[(head + size) % buffers.length];
+        }
+
+        private void grow() {
+            int n = buffers.length;
+            int[] b = new int[n * 2];
+            long[] a = new long[n * 2];
+            for (int k = 0; k < size; k++) {
+                b[k] = buffers[(head + k) % n];
+                a[k] = releasedAt[(head + k) % n];
+            }
+            buffers = b;
+            releasedAt = a;
+            head = 0;
+        }
     }
 }

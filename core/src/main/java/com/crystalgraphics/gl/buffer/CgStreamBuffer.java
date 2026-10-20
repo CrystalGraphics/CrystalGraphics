@@ -10,6 +10,7 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 
 /**
@@ -226,15 +227,22 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
     }
 
     /**
-     * {@link #map} as floats, positioned at the first float to write. The view is kept while {@link #map}
-     * hands back the same object -- LWJGL does, for a mapping at the same address and size -- since a view
-     * per upload was the largest allocation on the frame thread.
+     * {@link #map} as floats, positioned at the first float to write: write from {@code position()} on, then
+     * {@link #commit}. The view is kept while {@link #map} hands back the same object -- LWJGL does, for a mapping at
+     * the same address and size -- since a view per upload was the largest allocation on the frame thread.
+     *
+     * <pre>{@code
+     * FloatBuffer out = ring.mapFloats(bytes);
+     * int base = out.position();             // not always 0: the persistent tier writes through one view of it all
+     * out.position(base + 4).put(block);     // a block 16 bytes in
+     * int offset = ring.commit(bytes);
+     * }</pre>
      */
-    protected FloatBuffer mapFloats(int sizeBytes) {
+    public FloatBuffer mapFloats(int sizeBytes) {
         ByteBuffer mapped = map(sizeBytes);
         if (mapped != floatSource) {
             floatSource = mapped;
-            floatView = mapped.asFloatBuffer();
+            floatView = mapped.order(ByteOrder.nativeOrder()).asFloatBuffer();
         }
         floatView.clear();
         return floatView;
