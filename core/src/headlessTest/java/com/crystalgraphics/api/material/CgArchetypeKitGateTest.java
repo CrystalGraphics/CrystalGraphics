@@ -33,7 +33,9 @@ import static org.junit.Assert.assertTrue;
 public class CgArchetypeKitGateTest {
 
     /** The archetypes written so far, in census order (M7.1 on). A new one joins here. */
-    static final Set<String> BUILT = new HashSet<>(Arrays.asList("cc2_effect", "cc2_toon", "cc2_outline"));
+    static final Set<String> BUILT = new HashSet<>(Arrays.asList("cc2_effect", "cc2_toon", "cc2_outline",
+            "cc2_scene_distortion", "cc2_scene_luma_ramp", "cc2_water", "cc2_surface", "cc2_scene_channel_ramp",
+            "cc2_scene_tint"));
 
     private static final Map<String, Path> FILES = new HashMap<>();
     private static final Map<String, CgAssetData> RESOLVED = new HashMap<>();
