@@ -86,6 +86,19 @@ public final class CgGraphBuffer extends CgGraphResource implements CgBufferHand
         return previous;
     }
 
+    private String updateName, fillName;
+
+    /** Its update and fill passes' names, made once: a pooled pass takes them each frame. */
+    String updateName() {
+        if (updateName == null) updateName = "update " + name();
+        return updateName;
+    }
+
+    String fillName() {
+        if (fillName == null) fillName = "fill " + name();
+        return fillName;
+    }
+
     public Kind kind() {
         return kind;
     }

@@ -137,8 +137,12 @@ public final class CgVfxFrame {
             // A pool that has not recorded its first step has no storage yet, and no particle to draw.
             if (proxy.key.pool().records() == null) continue;
             CgVfxRange range = CgVfxRange.of(proxy.key.pool());
-            CgMesh mesh = proxy.key.strip() == CgVfxLayer.Strip.NONE ? slotMesh(proxy.key.renderer(), proxy.capacity)
-                    : CgMesh.vertices(sizeClass(proxy.capacity, 1) * proxy.key.factor(), CgMeshTopology.TRIANGLES);
+            if (proxy.meshCapacity != proxy.capacity) {
+                proxy.meshCapacity = proxy.capacity;
+                proxy.mesh = proxy.key.strip() == CgVfxLayer.Strip.NONE ? slotMesh(proxy.key.renderer(), proxy.capacity)
+                        : CgMesh.vertices(sizeClass(proxy.capacity, 1) * proxy.key.factor(), CgMeshTopology.TRIANGLES);
+            }
+            CgMesh mesh = proxy.mesh;
             CgWorldRenderer.Draw draw = world.draw(mesh, proxy.key.material())
                     .buffer(CgBindingPoints.PARTICLES, proxy.key.pool().records())
                     .buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
@@ -188,6 +192,9 @@ public final class CgVfxFrame {
         final CgIndirect mode;
         /** This frame's largest slot: the mesh is sized for it. */
         int capacity;
+        /** The mesh it last drew on, and the capacity it was sized for: looked up again only when that changes. */
+        CgMesh mesh;
+        int meshCapacity = -1;
         int records, stamp;
         double[] at = new double[16 * 3];
         float[] custom = new float[16 * 16];

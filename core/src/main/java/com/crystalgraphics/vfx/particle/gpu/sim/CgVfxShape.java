@@ -16,6 +16,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
@@ -60,6 +61,8 @@ public final class CgVfxShape {
     private static final Map<String, String> SOURCES = new ConcurrentHashMap<>();
     /** A number per texture a shape has sampled, for the pool key: by identity. */
     private static final Map<CgTexture, Integer> TEXTURE_IDS = new IdentityHashMap<>();
+    /** Each definition's shape per tier, made once: a cast prepares and opens its shapes every play. Held weakly. */
+    private static final Map<CgVfxGpuEmitter, CgVfxShape[]> SHAPES = new WeakHashMap<>();
 
     private final String key, kernelKey;
     private final CgTexture[][] textures;
@@ -247,12 +250,19 @@ public final class CgVfxShape {
 
     /** {@code emitter}'s shape as a definition spawned by nothing. */
     public static CgVfxShape of(CgVfxGpuEmitter emitter) {
-        return new CgVfxShape(emitter, 0);
+        return of(emitter, 0);
     }
 
     /** {@code emitter}'s shape at feed {@code tier}: 0 for a root, 1 for a root's events' children, 2 for theirs. */
     public static CgVfxShape of(CgVfxGpuEmitter emitter, int tier) {
-        return new CgVfxShape(emitter, tier);
+        if (tier < 0 || tier >= TIERS) return new CgVfxShape(emitter, tier);   // which throws, naming both
+        synchronized (SHAPES) {
+            CgVfxShape[] tiers = SHAPES.get(emitter);
+            if (tiers == null) SHAPES.put(emitter, tiers = new CgVfxShape[TIERS]);
+            CgVfxShape shape = tiers[tier];
+            if (shape == null) tiers[tier] = shape = new CgVfxShape(emitter, tier);
+            return shape;
+        }
     }
 
     /** One string naming the shape: equal for definitions that share a pool. */

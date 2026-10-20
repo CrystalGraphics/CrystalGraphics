@@ -137,7 +137,6 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
     static final class Fill extends CgPass {
         CgGraphBuffer buffer;
         /** The buffer name {@link #name} was made from: kept past {@link #clearReferences}. */
-        private String namedFor;
         long offset, size;
         int value;
 
@@ -147,10 +146,7 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
         }
 
         void reuse(CgGraphBuffer buffer, long offset, long size, int value) {
-            if (!buffer.name().equals(namedFor)) {
-                name = "fill " + buffer.name();
-                namedFor = buffer.name();
-            }
+            name = buffer.fillName();
             this.buffer = buffer;
             this.offset = offset;
             this.size = size;
@@ -177,7 +173,6 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
         /** In bytes. */
         int size;
         /** The buffer name {@link #name} was made from: kept past {@link #clearReferences}. */
-        private String namedFor;
         /** The bytes a reused update copies into, grown as needed: {@link #bytes} while it holds bytes. */
         @Nullable
         private byte[] owned;
@@ -197,10 +192,7 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
         }
 
         void reuse(CgGraphBuffer buffer, long offset, @Nullable float[] floats, @Nullable int[] ints, int from, int count) {
-            if (!buffer.name().equals(namedFor)) {
-                name = "update " + buffer.name();
-                namedFor = buffer.name();
-            }
+            name = buffer.updateName();
             this.buffer = buffer;
             this.offset = offset;
             this.bytes = null;
