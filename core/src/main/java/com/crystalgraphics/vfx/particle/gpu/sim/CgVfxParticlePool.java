@@ -30,6 +30,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxEventRows;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
@@ -1112,6 +1113,16 @@ public final class CgVfxParticlePool {
             words.target(instances, at + shape.lanesAt(i) * 4, lanes, who + "'s fx_" + shape.kind(i));
             emitter.modules().get(i).writeInstance(view, words);
             words.finish("its instance lanes");
+        }
+        int bound = shape.userBindings();
+        if (bound > 0) {
+            List<CgVfxUserBinding> bindings = emitter.userBindings();
+            int base = at + shape.userAt() * 4, end = base + CgVfxShape.userLanes(bound) * 4;
+            for (int b = 0; b < bound; b++) {
+                CgVfxUserBinding u = bindings.get(b);
+                instances[base + b] = Float.floatToRawIntBits(u.apply(view.user(u.param())));
+            }
+            for (int w = base + bound; w < end; w++) instances[w] = 0;
         }
         if (shape.usesGas()) {
             words.target(instances, at + shape.gasAt() * 4, CgVfxShape.GAS_LANES, who + "'s gas");

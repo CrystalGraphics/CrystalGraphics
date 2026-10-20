@@ -7,6 +7,7 @@ import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
@@ -119,6 +120,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     /** Its own events, then its clip's bursts and streams as events; how many are its own. */
     final List<CgVfxEvent> events;
     private final int ownEvents;
+    /** Its inputs bound to user parameters. */
+    final List<CgVfxUserBinding> userBindings;
     @Nullable
     private final CgVfxNodeClip clip;
     private final float playRate;
@@ -182,6 +185,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         clip = b.clip;
         playRate = b.playRate;
         ownEvents = b.events.size();
+        userBindings = List.copyOf(b.userBindings);
         List<CgVfxEvent> all = new ArrayList<>(b.events);
         if (clip != null) all.addAll(clipEvents(clip, playRate));
         events = Collections.unmodifiableList(all);
@@ -332,6 +336,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     @Override
     public List<CgVfxEvent> events() {
         return events;
+    }
+
+    @Override
+    public List<CgVfxUserBinding> userBindings() {
+        return userBindings;
     }
 
     @Override
@@ -557,6 +566,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private float heat;
         private final List<CgVfxModule> modules = new ArrayList<>();
         private final List<CgVfxEvent> events = new ArrayList<>();
+        private final List<CgVfxUserBinding> userBindings = new ArrayList<>();
         private CgVfxNodeClip clip;
         private float playRate = 1f;
         private CgKeyframes sizeOverLife = CgKeyframes.constant(1f);
@@ -600,6 +610,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             heat = e.heat;
             modules.addAll(e.modules);
             events.addAll(e.events.subList(0, e.ownEvents));
+            userBindings.addAll(e.userBindings);
             clip = e.clip;
             playRate = e.playRate;
             sizeOverLife = e.sizeOverLife;
@@ -1072,6 +1083,24 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
         public Builder clearModules() {
             modules.clear();
+            return this;
+        }
+
+        /**
+         * Binds one of its inputs to a user parameter, read from its effect's values each step ({@link CgVfxUserBinding}).
+         *
+         * <pre>{@code
+         * .module(new CgVfxModule.Gravity(9.8f)).bind(CgVfxUserBinding.module(0, 0, GRAVITY, 9.8f, 0f))
+         * .bind(CgVfxUserBinding.spawn(1, SPEED, 1f, 0f))   // speed max: new spawns only
+         * }</pre>
+         *
+         * <ul>
+         *   <li>Module indices count its modules as added; a word it lacks throws when its shape is made.</li>
+         * </ul>
+         */
+        public Builder bind(CgVfxUserBinding binding) {
+            if (binding == null) throw new IllegalArgumentException("a null binding");
+            userBindings.add(binding);
             return this;
         }
 

@@ -88,6 +88,18 @@ public interface CgVfxGpuEmitter {
         return List.of();
     }
 
+    /**
+     * Its inputs bound to user parameters, read from instance lanes each step: which words are bound joins its
+     * {@link CgVfxShape}. At most {@link CgVfxShape#MAX_USER_BINDINGS}.
+     *
+     * <pre>{@code
+     * public List<CgVfxUserBinding> userBindings() { return List.of(CgVfxUserBinding.module(0, 0, GRAVITY, 9.8f, 0f)); }
+     * }</pre>
+     */
+    default List<CgVfxUserBinding> userBindings() {
+        return List.of();
+    }
+
     /** Samples each of a curve row's two curves holds. */
     int CURVE_TEXELS = 256;
 

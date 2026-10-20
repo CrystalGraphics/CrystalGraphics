@@ -8,6 +8,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 
 import java.util.EnumSet;
@@ -74,6 +75,10 @@ public final class CgVfxShape {
             splatsGrid, floors, spawnsOnMesh;
     /** Where the gas's and the grid's two lanes each start in the instance row, after every module's: the pool's, not a kind's. */
     private final int gasAt, gridAt;
+    /** Its user bindings, the parameter-row word each replaces, and where their lanes start: four bindings a lane. */
+    private final CgVfxUserBinding[] userBindings;
+    private final int[] userWords;
+    private final int userAt;
     private final CgVfxEvent.Trigger[] triggers;
     private final boolean[] eventSpawns, eventReports, eventNodes;
     private final int eventsAt, tier;
@@ -178,6 +183,27 @@ public final class CgVfxShape {
         eventsAt = param;
         if (triggers.length > 0) param += EVENT_VECTORS;
         paramRow = param;
+        List<CgVfxUserBinding> bound = emitter.userBindings();
+        if (bound.size() > MAX_USER_BINDINGS) {
+            throw new IllegalArgumentException(emitter.name() + " binds " + bound.size() + " inputs, past " + MAX_USER_BINDINGS);
+        }
+        userBindings = bound.toArray(new CgVfxUserBinding[0]);
+        userWords = new int[userBindings.length];
+        for (int b = 0; b < userBindings.length; b++) {
+            CgVfxUserBinding u = userBindings[b];
+            int block = u.module() == CgVfxUserBinding.SPAWN ? CgVfxGpuEmitter.SPAWN_VECTORS : u.module() < n ? params[u.module()] : -1;
+            if (block < 0 || u.word() >= block * 4) {
+                throw new IllegalArgumentException(emitter.name() + " binds word " + u.word() + " of "
+                        + (u.module() == CgVfxUserBinding.SPAWN ? "its spawn numbers" : "module " + u.module()) + ", which it lacks");
+            }
+            userWords[b] = (u.module() == CgVfxUserBinding.SPAWN ? 0 : paramAt[u.module()] * 4) + u.word();
+            for (int c = 0; c < b; c++) {
+                if (userWords[c] == userWords[b]) throw new IllegalArgumentException(emitter.name() + " binds word " + userWords[b] + " twice");
+            }
+            key.append(b == 0 ? "|user:" : ",").append(userWords[b]);
+        }
+        userAt = lane;
+        lane += userLanes(userBindings.length);
         boolean reads = false, distance = false, depth = false, entities = false, neighbours = false, gas = false,
                 feeds = false, grid = false, splats = false, floor = false;
         for (CgVfxWorldInput[] inputs : world) {
@@ -372,6 +398,35 @@ public final class CgVfxShape {
         return gridAt;
     }
 
+    /** The most user bindings a definition takes: a word each of its parameter row. */
+    public static final int MAX_USER_BINDINGS = 16;
+
+    /** The lanes {@code bindings} user bindings take: four a lane. */
+    public static int userLanes(int bindings) {
+        return (bindings + 3) / 4;
+    }
+
+    /** How many inputs its definitions bind to user parameters. */
+    public int userBindings() {
+        return userBindings.length;
+    }
+
+    /** User binding {@code b}'s parameter-row word: the float the kernel reads from its lane instead. */
+    public int userWord(int b) {
+        return userWords[b];
+    }
+
+    /** Where its user lanes start in an instance row, in vec4s: binding {@code b} is lane {@code b / 4}'s component {@code b % 4}. */
+    public int userAt() {
+        return userAt;
+    }
+
+    /** Whether any user binding replaces a word of parameter-row vector {@code v}. */
+    public boolean userBound(int v) {
+        for (int w : userWords) if (w / 4 == v) return true;
+        return false;
+    }
+
     /** Whether any module takes a voxel window input: its Step kernel reads the window. */
     public boolean readsWorld() {
         return readsWorld;
@@ -445,7 +500,10 @@ public final class CgVfxShape {
         return paramRow;
     }
 
-    /** An instance row's vec4s: {@link CgVfxParticlePool#INSTANCE_HEADER}, then each module's lanes in stack order. */
+    /**
+     * An instance row's vec4s: {@link CgVfxParticlePool#INSTANCE_HEADER}, then each module's lanes in stack order, then
+     * the user lanes ({@link #userAt()}), then the gas's and the grid's.
+     */
     public int instanceRowVectors() {
         return instanceRow;
     }

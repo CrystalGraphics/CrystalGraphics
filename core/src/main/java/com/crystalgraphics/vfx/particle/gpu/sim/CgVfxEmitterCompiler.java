@@ -181,6 +181,7 @@ public final class CgVfxEmitterCompiler {
                     return uintBitsToFloat(INSTANCES(at));
                 }
 """);
+        stepVector(s, shape);
         if (shape.readsWorld()) {
             s.append("""
 
@@ -368,8 +369,8 @@ public final class CgVfxEmitterCompiler {
                 }
 
                 // CgVfxEmitter.front: how far out spawn k's swept front is, from the row's fourth vector; 0 for none.
-                float step_front(uint k, int row) {
-                    vec4 s3 = step_param(row + 3);
+                float step_front(uint k, int row, int inst) {
+                    vec4 s3 = step_vector(row, inst, 3);
                     if (s3.y == 0.0) return 0.0;
                     float held = min(float(k), s3.x / (2.0 * s3.y));
                     return s3.x * held - s3.y * held * held;
@@ -423,7 +424,7 @@ public final class CgVfxEmitterCompiler {
                 // +Y), and the way out of the shape's middle there. `up` is the launch band's draw, which a point or a
                 // sphere is born along.
                 void step_place(uint seed, uint k, int row, int inst, float up, out vec3 pos, out vec3 way) {
-                    vec4 s6 = step_param(row + 6), n = step_param(row + 7);
+                    vec4 s6 = step_vector(row, inst, 6), n = step_vector(row, inst, 7);
                     int kind = int(s6.x), flags = int(s6.y), placement = flags & 3;
                     bool upper = (flags & 4) != 0;
                     float u1 = fx_rand(seed, k, 11u), u2 = fx_rand(seed, k, 12u), u3 = fx_rand(seed, k, 13u);
@@ -538,8 +539,9 @@ public final class CgVfxEmitterCompiler {
                 // instance's rotation, a quaternion) then its up turned to n (an event's normal), front blocks further out.
                 void step_launch(uint seed, uint k, int row, int inst, vec3 at, vec3 n, vec4 turn, float front,
                                  out FxParticle p) {
-                    vec4 s0 = step_param(row), s1 = step_param(row + 1), s2 = step_param(row + 2), s4 = step_param(row + 4);
-                    vec4 q = step_param(row + 8);
+                    vec4 s0 = step_vector(row, inst, 0), s1 = step_vector(row, inst, 1), s2 = step_vector(row, inst, 2);
+                    vec4 s4 = step_vector(row, inst, 4);
+                    vec4 q = step_vector(row, inst, 8);
                     float up = s4.x + (s4.y - s4.x) * pow(fx_rand(seed, k, 0u), s4.z);
                     vec3 local, way;
                     step_place(seed, k, row, inst, up, local, way);
@@ -549,7 +551,7 @@ public final class CgVfxEmitterCompiler {
                     else if (mode == 1) dir = -outward;
                     else if (mode == 2) {
                         // Within a cone round the direction: uniform over its cap.
-                        vec4 s5 = step_param(row + 5);
+                        vec4 s5 = step_vector(row, inst, 5);
                         float ct = 1.0 - fx_rand(seed, k, 15u) * (1.0 - s5.w), st = sqrt(max(1.0 - ct * ct, 0.0));
                         float phi = fx_rand(seed, k, 16u) * STEP_TAU;
                         dir = step_orient(vec3(st * cos(phi), ct, st * sin(phi)), s5.xyz);
@@ -557,7 +559,7 @@ public final class CgVfxEmitterCompiler {
                         float heading = fx_rand(seed, k, 1u) * STEP_TAU, across = sqrt(max(1.0 - up * up, 0.0));
                         dir = step_rotate(q, vec3(across * cos(heading), up, across * sin(heading)));
                     }
-                    vec3 place = step_rotate(q, local) + step_param(row + 9).xyz;
+                    vec3 place = step_rotate(q, local) + step_vector(row, inst, 9).xyz;
                     float speed = s0.x + (s0.y - s0.x) * fx_rand(seed, k, 3u);
                     p.position = at + step_orient(step_rotate(turn, place + outward * front), n);
                     p.previous = p.position;
@@ -591,8 +593,8 @@ public final class CgVfxEmitterCompiler {
                     int bursts = int(from.w);
                     if (i >= bursts) born = float(i - bursts + 1) / float(n - bursts);
                     step_launch(seed, k, row, inst, mix(from.xyz, to.xyz, born), vec3(0.0, 1.0, 0.0), step_instance(inst + 8),
-                            step_front(k, row), p);
-                    p.velocity += step_param(row + 2).z * (to.xyz - from.xyz) / _Step.x;
+                            step_front(k, row, inst), p);
+                    p.velocity += step_vector(row, inst, 2).z * (to.xyz - from.xyz) / _Step.x;
                     p.id = k;
                     p.slot = slot;
                     return true;
@@ -804,6 +806,20 @@ public final class CgVfxEmitterCompiler {
         return s.toString();
     }
 
+    /**
+     * {@code step_vector}: parameter-row vector {@code v} of the row at {@code row}, each word a user binding replaces
+     * read from the instance's user lanes. Spawn numbers and bound module numbers read through it.
+     */
+    private static void stepVector(StringBuilder s, CgVfxShape shape) {
+        s.append("\nvec4 step_vector(int row, int inst, int v) {\n    vec4 x = step_param(row + v);\n");
+        for (int b = 0; b < shape.userBindings(); b++) {
+            int word = shape.userWord(b);
+            s.append("    if (v == ").append(word / 4).append(") x[").append(word % 4).append("] = step_instance(inst + ")
+                    .append(shape.userAt() + b / 4).append(")[").append(b % 4).append("];\n");
+        }
+        s.append("    return x;\n}\n");
+    }
+
     /** Event {@code e}'s age or period, from the parameter row. */
     private static String eventValue(CgVfxShape shape, int e) {
         return eventParam(shape, CgVfxShape.EVENT_AGES, e);
@@ -843,7 +859,10 @@ public final class CgVfxEmitterCompiler {
     /** Module {@code i}'s call: its numbers from the parameter row, its lanes from the instance row, its world inputs, its textures. */
     private static void call(StringBuilder s, CgVfxShape shape, int i) {
         s.append("    fx_").append(shape.kind(i)).append(shape.afterSolve(i) ? "(p, s" : "(p, f, s");
-        for (int j = 0, at = shape.paramAt(i); j < shape.paramVectors(i); j++) s.append(", step_param(row + ").append(at + j).append(')');
+        for (int j = 0, at = shape.paramAt(i); j < shape.paramVectors(i); j++) {
+            if (shape.userBound(at + j)) s.append(", step_vector(row, inst, ").append(at + j).append(')');
+            else s.append(", step_param(row + ").append(at + j).append(')');
+        }
         CgVfxLane[] lanes = shape.lanes(i);
         for (int l = 0, at = shape.lanesAt(i); l < lanes.length; l++) {
             switch (lanes[l]) {

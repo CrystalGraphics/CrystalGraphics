@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.particle.gpu;
 
 import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
+import com.crystalgraphics.vfx.look.CgVfxParam;
 
 import javax.annotation.Nullable;
 
@@ -111,6 +112,11 @@ public interface CgVfxInstanceView {
 
     default float turnW() {
         return 1f;
+    }
+
+    /** User parameter {@code param}'s value this step, for {@link CgVfxUserBinding}s: its default unless its effect sets it. */
+    default float user(CgVfxParam.Scalar param) {
+        return param.defaultValue();
     }
 
     /** The fluid its particles are carried by, for kinds taking {@link CgVfxWorldInput#GAS}; null for none. */
