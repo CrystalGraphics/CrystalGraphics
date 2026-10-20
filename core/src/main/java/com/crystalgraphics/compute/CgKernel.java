@@ -50,6 +50,8 @@ public final class CgKernel {
     private final CgCompute compute;
     private final String name;
     private final Set<String> keywords;
+    /** Its file's key for its program, name then keywords: built once, since a prepare looks it up each frame. */
+    final String programKey;
     /** The program last answered, while its file has not released it. */
     private volatile CgKernelProgram program;
     private volatile int programGeneration = -1;
@@ -69,6 +71,7 @@ public final class CgKernel {
         this.compute = compute;
         this.name = name;
         this.keywords = keywords;
+        this.programKey = name + keywords;
     }
 
     /**

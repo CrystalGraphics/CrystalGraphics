@@ -170,7 +170,7 @@ public final class CgCompute implements CgReloadable {
     /** The compiled program for {@code kernel}, compiled and cached on the first call. Render thread. */
     synchronized CgKernelProgram program(CgKernel kernel) {
         for (CgCompute retired; (retired = RETIRED.poll()) != null; ) retired.release();
-        String key = kernel.name() + kernel.keywords();
+        String key = kernel.programKey;
         CgKernelProgram program = programs.get(key);
         if (program == null || program.isDeleted()) {
             CgKernelProgram.Pending pending = preparing.remove(key);
@@ -195,7 +195,7 @@ public final class CgCompute implements CgReloadable {
     /** Starts {@code kernel}'s program without waiting, unless it is compiled or started. Render thread. */
     synchronized void prepare(CgKernel kernel) {
         for (CgCompute retired; (retired = RETIRED.poll()) != null; ) retired.release();
-        String key = kernel.name() + kernel.keywords();
+        String key = kernel.programKey;
         CgKernelProgram program = programs.get(key);
         if (program != null && !program.isDeleted() || preparing.containsKey(key)) return;
         CgIO.Reads recorded = CgIO.recordReads();
@@ -275,7 +275,7 @@ public final class CgCompute implements CgReloadable {
             List<CgKernel> compiled = new ArrayList<>(kernels.values());
             compiled.addAll(variants.keySet());
             for (CgKernel kernel : compiled) {
-                String key = kernel.name() + kernel.keywords();
+                String key = kernel.programKey;
                 CgKernelProgram old = programs.get(key);
                 CgKernelDecl decl = parsed.kernel(kernel.name());
                 if (old == null || old.isDeleted() || decl == null || built.containsKey(key)) continue;
