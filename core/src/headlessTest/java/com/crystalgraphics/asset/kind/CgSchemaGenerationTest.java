@@ -28,17 +28,15 @@ import com.google.gson.JsonPrimitive;
 
 /**
  * The bible gate, step 2: each kind's schema generated from its declaration ({@link CgSchemaWriter}) against the
- * checked-in one, key for key, descriptions aside. Until they are equal it holds the count of differences to
- * {@link #BASELINE}, so a change may only close the gap; the differences are printed, grouped by what each expected.
+ * checked-in one, key for key, descriptions aside. The checked-in kind schemas are this output with their descriptions,
+ * so a difference is a declaration changed without its spec change (an {@code aaa-design} entry); the differences are
+ * printed, grouped by what each expected.
  *
  * <p>Reads the schemas from {@code -Dcrystalgraphics.spec}; skipped, saying so, without it.</p>
  */
 public class CgSchemaGenerationTest {
 
-    /** Differences left between the generated schemas and the checked-in ones: lower it as they close. */
-    static final int BASELINE = 340;
-
-    /** Where the generated schemas are written, for review beside the checked-in ones. */
+    /** Where the generated schemas are written, to copy into the spec with their descriptions. */
     private static final Path OUT = Paths.get("build", "generated-schemas");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
@@ -71,7 +69,7 @@ public class CgSchemaGenerationTest {
         report.append("first differences:\n");
         for (int i = 0; i < Math.min(60, diffs.size()); i++) report.append("  ").append(diffs.get(i)).append('\n');
         System.out.println(report);
-        assertTrue(report.toString(), diffs.size() <= BASELINE);
+        assertTrue(report.toString(), diffs.isEmpty());
     }
 
     private static void diff(String path, Object want, Object got, List<String> diffs, Map<String, Integer> byShape) {
