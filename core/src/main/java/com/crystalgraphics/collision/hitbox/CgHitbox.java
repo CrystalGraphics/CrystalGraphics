@@ -5,6 +5,7 @@ import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitClaim;
 import com.crystalgraphics.collision.hit.CgHitPart;
+import com.crystalgraphics.world.CgCharacterClock;
 import com.crystalgraphics.collision.hit.CgHits;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.platform.world.CgEntityQuery;
@@ -203,6 +204,9 @@ public final class CgHitbox {
     private boolean silent;
     private int epoch;
     private double age, sizeNow;
+    /** The character clock an engine-ticked hitbox ages by, and the clock ticks it has spent. */
+    private CgCharacterClock clock;
+    private long clockTicks;
     private double prevX, prevY, prevZ, nowX, nowY, nowZ;
     private final Quaterniond prevQ = new Quaterniond(), nowQ = new Quaterniond(), stepQ = new Quaterniond();
     private final CgPose stepPose = new CgPose(), drawPose = new CgPose();
@@ -613,6 +617,22 @@ public final class CgHitbox {
         return stopped;
     }
 
+    /**
+     * Ages by a character's own game ticks rather than the level's: an engine-ticked hitbox holds through the
+     * character's hitstop and a late-heard freeze, and its age agrees on every side. An owner ticking it passes
+     * {@link CgCharacterClock#ticks} deltas itself.
+     *
+     * <pre>{@code
+     * CgHitbox.follow(attacker, STRIKE).clock(CgCharacterClock.of(attacker)).activeFor(5).part(BLOW, SWING).start(level);
+     * }</pre>
+     */
+    public CgHitbox clock(CgCharacterClock clock) {
+        configurable();
+        this.clock = clock;
+        clockTicks = clock.ticks();
+        return this;
+    }
+
     /** Ticks since it started. */
     public double age() {
         return age;
@@ -811,7 +831,16 @@ public final class CgHitbox {
             stop();
             return;
         }
-        advance(1);
+        if (clock == null) {
+            advance(1);
+            return;
+        }
+        // Ticks the character ran since last time; a freeze heard late steps its count back, and this waits it out.
+        long ran = clock.ticks() - clockTicks;
+        if (ran > 0) {
+            clockTicks += ran;
+            advance(ran);
+        }
     }
 
     private void prepare() {
