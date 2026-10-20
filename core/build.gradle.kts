@@ -169,6 +169,24 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
 
 tasks.named("check") { dependsOn(headlessTestTask) }
 
+// T5: the allocation proofs again on the Java 8 copies of core and platform, where a jvmdg stub on a hot path would
+// allocate. By hand: ./gradlew :core:allocationProofsOnJava8Copy
+tasks.register<Test>("allocationProofsOnJava8Copy") {
+    description = "The *AllocationTest proofs against the Java 8 copies of core and platform."
+    group = "verification"
+    useJUnit()
+    val test = sourceSets["test"]
+    val platform = project(":platform").layout.buildDirectory
+    val platformBuild = platform.get().asFile.toPath()
+    val coreMain = sourceSets["main"].output
+    dependsOn(":platform:unpackDowngraded", "unpackDowngraded")
+    testClassesDirs = test.output.classesDirs
+    classpath = test.output + sourceSets["downgraded"].output +
+            files(platform.dir("downgraded/classes"), platform.dir("resources/main")) +
+            test.runtimeClasspath.filter { f -> f !in coreMain.files && !f.toPath().startsWith(platformBuild) }
+    filter { includeTestsMatching("*AllocationTest") }
+}
+
 // ── Import guard ─────────────────────────────────────────────────────────────
 //
 // ENABLED 2026-08-21. Its own AGENTS.md warned that the guard below was commented out and that
