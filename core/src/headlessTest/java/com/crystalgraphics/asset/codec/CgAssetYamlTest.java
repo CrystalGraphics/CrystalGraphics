@@ -32,6 +32,8 @@ public class CgAssetYamlTest {
         assertEquals("1000000000000000.0", CgAssetYaml.scalar(1e15));
         assertEquals("2.5e+16", CgAssetYaml.scalar(2.5e16));
         assertEquals("0.019999999552965164", CgAssetYaml.scalar((double) 0.02f));
+        assertEquals("5.960464477539063e-08", CgAssetYaml.scalar(Math.pow(2, -24)));   // a tie the odd neighbour wins
+        assertEquals("-5.684341886080802e-14", CgAssetYaml.scalar(-Math.pow(2, -44)));
         assertEquals("-0.0", CgAssetYaml.scalar(-0.0));
         assertEquals(".nan", CgAssetYaml.scalar(Double.NaN));
         assertEquals("plain_text/ok", CgAssetYaml.scalar("plain_text/ok"));

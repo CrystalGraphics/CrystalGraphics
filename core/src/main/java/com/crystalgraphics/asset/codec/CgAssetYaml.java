@@ -343,8 +343,8 @@ public final class CgAssetYaml {
         BigDecimal best = exact.round(new MathContext(17, RoundingMode.HALF_EVEN));
         while (lo <= hi) {
             int mid = (lo + hi) >>> 1;
-            BigDecimal r = exact.round(new MathContext(mid, RoundingMode.HALF_EVEN));
-            if (r.doubleValue() == a) {
+            BigDecimal r = readsBack(exact, mid, a);
+            if (r != null) {
                 best = r;
                 hi = mid - 1;
             } else {
@@ -352,6 +352,20 @@ public final class CgAssetYaml {
             }
         }
         return best.stripTrailingZeros();
+    }
+
+    /**
+     * {@code exact} to {@code digits} digits, correctly rounded, if that reads back to {@code a}; else the other
+     * neighbour where it does. A power of two's gap below is half its gap above, so on a tie (2^-24 at 16 digits) the
+     * even neighbour can fall outside it while the odd one reads back, and Python's repr takes that one.
+     */
+    @Nullable
+    private static BigDecimal readsBack(BigDecimal exact, int digits, double a) {
+        BigDecimal even = exact.round(new MathContext(digits, RoundingMode.HALF_EVEN));
+        if (even.doubleValue() == a) return even;
+        BigDecimal up = exact.round(new MathContext(digits, RoundingMode.UP));
+        BigDecimal other = up.equals(even) ? exact.round(new MathContext(digits, RoundingMode.DOWN)) : up;
+        return other.doubleValue() == a ? other : null;
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────────────────
