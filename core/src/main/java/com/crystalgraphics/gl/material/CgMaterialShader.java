@@ -477,7 +477,7 @@ public final class CgMaterialShader implements CgReloadable {
         String source;
         if (isGenerated()) {
             source = generatedSource;
-        } else try {
+        } else try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.load")) {
             source = CgIO.loadSource(resourcePath);
         } catch (Exception e) {
             if (isFirst) throw new IllegalArgumentException("Could not load shader source from: " + resourcePath, e);
@@ -499,7 +499,10 @@ public final class CgMaterialShader implements CgReloadable {
         // include it -- and catching that is what the reload is for. The expanded text is kept rather
         // than a hash of it: a few KB per shader, against a hash collision presenting as "F3+T stopped
         // working on this file", which is not a bug anybody would find twice.
-        String expanded = expandedForComparison(source);
+        String expanded;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.expandCompare")) {
+            expanded = expandedForComparison(source);
+        }
         if (!isFirst && !previousCompileFailed && expanded != null && expanded.equals(lastCompiledSource)) {
             compileFailed = false;
             return;
@@ -567,11 +570,13 @@ public final class CgMaterialShader implements CgReloadable {
         }
 
         // ── Step 4: Build template UBO for GLSL emission ───────────────────────
-        CgMaterialProperties tempProps = new CgMaterialProperties(parsed.properties());
         CgUniformBuffer newMatPropsUbo = null;
-        if (tempProps.hasUboProps()) {
-            newMatPropsUbo = new CgUniformBuffer(CgMaterial.MATERIAL_PROPERTIES_BLOCK,
-                    tempProps.buildUboFormat(), CgBindingPoints.MATERIAL_PROPERTIES_UBO);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.templateUbo")) {
+            CgMaterialProperties tempProps = new CgMaterialProperties(parsed.properties());
+            if (tempProps.hasUboProps()) {
+                newMatPropsUbo = new CgUniformBuffer(CgMaterial.MATERIAL_PROPERTIES_BLOCK,
+                        tempProps.buildUboFormat(), CgBindingPoints.MATERIAL_PROPERTIES_UBO);
+            }
         }
 
         // ── Step 5: Compile all declared passes (no-keyword variant) ──────────
