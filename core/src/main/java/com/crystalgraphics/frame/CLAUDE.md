@@ -11,6 +11,7 @@ What runs once a frame, in order. Usage and examples: `docs/ENGINE_API.md` § *T
 | `CgTickFunction` | One named body in a group, with prerequisites, interval, pause and server flags |
 | `CgTickSchedule` | Plans (effective group, then Kahn's per group, ties by name) and runs; disables a throwing function |
 | `CgWorldSubsystem` | State with a lifetime that registers functions |
+| `CgFrameBoundary` | The frame's end on every screen: `DRAIN` (the asset loop, edits) then `PUBLISH` (definitions swapped), from `CgGraphicsLifecycle.tickFrame`; a server's tick on a dedicated server |
 
 - **Order is never registration order.** Ties break by name, so two mods cannot reorder each other by load order.
 - **The plan is rebuilt on any add, close or `after`**, not per frame; the frame path allocates nothing.
