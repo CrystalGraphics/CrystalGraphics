@@ -440,6 +440,38 @@ public final class CgCameraKinds {
             .property("arrives", CgValueType.struct(ARRIVES))
             .register();
 
+    private static CgType holdAxis(String id, CgQuantity amplitude) {
+        return CgTypes.struct("crystalgraphics:shake_pattern.sample_hold." + id).property("amplitude", FLOAT).quantity(amplitude).register();
+    }
+
+    /** One axis held at a sample: its amplitude a length. */
+    static final CgType HOLD_LOCATION_AXIS = holdAxis("location_axis", CgQuantity.LENGTH);
+    /** One rotation or field-of-view axis held at a sample: its amplitude an angle. */
+    static final CgType HOLD_ANGLE_AXIS = holdAxis("angle_axis", CgQuantity.ANGLE);
+
+    /**
+     * Kakarot's preset shake ({@code AATPlayerCameraManager::ApplyShake}), ours: every {@code interval}, each axis
+     * takes a new offset uniform in ±amplitude and holds it. Closed, as the format declares it.
+     */
+    static final CgType SAMPLE_HOLD = CgTypes.struct("crystalgraphics:shake_pattern.sample_hold")
+            .onRegister(t -> PATTERNS.member("sample_hold", t))
+            .property("duration", CgValueType.oneOf(FLOAT, CgValueType.enumOf("infinite"))).quantity(CgQuantity.TIME)
+            .property("blend_in", FLOAT).quantity(CgQuantity.TIME)
+            .property("blend_out", FLOAT).quantity(CgQuantity.TIME)
+            .property("interval", FLOAT).quantity(CgQuantity.TIME).required()
+            .property("location", CgValueType.struct(CgTypes.struct("crystalgraphics:shake_pattern.sample_hold.location")
+                    .property("x", CgValueType.struct(HOLD_LOCATION_AXIS))
+                    .property("y", CgValueType.struct(HOLD_LOCATION_AXIS))
+                    .property("z", CgValueType.struct(HOLD_LOCATION_AXIS))
+                    .register()))
+            .property("rotation", CgValueType.struct(CgTypes.struct("crystalgraphics:shake_pattern.sample_hold.rotation")
+                    .property("pitch", CgValueType.struct(HOLD_ANGLE_AXIS))
+                    .property("yaw", CgValueType.struct(HOLD_ANGLE_AXIS))
+                    .property("roll", CgValueType.struct(HOLD_ANGLE_AXIS))
+                    .register()))
+            .property("fov", CgValueType.struct(HOLD_ANGLE_AXIS))
+            .register();
+
     static final CgType PLAY = CgTypes.struct("crystalgraphics:shake.play")
             .property("inner", FLOAT).quantity(CgQuantity.LENGTH)
             .property("outer", FLOAT).quantity(CgQuantity.LENGTH)
