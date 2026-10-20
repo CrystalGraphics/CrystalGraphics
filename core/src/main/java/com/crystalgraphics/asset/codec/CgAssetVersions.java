@@ -15,7 +15,7 @@ import com.crystalgraphics.serialization.CgTreeEdit;
 import com.crystalgraphics.serialization.CgVersionedCodec;
 
 /**
- * A kind's {@code _v} steps ({@code spec/core.md} § File): an older file is upgraded on read, one step a version,
+ * A kind's {@code _v} steps: an older file is upgraded on read, one step a version,
  * before anything decodes it; a newer one fails, naming both versions. The steps are {@link CgTreeEdit}s, the same as
  * a mod's own saves take.
  *

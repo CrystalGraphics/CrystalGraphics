@@ -18,7 +18,7 @@ import static com.crystalgraphics.object.CgValueType.VEC3;
 import static com.crystalgraphics.object.CgValueType.VEC4;
 
 /**
- * The camera kinds and the post block of {@code spec/cameras.md}: {@code camera_rig} (Gameplay Cameras'
+ * The camera kinds and the post block: {@code camera_rig} (Gameplay Cameras'
  * {@code UCameraRigAsset}), {@code shake} ({@code UCameraShakeBase}), and {@link #POST}, Unreal's
  * {@code FPostProcessSettings} wherever post goes.
  *
@@ -121,14 +121,14 @@ public final class CgCameraKinds {
 
     // ── Camera rig ───────────────────────────────────────────────────────────────────────
 
-    /** Rig nodes by {@code node} ({@code cameras.md} § Camera rig); a mod registers its own. */
+    /** Rig nodes by {@code node}; a mod registers its own. */
     public static final CgType NODES = CgTypes.dispatch("crystalgraphics:camera_node", "node").register();
 
     private static final CgValueType SPACE = CgValueType.enumOf("camera_pose", "active_context", "owning_context",
             "pivot", "subject", "world");
 
     /**
-     * A node of {@code name}: its fields in its Unreal class's declaration order ({@code aaa-design} §2.49), then
+     * A node of {@code name}: its fields in its Unreal class's declaration order, snake-cased, then
      * {@code editor}. Register with {@link #done}.
      */
     private static CgType.Builder node(String name) {
@@ -363,7 +363,7 @@ public final class CgCameraKinds {
 
     // ── Shake ────────────────────────────────────────────────────────────────────────────
 
-    /** Shake patterns by {@code kind} ({@code cameras.md} § Shake); open per the schema. */
+    /** Shake patterns by {@code kind}; a mod registers its own. */
     public static final CgType PATTERNS = CgTypes.dispatch("crystalgraphics:shake_pattern", "kind").register();
 
     private static CgType.Builder pattern(String kind) {

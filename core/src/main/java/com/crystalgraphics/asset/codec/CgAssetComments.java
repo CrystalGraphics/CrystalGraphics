@@ -11,8 +11,8 @@ import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.serialization.format.file.YamlDocument;
 
 /**
- * A file's comments moved into {@code editor} ({@code spec/core.md} § The writer's rules), as
- * {@code aaa_write.load} places them: the asset's or an element's {@code note}, or a key's in {@code notes}.
+ * A file's comments moved into {@code editor}, where the format's reference writer places them: the asset's or an
+ * element's {@code note}, or a key's in {@code notes}.
  */
 final class CgAssetComments {
 

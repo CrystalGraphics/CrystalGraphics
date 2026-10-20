@@ -14,7 +14,7 @@ import static com.crystalgraphics.object.CgValueType.STRING;
 import static com.crystalgraphics.object.CgValueType.VALUE;
 
 /**
- * The {@code cue} kind of {@code spec/gameplay.md}: what gameplay's moments play, per phase and per event, and what
+ * The {@code cue} kind: what gameplay's moments play, per phase and per event, and what
  * gameplay writes each frame. GAS's {@code UGameplayCueNotify_Burst} and {@code AGameplayCueNotify_Looping}, with
  * {@code FGameplayCueNotify_BurstEffects} as the effects block.
  *
@@ -93,7 +93,7 @@ public final class CgGameplayKinds {
             .property("size", VALUE)
             .property("fade", VALUE));
 
-    /** A sequence played once from its start at the entry's placement ({@code aaa-design} §2.49). */
+    /** A sequence played once from its start at the entry's placement. */
     static final CgType SEQUENCE = where(entry("sequence")
             .property("sequence", soft("sequence")).required());
 

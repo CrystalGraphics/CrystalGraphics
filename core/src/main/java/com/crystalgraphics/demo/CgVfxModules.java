@@ -347,7 +347,7 @@ public final class CgVfxModules {
     }
 
     /**
-     * An emitter's orientation at run time (aaa-design §2.16): each station's effect turned every tick, as a hand turns
+     * An emitter's orientation at run time: each station's effect turned every tick, as a hand turns
      * a charge it holds. Left, a world emitter: a cone's spray swept round as the effect turns, what it sprayed keeping
      * its course. Right, a local one: a ring of particles turning as one body with the effect, about its origin.
      */

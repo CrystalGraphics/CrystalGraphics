@@ -29,11 +29,11 @@ import com.crystalgraphics.object.CgType;
 import static org.junit.Assert.assertTrue;
 
 /**
- * O3's gate (blueprint 01): every file of the kits round-trips YAML → tree → YAML to identical bytes, and every child
+ * Every file of the kits round-trips YAML → tree → YAML to identical bytes, and every child
  * resolves over its parent with a delta that writes back to its file.
  *
  * <p>Runs over {@code -Dcrystalgraphics.kits=<namespace>=<dir>;...}, which {@code -Pkits=...} hands the build; skipped
- * without it, since the kits are private and canonical only once REA's CO1 rewrites them.</p>
+ * without it, since the kits are private.</p>
  */
 public class CgAssetRoundTripGateTest {
 
@@ -93,7 +93,7 @@ public class CgAssetRoundTripGateTest {
                 bad.subList(0, Math.min(20, bad.size()))), bad.isEmpty());
     }
 
-    /** O4's gate: random edits on every 25th asset, undone in full, give its original bytes. */
+    /** Random edits on every 25th asset, undone in full, give its original bytes. */
     @Test
     public void randomEditsUndoneGiveTheOriginalBytes() throws IOException {
         Map<String, CgAssetData> loaded = new HashMap<>();

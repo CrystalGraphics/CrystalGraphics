@@ -1,8 +1,7 @@
 # asset.kind — the format's 20 kinds
 
-Every kind of `spec/README.md` § Kinds, its structs, elements and dispatch families, declared once against
-`object`'s model (engine blueprint 01, O1). `CgAssetKinds.register()` declares them all; `all()` and `byFolder()` read
-them.
+Every kind of the format (`docs/vfx/assets.md` § The kinds), its structs, elements and dispatch families, declared once
+against `object`'s model. `CgAssetKinds.register()` declares them all; `all()` and `byFolder()` read them.
 
 | Class | Declares |
 |---|---|
@@ -14,17 +13,19 @@ them.
 | `CgGameplayKinds` | `cue` and its effects block |
 | `CgFieldKinds` | `field`; graph nodes (`NODES`) |
 | `CgCommonStructs` | what several kinds share: placement, binding, condition, socket, mesh slot, transform, input declaration |
-| `CgModuleTypes` | the built-in modules, read from the shipped `vfx/modules.yaml` (a byte copy of the spec's) into a struct of inputs each |
+| `CgModuleTypes` | the built-in modules, read from the shipped `vfx/modules.yaml` (a byte copy of the format's) into a struct of inputs each |
 
-**The bible gate** is `CgBibleGateTest` (`:core:headlessTest`): every declaration against `spec/schema` both ways, and
-the shipped `modules.yaml` against the spec's. It skips without the plan repository beside the checkout.
+**The bible gate** is `CgBibleGateTest` (`:core:headlessTest`): every declaration against the format's JSON schemas both
+ways, and the shipped `modules.yaml` against the format's. It reads them from `-Dcrystalgraphics.spec`, which the build
+sets only where the private plan checkout sits beside this one, and skips without it.
 
 ## Rules
 
-- **The spec is the bible**: `spec/schema/*.schema.json` (keys, order, required, enums), then the prose, then
-  `aaa-design` §2.48–2.50 (an open struct's fields are its Unreal class's `UPROPERTY`s, snake-cased, the prose's
-  name where it has one). A mismatch is this package's bug, never the spec's; a disagreement in the spec goes to REA.
+- **The schemas are the bible**: keys, order, required, enums. A struct they leave open takes its Unreal class's
+  `UPROPERTY`s, snake-cased. A mismatch is this package's bug; a disagreement in the format goes to its designer.
+- **The declarations order exactly what the schemas order**: where a schema is open, the reference writer keeps read
+  order, so a declared order there makes the two writers disagree. The gate reports it.
 - **Public**: the 20 kinds, the families a mod extends, and the shared post block, placement, condition, binding
   and input declaration. Every other struct is package-private: reach it through its kind's properties.
-- **Nothing is guessed**: a type the spec and Unreal leave open is `VALUE`; a subtree kept as written (`editor`,
+- **Nothing is guessed**: a type the format and Unreal leave open is `VALUE`; a subtree kept as written (`editor`,
   `unsupported`, an event's `args`) is `TREE`.

@@ -15,7 +15,7 @@ import static com.crystalgraphics.object.CgValueType.STRING;
 import static com.crystalgraphics.object.CgValueType.VEC4;
 
 /**
- * The look kinds of {@code spec/looks.md} and {@code core.md} § Curves: {@code material}, {@code texture},
+ * The look kinds: {@code material}, {@code texture},
  * {@code mesh}, {@code parameters} and {@code curve}. Unreal's {@code UMaterialInstanceConstant}, texture and mesh
  * settings, {@code UMaterialParameterCollection} and {@code UCurveFloat}/{@code Vector}/{@code LinearColor}.
  *
@@ -54,7 +54,7 @@ public final class CgLookKinds {
             .property("stencil", CgValueType.struct(STENCIL))
             .register();
 
-    /** A sampler: filtering, wrapping, anisotropy ({@code looks.md} § Textures). */
+    /** A sampler: filtering, wrapping, anisotropy. */
     static final CgType SAMPLER = CgTypes.struct("crystalgraphics:sampler")
             .property("filter", CgValueType.enumOf("nearest", "bilinear", "trilinear")).defaultValue("trilinear")
             .property("wrap", CgValueType.oneOf(CgValueType.enumOf("repeat", "clamp", "mirror"),
@@ -141,7 +141,7 @@ public final class CgLookKinds {
             .property("max_alpha", FLOAT)
             .register();
 
-    /** {@code curves/}: a shared curve ({@code core.md} § Curves). */
+    /** {@code curves/}: a shared curve. */
     public static final CgType CURVE_KIND = CgTypes.kind("crystalgraphics:curve").folder("curves").version(1)
             .property("type", CgValueType.enumOf("float", "vector", "colour")).required().flags(CgPropertyFlag.HEADLESS)
             .property("curves", CgValueType.listOf(CURVE)).required().flags(CgPropertyFlag.HEADLESS)

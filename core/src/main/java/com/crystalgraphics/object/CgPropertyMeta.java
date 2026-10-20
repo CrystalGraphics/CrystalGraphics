@@ -26,7 +26,7 @@ import lombok.experimental.Accessors;
  *   <li>A {@code null} bound is open on that side.</li>
  *   <li>{@link #by()}'s first entry is the default lookup a curve uses.</li>
  *   <li>{@link #replication()} is read only for {@link CgPropertyFlag#NETWORKED} properties; null takes the default
- *       by type (floats interpolate, positions are goals, the rest snap: blueprint 09 §3.4).</li>
+ *       by type (floats interpolate, positions are goals, the rest snap).</li>
  * </ul>
  */
 @Value
@@ -40,7 +40,7 @@ public class CgPropertyMeta {
     /** When a range rolls ({@code rolls:}): per particle, per loop, per instance or per draw. */
     public enum Rolls { PARTICLE, LOOP, INSTANCE, DRAW }
 
-    /** How a networked value reaches viewers (blueprint 09 §3.4). */
+    /** How a networked value reaches viewers. */
     public enum Replication { INTERPOLATE, GOAL, SNAP }
 
     /** No metadata at all. */

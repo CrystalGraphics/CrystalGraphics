@@ -7,8 +7,8 @@ import java.util.List;
 import com.crystalgraphics.object.CgType;
 
 /**
- * The format's 20 asset kinds ({@code spec/README.md} § Kinds), each declared once with its structs, elements and
- * dispatch families, read by the codec, validation, the editor and replication alike (blueprint 01 §3.2).
+ * The format's 20 asset kinds ({@code docs/vfx/assets.md} § The kinds), each declared once with its structs, elements
+ * and dispatch families, read by the codec, validation, the editor and replication alike.
  *
  * <pre>{@code
  * CgAssetKinds.register();                                    // at init, both sides: declares every kind
@@ -48,7 +48,7 @@ public final class CgAssetKinds {
                 CgCameraKinds.CAMERA_RIG, CgCameraKinds.SHAKE, CgGameplayKinds.CUE));
     }
 
-    /** The 20 kinds, in {@code spec/README.md}'s order. */
+    /** The 20 kinds, particles first. */
     public static List<CgType> all() {
         register();
         return all;

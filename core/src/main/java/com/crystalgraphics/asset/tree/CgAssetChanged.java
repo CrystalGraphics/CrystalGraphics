@@ -4,7 +4,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * An asset's change, fired once an edit or a transaction applied (blueprint 01 §3.6): Unreal's
+ * An asset's change, fired once an edit or a transaction applied: Unreal's
  * {@code FPropertyChangedChainEvent}. An undo fires one too, its edits the inverses.
  *
  * <pre>{@code

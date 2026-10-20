@@ -132,7 +132,7 @@ dependencies {
 
 // ── headlessTest: what a dedicated server runs ───────────────────────────────
 // core and platform with no LWJGL, no font bindings and no GL context: a test that needs one of those cannot
-// compile here, which is the assertion (blueprint 01's spine, 03's tick schedule, 09's cues).
+// compile here, which is the assertion.
 val headlessTest: SourceSet by sourceSets.creating {
     compileClasspath += sourceSets["main"].output
     runtimeClasspath += sourceSets["main"].output
@@ -144,7 +144,7 @@ dependencies {
     "headlessTestImplementation"("org.yaml:snakeyaml:2.7")
     "headlessTestImplementation"("org.joml:joml-jdk8:$jomlVer")
     "headlessTestImplementation"("org.apache.logging.log4j:log4j-core:2.26.1")
-    // The bible gate reads the spec's JSON schemas.
+    // The bible gate reads the format's JSON schemas.
     "headlessTestImplementation"("com.google.code.gson:gson:2.11.0")
     "headlessTestCompileOnly"("com.google.code.findbugs:jsr305:3.0.2")
     "headlessTestCompileOnly"("org.projectlombok:lombok:1.18.44")
@@ -157,10 +157,10 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
     testClassesDirs = headlessTest.output.classesDirs
     classpath = headlessTest.runtimeClasspath
     useJUnit()
-    // The spec lives in the private plan repository beside CrystalGUI's checkout; the bible gate skips without it.
+    // The format's schemas, where the private plan checkout sits beside this one; the bible gate skips without them.
     val spec = rootProject.file("../plan/crystalgraphics/vfx-aaa/spec")
     if (spec.isDirectory) systemProperty("crystalgraphics.spec", spec.absolutePath)
-    // O3's round-trip gate, asked for: -Pkits=<namespace>=<dir>;...
+    // The kits' round-trip gate, asked for: -Pkits=<namespace>=<dir>;...
     providers.gradleProperty("kits").orNull?.let { systemProperty("crystalgraphics.kits", it) }
 }
 

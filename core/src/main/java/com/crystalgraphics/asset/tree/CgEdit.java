@@ -5,7 +5,7 @@ import java.util.Map;
 import javax.annotation.Nullable;
 
 /**
- * One change to an asset (blueprint 01 §3.6): what it touches, how, and the values before and after. Applying one
+ * One change to an asset: what it touches, how, and the values before and after. Applying one
  * answers its inverse, which undoes it to the byte.
  *
  * <pre>{@code

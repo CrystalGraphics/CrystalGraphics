@@ -4,7 +4,7 @@ package com.crystalgraphics.object.value;
  * What a number measures, so the loader knows how to convert it from the asset's units to the host's.
  *
  * <p>A property declares one; the file never says it. An imported value keeps its game's number, and the compile
- * converts it once by this quantity ({@code spec/core.md} § Units).</p>
+ * converts it once by this quantity and the asset's {@code units}.</p>
  *
  * <pre>{@code
  * .property("radius", CgValueType.FLOAT).quantity(CgQuantity.LENGTH)        // cm in a Kakarot kit, metres here
@@ -48,7 +48,7 @@ public enum CgQuantity {
     RATE("rate"),
     /** Per length. */
     PER_LENGTH("per_length"),
-    /** Converted for the space its reader declares ({@code core.md} § Colours). */
+    /** Converted for the colour space its reader declares. */
     COLOUR("colour");
 
     private final String spec;
@@ -57,12 +57,12 @@ public enum CgQuantity {
         this.spec = spec;
     }
 
-    /** The spec's name for it, as {@code modules.yaml} writes it ({@code angular_speed}). */
+    /** Its name in the format, as {@code modules.yaml} writes it ({@code angular_speed}). */
     public String specName() {
         return spec;
     }
 
-    /** The quantity the spec names {@code name}, or null if none does. */
+    /** The quantity the format names {@code name}, or null if none does. */
     public static CgQuantity bySpecName(String name) {
         for (CgQuantity q : values()) {
             if (q.spec.equals(name)) return q;

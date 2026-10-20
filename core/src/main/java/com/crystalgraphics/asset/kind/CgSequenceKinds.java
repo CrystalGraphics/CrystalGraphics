@@ -19,7 +19,7 @@ import static com.crystalgraphics.object.CgValueType.VALUE;
 import static com.crystalgraphics.object.CgValueType.VEC3;
 
 /**
- * The {@code sequence} kind ({@code spec/sequences.md}): Unreal's {@code ULevelSequence} with an anim montage's
+ * The {@code sequence} kind: Unreal's {@code ULevelSequence} with an anim montage's
  * sections and notifies: roles, locators, spawnables, tracks of 23 kinds, their sections, splines.
  *
  * <pre>{@code
@@ -28,7 +28,7 @@ import static com.crystalgraphics.object.CgValueType.VEC3;
  * }</pre>
  *
  * <ul>
- *   <li>A channel is a curve on the sequence's ticks ({@code sequences.md} § Channels); held channels (bool, event,
+ *   <li>A channel is a curve on the sequence's ticks; held channels (bool, event,
  *       particle, object, actor) are typed when the sequence compiles, not here.</li>
  *   <li>A track's envelope keys are the schema's for every kind; each kind's section holds the common section keys,
  *       then its own.</li>
@@ -47,7 +47,6 @@ public final class CgSequenceKinds {
             .property("character", STRING)
             .property("seed", BOOL)
             .property("absent", CgValueType.enumOf("skip", "fail"))
-            .property("editor", TREE).flags(CgPropertyFlag.EDITOR_ONLY)
             .register();
 
     static final CgType LOCATOR = CgTypes.element("crystalgraphics:sequence.locator")
@@ -56,7 +55,6 @@ public final class CgSequenceKinds {
             .property("location", VEC3).quantity(CgQuantity.POSITION)
             .property("rotation", CgValueType.ROTATION).quantity(CgQuantity.ROTATION)
             .property("scale", VEC3).quantity(CgQuantity.SCALE)
-            .property("editor", TREE).flags(CgPropertyFlag.EDITOR_ONLY)
             .register();
 
     static final CgType SPLINE_LAYER = CgTypes.element("crystalgraphics:sequence.spline_mesh.layer")
@@ -66,7 +64,6 @@ public final class CgSequenceKinds {
             .property("loop_only", VALUE)
             .property("material", hard("material"))
             .property("scale", VALUE)
-            .property("editor", TREE).flags(CgPropertyFlag.EDITOR_ONLY)
             .register();
 
     static final CgType SPLINE_PATH = CgTypes.struct("crystalgraphics:sequence.spline_mesh.path")
@@ -105,12 +102,12 @@ public final class CgSequenceKinds {
             .property("hide", CgValueType.listOf(BINDING))
             .register();
 
-    /** A prefab written inline in its spawnable ({@code bodies.md}). */
+    /** A prefab written inline in its spawnable. */
     static final CgType INLINE_PREFAB = CgTypes.struct("crystalgraphics:sequence.inline_prefab")
             .property("nodes", CgValueType.idList(CgBodyKinds.NODE)).required()
             .register();
 
-    /** A node's rest for this sequence ({@code sequences.md} § Rests): a constant is a rest, never a track. */
+    /** A node's rest for this sequence: a constant is a rest, never a track. */
     static final CgType REST = CgTypes.struct("crystalgraphics:sequence.rest")
             .property("opacity", FLOAT)
             .property("values", mapOfValues())
@@ -192,14 +189,13 @@ public final class CgSequenceKinds {
 
     /**
      * A spawnable: an object the sequence makes and owns, its kind the one kind key present ({@code system},
-     * {@code prefab}, {@code puppet}…; {@code sequences.md} § Spawnables). Exactly one kind key.
+     * {@code prefab}, {@code puppet}…). Exactly one kind key.
      */
     static final CgType SPAWNABLE = CgTypes.element("crystalgraphics:sequence.spawnable")
             .property("name", STRING).flags(CgPropertyFlag.LOCKED)
             .property("at", CgValueType.struct(CgCommonStructs.PLACE))
             .property("nodes", CgValueType.mapOf(CgValueType.struct(REST)))
             .property("bind", mapOfValues())
-            .property("editor", TREE).flags(CgPropertyFlag.EDITOR_ONLY)
             .property("system", hard("system")).flags(CgPropertyFlag.STRUCTURAL)
             .property("prefab", CgValueType.oneOf(hard("prefab"), CgValueType.struct(INLINE_PREFAB))).flags(CgPropertyFlag.STRUCTURAL)
             .property("puppet", CgValueType.struct(PUPPET)).flags(CgPropertyFlag.STRUCTURAL)
@@ -234,12 +230,11 @@ public final class CgSequenceKinds {
             .property("parent", BINDING)
             .property("points", CgValueType.listOf(VEC3)).required().quantity(CgQuantity.POSITION)
             .property("closed", BOOL).defaultValue(false)
-            .property("editor", TREE).flags(CgPropertyFlag.EDITOR_ONLY)
             .register();
 
     // ── Tracks and sections ──────────────────────────────────────────────────────────────
 
-    /** Tracks by {@code kind} ({@code sequences.md} § Kinds); each member carries the envelope and its sections. */
+    /** Tracks by {@code kind}; each member carries the envelope and its sections. */
     public static final CgType TRACKS = CgTypes.dispatch("crystalgraphics:track", "kind").register();
 
     private static final CgValueType BLEND = CgValueType.enumOf("absolute", "additive", "relative", "additive_from_base", "override");
@@ -294,7 +289,7 @@ public final class CgSequenceKinds {
             .register();
 
     /**
-     * The keys every section holds, before its kind's ({@code sequences.md} § Tracks). Open: channels named by data
+     * The keys every section holds, before its kind's. Open: channels named by data
      * ({@code x}, a material parameter, a morph target) follow the declared keys.
      */
     private static CgType.Builder section(String kind) {
@@ -327,7 +322,6 @@ public final class CgSequenceKinds {
                 .property("fire_forwards", BOOL).defaultValue(true)
                 .property("fire_backwards", BOOL).defaultValue(false)
                 .property("unsupported", TREE)
-                .property("editor", TREE).flags(CgPropertyFlag.EDITOR_ONLY)
                 .property("sections", CgValueType.idList(sectionType)).required()
                 .onRegister(t -> TRACKS.member(kind, t))
                 .register();

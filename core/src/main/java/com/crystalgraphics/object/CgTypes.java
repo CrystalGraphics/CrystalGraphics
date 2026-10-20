@@ -9,8 +9,8 @@ import java.util.regex.Pattern;
 
 /**
  * Every declared type, by id: the engine's 20 kinds and their structs, dispatch families and their members, and a
- * mod's own. What Unreal's {@code UClass} and {@code UScriptStruct} registries are to its reflection (blueprint 01
- * §3.2).
+ * mod's own. What Unreal's {@code UClass} and {@code UScriptStruct} registries are to its
+ * reflection.
  *
  * <pre>{@code
  * // at init, both sides: declare, then register
@@ -35,7 +35,7 @@ public final class CgTypes {
     private static final Pattern ID = Pattern.compile("^[a-z0-9_]+:[a-z0-9_./]+$");
     private static final CgTypes GLOBAL = new CgTypes();
 
-    // ── Units: every kind's `units` ({@code spec/core.md} § Units), the spine's since compiling converts by it ──
+    // ── Units: every kind's `units`, declared here since compiling converts by it ──
 
     private static final CgType METRES = struct("crystalgraphics:units.metres")
             .property("metres", CgValueType.FLOAT).required()

@@ -5,7 +5,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * A node of an asset by name (blueprint 01 §3.5): the asset's id, then segments, each a map key, an element's id or a
+ * A node of an asset by name: the asset's id, then segments, each a map key, an element's id or a
  * plain list's index. Element ids keep a path pointed at its element when the list is reordered, so an undo entry, a
  * selection or a message survives a drag.
  *

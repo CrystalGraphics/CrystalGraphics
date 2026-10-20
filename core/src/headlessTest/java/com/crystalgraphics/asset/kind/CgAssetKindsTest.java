@@ -19,10 +19,10 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
-/** O1's done-when: the spec's 20 kinds and their structs are declared, each in its folder. */
+/** The format's 20 kinds and their structs are declared, each in its folder. */
 public class CgAssetKindsTest {
 
-    /** {@code spec/README.md} § Kinds: kind and folder, in its order. */
+    /** Each kind and its folder, in order. */
     private static final Map<String, String> README = new LinkedHashMap<>();
 
     static {

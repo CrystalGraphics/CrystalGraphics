@@ -10,8 +10,8 @@ import java.util.Objects;
  *
  * <p>Mirrors what Unreal's {@code FProperty} subclasses are to a {@code UPROPERTY} ({@code FFloatProperty},
  * {@code FStructProperty}, {@code FArrayProperty}, {@code FSoftObjectProperty}), and Niagara's
- * {@code FNiagaraTypeDefinition} for inputs. The scalar and vector types are the ones {@code spec/core.md} § Values
- * names; the rest are the shapes the 20 kinds hold.</p>
+ * {@code FNiagaraTypeDefinition} for inputs. The scalar and vector types are the format's values
+ * ({@code docs/vfx/assets.md} § Values); the rest are the shapes the 20 kinds hold.</p>
  *
  * <pre>{@code
  * CgValueType.FLOAT
@@ -25,7 +25,7 @@ import java.util.Objects;
  *
  * <ul>
  *   <li>{@link #idList} and {@link #listOf} differ under inheritance: an id list merges element by element, a plain
- *       list is replaced whole ({@code core.md} § Inheritance).</li>
+ *       list is replaced whole.</li>
  *   <li>A reference's strength is the field's declaration, never the file's.</li>
  *   <li>{@link #TREE} is a subtree kept as written and never typed below its root: {@code editor} and
  *       {@code unsupported} blocks.</li>
@@ -40,7 +40,7 @@ public final class CgValueType {
         VALUE, ONE_OF, SELF
     }
 
-    /** Whether a reference loads with its referrer or on first use ({@code core.md} § References). */
+    /** Whether a reference loads with its referrer or on first use. */
     public enum Strength { HARD, SOFT }
 
     /** A number. */
@@ -57,13 +57,13 @@ public final class CgValueType {
     public static final CgValueType VEC3 = new CgValueType(Kind.VEC3);
     /** Four numbers. */
     public static final CgValueType VEC4 = new CgValueType(Kind.VEC4);
-    /** Floats in the declared space, or {@code { argb, intensity }} ({@code core.md} § Colours). */
+    /** Floats in the declared space, or {@code { argb, intensity }}. */
     public static final CgValueType COLOUR = new CgValueType(Kind.COLOUR);
-    /** A rotation in the asset's convention ({@code spec/core.md} § Units). */
+    /** A rotation in the asset's convention: its {@code units}' {@code rotation} and {@code angles}. */
     public static final CgValueType ROTATION = new CgValueType(Kind.ROTATION);
     /** A point the player binds or the file states. */
     public static final CgValueType POSITION = new CgValueType(Kind.POSITION);
-    /** A curve inline or by id: {@code core.md} § Curves. */
+    /** A curve inline or by id. */
     public static final CgValueType CURVE = new CgValueType(Kind.CURVE);
     /** A mesh data input: {@code { mesh: <id> }}. */
     public static final CgValueType MESH = new CgValueType(Kind.MESH);
@@ -75,7 +75,7 @@ public final class CgValueType {
     public static final CgValueType ARRAY = new CgValueType(Kind.ARRAY);
     /** A subtree kept as written: {@code editor}, {@code unsupported}. */
     public static final CgValueType TREE = new CgValueType(Kind.TREE);
-    /** A struct whose fields the spec leaves open (a module input of {@code type: struct} with no shape). */
+    /** A struct whose fields the format leaves open (a module input of {@code type: struct} with no shape). */
     public static final CgValueType OPEN_STRUCT = new CgValueType(Kind.STRUCT);
     /**
      * A value in any form whose type another declaration gives: a module entry's {@code inputs} (the module's
@@ -225,7 +225,7 @@ public final class CgValueType {
 
     /**
      * Whether a property of this type takes every value form unless its declaration narrows it: a number, a vector,
-     * a curve, or a value typed elsewhere ({@code spec/modules.md}: "a number takes every form").
+     * a curve, or a value typed elsewhere.
      */
     public boolean takesEveryForm() {
         switch (kind) {

@@ -10,8 +10,7 @@ import com.crystalgraphics.object.value.CgValueForm;
 /**
  * One declared property of a {@link CgType}: its name, value type, quantity, accepted forms, default, flags and
  * metadata. Mirrors Unreal's {@code FProperty} with its {@code EPropertyFlags} and metadata: one declaration that
- * the codec, inheritance, validation, units, undo, the editor's details panel and replication all read
- * (blueprint 01 §3.1).
+ * the codec, inheritance, validation, units, undo, the editor's details panel and replication all read.
  *
  * <p>Declared through a type's builder, in the order a file writes it:</p>
  *
@@ -85,7 +84,7 @@ public final class CgProperty {
         return quantity;
     }
 
-    /** The value forms it accepts ({@code spec/core.md} § Values). */
+    /** The value forms it accepts: a constant, a range, a curve, a binding… */
     public Set<CgValueForm> forms() {
         return forms;
     }

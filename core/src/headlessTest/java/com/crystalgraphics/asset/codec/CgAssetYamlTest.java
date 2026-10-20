@@ -15,7 +15,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** The writer's rules ({@code spec/core.md} § The writer's rules), the cooked form and the {@code _v} steps. */
+/** The writer's rules, the cooked form and the {@code _v} steps. */
 public class CgAssetYamlTest {
 
     @BeforeClass

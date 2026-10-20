@@ -17,8 +17,8 @@ import com.crystalgraphics.object.value.CgValueForm;
 /**
  * A declared shape: an asset kind, a struct, an id list's element or a dispatch family, with its properties in the
  * order a file writes them. Mirrors Unreal's {@code UClass} and {@code UScriptStruct} as the reflection system
- * holds them: one declaration that serialization, inheritance, validation, undo, the editor and replication all read
- * (blueprint 01 §3.1–3.2).
+ * holds them: one declaration that serialization, inheritance, validation, undo, the editor and replication all
+ * read.
  *
  * <p>A native type is declared by builder at init, never by annotations read through reflection:</p>
  *
@@ -41,9 +41,9 @@ import com.crystalgraphics.object.value.CgValueForm;
  *
  * <ul>
  *   <li>A kind gets {@code _v}, {@code parent} and {@code units} before its own properties and {@code unsupported},
- *       {@code editor} and {@code remove} after them ({@code spec/core.md} § File); an element gets {@code id} first.
- *       Never declare those yourself. An element's merge keys ({@code enabled}, {@code after}, {@code before}) and
- *       its {@code editor} block differ by element, so each declares its own where its schema puts them.</li>
+ *       {@code editor} and {@code remove} after them; an element gets {@code id} first and {@code editor} last. Never
+ *       declare those yourself. An element's merge keys ({@code enabled}, {@code after}, {@code before}) differ by
+ *       element, so each declares its own.</li>
  *   <li>Each property modifier ({@code quantity}, {@code flags}…) applies to the property declared last.</li>
  *   <li>A frozen type refuses a new member or property: a change is structural for everything compiled against
  *       it, so it is a new type.</li>
@@ -149,7 +149,7 @@ public final class CgType {
     }
 
     /**
-     * Adds a member to this dispatch family: the engine's at init, a mod's under its own namespace (P15).
+     * Adds a member to this dispatch family: the engine's at init, a mod's under its own namespace.
      *
      * @throws IllegalStateException if the family is frozen, or {@code key} is taken
      * @throws IllegalArgumentException if this is not a family, or an inline member declares the key
@@ -257,13 +257,13 @@ public final class CgType {
             return this;
         }
 
-        /** What the last property's number measures ({@code spec/core.md} § Units). */
+        /** What the last property's number measures: what the asset's {@code units} convert it by. */
         public Builder quantity(CgQuantity quantity) {
             current().quantity = Objects.requireNonNull(quantity);
             return this;
         }
 
-        /** Narrows the forms it accepts; a number otherwise takes every form ({@code spec/modules.md}). */
+        /** Narrows the forms it accepts; a number otherwise takes every form. */
         public Builder forms(CgValueForm first, CgValueForm... rest) {
             current().forms = EnumSet.of(first, rest);
             return this;

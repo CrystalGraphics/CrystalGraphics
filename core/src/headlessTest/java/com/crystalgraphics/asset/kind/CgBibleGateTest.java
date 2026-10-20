@@ -38,13 +38,12 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * The bible gate, step 1 (blueprint 01 §3.11, O2): every declaration against the spec, both ways. A schema property
- * with no declaration and a declaration the schema lacks both fail, unless the schema is open; key order, required
- * keys, enum values and type shapes must agree. {@code modules.yaml}'s modules load as types and match it input for
- * input. The spec wins: a mismatch is the engine's to fix.
+ * The bible gate: every declaration against the format's JSON schemas, both ways. A schema property with no
+ * declaration fails, and so does a declaration the schema lacks or leaves open, since the reference writer keeps read
+ * order there; key order, required keys, enum values and type shapes must agree. {@code modules.yaml}'s modules load
+ * as types and match it input for input. The schemas win: a mismatch is the engine's to fix.
  *
- * <p>Reads the spec from {@code -Dcrystalgraphics.spec}, which the build sets when the plan repository is beside the
- * checkout; skipped, saying so, without it.</p>
+ * <p>Reads the schemas from {@code -Dcrystalgraphics.spec}; skipped, saying so, without it.</p>
  */
 public class CgBibleGateTest {
 
@@ -54,7 +53,7 @@ public class CgBibleGateTest {
     @BeforeClass
     public static void spec() throws IOException {
         String dir = System.getProperty("crystalgraphics.spec");
-        Assume.assumeTrue("the spec is not beside this checkout (plan/crystalgraphics/vfx-aaa/spec): the bible gate did not run",
+        Assume.assumeTrue("no -Dcrystalgraphics.spec: the bible gate did not run",
                 dir != null && Files.isDirectory(Paths.get(dir)));
         spec = Paths.get(dir);
         common = schema("common").getAsJsonObject("$defs");
@@ -70,7 +69,7 @@ public class CgBibleGateTest {
             new Walk(schema.has("$defs") ? schema.getAsJsonObject("$defs") : new JsonObject(), found)
                     .struct(name, schema, kind, new HashSet<String>(), null);
         }
-        assertTrue(found.size() + " mismatches between the declarations and spec/schema:\n  " + String.join("\n  ", found),
+        assertTrue(found.size() + " mismatches between the declarations and the schemas:\n  " + String.join("\n  ", found),
                 found.isEmpty());
     }
 
@@ -81,7 +80,7 @@ public class CgBibleGateTest {
         try (InputStream in = CgIO.openStream(CgModuleTypes.RESOURCE)) {
             shipped = in.readAllBytes();
         }
-        assertArrayEquals("core's " + CgModuleTypes.RESOURCE + " differs from spec/schema/modules.yaml: copy it over", specs, shipped);
+        assertArrayEquals("core's " + CgModuleTypes.RESOURCE + " differs from the format's modules.yaml: copy it over", specs, shipped);
     }
 
     @Test

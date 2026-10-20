@@ -18,7 +18,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-/** Edits, their inverses and their change class (blueprint 01 §3.5–3.7), on a parent and a child. */
+/** Edits, their inverses and their change class on a parent and a child. */
 public class CgAssetEditTest {
 
     private static final String PARENT_ID = "dragonforge:kamehameha/charge", CHILD_ID = "dragonforge:kamehameha/charge_big";
@@ -141,7 +141,7 @@ public class CgAssetEditTest {
         throw new AssertionError("removed an element that is not there");
     }
 
-    /** O4's gate in miniature: random edits on both assets, undone in full, give the original bytes. */
+    /** Random edits on both assets, undone in full, give the original bytes. */
     @Test
     public void randomEditsUndoneGiveTheOriginalBytes() {
         for (int seed = 0; seed < 40; seed++) {

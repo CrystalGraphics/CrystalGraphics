@@ -5,7 +5,8 @@ import java.util.EnumSet;
 import java.util.Set;
 
 /**
- * How a value is written: a constant, or one of the maps that name a form ({@code spec/core.md} § Values).
+ * How a value is written: a constant, or one of the maps that name a form ({@code docs/vfx/assets.md}
+ * § Values).
  *
  * <p>Every input accepts every form unless its declaration narrows it. A declaration narrows only where the value
  * must be known before anything runs: a burst's count takes a constant or a range, a mesh input only data.</p>

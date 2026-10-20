@@ -25,7 +25,7 @@ import lombok.experimental.Accessors;
 /**
  * The built-in modules' declarations, read from {@code modules.yaml} into one type per module: its inputs as
  * properties a module entry's {@code inputs} are checked and decoded against. Niagara's module scripts are data,
- * reflected like native types; these are ours (blueprint 01 §3.2).
+ * reflected like native types; these are ours.
  *
  * <pre>{@code
  * CgModuleTypes modules = CgModuleTypes.builtIn();                     // the engine's, loaded once

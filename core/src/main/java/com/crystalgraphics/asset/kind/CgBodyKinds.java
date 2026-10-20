@@ -12,12 +12,11 @@ import static com.crystalgraphics.object.CgValueType.BOOL;
 import static com.crystalgraphics.object.CgValueType.FLOAT;
 import static com.crystalgraphics.object.CgValueType.INT;
 import static com.crystalgraphics.object.CgValueType.STRING;
-import static com.crystalgraphics.object.CgValueType.TREE;
 import static com.crystalgraphics.object.CgValueType.VALUE;
 import static com.crystalgraphics.object.CgValueType.VEC3;
 
 /**
- * The body kinds of {@code spec/bodies.md}: {@code prefab}, {@code skeleton}, {@code springs}, {@code rig} and
+ * The body kinds: {@code prefab}, {@code skeleton}, {@code springs}, {@code rig} and
  * {@code retargeter}. A Blueprint actor's component tree, {@code USkeleton}'s sockets, spring chains,
  * {@code UIKRigDefinition} and {@code UIKRetargeter}.
  *
@@ -39,7 +38,6 @@ public final class CgBodyKinds {
             .property("opacity", FLOAT).defaultValue(1).flags(CgPropertyFlag.KEYABLE)
             .property("values", mapOfValues())
             .property("meshes", CgValueType.listOf(CgValueType.struct(CgCommonStructs.MESH_SLOT))).flags(CgPropertyFlag.STRUCTURAL)
-            .property("editor", TREE).flags(CgPropertyFlag.EDITOR_ONLY)
             .register();
 
     /** {@code prefabs/}: nodes, each with a rest transform, opacity, meshes and materials. */
@@ -49,7 +47,7 @@ public final class CgBodyKinds {
 
     // ── Skeleton ─────────────────────────────────────────────────────────────────────────
 
-    /** A socket from a bone, from the entity, or derived from others ({@code bodies.md} § Sockets). */
+    /** A socket from a bone, from the entity, or derived from others. */
     static final CgType SOCKET = CgTypes.element("crystalgraphics:skeleton.socket")
             .property("name", STRING).required().flags(CgPropertyFlag.LOCKED, CgPropertyFlag.HEADLESS)
             .property("from", CgValueType.enumOf("bone", "entity", "derived")).required().flags(CgPropertyFlag.HEADLESS)

@@ -8,7 +8,7 @@ import java.util.Random;
 
 import com.crystalgraphics.object.CgType;
 
-/** Random edits on an asset, for O4's gate: every value, element and list it can find, set, reset, moved or dropped. */
+/** Random edits on an asset, for the undo gates: every value, element and list it can find, set, reset, moved or dropped. */
 public final class CgRandomEdits {
 
     private CgRandomEdits() {

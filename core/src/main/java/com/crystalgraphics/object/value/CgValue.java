@@ -7,9 +7,9 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * An input's value in one of the spec's forms, as the file holds it: in the asset's own units, before the compile
- * converts it ({@code spec/core.md} § Values). What a module input, a renderer's field or a track's value decodes
- * to.
+ * An input's value in one of the format's forms ({@code docs/vfx/assets.md} § Values), as the file holds it: in
+ * the asset's own units, before the compile converts it. What a module input, a renderer's field or a track's value
+ * decodes to.
  *
  * <pre>{@code
  * CgValue.constant(0.5)                                         // 0.5
@@ -143,7 +143,7 @@ public abstract class CgValue {
 
     /**
      * A curve, a curve per channel, or a gradient, looked up {@code by} something ({@code age}, {@code loop}…).
-     * Each curve is a curve id or an inline curve as written ({@code core.md} § Curves).
+     * Each curve is a curve id or an inline curve as written.
      */
     public static final class Curve extends CgValue {
         private final CgValueForm form;
@@ -217,7 +217,7 @@ public abstract class CgValue {
     }
 
     /**
-     * A parameter read: {@code scale × remap(value)} ({@code core.md} § Values). Niagara's linked inputs, Cascade's
+     * A parameter read: {@code scale × remap(value)}. Niagara's linked inputs, Cascade's
      * parameter distributions.
      */
     public static final class Binding extends CgValue {

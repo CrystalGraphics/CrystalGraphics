@@ -22,8 +22,8 @@ import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.serialization.format.file.YamlDocument;
 
 /**
- * An asset file's text and its tree, by {@code spec/core.md} § How a file is written: the one writer every tool uses,
- * so the same tree always gives the same bytes and a file written here reads back to the tree that wrote it.
+ * An asset file's text and its tree ({@code docs/vfx/assets.md} § How a file is written): the one writer every tool
+ * uses, so the same tree always gives the same bytes and a file written here reads back to the tree that wrote it.
  *
  * <pre>{@code
  * Map<String, Object> tree = CgAssetYaml.read(text);                 // comments moved into `editor`
@@ -36,8 +36,7 @@ import com.crystalgraphics.serialization.format.file.YamlDocument;
  *       {@link Double}, {@link Boolean}, null. Maps keep their order.</li>
  *   <li>Key order is the declaration's; keys it does not order follow in the order held, and {@code editor} closes
  *       every map that has one. A dispatch member is its {@code id}, the family's key, then its own fields.</li>
- *   <li>A port of the format's reference writer, {@code X:/research/tools/scripts/aaa_write.py}; the two give the
- *       same bytes.</li>
+ *   <li>A port of the format's reference writer: the two give the same bytes.</li>
  * </ul>
  */
 public final class CgAssetYaml {
@@ -57,7 +56,7 @@ public final class CgAssetYaml {
     // ── Reading ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * A file's tree, its comments moved into {@code editor} ({@code core.md} § The writer's rules): the lines before
+     * A file's tree, its comments moved into {@code editor}: the lines before
      * the first key to the asset's {@code editor.note}, a comment on or above an element to its {@code editor.note},
      * one on or above a key inside an element to its {@code editor.notes} under the key's path.
      */
@@ -89,7 +88,7 @@ public final class CgAssetYaml {
         return write(tree, kindOf(path));
     }
 
-    /** The kind a file's folder names ({@code spec/README.md} § Kinds), or null for a root file or none. */
+    /** The kind a file's folder names ({@code vfx/systems/...}), or null for a root file or none. */
     @Nullable
     public static CgType kindOf(String path) {
         String[] segs = path.replace('\\', '/').split("/");

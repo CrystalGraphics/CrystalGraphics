@@ -24,7 +24,7 @@ import static com.crystalgraphics.object.CgValueType.VEC3;
 import static com.crystalgraphics.object.CgValueType.VEC4;
 
 /**
- * The particle kinds of {@code spec/particles.md} and {@code spec/modules.md}: {@code system}, {@code emitter},
+ * The particle kinds: {@code system}, {@code emitter},
  * {@code module}, {@code effect_type} and {@code ending}, with their elements and renderers. Niagara's
  * {@code UNiagaraSystem}, {@code UNiagaraEmitter}, module scripts and {@code UNiagaraEffectType}.
  *
@@ -40,7 +40,7 @@ public final class CgParticleKinds {
     private CgParticleKinds() {
     }
 
-    /** {@code seed} on a module entry: Cascade's {@code _Seeded} modules ({@code modules.md} § Declaration). */
+    /** {@code seed} on a module entry: Cascade's {@code _Seeded} modules. */
     static final CgType SEED = CgTypes.struct("crystalgraphics:seed")
             .property("values", CgValueType.listOf(INT))
             .property("instance_per_seed", BOOL).defaultValue(false)
@@ -56,7 +56,6 @@ public final class CgParticleKinds {
             .property("seed", CgValueType.struct(SEED))
             .property("after", STRING)
             .property("before", STRING)
-            .property("editor", TREE).flags(CgPropertyFlag.EDITOR_ONLY)
             .register();
 
     static final CgType DETERMINISM = CgTypes.struct("crystalgraphics:determinism")
@@ -92,12 +91,11 @@ public final class CgParticleKinds {
             .property("spawn", CgValueType.struct(SPAWN))
             .property("kill", BOOL)
             .property("max_per_frame", INT)
-            .property("editor", TREE).flags(CgPropertyFlag.EDITOR_ONLY)
             .register();
 
     // ── Renderers ────────────────────────────────────────────────────────────────────────
 
-    /** Renderers by {@code kind} ({@code particles.md} § Renderers); a mod registers its own. */
+    /** Renderers by {@code kind}; a mod registers its own. */
     public static final CgType RENDERERS = CgTypes.dispatch("crystalgraphics:renderer", "kind").register();
 
     static final CgType SUB_IMAGE = CgTypes.struct("crystalgraphics:renderer.sub_image")
@@ -264,7 +262,7 @@ public final class CgParticleKinds {
             .register();
 
     /**
-     * A renderer member: the fields every renderer holds ({@code particles.md} § Renderers), then its kind's. The
+     * A renderer member: the fields every renderer holds, then its kind's. The
      * family's {@code kind} key is written after the id.
      */
     private static CgType.Builder renderer(String kind) {
@@ -303,7 +301,7 @@ public final class CgParticleKinds {
 
     // ── System ───────────────────────────────────────────────────────────────────────────
 
-    /** A user parameter's declaration ({@code particles.md} § System: what gameplay, sequences and parents set). */
+    /** A user parameter's declaration (what gameplay, sequences and parents set). */
     static final CgType USER_PARAMETER = CgTypes.struct("crystalgraphics:system.user_parameter")
             .property("type", CgValueType.enumOf("float", "int", "bool", "vec2", "vec3", "vec4", "colour", "position",
                     "rotation", "curve", "mesh", "texture", "material")).required().flags(CgPropertyFlag.STRUCTURAL)
@@ -325,7 +323,7 @@ public final class CgParticleKinds {
             .property("bind", mapOfValues())
             .register();
 
-    /** A field the system places ({@code fields.md} § Placing). */
+    /** A field the system places. */
     static final CgType PLACED_FIELD = CgTypes.element("crystalgraphics:system.field")
             .property("field", CgValueType.oneOf(hard("field"), CgValueType.struct(CgFieldKinds.INLINE_GRAPH)))
             .property("at", CgValueType.struct(CgCommonStructs.PLACE))
@@ -345,7 +343,7 @@ public final class CgParticleKinds {
             .property("fixed", FLOAT).quantity(CgQuantity.TIME)
             .register();
 
-    /** What a native behaviour's slot draws (ours; {@code particles.md} § System). */
+    /** What a native behaviour's slot draws (ours, with no Unreal counterpart). */
     static final CgType SLOT = CgTypes.element("crystalgraphics:system.slot")
             .property("slot", STRING).required()
             .property("material", hard("material")).flags(CgPropertyFlag.STRUCTURAL)
@@ -379,7 +377,7 @@ public final class CgParticleKinds {
             .property("input", STRING)
             .register();
 
-    /** {@code vfx/modules/}: a data GPU module, declarations and GLSL ({@code modules.md} § Module assets). */
+    /** {@code vfx/modules/}: a data GPU module, declarations and GLSL. */
     public static final CgType MODULE = CgTypes.kind("crystalgraphics:module").folder("vfx/modules").version(1)
             .property("groups", CgValueType.listOf(CgValueType.enumOf("emitter_update", "particle_spawn", "particle_update"))).flags(CgPropertyFlag.STRUCTURAL)
             .property("order", CgValueType.enumOf("emitter", "spawn_init", "spawn_place", "spawn_launch", "forces", "after_solve", "events"))
@@ -409,7 +407,7 @@ public final class CgParticleKinds {
 
     /**
      * {@code FNiagaraGlobalBudgetScaling}. Each ramp follows the toggle that switches it on, as Unreal's
-     * {@code InlineEditConditionToggle}s do ({@code aaa-design} §2.50).
+     * {@code InlineEditConditionToggle}s do.
      */
     static final CgType BUDGET = CgTypes.struct("crystalgraphics:effect_type.budget")
             .property("cull", BOOL).defaultValue(false)

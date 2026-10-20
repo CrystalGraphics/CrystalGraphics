@@ -16,7 +16,7 @@ import com.crystalgraphics.object.CgValueType;
 
 /**
  * An asset in memory: its file resolved over its parent's, every node knowing where its value comes from
- * (blueprint 01 §3.3–3.4, {@code spec/core.md} § Inheritance). One tree for every kind; a kind's facade reads it.
+ * ({@code docs/vfx/assets.md} § Inheritance). One tree for every kind; a kind's facade reads it.
  *
  * <pre>{@code
  * CgAssetData charge = CgAssetData.of("dragonforge:kamehameha/charge", SYSTEM, chargeTree, null);

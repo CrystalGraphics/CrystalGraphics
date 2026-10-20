@@ -14,7 +14,7 @@ import com.crystalgraphics.asset.kind.CgParticleKinds;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
-/** Inheritance by {@code spec/core.md} § Inheritance, on its own example: what resolves, from where, and the delta. */
+/** Inheritance, on the format's own example: what resolves, from where, and the delta. */
 public class CgAssetDataTest {
 
     private static final String PARENT = "_v: 1\n"

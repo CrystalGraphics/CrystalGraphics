@@ -88,7 +88,7 @@ public final class CgPassConstants {
 
     /**
      * Seconds; the block carries {@code (t/20, t, 2t, 3t)}. Narrowed to the shader's float here and nowhere else: what
-     * wraps, and how, is blueprint 05's.
+     * wraps, and how, is the material system's.
      */
     public CgPassConstants time(double seconds) {
         this.time = (float) seconds;

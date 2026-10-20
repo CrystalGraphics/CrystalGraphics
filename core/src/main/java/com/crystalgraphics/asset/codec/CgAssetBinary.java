@@ -9,7 +9,7 @@ import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.serialization.CgBinaryFormat;
 
 /**
- * An asset's cooked form (blueprint 01 §3.8): the same tree as its YAML, as {@link CgBinaryFormat} bytes, with every
+ * An asset's cooked form: the same tree as its YAML, as {@link CgBinaryFormat} bytes, with every
  * {@code editor} block dropped, since only tools read them.
  *
  * <pre>{@code

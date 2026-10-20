@@ -1,7 +1,7 @@
 package com.crystalgraphics.asset.tree;
 
 /**
- * Where a resolved value comes from (blueprint 01 §3.4): Unreal's {@code FOverridableManager} states, made the rule.
+ * Where a resolved value comes from: Unreal's {@code FOverridableManager} states, made the rule.
  *
  * <pre>{@code
  * data.origin("emitters", "h1", "enabled");   // OVERRIDDEN: this asset set it, even to its parent's value

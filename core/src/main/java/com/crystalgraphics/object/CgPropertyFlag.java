@@ -2,7 +2,7 @@ package com.crystalgraphics.object;
 
 /**
  * What a property is to each system that reads it. Mirrors Unreal's {@code EPropertyFlags} ({@code CPF_*}), cut
- * to the ones the format needs (blueprint 01 §3.1).
+ * to the ones the format needs.
  *
  * <pre>{@code
  * .property("capacity", CgValueType.INT).flags(CgPropertyFlag.STRUCTURAL)         // a change restarts what plays it
@@ -20,9 +20,9 @@ public enum CgPropertyFlag {
     EDITOR_ONLY,
     /** Never written ({@code CPF_Transient}). */
     TRANSIENT,
-    /** Resolved on a dedicated server ({@code NeedsLoadForServer}): the spec's headless subset. */
+    /** Resolved on a dedicated server ({@code NeedsLoadForServer}): what a server needs of the asset. */
     HEADLESS,
-    /** A change restarts what plays the asset ({@code spec/loading.md} § Hot reload). */
+    /** A change rebuilds what plays the asset, where any other edit only updates its values. */
     STRUCTURAL,
     /** A sequence track may key it ({@code CPF_Interp}). */
     KEYABLE,

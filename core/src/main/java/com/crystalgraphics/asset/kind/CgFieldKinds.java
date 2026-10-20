@@ -16,7 +16,7 @@ import static com.crystalgraphics.object.CgValueType.TREE;
 import static com.crystalgraphics.object.CgValueType.VEC3;
 
 /**
- * The {@code field} kind of {@code spec/fields.md}: a grid of vectors ({@code UVectorFieldStatic}) or a graph of
+ * The {@code field} kind: a grid of vectors ({@code UVectorFieldStatic}) or a graph of
  * force nodes (Chaos Physics Fields, flattened as Unreal's {@code UFieldNodeBase} graph is).
  *
  * <p>Registered by {@link CgAssetKinds#register()}.</p>
@@ -26,7 +26,7 @@ public final class CgFieldKinds {
     private CgFieldKinds() {
     }
 
-    /** Graph nodes by {@code kind}; each node's fields are its Chaos class's ({@code aaa-design} §2.49). */
+    /** Graph nodes by {@code kind}; each node's fields are its Chaos class's. */
     public static final CgType NODES = CgTypes.dispatch("crystalgraphics:field_node", "kind").register();
 
     private static final CgValueType FALLOFF = CgValueType.enumOf("none", "linear", "inverse", "squared", "logarithmic");

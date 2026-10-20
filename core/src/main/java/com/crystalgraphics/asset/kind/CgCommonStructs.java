@@ -15,7 +15,7 @@ import static com.crystalgraphics.object.CgValueType.VALUE;
 import static com.crystalgraphics.object.CgValueType.VEC3;
 
 /**
- * The structs several kinds share ({@code spec/schema/common.schema.json}'s {@code $defs}): a placement, a condition,
+ * The structs several kinds share: a placement, a condition,
  * a mesh slot, a quality tier, an input's declaration, and the reference shapes.
  *
  * <pre>{@code
@@ -50,15 +50,15 @@ public final class CgCommonStructs {
     /** A set of tiers; absent means all. */
     public static final CgValueType TIERS = CgValueType.listOf(TIER);
 
-    /** A quantity's spec name ({@code spec/core.md} § Units). */
+    /** A quantity's name in the format. */
     public static final CgValueType QUANTITY = CgValueType.enumOf("length", "position", "offset", "speed", "acceleration",
             "direction", "scale", "angle", "angular_speed", "rotation", "time", "frequency", "rate", "per_length",
             "colour", "none");
 
     /**
      * An input's declaration: a built-in module's in {@code modules.yaml}, a data module's in its asset
-     * ({@code spec/modules.md} § Declaration). Keyed by {@code name}, unique within its module, as Niagara keys a
-     * script's inputs; its key order is {@code aaa-design} §2.49's.
+     * Keyed by {@code name}, unique within its module, as Niagara keys a
+     * script's inputs.
      */
     public static final CgType INPUT_DECLARATION = CgTypes.struct("crystalgraphics:input")
             .property("name", STRING).required()
@@ -78,7 +78,7 @@ public final class CgCommonStructs {
             .property("description", STRING)
             .register();
 
-    /** A role's socket, the value of a {@code socket} input or parameter ({@code spec/core.md} § Values). */
+    /** A role's socket, the value of a {@code socket} input or parameter. */
     static final CgType SOCKET = CgTypes.struct("crystalgraphics:socket")
             .property("role", STRING).required()
             .property("socket", STRING).required()
@@ -102,7 +102,7 @@ public final class CgCommonStructs {
 
     /**
      * A section's or a spawn's condition: a registered kind with its own keys, or {@code all}, {@code any},
-     * {@code not} of others ({@code common.schema.json#/$defs/condition}, {@code sequences.md} § Conditions).
+     * {@code not} of others.
      * A condition kind's own keys sit beside {@code kind} and are typed by its registration.
      */
     public static final CgType CONDITION = CgTypes.struct("crystalgraphics:condition").open()
@@ -115,7 +115,7 @@ public final class CgCommonStructs {
             .register();
 
     /**
-     * What a track or a placement binds ({@code sequences.md} § Bindings): a role, a socket or material of it, a
+     * What a track or a placement binds: a role, a socket or material of it, a
      * locator, a spawnable or a node or material of it, a camera; or the host's {@code environment}, or an id.
      */
     static final CgType BINDING_STRUCT = CgTypes.struct("crystalgraphics:binding")
@@ -164,7 +164,7 @@ public final class CgCommonStructs {
 
     // ── How a value is written ({@code common.schema.json#/$defs/value} and {@code curve}) ─────────────────────────────
 
-    /** A curve's keys, or its baked samples ({@code core.md} § Curves). */
+    /** A curve's keys, or its baked samples. */
     static final CgType CURVE_KEYS = CgTypes.struct("crystalgraphics:curve.keys")
             .property("keys", CgValueType.ARRAY).required()
             .property("default", CgValueType.TREE)
@@ -242,7 +242,7 @@ public final class CgCommonStructs {
             .register();
 
     /**
-     * A value as a file writes it ({@code core.md} § Values): a constant, a list, or a map naming its form, else a
+     * A value as a file writes it: a constant, a list, or a map naming its form, else a
      * struct of values. Alternatives in the schema's order: a map takes the first whose required key it holds, so
      * {@code { unit: turns, range: [...] }} is a range with a unit beside it.
      */

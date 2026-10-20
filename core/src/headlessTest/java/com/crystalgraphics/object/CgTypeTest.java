@@ -16,7 +16,7 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
-/** Blueprint 01 O1: the declaration model every later step reads. */
+/** The declaration model the codec, inheritance and edits read. */
 public class CgTypeTest {
 
     private final CgTypes types = CgTypes.create();
