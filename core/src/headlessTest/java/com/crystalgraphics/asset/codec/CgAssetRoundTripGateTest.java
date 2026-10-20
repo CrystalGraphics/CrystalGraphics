@@ -2,10 +2,12 @@ package com.crystalgraphics.asset.codec;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -68,6 +70,23 @@ public class CgAssetRoundTripGateTest {
         }
     }
 
+    /**
+     * {@code assertTrue}, with the verdict also kept in {@code build/kit-gates/<test>.txt}: a run of minutes outlives
+     * test results another run in the same build directory deletes.
+     */
+    private static void holds(String message, boolean ok) {
+        String test = new Throwable().getStackTrace()[1].getMethodName();
+        try {
+            Path out = Paths.get("build", "kit-gates", test + ".txt");
+            Files.createDirectories(out.getParent());
+            Files.write(out, ((ok ? "PASS\n" : "FAIL\n") + message + "\n").getBytes(StandardCharsets.UTF_8),
+                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        assertTrue(message, ok);
+    }
+
     @Test
     public void everyFileRoundTripsToIdenticalBytes() throws IOException {
         List<String> bad = new ArrayList<>();
@@ -82,7 +101,7 @@ public class CgAssetRoundTripGateTest {
             }
             if (!again.equals(text)) bad.add(bad.size() < 20 ? p + "\n" + firstDiff(text, again) : p.toString());
         }
-        assertTrue(bad.size() + " of " + ALL.size() + " files are not their own bytes:\n" + String.join("\n",
+        holds(bad.size() + " of " + ALL.size() + " files are not their own bytes:\n" + String.join("\n",
                 bad.subList(0, Math.min(20, bad.size()))), bad.isEmpty());
     }
 
@@ -105,7 +124,7 @@ public class CgAssetRoundTripGateTest {
                 bad.add(IDS.get(e.getKey()) + ": " + ex.getMessage());
             }
         }
-        assertTrue(bad.size() + " of " + children + " children:\n" + String.join("\n",
+        holds(bad.size() + " of " + children + " children:\n" + String.join("\n",
                 bad.subList(0, Math.min(20, bad.size()))), bad.isEmpty());
     }
 
@@ -136,7 +155,7 @@ public class CgAssetRoundTripGateTest {
             }
             checked++;
         }
-        assertTrue(bad.size() + " of " + checked + " assets:\n" + String.join("\n", bad.subList(0, Math.min(20, bad.size()))),
+        holds(bad.size() + " of " + checked + " assets:\n" + String.join("\n", bad.subList(0, Math.min(20, bad.size()))),
                 bad.isEmpty());
     }
 
@@ -151,9 +170,9 @@ public class CgAssetRoundTripGateTest {
         for (String ns : KITS.keySet()) {
             for (CgAssetEntry e : registry.entries(ns)) if (!e.binary() && !FILES.containsKey(key(e.kind(), e.id()))) extra.add(e.file().toString());
         }
-        assertTrue(missing.size() + " of " + FILES.size() + " assets unregistered: " + missing.subList(0, Math.min(20, missing.size())),
+        holds(missing.size() + " of " + FILES.size() + " assets unregistered: " + missing.subList(0, Math.min(20, missing.size())),
                 missing.isEmpty());
-        assertTrue(extra.size() + " registered that are not assets: " + extra.subList(0, Math.min(20, extra.size())), extra.isEmpty());
+        holds(extra.size() + " registered that are not assets: " + extra.subList(0, Math.min(20, extra.size())), extra.isEmpty());
     }
 
     /**
@@ -210,8 +229,8 @@ public class CgAssetRoundTripGateTest {
         for (Map.Entry<String, Integer> e : roots.entrySet()) {
             report.append(String.format("%7d  %s%n         %s%n", e.getValue(), e.getKey(), rootExample.get(e.getKey())));
         }
-        assertTrue(report + "steps off the workers: " + offWorkers, offWorkers == 0);
-        assertTrue(report + "threw:\n" + String.join("\n", crashed), crashed.isEmpty());
+        holds(report + "steps off the workers: " + offWorkers, offWorkers == 0);
+        holds(report + "threw:\n" + String.join("\n", crashed), crashed.isEmpty());
         System.out.println(report);
     }
 
@@ -255,7 +274,7 @@ public class CgAssetRoundTripGateTest {
         for (Map.Entry<String, Integer> e : byWhat.entrySet()) {
             report.append(String.format("%7d  %s%n         %s%n", e.getValue(), e.getKey(), first.get(e.getKey())));
         }
-        assertTrue(errors + " errors in " + checked + " assets:\n" + report, errors == 0);
+        holds(errors + " errors in " + checked + " assets:\n" + report, errors == 0);
     }
 
     /** The parent a file names on its first lines, where the writer puts it; null for none. */
