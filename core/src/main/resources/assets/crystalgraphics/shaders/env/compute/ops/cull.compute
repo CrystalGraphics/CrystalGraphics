@@ -1,4 +1,4 @@
-// CgGpuOps.cull (gpu-compute C9b): instances of one mesh, each placed in the camera-relative world, tested against the
+// CgGpuOps.cull: instances of one mesh, each placed in the camera-relative world, tested against the
 // view's frustum, given the level its screen height picks and, with a depth pyramid, tested against the scene's depth.
 // Each kept at this dispatch's level is appended as the object record a draw reads. One dispatch a level, every one
 // testing every instance: an append writes one buffer. CgWorldRenderer's tests on the CPU, step for step;

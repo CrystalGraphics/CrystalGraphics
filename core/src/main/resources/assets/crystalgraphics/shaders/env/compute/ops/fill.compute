@@ -1,4 +1,4 @@
-// CgGpuOps' fills, sequences, copies and dispatch arguments (gpu-compute C7). Past the count nothing is written.
+// CgGpuOps' fills, sequences, copies and dispatch arguments. Past the count nothing is written.
 #pragma kernel Fill map
 #pragma kernel Iota map
 #pragma kernel Copy map

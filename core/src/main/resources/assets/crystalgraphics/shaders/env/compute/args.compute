@@ -1,4 +1,4 @@
-// An indirect draw's command, written on the GPU (gpu-compute C4): the count a kernel wrote, scaled, and the range of
+// An indirect draw's command, written on the GPU: the count a kernel wrote, scaled, and the range of
 // the mesh as the store placed it, which only the render thread knows. Five elements a draw, one a word, dispatched by
 // the frame graph's executor before the draw's raster pass (render/graph/CgIndirectArgs) with ARGS bound to its
 // command alone, so two of them write nothing in common. A map, so a tier below compute captures it in one pass.

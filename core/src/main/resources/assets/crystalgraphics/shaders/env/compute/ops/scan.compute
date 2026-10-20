@@ -1,4 +1,4 @@
-// CgGpuOps' reduce, scan and compact (gpu-compute C7), in shapes every tier runs. Values are folded in blocks of
+// CgGpuOps' reduce, scan and compact, in shapes every tier runs. Values are folded in blocks of
 // sixteen, a level at a time: element j of level k+1 folds elements 16j to 16j+15 of level k, left to right, so every
 // tier and the Java bodies combine floats in the same order. A scan folds each block's prefix from the scanned block
 // sums of the level above. A count is read from COUNT; level k holds ceil(count / 16^k) elements.

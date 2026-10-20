@@ -1,4 +1,4 @@
-// CgGpuOps' image ops (gpu-compute C7): a mip level from the level above it, and one axis of a Gaussian blur. An image
+// CgGpuOps' image ops: a mip level from the level above it, and one axis of a Gaussian blur. An image
 // is declared in one format, so each op is a kernel per format; a dispatch is the target level's size.
 #pragma kernel DownsampleRgba8 8 8 image
 #pragma kernel DownsampleRgba16f 8 8 image

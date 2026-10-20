@@ -1,4 +1,4 @@
-// A kernel lowered below compute (gpu-compute C5): where this invocation is, as kernel.glsl says it for a compute
+// A kernel lowered below compute: where this invocation is, as kernel.glsl says it for a compute
 // stage. A lowered kernel runs as a vertex, geometry or fragment stage; the engine sets cg_Dispatch per draw and calls
 // _cg_setup (an element) or _cg_setup_texel (an image kernel's texel) before the kernel.
 //

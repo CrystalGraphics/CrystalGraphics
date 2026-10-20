@@ -1,4 +1,4 @@
-// CgGpuOps' sort (gpu-compute C7): least significant digit first, four bits a pass, stable, in two forms that put
+// CgGpuOps' sort: least significant digit first, four bits a pass, stable, in two forms that put
 // every key in the same place.
 //
 // Every tier: a pass counts the digits of each block of 32 elements (RadixCount), scans those counts digit-major with

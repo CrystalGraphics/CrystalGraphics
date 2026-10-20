@@ -19,7 +19,7 @@ import java.util.Arrays;
 import java.util.function.IntConsumer;
 
 /**
- * An executor's indirect commands (gpu-compute C4): one per indirect draw of the raster pass about to run, written
+ * An executor's indirect commands: one per indirect draw of the raster pass about to run, written
  * before the pass begins by {@code crystalgraphics:shaders/env/compute/args.compute} from the count a kernel wrote and
  * the range the mesh store placed. Each command has a slot of its own, aligned for a storage binding, so each write
  * binds only its slot and no two writes overlap. Below compute the kernel runs lowered (tier G40). Render thread.

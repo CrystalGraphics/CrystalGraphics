@@ -777,7 +777,7 @@ public final class CgExecutor {
         return 1;
     }
 
-    /** A dispatch below compute (gpu-compute C5): the kernel's lowered passes over what the dispatch bound. */
+    /** A dispatch below compute: the kernel's lowered passes over what the dispatch bound. */
     private void lowered(CgFrame frame, CgDispatch d, int bindings) {
         CgLoweredKernel kernel = d.kernel.lowered();
         frame.bindings.bind(bindings);
@@ -786,7 +786,7 @@ public final class CgExecutor {
         advanceHistories(d);
     }
 
-    /** A dispatch on the CPU tier (gpu-compute C6): its kernel's Java body, over CPU copies of what it binds. */
+    /** A dispatch on the CPU tier: its kernel's Java body, over CPU copies of what it binds. */
     private void cpu(CgDispatch d) {
         CgKernelDecl runs = d.kernel.form().runs();
         CgDispatchBindings b = bind(d);

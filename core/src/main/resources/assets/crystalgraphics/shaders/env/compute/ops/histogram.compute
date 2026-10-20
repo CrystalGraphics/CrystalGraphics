@@ -1,4 +1,4 @@
-// CgGpuOps' histogram (gpu-compute C7): each key counted into bin min(key >> _Shift, _Bins - 1). Counts are exact to
+// CgGpuOps' histogram: each key counted into bin min(key >> _Shift, _Bins - 1). Counts are exact to
 // 2^24 a bin below compute, where adds are blends.
 //
 // Every tier: one global add per key (Histogram). Compute only, for up to 1024 bins: each work group counts its share
