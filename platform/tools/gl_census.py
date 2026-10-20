@@ -23,12 +23,12 @@ GROUPS = {
 PRODUCT = ('core', 'CrystalGUI', 'hosts', 'platform')
 SKIP_PLATFORM = ('CgGL.java', 'CgGLBackend.java', 'CgGlRecordingBackend.java')
 
-# D3.4's build order. Each domain is built after the ones above it.
+# The tracked backend's build order. Each domain is built after the ones above it.
 DOMAINS = [
     ('Context and queries', 'what `CgCapabilities.detect()` and the state providers read before anything draws', [
         'initContext', 'isContextCurrent', 'ownedByCurrentThread', 'glGetInteger', 'glGetBoolean', 'glGetFloat',
         'glGetError', 'glGetIntegeri', 'glGetString', 'glGetStringi']),
-    ('State', 'the pipeline key, and what the scope suite (D3.5) restores', [
+    ('State', 'the pipeline key, and what the scope suite restores', [
         'glEnable', 'glDisable', 'glBlendFunc', 'glBlendFuncSeparate', 'glBlendEquationSeparate', 'glDepthMask',
         'glDepthFunc', 'glCullFace', 'glFrontFace', 'glColorMask', 'glColorMaski', 'glStencilFunc', 'glStencilOp',
         'glStencilMask', 'glPolygonOffset', 'glViewport', 'glScissor', 'glClearColor', 'glClearDepth',
@@ -39,7 +39,7 @@ DOMAINS = [
         'glTexBuffer', 'glGenVertexArrays', 'glDeleteVertexArrays', 'glBindVertexArray',
         'glEnableVertexAttribArray', 'glVertexAttribPointer', 'glVertexAttribIPointer', 'glVertexAttribDivisor',
         'glCopyBufferSubData', 'cgFillBuffer']),
-    ('Programs', 'the link-time rewrite (D3.6) produces the tables these answer from', [
+    ('Programs', 'the link-time rewrite produces the tables these answer from', [
         'glCreateShader', 'glShaderSource', 'glCompileShader', 'glGetShaderi', 'glGetShaderInfoLog',
         'glDeleteShader', 'glCreateProgram', 'glAttachShader', 'glDetachShader', 'glGetAttachedShaders',
         'glLinkProgram', 'glGetProgrami', 'glGetProgramInfoLog', 'glUseProgram', 'glDeleteProgram',
@@ -204,9 +204,9 @@ def main():
         f'**{len(harness_only)} by the harness only**; **{len(unreached)} by nothing** -- '
         + ', '.join(f'`{b}`' for b in unreached) + '.',
         '',
-        '**What it orders** (D3.4): the tracked backend is built domain by domain in the order below, reached',
+        '**What it orders**: the tracked backend is built domain by domain in the order below, reached',
         'methods first within each. An unreached method is still built -- `CgGL` is public API outside mods',
-        'call (decision 18) -- but last, and a test reaches it before it counts.',
+        'call -- but last, and a test reaches it before it counts.',
         '',
     ]
     for title, why, names in DOMAINS:

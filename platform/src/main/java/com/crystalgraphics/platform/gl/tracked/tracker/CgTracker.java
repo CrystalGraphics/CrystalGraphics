@@ -50,7 +50,7 @@ import java.util.function.IntFunction;
  *   <li>A clear before a pass's first draw, over the whole target, is its load op; any other is an attachment
  *       clear inside the pass. A colour clear under a partial write mask is drawn, through the mask, since a
  *       device's clear writes every channel; a partial stencil mask still clears every bit, with one warning.</li>
- *   <li>With {@code debug} on, sampling a texture the open pass renders to is refused (decision 21).</li>
+ *   <li>With {@code debug} on, sampling a texture the open pass renders to is refused.</li>
  *   <li>Owner thread only.</li>
  * </ul>
  */

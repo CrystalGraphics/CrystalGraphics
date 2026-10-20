@@ -82,7 +82,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     /**
      * @param compiler what a program's link compiles its GLSL with
-     * @param debug    refuse what GL leaves undefined and a device cannot survive: feedback loops (decision 21)
+     * @param debug    refuse what GL leaves undefined and a device cannot survive: feedback loops
      */
     public CgTrackedGLBackend(CgDevice device, CgGlslCompiler compiler, boolean debug) {
         this.device = device;

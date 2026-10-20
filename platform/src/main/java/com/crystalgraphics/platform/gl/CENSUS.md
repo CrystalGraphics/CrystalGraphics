@@ -8,9 +8,9 @@ test application.
 
 **167 methods** (182 declarations with overloads): **155 reached** by core, CrystalGUI, the hosts or `platform`; **2 by the harness only**; **10 by nothing** -- `isAvailable`, `getPriority`, `glVertexAttribDivisor`, `glDrawElementsInstanced`, `glMultiDrawArraysIndirect`, `glMultiDrawArraysIndirectCount`, `glMultiDrawElementsIndirectCount`, `glMemoryBarrier`, `isContextCurrent`, `glTexImage2DMultisample`.
 
-**What it orders** (D3.4): the tracked backend is built domain by domain in the order below, reached
+**What it orders**: the tracked backend is built domain by domain in the order below, reached
 methods first within each. An unreached method is still built -- `CgGL` is public API outside mods
-call (decision 18) -- but last, and a test reaches it before it counts.
+call -- but last, and a test reaches it before it counts.
 
 ## Context and queries
 
@@ -31,7 +31,7 @@ What `CgCapabilities.detect()` and the state providers read before anything draw
 
 ## State
 
-The pipeline key, and what the scope suite (D3.5) restores.
+The pipeline key, and what the scope suite restores.
 
 | Method | via `CgGL` | core | CrystalGUI | hosts | platform | harness |
 |---|---|---:|---:|---:|---:|---:|
@@ -87,7 +87,7 @@ Every draw reads them; the frame ring and orphan-as-rename live here.
 
 ## Programs
 
-The link-time rewrite (D3.6) produces the tables these answer from.
+The link-time rewrite produces the tables these answer from.
 
 | Method | via `CgGL` | core | CrystalGUI | hosts | platform | harness |
 |---|---|---:|---:|---:|---:|---:|
