@@ -514,9 +514,8 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
 
         /**
          * Optional per-quad transform, baked on the CPU at {@link #submit()} time into
-         * {@code origin}/{@code right}/{@code up} (point + two edge vectors — see
-         * {@code plan/text-instancing.md} Decision 2 for why 3 vectors
-         * instead of a full {@code mat4} per instance). {@code null} (the default) submits
+         * {@code origin}/{@code right}/{@code up} (point + two edge vectors — three vectors
+         * instead of a full {@code mat4} per instance, which a quad does not need). {@code null} (the default) submits
          * the quad untransformed, in local/flat space.
          */
         public Quad pose(Matrix4f pose) {

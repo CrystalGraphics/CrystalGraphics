@@ -36,9 +36,7 @@ import java.util.logging.Logger;
  * otherwise mode/format-identical. Collapsing all pages of one family into one
  * array's layers turns the renderer's batch-break "which texture" dimension
  * from an unbounded per-page count into one fixed id per family, so a
- * multi-page HUD/paragraph's draw-call count stops scaling with page count.
- * See {@code plan/text-instancing.md}, "Atlas
- * texture array."</p>
+ * multi-page HUD/paragraph's draw-call count stops scaling with page count.</p>
  *
  * <h3>Format</h3>
  * <p>Bitmap atlases allocate their array as {@code R8}. Distance-field atlases

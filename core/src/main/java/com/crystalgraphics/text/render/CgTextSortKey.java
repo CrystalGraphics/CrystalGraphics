@@ -80,8 +80,7 @@ final class CgTextSortKey {
      *
      * <p>In practice this is constant within a texture id — one atlas is one config, one pxRange —
      * so it adds no batch granularity beyond {@code atlasId} today. Kept because promoting
-     * pxRange to a per-instance value is a live option; see
-     * {@code plan/text-instancing.md}.
+     * pxRange to a per-instance value is a live option.
      */
     private static final int PX_RANGE_BITS = 15;
     /** GL texture id. Real ids are small; {@link #MAX_TEXTURE_ID} is checked, not assumed. */
