@@ -97,7 +97,9 @@ public final class CgVfxRange {
 
     /** Every pool's range, by pool, and in the order made: the order their slots are numbered in. Render thread. */
     private static final Map<CgVfxParticlePool, CgVfxRange> RANGES = new IdentityHashMap<>();
-    private static final List<CgVfxRange> ALL = new ArrayList<>();
+    /** The real frame's ranges, and a rehearsal's hidden pools'; {@link #ALL} is whichever records now. */
+    private static final List<CgVfxRange> REAL = new ArrayList<>(), REHEARSED = new ArrayList<>();
+    private static List<CgVfxRange> ALL = REAL;
     private static CgRenderStage.Registration registration;
 
     private static CgGraphBuffer drawn, visible, slots, bases, objects, sorts, origins;
@@ -195,7 +197,7 @@ public final class CgVfxRange {
         CgVfxRange range = RANGES.get(pool);
         if (range == null) {
             RANGES.put(pool, range = new CgVfxRange(pool));
-            ALL.add(range);
+            (pool.hidden() ? REHEARSED : REAL).add(range);
             if (registration == null) {
                 registration = CgRenderStage.WORLD_OPAQUE.register(ORDER, CgVfxRange::recordAll);
                 CgGraphicsLifecycle.addListener(CONTEXT);
@@ -234,7 +236,9 @@ public final class CgVfxRange {
     /** Forgets every range and stops recording. Tests. */
     static void forgetAll() {
         RANGES.clear();
-        ALL.clear();
+        REAL.clear();
+        REHEARSED.clear();
+        ALL = REAL;
         RETIRED.clear();
         drawn = visible = slots = bases = objects = sorts = origins = null;
         anySorted = objectsAsked = false;
@@ -445,12 +449,24 @@ public final class CgVfxRange {
             }
         }
         if (ALL.isEmpty()) {
-            release(frame.recording());
+            if (ALL == REAL) release(frame.recording());
             return;
         }
         boolean any = false;
         for (int i = 0; i < ALL.size(); i++) any |= keyed(ALL.get(i).pool);
         record(frame.recording(), frame.host().view(), any ? frame.depthPyramid() : null);
+    }
+
+    /**
+     * Swaps the hidden pools' ranges in for the real ones, or back, beside {@link CgVfxParticlePool#rehearsing}; restore
+     * it in a {@code finally}. Off, the hidden pools' ranges that are left are forgotten. Render thread.
+     */
+    public static void rehearsing(boolean on) {
+        ALL = on ? REHEARSED : REAL;
+        if (on) return;
+        for (int i = REHEARSED.size() - 1; i >= 0; i--) {
+            if (REHEARSED.get(i).pool.isReleased()) RANGES.remove(REHEARSED.remove(i).pool);
+        }
     }
 
     /**

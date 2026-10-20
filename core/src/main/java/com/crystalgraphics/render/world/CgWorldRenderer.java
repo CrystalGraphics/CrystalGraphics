@@ -60,6 +60,7 @@ import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.render.graph.CgRehearsal;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Matrix4f;
@@ -1434,10 +1435,23 @@ public final class CgWorldRenderer {
     }
 
     private void record(CgStageFrame stage, int which) {
+        if (!CgRehearsal.active()) {
+            recordFiring(stage, which);
+            return;
+        }
+        // A rehearsal's firing records no labels, whose uploads are the real frame's; its draws were its own.
+        try {
+            recordFiring(stage, which);
+        } finally {
+            if (which == TRANSPARENT) clear();
+        }
+    }
+
+    private void recordFiring(CgStageFrame stage, int which) {
         CgHostView view = stage.host().view();
         beginFrame(view);
         if (count == 0) {
-            if (which == TRANSPARENT) text.record(stage, view);
+            if (which == TRANSPARENT && !CgRehearsal.active()) text.record(stage, view);
             return;
         }
         if (!irisWarned && CgIrisCompat.isShaderPackActive()) {
@@ -1516,7 +1530,7 @@ public final class CgWorldRenderer {
             boolean scene = which == TRANSPARENT && stage.resources().has(CgFrameKeys.SCENE);
             volumeFolds = scene && mergeEmission;
             // Before any glow: a label's text then hides the glows behind it from the emission, as from the colour.
-            if (which == TRANSPARENT) text.recordDepth(stage, view);
+            if (which == TRANSPARENT && !CgRehearsal.active()) text.recordDepth(stage, view);
             CgGraphTexture emission = which == TRANSPARENT && drawn > 0 ? mergedEmission(stage, recording) : null;
             mediaOut = which == TRANSPARENT && drawn > 0
                     ? media.record(recording, stage.constants(), view, toWorld, targetWidth, targetHeight) : null;
@@ -1540,7 +1554,7 @@ public final class CgWorldRenderer {
                 recordSubject(stage, recording, view, stage.resources().get(CgFrameKeys.SUBJECT_READ));
             }
             if (which == TRANSPARENT && overdraw && drawn > 0) recordOverdraw(stage, recording, view);
-            if (which == TRANSPARENT) text.record(stage, view);
+            if (which == TRANSPARENT && !CgRehearsal.active()) text.record(stage, view);
         }
     }
 

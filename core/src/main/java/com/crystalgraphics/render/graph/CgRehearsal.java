@@ -5,6 +5,10 @@ import com.crystalgraphics.render.CgWarmBudget;
 import java.lang.management.ClassLoadingMXBean;
 import java.lang.management.CompilationMXBean;
 import java.lang.management.ManagementFactory;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Warms the JIT on a move's frame-thread paths before its first cast, as PSO precaching warms pipelines: its
@@ -27,6 +31,11 @@ import java.lang.management.ManagementFactory;
  * <ul>
  *   <li>The act must record exactly what the cast will, with the definitions it will use: synthetic ones shape the
  *       JIT's inlining for the wrong types, and the first real cast deoptimises.</li>
+ *   <li>A pass may not resize or release a buffer ({@link CgRecording#resize}, {@link CgRecording#release}): its
+ *       recording never executes, so the copy and the release would never run and the handle would lose its bytes.
+ *       It throws, naming the buffer; size it before the move rehearses.
+ *       {@code -Dcrystalgraphics.rehearsal.listGrowth=true} lists each instead of throwing ({@link #grown()}), which
+ *       corrupts what it lists: a diagnostic run only.</li>
  *   <li>Render thread; one rehearsal's recording at a time.</li>
  * </ul>
  */
@@ -37,6 +46,12 @@ public final class CgRehearsal {
     public interface Act {
         void record(CgRecording recording);
     }
+
+    private static final boolean LIST_GROWTH = Boolean.getBoolean("crystalgraphics.rehearsal.listGrowth");
+    /** What passes resized or released, under {@link #LIST_GROWTH}: what to size ahead. */
+    private static final Set<String> GROWN = new LinkedHashSet<>();
+    /** A pass is running: its recording never executes. */
+    private static boolean active;
 
     private static final CompilationMXBean JIT = ManagementFactory.getCompilationMXBean();
     private static final ClassLoadingMXBean CLASSES = ManagementFactory.getClassLoadingMXBean();
@@ -100,13 +115,39 @@ public final class CgRehearsal {
     }
 
     private void pass() {
-        act.record(recording);
-        graph.add(recording.seal());
-        CgFrame frame = builder.build(graph);
-        builder.recycle(frame);
-        graph.clear();
-        recording.reset();
+        active = true;
+        try {
+            act.record(recording);
+            graph.add(recording.seal());
+            CgFrame frame = builder.build(graph);
+            builder.recycle(frame);
+        } finally {
+            active = false;
+            graph.clear();
+            recording.reset();
+        }
         passes++;
+    }
+
+    /** Whether a rehearsal's pass is running: what records now is built and never executed. Render thread. */
+    public static boolean active() {
+        return active;
+    }
+
+    /** What passes resized or released under {@code crystalgraphics.rehearsal.listGrowth}, in the order first seen. */
+    public static List<String> grown() {
+        return new ArrayList<>(GROWN);
+    }
+
+    /** A pass's resize or release of {@code buffer}: refused, or listed under {@link #LIST_GROWTH}. */
+    static void refuse(String what, CgGraphBuffer buffer) {
+        if (!active) return;
+        if (LIST_GROWTH) {
+            GROWN.add(what + " " + buffer.name());
+            return;
+        }
+        throw new IllegalStateException("a rehearsal " + what + " " + buffer.name()
+                + ": its recording never executes, so size it before the move rehearses");
     }
 
     private boolean settled() {

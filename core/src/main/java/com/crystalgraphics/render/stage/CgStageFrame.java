@@ -217,6 +217,16 @@ public final class CgStageFrame {
         remember(host.view());
     }
 
+    /** As {@link #begin} for a rehearsal's firing: the stage's history, kept for the real frames, is left alone. */
+    void beginRehearsal(CgHostFrame host) {
+        this.host = host;
+        recording.reset();
+        pyramidBuilt = false;
+        target = null;
+        viewProjection.set(host.view().projection()).mul(host.view().view());
+        historyValid = false;
+    }
+
     /** Compares this firing's view with last frame's of the same ordinal, then keeps it for the next. */
     private void remember(CgHostView view) {
         viewProjection.set(view.projection()).mul(view.view());
@@ -263,6 +273,18 @@ public final class CgStageFrame {
 
     /** The slot an execution saves, as an array once: varargs make one a call. */
     private static final CgGlSlot[] SCISSOR = {CgGlSlot.SCISSOR};
+
+    /** Builds what was recorded and drops it unexecuted: a rehearsal's firing. */
+    void discard() {
+        try {
+            graph.add(recording.seal());
+            builder.recycle(builder.build(graph));
+        } finally {
+            graph.clear();
+            recording.reset();
+            resources.clear();
+        }
+    }
 
     /** Builds and executes what was recorded, then resets for the next firing. */
     void execute() {

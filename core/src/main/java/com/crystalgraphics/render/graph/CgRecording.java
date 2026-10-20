@@ -603,6 +603,7 @@ public final class CgRecording {
      */
     public CgGraphBuffer resize(CgGraphBuffer buffer, CgBufferDesc desc) {
         requireOpen();
+        CgRehearsal.refuse("resizes", buffer);
         boolean history = buffer.kind() == CgGraphBuffer.Kind.HISTORY;
         if (!history && buffer.kind() != CgGraphBuffer.Kind.PERSISTENT || buffer.isPreviousVersion()) {
             throw new IllegalArgumentException("only a persistent or history buffer is resized: " + buffer);
@@ -619,6 +620,7 @@ public final class CgRecording {
     /** Frees a persistent or history buffer's storage once everything before it used it. */
     public void release(CgGraphBuffer buffer) {
         requireOpen();
+        CgRehearsal.refuse("releases", buffer);
         if (buffer.kind() != CgGraphBuffer.Kind.PERSISTENT && buffer.kind() != CgGraphBuffer.Kind.HISTORY
                 || buffer.isPreviousVersion()) {
             throw new IllegalArgumentException("only a persistent or history buffer is released: " + buffer);

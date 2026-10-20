@@ -52,6 +52,7 @@ import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Every particle of every playing emitter instance whose definition has one {@link CgVfxShape}: one simulation on the
@@ -133,7 +134,12 @@ public final class CgVfxParticlePool {
 
     /** Every pool, by owner and shape key, and in the order made; and those released since the last recording. */
     private static final Map<Object, Map<String, CgVfxParticlePool>> POOLS = new IdentityHashMap<>();
-    private static final List<CgVfxParticlePool> ALL = new ArrayList<>(), RELEASED = new ArrayList<>();
+    private static final List<CgVfxParticlePool> RELEASED = new ArrayList<>();
+    /** The real frame's pools, and a rehearsal's hidden owners'; {@link #ALL} is whichever records now. */
+    private static final List<CgVfxParticlePool> REAL = new ArrayList<>(), REHEARSED = new ArrayList<>();
+    private static List<CgVfxParticlePool> ALL = REAL;
+    /** Owners whose pools only a rehearsal records ({@link #hide}), by identity. */
+    private static final Set<Object> HIDDEN = Collections.newSetFromMap(new IdentityHashMap<>());
     private static CgRenderStage.Registration recording;
     private static final List<CgVfxEventListener> LISTENERS = new ArrayList<>();
     /** The pools stepping in this recording, and the event streams between them: shared, as one step crosses pools. */
@@ -310,7 +316,8 @@ public final class CgVfxParticlePool {
         CgVfxParticlePool pool = owned.get(shape.key());
         if (pool == null) {
             owned.put(shape.key(), pool = new CgVfxParticlePool(shape));
-            ALL.add(pool);
+            pool.hidden = HIDDEN.contains(owner);
+            (pool.hidden ? REHEARSED : REAL).add(pool);
             if (recording == null) {
                 recording = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, CgVfxParticlePool::recordStage);
                 CgGraphicsLifecycle.addListener(CONTEXT);
@@ -364,22 +371,60 @@ public final class CgVfxParticlePool {
         LISTENERS.remove(listener);
     }
 
-    /** Drops {@code owner}'s pools; their GPU storage is released at the next recording. Render thread. */
+    /**
+     * Drops {@code owner}'s pools; their GPU storage is released at the next recording. A hidden owner's had none: only
+     * rehearsals, which never execute, recorded them. Render thread.
+     */
     public static void release(Object owner) {
+        HIDDEN.remove(owner);
         Map<String, CgVfxParticlePool> owned = POOLS.remove(owner);
         if (owned == null) return;
         for (CgVfxParticlePool pool : owned.values()) {
-            ALL.remove(pool);
+            (pool.hidden ? REHEARSED : REAL).remove(pool);
             pool.released = true;
-            RELEASED.add(pool);
+            if (!pool.hidden) RELEASED.add(pool);
         }
     }
+
+    /**
+     * Makes {@code owner}'s pools a rehearsal's: real frames never record them, and while {@link #rehearsing} they are
+     * the only pools ranged and drawn. Before its first pool. Render thread.
+     *
+     * <pre>{@code
+     * CgVfxParticlePool.hide(hiddenSteps);
+     * CgVfxParticlePool.rehearsing(true);
+     * try { ... CgVfxParticlePool.recordRehearsed(recording); ... } finally { CgVfxParticlePool.rehearsing(false); }
+     * }</pre>
+     */
+    public static void hide(Object owner) {
+        if (POOLS.containsKey(owner)) throw new IllegalStateException(owner + " already has pools: hide it before its first");
+        HIDDEN.add(owner);
+    }
+
+    /** Swaps the hidden owners' pools in for the real ones, or back; restore it in a {@code finally}. Render thread. */
+    public static void rehearsing(boolean on) {
+        ALL = on ? REHEARSED : REAL;
+    }
+
+    /** Records the hidden owners' queued steps into {@code recording}: a rehearsal's pass. Render thread. */
+    public static void recordRehearsed(CgRecording recording) {
+        if (ALL != REHEARSED) throw new IllegalStateException("record the hidden pools while rehearsing");
+        recordPools(recording, REHEARSED);
+    }
+
+    /** Whether only a rehearsal records it. */
+    public boolean hidden() {
+        return hidden;
+    }
+
+    private boolean hidden;
 
     /** A dying context frees every pool's storage (CgExecutor.destroyAll): each makes it again, empty, at its next step. */
     private static final CgLifecycleListener CONTEXT = new CgLifecycleListener() {
         @Override
         public void onDestroy() {
-            for (int i = 0; i < ALL.size(); i++) ALL.get(i).forgetStorage();
+            for (int i = 0; i < REAL.size(); i++) REAL.get(i).forgetStorage();
+            for (int i = 0; i < REHEARSED.size(); i++) REHEARSED.get(i).forgetStorage();
             RELEASED.clear();
             unfed = reportStream = reportCounts = null;
             Arrays.fill(SPAWN_STREAMS, null);
@@ -403,7 +448,10 @@ public final class CgVfxParticlePool {
     /** Forgets every pool and stops recording. Tests. */
     static void forgetAll() {
         POOLS.clear();
-        ALL.clear();
+        REAL.clear();
+        REHEARSED.clear();
+        HIDDEN.clear();
+        ALL = REAL;
         RELEASED.clear();
         if (recording != null) {
             recording.close();

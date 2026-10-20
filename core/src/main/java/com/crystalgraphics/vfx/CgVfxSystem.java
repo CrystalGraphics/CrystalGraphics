@@ -12,6 +12,8 @@ import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.frame.CgWorld;
+import com.crystalgraphics.render.graph.CgRehearsal;
+import com.crystalgraphics.frame.CgFrameBoundary;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgSortLayer;
@@ -43,6 +45,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Quaternionf;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -51,6 +54,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 
 /**
@@ -828,8 +832,85 @@ public final class CgVfxSystem {
      */
     public boolean warmed() {
         pollWarming(CgWorldRenderer.get());
-        return warming.isEmpty() && gpuWarming.isEmpty();
+        if (rehearsalFailure != null) throw new IllegalStateException("the rehearsal failed", rehearsalFailure);
+        if (rehearsal != null && rehearsal.done()) endRehearsal();
+        return warming.isEmpty() && gpuWarming.isEmpty() && rehearsal == null;
     }
+
+    /**
+     * Rehearses a move before its first cast, as {@link #prepare} warms its programs: {@code cast} plays the move into a
+     * hidden system of its own, which is updated, submitted, its pools stepped and the world stages recorded and built
+     * each pass, never executed, until the JIT has settled ({@link CgRehearsal}). It runs at the frame boundary, a few
+     * passes a frame under {@link CgWarmBudget}, once the programs {@link #prepare}d are built; {@link #warmed} answers
+     * true when it is over.
+     *
+     * <pre>{@code
+     * vfx.prepare(BEAM, BLAST);
+     * vfx.rehearse(hidden -> hidden.play(new CgEnergyWave(BEAM, x, y, z)));   // again each time its effects end
+     * if (!vfx.warmed()) return;                                              // each frame, then cast
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code cast} plays what the real cast will, with its definitions: the JIT inlines for the types it sees.</li>
+     *   <li>A pass may not grow a buffer: size the move's pools and tables first. One that does fails the rehearsal,
+     *       naming the buffer, and {@link #warmed} throws it.</li>
+     *   <li>One rehearsal at a time a system. Render thread.</li>
+     * </ul>
+     */
+    public CgRehearsal rehearse(Consumer<CgVfxSystem> cast) {
+        if (rehearsal != null) throw new IllegalStateException("a rehearsal is already running");
+        CgVfxSystem hidden = new CgVfxSystem();
+        CgVfxParticlePool.hide(hidden.gpuSteps);
+        double[] clock = {0.0};
+        rehearsal = CgRehearsal.of(recording -> {
+            CgVfxParticlePool.rehearsing(true);
+            CgVfxRange.rehearsing(true);
+            try {
+                if (hidden.effects.isEmpty()) cast.accept(hidden);
+                hidden.update(clock[0] += REHEARSAL_STEP);
+                hidden.submit(CgWorldRenderer.get());
+                CgVfxParticlePool.recordRehearsed(recording);
+                CgRenderStage.WORLD_OPAQUE.rehearse();
+                CgRenderStage.WORLD_TRANSPARENT.rehearse();
+            } finally {
+                CgVfxParticlePool.rehearsing(false);
+                CgVfxRange.rehearsing(false);
+            }
+        });
+        rehearsed = hidden;
+        rehearsalStep = CgFrameBoundary.add(CgFrameBoundary.Phase.DRAIN, "crystalgraphics:vfx-rehearsal", this::stepRehearsal);
+        return rehearsal;
+    }
+
+    /** The boundary's step: once the programs are built, a frame's passes. */
+    private void stepRehearsal() {
+        if (rehearsal == null || rehearsal.done() || rehearsalFailure != null) return;
+        if (!warming.isEmpty() || !gpuWarming.isEmpty()) return;
+        try {
+            rehearsal.step();
+        } catch (RuntimeException e) {
+            rehearsalFailure = e;
+        }
+    }
+
+    private void endRehearsal() {
+        rehearsalStep.close();
+        rehearsed.delete();
+        rehearsal = null;
+        rehearsed = null;
+        rehearsalStep = null;
+    }
+
+    /** A rehearsal's clock step: a frame at 60 a second. */
+    private static final double REHEARSAL_STEP = 1.0 / 60.0;
+    @Nullable
+    private CgRehearsal rehearsal;
+    @Nullable
+    private CgVfxSystem rehearsed;
+    @Nullable
+    private CgFrameBoundary.Function rehearsalStep;
+    @Nullable
+    private RuntimeException rehearsalFailure;
 
     /** Stops every effect: none emits again, and what is in flight plays out before each dies. */
     public void stop() {
@@ -949,6 +1030,7 @@ public final class CgVfxSystem {
 
     /** Releases its meshes and frees the path texture; materials belong to the material registry. */
     public void delete() {
+        if (rehearsal != null) endRehearsal();
         for (int i = 0; i < effects.size(); i++) effects.get(i).leaveGroup();
         effects.clear();
         simulations.clear();

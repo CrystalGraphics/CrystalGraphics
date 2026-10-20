@@ -8,6 +8,7 @@ import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.render.graph.CgRehearsal;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -243,19 +244,45 @@ public final class CgRenderStage {
         }
     }
 
+    /**
+     * Records every renderer into the stage's frame under the host's latest frame and builds it without executing: a
+     * {@link CgRehearsal}'s pass, at the frame boundary, after the frame's last firing. Once-per-frame renderers are
+     * skipped: they ran this frame, and their state is the real frame's. Render thread.
+     */
+    public void rehearse() {
+        if (renderers.isEmpty() || !CgGraphicsLifecycle.isInitialized()) return;
+        if (!CgRehearsal.active()) throw new IllegalStateException(path + " rehearses only inside a rehearsal's pass");
+        firing++;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, REHEARSE)) {
+            frame.beginRehearsal(host);
+            record(CgFrameRing.frame(), true);
+            frame.discard();
+        } finally {
+            firing--;
+        }
+    }
+
+    private static final int REHEARSE = CgTrace.name("stage.rehearse");
+
     /** One firing's work once the engine runs: the renderers record into the stage's frame, which executes. */
     void recordAndExecute() {
         frame.begin(host);
-        record(CgFrameRing.frame());
+        record(CgFrameRing.frame(), false);
         frame.execute();
     }
 
     /** Lets every renderer due in host frame {@code hostFrame} record into the stage's frame, in order. */
     void record(long hostFrame) {
+        record(hostFrame, false);
+    }
+
+    /** As {@link #record(long)}; a rehearsal's skips the once-per-frame renderers. */
+    void record(long hostFrame, boolean rehearsal) {
         List<Entry> due = renderers;
         for (int i = 0; i < due.size(); i++) {
             Entry entry = due.get(i);
             if (entry.oncePerFrame) {
+                if (rehearsal) continue;
                 if (entry.lastFrame == hostFrame) continue;
                 entry.lastFrame = hostFrame;
             }
