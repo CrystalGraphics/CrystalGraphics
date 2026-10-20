@@ -255,7 +255,8 @@ modules:
   - { id: kill_volume, groups: [particle_update], order: after_solve, unreal: { niagara: KillParticlesInVolume, cascade: [KillBox, KillHeight] }, inputs: [
       { name: shape, type: enum, values: [sphere, box, plane] }, { name: inside, type: bool }, { name: offset, type: vec3, quantity: offset },
       { name: sphere_radius, type: float, quantity: length }, { name: box_size, type: vec3, quantity: length },
-      { name: plane_normal, type: vec3, quantity: direction }, { name: world_space, type: bool } ] }
+      { name: plane_normal, type: vec3, quantity: direction }, { name: world_space, type: bool },
+      { name: axis_aligned, type: bool, default: true } ] }
 
   # beams and ribbons
   - { id: beam_source, groups: [particle_spawn], unreal: { cascade: [BeamSource] }, inputs: &beam_end [
