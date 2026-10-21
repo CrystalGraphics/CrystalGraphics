@@ -36,8 +36,9 @@ import java.util.function.Consumer;
  *   <li>Positions, normals, glTF's {@code COLOR_0}, {@code TEXCOORD_0} and {@code TEXCOORD_1} fill what the format has;
  *       colour is white and the second UV the first where the file has none. A format with other attributes needs a
  *       reader of its own.</li>
- *   <li>glTF is read in mesh space: node transforms are not applied. Strips, fans and loops become lists; a file
- *       mixing triangles with lines or points, a skinned primitive, or one with external buffers throws.</li>
+ *   <li>glTF is read in mesh space: node transforms are not applied, and a skinned primitive in its bind pose, its
+ *       joints and weights unread. Strips, fans and loops become lists; a file mixing triangles with lines or points, or
+ *       one with external buffers, throws.</li>
  * </ul>
  */
 public final class CgMeshLoader {

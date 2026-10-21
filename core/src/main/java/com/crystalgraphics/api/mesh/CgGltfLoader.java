@@ -41,9 +41,6 @@ final class CgGltfLoader {
         List<String> materials = new ArrayList<>();
         for (MeshPrimitiveModel p : primitives) {
             Map<String, AccessorModel> attributes = p.getAttributes();
-            if (attributes.containsKey("JOINTS_0") || attributes.containsKey("WEIGHTS_0")) {
-                throw new UnsupportedOperationException("skinned primitives are not supported");
-            }
             if (!attributes.containsKey("POSITION")) throw new IOException("a primitive has no POSITION");
             CgMeshTopology t = topologyOf(p.getMode());
             if (topology != null && t != topology) {
