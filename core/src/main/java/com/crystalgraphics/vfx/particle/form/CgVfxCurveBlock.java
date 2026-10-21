@@ -23,8 +23,8 @@ import com.crystalgraphics.asset.curve.CgRichCurve;
  */
 public final class CgVfxCurveBlock {
 
-    /** Texels a slot. */
-    public static final int TEXELS = 256;
+    /** Texels a slot: Unreal's curve lookup table's width ({@code CurveLUTDefaultWidth}). */
+    public static final int TEXELS = 128;
 
     private float[] data = new float[0];
     private float[] start = new float[0], span = new float[0];

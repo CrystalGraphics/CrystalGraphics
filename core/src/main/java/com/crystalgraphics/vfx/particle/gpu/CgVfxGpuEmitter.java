@@ -7,6 +7,8 @@ import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import javax.annotation.Nullable;
 import java.util.List;
 
+import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
+
 /**
  * An emitter definition as a GPU pool reads it: its module stack, its renderer and its spawn numbers.
  * {@code CgVfxEmitter} implements it; its {@code name()}, {@code renderer()} and {@code modules()} already answer three
@@ -108,6 +110,18 @@ public interface CgVfxGpuEmitter {
      * }</pre>
      */
     default List<CgVfxUserBinding> userBindings() {
+        return List.of();
+    }
+
+    /**
+     * Its module inputs given in a form other than a constant ({@code core.md} § Values): each built per lane in the
+     * Step kernel from the parameter row's form area. Which input takes which form class is part of the shape.
+     *
+     * <pre>{@code
+     * public List<CgVfxModuleForm> moduleForms() { return List.of(new CgVfxModuleForm(1, "drag", value, compiled)); }
+     * }</pre>
+     */
+    default List<CgVfxModuleForm> moduleForms() {
         return List.of();
     }
 

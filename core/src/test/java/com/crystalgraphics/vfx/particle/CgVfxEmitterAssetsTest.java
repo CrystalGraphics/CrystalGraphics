@@ -5,6 +5,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -86,6 +87,28 @@ public class CgVfxEmitterAssetsTest {
             same(e, CgVfxEmitterAssets.compile(e.name(), CgVfxEmitterAssets.write(back), e));
             CgVfxEmitterAssets.compile(e.name(), asset.resolved(), null);
         }
+    }
+
+    /** A module input in a form, written back as its file wrote it and compiled again to the same words. */
+    @Test
+    public void formsRoundTrip() {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 64));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0))));
+        Object range = Map.of("range", List.of(List.of(-1.0, 2.0, 0.5), List.of(3.0, -2.0, 4.0)), "per_channel", true);
+        Object curve = Map.of("curve", Map.of("keys", List.of(List.of(0.0, 0.5, "linear"), List.of(1.0, 2.0, "linear"))), "by", "age");
+        tree.put("particle_update", List.of(
+                Map.of("id", "push", "module", "crystalgraphics:acceleration", "inputs", Map.of("acceleration", range)),
+                Map.of("id", "drag", "module", "crystalgraphics:drag", "inputs", Map.of("drag", curve))));
+        CgVfxEmitter e = CgVfxEmitterAssets.compile("forms", tree, null);
+        assertEquals(2, e.moduleForms().size());
+        Map<String, Object> written = CgVfxEmitterAssets.write(e);
+        assertEquals(range, ((Map<?, ?>) ((Map<?, ?>) ((List<?>) written.get("particle_update")).get(0)).get("inputs")).get("acceleration"));
+        CgVfxEmitter back = CgVfxEmitterAssets.compile("forms", written, null);
+        same(e, back);
+        assertEquals(e.moduleForms().toString().replaceAll("@[0-9a-f]+", ""), back.moduleForms().toString().replaceAll("@[0-9a-f]+", ""));
     }
 
     private static void same(CgVfxEmitter e, CgVfxEmitter back) {

@@ -1,5 +1,7 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
+import com.crystalgraphics.vfx.particle.form.CgVfxCurveBlock;
+import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
@@ -1829,11 +1831,30 @@ public final class CgVfxParticlePool {
         for (int w = starts; w < starts + 8; w++) if ((w & 3) != 3) start = Math.max(start, Math.abs(curveScratch[w]));
         rowSizeMax[index] = most * start;
         if (shape.events() > 0) writeEvents(emitter, at + shape.eventsAt() * 4);
+        for (int f = 0; f < shape.forms(); f++) writeForm(f, at + shape.formAt(f) * 4);
         // Its draws read the clip's rows from its first step's upload on.
         if (emitter.clip() != null) CgVfxClipAtlas.of(emitter.clip());
         rows.put(emitter, new int[]{index, 1});
         paramsChanged = true;
         return index;
+    }
+
+    /** Form {@code f}'s vec4s from word {@code at}: a range's or a pick's other end; a curve's domain, then its texels. */
+    private void writeForm(int f, int at) {
+        CgVfxFormInput c = shape.form(f).compiled();
+        if (c instanceof CgVfxFormInput.Range r) {
+            for (int k = 0; k < r.components(); k++) params[at + k] = Float.floatToRawIntBits(r.max()[k]);
+        } else if (c instanceof CgVfxFormInput.Pick pick) {
+            for (int k = 0; k < pick.components(); k++) params[at + k] = Float.floatToRawIntBits(pick.b()[k]);
+        } else if (c instanceof CgVfxFormInput.Curve curve) {
+            CgVfxCurveBlock block = curve.block();
+            params[at] = Float.floatToRawIntBits(block.start(curve.slot()));
+            params[at + 1] = Float.floatToRawIntBits(block.span(curve.slot()));
+            params[at + 2] = params[at + 3] = 0;
+            float[] texels = block.texels();
+            int from = curve.slot() * CgVfxCurveBlock.TEXELS * 4;
+            for (int w = 0; w < CgVfxCurveBlock.TEXELS * 4; w++) params[at + 4 + w] = Float.floatToRawIntBits(texels[from + w]);
+        }
     }
 
     /** {@code emitter}'s event vec4s from word {@code at}, laid out as {@link CgVfxShape#EVENT_VECTORS} says. */

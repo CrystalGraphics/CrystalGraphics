@@ -5,6 +5,7 @@ import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
+import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
@@ -124,6 +125,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     private final int ownEvents;
     /** Its inputs bound to user parameters. */
     final List<CgVfxUserBinding> userBindings;
+    /** Its module inputs given in a form other than a constant: an emitter file's. */
+    final List<CgVfxModuleForm> forms;
     @Nullable
     private final CgVfxNodeClip clip;
     private final float playRate;
@@ -186,6 +189,10 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         playRate = b.playRate;
         ownEvents = b.events.size();
         userBindings = List.copyOf(b.userBindings);
+        forms = List.copyOf(b.forms);
+        for (CgVfxModuleForm f : forms) {
+            if (f.module() >= modules.size()) throw new IllegalStateException(name + " gives module " + f.module() + " a form; it has " + modules.size());
+        }
         List<CgVfxEvent> all = new ArrayList<>(b.events);
         if (clip != null) all.addAll(clipEvents(clip, playRate));
         events = Collections.unmodifiableList(all);
@@ -255,6 +262,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
      */
     public CgVfxEmitter scaled(float scale) {
         if (scale == 1f) return this;
+        if (!forms.isEmpty()) throw new IllegalStateException(name + "'s module forms do not scale yet");
         return scaledCopies.computeIfAbsent(scale, s -> {
             Builder b = toBuilder();
             b.spawn = new CgVfxSpawnShape.Builder(spawn.scaled(s, name));
@@ -346,6 +354,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     @Override
     public List<CgVfxUserBinding> userBindings() {
         return userBindings;
+    }
+
+    @Override
+    public List<CgVfxModuleForm> moduleForms() {
+        return forms;
     }
 
     @Override
@@ -571,6 +584,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private final List<CgVfxModule> modules = new ArrayList<>();
         private final List<CgVfxEvent> events = new ArrayList<>();
         private final List<CgVfxUserBinding> userBindings = new ArrayList<>();
+        private final List<CgVfxModuleForm> forms = new ArrayList<>();
         private CgVfxNodeClip clip;
         private float playRate = 1f;
         private CgKeyframes sizeOverLife = CgKeyframes.constant(1f);
@@ -612,6 +626,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             modules.addAll(e.modules);
             events.addAll(e.events.subList(0, e.ownEvents));
             userBindings.addAll(e.userBindings);
+            forms.addAll(e.forms);
             clip = e.clip;
             playRate = e.playRate;
             sizeOverLife = e.sizeOverLife;
@@ -1081,6 +1096,13 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
         public Builder clearModules() {
             modules.clear();
+            forms.clear();
+            return this;
+        }
+
+        /** One module input given in a form: an emitter file's ({@link CgVfxEmitterAssets}). */
+        Builder form(CgVfxModuleForm form) {
+            forms.add(form);
             return this;
         }
 

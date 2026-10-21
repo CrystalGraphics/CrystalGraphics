@@ -1,5 +1,8 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
+import com.crystalgraphics.vfx.particle.form.CgVfxCurveBlock;
+import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
+import java.util.Locale;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
 import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
@@ -166,6 +169,7 @@ public final class CgVfxEmitterCompiler {
         }
         s.append("}\n\n");
         s.append("const int STEP_PARAM_ROW = ").append(shape.paramRowVectors()).append(";\n");
+        s.append("const int STEP_CURVE_TEXELS = ").append(CgVfxCurveBlock.TEXELS).append(";\n");
         s.append("const int STEP_INSTANCE_ROW = ").append(shape.instanceRowVectors()).append(";\n");
         s.append("const int STEP_SPAWN_ROW = ").append(CgVfxParticlePool.SPAWN_ROW_WORDS / 4).append(";\n");
         if (shape.events() > 0) {
@@ -376,6 +380,15 @@ public final class CgVfxEmitterCompiler {
                     vec3 t = vec3(1.0 + sg * n.x * n.x * a, sg * b, -sg * n.x);
                     vec3 u = vec3(b, sg + n.y * n.y * a, -n.y);
                     return t * v.x + n * v.y + u * v.z;
+                }
+
+                // A form's curve (CgVfxCurveBlock) from the vec4 at `at`: its domain's start and span, then its texels,
+                // sampled linearly at t, clamped at the ends.
+                vec4 step_curve(int at, float t) {
+                    vec4 d = step_param(at);
+                    float u = d.y > 0.0 ? clamp((t - d.x) / d.y, 0.0, 1.0) * float(STEP_CURVE_TEXELS - 1) : 0.0;
+                    int i = min(STEP_CURVE_TEXELS - 2, int(u));
+                    return mix(step_param(at + 1 + i), step_param(at + 2 + i), u - float(i));
                 }
 
                 // CgVfxEmitter.front: how far out spawn k's swept front is, from the row's fourth vector; 0 for none.
@@ -753,6 +766,8 @@ public final class CgVfxEmitterCompiler {
                     }
                     uint paramRow = INSTANCES(inst).x;
                     int row = int(paramRow) * STEP_PARAM_ROW;
+                    // What a form's rolls key on, with its module and input: the instance's seed.
+                    uint formSeed = INSTANCES(inst).y;
                     FxStep s;
                     // A slot held still while another effect prewarms steps by 0: unmoved, unaged. A newborn steps for
                     // the part of the step after its birth.
@@ -870,8 +885,22 @@ public final class CgVfxEmitterCompiler {
     private static void call(StringBuilder s, CgVfxShape shape, int i) {
         s.append("    fx_").append(shape.kind(i)).append(shape.afterSolve(i) ? "(p, s" : "(p, f, s");
         for (int j = 0, at = shape.paramAt(i); j < shape.paramVectors(i); j++) {
-            if (shape.userBound(at + j)) s.append(", step_vector(row, inst, ").append(at + j).append(')');
-            else s.append(", step_param(row + ").append(at + j).append(')');
+            int v = at + j;
+            String base = shape.userBound(v) ? "step_vector(row, inst, " + v + ")" : "step_param(row + " + v + ")";
+            boolean formed = false;
+            for (int l = 0; l < 4; l++) formed |= shape.formAtWord(v * 4 + l) != null;
+            if (!formed) {
+                s.append(", ").append(base);
+                continue;
+            }
+            // A vector a form fills: each lane its form's expression, or its word.
+            s.append(", vec4(");
+            for (int l = 0; l < 4; l++) {
+                if (l > 0) s.append(", ");
+                int[] fk = shape.formAtWord(v * 4 + l);
+                s.append(fk == null ? base + "." + XYZW.charAt(l) : formLane(shape, fk[0], fk[1], base + "." + XYZW.charAt(l)));
+            }
+            s.append(')');
         }
         CgVfxLane[] lanes = shape.lanes(i);
         for (int l = 0, at = shape.lanesAt(i); l < lanes.length; l++) {
@@ -894,6 +923,47 @@ public final class CgVfxEmitterCompiler {
         }
         for (int t = 0; t < shape.textureCount(i); t++) s.append(", ").append(texture(i, t));
         s.append(");\n");
+    }
+
+    private static final String XYZW = "xyzw";
+
+    /**
+     * Component {@code k} of form {@code f}: its expression in the kernel, the Java evaluation's twin
+     * ({@code CgVfxFormInput.channel}). {@code first} is its word in the module's own vec4s: a range's or a pick's
+     * first end.
+     */
+    private static String formLane(CgVfxShape shape, int f, int k, String first) {
+        CgVfxFormInput c = shape.form(f).compiled();
+        String own = "step_param(row + " + shape.formAt(f) + ")." + XYZW.charAt(k);
+        if (c instanceof CgVfxFormInput.Range r) {
+            return "mix(" + first + ", " + own + ", fx_rand(formSeed ^ " + key(r.key()) + ", p.id, " + r.rollOf(k) + "u))";
+        }
+        if (c instanceof CgVfxFormInput.Pick p) {
+            return "(fx_rand(formSeed ^ " + key(p.key()) + ", p.id, 0u) < 0.5 ? " + first + " : " + own + ")";
+        }
+        if (c instanceof CgVfxFormInput.Curve curve) {
+            String t = switch (curve.by()) {
+                case AGE -> "(p.age / max(p.life, 1e-6))";
+                case PARTICLES_AGE -> "p.age";
+                case SPEED -> "length(p.velocity)";
+                case ID -> "float(p.id)";
+                case RANDOM -> "fx_rand(formSeed ^ " + key(curve.key()) + ", p.id, 31u)";
+                default -> throw new IllegalStateException("a curve by " + curve.by());
+            };
+            return "step_curve(row + " + shape.formAt(f) + ", " + t + ")." + XYZW.charAt(k);
+        }
+        CgVfxFormInput.Binding b = (CgVfxFormInput.Binding) c;
+        return "(p.age * " + glsl(b.scale()) + ")";
+    }
+
+    /** A roll's key as GLSL: its int's bits, unsigned. */
+    private static String key(int key) {
+        return "0x" + Integer.toHexString(key) + "u";
+    }
+
+    private static String glsl(float v) {
+        String s = Float.toString(v);
+        return s.contains("E") ? String.format(Locale.ROOT, "%.9e", v) : s;
     }
 
     /** Module {@code i}'s texture {@code t}'s sampler property: what the pool binds it as. */

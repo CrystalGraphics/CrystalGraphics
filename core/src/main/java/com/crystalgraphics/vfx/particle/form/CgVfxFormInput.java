@@ -116,7 +116,7 @@ public sealed interface CgVfxFormInput {
         }
 
         /** Which roll channel {@code c} takes: its own per channel, else the first; a locked axis its source's. */
-        private int rollOf(int c) {
+        public int rollOf(int c) {
             if (!perChannel) return 0;
             if (locked != null) {
                 if (locked.equals("xyz") && c > 0) return 0;

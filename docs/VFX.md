@@ -2332,6 +2332,7 @@ Harness gates (`./gradlew :gl-debug-harness:runHarness --args="--mode=<gate>"`, 
 | `vfx-inputs` | vector fields, heightfields, the depth pyramid |
 | `vfx-world` | the voxel window, its distance field and per-particle light |
 | `vfx-range` | drawing by slot, and size over speed |
+| `vfx-forms` | module inputs in forms: each form's lanes on the GPU against its Java evaluation |
 
 Each must pass at every forced tier (`-Dcrystalgraphics.compute.tier=G43|G40|G33`) and on `--device=vulkan`. Scenes to
 look at: `vfx-spheres` (the waves' lanes, `crystalgraphics.harness.vfx.moments` for a contact sheet of every moment),

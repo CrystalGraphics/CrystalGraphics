@@ -1,14 +1,19 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.object.CgPropertyMeta;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxModuleTypes;
+import com.crystalgraphics.vfx.particle.form.CgVfxCurveBlock;
+import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
+import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxModuleWords;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 
@@ -83,6 +88,11 @@ public final class CgVfxShape {
     private final CgVfxUserBinding[] userBindings;
     private final int[] userWords;
     private final int userAt;
+    /** Its module forms and, per form, the row word each component replaces and where its own vec4s start. */
+    private final CgVfxModuleForm[] forms;
+    private final int[][] formWords;
+    private final int[] formAt;
+    private final int formsAt, formVectors;
     private final CgVfxEvent.Trigger[] triggers;
     private final boolean[] eventSpawns, eventReports, eventNodes;
     private final int eventsAt, tier;
@@ -185,6 +195,30 @@ public final class CgVfxShape {
         readsClips = anyNodes;
         eventsAt = param;
         if (triggers.length > 0) param += EVENT_VECTORS;
+        // The form area: a range's or a pick's other end, a curve's domain and texels.
+        List<CgVfxModuleForm> given = emitter.moduleForms();
+        forms = given.toArray(new CgVfxModuleForm[0]);
+        formWords = new int[forms.length][];
+        formAt = new int[forms.length];
+        formsAt = param;
+        for (int f = 0; f < forms.length; f++) {
+            CgVfxModuleForm form = forms[f];
+            if (form.module() >= n) throw new IllegalArgumentException(emitter.name() + " gives module " + form.module() + " a form; it lacks it");
+            CgVfxFormInput c = form.compiled();
+            CgVfxModuleWords words = CgVfxModuleTypes.of(modules.get(form.module())).words();
+            formWords[f] = new int[c.components()];
+            for (int k = 0; k < c.components(); k++) {
+                try {
+                    formWords[f][k] = paramAt[form.module()] * 4 + words.lane(form.input(), k);
+                } catch (IllegalArgumentException e) {
+                    throw new IllegalArgumentException(emitter.name() + "'s module " + form.module() + ": " + e.getMessage(), e);
+                }
+            }
+            formAt[f] = param;
+            param += formVectors(emitter.name(), form);
+            key.append(f == 0 ? "|form:" : ",").append(form.module()).append('.').append(form.input()).append('=').append(formKey(c));
+        }
+        formVectors = param - formsAt;
         paramRow = param;
         List<CgVfxUserBinding> bound = emitter.userBindings();
         if (bound.size() > MAX_USER_BINDINGS) {
@@ -243,6 +277,40 @@ public final class CgVfxShape {
         floors = floor;
         kernelKey = key.toString();
         this.key = kernelKey + identity;
+    }
+
+    /** The vec4s form {@code form} takes in the form area; throws for a form the kernel does not build yet, by name. */
+    private static int formVectors(String name, CgVfxModuleForm form) {
+        CgVfxFormInput c = form.compiled();
+        String what = name + "'s module " + form.module() + " input " + form.input();
+        if (c.components() > 4) throw new IllegalArgumentException(what + " has " + c.components() + " components");
+        if (c instanceof CgVfxFormInput.Range r) {
+            if (r.rolls() != null && r.rolls() != CgPropertyMeta.Rolls.PARTICLE) {
+                throw new IllegalArgumentException(what + ": a range rolled per " + r.rolls() + " is not built yet; per particle alone");
+            }
+            return 1;
+        }
+        if (c instanceof CgVfxFormInput.Pick p) {
+            if (p.rolls() != null && p.rolls() != CgPropertyMeta.Rolls.PARTICLE) {
+                throw new IllegalArgumentException(what + ": a pick rolled per " + p.rolls() + " is not built yet; per particle alone");
+            }
+            return 1;
+        }
+        if (c instanceof CgVfxFormInput.Curve curve) {
+            if (curve.by() == CgVfxFormInput.Lookup.LOOP || curve.by() == CgVfxFormInput.Lookup.LENGTH) {
+                throw new IllegalArgumentException(what + ": a curve by " + curve.by() + " is not built yet in the Step");
+            }
+            return 1 + CgVfxCurveBlock.TEXELS;
+        }
+        if (c instanceof CgVfxFormInput.Binding b && b.path().equals("particles.age") && b.inLo() == null) return 0;
+        throw new IllegalArgumentException(what + ": the " + c.form().specName() + " form is not built in the Step yet");
+    }
+
+    /** A form's part of the key: what decides its kernel code. */
+    private static String formKey(CgVfxFormInput c) {
+        if (c instanceof CgVfxFormInput.Range r) return "RANGE" + (r.perChannel() ? ":" + (r.locked() == null ? "c" : r.locked()) : "");
+        if (c instanceof CgVfxFormInput.Curve curve) return "CURVE:" + curve.by();
+        return c.form().name();
     }
 
     private static int textureId(CgTexture texture) {
@@ -511,6 +579,34 @@ public final class CgVfxShape {
     }
 
     /** A parameter row's vec4s: the spawn numbers, then each module's in stack order, then its events' ages. */
+    /** How many module forms. */
+    public int forms() {
+        return forms.length;
+    }
+
+    /** Form {@code f}. */
+    public CgVfxModuleForm form(int f) {
+        return forms[f];
+    }
+
+    /** The parameter-row word component {@code k} of form {@code f} replaces. */
+    public int formWord(int f, int k) {
+        return formWords[f][k];
+    }
+
+    /** Where form {@code f}'s own vec4s start in a parameter row. */
+    public int formAt(int f) {
+        return formAt[f];
+    }
+
+    /** The form at row word {@code word} and its component there; null where the word is a constant. */
+    public int[] formAtWord(int word) {
+        for (int f = 0; f < forms.length; f++) {
+            for (int k = 0; k < formWords[f].length; k++) if (formWords[f][k] == word) return new int[]{f, k};
+        }
+        return null;
+    }
+
     public int paramRowVectors() {
         return paramRow;
     }

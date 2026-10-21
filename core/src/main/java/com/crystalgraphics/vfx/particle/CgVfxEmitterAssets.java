@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.particle;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,6 +24,10 @@ import com.crystalgraphics.object.CgProperty;
 import com.crystalgraphics.object.CgPropertyFlag;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.shape.primitive.CgPlane;
+import com.crystalgraphics.vfx.particle.form.CgVfxCurveBlock;
+import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
+import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
+import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxInactiveResponse;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxLoopBehavior;
@@ -127,9 +132,11 @@ public final class CgVfxEmitterAssets {
             modules.add(entry("rasterize", "grid_rasterize", map("density", list(r[0], r[1], r[2], r[3]))));
         }
         Map<String, Integer> seen = new LinkedHashMap<>();
-        for (CgVfxModule m : e.modules) {
+        for (int i = 0; i < e.modules.size(); i++) {
+            CgVfxModule m = e.modules.get(i);
             CgVfxModuleTypes.Kind<CgVfxModule> kind = CgVfxModuleTypes.of(m);
             Mapped f = toFile(e.name, kind.id(), kind.inputs(m));
+            for (CgVfxModuleForm form : e.forms) if (form.module() == i) f.inputs.put(f.fileName(form.input()), form.value());
             int n = seen.merge(f.module, 1, Integer::sum);
             modules.add(entry(n == 1 ? f.module : f.module + "_" + n, f.module, f.inputs));
         }
@@ -287,6 +294,8 @@ public final class CgVfxEmitterAssets {
                 default -> throw new IllegalArgumentException(name + ": particle_spawn has no " + entry.get("module"));
             }
         }
+        CgVfxFormCompiler forms = new CgVfxFormCompiler(new CgVfxCurveBlock(), id -> null);
+        int stacked = 0;
         for (Map<?, ?> entry : entries(tree, "particle_update")) {
             if (Boolean.FALSE.equals(entry.get("enabled"))) continue;
             String id = moduleId(entry);
@@ -336,6 +345,8 @@ public final class CgVfxEmitterAssets {
             Mapped m = toEngine(name, entry);
             CgVfxModuleTypes.Kind<?> kind = CgVfxModuleTypes.kind(m.module);
             if (kind == null) throw new IllegalArgumentException(name + ": no module " + entry.get("module"));
+            formed(name, entry, m, kind, stacked, forms, b);
+            stacked++;
             if (!(kind.compile(m.inputs) instanceof CgVfxModule module)) {
                 throw new IllegalArgumentException(name + ": module " + entry.get("module") + " is a mod's kind; an asset names the engine's");
             }
@@ -515,17 +526,25 @@ public final class CgVfxEmitterAssets {
 
     // ── Physics modules by their file ids ────────────────────────────────────────────────
 
-    /** A module by one side's id and inputs; {@code consumed}, the file inputs it read. */
-    private record Mapped(String module, Map<String, Object> inputs, Set<String> consumed) {
+    /**
+     * A module by one side's id and inputs; {@code consumed}, the file inputs it read; {@code names}, each input renamed
+     * one to one, by its engine name, to its file name (none where they agree).
+     */
+    private record Mapped(String module, Map<String, Object> inputs, Set<String> consumed, Map<String, String> names) {
+
+        String fileName(String engine) {
+            return names.getOrDefault(engine, engine);
+        }
     }
 
     /** Kind {@code kind}'s inputs as the file names them (aaa-design 2.60, 2.61). */
     private static Mapped toFile(String name, String kind, Map<String, Object> in) {
         Map<String, Object> out = new LinkedHashMap<>();
+        Map<String, String> names = new HashMap<>();
         switch (kind) {
             case "force" -> {
-                out.put("acceleration", in.get("force"));
-                return new Mapped("acceleration", out, Set.of());
+                give(out, names, "acceleration", in, "force");
+                return new Mapped("acceleration", out, Set.of(), names);
             }
             case "collide", "collide_world", "collide_depth", "collide_entities" -> {
                 out.put("against", switch (kind) {
@@ -536,61 +555,61 @@ public final class CgVfxEmitterAssets {
                 });
                 if (kind.equals("collide")) {
                     shapeToFile(in, out);
-                    out.put("shape_offset", in.get("offset"));
-                    out.put("keep_inside", in.get("keeps_inside"));
-                    out.put("particle_radius_scale", in.get("radius"));
+                    give(out, names, "shape_offset", in, "offset");
+                    give(out, names, "keep_inside", in, "keeps_inside");
+                    give(out, names, "particle_radius_scale", in, "radius");
                 }
                 double bounce = ((Number) in.get("bounce")).doubleValue();
                 out.put("restitution", List.of(bounce, bounce, bounce));
-                out.put("friction", in.get("friction"));
-                out.put("static_friction_speed", in.get("rest"));
+                give(out, names, "friction", in, "friction");
+                give(out, names, "static_friction_speed", in, "rest");
                 if (Boolean.TRUE.equals(in.get("kill"))) {
                     out.put("max_collisions", 1);
                     out.put("on_complete", "kill");
                 }
                 // Ours: the depth a screen collider reaches behind what it sees, an entity's box grown by.
-                if (in.containsKey("thickness")) out.put("depth_thickness", in.get("thickness"));
-                if (in.containsKey("size")) out.put("entity_size", in.get("size"));
-                return new Mapped("collision", out, Set.of());
+                if (in.containsKey("thickness")) give(out, names, "depth_thickness", in, "thickness");
+                if (in.containsKey("size")) give(out, names, "entity_size", in, "size");
+                return new Mapped("collision", out, Set.of(), names);
             }
             case "kill" -> {
                 shapeToFile(in, out);
-                out.put("inside", in.get("inside"));
-                out.put("offset", in.get("offset"));
-                return new Mapped("kill_volume", out, Set.of());
+                give(out, names, "inside", in, "inside");
+                give(out, names, "offset", in, "offset");
+                return new Mapped("kill_volume", out, Set.of(), names);
             }
             case "attract" -> {
                 if (!"sphere".equals(in.get("shape"))) {
                     throw new IllegalArgumentException(name + ": an attractor over a box has no file form (aaa-design 2.61)");
                 }
-                out.put("position", in.get("offset"));
-                out.put("strength", in.get("strength"));
+                give(out, names, "position", in, "offset");
+                give(out, names, "strength", in, "strength");
                 out.put("radius", ((List<?>) in.get("volume")).get(0));
-                out.put("falloff", in.get("attenuation"));
-                out.put("directionality", in.get("directionality"));
-                out.put("axis", in.get("axis"));
-                return new Mapped("point_attractor", out, Set.of());
+                give(out, names, "falloff", in, "attenuation");
+                give(out, names, "directionality", in, "directionality");
+                give(out, names, "axis", in, "axis");
+                return new Mapped("point_attractor", out, Set.of(), names);
             }
             case "vector_field" -> {
-                out.put("field", in.get("field"));
-                out.put("intensity", in.get("strength"));
-                out.put("translation", in.get("offset"));
+                give(out, names, "field", in, "field");
+                give(out, names, "intensity", in, "strength");
+                give(out, names, "translation", in, "offset");
                 out.put("tile", Boolean.TRUE.equals(in.get("tiles")) ? "xyz" : "");
-                out.put("volume", in.get("volume"));
-                out.put("attenuation", in.get("attenuation"));
-                return new Mapped("vector_field", out, Set.of());
+                give(out, names, "volume", in, "volume");
+                give(out, names, "attenuation", in, "attenuation");
+                return new Mapped("vector_field", out, Set.of(), names);
             }
             case "conform" -> {
                 out.putAll(in);
                 out.put("origin", out.remove("offset"));
-                return new Mapped("conform", out, Set.of());
+                return new Mapped("conform", out, Set.of(), names);
             }
             case "orbit" -> {
                 // Ours, beside Unreal's Orbit of another shape (aaa-design 2.61).
-                return new Mapped("orbit_axis", new LinkedHashMap<>(in), Set.of());
+                return new Mapped("orbit_axis", new LinkedHashMap<>(in), Set.of(), names);
             }
             default -> {
-                return new Mapped(kind, new LinkedHashMap<>(in), Set.of());
+                return new Mapped(kind, new LinkedHashMap<>(in), Set.of(), names);
             }
         }
     }
@@ -600,12 +619,13 @@ public final class CgVfxEmitterAssets {
         Map<?, ?> in = inputs(entry);
         String id = moduleId(entry);
         Map<String, Object> out = new LinkedHashMap<>();
+        Map<String, String> names = new HashMap<>();
         Set<String> read = new HashSet<>();
         String kind;
         switch (id) {
             case "acceleration" -> {
                 kind = "force";
-                take(in, read, out, "acceleration", "force");
+                take(in, read, out, names, "acceleration", "force");
             }
             case "collision" -> {
                 String against = String.valueOf(in.get("against"));
@@ -618,10 +638,10 @@ public final class CgVfxEmitterAssets {
                     default -> throw new IllegalArgumentException(name + ": collision against " + against);
                 };
                 if (kind.equals("collide")) {
-                    shapeToEngine(in, read, out);
-                    take(in, read, out, "shape_offset", "offset");
-                    take(in, read, out, "keep_inside", "keeps_inside");
-                    take(in, read, out, "particle_radius_scale", "radius");
+                    shapeToEngine(in, read, out, names);
+                    take(in, read, out, names, "shape_offset", "offset");
+                    take(in, read, out, names, "keep_inside", "keeps_inside");
+                    take(in, read, out, names, "particle_radius_scale", "radius");
                 }
                 List<?> r = (List<?>) in.get("restitution");
                 if (!(r.get(0).equals(r.get(1)) && r.get(1).equals(r.get(2)))) {
@@ -629,8 +649,8 @@ public final class CgVfxEmitterAssets {
                 }
                 read.add("restitution");
                 out.put("bounce", r.get(0));
-                take(in, read, out, "friction", "friction");
-                take(in, read, out, "static_friction_speed", "rest");
+                take(in, read, out, names, "friction", "friction");
+                take(in, read, out, names, "static_friction_speed", "rest");
                 Object most = in.get("max_collisions");
                 if (most != null && !(most instanceof Number n && n.intValue() == 1 && "kill".equals(in.get("on_complete")))) {
                     throw new IllegalArgumentException(name + ": collision's max_collisions " + most + " is not read yet: 1 and kill alone");
@@ -638,14 +658,14 @@ public final class CgVfxEmitterAssets {
                 read.add("max_collisions");
                 read.add("on_complete");
                 out.put("kill", most != null);
-                if (kind.equals("collide_depth")) take(in, read, out, "depth_thickness", "thickness");
-                if (kind.equals("collide_entities")) take(in, read, out, "entity_size", "size");
+                if (kind.equals("collide_depth")) take(in, read, out, names, "depth_thickness", "thickness");
+                if (kind.equals("collide_entities")) take(in, read, out, names, "entity_size", "size");
             }
             case "kill_volume" -> {
                 kind = "kill";
-                shapeToEngine(in, read, out);
-                take(in, read, out, "inside", "inside");
-                take(in, read, out, "offset", "offset");
+                shapeToEngine(in, read, out, names);
+                take(in, read, out, names, "inside", "inside");
+                take(in, read, out, names, "offset", "offset");
             }
             case "point_attractor" -> {
                 kind = "attract";
@@ -653,21 +673,21 @@ public final class CgVfxEmitterAssets {
                 double r = ((Number) in.get("radius")).doubleValue();
                 out.put("volume", List.of(r, r, r));
                 read.add("radius");
-                take(in, read, out, "position", "offset");
-                take(in, read, out, "strength", "strength");
-                take(in, read, out, "falloff", "attenuation");
-                take(in, read, out, "directionality", "directionality");
-                take(in, read, out, "axis", "axis");
+                take(in, read, out, names, "position", "offset");
+                take(in, read, out, names, "strength", "strength");
+                take(in, read, out, names, "falloff", "attenuation");
+                take(in, read, out, names, "directionality", "directionality");
+                take(in, read, out, names, "axis", "axis");
             }
             case "vector_field" -> {
                 kind = "vector_field";
-                take(in, read, out, "field", "field");
-                take(in, read, out, "intensity", "strength");
-                take(in, read, out, "translation", "offset");
+                take(in, read, out, names, "field", "field");
+                take(in, read, out, names, "intensity", "strength");
+                take(in, read, out, names, "translation", "offset");
                 out.put("tiles", !String.valueOf(in.get("tile")).isEmpty() && in.get("tile") != null);
                 read.add("tile");
-                take(in, read, out, "volume", "volume");
-                take(in, read, out, "attenuation", "attenuation");
+                take(in, read, out, names, "volume", "volume");
+                take(in, read, out, names, "attenuation", "attenuation");
             }
             case "conform" -> {
                 kind = "conform";
@@ -693,12 +713,62 @@ public final class CgVfxEmitterAssets {
             }
         }
         unread(name, entry, in, read);
-        return new Mapped(kind, out, read);
+        return new Mapped(kind, out, read, names);
     }
 
-    private static void take(Map<?, ?> in, Set<String> read, Map<String, Object> out, String file, String engine) {
+    /**
+     * Each input of {@code m} written in a form other than a constant, compiled ({@link CgVfxFormCompiler}) and given to
+     * {@code b} as module {@code index}'s form; its value in {@code m} becomes the form's first end, which the module's
+     * own words hold.
+     */
+    private static void formed(String name, Map<?, ?> entry, Mapped m, CgVfxModuleTypes.Kind<?> kind, int index,
+                               CgVfxFormCompiler forms, CgVfxEmitter.Builder b) {
+        CgModuleTypes.Module declared = CgModuleTypes.builtIn().get(moduleId(entry));
+        for (Map.Entry<String, Object> in : m.inputs.entrySet()) {
+            if (!isForm(in.getValue())) continue;
+            String file = m.fileName(in.getKey());
+            if (!m.module.equals(moduleId(entry)) && file.equals(in.getKey()) && !m.consumed.contains(file)) {
+                throw new IllegalArgumentException(name + ": " + entry.get("module") + "'s " + in.getKey()
+                        + " is written in a form, which an input the engine derives otherwise does not read yet");
+            }
+            CgProperty property = property(declared != null ? declared.inputs().properties() : null, file);
+            if (property == null) property = property(kind.inputs().properties(), in.getKey());
+            CgVfxFormInput compiled = forms.compile(NS + m.module, property, in.getValue());
+            b.form(new CgVfxModuleForm(index, in.getKey(), in.getValue(), compiled));
+            in.setValue(firstEnd(compiled));
+        }
+    }
+
+    @Nullable
+    private static CgProperty property(@Nullable List<CgProperty> properties, String name) {
+        if (properties != null) for (CgProperty p : properties) if (p.name().equals(name)) return p;
+        return null;
+    }
+
+    /** A form: a map with a range, pick, curve, gradient, array, function or binding. */
+    private static boolean isForm(Object value) {
+        if (!(value instanceof Map<?, ?> m)) return false;
+        for (String k : List.of("range", "pick", "curve", "curves", "gradient", "array", "fn", "bind")) if (m.containsKey(k)) return true;
+        return false;
+    }
+
+    /** What a form's module words hold: a range's or a pick's first end, else zero. */
+    private static Object firstEnd(CgVfxFormInput c) {
+        float[] v = c instanceof CgVfxFormInput.Range r ? r.min() : c instanceof CgVfxFormInput.Pick p ? p.a() : new float[c.components()];
+        return v.length == 1 ? (Object) (double) v[0] : list(v);
+    }
+
+    private static void take(Map<?, ?> in, Set<String> read, Map<String, Object> out, Map<String, String> names, String file,
+                             String engine) {
         read.add(file);
         if (in.containsKey(file)) out.put(engine, in.get(file));
+        if (!file.equals(engine)) names.put(engine, file);
+    }
+
+    /** {@code take}'s other way: engine input {@code engine} written as {@code file}. */
+    private static void give(Map<String, Object> out, Map<String, String> names, String file, Map<String, Object> in, String engine) {
+        out.put(file, in.get(engine));
+        if (!file.equals(engine)) names.put(engine, file);
     }
 
     /** A shape's {@code volume} and {@code shape} as Unreal's shape inputs; a plane's radius ours. */
@@ -717,7 +787,7 @@ public final class CgVfxEmitterAssets {
         }
     }
 
-    private static void shapeToEngine(Map<?, ?> in, Set<String> read, Map<String, Object> out) {
+    private static void shapeToEngine(Map<?, ?> in, Set<String> read, Map<String, Object> out, Map<String, String> names) {
         String shape = String.valueOf(in.get("shape"));
         read.add("shape");
         out.put("shape", shape);

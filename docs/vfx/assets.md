@@ -235,6 +235,18 @@ file alone is the one that wrote it:
 - **The renderer, trail, clip, events and bindings are not in the file yet**: they come from the code-built emitter
   of the same id (`compiler(templates)`), else the builder's defaults.
 - An input the format declares and the engine does not take yet reads at its default alone, and fails by name otherwise.
+- **A module's input takes the format's forms** (`core.md` § Values), built per particle in the Step kernel each step: a
+  range rolled per particle (per channel, locked), a pick, a curve by `age`, `particles.age`, `speed`, `random` or
+  `id`, and `{ bind: particles.age }`. Its rolls are keyed by the module and the input, never by place.
+
+  ```yaml
+  particle_update:
+    - { id: push, module: crystalgraphics:acceleration, inputs: { acceleration: { range: [[0, 1, 0], [0, 4, 0]] } } }
+    - { id: drag, module: crystalgraphics:drag, inputs: { drag: { curve: { keys: [[0, 0.5], [1, 3, linear]] }, by: age } } }
+  ```
+
+  Not built yet, and refused by name: a roll per loop or instance, a curve by `loop` or `length`, an array, a function,
+  and a binding to anything but `particles.age` (a user parameter's is P5's binding, through its system).
 
 ## Playing an asset, and changing it while it plays
 
