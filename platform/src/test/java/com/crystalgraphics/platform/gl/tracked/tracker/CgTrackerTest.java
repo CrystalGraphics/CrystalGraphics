@@ -1,9 +1,11 @@
 package com.crystalgraphics.platform.gl.tracked.tracker;
 
+import com.crystalgraphics.platform.device.command.CgAccess;
 import com.crystalgraphics.platform.device.command.CgPassDesc;
 import com.crystalgraphics.platform.device.format.CgAttribFormat;
 import com.crystalgraphics.platform.device.format.CgFormat;
 import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
+import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
 import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
 import com.crystalgraphics.platform.device.resource.CgGpuSampler;
@@ -177,5 +179,31 @@ public class CgTrackerTest {
         } catch (IllegalStateException e) {
             assertTrue(e.getMessage(), e.getMessage().contains("layer"));
         }
+    }
+    private void dispatchOver(CgComputePipeline kernel, CgAllocation a) {
+        tracker.state.clearBindings();
+        tracker.state.storage(0, a, 0, 64);
+        tracker.dispatch(kernel, 1, 1, 1);
+    }
+
+    @Test
+    public void aBufferBarrierIsDroppedWhereABarrierRecordedSinceItsLastDispatchOrdersIt() {
+        CgBindingLayout layout = device.createBindingLayout("k", List.of(new CgBindingLayout.Slot(0, CgBindingLayout.Type.STORAGE_BUFFER)));
+        CgShaderModule cs = device.createShaderModule(CgShaderModule.Stage.COMPUTE, CgRecordingDevice.emptySpirv(), "cs");
+        CgComputePipeline kernel = device.createComputePipeline("k", cs, layout);
+        CgAllocation first = tracker.allocate(64, false, false, "first"), second = tracker.allocate(64, false, false, "second");
+        int write = CgAccess.COMPUTE_WRITE, read = CgAccess.COMPUTE_READ;
+
+        dispatchOver(kernel, first);
+        dispatchOver(kernel, second);
+        tracker.bufferBarrier(first, write, read);
+        dispatchOver(kernel, first);                 // the barrier is recorded before it, after both dispatches
+        tracker.bufferBarrier(second, write, read);  // ordered by that barrier: dropped
+        tracker.bufferBarrier(first, write, read);   // dispatched since it: kept
+        tracker.bufferBarrier(second, CgAccess.COPY_WRITE, read);   // not a dispatch's write: kept
+        tracker.bufferBarrier(second, write, CgAccess.VERTEX_READ); // a reader it did not order: kept
+
+        assertEquals(1, tracker.stats.barriersCovered);
+        assertEquals(4, device.log().stream().filter(l -> l.startsWith("bufferBarrier")).count());
     }
 }

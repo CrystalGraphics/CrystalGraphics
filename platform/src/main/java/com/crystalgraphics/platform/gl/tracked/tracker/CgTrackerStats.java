@@ -25,12 +25,15 @@ public final class CgTrackerStats {
     public long textureWrites, textureWriteBytes, uploadBreaks;
     /** Uploads replacing a whole texture the frame had used, written into a new one instead. */
     public long textureRenames;
+    /** Buffer barriers dropped: a barrier recorded after the dispatch that last bound the buffer already orders it. */
+    public long barriersCovered;
 
     @Override
     public String toString() {
         return "draws=" + draws + " dispatches=" + dispatches + " computePasses=" + computePasses + " async=" + asyncSections + " passes=" + passes + " breaks=" + passBreaks + " loadClears=" + clearsAsLoadOps
                 + " passClears=" + clearsInPass + " pipelineBinds=" + pipelineBinds + " misses=" + pipelineMisses
                 + " renames=" + renames + " textureWrites=" + textureWrites + " textureWriteBytes=" + textureWriteBytes
-                + " uploadBreaks=" + uploadBreaks + " textureRenames=" + textureRenames;
+                + " uploadBreaks=" + uploadBreaks + " textureRenames=" + textureRenames
+                + " barriersCovered=" + barriersCovered;
     }
 }

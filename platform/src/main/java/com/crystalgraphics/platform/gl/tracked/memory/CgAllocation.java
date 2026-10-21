@@ -16,6 +16,9 @@ public final class CgAllocation {
     final long size;
     final boolean dedicated;
     public long lastUse = -1;
+    /** The last dispatch that bound it, by its tracker's count, and the queue that dispatch ran on (0 for none). */
+    public long dispatchedAt;
+    public int dispatchedOn;
 
     CgAllocation(CgSlabAllocator owner, CgGpuBuffer buffer, long offset, long size, boolean dedicated) {
         this.owner = owner;

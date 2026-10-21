@@ -84,6 +84,13 @@ public final class CgTracker {
     private CgComputePass compute;
     /** Between {@link #beginAsync} and {@link #endAsync}: what is recorded goes to the compute queue. */
     private boolean async;
+    /**
+     * Dispatches recorded; the barriers asked for since the last one, which the encoder records before the next; and
+     * the last such barrier known recorded: after how many dispatches, on which queue, for what accesses.
+     */
+    private long dispatchesRecorded, flushedAt = -1;
+    private int pendingFrom, pendingTo, flushedOn, flushedFrom, flushedTo;
+    private boolean barrierPending;
     /** Between {@link #beginTransfer} and {@link #endTransfer}: buffer copies may go to the transfer queue. */
     private boolean transfer;
     private CgComputePipeline computePipeline;
@@ -431,6 +438,7 @@ public final class CgTracker {
     /** {@code glDispatchCompute}, reading the bindings in {@link #state}. */
     public void dispatch(CgComputePipeline pipeline, int groupsX, int groupsY, int groupsZ) {
         prepareDispatch(pipeline).dispatch(groupsX, groupsY, groupsZ);
+        dispatchesRecorded++;
         stats.dispatches++;
     }
 
@@ -439,11 +447,21 @@ public final class CgTracker {
         CgComputePass c = prepareDispatch(pipeline);
         markUsed(args);
         c.dispatchIndirect(args.buffer, args.offset + offset);
+        dispatchesRecorded++;
         stats.dispatches++;
     }
 
     private CgComputePass prepareDispatch(CgComputePipeline pipeline) {
         outsideRenderPass();
+        if (barrierPending) {
+            // The encoder records what was asked before this dispatch: it orders every dispatch before it.
+            barrierPending = false;
+            flushedAt = dispatchesRecorded;
+            flushedOn = queue();
+            flushedFrom = pendingFrom;
+            flushedTo = pendingTo;
+            pendingFrom = pendingTo = 0;
+        }
         if (compute == null) {
             if (drawnSinceCompute) {
                 device.encoder().memoryBarrier(CgAccess.GRAPHICS, CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE);
@@ -464,7 +482,12 @@ public final class CgTracker {
                     throw new IllegalStateException("A dispatch samples '" + state.bindings.view(i).texture().label()
                             + "', which it also writes as an image");
             } else if (type != CgBindingLayout.Type.STORAGE_IMAGE) {
-                markUsed(state.bindingAllocation(i));
+                CgAllocation a = state.bindingAllocation(i);
+                markUsed(a);
+                if (a != null) {
+                    a.dispatchedAt = dispatchesRecorded + 1;
+                    a.dispatchedOn = queue();
+                }
             }
         }
         compute.pushBindings(state.bindings);
@@ -483,12 +506,50 @@ public final class CgTracker {
     public void memoryBarrier(int from, int to) {
         outsideRenderPass();
         device.encoder().memoryBarrier(from, to);
+        pend(from, to);
     }
 
+    /**
+     * Dropped where a barrier already recorded orders {@code a}'s last dispatch: so independent emitters' dispatches
+     * between two barriers share one, as a Niagara dispatch group shares one transition batch
+     * (NiagaraGpuComputeDispatch.cpp, ExecuteTicks). Judged per allocation, since many share a device buffer.
+     */
     public void bufferBarrier(CgAllocation a, int from, int to) {
         outsideRenderPass();
         markUsed(a);
+        if (covered(a, from, to)) {
+            stats.barriersCovered++;
+            return;
+        }
         device.encoder().bufferBarrier(a.buffer, from, to);
+        pend(from, to);
+    }
+
+    /** Barriers asked for across a change of queue may land on either: none is claimed recorded. */
+    private void forgetPending() {
+        barrierPending = false;
+        pendingFrom = pendingTo = 0;
+    }
+
+    private void pend(int from, int to) {
+        barrierPending = true;
+        pendingFrom |= from;
+        pendingTo |= to;
+    }
+
+    /**
+     * Whether the last barrier known recorded came after {@code a}'s last dispatch, on its queue, for every access asked.
+     * A barrier orders everything submitted before it on its queue, so an earlier frame's dispatch counts too.
+     */
+    private boolean covered(CgAllocation a, int from, int to) {
+        if ((from & ~(CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE)) != 0) return false;
+        return a.dispatchedOn == flushedOn && a.dispatchedAt <= flushedAt
+                && (flushedFrom & from) == from && (flushedTo & to) == to;
+    }
+
+    /** The queue what is recorded now runs on: the frame's, or the compute queue's between async brackets. */
+    private int queue() {
+        return async ? 2 : 1;
     }
 
     public void imageBarrier(CgGpuTexture texture, int from, int to) {
@@ -518,6 +579,7 @@ public final class CgTracker {
         outsideRenderPass();
         endCompute();
         device.encoder().beginAsync();
+        forgetPending();
         async = true;
         stats.asyncSections++;
     }
@@ -526,6 +588,7 @@ public final class CgTracker {
     public long endAsync() {
         if (!async) throw new IllegalStateException("cgEndAsync with no async work open");
         endCompute();
+        forgetPending();
         async = false;
         return device.encoder().endAsync();
     }

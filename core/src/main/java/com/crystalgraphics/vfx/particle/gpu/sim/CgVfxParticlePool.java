@@ -588,9 +588,20 @@ public final class CgVfxParticlePool {
             }
             for (int tier = 0; tier < CgVfxShape.TIERS; tier++) {
                 int childRows = tier > 0 && (parents >> (tier - 1) & 1) != 0 ? SPAWN_ROWS[tier - 1] : 0;
+                // Stage by stage across the tier's pools, as Niagara groups each instance's i-th dispatch with every
+                // other's (NiagaraGpuComputeDispatch.cpp, PrepareTicksForProxy): pools are independent, so a stage's
+                // dispatches share one barrier and a kernel's binding, not one each.
+                for (int i = 0; i < STEPPING.size(); i++) {
+                    CgVfxParticlePool pool = STEPPING.get(i);
+                    if (pool.shape.tier() == tier && s < pool.steps) pool.clearNext(pass);
+                }
                 for (int i = 0; i < STEPPING.size(); i++) {
                     CgVfxParticlePool pool = STEPPING.get(i);
                     if (pool.shape.tier() == tier && s < pool.steps) pool.dispatchStep(pass, s, childRows, reportRows);
+                }
+                for (int i = 0; i < STEPPING.size(); i++) {
+                    CgVfxParticlePool pool = STEPPING.get(i);
+                    if (pool.shape.tier() == tier && s < pool.steps) pool.finishStep(pass, s);
                 }
             }
         }
@@ -790,10 +801,14 @@ public final class CgVfxParticlePool {
         put(recording, feedBuffer, feedWords, feeds * 4);
     }
 
+    /** The count the next step appends to, cleared: a step's first stage. */
+    private void clearNext(CgComputePass pass) {
+        CgGpuOps.fill(pass, counts[1 - current], 0, ONE);
+    }
+
     /** Step {@code s}'s dispatch, its children read from {@code spawnRows} rows of the tier before when its parents stepped. */
     private void dispatchStep(CgComputePass pass, int s, int spawnRows, int reportRows) {
         CgGraphBuffer next = counts[1 - current];
-        CgGpuOps.fill(pass, next, 0, ONE);
         boolean children = feeds > 0 && spawnRows > 0;
         int live = Math.min(storage, stepCapacity[s]);
         CgDispatch stepping = pass.dispatch(step, live + stepSpawned[s] + (children ? spawnRows * childMax : 0))
@@ -835,7 +850,11 @@ public final class CgVfxParticlePool {
             for (int t = 0; t < shape.textureCount(i); t++) stepping.texture(CgVfxEmitterCompiler.texture(i, t), shape.texture(i, t));
         }
         current = 1 - current;
-        // The Step's last stage: what draws read, written into each live record in place.
+    }
+
+    /** Step {@code s}'s last stages, after {@link #dispatchStep}: the drawn record, the neighbour grid, the history. */
+    private void finishStep(CgComputePass pass, int s) {
+        // What draws read, written into each live record in place.
         CgVfxVoxelWindow.get().bindBlocks(pass.dispatch(look, storage).bind("IN", records).bind("OUT", records)
                 .bind("LIVE", counts[current]).bind("INSTANCES", instanceBuffer).bind("CURVES", curveBuffer)
                 .set("_InstanceAt", stepInstanceAt[s] / 4).set("_InstanceRow", shape.instanceRowVectors())
