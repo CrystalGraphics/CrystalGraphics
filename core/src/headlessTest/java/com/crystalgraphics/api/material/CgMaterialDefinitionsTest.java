@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.material;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -7,6 +8,7 @@ import java.util.Map;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
@@ -194,6 +196,61 @@ public class CgMaterialDefinitionsTest {
             fail("a track keyed a sampler");
         } catch (CgAssetException e) {
             assertTrue(e.getMessage(), e.getMessage().contains("_MainTex") && e.getMessage().contains("track tex"));
+        }
+    }
+
+    @Test
+    public void aMaterialBuiltInJavaIsTheOneItsFileLoads() {
+        CgMaterialDefinitions.archetypes(ARCHETYPES);
+        try {
+            CgMaterialDefinition.Builder b = CgMaterialDefinition.builder("test:glow", FX)
+                    .blend(CgBlendMode.ADDITIVE).twoSided().keyword("SOFT").color("_Color", 0x80FF8040, 2f)
+                    .value("_Speed", 1.5f).texture("_MainTex", "test:textures/noise.png", CgSampler.Filter.BILINEAR,
+                            CgSampler.Address.WRAP);
+            CgMaterialDefinition built = b.build();
+            CgMaterialDefinition loaded = CgMaterialDefinitions.compile(asset("test:glow", b.tree(), null));
+            assertSame(loaded.permutation(), built.permutation());
+            assertEquals(loaded.textures(), built.textures());
+            assertEquals(loaded.draw(), built.draw());
+            assertArrayEquals(new float[] {2f, 0x80 / 255f * 2f, 0x40 / 255f * 2f, 0x80 / 255f},
+                    built.constants().get("_Color"), 1e-6f);
+            assertEquals("additive", built.permutation().blend());
+            assertEquals(Arrays.asList("_v", "shader", "state", "keywords", "values", "textures"),
+                    new ArrayList<>(b.tree().keySet()));
+            try {
+                CgMaterialDefinition.builder("test:bad", FX).value("_Nope", 1f).build();
+                fail("an undeclared property must fail at build");
+            } catch (CgAssetException expected) {
+                assertTrue(expected.getMessage(), expected.getMessage().contains("_Nope"));
+            }
+        } finally {
+            CgMaterialDefinitions.archetypes(CgMaterialArchetypes.FILES);
+        }
+    }
+
+    @Test
+    public void aDerivedDefinitionIsInternedByItsParentAndOverrides() {
+        CgMaterialDefinitions.archetypes(ARCHETYPES);
+        try {
+            CgMaterialDefinition glow = CgMaterialDefinitions.compile(root());
+            CgMaterialDefinition soft = CgMaterialDefinitions.derive(glow, map("keywords", Arrays.asList("SOFT", "GLOW")));
+            assertSame(soft, CgMaterialDefinitions.derive(glow, map("keywords", Arrays.asList("GLOW", "SOFT"))));
+            assertNotSame(glow.permutation(), soft.permutation());
+            assertEquals("test:glow", soft.parent());
+
+            CgMaterialDefinition fast = CgMaterialDefinitions.derive(glow, map("values", map("_Speed", 4.0)));
+            assertTrue("values alone share their parent's programs", fast.sharesProgramsWith(glow));
+            assertArrayEquals(new float[] {4f}, fast.constants().get("_Speed"), 0f);
+            assertArrayEquals(new float[] {1f, 0.5f, 0.25f, 1f}, fast.constants().get("_Color"), 0f);
+            assertSame("a float and a double of one value are one key", fast,
+                    CgMaterialDefinitions.derive(glow, map("values", map("_Speed", 4f))));
+            assertNotSame(fast, CgMaterialDefinitions.derive(glow, map("values", map("_Speed", 4.5))));
+
+            CgMaterialDefinition again = CgMaterialDefinitions.compile(root());
+            assertNotSame("a new generation derives its own", fast,
+                    CgMaterialDefinitions.derive(again, map("values", map("_Speed", 4.0))));
+        } finally {
+            CgMaterialDefinitions.archetypes(CgMaterialArchetypes.FILES);
         }
     }
 

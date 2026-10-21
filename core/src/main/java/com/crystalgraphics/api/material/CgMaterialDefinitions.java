@@ -2,11 +2,14 @@ package com.crystalgraphics.api.material;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.WeakHashMap;
 
 import javax.annotation.Nullable;
 
@@ -16,6 +19,8 @@ import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.object.CgType;
+import com.crystalgraphics.object.validate.CgValidation;
 
 /**
  * The {@code material} kind's compiler: a resolved asset to a {@link CgMaterialDefinition}, every name checked against
@@ -36,6 +41,8 @@ import com.crystalgraphics.gl.material.parse.CgParsedShader;
 public final class CgMaterialDefinitions {
 
     private static volatile CgMaterialArchetypes archetypes = CgMaterialArchetypes.FILES;
+    /** Each parent's derived children, dropped with it: a definition's equality is its arrays', so its identity. */
+    private static final Map<CgMaterialDefinition, Map<Object, CgMaterialDefinition>> DERIVED = new WeakHashMap<>();
     /** The threshold a {@code masked} material's {@code mask_clip} sets: what {@code CG_CLIP_THRESHOLD} reads. */
     static final String CLIP = "_Clip";
 
@@ -164,11 +171,83 @@ public final class CgMaterialDefinitions {
         CgMaterialDefinition d = new CgMaterialDefinition(id, asset.parent() == null ? null : asset.parent().id(),
                 permutation, Collections.unmodifiableMap(constants), Collections.unmodifiableMap(forms),
                 Collections.unmodifiableMap(textures), CgMaterialRowLayout.of(parsed.properties()), draw, order,
-                sortLayer, map(m.get("post")), domain, model);
+                sortLayer, map(m.get("post")), domain, model, Collections.unmodifiableMap(m));
         for (String name : forms.keySet()) {
             if (d.route(name) == CgMaterialRoute.ROW) d.requireRow(name, "its bind");
         }
         return d;
+    }
+
+    /**
+     * {@code parent} with {@code overrides} over it, as a child file holding them would compile: what a renderer's own
+     * textures, keywords or state make of its material. Interned: the same overrides on the same parent answer the
+     * same definition, which shares its parent's programs where its permutation does.
+     *
+     * <pre>{@code
+     * CgMaterialDefinition soft = CgMaterialDefinitions.derive(glow, Map.of("keywords", List.of("SOFT")));
+     * soft == CgMaterialDefinitions.derive(glow, Map.of("keywords", List.of("SOFT")));   // true
+     * CgMaterialDefinition tinted = CgMaterialDefinitions.derive(glow, Map.of("values", Map.of("_Speed", 2.0)));
+     * tinted.sharesProgramsWith(glow);                                                    // true: values only
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code overrides} holds a material file's keys ({@code values}, {@code textures}, {@code keywords},
+     *       {@code state}); a list replaces the parent's, a map merges into it.</li>
+     *   <li>A new generation of {@code parent} (a reload compiles a new definition) derives its children again; the
+     *       old ones are dropped with it.</li>
+     * </ul>
+     *
+     * @throws CgAssetException naming what the declaration or the archetype refuses
+     */
+    public static CgMaterialDefinition derive(CgMaterialDefinition parent, Map<String, ?> overrides) {
+        Object key = canonical(overrides);
+        Map<Object, CgMaterialDefinition> children;
+        synchronized (DERIVED) {
+            children = DERIVED.computeIfAbsent(parent, p -> new HashMap<>());
+            CgMaterialDefinition had = children.get(key);
+            if (had != null) return had;
+        }
+        Map<Object, Object> root = new LinkedHashMap<>(parent.resolved());
+        root.remove(CgType.PARENT);
+        CgAssetData base = CgAssetData.of(parent.id(), CgLookKinds.MATERIAL, root, null);
+        Map<Object, Object> file = new LinkedHashMap<>();
+        file.put(CgType.PARENT, parent.id());
+        file.putAll(overrides);
+        CgAssetData child = CgAssetData.of(parent.id() + "#" + Integer.toHexString(key.hashCode()), CgLookKinds.MATERIAL,
+                file, base);
+        CgValidation v = child.validate(CgValidation.Usecase.LOAD);
+        if (!v.valid()) throw new CgAssetException(child.id() + ": " + v.issues());
+        CgMaterialDefinition d = compile(child);
+        synchronized (DERIVED) {
+            CgMaterialDefinition raced = children.putIfAbsent(key, d);
+            return raced != null ? raced : d;
+        }
+    }
+
+    /** Overrides in a form equal exactly when they compile alike: floats by bits, NaN as one, keywords sorted. */
+    private static Object canonical(Object o) {
+        if (o instanceof Map) {
+            Map<String, Object> out = new TreeMap<>();
+            for (Map.Entry<?, ?> e : ((Map<?, ?>) o).entrySet()) {
+                String k = String.valueOf(e.getKey());
+                Object v = canonical(e.getValue());
+                if (k.equals("keywords") && v instanceof List) {
+                    List<Object> sorted = new ArrayList<>((List<?>) v);
+                    sorted.sort((a, b) -> String.valueOf(a).compareTo(String.valueOf(b)));
+                    v = sorted;
+                }
+                out.put(k, v);
+            }
+            return out;
+        }
+        if (o instanceof List) {
+            List<Object> out = new ArrayList<>();
+            for (Object v : (List<?>) o) out.add(canonical(v));
+            return out;
+        }
+        if (o instanceof Float || o instanceof Double) return Float.floatToIntBits(((Number) o).floatValue());
+        if (o instanceof Number) return ((Number) o).longValue();
+        return o;
     }
 
     private static CgMaterialProperty declared(String id, String shader, Map<String, CgMaterialProperty> props,

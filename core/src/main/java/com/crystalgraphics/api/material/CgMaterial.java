@@ -322,6 +322,20 @@ public final class CgMaterial {
         return cgMaterialShader == null ? null : cgMaterialShader.lastCompileError();
     }
 
+    /**
+     * The material a {@code material} asset's definition draws as, shared by every caller: its archetype, state,
+     * keywords, constants and textures. {@link CgMaterialRegistry#getOrCreate(CgMaterialDefinition, String)} adds a
+     * draw's keyword.
+     *
+     * <pre>{@code
+     * CgMaterial glow = CgMaterial.of(definition);
+     * CgWorldRenderer.get().draw(mesh, glow).at(x, y, z).submit();
+     * }</pre>
+     */
+    public static CgMaterial of(CgMaterialDefinition definition) {
+        return CgMaterialRegistry.get().getOrCreate(definition, null);
+    }
+
     public static CgMaterial load(String resourcePath) {
         return CgMaterialRegistry.get().getOrCreate(resourcePath);
     }

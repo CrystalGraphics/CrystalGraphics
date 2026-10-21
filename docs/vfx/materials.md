@@ -4,6 +4,50 @@ A material is a `.shader` ([`../SHADERS.md`](../SHADERS.md)). This page is about
 reads: the particle and the vertex it is drawing, as Unreal's material graph reads them. It grows as the engine's
 material work lands.
 
+## A material, as a file and in Java
+
+A `material` asset names its `.shader` (its archetype) and sets what Unreal's material instance sets: its blend and
+faces, its keywords (static switches), its values and its textures. A child names a parent and overrides some of them.
+
+```yaml
+# assets/mymod/materials/fx/sparks.yaml
+_v: 1
+shader: crystalgraphics:shaders/vfx/particle/sprite.shader
+state: { blend: additive, two_sided: true }
+values: { _Color: [2.0, 1.0, 0.5, 1.0], _SoftDistance: 0.25 }
+textures:
+  _Sheet: { texture: mymod:textures/fx/sparks.png, sampler: { filter: bilinear, wrap: clamp } }
+```
+
+```java
+CgMaterialDefinition sparks = CgMaterialDefinition.builder("mymod:materials/fx/sparks",
+                "crystalgraphics:shaders/vfx/particle/sprite.shader")
+        .blend(CgBlendMode.ADDITIVE).twoSided()
+        .color("_Color", 0xFFFF8040, 2f)              // 0xAARRGGBB, its rgb times 2
+        .value("_SoftDistance", 0.25f)
+        .texture("_Sheet", "mymod:textures/fx/sparks.png", CgSampler.Filter.BILINEAR, CgSampler.Address.CLAMP)
+        .build();                                     // the same definition the file loads
+```
+
+**Drawing it.** A definition draws as one `CgMaterial`, made once and shared:
+
+```java
+CgMaterial m = CgMaterial.of(sparks);
+CgWorldRenderer.get().draw(mesh, m).at(x, y, z).submit();
+```
+
+**A variant without a file.** `derive` is a child made in code: the same overrides on the same parent answer the same
+definition, and one changing only values shares its parent's programs.
+
+```java
+CgMaterialDefinition soft = CgMaterialDefinitions.derive(sparks, Map.of("keywords", List.of("SOFT")));
+CgMaterialDefinition slow = CgMaterialDefinitions.derive(sparks, Map.of("values", Map.of("_SoftDistance", 1.0)));
+```
+
+- A name the shader does not declare fails at `build()`, or at load for a file, naming the material and the property.
+- A texture is a 2D image, its path the image's (`<namespace>:textures/....png`).
+- `depth_test: false` fails when it draws: no material state carries it yet.
+
 ## A particle's material: the vertex factory
 
 A material on particles never places its own vertices. The engine does, for the kind of draw it is, and hands the
