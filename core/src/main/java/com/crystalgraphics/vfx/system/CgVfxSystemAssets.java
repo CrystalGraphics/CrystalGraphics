@@ -1,6 +1,8 @@
 package com.crystalgraphics.vfx.system;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -10,20 +12,23 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
-import com.crystalgraphics.vfx.look.CgVfxKit;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
+import com.crystalgraphics.vfx.look.CgVfxKit;
+import com.crystalgraphics.vfx.look.CgVfxLayout;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
+import com.crystalgraphics.vfx.look.CgVfxUnit;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterAssets;
 
 /**
- * The {@code system} kind's compiler: a system asset to the {@link CgVfxSystemDefinition} a
- * {@link CgVfxSystemInstance} plays, as Niagara compiles a {@code UNiagaraSystem}. Its {@code user} parameters become
- * its schema, each emitter handle an emitter its instances play, and {@code effect:} the behaviour registered under
- * that id. A behaviour registered with a contract ({@link CgVfxBehaviour.Contract}) draws with its contract's look: the
- * file's {@code user} values are set on it by name, and a name the contract requires that the file lacks fails.
+ * The {@code system} kind's compiler and writer: a system asset to the {@link CgVfxSystemDefinition} a
+ * {@link CgVfxSystemInstance} plays, as Niagara compiles a {@code UNiagaraSystem}, and a definition back to its file.
+ * Its {@code user} parameters become its schema, each emitter handle an emitter its instances play, and {@code effect:}
+ * the behaviour registered under that id. A behaviour registered with a contract ({@link CgVfxBehaviour.Contract})
+ * draws with its contract's look: the file's {@code user} values are set on it by name, and a name the contract
+ * requires that the file lacks fails.
  *
  * <pre>{@code
  * CgVfxSystemAssets.effect("mymod:pulse", Pulse::new);                    // at init, before a system names it
@@ -33,12 +38,21 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitterAssets;
  * VFX.play(new CgVfxSystemInstance<>(NOVA.get(), x, y, z));
  * }</pre>
  *
+ * <p>A definition made in code, written as a file a tool can open:</p>
+ * <pre>{@code
+ * Map<String, Object> tree = CgVfxSystemAssets.write(PUFF);     // effect, user, emitters inline
+ * Files.write(path, CgAssetYaml.write(tree, CgParticleKinds.SYSTEM).getBytes(StandardCharsets.UTF_8));
+ * }</pre>
+ *
  * <ul>
  *   <li>The engine's own behaviour, {@code crystalgraphics:energy_wave} ({@link CgEnergyWave}), is registered here.</li>
  *   <li>An input the asset leaves out takes the default {@code modules.yaml} declares; with none declared it fails
  *       naming the emitter, as do a module the reader does not know and an {@code effect} nothing registered.</li>
  *   <li>Renderers are not layers yet: a compiled system simulates its emitters and draws none of them.</li>
  *   <li>Runs on a worker: reads only the asset and its dependencies.</li>
+ *   <li>{@link #write} writes a contracted system's values only where they differ from its contract's look, and its
+ *       contract's required names always: the file is the delta. Emitters are written inline. Curves, palettes and
+ *       shakes are not user parameters yet, and are not written.</li>
  * </ul>
  */
 public final class CgVfxSystemAssets {
@@ -75,6 +89,92 @@ public final class CgVfxSystemAssets {
      */
     public static void effect(String id, CgVfxBehaviour.Factory factory, CgVfxBehaviour.Contract contract) {
         EFFECTS.put(id, new Effect(factory, contract));
+    }
+
+    /**
+     * {@code definition} as a system file's tree: its {@code effect}, its {@code user} parameters and its emitters inline.
+     * Compiling it gives a definition that writes the same tree.
+     */
+    public static Map<String, Object> write(CgVfxSystemDefinition definition) {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        String effectId = null;
+        Effect effect = null;
+        if (definition.behaviour() != null) {
+            for (Map.Entry<String, Effect> e : EFFECTS.entrySet()) {
+                if (e.getValue().factory() == definition.behaviour()) {
+                    effectId = e.getKey();
+                    effect = e.getValue();
+                }
+            }
+            if (effectId == null) throw new IllegalArgumentException(definition.name() + "'s behaviour has no effect id registered");
+        }
+        CgVfxLook look = definition.look();
+        CgVfxLayout layout = look.layout();
+        CgVfxBehaviour.Contract contract = effect == null ? null : effect.contract();
+        Map<String, Object> user = new LinkedHashMap<>();
+        for (CgVfxParam p : layout.params()) {
+            boolean own = p.schema().name().equals(definition.name());
+            if (!(p instanceof CgVfxParam.Scalar || p instanceof CgVfxParam.Vector || p instanceof CgVfxParam.Color)) continue;
+            String name = layout.qualifiedName(p);
+            if (!own) {
+                if (contract == null) continue;
+                if (!contract.required().contains(name) && same(look, contract.look(), p)) continue;
+            }
+            user.put(name, userEntry(look, p));
+        }
+        if (!user.isEmpty()) tree.put("user", user);
+        List<Object> handles = new ArrayList<>();
+        for (CgVfxEmitter e : definition.emitters()) {
+            Map<String, Object> handle = new LinkedHashMap<>();
+            String id = e.name().replaceAll("[^a-z0-9_]", "_");
+            handle.put("id", id);
+            if (!id.equals(e.name())) handle.put("name", e.name());
+            handle.put("emitter", CgVfxEmitterAssets.write(e));
+            handles.add(handle);
+        }
+        if (!handles.isEmpty() || effectId == null) tree.put("emitters", handles);
+        if (effectId != null) tree.put("effect", effectId);
+        return tree;
+    }
+
+    /** Whether {@code look} holds {@code p} as {@code base} does. */
+    private static boolean same(CgVfxLook look, CgVfxLook base, CgVfxParam p) {
+        if (p instanceof CgVfxParam.Scalar s) return Float.compare(look.get(s), base.get(s)) == 0;
+        int n = p instanceof CgVfxParam.Vector ? 3 : 4;
+        for (int i = 0; i < n; i++) {
+            float a = p instanceof CgVfxParam.Vector v ? look.get(v, i) : look.get((CgVfxParam.Color) p, i);
+            float b = p instanceof CgVfxParam.Vector v ? base.get(v, i) : base.get((CgVfxParam.Color) p, i);
+            if (Float.compare(a, b) != 0) return false;
+        }
+        return true;
+    }
+
+    /** One {@code user} entry: its type, quantity where it is a length, and its value in {@code look}. */
+    private static Map<String, Object> userEntry(CgVfxLook look, CgVfxParam p) {
+        Map<String, Object> entry = new LinkedHashMap<>();
+        if (p instanceof CgVfxParam.Scalar s) {
+            entry.put("type", "float");
+            if (s.unit() == CgVfxUnit.LENGTH) entry.put("quantity", "length");
+            entry.put("default", (double) look.get(s));
+        } else if (p instanceof CgVfxParam.Vector v) {
+            entry.put("type", "vec3");
+            if (!Float.isNaN(look.get(v, 0))) {
+                entry.put("default", Arrays.asList((double) look.get(v, 0), (double) look.get(v, 1), (double) look.get(v, 2)));
+            }
+        } else {
+            CgVfxParam.Color c = (CgVfxParam.Color) p;
+            float r = look.get(c, 0), g = look.get(c, 1), b = look.get(c, 2), a = look.get(c, 3);
+            float intensity = Math.max(1f, Math.max(r, Math.max(g, b)));
+            long argb = (long) Math.round(Math.min(1f, a) * 255f) << 24 | Math.round(r / intensity * 255f) << 16
+                    | Math.round(g / intensity * 255f) << 8 | Math.round(b / intensity * 255f);
+            Map<String, Object> value = new LinkedHashMap<>();
+            value.put("argb", argb);
+            if (intensity != 1f) value.put("intensity", (double) intensity);
+            entry.put("type", "colour");
+            entry.put("default", value);
+        }
+        return entry;
     }
 
     /** {@code asset}'s definition; {@code deps} answers its referenced emitters. */

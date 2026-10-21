@@ -167,6 +167,53 @@ stop.run();
   never touched.
 - Every edit re-resolves the asset; a child of it re-resolves when you rebuild its `CgAssetData` over the new parent.
 
+## A system, as a file and in Java
+
+One system, both ways. The file:
+
+```yaml
+# assets/mymod/vfx/systems/puff.yaml  →  mymod:puff
+_v: 1
+user:
+  radius: { type: float, quantity: length, default: 0.8 }
+  tint: { type: colour, default: { argb: 0xFF2659FF, intensity: 1.6 } }
+emitters:
+  - id: puff
+    emitter:
+      properties: { capacity: 40 }
+      emitter_update:
+        - { id: s0, module: crystalgraphics:emitter_state, inputs: { loop: once, duration: 1 } }
+        - { id: s1, module: crystalgraphics:spawn_burst, inputs: { time: 0, count: 20 } }
+```
+
+The same system in code:
+
+```java
+static final CgVfxSchema SCHEMA = CgVfxSchema.of("mymod:puff");
+static final CgVfxParam.Scalar RADIUS = SCHEMA.length("radius", 0.8f);
+static final CgVfxParam.Color TINT = SCHEMA.color("tint", 0xFF2659FF, 1.6f);
+static final CgVfxEmitter PUFF_EMITTER = CgVfxEmitter.builder("puff").capacity(40)
+        .state(CgVfxEmitterState.once(1f)).burst(0f, 20).build();
+static final CgVfxSystemDefinition PUFF = CgVfxSystemDefinition.of("mymod:puff",
+        CgVfxLook.builder(SCHEMA).with(CgVfxKit.of("mymod:puff").emitter(PUFF_EMITTER).build()).build());
+```
+
+Each turns into the other:
+
+```java
+Map<String, Object> tree = CgVfxSystemAssets.write(PUFF);                        // code → file
+String yaml = CgAssetYaml.write(tree, CgParticleKinds.SYSTEM);
+CgVfxSystemDefinition back = CgVfxSystemAssets.compile(                          // file → code
+        CgAssetData.of("mymod:puff", CgParticleKinds.SYSTEM, tree, null), (kind, ref) -> null);
+```
+
+- **The schema is the system's `user` block**: a parameter on a schema named as the system is written; another
+  schema's is not. A system whose `effect` has a contract writes only what differs from the contract's look, plus
+  the names the contract requires.
+- **Emitters are written inline.** A file may name one by reference instead (`emitter: mymod:puff/core`); written
+  back, it is inline.
+- Curves, palettes and shakes are not `user` parameters yet: a schema's are kept in code and left out of the file.
+
 ## Playing an asset, and changing it while it plays
 
 A system played from its ref follows the asset: a newer definition reaches every instance playing it.
