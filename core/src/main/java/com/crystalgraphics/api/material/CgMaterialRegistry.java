@@ -2,11 +2,19 @@ package com.crystalgraphics.api.material;
 
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.gl.texture.CgTexture2D;
+import com.crystalgraphics.api.texture.CgTextureSpec;
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.api.texture.CgTextures;
+import com.crystalgraphics.asset.codec.CgAssetYaml;
+import com.crystalgraphics.util.io.CgIO;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 
 import javax.annotation.Nullable;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -107,14 +115,31 @@ public final class CgMaterialRegistry {
 
     /**
      * The texture a material definition's binding names, made at its first ask and shared: warm it ahead of a first
-     * draw, as a system's preparer does, and the draw loads nothing.
+     * draw, as a system's preparer does, and the draw loads nothing. Its colour space is its settings file's, the
+     * {@code texture} asset beside the image ({@code noise.png}'s {@code noise.yaml}): {@code colour: linear} for data
+     * (masks, normals), else sRGB, decoded as it is sampled, as Unreal's {@code SRGB} defaults on.
      *
      * <pre>{@code
      * for (CgMaterialDefinition.Texture t : definition.textures().values()) CgMaterialRegistry.texture(t.texture()).getWidth();
      * }</pre>
      */
     public static CgTexture2D texture(String path) {
-        return TEXTURES.computeIfAbsent(path, CgTextures::of);
+        return TEXTURES.computeIfAbsent(path, p -> CgTextures.of(p, linear(p) ? CgTextureSpec.RGBA8_LINEAR : SRGB));
+    }
+
+    private static final CgTextureSpec SRGB = CgTextureType.SRGB8_ALPHA8.toTextureSpec();
+
+    /** Whether {@code image}'s settings file says {@code colour: linear}; an image with none is colour. */
+    private static boolean linear(String image) {
+        int dot = image.lastIndexOf('.');
+        if (dot < 0) return false;
+        try (InputStream in = CgIO.openStream(image.substring(0, dot) + ".yaml")) {
+            if (in == null) return false;
+            Object tree = CgAssetYaml.read(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+            return tree instanceof Map<?, ?> m && "linear".equals(m.get("colour"));
+        } catch (IOException e) {
+            throw new UncheckedIOException(image + "'s settings do not read", e);
+        }
     }
 
     /** Deletes {@code definition}'s materials: an old generation, once its last draw has executed. */
