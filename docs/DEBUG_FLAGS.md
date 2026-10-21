@@ -184,6 +184,12 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.post.bloom.linear` | true, false | `false` | Bloom starts composited in linear light (the copy form), to compare with the default blend form; L cycles blend, linear and off in any harness scene with a 3D camera. |
 | `crystalgraphics.post.debug` | text | empty | emission: the emission target over the frame. level<N>: a level of bloom's chain, 0 the glow the composite reads. overdraw: transparent fragments per pixel as a heat ramp (blue 1, green 4, red 16, white 32). distortion: the distortion target, \|offset\| x 50 in red and green, the split in blue. |
 
+## `crystalgraphics.quality`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.quality.detect` | true, false | `true` | Choose the effects quality from a timed pass at a fresh install, as Unreal's scalability auto-detect does; false keeps the default. |
+
 ## `crystalgraphics.recorder`
 
 | Variable | Takes | Default | |
@@ -196,23 +202,24 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.recording.debugScopes` | true, false | `false` | A scope a GL recording leaves open at end() names where it was opened. |
 
-## `crystalgraphics.resourceOverrideDirs`
-
-| Variable | Takes | Default | |
-|---|---|---|---|
-| `crystalgraphics.resourceOverrideDirs` | text | empty | Source roots searched before the classpath, separated by the platform's path separator and tried in order ahead of the ones a dev run finds itself, so an edited asset is read from its source tree; set, the shader preprocessor caches nothing unless hot reload watches. Read at launch. |
-| `crystalgraphics.resourceOverrideDirs.auto` | true, false | `true` | A dev run's own source resource folders as override roots, found from what its launcher passed (CgDevResourceRoots); a production client has none. Read at launch. |
 ## `crystalgraphics.rehearsal`
 
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.rehearsal.listGrowth` | true, false | `false` | Lists what a rehearsal's passes resized or released (CgRehearsal.grown()): what to size ahead. Read at launch. |
 
+## `crystalgraphics.resourceOverrideDirs`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.resourceOverrideDirs` | text | empty | Source roots searched before the classpath, separated by the platform's path separator and tried in order ahead of the ones a dev run finds itself, so an edited asset is read from its source tree; set, the shader preprocessor caches nothing unless hot reload watches. Read at launch. |
+| `crystalgraphics.resourceOverrideDirs.auto` | true, false | `true` | A dev run's own source resource folders as override roots, found from what its launcher passed (CgDevResourceRoots); a production client has none. Read at launch. |
 
 ## `crystalgraphics.shader`
 
 | Variable | Takes | Default | |
 |---|---|---|---|
+| `crystalgraphics.shader.binaryCache` | true, false | `true` | Keep linked GL programs' binaries across launches where the driver gives them; false compiles every program from source. |
 | `crystalgraphics.shader.devmode` | true, false | `false` | #line directives around each include in preprocessed shader source, so a compiler's line numbers name the file. Read at launch. |
 | `crystalgraphics.shader.parallelCompile` | true, false | `true` | Materials compile ahead of their first bind where the driver links on its own threads; false compiles at the first bind: for a driver that misreports completion. Read at launch. |
 

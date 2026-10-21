@@ -27,7 +27,8 @@ public final class CgGraphicsSettings {
             false);
 
     public static final CgSetting.Choice<CgQuality> QUALITY = FILE.choice("effects", "quality", "Quality",
-            "How much each effect draws. Low drops distortion and optional layers, draws a cheaper bloom, and halves optional particles.",
+            "How much each effect draws. Low drops distortion and optional layers, draws a cheaper bloom, and halves optional"
+                    + " particles. Chosen from your graphics card's speed at the first launch.",
             CgQuality.HIGH);
 
     public static final CgSetting.Toggle HDR = FILE.toggle("effects", "hdr", "HDR lighting",

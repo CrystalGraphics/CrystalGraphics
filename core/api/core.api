@@ -5236,6 +5236,14 @@ com/crystalgraphics/gl/render/CgVectorRenderer$Triangle
   method public pose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
   method public silhouetteEdge (I)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
   method public submit ()Lcom/crystalgraphics/gl/render/CgVectorRenderer;
+com/crystalgraphics/gl/shader/CgProgramBinaryCache
+  access public,final
+  extends java/lang/Object
+  field public,static,final ENABLED Lcom/crystalgraphics/variable/CgVar$Bool;
+  method public,static key ([Ljava/lang/String;)Ljava/lang/String;
+  method public,static load (ILjava/lang/String;)Z
+  method public,static retrievable (ILjava/lang/String;)V
+  method public,static store (ILjava/lang/String;)V
 com/crystalgraphics/gl/shader/CgShaderFactory
   access public,final
   extends java/lang/Object
@@ -8901,6 +8909,12 @@ com/crystalgraphics/settings/CgQuality
   method public atLeast (Lcom/crystalgraphics/settings/CgQuality;)Z
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/settings/CgQuality;
   method public,static values ()[Lcom/crystalgraphics/settings/CgQuality;
+com/crystalgraphics/settings/CgQualityDetect
+  access public,final
+  extends java/lang/Object
+  field public,static,final ENABLED Lcom/crystalgraphics/variable/CgVar$Bool;
+  method public,static tick ()V
+  method public,static tierOf (F)Lcom/crystalgraphics/settings/CgQuality;
 com/crystalgraphics/settings/CgSetting
   access public,abstract
   extends java/lang/Object

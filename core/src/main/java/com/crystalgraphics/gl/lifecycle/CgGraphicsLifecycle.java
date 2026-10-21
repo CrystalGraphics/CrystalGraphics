@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.lifecycle;
 
+import com.crystalgraphics.settings.CgQualityDetect;
 import com.crystalgraphics.collision.debug.CgCollisionDebug;
 import com.crystalgraphics.mc.CgHotReload;
 import com.crystalgraphics.compute.CgCompute;
@@ -429,6 +430,7 @@ public final class CgGraphicsLifecycle {
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, BUDGET)) {
                     CgGpuBudget.tick();
                 }
+                CgQualityDetect.tick();   // a fresh install's quality, from a timed pass
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, HOT_RELOAD)) {
                     CgHotReload.tick();   // before the dispatches and binds that take what it refreshed
                 }
