@@ -889,8 +889,8 @@ public final class CgVfxSystem {
 
     /**
      * Rehearses a move before its first cast, as {@link #prepare} warms its programs: {@code cast} plays the move into a
-     * hidden system of its own, which is updated, submitted, its pools stepped and the world stages recorded and built
-     * each pass, never executed, until the JIT has settled ({@link CgRehearsal}). It runs at the frame boundary, a few
+     * hidden system of its own, which is updated, submitted, its pools stepped and the world stages recorded and
+     * executed each pass into a hidden target, until the JIT has settled ({@link CgRehearsal}). It runs at the frame boundary, a few
      * passes a frame under {@link CgWarmBudget}, once the programs {@link #prepare}d are built; {@link #warmed} answers
      * true when it is over.
      *
@@ -902,8 +902,7 @@ public final class CgVfxSystem {
      *
      * <ul>
      *   <li>{@code cast} plays what the real cast will, with its definitions: the JIT inlines for the types it sees.</li>
-     *   <li>A pass may not grow a buffer: size the move's pools and tables first. One that does fails the rehearsal,
-     *       naming the buffer, and {@link #warmed} throws it.</li>
+     *   <li>A pass that throws fails the rehearsal, and {@link #warmed} throws it.</li>
      *   <li>One rehearsal at a time a system. Render thread.</li>
      * </ul>
      */
@@ -912,14 +911,15 @@ public final class CgVfxSystem {
         CgVfxSystem hidden = new CgVfxSystem();
         CgVfxParticlePool.hide(hidden.gpuSteps);
         double[] clock = {0.0};
-        rehearsal = CgRehearsal.of(recording -> {
+        rehearsal = CgRehearsal.of(pass -> {
             CgVfxParticlePool.rehearsing(true);
             CgVfxRange.rehearsing(true);
             try {
                 if (hidden.effects.isEmpty()) cast.accept(hidden);
                 hidden.update(clock[0] += REHEARSAL_STEP);
                 hidden.submit(CgWorldRenderer.get());
-                CgVfxParticlePool.recordRehearsed(recording);
+                CgVfxParticlePool.recordRehearsed(pass.recording());
+                pass.execute();
                 CgRenderStage.WORLD_OPAQUE.rehearse();
                 CgRenderStage.WORLD_TRANSPARENT.rehearse();
             } finally {

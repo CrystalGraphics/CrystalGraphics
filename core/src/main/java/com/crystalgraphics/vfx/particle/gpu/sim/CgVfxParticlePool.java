@@ -383,8 +383,7 @@ public final class CgVfxParticlePool {
     }
 
     /**
-     * Drops {@code owner}'s pools; their GPU storage is released at the next recording. A hidden owner's had none: only
-     * rehearsals, which never execute, recorded them. Render thread.
+     * Drops {@code owner}'s pools; their GPU storage is released at the next recording. Render thread.
      */
     public static void release(Object owner) {
         HIDDEN.remove(owner);
@@ -393,7 +392,7 @@ public final class CgVfxParticlePool {
         for (CgVfxParticlePool pool : owned.values()) {
             (pool.hidden ? REHEARSED : REAL).remove(pool);
             pool.released = true;
-            if (!pool.hidden) RELEASED.add(pool);
+            RELEASED.add(pool);
         }
     }
 
@@ -599,6 +598,7 @@ public final class CgVfxParticlePool {
             for (int s = 0; s < maxSteps; s++) {
                 Report report = REPORTS.isEmpty() ? new Report() : REPORTS.poll();
                 report.take(STEPPING);
+                report.heard = pools != REHEARSED;
                 CgGpuOps.readRows(recording, reportStream, (long) s * reportRows * EVENT_BYTES, EVENT_BYTES,
                         CgGpuCount.at(reportCounts, s, reportRows), report);
             }
@@ -895,6 +895,8 @@ public final class CgVfxParticlePool {
         private final IdentityHashMap<CgVfxParticlePool, Object[]> owners = new IdentityHashMap<>();
         private final IdentityHashMap<CgVfxGpuEmitter, CgVfxEventRows[]> groups = new IdentityHashMap<>();
         private CgVfxParticlePool[] byId = new CgVfxParticlePool[0];
+        /** False for a rehearsal's: its rows are read and reach no listener. */
+        private boolean heard = true;
 
         void take(List<CgVfxParticlePool> pools) {
             for (int i = 0; i < pools.size(); i++) {
@@ -944,7 +946,7 @@ public final class CgVfxParticlePool {
                 CgVfxEventRows[] group = e.getValue();
                 for (int event = 0; event < group.length; event++) {
                     CgVfxEventRows r = group[event];
-                    if (r == null || r.count() == 0 && r.dropped() == 0) continue;
+                    if (r == null || r.count() == 0 && r.dropped() == 0 || !heard) continue;
                     // From the end, so a listener may stop listening as it hears.
                     for (int l = LISTENERS.size() - 1; l >= 0; l--) {
                         if (l < LISTENERS.size()) LISTENERS.get(l).events(e.getKey(), event, r);

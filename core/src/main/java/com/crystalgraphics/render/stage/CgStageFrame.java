@@ -2,6 +2,7 @@ package com.crystalgraphics.render.stage;
 
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
+import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.gl.texture.CgHostSamplers;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
@@ -274,17 +275,16 @@ public final class CgStageFrame {
     /** The slot an execution saves, as an array once: varargs make one a call. */
     private static final CgGlSlot[] SCISSOR = {CgGlSlot.SCISSOR};
 
-    /** Builds what was recorded and drops it unexecuted: a rehearsal's firing. */
-    void discard() {
-        try {
-            graph.add(recording.seal());
-            builder.recycle(builder.build(graph));
-        } finally {
-            graph.clear();
-            recording.reset();
-            resources.clear();
+    /** As {@link #execute()}, with {@code target} bound as the host's: a rehearsal's firing. */
+    void executeInto(CgFrameBuffer target) {
+        try (CgGlScope ignored = CgGlState.save(FRAMEBUFFER)) {
+            target.bind();
+            execute();
         }
     }
+
+    /** The slot {@link #executeInto} restores. */
+    private static final CgGlSlot[] FRAMEBUFFER = {CgGlSlot.FBO, CgGlSlot.VIEWPORT};
 
     /** Builds and executes what was recorded, then resets for the next firing. */
     void execute() {

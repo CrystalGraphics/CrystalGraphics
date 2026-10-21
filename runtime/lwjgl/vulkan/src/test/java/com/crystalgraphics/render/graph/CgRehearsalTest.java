@@ -2,6 +2,7 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -26,8 +27,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * T6: a rehearsal records and builds on the device's thread and never executes: the recording device sees no command
- * while it runs, it ends by measurement, and once it has, the rehearsed path loads no class.
+ * A rehearsal records, builds and executes each pass: the device draws what it recorded, it ends by measurement, and
+ * once it has, the rehearsed path loads no class.
  */
 public class CgRehearsalTest {
 
@@ -62,17 +63,19 @@ public class CgRehearsalTest {
 
     @AfterClass
     public static void uninstall() {
+        CgFrameRing.reset();   // its fences are this backend's: the next class installs another
         CgGlState.reset();
         compiler.close();
     }
 
     @Test
-    public void aRehearsalRecordsAndBuildsAndNeverExecutes() {
+    public void aRehearsalExecutesWhatItRecords() {
         CgMaterial material = CgMaterial.fromSource(SOURCE);
         CgPipeline quads = material.pipeline(CgInstanceKind.QUAD);
-        CgGraphTexture target = CgGraphTexture.requested("rehearsal", new CgTextureDesc(128, 128, CgTextureDesc.RGBA8));
-        CgPassConstants constants = new CgPassConstants().resolution(128, 128);
-        CgRehearsal.Act cast = rec -> {
+        CgGraphTexture target = CgGraphTexture.current();   // the device's 64x64 target, as a stage's host
+        CgPassConstants constants = new CgPassConstants().resolution(64, 64);
+        CgRehearsal.Act cast = rehearsal -> {
+            CgRecording rec = rehearsal.recording();
             CgRasterPass pass = rec.raster(target, CgLoad.load(), constants, null, CgOrder.SORTED);
             for (int c = 0; c < 6; c++) {
                 CgChunkBuilder chunk = rec.chunks().begin();
@@ -88,11 +91,10 @@ public class CgRehearsalTest {
         };
 
         int mark = device.mark();
-        int draws = device.draws();
         CgRehearsal rehearsal = CgRehearsal.of(cast).minPasses(64).window(32).maxPasses(50_000)
                 .runAll();
-        assertEquals("nothing reached the device", mark, device.mark());
-        assertEquals(draws, device.draws());
+        assertTrue("its passes reached the device", device.mark() > mark);
+        CgFrameRing.endFrame();
         assertTrue(rehearsal.done());
         assertTrue("ran at least its least passes", rehearsal.passes() >= 64);
 
@@ -105,7 +107,7 @@ public class CgRehearsalTest {
 
     @Test
     public void stepRunsUnderTheWarmBudgetAndEnds() {
-        CgRehearsal rehearsal = CgRehearsal.of(rec -> { }).minPasses(8).window(4).maxPasses(500);
+        CgRehearsal rehearsal = CgRehearsal.of(pass -> { }).minPasses(8).window(4).maxPasses(500);
         int frames = 0;
         while (!rehearsal.step()) frames++;
         assertTrue(rehearsal.done());

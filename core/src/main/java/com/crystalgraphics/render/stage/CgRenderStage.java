@@ -1,6 +1,9 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
+import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlCensus;
@@ -245,24 +248,39 @@ public final class CgRenderStage {
     }
 
     /**
-     * Records every renderer into the stage's frame under the host's latest frame and builds it without executing: a
-     * {@link CgRehearsal}'s pass, at the frame boundary, after the frame's last firing. Once-per-frame renderers are
-     * skipped: they ran this frame, and their state is the real frame's. Render thread.
+     * Records every renderer into the stage's frame under the host's latest frame and executes it into a target of the
+     * rehearsals' own, the host's size and depth, which every stage's rehearsal shares: a {@link CgRehearsal}'s pass, at
+     * the frame boundary, after the frame's last firing. It is bound as the current target, while the host frame still
+     * names the host's, so what renderers decide from the host's target (a depth to draw beside, an attachment it takes)
+     * they decide as the cast will. Once-per-frame renderers are skipped: they ran this frame, and their state is the
+     * real frame's. Render thread.
      */
     public void rehearse() {
         if (renderers.isEmpty() || !CgGraphicsLifecycle.isInitialized()) return;
         if (!CgRehearsal.active()) throw new IllegalStateException(path + " rehearses only inside a rehearsal's pass");
+        int hostTarget = host.mainFramebuffer();
+        if (rehearsalTarget == null || rehearsalTarget.isDeleted() || hostTarget != rehearsedHost) {
+            // The host's depth type: copies of the current target are cached by it, so the cast reuses the rehearsal's.
+            CgTextureType depth = CgFrameBuffer.depthTypeOf(hostTarget);
+            rehearsalTarget = CgFrameBuffer.createScreenSized("cg_rehearsal", CgFrameBufferFormat.builder("cg_rehearsal")
+                    .color(0, CgTextureType.RGBA8).depth(depth != null ? depth : CgTextureType.DEPTH24_STENCIL8).build());
+            rehearsedHost = hostTarget;
+        }
         firing++;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, REHEARSE)) {
             frame.beginRehearsal(host);
             record(CgFrameRing.frame(), true);
-            frame.discard();
+            frame.executeInto(rehearsalTarget);
         } finally {
             firing--;
         }
     }
 
     private static final int REHEARSE = CgTrace.name("stage.rehearse");
+    /** What a rehearsal draws into: the host target's colour and depth, hidden; and the host target it is shaped by. */
+    @Nullable
+    private static CgFrameBuffer rehearsalTarget;
+    private static int rehearsedHost = -1;
 
     /** One firing's work once the engine runs: the renderers record into the stage's frame, which executes. */
     void recordAndExecute() {

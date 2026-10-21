@@ -309,9 +309,10 @@ public final class CgWorldRenderer {
     // Volumes: half-size premultiplied draws, blended with their last frame per firing ordinal, then laid over the
     // target in the transparent pass at the farthest one's key.
     private CgGraphTexture volumeTarget;
-    private final CgGraphTexture[] volumeHistories = new CgGraphTexture[VOLUME_HISTORIES];
+    /** One a firing ordinal, and the last a rehearsal's, so its passes never advance the real frame's. */
+    private final CgGraphTexture[] volumeHistories = new CgGraphTexture[VOLUME_HISTORIES + 1];
     /** Per ordinal: the ring frame its history was made in, which holds nothing of a frame before. */
-    private final long[] volumeMade = new long[VOLUME_HISTORIES];
+    private final long[] volumeMade = new long[VOLUME_HISTORIES + 1];
     private CgMaterial resolve, composite;
     private CgTexture resolveBound, compositeBound;
     @Nullable
@@ -2087,8 +2088,10 @@ public final class CgWorldRenderer {
         pass.add(chunks.end());
         pass.end();
 
-        int ordinal = stage.ordinal();
-        if (ordinal >= VOLUME_HISTORIES) return volumeTarget.attachment(0);
+        int ordinal = CgRehearsal.active() ? VOLUME_HISTORIES : stage.ordinal();
+        if (ordinal > VOLUME_HISTORIES || ordinal == VOLUME_HISTORIES && !CgRehearsal.active()) {
+            return volumeTarget.attachment(0);
+        }
         CgGraphTexture history = volumeHistories[ordinal];
         if (history == null || history.getWidth() != w || history.getHeight() != h) {
             if (history != null) recording.release(history);
