@@ -837,6 +837,30 @@ Located at `src/main/resources/assets/crystalgraphics/shaders/lib/`. All files u
 
 Use with `#include "crystalgraphics:shaders/lib/color.glsl"` etc. (`#pragma once` prevents double-expansion when multiple files include `math.glsl`.)
 
+#### Unreal's material expressions: `lib/material/`
+
+One file an expression, each matching Unreal 4.21's (`MaterialExpressions.cpp`), so a game's material ported by hand
+reads as its graph does. `--mode=material-library` checks each against Unreal's formula at every tier and on Vulkan.
+
+| File | Function | Unreal |
+|---|---|---|
+| `depth_fade.glsl` | `cg_depth_fade(opacity, fadeDistance, sceneDepth, pixelDepth)`; in a fragment stage `cg_depth_fade(opacity, fadeDistance, screenUv)` reads both depths itself | DepthFade |
+| `panner.glsl` | `cg_panner(uv, time, speed, fractional)` | Panner |
+| `rotator.glsl` | `cg_rotator(uv, center, time, speed)`: radians a second, counter-clockwise | Rotator |
+| `particle_sub_uv.glsl` | `cg_particle_sub_uv(tex, coords0, coords1, subUVLerp, blend)`; with the particle factory, `cg_particle_sub_uv(tex, particle, blend)` | ParticleSubUV |
+| `rotate_about_axis.glsl` | `cg_rotate_about_axis(axisAndAngle, pivot, position)`: the offset to add, not the rotated position | RotateAboutAxis |
+
+```glsl
+#include "crystalgraphics:shaders/lib/material/depth_fade.glsl"
+#include "crystalgraphics:shaders/lib/material/panner.glsl"
+
+vec2 uv = cg_panner(i.uv, CG_TIME, vec2(0.0, 1.5), true);
+float a = cg_depth_fade(texture(_Mask, uv).r, _FadeDistance, gl_FragCoord.xy / CG_RESOLUTION);
+```
+
+- Distances are blocks. A material value in a kit's own unit (Kakarot's centimetres) is converted where the asset loads; a constant compiled into a port's code is the port's to convert.
+- RotateAboutAxis takes radians; Unreal's node takes periods, so a port multiplies by `2pi / Period` first.
+
 **Package guides for this layer**: `api/material/CLAUDE.md` · `render/CLAUDE.md` · `render/world/CLAUDE.md` · `render/stage` (its classes' javadoc) · `gl/material/CLAUDE.md` · `gl/material/parse/CLAUDE.md`
 
 ### Raw Shaders
