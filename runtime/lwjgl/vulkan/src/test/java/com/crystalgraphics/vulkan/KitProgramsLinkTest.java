@@ -89,9 +89,47 @@ public class KitProgramsLinkTest {
             }
             """;
 
-    /** The same reads on a mesh, whose factory is not built: it must fail naming that, not draw something else. */
+    /** A mesh port on the mesh factory: the mesh's own colour and UVs, the particle's colour, time and record. */
     private static final String MESH_PORT = """
             #type spatial
+            #pragma cg_use particle
+            #include "crystalgraphics:shaders/lib/material/panner.glsl"
+            #include "crystalgraphics:shaders/lib/material/rotate_about_axis.glsl"
+
+            Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
+            Queue = "Transparent"
+
+            Properties {
+                _Mask ("Mask", sampler2D) = "white"
+            }
+
+            struct v2f { vec2 uv; vec4 colour; float heat; };
+
+            Pass {
+                Tags { "LightMode" = "Forward" }
+                RenderState {
+                    Blend ONE ONE
+                    DepthWrite OFF
+                }
+                void vertex(out v2f o) {
+                    CgMaterialVertex v = cg_material_vertex();
+                    CgMaterialParticle p = cg_material_particle();
+                    v.worldPosition += v.tangentToWorld[2] * 0.1 * p.relativeTime
+                            + cg_rotate_about_axis(vec4(0.0, 1.0, 0.0, p.random), p.positionAndSize.xyz, v.worldPosition);
+                    o.uv = cg_panner(v.texCoords[0], CG_TIME, vec2(0.5, 0.0), true);
+                    o.colour = p.color * v.vertexColor * cg_dynamic_parameter(p, 0, vec4(1.0));
+                    o.heat = CG_PARTICLE_HEAT(p.record);
+                    gl_Position = cg_material_project(v);
+                }
+                void fragment(in v2f i, out vec4 fragColor) {
+                    fragColor = vec4(i.colour.rgb * texture(_Mask, i.uv).r * (1.0 + i.heat), 0.0);
+                }
+            }
+            """;
+
+    /** A type with no factory: it must fail naming that, not draw something else. */
+    private static final String UNFACTORED_PORT = """
+            #type pos3_uv2_col4ub
             #pragma cg_use particle
 
             Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
@@ -130,11 +168,20 @@ public class KitProgramsLinkTest {
     }
 
     @Test
-    public void aMeshPortFailsNamingTheFactoryThatIsNotBuilt() {
+    public void aMeshPortOnTheContractLinksInEveryPass() {
         CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreateGenerated(MESH_PORT);
+        List<String> failures = new ArrayList<>();
+        int programs = link("the mesh port", shader, failures);
+        assertTrue(String.join(System.lineSeparator(), failures), failures.isEmpty());
+        assertTrue("no program was linked", programs > 0);
+    }
+
+    @Test
+    public void aPortOnATypeWithNoFactoryFailsNamingIt() {
+        CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreateGenerated(UNFACTORED_PORT);
         shader.recompile();
-        assertTrue("a mesh port compiled against a factory that does not exist", shader.hasCompileFailed());
-        assertTrue(shader.lastCompileError(), shader.lastCompileError().contains("mesh_factory_is_not_built"));
+        assertTrue("a port compiled against a factory that does not exist", shader.hasCompileFailed());
+        assertTrue(shader.lastCompileError(), shader.lastCompileError().contains("has_no_factory_for_this_type"));
     }
 
     @Test

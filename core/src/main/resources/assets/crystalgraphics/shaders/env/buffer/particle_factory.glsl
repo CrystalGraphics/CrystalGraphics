@@ -10,9 +10,10 @@
 //         gl_Position = cg_material_project(v);
 //     }
 //
-// The factory is the program's #type: none is the sprite factory (Unreal's sprite vertex factory). A port never places
-// a vertex: facing, stretch, camera offset and the flipbook are the renderer's settings, the _cg_ row properties this
-// token declares. The accessors are macros, so they expand where a port calls them, after its properties exist.
+// The factory is the program's #type: none is the sprite factory (Unreal's sprite vertex factory), spatial the mesh
+// factory (its mesh particle vertex factory). A port never places a vertex: facing, stretch, camera offset and the
+// flipbook are the renderer's settings, the _cg_ row properties this token declares. The accessors are macros, so
+// they expand where a port calls them, after its properties exist.
 #pragma once
 
 struct CgMaterialVertex {
@@ -110,8 +111,49 @@ CgMaterialParticle _cg_sprite_particle(float facing, vec4 axis, float stretch, f
 
 #define cg_material_vertex() _cg_sprite_vertex(_cg_Facing, _cg_Axis, _cg_Stretch, _cg_MaxStretch, _cg_CameraOffset, _cg_SubImage, _cg_SubUV, _cg_SubImages)
 #define cg_material_particle() _cg_sprite_particle(_cg_Facing, _cg_Axis, _cg_Stretch, _cg_MaxStretch, _cg_CameraOffset, _cg_SubImage, _cg_SubUV, _cg_SubImages)
+#elif defined(CG_VERTEX_STAGE) && defined(CG_TYPE_SPATIAL)
+// The mesh factory: a particle's mesh, drawn an instance a particle from Range's object records (CgVfxRange.objects):
+// the model its place, turn and size; custom0 its velocity and age; custom1 its progress, seed, opacity and heat;
+// custom2 its colour and its place in the order. As Unreal's MeshParticleVertexFactory.ush, the vertex colour and UVs
+// are the mesh's and the particle's colour is the particle's alone.
+CgMaterialVertex _cg_mesh_vertex() {
+    CgMaterialVertex v;
+    v.worldPosition = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;
+    v.texCoords[0] = cg_TexCoord0;
+    v.texCoords[1] = cg_TexCoord1;
+    v.texCoords[2] = vec2(0.0);   // the mesh has two sets; Unreal zeroes the rest
+    v.texCoords[3] = vec2(0.0);
+    // The format carries no tangent: a frame about the normal (Duff et al., "Building an Orthonormal Basis, Revisited").
+    vec3 n = normalize(CG_NORMAL_MATRIX * cg_Normal);
+    float s = n.z >= 0.0 ? 1.0 : -1.0, a = -1.0 / (s + n.z), b = n.x * n.y * a;
+    v.tangentToWorld = mat3(vec3(1.0 + s * n.x * n.x * a, s * b, -s * n.x), vec3(b, s + n.y * n.y * a, -n.y), n);
+    v.vertexColor = cg_Color;
+    return v;
+}
+
+CgMaterialParticle _cg_mesh_particle() {
+    CgMaterialParticle p;
+    vec3 velocity = CG_OBJECT_CUSTOM0.xyz;
+    float speed = length(velocity);
+    p.color = vec4(CG_OBJECT_CUSTOM2.rgb, CG_OBJECT_CUSTOM1.z);
+    p.relativeTime = CG_OBJECT_CUSTOM1.x;
+    p.random = CG_OBJECT_CUSTOM1.y;
+    p.velocity = vec4(speed > 0.0 ? velocity / speed : vec3(0.0), speed);
+    p.positionAndSize = vec4(CG_OBJECT_TO_WORLD[3].xyz, 1.0);   // Unreal's mesh factory sizes it 1
+    p.size = vec2(0.0);
+    p.spriteRotation = 0.0;
+    // One sub-image until a mesh renderer sets its grid: Unreal's (SubUVParams + uv) * SubImageSize at 1x1.
+    p.subUVCoords0 = cg_TexCoord0;
+    p.subUVCoords1 = cg_TexCoord0;
+    p.subUVLerp = 0.0;
+    p.record = int(CG_OBJECT_CUSTOM2.w);
+    return p;
+}
+
+#define cg_material_vertex() _cg_mesh_vertex()
+#define cg_material_particle() _cg_mesh_particle()
 #elif defined(CG_VERTEX_STAGE)
-// The mesh factory (#type spatial) comes with the mesh renderer: until then a port calling it fails here, by name.
-#define cg_material_vertex() cg_material_vertex_needs_a_sprite_program_the_mesh_factory_is_not_built()
-#define cg_material_particle() cg_material_particle_needs_a_sprite_program_the_mesh_factory_is_not_built()
+// No factory for this #type: a port calling one fails here, by name.
+#define cg_material_vertex() cg_material_vertex_has_no_factory_for_this_type()
+#define cg_material_particle() cg_material_particle_has_no_factory_for_this_type()
 #endif

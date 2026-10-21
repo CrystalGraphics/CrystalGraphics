@@ -8,6 +8,7 @@ the engine moves toward Unreal's (Niagara's) model; what it does not cover yet i
 | [`assets.md`](assets.md) | the files an effect is made of: kinds, ids, values, inheritance, editing and undo, validation |
 | [`effects.md`](effects.md) | how a layer draws: its blend, two-sidedness, depth and clip, and where it draws among the rest |
 | [`particles.md`](particles.md) | emitters and their particles: when they spawn (loops, rates, bursts), turning them with their effect, stopping and killing them |
+| [`materials.md`](materials.md) | a particle's material: the vertex and particle it reads on a sprite or a mesh, Unreal's expressions |
 | [`prefabs.md`](prefabs.md) | models made of parts: a node tree an effect plays, moving and fading its nodes |
 | [`sequences.md`](sequences.md) | a clip on every particle: a prefab moving over frames, events at its nodes, children's children |
 | [`networking.md`](networking.md) | gameplay tags: names a server and its clients agree on, parent matching, tag sets |

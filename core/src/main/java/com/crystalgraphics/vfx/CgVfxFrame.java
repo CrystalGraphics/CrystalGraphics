@@ -444,7 +444,10 @@ public final class CgVfxFrame {
                             .instanceScale(size)
                             .gpuCulled()
                             .at(ox, oy, oz)
-                            .custom(3, row, effect.age, effect.seed, effect.presence());
+                            .custom(3, row, effect.age, effect.seed, effect.presence())
+                            // the records a mesh factory's CG_PARTICLE_* reads, at each record's custom2.w
+                            .buffer(CgBindingPoints.PARTICLES, pool.records())
+                            .buffer(CgBindingPoints.PARTICLE_ORDER, range.order());
                     CgVfxSystem.place(draw, rd.placed, effect).submit();
                 }
                 case MERGED -> {

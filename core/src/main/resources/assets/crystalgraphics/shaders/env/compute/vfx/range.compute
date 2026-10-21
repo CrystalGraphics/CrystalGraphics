@@ -210,7 +210,8 @@ void Objects() {
         // Its age: what a clip plays at.
         o.custom0 = vec4(r.velocitySize.xyz, r.positionAge.w);
         o.custom1 = vec4(t, r.seedSpin.x, r.color.a, r.seedSpin.w);
-        o.custom2 = vec4(r.color.rgb, 0.0);
+        // w: its place in the order, which the cull's compaction loses: what a mesh factory's CG_PARTICLE_* reads.
+        o.custom2 = vec4(r.color.rgb, float(CG_ELEMENT));
     }
     OBJECTS_WRITE(o);
 }
