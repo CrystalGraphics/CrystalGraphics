@@ -549,6 +549,11 @@ final class CgStructureParser {
     }
 
     static void validateNotReservedPrefix(String name, String context, String resourcePath) {
+        if (name.contains("__")) {
+            // GLSL reserves it: shaderc warns, NVIDIA's GL refuses the program (C7528).
+            throw new CgShaderParseException("[" + resourcePath + "] Name '" + name + "' in " + context
+                    + " contains '__', which GLSL reserves");
+        }
         for (String prefix : RESERVED_PREFIXES) {
             if (name.startsWith(prefix)) {
                 throw new CgShaderParseException(
