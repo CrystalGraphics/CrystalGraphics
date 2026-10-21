@@ -4,7 +4,7 @@
 #pragma cg_feature SECOND_LAYER
 #pragma cg_feature SOFT_PARTICLE
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
+Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.001" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {

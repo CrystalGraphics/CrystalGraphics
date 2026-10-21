@@ -2,7 +2,7 @@
 // colour, faded by the vertex alpha.
 #type spatial
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
+Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.001" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
