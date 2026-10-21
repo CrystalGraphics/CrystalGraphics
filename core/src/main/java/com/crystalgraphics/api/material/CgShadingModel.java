@@ -10,15 +10,17 @@ import com.github.bsideup.jabel.Desugar;
  * {@code EMaterialShadingModel}, open to a namespace rather than an enum.
  *
  * <pre>{@code
- * CgShadingModels.register(new CgShadingModel("kakarot:cell_tone", "lit", "CELL_TONE",
+ * CgShadingModels.register(new CgShadingModel("kakarot:cell_tone", 13, "lit", "CELL_TONE",
  *         "kakarot_kit:shaders/lib/cell_tone.glsl"));
  * }</pre>
  *
  * @param id      its name, {@code namespace:name} for any but the engine's three
+ * @param index   the number a pixel drawn with it carries, what {@code CG_SHADING_MODEL_ID} reads: Unreal's for the
+ *                engine's three (unlit 0, lit 1, subsurface 2), a kit's from its game's own (Kakarot's cell tone is 13)
  * @param base    the engine model it builds on, which sets lighting: {@code unlit}, {@code lit} or {@code subsurface}
  * @param keyword the archetype keyword that carries it, enabled on each material naming it; null for none
  * @param library the GLSL library its passes include, null for none
  */
 @Desugar
-public record CgShadingModel(String id, String base, @Nullable String keyword, @Nullable String library) {
+public record CgShadingModel(String id, int index, String base, @Nullable String keyword, @Nullable String library) {
 }

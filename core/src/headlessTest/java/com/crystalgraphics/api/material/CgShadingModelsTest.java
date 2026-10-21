@@ -13,6 +13,7 @@ import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
 
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
@@ -27,10 +28,10 @@ public class CgShadingModelsTest {
     @BeforeClass
     public static void kit() {
         CgAssetKinds.register();
-        // Kakarot's kit declares its three, carried by the archetypes' CELL_TONE keyword.
+        // Kakarot's kit declares its models at its game's numbers, carried by the archetypes' CELL_TONE keyword.
         Map<String, Object> declared = new LinkedHashMap<>();
-        declared.put("cell_tone", map("base", "lit", "keyword", "CELL_TONE"));
-        declared.put("cell_shade", map("base", "lit"));
+        declared.put("cell_tone", map("index", 13, "base", "lit", "keyword", "CELL_TONE"));
+        declared.put("cell_shade", map("index", 10, "base", "lit"));
         List<CgShadingModel> made = CgShadingModels.registerKit("kakarot", declared);
         assertEquals(2, made.size());
     }
@@ -68,11 +69,26 @@ public class CgShadingModelsTest {
     @Test
     public void aBaseMustBeTheEngines() {
         try {
-            CgShadingModels.register(new CgShadingModel("mymod:x", "toon", null, null));
+            CgShadingModels.register(new CgShadingModel("mymod:x", 40, "toon", null, null));
             fail();
         } catch (IllegalArgumentException e) {
             assertTrue(e.getMessage(), e.getMessage().contains("toon"));
         }
+    }
+
+    @Test
+    public void anIndexIsTheGamesAndHeldOnce() {
+        assertSame(CgShadingModels.get("kakarot:cell_tone"), CgShadingModels.at(13));
+        assertEquals(1, CgShadingModels.LIT.index());
+        assertEquals("13 needs four bits", 4, CgShadingModels.indexBits());
+        IllegalArgumentException clash = assertThrows(IllegalArgumentException.class,
+                () -> CgShadingModels.register(new CgShadingModel("mymod:clash", 13, "lit", null, null)));
+        assertTrue(clash.getMessage(), clash.getMessage().contains("kakarot:cell_tone"));
+        assertThrows(IllegalArgumentException.class,
+                () -> CgShadingModels.register(new CgShadingModel("mymod:far", 256, "lit", null, null)));
+        IllegalArgumentException none = assertThrows(IllegalArgumentException.class,
+                () -> CgShadingModels.registerKit("mymod", map("toon", map("base", "lit"))));
+        assertTrue(none.getMessage(), none.getMessage().contains("index"));
     }
 
     @Test
