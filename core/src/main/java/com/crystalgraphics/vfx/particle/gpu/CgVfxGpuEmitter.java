@@ -42,6 +42,17 @@ public interface CgVfxGpuEmitter {
     List<? extends CgVfxGpuModule> modules();
 
     /**
+     * Its modules' numbers: every module's vec4s end to end in stack order, each laid out from its kind's declaration.
+     * Made once with the definition, and copied into a parameter row whenever one opens. The array itself: never written.
+     *
+     * <pre>{@code
+     * private final int[] words = CgVfxModuleTypes.words(modules);   // in the constructor
+     * public int[] moduleWords() { return words; }
+     * }</pre>
+     */
+    int[] moduleWords();
+
+    /**
      * Writes its spawn numbers, {@link #SPAWN_VECTORS} vec4s in this order: (speed min, speed max, life min, life max),
      * (size min, size max, size skew, heat), (spin min, spin max, the share of its source's velocity, 0), (front a, front
      * b, 0, 0): spawn k starts {@code a k - b k^2} blocks further out, its k held where that peaks ({@code a / 2b}), 0, 0
@@ -93,7 +104,7 @@ public interface CgVfxGpuEmitter {
      * {@link CgVfxShape}. At most {@link CgVfxShape#MAX_USER_BINDINGS}.
      *
      * <pre>{@code
-     * public List<CgVfxUserBinding> userBindings() { return List.of(CgVfxUserBinding.module(0, 0, GRAVITY, 9.8f, 0f)); }
+     * public List<CgVfxUserBinding> userBindings() { return List.of(CgVfxUserBinding.module(0, "gravity", 1, GRAVITY, -9.8f, 0f)); }
      * }</pre>
      */
     default List<CgVfxUserBinding> userBindings() {

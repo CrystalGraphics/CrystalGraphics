@@ -3,18 +3,23 @@ package com.crystalgraphics.vfx.particle.gpu;
 import com.crystalgraphics.api.texture.CgTexture;
 
 /**
- * A module kind's GPU side: the GLSL function the emitter compiler calls in its Step kernel, in stack order, and the
- * numbers that call gets. A kind is one function, {@code fx_<kind>} in
- * {@code crystalgraphics:shaders/lib/vfx/sim/fx_<kind>.glsl}, which includes {@code fx_types.glsl} for its structs.
- * Since the kind declares what it takes, a new kind is that file and these methods, never a compiler change.
+ * A module kind's GPU side: the GLSL function the emitter compiler calls in its Step kernel, in stack order, and what
+ * that call gets. A kind is one function, {@code fx_<kind>} in {@code crystalgraphics:shaders/lib/vfx/sim/fx_<kind>.glsl},
+ * which includes {@code fx_types.glsl} for its structs. Its numbers are its declaration's
+ * ({@code CgVfxModuleTypes.declare}): the inputs it lists, packed into {@code vec4 m0..mN} in that order. A new kind
+ * is that file, the declaration and these methods, never a compiler change.
  *
  * <pre>{@code
- * record Gravity(float strength) implements CgVfxModule {          // CgVfxModule extends CgVfxGpuModule
- *     public String gpuKind() { return "gravity"; }
- *     public void writeParams(CgVfxWords out) { out.vec4(strength, 0f, 0f, 0f); }
+ * record Pull(float strength) implements CgVfxGpuModule {
+ *     static {
+ *         CgVfxModuleTypes.declare("mymod_pull", Pull.class, t -> t.property("strength", CgValueType.FLOAT),
+ *                 (m, in) -> in.f("strength", m.strength()));
+ *     }
+ *     public String gpuKind() { return "mymod_pull"; }
+ *     public boolean afterSolve() { return false; }
  * }
- * // fx_gravity.glsl
- * void fx_gravity(inout FxParticle p, inout FxForces f, FxStep s, vec4 m) { f.accel.y -= m.x; }
+ * // fx_mymod_pull.glsl
+ * void fx_mymod_pull(inout FxParticle p, inout FxForces f, FxStep s, vec4 m) { f.accel -= p.position * m.x; }
  * }</pre>
  *
  * <p>Values the CPU works out per instance each step, in doubles where the world's coordinates need them:</p>
@@ -48,11 +53,10 @@ import com.crystalgraphics.api.texture.CgTexture;
  *
  * <ul>
  *   <li>{@link #gpuKind()} names the file and the function: lower case letters, digits and underscores.</li>
- *   <li>Write exactly what is declared: {@link #paramVectors()} vec4s in {@link #writeParams}, one per lane in
- *       {@link #writeInstance}; the pool throws otherwise, naming the kind.</li>
+ *   <li>Write one vec4 per lane in {@link #writeInstance}; the pool throws otherwise, naming the kind.</li>
  *   <li>Answer the arrays as constants: they are asked for every step.</li>
- *   <li>{@link #writeParams} holds the definition's numbers, shared by every instance of it; anything that differs per
- *       instance is a lane. Numbers never recompile anything: the shape holds the kind and its counts only.</li>
+ *   <li>Its declared numbers are the definition's, shared by every instance of it; anything that differs per instance
+ *       is a lane. Numbers never recompile anything: the shape holds the kind and its counts only.</li>
  *   <li>World inputs are for a kind after the solver; one before it declaring any is refused.</li>
  * </ul>
  */
@@ -93,12 +97,7 @@ public interface CgVfxGpuModule {
         return 0f;
     }
 
-    /** How many vec4s of numbers it takes, as {@code m} or {@code m0, m1, ...}. */
-    default int paramVectors() {
-        return 1;
-    }
-
-    /** Its per-instance values, in the order its function takes them after its numbers. */
+    /** Its per-instance values, in the order its function takes them after its numbers ({@code m0..mN}). */
     default CgVfxLane[] instanceLanes() {
         return CgVfxLane.NONE;
     }
@@ -112,7 +111,7 @@ public interface CgVfxGpuModule {
      * Textures it samples, passed after its world inputs as {@code sampler2D} or {@code sampler3D} by each one's kind:
      * a vector field (Unity's Vector Field Force, Niagara's Sample Vector Field), a heightfield (Godot's). Each texture
      * is part of the pool's identity, so definitions sampling different ones step in different pools; numbers placing it
-     * stay in {@link #writeParams} and the lanes.
+     * stay in its declared inputs and the lanes.
      *
      * <pre>{@code
      * private final CgTexture[] field = {CgTexture3D.create(CgTextureType.RGBA32F.toTextureSpec(), "mymod:fields/swirl.png")};
@@ -132,9 +131,6 @@ public interface CgVfxGpuModule {
 
     /** No textures. Never write into it. */
     CgTexture[] NO_TEXTURES = {};
-
-    /** Writes its {@link #paramVectors()} vec4s of numbers: once, when its definition first plays in a pool. */
-    void writeParams(CgVfxWords out);
 
     /** Writes one vec4 per lane for {@code instance}, at a step's start; nothing for a kind with no lanes. */
     default void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {

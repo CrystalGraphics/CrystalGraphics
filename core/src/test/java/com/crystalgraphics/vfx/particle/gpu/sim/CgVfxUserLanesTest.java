@@ -48,31 +48,33 @@ public class CgVfxUserLanesTest {
     @Test
     public void theBoundWordsAndTheLaneCountAreTheShapes() {
         CgVfxShape plain = CgVfxShape.of(base().build());
-        CgVfxShape bound = CgVfxShape.of(base().bind(CgVfxUserBinding.module(0, 0, GRAVITY, 9.8f, 0f)).build());
-        CgVfxShape other = CgVfxShape.of(base().bind(CgVfxUserBinding.module(0, 1, GRAVITY, 9.8f, 0f)).build());
+        CgVfxShape bound = CgVfxShape.of(base().bind(CgVfxUserBinding.module(0, "gravity", 0, GRAVITY, 9.8f, 0f)).build());
+        CgVfxShape other = CgVfxShape.of(base().bind(CgVfxUserBinding.module(0, "gravity", 1, GRAVITY, 9.8f, 0f)).build());
         assertNotEquals(plain, bound);
         assertNotEquals(bound, other);
         assertEquals(plain.instanceRowVectors() + 1, bound.instanceRowVectors());
         // The parameter's value is never the shape's: another scale shares the pool.
-        assertEquals(bound, CgVfxShape.of(base().bind(CgVfxUserBinding.module(0, 0, SPEED, 2f, 1f)).build()));
+        assertEquals(bound, CgVfxShape.of(base().bind(CgVfxUserBinding.module(0, "gravity", 0, SPEED, 2f, 1f)).build()));
         CgVfxEmitter.Builder five = base();
         for (int w = 0; w < 5; w++) five.bind(CgVfxUserBinding.spawn(w, SPEED, 1f, 0f));
         assertEquals(plain.instanceRowVectors() + 2, CgVfxShape.of(five.build()).instanceRowVectors());
     }
 
     @Test
-    public void aWordTheDefinitionLacksOrBindsTwiceIsRefused() {
+    public void anInputTheDefinitionLacksOrAWordBoundTwiceIsRefused() {
         assertThrows(IllegalArgumentException.class,
-                () -> CgVfxShape.of(base().bind(CgVfxUserBinding.module(1, 0, GRAVITY, 1f, 0f)).build()));
+                () -> CgVfxShape.of(base().bind(CgVfxUserBinding.module(1, "gravity", 0, GRAVITY, 1f, 0f)).build()));
         assertThrows(IllegalArgumentException.class,
-                () -> CgVfxShape.of(base().bind(CgVfxUserBinding.module(0, 4, GRAVITY, 1f, 0f)).build()));
+                () -> CgVfxShape.of(base().bind(CgVfxUserBinding.module(0, "gravity", 3, GRAVITY, 1f, 0f)).build()));
+        assertThrows(IllegalArgumentException.class,
+                () -> CgVfxShape.of(base().bind(CgVfxUserBinding.module(0, "pull", GRAVITY, 1f, 0f)).build()));
         assertThrows(IllegalArgumentException.class, () -> CgVfxShape.of(base()
                 .bind(CgVfxUserBinding.spawn(1, SPEED, 1f, 0f)).bind(CgVfxUserBinding.spawn(1, GRAVITY, 1f, 0f)).build()));
     }
 
     @Test
     public void eachStepsRowCarriesTheScaledValueFromTheEffect() {
-        CgVfxEmitter def = base().bind(CgVfxUserBinding.module(0, 0, GRAVITY, 9.8f, 0f))
+        CgVfxEmitter def = base().bind(CgVfxUserBinding.module(0, "gravity", 0, GRAVITY, 9.8f, 0f))
                 .bind(CgVfxUserBinding.spawn(1, SPEED, 2f, 0.5f)).build();
         CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, def);
         int slot = pool.open(def, 10);
@@ -96,7 +98,7 @@ public class CgVfxUserLanesTest {
 
     @Test
     public void theKernelReadsABoundModuleWordEveryStepAndABoundSpawnWordAtLaunch() {
-        CgVfxShape shape = CgVfxShape.of(base().bind(CgVfxUserBinding.module(0, 0, GRAVITY, 9.8f, 0f))
+        CgVfxShape shape = CgVfxShape.of(base().bind(CgVfxUserBinding.module(0, "gravity", 0, GRAVITY, 9.8f, 0f))
                 .bind(CgVfxUserBinding.spawn(1, SPEED, 1f, 0f)).build());
         String glsl = CgVfxEmitterCompiler.source(shape);
         int at = shape.paramAt(0), lane = shape.userAt();

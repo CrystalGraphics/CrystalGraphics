@@ -15,7 +15,6 @@ import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.vfx.effect.beam.CgBeamWake;
 import com.crystalgraphics.vfx.element.CgVfxExplosion;
-import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 
 /** Today's built-in emitters round-trip through emitter assets: written, resolved, compiled, written again. */
 public class CgVfxEmitterAssetsTest {
@@ -37,17 +36,9 @@ public class CgVfxEmitterAssetsTest {
             CgVfxEmitter back = CgVfxEmitterAssets.compile(e.name(), asset.resolved(), e);
             assertEquals(e.name(), tree.toString(), CgVfxEmitterAssets.write(back).toString());
             assertEquals(e.name(), e.modules.size(), back.modules.size());
-            for (int i = 0; i < e.modules.size(); i++) assertArrayEquals(e.name() + " module " + i, words(e.modules.get(i)), words(back.modules.get(i)));
+            assertArrayEquals(e.name() + "'s module words", e.moduleWords(), back.moduleWords());
             CgVfxEmitter bare = CgVfxEmitterAssets.compile(e.name(), asset.resolved(), null);
             assertEquals(e.name() + " without a template", tree.toString(), CgVfxEmitterAssets.write(bare).toString());
         }
-    }
-
-    private static int[] words(CgVfxModule m) {
-        int[] w = new int[m.paramVectors() * 4];
-        CgVfxWords out = CgVfxWords.into(w, 0, m.paramVectors(), m.gpuKind());
-        m.writeParams(out);
-        out.finish("its words");
-        return w;
     }
 }

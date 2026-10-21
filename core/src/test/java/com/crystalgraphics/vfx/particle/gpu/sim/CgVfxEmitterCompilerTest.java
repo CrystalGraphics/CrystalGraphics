@@ -1,11 +1,13 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
+import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgPlane;
 import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxField;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
+import com.crystalgraphics.vfx.particle.CgVfxModuleTypes;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
@@ -76,10 +78,14 @@ public class CgVfxEmitterCompilerTest {
     /** A kind given as text, bouncing on the window's distance field, its impacts and a rate as events. */
     private static final class Bounce implements CgVfxGpuModule {
         private static final CgVfxWorldInput[] WORLD = {CgVfxWorldInput.WORLD_DISTANCE};
+        static {
+            CgVfxModuleTypes.declare("test_bounce", Bounce.class,
+                    t -> t.property("keep", CgValueType.FLOAT).property("hit_speed", CgValueType.FLOAT),
+                    (m, in) -> in.f("keep", 0.5f).f("hit_speed", 1f));
+        }
         public String gpuKind() { return "test_bounce"; }
         public boolean afterSolve() { return true; }
         public CgVfxWorldInput[] worldInputs() { return WORLD; }
-        public void writeParams(CgVfxWords out) { out.vec4(0.5f, 1f, 0f, 0f); }
         public String gpuSource() {
             return """
                     void fx_test_bounce(inout FxParticle p, FxStep s, vec4 m, FxWorld world) {
@@ -93,7 +99,12 @@ public class CgVfxEmitterCompilerTest {
         }
     }
 
-    private record Hooked(CgVfxEmitter of, List<CgVfxGpuModule> modules, List<CgVfxEvent> events) implements CgVfxGpuEmitter {
+    private record Hooked(CgVfxEmitter of, List<CgVfxGpuModule> modules, List<CgVfxEvent> events, int[] moduleWords)
+            implements CgVfxGpuEmitter {
+        Hooked(CgVfxEmitter of, List<CgVfxGpuModule> modules, List<CgVfxEvent> events) {
+            this(of, modules, events, CgVfxModuleTypes.words(modules));
+        }
+
         public String name() { return of.name(); }
         public CgVfxEmitter.Renderer renderer() { return of.renderer(); }
         public void writeSpawn(CgVfxWords out) { of.writeSpawn(out); }

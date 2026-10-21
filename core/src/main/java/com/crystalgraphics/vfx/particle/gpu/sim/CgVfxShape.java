@@ -4,6 +4,7 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.CgVfxModuleTypes;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
@@ -124,10 +125,9 @@ public final class CgVfxShape {
                 }
             }
             afterSolve[i] = m.afterSolve();
-            params[i] = m.paramVectors();
+            params[i] = CgVfxModuleTypes.vectors(m);
             lanes[i] = m.instanceLanes().clone();
             world[i] = m.worldInputs().clone();
-            if (params[i] < 0) throw new IllegalArgumentException(emitter.name() + ": fx_" + kind + " declares " + params[i] + " param vectors");
             if (!afterSolve[i]) {
                 for (CgVfxWorldInput input : world[i]) {
                     if (!BEFORE_SOLVER.contains(input)) {
@@ -194,12 +194,17 @@ public final class CgVfxShape {
         userWords = new int[userBindings.length];
         for (int b = 0; b < userBindings.length; b++) {
             CgVfxUserBinding u = userBindings[b];
-            int block = u.module() == CgVfxUserBinding.SPAWN ? CgVfxGpuEmitter.SPAWN_VECTORS : u.module() < n ? params[u.module()] : -1;
-            if (block < 0 || u.word() >= block * 4) {
-                throw new IllegalArgumentException(emitter.name() + " binds word " + u.word() + " of "
-                        + (u.module() == CgVfxUserBinding.SPAWN ? "its spawn numbers" : "module " + u.module()) + ", which it lacks");
+            if (u.module() == CgVfxUserBinding.SPAWN) {
+                userWords[b] = u.index();
+            } else {
+                if (u.module() >= n) throw new IllegalArgumentException(emitter.name() + " binds module " + u.module() + ", which it lacks");
+                CgVfxGpuModule m = modules.get(u.module());
+                try {
+                    userWords[b] = paramAt[u.module()] * 4 + CgVfxModuleTypes.of(m).words().lane(u.input(), u.index());
+                } catch (IllegalArgumentException e) {
+                    throw new IllegalArgumentException(emitter.name() + " binds module " + u.module() + ": " + e.getMessage(), e);
+                }
             }
-            userWords[b] = (u.module() == CgVfxUserBinding.SPAWN ? 0 : paramAt[u.module()] * 4) + u.word();
             for (int c = 0; c < b; c++) {
                 if (userWords[c] == userWords[b]) throw new IllegalArgumentException(emitter.name() + " binds word " + userWords[b] + " twice");
             }

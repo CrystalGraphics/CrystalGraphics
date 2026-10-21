@@ -24,10 +24,56 @@ import com.crystalgraphics.object.layout.CgParam;
 import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgPlane;
 import com.crystalgraphics.shape.primitive.CgSphere;
-import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 
-/** Each built-in module's words, laid out from its declaration, equal its hand-written {@code writeParams}. */
+/**
+ * Each built-in module's words, laid out from its declaration, equal what its hand-written {@code writeParams} wrote
+ * before O6 deleted it: {@link #GOLDEN}, captured from {@code writeParams} for {@link #examples()}, word for word.
+ */
 public class CgVfxModuleWordsTest {
+
+    /** {@code writeParams}' words for each of {@link #examples()}, in order. */
+    private static final float[][] GOLDEN = {
+            {0.0f, -9.8f, 0.0f, 0.0f},   // gravity
+            {0.0f, 1.5f, 0.0f, 0.0f},   // gravity
+            {4.0f, 1.0f, 0.0f, 0.0f},   // drag
+            {0.25f, 1.0f, 1.0f, 0.06f},   // drag
+            {1.0f, 0.0f, 0.0f, 0.0f},   // wind
+            {8.0f, 0.12f, 0.6f, 0.0f},   // turbulence
+            {16.0f, 0.9f, 0.0f, 0.0f},   // buoyancy
+            {3.0f, 2.0f, 6.0f, 1.5f},   // updraft
+            {0.3f, 0.5f, 0.6f, 1.0f},   // ground
+            {0.0f, 0.02f, 0.0f, 0.3f},   // ground
+            {2.0f, 0.3f, 2.0f, 2.5f},   // current
+            {0.8f, 0.0f, 0.0f, 0.0f},   // spin
+            {6.0f, 6.0f, 6.0f, 0.0f, 30.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f},   // attract
+            {3.0f, 3.0f, 3.0f, 1.0f, 12.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f},   // attract
+            {4.0f, 4.0f, 4.0f, 0.0f, 10.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f},   // attract
+            {0.0f, 1.0f, 0.0f, 0.6f},   // orbit
+            {0.0f, 0.70710677f, 0.70710677f, 3.0f, -1.0f, 0.0f, 0.0f, 0.0f},   // vortex
+            {1.6f, 3.0f, 1.5f, 0.8f, 0.5f, 24.0f, 0.0f, 0.0f},   // flock
+            {2.0f, 1.0f, 1.0f, 1.0f, 0.3f, 7.0f, 0.0f, 0.0f},   // flock
+            {2.5f, 0.0f, 0.0f, 0.0f},   // flow
+            {0.2f, 3.0f, 9.0f, 0.0f},   // gas_feed
+            {1.0f, 0.5f, 0.0f, 2.0f},   // grid_splat
+            {2.0f, 1.5f, 0.4f, 3.0f, 0.9f, 0.0f, 0.0f, 0.0f},   // grid_follow
+            {1.0f, -2.0f, 0.0f, 0.0f},   // grid_gradient
+            {1.0f, -2.0f, 3.0f, 0.0f},   // force
+            {2.0f, 3.0f, 4.0f, 1.0f, 5.0f, 0.5f, 0.0f, 0.0f},   // vector_field
+            {2.0f, 0.0f, 0.0f, 0.0f},   // damping
+            {4.0f, 0.0f, 0.0f, 0.0f},   // limit_speed
+            {2.0f, 1.0f, 3.0f, 2.0f, 0.1f, 2.0f, 0.0f, 0.0f},   // conform
+            {0.37139067f, 0.9284767f, 0.0f, 2.0f, 0.3f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f},   // collide
+            {2.0f, 2.0f, 2.0f, 0.0f, 0.5f, 0.1f, 0.2f, 1.0f, 0.5f, 1.0f, 0.0f, 0.0f},   // collide
+            {1.0f, 2.0f, 3.0f, 1.0f, 0.1f, 0.2f, 0.3f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f},   // collide
+            {0.35f, 0.4f, 0.4f, 0.0f},   // collide_world
+            {0.0f, 0.0f, 0.0f, 1.0f},   // collide_world
+            {0.2f, 0.3f, 0.4f, 0.0f, 0.5f, 0.0f, 0.0f, 0.0f},   // collide_depth
+            {0.2f, 0.3f, 0.4f, 1.0f, 1.2f, 0.0f, 0.0f, 0.0f},   // collide_entities
+            {0.3f, 0.3f, 0.3f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f},   // kill
+            {4.0f, 1.0f, 4.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f},   // kill
+            {0.0f, 1.0f, 0.0f, 2.0f, 1.0f, 0.0f, 0.0f, 0.0f},   // kill
+    };
 
     /** Example configurations: every kind at least once, every shape on the shape kinds. */
     static List<CgVfxModule> examples() {
@@ -70,23 +116,77 @@ public class CgVfxModuleWordsTest {
     }
 
     @Test
-    public void generatedWordsEqualWriteParams() {
+    public void declaredWordsEqualTheHandWrittenOnes() {
+        List<CgVfxModule> examples = examples();
+        assertEquals(GOLDEN.length, examples.size());
         Set<String> seen = new HashSet<>();
-        for (CgVfxModule m : examples()) {
+        for (int e = 0; e < GOLDEN.length; e++) {
+            CgVfxModule m = examples.get(e);
             CgVfxModuleTypes.Kind<CgVfxModule> kind = CgVfxModuleTypes.of(m);
             assertEquals(m.gpuKind(), kind.id());
-            assertEquals(m.gpuKind() + "'s vec4s", m.paramVectors(), kind.words().vectors());
-            int[] expected = new int[m.paramVectors() * 4], actual = new int[expected.length];
-            CgVfxWords out = CgVfxWords.into(expected, 0, m.paramVectors(), m.gpuKind());
-            m.writeParams(out);
-            out.finish("writeParams");
-            out = CgVfxWords.into(actual, 0, m.paramVectors(), m.gpuKind());
-            kind.words().write(kind.values(kind.inputs(m)), out);
-            out.finish("the declaration");
-            assertArrayEquals(m.toString(), expected, actual);
+            int[] expected = new int[GOLDEN[e].length];
+            for (int w = 0; w < expected.length; w++) expected[w] = Float.floatToRawIntBits(GOLDEN[e][w]);
+            assertArrayEquals(m.toString(), expected, CgVfxModuleTypes.words(m));
             seen.add(kind.id());
         }
-        for (CgVfxModuleTypes.Kind<?> k : CgVfxModuleTypes.all()) assertTrue(k.id() + " has no example", seen.contains(k.id()));
+        for (CgVfxModuleTypes.Kind<?> k : CgVfxModuleTypes.all()) {
+            if (k.type().getEnclosingClass() == CgVfxModule.class) assertTrue(k.id() + " has no example", seen.contains(k.id()));
+        }
+    }
+
+    /** A kind of a mod's own: one scalar, then a vec3 on a new vec4. */
+    private record Swirl(float strength, float x, float y, float z) implements CgVfxGpuModule {
+        static {
+            CgVfxModuleTypes.declare("test_words_swirl", Swirl.class,
+                    t -> t.property("strength", CgValueType.FLOAT).property("axis", CgValueType.VEC3),
+                    (m, in) -> in.f("strength", m.strength()).v3("axis", m.x(), m.y(), m.z()));
+        }
+
+        public String gpuKind() {
+            return "test_words_swirl";
+        }
+
+        public boolean afterSolve() {
+            return false;
+        }
+    }
+
+    /** Another class under the same id. */
+    private record Imposter() implements CgVfxGpuModule {
+        public String gpuKind() {
+            return "test_words_swirl";
+        }
+
+        public boolean afterSolve() {
+            return false;
+        }
+    }
+
+    @Test
+    public void aModsKindIsLaidOutFromItsDeclarationAndBindsByName() {
+        Swirl s = new Swirl(2f, 0f, 1f, 0f);
+        assertArrayEquals(new int[] {Float.floatToRawIntBits(2f), 0, 0, 0, 0, Float.floatToRawIntBits(1f), 0, 0},
+                CgVfxModuleTypes.words(s));
+        assertEquals(2, CgVfxModuleTypes.vectors(s));
+        assertEquals(5, CgVfxModuleTypes.of(s).words().lane("axis", 1));
+        try {
+            CgVfxModuleTypes.of(s).compile(CgVfxModuleTypes.inputs(s));
+            fail("a kind declared for code reads no inputs");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("test_words_swirl"));
+        }
+        try {
+            CgVfxModuleTypes.declare("test_words_swirl", Imposter.class, t -> { }, (m, in) -> { });
+            fail("an id is one class's");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("Swirl"));
+        }
+        try {
+            CgVfxModuleTypes.words(new Imposter());
+            fail("an undeclared kind");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("declare"));
+        }
     }
 
     @Test

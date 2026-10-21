@@ -1,6 +1,8 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
+import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.CgVfxModuleTypes;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
@@ -26,6 +28,11 @@ public class CgVfxParticlePoolTest {
 
     /** A kind with one vec4 of numbers. */
     private static final class Pull implements CgVfxGpuModule {
+        static {
+            CgVfxModuleTypes.declare("pull", Pull.class, t -> t.property("strength", CgValueType.FLOAT),
+                    (m, in) -> in.f("strength", m.strength));
+        }
+
         final float strength;
 
         Pull(float strength) {
@@ -39,15 +46,16 @@ public class CgVfxParticlePoolTest {
         public boolean afterSolve() {
             return false;
         }
-
-        public void writeParams(CgVfxWords out) {
-            out.vec4(strength, 0f, 0f, 0f);
-        }
     }
 
     /** A kind with two lanes worked out per instance, as Turbulence's lattice cell and fraction. */
     private static final class Swirl implements CgVfxGpuModule {
         private static final CgVfxLane[] LANES = {CgVfxLane.IVEC4, CgVfxLane.VEC4};
+        static {
+            CgVfxModuleTypes.declare("swirl", Swirl.class, t -> t.property("frequency", CgValueType.FLOAT),
+                    (m, in) -> in.f("frequency", (float) m.frequency));
+        }
+
         final double frequency;
         int writes = 2;
 
@@ -67,10 +75,6 @@ public class CgVfxParticlePoolTest {
             return LANES;
         }
 
-        public void writeParams(CgVfxWords out) {
-            out.vec4((float) frequency, 0f, 0f, 0f);
-        }
-
         public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
             double x = instance.originX() * frequency;
             if (writes > 0) out.ivec4((int) Math.floor(x), 0, 0, 0);
@@ -81,6 +85,10 @@ public class CgVfxParticlePoolTest {
     /** A kind after the solver taking the floor. */
     private static final class Floor implements CgVfxGpuModule {
         private static final CgVfxWorldInput[] WORLD = {CgVfxWorldInput.FLOOR_Y};
+        static {
+            CgVfxModuleTypes.declare("floor", Floor.class, t -> t.property("rest", CgValueType.FLOAT), (m, in) -> in.f("rest", 0.5f));
+        }
+
         final boolean after;
 
         Floor(boolean after) {
@@ -98,22 +106,20 @@ public class CgVfxParticlePoolTest {
         public CgVfxWorldInput[] worldInputs() {
             return WORLD;
         }
-
-        public void writeParams(CgVfxWords out) {
-            out.vec4(0.5f, 0f, 0f, 0f);
-        }
     }
 
     private static final class Def implements CgVfxGpuEmitter {
         final String name;
         final CgVfxEmitter.Renderer renderer;
         final List<CgVfxGpuModule> modules;
+        final int[] moduleWords;
         int trailPoints;
 
         Def(String name, CgVfxEmitter.Renderer renderer, CgVfxGpuModule... modules) {
             this.name = name;
             this.renderer = renderer;
             this.modules = Arrays.asList(modules);
+            this.moduleWords = CgVfxModuleTypes.words(this.modules);
         }
 
         public String name() {
@@ -126,6 +132,10 @@ public class CgVfxParticlePoolTest {
 
         public List<CgVfxGpuModule> modules() {
             return modules;
+        }
+
+        public int[] moduleWords() {
+            return moduleWords;
         }
 
         public void writeSpawn(CgVfxWords out) {

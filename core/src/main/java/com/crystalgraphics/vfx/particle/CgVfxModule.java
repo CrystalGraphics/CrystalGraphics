@@ -54,8 +54,9 @@ import java.util.Objects;
  *       from it. Any other shape is refused.</li>
  *   <li>{@link Ground} lands particles on the voxel window's blocks, or on the instance's ground height where the host
  *       has no world ({@link CgVfxEmitterInstance#ground(float)}).</li>
- *   <li>A new kind is a record here and its GPU side: {@code fx_<kind>.glsl} and the {@link CgVfxGpuModule} methods.
- *       A mod's own kind implements {@link CgVfxGpuModule} instead.</li>
+ *   <li>A new kind is a record here, its declaration in {@link CgVfxModuleTypes} (its inputs, which are its GPU
+ *       numbers) and its GPU side: {@code fx_<kind>.glsl} and the {@link CgVfxGpuModule} methods. A mod's own kind
+ *       implements {@link CgVfxGpuModule} instead and declares itself.</li>
  * </ul>
  */
 public sealed interface CgVfxModule extends CgVfxGpuModule {
@@ -113,11 +114,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         public String gpuKind() {
             return "gravity";
         }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(x, y, z, 0f);
-        }
     }
 
     /**
@@ -136,10 +132,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         /** Its declared inputs' words: the drag, a scale of 1, use_quadratic and the quadratic term ({@code fx_drag.glsl}). */
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(linear, 1f, quadratic != 0f ? 1f : 0f, quadratic);
-        }
     }
 
     /**
@@ -151,11 +143,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "wind";
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(resistance, 0f, 0f, 0f);
         }
     }
 
@@ -183,11 +170,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "turbulence";
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(strength, frequency, evolve, 0f);
         }
 
         @Override
@@ -230,11 +212,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         public String gpuKind() {
             return "buoyancy";
         }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(lift, cooling, 0f, 0f);
-        }
     }
 
     /**
@@ -264,11 +241,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "updraft";
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(strength, radius, height, duration);
         }
 
         @Override
@@ -314,11 +286,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "ground";
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(restitution, friction, rest, radius);
         }
 
         @Override
@@ -368,11 +335,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(depth, roll, loft, slow);
-        }
-
-        @Override
         public CgVfxWorldInput[] worldInputs() {
             return WORLD;
         }
@@ -384,11 +346,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "spin";
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(drag, 0f, 0f, 0f);
         }
     }
 
@@ -454,17 +411,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public int paramVectors() {
-            return 3;
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            CgVfxShapeRows.writeShape(shape, out);
-            out.vec4(strength, attenuation, directionality, 0f).vec4(axisX, axisY, axisZ, 0f);
-        }
-
-        @Override
         public CgVfxLane[] instanceLanes() {
             return LANES;
         }
@@ -502,11 +448,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "orbit";
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(axisX, axisY, axisZ, turns);
         }
 
         @Override
@@ -549,16 +490,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "vortex";
-        }
-
-        @Override
-        public int paramVectors() {
-            return 2;
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(axisX, axisY, axisZ, tangential).vec4(radial, 0f, 0f, 0f);
         }
 
         @Override
@@ -620,16 +551,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public int paramVectors() {
-            return 2;
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(radius, separation, alignment, cohesion).vec4(apart, most, 0f, 0f);
-        }
-
-        @Override
         public CgVfxWorldInput[] worldInputs() {
             return NEIGHBOURS;
         }
@@ -672,11 +593,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "flow";
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(follow, 0f, 0f, 0f);
         }
 
         @Override
@@ -730,11 +646,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(density, heat, push, 0f);
-        }
-
-        @Override
         public CgVfxWorldInput[] worldInputs() {
             return FEEDS;
         }
@@ -773,11 +684,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public boolean afterSolve() {
             return true;
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(x, y, z, w);
         }
 
         @Override
@@ -821,11 +727,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public int paramVectors() {
-            return 2;
-        }
-
-        @Override
         public String gpuKind() {
             return "grid_follow";
         }
@@ -833,11 +734,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuFile() {
             return "crystalgraphics:shaders/lib/vfx/sim/grid/fx_grid_follow.glsl";
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(channel, sense, angle, turn).vec4(full, 0f, 0f, 0f);
         }
 
         @Override
@@ -873,11 +769,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(channel, strength, 0f, 0f);
-        }
-
-        @Override
         public CgVfxWorldInput[] worldInputs() {
             return GRID;
         }
@@ -894,11 +785,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "force";
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(x, y, z, 0f);
         }
     }
 
@@ -941,17 +827,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public int paramVectors() {
-            return 2;
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4((float) box.halfX(), (float) box.halfY(), (float) box.halfZ(), field.tiles() ? 1f : 0f)
-                    .vec4(strength, attenuation, 0f, 0f);
-        }
-
-        @Override
         public CgVfxLane[] instanceLanes() {
             return LANES;
         }
@@ -977,11 +852,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         public String gpuKind() {
             return "damping";
         }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(rate, 0f, 0f, 0f);
-        }
     }
 
     /**
@@ -1001,11 +871,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "limit_speed";
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(most, 0f, 0f, 0f);
         }
     }
 
@@ -1047,16 +912,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "conform";
-        }
-
-        @Override
-        public int paramVectors() {
-            return 2;
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4((float) sphere.radius(), influence, attraction, speed).vec4(shell, sticky, 0f, 0f);
         }
 
         @Override
@@ -1135,17 +990,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public int paramVectors() {
-            return 3;
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            CgVfxShapeRows.writeShape(shape, out);
-            out.vec4(bounce, friction, rest, kill ? 1f : 0f).vec4(radius, keepsInside ? 1f : 0f, 0f, 0f);
-        }
-
-        @Override
         public CgVfxLane[] instanceLanes() {
             return LANES;
         }
@@ -1189,11 +1033,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(bounce, friction, rest, kill ? 1f : 0f);
-        }
-
-        @Override
         public CgVfxWorldInput[] worldInputs() {
             return WORLD;
         }
@@ -1227,16 +1066,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "collide_depth";
-        }
-
-        @Override
-        public int paramVectors() {
-            return 2;
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(bounce, friction, rest, kill ? 1f : 0f).vec4(thickness, 0f, 0f, 0f);
         }
 
         @Override
@@ -1286,16 +1115,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public int paramVectors() {
-            return 2;
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            out.vec4(bounce, friction, rest, kill ? 1f : 0f).vec4(size, 0f, 0f, 0f);
-        }
-
-        @Override
         public CgVfxWorldInput[] worldInputs() {
             return ENTITIES;
         }
@@ -1335,17 +1154,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "kill";
-        }
-
-        @Override
-        public int paramVectors() {
-            return 2;
-        }
-
-        @Override
-        public void writeParams(CgVfxWords out) {
-            CgVfxShapeRows.writeShape(shape, out);
-            out.vec4(inside ? 1f : 0f, 0f, 0f, 0f);
         }
 
         @Override

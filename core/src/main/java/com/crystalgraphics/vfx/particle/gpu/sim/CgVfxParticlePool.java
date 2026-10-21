@@ -1781,12 +1781,14 @@ public final class CgVfxParticlePool {
         words.target(params, at, CgVfxGpuEmitter.SPAWN_VECTORS, emitter.name());
         emitter.writeSpawn(words);
         words.finish("its spawn numbers");
-        for (int i = 0; i < shape.modules(); i++) {
-            int vectors = shape.paramVectors(i);
-            words.target(params, at + shape.paramAt(i) * 4, vectors, emitter.name() + "'s fx_" + shape.kind(i));
-            emitter.modules().get(i).writeParams(words);
-            words.finish("its numbers");
+        int[] moduleWords = emitter.moduleWords();
+        int last = shape.modules() - 1;
+        int expected = last < 0 ? 0 : (shape.paramAt(last) + shape.paramVectors(last) - CgVfxGpuEmitter.SPAWN_VECTORS) * 4;
+        if (moduleWords.length != expected) {
+            throw new IllegalStateException(emitter.name() + "'s module words are " + moduleWords.length + " long; its modules'"
+                    + " declarations lay out " + expected);
         }
+        System.arraycopy(moduleWords, 0, params, at + CgVfxGpuEmitter.SPAWN_VECTORS * 4, expected);
         if (curves.length < (index + 1) * CURVE_WORDS) {
             curves = Arrays.copyOf(curves, Math.max((index + 1) * CURVE_WORDS, curves.length * 2));
             rowSizeMax = Arrays.copyOf(rowSizeMax, curves.length / CURVE_WORDS);

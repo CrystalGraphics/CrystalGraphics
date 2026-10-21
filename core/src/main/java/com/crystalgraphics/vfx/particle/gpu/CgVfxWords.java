@@ -1,15 +1,12 @@
 package com.crystalgraphics.vfx.particle.gpu;
 
 /**
- * Where a module kind or an emitter writes its numbers for the GPU: whole {@code vec4}s of 32-bit words, in the order
- * its GLSL takes them. The pool hands one out positioned at a row and checks afterwards that exactly what was declared
- * was written.
+ * Where a module kind writes its lanes, or an emitter its spawn numbers, for the GPU: whole {@code vec4}s of 32-bit
+ * words, in the order its GLSL takes them. The pool hands one out positioned at a row and checks afterwards that exactly
+ * what was declared was written. A kind's own numbers are its declaration's ({@code CgVfxModuleTypes}), never written
+ * here.
  *
  * <pre>{@code
- * public void writeParams(CgVfxWords out) {
- *     out.vec4(strength, frequency, evolve, 0f);
- * }
- *
  * public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
  *     double x = instance.originX() * frequency;
  *     out.ivec4((int) Math.floor(x), ..., 0).vec4((float) (x - Math.floor(x)), ..., 0f);
@@ -40,9 +37,9 @@ public final class CgVfxWords {
      *
      * <pre>{@code
      * int[] words = new int[8];
-     * CgVfxWords out = CgVfxWords.into(words, 0, turbulence.paramVectors(), "turbulence");
-     * turbulence.writeParams(out);
-     * out.finish("its numbers");
+     * CgVfxWords out = CgVfxWords.into(words, 0, 2, "turbulence");
+     * turbulence.writeInstance(instance, out);
+     * out.finish("its lanes");
      * }</pre>
      */
     public static CgVfxWords into(int[] into, int from, int vectors, String writer) {

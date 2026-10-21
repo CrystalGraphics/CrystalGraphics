@@ -2131,18 +2131,24 @@ Properties {
 
 ## 21. Writing a particle module of your own
 
-A module is a Java record implementing `CgVfxModule` plus a GLSL function `fx_<kind>`, which the generated GPU step
-calls. Its numbers are written once per emitter definition; nothing recompiles when they change.
+A module is a Java record implementing `CgVfxGpuModule`, its inputs declared once (`CgVfxModuleTypes.declare`), plus
+a GLSL function `fx_<kind>`, which the generated GPU step calls. Its inputs, in the order declared, are its numbers:
+packed into `vec4 m0, m1, ...` (a scalar takes the next lane, a `vec3` or `vec4` a new vec4), laid out once per
+emitter definition; nothing recompiles when they change.
 
 ```java
-record Swirl(float strength) implements CgVfxModule {
+record Swirl(float strength, float height) implements CgVfxGpuModule {
+    static {
+        CgVfxModuleTypes.declare("mymod_swirl", Swirl.class,
+                t -> t.property("strength", CgValueType.FLOAT).property("height", CgValueType.FLOAT),
+                (m, in) -> in.f("strength", m.strength()).f("height", m.height()));
+    }
     public String gpuKind() { return "mymod_swirl"; }
     public boolean afterSolve() { return false; }
-    public void writeParams(CgVfxWords out) { out.vec4(strength, 0f, 0f, 0f); }
     public String gpuSource() {                          // or a file: shaders/lib/vfx/sim/fx_mymod_swirl.glsl
         return """
                 void fx_mymod_swirl(inout FxParticle p, inout FxForces f, FxStep s, vec4 m) {
-                    f.accel += cross(vec3(0.0, 1.0, 0.0), p.position) * m.x;
+                    f.accel += cross(vec3(0.0, 1.0, 0.0), p.position) * m.x * step(p.position.y, m.y);
                 }
                 """;
     }
@@ -2151,7 +2157,8 @@ record Swirl(float strength) implements CgVfxModule {
 
 | Needs | Declares | Its function then takes |
 |---|---|---|
-| more numbers | `paramVectors()` | `vec4 m0, m1, ...` |
+| more numbers | more inputs in its declaration | `vec4 m0, m1, ...` once they pass four lanes |
+| an input an effect drives | nothing: the emitter binds it by name, `CgVfxUserBinding.module(i, "strength", PARAM, scale, offset)` | the same argument, read from the instance each step |
 | a value per instance each step (a moving centre) | `instanceLanes()`, `writeInstance` | one argument per lane, after the numbers |
 | the world after the solver (floor, blocks, light) | `afterSolve()` true, `worldInputs()` | the world values, after the lanes; `FxWorld` for the voxel window |
 | a texture (a field, a heightfield) | `textures()` | a `sampler2D` or `sampler3D` each, after the world |
@@ -2163,7 +2170,9 @@ record Swirl(float strength) implements CgVfxModule {
 
 - `fx_types.glsl` defines `FxParticle`, `FxForces` and `FxStep`. Kill a particle with `p.life = p.age`.
 - **Prefix the kind with your mod's name**: two kinds of one name with different source throw.
-- Write exactly the vec4s you declared, or the pool throws naming the kind. Every variation has an example in
+- **Declare before its first definition opens** (a static initialiser runs when the first module is made). An
+  undeclared kind throws as its shape is made, naming it.
+- Write one vec4 per lane you declared, or the pool throws naming the kind. Every variation has an example in
   `CgVfxGpuModule`'s javadoc.
 
 ---

@@ -117,6 +117,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final float frontA, frontB;
     final float sizeMin, sizeMax, sizeSkew, spinMin, spinMax, heat;
     final List<CgVfxModule> modules;
+    /** Its modules' numbers from their kinds' declarations, made once: what a pool copies into a row. */
+    private final int[] moduleWords;
     /** Its own events, then its clip's bursts and streams as events; how many are its own. */
     final List<CgVfxEvent> events;
     private final int ownEvents;
@@ -175,6 +177,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         spinMax = b.spinMax;
         heat = b.heat;
         modules = Collections.unmodifiableList(new ArrayList<>(b.modules));
+        moduleWords = CgVfxModuleTypes.words(modules);
         boolean feeds = false, splats = false;
         for (CgVfxModule m : modules) {
             feeds |= Arrays.asList(m.worldInputs()).contains(CgVfxWorldInput.GAS_FEED);
@@ -331,6 +334,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     @Override
     public List<CgVfxModule> modules() {
         return modules;
+    }
+
+    @Override
+    public int[] moduleWords() {
+        return moduleWords;
     }
 
     @Override
@@ -1102,12 +1110,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
          * Binds one of its inputs to a user parameter, read from its effect's values each step ({@link CgVfxUserBinding}).
          *
          * <pre>{@code
-         * .module(new CgVfxModule.Gravity(9.8f)).bind(CgVfxUserBinding.module(0, 0, GRAVITY, 9.8f, 0f))
+         * .module(new CgVfxModule.Gravity(9.8f)).bind(CgVfxUserBinding.module(0, "gravity", 1, GRAVITY, -9.8f, 0f))
          * .bind(CgVfxUserBinding.spawn(1, SPEED, 1f, 0f))   // speed max: new spawns only
          * }</pre>
          *
          * <ul>
-         *   <li>Module indices count its modules as added; a word it lacks throws when its shape is made.</li>
+         *   <li>Module indices count its modules as added; an input its module's kind lacks throws when its shape is made.</li>
          * </ul>
          */
         public Builder bind(CgVfxUserBinding binding) {

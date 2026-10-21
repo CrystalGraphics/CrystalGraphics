@@ -21,21 +21,49 @@ import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgPlane;
 import com.crystalgraphics.shape.primitive.CgSphere;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxModuleWords;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 
 /**
- * Each {@link CgVfxModule} kind declared as data: its inputs in GPU word order, the {@link CgLayout} and
- * {@link CgVfxModuleWords} compiled from them, and the two directions between a module and a module entry's
- * {@code inputs}: {@link Kind#inputs} writes an asset's, {@link Kind#compile} builds the module from them.
+ * Every module kind declared as data: its inputs in GPU word order, the {@link CgLayout} and {@link CgVfxModuleWords}
+ * compiled from them, and the two directions between a module and a module entry's {@code inputs}: {@link Kind#inputs}
+ * writes an asset's, {@link Kind#compile} builds the module from them. A kind's GPU numbers are its declaration's words:
+ * nothing writes them by hand.
  *
  * <pre>{@code
  * CgVfxModuleTypes.Kind<?> drag = CgVfxModuleTypes.kind("drag");
  * Map<String, Object> inputs = CgVfxModuleTypes.inputs(new CgVfxModule.Drag(4f, 0f));   // {linear: 4.0, quadratic: 0.0}
  * CgVfxModule back = drag.compile(inputs);                                              // Drag[linear=4.0, quadratic=0.0]
- * drag.words().write(drag.values(inputs), out);                                         // its row, from the declaration
+ * int[] row = CgVfxModuleTypes.words(new CgVfxModule.Drag(4f, 0f));                     // its vec4s, from the declaration
+ * }</pre>
+ *
+ * <p>A kind of a mod's own declares its inputs once, in its class's static initialiser, in the order its
+ * {@code fx_<kind>} reads them:</p>
+ * <pre>{@code
+ * record Swirl(float strength, float height) implements CgVfxGpuModule {
+ *     static {
+ *         CgVfxModuleTypes.declare("mymod_swirl", Swirl.class,
+ *                 t -> t.property("strength", CgValueType.FLOAT).property("height", CgValueType.FLOAT),
+ *                 (m, in) -> in.f("strength", m.strength()).f("height", m.height()));
+ *     }
+ *     public String gpuKind() { return "mymod_swirl"; }
+ *     public boolean afterSolve() { return false; }
+ * }
+ * // void fx_mymod_swirl(inout FxParticle p, inout FxForces f, FxStep s, vec4 m)   // m.x strength, m.y height
+ * }</pre>
+ *
+ * <p>Read back from an asset's inputs too, by adding the reader:</p>
+ * <pre>{@code
+ * CgVfxModuleTypes.declare("mymod_swirl", Swirl.class, t -> ..., (m, in) -> ...,
+ *         r -> new Swirl(r.f("strength"), r.f("height")));
  * }</pre>
  *
  * <ul>
+ *   <li>Packing is {@link CgVfxModuleWords}': a scalar takes the next lane, a {@code vec3} or {@code vec4} a new
+ *       vec4.</li>
+ *   <li>Declare before the first definition holding the kind opens in a pool: a kind with no declaration throws there,
+ *       naming it. A second declaration of an id by another class throws.</li>
  *   <li>A shape is {@code volume} (a sphere's radius three times, a box's half extents or a plane's normal) then
  *       {@code shape}, one vec4 as {@code fx_contact.glsl} reads it; its centre ({@code offset}) and a plane's radius
  *       are {@code PER_INSTANCE}, written to the instance lane.</li>
@@ -60,9 +88,9 @@ public final class CgVfxModuleTypes {
      * @param layout  the layout of {@code inputs}
      * @param words   its row, laid out from {@code layout}
      */
-    public record Kind<M extends CgVfxModule>(String id, Class<M> type, CgType inputs, CgLayout layout,
-                                              CgVfxModuleWords words, BiConsumer<M, Inputs> writer,
-                                              Function<CgLayoutValues, M> reader) {
+    public record Kind<M extends CgVfxGpuModule>(String id, Class<M> type, CgType inputs, CgLayout layout,
+                                                 CgVfxModuleWords words, BiConsumer<M, Inputs> writer,
+                                                 Function<CgLayoutValues, M> reader) {
 
         /** {@code module}'s inputs by name, in declaration order. */
         public Map<String, Object> inputs(M module) {
@@ -76,47 +104,63 @@ public final class CgVfxModuleTypes {
             return layout.values().setAll(inputs);
         }
 
-        /** The module {@code inputs} declare. */
+        /** The module {@code inputs} declare: throws for a kind declared without a reader. */
         public M compile(Map<?, ?> inputs) {
-            return reader.apply(values(inputs));
+            return compile(values(inputs));
         }
 
-        /** The module {@code values} hold. */
+        /** The module {@code values} hold: throws for a kind declared without a reader. */
         public M compile(CgLayoutValues values) {
+            if (reader == null) throw new IllegalStateException(id + " is declared for code alone: it reads no inputs");
             return reader.apply(values);
+        }
+
+        /** {@code module}'s {@link #words} vec4s, in a new array. */
+        public int[] words(M module) {
+            int[] out = new int[words.vectors() * 4];
+            CgVfxWords to = CgVfxWords.into(out, 0, words.vectors(), id);
+            words.write(values(inputs(module)), to);
+            to.finish("its declaration");
+            return out;
         }
     }
 
-    /** A module's inputs as it writes them: numbers as doubles, vectors as lists, enums by name. */
+    /** A module's inputs as its kind's writer gives them: numbers as doubles, vectors as lists, enums by name. */
     public static final class Inputs {
         private final Map<String, Object> map = new LinkedHashMap<>();
 
-        Inputs f(String name, float v) {
+        /** A {@code float} input. */
+        public Inputs f(String name, float v) {
             map.put(name, (double) v);
             return this;
         }
 
-        Inputs i(String name, int v) {
+        /** An {@code int} input. */
+        public Inputs i(String name, int v) {
             map.put(name, v);
             return this;
         }
 
-        Inputs b(String name, boolean v) {
+        /** A {@code bool} input: 1 or 0 in its word. */
+        public Inputs b(String name, boolean v) {
             map.put(name, v);
             return this;
         }
 
-        Inputs v3(String name, float x, float y, float z) {
+        /** A {@code vec3} input. */
+        public Inputs v3(String name, float x, float y, float z) {
             map.put(name, Arrays.asList((double) x, (double) y, (double) z));
             return this;
         }
 
-        Inputs v4(String name, float x, float y, float z, float w) {
+        /** A {@code vec4} input. */
+        public Inputs v4(String name, float x, float y, float z, float w) {
             map.put(name, Arrays.asList((double) x, (double) y, (double) z, (double) w));
             return this;
         }
 
-        Inputs o(String name, Object v) {
+        /** An object input (a field, a texture): outside the words. */
+        public Inputs o(String name, Object v) {
             map.put(name, v);
             return this;
         }
@@ -138,25 +182,26 @@ public final class CgVfxModuleTypes {
         }
     }
 
-    /** Reads compiled values by name: compile time only. */
-    private record Read(CgLayoutValues v) {
-        float f(String name) {
+    /** A kind's compiled values read by name, for its reader: compile time only. */
+    public record Read(CgLayoutValues v) {
+        public float f(String name) {
             return v.getFloat(slot(name));
         }
 
-        float f(String name, int lane) {
+        /** Component {@code lane} of a vector input. */
+        public float f(String name, int lane) {
             return v.getFloat(slot(name), lane);
         }
 
-        int i(String name) {
+        public int i(String name) {
             return v.getInt(slot(name));
         }
 
-        boolean b(String name) {
+        public boolean b(String name) {
             return v.getBool(slot(name));
         }
 
-        Object o(String name) {
+        public Object o(String name) {
             return v.getObject(slot(name));
         }
 
@@ -296,15 +341,40 @@ public final class CgVfxModuleTypes {
     private CgVfxModuleTypes() {
     }
 
-    private static <M extends CgVfxModule> void kind(String id, Class<M> type, Consumer<CgType.Builder> declare,
-                                                     BiConsumer<M, Inputs> writer, Function<Read, M> reader) {
+    private static <M extends CgVfxGpuModule> void kind(String id, Class<M> type, Consumer<CgType.Builder> declare,
+                                                        BiConsumer<M, Inputs> writer, Function<Read, M> reader) {
+        declare(id, type, declare, writer, reader);
+    }
+
+    /**
+     * Declares a kind of {@code type}: {@code declare} lists its inputs in the order its {@code fx_<kind>} reads them,
+     * {@code writer} gives a module's values for them, {@code reader} builds one back from an asset's. {@code id} is its
+     * {@code gpuKind()}, which an asset names it by; a class answering several GPU kinds of one layout declares once,
+     * under an id of its own.
+     */
+    public static synchronized <M extends CgVfxGpuModule> Kind<M> declare(String id, Class<M> type,
+            Consumer<CgType.Builder> declare, BiConsumer<M, Inputs> writer, Function<Read, M> reader) {
+        Kind<?> known = BY_ID.get(id);
+        if (known != null) {
+            if (known.type() != type) throw new IllegalArgumentException(id + " is declared already, by " + known.type().getName());
+            @SuppressWarnings("unchecked") Kind<M> same = (Kind<M>) known;
+            return same;
+        }
         CgType.Builder b = REGISTRY.declare("crystalgraphics:gpu_module." + id, CgTypeKind.STRUCT);
         declare.accept(b);
         CgType t = b.register();
         CgLayout layout = CgLayout.of(t);
-        Kind<M> kind = new Kind<>(id, type, t, layout, CgVfxModuleWords.of(layout), writer, v -> reader.apply(new Read(v)));
+        Kind<M> kind = new Kind<>(id, type, t, layout, CgVfxModuleWords.of(layout), writer,
+                reader == null ? null : v -> reader.apply(new Read(v)));
         BY_ID.put(id, kind);
         BY_CLASS.put(type, kind);
+        return kind;
+    }
+
+    /** {@link #declare(String, Class, Consumer, BiConsumer, Function) declare} for a kind made in code alone. */
+    public static <M extends CgVfxGpuModule> Kind<M> declare(String id, Class<M> type, Consumer<CgType.Builder> declare,
+                                                             BiConsumer<M, Inputs> writer) {
+        return declare(id, type, declare, writer, null);
     }
 
     private static void fl(CgType.Builder t, String... names) {
@@ -332,26 +402,49 @@ public final class CgVfxModuleTypes {
         return s instanceof CgPlane plane ? (float) plane.radius() : 1f;
     }
 
-    /** The kind whose {@link CgVfxModule#gpuKind()} is {@code id}, or null. */
-    public static Kind<?> kind(String id) {
+    /** The kind whose {@link CgVfxGpuModule#gpuKind()} is {@code id}, or null. */
+    public static synchronized Kind<?> kind(String id) {
         return BY_ID.get(id);
     }
 
     /** Every kind, in declaration order. */
-    public static List<Kind<?>> all() {
+    public static synchronized List<Kind<?>> all() {
         return new ArrayList<>(BY_ID.values());
     }
 
-    /** {@code module}'s kind: throws for a kind with no declaration (a mod's own). */
+    /** {@code module}'s kind: throws, naming it, for a kind never declared. */
     @SuppressWarnings("unchecked")
-    public static <M extends CgVfxModule> Kind<M> of(M module) {
+    public static synchronized <M extends CgVfxGpuModule> Kind<M> of(M module) {
         Kind<M> k = (Kind<M>) BY_CLASS.get(module.getClass());
-        if (k == null) throw new IllegalArgumentException("no declaration for the module kind " + module.gpuKind());
+        if (k == null) {
+            throw new IllegalArgumentException("no declaration for the module kind " + module.gpuKind() + " ("
+                    + module.getClass().getName() + "): CgVfxModuleTypes.declare it");
+        }
         return k;
     }
 
     /** {@code module}'s inputs, as its asset entry writes them. */
-    public static <M extends CgVfxModule> Map<String, Object> inputs(M module) {
+    public static <M extends CgVfxGpuModule> Map<String, Object> inputs(M module) {
         return of(module).inputs(module);
+    }
+
+    /** {@code module}'s vec4s of numbers, laid out from its kind's declaration. */
+    public static <M extends CgVfxGpuModule> int[] words(M module) {
+        return of(module).words(module);
+    }
+
+    /** Every module's words end to end in stack order: what an emitter definition's {@code moduleWords()} holds. */
+    public static int[] words(List<? extends CgVfxGpuModule> modules) {
+        int[][] each = new int[modules.size()][];
+        int total = 0;
+        for (int i = 0; i < each.length; i++) total += (each[i] = words(modules.get(i))).length;
+        int[] out = new int[total];
+        for (int i = 0, at = 0; i < each.length; at += each[i].length, i++) System.arraycopy(each[i], 0, out, at, each[i].length);
+        return out;
+    }
+
+    /** How many vec4s {@code module}'s numbers take. */
+    public static int vectors(CgVfxGpuModule module) {
+        return of(module).words().vectors();
     }
 }

@@ -1,6 +1,8 @@
 package com.crystalgraphics.vfx.particle.gpu;
 
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 import com.crystalgraphics.object.layout.CgFormClass;
 import com.crystalgraphics.object.layout.CgLayout;
@@ -23,6 +25,7 @@ import com.crystalgraphics.object.layout.CgLayoutValues;
  *   <li>{@code PER_INSTANCE} slots go to the instance lanes and objects (textures, fields) outside the words:
  *       neither takes a lane here.</li>
  *   <li>A kind with no row slot still writes one vec4 of zeros.</li>
+ *   <li>{@link #lane} finds an input's first lane by name: what a user binding reads in its place.</li>
  * </ul>
  */
 public final class CgVfxModuleWords {
@@ -32,22 +35,27 @@ public final class CgVfxModuleWords {
     private final CgLayout layout;
     /** Per lane: the float offset ({@code >= 0}), {@code -(intOffset + 2)} for an int, or {@link #PAD}. */
     private final int[] lanes;
+    /** By row input's name: its first lane. */
+    private final Map<String, Integer> firstLane;
 
-    private CgVfxModuleWords(CgLayout layout, int[] lanes) {
+    private CgVfxModuleWords(CgLayout layout, int[] lanes, Map<String, Integer> firstLane) {
         this.layout = layout;
         this.lanes = lanes;
+        this.firstLane = firstLane;
     }
 
     /** The words of {@code layout}'s row slots. */
     public static CgVfxModuleWords of(CgLayout layout) {
         int[] scratch = new int[4 + 4 * (layout.floats() + layout.ints())];
         Arrays.fill(scratch, PAD);
+        Map<String, Integer> first = new HashMap<>();
         int lane = 0;
         for (CgLayout.Slot s : layout.slots()) {
             if (s.formClass() != CgFormClass.ROW) continue;
             int w = s.width();
             int align = w == 1 ? 1 : w == 2 ? 2 : 4;
             lane = (lane + align - 1) / align * align;
+            first.put(s.name(), lane);
             for (int i = 0; i < w; i++) {
                 scratch[lane + i] = s.store() == CgLayout.Store.FLOAT ? s.offset() + i : -(s.offset() + 2);
             }
@@ -56,7 +64,21 @@ public final class CgVfxModuleWords {
         int vectors = Math.max(1, (lane + 3) / 4);
         int[] lanes = new int[vectors * 4];
         System.arraycopy(scratch, 0, lanes, 0, lanes.length);
-        return new CgVfxModuleWords(layout, lanes);
+        return new CgVfxModuleWords(layout, lanes, first);
+    }
+
+    /**
+     * The lane holding {@code component} of the row input {@code name}: throws, naming the layout, for an input it has
+     * not, one outside the words, or a component past its width.
+     */
+    public int lane(String name, int component) {
+        Integer first = firstLane.get(name);
+        CgLayout.Slot s = layout.slot(name);
+        if (first == null || s == null) throw new IllegalArgumentException(layout.id() + " has no input '" + name + "' in its words");
+        if (component < 0 || component >= s.width()) {
+            throw new IllegalArgumentException(layout.id() + "." + name + " has " + s.width() + " components, not " + (component + 1));
+        }
+        return first + component;
     }
 
     public CgLayout layout() {

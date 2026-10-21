@@ -173,7 +173,10 @@ public final class CgVfxEmitterAssets {
             }
             CgVfxModuleTypes.Kind<?> kind = CgVfxModuleTypes.kind(moduleId(entry));
             if (kind == null) throw new IllegalArgumentException(name + ": no module " + entry.get("module"));
-            b.module(kind.compile(inputs(entry)));
+            if (!(kind.compile(inputs(entry)) instanceof CgVfxModule module)) {
+                throw new IllegalArgumentException(name + ": module " + entry.get("module") + " is a mod's kind; an asset names the engine's");
+            }
+            b.module(module);
         }
         return b.build();
     }
