@@ -23,7 +23,7 @@ import static org.junit.Assert.fail;
 /** System assets to definitions: emitters by handle, user parameters, effect behaviours, failures by path. */
 public class CgVfxSystemAssetsTest {
 
-    private static final Path NOVA = Paths.get("../../plan/crystalgraphics/vfx-aaa/examples/novamod/vfx/systems/nova_cannon");
+    private static final Path NOVA = Paths.get("../../plan/crystalgraphics/vfx-aaa/examples/novamod/assets/novamod/vfx/systems/nova_cannon");
 
     private static CgVfxSystemDefinition compile(String id, String yaml) {
         CgAssetData asset = CgAssetData.of(id, CgParticleKinds.SYSTEM, (Map<?, ?>) CgAssetYaml.read(yaml), null);

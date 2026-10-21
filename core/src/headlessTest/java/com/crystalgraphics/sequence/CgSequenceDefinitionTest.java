@@ -59,7 +59,7 @@ public class CgSequenceDefinitionTest {
 
     @Test
     public void theNovaCannonsSequenceCompilesOrFailsNamingItsPath() throws Exception {
-        Path file = Paths.get("../../plan/crystalgraphics/vfx-aaa/examples/novamod/sequences/nova_cannon.yaml");
+        Path file = Paths.get("../../plan/crystalgraphics/vfx-aaa/examples/novamod/assets/novamod/sequences/nova_cannon.yaml");
         Assume.assumeTrue("the Nova Cannon fixture is absent", Files.isRegularFile(file));
         try {
             compile("novamod:nova_cannon", new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
