@@ -6,17 +6,16 @@
 #pragma kernel Runs scatter
 
 #include "crystalgraphics:shaders/lib/vfx/sim/fx_neighbour_hash.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_record.glsl"
 
 Properties {
     _Cell  ("A cell's width, blocks",       float) = 1.0
     _Cells ("Hashed cells: a power of two", int)   = 1
+    _RecordVectors ("A record's uvec4s: its pool's layout", int) = 4
 }
 
-// A particle as a pool stores it: CgVfxRecord.GLSL.
-struct FxRecord { vec4 positionAge; vec4 previousLife; vec4 velocitySize; vec4 seedSpin; uvec4 idSlot; vec4 place; vec4 motion; vec4 state; vec4 light; vec4 color; vec4 scale; };
-
 Buffers {
-    RECORDS ("Particles, after the step",                            FxRecord, readonly)
+    RECORDS ("Particles, after the step",                            uvec4,    readonly)
     LIVE    ("How many are alive",                                   uint,     readonly)
     KEYS    ("Each particle's hashed cell; sorted, the runs' order", uint,     readwrite)
     VALUES  ("Each particle's index, sorted with its key",           uint,     writeonly)
@@ -26,8 +25,9 @@ Buffers {
 void Keys() {
     uint key = 0u;
     if (CG_ELEMENT < int(LIVE(0))) {
-        FxRecord r = RECORDS(CG_ELEMENT);
-        key = uint(fx_neighbour_hash(ivec3(floor(r.positionAge.xyz / _Cell)), r.idSlot.y, _Cells));
+        int e = CG_ELEMENT * _RecordVectors;
+        vec3 p = uintBitsToFloat(RECORDS(e + FX_RECORD_POSITION_AGE).xyz);
+        key = uint(fx_neighbour_hash(ivec3(floor(p / _Cell)), RECORDS(e + FX_RECORD_HEAT_ID).z, _Cells));
     }
     KEYS_WRITE(key);
     VALUES_WRITE(uint(CG_ELEMENT));

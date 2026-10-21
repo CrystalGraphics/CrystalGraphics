@@ -10,6 +10,7 @@ import static org.junit.Assert.assertTrue;
 public class CgVfxRangeTest {
 
     private static final String RANGE = "crystalgraphics:shaders/env/compute/vfx/range.compute";
+    private static final String LOOK = "crystalgraphics:shaders/env/compute/vfx/look.compute";
 
     @Test
     public void rangesKernelsRunOnEveryTier() {
@@ -20,7 +21,8 @@ public class CgVfxRangeTest {
     }
 
     @Test
-    public void rangeReadsTheRecordTheStepKernelWrites() {
-        assertTrue(CgIO.loadSource(RANGE).contains(CgVfxRecord.GLSL));
+    public void rangeAndTheDrawsReadTheDrawnPartLookWrites() {
+        assertTrue(CgIO.loadSource(LOOK).contains(CgVfxRecord.DRAWN_GLSL));
+        assertTrue(CgIO.loadSource(RANGE).contains(CgVfxRecord.DRAWN_GLSL));
     }
 }

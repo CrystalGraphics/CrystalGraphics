@@ -4,15 +4,15 @@
 // runs at every tier: below compute, points blended into the history's target.
 #pragma kernel Store scatter
 
+#include "crystalgraphics:shaders/lib/vfx/fx_record.glsl"
+
 Properties {
-    _Step ("This step's place in every ring: the steps the pool has stored, modulo a ring's points", int) = 0
+    _Step          ("This step's place in every ring: the steps the pool has stored, modulo a ring's points", int) = 0
+    _RecordVectors ("A record's uvec4s: its pool's layout", int) = 4
 }
 
-// A particle as a pool stores it: CgVfxRecord.GLSL.
-struct FxRecord { vec4 positionAge; vec4 previousLife; vec4 velocitySize; vec4 seedSpin; uvec4 idSlot; vec4 place; vec4 motion; vec4 state; vec4 light; vec4 color; vec4 scale; };
-
 Buffers {
-    RECORDS ("Particles, after the step",                                FxRecord, readonly)
+    RECORDS ("Particles, after the step",                                uvec4,    readonly)
     LIVE    ("How many are alive",                                       uint,     readonly)
     RINGS   ("Each slot's rings: first point, rings, points a ring, 0",  uvec4,    readonly)
     HISTORY ("Every ring's points: position from its slot's origin, and 1 + its particle's id", vec4, writeonly)
@@ -20,9 +20,10 @@ Buffers {
 
 void Store() {
     if (CG_ELEMENT >= int(LIVE(0))) return;
-    FxRecord r = RECORDS(CG_ELEMENT);
-    uvec4 ring = RINGS(int(r.idSlot.y));
+    int e = CG_ELEMENT * _RecordVectors;
+    uvec4 heatId = RECORDS(e + FX_RECORD_HEAT_ID);
+    uvec4 ring = RINGS(int(heatId.z));
     if (ring.z == 0u) return;
-    uint at = ring.x + (r.idSlot.x % ring.y) * ring.z + uint(_Step) % ring.z;
-    HISTORY_STORE(int(at), vec4(r.positionAge.xyz, float(r.idSlot.x & 16777215u) + 1.0));
+    uint at = ring.x + (heatId.y % ring.y) * ring.z + uint(_Step) % ring.z;
+    HISTORY_STORE(int(at), vec4(uintBitsToFloat(RECORDS(e + FX_RECORD_POSITION_AGE).xyz), float(heatId.y & 16777215u) + 1.0));
 }

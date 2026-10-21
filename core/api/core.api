@@ -13454,7 +13454,7 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   method public shape ()Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape;
   method public slotCount ()I
   method public spawn (III)V
-  method public spawn (IIIIFFFFFFFF)V
+  method public spawn (IIIIFFFFFFFFFF)V
   method public storage ()I
   method public trailSince ()F
   method public,static depth (Lcom/crystalgraphics/render/stage/CgHostView;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
@@ -13477,17 +13477,16 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord
   access public,final
   extends java/lang/Object
   field public,static,final AGE I
-  field public,static,final BYTES I
   field public,static,final COLLISIONS_SHIFT I
-  field public,static,final DRAWN I
-  field public,static,final FLAGS I
-  field public,static,final GLSL Ljava/lang/String;
+  field public,static,final CORE Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord;
+  field public,static,final CORE_WORDS I
+  field public,static,final DRAWN_BYTES I
+  field public,static,final DRAWN_GLSL Ljava/lang/String;
   field public,static,final HEAT I
   field public,static,final ID I
   field public,static,final LIFE I
   field public,static,final PARAM_ROW I
   field public,static,final POSITION I
-  field public,static,final PREVIOUS I
   field public,static,final RESTING I
   field public,static,final SEED I
   field public,static,final SIZE I
@@ -13495,9 +13494,29 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord
   field public,static,final SPIN I
   field public,static,final SPIN_RATE I
   field public,static,final VELOCITY I
-  field public,static,final WORDS I
-  method public,static f (Ljava/nio/ByteBuffer;II)F
-  method public,static i (Ljava/nio/ByteBuffer;II)I
+  method public bytes ()I
+  method public f (Ljava/nio/ByteBuffer;II)F
+  method public glsl ()Ljava/lang/String;
+  method public has (Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord$Tail;)Z
+  method public i (Ljava/nio/ByteBuffer;II)I
+  method public put (Ljava/nio/ByteBuffer;IFFFFFFFFFFII)V
+  method public putF (Ljava/nio/ByteBuffer;IIF)V
+  method public putI (Ljava/nio/ByteBuffer;III)V
+  method public tail ()Ljava/util/List;
+  method public toString ()Ljava/lang/String;
+  method public vectors ()I
+  method public word (Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord$Tail;)I
+  method public words ()I
+  method public,static lane (Ljava/lang/String;I)Ljava/lang/String;
+  method public,static of (Ljava/util/Collection;)Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord;
+com/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord$Tail
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final FLAGS Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord$Tail;
+  field public,static,final PREVIOUS Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord$Tail;
+  method public components ()I
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord$Tail;
+  method public,static values ()[Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord$Tail;
 com/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape
   access public,final
   extends java/lang/Object
@@ -13588,6 +13607,7 @@ com/crystalgraphics/vfx/particle/spawn/CgVfxEmitterState
   field public,static,final DEFAULT Lcom/crystalgraphics/vfx/particle/spawn/CgVfxEmitterState;
   field public,static,final DEFAULT_DURATION F
   field public,static,final ONCE Lcom/crystalgraphics/vfx/particle/spawn/CgVfxEmitterState;
+  method public drawn ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public delay (F)Lcom/crystalgraphics/vfx/particle/spawn/CgVfxEmitterState;
   method public delay (FF)Lcom/crystalgraphics/vfx/particle/spawn/CgVfxEmitterState;
   method public delayBefore (II)F
@@ -13612,6 +13632,7 @@ com/crystalgraphics/vfx/particle/spawn/CgVfxEmitterState
   method public,static infinite (FF)Lcom/crystalgraphics/vfx/particle/spawn/CgVfxEmitterState;
   method public,static loops (IF)Lcom/crystalgraphics/vfx/particle/spawn/CgVfxEmitterState;
   method public,static loops (IFF)Lcom/crystalgraphics/vfx/particle/spawn/CgVfxEmitterState;
+  method public record ()Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord;
   method public,static once (F)Lcom/crystalgraphics/vfx/particle/spawn/CgVfxEmitterState;
   method public,static once (FF)Lcom/crystalgraphics/vfx/particle/spawn/CgVfxEmitterState;
 com/crystalgraphics/vfx/particle/spawn/CgVfxInactiveResponse
@@ -13689,12 +13710,19 @@ com/crystalgraphics/vfx/path/CgVfxPath
 com/crystalgraphics/vfx/path/CgVfxPathTexture
   access public,final
   extends java/lang/Object
+  method public form (I)Lcom/crystalgraphics/vfx/particle/form/CgVfxModuleForm;
+  method public formAt (I)I
+  method public formAtWord (I)[I
+  method public formWord (II)I
+  method public forms ()I
   field public,static,final WIDTH I
   method public <init> ()V
   method public add (Lcom/crystalgraphics/vfx/path/CgVfxPath;FF)I
   method public begin ()V
   method public delete ()V
   method public texture ()Lcom/crystalgraphics/gl/texture/CgTexture2D;
+  method public keys ()I
+  method public keysAt ()I
   method public upload ()V
 com/crystalgraphics/vfx/prefab/CgVfxPrefab
   access public,final
@@ -13704,9 +13732,14 @@ com/crystalgraphics/vfx/prefab/CgVfxPrefab
   method public id ()Ljava/lang/String;
   method public kit ()Lcom/crystalgraphics/vfx/look/CgVfxKit;
   method public name (I)Ljava/lang/String;
+  method public record ()Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord;
   method public node (Ljava/lang/String;)I
   method public nodes ()I
   method public opacity (I)F
+  method public spawnForm (I)Lcom/crystalgraphics/vfx/particle/form/CgVfxSpawnForm;
+  method public spawnFormAt (I)I
+  method public spawnFormOf (Lcom/crystalgraphics/vfx/particle/form/CgVfxSpawnInput;)I
+  method public spawnForms ()I
   method public parent (I)I
   method public partMesh (I)Lcom/crystalgraphics/api/mesh/CgMeshLods;
   method public partSlot (I)Lcom/crystalgraphics/vfx/look/CgVfxSlot;

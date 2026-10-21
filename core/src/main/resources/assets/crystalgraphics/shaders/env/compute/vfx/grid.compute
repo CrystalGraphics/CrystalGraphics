@@ -20,6 +20,7 @@
 #pragma kernel Coarsen 4 4 4 image
 
 #include "crystalgraphics:shaders/lib/vfx/fx_sparse.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_record.glsl"
 
 Properties {
     _State ("The channels as the last frame's step left them", sampler3D) = "black"
@@ -28,11 +29,10 @@ Properties {
     _Before ("The coarsened grid's page table before",         sampler3D) = "black"
     _Coarsened ("The grid coarsened this frame",               int)       = -1
     _Texels ("Samples a curve row holds",                       int)       = 256
+    _RecordVectors ("A record's uvec4s: its pool's layout",       int)       = 4
 }
 
 struct FxSplat { vec4 cell; vec4 amounts; };
-// A particle as a pool stores it: CgVfxRecord.GLSL.
-struct FxRecord { vec4 positionAge; vec4 previousLife; vec4 velocitySize; vec4 seedSpin; uvec4 idSlot; vec4 place; vec4 motion; vec4 state; vec4 light; vec4 color; vec4 scale; };
 
 Buffers {
     GRIDS       ("Each grid's four rows (CgVfxGridAtlas.ROW_*)",                                     vec4,    readonly)
@@ -43,7 +43,7 @@ Buffers {
     WANT        ("1 for each page a splat found no tile in, a page table's worth a grid",           uint,    readwrite)
     WANTED      ("The pages WANT marked, each grid * PAGES³ + page + 1",                           uint,    append)
     OCCUPIED    ("Each slot's eight flags: something in it, then near its -x, +x, -y, +y, -z, +z face", uint, readwrite)
-    RECORDS     ("A pool's particles",                                                             FxRecord, readonly)
+    RECORDS     ("A pool's particles",                                                             uvec4,   readonly)
     LIVE        ("How many are alive",                                                             uint,    readonly)
     CURVES      ("Each parameter row's curves and start values (range.compute's)",                 vec4,    readonly)
     RASTER      ("Each pool slot's: its origin from its grid's low corner and the grid, 0s, its densities", vec4, readonly)
@@ -181,31 +181,36 @@ vec2 g_curve(uint row, float t) {
     return vec2(mix(CURVES(at + i0).w, CURVES(at + i1).w, f), mix(CURVES(at + _Texels + i0).w, CURVES(at + _Texels + i1).w, f));
 }
 
-// Where r samples its curves: life progress, or its speed between its row's two (range.compute's range_curve_at).
-float g_curve_at(FxRecord r, float progress) {
-    vec4 speeds = CURVES(int(r.idSlot.w) * (2 * _Texels + 5) + 2 * _Texels + 4);
+// Where a particle of row `row` samples its curves: life progress, or its speed between its row's two (range.compute's
+// range_curve_at).
+float g_curve_at(uint row, vec3 velocity, float progress) {
+    vec4 speeds = CURVES(int(row) * (2 * _Texels + 5) + 2 * _Texels + 4);
     if (speeds.x < 0.0) return progress;
-    return clamp((length(r.velocitySize.xyz) - speeds.x) / (speeds.y - speeds.x), 0.0, 1.0);
+    return clamp((length(velocity) - speeds.x) / (speeds.y - speeds.x), 0.0, 1.0);
 }
 
 void Rasterize() {
     if (uint(CG_ELEMENT) >= LIVE(0)) return;
-    FxRecord r = RECORDS(CG_ELEMENT);
-    int slot = int(r.idSlot.y);
+    int e = CG_ELEMENT * _RecordVectors;
+    vec4 positionAge = uintBitsToFloat(RECORDS(e + FX_RECORD_POSITION_AGE));
+    vec4 velocitySize = uintBitsToFloat(RECORDS(e + FX_RECORD_VELOCITY_SIZE));
+    float life = uintBitsToFloat(RECORDS(e + FX_RECORD_LIFE_SEED).x);
+    uvec4 heatId = RECORDS(e + FX_RECORD_HEAT_ID);
+    int slot = int(heatId.z);
     vec4 into = RASTER(slot * 3);
     if (into.w < 0.0) return;
     int b = int(into.w + 0.5);
     vec4 state = GRIDS(b * G_ROWS);
     if (state.x < 0.5) return;
-    float t = min(r.positionAge.w / r.previousLife.w, 1.0);
-    vec2 curve = g_curve(r.idSlot.w, g_curve_at(r, t));
+    float t = min(positionAge.w / life, 1.0);
+    vec2 curve = g_curve(heatId.w, g_curve_at(heatId.w, velocitySize.xyz, t));
     // Into rebuilt channels alone: a trail takes what Splat adds a step, never a frame's worth.
     vec4 density = RASTER(slot * 3 + 2) * GRIDS(b * G_ROWS + 4) * curve.y;
     if (all(equal(density, vec4(0.0)))) return;
     // Where Range draws it, as wide as it is drawn (its size over life), never under a cell nor past G_RASTER_CELLS.
-    vec3 p = r.positionAge.xyz;
+    vec3 p = positionAge.xyz;
     float cell = state.w;
-    float radius = clamp(r.velocitySize.w * curve.x / cell, 1.0, G_RASTER_CELLS);
+    float radius = clamp(velocitySize.w * curve.x / cell, 1.0, G_RASTER_CELLS);
     vec3 q = (p + into.xyz) / cell;
     ivec3 lo = ivec3(floor(q - radius)), hi = ivec3(floor(q + radius));
     for (int z = lo.z; z <= hi.z; z++) {

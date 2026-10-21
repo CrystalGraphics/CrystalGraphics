@@ -1,5 +1,5 @@
-// The Step's last stage (CgVfxParticlePool, P14): after a step, every live particle's drawn part written into its own
-// record, which draws read through Range's order: its look over life or speed from its row's curves, its starts rolled
+// The Step's last stage (CgVfxParticlePool, P14): after a step, every live particle's drawn part written into the
+// pool's drawn buffer at its record's index, which draws read through Range's order: its look over life or speed from its row's curves, its starts rolled
 // per channel from its seed (Niagara's non-uniform ranges), its light from the voxel window at its block, and the floor
 // under it. A stage of its own rather than the Step's tail, so the Step keeps its units below compute; a map, so it runs
 // at every tier.
@@ -7,6 +7,7 @@
 
 #include "crystalgraphics:shaders/lib/vfx/fx_rand.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_world.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_record.glsl"
 
 Properties {
     _InstanceAt    ("This step's instance rows",                          int)       = 0
@@ -22,14 +23,16 @@ Properties {
     _WorldWrapY    ("y",                                                  int)       = 0
     _WorldWrapZ    ("z",                                                  int)       = 0
     _WorldLive     ("1 with a level, else 0: read nothing",               int)       = 0
+    _RecordVectors ("A record's uvec4s: its pool's layout",               int)       = 4
+    _PreviousAt    ("Its previous position's word; -1 reads the position", int)      = -1
 }
 
-// A particle as a pool stores it: CgVfxRecord.GLSL.
-struct FxRecord { vec4 positionAge; vec4 previousLife; vec4 velocitySize; vec4 seedSpin; uvec4 idSlot; vec4 place; vec4 motion; vec4 state; vec4 light; vec4 color; vec4 scale; };
+// A particle's drawn part: CgVfxRecord.DRAWN_GLSL.
+struct FxDrawn { vec4 place; vec4 motion; vec4 state; vec4 light; vec4 color; vec4 scale; };
 
 Buffers {
-    IN        ("Particles, after the step",                         FxRecord, readonly)
-    OUT       ("The same, their drawn part written",                FxRecord, writeonly)
+    IN        ("Particles, after the step",                         uvec4,    readonly)
+    DRAWN     ("Their drawn parts, at the same index",              FxDrawn,  writeonly)
     LIVE      ("How many are alive",                                uint,     readonly)
     INSTANCES ("Instance rows",                                     uvec4,    readonly)
     CURVES    ("Each parameter row's curves and start values",      vec4,     readonly)
@@ -49,14 +52,20 @@ vec4 look_curve(int at, float t) {
 }
 
 void Look() {
-    FxRecord r = IN(CG_ELEMENT);
+    FxDrawn d;
+    d.place = d.motion = d.state = d.light = d.color = d.scale = vec4(0.0);
     if (CG_ELEMENT < int(LIVE(0))) {
-        vec3 position = r.positionAge.xyz, velocity = r.velocitySize.xyz;
-        float age = r.positionAge.w, life = r.previousLife.w, size = r.velocitySize.w;
-        float seed = r.seedSpin.x, spin = r.seedSpin.y, heat = r.seedSpin.w;
-        int inst = _InstanceAt + int(r.idSlot.y) * _InstanceRow;
+        int e = CG_ELEMENT * _RecordVectors;
+        vec4 positionAge = uintBitsToFloat(IN(e + FX_RECORD_POSITION_AGE));
+        vec4 velocitySize = uintBitsToFloat(IN(e + FX_RECORD_VELOCITY_SIZE));
+        vec4 lifeSeed = uintBitsToFloat(IN(e + FX_RECORD_LIFE_SEED));
+        uvec4 heatId = IN(e + FX_RECORD_HEAT_ID);
+        vec3 position = positionAge.xyz, velocity = velocitySize.xyz;
+        float age = positionAge.w, life = lifeSeed.x, size = velocitySize.w;
+        float seed = lifeSeed.y, spin = lifeSeed.z, heat = uintBitsToFloat(heatId.x);
+        int inst = _InstanceAt + int(heatId.z) * _InstanceRow;
         float t = min(age / life, 1.0);
-        int at = int(r.idSlot.w) * (2 * _Texels + 5), starts = at + 2 * _Texels;
+        int at = int(heatId.w) * (2 * _Texels + 5), starts = at + 2 * _Texels;
         vec4 speeds = CURVES(starts + 4);
         float u = speeds.x < 0.0 ? t : clamp((length(velocity) - speeds.x) / (speeds.y - speeds.x), 0.0, 1.0);
         vec4 shape = look_curve(at, u), tint = look_curve(at + _Texels, u);
@@ -64,11 +73,11 @@ void Look() {
         vec4 colorRoll = vec4(fx_rand(bits, 0u, 20u), fx_rand(bits, 0u, 21u), fx_rand(bits, 0u, 22u), fx_rand(bits, 0u, 23u));
         vec3 scaleRoll = vec3(fx_rand(bits, 0u, 24u), fx_rand(bits, 0u, 25u), fx_rand(bits, 0u, 26u));
         vec4 color = mix(CURVES(starts), CURVES(starts + 1), colorRoll) * tint;
-        r.place = vec4(position, size * shape.w);
-        r.motion = vec4(velocity, t);
-        r.state = vec4(seed, spin, heat, color.a);
-        r.color = color;
-        r.scale = vec4(mix(CURVES(starts + 2).xyz, CURVES(starts + 3).xyz, scaleRoll) * shape.xyz, age);
+        d.place = vec4(position, size * shape.w);
+        d.motion = vec4(velocity, t);
+        d.state = vec4(seed, spin, heat, color.a);
+        d.color = color;
+        d.scale = vec4(mix(CURVES(starts + 2).xyz, CURVES(starts + 3).xyz, scaleRoll) * shape.xyz, age);
         ivec3 base = ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ), wrap = ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ);
         ivec3 originBlock = ivec3(INSTANCES(inst + 3).xyz);
         vec3 originFrac = look_instance(inst + 4).xyz;
@@ -81,13 +90,14 @@ void Look() {
         if (_Floors != 0) {
             float floorY = look_instance(inst + 2).y;
             if (_WorldLive != 0) {
-                floorY = fx_world_floor(_World, _WorldSections, base, wrap, originBlock, originFrac, position,
-                        r.previousLife.y);
+                int w = _PreviousAt + 1;
+                float previousY = _PreviousAt < 0 ? position.y : uintBitsToFloat(IN(e + w / 4)[w % 4]);
+                floorY = fx_world_floor(_World, _WorldSections, base, wrap, originBlock, originFrac, position, previousY);
             }
             if (!isnan(floorY)) ground = vec2(position.y - floorY, 1.0);
         }
         // Light packed into one lane (block + 16 sky), its spawn id's low 24 bits in the next.
-        r.light = vec4(floor(light.x + 0.5) + 16.0 * floor(light.y + 0.5), float(r.idSlot.x & 16777215u), ground);
+        d.light = vec4(floor(light.x + 0.5) + 16.0 * floor(light.y + 0.5), float(heatId.y & 16777215u), ground);
     }
-    OUT_WRITE(r);
+    DRAWN_WRITE(d);
 }

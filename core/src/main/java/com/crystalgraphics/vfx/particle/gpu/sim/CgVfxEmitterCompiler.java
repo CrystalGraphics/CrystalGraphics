@@ -13,7 +13,13 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
 
+import com.crystalgraphics.util.io.CgIO;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -87,21 +93,151 @@ public final class CgVfxEmitterCompiler {
         return "crystalgraphics:vfx/pool/" + shape.kernelKey();
     }
 
+    /**
+     * {@code step_unpack} and {@code step_pack} for {@code record}'s layout, the simulated part alone: a tail attribute
+     * it lacks unpacks as its default (PREVIOUS the position, FLAGS none) and is not stored.
+     */
+    private static void recordCode(StringBuilder s, CgVfxRecord record) {
+        int previous = record.word(CgVfxRecord.Tail.PREVIOUS), flags = record.word(CgVfxRecord.Tail.FLAGS);
+        s.append("\nFxParticle step_unpack(FxRecord r) {\n    FxParticle p;\n");
+        unpack(s, "position", "uintBitsToFloat", CgVfxRecord.POSITION, 3);
+        unpack(s, "age", "uintBitsToFloat", CgVfxRecord.AGE, 1);
+        unpack(s, "velocity", "uintBitsToFloat", CgVfxRecord.VELOCITY, 3);
+        unpack(s, "size", "uintBitsToFloat", CgVfxRecord.SIZE, 1);
+        unpack(s, "life", "uintBitsToFloat", CgVfxRecord.LIFE, 1);
+        unpack(s, "seed", "uintBitsToFloat", CgVfxRecord.SEED, 1);
+        unpack(s, "spin", "uintBitsToFloat", CgVfxRecord.SPIN, 1);
+        unpack(s, "spinRate", "uintBitsToFloat", CgVfxRecord.SPIN_RATE, 1);
+        unpack(s, "heat", "uintBitsToFloat", CgVfxRecord.HEAT, 1);
+        unpack(s, "id", "", CgVfxRecord.ID, 1);
+        unpack(s, "slot", "", CgVfxRecord.SLOT, 1);
+        if (previous >= 0) unpack(s, "previous", "uintBitsToFloat", previous, 3);
+        else s.append("    p.previous = p.position;\n");
+        if (flags >= 0) {
+            String w = CgVfxRecord.lane("r", flags);
+            s.append("    p.resting = (").append(w).append(" & 1u) != 0u;\n    p.collisions = ").append(w).append(" >> 16u;\n");
+        } else {
+            s.append("    p.resting = false;\n    p.collisions = 0u;\n");
+        }
+        s.append("    p.hit = vec4(0.0);\n    p.hitEntity = 0u;\n    return p;\n}\n");
+
+        String[] w = new String[record.words()];
+        pack(w, "p.position", CgVfxRecord.POSITION, 3);
+        pack(w, "p.age", CgVfxRecord.AGE, 1);
+        pack(w, "p.velocity", CgVfxRecord.VELOCITY, 3);
+        pack(w, "p.size", CgVfxRecord.SIZE, 1);
+        pack(w, "p.life", CgVfxRecord.LIFE, 1);
+        pack(w, "p.seed", CgVfxRecord.SEED, 1);
+        pack(w, "p.spin", CgVfxRecord.SPIN, 1);
+        pack(w, "p.spinRate", CgVfxRecord.SPIN_RATE, 1);
+        pack(w, "p.heat", CgVfxRecord.HEAT, 1);
+        w[CgVfxRecord.ID] = "p.id";
+        w[CgVfxRecord.SLOT] = "p.slot";
+        w[CgVfxRecord.PARAM_ROW] = "paramRow";
+        if (previous >= 0) pack(w, "p.previous", previous, 3);
+        if (flags >= 0) w[flags] = "((p.resting ? 1u : 0u) | p.collisions << 16u)";
+        // The simulated part; the drawn part is the Look stage's (env/compute/vfx/look.compute).
+        s.append("\nFxRecord step_pack(FxParticle p, uint paramRow) {\n    FxRecord r;\n");
+        for (int v = 0; v < record.vectors(); v++) {
+            s.append("    r.w").append(v).append(" = uvec4(");
+            for (int k = 0; k < 4; k++) {
+                String word = w[v * 4 + k];
+                s.append(k > 0 ? ", " : "").append(word != null ? word : "0u");
+            }
+            s.append(");\n");
+        }
+        s.append("    return r;\n}\n");
+    }
+
+    /** {@code p.<field> = <decode>(the n words from word)}: a uint, or a uvecN, decoded. */
+    private static void unpack(StringBuilder s, String field, String decode, int word, int n) {
+        s.append("    p.").append(field).append(" = ").append(decode).append('(');
+        if (n > 1) s.append("uvec").append(n).append('(');
+        for (int k = 0; k < n; k++) s.append(k > 0 ? ", " : "").append(CgVfxRecord.lane("r", word + k));
+        s.append(n > 1 ? "));\n" : ");\n");
+    }
+
+    /** The n words from {@code word} as {@code value}'s components' bits. */
+    private static void pack(String[] w, String value, int word, int n) {
+        for (int k = 0; k < n; k++) w[word + k] = "floatBitsToUint(" + value + (n > 1 ? "." + "xyz".charAt(k) : "") + ")";
+    }
+
+    /** The libraries every Step includes: the step's own code, not a kind's. */
+    private static final List<String> STEP_LIBRARIES = List.of("crystalgraphics:shaders/lib/vfx/sim/fx_types.glsl",
+            "crystalgraphics:shaders/lib/vfx/fx_rand.glsl", "crystalgraphics:shaders/lib/vfx/fx_event.glsl");
+
+    /** The libraries {@code shape}'s inputs bring, in include order. */
+    private static List<String> libraries(CgVfxShape shape) {
+        List<String> libs = new ArrayList<>();
+        if (shape.readsClips()) libs.add("crystalgraphics:shaders/lib/vfx/fx_clip.glsl");
+        if (shape.readsWorld()) libs.add("crystalgraphics:shaders/lib/vfx/sim/fx_world_at.glsl");
+        if (shape.usesDepth()) libs.add("crystalgraphics:shaders/lib/vfx/sim/fx_depth_at.glsl");
+        if (shape.usesEntities()) libs.add("crystalgraphics:shaders/lib/vfx/sim/fx_entities_at.glsl");
+        if (shape.usesNeighbours()) libs.add("crystalgraphics:shaders/lib/vfx/sim/fx_neighbours_at.glsl");
+        if (shape.usesGas()) libs.add("crystalgraphics:shaders/lib/vfx/sim/fx_gas_at.glsl");
+        if (shape.usesGrid()) libs.add("crystalgraphics:shaders/lib/vfx/sim/grid/fx_grid_at.glsl");
+        return libs;
+    }
+
+    /** What writes each tail attribute in a kind's or a library's code: a value only read stays its default. */
+    private static final Pattern[] TAIL_WRITES = {
+            Pattern.compile("\\bp\\.previous\\s*([-+|]?=(?!=))"),
+            Pattern.compile("\\bp\\.(resting|collisions)\\s*([-+|]?=(?!=))|\\bfx_hit\\s*\\(")};
+    private static final Pattern INCLUDE = Pattern.compile("#include\\s+\"([^\"]+)\"");
+
+    /**
+     * {@code shape}'s record layout ({@link CgVfxShape#record()}): the tail attributes whose values must outlive a step,
+     * in the order its code first writes them, as Niagara's translator collects a script's attribute writes: FLAGS
+     * where its kinds or their libraries rest a particle or count a hit, or an event fires on landing or collision;
+     * PREVIOUS where its particles land on a floor, which the Look stage tests the step's start against. The step sets
+     * PREVIOUS itself before its kinds run, so a kind reading it needs none stored.
+     */
+    static CgVfxRecord record(CgVfxShape shape) {
+        StringBuilder code = new StringBuilder();
+        Set<String> read = new HashSet<>(STEP_LIBRARIES);
+        for (String lib : libraries(shape)) appendCode(code, lib, read);
+        for (int i = 0; i < shape.modules(); i++) {
+            if (shape.source(i) != null) code.append(shape.source(i)).append('\n');
+            else appendCode(code, shape.file(i) != null ? shape.file(i) : KIND_DIR + shape.kind(i) + ".glsl", read);
+        }
+        CgVfxRecord.Tail[] tails = CgVfxRecord.Tail.values();
+        int[] first = new int[tails.length];
+        for (int t = 0; t < tails.length; t++) {
+            Matcher m = TAIL_WRITES[t].matcher(code);
+            first[t] = m.find() ? m.start() : Integer.MAX_VALUE;
+        }
+        for (int e = 0; e < shape.events(); e++) {
+            CgVfxEvent.Trigger trigger = shape.trigger(e);
+            if (trigger == CgVfxEvent.Trigger.LANDING || trigger == CgVfxEvent.Trigger.COLLISION) {
+                first[CgVfxRecord.Tail.FLAGS.ordinal()] = Math.min(first[CgVfxRecord.Tail.FLAGS.ordinal()], code.length());
+            }
+        }
+        if (shape.floors()) {
+            first[CgVfxRecord.Tail.PREVIOUS.ordinal()] = Math.min(first[CgVfxRecord.Tail.PREVIOUS.ordinal()], code.length() + 1);
+        }
+        List<CgVfxRecord.Tail> tail = new ArrayList<>();
+        for (CgVfxRecord.Tail t : tails) if (first[t.ordinal()] != Integer.MAX_VALUE) tail.add(t);
+        tail.sort(Comparator.comparingInt(t -> first[t.ordinal()]));
+        return CgVfxRecord.of(tail);
+    }
+
+    /** {@code path}'s text, each include it names before it once, into {@code code}; none for a missing file. */
+    private static void appendCode(StringBuilder code, String path, Set<String> read) {
+        if (!read.add(path)) return;
+        String text = CgIO.loadSource(path);
+        if (text == null) return;   // the compile names it
+        Matcher m = INCLUDE.matcher(text);
+        while (m.find()) appendCode(code, m.group(1), read);
+        code.append(text).append('\n');
+    }
+
     /** {@code shape}'s Step kernel as {@code .compute} text. */
     public static String source(CgVfxShape shape) {
         StringBuilder s = new StringBuilder(4096);
         s.append("// Written by CgVfxEmitterCompiler for ").append(shape.kernelKey()).append("\n");
         s.append("#pragma kernel Step append\n\n");
-        s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_types.glsl\"\n");
-        s.append("#include \"crystalgraphics:shaders/lib/vfx/fx_rand.glsl\"\n");
-        s.append("#include \"crystalgraphics:shaders/lib/vfx/fx_event.glsl\"\n");
-        if (shape.readsClips()) s.append("#include \"crystalgraphics:shaders/lib/vfx/fx_clip.glsl\"\n");
-        if (shape.readsWorld()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_world_at.glsl\"\n");
-        if (shape.usesDepth()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_depth_at.glsl\"\n");
-        if (shape.usesEntities()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_entities_at.glsl\"\n");
-        if (shape.usesNeighbours()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_neighbours_at.glsl\"\n");
-        if (shape.usesGas()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_gas_at.glsl\"\n");
-        if (shape.usesGrid()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/grid/fx_grid_at.glsl\"\n");
+        for (String lib : STEP_LIBRARIES) s.append("#include \"").append(lib).append("\"\n");
+        for (String lib : libraries(shape)) s.append("#include \"").append(lib).append("\"\n");
         // Declared ahead of the kinds' functions that call them; defined with the other step_ functions.
         if (shape.feedsGas()) {
             s.append("void step_feed(FxGas g, vec3 p, vec3 velocity, float density, float heat, float couple, float dt);\n");
@@ -142,7 +278,8 @@ public final class CgVfxEmitterCompiler {
             }
         }
         s.append("}\n\n");
-        s.append(CgVfxRecord.GLSL).append("\n");
+        CgVfxRecord record = shape.record();
+        s.append(record.glsl()).append("\n");
         s.append(CgVfxParticlePool.EVENT_GLSL).append("\n\n");
         if (shape.feedsGas()) s.append(CgVfxFluidAtlas.DEPOSIT_GLSL).append("\n\n");
         if (shape.splatsGrid()) s.append(CgVfxGridAtlas.SPLAT_GLSL).append("\n\n");
@@ -347,40 +484,8 @@ public final class CgVfxEmitterCompiler {
                     way = d > 1e-20 ? f * inversesqrt(d) : vec3(0.0, 1.0, 0.0);
                 }
                 """);
+        recordCode(s, record);
         s.append("""
-
-                FxParticle step_unpack(FxRecord r) {
-                    FxParticle p;
-                    p.position = r.positionAge.xyz;
-                    p.age = r.positionAge.w;
-                    p.previous = r.previousLife.xyz;
-                    p.life = r.previousLife.w;
-                    p.velocity = r.velocitySize.xyz;
-                    p.size = r.velocitySize.w;
-                    p.seed = r.seedSpin.x;
-                    p.spin = r.seedSpin.y;
-                    p.spinRate = r.seedSpin.z;
-                    p.heat = r.seedSpin.w;
-                    p.resting = (r.idSlot.z & 1u) != 0u;
-                    p.collisions = r.idSlot.z >> 16u;
-                    p.id = r.idSlot.x;
-                    p.slot = r.idSlot.y;
-                    p.hit = vec4(0.0);
-                    p.hitEntity = 0u;
-                    return p;
-                }
-
-                // The simulated part; the drawn part is the Look stage's (env/compute/vfx/look.compute).
-                FxRecord step_pack(FxParticle p, uint paramRow) {
-                    FxRecord r;
-                    r.positionAge = vec4(p.position, p.age);
-                    r.previousLife = vec4(p.previous, p.life);
-                    r.velocitySize = vec4(p.velocity, p.size);
-                    r.seedSpin = vec4(p.seed, p.spin, p.spinRate, p.heat);
-                    r.idSlot = uvec4(p.id, p.slot, (p.resting ? 1u : 0u) | p.collisions << 16u, paramRow);
-                    r.place = r.motion = r.state = r.light = r.color = r.scale = vec4(0.0);
-                    return r;
-                }
 
                 // A launch's local (x, up, z) turned so up is n: Duff et al. 2017's basis, the identity for straight up.
                 vec3 step_orient(vec3 v, vec3 n) {
@@ -746,11 +851,11 @@ public final class CgVfxEmitterCompiler {
 
                 FxNeighbour step_neighbour(uint k) {
                     int i = int(SORTED(int(k)));
-                    FxRecord r = IN(i);
+                    FxParticle q = step_unpack(IN(i));
                     FxNeighbour n;
-                    n.position = r.positionAge.xyz;
-                    n.velocity = r.velocitySize.xyz;
-                    n.slot = r.idSlot.y;
+                    n.position = q.position;
+                    n.velocity = q.velocity;
+                    n.slot = q.slot;
                     n.index = i;
                     return n;
                 }

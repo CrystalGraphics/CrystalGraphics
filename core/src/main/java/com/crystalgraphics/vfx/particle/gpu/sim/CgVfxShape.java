@@ -98,6 +98,8 @@ public final class CgVfxShape {
     private final int keyCount;
     /** Its spawn forms by target, and where each one's vec4s start. */
     private final CgVfxSpawnForm[] spawnForms;
+    /** Its record layout, read from its code the first time it is asked. */
+    private volatile CgVfxRecord record;
     private final int[] spawnFormAt;
     private final int formsAt, formVectors;
     /** Where its roll keys start: the launch's {@code ROLL_KEYS}, then each module form's, then each spawn form's. */
@@ -650,6 +652,16 @@ public final class CgVfxShape {
     public int spawnFormOf(CgVfxSpawnInput target) {
         for (int f = 0; f < spawnForms.length; f++) if (spawnForms[f].target() == target) return f;
         return -1;
+    }
+
+    /**
+     * Its particles' record layout: the core, then the tail attributes its code writes and a later step or stage
+     * reads, so a pool of shapes that never rest nor land stores no flags and no previous position ({@link CgVfxRecord}).
+     */
+    public CgVfxRecord record() {
+        CgVfxRecord r = record;
+        if (r == null) record = r = CgVfxEmitterCompiler.record(this);
+        return r;
     }
 
     /** A parameter row's vec4s: the spawn numbers, then each module's in stack order, its events', its forms', its roll keys. */

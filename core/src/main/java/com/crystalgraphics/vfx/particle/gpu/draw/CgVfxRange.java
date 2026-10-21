@@ -50,7 +50,7 @@ import java.util.Map;
  * <pre>{@code
  * CgVfxRange range = CgVfxRange.of(pool);
  * world.draw(quads, spark)                                                  // per slot and layer
- *      .buffer(CgBindingPoints.PARTICLES, pool.records()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
+ *      .buffer(CgBindingPoints.PARTICLES, pool.drawn()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
  *      .indirect(range.visible(), range.visibleWord(slot) * 4L, CgIndirect.INDICES, 6)
  *      .custom(0, range.base(slot), capacity, radius, parameter)
  *      .at(ox, oy, oz).gpuCulled().group(ox, oy, oz).submit();
@@ -449,6 +449,7 @@ public final class CgVfxRange {
             if (!keyed(p)) continue;
             keyFirst = align(keyFirst, KEY_ALIGN);
             pass.dispatch(order, p.storage()).bind("RECORDS", p.records()).bind("LIVE", p.live())
+                    .set("_RecordVectors", p.record().vectors())
                     .bind("KEYS", keyBuffer, keyFirst * 4L, p.storage() * 4L)
                     .bind("INDICES", indices, keyFirst * 4L, p.storage() * 4L)
                     .set("_Pool", place++).set("_IdBits", idBits);
@@ -542,6 +543,7 @@ public final class CgVfxRange {
             if (keyed(p)) {
                 keyFirst = align(keyFirst, KEY_ALIGN);
                 CgDispatch keyed = pass.dispatch(key, p.storage()).bind("RECORDS", p.records()).bind("LIVE", p.live())
+                        .set("_RecordVectors", p.record().vectors())
                         .bind("SLOTS", slots).bind("SORTS", sorts)
                         .bind("KEYS", keyBuffer, keyFirst * 4L, p.storage() * 4L)
                         .bind("INDICES", indices, keyFirst * 4L, p.storage() * 4L)
@@ -575,7 +577,7 @@ public final class CgVfxRange {
             if (p.isReleased()) continue;
             int capacity = p.capacity();
             if (keyed(p) && capacity > 0) {
-                window.bind(pass.dispatch(place, capacity).bind("RECORDS", p.records()).bind("INDICES", indices)
+                window.bind(pass.dispatch(place, capacity).bind("INDICES", indices)
                         .bind("VISIBLE", visible).bind("STARTS", starts).bind("BASES", bases).bind("ORIGINS", origins)
                         .bind("ORDER", drawn, (long) drawnFirst * DRAWN_BYTES, (long) capacity * DRAWN_BYTES)
                         .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst)
@@ -583,7 +585,8 @@ public final class CgVfxRange {
                         .set("_Floors", p.shape().floors() ? 1 : 0));
                 if (objects != null) {
                     long bytes = CgGpuOps.cullRecordBytes();
-                    window.bind(pass.dispatch(objected, capacity).bind("RECORDS", p.records()).bind("INDICES", indices)
+                    window.bind(pass.dispatch(objected, capacity).bind("RECORDS", p.records()).bind("DRAWN", p.drawn())
+                            .set("_RecordVectors", p.record().vectors()).bind("INDICES", indices)
                             .bind("VISIBLE", visible).bind("STARTS", starts).bind("BASES", bases).bind("ORIGINS", origins)
                             .bind("OBJECTS", objects, drawnFirst * bytes, capacity * bytes)
                             .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst)

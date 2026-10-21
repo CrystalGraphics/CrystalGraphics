@@ -2149,6 +2149,9 @@ record Swirl(float strength, float height) implements CgVfxGpuModule {
 | to pour into that fluid, or push it | `worldInputs()` of `GAS_FEED` | `FxGas`, and `step_feed(gas, p.position, p.velocity, density, heat, couple, s.dt)` (`fx_gas_feed.glsl`) |
 
 - `fx_types.glsl` defines `FxParticle`, `FxForces` and `FxStep`. Kill a particle with `p.life = p.age`.
+- **A pool stores only what outlives a step** (`CgVfxRecord`, a layout per shape): `p.resting` and `p.collisions`
+  are kept where some kind of the shape writes them or calls `fx_hit`, and read false and 0 elsewhere; `p.previous` is
+  the step's start, set before your function runs, so reading it costs nothing.
 - **Prefix the kind with your mod's name**: two kinds of one name with different source throw.
 - **Declare before its first definition opens** (a static initialiser runs when the first module is made). An
   undeclared kind throws as its shape is made, naming it.

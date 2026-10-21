@@ -17,6 +17,7 @@
 #include "crystalgraphics:shaders/lib/occlusion.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_world.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_rand.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_record.glsl"
 
 Properties {
     _Plane0 ("The frustum's planes, JOML's order, camera-relative", vec4)  = (0, 0, 0, 1)
@@ -36,6 +37,7 @@ Properties {
     _Ordered     ("1 when Order sorted INDICES by spawn id first",   int)       = 0
     _Pool        ("The pool's place among those keyed: Order's high bits", int) = 0
     _IdBits      ("The spawn id's bits Order keys by",               int)       = 24
+    _RecordVectors ("A record's uvec4s: the pool's layout",          int)       = 4
     _ClipX       ("Projection times view: row 0",                    vec4)      = (1, 0, 0, 0)
     _ClipY       ("Row 1",                                           vec4)      = (0, 1, 0, 0)
     _ClipZ       ("Row 2",                                           vec4)      = (0, 0, 1, 0)
@@ -56,8 +58,8 @@ Properties {
     _WorldDistance ("Distance to solid over FX_WORLD_FAR",  sampler3D) = "white"
 }
 
-// A particle as a pool stores it: CgVfxRecord.GLSL, which a test holds this line to.
-struct FxRecord { vec4 positionAge; vec4 previousLife; vec4 velocitySize; vec4 seedSpin; uvec4 idSlot; vec4 place; vec4 motion; vec4 state; vec4 light; vec4 color; vec4 scale; };
+// A particle's drawn part: CgVfxRecord.DRAWN_GLSL, which a test holds this line to.
+struct FxDrawn { vec4 place; vec4 motion; vec4 state; vec4 light; vec4 color; vec4 scale; };
 
 // A slot's origin, absolute: its whole blocks, and where in that block; within.w its ground from there, NaN for none;
 // and its instance's rotation, a quaternion.
@@ -71,7 +73,8 @@ struct FxObject {
 };
 
 Buffers {
-    RECORDS ("Particles",                                         FxRecord, readonly)
+    RECORDS ("Particles",                                         uvec4,    readonly)
+    DRAWN   ("Their drawn parts, at the same index",              FxDrawn,  readonly)
     LIVE    ("How many are alive",                                uint,     readonly)
     SLOTS   ("Each slot's origin from the camera, and its reach (below 0: one sphere's)", vec4, readonly)
     SORTS   ("Each slot's: 1 far to near, 2 + its newest spawn's id for a ribbon in spawn order", uint, readonly)
@@ -98,7 +101,7 @@ uint range_depth(vec3 c) {
 // The pool, then dead after live, then the spawn id's low bits.
 void Order() {
     bool live = CG_ELEMENT < int(LIVE(0));
-    uint id = live ? RECORDS(CG_ELEMENT).idSlot.x & ((1u << uint(_IdBits)) - 1u) : 0u;
+    uint id = live ? RECORDS(CG_ELEMENT * _RecordVectors + FX_RECORD_HEAT_ID).y & ((1u << uint(_IdBits)) - 1u) : 0u;
     KEYS_WRITE((uint(_Pool) << uint(_IdBits + 1)) | (live ? 0u : 1u << uint(_IdBits)) | id);
     INDICES_WRITE(uint(CG_ELEMENT));
 }
@@ -107,15 +110,16 @@ void Key() {
     uint key = uint(_AllSlots) << _DepthBits;
     uint e = _Ordered != 0 ? INDICES(CG_ELEMENT) : uint(CG_ELEMENT);
     if (CG_ELEMENT < int(LIVE(0))) {
-        FxRecord r = RECORDS(int(e));
-        uint owner = uint(_SlotFirst) + r.idSlot.y;
+        int at = int(e) * _RecordVectors;
+        uvec4 heatId = RECORDS(at + FX_RECORD_HEAT_ID);
+        uint owner = uint(_SlotFirst) + heatId.z;
         vec4 slot = SLOTS(int(owner));
-        vec3 p = slot.xyz + r.positionAge.xyz;
+        vec3 p = slot.xyz + uintBitsToFloat(RECORDS(at + FX_RECORD_POSITION_AGE).xyz);
         // Its size: a frame draws it where its step left it. A slot culled about its source (w below 0) is one sphere
         // of radius -w at its origin.
         bool source = slot.w < 0.0;
         vec3 c = source ? slot.xyz : p;
-        float reach = source ? -slot.w : r.velocitySize.w * slot.w;
+        float reach = source ? -slot.w : uintBitsToFloat(RECORDS(at + FX_RECORD_VELOCITY_SIZE).w) * slot.w;
         bool outside = range_outside(_Plane0, c, reach) || range_outside(_Plane1, c, reach)
                 || range_outside(_Plane2, c, reach) || range_outside(_Plane3, c, reach)
                 || range_outside(_Plane4, c, reach) || range_outside(_Plane5, c, reach);
@@ -124,7 +128,7 @@ void Key() {
             key = owner << _DepthBits;
             uint order = SORTS(int(owner));
             if (_DepthBits > 0 && order == 1u) key |= 65535u - range_depth(p);
-            else if (_DepthBits > 0 && order >= 2u) key |= min(order - 2u - r.idSlot.x, 65535u);
+            else if (_DepthBits > 0 && order >= 2u) key |= min(order - 2u - heatId.y, 65535u);
         }
     }
     KEYS_WRITE(key);
@@ -189,19 +193,21 @@ void Objects() {
     o.normal0 = vec4(0.0); o.normal1 = vec4(0.0); o.normal2 = vec4(0.0); o.normal3 = vec4(15.0, 15.0, 0.0, 1.0);
     o.custom0 = vec4(0.0); o.custom1 = vec4(0.0); o.custom2 = vec4(0.0); o.custom3 = vec4(0.0);
     if (rank < int(VISIBLE(lo))) {
-        FxRecord r = RECORDS(int(INDICES(int(STARTS(lo)) + rank)));
+        int e = int(INDICES(int(STARTS(lo)) + rank));
+        FxDrawn r = DRAWN(e);
         float t = r.motion.w;
         // CgVfxFrame.particleMeshes: turned by its seed and spin, sized on each of its own axes by its size over life.
-        // A clip's particle plays in its effect's frame at its own size, as the Step places its events there.
-        float turn = r.seedSpin.x * 6.2831853 + r.seedSpin.y;
+        // A clip's particle plays in its effect's frame at its size at birth, as the Step places its events there.
+        float turn = r.state.x * 6.2831853 + r.state.y;
         mat3 turned = _Sequence != 0 ? range_quat(ORIGINS(lo).turn) : range_turn(turn * 1.7, turn * 2.3, turn);
-        vec3 size = _Sequence != 0 ? vec3(r.velocitySize.w) : r.place.w * r.scale.xyz;
+        vec3 size = _Sequence != 0 ? vec3(uintBitsToFloat(RECORDS(e * _RecordVectors + FX_RECORD_VELOCITY_SIZE).w))
+                : r.place.w * r.scale.xyz;
         vec3 inverse = vec3(size.x != 0.0 ? 1.0 / size.x : 0.0, size.y != 0.0 ? 1.0 / size.y : 0.0,
                 size.z != 0.0 ? 1.0 / size.z : 0.0);
         o.model0 = vec4(turned[0] * size.x, 0.0);
         o.model1 = vec4(turned[1] * size.y, 0.0);
         o.model2 = vec4(turned[2] * size.z, 0.0);
-        o.model3 = vec4(r.positionAge.xyz, 1.0);
+        o.model3 = vec4(r.place.xyz, 1.0);
         // Matrix4f.normal: the inverse transpose, the rotation over each axis's size; its spare lanes what it rests on
         vec4 contact = range_contact(lo, o.model3.xyz);
         o.normal0 = vec4(turned[0] * inverse.x, contact.x);
@@ -209,8 +215,8 @@ void Objects() {
         o.normal2 = vec4(turned[2] * inverse.z, contact.z);
         o.normal3 = vec4(mod(r.light.x, 16.0), floor(r.light.x / 16.0), 0.0, contact.w);
         // Its age: what a clip plays at.
-        o.custom0 = vec4(r.velocitySize.xyz, r.positionAge.w);
-        o.custom1 = vec4(t, r.seedSpin.x, r.color.a, r.seedSpin.w);
+        o.custom0 = vec4(r.motion.xyz, r.scale.w);
+        o.custom1 = vec4(t, r.state.x, r.color.a, r.state.z);
         // w: its place in the order, which the cull's compaction loses: what a mesh factory's CG_PARTICLE_* reads.
         o.custom2 = vec4(r.color.rgb, float(_DrawnFirst + CG_ELEMENT));
     }

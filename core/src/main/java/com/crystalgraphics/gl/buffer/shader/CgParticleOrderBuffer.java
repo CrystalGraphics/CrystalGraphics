@@ -12,7 +12,7 @@ import static com.crystalgraphics.api.buffer.CgBufferFormat.MemoryLayout.STD430;
  * and the {@code CG_PARTICLE_*} macros read through it.
  *
  * <pre>{@code
- * world.draw(quads, spark).buffer(CgBindingPoints.PARTICLES, pool.records())
+ * world.draw(quads, spark).buffer(CgBindingPoints.PARTICLES, pool.drawn())
  *      .buffer(CgBindingPoints.PARTICLE_ORDER, range.order())...
  * }</pre>
  *

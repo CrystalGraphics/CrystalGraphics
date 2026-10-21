@@ -152,7 +152,7 @@ public final class CgVfxFrame {
             }
             CgMesh mesh = proxy.mesh;
             CgWorldRenderer.Draw draw = world.draw(mesh, proxy.key.material())
-                    .buffer(CgBindingPoints.PARTICLES, proxy.key.pool().records())
+                    .buffer(CgBindingPoints.PARTICLES, proxy.key.pool().drawn())
                     .buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
                     .indirectEach(range.visible(), proxy.mode, proxy.key.factor())
                     .gpuCulled()
@@ -456,7 +456,7 @@ public final class CgVfxFrame {
                             .at(ox, oy, oz)
                             .custom(3, row, effect.age, effect.seed, effect.presence())
                             // the records a mesh factory's CG_PARTICLE_* reads, at each record's custom2.w
-                            .buffer(CgBindingPoints.PARTICLES, pool.records())
+                            .buffer(CgBindingPoints.PARTICLES, pool.drawn())
                             .buffer(CgBindingPoints.PARTICLE_ORDER, range.order());
                     CgVfxSystem.place(draw, rd.placed, effect).submit();
                 }
@@ -481,7 +481,7 @@ public final class CgVfxFrame {
                     if (!rd.unsorted && blendsInOrder(rd.material)) range.sorted(slot);
                     reach = Math.max(reach, Math.max(size, 1f) * 4f);
                     CgWorldRenderer.Draw draw = world.draw(slotMesh(def.renderer(), capacity), rd.material)
-                            .buffer(CgBindingPoints.PARTICLES, pool.records()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
+                            .buffer(CgBindingPoints.PARTICLES, pool.drawn()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
                             .indirect(range.visible(), word, arcs ? CgIndirect.VERTICES : CgIndirect.INDICES,
                                     arcs ? CgVfxRibbons.VERTICES : 6)
                             .gpuCulled()
@@ -787,7 +787,7 @@ public final class CgVfxFrame {
         }
         CgWorldRenderer.Draw draw = world.draw(CgMesh.vertices(sizeClass(capacity, 1) * rd.per, CgMeshTopology.TRIANGLES),
                         rd.material)
-                .buffer(CgBindingPoints.PARTICLES, pool.records()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
+                .buffer(CgBindingPoints.PARTICLES, pool.drawn()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
                 .indirect(range.visible(), word, CgIndirect.VERTICES, rd.per)
                 .gpuCulled()
                 .at(ox, oy, oz)

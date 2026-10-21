@@ -175,7 +175,7 @@ public final class CgVfxParticlePool {
     private final int id = nextId++ & 0x1FFF;
     private final CgVfxWords words = new CgVfxWords();
     private final int paramWords, instanceWords;
-    private final String passName, recordsName, paramsName, curvesName, instancesName, spawnsName, historyName, ringsName,
+    private final String passName, recordsName, drawnName, paramsName, curvesName, instancesName, spawnsName, historyName, ringsName,
             gridKeysName, gridValuesName, gridRunsName;
     private final String[] countNames;
 
@@ -268,7 +268,7 @@ public final class CgVfxParticlePool {
 
     // The GPU half: made at the first recording, grown as slots open.
     private CgKernel step, look, store, gridKeys, gridRuns;
-    private CgGraphBuffer records, paramBuffer, curveBuffer, instanceBuffer, spawnBuffer, history, ringTable;
+    private CgGraphBuffer records, drawn, paramBuffer, curveBuffer, instanceBuffer, spawnBuffer, history, ringTable;
     /** The neighbour grid (CgVfxWorldInput.NEIGHBOURS): each record's key and index, sorted; each hashed cell's run. */
     private CgGraphBuffer cellKeys, cellValues, cellRuns;
     private int cells;
@@ -286,6 +286,7 @@ public final class CgVfxParticlePool {
         String name = "vfx.pool[" + shape.key() + "]";
         passName = name + ".step";
         recordsName = name + ".records";
+        drawnName = name + ".drawn";
         paramsName = name + ".params";
         curvesName = name + ".curves";
         instancesName = name + ".instances";
@@ -451,7 +452,7 @@ public final class CgVfxParticlePool {
     };
 
     private void forgetStorage() {
-        records = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = feedBuffer = counts[0] = counts[1] = null;
+        records = drawn = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = feedBuffer = counts[0] = counts[1] = null;
         history = ringTable = historyFrom = null;
         cellKeys = cellValues = cellRuns = null;
         historyDrops.clear();
@@ -671,7 +672,8 @@ public final class CgVfxParticlePool {
     private void buildGrid(CgComputePass pass) {
         CgGraphBuffer live = counts[current];
         pass.dispatch(gridKeys, storage).bind("RECORDS", records).bind("LIVE", live).bind("KEYS", cellKeys)
-                .bind("VALUES", cellValues).set("_Cell", cellWidth).set("_Cells", cells);
+                .bind("VALUES", cellValues).set("_Cell", cellWidth).set("_Cells", cells)
+                .set("_RecordVectors", shape.record().vectors());
         CgGpuOps.sort(pass, Integer.numberOfTrailingZeros(cells), CgGpuOps.Order.ASCENDING, cellKeys, cellValues,
                 CgGpuCount.at(live, 0, storage));
         CgGpuOps.fill(pass, cellRuns, 0, CgGpuCount.of(cells * 2));
@@ -858,8 +860,10 @@ public final class CgVfxParticlePool {
 
     /** Step {@code s}'s last stages, after {@link #dispatchStep}: the drawn record, the neighbour grid, the history. */
     private void finishStep(CgComputePass pass, int s) {
-        // What draws read, written into each live record in place.
-        CgVfxVoxelWindow.get().bindBlocks(pass.dispatch(look, storage).bind("IN", records).bind("OUT", records)
+        // What draws read, written into the drawn buffer at each live record's index.
+        CgVfxRecord record = shape.record();
+        CgVfxVoxelWindow.get().bindBlocks(pass.dispatch(look, storage).bind("IN", records).bind("DRAWN", drawn)
+                .set("_RecordVectors", record.vectors()).set("_PreviousAt", record.word(CgVfxRecord.Tail.PREVIOUS))
                 .bind("LIVE", counts[current]).bind("INSTANCES", instanceBuffer).bind("CURVES", curveBuffer)
                 .set("_InstanceAt", stepInstanceAt[s] / 4).set("_InstanceRow", shape.instanceRowVectors())
                 .set("_Floors", shape.floors() ? 1 : 0).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS));
@@ -867,7 +871,8 @@ public final class CgVfxParticlePool {
         if (stepStores[s]) {
             if (ringSlots > 0) {
                 pass.dispatch(store, storage).bind("RECORDS", records).bind("LIVE", counts[current])
-                        .bind("RINGS", ringTable).bind("HISTORY", history).set("_Step", stepsStored);
+                        .bind("RINGS", ringTable).bind("HISTORY", history).set("_Step", stepsStored)
+                        .set("_RecordVectors", record.vectors());
             }
             stepsStored++;
             pendingStores--;
@@ -1006,11 +1011,11 @@ public final class CgVfxParticlePool {
     private static int releases;
 
     private void releaseStorage(CgRecording recording) {
-        CgGraphBuffer[] owned = {records, counts[0], counts[1], paramBuffer, curveBuffer, instanceBuffer, spawnBuffer,
+        CgGraphBuffer[] owned = {records, drawn, counts[0], counts[1], paramBuffer, curveBuffer, instanceBuffer, spawnBuffer,
                 history, ringTable, historyFrom, cellKeys, cellValues, cellRuns};
         for (CgGraphBuffer buffer : owned) if (buffer != null) recording.release(buffer);
         for (int i = 0; i < historyDrops.size(); i++) recording.release(historyDrops.get(i));
-        records = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = counts[0] = counts[1] = null;
+        records = drawn = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = counts[0] = counts[1] = null;
         history = ringTable = historyFrom = null;
         cellKeys = cellValues = cellRuns = null;
         historyDrops.clear();
@@ -1404,11 +1409,24 @@ public final class CgVfxParticlePool {
     }
 
     /**
-     * Every particle, a {@link CgVfxRecord} each: a history buffer whose newest version holds {@link #live()}'s count
+     * Every particle, in {@link #record()}'s layout: a history buffer whose newest version holds {@link #live()}'s count
      * of them. Null before the first step is recorded; a new handle after growth, so ask each frame.
      */
     public CgGraphBuffer records() {
         return records;
+    }
+
+    /**
+     * What draws read of every particle, {@link CgVfxRecord#DRAWN_BYTES} each at its record's index
+     * ({@code CgParticleBuffer}'s record): written by the step's last stage. Null and renewed as {@link #records()}.
+     */
+    public CgGraphBuffer drawn() {
+        return drawn;
+    }
+
+    /** Its records' layout: its shape's ({@link CgVfxShape#record()}). */
+    public CgVfxRecord record() {
+        return shape.record();
     }
 
     /** How many records the newest version of {@link #records()} holds: a {@code uint} at word 0. */
@@ -1583,18 +1601,19 @@ public final class CgVfxParticlePool {
     }
 
     /**
-     * Replaces the pool's particles with the first {@code count} records of {@code data}, in {@link CgVfxRecord}'s
+     * Replaces the pool's particles with the first {@code count} records of {@code data}, in {@link #record()}'s
      * layout and native order, ahead of the steps recorded after it: a check stepping particles it placed itself.
      * Render thread, between steps.
      *
      * <pre>{@code
-     * packed.putFloat(r * CgVfxRecord.BYTES, x)...;      // each record's 20 words, CgVfxRecord's layout
+     * CgVfxRecord layout = pool.record();
+     * layout.putF(packed, r, CgVfxRecord.POSITION, x)...;   // each record's words, in its layout
      * pool.seed(recording, packed, n);
      * pool.beginStep(dt, windX, windY, windZ);    // a step, its instance rows and spawns
      * ...
      * pool.endStep();
      * pool.record(recording);
-     * recording.readback(pool.records(), 0, (long) pool.storage() * CgVfxRecord.BYTES, data -> compare(data));
+     * recording.readback(pool.records(), 0, (long) pool.storage() * layout.bytes(), data -> compare(data));
      * recording.readback(pool.live(), 0, 4, data -> alive = data.getInt(0));
      * }</pre>
      *
@@ -1606,14 +1625,15 @@ public final class CgVfxParticlePool {
      */
     public void seed(CgRecording recording, ByteBuffer data, int count) {
         betweenSteps("seed");
-        if (count < 0 || data.capacity() < (long) count * CgVfxRecord.BYTES) {
+        int bytesEach = shape.record().bytes();
+        if (count < 0 || data.capacity() < (long) count * bytesEach) {
             throw new IllegalArgumentException(count + " records in " + data.capacity() + " bytes");
         }
         reserve(recording, count);
         if (count > 0) {
             ByteBuffer bytes = data.duplicate();
             bytes.position(0);
-            bytes.limit(count * CgVfxRecord.BYTES);
+            bytes.limit(count * bytesEach);
             recording.update(records, 0, bytes);
         }
         put(recording, counts[current], new int[]{count}, 1);
@@ -1642,6 +1662,7 @@ public final class CgVfxParticlePool {
         if (records == null) {
             storage = sizeClass(need);
             records = CgGraphBuffer.history(recordsName, recordsDesc(storage));
+            drawn = CgGraphBuffer.persistent(drawnName, drawnDesc(storage));
             for (int c = 0; c < 2; c++) {
                 counts[c] = CgGraphBuffer.persistent(countNames[c],
                         CgBufferDesc.of(16, CgBufferUsage.STORAGE, CgBufferUsage.COPY, CgBufferUsage.INDIRECT));
@@ -1650,6 +1671,9 @@ public final class CgVfxParticlePool {
         } else if (need > storage) {
             storage = sizeClass(need);
             records = recording.resize(records, recordsDesc(storage));
+            // The step's last stage rewrites every live particle's drawn part before a draw reads it.
+            recording.release(drawn);
+            drawn = CgGraphBuffer.persistent(drawnName, drawnDesc(storage));
             CgVfxTrace.count(STORAGE_GROWS, 1);
         }
     }
@@ -1689,8 +1713,12 @@ public final class CgVfxParticlePool {
         return Math.max(MIN_STORAGE, Integer.highestOneBit(Math.max(records, 1) - 1) << 1);
     }
 
-    private static CgBufferDesc recordsDesc(int storage) {
-        return CgBufferDesc.elements(storage, CgVfxRecord.BYTES, CgBufferUsage.STORAGE, CgBufferUsage.COPY);
+    private CgBufferDesc recordsDesc(int storage) {
+        return CgBufferDesc.elements(storage, shape.record().bytes(), CgBufferUsage.STORAGE, CgBufferUsage.COPY);
+    }
+
+    private static CgBufferDesc drawnDesc(int storage) {
+        return CgBufferDesc.elements(storage, CgVfxRecord.DRAWN_BYTES, CgBufferUsage.STORAGE, CgBufferUsage.COPY);
     }
 
     // What the recording reads, step by step; then takeSteps() clears it.

@@ -395,7 +395,8 @@ public final class CgVfxGridAtlas {
                 CgVfxParticlePool p = rasterizing.get(i);
                 bind(pass.dispatch(rasterize, p.storage())).bind("RECORDS", p.records()).bind("LIVE", p.live())
                         .bind("CURVES", p.curves()).bind("RASTER", rasterRows.get(i)).bind("SPLAT_SUM", splatSum)
-                        .bind("WANT", this.want).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS);
+                        .bind("WANT", this.want).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
+                        .set("_RecordVectors", p.record().vectors());
             }
         }
         pass.dispatch(wantedKernel, CAPACITY * PAGE_TABLE).bind("WANT", this.want).bind("WANTED", wanted)

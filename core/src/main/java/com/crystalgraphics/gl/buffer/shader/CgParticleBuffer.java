@@ -8,13 +8,13 @@ import static com.crystalgraphics.api.buffer.CgBufferFormat.MemoryLayout.STD430;
 
 /**
  * The particle record a shader reads through {@code #pragma cg_use particle} (the {@code CG_PARTICLE_*} macros in
- * {@code env/buffer/particle.glsl}): a GPU pool's own record ({@code CgVfxRecord}), its simulated part then the drawn
- * part the Step writes, bound at {@link CgBindingPoints#PARTICLES}. A draw's particle {@code n} is the record
+ * {@code env/buffer/particle.glsl}): a GPU pool's drawn part, written by the step's last stage into the pool's own
+ * buffer at each record's index, bound at {@link CgBindingPoints#PARTICLES}. A draw's particle {@code n} is the record
  * {@code CgParticleOrderBuffer} names at {@code n}: Range's culled, sorted order, as Niagara's GPU renderers read the
  * simulation's buffer through its sorted indices.
  *
  * <pre>{@code
- * world.draw(quads, material).buffer(CgBindingPoints.PARTICLES, pool.records())
+ * world.draw(quads, material).buffer(CgBindingPoints.PARTICLES, pool.drawn())
  *      .buffer(CgBindingPoints.PARTICLE_ORDER, range.order())...   // particles [base, base + count) of the order
  * }</pre>
  *
@@ -32,12 +32,6 @@ public final class CgParticleBuffer {
      * each axis's scale of its size, then its age in seconds.
      */
     public static final CgBufferFormat FORMAT = CgBufferFormat.builder("CgParticle", STD430)
-            .vec4("positionAge")
-            .vec4("previousLife")
-            .vec4("velocitySize")
-            .vec4("seedSpin")
-            // The kernels' uvec4 (id, slot, flags, row): no draw reads it, and a buffer texture holds floats only.
-            .vec4("idSlot")
             .vec4("place")
             .vec4("motion")
             .vec4("state")
