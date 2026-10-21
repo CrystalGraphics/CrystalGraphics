@@ -1,5 +1,7 @@
 package com.crystalgraphics.vfx.system;
 
+import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.material.CgMaterialRegistry;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -72,6 +74,17 @@ public final class CgVfxSystemPreparer implements CgAssetPreparer {
                 List<CgTexture> textures = new ArrayList<>();
                 for (CgVfxLook.Placed placed : look.placed()) {
                     for (CgTexture t : placed.layer().textures().values()) if (seen.add(t)) textures.add(t);
+                }
+                // A renderer's material samples the registry's texture of each binding's path.
+                for (List<CgVfxLook.Placed> drawn : List.of(look.rendered())) {
+                    for (CgVfxLook.Placed placed : drawn) {
+                        CgMaterialDefinition d = placed.definition();
+                        if (d == null) continue;
+                        for (CgMaterialDefinition.Texture t : d.textures().values()) {
+                            CgTexture texture = CgMaterialRegistry.texture(t.texture());
+                            if (seen.add(texture)) textures.add(texture);
+                        }
+                    }
                 }
                 // Its size decodes it on the asking thread and queues the upload, which lands before the next frame.
                 decoded = CompletableFuture.runAsync(() -> {

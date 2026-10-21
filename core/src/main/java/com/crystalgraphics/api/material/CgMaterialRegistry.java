@@ -1,6 +1,7 @@
 package com.crystalgraphics.api.material;
 
 import com.crystalgraphics.api.texture.CgSampler;
+import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
@@ -12,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Singleton load/reload/delete lifecycle manager for {@link CgMaterial} instances.
@@ -100,6 +102,21 @@ public final class CgMaterialRegistry {
         return made;
     }
 
+    /** Every texture a definition's binding names, one a path: what a preparer warms is what the material samples. */
+    private static final Map<String, CgTexture2D> TEXTURES = new ConcurrentHashMap<>();
+
+    /**
+     * The texture a material definition's binding names, made at its first ask and shared: warm it ahead of a first
+     * draw, as a system's preparer does, and the draw loads nothing.
+     *
+     * <pre>{@code
+     * for (CgMaterialDefinition.Texture t : definition.textures().values()) CgMaterialRegistry.texture(t.texture()).getWidth();
+     * }</pre>
+     */
+    public static CgTexture2D texture(String path) {
+        return TEXTURES.computeIfAbsent(path, CgTextures::of);
+    }
+
     /** Deletes {@code definition}'s materials: an old generation, once its last draw has executed. */
     public void release(CgMaterialDefinition definition) {
         Map<String, CgMaterial> byKeyword = defined.remove(definition);
@@ -134,8 +151,9 @@ public final class CgMaterialRegistry {
             int unit = 0;
             for (Map.Entry<String, CgMaterialDefinition.Texture> t : d.textures().entrySet()) {
                 CgSampler sampler = sampler(t.getValue().sampler());
-                if (sampler == null) b.sampler(t.getKey(), unit++, CgTextures.of(t.getValue().texture()));
-                else b.sampler(t.getKey(), unit++, CgTextures.of(t.getValue().texture()), sampler);
+                CgTexture2D texture = texture(t.getValue().texture());
+                if (sampler == null) b.sampler(t.getKey(), unit++, texture);
+                else b.sampler(t.getKey(), unit++, texture, sampler);
             }
         });
         return m;
