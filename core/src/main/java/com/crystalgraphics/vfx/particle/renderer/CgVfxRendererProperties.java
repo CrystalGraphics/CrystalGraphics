@@ -1,0 +1,54 @@
+package com.crystalgraphics.vfx.particle.renderer;
+
+import com.crystalgraphics.settings.CgQuality;
+
+import javax.annotation.Nullable;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * How an emitter's particles draw: one renderer of its {@code renderers:}, compiled from the file. Mirrors Niagara's
+ * {@code UNiagaraRendererProperties}: an emitter holds several, each drawing the same particles with its own material.
+ * {@link CgVfxRenderers} compiles one from its tree and builds one in Java.
+ *
+ * <pre>{@code
+ * CgVfxRendererProperties r = CgVfxRenderers.compile("sparks", entry);   // a renderers: entry of an emitter file
+ * if (r instanceof CgVfxSpriteRendererProperties sprite) draw(sprite.facing(), sprite.common().material());
+ * Map<String, Object> written = r.tree();                                // what the file holds, as compiled
+ * }</pre>
+ *
+ * <ul>
+ *   <li>{@link #tree()} is the renderer as declared ({@code CgParticleKinds.RENDERERS}): the writer writes it back
+ *       unchanged, so a file round-trips through its renderers byte for byte.</li>
+ *   <li>A kind no renderer is built for yet fails at compile, naming what builds it.</li>
+ * </ul>
+ */
+public sealed interface CgVfxRendererProperties permits CgVfxSpriteRendererProperties, CgVfxMeshRendererProperties,
+        CgVfxRibbonRendererProperties, CgVfxArcRendererProperties, CgVfxTrailsRendererProperties,
+        CgVfxSequenceRendererProperties {
+
+    /** What every renderer holds. */
+    Common common();
+
+    /** The renderer as its file declares it: its id, {@code kind}, then its fields. */
+    Map<String, Object> tree();
+
+    /**
+     * The fields every renderer kind shares ({@code spec/particles.md} § Renderers).
+     *
+     * @param id              its id among its emitter's renderers
+     * @param enabled         whether it draws
+     * @param quality         the tier it draws from, null for every tier
+     * @param sortOrderHint   its place among its emitter's renderers, Niagara's {@code SortOrderHint}
+     * @param motionVectors   whether it writes motion vectors
+     * @param material        its material asset, null when a user parameter names it
+     * @param materialBinding the user parameter naming its material ({@code { bind: user.x }}), null for a fixed one
+     * @param bind            material parameter to source: a user parameter or a particle attribute, read per draw
+     * @param values          material parameter to a constant, this renderer's alone
+     * @param keywords        material keywords it enables
+     */
+    record Common(String id, boolean enabled, @Nullable CgQuality quality, int sortOrderHint, boolean motionVectors,
+                  @Nullable String material, @Nullable String materialBinding, Map<String, Object> bind,
+                  Map<String, Object> values, List<String> keywords) {
+    }
+}

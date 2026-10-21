@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.particle;
 
+import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
@@ -99,6 +100,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final String name;
     private final CgVfxSlot slot;
     final Renderer renderer;
+    final List<CgVfxRendererProperties> renderers;
     final boolean optional, local;
     final CgVfxEmitterState state;
     final int capacity;
@@ -147,6 +149,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         name = b.name;
         slot = CgVfxSlot.particles(b.name);
         renderer = b.renderer;
+        renderers = List.copyOf(b.renderers);
         optional = b.optional;
         local = b.local;
         state = b.state;
@@ -290,6 +293,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
     public Renderer renderer() {
         return renderer;
+    }
+
+    /** Its renderers ({@code renderers:}), in their order: how its particles draw, each with its own material. */
+    public List<CgVfxRendererProperties> renderers() {
+        return renderers;
     }
 
     /** The clip each particle plays, a {@link Renderer#SEQUENCE} emitter's; null for any other. */
@@ -566,6 +574,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
         private String name;
         private Renderer renderer = Renderer.QUADS;
+        private final List<CgVfxRendererProperties> renderers = new ArrayList<>();
         private boolean optional, local;
         private CgVfxEmitterState state = CgVfxEmitterState.DEFAULT;
         private int capacity = 256;
@@ -600,6 +609,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private Builder(CgVfxEmitter e) {
             name = e.name;
             renderer = e.renderer;
+            renderers.addAll(e.renderers);
             optional = e.optional;
             local = e.local;
             state = e.state;
@@ -652,6 +662,15 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
         public Builder renderer(Renderer renderer) {
             this.renderer = renderer;
+            return this;
+        }
+
+        /**
+         * Draws its particles with {@code renderer} too, after those added before: a renderer from
+         * {@code CgVfxRenderers}, as its file's {@code renderers:} would hold it.
+         */
+        public Builder renderer(CgVfxRendererProperties renderer) {
+            renderers.add(renderer);
             return this;
         }
 

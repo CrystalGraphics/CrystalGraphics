@@ -1,5 +1,7 @@
 package com.crystalgraphics.vfx.particle;
 
+import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -141,6 +143,11 @@ public final class CgVfxEmitterAssets {
             modules.add(entry(n == 1 ? f.module : f.module + "_" + n, f.module, f.inputs));
         }
         tree.put("particle_update", modules);
+        if (!e.renderers.isEmpty()) {
+            List<Object> renderers = new ArrayList<>();
+            for (CgVfxRendererProperties r : e.renderers) renderers.add(r.tree());
+            tree.put("renderers", renderers);
+        }
         return tree;
     }
 
@@ -352,6 +359,7 @@ public final class CgVfxEmitterAssets {
             }
             b.module(module);
         }
+        for (CgVfxRendererProperties r : CgVfxRenderers.compileAll(name, tree.get("renderers"))) b.renderer(r);
         return b.build();
     }
 
