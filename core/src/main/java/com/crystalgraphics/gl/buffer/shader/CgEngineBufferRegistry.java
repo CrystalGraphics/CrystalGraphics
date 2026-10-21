@@ -70,8 +70,18 @@ public final class CgEngineBufferRegistry {
                 "crystalgraphics:shaders/env/buffer/shape.glsl");
         // A particle is read through the culled, sorted order Range writes, so the order comes with it.
         register("particle_order", CgParticleOrderBuffer::buffer, CgParticleOrderBuffer.MACRO_NAME, null);
-        register("particle", CgParticleBuffer::buffer, CgParticleBuffer.MACRO_NAME,
-                "crystalgraphics:shaders/env/buffer/particle.glsl", "particle_order");
+        // The sprite factory's settings, the renderer's to set per draw: a port never declares them.
+        registerWithProperties("particle", CgParticleBuffer::buffer, CgParticleBuffer.MACRO_NAME,
+                "crystalgraphics:shaders/env/buffer/particle.glsl", """
+                    _cg_Facing ("FX_FACE_*: camera, camera position, upright, velocity, axis", float) = 0
+                    _cg_Axis ("The AXIS facing's normal", vec4) = (0, 1, 0, 0)
+                    _cg_Stretch ("VELOCITY facing: how much longer per block a second", float) = 0.1
+                    _cg_MaxStretch ("VELOCITY facing: longest, in widths", float) = 4.0
+                    _cg_CameraOffset ("Drawn this many of its sizes toward the eye", float) = 0
+                    _cg_SubImage ("CgVfxFlipbook: columns (a table's frames), rows (0: a table), blends, random start", vec4) = (1, 1, 1, 0)
+                    _cg_SubUV ("CgVfxFlipbook: mode, first frame, last frame (-1: the last), rate", vec4) = (0, 0, -1, 0)
+                    _cg_SubImages ("CgVfxFlipbook: a rect table, a rect a texel", sampler2D) = "white"
+                    """, "particle_order");
         register("rows", CgPropertyRows::buffer, CgPropertyRows.MACRO_NAME,
                 "crystalgraphics:shaders/env/buffer/rows.glsl");
         registerGenerated("globals", CgParameterCollectionBuffer::buffer, CgParameterCollectionBuffer.MACRO_NAME,

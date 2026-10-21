@@ -844,10 +844,10 @@ reads as its graph does. `--mode=material-library` checks each against Unreal's 
 
 | File | Function | Unreal |
 |---|---|---|
-| `depth_fade.glsl` | `cg_depth_fade(opacity, fadeDistance, sceneDepth, pixelDepth)`; in a fragment stage `cg_depth_fade(opacity, fadeDistance, screenUv)` reads both depths itself | DepthFade |
+| `depth_fade.glsl` | `cg_depth_fade(opacity, fadeDistance, sceneDepth, pixelDepth)`; in a material's fragment stage `CG_DEPTH_FADE(opacity, fadeDistance, screenUv)` reads both depths itself | DepthFade |
 | `panner.glsl` | `cg_panner(uv, time, speed, fractional)` | Panner |
 | `rotator.glsl` | `cg_rotator(uv, center, time, speed)`: radians a second, counter-clockwise | Rotator |
-| `particle_sub_uv.glsl` | `cg_particle_sub_uv(tex, coords0, coords1, subUVLerp, blend)`; with the particle factory, `cg_particle_sub_uv(tex, particle, blend)` | ParticleSubUV |
+| `particle_sub_uv.glsl` | `cg_particle_sub_uv(tex, coords0, coords1, subUVLerp, blend)`; with the particle factory, `CG_PARTICLE_SUB_UV(tex, particle, blend)` | ParticleSubUV |
 | `rotate_about_axis.glsl` | `cg_rotate_about_axis(axisAndAngle, pivot, position)`: the offset to add, not the rotated position | RotateAboutAxis |
 
 ```glsl
@@ -855,10 +855,11 @@ reads as its graph does. `--mode=material-library` checks each against Unreal's 
 #include "crystalgraphics:shaders/lib/material/panner.glsl"
 
 vec2 uv = cg_panner(i.uv, CG_TIME, vec2(0.0, 1.5), true);
-float a = cg_depth_fade(texture(_Mask, uv).r, _FadeDistance, gl_FragCoord.xy / CG_RESOLUTION);
+float a = CG_DEPTH_FADE(texture(_Mask, uv).r, _FadeDistance, gl_FragCoord.xy / CG_RESOLUTION);
 ```
 
 - Distances are blocks. A material value in a kit's own unit (Kakarot's centimetres) is converted where the asset loads; a constant compiled into a port's code is the port's to convert.
+- `CG_DEPTH_FADE` and `CG_PARTICLE_SUB_UV` are macros: a material's `#include`s are placed before the engine's declarations, so a function reading those would not compile.
 - RotateAboutAxis takes radians; Unreal's node takes periods, so a port multiplies by `2pi / Period` first.
 
 **Package guides for this layer**: `api/material/CLAUDE.md` · `render/CLAUDE.md` · `render/world/CLAUDE.md` · `render/stage` (its classes' javadoc) · `gl/material/CLAUDE.md` · `gl/material/parse/CLAUDE.md`

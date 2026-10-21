@@ -38,3 +38,6 @@
 #define CG_PARTICLE_SCALE(n) (CG_PARTICLE(n).scale.xyz)
 // Its age in seconds: what a flipbook's loop and random frames run on (progress alone is a fraction of its life).
 #define CG_PARTICLE_AGE(n) (CG_PARTICLE(n).scale.w)
+
+// The vertex factory a kit's material program reads: cg_material_vertex(), cg_material_particle().
+#include "crystalgraphics:shaders/env/buffer/particle_factory.glsl"

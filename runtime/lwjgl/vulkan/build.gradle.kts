@@ -62,11 +62,32 @@ tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
 }
 
+// -PkitPorts=<namespace>=<dir>;...: each dir's files as <namespace>:shaders/..., where a kit's importer puts them.
+val kitPorts: Map<String, String> = providers.gradleProperty("kitPorts").orNull.orEmpty().split(";")
+    .map { it.trim() }.filter { it.isNotEmpty() }
+    .associate { entry ->
+        val at = entry.indexOf('=')
+        require(at > 0) { "-PkitPorts takes <namespace>=<dir>, not '$entry'" }
+        entry.substring(0, at) to entry.substring(at + 1)
+    }
+val kitPortsRoot = layout.buildDirectory.dir("kit-ports")
+val stageKitPorts = tasks.register<Sync>("stageKitPorts") {
+    into(kitPortsRoot)
+    kitPorts.forEach { (namespace, dir) -> from(dir) { into("assets/$namespace/shaders") } }
+}
+
 // The natives load through System.load, which JDK 25 warns about unless native access is granted.
 tasks.test {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
     // Each class installs its own backend under the engine's static buffers and fences: one JVM a class.
     forkEvery = 1
+    // A kit's ported programs, linked when asked (KitProgramsLinkTest): staged under their namespace, as a kit loads them.
+    if (kitPorts.isNotEmpty()) {
+        dependsOn(stageKitPorts)
+        systemProperty("crystalgraphics.kits.ports", kitPorts.keys.joinToString(";"))
+        systemProperty("crystalgraphics.kits.portsRoot", kitPortsRoot.get().asFile.absolutePath)
+        systemProperty("crystalgraphics.resourceOverrideDirs", kitPortsRoot.get().asFile.absolutePath)
+    }
 }
 
 // -Ptest.bytecode=8: the tests against core's and platform's Java 8 copies, the bytecode the shipped jars carry,

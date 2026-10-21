@@ -1828,8 +1828,8 @@ public final class CgVfxModules {
                     .opacity(CgKeyframes.start(0f, 0f).to(0.05f, 1f, CgEasings.OUT_QUAD).to(0.85f, 1f, CgEasings.LINEAR)
                             .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
             look.emitter(shell).layer(layerOf("sprite_glow", shell, colours[s][0], colours[s][1], b -> b
-                    .texture("_Sheet", dot).set("_Facing", 3f)
-                    .set("_Stretch", 3f).set("_MaxStretch", 40f)));
+                    .texture("_Sheet", dot).set("_cg_Facing", 3f)
+                    .set("_cg_Stretch", 3f).set("_cg_MaxStretch", 40f)));
             emitters.add(shell);
             sources.add(new float[]{0f, top, 0f});
         }
@@ -2029,7 +2029,7 @@ public final class CgVfxModules {
                 .layer(layerOf("sprite", snow, SNOW, SNOW, b -> b.texture("_Sheet", smokeSheet)
                         .flipbook(CgVfxFlipbook.grid(8, 8))))
                 // Solid pieces: pulled toward the eye to rest on the ramp whole, never faded into it.
-                .layer(facing(shards, ICE, WHITE, shard, 0, b -> b.set("_SoftDistance", 0f).set("_CameraOffset", 1f)))
+                .layer(facing(shards, ICE, WHITE, shard, 0, b -> b.set("_SoftDistance", 0f).set("_cg_CameraOffset", 1f)))
                 .build();
         stations.add(new Station("slope: Collide plane, an avalanche kicking up snow", x, z, look, List.of(shards),
                 new float[][]{{0f, source, 0f}}, p -> {
@@ -2059,7 +2059,7 @@ public final class CgVfxModules {
         // 1.1 of its middle, a ripple's 0.35 radius short of its 1.5 edge; the floor's dies in the column over the block.
         CgVfxEmitter onBlock = rain("block", 180f, 1.1f, source, splash, ripple);
         CgVfxEmitter onFloor = rain("blockFloor", 420f, 3f, source, splash, ripple);
-        Consumer<CgVfxLayer.Builder> streak = b -> b.set("_Stretch", 0.25f).set("_MaxStretch", 12f);
+        Consumer<CgVfxLayer.Builder> streak = b -> b.set("_cg_Stretch", 0.25f).set("_cg_MaxStretch", 12f);
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(onBlock).emitter(onFloor).emitter(splash).emitter(ripple)
                 .layer(facing(onBlock, CYAN, WHITE, dot, 3, streak)).layer(facing(onFloor, CYAN, WHITE, dot, 3, streak))
                 .layer(facing(splash, CYAN, WHITE, dot, 3, streak)).layer(facing(ripple, CYAN, WHITE, ring, 4, null))
@@ -2261,7 +2261,7 @@ public final class CgVfxModules {
                 .layer(layerOf("sprite", soot, SOOT, SOOT, smoke))
                 .layer(layerOf("sprite_glow", fire, FIRE_COOL, FIRE_HOT,
                         b -> b.texture("_Sheet", fireSheet).flipbook(FLAMES)
-                                .set("_Facing", 2f)))
+                                .set("_cg_Facing", 2f)))
                 .layer(sparkLayer(embers, EMBER, FLAME))
                 .build();
         stations.add(new Station("flipbooks: a smoke column (left), a fire with embers and smoke (right)", x, z, look,
@@ -2325,7 +2325,7 @@ public final class CgVfxModules {
                 .layer(facing(glints, GOLD, WHITE, star, 0, null))
                 .layer(facing(runes, VIOLET, WHITE, rune, 1, null))
                 .layer(facing(flames, SPIRIT_COOL, SPIRIT_HOT, wisp, 2, b -> b.flipbook(FLAMES)))
-                .layer(facing(sparks, GOLD, WHITE, dot, 3, b -> b.set("_Stretch", 0.6f).set("_MaxStretch", 10f)))
+                .layer(facing(sparks, GOLD, WHITE, dot, 3, b -> b.set("_cg_Stretch", 0.6f).set("_cg_MaxStretch", 10f)))
                 .layer(facing(waves, CYAN, WHITE, ring, 4, null)).build();
         stations.add(new Station("facing: camera, camera position, upright, velocity, axis", x, z, look,
                 List.of(glints, runes, flames, sparks, waves),
@@ -2347,8 +2347,8 @@ public final class CgVfxModules {
     private static CgVfxLayer facing(CgVfxEmitter e, CgVfxParam.Color cool, CgVfxParam.Color hot, CgTexture sheet, int mode,
                                      Consumer<CgVfxLayer.Builder> more) {
         return layerOf("sprite_glow", e, cool, hot, b -> {
-            b.texture("_Sheet", sheet).set("_Facing", mode)
-                    .set("_Axis", 0f, 1f, 0f, 0f);
+            b.texture("_Sheet", sheet).set("_cg_Facing", mode)
+                    .set("_cg_Axis", 0f, 1f, 0f, 0f);
             // Lying on a surface on purpose: a soft fade would fade it out.
             if (mode == 4) b.set("_SoftDistance", 0f);
             if (more != null) more.accept(b);

@@ -604,10 +604,10 @@ public final class CgVfxLayer {
         public Builder flipbook(CgVfxFlipbook flipbook) {
             Objects.requireNonNull(flipbook, "flipbook");
             float[] subImage = flipbook.subImage(), subUv = flipbook.subUv();
-            set("_SubImage", subImage[0], subImage[1], subImage[2], subImage[3]);
-            set("_SubUV", subUv[0], subUv[1], subUv[2], subUv[3]);
-            if (flipbook.isTable()) texture("_SubImages", flipbook::table);
-            else textures.remove("_SubImages");
+            set("_cg_SubImage", subImage[0], subImage[1], subImage[2], subImage[3]);
+            set("_cg_SubUV", subUv[0], subUv[1], subUv[2], subUv[3]);
+            if (flipbook.isTable()) texture("_cg_SubImages", flipbook::table);
+            else textures.remove("_cg_SubImages");
             return this;
         }
 

@@ -1,9 +1,9 @@
-// A textured sprite: a frame of a flipbook sheet on a quad facing as _Facing says (fx_particle.glsl's FX_FACE_*), lit by
+// A textured sprite: a frame of a flipbook sheet on a quad facing as the factory's _cg_Facing says (fx_particle.glsl's FX_FACE_*), lit by
 // the world where it is and blended over what is behind: smoke, dust, leaves. A CgVfxQuads quad placed from its particle
 // record (CgVfxFrame.particles, QUADS). _Color tints the sheet, its alpha a strength.
 //
 //     CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/sprite.shader").on(PUFFS).bind("_Color", TINT)
-//             .texture("_Sheet", SHEET).flipbook(CgVfxFlipbook.grid(8, 8)).set("_Facing", 2f).build()
+//             .texture("_Sheet", SHEET).flipbook(CgVfxFlipbook.grid(8, 8)).set("_cg_Facing", 2f).build()
 #type none
 #pragma cg_use particle
 #pragma cg_use rows
@@ -18,15 +18,7 @@ Queue = "Transparent"
 Properties {
     _Color ("Tints the sheet; its alpha a strength", color) = (1, 1, 1, 1)
     _Sheet ("The flipbook sheet, straight alpha, frame 0 at the top left", sampler2D) = "white"
-    _SubImage ("CgVfxFlipbook: columns (a table's frames), rows (0: a table), blends, random start", vec4) = (1, 1, 1, 0)
-    _SubUV ("CgVfxFlipbook: mode, first frame, last frame (-1: the last), rate", vec4) = (0, 0, -1, 0)
-    _SubImages ("CgVfxFlipbook: a rect table, a rect a texel", sampler2D) = "white"
-    _Facing ("FX_FACE_*: camera, camera position, upright, velocity, axis", float) = 0
-    _Axis ("The AXIS mode's normal", vec4) = (0, 1, 0, 0)
-    _Stretch ("VELOCITY mode: how much longer per block a second", float) = 0.1
-    _MaxStretch ("VELOCITY mode: longest, in widths", float) = 4.0
     _SoftDistance ("Fades into what is behind it over this many blocks; 0 for none", float) = 0.5
-    _CameraOffset ("Drawn this many of its sizes toward the eye: a solid piece resting on a surface", float) = 0
 }
 
 struct v2f { vec4 uv; float blend; float opacity; vec2 light; vec3 tint; };
@@ -41,31 +33,14 @@ Pass {
     }
 
     void vertex(out v2f o) {
-        int n = fx_particle_index(FX_QUAD_INDEX, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM0.y);
-        vec2 corner = FX_QUAD_CORNER;
-        vec3 origin = CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz;
-        vec3 eyeRight = vec3(cg_ViewMatrix[0][0], cg_ViewMatrix[1][0], cg_ViewMatrix[2][0]);
-        vec3 eyeUp = vec3(cg_ViewMatrix[0][1], cg_ViewMatrix[1][1], cg_ViewMatrix[2][1]);
-        vec3 eye = -(transpose(mat3(cg_ViewMatrix)) * cg_ViewMatrix[3].xyz);
-        int i = max(n, 0);
-        vec3 velocity = CG_PARTICLE_VELOCITY(i);
-        float size = n < 0 ? 0.0 : CG_PARTICLE_SIZE(i) * CG_OBJECT_CUSTOM0.z, keep;
-        vec3 centre = fx_particle_toward_eye(origin + CG_PARTICLE_POSITION(i), eye, _CameraOffset * size, keep);
-        size *= keep;
-        int mode = int(_Facing + 0.5);
-        vec3 right, up;
-        fx_particle_facing(mode, centre, velocity, _Axis.xyz, eye, eyeRight, eyeUp, right, up);
-        bool streak = mode == FX_FACE_VELOCITY;
-        float length_ = streak ? min(1.0 + length(velocity) * _Stretch, _MaxStretch) : 1.0;
-        vec2 extent = size * CG_PARTICLE_SCALE(i).xy * vec2(length_, 1.0);
-        vec3 world = fx_particle_corner(centre, corner, extent, streak ? 0.0 : CG_PARTICLE_SPIN(i), right, up);
-        float a, b;
-        fx_subuv_frames(_SubUV, _SubImage, CG_PARTICLE_AGE(i), CG_PARTICLE_PROGRESS(i), CG_PARTICLE_SEED(i), a, b, o.blend);
-        o.uv = vec4(fx_subimage_uv(_SubImages, _SubImage, a, corner), fx_subimage_uv(_SubImages, _SubImage, b, corner));
-        o.opacity = CG_PARTICLE_OPACITY(i);
-        o.light = CG_PARTICLE_LIGHT(i);
-        o.tint = CG_PARTICLE_COLOR(i).rgb;
-        gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(world, 1.0);
+        CgMaterialVertex v = cg_material_vertex();
+        CgMaterialParticle p = cg_material_particle();
+        o.uv = vec4(v.texCoords[0], v.texCoords[1]);
+        o.blend = p.subUVLerp;
+        o.opacity = CG_PARTICLE_OPACITY(p.record);
+        o.light = CG_PARTICLE_LIGHT(p.record);
+        o.tint = p.color.rgb;
+        gl_Position = cg_material_project(v);
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
