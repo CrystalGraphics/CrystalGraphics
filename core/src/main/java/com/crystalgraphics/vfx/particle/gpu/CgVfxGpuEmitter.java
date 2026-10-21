@@ -7,6 +7,7 @@ import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import javax.annotation.Nullable;
 import java.util.List;
 
+import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
 import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
 
@@ -35,6 +36,53 @@ public interface CgVfxGpuEmitter {
 
     /** The vec4s {@link #writeSpawn} writes. */
     int SPAWN_VECTORS = 10;
+
+    /**
+     * The launch's rolls, each an input's, by index into {@link #rollKeys}: the speed, the cone's two angles, the
+     * lifetime, the sprite size, the starting rotation, the particle's own seed, the spin's rate and sense, the shape's
+     * draws, and the density share's thinning.
+     */
+    int KEY_SPEED = 0, KEY_CONE = 1, KEY_LIFE = 2, KEY_SIZE = 3, KEY_ROTATION = 4, KEY_SEED = 5, KEY_SPIN = 6,
+            KEY_SHAPE = 7, KEY_THIN = 8, ROLL_KEYS = 9;
+
+    /**
+     * Roll {@code k}'s element and input, by the writer's names for an emitter's elements ({@code init},
+     * {@code velocity}, {@code shape}, {@code spin_rate}); {@code scalability} is the engine's own.
+     */
+    static String[] rollOf(int k) {
+        return switch (k) {
+            case KEY_SPEED -> new String[]{"velocity", "speed"};
+            case KEY_CONE -> new String[]{"velocity", "cone_angle"};
+            case KEY_LIFE -> new String[]{"init", "lifetime"};
+            case KEY_SIZE -> new String[]{"init", "sprite_size"};
+            case KEY_ROTATION -> new String[]{"init", "sprite_rotation"};
+            case KEY_SEED -> new String[]{"init", "seed"};
+            case KEY_SPIN -> new String[]{"spin_rate", "rate"};
+            case KEY_SHAPE -> new String[]{"shape", "shape"};
+            case KEY_THIN -> new String[]{"scalability", "spawn_count_scale"};
+            default -> throw new IllegalArgumentException("no roll " + k);
+        };
+    }
+
+    /** Roll {@code k}'s key with its elements under the writer's names: an emitter made in code. */
+    static int defaultRollKey(int k) {
+        String[] r = rollOf(k);
+        return CgVfxFormCompiler.key(r[0], r[1]);
+    }
+
+    /**
+     * The keys of the launch's {@link #ROLL_KEYS} rolls, each {@code CgVfxFormCompiler.key(element id, input)}: an
+     * emitter file's element ids, or the writer's names. What the parameter row's key area holds.
+     *
+     * <pre>{@code
+     * public int[] rollKeys() { return keys; }   // made once: keys[k] = CgVfxFormCompiler.key(idOf(element), input)
+     * }</pre>
+     */
+    default int[] rollKeys() {
+        int[] keys = new int[ROLL_KEYS];
+        for (int k = 0; k < ROLL_KEYS; k++) keys[k] = defaultRollKey(k);
+        return keys;
+    }
 
     /** For messages. */
     String name();

@@ -196,27 +196,27 @@ public final class CgVfxEmitterState {
     }
 
     /**
-     * How long loop {@code loop} (0 first) of an instance whose seed's bits are {@code seed} lasts: the same on every
-     * side, so the books and every client agree.
+     * How long loop {@code loop} (0 first) of an instance whose seed's bits are {@code seed} lasts, its roll keyed by
+     * {@code key} (its element's {@code loop_duration}): the same on every side, so the books and every client agree.
      */
-    public float durationOf(int seed, int loop) {
+    public float durationOf(int seed, int key, int loop) {
         if (durationMax == durationMin) return durationMin;
-        // Negative particle indices: draws the kernel never makes.
-        return durationMin + (durationMax - durationMin) * CgVfxEmitterInstance.rand(seed, -1 - (recalculateDuration ? loop : 0), 3);
+        return durationMin + (durationMax - durationMin) * CgVfxEmitterInstance.rand(seed ^ key, recalculateDuration ? loop : 0, 0);
     }
 
     /**
-     * The delay before loop {@code loop} (0 first) of an instance whose seed's bits are {@code seed}: the same on every
-     * side.
+     * The delay before loop {@code loop} (0 first) of an instance whose seed's bits are {@code seed}, its roll keyed by
+     * {@code key} (its element's {@code loop_delay}): the same on every side.
      *
      * <pre>{@code
-     * float firstLoopStarts = state.delayBefore(instance.books().seedBits(), 0);
+     * int key = CgVfxFormCompiler.key("state", "loop_delay");
+     * float firstLoopStarts = state.delayBefore(instance.books().seedBits(), key, 0);
      * }</pre>
      */
-    public float delayBefore(int seed, int loop) {
+    public float delayBefore(int seed, int key, int loop) {
         if (delayMax == 0f || delayFirstLoopOnly && loop > 0) return 0f;
         if (delayMax == delayMin) return delayMin;
-        return delayMin + (delayMax - delayMin) * CgVfxEmitterInstance.rand(seed, -1 - (recalculateDelay ? loop : 0), 0);
+        return delayMin + (delayMax - delayMin) * CgVfxEmitterInstance.rand(seed ^ key, recalculateDelay ? loop : 0, 0);
     }
 
     /** Seconds from one loop's start to the next's, at the least: what bounds how many loops overlap a particle's life. */

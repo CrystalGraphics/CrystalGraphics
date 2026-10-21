@@ -99,6 +99,8 @@ public final class CgVfxShape {
     private final CgVfxSpawnForm[] spawnForms;
     private final int[] spawnFormAt;
     private final int formsAt, formVectors;
+    /** Where its roll keys start: the launch's {@code ROLL_KEYS}, then each module form's, then each spawn form's. */
+    private final int keysAt;
     private final CgVfxEvent.Trigger[] triggers;
     private final boolean[] eventSpawns, eventReports, eventNodes;
     private final int eventsAt, tier;
@@ -232,6 +234,8 @@ public final class CgVfxShape {
             key.append(f == 0 ? "|spawn:" : ",").append(spawnForms[f].target()).append('=').append(formKey(spawnForms[f].compiled()));
         }
         formVectors = param - formsAt;
+        keysAt = param;
+        param += (keys() + 3) / 4;
         paramRow = param;
         List<CgVfxUserBinding> bound = emitter.userBindings();
         if (bound.size() > MAX_USER_BINDINGS) {
@@ -635,6 +639,26 @@ public final class CgVfxShape {
         return null;
     }
 
+    /** Where the roll keys start in a parameter row, a word each. */
+    public int keysAt() {
+        return keysAt;
+    }
+
+    /** How many roll keys: the launch's, then a module form's each, then a spawn form's each. */
+    public int keys() {
+        return CgVfxGpuEmitter.ROLL_KEYS + forms.length + spawnForms.length;
+    }
+
+    /** The roll key index of module form {@code f}. */
+    public int formKey(int f) {
+        return CgVfxGpuEmitter.ROLL_KEYS + f;
+    }
+
+    /** The roll key index of spawn form {@code f}. */
+    public int spawnFormKey(int f) {
+        return CgVfxGpuEmitter.ROLL_KEYS + forms.length + f;
+    }
+
     /** How many spawn forms. */
     public int spawnForms() {
         return spawnForms.length;
@@ -656,7 +680,7 @@ public final class CgVfxShape {
         return -1;
     }
 
-    /** A parameter row's vec4s: the spawn numbers, then each module's in stack order, its events', then its forms'. */
+    /** A parameter row's vec4s: the spawn numbers, then each module's in stack order, its events', its forms', its roll keys. */
     public int paramRowVectors() {
         return paramRow;
     }

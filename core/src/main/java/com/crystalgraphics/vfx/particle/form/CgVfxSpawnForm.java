@@ -14,8 +14,8 @@ import com.crystalgraphics.object.CgProperty;
  * builds it per spawn; the spawn row's word holds its first end.
  *
  * <pre>{@code
- * CgVfxSpawnForm size = CgVfxSpawnForm.of(CgVfxSpawnInput.SPRITE_SIZE, "sprite_size", CgVfxSpawnForm.skewed(0.1f, 0.5f, 2f));
- * CgVfxSpawnForm front = CgVfxSpawnForm.of(CgVfxSpawnInput.RADIUS, "sphere_radius", CgVfxSpawnForm.swept(9f, 33.5f, 1.6f));
+ * CgVfxSpawnForm size = CgVfxSpawnForm.of(CgVfxSpawnInput.SPRITE_SIZE, "init", "sprite_size", CgVfxSpawnForm.skewed(0.1f, 0.5f, 2f));
+ * CgVfxSpawnForm front = CgVfxSpawnForm.of(CgVfxSpawnInput.RADIUS, "shape", "sphere_radius", CgVfxSpawnForm.swept(9f, 33.5f, 1.6f));
  * size.scaled(0.5f);   // the same form at half the size
  * }</pre>
  *
@@ -25,24 +25,25 @@ import com.crystalgraphics.object.CgProperty;
  * </ul>
  *
  * @param target   the spawn value it gives
+ * @param element  its element's id in the emitter's spawn stack: what its rolls are keyed by
  * @param input    its spec input's name: {@code sphere_radius}, {@code cylinder_radius} or {@code ring_radius} for a radius
  * @param value    the value as written
  * @param compiled its compiled form, the kernel's and the Java reference's
  */
-public record CgVfxSpawnForm(CgVfxSpawnInput target, String input, Object value, CgVfxFormInput compiled) {
+public record CgVfxSpawnForm(CgVfxSpawnInput target, String element, String input, Object value, CgVfxFormInput compiled) {
 
     private static final String NS = "crystalgraphics:";
     /** Samples a skewed size's curve takes. */
     private static final int SKEW_SAMPLES = 17;
 
-    /** {@code value} for {@code input} of {@code target}'s module, compiled against its spec declaration. */
-    public static CgVfxSpawnForm of(CgVfxSpawnInput target, String input, Object value) {
+    /** {@code value} for {@code input} of the element {@code element}, {@code target}'s module, compiled against its spec declaration. */
+    public static CgVfxSpawnForm of(CgVfxSpawnInput target, String element, String input, Object value) {
         String module = NS + target.module();
         CgProperty property = null;
         for (CgProperty p : CgModuleTypes.builtIn().get(module).inputs().properties()) if (p.name().equals(input)) property = p;
         if (property == null) throw new IllegalArgumentException(module + " has no input " + input);
-        CgVfxFormInput compiled = new CgVfxFormCompiler(new CgVfxCurveBlock(), id -> null).compile(module, property, value);
-        return new CgVfxSpawnForm(target, input, value, compiled);
+        CgVfxFormInput compiled = new CgVfxFormCompiler(new CgVfxCurveBlock(), id -> null).compile(element, property, value);
+        return new CgVfxSpawnForm(target, element, input, value, compiled);
     }
 
     /** A size {@code min + (max - min) x^skew} by a random draw: most small and a few large (aaa-design 2.60). */
@@ -67,7 +68,7 @@ public record CgVfxSpawnForm(CgVfxSpawnInput target, String input, Object value,
     /** This form with every value times {@code s}, if its target scales; itself if not. */
     public CgVfxSpawnForm scaled(float s) {
         if (!target.scales() || s == 1f) return this;
-        return of(target, input, scaledValue(value, s));
+        return of(target, element, input, scaledValue(value, s));
     }
 
     /** Its first channel's first end: a pick's first, a curve's value at its domain's start. */

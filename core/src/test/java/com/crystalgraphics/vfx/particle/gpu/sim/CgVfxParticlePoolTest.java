@@ -221,8 +221,10 @@ public class CgVfxParticlePoolTest {
         CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, def);
         pool.open(def, 100);
         CgVfxShape shape = pool.shape();
-        assertEquals(CgVfxGpuEmitter.SPAWN_VECTORS + 2, shape.paramRowVectors());
+        // The spawn numbers, a vec4 each module, then the roll keys a word each.
+        assertEquals(CgVfxGpuEmitter.SPAWN_VECTORS + 2 + (CgVfxGpuEmitter.ROLL_KEYS + 3) / 4, shape.paramRowVectors());
         int[] words = pool.paramWords();
+        assertEquals(def.rollKeys()[CgVfxGpuEmitter.KEY_LIFE], words[shape.keysAt() * 4 + CgVfxGpuEmitter.KEY_LIFE]);
         assertEquals(14f, Float.intBitsToFloat(words[13]), 0f);
         assertEquals(9.8f, Float.intBitsToFloat(words[shape.paramAt(0) * 4]), 0f);
         assertEquals(0.12f, Float.intBitsToFloat(words[shape.paramAt(1) * 4]), 0f);

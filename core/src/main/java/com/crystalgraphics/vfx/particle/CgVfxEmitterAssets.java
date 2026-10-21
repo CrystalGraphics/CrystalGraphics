@@ -88,7 +88,7 @@ public final class CgVfxEmitterAssets {
         tree.put("properties", props);
 
         List<Object> update = new ArrayList<>();
-        update.add(entry("state", "emitter_state", state(e.state)));
+        update.add(entry(e.id("state"), "emitter_state", state(e.state)));
         if (e.rate.perSecond() > 0f) {
             Map<String, Object> rate = map("rate", (double) e.rate.perSecond());
             if (!isOne(e.rate.scale())) rate.put("scale", curve(e.rate.scale(), "loop"));
@@ -96,7 +96,7 @@ public final class CgVfxEmitterAssets {
         }
         for (int i = 0; i < e.bursts.length; i++) {
             CgVfxSpawnBurst b = e.bursts[i];
-            update.add(entry("burst_" + i, "spawn_burst", map("time", (double) b.time(), "count", range(b.countMin(), b.countMax()),
+            update.add(entry(e.burstIds[i], "spawn_burst", map("time", (double) b.time(), "count", range(b.countMin(), b.countMax()),
                     "probability", (double) b.probability())));
         }
         if (e.perUnit.perBlock() > 0f) {
@@ -109,10 +109,10 @@ public final class CgVfxEmitterAssets {
                 "heat", (double) e.heat, "sprite_size", written(e, CgVfxSpawnInput.SPRITE_SIZE, spriteSize(e.sizeMin, e.sizeMax)));
         if (!same(e.colorFrom, WHITE) || !same(e.colorTo, WHITE)) init.put("color", vector(e.colorFrom, e.colorTo));
         if (!same(e.scaleFrom, UNIT) || !same(e.scaleTo, UNIT)) init.put("mesh_scale", vector(e.scaleFrom, e.scaleTo));
-        spawn.add(entry("init", "initialize_particle", init));
+        spawn.add(entry(e.id("init"), "initialize_particle", init));
         Map<String, Object> shape = shape(e);
-        if (shape != null) spawn.add(entry("shape", "shape_location", shape));
-        spawn.add(entry("velocity", "add_velocity", velocity(e)));
+        if (shape != null) spawn.add(entry(e.id("shape"), "shape_location", shape));
+        spawn.add(entry(e.id("velocity"), "add_velocity", velocity(e)));
         tree.put("particle_spawn", spawn);
 
         List<Object> modules = new ArrayList<>();
@@ -127,7 +127,7 @@ public final class CgVfxEmitterAssets {
         if (!color.isEmpty()) modules.add(entry("color", "scale_color", color));
         if (e.spinMin != 0f || e.spinMax != 0f) {
             // Ours rolls the sense too: Unreal's rate is signed.
-            modules.add(entry("spin_rate", "sprite_rotation_rate", map("rate",
+            modules.add(entry(e.id("spin_rate"), "sprite_rotation_rate", map("rate",
                     map("fn", NS + "random_sign", "inputs", map("value", range(e.spinMin, e.spinMax))))));
         }
         if (e.rasterized != null) {
@@ -141,7 +141,8 @@ public final class CgVfxEmitterAssets {
             Mapped f = toFile(e.name, kind.id(), kind.inputs(m));
             for (CgVfxModuleForm form : e.forms) if (form.module() == i) f.inputs.put(f.fileName(form.input()), form.value());
             int n = seen.merge(f.module, 1, Integer::sum);
-            modules.add(entry(n == 1 ? f.module : f.module + "_" + n, f.module, f.inputs));
+            String id = e.moduleIds[i] != null ? e.moduleIds[i] : n == 1 ? f.module : f.module + "_" + n;
+            modules.add(entry(id, f.module, f.inputs));
         }
         tree.put("particle_update", modules);
         if (!e.renderers.isEmpty()) {
@@ -271,11 +272,12 @@ public final class CgVfxEmitterAssets {
         b.local(Boolean.TRUE.equals(props.get("local_space")));
         if (props.get("scalability") != null) b.optional(halvedAtLow(name, props.get("scalability")));
 
+        int bursts = 0;
         for (Map<?, ?> entry : entries(tree, "emitter_update")) {
             Map<?, ?> in = inputs(entry);
             switch (moduleId(entry)) {
                 case "emitter_state":
-                    b.state(state(in));
+                    b.state(state(in)).id("state", idOf(entry, "state"));
                     break;
                 case "spawn_rate": {
                     Object scale = in.get("scale");
@@ -286,7 +288,8 @@ public final class CgVfxEmitterAssets {
                 case "spawn_burst": {
                     float[] count = rangeOf(in.get("count"));
                     float p = in.get("probability") instanceof Number n ? n.floatValue() : 1f;
-                    b.burst(CgVfxSpawnBurst.at(num(in.get("time")), (int) count[0], (int) count[1]).probability(p));
+                    b.burst(CgVfxSpawnBurst.at(num(in.get("time")), (int) count[0], (int) count[1]).probability(p),
+                            idOf(entry, "burst_" + bursts++));
                     break;
                 }
                 case "spawn_per_unit":
@@ -300,9 +303,9 @@ public final class CgVfxEmitterAssets {
         for (Map<?, ?> entry : entries(tree, "particle_spawn")) {
             Map<?, ?> in = inputs(entry);
             switch (moduleId(entry)) {
-                case "initialize_particle" -> initialize(name, b, in);
-                case "add_velocity" -> velocity(name, b, in);
-                case "shape_location" -> shape(name, b, in);
+                case "initialize_particle" -> initialize(name, b, in, spawnId(b, entry, "init"));
+                case "add_velocity" -> velocity(name, b, in, spawnId(b, entry, "velocity"));
+                case "shape_location" -> shape(name, b, in, spawnId(b, entry, "shape"));
                 default -> throw new IllegalArgumentException(name + ": particle_spawn has no " + entry.get("module"));
             }
         }
@@ -338,6 +341,7 @@ public final class CgVfxEmitterAssets {
                     continue;
                 }
                 case "sprite_rotation_rate" -> {
+                    b.id("spin_rate", idOf(entry, "spin_rate"));
                     Object rate = inputs(entry).get("rate");
                     if (rate instanceof Map<?, ?> fn && (NS + "random_sign").equals(fn.get("fn")) && fn.get("inputs") instanceof Map<?, ?> fin) {
                         rate = fin.get("value");
@@ -362,7 +366,7 @@ public final class CgVfxEmitterAssets {
             if (!(kind.compile(m.inputs) instanceof CgVfxModule module)) {
                 throw new IllegalArgumentException(name + ": module " + entry.get("module") + " is a mod's kind; an asset names the engine's");
             }
-            b.module(module);
+            b.module(module, idOf(entry, m.module));
         }
         for (CgVfxRendererProperties r : CgVfxRenderers.compileAll(name, tree.get("renderers"), deps)) b.renderer(r);
         return b.build();
@@ -385,14 +389,14 @@ public final class CgVfxEmitterAssets {
         throw new IllegalArgumentException(name + ": scalability " + scalability + " is not read yet: the Low tier's half alone");
     }
 
-    private static void initialize(String name, CgVfxEmitter.Builder b, Map<?, ?> in) {
-        CgVfxSpawnForm life = spawnForm(CgVfxSpawnInput.LIFETIME, "lifetime", in.get("lifetime"));
+    private static void initialize(String name, CgVfxEmitter.Builder b, Map<?, ?> in, String element) {
+        CgVfxSpawnForm life = spawnForm(CgVfxSpawnInput.LIFETIME, element, "lifetime", in.get("lifetime"));
         float[] lives = life != null ? life.bounds() : rangeOf(in.get("lifetime"));
         b.life(lives[0], lives[1]);
         if (life != null) b.spawnForm(life);
         if (in.get("heat") instanceof Number h) b.heat(h.floatValue());
         Object size = in.get("sprite_size");
-        CgVfxSpawnForm sized = spawnForm(CgVfxSpawnInput.SPRITE_SIZE, "sprite_size", size);
+        CgVfxSpawnForm sized = spawnForm(CgVfxSpawnInput.SPRITE_SIZE, element, "sprite_size", size);
         if (sized != null) {
             float[] width = sized.bounds();
             b.size(width[0], width[1]);
@@ -411,7 +415,7 @@ public final class CgVfxEmitterAssets {
         }
     }
 
-    private static void velocity(String name, CgVfxEmitter.Builder b, Map<?, ?> in) {
+    private static void velocity(String name, CgVfxEmitter.Builder b, Map<?, ?> in, String element) {
         CgVfxSpawnShape.Builder s = b.spawn();
         String mode = String.valueOf(in.get("mode"));
         switch (mode) {
@@ -436,7 +440,7 @@ public final class CgVfxEmitterAssets {
             }
             default -> throw new IllegalArgumentException(name + ": add_velocity's mode " + mode + " is not read yet");
         }
-        CgVfxSpawnForm formed = spawnForm(CgVfxSpawnInput.SPEED, "speed", in.get("speed"));
+        CgVfxSpawnForm formed = spawnForm(CgVfxSpawnInput.SPEED, element, "speed", in.get("speed"));
         float[] speed = formed != null ? formed.bounds() : rangeOf(in.get("speed"));
         b.speed(speed[0], speed[1]);
         if (formed != null) b.spawnForm(formed);
@@ -445,12 +449,24 @@ public final class CgVfxEmitterAssets {
 
     /** {@code value} as a spawn form: null for a constant or a range, which the spawn row's two ends give. */
     @Nullable
-    private static CgVfxSpawnForm spawnForm(CgVfxSpawnInput target, String input, Object value) {
+    private static CgVfxSpawnForm spawnForm(CgVfxSpawnInput target, String element, String input, Object value) {
         if (!isForm(value) || ((Map<?, ?>) value).containsKey("range")) return null;
-        return CgVfxSpawnForm.of(target, input, value);
+        return CgVfxSpawnForm.of(target, element, input, value);
     }
 
-    private static void shape(String name, CgVfxEmitter.Builder b, Map<?, ?> in) {
+    /** An entry's element id, or {@code otherwise} where it has none. */
+    private static String idOf(Map<?, ?> entry, String otherwise) {
+        return entry.get("id") instanceof String id ? id : otherwise;
+    }
+
+    /** A spawn entry's element id, given to {@code b} under the writer's name {@code element}. */
+    private static String spawnId(CgVfxEmitter.Builder b, Map<?, ?> entry, String element) {
+        String id = idOf(entry, element);
+        b.id(element, id);
+        return id;
+    }
+
+    private static void shape(String name, CgVfxEmitter.Builder b, Map<?, ?> in, String element) {
         CgVfxSpawnShape.Builder s = b.spawn();
         String shape = String.valueOf(in.get("shape"));
         s.a = s.b = s.c = 0f;
@@ -459,7 +475,7 @@ public final class CgVfxEmitterAssets {
             case "point" -> s.kind = CgVfxSpawnShape.POINT;
             case "sphere" -> {
                 s.kind = CgVfxSpawnShape.SPHERE;
-                s.b = radius(b, "sphere_radius", in.get("sphere_radius"));
+                s.b = radius(b, element, "sphere_radius", in.get("sphere_radius"));
                 band(s, in);
             }
             case "box" -> {
@@ -475,14 +491,14 @@ public final class CgVfxEmitterAssets {
                     throw new IllegalArgumentException(name + ": a cylinder along " + in.get("cylinder_axis") + " is not read yet: turn it");
                 }
                 s.kind = CgVfxSpawnShape.CYLINDER;
-                s.b = radius(b, "cylinder_radius", in.get("cylinder_radius"));
+                s.b = radius(b, element, "cylinder_radius", in.get("cylinder_radius"));
                 s.c = num(in.get("cylinder_height")) / 2f;
                 band(s, in);
             }
             case "ring" -> {
                 // Unreal's ring at its default coverage: its edge.
                 s.kind = CgVfxSpawnShape.CYLINDER;
-                s.b = radius(b, "ring_radius", in.get("ring_radius"));
+                s.b = radius(b, element, "ring_radius", in.get("ring_radius"));
                 s.placement = CgVfxSpawnShape.EDGE;
             }
             case "cone" -> {
@@ -524,8 +540,8 @@ public final class CgVfxEmitterAssets {
     }
 
     /** A radius, or one in a form (a sweep's is a curve by the loop's seconds, aaa-design 2.60): its first end. */
-    private static float radius(CgVfxEmitter.Builder b, String input, Object value) {
-        CgVfxSpawnForm formed = spawnForm(CgVfxSpawnInput.RADIUS, input, value);
+    private static float radius(CgVfxEmitter.Builder b, String element, String input, Object value) {
+        CgVfxSpawnForm formed = spawnForm(CgVfxSpawnInput.RADIUS, element, input, value);
         if (formed == null) return num(value);
         b.spawnForm(formed);
         return formed.firstEnd();
@@ -753,7 +769,7 @@ public final class CgVfxEmitterAssets {
             }
             CgProperty property = property(declared != null ? declared.inputs().properties() : null, file);
             if (property == null) property = property(kind.inputs().properties(), in.getKey());
-            CgVfxFormInput compiled = forms.compile(NS + m.module, property, in.getValue());
+            CgVfxFormInput compiled = forms.compile(idOf(entry, m.module), property, in.getValue());
             b.form(new CgVfxModuleForm(index, in.getKey(), in.getValue(), compiled));
             in.setValue(firstEnd(compiled));
         }

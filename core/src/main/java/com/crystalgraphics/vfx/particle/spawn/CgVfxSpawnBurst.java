@@ -42,14 +42,14 @@ public record CgVfxSpawnBurst(float time, int countMin, int countMax, float prob
     }
 
     /**
-     * How many it spawns in loop {@code loop} (0 first) of an instance whose seed's bits are {@code seed}, as burst
-     * {@code index} of its emitter by time: 0 in a loop its probability skips. The same on every side.
+     * How many it spawns in loop {@code loop} (0 first) of an instance whose seed's bits are {@code seed}: 0 in a loop
+     * its probability skips. Its rolls are keyed by its element's id ({@code CgVfxFormCompiler.key(id, "count")} and
+     * {@code "probability"}), never its place among the bursts. The same on every side.
      */
-    public int count(int seed, int loop, int index) {
-        // Negative particle indices, as the loop's delay: draws the kernel never makes.
-        if (probability < 1f && CgVfxEmitterInstance.rand(seed, -1 - loop, 1 + 2 * index) >= probability) return 0;
+    public int count(int seed, int countKey, int probabilityKey, int loop) {
+        if (probability < 1f && CgVfxEmitterInstance.rand(seed ^ probabilityKey, loop, 0) >= probability) return 0;
         if (countMax == countMin) return countMin;
         int span = countMax - countMin + 1;
-        return countMin + Math.min(span - 1, (int) (CgVfxEmitterInstance.rand(seed, -1 - loop, 2 + 2 * index) * span));
+        return countMin + Math.min(span - 1, (int) (CgVfxEmitterInstance.rand(seed ^ countKey, loop, 0) * span));
     }
 }

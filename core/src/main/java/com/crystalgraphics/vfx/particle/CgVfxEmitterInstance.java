@@ -3,6 +3,7 @@ package com.crystalgraphics.vfx.particle;
 import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxInactiveResponse;
@@ -183,8 +184,8 @@ public final class CgVfxEmitterInstance {
         spawned = 0;
         burstsDone = 0;
         loop = 0;
-        loopStart = emitter.state.delayBefore(seed, 0);
-        loopLength = emitter.state.durationOf(seed, 0);
+        loopStart = emitter.state.delayBefore(seed, emitter.delayKey, 0);
+        loopLength = emitter.state.durationOf(seed, emitter.durationKey, 0);
         loopsOver = false;
         rateOwed = 0f;
         lastDeath = -1f;
@@ -350,7 +351,7 @@ public final class CgVfxEmitterInstance {
         if (dying == null) return n;
         int room = emitter.capacity - alive, k = spawned, taken = 0;
         while (taken < n) {
-            if (!(share < 1f && rand(k, 10) >= share)) {
+            if (!(share < 1f && keyed(CgVfxGpuEmitter.KEY_THIN, k) >= share)) {
                 if (room == 0) break;
                 room--;
             }
@@ -450,9 +451,10 @@ public final class CgVfxEmitterInstance {
      */
     private void scheduleOne(float dt, float born) {
         int k = spawned++;
-        if (share < 1f && rand(k, 10) >= share) return;
+        if (share < 1f && keyed(CgVfxGpuEmitter.KEY_THIN, k) >= share) return;
         // A lifetime in a form is booked at its longest: the kernel alone evaluates it.
-        float life = emitter.lifeFormed ? emitter.lifeMax : emitter.lifeMin + (emitter.lifeMax - emitter.lifeMin) * rand(k, 4);
+        float life = emitter.lifeFormed ? emitter.lifeMax
+                : emitter.lifeMin + (emitter.lifeMax - emitter.lifeMin) * keyed(CgVfxGpuEmitter.KEY_LIFE, k);
         // It ages the rest of this step, then a step at a time, and goes at the end of the step its age reaches its life.
         float death = time + dt * (float) Math.ceil(life / dt + born);
         lastDeath = Math.max(lastDeath, death);
@@ -474,7 +476,7 @@ public final class CgVfxEmitterInstance {
             float age = time - loopStart, duration = loopLength;
             // A burst past the loop's end never fires; in the delay, age is negative and none does.
             while (burstsDone < bursts.length && bursts[burstsDone].time() <= Math.min(age, duration)) {
-                int fit = fit(bursts[burstsDone].count(seed, loop, burstsDone));
+                int fit = fit(bursts[burstsDone].count(seed, emitter.burstCountKeys[burstsDone], emitter.burstProbabilityKeys[burstsDone], loop));
                 for (int n = 0; n < fit; n++) scheduleOne(stepDt, 0f);
                 burstsDone++;
             }
@@ -488,8 +490,8 @@ public final class CgVfxEmitterInstance {
                 return;
             }
             loop++;
-            loopStart += duration + state.delayBefore(seed, loop);
-            loopLength = state.durationOf(seed, loop);
+            loopStart += duration + state.delayBefore(seed, emitter.delayKey, loop);
+            loopLength = state.durationOf(seed, emitter.durationKey, loop);
             burstsDone = 0;
         }
     }
@@ -926,16 +928,19 @@ public final class CgVfxEmitterInstance {
         }
     }
 
-    private float rand(int n, int k) {
-        return rand(seed, n, k);
+    /** Spawn {@code k}'s draw of the launch's roll {@code roll} ({@code CgVfxGpuEmitter.KEY_*}): the kernel's, bit for bit. */
+    private float keyed(int roll, int k) {
+        return rand(seed ^ emitter.rollKeys()[roll], k, 0);
     }
 
     /**
-     * A number in 0..1 for the {@code k}-th draw of the {@code n}-th particle an instance seeded with {@code seed} (the
-     * bits of its float seed) spawned. {@code fx_rand.glsl} gives the same bits on the GPU.
+     * A number in 0..1 for channel {@code k} of the {@code n}-th particle (or loop) an instance seeded with {@code seed}
+     * spawned. {@code fx_rand.glsl} gives the same bits on the GPU. A roll of an input passes its seed xor the input's
+     * key, so moving an element reshuffles nothing else.
      *
      * <pre>{@code
-     * float life = lifeMin + (lifeMax - lifeMin) * CgVfxEmitterInstance.rand(Float.floatToIntBits(seed), k, 4);
+     * int key = CgVfxFormCompiler.key("init", "lifetime");
+     * float life = lifeMin + (lifeMax - lifeMin) * CgVfxEmitterInstance.rand(seedBits ^ key, spawn, 0);
      * }</pre>
      */
     public static float rand(int seed, int n, int k) {

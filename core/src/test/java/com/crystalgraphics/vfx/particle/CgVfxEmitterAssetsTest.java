@@ -25,6 +25,7 @@ import com.crystalgraphics.shape.primitive.CgPlane;
 import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.vfx.effect.beam.CgBeamWake;
 import com.crystalgraphics.vfx.element.CgVfxExplosion;
+import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
@@ -87,6 +88,48 @@ public class CgVfxEmitterAssetsTest {
             same(e, CgVfxEmitterAssets.compile(e.name(), CgVfxEmitterAssets.write(back), e));
             CgVfxEmitterAssets.compile(e.name(), asset.resolved(), null);
         }
+    }
+
+    /**
+     * Rolls follow element ids, never places (core.md § Values): two bursts listed either way round roll the same counts
+     * every loop, the ids are written back as read, and renaming the init element moves the launch's keys.
+     */
+    @Test
+    public void rollsFollowElementIdsNotPlaces() {
+        Map<String, Object> early = burstEntry("early", 0.0), late = burstEntry("late", 0.5);
+        CgVfxEmitter one = CgVfxEmitterAssets.compile("ids", burstTree(early, late, "init"), null);
+        CgVfxEmitter other = CgVfxEmitterAssets.compile("ids", burstTree(late, early, "spawn_init"), null);
+        int seed = 0x5EED;
+        for (int b = 0; b < 2; b++) {
+            assertEquals(one.burstIds[b], other.burstIds[b]);
+            for (int loop = 0; loop < 16; loop++) {
+                assertEquals(one.bursts[b].count(seed, one.burstCountKeys[b], one.burstProbabilityKeys[b], loop),
+                        other.bursts[b].count(seed, other.burstCountKeys[b], other.burstProbabilityKeys[b], loop));
+            }
+        }
+        assertEquals(CgVfxFormCompiler.key("spawn_init", "lifetime"), other.rollKeys()[CgVfxGpuEmitter.KEY_LIFE]);
+        assertEquals(CgVfxFormCompiler.key("velocity", "speed"), other.rollKeys()[CgVfxGpuEmitter.KEY_SPEED]);
+        Map<String, Object> written = CgVfxEmitterAssets.write(other);
+        assertEquals("spawn_init", ((Map<?, ?>) ((List<?>) written.get("particle_spawn")).get(0)).get("id"));
+        CgVfxEmitter back = CgVfxEmitterAssets.compile("ids", written, null);
+        assertArrayEquals(other.rollKeys(), back.rollKeys());
+        assertArrayEquals(other.burstCountKeys, back.burstCountKeys);
+    }
+
+    private static Map<String, Object> burstEntry(String id, double time) {
+        return Map.of("id", id, "module", "crystalgraphics:spawn_burst",
+                "inputs", Map.of("time", time, "count", Map.of("range", List.of(2.0, 9.0)), "probability", 0.5));
+    }
+
+    private static Map<String, Object> burstTree(Map<String, Object> first, Map<String, Object> second, String init) {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 64));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "infinite", "duration", 1.0)), first, second));
+        tree.put("particle_spawn", List.of(Map.of("id", init, "module", "crystalgraphics:initialize_particle",
+                "inputs", Map.of("lifetime", Map.of("range", List.of(0.5, 1.0))))));
+        return tree;
     }
 
     /** A module input in a form, written back as its file wrote it and compiled again to the same words. */

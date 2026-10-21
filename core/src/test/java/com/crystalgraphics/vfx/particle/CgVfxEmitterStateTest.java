@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
 import org.junit.Test;
@@ -76,7 +77,7 @@ public class CgVfxEmitterStateTest {
         assertEquals(first, second);
         float start = 0f;
         for (int loop = 0; loop < first.size(); loop++) {
-            float delay = state.delayBefore(a.books().seedBits(), loop);
+            float delay = state.delayBefore(a.books().seedBits(), CgVfxFormCompiler.key("state", "loop_delay"), loop);
             assertTrue(delay >= 0.2f && delay <= 0.8f);
             start += delay;
             assertEquals(start, first.get(loop) * DT, DT * 1.01f * (loop + 1));
@@ -166,13 +167,14 @@ public class CgVfxEmitterStateTest {
     public void aDurationRangeIsRolledOnceUnlessRecalculatedEachLoop() {
         CgVfxEmitterState once = CgVfxEmitterState.infinite(0.5f, 1.5f), each = once.recalculateDurationEachLoop();
         int seed = new CgVfxEmitterInstance(CgVfxEmitter.builder("seed").build(), 0.42f).books().seedBits();
-        float first = once.durationOf(seed, 0);
+        int key = CgVfxFormCompiler.key("state", "loop_duration");
+        float first = once.durationOf(seed, key, 0);
         boolean varies = false;
         for (int loop = 0; loop < 8; loop++) {
-            assertEquals(first, once.durationOf(seed, loop), 0f);
-            float d = each.durationOf(seed, loop);
+            assertEquals(first, once.durationOf(seed, key, loop), 0f);
+            float d = each.durationOf(seed, key, loop);
             assertTrue(d >= 0.5f && d <= 1.5f);
-            varies |= d != each.durationOf(seed, 0);
+            varies |= d != each.durationOf(seed, key, 0);
         }
         assertTrue("a recalculated duration varies by loop", varies);
     }

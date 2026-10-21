@@ -6,6 +6,7 @@ import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
+import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
 import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
@@ -25,6 +26,7 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -106,8 +108,20 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final boolean optional, local;
     final CgVfxEmitterState state;
     final int capacity;
-    /** Its bursts, by time. */
+    /** Its bursts, by time, and each one's element id. */
     final CgVfxSpawnBurst[] bursts;
+    final String[] burstIds;
+    /**
+     * Its elements' ids by the writer's name for each ({@code init}, {@code shape}, {@code velocity}, {@code state},
+     * {@code spin_rate}): a file's as read, else the name itself. What its rolls are keyed by ({@code core.md} § Values).
+     */
+    private final Map<String, String> ids;
+    /** Each module's element id from its file; null for one made in code, which the writer names. */
+    final String[] moduleIds;
+    private final int[] rollKeys;
+    /** The books' keys: the loop's delay and duration, each burst's count and probability. */
+    final int delayKey, durationKey;
+    final int[] burstCountKeys, burstProbabilityKeys;
     final CgVfxSpawnRate rate;
     final CgVfxSpawnPerUnit perUnit;
     /** The highest of each range, or of its spawn form's values: what its bounds and books read. */
@@ -160,9 +174,29 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         local = b.local;
         state = b.state;
         capacity = b.capacity;
-        bursts = b.bursts.toArray(new CgVfxSpawnBurst[0]);
         // Stable: two at one time fire in the order given.
-        Arrays.sort(bursts, (x, y) -> Float.compare(x.time(), y.time()));
+        Integer[] byTime = new Integer[b.bursts.size()];
+        for (int i = 0; i < byTime.length; i++) byTime[i] = i;
+        Arrays.sort(byTime, (x, y) -> Float.compare(b.bursts.get(x).time(), b.bursts.get(y).time()));
+        bursts = new CgVfxSpawnBurst[byTime.length];
+        burstIds = new String[byTime.length];
+        burstCountKeys = new int[byTime.length];
+        burstProbabilityKeys = new int[byTime.length];
+        for (int i = 0; i < byTime.length; i++) {
+            bursts[i] = b.bursts.get(byTime[i]);
+            burstIds[i] = b.burstIds.get(byTime[i]);
+            burstCountKeys[i] = CgVfxFormCompiler.key(burstIds[i], "count");
+            burstProbabilityKeys[i] = CgVfxFormCompiler.key(burstIds[i], "probability");
+        }
+        ids = Map.copyOf(b.ids);
+        moduleIds = b.moduleIds.toArray(new String[0]);
+        rollKeys = new int[ROLL_KEYS];
+        for (int k = 0; k < ROLL_KEYS; k++) {
+            String[] roll = CgVfxGpuEmitter.rollOf(k);
+            rollKeys[k] = CgVfxFormCompiler.key(id(roll[0]), roll[1]);
+        }
+        delayKey = CgVfxFormCompiler.key(id("state"), "loop_delay");
+        durationKey = CgVfxFormCompiler.key(id("state"), "loop_duration");
         rate = b.rate;
         spawn = b.spawn.build(b.name);
         perUnit = b.perUnit;
@@ -412,6 +446,16 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         return spawnForms;
     }
 
+    @Override
+    public int[] rollKeys() {
+        return rollKeys;
+    }
+
+    /** The id of its element the writer names {@code element}: a file's, or the name itself. */
+    String id(String element) {
+        return ids.getOrDefault(element, element);
+    }
+
     /** Its spawn form for {@code target}; null where the spawn row's range gives it. */
     @Nullable
     CgVfxSpawnForm spawnForm(CgVfxSpawnInput target) {
@@ -598,6 +642,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private CgVfxSpawnShape.Builder spawn = new CgVfxSpawnShape.Builder();
         private float sweep, inherit, maxStep = 8f;
         private final List<CgVfxSpawnForm> spawnForms = new ArrayList<>();
+        private final Map<String, String> ids = new HashMap<>();
+        private final List<String> burstIds = new ArrayList<>();
+        private final List<String> moduleIds = new ArrayList<>();
         private int trailPoints;
         private float[] rasterized;
         private float speedMin, speedMax;
@@ -630,6 +677,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             state = e.state;
             capacity = e.capacity;
             bursts.addAll(Arrays.asList(e.bursts));
+            burstIds.addAll(Arrays.asList(e.burstIds));
+            ids.putAll(e.ids);
             rate = e.rate;
             spawn = new CgVfxSpawnShape.Builder(e.spawn);
             perUnit = e.perUnit;
@@ -648,6 +697,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             spinMax = e.spinMax;
             heat = e.heat;
             modules.addAll(e.modules);
+            moduleIds.addAll(Arrays.asList(e.moduleIds));
             events.addAll(e.events.subList(0, e.ownEvents));
             userBindings.addAll(e.userBindings);
             forms.addAll(e.forms);
@@ -780,7 +830,13 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
          * }</pre>
          */
         public Builder burst(CgVfxSpawnBurst burst) {
+            return burst(burst, "burst_" + bursts.size());
+        }
+
+        /** A burst with its element id, what its rolls are keyed by: an emitter file's ({@link CgVfxEmitterAssets}). */
+        Builder burst(CgVfxSpawnBurst burst, String id) {
             bursts.add(Objects.requireNonNull(burst, "burst"));
+            burstIds.add(id);
             return this;
         }
 
@@ -1110,7 +1166,10 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             sizeMin = min;
             sizeMax = max;
             spawnForms.removeIf(f -> f.target() == CgVfxSpawnInput.SPRITE_SIZE);
-            if (skew != 1f) spawnForms.add(CgVfxSpawnForm.of(CgVfxSpawnInput.SPRITE_SIZE, "sprite_size", CgVfxSpawnForm.skewed(min, max, skew)));
+            if (skew != 1f) {
+                spawnForms.add(CgVfxSpawnForm.of(CgVfxSpawnInput.SPRITE_SIZE, ids.getOrDefault("init", "init"), "sprite_size",
+                        CgVfxSpawnForm.skewed(min, max, skew)));
+            }
             return this;
         }
 
@@ -1135,13 +1194,26 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         }
 
         public Builder module(CgVfxModule module) {
+            return module(module, null);
+        }
+
+        /** A module with its element id from its file; null for one made in code ({@link CgVfxEmitterAssets}). */
+        Builder module(CgVfxModule module, String id) {
             modules.add(module);
+            moduleIds.add(id);
             return this;
         }
 
         public Builder clearModules() {
             modules.clear();
+            moduleIds.clear();
             forms.clear();
+            return this;
+        }
+
+        /** The id of its element the writer names {@code element}: an emitter file's ({@link CgVfxEmitterAssets}). */
+        Builder id(String element, String id) {
+            ids.put(element, id);
             return this;
         }
 
@@ -1154,6 +1226,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         /** Clears its bursts: an asset's {@code spawn_burst} entries set them again ({@link CgVfxEmitterAssets}). */
         Builder clearBursts() {
             bursts.clear();
+            burstIds.clear();
             return this;
         }
 
@@ -1383,7 +1456,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
                 if (!(state.durationMax() > 0f && state.durationMax() < Float.POSITIVE_INFINITY)) {
                     throw new IllegalStateException(name + " sweeps over its loop, which needs a finite duration");
                 }
-                spawnForm(CgVfxSpawnForm.of(CgVfxSpawnInput.RADIUS, radius, CgVfxSpawnForm.swept(spawn.b, sweep, state.durationMax())));
+                spawnForm(CgVfxSpawnForm.of(CgVfxSpawnInput.RADIUS, ids.getOrDefault("shape", "shape"), radius,
+                        CgVfxSpawnForm.swept(spawn.b, sweep, state.durationMax())));
                 sweep = 0f;
             }
             if (state.loops() > 1 && !(state.shortestPeriod() > 0f)) {

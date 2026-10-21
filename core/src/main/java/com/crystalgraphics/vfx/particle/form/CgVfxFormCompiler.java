@@ -21,13 +21,14 @@ import com.crystalgraphics.object.value.CgValueForm;
  *
  * <pre>{@code
  * CgVfxFormCompiler compiler = new CgVfxFormCompiler(new CgVfxCurveBlock(), curveId -> curves.get(curveId));
- * CgVfxFormInput drag = compiler.compile("mymod:sparks/drag", dragProperty, Map.of("curve", fade, "by", "age"));
+ * CgVfxFormInput drag = compiler.compile("drag", dragProperty, Map.of("curve", fade, "by", "age"));   // element "drag"
  * String key = CgVfxFormCompiler.shapeKey("drag", List.of(drag));      // "drag(drag:CURVE_BLOCK)"
  * }</pre>
  *
  * <ul>
  *   <li>A form the declaration does not accept throws, naming the input and the forms it takes.</li>
- *   <li>The roll key is {@code (moduleId + "/" + input).hashCode()}: the same on every side, moved by no reordering.</li>
+ *   <li>The roll key is {@link #key}{@code (element, input)}: the element's id in its stack, never its place, so the
+ *       same on every side and moved by no reordering.</li>
  *   <li>A value with a {@code unit:} and a {@code struct} form are not compiled here: units convert before, a struct's
  *       fields compile one by one.</li>
  * </ul>
@@ -47,19 +48,27 @@ public final class CgVfxFormCompiler {
         return block;
     }
 
-    /** {@code value}, written for {@code input} of the module {@code moduleId}. */
-    public CgVfxFormInput compile(String moduleId, CgProperty input, Object value) {
+    /**
+     * The roll key of {@code element}'s {@code input} ({@code core.md} § Values): by the element's id and the input's
+     * name, never by place, the same on every side.
+     */
+    public static int key(String element, String input) {
+        return (element + "/" + input).hashCode();
+    }
+
+    /** {@code value}, written for {@code input} of the element whose id is {@code element}. */
+    public CgVfxFormInput compile(String element, CgProperty input, Object value) {
         CgValueForm form = CgValueForm.of(value);
         if (!input.accepts(form)) {
-            throw new IllegalArgumentException(moduleId + "'s " + input.name() + " is written as a " + form.specName()
+            throw new IllegalArgumentException(element + "'s " + input.name() + " is written as a " + form.specName()
                     + ", and takes " + input.forms());
         }
-        return compile(moduleId, input.name(), components(input.type()), input.meta().rolls(), form, value);
+        return compile(element, input.name(), components(input.type()), input.meta().rolls(), form, value);
     }
 
     private CgVfxFormInput compile(String moduleId, String name, int n, @Nullable CgPropertyMeta.Rolls rolls,
                                    CgValueForm form, Object value) {
-        int key = (moduleId + "/" + name).hashCode();
+        int key = key(moduleId, name);
         Map<?, ?> m = value instanceof Map<?, ?> map ? map : Map.of();
         switch (form) {
             case CONSTANT:

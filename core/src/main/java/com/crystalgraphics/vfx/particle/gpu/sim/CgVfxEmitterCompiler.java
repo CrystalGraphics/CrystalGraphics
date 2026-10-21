@@ -8,6 +8,7 @@ import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
 import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
@@ -170,6 +171,12 @@ public final class CgVfxEmitterCompiler {
         }
         s.append("}\n\n");
         s.append("const int STEP_PARAM_ROW = ").append(shape.paramRowVectors()).append(";\n");
+        s.append("const int STEP_KEYS = ").append(shape.keysAt()).append(";\n");
+        // The launch's roll keys by name (CgVfxGpuEmitter.KEY_*).
+        s.append("const int STEP_KEY_SHAPE = ").append(CgVfxGpuEmitter.KEY_SHAPE).append(", STEP_KEY_CONE = ")
+                .append(CgVfxGpuEmitter.KEY_CONE).append(", STEP_KEY_SEED = ").append(CgVfxGpuEmitter.KEY_SEED)
+                .append(", STEP_KEY_SPIN = ").append(CgVfxGpuEmitter.KEY_SPIN).append(", STEP_KEY_ROTATION = ")
+                .append(CgVfxGpuEmitter.KEY_ROTATION).append(", STEP_KEY_THIN = ").append(CgVfxGpuEmitter.KEY_THIN).append(";\n");
         s.append("const int STEP_CURVE_TEXELS = ").append(CgVfxCurveBlock.TEXELS).append(";\n");
         s.append("const int STEP_INSTANCE_ROW = ").append(shape.instanceRowVectors()).append(";\n");
         s.append("const int STEP_SPAWN_ROW = ").append(CgVfxParticlePool.SPAWN_ROW_WORDS / 4).append(";\n");
@@ -385,6 +392,12 @@ public final class CgVfxEmitterCompiler {
 
                 // A form's curve (CgVfxCurveBlock) from the vec4 at `at`: its domain's start and span, then its texels,
                 // sampled linearly at t, clamped at the ends.
+                // Roll key i of the definition at row: its element's id and input's name (CgVfxShape.keys), xored into
+                // the seed of every draw of that input.
+                uint step_key(int row, int i) {
+                    return floatBitsToUint(step_param(row + STEP_KEYS + i / 4)[i % 4]);
+                }
+
                 vec4 step_curve(int at, float t) {
                     vec4 d = step_param(at);
                     float u = d.y > 0.0 ? clamp((t - d.x) / d.y, 0.0, 1.0) * float(STEP_CURVE_TEXELS - 1) : 0.0;
@@ -439,6 +452,7 @@ public final class CgVfxEmitterCompiler {
                 // CgVfxSpawnShape: where spawn k of the instance at inst is born in its shape's sampling frame (axis
                 // +Y), and the way out of the shape's middle there.
                 void step_place(uint seed, uint k, int row, int inst, out vec3 pos, out vec3 way) {
+                    seed ^= step_key(row, STEP_KEY_SHAPE);
                     vec4 s6 = step_vector(row, inst, 6), n = step_vector(row, inst, 7);
                     int kind = int(s6.x), flags = int(s6.y), placement = flags & 3;
                     bool upper = (flags & 4) != 0;
@@ -568,7 +582,8 @@ public final class CgVfxEmitterCompiler {
                     else {
                         // Niagara's cone: the angle from its axis drawn evenly between its inner and outer half angles,
                         // the turn round it evenly (NiagaraStatelessModule_SolveVelocitiesAndForces.ush).
-                        float angle = mix(s4.x, s4.y, fx_rand(seed, k, 15u)), phi = fx_rand(seed, k, 16u) * STEP_TAU;
+                        float angle = mix(s4.x, s4.y, fx_rand(seed ^ step_key(row, STEP_KEY_CONE), k, 0u)),
+                              phi = fx_rand(seed ^ step_key(row, STEP_KEY_CONE), k, 1u) * STEP_TAU;
                         float st = sin(angle);
                         dir = step_orient(vec3(st * cos(phi), cos(angle), st * sin(phi)), step_vector(row, inst, 5).xyz);
                     }
@@ -580,10 +595,11 @@ public final class CgVfxEmitterCompiler {
                     p.age = 0.0;
                     p.life = @LIFE@;
                     p.size = @SIZE@;
-                    p.seed = fx_rand(seed, k, 6u);
-                    float spin = s2.x + (s2.y - s2.x) * fx_rand(seed, k, 7u);
-                    p.spinRate = fx_rand(seed, k, 8u) < 0.5 ? -spin : spin;
-                    p.spin = fx_rand(seed, k, 9u) * 6.2831853;
+                    p.seed = fx_rand(seed ^ step_key(row, STEP_KEY_SEED), k, 0u);
+                    uint spinKey = seed ^ step_key(row, STEP_KEY_SPIN);
+                    float spin = s2.x + (s2.y - s2.x) * fx_rand(spinKey, k, 0u);
+                    p.spinRate = fx_rand(spinKey, k, 1u) < 0.5 ? -spin : spin;
+                    p.spin = fx_rand(seed ^ step_key(row, STEP_KEY_ROTATION), k, 0u) * 6.2831853;
                     p.heat = s1.w;
                     p.resting = false;
                     p.collisions = 0u;
@@ -601,8 +617,8 @@ public final class CgVfxEmitterCompiler {
                     uvec4 head = INSTANCES(inst);
                     float share = step_instance(inst + 2).x;
                     uint seed = head.y;
-                    if (share < 1.0 && fx_rand(seed, k, 10u) >= share) return false;
                     int row = int(head.x) * STEP_PARAM_ROW;
+                    if (share < 1.0 && fx_rand(seed ^ step_key(row, STEP_KEY_THIN), k, 0u) >= share) return false;
                     vec4 when = uintBitsToFloat(SPAWNS(at + 1)), from = uintBitsToFloat(SPAWNS(at + 2));
                     vec4 to = uintBitsToFloat(SPAWNS(at + 3));
                     int bursts = int(when.z);
@@ -617,9 +633,9 @@ public final class CgVfxEmitterCompiler {
                     return true;
                 }
 
-                """.replace("@SPEED@", spawnValue(shape, CgVfxSpawnInput.SPEED, "s0.x", "s0.x + (s0.y - s0.x) * fx_rand(seed, k, 3u)"))
-                .replace("@LIFE@", spawnValue(shape, CgVfxSpawnInput.LIFETIME, "s0.z", "s0.z + (s0.w - s0.z) * fx_rand(seed, k, 4u)"))
-                .replace("@SIZE@", spawnValue(shape, CgVfxSpawnInput.SPRITE_SIZE, "s1.x", "s1.x + (s1.y - s1.x) * fx_rand(seed, k, 5u)"))
+                """.replace("@SPEED@", spawnValue(shape, CgVfxSpawnInput.SPEED, "s0.x", "s0.x + (s0.y - s0.x) * " + roll(CgVfxGpuEmitter.KEY_SPEED)))
+                .replace("@LIFE@", spawnValue(shape, CgVfxSpawnInput.LIFETIME, "s0.z", "s0.z + (s0.w - s0.z) * " + roll(CgVfxGpuEmitter.KEY_LIFE)))
+                .replace("@SIZE@", spawnValue(shape, CgVfxSpawnInput.SPRITE_SIZE, "s1.x", "s1.x + (s1.y - s1.x) * " + roll(CgVfxGpuEmitter.KEY_SIZE)))
                 .replace("@FRONT@", front(shape)));
         if (shape.tier() > 0) s.append("""
                 // Child c of this step's parent events: row c / _ChildMax's child c % _ChildMax, for the slot its feed
@@ -643,7 +659,7 @@ public final class CgVfxEmitterCompiler {
                     float share = step_instance(inst + 2).x;
                     // A repeating event's firing, from 1, in w: each firing's children are other particles.
                     uint seed = head.y, k = STEP_CHILD_KEY;
-                    if (share < 1.0 && fx_rand(seed, k, 10u) >= share) return false;
+                    if (share < 1.0 && fx_rand(seed ^ step_key(int(head.x) * STEP_PARAM_ROW, STEP_KEY_THIN), k, 0u) >= share) return false;
                     // From the parent's block and the place within it to this slot's origin.
                     vec3 at = vec3(ev.block.xyz - ivec3(INSTANCES(inst + 3).xyz)) + ev.position.xyz - step_instance(inst + 4).xyz;
                     // Launched about the event's normal: the instance's rotation turned its parent already.
@@ -897,7 +913,8 @@ public final class CgVfxEmitterCompiler {
                 if (l > 0) s.append(", ");
                 int[] fk = shape.formAtWord(v * 4 + l);
                 s.append(fk == null ? base + "." + XYZW.charAt(l)
-                        : formExpr(shape.form(fk[0]).compiled(), shape.formAt(fk[0]), fk[1], base + "." + XYZW.charAt(l), "formSeed", "p.id"));
+                        : formExpr(shape.form(fk[0]).compiled(), shape.formAt(fk[0]), fk[1], base + "." + XYZW.charAt(l), "formSeed",
+                                "p.id", shape.formKey(fk[0])));
             }
             s.append(')');
         }
@@ -926,10 +943,15 @@ public final class CgVfxEmitterCompiler {
 
     private static final String XYZW = "xyzw";
 
+    /** Spawn k's draw of the launch's roll {@code key} ({@code CgVfxGpuEmitter.KEY_*}). */
+    private static String roll(int key) {
+        return "fx_rand(seed ^ step_key(row, " + key + "), k, 0u)";
+    }
+
     /** A spawn value: its spawn form's expression for channel 0, else the spawn row's range as {@code otherwise}. */
     private static String spawnValue(CgVfxShape shape, CgVfxSpawnInput target, String first, String otherwise) {
         int f = shape.spawnFormOf(target);
-        return f < 0 ? otherwise : formExpr(shape.spawnForm(f).compiled(), shape.spawnFormAt(f), 0, first, "seed", "k");
+        return f < 0 ? otherwise : formExpr(shape.spawnForm(f).compiled(), shape.spawnFormAt(f), 0, first, "seed", "k", shape.spawnFormKey(f));
     }
 
     /** How far out a spawn is born past its shape: a radius form's value less the shape's radius; 0 without one. */
@@ -937,22 +959,23 @@ public final class CgVfxEmitterCompiler {
         int f = shape.spawnFormOf(CgVfxSpawnInput.RADIUS);
         if (f < 0) return "0.0";
         String radius = "step_vector(row, inst, 7).y";
-        return "(" + formExpr(shape.spawnForm(f).compiled(), shape.spawnFormAt(f), 0, radius, "seed", "k") + " - " + radius + ")";
+        return "(" + formExpr(shape.spawnForm(f).compiled(), shape.spawnFormAt(f), 0, radius, "seed", "k", shape.spawnFormKey(f)) + " - " + radius + ")";
     }
 
     /**
      * Component {@code k} of a form whose vec4s start at row vector {@code at}: its expression in the kernel, the Java
      * evaluation's twin ({@code CgVfxFormInput.channel}). {@code first} is the word holding a range's or a pick's first
-     * end; {@code seed} and {@code id} key its rolls: the instance's seed and the particle's id, or at spawn its key. A
-     * curve by the loop reads {@code loop}, which only a launch has.
+     * end; {@code seed} and {@code id} seed its rolls: the instance's seed and the particle's id, or at spawn its key;
+     * {@code key} is its roll key's index. A curve by the loop reads {@code loop}, which only a launch has.
      */
-    private static String formExpr(CgVfxFormInput c, int at, int k, String first, String seed, String id) {
+    private static String formExpr(CgVfxFormInput c, int at, int k, String first, String seed, String id, int key) {
+        String keyed = seed + " ^ step_key(row, " + key + ")";
         String own = "step_param(row + " + at + ")." + XYZW.charAt(k);
         if (c instanceof CgVfxFormInput.Range r) {
-            return "mix(" + first + ", " + own + ", fx_rand(" + seed + " ^ " + key(r.key()) + ", " + id + ", " + r.rollOf(k) + "u))";
+            return "mix(" + first + ", " + own + ", fx_rand(" + keyed + ", " + id + ", " + r.rollOf(k) + "u))";
         }
         if (c instanceof CgVfxFormInput.Pick p) {
-            return "(fx_rand(" + seed + " ^ " + key(p.key()) + ", " + id + ", 0u) < 0.5 ? " + first + " : " + own + ")";
+            return "(fx_rand(" + keyed + ", " + id + ", 0u) < 0.5 ? " + first + " : " + own + ")";
         }
         if (c instanceof CgVfxFormInput.Curve curve) {
             String t = switch (curve.by()) {
@@ -960,7 +983,7 @@ public final class CgVfxEmitterCompiler {
                 case PARTICLES_AGE -> "p.age";
                 case SPEED -> "length(p.velocity)";
                 case ID -> "float(" + id + ")";
-                case RANDOM -> "fx_rand(" + seed + " ^ " + key(curve.key()) + ", " + id + ", 31u)";
+                case RANDOM -> "fx_rand(" + keyed + ", " + id + ", 31u)";
                 case LOOP -> "loop";
                 default -> throw new IllegalStateException("a curve by " + curve.by());
             };
@@ -968,11 +991,6 @@ public final class CgVfxEmitterCompiler {
         }
         CgVfxFormInput.Binding b = (CgVfxFormInput.Binding) c;
         return "(p.age * " + glsl(b.scale()) + ")";
-    }
-
-    /** A roll's key as GLSL: its int's bits, unsigned. */
-    private static String key(int key) {
-        return "0x" + Integer.toHexString(key) + "u";
     }
 
     private static String glsl(float v) {

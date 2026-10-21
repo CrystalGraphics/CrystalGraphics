@@ -237,7 +237,7 @@ file alone is the one that wrote it:
 - An input the format declares and the engine does not take yet reads at its default alone, and fails by name otherwise.
 - **A module's input takes the format's forms** (`core.md` § Values), built per particle in the Step kernel each step: a
   range rolled per particle (per channel, locked), a pick, a curve by `age`, `particles.age`, `speed`, `random` or
-  `id`, and `{ bind: particles.age }`. Its rolls are keyed by the module and the input, never by place.
+  `id`, and `{ bind: particles.age }`. Its rolls are keyed by its element's `id` and the input's name, never by place.
 
   ```yaml
   particle_update:

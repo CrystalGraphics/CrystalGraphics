@@ -149,6 +149,10 @@ A burst can roll its count each loop, and fire in only some loops:
 - **A delay delays everything in the loop**, its bursts too: a burst at 0 fires after the delay.
 - **Every roll comes from the instance's seed**: a delay, a burst's count, a probability. Every client playing the
   same instance spawns the same.
+- **Each roll is keyed by its element's `id` and the input's name** (`core.md` § Values), never by its place: a burst's
+  count by that burst's `id`, a lifetime by its `initialize_particle` entry's. Reordering a file's entries changes
+  nothing drawn; renaming one changes that element's rolls alone. An emitter made in code takes the writer's names
+  (`init`, `shape`, `velocity`, `state`, `burst_<n>`).
 - **An effect's seed is drawn from the engine's random stream** unless `CgVfxEffect.seeded(...)` or a cue gave it one.
   A capture that must repeat run to run turns on `-Dcrystalgraphics.fixedSeed=true` (or `CgRandom.fixedSeed(true)` at
   startup; the harness does), which seeds that stream from a constant, as Unreal's `-FixedSeed` does.

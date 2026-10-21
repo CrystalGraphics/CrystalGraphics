@@ -1839,11 +1839,24 @@ public final class CgVfxParticlePool {
             params[at + form.target().word()] = Float.floatToRawIntBits(form.firstEnd());
             writeForm(form.compiled(), at + shape.spawnFormAt(f) * 4);
         }
+        // Each roll's key, by its element's id and its input's name (core.md § Values): the kernel reads its word.
+        int keys = at + shape.keysAt() * 4;
+        System.arraycopy(emitter.rollKeys(), 0, params, keys, CgVfxGpuEmitter.ROLL_KEYS);
+        for (int f = 0; f < shape.forms(); f++) params[keys + shape.formKey(f)] = rollKey(shape.form(f).compiled());
+        for (int f = 0; f < shape.spawnForms(); f++) params[keys + shape.spawnFormKey(f)] = rollKey(shape.spawnForm(f).compiled());
         // Its draws read the clip's rows from its first step's upload on.
         if (emitter.clip() != null) CgVfxClipAtlas.of(emitter.clip());
         rows.put(emitter, new int[]{index, 1});
         paramsChanged = true;
         return index;
+    }
+
+    /** A form's roll key: 0 for one that rolls nothing. */
+    private static int rollKey(CgVfxFormInput c) {
+        if (c instanceof CgVfxFormInput.Range r) return r.key();
+        if (c instanceof CgVfxFormInput.Pick pick) return pick.key();
+        if (c instanceof CgVfxFormInput.Curve curve) return curve.key();
+        return 0;
     }
 
     /** A form's vec4s from word {@code at}: a range's or a pick's other end; a curve's domain, then its texels. */
