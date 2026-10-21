@@ -150,6 +150,8 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     /** Every queue family a buffer or image is used on, when more than the frame's: they are made CONCURRENT. */
     private final int[] sharedFamilies;
     public int barriers;
+    /** Descriptor pushes sent, the descriptors they wrote, and pushes skipped as what their bind point already held. */
+    public long pushes, pushWrites, pushesSkipped;
     /** Copies recorded on the transfer queue, and of those the buffer copies (a {@code cgBeginTransfer} bracket's). */
     public int transferCopies, transferBufferCopies;
     /** Copies into textures recorded on the frame's queue, and the calls they were batched into. */

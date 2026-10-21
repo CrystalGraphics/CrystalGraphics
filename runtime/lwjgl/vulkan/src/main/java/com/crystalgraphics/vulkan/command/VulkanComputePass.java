@@ -61,7 +61,7 @@ final class VulkanComputePass implements CgComputePass {
             images.add(view);
         }
         VulkanDescriptors.push(device, cmd(), VK_PIPELINE_BIND_POINT_COMPUTE,
-                ((VulkanBindingLayout) pipeline.layout()).pipelineLayout, b);
+                ((VulkanBindingLayout) pipeline.layout()).pipelineLayout, b, encoder.computePushed);
     }
 
     @Override

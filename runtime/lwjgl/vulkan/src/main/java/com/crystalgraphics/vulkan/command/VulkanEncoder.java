@@ -70,6 +70,9 @@ public final class VulkanEncoder implements CgCommandEncoder {
     private final CgVulkanDevice device;
     private VulkanPass open;
     private VulkanComputePass openCompute;
+    /** What each bind point last pushed, forgotten as a pass of its kind begins. */
+    final VulkanDescriptors.Pushed graphicsPushed = new VulkanDescriptors.Pushed(),
+            computePushed = new VulkanDescriptors.Pushed();
     private boolean inAsync;
     /** Inside {@link #beginTransfer}; and whether the bracket's copies there are ordered after earlier ones yet. */
     private boolean inTransfer, transferOrdered;
@@ -225,6 +228,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
         if (openCompute != null) throw new IllegalStateException("beginCompute inside a compute pass");
         outsideTransfer("beginCompute");
         syncTransfers();
+        computePushed.forget();
         openCompute = new VulkanComputePass(device, this);
         return openCompute;
     }
@@ -327,6 +331,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
             }
         }
         nvkCmdBeginRenderingKHR(cmd, s.address);
+        graphicsPushed.forget();
         open = new VulkanPass(device, this, desc);
         return open;
     }

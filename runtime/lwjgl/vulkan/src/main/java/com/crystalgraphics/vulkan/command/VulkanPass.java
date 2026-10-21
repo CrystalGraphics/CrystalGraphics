@@ -28,7 +28,8 @@ import static org.lwjgl.vulkan.VK12.vkCmdDrawIndexedIndirectCount;
 import static org.lwjgl.vulkan.VK12.vkCmdDrawIndirectCount;
 
 /**
- * One {@code vkCmdBeginRenderingKHR} instance. Bindings are pushed per draw into set 0; the viewport is positive, so
+ * One {@code vkCmdBeginRenderingKHR} instance. Bindings are pushed per draw into set 0, unless they are what set 0 already
+ * holds ({@link VulkanDescriptors}); the viewport is positive, so
  * GL's clip space lands on the same memory rows it does on GL (plan/device-vulkan.md §6).
  */
 final class VulkanPass implements CgRenderPass {
@@ -59,7 +60,7 @@ final class VulkanPass implements CgRenderPass {
         if (b.count() == 0) return;
         if (pipeline == null) throw new IllegalStateException("Bindings pushed before a pipeline");
         VulkanDescriptors.push(device, cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS,
-                ((VulkanBindingLayout) pipeline.desc.layout()).pipelineLayout, b);
+                ((VulkanBindingLayout) pipeline.desc.layout()).pipelineLayout, b, encoder.graphicsPushed);
     }
 
     // Per draw: filled in VulkanScratch.
