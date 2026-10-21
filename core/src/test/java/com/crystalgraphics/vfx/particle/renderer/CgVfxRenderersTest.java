@@ -1,6 +1,9 @@
 package com.crystalgraphics.vfx.particle.renderer;
 
+import com.crystalgraphics.api.material.CgBlendMode;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
+import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.object.validate.CgValidation;
@@ -17,6 +20,8 @@ import static org.junit.Assert.*;
 
 /** An emitter's renderers: compiled from their entries by kind, built in Java to the same tree, round-tripped. */
 public class CgVfxRenderersTest {
+
+    private static final String SPRITE = "crystalgraphics:shaders/vfx/particle/sprite.shader";
 
     @Test
     public void everyBuiltKindCompilesFromItsEntry() {
@@ -58,6 +63,35 @@ public class CgVfxRenderersTest {
                     () -> CgVfxRenderers.compile("sparks", Map.of("id", "r1", "kind", kind)));
             assertTrue(e.getMessage(), e.getMessage().contains("not built yet"));
         }
+    }
+
+    @Test
+    public void itsMaterialIsTheDefinitionItsAssetCompiledFirst() {
+        CgAssetKinds.register();
+        CgMaterialDefinition spark = CgMaterialDefinition.builder("test:materials/spark", SPRITE)
+                .blend(CgBlendMode.ADDITIVE).build();
+        CgVfxRendererProperties fromFile = CgVfxRenderers.compile("sparks",
+                Map.of("id", "r1", "kind", "sprite", "material", "test:materials/spark"),
+                (kind, id) -> kind == CgLookKinds.MATERIAL && id.equals(spark.id()) ? spark : null);
+        assertSame(spark, fromFile.common().definition());
+        CgVfxRendererProperties inJava = CgVfxRenderers.sprite("r1").material(spark).build();
+        assertSame(spark, inJava.common().definition());
+        assertEquals(fromFile.tree(), inJava.tree());
+        IllegalArgumentException wrong = assertThrows(IllegalArgumentException.class, () -> CgVfxRenderers.compile(
+                "sparks", Map.of("id", "r1", "kind", "sprite", "material", "test:materials/raw"), (kind, id) -> "a tree"));
+        assertTrue(wrong.getMessage(), wrong.getMessage().contains("test:materials/raw"));
+    }
+
+    @Test
+    public void aBindReadsAUserParameterAndNothingElse() {
+        assertEquals(Map.of("_Color", "user.ember"), CgVfxRenderers.sprite("r1").bind("_Color", "user.ember").build()
+                .common().bind());
+        IllegalArgumentException particle = assertThrows(IllegalArgumentException.class,
+                () -> CgVfxRenderers.sprite("r1").bind("_Glow", "particles.dynamic_0").build());
+        assertTrue(particle.getMessage(), particle.getMessage().contains("cg_dynamic_parameter"));
+        IllegalArgumentException fromUser = assertThrows(IllegalArgumentException.class, () -> CgVfxRenderers.compile(
+                "sparks", Map.of("id", "r1", "kind", "sprite", "material", Map.of("bind", "user.look"))));
+        assertTrue(fromUser.getMessage(), fromUser.getMessage().contains("not built yet"));
     }
 
     @Test

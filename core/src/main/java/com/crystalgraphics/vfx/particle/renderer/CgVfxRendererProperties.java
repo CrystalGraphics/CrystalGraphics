@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.particle.renderer;
 
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.settings.CgQuality;
 
 import javax.annotation.Nullable;
@@ -34,21 +35,21 @@ public sealed interface CgVfxRendererProperties permits CgVfxSpriteRendererPrope
     Map<String, Object> tree();
 
     /**
-     * The fields every renderer kind shares ({@code spec/particles.md} § Renderers).
+     * The fields every renderer kind shares.
      *
      * @param id              its id among its emitter's renderers
      * @param enabled         whether it draws
      * @param quality         the tier it draws from, null for every tier
      * @param sortOrderHint   its place among its emitter's renderers, Niagara's {@code SortOrderHint}
      * @param motionVectors   whether it writes motion vectors
-     * @param material        its material asset, null when a user parameter names it
-     * @param materialBinding the user parameter naming its material ({@code { bind: user.x }}), null for a fixed one
-     * @param bind            material parameter to source: a user parameter or a particle attribute, read per draw
+     * @param material        its material asset's id
+     * @param definition      that material compiled, null where its emitter compiled with no dependencies to ask
+     * @param bind            material parameter to the user parameter it reads per draw, {@code user.<name>}
      * @param values          material parameter to a constant, this renderer's alone
      * @param keywords        material keywords it enables
      */
     record Common(String id, boolean enabled, @Nullable CgQuality quality, int sortOrderHint, boolean motionVectors,
-                  @Nullable String material, @Nullable String materialBinding, Map<String, Object> bind,
+                  @Nullable String material, @Nullable CgMaterialDefinition definition, Map<String, Object> bind,
                   Map<String, Object> values, List<String> keywords) {
     }
 }

@@ -336,6 +336,21 @@ public final class CgMaterial {
         return CgMaterialRegistry.get().getOrCreate(definition, null);
     }
 
+    /**
+     * A fresh material of {@code definition}, the caller's to configure further and to {@link #delete()}: what
+     * {@link #of} shares, for a drawer that adds per-draw state of its own (row slots, buffers).
+     *
+     * <pre>{@code
+     * CgMaterial m = CgMaterial.newInstance(definition, "FX_ON_MESH");   // the draw keyword, where the shader declares it
+     * m.applyProperties(b -> b.set1i(CgMaterialProperty.rowSlotName("_Color"), 0));
+     * }</pre>
+     *
+     * @throws IllegalStateException naming the definition and what no material state or binding carries yet
+     */
+    public static CgMaterial newInstance(CgMaterialDefinition definition, @Nullable String drawKeyword) {
+        return CgMaterialRegistry.make(definition, drawKeyword);
+    }
+
     public static CgMaterial load(String resourcePath) {
         return CgMaterialRegistry.get().getOrCreate(resourcePath);
     }

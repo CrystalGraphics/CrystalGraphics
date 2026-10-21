@@ -73,9 +73,13 @@ public final class CgVfxSystemAssets {
     private CgVfxSystemAssets() {
     }
 
-    /** Sets {@link #COMPILER} as the system kind's. */
+    /**
+     * Sets {@link #COMPILER} as the system kind's, and the emitter kind's: an emitter file compiles against its own
+     * hard references (its renderers' materials), which a system referencing it does not hold.
+     */
     public static void register() {
         CgAssetCompiler.register(CgParticleKinds.SYSTEM, COMPILER);
+        CgAssetCompiler.register(CgParticleKinds.EMITTER, CgVfxEmitterAssets.compiler(id -> null));
     }
 
     /** Names {@code factory} as the behaviour a system's {@code effect: id} plays with, drawing the file's look. At init. */
@@ -273,7 +277,7 @@ public final class CgVfxSystemAssets {
             throw new IllegalArgumentException(at + ": no emitter");
         }
         try {
-            return CgVfxEmitterAssets.compile(name, tree, null);
+            return CgVfxEmitterAssets.compile(name, tree, null, deps);
         } catch (RuntimeException failed) {
             throw new IllegalArgumentException(at + ": " + failed.getMessage(), failed);
         }

@@ -1,5 +1,8 @@
 package com.crystalgraphics.vfx.particle.renderer;
 
+import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.asset.kind.CgLookKinds;
+import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.look.CgVfxFlipbook;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties.Common;
@@ -29,7 +32,10 @@ import java.util.Map;
  * <ul>
  *   <li>Built in Java or read from a file, a renderer is its tree: {@link CgVfxRendererProperties#tree()} writes
  *       back exactly what compiled it.</li>
- *   <li>{@code system}, {@code anim_trail}, {@code beam} and {@code light} fail at compile, naming what they need.</li>
+ *   <li>{@code system}, {@code anim_trail}, {@code beam} and {@code light} fail at compile, naming what they need;
+ *       so does a material named by a user parameter ({@code material: { bind: user.x }}).</li>
+ *   <li>{@code bind} takes user parameters alone: a particle's own attributes are read in the material
+ *       ({@code cg_dynamic_parameter}, {@code CG_PARTICLE_COLOR}), as Unreal's material graph reads them.</li>
  *   <li>A flipbook's {@code mode: direct} fails too: no module sets its frame yet.</li>
  * </ul>
  */
@@ -41,24 +47,39 @@ public final class CgVfxRenderers {
     private CgVfxRenderers() {
     }
 
-    /** Every entry of an emitter's {@code renderers:}, in order; an absent list is empty. */
+    /** Every entry of an emitter's {@code renderers:}, in order, their materials by id alone. */
     public static List<CgVfxRendererProperties> compileAll(String emitter, @Nullable Object renderers) {
+        return compileAll(emitter, renderers, null);
+    }
+
+    /**
+     * Every entry of an emitter's {@code renderers:}, in order; an absent list is empty. {@code deps} answers each
+     * renderer's material, a hard reference its asset compiled first; null leaves {@link Common#definition()} null.
+     */
+    public static List<CgVfxRendererProperties> compileAll(String emitter, @Nullable Object renderers,
+                                                           @Nullable CgAssetCompiler.Dependencies deps) {
         List<CgVfxRendererProperties> out = new ArrayList<>();
         if (renderers instanceof List<?> list) {
             for (Object entry : list) {
                 if (!(entry instanceof Map<?, ?> m)) throw new IllegalArgumentException(emitter + ": a renderer is a map, not " + entry);
-                out.add(compile(emitter, m));
+                out.add(compile(emitter, m, deps));
             }
         }
         return Collections.unmodifiableList(out);
     }
 
-    /** One {@code renderers:} entry of {@code emitter}. */
+    /** One {@code renderers:} entry of {@code emitter}, its material by id alone. */
     public static CgVfxRendererProperties compile(String emitter, Map<?, ?> entry) {
+        return compile(emitter, entry, null);
+    }
+
+    /** One {@code renderers:} entry of {@code emitter}; {@code deps} answers its material. */
+    public static CgVfxRendererProperties compile(String emitter, Map<?, ?> entry,
+                                                  @Nullable CgAssetCompiler.Dependencies deps) {
         Map<String, Object> tree = copy(entry);
         String kind = String.valueOf(tree.get("kind"));
         String who = emitter + "'s renderer " + tree.get("id");
-        Common common = common(who, tree);
+        Common common = common(who, tree, deps);
         return switch (kind) {
             case "sprite" -> new CgVfxSpriteRendererProperties(common, tree,
                     choice(who, tree, "alignment", CgVfxSpriteRendererProperties.Alignment.class, "unaligned"),
@@ -95,18 +116,43 @@ public final class CgVfxRenderers {
         };
     }
 
-    private static Common common(String who, Map<String, Object> tree) {
+    private static Common common(String who, Map<String, Object> tree, @Nullable CgAssetCompiler.Dependencies deps) {
         if (!(tree.get("id") instanceof String id)) throw new IllegalArgumentException(who + " has no id");
         CgQuality quality = tree.get("quality") instanceof String q ? CgQuality.valueOf(q.toUpperCase(Locale.ROOT)) : null;
-        String material = null, binding = null;
+        String material = null;
+        CgMaterialDefinition definition = null;
         Object m = tree.get("material");
-        if (m instanceof String s) material = s;
-        else if (m instanceof Map<?, ?> b && b.get("bind") instanceof String s) binding = s;
-        else if (m != null) throw new IllegalArgumentException(who + "'s material is an asset or { bind: user.x }, not " + m);
+        if (m instanceof String s) {
+            material = s;
+            if (deps != null) {
+                Object d = deps.definition(CgLookKinds.MATERIAL, s);
+                // Null: the caller holds no compiled hard references; a pipeline answers every one or fails first.
+                if (d instanceof CgMaterialDefinition md) definition = md;
+                else if (d != null) throw new IllegalArgumentException(who + "'s material " + s + " compiled to " + d.getClass().getSimpleName() + ", not a material: is CgMaterialDefinitions registered?");
+            }
+        } else if (m instanceof Map<?, ?>) {
+            throw new IllegalArgumentException(who + " takes its material from a user parameter, which is not built yet:"
+                    + " name a material asset");
+        } else if (m != null) {
+            throw new IllegalArgumentException(who + "'s material is an asset, not " + m);
+        }
+        Map<String, Object> bind = stringKeyed(tree.get("bind"));
+        for (Map.Entry<String, Object> b : bind.entrySet()) {
+            Object source = b.getValue() instanceof Map<?, ?> form ? form.get("bind") : b.getValue();
+            String from = String.valueOf(source);
+            if (from.startsWith("particles.")) {
+                throw new IllegalArgumentException(who + " binds " + b.getKey() + " to " + from + ": a particle's own"
+                        + " attributes are read in its material (cg_dynamic_parameter, CG_PARTICLE_COLOR), not bound");
+            }
+            if (!from.startsWith("user.")) {
+                throw new IllegalArgumentException(who + " binds " + b.getKey() + " to " + from + ": a bind reads a user"
+                        + " parameter, user.<name>");
+            }
+        }
         List<String> keywords = new ArrayList<>();
         if (tree.get("keywords") instanceof List<?> list) for (Object k : list) keywords.add(String.valueOf(k));
         return new Common(id, !Boolean.FALSE.equals(tree.get("enabled")), quality, integer(tree.get("sort_order_hint")),
-                Boolean.TRUE.equals(tree.get("motion_vectors")), material, binding, stringKeyed(tree.get("bind")),
+                Boolean.TRUE.equals(tree.get("motion_vectors")), material, definition, bind,
                 stringKeyed(tree.get("values")), Collections.unmodifiableList(keywords));
     }
 
@@ -248,6 +294,7 @@ public final class CgVfxRenderers {
         private final Map<String, Object> tree = new LinkedHashMap<>();
         private final Map<String, Object> bind = new LinkedHashMap<>(), values = new LinkedHashMap<>();
         private final List<String> keywords = new ArrayList<>();
+        private CgMaterialDefinition definition;
 
         private Builder(String id, String kind) {
             tree.put("id", id);
@@ -260,10 +307,10 @@ public final class CgVfxRenderers {
             return this;
         }
 
-        /** Its material from a user parameter: {@code user.<name>}. */
-        public Builder materialFrom(String userParameter) {
-            tree.put("material", Map.of("bind", userParameter));
-            return this;
+        /** Its material, compiled: its id is written, and {@link Common#definition()} is it. */
+        public Builder material(CgMaterialDefinition material) {
+            definition = material;
+            return material(material.id());
         }
 
         /** Drawn from {@code quality} up. */
@@ -284,7 +331,7 @@ public final class CgVfxRenderers {
             return this;
         }
 
-        /** Material parameter {@code parameter} read per draw from {@code source}: {@code user.x} or {@code particles.x}. */
+        /** Material parameter {@code parameter} read per draw from user parameter {@code source}, {@code user.<name>}. */
         public Builder bind(String parameter, String source) {
             bind.put(parameter, source);
             return this;
@@ -337,7 +384,8 @@ public final class CgVfxRenderers {
                 }
             }
             for (Map.Entry<String, Object> e : tree.entrySet()) entry.putIfAbsent(e.getKey(), e.getValue());
-            return compile("java", entry);
+            CgMaterialDefinition d = definition;
+            return compile("java", entry, d == null ? null : (kind, id) -> id.equals(d.id()) ? d : null);
         }
     }
 }

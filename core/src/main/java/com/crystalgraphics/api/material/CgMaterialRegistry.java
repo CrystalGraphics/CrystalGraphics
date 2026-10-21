@@ -106,7 +106,7 @@ public final class CgMaterialRegistry {
         if (byKeyword != null) for (CgMaterial m : byKeyword.values()) m.delete();
     }
 
-    private static CgMaterial make(CgMaterialDefinition d, @Nullable String drawKeyword) {
+    static CgMaterial make(CgMaterialDefinition d, @Nullable String drawKeyword) {
         if (Boolean.FALSE.equals(d.draw().depthTest())) {
             throw new IllegalStateException(d.id() + " turns depth_test off, which no material state carries yet");
         }

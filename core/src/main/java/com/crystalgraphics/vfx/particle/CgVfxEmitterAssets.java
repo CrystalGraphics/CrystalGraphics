@@ -256,6 +256,12 @@ public final class CgVfxEmitterAssets {
 
     /** The emitter {@code tree} declares, named {@code name}; {@code template} gives what a file does not carry yet. */
     public static CgVfxEmitter compile(String name, Map<?, ?> tree, @Nullable CgVfxEmitter template) {
+        return compile(name, tree, template, null);
+    }
+
+    /** As {@link #compile(String, Map, CgVfxEmitter)}, {@code deps} answering its renderers' materials. */
+    public static CgVfxEmitter compile(String name, Map<?, ?> tree, @Nullable CgVfxEmitter template,
+                                       @Nullable CgAssetCompiler.Dependencies deps) {
         CgVfxEmitter.Builder b = CgVfxEmitter.builder(name);
         if (template != null) b.carry(template);
         // Unreal's defaults for what a file leaves out: opaque throughout.
@@ -358,7 +364,7 @@ public final class CgVfxEmitterAssets {
             }
             b.module(module);
         }
-        for (CgVfxRendererProperties r : CgVfxRenderers.compileAll(name, tree.get("renderers"))) b.renderer(r);
+        for (CgVfxRendererProperties r : CgVfxRenderers.compileAll(name, tree.get("renderers"), deps)) b.renderer(r);
         return b.build();
     }
 
@@ -366,7 +372,7 @@ public final class CgVfxEmitterAssets {
     public static CgAssetCompiler<CgVfxEmitter> compiler(Function<String, CgVfxEmitter> templates) {
         return (asset, deps) -> {
             String id = asset.id();
-            return compile(id.substring(id.lastIndexOf('/') + 1), asset.resolved(), templates.apply(id));
+            return compile(id.substring(id.lastIndexOf('/') + 1), asset.resolved(), templates.apply(id), deps);
         };
     }
 
