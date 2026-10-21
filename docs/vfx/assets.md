@@ -189,6 +189,8 @@ compared with the one it replaces and turned into the edits an editor would make
 | A value: a rate, a colour, a module's input | takes it at its next update, its particles and emitters kept |
 | Structure: a module, emitter or renderer added or removed, a capacity | plays again from its start up to its age, its emitters and behaviour made anew |
 
+- **A material reaches every system drawing with it**: saving a material's file recompiles the systems that use it,
+  and each playing one takes its new values in place.
 - **Values set on the instance keep** through either: Unreal keeps a component's user parameters through a reinit.
 - **A value that changes what an emitter is** (its capacity, its life, whether it is local) restarts it too.
 - **A file that no longer reads, resolves or validates** keeps the last good definition and logs why; save it fixed and
