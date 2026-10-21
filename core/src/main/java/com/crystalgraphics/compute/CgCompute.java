@@ -68,6 +68,8 @@ public final class CgCompute implements CgReloadable {
     private static final Queue<CgCompute> RETIRED = new ConcurrentLinkedQueue<>();
     private static final int COMPILE = CgTrace.name("compute.compile"), COMPILE_LOWERED = CgTrace.name("compute.compileLowered");
     private static final int COMPILES = CgTrace.name("compute.compiles");
+    /** Of {@link #COMPILES}, those whose sources a worker made ahead ({@link CgKernel#ahead}). */
+    private static final int AHEAD_HITS = CgTrace.name("compute.compiles-ahead");
     private static final int PREPARE = CgTrace.name("compute.prepare"), COMPILE_WAIT = CgTrace.name("compute.compileWait");
     private static final int COMPILE_WAITS = CgTrace.name("compute.compile-waits");
     private static final int FINISH = CgTrace.name("compute.finishPrepared");
@@ -193,12 +195,41 @@ public final class CgCompute implements CgReloadable {
         return program;
     }
 
+    /** Sources a worker made for {@link #prepare}, by program key, with what making them read. */
+    private final Map<String, Ahead> ahead = new ConcurrentHashMap<>();
+
+    private record Ahead(CgKernelProgram.Sources sources, Set<String> reads) {
+    }
+
+    /** {@code kernel}'s sources for the current target, made for the {@link #prepare} that follows. CPU only, any thread. */
+    void loadAhead(CgKernel kernel) {
+        String key = kernel.programKey;
+        CgComputeSource now = source;
+        CgKernelDecl decl = now.kernel(kernel.name());
+        if (decl == null || ahead.containsKey(key)) return;
+        try (CgIO.Reads reads = CgIO.recordReads()) {
+            CgKernelProgram.Sources made = CgKernelProgram.Sources.of(now, decl, kernel.keywords(), CgKernelTarget.current());
+            ahead.put(key, new Ahead(made, new HashSet<>(reads.paths())));
+        }
+    }
+
     /** Starts {@code kernel}'s program without waiting, unless it is compiled or started. Render thread. */
     synchronized void prepare(CgKernel kernel) {
         for (CgCompute retired; (retired = RETIRED.poll()) != null; ) retired.release();
         String key = kernel.programKey;
         CgKernelProgram program = programs.get(key);
         if (program != null && !program.isDeleted() || preparing.containsKey(key)) return;
+        Ahead made = ahead.remove(key);
+        if (made != null && made.sources().source() == source && made.sources().target().equals(CgKernelTarget.current())) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, PREPARE)) {
+                preparing.put(key, CgKernelProgram.submit(made.sources(), decl(kernel), kernel.keywords()));
+            }
+            addReads(made.reads());
+            PREPARING.add(this);
+            CgTrace.add(CgChannels.GL, COMPILES, 1);
+            CgTrace.add(CgChannels.GL, AHEAD_HITS, 1);
+            return;
+        }
         CgIO.Reads recorded = CgIO.recordReads();
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, PREPARE)) {
             preparing.put(key, CgKernelProgram.submit(source, decl(kernel), kernel.keywords(), CgKernelTarget.current()));

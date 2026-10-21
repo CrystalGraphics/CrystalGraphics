@@ -133,11 +133,26 @@ public final class CgKernelProgram {
      */
     public static Pending submit(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords,
                                  CgKernelTarget target) {
-        String glsl = CgKernelEmitter.emit(source, kernel, keywords, target);
-        String expanded = new CgShaderPreprocessor().process(glsl, source.path());
+        return submit(Sources.of(source, kernel, keywords, target), kernel, keywords);
+    }
+
+    /** {@link #submit(CgComputeSource, CgKernelDecl, Set, CgKernelTarget)} from sources made already, on a worker. */
+    public static Pending submit(Sources made, CgKernelDecl kernel, Set<String> keywords) {
         CgShaderProgram program = CgShaderProgram.create();
-        program.submitComputeLink(expanded);
-        return new Pending(source, kernel, keywords, glsl, expanded, program, target.checked());
+        program.submitComputeLink(made.expanded());
+        return new Pending(made.source(), kernel, keywords, made.glsl(), made.expanded(), program, made.target().checked());
+    }
+
+    /**
+     * A kernel's GLSL for a target, emitted and with its includes expanded: what {@link #submit} hands the driver. CPU
+     * only, so a worker makes it ahead of the frame that submits.
+     */
+    public record Sources(CgComputeSource source, CgKernelTarget target, String glsl, String expanded) {
+        public static Sources of(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, CgKernelTarget target) {
+            String glsl = CgKernelEmitter.emit(source, kernel, keywords, target);
+            String expanded = CgGL.checkSource(new CgShaderPreprocessor().process(glsl, source.path())).toString();
+            return new Sources(source, target, glsl, expanded);
+        }
     }
 
     /** A kernel's program linking: {@link #finish} makes it, waiting for the driver only if it has not finished. */

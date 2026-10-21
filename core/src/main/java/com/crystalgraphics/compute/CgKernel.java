@@ -166,9 +166,33 @@ public final class CgKernel {
     public CgKernel prepare() {
         check();
         CgKernelForm f = form();
+        if (AHEAD.get()) {
+            if (f.how() == CgKernelForm.How.COMPUTE) compute.loadAhead(this);
+            return this;
+        }
         if (f.how() == CgKernelForm.How.COMPUTE) compute.prepare(this);
         else if (f.how() == CgKernelForm.How.LOWERED) lowered();
         return this;
+    }
+
+    private static final ThreadLocal<Boolean> AHEAD = ThreadLocal.withInitial(() -> false);
+
+    /**
+     * Runs {@code prepares} with every {@link #prepare} in it making that kernel's sources rather than its program: on a
+     * worker ahead of a warm-up, whose own {@code prepare} then only submits. A lowered kernel is left to it whole.
+     *
+     * <pre>{@code
+     * CgJob.executor(CgJobLane.LATENCY).execute(() -> CgKernel.ahead(CgVfxRange::prepare));   // a worker
+     * CgVfxRange.prepare();                                                                   // later, the render thread
+     * }</pre>
+     */
+    public static void ahead(Runnable prepares) {
+        AHEAD.set(true);
+        try {
+            prepares.run();
+        } finally {
+            AHEAD.set(false);
+        }
     }
 
     /**
