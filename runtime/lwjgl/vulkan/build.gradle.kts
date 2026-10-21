@@ -92,6 +92,9 @@ tasks.test {
         systemProperty("crystalgraphics.kits.portsRoot", kitPortsRoot.get().asFile.absolutePath)
         systemProperty("crystalgraphics.resourceOverrideDirs", kitPortsRoot.get().asFile.absolutePath)
     }
+    // -PkitShading=<namespace>=<kit dir>;...: a kit's shading.yaml registered under <namespace>, and its materials
+    // naming one of those models compiled and linked under it.
+    providers.gradleProperty("kitShading").orNull?.let { systemProperty("crystalgraphics.kits.shading", it) }
 }
 
 // -Ptest.bytecode=8: the tests against core's and platform's Java 8 copies, the bytecode the shipped jars carry,

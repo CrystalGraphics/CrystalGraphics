@@ -1,7 +1,12 @@
 package com.crystalgraphics.vulkan;
 
+import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.material.CgMaterialDefinitions;
 import com.crystalgraphics.api.material.CgParameterCollections;
+import com.crystalgraphics.api.material.CgShadingModel;
+import com.crystalgraphics.api.material.CgShadingModels;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
+import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.gl.material.CgMaterialShader;
@@ -19,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -218,6 +224,86 @@ public class KitProgramsLinkTest {
         assertTrue(String.join("\n", failures), failures.isEmpty());
         assertTrue("no port was found under " + namespaces, ports > 0);
         assertTrue("no program was linked", programs > 0);
+    }
+
+    /**
+     * Each kit's {@code shading.yaml} registered under its namespace, and every material of the kit naming one of those
+     * models compiled through its parent chain, its model's keyword on, and its forward program linked. A material
+     * whose archetype the kit has not ported is listed, not linked.
+     */
+    @Test
+    public void aKitsShadingModelsRegisterAndItsMaterialsLinkUnderThem() throws IOException {
+        String kits = System.getProperty("crystalgraphics.kits.shading");
+        Assume.assumeTrue("no -PkitShading given", kits != null && !kits.isBlank());
+        CgAssetKinds.register();
+        String portsRoot = System.getProperty("crystalgraphics.kits.portsRoot");
+        List<String> failures = new ArrayList<>(), unported = new ArrayList<>();
+        int linked = 0;
+        for (String pair : kits.split(";")) {
+            String namespace = pair.substring(0, pair.indexOf('='));
+            Path dir = Paths.get(pair.substring(pair.indexOf('=') + 1));
+            String kit = dir.getFileName().toString();
+            List<CgShadingModel> models = CgShadingModels.registerKit(namespace, dir);
+            assertTrue(dir + " registers no shading model", !models.isEmpty());
+            Map<String, CgAssetData> assets = new HashMap<>();
+            Path materials = dir.resolve("materials");
+            List<Path> files;
+            try (Stream<Path> walk = Files.walk(materials)) {
+                files = walk.filter(f -> f.toString().endsWith(".yaml")).sorted().toList();
+            }
+            for (Path file : files) {
+                String id = kit + ":" + materials.relativize(file).toString().replace(File.separatorChar, '/')
+                        .replaceFirst("[.]yaml$", "");
+                CgAssetData asset = material(id, materials, kit, assets);
+                Object state = asset.resolved().get("state");
+                Object shading = state instanceof Map<?, ?> s ? s.get("shading") : null;
+                if (!(shading instanceof String model) || !model.startsWith(namespace + ":")) continue;
+                String shader = String.valueOf(asset.resolved().get("shader"));
+                Path port = Paths.get(portsRoot, "assets", shader.substring(0, shader.indexOf(':')),
+                        shader.substring(shader.indexOf(':') + 1));
+                if (!Files.isRegularFile(port)) {
+                    unported.add(id + " (" + shader + ")");
+                    continue;
+                }
+                try {
+                    CgMaterialDefinition d = CgMaterialDefinitions.compile(asset);
+                    String keyword = CgShadingModels.get(model).keyword();
+                    if (keyword != null && !d.permutation().keywords().contains(keyword)) {
+                        failures.add(id + ": " + model + "'s keyword " + keyword + " is not on");
+                        continue;
+                    }
+                    CgMaterialShader program = CgMaterialShaderRegistry.get().getOrCreate(d.permutation().shader(), d.state());
+                    if (program.getLastParsed() == null || program.hasCompileFailed()) program.recompile();
+                    if (program.hasCompileFailed()) {
+                        failures.add(id + ": " + program.lastCompileError());
+                        continue;
+                    }
+                    if (program.getOrCompileForwardPass(new HashSet<>(d.permutation().keywords())) == null) {
+                        failures.add(id + " " + d.permutation().keywords() + ": did not link (see log)");
+                        continue;
+                    }
+                    linked++;
+                } catch (RuntimeException e) {
+                    failures.add(id + ": " + e.getMessage());
+                }
+            }
+        }
+        System.out.println("[kit-shading] " + linked + " linked; not ported: " + unported.size() + " " + unported);
+        assertTrue(String.join("\n", failures), failures.isEmpty());
+        assertTrue("no material naming a kit shading model was linked", linked > 0);
+    }
+
+    /** The kit material {@code id}, resolved over its parent chain from {@code materials}. */
+    private static CgAssetData material(String id, Path materials, String kit, Map<String, CgAssetData> assets)
+            throws IOException {
+        CgAssetData had = assets.get(id);
+        if (had != null) return had;
+        Path file = materials.resolve(id.substring(kit.length() + 1) + ".yaml");
+        Map<?, ?> tree = (Map<?, ?>) CgAssetYaml.read(Files.readString(file));
+        CgAssetData parent = tree.get("parent") instanceof String p ? material(p, materials, kit, assets) : null;
+        CgAssetData asset = CgAssetData.of(id, CgLookKinds.MATERIAL, tree, parent);
+        assets.put(id, asset);
+        return asset;
     }
 
     /** Each collection asset under {@code dir}, declared as its kit's load would. */
