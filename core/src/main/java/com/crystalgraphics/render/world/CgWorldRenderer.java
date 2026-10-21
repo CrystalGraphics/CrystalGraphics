@@ -127,6 +127,8 @@ public final class CgWorldRenderer {
     /** Where the world renderer records in each world stage: after renderers at the default order, which may submit. */
     public static final int ORDER = 1000;
     /** Where a firing starts the world renderer's frame and runs the client world's schedule: after camera shake only. */
+    /** A pass into a target it fills from nothing: one load, not one a pass. */
+    private static final CgLoad CLEAR = CgLoad.clear(0f, 0f, 0f, 0f);
     private static final int FRAME_ORDER = Integer.MIN_VALUE + 1;
 
     private static final Logger LOGGER = LogManager.getLogger("CgWorldRenderer");
@@ -1661,7 +1663,7 @@ public final class CgWorldRenderer {
         if (overdrawTarget == null || overdrawTarget.getWidth() != w || overdrawTarget.getHeight() != h) {
             overdrawTarget = CgGraphTexture.transientTexture("cg_world_overdraw", new CgTextureDesc(w, h, OVERDRAW_FORMAT));
         }
-        CgRasterPass pass = recording.raster(overdrawTarget, CgLoad.clear(0f, 0f, 0f, 0f), stage.constants(), null,
+        CgRasterPass pass = recording.raster(overdrawTarget, CLEAR, stage.constants(), null,
                         CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
         CgChunkBuilder chunks = recording.chunks().begin();
@@ -1804,7 +1806,7 @@ public final class CgWorldRenderer {
         }
         stage.constants().write(constantsBlock, 0);
         emissionConstants.read(constantsBlock, 0).resolution(w, h);
-        CgRasterPass glow = recording.raster(ownedSubject, CgLoad.clear(0f, 0f, 0f, 0f), emissionConstants, EMISSIVE_STATE,
+        CgRasterPass glow = recording.raster(ownedSubject, CLEAR, emissionConstants, EMISSIVE_STATE,
                 CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target()).timed(GPU_EMISSION);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
@@ -1830,7 +1832,7 @@ public final class CgWorldRenderer {
         stage.constants().write(constantsBlock, 0);
         emissionConstants.read(constantsBlock, 0).resolution(into.getWidth(), into.getHeight());
 
-        CgRasterPass glow = recording.raster(into, merged ? CgLoad.load() : CgLoad.clear(0f, 0f, 0f, 0f),
+        CgRasterPass glow = recording.raster(into, merged ? CgLoad.load() : CLEAR,
                 emissionConstants, EMISSIVE_STATE, CgOrder.SORTED)
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target()).timed(GPU_EMISSION);
         mediated(glow);
@@ -1947,7 +1949,7 @@ public final class CgWorldRenderer {
         if (emissionFull == null || emissionFull.getWidth() != w || emissionFull.getHeight() != h) {
             emissionFull = CgGraphTexture.transientTexture("cg_emission_full", new CgTextureDesc(w, h, EMISSION_FORMAT));
         }
-        recording.raster(emissionFull, CgLoad.clear(0f, 0f, 0f, 0f), stage.constants(), null, CgOrder.SORTED).end();
+        recording.raster(emissionFull, CLEAR, stage.constants(), null, CgOrder.SORTED).end();
         if (!mergeNoted) {
             mergeNoted = true;
             LOGGER.info("Glows merge into their surfaces' draws: an emission of {}x{} beside framebuffer {}", w, h, stage.host().mainFramebuffer());
@@ -1984,7 +1986,7 @@ public final class CgWorldRenderer {
         }
         stage.constants().write(constantsBlock, 0);
         halfConstants.read(constantsBlock, 0).resolution(w, h);
-        CgRasterPass pass = recording.raster(halfTarget, CgLoad.clear(0f, 0f, 0f, 0f), halfConstants, TRANSPARENT_STATE,
+        CgRasterPass pass = recording.raster(halfTarget, CLEAR, halfConstants, TRANSPARENT_STATE,
                         CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_HALF);
         mediated(pass);
@@ -2062,7 +2064,7 @@ public final class CgWorldRenderer {
         }
         stage.constants().write(constantsBlock, 0);
         halfConstants.read(constantsBlock, 0).resolution(w, h);
-        CgRasterPass pass = recording.raster(volumeTarget, CgLoad.clear(0f, 0f, 0f, 0f), halfConstants, TRANSPARENT_STATE,
+        CgRasterPass pass = recording.raster(volumeTarget, CLEAR, halfConstants, TRANSPARENT_STATE,
                         CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_VOLUME);
         CgChunkBuilder chunks = recording.chunks().begin();
@@ -2110,7 +2112,7 @@ public final class CgWorldRenderer {
         resolve.applyProperties(b -> b.set1f("_Fresh", fresh ? 1f : 0f));
         CgPipeline pipeline = resolve.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return volumeTarget.attachment(0);
-        CgRasterPass resolving = recording.raster(history, CgLoad.clear(0f, 0f, 0f, 0f), halfConstants, null, CgOrder.SORTED)
+        CgRasterPass resolving = recording.raster(history, CLEAR, halfConstants, null, CgOrder.SORTED)
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target()).timed(GPU_VOLUME_RESOLVE);
         CgChunkBuilder resolved = recording.chunks().begin();
         resolved.draw(pipeline, resolve.captureBindings(recording.bindings()), FULLSCREEN);

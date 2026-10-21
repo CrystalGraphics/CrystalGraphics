@@ -130,13 +130,21 @@ public final class CgAssetPipeline {
      */
     public void drain() {
         loop.drain();
-        if (running == 0) {
+        if (running == 0 && anyWaiting()) {
+            // copied, as failing one changes the map; only when one waits, since drain runs every frame
             for (CgAssetLoad l : new ArrayList<>(loads.values())) {
                 if (!l.state.atLeast(CgAssetState.COMPILED) && l.state != CgAssetState.FAILED) {
                     fail(l, "waits on a cycle of hard dependencies");
                 }
             }
         }
+    }
+
+    private boolean anyWaiting() {
+        for (CgAssetLoad l : loads.values()) {
+            if (!l.state.atLeast(CgAssetState.COMPILED) && l.state != CgAssetState.FAILED) return true;
+        }
+        return false;
     }
 
     /** Whether no step is running and nothing waits to be published. */

@@ -115,6 +115,8 @@ public final class CgRasterPass extends CgPass {
     /** Textures bound with the pass's constants: units and textures, in parallel. */
     private int[] textureUnits = NO_UNITS;
     private CgTexture[] textures = NO_TEXTURES;
+    /** How many of them this pass binds: the arrays are kept, grown by doubling, across the pass's reuse. */
+    private int textureCount;
 
     CgRasterPass(CgRecording recording, String name, CgGraphTexture target, int level, int layer, CgLoad load,
                  CgPassConstants constants, @Nullable CgRenderState state, CgOrder order) {
@@ -159,10 +161,12 @@ public final class CgRasterPass extends CgPass {
         colorFromCopy = null;
         attachment = null;
         attachmentOptional = false;
-        if (textures.length > 0) {
-            textureUnits = NO_UNITS;
-            textures = NO_TEXTURES;
-        }
+        dropTextures();
+    }
+
+    private void dropTextures() {
+        Arrays.fill(textures, 0, textureCount, null);
+        textureCount = 0;
     }
 
     /** Drops what the pass names once its recording is reset, keeping its arrays for the next reuse. */
@@ -175,8 +179,7 @@ public final class CgRasterPass extends CgPass {
         colorFrom = null;
         attachment = null;
         targetCopy = depthFromCopy = colorFromCopy = null;
-        textureUnits = NO_UNITS;
-        textures = NO_TEXTURES;
+        dropTextures();
     }
 
     /** Whether {@link #name} is already what a pass into {@code target} at this level and layer is called. */
@@ -361,9 +364,11 @@ public final class CgRasterPass extends CgPass {
     /** Binds {@code texture} at {@code unit} for every draw of this pass. A graph texture is read as of this call. */
     public CgRasterPass texture(int unit, CgTexture texture) {
         if (ended) throw new IllegalStateException(this + " has ended");
-        int n = textureUnits.length;
-        textureUnits = Arrays.copyOf(textureUnits, n + 1);
-        textures = Arrays.copyOf(textures, n + 1);
+        int n = textureCount++;
+        if (n == textureUnits.length) {
+            textureUnits = Arrays.copyOf(textureUnits, Math.max(4, n * 2));
+            textures = Arrays.copyOf(textures, textureUnits.length);
+        }
         textureUnits[n] = unit;
         textures[n] = texture;
         CgGraphTexture graph = CgGraphTexture.sampled(texture);
@@ -521,7 +526,7 @@ public final class CgRasterPass extends CgPass {
     }
 
     int textureCount() {
-        return textureUnits.length;
+        return textureCount;
     }
 
     int textureUnit(int i) {

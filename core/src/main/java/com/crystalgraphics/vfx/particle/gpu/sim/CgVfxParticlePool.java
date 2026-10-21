@@ -392,6 +392,7 @@ public final class CgVfxParticlePool {
         for (CgVfxParticlePool pool : owned.values()) {
             (pool.hidden ? REHEARSED : REAL).remove(pool);
             pool.released = true;
+            releases++;
             RELEASED.add(pool);
         }
     }
@@ -973,6 +974,13 @@ public final class CgVfxParticlePool {
     public boolean isReleased() {
         return released;
     }
+
+    /** How many pools {@link #release} has dropped: what holds pools looks for released ones only when it moved. */
+    public static int releases() {
+        return releases;
+    }
+
+    private static int releases;
 
     private void releaseStorage(CgRecording recording) {
         CgGraphBuffer[] owned = {records, counts[0], counts[1], paramBuffer, curveBuffer, instanceBuffer, spawnBuffer,

@@ -59,6 +59,12 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         CgFormat texelFormat;
         CgGpuSampler sampler;
         CgTextureView view;
+        /**
+         * Its views as an image, by level and layer ({@code level * (depth + 1) + layer + 1}, -1 layered), made at the
+         * first bind of each and kept: a chain bound level by level each dispatch made a view a bind. For {@link #image}.
+         */
+        CgTextureView[] imageViews;
+        CgGpuTexture imageViewsOf;
 
         GlTexture(int name) { this.name = name; }
 
@@ -100,7 +106,6 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
     private final CgTextureView[] incomplete = new CgTextureView[KINDS];
     /** Per image unit: texture, level, layer (-1: every layer), format, access. */
     private final int[][] imageUnits = new int[IMAGE_UNITS][5];
-    private final CgTextureView[] imageViews = new CgTextureView[IMAGE_UNITS];
     public final GlPixels.Store unpack = new GlPixels.Store(), pack = new GlPixels.Store();
     private int active;
 
@@ -162,10 +167,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         if (t.image != null && !t.imported) tracker.release(t.image);
         for (int[] unit : units) for (int k = 0; k < KINDS; k++) if (unit[k] == name) unit[k] = 0;
         for (int u = 0; u < IMAGE_UNITS; u++) {
-            if (imageUnits[u][0] == name) {
-                imageUnits[u][0] = 0;
-                imageViews[u] = null;
-            }
+            if (imageUnits[u][0] == name) imageUnits[u][0] = 0;
         }
     }
 
@@ -182,7 +184,6 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         u[2] = layered ? -1 : layer;
         u[3] = format;
         u[4] = access;
-        imageViews[unit] = null;
     }
 
     /** Image unit {@code unit}: texture, level, layer (-1: every layer), format, access. */
@@ -242,7 +243,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         long breaks = stats.passBreaks;
         CgCommandEncoder encoder = tracker.transfer();
         renameIfReplaced(encoder, t, level, 0, 0, 0, width, height, 1);
-        encoder.copyBufferToTexture(a.buffer(), at, t.image, new CgTextureRegion(level, 0, 0, 0, width, height, 1));
+        encoder.copyBufferToTexture(a.buffer(), at, t.image, region(level, 0, 0, 0, width, height, 1));
         tracker.markUsed(a);
         stats.textureWrites++;
         stats.textureWriteBytes += imageSize;
@@ -281,7 +282,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         int bytes = texels.remaining();
         CgCommandEncoder encoder = tracker.transfer();
         renameIfReplaced(encoder, t, level, 0, 0, 0, width, height, 1);
-        encoder.writeTexture(t.image, new CgTextureRegion(level, 0, 0, 0, width, height, 1), texels);
+        encoder.writeTexture(t.image, region(level, 0, 0, 0, width, height, 1), texels);
         stats.textureWrites++;
         stats.textureWriteBytes += bytes;
         stats.uploadBreaks += stats.passBreaks - breaks;
@@ -319,7 +320,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
             long breaks = stats.passBreaks;
             CgCommandEncoder encoder = tracker.transfer();
             renameIfReplaced(encoder, t, level, x, y, layer, width, height, depth);
-            encoder.copyBufferToTexture(a.buffer(), at, t.image, new CgTextureRegion(level, x, y, layer, width,
+            encoder.copyBufferToTexture(a.buffer(), at, t.image, region(level, x, y, layer, width,
                     height, depth));
             tracker.markUsed(a);
             stats.textureWrites++;
@@ -444,7 +445,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         int w = Math.max(1, t.width >> level), h = Math.max(1, t.height >> level);
         int layers = t.kind == KIND_3D ? Math.max(1, t.depth >> level) : t.depth;
         ByteBuffer texels = ByteBuffer.allocateDirect(w * h * layers * t.format.bytes()).order(ByteOrder.nativeOrder());
-        tracker.transfer().readTexture(t.image, new CgTextureRegion(level, 0, 0, 0, w, h, layers), texels);
+        tracker.transfer().readTexture(t.image, region(level, 0, 0, 0, w, h, layers), texels);
         GlPixels.pack(texels, t.format, w, h * layers, format, type, pack, out);
     }
 
@@ -507,10 +508,16 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
             throw new UnsupportedOperationException("Texture " + t.name + " bound as an image in a format other than its own");
         if (t.kind == KIND_3D && u[2] >= 0)
             throw new UnsupportedOperationException("One slice of a 3D texture as an image: bind it layered");
-        CgTextureView v = imageViews[unit];
-        if (v == null || v.texture() != t.image) {
-            v = imageViews[unit] = u[2] < 0 ? new CgTextureView(t.image, u[1], 1, 0, t.kind == KIND_3D ? 1 : t.depth)
-                    : new CgTextureView(t.image, u[1], 1, u[2], 1);
+        int layers = t.kind == KIND_3D ? 1 : t.depth;
+        if (t.imageViewsOf != t.image) {
+            t.imageViews = new CgTextureView[Math.max(1, t.mips) * (layers + 1)];
+            t.imageViewsOf = t.image;
+        }
+        int at = u[1] * (layers + 1) + u[2] + 1;
+        CgTextureView v = at < t.imageViews.length ? t.imageViews[at] : null;
+        if (v == null) {
+            v = u[2] < 0 ? new CgTextureView(t.image, u[1], 1, 0, layers) : new CgTextureView(t.image, u[1], 1, u[2], 1);
+            if (at < t.imageViews.length) t.imageViews[at] = v;
         }
         state.image(image.binding(), v);
     }
@@ -566,7 +573,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
                     CgFormat.RGBA8_UNORM, 1, 1, layers, 1, 1, CgGpuTexture.Usage.SAMPLED_UPLOADED));
             ByteBuffer black = ByteBuffer.allocateDirect(4 * layers);
             for (int i = 0; i < layers; i++) black.put(i * 4 + 3, (byte) 0xFF);
-            tracker.transfer().writeTexture(image, new CgTextureRegion(0, 0, 0, 0, 1, 1, layers), black);
+            tracker.transfer().writeTexture(image, region(0, 0, 0, 0, 1, 1, layers), black);
             incomplete[kind] = CgTextureView.whole(image);
         }
         return incomplete[kind];
@@ -592,12 +599,32 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         t.view = null;
     }
 
+    /** The last region an upload, copy or read named: the same one again (a texture rewritten each frame) makes none. */
+    private CgTextureRegion lastRegion;
+
+    private CgTextureRegion region(int mip, int x, int y, int z, int w, int h, int d) {
+        CgTextureRegion r = lastRegion;
+        if (r == null || r.mip() != mip || r.x() != x || r.y() != y || r.z() != z || r.width() != w || r.height() != h
+                || r.depth() != d) {
+            r = lastRegion = new CgTextureRegion(mip, x, y, z, w, h, d);
+        }
+        return r;
+    }
+    /** The last source an upload staged as it is, and the one view of it re-positioned for each. */
+    private ByteBuffer uploadSource, uploadView;
+
     private void upload(GlTexture t, int level, int x, int y, int z, int w, int h, int d, int format, int type, ByteBuffer pixels) {
         if (pixels == null || w == 0 || h == 0 || d == 0) return;
         ByteBuffer texels;
         if (GlPixels.sameLayout(format, type, t.format) && GlPixels.tight(unpack, format, type, w, h)) {
-            texels = pixels.duplicate();   // writeTexture stages it: unpacking would only copy it once more
-            texels.limit(texels.position() + w * h * d * t.format.bytes());
+            // writeTexture stages it: unpacking would only copy it once more. One view a source, re-positioned.
+            if (pixels != uploadSource) {
+                uploadSource = pixels;
+                uploadView = pixels.duplicate();
+            }
+            texels = uploadView;
+            texels.clear();
+            texels.position(pixels.position()).limit(pixels.position() + w * h * d * t.format.bytes());
         } else {
             texels = GlPixels.unpack(pixels, format, type, w, h, d, unpack, t.format);
         }
@@ -606,7 +633,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         int bytes = texels.remaining();
         CgCommandEncoder encoder = tracker.transfer();
         renameIfReplaced(encoder, t, level, x, y, z, w, h, d);
-        encoder.writeTexture(t.image, new CgTextureRegion(level, x, y, z, w, h, d), texels);
+        encoder.writeTexture(t.image, region(level, x, y, z, w, h, d), texels);
         stats.textureWrites++;
         stats.textureWriteBytes += bytes;
         stats.uploadBreaks += stats.passBreaks - breaks;

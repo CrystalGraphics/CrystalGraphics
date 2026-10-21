@@ -34,6 +34,8 @@ final class CgTargetCopy {
 
     /** What a copy takes, as bits. */
     static final int COLOR = 1, DEPTH = 2;
+    /** What a copy saves round its blit: one array, not one a copy. */
+    private static final CgGlSlot[] SCISSOR = {CgGlSlot.SCISSOR};
 
     /** Copy formats by the source's: its colour slot 0 and depth, as textures. Render thread. */
     private static final Map<CgFrameBufferFormat, CgFrameBufferFormat> FORMATS = new HashMap<>();
@@ -50,6 +52,7 @@ final class CgTargetCopy {
     final CgTexture color = new View(true), depth = new View(false);
     @Nullable
     private CgFrameBuffer storage;
+    /** What its storage is acquired as: kept after {@link #release}, so the next frame's copy asks with the same key. */
     @Nullable
     private CgTextureDesc desc;
 
@@ -105,11 +108,11 @@ final class CgTargetCopy {
         int colorMask = (bits & COLOR) != 0 && format.colorSlotCount() > 0 ? CgGL.GL_COLOR_BUFFER_BIT : 0;
         if ((bits & DEPTH) == 0) depthMask = 0;
         if ((colorMask | depthMask) == 0 || width <= 0 || height <= 0) return 0L;
-        if (desc == null || desc.width() != width || desc.height() != height || !desc.format().equals(format)) {
+        if (!fits(desc, width, height, format)) {
             release(pool);
             desc = new CgTextureDesc(width, height, format);
-            storage = pool.acquire(desc);
         }
+        if (storage == null) storage = pool.acquire(desc);
         int x0 = 0, y0 = 0, x1 = width, y1 = height;
         if (rects[at + 2] >= 0) {
             x0 = Math.max(0, rects[at]);
@@ -118,7 +121,7 @@ final class CgTargetCopy {
             y1 = Math.min(height, rects[at + 3]);
         }
         if (x1 <= x0 || y1 <= y0) colorMask = 0;
-        try (CgGlScope scope = CgGlState.save(CgGlSlot.SCISSOR)) {
+        try (CgGlScope scope = CgGlState.save(SCISSOR)) {
             CgGL.glDisable(CgGL.GL_SCISSOR_TEST);   // a blit is scissored
             if (colorSource == depthSource && x0 == 0 && y0 == 0 && x1 == width && y1 == height) {
                 blit(colorSource, colorMask | depthMask, 0, 0, width, height);
@@ -170,10 +173,14 @@ final class CgTargetCopy {
             BOTH_ZONE = CgTrace.name("graph.copy.colorDepth");
 
     /** Gives the copy's framebuffer back to the pool. When the pass ends. */
+    private static boolean fits(@Nullable CgTextureDesc d, int width, int height, CgFrameBufferFormat format) {
+        return d != null && d.width() == width && d.height() == height && d.format().equals(format);
+    }
+
+    /** Gives its storage back to {@code pool}; it keeps what it asked for, the key of its next copy's. */
     void release(CgTexturePool pool) {
         if (storage != null) pool.release(desc, storage);
         storage = null;
-        desc = null;
     }
 
     private static CgFrameBufferFormat copyFormat(@Nullable CgTextureType colorType, @Nullable CgTextureType depthType) {

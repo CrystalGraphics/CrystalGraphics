@@ -35,6 +35,17 @@ public record CgTextureDesc(int width, int height, int depth, CgFrameBufferForma
             .color(0, CgTextureType.RGBA8)
             .build();
 
+    /** Spelled out: the Java 8 copy's record hash boxes every field, and a pool hashes a desc each acquire. */
+    @Override
+    public int hashCode() {
+        int h = width;
+        h = 31 * h + height;
+        h = 31 * h + depth;
+        h = 31 * h + format.hashCode();
+        h = 31 * h + levels;
+        return 31 * h + layers;
+    }
+
     public CgTextureDesc {
         if (width <= 0 || height <= 0 || depth <= 0 || layers <= 0) {
             throw new IllegalArgumentException("a texture of " + width + "x" + height + "x" + depth + ", " + layers + " layers");

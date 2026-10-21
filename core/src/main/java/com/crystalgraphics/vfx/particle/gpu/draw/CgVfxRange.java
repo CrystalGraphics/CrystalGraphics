@@ -86,6 +86,19 @@ public final class CgVfxRange {
     private static final int GPU_RANGE = CgGpuTrace.name("vfx.pool.range");
     /** An index into its pool's records: what {@link #order()} holds per drawn particle. */
     private static final int DRAWN_BYTES = 4;
+    /**
+     * The sort's and the scan's counts, the last two of each: the real pools' and the rehearsed ones' each frame, so a
+     * count is made when it changes, never once a frame.
+     */
+    private static final CgGpuCount[] KEY_COUNTS = new CgGpuCount[2], SLOT_COUNTS = new CgGpuCount[2];
+
+    private static CgGpuCount count(CgGpuCount[] last, int n) {
+        if (last[0] != null && last[0].capacity() == n) return last[0];
+        CgGpuCount c = last[1] != null && last[1].capacity() == n ? last[1] : CgGpuCount.of(n);
+        last[1] = last[0];
+        last[0] = c;
+        return c;
+    }
     /** A slot's ORIGINS entry: its block, where within it with its ground, its rotation. */
     private static final int ORIGIN_BYTES = 48;
     /** The low key bits a sorting slot's view depth takes. */
@@ -550,12 +563,12 @@ public final class CgVfxRange {
             }
             slotFirst += p.slotCount();
         }
-        CgGpuCount all = CgGpuCount.of(keys);
+        CgGpuCount all = count(KEY_COUNTS, keys);
         CgGpuOps.sort(pass, 32 - Integer.numberOfLeadingZeros(allSlots) + depthBits, CgGpuOps.Order.ASCENDING, keyBuffer,
                 indices, all);
         CgGpuOps.histogram(pass, keyBuffer, all, visible, allSlots + 1, depthBits);
         CgGpuOps.scan(pass, CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT, visible,
-                CgGpuCount.of(allSlots + 1), starts);
+                count(SLOT_COUNTS, allSlots + 1), starts);
         for (int i = 0, drawnFirst = 0, slotFirst = 0; i < ALL.size(); i++) {
             CgVfxRange range = ALL.get(i);
             CgVfxParticlePool p = range.pool;

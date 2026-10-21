@@ -249,6 +249,19 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
         return floatView;
     }
 
+    /**
+     * Writes {@code count} bytes of {@code src} from {@code from} as one upload: {@link #map} and a put, then
+     * {@link #commit} as after a map. A tier that can writes them without a view of its own, as {@link #mapFloats} does.
+     *
+     * <pre>{@code
+     * staging.write(bytes, 0, n);
+     * int offset = staging.commit(n);
+     * }</pre>
+     */
+    public void write(byte[] src, int from, int count) {
+        map(count).put(src, from, count);
+    }
+
     /** The mapping {@link #floatView} was made over. Compared by identity, never written through. */
     private ByteBuffer floatSource;
     private FloatBuffer floatView;

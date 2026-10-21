@@ -45,6 +45,8 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
     /** {@link #persistentMapping} as floats; rebuilt with it on every {@link #allocate}. */
     private FloatBuffer persistentFloats;
     private IntBuffer persistentInts;
+    /** {@link #persistentMapping} as one byte view, positioned per {@link #write}. */
+    private ByteBuffer persistentBytes;
     /** The mapped tier's last mapping, offered back to the driver so its wrapper can be reused. */
     private ByteBuffer lastMapping;
 
@@ -98,6 +100,18 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
         persistentInts.clear();
         persistentInts.position(mappedAt >> 2);
         return persistentInts;
+    }
+
+    @Override
+    public void write(byte[] src, int from, int count) {
+        if (!persistent) {
+            super.write(src, from, count);
+            return;
+        }
+        reserve(count);   // may allocate(), which rebuilds the view
+        persistentBytes.clear();
+        persistentBytes.position(mappedAt);
+        persistentBytes.put(src, from, count);
     }
 
     @Override
@@ -204,6 +218,7 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
             }
             persistentFloats = persistentMapping.order(ByteOrder.nativeOrder()).asFloatBuffer();
             persistentInts = persistentMapping.asIntBuffer();
+            persistentBytes = persistentMapping.duplicate();
         } else {
             bind();
             CgGL.glBufferData(target, capacityBytes, CgGL.GL_STREAM_DRAW);

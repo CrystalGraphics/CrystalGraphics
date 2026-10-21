@@ -53,8 +53,8 @@ public record CgTarget(List<CgTextureView> colors, CgTextureView depth) {
 
     /** Whether {@code view} reads what an attachment renders to: another level of the same texture does not. */
     public boolean attaches(CgTextureView view) {
-        for (CgTextureView v : colors) {
-            if (v.overlaps(view)) return true;
+        for (int i = 0; i < colors.size(); i++) {   // indexed: an iterator a draw
+            if (colors.get(i).overlaps(view)) return true;
         }
         return depth != null && depth.overlaps(view);
     }

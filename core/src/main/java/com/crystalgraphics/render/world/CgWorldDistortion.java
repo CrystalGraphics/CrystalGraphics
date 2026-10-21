@@ -72,6 +72,8 @@ final class CgWorldDistortion {
     private static final int SLOTS = CgDistortionField.MAX - 1, FINAL = SLOTS;
     /** How far an apply samples from its rect, a share of the target's height: the apply shader's SceneColorMargin. */
     private static final float MARGIN = 0.1f;
+    /** A bend's layer starts empty: no offset, no split. */
+    private static final CgLoad CLEAR = CgLoad.clear(0f, 0f, 0f, 0f);
     /** Pixels an apply's offsets spread past its rect when read bilinearly from a half-size target, and then some. */
     private static final float SPREAD = 4f;
     private static final CgFrameBufferFormat FORMAT = CgFrameBufferFormat.builder("cg_world_distortion")
@@ -251,7 +253,7 @@ final class CgWorldDistortion {
         layerOf[slot] = layer;
         stage.constants().write(block, 0);
         constants.read(block, 0).resolution(target.getWidth(), target.getHeight());
-        CgRasterPass bend = recording.raster(target, 0, layer, CgLoad.clear(0f, 0f, 0f, 0f), constants, BEND_STATE,
+        CgRasterPass bend = recording.raster(target, 0, layer, CLEAR, constants, BEND_STATE,
                         CgOrder.SORTED)
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_BEND);

@@ -161,8 +161,14 @@ public final class CgVfxFrame {
             draw.submit();
             CgVfxTrace.count(DRAWS_PARTICLE_SETS, 1);
         }
-        if (!proxies.isEmpty()) proxies.values().removeIf(p -> p.key.pool().isReleased());
+        if (!proxies.isEmpty() && releasesSeen != CgVfxParticlePool.releases()) {
+            releasesSeen = CgVfxParticlePool.releases();   // an iterator a frame otherwise
+            proxies.values().removeIf(p -> p.key.pool().isReleased());
+        }
     }
+
+    /** {@link CgVfxParticlePool#releases()} when its proxies were last checked for a released pool. */
+    private int releasesSeen;
 
     /** Drops every proxy: the system's pools are gone. */
     void clear() {

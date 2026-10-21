@@ -90,7 +90,7 @@ public final class CgRenderState {
         if (depth   != null) depth.apply();
         if (cull    != null) cull.apply();
         if (stencil != null) stencil.apply();
-        for (CgColorMask mask : colorMasks) mask.apply();
+        for (int i = 0; i < colorMasks.size(); i++) colorMasks.get(i).apply();   // indexed: an iterator a bind
     }
 
     /**

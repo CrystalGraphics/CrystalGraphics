@@ -358,12 +358,17 @@ public final class CgGpuOps {
      * Word b of {@code bins}, for b below {@code binCount}, becomes how many of the count's keys fall in bin b:
      * {@code min(key >>> shift, binCount - 1)}. Exact to 2^24 a bin on every tier.
      */
+    /** {@link #histogram}'s last bin count, and the radix sort's cells. A recording on another thread at worst makes one more. */
+    private static volatile CgGpuCount histogramBins, sortCells;
+
     public static void histogram(CgComputePass pass, CgGraphBuffer keys, CgGpuCount count, CgGraphBuffer bins,
                                  int binCount, int shift) {
         if (shift < 0 || shift > 31) throw new IllegalArgumentException("a shift of " + shift);
         if (binCount < 1) throw new IllegalArgumentException(binCount + " bins");
         distinct(keys, bins);
-        fill(pass, bins, 0, CgGpuCount.of(binCount));
+        CgGpuCount cleared = histogramBins;   // the last bin count's: made again only when it changes
+        if (cleared == null || cleared.capacity() != binCount) histogramBins = cleared = CgGpuCount.of(binCount);
+        fill(pass, bins, 0, cleared);
         int capacity = count.capacity();
         if (capacity == 0) return;
         CgKernel grouped = Files.histogram().kernel("HistogramGroups");
@@ -691,7 +696,8 @@ public final class CgGpuOps {
         int blocks = grouped ? (capacity + SORT_BLOCK - 1) / SORT_BLOCK : (capacity + 31) / 32;
         int groups = Math.min(blocks, SORT_GROUPS), reduce = (groups + SORT_BLOCK - 1) / SORT_BLOCK;
         int cells = 16 * (grouped ? groups : blocks), passes = (bits + 3) / 4;
-        CgGpuCount cellCount = CgGpuCount.of(cells);
+        CgGpuCount cellCount = sortCells;   // the last cell count's: made again only when it changes
+        if (cellCount == null || cellCount.capacity() != cells) sortCells = cellCount = CgGpuCount.of(cells);
         CgGraphBuffer digits = words(pass, "ops.sort.digits", cells);
         CgGraphBuffer offsets = grouped ? null : words(pass, "ops.sort.offsets", cells);
         CgGraphBuffer reduced = grouped ? words(pass, "ops.sort.reduced", 16 * reduce) : null;

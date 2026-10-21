@@ -207,7 +207,9 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
             reuse(buffer, offset, null, null, 0, 0);
             int n = data.remaining();
             if (owned == null || owned.length < n) owned = new byte[Math.max(n, owned == null ? 0 : owned.length * 2)];
-            data.duplicate().get(owned, 0, n);
+            int at = data.position();   // read and put back: a duplicate a call was an allocation a frame
+            data.get(owned, 0, n);
+            data.position(at);
             bytes = owned;
             size = n;
         }

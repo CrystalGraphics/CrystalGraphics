@@ -7,6 +7,7 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.gl.texture.CgTexture2DArray;
@@ -72,6 +73,9 @@ import static com.crystalgraphics.platform.gl.state.CgGlSlot.STENCIL;
  * @see CgFrameBufferRegistry
  */
 public class CgFrameBuffer {
+
+    /** What a blit or a bind saves round itself: one array, not one a call. */
+    private static final CgGlSlot[] FBO_ONLY = {FBO};
    
     // ── Instance fields ────────────────────────────────────────────────────────
 
@@ -432,7 +436,7 @@ public class CgFrameBuffer {
      */
     private void initGl(int w, int h, CgFrameBufferFormat fmt) {
         try (CgTrace.Zone zone = CgTrace.zone(CgChannels.GL, "framebuffer.create");
-             CgGlScope ignored = CgGlState.save(FBO)) {
+             CgGlScope ignored = CgGlState.save(FBO_ONLY)) {
             initGlAttachments(w, h, fmt);
         }
     }
@@ -610,7 +614,7 @@ public class CgFrameBuffer {
         if (levelFbos[level - 1] != 0) return levelFbos[level - 1];
         int id = doGenFramebuffer();
         levelFbos[level - 1] = id;
-        try (CgGlScope ignored = CgGlState.save(FBO)) {
+        try (CgGlScope ignored = CgGlState.save(FBO_ONLY)) {
             doBindFbo(CgGL.GL_FRAMEBUFFER, id);
             for (Attachment a : colorAttachments.values()) {
                 if (a.getTexture() != null) doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, a.getType().glAttachmentPoint(a.getSlot()),
@@ -777,7 +781,7 @@ public class CgFrameBuffer {
     public static void blitFrom(int src, int dst, int srcX0, int srcY0, int srcX1, int srcY1,
                                 int dstX0, int dstY0, int dstX1, int dstY1,
                                 int mask, int filter) {
-        try (CgGlScope scope = CgGlState.save(FBO)) {
+        try (CgGlScope scope = CgGlState.save(FBO_ONLY)) {
             CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, src);
             CgGL.glBindFramebuffer(CgGL.GL_DRAW_FRAMEBUFFER, dst);
             CgGL.glBlitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
@@ -801,7 +805,7 @@ public class CgFrameBuffer {
      *         attachment, otherwise {@code GL_DEPTH_BUFFER_BIT}
      */
     public static int optimalDepthBlitMask(int sourceFboId) {
-        try (CgGlScope scope = CgGlState.save(FBO)) {
+        try (CgGlScope scope = CgGlState.save(FBO_ONLY)) {
             CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, sourceFboId);
             int stencilToken = (sourceFboId == 0) ? CgGL.GL_STENCIL : CgGL.GL_STENCIL_ATTACHMENT;
             int objType = CgGL.glGetFramebufferAttachmentParameteriv(
@@ -827,7 +831,7 @@ public class CgFrameBuffer {
      */
     @Nullable
     public static CgTextureType depthTypeOf(int sourceFboId) {
-        try (CgGlScope scope = CgGlState.save(FBO)) {
+        try (CgGlScope scope = CgGlState.save(FBO_ONLY)) {
             CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, sourceFboId);
             int depth = sourceFboId == 0 ? CgGL.GL_DEPTH : CgGL.GL_DEPTH_ATTACHMENT;
             int stencil = sourceFboId == 0 ? CgGL.GL_STENCIL : CgGL.GL_STENCIL_ATTACHMENT;

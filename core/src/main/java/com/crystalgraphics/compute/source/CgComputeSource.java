@@ -33,7 +33,7 @@ public record CgComputeSource(String path, List<CgKernelDecl> kernels, List<CgBu
     }
 
     public CgImageDecl image(String name) {
-        for (CgImageDecl i : images) if (i.name().equals(name)) return i;
+        for (int i = 0; i < images.size(); i++) if (images.get(i).name().equals(name)) return images.get(i);
         return null;
     }
 }

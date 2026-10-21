@@ -955,7 +955,7 @@ public final class CgExecutor {
             } else if (update.ints != null) {
                 staging.mapInts(bytes).put(update.ints, update.from, bytes / Integer.BYTES);
             } else {
-                staging.map(bytes).put(update.bytes, 0, bytes);
+                staging.write(update.bytes, 0, bytes);
             }
             at = staging.commit(bytes);
         }

@@ -97,6 +97,9 @@ public final class CgTracker {
 
     private CgPipeline passPipeline;
     private boolean passFresh;
+    /** The passes begun lately, each reused while its target, its loads and its clears are a new one's: a frame's few. */
+    private final CgPassDesc[] recentPasses = new CgPassDesc[8];
+    private int recentNext;
     private int vx, vy, vw, vh, sx, sy, sw, sh, stencilRef;
     private float biasConstant, biasSlope;
 
@@ -615,11 +618,36 @@ public final class CgTracker {
         endPass();
     }
 
-    private void beginPass() {
-        if (async) throw new IllegalStateException("A draw or clear inside async work: a compute queue draws nothing");
-        if (transfer) throw new IllegalStateException("A draw or clear inside a transfer");
-        endCompute();
-        drawnSinceCompute = true;
+    /** A recent pass whose target, loads and clears are what the next would be built from; null if none. */
+    private CgPassDesc recentPass() {
+        List<CgTextureView> views = target.colors();
+        for (CgPassDesc d : recentPasses) {
+            if (d == null || d.width() != target.width() || d.height() != target.height() || d.colors().size() != views.size()) {
+                continue;
+            }
+            boolean same = true;
+            for (int i = 0; i < views.size() && same; i++) {
+                CgPassDesc.Color c = d.colors().get(i);
+                boolean clear = (pendingColors & (1 << i)) != 0;
+                same = c.view() == views.get(i) && c.load() == (clear ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD)
+                        && (!clear || c.r() == clearR && c.g() == clearG && c.b() == clearB && c.a() == clearA);
+            }
+            CgPassDesc.Depth z = d.depth();
+            if (target.depth() == null) {
+                same &= z == null;
+            } else {
+                same &= z != null && z.view() == target.depth()
+                        && z.depthLoad() == (pendingDepth ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD)
+                        && z.stencilLoad() == (pendingStencil ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD)
+                        && (!pendingDepth || z.clearDepth() == clearDepthValue)
+                        && (!pendingStencil || z.clearStencil() == clearStencilValue);
+            }
+            if (same) return d;
+        }
+        return null;
+    }
+
+    private CgPassDesc newPass() {
         List<CgPassDesc.Color> colors = new ArrayList<>(target.colors().size());
         for (int i = 0; i < target.colors().size(); i++) {
             boolean clear = (pendingColors & (1 << i)) != 0;
@@ -630,11 +658,23 @@ public final class CgTracker {
                 pendingDepth ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, clearDepthValue,
                 pendingStencil ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, clearStencilValue,
                 CgPassDesc.StoreOp.STORE);
+        CgTextureView first = target.colors().isEmpty() ? target.depth() : target.colors().get(0);
+        return new CgPassDesc(first.texture().label(), colors, depth, target.width(), target.height());
+    }
+
+    private void beginPass() {
+        if (async) throw new IllegalStateException("A draw or clear inside async work: a compute queue draws nothing");
+        if (transfer) throw new IllegalStateException("A draw or clear inside a transfer");
+        endCompute();
+        drawnSinceCompute = true;
+        CgPassDesc desc = recentPass();
+        if (desc == null) {
+            desc = recentPasses[recentNext] = newPass();
+            recentNext = (recentNext + 1) % recentPasses.length;
+        }
         pendingColors = 0;
         pendingDepth = pendingStencil = false;
-        CgTextureView first = target.colors().isEmpty() ? target.depth() : target.colors().get(0);
-        pass = device.encoder().beginPass(new CgPassDesc(first.texture().label(), colors, depth,
-                target.width(), target.height()));
+        pass = device.encoder().beginPass(desc);
         passTarget = target;
         passPipeline = null;
         passFresh = true;
