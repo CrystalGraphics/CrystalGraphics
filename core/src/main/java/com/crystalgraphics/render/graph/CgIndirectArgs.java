@@ -53,6 +53,8 @@ final class CgIndirectArgs {
     private float[] table = new float[64 * ROW];
     private int rows;
     private int rowsCount;
+    /** The queued rows' first and last slots: the span their dispatch binds of the buffer. */
+    private int firstSlot, lastSlot;
     private CgDispatchBindings lowered;
     /** Bytes from one command to the next: a command rounded up to the storage offset alignment. */
     private int stride;
@@ -103,6 +105,9 @@ final class CgIndirectArgs {
             // A row for DrawArgsMany: a dispatch per command was ~1,250 dispatches a frame in the blasts scene.
             if (rows > 0 && count != rowsCount) flush();
             rowsCount = count;
+            if (rows == 0) firstSlot = lastSlot = slot;
+            firstSlot = Math.min(firstSlot, slot);
+            lastSlot = Math.max(lastSlot, slot);
             int at = rows * ROW;
             if (at + ROW > table.length) table = Arrays.copyOf(table, table.length * 2);
             table[at] = Float.intBitsToFloat((int) (countOffset >>> 2));
@@ -115,7 +120,7 @@ final class CgIndirectArgs {
             table[at + 7] = Float.intBitsToFloat(records);
             table[at + 8] = Float.intBitsToFloat(most);
             table[at + 9] = Float.intBitsToFloat(firstInstance);
-            table[at + 10] = Float.intBitsToFloat((int) (offset(slot) >>> 2));
+            table[at + 10] = Float.intBitsToFloat(slot);
             rows++;
             return;
         }
@@ -133,11 +138,18 @@ final class CgIndirectArgs {
     /** Writes the commands {@link #write} queued as compute, in one dispatch. Before the commands' barrier. */
     void flush() {
         if (rows == 0) return;
+        // Each row's command in words from the span bound: two flushes binding the whole buffer overlap, which
+        // synchronization validation reads as a write after write.
+        long base = offset(firstSlot);
+        for (int at = 10; at < rows * ROW; at += ROW) {
+            int slot = Float.floatToRawIntBits(table[at]);
+            table[at] = Float.intBitsToFloat((int) ((offset(slot) - base) >>> 2));
+        }
         if (params == null) params = CgStreamBuffer.createFrameLocal(CgGL.GL_SHADER_STORAGE_BUFFER, table.length * 4);
         int at = params.uploadFloats(table, rows * ROW);
         CgKernelProgram program = many();
         program.use();
-        program.buffer("COUNT", rowsCount).buffer("ARGS", buffer)
+        program.buffer("COUNT", rowsCount).buffer("ARGS", buffer, base, offset(lastSlot) - base + COMMAND_BYTES)
                 .buffer("PARAMS", params.getGlBuffer(), at, params.getCommittedBytes())
                 .dispatch(rows * 5);
         rows = 0;
