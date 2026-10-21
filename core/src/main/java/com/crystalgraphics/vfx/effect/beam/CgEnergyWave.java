@@ -11,6 +11,7 @@ import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.CgVfxEffect;
+import com.crystalgraphics.vfx.CgVfxElement;
 import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.camera.CgCameraShakes;
@@ -23,22 +24,41 @@ import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.net.CgVfxCue;
+import com.crystalgraphics.vfx.system.CgVfxBehaviour;
+import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
+import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
+
 /**
  * An energy wave: charged at a muzzle, then a beam that flows outward, bends where its source turns, homes on a target
- * and stops where it hits, bursting into a blast when its tail runs out into what it hit. {@link #kamehameha()} is its
- * look; {@link #finalFlash()} and {@link #galickGun()} are the same kits in another palette, and {@link #toon()} its
- * body in flat bands.
+ * and stops where it hits, bursting into a blast when its tail runs out into what it hit. It is the native behaviour
+ * {@code crystalgraphics:energy_wave} of a system instance, as a Blueprint drives a Niagara component: the instance
+ * plays, follows, stops and ends; the wave is what it does. {@link #kamehameha()} is its look; {@link #finalFlash()} and
+ * {@link #galickGun()} are the same kits in another palette, and {@link #toon()} its body in flat bands.
  *
  * <pre>{@code
- * CgEnergyWave wave = VFX.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z)
- *         .follow(playerId, CgEntityAttachments.HANDS_FORWARD).hold());   // charging until fired
- * wave.aim(dx, dy, dz).target(tx, ty, tz);   // each tick, as the source turns
- * wave.fire();                               // release
- * wave.stop();                               // the tail runs out into the target, which bursts
- * wave.end(CgEnergyWave.FADE);               // or: thins away where it is, no blast
+ * CgVfxSystemInstance beam = VFX.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z)
+ *         .follow(playerId, CgEntityAttachments.HANDS_FORWARD));
+ * CgEnergyWave wave = CgEnergyWave.of(beam).hold();   // charging until fired
+ * wave.aim(dx, dy, dz).target(tx, ty, tz);            // each tick, as the source turns
+ * wave.fire();                                        // release
+ * beam.stop();                                        // the tail runs out into the target, which bursts
+ * beam.end(CgEnergyWave.FADE);                        // or: thins away where it is, no blast
+ * }</pre>
+ *
+ * <p>From a file, a system names it as its {@code effect} and sets the parameters it reads by name, {@link #CONTRACT}'s:</p>
+ *
+ * <pre>{@code
+ * user:
+ *   radius: { type: float, quantity: length, default: 0.8 }
+ *   shell: { type: colour, default: { argb: 0xFFFFA21A, intensity: 1.8 } }
+ * effect: crystalgraphics:energy_wave
  * }</pre>
  *
  * <p>It is made of elements, each with its own parameters and slots, which its looks draw through kits:</p>
@@ -63,9 +83,10 @@ import org.apache.logging.log4j.Logger;
  *       it leaves the muzzle along the aim into an end that chases the target, for a beam a player aims.</li>
  *   <li>It flies to the target it is given; {@link #collide} has it find its own along its aim.</li>
  *   <li>Its look must carry its elements' schemas: derive it from one of the three, or add them with {@code params}.</li>
+ *   <li>Its elements play their own emitters: its system names none for the instance ({@link #system}).</li>
  * </ul>
  */
-public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgVfxCue.Live, CgVfxCue.Authoritative {
+public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, CgVfxCue.Live, CgVfxCue.Authoritative {
 
     public static final CgVfxSchema SCHEMA = CgVfxSchema.of("crystalgraphics:wave");
 
@@ -141,7 +162,7 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
      * gives way rather than deflates.
      *
      * <pre>{@code
-     * wave.end(CgEnergyWave.FADE);
+     * beam.end(CgEnergyWave.FADE);   // its instance
      * }</pre>
      */
     public static final CgVfxEnding FADE = CgVfxEnding.over("crystalgraphics:wave/fade", 0.35f)
@@ -272,11 +293,19 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
             "Logs each cast a server's wave makes for its beam: from where, along what, what it met, and every entity"
                     + " its level lists along the first 32 blocks.");
 
-    private final CgVfxCharge charge = new CgVfxCharge(this);
-    private final CgBeamBody body = new CgBeamBody(this);
-    private final CgBeamContact contact = new CgBeamContact(this);
-    private final CgVfxBlast blast = new CgVfxBlast(this, PART_BLAST);
-    private final CgBeamWake wake = new CgBeamWake(this, WAKE);
+    /** The files' contract: its look, and the names a file must declare (its size and palette). */
+    public static final CgVfxBehaviour.Contract CONTRACT = new CgVfxBehaviour.Contract(KAMEHAMEHA,
+            List.of("radius", "maxLength", "core", "coreRim", "shell", "shellHot", "spiral", "glow"));
+
+    /** Each look's system, made once: a definition is its simulation's key. */
+    private static final Map<CgVfxLook, CgVfxSystemDefinition> SYSTEMS = Collections.synchronizedMap(new WeakHashMap<>());
+
+    private final CgVfxSystemInstance instance;
+    private final CgVfxCharge charge;
+    private final CgBeamBody body;
+    private final CgBeamContact contact;
+    private final CgVfxBlast blast;
+    private final CgBeamWake wake;
 
     private float aimX = 1f, aimY, aimZ;
     /** Where the muzzle is from the origin: {@code follow} moves it, and leaves what it fired where it is. */
@@ -305,18 +334,59 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
     private final CgHit reported = new CgHit();
     /** The age it releases at, and the age it was stopped at; NaN until stopped. */
     private float releaseAge, stopAge = Float.NaN;
-    private int momentsFired, sizeAtStop;
-    private boolean held, ended;
+    private int sizeAtStop;
+    private boolean held, ended, finished;
 
-    public CgEnergyWave(CgVfxLook look, double x, double y, double z) {
-        super(look, x, y, z);
+    /** The wave {@code instance} carries: its system's behaviour factory ({@code CgEnergyWave::new}). */
+    public CgEnergyWave(CgVfxSystemInstance instance) {
+        super(instance);
+        this.instance = instance;
+        CgVfxLook look = instance.look();
         for (CgVfxSchema s : new CgVfxSchema[] {CgBeamBody.SCHEMA, CgVfxCharge.SCHEMA, CgBeamContact.SCHEMA, CgVfxBlast.SCHEMA}) {
             if (!look.layout().schemas().contains(s)) {
                 throw new IllegalArgumentException("A wave's look carries " + s + ": derive it from kamehameha(), or add"
                         + " it with params(...)");
             }
         }
+        charge = new CgVfxCharge(instance);
+        body = new CgBeamBody(instance);
+        contact = new CgBeamContact(instance);
+        blast = new CgVfxBlast(instance, PART_BLAST);
+        wake = new CgBeamWake(instance, WAKE);
         releaseAge = Math.max(get(CgVfxCharge.TIME), 0f);
+    }
+
+    /**
+     * The system playing a wave of {@code look}: the same definition for the same look, playing no emitters of its own,
+     * since its elements play theirs.
+     */
+    public static CgVfxSystemDefinition system(CgVfxLook look) {
+        CgVfxSystemDefinition known = SYSTEMS.get(look);
+        if (known != null) return known;
+        CgVfxSystemDefinition made = new CgVfxSystemDefinition("crystalgraphics:energy_wave", look, CgEnergyWave::new, List.of());
+        CgVfxSystemDefinition raced = SYSTEMS.putIfAbsent(look, made);
+        return raced != null ? raced : made;
+    }
+
+    /**
+     * A wave of {@code look} at {@code (x, y, z)}, to play: its instance, which {@link #of} reaches the wave of.
+     *
+     * <pre>{@code
+     * CgVfxSystemInstance beam = VFX.play(CgEnergyWave.instance(CgEnergyWave.finalFlash(), x, y, z));
+     * }</pre>
+     */
+    public static CgVfxSystemInstance instance(CgVfxLook look, double x, double y, double z) {
+        return new CgVfxSystemInstance(system(look), x, y, z);
+    }
+
+    /** The wave {@code instance} carries. @throws IllegalStateException if it carries none */
+    public static CgEnergyWave of(CgVfxSystemInstance instance) {
+        return instance.behaviour(CgEnergyWave.class);
+    }
+
+    /** The instance carrying it: what plays, follows, stops and ends. */
+    public CgVfxSystemInstance instance() {
+        return instance;
     }
 
     /** Blue-white, Sparking! Zero's. */
@@ -339,11 +409,13 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
         return TOON_LOOK;
     }
 
+    /** Its muzzle rides what it follows; what it fired stays where it is in the world. */
     @Override
-    protected void followed(double x, double y, double z) {
-        muzzleX = (float) (x - originX);
-        muzzleY = (float) (y - originY);
-        muzzleZ = (float) (z - originZ);
+    public boolean followed(CgVfxSystemInstance in, double x, double y, double z) {
+        muzzleX = (float) (x - originX());
+        muzzleY = (float) (y - originY());
+        muzzleZ = (float) (z - originZ());
+        return true;
     }
 
     /** Where the source points, any length. Any time. */
@@ -356,13 +428,13 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
 
     /** What the body homes on, in world coordinates; NaN for straight flight. */
     public CgEnergyWave target(double x, double y, double z) {
-        body.stream().target((float) (x - originX), (float) (y - originY), (float) (z - originZ));
+        body.stream().target((float) (x - originX()), (float) (y - originY()), (float) (z - originZ()));
         return this;
     }
 
     /** A point the body passes on its way to the target; NaN for none. */
     public CgEnergyWave via(double x, double y, double z) {
-        body.stream().via((float) (x - originX), (float) (y - originY), (float) (z - originZ));
+        body.stream().via((float) (x - originX()), (float) (y - originY()), (float) (z - originZ()));
         return this;
     }
 
@@ -372,7 +444,8 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
      * stopped it keeps the last, so the blast lands where it was hitting; a {@link #target} call is overridden.
      *
      * <pre>{@code
-     * wave = owner.play(new CgEnergyWave(look, x, y, z).follow(playerId, CgEntityAttachments.HANDS_FORWARD).collide());
+     * beam = owner.play(CgEnergyWave.instance(look, x, y, z).follow(playerId, CgEntityAttachments.HANDS_FORWARD));
+     * wave = CgEnergyWave.of(beam).collide();
      * wave.aim(look.x, look.y, look.z);                               // each tick
      * wave.onHit(CgEnergyWave.PART_BEAM, h -> damage(h.entity()));    // as the head reaches it, and as it changes
      * }</pre>
@@ -397,12 +470,12 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
      * streaks, arcs and tremor running on. Any time before it fires; a held wave never fired charges until stopped.
      *
      * <pre>{@code
-     * wave = owner.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z).hold());   // key down
+     * wave = CgEnergyWave.of(owner.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z))).hold();   // key down
      * wave.fire();                                                                       // key up
      * }</pre>
      */
     public CgEnergyWave hold() {
-        if (age == 0f || age < releaseAge) {
+        if (age() == 0f || age() < releaseAge) {
             releaseAge = Float.POSITIVE_INFINITY;
             held = true;
         }
@@ -411,7 +484,7 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
 
     /** Releases the charge now, if it has not yet. */
     public CgEnergyWave fire() {
-        releaseAge = Math.min(releaseAge, age);
+        releaseAge = Math.min(releaseAge, age());
         return this;
     }
 
@@ -423,7 +496,7 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
 
     /** Whether it is still charging. */
     public boolean charging() {
-        return age < releaseAge && state() == State.PLAYING;
+        return age() < releaseAge && instance.state() == CgVfxEffect.State.PLAYING;
     }
 
     /** Whether the head is at the target this tick. */
@@ -479,17 +552,19 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
     }
 
     /**
-     * A wave from a cue: at its point, aimed and targeted as it says, charging and fired as {@link #HELD} and
+     * A wave's instance from a cue: at its point, aimed and targeted as it says, charging and fired as {@link #HELD} and
      * {@link #FIRED_AT} say. The one factory for both sides of an authoritative cue: the server's wave
      * {@linkplain #collide collides}, finding its own end, unless the cue gave it a target.
      *
      * <pre>{@code
      * public static final CgVfxCue WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(), CgEnergyWave::fromCue)
      *         .range(96).authoritative().build();
+     * CgEnergyWave beam = CgEnergyWave.of(WAVE.on(caster, CgEntityAttachments.HANDS_FORWARD).start().effect());
      * }</pre>
      */
-    public static CgEnergyWave fromCue(CgVfxLook look, CgVfxCue.Play cue) {
-        CgEnergyWave wave = new CgEnergyWave(look, cue.x(), cue.y(), cue.z());
+    public static CgVfxSystemInstance fromCue(CgVfxLook look, CgVfxCue.Play cue) {
+        CgVfxSystemInstance played = instance(look, cue.x(), cue.y(), cue.z());
+        CgEnergyWave wave = of(played);
         if (cue.hasDirection()) wave.aim((float) cue.dx(), (float) cue.dy(), (float) cue.dz());
         if (cue.hasTarget()) wave.target(cue.tx(), cue.ty(), cue.tz());
         else if (cue.authoritative()) wave.collide();
@@ -497,27 +572,31 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
         if (cue.getBool(HELD)) wave.hold();
         float fireAge = cue.getFloat(FIRED_AT);
         if (!Float.isNaN(fireAge)) wave.fireAt(fireAge);
-        return wave;
+        return played;
     }
 
+    /** Its instance stopped: the tail runs out from here into what it hit. */
     @Override
-    public void stop() {
-        if (state() == State.PLAYING) {
-            stopAge = age;
-            sizeAtStop = body.stream().size();
-        }
-        super.stop();
+    public void deactivated(CgVfxSystemInstance in) {
+        stopAge = age();
+        sizeAtStop = body.stream().size();
     }
 
     /** An ending thins it where it is: its tail never runs out into a blast. */
     @Override
-    protected void ending(CgVfxEnding ending) {
+    public void ending(CgVfxSystemInstance in, CgVfxEnding ending) {
         ended = true;
     }
 
+    /** Whether its blast, or its tail with no blast, has finished: its instance then completes. */
     @Override
-    protected void tick(float dt) {
-        boolean playing = state() == State.PLAYING, fired = playing && age >= releaseAge;
+    public boolean done(CgVfxSystemInstance in) {
+        return finished;
+    }
+
+    @Override
+    public void tick(CgVfxSystemInstance in, float dt) {
+        boolean playing = instance.state() == CgVfxEffect.State.PLAYING, fired = playing && age() >= releaseAge;
         if (collides && playing) targetAlongAim();
         drawnMuzzle();
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, STREAM_ZONE)) {
@@ -527,7 +606,7 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
         contact.tick(dt, impacting(), body.stream().impactX(), body.stream().impactY(), body.stream().impactZ());
         charge.tick(drawnX, drawnY, drawnZ, aimX, aimY, aimZ, releaseAge, stopAge);
         if (fired) holdShake(FIRING_SHAKE, drawnX, drawnY, drawnZ, 1f, 1f);
-        boolean drained = state() == State.STOPPING && body.stream().size() == 0;
+        boolean drained = instance.state() == CgVfxEffect.State.STOPPING && body.stream().size() == 0;
         // The tail has run into what it hit: it bursts.
         if (drained && !ended && !Float.isNaN(contact.firstHit()) && !blast.ignited()) {
             blast.ignite(body.stream().impactX(), body.stream().impactY(), body.stream().impactZ(), body.normalX(),
@@ -535,14 +614,14 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
         }
         if (blast.tick(dt)) reportBurst();
         wake.tick(dt, body.path(), fired);
-        boolean done = blast.ignited() ? blast.done() : drained && age > stopAge + CgVfxCharge.FADE;
+        boolean done = blast.ignited() ? blast.done() : drained && age() > stopAge + CgVfxCharge.FADE;
         if (momentsHeard()) moments(done);
-        if (done) die();
+        if (done) finished = true;
     }
 
     /** The muzzle as drawn: {@link #MUZZLE_FORWARD} along the aim, eased in over the charge's settle once fired. */
     private void drawnMuzzle() {
-        float forward = get(MUZZLE_FORWARD) * smooth(0f, CgVfxCharge.SETTLE, age - releaseAge);
+        float forward = get(MUZZLE_FORWARD) * smooth(0f, CgVfxCharge.SETTLE, age() - releaseAge);
         float length = (float) Math.sqrt(aimX * aimX + aimY * aimY + aimZ * aimZ);
         float k = length > 0f ? forward / length : 0f;
         drawnX = muzzleX + aimX * k;
@@ -557,9 +636,9 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
     private void targetAlongAim() {
         double length = Math.sqrt(aimX * aimX + aimY * aimY + aimZ * aimZ);
         if (length == 0.0) return;
-        if (authoritative() && age - rayAge < SERVER_RAY_SECONDS) return;
-        rayAge = age;
-        double x = originX + muzzleX, y = originY + muzzleY, z = originZ + muzzleZ;
+        if (authoritative() && age() - rayAge < SERVER_RAY_SECONDS) return;
+        rayAge = age();
+        double x = originX() + muzzleX, y = originY() + muzzleY, z = originZ() + muzzleZ;
         float reach = get(MAX_LENGTH), radius = get(RADIUS);
         if (beam == null || beam.radius() != radius) beam = CgSphere.of(Math.max(radius, 1.0e-3f));
         CgCollisionWorld world = world();
@@ -596,7 +675,7 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
         String met = !aimMet ? "nothing" : (hitEntity >= 0 ? "entity " + hitEntity : "a block")
                 + String.format(" at %.2f %.2f %.2f", endX, endY, endZ);
         LOGGER.info(String.format("[CgVfx] a wave on the server, age %.3f: from %.2f %.2f %.2f along %.3f %.3f %.3f,"
-                        + " reach %.1f, radius %.2f, source %d: met %s; world %s, entities %s; listed:%s", age, x, y, z,
+                        + " reach %.1f, radius %.2f, source %d: met %s; world %s, entities %s; listed:%s", age(), x, y, z,
                 aimX, aimY, aimZ, reach, radius, followingId(), met, world.blocks().getClass().getSimpleName(),
                 entities.getClass().getSimpleName(), listed.length() == 0 ? " none" : listed));
     }
@@ -612,8 +691,8 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
                 : aimMet ? hit.kind() : null;
         int entity = now != CgHit.Kind.ENTITY ? -1 : collides ? hitEntity : cueStruck;
         if (now != null && (now != struck || entity != struckEntity)) {
-            double x = originX + body.stream().impactX(), y = originY + body.stream().impactY(),
-                    z = originZ + body.stream().impactZ();
+            double x = originX() + body.stream().impactX(), y = originY() + body.stream().impactY(),
+                    z = originZ() + body.stream().impactZ();
             if (collides) reported.set(hit);
             else if (now == CgHit.Kind.ENTITY) reported.setPoint(x, y, z, PART_BEAM).setEntity(entity, entity).from(world().entities());
             else reported.setPoint(x, y, z, PART_BEAM);
@@ -625,8 +704,8 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
 
     /** {@link #PART_BURST}, where the beam ended: on the block it last met, else that point alone. */
     private void reportBurst() {
-        double x = originX + body.stream().impactX(), y = originY + body.stream().impactY(),
-                z = originZ + body.stream().impactZ();
+        double x = originX() + body.stream().impactX(), y = originY() + body.stream().impactY(),
+                z = originZ() + body.stream().impactZ();
         if (reported.kind() != null && reported.kind().isTerrain()) {
             int bx = reported.blockX(), by = reported.blockY(), bz = reported.blockZ();
             reported.setPoint(x, y, z, PART_BURST).setBlock(bx, by, bz);
@@ -638,20 +717,18 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
 
     /** Its own moments, framed on the flight; its elements announce theirs. */
     private void moments(boolean done) {
-        if (age - releaseAge >= 0.35f && body.stream().size() > 0) onFlight(0, MOMENT_LAUNCH);
+        if (age() - releaseAge >= 0.35f && body.stream().size() > 0) onFlight(0, MOMENT_LAUNCH);
         if (body.stream().viaReached()) onFlight(1, MOMENT_WAYPOINT);
         float hitAt = contact.firstHit();
         if (!Float.isNaN(hitAt)) onFlight(2, MOMENT_IMPACT);
-        if (age >= hitAt + 0.8f) onFlight(3, MOMENT_HOLDING);
-        if (age >= stopAge + 0.05f) onFlight(4, MOMENT_STOP);
+        if (age() >= hitAt + 0.8f) onFlight(3, MOMENT_HOLDING);
+        if (age() >= stopAge + 0.05f) onFlight(4, MOMENT_STOP);
         if (!Float.isNaN(stopAge) && body.stream().size() <= sizeAtStop / 2) onFlight(5, MOMENT_TAIL);
         if (done) onFlight(6, MOMENT_END);
     }
 
     /** Framed on the box holding the muzzle, the head and, while it hits, the impact. */
     private void onFlight(int bit, String name) {
-        if ((momentsFired & (1 << bit)) != 0) return;
-        momentsFired |= 1 << bit;
         float minX = drawnX, minY = drawnY, minZ = drawnZ, maxX = drawnX, maxY = drawnY, maxZ = drawnZ;
         if (body.stream().size() > 0) {
             minX = Math.min(minX, body.stream().headX()); maxX = Math.max(maxX, body.stream().headX());
@@ -665,11 +742,11 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
         }
         float dx = maxX - minX, dy = maxY - minY, dz = maxZ - minZ;
         float frame = 0.5f * (float) Math.sqrt(dx * dx + dy * dy + dz * dz) + get(RADIUS) * 6f;
-        moment(name, (minX + maxX) * 0.5f, (minY + maxY) * 0.5f, (minZ + maxZ) * 0.5f, frame);
+        once(bit, name, (minX + maxX) * 0.5f, (minY + maxY) * 0.5f, (minZ + maxZ) * 0.5f, frame);
     }
 
     @Override
-    protected void submit(CgVfxFrame frame) {
+    public void submit(CgVfxSystemInstance in, CgVfxFrame frame) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, MUZZLE_ZONE)) {
             charge.submit(frame);
         }
@@ -677,11 +754,6 @@ public final class CgEnergyWave extends CgVfxEffect<CgEnergyWave> implements CgV
             contact.submit(frame, body.normalX(), body.normalY(), body.normalZ());
             blast.submit(frame);
         }
-        body.submit(frame, state() == State.PLAYING && age >= releaseAge, drawnX, drawnY, drawnZ, releaseAge, stopAge);
-    }
-
-    private static float smooth(float edge0, float edge1, float x) {
-        float t = Math.max(0f, Math.min(1f, (x - edge0) / (edge1 - edge0)));
-        return t * t * (3f - 2f * t);
+        body.submit(frame, instance.state() == CgVfxEffect.State.PLAYING && age() >= releaseAge, drawnX, drawnY, drawnZ, releaseAge, stopAge);
     }
 }

@@ -10,6 +10,7 @@ import com.crystalgraphics.platform.world.CgPlayerQuery;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.vfx.CgVfxAuthorityTest;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
+import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -121,14 +122,14 @@ public class CgVfxServerBench {
         CgNetwork.clientConnected();
         for (int t = 0; t < 12; t++) tick();
 
-        CgEnergyWave[] beams = new CgEnergyWave[WAVES];
+        CgVfxSystemInstance[] beams = new CgVfxSystemInstance[WAVES];
         for (int i = 0; i < WAVES; i++) {
             CgVfxCue.Playing playing = WAVE.at(body, (i % 10) * 6, 64, (i / 10) * 6).toward(1, 0, 0).start();
             beams[i] = playing.effect();
-            beams[i].hold().aim(1, 0, 0);
+            CgEnergyWave.of(beams[i]).hold().aim(1, 0, 0);
         }
         for (int t = 0; t < WARMUP_TICKS; t++) tick();
-        for (CgEnergyWave beam : beams) beam.fire();
+        for (CgVfxSystemInstance beam : beams) CgEnergyWave.of(beam).fire();
 
         com.sun.management.ThreadMXBean threads = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
         long thread = Thread.currentThread().getId();

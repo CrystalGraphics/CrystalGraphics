@@ -13,6 +13,8 @@ import org.junit.Test;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
+import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
+import com.crystalgraphics.vfx.look.CgVfxParam;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -64,6 +66,26 @@ public class CgVfxSystemAssetsTest {
             assertEquals(2, d.look().emitters().size());
         } catch (IllegalArgumentException e) {
             assertTrue(e.getMessage(), e.getMessage().startsWith("novamod:nova_cannon/charge: emitters."));
+        }
+    }
+
+    @Test
+    public void theNovaCannonsBeamPlaysTheEnergyWaveInTheFilesPalette() throws IOException {
+        Path beam = NOVA.resolve("beam.yaml");
+        Assume.assumeTrue("the Nova Cannon fixture is absent", Files.isRegularFile(beam));
+        CgVfxSystemDefinition d = compile("novamod:nova_cannon/beam", new String(Files.readAllBytes(beam), StandardCharsets.UTF_8));
+        assertEquals(CgVfxSystemAssets.effect("crystalgraphics:energy_wave"), d.behaviour());
+        CgVfxParam.Scalar radius = (CgVfxParam.Scalar) CgEnergyWave.CONTRACT.look().layout().param("radius");
+        assertEquals(0.8f, d.look().get(radius), 0f);
+    }
+
+    @Test
+    public void aContractedEffectMissingANameFailsNamingIt() {
+        try {
+            compile("mymod:beam", "_v: 1\nuser:\n  radius: { type: float, default: 1 }\neffect: crystalgraphics:energy_wave\n");
+            fail();
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("user.maxLength"));
         }
     }
 }

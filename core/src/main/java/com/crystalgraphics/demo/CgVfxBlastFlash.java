@@ -6,6 +6,7 @@ import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxOwner;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
+import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -70,7 +71,7 @@ public final class CgVfxBlastFlash {
         for (Iterator<CgEnergyWave> it = flying.iterator(); it.hasNext(); ) {
             CgEnergyWave wave = it.next();
             if (!wave.impacting()) continue;
-            wave.stop();
+            wave.instance().stop();
             it.remove();
         }
         if (drives) {
@@ -95,11 +96,12 @@ public final class CgVfxBlastFlash {
         CgVfxDemoControls controls = CgVfxDemoControls.get();
         double length = Math.hypot(forwardX, forwardZ);
         double rightX = length > 1.0e-6 ? -forwardZ / length : 1.0, rightZ = length > 1.0e-6 ? forwardX / length : 0.0;
-        CgEnergyWave wave = new CgEnergyWave(CgEnergyWave.kamehameha(), x - rightX * SPAN, y + MUZZLE_UP, z - rightZ * SPAN);
-        wave.aim((float) rightX, -0.2f, (float) rightZ).target(x, y, z).fire();
-        wave.ground(y);
-        controls.apply(wave);
-        flying.add(vfx.play(wave));
+        CgVfxSystemInstance beam = CgEnergyWave.instance(CgEnergyWave.kamehameha(), x - rightX * SPAN, y + MUZZLE_UP,
+                z - rightZ * SPAN).ground(y);
+        CgEnergyWave wave = CgEnergyWave.of(beam).aim((float) rightX, -0.2f, (float) rightZ).target(x, y, z).fire();
+        controls.apply(beam);
+        vfx.play(beam);
+        flying.add(wave);
         fired++;
         return wave;
     }

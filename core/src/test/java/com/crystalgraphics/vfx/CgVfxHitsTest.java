@@ -3,6 +3,7 @@ package com.crystalgraphics.vfx;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
+import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 import com.crystalgraphics.vfx.look.CgVfxLayout;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
@@ -64,13 +65,13 @@ public class CgVfxHitsTest {
     @Test
     public void aWaveReportsItsBeamOnceThenItsBurstAtTheSamePoint() {
         CgVfxSystem vfx = new CgVfxSystem();
-        CgEnergyWave wave = CgVfx.owner("wave_hits_test", vfx).play(new CgEnergyWave(CgEnergyWave.kamehameha(), 0, 0, 0));
-        wave.aim(1f, 0f, 0f).target(8, 0, 0);
+        CgVfxSystemInstance beam = CgVfx.owner("wave_hits_test", vfx).play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), 0, 0, 0));
+        CgEnergyWave.of(beam).aim(1f, 0f, 0f).target(8, 0, 0);
         List<String> heard = new ArrayList<>();
-        wave.onHit(h -> heard.add(h.part() + " " + h.kind() + " " + Math.round(h.x())));
+        beam.onHit(h -> heard.add(h.part() + " " + h.kind() + " " + Math.round(h.x())));
         for (int f = 0; f <= 600; f++) vfx.update(f / 60.0);
         assertEquals("held on the target, not every tick", List.of("beam POINT 8"), heard);
-        wave.stop();
+        beam.stop();
         for (int f = 601; f <= 1500; f++) vfx.update(f / 60.0);
         assertEquals(List.of("beam POINT 8", "burst POINT 8"), heard);
     }

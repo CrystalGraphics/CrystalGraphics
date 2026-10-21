@@ -2,7 +2,9 @@ package com.crystalgraphics.vfx.system;
 
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
+import com.crystalgraphics.vfx.look.CgVfxEnding;
 import com.crystalgraphics.vfx.look.CgVfxLook;
+import com.crystalgraphics.vfx.net.CgVfxCue;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 
@@ -28,9 +30,12 @@ import java.util.List;
  *       once at the origin.</li>
  *   <li>A stopped instance never restarts: an {@link CgVfxExecutionState#ACTIVE} request after one is refused.</li>
  *   <li>Set {@link #ground} before the first update, or the first tick's particles miss it.</li>
+ *   <li>Its behaviour hears its cue: an instance is {@code CgVfxCue.Live} and {@code CgVfxCue.Authoritative} for a
+ *       behaviour that is, and nothing for one that is not.</li>
  * </ul>
  */
-public final class CgVfxSystemInstance extends CgVfxEffect<CgVfxSystemInstance> {
+public final class CgVfxSystemInstance extends CgVfxEffect<CgVfxSystemInstance>
+        implements CgVfxCue.Live, CgVfxCue.Authoritative {
 
     private final CgVfxSystemDefinition definition;
     private final CgVfxEmitterInstance[] emitters;
@@ -44,7 +49,7 @@ public final class CgVfxSystemInstance extends CgVfxEffect<CgVfxSystemInstance> 
     public CgVfxSystemInstance(CgVfxSystemDefinition definition, double x, double y, double z) {
         super(definition.look(), x, y, z);
         this.definition = definition;
-        List<CgVfxEmitter> kinds = definition.look().emitters();
+        List<CgVfxEmitter> kinds = definition.emitters();
         emitters = new CgVfxEmitterInstance[kinds.size()];
         for (int i = 0; i < emitters.length; i++) {
             emitters[i] = new CgVfxEmitterInstance(kinds.get(i), seed + i * 0.137f);
@@ -62,7 +67,7 @@ public final class CgVfxSystemInstance extends CgVfxEffect<CgVfxSystemInstance> 
         return definition;
     }
 
-    /** How many emitters it plays: its look's, in its order. */
+    /** How many emitters it plays: its definition's, in its order. */
     public int emitters() {
         return emitters.length;
     }
@@ -83,6 +88,22 @@ public final class CgVfxSystemInstance extends CgVfxEffect<CgVfxSystemInstance> 
     @Nullable
     public CgVfxBehaviour behaviour() {
         return behaviour;
+    }
+
+    /**
+     * Its behaviour as {@code type}, to drive it.
+     *
+     * <pre>{@code
+     * CgEnergyWave wave = beam.behaviour(CgEnergyWave.class).aim(dx, dy, dz);
+     * }</pre>
+     *
+     * @throws IllegalStateException if it carries none of that type
+     */
+    public <B extends CgVfxBehaviour> B behaviour(Class<B> type) {
+        if (!type.isInstance(behaviour)) {
+            throw new IllegalStateException(definition.name() + " carries " + behaviour + ", no " + type.getSimpleName());
+        }
+        return type.cast(behaviour);
     }
 
     /** What it is doing now. */
@@ -148,6 +169,26 @@ public final class CgVfxSystemInstance extends CgVfxEffect<CgVfxSystemInstance> 
     @Override
     protected Object definitionKey() {
         return definition;
+    }
+
+    @Override
+    protected void ending(CgVfxEnding ending) {
+        if (behaviour != null) behaviour.ending(this, ending);
+    }
+
+    @Override
+    protected void followed(double x, double y, double z) {
+        if (behaviour == null || !behaviour.followed(this, x, y, z)) super.followed(x, y, z);
+    }
+
+    @Override
+    public void cueChanged(CgVfxCue.Play cue) {
+        if (behaviour instanceof CgVfxCue.Live live) live.cueChanged(cue);
+    }
+
+    @Override
+    public void publish(CgVfxCue.Play cue) {
+        if (behaviour instanceof CgVfxCue.Authoritative authoritative) authoritative.publish(cue);
     }
 
     @Override

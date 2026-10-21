@@ -5,6 +5,7 @@ import com.crystalgraphics.platform.world.CgBoxSink;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
+import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 import com.crystalgraphics.world.CgEntityAttachments;
 import org.junit.Test;
 
@@ -86,18 +87,19 @@ public class CgVfxAuthorityTest {
 
     @Test
     public void aServersWaveStrikesWhatItsLevelHoldsThenBursts() {
-        CgEnergyWave wave = new CgEnergyWave(CgEnergyWave.kamehameha(), 0, 1, 0).collide();
-        wave.follow(1, CgEntityAttachments.CHEST);
+        CgVfxSystemInstance beam = CgEnergyWave.instance(CgEnergyWave.kamehameha(), 0, 1, 0);
+        CgEnergyWave wave = CgEnergyWave.of(beam).collide();
+        beam.follow(1, CgEntityAttachments.CHEST);
         wave.aim(1f, 0f, 0f);
-        CgVfxAuthority run = new CgVfxAuthority(wave, CgCollisionWorld.of(FLOOR, new Crowd()));
+        CgVfxAuthority run = new CgVfxAuthority(beam, CgCollisionWorld.of(FLOOR, new Crowd()));
         List<String> heard = new ArrayList<>();
-        wave.onHit(h -> heard.add(h.part() + " " + h.kind() + " " + h.entityId()));
+        beam.onHit(h -> heard.add(h.part() + " " + h.kind() + " " + h.entityId()));
 
         for (int t = 0; t < 200; t++) run.advance(0.05f);
         assertEquals("through its caster, onto the zombie, once", List.of("beam ENTITY 2"), heard);
         assertEquals(2, wave.hitEntity());
 
-        wave.stop();
+        beam.stop();
         for (int t = 0; t < 600 && !run.done(); t++) run.advance(0.05f);
         assertEquals("the burst at its point, then its front on the zombie",
                 List.of("beam ENTITY 2", "burst POINT -1", "blast ENTITY 2"), heard);
@@ -106,8 +108,8 @@ public class CgVfxAuthorityTest {
 
     @Test(expected = IllegalStateException.class)
     public void anEffectRunsInOnePlaceOnly() {
-        CgEnergyWave wave = new CgEnergyWave(CgEnergyWave.kamehameha(), 0, 1, 0);
-        new CgVfxAuthority(wave, CgCollisionWorld.of(FLOOR, new Crowd()));
-        new CgVfxAuthority(wave, CgCollisionWorld.of(FLOOR, new Crowd()));
+        CgVfxSystemInstance beam = CgEnergyWave.instance(CgEnergyWave.kamehameha(), 0, 1, 0);
+        new CgVfxAuthority(beam, CgCollisionWorld.of(FLOOR, new Crowd()));
+        new CgVfxAuthority(beam, CgCollisionWorld.of(FLOOR, new Crowd()));
     }
 }

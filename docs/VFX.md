@@ -68,7 +68,7 @@ itself for anyone editing a VFX file.
 
 | Word | What it is | Class |
 |---|---|---|
-| **Effect** | One thing playing in the world: one Kamehameha, one explosion. A position, an age, and code that runs every tick. It dies when it is done. | `CgVfxEffect`: `CgEnergyWave`, `CgVfxSystemInstance`, yours |
+| **Effect** | One thing playing in the world: one Kamehameha, one explosion. A position, an age, and code that runs every tick. It dies when it is done. | `CgVfxEffect`: `CgVfxSystemInstance` (the energy wave is its `CgEnergyWave` behaviour), yours |
 | **Element** | A part many effects share, with its own parameters and slots: a charge ball, a blast, a beam's body. An effect is made of elements. | `CgVfxElement`: `CgVfxCharge`, `CgVfxBlast`, `CgBeamBody`, ... |
 | **Look** | How an effect looks: its parameters' values, the kits that draw it, its emitters. Shared, never changed by playing. | `CgVfxLook` |
 | **Schema**, **parameter** | A named set of typed values an effect, element or kit reads: a length, a colour, a palette, a curve, a camera shake. | `CgVfxSchema`, `CgVfxParam` |
@@ -93,7 +93,7 @@ itself for anyone editing a VFX file.
 How they fit together:
 
 ```
-CgEnergyWave (the effect: phases, aim, fire, hits)
+CgVfxSystemInstance playing the CgEnergyWave behaviour (phases, aim, fire, hits)
   ├─ CgVfxCharge  ── schema crystalgraphics:charge  ── slots BALL, HAZE, STREAKS, ...
   ├─ CgBeamBody   ── schema crystalgraphics:wave/body ── slots BODY, ARCS, HEAD
   ├─ CgBeamContact, CgVfxBlast, CgBeamWake
@@ -115,12 +115,13 @@ CgEnergyWave (the effect: phases, aim, fire, hits)
 public static final CgVfxOwner VFX = CgVfx.owner("mymod");   // once, as a constant
 
 // client: a Kamehameha at the player's hands, aimed where they look, charging until fired
-CgEnergyWave wave = VFX.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z)
-        .follow(playerId, CgEntityAttachments.HANDS_FORWARD).hold());
+CgVfxSystemInstance beam = VFX.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z)
+        .follow(playerId, CgEntityAttachments.HANDS_FORWARD));
+CgEnergyWave wave = CgEnergyWave.of(beam).hold();   // the behaviour: aim, fire, target, collide
 wave.aim(lookX, lookY, lookZ);   // each tick
 wave.fire();                     // key released
-wave.stop();                     // its tail runs out into what it hit, which bursts
-wave.end(CgEnergyWave.FADE);     // or: it thins away where it is, no blast
+beam.stop();                     // its tail runs out into what it hit, which bursts
+beam.end(CgEnergyWave.FADE);     // or: it thins away where it is, no blast
 ```
 
 The engine registers its effects by id ([§5](#5-the-engines-effects)), so a tool or a command can play one without knowing its
@@ -340,12 +341,13 @@ homes on a target or is steered by a player's aim, stops where it hits, and burs
 out into what it hit.
 
 ```java
-CgEnergyWave wave = VFX.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z)
-        .follow(playerId, CgEntityAttachments.HANDS_FORWARD).hold());   // charging until fired
+CgVfxSystemInstance beam = VFX.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z)
+        .follow(playerId, CgEntityAttachments.HANDS_FORWARD));
+CgEnergyWave wave = CgEnergyWave.of(beam).hold();   // charging until fired
 wave.aim(dx, dy, dz).target(tx, ty, tz);   // each tick, as the source turns
 wave.collide();                            // or: find its own target along the aim
 wave.fire();
-wave.stop();                               // the tail runs out into the target, which bursts
+beam.stop();                               // the tail runs out into the target, which bursts
 ```
 
 #### Made of elements
@@ -1660,8 +1662,8 @@ public static final CgVfxCue WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameh
 
 // server: start it, then drive its effect exactly as on a client
 CgVfxCue.Playing wave = WAVE.on(caster, CgEntityAttachments.HANDS_FORWARD).start();
-CgEnergyWave beam = wave.effect();
-beam.hold().aim(look.x, look.y, look.z);   // key down
+CgVfxSystemInstance beam = wave.effect();
+CgEnergyWave.of(beam).hold().aim(look.x, look.y, look.z);   // key down
 
 wave.onHit(CgEnergyWave.PART_BEAM, h -> { if (h.kind() == CgHit.Kind.ENTITY) stagger(h.entity()); })
     .onHit(CgEnergyWave.PART_BURST, h -> explode(h.x(), h.y(), h.z(), beam.blastRadius()))
@@ -1784,7 +1786,8 @@ An effect strikes through the collision engine ([`COLLISION.md`](COLLISION.md)):
 `world()` and the hitboxes it owns. Each thing it strikes is a `CgHit`, and `onHit` hears them:
 
 ```java
-CgEnergyWave wave = VFX.play(new CgEnergyWave(look, x, y, z).follow(playerId, HANDS_FORWARD).collide());
+CgVfxSystemInstance wave = VFX.play(CgEnergyWave.instance(look, x, y, z).follow(playerId, HANDS_FORWARD));
+CgEnergyWave.of(wave).collide();
 wave.onHit(h -> { if (h.kind() == CgHit.Kind.ENTITY) flash(h.entity()); });
 ```
 
@@ -1795,7 +1798,7 @@ part:
 
 ```java
 wave.onHit(CgEnergyWave.PART_BEAM, h -> flash(h.x(), h.y(), h.z()))
-    .onHit(CgEnergyWave.PART_BURST, h -> shatter(h.x(), h.y(), h.z(), wave.blastRadius()))
+    .onHit(CgEnergyWave.PART_BURST, h -> shatter(h.x(), h.y(), h.z(), CgEnergyWave.of(wave).blastRadius()))
     .onHit(CgEnergyWave.PART_BLAST, h -> knockBack(h.entity()));
 ```
 
@@ -1853,7 +1856,7 @@ viewer's own copy: the factory builds both copies, and `cue.authoritative()` tel
 
 ```java
 public static final CgVfxCue WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(), (look, cue) -> {
-    CgEnergyWave wave = CgEnergyWave.fromCue(look, cue);
+    CgVfxSystemInstance wave = CgEnergyWave.fromCue(look, cue);
     if (!cue.authoritative()) wave.onHit(CgEnergyWave.PART_BEAM, h -> flash(h.x(), h.y(), h.z()));   // each viewer
     return wave;
 }).range(96).authoritative().build();
@@ -2273,8 +2276,8 @@ Whatever its own code tests. The built-in ones:
 Damage of your own shape goes on the burst:
 
 ```java
-wave.onHit(CgEnergyWave.PART_BURST, h -> CgCollisionWorld.of(level).overlap(CgSphere.of(wave.blastRadius()))
-        .at(h.x(), h.y(), h.z()).exposure().forEach(e -> damage(e.entity(), 20f * e.falloff(2, wave.blastRadius()))));
+wave.onHit(CgEnergyWave.PART_BURST, h -> CgCollisionWorld.of(level).overlap(CgSphere.of(CgEnergyWave.of(wave).blastRadius()))
+        .at(h.x(), h.y(), h.z()).exposure().forEach(e -> damage(e.entity(), 20f * e.falloff(2, CgEnergyWave.of(wave).blastRadius()))));
 ```
 
 ### Where do I put a number: a parameter, a layer constant, or a constant in code?

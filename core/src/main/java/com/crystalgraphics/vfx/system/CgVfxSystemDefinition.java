@@ -2,15 +2,18 @@ package com.crystalgraphics.vfx.system;
 
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
+import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 
 import javax.annotation.Nullable;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
 /**
- * What a system plays: its name, its look (emitters, the layers on them, its parameters) and its native behaviour, if
- * any. Unreal's {@code UNiagaraSystem} as it compiles; a system with no behaviour plays its emitters once and completes.
+ * What a system plays: its name, its look (layers and parameters), the emitters its instances play, and its native
+ * behaviour, if any. Unreal's {@code UNiagaraSystem} as it compiles; a system with no behaviour plays its emitters once
+ * and completes.
  *
  * <pre>{@code
  * static final CgVfxSystemDefinition PUFF = CgVfxSystemDefinition.of("mymod:puff",
@@ -20,15 +23,25 @@ import java.util.WeakHashMap;
  * static final CgVfxSystemDefinition BEAM = CgVfxSystemDefinition.of("mymod:beam", BEAM_LOOK).withBehaviour(Beam::new);
  * }</pre>
  *
+ * <p>A behaviour that plays emitters of its own (through the elements it builds) names none for its instance to play,
+ * so they are not played twice:</p>
+ *
+ * <pre>{@code
+ * static final CgVfxSystemDefinition WAVE = new CgVfxSystemDefinition("mymod:wave", WAVE_LOOK, Wave::new, List.of());
+ * }</pre>
+ *
  * <ul>
  *   <li>Held by identity: it is the simulation's key, so make each once, as a constant.</li>
+ *   <li>{@link #of(String, CgVfxLook)} plays every emitter of the look; {@code withBehaviour} keeps them.</li>
  * </ul>
  *
  * @param name      what tools and logs call it
- * @param look      its emitters, layers and parameters
+ * @param look      its layers and parameters, and the emitters they draw
  * @param behaviour its native behaviour's factory, or null for none
+ * @param emitters  what each instance plays from its origin
  */
-public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfxBehaviour.Factory behaviour) {
+public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfxBehaviour.Factory behaviour,
+                                    List<CgVfxEmitter> emitters) {
 
     /** A system with no parameters of its own reads none: its kits' layers read theirs. */
     public static final CgVfxSchema SCHEMA = CgVfxSchema.of("crystalgraphics:system");
@@ -36,6 +49,12 @@ public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfx
     public CgVfxSystemDefinition {
         if (name == null || name.isEmpty()) throw new IllegalArgumentException("a system needs a name");
         if (look == null) throw new IllegalArgumentException(name + " needs a look");
+        emitters = List.copyOf(emitters);
+    }
+
+    /** {@code look}'s emitters played by every instance. */
+    public CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfxBehaviour.Factory behaviour) {
+        this(name, look, behaviour, look.emitters());
     }
 
     /** {@code look}'s emitters played once, with no behaviour. */
@@ -55,8 +74,8 @@ public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfx
         return raced != null ? raced : made;
     }
 
-    /** This definition carrying {@code behaviour}. */
+    /** This definition carrying {@code behaviour}, its emitters kept. */
     public CgVfxSystemDefinition withBehaviour(CgVfxBehaviour.Factory behaviour) {
-        return new CgVfxSystemDefinition(name, look, behaviour);
+        return new CgVfxSystemDefinition(name, look, behaviour, emitters);
     }
 }
