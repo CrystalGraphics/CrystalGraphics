@@ -47,7 +47,7 @@ public class CgVfxEmitterCompilerTest {
     public void modulesRunInStackOrderAroundTheSolver() {
         String glsl = CgVfxEmitterCompiler.source(CgVfxShape.of(EVERY_KIND));
         int solve = glsl.indexOf("// The solve");
-        String[] before = {"fx_gravity(p, f, s", "fx_drag(p, f, s", "fx_wind(p, f, s", "fx_turbulence(p, f, s",
+        String[] before = {"fx_gravity(p, f, s", "fx_drag(p, f, s", "fx_wind(p, f, s", "fx_curl_noise(p, f, s",
                 "fx_buoyancy(p, f, s", "fx_updraft(p, f, s", "fx_spin(p, f, s"};
         int at = -1;
         for (String call : before) {
@@ -66,7 +66,7 @@ public class CgVfxEmitterCompilerTest {
         String glsl = CgVfxEmitterCompiler.source(shape);
         int turbulence = 3, ground = 6;
         int p = shape.paramAt(turbulence), l = shape.lanesAt(turbulence);
-        assertTrue(glsl, glsl.contains("fx_turbulence(p, f, s, step_param(row + " + p + "), ivec4(INSTANCES(inst + " + l
+        assertTrue(glsl, glsl.contains("fx_curl_noise(p, f, s, step_param(row + " + p + "), ivec4(INSTANCES(inst + " + l
                 + ")), step_instance(inst + " + (l + 1) + "), ivec4(INSTANCES(inst + " + (l + 2) + ")), step_instance(inst + "
                 + (l + 3) + "));"));
         assertTrue(glsl, glsl.contains("fx_ground(p, s, step_param(row + " + shape.paramAt(ground) + "), step_floor(p, inst));"));

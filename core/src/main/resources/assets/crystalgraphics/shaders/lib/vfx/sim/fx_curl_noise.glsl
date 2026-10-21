@@ -1,11 +1,11 @@
-// CgVfxModule.Turbulence: a curl-noise force, the field fixed in the world so neighbours swirl together.
+// CgVfxModule.Turbulence, Niagara's Curl Noise Force: the field fixed in the world so neighbours swirl together.
 // m: strength (blocks a second squared), frequency (a block), evolve (a second). cell0, frac0, cell1, frac1: where the
 // instance's origin samples each octave, split in doubles on the CPU with the drift folded in (fx_curl.glsl).
 #pragma once
 #include "crystalgraphics:shaders/lib/vfx/sim/fx_types.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_curl.glsl"
 
-void fx_turbulence(inout FxParticle p, inout FxForces f, FxStep s, vec4 m, ivec4 cell0, vec4 frac0, ivec4 cell1,
+void fx_curl_noise(inout FxParticle p, inout FxForces f, FxStep s, vec4 m, ivec4 cell0, vec4 frac0, ivec4 cell1,
                    vec4 frac1) {
     if (p.resting) return;
     vec3 at = p.position * m.y;

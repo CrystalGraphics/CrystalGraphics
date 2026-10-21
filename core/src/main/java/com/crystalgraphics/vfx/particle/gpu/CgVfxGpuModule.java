@@ -27,7 +27,7 @@ import com.crystalgraphics.api.texture.CgTexture;
  * private static final CgVfxLane[] LANES = {CgVfxLane.IVEC4, CgVfxLane.VEC4};
  * public CgVfxLane[] instanceLanes() { return LANES; }
  * public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) { out.ivec4(...).vec4(...); }
- * // void fx_turbulence(inout FxParticle p, inout FxForces f, FxStep s, vec4 m, ivec4 cell, vec4 frac)
+ * // void fx_curl_noise(inout FxParticle p, inout FxForces f, FxStep s, vec4 m, ivec4 cell, vec4 frac)
  * }</pre>
  *
  * <p>After the solver: no forces, and the world values it declares after its lanes:</p>

@@ -2,10 +2,13 @@ package com.crystalgraphics.vfx.particle;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 
 import javax.annotation.Nullable;
@@ -173,7 +176,7 @@ public final class CgVfxEmitterAssets {
             }
             CgVfxModuleTypes.Kind<?> kind = CgVfxModuleTypes.kind(moduleId(entry));
             if (kind == null) throw new IllegalArgumentException(name + ": no module " + entry.get("module"));
-            if (!(kind.compile(inputs(entry)) instanceof CgVfxModule module)) {
+            if (!(kind.compile(taken(name, entry, kind)) instanceof CgVfxModule module)) {
                 throw new IllegalArgumentException(name + ": module " + entry.get("module") + " is a mod's kind; an asset names the engine's");
             }
             b.module(module);
@@ -311,6 +314,37 @@ public final class CgVfxEmitterAssets {
             }
         }
         return in;
+    }
+
+    /**
+     * Its inputs {@code kind} takes. One {@code modules.yaml} declares that the engine does not take yet (Unreal's
+     * {@code curl_noise.bias}) is accepted at its default alone, and fails here, by name, at any other value.
+     */
+    private static Map<?, ?> taken(String name, Map<?, ?> entry, CgVfxModuleTypes.Kind<?> kind) {
+        Map<?, ?> in = inputs(entry);
+        Set<String> takes = new HashSet<>();
+        for (CgProperty p : kind.inputs().properties()) takes.add(p.name());
+        CgModuleTypes.Module declared = CgModuleTypes.builtIn().get(moduleId(entry));
+        Map<Object, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : in.entrySet()) {
+            if (takes.contains(String.valueOf(e.getKey()))) {
+                out.put(e.getKey(), e.getValue());
+                continue;
+            }
+            Object fallback = null;
+            if (declared != null) {
+                for (CgProperty p : declared.inputs().properties()) {
+                    if (p.name().equals(e.getKey()) && p.defaultValue() != null) {
+                        fallback = CgUnits.UNREAL.toHost(p.defaultValue(), p.quantity());
+                    }
+                }
+            }
+            if (!Objects.equals(e.getValue(), fallback)) {
+                throw new IllegalArgumentException(name + ": " + entry.get("module") + ".inputs." + e.getKey()
+                        + " is not taken by the engine yet, only at its default " + fallback);
+            }
+        }
+        return out;
     }
 
     /** Whether every input {@code p}'s gate names holds the value it asks for; a list is any of its values. */

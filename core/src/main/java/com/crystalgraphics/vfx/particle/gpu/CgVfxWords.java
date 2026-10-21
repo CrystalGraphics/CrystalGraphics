@@ -37,7 +37,7 @@ public final class CgVfxWords {
      *
      * <pre>{@code
      * int[] words = new int[8];
-     * CgVfxWords out = CgVfxWords.into(words, 0, 2, "turbulence");
+     * CgVfxWords out = CgVfxWords.into(words, 0, 2, "curl_noise");
      * turbulence.writeInstance(instance, out);
      * out.finish("its lanes");
      * }</pre>

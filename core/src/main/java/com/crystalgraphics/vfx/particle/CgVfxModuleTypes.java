@@ -234,7 +234,7 @@ public final class CgVfxModuleTypes {
                 r -> new CgVfxModule.Drag(r.f("drag") * r.f("scale"), r.b("use_quadratic") ? r.f("quadratic") : 0f));
         kind("wind", CgVfxModule.Wind.class, t -> fl(t, "resistance"),
                 (m, in) -> in.f("resistance", m.resistance()), r -> new CgVfxModule.Wind(r.f("resistance")));
-        kind("turbulence", CgVfxModule.Turbulence.class, t -> fl(t, "strength", "frequency", "evolve"),
+        kind("curl_noise", CgVfxModule.Turbulence.class, t -> fl(t, "strength", "frequency", "evolve"),
                 (m, in) -> in.f("strength", m.strength()).f("frequency", m.frequency()).f("evolve", m.evolve()),
                 r -> new CgVfxModule.Turbulence(r.f("strength"), r.f("frequency"), r.f("evolve")));
         kind("buoyancy", CgVfxModule.Buoyancy.class, t -> fl(t, "lift", "cooling"),
@@ -262,11 +262,11 @@ public final class CgVfxModuleTypes {
                 (m, in) -> in.v3("axis", m.axisX(), m.axisY(), m.axisZ()).f("turns", m.turns()).v3("offset", m.x(), m.y(), m.z()),
                 r -> new CgVfxModule.Orbit(r.f("turns"), r.f("axis", 0), r.f("axis", 1), r.f("axis", 2),
                         r.f("offset", 0), r.f("offset", 1), r.f("offset", 2)));
-        kind("vortex", CgVfxModule.Vortex.class, t -> { v3(t, "axis"); fl(t, "tangential", "radial"); offset(t); },
+        kind("vortex", CgVfxModule.Vortex.class, t -> { v3(t, "axis"); fl(t, "tangential", "radial"); offset(t, "origin"); },
                 (m, in) -> in.v3("axis", m.axisX(), m.axisY(), m.axisZ()).f("tangential", m.tangential()).f("radial", m.radial())
-                        .v3("offset", m.x(), m.y(), m.z()),
+                        .v3("origin", m.x(), m.y(), m.z()),
                 r -> new CgVfxModule.Vortex(r.f("axis", 0), r.f("axis", 1), r.f("axis", 2), r.f("tangential"), r.f("radial"),
-                        r.f("offset", 0), r.f("offset", 1), r.f("offset", 2)));
+                        r.f("origin", 0), r.f("origin", 1), r.f("origin", 2)));
         kind("flock", CgVfxModule.Flock.class,
                 t -> { fl(t, "radius", "separation", "alignment", "cohesion", "apart"); t.property("most", CgValueType.INT).defaultValue(24); },
                 (m, in) -> in.f("radius", m.radius()).f("separation", m.separation()).f("alignment", m.alignment())
@@ -277,9 +277,9 @@ public final class CgVfxModuleTypes {
         kind("gas_feed", CgVfxModule.Feed.class, t -> fl(t, "density", "heat", "push"),
                 (m, in) -> in.f("density", m.density()).f("heat", m.heat()).f("push", m.push()),
                 r -> new CgVfxModule.Feed(r.f("density"), r.f("heat"), r.f("push")));
-        kind("grid_splat", CgVfxModule.Splat.class, t -> t.property("weights", CgValueType.VEC4),
-                (m, in) -> in.v4("weights", m.x(), m.y(), m.z(), m.w()),
-                r -> new CgVfxModule.Splat(r.f("weights", 0), r.f("weights", 1), r.f("weights", 2), r.f("weights", 3)));
+        kind("grid_splat", CgVfxModule.Splat.class, t -> t.property("value", CgValueType.VEC4),
+                (m, in) -> in.v4("value", m.x(), m.y(), m.z(), m.w()),
+                r -> new CgVfxModule.Splat(r.f("value", 0), r.f("value", 1), r.f("value", 2), r.f("value", 3)));
         kind("grid_follow", CgVfxModule.Follow.class,
                 t -> { t.property("channel", CgValueType.INT); fl(t, "sense", "angle", "turn", "full"); },
                 (m, in) -> in.i("channel", m.channel()).f("sense", m.sense()).f("angle", m.angle()).f("turn", m.turn()).f("full", m.full()),
@@ -391,7 +391,12 @@ public final class CgVfxModuleTypes {
     }
 
     private static void offset(CgType.Builder t) {
-        t.property("offset", CgValueType.VEC3).defaultValue(Arrays.asList(0.0, 0.0, 0.0)).flags(CgPropertyFlag.PER_INSTANCE);
+        offset(t, "offset");
+    }
+
+    /** A place from the source, written per instance: {@code name} as the format names it. */
+    private static void offset(CgType.Builder t, String name) {
+        t.property(name, CgValueType.VEC3).defaultValue(Arrays.asList(0.0, 0.0, 0.0)).flags(CgPropertyFlag.PER_INSTANCE);
     }
 
     private static void planeRadius(CgType.Builder t) {

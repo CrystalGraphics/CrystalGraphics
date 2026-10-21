@@ -169,7 +169,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public String gpuKind() {
-            return "turbulence";
+            return "curl_noise";
         }
 
         @Override

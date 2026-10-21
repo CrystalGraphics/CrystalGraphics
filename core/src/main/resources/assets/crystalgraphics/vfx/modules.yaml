@@ -181,18 +181,35 @@ modules:
       { name: group, type: string },
       { name: target, type: enum, values: [linear_force, linear_velocity, kill, orbit, speed_scale, angular_velocity, scale, strain] },
       { name: scale, type: float, rolls: particle, default: 1 } ] }
-  - { id: wind, groups: [particle_update], order: forces, inputs: [ { name: resistance, type: float } ] }
-  - { id: buoyancy, groups: [particle_update], order: forces, inputs: [] }
-  - { id: updraft, groups: [particle_update], order: forces, inputs: [] }
-  - { id: flock, groups: [particle_update], order: forces, inputs: [] }
-  - { id: conform, groups: [particle_update], order: forces, inputs: [] }
-  - { id: ground, groups: [particle_update], order: after_solve, inputs: [] }
-  - { id: current, groups: [particle_update], order: forces, inputs: [] }
-  - { id: flow, groups: [particle_update], order: forces, inputs: [] }
-  - { id: gas_feed, groups: [particle_update], order: forces, inputs: [] }
-  - { id: grid_splat, groups: [particle_update], order: after_solve, inputs: [] }
-  - { id: grid_follow, groups: [particle_update], order: forces, inputs: [] }
-  - { id: grid_gradient, groups: [particle_update], order: forces, inputs: [] }
+  # ours: Niagara does these with data interfaces and simulation stages, so no standard module carries their inputs
+  - { id: wind, groups: [particle_update], order: forces, inputs: [ { name: resistance, type: float, quantity: rate } ] }
+  - { id: buoyancy, groups: [particle_update], order: forces, inputs: [
+      { name: lift, type: float, quantity: acceleration }, { name: cooling, type: float, quantity: time } ] }
+  - { id: updraft, groups: [particle_update], order: forces, inputs: [
+      { name: strength, type: float, quantity: acceleration }, { name: radius, type: float, quantity: length },
+      { name: height, type: float, quantity: length }, { name: duration, type: float, quantity: time } ] }
+  - { id: flock, groups: [particle_update], order: forces, inputs: [
+      { name: radius, type: float, quantity: length }, { name: apart, type: float, quantity: length },
+      { name: separation, type: float, quantity: acceleration }, { name: alignment, type: float, quantity: rate },
+      { name: cohesion, type: float, quantity: rate }, { name: most, type: int, default: 24 } ] }
+  - { id: conform, groups: [particle_update], order: forces, inputs: [
+      { name: radius, type: float, quantity: length }, { name: origin, type: vec3, quantity: offset, default: [0, 0, 0] },
+      { name: influence, type: float, quantity: length }, { name: attraction, type: float, quantity: acceleration },
+      { name: speed, type: float, quantity: speed }, { name: shell, type: float, quantity: length, default: 0.1 },
+      { name: sticky, type: float, default: 2 } ] }
+  - { id: current, groups: [particle_update], order: after_solve, inputs: [
+      { name: depth, type: float, quantity: length }, { name: roll, type: float, quantity: rate },
+      { name: loft, type: float, quantity: acceleration }, { name: slow, type: float, quantity: speed } ] }
+  - { id: flow, groups: [particle_update], order: forces, inputs: [ { name: follow, type: float, quantity: rate } ] }
+  - { id: gas_feed, groups: [particle_update], order: forces, inputs: [
+      { name: density, type: float, quantity: rate }, { name: heat, type: float, quantity: rate }, { name: push, type: float, quantity: rate } ] }
+  - { id: grid_splat, groups: [particle_update], order: after_solve, inputs: [ { name: value, type: vec4 } ] }
+  - { id: grid_rasterize, groups: [particle_update], order: after_solve, inputs: [ { name: density, type: vec4 } ] }
+  - { id: grid_follow, groups: [particle_update], order: forces, inputs: [
+      { name: channel, type: int }, { name: sense, type: float, quantity: length }, { name: angle, type: float, quantity: angle },
+      { name: turn, type: float, quantity: rate }, { name: full, type: float, default: 0 } ] }
+  - { id: grid_gradient, groups: [particle_update], order: forces, inputs: [
+      { name: channel, type: int }, { name: strength, type: float, quantity: acceleration } ] }
 
   # particle update: appearance
   - { id: color, groups: [particle_update], analytic: true, unreal: { niagara: Color, cascade: [ColorOverLife] }, inputs: [
@@ -245,6 +262,10 @@ modules:
       { name: restitution, type: vec3, default: [0.6, 0.6, 0.6] }, { name: rotation_restitution, type: vec3, default: [1, 1, 1] },
       { name: restitution_scale, type: float, by: [age], default: 1 }, { name: radius_bias, type: float, quantity: length, default: 0 },
       { name: friction, type: float, default: 0.25 },
+      # Niagara's rest state: static friction engages under its speed, a particle at rest for the time range stays
+      { name: static_friction, type: float, default: 0.5 }, { name: static_friction_speed, type: float, quantity: speed, default: 1 },
+      { name: rest_state, type: bool, default: true }, { name: rest_time, type: float, quantity: time, default: 0.5, visible_when: { rest_state: true } },
+      { name: particle_radius_scale, type: float, default: 1 },
       { name: max_collisions, type: int, forms: [constant, range], default: null },
       { name: on_complete, type: enum, values: [kill, freeze, halt, freeze_translation, freeze_rotation, freeze_movement], default: kill },
       { name: delay, type: float, quantity: time, default: 0 }, { name: max_distance, type: float, quantity: length, default: 1000 },
