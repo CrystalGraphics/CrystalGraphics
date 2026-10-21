@@ -19,6 +19,7 @@ import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 
+import java.util.Locale;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -1007,6 +1008,8 @@ public final class CgMaterialShaderCompiler {
      * in an Emissive pass, times {@code CG_SCENE_GLOW} too, the world's gain on glows drawn into the HDR scene.
      */
     private static void appendPassDefine(StringBuilder sb, CgParsedShader shader, CgParsedPass pass) {
+        // The vertex factory an engine buffer's env places vertices for: CG_TYPE_NONE, CG_TYPE_SPATIAL.
+        sb.append("#define CG_TYPE_").append(shader.shaderType().toUpperCase(Locale.ROOT)).append(" 1\n");
         if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())) sb.append("#define CG_EMISSIVE_PASS 1\n");
         if (CgParsedPass.LIGHT_MODE_DISTORTION.equals(pass.lightMode())) sb.append("#define CG_DISTORTION_PASS 1\n");
         sb.append("#define CG_EMISSION (vec3(1.0)");

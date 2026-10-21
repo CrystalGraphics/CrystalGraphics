@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.material.parse;
 
+import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import org.junit.Test;
 
 import java.util.List;
@@ -93,5 +94,41 @@ public class CgShaderParserUsePragmaTest {
         assertThrows(CgShaderParseException.class, () ->
                 CgShaderParser.parse(shader("#pragma cg_use", "        gl_Position = vec4(0.0);"),
                         "test:blank.shader"));
+    }
+
+    private static final String PROPS_TOKEN = "test_engine_props";
+
+    private static void registerPropsToken() {
+        if (CgEngineBufferRegistry.get(PROPS_TOKEN) != null) return;
+        CgEngineBufferRegistry.registerWithProperties(PROPS_TOKEN, () -> null, "TEST_ENGINE_PROPS_DATA", null,
+                """
+                _cg_Spin ("Turns a second", float) = 0.5
+                _cg_Tint ("A tint", color) = (1, 1, 1, 1)
+                """);
+    }
+
+    /** A token's properties are the declaring shader's own, after its authored ones. */
+    @Test
+    public void aTokensPropertiesBecomeTheShadersOwn() {
+        registerPropsToken();
+        CgParsedShader parsed = CgShaderParser.parse(shader("#pragma cg_use " + PROPS_TOKEN + """
+
+                Properties {
+                    _Mine ("Authored", float) = 1
+                }
+                """, "        gl_Position = vec4(0.0);"), "test:engine-props.shader");
+        assertEquals(List.of("_Mine", "_cg_Spin", "_cg_Tint"),
+                parsed.properties().stream().map(p -> p.getName()).toList());
+    }
+
+    /** _cg_ is the engine's: a shader declaring one itself is refused, so no port can shadow a factory setting. */
+    @Test
+    public void anAuthoredCgUnderscorePropertyIsRefused() {
+        CgShaderParseException e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parse(shader("""
+                Properties {
+                    _cg_Spin ("Mine", float) = 1
+                }
+                """, "        gl_Position = vec4(0.0);"), "test:reserved.shader"));
+        assertTrue(e.getMessage(), e.getMessage().contains("_cg_"));
     }
 }

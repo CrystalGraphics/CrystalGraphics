@@ -49,7 +49,7 @@ final class CgStructureParser {
     private static final Pattern BUFFERS_BLOCK_PATTERN = Pattern.compile("\\bBuffers\\s*\\{");
     private static final Pattern STRUCT_PATTERN = Pattern.compile("\\bstruct\\s+([A-Za-z_]\\w*)\\s*\\{");
 
-    static final String[] RESERVED_PREFIXES = {"cg_", "CG_", "_v2f_"};
+    static final String[] RESERVED_PREFIXES = {"cg_", "CG_", "_v2f_", "_cg_"};
 
     /** A material's {@code Buffers { }}, and the declarations of the structs their elements name. */
     @Desugar
@@ -518,7 +518,7 @@ final class CgStructureParser {
                 throw new CgShaderParseException(
                         "[" + resourcePath + "] Name '" + name + "' in " + context
                         + " uses engine-reserved prefix '" + prefix
-                        + "'. Engine-reserved prefixes (cg_, CG_, _v2f_) must not be used in authored symbols.");
+                        + "'. Engine-reserved prefixes (cg_, CG_, _v2f_, _cg_) must not be used in authored symbols.");
             }
         }
     }

@@ -195,7 +195,7 @@ public final class CgShaderParser {
                 CgStructureParser.parseUsePragmas(source, resourcePath));
         validateEngineBufferUsage(source, engineBuffers, resourcePath);
         noteGeneratedReads(engineBuffers);
-        List<CgMaterialProperty> props = CgPropertiesParser.parse(source, resourcePath);
+        List<CgMaterialProperty> props = withEngineProperties(CgPropertiesParser.parse(source, resourcePath), engineBuffers);
         if (engineBuffers.contains(ROWS)) props = withRowSlots(props);
         CgStructureParser.MaterialBuffers buffers = CgStructureParser.parseBuffers(stripGlslComments(source), resourcePath);
         int renderQueue                = CgQueueParser.parse(source, resourcePath);
@@ -468,6 +468,18 @@ public final class CgShaderParser {
      * made {@code example.shader}, the reference file this project tells authors to read first,
      * unparseable by the very feature it describes.</p>
      */
+    /** {@code authored} and after them every declared engine buffer's own properties, in declaration order. */
+    private static List<CgMaterialProperty> withEngineProperties(List<CgMaterialProperty> authored, List<String> declared) {
+        List<CgMaterialProperty> out = null;
+        for (String token : declared) {
+            CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(token);
+            if (provider == null || provider.properties() == null) continue;
+            if (out == null) out = new ArrayList<>(authored);
+            out.addAll(CgPropertiesParser.parseEngine(provider.properties(), token));
+        }
+        return out == null ? authored : Collections.unmodifiableList(out);
+    }
+
     /** A buffer whose GLSL is generated is read as its generated path, so what generates it can recompile this shader. */
     private static void noteGeneratedReads(List<String> declared) {
         for (String token : declared) {

@@ -110,7 +110,23 @@ public final class CgEngineBufferRegistry {
      */
     public static synchronized void register(String token, Supplier<CgShaderBuffer> buffer, String macroName,
                                              String envPath, String... requires) {
-        put(new Provider(token, buffer, macroName, envPath, List.of(requires), null, false));
+        put(new Provider(token, buffer, macroName, envPath, List.of(requires), null, false, null));
+    }
+
+    /**
+     * As {@link #register(String, Supplier, String, String, String...)}, with properties every shader declaring the
+     * token takes as its own: a {@code Properties { }} body, each name with the reserved {@code _cg_} prefix. Under
+     * {@code cg_use rows} they are row properties like any other, so whoever draws sets them per draw.
+     *
+     * <pre>{@code
+     * CgEngineBufferRegistry.registerWithProperties("myfactory", MyBuffer::buffer, "MY_DATA",
+     *         "mymod:shaders/env/myfactory.glsl", "_cg_Spin (\"Turns a second\", float) = 0");
+     * }</pre>
+     */
+    public static synchronized void registerWithProperties(String token, Supplier<CgShaderBuffer> buffer,
+                                                           String macroName, String envPath, String properties,
+                                                           String... requires) {
+        put(new Provider(token, buffer, macroName, envPath, List.of(requires), null, false, properties));
     }
 
     /**
@@ -121,7 +137,7 @@ public final class CgEngineBufferRegistry {
      */
     public static synchronized void registerGenerated(String token, Supplier<CgShaderBuffer> buffer, String macroName,
                                                       String envPath, Supplier<String> generated) {
-        put(new Provider(token, buffer, macroName, envPath, List.of(), generated, true));
+        put(new Provider(token, buffer, macroName, envPath, List.of(), generated, true, null));
     }
 
     private static void put(Provider provider) {
@@ -176,9 +192,10 @@ public final class CgEngineBufferRegistry {
      * @param generated GLSL made at each compile, after the env file, or null
      * @param perDraw   bound by each draw's binding snapshot, as a material's own attached buffer is, rather than left to
      *                  an executor: a texture-buffer unit does not survive from the upload to the draw
+     * @param properties a {@code Properties { }} body every declaring shader takes, names {@code _cg_}-prefixed, or null
      */
     public record Provider(String token, Supplier<CgShaderBuffer> buffer, String macroName, String envPath,
-                           List<String> requires, Supplier<String> generated, boolean perDraw) {
+                           List<String> requires, Supplier<String> generated, boolean perDraw, String properties) {
 
         /** What a shader reading {@link #generated} is tracked by: no file, a name for {@code CgAssetReloader}. */
         public String generatedPath() {

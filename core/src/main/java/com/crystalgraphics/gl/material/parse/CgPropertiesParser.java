@@ -62,6 +62,18 @@ final class CgPropertiesParser {
      * Parses the {@code Properties { }} block. Returns an empty list if the block is absent.
      */
     static List<CgMaterialProperty> parse(String source, String resourcePath) {
+        return parse(source, resourcePath, false);
+    }
+
+    /**
+     * An engine buffer's properties ({@code CgEngineBufferRegistry.Provider#properties}), a {@code Properties { }} body:
+     * each name takes the reserved {@code _cg_} prefix, which an authored shader may not.
+     */
+    static List<CgMaterialProperty> parseEngine(String body, String token) {
+        return parse("Properties {\n" + body + "\n}", "cg_use " + token, true);
+    }
+
+    private static List<CgMaterialProperty> parse(String source, String resourcePath, boolean engine) {
         int start = source.indexOf("Properties {");
         if (start == -1) start = source.indexOf("Properties{");
         if (start == -1) return Collections.emptyList();
@@ -83,7 +95,7 @@ final class CgPropertiesParser {
                 String[] typeAndDef = parseNewStyleTypeAndDefault(newM.group(3), resourcePath, line);
                 String typeRaw = typeAndDef[0];
                 String defRaw  = typeAndDef[1];
-                CgStructureParser.validateNotReservedPrefix(name, "Properties block", resourcePath);
+                validateName(name, engine, resourcePath);
                 int length = 0;
                 Matcher arrayM = ARRAY_TYPE_PATTERN.matcher(typeRaw);
                 if (arrayM.matches()) {
@@ -120,12 +132,21 @@ final class CgPropertiesParser {
             String name    = m.group(1);
             String typeRaw = m.group(2);
             String defRaw  = m.group(3) != null ? m.group(3).trim() : null;
-            CgStructureParser.validateNotReservedPrefix(name, "Properties block", resourcePath);
+            validateName(name, engine, resourcePath);
             String typeBase = resolvePropertyTypeBase(typeRaw, resourcePath, line);
             defRaw = validateAndStripSamplerDefault(typeBase, defRaw, resourcePath, line);
             result.add(buildProperty(name, name, typeBase, typeRaw, defRaw));
         }
         return Collections.unmodifiableList(result);
+    }
+
+    private static void validateName(String name, boolean engine, String resourcePath) {
+        if (!engine) {
+            CgStructureParser.validateNotReservedPrefix(name, "Properties block", resourcePath);
+        } else if (!name.startsWith("_cg_")) {
+            throw new CgShaderParseException("[" + resourcePath + "] An engine buffer's property '" + name
+                    + "' must take the reserved prefix _cg_");
+        }
     }
 
     /**

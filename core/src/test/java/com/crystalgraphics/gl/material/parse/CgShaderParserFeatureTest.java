@@ -161,7 +161,7 @@ public class CgShaderParserFeatureTest {
     }
 
     @Test(expected = CgShaderParseException.class)
-    public void nineFeaturesExceedsMax_throws() {
+    public void seventeenFeaturesExceedsMax_throws() {
         CgShaderParser.parse(shader(
                 "#pragma cg_feature A",
                 "#pragma cg_feature B",
@@ -171,7 +171,15 @@ public class CgShaderParserFeatureTest {
                 "#pragma cg_feature F",
                 "#pragma cg_feature G",
                 "#pragma cg_feature H",
-                "#pragma cg_feature I"), "test");
+                "#pragma cg_feature I",
+                "#pragma cg_feature J",
+                "#pragma cg_feature K",
+                "#pragma cg_feature L",
+                "#pragma cg_feature M",
+                "#pragma cg_feature N",
+                "#pragma cg_feature O",
+                "#pragma cg_feature P",
+                "#pragma cg_feature Q"), "test");
     }
 
     // ── Compiler integration — pragma never in generated GLSL ────────────────
