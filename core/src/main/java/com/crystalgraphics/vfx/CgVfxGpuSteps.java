@@ -269,6 +269,20 @@ final class CgVfxGpuSteps {
         for (int i = 0; i < tenants.size(); i++) tenants.get(i).warm = false;
     }
 
+    /**
+     * Moves every slot whose instance took a newer emitter ({@code CgVfxEmitterInstance.adopt}, a hot reload's
+     * {@code VALUE} swap) to that emitter's numbers, its renderers made again. Between steps.
+     */
+    void rebind() {
+        for (int i = 0; i < tenants.size(); i++) {
+            Tenant tenant = tenants.get(i);
+            CgVfxEmitter now = tenant.instance.emitter();
+            if (tenant.pool.emitter(tenant.slot) == now) continue;
+            tenant.pool.rebind(tenant.slot, now);
+            tenant.renderers = null;
+        }
+    }
+
     private void book(float at, boolean warmOnly) {
         for (int i = 0; i < tenants.size(); i++) {
             Tenant tenant = tenants.get(i);

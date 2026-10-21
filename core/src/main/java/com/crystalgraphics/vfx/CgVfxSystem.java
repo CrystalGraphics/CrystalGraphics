@@ -5,6 +5,7 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.asset.load.CgAssetFollower;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.texture.CgTexture2D;
@@ -242,11 +243,7 @@ public final class CgVfxSystem {
         if (effect.system != null) throw new IllegalStateException("already played: " + effect);
         effect.system = this;
         effects.add(effect);
-        Object key = effect.definitionKey();
-        CgVfxSystemSimulation simulation = simulations.get(key);
-        if (simulation == null) simulations.put(key, simulation = new CgVfxSystemSimulation(key));
-        simulation.add(effect);
-        effect.simulation = simulation;
+        joinSimulation(effect);
         precull(effect);
         CgVfxOwner owner = effect.owner;
         if (owner != null) {
@@ -340,6 +337,7 @@ public final class CgVfxSystem {
             CgVfxTrace.count(HELD, 1);
             return;
         }
+        adoptDefinitions();
         startLate();
         int ticks = 0;
         long budget = (long) (SIM_BUDGET_MS.get() * 1_000_000L), start = System.nanoTime();
@@ -464,8 +462,42 @@ public final class CgVfxSystem {
         return n;
     }
 
+    private void joinSimulation(CgVfxEffect<?> effect) {
+        Object key = effect.definitionKey();
+        CgVfxSystemSimulation simulation = simulations.get(key);
+        if (simulation == null) simulations.put(key, simulation = new CgVfxSystemSimulation(key));
+        simulation.add(effect);
+        effect.simulation = simulation;
+    }
+
     private void leaveSimulation(CgVfxEffect<?> effect) {
         if (effect.simulation.remove(effect)) simulations.remove(effect.simulation.key());
+    }
+
+    /**
+     * Effects whose asset published a newer definition take it ({@link CgVfxEffect#adopt}), each into its new
+     * definition's simulation; then every slot whose instance took a newer emitter moves to that emitter's numbers.
+     */
+    private void adoptDefinitions() {
+        boolean values = false;
+        for (int i = 0; i < effects.size(); i++) {
+            CgVfxEffect<?> effect = effects.get(i);
+            if (effect.state() == CgVfxEffect.State.DEAD) continue;
+            CgAssetFollower.Adoption adoption;
+            try {
+                adoption = effect.adopt();
+            } catch (RuntimeException e) {
+                fail(effect, e);
+                continue;
+            }
+            if (adoption == CgAssetFollower.Adoption.NONE) continue;
+            values |= adoption == CgAssetFollower.Adoption.VALUE;
+            if (effect.definitionKey() != effect.simulation.key()) {
+                leaveSimulation(effect);
+                joinSimulation(effect);
+            }
+        }
+        if (values) gpuSteps.rebind();
     }
 
     /** Every owner it lists lets go of its effects at once. */

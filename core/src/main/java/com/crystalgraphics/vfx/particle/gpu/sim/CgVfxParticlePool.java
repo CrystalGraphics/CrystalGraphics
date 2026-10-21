@@ -1033,12 +1033,7 @@ public final class CgVfxParticlePool {
     public void close(int slot) {
         betweenSteps("close");
         CgVfxGpuEmitter emitter = openSlot(slot, "close");
-        int[] row = rows.get(emitter);
-        if (--row[1] == 0) {
-            rows.remove(emitter);
-            if (freeRows.length == freeRowCount) freeRows = Arrays.copyOf(freeRows, Math.max(4, freeRowCount * 2));
-            freeRows[freeRowCount++] = row[0];
-        }
+        releaseRow(emitter);
         capacity -= slotCapacity[slot];
         if (ringPoints[slot] > 0) {
             giveRing(ringFirst[slot], slotCapacity[slot] * ringPoints[slot]);
@@ -1053,6 +1048,34 @@ public final class CgVfxParticlePool {
         openSlots--;
         while (slotCount > 0 && slotEmitter[slotCount - 1] == null) slotCount--;
         basesStale = true;
+    }
+
+    /** The emitter open {@code slot} plays. */
+    public CgVfxGpuEmitter emitter(int slot) {
+        return openSlot(slot, "emitter");
+    }
+
+    /**
+     * Moves open {@code slot} to {@code emitter}'s numbers: an instance that took a newer emitter of this pool's shape,
+     * a hot reload's {@code VALUE} swap. Its particles go on under them from the next step. Render thread, between
+     * steps.
+     */
+    public void rebind(int slot, CgVfxGpuEmitter emitter) {
+        betweenSteps("rebind");
+        CgVfxGpuEmitter was = openSlot(slot, "rebind");
+        if (was == emitter) return;
+        releaseRow(was);
+        slotEmitter[slot] = emitter;
+        slotRow[slot] = useRow(emitter);
+    }
+
+    private void releaseRow(CgVfxGpuEmitter emitter) {
+        int[] row = rows.get(emitter);
+        if (--row[1] == 0) {
+            rows.remove(emitter);
+            if (freeRows.length == freeRowCount) freeRows = Arrays.copyOf(freeRows, Math.max(4, freeRowCount * 2));
+            freeRows[freeRowCount++] = row[0];
+        }
     }
 
     /**

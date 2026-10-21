@@ -199,6 +199,46 @@ public final class CgVfxValues {
                 linkFactor.clone(), links, null);
     }
 
+    /**
+     * Keeps over these what {@code current} changed from {@code was}'s own values: a playing effect's values carried
+     * onto a newer look, as Unreal's component keeps its user parameter overrides through a reinit. A value it never
+     * changed takes the newer look's; links it made or broke keep too.
+     *
+     * <pre>{@code
+     * CgVfxValues carried = next.copyValues();
+     * carried.keep(effect.values(), previousLook);
+     * }</pre>
+     *
+     * @return false, keeping nothing, when {@code was} or {@code current} is not these values' size: another layout
+     */
+    public boolean keep(CgVfxValues current, CgVfxLook was) {
+        CgVfxValues base = was.values();
+        if (base.values.length != values.length || base.objects.length != objects.length
+                || current.values.length != values.length || current.objects.length != objects.length) {
+            return false;
+        }
+        for (int i = 0; i < values.length; i++) {
+            if (Float.floatToIntBits(current.values[i]) != Float.floatToIntBits(base.values[i])) values[i] = current.values[i];
+        }
+        for (int i = 0; i < objects.length; i++) if (current.objects[i] != base.objects[i]) objects[i] = current.objects[i];
+        if (!sameLinks(current, base)) {
+            linkTo = Arrays.copyOf(current.linkTo, current.links);
+            linkFrom = Arrays.copyOf(current.linkFrom, current.links);
+            linkFactor = Arrays.copyOf(current.linkFactor, current.links);
+            links = current.links;
+        }
+        resolve();
+        return true;
+    }
+
+    private static boolean sameLinks(CgVfxValues a, CgVfxValues b) {
+        if (a.links != b.links) return false;
+        for (int i = 0; i < a.links; i++) {
+            if (a.linkTo[i] != b.linkTo[i] || a.linkFrom[i] != b.linkFrom[i] || a.linkFactor[i] != b.linkFactor[i]) return false;
+        }
+        return true;
+    }
+
     /** A copy that {@link #takeTuning} keeps up with these: a look's values handed to an effect. */
     CgVfxValues follower() {
         return new CgVfxValues(layout, values.clone(), objects.clone(), linkTo.clone(), linkFrom.clone(),

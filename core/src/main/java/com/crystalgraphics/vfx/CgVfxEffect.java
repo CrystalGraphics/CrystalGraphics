@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.asset.load.CgAssetFollower;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
@@ -136,8 +137,8 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     boolean warmed;
     /** Its emitters' GPU programs have been started. */
     boolean gpuPrepared;
-    private final CgVfxLook look;
-    private final CgVfxValues values;
+    private CgVfxLook look;
+    private CgVfxValues values;
     private State state = State.PLAYING;
     private double groundY = Double.NaN;
     /** The shakes it holds, by parameter; made when first held. */
@@ -267,6 +268,34 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
      */
     protected Object definitionKey() {
         return look;
+    }
+
+    /**
+     * Takes a newer definition its asset published, before its system's ticks: a hot reload. {@code NONE} unless it
+     * plays one, as a {@code CgVfxSystemInstance} played from an asset's ref does; after any other answer its system
+     * moves it to its {@link #definitionKey}'s simulation.
+     */
+    protected CgAssetFollower.Adoption adopt() {
+        return CgAssetFollower.Adoption.NONE;
+    }
+
+    /**
+     * Draws with {@code next} from now. Its values become {@code next}'s but for those set on this effect, which keep
+     * ({@link CgVfxValues#keep}); its materials and programs are warmed again.
+     */
+    protected final void relook(CgVfxLook next) {
+        CgVfxValues carried = next.copyValues();
+        carried.keep(values, look);
+        look = next;
+        values = carried;
+        warmed = false;
+        gpuPrepared = false;
+    }
+
+    /** Plays it again from its start, fast-forwarded to its age now by its system's next update: a structural reload. */
+    protected final void restartAtAge() {
+        startAge = age;
+        age = 0f;
     }
 
     /**

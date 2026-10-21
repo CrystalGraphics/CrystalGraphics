@@ -121,10 +121,7 @@ public final class CgVfxAssets {
         CgVfxAssets a = instance;
         if (a != null) return a;
         synchronized (CgVfxAssets.class) {
-            if (instance == null) {
-                instance = new CgVfxAssets(new CgAssetRegistry());
-                CgAssetReloader.addListener(SAVES);
-            }
+            if (instance == null) install(new CgVfxAssets(new CgAssetRegistry()));
             return instance;
         }
     }
@@ -145,7 +142,14 @@ public final class CgVfxAssets {
     /** Replaces the process's assets: a host with a registry of its own, or a test. */
     public static synchronized void install(CgVfxAssets assets) {
         instance = assets;
+        if (!listening) {
+            listening = true;
+            CgAssetReloader.addListener(SAVES);
+        }
     }
+
+    /** Hot reload's saves reach whichever assets are installed: registered once, by the first install. */
+    private static boolean listening;
 
     /** {@code kind}'s {@code id} on the process's assets: {@code instance().declare(kind, id)}. */
     public static <D> CgAssetRef<D> ref(CgType kind, String id) {

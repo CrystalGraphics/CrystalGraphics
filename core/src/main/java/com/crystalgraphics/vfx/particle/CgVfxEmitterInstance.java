@@ -47,7 +47,7 @@ import java.util.List;
  */
 public final class CgVfxEmitterInstance {
 
-    private final CgVfxEmitter emitter;
+    private CgVfxEmitter emitter;
     private final Books books = new Books();
     private final int seed;
     private float time = -1f, sourceX, sourceY, sourceZ, groundY = Float.NaN;
@@ -102,7 +102,7 @@ public final class CgVfxEmitterInstance {
     /** By event index: the instance its children run in; null where it spawns none. */
     private final CgVfxEmitterInstance[] children;
     /** A child's: the event that feeds it. */
-    private final CgVfxEvent feed;
+    private CgVfxEvent feed;
 
     public CgVfxEmitterInstance(CgVfxEmitter emitter, float seed) {
         this(emitter, Float.floatToIntBits(seed), null, emitter.local);
@@ -121,6 +121,52 @@ public final class CgVfxEmitterInstance {
             CgVfxEvent event = events.get(e);
             // Seeded as its parent, as the kernel keys a child by its parent's id.
             if (event.child() != null) children[e] = new CgVfxEmitterInstance((CgVfxEmitter) event.child(), seedBits, event, local);
+        }
+    }
+
+    /**
+     * Whether {@code next} can take its emitter's place while it plays ({@link #adopt}): the same capacity, life,
+     * locality and renderer, bound by its capacity or not as this one is, and events with children in the same places, each of which can too.
+     */
+    public boolean canAdopt(CgVfxEmitter next) {
+        if (next.capacity != emitter.capacity || next.lifeMax != emitter.lifeMax || next.local != emitter.local
+                || next.renderer() != emitter.renderer() || (feed == null && next.capacity < next.uncappedPeak()) != (dying != null)
+                || next.events.size() != children.length) {
+            return false;
+        }
+        for (int e = 0; e < children.length; e++) {
+            Object child = next.events.get(e).child();
+            if (children[e] == null ? child != null : !(child instanceof CgVfxEmitter c) || !children[e].canAdopt(c)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Plays {@code next} in its emitter's place from its next step, its books, slot and particles kept: a hot reload's
+     * {@code VALUE} swap. Its system moves its slot to the new emitter's numbers.
+     *
+     * <pre>{@code
+     * if (sparks.canAdopt(newer)) sparks.adopt(newer);   // else the system restarts the instance
+     * }</pre>
+     *
+     * @throws IllegalArgumentException unless {@link #canAdopt}
+     */
+    public void adopt(CgVfxEmitter next) {
+        if (!canAdopt(next)) {
+            throw new IllegalArgumentException(next.name() + " cannot take " + emitter.name() + "'s place while it plays");
+        }
+        take(next);
+    }
+
+    private void take(CgVfxEmitter next) {
+        emitter = next;
+        for (int e = 0; e < children.length; e++) {
+            if (children[e] == null) continue;
+            CgVfxEvent event = next.events.get(e);
+            children[e].feed = event;
+            children[e].take((CgVfxEmitter) event.child());
         }
     }
 

@@ -167,6 +167,34 @@ stop.run();
   never touched.
 - Every edit re-resolves the asset; a child of it re-resolves when you rebuild its `CgAssetData` over the new parent.
 
+## Playing an asset, and changing it while it plays
+
+A system played from its ref follows the asset: a newer definition reaches every instance playing it.
+
+```java
+static final CgAssetRef<CgVfxSystemDefinition> CHARGE = CgVfxAssets.ref(CgParticleKinds.SYSTEM, "mymod:kamehameha/charge");
+
+CgLoadHandle loading = CgVfxAssets.instance().load(List.of(CHARGE), CgLoadPriority.MOVE);   // ahead of the move
+if (loading.ready()) VFX.play(new CgVfxSystemInstance<>(CHARGE, x, y, z));                    // follows CHARGE
+
+VFX.play(new CgVfxSystemInstance<>(CHARGE.get(), x, y, z));   // the definition alone: never changes while it plays
+```
+
+What makes a newer definition: a file saved in a dev run (its source folder is watched), an editor's edit, or
+`CgVfxAssets.instance().saved("mymod:vfx/systems/kamehameha/charge.yaml")` from a tool of your own. A saved file is
+compared with the one it replaces and turned into the edits an editor would make, so both reach what plays the same way.
+
+| The change | A playing instance |
+|---|---|
+| A value: a rate, a colour, a module's input | takes it at its next update, its particles and emitters kept |
+| Structure: a module, emitter or renderer added or removed, a capacity | plays again from its start up to its age, its emitters and behaviour made anew |
+
+- **Values set on the instance keep** through either: Unreal keeps a component's user parameters through a reinit.
+- **A value that changes what an emitter is** (its capacity, its life, whether it is local) restarts it too.
+- **A file that no longer reads, resolves or validates** keeps the last good definition and logs why; save it fixed and
+  it takes effect.
+- A restart makes the behaviour anew: hold the instance, not `instance.behaviour()`, across a save.
+
 ## Checking an asset
 
 An asset is checked whole, with what it inherits, as Unreal's data validation checks an object: every key one its

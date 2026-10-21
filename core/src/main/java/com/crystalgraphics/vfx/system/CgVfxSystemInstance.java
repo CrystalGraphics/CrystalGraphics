@@ -1,5 +1,7 @@
 package com.crystalgraphics.vfx.system;
 
+import com.crystalgraphics.asset.load.CgAssetFollower;
+import com.crystalgraphics.asset.load.CgAssetRef;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.look.CgVfxEnding;
@@ -7,6 +9,7 @@ import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.net.CgVfxCue;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
+import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
 
 import javax.annotation.Nullable;
 import java.util.List;
@@ -26,7 +29,7 @@ import java.util.List;
  * beam.stop();                               // INACTIVE, the owner's: no new spawns, particles finish
  * beam.kill();                               // INACTIVE_CLEAR: gone at its system's next step
  *
- * CgVfxSystemInstance<?> fromFile = VFX.play(new CgVfxSystemInstance<>(NOVA.get(), x, y, z));
+ * CgVfxSystemInstance<?> fromFile = VFX.play(new CgVfxSystemInstance<>(NOVA, x, y, z));   // follows its asset
  * fromFile.behaviour(CgEnergyWave.class);    // checked, for an instance whose type is not known here
  * }</pre>
  *
@@ -37,31 +40,57 @@ import java.util.List;
  *   <li>Set {@link #ground} before the first update, or the first tick's particles miss it.</li>
  *   <li>Its behaviour hears its cue: an instance is {@code CgVfxCue.Live} and {@code CgVfxCue.Authoritative} for a
  *       behaviour that is, and nothing for one that is not.</li>
+ *   <li>Played from an asset's ref it follows it: a newer definition (a saved file, an editor's edit) reaches it at its
+ *       next update, its values taken in place where its emitters keep their shape, else played again from its start
+ *       up to its age. That restart makes its emitters and its behaviour anew: hold the instance, not its behaviour,
+ *       across one.</li>
  * </ul>
  */
 public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEffect<CgVfxSystemInstance<B>>
         implements CgVfxCue.Live, CgVfxCue.Authoritative {
 
-    private final CgVfxSystemDefinition definition;
-    private final CgVfxEmitterInstance[] emitters;
+    private CgVfxSystemDefinition definition;
+    private CgVfxEmitterInstance[] emitters;
     @Nullable
-    private final B behaviour;
+    private B behaviour;
+    /** The ref it follows when played from an asset; null for a definition handed over. */
+    @Nullable
+    private final CgAssetFollower<CgVfxSystemDefinition> follower;
     private CgVfxExecutionState requested = CgVfxExecutionState.ACTIVE;
     /** The standing request's source: the lowest until something asks. */
     private CgVfxExecutionSource source = CgVfxExecutionSource.SCALABILITY;
     private boolean grounded;
 
-    @SuppressWarnings("unchecked")   // B is the caller's word for what the definition's factory makes
     public CgVfxSystemInstance(CgVfxSystemDefinition definition, double x, double y, double z) {
+        this(definition, null, x, y, z);
+    }
+
+    /**
+     * {@code ref}'s definition, followed while it plays: a newer one its asset publishes reaches it at its next update.
+     * Loads it now if it has not loaded ({@link CgAssetRef#get}, counted): load its bundle ahead.
+     */
+    public CgVfxSystemInstance(CgAssetRef<CgVfxSystemDefinition> ref, double x, double y, double z) {
+        this(ref.get(), new CgAssetFollower<>(ref), x, y, z);
+    }
+
+    @SuppressWarnings("unchecked")   // B is the caller's word for what the definition's factory makes
+    private CgVfxSystemInstance(CgVfxSystemDefinition definition, @Nullable CgAssetFollower<CgVfxSystemDefinition> follower,
+                                double x, double y, double z) {
         super(definition.look(), x, y, z);
         this.definition = definition;
-        List<CgVfxEmitter> kinds = definition.emitters();
-        emitters = new CgVfxEmitterInstance[kinds.size()];
-        for (int i = 0; i < emitters.length; i++) {
-            emitters[i] = new CgVfxEmitterInstance(kinds.get(i), seed + i * 0.137f);
-            emitters[i].start(0f, 0f, 0f);
-        }
+        this.follower = follower;
+        emitters = emittersOf(definition);
         behaviour = definition.behaviour() == null ? null : (B) definition.behaviour().make(this);
+    }
+
+    private CgVfxEmitterInstance[] emittersOf(CgVfxSystemDefinition d) {
+        List<CgVfxEmitter> kinds = d.emitters();
+        CgVfxEmitterInstance[] made = new CgVfxEmitterInstance[kinds.size()];
+        for (int i = 0; i < made.length; i++) {
+            made[i] = new CgVfxEmitterInstance(kinds.get(i), seed + i * 0.137f);
+            made[i].start(0f, 0f, 0f);
+        }
+        return made;
     }
 
     /** {@code look}'s emitters played once from the origin: a burst ({@link CgVfxSystemDefinition#of(CgVfxLook)}). */
@@ -175,6 +204,61 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
     @Override
     protected Object definitionKey() {
         return definition;
+    }
+
+    /**
+     * Its ref's newer definition, as Niagara's reinit and its desired age: a {@code VALUE} swap whose emitters each take
+     * the new one's place in the same pools is taken in place; anything else plays it again up to its age.
+     */
+    @Override
+    protected CgAssetFollower.Adoption adopt() {
+        if (follower == null) return CgAssetFollower.Adoption.NONE;
+        CgAssetFollower.Adoption adoption = follower.poll();
+        if (adoption == CgAssetFollower.Adoption.NONE) return adoption;
+        CgVfxSystemDefinition next = follower.definition();
+        if (adoption == CgAssetFollower.Adoption.VALUE && takesValues(next)) {
+            relook(next.look());
+            for (int i = 0; i < emitters.length; i++) emitters[i].adopt(next.emitters().get(i));
+            definition = next;
+            return adoption;
+        }
+        restart(next);
+        return CgAssetFollower.Adoption.RESTART;
+    }
+
+    /** Whether {@code next}'s emitters can each take its own's place, in the same pools, under the same behaviour. */
+    private boolean takesValues(CgVfxSystemDefinition next) {
+        List<CgVfxEmitter> kinds = next.emitters();
+        if (kinds.size() != emitters.length || next.behaviour() != definition.behaviour()) return false;
+        for (int i = 0; i < emitters.length; i++) {
+            if (!emitters[i].canAdopt(kinds.get(i)) || !samePools(emitters[i].emitter(), kinds.get(i))) return false;
+        }
+        return true;
+    }
+
+    /** Whether {@code a} and {@code b}, and their events' children, simulate in pools of one shape. */
+    private static boolean samePools(CgVfxEmitter a, CgVfxEmitter b) {
+        if (!CgVfxShape.of(a).key().equals(CgVfxShape.of(b).key())) return false;
+        for (int e = 0; e < a.events().size(); e++) {
+            if (a.events().get(e).child() instanceof CgVfxEmitter ca && b.events().get(e).child() instanceof CgVfxEmitter cb
+                    && !samePools(ca, cb)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Plays {@code next} from its start up to its age now: its old emitters killed, its behaviour made anew. */
+    @SuppressWarnings("unchecked")
+    private void restart(CgVfxSystemDefinition next) {
+        for (CgVfxEmitterInstance e : emitters) e.kill();
+        definition = next;
+        relook(next.look());
+        emitters = emittersOf(next);
+        grounded = false;
+        behaviour = next.behaviour() == null ? null : (B) next.behaviour().make(this);
+        if (requested != CgVfxExecutionState.ACTIVE) for (CgVfxEmitterInstance e : emitters) e.stop();
+        restartAtAge();
     }
 
     @Override
