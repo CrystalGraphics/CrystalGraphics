@@ -214,6 +214,28 @@ CgVfxSystemDefinition back = CgVfxSystemAssets.compile(                         
   back, it is inline.
 - Curves, palettes and shakes are not `user` parameters yet: a schema's are kept in code and left out of the file.
 
+### What an emitter file carries
+
+Every builder field is written through the format's modules (`CgVfxEmitterAssets`), so an emitter compiled from its
+file alone is the one that wrote it:
+
+| Builder | File |
+|---|---|
+| `capacity`, `local`, `optional` | `properties`: `capacity`, `local_space`, `scalability: [{ tiers: [low], scale_spawn_count: true, spawn_count_scale: 0.5 }]` |
+| `state`, `rate` (and its scale curve), `burst`, `ratePerBlock`, `maxStep` | `emitter_update`: `emitter_state`, `spawn_rate { rate, scale: { curve, by: loop } }`, `spawn_burst`, `spawn_per_unit` |
+| `life`, `heat`, `size`, `color`, `scale` | `initialize_particle`: `lifetime`, `heat`, `sprite_size`, `color`, `mesh_scale`. A size's skew is `sprite_size` as a curve by a random draw |
+| `shape` and its placement, `pointing`, `at`, `mesh`, `entity` | `shape_location`: the shape's own inputs, `surface_only` (with `surface_thickness` for a shell or a ring), `edge_only`, `hemisphere`, `arc`, `ordered`, `rotation` (a quaternion), `offset`. A sweep is the radius as a curve by loop |
+| `outward`, `inward`, `direction`, `speed`, `inherit` | `add_velocity`: `mode` (`outward`, `inward`, `in_cone` with `cone_axis`, `cone_angle` and `inner_cone`, Unreal's apex angles) |
+| `size(curve)`, `scaleOverLife`, `colorOverLife`, `opacity`, `intensityOverLife` | `scale_sprite_size`, `scale_mesh_size`, `scale_color { scale, alpha, intensity }`, curves by age |
+| `spin`, `rasterize` | `sprite_rotation_rate` (its rate `crystalgraphics:random_sign` of a range), `grid_rasterize { density }` |
+| each `module` | its file id: `curl_noise`, `acceleration`, `collision` (by `against`: `shape`, `world`, `depth`, `entities`), `kill_volume`, `point_attractor`, `orbit_axis`, the rest by their own |
+
+- **Curves are `FRichCurve`'s keys**: a linear segment linear; a quad or cubic easing a cubic with its tangents,
+  exactly; any other easing 32 cubic pieces at its own slope.
+- **The renderer, trail, clip, events and bindings are not in the file yet**: they come from the code-built emitter
+  of the same id (`compiler(templates)`), else the builder's defaults.
+- An input the format declares and the engine does not take yet reads at its default alone, and fails by name otherwise.
+
 ## Playing an asset, and changing it while it plays
 
 A system played from its ref follows the asset: a newer definition reaches every instance playing it.

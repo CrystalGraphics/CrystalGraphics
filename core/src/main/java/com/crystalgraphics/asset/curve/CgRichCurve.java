@@ -170,6 +170,25 @@ public final class CgRichCurve {
         return values[key];
     }
 
+    /** The interpolation of the segment key {@code key} starts: {@link #CONSTANT}, {@link #LINEAR} or {@link #CUBIC}. */
+    public int interp(int key) {
+        return interp[key];
+    }
+
+    /** Key {@code key}'s arriving and leaving tangents, value a time, as evaluated (auto ones as computed). */
+    public float arrive(int key) {
+        return arrive[key];
+    }
+
+    public float leave(int key) {
+        return leave[key];
+    }
+
+    /** Whether key {@code key} weights either tangent: a 2D Bezier, which a Hermite does not reproduce. */
+    public boolean weighted(int key) {
+        return weightMode[key] != WEIGHT_NONE;
+    }
+
     /** Sets key {@code key}'s value in place, recomputing auto tangents: a patch to the live curve. */
     public void setValue(int key, float value) {
         values[key] = value;

@@ -59,6 +59,20 @@ final class CgVfxSpawnShape {
         return given.kind;
     }
 
+    /** What the builder was given: an emitter file's writer reads it. */
+    Builder given() {
+        return given;
+    }
+
+    /** From the sampling frame to the source's: its rotation (x, y, z, w) and its offset. */
+    float[] turn() {
+        return new float[]{qx, qy, qz, qw};
+    }
+
+    float[] place() {
+        return new float[]{ox, oy, oz};
+    }
+
     /** Whether it launches toward its middle ({@code add_velocity}'s {@code inward} mode). */
     boolean inward() {
         return given.mode == INWARD;
@@ -125,6 +139,7 @@ final class CgVfxSpawnShape {
         s.atX *= scale;
         s.atY *= scale;
         s.atZ *= scale;
+        if (s.place != null) s.place = new float[]{s.place[0] * scale, s.place[1] * scale, s.place[2] * scale};
         return s.build(name);
     }
 
@@ -143,6 +158,8 @@ final class CgVfxSpawnShape {
         /** The shape's own axis and middle, in its own space; where it is pointed (NaN for its own); where it sits. */
         float axisX, axisY = 1f, axisZ, midX, midY, midZ;
         float pointX = Float.NaN, pointY, pointZ, atX, atY, atZ;
+        /** A file's rotation (x, y, z, w) and offset, in place of the ones resolved from the axis, pointing and at. */
+        float[] turn, place;
 
         Builder() {
         }
@@ -278,6 +295,8 @@ final class CgVfxSpawnShape {
             }
             Builder given = new Builder();
             given.copy(this);
+            if (turn != null) return new CgVfxSpawnShape(given, new Quaternionf(turn[0], turn[1], turn[2], turn[3]),
+                    new Vector3f(place[0], place[1], place[2]));
             return new CgVfxSpawnShape(given, q, offset.add(atX, atY, atZ));
         }
 
@@ -310,6 +329,8 @@ final class CgVfxSpawnShape {
             atZ = s.atZ;
             mesh = s.mesh;
             meshPath = s.meshPath;
+            turn = s.turn;
+            place = s.place;
         }
     }
 }

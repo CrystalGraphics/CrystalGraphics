@@ -1096,6 +1096,40 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
+        /** Halved at the Low tier or not, as an asset's spawn count scale says. */
+        Builder optional(boolean optional) {
+            this.optional = optional;
+            return this;
+        }
+
+        /** Where particles are born, as an asset's {@code shape_location} and {@code add_velocity} set it. */
+        CgVfxSpawnShape.Builder spawn() {
+            return spawn;
+        }
+
+        /** Its start colour's two ends as rgb times intensity and alpha: an asset's floats, kept exactly. */
+        Builder colors(float[] from, float[] to) {
+            colorFrom = from.clone();
+            colorTo = to.clone();
+            return this;
+        }
+
+        /**
+         * What an emitter file does not carry yet, taken from {@code t}: its renderer, trail and clip (P8), its events
+         * (P9) and its bindings (P6.3).
+         */
+        Builder carry(CgVfxEmitter t) {
+            renderer = t.renderer;
+            trailPoints = t.trailPoints;
+            clip = t.clip;
+            playRate = t.playRate;
+            events.clear();
+            events.addAll(t.events.subList(0, t.ownEvents));
+            userBindings.clear();
+            userBindings.addAll(t.userBindings);
+            return this;
+        }
+
         /**
          * Binds one of its inputs to a user parameter, read from its effect's values each step ({@link CgVfxUserBinding}).
          *

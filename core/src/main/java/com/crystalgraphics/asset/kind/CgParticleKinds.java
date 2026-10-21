@@ -72,6 +72,13 @@ public final class CgParticleKinds {
             .property("fixed", CgValueType.listOf(VEC3)).quantity(CgQuantity.POSITION)
             .register();
 
+    /** {@code FNiagaraEmitterScalabilitySettings}. */
+    static final CgType EMITTER_SCALABILITY = CgTypes.struct("crystalgraphics:effect_type.emitter")
+            .property("tiers", TIERS)
+            .property("scale_spawn_count", BOOL).defaultValue(false).toggleFor("spawn_count_scale")
+            .property("spawn_count_scale", FLOAT).defaultValue(1.0)
+            .register();
+
     static final CgType EMITTER_PROPERTIES = CgTypes.struct("crystalgraphics:emitter.properties")
             .property("capacity", INT).flags(CgPropertyFlag.STRUCTURAL).range(0, null)
             .property("local_space", BOOL).defaultValue(false).flags(CgPropertyFlag.STRUCTURAL)
@@ -80,6 +87,8 @@ public final class CgParticleKinds {
             .property("interpolated_spawn", BOOL)
             .property("determinism", CgValueType.struct(DETERMINISM))
             .property("quality", CgValueType.listOf(TIER)).flags(CgPropertyFlag.STRUCTURAL)
+            // UNiagaraEmitter::ScalabilityOverrides: an entry whose tiers hold replaces the effect type's; the last wins
+            .property("scalability", CgValueType.listOf(CgValueType.struct(EMITTER_SCALABILITY)))
             .register();
 
     static final CgType SPAWN = CgTypes.struct("crystalgraphics:emitter.event.spawn")
@@ -440,13 +449,6 @@ public final class CgParticleKinds {
             .property("max_system_proxies", INT).defaultValue(32)
             .property("visibility", CgValueType.struct(VISIBILITY))
             .property("budget", CgValueType.struct(BUDGET))
-            .register();
-
-    /** {@code FNiagaraEmitterScalabilitySettings}. */
-    static final CgType EMITTER_SCALABILITY = CgTypes.struct("crystalgraphics:effect_type.emitter")
-            .property("tiers", TIERS)
-            .property("scale_spawn_count", BOOL).defaultValue(false).toggleFor("spawn_count_scale")
-            .property("spawn_count_scale", FLOAT).defaultValue(1.0)
             .register();
 
     /** {@code vfx/effect_types/} ({@code UNiagaraEffectType}). */

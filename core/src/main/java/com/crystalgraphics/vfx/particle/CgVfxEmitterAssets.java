@@ -13,14 +13,16 @@ import java.util.function.Function;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.asset.curve.CgRichCurve;
 import com.crystalgraphics.asset.kind.CgModuleTypes;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
+import com.crystalgraphics.easing.CgEasing;
+import com.crystalgraphics.easing.CgEasings;
+import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.object.CgProperty;
 import com.crystalgraphics.object.CgPropertyFlag;
 import com.crystalgraphics.object.value.CgUnits;
-import com.crystalgraphics.easing.CgEasings;
-import com.crystalgraphics.easing.CgKeyframes;
-import com.crystalgraphics.shape.primitive.CgSphere;
+import com.crystalgraphics.shape.primitive.CgPlane;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxInactiveResponse;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxLoopBehavior;
@@ -37,26 +39,34 @@ import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnRate;
  * CgAssetCompiler.register(CgParticleKinds.EMITTER, CgVfxEmitterAssets.compiler(id -> TEMPLATES.get(id)));
  * }</pre>
  *
- * <p>What the asset carries: {@code properties} ({@code capacity}, {@code local_space}); {@code emitter_update}'s
- * {@code emitter_state}, {@code spawn_rate}, {@code spawn_burst}s and {@code spawn_per_unit}; {@code particle_spawn}'s
- * {@code initialize_particle} (lifetime, heat, sprite size) and {@code add_velocity} (speed, inherit); and every
- * {@code particle_update} module, by {@link CgVfxModuleTypes}.</p>
+ * <p>Every field of the builder is the file's, through {@code modules.yaml}'s modules: {@code shape_location} (the
+ * shape, its placement, turn and offset), {@code add_velocity}, {@code initialize_particle}, {@code scale_color},
+ * {@code scale_sprite_size} and {@code scale_mesh_size} over age, {@code sprite_rotation_rate},
+ * {@code spawn_rate.scale} by loop, {@code grid_rasterize}, and every physics module by its file id.</p>
  *
  * <ul>
- *   <li>Everything else (the spawn shape, launch, the size's skew, spin, the curves and colours over life, events, the renderer,
- *       trails, a clip, bindings, a spawn rate's scale curve) still comes from {@code template}, the code-built emitter
- *       of the same id. A {@code null} template starts from the builder's defaults.</li>
- *   <li>Physics modules write their engine ids ({@code crystalgraphics:<gpu kind>}) and the inputs
- *       {@link CgVfxModuleTypes} declares; where {@code modules.yaml} declares none the bible gate reports them.</li>
- *   <li>A range is {@code { range: [min, max] }}, a constant where both ends agree.</li>
+ *   <li>The template gives what an emitter file does not carry yet: the renderer, trail and clip, events and
+ *       bindings. A {@code null} template leaves them the builder's defaults.</li>
+ *   <li>Curves are {@code FRichCurve}'s keys: linear segments linear, quad and cubic easings as cubic keys with their
+ *       tangents, any other easing as linear keys sampled along it.</li>
+ *   <li>A size's skew is {@code sprite_size} as a curve by a random draw; a sweep is the shape's radius as a curve by
+ *       the loop's seconds (aaa-design 2.60).</li>
+ *   <li>An input {@code modules.yaml} declares that the engine does not take yet reads at its default alone, and fails
+ *       by name at any other value.</li>
  * </ul>
  */
 public final class CgVfxEmitterAssets {
 
     private static final String NS = "crystalgraphics:";
+    /** Hermite pieces an eased segment no single cubic reproduces is written as, each key at the easing's own slope. */
+    private static final int EASE_STEPS = 32;
+    /** Samples a skewed size's curve is written as. */
+    private static final int SKEW_SAMPLES = 17;
 
     private CgVfxEmitterAssets() {
     }
+
+    // ── Write ────────────────────────────────────────────────────────────────────────────
 
     /** {@code e}'s asset tree: {@code _v}, {@code properties} and its stacks. */
     public static Map<String, Object> write(CgVfxEmitter e) {
@@ -65,11 +75,17 @@ public final class CgVfxEmitterAssets {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("capacity", e.capacity);
         props.put("local_space", e.local);
+        // Unreal's emitter scalability override: the Low tier spawns half.
+        if (e.optional) props.put("scalability", List.of(map("tiers", List.of("low"), "scale_spawn_count", true, "spawn_count_scale", 0.5)));
         tree.put("properties", props);
 
         List<Object> update = new ArrayList<>();
         update.add(entry("state", "emitter_state", state(e.state)));
-        if (e.rate.perSecond() > 0f) update.add(entry("rate", "spawn_rate", map("rate", (double) e.rate.perSecond())));
+        if (e.rate.perSecond() > 0f) {
+            Map<String, Object> rate = map("rate", (double) e.rate.perSecond());
+            if (!isOne(e.rate.scale())) rate.put("scale", curve(e.rate.scale(), "loop"));
+            update.add(entry("rate", "spawn_rate", rate));
+        }
         for (int i = 0; i < e.bursts.length; i++) {
             CgVfxSpawnBurst b = e.bursts[i];
             update.add(entry("burst_" + i, "spawn_burst", map("time", (double) b.time(), "count", range(b.countMin(), b.countMax()),
@@ -81,32 +97,160 @@ public final class CgVfxEmitterAssets {
         tree.put("emitter_update", update);
 
         List<Object> spawn = new ArrayList<>();
-        spawn.add(entry("init", "initialize_particle", map("lifetime", range(e.lifeMin, e.lifeMax), "heat", (double) e.heat,
-                "sprite_size", spriteSize(e.sizeMin, e.sizeMax))));
-        // A mode the speed is read in: linear, the format's default, reads a vector instead. Other launches stay the template's.
-        String mode = e.spawn.inward() ? "inward" : "outward";
-        spawn.add(entry("velocity", "add_velocity", map("mode", mode, "speed", range(e.speedMin, e.speedMax),
-                "inherit", (double) e.inherit)));
+        Map<String, Object> init = map("lifetime", range(e.lifeMin, e.lifeMax), "heat", (double) e.heat,
+                "sprite_size", spriteSize(e.sizeMin, e.sizeMax, e.sizeSkew));
+        if (!same(e.colorFrom, WHITE) || !same(e.colorTo, WHITE)) init.put("color", vector(e.colorFrom, e.colorTo));
+        if (!same(e.scaleFrom, UNIT) || !same(e.scaleTo, UNIT)) init.put("mesh_scale", vector(e.scaleFrom, e.scaleTo));
+        spawn.add(entry("init", "initialize_particle", init));
+        Map<String, Object> shape = shape(e);
+        if (shape != null) spawn.add(entry("shape", "shape_location", shape));
+        spawn.add(entry("velocity", "add_velocity", velocity(e)));
         tree.put("particle_spawn", spawn);
 
         List<Object> modules = new ArrayList<>();
+        if (!isOne(e.sizeOverLife)) modules.add(entry("size", "scale_sprite_size", map("scale", curve(e.sizeOverLife, "age"))));
+        if (!isOne(e.scaleX) || !isOne(e.scaleY) || !isOne(e.scaleZ)) {
+            modules.add(entry("scale", "scale_mesh_size", map("scale", curves("age", e.scaleX, e.scaleY, e.scaleZ))));
+        }
+        Map<String, Object> color = new LinkedHashMap<>();
+        if (!isOne(e.red) || !isOne(e.green) || !isOne(e.blue)) color.put("scale", curves("age", e.red, e.green, e.blue));
+        if (!isOne(e.opacityOverLife)) color.put("alpha", curve(e.opacityOverLife, "age"));
+        if (!isOne(e.intensity)) color.put("intensity", curve(e.intensity, "age"));
+        if (!color.isEmpty()) modules.add(entry("color", "scale_color", color));
+        if (e.spinMin != 0f || e.spinMax != 0f) {
+            // Ours rolls the sense too: Unreal's rate is signed.
+            modules.add(entry("spin_rate", "sprite_rotation_rate", map("rate",
+                    map("fn", NS + "random_sign", "inputs", map("value", range(e.spinMin, e.spinMax))))));
+        }
+        if (e.rasterized != null) {
+            float[] r = e.rasterized;
+            modules.add(entry("rasterize", "grid_rasterize", map("density", list(r[0], r[1], r[2], r[3]))));
+        }
         Map<String, Integer> seen = new LinkedHashMap<>();
         for (CgVfxModule m : e.modules) {
             CgVfxModuleTypes.Kind<CgVfxModule> kind = CgVfxModuleTypes.of(m);
-            int n = seen.merge(kind.id(), 1, Integer::sum);
-            modules.add(entry(n == 1 ? kind.id() : kind.id() + "_" + n, kind.id(), kind.inputs(m)));
+            Mapped f = toFile(e.name, kind.id(), kind.inputs(m));
+            int n = seen.merge(f.module, 1, Integer::sum);
+            modules.add(entry(n == 1 ? f.module : f.module + "_" + n, f.module, f.inputs));
         }
         tree.put("particle_update", modules);
         return tree;
     }
 
-    /** The emitter {@code tree} declares, named {@code name}, over {@code template}'s fields the asset does not carry. */
+    private static final float[] WHITE = {1f, 1f, 1f, 1f}, UNIT = {1f, 1f, 1f};
+
+    /** {@code shape_location}'s inputs; null for a point at the source, unturned. */
+    @Nullable
+    private static Map<String, Object> shape(CgVfxEmitter e) {
+        CgVfxSpawnShape.Builder s = e.spawn.given();
+        Map<String, Object> in = new LinkedHashMap<>();
+        Object radius = e.sweep != 0f ? sweptRadius(s.b, e.sweep, e.state.durationMax()) : (Object) (double) s.b;
+        switch (s.kind) {
+            case CgVfxSpawnShape.POINT -> in.put("shape", "point");
+            case CgVfxSpawnShape.SPHERE -> {
+                in.put("shape", "sphere");
+                in.put("sphere_radius", radius);
+                band(e.name, s, in);
+            }
+            case CgVfxSpawnShape.BOX -> {
+                in.put("shape", "box");
+                in.put("box_size", list(2f * s.a, 2f * s.b, 2f * s.c));
+                writePlacement(s, in);
+            }
+            case CgVfxSpawnShape.CYLINDER -> {
+                in.put("shape", "cylinder");
+                in.put("cylinder_radius", radius);
+                in.put("cylinder_height", (double) (2f * s.c));
+                band(e.name, s, in);
+            }
+            case CgVfxSpawnShape.CONE -> {
+                in.put("shape", "cone");
+                in.put("cone_length", (double) s.a);
+                in.put("cone_angle", (double) s.b);
+                writePlacement(s, in);
+            }
+            case CgVfxSpawnShape.CAPSULE -> {
+                in.put("shape", "capsule");
+                in.put("capsule_radius", (double) s.b);
+                in.put("capsule_height", (double) (2f * s.a));
+                writePlacement(s, in);
+            }
+            case CgVfxSpawnShape.MESH -> {
+                if (s.meshPath == null) throw new IllegalArgumentException(e.name + ": a mesh made in code has no file; name it by path");
+                in.put("shape", "mesh");
+                in.put("mesh", map("mesh", s.meshPath));
+                if (s.placement == CgVfxSpawnShape.VERTICES) in.put("vertices", true);
+                if (s.a != 1f) in.put("scale", list(s.a, s.a, s.a));
+            }
+            default -> {
+                in.put("shape", "entity");
+                writePlacement(s, in);
+            }
+        }
+        if (s.hemisphere) in.put("hemisphere", true);
+        if (s.arc < CgVfxSpawnShape.TAU) in.put("arc", (double) s.arc);
+        if (s.ordered > 0) in.put("ordered", s.ordered);
+        float[] q = e.spawn.turn(), o = e.spawn.place();
+        if (q[0] != 0f || q[1] != 0f || q[2] != 0f || q[3] != 1f) in.put("rotation", list(q[0], q[1], q[2], q[3]));
+        if (o[0] != 0f || o[1] != 0f || o[2] != 0f) in.put("offset", list(o[0], o[1], o[2]));
+        return in.size() == 1 && "point".equals(in.get("shape")) ? null : in;
+    }
+
+    /** A sphere's or cylinder's hollow (a shell, a ring) as Unreal's surface band, and its surface or edge. */
+    private static void band(String name, CgVfxSpawnShape.Builder s, Map<String, Object> in) {
+        if (s.placement == CgVfxSpawnShape.VOLUME && s.a > 0f) {
+            in.put("surface_only", true);
+            in.put("surface_thickness", (double) (s.b - s.a));
+        } else {
+            if (s.a > 0f) throw new IllegalArgumentException(name + ": a hollow shape's surface or edge has no file form");
+            writePlacement(s, in);
+        }
+    }
+
+    private static void writePlacement(CgVfxSpawnShape.Builder s, Map<String, Object> in) {
+        if (s.placement == CgVfxSpawnShape.SURFACE) in.put("surface_only", true);
+        else if (s.placement == CgVfxSpawnShape.EDGE) in.put("edge_only", true);
+    }
+
+    /** A radius running out at {@code sweep} blocks a second and easing to a stop at the loop's end: its quadratic, exactly. */
+    private static Map<String, Object> sweptRadius(float r, float sweep, float duration) {
+        List<Object> keys = List.of(
+                List.of((double) 0f, (double) r, "cubic", "break", 0.0, (double) sweep),
+                List.of((double) duration, (double) r + (double) sweep * duration / 2.0, "cubic", "break", 0.0, 0.0));
+        return map("curve", map("keys", keys), "by", "loop");
+    }
+
+    private static Map<String, Object> velocity(CgVfxEmitter e) {
+        CgVfxSpawnShape.Builder s = e.spawn.given();
+        Map<String, Object> in = new LinkedHashMap<>();
+        switch (s.mode) {
+            case CgVfxSpawnShape.INWARD -> in.put("mode", "inward");
+            case CgVfxSpawnShape.DIRECTION -> {
+                in.put("mode", "in_cone");
+                in.put("cone_axis", list(s.dirX, s.dirY, s.dirZ));
+                // Unreal's cone angles are apex angles: twice the half angles drawn between.
+                in.put("cone_angle", 2.0 * s.spread);
+                if (s.innerSpread != 0f) in.put("inner_cone", 2.0 * s.innerSpread);
+            }
+            default -> in.put("mode", "outward");
+        }
+        in.put("speed", range(e.speedMin, e.speedMax));
+        in.put("inherit", (double) e.inherit);
+        return in;
+    }
+
+    // ── Compile ──────────────────────────────────────────────────────────────────────────
+
+    /** The emitter {@code tree} declares, named {@code name}; {@code template} gives what a file does not carry yet. */
     public static CgVfxEmitter compile(String name, Map<?, ?> tree, @Nullable CgVfxEmitter template) {
-        CgVfxEmitter.Builder b = template != null ? template.toBuilder().name(name) : CgVfxEmitter.builder(name);
-        b.clearBursts().clearModules().rate(CgVfxSpawnRate.NONE).ratePerBlock(0f);
+        CgVfxEmitter.Builder b = CgVfxEmitter.builder(name);
+        if (template != null) b.carry(template);
+        // Unreal's defaults for what a file leaves out: opaque throughout.
+        b.opacity(CgKeyframes.constant(1f));
         Map<?, ?> props = tree.get("properties") instanceof Map<?, ?> p ? p : Map.of();
         if (props.get("capacity") instanceof Number c) b.capacity(c.intValue());
         b.local(Boolean.TRUE.equals(props.get("local_space")));
+        if (props.get("scalability") != null) b.optional(halvedAtLow(name, props.get("scalability")));
 
         for (Map<?, ?> entry : entries(tree, "emitter_update")) {
             Map<?, ?> in = inputs(entry);
@@ -115,8 +259,9 @@ public final class CgVfxEmitterAssets {
                     b.state(state(in));
                     break;
                 case "spawn_rate": {
-                    float rate = num(in.get("rate"));
-                    b.rate(template != null && template.rate.perSecond() == rate ? template.rate : CgVfxSpawnRate.of(rate));
+                    Object scale = in.get("scale");
+                    b.rate(scale == null || scale instanceof Number ? new CgVfxSpawnRate(num(in.get("rate")), CgKeyframes.constant(scale == null ? 1f : num(scale)))
+                            : new CgVfxSpawnRate(num(in.get("rate")), keyframes(name, scale, "loop")));
                     break;
                 }
                 case "spawn_burst": {
@@ -136,47 +281,62 @@ public final class CgVfxEmitterAssets {
         for (Map<?, ?> entry : entries(tree, "particle_spawn")) {
             Map<?, ?> in = inputs(entry);
             switch (moduleId(entry)) {
-                case "initialize_particle": {
-                    float[] life = rangeOf(in.get("lifetime"));
-                    b.life(life[0], life[1]);
-                    if (in.get("heat") instanceof Number h) b.heat(h.floatValue());
-                    if (in.get("sprite_size") != null) {
-                        float[] width = spriteWidth(in.get("sprite_size"));
-                        b.size(width[0], width[1], template != null ? template.sizeSkew : 1f);
-                    }
-                    break;
-                }
-                case "add_velocity": {
-                    float[] speed = rangeOf(in.get("speed"));
-                    b.speed(speed[0], speed[1]);
-                    if (in.get("inherit") instanceof Number i) b.inherit(i.floatValue());
-                    if ("inward".equals(in.get("mode"))) b.inward();
-                    break;
-                }
-                case "shape_location": {
-                    if (!"sphere".equals(in.get("shape"))) throw new IllegalArgumentException(name + ": shape_location's shape " + in.get("shape") + " is not read yet");
-                    b.shape(CgSphere.of(num(in.get("sphere_radius"))));
-                    if (Boolean.TRUE.equals(in.get("surface_only"))) b.surface();
-                    break;
-                }
-                default:
-                    throw new IllegalArgumentException(name + ": particle_spawn has no " + entry.get("module"));
+                case "initialize_particle" -> initialize(name, b, in);
+                case "add_velocity" -> velocity(name, b, in);
+                case "shape_location" -> shape(name, b, in);
+                default -> throw new IllegalArgumentException(name + ": particle_spawn has no " + entry.get("module"));
             }
         }
         for (Map<?, ?> entry : entries(tree, "particle_update")) {
             if (Boolean.FALSE.equals(entry.get("enabled"))) continue;
-            switch (moduleId(entry)) {   // over life by age: the builder's curves, not modules
-                case "scale_sprite_size":
-                    b.size(ageCurve(name, inputs(entry).get("scale")));
+            String id = moduleId(entry);
+            switch (id) {   // over life by age, and the grid's density: the builder's fields, not modules
+                case "scale_sprite_size" -> {
+                    Object scale = inputs(entry).get("scale");
+                    if (scale instanceof Map<?, ?> m && m.get("curves") != null) {
+                        CgKeyframes[] xy = axes(name, scale, 2);
+                        b.scaleOverLife(xy[0], xy[1], CgKeyframes.constant(1f));
+                    } else {
+                        b.size(keyframes(name, uniform(scale), "age"));
+                    }
                     continue;
-                case "scale_color":
-                    b.opacity(ageCurve(name, inputs(entry).get("alpha")));
+                }
+                case "scale_mesh_size" -> {
+                    CgKeyframes[] xyz = axes(name, inputs(entry).get("scale"), 3);
+                    b.scaleOverLife(xyz[0], xyz[1], xyz[2]);
                     continue;
-                default:
+                }
+                case "scale_color" -> {
+                    Map<?, ?> in = inputs(entry);
+                    if (in.get("scale") != null) {
+                        CgKeyframes[] rgb = axes(name, in.get("scale"), 3);
+                        b.colorOverLife(rgb[0], rgb[1], rgb[2]);
+                    }
+                    if (in.get("alpha") != null) b.opacity(keyframes(name, in.get("alpha"), "age"));
+                    if (in.get("intensity") != null) b.intensityOverLife(keyframes(name, in.get("intensity"), "age"));
+                    continue;
+                }
+                case "sprite_rotation_rate" -> {
+                    Object rate = inputs(entry).get("rate");
+                    if (rate instanceof Map<?, ?> fn && (NS + "random_sign").equals(fn.get("fn")) && fn.get("inputs") instanceof Map<?, ?> fin) {
+                        rate = fin.get("value");
+                    }
+                    float[] spin = rangeOf(rate);
+                    b.spin(spin[0], spin[1]);
+                    continue;
+                }
+                case "grid_rasterize" -> {
+                    float[] d = vec(inputs(entry).get("density"), 4);
+                    b.rasterize(d[0], d[1], d[2], d[3]);
+                    continue;
+                }
+                default -> {
+                }
             }
-            CgVfxModuleTypes.Kind<?> kind = CgVfxModuleTypes.kind(moduleId(entry));
+            Mapped m = toEngine(name, entry);
+            CgVfxModuleTypes.Kind<?> kind = CgVfxModuleTypes.kind(m.module);
             if (kind == null) throw new IllegalArgumentException(name + ": no module " + entry.get("module"));
-            if (!(kind.compile(taken(name, entry, kind)) instanceof CgVfxModule module)) {
+            if (!(kind.compile(m.inputs) instanceof CgVfxModule module)) {
                 throw new IllegalArgumentException(name + ": module " + entry.get("module") + " is a mod's kind; an asset names the engine's");
             }
             b.module(module);
@@ -190,6 +350,429 @@ public final class CgVfxEmitterAssets {
             String id = asset.id();
             return compile(id.substring(id.lastIndexOf('/') + 1), asset.resolved(), templates.apply(id));
         };
+    }
+
+    private static boolean halvedAtLow(String name, Object scalability) {
+        if (scalability instanceof List<?> list && list.size() == 1 && list.get(0) instanceof Map<?, ?> m
+                && List.of("low").equals(m.get("tiers")) && Boolean.TRUE.equals(m.get("scale_spawn_count"))
+                && m.get("spawn_count_scale") instanceof Number n && n.doubleValue() == 0.5) {
+            return true;
+        }
+        throw new IllegalArgumentException(name + ": scalability " + scalability + " is not read yet: the Low tier's half alone");
+    }
+
+    private static void initialize(String name, CgVfxEmitter.Builder b, Map<?, ?> in) {
+        float[] life = rangeOf(in.get("lifetime"));
+        b.life(life[0], life[1]);
+        if (in.get("heat") instanceof Number h) b.heat(h.floatValue());
+        Object size = in.get("sprite_size");
+        if (size instanceof Map<?, ?> form && "random".equals(form.get("by"))) {
+            // aaa-design 2.60: a skewed size is min + (max - min) * x^skew, looked up by a random draw.
+            CgRichCurve c = CgRichCurve.decode(((Map<?, ?>) uniform(form)).get("curve"));
+            float lo = c.eval(0f), hi = c.eval(1f);
+            float skew = hi > lo ? (float) (Math.log((c.eval(0.5f) - lo) / (hi - lo)) / Math.log(0.5)) : 1f;
+            b.size(lo, hi, skew);
+        } else if (size != null) {
+            float[] width = spriteWidth(size);
+            b.size(width[0], width[1]);
+        }
+        if (in.get("color") != null) {
+            float[][] c = ends(in.get("color"), 4);
+            b.colors(c[0], c[1]);
+        }
+        if (in.get("mesh_scale") != null) {
+            float[][] s = ends(in.get("mesh_scale"), 3);
+            b.scale(s[0][0], s[0][1], s[0][2], s[1][0], s[1][1], s[1][2]);
+        }
+    }
+
+    private static void velocity(String name, CgVfxEmitter.Builder b, Map<?, ?> in) {
+        CgVfxSpawnShape.Builder s = b.spawn();
+        String mode = String.valueOf(in.get("mode"));
+        switch (mode) {
+            case "outward" -> s.mode = CgVfxSpawnShape.OUTWARD;
+            case "inward" -> s.mode = CgVfxSpawnShape.INWARD;
+            case "in_cone" -> {
+                float[] axis = vec(in.get("cone_axis"), 3);
+                s.mode = CgVfxSpawnShape.DIRECTION;
+                s.dirX = axis[0];
+                s.dirY = axis[1];
+                s.dirZ = axis[2];
+                s.spread = num(in.get("cone_angle")) / 2f;
+                s.innerSpread = in.get("inner_cone") instanceof Number n ? n.floatValue() / 2f : 0f;
+            }
+            case "linear" -> {
+                float[] v = vec(in.get("linear"), 3);
+                float speed = (float) Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+                if (speed > 0f) b.direction(v[0], v[1], v[2], 0f);
+                b.speed(speed, speed);
+                if (in.get("inherit") instanceof Number i) b.inherit(i.floatValue());
+                return;
+            }
+            default -> throw new IllegalArgumentException(name + ": add_velocity's mode " + mode + " is not read yet");
+        }
+        float[] speed = rangeOf(in.get("speed"));
+        b.speed(speed[0], speed[1]);
+        if (in.get("inherit") instanceof Number i) b.inherit(i.floatValue());
+    }
+
+    private static void shape(String name, CgVfxEmitter.Builder b, Map<?, ?> in) {
+        CgVfxSpawnShape.Builder s = b.spawn();
+        String shape = String.valueOf(in.get("shape"));
+        s.a = s.b = s.c = 0f;
+        s.placement = CgVfxSpawnShape.VOLUME;
+        switch (shape) {
+            case "point" -> s.kind = CgVfxSpawnShape.POINT;
+            case "sphere" -> {
+                s.kind = CgVfxSpawnShape.SPHERE;
+                s.b = radius(name, b, in.get("sphere_radius"));
+                band(s, in);
+            }
+            case "box" -> {
+                float[] size = vec(in.get("box_size"), 3);
+                s.kind = CgVfxSpawnShape.BOX;
+                s.a = size[0] / 2f;
+                s.b = size[1] / 2f;
+                s.c = size[2] / 2f;
+                placement(s, in);
+            }
+            case "cylinder" -> {
+                if (in.get("cylinder_axis") != null && !"z".equals(in.get("cylinder_axis"))) {
+                    throw new IllegalArgumentException(name + ": a cylinder along " + in.get("cylinder_axis") + " is not read yet: turn it");
+                }
+                s.kind = CgVfxSpawnShape.CYLINDER;
+                s.b = radius(name, b, in.get("cylinder_radius"));
+                s.c = num(in.get("cylinder_height")) / 2f;
+                band(s, in);
+            }
+            case "ring" -> {
+                // Unreal's ring at its default coverage: its edge.
+                s.kind = CgVfxSpawnShape.CYLINDER;
+                s.b = num(in.get("ring_radius"));
+                s.placement = CgVfxSpawnShape.EDGE;
+            }
+            case "cone" -> {
+                s.kind = CgVfxSpawnShape.CONE;
+                s.a = num(in.get("cone_length"));
+                s.b = num(in.get("cone_angle"));
+                placement(s, in);
+            }
+            case "capsule" -> {
+                s.kind = CgVfxSpawnShape.CAPSULE;
+                s.b = num(in.get("capsule_radius"));
+                s.a = num(in.get("capsule_height")) / 2f;
+                placement(s, in);
+            }
+            case "mesh" -> {
+                if (!(in.get("mesh") instanceof Map<?, ?> m) || !(m.get("mesh") instanceof String path)) {
+                    throw new IllegalArgumentException(name + ": shape_location's mesh is { mesh: <path> }, not " + in.get("mesh"));
+                }
+                b.mesh(path);
+                if (Boolean.TRUE.equals(in.get("vertices"))) s.placement = CgVfxSpawnShape.VERTICES;
+                if (in.get("scale") != null) s.a = vec(in.get("scale"), 3)[0];
+            }
+            case "entity" -> {
+                b.entity();
+                placement(s, in);
+            }
+            default -> throw new IllegalArgumentException(name + ": shape_location's shape " + shape + " is not read yet");
+        }
+        s.hemisphere = Boolean.TRUE.equals(in.get("hemisphere"));
+        s.arc = in.get("arc") instanceof Number a ? a.floatValue() : CgVfxSpawnShape.TAU;
+        s.ordered = in.get("ordered") instanceof Number n ? n.intValue() : 0;
+        Object r = in.get("rotation");
+        if (r instanceof List<?> q && q.size() == 3 && q.stream().allMatch(v -> v instanceof Number n && n.doubleValue() == 0.0)) r = null;
+        if (r != null && !(r instanceof List<?> q4 && q4.size() == 4)) {
+            throw new IllegalArgumentException(name + ": shape_location's rotation " + r + " is not read yet: a quaternion (x, y, z, w)");
+        }
+        s.turn = r == null ? new float[]{0f, 0f, 0f, 1f} : vec(r, 4);
+        s.place = in.get("offset") != null ? vec(in.get("offset"), 3) : new float[3];
+    }
+
+    /** A radius, or one running out over the loop's seconds: a sweep's (aaa-design 2.60). */
+    private static float radius(String name, CgVfxEmitter.Builder b, Object value) {
+        if (value instanceof Map<?, ?> form && "loop".equals(form.get("by")) && form.get("curve") instanceof Map<?, ?> c) {
+            CgRichCurve curve = CgRichCurve.decode(c);
+            if (curve.size() != 2) throw new IllegalArgumentException(name + ": a swept radius is two keys, not " + curve.size());
+            b.sweep(2f * (curve.value(1) - curve.value(0)) / (curve.time(1) - curve.time(0)));
+            return curve.value(0);
+        }
+        return num(value);
+    }
+
+    private static void band(CgVfxSpawnShape.Builder s, Map<?, ?> in) {
+        if (Boolean.TRUE.equals(in.get("surface_only")) && in.get("surface_thickness") instanceof Number t && t.floatValue() > 0f) {
+            s.a = s.b - t.floatValue();
+            return;
+        }
+        placement(s, in);
+    }
+
+    private static void placement(CgVfxSpawnShape.Builder s, Map<?, ?> in) {
+        if (Boolean.TRUE.equals(in.get("surface_only"))) s.placement = CgVfxSpawnShape.SURFACE;
+        else if (Boolean.TRUE.equals(in.get("edge_only"))) s.placement = CgVfxSpawnShape.EDGE;
+    }
+
+    // ── Physics modules by their file ids ────────────────────────────────────────────────
+
+    /** A module by one side's id and inputs; {@code consumed}, the file inputs it read. */
+    private record Mapped(String module, Map<String, Object> inputs, Set<String> consumed) {
+    }
+
+    /** Kind {@code kind}'s inputs as the file names them (aaa-design 2.60, 2.61). */
+    private static Mapped toFile(String name, String kind, Map<String, Object> in) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        switch (kind) {
+            case "force" -> {
+                out.put("acceleration", in.get("force"));
+                return new Mapped("acceleration", out, Set.of());
+            }
+            case "collide", "collide_world", "collide_depth", "collide_entities" -> {
+                out.put("against", switch (kind) {
+                    case "collide" -> "shape";
+                    case "collide_world" -> "world";
+                    case "collide_depth" -> "depth";
+                    default -> "entities";
+                });
+                if (kind.equals("collide")) {
+                    shapeToFile(in, out);
+                    out.put("shape_offset", in.get("offset"));
+                    out.put("keep_inside", in.get("keeps_inside"));
+                    out.put("particle_radius_scale", in.get("radius"));
+                }
+                double bounce = ((Number) in.get("bounce")).doubleValue();
+                out.put("restitution", List.of(bounce, bounce, bounce));
+                out.put("friction", in.get("friction"));
+                out.put("static_friction_speed", in.get("rest"));
+                if (Boolean.TRUE.equals(in.get("kill"))) {
+                    out.put("max_collisions", 1);
+                    out.put("on_complete", "kill");
+                }
+                // Ours: the depth a screen collider reaches behind what it sees, an entity's box grown by.
+                if (in.containsKey("thickness")) out.put("depth_thickness", in.get("thickness"));
+                if (in.containsKey("size")) out.put("entity_size", in.get("size"));
+                return new Mapped("collision", out, Set.of());
+            }
+            case "kill" -> {
+                shapeToFile(in, out);
+                out.put("inside", in.get("inside"));
+                out.put("offset", in.get("offset"));
+                return new Mapped("kill_volume", out, Set.of());
+            }
+            case "attract" -> {
+                if (!"sphere".equals(in.get("shape"))) {
+                    throw new IllegalArgumentException(name + ": an attractor over a box has no file form (aaa-design 2.61)");
+                }
+                out.put("position", in.get("offset"));
+                out.put("strength", in.get("strength"));
+                out.put("radius", ((List<?>) in.get("volume")).get(0));
+                out.put("falloff", in.get("attenuation"));
+                out.put("directionality", in.get("directionality"));
+                out.put("axis", in.get("axis"));
+                return new Mapped("point_attractor", out, Set.of());
+            }
+            case "vector_field" -> {
+                out.put("field", in.get("field"));
+                out.put("intensity", in.get("strength"));
+                out.put("translation", in.get("offset"));
+                out.put("tile", Boolean.TRUE.equals(in.get("tiles")) ? "xyz" : "");
+                out.put("volume", in.get("volume"));
+                out.put("attenuation", in.get("attenuation"));
+                return new Mapped("vector_field", out, Set.of());
+            }
+            case "conform" -> {
+                out.putAll(in);
+                out.put("origin", out.remove("offset"));
+                return new Mapped("conform", out, Set.of());
+            }
+            case "orbit" -> {
+                // Ours, beside Unreal's Orbit of another shape (aaa-design 2.61).
+                return new Mapped("orbit_axis", new LinkedHashMap<>(in), Set.of());
+            }
+            default -> {
+                return new Mapped(kind, new LinkedHashMap<>(in), Set.of());
+            }
+        }
+    }
+
+    /** A particle_update entry as the engine kind it names and that kind's inputs. */
+    private static Mapped toEngine(String name, Map<?, ?> entry) {
+        Map<?, ?> in = inputs(entry);
+        String id = moduleId(entry);
+        Map<String, Object> out = new LinkedHashMap<>();
+        Set<String> read = new HashSet<>();
+        String kind;
+        switch (id) {
+            case "acceleration" -> {
+                kind = "force";
+                take(in, read, out, "acceleration", "force");
+            }
+            case "collision" -> {
+                String against = String.valueOf(in.get("against"));
+                read.add("against");
+                kind = switch (against) {
+                    case "shape" -> "collide";
+                    case "world" -> "collide_world";
+                    case "depth" -> "collide_depth";
+                    case "entities" -> "collide_entities";
+                    default -> throw new IllegalArgumentException(name + ": collision against " + against);
+                };
+                if (kind.equals("collide")) {
+                    shapeToEngine(in, read, out);
+                    take(in, read, out, "shape_offset", "offset");
+                    take(in, read, out, "keep_inside", "keeps_inside");
+                    take(in, read, out, "particle_radius_scale", "radius");
+                }
+                List<?> r = (List<?>) in.get("restitution");
+                if (!(r.get(0).equals(r.get(1)) && r.get(1).equals(r.get(2)))) {
+                    throw new IllegalArgumentException(name + ": collision's restitution " + r + " is not read yet: one value on every axis");
+                }
+                read.add("restitution");
+                out.put("bounce", r.get(0));
+                take(in, read, out, "friction", "friction");
+                take(in, read, out, "static_friction_speed", "rest");
+                Object most = in.get("max_collisions");
+                if (most != null && !(most instanceof Number n && n.intValue() == 1 && "kill".equals(in.get("on_complete")))) {
+                    throw new IllegalArgumentException(name + ": collision's max_collisions " + most + " is not read yet: 1 and kill alone");
+                }
+                read.add("max_collisions");
+                read.add("on_complete");
+                out.put("kill", most != null);
+                if (kind.equals("collide_depth")) take(in, read, out, "depth_thickness", "thickness");
+                if (kind.equals("collide_entities")) take(in, read, out, "entity_size", "size");
+            }
+            case "kill_volume" -> {
+                kind = "kill";
+                shapeToEngine(in, read, out);
+                take(in, read, out, "inside", "inside");
+                take(in, read, out, "offset", "offset");
+            }
+            case "point_attractor" -> {
+                kind = "attract";
+                out.put("shape", "sphere");
+                double r = ((Number) in.get("radius")).doubleValue();
+                out.put("volume", List.of(r, r, r));
+                read.add("radius");
+                take(in, read, out, "position", "offset");
+                take(in, read, out, "strength", "strength");
+                take(in, read, out, "falloff", "attenuation");
+                take(in, read, out, "directionality", "directionality");
+                take(in, read, out, "axis", "axis");
+            }
+            case "vector_field" -> {
+                kind = "vector_field";
+                take(in, read, out, "field", "field");
+                take(in, read, out, "intensity", "strength");
+                take(in, read, out, "translation", "offset");
+                out.put("tiles", !String.valueOf(in.get("tile")).isEmpty() && in.get("tile") != null);
+                read.add("tile");
+                take(in, read, out, "volume", "volume");
+                take(in, read, out, "attenuation", "attenuation");
+            }
+            case "conform" -> {
+                kind = "conform";
+                for (Map.Entry<?, ?> e : in.entrySet()) out.put(String.valueOf(e.getKey()), e.getValue());
+                read.addAll(out.keySet());
+                out.put("offset", out.remove("origin"));
+            }
+            case "orbit_axis" -> {
+                kind = "orbit";
+                for (Map.Entry<?, ?> e : in.entrySet()) out.put(String.valueOf(e.getKey()), e.getValue());
+                read.addAll(out.keySet());
+            }
+            default -> {
+                kind = id;
+                CgVfxModuleTypes.Kind<?> k = CgVfxModuleTypes.kind(id);
+                if (k == null) throw new IllegalArgumentException(name + ": no module " + entry.get("module"));
+                for (CgProperty p : k.inputs().properties()) {
+                    if (in.containsKey(p.name())) {
+                        out.put(p.name(), in.get(p.name()));
+                        read.add(p.name());
+                    }
+                }
+            }
+        }
+        unread(name, entry, in, read);
+        return new Mapped(kind, out, read);
+    }
+
+    private static void take(Map<?, ?> in, Set<String> read, Map<String, Object> out, String file, String engine) {
+        read.add(file);
+        if (in.containsKey(file)) out.put(engine, in.get(file));
+    }
+
+    /** A shape's {@code volume} and {@code shape} as Unreal's shape inputs; a plane's radius ours. */
+    private static void shapeToFile(Map<String, Object> in, Map<String, Object> out) {
+        String shape = String.valueOf(in.get("shape"));
+        List<?> v = (List<?>) in.get("volume");
+        out.put("shape", shape);
+        switch (shape) {
+            case "sphere" -> out.put("sphere_radius", v.get(0));
+            case "box" -> out.put("box_size", List.of(2.0 * ((Number) v.get(0)).doubleValue(), 2.0 * ((Number) v.get(1)).doubleValue(),
+                    2.0 * ((Number) v.get(2)).doubleValue()));
+            default -> {
+                out.put("plane_normal", v);
+                out.put("plane_radius", in.get("plane_radius"));
+            }
+        }
+    }
+
+    private static void shapeToEngine(Map<?, ?> in, Set<String> read, Map<String, Object> out) {
+        String shape = String.valueOf(in.get("shape"));
+        read.add("shape");
+        out.put("shape", shape);
+        switch (shape) {
+            case "sphere" -> {
+                Object r = in.get("sphere_radius");
+                out.put("volume", List.of(r, r, r));
+                read.add("sphere_radius");
+            }
+            case "box" -> {
+                float[] s = vec(in.get("box_size"), 3);
+                out.put("volume", List.of(s[0] / 2.0, s[1] / 2.0, s[2] / 2.0));
+                read.add("box_size");
+            }
+            default -> {
+                out.put("volume", in.get("plane_normal"));
+                read.add("plane_normal");
+                read.add("plane_radius");
+                // Unreal's planes have no edge; ours may (a ramp), its radius an input of our own.
+                out.put("plane_radius", in.containsKey("plane_radius") ? in.get("plane_radius") : (double) CgPlane.of(0, 1, 0).radius());
+            }
+        }
+    }
+
+    /**
+     * Fails for an input {@code entry} gives that nothing read and that is not {@code modules.yaml}'s default: one the
+     * spec declares and the engine does not take yet (Unreal's {@code curl_noise.bias}) reads at its default alone.
+     */
+    private static void unread(String name, Map<?, ?> entry, Map<?, ?> in, Set<String> read) {
+        CgModuleTypes.Module declared = CgModuleTypes.builtIn().get(moduleId(entry));
+        for (Map.Entry<?, ?> e : in.entrySet()) {
+            String key = String.valueOf(e.getKey());
+            if (read.contains(key)) continue;
+            Object fallback = null;
+            if (declared != null) {
+                for (CgProperty p : declared.inputs().properties()) {
+                    if (p.name().equals(key) && p.defaultValue() != null) fallback = CgUnits.UNREAL.toHost(p.defaultValue(), p.quantity());
+                }
+            }
+            if (!sameValue(e.getValue(), fallback)) {
+                throw new IllegalArgumentException(name + ": " + entry.get("module") + ".inputs." + key
+                        + " is not taken by the engine yet, only at its default " + fallback);
+            }
+        }
+    }
+
+    /** Equal as values: numbers by their double, lists element by element. */
+    private static boolean sameValue(Object a, Object b) {
+        if (a instanceof Number x && b instanceof Number y) return x.doubleValue() == y.doubleValue();
+        if (a instanceof List<?> x && b instanceof List<?> y) {
+            if (x.size() != y.size()) return false;
+            for (int i = 0; i < x.size(); i++) if (!sameValue(x.get(i), y.get(i))) return false;
+            return true;
+        }
+        return Objects.equals(a, b);
     }
 
     // ── emitter_state ────────────────────────────────────────────────────────────────────
@@ -222,6 +805,178 @@ public final class CgVfxEmitterAssets {
         return s;
     }
 
+    // ── Curves ───────────────────────────────────────────────────────────────────────────
+
+    private static boolean isOne(CgKeyframes k) {
+        for (int i = 0; i < k.size(); i++) if (k.value(i) != 1f) return false;
+        return true;
+    }
+
+    /** {@code k} by {@code by}: a number where it holds one value. */
+    private static Object curve(CgKeyframes k, String by) {
+        if (k.size() == 1) return (double) k.value(0);
+        return map("curve", richCurve(k), "by", by);
+    }
+
+    private static Map<String, Object> curves(String by, CgKeyframes... k) {
+        List<Object> list = new ArrayList<>();
+        for (CgKeyframes c : k) list.add(richCurve(c));
+        return map("curves", list, "by", by);
+    }
+
+    /**
+     * {@code k} as {@code FRichCurve}'s keys. All linear, its keys linear. Otherwise every key cubic with its tangents:
+     * a linear segment's both its slope, a quad or cubic easing's its polynomial's end slopes (exact), and any other
+     * easing {@link #EASE_STEPS} Hermite pieces along it.
+     */
+    private static Map<String, Object> richCurve(CgKeyframes k) {
+        boolean linear = true;
+        for (int i = 1; i < k.size(); i++) linear &= k.easing(i) == CgEasings.LINEAR;
+        List<Object> keys = new ArrayList<>();
+        if (linear) {
+            for (int i = 0; i < k.size(); i++) keys.add(List.of((double) k.time(i), (double) k.value(i), "linear"));
+            return map("keys", keys);
+        }
+        // t, v, arrive, leave
+        List<double[]> points = new ArrayList<>();
+        points.add(new double[]{k.time(0), k.value(0), 0, 0});
+        for (int i = 1; i < k.size(); i++) {
+            double t0 = k.time(i - 1), v0 = k.value(i - 1), t1 = k.time(i), v1 = k.value(i), dt = t1 - t0, dv = v1 - v0;
+            double[] prev = points.get(points.size() - 1);
+            if (!(dt > 0)) {
+                points.add(new double[]{t1, v1, 0, 0});
+                continue;
+            }
+            double[] ends = endSlopes(k.easing(i));
+            if (ends != null) {
+                prev[3] = dv * ends[0] / dt;
+                points.add(new double[]{t1, v1, dv * ends[1] / dt, 0});
+                continue;
+            }
+            CgEasing easing = k.easing(i);
+            prev[3] = dv * slope(easing, 0) / dt;
+            for (int j = 1; j <= EASE_STEPS; j++) {
+                double u = (double) j / EASE_STEPS, t = t0 + u * dt, v = j == EASE_STEPS ? v1 : v0 + dv * easing.ease(u);
+                double s = dv * slope(easing, u) / dt;
+                points.add(new double[]{t, v, s, s});
+            }
+        }
+        for (double[] p : points) keys.add(List.of(p[0], p[1], "cubic", "break", p[2], p[3]));
+        return map("keys", keys);
+    }
+
+    /** {@code e}'s slope at {@code u}, by a central difference (one-sided at the ends). */
+    private static double slope(CgEasing e, double u) {
+        double h = 1e-6, lo = Math.max(0, u - h), hi = Math.min(1, u + h);
+        return (e.ease(hi) - e.ease(lo)) / (hi - lo);
+    }
+
+    /** An easing's slope at its start and end, in its own units: those Hermite reproduces exactly; null for any other. */
+    @Nullable
+    private static double[] endSlopes(CgEasing e) {
+        if (e == CgEasings.LINEAR) return new double[]{1, 1};
+        if (e == CgEasings.IN_QUAD) return new double[]{0, 2};
+        if (e == CgEasings.OUT_QUAD) return new double[]{2, 0};
+        if (e == CgEasings.IN_CUBIC) return new double[]{0, 3};
+        if (e == CgEasings.OUT_CUBIC) return new double[]{3, 0};
+        if (e instanceof Cubic c && !Double.isNaN(c.start())) return new double[]{c.start(), c.end()};
+        return null;
+    }
+
+    /**
+     * A curve value read as keyframes: a number constant; {@code { curve, by }} its keys, a linear segment linear, a
+     * constant one a step and a cubic one eased along the curve itself, so it evaluates as the file's curve.
+     */
+    private static CgKeyframes keyframes(String name, Object value, String by) {
+        if (value instanceof Number n) return CgKeyframes.constant(n.floatValue());
+        if (!(value instanceof Map<?, ?> form) || form.get("curve") == null) {
+            throw new IllegalArgumentException(name + ": a number or a curve by " + by + ", not " + value);
+        }
+        if (form.get("by") != null && !by.equals(form.get("by"))) {
+            throw new IllegalArgumentException(name + ": a curve by " + form.get("by") + " is not read yet here, only by " + by);
+        }
+        return keyframes(name, CgRichCurve.decode(form.get("curve")), form.get("curve"));
+    }
+
+    private static CgKeyframes keyframes(String name, CgRichCurve c, Object tree) {
+        if (tree instanceof Map<?, ?> m && (m.get("samples") != null || isExtrapolated(m.get("pre")) || isExtrapolated(m.get("post")))) {
+            throw new IllegalArgumentException(name + ": a sampled or extrapolated curve is not read yet here");
+        }
+        if (c.size() == 0) return CgKeyframes.constant(c.eval(0f));
+        CgKeyframes.Builder k = CgKeyframes.start(c.time(0), c.value(0));
+        for (int i = 1; i < c.size(); i++) {
+            float t0 = c.time(i - 1), v0 = c.value(i - 1), t1 = c.time(i), v1 = c.value(i);
+            int interp = c.interp(i - 1);
+            if (interp == CgRichCurve.LINEAR || !(t1 > t0)) {
+                k.to(t1, v1, CgEasings.LINEAR);
+            } else if (interp == CgRichCurve.CONSTANT) {
+                k.to(t1, v0, CgEasings.LINEAR).to(t1, v1, CgEasings.LINEAR);
+            } else if (v1 != v0) {
+                float span = t1 - t0, rise = v1 - v0;
+                boolean hermite = !c.weighted(i - 1) && !c.weighted(i);
+                k.to(t1, v1, new Cubic(c, t0, span, v0, rise, hermite ? (double) c.leave(i - 1) * span / rise : Double.NaN,
+                        hermite ? (double) c.arrive(i) * span / rise : Double.NaN));
+            } else {
+                // A cubic between equal values bulges: eased pieces would divide by nothing, so straight ones.
+                for (int j = 1; j <= EASE_STEPS; j++) {
+                    float t = t0 + (t1 - t0) * j / EASE_STEPS;
+                    k.to(t, c.eval(t), CgEasings.LINEAR);
+                }
+            }
+        }
+        return k.build();
+    }
+
+    /**
+     * A cubic segment of a file's curve as an easing, evaluated as the curve itself. Unweighted, it keeps its end slopes
+     * in its own units, so {@link #richCurve} writes it back as the same cubic; weighted, they are NaN.
+     */
+    private record Cubic(CgRichCurve curve, float t0, float span, float v0, float rise, double start, double end)
+            implements CgEasing {
+        @Override
+        public double ease(double u) {
+            return (curve.eval(t0 + (float) u * span) - v0) / rise;
+        }
+    }
+
+    private static boolean isExtrapolated(Object e) {
+        return e != null && !"constant".equals(e);
+    }
+
+    /** {@code { curves: [...] }} as one keyframes an axis; {@code { curve }} the same on every axis. */
+    private static CgKeyframes[] axes(String name, Object value, int n) {
+        CgKeyframes[] out = new CgKeyframes[n];
+        if (value instanceof Map<?, ?> form && form.get("curves") instanceof List<?> list) {
+            if (list.size() < n) throw new IllegalArgumentException(name + ": " + n + " curves, not " + list.size());
+            for (int i = 0; i < n; i++) out[i] = keyframes(name, CgRichCurve.decode(list.get(i)), list.get(i));
+            return out;
+        }
+        if (value instanceof List<?> constant) {
+            for (int i = 0; i < n; i++) out[i] = CgKeyframes.constant(num(constant.get(i)));
+            return out;
+        }
+        if (value instanceof Map<?, ?> m && m.get("argb") instanceof Number) {
+            float[] c = rgba(m);
+            for (int i = 0; i < n; i++) out[i] = CgKeyframes.constant(c[i]);
+            return out;
+        }
+        CgKeyframes one = keyframes(name, uniform(value), "age");
+        Arrays.fill(out, one);
+        return out;
+    }
+
+    /** A vec2's uniform form, {@code { curves: [c, c] }}, as {@code { curve: c }}. */
+    private static Object uniform(Object value) {
+        if (value instanceof Map<?, ?> form && form.get("curves") instanceof List<?> list && !list.isEmpty()) {
+            Map<Object, Object> one = new LinkedHashMap<>(form);
+            one.remove("curves");
+            one.put("curve", list.get(0));
+            return one;
+        }
+        if (value instanceof List<?> constant && !constant.isEmpty()) return constant.get(0);
+        return value;
+    }
+
     // ── The tree ─────────────────────────────────────────────────────────────────────────
 
     private static Map<String, Object> entry(String id, String module, Map<String, Object> inputs) {
@@ -234,12 +989,39 @@ public final class CgVfxEmitterAssets {
         return m;
     }
 
+    private static List<Object> list(float... v) {
+        List<Object> out = new ArrayList<>(v.length);
+        for (float f : v) out.add((double) f);
+        return out;
+    }
+
+    private static boolean same(float[] a, float[] b) {
+        return Arrays.equals(a, b);
+    }
+
     private static Object range(float min, float max) {
         return min == max ? (Object) (double) min : map("range", Arrays.asList((double) min, (double) max));
     }
 
-    /** A sprite size, Niagara's vec2 of width and height: a square, or a range of two squares. */
-    private static Object spriteSize(float min, float max) {
+    /** Two ends of a vector, rolled per channel: one where both agree. */
+    private static Object vector(float[] from, float[] to) {
+        return same(from, to) ? list(from) : map("range", List.of(list(from), list(to)), "per_channel", true);
+    }
+
+    /**
+     * A sprite size, Niagara's vec2 of width and height: a square, a range of two squares, or skewed (most small, a few
+     * large) a curve by a random draw (aaa-design 2.60).
+     */
+    private static Object spriteSize(float min, float max, float skew) {
+        if (skew != 1f) {
+            List<Object> values = new ArrayList<>();
+            for (int i = 0; i < SKEW_SAMPLES; i++) {
+                double x = (double) i / (SKEW_SAMPLES - 1);
+                values.add(min + (max - (double) min) * Math.pow(x, skew));
+            }
+            Map<String, Object> c = map("samples", map("range", List.of(0.0, 1.0), "values", values));
+            return map("curves", List.of(c, c), "by", "random");
+        }
         List<Double> lo = Arrays.asList((double) min, (double) min);
         return min == max ? lo : map("range", Arrays.asList(lo, Arrays.asList((double) max, (double) max)));
     }
@@ -257,26 +1039,36 @@ public final class CgVfxEmitterAssets {
         return rangeOf(value);
     }
 
+    /** A vector's two ends: a constant both, a range its two; a colour in the engine's form decoded. */
+    private static float[][] ends(Object value, int n) {
+        if (value instanceof Map<?, ?> m && m.get("range") instanceof List<?> r) return new float[][]{endOf(r.get(0), n), endOf(r.get(1), n)};
+        float[] one = endOf(value, n);
+        return new float[][]{one, one.clone()};
+    }
+
+    private static float[] endOf(Object value, int n) {
+        if (value instanceof Map<?, ?> m && m.get("argb") instanceof Number) return rgba(m);
+        return vec(value, n);
+    }
+
+    /** {@code { argb, intensity }}: its rgb times the intensity, and its alpha, as the builder's {@code color} makes it. */
+    private static float[] rgba(Map<?, ?> m) {
+        int argb = (int) ((Number) m.get("argb")).longValue();
+        float i = m.get("intensity") instanceof Number n ? n.floatValue() : 1f;
+        return new float[]{(argb >> 16 & 0xFF) / 255f * i, (argb >> 8 & 0xFF) / 255f * i, (argb & 0xFF) / 255f * i, (argb >>> 24) / 255f};
+    }
+
+    private static float[] vec(Object value, int n) {
+        if (!(value instanceof List<?> v) || v.size() < n) throw new IllegalArgumentException("a vector of " + n + ", not " + value);
+        float[] out = new float[n];
+        for (int i = 0; i < n; i++) out[i] = num(v.get(i));
+        return out;
+    }
+
     private static float[] rangeOf(Object value) {
         if (value instanceof Number n) return new float[]{n.floatValue(), n.floatValue()};
         if (value instanceof Map<?, ?> m && m.get("range") instanceof List<?> r) return new float[]{num(r.get(0)), num(r.get(1))};
         throw new IllegalArgumentException("a number or a range, not " + value);
-    }
-
-    /** {@code { curve: { keys: [[t, v], ...] }, by: age }}, linear between keys. */
-    private static CgKeyframes ageCurve(String name, Object value) {
-        if (!(value instanceof Map<?, ?> form) || !(form.get("curve") instanceof Map<?, ?> curve)
-                || !(curve.get("keys") instanceof List<?> keys) || keys.isEmpty()) {
-            throw new IllegalArgumentException(name + ": a curve over age, not " + value);
-        }
-        if (form.get("by") != null && !"age".equals(form.get("by"))) throw new IllegalArgumentException(name + ": a curve by " + form.get("by") + " is not read yet");
-        List<?> first = (List<?>) keys.get(0);
-        CgKeyframes.Builder k = CgKeyframes.start(num(first.get(0)), num(first.get(1)));
-        for (int i = 1; i < keys.size(); i++) {
-            List<?> key = (List<?>) keys.get(i);
-            k.to(num(key.get(0)), num(key.get(1)), CgEasings.LINEAR);
-        }
-        return k.build();
     }
 
     private static float num(Object o) {
@@ -314,37 +1106,6 @@ public final class CgVfxEmitterAssets {
             }
         }
         return in;
-    }
-
-    /**
-     * Its inputs {@code kind} takes. One {@code modules.yaml} declares that the engine does not take yet (Unreal's
-     * {@code curl_noise.bias}) is accepted at its default alone, and fails here, by name, at any other value.
-     */
-    private static Map<?, ?> taken(String name, Map<?, ?> entry, CgVfxModuleTypes.Kind<?> kind) {
-        Map<?, ?> in = inputs(entry);
-        Set<String> takes = new HashSet<>();
-        for (CgProperty p : kind.inputs().properties()) takes.add(p.name());
-        CgModuleTypes.Module declared = CgModuleTypes.builtIn().get(moduleId(entry));
-        Map<Object, Object> out = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> e : in.entrySet()) {
-            if (takes.contains(String.valueOf(e.getKey()))) {
-                out.put(e.getKey(), e.getValue());
-                continue;
-            }
-            Object fallback = null;
-            if (declared != null) {
-                for (CgProperty p : declared.inputs().properties()) {
-                    if (p.name().equals(e.getKey()) && p.defaultValue() != null) {
-                        fallback = CgUnits.UNREAL.toHost(p.defaultValue(), p.quantity());
-                    }
-                }
-            }
-            if (!Objects.equals(e.getValue(), fallback)) {
-                throw new IllegalArgumentException(name + ": " + entry.get("module") + ".inputs." + e.getKey()
-                        + " is not taken by the engine yet, only at its default " + fallback);
-            }
-        }
-        return out;
     }
 
     /** Whether every input {@code p}'s gate names holds the value it asks for; a list is any of its values. */

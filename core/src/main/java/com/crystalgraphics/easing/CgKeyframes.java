@@ -56,6 +56,24 @@ public final class CgKeyframes {
         return times[times.length - 1];
     }
 
+    /** How many keys. */
+    public int size() {
+        return times.length;
+    }
+
+    public float time(int key) {
+        return times[key];
+    }
+
+    public float value(int key) {
+        return values[key];
+    }
+
+    /** How key {@code key} is reached from the one before; key 0's is unused. */
+    public CgEasing easing(int key) {
+        return easings[key];
+    }
+
     public static final class Builder {
 
         private float[] times = new float[4];

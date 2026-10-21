@@ -136,7 +136,8 @@ modules:
       { name: falloff, type: float, default: 0.5 }, { name: kill_radius, type: float, quantity: length, default: 0 },
       { name: by_distance, type: bool, default: true }, { name: affect_base_velocity, type: bool, default: false }, { name: override_velocity, type: bool, default: false },
       { name: positive_only, type: bool, default: false }, { name: directions, type: string, default: "+x-x+y-y+z-z" },
-      { name: space, type: enum, values: [emitter, world], default: emitter } ] }
+      { name: space, type: enum, values: [emitter, world], default: emitter },
+      { name: directionality, type: float, default: 0 }, { name: axis, type: vec3, quantity: direction, default: [0, 0, 1] } ] }
   - { id: line_attractor, groups: [particle_update], order: forces, unreal: { niagara: LineAttractionForce, cascade: [AttractorLine] }, inputs: [
       { name: start, type: vec3, quantity: position, default: [100, 0, 0] }, { name: end, type: vec3, quantity: position, default: [-100, 0, 0] },
       { name: strength, type: float, quantity: acceleration, default: 20 }, { name: radius, type: float, quantity: length, default: null } ] }
@@ -176,12 +177,17 @@ modules:
       { name: tightness, type: float, default: 0 },
       { name: translation, type: vec3, quantity: offset, default: [0, 0, 0] }, { name: rotation, type: vec3, quantity: angle, default: [0, 0, 0] },
       { name: rotation_rate, type: vec3, quantity: angular_speed, default: [0, 0, 0] },
-      { name: tile, type: string, default: "" }, { name: ignore_component_transform, type: bool, default: false }, { name: use_fix_dt, type: bool, default: true } ] }
+      { name: tile, type: string, default: "" }, { name: ignore_component_transform, type: bool, default: false }, { name: use_fix_dt, type: bool, default: true },
+      { name: volume, type: vec3, quantity: length, default: null }, { name: attenuation, type: float, default: 1 } ] }
   - { id: physics_field, groups: [particle_update], order: forces, unreal: { niagara: PhysicsField }, inputs: [
       { name: group, type: string },
       { name: target, type: enum, values: [linear_force, linear_velocity, kill, orbit, speed_scale, angular_velocity, scale, strain] },
       { name: scale, type: float, rolls: particle, default: 1 } ] }
   # ours: Niagara does these with data interfaces and simulation stages, so no standard module carries their inputs
+  - { id: damping, groups: [particle_update], order: forces, inputs: [ { name: rate, type: float, quantity: acceleration } ] }
+  - { id: orbit_axis, groups: [particle_update], order: after_solve, inputs: [
+      { name: axis, type: vec3, quantity: direction }, { name: turns, type: float, quantity: rate },
+      { name: offset, type: vec3, quantity: offset, default: [0, 0, 0] } ] }
   - { id: wind, groups: [particle_update], order: forces, inputs: [ { name: resistance, type: float, quantity: rate } ] }
   - { id: buoyancy, groups: [particle_update], order: forces, inputs: [
       { name: lift, type: float, quantity: acceleration }, { name: cooling, type: float, quantity: time } ] }
@@ -259,6 +265,17 @@ modules:
   # contacts and kills
   - { id: collision, groups: [particle_update], order: after_solve, unreal: { niagara: Collision, cascade: [Collision] }, inputs: [
       { name: against, type: enum, values: [depth, world, shape, entities], default: world },
+      # against: shape: a sphere, box or plane, ours until Niagara's AnalyticalCollisionQuery module is read
+      { name: shape, type: enum, values: [sphere, box, plane], default: plane, visible_when: { against: shape } },
+      { name: sphere_radius, type: float, quantity: length, default: 100, visible_when: { shape: sphere } },
+      { name: box_size, type: vec3, quantity: length, default: [100, 100, 100], visible_when: { shape: box } },
+      { name: plane_normal, type: vec3, quantity: direction, default: [0, 0, 1], visible_when: { shape: plane } },
+      { name: shape_offset, type: vec3, quantity: offset, default: [0, 0, 0], visible_when: { against: shape } },
+      { name: keep_inside, type: bool, default: false, visible_when: { against: shape } },
+      # ours, absent where Unreal has nothing: a plane with an edge, the depth test's thickness
+      { name: plane_radius, type: float, quantity: length, default: null, visible_when: { shape: plane } },
+      { name: depth_thickness, type: float, quantity: length, default: null, visible_when: { against: depth } },
+      { name: entity_size, type: float, default: null, visible_when: { against: entities } },
       { name: restitution, type: vec3, default: [0.6, 0.6, 0.6] }, { name: rotation_restitution, type: vec3, default: [1, 1, 1] },
       { name: restitution_scale, type: float, by: [age], default: 1 }, { name: radius_bias, type: float, quantity: length, default: 0 },
       { name: friction, type: float, default: 0.25 },
@@ -278,7 +295,7 @@ modules:
   - { id: kill_volume, groups: [particle_update], order: after_solve, unreal: { niagara: KillParticlesInVolume, cascade: [KillBox, KillHeight] }, inputs: [
       { name: shape, type: enum, values: [sphere, box, plane], default: sphere }, { name: inside, type: bool, default: true }, { name: offset, type: vec3, quantity: offset, default: [0, 0, 0] },
       { name: sphere_radius, type: float, quantity: length, default: 100, visible_when: { shape: sphere } }, { name: box_size, type: vec3, quantity: length, default: [100, 100, 100], visible_when: { shape: box } },
-      { name: plane_normal, type: vec3, quantity: direction, default: [0, 0, 1], visible_when: { shape: plane } }, { name: world_space, type: bool, default: false },
+      { name: plane_normal, type: vec3, quantity: direction, default: [0, 0, 1], visible_when: { shape: plane } }, { name: plane_radius, type: float, quantity: length, default: null, visible_when: { shape: plane } }, { name: world_space, type: bool, default: false },
       { name: axis_aligned, type: bool, default: true } ] }
 
   # beams and ribbons
