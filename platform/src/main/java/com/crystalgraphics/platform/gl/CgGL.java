@@ -6,12 +6,15 @@ import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceChannel;
 
+import java.lang.ref.WeakReference;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 
 /**
  * Static GL facade for the CrystalGraphics core module.
@@ -782,8 +785,32 @@ public final class CgGL {
         gl().glShaderSource(shader, ascii(source));
     }
 
+    /**
+     * What {@link #glShaderSource} will pass for {@code source}, checked now on any thread: a worker making a shader's
+     * source ahead calls it, and the render thread's call then skips the scan, which over an expanded source of a few
+     * hundred kilobytes is most of a submit. Hand on the instance it returns.
+     *
+     * <pre>{@code
+     * String expanded = CgGL.checkSource(preprocessor.process(glsl, path)).toString();   // a worker
+     * CgGL.glShaderSource(shader, expanded);                                            // the render thread: no scan
+     * }</pre>
+     */
+    public static CharSequence checkSource(CharSequence source) {
+        CharSequence clean = ascii(source);
+        if (clean == source) CHECKED.set(CHECKED_AT.getAndIncrement() & (CHECKED.length() - 1), new WeakReference<>(source));
+        return clean;
+    }
+
+    /** The sources {@link #checkSource} found ASCII lately, by identity; an older one is scanned again. */
+    private static final AtomicReferenceArray<WeakReference<CharSequence>> CHECKED = new AtomicReferenceArray<>(256);
+    private static final AtomicInteger CHECKED_AT = new AtomicInteger();
+
     /** {@code source} with every character above 127 a space; the same instance when it has none. */
     static CharSequence ascii(CharSequence source) {
+        for (int k = 0; k < CHECKED.length(); k++) {
+            WeakReference<CharSequence> checked = CHECKED.get(k);
+            if (checked != null && checked.get() == source) return source;
+        }
         int n = source.length(), i = 0;
         while (i < n && source.charAt(i) < 128) i++;
         if (i == n) return source;

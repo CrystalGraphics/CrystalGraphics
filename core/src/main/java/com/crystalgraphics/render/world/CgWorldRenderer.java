@@ -24,6 +24,10 @@ import com.crystalgraphics.compute.ops.CgCullSets;
 import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.frame.CgWorld;
+import com.crystalgraphics.gl.material.CgMaterialShader;
+import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
+import com.crystalgraphics.job.CgJob;
+import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -70,6 +74,7 @@ import org.joml.Vector3f;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -361,6 +366,20 @@ public final class CgWorldRenderer {
         CgRenderStage.WORLD_TRANSPARENT.register(CgSceneTarget.ORDER, sceneTarget::record);
         CgRenderStage.WORLD_OPAQUE.register(ORDER, this::recordOpaque);
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::recordTransparent);
+        parsePassesAhead();
+    }
+
+    /**
+     * The renderer's own passes a material brings in (half size, volumes, the distortion apply), parsed on a worker now:
+     * the warm-up that first needs one finds it parsed rather than parsing on its frame.
+     */
+    private static void parsePassesAhead() {
+        CgMaterialShaderRegistry registry = CgMaterialShaderRegistry.get();
+        List<CgMaterialShader> shaders = List.of(registry.getOrCreate(UPSAMPLE_SHADER), registry.getOrCreate(RESOLVE_SHADER),
+                registry.getOrCreate(COMPOSITE_SHADER), registry.getOrCreate(CgWorldDistortion.APPLY_SHADER));
+        CgJob.executor(CgJobLane.LATENCY).execute(() -> {
+            for (CgMaterialShader shader : shaders) shader.ensureParsed();
+        });
     }
 
     /** Drops the previous ring frame's draws and runs the client world's schedule, once a ring frame. */

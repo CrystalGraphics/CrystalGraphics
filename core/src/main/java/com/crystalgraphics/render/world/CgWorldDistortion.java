@@ -76,7 +76,7 @@ final class CgWorldDistortion {
     private static final float SPREAD = 4f;
     private static final CgFrameBufferFormat FORMAT = CgFrameBufferFormat.builder("cg_world_distortion")
             .color(0, CgTextureType.RGBA16F).build();
-    private static final String APPLY_SHADER = "crystalgraphics:shaders/world_distortion_apply.shader";
+    static final String APPLY_SHADER = "crystalgraphics:shaders/world_distortion_apply.shader";
     /** Offsets add, ONE ONE, hidden by the scene's copied depth rather than a depth test. */
     private static final CgRenderState BEND_STATE = CgRenderState.builder()
             .depth(CgDepthState.NONE).blend(new CgBlendState(true, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE,

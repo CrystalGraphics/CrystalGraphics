@@ -30,7 +30,7 @@ public final class CgWarmBudget {
 
     private static boolean started;
     private static long spent;
-    /** What a start costs: the largest lately, decaying by an eighth a charge. */
+    /** What a start costs: the largest lately, decaying by an eighth a frame, so many small starts never hide a large one. */
     private static long estimate;
 
     private CgWarmBudget() {}
@@ -53,7 +53,7 @@ public final class CgWarmBudget {
     public static void spend(long nanos) {
         long n = Math.max(nanos, 1L);
         spent += n;
-        estimate = Math.max(n, estimate - (estimate >> 3));
+        estimate = Math.max(n, estimate);
     }
 
     /** A context started: warming is budgeted from now on. The lifecycle's. */
@@ -62,8 +62,9 @@ public final class CgWarmBudget {
         spent = 0;
     }
 
-    /** The frame's end: the next frame starts with its whole budget. The lifecycle's. */
+    /** A frame's start, before anything warms in it: its whole budget. The lifecycle's. */
     public static void nextFrame() {
         spent = 0;
+        estimate -= estimate >> 3;
     }
 }

@@ -31,6 +31,7 @@ import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
+import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.render.mesh.CgMeshStore;
@@ -402,6 +403,7 @@ public final class CgGraphicsLifecycle {
         if (destroyed || stoodDown) return;
 
         CgFrameClock.advance();
+        CgWarmBudget.nextFrame();   // first: the finishers below charge this frame's budget
 
         CgGlCensus.at("frame");
         CgGL.fromHost();
@@ -432,6 +434,7 @@ public final class CgGraphicsLifecycle {
                 }
                 CgFrameBoundary.run();        // after hot reload queued its saves; swaps land between frames
                 CgCompute.finishPrepared();   // ahead of the dispatches that take them
+                CgMaterialShader.advanceSubmits();
             }
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, LISTENERS)) {
                 listeners.dispatch("onFrame", l -> l.onFrame(CgFrameClock.frameIndex()));
@@ -454,7 +457,6 @@ public final class CgGraphicsLifecycle {
                     CgFrameRing.endFrame();
                 }
             }
-            CgWarmBudget.nextFrame();
         } finally {
             CgGL.toHost();
         }

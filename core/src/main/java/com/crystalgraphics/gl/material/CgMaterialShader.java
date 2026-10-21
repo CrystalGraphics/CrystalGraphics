@@ -3,6 +3,7 @@ package com.crystalgraphics.gl.material;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
+import com.crystalgraphics.render.CgWarmBudget;
 import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -29,6 +30,8 @@ import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.material.parse.CgShaderParseException;
 import com.crystalgraphics.gl.material.parse.CgShaderParser;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
+import com.crystalgraphics.job.CgJob;
+import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.mc.CgAssetReloader;
 import com.crystalgraphics.mc.CgReloadable;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -50,6 +53,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Shared shader asset compiled from a {@code .shader} file. Owned by {@link CgMaterialShaderRegistry}.
@@ -85,6 +89,9 @@ public final class CgMaterialShader implements CgReloadable {
     private static final Logger LOGGER = LogManager.getLogger("CgMaterialShader");
     private static final CgVar.Bool DUMP_GLSL = CgVar.bool("crystalgraphics.material.dumpGlsl", false, CgVar.DEV,
             "Log every material pass's generated vertex and fragment GLSL as it compiles.");
+    private static final CgVar.Bool SOURCES_AHEAD = CgVar.bool("crystalgraphics.material.sourcesAhead", true, CgVar.DEV,
+            "A submitted recompile reads, parses and generates its GLSL on a worker first, so the frame that submits "
+                    + "only hands it to the driver; false does all of it on that frame.");
     private static final int COMPILE_WAITS = CgTrace.name("material.compile-waits");
     private static final CgVar.Bool LOG_COMPILE_WAITS = CgVar.bool("crystalgraphics.material.logCompileWaits", false,
             CgVar.DEV, "Log each program a draw had to wait for (material.compile-waits), by shader and pass.");
@@ -357,24 +364,31 @@ public final class CgMaterialShader implements CgReloadable {
         if (parsed != null) return parsed;
         synchronized (this) {
             if (lastParsed != null || parseFailed || deleted) return lastParsed;
-            String source;
-            try {
-                source = isGenerated() ? generatedSource : CgIO.loadSource(resourcePath);
-            } catch (Exception e) {
-                source = null;
-            }
-            if (source == null || source.isEmpty()) {
-                parseFailed = true;
-                LOGGER.error("Cannot parse '{}': could not load its source", resourcePath);
-                return null;
-            }
+        }
+        // Read and parsed outside the lock: a worker parsing ahead must not hold up the render thread's compile.
+        String source;
+        try {
+            source = isGenerated() ? generatedSource : CgIO.loadSource(resourcePath);
+        } catch (Exception e) {
+            source = null;
+        }
+        String failure = null;
+        if (source == null || source.isEmpty()) {
+            failure = "could not load its source";
+        } else {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.parse")) {
                 parsed = CgShaderParser.parse(source, resourcePath).withState(state, resourcePath);
                 requireMargin(parsed, source);
                 requireUnits(parsed);
             } catch (CgShaderParseException e) {
+                failure = e.getMessage();
+            }
+        }
+        synchronized (this) {
+            if (lastParsed != null || deleted) return lastParsed;
+            if (failure != null) {
                 parseFailed = true;
-                LOGGER.error("Cannot parse '{}': {}", resourcePath, e.getMessage());
+                LOGGER.error("Cannot parse '{}': {}", resourcePath, failure);
                 return null;
             }
             this.renderQueue = parsed.renderQueue();
@@ -457,6 +471,16 @@ public final class CgMaterialShader implements CgReloadable {
         dirty = false;
         discardPending();
         if (resourcePath == null) return;
+        Ahead ahead = takeAhead();
+        try {
+            compileWith(ahead);
+        } finally {
+            if (ahead != null) ahead.release();
+        }
+    }
+
+    /** {@link #compile}, taking what a worker already made where it matches. */
+    private void compileWith(@Nullable Ahead ahead) {
 
         // Read BEFORE the latch below overwrites it: the unchanged-source skip may only stand on a
         // compile that actually succeeded.
@@ -475,7 +499,10 @@ public final class CgMaterialShader implements CgReloadable {
         // is identical either way, which is the point: a graph-compiled shader is not a second kind of
         // material, it is the same kind that arrived by a different route.
         String source;
-        if (isGenerated()) {
+        if (ahead != null) {
+            source = ahead.landed.source();
+            for (String read : ahead.reads()) CgIO.noteRead(read);
+        } else if (isGenerated()) {
             source = generatedSource;
         } else try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.load")) {
             source = CgIO.loadSource(resourcePath);
@@ -500,7 +527,9 @@ public final class CgMaterialShader implements CgReloadable {
         // than a hash of it: a few KB per shader, against a hash collision presenting as "F3+T stopped
         // working on this file", which is not a bug anybody would find twice.
         String expanded;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.expandCompare")) {
+        if (ahead != null) {
+            expanded = ahead.landed.expanded();
+        } else try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.expandCompare")) {
             expanded = expandedForComparison(source);
         }
         if (!isFirst && !previousCompileFailed && expanded != null && expanded.equals(lastCompiledSource)) {
@@ -514,7 +543,9 @@ public final class CgMaterialShader implements CgReloadable {
         CgParsedShader parsed;
         synchronized (this) {   // with ensureParsed, which a recorder may be running
             parsed = lastParsed;
-            if (parsed == null || !source.equals(parsedSource)) {
+            if ((parsed == null || !source.equals(parsedSource)) && ahead != null && ahead.landed.parsed() != null) {
+                parsed = ahead.landed.parsed();
+            } else if (parsed == null || !source.equals(parsedSource)) {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.parse")) {
                     parsed = CgShaderParser.parse(source, resourcePath).withState(state, resourcePath);
                     requireMargin(parsed, source);
@@ -556,10 +587,7 @@ public final class CgMaterialShader implements CgReloadable {
         //
         // Unknown tokens were already rejected at parse time, so the provider is non-null. attach()
         // dedupes by macro name, so a caller that also attached manually is harmless.
-        for (String token : parsed.engineBuffers()) {
-            CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(token);
-            attach(provider.buffer().get(), provider.macroName());
-        }
+        attachEngineBuffers(parsed);
 
         // ── Step 3: Capability check ───────────────────────────────────────────
         CgCapabilities.ShaderBufferPath bufferPath = CgCapabilities.detect().shaderBufferPath();
@@ -570,8 +598,8 @@ public final class CgMaterialShader implements CgReloadable {
         }
 
         // ── Step 4: Build template UBO for GLSL emission ───────────────────────
-        CgUniformBuffer newMatPropsUbo = null;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.templateUbo")) {
+        CgUniformBuffer newMatPropsUbo = ahead != null && ahead.basis == parsed ? ahead.takeUbo() : null;
+        if (newMatPropsUbo == null) try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.templateUbo")) {
             CgMaterialProperties tempProps = new CgMaterialProperties(parsed.properties());
             if (tempProps.hasUboProps()) {
                 newMatPropsUbo = new CgUniformBuffer(CgMaterial.MATERIAL_PROPERTIES_BLOCK,
@@ -585,8 +613,11 @@ public final class CgMaterialShader implements CgReloadable {
         Map<ProgramKey, CgShader> newCache = new LinkedHashMap<>();
 
         for (CgParsedPass pass : parsed.passes()) {
+            Sources made = ahead != null ? ahead.sources(parsed, pass, attachedBuffers) : null;
             CgMaterialShaderCompiler.CompiledSource compiled;
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.codegen")) {
+            if (made != null) {
+                compiled = made.compiled();
+            } else try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.codegen")) {
                 compiled = CgMaterialShaderCompiler.compile(parsed, pass, attachedBuffers,
                         newMatPropsUbo, CgMaterialShaderCompiler.CompileConfig.DEFAULT);
             } catch (CgPreprocessorException e) {
@@ -608,7 +639,10 @@ public final class CgMaterialShader implements CgReloadable {
 
             String processedVert;
             String processedFrag;
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.preprocess")) {
+            if (made != null) {
+                processedVert = made.vertex();
+                processedFrag = made.fragment();
+            } else try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.preprocess")) {
                 processedVert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
                 processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
             }
@@ -730,6 +764,9 @@ public final class CgMaterialShader implements CgReloadable {
      *
      * <p>Anything that asks for a program first waits for the pending one ({@link #awaitPending}), so a caller
      * that binds early pays today's cost rather than drawing half a commit.</p>
+     *
+     * <p>The sources are made on a worker first: the first calls start it and return with the shader still dirty, and
+     * the call that finds them made submits. Poll it while {@link #isDirty()}, as a warm-up does.</p>
      */
     public void submitRecompile() {
         submitRecompile(false);
@@ -740,6 +777,11 @@ public final class CgMaterialShader implements CgReloadable {
      * pass that asks for one, for a caller that only ever binds the Forward pass.
      */
     public void submitRecompile(boolean forwardOnly) {
+        if (!sourcesReady()) {
+            carryOn(forwardOnly);
+            return;
+        }
+        carried = false;
         deferring = true;
         this.forwardOnly = forwardOnly;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.submitRecompile")) {
@@ -923,6 +965,26 @@ public final class CgMaterialShader implements CgReloadable {
         if (isAutoGenerated(passName) && !programCache.containsKey(new ProgramKey(passName, Collections.emptySet()))) {
             return true;
         }
+        if (SOURCES_AHEAD.get() && !DUMP_GLSL.get()) {
+            VariantAhead ahead = variantsAhead.get(key);
+            if (ahead == null) {
+                variantsAhead.put(key, startVariant(key));
+                return false;
+            }
+            if (!ahead.sources().isDone()) return false;
+            variantsAhead.remove(key);
+            Sources made = ahead.sources().isCompletedExceptionally() ? null : ahead.sources().join();
+            if (made != null && ahead.parsed() == lastParsed && ahead.ubo() == matPropsUbo
+                    && ahead.buffers().equals(attachedBuffers)) {
+                for (String read : ahead.reads()) CgIO.noteRead(read);
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.glSubmit")) {
+                    pendingVariants.put(key, CgShaderFactory.submit(made.vertex(), made.fragment(),
+                            made.compiled().vertexFormat()));
+                }
+                return false;
+            }
+            // Stale, or it failed: made here as before, which reports what failed.
+        }
         CgMaterialShaderCompiler.CompiledSource compiled = variantSource(key);
         if (compiled == null) {
             failedVariants.add(key);
@@ -934,6 +996,54 @@ public final class CgMaterialShader implements CgReloadable {
             pendingVariants.put(key, CgShaderFactory.submit(vert, frag, compiled.vertexFormat()));
         }
         return false;
+    }
+
+    /** A variant's sources a worker is making, and what it made them from: taken only while all of it is current. */
+    private record VariantAhead(CgParsedShader parsed, List<CgAttachedBuffer> buffers, @Nullable CgUniformBuffer ubo,
+                                Set<String> reads, CompletableFuture<Sources> sources) {
+    }
+
+    /** Variants whose sources a worker is making for {@link #prepareVariant}. */
+    private final Map<ProgramKey, VariantAhead> variantsAhead = new HashMap<>();
+
+    /** {@code key}'s sources on a worker, from a snapshot of what {@link #variantSource} reads. Render thread. */
+    private VariantAhead startVariant(ProgramKey key) {
+        CgParsedShader parsed = lastParsed;
+        List<CgAttachedBuffer> buffers = new ArrayList<>(attachedBuffers);
+        CgUniformBuffer ubo = matPropsUbo;
+        String path = resourcePath;
+        Set<String> reads = Collections.synchronizedSet(new HashSet<>());
+        return new VariantAhead(parsed, buffers, ubo, reads, CompletableFuture.supplyAsync(() -> {
+            CgMaterialShaderCompiler.CompiledSource compiled = variantSource(parsed, key, buffers, ubo);
+            if (compiled == null) throw new IllegalStateException("no variant " + key);
+            try (CgIO.Reads recorded = CgIO.recordReads()) {
+                Sources made = new Sources(compiled,
+                        CgGL.checkSource(new CgShaderPreprocessor().process(compiled.vertexSource(), path)).toString(),
+                        CgGL.checkSource(new CgShaderPreprocessor().process(compiled.fragmentSource(), path)).toString());
+                reads.addAll(recorded.paths());
+                return made;
+            }
+        }, CgJob.executor(CgJobLane.LATENCY)));
+    }
+
+    /**
+     * {@link #variantSource(ProgramKey)} from what it reads, on any thread: null where there is no such pass, logging
+     * nothing, so the frame's own attempt reports it.
+     */
+    @Nullable
+    private static CgMaterialShaderCompiler.CompiledSource variantSource(CgParsedShader parsed, ProgramKey key,
+                                                                         List<CgAttachedBuffer> buffers,
+                                                                         @Nullable CgUniformBuffer ubo) {
+        if (parsed == null) return null;
+        String passName = key.passName();
+        CgParsedPass pass = parsed.getPassByName(passName);
+        CgMaterialShaderCompiler.CompileConfig config = new CgMaterialShaderCompiler.CompileConfig(key.keywords());
+        if (pass != null) return CgMaterialShaderCompiler.compile(parsed, pass, buffers, ubo, config);
+        if (!isAutoGenerated(passName)) return null;
+        CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
+        return passName.equals(CgRenderPassVariant.DEPTH.lightModeName())
+                ? CgMaterialShaderCompiler.compileDepthAutoGen(parsed, forward, buffers, ubo, config)
+                : CgMaterialShaderCompiler.compileShadowAutoGen(parsed, forward, buffers, ubo, config);
     }
 
     /** The sources of a pass and keyword set, or null, logged, when the shader has no such pass. */
@@ -979,6 +1089,7 @@ public final class CgMaterialShader implements CgReloadable {
     private void dropVariants() {
         for (CgShader s : pendingVariants.values()) s.delete();
         pendingVariants.clear();
+        variantsAhead.clear();
         failedVariants.clear();
         cacheVersion++;
     }
@@ -1067,6 +1178,208 @@ public final class CgMaterialShader implements CgReloadable {
         return shader;
     }
 
+    // ── Sources made ahead, on a worker ─────────────────────────────────────────
+
+    /** Submits waiting on their worker, carried on once a frame by {@link #advanceSubmits}. Render thread. */
+    private static final ArrayList<CgMaterialShader> CARRIED = new ArrayList<>();
+
+    /** In {@link #CARRIED}, to submit forward-only or not. */
+    private boolean carried, carriedForwardOnly;
+
+    private void carryOn(boolean forwardOnly) {
+        carriedForwardOnly = forwardOnly;
+        if (carried) return;
+        carried = true;
+        CARRIED.add(this);
+    }
+
+    /**
+     * Carries each submit whose sources a worker is making one hop on, and submits those made, inside the frame's
+     * {@link CgWarmBudget}: a caller that asked once ({@code prepare()} on a loading screen) gets its programs
+     * submitted without asking again. Once a frame, from {@code tickFrame}; allocates nothing.
+     */
+    public static void advanceSubmits() {
+        for (int i = CARRIED.size() - 1; i >= 0; i--) {
+            CgMaterialShader shader = CARRIED.get(i);
+            if (shader.carried && !shader.deleted && shader.dirty && CgWarmBudget.allows()) {
+                long start = System.nanoTime();
+                try {
+                    shader.submitRecompile(shader.carriedForwardOnly);
+                } finally {
+                    CgWarmBudget.spend(System.nanoTime() - start);
+                }
+            }
+            if (!shader.carried || shader.deleted || !shader.dirty) {
+                shader.carried = false;
+                CARRIED.remove(i);
+            }
+        }
+    }
+
+    /** Bumped by {@link #markDirty()}: sources a worker started before it read files that have changed since. */
+    private int generation;
+
+    /** The sources a worker is making for the next {@link #submitRecompile}, or has made. */
+    @Nullable
+    private Ahead ahead;
+
+    /** What a worker reads before anything is generated: the source, expanded for the unchanged check, parsed. */
+    private record Front(String source, @Nullable String expanded, @Nullable CgParsedShader parsed, Set<String> reads) {
+    }
+
+    /** One pass's generated GLSL, and the same preprocessed: what {@code CgShaderFactory} takes. */
+    private record Sources(CgMaterialShaderCompiler.CompiledSource compiled, String vertex, String fragment) {
+    }
+
+    /** Every pass's sources by name, and what preprocessing them read. */
+    private record Passes(Map<String, Sources> sources, Set<String> reads) {
+    }
+
+    /**
+     * A recompile's CPU work made off the frame, in two hops: the worker reads and parses; the frame attaches the
+     * engine buffers and makes the template block; the worker generates and preprocesses every pass. A compile takes
+     * each part only where it was made from what it would use itself, and makes the rest as before.
+     */
+    private static final class Ahead {
+        final int generation;
+        final CompletableFuture<Front> front;
+        Front landed;
+        CgParsedShader basis;
+        CgUniformBuffer ubo;
+        List<CgAttachedBuffer> buffers;
+        CompletableFuture<Passes> passes;
+
+        Ahead(int generation, CompletableFuture<Front> front) {
+            this.generation = generation;
+            this.front = front;
+        }
+
+        /** The template block, now the compile's. */
+        CgUniformBuffer takeUbo() {
+            CgUniformBuffer taken = ubo;
+            ubo = null;
+            return taken;
+        }
+
+        /** A pass's sources, where they were generated from this parse and these buffers; null otherwise. */
+        @Nullable
+        Sources sources(CgParsedShader parsed, CgParsedPass pass, List<CgAttachedBuffer> attached) {
+            if (passes == null || basis != parsed || !buffers.equals(attached)) return null;
+            if (!passes.isDone() || passes.isCompletedExceptionally()) return null;
+            return passes.join().sources().get(pass.name());
+        }
+
+        /** Every file the worker read for this compile: the reload index tracks them as if the frame had read them. */
+        Set<String> reads() {
+            if (passes == null || !passes.isDone() || passes.isCompletedExceptionally()) return landed.reads();
+            Set<String> all = new HashSet<>(landed.reads());
+            all.addAll(passes.join().reads());
+            return all;
+        }
+
+        void release() {
+            if (ubo != null) ubo.delete();
+            ubo = null;
+        }
+    }
+
+    /**
+     * Moves the sources a worker makes one hop on, and says whether a submit may go ahead: true once they are made,
+     * once making them failed (the compile then makes them itself, and reports the failure as it always has), or
+     * where nothing is made ahead.
+     */
+    private boolean sourcesReady() {
+        if (!SOURCES_AHEAD.get() || DUMP_GLSL.get() || resourcePath == null) return true;
+        Ahead a = ahead;
+        if (a != null && a.generation != generation) {
+            a.release();
+            ahead = a = null;
+        }
+        if (a == null) {
+            ahead = startAhead();
+            return false;
+        }
+        if (a.passes != null) return a.passes.isDone();
+        if (!a.front.isDone()) return false;
+        if (a.front.isCompletedExceptionally()) return true;
+        startPasses(a, a.front.join());
+        return false;
+    }
+
+    /** The first hop, on a worker: the source read, expanded and parsed, recording what it read. */
+    private Ahead startAhead() {
+        CgCapabilities.detect();   // probed here, so the worker reads the cache
+        String generated = isGenerated() ? generatedSource : null;
+        String path = resourcePath;
+        String known;
+        synchronized (this) {
+            known = lastParsed != null ? parsedSource : null;
+        }
+        return new Ahead(generation, CompletableFuture.supplyAsync(() -> {
+            try (CgIO.Reads reads = CgIO.recordReads()) {
+                String source = generated != null ? generated : CgIO.loadSource(path);
+                if (source == null || source.isEmpty()) throw new IllegalStateException("no source: " + path);
+                String expanded = expandedForComparison(source);
+                CgParsedShader parsed = null;
+                if (!source.equals(known)) {
+                    parsed = CgShaderParser.parse(source, path).withState(state, path);
+                    requireMargin(parsed, source);
+                    requireUnits(parsed);
+                }
+                return new Front(source, expanded, parsed, new HashSet<>(reads.paths()));
+            }
+        }, CgJob.executor(CgJobLane.LATENCY)));
+    }
+
+    /** Between the hops, on the frame: the engine buffers attached and the template block made, then every pass on a worker. */
+    private void startPasses(Ahead a, Front front) {
+        a.landed = front;
+        CgParsedShader parsed;
+        synchronized (this) {
+            parsed = front.parsed() != null ? front.parsed() : lastParsed;
+        }
+        if (parsed == null) {
+            a.passes = CompletableFuture.completedFuture(new Passes(Collections.emptyMap(), Collections.emptySet()));
+            return;
+        }
+        attachEngineBuffers(parsed);
+        CgMaterialProperties props = new CgMaterialProperties(parsed.properties());
+        a.basis = parsed;
+        a.ubo = props.hasUboProps() ? new CgUniformBuffer(CgMaterial.MATERIAL_PROPERTIES_BLOCK,
+                props.buildUboFormat(), CgBindingPoints.MATERIAL_PROPERTIES_UBO) : null;
+        a.buffers = new ArrayList<>(attachedBuffers);
+        List<CgAttachedBuffer> buffers = a.buffers;
+        CgUniformBuffer ubo = a.ubo;
+        String path = resourcePath;
+        a.passes = CompletableFuture.supplyAsync(() -> {
+            try (CgIO.Reads reads = CgIO.recordReads()) {
+                Map<String, Sources> made = new HashMap<>();
+                for (CgParsedPass pass : parsed.passes()) {
+                    CgMaterialShaderCompiler.CompiledSource compiled = CgMaterialShaderCompiler.compile(parsed, pass,
+                            buffers, ubo, CgMaterialShaderCompiler.CompileConfig.DEFAULT);
+                    // Checked here too, so glShaderSource has no scan left for the frame that submits.
+                    made.put(pass.name(), new Sources(compiled,
+                            CgGL.checkSource(new CgShaderPreprocessor().process(compiled.vertexSource(), path)).toString(),
+                            CgGL.checkSource(new CgShaderPreprocessor().process(compiled.fragmentSource(), path)).toString()));
+                }
+                return new Passes(made, new HashSet<>(reads.paths()));
+            }
+        }, CgJob.executor(CgJobLane.LATENCY));
+    }
+
+    /** The sources made for this compile, or null where none are or they are stale; the caller releases them. */
+    @Nullable
+    private Ahead takeAhead() {
+        Ahead a = ahead;
+        ahead = null;
+        if (a == null) return null;
+        if (a.generation != generation || a.landed == null) {
+            a.release();
+            return null;
+        }
+        return a;
+    }
+
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     /**
@@ -1076,6 +1389,7 @@ public final class CgMaterialShader implements CgReloadable {
     public void markDirty() {
         if (!deleted) {
             dirty = true;
+            generation++;
             // Clear the failure latch — a hot-reload is exactly the event that might fix it, and a
             // latch that survived one would make a broken shader unrecoverable without a restart.
             //
@@ -1170,6 +1484,22 @@ public final class CgMaterialShader implements CgReloadable {
      * @apiNote Never throws — validation failures are logged as warnings and the call becomes a no-op.
      */
     public CgMaterialShader attach(CgShaderBuffer buffer, String macroName) {
+        return attach(buffer, macroName, true);
+    }
+
+    /**
+     * The engine buffers a parse names ({@code #pragma cg_use}), attached for the compile that declares them: it
+     * includes them, so attaching marks nothing dirty.
+     */
+    private void attachEngineBuffers(CgParsedShader parsed) {
+        // Unknown tokens were rejected at parse time, so the provider is non-null; attach dedupes by macro name.
+        for (String token : parsed.engineBuffers()) {
+            CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(token);
+            attach(provider.buffer().get(), provider.macroName(), false);
+        }
+    }
+
+    private CgMaterialShader attach(CgShaderBuffer buffer, String macroName, boolean dirties) {
         CgAttachedBuffer ab;
         try {
             ab = CgAttachedBuffer.of(buffer, macroName);
@@ -1198,7 +1528,7 @@ public final class CgMaterialShader implements CgReloadable {
             }
         }
         attachedBuffers.add(ab);
-        markDirty();
+        if (dirties) markDirty();
         return this;
     }
 
