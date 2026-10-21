@@ -70,6 +70,11 @@ public final class CgVfxValues {
         return values[layout.offset(param) + index];
     }
 
+    /** Component {@code index} of a vector: 0 x, 1 y, 2 z. */
+    public float get(CgVfxParam.Vector param, int index) {
+        return values[layout.offset(param) + index];
+    }
+
     /** Component {@code component} of colour {@code entry} of a palette. */
     public float get(CgVfxParam.Palette param, int entry, int component) {
         return values[layout.offset(param) + entry * 4 + component];
@@ -98,6 +103,14 @@ public final class CgVfxValues {
         values[at + 1] = g;
         values[at + 2] = b;
         values[at + 3] = a;
+        return this;
+    }
+
+    public CgVfxValues set(CgVfxParam.Vector param, float x, float y, float z) {
+        int at = layout.offset(param);
+        values[at] = x;
+        values[at + 1] = y;
+        values[at + 2] = z;
         return this;
     }
 

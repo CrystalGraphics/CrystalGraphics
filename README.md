@@ -153,7 +153,7 @@ Fire a Kamehameha, then flash the screen around where it lands:
 ```java
 CgVfxSystem vfx = new CgVfxSystem();
 CgVfxSystemInstance<CgEnergyWave> beam = vfx.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z));   // fire from x, y, z
-beam.behaviour().aim(dx, dy, dz);                                                            // in this direction
+beam.set(CgEnergyWave.AIM, dx, dy, dz);                                                      // in this direction
 
 CgPostSettings bright = new CgPostSettings().flash(1.5f);       // brighten the picture (1 doubles it)
 CgPostVolume flash = CgPostStack.get().volume(10, bright);     // apply it now; 10 wins over lower-priority effects

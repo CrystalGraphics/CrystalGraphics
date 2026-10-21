@@ -91,7 +91,8 @@ public class CgVfxEndingTest {
         CgVfxSystem vfx = new CgVfxSystem();
         CgVfxLook look = CgEnergyWave.kamehameha().derive().set(CgVfxCharge.TIME, 0f).build();
         CgVfxSystemInstance<CgEnergyWave> beam = vfx.play(CgEnergyWave.instance(look, 0, 64, 0));
-        CgEnergyWave wave = beam.behaviour().aim(1f, 0f, 0f).target(8, 64, 0);
+        beam.set(CgEnergyWave.AIM, 1f, 0f, 0f).setPoint(CgEnergyWave.TARGET, 8, 64, 0);
+        CgEnergyWave wave = beam.behaviour();
         double t = 0;
         for (int f = 0; f < 240 && !wave.impacting(); f++) vfx.update(t += 1 / 60.0);
         assertTrue("the beam reaches its target", wave.impacting());

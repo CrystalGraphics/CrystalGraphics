@@ -24,7 +24,8 @@ import java.util.List;
  * <pre>{@code
  * CgVfxSystemInstance<?> puff = VFX.play(new CgVfxSystemInstance<>(PUFF, x, y, z)).ground(floorY);
  * CgVfxSystemInstance<CgEnergyWave> beam = VFX.play(CgEnergyWave.instance(look, x, y, z));
- * beam.behaviour().hold().aim(dx, dy, dz);   // typed: the wave's own methods
+ * beam.set(CgEnergyWave.AIM, dx, dy, dz);    // a user parameter: what its behaviour reads each tick
+ * float reach = beam.behaviour().blastRadius();   // typed: the behaviour's own state
  * beam.set(BEAM_LENGTH, 40f);                // a user parameter: its look's value, read by its behaviour and layers
  * beam.stop();                               // INACTIVE, the owner's: no new spawns, particles finish
  * beam.kill();                               // INACTIVE_CLEAR: gone at its system's next step
@@ -129,7 +130,7 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
      * Its behaviour as {@code type}, to drive it.
      *
      * <pre>{@code
-     * CgEnergyWave wave = beam.behaviour(CgEnergyWave.class).aim(dx, dy, dz);
+     * float reach = beam.behaviour(CgEnergyWave.class).blastRadius();
      * }</pre>
      *
      * @throws IllegalStateException if it carries none of that type

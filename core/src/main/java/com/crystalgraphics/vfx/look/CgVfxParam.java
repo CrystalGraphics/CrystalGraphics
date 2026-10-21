@@ -4,8 +4,8 @@ import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 
 /**
- * One value a look carries, declared on a {@link CgVfxSchema}: a number, a colour, a palette of colours, a curve or a
- * camera shake. Its kind is its type, so a colour handed where a number belongs does not compile.
+ * One value a look carries, declared on a {@link CgVfxSchema}: a number, a colour, a vector, a palette of colours, a
+ * curve or a camera shake. Its kind is its type, so a colour handed where a number belongs does not compile.
  *
  * <pre>{@code
  * public static final CgVfxSchema SCHEMA = CgVfxSchema.of("mymod:bolt");
@@ -44,7 +44,7 @@ public abstract class CgVfxParam {
         return schema;
     }
 
-    /** Floats it takes in a set of values: 1 a number, 4 a colour, 4 an entry a palette; 0 a curve or a shake. */
+    /** Floats it takes in a set of values: 1 a number, 3 a vector, 4 a colour, 4 an entry a palette; 0 a curve or a shake. */
     public abstract int floats();
 
     /** Whether a shader property can read it: a number, a colour or a palette. */
@@ -140,6 +140,42 @@ public abstract class CgVfxParam {
 
         public static float alpha(int argb) {
             return (argb >>> 24) / 255f;
+        }
+    }
+
+    /**
+     * Three numbers: a direction, or a point from its effect's origin. The format's {@code vec3} user parameter, and
+     * Niagara's vector user parameters, set by whoever plays the effect and read by it each tick.
+     *
+     * <pre>{@code
+     * public static final CgVfxParam.Vector AIM = SCHEMA.vector("aim", 1f, 0f, 0f);
+     * public static final CgVfxParam.Vector TARGET = SCHEMA.vector("target", Float.NaN, Float.NaN, Float.NaN);
+     *
+     * beam.set(AIM, dx, dy, dz);                    // a direction
+     * beam.setPoint(TARGET, x, y, z);              // a point in the world, kept from the effect's origin
+     * float ax = beam.get(AIM, 0);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>No unit: a look's {@code scaled} leaves it.</li>
+     *   <li>It is set, never tweened.</li>
+     *   <li>A point from the origin moves with an effect that follows something; one that keeps its origin (a wave,
+     *       whose muzzle alone rides) holds it in place.</li>
+     * </ul>
+     */
+    public static final class Vector extends CgVfxParam {
+        final float x, y, z;
+
+        Vector(CgVfxSchema schema, String name, int local, float x, float y, float z) {
+            super(schema, name, local);
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
+
+        @Override
+        public int floats() {
+            return 3;
         }
     }
 

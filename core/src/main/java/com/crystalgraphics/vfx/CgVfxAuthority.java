@@ -19,10 +19,11 @@ import java.util.function.Consumer;
  * listeners on the server thread.
  *
  * <pre>{@code
- * CgEnergyWave wave = new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z).collide();
+ * CgVfxSystemInstance<CgEnergyWave> wave = CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z)
+ *         .set(CgEnergyWave.COLLIDE, 1f);
  * CgVfxAuthority run = new CgVfxAuthority(wave, CgCollisionWorld.of(level));
  * wave.onHit(CgEnergyWave.PART_BEAM, h -> damage(h.entity()));
- * run.advance(0.05f);                 // each server tick, after wave.aim(...)
+ * run.advance(0.05f);                 // each server tick, after wave.set(CgEnergyWave.AIM, ...)
  * if (run.done()) ...
  * }</pre>
  *

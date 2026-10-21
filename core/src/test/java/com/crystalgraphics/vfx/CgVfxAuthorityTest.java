@@ -88,16 +88,16 @@ public class CgVfxAuthorityTest {
     @Test
     public void aServersWaveStrikesWhatItsLevelHoldsThenBursts() {
         CgVfxSystemInstance<CgEnergyWave> beam = CgEnergyWave.instance(CgEnergyWave.kamehameha(), 0, 1, 0);
-        CgEnergyWave wave = beam.behaviour().collide();
+        beam.set(CgEnergyWave.COLLIDE, 1f);
         beam.follow(1, CgEntityAttachments.CHEST);
-        wave.aim(1f, 0f, 0f);
+        beam.set(CgEnergyWave.AIM, 1f, 0f, 0f);
         CgVfxAuthority run = new CgVfxAuthority(beam, CgCollisionWorld.of(FLOOR, new Crowd()));
         List<String> heard = new ArrayList<>();
         beam.onHit(h -> heard.add(h.part() + " " + h.kind() + " " + h.entityId()));
 
         for (int t = 0; t < 200; t++) run.advance(0.05f);
         assertEquals("through its caster, onto the zombie, once", List.of("beam ENTITY 2"), heard);
-        assertEquals(2, wave.hitEntity());
+        assertEquals(2, beam.behaviour().hitEntity());
 
         beam.stop();
         for (int t = 0; t < 600 && !run.done(); t++) run.advance(0.05f);

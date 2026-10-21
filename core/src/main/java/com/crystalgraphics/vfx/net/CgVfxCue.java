@@ -432,7 +432,8 @@ public final class CgVfxCue {
                 int size = params[i].floats();
                 fields[i] = new CgNetField[size];
                 for (int k = 0; k < size; k++) {
-                    String component = size == 1 ? name : size == 4 ? name + "/" + "rgba".charAt(k)
+                    String component = size == 1 ? name : size == 3 ? name + "/" + "xyz".charAt(k)
+                            : size == 4 ? name + "/" + "rgba".charAt(k)
                             : name + "/" + k / 4 + "rgba".charAt(k % 4);
                     fields[i][k] = CgNetField.ofFloat(component);
                     byField.put(fields[i][k], i);
@@ -458,6 +459,8 @@ public final class CgVfxCue {
             } else if (param instanceof CgVfxParam.Color) {
                 effect.set((CgVfxParam.Color) param, play.getFloat(f[0]), play.getFloat(f[1]), play.getFloat(f[2]),
                         play.getFloat(f[3]));
+            } else if (param instanceof CgVfxParam.Vector) {
+                effect.set((CgVfxParam.Vector) param, play.getFloat(f[0]), play.getFloat(f[1]), play.getFloat(f[2]));
             } else {
                 CgVfxParam.Palette palette = (CgVfxParam.Palette) param;
                 for (int e = 0; e < palette.count(); e++) {
@@ -703,6 +706,24 @@ public final class CgVfxCue {
         /** One of its look's numbers, by the parameter's constant ({@code Blast.RADIUS}). */
         public Play set(CgVfxParam.Scalar param, float value) {
             return setFloat(lookField(param)[0], value);
+        }
+
+        /** One of its look's numbers as it carries it; NaN where nothing set it. */
+        public float get(CgVfxParam.Scalar param) {
+            CgNetField<Float> f = lookField(param)[0];
+            return has(f) ? getFloat(f) : Float.NaN;
+        }
+
+        /** Component {@code index} of one of its look's vectors as it carries it; NaN where nothing set it. */
+        public float get(CgVfxParam.Vector param, int index) {
+            CgNetField<Float> f = lookField(param)[index];
+            return has(f) ? getFloat(f) : Float.NaN;
+        }
+
+        /** One of its look's vectors. */
+        public Play set(CgVfxParam.Vector param, float x, float y, float z) {
+            CgNetField<Float>[] f = lookField(param);
+            return setFloat(f[0], x).setFloat(f[1], y).setFloat(f[2], z);
         }
 
         /** One of its look's colours, {@code 0xAARRGGBB}. */
@@ -1017,10 +1038,10 @@ public final class CgVfxCue {
      *
      * <pre>{@code
      * CgVfxCue.Playing wave = WAVE.on(caster, CgEntityAttachments.HANDS_FORWARD).start();
-     * CgEnergyWave beam = wave.effect();
-     * beam.hold().aim(look.x, look.y, look.z);   // before its first tick, as on a client
-     * beam.set(CgEnergyWave.RADIUS, 1.2f);       // a number or colour set on it reaches every viewer too
-     * beam.fire();                               // what it publishes reaches every viewer
+     * CgVfxSystemInstance<CgEnergyWave> beam = wave.effect();
+     * beam.set(CgEnergyWave.RELEASE, Float.POSITIVE_INFINITY).set(CgEnergyWave.AIM, look.x, look.y, look.z);
+     * beam.set(CgEnergyWave.RADIUS, 1.2f);       // a number, colour or vector set on it reaches every viewer too
+     * beam.set(CgEnergyWave.RELEASE, beam.age());   // fired, on every viewer
      * }</pre>
      */
     public static final class Playing {
@@ -1055,6 +1076,13 @@ public final class CgVfxCue {
         public Playing set(CgVfxParam.Scalar param, float value) {
             if (authority != null) authority.effect().set(param, value);
             else play.set(param, value);
+            return this;
+        }
+
+        /** One of its look's vectors; on an authoritative cue, set on the server's effect, which sends it on. */
+        public Playing set(CgVfxParam.Vector param, float x, float y, float z) {
+            if (authority != null) authority.effect().set(param, x, y, z);
+            else play.set(param, x, y, z);
             return this;
         }
 

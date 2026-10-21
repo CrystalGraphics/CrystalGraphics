@@ -66,7 +66,7 @@ public class CgVfxHitsTest {
     public void aWaveReportsItsBeamOnceThenItsBurstAtTheSamePoint() {
         CgVfxSystem vfx = new CgVfxSystem();
         CgVfxSystemInstance<CgEnergyWave> beam = CgVfx.owner("wave_hits_test", vfx).play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), 0, 0, 0));
-        beam.behaviour().aim(1f, 0f, 0f).target(8, 0, 0);
+        beam.set(CgEnergyWave.AIM, 1f, 0f, 0f).setPoint(CgEnergyWave.TARGET, 8, 0, 0);
         List<String> heard = new ArrayList<>();
         beam.onHit(h -> heard.add(h.part() + " " + h.kind() + " " + Math.round(h.x())));
         for (int f = 0; f <= 600; f++) vfx.update(f / 60.0);

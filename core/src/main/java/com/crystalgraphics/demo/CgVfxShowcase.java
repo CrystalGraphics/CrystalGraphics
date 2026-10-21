@@ -420,9 +420,9 @@ public final class CgVfxShowcase {
                 CgVfxSystemInstance<CgEnergyWave> beam = vfx.play(CgEnergyWave.instance(lane.look, x + lane.from[0], y + lane.from[1],
                         z + lane.from[2]).ground(y));
                 controls.apply(beam);
-                beam.behaviour().aim(lane.aim[0], lane.aim[1], lane.aim[2])
-                        .via(x + lane.via[0], y + lane.via[1], z + lane.via[2])
-                        .target(x + target[0], y + target[1], z + target[2]);
+                beam.set(CgEnergyWave.AIM, lane.aim[0], lane.aim[1], lane.aim[2])
+                        .setPoint(CgEnergyWave.VIA, x + lane.via[0], y + lane.via[1], z + lane.via[2])
+                        .setPoint(CgEnergyWave.TARGET, x + target[0], y + target[1], z + target[2]);
                 waves[k] = beam;
             }
             if (waves[k] != null && seconds - firedAt[k] > WAVE_HOLD) waves[k].stop();

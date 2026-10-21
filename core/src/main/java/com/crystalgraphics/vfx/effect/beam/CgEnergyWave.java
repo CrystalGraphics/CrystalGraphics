@@ -4,7 +4,6 @@ import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.easing.CgEasings;
-import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.shape.primitive.CgSphere;
@@ -39,17 +38,22 @@ import java.util.WeakHashMap;
  * An energy wave: charged at a muzzle, then a beam that flows outward, bends where its source turns, homes on a target
  * and stops where it hits, bursting into a blast when its tail runs out into what it hit. It is the native behaviour
  * {@code crystalgraphics:energy_wave} of a system instance, as a Blueprint drives a Niagara component: the instance
- * plays, follows, stops and ends; the wave is what it does. {@link #kamehameha()} is its look; {@link #finalFlash()} and
- * {@link #galickGun()} are the same kits in another palette, and {@link #toon()} its body in flat bands.
+ * plays, follows, stops and ends; the wave is what it does. Whoever plays it drives it through its instance's user
+ * parameters ({@link #AIM}, {@link #TARGET}, {@link #VIA}, {@link #COLLIDE}, {@link #RELEASE}), which the wave reads
+ * each tick, as a Niagara system's data interfaces read the user parameters its component is given.
+ * {@link #kamehameha()} is its look; {@link #finalFlash()} and {@link #galickGun()} are the same kits in another
+ * palette, and {@link #toon()} its body in flat bands.
  *
  * <pre>{@code
  * CgVfxSystemInstance<CgEnergyWave> beam = VFX.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z)
- *         .follow(playerId, CgEntityAttachments.HANDS_FORWARD));
- * CgEnergyWave wave = beam.behaviour().hold();   // charging until fired
- * wave.aim(dx, dy, dz).target(tx, ty, tz);            // each tick, as the source turns
- * wave.fire();                                        // release
- * beam.stop();                                        // the tail runs out into the target, which bursts
- * beam.end(CgEnergyWave.FADE);                        // or: thins away where it is, no blast
+ *         .follow(playerId, CgEntityAttachments.HANDS_FORWARD)
+ *         .set(CgEnergyWave.RELEASE, Float.POSITIVE_INFINITY));   // charging until fired
+ * beam.set(CgEnergyWave.AIM, dx, dy, dz).setPoint(CgEnergyWave.TARGET, tx, ty, tz);   // each tick, as the source turns
+ * beam.set(CgEnergyWave.RELEASE, beam.age());                     // release
+ * beam.stop();                                                    // the tail runs out into the target, which bursts
+ * beam.end(CgEnergyWave.FADE);                                    // or: thins away where it is, no blast
+ *
+ * float reach = beam.behaviour().blastRadius();                   // its own state, read typed
  * }</pre>
  *
  * <p>From a file, a system names it as its {@code effect} and sets the parameters it reads by name, {@link #CONTRACT}'s:</p>
@@ -81,7 +85,8 @@ import java.util.WeakHashMap;
  *       they are in the world.</li>
  *   <li>It homes on its target ({@link #TURN_RATE}, {@link #NAVIGATION}) or, with {@link #STEER} above 0, is steered:
  *       it leaves the muzzle along the aim into an end that chases the target, for a beam a player aims.</li>
- *   <li>It flies to the target it is given; {@link #collide} has it find its own along its aim.</li>
+ *   <li>It flies to the target it is given; {@link #COLLIDE} has it find its own along its aim.</li>
+ *   <li>Once fired it stays fired: a later {@link #RELEASE} does not take it back.</li>
  *   <li>Its look must carry its elements' schemas: derive it from one of the three, or add them with {@code params}.</li>
  *   <li>Its elements play their own emitters: its system names none for the instance ({@link #system}).</li>
  * </ul>
@@ -91,24 +96,8 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
     public static final CgVfxSchema SCHEMA = CgVfxSchema.of("crystalgraphics:wave");
 
     /**
-     * What a cue playing a wave carries beyond its look: whether it charges until fired, and the age it fired at, in
-     * seconds. An authoritative cue's server wave publishes both; a cosmetic one sets them.
-     *
-     * <pre>{@code
-     * Playing wave = KAMEHAMEHA.on(player, CgEntityAttachments.HANDS_FORWARD).setBool(CgEnergyWave.HELD, true).start();
-     * wave.set(CgEnergyWave.FIRED_AT, wave.age());   // released
-     * }</pre>
-     */
-    public static final CgNetField<Boolean> HELD = CgNetField.ofBool("wave/held");
-    public static final CgNetField<Float> FIRED_AT = CgNetField.ofFloat("wave/fired_at").fallback(Float.NaN);
-
-    static {
-        SCHEMA.networked(HELD, FIRED_AT);
-    }
-
-    /**
      * The parts of it that strike, each hit's {@code part}. The beam, as its head reaches what it hits and again when
-     * that changes: the entity or block its cast met, or with no cast ({@link #collide}) the point it was aimed at. The
+     * that changes: the entity or block its cast met, or with no cast ({@link #COLLIDE}) the point it was aimed at. The
      * burst, once, where it bursts after its impact frame: the block the beam last met, else that point alone. The
      * blast, once for each entity within {@link #blastRadius()}, as its shock front reaches it.
      *
@@ -141,6 +130,40 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
      * hands are the muzzle, and the beam clears their body. Its casts still start at the muzzle.
      */
     public static final CgVfxParam.Scalar MUZZLE_FORWARD = SCHEMA.length("muzzleForward", 0f);
+
+    /** Where the source points, any length: set each tick as the caster turns. */
+    public static final CgVfxParam.Vector AIM = SCHEMA.vector("aim", 1f, 0f, 0f);
+    /**
+     * What the body homes on, from the system's origin ({@code setPoint} takes a point in the world); NaN for straight
+     * flight. While it {@link #COLLIDE}s, the end its cast finds instead.
+     */
+    public static final CgVfxParam.Vector TARGET = SCHEMA.vector("target", Float.NaN, Float.NaN, Float.NaN);
+    /** A point the body passes on its way to the target, from the origin; NaN for none. */
+    public static final CgVfxParam.Vector VIA = SCHEMA.vector("via", Float.NaN, Float.NaN, Float.NaN);
+    /**
+     * 1: it finds its own target each tick, where a sphere of {@link #RADIUS} cast from the muzzle along the aim first
+     * meets a block or an entity, passing through the entity it follows, else {@link #MAX_LENGTH} ahead. Once stopped it
+     * keeps the last, so the blast lands where it was hitting. A viewer of a cue never casts: it homes on the server's.
+     *
+     * <pre>{@code
+     * beam = owner.play(CgEnergyWave.instance(look, x, y, z).follow(playerId, CgEntityAttachments.HANDS_FORWARD)
+     *         .set(CgEnergyWave.COLLIDE, 1f));
+     * beam.set(CgEnergyWave.AIM, look.x, look.y, look.z);                // each tick
+     * beam.onHit(CgEnergyWave.PART_BEAM, h -> damage(h.entity()));       // as the head reaches it, and as it changes
+     * }</pre>
+     */
+    public static final CgVfxParam.Scalar COLLIDE = SCHEMA.scalar("collide", 0f);
+    /**
+     * The age it fires at, in seconds: NaN at its charge's {@link CgVfxCharge#TIME}, infinity held, charging until set
+     * again. Once its age reaches it, it has fired, whatever is set after: a late joiner given the age the caster fired
+     * at fires there.
+     *
+     * <pre>{@code
+     * beam.set(CgEnergyWave.RELEASE, Float.POSITIVE_INFINITY);   // key down: the ball grows over TIME and stays full
+     * beam.set(CgEnergyWave.RELEASE, beam.age());                // key up
+     * }</pre>
+     */
+    public static final CgVfxParam.Scalar RELEASE = SCHEMA.time("release", Float.NaN);
     /** Held at the muzzle while it fires. */
     public static final CgVfxParam.Shake FIRING_SHAKE = SCHEMA.shake("firingShake",
             CgCameraShakes.RUMBLE.toBuilder().trauma(0.2f).radii(3f, 24f).build());
@@ -283,7 +306,7 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
             .build();
 
     /** Blocks the end must move before a server publishes it again, and how far the unit aim must turn. */
-    private static final double PUBLISH_MOVE = 0.05, AIM_EPSILON = 1.0e-4;
+    private static final double PUBLISH_MOVE = 0.05;
     /** A server tests its aim once a server tick: entities and the aim move no faster. */
     private static final float SERVER_RAY_SECONDS = 0.05f - 1.0e-4f;
     private static final int STREAM_ZONE = CgTrace.name("vfx.wave.stream"), MUZZLE_ZONE = CgTrace.name("vfx.wave.muzzle"),
@@ -312,14 +335,18 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
     private float muzzleX, muzzleY, muzzleZ;
     /** The muzzle as drawn this tick: {@link #MUZZLE_FORWARD} along the aim once fired. */
     private float drawnX, drawnY, drawnZ;
-    /** {@link #collide}: whether it targets what its aim meets, and the entity it met this tick. */
-    private boolean collides;
+    /** {@link #COLLIDE} this tick, and the entity its cast met; never for a cue's viewer. */
+    private boolean collides, viewer;
+    /** The {@link #TARGET} and {@link #VIA} last given the stream, and the cue's direction last taken; NaN before. */
+    private float appliedTX = Float.NaN, appliedTY = Float.NaN, appliedTZ = Float.NaN;
+    private float appliedVX = Float.NaN, appliedVY = Float.NaN, appliedVZ = Float.NaN;
+    private double cueDX = Double.NaN, cueDY = Double.NaN, cueDZ = Double.NaN;
     private int hitEntity = -1;
     private final CgHit hit = new CgHit();
     /** The beam's cross-section, cast along the aim; made again when {@link #RADIUS} changes. */
     private CgSphere beam;
     private boolean aimMet;
-    /** Where {@link #collide} last aimed it, in world coordinates, and the age of that test; NaN before the first. */
+    /** Where its cast last aimed it, in world coordinates, and the age of that test; NaN before the first. */
     private double endX = Double.NaN, endY, endZ;
     private float rayAge = Float.NEGATIVE_INFINITY;
     /** The end last published, NaN before the first, and the entity it was on. */
@@ -335,7 +362,7 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
     /** The age it releases at, and the age it was stopped at; NaN until stopped. */
     private float releaseAge, stopAge = Float.NaN;
     private int sizeAtStop;
-    private boolean held, ended, finished;
+    private boolean ended, finished;
 
     /** The wave {@code instance} carries: its system's behaviour factory ({@code CgEnergyWave::new}). */
     @SuppressWarnings("unchecked")   // the instance making a wave is the wave's own
@@ -414,44 +441,39 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
         return true;
     }
 
-    /** Where the source points, any length. Any time. */
-    public CgEnergyWave aim(float dx, float dy, float dz) {
-        aimX = dx;
-        aimY = dy;
-        aimZ = dz;
-        return this;
+    /** Reads what whoever plays it set: the aim, the target and waypoint, the cast, the release. */
+    private void drive() {
+        aimX = get(AIM, 0);
+        aimY = get(AIM, 1);
+        aimZ = get(AIM, 2);
+        collides = get(COLLIDE) > 0f && !viewer;
+        if (collides) {
+            appliedTX = UNAPPLIED;   // the cast gives the stream its target; TARGET goes again once it stops
+        } else {
+            float x = get(TARGET, 0), y = get(TARGET, 1), z = get(TARGET, 2);
+            if (!same(x, appliedTX) || !same(y, appliedTY) || !same(z, appliedTZ)) {
+                body.stream().target(appliedTX = x, appliedTY = y, appliedTZ = z);
+            }
+        }
+        float vx = get(VIA, 0), vy = get(VIA, 1), vz = get(VIA, 2);
+        if (!same(vx, appliedVX) || !same(vy, appliedVY) || !same(vz, appliedVZ)) {
+            body.stream().via(appliedVX = vx, appliedVY = vy, appliedVZ = vz);
+        }
+        if (!(age() >= releaseAge)) {
+            float release = get(RELEASE);
+            releaseAge = Float.isNaN(release) ? Math.max(get(CgVfxCharge.TIME), 0f) : Math.max(release, 0f);
+        }
     }
 
-    /** What the body homes on, in world coordinates; NaN for straight flight. */
-    public CgEnergyWave target(double x, double y, double z) {
-        body.stream().target((float) (x - originX()), (float) (y - originY()), (float) (z - originZ()));
-        return this;
+    /** A NaN no parameter holds: the stream's target is the cast's, not {@link #TARGET}'s. */
+    private static final float UNAPPLIED = Float.intBitsToFloat(0x7fc00001);
+
+    /** Equal, NaN equal to NaN. */
+    private static boolean same(float a, float b) {
+        return Float.floatToIntBits(a) == Float.floatToIntBits(b);
     }
 
-    /** A point the body passes on its way to the target; NaN for none. */
-    public CgEnergyWave via(double x, double y, double z) {
-        body.stream().via((float) (x - originX()), (float) (y - originY()), (float) (z - originZ()));
-        return this;
-    }
-
-    /**
-     * Finds its own target each tick while it plays: where a sphere of {@link #RADIUS} cast from the muzzle along the
-     * aim first meets a block or an entity, passing through the entity it follows, else {@link #MAX_LENGTH} ahead. Once
-     * stopped it keeps the last, so the blast lands where it was hitting; a {@link #target} call is overridden.
-     *
-     * <pre>{@code
-     * beam = owner.play(CgEnergyWave.instance(look, x, y, z).follow(playerId, CgEntityAttachments.HANDS_FORWARD));
-     * wave = beam.behaviour().collide();
-     * wave.aim(look.x, look.y, look.z);                               // each tick
-     * wave.onHit(CgEnergyWave.PART_BEAM, h -> damage(h.entity()));    // as the head reaches it, and as it changes
-     * }</pre>
-     */
-    public CgEnergyWave collide() {
-        collides = true;
-        return this;
-    }
-
-    /** The entity the beam meets this tick while it {@link #collide collides}; -1 for none, or a block. */
+    /** The entity the beam meets this tick while it {@link #COLLIDE}s; -1 for none, or a block. */
     public int hitEntity() {
         return hitEntity;
     }
@@ -459,35 +481,6 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
     /** How far its blast reaches from where it bursts, in blocks. */
     public float blastRadius() {
         return get(CgVfxBlast.RADIUS);
-    }
-
-    /**
-     * Charges until {@link #fire()}, however long: the ball grows over {@link CgVfxCharge#TIME} and stays full, its
-     * streaks, arcs and tremor running on. Any time before it fires; a held wave never fired charges until stopped.
-     *
-     * <pre>{@code
-     * wave = owner.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z)).behaviour().hold();   // key down
-     * wave.fire();                                                                       // key up
-     * }</pre>
-     */
-    public CgEnergyWave hold() {
-        if (age() == 0f || age() < releaseAge) {
-            releaseAge = Float.POSITIVE_INFINITY;
-            held = true;
-        }
-        return this;
-    }
-
-    /** Releases the charge now, if it has not yet. */
-    public CgEnergyWave fire() {
-        releaseAge = Math.min(releaseAge, age());
-        return this;
-    }
-
-    /** Releases the charge at {@code seconds} into its life: a viewer joining late fires where the caster fired. */
-    public CgEnergyWave fireAt(float seconds) {
-        releaseAge = Math.min(releaseAge, Math.max(seconds, 0f));
-        return this;
     }
 
     /** Whether it is still charging. */
@@ -511,31 +504,28 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
     }
 
     /**
-     * Follows its cue as the server changes it: the aim, the target, what it struck, and {@link #FIRED_AT}. An
-     * authoritative cue's server wave publishes all of them; a cosmetic one sets them.
+     * Follows its cue's core as the server changes it: a new direction into {@link #AIM}, the target into
+     * {@link #TARGET}, and what it struck. Its user parameters arrive as the cue's look fields, set on its instance.
      */
     @Override
     public void cueChanged(CgVfxCue.Play cue) {
-        if (cue.hasDirection()) aim((float) cue.dx(), (float) cue.dy(), (float) cue.dz());
-        if (cue.hasTarget()) target(cue.tx(), cue.ty(), cue.tz());
+        // A direction only once it moves: the server drives the aim through AIM, which an unchanged core must not undo.
+        if (cue.hasDirection() && (cue.dx() != cueDX || cue.dy() != cueDY || cue.dz() != cueDZ)) {
+            cueDX = cue.dx();
+            cueDY = cue.dy();
+            cueDZ = cue.dz();
+            instance.set(AIM, (float) cueDX, (float) cueDY, (float) cueDZ);
+        }
+        if (cue.hasTarget()) instance.setPoint(TARGET, cue.tx(), cue.ty(), cue.tz());
         cueStruck = cue.struck();
-        float fireAge = cue.getFloat(FIRED_AT);
-        if (!Float.isNaN(fireAge)) fireAt(fireAge);
     }
 
     /**
-     * On a server, what its viewers draw: where the beam ends and the entity there, which they home on rather than test
-     * their own worlds; and its aim, hold and release as the server drove it.
+     * On a server, where the beam ends and the entity there, which its viewers home on rather than test their own
+     * worlds. Its aim and release reach them as look fields.
      */
     @Override
     public void publish(CgVfxCue.Play cue) {
-        float length = (float) Math.sqrt(aimX * aimX + aimY * aimY + aimZ * aimZ);
-        if (length > 0f && Math.abs(aimX / length - cue.dx()) + Math.abs(aimY / length - cue.dy())
-                + Math.abs(aimZ / length - cue.dz()) > AIM_EPSILON) {
-            cue.toward(aimX, aimY, aimZ);
-        }
-        cue.setBool(HELD, held);
-        if (releaseAge != Float.POSITIVE_INFINITY) cue.setFloat(FIRED_AT, releaseAge);
         if (Double.isNaN(endX)) return;
         double dx = endX - publishedX, dy = endY - publishedY, dz = endZ - publishedZ;
         // The comparison is false while the last is NaN.
@@ -548,9 +538,10 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
     }
 
     /**
-     * A wave's instance from a cue: at its point, aimed and targeted as it says, charging and fired as {@link #HELD} and
-     * {@link #FIRED_AT} say. The one factory for both sides of an authoritative cue: the server's wave
-     * {@linkplain #collide collides}, finding its own end, unless the cue gave it a target.
+     * A wave's instance from a cue: at its point, aimed and targeted as it says; charged and fired as its look fields'
+     * {@link #RELEASE} says. The one factory for both sides of an authoritative cue: the server's wave
+     * {@linkplain #COLLIDE collides}, finding its own end, unless the cue gave it a target; a viewer homes on what the
+     * server publishes.
      *
      * <pre>{@code
      * public static final CgVfxCue WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(), CgEnergyWave::fromCue)
@@ -561,13 +552,16 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
     public static CgVfxSystemInstance<CgEnergyWave> fromCue(CgVfxLook look, CgVfxCue.Play cue) {
         CgVfxSystemInstance<CgEnergyWave> played = instance(look, cue.x(), cue.y(), cue.z());
         CgEnergyWave wave = played.behaviour();
-        if (cue.hasDirection()) wave.aim((float) cue.dx(), (float) cue.dy(), (float) cue.dz());
-        if (cue.hasTarget()) wave.target(cue.tx(), cue.ty(), cue.tz());
-        else if (cue.authoritative()) wave.collide();
+        wave.viewer = !cue.authoritative();
+        if (cue.hasDirection()) {
+            wave.cueDX = cue.dx();
+            wave.cueDY = cue.dy();
+            wave.cueDZ = cue.dz();
+            played.set(AIM, (float) cue.dx(), (float) cue.dy(), (float) cue.dz());
+        }
+        if (cue.hasTarget()) played.setPoint(TARGET, cue.tx(), cue.ty(), cue.tz());
+        else if (cue.authoritative()) played.set(COLLIDE, 1f);
         wave.cueStruck = cue.struck();
-        if (cue.getBool(HELD)) wave.hold();
-        float fireAge = cue.getFloat(FIRED_AT);
-        if (!Float.isNaN(fireAge)) wave.fireAt(fireAge);
         return played;
     }
 
@@ -592,6 +586,7 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
 
     @Override
     public void tick(CgVfxSystemInstance<?> in, float dt) {
+        drive();
         boolean playing = instance.state() == CgVfxEffect.State.PLAYING, fired = playing && age() >= releaseAge;
         if (collides && playing) targetAlongAim();
         drawnMuzzle();
@@ -626,7 +621,7 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
     }
 
     /**
-     * {@link #collide}'s target: where the beam, a sphere of {@link #RADIUS} cast from the muzzle along the aim, first
+     * {@link #COLLIDE}'s target: where the beam, a sphere of {@link #RADIUS} cast from the muzzle along the aim, first
      * meets a block or an entity, passing through what it follows; else its reach ahead.
      */
     private void targetAlongAim() {
@@ -648,7 +643,7 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
         endY = y + aimY / length * distance;
         endZ = z + aimZ / length * distance;
         if (authoritative() && TRACE_AUTHORITY.get()) traceCast(world, x, y, z, reach, radius);
-        target(endX, endY, endZ);
+        body.stream().target((float) (endX - originX()), (float) (endY - originY()), (float) (endZ - originZ()));
     }
 
     private void traceCast(CgCollisionWorld world, double x, double y, double z, float reach, float radius) {

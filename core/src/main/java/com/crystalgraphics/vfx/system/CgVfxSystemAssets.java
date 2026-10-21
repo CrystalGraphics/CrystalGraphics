@@ -144,6 +144,9 @@ public final class CgVfxSystemAssets {
         Object v = p.get("default");
         if (target instanceof CgVfxParam.Scalar scalar && ("float".equals(type) || "int".equals(type))) {
             look.set(scalar, v instanceof Number n ? n.floatValue() : 0f);
+        } else if (target instanceof CgVfxParam.Vector vector && "vec3".equals(type)) {
+            float[] xyz = vec3(id, name, v);
+            look.set(vector, xyz[0], xyz[1], xyz[2]);
         } else if (target instanceof CgVfxParam.Color color && "colour".equals(type)) {
             Map<?, ?> c = v instanceof Map<?, ?> m ? m : Map.of();
             look.set(color, c.get("argb") instanceof Number n ? (int) n.longValue() : 0xFFFFFFFF,
@@ -193,9 +196,25 @@ public final class CgVfxSystemAssets {
                 schema.color(name, argb, intensity);
                 break;
             }
+            case "vec3": {
+                float[] xyz = vec3(system, name, v);
+                schema.vector(name, xyz[0], xyz[1], xyz[2]);
+                break;
+            }
             default:
                 throw new IllegalArgumentException(system + ": user." + name + " is a " + type + ", which systems cannot hold yet");
         }
+    }
+
+    /** A {@code vec3}'s default, {@code [x, y, z]}; absent, all three NaN (none). */
+    private static float[] vec3(String system, String name, @Nullable Object v) {
+        if (v == null) return new float[] {Float.NaN, Float.NaN, Float.NaN};
+        if (!(v instanceof List<?> list) || list.size() != 3) {
+            throw new IllegalArgumentException(system + ": user." + name + "'s default is " + v + ", where a vec3 is [x, y, z]");
+        }
+        float[] xyz = new float[3];
+        for (int i = 0; i < 3; i++) xyz[i] = list.get(i) instanceof Number n ? n.floatValue() : Float.NaN;
+        return xyz;
     }
 
     @Nullable

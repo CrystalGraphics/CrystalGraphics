@@ -108,6 +108,12 @@ public final class CgVfxTuning implements AutoCloseable, CgReloadable {
                     declare(key + "." + COLOUR[i], values.raw(c), v -> values.tune(c, v),
                             "Colour " + param.name + " of " + prefix + ", its " + COLOUR[i] + ".");
                 }
+            } else if (param instanceof CgVfxParam.Vector) {
+                for (int i = 0; i < 3; i++) {
+                    int c = at + i;
+                    declare(key + "." + "xyz".charAt(i), values.raw(c), v -> values.tune(c, v),
+                            "Vector " + param.name + " of " + prefix + ", its " + "xyz".charAt(i) + ".");
+                }
             } else if (param instanceof CgVfxParam.Palette) {
                 for (int e = 0; e < ((CgVfxParam.Palette) param).count(); e++) {
                     for (int i = 0; i < 4; i++) {

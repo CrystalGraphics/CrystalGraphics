@@ -94,6 +94,11 @@ public abstract class CgVfxElement {
         return effect.get(param);
     }
 
+    /** Component {@code index} of a vector of its effect's: 0 x, 1 y, 2 z. */
+    protected final float get(CgVfxParam.Vector param, int index) {
+        return effect.get(param, index);
+    }
+
     protected final CgKeyframes curve(CgVfxParam.Curve param) {
         return effect.curve(param);
     }

@@ -200,6 +200,11 @@ public final class CgVfxLook {
         return values.get(param, index);
     }
 
+    /** Component {@code index} of a vector: 0 x, 1 y, 2 z. */
+    public float get(CgVfxParam.Vector param, int index) {
+        return values.get(param, index);
+    }
+
     public CgKeyframes curve(CgVfxParam.Curve param) {
         return values.curve(param);
     }
@@ -358,6 +363,11 @@ public final class CgVfxLook {
 
         public Builder set(CgVfxParam.Scalar param, float value) {
             ops.add(v -> v.set(param, value));
+            return this;
+        }
+
+        public Builder set(CgVfxParam.Vector param, float x, float y, float z) {
+            ops.add(v -> v.set(param, x, y, z));
             return this;
         }
 

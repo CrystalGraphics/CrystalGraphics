@@ -92,6 +92,11 @@ public final class CgVfxLayout {
                 defaults[at + 1] = c.g;
                 defaults[at + 2] = c.b;
                 defaults[at + 3] = c.a;
+            } else if (p instanceof CgVfxParam.Vector) {
+                CgVfxParam.Vector v = (CgVfxParam.Vector) p;
+                defaults[at] = v.x;
+                defaults[at + 1] = v.y;
+                defaults[at + 2] = v.z;
             } else if (p instanceof CgVfxParam.Palette) {
                 System.arraycopy(((CgVfxParam.Palette) p).values, 0, defaults, at, p.floats());
             } else if (p instanceof CgVfxParam.Curve) {

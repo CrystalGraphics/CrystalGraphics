@@ -122,6 +122,11 @@ public final class CgVfxSchema {
                 CgVfxParam.Color.blue(argb) * intensity, CgVfxParam.Color.alpha(argb)));
     }
 
+    /** Three numbers, {@link CgVfxParam.Vector}: a direction, or a point from the effect's origin; NaN for none. */
+    public CgVfxParam.Vector vector(String name, float x, float y, float z) {
+        return add(new CgVfxParam.Vector(this, unique(name), floats, x, y, z));
+    }
+
     /** Colours in a row, each {@code 0xAARRGGBB}. */
     public CgVfxParam.Palette palette(String name, int... argb) {
         if (argb.length == 0) throw new IllegalArgumentException("Palette '" + name + "' holds no colour");

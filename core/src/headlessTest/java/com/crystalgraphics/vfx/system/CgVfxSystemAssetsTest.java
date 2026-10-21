@@ -45,6 +45,19 @@ public class CgVfxSystemAssetsTest {
     }
 
     @Test
+    public void aVec3UserParameterCarriesItsDefaultAndABadOneFailsNamingIt() {
+        CgVfxSystemDefinition d = compile("mymod:aimed", "_v: 1\nuser:\n  aim: { type: vec3, default: [0, 1, 0] }\n");
+        CgVfxParam.Vector aim = (CgVfxParam.Vector) d.look().layout().param("aim");
+        assertEquals(1f, d.look().get(aim, 1), 0f);
+        try {
+            compile("mymod:aimed", "_v: 1\nuser:\n  aim: { type: vec3, default: [0, 1] }\n");
+            fail();
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("user.aim"));
+        }
+    }
+
+    @Test
     public void anEffectNothingRegisteredFailsNamingIt() {
         try {
             compile("mymod:beam", "_v: 1\nemitters: []\neffect: mymod:nope\n");

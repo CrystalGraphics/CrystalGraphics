@@ -7,7 +7,7 @@ This guide is where each part lives. Design and steps: private plans `crystalgra
 ```java
 static final CgVfxOwner VFX = CgVfx.owner("mymod");      // the world's system: the engine updates, draws and clears it
 CgVfxSystemInstance<CgEnergyWave> beam = VFX.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z));
-beam.behaviour().aim(dx, dy, dz).target(tx, ty, tz);   // the wave is a behaviour of a system instance
+beam.set(CgEnergyWave.AIM, dx, dy, dz).setPoint(CgEnergyWave.TARGET, tx, ty, tz);   // its behaviour reads its user parameters
 ```
 
 ## AAA parity: binding rules

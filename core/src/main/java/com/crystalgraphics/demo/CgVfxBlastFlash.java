@@ -98,7 +98,9 @@ public final class CgVfxBlastFlash {
         double rightX = length > 1.0e-6 ? -forwardZ / length : 1.0, rightZ = length > 1.0e-6 ? forwardX / length : 0.0;
         CgVfxSystemInstance<CgEnergyWave> beam = CgEnergyWave.instance(CgEnergyWave.kamehameha(), x - rightX * SPAN, y + MUZZLE_UP,
                 z - rightZ * SPAN).ground(y);
-        CgEnergyWave wave = beam.behaviour().aim((float) rightX, -0.2f, (float) rightZ).target(x, y, z).fire();
+        beam.set(CgEnergyWave.AIM, (float) rightX, -0.2f, (float) rightZ).setPoint(CgEnergyWave.TARGET, x, y, z)
+                .set(CgEnergyWave.RELEASE, 0f);
+        CgEnergyWave wave = beam.behaviour();
         controls.apply(beam);
         vfx.play(beam);
         flying.add(wave);

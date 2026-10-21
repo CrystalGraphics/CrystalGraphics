@@ -739,6 +739,11 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         return values.get(param, index);
     }
 
+    /** Component {@code index} of a vector: 0 x, 1 y, 2 z. */
+    public final float get(CgVfxParam.Vector param, int index) {
+        return values.get(param, index);
+    }
+
     /** Component {@code component} of colour {@code entry} of a palette. */
     public final float get(CgVfxParam.Palette param, int entry, int component) {
         return values.get(param, entry, component);
@@ -760,6 +765,24 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         values.set(param, r, g, b, a);
         if (authority != null) authority.set(param);
         return self();
+    }
+
+    /** Sets a vector for this effect alone; on a server, a lasting cue's effect sends it on as it does a number. */
+    public final E set(CgVfxParam.Vector param, float x, float y, float z) {
+        values.set(param, x, y, z);
+        if (authority != null) authority.set(param);
+        return self();
+    }
+
+    /**
+     * Sets a vector to a point in the world, kept from this effect's origin: a target, a waypoint.
+     *
+     * <pre>{@code
+     * beam.setPoint(CgEnergyWave.TARGET, enemy.x, enemy.y + 1, enemy.z);
+     * }</pre>
+     */
+    public final E setPoint(CgVfxParam.Vector param, double x, double y, double z) {
+        return set(param, (float) (x - originX), (float) (y - originY), (float) (z - originZ));
     }
 
     /** Sets colour {@code entry} of a palette. */

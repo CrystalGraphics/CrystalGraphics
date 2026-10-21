@@ -405,18 +405,18 @@ public class CgVfxCueTest {
         join();
         CgVfxCue.Playing playing = WAVE.at(body, 0, 64, 0).toward(0, 0, 1).start();
         CgVfxSystemInstance<CgEnergyWave> beam = playing.effect();
-        beam.behaviour().hold().aim(1, 0, 0);
+        beam.set(CgEnergyWave.RELEASE, Float.POSITIVE_INFINITY).set(CgEnergyWave.AIM, 1, 0, 0);
         settle();
 
         CgVfxCue.Play added = WAVE_CUES.get(0);
-        assertTrue("built charging", added.getBool(CgEnergyWave.HELD));
-        assertEquals("aimed as the server aimed it", 1.0, added.dx(), 1e-6);
+        assertEquals("built charging", Float.POSITIVE_INFINITY, added.get(CgEnergyWave.RELEASE), 0f);
+        assertEquals("aimed as the server aimed it", 1.0, added.get(CgEnergyWave.AIM, 0), 1e-6);
         assertTrue("homing on the end the server found", added.hasTarget());
 
         float firedAt = beam.age();
-        beam.behaviour().fire();
+        beam.set(CgEnergyWave.RELEASE, firedAt);
         settle();
-        assertEquals("its release published", firedAt, playing.object().getFloat(CgEnergyWave.FIRED_AT), 0f);
+        assertEquals("its release published", firedAt, WAVE_CUES.get(WAVE_CUES.size() - 1).get(CgEnergyWave.RELEASE), 0f);
 
         beam.stop();
         settle();

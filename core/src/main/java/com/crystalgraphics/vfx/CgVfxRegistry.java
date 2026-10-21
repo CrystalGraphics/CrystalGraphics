@@ -176,7 +176,7 @@ public final class CgVfxRegistry {
 
     private static CgVfxEffect<?> wave(CgVfxLook look, double x, double y, double z, double tx, double ty, double tz) {
         CgVfxSystemInstance<CgEnergyWave> beam = CgEnergyWave.instance(look, x, y, z);
-        beam.behaviour().aim((float) (tx - x), (float) (ty - y), (float) (tz - z)).target(tx, ty, tz);
+        beam.set(CgEnergyWave.AIM, (float) (tx - x), (float) (ty - y), (float) (tz - z)).setPoint(CgEnergyWave.TARGET, tx, ty, tz);
         return beam;
     }
 }

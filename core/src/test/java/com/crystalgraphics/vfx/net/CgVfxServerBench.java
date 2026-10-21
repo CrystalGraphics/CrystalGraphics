@@ -125,11 +125,11 @@ public class CgVfxServerBench {
         CgEnergyWave[] beams = new CgEnergyWave[WAVES];
         for (int i = 0; i < WAVES; i++) {
             CgVfxCue.Playing playing = WAVE.at(body, (i % 10) * 6, 64, (i / 10) * 6).toward(1, 0, 0).start();
-            beams[i] = playing.<CgVfxSystemInstance<CgEnergyWave>>effect().behaviour().hold();
-            beams[i].aim(1, 0, 0);
+            beams[i] = playing.<CgVfxSystemInstance<CgEnergyWave>>effect()
+                    .set(CgEnergyWave.RELEASE, Float.POSITIVE_INFINITY).set(CgEnergyWave.AIM, 1, 0, 0).behaviour();
         }
         for (int t = 0; t < WARMUP_TICKS; t++) tick();
-        for (CgEnergyWave beam : beams) beam.fire();
+        for (CgEnergyWave beam : beams) beam.instance().set(CgEnergyWave.RELEASE, beam.instance().age());
 
         com.sun.management.ThreadMXBean threads = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
         long thread = Thread.currentThread().getId();

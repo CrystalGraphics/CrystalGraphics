@@ -116,10 +116,10 @@ public static final CgVfxOwner VFX = CgVfx.owner("mymod");   // once, as a const
 
 // client: a Kamehameha at the player's hands, aimed where they look, charging until fired
 CgVfxSystemInstance<CgEnergyWave> beam = VFX.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z)
-        .follow(playerId, CgEntityAttachments.HANDS_FORWARD));
-CgEnergyWave wave = beam.behaviour().hold();   // the behaviour: aim, fire, target, collide
-wave.aim(lookX, lookY, lookZ);   // each tick
-wave.fire();                     // key released
+        .follow(playerId, CgEntityAttachments.HANDS_FORWARD)
+        .set(CgEnergyWave.RELEASE, Float.POSITIVE_INFINITY));   // its user parameters drive it
+beam.set(CgEnergyWave.AIM, lookX, lookY, lookZ);   // each tick
+beam.set(CgEnergyWave.RELEASE, beam.age());        // key released
 beam.stop();                     // its tail runs out into what it hit, which bursts
 beam.end(CgEnergyWave.FADE);     // or: it thins away where it is, no blast
 ```
@@ -342,12 +342,13 @@ out into what it hit.
 
 ```java
 CgVfxSystemInstance<CgEnergyWave> beam = VFX.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z)
-        .follow(playerId, CgEntityAttachments.HANDS_FORWARD));
-CgEnergyWave wave = beam.behaviour().hold();   // charging until fired
-wave.aim(dx, dy, dz).target(tx, ty, tz);   // each tick, as the source turns
-wave.collide();                            // or: find its own target along the aim
-wave.fire();
+        .follow(playerId, CgEntityAttachments.HANDS_FORWARD)
+        .set(CgEnergyWave.RELEASE, Float.POSITIVE_INFINITY));        // charging until fired
+beam.set(CgEnergyWave.AIM, dx, dy, dz).setPoint(CgEnergyWave.TARGET, tx, ty, tz);   // each tick, as the source turns
+beam.set(CgEnergyWave.COLLIDE, 1f);                                  // or: find its own target along the aim
+beam.set(CgEnergyWave.RELEASE, beam.age());                          // fire
 beam.stop();                               // the tail runs out into the target, which bursts
+float reach = beam.behaviour().blastRadius();   // the wave's own state, read typed
 ```
 
 #### Made of elements
@@ -381,6 +382,10 @@ Each element's schema, slots and moments are on its class. Any effect may use th
 | `STEER` | 0 | above 0, steered: a curve from the muzzle along the aim into an end that chases the target, turning at most this many radians a second |
 | `MAX_LENGTH` | 120 | how far the head flies when it hits nothing |
 | `MUZZLE_FORWARD` | 0 | how far along the aim the drawn wave starts once fired: a caster's hands are the muzzle, the beam clears their body. Its casts still start at the muzzle |
+| `AIM` | (1, 0, 0) | where the source points, any length: whoever plays it sets it, as every row below, and the wave reads it each tick |
+| `TARGET`, `VIA` | NaN | what the body homes on, and a point it passes, from the origin (`setPoint` takes a point in the world); NaN for none |
+| `COLLIDE` | 0 | 1: it finds its own target where a cast along the aim meets something; a cue's viewer never casts |
+| `RELEASE` | NaN | the age it fires at: NaN at its charge's `TIME`, infinity held; once fired it stays fired |
 | `CORE`, `CORE_RIM`, `SHELL`, `SHELL_HOT`, `SPIRAL`, `GLOW` | | the energy palette its realistic kits read by name |
 | `CgBeamBody.HEAD_WIDTH`, `HEAD_LENGTH` | `RADIUS` × 1.45, × 1.9 | the head |
 | `CgVfxCharge.RADIUS`, `ROOT_SIZE` | `RADIUS` × 1.7, 0.8 | the ball, and the root it settles to once fired |
@@ -1663,15 +1668,15 @@ public static final CgVfxCue WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameh
 // server: start it, then drive its effect exactly as on a client
 CgVfxCue.Playing wave = WAVE.on(caster, CgEntityAttachments.HANDS_FORWARD).start();
 CgVfxSystemInstance<CgEnergyWave> beam = wave.effect();
-beam.behaviour().hold().aim(look.x, look.y, look.z);   // key down
+beam.set(CgEnergyWave.RELEASE, Float.POSITIVE_INFINITY).set(CgEnergyWave.AIM, look.x, look.y, look.z);   // key down
 
 wave.onHit(CgEnergyWave.PART_BEAM, h -> { if (h.kind() == CgHit.Kind.ENTITY) stagger(h.entity()); })
-    .onHit(CgEnergyWave.PART_BURST, h -> explode(h.x(), h.y(), h.z(), beam.blastRadius()))
+    .onHit(CgEnergyWave.PART_BURST, h -> explode(h.x(), h.y(), h.z(), beam.behaviour().blastRadius()))
     .onHit(CgEnergyWave.PART_BLAST, h -> damage(h.entity()));
 
-beam.aim(look.x, look.y, look.z);          // each tick, as the caster turns
+beam.set(CgEnergyWave.AIM, look.x, look.y, look.z);   // each tick, as the caster turns
 beam.set(CgEnergyWave.RADIUS, 1.2f);       // powered up: every viewer's beam widens, and the server's ray with it
-beam.fire();                               // key up
+beam.set(CgEnergyWave.RELEASE, beam.age());           // key up
 wave.end(CgEnergyWave.FADE);               // every viewer's thins away; or stop(), and the blast is still heard
 ```
 
@@ -1692,7 +1697,7 @@ WAVE.onConfirmedHit(CgEnergyWave.PART_BURST, h -> decals.scorch(h.x(), h.y(), h.
 
 ### Driving it
 
-- **`wave.effect()`** is the server's copy. Call it exactly as on a client: `aim`, `fire`, `set`, `animate`, `end`,
+- **`wave.effect()`** is the server's copy. Call it exactly as on a client: `set` (its user parameters too), `animate`, `end`,
   `stop`.
 - **Stopping the effect stops every viewer's copy.** The cue lasts until the server's copy has played out (at most 10
   seconds), so what it strikes meanwhile still reaches viewers.
@@ -1787,7 +1792,7 @@ An effect strikes through the collision engine ([`COLLISION.md`](COLLISION.md)):
 
 ```java
 CgVfxSystemInstance<CgEnergyWave> wave = VFX.play(CgEnergyWave.instance(look, x, y, z).follow(playerId, HANDS_FORWARD));
-wave.behaviour().collide();
+wave.set(CgEnergyWave.COLLIDE, 1f);
 wave.onHit(h -> { if (h.kind() == CgHit.Kind.ENTITY) flash(h.entity()); });
 ```
 
