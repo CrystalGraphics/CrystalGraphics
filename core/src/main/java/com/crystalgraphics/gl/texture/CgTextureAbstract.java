@@ -149,6 +149,17 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
         unloaded = true;
     }
 
+    private static final int LOADS = CgTrace.name("texture.loads");
+    private static volatile long loads;
+
+    /**
+     * Textures from files loaded so far, at their first use or ahead of it: a play that should load none reads it
+     * before and after. Also the trace counter {@code texture.loads}.
+     */
+    public static long loads() {
+        return loads;
+    }
+
     /** Loads it now if it waits for its first use. Any thread. */
     protected final void ensureLoaded() {
         if (!unloaded) return;
@@ -159,6 +170,10 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texture.load")) {
                 load();
             }
+            synchronized (CgTextureAbstract.class) {
+                loads++;
+            }
+            CgTrace.add(CgChannels.GL, LOADS, 1);
         }
     }
 
