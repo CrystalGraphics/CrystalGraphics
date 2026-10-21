@@ -106,13 +106,23 @@ public final class CgRecording {
     /** A pass a built frame still holds stays that frame's; the pool keeps the rest, cleared, for the next use. */
     private static <P extends CgPass> void recycle(List<P> pool, int used) {
         int kept = 0;
+        // Only [0, used) is cleared, before the caller resets used: a pass past it was cleared when it was last used,
+        // so a pool grown to a peak (a rehearsal) costs a frame only what that frame used.
         for (int i = 0; i < pool.size(); i++) {
             P pass = pool.get(i);
-            if (i < used && pass.held()) continue;
-            pass.clearReferences();
-            pool.set(kept++, pass);
+            if (i < used) {
+                if (pass.held()) continue;
+                pass.clearReferences();
+            }
+            if (kept != i) pool.set(kept, pass);
+            kept++;
         }
         while (pool.size() > kept) pool.remove(pool.size() - 1);
+    }
+
+    /** The compute passes kept for reuse, in use or not. */
+    List<CgComputePass> computePool() {
+        return computes;
     }
 
     private boolean sealed;

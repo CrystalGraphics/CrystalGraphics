@@ -68,9 +68,18 @@ public final class CgComputePass extends CgPass {
     @Override
     void clearReferences() {
         dispatches.clear();
-        for (int i = 0; i < shells.size(); i++) shells.get(i).clearReferences();
+        // Only [0, shellsUsed) is cleared before it resets: a shell past it was cleared when it was last used.
+        for (int i = 0; i < shellsUsed; i++) shells.get(i).clearReferences();
         shellsUsed = 0;
         budget = null;
+    }
+
+    int shellCount() {
+        return shells.size();
+    }
+
+    CgDispatch shell(int i) {
+        return shells.get(i);
     }
 
     /** The recording it belongs to: where an op takes its {@linkplain CgRecording#scratch scratch}. */
