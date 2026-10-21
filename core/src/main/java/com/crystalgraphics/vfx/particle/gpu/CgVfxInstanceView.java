@@ -114,6 +114,11 @@ public interface CgVfxInstanceView {
         return 1f;
     }
 
+    /** Its loop's seconds as this step ends: what a module input's curve or array by the loop reads. */
+    default float loopSeconds() {
+        return 0f;
+    }
+
     /** User parameter {@code param}'s value this step, for {@link CgVfxUserBinding}s: its default unless its effect sets it. */
     default float user(CgVfxParam.Scalar param) {
         return param.defaultValue();

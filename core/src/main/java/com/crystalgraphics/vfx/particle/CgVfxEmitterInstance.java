@@ -857,6 +857,11 @@ public final class CgVfxEmitterInstance {
             return stepLoopTo;
         }
 
+        @Override
+        public float loopSeconds() {
+            return stepLoopTo;
+        }
+
         /** Its seed's bits: what {@code fx_rand} and {@link #rand(int, int, int)} take. */
         public int seedBits() {
             return seed;

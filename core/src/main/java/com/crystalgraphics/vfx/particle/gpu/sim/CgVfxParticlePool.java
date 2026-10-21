@@ -103,7 +103,8 @@ public final class CgVfxParticlePool {
     /**
      * An instance row's own vec4s ahead of its modules' lanes: {@code uvec4(param row, seed bits, slot, 0)},
      * {@code vec4(source xyz, time)}, {@code vec4(share, ground height or NaN, step scale, 1 to kill)}, {@code ivec4(origin's whole
-     * blocks, 0)}, {@code vec4(origin within its block, 0)}, {@code vec4(the followed entity's box's centre from the source, 0)},
+     * blocks, 0)}, {@code vec4(origin within its block, 0)}, {@code vec4(the followed entity's box's centre from the source, its loop's
+     * seconds)},
      * {@code vec4(its half extents, 0)}, {@code vec4(its rotation, a quaternion)}, {@code vec4(its rotation's change since
      * the last step, the identity unless local)}: the fourth and fifth place a particle in the world's blocks; spawns turn
      * by the eighth, and a local slot's live particles by the ninth.
@@ -1249,7 +1250,7 @@ public final class CgVfxParticlePool {
                 .vec4(share, groundY, stepScale, kill ? 1f : 0f)
                 .ivec4((int) bx, (int) by, (int) bz, 0)
                 .vec4((float) (ox - bx), (float) (oy - by), (float) (oz - bz), 0f)
-                .vec4(view.boxX(), view.boxY(), view.boxZ(), 0f)
+                .vec4(view.boxX(), view.boxY(), view.boxZ(), view.loopSeconds())
                 .vec4(view.boxHalfX(), view.boxHalfY(), view.boxHalfZ(), 0f)
                 .vec4(view.rotationX(), view.rotationY(), view.rotationZ(), view.rotationW())
                 .vec4(view.turnX(), view.turnY(), view.turnZ(), view.turnW());
@@ -1833,17 +1834,15 @@ public final class CgVfxParticlePool {
         for (int w = starts; w < starts + 8; w++) if ((w & 3) != 3) start = Math.max(start, Math.abs(curveScratch[w]));
         rowSizeMax[index] = most * start;
         if (shape.events() > 0) writeEvents(emitter, at + shape.eventsAt() * 4);
-        for (int f = 0; f < shape.forms(); f++) writeForm(shape.form(f).compiled(), at + shape.formAt(f) * 4);
-        for (int f = 0; f < shape.spawnForms(); f++) {
-            CgVfxSpawnForm form = shape.spawnForm(f);
-            params[at + form.target().word()] = Float.floatToRawIntBits(form.firstEnd());
-            writeForm(form.compiled(), at + shape.spawnFormAt(f) * 4);
-        }
         // Each roll's key, by its element's id and its input's name (core.md § Values): the kernel reads its word.
         int keys = at + shape.keysAt() * 4;
         System.arraycopy(emitter.rollKeys(), 0, params, keys, CgVfxGpuEmitter.ROLL_KEYS);
-        for (int f = 0; f < shape.forms(); f++) params[keys + shape.formKey(f)] = rollKey(shape.form(f).compiled());
-        for (int f = 0; f < shape.spawnForms(); f++) params[keys + shape.spawnFormKey(f)] = rollKey(shape.spawnForm(f).compiled());
+        for (int f = 0; f < shape.forms(); f++) writeForm(shape.layout(f), at, keys);
+        for (int f = 0; f < shape.spawnForms(); f++) {
+            CgVfxSpawnForm form = shape.spawnForm(f);
+            params[at + form.target().word()] = Float.floatToRawIntBits(form.firstEnd());
+            writeForm(shape.spawnLayout(f), at, keys);
+        }
         // Its draws read the clip's rows from its first step's upload on.
         if (emitter.clip() != null) CgVfxClipAtlas.of(emitter.clip());
         rows.put(emitter, new int[]{index, 1});
@@ -1856,15 +1855,40 @@ public final class CgVfxParticlePool {
         if (c instanceof CgVfxFormInput.Range r) return r.key();
         if (c instanceof CgVfxFormInput.Pick pick) return pick.key();
         if (c instanceof CgVfxFormInput.Curve curve) return curve.key();
+        if (c instanceof CgVfxFormInput.Array array) return array.key();
+        if (c instanceof CgVfxFormInput.Function f) return f.key();
         return 0;
     }
 
-    /** A form's vec4s from word {@code at}: a range's or a pick's other end; a curve's domain, then its texels. */
-    private void writeForm(CgVfxFormInput c, int at) {
-        if (c instanceof CgVfxFormInput.Range r) {
-            for (int k = 0; k < r.components(); k++) params[at + k] = Float.floatToRawIntBits(r.max()[k]);
+    /**
+     * A form's nodes into the row starting at word {@code row}, each node's roll key into the key area at word
+     * {@code keys}.
+     */
+    private void writeForm(CgVfxFormLayout layout, int row, int keys) {
+        for (CgVfxFormLayout.Node n : layout.nodes()) {
+            if (n.key() >= 0) params[keys + n.key()] = rollKey(n.form());
+            writeNode(n.form(), n.top(), row + n.at() * 4);
+        }
+    }
+
+    /**
+     * A node's vec4s from word {@code at}: a constant; a range's or a pick's ends (the other alone at the top, whose
+     * first sits in its row word); a curve's domain, then its texels; an array's length, interpolation and address,
+     * then its values.
+     */
+    private void writeNode(CgVfxFormInput c, boolean top, int at) {
+        if (c instanceof CgVfxFormInput.Constant k) {
+            vector(at, k.values());
+        } else if (c instanceof CgVfxFormInput.Range r) {
+            if (!top) vector(at, r.min());
+            vector(top ? at : at + 4, r.max());
         } else if (c instanceof CgVfxFormInput.Pick pick) {
-            for (int k = 0; k < pick.components(); k++) params[at + k] = Float.floatToRawIntBits(pick.b()[k]);
+            if (!top) vector(at, pick.a());
+            vector(top ? at : at + 4, pick.b());
+        } else if (c instanceof CgVfxFormInput.Array array) {
+            int address = "wrap".equals(array.address()) ? 1 : "mirror".equals(array.address()) ? 2 : 0;
+            vector(at, new float[]{array.values().length, array.interpolate() ? 1f : 0f, address, 0f});
+            for (int i = 0; i < array.values().length; i++) vector(at + 4 * (1 + i), array.values()[i]);
         } else if (c instanceof CgVfxFormInput.Curve curve) {
             CgVfxCurveBlock block = curve.block();
             params[at] = Float.floatToRawIntBits(block.start(curve.slot()));
@@ -1874,6 +1898,11 @@ public final class CgVfxParticlePool {
             int from = curve.slot() * CgVfxCurveBlock.TEXELS * 4;
             for (int w = 0; w < CgVfxCurveBlock.TEXELS * 4; w++) params[at + 4 + w] = Float.floatToRawIntBits(texels[from + w]);
         }
+    }
+
+    /** {@code v}'s numbers into the vec4 at word {@code at}, zero past them. */
+    private void vector(int at, float[] v) {
+        for (int k = 0; k < 4; k++) params[at + k] = Float.floatToRawIntBits(k < v.length ? v[k] : 0f);
     }
 
     /** {@code emitter}'s event vec4s from word {@code at}, laid out as {@link CgVfxShape#EVENT_VECTORS} says. */

@@ -236,20 +236,24 @@ file alone is the one that wrote it:
   of the same id (`compiler(templates)`), else the builder's defaults.
 - An input the format declares and the engine does not take yet reads at its default alone, and fails by name otherwise.
 - **A module's input takes the format's forms** (`core.md` § Values), built per particle in the Step kernel each step: a
-  range rolled per particle (per channel, locked), a pick, a curve by `age`, `particles.age`, `speed`, `random` or
-  `id`, and `{ bind: particles.age }`. Its rolls are keyed by its element's `id` and the input's name, never by place.
+  range rolled per particle (per channel, locked), a pick, a curve or an array by `age`, `particles.age`, `speed`,
+  `random`, `id` or `loop` (the loop's seconds), a function (`crystalgraphics:random_range`, `crystalgraphics:add`)
+  whose arguments are forms themselves, and `{ bind: particles.age }`. Its rolls are keyed by its element's `id` and the
+  input's name, never by place.
 
   ```yaml
   particle_update:
     - { id: push, module: crystalgraphics:acceleration, inputs: { acceleration: { range: [[0, 1, 0], [0, 4, 0]] } } }
     - { id: drag, module: crystalgraphics:drag, inputs: { drag: { curve: { keys: [[0, 0.5], [1, 3, linear]] }, by: age } } }
+    - { id: gust, module: crystalgraphics:acceleration, inputs: { acceleration: { fn: crystalgraphics:random_range,
+        inputs: { min: [0, 0, 0], max: { array: [[1, 0, 0], [0, 2, 0]], by: loop } } } } }
   ```
 
-  Not built yet, and refused by name: a roll per loop or instance, a curve by `loop` or `length`, an array, a function,
-  and a binding to anything but `particles.age` (a user parameter's is P5's binding, through its system).
+  Refused by name: a roll per loop or instance (no module input declares one), a lookup by `length` (a trail's), and a
+  binding to anything but `particles.age` (a user parameter's is P5's binding, through its system).
 - **A spawn value takes them too**: `initialize_particle`'s `lifetime` and `sprite_size`, `add_velocity`'s `speed`, and
-  `shape_location`'s radius, each built per spawn as a pick or a curve by `random`, `id` or `loop` (the loop's seconds
-  as it spawns); a constant or a range is the spawn row's two ends. A radius in a form moves each birth out by its value
+  `shape_location`'s radius, each built per spawn in any of those forms whose lookup a newborn has: `random`, `id` or
+  `loop` (the loop's seconds as it spawns); a constant or a range is the spawn row's two ends. A radius in a form moves each birth out by its value
   less the shape's radius. The builder's `size(min, max, skew)` and `sweep(speed)` write two such forms.
 
   ```yaml

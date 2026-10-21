@@ -132,6 +132,7 @@ final class CgVfxGpuSteps {
         public float turnY() { return tenant.turnY; }
         public float turnZ() { return tenant.turnZ; }
         public float turnW() { return tenant.turnW; }
+        public float loopSeconds() { return of.books().loopSeconds(); }
         public CgVfxFluid gas() { return of.books().gas(); }
         public CgVfxGrid3D grid() { return of.books().grid(); }
         public float user(CgVfxParam.Scalar param) { return values == null ? param.defaultValue() : values.get(param); }

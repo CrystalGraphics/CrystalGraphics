@@ -407,6 +407,32 @@ public final class CgVfxEmitterCompiler {
                     return mix(step_param(at + 1 + i), step_param(at + 2 + i), u - float(i));
                 }
 
+                // An array's index i addressed as its header says (length, interpolate, clamp 0 | wrap 1 | mirror 2).
+                int step_array_index(vec4 h, int i) {
+                    int n = int(h.x), a = int(h.z);
+                    if (a == 1) return ((i % n) + n) % n;
+                    if (a == 2) {
+                        int period = 2 * (n - 1);
+                        if (period == 0) return 0;
+                        int m = ((i % period) + period) % period;
+                        return m < n ? m : period - m;
+                    }
+                    return clamp(i, 0, n - 1);
+                }
+
+                // A form's array (CgVfxFormInput.Array) from the vec4 at `at`: by a random draw (mode 0), by an index
+                // (1), or by a lookup across it (2), nearest or interpolated.
+                vec4 step_array(int at, float t, int mode) {
+                    vec4 h = step_param(at);
+                    int n = int(h.x);
+                    if (mode == 0) return step_param(at + 1 + min(n - 1, int(t * float(n))));
+                    if (mode == 1) return step_param(at + 1 + step_array_index(h, int(t)));
+                    float u = t * float(n - 1);
+                    int i = int(floor(u));
+                    if (h.y == 0.0) return step_param(at + 1 + step_array_index(h, int(floor(u + 0.5))));
+                    return mix(step_param(at + 1 + step_array_index(h, i)), step_param(at + 1 + step_array_index(h, i + 1)), u - float(i));
+                }
+
                 const float STEP_TAU = 6.2831853;
 
                 vec3 step_rotate(vec4 q, vec3 v) {
@@ -921,8 +947,8 @@ public final class CgVfxEmitterCompiler {
                 if (l > 0) s.append(", ");
                 int[] fk = shape.formAtWord(v * 4 + l);
                 s.append(fk == null ? base + "." + XYZW.charAt(l)
-                        : formExpr(shape.form(fk[0]).compiled(), shape.formAt(fk[0]), fk[1], base + "." + XYZW.charAt(l), "formSeed",
-                                "p.id", shape.formKey(fk[0])));
+                        : formExpr(shape.layout(fk[0]), shape.form(fk[0]).compiled(), fk[1], base + "." + XYZW.charAt(l),
+                                "formSeed", "p.id", LOOP_SECONDS));
             }
             s.append(')');
         }
@@ -959,7 +985,7 @@ public final class CgVfxEmitterCompiler {
     /** A spawn value: its spawn form's expression for channel 0, else the spawn row's range as {@code otherwise}. */
     private static String spawnValue(CgVfxShape shape, CgVfxSpawnInput target, String first, String otherwise) {
         int f = shape.spawnFormOf(target);
-        return f < 0 ? otherwise : formExpr(shape.spawnForm(f).compiled(), shape.spawnFormAt(f), 0, first, "seed", "k", shape.spawnFormKey(f));
+        return f < 0 ? otherwise : formExpr(shape.spawnLayout(f), shape.spawnForm(f).compiled(), 0, first, "seed", "k", "loop");
     }
 
     /** How far out a spawn is born past its shape: a radius form's value less the shape's radius; 0 without one. */
@@ -967,38 +993,60 @@ public final class CgVfxEmitterCompiler {
         int f = shape.spawnFormOf(CgVfxSpawnInput.RADIUS);
         if (f < 0) return "0.0";
         String radius = "step_vector(row, inst, 7).y";
-        return "(" + formExpr(shape.spawnForm(f).compiled(), shape.spawnFormAt(f), 0, radius, "seed", "k", shape.spawnFormKey(f)) + " - " + radius + ")";
+        return "(" + formExpr(shape.spawnLayout(f), shape.spawnForm(f).compiled(), 0, radius, "seed", "k", "loop") + " - " + radius + ")";
     }
 
+    /** The loop's seconds an update reads: the instance header's (CgVfxParticlePool.INSTANCE_HEADER). */
+    private static final String LOOP_SECONDS = "step_instance(inst + 5).w";
+
     /**
-     * Component {@code k} of a form whose vec4s start at row vector {@code at}: its expression in the kernel, the Java
-     * evaluation's twin ({@code CgVfxFormInput.channel}). {@code first} is the word holding a range's or a pick's first
-     * end; {@code seed} and {@code id} seed its rolls: the instance's seed and the particle's id, or at spawn its key;
-     * {@code key} is its roll key's index. A curve by the loop reads {@code loop}, which only a launch has.
+     * Component {@code k} of form node {@code c} of {@code layout}: its expression in the kernel, the Java evaluation's
+     * twin ({@code CgVfxFormInput.channel}), its arguments' nested as the Java nests them. {@code first} is the word
+     * holding a top-level range's or pick's first end; {@code seed} and {@code id} seed its rolls (the instance's seed
+     * and the particle's id, or at spawn its key); a lookup by the loop reads {@code loop}.
      */
-    private static String formExpr(CgVfxFormInput c, int at, int k, String first, String seed, String id, int key) {
-        String keyed = seed + " ^ step_key(row, " + key + ")";
-        String own = "step_param(row + " + at + ")." + XYZW.charAt(k);
+    private static String formExpr(CgVfxFormLayout layout, CgVfxFormInput c, int k, String first, String seed, String id,
+                                   String loop) {
+        CgVfxFormLayout.Node n = layout.node(c);
+        String keyed = n.key() < 0 ? seed : seed + " ^ step_key(row, " + n.key() + ")";
+        String lane = "." + XYZW.charAt(k);
+        String at0 = "step_param(row + " + n.at() + ")" + lane, at1 = "step_param(row + " + (n.at() + 1) + ")" + lane;
+        if (c instanceof CgVfxFormInput.Constant) return at0;
         if (c instanceof CgVfxFormInput.Range r) {
-            return "mix(" + first + ", " + own + ", fx_rand(" + keyed + ", " + id + ", " + r.rollOf(k) + "u))";
+            return "mix(" + (n.top() ? first : at0) + ", " + (n.top() ? at0 : at1) + ", fx_rand(" + keyed + ", " + id + ", "
+                    + r.rollOf(k) + "u))";
         }
-        if (c instanceof CgVfxFormInput.Pick p) {
-            return "(fx_rand(" + keyed + ", " + id + ", 0u) < 0.5 ? " + first + " : " + own + ")";
+        if (c instanceof CgVfxFormInput.Pick) {
+            return "(fx_rand(" + keyed + ", " + id + ", 0u) < 0.5 ? " + (n.top() ? first : at0) + " : " + (n.top() ? at0 : at1) + ")";
         }
         if (c instanceof CgVfxFormInput.Curve curve) {
-            String t = switch (curve.by()) {
-                case AGE -> "(p.age / max(p.life, 1e-6))";
-                case PARTICLES_AGE -> "p.age";
-                case SPEED -> "length(p.velocity)";
-                case ID -> "float(" + id + ")";
-                case RANDOM -> "fx_rand(" + keyed + ", " + id + ", 31u)";
-                case LOOP -> "loop";
-                default -> throw new IllegalStateException("a curve by " + curve.by());
-            };
-            return "step_curve(row + " + at + ", " + t + ")." + XYZW.charAt(k);
+            return "step_curve(row + " + n.at() + ", " + lookup(curve.by(), keyed, id, loop) + ")" + lane;
+        }
+        if (c instanceof CgVfxFormInput.Array array) {
+            int mode = array.by() == CgVfxFormInput.Lookup.RANDOM ? 0 : array.by() == CgVfxFormInput.Lookup.ID ? 1 : 2;
+            return "step_array(row + " + n.at() + ", " + lookup(array.by(), keyed, id, loop) + ", " + mode + ")" + lane;
+        }
+        if (c instanceof CgVfxFormInput.Function f) {
+            String a = formExpr(layout, f.first(), Math.min(k, f.first().components() - 1), null, seed, id, loop);
+            String b = formExpr(layout, f.second(), Math.min(k, f.second().components() - 1), null, seed, id, loop);
+            if (f.fn().endsWith(":add")) return "(" + a + " + " + b + ")";
+            return "mix(" + a + ", " + b + ", fx_rand(" + keyed + ", " + id + ", 0u))";
         }
         CgVfxFormInput.Binding b = (CgVfxFormInput.Binding) c;
         return "(p.age * " + glsl(b.scale()) + ")";
+    }
+
+    /** A lookup's value in the kernel: {@code CgVfxFormInput.Lookup.read}'s twin. */
+    private static String lookup(CgVfxFormInput.Lookup by, String keyed, String id, String loop) {
+        return switch (by) {
+            case AGE -> "(p.age / max(p.life, 1e-6))";
+            case PARTICLES_AGE -> "p.age";
+            case SPEED -> "length(p.velocity)";
+            case ID -> "float(" + id + ")";
+            case RANDOM -> "fx_rand(" + keyed + ", " + id + ", 31u)";
+            case LOOP -> loop;
+            default -> throw new IllegalStateException("a lookup by " + by);
+        };
     }
 
     private static String glsl(float v) {

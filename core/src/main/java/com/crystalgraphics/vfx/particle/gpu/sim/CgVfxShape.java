@@ -1,12 +1,10 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.object.CgPropertyMeta;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxModuleTypes;
-import com.crystalgraphics.vfx.particle.form.CgVfxCurveBlock;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
 import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
@@ -95,6 +93,9 @@ public final class CgVfxShape {
     private final CgVfxModuleForm[] forms;
     private final int[][] formWords;
     private final int[] formAt;
+    /** Each module form's and spawn form's nodes in the form area and the key area. */
+    private final CgVfxFormLayout[] layouts, spawnLayouts;
+    private final int keyCount;
     /** Its spawn forms by target, and where each one's vec4s start. */
     private final CgVfxSpawnForm[] spawnForms;
     private final int[] spawnFormAt;
@@ -203,12 +204,14 @@ public final class CgVfxShape {
         readsClips = anyNodes;
         eventsAt = param;
         if (triggers.length > 0) param += EVENT_VECTORS;
-        // The form area: a range's or a pick's other end, a curve's domain and texels.
+        // The form area: each form's nodes (CgVfxFormLayout); the key area after it, the launch's keys first.
         List<CgVfxModuleForm> given = emitter.moduleForms();
         forms = given.toArray(new CgVfxModuleForm[0]);
         formWords = new int[forms.length][];
         formAt = new int[forms.length];
+        layouts = new CgVfxFormLayout[forms.length];
         formsAt = param;
+        int keySlot = CgVfxGpuEmitter.ROLL_KEYS;
         for (int f = 0; f < forms.length; f++) {
             CgVfxModuleForm form = forms[f];
             if (form.module() >= n) throw new IllegalArgumentException(emitter.name() + " gives module " + form.module() + " a form; it lacks it");
@@ -223,17 +226,25 @@ public final class CgVfxShape {
                 }
             }
             formAt[f] = param;
-            param += formVectors(emitter.name(), form);
+            layouts[f] = CgVfxFormLayout.of(emitter.name() + "'s module " + form.module() + " input " + form.input(), c, true, false,
+                    param, keySlot);
+            param += layouts[f].vectors();
+            keySlot += layouts[f].keys();
             key.append(f == 0 ? "|form:" : ",").append(form.module()).append('.').append(form.input()).append('=').append(formKey(c));
         }
         spawnForms = emitter.spawnForms().stream().sorted(Comparator.comparing(CgVfxSpawnForm::target)).toArray(CgVfxSpawnForm[]::new);
         spawnFormAt = new int[spawnForms.length];
+        spawnLayouts = new CgVfxFormLayout[spawnForms.length];
         for (int f = 0; f < spawnForms.length; f++) {
             spawnFormAt[f] = param;
-            param += spawnFormVectors(emitter.name(), spawnForms[f]);
+            spawnLayouts[f] = CgVfxFormLayout.of(emitter.name() + "'s " + spawnForms[f].target().module() + " " + spawnForms[f].input(),
+                    spawnForms[f].compiled(), true, true, param, keySlot);
+            param += spawnLayouts[f].vectors();
+            keySlot += spawnLayouts[f].keys();
             key.append(f == 0 ? "|spawn:" : ",").append(spawnForms[f].target()).append('=').append(formKey(spawnForms[f].compiled()));
         }
         formVectors = param - formsAt;
+        keyCount = keySlot;
         keysAt = param;
         param += (keys() + 3) / 4;
         paramRow = param;
@@ -296,53 +307,14 @@ public final class CgVfxShape {
         this.key = kernelKey + identity;
     }
 
-    /** The vec4s form {@code form} takes in the form area; throws for a form the kernel does not build yet, by name. */
-    private static int formVectors(String name, CgVfxModuleForm form) {
-        CgVfxFormInput c = form.compiled();
-        String what = name + "'s module " + form.module() + " input " + form.input();
-        if (c.components() > 4) throw new IllegalArgumentException(what + " has " + c.components() + " components");
-        if (c instanceof CgVfxFormInput.Range r) {
-            if (r.rolls() != null && r.rolls() != CgPropertyMeta.Rolls.PARTICLE) {
-                throw new IllegalArgumentException(what + ": a range rolled per " + r.rolls() + " is not built yet; per particle alone");
-            }
-            return 1;
-        }
-        if (c instanceof CgVfxFormInput.Pick p) {
-            if (p.rolls() != null && p.rolls() != CgPropertyMeta.Rolls.PARTICLE) {
-                throw new IllegalArgumentException(what + ": a pick rolled per " + p.rolls() + " is not built yet; per particle alone");
-            }
-            return 1;
-        }
-        if (c instanceof CgVfxFormInput.Curve curve) {
-            if (curve.by() == CgVfxFormInput.Lookup.LOOP || curve.by() == CgVfxFormInput.Lookup.LENGTH) {
-                throw new IllegalArgumentException(what + ": a curve by " + curve.by() + " is not built yet in the Step");
-            }
-            return 1 + CgVfxCurveBlock.TEXELS;
-        }
-        if (c instanceof CgVfxFormInput.Binding b && b.path().equals("particles.age") && b.inLo() == null) return 0;
-        throw new IllegalArgumentException(what + ": the " + c.form().specName() + " form is not built in the Step yet");
-    }
-
-    /**
-     * The vec4s a spawn form takes: a pick's other end; a curve's domain and texels, by random, id or the loop's
-     * seconds. Throws for any other, by name.
-     */
-    private static int spawnFormVectors(String name, CgVfxSpawnForm form) {
-        CgVfxFormInput c = form.compiled();
-        String what = name + "'s " + form.target().module() + " " + form.input();
-        if (c instanceof CgVfxFormInput.Pick p && (p.rolls() == null || p.rolls() == CgPropertyMeta.Rolls.PARTICLE)) return 1;
-        if (c instanceof CgVfxFormInput.Curve curve && (curve.by() == CgVfxFormInput.Lookup.RANDOM
-                || curve.by() == CgVfxFormInput.Lookup.ID || curve.by() == CgVfxFormInput.Lookup.LOOP)) {
-            return 1 + CgVfxCurveBlock.TEXELS;
-        }
-        String which = c instanceof CgVfxFormInput.Curve curve ? "a curve by " + curve.by() : "the " + c.form().specName() + " form";
-        throw new IllegalArgumentException(what + ": " + which + " is not built at spawn; a pick, or a curve by random, id or loop");
-    }
-
     /** A form's part of the key: what decides its kernel code. */
     private static String formKey(CgVfxFormInput c) {
         if (c instanceof CgVfxFormInput.Range r) return "RANGE" + (r.perChannel() ? ":" + (r.locked() == null ? "c" : r.locked()) : "");
         if (c instanceof CgVfxFormInput.Curve curve) return "CURVE:" + curve.by();
+        if (c instanceof CgVfxFormInput.Array array) return "ARRAY:" + array.by();
+        if (c instanceof CgVfxFormInput.Function f) {
+            return "FN:" + f.fn() + "(" + formKey(f.first()) + "," + formKey(f.second()) + ")";
+        }
         return c.form().name();
     }
 
@@ -644,19 +616,19 @@ public final class CgVfxShape {
         return keysAt;
     }
 
-    /** How many roll keys: the launch's, then a module form's each, then a spawn form's each. */
+    /** How many roll keys: the launch's, then each module form's nodes', then each spawn form's. */
     public int keys() {
-        return CgVfxGpuEmitter.ROLL_KEYS + forms.length + spawnForms.length;
+        return keyCount;
     }
 
-    /** The roll key index of module form {@code f}. */
-    public int formKey(int f) {
-        return CgVfxGpuEmitter.ROLL_KEYS + f;
+    /** Module form {@code f}'s nodes. */
+    CgVfxFormLayout layout(int f) {
+        return layouts[f];
     }
 
-    /** The roll key index of spawn form {@code f}. */
-    public int spawnFormKey(int f) {
-        return CgVfxGpuEmitter.ROLL_KEYS + forms.length + f;
+    /** Spawn form {@code f}'s nodes. */
+    CgVfxFormLayout spawnLayout(int f) {
+        return spawnLayouts[f];
     }
 
     /** How many spawn forms. */
