@@ -254,6 +254,9 @@ vec4 cg_Fog(vec4 color) {
     return vec4(color.rgb * (1.0 - fog), color.a);
 #elif CG_FOG_MODE == 1
     return vec4(mix(color.rgb, cg_FogColor.rgb * color.a, fog), color.a);
+#elif CG_FOG_MODE == 3
+    // A multiplier fades to 1, by the square of what gets through (Unreal's modulate)
+    return vec4(mix(vec3(1.0), color.rgb, (1.0 - fog) * (1.0 - fog)), color.a);
 #else
     return vec4(mix(color.rgb, cg_FogColor.rgb, fog), color.a);
 #endif

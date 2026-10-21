@@ -83,6 +83,25 @@ void vertex(out v2f o) {
 - A sprite's facing, stretch, camera offset and flipbook are its renderer's (`_cg_Facing`, `_cg_SubImage`, ...): never
   declare a `_cg_` property in a material.
 
+### Emissive and opacity: `"Output" = "EmissiveOpacity"`
+
+A material ported from Unreal writes what Unreal's material outputs: its emissive colour and its opacity. Tagged
+`"Output" = "EmissiveOpacity"`, it writes them as they are, and the engine composes them for the blend the material
+draws with, as Unreal's base pass does. The same program then draws under any of a kit's blends.
+
+```glsl
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Output" = "EmissiveOpacity" }
+
+void fragment(in v2f i, out vec4 fragColor) {
+    fragColor = vec4(i.colour.rgb * _Glow, texture(_Mask, i.uv).r * i.colour.a);   // emissive, opacity
+}
+```
+
+| Blend | Drawn as |
+|---|---|
+| `ADDITIVE`, `SUBTRACT` | emissive times opacity, added |
+| `ALPHA`, `PREMULTIPLIED`, `MODULATE`, `OPAQUE` | as written: the blend and the fog take the rest |
+
 ### Unreal's expressions
 
 `lib/material/` holds Unreal's expressions as functions a material includes: DepthFade, Panner, Rotator,

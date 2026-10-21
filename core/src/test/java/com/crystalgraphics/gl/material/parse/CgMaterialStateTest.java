@@ -102,6 +102,7 @@ public class CgMaterialStateTest {
                 {"ALPHA", "Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA", ""},
                 {"PREMULTIPLIED", "Blend ONE ONE_MINUS_SRC_ALPHA", ""},
                 {"ADDITIVE", "Blend ONE ONE", ""},
+                {"MODULATE", "Blend DST_COLOR ZERO", ""},
                 // A glow is never subtracted: its codeless Emissive pass adds.
                 {"SUBTRACT", "Blend ONE ONE BlendEquation REV_SUB", "Blend ONE ONE BlendEquation ADD DepthWrite OFF"},
         };
@@ -118,6 +119,32 @@ public class CgMaterialStateTest {
                 NO_BUFFERS).fragmentSource();
         assertTrue(fragment.contains("#define CG_FOG_MODE 2"));
         assertTrue(fragment.contains("if (CG_LINEAR_SCENE) _cg_fragColor.rgb = cg_SceneDecode(_cg_fragColor.rgb);"));
+    }
+
+    /** Unreal's modulate fogs toward white by the square of what gets through (BasePassPixelShader.usf). */
+    @Test
+    public void modulateIsFoggedTowardWhite() {
+        String fragment = CgMaterialShaderCompiler.compile(stated(CgMaterialState.builder().blend(CgBlendMode.MODULATE).build()),
+                NO_BUFFERS).fragmentSource();
+        assertTrue(fragment.contains("#define CG_FOG_MODE 3"));
+    }
+
+    /** Emissive and opacity are composed as Unreal's base pass does: added as emissive times opacity, else as written. */
+    @Test
+    public void emissiveOpacityIsComposedForTheBlend() {
+        CgParsedShader source = CgShaderParser.parse(shader("\"Output\" = \"EmissiveOpacity\"", "DepthWrite OFF", ""), "test");
+        String compose = "_cg_fragColor = vec4(_cg_fragColor.rgb * _cg_fragColor.a, 0.0);";
+        for (CgBlendMode mode : CgBlendMode.values()) {
+            CgParsedShader stated = source.withState(CgMaterialState.builder().blend(mode).build(), "test");
+            String fragment = CgMaterialShaderCompiler.compile(stated, stated.getPassByLightMode("Forward"), NO_BUFFERS,
+                    null, CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();
+            boolean added = mode == CgBlendMode.ADDITIVE || mode == CgBlendMode.SUBTRACT;
+            assertEquals(mode.name(), added, fragment.contains(compose));
+        }
+        assertFalse(CgMaterialShaderCompiler.compile(stated(CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).build()),
+                NO_BUFFERS).fragmentSource().contains(compose));
+        assertThrows(CgShaderParseException.class,
+                () -> CgShaderParser.parse(shader("\"Output\" = \"Emissive\"", "DepthWrite OFF", ""), "test"));
     }
 
     @Test

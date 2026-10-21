@@ -232,6 +232,11 @@ public final class CgShaderParser {
             throw new CgShaderParseException("[" + resourcePath + "] ColorSpace is \"sRGB\" or \"Linear\", not \""
                     + colorSpace + "\"");
         }
+        String output = topTags.getOrDefault("Output", "Color");
+        if (!"Color".equals(output) && !"EmissiveOpacity".equals(output)) {
+            throw new CgShaderParseException("[" + resourcePath + "] Output is \"Color\" or \"EmissiveOpacity\", not \""
+                    + output + "\"");
+        }
         CgParsedShader.DepthMode depthMode = depthMode(topTags.get("Depth"), renderQueue, resourcePath);
 
         // ── Step 4: extract Pass blocks (at least one required) ───────────
@@ -419,7 +424,8 @@ public final class CgShaderParser {
         // ── Step 8: return assembled parsed shader ─────────────────────────
         return new CgParsedShader(shaderType, props, featureNames, engineBuffers, renderQueue,
                 renderType, castShadows, sceneColorMargin, "Unlit".equals(lighting), "Off".equals(fog),
-                "Linear".equals(colorSpace), "Off".equals(media), depthMode, Collections.unmodifiableList(passes),
+                "Linear".equals(colorSpace), "Off".equals(media), "EmissiveOpacity".equals(output), depthMode,
+                Collections.unmodifiableList(passes),
                 buffers.buffers(),
                 buffers.structs());
     }

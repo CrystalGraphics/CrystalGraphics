@@ -1075,6 +1075,7 @@ public final class CgMaterialShaderCompiler {
         CgBlendState blend = pass.renderState().getBlend();
         if (blend == null || !blend.enabled()) return 0;
         if (blend.dstRgb() == CgGL.GL_ONE) return 2;
+        if (blend.srcRgb() == CgGL.GL_DST_COLOR && blend.dstRgb() == CgGL.GL_ZERO) return 3;   // modulate
         return blend.srcRgb() == CgGL.GL_ONE ? 1 : 0;
     }
 
@@ -1123,6 +1124,19 @@ public final class CgMaterialShaderCompiler {
         if (merge == EmissionMerge.SAME_BLEND || merge == EmissionMerge.ADDED) sb.append("  _cg_emission.rgb *= _cg_media;\n");
     }
 
+    /**
+     * An {@code "Output" = "EmissiveOpacity"} fragment's (emissive, opacity) as Unreal's base pass composes it for the
+     * blend (BasePassPixelShader.usf): an additive pass adds emissive times opacity, alpha 0; every other blend draws
+     * them as written, its fog mode doing the rest.
+     */
+    private static void appendEmissiveOpacity(StringBuilder sb, CgParsedShader shader, CgParsedPass pass) {
+        if (!shader.emissiveOpacity() || CgParsedPass.LIGHT_MODE_DISTORTION.equals(pass.lightMode())) return;
+        CgBlendState blend = pass.renderState().getBlend();
+        if (blend != null && blend.enabled() && blend.srcRgb() == CgGL.GL_ONE && blend.dstRgb() == CgGL.GL_ONE) {
+            sb.append("  _cg_fragColor = vec4(_cg_fragColor.rgb * _cg_fragColor.a, 0.0);\n");
+        }
+    }
+
     private static void appendFragmentMain(StringBuilder sb, List<CgShaderParser.V2fField> fields,
                                             CgParsedPass pass, CgParsedShader shader, boolean overdraw,
                                             EmissionMerge merge, boolean cover, boolean fold) {
@@ -1158,6 +1172,7 @@ public final class CgMaterialShaderCompiler {
             }
         } else if (!pass.fragOutput().isMrt()) {
             sb.append("  fragment(_v2f_local, _cg_fragColor);\n");
+            appendEmissiveOpacity(sb, shader, pass);
             boolean named = NAMES_GLOW.matcher(pass.fragmentBody()).find();
             String glow = named ? "vec4(_cg_glowRgb, _cg_fragColor.a)" : "_cg_fragColor";
             if (emissive && named) sb.append("  _cg_fragColor.rgb = _cg_glowRgb;\n");

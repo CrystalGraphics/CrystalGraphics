@@ -68,6 +68,10 @@ import java.util.Objects;
  * @param unmediated
  *     {@code true} for {@code "Media" = "Off"}: a transparent pass is not dimmed by the smoke and gas in front of it
  *     ({@code cg_Media}), as a transparent world material's otherwise is: the engine's own composites, already dimmed.
+ * @param emissiveOpacity
+ *     {@code true} for {@code "Output" = "EmissiveOpacity"}: its Forward fragment writes Unreal's emissive and opacity,
+ *     not a colour to blend, and the generated {@code main} composes them for the pass's blend as Unreal's base pass
+ *     does (an additive pass adds emissive times opacity).
  * @param depthMode
  *     The material-level {@code "Depth"} tag: how a transparent material writes depth, {@link DepthMode#NONE} when
  *     absent.
@@ -86,7 +90,8 @@ import java.util.Objects;
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties,
                               List<String> featureNames, List<String> engineBuffers, int renderQueue,
                               String renderType, boolean castShadows, float sceneColorMargin, boolean unlit,
-                              boolean unfogged, boolean linearColor, boolean unmediated, DepthMode depthMode,
+                              boolean unfogged, boolean linearColor, boolean unmediated, boolean emissiveOpacity,
+                              DepthMode depthMode,
                               List<CgParsedPass> passes, List<CgBufferDecl> buffers, String bufferStructs) {
 
     /**
@@ -169,7 +174,7 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
                     pass.v2fStructBody(), pass.globalDecls(), pass.vertexBody(), pass.fragmentBody(), pass.fragOutput()));
         }
         return new CgParsedShader(shaderType, properties, featureNames, engineBuffers, renderQueue, renderType,
-                castShadows, sceneColorMargin, unlit, unfogged, linearColor, unmediated,
+                castShadows, sceneColorMargin, unlit, unfogged, linearColor, unmediated, emissiveOpacity,
                 state.clip() ? DepthMode.CLIP : depthMode, Collections.unmodifiableList(out), buffers, bufferStructs);
     }
 

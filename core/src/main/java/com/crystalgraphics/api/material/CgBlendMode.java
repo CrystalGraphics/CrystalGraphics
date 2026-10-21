@@ -15,7 +15,8 @@ import com.crystalgraphics.platform.gl.CgGL;
  *
  * <ul>
  *   <li>The fragment writes for its mode: straight colour and alpha for {@link #ALPHA}, colour already times its
- *       coverage for {@link #PREMULTIPLIED}, light for {@link #ADDITIVE} and {@link #SUBTRACT}, whose alpha is unused.</li>
+ *       coverage for {@link #PREMULTIPLIED}, light for {@link #ADDITIVE} and {@link #SUBTRACT}, whose alpha is unused,
+ *       a multiplier for {@link #MODULATE}.</li>
  *   <li>A mode never moves a draw between the opaque and transparent passes: that is the shader's {@code Queue}.</li>
  * </ul>
  */
@@ -28,6 +29,11 @@ public enum CgBlendMode {
     PREMULTIPLIED(blend(CgGL.GL_ONE, CgGL.GL_ONE_MINUS_SRC_ALPHA, CgGL.GL_FUNC_ADD)),
     /** {@code Blend ONE ONE}. Unreal's Additive. */
     ADDITIVE(blend(CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_FUNC_ADD)),
+    /**
+     * {@code Blend DST_COLOR ZERO}: what is behind times the colour. Unreal's Modulate; fogged toward
+     * white, as a fogged multiplier is.
+     */
+    MODULATE(blend(CgGL.GL_DST_COLOR, CgGL.GL_ZERO, CgGL.GL_FUNC_ADD)),
     /**
      * {@code Blend ONE ONE} with {@code BlendEquation REV_SUB}: what is behind, less the colour. No Unreal mode; CC2's
      * kits author it. Fogged and decoded as {@link #ADDITIVE} is.

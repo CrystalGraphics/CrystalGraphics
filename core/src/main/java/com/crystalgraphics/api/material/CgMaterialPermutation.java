@@ -53,8 +53,6 @@ public record CgMaterialPermutation(String shader, List<String> keywords, String
     /**
      * The engine's state for it: blend, clip and depth write; a shading model is not state. An archetype with a
      * {@code "Depth"} tag refuses the depth write: give it none.
-     *
-     * @throws UnsupportedOperationException for {@code modulate}, which no {@link CgBlendMode} draws yet
      */
     public CgMaterialState state() {
         CgMaterialState.Builder b = CgMaterialState.builder();
@@ -74,6 +72,9 @@ public record CgMaterialPermutation(String shader, List<String> keywords, String
                 break;
             case "subtract":
                 b.blend(CgBlendMode.SUBTRACT);
+                break;
+            case "modulate":
+                b.blend(CgBlendMode.MODULATE);
                 break;
             default:
                 throw new UnsupportedOperationException("blend '" + blend + "' has no CgBlendMode");

@@ -119,7 +119,7 @@ void fragment(in v2f i, out vec4 fragColor) {
 | `CG_LIGHTMAP(light)` | the lightmap's colour for a `vec2(block, sky)` |
 | `cg_Lit(color)`, `cg_Fog(color)` | fragment only: what the generated `main` applies, for a material that opted out and wants them on part of its colour |
 | `cg_FogAmount(distance)`, `CG_FOG_AMOUNT(worldPos)` | 0 to 1, vanilla's smoothstep from `cg_FogParams` |
-| `CG_FOG_MODE` | set by the compiler from the pass's blend: 0 mixes toward the fog colour, 1 does so premultiplied, 2 (additive) fades the colour out |
+| `CG_FOG_MODE` | set by the compiler from the pass's blend: 0 mixes toward the fog colour, 1 does so premultiplied, 2 (additive) fades the colour out, 3 (modulate) fades it toward white |
 
 - The tags take `Lit`/`Unlit` and `On`/`Off`; anything else fails to parse.
 - **Colour is authored in sRGB**, as Minecraft's is. Where a pass draws into the HDR scene (`CG_LINEAR_SCENE`), the
@@ -798,6 +798,7 @@ CgMaterial ink = CgMaterial.newInstance("mymod:shaders/fx/ink.shader",
 | `ALPHA` | `Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA` |
 | `PREMULTIPLIED` | `Blend ONE ONE_MINUS_SRC_ALPHA` |
 | `ADDITIVE` | `Blend ONE ONE` |
+| `MODULATE` | `Blend DST_COLOR ZERO`: what is behind times the colour, fogged toward white |
 | `SUBTRACT` | `Blend ONE ONE` with `BlendEquation REV_SUB`: fogged and decoded as `ADDITIVE`, its glow added |
 
 - **A blend or a clip is a shader asset of its own** (`CgMaterialShaderRegistry.getOrCreate(path, state)`): the
