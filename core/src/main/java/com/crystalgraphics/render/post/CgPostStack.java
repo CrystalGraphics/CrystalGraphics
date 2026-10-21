@@ -94,7 +94,9 @@ public final class CgPostStack {
     /**
      * Every keyword set of bloom's and the composite's passes a setting can switch to: the tier's {@code CHEAP} filters,
      * Karis on the first step, the composite's blend form (the HDR scene off) and copy form with {@code SCENE} (on), each
-     * with bloom and a fade or without. The looks' keywords follow volumes, not settings, and are not among them.
+     * with bloom and a fade or without; the HDR scene's way in, with depth and without; and the bend bloom's emission
+     * takes through the distortion, which a tier below Medium never draws. The looks' keywords follow volumes, not
+     * settings, and are not among them.
      */
     private static void warmVariants(CgWorldPrograms programs) {
         String bloom = "crystalgraphics:shaders/post/bloom/", post = "crystalgraphics:shaders/post/";
@@ -106,6 +108,9 @@ public final class CgPostStack {
         programs.add(bloom + "prefilter.shader");
         programs.add(bloom + "prefilter.shader", "KARIS");
         programs.add(bloom + "excess.shader");
+        programs.add("crystalgraphics:shaders/world_scene_in.shader");
+        programs.add("crystalgraphics:shaders/world_scene_in.shader", "DEPTH");
+        programs.add(post + "distortion_bend.shader");
         for (String fade : new String[] {null, "FADE"}) {
             programs.add(post + "composite.shader", with(fade));
             programs.add(post + "composite.shader", with(fade, "BLOOM"));

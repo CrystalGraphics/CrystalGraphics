@@ -221,16 +221,25 @@ public final class CgVfxRange {
      * {@link CgVfxParticlePool#prepare}.
      */
     public static void prepare() {
-        CgCompute kernels = CgCompute.load(KERNELS);
-        kernels.kernel("Key").prepare();
-        kernels.kernel("Place").prepare();
-        kernels.kernel("Objects").prepare();
-        CgGpuOps.prepareSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING);
-        CgGpuOps.prepareHistogram();
-        CgGpuOps.prepareScan(CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT);
-        CgGpuOps.prepareDepthPyramid();
-        CgGpuOps.prepareIndirect();   // every slot draws indirect
-        CgGpuOps.prepareCull(true);   // MESHES slots, drawn through the world renderer's cull
+        for (int i = 0; i < PREPARE_STEPS.size(); i++) PREPARE_STEPS.get(i).run();
+    }
+
+    /** {@link #prepare} as steps, a kernel or an op's few each, for a warm-up that runs one at a time under its budget. */
+    public static final List<Runnable> PREPARE_STEPS = List.of(
+            () -> CgCompute.load(KERNELS).kernel("Key").prepare(),
+            () -> CgCompute.load(KERNELS).kernel("Place").prepare(),
+            () -> CgCompute.load(KERNELS).kernel("Objects").prepare(),
+            () -> CgGpuOps.prepareSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING),
+            CgGpuOps::prepareHistogram,
+            () -> CgGpuOps.prepareScan(CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT),
+            CgGpuOps::prepareDepthPyramid,
+            CgGpuOps::prepareIndirect,      // every slot draws indirect
+            () -> CgGpuOps.prepareCull(true)   // MESHES slots, drawn through the world renderer's cull
+    );
+
+    /** {@link #prepare}'s files read and parsed, and nothing built: CPU only, any thread. */
+    public static void loadAhead() {
+        CgKernel.ahead(CgVfxRange::prepare);
     }
 
     /** Forgets every range and stops recording. Tests. */

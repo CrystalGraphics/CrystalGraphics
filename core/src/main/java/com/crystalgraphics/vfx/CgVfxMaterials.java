@@ -4,6 +4,8 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgPropertyRows;
+import com.crystalgraphics.gl.material.CgMaterialShader;
+import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLayout;
@@ -429,15 +431,23 @@ final class CgVfxMaterials {
 
     /** Warms {@code look}'s materials: one per layer and kind it draws on; those drawn at half size also in {@code halved}. */
     void prepare(CgVfxLook look, List<CgMaterial> warming, Set<CgMaterial> halved) {
-        for (CgVfxLook.Placed placed : look.placed()) {
-            Resolved r = resolve(look, placed);
-            for (CgVfxSlot slot : placed.layer().slots()) {
-                CgMaterial material = material(r, slot.kind());
-                if (!warming.contains(material)) warming.add(material);
-                if (halfResolution(placed.layer(), slot.kind())) halved.add(material);
-            }
+        for (int i = 0; i < look.placed().size(); i++) prepare(look, i, warming, halved);
+        prepareClips(look, warming);
+    }
+
+    /** {@link #prepare}'s step for {@code look}'s {@code i}th placed layer: a warm-up's unit of work. */
+    void prepare(CgVfxLook look, int i, List<CgMaterial> warming, Set<CgMaterial> halved) {
+        CgVfxLook.Placed placed = look.placed().get(i);
+        Resolved r = resolve(look, placed);
+        for (CgVfxSlot slot : placed.layer().slots()) {
+            CgMaterial material = material(r, slot.kind());
+            if (!warming.contains(material)) warming.add(material);
+            if (halfResolution(placed.layer(), slot.kind())) halved.add(material);
         }
-        // A clip's parts draw their prefab's layers on SEQUENCE materials: their own programs.
+    }
+
+    /** {@link #prepare}'s last step: a clip's parts draw their prefab's layers on SEQUENCE materials, their own programs. */
+    void prepareClips(CgVfxLook look, List<CgMaterial> warming) {
         for (CgVfxEmitter emitter : look.emitters()) {
             CgVfxNodeClip clip = emitter.clip();
             if (clip == null) continue;
@@ -448,6 +458,19 @@ final class CgVfxMaterials {
                     if (!warming.contains(material)) warming.add(material);
                 }
             }
+        }
+    }
+
+    /**
+     * The shader assets {@link #prepare} would make {@code look}'s materials from, added to {@code out}: made here, on the
+     * render thread, so a worker can parse them ahead ({@link CgMaterialShader#ensureParsed}).
+     */
+    void shaders(CgVfxLook look, List<CgMaterialShader> out) {
+        CgMaterialShaderRegistry registry = CgMaterialShaderRegistry.get();
+        for (CgVfxLook.Placed placed : look.placed()) {
+            CgVfxLayer layer = placed.layer();
+            CgMaterialShader shader = registry.getOrCreate(layer.shader(), layer.state());
+            if (!out.contains(shader)) out.add(shader);
         }
     }
 

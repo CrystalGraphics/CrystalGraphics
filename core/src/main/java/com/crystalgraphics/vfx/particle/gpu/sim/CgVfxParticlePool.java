@@ -343,6 +343,14 @@ public final class CgVfxParticlePool {
         prepare(emitter, 0);
     }
 
+    /**
+     * {@link #prepare(CgVfxGpuEmitter, int)}'s CPU half: the Step kernel generated and parsed, the shared kernel files
+     * read, nothing built. Any thread: a worker, so the prepare that follows takes them from the cache.
+     */
+    public static void loadAhead(CgVfxGpuEmitter emitter, int tier) {
+        CgKernel.ahead(() -> prepare(emitter, tier));
+    }
+
     /** As {@link #prepare(CgVfxGpuEmitter)}, for {@code emitter} spawned at feed {@code tier}. */
     public static void prepare(CgVfxGpuEmitter emitter, int tier) {
         CgVfxShape shape = CgVfxShape.of(emitter, tier);
