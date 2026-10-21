@@ -3,13 +3,25 @@ package com.crystalgraphics.asset.curve;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.junit.Assume;
 import org.junit.BeforeClass;
 import org.junit.Test;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgLookKinds;
@@ -17,10 +29,15 @@ import com.crystalgraphics.asset.load.CgPatchTable;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.object.CgPropertyPath;
 
-/** A curve evaluates as {@code FRichCurve::Eval}: vectors worked from its segment and extrapolation rules. */
+/**
+ * A curve evaluates as {@code FRichCurve::Eval}: vectors worked from its segment and extrapolation rules, and Unreal's
+ * own curves against the LUTs Unreal sampled from them ({@code X:/research/unreal/MINING.md} § Ground truth for curves).
+ */
 public class CgRichCurveTest {
 
     private static final float EPS = 1e-5f;
+    /** Uncooked Niagara curve interfaces' keys beside their {@code ShaderLUT}: Unreal's evaluation, taken from the engine. */
+    private static final Path UNREAL = Paths.get("X:/research/unreal/test_channels/unreal_curves.json");
 
     @BeforeClass
     public static void kinds() {
@@ -37,6 +54,57 @@ public class CgRichCurveTest {
         if (post != null) m.put("post", post);
         m.put("keys", Arrays.asList(keys));
         return CgRichCurve.decode(m);
+    }
+
+    /** One channel's keys in the file form: with Unreal's stored tangents, or auto keys left for {@code decode} to set. */
+    private static CgRichCurve unrealChannel(JsonObject channel, boolean storedTangents) {
+        List<Object> keys = new ArrayList<>();
+        for (JsonElement k : channel.getAsJsonArray("keys")) {
+            JsonObject key = k.getAsJsonObject();
+            String interp = key.get("InterpMode").getAsString();
+            List<Object> out = new ArrayList<>(Arrays.asList(key.get("Time").getAsDouble(), key.get("Value").getAsDouble()));
+            out.add("RCIM_Constant".equals(interp) ? "constant" : "RCIM_Linear".equals(interp) ? "linear" : "cubic");
+            if ("RCIM_Cubic".equals(interp)) {
+                boolean auto = "RCTM_Auto".equals(key.get("TangentMode").getAsString());
+                out.add(auto ? "auto" : "user");
+                if (storedTangents || !auto) {
+                    out.add(key.get("ArriveTangent").getAsDouble());
+                    out.add(key.get("LeaveTangent").getAsDouble());
+                }
+            }
+            keys.add(out);
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("keys", keys);
+        return CgRichCurve.decode(m);
+    }
+
+    @Test
+    public void unrealsOwnCurvesEvaluateToTheLutsUnrealSampled() throws IOException {
+        Assume.assumeTrue("Unreal's curve oracle is absent: " + UNREAL, Files.isRegularFile(UNREAL));
+        JsonObject root = JsonParser.parseString(new String(Files.readAllBytes(UNREAL), StandardCharsets.UTF_8)).getAsJsonObject();
+        int checked = 0;
+        for (JsonElement e : root.getAsJsonArray("curves")) {
+            JsonObject c = e.getAsJsonObject();
+            if (!c.has("lut") || c.get("lut").isJsonNull()) continue;
+            JsonObject lut = c.getAsJsonObject("lut");
+            JsonArray channels = c.getAsJsonArray("channels"), values = lut.getAsJsonArray("values");
+            int n = values.size() / channels.size();
+            float min = lut.get("min").getAsFloat(), max = lut.get("max").getAsFloat();
+            for (int ch = 0; ch < channels.size(); ch++) {
+                String at = c.get("source").getAsString() + " " + c.get("path").getAsString() + " channel " + ch;
+                CgRichCurve stored = unrealChannel(channels.get(ch).getAsJsonObject(), true);
+                CgRichCurve auto = unrealChannel(channels.get(ch).getAsJsonObject(), false);
+                for (int i = 0; i < n; i++) {
+                    float t = n == 1 ? min : min + i * (max - min) / (n - 1);
+                    float expected = values.get(i * channels.size() + ch).getAsFloat();
+                    assertEquals(at + " at " + t + ", stored tangents", expected, stored.eval(t), 2e-5f);
+                    assertEquals(at + " at " + t + ", auto tangents set here", expected, auto.eval(t), 2e-5f);
+                }
+            }
+            checked++;
+        }
+        assertTrue("no curve with a LUT in " + UNREAL, checked > 0);
     }
 
     @Test

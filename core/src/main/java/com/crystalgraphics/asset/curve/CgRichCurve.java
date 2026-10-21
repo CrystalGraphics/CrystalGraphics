@@ -25,7 +25,9 @@ import java.util.Map;
  *
  * <ul>
  *   <li>A key written without tangents in {@code auto} (the default) gets Unreal's auto tangent, flat at the ends;
- *       stored tangents are evaluated as stored. {@code smart_auto} is computed as {@code auto}.</li>
+ *       stored tangents are evaluated as stored. {@code smart_auto} is {@code FRichCurve}'s: as stored where written
+ *       (its {@code AutoSetTangents} never recomputes one), else as {@code auto}, as its curve editor treats it.
+ *       Sequencer's smart tangent ({@code CalcSmartTangent}) is a channel's, not this curve's.</li>
  *   <li>No keys gives {@code default} (0 unless written); one key holds everywhere.</li>
  *   <li>A patched key value ({@link #setValue}) recomputes the auto tangents, as an edit does.</li>
  * </ul>
