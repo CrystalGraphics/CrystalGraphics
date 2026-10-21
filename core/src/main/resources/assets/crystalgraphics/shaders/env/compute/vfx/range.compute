@@ -31,6 +31,7 @@ Properties {
     _Texels ("Samples each curve of a row holds",                   int)   = 256
     _Floors ("1 when the pool's kinds land on a floor: Place writes it", int) = 0
     _Sequence    ("1 for a SEQUENCE pool: objects turned with their slot, sized by their size alone", int) = 0
+    _DrawnFirst  ("Where the pool's records start in the order every draw reads",  int)       = 0
     _DepthBits   ("0, or 16 when a slot sorts by view depth",        int)       = 0
     _Ordered     ("1 when Order sorted INDICES by spawn id first",   int)       = 0
     _Pool        ("The pool's place among those keyed: Order's high bits", int) = 0
@@ -211,7 +212,7 @@ void Objects() {
         o.custom0 = vec4(r.velocitySize.xyz, r.positionAge.w);
         o.custom1 = vec4(t, r.seedSpin.x, r.color.a, r.seedSpin.w);
         // w: its place in the order, which the cull's compaction loses: what a mesh factory's CG_PARTICLE_* reads.
-        o.custom2 = vec4(r.color.rgb, float(CG_ELEMENT));
+        o.custom2 = vec4(r.color.rgb, float(_DrawnFirst + CG_ELEMENT));
     }
     OBJECTS_WRITE(o);
 }

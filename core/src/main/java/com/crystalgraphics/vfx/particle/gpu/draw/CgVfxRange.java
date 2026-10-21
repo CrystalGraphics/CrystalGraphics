@@ -588,7 +588,8 @@ public final class CgVfxRange {
                             .bind("OBJECTS", objects, drawnFirst * bytes, capacity * bytes)
                             .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst)
                             .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
-                            .set("_Sequence", p.shape().renderer() == CgVfxEmitter.Renderer.SEQUENCE ? 1 : 0));
+                            .set("_Sequence", p.shape().renderer() == CgVfxEmitter.Renderer.SEQUENCE ? 1 : 0)
+                            .set("_DrawnFirst", drawnFirst));
                 }
             }
             drawnFirst += align(capacity, RECORD_ALIGN);
