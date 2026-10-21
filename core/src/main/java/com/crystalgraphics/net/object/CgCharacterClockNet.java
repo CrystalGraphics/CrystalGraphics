@@ -10,8 +10,7 @@ import java.util.function.LongSupplier;
  * level's tick.
  *
  * <pre>{@code
- * // common, at init, before any player connects; client, once more with the level's tick
- * CgCharacterClockNet.install(() -> level.getGameTime());
+ * // client: installed by CgVfx.install with the level's tick (CgHostEnvironment.gameTime): nothing to call
  *
  * // server, once a game tick, after the character's own advance()
  * if (clock.advance()) runStateTick();
@@ -43,7 +42,8 @@ public final class CgCharacterClockNet {
     }
 
     /**
-     * Makes each client's copy of the type drive {@link CgCharacterClock#of} from its level's tick. Client side, once.
+     * Makes each client's copy of the type drive {@link CgCharacterClock#of} from its level's tick. Client side, once:
+     * {@code CgVfx.install} does it; a test or a host without the VFX engine calls it.
      */
     public static void install(LongSupplier levelTick) {
         clientLevelTick = levelTick;

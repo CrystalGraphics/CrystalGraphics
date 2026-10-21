@@ -5,8 +5,10 @@ import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
+import com.crystalgraphics.net.object.CgCharacterClockNet;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.CgFrameClock;
+import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.net.CgVfxCueClient;
 import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
@@ -81,6 +83,8 @@ public final class CgVfx {
         CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "crystalgraphics:vfx.submit", dt -> submit())
                 .after(effects).whilePaused(true);
         CgVfxCueClient.install();
+        // Characters' clocks the server sends, kept on the level's tick: the effects following them hold and slow.
+        CgCharacterClockNet.install(() -> CgRenderStage.WORLD_OPAQUE.host().environment().gameTime());
         CgVfxSystemAssets.register();   // system assets compile to playable definitions
         // and are READY once the world's system has warmed what they draw: nothing compiles or uploads at a play
         CgVfxAssets.instance().preparer(CgParticleKinds.SYSTEM, new CgVfxSystemPreparer(CgVfx::world));
