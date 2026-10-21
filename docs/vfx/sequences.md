@@ -50,17 +50,17 @@ static final CgVfxEmitter SHURIKENS = CgVfxEmitter.builder("shurikens").sequence
         .shape(CgSphere.of(2)).speed(1f, 2f)
         .build();
 
-static final CgVfxLook LOOK = CgVfxLook.builder(CgVfxBurst.SCHEMA)
+static final CgVfxLook LOOK = CgVfxLook.builder(CgVfxSchema.of("mymod:shurikens"))
         .with(CgVfxKit.of("mymod:shurikens").emitter(SHURIKENS)
                 .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/spark.shader").on(SPARKS).build())
                 .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/dust.shader").on(SMOKE).build())
                 .build(), SPINNER.kit())
         .build();
 
-VFX.play(new CgVfxBurst(LOOK, x, y, z));
+VFX.play(new CgVfxSystemInstance(LOOK, x, y, z));
 ```
 
-- **The children are drawn by layers on their slots**, not listed as emitters: a burst starts every emitter its look
+- **The children are drawn by layers on their slots**, not listed as emitters: a system instance starts every emitter its look
   lists.
 
 - **The look draws the prefab's kit**: each part is drawn with its material on every particle, where its node is at the
