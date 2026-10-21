@@ -98,6 +98,9 @@ public interface CgVulkanHost {
     /** How many validation messages at error severity the host has seen; 0 without validation. */
     int validationErrors();
 
+    /** Whether {@code VK_EXT_debug_utils} is on, so the device names its objects for the validation layer. */
+    boolean namesObjects();
+
     /**
      * Whether the device enabled {@code VK_EXT_line_rasterization}'s {@code bresenhamLines}: GL's rule for which
      * pixels a line covers. Without it a line on an exact pixel boundary can vanish where GL draws it.

@@ -242,6 +242,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     @Override public long retiredFrame() { return retired; }
     @Override public boolean ownsSubmission() { return true; }
     @Override public int validationErrors() { return errors; }
+    @Override public boolean namesObjects() { return messenger != VK_NULL_HANDLE; }
 
     @Override public boolean bresenhamLines() { return bresenhamLines; }
     @Override public boolean multiDrawIndirect() { return multiDrawIndirect; }

@@ -625,6 +625,7 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
     }
 
     @Override public int validationErrors() { return 0; }
+    @Override public boolean namesObjects() { return false; }
 
     @Override public final void fromHost() { inSection = true; }
 

@@ -37,6 +37,7 @@ import org.lwjgl.util.vma.VmaAllocatorCreateInfo;
 import org.lwjgl.util.vma.VmaVulkanFunctions;
 import org.lwjgl.vulkan.VkBufferCreateInfo;
 import org.lwjgl.vulkan.VkComputePipelineCreateInfo;
+import org.lwjgl.vulkan.VkDebugUtilsObjectNameInfoEXT;
 import org.lwjgl.vulkan.VkBufferViewCreateInfo;
 import org.lwjgl.vulkan.VkDescriptorSetLayoutBinding;
 import org.lwjgl.vulkan.VkDescriptorSetLayoutCreateInfo;
@@ -94,6 +95,7 @@ import static org.lwjgl.system.MemoryUtil.memAlloc;
 import static org.lwjgl.system.MemoryUtil.memByteBuffer;
 import static org.lwjgl.system.MemoryUtil.memFree;
 import static org.lwjgl.util.vma.Vma.*;
+import static org.lwjgl.vulkan.EXTDebugUtils.vkSetDebugUtilsObjectNameEXT;
 import static org.lwjgl.vulkan.EXTLineRasterization.VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT;
 import static org.lwjgl.vulkan.KHRPushDescriptor.VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
 import static org.lwjgl.vulkan.VK10.*;
@@ -346,6 +348,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
             check(vmaCreateBuffer(vma, bci, aci, lp, pp, ai), "vmaCreateBuffer " + desc.label());
             ByteBuffer mapped = desc.hostVisible()
                     ? memByteBuffer(ai.pMappedData(), (int) desc.size()).order(ByteOrder.nativeOrder()) : null;
+            name(stack, VK_OBJECT_TYPE_BUFFER, lp.get(0), desc.label());
             VulkanBuffer b = new VulkanBuffer(desc, lp.get(0), pp.get(0), mapped);
             live.add(b);
             return b;
@@ -384,6 +387,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
             LongBuffer lp = stack.mallocLong(1);
             PointerBuffer pp = stack.mallocPointer(1);
             check(vmaCreateImage(vma, ici, aci, lp, pp, null), "vmaCreateImage " + desc.label());
+            name(stack, VK_OBJECT_TYPE_IMAGE, lp.get(0), desc.label());
             VulkanTexture t = new VulkanTexture(desc, lp.get(0), pp.get(0), format, aspect);
             live.add(t);
             if (host.asyncTransfer()) {
@@ -514,6 +518,13 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
         }
     }
 
+    /** Names an object in the validation layer's messages, which otherwise give only its handle. */
+    private void name(MemoryStack stack, int type, long handle, String label) {
+        if (!host.namesObjects() || label == null) return;
+        vkSetDebugUtilsObjectNameEXT(device, VkDebugUtilsObjectNameInfoEXT.calloc(stack).sType$Default()
+                .objectType(type).objectHandle(handle).pObjectName(stack.UTF8(label)));
+    }
+
     @Override
     public CgComputePipeline createComputePipeline(String label, CgShaderModule module, CgBindingLayout layout) {
         try (MemoryStack stack = stackPush()) {
@@ -523,6 +534,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
                     .module(((VulkanShaderModule) module).module).pName(stack.UTF8("main"));
             LongBuffer lp = stack.mallocLong(1);
             check(vkCreateComputePipelines(device, pipelineCache, ci, null, lp), "vkCreateComputePipelines " + label);
+            name(stack, VK_OBJECT_TYPE_PIPELINE, lp.get(0), label);
             VulkanComputePipeline p = new VulkanComputePipeline(label, module, layout, lp.get(0));
             live.add(p);
             return p;
