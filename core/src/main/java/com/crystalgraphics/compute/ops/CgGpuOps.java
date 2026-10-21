@@ -451,7 +451,7 @@ public final class CgGpuOps {
 
     /** {@link #prepareSort}, for {@link #depthPyramid}: its seed material and its chain's kernel. */
     public static void prepareDepthPyramid() {
-        CgMaterial.load(PYRAMID_SHADER).prepare();
+        if (!CgKernel.isAhead()) CgMaterial.load(PYRAMID_SHADER).prepare();
         prepare(downsampleKernel(IMAGE_TYPES.indexOf(PYRAMID_FORMAT.getColorSlot(0)), Filter.MAX));
     }
 

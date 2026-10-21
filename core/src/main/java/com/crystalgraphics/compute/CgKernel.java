@@ -196,6 +196,14 @@ public final class CgKernel {
     }
 
     /**
+     * Whether this thread is inside {@link #ahead}: a prepare step that also starts a material skips it there, since
+     * a material's prepare drives the device and the render thread's pass after starts it.
+     */
+    public static boolean isAhead() {
+        return AHEAD.get();
+    }
+
+    /**
      * Gives this kernel a Java body, which the CPU tier runs when it is forced: for debugging and tests. No player's
      * tier runs one, so a shipped kernel needs none. Every keyword set of the kernel shares it;
      * {@link CgCpuDispatch#keyword} tells them apart.
