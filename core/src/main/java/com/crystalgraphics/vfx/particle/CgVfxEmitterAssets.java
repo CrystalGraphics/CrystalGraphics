@@ -931,6 +931,12 @@ public final class CgVfxEmitterAssets {
                 points.add(new double[]{t1, v1, 0, 0});
                 continue;
             }
+            if (k.easing(i) instanceof Cubic c && !Double.isNaN(c.leave())) {
+                // A file's cubic: its own slopes back as read, so a curve round-trips to the bit.
+                prev[3] = c.leave();
+                points.add(new double[]{t1, v1, c.arrive(), 0});
+                continue;
+            }
             double[] ends = endSlopes(k.easing(i));
             if (ends != null) {
                 prev[3] = dv * ends[0] / dt;
@@ -963,7 +969,6 @@ public final class CgVfxEmitterAssets {
         if (e == CgEasings.OUT_QUAD) return new double[]{2, 0};
         if (e == CgEasings.IN_CUBIC) return new double[]{0, 3};
         if (e == CgEasings.OUT_CUBIC) return new double[]{3, 0};
-        if (e instanceof Cubic c && !Double.isNaN(c.start())) return new double[]{c.start(), c.end()};
         return null;
     }
 
@@ -998,8 +1003,7 @@ public final class CgVfxEmitterAssets {
             } else if (v1 != v0) {
                 float span = t1 - t0, rise = v1 - v0;
                 boolean hermite = !c.weighted(i - 1) && !c.weighted(i);
-                k.to(t1, v1, new Cubic(c, t0, span, v0, rise, hermite ? (double) c.leave(i - 1) * span / rise : Double.NaN,
-                        hermite ? (double) c.arrive(i) * span / rise : Double.NaN));
+                k.to(t1, v1, new Cubic(c, t0, span, v0, rise, hermite ? c.leave(i - 1) : Double.NaN, hermite ? c.arrive(i) : Double.NaN));
             } else {
                 // A cubic between equal values bulges: eased pieces would divide by nothing, so straight ones.
                 for (int j = 1; j <= EASE_STEPS; j++) {
@@ -1012,10 +1016,10 @@ public final class CgVfxEmitterAssets {
     }
 
     /**
-     * A cubic segment of a file's curve as an easing, evaluated as the curve itself. Unweighted, it keeps its end slopes
-     * in its own units, so {@link #richCurve} writes it back as the same cubic; weighted, they are NaN.
+     * A cubic segment of a file's curve as an easing, evaluated as the curve itself. Unweighted, it keeps its keys'
+     * slopes as the file gave them, so {@link #richCurve} writes it back as the same cubic; weighted, they are NaN.
      */
-    private record Cubic(CgRichCurve curve, float t0, float span, float v0, float rise, double start, double end)
+    private record Cubic(CgRichCurve curve, float t0, float span, float v0, float rise, double leave, double arrive)
             implements CgEasing {
         @Override
         public double ease(double u) {
