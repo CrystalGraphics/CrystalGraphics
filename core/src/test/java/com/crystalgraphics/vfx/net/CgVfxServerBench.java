@@ -29,7 +29,7 @@ import java.util.function.BiConsumer;
 import static org.junit.Assert.assertTrue;
 
 /**
- * The server's tick under {@value #WAVES} authoritative waves in one level, one viewer: what a dedicated server
+ * The server's tick under 100 authoritative waves in one level ({@code CG_BENCH_WAVES} for another count), one viewer: what a dedicated server
  * pays to run effects other players' gameplay depends on. Scene id {@code bench-server}.
  *
  * <pre>{@code
@@ -44,7 +44,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class CgVfxServerBench {
 
-    static final int WAVES = Integer.getInteger("crystalgraphics.bench.server.waves", 100);
+    static final int WAVES = System.getenv("CG_BENCH_WAVES") != null ? Integer.parseInt(System.getenv("CG_BENCH_WAVES")) : 100;
     private static final int WARMUP_TICKS = 200;
     private static final int MEASURED_TICKS = 600;
     /** A server tick, 20 Hz. */
@@ -170,7 +170,7 @@ public class CgVfxServerBench {
     /** bench.py's result format, version 1: the server tick as the frame's wall and cpu. */
     private static void write(Path path, long[] nanos, long[] bytes) throws IOException {
         String json = "{\n  \"version\": 1,\n  \"scene\": \"bench-server\",\n  \"cell\": \"server\",\n  \"commit\": \""
-                + System.getProperty("crystalgraphics.harness.commit", "unknown") + "\",\n  \"targetNanos\": " + TARGET_NANOS
+                + (System.getenv("CG_BENCH_COMMIT") != null ? System.getenv("CG_BENCH_COMMIT") : "unknown") + "\",\n  \"targetNanos\": " + TARGET_NANOS
                 + ",\n  \"frames\": " + nanos.length + ",\n  \"measures\": {\n    \"wall\": " + measure(nanos)
                 + ",\n    \"cpu\": " + measure(nanos) + ",\n    \"gpu\": null,\n    \"allocatedBytes\": " + measure(bytes)
                 + ",\n    \"directBytes\": null\n  },\n  \"hitches\": {\"count\": 0, \"ours\": 0, \"unexplained\": 0},\n"

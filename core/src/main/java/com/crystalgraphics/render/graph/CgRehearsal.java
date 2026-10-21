@@ -4,6 +4,7 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.variable.CgVar;
 
 import java.lang.management.ClassLoadingMXBean;
 import java.lang.management.CompilationMXBean;
@@ -64,7 +65,8 @@ public final class CgRehearsal {
         void execute();
     }
 
-    private static final boolean LIST_GROWTH = Boolean.getBoolean("crystalgraphics.rehearsal.listGrowth");
+    private static final boolean LIST_GROWTH = CgVar.bool("crystalgraphics.rehearsal.listGrowth", false, CgVar.DEV | CgVar.RESTART,
+            "Lists what a rehearsal's passes resized or released (CgRehearsal.grown()): what to size ahead.").get();
     /** What passes resized or released, under {@link #LIST_GROWTH}: what to size ahead. */
     private static final Set<String> GROWN = new LinkedHashSet<>();
     /** A pass is running. */

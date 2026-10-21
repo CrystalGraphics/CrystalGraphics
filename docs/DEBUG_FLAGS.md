@@ -202,6 +202,12 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.resourceOverrideDirs` | text | empty | Source roots searched before the classpath, separated by the platform's path separator and tried in order ahead of the ones a dev run finds itself, so an edited asset is read from its source tree; set, the shader preprocessor caches nothing unless hot reload watches. Read at launch. |
 | `crystalgraphics.resourceOverrideDirs.auto` | true, false | `true` | A dev run's own source resource folders as override roots, found from what its launcher passed (CgDevResourceRoots); a production client has none. Read at launch. |
+## `crystalgraphics.rehearsal`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.rehearsal.listGrowth` | true, false | `false` | Lists what a rehearsal's passes resized or released (CgRehearsal.grown()): what to size ahead. Read at launch. |
+
 
 ## `crystalgraphics.shader`
 
