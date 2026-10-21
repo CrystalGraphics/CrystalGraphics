@@ -2,15 +2,15 @@ package com.crystalgraphics.asset.load;
 
 /**
  * A playing instance's hold on its definition: it keeps the one it started with until it adopts a newer one, at its
- * own next step. A {@code VALUE} swap is taken through a patch table; a {@code STRUCTURAL} one restarts it at its age.
+ * own next step. A {@code VALUE} swap is taken in place; a {@code STRUCTURAL} one restarts it at its age.
  *
  * <pre>{@code
- * CgAssetFollower<SystemDef> def = new CgAssetFollower<>(NOVA);    // at play
+ * CgAssetFollower<CgVfxSystemDefinition> def = new CgAssetFollower<>(NOVA);    // at play
  *
  * // each step, before it reads its definition:
  * switch (def.poll()) {
- *     case VALUE:   patches.patch(def.previous(), def.definition(), rows); break;   // the new values, next step
- *     case RESTART: restartAt(def.definition(), age); break;                       // a module added
+ *     case VALUE:   takeValues(def.definition()); break;         // the new values into the rows it holds
+ *     case RESTART: restartAt(def.definition(), age); break;     // a module added
  *     default:
  * }
  * }</pre>

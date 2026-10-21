@@ -5,6 +5,7 @@ import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 
 import javax.annotation.Nullable;
+import java.lang.ref.WeakReference;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -62,16 +63,20 @@ public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfx
         return new CgVfxSystemDefinition(name, look, null);
     }
 
-    /** Each look's burst definition, made once: a definition is its simulation's key. */
-    private static final Map<CgVfxLook, CgVfxSystemDefinition> BURSTS = Collections.synchronizedMap(new WeakHashMap<>());
+    /** Each look's burst definition, made once: a definition is its simulation's key. Held weakly, as it holds the look. */
+    private static final Map<CgVfxLook, WeakReference<CgVfxSystemDefinition>> BURSTS =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     /** {@code look}'s emitters played once, with no behaviour: the same definition for the same look. */
     public static CgVfxSystemDefinition of(CgVfxLook look) {
-        CgVfxSystemDefinition known = BURSTS.get(look);
-        if (known != null) return known;
-        CgVfxSystemDefinition made = new CgVfxSystemDefinition("crystalgraphics:burst", look, null);
-        CgVfxSystemDefinition raced = BURSTS.putIfAbsent(look, made);
-        return raced != null ? raced : made;
+        synchronized (BURSTS) {
+            WeakReference<CgVfxSystemDefinition> ref = BURSTS.get(look);
+            CgVfxSystemDefinition known = ref != null ? ref.get() : null;
+            if (known != null) return known;
+            CgVfxSystemDefinition made = new CgVfxSystemDefinition("crystalgraphics:burst", look, null);
+            BURSTS.put(look, new WeakReference<>(made));
+            return made;
+        }
     }
 
     /** This definition carrying {@code behaviour}, its emitters kept. */

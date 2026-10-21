@@ -19,13 +19,13 @@ import java.util.function.Consumer;
  * // declared once, a static final beside what reads it
  * static final CgVar.Bool MERGE = CgVar.bool("crystalgraphics.vfx.mergeParticles", true, CgVar.DEV,
  *         "GPU particles a draw a pool and layer; false draws a slot a draw, sorted per effect.");
- * static final CgVar.Int STEP = CgVar.integer("crystalgraphics.vfx.particleStep", 2, 1, 8, CgVar.DEV,
- *         "Ticks a particle step spans.");
+ * static final CgVar.Int BATCH = CgVar.integer("crystalgraphics.vfx.bookBatch", 256, 1, 4096, CgVar.DEV,
+ *         "Effects of one simulation a worker books in one task.");
  *
  * if (MERGE.get()) ...                              // a volatile read: fine in a hot path
- * STEP.onChange(step -> rebuild(step));             // runs on the thread that changed it
- * STEP.set(1);                                      // CODE: -D, the console and remote still win
- * STEP.set(CgVar.Source.CONSOLE, 1);                // a dev tool's key: outranks -D
+ * BATCH.onChange(n -> rebuild(n));                  // runs on the thread that changed it
+ * BATCH.set(64);                                    // CODE: -D, the console and remote still win
+ * BATCH.set(CgVar.Source.CONSOLE, 64);              // a dev tool's key: outranks -D
  * }</pre>
  *
  * <p>Read once at startup and never again? Declare it {@link #RESTART}: later changes are kept for the next launch

@@ -11,8 +11,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code docs/DEBUG_FLAGS.md} is generated from.
  *
  * <pre>{@code
- * CgVar<?> v = CgVars.get("crystalgraphics.vfx.particleStep");
- * v.setText(CgVar.Source.CONSOLE, "1");             // false: no such value, or read-only
+ * CgVar<?> v = CgVars.get("crystalgraphics.vfx.mergeParticles");
+ * v.setText(CgVar.Source.CONSOLE, "false");         // false: no such value, or read-only
  * v.clear(CgVar.Source.CONSOLE);                    // back to what -D, the file or the default says
  *
  * for (CgVar<?> each : CgVars.all()) System.out.println(each);   // sorted by id

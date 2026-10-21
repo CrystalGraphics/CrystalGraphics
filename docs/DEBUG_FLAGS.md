@@ -7,12 +7,12 @@ Every engine switch is a variable (`com.crystalgraphics.variable.CgVar`): typed,
 |---|---|
 | code | `VAR.set(value)`: a mod's own default, a screen previewing a value |
 | settings file | a player's setting (`CgSettings`); player settings are variables too, `<file>.<section>.<key>`, and are not listed below |
-| `-D` | `-Dcrystalgraphics.vfx.particleStep=1` at launch; a bare `-Dcrystalgraphics.state.verify` turns a bool on |
-| console | a person, live: the in-game console, a dev tool's key (the harness's P, H, L, G) |
+| `-D` | `-Dcrystalgraphics.vfx.mergeParticles=false` at launch; a bare `-Dcrystalgraphics.state.verify` turns a bool on |
+| console | a person, live: the in-game console, a dev tool's key (the harness's H, L, G) |
 | remote | a remote tool |
 
 ```bash
-./gradlew :gl-debug-harness:runHarness --args="--mode=vfx-spheres" -Dcrystalgraphics.vfx.particleStep=1
+./gradlew :gl-debug-harness:runHarness --args="--mode=vfx-spheres" -Dcrystalgraphics.vfx.mergeParticles=false
 ./gradlew :runtime:mc:modern:forge:1.20.1:runClient -Dcrystalgraphics.state.roundTrip=true
 ```
 
@@ -133,6 +133,8 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.material.dumpGlsl` | true, false | `false` | Log every material pass's generated vertex and fragment GLSL as it compiles. |
+| `crystalgraphics.material.logCompileWaits` | true, false | `false` | Log each program a draw had to wait for (material.compile-waits), by shader and pass. |
+| `crystalgraphics.material.sourcesAhead` | true, false | `true` | A submitted recompile reads, parses and generates its GLSL on a worker first, so the frame that submits only hands it to the driver; false does all of it on that frame. |
 
 ## `crystalgraphics.mesh`
 
@@ -267,13 +269,13 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
+| `crystalgraphics.vfx.bindByName` | true, false | `true` | A layer's colour or palette property reads the look's colour of its name when nothing binds it; false takes values only through explicit binds, as the format's materials do. |
 | `crystalgraphics.vfx.bookBatch` | 1 to 2147483647 | `256` | Effects of one simulation a worker books in one task. |
 | `crystalgraphics.vfx.coarseVolumes` | true, false | `false` | Measurement: volume layers on a 12 x 24 sphere instead of 48 x 96. Read at launch. |
 | `crystalgraphics.vfx.cpuBudgetMs` | 0.1 to 1000.0 | `4.0` | CPU milliseconds a frame a system's updates and draws may take before its scalability shrinks every distance and cap. |
 | `crystalgraphics.vfx.mergeParticles` | true, false | `true` | GPU particles one draw a pool and layer (indirectEach); false draws a slot a draw, sorted per effect: the comparison for overlaps. |
 | `crystalgraphics.vfx.orderedTies` | true, false | `false` | Break ties in the particle draw order by spawn id, so a capture repeats byte for byte: a dispatch per pool and a sort a frame. Capture runs only, beside crystalgraphics.fixedSeed. |
 | `crystalgraphics.vfx.parallelBooks` | 1 to 2147483647 | `4096` | Effects with emitters due a tick past which their books run on the workers, in batches of one simulation's effects; fewer book on the render thread alone. |
-| `crystalgraphics.vfx.particleStep` | 1 to 64 | `2` | Ticks a particle step spans: 2 steps particles at 60 Hz while effects tick at 120, 1 every tick. |
 | `crystalgraphics.vfx.sharedDistortion` | true, false | `false` | Measurement: distortion layers after every effect's draws, so they share one copy of the target. |
 | `crystalgraphics.vfx.simBudgetMs` | 0.0 to 1000.0 | `12.0` | Wall milliseconds an update may spend catching up ticks before it drops the rest and effects slow down. |
 | `crystalgraphics.vfx.skip` | text | empty | Comma-separated: layers whose shader path contains any of these draw nothing, to see what a frame's GPU time is spent on, one profile per group (body_light,haze). |
@@ -302,6 +304,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.world.halfResolution` | true, false | `true` | What a new world renderer starts with: draws marked halfResolution() at half size; false at full size, in the transparent pass (H in the harness, halfResolution(boolean) live). |
 | `crystalgraphics.world.hdrScene` | text | empty | true or false forces the HDR scene for the run over the player's HDR setting, unsaved; empty follows the setting (G in the harness, hdrScene(boolean) live). |
 | `crystalgraphics.world.mergeEmission` | true, false | `true` | What a new world renderer starts with: a transparent draw's codeless Emissive pass written by its Forward draw beside the target; false draws every Emissive pass on its own (mergeEmission(boolean) live). |
+| `crystalgraphics.world.skipUnready` | true, false | `false` | Skips a draw whose program is not built yet, counting it as world.unready-draws, rather than compiling at the draw (skipUnready(boolean) live). |
 
 ## `crystalgraphics.worldevents`
 
