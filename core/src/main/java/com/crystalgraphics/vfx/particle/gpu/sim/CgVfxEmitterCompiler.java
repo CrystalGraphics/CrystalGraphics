@@ -17,6 +17,8 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Writes a shape's Step kernel: one {@code append} kernel that runs a particle step for every particle of a pool
@@ -842,8 +844,14 @@ public final class CgVfxEmitterCompiler {
                     OUT_APPEND(step_pack(p, paramRow));
                 }
                 """);
-        return s.toString();
+        String out = s.toString();
+        // A text block's @NAME@ the code forgot to fill compiles as a syntax error far from its cause.
+        Matcher left = PLACEHOLDER.matcher(out);
+        if (left.find()) throw new IllegalStateException(shape.kernelKey() + ": " + left.group() + " left unfilled in its Step kernel");
+        return out;
     }
+
+    private static final Pattern PLACEHOLDER = Pattern.compile("@[A-Z_]+@");
 
     /**
      * {@code step_vector}: parameter-row vector {@code v} of the row at {@code row}, each word a user binding replaces
