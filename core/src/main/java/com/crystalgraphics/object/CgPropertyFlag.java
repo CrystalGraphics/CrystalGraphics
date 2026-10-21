@@ -33,5 +33,11 @@ public enum CgPropertyFlag {
     /** Named by a code contract: the editor refuses a rename or delete, naming the class. */
     LOCKED,
     /** Read and upgraded, never written ({@code CPF_Deprecated}). */
-    DEPRECATED
+    DEPRECATED,
+    /**
+     * No default defines it: an asset gives it wherever its {@code visible_when} gate holds, or fails at load naming
+     * it. A module input declared with no {@code default} (a mesh, a field, a speed limit); {@code default: null} is
+     * optional instead, left unread when absent.
+     */
+    NO_DEFAULT
 }

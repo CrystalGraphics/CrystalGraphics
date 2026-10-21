@@ -57,15 +57,26 @@ public class CgVfxSystemAssetsTest {
     }
 
     @Test
-    public void theNovaCannonsChargeCompilesOrFailsNamingWhat() throws IOException {
+    public void theNovaCannonsChargeAndImpactCompile() throws IOException {
         Path charge = NOVA.resolve("charge.yaml");
         Assume.assumeTrue("the Nova Cannon fixture is absent", Files.isRegularFile(charge));
-        String yaml = new String(Files.readAllBytes(charge), StandardCharsets.UTF_8);
+        CgVfxSystemDefinition d = compile("novamod:nova_cannon/charge",
+                new String(Files.readAllBytes(charge), StandardCharsets.UTF_8));
+        assertEquals(2, d.look().emitters().size());
+        CgVfxSystemDefinition impact = compile("novamod:nova_cannon/impact",
+                new String(Files.readAllBytes(NOVA.resolve("impact.yaml")), StandardCharsets.UTF_8));
+        assertTrue(impact.look().emitters().size() > 0);
+    }
+
+    @Test
+    public void aRequiredInputLeftOutFailsNamingIt() {
         try {
-            CgVfxSystemDefinition d = compile("novamod:nova_cannon/charge", yaml);
-            assertEquals(2, d.look().emitters().size());
+            compile("mymod:limited", "_v: 1\nemitters:\n  - id: h1\n    name: puff\n    emitter:\n"
+                    + "      particle_update:\n"
+                    + "        - { id: u0, module: crystalgraphics:limit_speed }\n");
+            fail();
         } catch (IllegalArgumentException e) {
-            assertTrue(e.getMessage(), e.getMessage().startsWith("novamod:nova_cannon/charge: emitters."));
+            assertTrue(e.getMessage(), e.getMessage().contains("limit_speed.inputs.max_speed"));
         }
     }
 

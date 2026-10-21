@@ -135,9 +135,10 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
             return "drag";
         }
 
+        /** Its declared inputs' words: the drag, a scale of 1, use_quadratic and the quadratic term ({@code fx_drag.glsl}). */
         @Override
         public void writeParams(CgVfxWords out) {
-            out.vec4(linear, quadratic, 0f, 0f);
+            out.vec4(linear, 1f, quadratic != 0f ? 1f : 0f, quadratic);
         }
     }
 

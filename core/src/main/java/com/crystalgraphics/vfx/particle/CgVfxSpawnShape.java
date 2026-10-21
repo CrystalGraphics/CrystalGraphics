@@ -59,6 +59,11 @@ final class CgVfxSpawnShape {
         return given.kind;
     }
 
+    /** Whether it launches toward its middle ({@code add_velocity}'s {@code inward} mode). */
+    boolean inward() {
+        return given.mode == INWARD;
+    }
+
     /**
      * Its six vec4s from the parameter row's fifth: (up min, up max, up bias, direction mode), (direction xyz, cos of its
      * spread), (kind, placement | 4 for the upper half, arc, ordered), (numbers by kind), rotation, (offset xyz, 0).

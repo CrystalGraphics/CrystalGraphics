@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import org.junit.Assume;
@@ -21,6 +22,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.crystalgraphics.object.CgProperty;
+import com.crystalgraphics.object.CgPropertyFlag;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgTypeKind;
 import com.crystalgraphics.object.CgTypes;
@@ -111,7 +113,8 @@ public class CgBibleGateTest {
                 if (!p.name().equals(in.get("name"))) found.add(where + ": loaded as '" + p.name() + "', out of order");
                 Object q = in.getOrDefault("quantity", "none");
                 if (!p.quantity().specName().equals(q)) found.add(where + ": quantity " + p.quantity().specName() + ", declared " + q);
-                if (in.containsKey("default") && !in.get("default").equals(p.defaultValue())) found.add(where + ": default " + p.defaultValue());
+                if (in.containsKey("default") && !Objects.equals(in.get("default"), p.defaultValue())) found.add(where + ": default " + p.defaultValue());
+                if (in.containsKey("default") == p.flags().contains(CgPropertyFlag.NO_DEFAULT)) found.add(where + ": no default " + !in.containsKey("default"));
                 if (in.containsKey("forms")) {
                     Set<String> forms = new LinkedHashSet<>();
                     for (CgValueForm f : p.forms()) forms.add(f.specName());

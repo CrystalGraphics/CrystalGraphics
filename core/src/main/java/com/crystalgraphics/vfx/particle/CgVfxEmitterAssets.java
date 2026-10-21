@@ -13,6 +13,7 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.asset.kind.CgModuleTypes;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.object.CgProperty;
+import com.crystalgraphics.object.CgPropertyFlag;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
@@ -35,11 +36,11 @@ import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnRate;
  *
  * <p>What the asset carries: {@code properties} ({@code capacity}, {@code local_space}); {@code emitter_update}'s
  * {@code emitter_state}, {@code spawn_rate}, {@code spawn_burst}s and {@code spawn_per_unit}; {@code particle_spawn}'s
- * {@code initialize_particle} (lifetime, heat) and {@code add_velocity} (speed, inherit); and every
+ * {@code initialize_particle} (lifetime, heat, sprite size) and {@code add_velocity} (speed, inherit); and every
  * {@code particle_update} module, by {@link CgVfxModuleTypes}.</p>
  *
  * <ul>
- *   <li>Everything else (the spawn shape, launch, size, spin, the curves and colours over life, events, the renderer,
+ *   <li>Everything else (the spawn shape, launch, the size's skew, spin, the curves and colours over life, events, the renderer,
  *       trails, a clip, bindings, a spawn rate's scale curve) still comes from {@code template}, the code-built emitter
  *       of the same id. A {@code null} template starts from the builder's defaults.</li>
  *   <li>Physics modules write their engine ids ({@code crystalgraphics:<gpu kind>}) and the inputs
@@ -77,8 +78,12 @@ public final class CgVfxEmitterAssets {
         tree.put("emitter_update", update);
 
         List<Object> spawn = new ArrayList<>();
-        spawn.add(entry("init", "initialize_particle", map("lifetime", range(e.lifeMin, e.lifeMax), "heat", (double) e.heat)));
-        spawn.add(entry("velocity", "add_velocity", map("speed", range(e.speedMin, e.speedMax), "inherit", (double) e.inherit)));
+        spawn.add(entry("init", "initialize_particle", map("lifetime", range(e.lifeMin, e.lifeMax), "heat", (double) e.heat,
+                "sprite_size", spriteSize(e.sizeMin, e.sizeMax))));
+        // A mode the speed is read in: linear, the format's default, reads a vector instead. Other launches stay the template's.
+        String mode = e.spawn.inward() ? "inward" : "outward";
+        spawn.add(entry("velocity", "add_velocity", map("mode", mode, "speed", range(e.speedMin, e.speedMax),
+                "inherit", (double) e.inherit)));
         tree.put("particle_spawn", spawn);
 
         List<Object> modules = new ArrayList<>();
@@ -133,8 +138,8 @@ public final class CgVfxEmitterAssets {
                     b.life(life[0], life[1]);
                     if (in.get("heat") instanceof Number h) b.heat(h.floatValue());
                     if (in.get("sprite_size") != null) {
-                        float[] size = rangeOf(in.get("sprite_size"));
-                        b.size(size[0], size[1]);
+                        float[] width = spriteWidth(in.get("sprite_size"));
+                        b.size(width[0], width[1], template != null ? template.sizeSkew : 1f);
                     }
                     break;
                 }
@@ -227,6 +232,25 @@ public final class CgVfxEmitterAssets {
         return min == max ? (Object) (double) min : map("range", Arrays.asList((double) min, (double) max));
     }
 
+    /** A sprite size, Niagara's vec2 of width and height: a square, or a range of two squares. */
+    private static Object spriteSize(float min, float max) {
+        List<Double> lo = Arrays.asList((double) min, (double) min);
+        return min == max ? lo : map("range", Arrays.asList(lo, Arrays.asList((double) max, (double) max)));
+    }
+
+    /**
+     * A sprite size's width, as a range: the vec2's x, or each end's of a range of vec2s; a number or a range of numbers
+     * is a square.
+     */
+    private static float[] spriteWidth(Object value) {
+        if (value instanceof List<?> v) return new float[]{num(v.get(0)), num(v.get(0))};
+        if (value instanceof Map<?, ?> m && m.get("range") instanceof List<?> r
+                && r.get(0) instanceof List<?> lo && r.get(1) instanceof List<?> hi) {
+            return new float[]{num(lo.get(0)), num(hi.get(0))};
+        }
+        return rangeOf(value);
+    }
+
     private static float[] rangeOf(Object value) {
         if (value instanceof Number n) return new float[]{n.floatValue(), n.floatValue()};
         if (value instanceof Map<?, ?> m && m.get("range") instanceof List<?> r) return new float[]{num(r.get(0)), num(r.get(1))};
@@ -262,7 +286,9 @@ public final class CgVfxEmitterAssets {
 
     /**
      * Its inputs: each one absent taking the default {@code modules.yaml} declares, which is in Unreal's units
-     * ({@code modules.md} § Declaration), and each one its {@code visible_when} gate leaves unread dropped.
+     * ({@code modules.md} § Declaration), and each one its {@code visible_when} gate leaves unread dropped. An input
+     * declared optional ({@code default: null}) stays absent; one declared with no default fails here, by name, where
+     * its gate holds and the asset leaves it out.
      */
     private static Map<?, ?> inputs(Map<?, ?> entry) {
         Map<Object, Object> in = new LinkedHashMap<>(entry.get("inputs") instanceof Map<?, ?> m ? m : Map.of());
@@ -274,7 +300,12 @@ public final class CgVfxEmitterAssets {
             }
         }
         for (CgProperty p : declared.inputs().properties()) {
-            if (!gateHolds(p, in)) in.remove(p.name());
+            if (!gateHolds(p, in)) {
+                in.remove(p.name());
+            } else if (!in.containsKey(p.name()) && p.flags().contains(CgPropertyFlag.NO_DEFAULT)) {
+                throw new IllegalArgumentException(entry.get("module") + ".inputs." + p.name()
+                        + ": required, and modules.yaml declares no default");
+            }
         }
         return in;
     }

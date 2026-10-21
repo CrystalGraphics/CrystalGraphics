@@ -181,9 +181,12 @@ public final class CgVfxModuleTypes {
         kind("gravity", CgVfxModule.Gravity.class, t -> v3(t, "gravity"),
                 (m, in) -> in.v3("gravity", m.x(), m.y(), m.z()),
                 r -> new CgVfxModule.Gravity(r.f("gravity", 0), r.f("gravity", 1), r.f("gravity", 2)));
-        kind("drag", CgVfxModule.Drag.class, t -> fl(t, "drag", "quadratic"),
-                (m, in) -> in.f("drag", m.linear()).f("quadratic", m.quadratic()),
-                r -> new CgVfxModule.Drag(r.f("drag"), r.f("quadratic")));
+        // Drag times Cascade's AccelerationDragScaleOverLife scale; the quadratic term only while its toggle is on.
+        kind("drag", CgVfxModule.Drag.class,
+                t -> { fl(t, "drag", "scale"); t.property("use_quadratic", CgValueType.BOOL); fl(t, "quadratic"); },
+                (m, in) -> in.f("drag", m.linear()).f("scale", 1f).b("use_quadratic", m.quadratic() != 0f)
+                        .f("quadratic", m.quadratic()),
+                r -> new CgVfxModule.Drag(r.f("drag") * r.f("scale"), r.b("use_quadratic") ? r.f("quadratic") : 0f));
         kind("wind", CgVfxModule.Wind.class, t -> fl(t, "resistance"),
                 (m, in) -> in.f("resistance", m.resistance()), r -> new CgVfxModule.Wind(r.f("resistance")));
         kind("turbulence", CgVfxModule.Turbulence.class, t -> fl(t, "strength", "frequency", "evolve"),

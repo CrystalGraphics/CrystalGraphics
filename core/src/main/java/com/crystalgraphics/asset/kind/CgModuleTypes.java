@@ -131,7 +131,9 @@ public final class CgModuleTypes {
             for (int i = 1; i < names.size(); i++) rest[i - 1] = form(names.get(i), where);
             b.forms(form(names.get(0), where), rest);
         }
+        // default: null is optional, absent means unread; no default key is required (modules.md § Declaration).
         if (in.containsKey("default")) b.defaultValue(in.get("default"));
+        else b.flags(CgPropertyFlag.NO_DEFAULT);
         Object by = in.get("by");
         if (by != null) {
             List<Object> lookups = asList(by, where + ".by");
