@@ -2306,10 +2306,6 @@ com/crystalgraphics/asset/load/CgPrepareBudget
   method public spentLastFrame ()J
   method public uploadBytesPerFrame ()J
   method public uploadBytesPerFrame (J)Lcom/crystalgraphics/asset/load/CgPrepareBudget;
-com/crystalgraphics/asset/load/CgValuePatcher
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract patch (Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V
 com/crystalgraphics/asset/load/CgVfxAssets
   access public,final
   extends java/lang/Object
