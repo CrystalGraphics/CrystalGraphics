@@ -79,6 +79,8 @@ public final class CgRecordingDevice implements CgDevice {
     private boolean async, transfer;
     private long asyncPoint;
     private Pass open;
+    /** Unlogged, the last ended pass, begun again: an allocation test measures the engine, not this device. */
+    private Pass spare;
     private ComputePass openCompute;
     private Texture surfaceColor, surfaceDepth;
 
@@ -378,20 +380,27 @@ public final class CgRecordingDevice implements CgDevice {
             noCompute("beginPass");
             if (async) throw new IllegalStateException("A render pass inside async work: a compute queue draws nothing");
             if (transfer) throw new IllegalStateException("A render pass inside a transfer: a transfer queue draws nothing");
-            StringBuilder s = new StringBuilder("beginPass ").append(desc.label()).append(" colors=[");
-            for (int i = 0; i < desc.colors().size(); i++) {
-                CgPassDesc.Color c = desc.colors().get(i);
-                use(c.view().texture());
-                s.append(i == 0 ? "" : ", ").append(ref(c.view().texture())).append(':').append(c.load());
+            for (int i = 0; i < desc.colors().size(); i++) use(desc.colors().get(i).view().texture());
+            if (desc.depth() != null) use(desc.depth().view().texture());
+            if (!logging && spare != null) {
+                Pass p = spare;
+                spare = null;
+                return open = p.reopen(desc);
             }
-            s.append(']');
-            if (desc.depth() != null) {
-                use(desc.depth().view().texture());
-                s.append(" depth=").append(ref(desc.depth().view().texture())).append(':')
-                        .append(desc.depth().depthLoad()).append('/').append(desc.depth().stencilLoad());
+            if (logging) {
+                StringBuilder s = new StringBuilder("beginPass ").append(desc.label()).append(" colors=[");
+                for (int i = 0; i < desc.colors().size(); i++) {
+                    CgPassDesc.Color c = desc.colors().get(i);
+                    s.append(i == 0 ? "" : ", ").append(ref(c.view().texture())).append(':').append(c.load());
+                }
+                s.append(']');
+                if (desc.depth() != null) {
+                    s.append(" depth=").append(ref(desc.depth().view().texture())).append(':')
+                            .append(desc.depth().depthLoad()).append('/').append(desc.depth().stencilLoad());
+                }
+                passes.add(desc);
+                record(s.toString());
             }
-            if (logging) passes.add(desc);
-            if (logging) record(s.toString());
             return open = new Pass(desc);
         }
 
@@ -618,7 +627,7 @@ public final class CgRecordingDevice implements CgDevice {
     }
 
     private final class Pass implements CgRenderPass {
-        final CgPassDesc desc;
+        CgPassDesc desc;
         final CgBindings pushed = new CgBindings();
         final Map<Integer, Buffer> vertexBuffers = new TreeMap<>();
         Pipeline pipeline;
@@ -626,6 +635,17 @@ public final class CgRecordingDevice implements CgDevice {
         boolean ended;
 
         Pass(CgPassDesc desc) { this.desc = desc; }
+
+        /** This ended pass begun again on {@code next}, as if new. */
+        Pass reopen(CgPassDesc next) {
+            desc = next;
+            pushed.clear();
+            vertexBuffers.clear();
+            pipeline = null;
+            indexBuffer = null;
+            ended = false;
+            return this;
+        }
 
         private void live() {
             if (ended || open != this) throw new IllegalStateException("Pass '" + desc.label() + "' has ended");
@@ -776,7 +796,9 @@ public final class CgRecordingDevice implements CgDevice {
             if (pipeline == null) throw new IllegalStateException("Draw with no pipeline in '" + desc.label() + "'");
             use(pipeline);
             pushedAll(pipeline.desc().label(), pipeline.desc().layout(), pushed);
-            for (CgPipelineDesc.VertexBuffer vb : pipeline.desc().vertexBuffers()) {
+            List<CgPipelineDesc.VertexBuffer> reads = pipeline.desc().vertexBuffers();
+            for (int i = 0; i < reads.size(); i++) {
+                CgPipelineDesc.VertexBuffer vb = reads.get(i);
                 Buffer b = vertexBuffers.get(vb.binding());
                 if (b == null) throw new IllegalStateException(pipeline.desc().label() + " reads vertex binding "
                         + vb.binding() + ", which has no buffer");
@@ -790,6 +812,7 @@ public final class CgRecordingDevice implements CgDevice {
             ended = true;
             open = null;
             if (logging) record("endPass");
+            else spare = this;
         }
     }
 

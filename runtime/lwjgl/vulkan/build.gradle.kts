@@ -49,6 +49,8 @@ dependencies {
     testImplementation(project(":core"))
     testImplementation("org.joml:joml:${rootProject.properties["dep.joml"]}")
     testRuntimeOnly("org.apache.logging.log4j:log4j-core:2.26.1")
+    // Asset files are YAML (CgFormats.YAML): core's consumerApi does not reach this test classpath.
+    testRuntimeOnly("org.yaml:snakeyaml:2.7")
     testImplementation("junit:junit:${rootProject.properties["dep.junit"]}")
     for (module in listOf("lwjgl", "lwjgl-shaderc", "lwjgl-spvc")) {
         testImplementation("org.lwjgl:$module:$lwjglVulkan")
