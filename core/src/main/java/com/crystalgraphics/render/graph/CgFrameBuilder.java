@@ -6,6 +6,7 @@ import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.property.CgPropertyValues;
 import com.crystalgraphics.render.property.CgSpatialTree;
 import com.crystalgraphics.render.draw.CgBatcher;
@@ -483,6 +484,11 @@ public final class CgFrameBuilder {
             }
         }
         Arrays.fill(refChunk, 0, refs, null);
+        boolean writesDepth = (pass.load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0;
+        for (int b = 0; b < packed.count && !writesDepth; b++) {
+            writesDepth = (writesOf(CgPipeline.byId(packed.pipeline[b]), pass.state) & CgTargetCopy.DEPTH) != 0;
+        }
+        packed.writesDepth = writesDepth;
         placeCopies(pass, packed);
         frame.kernels |= packed.indirects > 0;   // an indirect draw's command is a kernel's
         packed.clips = frame.clipsOf(pass.recording.clips());
@@ -527,7 +533,8 @@ public final class CgFrameBuilder {
      * shader's {@code SceneColorMargin}, the last copy does not hold or a draw since wrote into; the readers after it,
      * up to the next draw that writes colour without reading it, share the copy, which covers all their rects. A
      * reader's own colour writes leave what it reads clean, so readers in a row never see each other's colour; any
-     * depth write, a reader's too, is seen by the next depth reader.
+     * depth write, a reader's too, is seen by the next depth reader. A depth copy no draw of the pass wrote before is
+     * {@link CgTargetCopy#CLEAN}: the target's depth as the pass found it, which the executor may share between passes.
      */
     private void placeCopies(CgRasterPass pass, CgFrame.Raster packed) {
         int sampled = (pass.sceneColorUnit() >= 0 ? CgTargetCopy.COLOR : 0)
@@ -537,6 +544,7 @@ public final class CgFrameBuilder {
         // A pass into part of a layer is not in its target's pixels: its copies are whole.
         boolean regions = width > 0f && height > 0f && pass.viewOwner() == 0 && pass.viewX() == 0f && pass.viewY() == 0f;
         int depthUnseen = sampled & CgTargetCopy.DEPTH;
+        boolean depthWritten = (pass.load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0;
         int run = -1;   // the batch holding the copy the current readers share
         boolean copied = false;
         clear(dirty);
@@ -545,7 +553,7 @@ public final class CgFrameBuilder {
             int reads = sampled & readsOf(pipeline);
             int writes = sampled & writesOf(pipeline, pass.state);
             if ((reads & depthUnseen) != 0) {
-                packed.copyBefore[b] |= CgTargetCopy.DEPTH;
+                packed.copyBefore[b] |= depthWritten ? CgTargetCopy.DEPTH : CgTargetCopy.DEPTH | CgTargetCopy.CLEAN;
                 depthUnseen = 0;
             }
             if ((reads & CgTargetCopy.COLOR) != 0) {
@@ -574,7 +582,10 @@ public final class CgFrameBuilder {
             }
             // A reader's depth write is seen by the next reader, unlike its colour: the distortion apply writes where it
             // read from, and the sky seal after it must test that, not the unbent depth.
-            if ((writes & CgTargetCopy.DEPTH) != 0) depthUnseen = sampled & CgTargetCopy.DEPTH;
+            if ((writes & CgTargetCopy.DEPTH) != 0) {
+                depthUnseen = sampled & CgTargetCopy.DEPTH;
+                depthWritten = true;
+            }
         }
     }
 

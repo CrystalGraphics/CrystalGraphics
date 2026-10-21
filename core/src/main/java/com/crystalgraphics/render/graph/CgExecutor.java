@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
@@ -99,6 +100,15 @@ public final class CgExecutor {
     private static final Logger LOGGER = LogManager.getLogger("CgExecutor");
     private static final int TARGET_COPIES = CgTrace.name("graph.target-copies");
     private static final int TARGET_COPY_PIXELS = CgTrace.name("graph.target-copy-pixels");
+    private static final int DEPTH_SHARED = CgTrace.name("graph.depth-copies-shared");
+
+    /**
+     * One copy of a framebuffer's depth, read by every pass after it that reads that depth until something may write
+     * it: Unreal resolves scene depth once after the base pass, where each pass copying its own cost a blit apiece.
+     * Released when the execution ends; -1 when it holds nothing.
+     */
+    private final CgTargetCopy sharedDepth = new CgTargetCopy();
+    private int sharedDepthSource = -1, sharedDepthWidth, sharedDepthHeight;
     private static final int KINDS = CgInstanceKind.values().length;
     private static final int UNIT_KINDS = (1 << CgInstanceKind.QUAD.ordinal()) | (1 << CgInstanceKind.CURVE.ordinal());
     private static final int OBJECT = CgInstanceKind.OBJECT.ordinal();
@@ -353,12 +363,18 @@ public final class CgExecutor {
                 }
                 for (int t = 0; t < frame.transients.size(); t++) {
                     if (frame.releaseAfter[t] == s) {
+                        if (frame.transients.get(t) instanceof CgGraphTexture texture && texture.framebuffer() != null
+                                && texture.framebuffer().getId() == sharedDepthSource) {
+                            sharedDepthSource = -1;
+                        }
                         giveBack(frame.transients.get(t));
                         resolved--;
                     }
                 }
             }
         } finally {
+            sharedDepth.release(POOL);
+            sharedDepthSource = -1;
             waitAsync(asyncEnd);   // what the host may touch; the rest waits for its reader, or the frame's end
             if (resolved > 0) {
                 for (CgGraphResource transientResource : frame.transients) {
@@ -491,6 +507,7 @@ public final class CgExecutor {
             if (!(pass instanceof CgComputePass)) barriers(frame, s);
             if (pass instanceof CgRasterPass raster) {
                 raster(frame, raster, frame.rasters[s]);
+                if (frame.rasters[s].writesDepth && depthDestination(raster) == sharedDepthSource) sharedDepthSource = -1;
                 unpinLevels(frame, s);
             } else if (pass instanceof CgComputePass compute) {
                 if (async) {
@@ -522,9 +539,11 @@ public final class CgExecutor {
                         copy.tx, copy.ty, copy.tx + copy.tw, copy.ty + copy.th, CgGL.GL_COLOR_BUFFER_BIT,
                         copy.linear ? CgGL.GL_LINEAR : CgGL.GL_NEAREST);
             } else if (pass instanceof CgPass.Upload upload) {
+                sharedDepthSource = -1;
                 upload.writer.upload(storage(upload.target));
                 upload.request.complete();
             } else if (pass instanceof CgPass.Callback callback) {
+                sharedDepthSource = -1;   // its body may draw anything
                 boolean bound = otherBound;   // the scope restores the binding it found
                 try (CgGlScope ignored = CgGlState.saveAll()) {
                     boolean drawsBeside = callback.target != null && callback.target.drawsBesideCurrentDepth()
@@ -544,6 +563,7 @@ public final class CgExecutor {
                     else compile.request.fail(String.valueOf(compile.pipeline.shader().lastCompileError()));
                 }
             } else if (pass instanceof CgPass.Release) {
+                sharedDepthSource = -1;
                 CgFrameBuffer[] versions = pass.target.versions();
                 if (versions != null) {
                     for (int v = 0; v < versions.length; v++) {
@@ -1400,13 +1420,40 @@ public final class CgExecutor {
         CgGraphTexture from = pass.depthFrom();
         CgTargetCopy copy = pass.depthFromCopy();
         if (from.kind() == CgGraphTexture.Kind.CURRENT || from.drawsBesideCurrentDepth()) {
-            copy.copyDepth(startFramebuffer, null, startViewport.get(2), startViewport.get(3), pass, POOL);
+            copy.borrowDepth(sharedDepth(startFramebuffer, null, startViewport.get(2), startViewport.get(3), pass));
         } else {
             CgFrameBuffer storage = storage(from);
-            copy.copyDepth(storage.getId(), storage.getFormat(), storage.getWidth(), storage.getHeight(), pass, POOL);
+            copy.borrowDepth(sharedDepth(storage.getId(), storage.getFormat(), storage.getWidth(), storage.getHeight(), pass));
         }
         copy.depth.bind(pass.depthFromUnit());
+    }
+
+    /** The framebuffer whose depth {@code pass} draws into, or -1 where its target has none. */
+    private int depthDestination(CgRasterPass pass) {
+        CgGraphTexture target = pass.target;
+        if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT || target.drawsBesideCurrentDepth()
+                || pass.attachment() != null) {
+            return startFramebuffer;
+        }
+        CgFrameBuffer storage = storage(target);
+        return storage.getFormat().hasDepth() ? storage.getId() : -1;
+    }
+
+    /**
+     * The execution's copy of framebuffer {@code source}'s depth, copied now unless it already holds it: the current
+     * target when {@code format} is null.
+     */
+    private CgTargetCopy sharedDepth(int source, @Nullable CgFrameBufferFormat format, int width, int height, CgPass pass) {
+        if (source == sharedDepthSource && width == sharedDepthWidth && height == sharedDepthHeight) {
+            CgTrace.add(CgChannels.GL, DEPTH_SHARED, 1);
+            return sharedDepth;
+        }
+        sharedDepth.copyDepth(source, format, width, height, pass, POOL);
+        sharedDepthSource = source;
+        sharedDepthWidth = width;
+        sharedDepthHeight = height;
         CgTrace.add(CgChannels.GL, TARGET_COPIES, 1);
+        return sharedDepth;
     }
 
     /** Copies another target's colour whole, for a pass reading it ({@link CgRasterPass#sceneColor(int, CgGraphTexture)}). */
@@ -1570,6 +1617,23 @@ public final class CgExecutor {
     private void copyTarget(CgRasterPass pass, int bits, int[] rects, int at) {
         CgGraphTexture target = pass.target;
         CgTargetCopy copy = pass.targetCopy();
+        if ((bits & (CgTargetCopy.DEPTH | CgTargetCopy.CLEAN)) == (CgTargetCopy.DEPTH | CgTargetCopy.CLEAN)) {
+            // The target's depth as the pass found it: what an earlier pass may have copied already.
+            if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) {
+                copy.borrowDepth(sharedDepth(startFramebuffer, null, startViewport.get(2), startViewport.get(3), pass));
+            } else if (target.drawsBesideCurrentDepth()) {
+                CgFrameBuffer storage = storage(target);
+                copy.borrowDepth(sharedDepth(startFramebuffer, null, storage.getWidth(), storage.getHeight(), pass));
+            } else {
+                CgFrameBuffer storage = storage(target);
+                copy.borrowDepth(sharedDepth(storage.getId(), storage.getFormat(), storage.getWidth(),
+                        storage.getHeight(), pass));
+            }
+            copy.depth.bind(pass.sceneDepthUnit());
+            bits &= ~(CgTargetCopy.DEPTH | CgTargetCopy.CLEAN);
+            if (bits == 0) return;
+        }
+        bits &= ~CgTargetCopy.CLEAN;
         long pixels;
         if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) {
             pixels = copy.copy(startFramebuffer, null, startViewport.get(2), startViewport.get(3), bits, rects, at, POOL);

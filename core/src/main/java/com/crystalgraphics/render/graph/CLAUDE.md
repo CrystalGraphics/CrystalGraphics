@@ -207,6 +207,13 @@ CgRasterPass pass = recording.raster(target, CgLoad.load(), constants, state, Cg
 reads `from`'s depth as it stands after every write recorded before the call, copied once, whole, when the pass begins.
 Readers sample by `gl_FragCoord.xy / CG_RESOLUTION`. The world's bloom is the user (`render/world/CLAUDE.md`).
 
+**One depth copy, shared.** The executor keeps one copy of a framebuffer's depth per execution, and every pass after it
+reading that depth, as another target's or as its own before any draw of its own wrote depth, reads that copy until
+something may write it: a raster pass into that framebuffer's depth that clears it or has a batch whose state writes it
+or does not say, a callback, an upload, a release, or the framebuffer going back to the pool. Unreal resolves scene depth once after the base pass the
+same way. Counters `graph.target-copies` (blits) and `graph.depth-copies-shared` (copies read again). A pass's depth
+state that says `DepthWrite OFF` keeps the copy alive; one that says nothing ends it.
+
 ```java
 recording.raster(glow, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED)
         .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, CgGraphTexture.current());

@@ -321,6 +321,8 @@ public final class CgFrame {
         int[] copyRect = new int[16 * 4];
         /** The indirect commands its batches draw, which the executor builds before the pass begins. */
         int indirects;
+        /** Whether it may write depth: it clears depth, or a batch's state writes or does not say. */
+        boolean writesDepth;
         /** Bits by kind ordinal: the kinds its batches draw, so their buffers are bound once per pass. */
         int kinds;
         /** Whether a batch's pipeline reads the tables (palette, clips, shapes), as an OBJECT text label does. */

@@ -22,6 +22,10 @@ import java.util.Map;
  * when it ends. A colour copy refreshes only the rect its readers sample, in place: a reader samples only what was
  * copied for it, never what an earlier copy left. Depth is copied whole.
  *
+ * <p>A depth copy may be borrowed ({@link #borrowDepth}): the executor shares one copy of a target's depth between the
+ * passes reading it until something writes that depth, as Unreal resolves scene depth once for every pass after the
+ * base pass.</p>
+ *
  * <ul>
  *   <li>Render thread. A pass of its own each, so a nested execution or a pass of another size never moves what an
  *       earlier pass samples.</li>
@@ -34,6 +38,8 @@ final class CgTargetCopy {
 
     /** What a copy takes, as bits. */
     static final int COLOR = 1, DEPTH = 2;
+    /** With {@link #DEPTH}: no draw of the pass wrote depth before it, so a copy shared between passes serves. */
+    static final int CLEAN = 4;
     /** What a copy saves round its blit: one array, not one a copy. */
     private static final CgGlSlot[] SCISSOR = {CgGlSlot.SCISSOR};
 
@@ -55,6 +61,14 @@ final class CgTargetCopy {
     /** What its storage is acquired as: kept after {@link #release}, so the next frame's copy asks with the same key. */
     @Nullable
     private CgTextureDesc desc;
+    /** The copy whose depth this one reads instead of its own, until it copies depth or is released. */
+    @Nullable
+    private CgTargetCopy depthLender;
+
+    /** Reads {@code lender}'s depth in place of a copy of its own; null to read its own again. */
+    void borrowDepth(@Nullable CgTargetCopy lender) {
+        depthLender = lender;
+    }
 
     /**
      * Copies what {@code bits} name from {@code width} x {@code height} framebuffer {@code source}: the current target
@@ -107,6 +121,7 @@ final class CgTargetCopy {
                       int bits, int[] rects, int at, CgTexturePool pool) {
         int colorMask = (bits & COLOR) != 0 && format.colorSlotCount() > 0 ? CgGL.GL_COLOR_BUFFER_BIT : 0;
         if ((bits & DEPTH) == 0) depthMask = 0;
+        if (depthMask != 0) depthLender = null;
         if ((colorMask | depthMask) == 0 || width <= 0 || height <= 0) return 0L;
         if (!fits(desc, width, height, format)) {
             release(pool);
@@ -181,6 +196,7 @@ final class CgTargetCopy {
     void release(CgTexturePool pool) {
         if (storage != null) pool.release(desc, storage);
         storage = null;
+        depthLender = null;
     }
 
     private static CgFrameBufferFormat copyFormat(@Nullable CgTextureType colorType, @Nullable CgTextureType depthType) {
@@ -200,9 +216,15 @@ final class CgTargetCopy {
         }
 
         @Nullable
+        private CgFrameBuffer source() {
+            return !isColor && depthLender != null ? depthLender.storage : storage;
+        }
+
+        @Nullable
         private CgTexture texture() {
-            if (storage == null) return null;
-            return isColor ? storage.getColorTexture(0) : storage.getDepthTexture();
+            CgFrameBuffer from = source();
+            if (from == null) return null;
+            return isColor ? from.getColorTexture(0) : from.getDepthTexture();
         }
 
         @Override
@@ -225,12 +247,14 @@ final class CgTargetCopy {
 
         @Override
         public int getWidth() {
-            return storage == null ? 0 : storage.getWidth();
+            CgFrameBuffer from = source();
+            return from == null ? 0 : from.getWidth();
         }
 
         @Override
         public int getHeight() {
-            return storage == null ? 0 : storage.getHeight();
+            CgFrameBuffer from = source();
+            return from == null ? 0 : from.getHeight();
         }
 
         @Override
