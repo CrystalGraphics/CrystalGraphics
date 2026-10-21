@@ -5,6 +5,8 @@ import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgParameterCollectionBuffer;
 import com.crystalgraphics.mc.CgAssetReloader;
 
+import javax.annotation.Nullable;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -107,6 +109,20 @@ public final class CgParameterCollection {
 
     public String namespace() {
         return namespace;
+    }
+
+    /** Its scalar of that name, or null: Unreal's {@code GetScalarParameterByName}, for a value named in data. */
+    @Nullable
+    public Scalar scalarNamed(String name) {
+        for (Scalar s : scalars) if (s.name.equals(name)) return s;
+        return null;
+    }
+
+    /** Its vector of that name, or null: Unreal's {@code GetVectorParameterByName}. */
+    @Nullable
+    public Vector vectorNamed(String name) {
+        for (Vector v : vectors) if (v.name.equals(name)) return v;
+        return null;
     }
 
     /** Whether it has its place in the buffer: no parameter can be added once it has. */

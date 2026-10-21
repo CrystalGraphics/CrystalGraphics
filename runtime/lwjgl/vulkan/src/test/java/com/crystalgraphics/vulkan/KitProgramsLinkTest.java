@@ -1,5 +1,9 @@
 package com.crystalgraphics.vulkan;
 
+import com.crystalgraphics.api.material.CgParameterCollections;
+import com.crystalgraphics.asset.codec.CgAssetYaml;
+import com.crystalgraphics.asset.kind.CgLookKinds;
+import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
@@ -17,6 +21,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -32,8 +37,8 @@ import static org.junit.Assert.*;
  * }</pre>
  *
  * <p>{@code -PkitPorts} takes {@code <namespace>=<dir>} pairs separated by {@code ;}: each dir is loaded as
- * {@code <namespace>:shaders/}, so a port's includes of its own namespace resolve. Without it the kits' ports are
- * skipped.</p>
+ * {@code <namespace>:shaders/}, so a port's includes of its own namespace resolve, and a {@code parameters/} beside it
+ * declares the collections the ports read. Without it the kits' ports are skipped.</p>
  */
 public class KitProgramsLinkTest {
 
@@ -192,6 +197,9 @@ public class KitProgramsLinkTest {
         List<String> failures = new ArrayList<>();
         int programs = 0, ports = 0;
         for (String namespace : namespaces.split(";")) {
+            declareCollections(namespace, root.resolve(namespace).resolve("parameters"));
+        }
+        for (String namespace : namespaces.split(";")) {
             Path shaders = root.resolve(namespace).resolve("shaders");
             List<Path> files;
             try (Stream<Path> walk = Files.walk(shaders)) {
@@ -210,6 +218,19 @@ public class KitProgramsLinkTest {
         assertTrue(String.join("\n", failures), failures.isEmpty());
         assertTrue("no port was found under " + namespaces, ports > 0);
         assertTrue("no program was linked", programs > 0);
+    }
+
+    /** Each collection asset under {@code dir}, declared as its kit's load would. */
+    private static void declareCollections(String namespace, Path dir) throws IOException {
+        if (!Files.isDirectory(dir)) return;
+        try (Stream<Path> walk = Files.walk(dir)) {
+            for (Path file : walk.filter(f -> f.toString().endsWith(".yaml")).sorted().toList()) {
+                String name = dir.relativize(file).toString().replace(File.separatorChar, '/').replaceFirst("[.]yaml$", "");
+                Map<?, ?> tree = (Map<?, ?>) CgAssetYaml.read(Files.readString(file));
+                CgParameterCollections.compile(CgAssetData.of(namespace + ":parameters/" + name, CgLookKinds.PARAMETERS, tree, null),
+                        (kind, id) -> null);
+            }
+        }
     }
 
     /** Every pass with no keyword, each keyword alone and all of them: the programs counted, the failures listed. */

@@ -62,7 +62,8 @@ tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
 }
 
-// -PkitPorts=<namespace>=<dir>;...: each dir's files as <namespace>:shaders/..., where a kit's importer puts them.
+// -PkitPorts=<namespace>=<dir>;...: each dir's files as <namespace>:shaders/..., where a kit's importer puts them, and
+// a parameters/ beside the dir as <namespace>:parameters/, the collections the ports read.
 val kitPorts: Map<String, String> = providers.gradleProperty("kitPorts").orNull.orEmpty().split(";")
     .map { it.trim() }.filter { it.isNotEmpty() }
     .associate { entry ->
@@ -73,7 +74,10 @@ val kitPorts: Map<String, String> = providers.gradleProperty("kitPorts").orNull.
 val kitPortsRoot = layout.buildDirectory.dir("kit-ports")
 val stageKitPorts = tasks.register<Sync>("stageKitPorts") {
     into(kitPortsRoot)
-    kitPorts.forEach { (namespace, dir) -> from(dir) { into("assets/$namespace/shaders") } }
+    kitPorts.forEach { (namespace, dir) ->
+        from(dir) { into("assets/$namespace/shaders") }
+        from(file(dir).resolveSibling("parameters")) { into("assets/$namespace/parameters") }
+    }
 }
 
 // The natives load through System.load, which JDK 25 warns about unless native access is granted.
