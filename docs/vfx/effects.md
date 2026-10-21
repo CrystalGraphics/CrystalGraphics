@@ -253,8 +253,8 @@ held across a whole clip.
 
 ```java
 CgVfxSortGroup move = new CgVfxSortGroup();                     // one per move played
-VFX.play(new CgVfxSystemInstance(SPIRAL, x, y, z).sortGroup(move));
-VFX.play(new CgVfxSystemInstance(SHOCKWAVE, x, y, z).sortGroup(move));   // a hint of 4 here draws before SPIRAL's 12
+VFX.play(new CgVfxSystemInstance<>(SPIRAL, x, y, z).sortGroup(move));
+VFX.play(new CgVfxSystemInstance<>(SHOCKWAVE, x, y, z).sortGroup(move));   // a hint of 4 here draws before SPIRAL's 12
 ```
 
 ```java

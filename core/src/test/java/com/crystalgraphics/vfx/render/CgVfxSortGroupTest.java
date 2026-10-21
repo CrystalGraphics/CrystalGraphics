@@ -25,8 +25,8 @@ public class CgVfxSortGroupTest {
         CgVfxLook b = CgVfxLook.builder(CgVfxSystemDefinition.SCHEMA).layer(b2).layer(b1).build();
 
         CgVfxSortGroup group = new CgVfxSortGroup();
-        CgVfxSystemInstance first = new CgVfxSystemInstance(a, 0, 0, 0).sortGroup(group);
-        CgVfxSystemInstance second = new CgVfxSystemInstance(b, 10, 0, 0).sortGroup(group);
+        CgVfxSystemInstance<?> first = new CgVfxSystemInstance<>(a, 0, 0, 0).sortGroup(group);
+        CgVfxSystemInstance<?> second = new CgVfxSystemInstance<>(b, 10, 0, 0).sortGroup(group);
         assertEquals(2, group.members());
 
         // Smoke first by role; then surfaces by hint across both looks, the earlier look first on a tie

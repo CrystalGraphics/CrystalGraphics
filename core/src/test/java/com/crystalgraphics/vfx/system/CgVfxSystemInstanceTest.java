@@ -45,7 +45,7 @@ public class CgVfxSystemInstanceTest {
     @Test
     public void aLookAloneIsABurstThatCompletes() {
         vfx = new CgVfxSystem();
-        CgVfxSystemInstance puff = vfx.play(new CgVfxSystemInstance(PUFF_LOOK, 0, 64, 0));
+        CgVfxSystemInstance<?> puff = vfx.play(new CgVfxSystemInstance<>(PUFF_LOOK, 0, 64, 0));
         assertSame(CgVfxSystemDefinition.of(PUFF_LOOK), puff.definition());
         assertNotNull(puff.emitter("sys_puff"));
         assertEquals(CgVfxExecutionState.ACTIVE, puff.executionState());
@@ -57,7 +57,7 @@ public class CgVfxSystemInstanceTest {
     @Test
     public void aScalabilityCullNeverOverridesItsOwner() {
         vfx = new CgVfxSystem();
-        CgVfxSystemInstance aura = vfx.play(new CgVfxSystemInstance(AURA_LOOK, 0, 64, 0));
+        CgVfxSystemInstance<?> aura = vfx.play(new CgVfxSystemInstance<>(AURA_LOOK, 0, 64, 0));
         frames(3);
         aura.stop();
         assertEquals(CgVfxExecutionState.INACTIVE, aura.executionState());
@@ -74,13 +74,13 @@ public class CgVfxSystemInstanceTest {
     @Test
     public void aCullBeforeItsOwnerSpeaksIsHeardAndAStoppedOneNeverRestarts() {
         vfx = new CgVfxSystem();
-        CgVfxSystemInstance aura = vfx.play(new CgVfxSystemInstance(AURA_LOOK, 0, 64, 0));
+        CgVfxSystemInstance<?> aura = vfx.play(new CgVfxSystemInstance<>(AURA_LOOK, 0, 64, 0));
         assertTrue(aura.request(CgVfxExecutionState.INACTIVE, CgVfxExecutionSource.SCALABILITY));
         assertFalse(aura.request(CgVfxExecutionState.ACTIVE, CgVfxExecutionSource.OWNER));
         assertTrue(aura.request(CgVfxExecutionState.INACTIVE_CLEAR, CgVfxExecutionSource.OWNER));
         assertEquals(CgVfxExecutionState.COMPLETE, aura.executionState());
         assertThrows(IllegalArgumentException.class,
-                () -> new CgVfxSystemInstance(AURA_LOOK, 0, 0, 0).request(CgVfxExecutionState.ASLEEP, CgVfxExecutionSource.OWNER));
+                () -> new CgVfxSystemInstance<>(AURA_LOOK, 0, 0, 0).request(CgVfxExecutionState.ASLEEP, CgVfxExecutionSource.OWNER));
     }
 
     @Test
@@ -89,19 +89,19 @@ public class CgVfxSystemInstanceTest {
         int[] ticks = {0}, deactivations = {0};
         boolean[] done = {false};
         CgVfxSystemDefinition def = CgVfxSystemDefinition.of("test:held", PUFF_LOOK).withBehaviour(in -> new CgVfxBehaviour() {
-            public void tick(CgVfxSystemInstance instance, float dt) {
+            public void tick(CgVfxSystemInstance<?> instance, float dt) {
                 ticks[0]++;
             }
 
-            public void deactivated(CgVfxSystemInstance instance) {
+            public void deactivated(CgVfxSystemInstance<?> instance) {
                 deactivations[0]++;
             }
 
-            public boolean done(CgVfxSystemInstance instance) {
+            public boolean done(CgVfxSystemInstance<?> instance) {
                 return done[0];
             }
         });
-        CgVfxSystemInstance held = vfx.play(new CgVfxSystemInstance(def, 0, 64, 0));
+        CgVfxSystemInstance<?> held = vfx.play(new CgVfxSystemInstance<>(def, 0, 64, 0));
         frames(120);
         assertTrue(ticks[0] > 100);
         assertEquals(CgVfxExecutionState.ACTIVE, held.executionState());   // its emitters finished; its behaviour has not

@@ -57,7 +57,7 @@ static final CgVfxLook LOOK = CgVfxLook.builder(CgVfxSchema.of("mymod:shurikens"
                 .build(), SPINNER.kit())
         .build();
 
-VFX.play(new CgVfxSystemInstance(LOOK, x, y, z));
+VFX.play(new CgVfxSystemInstance<>(LOOK, x, y, z));
 ```
 
 - **The children are drawn by layers on their slots**, not listed as emitters: a system instance starts every emitter its look

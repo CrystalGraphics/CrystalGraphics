@@ -27,7 +27,7 @@ import java.util.Locale;
  * scene.submit(world, x, y, z, t);
  *
  * // each wave a scene fires
- * CgVfxSystemInstance wave = vfx.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z));
+ * CgVfxSystemInstance<CgEnergyWave> wave = vfx.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z));
  * controls.apply(wave);
  *
  * hud.line(controls.hudLines(true));                      // false: a scene with no waves shows the time alone
@@ -88,7 +88,7 @@ public final class CgVfxDemoControls {
     private double clock;
     private double last = Double.NaN;
     /** Each wave {@link #apply} set and its own flash, the double; pruned once dead. */
-    private record Live(CgVfxSystemInstance wave, CgKeyframes flash) {
+    private record Live(CgVfxSystemInstance<?> wave, CgKeyframes flash) {
     }
 
     private final List<Live> live = new ArrayList<>();
@@ -182,7 +182,7 @@ public final class CgVfxDemoControls {
     }
 
     /** Sets the wave's flash, impact frame and billows from the switches, and again at each press while it plays. */
-    public void apply(CgVfxSystemInstance wave) {
+    public void apply(CgVfxSystemInstance<?> wave) {
         for (int i = live.size() - 1; i >= 0; i--) {
             if (live.get(i).wave.state() == CgVfxEffect.State.DEAD) live.remove(i);
         }

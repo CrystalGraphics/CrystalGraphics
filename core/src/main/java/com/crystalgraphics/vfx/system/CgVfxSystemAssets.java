@@ -30,7 +30,7 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitterAssets;
  * CgVfxSystemAssets.effect("mymod:wave", Wave::new, Wave.CONTRACT);      // drawn with its own look, set by the file
  * CgVfxSystemAssets.register();                                          // the pipeline compiles systems so
  * CgAssetRef<CgVfxSystemDefinition> NOVA = CgVfxAssets.ref(CgParticleKinds.SYSTEM, "novamod:nova_cannon/charge");
- * VFX.play(new CgVfxSystemInstance(NOVA.get(), x, y, z));
+ * VFX.play(new CgVfxSystemInstance<>(NOVA.get(), x, y, z));
  * }</pre>
  *
  * <ul>

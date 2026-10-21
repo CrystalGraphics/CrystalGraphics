@@ -848,7 +848,7 @@ public final class CgVfxSystem {
      *
      * <pre>{@code
      * vfx.prepare(BEAM, BLAST);
-     * vfx.rehearse(hidden -> hidden.play(new CgEnergyWave(BEAM, x, y, z)));   // again each time its effects end
+     * vfx.rehearse(hidden -> hidden.play(CgEnergyWave.instance(BEAM, x, y, z)));   // again each time its effects end
      * if (!vfx.warmed()) return;                                              // each frame, then cast
      * }</pre>
      *

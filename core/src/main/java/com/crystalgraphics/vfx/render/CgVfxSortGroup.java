@@ -16,8 +16,8 @@ import java.util.Map;
  *
  * <pre>{@code
  * CgVfxSortGroup move = new CgVfxSortGroup();                       // one per move played
- * VFX.play(new CgVfxSystemInstance(SPIRAL, x, y, z).sortGroup(move));
- * VFX.play(new CgVfxSystemInstance(SHOCKWAVE, x, y, z).sortGroup(move));     // its layers order against SPIRAL's by their hints
+ * VFX.play(new CgVfxSystemInstance<>(SPIRAL, x, y, z).sortGroup(move));
+ * VFX.play(new CgVfxSystemInstance<>(SHOCKWAVE, x, y, z).sortGroup(move));     // its layers order against SPIRAL's by their hints
  * }</pre>
  *
  * <pre>{@code

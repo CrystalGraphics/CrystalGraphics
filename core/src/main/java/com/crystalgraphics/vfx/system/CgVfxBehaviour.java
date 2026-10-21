@@ -13,7 +13,7 @@ import java.util.List;
  *
  * <pre>{@code
  * static final CgVfxBehaviour.Factory PULSE = instance -> new CgVfxBehaviour() {
- *     public void tick(CgVfxSystemInstance in, float dt) {
+ *     public void tick(CgVfxSystemInstance<?> in, float dt) {
  *         if (in.age() > in.get(LIFE)) in.request(CgVfxExecutionState.INACTIVE, CgVfxExecutionSource.INTERNAL);
  *     }
  * };
@@ -36,37 +36,37 @@ import java.util.List;
 public interface CgVfxBehaviour {
 
     /** Each tick, before the instance's emitters book theirs. */
-    void tick(CgVfxSystemInstance instance, float dt);
+    void tick(CgVfxSystemInstance<?> instance, float dt);
 
     /** Draws what it draws itself this frame; its emitters' particles are the system's to draw. */
-    default void submit(CgVfxSystemInstance instance, CgVfxFrame frame) {
+    default void submit(CgVfxSystemInstance<?> instance, CgVfxFrame frame) {
     }
 
     /** Its instance was asked to stop spawning ({@link CgVfxExecutionState#INACTIVE}): its own graceful end. */
-    default void deactivated(CgVfxSystemInstance instance) {
+    default void deactivated(CgVfxSystemInstance<?> instance) {
     }
 
     /** Its instance is ending by {@code ending} rather than its own way: heard before it deactivates. */
-    default void ending(CgVfxSystemInstance instance, CgVfxEnding ending) {
+    default void ending(CgVfxSystemInstance<?> instance, CgVfxEnding ending) {
     }
 
     /**
      * The point its instance follows moved to {@code (x, y, z)}: true if it placed what it moves itself (a muzzle riding
      * the hands while what it fired stays in the world), false to move the instance's origin there.
      */
-    default boolean followed(CgVfxSystemInstance instance, double x, double y, double z) {
+    default boolean followed(CgVfxSystemInstance<?> instance, double x, double y, double z) {
         return false;
     }
 
     /** Whether it lets its instance complete once the emitters have finished. */
-    default boolean done(CgVfxSystemInstance instance) {
+    default boolean done(CgVfxSystemInstance<?> instance) {
         return true;
     }
 
     /** Makes an instance's behaviour, once, as it is played. */
     @FunctionalInterface
     interface Factory {
-        CgVfxBehaviour make(CgVfxSystemInstance instance);
+        CgVfxBehaviour make(CgVfxSystemInstance<?> instance);
     }
 
     /**

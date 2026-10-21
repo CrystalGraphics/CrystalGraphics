@@ -18,7 +18,7 @@ import java.util.WeakHashMap;
  * <pre>{@code
  * static final CgVfxSystemDefinition PUFF = CgVfxSystemDefinition.of("mymod:puff",
  *         CgVfxLook.builder(CgVfxSystemDefinition.SCHEMA).with(PUFF_KIT).build());
- * VFX.play(new CgVfxSystemInstance(PUFF, x, y, z));
+ * VFX.play(new CgVfxSystemInstance<>(PUFF, x, y, z));
  *
  * static final CgVfxSystemDefinition BEAM = CgVfxSystemDefinition.of("mymod:beam", BEAM_LOOK).withBehaviour(Beam::new);
  * }</pre>

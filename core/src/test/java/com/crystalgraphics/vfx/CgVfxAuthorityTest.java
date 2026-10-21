@@ -87,8 +87,8 @@ public class CgVfxAuthorityTest {
 
     @Test
     public void aServersWaveStrikesWhatItsLevelHoldsThenBursts() {
-        CgVfxSystemInstance beam = CgEnergyWave.instance(CgEnergyWave.kamehameha(), 0, 1, 0);
-        CgEnergyWave wave = CgEnergyWave.of(beam).collide();
+        CgVfxSystemInstance<CgEnergyWave> beam = CgEnergyWave.instance(CgEnergyWave.kamehameha(), 0, 1, 0);
+        CgEnergyWave wave = beam.behaviour().collide();
         beam.follow(1, CgEntityAttachments.CHEST);
         wave.aim(1f, 0f, 0f);
         CgVfxAuthority run = new CgVfxAuthority(beam, CgCollisionWorld.of(FLOOR, new Crowd()));
@@ -108,7 +108,7 @@ public class CgVfxAuthorityTest {
 
     @Test(expected = IllegalStateException.class)
     public void anEffectRunsInOnePlaceOnly() {
-        CgVfxSystemInstance beam = CgEnergyWave.instance(CgEnergyWave.kamehameha(), 0, 1, 0);
+        CgVfxSystemInstance<CgEnergyWave> beam = CgEnergyWave.instance(CgEnergyWave.kamehameha(), 0, 1, 0);
         new CgVfxAuthority(beam, CgCollisionWorld.of(FLOOR, new Crowd()));
         new CgVfxAuthority(beam, CgCollisionWorld.of(FLOOR, new Crowd()));
     }

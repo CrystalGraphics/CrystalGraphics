@@ -12,17 +12,22 @@ import javax.annotation.Nullable;
 import java.util.List;
 
 /**
- * One playing system: Unreal's {@code FNiagaraSystemInstance}. It plays its definition's emitters from its origin, runs
+ * One playing system: Unreal's {@code FNiagaraSystemInstance}. {@code B} is its behaviour's type, known where the
+ * instance is made and a wildcard where a file or a cue made it. It plays its definition's emitters from its origin, runs
  * its native behaviour if the definition has one ({@link CgVfxBehaviour}), and completes when both are done. Its
  * execution state is requested by source ({@link CgVfxExecutionSource}): a request below the standing one's source is
  * refused, so a scalability cull never overrides its owner.
  *
  * <pre>{@code
- * CgVfxSystemInstance puff = VFX.play(new CgVfxSystemInstance(PUFF, x, y, z)).ground(floorY);
- * CgVfxSystemInstance beam = VFX.play(new CgVfxSystemInstance(BEAM, x, y, z));
+ * CgVfxSystemInstance<?> puff = VFX.play(new CgVfxSystemInstance<>(PUFF, x, y, z)).ground(floorY);
+ * CgVfxSystemInstance<CgEnergyWave> beam = VFX.play(CgEnergyWave.instance(look, x, y, z));
+ * beam.behaviour().hold().aim(dx, dy, dz);   // typed: the wave's own methods
  * beam.set(BEAM_LENGTH, 40f);                // a user parameter: its look's value, read by its behaviour and layers
  * beam.stop();                               // INACTIVE, the owner's: no new spawns, particles finish
  * beam.kill();                               // INACTIVE_CLEAR: gone at its system's next step
+ *
+ * CgVfxSystemInstance<?> fromFile = VFX.play(new CgVfxSystemInstance<>(NOVA.get(), x, y, z));
+ * fromFile.behaviour(CgEnergyWave.class);    // checked, for an instance whose type is not known here
  * }</pre>
  *
  * <ul>
@@ -34,18 +39,19 @@ import java.util.List;
  *       behaviour that is, and nothing for one that is not.</li>
  * </ul>
  */
-public final class CgVfxSystemInstance extends CgVfxEffect<CgVfxSystemInstance>
+public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEffect<CgVfxSystemInstance<B>>
         implements CgVfxCue.Live, CgVfxCue.Authoritative {
 
     private final CgVfxSystemDefinition definition;
     private final CgVfxEmitterInstance[] emitters;
     @Nullable
-    private final CgVfxBehaviour behaviour;
+    private final B behaviour;
     private CgVfxExecutionState requested = CgVfxExecutionState.ACTIVE;
     /** The standing request's source: the lowest until something asks. */
     private CgVfxExecutionSource source = CgVfxExecutionSource.SCALABILITY;
     private boolean grounded;
 
+    @SuppressWarnings("unchecked")   // B is the caller's word for what the definition's factory makes
     public CgVfxSystemInstance(CgVfxSystemDefinition definition, double x, double y, double z) {
         super(definition.look(), x, y, z);
         this.definition = definition;
@@ -55,7 +61,7 @@ public final class CgVfxSystemInstance extends CgVfxEffect<CgVfxSystemInstance>
             emitters[i] = new CgVfxEmitterInstance(kinds.get(i), seed + i * 0.137f);
             emitters[i].start(0f, 0f, 0f);
         }
-        behaviour = definition.behaviour() == null ? null : definition.behaviour().make(this);
+        behaviour = definition.behaviour() == null ? null : (B) definition.behaviour().make(this);
     }
 
     /** {@code look}'s emitters played once from the origin: a burst ({@link CgVfxSystemDefinition#of(CgVfxLook)}). */
@@ -86,7 +92,7 @@ public final class CgVfxSystemInstance extends CgVfxEffect<CgVfxSystemInstance>
 
     /** Its behaviour, or null for a system with none. */
     @Nullable
-    public CgVfxBehaviour behaviour() {
+    public B behaviour() {
         return behaviour;
     }
 
@@ -99,7 +105,7 @@ public final class CgVfxSystemInstance extends CgVfxEffect<CgVfxSystemInstance>
      *
      * @throws IllegalStateException if it carries none of that type
      */
-    public <B extends CgVfxBehaviour> B behaviour(Class<B> type) {
+    public <T extends CgVfxBehaviour> T behaviour(Class<T> type) {
         if (!type.isInstance(behaviour)) {
             throw new IllegalStateException(definition.name() + " carries " + behaviour + ", no " + type.getSimpleName());
         }

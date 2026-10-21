@@ -43,9 +43,9 @@ import java.util.WeakHashMap;
  * {@link #galickGun()} are the same kits in another palette, and {@link #toon()} its body in flat bands.
  *
  * <pre>{@code
- * CgVfxSystemInstance beam = VFX.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z)
+ * CgVfxSystemInstance<CgEnergyWave> beam = VFX.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z)
  *         .follow(playerId, CgEntityAttachments.HANDS_FORWARD));
- * CgEnergyWave wave = CgEnergyWave.of(beam).hold();   // charging until fired
+ * CgEnergyWave wave = beam.behaviour().hold();   // charging until fired
  * wave.aim(dx, dy, dz).target(tx, ty, tz);            // each tick, as the source turns
  * wave.fire();                                        // release
  * beam.stop();                                        // the tail runs out into the target, which bursts
@@ -300,7 +300,7 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
     /** Each look's system, made once: a definition is its simulation's key. */
     private static final Map<CgVfxLook, CgVfxSystemDefinition> SYSTEMS = Collections.synchronizedMap(new WeakHashMap<>());
 
-    private final CgVfxSystemInstance instance;
+    private final CgVfxSystemInstance<CgEnergyWave> instance;
     private final CgVfxCharge charge;
     private final CgBeamBody body;
     private final CgBeamContact contact;
@@ -338,9 +338,10 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
     private boolean held, ended, finished;
 
     /** The wave {@code instance} carries: its system's behaviour factory ({@code CgEnergyWave::new}). */
-    public CgEnergyWave(CgVfxSystemInstance instance) {
+    @SuppressWarnings("unchecked")   // the instance making a wave is the wave's own
+    public CgEnergyWave(CgVfxSystemInstance<?> instance) {
         super(instance);
-        this.instance = instance;
+        this.instance = (CgVfxSystemInstance<CgEnergyWave>) instance;
         CgVfxLook look = instance.look();
         for (CgVfxSchema s : new CgVfxSchema[] {CgBeamBody.SCHEMA, CgVfxCharge.SCHEMA, CgBeamContact.SCHEMA, CgVfxBlast.SCHEMA}) {
             if (!look.layout().schemas().contains(s)) {
@@ -369,23 +370,18 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
     }
 
     /**
-     * A wave of {@code look} at {@code (x, y, z)}, to play: its instance, which {@link #of} reaches the wave of.
+     * A wave of {@code look} at {@code (x, y, z)}, to play: its instance, whose {@code behaviour()} is the wave.
      *
      * <pre>{@code
-     * CgVfxSystemInstance beam = VFX.play(CgEnergyWave.instance(CgEnergyWave.finalFlash(), x, y, z));
+     * CgVfxSystemInstance<CgEnergyWave> beam = VFX.play(CgEnergyWave.instance(CgEnergyWave.finalFlash(), x, y, z));
      * }</pre>
      */
-    public static CgVfxSystemInstance instance(CgVfxLook look, double x, double y, double z) {
-        return new CgVfxSystemInstance(system(look), x, y, z);
-    }
-
-    /** The wave {@code instance} carries. @throws IllegalStateException if it carries none */
-    public static CgEnergyWave of(CgVfxSystemInstance instance) {
-        return instance.behaviour(CgEnergyWave.class);
+    public static CgVfxSystemInstance<CgEnergyWave> instance(CgVfxLook look, double x, double y, double z) {
+        return new CgVfxSystemInstance<>(system(look), x, y, z);
     }
 
     /** The instance carrying it: what plays, follows, stops and ends. */
-    public CgVfxSystemInstance instance() {
+    public CgVfxSystemInstance<CgEnergyWave> instance() {
         return instance;
     }
 
@@ -411,7 +407,7 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
 
     /** Its muzzle rides what it follows; what it fired stays where it is in the world. */
     @Override
-    public boolean followed(CgVfxSystemInstance in, double x, double y, double z) {
+    public boolean followed(CgVfxSystemInstance<?> in, double x, double y, double z) {
         muzzleX = (float) (x - originX());
         muzzleY = (float) (y - originY());
         muzzleZ = (float) (z - originZ());
@@ -445,7 +441,7 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
      *
      * <pre>{@code
      * beam = owner.play(CgEnergyWave.instance(look, x, y, z).follow(playerId, CgEntityAttachments.HANDS_FORWARD));
-     * wave = CgEnergyWave.of(beam).collide();
+     * wave = beam.behaviour().collide();
      * wave.aim(look.x, look.y, look.z);                               // each tick
      * wave.onHit(CgEnergyWave.PART_BEAM, h -> damage(h.entity()));    // as the head reaches it, and as it changes
      * }</pre>
@@ -470,7 +466,7 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
      * streaks, arcs and tremor running on. Any time before it fires; a held wave never fired charges until stopped.
      *
      * <pre>{@code
-     * wave = CgEnergyWave.of(owner.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z))).hold();   // key down
+     * wave = owner.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z)).behaviour().hold();   // key down
      * wave.fire();                                                                       // key up
      * }</pre>
      */
@@ -559,12 +555,12 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
      * <pre>{@code
      * public static final CgVfxCue WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(), CgEnergyWave::fromCue)
      *         .range(96).authoritative().build();
-     * CgEnergyWave beam = CgEnergyWave.of(WAVE.on(caster, CgEntityAttachments.HANDS_FORWARD).start().effect());
+     * CgVfxSystemInstance<CgEnergyWave> beam = WAVE.on(caster, CgEntityAttachments.HANDS_FORWARD).start().effect();
      * }</pre>
      */
-    public static CgVfxSystemInstance fromCue(CgVfxLook look, CgVfxCue.Play cue) {
-        CgVfxSystemInstance played = instance(look, cue.x(), cue.y(), cue.z());
-        CgEnergyWave wave = of(played);
+    public static CgVfxSystemInstance<CgEnergyWave> fromCue(CgVfxLook look, CgVfxCue.Play cue) {
+        CgVfxSystemInstance<CgEnergyWave> played = instance(look, cue.x(), cue.y(), cue.z());
+        CgEnergyWave wave = played.behaviour();
         if (cue.hasDirection()) wave.aim((float) cue.dx(), (float) cue.dy(), (float) cue.dz());
         if (cue.hasTarget()) wave.target(cue.tx(), cue.ty(), cue.tz());
         else if (cue.authoritative()) wave.collide();
@@ -577,25 +573,25 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
 
     /** Its instance stopped: the tail runs out from here into what it hit. */
     @Override
-    public void deactivated(CgVfxSystemInstance in) {
+    public void deactivated(CgVfxSystemInstance<?> in) {
         stopAge = age();
         sizeAtStop = body.stream().size();
     }
 
     /** An ending thins it where it is: its tail never runs out into a blast. */
     @Override
-    public void ending(CgVfxSystemInstance in, CgVfxEnding ending) {
+    public void ending(CgVfxSystemInstance<?> in, CgVfxEnding ending) {
         ended = true;
     }
 
     /** Whether its blast, or its tail with no blast, has finished: its instance then completes. */
     @Override
-    public boolean done(CgVfxSystemInstance in) {
+    public boolean done(CgVfxSystemInstance<?> in) {
         return finished;
     }
 
     @Override
-    public void tick(CgVfxSystemInstance in, float dt) {
+    public void tick(CgVfxSystemInstance<?> in, float dt) {
         boolean playing = instance.state() == CgVfxEffect.State.PLAYING, fired = playing && age() >= releaseAge;
         if (collides && playing) targetAlongAim();
         drawnMuzzle();
@@ -746,7 +742,7 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
     }
 
     @Override
-    public void submit(CgVfxSystemInstance in, CgVfxFrame frame) {
+    public void submit(CgVfxSystemInstance<?> in, CgVfxFrame frame) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, MUZZLE_ZONE)) {
             charge.submit(frame);
         }

@@ -58,7 +58,7 @@ public class CgVfxCueTest {
     private static final List<String> CONFIRMED = new ArrayList<>();
     /** The plays each viewer's wave was built from, and the waves. */
     private static final List<CgVfxCue.Play> WAVE_CUES = new ArrayList<>();
-    private static final List<CgVfxSystemInstance> WAVES = new ArrayList<>();
+    private static final List<CgVfxSystemInstance<?>> WAVES = new ArrayList<>();
 
     private static final CgVfxCue SPARK = CgVfxCue.define("cue_test:spark", LOOK, CgVfxCueTest::probe).fields(LEVEL).build();
     private static final CgVfxCue KEPT = CgVfxCue.define("cue_test:kept", LOOK, CgVfxCueTest::probe).persisted().build();
@@ -67,7 +67,7 @@ public class CgVfxCueTest {
         return new Seeker(cue.x(), cue.y(), cue.z());
     }).authoritative().build().onConfirmedHit(h -> CONFIRMED.add(h.kind() + " at y " + Math.round(h.y())));
     private static final CgVfxCue WAVE = CgVfxCue.define("cue_test:wave", CgEnergyWave.kamehameha(), (look, cue) -> {
-        CgVfxSystemInstance wave = CgEnergyWave.fromCue(look, cue);
+        CgVfxSystemInstance<CgEnergyWave> wave = CgEnergyWave.fromCue(look, cue);
         if (!cue.authoritative()) {
             WAVE_CUES.add(cue);
             WAVES.add(wave);
@@ -404,8 +404,8 @@ public class CgVfxCueTest {
         levels.blocks = level -> CgVfxAuthorityTest.FLOOR;
         join();
         CgVfxCue.Playing playing = WAVE.at(body, 0, 64, 0).toward(0, 0, 1).start();
-        CgVfxSystemInstance beam = playing.effect();
-        CgEnergyWave.of(beam).hold().aim(1, 0, 0);
+        CgVfxSystemInstance<CgEnergyWave> beam = playing.effect();
+        beam.behaviour().hold().aim(1, 0, 0);
         settle();
 
         CgVfxCue.Play added = WAVE_CUES.get(0);
@@ -414,7 +414,7 @@ public class CgVfxCueTest {
         assertTrue("homing on the end the server found", added.hasTarget());
 
         float firedAt = beam.age();
-        CgEnergyWave.of(beam).fire();
+        beam.behaviour().fire();
         settle();
         assertEquals("its release published", firedAt, playing.object().getFloat(CgEnergyWave.FIRED_AT), 0f);
 
@@ -430,7 +430,7 @@ public class CgVfxCueTest {
         levels.blocks = level -> CgVfxAuthorityTest.FLOOR;
         join();
         CgVfxCue.Playing playing = WAVE.at(body, 0, 64, 0).toward(1, 0, 0).set(CgEnergyWave.RADIUS, 0.5f).start();
-        CgVfxSystemInstance beam = playing.effect();
+        CgVfxSystemInstance<?> beam = playing.effect();
         assertEquals("the server's effect is built with what the play set", 0.5f, beam.get(CgEnergyWave.RADIUS), 0f);
         settle();
         beam.set(CgEnergyWave.RADIUS, 0.4f);
@@ -450,11 +450,11 @@ public class CgVfxCueTest {
         levels.blocks = level -> CgVfxAuthorityTest.FLOOR;
         join();
         CgVfxCue.Playing playing = WAVE.at(body, 0, 64, 0).toward(1, 0, 0).start();
-        CgVfxSystemInstance beam = playing.effect();
+        CgVfxSystemInstance<?> beam = playing.effect();
         settle();
         beam.animate(CgEnergyWave.RADIUS, 2f, 0.5f, CgEasings.LINEAR);
         settle();
-        CgVfxSystemInstance viewer = WAVES.get(0);
+        CgVfxSystemInstance<?> viewer = WAVES.get(0);
         assertNull("a viewer's eases on its own clock", viewer.ending());
 
         beam.end(CgEnergyWave.FADE);
@@ -472,7 +472,7 @@ public class CgVfxCueTest {
     public void aViewersWaveReportsTheEntityItsServerStruck() {
         CgVfxCue.Play cue = WAVE.at(0, 0, 0).toward(1, 0, 0).target(8, 0, 0).struck(42);
         CgVfxSystem vfx = new CgVfxSystem();
-        CgVfxSystemInstance wave = CgVfx.owner("cue_test", vfx).play(CgEnergyWave.fromCue(CgEnergyWave.kamehameha(), cue));
+        CgVfxSystemInstance<CgEnergyWave> wave = CgVfx.owner("cue_test", vfx).play(CgEnergyWave.fromCue(CgEnergyWave.kamehameha(), cue));
         List<String> heard = new ArrayList<>();
         wave.onHit(h -> heard.add(h.part() + " " + h.kind() + " " + h.entityId()));
         for (int f = 0; f <= 600; f++) vfx.update(f / 60.0);

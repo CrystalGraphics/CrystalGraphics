@@ -150,7 +150,7 @@ public final class CgVfxShowcase {
     private final boolean drives;
     private final Lane[] lanes;
     /** Each lane's wave, the shot it is on, when it fired and when the next fires (NaN: not yet scheduled). */
-    private final CgVfxSystemInstance[] waves;
+    private final CgVfxSystemInstance<?>[] waves;
     private final int[] shots;
     private final double[] firedAt, nextShot;
     private CgVfxHeatHaze haze;
@@ -170,7 +170,7 @@ public final class CgVfxShowcase {
         drives = owner == null;
         vfx = drives ? CgVfx.owner("crystalgraphics", new CgVfxSystem()) : owner;
         this.lanes = lanes;
-        this.waves = new CgVfxSystemInstance[lanes.length];
+        this.waves = new CgVfxSystemInstance<?>[lanes.length];
         this.shots = filled(lanes.length, -1);
         this.firedAt = new double[lanes.length];
         this.nextShot = new double[lanes.length];
@@ -417,10 +417,10 @@ public final class CgVfxShowcase {
                 if (waves[k] != null) waves[k].stop();
                 float[] target = lane.targets[shots[k] & 1];
                 // The grid is the floor its debris lands on.
-                CgVfxSystemInstance beam = vfx.play(CgEnergyWave.instance(lane.look, x + lane.from[0], y + lane.from[1],
+                CgVfxSystemInstance<CgEnergyWave> beam = vfx.play(CgEnergyWave.instance(lane.look, x + lane.from[0], y + lane.from[1],
                         z + lane.from[2]).ground(y));
                 controls.apply(beam);
-                CgEnergyWave.of(beam).aim(lane.aim[0], lane.aim[1], lane.aim[2])
+                beam.behaviour().aim(lane.aim[0], lane.aim[1], lane.aim[2])
                         .via(x + lane.via[0], y + lane.via[1], z + lane.via[2])
                         .target(x + target[0], y + target[1], z + target[2]);
                 waves[k] = beam;

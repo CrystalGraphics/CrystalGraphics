@@ -32,9 +32,9 @@ public class CgVfxSystemSimulationTest {
     @Test
     public void instancesOfOneDefinitionShareASimulationGoneWithTheLast() {
         vfx = new CgVfxSystem();
-        CgVfxSystemInstance a1 = vfx.play(new CgVfxSystemInstance(A, 0, 64, 0));
-        CgVfxSystemInstance a2 = vfx.play(new CgVfxSystemInstance(A, 4, 64, 0));
-        CgVfxSystemInstance b = vfx.play(new CgVfxSystemInstance(B, 8, 64, 0));
+        CgVfxSystemInstance<?> a1 = vfx.play(new CgVfxSystemInstance<>(A, 0, 64, 0));
+        CgVfxSystemInstance<?> a2 = vfx.play(new CgVfxSystemInstance<>(A, 4, 64, 0));
+        CgVfxSystemInstance<?> b = vfx.play(new CgVfxSystemInstance<>(B, 8, 64, 0));
         assertSame(vfx.simulation(a1), vfx.simulation(a2));
         // One look, two definitions: two simulations.
         assertNotSame(vfx.simulation(a1), vfx.simulation(b));

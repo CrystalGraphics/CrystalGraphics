@@ -374,8 +374,8 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
      *
      * <pre>{@code
      * CgVfxSortGroup move = new CgVfxSortGroup();
-     * VFX.play(new CgVfxSystemInstance(SPIRAL, x, y, z).sortGroup(move));
-     * VFX.play(new CgVfxSystemInstance(RINGS, x, y, z).sortGroup(move));
+     * VFX.play(new CgVfxSystemInstance<>(SPIRAL, x, y, z).sortGroup(move));
+     * VFX.play(new CgVfxSystemInstance<>(RINGS, x, y, z).sortGroup(move));
      * }</pre>
      */
     public final E sortGroup(CgVfxSortGroup group) {
