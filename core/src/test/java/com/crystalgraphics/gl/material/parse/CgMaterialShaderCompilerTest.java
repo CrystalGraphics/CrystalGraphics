@@ -57,6 +57,27 @@ public class CgMaterialShaderCompilerTest {
         return CgShaderParser.parse(src, "test");
     }
 
+    // ── Declarations ──────────────────────────────────────────────────────────
+
+    /** Code outside every Pass reaches no program: refused, naming it, rather than missing from the pass that calls it. */
+    @Test
+    public void codeOutsideEveryPass_isRefusedByName() {
+        String loose = MINIMAL.replaceFirst("Pass \\{\n", "float helper() { return 1.0; }\nPass {\n");
+        CgShaderParseException e = assertThrows(CgShaderParseException.class, () -> parse(loose));
+        assertTrue(e.getMessage(), e.getMessage().contains("float helper()"));
+    }
+
+    /** A conditional around a declaration stays with it: hoisted alone, the function would compile in every stage. */
+    @Test
+    public void aGuardedDeclaration_keepsItsGuard() {
+        CgParsedShader shader = parse(MINIMAL.replace("    void vertex(",
+                "#if !defined(CG_VERTEX_STAGE)\n    float shade() { return fwidth(1.0); }\n#endif\n    void vertex("));
+        String vert = CgMaterialShaderCompiler.compile(shader, shader.passes().get(0), NO_BUFFERS, null,
+                CgMaterialShaderCompiler.CompileConfig.DEFAULT).vertexSource();
+        int guard = vert.indexOf("#if !defined(CG_VERTEX_STAGE)"), shade = vert.indexOf("float shade()");
+        assertTrue(vert, guard >= 0 && guard < shade && shade < vert.indexOf("#endif", guard));
+    }
+
     // ── Emissive pass ─────────────────────────────────────────────────────────
 
     private static final String EMISSIVE =

@@ -751,16 +751,40 @@ public final class CgMaterialShaderCompiler {
         if (globalDecls == null || globalDecls.trim().isEmpty()) return new String[]{"", ""};
         StringBuilder directives = new StringBuilder();
         StringBuilder code = new StringBuilder();
-        for (String rawLine : globalDecls.split("\n", -1)) {
-            if (rawLine.trim().startsWith("#")) {
-                if (directives.length() > 0) directives.append('\n');
-                directives.append(rawLine);
-            } else {
-                if (code.length() > 0) code.append('\n');
-                code.append(rawLine);
+        String[] lines = globalDecls.split("\n", -1);
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].trim();
+            if (!line.startsWith("#")) {
+                appendLine(code, lines[i]);
+                continue;
             }
+            int end = line.startsWith("#if") ? endOfConditional(lines, i) : i;
+            // A conditional around code stays with it, whole: hoisted, its #if would leave the code unguarded.
+            boolean holdsCode = false;
+            for (int k = i; k <= end && !holdsCode; k++) {
+                String t = lines[k].trim();
+                holdsCode = !t.isEmpty() && !t.startsWith("#");
+            }
+            for (int k = i; k <= end; k++) appendLine(holdsCode ? code : directives, lines[k]);
+            i = end;
         }
         return new String[]{directives.toString(), code.toString()};
+    }
+
+    /** The {@code #endif} closing the conditional opened at {@code from}; the last line if none does. */
+    private static int endOfConditional(String[] lines, int from) {
+        int depth = 0;
+        for (int k = from; k < lines.length; k++) {
+            String t = lines[k].trim();
+            if (t.startsWith("#if")) depth++;
+            else if (t.startsWith("#endif") && --depth == 0) return k;
+        }
+        return lines.length - 1;
+    }
+
+    private static void appendLine(StringBuilder sb, String line) {
+        if (sb.length() > 0) sb.append('\n');
+        sb.append(line);
     }
 
     private static void appendAutoRequiredExtensions(StringBuilder sb, Set<String> required,

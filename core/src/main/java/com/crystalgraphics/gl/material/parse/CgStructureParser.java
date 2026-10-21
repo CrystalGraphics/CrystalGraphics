@@ -117,6 +117,42 @@ final class CgStructureParser {
         throw new CgShaderParseException("Unmatched '{' at position " + openIdx + " — missing closing '}'");
     }
 
+    /**
+     * Refuses code outside every section: a function between {@code struct v2f} and the first {@code Pass} reaches no
+     * program, and its pass then fails to find it. {@code source} has its comments stripped.
+     */
+    static void validateNoLooseCode(String source, String resourcePath) {
+        int i = 0, n = source.length();
+        while (i < n) {
+            char c = source.charAt(i);
+            int eol = source.indexOf('\n', i);
+            if (eol < 0) eol = n;
+            if (Character.isWhitespace(c)) {
+                i++;
+            } else if (c == '#') {
+                i = eol;
+            } else {
+                int j = i;
+                while (j < n && (Character.isLetterOrDigit(source.charAt(j)) || source.charAt(j) == '_')) j++;
+                String word = source.substring(i, j);
+                int open = source.indexOf('{', j);
+                if (word.equals("Queue")) {
+                    i = eol;
+                } else if (open >= 0 && (word.equals("Tags") || word.equals("Properties") || word.equals("Buffers")
+                        || word.equals("Pass") || word.equals("struct"))) {
+                    i = matchBrace(source, open) + 1;
+                    while (i < n && Character.isWhitespace(source.charAt(i))) i++;
+                    if (i < n && source.charAt(i) == ';') i++;
+                } else {
+                    throw new CgShaderParseException("[" + resourcePath + "] '" + source.substring(i, eol).trim()
+                            + "' is outside every Pass, so no program compiles it: declare it in a Pass before its"
+                            + " vertex() (a Distortion or codeless Emissive pass takes the first Forward pass's), or"
+                            + " #include it");
+                }
+            }
+        }
+    }
+
     /** Strips {@code // ...} single-line comments from each line. */
     static String stripLineComments(String text) {
         StringBuilder sb = new StringBuilder();

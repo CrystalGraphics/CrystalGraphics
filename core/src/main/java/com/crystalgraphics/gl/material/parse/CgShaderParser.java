@@ -197,7 +197,9 @@ public final class CgShaderParser {
         noteGeneratedReads(engineBuffers);
         List<CgMaterialProperty> props = withEngineProperties(CgPropertiesParser.parse(source, resourcePath), engineBuffers);
         if (engineBuffers.contains(ROWS)) props = withRowSlots(props);
-        CgStructureParser.MaterialBuffers buffers = CgStructureParser.parseBuffers(stripGlslComments(source), resourcePath);
+        String uncommented = stripGlslComments(source);
+        CgStructureParser.validateNoLooseCode(uncommented, resourcePath);
+        CgStructureParser.MaterialBuffers buffers = CgStructureParser.parseBuffers(uncommented, resourcePath);
         int renderQueue                = CgQueueParser.parse(source, resourcePath);
 
         // ── Step 3: top-level Tags block → RenderType, CastShadows ────────
