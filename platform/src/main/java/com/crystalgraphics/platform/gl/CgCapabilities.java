@@ -227,6 +227,12 @@ public final class CgCapabilities {
      * the ARB twin): a compile can then be submitted and drawn from only once the driver has finished it.
      */
     @Getter boolean parallelShaderCompile;
+    /**
+     * How many program binary formats the driver gives (GL 4.1 or {@code ARB_get_program_binary}): above 0, a linked
+     * program's binary may be kept and loaded in a later launch. 0 on the tracked backend, and on macOS, whose GL
+     * lists none.
+     */
+    @Getter int programBinaryFormats;
     /** Whether the current context is a core profile. Fixed-function state
      *  such as {@code GL_ALPHA_TEST} is unavailable in core profile contexts. */
     boolean coreProfile;
@@ -300,6 +306,15 @@ public final class CgCapabilities {
     // ─────────────────────────────────────────────────────────────────────────
     //  Detection
     // ─────────────────────────────────────────────────────────────────────────
+
+    /** GL 4.1, or {@code ARB_get_program_binary} listed. */
+    private static boolean programBinary() {
+        if (CgGL.glGetInteger(CgGL.GL_MAJOR_VERSION) * 10 + CgGL.glGetInteger(CgGL.GL_MINOR_VERSION) >= 41) return true;
+        for (int i = 0, n = CgGL.glGetInteger(CgGL.GL_NUM_EXTENSIONS); i < n; i++) {
+            if ("GL_ARB_get_program_binary".equals(CgGL.glGetStringi(CgGL.GL_EXTENSIONS, i))) return true;
+        }
+        return false;
+    }
 
     /**
      * Detects capabilities from the current OpenGL context (uncached).
@@ -383,6 +398,7 @@ public final class CgCapabilities {
         caps.bc7               = (device != null ? tracked(CgFormat.BC7_RGBA_UNORM_SRGB)
                 : gl.OpenGL42() || gl.GL_ARB_texture_compression_bptc()) && BC7.get();
         caps.computeTier       = computeTier(caps, device != null);
+        caps.programBinaryFormats = device == null && programBinary() ? CgGL.glGetInteger(CgGL.GL_NUM_PROGRAM_BINARY_FORMATS) : 0;
         caps.storageOffsetAlignment = ssbo || device != null ? CgGL.glGetInteger(CgGL.GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT) : 0;
         if (caps.compute) {
             caps.maxComputeSharedMemory = CgGL.glGetInteger(CgGL.GL_MAX_COMPUTE_SHARED_MEMORY_SIZE);

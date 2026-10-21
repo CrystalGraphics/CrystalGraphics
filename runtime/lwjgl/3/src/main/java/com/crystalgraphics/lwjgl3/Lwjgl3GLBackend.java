@@ -186,6 +186,25 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     }
 
     @Override
+    public int glGetProgramBinary(int program, ByteBuffer binary) {
+        GL41C.glGetProgramBinary(program, (int[]) null, PROGRAM_BINARY_FORMAT, binary);
+        return PROGRAM_BINARY_FORMAT[0];
+    }
+
+    /** The format a {@link #glGetProgramBinary} wrote. GL thread only, as every query is. */
+    private static final int[] PROGRAM_BINARY_FORMAT = new int[1];
+
+    @Override
+    public void glProgramBinary(int program, int binaryFormat, ByteBuffer binary) {
+        GL41C.glProgramBinary(program, binaryFormat, binary);
+    }
+
+    @Override
+    public void glProgramParameteri(int program, int pname, int value) {
+        GL41C.glProgramParameteri(program, pname, value);
+    }
+
+    @Override
     public String glGetProgramInfoLog(int program, int maxLength) {
         return GL20C.glGetProgramInfoLog(program, maxLength);
     }

@@ -485,6 +485,18 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     @Override public int glGetProgrami(int program, int pname) { return programs.programi(program, pname); }
 
+    @Override
+    public int glGetProgramBinary(int program, ByteBuffer binary) {
+        throw new UnsupportedOperationException("program binaries: a device keeps SPIR-V and its pipeline cache instead");
+    }
+
+    @Override
+    public void glProgramBinary(int program, int binaryFormat, ByteBuffer binary) {
+        throw new UnsupportedOperationException("program binaries: a device keeps SPIR-V and its pipeline cache instead");
+    }
+
+    @Override public void glProgramParameteri(int program, int pname, int value) { }
+
     @Override public String glGetProgramInfoLog(int program, int maxLength) { return programs.log(program, maxLength); }
 
     @Override public void glUseProgram(int program) { programs.use(program); }

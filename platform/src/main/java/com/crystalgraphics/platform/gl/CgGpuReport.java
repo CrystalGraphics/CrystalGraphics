@@ -143,6 +143,7 @@ public record CgGpuReport(String api, Map<String, String> facts) {
         }
         listed.removeAll(CgDisabledExtensions.all());
         for (Feature feature : FEATURES) f.put(feature.key(), feature.in(version, listed));
+        if (has(f, "programBinary")) f.put("programBinaryFormats", integer(CgGL.GL_NUM_PROGRAM_BINARY_FORMATS));
 
         if (has(f, "compute")) {
             f.put("computeInvocations", integer(CgGL.GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS));

@@ -1,9 +1,12 @@
 package com.crystalgraphics.api.shader;
 
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.gl.shader.CgProgramBinaryCache;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.CgBufferUtils;
+import com.crystalgraphics.util.trace.CgChannels;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
@@ -55,9 +58,15 @@ import static com.crystalgraphics.gl.shader.CgShaderFactory.JOML_BUFFER;
  *   <li>A failed compile or link throws {@link IllegalStateException} with the driver's log. A failed
  *       {@link #relink} keeps the program's id and its previous executable.</li>
  *   <li>Finish a {@link #submitLink} before binding: anything that queries the program waits for the driver.</li>
+ *   <li>A link is kept across launches as the driver's binary where it gives one ({@link CgProgramBinaryCache}): a
+ *       second launch loads it instead of compiling. Where the driver links on the calling thread (no
+ *       {@code KHR_parallel_shader_compile}), every link not loaded is counted as {@code shader.blocking-links}.</li>
  * </ul>
  */
 public final class CgShaderProgram {
+
+    /** Links submitted where the driver links on the calling thread: each is a stall of that thread. */
+    private static final int BLOCKING_LINKS = CgTrace.name("shader.blocking-links");
 
     private final int programId;
     private boolean deleted;
@@ -66,6 +75,8 @@ public final class CgShaderProgram {
     private int pendingVert;
     private int pendingFrag;
     private int pendingCompute;
+    /** The binary cache's key for the pending link, kept once it links; null when none is kept. */
+    @Nullable private String pendingKey;
 
     private CgShaderProgram(int programId) {
         this.programId = programId;
@@ -220,6 +231,13 @@ public final class CgShaderProgram {
     public void submitLink(String vertexSource, String fragmentSource, CgVertexFormat format) {
         finishPendingQuietly();
         detachAll();
+        String[] parts = new String[2 + (format != null ? format.getAttributeCount() : 0)];
+        parts[0] = vertexSource;
+        parts[1] = fragmentSource;
+        for (int i = 2; i < parts.length; i++) parts[i] = format.getAttribute(i - 2).getName();
+        String key = CgProgramBinaryCache.key(parts);
+        if (key != null && CgProgramBinaryCache.load(programId, key)) return;
+        pendingKey = key;
 
         pendingVert = CgGL.glCreateShader(CgGL.GL_VERTEX_SHADER);
         CgGL.glShaderSource(pendingVert, vertexSource);
@@ -234,18 +252,29 @@ public final class CgShaderProgram {
             for (int i = 0; i < format.getAttributeCount(); i++)
                 CgGL.glBindAttribLocation(programId, i, format.getAttribute(i).getName());
         }
+        CgProgramBinaryCache.retrievable(programId, key);
         CgGL.glLinkProgram(programId);
+        countBlocking();
     }
 
     /** {@link #submitLink} for a compute program: one compute shader, linked alone. */
     public void submitComputeLink(String computeSource) {
         finishPendingQuietly();
         detachAll();
+        String key = CgProgramBinaryCache.key(computeSource);
+        if (key != null && CgProgramBinaryCache.load(programId, key)) return;
+        pendingKey = key;
         pendingCompute = CgGL.glCreateShader(CgGL.GL_COMPUTE_SHADER);
         CgGL.glShaderSource(pendingCompute, computeSource);
         CgGL.glCompileShader(pendingCompute);
         CgGL.glAttachShader(programId, pendingCompute);
+        CgProgramBinaryCache.retrievable(programId, key);
         CgGL.glLinkProgram(programId);
+        countBlocking();
+    }
+
+    private static void countBlocking() {
+        if (!CgCapabilities.detect().isParallelShaderCompile()) CgTrace.add(CgChannels.GL, BLOCKING_LINKS, 1);
     }
 
     private void detachAll() {
@@ -277,8 +306,10 @@ public final class CgShaderProgram {
         }
         if (pendingVert == 0) return;
         int vertId = pendingVert, fragId = pendingFrag;
+        String key = pendingKey;
         pendingVert = 0;
         pendingFrag = 0;
+        pendingKey = null;
         try {
             // The compile statuses first: a failed stage makes the link fail too, and its log names the line.
             if (CgGL.glGetShaderi(vertId, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
@@ -290,6 +321,7 @@ public final class CgShaderProgram {
             if (CgGL.glGetProgrami(programId, CgGL.GL_LINK_STATUS) != CgGL.GL_TRUE) {
                 throw new IllegalStateException("Shader program link failed: " + CgGL.glGetProgramInfoLog(programId, 4096));
             }
+            CgProgramBinaryCache.store(programId, key);
         } finally {
             CgGL.glDetachShader(programId, vertId);
             CgGL.glDetachShader(programId, fragId);
@@ -300,7 +332,9 @@ public final class CgShaderProgram {
 
     private void finishComputeLink() {
         int computeId = pendingCompute;
+        String key = pendingKey;
         pendingCompute = 0;
+        pendingKey = null;
         try {
             if (CgGL.glGetShaderi(computeId, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
                 throw new IllegalStateException("Compute shader compile failed: " + CgGL.glGetShaderInfoLog(computeId, 4096));
@@ -308,6 +342,7 @@ public final class CgShaderProgram {
             if (CgGL.glGetProgrami(programId, CgGL.GL_LINK_STATUS) != CgGL.GL_TRUE) {
                 throw new IllegalStateException("Compute program link failed: " + CgGL.glGetProgramInfoLog(programId, 4096));
             }
+            CgProgramBinaryCache.store(programId, key);
         } finally {
             CgGL.glDetachShader(programId, computeId);
             CgGL.glDeleteShader(computeId);

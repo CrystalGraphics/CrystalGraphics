@@ -2,6 +2,7 @@ package com.crystalgraphics.lwjgl2;
 
 import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.state.CgGlState;
+import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.*;
 
 import java.nio.ByteBuffer;
@@ -172,6 +173,26 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     @Override
     public int glGetProgrami(int program, int pname) {
         return GL20.glGetProgrami(program, pname);
+    }
+
+    @Override
+    public int glGetProgramBinary(int program, ByteBuffer binary) {
+        GL41.glGetProgramBinary(program, PROGRAM_BINARY_LENGTH, PROGRAM_BINARY_FORMAT, binary);
+        return PROGRAM_BINARY_FORMAT.get(0);
+    }
+
+    /** What a {@link #glGetProgramBinary} wrote besides the binary. GL thread only, as every query is. */
+    private static final IntBuffer PROGRAM_BINARY_LENGTH = BufferUtils.createIntBuffer(1),
+            PROGRAM_BINARY_FORMAT = BufferUtils.createIntBuffer(1);
+
+    @Override
+    public void glProgramBinary(int program, int binaryFormat, ByteBuffer binary) {
+        GL41.glProgramBinary(program, binaryFormat, binary);
+    }
+
+    @Override
+    public void glProgramParameteri(int program, int pname, int value) {
+        GL41.glProgramParameteri(program, pname, value);
     }
 
     @Override

@@ -6,7 +6,7 @@ it -- statically, with every Stonecutter branch counted as live. `platform` is t
 restores, the providers and the trace; `harness` is the GL debug harness, listed apart since it is a
 test application.
 
-**167 methods** (182 declarations with overloads): **155 reached** by core, CrystalGUI, the hosts or `platform`; **2 by the harness only**; **10 by nothing** -- `isAvailable`, `getPriority`, `glVertexAttribDivisor`, `glDrawElementsInstanced`, `glMultiDrawArraysIndirect`, `glMultiDrawArraysIndirectCount`, `glMultiDrawElementsIndirectCount`, `glMemoryBarrier`, `isContextCurrent`, `glTexImage2DMultisample`.
+**170 methods** (185 declarations with overloads): **158 reached** by core, CrystalGUI, the hosts or `platform`; **2 by the harness only**; **10 by nothing** -- `isAvailable`, `getPriority`, `glVertexAttribDivisor`, `glDrawElementsInstanced`, `glMultiDrawArraysIndirect`, `glMultiDrawArraysIndirectCount`, `glMultiDrawElementsIndirectCount`, `glMemoryBarrier`, `isContextCurrent`, `glTexImage2DMultisample`.
 
 **What it orders**: the tracked backend is built domain by domain in the order below, reached
 methods first within each. An unreached method is still built -- `CgGL` is public API outside mods
@@ -19,11 +19,11 @@ What `CgCapabilities.detect()` and the state providers read before anything draw
 | Method | via `CgGL` | core | CrystalGUI | hosts | platform | harness |
 |---|---|---:|---:|---:|---:|---:|
 | `initContext` | direct | 1 |  |  |  |  |
-| `glGetInteger` ×2 | `glGetInteger` | 4 | 10 |  | 28 | 12 |
+| `glGetInteger` ×2 | `glGetInteger` | 4 | 10 |  | 32 | 12 |
 | `glGetBoolean` ×2 | `glGetBoolean` |  | 2 |  | 2 | 5 |
 | `glGetFloat` ×2 | `glGetFloat` | 1 |  |  | 1 |  |
-| `glGetString` | `glGetString` |  |  |  | 4 |  |
-| `glGetStringi` | `glGetStringi` |  |  |  | 1 |  |
+| `glGetString` | `glGetString` | 3 |  |  | 4 |  |
+| `glGetStringi` | `glGetStringi` |  |  |  | 2 |  |
 | `glGetIntegeri` | `glGetIntegeri` |  |  |  | 6 |  |
 | `glGetError` | `glGetError` | 3 | 6 |  |  | 3 |
 | `ownedByCurrentThread` | `mayIssueGl`, `ownedByCurrentThread` | 3 |  |  |  |  |
@@ -100,8 +100,11 @@ The link-time rewrite produces the tables these answer from.
 | `glCreateProgram` | `glCreateProgram` | 1 |  |  |  | 1 |
 | `glAttachShader` | `glAttachShader` | 4 |  |  |  | 2 |
 | `glLinkProgram` | `glLinkProgram` | 3 |  |  |  | 1 |
-| `glGetProgrami` | `glGetProgrami` | 6 |  |  |  | 1 |
+| `glGetProgrami` | `glGetProgrami` | 8 |  |  |  | 1 |
 | `glGetProgramInfoLog` | `glGetProgramInfoLog` | 3 |  |  |  | 1 |
+| `glGetProgramBinary` | `glGetProgramBinary` | 1 |  |  |  |  |
+| `glProgramBinary` | `glProgramBinary` | 1 |  |  |  |  |
+| `glProgramParameteri` | `glProgramParameteri` | 1 |  |  |  |  |
 | `glUseProgram` | `glUseProgram` | 7 |  |  | 1 | 9 |
 | `glDeleteProgram` | `glDeleteProgram` | 1 |  |  |  | 5 |
 | `glGetUniformLocation` | `glGetUniformLocation` | 17 |  |  |  | 4 |
@@ -251,8 +254,8 @@ End our pass and hand the host its state back (D4 wires the brackets).
 
 | Method | via `CgGL` | core | CrystalGUI | hosts | platform | harness |
 |---|---|---:|---:|---:|---:|---:|
-| `fromHost` | `fromHost` | 4 |  | 7 |  | 1 |
-| `toHost` | `toHost` | 4 |  | 7 |  | 1 |
+| `fromHost` | `fromHost` | 5 |  | 7 |  | 1 |
+| `toHost` | `toHost` | 5 |  | 7 |  | 1 |
 
 ## Backend selection
 

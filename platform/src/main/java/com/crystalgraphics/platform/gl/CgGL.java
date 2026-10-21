@@ -412,6 +412,10 @@ public final class CgGL {
     /** Only where {@code CgCapabilities.isParallelShaderCompile()}; the ARB extension's value is the same. */
     public static final int GL_COMPLETION_STATUS_KHR     = 0x91B1;
     public static final int GL_INFO_LOG_LENGTH           = 0x8B84;
+    /** Program binaries, only where {@code CgCapabilities.programBinaryFormats()} is above 0. */
+    public static final int GL_PROGRAM_BINARY_LENGTH     = 0x8741;
+    public static final int GL_NUM_PROGRAM_BINARY_FORMATS = 0x87FE;
+    public static final int GL_PROGRAM_BINARY_RETRIEVABLE_HINT = 0x8257;
     public static final int GL_ACTIVE_UNIFORMS           = 0x8B86;
     public static final int GL_ACTIVE_UNIFORM_BLOCKS     = 0x8A36;
     public static final int GL_ACTIVE_UNIFORM_MAX_LENGTH = 0x8B87;
@@ -856,6 +860,33 @@ public final class CgGL {
 
     public static String glGetProgramInfoLog(int program, int maxLength) {
         return gl().glGetProgramInfoLog(program, maxLength);
+    }
+
+    /**
+     * A linked program's binary, written into {@code binary} from its position, at most its remaining bytes; answers
+     * the binary's format. Size it from {@code glGetProgrami(program, GL_PROGRAM_BINARY_LENGTH)}.
+     *
+     * <pre>{@code
+     * ByteBuffer binary = ByteBuffer.allocateDirect(CgGL.glGetProgrami(program, CgGL.GL_PROGRAM_BINARY_LENGTH));
+     * int format = CgGL.glGetProgramBinary(program, binary);
+     * }</pre>
+     */
+    public static int glGetProgramBinary(int program, ByteBuffer binary) {
+        return gl().glGetProgramBinary(program, binary);
+    }
+
+    /**
+     * Loads a binary {@link #glGetProgramBinary} gave, from {@code binary}'s position to its limit. Read
+     * {@code GL_LINK_STATUS} after: a driver refuses a binary of another driver or version, and the program must then
+     * be compiled from source.
+     */
+    public static void glProgramBinary(int program, int binaryFormat, ByteBuffer binary) {
+        gl().glProgramBinary(program, binaryFormat, binary);
+    }
+
+    /** {@code GL_PROGRAM_BINARY_RETRIEVABLE_HINT}, set before the link whose binary is wanted. */
+    public static void glProgramParameteri(int program, int pname, int value) {
+        gl().glProgramParameteri(program, pname, value);
     }
 
     public static void glUseProgram(int program) {

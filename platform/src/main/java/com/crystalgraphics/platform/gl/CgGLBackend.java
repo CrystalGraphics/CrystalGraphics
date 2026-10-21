@@ -133,6 +133,13 @@ public abstract class CgGLBackend {
     public abstract void glLinkProgram(int program);
     public abstract int glGetProgrami(int program, int pname);
     public abstract String glGetProgramInfoLog(int program, int maxLength);
+
+    /** GL 4.1 or {@code ARB_get_program_binary}. @see CgGL#glGetProgramBinary */
+    public abstract int glGetProgramBinary(int program, ByteBuffer binary);
+    /** GL 4.1 or {@code ARB_get_program_binary}. @see CgGL#glProgramBinary */
+    public abstract void glProgramBinary(int program, int binaryFormat, ByteBuffer binary);
+    /** GL 4.1 or {@code ARB_get_program_binary}. */
+    public abstract void glProgramParameteri(int program, int pname, int value);
     public abstract void glUseProgram(int program);
     public abstract void glDeleteProgram(int program);
     public abstract int glGetUniformLocation(int program, CharSequence name);

@@ -42,7 +42,7 @@ DOMAINS = [
     ('Programs', 'the link-time rewrite produces the tables these answer from', [
         'glCreateShader', 'glShaderSource', 'glCompileShader', 'glGetShaderi', 'glGetShaderInfoLog',
         'glDeleteShader', 'glCreateProgram', 'glAttachShader', 'glDetachShader', 'glGetAttachedShaders',
-        'glLinkProgram', 'glGetProgrami', 'glGetProgramInfoLog', 'glUseProgram', 'glDeleteProgram',
+        'glLinkProgram', 'glGetProgrami', 'glGetProgramInfoLog', 'glUseProgram', 'glDeleteProgram', 'glGetProgramBinary', 'glProgramBinary', 'glProgramParameteri',
         'glBindAttribLocation', 'glGetUniformLocation', 'glGetActiveUniform', 'glUniform1i', 'glUniform1f',
         'glUniform2f', 'glUniform3f', 'glUniform4f', 'glUniform1', 'glUniformMatrix3', 'glUniformMatrix4',
         'glUniformMatrix4fv', 'glGetUniformBlockIndex', 'glUniformBlockBinding', 'glGetProgramResourceIndex',
