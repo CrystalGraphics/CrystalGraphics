@@ -3,6 +3,7 @@ package com.crystalgraphics.vfx.element;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.settings.CgQuality;
+import com.crystalgraphics.shape.primitive.CgRing;
 import com.crystalgraphics.shape.primitive.CgShell;
 import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.vfx.look.CgVfxKit;
@@ -65,7 +66,7 @@ public final class CgVfxExplosion {
     public static final CgVfxEmitter BILLOWS = CgVfxEmitter.builder("billows")
             .state(CgVfxEmitterState.once(0.4f).delay(0.15f))
             .renderer(CgVfxEmitter.Renderer.MESHES)
-            .capacity(130).rate(300f).shape(CgShell.of(9f, 11f)).launch(-0.05f, 0.3f, 2.2f).speed(5f, 12f)
+            .capacity(130).rate(300f).shape(CgRing.of(9f, 11f, 1.92f)).at(0f, 1.38f, 0f).speed(5f, 12f)
             .life(3.5f, 5.5f).size(0.6f, 1.4f, 1.6f).spin(0.1f, 0.6f).heat(1f)
             .module(new CgVfxModule.Drag(0.8f, 0.08f))
             .module(new CgVfxModule.Buoyancy(1.2f, 2.5f))
@@ -81,7 +82,7 @@ public final class CgVfxExplosion {
     /** Dark debris: heavy and ballistic, it lands, bounces a little, tumbles to a stop and fades. */
     public static final CgVfxEmitter SPECKS = CgVfxEmitter.builder("specks").state(CgVfxEmitterState.ONCE)
             .renderer(CgVfxEmitter.Renderer.QUADS)
-            .optional().capacity(820).burst(0f, 800).shape(CgSphere.of(3f)).launch(0.05f, 1f, 0.7f).speed(6f, 16f)
+            .optional().capacity(820).burst(0f, 800).shape(CgSphere.of(3f)).hemisphere().speed(6f, 16f)
             .life(4f, 6f).size(0.035f, 0.25f, 2.4f).spin(4f, 14f)
             .module(new CgVfxModule.Gravity(9.8f))
             .module(new CgVfxModule.Drag(0.25f, 0f))
@@ -97,7 +98,7 @@ public final class CgVfxExplosion {
      * braked hard, swelling and thinning as it settles on the ground under it. Spawned only by the specks' landings.
      */
     public static final CgVfxEmitter DUST = CgVfxEmitter.builder("dust").renderer(CgVfxEmitter.Renderer.QUADS)
-            .optional().shape(CgSphere.of(0.05f)).launch(0.3f, 1f, 1.5f).speed(0.4f, 1.4f)
+            .optional().shape(CgSphere.of(0.05f)).hemisphere().direction(0, 1, 0, 72.54f).speed(0.4f, 1.4f)
             .life(0.9f, 1.6f).size(0.18f, 0.45f, 1.5f).spin(0f, 0.6f)
             .module(new CgVfxModule.Gravity(0.6f))
             .module(new CgVfxModule.Drag(2.5f, 0f))
@@ -118,7 +119,7 @@ public final class CgVfxExplosion {
     public static final CgVfxEmitter SURGE = CgVfxEmitter.builder("surge")
             .state(CgVfxEmitterState.once(0.34f).delay(0.08f))
             .renderer(CgVfxEmitter.Renderer.QUADS)
-            .optional().capacity(360).rate(980f).shape(CgShell.of(9f, 11f)).launch(0f, 0.04f, 1f).speed(9f, 19f)
+            .optional().capacity(360).rate(980f).shape(CgRing.of(9f, 11f, 0.22f)).at(0f, 0.22f, 0f).speed(9f, 19f)
             .life(2.6f, 4f).size(0.25f, 0.55f, 1.4f)
             .module(new CgVfxModule.Gravity(1.5f))
             .module(new CgVfxModule.Drag(0.9f, 0.05f))
@@ -138,7 +139,7 @@ public final class CgVfxExplosion {
      */
     public static final CgVfxEmitter SKIRT = CgVfxEmitter.builder("skirt").state(CgVfxEmitterState.once(2.2f))
             .renderer(CgVfxEmitter.Renderer.QUADS)
-            .optional().capacity(560).rate(240f).shape(CgShell.of(9.2f, 9.6f)).sweep(33.5f).launch(0f, 0.02f, 1f)
+            .optional().capacity(560).rate(240f).shape(CgRing.of(9.2f, 9.6f, 0.1f)).sweep(33.5f).at(0f, 0.1f, 0f)
             .speed(3f, 9f).life(1.1f, 2.2f).size(0.35f, 0.8f, 1.4f)
             .module(new CgVfxModule.Gravity(1.5f))
             .module(new CgVfxModule.Drag(1.2f, 0.05f))
@@ -157,7 +158,7 @@ public final class CgVfxExplosion {
      */
     public static final CgVfxEmitter SPARKLES = CgVfxEmitter.builder("sparkles").state(CgVfxEmitterState.ONCE)
             .renderer(CgVfxEmitter.Renderer.QUADS)
-            .optional().capacity(520).burst(0f, 500).shape(CgSphere.of(3f)).launch(-0.05f, 0.8f, 1.6f).speed(18f, 36f)
+            .optional().capacity(520).burst(0f, 500).shape(CgSphere.of(3f)).hemisphere().speed(18f, 36f)
             .life(4f, 7f).size(0.1f, 0.5f, 2f).heat(1f)
             .module(new CgVfxModule.Gravity(9.8f))
             .module(new CgVfxModule.Drag(1.5f, 0.05f))
@@ -177,7 +178,7 @@ public final class CgVfxExplosion {
      */
     public static final CgVfxEmitter INK = CgVfxEmitter.builder("ink").state(CgVfxEmitterState.once(0.8f))
             .renderer(CgVfxEmitter.Renderer.ARCS)
-            .capacity(34).rate(36f).shape(CgShell.of(7f, 10f)).launch(0.15f, 1f, 0.8f).speed(22f, 55f)
+            .capacity(34).rate(36f).shape(CgShell.of(7f, 10f)).hemisphere().speed(22f, 55f)
             .life(0.5f, 1.2f).size(0.25f, 0.45f, 1f)
             .module(new CgVfxModule.Drag(0f, 0.08f))
             .size(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build())
@@ -191,7 +192,7 @@ public final class CgVfxExplosion {
      */
     public static final CgVfxEmitter RAYS = CgVfxEmitter.builder("rays").state(CgVfxEmitterState.once(0.5f))
             .renderer(CgVfxEmitter.Renderer.ARCS)
-            .capacity(120).rate(200f).shape(CgShell.of(2f, 5f)).launch(0f, 0.95f, 1.6f).speed(18f, 60f)
+            .capacity(120).rate(200f).shape(CgShell.of(2f, 5f)).hemisphere().speed(18f, 60f)
             .life(0.6f, 1.4f).size(0.18f, 0.45f, 2f)
             .module(new CgVfxModule.Gravity(6f))
             .module(new CgVfxModule.Drag(0f, 0.04f))
@@ -207,7 +208,7 @@ public final class CgVfxExplosion {
      */
     public static final CgVfxEmitter RINGS = CgVfxEmitter.builder("rings").state(CgVfxEmitterState.ONCE)
             .renderer(CgVfxEmitter.Renderer.MESHES)
-            .capacity(1).burst(0f, 1).launch(1f, 1f, 1f).speed(0f, 0f)
+            .capacity(1).burst(0f, 1).direction(0, 1, 0, 0f).speed(0f, 0f)
             .life(2.2f, 2.2f).size(46f, 46f, 1f)
             .size(CgKeyframes.start(0f, 0.2f).to(1f, 1f, CgEasings.OUT_QUAD).build())
             .opacity(CgKeyframes.start(0f, 0f).to(0.04f, 1f, CgEasings.LINEAR).to(0.5f, 0.7f, CgEasings.LINEAR)

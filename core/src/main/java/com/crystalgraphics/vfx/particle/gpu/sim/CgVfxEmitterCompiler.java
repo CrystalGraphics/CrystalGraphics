@@ -431,16 +431,16 @@ public final class CgVfxEmitterCompiler {
                 }
 
                 // CgVfxSpawnShape: where spawn k of the instance at inst is born in its shape's sampling frame (axis
-                // +Y), and the way out of the shape's middle there. `up` is the launch band's draw, which a point or a
-                // sphere is born along.
-                void step_place(uint seed, uint k, int row, int inst, float up, out vec3 pos, out vec3 way) {
+                // +Y), and the way out of the shape's middle there.
+                void step_place(uint seed, uint k, int row, int inst, out vec3 pos, out vec3 way) {
                     vec4 s6 = step_vector(row, inst, 6), n = step_vector(row, inst, 7);
                     int kind = int(s6.x), flags = int(s6.y), placement = flags & 3;
                     bool upper = (flags & 4) != 0;
                     float u1 = fx_rand(seed, k, 11u), u2 = fx_rand(seed, k, 12u), u3 = fx_rand(seed, k, 13u);
                     float u4 = fx_rand(seed, k, 14u);
                     if (kind <= 1) {
-                        // A point or a sphere: born along the band's direction, at a heading its arc and order allow.
+                        // A point or a sphere: born along a direction drawn evenly, at a heading its arc and order allow.
+                        float up = fx_rand(seed, k, 0u) * 2.0 - 1.0;
                         if (upper) up = abs(up);
                         if (placement == 2) up = 0.0;
                         float h = step_heading(seed, k, 1u, s6), across = sqrt(max(1.0 - up * up, 0.0));
@@ -552,22 +552,18 @@ public final class CgVfxEmitterCompiler {
                     vec4 s0 = step_vector(row, inst, 0), s1 = step_vector(row, inst, 1), s2 = step_vector(row, inst, 2);
                     vec4 s4 = step_vector(row, inst, 4);
                     vec4 q = step_vector(row, inst, 8);
-                    float up = s4.x + (s4.y - s4.x) * pow(fx_rand(seed, k, 0u), s4.z);
                     vec3 local, way;
-                    step_place(seed, k, row, inst, up, local, way);
+                    step_place(seed, k, row, inst, local, way);
                     vec3 outward = step_rotate(q, way), dir;
                     int mode = int(s4.w);
                     if (mode == 0) dir = outward;
                     else if (mode == 1) dir = -outward;
-                    else if (mode == 2) {
-                        // Within a cone round the direction: uniform over its cap.
-                        vec4 s5 = step_vector(row, inst, 5);
-                        float ct = 1.0 - fx_rand(seed, k, 15u) * (1.0 - s5.w), st = sqrt(max(1.0 - ct * ct, 0.0));
-                        float phi = fx_rand(seed, k, 16u) * STEP_TAU;
-                        dir = step_orient(vec3(st * cos(phi), ct, st * sin(phi)), s5.xyz);
-                    } else {
-                        float heading = fx_rand(seed, k, 1u) * STEP_TAU, across = sqrt(max(1.0 - up * up, 0.0));
-                        dir = step_rotate(q, vec3(across * cos(heading), up, across * sin(heading)));
+                    else {
+                        // Niagara's cone: the angle from its axis drawn evenly between its inner and outer half angles,
+                        // the turn round it evenly (NiagaraStatelessModule_SolveVelocitiesAndForces.ush).
+                        float angle = mix(s4.x, s4.y, fx_rand(seed, k, 15u)), phi = fx_rand(seed, k, 16u) * STEP_TAU;
+                        float st = sin(angle);
+                        dir = step_orient(vec3(st * cos(phi), cos(angle), st * sin(phi)), step_vector(row, inst, 5).xyz);
                     }
                     vec3 place = step_rotate(q, local) + step_vector(row, inst, 9).xyz;
                     float speed = s0.x + (s0.y - s0.x) * fx_rand(seed, k, 3u);

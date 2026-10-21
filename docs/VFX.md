@@ -702,7 +702,7 @@ frame.mesh(this, SLASH, 0f, 1.2f, 0f, transform, reveal, 1f, 0.3f, 0f);
 
 ```java
 static final CgVfxEmitter ROCKS = CgVfxEmitter.builder("rocks").renderer(CgVfxEmitter.Renderer.MESHES).capacity(40)
-        .state(CgVfxEmitterState.ONCE).burst(0.5f, 24).shape(CgSphere.of(0.5)).launch(0.5f, 1f, 1f).speed(4f, 7f).life(3f, 4f)
+        .state(CgVfxEmitterState.ONCE).burst(0.5f, 24).shape(CgSphere.of(0.5)).hemisphere().direction(0, 1, 0, 60f).speed(4f, 7f).life(3f, 4f)
         .size(0.12f, 0.3f, 1f).spin(1f, 4f)
         .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0.2f, 0.4f, 0.6f)).build();
 
@@ -915,7 +915,7 @@ static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks")   // its name 
         .state(CgVfxEmitterState.once(4f))     // one loop of 4 s: unset, an emitter loops for ever
         .rate(120f)                            // 120 a second while it runs
         .shape(CgSphere.of(1.2))               // born anywhere in a ball 1.2 blocks round the source
-        .launch(0.2f, 1f, 1f)                  // each flies a random way whose upward share is 0.2 to 1: up and out
+        .hemisphere()                          // in its upper half, each flying out from its middle: up and out
         .speed(0.5f, 2f)                       // blocks a second, a random speed between
         .life(2.5f, 3f)                        // seconds
         .size(0.08f, 0.14f)                    // blocks; a third number above 1 makes most small and a few large
@@ -956,8 +956,7 @@ surface by area, an edge by length.
 | `ordered(n)` | spawn `k` at the `k mod n`-th of `n` even places round its axis (along a capsule's edge), not at random |
 | `pointing(x, y, z)`, `at(x, y, z)` | turns its axis that way; moves it from the source |
 | `outward()` (the default), `inward()` | launched away from its middle (its centre, or a cylinder's or capsule's axis), or toward it |
-| `direction(x, y, z, spread)` | launched that way, within `spread` degrees |
-| `launch(upMin, upMax, bias)` | launched at any heading with an upward share in that band; on a point or sphere, also where they are born |
+| `direction(x, y, z, spread)`, `direction(x, y, z, inner, spread)` | launched that way, within `spread` degrees, or between `inner` and `spread`: Niagara's cone, its angle from the axis drawn evenly |
 | `mesh(mesh)`, `mesh(path)` | on a mesh's surface, a triangle picked by area, launched along its normal; a path loads at its first spawn |
 | `vertices()` | at the mesh's vertices instead; with `ordered(n)`, the `k mod n`-th of `n` spread through them in order |
 | `entity()` | in the box of the entity its effect follows, as it stands each step (`surface()` and `edge()` as a box's); at the source while it follows none |
@@ -1043,7 +1042,7 @@ sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debr
 | `burst(time, count)`, `burst(CgVfxSpawnBurst)` | `count` at once at `time` seconds into each loop; a count range, a probability |
 | `ratePerBlock(n)`, `maxStep(blocks)` | spawns by the distance its source moves ([above](#a-source-that-moves)) |
 | `shape`, `surface`, `edge`, `hemisphere`, `arc`, `ordered`, `pointing`, `at`, `mesh`, `vertices`, `entity` | where they are born ([above](#where-particles-are-born-and-which-way-they-fly)) |
-| `launch`, `outward`, `inward`, `direction` | which way they fly |
+| `outward`, `inward`, `direction` | which way they fly |
 | `speed(min, max)`, `inherit(share)` | blocks a second; a share of the source's velocity |
 | `life(min, max)` | seconds |
 | `size(min, max)`, `size(min, max, skew)`, `size(curve)` | blocks; a skew above 1 makes most small and a few large; a curve over life, a share of the starting size |

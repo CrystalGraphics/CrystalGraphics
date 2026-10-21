@@ -13,7 +13,7 @@ public class CgVfxEmitterScaleTest {
 
     private static final CgVfxEmitter BURST = CgVfxEmitter.builder("burst").state(CgVfxEmitterState.ONCE)
             .capacity(200).burst(0f, 200)
-            .shape(CgShell.of(1f, 3f)).launch(-0.2f, 1f, 1f).speed(4f, 12f).life(5f, 5f).size(0.2f, 0.6f, 1f)
+            .shape(CgShell.of(1f, 3f)).speed(4f, 12f).life(5f, 5f).size(0.2f, 0.6f, 1f)
             .module(new CgVfxModule.Gravity(9.8f))
             .module(new CgVfxModule.Drag(0.8f, 0.08f))
             .build();

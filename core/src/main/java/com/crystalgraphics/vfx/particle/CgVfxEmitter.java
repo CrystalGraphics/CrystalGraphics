@@ -34,7 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <pre>{@code
  * static final CgVfxEmitter EMBERS = CgVfxEmitter.builder("embers")
  *         .state(CgVfxEmitterState.ONCE).capacity(400).burst(0f, 360)       // once: unset, it loops for ever
- *         .shape(CgSphere.of(0.5)).launch(-0.1f, 1f, 0.6f).speed(6f, 18f)   // up-biased, 6..18 blocks a second
+ *         .shape(CgSphere.of(0.5)).hemisphere().speed(6f, 18f)             // up and out, 6..18 blocks a second
  *         .life(4f, 7f).size(0.05f, 0.25f, 2f).heat(1f)
  *         .module(new CgVfxModule.Gravity(9.8f))
  *         .module(new CgVfxModule.Drag(4f, 0f))
@@ -105,7 +105,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final CgVfxSpawnBurst[] bursts;
     final CgVfxSpawnRate rate;
     final CgVfxSpawnPerUnit perUnit;
-    final float sweep, upMin, upMax, upBias, speedMin, speedMax, lifeMin, lifeMax;
+    final float sweep, speedMin, speedMax, lifeMin, lifeMax;
     final CgVfxSpawnShape spawn;
     /** The most blocks a step may move and still spread its spawns and give its velocity; its velocity's share. */
     final float maxStep, inherit;
@@ -163,9 +163,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         float span = b.state.durationMax(), perSecond = b.rate.perSecond();
         frontA = sweep != 0f ? sweep / perSecond : 0f;
         frontB = sweep != 0f ? sweep / (2f * span * perSecond * perSecond) : 0f;
-        upMin = b.upMin;
-        upMax = b.upMax;
-        upBias = b.upBias;
         speedMin = b.speedMin;
         speedMax = b.speedMax;
         lifeMin = b.lifeMin;
@@ -382,7 +379,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
            .vec4(sizeMin, sizeMax, sizeSkew, heat)
            .vec4(spinMin, spinMax, inherit, 0f)
            .vec4(frontA, frontB, 0f, 0f);
-        spawn.write(out, upMin, upMax, upBias);
+        spawn.write(out);
     }
 
     /** How far out spawn {@code k}'s front has swept, in blocks: 0 without {@link Builder#sweep}. */
@@ -566,7 +563,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private float sweep, inherit, maxStep = 8f;
         private int trailPoints;
         private float[] rasterized;
-        private float upMin = -1f, upMax = 1f, upBias = 1f;
         private float speedMin, speedMax;
         private float lifeMin = 1f, lifeMax = 1f;
         private float sizeMin = 1f, sizeMax = 1f, sizeSkew = 1f;
@@ -603,9 +599,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             trailPoints = e.trailPoints;
             rasterized = e.rasterized;
             sweep = e.sweep;
-            upMin = e.upMin;
-            upMax = e.upMax;
-            upBias = e.upBias;
             speedMin = e.speedMin;
             speedMax = e.speedMax;
             lifeMin = e.lifeMin;
@@ -933,11 +926,25 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         }
 
         /**
-         * Launched along {@code (x, y, z)}, in the effect's frame, within {@code spreadDegrees} of it, wherever it is born.
-         * An event's children take the event's normal as up.
+         * Launched along {@code (x, y, z)}, in the effect's frame, within {@code spreadDegrees} of it, wherever it is born:
+         * Niagara's Add Velocity in Cone, whose angle from the axis is drawn evenly. An event's children take the event's
+         * normal as up.
          */
         public Builder direction(float x, float y, float z, float spreadDegrees) {
-            spawn.direction(x, y, z, spreadDegrees, name);
+            return direction(x, y, z, 0f, spreadDegrees);
+        }
+
+        /**
+         * Launched between {@code innerDegrees} and {@code spreadDegrees} of {@code (x, y, z)}, the angle drawn evenly
+         * between them and the turn round it evenly: Niagara's cone with an inner angle (half its inner and outer cone
+         * angles). A band of headings, up and out:
+         *
+         * <pre>{@code
+         * .shape(CgSphere.of(3)).direction(0, 1, 0, 30f, 85f)   // 30 to 85 degrees off straight up
+         * }</pre>
+         */
+        public Builder direction(float x, float y, float z, float innerDegrees, float spreadDegrees) {
+            spawn.direction(x, y, z, innerDegrees, spreadDegrees, name);
             return this;
         }
 
@@ -948,7 +955,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
          *
          * <pre>{@code
          * CgVfxEmitter.builder("skirt").state(CgVfxEmitterState.once(1.6f)).rate(400f).shape(CgShell.of(9f, 9.5f))
-         *         .launch(0f, 0.15f, 1f).sweep(46f)              // 9 blocks out at the start, 46 at 1.6 s
+         *         .sweep(46f)                                    // 9 blocks out at the start, 46 at 1.6 s
          *         ...
          * }</pre>
          *
@@ -959,23 +966,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
          */
         public Builder sweep(float speed) {
             sweep = speed;
-            return this;
-        }
-
-        /**
-         * Launched at any heading with an upward share from {@code upMin} to {@code upMax}, skewed up by a bias under 1.
-         * On a point or a sphere it is also where they are born, along that direction: a ball that only fills its lower
-         * half, debris thrown up and out.
-         *
-         * <pre>{@code
-         * .shape(CgSphere.of(3)).launch(0.05f, 1f, 0.7f)    // born and flying in the upper half, mostly up
-         * }</pre>
-         */
-        public Builder launch(float upMin, float upMax, float bias) {
-            this.upMin = upMin;
-            this.upMax = upMax;
-            this.upBias = bias;
-            spawn.mode = CgVfxSpawnShape.LAUNCH;
             return this;
         }
 

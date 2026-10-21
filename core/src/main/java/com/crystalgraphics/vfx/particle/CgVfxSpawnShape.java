@@ -31,7 +31,7 @@ final class CgVfxSpawnShape {
 
     static final int POINT = 0, SPHERE = 1, BOX = 2, CYLINDER = 3, CONE = 4, CAPSULE = 5, MESH = 6, ENTITY = 7;
     static final int VOLUME = 0, SURFACE = 1, EDGE = 2, VERTICES = 3;
-    static final int OUTWARD = 0, INWARD = 1, DIRECTION = 2, LAUNCH = 3;
+    static final int OUTWARD = 0, INWARD = 1, DIRECTION = 2;
     static final float TAU = (float) (2 * Math.PI);
 
     static final CgVfxSpawnShape DEFAULT = new Builder().build("");
@@ -65,15 +65,13 @@ final class CgVfxSpawnShape {
     }
 
     /**
-     * Its six vec4s from the parameter row's fifth: (up min, up max, up bias, direction mode), (direction xyz, cos of its
-     * spread), (kind, placement | 4 for the upper half, arc, ordered), (numbers by kind), rotation, (offset xyz, 0).
+     * Its six vec4s from the parameter row's fifth: (cone's inner and outer half angle, 0, direction mode), (direction
+     * xyz, 0), (kind, placement | 4 for the upper half, arc, ordered), (numbers by kind), rotation, (offset xyz, 0).
      */
-    void write(CgVfxWords out, float upMin, float upMax, float upBias) {
+    void write(CgVfxWords out) {
         Builder s = given;
-        // A point's and a sphere's band is where they are born: their launch is the way out.
-        int mode = s.mode == LAUNCH && s.kind <= SPHERE ? OUTWARD : s.mode;
-        out.vec4(upMin, upMax, upBias, mode)
-           .vec4(s.dirX, s.dirY, s.dirZ, s.cosSpread)
+        out.vec4(s.innerSpread, s.spread, 0f, s.mode)
+           .vec4(s.dirX, s.dirY, s.dirZ, 0f)
            .vec4(s.kind, s.placement | (s.hemisphere ? 4 : 0), s.arc, s.ordered);
         if (s.kind == MESH) {
             CgVfxSpawnMeshes.Section m = CgVfxSpawnMeshes.of(mesh());
@@ -140,7 +138,8 @@ final class CgVfxSpawnShape {
         float a, b, c, arc = TAU;
         CgMesh mesh;
         String meshPath;
-        float dirX, dirY = 1f, dirZ, cosSpread = 1f;
+        /** A cone's axis, and the least and most angle from it, radians: Niagara's inner and outer half angles. */
+        float dirX, dirY = 1f, dirZ, innerSpread, spread;
         /** The shape's own axis and middle, in its own space; where it is pointed (NaN for its own); where it sits. */
         float axisX, axisY = 1f, axisZ, midX, midY, midZ;
         float pointX = Float.NaN, pointY, pointZ, atX, atY, atZ;
@@ -235,17 +234,19 @@ final class CgVfxSpawnShape {
             pointZ = z / length;
         }
 
-        void direction(float x, float y, float z, float spreadDegrees, String name) {
+        void direction(float x, float y, float z, float innerDegrees, float spreadDegrees, String name) {
             float length = (float) Math.sqrt(x * x + y * y + z * z);
             if (!(length > 0f)) throw new IllegalArgumentException(name + ": direction(" + x + ", " + y + ", " + z + ")");
-            if (!(spreadDegrees >= 0f && spreadDegrees <= 180f)) {
-                throw new IllegalArgumentException(name + ": a spread of " + spreadDegrees + " degrees, not 0 to 180");
+            if (!(innerDegrees >= 0f && innerDegrees <= spreadDegrees && spreadDegrees <= 180f)) {
+                throw new IllegalArgumentException(name + ": a spread of " + innerDegrees + " to " + spreadDegrees
+                        + " degrees, not 0 <= inner <= spread <= 180");
             }
             mode = DIRECTION;
             dirX = x / length;
             dirY = y / length;
             dirZ = z / length;
-            cosSpread = (float) Math.cos(Math.toRadians(spreadDegrees));
+            innerSpread = (float) Math.toRadians(innerDegrees);
+            spread = (float) Math.toRadians(spreadDegrees);
         }
 
         CgVfxSpawnShape build(String name) {
@@ -293,7 +294,8 @@ final class CgVfxSpawnShape {
             dirX = s.dirX;
             dirY = s.dirY;
             dirZ = s.dirZ;
-            cosSpread = s.cosSpread;
+            innerSpread = s.innerSpread;
+            spread = s.spread;
             axisX = s.axisX;
             axisY = s.axisY;
             axisZ = s.axisZ;

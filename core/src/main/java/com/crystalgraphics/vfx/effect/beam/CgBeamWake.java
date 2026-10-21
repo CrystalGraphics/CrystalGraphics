@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.effect.beam;
 
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.shape.primitive.CgRing;
 import com.crystalgraphics.shape.primitive.CgShell;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxElement;
@@ -32,8 +33,8 @@ public final class CgBeamWake extends CgVfxElement {
     public static final CgVfxEmitter EMITTER = CgVfxEmitter.builder("crystalgraphics:wave/wake")
             .state(CgVfxEmitterState.ONCE)
             .renderer(CgVfxEmitter.Renderer.QUADS)
-            .optional().capacity(1200).rate(36f).shape(CgShell.of(0.4f, 1.4f))
-            .launch(0.05f, 0.45f, 1.4f).speed(4f, 11f).life(0.9f, 1.8f).size(0.3f, 0.7f, 1.4f)
+            .optional().capacity(1200).rate(36f).shape(CgRing.of(0.4f, 1.4f, 0.28f))
+            .at(0f, 0.35f, 0f).speed(4f, 11f).life(0.9f, 1.8f).size(0.3f, 0.7f, 1.4f)
             .module(new CgVfxModule.Gravity(1.5f))
             .module(new CgVfxModule.Drag(1.3f, 0.05f))
             .module(new CgVfxModule.Turbulence(1.2f, 0.15f, 0.4f))

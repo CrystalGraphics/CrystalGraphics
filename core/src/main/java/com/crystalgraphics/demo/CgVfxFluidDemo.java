@@ -350,7 +350,7 @@ public final class CgVfxFluidDemo {
     private void fireWhirl(float x, float z) {
         CgVfxEmitter embers = CgVfxEmitter.builder("whirlEmbers").state(CgVfxEmitterState.once(PERIOD - 4f))
                 .capacity(4000).rate(600f)
-                .shape(CgRing.of(1.2, 2.4, 0)).launch(0.7f, 1f, 1f).speed(1f, 3f).life(2.5f, 4f).size(0.03f, 0.06f).heat(1f)
+                .shape(CgRing.of(1.2, 2.4, 0)).direction(0, 1, 0, 45.57f).speed(1f, 3f).life(2.5f, 4f).size(0.03f, 0.06f).heat(1f)
                 .trail(10)
                 .module(new CgVfxModule.Vortex(0f, 1f, 0f, 7f, -1.2f, 0f, 0f, 0f))
                 .module(new CgVfxModule.Force(0f, 3f, 0f))
@@ -535,7 +535,7 @@ public final class CgVfxFluidDemo {
      */
     private void particleSmoke(float volumeX, float spritesX, float z) {
         CgVfxEmitter.Builder rising = CgVfxEmitter.builder("smokeSprites").state(CgVfxEmitterState.once(PERIOD - 5f))
-                .capacity(2400).rate(700f).shape(CgSphere.of(0.7)).launch(0.6f, 1f, 1f).speed(1f, 2.2f)
+                .capacity(2400).rate(700f).shape(CgSphere.of(0.7)).hemisphere().direction(0, 1, 0, 53.13f).speed(1f, 2.2f)
                 .life(2.8f, 3.4f).size(0.7f, 0.7f)
                 // Each puff eases in and swells as it leaves the vent: born whole, a step's batch at a time, the base was
                 // mostly newborns and pulsed with each.
@@ -617,7 +617,7 @@ public final class CgVfxFluidDemo {
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
         CgVfxEmitter debris = CgVfxEmitter.builder("mushroomDebris").state(CgVfxEmitterState.ONCE)
                 .capacity(400).burst(0.05f, 400)
-                .shape(CgSphere.of(3)).launch(0.5f, 1f, 1f).speed(8f, 20f).life(2.5f, 4f).size(0.05f, 0.1f, 2f).heat(1f)
+                .shape(CgSphere.of(3)).hemisphere().direction(0, 1, 0, 60f).speed(8f, 20f).life(2.5f, 4f).size(0.05f, 0.1f, 2f).heat(1f)
                 .trail(14)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Drag(0.25f, 0f))

@@ -18,7 +18,7 @@ import java.util.List;
  *        .vec4(sizeMin, sizeMax, sizeSkew, heat)
  *        .vec4(spinMin, spinMax, inherit, 0f)
  *        .vec4(frontA, frontB, 0f, 0f);
- *     spawnShape.write(out, upMin, upMax, upBias);   // six more: where it is born, which way it flies
+ *     spawnShape.write(out);                          // six more: where it is born, which way it flies
  * }
  * }</pre>
  *
