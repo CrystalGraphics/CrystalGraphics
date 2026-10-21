@@ -1,11 +1,18 @@
 package com.crystalgraphics.api.material;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import javax.annotation.Nullable;
+
+import com.crystalgraphics.asset.codec.CgAssetYaml;
 
 /**
  * Every shading model by id and by index: the engine's three, and what kits register. A material naming one that is
@@ -98,6 +105,36 @@ public final class CgShadingModels {
             made.add(model);
         }
         return made;
+    }
+
+    /**
+     * Registers a kit folder's shading models: its {@code shading.yaml}, or nothing when the kit ships none.
+     *
+     * <pre>{@code
+     * // assets/kakarot_kit/shading.yaml:  _v: 1
+     * //                                   shading: { cell_tone: { index: 13, base: lit, keyword: CELL_TONE } }
+     * CgShadingModels.registerKit("kakarot_kit", Paths.get("assets/kakarot_kit"));   // kakarot_kit:cell_tone
+     * }</pre>
+     *
+     * @throws IllegalArgumentException naming the file, as {@link #registerKit(String, Map)}, or if it cannot be read
+     */
+    public static List<CgShadingModel> registerKit(String namespace, Path folder) {
+        Path file = folder.resolve("shading.yaml");
+        if (!Files.isRegularFile(file)) return Collections.emptyList();
+        Object tree;
+        try {
+            tree = CgAssetYaml.read(new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            throw new IllegalArgumentException(file + ": " + e.getMessage(), e);
+        }
+        if (!(tree instanceof Map<?, ?> root) || !(root.get("shading") instanceof Map<?, ?> declarations)) {
+            throw new IllegalArgumentException(file + ": expected _v and a shading: map of name to its index and base");
+        }
+        try {
+            return registerKit(namespace, declarations);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(file + ": " + e.getMessage(), e);
+        }
     }
 
     /** The model of {@code id}, null when none is registered. */

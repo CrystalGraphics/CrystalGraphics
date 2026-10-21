@@ -27,7 +27,7 @@ This is the top of the CrystalShader material stack.
 | `CgMaterialArchetypes` | Where an archetype is read: `FILES` through `CgIO`, a kit's `<ns>:shaders/<name>.shader` falling back to the engine's `crystalgraphics:shaders/vfx/archetype/<name>.shader` (`resolve`); its domain from `Tags { "Domain" = ... }` |
 | `CgMaterialManifest` | A move's permutations by slot-kind keyword and half size: what `CgWorldRenderer.programs().warm(manifest)` warms |
 | `CgMaterialRoute`, `CgMaterialRow` | The three routes a value takes (constant, row, global) and one draw's row of a definition, written by slot |
-| `CgShadingModel`, `CgShadingModels`, `CgMaterialDomain` | Shading models by registry (`unlit`, `lit`, `subsurface`, and a kit's `registerKit(namespace, ...)`); `SURFACE`, `POST`, `DECAL` |
+| `CgShadingModel`, `CgShadingModels`, `CgMaterialDomain` | Shading models by registry (`unlit`, `lit`, `subsurface`, and a kit's `registerKit(namespace, declarations)`, or `registerKit(namespace, folder)` reading the kit's `shading.yaml`, `shading:` name to `index`, `base`, `keyword`); `SURFACE`, `POST`, `DECAL` |
 | `CgRenderQueue` | Final utility class (not an enum). Static `int` constants: `BACKGROUND` (1000), `GEOMETRY` (2000), `ALPHA_TEST` (2450), `TRANSPARENT` (3000), `AFTER_DISTORTION` (3500: transparent, drawn after the distortion apply), `OVERLAY` (4000). Threshold constants: `ALPHA_TEST_THRESHOLD` (2450), `TRANSPARENT_THRESHOLD` (2500), `AFTER_DISTORTION_THRESHOLD` (3500), `OVERLAY_THRESHOLD` (4000). `fromName(String)` maps PascalCase or SCREAMING_SNAKE names to int value; throws for unknown names. |
 | `package-info.java` | Package-level Javadoc describing the material API and lifecycle contract. |
 

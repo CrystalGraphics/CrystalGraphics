@@ -1,5 +1,8 @@
 package com.crystalgraphics.api.material;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -120,5 +123,26 @@ public class CgShadingModelsTest {
         } catch (CgAssetException e) {
             assertTrue(e.getMessage(), e.getMessage().contains(naming));
         }
+    }
+
+    @Test
+    public void aKitFolderRegistersItsShadingFile() throws Exception {
+        Path kit = Files.createTempDirectory("kit");
+        assertTrue("a kit with no shading.yaml registers nothing",
+                CgShadingModels.registerKit("filekit", kit).isEmpty());
+        Files.write(kit.resolve("shading.yaml"), List.of("_v: 1", "shading:",
+                "  toon: { index: 40, base: lit, keyword: TOON }", "  flat: { index: 41, base: unlit }"),
+                StandardCharsets.UTF_8);
+        List<CgShadingModel> made = CgShadingModels.registerKit("filekit", kit);
+        assertEquals(2, made.size());
+        assertSame(CgShadingModels.get("filekit:toon"), CgShadingModels.at(40));
+        assertEquals("TOON", CgShadingModels.get("filekit:toon").keyword());
+        assertEquals("unlit", CgShadingModels.get("filekit:flat").base());
+        Path bad = Files.createTempDirectory("kit");
+        Files.write(bad.resolve("shading.yaml"), List.of("_v: 1", "shading:", "  odd: { base: lit }"),
+                StandardCharsets.UTF_8);
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> CgShadingModels.registerKit("badkit", bad));
+        assertTrue(e.getMessage(), e.getMessage().contains("shading.yaml") && e.getMessage().contains("index"));
     }
 }
