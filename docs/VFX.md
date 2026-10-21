@@ -1054,7 +1054,7 @@ sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debr
 | `event(e)` | children spawned or rows reported when something happens to a particle ([§12](#12-modules-and-events)) |
 | `trail(points)` | its last positions kept, for a `trails()` layer ([§13](#13-trails-and-ribbons)) |
 | `rasterize(x, y, z, w)` | drawn into its instance's grid each frame, a soft ball as wide as it is drawn holding that density in each channel: a body of particles a grid layer draws lit through itself (`CgVfxGrid3D.channel(c)`) |
-| `sweep(speed)` | born on a front running out at that speed; rate spawns only |
+| `sweep(speed)` | born on a front running out at that speed over each loop: the shape's radius by the loop's seconds |
 | `local()` | its particles ride the effect as it moves, rather than staying where they were born |
 | `optional()` | detail: halved at the Low quality tier |
 | `name(name)` | its name in a look, which `look.emitter(name)` finds and a look's `emitter` replaces by |
@@ -2332,7 +2332,7 @@ Harness gates (`./gradlew :gl-debug-harness:runHarness --args="--mode=<gate>"`, 
 | `vfx-inputs` | vector fields, heightfields, the depth pyramid |
 | `vfx-world` | the voxel window, its distance field and per-particle light |
 | `vfx-range` | drawing by slot, and size over speed |
-| `vfx-forms` | module inputs in forms: each form's lanes on the GPU against its Java evaluation |
+| `vfx-forms` | module inputs and spawn values in forms: each form on the GPU against its Java evaluation |
 
 Each must pass at every forced tier (`-Dcrystalgraphics.compute.tier=G43|G40|G33`) and on `--device=vulkan`. Scenes to
 look at: `vfx-spheres` (the waves' lanes, `crystalgraphics.harness.vfx.moments` for a contact sheet of every moment),

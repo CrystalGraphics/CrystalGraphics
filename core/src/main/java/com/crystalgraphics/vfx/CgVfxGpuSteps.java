@@ -142,7 +142,11 @@ final class CgVfxGpuSteps {
     /** The pools with tenants, in the order first used. */
     private final List<CgVfxParticlePool> pools = new ArrayList<>();
     private final StepView view = new StepView();
-    /** This frame's booked spawns, a CPU tick's each: its tenant, (first, candidates, bursts), (born, from xyz, to xyz). */
+    /**
+     * This frame's booked spawns, a CPU tick's each: its tenant, (first, candidates, bursts), (born, from xyz, to xyz,
+     * the loop's seconds at the tick's start and end).
+     */
+    private static final int PENDING_FLOATS = 9;
     private Tenant[] pendingTenant = new Tenant[0];
     private int[] pendingInts = new int[0];
     private float[] pendingFloats = new float[0];
@@ -330,11 +334,11 @@ final class CgVfxGpuSteps {
             int n = Math.max(16, pending * 2);
             pendingTenant = Arrays.copyOf(pendingTenant, n);
             pendingInts = Arrays.copyOf(pendingInts, n * 3);
-            pendingFloats = Arrays.copyOf(pendingFloats, n * 7);
+            pendingFloats = Arrays.copyOf(pendingFloats, n * PENDING_FLOATS);
         }
         CgVfxEmitterInstance.Books b = tenant.instance.books();
         pendingTenant[pending] = tenant;
-        int i = pending * 3, f = pending * 7;
+        int i = pending * 3, f = pending * PENDING_FLOATS;
         pendingInts[i] = b.stepFirstSpawn();
         pendingInts[i + 1] = b.stepCandidates();
         pendingInts[i + 2] = b.stepBursts();
@@ -345,6 +349,8 @@ final class CgVfxGpuSteps {
         pendingFloats[f + 4] = tenant.instance.sourceX();
         pendingFloats[f + 5] = tenant.instance.sourceY();
         pendingFloats[f + 6] = tenant.instance.sourceZ();
+        pendingFloats[f + 7] = b.stepLoopFrom();
+        pendingFloats[f + 8] = b.stepLoopTo();
         pending++;
     }
 
@@ -374,10 +380,10 @@ final class CgVfxGpuSteps {
         for (int k = 0; k < pending; k++) {
             Tenant tenant = pendingTenant[k];
             if (!tenant.killed && byInstance.get(tenant.instance) == tenant) {
-                int i = k * 3, f = k * 7;
+                int i = k * 3, f = k * PENDING_FLOATS;
                 tenant.pool.spawn(tenant.slot, pendingInts[i], pendingInts[i + 1], pendingInts[i + 2], pendingFloats[f],
                         CgVfxSystem.TICK, pendingFloats[f + 1], pendingFloats[f + 2], pendingFloats[f + 3],
-                        pendingFloats[f + 4], pendingFloats[f + 5], pendingFloats[f + 6]);
+                        pendingFloats[f + 4], pendingFloats[f + 5], pendingFloats[f + 6], pendingFloats[f + 7], pendingFloats[f + 8]);
             }
         }
         dropPending();

@@ -27,6 +27,8 @@ import com.crystalgraphics.object.CgPropertyFlag;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.shape.primitive.CgPlane;
 import com.crystalgraphics.vfx.particle.form.CgVfxCurveBlock;
+import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
+import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
 import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
@@ -56,8 +58,9 @@ import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnRate;
  *       bindings. A {@code null} template leaves them the builder's defaults.</li>
  *   <li>Curves are {@code FRichCurve}'s keys: linear segments linear, quad and cubic easings as cubic keys with their
  *       tangents, any other easing as linear keys sampled along it.</li>
- *   <li>A size's skew is {@code sprite_size} as a curve by a random draw; a sweep is the shape's radius as a curve by
- *       the loop's seconds (aaa-design 2.60).</li>
+ *   <li>A lifetime, sprite size, speed or radius in any form but a constant or a range is a spawn form
+ *       ({@link CgVfxSpawnForm}), written back as it was read: the builder's skewed size and sweep are two
+ *       (aaa-design 2.60).</li>
  *   <li>An input {@code modules.yaml} declares that the engine does not take yet reads at its default alone, and fails
  *       by name at any other value.</li>
  * </ul>
@@ -67,8 +70,6 @@ public final class CgVfxEmitterAssets {
     private static final String NS = "crystalgraphics:";
     /** Hermite pieces an eased segment no single cubic reproduces is written as, each key at the easing's own slope. */
     private static final int EASE_STEPS = 32;
-    /** Samples a skewed size's curve is written as. */
-    private static final int SKEW_SAMPLES = 17;
 
     private CgVfxEmitterAssets() {
     }
@@ -104,8 +105,8 @@ public final class CgVfxEmitterAssets {
         tree.put("emitter_update", update);
 
         List<Object> spawn = new ArrayList<>();
-        Map<String, Object> init = map("lifetime", range(e.lifeMin, e.lifeMax), "heat", (double) e.heat,
-                "sprite_size", spriteSize(e.sizeMin, e.sizeMax, e.sizeSkew));
+        Map<String, Object> init = map("lifetime", written(e, CgVfxSpawnInput.LIFETIME, range(e.lifeMin, e.lifeMax)),
+                "heat", (double) e.heat, "sprite_size", written(e, CgVfxSpawnInput.SPRITE_SIZE, spriteSize(e.sizeMin, e.sizeMax)));
         if (!same(e.colorFrom, WHITE) || !same(e.colorTo, WHITE)) init.put("color", vector(e.colorFrom, e.colorTo));
         if (!same(e.scaleFrom, UNIT) || !same(e.scaleTo, UNIT)) init.put("mesh_scale", vector(e.scaleFrom, e.scaleTo));
         spawn.add(entry("init", "initialize_particle", init));
@@ -158,7 +159,7 @@ public final class CgVfxEmitterAssets {
     private static Map<String, Object> shape(CgVfxEmitter e) {
         CgVfxSpawnShape.Builder s = e.spawn.given();
         Map<String, Object> in = new LinkedHashMap<>();
-        Object radius = e.sweep != 0f ? sweptRadius(s.b, e.sweep, e.state.durationMax()) : (Object) (double) s.b;
+        Object radius = written(e, CgVfxSpawnInput.RADIUS, (double) s.b);
         switch (s.kind) {
             case CgVfxSpawnShape.POINT -> in.put("shape", "point");
             case CgVfxSpawnShape.SPHERE -> {
@@ -226,12 +227,10 @@ public final class CgVfxEmitterAssets {
         else if (s.placement == CgVfxSpawnShape.EDGE) in.put("edge_only", true);
     }
 
-    /** A radius running out at {@code sweep} blocks a second and easing to a stop at the loop's end: its quadratic, exactly. */
-    private static Map<String, Object> sweptRadius(float r, float sweep, float duration) {
-        List<Object> keys = List.of(
-                List.of((double) 0f, (double) r, "cubic", "break", 0.0, (double) sweep),
-                List.of((double) duration, (double) r + (double) sweep * duration / 2.0, "cubic", "break", 0.0, 0.0));
-        return map("curve", map("keys", keys), "by", "loop");
+    /** {@code target}'s spawn form's value as it was read, else {@code otherwise}. */
+    private static Object written(CgVfxEmitter e, CgVfxSpawnInput target, Object otherwise) {
+        CgVfxSpawnForm f = e.spawnForm(target);
+        return f == null ? otherwise : f.value();
     }
 
     private static Map<String, Object> velocity(CgVfxEmitter e) {
@@ -248,7 +247,7 @@ public final class CgVfxEmitterAssets {
             }
             default -> in.put("mode", "outward");
         }
-        in.put("speed", range(e.speedMin, e.speedMax));
+        in.put("speed", written(e, CgVfxSpawnInput.SPEED, range(e.speedMin, e.speedMax)));
         in.put("inherit", (double) e.inherit);
         return in;
     }
@@ -381,16 +380,17 @@ public final class CgVfxEmitterAssets {
     }
 
     private static void initialize(String name, CgVfxEmitter.Builder b, Map<?, ?> in) {
-        float[] life = rangeOf(in.get("lifetime"));
-        b.life(life[0], life[1]);
+        CgVfxSpawnForm life = spawnForm(CgVfxSpawnInput.LIFETIME, "lifetime", in.get("lifetime"));
+        float[] lives = life != null ? life.bounds() : rangeOf(in.get("lifetime"));
+        b.life(lives[0], lives[1]);
+        if (life != null) b.spawnForm(life);
         if (in.get("heat") instanceof Number h) b.heat(h.floatValue());
         Object size = in.get("sprite_size");
-        if (size instanceof Map<?, ?> form && "random".equals(form.get("by"))) {
-            // aaa-design 2.60: a skewed size is min + (max - min) * x^skew, looked up by a random draw.
-            CgRichCurve c = CgRichCurve.decode(((Map<?, ?>) uniform(form)).get("curve"));
-            float lo = c.eval(0f), hi = c.eval(1f);
-            float skew = hi > lo ? (float) (Math.log((c.eval(0.5f) - lo) / (hi - lo)) / Math.log(0.5)) : 1f;
-            b.size(lo, hi, skew);
+        CgVfxSpawnForm sized = spawnForm(CgVfxSpawnInput.SPRITE_SIZE, "sprite_size", size);
+        if (sized != null) {
+            float[] width = sized.bounds();
+            b.size(width[0], width[1]);
+            b.spawnForm(sized);
         } else if (size != null) {
             float[] width = spriteWidth(size);
             b.size(width[0], width[1]);
@@ -430,9 +430,18 @@ public final class CgVfxEmitterAssets {
             }
             default -> throw new IllegalArgumentException(name + ": add_velocity's mode " + mode + " is not read yet");
         }
-        float[] speed = rangeOf(in.get("speed"));
+        CgVfxSpawnForm formed = spawnForm(CgVfxSpawnInput.SPEED, "speed", in.get("speed"));
+        float[] speed = formed != null ? formed.bounds() : rangeOf(in.get("speed"));
         b.speed(speed[0], speed[1]);
+        if (formed != null) b.spawnForm(formed);
         if (in.get("inherit") instanceof Number i) b.inherit(i.floatValue());
+    }
+
+    /** {@code value} as a spawn form: null for a constant or a range, which the spawn row's two ends give. */
+    @Nullable
+    private static CgVfxSpawnForm spawnForm(CgVfxSpawnInput target, String input, Object value) {
+        if (!isForm(value) || ((Map<?, ?>) value).containsKey("range")) return null;
+        return CgVfxSpawnForm.of(target, input, value);
     }
 
     private static void shape(String name, CgVfxEmitter.Builder b, Map<?, ?> in) {
@@ -444,7 +453,7 @@ public final class CgVfxEmitterAssets {
             case "point" -> s.kind = CgVfxSpawnShape.POINT;
             case "sphere" -> {
                 s.kind = CgVfxSpawnShape.SPHERE;
-                s.b = radius(name, b, in.get("sphere_radius"));
+                s.b = radius(b, "sphere_radius", in.get("sphere_radius"));
                 band(s, in);
             }
             case "box" -> {
@@ -460,14 +469,14 @@ public final class CgVfxEmitterAssets {
                     throw new IllegalArgumentException(name + ": a cylinder along " + in.get("cylinder_axis") + " is not read yet: turn it");
                 }
                 s.kind = CgVfxSpawnShape.CYLINDER;
-                s.b = radius(name, b, in.get("cylinder_radius"));
+                s.b = radius(b, "cylinder_radius", in.get("cylinder_radius"));
                 s.c = num(in.get("cylinder_height")) / 2f;
                 band(s, in);
             }
             case "ring" -> {
                 // Unreal's ring at its default coverage: its edge.
                 s.kind = CgVfxSpawnShape.CYLINDER;
-                s.b = num(in.get("ring_radius"));
+                s.b = radius(b, "ring_radius", in.get("ring_radius"));
                 s.placement = CgVfxSpawnShape.EDGE;
             }
             case "cone" -> {
@@ -508,15 +517,12 @@ public final class CgVfxEmitterAssets {
         s.place = in.get("offset") != null ? vec(in.get("offset"), 3) : new float[3];
     }
 
-    /** A radius, or one running out over the loop's seconds: a sweep's (aaa-design 2.60). */
-    private static float radius(String name, CgVfxEmitter.Builder b, Object value) {
-        if (value instanceof Map<?, ?> form && "loop".equals(form.get("by")) && form.get("curve") instanceof Map<?, ?> c) {
-            CgRichCurve curve = CgRichCurve.decode(c);
-            if (curve.size() != 2) throw new IllegalArgumentException(name + ": a swept radius is two keys, not " + curve.size());
-            b.sweep(2f * (curve.value(1) - curve.value(0)) / (curve.time(1) - curve.time(0)));
-            return curve.value(0);
-        }
-        return num(value);
+    /** A radius, or one in a form (a sweep's is a curve by the loop's seconds, aaa-design 2.60): its first end. */
+    private static float radius(CgVfxEmitter.Builder b, String input, Object value) {
+        CgVfxSpawnForm formed = spawnForm(CgVfxSpawnInput.RADIUS, input, value);
+        if (formed == null) return num(value);
+        b.spawnForm(formed);
+        return formed.firstEnd();
     }
 
     private static void band(CgVfxSpawnShape.Builder s, Map<?, ?> in) {
@@ -1086,20 +1092,8 @@ public final class CgVfxEmitterAssets {
         return same(from, to) ? list(from) : map("range", List.of(list(from), list(to)), "per_channel", true);
     }
 
-    /**
-     * A sprite size, Niagara's vec2 of width and height: a square, a range of two squares, or skewed (most small, a few
-     * large) a curve by a random draw (aaa-design 2.60).
-     */
-    private static Object spriteSize(float min, float max, float skew) {
-        if (skew != 1f) {
-            List<Object> values = new ArrayList<>();
-            for (int i = 0; i < SKEW_SAMPLES; i++) {
-                double x = (double) i / (SKEW_SAMPLES - 1);
-                values.add(min + (max - (double) min) * Math.pow(x, skew));
-            }
-            Map<String, Object> c = map("samples", map("range", List.of(0.0, 1.0), "values", values));
-            return map("curves", List.of(c, c), "by", "random");
-        }
+    /** A sprite size, Niagara's vec2 of width and height: a square, or a range of two squares. */
+    private static Object spriteSize(float min, float max) {
         List<Double> lo = Arrays.asList((double) min, (double) min);
         return min == max ? lo : map("range", Arrays.asList(lo, Arrays.asList((double) max, (double) max)));
     }

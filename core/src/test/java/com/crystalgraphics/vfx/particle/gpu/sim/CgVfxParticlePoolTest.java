@@ -375,8 +375,8 @@ public class CgVfxParticlePoolTest {
         float tick = 1f / 120f;
         pool.beginStep(3 * tick, 0f, 0f, 0f);
         pool.instance(slot, 0, 1f, 0f, new At(0, 0f));
-        pool.spawn(slot, 0, 4, 1, 0f, tick, 0f, 0f, 0f, 1f, 0f, 0f);
-        pool.spawn(slot, 4, 2, 0, 2 * tick, tick, 1f, 0f, 0f, 2f, 0f, 0f);
+        pool.spawn(slot, 0, 4, 1, 0f, tick, 0f, 0f, 0f, 1f, 0f, 0f, 0f, tick);
+        pool.spawn(slot, 4, 2, 0, 2 * tick, tick, 1f, 0f, 0f, 2f, 0f, 0f, 2 * tick, 3 * tick);
         pool.endStep();
         int[] rows = pool.spawnWords();
         int second = pool.stepSpawnAt(0) + CgVfxParticlePool.SPAWN_ROW_WORDS;
@@ -384,6 +384,8 @@ public class CgVfxParticlePoolTest {
         assertEquals(2 * tick, Float.intBitsToFloat(rows[second + 4]), 0f);       // born from its tick's offset
         assertEquals(3 * tick, Float.intBitsToFloat(rows[second + 5]), 1e-7f);   // to its end
         assertEquals(2f, Float.intBitsToFloat(rows[second + 12]), 0f);           // the source at its end
+        assertEquals(2 * tick, Float.intBitsToFloat(rows[second + 11]), 0f);      // its loop's seconds at its start
+        assertEquals(3 * tick, Float.intBitsToFloat(rows[second + 15]), 0f);      // and at its end
         String glsl = CgVfxEmitterCompiler.source(pool.shape());
         assertTrue(glsl.contains("s.dt = max(_Step.x - born, 0.0)"));
         assertTrue(glsl.contains("born = mix(when.x, when.y, along);"));

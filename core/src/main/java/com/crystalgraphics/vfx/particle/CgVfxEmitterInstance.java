@@ -69,6 +69,8 @@ public final class CgVfxEmitterInstance {
     /** The loop under way (its emitter's state), when its time began after its delay, and whether every loop is spent. */
     private int loop;
     private float loopStart, loopLength;
+    /** The loop's seconds at the last scheduled step's start and end: what a spawn form by the loop reads. */
+    private float stepLoopFrom, stepLoopTo;
     private boolean loopsOver;
     private float rateOwed, share = 1f;
     /** When {@link #stop} ended its spawning; infinite until then. What {@link #rateScale} multiplies its rate by. */
@@ -449,7 +451,8 @@ public final class CgVfxEmitterInstance {
     private void scheduleOne(float dt, float born) {
         int k = spawned++;
         if (share < 1f && rand(k, 10) >= share) return;
-        float life = emitter.lifeMin + (emitter.lifeMax - emitter.lifeMin) * rand(k, 4);
+        // A lifetime in a form is booked at its longest: the kernel alone evaluates it.
+        float life = emitter.lifeFormed ? emitter.lifeMax : emitter.lifeMin + (emitter.lifeMax - emitter.lifeMin) * rand(k, 4);
         // It ages the rest of this step, then a step at a time, and goes at the end of the step its age reaches its life.
         float death = time + dt * (float) Math.ceil(life / dt + born);
         lastDeath = Math.max(lastDeath, death);
@@ -755,6 +758,8 @@ public final class CgVfxEmitterInstance {
             fireBursts();
             stepBursts = spawned - stepFirst;
             float age = time - loopStart;
+            stepLoopFrom = Math.max(0f, age);
+            stepLoopTo = stepLoopFrom + dt;
             if (!loopsOver && time < stoppedAt && age >= 0f && age < loopLength) {
                 rateOwed += (e.rate.at(age) * dt + e.perUnit.perBlock() * travelled) * rateScale;
                 int n = (int) rateOwed;
@@ -838,6 +843,16 @@ public final class CgVfxEmitterInstance {
         /** How many of {@link #stepCandidates} are bursts, first: born where the source was at the step's start. */
         public int stepBursts() {
             return stepBursts;
+        }
+
+        /** Its loop's seconds as {@link #schedule}'s last step began: its bursts' and its first rate spawn's. */
+        public float stepLoopFrom() {
+            return stepLoopFrom;
+        }
+
+        /** Its loop's seconds as that step ended: its last rate spawn's. */
+        public float stepLoopTo() {
+            return stepLoopTo;
         }
 
         /** Its seed's bits: what {@code fx_rand} and {@link #rand(int, int, int)} take. */

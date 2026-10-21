@@ -9,6 +9,8 @@ import com.crystalgraphics.vfx.particle.CgVfxModuleTypes;
 import com.crystalgraphics.vfx.particle.form.CgVfxCurveBlock;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
 import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
+import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
+import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
@@ -17,6 +19,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxModuleWords;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -92,6 +95,9 @@ public final class CgVfxShape {
     private final CgVfxModuleForm[] forms;
     private final int[][] formWords;
     private final int[] formAt;
+    /** Its spawn forms by target, and where each one's vec4s start. */
+    private final CgVfxSpawnForm[] spawnForms;
+    private final int[] spawnFormAt;
     private final int formsAt, formVectors;
     private final CgVfxEvent.Trigger[] triggers;
     private final boolean[] eventSpawns, eventReports, eventNodes;
@@ -218,6 +224,13 @@ public final class CgVfxShape {
             param += formVectors(emitter.name(), form);
             key.append(f == 0 ? "|form:" : ",").append(form.module()).append('.').append(form.input()).append('=').append(formKey(c));
         }
+        spawnForms = emitter.spawnForms().stream().sorted(Comparator.comparing(CgVfxSpawnForm::target)).toArray(CgVfxSpawnForm[]::new);
+        spawnFormAt = new int[spawnForms.length];
+        for (int f = 0; f < spawnForms.length; f++) {
+            spawnFormAt[f] = param;
+            param += spawnFormVectors(emitter.name(), spawnForms[f]);
+            key.append(f == 0 ? "|spawn:" : ",").append(spawnForms[f].target()).append('=').append(formKey(spawnForms[f].compiled()));
+        }
         formVectors = param - formsAt;
         paramRow = param;
         List<CgVfxUserBinding> bound = emitter.userBindings();
@@ -304,6 +317,22 @@ public final class CgVfxShape {
         }
         if (c instanceof CgVfxFormInput.Binding b && b.path().equals("particles.age") && b.inLo() == null) return 0;
         throw new IllegalArgumentException(what + ": the " + c.form().specName() + " form is not built in the Step yet");
+    }
+
+    /**
+     * The vec4s a spawn form takes: a pick's other end; a curve's domain and texels, by random, id or the loop's
+     * seconds. Throws for any other, by name.
+     */
+    private static int spawnFormVectors(String name, CgVfxSpawnForm form) {
+        CgVfxFormInput c = form.compiled();
+        String what = name + "'s " + form.target().module() + " " + form.input();
+        if (c instanceof CgVfxFormInput.Pick p && (p.rolls() == null || p.rolls() == CgPropertyMeta.Rolls.PARTICLE)) return 1;
+        if (c instanceof CgVfxFormInput.Curve curve && (curve.by() == CgVfxFormInput.Lookup.RANDOM
+                || curve.by() == CgVfxFormInput.Lookup.ID || curve.by() == CgVfxFormInput.Lookup.LOOP)) {
+            return 1 + CgVfxCurveBlock.TEXELS;
+        }
+        String which = c instanceof CgVfxFormInput.Curve curve ? "a curve by " + curve.by() : "the " + c.form().specName() + " form";
+        throw new IllegalArgumentException(what + ": " + which + " is not built at spawn; a pick, or a curve by random, id or loop");
     }
 
     /** A form's part of the key: what decides its kernel code. */
@@ -578,7 +607,6 @@ public final class CgVfxShape {
         return lanes[i].length;
     }
 
-    /** A parameter row's vec4s: the spawn numbers, then each module's in stack order, then its events' ages. */
     /** How many module forms. */
     public int forms() {
         return forms.length;
@@ -607,6 +635,28 @@ public final class CgVfxShape {
         return null;
     }
 
+    /** How many spawn forms. */
+    public int spawnForms() {
+        return spawnForms.length;
+    }
+
+    /** Spawn form {@code f}, by target. */
+    public CgVfxSpawnForm spawnForm(int f) {
+        return spawnForms[f];
+    }
+
+    /** Where spawn form {@code f}'s own vec4s start in a parameter row. */
+    public int spawnFormAt(int f) {
+        return spawnFormAt[f];
+    }
+
+    /** The index of {@code target}'s spawn form; -1 where the spawn row's range gives it. */
+    public int spawnFormOf(CgVfxSpawnInput target) {
+        for (int f = 0; f < spawnForms.length; f++) if (spawnForms[f].target() == target) return f;
+        return -1;
+    }
+
+    /** A parameter row's vec4s: the spawn numbers, then each module's in stack order, its events', then its forms'. */
     public int paramRowVectors() {
         return paramRow;
     }

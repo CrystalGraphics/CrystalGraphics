@@ -8,6 +8,7 @@ import javax.annotation.Nullable;
 import java.util.List;
 
 import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
+import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
 
 /**
  * An emitter definition as a GPU pool reads it: its module stack, its renderer and its spawn numbers.
@@ -17,9 +18,9 @@ import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
  * <pre>{@code
  * public void writeSpawn(CgVfxWords out) {
  *     out.vec4(speedMin, speedMax, lifeMin, lifeMax)
- *        .vec4(sizeMin, sizeMax, sizeSkew, heat)
+ *        .vec4(sizeMin, sizeMax, 0f, heat)
  *        .vec4(spinMin, spinMax, inherit, 0f)
- *        .vec4(frontA, frontB, 0f, 0f);
+ *        .vec4(0f, 0f, 0f, 0f);
  *     spawnShape.write(out);                          // six more: where it is born, which way it flies
  * }
  * }</pre>
@@ -56,12 +57,11 @@ public interface CgVfxGpuEmitter {
 
     /**
      * Writes its spawn numbers, {@link #SPAWN_VECTORS} vec4s in this order: (speed min, speed max, life min, life max),
-     * (size min, size max, size skew, heat), (spin min, spin max, the share of its source's velocity, 0), (front a, front
-     * b, 0, 0): spawn k starts {@code a k - b k^2} blocks further out, its k held where that peaks ({@code a / 2b}), 0, 0
-     * for a shape that stays put; then where it is born: (up min, up max, up bias, direction mode), (direction xyz, cos
-     * of its spread), (shape kind, placement | 4 for the upper half, arc, ordered), (the shape's numbers), its rotation
-     * from the sampling frame (axis +Y), (its offset from the source, 0). {@code CgVfxSpawnShape} has the codes; a mesh's
-     * numbers name its section of {@code CgVfxSpawnMeshes}.
+     * (size min, size max, 0, heat), (spin min, spin max, the share of its source's velocity, 0), (0, 0, 0, 0); then
+     * where it is born: (the cone's inner and outer half angles, 0, direction mode), (direction xyz, 0), (shape kind,
+     * placement | 4 for the upper half, arc, ordered), (the shape's numbers), its rotation from the sampling frame (axis
+     * +Y), (its offset from the source, 0). {@code CgVfxSpawnShape} has the codes; a mesh's numbers name its section of
+     * {@code CgVfxSpawnMeshes}. A value given in a {@link #spawnForms() form} keeps its first end in its word.
      */
     void writeSpawn(CgVfxWords out);
 
@@ -122,6 +122,19 @@ public interface CgVfxGpuEmitter {
      * }</pre>
      */
     default List<CgVfxModuleForm> moduleForms() {
+        return List.of();
+    }
+
+    /**
+     * Its spawn values given in a form rather than the spawn row's range: a pick, a curve by random, id or the loop's
+     * seconds, built per spawn by the Step kernel's launch from the form area. Which value takes which form class is
+     * part of the shape.
+     *
+     * <pre>{@code
+     * public List<CgVfxSpawnForm> spawnForms() { return List.of(CgVfxSpawnForm.of(CgVfxSpawnInput.SPRITE_SIZE, "sprite_size", value)); }
+     * }</pre>
+     */
+    default List<CgVfxSpawnForm> spawnForms() {
         return List.of();
     }
 

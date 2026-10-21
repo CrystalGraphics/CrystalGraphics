@@ -107,7 +107,8 @@ A burst can roll its count each loop, and fire in only some loops:
   A capture that must repeat run to run turns on `-Dcrystalgraphics.fixedSeed=true` (or `CgRandom.fixedSeed(true)` at
   startup; the harness does), which seeds that stream from a constant, as Unreal's `-FixedSeed` does.
 - **Loops of no time are refused**: a looping state needs a duration or a delay, or `build()` throws.
-- **`sweep(speed)` needs one loop of a set length**, a rate and no burst: its front runs over that loop.
+- **`sweep(speed)` needs a sphere, shell, cylinder or ring and a loop of finite length**: its front runs over each
+  loop, the radius as a curve by the loop's seconds, its longest loop's length.
 
 ## How each particle looks: colour and size per axis
 

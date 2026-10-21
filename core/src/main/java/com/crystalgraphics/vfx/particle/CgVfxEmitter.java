@@ -7,6 +7,8 @@ import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
+import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
+import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
@@ -108,7 +110,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final CgVfxSpawnBurst[] bursts;
     final CgVfxSpawnRate rate;
     final CgVfxSpawnPerUnit perUnit;
-    final float sweep, speedMin, speedMax, lifeMin, lifeMax;
+    /** The highest of each range, or of its spawn form's values: what its bounds and books read. */
+    final float speedMin, speedMax, lifeMin, lifeMax;
     final CgVfxSpawnShape spawn;
     /** The most blocks a step may move and still spread its spawns and give its velocity; its velocity's share. */
     final float maxStep, inherit;
@@ -116,9 +119,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final int trailPoints;
     /** The density each particle draws into its grid's four channels each frame; null for none. */
     final float[] rasterized;
-    /** The sweep as spawn k's front, {@code frontA k - frontB k^2} blocks, k held at its peak: what both paths read. */
-    final float frontA, frontB;
-    final float sizeMin, sizeMax, sizeSkew, spinMin, spinMax, heat;
+    final float sizeMin, sizeMax, spinMin, spinMax, heat;
+    /** Its spawn values given in a form, one a target; how far a radius form moves its birth out at most. */
+    final List<CgVfxSpawnForm> spawnForms;
+    private final float sweptOut;
+    /** Whether its lifetime is a form: the books then book every particle at its longest. */
+    final boolean lifeFormed;
     final List<CgVfxModule> modules;
     /** Its modules' numbers from their kinds' declarations, made once: what a pool copies into a row. */
     private final int[] moduleWords;
@@ -164,18 +170,16 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         inherit = b.inherit;
         trailPoints = b.trailPoints;
         rasterized = b.rasterized != null ? b.rasterized.clone() : null;
-        sweep = b.sweep;
-        // Spawn k is born k / rate into its one loop of T: the front, sweep (t - t^2 / 2T), in k.
-        float span = b.state.durationMax(), perSecond = b.rate.perSecond();
-        frontA = sweep != 0f ? sweep / perSecond : 0f;
-        frontB = sweep != 0f ? sweep / (2f * span * perSecond * perSecond) : 0f;
+        spawnForms = List.copyOf(b.spawnForms);
         speedMin = b.speedMin;
-        speedMax = b.speedMax;
+        speedMax = Math.max(b.speedMax, high(CgVfxSpawnInput.SPEED, b.speedMax));
         lifeMin = b.lifeMin;
-        lifeMax = b.lifeMax;
+        lifeMax = Math.max(b.lifeMax, high(CgVfxSpawnInput.LIFETIME, b.lifeMax));
+        lifeFormed = spawnForm(CgVfxSpawnInput.LIFETIME) != null;
         sizeMin = b.sizeMin;
-        sizeMax = b.sizeMax;
-        sizeSkew = b.sizeSkew;
+        sizeMax = Math.max(b.sizeMax, high(CgVfxSpawnInput.SPRITE_SIZE, b.sizeMax));
+        CgVfxSpawnForm radius = spawnForm(CgVfxSpawnInput.RADIUS);
+        sweptOut = radius == null ? 0f : Math.max(0f, radius.bounds()[1] - radius.firstEnd());
         spinMin = b.spinMin;
         spinMax = b.spinMax;
         heat = b.heat;
@@ -271,7 +275,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             b.spawn = new CgVfxSpawnShape.Builder(spawn.scaled(s, name));
             b.perUnit = perUnit.scaled(s);
             b.maxStep *= s;
-            b.sweep *= s;
+            b.spawnForms.replaceAll(f -> f.scaled(s));
             b.speedMin *= s;
             b.speedMax *= s;
             b.sizeMin *= s;
@@ -397,17 +401,28 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     @Override
     public void writeSpawn(CgVfxWords out) {
         out.vec4(speedMin, speedMax, lifeMin, lifeMax)
-           .vec4(sizeMin, sizeMax, sizeSkew, heat)
+           .vec4(sizeMin, sizeMax, 0f, heat)
            .vec4(spinMin, spinMax, inherit, 0f)
-           .vec4(frontA, frontB, 0f, 0f);
+           .vec4(0f, 0f, 0f, 0f);
         spawn.write(out);
     }
 
-    /** How far out spawn {@code k}'s front has swept, in blocks: 0 without {@link Builder#sweep}. */
-    float front(int k) {
-        if (frontB == 0f) return 0f;
-        float held = Math.min(k, frontA / (2f * frontB));
-        return frontA * held - frontB * held * held;
+    @Override
+    public List<CgVfxSpawnForm> spawnForms() {
+        return spawnForms;
+    }
+
+    /** Its spawn form for {@code target}; null where the spawn row's range gives it. */
+    @Nullable
+    CgVfxSpawnForm spawnForm(CgVfxSpawnInput target) {
+        for (CgVfxSpawnForm f : spawnForms) if (f.target() == target) return f;
+        return null;
+    }
+
+    /** The most {@code target}'s spawn form takes; {@code otherwise} without one. */
+    private float high(CgVfxSpawnInput target, float otherwise) {
+        CgVfxSpawnForm f = spawnForm(target);
+        return f == null ? otherwise : f.bounds()[1];
     }
 
     @Override
@@ -556,8 +571,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             pull += modules.get(i).pull(heat);
             wind |= modules.get(i) instanceof CgVfxModule.Wind;
         }
-        float swept = sweep != 0f ? 0.5f * Math.abs(sweep) * state.durationMax() : 0f;
-        return spawn.extent() + swept + speedMax * lifeMax + 0.5f * pull * lifeMax * lifeMax + (wind ? windSpeed * lifeMax : 0f);
+        return spawn.extent() + sweptOut + speedMax * lifeMax + 0.5f * pull * lifeMax * lifeMax + (wind ? windSpeed * lifeMax : 0f);
     }
 
     /** The largest a particle draws, before a look's own scale: its largest size times its size curve's peak. */
@@ -583,11 +597,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private CgVfxSpawnPerUnit perUnit = CgVfxSpawnPerUnit.NONE;
         private CgVfxSpawnShape.Builder spawn = new CgVfxSpawnShape.Builder();
         private float sweep, inherit, maxStep = 8f;
+        private final List<CgVfxSpawnForm> spawnForms = new ArrayList<>();
         private int trailPoints;
         private float[] rasterized;
         private float speedMin, speedMax;
         private float lifeMin = 1f, lifeMax = 1f;
-        private float sizeMin = 1f, sizeMax = 1f, sizeSkew = 1f;
+        private float sizeMin = 1f, sizeMax = 1f;
         private float spinMin, spinMax;
         private float heat;
         private final List<CgVfxModule> modules = new ArrayList<>();
@@ -622,14 +637,13 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             inherit = e.inherit;
             trailPoints = e.trailPoints;
             rasterized = e.rasterized;
-            sweep = e.sweep;
+            spawnForms.addAll(e.spawnForms);
             speedMin = e.speedMin;
             speedMax = e.speedMax;
             lifeMin = e.lifeMin;
             lifeMax = e.lifeMax;
             sizeMin = e.sizeMin;
             sizeMax = e.sizeMax;
-            sizeSkew = e.sizeSkew;
             spinMin = e.spinMin;
             spinMax = e.spinMax;
             heat = e.heat;
@@ -994,7 +1008,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
          * }</pre>
          *
          * <ul>
-         *   <li>One loop of a finite duration, a constant rate and no burst: {@link #build} throws otherwise.</li>
+         *   <li>Its radius by the loop's seconds ({@link CgVfxSpawnForm#swept}), over its longest loop: a sphere, shell,
+         *       cylinder or ring, with a finite loop, or {@link #build} throws.</li>
          *   <li>An event's children spawn where the event fired, never on the front.</li>
          * </ul>
          */
@@ -1087,11 +1102,22 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return size(min, max, 1f);
         }
 
-        /** Starting size in blocks; a {@code skew} over 1 makes most small and a few large. */
+        /**
+         * Starting size in blocks; a {@code skew} over 1 makes most small and a few large: the size by a random draw
+         * through {@code min + (max - min) x^skew} ({@link CgVfxSpawnForm#skewed}).
+         */
         public Builder size(float min, float max, float skew) {
             sizeMin = min;
             sizeMax = max;
-            sizeSkew = skew;
+            spawnForms.removeIf(f -> f.target() == CgVfxSpawnInput.SPRITE_SIZE);
+            if (skew != 1f) spawnForms.add(CgVfxSpawnForm.of(CgVfxSpawnInput.SPRITE_SIZE, "sprite_size", CgVfxSpawnForm.skewed(min, max, skew)));
+            return this;
+        }
+
+        /** One spawn value given in a form, replacing any for its target: an emitter file's ({@link CgVfxEmitterAssets}). */
+        Builder spawnForm(CgVfxSpawnForm form) {
+            spawnForms.removeIf(f -> f.target() == form.target());
+            spawnForms.add(form);
             return this;
         }
 
@@ -1349,11 +1375,16 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         }
 
         public CgVfxEmitter build() {
-            if (sweep != 0f && (!bursts.isEmpty() || rate.perSecond() <= 0f || state.loops() != 1
-                    || state.durationMin() != state.durationMax()
-                    || !(state.durationMax() > 0f && state.durationMax() < Float.POSITIVE_INFINITY))) {
-                throw new IllegalStateException(name
-                        + " sweeps its shape, which needs one loop of a fixed duration, a rate and no bursts");
+            if (sweep != 0f) {
+                // aaa-design 2.60: the shape's radius as a curve by the loop's seconds.
+                String radius = spawn.kind == CgVfxSpawnShape.SPHERE ? "sphere_radius"
+                        : spawn.kind == CgVfxSpawnShape.CYLINDER ? "cylinder_radius" : null;
+                if (radius == null) throw new IllegalStateException(name + " sweeps a shape with no radius: a sphere, shell, cylinder or ring");
+                if (!(state.durationMax() > 0f && state.durationMax() < Float.POSITIVE_INFINITY)) {
+                    throw new IllegalStateException(name + " sweeps over its loop, which needs a finite duration");
+                }
+                spawnForm(CgVfxSpawnForm.of(CgVfxSpawnInput.RADIUS, radius, CgVfxSpawnForm.swept(spawn.b, sweep, state.durationMax())));
+                sweep = 0f;
             }
             if (state.loops() > 1 && !(state.shortestPeriod() > 0f)) {
                 throw new IllegalStateException(name + " loops in no time: give its loops a duration or a delay");

@@ -223,8 +223,8 @@ file alone is the one that wrote it:
 |---|---|
 | `capacity`, `local`, `optional` | `properties`: `capacity`, `local_space`, `scalability: [{ tiers: [low], scale_spawn_count: true, spawn_count_scale: 0.5 }]` |
 | `state`, `rate` (and its scale curve), `burst`, `ratePerBlock`, `maxStep` | `emitter_update`: `emitter_state`, `spawn_rate { rate, scale: { curve, by: loop } }`, `spawn_burst`, `spawn_per_unit` |
-| `life`, `heat`, `size`, `color`, `scale` | `initialize_particle`: `lifetime`, `heat`, `sprite_size`, `color`, `mesh_scale`. A size's skew is `sprite_size` as a curve by a random draw |
-| `shape` and its placement, `pointing`, `at`, `mesh`, `entity` | `shape_location`: the shape's own inputs, `surface_only` (with `surface_thickness` for a shell or a ring), `edge_only`, `hemisphere`, `arc`, `ordered`, `rotation` (a quaternion), `offset`. A sweep is the radius as a curve by loop |
+| `life`, `heat`, `size`, `color`, `scale` | `initialize_particle`: `lifetime`, `heat`, `sprite_size`, `color`, `mesh_scale`. A size's skew is `sprite_size` as a curve by a random draw (below) |
+| `shape` and its placement, `pointing`, `at`, `mesh`, `entity` | `shape_location`: the shape's own inputs, `surface_only` (with `surface_thickness` for a shell or a ring), `edge_only`, `hemisphere`, `arc`, `ordered`, `rotation` (a quaternion), `offset`. A sweep is the radius as a curve by loop (below) |
 | `outward`, `inward`, `direction`, `speed`, `inherit` | `add_velocity`: `mode` (`outward`, `inward`, `in_cone` with `cone_axis`, `cone_angle` and `inner_cone`, Unreal's apex angles) |
 | `size(curve)`, `scaleOverLife`, `colorOverLife`, `opacity`, `intensityOverLife` | `scale_sprite_size`, `scale_mesh_size`, `scale_color { scale, alpha, intensity }`, curves by age |
 | `spin`, `rasterize` | `sprite_rotation_rate` (its rate `crystalgraphics:random_sign` of a range), `grid_rasterize { density }` |
@@ -247,6 +247,19 @@ file alone is the one that wrote it:
 
   Not built yet, and refused by name: a roll per loop or instance, a curve by `loop` or `length`, an array, a function,
   and a binding to anything but `particles.age` (a user parameter's is P5's binding, through its system).
+- **A spawn value takes them too**: `initialize_particle`'s `lifetime` and `sprite_size`, `add_velocity`'s `speed`, and
+  `shape_location`'s radius, each built per spawn as a pick or a curve by `random`, `id` or `loop` (the loop's seconds
+  as it spawns); a constant or a range is the spawn row's two ends. A radius in a form moves each birth out by its value
+  less the shape's radius. The builder's `size(min, max, skew)` and `sweep(speed)` write two such forms.
+
+  ```yaml
+  particle_spawn:
+    - { id: init, module: crystalgraphics:initialize_particle, inputs: { lifetime: { pick: [1.5, 3] } } }
+    - { id: shape, module: crystalgraphics:shape_location, inputs: { shape: sphere, surface_only: true,
+        sphere_radius: { curve: { keys: [[0, 9, cubic, break, 0, 33.5], [1.6, 35.8, cubic, break, 0, 0]] }, by: loop } } }
+  ```
+
+  A lifetime in a form is booked at its longest, so its emitter finishes no earlier than its last particle.
 
 ## Playing an asset, and changing it while it plays
 

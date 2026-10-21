@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.particle.gpu.sim;
 
 import com.crystalgraphics.vfx.particle.form.CgVfxCurveBlock;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
+import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
@@ -71,7 +72,7 @@ import java.util.Set;
  * // once a frame, over the frame's particle time, for every pool
  * pool.beginStep(dt, wind.x, wind.y, wind.z);
  * pool.instance(slot, seedBits, share, groundY, instance);   // every open slot, once
- * pool.spawn(slot, first, candidates, bursts, bornFrom, TICK, fx, fy, fz, tx, ty, tz);   // a row per CPU tick that spawned
+ * pool.spawn(slot, first, candidates, bursts, bornFrom, TICK, fx, fy, fz, tx, ty, tz, loopFrom, loopTo);   // a row per CPU tick that spawned
  * pool.endStep();
  *
  * pool.close(slot);                                  // once its last particle has died
@@ -110,9 +111,9 @@ public final class CgVfxParticlePool {
     public static final int INSTANCE_HEADER = 9;
     /**
      * A spawn row's words: {@code uvec4(slot, first spawn, candidates, first element)}, {@code vec4(born from, born to,
-     * bursts, tick seconds)}, {@code vec4(source at the tick's start, 0)}, {@code vec4(source at its end, 0)}. The born
-     * window is seconds into the step: a row is one CPU tick's spawns, its bursts born at its start and the rest spread
-     * across it.
+     * bursts, tick seconds)}, {@code vec4(source at the tick's start, its loop's seconds then)}, {@code vec4(source at its
+     * end, its loop's seconds then)}. The born window is seconds into the step: a row is one CPU tick's spawns, its bursts
+     * born at its start and the rest spread across it.
      */
     public static final int SPAWN_ROW_WORDS = 16;
     /** Seconds of particle time between two trail points: trails sample by time, whatever the frame rate. */
@@ -1306,22 +1307,23 @@ public final class CgVfxParticlePool {
         int at = stepInstanceAt[steps] + slot * instanceWords + 4;
         float x = Float.intBitsToFloat(instances[at]), y = Float.intBitsToFloat(instances[at + 1]),
                 z = Float.intBitsToFloat(instances[at + 2]);
-        spawn(slot, firstSpawn, candidates, candidates, 0f, 1f, x, y, z, x, y, z);
+        spawn(slot, firstSpawn, candidates, candidates, 0f, 1f, x, y, z, x, y, z, 0f, 0f);
     }
 
     /**
      * Queues one CPU tick's spawns for {@code slot} this step: {@code candidates} spawn indices from {@code firstSpawn},
      * the first {@code bursts} born at {@code bornFrom} seconds into the step where the source was as the tick began
      * ({@code from}), the rest spread from there to {@code bornFrom + tickSeconds} and the source at its end ({@code to}),
-     * each stepped for the rest of the step. After the slot's {@link #instance} row; a row per tick that spawned.
+     * each stepped for the rest of the step; its loop's seconds run from {@code loopFrom} to {@code loopTo} across it, what
+     * a spawn form by the loop reads. After the slot's {@link #instance} row; a row per tick that spawned.
      *
      * <pre>{@code
      * pool.spawn(slot, b.stepFirstSpawn(), b.stepCandidates(), b.stepBursts(), tickStart, TICK,
-     *         b.fromX(), b.fromY(), b.fromZ(), b.sourceX(), b.sourceY(), b.sourceZ());
+     *         b.fromX(), b.fromY(), b.fromZ(), b.sourceX(), b.sourceY(), b.sourceZ(), b.stepLoopFrom(), b.stepLoopTo());
      * }</pre>
      */
     public void spawn(int slot, int firstSpawn, int candidates, int bursts, float bornFrom, float tickSeconds,
-                      float fromX, float fromY, float fromZ, float toX, float toY, float toZ) {
+                      float fromX, float fromY, float fromZ, float toX, float toY, float toZ, float loopFrom, float loopTo) {
         inStep("spawn");
         openSlot(slot, "spawn");
         if (firstSpawn < 0 || candidates < 0 || bursts < 0 || bursts > candidates || !(tickSeconds > 0f) || !(bornFrom >= 0f)) {
@@ -1347,11 +1349,11 @@ public final class CgVfxParticlePool {
         w[at + 8] = Float.floatToRawIntBits(fromX);
         w[at + 9] = Float.floatToRawIntBits(fromY);
         w[at + 10] = Float.floatToRawIntBits(fromZ);
-        w[at + 11] = 0;
+        w[at + 11] = Float.floatToRawIntBits(loopFrom);
         w[at + 12] = Float.floatToRawIntBits(toX);
         w[at + 13] = Float.floatToRawIntBits(toY);
         w[at + 14] = Float.floatToRawIntBits(toZ);
-        w[at + 15] = 0;
+        w[at + 15] = Float.floatToRawIntBits(loopTo);
         spawnEnd += SPAWN_ROW_WORDS;
         stepSpawnRows[s]++;
         stepSpawned[s] += candidates;
@@ -1831,7 +1833,12 @@ public final class CgVfxParticlePool {
         for (int w = starts; w < starts + 8; w++) if ((w & 3) != 3) start = Math.max(start, Math.abs(curveScratch[w]));
         rowSizeMax[index] = most * start;
         if (shape.events() > 0) writeEvents(emitter, at + shape.eventsAt() * 4);
-        for (int f = 0; f < shape.forms(); f++) writeForm(f, at + shape.formAt(f) * 4);
+        for (int f = 0; f < shape.forms(); f++) writeForm(shape.form(f).compiled(), at + shape.formAt(f) * 4);
+        for (int f = 0; f < shape.spawnForms(); f++) {
+            CgVfxSpawnForm form = shape.spawnForm(f);
+            params[at + form.target().word()] = Float.floatToRawIntBits(form.firstEnd());
+            writeForm(form.compiled(), at + shape.spawnFormAt(f) * 4);
+        }
         // Its draws read the clip's rows from its first step's upload on.
         if (emitter.clip() != null) CgVfxClipAtlas.of(emitter.clip());
         rows.put(emitter, new int[]{index, 1});
@@ -1839,9 +1846,8 @@ public final class CgVfxParticlePool {
         return index;
     }
 
-    /** Form {@code f}'s vec4s from word {@code at}: a range's or a pick's other end; a curve's domain, then its texels. */
-    private void writeForm(int f, int at) {
-        CgVfxFormInput c = shape.form(f).compiled();
+    /** A form's vec4s from word {@code at}: a range's or a pick's other end; a curve's domain, then its texels. */
+    private void writeForm(CgVfxFormInput c, int at) {
         if (c instanceof CgVfxFormInput.Range r) {
             for (int k = 0; k < r.components(); k++) params[at + k] = Float.floatToRawIntBits(r.max()[k]);
         } else if (c instanceof CgVfxFormInput.Pick pick) {
