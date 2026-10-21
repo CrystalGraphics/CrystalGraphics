@@ -8,6 +8,52 @@ an emitter asset and the emitter running in a component.
 Writing emitters and their modules is still [`../VFX.md`](../VFX.md) §11 and §12; this page grows as the engine's
 particle work lands.
 
+## Renderers: how an emitter's particles draw
+
+An emitter's `renderers:` say how its particles draw, Niagara's renderer properties: each a kind, a `material` asset,
+and what feeds the material. One emitter may hold several, each drawing the same particles.
+
+```yaml
+# assets/mymod/vfx/emitters/sparks.yaml
+renderers:
+  - id: r1
+    kind: sprite
+    material: mymod:materials/fx/sparks       # a material asset (materials.md)
+    alignment: velocity                       # stands along its motion
+    bind: { _Color: user.ember }              # read per draw from the system's user parameter
+    values: { _SoftDistance: 0.25 }           # this renderer's own constant
+    sort_order_hint: 1                        # drawn after hints below it
+```
+
+```java
+CgMaterialDefinition sparks = CgMaterialDefinition.builder("mymod:materials/fx/sparks",
+        "crystalgraphics:shaders/vfx/particle/sprite.shader").blend(CgBlendMode.ADDITIVE).build();
+CgVfxEmitter emitter = CgVfxEmitter.builder("sparks")
+        .renderer(CgVfxRenderers.sprite("r1").material(sparks).alignment("velocity")
+                .bind("_Color", "user.ember").value("_SoftDistance", 0.25).sortOrderHint(1).build())
+        .build();
+```
+
+| Kind | Draws | Its emitter |
+|---|---|---|
+| `sprite` | a quad a particle: `alignment` (`unaligned`, `velocity`), `facing` (`camera`, `camera_plane`, `camera_position`), `sort` (`none`, `view_depth`), `sub_image` (a grid flipbook) | quads |
+| `mesh` | one mesh a particle (`meshes: [{ mesh: <path> }]`), the unit sphere with none | `MESHES` |
+| `ribbon` | one strip through an instance's particles, newest first | quads |
+| `trails` | a strip behind each particle; its `points` are the ring its emitter keeps (`trail(points)`) | quads |
+| `arc` | a stroke round the source | `ARCS` |
+| `sequence` | a clip's parts at each particle, drawn by the clip's prefab | a clip |
+
+- **Binds read user parameters alone** (`user.<name>`, or `{ bind: user.<name>, scale: s }`): a row a draw, so a hundred
+  effects of one emitter stay one draw. A particle's own attributes are read in its material
+  (`cg_dynamic_parameter`, `CG_PARTICLE_COLOR`), so `particles.*` fails at load.
+- **Values on a property the material reads per draw** are constants of the row; **keywords and other values** make a
+  child material, shared by every renderer with the same overrides.
+- **What is not drawn yet fails at load by name**, rather than drawing as something else: the `system`, `anim_trail`,
+  `beam` and `light` kinds, a material named by a user parameter, and fields such as a custom sprite facing, a
+  pivot off the middle, a rect-table `sub_image`, a mesh prefab or `locked_axis`, a ribbon's `shape: tube`.
+- **Order** is the hint, then the look's order; a renderer whose material has a Distortion pass bends what draws before
+  it, and every other draws after its effect's own bend.
+
 ## When particles spawn: emitter time
 
 An emitter runs in **loops**, as a Niagara emitter does. Its **state** (`CgVfxEmitterState`, Niagara's Emitter

@@ -45,6 +45,7 @@ import com.github.bsideup.jabel.Desugar;
  * @param post        its root's {@code post} block, null when it is not a post material
  * @param domain      where it is drawn: its archetype's
  * @param shading     the shading model it names, null for its archetype's own
+ * @param distortion  whether its archetype has a Distortion pass: it bends what is drawn before it
  * @param resolved    the asset it was compiled from, its parent chain merged: what a derived child is merged over
  */
 @Desugar
@@ -52,7 +53,8 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
                                    Map<String, float[]> constants, Map<String, Object> forms,
                                    Map<String, Texture> textures, CgMaterialRowLayout rows, Draw draw, int order,
                                    String sortLayer, @Nullable Map<Object, Object> post, CgMaterialDomain domain,
-                                   @Nullable CgShadingModel shading, Map<Object, Object> resolved) {
+                                   @Nullable CgShadingModel shading, boolean distortion,
+                                   Map<Object, Object> resolved) {
 
     /**
      * A material written in Java: the same tree its file holds, compiled by the same compiler.

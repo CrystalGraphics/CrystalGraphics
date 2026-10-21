@@ -4,11 +4,14 @@ import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.vfx.CgVfxScalability;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -44,18 +47,40 @@ import java.util.function.Consumer;
  */
 public final class CgVfxLook {
 
-    /** A layer as this look draws it, and where among its draws. */
+    /** A layer, or an emitter's renderer, as this look draws it, and where among its draws. */
     public static final class Placed {
         final CgVfxLayer layer;
+        final CgVfxEmitter emitter;
+        final CgVfxRendererProperties renderer;
         final int order;
 
         Placed(CgVfxLayer layer, int order) {
             this.layer = layer;
+            this.emitter = null;
+            this.renderer = null;
             this.order = order;
         }
 
+        Placed(CgVfxEmitter emitter, CgVfxRendererProperties renderer, int order) {
+            this.layer = null;
+            this.emitter = emitter;
+            this.renderer = renderer;
+            this.order = order;
+        }
+
+        /** The layer it draws; null for a renderer. */
         public CgVfxLayer layer() {
             return layer;
+        }
+
+        /** The emitter whose renderer it is; null for a layer. */
+        public CgVfxEmitter emitter() {
+            return emitter;
+        }
+
+        /** The renderer it draws; null for a layer. */
+        public CgVfxRendererProperties renderer() {
+            return renderer;
         }
 
         /**
@@ -75,6 +100,10 @@ public final class CgVfxLook {
     private final List<CgVfxLayer> layers;
     private final Placed[][] bySlot;
     private final List<CgVfxEmitter> emitters;
+    /** Each emitter's renderers as placed, after every layer; and every placement, layers then renderers. */
+    private final Map<CgVfxEmitter, Placed[]> byEmitter = new IdentityHashMap<>();
+    private final List<Placed> rendered;
+    private final int draws;
     private final CgVfxScalability scalability;
     private final Builder recipe;
 
@@ -108,7 +137,6 @@ public final class CgVfxLook {
             ofRole.sort(Comparator.comparingInt(CgVfxLayer::order));   // stable: ties keep the look's order
             ordered.addAll(ofRole);
         }
-        if (ordered.size() > 256) throw new IllegalStateException("A look draws at most 256 layers, not " + ordered.size());
         List<Placed> all = new ArrayList<>();
         List<List<Placed>> slots = new ArrayList<>();
         for (int i = 0; i < ordered.size(); i++) {
@@ -127,6 +155,25 @@ public final class CgVfxLook {
         List<CgVfxEmitter> emitted = new ArrayList<>();
         for (Entry e : b.entries) if (e.part instanceof CgVfxEmitter) emitted.add((CgVfxEmitter) e.part);
         this.emitters = Collections.unmodifiableList(emitted);
+        // Renderers after the layers, by Niagara's SortOrderHint, then in the look's order.
+        List<Placed> renderers = new ArrayList<>();
+        List<Object[]> pairs = new ArrayList<>();
+        for (CgVfxEmitter e : emitted) {
+            for (CgVfxRendererProperties r : e.renderers()) if (r.common().enabled()) pairs.add(new Object[] {e, r});
+        }
+        pairs.sort(Comparator.comparingInt(pair -> ((CgVfxRendererProperties) pair[1]).common().sortOrderHint()));
+        Map<CgVfxEmitter, List<Placed>> mine = new IdentityHashMap<>();
+        for (Object[] pair : pairs) {
+            Placed p = new Placed((CgVfxEmitter) pair[0], (CgVfxRendererProperties) pair[1], ordered.size() + renderers.size());
+            renderers.add(p);
+            mine.computeIfAbsent(p.emitter, x -> new ArrayList<>()).add(p);
+        }
+        for (Map.Entry<CgVfxEmitter, List<Placed>> e : mine.entrySet()) byEmitter.put(e.getKey(), e.getValue().toArray(NONE));
+        this.rendered = Collections.unmodifiableList(renderers);
+        this.draws = ordered.size() + renderers.size();
+        if (draws > 256) {
+            throw new IllegalStateException("A look draws at most 256 layers and renderers, not " + draws);
+        }
         this.scalability = b.scalability;
         this.recipe = b.copy();
     }
@@ -163,6 +210,22 @@ public final class CgVfxLook {
     /** Its layers on {@code slot}, in draw order; empty for none. Allocates nothing. */
     public Placed[] on(CgVfxSlot slot) {
         return slot.id < bySlot.length ? bySlot[slot.id] : NONE;
+    }
+
+    /** {@code emitter}'s renderers as this look draws them, by hint; empty for none. Allocates nothing. */
+    public Placed[] renderers(CgVfxEmitter emitter) {
+        Placed[] p = byEmitter.get(emitter);
+        return p == null ? NONE : p;
+    }
+
+    /** Every emitter's renderers as placed, in draw order, after {@link #placed()}. */
+    public List<Placed> rendered() {
+        return rendered;
+    }
+
+    /** How many draws it places, layers and renderers: each one's {@link Placed#order()} is below it. */
+    public int draws() {
+        return draws;
     }
 
     /** Whether any layer draws on {@code slot}. */

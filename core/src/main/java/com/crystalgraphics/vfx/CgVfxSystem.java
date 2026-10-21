@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
@@ -1102,7 +1103,7 @@ public final class CgVfxSystem {
                 if (drawPlaced < look.placed().size()) {
                     materials.prepare(look, drawPlaced++, warming, halved);
                 } else {
-                    materials.prepareClips(look, warming);
+                    materials.prepareParticles(look, warming);
                     drawWarming.remove(0);
                     drawPlaced = 0;
                 }
@@ -1231,8 +1232,28 @@ public final class CgVfxSystem {
     public static CgWorldRenderer.Draw place(CgWorldRenderer.Draw draw, CgVfxLook.Placed placed, double ox, double oy,
                                              double oz) {
         CgVfxLayer layer = placed.layer();
+        if (layer == null) {
+            // A renderer: its material's sort layer; after the apply unless its material distorts, as a SURFACE layer.
+            CgMaterialDefinition material = placed.renderer().common().definition();
+            boolean distorts = material != null && material.distortion();
+            draw.layer(material == null ? CgSortLayer.EFFECTS : sortLayer(material.sortLayer(), distorts))
+                    .group(ox, oy, oz).order(placed.order());
+            return distorts ? draw : draw.afterDistortion();
+        }
         draw.layer(sortLayer(layer)).group(ox, oy, oz).order(placed.order());
         return layer.role() == CgVfxLayer.Role.SURFACE ? draw.afterDistortion() : draw;
+    }
+
+    /** A material's {@code sort_layer} as the world renderer's, a distorting one after every effect where shared. */
+    private static CgSortLayer sortLayer(String sortLayer, boolean distorts) {
+        return switch (sortLayer) {
+            case "background" -> CgSortLayer.BACKGROUND;
+            case "default" -> SHARED_DISTORTION.get() && distorts ? DISTORTION : CgSortLayer.EFFECTS;
+            case "effects" -> CgSortLayer.EFFECTS;
+            case "overlay" -> CgSortLayer.OVERLAY;
+            default -> throw new IllegalArgumentException("sort_layer " + sortLayer + " is not one of background, default,"
+                    + " effects, overlay");
+        };
     }
 
     /**

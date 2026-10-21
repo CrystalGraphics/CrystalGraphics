@@ -80,7 +80,7 @@ public final class CgVfxRenderers {
         String kind = String.valueOf(tree.get("kind"));
         String who = emitter + "'s renderer " + tree.get("id");
         Common common = common(who, tree, deps);
-        return switch (kind) {
+        CgVfxRendererProperties r = switch (kind) {
             case "sprite" -> new CgVfxSpriteRendererProperties(common, tree,
                     choice(who, tree, "alignment", CgVfxSpriteRendererProperties.Alignment.class, "unaligned"),
                     choice(who, tree, "facing", CgVfxSpriteRendererProperties.Facing.class, "camera"),
@@ -114,6 +114,41 @@ public final class CgVfxRenderers {
             case "light" -> throw new IllegalArgumentException(who + ": a light renderer needs the clustered light bins, which are not built yet");
             default -> throw new IllegalArgumentException(who + " has no kind '" + kind + "'");
         };
+        built(who, r);
+        return r;
+    }
+
+    /** Fails naming {@code who}'s first field the engine does not draw yet, rather than play it as something else. */
+    private static void built(String who, CgVfxRendererProperties r) {
+        String unbuilt = null;
+        if (r instanceof CgVfxSpriteRendererProperties s) {
+            s.factoryFacing(who);
+            if (s.sort() != CgVfxSpriteRendererProperties.Sort.NONE && s.sort() != CgVfxSpriteRendererProperties.Sort.VIEW_DEPTH) unbuilt = "sort " + s.sort();
+            else if (s.pivot()[0] != 0.5f || s.pivot()[1] != 0.5f) unbuilt = "a pivot off its middle";
+            else if (s.subImage() != null && s.subImage().isTable()) unbuilt = "a rect-table sub_image";
+            else if (s.cameraDistance() != null) unbuilt = "camera_distance";
+            else if (s.castShadows()) unbuilt = "cast_shadows";
+            else if (!Float.isNaN(s.softDepth())) unbuilt = "soft_depth";
+        } else if (r instanceof CgVfxMeshRendererProperties m) {
+            if (m.prefab() != null || m.meshBinding() != null || m.meshes().size() > 1) unbuilt = "a prefab, a bound mesh or several meshes";
+            else if (!m.materialOverrides().isEmpty()) unbuilt = "material_overrides";
+            else if (m.facing() != CgVfxMeshRendererProperties.Facing.DEFAULT) unbuilt = "facing " + m.facing();
+            else if (m.lockedAxis() != null) unbuilt = "locked_axis";
+            else if (m.subImage() != null) unbuilt = "sub_image";
+            else if (m.cameraDistance() != null) unbuilt = "camera_distance";
+            else if (m.castShadows()) unbuilt = "cast_shadows";
+        } else if (r instanceof CgVfxRibbonRendererProperties b) {
+            if (b.facing() != CgVfxRibbonRendererProperties.Facing.SCREEN) unbuilt = "facing " + b.facing();
+            else if (b.shape() != CgVfxRibbonRendererProperties.Shape.PLANE) unbuilt = "shape " + b.shape();
+            else if (b.widthSegments() != 0 || b.maxRibbons() != 0 || b.maxLinkGap() != 0) unbuilt = "width_segments, max_ribbons or max_link_gap";
+            else if (b.uv0() != null || b.uv1() != null || b.tessellation() != null) unbuilt = "uv0, uv1 or tessellation";
+            else if (b.linkOrderById()) unbuilt = "link_order_by_id";
+        } else if (r instanceof CgVfxTrailsRendererProperties t) {
+            if (t.taper() != 1f) unbuilt = "taper";
+        } else if (r instanceof CgVfxArcRendererProperties a) {
+            if (a.subdivisions() != 0) unbuilt = "subdivisions";
+        }
+        if (unbuilt != null) throw new IllegalArgumentException(who + " sets " + unbuilt + ", which is not built yet");
     }
 
     private static Common common(String who, Map<String, Object> tree, @Nullable CgAssetCompiler.Dependencies deps) {

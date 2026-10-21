@@ -1,6 +1,8 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.material.CgMaterialDefinitions;
 import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgPropertyRows;
@@ -17,6 +19,9 @@ import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
 import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxSpriteRendererProperties;
+import com.crystalgraphics.vfx.look.CgVfxFlipbook;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
 import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
@@ -27,6 +32,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -48,13 +54,23 @@ final class CgVfxMaterials {
             "A layer's colour or palette property reads the look's colour of its name when nothing binds it; false"
                     + " takes values only through explicit binds, as the format's materials do.");
 
-    /** What a layer resolved to in one look: where each bound value comes from, and its materials by kind. */
+    /** What a layer or a renderer resolved to in one look: where each bound value comes from, and its materials by kind. */
     static final class Resolved {
         final CgVfxLook.Placed placed;
+        /** The layer it draws; null for a renderer, whose material is {@link #definition}. */
         final CgVfxLayer layer;
-        /** Per bound value: its float offset in the look's values, its floats (1, 4, or 4 an entry), its factor. */
+        final CgMaterialDefinition definition;
+        /** Its size, times its size parameter's value where {@link #sizeAt} names one. */
+        final float size;
+        /** What its materials are made from, for their batch keys: the shader and state, or the material asset. */
+        final String source0;
+        /**
+         * Per row value: its float offset in the look's values (-1 for a renderer's constant, {@link #fixed}), its floats
+         * (1, 4, or 4 an entry), its factor.
+         */
         final int[] source, floats;
         final float[] factor;
+        final float[][] fixed;
         /** The row's length in vec4s. */
         final int vec4s;
         /** Each bound property's place in the row, by name: what makes a material's slot ints. */
@@ -69,11 +85,20 @@ final class CgVfxMaterials {
 
         Resolved(CgVfxLook.Placed placed, int[] source, int[] floats, float[] factor, int vec4s, Map<String, Integer> slots,
                  String signature, int sizeAt) {
+            this(placed, null, source, floats, factor, null, vec4s, slots, signature, sizeAt);
+        }
+
+        Resolved(CgVfxLook.Placed placed, CgMaterialDefinition definition, int[] source, int[] floats, float[] factor,
+                 float[][] fixed, int vec4s, Map<String, Integer> slots, String signature, int sizeAt) {
             this.placed = placed;
             this.layer = placed.layer();
+            this.definition = definition;
+            this.size = layer != null ? layer.size() : 1f;
+            this.source0 = layer != null ? layer.shader() + '|' + layer.state() : definition.id();
             this.source = source;
             this.floats = floats;
             this.factor = factor;
+            this.fixed = fixed;
             this.vec4s = vec4s;
             this.slots = slots;
             this.signature = signature;
@@ -81,8 +106,10 @@ final class CgVfxMaterials {
         }
     }
 
-    /** Every material made, by layer, then by kind and signature. */
-    private final Map<CgVfxLayer, Map<String, CgMaterial>> materials = new IdentityHashMap<>();
+    /** Every material made, by layer or renderer material definition, then by kind and signature. */
+    private final Map<Object, Map<String, CgMaterial>> materials = new IdentityHashMap<>();
+    /** A probe material per renderer material definition, made to read what its shader declares. */
+    private final Map<CgMaterialDefinition, CgMaterial> definitionProbes = new IdentityHashMap<>();
     /** A probe material per layer, made to read what its shader declares. */
     private final Map<CgVfxLayer, CgMaterial> probes = new IdentityHashMap<>();
     private final List<CgMaterial> all = new ArrayList<>();
@@ -101,10 +128,10 @@ final class CgVfxMaterials {
     Resolved resolve(CgVfxLook look, CgVfxLook.Placed placed) {
         if (look != lastLook) {
             lastLook = look;
-            lastResolved = resolved.computeIfAbsent(look, l -> new Resolved[l.layers().size()]);
+            lastResolved = resolved.computeIfAbsent(look, l -> new Resolved[l.draws()]);
         }
         Resolved r = lastResolved[placed.order()];
-        if (r == null) lastResolved[placed.order()] = r = make(look, placed);
+        if (r == null) lastResolved[placed.order()] = r = placed.renderer() != null ? rendered(look, placed) : make(look, placed);
         return r;
     }
 
@@ -181,6 +208,141 @@ final class CgVfxMaterials {
     }
 
     /**
+     * A renderer's resolution: its material definition, derived where its keywords or a value on a property without
+     * rows change it (05's interning), its {@code bind}s to the look's user parameters by name and its values on row
+     * properties into the row, in the shader's declaration order.
+     */
+    private Resolved rendered(CgVfxLook look, CgVfxLook.Placed placed) {
+        CgVfxRendererProperties renderer = placed.renderer();
+        CgVfxRendererProperties.Common common = renderer.common();
+        String who = placed.emitter().name() + "'s renderer " + common.id();
+        CgMaterialDefinition definition = common.definition();
+        if (definition == null) {
+            throw new IllegalStateException(who + " names material " + common.material() + ", which nothing compiled: an"
+                    + " emitter built in Java takes it with material(CgMaterialDefinition), a file through its asset");
+        }
+        Map<String, Object> derived = new LinkedHashMap<>();
+        Map<String, Object> rowValues = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> v : common.values().entrySet()) {
+            if (definition.rows().slot(v.getKey()) >= 0) rowValues.put(v.getKey(), v.getValue());
+            else derived.put(v.getKey(), v.getValue());
+        }
+        Map<String, Object> overrides = new LinkedHashMap<>();
+        if (!derived.isEmpty()) overrides.put("values", derived);
+        if (!common.keywords().isEmpty()) {
+            List<String> keywords = new ArrayList<>(definition.permutation().keywords());
+            for (String k : common.keywords()) if (!keywords.contains(k)) keywords.add(k);
+            overrides.put("keywords", keywords);
+        }
+        if (!overrides.isEmpty()) definition = CgMaterialDefinitions.derive(definition, overrides);
+        CgMaterialDefinition material = definition;
+        CgMaterial probe = definitionProbes.computeIfAbsent(material, d -> CgMaterial.newInstance(d, null));
+        if (renderer instanceof CgVfxSpriteRendererProperties sprite) {
+            // The sprite factory's settings, the renderer's own: rows, so renderers differing only in them share a draw.
+            material.requireRow(FACING, who);
+            rowValues.put(FACING, sprite.factoryFacing(who));
+            CgVfxFlipbook flipbook = sprite.subImage();
+            if (flipbook != null) {
+                rowValues.put(SUB_IMAGE, floats(flipbook.subImage()));
+                rowValues.put(SUB_UV, floats(flipbook.subUv()));
+            }
+        }
+        CgVfxLayout layout = look.layout();
+        Map<String, CgVfxParam> bound = new HashMap<>();
+        Map<String, Float> factors = new HashMap<>();
+        for (Map.Entry<String, Object> b : common.bind().entrySet()) {
+            Object form = b.getValue();
+            String from = String.valueOf(form instanceof Map<?, ?> m ? m.get("bind") : form);
+            float scale = form instanceof Map<?, ?> m && m.get("scale") instanceof Number n ? n.floatValue() : 1f;
+            String name = from.substring("user.".length());
+            CgVfxParam param = null;
+            for (CgVfxParam p : layout.params()) {
+                if (!p.name().equals(name)) continue;
+                if (param != null) {
+                    throw new IllegalStateException(who + " binds " + b.getKey() + " to " + from + ", which two of the"
+                            + " look's schemas declare");
+                }
+                param = p;
+            }
+            if (param == null) {
+                throw new IllegalStateException(who + " binds " + b.getKey() + " to " + from + ", which its look does not"
+                        + " declare: its user parameters are " + layout.params());
+            }
+            material.requireRow(b.getKey(), who);
+            bound.put(b.getKey(), param);
+            factors.put(b.getKey(), scale);
+        }
+        List<int[]> entries = new ArrayList<>();
+        List<Float> entryFactors = new ArrayList<>();
+        List<float[]> entryFixed = new ArrayList<>();
+        Map<String, Integer> slots = new HashMap<>();
+        StringBuilder signature = new StringBuilder();
+        int vec4s = 0;
+        for (CgMaterialProperty p : probe.properties()) {
+            CgVfxParam param = bound.get(p.getName());
+            Object constant = rowValues.get(p.getName());
+            if (param == null && constant == null) continue;
+            if (param != null && !fits(p, param)) {
+                throw new IllegalStateException(who + " binds '" + p.getName() + "' (" + p.getType() + ") to " + param
+                        + ", which does not fit it");
+            }
+            slots.put(p.getName(), vec4s);
+            signature.append(p.getName()).append('@').append(vec4s).append(';');
+            if (param != null) {
+                entries.add(new int[] {layout.offset(param), param.floats()});
+                entryFactors.add(factors.get(p.getName()));
+                entryFixed.add(null);
+                vec4s += param instanceof CgVfxParam.Palette ? ((CgVfxParam.Palette) param).count() : 1;
+            } else {
+                float[] v = constant(who, p, constant);
+                entries.add(new int[] {-1, v.length});
+                entryFactors.add(1f);
+                entryFixed.add(v);
+                vec4s += (v.length + 3) / 4;
+            }
+        }
+        int n = entries.size();
+        int[] source = new int[n], floats = new int[n];
+        float[] factor = new float[n];
+        float[][] fixed = new float[n][];
+        for (int i = 0; i < n; i++) {
+            source[i] = entries.get(i)[0];
+            floats[i] = entries.get(i)[1];
+            factor[i] = entryFactors.get(i);
+            fixed[i] = entryFixed.get(i);
+        }
+        return new Resolved(placed, material, source, floats, factor, fixed, vec4s, slots, signature.toString(), -1);
+    }
+
+    /** The sprite factory's facing and flipbook settings, which a sprite renderer's fields write. */
+    private static final String FACING = "_cg_Facing", SUB_IMAGE = "_cg_SubImage", SUB_UV = "_cg_SubUV";
+
+    private static List<Object> floats(float[] v) {
+        List<Object> out = new ArrayList<>(v.length);
+        for (float f : v) out.add(f);
+        return out;
+    }
+
+    /** A renderer's value for row property {@code p}: a number, or a vector of up to its floats, padded to a vec4 each. */
+    private static float[] constant(String who, CgMaterialProperty p, Object value) {
+        int want = p.isArray() ? 4 * p.getCount() : 4;
+        float[] out = new float[want];
+        if (value instanceof Number n) {
+            out[0] = n.floatValue();
+            return p.isArray() || p.getType().getComponents() <= 1 ? Arrays.copyOf(out, 4) : out;
+        }
+        if (value instanceof List<?> list && list.size() <= want) {
+            for (int i = 0; i < list.size(); i++) {
+                if (!(list.get(i) instanceof Number n)) break;
+                out[i] = n.floatValue();
+                if (i == list.size() - 1) return out;
+            }
+        }
+        throw new IllegalStateException(who + " sets " + p.getName() + " to " + value + ", which is not a number or up to "
+                + want + " numbers");
+    }
+
+    /**
      * The colour or palette a property reads by name: {@code _ShellHot} reads {@code shellHot}, the effect's schema
      * first. A number never binds by name: a shader's {@code _Speed} is not the effect's {@code speed}.
      */
@@ -235,16 +397,15 @@ final class CgVfxMaterials {
     CgMaterial material(Resolved r, CgVfxSlot.Kind kind) {
         CgMaterial material = r.byKind[kind.ordinal()];
         if (material != null) return withClips(material);
-        if (r.layer.hasMesh() && kind != CgVfxSlot.Kind.MESH && kind != CgVfxSlot.Kind.PARTICLES
+        if (r.layer != null && r.layer.hasMesh() && kind != CgVfxSlot.Kind.MESH && kind != CgVfxSlot.Kind.PARTICLES
                 && kind != CgVfxSlot.Kind.SEQUENCE) {
             throw new IllegalStateException(r.layer + " draws a mesh, which a " + kind + " slot does not take");
         }
-        Map<String, CgMaterial> mine = materials.computeIfAbsent(r.layer, l -> new HashMap<>());
+        Map<String, CgMaterial> mine = materials.computeIfAbsent(owner(r), l -> new HashMap<>());
         String key = kind + "|" + r.signature;
         material = mine.get(key);
         if (material == null) {
-            material = CgMaterial.newInstance(r.layer.shader(), r.layer.state());
-            configure(material, r, kind);
+            material = made(r, kind);
             mine.put(key, material);
             all.add(material);
             keys.put(material, batchKey(r, kind, ""));
@@ -274,9 +435,8 @@ final class CgVfxMaterials {
         material(r, CgVfxSlot.Kind.PARTICLES);
         CgMaterial material = r.byPool.get(pool);
         if (material == null) {
-            material = CgMaterial.newInstance(r.layer.shader(), r.layer.state());
-            configure(material, r, CgVfxSlot.Kind.PARTICLES);
-            materials.get(r.layer).put(CgVfxSlot.Kind.PARTICLES + "|" + r.signature + "|pool" + (nextPool++), material);
+            material = made(r, CgVfxSlot.Kind.PARTICLES);
+            materials.get(owner(r)).put(CgVfxSlot.Kind.PARTICLES + "|" + r.signature + "|pool" + (nextPool++), material);
             all.add(material);
             keys.put(material, batchKey(r, CgVfxSlot.Kind.PARTICLES, pool.shape().key()));
             r.byPool.put(pool, material);
@@ -286,6 +446,31 @@ final class CgVfxMaterials {
     }
 
     private int nextPool;
+
+    /** What {@code r}'s materials are kept under: its layer, or its renderer's material definition. */
+    private static Object owner(Resolved r) {
+        return r.layer != null ? r.layer : r.definition;
+    }
+
+    /** A new material of {@code r} for slots of {@code kind}, configured: a layer's from its shader, a renderer's from its definition. */
+    private static CgMaterial made(Resolved r, CgVfxSlot.Kind kind) {
+        if (r.layer != null) {
+            CgMaterial material = CgMaterial.newInstance(r.layer.shader(), r.layer.state());
+            configure(material, r, kind);
+            return material;
+        }
+        CgMaterial material = CgMaterial.newInstance(r.definition, kind.keyword());
+        if (kind == CgVfxSlot.Kind.SEQUENCE && !material.isKeywordEnabled(kind.keyword())) {
+            throw new IllegalStateException(r.definition.id() + " draws a part a clip plays, but its shader declares no "
+                    + kind.keyword() + ": place its vertices by FX_SEQUENCE_TO_WORLD (fx_sequence.glsl)");
+        }
+        material.applyProperties(b -> {
+            for (Map.Entry<String, Integer> slot : r.slots.entrySet()) {
+                b.set1i(CgMaterialProperty.rowSlotName(slot.getKey()), slot.getValue());
+            }
+        });
+        return material;
+    }
 
     /** The fluid shade each fluid material was last pointed at: the atlas makes it anew when its pool changes size. */
     private final Map<CgMaterial, CgTexture> fluidShades = new IdentityHashMap<>();
@@ -318,7 +503,7 @@ final class CgVfxMaterials {
      * reorders blending. Strings only: an enum's hash differs run to run. Two materials sharing a key only batch less.
      */
     private static int batchKey(Resolved r, CgVfxSlot.Kind kind, String pool) {
-        int h = (r.layer.shader() + '|' + r.layer.state() + '|' + kind.name() + '|' + r.signature + '|' + pool).hashCode();
+        int h = (r.source0 + '|' + kind.name() + '|' + r.signature + '|' + pool).hashCode();
         h ^= h >>> 16;
         return (h ^ h >>> 12) & 0xFFF;
     }
@@ -369,7 +554,7 @@ final class CgVfxMaterials {
 
     /** {@code r}'s size for {@code effect}: its own, times its size parameter's value when it has one. */
     static float size(CgVfxEffect<?> effect, Resolved r) {
-        return r.sizeAt < 0 ? r.layer.size() : r.layer.size() * effect.values().raw(r.sizeAt);
+        return r.sizeAt < 0 ? r.size : r.size * effect.values().raw(r.sizeAt);
     }
 
     /** Starts a frame's rows. */
@@ -387,7 +572,7 @@ final class CgVfxMaterials {
         int index = r.placed.order();
         if (effect.rowsFrame != frame) {
             effect.rowsFrame = frame;
-            int layers = effect.look().layers().size();
+            int layers = effect.look().draws();
             if (effect.rows.length < layers) effect.rows = new int[layers];
             Arrays.fill(effect.rows, 0, layers, -1);
         }
@@ -400,7 +585,10 @@ final class CgVfxMaterials {
         int write = at * 4;
         for (int i = 0; i < r.source.length; i++) {
             int floats = r.floats[i];
-            if (floats == 1) {
+            if (r.source[i] < 0) {
+                System.arraycopy(r.fixed[i], 0, rows, write, floats);
+                write += floats;
+            } else if (floats == 1) {
                 rows[write] = values.raw(r.source[i]) * r.factor[i];
                 rows[write + 1] = rows[write + 2] = rows[write + 3] = 0f;
                 write += 4;
@@ -422,7 +610,7 @@ final class CgVfxMaterials {
     /** Warms {@code look}'s materials: one per layer and kind it draws on; those drawn at half size also in {@code halved}. */
     void prepare(CgVfxLook look, List<CgMaterial> warming, Set<CgMaterial> halved) {
         for (int i = 0; i < look.placed().size(); i++) prepare(look, i, warming, halved);
-        prepareClips(look, warming);
+        prepareParticles(look, warming);
     }
 
     /** {@link #prepare}'s step for {@code look}'s {@code i}th placed layer: a warm-up's unit of work. */
@@ -436,8 +624,16 @@ final class CgVfxMaterials {
         }
     }
 
-    /** {@link #prepare}'s last step: a clip's parts draw their prefab's layers on SEQUENCE materials, their own programs. */
-    void prepareClips(CgVfxLook look, List<CgMaterial> warming) {
+    /**
+     * {@link #prepare}'s last step: each emitter's renderers on their particles' materials, and a clip's parts, which
+     * draw their prefab's layers on SEQUENCE materials, their own programs.
+     */
+    void prepareParticles(CgVfxLook look, List<CgMaterial> warming) {
+        for (CgVfxLook.Placed placed : look.rendered()) {
+            if (placed.emitter().renderer() == CgVfxEmitter.Renderer.SEQUENCE) continue;   // its parts draw it
+            CgMaterial material = material(resolve(look, placed), CgVfxSlot.Kind.PARTICLES);
+            if (!warming.contains(material)) warming.add(material);
+        }
         for (CgVfxEmitter emitter : look.emitters()) {
             CgVfxNodeClip clip = emitter.clip();
             if (clip == null) continue;

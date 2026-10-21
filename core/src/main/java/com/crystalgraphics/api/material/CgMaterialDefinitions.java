@@ -171,7 +171,8 @@ public final class CgMaterialDefinitions {
         CgMaterialDefinition d = new CgMaterialDefinition(id, asset.parent() == null ? null : asset.parent().id(),
                 permutation, Collections.unmodifiableMap(constants), Collections.unmodifiableMap(forms),
                 Collections.unmodifiableMap(textures), CgMaterialRowLayout.of(parsed.properties()), draw, order,
-                sortLayer, map(m.get("post")), domain, model, Collections.unmodifiableMap(m));
+                sortLayer, map(m.get("post")), domain, model, parsed.getPassByLightMode("Distortion") != null,
+                Collections.unmodifiableMap(m));
         for (String name : forms.keySet()) {
             if (d.route(name) == CgMaterialRoute.ROW) d.requireRow(name, "its bind");
         }

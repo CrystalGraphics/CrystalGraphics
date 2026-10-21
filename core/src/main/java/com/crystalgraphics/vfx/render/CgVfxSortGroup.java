@@ -123,6 +123,10 @@ public final class CgVfxSortGroup {
                 CgVfxLayer layer = p.layer();
                 keys.add(new long[] {layer.role().ordinal(), layer.order(), l, p.order()});
             }
+            // A renderer ranks after every layer's role, by its hint.
+            for (CgVfxLook.Placed p : looks.get(l).rendered()) {
+                keys.add(new long[] {CgVfxLayer.Role.values().length, p.renderer().common().sortOrderHint(), l, p.order()});
+            }
         }
         if (keys.size() > 256) {
             throw new IllegalStateException("a sort group ranks at most 256 layers; its looks draw " + keys.size());
@@ -132,7 +136,7 @@ public final class CgVfxSortGroup {
             return 0;
         });
         ranks.clear();
-        for (int l = 0; l < looks.size(); l++) ranks.put(looks.get(l), new int[looks.get(l).placed().size()]);
+        for (int l = 0; l < looks.size(); l++) ranks.put(looks.get(l), new int[looks.get(l).draws()]);
         for (int i = 0; i < keys.size(); i++) {
             long[] k = keys.get(i);
             ranks.get(looks.get((int) k[2]))[(int) k[3]] = i;

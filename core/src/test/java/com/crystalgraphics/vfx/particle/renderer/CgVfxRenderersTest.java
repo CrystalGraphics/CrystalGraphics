@@ -28,19 +28,19 @@ public class CgVfxRenderersTest {
         List<CgVfxRendererProperties> all = CgVfxRenderers.compileAll("sparks", List.of(
                 Map.of("id", "r1", "kind", "sprite", "material", "test:materials/spark", "alignment", "velocity",
                         "facing", "camera_plane", "sort", "view_depth", "quality", "medium"),
-                Map.of("id", "r2", "kind", "mesh", "meshes", Map.of("prefab", "test:prefabs/rock")),
-                Map.of("id", "r3", "kind", "ribbon", "shape", "tube", "link_order_by_id", true),
-                Map.of("id", "r4", "kind", "arc", "subdivisions", 16),
-                Map.of("id", "r5", "kind", "trails", "points", 12, "taper", 0.5),
+                Map.of("id", "r2", "kind", "mesh", "meshes", List.of(Map.of("mesh", "test:models/rock.glb"))),
+                Map.of("id", "r3", "kind", "ribbon", "shape", "plane"),
+                Map.of("id", "r4", "kind", "arc"),
+                Map.of("id", "r5", "kind", "trails", "points", 12),
                 Map.of("id", "r6", "kind", "sequence", "sequence", "test:sequences/blades", "play_rate", 2.0)));
         CgVfxSpriteRendererProperties sprite = (CgVfxSpriteRendererProperties) all.get(0);
         assertEquals(CgVfxSpriteRendererProperties.Alignment.VELOCITY, sprite.alignment());
         assertEquals(CgVfxSpriteRendererProperties.Facing.CAMERA_PLANE, sprite.facing());
         assertEquals(CgQuality.MEDIUM, sprite.common().quality());
         assertArrayEquals("Unreal's pivot", new float[] {0.5f, 0.5f}, sprite.pivot(), 0f);
-        assertEquals("test:prefabs/rock", ((CgVfxMeshRendererProperties) all.get(1)).prefab());
-        assertEquals(CgVfxRibbonRendererProperties.Shape.TUBE, ((CgVfxRibbonRendererProperties) all.get(2)).shape());
-        assertEquals(16, ((CgVfxArcRendererProperties) all.get(3)).subdivisions());
+        assertEquals(1, ((CgVfxMeshRendererProperties) all.get(1)).meshes().size());
+        assertEquals(CgVfxRibbonRendererProperties.Shape.PLANE, ((CgVfxRibbonRendererProperties) all.get(2)).shape());
+        assertEquals(0, ((CgVfxArcRendererProperties) all.get(3)).subdivisions());
         assertEquals(12, ((CgVfxTrailsRendererProperties) all.get(4)).points());
         assertEquals(2f, ((CgVfxSequenceRendererProperties) all.get(5)).playRate(), 0f);
     }
@@ -54,6 +54,20 @@ public class CgVfxRenderersTest {
         assertEquals(CgVfxFlipbook.Mode.LOOP, f.mode());
         assertThrows(IllegalArgumentException.class, () -> CgVfxRenderers.sprite("r2")
                 .subImage(Map.of("size", List.of(4, 4), "mode", "direct")).build());
+    }
+
+    @Test
+    public void aFieldNotBuiltYetFailsAtLoadNamingIt() {
+        for (Map<String, Object> entry : List.<Map<String, Object>>of(
+                Map.of("id", "r1", "kind", "mesh", "meshes", Map.of("prefab", "test:prefabs/rock")),
+                Map.of("id", "r1", "kind", "ribbon", "shape", "tube"),
+                Map.of("id", "r1", "kind", "trails", "taper", 0.5),
+                Map.of("id", "r1", "kind", "sprite", "facing", "custom"),
+                Map.of("id", "r1", "kind", "sprite", "sort", "spawn_order"))) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                    () -> CgVfxRenderers.compile("sparks", entry));
+            assertTrue(e.getMessage(), e.getMessage().contains("not built yet"));
+        }
     }
 
     @Test

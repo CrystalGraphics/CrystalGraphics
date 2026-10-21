@@ -36,4 +36,23 @@ public record CgVfxSpriteRendererProperties(Common common, Map<String, Object> t
 
     /** {@code ENiagaraSortMode}, and the spawn orders ours adds. */
     public enum Sort { NONE, VIEW_DEPTH, VIEW_DISTANCE, SPAWN_ORDER, OLDEST_FIRST, NEWEST_FIRST }
+
+    /** The sprite factory's facing, {@code fx_particle.glsl}'s {@code FX_FACE_*}: camera 0, position up 5, aligned 6. */
+    public static final float FACE_CAMERA = 0f, FACE_POSITION_UP = 5f, FACE_ALIGNED = 6f;
+
+    /**
+     * How the sprite factory faces it ({@code _cg_Facing}), as {@code NiagaraSpriteVertexFactory.ush}'s
+     * {@code GetTangents} does: an aligned sprite stands along its velocity whatever it faces, an unaligned one lies in
+     * the eye's plane (camera, camera plane) or turns toward the eye round world up (camera position).
+     *
+     * @throws IllegalArgumentException for a custom axis or facing, or a distance blend: not built yet
+     */
+    public float factoryFacing(String who) {
+        if (alignment == Alignment.CUSTOM || facing == Facing.CUSTOM || facing == Facing.CAMERA_DISTANCE_BLEND) {
+            throw new IllegalArgumentException(who + " aligns " + alignment + " facing " + facing
+                    + ": custom axes and distance blends need the sprite attributes, which are not built yet");
+        }
+        if (alignment == Alignment.VELOCITY) return FACE_ALIGNED;
+        return facing == Facing.CAMERA_POSITION ? FACE_POSITION_UP : FACE_CAMERA;
+    }
 }

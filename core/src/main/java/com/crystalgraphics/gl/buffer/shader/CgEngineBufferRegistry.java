@@ -73,7 +73,7 @@ public final class CgEngineBufferRegistry {
         // The sprite factory's settings, the renderer's to set per draw: a port never declares them.
         registerWithProperties("particle", CgParticleBuffer::buffer, CgParticleBuffer.MACRO_NAME,
                 "crystalgraphics:shaders/env/buffer/particle.glsl", """
-                    _cg_Facing ("FX_FACE_*: camera, camera position, upright, velocity, axis", float) = 0
+                    _cg_Facing ("FX_FACE_*: camera, camera position, upright, velocity, axis, position up, aligned", float) = 0
                     _cg_Axis ("The AXIS facing's normal", vec4) = (0, 1, 0, 0)
                     _cg_Stretch ("VELOCITY facing: how much longer per block a second", float) = 0.1
                     _cg_MaxStretch ("VELOCITY facing: longest, in widths", float) = 4.0
