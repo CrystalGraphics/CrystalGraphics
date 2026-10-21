@@ -213,9 +213,9 @@ public final class CgVfxLook {
         return values.shake(param);
     }
 
-    /** A copy of every value, as a playing effect starts from; it takes what a {@link CgVfxTuning} sets after. */
+    /** A copy of every value, as a playing effect starts from. */
     public CgVfxValues copyValues() {
-        return values.follower();
+        return values.copy();
     }
 
     CgVfxValues values() {

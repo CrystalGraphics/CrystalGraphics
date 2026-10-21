@@ -876,47 +876,27 @@ before `stop()`. `ending()` says which one is playing, or null.
 
 ## 10. Tuning a look live, and saving it
 
-Open a look for tuning and every number and colour of it, and every constant its layers set, becomes a **variable**:
-a named value in the engine's registry (`CgVars`), which the console, a tuning panel and remote tools all read and
-write. The look takes a change at once, every effect playing it at
-its next tick, every effect played after starts from it.
+A look tuned live is a system asset: its file is what you edit, and the engine plays what you save. Write a look made
+in code out as a file once ([`vfx/assets.md`](vfx/assets.md) § *A system, as a file and in Java*), play it from its
+ref, and every saved change reaches what is playing it at the next frame: a value in place, a structural change
+restarting it at its age ([`vfx/assets.md`](vfx/assets.md) § *Playing an asset, and changing it while it plays*).
 
 ```java
-CgVfxTuning tuning = CgVfxTuning.open("vfx.kamehameha", CgEnergyWave.kamehameha());
-CgVars.get("vfx.kamehameha.radius").setText(CgVar.Source.CONSOLE, "0.9");
-CgVars.get("vfx.kamehameha.shell.g").setText(CgVar.Source.CONSOLE, "0.8");                      // r, g, b, a
-CgVars.get("vfx.kamehameha.crystalgraphics.charge.radius").setText(CgVar.Source.CONSOLE, "1.5");  // a kit's schema
-CgVars.get("vfx.kamehameha.layer.body_shell._Flow").setText(CgVar.Source.CONSOLE, "30");         // a layer constant
-tuning.save(Paths.get("src/main/resources/assets/mymod/vfx/kamehameha.yaml"));                  // what changed
-tuning.close();
-```
-
-**Overrides in a file**, shipped with the mod and edited live in a dev run:
-
-```java
-CgVfxTuning.open("vfx.kamehameha", LOOK).follow("mymod:vfx/kamehameha.yaml");   // loaded now, and on each save
+Files.write(path, CgAssetYaml.write(CgVfxSystemAssets.write(PUFF), CgParticleKinds.SYSTEM).getBytes(UTF_8));   // once
+static final CgAssetRef<CgVfxSystemDefinition> TUNED = CgVfxAssets.ref(CgParticleKinds.SYSTEM, "mymod:puff");
+VFX.play(new CgVfxSystemInstance<>(TUNED, x, y, z));                        // follows the file as it is saved
 ```
 
 ```yaml
-radius: 0.9
-shell.g: 0.8
-layer.body_shell._Flow: 30.0
+# assets/mymod/vfx/systems/puff.yaml, edited while it plays
+user:
+  radius: { type: float, quantity: length, default: 0.9 }
 ```
 
-| Variable | Named |
-|---|---|
-| A parameter of the effect's own schema | as declared: `radius`, `core.r` |
-| Another schema's | after its schema, `:` and `/` as dots: `crystalgraphics.charge.radius` |
-| A palette's entry | `bands.1.g` |
-| A layer's constant | `layer.<shader name>.<property>`, `_2` and on where two layers share a name; a vector's `x y z w` |
-
-- Hot reload is the engine's own ([`ENGINE_API.md`](ENGINE_API.md) § *Hot reload*): saving the file in a dev run's
-  source folder applies it at the next frame. A file that will not parse keeps the values it had.
-- A file's values are `CgVar.Source.FILE`'s, under the console's; a key the look has not is logged.
-- A layer's constant is the layer's: every look drawing that layer takes it. Only constants the layer `set`s are
-  variables; a shader's own defaults are not.
-- Curves and shakes are not variables. One tuning a prefix at a time; clearing a variable puts back the value it was
-  opened with.
+- A tool edits the same file through `CgVfxAssets.edit`, with exact undo ([`vfx/assets.md`](vfx/assets.md) §
+  *Reading and editing an asset in Java*).
+- One playing effect alone: `effect.set(PARAM, value)` ([§6](#6-parameters-what-a-look-carries)); its look stays as
+  it was.
 
 ---
 
@@ -2369,7 +2349,7 @@ In game and in the harness, `vfx-modules` is a station per feature, replayed eve
 | Particle strips | a trail behind every particle (sparks, embers, fireworks); ribbons through particles |
 | Flocking | spirits round a heart, a school round a vortex, a murmuration of embers |
 
-Unit tests (`./gradlew :core:test --tests "<class>"`): `CgVfxLookTest`, `CgVfxTuningTest`, `CgVfxEndingTest`,
+Unit tests (`./gradlew :core:test --tests "<class>"`): `CgVfxLookTest`, `CgVfxEndingTest`,
 `CgPropertyRowsTest`, `CgVfxCueTest`, `CgVfxAuthorityTest`, `CgVfxHitsTest`, `CgVfxOwnerTest`, `CgVfxStartAtTest`,
 `CgVfxSmokeFillTest`, `CgVfxSortGroupTest`.
 Every shipped shader, each keyword variant, links under shaderc in `:runtime:lwjgl:vulkan:test --tests

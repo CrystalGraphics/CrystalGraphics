@@ -1189,7 +1189,6 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     }
 
     final void step(float dt) {
-        values.takeTuning();
         age += dt;
         if (tweens > 0) stepTweens();
         tick(dt);

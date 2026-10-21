@@ -18,7 +18,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 /**
@@ -57,8 +56,7 @@ import java.util.function.Supplier;
  *       given), then the look's list order.</li>
  *   <li>{@link Builder#state} draws its shader under another blend, cull or depth write, as a kit's material
  *       authors it: one shader for every state a kit asks of it.</li>
- *   <li>Immutable, and shared: a look built from kits shares their layers' materials. A {@link CgVfxTuning} may change
- *       its constants for the run, in every look drawing it.</li>
+ *   <li>Immutable, and shared: a look built from kits shares their layers' materials.</li>
  * </ul>
  */
 public final class CgVfxLayer {
@@ -125,10 +123,6 @@ public final class CgVfxLayer {
     private final CgMeshLods meshLods;
     private final String meshPath;
     private volatile CgMeshLods loaded;
-    /** Constants a tuning changed: the layer's for as long as the run. */
-    private final Map<String, float[]> tuned = new ConcurrentHashMap<>();
-    private volatile int tunings;
-
     private CgVfxLayer(Builder b) {
         this.shader = b.shader;
         this.name = b.name != null ? b.name : defaultName(b.shader);
@@ -264,23 +258,9 @@ public final class CgVfxLayer {
         return constants;
     }
 
-    /** A constant as it stands: as a {@link CgVfxTuning} set it, else as built; null for one it does not set. */
+    /** A constant as built; null for one it does not set. */
     public float[] constant(String property) {
-        float[] tuned = this.tuned.get(property);
-        return tuned != null ? tuned : constants.get(property);
-    }
-
-    /** How many times a tuning has changed its constants: a material re-applies them when this moves. */
-    public int tunings() {
-        return tunings;
-    }
-
-    /** Sets one float of a constant it sets: a tuning's, on any thread. */
-    synchronized void tune(String property, int component, float value) {
-        float[] v = constant(property).clone();
-        v[component] = value;
-        tuned.put(property, v);
-        tunings++;
+        return constants.get(property);
     }
 
     /** Its explicit bindings. */

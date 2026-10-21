@@ -31,22 +31,16 @@ public final class CgVfxValues {
     private int[] linkTo, linkFrom;
     private float[] linkFactor;
     private int links;
-    // A look's values copied for an effect: what takeTuning follows.
-    private final CgVfxValues look;
-    private int tuningsTaken;
-    // On a look's values: the floats a CgVfxTuning set, and how many times it has.
-    private boolean[] tuned;
-    private volatile int tunings;
 
     CgVfxValues(CgVfxLayout layout) {
         this(layout, layout.defaults(), layout.defaultObjects(), layout.linkTo.clone(), layout.linkFrom.clone(),
-                layout.linkFactor.clone(), layout.linkTo.length, null);
+                layout.linkFactor.clone(), layout.linkTo.length);
         order();
         resolve();
     }
 
     private CgVfxValues(CgVfxLayout layout, float[] values, Object[] objects, int[] linkTo, int[] linkFrom,
-                        float[] linkFactor, int links, CgVfxValues look) {
+                        float[] linkFactor, int links) {
         this.layout = layout;
         this.values = values;
         this.objects = objects;
@@ -54,7 +48,6 @@ public final class CgVfxValues {
         this.linkFrom = linkFrom;
         this.linkFactor = linkFactor;
         this.links = links;
-        this.look = look;
     }
 
     public CgVfxLayout layout() {
@@ -209,7 +202,7 @@ public final class CgVfxValues {
 
     public CgVfxValues copy() {
         return new CgVfxValues(layout, values.clone(), objects.clone(), linkTo.clone(), linkFrom.clone(),
-                linkFactor.clone(), links, null);
+                linkFactor.clone(), links);
     }
 
     /**
@@ -250,40 +243,6 @@ public final class CgVfxValues {
             if (a.linkTo[i] != b.linkTo[i] || a.linkFrom[i] != b.linkFrom[i] || a.linkFactor[i] != b.linkFactor[i]) return false;
         }
         return true;
-    }
-
-    /** A copy that {@link #takeTuning} keeps up with these: a look's values handed to an effect. */
-    CgVfxValues follower() {
-        return new CgVfxValues(layout, values.clone(), objects.clone(), linkTo.clone(), linkFrom.clone(),
-                linkFactor.clone(), links, this);
-    }
-
-    /**
-     * Takes what a {@link CgVfxTuning} set on the look these were copied from since the last call, over any value set
-     * here. A playing effect's values take it before each tick; a {@link #copy} follows nothing.
-     */
-    public void takeTuning() {
-        CgVfxValues from = look;
-        if (from == null) return;
-        int count = from.tunings;
-        if (count == tuningsTaken) return;
-        tuningsTaken = count;
-        boolean[] set = from.tuned;
-        for (int i = 0; i < set.length; i++) {
-            if (!set[i]) continue;
-            unlink(i);
-            values[i] = from.values[i];
-        }
-        resolve();
-    }
-
-    synchronized void tune(int offset, float value) {
-        if (tuned == null) tuned = new boolean[values.length];
-        unlink(offset);
-        values[offset] = value;
-        resolve();
-        tuned[offset] = true;
-        tunings++;
     }
 
     private void unlink(int offset) {

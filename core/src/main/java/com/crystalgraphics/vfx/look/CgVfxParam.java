@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.look;
 
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.object.layout.CgLayout;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 
 /**
@@ -42,6 +43,11 @@ public abstract class CgVfxParam {
 
     public final CgVfxSchema schema() {
         return schema;
+    }
+
+    /** Its place in its schema's {@link CgVfxSchema#layout()}: a palette's first entry for a palette. */
+    public final CgLayout.Slot slot() {
+        return schema.layout().slot(this instanceof Palette ? name + "[0]" : name);
     }
 
     /** Floats it takes in a set of values: 1 a number, 3 a vector, 4 a colour, 4 an entry a palette; 0 a curve or a shake. */

@@ -2,6 +2,8 @@ package com.crystalgraphics.vfx.look;
 
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.net.object.CgNetField;
+import com.crystalgraphics.object.layout.CgLayout;
+import com.crystalgraphics.object.layout.CgLayoutValues;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -12,9 +14,10 @@ import java.util.Map;
 import javax.annotation.Nullable;
 
 /**
- * Where each parameter of a look lives in its values: every schema the look includes, its effect's first, laid end to
- * end as flat floats (numbers, colours, palettes) and objects (curves, shakes). Looks of the same schemas share one.
- * Tools walk it; effects never see it.
+ * Where each parameter of a look lives in its values: every schema the look includes, its effect's first, each
+ * schema's {@link CgLayout} laid end to end as flat floats (numbers, colours, palettes) and objects (curves, shakes),
+ * its defaults those layouts' declared defaults. Looks of the same schemas share one. Tools walk it; effects never see
+ * it.
  *
  * <pre>{@code
  * CgVfxLayout layout = look.layout();
@@ -72,38 +75,23 @@ public final class CgVfxLayout {
         parts = Collections.unmodifiableList(hitParts);
         defaults = new float[f];
         defaultObjects = new Object[o];
+        for (CgVfxSchema s : schemas) {
+            CgLayout layout = s.layout();
+            CgLayoutValues declared = layout.values();
+            for (int i = 0; i < layout.floats(); i++) defaults[floatBase[s.id] + i] = declared.floatAt(i);
+            for (CgLayout.Slot slot : layout.slots()) {
+                if (slot.store() == CgLayout.Store.OBJECT) defaultObjects[objectBase[s.id] + slot.offset()] = declared.getObject(slot);
+            }
+        }
         List<int[]> links = new ArrayList<>();
         List<Float> factors = new ArrayList<>();
         for (CgVfxParam p : all) {
-            int at = offset(p);
-            if (p instanceof CgVfxParam.Scalar) {
-                CgVfxParam.Scalar s = (CgVfxParam.Scalar) p;
-                defaults[at] = s.defaultValue();
-                if (s.source != null) {
-                    if (!includes(s.source)) {
-                        throw new IllegalArgumentException(p + " follows " + s.source + ", which this look does not include");
-                    }
-                    links.add(new int[] {at, offset(s.source)});
-                    factors.add(s.factor);
-                }
-            } else if (p instanceof CgVfxParam.Color) {
-                CgVfxParam.Color c = (CgVfxParam.Color) p;
-                defaults[at] = c.r;
-                defaults[at + 1] = c.g;
-                defaults[at + 2] = c.b;
-                defaults[at + 3] = c.a;
-            } else if (p instanceof CgVfxParam.Vector) {
-                CgVfxParam.Vector v = (CgVfxParam.Vector) p;
-                defaults[at] = v.x;
-                defaults[at + 1] = v.y;
-                defaults[at + 2] = v.z;
-            } else if (p instanceof CgVfxParam.Palette) {
-                System.arraycopy(((CgVfxParam.Palette) p).values, 0, defaults, at, p.floats());
-            } else if (p instanceof CgVfxParam.Curve) {
-                defaultObjects[at] = ((CgVfxParam.Curve) p).value;
-            } else {
-                defaultObjects[at] = ((CgVfxParam.Shake) p).value;
+            if (!(p instanceof CgVfxParam.Scalar s) || s.source == null) continue;
+            if (!includes(s.source)) {
+                throw new IllegalArgumentException(p + " follows " + s.source + ", which this look does not include");
             }
+            links.add(new int[] {offset(p), offset(s.source)});
+            factors.add(s.factor);
         }
         linkTo = new int[links.size()];
         linkFrom = new int[links.size()];
@@ -163,7 +151,7 @@ public final class CgVfxLayout {
     }
 
     /**
-     * {@code param}'s name in this layout, which tunings, overrides and cues use: its own for the effect's schema's;
+     * {@code param}'s name in this layout, which system files and cues use: its own for the effect's schema's;
      * after its schema's for another's, {@code :} and {@code /} as dots ({@code crystalgraphics.charge.radius}).
      */
     public String qualifiedName(CgVfxParam param) {

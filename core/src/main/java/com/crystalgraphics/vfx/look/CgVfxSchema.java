@@ -3,17 +3,26 @@ package com.crystalgraphics.vfx.look;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.net.object.CgNetField;
+import com.crystalgraphics.object.CgType;
+import com.crystalgraphics.object.CgTypeKind;
+import com.crystalgraphics.object.CgTypes;
+import com.crystalgraphics.object.CgValueType;
+import com.crystalgraphics.object.layout.CgLayout;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * A named set of parameters: what one effect, one kit or one look reads, each with a default in a unit. A look lays
- * out every schema it includes ({@link CgVfxLayout}): its effect's, each kit's, its own.
+ * out every schema it includes ({@link CgVfxLayout}): its effect's, each kit's, its own. It is a face of the object
+ * model: each parameter declares a property of its {@link #type()}, and where each lives is that type's
+ * {@link CgLayout}, as any declared block of parameters is laid out.
  *
  * <pre>{@code
  * public static final CgVfxSchema SCHEMA = CgVfxSchema.of("mymod:bolt");
@@ -33,6 +42,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li>A name is unique in its schema, and a schema's name among the schemas of a look.</li>
  *   <li>A link's source may be another schema's, as a kit's reach follows its effect's radius; a look including the one
  *       must include the other.</li>
+ *   <li>{@link #type()} and {@link #layout()} freeze it, as a look does: a tool reads them once the looks are built.
+ *       A palette declares one {@code colour} property an entry, {@code name[i]}.</li>
  * </ul>
  */
 public final class CgVfxSchema {
@@ -46,9 +57,22 @@ public final class CgVfxSchema {
     private final List<CgHitPart> parts = new ArrayList<>();
     private int floats, objects;
     private volatile boolean frozen;
+    /** Its parameters as properties, declared as they are; registered, and laid out, when it freezes. */
+    private final CgType.Builder declaration;
+    private CgType type;
+    private CgLayout layout;
 
     private CgVfxSchema(String name) {
         this.name = Objects.requireNonNull(name, "name");
+        this.declaration = CgTypes.create().declare(typeId(name), CgTypeKind.STRUCT);
+    }
+
+    /** {@code name} as a type id: lower case, {@code vfx:} before a name with no namespace. */
+    private static String typeId(String name) {
+        String id = name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_:./]", "_");
+        int colon = id.indexOf(':');
+        if (colon < 0) return "vfx:" + id.replace("/", "_").replace(".", "_");
+        return id.substring(0, colon).replaceAll("[^a-z0-9_]", "_") + ":" + id.substring(colon + 1).replace(":", "_");
     }
 
     /** A schema named {@code name}: by convention {@code namespace:path}, as {@code "crystalgraphics:wave"}. */
@@ -212,8 +236,51 @@ public final class CgVfxSchema {
         return frozen;
     }
 
-    void freeze() {
+    /** Its parameters declared as a type: each one's property, in order, with its quantity and default. Freezes it. */
+    public CgType type() {
+        freeze();
+        return type;
+    }
+
+    /** Where each parameter lives: its type's layout, each float and object at its parameter's offset. Freezes it. */
+    public CgLayout layout() {
+        freeze();
+        return layout;
+    }
+
+    synchronized void freeze() {
+        if (type != null) return;
         frozen = true;
+        type = declaration.register();
+        layout = CgLayout.of(type);
+        for (CgVfxParam p : params) {
+            CgLayout.Slot slot = layout.slot(p instanceof CgVfxParam.Palette ? p.name + "[0]" : p.name);
+            boolean numeric = p.numeric();
+            if (slot == null || (slot.store() == CgLayout.Store.FLOAT) != numeric || slot.offset() != p.local) {
+                throw new IllegalStateException(name + "." + p.name + " is laid out at " + slot + ", not where it was declared ("
+                        + p.local + ")");
+            }
+        }
+    }
+
+    /** Declares {@code param}'s property: what {@link #type()} holds and {@link #layout()} places. */
+    private void declare(CgVfxParam param) {
+        if (param instanceof CgVfxParam.Scalar s) {
+            declaration.property(param.name, CgValueType.FLOAT).quantity(s.unit.quantity()).defaultValue((double) s.defaultValue());
+        } else if (param instanceof CgVfxParam.Color c) {
+            declaration.property(param.name, CgValueType.COLOUR).defaultValue(Arrays.asList((double) c.r, (double) c.g, (double) c.b, (double) c.a));
+        } else if (param instanceof CgVfxParam.Vector v) {
+            declaration.property(param.name, CgValueType.VEC3).defaultValue(Arrays.asList((double) v.x, (double) v.y, (double) v.z));
+        } else if (param instanceof CgVfxParam.Palette p) {
+            for (int i = 0; i < p.count; i++) {
+                declaration.property(param.name + "[" + i + "]", CgValueType.COLOUR).defaultValue(Arrays.asList(
+                        (double) p.values[i * 4], (double) p.values[i * 4 + 1], (double) p.values[i * 4 + 2], (double) p.values[i * 4 + 3]));
+            }
+        } else if (param instanceof CgVfxParam.Curve c) {
+            declaration.property(param.name, CgValueType.CURVE).defaultValue(c.value);
+        } else {
+            declaration.property(param.name, CgValueType.VALUE).defaultValue(((CgVfxParam.Shake) param).value);
+        }
     }
 
     private String unique(String name) {
@@ -231,6 +298,7 @@ public final class CgVfxSchema {
     }
 
     private <P extends CgVfxParam> P add(P param) {
+        declare(param);
         params.add(param);
         if (param.numeric()) floats += param.floats();
         else objects++;

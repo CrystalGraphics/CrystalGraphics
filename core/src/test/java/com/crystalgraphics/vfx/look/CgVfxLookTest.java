@@ -1,5 +1,9 @@
 package com.crystalgraphics.vfx.look;
 
+import com.crystalgraphics.object.CgType;
+import com.crystalgraphics.object.CgValueType;
+import com.crystalgraphics.object.layout.CgLayout;
+import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import org.junit.Test;
 
@@ -33,6 +37,26 @@ public class CgVfxLookTest {
     /** Its emitters authored where BLAST is 10: a look's scaling leaves them to BLAST. */
     private static final CgVfxKit BLAST_KIT = CgVfxKit.of("test:look/blast").params(KIT_SCHEMA).scalesWith(BLAST, 10f)
             .emitter(DUST).build();
+
+    @Test
+    public void aSchemaIsADeclaredTypeLaidOutByItsLayout() {
+        CgVfxSchema schema = CgVfxSchema.of("test:look/typed");
+        CgVfxParam.Scalar size = schema.length("size", 2f);
+        CgVfxParam.Color tint = schema.color("tint", 0xFF336699, 2f);
+        CgVfxParam.Palette bands = schema.palette("bands", 0xFFFFFFFF, 0xFF000000);
+        CgVfxParam.Vector aim = schema.vector("aim", 0f, 1f, 0f);
+        CgVfxLook look = CgVfxLook.builder(schema).build();
+        CgType type = schema.type();
+        assertEquals(CgQuantity.LENGTH, type.property("size").quantity());
+        assertEquals(CgValueType.Kind.COLOUR, type.property("bands[1]").type().kind());
+        CgLayout layout = schema.layout();
+        assertEquals(1 + 4 + 8 + 3, layout.floats());
+        assertEquals(look.layout().offset(tint), tint.slot().offset());
+        assertEquals(look.layout().offset(aim), aim.slot().offset());
+        assertEquals(look.layout().offset(bands), bands.slot().offset());
+        assertEquals(2f, look.get(size), 0f);
+        assertEquals(0x33 / 255f * 2f, look.get(tint, 0), 1e-6f);
+    }
 
     @Test
     public void layersDrawByRoleThenAsAddedAndSlotsHoldTheirOwn() {

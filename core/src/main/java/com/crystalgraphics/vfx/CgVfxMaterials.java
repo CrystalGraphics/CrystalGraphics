@@ -66,8 +66,6 @@ final class CgVfxMaterials {
         final CgMaterial[] byKind = new CgMaterial[CgVfxSlot.Kind.values().length];
         /** Its trails layer's materials by pool, each bound to that pool's history ({@link #material(Resolved, CgVfxParticlePool)}). */
         final Map<CgVfxParticlePool, CgMaterial> byPool = new IdentityHashMap<>();
-        /** The layer's {@code tunings()} its materials' constants were last set at. */
-        int tunings;
 
         Resolved(CgVfxLook.Placed placed, int[] source, int[] floats, float[] factor, int vec4s, Map<String, Integer> slots,
                  String signature, int sizeAt) {
@@ -235,7 +233,6 @@ final class CgVfxMaterials {
 
     /** {@code r}'s material for slots of {@code kind}: made at its first ask, shared by layers resolving alike. */
     CgMaterial material(Resolved r, CgVfxSlot.Kind kind) {
-        if (r.tunings != r.layer.tunings()) retune(r);
         CgMaterial material = r.byKind[kind.ordinal()];
         if (material != null) return withClips(material);
         if (r.layer.hasMesh() && kind != CgVfxSlot.Kind.MESH && kind != CgVfxSlot.Kind.PARTICLES
@@ -332,17 +329,10 @@ final class CgVfxMaterials {
         return key == null ? 0 : key;
     }
 
-    /** A tuning changed {@code r}'s layer's constants: every material of the layer takes them again. */
-    private void retune(Resolved r) {
-        r.tunings = r.layer.tunings();
-        Map<String, CgMaterial> mine = materials.get(r.layer);
-        if (mine == null) return;
-        for (CgMaterial material : mine.values()) material.applyProperties(b -> constants(b, r.layer));
-    }
-
     private static void constants(CgShaderBindings b, CgVfxLayer layer) {
-        for (String property : layer.constants().keySet()) {
-            float[] v = layer.constant(property);
+        for (Map.Entry<String, float[]> c : layer.constants().entrySet()) {
+            String property = c.getKey();
+            float[] v = c.getValue();
             if (v.length == 1) b.set1f(property, v[0]);
             else if (v.length == 2) b.vec2(property, v[0], v[1]);
             else if (v.length == 4) b.vec4(property, v[0], v[1], v[2], v[3]);
