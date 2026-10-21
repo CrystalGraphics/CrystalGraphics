@@ -76,9 +76,9 @@ public final class CgVfxSystemPreparer implements CgAssetPreparer {
                     for (CgTexture t : placed.layer().textures().values()) if (seen.add(t)) textures.add(t);
                 }
                 // A renderer's material samples the registry's texture of each binding's path.
-                for (List<CgVfxLook.Placed> drawn : List.of(look.rendered())) {
+                for (List<CgVfxLook.Placed> drawn : List.of(look.slotted(), look.rendered())) {
                     for (CgVfxLook.Placed placed : drawn) {
-                        CgMaterialDefinition d = placed.renderer().common().definition();
+                        CgMaterialDefinition d = placed.definition();
                         if (d == null) continue;
                         for (CgMaterialDefinition.Texture t : d.textures().values()) {
                             CgTexture texture = CgMaterialRegistry.texture(t.texture());

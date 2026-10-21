@@ -1828,7 +1828,7 @@ public final class CgVfxModules {
                     .opacity(CgKeyframes.start(0f, 0f).to(0.05f, 1f, CgEasings.OUT_QUAD).to(0.85f, 1f, CgEasings.LINEAR)
                             .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
             look.emitter(shell).layer(layerOf("sprite_glow", shell, colours[s][0], colours[s][1], b -> b
-                    .texture("_Sheet", dot).set("_cg_Facing", 3f)
+                    .texture("_Sheet", dot).set("_cg_Facing", 6f)
                     .set("_cg_Stretch", 3f).set("_cg_MaxStretch", 40f)));
             emitters.add(shell);
             sources.add(new float[]{0f, top, 0f});
@@ -2061,8 +2061,8 @@ public final class CgVfxModules {
         CgVfxEmitter onFloor = rain("blockFloor", 420f, 3f, source, splash, ripple);
         Consumer<CgVfxLayer.Builder> streak = b -> b.set("_cg_Stretch", 0.25f).set("_cg_MaxStretch", 12f);
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(onBlock).emitter(onFloor).emitter(splash).emitter(ripple)
-                .layer(facing(onBlock, CYAN, WHITE, dot, 3, streak)).layer(facing(onFloor, CYAN, WHITE, dot, 3, streak))
-                .layer(facing(splash, CYAN, WHITE, dot, 3, streak)).layer(facing(ripple, CYAN, WHITE, ring, 4, null))
+                .layer(facing(onBlock, CYAN, WHITE, dot, 6, streak)).layer(facing(onFloor, CYAN, WHITE, dot, 6, streak))
+                .layer(facing(splash, CYAN, WHITE, dot, 6, streak)).layer(facing(ripple, CYAN, WHITE, ring, 4, null))
                 .build();
         stations.add(new Station("block: Collide box, rain splashing and rippling", x, z, look, List.of(onBlock, onFloor),
                 new float[][]{{0f, source, 0f}, {0f, source, 0f}}, p -> {
@@ -2323,11 +2323,11 @@ public final class CgVfxModules {
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(glints).emitter(runes).emitter(flames).emitter(sparks)
                 .emitter(waves)
                 .layer(facing(glints, GOLD, WHITE, star, 0, null))
-                .layer(facing(runes, VIOLET, WHITE, rune, 1, null))
+                .layer(facing(runes, VIOLET, WHITE, rune, 5, null))
                 .layer(facing(flames, SPIRIT_COOL, SPIRIT_HOT, wisp, 2, b -> b.flipbook(FLAMES)))
-                .layer(facing(sparks, GOLD, WHITE, dot, 3, b -> b.set("_cg_Stretch", 0.6f).set("_cg_MaxStretch", 10f)))
+                .layer(facing(sparks, GOLD, WHITE, dot, 6, b -> b.set("_cg_Stretch", 0.6f).set("_cg_MaxStretch", 10f)))
                 .layer(facing(waves, CYAN, WHITE, ring, 4, null)).build();
-        stations.add(new Station("facing: camera, camera position, upright, velocity, axis", x, z, look,
+        stations.add(new Station("facing: camera, position up, upright, aligned, axis", x, z, look,
                 List.of(glints, runes, flames, sparks, waves),
                 new float[][]{{-7f, 2.5f, 0f}, {-3.5f, 1.8f, 0f}, {0f, 0.2f, 0f}, {3.5f, 0.4f, 0f}, {7f, 0.04f, 0f}}, p -> {
                     for (int lane = 0; lane < 5; lane++) {
@@ -2339,9 +2339,9 @@ public final class CgVfxModules {
     }
 
     /** Each facing lane's mode, and how it turns: what to look for, flying round it. */
-    private static final String[] FACING_NAMES = {"camera", "camera position", "upright", "velocity", "axis"};
-    private static final String[] FACING_HINTS = {"lies in the screen", "turns to your eye", "stands up, turns round y",
-            "lies along its motion", "flat across an axis"};
+    private static final String[] FACING_NAMES = {"camera", "position up", "upright", "aligned", "axis"};
+    private static final String[] FACING_HINTS = {"lies in the screen", "turns to your eye round up", "stands up, turns round y",
+            "stands along its motion", "flat across an axis"};
 
     /** A glowing sprite of {@code sheet}, a single frame unless {@code more} says otherwise, facing as {@code mode}. */
     private static CgVfxLayer facing(CgVfxEmitter e, CgVfxParam.Color cool, CgVfxParam.Color hot, CgTexture sheet, int mode,

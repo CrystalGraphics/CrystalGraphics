@@ -2,11 +2,13 @@ package com.crystalgraphics.api.material;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.WeakHashMap;
@@ -166,17 +168,44 @@ public final class CgMaterialDefinitions {
             }
             constants.put(CLIP, floats(id, CLIP, clip, draw.maskClip()));
         }
+        Set<CgMaterialUsage> usage = usage(id, shader, parsed, strings(m.get("usage")));
         int order = m.get("order") instanceof Number ? ((Number) m.get("order")).intValue() : 0;
         String sortLayer = m.get("sort_layer") instanceof String ? (String) m.get("sort_layer") : "default";
         CgMaterialDefinition d = new CgMaterialDefinition(id, asset.parent() == null ? null : asset.parent().id(),
                 permutation, Collections.unmodifiableMap(constants), Collections.unmodifiableMap(forms),
                 Collections.unmodifiableMap(textures), CgMaterialRowLayout.of(parsed.properties()), draw, order,
-                sortLayer, map(m.get("post")), domain, model, parsed.getPassByLightMode("Distortion") != null,
-                Collections.unmodifiableMap(m));
+                sortLayer, map(m.get("post")), domain, model, parsed.getPassByLightMode("Distortion") != null, parsed.tube(),
+                usage, Collections.unmodifiableMap(m));
         for (String name : forms.keySet()) {
             if (d.route(name) == CgMaterialRoute.ROW) d.requireRow(name, "its bind");
         }
         return d;
+    }
+
+    /**
+     * What draws a material: its file's {@code usage}, static mesh where it lists none, each checked against what its
+     * archetype can be compiled for (see {@link CgMaterialUsage}).
+     */
+    private static Set<CgMaterialUsage> usage(String id, String shader, CgParsedShader parsed, List<String> names) {
+        Set<CgMaterialUsage> usage = EnumSet.noneOf(CgMaterialUsage.class);
+        for (String n : names) usage.add(CgMaterialUsage.of(n));
+        if (usage.isEmpty()) usage.add(CgMaterialUsage.STATIC_MESH);
+        Set<CgMaterialUsage> serves = EnumSet.noneOf(CgMaterialUsage.class);
+        for (CgMaterialUsage u : CgMaterialUsage.values()) {
+            if (u.keyword() != null && parsed.featureNames().contains(u.keyword())) serves.add(u);
+        }
+        boolean particles = parsed.engineBuffers().contains("particle");
+        if (!serves.isEmpty()) serves.add(CgMaterialUsage.STATIC_MESH);
+        else if (particles) serves.addAll(EnumSet.of(CgMaterialUsage.SPRITES, CgMaterialUsage.MESH_PARTICLES, CgMaterialUsage.RIBBONS));
+        else serves.addAll(EnumSet.of(CgMaterialUsage.STATIC_MESH, CgMaterialUsage.SKELETAL_MESH));
+        for (CgMaterialUsage u : usage) {
+            if (!serves.contains(u)) {
+                throw new CgAssetException(id + " is used with " + u.fileName() + ", which " + shader + " is not compiled"
+                        + " for: " + (u.keyword() == null ? "it is a particle program (#pragma cg_use particle)"
+                        : "it declares no #pragma cg_feature " + u.keyword()));
+            }
+        }
+        return Collections.unmodifiableSet(usage);
     }
 
     /**

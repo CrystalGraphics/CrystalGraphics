@@ -10,6 +10,7 @@ import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -51,6 +52,9 @@ import java.util.Objects;
  *     {@code "CastShadows" = "Off"}; {@code true} in all other cases (including
  *     when the tag is absent). Controls whether the shadow auto-generation ladder
  *     runs during {@code recompile()}.
+ * @param tube
+ *     The tube geometry it needs on a tube slot, by its material-level {@code "Tube"} tag: {@code Volume} a chunk on a
+ *     sphere round it, {@code Closed} a chunk closed at both ends; null for the chunked tube.
  * @param sceneColorMargin
  *     How far past its own geometry a draw samples {@code cg_SceneColor}, a share of the target's height: the
  *     material-level {@code "SceneColorMargin"} tag, NaN when absent, and required of a shader that reads it. The
@@ -91,8 +95,24 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
                               List<String> featureNames, List<String> engineBuffers, int renderQueue,
                               String renderType, boolean castShadows, float sceneColorMargin, boolean unlit,
                               boolean unfogged, boolean linearColor, boolean unmediated, boolean emissiveOpacity,
-                              DepthMode depthMode,
+                              DepthMode depthMode, @Nullable Tube tube,
                               List<CgParsedPass> passes, List<CgBufferDecl> buffers, String bufferStructs) {
+
+    /**
+     * The geometry a shader needs on a tube slot, by its {@code "Tube"} tag; a material of one on any other slot fails
+     * at load.
+     *
+     * <pre>{@code
+     * Tags { "RenderType" = "Transparent" "Tube" = "Volume" }   // sums its own chunk's light: drawn on a sphere round it
+     * Tags { "RenderType" = "Transparent" "Tube" = "Closed" }   // traces the view ray through its rings: ends capped
+     * }</pre>
+     */
+    public enum Tube {
+        /** Each chunk drawn on a sphere round it: a shader summing its own chunk's light. */
+        VOLUME,
+        /** Each chunk closed at both ends: a shader tracing the view ray through its rings. */
+        CLOSED
+    }
 
     /**
      * How a material writes depth where it is solid, by its {@code "Depth"} tag (Godot's alpha scissor and depth
@@ -175,7 +195,7 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
         }
         return new CgParsedShader(shaderType, properties, featureNames, engineBuffers, renderQueue, renderType,
                 castShadows, sceneColorMargin, unlit, unfogged, linearColor, unmediated, emissiveOpacity,
-                state.clip() ? DepthMode.CLIP : depthMode, Collections.unmodifiableList(out), buffers, bufferStructs);
+                state.clip() ? DepthMode.CLIP : depthMode, tube, Collections.unmodifiableList(out), buffers, bufferStructs);
     }
 
     /** A Forward pass's {@code rs} under {@code state}'s blend, and with its clip writing depth as the parser makes it. */

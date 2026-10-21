@@ -63,10 +63,10 @@ void _cg_sprite(float facing, vec4 axis, float stretch, float maxStretch, float 
     int mode = int(facing + 0.5);
     vec3 right, up;
     fx_particle_facing(mode, centre, velocity, axis.xyz, eye, eyeRight, eyeUp, right, up);
-    bool streak = mode == FX_FACE_VELOCITY;
-    float length_ = streak ? min(1.0 + length(velocity) * stretch, maxStretch) : 1.0;
-    vec2 extent = size * CG_PARTICLE_SCALE(i).xy * vec2(length_, 1.0);
-    float spin = streak ? 0.0 : CG_PARTICLE_SPIN(i);
+    bool aligned = mode == FX_FACE_ALIGNED;
+    float length_ = aligned ? clamp(1.0 + length(velocity) * stretch, 1.0, maxStretch) : 1.0;
+    vec2 extent = size * CG_PARTICLE_SCALE(i).xy * vec2(1.0, length_);
+    float spin = aligned ? 0.0 : CG_PARTICLE_SPIN(i);
     float a, b, blend;
     fx_subuv_frames(subUv, subImage, CG_PARTICLE_AGE(i), CG_PARTICLE_PROGRESS(i), CG_PARTICLE_SEED(i), a, b, blend);
     vec2 uvA = fx_subimage_uv(subImages, subImage, a, corner), uvB = fx_subimage_uv(subImages, subImage, b, corner);

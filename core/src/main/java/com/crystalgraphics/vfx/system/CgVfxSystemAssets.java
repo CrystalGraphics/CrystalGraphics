@@ -21,6 +21,7 @@ import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.look.CgVfxUnit;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterAssets;
+import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 
 /**
  * The {@code system} kind's compiler and writer: a system asset to the {@link CgVfxSystemDefinition} a
@@ -139,6 +140,15 @@ public final class CgVfxSystemAssets {
         }
         if (!handles.isEmpty() || effectId == null) tree.put("emitters", handles);
         if (effectId != null) tree.put("effect", effectId);
+        // Its own slot renderers: what it adds over its behaviour's look, which a file names by its effect alone.
+        List<Object> slots = new ArrayList<>();
+        List<CgVfxLook.Placed> inherited = contract == null ? List.of() : contract.look().slotted();
+        for (CgVfxLook.Placed placed : look.slotted()) {
+            boolean theirs = false;
+            for (CgVfxLook.Placed c : inherited) theirs |= c.slotRenderer() == placed.slotRenderer();
+            if (!theirs) slots.add(placed.slotRenderer().tree());
+        }
+        if (!slots.isEmpty()) tree.put("slots", slots);
         return tree;
     }
 
@@ -188,6 +198,13 @@ public final class CgVfxSystemAssets {
         Map<?, ?> user = tree.get("user") instanceof Map<?, ?> u ? u : Map.of();
         List<CgVfxEmitter> emitters = new ArrayList<>();
         CgVfxKit.Builder kit = CgVfxKit.of(id);
+        boolean slotted = false;
+        if (tree.get("slots") instanceof List<?> entries) {
+            for (Object o : entries) {
+                kit.slot(CgVfxSlotRenderer.compile(id, (Map<?, ?>) o, deps));
+                slotted = true;
+            }
+        }
         if (tree.get("emitters") instanceof List<?> handles) {
             for (Object o : handles) {
                 Map<?, ?> h = (Map<?, ?>) o;
@@ -202,7 +219,7 @@ public final class CgVfxSystemAssets {
             effect = EFFECTS.get(name);
             if (effect == null) throw new IllegalArgumentException(id + ": effect " + name + " has no behaviour registered");
             if (effect.contract() != null) {
-                CgVfxLook look = contracted(id, name, effect.contract(), user, emitters.isEmpty() ? null : kit.build());
+                CgVfxLook look = contracted(id, name, effect.contract(), user, emitters.isEmpty() && !slotted ? null : kit.build());
                 return new CgVfxSystemDefinition(id, look, effect.factory(), emitters);
             }
         }

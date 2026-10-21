@@ -262,10 +262,13 @@ public final class CgVfxFrame {
      * Whether {@code effect}'s tier this frame (the system's, lowered by its distance) is below {@code layer}'s, or
      * {@link CgVfxSystem#skipped()} names it.
      */
-    private boolean skips(CgVfxEffect<?> effect, CgVfxLayer layer) {
-        if (!system.quality(effect.lowered).atLeast(layer.from())) return true;
+    /** Whether {@code effect} at its tier, with the parts skipped, leaves {@code placed} out. */
+    private boolean skips(CgVfxEffect<?> effect, CgVfxLook.Placed placed) {
+        CgQuality from = placed.from();
+        if (from != null && !system.quality(effect.lowered).atLeast(from)) return true;
+        String name = placed.partName();
         for (String token : CgVfxSystem.skippedParts()) {
-            if (layer.shader().contains(token)) return true;
+            if (name.contains(token)) return true;
         }
         return false;
     }
@@ -290,11 +293,10 @@ public final class CgVfxFrame {
         CgVfxLook look = effect.look();
         CgVfxLook.Placed[] on = look.on(slot);
         for (CgVfxLook.Placed placed : on) {
-            CgVfxLayer layer = placed.layer();
-            if (skips(effect, layer)) continue;
+            if (skips(effect, placed)) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             boundPath(effect, path, CgVfxMaterials.size(effect, r));
-            CgMesh mesh = layer.isVolume() ? system.volumeMesh() : layer.isClosed() ? system.closedTubeMesh() : system.tubeMesh();
+            CgMesh mesh = placed.volume() ? system.volumeMesh() : placed.closed() ? system.closedTubeMesh() : system.tubeMesh();
             system.tube().submit(world, mesh, materials.material(r, CgVfxSlot.Kind.TUBE), placed, path, row, effect,
                     CgVfxMaterials.size(effect, r), materials.row(effect, r), effect.age, effect.seed, effect.presence());
         }
@@ -334,11 +336,11 @@ public final class CgVfxFrame {
         kind(slot, CgVfxSlot.Kind.MESH);
         CgVfxLook look = effect.look();
         for (CgVfxLook.Placed placed : look.on(slot)) {
-            if (skips(effect, placed.layer())) continue;
+            if (skips(effect, placed)) continue;
             CgVfxTrace.count(DRAWS_MESH, 1);
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             CgMaterial material = materials.material(r, CgVfxSlot.Kind.MESH);
-            CgMeshLods own = mesh != null ? mesh : placed.layer().mesh();
+            CgMeshLods own = mesh != null ? mesh : placed.mesh();
             dress(own != null ? world.draw(own, material) : world.draw(system.sphereMesh(), material), effect, r, x, y, z,
                     transform, own != null ? own.reach() : 1f, presence, ex, ey, ez, ew).submit();
         }
@@ -354,7 +356,7 @@ public final class CgVfxFrame {
         kind(slot, CgVfxSlot.Kind.RIBBONS);
         CgVfxLook look = effect.look();
         for (CgVfxLook.Placed placed : look.on(slot)) {
-            if (skips(effect, placed.layer())) continue;
+            if (skips(effect, placed)) continue;
             CgVfxTrace.count(DRAWS_RIBBONS, 1);
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             dress(world.draw(system.ribbonMesh(), materials.material(r, CgVfxSlot.Kind.RIBBONS)), effect, r, x, y, z,
@@ -529,10 +531,10 @@ public final class CgVfxFrame {
                 for (int part = prefab.firstPart(node), end = prefab.firstPart(node + 1); part < end; part++) {
                     CgMeshLods mesh = prefab.partMesh(part);
                     for (CgVfxLook.Placed placed : look.on(prefab.partSlot(part))) {
-                        if (skips(effect, placed.layer())) continue;
+                        if (skips(effect, placed)) continue;
                         CgVfxMaterials.Resolved r = materials.resolve(look, placed);
                         Renderer rd = rs.next(Shape.SEQUENCE, placed, r, materials.material(r, CgVfxSlot.Kind.SEQUENCE));
-                        CgMeshLods own = mesh != null ? mesh : placed.layer().mesh();
+                        CgMeshLods own = mesh != null ? mesh : placed.mesh();
                         rd.mesh = own;
                         rd.node = node;
                         rd.carried = section.reach(own != null ? own.reach() : 1f);
@@ -544,7 +546,7 @@ public final class CgVfxFrame {
         boolean meshes = def.renderer() == CgVfxEmitter.Renderer.MESHES, arcs = def.renderer() == CgVfxEmitter.Renderer.ARCS;
         for (CgVfxLook.Placed placed : look.on(def.slot())) {
             CgVfxLayer layer = placed.layer();
-            if (skips(effect, layer)) continue;
+            if (skips(effect, placed)) continue;
             if (!meshes && layer.hasMesh()) {
                 throw new IllegalStateException(layer + " draws a mesh, which only a mesh slot or a MESHES emitter takes");
             }
@@ -566,7 +568,7 @@ public final class CgVfxFrame {
         for (CgVfxLook.Placed placed : look.renderers(def)) {
             CgVfxRendererProperties renderer = placed.renderer();
             String who = def.name() + "'s renderer " + renderer.common().id();
-            if (skips(effect, renderer)) continue;
+            if (skips(effect, placed)) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             if (renderer instanceof CgVfxTrailsRendererProperties t) {
                 requireRenderer(who, def, CgVfxEmitter.Renderer.QUADS);
@@ -643,17 +645,6 @@ public final class CgVfxFrame {
             throw new IllegalStateException(who + " draws its particles as " + renderer + ", but " + def.name()
                     + " lays them out as " + def.renderer());
         }
-    }
-
-    /** Whether {@code effect} at its tier, with the parts skipped, leaves {@code renderer} out. */
-    private boolean skips(CgVfxEffect<?> effect, CgVfxRendererProperties renderer) {
-        CgQuality from = renderer.common().quality();
-        if (from != null && !system.quality(effect.lowered).atLeast(from)) return true;
-        String material = renderer.common().material();
-        for (String token : CgVfxSystem.skippedParts()) {
-            if (material != null && material.contains(token)) return true;
-        }
-        return false;
     }
 
     /** Every mesh a mesh renderer named, loaded once and kept: a mesh uploaded stays. */
@@ -854,7 +845,7 @@ public final class CgVfxFrame {
         kind(slot, CgVfxSlot.Kind.BILLBOARD);
         CgVfxLook look = effect.look();
         for (CgVfxLook.Placed placed : look.on(slot)) {
-            if (skips(effect, placed.layer())) continue;
+            if (skips(effect, placed)) continue;
             CgVfxTrace.count(DRAWS_BILLBOARD, 1);
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             // Its bounds: the cube its transform scales, whichever way the shader turns it.
@@ -891,7 +882,7 @@ public final class CgVfxFrame {
         }
         float cx = (minX + maxX) * 0.5f, cy = (minY + maxY) * 0.5f, cz = (minZ + maxZ) * 0.5f;
         for (CgVfxLook.Placed placed : on) {
-            if (skips(effect, placed.layer())) continue;
+            if (skips(effect, placed)) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             float size = CgVfxMaterials.size(effect, r);
             float reach = widest * Math.max(size, 1f) * 2f;
@@ -936,10 +927,10 @@ public final class CgVfxFrame {
         boolean blade = trail.mode() == CgVfxTrail.Mode.BLADE;
         float ox = (float) (ax - effect.originX), oy = (float) (ay - effect.originY), oz = (float) (az - effect.originZ);
         for (CgVfxLook.Placed placed : on) {
-            if (skips(effect, placed.layer())) continue;
+            if (skips(effect, placed)) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             float size = CgVfxMaterials.size(effect, r);
-            int subs = placed.layer().subdivisions() > 0 ? placed.layer().subdivisions() : TRAIL_QUADS;
+            int subs = placed.subdivisions() > 0 ? placed.subdivisions() : TRAIL_QUADS;
             CgMesh mesh = CgMesh.vertices(sizeClass((points - 1) * subs, 16) * 6, CgMeshTopology.TRIANGLES);
             // A ribbon reaches its widest half-width past its points; a blade past its tips as far as its size goes.
             float reach = blade ? Math.max(size - 1f, 0f) * 2f * Math.max(hx, Math.max(hy, hz)) : size * trail.widest();
@@ -981,7 +972,7 @@ public final class CgVfxFrame {
         float ox = (float) (fluid.x() - effect.originX), oy = (float) (fluid.y() - effect.originY),
                 oz = (float) (fluid.z() - effect.originZ);
         for (CgVfxLook.Placed placed : look.on(slot)) {
-            if (skips(effect, placed.layer())) continue;
+            if (skips(effect, placed)) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             CgMaterial material = materials.material(r, CgVfxSlot.Kind.FLUID);
             materials.fluid(material, shade, restA, restB, pages);
@@ -1019,7 +1010,7 @@ public final class CgVfxFrame {
         float ox = (float) (grid.x() - effect.originX), oy = (float) (grid.y() - effect.originY),
                 oz = (float) (grid.z() - effect.originZ);
         for (CgVfxLook.Placed placed : look.on(slot)) {
-            if (skips(effect, placed.layer())) continue;
+            if (skips(effect, placed)) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             CgMaterial material = materials.material(r, CgVfxSlot.Kind.GRID);
             materials.grid(material, view, light, pages);

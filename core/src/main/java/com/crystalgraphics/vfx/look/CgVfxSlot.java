@@ -159,6 +159,24 @@ public final class CgVfxSlot {
         return of(Kind.PARTICLES, emitter);
     }
 
+    /**
+     * The slot declared under {@code name}, a behaviour's (not an emitter's particles); null for none. What a system
+     * file's {@code slots:} names.
+     *
+     * @throws IllegalArgumentException if slots of two kinds share the name
+     */
+    public static CgVfxSlot named(String name) {
+        synchronized (INTERNED) {
+            CgVfxSlot found = null;
+            for (CgVfxSlot s : BY_ID) {
+                if (s.kind == Kind.PARTICLES || !s.name.equals(name)) continue;
+                if (found != null) throw new IllegalArgumentException("slot " + name + " is both a " + found.kind + " and a " + s.kind);
+                found = s;
+            }
+            return found;
+        }
+    }
+
     public String name() {
         return name;
     }

@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.particle.renderer;
 
 import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.material.CgMaterialUsage;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.settings.CgQuality;
@@ -115,7 +116,22 @@ public final class CgVfxRenderers {
             default -> throw new IllegalArgumentException(who + " has no kind '" + kind + "'");
         };
         built(who, r);
+        if (common.definition() != null) common.definition().requireUsage(usage(r), who);
         return r;
+    }
+
+    /**
+     * The usage a renderer draws its material as: sprites and arcs {@code sprites}, meshes and clips' parts {@code
+     * mesh_particles}, ribbons and trails {@code ribbons}.
+     */
+    public static CgMaterialUsage usage(CgVfxRendererProperties r) {
+        if (r instanceof CgVfxMeshRendererProperties || r instanceof CgVfxSequenceRendererProperties) {
+            return CgMaterialUsage.MESH_PARTICLES;
+        }
+        if (r instanceof CgVfxRibbonRendererProperties || r instanceof CgVfxTrailsRendererProperties) {
+            return CgMaterialUsage.RIBBONS;
+        }
+        return CgMaterialUsage.SPRITES;
     }
 
     /** Fails naming {@code who}'s first field the engine does not draw yet, rather than play it as something else. */

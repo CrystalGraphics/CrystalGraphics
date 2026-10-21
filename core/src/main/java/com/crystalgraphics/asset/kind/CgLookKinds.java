@@ -72,6 +72,8 @@ public final class CgLookKinds {
     public static final CgType MATERIAL = CgTypes.kind("crystalgraphics:material").folder("materials").version(1)
             .property("shader", CgValueType.NAMESPACED_ID).flags(CgPropertyFlag.STRUCTURAL)
             .property("state", CgValueType.struct(STATE))
+            .property("usage", CgValueType.listOf(CgValueType.enumOf("static_mesh", "skeletal_mesh", "sprites",
+                    "mesh_particles", "ribbons"))).flags(CgPropertyFlag.STRUCTURAL)
             .property("post", CgValueType.struct(POST))
             .property("order", INT).forms(CgValueForm.CONSTANT).range(0, 255)
             .property("sort_layer", CgValueType.enumOf("background", "default", "effects", "overlay"))

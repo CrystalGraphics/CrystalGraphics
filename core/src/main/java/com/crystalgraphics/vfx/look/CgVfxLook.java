@@ -5,6 +5,11 @@ import com.crystalgraphics.vfx.CgVfxScalability;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
+import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.mesh.CgMeshLods;
+import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.settings.CgQuality;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -47,25 +52,79 @@ import java.util.function.Consumer;
  */
 public final class CgVfxLook {
 
-    /** A layer, or an emitter's renderer, as this look draws it, and where among its draws. */
+    /** A layer, an emitter's renderer or a slot renderer, as this look draws it, and where among its draws. */
     public static final class Placed {
         final CgVfxLayer layer;
         final CgVfxEmitter emitter;
         final CgVfxRendererProperties renderer;
+        final CgVfxSlotRenderer slotRenderer;
         final int order;
 
         Placed(CgVfxLayer layer, int order) {
-            this.layer = layer;
-            this.emitter = null;
-            this.renderer = null;
-            this.order = order;
+            this(layer, null, null, null, order);
         }
 
         Placed(CgVfxEmitter emitter, CgVfxRendererProperties renderer, int order) {
-            this.layer = null;
+            this(null, emitter, renderer, null, order);
+        }
+
+        Placed(CgVfxSlotRenderer slotRenderer, int order) {
+            this(null, null, null, slotRenderer, order);
+        }
+
+        private Placed(CgVfxLayer layer, CgVfxEmitter emitter, CgVfxRendererProperties renderer,
+                       CgVfxSlotRenderer slotRenderer, int order) {
+            this.layer = layer;
             this.emitter = emitter;
             this.renderer = renderer;
+            this.slotRenderer = slotRenderer;
             this.order = order;
+        }
+
+        /** The slot renderer it draws; null for a layer or an emitter's renderer. */
+        public CgVfxSlotRenderer slotRenderer() {
+            return slotRenderer;
+        }
+
+        /** Its material definition: a renderer's or a slot renderer's; null for a layer, whose material is its shader. */
+        public CgMaterialDefinition definition() {
+            return renderer != null ? renderer.common().definition() : slotRenderer != null ? slotRenderer.definition() : null;
+        }
+
+        /** The tier it draws from: a layer's {@code from}, a renderer's {@code quality}; null for every tier. */
+        public CgQuality from() {
+            return layer != null ? layer.from() : renderer != null ? renderer.common().quality() : slotRenderer.quality();
+        }
+
+        /** What a skipped part's name is matched against: a layer's shader, else its material's id. */
+        public String partName() {
+            return layer != null ? layer.shader() : renderer != null ? String.valueOf(renderer.common().material())
+                    : slotRenderer.material();
+        }
+
+        /** The mesh it draws on a mesh slot or per particle; null for the slot's own. */
+        public CgMeshLods mesh() {
+            return layer != null ? layer.mesh() : slotRenderer != null ? slotRenderer.mesh() : null;
+        }
+
+        /** Quads between two points of a strip it draws; 0 for the shader's own. */
+        public int subdivisions() {
+            return layer != null ? layer.subdivisions() : 0;
+        }
+
+        /** Whether a tube slot draws it chunk by chunk on a sphere: a layer's {@code volume()}, an archetype's Volume. */
+        public boolean volume() {
+            return layer != null ? layer.isVolume() : slotRenderer != null && slotRenderer.tube() == CgParsedShader.Tube.VOLUME;
+        }
+
+        /** Whether a tube slot draws it closed at both ends: a layer's {@code closed()}, an archetype's Closed. */
+        public boolean closed() {
+            return layer != null ? layer.isClosed() : slotRenderer != null && slotRenderer.tube() == CgParsedShader.Tube.CLOSED;
+        }
+
+        /** The slots it draws on: a layer's, a slot renderer's one; none for an emitter's renderer. */
+        public List<CgVfxSlot> slots() {
+            return layer != null ? layer.slots : slotRenderer != null ? List.of(slotRenderer.slot()) : List.of();
         }
 
         /** The layer it draws; null for a renderer. */
@@ -103,6 +162,7 @@ public final class CgVfxLook {
     /** Each emitter's renderers as placed, after every layer; and every placement, layers then renderers. */
     private final Map<CgVfxEmitter, Placed[]> byEmitter = new IdentityHashMap<>();
     private final List<Placed> rendered;
+    private final List<Placed> slotted;
     private final int draws;
     private final CgVfxScalability scalability;
     private final Builder recipe;
@@ -148,6 +208,20 @@ public final class CgVfxLook {
                 slots.get(slot.id).add(p);
             }
         }
+        // Slot renderers after the layers, in the look's order, then their material's order.
+        List<CgVfxSlotRenderer> slotted = new ArrayList<>();
+        for (Entry e : b.entries) if (e.part instanceof CgVfxSlotRenderer) slotted.add((CgVfxSlotRenderer) e.part);
+        slotted.sort(Comparator.comparingInt(r -> r.definition() == null ? 0 : r.definition().order()));
+        List<Placed> slotPlaced = new ArrayList<>();
+        for (CgVfxSlotRenderer r : slotted) {
+            Placed p = new Placed(r, ordered.size() + slotPlaced.size());
+            slotPlaced.add(p);
+            CgVfxSlot slot = r.slot();
+            while (slots.size() <= slot.id) slots.add(null);
+            if (slots.get(slot.id) == null) slots.set(slot.id, new ArrayList<>());
+            slots.get(slot.id).add(p);
+        }
+        this.slotted = Collections.unmodifiableList(slotPlaced);
         this.placed = Collections.unmodifiableList(all);
         this.layers = Collections.unmodifiableList(ordered);
         this.bySlot = new Placed[slots.size()][];
@@ -163,14 +237,15 @@ public final class CgVfxLook {
         }
         pairs.sort(Comparator.comparingInt(pair -> ((CgVfxRendererProperties) pair[1]).common().sortOrderHint()));
         Map<CgVfxEmitter, List<Placed>> mine = new IdentityHashMap<>();
+        int first = ordered.size() + slotPlaced.size();
         for (Object[] pair : pairs) {
-            Placed p = new Placed((CgVfxEmitter) pair[0], (CgVfxRendererProperties) pair[1], ordered.size() + renderers.size());
+            Placed p = new Placed((CgVfxEmitter) pair[0], (CgVfxRendererProperties) pair[1], first + renderers.size());
             renderers.add(p);
             mine.computeIfAbsent(p.emitter, x -> new ArrayList<>()).add(p);
         }
         for (Map.Entry<CgVfxEmitter, List<Placed>> e : mine.entrySet()) byEmitter.put(e.getKey(), e.getValue().toArray(NONE));
         this.rendered = Collections.unmodifiableList(renderers);
-        this.draws = ordered.size() + renderers.size();
+        this.draws = first + renderers.size();
         if (draws > 256) {
             throw new IllegalStateException("A look draws at most 256 layers and renderers, not " + draws);
         }
@@ -221,6 +296,11 @@ public final class CgVfxLook {
     /** Every emitter's renderers as placed, in draw order, after {@link #placed()}. */
     public List<Placed> rendered() {
         return rendered;
+    }
+
+    /** Its slot renderers as placed, in draw order, after {@link #placed()}. */
+    public List<Placed> slotted() {
+        return slotted;
     }
 
     /** How many draws it places, layers and renderers: each one's {@link Placed#order()} is below it. */
@@ -383,6 +463,12 @@ public final class CgVfxLook {
             flatten(with, new ArrayList<>(), added);
             entries.addAll(at < 0 ? entries.size() : Math.min(at, entries.size()), added);
             for (CgVfxSchema s : with.schemas()) if (!schemas.contains(s)) schemas.add(s);
+            return this;
+        }
+
+        /** A slot renderer of the look's own, after those here. */
+        public Builder slot(CgVfxSlotRenderer renderer) {
+            entries.add(new Entry(Objects.requireNonNull(renderer, "renderer"), Collections.emptyList()));
             return this;
         }
 

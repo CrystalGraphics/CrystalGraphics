@@ -238,6 +238,13 @@ public final class CgShaderParser {
                     + output + "\"");
         }
         CgParsedShader.DepthMode depthMode = depthMode(topTags.get("Depth"), renderQueue, resourcePath);
+        String tubeTag = topTags.get("Tube");
+        CgParsedShader.Tube tube = null;
+        if ("Volume".equals(tubeTag)) tube = CgParsedShader.Tube.VOLUME;
+        else if ("Closed".equals(tubeTag)) tube = CgParsedShader.Tube.CLOSED;
+        else if (tubeTag != null) {
+            throw new CgShaderParseException("[" + resourcePath + "] Tube is \"Volume\" or \"Closed\", not \"" + tubeTag + "\"");
+        }
 
         // ── Step 4: extract Pass blocks (at least one required) ───────────
         List<String> passBlocks = CgStructureParser.extractPassBlocks(source, resourcePath);
@@ -424,7 +431,7 @@ public final class CgShaderParser {
         // ── Step 8: return assembled parsed shader ─────────────────────────
         return new CgParsedShader(shaderType, props, featureNames, engineBuffers, renderQueue,
                 renderType, castShadows, sceneColorMargin, "Unlit".equals(lighting), "Off".equals(fog),
-                "Linear".equals(colorSpace), "Off".equals(media), "EmissiveOpacity".equals(output), depthMode,
+                "Linear".equals(colorSpace), "Off".equals(media), "EmissiveOpacity".equals(output), depthMode, tube,
                 Collections.unmodifiableList(passes),
                 buffers.buffers(),
                 buffers.structs());

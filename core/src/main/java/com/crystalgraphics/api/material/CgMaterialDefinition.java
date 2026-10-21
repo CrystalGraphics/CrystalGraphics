@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import javax.annotation.Nullable;
 
@@ -14,6 +15,7 @@ import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
+import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.validate.CgValidation;
 import com.github.bsideup.jabel.Desugar;
@@ -46,6 +48,8 @@ import com.github.bsideup.jabel.Desugar;
  * @param domain      where it is drawn: its archetype's
  * @param shading     the shading model it names, null for its archetype's own
  * @param distortion  whether its archetype has a Distortion pass: it bends what is drawn before it
+ * @param tube        the tube geometry its archetype needs on a tube slot ({@code "Tube"}), null for the chunked tube
+ * @param usage       what draws it ({@code usage}): static mesh where its file lists none
  * @param resolved    the asset it was compiled from, its parent chain merged: what a derived child is merged over
  */
 @Desugar
@@ -54,6 +58,7 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
                                    Map<String, Texture> textures, CgMaterialRowLayout rows, Draw draw, int order,
                                    String sortLayer, @Nullable Map<Object, Object> post, CgMaterialDomain domain,
                                    @Nullable CgShadingModel shading, boolean distortion,
+                                   @Nullable CgParsedShader.Tube tube, Set<CgMaterialUsage> usage,
                                    Map<Object, Object> resolved) {
 
     /**
@@ -176,12 +181,39 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
         return slot;
     }
 
+    /**
+     * Checks {@code who} may draw it as {@code usage}, and answers the keyword its program is compiled with for it.
+     *
+     * <pre>{@code
+     * String keyword = definition.requireUsage(CgMaterialUsage.SPRITES, "renderer r1 of emitter mymod:sparks");   // at load
+     * CgMaterialRegistry.get().getOrCreate(definition, keyword);
+     * }</pre>
+     *
+     * @throws CgAssetException naming both when its file does not list the usage: Unreal draws such a material as its
+     *                          default one, which here would be a construct playing as something else
+     */
+    @Nullable
+    public String requireUsage(CgMaterialUsage usage, String who) {
+        if (!this.usage.contains(usage)) {
+            throw new CgAssetException(who + " draws " + id + " as " + usage.fileName() + ", which its usage " + usages()
+                    + " does not list");
+        }
+        return usage.keyword();
+    }
+
+    private List<String> usages() {
+        List<String> names = new ArrayList<>();
+        for (CgMaterialUsage u : usage) names.add(u.fileName());
+        return names;
+    }
+
     /** Writes a material's tree and compiles it: see {@link CgMaterialDefinition#builder}. */
     public static final class Builder {
         private final String id, shader;
         private final Map<String, Object> state = new LinkedHashMap<>(), values = new LinkedHashMap<>(),
                 textures = new LinkedHashMap<>();
         private final List<String> keywords = new ArrayList<>();
+        private final List<String> usage = new ArrayList<>();
         private Integer order;
         private String sortLayer;
 
@@ -231,6 +263,12 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
         /** The shading model it names: {@code unlit}, {@code lit}, {@code subsurface}, or a kit's id. */
         public Builder shading(String model) {
             state.put("shading", model);
+            return this;
+        }
+
+        /** What draws it, each a program variant: static mesh where none is given. */
+        public Builder usage(CgMaterialUsage... usages) {
+            for (CgMaterialUsage u : usages) usage.add(u.fileName());
             return this;
         }
 
@@ -300,6 +338,7 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
             t.put(CgType.VERSION, CgLookKinds.MATERIAL.version());
             t.put("shader", shader);
             if (!state.isEmpty()) t.put("state", new LinkedHashMap<>(state));
+            if (!usage.isEmpty()) t.put("usage", new ArrayList<>(usage));
             if (order != null) t.put("order", order);
             if (sortLayer != null) t.put("sort_layer", sortLayer);
             if (!keywords.isEmpty()) t.put("keywords", new ArrayList<>(keywords));

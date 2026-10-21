@@ -1234,7 +1234,7 @@ public final class CgVfxSystem {
         CgVfxLayer layer = placed.layer();
         if (layer == null) {
             // A renderer: its material's sort layer; after the apply unless its material distorts, as a SURFACE layer.
-            CgMaterialDefinition material = placed.renderer().common().definition();
+            CgMaterialDefinition material = placed.definition();
             boolean distorts = material != null && material.distortion();
             draw.layer(material == null ? CgSortLayer.EFFECTS : sortLayer(material.sortLayer(), distorts))
                     .group(ox, oy, oz).order(placed.order());

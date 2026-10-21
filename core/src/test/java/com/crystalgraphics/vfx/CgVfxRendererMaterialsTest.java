@@ -3,6 +3,7 @@ package com.crystalgraphics.vfx;
 import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.material.CgMaterialUsage;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
@@ -28,7 +29,7 @@ public class CgVfxRendererMaterialsTest {
     @BeforeClass
     public static void kinds() {
         CgAssetKinds.register();
-        spark = CgMaterialDefinition.builder("test:materials/spark", SPRITE).blend(CgBlendMode.ADDITIVE).build();
+        spark = CgMaterialDefinition.builder("test:materials/spark", SPRITE).usage(CgMaterialUsage.SPRITES).blend(CgBlendMode.ADDITIVE).build();
     }
 
     @Test

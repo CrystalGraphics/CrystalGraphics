@@ -85,7 +85,7 @@ public final class CgVfxTube {
         int count = path.count();
         if (count < 2) return;
         double ox = effect.originX(), oy = effect.originY(), oz = effect.originZ();
-        CgVfxLayer layer = placed.layer();
+        boolean volume = placed.volume();
         float scaleOf = size;
         for (int first = 0; first < count - 1; first += SPANS) {
             int last = Math.min(first + SPANS, count - 1);
@@ -100,7 +100,7 @@ public final class CgVfxTube {
                 reach = Math.max(reach, path.radius(i));
             }
             float cx = (minX + maxX) * 0.5f, cy = (minY + maxY) * 0.5f, cz = (minZ + maxZ) * 0.5f;
-            if (layer.isVolume()) {
+            if (volume) {
                 // A unit sphere round the chunk's rings and as far again as their light reaches.
                 float half = 0.5f * (float) Math.sqrt(sq(maxX - minX) + sq(maxY - minY) + sq(maxZ - minZ));
                 scale.scaling(half + reach * scaleOf);
@@ -115,9 +115,9 @@ public final class CgVfxTube {
                     .custom(3, valuesRow, age, seed, presence);
             CgVfxSystem.place(draw, placed, effect);
             // A volume is soft light that adds: a quarter of the pixels draws it as well.
-            if (layer.isVolume()) draw.halfResolution();
+            if (volume) draw.halfResolution();
             draw.submit();
-            CgVfxTrace.count(layer.isVolume() ? DRAWS_TUBE_VOLUME : DRAWS_TUBE, 1);
+            CgVfxTrace.count(volume ? DRAWS_TUBE_VOLUME : DRAWS_TUBE, 1);
         }
     }
 

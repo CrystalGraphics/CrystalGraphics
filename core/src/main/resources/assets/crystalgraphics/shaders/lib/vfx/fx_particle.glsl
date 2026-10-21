@@ -41,16 +41,13 @@ float fx_particle_heading(vec3 velocity, vec3 right, vec3 up) {
 }
 
 // How a quad faces, the plane fx_particle_facing answers. CAMERA lies in the eye's plane (Godot's billboard, bevy_hanabi's
-// ParallelCameraDepthPlane); CAMERA_POSITION turns toward the eye itself (FaceCameraPosition), so wide sprites do not
-// shear at the screen's edge; UPRIGHT turns round world up alone (Godot's FIXED_Y), for flames and trees; VELOCITY lies
-// along the motion, facing the eye as far as it can (AlongVelocity), a streak in three dimensions; AXIS lies flat across
-// a fixed axis, a ring on the ground. The last two are Niagara's, what a sprite renderer names
+// ParallelCameraDepthPlane); UPRIGHT turns round world up alone (Godot's FIXED_Y), for flames and trees; AXIS lies flat
+// across a fixed axis, a ring on the ground. POSITION_UP and ALIGNED are Niagara's, what a sprite renderer names
 // (NiagaraSpriteVertexFactory.ush, GetTangents), in a right-handed Y-up frame: POSITION_UP turns toward the eye round
-// world up (FaceCameraPosition), ALIGNED stands its top along the motion, unstretched (an aligned sprite).
+// world up (FaceCameraPosition), ALIGNED stands its top along the motion (an aligned sprite), stretched only where the
+// draw asks (_cg_Stretch: a sprite size scaled by speed).
 #define FX_FACE_CAMERA 0
-#define FX_FACE_CAMERA_POSITION 1
 #define FX_FACE_UPRIGHT 2
-#define FX_FACE_VELOCITY 3
 #define FX_FACE_AXIS 4
 #define FX_FACE_POSITION_UP 5
 #define FX_FACE_ALIGNED 6
@@ -63,28 +60,11 @@ void fx_particle_facing(int mode, vec3 centre, vec3 velocity, vec3 axis, vec3 ey
     right = eyeRight;
     up = eyeUp;
     vec3 toEye = eye - centre;
-    if (mode == FX_FACE_CAMERA_POSITION) {
-        vec3 z = normalize(toEye);
-        vec3 x = cross(eyeUp, z);
-        if (dot(x, x) > 1.0e-8) {
-            right = normalize(x);
-            up = cross(z, right);
-        }
-    } else if (mode == FX_FACE_UPRIGHT) {
+    if (mode == FX_FACE_UPRIGHT) {
         vec3 x = cross(vec3(0.0, 1.0, 0.0), toEye);
         if (dot(x, x) > 1.0e-8) {
             right = normalize(x);
             up = vec3(0.0, 1.0, 0.0);
-        }
-    } else if (mode == FX_FACE_VELOCITY) {
-        float speed = length(velocity);
-        if (speed > 1.0e-5) {
-            vec3 x = velocity / speed;
-            vec3 y = cross(normalize(toEye), x);
-            if (dot(y, y) > 1.0e-8) {
-                right = x;
-                up = normalize(y);
-            }
         }
     } else if (mode == FX_FACE_POSITION_UP) {
         vec3 z = normalize(toEye);

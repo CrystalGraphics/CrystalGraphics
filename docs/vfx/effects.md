@@ -270,6 +270,42 @@ effect.sortGroup(null);                                          // that effect 
   What a group orders is every other layer.
 - A member leaves when it dies. Render thread.
 
+## A material on a behaviour's slot: slot renderers
+
+A system played by a native behaviour (the energy wave) can draw a material asset on one of that behaviour's slots,
+fed by its user parameters: the slot's counterpart of an emitter's renderers. In the file:
+
+```yaml
+# assets/mymod/vfx/systems/blue_wave.yaml
+effect: crystalgraphics:energy_wave
+slots:
+  - id: shell
+    slot: crystalgraphics:wave/body          # a slot the behaviour declares
+    material: mymod:materials/shell          # a material asset
+    bind: { _Shell: user.shell }             # read per draw from a user parameter
+    size: 1.15                               # times the slot's own size
+  - id: rock
+    slot: crystalgraphics:wave/head
+    material: mymod:materials/rock
+    mesh: mymod:models/rock.glb              # a mesh slot only: drawn in place of its sphere
+    quality: medium                          # drawn from Medium up
+```
+
+In Java, the same entry:
+
+```java
+CgVfxSlotRenderer shell = CgVfxSlotRenderer.of("shell", CgBeamBody.BODY).material(SHELL)
+        .bind("_Shell", "user.shell").size(1.15f).build();
+CgVfxLook look = CgEnergyWave.kamehameha().derive().slot(shell).build();
+```
+
+- **They draw after the look's layers** on the same slot, in their list order, then by their material's `order`.
+- **A tube slot draws the geometry its material's shader names**: `Tags { "Tube" = "Volume" }` draws each chunk on a
+  sphere round it (a shader summing its own chunk's light), `"Closed"` caps each chunk (a shader tracing the view ray
+  through it). A shader tagged so, on any other slot, fails at load.
+- **Binds read user parameters alone**, `user.<name>`; a `particles.*` bind fails at load.
+- An unknown slot, or a mesh on a slot that is not a mesh slot, fails at load, naming the entry.
+
 ## Easy to get wrong
 
 - **The mode is not the shader's queue.** A shader in the opaque queue drawn `ADDITIVE` still draws with the opaque

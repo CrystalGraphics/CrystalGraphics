@@ -123,9 +123,12 @@ public final class CgVfxSortGroup {
                 CgVfxLayer layer = p.layer();
                 keys.add(new long[] {layer.role().ordinal(), layer.order(), l, p.order()});
             }
-            // A renderer ranks after every layer's role, by its hint.
+            // A slot renderer ranks after every layer's role in its look's order, an emitter's renderer after it by hint.
+            for (CgVfxLook.Placed p : looks.get(l).slotted()) {
+                keys.add(new long[] {CgVfxLayer.Role.values().length, 0, l, p.order()});
+            }
             for (CgVfxLook.Placed p : looks.get(l).rendered()) {
-                keys.add(new long[] {CgVfxLayer.Role.values().length, p.renderer().common().sortOrderHint(), l, p.order()});
+                keys.add(new long[] {CgVfxLayer.Role.values().length + 1, p.renderer().common().sortOrderHint(), l, p.order()});
             }
         }
         if (keys.size() > 256) {

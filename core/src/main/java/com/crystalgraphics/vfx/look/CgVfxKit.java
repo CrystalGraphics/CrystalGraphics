@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.look;
 
+import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 
 import java.util.ArrayList;
@@ -129,6 +130,12 @@ public final class CgVfxKit {
         }
 
         /** An emitter its effect plays, and whose particles its layers draw ({@code on(emitter)}). */
+        /** A slot renderer: what one of its behaviour's slots draws. */
+        public Builder slot(CgVfxSlotRenderer renderer) {
+            parts.add(Objects.requireNonNull(renderer, "renderer"));
+            return this;
+        }
+
         public Builder emitter(CgVfxEmitter emitter) {
             parts.add(Objects.requireNonNull(emitter, "emitter"));
             return this;
