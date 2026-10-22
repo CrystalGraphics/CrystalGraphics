@@ -165,6 +165,8 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
         systemProperty("crystalgraphics.kits", it)
         maxHeapSize = "3g"   // a batch of resolved kit assets and their closures
     }
+    // The shape census over a slice of the kits' moves: -PcensusPacks=<text>,...
+    providers.gradleProperty("censusPacks").orNull?.let { systemProperty("crystalgraphics.census.packs", it) }
 }
 
 tasks.named("check") { dependsOn(headlessTestTask) }

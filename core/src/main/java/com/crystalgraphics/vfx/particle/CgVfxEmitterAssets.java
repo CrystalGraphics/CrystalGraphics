@@ -413,7 +413,8 @@ public final class CgVfxEmitterAssets {
             b.size(width[0], width[1]);
         }
         if (in.get("color") != null) {
-            float[][] c = ends(in.get("color"), 4);
+            float alpha = in.get("alpha") instanceof Number a ? a.floatValue() : 1f;
+            float[][] c = colourEnds(in.get("color"), alpha);
             b.colors(c[0], c[1]);
         }
         if (in.get("mesh_scale") != null) {
@@ -1149,6 +1150,28 @@ public final class CgVfxEmitterAssets {
         if (value instanceof Map<?, ?> m && m.get("range") instanceof List<?> r) return new float[][]{endOf(r.get(0), n), endOf(r.get(1), n)};
         float[] one = endOf(value, n);
         return new float[][]{one, one.clone()};
+    }
+
+    /**
+     * A colour's two ends, each four floats: a colour is 2 to 4 floats ({@code core.md} § Colours, the schema's
+     * {@code colour}), the channels it leaves out 0 and its alpha {@code alpha} (the module's own input, else 1).
+     */
+    private static float[][] colourEnds(Object value, float alpha) {
+        if (value instanceof Map<?, ?> m && m.get("range") instanceof List<?> r) {
+            return new float[][]{colourOf(r.get(0), alpha), colourOf(r.get(1), alpha)};
+        }
+        float[] one = colourOf(value, alpha);
+        return new float[][]{one, one.clone()};
+    }
+
+    private static float[] colourOf(Object value, float alpha) {
+        if (value instanceof Map<?, ?> m && m.get("argb") instanceof Number) return rgba(m);
+        if (!(value instanceof List<?> v) || v.size() < 2 || v.size() > 4) {
+            throw new IllegalArgumentException("a colour of 2 to 4 floats, not " + value);
+        }
+        float[] c = {0f, 0f, 0f, alpha};
+        for (int i = 0; i < v.size(); i++) c[i] = num(v.get(i));
+        return c;
     }
 
     private static float[] endOf(Object value, int n) {

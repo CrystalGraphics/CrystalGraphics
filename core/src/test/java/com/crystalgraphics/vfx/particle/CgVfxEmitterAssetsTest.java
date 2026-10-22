@@ -132,6 +132,19 @@ public class CgVfxEmitterAssetsTest {
         return tree;
     }
 
+    /** A colour of three floats (the schema takes 2 to 4) takes its alpha from the module's {@code alpha}. */
+    @Test
+    public void aColourOfThreeTakesItsAlphaInput() {
+        Map<String, Object> three = burstTree(burstEntry("b", 0.0), burstEntry("c", 0.5), "init");
+        three.put("particle_spawn", List.of(Map.of("id", "init", "module", "crystalgraphics:initialize_particle",
+                "inputs", Map.of("lifetime", 1.0, "color", List.of(0.2, 0.4, 0.8), "alpha", 0.5))));
+        Map<String, Object> four = burstTree(burstEntry("b", 0.0), burstEntry("c", 0.5), "init");
+        four.put("particle_spawn", List.of(Map.of("id", "init", "module", "crystalgraphics:initialize_particle",
+                "inputs", Map.of("lifetime", 1.0, "color", List.of(0.2, 0.4, 0.8, 0.5)))));
+        assertArrayEquals(spawn(CgVfxEmitterAssets.compile("four", four, null)),
+                spawn(CgVfxEmitterAssets.compile("three", three, null)), 0f);
+    }
+
     /** A module input in a form, written back as its file wrote it and compiled again to the same words. */
     @Test
     public void formsRoundTrip() {
