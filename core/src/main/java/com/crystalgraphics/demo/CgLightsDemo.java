@@ -83,12 +83,12 @@ public final class CgLightsDemo {
     /** A shell bursting high over the arena every {@code every} seconds, its sparks falling as lights. */
     private static CgVfxEmitter fireworks(String name, int a, int b, float every, float dx) {
         return CgVfxEmitter.builder(name).capacity(600).state(CgVfxEmitterState.infinite(every)).burst(0f, 220)
-                .at(dx, 14f, 0f).shape(CgSphere.of(0.2)).outward().speed(6f, 9f).life(1.4f, 2.2f).size(0.06f, 0.1f)
+                .at(dx, 11f, 0f).shape(CgSphere.of(0.2)).outward().speed(6f, 9f).life(1.4f, 2.2f).size(0.06f, 0.1f)
                 .color(a, 6f, b, 6f).module(new CgVfxModule.Gravity(4f)).module(new CgVfxModule.Drag(1.2f, 0f))
                 .opacity(CgKeyframes.start(0f, 1f).to(0.6f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
-                .light(70f, 2f, CgVfxDrawnChannel.over(CgKeyframes.constant(1f)), CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
+                .light(160f, 2f, CgVfxDrawnChannel.over(CgKeyframes.constant(1f)), CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
                         CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
-                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 3f).to(1f, 0f, CgEasings.IN_QUAD).build()))
+                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 1.2f).to(1f, 0f, CgEasings.IN_QUAD).build()))
                 .renderer(sparks(name)).renderer(CgVfxRenderers.light(name + "Light").field("spawn_fraction", 0.4)
                         .field("inverse_squared_falloff", false).build())
                 .build();
@@ -104,8 +104,8 @@ public final class CgLightsDemo {
                         .to(1f, 0f, CgEasings.IN_QUAD).build())
                 .light(40f, 2f, CgVfxDrawnChannel.over(CgKeyframes.constant(1f)), CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
                         CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
-                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 0f).to(0.2f, 1.5f, CgEasings.OUT_QUAD)
-                                .to(0.8f, 1.5f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build()))
+                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 0f).to(0.2f, 0.5f, CgEasings.OUT_QUAD)
+                                .to(0.8f, 0.5f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build()))
                 .renderer(sparks("fireflies")).renderer(CgVfxRenderers.light("firefliesLight").field("spawn_fraction", 1.0)
                         .field("inverse_squared_falloff", false).build())
                 .build();
@@ -156,8 +156,8 @@ public final class CgLightsDemo {
         for (int side = -1; side <= 1; side += 2) {
             double sx = x + side * 15, sz = z + 12, sweep = Math.sin(t * 0.45 + side) * 0.9;
             float dx = (float) (-side * Math.cos(sweep) * 0.7), dz = (float) (-Math.cos(sweep * 0.7) * 0.9 + Math.sin(sweep) * 0.3);
-            CgCollisionDebug.shape(MARK, pose.at(sx, y + 1.5, sz), 0xFFFFF4E0);
-            lights.add(sx, y + 1.5, sz, 45f, 0xFFFFF4E0, lit(3f, 18f), 0f).spot(dx, -0.12f, dz, 4f, 9f);
+            CgCollisionDebug.shape(MARK, pose.at(sx, y + 3, sz), 0xFFFFF4E0);
+            lights.add(sx, y + 3, sz, 45f, 0xFFFFF4E0, lit(4f, 12f), 0f).spot(dx, -0.3f, dz, 5f, 10f);
         }
     }
 
@@ -182,7 +182,7 @@ public final class CgLightsDemo {
             float pulse = 0.35f + 0.65f * (float) Math.pow(0.5 + 0.5 * Math.cos((i / (float) ARCH - t * 0.6) * 2 * Math.PI), 4);
             int colour = hue(0.75f + 0.25f * i / ARCH + t * 0.1f);
             CgCollisionDebug.line(x0, y0, z, x1, y1, z, colour);
-            lights.add((x0 + x1) / 2, (y0 + y1) / 2, z, 9f, colour, lit(3f * pulse, 1.5f), 0f)
+            lights.add((x0 + x1) / 2, (y0 + y1) / 2, z, 14f, colour, lit(3f * pulse, 5f), 0f)
                     .tube((float) (x1 - x0), (float) (y1 - y0), 0f, (float) Math.hypot(x1 - x0, y1 - y0));
         }
     }
@@ -196,9 +196,9 @@ public final class CgLightsDemo {
             float dx = (float) (Math.cos(a) * -side), dy = (float) Math.sin(a);
             int colour = side < 0 ? 0xFFFF3030 : 0xFF3060FF;
             CgCollisionDebug.line(hx, hy, z, hx + dx * 1.8, hy + dy * 1.8, z, colour);
-            lights.add(hx + dx * 0.9, hy + dy * 0.9, z, 8f, colour, lit(4f, 1.1f), 0f).tube(dx, dy, 0f, 1.8f);
+            lights.add(hx + dx * 0.9, hy + dy * 0.9, z, 10f, colour, lit(5f, 2f), 0f).tube(dx, dy, 0f, 1.8f);
         }
-        if (clash > 0.05f) lights.add(x, y + 2.6, z, 12f, 0xFFFFFFFF, lit(6f * clash, 2.6f), 0f);
+        if (clash > 0.05f) lights.add(x, y + 2.6, z, 16f, 0xFFFFFFFF, lit(8f * clash, 4f), 0f);
     }
 
     /** Lightning far overhead every {@link #STORM} seconds: three flashes flooding the whole arena. */
