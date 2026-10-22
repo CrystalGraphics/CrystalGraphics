@@ -18,7 +18,7 @@ or edit one.
 | `CgMeshWriter` | What `build` and `edit` hand their body: a vertex's attributes in any order, `end()` naming any missing; semantic setters for one the format lacks do nothing; `set`/`setInt` by attribute index; `triangle`/`quad`/`line`/`index`; `submesh()` |
 | `CgSubmesh` | A part drawn on its own: first index, index count, first vertex, vertex count. Its indices count from its first vertex |
 | `CgMeshChanges` | A reader's reused holder: the revision now, `all`, and the vertex and index ranges touched since the revision it last read |
-| `CgMeshLoader` | Files: `load(path)` and `model(path)` into `SPATIAL` (glTF's `COLOR_0` and `TEXCOORD_1` included), or `load(path, format)` and `model(path, format)` -- OBJ, glTF, GLB by extension, every material group or primitive a submesh with the material it names (`Model.material(i)`). Cached per path and format, and shared; `read(stream, extension, format)` gives an uncached mesh of the caller's own. `CgObjLoader` and `CgGltfLoader` are its package-private readers |
+| `CgMeshLoader` | Files: `load(path)` and `model(path)` into `SPATIAL` (glTF's `COLOR_0` and `TEXCOORD_1` to `_3` included), or `load(path, format)` and `model(path, format)` -- OBJ, glTF, GLB by extension, every material group or primitive a submesh with the material it names (`Model.material(i)`). Cached per path and format, and shared; `read(stream, extension, format)` gives an uncached mesh of the caller's own. `CgObjLoader` and `CgGltfLoader` are its package-private readers |
 | `CgMeshLods` | One shape at falling detail, Unity's LODGroup: `builder().level(mesh, screenHeight)...build()`, a level held while a draw covers at least that fraction of the screen's height, nothing drawn below the last; `of(mesh)` one mesh at every height, `reach()` the finest level's farthest corner from its origin. `CgWorldRenderer.draw(lods, material)` picks per draw. `CgMeshShapes.sphereLods()` is a shared one: 128 sectors down to 8, each held until the next coarser silhouette strays half a pixel at 1080 lines |
 | `CgMeshShapes` | Shapes two ways: shared (one mesh per format and size, refusing edits) and writer forms that compose with anything else in a mesh |
 | `CgProceduralMesh` | Effect meshes from a few numbers, ported from Effekseer: `revolve(profile)` (crescents, domes, cones, swirls) and `ribbons(profile)`, over `sphere`/`cone`/`cylinder`/`spline` profiles, deformed by tilt, wave and curl (`CgMeshNoise`, Effekseer's curl noise). SPATIAL, smooth normals, a new mesh per `build()` |
@@ -29,7 +29,7 @@ or edit one.
 - **No GL, no device** in any type here.
 - **Hot paths do not allocate**: a mesh reuses its writer and swaps arrays with it on every `edit`; a reader reuses
   its `CgMeshChanges`.
-- **What a vertex is not given, `end()` fills where it can**: colour white, the second UV the first (Unreal's null
+- **What a vertex is not given, `end()` fills where it can**: colour white, a UV set the set before it (Unreal's null
   colour stream and repeated UV channel); anything else missing throws, naming it.
 - **A shape writes position, UV, normal and white colour**: one shape serves every format made of those. A loaded
   file the same, colour from glTF's `COLOR_0` where it has one.

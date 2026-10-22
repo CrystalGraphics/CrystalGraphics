@@ -34,7 +34,7 @@ import java.util.function.Supplier;
  *   <li>Loaded once per path and format and shared, like a {@link CgMeshShapes} shape: edits and
  *       {@link CgMesh#release()} refuse.</li>
  *   <li>Any thread. Paths resolve through {@link CgIO}, so resource packs and the override directory apply.</li>
- *   <li>Positions, normals, glTF's {@code COLOR_0}, {@code TEXCOORD_0} and {@code TEXCOORD_1} fill what the format has;
+ *   <li>Positions, normals, glTF's {@code COLOR_0} and {@code TEXCOORD_0} to {@code TEXCOORD_3} fill what the format has;
  *       colour is white and the second UV the first where the file has none. A format with other attributes needs a
  *       reader of its own.</li>
  *   <li>glTF is read in mesh space: node transforms are not applied, and a skinned primitive in its bind pose, its
@@ -150,11 +150,16 @@ public final class CgMeshLoader {
         return shared ? CgMesh.shared(format, body) : CgMesh.build(format, body);
     }
 
-    /** One vertex, every attribute the format has of these; a NaN {@code u1} leaves the second UV the writer's default. */
+    /**
+     * One vertex, every attribute the format has of these. {@code more} holds the further UV sets as u, v pairs from the
+     * second, null or a NaN u where the file has no more: the writer repeats the set before.
+     */
     static int vertex(CgMeshWriter m, float x, float y, float z, float u, float v, float nx, float ny, float nz,
-                      float r, float g, float b, float a, float u1, float v1) {
+                      float r, float g, float b, float a, float[] more) {
         m.vertex().position(x, y, z).uv(u, v).normal(nx, ny, nz).color(r, g, b, a);
-        if (!Float.isNaN(u1)) m.uv1(u1, v1);
+        if (more != null) for (int set = 1; set <= more.length / 2 && !Float.isNaN(more[set * 2 - 2]); set++) {
+            m.uv(set, more[set * 2 - 2], more[set * 2 - 1]);
+        }
         return m.end();
     }
 }

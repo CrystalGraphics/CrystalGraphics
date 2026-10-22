@@ -13,20 +13,21 @@ import static org.junit.Assert.*;
 /**
  * Every shape is pinned to its bytes: counts, and a CRC-32 of the vertex bytes and of the indices as little-endian ints.
  * The float formats' rows are the GL-era {@code CgMeshBuilder}'s, which it matched until that class was deleted (mesh
- * rewrite M5); SPATIAL's vertex bytes were pinned again when it was packed (aaa-design §2.25), its indices kept.
+ * rewrite M5); SPATIAL's vertex bytes were pinned again when it was packed (aaa-design §2.25) and when it took four UV sets (M7),
+ * its indices kept.
  */
 public class CgMeshShapesTest {
 
     @Test
     public void everyShapeKeepsTheBytesItWasPinnedTo() {
         CgVertexFormat s = CgVertexFormat.SPATIAL, c = CgVertexFormat.POS3_UV2_COL4UB;
-        pin(s, CgMeshShapes::cube, 24, 36, 831646214L, 2079335227L);
-        pin(s, m -> CgMeshShapes.quad(m, -1f, -1f, 1f, 1f), 4, 6, 3832988528L, 598887801L);
-        pin(s, m -> CgMeshShapes.plane(m, 3, 5, 120f, 7f), 24, 90, 3611066502L, 4126433410L);
-        pin(s, m -> CgMeshShapes.sphere(m, 24, 32, 1f), 825, 4608, 3913484092L, 1891855659L);
-        pin(s, m -> CgMeshShapes.cylinder(m, 32, 0.6f, 1.6f), 198, 960, 217328617L, 1393303421L);
-        pin(s, m -> CgMeshShapes.capsule(m, 32, 8, 0.5f, 1f), 594, 3264, 2463867208L, 2442595604L);
-        pin(s, m -> CgMeshShapes.icosphere(m, 3), 3840, 0, 3645330816L, 0L);
+        pin(s, CgMeshShapes::cube, 24, 36, 540939765L, 2079335227L);
+        pin(s, m -> CgMeshShapes.quad(m, -1f, -1f, 1f, 1f), 4, 6, 3509220210L, 598887801L);
+        pin(s, m -> CgMeshShapes.plane(m, 3, 5, 120f, 7f), 24, 90, 2508697407L, 4126433410L);
+        pin(s, m -> CgMeshShapes.sphere(m, 24, 32, 1f), 825, 4608, 2856624549L, 1891855659L);
+        pin(s, m -> CgMeshShapes.cylinder(m, 32, 0.6f, 1.6f), 198, 960, 2902629536L, 1393303421L);
+        pin(s, m -> CgMeshShapes.capsule(m, 32, 8, 0.5f, 1f), 594, 3264, 1300431200L, 2442595604L);
+        pin(s, m -> CgMeshShapes.icosphere(m, 3), 3840, 0, 1379248624L, 0L);
         pin(c, CgMeshShapes::cube, 24, 36, 3601217581L, 2079335227L);
         pin(c, m -> CgMeshShapes.quad(m, -1f, -1f, 1f, 1f), 4, 6, 1045212050L, 598887801L);
         pin(c, m -> CgMeshShapes.plane(m, 3, 5, 120f, 7f), 24, 90, 3000861795L, 4126433410L);
@@ -35,7 +36,7 @@ public class CgMeshShapesTest {
         pin(c, m -> CgMeshShapes.capsule(m, 32, 8, 0.5f, 1f), 594, 3264, 2671504680L, 2442595604L);
         pin(c, m -> CgMeshShapes.icosphere(m, 3), 3840, 0, 1572712846L, 0L);
         pin(CgVertexFormat.POS2_UV2_COL4UB, m -> CgMeshShapes.quad(m, 0f, 0f, 1f, 1f), 4, 6, 1524397902L, 598887801L);
-        pin(s, m -> CgMeshShapes.sphere(m, 300, 300, 1f), 90601, 540000, 3214170113L, 2848149590L);
+        pin(s, m -> CgMeshShapes.sphere(m, 300, 300, 1f), 90601, 540000, 3649753745L, 2848149590L);
     }
 
     private static void pin(CgVertexFormat format, Consumer<CgMeshWriter> shape, int vertexCount, int indexCount,

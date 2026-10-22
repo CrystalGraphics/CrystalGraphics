@@ -75,16 +75,21 @@ final class CgGltfLoader {
         Map<String, AccessorModel> attributes = p.getAttributes();
         AccessorModel position = attributes.get("POSITION");
         AccessorModel uv = attributes.get("TEXCOORD_0"), normal = attributes.get("NORMAL"), color = attributes.get("COLOR_0");
-        AccessorModel uv1 = attributes.get("TEXCOORD_1");
+        AccessorModel[] sets = {attributes.get("TEXCOORD_1"), attributes.get("TEXCOORD_2"), attributes.get("TEXCOORD_3")};
+        float[] more = new float[sets.length * 2];
         int count = position.getCount();
         for (int v = 0; v < count; v++) {
+            for (int s = 0; s < sets.length; s++) {
+                more[s * 2] = sets[s] == null ? Float.NaN : value(sets[s], v, 0, 0f);
+                more[s * 2 + 1] = value(sets[s], v, 1, 0f);
+            }
             boolean n = normal != null;
             CgMeshLoader.vertex(m,
                     value(position, v, 0, 0f), value(position, v, 1, 0f), value(position, v, 2, 0f),
                     value(uv, v, 0, 0f), value(uv, v, 1, 0f),
                     n ? value(normal, v, 0, 0f) : 0f, n ? value(normal, v, 1, 1f) : 1f, n ? value(normal, v, 2, 0f) : 0f,
                     value(color, v, 0, 1f), value(color, v, 1, 1f), value(color, v, 2, 1f), value(color, v, 3, 1f),
-                    uv1 == null ? Float.NaN : value(uv1, v, 0, 0f), value(uv1, v, 1, 0f));
+                    more);
         }
 
         int[] indices = indices(p.getIndices(), count);

@@ -62,6 +62,6 @@ final class CgObjLoader {
         float u = uvs.length >= v * 2 + 2 ? uvs[v * 2] : 0f, t = uvs.length >= v * 2 + 2 ? uvs[v * 2 + 1] : 0f;
         boolean n = normals.length >= v * 3 + 3;
         return CgMeshLoader.vertex(m, positions[v * 3], positions[v * 3 + 1], positions[v * 3 + 2], u, t,
-                n ? normals[v * 3] : 0f, n ? normals[v * 3 + 1] : 1f, n ? normals[v * 3 + 2] : 0f, 1f, 1f, 1f, 1f, Float.NaN, 0f);
+                n ? normals[v * 3] : 0f, n ? normals[v * 3 + 1] : 1f, n ? normals[v * 3 + 2] : 0f, 1f, 1f, 1f, 1f, null);
     }
 }

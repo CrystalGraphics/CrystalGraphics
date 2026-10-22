@@ -467,7 +467,7 @@ for (int i = 0; i < ship.mesh().submeshCount(); i++) {
 
 ### Vertex Formats
 
-`CgVertexFormat.SPATIAL` — every mesh a material draws, Unreal's local vertex factory in 32 bytes: `cg_Position` (3 floats), `cg_Normal` (snorm16, read as `vec3`), `cg_Color` (4 bytes), `cg_TexCoord0` and `cg_TexCoord1` (halves). One format, so one pool and one VAO serve every mesh. It is the format `CgMeshShapes` builds when asked for none and `CgMeshLoader.load(path)` loads into, glTF's `COLOR_0` and `TEXCOORD_1` included. Two formats with identical attribute lists are value-equal.
+`CgVertexFormat.SPATIAL` — every mesh a material draws, Unreal's local vertex factory in 40 bytes: `cg_Position` (3 floats), `cg_Normal` (snorm16, read as `vec3`), `cg_Color` (4 bytes), `cg_TexCoord0` to `cg_TexCoord3` (halves; a set not written repeats the one before). One format, so one pool and one VAO serve every mesh. It is the format `CgMeshShapes` builds when asked for none and `CgMeshLoader.load(path)` loads into, glTF's `COLOR_0` and `TEXCOORD_1` to `TEXCOORD_3` included. Two formats with identical attribute lists are value-equal.
 
 ```java
 CgMesh tinted = CgMesh.build(CgVertexFormat.SPATIAL, m ->

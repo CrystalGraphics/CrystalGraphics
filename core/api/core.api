@@ -1048,7 +1048,10 @@ com/crystalgraphics/api/mesh/CgMeshWriter
   method public topology (Lcom/crystalgraphics/api/mesh/CgMeshTopology;)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
   method public triangle (III)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
   method public uv (FF)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public uv (IFF)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
   method public uv1 (FF)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public uv2 (FF)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public uv3 (FF)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
   method public vertex ()Lcom/crystalgraphics/api/mesh/CgMeshWriter;
 com/crystalgraphics/api/mesh/CgProceduralMesh
   access public,final

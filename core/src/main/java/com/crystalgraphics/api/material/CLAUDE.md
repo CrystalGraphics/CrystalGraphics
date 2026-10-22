@@ -272,7 +272,7 @@ No-op if `resourcePath == null` (shader-graph / programmatic materials).
 
 ### CgVertexFormat.SPATIAL
 ```java
-// Locations: 0 cg_Position (vec3), 1 cg_Normal (vec3), 2 cg_Color (vec4), 3 cg_TexCoord0, 4 cg_TexCoord1 (vec2)
+// Locations: 0 cg_Position (vec3), 1 cg_Normal (vec3), 2 cg_Color (vec4), 3-6 cg_TexCoord0-3 (vec2)
 // Stride: 32 bytes, packed (CgVertexFormat.SPATIAL's javadoc)
 CgVertexFormat format = CgVertexFormat.SPATIAL;
 CgMesh mesh = CgMeshShapes.cube(format);

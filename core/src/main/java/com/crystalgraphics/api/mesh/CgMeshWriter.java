@@ -56,7 +56,9 @@ public final class CgMeshWriter {
     private final CgVertexFormat format;
     private final int stride;
     private final CgVertexAttribute[] attributes;
-    private final int positionAttribute, uvAttribute, normalAttribute, colorAttribute, uv1Attribute;
+    private final int positionAttribute, normalAttribute, colorAttribute;
+    /** The attribute of each UV set by its index, -1 where the format has none. */
+    private final int[] uvAttributes = {-1, -1, -1, -1};
     private final int required;
 
     private final byte[] scratchBytes;
@@ -81,15 +83,14 @@ public final class CgMeshWriter {
         this.format = format;
         this.stride = format.getStride();
         this.attributes = new CgVertexAttribute[format.getAttributeCount()];
-        int position = -1, uv = -1, normal = -1, color = -1, uv1 = -1;
+        int position = -1, normal = -1, color = -1;
         for (int i = 0; i < attributes.length; i++) {
             CgVertexAttribute a = format.getAttribute(i);
             attributes[i] = a;
-            if (a.getSemantic() == CgVertexSemantic.UV && a.getSemanticIndex() == 1) uv1 = i;
+            if (a.getSemantic() == CgVertexSemantic.UV && a.getSemanticIndex() < uvAttributes.length) uvAttributes[a.getSemanticIndex()] = i;
             if (a.getSemanticIndex() != 0) continue;
             switch (a.getSemantic()) {
                 case POSITION: position = i; break;
-                case UV: uv = i; break;
                 case NORMAL: normal = i; break;
                 case COLOR: color = i; break;
                 default: break;
@@ -97,10 +98,8 @@ public final class CgMeshWriter {
         }
         if (attributes.length > 31) throw new IllegalArgumentException(format.getKey() + " has more than 31 attributes");
         this.positionAttribute = position;
-        this.uvAttribute = uv;
         this.normalAttribute = normal;
         this.colorAttribute = color;
-        this.uv1Attribute = uv1;
         this.required = (1 << attributes.length) - 1;
         this.scratchBytes = new byte[stride];
         this.scratch = ByteBuffer.wrap(scratchBytes).order(ByteOrder.nativeOrder());
@@ -166,12 +165,28 @@ public final class CgMeshWriter {
     }
 
     public CgMeshWriter uv(float u, float v) {
-        return uvAttribute < 0 ? this : floats(uvAttribute, u, v, 0f, 1f, 2);
+        return uv(0, u, v);
     }
 
-    /** The second UV set (`cg_TexCoord1`); nothing where the format has none. */
+    /** The second UV set ({@code cg_TexCoord1}); nothing where the format has none. */
     public CgMeshWriter uv1(float u, float v) {
-        return uv1Attribute < 0 ? this : floats(uv1Attribute, u, v, 0f, 1f, 2);
+        return uv(1, u, v);
+    }
+
+    /** The third UV set ({@code cg_TexCoord2}); nothing where the format has none. */
+    public CgMeshWriter uv2(float u, float v) {
+        return uv(2, u, v);
+    }
+
+    /** The fourth UV set ({@code cg_TexCoord3}); nothing where the format has none. */
+    public CgMeshWriter uv3(float u, float v) {
+        return uv(3, u, v);
+    }
+
+    /** UV set {@code set}, 0 to 3; nothing where the format has none. */
+    public CgMeshWriter uv(int set, float u, float v) {
+        int attribute = uvAttributes[set];
+        return attribute < 0 ? this : floats(attribute, u, v, 0f, 1f, 2);
     }
 
     public CgMeshWriter normal(float x, float y, float z) {
@@ -225,12 +240,13 @@ public final class CgMeshWriter {
         if (!open) throw new IllegalStateException("end() with no vertex() open");
         // Unreal's streams: a null colour stream reads white, and a missing UV channel repeats the last.
         if (colorAttribute >= 0 && (given & (1 << colorAttribute)) == 0) floats(colorAttribute, 1f, 1f, 1f, 1f, 4);
-        if (uv1Attribute >= 0 && (given & (1 << uv1Attribute)) == 0 && uvAttribute >= 0 && (given & (1 << uvAttribute)) != 0) {
-            CgVertexAttribute from = attributes[uvAttribute], to = attributes[uv1Attribute];
-            if (from.getByteSize() == to.getByteSize()) {
-                System.arraycopy(scratchBytes, from.getOffset(), scratchBytes, to.getOffset(), to.getByteSize());
-                given |= 1 << uv1Attribute;
-            }
+        for (int set = 1; set < uvAttributes.length; set++) {
+            int before = uvAttributes[set - 1], at = uvAttributes[set];
+            if (at < 0 || before < 0 || (given & (1 << at)) != 0 || (given & (1 << before)) == 0) continue;
+            CgVertexAttribute from = attributes[before], to = attributes[at];
+            if (from.getByteSize() != to.getByteSize()) continue;
+            System.arraycopy(scratchBytes, from.getOffset(), scratchBytes, to.getOffset(), to.getByteSize());
+            given |= 1 << at;
         }
         if (given != required) throw new IllegalStateException(missing());
         int at = vertexCount * stride;

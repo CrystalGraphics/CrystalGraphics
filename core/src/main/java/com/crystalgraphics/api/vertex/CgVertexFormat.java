@@ -74,12 +74,12 @@ public final class CgVertexFormat {
             .build();
 
     /**
-     * The vertex of every mesh a material draws: position, normal, colour and two UV sets in 32 bytes, Unreal's local
+     * The vertex of every mesh a material draws: position, normal, colour and four UV sets in 40 bytes, Unreal's local
      * vertex factory's streams at its default precision. {@code #type spatial}.
      *
      * <pre>{@code
      * CgMesh tri = CgMesh.build(CgVertexFormat.SPATIAL, m -> {
-     *     int a = m.vertex().position(0, 0, 0).normal(0, 1, 0).uv(0, 0).end();               // white, uv1 = uv
+     *     int a = m.vertex().position(0, 0, 0).normal(0, 1, 0).uv(0, 0).end();               // white, every set = uv
      *     int b = m.vertex().position(1, 0, 0).normal(0, 1, 0).uv(1, 0).color(0xFFFF8000).end();
      *     int c = m.vertex().position(0, 0, 1).normal(0, 1, 0).uv(0, 1).uv1(0.5f, 0.5f).end();
      *     m.triangle(a, b, c);
@@ -93,11 +93,14 @@ public final class CgVertexFormat {
      *   <tr><td>2</td><td>{@code vec4 cg_Color}</td><td>4 unorm8</td><td>{@code Color}</td></tr>
      *   <tr><td>3</td><td>{@code vec2 cg_TexCoord0}</td><td>2 halves</td><td>{@code TexCoords0}</td></tr>
      *   <tr><td>4</td><td>{@code vec2 cg_TexCoord1}</td><td>2 halves</td><td>{@code TexCoords1}</td></tr>
+     *   <tr><td>5</td><td>{@code vec2 cg_TexCoord2}</td><td>2 halves</td><td>{@code TexCoords2}</td></tr>
+     *   <tr><td>6</td><td>{@code vec2 cg_TexCoord3}</td><td>2 halves</td><td>{@code TexCoords3}</td></tr>
      * </table>
      *
      * <ul>
-     *   <li>A vertex given no colour is white, and no second UV its first: Unreal's null colour stream and its
-     *       repeated last UV channel. Every attribute is always there, so one pool and one VAO serve every mesh.</li>
+     *   <li>A vertex given no colour is white, and a UV set it is not given repeats the set before it: Unreal's null
+     *       colour stream and its repeated last UV channel. Every attribute is always there, so one pool and one VAO
+     *       serve every mesh; four sets, not Unreal's per-mesh count, is 8 bytes a vertex for that.</li>
      *   <li>UVs are halves: steps of 1/2048 below 1, 1/1024 to 2, 1/16 at 64. A UV tiled far past that needs a format of its own.</li>
      *   <li>Read stored bytes back with {@link CgVertexAttribute#read}, never {@code getFloat}.</li>
      * </ul>
@@ -108,6 +111,8 @@ public final class CgVertexFormat {
             .add(CgVertexSemantic.COLOR,    "cg_Color",     4, CgAttribType.UNSIGNED_BYTE, true)
             .add(CgVertexSemantic.UV,       "cg_TexCoord0", 2, CgAttribType.HALF_FLOAT)
             .add(CgVertexSemantic.UV, 1,    "cg_TexCoord1", 2, CgAttribType.HALF_FLOAT, false)
+            .add(CgVertexSemantic.UV, 2,    "cg_TexCoord2", 2, CgAttribType.HALF_FLOAT, false)
+            .add(CgVertexSemantic.UV, 3,    "cg_TexCoord3", 2, CgAttribType.HALF_FLOAT, false)
             .build();
 
     /**

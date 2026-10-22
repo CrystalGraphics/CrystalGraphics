@@ -65,7 +65,7 @@ public class CgMeshLoaderTest {
     public void aGltfFillsColourAndTheSecondUvOrTheirDefaults() throws IOException {
         CgVertexFormat f = CgVertexFormat.SPATIAL;
         CgVertexAttribute colour = f.getAttribute(f.indexOf("cg_Color")), uv0 = f.getAttribute(f.indexOf("cg_TexCoord0"));
-        CgVertexAttribute uv1 = f.getAttribute(f.indexOf("cg_TexCoord1"));
+        CgVertexAttribute uv1 = f.getAttribute(f.indexOf("cg_TexCoord1")), uv3 = f.getAttribute(f.indexOf("cg_TexCoord3"));
         ByteBuffer vertex = ByteBuffer.allocate(f.getStride()).order(ByteOrder.nativeOrder());
 
         CgMesh both = CgMeshLoader.read(new ByteArrayInputStream(twoUvGltf(true).getBytes(StandardCharsets.US_ASCII)),
@@ -74,6 +74,7 @@ public class CgMeshLoaderTest {
         both.readVertices(1, 1, vertex.clear());
         assertEquals(0.25f, uv1.read(vertex, 0, 0), 0f);
         assertEquals(0.75f, uv1.read(vertex, 0, 1), 0f);
+        assertEquals(0.25f, uv3.read(vertex, 0, 0), 0f);             // no TEXCOORD_2 or _3: the second set repeated
         assertEquals(1f, colour.read(vertex, 0, 0), 0f);             // COLOR_0 red
         assertEquals(0f, colour.read(vertex, 0, 1), 0f);
 

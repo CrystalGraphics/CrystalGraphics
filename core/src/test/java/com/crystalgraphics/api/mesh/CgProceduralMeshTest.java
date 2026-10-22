@@ -13,11 +13,12 @@ import static org.junit.Assert.assertTrue;
 
 public class CgProceduralMeshTest {
 
+    private static final int STRIDE = CgVertexFormat.SPATIAL.getStride();
     private static final CgVertexAttribute NORMAL = CgVertexFormat.SPATIAL.getAttribute(CgVertexFormat.SPATIAL.indexOf("cg_Normal"));
 
-    /** SPATIAL: 32 bytes a vertex, position as floats at 0; the normal read through its attribute. */
+    /** SPATIAL: position as floats at 0; the normal read through its attribute. */
     private static ByteBuffer vertices(CgMesh mesh) {
-        ByteBuffer bytes = ByteBuffer.allocate(mesh.vertexCount() * 32).order(ByteOrder.nativeOrder());
+        ByteBuffer bytes = ByteBuffer.allocate(mesh.vertexCount() * STRIDE).order(ByteOrder.nativeOrder());
         mesh.readVertices(0, mesh.vertexCount(), bytes);
         return bytes;
     }
@@ -40,7 +41,7 @@ public class CgProceduralMeshTest {
         for (int i = 0; i < mesh.vertexCount(); i++) {
             float[] p = position(v, i);
             if (Math.abs(p[1]) > 1.99f) continue;
-            float[] n = {NORMAL.read(v, i * 32, 0), NORMAL.read(v, i * 32, 1), NORMAL.read(v, i * 32, 2)};
+            float[] n = {NORMAL.read(v, i * STRIDE, 0), NORMAL.read(v, i * STRIDE, 1), NORMAL.read(v, i * STRIDE, 2)};
             assertTrue("vertex " + i + "'s normal is not radial", dot(n, CgProceduralMesh.normalize(p)) > 0.95f);
         }
     }
@@ -53,7 +54,7 @@ public class CgProceduralMeshTest {
             float[] first = position(v, row * 16), last = position(v, row * 16 + 15);
             assertEquals(first[0], last[0], 1e-6f);
             assertEquals(first[2], last[2], 1e-6f);
-            assertEquals(NORMAL.read(v, row * 16 * 32, 0), NORMAL.read(v, (row * 16 + 15) * 32, 0), 1e-4f);
+            assertEquals(NORMAL.read(v, row * 16 * STRIDE, 0), NORMAL.read(v, (row * 16 + 15) * STRIDE, 0), 1e-4f);
         }
     }
 
@@ -84,7 +85,7 @@ public class CgProceduralMeshTest {
     }
 
     private static float[] position(ByteBuffer v, int i) {
-        return new float[]{v.getFloat(i * 32), v.getFloat(i * 32 + 4), v.getFloat(i * 32 + 8)};
+        return new float[]{v.getFloat(i * STRIDE), v.getFloat(i * STRIDE + 4), v.getFloat(i * STRIDE + 8)};
     }
 
     private static float[] sub(float[] p, float[] q) {

@@ -126,8 +126,8 @@ CgMaterialVertex _cg_mesh_vertex() {
     v.worldPosition = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;
     v.texCoords[0] = cg_TexCoord0;
     v.texCoords[1] = cg_TexCoord1;
-    v.texCoords[2] = vec2(0.0);   // the mesh has two sets; Unreal zeroes the rest
-    v.texCoords[3] = vec2(0.0);
+    v.texCoords[2] = cg_TexCoord2;
+    v.texCoords[3] = cg_TexCoord3;
     // The format carries no tangent: a frame about the normal (Duff et al., "Building an Orthonormal Basis, Revisited").
     vec3 n = normalize(CG_NORMAL_MATRIX * cg_Normal);
     float s = n.z >= 0.0 ? 1.0 : -1.0, a = -1.0 / (s + n.z), b = n.x * n.y * a;
