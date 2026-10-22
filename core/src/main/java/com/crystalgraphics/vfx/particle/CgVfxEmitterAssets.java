@@ -2012,7 +2012,9 @@ public final class CgVfxEmitterAssets {
             CgKeyframes s = keyframes(name, scale, "loop");
             curve = curve == null ? s : product(curve, s);
         }
-        return new CgVfxSpawnRate(ends[0] * by[0], ends[1] * by[1], curve != null ? curve : CgKeyframes.constant(1f));
+        // Cascade's uniform is Max + (Min - Max) * rand (Distributions.cpp:2032): either end may be the larger.
+        float lo = ends[0] * by[0], hi = ends[1] * by[1];
+        return new CgVfxSpawnRate(Math.min(lo, hi), Math.max(lo, hi), curve != null ? curve : CgKeyframes.constant(1f));
     }
 
     /** {@code a} times {@code b}, sampled at each one's keys and between them. */

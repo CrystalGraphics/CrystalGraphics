@@ -38,7 +38,8 @@ import java.util.Map;
  *   <li>{@code kill} is refused, naming the emitter: no engine path runs it.</li>
  *   <li>A {@code name} with a {@code source} still needs that source to raise it; a name nothing raises spawns nothing,
  *       as Cascade's receiver does.</li>
- *   <li>A count is a number or a {@code range}; a curve is refused. {@code use_particle_time} reads a count over time,
+ *   <li>A count is a number or a {@code range}; a curve is refused. A count of 0 spawns nothing, as Cascade's receiver
+ *       rounds it (ParticleModules_Event.cpp:346-380), so its system puts no event on any source. {@code use_particle_time} reads a count over time,
  *       so with neither it changes nothing.</li>
  *   <li>{@code inherit_velocity} is one share for all three axes: a vector of three different shares is refused.</li>
  * </ul>
@@ -49,8 +50,8 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
 
     public CgVfxEventHandler {
         CgVfxEvent.ofSpec(trigger);
-        if (countMin < 1 || countMax < countMin || countMax > CgVfxEvent.MAX_CHILDREN) {
-            throw new IllegalArgumentException("event " + id + ": " + countMin + " to " + countMax + " children, 1 to "
+        if (countMin < 0 || countMax < countMin || countMax > CgVfxEvent.MAX_CHILDREN) {
+            throw new IllegalArgumentException("event " + id + ": " + countMin + " to " + countMax + " children, 0 to "
                     + CgVfxEvent.MAX_CHILDREN);
         }
         if (maxPerFrame < 1) throw new IllegalArgumentException("event " + id + ": max_per_frame " + maxPerFrame);
