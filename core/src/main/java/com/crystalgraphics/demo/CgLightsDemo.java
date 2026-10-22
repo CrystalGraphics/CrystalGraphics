@@ -106,8 +106,8 @@ public final class CgLightsDemo {
                         .to(1f, 0f, CgEasings.IN_QUAD).build())
                 .light(40f, 2f, CgVfxDrawnChannel.over(CgKeyframes.constant(1f)), CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
                         CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
-                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 0f).to(0.2f, 0.5f, CgEasings.OUT_QUAD)
-                                .to(0.8f, 0.5f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build()))
+                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 0f).to(0.2f, 1.5f, CgEasings.OUT_QUAD)
+                                .to(0.8f, 1.5f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build()))
                 .renderer(sparks("fireflies")).renderer(CgVfxRenderers.light("firefliesLight").field("spawn_fraction", 1.0)
                         .field("inverse_squared_falloff", false).build())
                 .build();
