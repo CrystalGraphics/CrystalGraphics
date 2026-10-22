@@ -1,6 +1,10 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
+import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.material.CgMaterialUsage;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
+import com.crystalgraphics.asset.kind.CgLookKinds;
+import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetReferences;
@@ -42,6 +46,9 @@ import java.util.TreeMap;
  */
 public class CgVfxShapeCensusTest {
 
+    /** What a stand-in material draws with: its usages are what a renderer checks, not its shader. */
+    private static final String STUB_SHADER = "crystalgraphics:shaders/vfx/particle/sprite.shader";
+
     @Test
     public void shapesPerMove() throws Exception {
         String kits = System.getProperty("crystalgraphics.kits");
@@ -53,8 +60,15 @@ public class CgVfxShapeCensusTest {
         CgAssetKinds.register();
         // Materials compile to definitions, as the engine's init does; with -PcensusMaterials=false they stay raw, so an
         // emitter's modules all compile before its renderer fails on its material, which the report then names apart.
-        boolean materials = !"false".equals(System.getProperty("crystalgraphics.census.materials"));
+        // With -PcensusMaterials=stub each compiles to a stand-in drawing every particle usage, so every emitter compiles whole
+        // and the report names what the engine lacks, past the materials not ported yet.
+        String materialMode = System.getProperty("crystalgraphics.census.materials", "true");
+        boolean materials = !"false".equals(materialMode);
         if (materials) CgBuiltInCompilers.register();
+        if (materialMode.equals("stub")) {
+            CgAssetCompiler.register(CgLookKinds.MATERIAL, (asset, deps) -> CgMaterialDefinition.of(asset.id(), STUB_SHADER)
+                    .usage(CgMaterialUsage.SPRITES, CgMaterialUsage.MESH_PARTICLES, CgMaterialUsage.RIBBONS).build());
+        }
         CgVfxSystemAssets.register();
         CgAssetRegistry registry = new CgAssetRegistry();
         registry.registerEngine();
@@ -143,7 +157,7 @@ public class CgVfxShapeCensusTest {
         worst.sort((a, b) -> b.getValue().size() - a.getValue().size());
         StringBuilder report = new StringBuilder();
         report.append(String.format("%d systems over %d moves (sequences); %d failed to compile%s%n", ids.size(), full.size(), failed,
-                materials ? "" : " (materials uncompiled: \"not a material\" means its emitter compiled up to its renderers)"));
+                materialMode.equals("stub") ? " (materials stood in for)" : materials ? "" : " (materials uncompiled: \"not a material\" means its emitter compiled up to its renderers)"));
         why.entrySet().stream().sorted((x, y) -> y.getValue() - x.getValue()).limit(40).forEach(e -> {
             report.append(String.format("  failed %5d  %s%n", e.getValue(), e.getKey()));
             detail.get(e.getKey()).entrySet().stream().sorted((x, y) -> y.getValue() - x.getValue()).limit(6)

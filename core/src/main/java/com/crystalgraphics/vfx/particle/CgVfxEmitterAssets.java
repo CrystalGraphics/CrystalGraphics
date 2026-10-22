@@ -1547,13 +1547,25 @@ public final class CgVfxEmitterAssets {
                     give(out, names, "keep_inside", in, "keeps_inside");
                     give(out, names, "particle_radius_scale", in, "radius");
                 }
-                double bounce = ((Number) in.get("bounce")).doubleValue();
-                out.put("restitution", List.of(bounce, bounce, bounce));
-                give(out, names, "friction", in, "friction");
+                double mode = ((Number) in.get("damping_mode")).doubleValue();
+                if (mode > 0) {
+                    out.put("damping", Objects.equals(in.get("damping_min"), in.get("damping_max")) ? in.get("damping_min")
+                            : mode > 1.5 ? map("range", Arrays.asList(in.get("damping_min"), in.get("damping_max")), "locked", true)
+                            : map("range", Arrays.asList(in.get("damping_min"), in.get("damping_max"))));
+                } else {
+                    double bounce = ((Number) in.get("bounce")).doubleValue();
+                    out.put("restitution", List.of(bounce, bounce, bounce));
+                    give(out, names, "friction", in, "friction");
+                }
                 give(out, names, "static_friction_speed", in, "rest");
-                if (Boolean.TRUE.equals(in.get("kill"))) {
-                    out.put("max_collisions", 1);
-                    out.put("on_complete", "kill");
+                out.put("rotation_restitution", in.get("rotation"));
+                names.put("rotation", "rotation_restitution");
+                out.put("delay", in.get("delay"));
+                if (in.get("lead") instanceof Number lead && lead.doubleValue() > 0) out.put("radius_scale", 2.0 / lead.doubleValue());
+                int complete = (int) Math.round(((Number) in.get("complete")).doubleValue());
+                if (complete > 0) {
+                    out.put("max_collisions", rangeToFile(in.get("most_min"), in.get("most_max"), false));
+                    out.put("on_complete", CgVfxModule.CollisionCompletion.values()[complete - 1].fileName());
                 }
                 if (in.get("reach") instanceof Number r) {
                     out.put("max_distance", Double.isInfinite(r.doubleValue()) ? WORLD_MAX : r.doubleValue());
@@ -1624,6 +1636,35 @@ public final class CgVfxEmitterAssets {
         }
     }
 
+    /**
+     * Collision's {@code damping} into a collider's inputs: a constant, or a range rolled per particle, per axis unless
+     * locked. A curve by the loop is refused by name.
+     */
+    private static void collisionDamping(String name, Object damping, Map<String, Object> out) {
+        Object lo = damping, hi = damping;
+        boolean locked = false;
+        if (damping instanceof Map<?, ?> m && m.get("range") instanceof List<?> r && r.size() == 2) {
+            lo = r.get(0);
+            hi = r.get(1);
+            locked = Boolean.TRUE.equals(m.get("locked"));
+        } else if (damping instanceof Map<?, ?>) {
+            throw new IllegalArgumentException(name + ": collision's damping " + damping + " is not read yet: a constant or"
+                    + " a range");
+        }
+        out.put("damping_min", vectorOf(name, "collision's damping", lo));
+        out.put("damping_max", vectorOf(name, "collision's damping", hi));
+        out.put("damping_mode", locked ? 2.0 : 1.0);
+    }
+
+    /** {@code value} as three doubles: a vector, or one number on every axis. */
+    private static List<Object> vectorOf(String name, String what, Object value) {
+        if (value instanceof Number n) return Arrays.asList(n.doubleValue(), n.doubleValue(), n.doubleValue());
+        if (value instanceof List<?> v && v.size() == 3) {
+            return Arrays.asList(num(v.get(0)), num(v.get(1)), num(v.get(2)));
+        }
+        throw new IllegalArgumentException(name + ": " + what + " " + value + " is not read yet: a vector or a number");
+    }
+
     /** A particle_update entry as the engine kind it names and that kind's inputs. */
     private static Mapped toEngine(String name, Map<?, ?> entry) {
         Map<?, ?> in = inputs(entry);
@@ -1655,13 +1696,31 @@ public final class CgVfxEmitterAssets {
                     take(in, read, out, names, "keep_inside", "keeps_inside");
                     take(in, read, out, names, "particle_radius_scale", "radius");
                 }
-                List<?> r = (List<?>) in.get("restitution");
-                if (!(r.get(0).equals(r.get(1)) && r.get(1).equals(r.get(2)))) {
-                    throw new IllegalArgumentException(name + ": collision's restitution " + r + " is not read yet: one value on every axis");
+                // Cascade's DampingFactor, when set, is the whole response: restitution and friction go unread (:453).
+                Object damping = in.get("damping");
+                read.add("damping");
+                if (damping != null) {
+                    collisionDamping(name, damping, out);
+                    read.add("restitution");
+                    read.add("friction");
+                    out.put("bounce", 0.0);
+                    out.put("friction", 0.0);
+                } else {
+                    List<?> r = (List<?>) in.get("restitution");
+                    if (!(r.get(0).equals(r.get(1)) && r.get(1).equals(r.get(2)))) {
+                        throw new IllegalArgumentException(name + ": collision's restitution " + r + " is not read yet: one value"
+                                + " on every axis, or Cascade's per-axis damping");
+                    }
+                    read.add("restitution");
+                    out.put("bounce", r.get(0));
+                    take(in, read, out, names, "friction", "friction");
                 }
-                read.add("restitution");
-                out.put("bounce", r.get(0));
-                take(in, read, out, names, "friction", "friction");
+                if (in.get("rotation_restitution") != null) {
+                    out.put("rotation", vectorOf(name, "collision's rotation_restitution", in.get("rotation_restitution")));
+                    read.add("rotation_restitution");
+                }
+                // A share of the particle's life, as Cascade compares it to its relative time (:314-321).
+                take(in, read, out, names, "delay", "delay");
                 take(in, read, out, names, "static_friction_speed", "rest");
                 // Cascade's particle mass pushes only the physics body it hits, under apply_physics
                 // (ParticleModules_Collision.cpp:436-473), which is refused unread: without it, mass changes nothing.
@@ -1675,15 +1734,30 @@ public final class CgVfxEmitterAssets {
                 read.add("ignore_triggers");
                 // The world's blocks are never the source actor; the scene's depth holds it, so there it collides.
                 if (!kind.equals("collide_depth") || Boolean.FALSE.equals(in.get("ignore_source"))) read.add("ignore_source");
+                // Cascade's MaxCollisions, rolled and rounded per particle (:155); 0 ends at the first collision as 1
+                // does, the count decremented before it is tested above 0 (:406-412). Absent, no count.
                 Object most = in.get("max_collisions");
-                // 0 ends at the first collision as 1 does: the count is decremented, then tested above 0 (:406-412).
-                if (most != null && !(most instanceof Number n && n.intValue() <= 1 && "kill".equals(in.get("on_complete")))) {
-                    throw new IllegalArgumentException(name + ": collision's max_collisions " + most + " is not read yet: 1 and kill alone");
-                }
                 read.add("max_collisions");
                 read.add("on_complete");
-                out.put("kill", most != null);
+                if (most != null) {
+                    float[] range = rangeOf(most);
+                    out.put("most_min", (double) range[0]);
+                    out.put("most_max", (double) range[1]);
+                    String complete = String.valueOf(in.get("on_complete"));
+                    int code = -1;
+                    for (CgVfxModule.CollisionCompletion c : CgVfxModule.CollisionCompletion.values()) {
+                        if (c.fileName().equals(complete)) code = c.ordinal() + 1;
+                    }
+                    if (code < 0) throw new IllegalArgumentException(name + ": collision's on_complete " + complete + " is not one");
+                    out.put("complete", (double) code);
+                }
                 if (kind.equals("collide_depth")) take(in, read, out, names, "depth_thickness", "thickness");
+                // Cascade's world trace reaches the particle's size over DirScalar ahead of it (:360); the engine's size
+                // is a half-width, so the lead is two over it.
+                if (kind.equals("collide_world") && in.get("radius_scale") instanceof Number scale && scale.doubleValue() > 0) {
+                    out.put("lead", 2.0 / scale.doubleValue());
+                    read.add("radius_scale");
+                }
                 if (kind.equals("collide_world") || kind.equals("collide_depth")) {
                     take(in, read, out, names, "max_distance", "reach");
                     // Cascade checks no distance at or past its world's size (:227-228).

@@ -5,9 +5,11 @@
 // Ported from Godot Engine (MIT, (c) 2014-present Godot Engine contributors): the attractor falloff and the sphere and
 // box colliders of servers/rendering/renderer_rd/shaders/particles.glsl, the rigid response of
 // scene/resources/particle_process_material.cpp. The plane, the container modes and the guard on a particle already
-// leaving are this project's.
+// leaving are this project's. Cascade's damping, count and completions (FxCollision) follow 4.21's
+// ParticleModules_Collision.cpp, written here.
 #pragma once
 #include "crystalgraphics:shaders/lib/vfx/sim/fx_types.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_rand.glsl"
 
 #define FX_SPHERE 0.0
 #define FX_BOX 1.0
@@ -94,31 +96,102 @@ bool fx_volume_contact(vec4 e, bool container, vec3 r, float size, out vec3 n, o
     return true;
 }
 
-// Godot's rigid response to a contact: pushed out by depth, the speed into the surface taken away, friction of the
-// rest, and a bounce once the impact is fast enough (slide_to_bounce_trigger), which is the punctual hit a collision
-// event fires on. Slower than rest after it, the particle rests. r: bounce, friction, rest (blocks a second), and kill:
-// Godot's hide on contact, a hit then death, on the surface so what the hit spawns starts there. what: the FX_HIT_ code.
-void fx_contact_respond(inout FxParticle p, vec3 n, float depth, vec4 r, float what) {
-    p.position += n * depth;
-    if (r.w > 0.0) {
-        fx_hit(p, n, what);
+// A collider's Cascade half, four vec4s of its words (CgVfxModule.CollisionResponse): damping's low end and whether it
+// is set (1 a roll per axis, 2 one roll); its high end and the delay, a share of life; the rotation restitution and
+// the completion (FX_COMPLETE_*, 0 for no count); the count's range and a world collider's lead.
+struct FxCollision { vec4 low, high, turn, most; };
+
+#define FX_COMPLETE_KILL 1.0
+#define FX_COMPLETE_FREEZE 2.0
+#define FX_COMPLETE_HALT 3.0
+#define FX_COMPLETE_FREEZE_TRANSLATION 4.0
+#define FX_COMPLETE_FREEZE_ROTATION 5.0
+#define FX_COMPLETE_FREEZE_MOVEMENT 6.0
+// FxParticle.state: collisions ignored after a completion; translation held (Cascade's STATE_Particle_* flags).
+#define FX_STATE_HALT 2u
+#define FX_STATE_STILL 4u
+// What a collider's rolls are keyed by, with the particle's id.
+#define FX_COLLISION_KEY 0x434F4C4Cu
+
+// Whether a collider leaves p alone this step: resting, past a completion, or within its delay, which Cascade tests
+// against the particle's relative time (:314-321).
+bool fx_collision_skips(FxParticle p, FxCollision c) {
+    return p.resting || (p.state & FX_STATE_HALT) != 0u || p.age < c.high.w * p.life;
+}
+
+// The contacts p takes before its completion: Cascade's MaxCollisions rolled and rounded (:155), at least 1, since the
+// count is decremented before it is tested above 0 (:406-411).
+float fx_collision_most(FxParticle p, FxCollision c) {
+    return max(floor(mix(c.most.x, c.most.y, fx_rand(p.id, FX_COLLISION_KEY, 3u)) + 0.5), 1.0);
+}
+
+// Cascade's DampingFactor for p, rolled from its id: per axis, or one roll for all.
+vec3 fx_collision_damping(FxParticle p, FxCollision c) {
+    vec3 roll = vec3(fx_rand(p.id, FX_COLLISION_KEY, 0u), fx_rand(p.id, FX_COLLISION_KEY, 1u), fx_rand(p.id, FX_COLLISION_KEY, 2u));
+    if (c.low.w > 1.5) roll = vec3(roll.x);
+    return mix(c.low.xyz, c.high.xyz, roll);
+}
+
+// Damps p's rotation rates by d from now: a sprite's by d.x, a mesh's per axis (:421-426), its turn so far kept.
+void fx_collision_turn(inout FxParticle p, vec3 d) {
+    p.spinRate *= d.x;
+    p.turnBase += (p.turnScale - p.turnScale * d) * p.age;
+    p.turnScale *= d;
+}
+
+// Cascade's completion (:497-534): killed; or held still, unturned or both; every one ignores collisions after.
+void fx_collision_complete(inout FxParticle p, float how) {
+    if (how < FX_COMPLETE_KILL + 0.5) {
         p.life = p.age;
         return;
     }
+    p.state |= FX_STATE_HALT;
+    bool still = abs(how - FX_COMPLETE_FREEZE) < 0.5 || abs(how - FX_COMPLETE_FREEZE_TRANSLATION) < 0.5
+            || abs(how - FX_COMPLETE_FREEZE_MOVEMENT) < 0.5;
+    bool unturned = abs(how - FX_COMPLETE_FREEZE) < 0.5 || abs(how - FX_COMPLETE_FREEZE_ROTATION) < 0.5
+            || abs(how - FX_COMPLETE_FREEZE_MOVEMENT) < 0.5;
+    if (still) {
+        p.state |= FX_STATE_STILL;
+        p.velocity = vec3(0.0);
+    }
+    if (unturned) fx_collision_turn(p, vec3(0.0));
+}
+
+// The response to a contact, pushed out by depth along n. With a count (c.turn.w), every contact is a hit counted
+// toward it and the one that spends it completes instead of bouncing, as Cascade's does. A particle already leaving
+// is left alone. With Cascade's damping (c.low.w) the whole velocity is mirrored and damped per axis, with no friction
+// (:453); else Godot's rigid response: the speed into the surface taken away, g.y of the rest as friction, and a
+// bounce of g.x once the impact is fast enough (slide_to_bounce_trigger), the punctual hit a collision event fires on,
+// slower than g.z after it resting. what: the FX_HIT_ code.
+void fx_contact_respond(inout FxParticle p, vec3 n, float depth, vec3 g, FxCollision c, float what) {
+    p.position += n * depth;
+    bool counted = c.turn.w > 0.0;
+    if (counted) {
+        fx_hit(p, n, what);
+        if (float(p.collisions) >= fx_collision_most(p, c)) {
+            fx_collision_complete(p, c.turn.w);
+            return;
+        }
+    }
     float response = n.x * p.velocity.x + n.y * p.velocity.y + n.z * p.velocity.z;
     if (response >= 0.0) return;
-    float trigger = -response < 2.0 / max(1.0, min(r.x + 1.0, 2.0)) ? 0.0 : 1.0;
-    float keep = 1.0 - max(0.0, min(r.y, 1.0));
+    if (c.low.w > 0.0) {
+        p.velocity = fx_collision_damping(p, c) * reflect(p.velocity, n);
+        if (!counted) fx_hit(p, n, what);
+        fx_collision_turn(p, c.turn.xyz);
+        return;
+    }
+    float trigger = -response < 2.0 / max(1.0, min(g.x + 1.0, 2.0)) ? 0.0 : 1.0;
+    float keep = 1.0 - max(0.0, min(g.y, 1.0));
     p.velocity = (p.velocity - n * response) * keep;
-    p.velocity -= n * response * (r.x * trigger);
-    if (trigger > 0.0) fx_hit(p, n, what);
-    if (length(p.velocity) < r.z) {
+    p.velocity -= n * response * (g.x * trigger);
+    if (trigger > 0.0) {
+        if (!counted) fx_hit(p, n, what);
+        fx_collision_turn(p, c.turn.xyz);
+    }
+    if (length(p.velocity) < g.z) {
         p.velocity = vec3(0.0);
         p.spinRate = 0.0;
         p.resting = true;
     }
-}
-
-void fx_contact_respond(inout FxParticle p, vec3 n, float depth, vec4 r) {
-    fx_contact_respond(p, n, depth, r, FX_HIT_OTHER);
 }

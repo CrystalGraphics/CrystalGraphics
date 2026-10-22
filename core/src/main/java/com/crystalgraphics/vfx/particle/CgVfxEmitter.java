@@ -1712,6 +1712,15 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             if (state.loops() > 1 && !(state.shortestPeriod() > 0f)) {
                 throw new IllegalStateException(name + " loops in no time: give its loops a duration or a delay");
             }
+            if (meshRotation != null && !meshRotation.steps().isEmpty()) {
+                for (CgVfxModule m : modules) {
+                    CgVfxModule.CollisionResponse r = CgVfxModule.CollisionResponse.of(m);
+                    if (r != null && r.turns()) {
+                        throw new IllegalStateException(name + "'s collision damps or freezes its turn, whose rate changes"
+                                + " over life: not built yet");
+                    }
+                }
+            }
             if (clip != null) {
                 for (CgVfxModule m : modules) {
                     if (m.dataInterfaces().length > 0) {

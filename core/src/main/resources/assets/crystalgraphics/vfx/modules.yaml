@@ -277,7 +277,9 @@ modules:
       { name: plane_radius, type: float, quantity: length, default: null, visible_when: { shape: plane } },
       { name: depth_thickness, type: float, quantity: length, default: null, visible_when: { against: depth } },
       { name: entity_size, type: float, default: null, visible_when: { against: entities } },
-      { name: restitution, type: vec3, default: [0.6, 0.6, 0.6] }, { name: rotation_restitution, type: vec3, default: [1, 1, 1] },
+      { name: restitution, type: vec3, default: [0.6, 0.6, 0.6] }, { name: rotation_restitution, type: vec3, quantity: scale, default: [1, 1, 1] },
+      # Cascade's DampingFactor: v' = damping x mirror(v, n), per axis, rolled at spawn; present, restitution and friction are unread
+      { name: damping, type: vec3, quantity: scale, forms: [constant, range], by: [loop], default: null },
       { name: restitution_scale, type: float, by: [age], default: 1 }, { name: radius_bias, type: float, quantity: length, default: 0 },
       { name: friction, type: float, default: 0.25 },
       # Niagara's rest state: static friction engages under its speed, a particle at rest for the time range stays
@@ -286,7 +288,7 @@ modules:
       { name: particle_radius_scale, type: float, default: 1 },
       { name: max_collisions, type: int, forms: [constant, range], default: null },
       { name: on_complete, type: enum, values: [kill, freeze, halt, freeze_translation, freeze_rotation, freeze_movement], default: kill },
-      { name: delay, type: float, quantity: time, default: 0 }, { name: max_distance, type: float, quantity: length, default: 1000 },
+      { name: delay, type: float, default: 0 }, { name: max_distance, type: float, quantity: length, default: 1000 },
       # Cascade's own: what its world trace reads
       { name: apply_physics, type: bool, default: false }, { name: ignore_triggers, type: bool, default: true },
       { name: ignore_source, type: bool, default: true }, { name: drop_detail, type: bool, default: true }, { name: object_types, type: array, default: [] },

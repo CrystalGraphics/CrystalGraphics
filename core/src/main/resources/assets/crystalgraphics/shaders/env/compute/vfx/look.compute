@@ -40,6 +40,7 @@ Properties {
     _ScaleAt       ("Its stored mesh scale's word; -1 rolls the row's starts", int)   = -1
     _TurnAt        ("Its stored rotator's word; -1 rolls the row's start", int)     = -1
     _TurnRateAt    ("Its stored rotation rate's word; -1 rolls the row's rate", int) = -1
+    _TurnStateAt   ("Its stored turn age map's word; -1 turns by its age", int) = -1
 }
 
 // A particle's drawn part: CgVfxRecord.DRAWN_GLSL.
@@ -146,6 +147,12 @@ void Look() {
             // A start or a rate stored at birth (CgVfxSpawnInput.MESH_ORIENTATION, MESH_ROTATION_RATE).
             if (_TurnRateAt >= 0) rate = vec3(look_word(e, _TurnRateAt), look_word(e, _TurnRateAt + 1), look_word(e, _TurnRateAt + 2));
             vec3 turned = rate * positionAge.w;
+            // A collision damps the rate from the age it strikes at: rate * (base + scale * age), the turn so far kept.
+            if (_TurnStateAt >= 0) {
+                vec3 base = vec3(look_word(e, _TurnStateAt), look_word(e, _TurnStateAt + 1), look_word(e, _TurnStateAt + 2));
+                vec3 scale = vec3(look_word(e, _TurnStateAt + 3), look_word(e, _TurnStateAt + 4), look_word(e, _TurnStateAt + 5));
+                turned = rate * (base + scale * positionAge.w);
+            }
             if (rateTo.w > 0.5) turned = lifeSeed.x * (rate * look_curve(r + 4, t).xyz + look_curve(r + 4 + _Texels, t).xyz);
             vec3 start = _TurnAt >= 0 ? vec3(look_word(e, _TurnAt), look_word(e, _TurnAt + 1), look_word(e, _TurnAt + 2))
                     : mix(from.xyz, to.xyz, look_rolls(roll, from.w));

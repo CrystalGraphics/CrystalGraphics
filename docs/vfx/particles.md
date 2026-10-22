@@ -289,6 +289,53 @@ particle slowed to a crawl by a curve speeds up again as the curve rises; `absol
 
 - Collisions, alignment and stretch read the velocity, not the scaled motion.
 
+## What a collision does: bounce, damping, a count and its end
+
+A collider (`collision`, against the world, the screen's depth, entities or a shape) bounces what strikes it. Its
+response is Cascade's when it says so: a damping per axis instead of the bounce, a delay before it collides, a number of
+collisions and what the last one does.
+
+```java
+// sparks: halved sideways, a quarter upward at each bounce, lying where the third lands
+.module(new CgVfxModule.CollideWorld(0f, 0f, 0f).response(CgVfxModule.CollisionResponse.NONE
+        .damping(0.5f, 0.25f, 0.5f)
+        .limit(3, CgVfxModule.CollisionCompletion.FREEZE)))
+
+// debris: its own damping each, colliding after a fifth of its life, gone after one to three bounces
+.module(new CgVfxModule.CollideWorld(0f, 0f, 0f).response(CgVfxModule.CollisionResponse.NONE
+        .damping(0.3f, 0.1f, 0.3f, 0.6f, 0.4f, 0.6f, false)
+        .delay(0.2f).rotation(0.5f, 0.5f, 0.5f)
+        .limit(1f, 3f, CgVfxModule.CollisionCompletion.KILL)))
+```
+
+```yaml
+- module: crystalgraphics:collision
+  inputs:
+    against: world
+    damping: { range: [[0.3, 0.3, 0.1], [0.6, 0.6, 0.4]] }   # the asset's axes: z up here
+    delay: 0.2
+    rotation_restitution: [0.5, 0.5, 0.5]
+    max_collisions: { range: [1, 3] }
+    on_complete: kill
+```
+
+| Field | Means |
+|---|---|
+| `damping` | the whole velocity mirrored about the surface and scaled per axis, rolled per particle between a range's ends; set, `restitution` and `friction` are unread |
+| `restitution`, `friction` | without damping: the speed into the surface bounced back at `restitution`, the slide kept less `friction` |
+| `delay` | the share of its life, 0 to 1, before a particle collides |
+| `rotation_restitution` | each bounce scales its rotation rates: a sprite's spin by x, a mesh's turn per axis |
+| `max_collisions` | contacts until `on_complete`, rolled and rounded per particle; absent, it bounces for ever |
+| `on_complete` | `kill`; `freeze` (still and unturned where it struck); `halt` (carries on, colliding no more); `freeze_translation`, `freeze_rotation`, `freeze_movement` |
+| `radius_scale` | a world collider tests the particle's size over this ahead of it along its motion (3.5) |
+
+- **With a count, every contact counts**, sliding included, and each fires a collision event; the one that spends the
+  count runs `on_complete` instead of bouncing.
+- **Every end stops its collisions**: a frozen or halted particle passes through what it meets after.
+- **A count below 1 is 1.**
+- **A frozen particle still ages and dies**, and its colour keeps playing over its life.
+- **Damping or freezing the turn of a mesh whose rotation rate changes over life** fails at load: not built yet.
+
 ## Beams: a strip from a source to a target
 
 A beam emitter draws each particle as a strip from its source to its target: lightning, a tether, a laser. Its

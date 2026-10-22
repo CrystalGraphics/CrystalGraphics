@@ -52,7 +52,7 @@ public final class CgVfxRecord {
     public enum Tail {
         /** The position before the last step: a collision's sweep, a floor's stair test. */
         PREVIOUS(3),
-        /** {@link #RESTING}, and the collisions so far from {@link #COLLISIONS_SHIFT}. */
+        /** {@link #RESTING}, a collision's completion state, and the collisions so far from {@link #COLLISIONS_SHIFT}. */
         FLAGS(1),
         /** Its colour at birth from a spawn form; an alpha below 0 takes the row's rolled alpha. */
         COLOR(4),
@@ -72,7 +72,13 @@ public final class CgVfxRecord {
          * Its light's radius scale and exponent, read once at birth by the emitter's time: Cascade's light payload
          * ({@code ParticleModules.cpp:3110-3112}).
          */
-        LIGHT(2);
+        LIGHT(2),
+        /**
+         * Its mesh turn's age map, {@code turnBase} then {@code turnScale}: Look turns it by its rate times
+         * {@code turnBase + turnScale * age}, which a collision damps from the age it strikes at
+         * ({@code ParticleModules_Collision.cpp:421-426}).
+         */
+        TURN_STATE(6);
 
         private final int components;
 
@@ -195,6 +201,8 @@ public final class CgVfxRecord {
             putF(out, record, previous + 1, y);
             putF(out, record, previous + 2, z);
         }
+        int turnState = word(Tail.TURN_STATE);
+        if (turnState >= 0) for (int a = 3; a < 6; a++) putF(out, record, turnState + a, 1f);
     }
 
     @Override

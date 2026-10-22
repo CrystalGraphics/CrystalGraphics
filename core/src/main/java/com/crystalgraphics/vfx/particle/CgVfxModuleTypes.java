@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.particle;
 
+import org.joml.Vector3fc;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -327,29 +328,29 @@ public final class CgVfxModuleTypes {
                 r -> new CgVfxModule.Conform(CgSphere.of(r.f("radius")), r.f("offset", 0), r.f("offset", 1), r.f("offset", 2),
                         r.f("influence"), r.f("attraction"), r.f("speed"), r.f("shell"), r.f("sticky")));
         kind("collide", CgVfxModule.Collide.class,
-                t -> { shape(t); fl(t, "bounce", "friction", "rest"); t.property("kill", CgValueType.BOOL);
-                    fl(t, "radius"); t.property("keeps_inside", CgValueType.BOOL); offset(t); planeRadius(t); },
-                (m, in) -> in.shape(m.shape()).f("bounce", m.bounce()).f("friction", m.friction()).f("rest", m.rest())
-                        .b("kill", m.kill()).f("radius", m.radius()).b("keeps_inside", m.keepsInside())
+                t -> { shape(t); fl(t, "bounce", "friction", "rest", "radius"); t.property("keeps_inside", CgValueType.BOOL);
+                    response(t); offset(t); planeRadius(t); },
+                (m, in) -> response(in.shape(m.shape()).f("bounce", m.bounce()).f("friction", m.friction()).f("rest", m.rest())
+                        .f("radius", m.radius()).b("keeps_inside", m.keepsInside()), m.response())
                         .v3("offset", m.x(), m.y(), m.z()).f("plane_radius", planeRadius(m.shape())),
                 r -> new CgVfxModule.Collide(r.shape(), r.f("offset", 0), r.f("offset", 1), r.f("offset", 2), r.f("bounce"),
-                        r.f("friction"), r.f("rest"), r.f("radius"), r.b("keeps_inside"), r.b("kill")));
+                        r.f("friction"), r.f("rest"), r.f("radius"), r.b("keeps_inside"), response(r)));
         kind("collide_world", CgVfxModule.CollideWorld.class,
-                t -> { fl(t, "bounce", "friction", "rest"); t.property("kill", CgValueType.BOOL); fl(t, "reach"); },
-                (m, in) -> in.f("bounce", m.bounce()).f("friction", m.friction()).f("rest", m.rest()).b("kill", m.kill())
-                        .f("reach", m.reach()),
-                r -> new CgVfxModule.CollideWorld(r.f("bounce"), r.f("friction"), r.f("rest"), r.b("kill"), r.f("reach")));
+                t -> { fl(t, "bounce", "friction", "rest", "reach"); response(t); },
+                (m, in) -> response(in.f("bounce", m.bounce()).f("friction", m.friction()).f("rest", m.rest())
+                        .f("reach", m.reach()), m.response()),
+                r -> new CgVfxModule.CollideWorld(r.f("bounce"), r.f("friction"), r.f("rest"), response(r), r.f("reach")));
         kind("collide_depth", CgVfxModule.CollideDepth.class,
-                t -> { fl(t, "bounce", "friction", "rest"); t.property("kill", CgValueType.BOOL); fl(t, "thickness", "reach"); },
-                (m, in) -> in.f("bounce", m.bounce()).f("friction", m.friction()).f("rest", m.rest()).b("kill", m.kill())
-                        .f("thickness", m.thickness()).f("reach", m.reach()),
-                r -> new CgVfxModule.CollideDepth(r.f("bounce"), r.f("friction"), r.f("rest"), r.f("thickness"), r.b("kill"),
+                t -> { fl(t, "bounce", "friction", "rest", "thickness", "reach"); response(t); },
+                (m, in) -> response(in.f("bounce", m.bounce()).f("friction", m.friction()).f("rest", m.rest())
+                        .f("thickness", m.thickness()).f("reach", m.reach()), m.response()),
+                r -> new CgVfxModule.CollideDepth(r.f("bounce"), r.f("friction"), r.f("rest"), r.f("thickness"), response(r),
                         r.f("reach")));
         kind("collide_entities", CgVfxModule.CollideEntities.class,
-                t -> { fl(t, "bounce", "friction", "rest"); t.property("kill", CgValueType.BOOL); fl(t, "size"); },
-                (m, in) -> in.f("bounce", m.bounce()).f("friction", m.friction()).f("rest", m.rest()).b("kill", m.kill())
-                        .f("size", m.size()),
-                r -> new CgVfxModule.CollideEntities(r.f("bounce"), r.f("friction"), r.f("rest"), r.f("size"), r.b("kill")));
+                t -> { fl(t, "bounce", "friction", "rest", "size"); response(t); },
+                (m, in) -> response(in.f("bounce", m.bounce()).f("friction", m.friction()).f("rest", m.rest())
+                        .f("size", m.size()), m.response()),
+                r -> new CgVfxModule.CollideEntities(r.f("bounce"), r.f("friction"), r.f("rest"), r.f("size"), response(r)));
         kind("kill", CgVfxModule.Kill.class,
                 t -> { shape(t); t.property("inside", CgValueType.BOOL); offset(t); planeRadius(t); },
                 (m, in) -> in.shape(m.shape()).b("inside", m.inside()).v3("offset", m.x(), m.y(), m.z())
@@ -490,6 +491,52 @@ public final class CgVfxModuleTypes {
     /** A place from the source, written per instance: {@code name} as the format names it. */
     private static void offset(CgType.Builder t, String name) {
         t.property(name, CgValueType.VEC3).defaultValue(Arrays.asList(0.0, 0.0, 0.0)).flags(CgPropertyFlag.PER_INSTANCE);
+    }
+
+    /**
+     * A collider's Cascade half ({@link CgVfxModule.CollisionResponse}), after its own inputs: four vec4s, the GLSL's
+     * {@code FxCollision}. The damping's mode is 0 for none, 1 a roll per axis, 2 one roll; the completion 0 for no count,
+     * else its place plus 1; the lead beside the count's range.
+     */
+    private static void response(CgType.Builder t) {
+        t.property("damping_min", CgValueType.VEC3).defaultValue(Arrays.asList(0.0, 0.0, 0.0));
+        t.property("damping_mode", CgValueType.FLOAT).defaultValue(0.0);
+        t.property("damping_max", CgValueType.VEC3).defaultValue(Arrays.asList(0.0, 0.0, 0.0));
+        t.property("delay", CgValueType.FLOAT).defaultValue(0.0);
+        t.property("rotation", CgValueType.VEC3).defaultValue(Arrays.asList(1.0, 1.0, 1.0));
+        t.property("complete", CgValueType.FLOAT).defaultValue(0.0);
+        t.property("most_min", CgValueType.FLOAT).defaultValue(0.0);
+        t.property("most_max", CgValueType.FLOAT).defaultValue(0.0);
+        t.property("lead", CgValueType.FLOAT).defaultValue(0.0);
+    }
+
+    private static Inputs response(Inputs in, CgVfxModule.CollisionResponse r) {
+        Vector3fc lo = r.dampingMin(), hi = r.dampingMax();
+        if (lo != null && hi != null) {
+            in.v3("damping_min", lo.x(), lo.y(), lo.z()).f("damping_mode", r.dampingLocked() ? 2f : 1f)
+                    .v3("damping_max", hi.x(), hi.y(), hi.z());
+        } else {
+            in.v3("damping_min", 0f, 0f, 0f).f("damping_mode", 0f).v3("damping_max", 0f, 0f, 0f);
+        }
+        Vector3fc turn = r.rotation();
+        return in.f("delay", r.delay()).v3("rotation", turn.x(), turn.y(), turn.z())
+                .f("complete", r.completion() == null ? 0f : r.completion().ordinal() + 1f)
+                .f("most_min", r.mostMin()).f("most_max", r.mostMax()).f("lead", r.lead());
+    }
+
+    private static CgVfxModule.CollisionResponse response(Read r) {
+        CgVfxModule.CollisionResponse out = CgVfxModule.CollisionResponse.NONE.delay(r.f("delay"))
+                .rotation(r.f("rotation", 0), r.f("rotation", 1), r.f("rotation", 2)).lead(r.f("lead"));
+        float mode = r.f("damping_mode");
+        if (mode > 0f) {
+            out = out.damping(r.f("damping_min", 0), r.f("damping_min", 1), r.f("damping_min", 2), r.f("damping_max", 0),
+                    r.f("damping_max", 1), r.f("damping_max", 2), mode > 1.5f);
+        }
+        int complete = Math.round(r.f("complete"));
+        if (complete > 0) {
+            out = out.limit(r.f("most_min"), r.f("most_max"), CgVfxModule.CollisionCompletion.values()[complete - 1]);
+        }
+        return out;
     }
 
     private static void planeRadius(CgType.Builder t) {

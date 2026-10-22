@@ -76,6 +76,7 @@ public final class CgVfxEmitterCompiler {
         int color = record.word(CgVfxRecord.Tail.COLOR), scale = record.word(CgVfxRecord.Tail.SCALE);
         int turn = record.word(CgVfxRecord.Tail.TURN), turnRate = record.word(CgVfxRecord.Tail.TURN_RATE);
         int beam = record.word(CgVfxRecord.Tail.BEAM), light = record.word(CgVfxRecord.Tail.LIGHT);
+        int turnState = record.word(CgVfxRecord.Tail.TURN_STATE);
         s.append("\nFxParticle step_unpack(FxRecord r) {\n    FxParticle p;\n");
         unpack(s, "position", "uintBitsToFloat", CgVfxRecord.POSITION, 3);
         unpack(s, "age", "uintBitsToFloat", CgVfxRecord.AGE, 1);
@@ -104,11 +105,18 @@ public final class CgVfxEmitterCompiler {
         }
         if (light >= 0) unpack(s, "light", "uintBitsToFloat", light, 2);
         else s.append("    p.light = vec2(0.0);\n");
+        if (turnState >= 0) {
+            unpack(s, "turnBase", "uintBitsToFloat", turnState, 3);
+            unpack(s, "turnScale", "uintBitsToFloat", turnState + 3, 3);
+        } else {
+            s.append("    p.turnBase = vec3(0.0);\n    p.turnScale = vec3(1.0);\n");
+        }
         if (flags >= 0) {
             String w = CgVfxRecord.lane("r", flags);
-            s.append("    p.resting = (").append(w).append(" & 1u) != 0u;\n    p.collisions = ").append(w).append(" >> 16u;\n");
+            s.append("    p.resting = (").append(w).append(" & 1u) != 0u;\n    p.state = ").append(w)
+                    .append(" & 0xFFFEu;\n    p.collisions = ").append(w).append(" >> 16u;\n");
         } else {
-            s.append("    p.resting = false;\n    p.collisions = 0u;\n");
+            s.append("    p.resting = false;\n    p.state = 0u;\n    p.collisions = 0u;\n");
         }
         s.append("    p.hit = vec4(0.0);\n    p.hitEntity = 0u;\n    return p;\n}\n");
 
@@ -126,13 +134,17 @@ public final class CgVfxEmitterCompiler {
         w[CgVfxRecord.SLOT] = "p.slot";
         w[CgVfxRecord.PARAM_ROW] = "paramRow";
         if (previous >= 0) pack(w, "p.previous", previous, 3);
-        if (flags >= 0) w[flags] = "((p.resting ? 1u : 0u) | p.collisions << 16u)";
+        if (flags >= 0) w[flags] = "((p.resting ? 1u : 0u) | (p.state & 0xFFFEu) | p.collisions << 16u)";
         if (color >= 0) pack(w, "p.color", color, 4);
         if (scale >= 0) pack(w, "p.scale", scale, 3);
         if (turn >= 0) pack(w, "p.turn", turn, 3);
         if (turnRate >= 0) pack(w, "p.turnRate", turnRate, 3);
         if (beam >= 0) for (int v = 0; v < BEAM_FIELDS.length; v++) pack(w, "p." + BEAM_FIELDS[v], beam + v * 4, 4);
         if (light >= 0) pack(w, "p.light", light, 2);
+        if (turnState >= 0) {
+            pack(w, "p.turnBase", turnState, 3);
+            pack(w, "p.turnScale", turnState + 3, 3);
+        }
         // The simulated part; the drawn part is the Look stage's (env/compute/vfx/look.compute).
         s.append("\nFxRecord step_pack(FxParticle p, uint paramRow) {\n    FxRecord r;\n");
         for (int v = 0; v < record.vectors(); v++) {
@@ -174,13 +186,14 @@ public final class CgVfxEmitterCompiler {
     /** What writes each tail attribute in a kind's or a library's code: a value only read stays its default. */
     private static final Pattern[] TAIL_WRITES = {
             Pattern.compile("\\bp\\.previous\\s*([-+|]?=(?!=))"),
-            Pattern.compile("\\bp\\.(resting|collisions)\\s*([-+|]?=(?!=))|\\bfx_hit\\s*\\("),
+            Pattern.compile("\\bp\\.(resting|collisions|state)\\s*([-+|]?=(?!=))|\\bfx_hit\\s*\\("),
             Pattern.compile("\\bp\\.color\\s*([-+*]?=(?!=))"),
             Pattern.compile("\\bp\\.scale\\s*([-+*]?=(?!=))"),
             Pattern.compile("\\bp\\.turn\\s*([-+*]?=(?!=))"),
             Pattern.compile("\\bp\\.turnRate\\s*([-+*]?=(?!=))"),
             Pattern.compile("\\bp\\.beam\\w*\\s*([-+*]?=(?!=))"),
-            Pattern.compile("\\bp\\.light\\s*([-+*]?=(?!=))")};
+            Pattern.compile("\\bp\\.light\\s*([-+*]?=(?!=))"),
+            Pattern.compile("\\bp\\.turn(Base|Scale)\\s*([-+*]?=(?!=))")};
     /** The {@code BEAM} tail's vec4s, in order: {@code FxParticle}'s fields. */
     private static final String[] BEAM_FIELDS = {"beamSource", "beamSourceTangent", "beamTarget", "beamTargetTangent", "beamNoise", "beamTurn"};
     private static final Pattern INCLUDE = Pattern.compile("#include\\s+\"([^\"]+)\"");
@@ -606,6 +619,9 @@ public final class CgVfxEmitterCompiler {
                     p.turnRate = @TURN_RATE@;
                     p.light = @LIGHT@;
                     p.resting = false;
+                    p.state = 0u;
+                    p.turnBase = vec3(0.0);
+                    p.turnScale = vec3(1.0);
                     p.collisions = 0u;
                     p.hit = vec4(0.0);
                     p.hitEntity = 0u;
@@ -842,13 +858,15 @@ public final class CgVfxEmitterCompiler {
                     // The solve: forces into velocity, drag implicit, then position
                     // Held still, it keeps the step it is drawn between.
                     if (s.dt > 0.0) p.previous = p.position;
-                    if (!p.resting) {
+                    // Held still after a collision's completion, it keeps its place and still turns (Cascade's
+                    // STATE_Particle_FreezeTranslation, ParticleEmitterInstances.cpp:1337-1350).
+                    if (!p.resting && (p.state & 4u) == 0u) {
                         vec3 v = p.velocity + f.accel * s.dt;
                         float keep = 1.0 / (1.0 + (f.drag + f.dragQuad * length(v)) * s.dt);
                         p.velocity = v * keep;
                         p.position += (p.velocity * f.motionScale + f.motionSet) * s.dt;
-                        p.spin += p.spinRate * s.dt;
                     }
+                    if (!p.resting) p.spin += p.spinRate * s.dt;
 @FOLLOW@                    // What it struck with: a landing's and a collision's velocity.
                     vec3 impact = p.velocity;
                     p.hit = vec4(0.0);

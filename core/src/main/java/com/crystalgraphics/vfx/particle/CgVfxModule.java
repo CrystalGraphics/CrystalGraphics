@@ -14,6 +14,11 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxDataInterfaces;
 
+import org.joml.Vector3f;
+import org.joml.Vector3fc;
+
+import javax.annotation.Nullable;
+import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -1168,10 +1173,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      *   <li>A plane ends at its {@link CgPlane#radius() radius}: a particle past the edge falls off rather than sliding
      *       on.</li>
      *   <li>A {@link #killing()} collider is Godot's hide on contact: a hit, then death at the end of the step.</li>
+     *   <li>Cascade's damping, delay, count and completion are its {@link CollisionResponse}.</li>
      * </ul>
      */
     record Collide(CgShape shape, float x, float y, float z, float bounce, float friction, float rest, float radius,
-                   boolean keepsInside, boolean kill) implements CgVfxModule {
+                   boolean keepsInside, CollisionResponse response) implements CgVfxModule {
         private static final CgVfxLane[] LANES = {CgVfxLane.VEC4};
 
         public Collide {
@@ -1179,27 +1185,32 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         public Collide(CgShape shape, float bounce, float friction, float rest) {
-            this(shape, 0f, 0f, 0f, bounce, friction, rest, 1f, false, false);
+            this(shape, 0f, 0f, 0f, bounce, friction, rest, 1f, false, CollisionResponse.NONE);
         }
 
         /** The shape centred {@code (x, y, z)} from the source. */
         public Collide at(float x, float y, float z) {
-            return new Collide(shape, x, y, z, bounce, friction, rest, radius, keepsInside, kill);
+            return new Collide(shape, x, y, z, bounce, friction, rest, radius, keepsInside, response);
         }
 
         /** Collides as a ball of {@code radius} times a particle's size. */
         public Collide radius(float radius) {
-            return new Collide(shape, x, y, z, bounce, friction, rest, radius, keepsInside, kill);
+            return new Collide(shape, x, y, z, bounce, friction, rest, radius, keepsInside, response);
         }
 
         /** Keeps particles inside the shape rather than out of it. */
         public Collide container() {
-            return new Collide(shape, x, y, z, bounce, friction, rest, radius, true, kill);
+            return new Collide(shape, x, y, z, bounce, friction, rest, radius, true, response);
         }
 
         /** Kills a particle on contact rather than bouncing it. */
         public Collide killing() {
-            return new Collide(shape, x, y, z, bounce, friction, rest, radius, keepsInside, true);
+            return response(response.limit(1, CollisionCompletion.KILL));
+        }
+
+        /** Responds with {@code response}'s damping, delay, count and completion. */
+        public Collide response(CollisionResponse response) {
+            return new Collide(shape, x, y, z, bounce, friction, rest, radius, keepsInside, response);
         }
 
         @Override
@@ -1220,6 +1231,124 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
             CgVfxShapeRows.writeCentre(shape, x, y, z, instance, out);
+        }
+    }
+
+    /** What ends a particle's collisions once its count is spent: Cascade's {@code EParticleCollisionComplete}. */
+    enum CollisionCompletion {
+        /** It dies there. */
+        KILL,
+        /** It holds still and unturned where it struck, and collides no more; it still ages and dies. */
+        FREEZE,
+        /** It carries on as it was and collides no more. */
+        HALT,
+        /** It holds still where it struck, still turning, and collides no more. */
+        FREEZE_TRANSLATION,
+        /** It stops turning and carries on, colliding no more. */
+        FREEZE_ROTATION,
+        /** {@link #FREEZE_TRANSLATION} and {@link #FREEZE_ROTATION}. */
+        FREEZE_MOVEMENT;
+
+        /** Its name in a file: {@code freeze_translation}. */
+        public String fileName() {
+            return name().toLowerCase(Locale.ROOT);
+        }
+    }
+
+    /**
+     * A collider's Cascade half (4.21's {@code UParticleModuleCollision}): what a contact does to a particle beyond the
+     * collider's own bounce. Damping, when set, replaces the bounce and friction: the whole velocity mirrored about the
+     * surface and scaled per axis, rolled per particle between its ends. A count, when set, makes every contact a hit,
+     * and the one that spends it runs the completion instead of bouncing.
+     *
+     * <pre>{@code
+     * new CgVfxModule.CollideWorld(0f, 0f, 0f).response(CgVfxModule.CollisionResponse.NONE
+     *         .damping(0.5f, 0.25f, 0.5f)                                  // Cascade's DampingFactor, y vertical
+     *         .limit(3, CgVfxModule.CollisionCompletion.FREEZE))           // two bounces, then lies where the third lands
+     *
+     * CgVfxModule.CollisionResponse.NONE.damping(0f, 0f, 0f, 0.3f, 0.1f, 0.3f, false)   // each particle its own
+     *         .delay(0.2f)                                                 // nothing for its first fifth of life
+     *         .rotation(0.5f, 0.5f, 0.5f)                                  // each bounce halves its spin
+     *         .limit(1f, 3f, CgVfxModule.CollisionCompletion.KILL)         // a count rolled and rounded per particle
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Damping's axes are the world's: its vertical is y.</li>
+     *   <li>The delay is a share of the particle's life, 0 to 1, as Cascade compares it, not seconds.</li>
+     *   <li>A count below 1 is 1: Cascade decrements it before it tests it.</li>
+     *   <li>A frozen particle's colour still plays over its life, which Cascade's {@code Freeze} holds at its start.</li>
+     * </ul>
+     *
+     * @param dampingMin    the damping's low end per axis; null for none: the collider's bounce and friction
+     * @param dampingMax    its high end
+     * @param dampingLocked whether one roll sets every axis
+     * @param delay         the share of its life a particle collides after
+     * @param rotation      what each bounce scales its rotation rates by: a sprite's by x, a mesh's per axis
+     * @param completion    what spending its count does; null for no count
+     * @param mostMin       the count's low end, contacts until the completion
+     * @param mostMax       its high end
+     * @param lead          a world collider's test led along the particle's motion by this many times its size:
+     *                      Cascade's trace reaching its size over {@code DirScalar} ahead ({@code :360}); 0 for none
+     */
+    record CollisionResponse(@Nullable Vector3fc dampingMin, @Nullable Vector3fc dampingMax, boolean dampingLocked,
+                             float delay, Vector3fc rotation, @Nullable CollisionCompletion completion, float mostMin,
+                             float mostMax, float lead) {
+        /** The collider's bounce alone, at every contact, with no count. */
+        public static final CollisionResponse NONE = new CollisionResponse(null, null, false, 0f, new Vector3f(1f), null, 0f, 0f, 0f);
+        /** Death at the first contact. */
+        public static final CollisionResponse KILL = NONE.limit(1, CollisionCompletion.KILL);
+
+        /** Damped by {@code (x, y, z)} at every bounce. */
+        public CollisionResponse damping(float x, float y, float z) {
+            return damping(x, y, z, x, y, z, false);
+        }
+
+        /** Damped between the two ends, rolled per particle, per axis or, {@code locked}, once for all three. */
+        public CollisionResponse damping(float x0, float y0, float z0, float x1, float y1, float z1, boolean locked) {
+            return new CollisionResponse(new Vector3f(x0, y0, z0), new Vector3f(x1, y1, z1), locked, delay, rotation,
+                    completion, mostMin, mostMax, lead);
+        }
+
+        /** Colliding only after {@code share} of a particle's life. */
+        public CollisionResponse delay(float share) {
+            return new CollisionResponse(dampingMin, dampingMax, dampingLocked, share, rotation, completion, mostMin, mostMax, lead);
+        }
+
+        /** Each bounce scaling its rotation rates by {@code (x, y, z)}. */
+        public CollisionResponse rotation(float x, float y, float z) {
+            return new CollisionResponse(dampingMin, dampingMax, dampingLocked, delay, new Vector3f(x, y, z), completion,
+                    mostMin, mostMax, lead);
+        }
+
+        /** {@code most} contacts, the last running {@code completion}. */
+        public CollisionResponse limit(int most, CollisionCompletion completion) {
+            return limit(most, most, completion);
+        }
+
+        /** A count rolled between the two and rounded per particle, the last contact running {@code completion}. */
+        public CollisionResponse limit(float mostMin, float mostMax, CollisionCompletion completion) {
+            return new CollisionResponse(dampingMin, dampingMax, dampingLocked, delay, rotation, completion, mostMin, mostMax, lead);
+        }
+
+        /** A world collider's test led {@code times} a particle's size along its motion. */
+        public CollisionResponse lead(float times) {
+            return new CollisionResponse(dampingMin, dampingMax, dampingLocked, delay, rotation, completion, mostMin, mostMax, times);
+        }
+
+        /** Whether it changes a particle's rotation rates: a rotation restitution other than 1, or a completion freezing rotation. */
+        public boolean turns() {
+            return rotation.x() != 1f || rotation.y() != 1f || rotation.z() != 1f || completion == CollisionCompletion.FREEZE
+                    || completion == CollisionCompletion.FREEZE_ROTATION || completion == CollisionCompletion.FREEZE_MOVEMENT;
+        }
+
+        /** {@code module}'s response, or null for a module that is no collider. */
+        @Nullable
+        public static CollisionResponse of(CgVfxModule module) {
+            if (module instanceof Collide c) return c.response();
+            if (module instanceof CollideWorld c) return c.response();
+            if (module instanceof CollideDepth c) return c.response();
+            if (module instanceof CollideEntities c) return c.response();
+            return null;
         }
     }
 
@@ -1250,24 +1379,28 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      *       further.</li>
      * </ul>
      */
-    record CollideWorld(float bounce, float friction, float rest, boolean kill, float reach) implements CgVfxModule {
+    record CollideWorld(float bounce, float friction, float rest, CollisionResponse response, float reach) implements CgVfxModule {
         private static final CgVfxDataInterface[] WORLD = {CgVfxDataInterfaces.WORLD_DISTANCE};
 
         public CollideWorld(float bounce, float friction, float rest) {
-            this(bounce, friction, rest, false);
+            this(bounce, friction, rest, CollisionResponse.NONE.lead(LEAD), Float.POSITIVE_INFINITY);
         }
 
-        public CollideWorld(float bounce, float friction, float rest, boolean kill) {
-            this(bounce, friction, rest, kill, Float.POSITIVE_INFINITY);
-        }
+        /** Cascade's default lead: a trace reaching its size over {@code DirScalar}'s 3.5, the size a full width. */
+        public static final float LEAD = 2f / 3.5f;
 
         public CollideWorld killing() {
-            return new CollideWorld(bounce, friction, rest, true, reach);
+            return response(response.limit(1, CollisionCompletion.KILL));
+        }
+
+        /** Responds with {@code response}'s damping, delay, count and completion. */
+        public CollideWorld response(CollisionResponse response) {
+            return new CollideWorld(bounce, friction, rest, response, reach);
         }
 
         /** The same, colliding only while the camera is within {@code blocks} of its effect. */
         public CollideWorld within(float blocks) {
-            return new CollideWorld(bounce, friction, rest, kill, blocks);
+            return new CollideWorld(bounce, friction, rest, response, blocks);
         }
 
         @Override
@@ -1305,24 +1438,26 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * new CgVfxModule.CollideDepth(0.5f, 0.2f, 0.3f, 0.6f)       // sparks off anything on screen
      * }</pre>
      */
-    record CollideDepth(float bounce, float friction, float rest, float thickness, boolean kill, float reach) implements CgVfxModule {
+    record CollideDepth(float bounce, float friction, float rest, float thickness, CollisionResponse response, float reach)
+            implements CgVfxModule {
         private static final CgVfxDataInterface[] DEPTH = {CgVfxDataInterfaces.DEPTH};
 
         public CollideDepth(float bounce, float friction, float rest, float thickness) {
-            this(bounce, friction, rest, thickness, false);
-        }
-
-        public CollideDepth(float bounce, float friction, float rest, float thickness, boolean kill) {
-            this(bounce, friction, rest, thickness, kill, Float.POSITIVE_INFINITY);
+            this(bounce, friction, rest, thickness, CollisionResponse.NONE, Float.POSITIVE_INFINITY);
         }
 
         public CollideDepth killing() {
-            return new CollideDepth(bounce, friction, rest, thickness, true, reach);
+            return response(response.limit(1, CollisionCompletion.KILL));
+        }
+
+        /** Responds with {@code response}'s damping, delay, count and completion. */
+        public CollideDepth response(CollisionResponse response) {
+            return new CollideDepth(bounce, friction, rest, thickness, response, reach);
         }
 
         /** The same, colliding only while the camera is within {@code blocks} of its effect ({@link CollideWorld#reach}). */
         public CollideDepth within(float blocks) {
-            return new CollideDepth(bounce, friction, rest, thickness, kill, blocks);
+            return new CollideDepth(bounce, friction, rest, thickness, response, blocks);
         }
 
         @Override
@@ -1370,15 +1505,21 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      *
      * @param size the share of a particle's size that collides: its box is grown by that
      */
-    record CollideEntities(float bounce, float friction, float rest, float size, boolean kill) implements CgVfxModule {
+    record CollideEntities(float bounce, float friction, float rest, float size, CollisionResponse response)
+            implements CgVfxModule {
         private static final CgVfxDataInterface[] ENTITIES = {CgVfxDataInterfaces.ENTITIES};
 
         public CollideEntities(float bounce, float friction, float rest, float size) {
-            this(bounce, friction, rest, size, false);
+            this(bounce, friction, rest, size, CollisionResponse.NONE);
         }
 
         public CollideEntities killing() {
-            return new CollideEntities(bounce, friction, rest, size, true);
+            return response(response.limit(1, CollisionCompletion.KILL));
+        }
+
+        /** Responds with {@code response}'s damping, delay, count and completion. */
+        public CollideEntities response(CollisionResponse response) {
+            return new CollideEntities(bounce, friction, rest, size, response);
         }
 
         @Override

@@ -23,6 +23,11 @@ struct FxParticle {
     vec2 light;
     float age, life, size, seed, spin, spinRate, heat;
     bool resting;
+    // A collision's completion (fx_contact.glsl's FX_STATE_*): stored with resting and the collisions.
+    uint state;
+    // Its mesh turn as Look takes it, start + rate * (turnBase + turnScale * age): a collision damps the rate from the
+    // age it strikes at, keeping the turn so far. (0, 1) unless a kind writes them.
+    vec3 turnBase, turnScale;
     uint id, slot, collisions, hitEntity;
     vec4 hit;
 };

@@ -70,13 +70,16 @@ public class CgVfxModuleWordsTest {
             {0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 2.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f},   // beam_modifier
             {4.0f, 0.0f, 0.0f, 0.0f},   // limit_speed
             {2.0f, 1.0f, 3.0f, 2.0f, 0.1f, 2.0f, 0.0f, 0.0f},   // conform
-            {0.37139067f, 0.9284767f, 0.0f, 2.0f, 0.3f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f},   // collide
-            {2.0f, 2.0f, 2.0f, 0.0f, 0.5f, 0.1f, 0.2f, 1.0f, 0.5f, 1.0f, 0.0f, 0.0f},   // collide
-            {1.0f, 2.0f, 3.0f, 1.0f, 0.1f, 0.2f, 0.3f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f},   // collide
-            {0.35f, 0.4f, 0.4f, 0.0f, Float.POSITIVE_INFINITY, 0.0f, 0.0f, 0.0f},   // collide_world
-            {0.0f, 0.0f, 0.0f, 1.0f, Float.POSITIVE_INFINITY, 0.0f, 0.0f, 0.0f},   // collide_world
-            {0.2f, 0.3f, 0.4f, 0.0f, 0.5f, Float.POSITIVE_INFINITY, 0.0f, 0.0f},   // collide_depth
-            {0.2f, 0.3f, 0.4f, 1.0f, 1.2f, 0.0f, 0.0f, 0.0f},   // collide_entities
+            // A collider's own lanes, then its response: damping's ends with its mode and the delay, the rotation
+            // restitution with the completion, the count's range.
+            {0.37139067f, 0.9284767f, 0.0f, 2.0f, 0.3f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},   // collide
+            {2.0f, 2.0f, 2.0f, 0.0f, 0.5f, 0.1f, 0.2f, 0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f},   // collide
+            {1.0f, 2.0f, 3.0f, 1.0f, 0.1f, 0.2f, 0.3f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},   // collide
+            {0.35f, 0.4f, 0.4f, Float.POSITIVE_INFINITY, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.5714286f, 0.0f},   // collide_world
+            {0.0f, 0.0f, 0.0f, Float.POSITIVE_INFINITY, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5714286f, 0.0f},   // collide_world
+            {0.2f, 0.3f, 0.4f, 0.5f, Float.POSITIVE_INFINITY, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},   // collide_depth
+            {0.0f, 0.0f, 0.0f, Float.POSITIVE_INFINITY, 0.5f, 0.25f, 0.5f, 1.0f, 0.6f, 0.3f, 0.6f, 0.1f, 0.5f, 0.5f, 0.5f, 2.0f, 1.0f, 3.0f, 0.5f, 0.0f},   // collide_world
+            {0.2f, 0.3f, 0.4f, 1.2f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f},   // collide_entities
             {0.3f, 0.3f, 0.3f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f},   // kill
             {4.0f, 1.0f, 4.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f},   // kill
             {0.0f, 1.0f, 0.0f, 2.0f, 1.0f, 0.0f, 0.0f, 0.0f},   // kill
@@ -122,9 +125,12 @@ public class CgVfxModuleWordsTest {
                 new CgVfxModule.Collide(CgPlane.of(0.4, 1, 0, 5), 0.3f, 0f, 0f),
                 new CgVfxModule.Collide(CgSphere.of(2), 0.5f, 0.1f, 0.2f).container().killing().radius(0.5f),
                 new CgVfxModule.Collide(CgBox.of(1, 2, 3), 0.1f, 0.2f, 0.3f).at(1f, 2f, 3f),
-                new CgVfxModule.CollideWorld(0.35f, 0.4f, 0.4f), new CgVfxModule.CollideWorld(0f, 0f, 0f, true),
-                new CgVfxModule.CollideDepth(0.2f, 0.3f, 0.4f, 0.5f, false),
-                new CgVfxModule.CollideEntities(0.2f, 0.3f, 0.4f, 1.2f, true),
+                new CgVfxModule.CollideWorld(0.35f, 0.4f, 0.4f), new CgVfxModule.CollideWorld(0f, 0f, 0f).killing(),
+                new CgVfxModule.CollideDepth(0.2f, 0.3f, 0.4f, 0.5f),
+                new CgVfxModule.CollideWorld(0f, 0f, 0f).response(CgVfxModule.CollisionResponse.NONE
+                        .damping(0.5f, 0.25f, 0.5f, 0.6f, 0.3f, 0.6f, false).delay(0.1f).rotation(0.5f, 0.5f, 0.5f)
+                        .limit(1f, 3f, CgVfxModule.CollisionCompletion.FREEZE).lead(0.5f)),
+                new CgVfxModule.CollideEntities(0.2f, 0.3f, 0.4f, 1.2f).killing(),
                 new CgVfxModule.Kill(CgSphere.of(0.3), true).at(0f, 1.5f, 0f),
                 new CgVfxModule.Kill(CgBox.of(4, 1, 4), false),
                 new CgVfxModule.Kill(CgPlane.of(0, 1, 0), true)));

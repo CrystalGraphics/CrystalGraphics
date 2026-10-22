@@ -59,7 +59,10 @@ public class CgVfxEmitterAssetsTest {
                 .rasterize(0.3f, 0f, 0.1f, 0f)
                 .module(new CgVfxModule.Collide(CgPlane.of(0.4, 1, 0, 5), 0.3f, 0.2f, 0.1f))
                 .module(new CgVfxModule.Collide(CgSphere.of(2), 0.5f, 0.1f, 0f).at(0f, 1f, 0f))
-                .module(new CgVfxModule.CollideWorld(0.35f, 0.4f, 0.4f, true))
+                .module(new CgVfxModule.CollideWorld(0.35f, 0.4f, 0.4f).killing())
+                .module(new CgVfxModule.CollideWorld(0f, 0f, 0f).response(CgVfxModule.CollisionResponse.NONE
+                        .damping(0.5f, 0.25f, 0.5f, 0.6f, 0.3f, 0.6f, false).delay(0.1f).rotation(0.5f, 0.5f, 0.5f)
+                        .limit(1f, 3f, CgVfxModule.CollisionCompletion.FREEZE).lead(0.5f)))
                 .module(new CgVfxModule.CollideDepth(0.2f, 0.3f, 0.1f, 0.6f))
                 .module(new CgVfxModule.CollideEntities(0.2f, 0.3f, 0.1f, 0.25f))
                 .module(new CgVfxModule.Kill(CgBox.of(4, 1, 4), true).at(0f, -2f, 0f))
