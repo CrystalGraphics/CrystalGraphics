@@ -45,6 +45,7 @@ public class CgVfxShapeCensusTest {
         String kits = System.getProperty("crystalgraphics.kits");
         Assume.assumeTrue("no -Pkits: the census did not run", kits != null && !kits.isEmpty());
         String packs = System.getProperty("crystalgraphics.census.packs", "");
+        boolean all = packs.equals("*");
         long began = System.nanoTime();
         CgAssetKinds.register();
         CgVfxSystemAssets.register();
@@ -62,14 +63,22 @@ public class CgVfxShapeCensusTest {
         for (String ns : namespaces) {
             for (CgAssetEntry e : registry.entries(ns)) {
                 if (e.kind() != CgSequenceKinds.SEQUENCE) continue;
-                if (!packs.isEmpty() && !matches(e.id(), packs)) continue;
+                if (!packs.isEmpty() && !all && !matches(e.id(), packs)) continue;
                 Set<String> systems = reach(registry, e);
                 if (systems.isEmpty()) continue;
                 moveSystems.put(e.id(), systems);
                 wanted.addAll(systems);
             }
         }
+        if (all) {
+            for (String ns : namespaces) {
+                for (CgAssetEntry e : registry.entries(ns)) if (e.kind() == CgParticleKinds.SYSTEM) wanted.add(e.id());
+            }
+        }
         List<String> ids = new ArrayList<>(wanted);
+        java.util.Collections.sort(ids);
+        StringBuilder failures = new StringBuilder();
+        Map<String, Map<String, Integer>> detail = new TreeMap<>();
         Map<String, Set<String>> systemFull = new HashMap<>(), systemCoalesced = new HashMap<>();
         Map<String, Integer> splitBy = new TreeMap<>();
         int failed = 0;
@@ -87,8 +96,12 @@ public class CgVfxShapeCensusTest {
                 CgAssetLoad l = asked.get(i);
                 if (l.state() != CgAssetState.COMPILED || !(l.definition() instanceof CgVfxSystemDefinition d)) {
                     failed++;
-                    String f = String.valueOf(l.failure()).replaceAll("[a-z0-9_]+:[^ ]+", "<id>").replaceAll("[0-9]+", "n");
-                    why.merge(f.substring(0, Math.min(160, f.length())), 1, Integer::sum);
+                    String raw = String.valueOf(l.failure());
+                    String cause = cause(raw);
+                    why.merge(cause, 1, Integer::sum);
+                    String tail = raw.substring(raw.lastIndexOf("): ") < 0 ? 0 : raw.lastIndexOf("): ") + 3);
+                    detail.computeIfAbsent(cause, k -> new HashMap<>()).merge(tail.substring(0, Math.min(140, tail.length())), 1, Integer::sum);
+                    failures.append(ids.get(from + i)).append('\t').append(raw.replace('\n', ' ')).append('\n');
                     continue;
                 }
                 Set<String> f = new HashSet<>(), c = new HashSet<>();
@@ -116,8 +129,11 @@ public class CgVfxShapeCensusTest {
         worst.sort((a, b) -> b.getValue().size() - a.getValue().size());
         StringBuilder report = new StringBuilder();
         report.append(String.format("%d systems over %d moves (sequences); %d failed to compile%n", ids.size(), full.size(), failed));
-        why.entrySet().stream().sorted((x, y) -> y.getValue() - x.getValue()).limit(10)
-                .forEach(e -> report.append(String.format("  failed %5d  %s%n", e.getValue(), e.getKey())));
+        why.entrySet().stream().sorted((x, y) -> y.getValue() - x.getValue()).limit(40).forEach(e -> {
+            report.append(String.format("  failed %5d  %s%n", e.getValue(), e.getKey()));
+            detail.get(e.getKey()).entrySet().stream().sorted((x, y) -> y.getValue() - x.getValue()).limit(6)
+                    .forEach(d -> report.append(String.format("           %5d  %s%n", d.getValue(), d.getKey())));
+        });
         report.append(String.format("kit: %d shapes, %d with form classes set aside%n", kitFull.size(), kitCoalesced.size()));
         report.append("moves by shapes (shapes, without form classes):\n");
         for (int i = 0; i < Math.min(25, worst.size()); i++) {
@@ -131,6 +147,7 @@ public class CgVfxShapeCensusTest {
         Path out = Paths.get("build", "kit-gates", "shape-census.txt");
         Files.createDirectories(out.getParent());
         Files.write(out, report.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Files.write(out.resolveSibling("census-failures.txt"), failures.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         System.out.println(report);
     }
 
@@ -155,6 +172,18 @@ public class CgVfxShapeCensusTest {
         for (CgVfxEvent ev : e.events()) {
             if (ev.child() instanceof CgVfxEmitter child) shapes(child, tier + 1, full, coalesced, splitBy);
         }
+    }
+
+    /**
+     * A failure's cause, without the system, emitter and names that differ: the message after its last element's
+     * {@code (Name): }, its leading {@code Name: } dropped, ids and numbers set aside.
+     */
+    static String cause(String raw) {
+        String m = raw.substring(raw.lastIndexOf("): ") < 0 ? 0 : raw.lastIndexOf("): ") + 3);
+        m = m.replaceFirst("^[A-Za-z0-9_ .-]+: ", "");
+        m = m.replaceAll("[a-z0-9_]+:[^ ,}\\]]+", "<id>").replaceAll("-?[0-9]+(\\.[0-9]+)?(E-?[0-9]+)?", "n");
+        m = m.replaceAll("\\{[^{}]*\\}", "{..}");
+        return m.substring(0, Math.min(110, m.length()));
     }
 
     /** {@code key} less its inputs' form classes and user bindings: what coalescing would raise to share a pool. */
