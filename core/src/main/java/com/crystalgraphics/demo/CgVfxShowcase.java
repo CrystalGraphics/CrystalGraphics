@@ -272,8 +272,9 @@ public final class CgVfxShowcase {
             float strength = GLOW[k][3];
             if (strength <= 0f) continue;
             strength *= k == STORM ? 0.55f + 0.9f * flicker(seconds, k) : 0.85f + 0.15f * (float) Math.sin(seconds * 2.3 + k);
-            // Each glowing sphere lights the world round it, about its strength on the ground below.
-            float light = strength * above * above;
+            // Each glowing sphere lights the world round it: the ground below lit to about its strength times its colour,
+            // twice over (π for Unreal's Lambert).
+            float light = strength * above * above * 2f * (float) Math.PI;
             world.lights().addLinear(cx, cy, cz, LIGHT_RADIUS, GLOW[k][0] * light, GLOW[k][1] * light, GLOW[k][2] * light, 0f);
             // The black hole has no ball to glow round: its disk lights the floor alone.
             if (k == BLACK_HOLE) continue;

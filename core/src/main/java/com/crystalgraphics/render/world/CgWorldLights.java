@@ -51,15 +51,15 @@ import java.util.function.Consumer;
  * <pre>{@code
  * // from the CPU, once a frame, before the world records (a tick function of the client world)
  * CgWorldLights lights = CgWorldRenderer.get().lights();
- * lights.add(x, y + 1.5, z, 6f, 0xFFFF9030, 4f, 0f);      // an orange glow, 6 blocks, inverse-squared: 1 at 2 blocks
- * lights.add(x, y, z, 3f, 0xFF40A0FF, 2f, 8f);            // a blue one, falling off as Unreal's exponent 8: 2 at its centre
+ * lights.add(x, y + 1.5, z, 6f, 0xFFFF9030, 40f, 0f);     // an orange glow, 6 blocks, inverse-squared
+ * lights.add(x, y, z, 3f, 0xFF40A0FF, 8f, 8f);            // a blue one, falling off as Unreal's exponent 8
  * }</pre>
  *
  * <pre>{@code
  * // a spot: the light just added, limited to a cone pointing down, full inside 20 degrees, gone past 35
- * lights.add(x, y + 6, z, 12f, 0xFFFFF0D0, 36f, 0f).spot(0f, -1f, 0f, 20f, 35f);
+ * lights.add(x, y + 6, z, 12f, 0xFFFFF0D0, 300f, 0f).spot(0f, -1f, 0f, 20f, 35f);
  * // a tube: the light just added, coming from a line 30 blocks long along the beam (Unreal's SourceLength)
- * lights.add(midX, midY, midZ, 24f, 0xFF60A0FF, 4f, 0f).tube(dirX, dirY, dirZ, 30f);
+ * lights.add(midX, midY, midZ, 24f, 0xFF60A0FF, 40f, 0f).tube(dirX, dirY, dirZ, 30f);
  * }</pre>
  *
  * <pre>{@code
@@ -75,7 +75,7 @@ import java.util.function.Consumer;
  * // its kernel: CgLight declared in its own file (STRUCT), LIGHTS an append buffer of it
  * #pragma kernel Gather append
  * #include "crystalgraphics:shaders/lib/lights.glsl"
- * struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; };
+ * struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; };
  * Properties { _LightEye ("The firing's eye, absolute", vec4) = (0, 0, 0, 0) }
  * Buffers { EMBERS ("Embers", vec4, readonly)  LIGHTS ("Lights", CgLight, append) }
  * void Gather() {
@@ -88,9 +88,11 @@ import java.util.function.Consumer;
  *   <li>A light lives one frame: add it again each frame it shines.</li>
  *   <li>{@code add}'s colour is sRGB, as authored colours are; a kernel appends linear colour, premultiplied by its
  *       intensity.</li>
- *   <li>Exponent 0 is inverse-squared falloff in blocks, faded to nothing at the radius: an intensity of 1 is 1 at a
- *       block, a quarter at two. Any other exponent is Unreal's
- *       {@code (1 - d²/r²)^exponent}, its intensity the brightness at the centre.</li>
+ *   <li>A light lights a surface as Unreal's simple light does: colour × intensity × falloff × N·L × albedo / π, the
+ *       albedo the scene's colour over the lightmap at the light's block (read when it is added; a kernel's light sets
+ *       its {@code ambient}, or the scene is taken as it is). So a light is as strong at night as by day.</li>
+ *   <li>Exponent 0 is inverse-squared falloff in blocks, faded to nothing at the radius: a quarter as strong at two
+ *       blocks as at one. Any other exponent is Unreal's {@code (1 - d²/r²)^exponent}.</li>
  *   <li>{@code spot} and {@code tube} change the light added last, and both may: a spot that comes from a line. The
  *       radius is still from the centre, so a tube's radius reaches past its ends.</li>
  *   <li>A kernel's positions are from the firing's eye ({@link #cameraX()}, {@code _LightEye}), as the froxels are.</li>
@@ -108,12 +110,13 @@ public final class CgWorldLights {
      * from the kernel's file alone, not its includes.
      */
     public static final String STRUCT =
-            "struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; };";
+            "struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; };";
     /**
      * Floats a light: position and radius, colour and exponent, a spot's direction and the cosine of its outer angle (-2
-     * for none), a tube's length along its axis and a spot's 1 / (cos inner - cos outer).
+     * for none), a tube's length along its axis and a spot's 1 / (cos inner - cos outer), and the block and sky light at
+     * the light (-1 unknown).
      */
-    public static final int FLOATS = 16;
+    public static final int FLOATS = 20;
 
     /** Adds lights from a kernel, each transparent firing. */
     public interface Appender {
@@ -244,6 +247,11 @@ public final class CgWorldLights {
         light[l + 8] = light[l + 9] = light[l + 10] = 0f;
         light[l + 11] = -2f;
         light[l + 12] = light[l + 13] = light[l + 14] = light[l + 15] = 0f;
+        // What Minecraft lit the scene round it by, which the apply divides out to find the albedo.
+        int lit = CgWorldLight.at(x, y, z);
+        light[l + 16] = CgWorldLight.block(lit);
+        light[l + 17] = CgWorldLight.sky(lit);
+        light[l + 18] = light[l + 19] = 0f;
         added++;
         return this;
     }

@@ -182,17 +182,18 @@ CgWorldRenderer.get().media().add((pass, media) -> {             // a volume of 
   skipped by its depth pyramid, every cell's list whole (32 lights a cell on average shared, what passes counted as
   `world.lights-cell-dropped`). A light smaller on screen than Unreal's r.MinScreenRadiusForLights (0.03,
   `-Dcrystalgraphics.world.lightsMinScreenRadius`) is not drawn: past 50 blocks under a block and a half of reach, past
-  33 times its reach above. 30,000 lights over a floor cost 0.43 ms on an RTX 4070 SUPER. Added in one full-screen
-  pass, the scene's colour standing in for the albedo Minecraft does not keep (`scene × (1 + light)`), with no facing.
-  Exponent 0 is the inverse square in blocks (an intensity of 1 is 1 at a block); any other is Unreal's
+  33 times its reach above. 30,000 lights over a floor cost 0.43 ms on an RTX 4070 SUPER. Lit in one full-screen
+  pass as Unreal's simple lights light a surface, colour × intensity × falloff × N·L × albedo / π: the normal rebuilt
+  from depth, the albedo the scene's colour over the lightmap at the light's own block, so a light is as strong at night
+  as by day. No specular: Minecraft has no roughness. Exponent 0 is the inverse square in blocks; any other is Unreal's
   `(1 - d²/r²)^exponent`. GPU zones `world.lights`, `world.lightsCoarse`, `world.lightsCells` and `world.lightsApply`;
   `-Dcrystalgraphics.world.lightsHzb=false` turns the depth cull off. The demo's `lights` scene shows each kind.
 
 ```java
 CgWorldLights lights = CgWorldRenderer.get().lights();                             // each frame, before the world records
-lights.add(x, y + 1.5, z, 6f, 0xFFFF9030, 4f, 0f);                                 // a point: 1 at two blocks
-lights.add(x, y + 6, z, 12f, 0xFFFFF0D0, 36f, 0f).spot(0f, -1f, 0f, 20f, 35f);     // a spot, pointing down
-lights.add(midX, midY, midZ, 24f, 0xFF60A0FF, 4f, 0f).tube(dirX, dirY, dirZ, 30f); // a tube, 30 blocks long
+lights.add(x, y + 1.5, z, 6f, 0xFFFF9030, 40f, 0f);                                // a point
+lights.add(x, y + 6, z, 12f, 0xFFFFF0D0, 300f, 0f).spot(0f, -1f, 0f, 20f, 35f);    // a spot, pointing down
+lights.add(midX, midY, midZ, 24f, 0xFF60A0FF, 40f, 0f).tube(dirX, dirY, dirZ, 30f); // a tube, 30 blocks long
 ```
 - **Distortion**: a transparent draw whose material has a Distortion pass (`docs/SHADERS.md` § *The Distortion pass*)
   adds an offset into a layer of an RGBA16F array half the world's size (`world.distortionScale(scale)`) after the

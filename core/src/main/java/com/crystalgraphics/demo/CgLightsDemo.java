@@ -51,6 +51,8 @@ public final class CgLightsDemo {
     private static final int ORANGE = 0xFFFF8A30, CYAN = 0xFF40E0FF, WHITE = 0xFFFFF2D8, YELLOW = 0xFFFFD060,
             MAGENTA = 0xFFFF40C0, BLUE = 0xFF4080FF;
     private static final CgSphere SOURCE = CgSphere.of(0.15);
+    /** A light's peak on a surface it faces: π for Unreal's Lambert, twice over so it carries at night. */
+    private static final float LIT = 2f * (float) Math.PI;
 
     private final CgVfxOwner vfx;
     private final CgVfxLook embers = CgVfxLook.builder(SCHEMA).emitter(embers()).build();
@@ -69,7 +71,7 @@ public final class CgLightsDemo {
                 .color(0xFFFF7020, 6f)
                 .light(10f, 4f, CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
                         CgVfxDrawnChannel.over(CgKeyframes.constant(0.8f)), CgVfxDrawnChannel.over(CgKeyframes.constant(0.6f)),
-                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 0f).to(0.15f, 0.5f, CgEasings.LINEAR)
+                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 0f).to(0.15f, 3f, CgEasings.LINEAR)
                                 .to(1f, 0f, CgEasings.LINEAR).build()))
                 .renderer(CgVfxRenderers.sprite("ember").material(CgMaterialDefinition.of(
                         "crystalgraphics:materials/demo_lights_ember", "crystalgraphics:shaders/vfx/particle/spark.shader")
@@ -92,30 +94,30 @@ public final class CgLightsDemo {
         CgWorldLights lights = world.lights();
         float t = (float) (seconds % 3600.0);
 
-        // Inverse-squared, circling 1.5 blocks up: about 1.5 on the ground below it.
+        // Inverse-squared, circling 1.5 blocks up: the ground below lit to about 1.5 times its colour, times two.
         double px = x - 12 + 3 * Math.cos(t * 0.8), pz = z + 3 * Math.sin(t * 0.8);
         source(px, y + 1.5, pz, ORANGE);
-        lights.add(px, y + 1.5, pz, 10f, ORANGE, 1.5f * 1.5f * 1.5f, 0f);
+        lights.add(px, y + 1.5, pz, 10f, ORANGE, 1.5f * 1.5f * 1.5f * LIT, 0f);
 
         // Unreal's exponent, pulsing: the brightness at its centre.
         source(x - 6, y + 2, z, CYAN);
-        lights.add(x - 6, y + 2, z, 7f, CYAN, 1.2f + (float) Math.sin(t * 2.0), 8f);
+        lights.add(x - 6, y + 2, z, 7f, CYAN, (1.2f + (float) Math.sin(t * 2.0)) * LIT, 8f);
 
         // A lamp 8 blocks up, its cone sweeping a circle on the ground.
         float sx = 0.45f * (float) Math.cos(t * 0.6), sz = 0.45f * (float) Math.sin(t * 0.6);
-        spot(lights, x, y + 8, z, sx, -1f, sz, 12f, 22f, 20f, WHITE, 2f * 8f * 8f);
+        spot(lights, x, y + 8, z, sx, -1f, sz, 12f, 22f, 20f, WHITE, 2f * 8f * 8f * LIT);
 
         // A lighthouse at head height, turning.
         spot(lights, x + 6, y + 1.7, z, (float) Math.cos(t * 0.9), -0.08f, (float) Math.sin(t * 0.9), 6f, 14f, 24f, YELLOW,
-                2f * 6f * 6f);
+                2f * 6f * 6f * LIT);
 
         // A neon bar lying along x, half a block up.
-        tube(lights, x + 12, y + 0.5, z, 1f, 0f, 0f, 5f, 8f, MAGENTA, 1.2f * 0.5f * 0.5f);
+        tube(lights, x + 12, y + 0.5, z, 1f, 0f, 0f, 5f, 8f, MAGENTA, 1.2f * 0.5f * 0.5f * LIT);
 
         // A saber swinging upright, behind.
         float swing = 0.9f * (float) Math.sin(t * 1.3);
         tube(lights, x - 4, y + 1.8, z + 8, (float) Math.sin(swing), (float) Math.cos(swing), 0f, 3f, 7f, BLUE,
-                1.5f * 1.8f * 1.8f);
+                1.5f * 1.8f * 1.8f * LIT);
 
         // The embers: played once where the scene stands, again where it moves to.
         if (playing == null || playing.state() == CgVfxSystemInstance.State.DEAD || playingX != x || playingY != y
