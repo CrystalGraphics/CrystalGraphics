@@ -14,6 +14,13 @@ import com.crystalgraphics.mc.modern.platform.vulkan.Blaze3dVulkanHost;
 //? if >=1.21.5 <26.1 {
 /*import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 *///?}
+//? if <1.21.5 {
+import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.texture.DynamicTexture;
+
+import java.lang.reflect.Field;
+//?}
 
 /**
  * Minecraft's lightmap and block atlas at the world stages, into the stage's {@link CgHostTextures}: a GL name on a GL
@@ -21,8 +28,8 @@ import com.crystalgraphics.mc.modern.platform.vulkan.Blaze3dVulkanHost;
  * Render thread; allocates only when a name changes.
  *
  * <ul>
- *   <li>The lightmap from 1.21.5, where Minecraft first hands its texture out; absent before, where reaching it would
- *       take an accessor into a private field.</li>
+ *   <li>The lightmap: handed out from 1.21.5; before, read from {@code LightTexture}'s private texture, found by its
+ *       type so no version's field name matters.</li>
  *   <li>The block atlas everywhere; its size from 1.21.5 (0 before, where UVs are what callers use).</li>
  * </ul>
  */
@@ -61,9 +68,38 @@ public final class TexturesModern {
         *///?} elif >=1.21.5 {
         /*out.lightmap(handle(mc.gameRenderer.lightTexture().getTarget(), false), LIGHTMAP_SIZE, LIGHTMAP_SIZE);
         *///?} else {
-        out.lightmap(null, 0, 0);
+        DynamicTexture lightmap = lightmap(mc);
+        out.lightmap(lightmap == null ? null : boxed(lightmap.getId(), false), LIGHTMAP_SIZE, LIGHTMAP_SIZE);
         //?}
     }
+
+    //? if <1.21.5 {
+    private static DynamicTexture lightmap;
+    private static boolean lightmapMissing;
+
+    /** The game renderer's lightmap texture, found once; null if this version hides it some other way. */
+    private static DynamicTexture lightmap(Minecraft mc) {
+        if (lightmap == null && !lightmapMissing) {
+            try {
+                LightTexture light = (LightTexture) fieldOf(GameRenderer.class, LightTexture.class).get(mc.gameRenderer);
+                lightmap = (DynamicTexture) fieldOf(LightTexture.class, DynamicTexture.class).get(light);
+            } catch (ReflectiveOperationException | RuntimeException e) {
+                lightmapMissing = true;
+            }
+        }
+        return lightmap;
+    }
+
+    private static Field fieldOf(Class<?> owner, Class<?> type) throws NoSuchFieldException {
+        for (Field field : owner.getDeclaredFields()) {
+            if (field.getType() == type) {
+                field.setAccessible(true);
+                return field;
+            }
+        }
+        throw new NoSuchFieldException(owner.getName() + " has no " + type.getName());
+    }
+    //?}
 
     // What CgGL.importHostTexture takes on a GL host: the GL name, boxed. The Vulkan host imports its own, above.
     //? if >=26.1 {
