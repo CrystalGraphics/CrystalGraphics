@@ -155,6 +155,17 @@ public class CgVfxEmitterAssetsTest {
                 spawn(CgVfxEmitterAssets.compile("three", three, null)), 0f);
     }
 
+    /** Keys out of order play as Unreal plays them: every age below the first key's time holds its value. */
+    @Test
+    public void keysOutOfOrderHoldTheFirst() {
+        Map<String, Object> tree = burstTree(burstEntry("b", 0.0), burstEntry("c", 0.5), "init");
+        tree.put("particle_update", List.of(Map.of("id", "fade", "module", "crystalgraphics:scale_color", "inputs",
+                Map.of("alpha", Map.of("curve", Map.of("keys", List.of(List.of(5.0, 4.0, "linear"), List.of(1.0, 10.0, "linear"))),
+                        "by", "age")))));
+        CgVfxEmitter e = CgVfxEmitterAssets.compile("unsorted", tree, null);
+        for (float t : new float[]{0f, 0.5f, 1f}) assertEquals(4f, e.opacityAt(t), 1e-6f);
+    }
+
     /** A module input in a form, written back as its file wrote it and compiled again to the same words. */
     @Test
     public void formsRoundTrip() {

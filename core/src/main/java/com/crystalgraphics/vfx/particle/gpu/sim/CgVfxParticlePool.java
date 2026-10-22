@@ -208,7 +208,7 @@ public final class CgVfxParticlePool {
     private static final int MIN_CELLS = 64, MAX_CELLS = 1 << 20;
 
     private final CgVfxShape shape;
-    /** What event rows name it by: below 2^13, as a feed's key takes it. */
+    /** What event rows name it by, above its slot's 16 bits: below 2^13. */
     private final int id = nextId++ & 0x1FFF;
     private final CgVfxWords words = new CgVfxWords();
     private final int paramWords, instanceWords;
@@ -273,7 +273,10 @@ public final class CgVfxParticlePool {
     private CgVfxGpuEmitter[] feedParent = new CgVfxGpuEmitter[0];
     private int[] feedSlot = new int[0], feedEvent = new int[0];
     /** This recording's feeds, four words a slot fed, by key; how many, and the most children an event spawns. */
-    /** A feed's two uvec4s: its key, child slot and count range, then the share of each axis of velocity it inherits. */
+    /**
+     * A feed's two uvec4s: its key, child slot, count range and a rounded count's low end, then the share of each axis of
+     * velocity it inherits and a rounded count's high end (0 for a whole roll, whose high end is at least 1).
+     */
     private static final int FEED_WORDS = 8;
     private int[] feedWords = new int[0];
     private int feeds, childMax;
@@ -947,6 +950,12 @@ public final class CgVfxParticlePool {
         }
     }
 
+    /** Feeds at words {@code a} and {@code b} ordered as {@code step_child} searches them: parent, then event. */
+    private static int feedOrder(int[] w, int a, int b) {
+        int c = Integer.compareUnsigned(w[a], w[b]);
+        return c != 0 ? c : Integer.compare(w[a + 1] >>> 16, w[b + 1] >>> 16);
+    }
+
     /** This recording's feeds, sorted by key, of slots whose parent is stepping: what {@code step_child} searches. */
     private void uploadFeeds(CgRecording recording) {
         feeds = childMax = 0;
@@ -960,15 +969,15 @@ public final class CgVfxParticlePool {
             CgVfxEvent event = feedParent[slot].events().get(feedEvent[slot]);
             if (feedWords.length < (feeds + 1) * FEED_WORDS) feedWords = Arrays.copyOf(feedWords, Math.max(32, feedWords.length * 2));
             int at = feeds * FEED_WORDS;
-            feedWords[at] = parent.id << 19 | feedSlot[slot] << 3 | feedEvent[slot];
-            feedWords[at + 1] = slot;
+            feedWords[at] = parent.id << 16 | feedSlot[slot];
+            feedWords[at + 1] = slot | feedEvent[slot] << 16;
             feedWords[at + 2] = event.countMin() | event.count() << 16;
-            feedWords[at + 3] = 0;
+            feedWords[at + 3] = event.rounded() ? Float.floatToRawIntBits(event.roundMin()) : 0;
             for (int a = 0; a < 3; a++) feedWords[at + 4 + a] = Float.floatToRawIntBits(event.inherit(a));
-            feedWords[at + 7] = 0;
+            feedWords[at + 7] = event.rounded() ? Float.floatToRawIntBits(event.roundMax()) : 0;
             childMax = Math.max(childMax, event.count());
             // Insertion by unsigned key: a handful of slots.
-            for (int i = feeds; i > 0 && Integer.compareUnsigned(feedWords[(i - 1) * FEED_WORDS], feedWords[i * FEED_WORDS]) > 0; i--) {
+            for (int i = feeds; i > 0 && feedOrder(feedWords, (i - 1) * FEED_WORDS, i * FEED_WORDS) > 0; i--) {
                 for (int w = 0; w < FEED_WORDS; w++) {
                     int t = feedWords[(i - 1) * FEED_WORDS + w];
                     feedWords[(i - 1) * FEED_WORDS + w] = feedWords[i * FEED_WORDS + w];
@@ -2452,27 +2461,27 @@ public final class CgVfxParticlePool {
         for (int k = 0; k < 4; k++) params[at + k] = Float.floatToRawIntBits(k < v.length ? v[k] : 0f);
     }
 
-    /** {@code emitter}'s event vec4s from word {@code at}, laid out as {@link CgVfxShape#EVENT_VECTORS} says. */
+    /** {@code emitter}'s event vec4s from word {@code at}, laid out as {@link CgVfxShape#eventField} says. */
     private void writeEvents(CgVfxGpuEmitter emitter, int at) {
         List<CgVfxEvent> events = emitter.events();
         CgVfxNodeClip clip = emitter.clip();
         CgVfxClipAtlas.Section section = clip == null ? null : CgVfxClipAtlas.of(clip);
-        int m = CgVfxEvent.MAX_EVENTS;
+        int field = shape.eventGroups() * 4, m = field;
         for (int e = 0; e < m; e++) {
             CgVfxEvent event = e < events.size() ? events.get(e) : null;
-            params[at + CgVfxShape.EVENT_AGES * 4 + e] = Float.floatToRawIntBits(event == null ? 0f : event.age());
-            params[at + CgVfxShape.EVENT_FIRINGS * 4 + e] = Float.floatToRawIntBits(event == null ? 0f : event.firings());
-            params[at + CgVfxShape.EVENT_FROM * 4 + e] = Float.floatToRawIntBits(event == null ? 0f : event.from());
-            params[at + CgVfxShape.EVENT_UNTIL * 4 + e] = Float.floatToRawIntBits(event == null ? 0f : event.until());
+            params[at + CgVfxShape.EVENT_AGES * field + e] = Float.floatToRawIntBits(event == null ? 0f : event.age());
+            params[at + CgVfxShape.EVENT_FIRINGS * field + e] = Float.floatToRawIntBits(event == null ? 0f : event.firings());
+            params[at + CgVfxShape.EVENT_FROM * field + e] = Float.floatToRawIntBits(event == null ? 0f : event.from());
+            params[at + CgVfxShape.EVENT_UNTIL * field + e] = Float.floatToRawIntBits(event == null ? 0f : event.until());
             int word = 0;
             if (event != null && event.node() != CgVfxEvent.NO_NODE) {
                 int base = section.base(event.node());
                 boolean steps = (section.stepMask(event.node()) & 0b111) != 0;
                 word = base | (steps ? 1 << 31 : 0);
             }
-            params[at + CgVfxShape.EVENT_NODES * 4 + e] = word;
+            params[at + CgVfxShape.EVENT_NODES * field + e] = word;
         }
-        int c = at + CgVfxShape.EVENT_CLIP * 4;
+        int c = at + CgVfxShape.EVENT_CLIP * field;
         params[c] = Float.floatToRawIntBits(section == null ? 0f : section.rowLength());
         params[c + 1] = Float.floatToRawIntBits(clip == null ? 0f : CgVfxNodeClip.FRAMES_PER_SECOND * emitter.playRate());
         params[c + 2] = Float.floatToRawIntBits(clip == null ? 0f : clip.frames());

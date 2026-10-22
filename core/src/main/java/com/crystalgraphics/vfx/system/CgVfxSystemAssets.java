@@ -370,7 +370,7 @@ public final class CgVfxSystemAssets {
                 String spawns = h.spawn() != null ? h.spawn() : receiver.getKey();
                 if (!base.containsKey(spawns)) throw new IllegalArgumentException(at + ": it spawns " + spawns + ", no enabled handle");
                 List<CgVfxEventGenerator> raising = raising(h, handle, base.get(handle));
-                if (raising == null || h.countMax() == 0) continue;
+                if (raising == null || Math.round(h.countMax()) == 0) continue;
                 CgVfxEmitter child = resolve(system, spawns, base, done, path);
                 if (b == null) b = base.get(handle).toBuilder();
                 try {

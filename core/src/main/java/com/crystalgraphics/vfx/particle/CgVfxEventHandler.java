@@ -45,12 +45,12 @@ import java.util.Map;
  * </ul>
  */
 public record CgVfxEventHandler(String id, String trigger, @Nullable String source, @Nullable String name,
-                                @Nullable String spawn, int countMin, int countMax, List<Float> inherit, boolean atEmitter,
-                                int maxPerFrame) {
+                                @Nullable String spawn, float countMin, float countMax, boolean rounded, List<Float> inherit,
+                                boolean atEmitter, int maxPerFrame) {
 
     public CgVfxEventHandler {
         CgVfxEvent.ofSpec(trigger);
-        if (countMin < 0 || countMax < countMin || countMax > CgVfxEvent.MAX_CHILDREN) {
+        if (!(countMin >= 0f) || !(countMax >= countMin) || Math.round(countMax) > CgVfxEvent.MAX_CHILDREN) {
             throw new IllegalArgumentException("event " + id + ": " + countMin + " to " + countMax + " children, 0 to "
                     + CgVfxEvent.MAX_CHILDREN);
         }
@@ -61,7 +61,9 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
 
     /** The event it puts on its source, spawning {@code child}: the handle {@link #spawn} resolved to. */
     public CgVfxEvent compile(CgVfxGpuEmitter child) {
-        CgVfxEvent e = CgVfxEvent.ofSpec(trigger).spawn(child, countMin, countMax).maxPerFrame(maxPerFrame);
+        CgVfxEvent spec = CgVfxEvent.ofSpec(trigger);
+        CgVfxEvent e = (rounded ? spec.spawnRounded(child, countMin, countMax)
+                : spec.spawn(child, Math.round(countMin), Math.round(countMax))).maxPerFrame(maxPerFrame);
         e = e.inherit(inherit.get(0), inherit.get(1), inherit.get(2));
         return atEmitter ? e.fromEmitter() : e;
     }
@@ -76,7 +78,8 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
         if (source == null && name == null) throw new IllegalArgumentException(at + ": no source and no name, so nothing feeds it");
         Map<?, ?> spawn = entry.get("spawn") instanceof Map<?, ?> m ? m : Map.of();
         String child = spawn.get("emitter") instanceof String c ? c : null;
-        int min, max;
+        float min, max;
+        boolean rounded = false;
         Object count = spawn.get("count");
         if (count == null) {
             min = max = 1;
@@ -84,8 +87,13 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
             min = max = Math.round(n.floatValue());
         } else if (count instanceof Map<?, ?> m && m.get("range") instanceof List<?> r && r.size() == 2
                 && r.get(0) instanceof Number a && r.get(1) instanceof Number b) {
-            min = Math.round(a.floatValue());
-            max = Math.round(b.floatValue());
+            Object rounding = m.get("rounding");
+            if (rounding != null && !"nearest".equals(rounding)) {
+                throw new IllegalArgumentException(at + ": count's rounding " + rounding + ": nearest, or none for a whole roll");
+            }
+            rounded = rounding != null;
+            min = rounded ? a.floatValue() : Math.round(a.floatValue());
+            max = rounded ? b.floatValue() : Math.round(b.floatValue());
         } else {
             throw new IllegalArgumentException(at + ": count " + count + ": a number or a range");
         }
@@ -97,7 +105,7 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
             inherit = List.of(x.floatValue(), y.floatValue(), z.floatValue());
         }
         int most = entry.get("max_per_frame") instanceof Number n ? n.intValue() : CgVfxEvent.MAX_PER_FRAME;
-        return new CgVfxEventHandler(id, String.valueOf(entry.get("trigger")), source, name, child, min, max, inherit,
+        return new CgVfxEventHandler(id, String.valueOf(entry.get("trigger")), source, name, child, min, max, rounded, inherit,
                 Boolean.TRUE.equals(spawn.get("use_emitter_location")), most);
     }
 
@@ -112,15 +120,21 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
         if (trigger == null) throw new IllegalArgumentException(what + " has no trigger in the format");
         if (event.node() != CgVfxEvent.NO_NODE) throw new IllegalArgumentException(what + " fires at a clip node: the clip's to write");
         if (event.readback() > 0) throw new IllegalArgumentException(what + " reports rows to the CPU: Java's alone");
-        return new CgVfxEventHandler(id, trigger, source, null, spawn, event.countMin(), event.count(),
-                List.of(event.inherit(0), event.inherit(1), event.inherit(2)), event.atEmitter(), event.maxPerFrame());
+        boolean rounded = event.rounded();
+        return new CgVfxEventHandler(id, trigger, source, null, spawn, rounded ? event.roundMin() : event.countMin(),
+                rounded ? event.roundMax() : event.count(), rounded, List.of(event.inherit(0), event.inherit(1), event.inherit(2)), event.atEmitter(), event.maxPerFrame());
     }
 
     /** As a file writes it. */
     public Map<String, Object> tree() {
         Map<String, Object> spawned = new LinkedHashMap<>();
         if (spawn != null) spawned.put("emitter", spawn);
-        spawned.put("count", countMin == countMax ? (Object) countMax : Map.of("range", List.of(countMin, countMax)));
+        if (rounded) {
+            spawned.put("count", Map.of("range", List.of((double) countMin, (double) countMax), "rounding", "nearest"));
+        } else {
+            int least = Math.round(countMin), most = Math.round(countMax);
+            spawned.put("count", least == most ? (Object) most : Map.of("range", List.of(least, most)));
+        }
         if (inherit.get(0) != 0f || inherit.get(1) != 0f || inherit.get(2) != 0f) {
             spawned.put("inherit_velocity", List.of((double) inherit.get(0), (double) inherit.get(1), (double) inherit.get(2)));
         }

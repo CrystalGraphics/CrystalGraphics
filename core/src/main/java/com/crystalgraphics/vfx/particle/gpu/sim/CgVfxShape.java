@@ -61,13 +61,13 @@ public final class CgVfxShape {
 
     private static final Pattern KIND = Pattern.compile("[a-z][a-z0-9_]*");
     /**
-     * The vec4s a parameter row gives its events, when it has any, {@link CgVfxEvent#MAX_EVENTS} of each in two vec4s
-     * from these offsets: each one's age or period, its most firings, its window's start and end, and its clip node's
-     * word ({@code base | 1 << 31} where the node's matrix steps); then one vec4 of its clip, {@code (row length,
-     * frames a second of age, frames, 0)}.
+     * The fields a parameter row gives its events, when it has any, in this order, each {@link #eventGroups()} vec4s of
+     * an event a lane: each one's age or period, its most firings, its window's start and end, and its clip node's word
+     * ({@code base | 1 << 31} where the node's matrix steps); then one vec4 of its clip, {@code (row length, frames a
+     * second of age, frames, 0)}. {@link #eventField} is where one starts.
      */
-    public static final int EVENT_AGES = 0, EVENT_FIRINGS = 2, EVENT_FROM = 4, EVENT_UNTIL = 6, EVENT_NODES = 8,
-            EVENT_CLIP = 10, EVENT_VECTORS = 11;
+    public static final int EVENT_AGES = 0, EVENT_FIRINGS = 1, EVENT_FROM = 2, EVENT_UNTIL = 3, EVENT_NODES = 4,
+            EVENT_CLIP = 5;
     /** Feed tiers: a definition spawned by nothing, by a root's events, by a child's. */
     public static final int TIERS = CgVfxEvent.LEVELS + 1;
     /** Each custom kind's text, as first seen: a kind name means one text. */
@@ -266,7 +266,8 @@ public final class CgVfxShape {
         reports = anyReports;
         readsClips = anyNodes;
         eventsAt = param;
-        if (triggers.length > 0) param += EVENT_VECTORS;
+        // Sized by the events it lists, so a row pays for no more than it has.
+        if (triggers.length > 0) param += EVENT_CLIP * eventGroups() + 1;
         // The form area: each form's nodes (CgVfxFormLayout); the key area after it, the launch's keys first.
         List<CgVfxModuleForm> given = emitter.moduleForms();
         forms = given.toArray(new CgVfxModuleForm[0]);
@@ -783,7 +784,17 @@ public final class CgVfxShape {
         return reports;
     }
 
-    /** Where the events' ages and periods start in a parameter row, in vec4s ({@link #EVENT_VECTORS}); no events, none. */
+    /** The vec4s each event field takes: a lane an event. */
+    public int eventGroups() {
+        return (triggers.length + 3) / 4;
+    }
+
+    /** Where event field {@code field} ({@link #EVENT_AGES} to {@link #EVENT_CLIP}) starts in a parameter row, in vec4s. */
+    public int eventField(int field) {
+        return eventsAt + field * eventGroups();
+    }
+
+    /** Where the events' ages and periods start in a parameter row, in vec4s ({@link #EVENT_AGES}); no events, none. */
     public int eventsAt() {
         return eventsAt;
     }

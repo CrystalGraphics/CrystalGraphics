@@ -366,8 +366,8 @@ public final class CgVfxEmitterCompiler {
         s.append("const int STEP_INSTANCE_ROW = ").append(shape.instanceRowVectors()).append(";\n");
         s.append("const int STEP_SPAWN_ROW = ").append(CgVfxParticlePool.SPAWN_ROW_WORDS / 4).append(";\n");
         if (shape.events() > 0) {
-            s.append("const int STEP_EVENT_NODES = ").append(shape.eventsAt() + CgVfxShape.EVENT_NODES).append(";\n");
-            s.append("const int STEP_EVENT_CLIP = ").append(shape.eventsAt() + CgVfxShape.EVENT_CLIP).append(";\n");
+            s.append("const int STEP_EVENT_NODES = ").append(shape.eventField(CgVfxShape.EVENT_NODES)).append(";\n");
+            s.append("const int STEP_EVENT_CLIP = ").append(shape.eventField(CgVfxShape.EVENT_CLIP)).append(";\n");
         }
         // Past the first level a key hashes every bit of its parent's, a full key itself.
         if (shape.tier() == 1) {
@@ -723,24 +723,32 @@ public final class CgVfxEmitterCompiler {
                     uint local = uint(r) - PARENT_REGIONS(lo).x, row = PARENT_RUNS(lo * 2) + local;
                     if (local >= PARENT_REGIONS(lo).y || row >= PARENT_RUNS(lo * 2 + 1)) return false;
                     FxEvent ev = PARENT_EVENTS(int(row));
-                    uint key = ev.ids.y << 3u | ev.ids.z;
+                    // Feeds sorted by the parent's pool and slot, then its event in y's high half.
+                    uint key = ev.ids.y;
                     lo = 0;
                     hi = _Feeds - 1;
                     while (lo < hi) {
                         int mid = (lo + hi) >> 1;
-                        if (FEEDS(mid * 2).x < key) lo = mid + 1; else hi = mid;
+                        uvec4 probe = FEEDS(mid * 2);
+                        if (probe.x < key || probe.x == key && (probe.y >> 16u) < ev.ids.z) lo = mid + 1; else hi = mid;
                     }
                     uvec4 feed = FEEDS(lo * 2);
                     // Its count: from z's low half to its high half, rolled per firing where they differ.
                     uint least = feed.z & 0xFFFFu, most = feed.z >> 16u;
-                    if (feed.x != key || uint(i) >= most) return false;
-                    uint slot = feed.y;
+                    if (feed.x != key || (feed.y >> 16u) != ev.ids.z || uint(i) >= most) return false;
+                    uint slot = feed.y & 0xFFFFu;
                     int inst = _InstanceAt + int(slot) * STEP_INSTANCE_ROW;
                     uvec4 head = INSTANCES(inst);
                     float share = step_instance(inst + 2).x;
                     // A repeating event's firing, from 1, in w: each firing's children are other particles.
                     uint seed = head.y, k = STEP_CHILD_KEY(i);
-                    if (least < most) {
+                    uvec4 more = FEEDS(lo * 2 + 1);
+                    if (more.w != 0u) {
+                        // Cascade's: a float between the ends, rounded to the nearest (RoundToInt).
+                        float low = uintBitsToFloat(feed.w), high = uintBitsToFloat(more.w);
+                        float roll = fx_rand(seed, STEP_CHILD_KEY(STEP_MAX_CHILDREN), 0u);
+                        if (float(i) >= floor(low + roll * (high - low) + 0.5)) return false;
+                    } else if (least < most) {
                         uint n = least + min(uint(fx_rand(seed, STEP_CHILD_KEY(STEP_MAX_CHILDREN), 0u) * float(most - least + 1u)),
                                 most - least);
                         if (uint(i) >= n) return false;
@@ -752,7 +760,7 @@ public final class CgVfxEmitterCompiler {
                     if (!step_launch(seed, k, int(head.x) * STEP_PARAM_ROW, inst, at, ev.normal.xyz, vec4(0.0, 0.0, 0.0, 1.0), 0.0, 0.0, p)) {
                         return false;
                     }
-                    p.velocity += uintBitsToFloat(FEEDS(lo * 2 + 1).xyz) * ev.velocityAge.xyz;
+                    p.velocity += uintBitsToFloat(more.xyz) * ev.velocityAge.xyz;
                     p.id = k;
                     p.slot = slot;
                     return true;
@@ -989,9 +997,9 @@ public final class CgVfxEmitterCompiler {
         return eventParam(shape, CgVfxShape.EVENT_FIRINGS, e);
     }
 
-    /** Event {@code e}'s number in the parameter row's event vec4s from {@code offset} ({@link CgVfxShape#EVENT_VECTORS}). */
-    private static String eventParam(CgVfxShape shape, int offset, int e) {
-        return "step_param(row + " + (shape.eventsAt() + offset + e / 4) + ")[" + e % 4 + "]";
+    /** Event {@code e}'s number in the parameter row's event field {@code field} ({@link CgVfxShape#eventField}). */
+    private static String eventParam(CgVfxShape shape, int field, int e) {
+        return "step_param(row + " + (shape.eventField(field) + e / 4) + ")[" + e % 4 + "]";
     }
 
     /**

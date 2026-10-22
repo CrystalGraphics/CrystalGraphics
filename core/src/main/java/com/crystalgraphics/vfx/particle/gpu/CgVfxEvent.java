@@ -67,7 +67,7 @@ public final class CgVfxEvent {
     public enum Trigger { LANDING, DEATH, AGE, COLLISION, RATE, LOCATION, BURST }
 
     /** Events a definition lists, and children an event spawns, at most (P0's census: 1,000). */
-    public static final int MAX_EVENTS = 8, MAX_CHILDREN = 1000;
+    public static final int MAX_EVENTS = 16, MAX_CHILDREN = 1000;
 
     /** Levels of children below a definition spawned by nothing: a pool's feed tiers less one (P0's census: 3). */
     public static final int LEVELS = 3;
@@ -96,18 +96,22 @@ public final class CgVfxEvent {
     private final CgVfxGpuEmitter child;
     private final int countMin, countMax, readback, firings, maxPerFrame;
     private final float inheritX, inheritY, inheritZ;
+    /** A count rolled as a float and rounded to the nearest ({@link #spawnRounded}): its ends; NaN for a whole roll. */
+    private final float roundMin, roundMax;
     private final int node;
     private final float from, until;
     private final boolean fromEmitter;
 
-    private CgVfxEvent(Trigger trigger, float age, @Nullable CgVfxGpuEmitter child, int countMin, int countMax, float inheritX,
-                       float inheritY, float inheritZ, int readback, int firings, int node, float from, float until,
+    private CgVfxEvent(Trigger trigger, float age, @Nullable CgVfxGpuEmitter child, int countMin, int countMax, float roundMin,
+                       float roundMax, float inheritX, float inheritY, float inheritZ, int readback, int firings, int node, float from, float until,
                        int maxPerFrame, boolean fromEmitter) {
         this.trigger = trigger;
         this.age = age;
         this.child = child;
         this.countMin = countMin;
         this.countMax = countMax;
+        this.roundMin = roundMin;
+        this.roundMax = roundMax;
         this.inheritX = inheritX;
         this.inheritY = inheritY;
         this.inheritZ = inheritZ;
@@ -121,7 +125,7 @@ public final class CgVfxEvent {
     }
 
     private CgVfxEvent(Trigger trigger, float age, int firings) {
-        this(trigger, age, null, 0, 0, 0f, 0f, 0f, 0, firings, NO_NODE, 0f, Float.POSITIVE_INFINITY, MAX_PER_FRAME, false);
+        this(trigger, age, null, 0, 0, Float.NaN, Float.NaN, 0f, 0f, 0f, 0, firings, NO_NODE, 0f, Float.POSITIVE_INFINITY, MAX_PER_FRAME, false);
     }
 
     /**
@@ -211,7 +215,38 @@ public final class CgVfxEvent {
             throw new IllegalArgumentException(child.name() + " spawns children " + below + " levels deep itself: " + LEVELS
                     + " levels of children at most");
         }
-        return new CgVfxEvent(trigger, age, child, min, max, inheritX, inheritY, inheritZ, readback, firings, node, from, until, maxPerFrame, fromEmitter);
+        return new CgVfxEvent(trigger, age, child, min, max, Float.NaN, Float.NaN, inheritX, inheritY, inheritZ, readback, firings, node, from, until, maxPerFrame, fromEmitter);
+    }
+
+    /**
+     * Between {@code min} and {@code max} children of {@code child} at each event, a float rolled per firing and rounded
+     * to the nearest: Cascade's receiver count, {@code RoundToInt(SpawnCount.GetValue())}
+     * ({@code ParticleModules_Event.cpp:345-366}). Its ends come up half as often as the counts between them;
+     * {@link #spawn(CgVfxGpuEmitter, int, int)} rolls a whole number, each equally, as Niagara's {@code RandRange}.
+     *
+     * <pre>{@code
+     * CgVfxEvent.onDeath().spawnRounded(SHARDS, 3f, 5f);   // 3, 4 and 5 a quarter, a half and a quarter of the time
+     * }</pre>
+     */
+    public CgVfxEvent spawnRounded(CgVfxGpuEmitter child, float min, float max) {
+        if (!(min >= 0f) || !(max >= min)) throw new IllegalArgumentException(min + " to " + max + " children an event");
+        CgVfxEvent e = spawn(child, Math.round(min), Math.round(max));
+        return new CgVfxEvent(trigger, age, child, e.countMin, e.countMax, min, max, inheritX, inheritY, inheritZ, readback,
+                firings, node, from, until, maxPerFrame, fromEmitter);
+    }
+
+    /** Whether its count is a float rounded to the nearest ({@link #spawnRounded}). */
+    public boolean rounded() {
+        return !Float.isNaN(roundMax);
+    }
+
+    /** A rounded count's ends, as given; NaN for a whole roll. */
+    public float roundMin() {
+        return roundMin;
+    }
+
+    public float roundMax() {
+        return roundMax;
     }
 
     /** The levels of children below {@code e}: 0 for one whose events spawn none. */
@@ -235,27 +270,27 @@ public final class CgVfxEvent {
      * }</pre>
      */
     public CgVfxEvent inherit(float x, float y, float z) {
-        return new CgVfxEvent(trigger, age, child, countMin, countMax, x, y, z, readback, firings, node, from, until,
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, roundMin, roundMax, x, y, z, readback, firings, node, from, until,
                 maxPerFrame, fromEmitter);
     }
 
     /** Rows to the CPU, at most {@code cap} a step ({@link CgVfxEventListener}). */
     public CgVfxEvent readback(int cap) {
         if (cap < 1) throw new IllegalArgumentException("a cap of " + cap);
-        return new CgVfxEvent(trigger, age, child, countMin, countMax, inheritX, inheritY, inheritZ, cap, firings, node, from, until, maxPerFrame,
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, roundMin, roundMax, inheritX, inheritY, inheritZ, cap, firings, node, from, until, maxPerFrame,
                 fromEmitter);
     }
 
     /** At most {@code most} of its firings a frame spawn children: {@link #MAX_PER_FRAME} unless told. */
     public CgVfxEvent maxPerFrame(int most) {
         if (most < 1) throw new IllegalArgumentException("at most " + most + " a frame");
-        return new CgVfxEvent(trigger, age, child, countMin, countMax, inheritX, inheritY, inheritZ, readback, firings, node, from, until, most,
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, roundMin, roundMax, inheritX, inheritY, inheritZ, readback, firings, node, from, until, most,
                 fromEmitter);
     }
 
     /** Its children born at the effect's origin rather than where it fired: the format's {@code use_emitter_location}. */
     public CgVfxEvent fromEmitter() {
-        return new CgVfxEvent(trigger, age, child, countMin, countMax, inheritX, inheritY, inheritZ, readback, firings, node, from, until, maxPerFrame,
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, roundMin, roundMax, inheritX, inheritY, inheritZ, readback, firings, node, from, until, maxPerFrame,
                 true);
     }
 
@@ -270,7 +305,7 @@ public final class CgVfxEvent {
     public CgVfxEvent firings(int most) {
         if (!repeats()) throw new IllegalArgumentException(trigger + " fires once: only a collision, a rate or a location repeats");
         if (most < 1) throw new IllegalArgumentException("at most " + most + " firings");
-        return new CgVfxEvent(trigger, age, child, countMin, countMax, inheritX, inheritY, inheritZ, readback, most, node, from, until, maxPerFrame,
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, roundMin, roundMax, inheritX, inheritY, inheritZ, readback, most, node, from, until, maxPerFrame,
                 fromEmitter);
     }
 
@@ -282,7 +317,7 @@ public final class CgVfxEvent {
     public CgVfxEvent at(int node) {
         if (node < 0) throw new IllegalArgumentException("node " + node);
         if (trigger == Trigger.BURST) throw new IllegalArgumentException("a burst fires at its batch's source, never at a node");
-        return new CgVfxEvent(trigger, age, child, countMin, countMax, inheritX, inheritY, inheritZ, readback, firings, node, from, until, maxPerFrame,
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, roundMin, roundMax, inheritX, inheritY, inheritZ, readback, firings, node, from, until, maxPerFrame,
                 fromEmitter);
     }
 
@@ -293,7 +328,7 @@ public final class CgVfxEvent {
     public CgVfxEvent between(float from, float until) {
         if (trigger != Trigger.RATE) throw new IllegalArgumentException(trigger + " has no window: only a rate fires within one");
         if (!(from >= 0f) || !(until > from)) throw new IllegalArgumentException("a window from " + from + " to " + until);
-        return new CgVfxEvent(trigger, age, child, countMin, countMax, inheritX, inheritY, inheritZ, readback, firings, node, from, until, maxPerFrame,
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, roundMin, roundMax, inheritX, inheritY, inheritZ, readback, firings, node, from, until, maxPerFrame,
                 fromEmitter);
     }
 
@@ -413,6 +448,14 @@ public final class CgVfxEvent {
     public static int rolledCount(int min, int max, float rand) {
         if (min >= max) return max;
         return min + Math.min((int) (rand * (max - min + 1)), max - min);
+    }
+
+    /**
+     * The children a firing of a rounded count spawns ({@link #spawnRounded}), as the GPU rolls them: {@code rand}
+     * between the ends, rounded to the nearest.
+     */
+    public static int roundedCount(float min, float max, float rand) {
+        return (int) Math.floor(min + rand * (max - min) + 0.5f);
     }
 
     // Chris Wellons's lowbias32 (hash-prospector, public domain).

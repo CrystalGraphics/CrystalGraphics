@@ -2,6 +2,9 @@ package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -80,6 +83,7 @@ public final class CgVfxEmitterAssets {
     private static final int EASE_STEPS = 32;
     private static final float HALF_SQRT2 = (float) Math.sqrt(0.5);
     /** Linear pieces an extrapolated curve is baked into over a life. */
+    private static final Logger LOGGER = LogManager.getLogger("CgVfx");
     private static final int EXTRAPOLATED_STEPS = 128;
 
     private CgVfxEmitterAssets() {
@@ -2398,17 +2402,14 @@ public final class CgVfxEmitterAssets {
             for (int i = 1; i < n; i++) k.to(range[0] + (range[1] - range[0]) * i / (n - 1), c.value(i), CgEasings.LINEAR);
             return k.build();
         }
-        if (tree instanceof Map<?, ?> m && (isExtrapolated(m.get("pre")) || isExtrapolated(m.get("post")))) {
-            // Over a life, a curve's extrapolation is what it gives between 0 and 1 outside its keys.
-            if (c.size() == 0) return CgKeyframes.constant(c.eval(0f));
-            float from = Math.min(0f, c.time(0)), to = Math.max(1f, c.time(c.size() - 1));
-            CgKeyframes.Builder k = CgKeyframes.start(from, c.eval(from));
-            for (int j = 1; j <= EXTRAPOLATED_STEPS; j++) {
-                float t = from + (to - from) * j / EXTRAPOLATED_STEPS;
-                k.to(t, c.eval(t), CgEasings.LINEAR);
-            }
-            return k.build();
+        if (!ascending(c)) {
+            // Unreal searches the keys as though sorted: before the first it plays the first
+            // (InterpCurve.h:246-249, RichCurve.cpp's Eval), which the curve's own evaluation does too.
+            LOGGER.warn("{}: a curve's keys are out of order; played as Unreal plays them", name);
+            return sampled(c);
         }
+        // Over a life, a curve's extrapolation is what it gives between 0 and 1 outside its keys.
+        if (tree instanceof Map<?, ?> m && (isExtrapolated(m.get("pre")) || isExtrapolated(m.get("post")))) return sampled(c);
         if (c.size() == 0) return CgKeyframes.constant(c.eval(0f));
         CgKeyframes.Builder k = CgKeyframes.start(c.time(0), c.value(0));
         for (int i = 1; i < c.size(); i++) {
@@ -2443,6 +2444,27 @@ public final class CgVfxEmitterAssets {
         public double ease(double u) {
             return (curve.eval(t0 + (float) u * span) - v0) / rise;
         }
+    }
+
+    /** {@code c} sampled over 0 to 1 and every key, linear between samples. */
+    private static CgKeyframes sampled(CgRichCurve c) {
+        if (c.size() == 0) return CgKeyframes.constant(c.eval(0f));
+        float from = 0f, to = 1f;
+        for (int i = 0; i < c.size(); i++) {
+            from = Math.min(from, c.time(i));
+            to = Math.max(to, c.time(i));
+        }
+        CgKeyframes.Builder k = CgKeyframes.start(from, c.eval(from));
+        for (int j = 1; j <= EXTRAPOLATED_STEPS; j++) {
+            float t = from + (to - from) * j / EXTRAPOLATED_STEPS;
+            k.to(t, c.eval(t), CgEasings.LINEAR);
+        }
+        return k.build();
+    }
+
+    private static boolean ascending(CgRichCurve c) {
+        for (int i = 1; i < c.size(); i++) if (c.time(i) < c.time(i - 1)) return false;
+        return true;
     }
 
     private static boolean isExtrapolated(Object e) {

@@ -61,6 +61,23 @@ public class CgVfxSystemEventsTest {
         assertEquals(0, glints.events().size());
     }
 
+    /** Cascade's count, a float rolled between the ends and rounded: read, compiled and written back as given. */
+    @Test
+    public void aRoundedCountKeepsItsEnds() {
+        CgVfxSystemDefinition d = compile(SPARKS.replace("count: { range: [3, 5] }", "count: { range: [2.5, 5.2], rounding: nearest }"));
+        CgVfxEvent collision = d.emitters().get(0).events().get(0);
+        assertTrue(collision.rounded());
+        assertEquals(2.5f, collision.roundMin(), 0f);
+        assertEquals(5.2f, collision.roundMax(), 0f);
+        assertEquals(5, collision.count());
+        Map<String, Object> tree = CgVfxSystemAssets.write(d);
+        assertEquals(tree, CgVfxSystemAssets.write(CgVfxSystemAssets.compile(
+                CgAssetData.of("mymod:sparks", CgParticleKinds.SYSTEM, tree, null), (kind, ref) -> null)));
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> compile(SPARKS.replace("count: { range: [3, 5] }", "count: { range: [3, 5], rounding: up }")));
+        assertTrue(e.getMessage(), e.getMessage().contains("rounding"));
+    }
+
     /** Cascade's receiver: no source and no spawned handle, fed by every handle raising its trigger under its name. */
     @Test
     public void aNamedHandlerTakesEveryHandleRaisingItsNameAndSpawnsItsOwn() {
