@@ -90,7 +90,7 @@ public final class CgLightsDemo {
                         CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
                         // About 90 sparks a burst, each nearly full 5 blocks off (Cascade's (1 - d²/r²)²): together
                         // about three times the colour of what they light there.
-                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 0.15f).to(1f, 0f, CgEasings.IN_QUAD).build()))
+                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 2.15f).to(1f, 0f, CgEasings.IN_QUAD).build()))
                 .renderer(sparks(name)).renderer(CgVfxRenderers.light(name + "Light").field("spawn_fraction", 0.4)
                         .field("inverse_squared_falloff", false).build())
                 .build();
@@ -104,12 +104,13 @@ public final class CgLightsDemo {
                 .module(new CgVfxModule.Drag(1.5f, 0f))
                 .opacity(CgKeyframes.start(0f, 0f).to(0.2f, 1f, CgEasings.OUT_QUAD).to(0.8f, 1f, CgEasings.LINEAR)
                         .to(1f, 0f, CgEasings.IN_QUAD).build())
-                .light(40f, 2f, CgVfxDrawnChannel.over(CgKeyframes.constant(1f)), CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
+                // Inverse-squared, as the world's lights: brighter the nearer, where a falloff exponent caps at its colour.
+                .light(40f, 0f, CgVfxDrawnChannel.over(CgKeyframes.constant(1f)), CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
                         CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
-                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 0f).to(0.2f, 1.5f, CgEasings.OUT_QUAD)
+                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 0f).to(0.2f, 4.5f, CgEasings.OUT_QUAD)
                                 .to(0.8f, 1.5f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build()))
                 .renderer(sparks("fireflies")).renderer(CgVfxRenderers.light("firefliesLight").field("spawn_fraction", 1.0)
-                        .field("inverse_squared_falloff", false).build())
+                        .build())
                 .build();
     }
 
