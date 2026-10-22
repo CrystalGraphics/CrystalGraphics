@@ -273,6 +273,8 @@ public final class CgVfxParticlePool {
     private CgVfxGpuEmitter[] feedParent = new CgVfxGpuEmitter[0];
     private int[] feedSlot = new int[0], feedEvent = new int[0];
     /** This recording's feeds, four words a slot fed, by key; how many, and the most children an event spawns. */
+    /** A feed's two uvec4s: its key, child slot and count range, then the share of each axis of velocity it inherits. */
+    private static final int FEED_WORDS = 8;
     private int[] feedWords = new int[0];
     private int feeds, childMax;
     /** This recording's first region in its tier: its spawning events' are the next ones in order. */
@@ -956,26 +958,28 @@ public final class CgVfxParticlePool {
                 continue;
             }
             CgVfxEvent event = feedParent[slot].events().get(feedEvent[slot]);
-            if (feedWords.length < (feeds + 1) * 4) feedWords = Arrays.copyOf(feedWords, Math.max(16, feedWords.length * 2));
-            int at = feeds * 4;
+            if (feedWords.length < (feeds + 1) * FEED_WORDS) feedWords = Arrays.copyOf(feedWords, Math.max(32, feedWords.length * 2));
+            int at = feeds * FEED_WORDS;
             feedWords[at] = parent.id << 19 | feedSlot[slot] << 3 | feedEvent[slot];
             feedWords[at + 1] = slot;
             feedWords[at + 2] = event.countMin() | event.count() << 16;
-            feedWords[at + 3] = Float.floatToRawIntBits(event.inherit());
+            feedWords[at + 3] = 0;
+            for (int a = 0; a < 3; a++) feedWords[at + 4 + a] = Float.floatToRawIntBits(event.inherit(a));
+            feedWords[at + 7] = 0;
             childMax = Math.max(childMax, event.count());
             // Insertion by unsigned key: a handful of slots.
-            for (int i = feeds; i > 0 && Integer.compareUnsigned(feedWords[(i - 1) * 4], feedWords[i * 4]) > 0; i--) {
-                for (int w = 0; w < 4; w++) {
-                    int t = feedWords[(i - 1) * 4 + w];
-                    feedWords[(i - 1) * 4 + w] = feedWords[i * 4 + w];
-                    feedWords[i * 4 + w] = t;
+            for (int i = feeds; i > 0 && Integer.compareUnsigned(feedWords[(i - 1) * FEED_WORDS], feedWords[i * FEED_WORDS]) > 0; i--) {
+                for (int w = 0; w < FEED_WORDS; w++) {
+                    int t = feedWords[(i - 1) * FEED_WORDS + w];
+                    feedWords[(i - 1) * FEED_WORDS + w] = feedWords[i * FEED_WORDS + w];
+                    feedWords[i * FEED_WORDS + w] = t;
                 }
             }
             feeds++;
         }
         if (feeds == 0) return;
-        feedBuffer = fit(recording, feedBuffer, name() + ".feeds", feeds * 4);
-        put(recording, feedBuffer, feedWords, feeds * 4);
+        feedBuffer = fit(recording, feedBuffer, name() + ".feeds", feeds * FEED_WORDS);
+        put(recording, feedBuffer, feedWords, feeds * FEED_WORDS);
     }
 
     /** The count the next step appends to, cleared: a step's first stage. */

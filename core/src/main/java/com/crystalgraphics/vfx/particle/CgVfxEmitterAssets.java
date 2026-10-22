@@ -2070,7 +2070,8 @@ public final class CgVfxEmitterAssets {
         CgModuleTypes.Module declared = CgModuleTypes.builtIn().get(moduleId(entry));
         for (Map.Entry<?, ?> e : in.entrySet()) {
             String key = String.valueOf(e.getKey());
-            if (read.contains(key)) continue;
+            // An effect has no scale of its own, so Unreal's owner scale (its component's) is 1 whichever is chosen.
+            if (read.contains(key) || key.equals("owner_scale")) continue;
             Object fallback = null;
             if (declared != null) {
                 for (CgProperty p : declared.inputs().properties()) {

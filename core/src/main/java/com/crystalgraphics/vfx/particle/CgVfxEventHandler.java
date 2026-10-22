@@ -41,11 +41,11 @@ import java.util.Map;
  *   <li>A count is a number or a {@code range}; a curve is refused. A count of 0 spawns nothing, as Cascade's receiver
  *       rounds it (ParticleModules_Event.cpp:346-380), so its system puts no event on any source. {@code use_particle_time} reads a count over time,
  *       so with neither it changes nothing.</li>
- *   <li>{@code inherit_velocity} is one share for all three axes: a vector of three different shares is refused.</li>
+ *   <li>{@code inherit_velocity} is a share per axis, Cascade's {@code InheritVelocityScale}.</li>
  * </ul>
  */
 public record CgVfxEventHandler(String id, String trigger, @Nullable String source, @Nullable String name,
-                                @Nullable String spawn, int countMin, int countMax, float inherit, boolean atEmitter,
+                                @Nullable String spawn, int countMin, int countMax, List<Float> inherit, boolean atEmitter,
                                 int maxPerFrame) {
 
     public CgVfxEventHandler {
@@ -54,13 +54,15 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
             throw new IllegalArgumentException("event " + id + ": " + countMin + " to " + countMax + " children, 0 to "
                     + CgVfxEvent.MAX_CHILDREN);
         }
+        inherit = List.copyOf(inherit);
+        if (inherit.size() != 3) throw new IllegalArgumentException("event " + id + ": inherit_velocity " + inherit + ": three shares");
         if (maxPerFrame < 1) throw new IllegalArgumentException("event " + id + ": max_per_frame " + maxPerFrame);
     }
 
     /** The event it puts on its source, spawning {@code child}: the handle {@link #spawn} resolved to. */
     public CgVfxEvent compile(CgVfxGpuEmitter child) {
         CgVfxEvent e = CgVfxEvent.ofSpec(trigger).spawn(child, countMin, countMax).maxPerFrame(maxPerFrame);
-        if (inherit != 0f) e = e.inherit(inherit);
+        e = e.inherit(inherit.get(0), inherit.get(1), inherit.get(2));
         return atEmitter ? e.fromEmitter() : e;
     }
 
@@ -87,13 +89,12 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
         } else {
             throw new IllegalArgumentException(at + ": count " + count + ": a number or a range");
         }
-        float inherit = 0f;
+        List<Float> inherit = List.of(0f, 0f, 0f);
         if (spawn.get("inherit_velocity") instanceof List<?> v) {
-            if (v.size() != 3 || !(v.get(0) instanceof Number x) || !(v.get(1) instanceof Number y) || !(v.get(2) instanceof Number z)
-                    || x.floatValue() != y.floatValue() || y.floatValue() != z.floatValue()) {
-                throw new IllegalArgumentException(at + ": inherit_velocity " + v + ": one share for all three axes");
+            if (v.size() != 3 || !(v.get(0) instanceof Number x) || !(v.get(1) instanceof Number y) || !(v.get(2) instanceof Number z)) {
+                throw new IllegalArgumentException(at + ": inherit_velocity " + v + ": three numbers");
             }
-            inherit = x.floatValue();
+            inherit = List.of(x.floatValue(), y.floatValue(), z.floatValue());
         }
         int most = entry.get("max_per_frame") instanceof Number n ? n.intValue() : CgVfxEvent.MAX_PER_FRAME;
         return new CgVfxEventHandler(id, String.valueOf(entry.get("trigger")), source, name, child, min, max, inherit,
@@ -111,8 +112,8 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
         if (trigger == null) throw new IllegalArgumentException(what + " has no trigger in the format");
         if (event.node() != CgVfxEvent.NO_NODE) throw new IllegalArgumentException(what + " fires at a clip node: the clip's to write");
         if (event.readback() > 0) throw new IllegalArgumentException(what + " reports rows to the CPU: Java's alone");
-        return new CgVfxEventHandler(id, trigger, source, null, spawn, event.countMin(), event.count(), event.inherit(),
-                event.atEmitter(), event.maxPerFrame());
+        return new CgVfxEventHandler(id, trigger, source, null, spawn, event.countMin(), event.count(),
+                List.of(event.inherit(0), event.inherit(1), event.inherit(2)), event.atEmitter(), event.maxPerFrame());
     }
 
     /** As a file writes it. */
@@ -120,7 +121,9 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
         Map<String, Object> spawned = new LinkedHashMap<>();
         if (spawn != null) spawned.put("emitter", spawn);
         spawned.put("count", countMin == countMax ? (Object) countMax : Map.of("range", List.of(countMin, countMax)));
-        if (inherit != 0f) spawned.put("inherit_velocity", List.of((double) inherit, (double) inherit, (double) inherit));
+        if (inherit.get(0) != 0f || inherit.get(1) != 0f || inherit.get(2) != 0f) {
+            spawned.put("inherit_velocity", List.of((double) inherit.get(0), (double) inherit.get(1), (double) inherit.get(2)));
+        }
         if (atEmitter) spawned.put("use_emitter_location", true);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", id);

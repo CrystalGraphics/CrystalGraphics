@@ -95,19 +95,22 @@ public final class CgVfxEvent {
     @Nullable
     private final CgVfxGpuEmitter child;
     private final int countMin, countMax, readback, firings, maxPerFrame;
-    private final float inherit;
+    private final float inheritX, inheritY, inheritZ;
     private final int node;
     private final float from, until;
     private final boolean fromEmitter;
 
-    private CgVfxEvent(Trigger trigger, float age, @Nullable CgVfxGpuEmitter child, int countMin, int countMax, float inherit,
-                       int readback, int firings, int node, float from, float until, int maxPerFrame, boolean fromEmitter) {
+    private CgVfxEvent(Trigger trigger, float age, @Nullable CgVfxGpuEmitter child, int countMin, int countMax, float inheritX,
+                       float inheritY, float inheritZ, int readback, int firings, int node, float from, float until,
+                       int maxPerFrame, boolean fromEmitter) {
         this.trigger = trigger;
         this.age = age;
         this.child = child;
         this.countMin = countMin;
         this.countMax = countMax;
-        this.inherit = inherit;
+        this.inheritX = inheritX;
+        this.inheritY = inheritY;
+        this.inheritZ = inheritZ;
         this.readback = readback;
         this.firings = firings;
         this.node = node;
@@ -118,7 +121,7 @@ public final class CgVfxEvent {
     }
 
     private CgVfxEvent(Trigger trigger, float age, int firings) {
-        this(trigger, age, null, 0, 0, 0f, 0, firings, NO_NODE, 0f, Float.POSITIVE_INFINITY, MAX_PER_FRAME, false);
+        this(trigger, age, null, 0, 0, 0f, 0f, 0f, 0, firings, NO_NODE, 0f, Float.POSITIVE_INFINITY, MAX_PER_FRAME, false);
     }
 
     /**
@@ -196,18 +199,19 @@ public final class CgVfxEvent {
 
     /**
      * Between {@code min} and {@code max} children of {@code child} at each event, rolled per firing: Cascade's spawn
-     * count over a range.
+     * count over a range. A {@code min} of 0 lets a firing spawn none, as Cascade's rounded count does
+     * ({@code ParticleModules_Event.cpp:345-378}).
      */
     public CgVfxEvent spawn(CgVfxGpuEmitter child, int min, int max) {
-        if (min < 1 || max < min || max > MAX_CHILDREN) {
-            throw new IllegalArgumentException(min + " to " + max + " children an event: 1 to " + MAX_CHILDREN);
+        if (min < 0 || max < Math.max(min, 1) || max > MAX_CHILDREN) {
+            throw new IllegalArgumentException(min + " to " + max + " children an event: at most 1 to " + MAX_CHILDREN);
         }
         int below = levels(child);
         if (below >= LEVELS) {
             throw new IllegalArgumentException(child.name() + " spawns children " + below + " levels deep itself: " + LEVELS
                     + " levels of children at most");
         }
-        return new CgVfxEvent(trigger, age, child, min, max, inherit, readback, firings, node, from, until, maxPerFrame, fromEmitter);
+        return new CgVfxEvent(trigger, age, child, min, max, inheritX, inheritY, inheritZ, readback, firings, node, from, until, maxPerFrame, fromEmitter);
     }
 
     /** The levels of children below {@code e}: 0 for one whose events spawn none. */
@@ -219,27 +223,39 @@ public final class CgVfxEvent {
 
     /** The share of the parent's velocity a child takes on, added to its own launch; 0 by default. */
     public CgVfxEvent inherit(float share) {
-        return new CgVfxEvent(trigger, age, child, countMin, countMax, share, readback, firings, node, from, until, maxPerFrame,
-                fromEmitter);
+        return inherit(share, share, share);
+    }
+
+    /**
+     * The share of each axis of the parent's velocity a child takes on: Cascade's {@code InheritVelocityScale}, a
+     * vector ({@code ParticleModules_Event.cpp:373-375}).
+     *
+     * <pre>{@code
+     * CgVfxEvent.onDeath().spawn(DUST, 2).inherit(1f, 0f, 1f);   // carried along the ground, not up or down
+     * }</pre>
+     */
+    public CgVfxEvent inherit(float x, float y, float z) {
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, x, y, z, readback, firings, node, from, until,
+                maxPerFrame, fromEmitter);
     }
 
     /** Rows to the CPU, at most {@code cap} a step ({@link CgVfxEventListener}). */
     public CgVfxEvent readback(int cap) {
         if (cap < 1) throw new IllegalArgumentException("a cap of " + cap);
-        return new CgVfxEvent(trigger, age, child, countMin, countMax, inherit, cap, firings, node, from, until, maxPerFrame,
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, inheritX, inheritY, inheritZ, cap, firings, node, from, until, maxPerFrame,
                 fromEmitter);
     }
 
     /** At most {@code most} of its firings a frame spawn children: {@link #MAX_PER_FRAME} unless told. */
     public CgVfxEvent maxPerFrame(int most) {
         if (most < 1) throw new IllegalArgumentException("at most " + most + " a frame");
-        return new CgVfxEvent(trigger, age, child, countMin, countMax, inherit, readback, firings, node, from, until, most,
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, inheritX, inheritY, inheritZ, readback, firings, node, from, until, most,
                 fromEmitter);
     }
 
     /** Its children born at the effect's origin rather than where it fired: the format's {@code use_emitter_location}. */
     public CgVfxEvent fromEmitter() {
-        return new CgVfxEvent(trigger, age, child, countMin, countMax, inherit, readback, firings, node, from, until, maxPerFrame,
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, inheritX, inheritY, inheritZ, readback, firings, node, from, until, maxPerFrame,
                 true);
     }
 
@@ -254,7 +270,7 @@ public final class CgVfxEvent {
     public CgVfxEvent firings(int most) {
         if (!repeats()) throw new IllegalArgumentException(trigger + " fires once: only a collision, a rate or a location repeats");
         if (most < 1) throw new IllegalArgumentException("at most " + most + " firings");
-        return new CgVfxEvent(trigger, age, child, countMin, countMax, inherit, readback, most, node, from, until, maxPerFrame,
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, inheritX, inheritY, inheritZ, readback, most, node, from, until, maxPerFrame,
                 fromEmitter);
     }
 
@@ -266,7 +282,7 @@ public final class CgVfxEvent {
     public CgVfxEvent at(int node) {
         if (node < 0) throw new IllegalArgumentException("node " + node);
         if (trigger == Trigger.BURST) throw new IllegalArgumentException("a burst fires at its batch's source, never at a node");
-        return new CgVfxEvent(trigger, age, child, countMin, countMax, inherit, readback, firings, node, from, until, maxPerFrame,
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, inheritX, inheritY, inheritZ, readback, firings, node, from, until, maxPerFrame,
                 fromEmitter);
     }
 
@@ -277,7 +293,7 @@ public final class CgVfxEvent {
     public CgVfxEvent between(float from, float until) {
         if (trigger != Trigger.RATE) throw new IllegalArgumentException(trigger + " has no window: only a rate fires within one");
         if (!(from >= 0f) || !(until > from)) throw new IllegalArgumentException("a window from " + from + " to " + until);
-        return new CgVfxEvent(trigger, age, child, countMin, countMax, inherit, readback, firings, node, from, until, maxPerFrame,
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, inheritX, inheritY, inheritZ, readback, firings, node, from, until, maxPerFrame,
                 fromEmitter);
     }
 
@@ -330,8 +346,9 @@ public final class CgVfxEvent {
         return countMin;
     }
 
-    public float inherit() {
-        return inherit;
+    /** The share of the parent's velocity on {@code axis} (0 to 2) a child takes on. */
+    public float inherit(int axis) {
+        return axis == 0 ? inheritX : axis == 1 ? inheritY : inheritZ;
     }
 
     /** Rows a step sent to the CPU at most; 0 for none. */

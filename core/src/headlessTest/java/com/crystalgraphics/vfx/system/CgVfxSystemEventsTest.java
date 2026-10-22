@@ -52,7 +52,7 @@ public class CgVfxSystemEventsTest {
         assertSame(chips, collision.child());
         assertEquals(3, collision.countMin());
         assertEquals(5, collision.count());
-        assertEquals(0.3f, collision.inherit(), 0f);
+        for (int a = 0; a < 3; a++) assertEquals(0.3f, collision.inherit(a), 0f);
         assertEquals(32, collision.maxPerFrame());
         CgVfxEvent death = chips.events().get(0);
         assertSame(glints, death.child());

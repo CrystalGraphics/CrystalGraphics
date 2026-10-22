@@ -352,7 +352,7 @@ public final class CgVfxEmitterCompiler {
             s.append("    PARENT_EVENTS  (\"This step's parents' events, sorted by region\",      FxEvent, readonly)\n");
             s.append("    PARENT_RUNS    (\"Each region's first sorted row, then its end\",       uint,    readonly)\n");
             s.append("    PARENT_REGIONS (\"Each region's first capped row and its cap\",         uvec4,   readonly)\n");
-            s.append("    FEEDS          (\"Child slots by parent slot\",                         uvec4,   readonly)\n");
+            s.append("    FEEDS          (\"Child slots by parent slot, two vec4s each\",          uvec4,   readonly)\n");
         }
         s.append("}\n\n");
         s.append("const int STEP_PARAM_ROW = ").append(shape.paramRowVectors()).append(";\n");
@@ -728,9 +728,9 @@ public final class CgVfxEmitterCompiler {
                     hi = _Feeds - 1;
                     while (lo < hi) {
                         int mid = (lo + hi) >> 1;
-                        if (FEEDS(mid).x < key) lo = mid + 1; else hi = mid;
+                        if (FEEDS(mid * 2).x < key) lo = mid + 1; else hi = mid;
                     }
-                    uvec4 feed = FEEDS(lo);
+                    uvec4 feed = FEEDS(lo * 2);
                     // Its count: from z's low half to its high half, rolled per firing where they differ.
                     uint least = feed.z & 0xFFFFu, most = feed.z >> 16u;
                     if (feed.x != key || uint(i) >= most) return false;
@@ -752,7 +752,7 @@ public final class CgVfxEmitterCompiler {
                     if (!step_launch(seed, k, int(head.x) * STEP_PARAM_ROW, inst, at, ev.normal.xyz, vec4(0.0, 0.0, 0.0, 1.0), 0.0, 0.0, p)) {
                         return false;
                     }
-                    p.velocity += uintBitsToFloat(feed.w) * ev.velocityAge.xyz;
+                    p.velocity += uintBitsToFloat(FEEDS(lo * 2 + 1).xyz) * ev.velocityAge.xyz;
                     p.id = k;
                     p.slot = slot;
                     return true;
