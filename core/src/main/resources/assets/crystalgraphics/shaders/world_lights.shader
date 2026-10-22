@@ -104,7 +104,11 @@ Pass {
             // Toward the nearest point of its line (its centre, for a point or a spot).
             float t = dot(segment.xyz, segment.xyz) > 0.0 ? clamp(dot(p - v, segment.xyz) / dot(segment.xyz, segment.xyz), -0.5, 0.5) : 0.0;
             vec3 toLight = v + segment.xyz * t - p;
-            float nol = clamp(dot(n, toLight) * inversesqrt(max(dot(toLight, toLight), 1.0e-12)), 0.0, 1.0);
+            float d2 = dot(toLight, toLight), nol = dot(n, toLight) * inversesqrt(max(d2, 1.0e-12));
+            // A source with a radius as Unreal's capsule integrate takes it (CapsuleLightIntegrate.ush:62-67).
+            float source = light.ambient.z;
+            if (source > 0.0) nol = cg_sphere_horizon_wrap(nol, clamp(source * source / (d2 + CG_LIGHT_BIAS), 0.0, 1.0));
+            nol = clamp(nol, 0.0, 1.0);
             vec3 ambient = vec3(1.0);
             float adapt = 1.0;
             if (light.ambient.x >= 0.0) {

@@ -186,7 +186,8 @@ CgWorldRenderer.get().media().add((pass, media) -> {             // a volume of 
   pass as Unreal's simple lights light a surface, colour × intensity × falloff × N·L × albedo / π: the normal rebuilt
   from depth, the albedo the scene's colour over the lightmap at the light's own block. A light is authored for the
   night and fades under an open sky by day, as an eye adapted to the sun sees it (for the lights alone;
-  `-Dcrystalgraphics.world.lightsDayFade`, 1 for never): full at night and underground, a tenth at noon. No specular: Minecraft has no roughness. Exponent 0 is the inverse square in blocks; any other is Unreal's
+  `-Dcrystalgraphics.world.lightsDayFade`, 1 for never): full at night and underground, a tenth at noon. A light's source radius (`.source(r)`, a particle's its drawn radius) wraps N·L over its sphere as Unreal's
+  SphereHorizonCosWrap does, so one touching a surface lights it. No specular: Minecraft has no roughness. Exponent 0 is the inverse square in blocks; any other is Unreal's
   `(1 - d²/r²)^exponent`. GPU zones `world.lights`, `world.lightsCoarse`, `world.lightsCells` and `world.lightsApply`;
   `-Dcrystalgraphics.world.lightsHzb=false` turns the depth cull off. The demo's `lights` scene shows each kind.
 
@@ -195,6 +196,7 @@ CgWorldLights lights = CgWorldRenderer.get().lights();                          
 lights.add(x, y + 1.5, z, 6f, 0xFFFF9030, 40f, 0f);                                // a point
 lights.add(x, y + 6, z, 12f, 0xFFFFF0D0, 300f, 0f).spot(0f, -1f, 0f, 20f, 35f);    // a spot, pointing down
 lights.add(midX, midY, midZ, 24f, 0xFF60A0FF, 40f, 0f).tube(dirX, dirY, dirZ, 30f); // a tube, 30 blocks long
+lights.add(x, y + 0.1, z, 3f, 0xFFFFB040, 2f, 0f).source(0.1f);                    // a glowing ball on the ground
 ```
 - **Distortion**: a transparent draw whose material has a Distortion pass (`docs/SHADERS.md` § *The Distortion pass*)
   adds an offset into a layer of an RGBA16F array half the world's size (`world.distortionScale(scale)`) after the

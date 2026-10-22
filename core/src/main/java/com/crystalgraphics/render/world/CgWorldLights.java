@@ -96,8 +96,10 @@ import java.util.function.Consumer;
  *       ({@code -Dcrystalgraphics.world.lightsDayFade}, 1 for never).</li>
  *   <li>Exponent 0 is inverse-squared falloff in blocks, faded to nothing at the radius: a quarter as strong at two
  *       blocks as at one. Any other exponent is Unreal's {@code (1 - d²/r²)^exponent}.</li>
- *   <li>{@code spot} and {@code tube} change the light added last, and both may: a spot that comes from a line. The
- *       radius is still from the centre, so a tube's radius reaches past its ends.</li>
+ *   <li>{@code spot}, {@code tube} and {@code source} change the light added last, and all may: a spot that comes from
+ *       a line. The radius is still from the centre, so a tube's radius reaches past its ends.</li>
+ *   <li>A point in a surface's plane only grazes it: give a light that touches surfaces (an ember on the ground) a
+ *       {@code source} radius. A particle's light takes its drawn radius.</li>
  *   <li>A kernel's positions are from the firing's eye ({@link #cameraX()}, {@code _LightEye}), as the froxels are.</li>
  *   <li>Past {@link #CAPACITY} lights a frame the rest are dropped and counted ({@code world.lights-dropped}).</li>
  * </ul>
@@ -116,8 +118,8 @@ public final class CgWorldLights {
             "struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; };";
     /**
      * Floats a light: position and radius, colour and exponent, a spot's direction and the cosine of its outer angle (-2
-     * for none), a tube's length along its axis and a spot's 1 / (cos inner - cos outer), and the block and sky light at
-     * the light (-1 unknown).
+     * for none), a tube's length along its axis and a spot's 1 / (cos inner - cos outer), the block and sky light at
+     * the light (-1 unknown) and its source radius.
      */
     public static final int FLOATS = 20;
 
@@ -302,6 +304,15 @@ public final class CgWorldLights {
         light[l + 12] = dx * s;
         light[l + 13] = dy * s;
         light[l + 14] = dz * s;
+        return this;
+    }
+
+    /**
+     * The light added last as a sphere {@code radius} blocks across from its centre (Unreal's SourceRadius): a surface
+     * it touches or half sinks into is lit, where a point in the surface's plane only grazes it. 0, a point, unless set.
+     */
+    public CgWorldLights source(float radius) {
+        light[last() + 18] = Math.max(radius, 0f);
         return this;
     }
 

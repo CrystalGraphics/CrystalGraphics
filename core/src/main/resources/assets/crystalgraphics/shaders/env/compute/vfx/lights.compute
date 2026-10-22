@@ -50,6 +50,8 @@ void Lights() {
     CgLight light = cg_light(origin.xyz + d.place.xyz, radius, color, falloff.x > 0.0 ? 0.0 : exponent);
     // The particle's own light, packed block + 16 sky (look.compute).
     float blockSky = d.light.x;
-    light.ambient = vec4(mod(blockSky, 16.0), floor(blockSky / 16.0), 0.0, 0.0);
+    // Its drawn radius as its source's: a departure from Unreal, whose particle lights are simple lights with none,
+    // so a particle touching a surface lights it.
+    light.ambient = vec4(mod(blockSky, 16.0), floor(blockSky / 16.0), (size.x + size.y) * 0.25, 0.0);
     LIGHTS_APPEND(light);
 }

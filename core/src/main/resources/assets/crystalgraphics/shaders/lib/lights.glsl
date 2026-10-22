@@ -10,7 +10,8 @@
 // and its falloff, 0 for inverse-squared. spotCos: the way a spot points and the cosine of its outer angle, w -2 for no
 // cone. segmentCone: a tube's length along its axis as one vector (0 for a point), and a spot's 1 / (cos inner - cos
 // outer). ambient: the block and sky light (0 to 15) at the light, what the scene there was lit by and is divided by to
-// find its albedo; x -1 where unknown, and the scene is taken as it is.
+// find its albedo, x -1 where unknown and the scene taken as it is; then its source radius (Unreal's SourceRadius, 0 a
+// point).
 #pragma once
 
 #define cg_light(position, radius, color, exponent) \
@@ -56,8 +57,17 @@ ivec3 cg_light_cell(vec3 p, vec3 zParams, vec2 rayMin, vec2 rayMax, vec2 tile, i
 // then the non-directional IntegrateLight of CapsuleLightIntegrate.ush): a mask from the light's centre, radial to its
 // radius and Square(saturate((cos - cosOuter) / (cosInner - cosOuter))) inside a cone (DynamicLightingCommon.ush:46-50),
 // times, for the inverse square, the irradiance of its segment (CapsuleLight.ush's LineIrradiance, 1 / (d² + 1) at a
-// point), in blocks with Unreal's square centimetre as the bias. A source's radius shapes only a lit surface's highlight and horizon, which no
-// surface here has, so it has no term.
+// point), in blocks with Unreal's square centimetre as the bias. A source's radius shapes only N.L at the horizon
+// (cg_sphere_horizon_wrap): Minecraft has no highlight.
+// N.L for a sphere of sin^2(alpha) = radius^2 / (d^2 + bias) as seen from the surface: Unreal's SphereHorizonCosWrap, its
+// Hermite fit (CapsuleLight.ush:74-104), so a source touching or half inside a surface still lights it.
+float cg_sphere_horizon_wrap(float nol, float sinAlphaSqr) {
+    float sinAlpha = sqrt(sinAlphaSqr);
+    if (nol >= sinAlpha) return nol;
+    nol = max(nol, -sinAlpha);
+    return (sinAlpha + nol) * (sinAlpha + nol) / (4.0 * sinAlpha);
+}
+
 float cg_light_falloff(vec3 position, float radius, float exponent, vec4 spotCos, vec4 segmentCone, vec3 p) {
     vec3 toLight = position - p;
     float d2 = dot(toLight, toLight), x = d2 / (radius * radius);
