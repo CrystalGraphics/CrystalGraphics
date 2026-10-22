@@ -31,7 +31,7 @@ import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.sparse.CgVfxTiles;
-import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
+import com.crystalgraphics.render.world.CgWorldVoxelWindow;
 import com.crystalgraphics.world.CgEntityQueries;
 
 import javax.annotation.Nullable;
@@ -417,7 +417,7 @@ public final class CgVfxFluidAtlas {
         writeCarves(live);
         upload(recording);
         uploadFills(recording, live);
-        CgVfxVoxelWindow window = CgVfxVoxelWindow.get().use();
+        CgWorldVoxelWindow window = CgWorldVoxelWindow.get().use();
         int iterations = Math.max(MIN_ITERATIONS, Math.round(ITERATIONS * GPU_BUDGET.scale()));
         if (most > 0) recording.fill(tiles.occupancy(), 0);
         CgComputePass pass = recording.compute("vfx.fluid", stage.defaults(constants)).timed(GPU_ZONE).timed(GPU_BUDGET)

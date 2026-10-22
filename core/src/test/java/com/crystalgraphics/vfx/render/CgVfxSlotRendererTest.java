@@ -117,16 +117,16 @@ public class CgVfxSlotRendererTest {
         assertEquals(0f, light.blue(), 0f);
         assertEquals(4f, light.intensity(), 0f);
         assertEquals(2.2f, light.attenuationRadius(), 1e-6f);
-        assertEquals(new CgVfxSlotRenderer.Light(1f, 1f, 1f, 1f, 1f, 0f, 0f, false, 0f, 44f),
+        assertEquals(new CgVfxSlotRenderer.Light(1f, 1f, 1f, 1f, 1f, 0f, 0f, false, 0f, 44f, true),
                 CgVfxSlotRenderer.light("l2", CgBeamBody.BODY).build().light());
     }
 
     @Test
     public void aSpotWithASourceIsItsFilesEntry() {
         CgVfxSlotRenderer built = CgVfxSlotRenderer.light("l1", CgBeamBody.HEAD).spot(10f, 25f).sourceRadius(0.5f)
-                .sourceLength(2f).bind("outer_cone_angle", "user.cone").build();
+                .sourceLength(2f).castShadows(false).bind("outer_cone_angle", "user.cone").build();
         CgVfxSlotRenderer loaded = CgVfxSlotRenderer.compile("test:wave", built.tree(), null);
         assertEquals(built.tree(), loaded.tree());
-        assertEquals(new CgVfxSlotRenderer.Light(1f, 1f, 1f, 1f, 1f, 0.5f, 2f, true, 10f, 25f), loaded.light());
+        assertEquals(new CgVfxSlotRenderer.Light(1f, 1f, 1f, 1f, 1f, 0.5f, 2f, true, 10f, 25f, false), loaded.light());
     }
 }

@@ -7,7 +7,8 @@
 // does. Minecraft has no exposure, so its noon is as bright as its moonlight is dim; a light is adapted to the sun as
 // an eye would be, for the lights alone: full at night and wherever no sky reaches it, fading to _DayFade under the
 // full daylight of an open sky (CG_DAYLIGHT times the sky light at it). Specular is left out: Minecraft has no
-// roughness.
+// roughness. A light that casts shadows is not lit here while the shadow passes run (_Shadows): their denoised lighting,
+// in the same units, is added in its place (_Shadowed, CgWorldLights' MegaLights port).
 #type none
 #include "crystalgraphics:shaders/lib/math.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
@@ -26,6 +27,8 @@ Properties {
     _ToView2 ("The third row",                                     vec4) = (0, 0, 1, 0)
     _Depth   ("The perspective's m22, m32, m23 and m33: window depth to eye depth", vec4) = (1, 0, -1, 0)
     _DayFade ("A light's strength under a full day's open sky; 1 for never fading", float) = 0.1
+    _Shadows ("1 while the shadow passes light the lights that cast shadows", float) = 0.0
+    _Shadowed ("Their lighting, denoised",                         sampler2D) = "black"
 }
 
 struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; };
@@ -92,23 +95,17 @@ Pass {
         // The darkest lightmap the albedo is recovered from: below it the scene's noise would be lit as colour.
         float floorLight = CG_LINEAR_SCENE ? 0.02 : 0.15;
         vec3 sum = vec3(0.0);
+        bool shadows = _Shadows > 0.5;
         for (int k = 0; k < count; k++) {
             CgLight light = LIGHTS(int(INDICES(from + k)));
+            if (shadows && CG_LIGHT_SHADOWED(light)) continue;
             vec3 at = light.positionRadius.xyz, way = light.spotCos.xyz, along = light.segmentCone.xyz;
             vec3 v = vec3(dot(_ToView0.xyz, at), dot(_ToView1.xyz, at), dot(_ToView2.xyz, at))
                     + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
             vec4 spot = vec4(dot(_ToView0.xyz, way), dot(_ToView1.xyz, way), dot(_ToView2.xyz, way), light.spotCos.w);
             vec4 segment = vec4(dot(_ToView0.xyz, along), dot(_ToView1.xyz, along), dot(_ToView2.xyz, along), light.segmentCone.w);
-            float falloff = cg_light_falloff(v, light.positionRadius.w, light.colorExponent.w, spot, segment, p);
-            if (falloff <= 0.0) continue;
-            // Toward the nearest point of its line (its centre, for a point or a spot).
-            float t = dot(segment.xyz, segment.xyz) > 0.0 ? clamp(dot(p - v, segment.xyz) / dot(segment.xyz, segment.xyz), -0.5, 0.5) : 0.0;
-            vec3 toLight = v + segment.xyz * t - p;
-            float d2 = dot(toLight, toLight), nol = dot(n, toLight) * inversesqrt(max(d2, 1.0e-12));
-            // A source with a radius as Unreal's capsule integrate takes it (CapsuleLightIntegrate.ush:62-67).
-            float source = light.ambient.z;
-            if (source > 0.0) nol = cg_sphere_horizon_wrap(nol, clamp(source * source / (d2 + CG_LIGHT_BIAS), 0.0, 1.0));
-            nol = clamp(nol, 0.0, 1.0);
+            float lit = cg_light_surface(v, light.positionRadius.w, light.colorExponent.w, spot, segment, light.ambient.z, p, n);
+            if (lit <= 0.0) continue;
             vec3 ambient = vec3(1.0);
             float adapt = 1.0;
             if (light.ambient.x >= 0.0) {
@@ -116,8 +113,9 @@ Pass {
                 adapt = mix(1.0, _DayFade, clamp(CG_DAYLIGHT, 0.0, 1.0) * light.ambient.y / 15.0);
                 ambient = max(CG_LINEAR_SCENE ? srgb_to_linear(lightmap) : lightmap, vec3(floorLight));
             }
-            sum += light.colorExponent.rgb * (falloff * nol * adapt / CG_PI) / ambient;
+            sum += light.colorExponent.rgb * (lit * adapt / CG_PI) / ambient;
         }
+        if (shadows) sum += texelFetch(_Shadowed, px, 0).rgb;
         fragColor = vec4(sum, 0.0);
     }
 }

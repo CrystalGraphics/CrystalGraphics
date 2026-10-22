@@ -11,7 +11,7 @@
 // cone. segmentCone: a tube's length along its axis as one vector (0 for a point), and a spot's 1 / (cos inner - cos
 // outer). ambient: the block and sky light (0 to 15) at the light, what the scene there was lit by and is divided by to
 // find its albedo, x -1 where unknown and the scene taken as it is; then its source radius (Unreal's SourceRadius, 0 a
-// point).
+// point), and 1 where it casts shadows (CG_LIGHT_SHADOWED).
 #pragma once
 
 #define cg_light(position, radius, color, exponent) \
@@ -34,6 +34,9 @@
 // Unreal's inverse-squared falloff's +1, a square centimetre, in square blocks: intensity is per square block, 1 at a
 // block.
 #define CG_LIGHT_BIAS 1.0e-4
+
+// Whether a light casts shadows (CgWorldLights.shadowed): traced by the shadow passes, not lit by the grid's own.
+#define CG_LIGHT_SHADOWED(light) ((light).ambient.w > 0.5)
 
 // The eye depth slice z starts at: 0 for the first, and far past the world for the end of the last, as Unreal's.
 float cg_light_slice_depth(int z, vec3 zParams) {
@@ -58,16 +61,7 @@ ivec3 cg_light_cell(vec3 p, vec3 zParams, vec2 rayMin, vec2 rayMax, vec2 tile, i
 // radius and Square(saturate((cos - cosOuter) / (cosInner - cosOuter))) inside a cone (DynamicLightingCommon.ush:46-50),
 // times, for the inverse square, the irradiance of its segment (CapsuleLight.ush's LineIrradiance, 1 / (d² + 1) at a
 // point), in blocks with Unreal's square centimetre as the bias. A source's radius shapes only N.L at the horizon
-// (cg_sphere_horizon_wrap): Minecraft has no highlight.
-// N.L for a sphere of sin^2(alpha) = radius^2 / (d^2 + bias) as seen from the surface: Unreal's SphereHorizonCosWrap, its
-// Hermite fit (CapsuleLight.ush:74-104), so a source touching or half inside a surface still lights it.
-float cg_sphere_horizon_wrap(float nol, float sinAlphaSqr) {
-    float sinAlpha = sqrt(sinAlphaSqr);
-    if (nol >= sinAlpha) return nol;
-    nol = max(nol, -sinAlpha);
-    return (sinAlpha + nol) * (sinAlpha + nol) / (4.0 * sinAlpha);
-}
-
+// (cg_light_surface): Minecraft has no highlight.
 float cg_light_falloff(vec3 position, float radius, float exponent, vec4 spotCos, vec4 segmentCone, vec3 p) {
     vec3 toLight = position - p;
     float d2 = dot(toLight, toLight), x = d2 / (radius * radius);
@@ -83,6 +77,30 @@ float cg_light_falloff(vec3 position, float radius, float exponent, vec4 spotCos
     float inv01 = inversesqrt(max(dot(l0, l0), 1.0e-12)) * inversesqrt(max(dot(l1, l1), 1.0e-12));
     float cosSubtended = dot(l0, l1) * inv01;
     return mask * inv01 / (cosSubtended * 0.5 + 0.5 + CG_LIGHT_BIAS * inv01);
+}
+
+// N.L for a sphere of sin^2(alpha) = radius^2 / (d^2 + bias) as seen from the surface: Unreal's SphereHorizonCosWrap, its
+// Hermite fit (CapsuleLight.ush:74-104), so a source touching or half inside a surface still lights it.
+float cg_sphere_horizon_wrap(float nol, float sinAlphaSqr) {
+    float sinAlpha = sqrt(sinAlphaSqr);
+    if (nol >= sinAlpha) return nol;
+    nol = max(nol, -sinAlpha);
+    return (sinAlpha + nol) * (sinAlpha + nol) / (4.0 * sinAlpha);
+}
+
+// What a light gives a surface at p facing n, all in one space, before its colour: its falloff times N.L, N.L toward
+// the nearest point of its line (its centre, for a point or a spot) and wrapped over its source sphere as Unreal's
+// capsule integrate does (CapsuleLightIntegrate.ush:62-67).
+float cg_light_surface(vec3 position, float radius, float exponent, vec4 spotCos, vec4 segmentCone, float source, vec3 p,
+                       vec3 n) {
+    float falloff = cg_light_falloff(position, radius, exponent, spotCos, segmentCone, p);
+    if (falloff <= 0.0) return 0.0;
+    float length2 = dot(segmentCone.xyz, segmentCone.xyz);
+    float t = length2 > 0.0 ? clamp(dot(p - position, segmentCone.xyz) / length2, -0.5, 0.5) : 0.0;
+    vec3 toLight = position + segmentCone.xyz * t - p;
+    float d2 = dot(toLight, toLight), nol = dot(n, toLight) * inversesqrt(max(d2, 1.0e-12));
+    if (source > 0.0) nol = cg_sphere_horizon_wrap(nol, clamp(source * source / (d2 + CG_LIGHT_BIAS), 0.0, 1.0));
+    return falloff * clamp(nol, 0.0, 1.0);
 }
 
 // Whether a light at position (radius blocks) with cone spotCos reaches a box of centre and extent, all in one space:

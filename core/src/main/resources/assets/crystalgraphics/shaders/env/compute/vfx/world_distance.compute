@@ -1,4 +1,4 @@
-// The voxel window's distance field (CgVfxVoxelWindow): each block's distance from its centre to the nearest solid
+// The voxel window's distance field (CgWorldVoxelWindow): each block's distance from its centre to the nearest solid
 // octant, up to FX_WORLD_FAR, by a jump flood (Rong and Tan) over the blocks around what changed. Seed gives each block
 // of the domain with a solid octant itself; each Jump keeps, of a block's own seed and the seeds of the 26 blocks a
 // step away, the one whose solid octants are nearest (steps 8, 4, 2, 1, then 1 again); Settle writes every block of

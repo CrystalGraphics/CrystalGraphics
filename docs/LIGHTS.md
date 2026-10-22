@@ -15,8 +15,9 @@ must light Minecraft's world.
 4. [Day and night](#4-day-and-night)
 5. [Tens of thousands: the light grid](#5-tens-of-thousands-the-light-grid)
 6. [Lights from effects](#6-lights-from-effects)
-7. [What they do not do yet](#7-what-they-do-not-do-yet)
-8. [Checking and measuring](#8-checking-and-measuring)
+7. [Shadows](#7-shadows)
+8. [What they do not do yet](#8-what-they-do-not-do-yet)
+9. [Checking and measuring](#9-checking-and-measuring)
 
 ---
 
@@ -144,22 +145,54 @@ Effects add lights without calling `add`:
 - **A slot light**: a slot renderer that lights instead of drawing a material, a point or a spot with a source radius
   and length. [`vfx/effects.md`](vfx/effects.md) § *A light on a slot*.
 
-## 7. What they do not do yet
+## 7. Shadows
+
+A light added from the CPU casts shadows: the blocks and entities between it and a surface withhold it. Nothing is
+drawn from the light's side, so there are no shadow maps and no caster passes: each pixel traces rays to its lights,
+as Unreal 5's **MegaLights** does, ported from its shaders pass by pass.
+
+```java
+lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f);                    // casts shadows
+lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCastShadows off: the grid alone, no rays
+```
+
+| Pass | Unreal (MegaLights) | Here |
+|---|---|---|
+| Sample | `GenerateLightSamplesCS`: 4 samples a half-resolution pixel, a weighted reservoir over its tile's lights, weight `log2(luminance + 1)`; a sample of the same light merged into the next one's ray | `world_lights_sample.shader`, over the light grid's cell, the shadowed lights alone |
+| Trace | screen trace (hierarchical, 1 m), then the global distance field | screen trace (24 steps over 8 blocks, `crystalgraphics.world.lightsScreenTrace`), then `CgWorldVoxelWindow`'s distance field (blocks, 128x96x128 round the camera), then each of `CgWorldEntityBoxes`' entities as a capsule (Unreal's capsule shadows) |
+| Shade | `ShadeLightSamplesCS`: each pixel picks a nearby half-resolution pixel by bilinear, depth and normal weight; each visible light lit exactly, times its samples' weights | `world_lights_shade.shader` |
+| Temporal | `DenoiserTemporalCS`: history clamped in YCoCg to the neighbourhood, 4 to 12 frames by confidence, moments kept | `world_lights_temporal.shader`, one history for the first firing (`crystalgraphics.world.lightsShadowFrames`) |
+| Spatial | `DenoiserSpatialCS`: where still noisy, a disk of 4 (8 after a disocclusion) samples by depth, normal and luminance | `world_lights_denoise.shader` (`crystalgraphics.world.lightsShadowSpatial`, pixels) |
+| Composite | adds into scene colour | `world_lights.shader` adds it beside the unshadowed lights |
+
+- **What casts**: Minecraft's blocks within the window, its living entities within 64 blocks, and anything on screen.
+  Meshes drawn through `CgWorldRenderer` shadow only where they are on screen; Unreal's mesh distance fields have no
+  counterpart yet.
+- **What does not**: a particle's light (Unreal's simple lights cast none), a slot light with `cast_shadows: false`,
+  any light under `-Dcrystalgraphics.world.lightsShadows=false`.
+- **Departures from Unreal**: a linear screen trace, longer than Unreal's, because the world trace knows only blocks;
+  no visible-light hash guiding the next frame's samples; lights that cast no shadow stay on the grid's exact pass
+  rather than being sampled; the shading confidence is 1.
+- The gate is `--mode=lights-shadow`: a wall of blocks between a light and the floor, the light behind it gone and in the
+  open the same as unshadowed. GPU zones `world.lightsSample`, `world.lightsShade`, `world.lightsTemporal`,
+  `world.lightsDenoise`.
+
+## 8. What they do not do yet
 
 | Missing | Unreal's answer | Plan |
 |---|---|---|
-| **Shadows**: lights pass through blocks | MegaLights: a few light samples a pixel, each traced (screen, then a distance field), denoised | `render-shadows`, through the voxel window's distance field |
 | Lighting transparent surfaces and particles | MegaLights' translucency lighting volume | after shadows (task #28) |
 | Lighting the air (fog and smoke glowing round a light) | volumetric fog's local-light injection | after shadows (task #29), into `CgWorldMedia`'s froxels |
 | Rect lights, IES profiles, light functions | rect lights, IES atlases, light function atlases | none yet |
 | Specular | GGX from the G-buffer's roughness | none: Minecraft has no roughness |
 | The sun's shadows | virtual shadow maps | none: vanilla Minecraft has no sun shadows |
 
-## 8. Checking and measuring
+## 9. Checking and measuring
 
 | Gate | Holds |
 |---|---|
 | `--mode=lights-grid` | every light word, every cell's list and the falloffs against Java, at every tier and on Vulkan |
+| `--mode=lights-shadow` | a light behind a wall of blocks withheld, in the open kept, on GL and Vulkan |
 | `--mode=vfx-lights` | every particle light (where, how far, how bright, its block and sky light, its source radius) against a Java gather |
 | `--mode=lights-bench` | the cost: `-Dcrystalgraphics.harness.lights=10000` and profile `world.lights`, `world.lightsCoarse`, `world.lightsCells`, `world.lightsApply` |
 

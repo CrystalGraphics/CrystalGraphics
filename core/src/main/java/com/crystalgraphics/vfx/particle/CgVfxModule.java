@@ -1498,7 +1498,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * }</pre>
      *
      * <ul>
-     *   <li>Each particle tests every box, at most {@code CgVfxEntityBoxes.MAX} of the nearest the camera: keep it to
+     *   <li>Each particle tests every box, at most {@code CgWorldEntityBoxes.MAX} of the nearest the camera: keep it to
      *       emitters of thousands, not millions.</li>
      *   <li>An entity walking into resting or slow particles engulfs them: they began the step inside.</li>
      * </ul>

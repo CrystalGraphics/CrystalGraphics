@@ -1,5 +1,6 @@
-package com.crystalgraphics.vfx.particle.gpu.sim;
+package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
@@ -14,24 +15,30 @@ import java.util.Arrays;
 import java.util.function.IntConsumer;
 
 /**
- * The entity boxes a Step kernel taking {@code ENTITIES} reads ({@code fx_entities_at.glsl}): the living nearest the
- * camera, at most {@link #MAX} within {@link #REACH} blocks, gathered from {@link CgEntityQuery} once a frame a pool reads
- * them. Items and projectiles are left out. Render thread.
+ * The boxes of the living entities nearest the camera, at most {@link #MAX} within {@link #REACH} blocks, gathered from
+ * {@link CgEntityQuery} once a frame something reads them: the world lights' shadow rays ({@link CgWorldLights}) and the
+ * particle steps that collide with entities ({@code fx_entities_at.glsl}). Items and projectiles are left out. Render
+ * thread.
  *
  * <pre>{@code
- * CgVfxEntityBoxes.around(camX, camY, camZ, partialTick);   // what the boxes centre on: the stage's camera
- * CgVfxEntityBoxes.upload(recording);                       // gathers and uploads, when a stepping shape reads them
- * CgVfxEntityBoxes.bind(dispatch);                          // each such shape's Step
+ * CgWorldEntityBoxes.around(camX, camY, camZ, partialTick);   // what the boxes centre on: the stage's camera
+ * CgWorldEntityBoxes.upload(recording);                       // gathers and uploads, when something reads them
+ * CgWorldEntityBoxes.bind(dispatch);                          // a kernel declaring PROPERTIES
+ * material.buffer("ENTITIES", CgWorldEntityBoxes.buffer());   // or a material: count() boxes from anchor(axis)
  * }</pre>
+ *
+ * <ul>
+ *   <li>A second {@link #upload} the same frame round the same block gathers nothing again.</li>
+ * </ul>
  */
-final class CgVfxEntityBoxes {
+public final class CgWorldEntityBoxes {
 
     /** The most boxes a step reads: each particle tests every one. */
-    static final int MAX = 64;
+    public static final int MAX = 64;
     /** How far from the camera an entity is gathered, in blocks, along each axis. */
-    static final double REACH = 64.0;
+    public static final double REACH = 64.0;
 
-    static final String PROPERTIES = """
+    public static final String PROPERTIES = """
                 _Entities      ("Entity boxes in ENTITIES",              int) = 0
                 _EntityAnchorX ("The block the boxes are relative to: x", int) = 0
                 _EntityAnchorY ("y",                                     int) = 0
@@ -42,24 +49,32 @@ final class CgVfxEntityBoxes {
     private static double cameraX, cameraY, cameraZ;
     private static float partialTick;
     private static int count, anchorX, anchorY, anchorZ;
+    private static long uploadedAt = -1;
     private static CgGraphBuffer buffer;
     private static ByteBuffer staging = ByteBuffer.allocate(MAX * 32).order(ByteOrder.nativeOrder());
     private static final Gather GATHER = new Gather();
 
-    private CgVfxEntityBoxes() {
+    private CgWorldEntityBoxes() {
     }
 
     /** Centres the next {@link #upload} on {@code (x, y, z)}, poses at {@code partialTick}. */
-    static void around(double x, double y, double z, float partialTick) {
+    public static void around(double x, double y, double z, float partialTick) {
         placed = true;
         cameraX = x;
         cameraY = y;
         cameraZ = z;
-        CgVfxEntityBoxes.partialTick = partialTick;
+        CgWorldEntityBoxes.partialTick = partialTick;
     }
 
     /** Gathers the boxes round where {@link #around} put them and uploads them; none when it was not called. */
-    static void upload(CgRecording recording) {
+    public static void upload(CgRecording recording) {
+        long frame = CgFrameRing.frame();
+        if (placed && frame == uploadedAt && anchorX == (int) Math.floor(cameraX) && anchorY == (int) Math.floor(cameraY)
+                && anchorZ == (int) Math.floor(cameraZ)) {
+            placed = false;
+            return;
+        }
+        uploadedAt = frame;
         gather();
         if (buffer == null) {
             buffer = CgGraphBuffer.persistent("vfx.pool.entities", CgBufferDesc.of(MAX * 32L, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
@@ -72,7 +87,7 @@ final class CgVfxEntityBoxes {
     }
 
     /** {@link #upload}'s gathering alone: the boxes in {@link #words()}. */
-    static void gather() {
+    public static void gather() {
         count = 0;
         anchorX = (int) Math.floor(cameraX);
         anchorY = (int) Math.floor(cameraY);
@@ -81,15 +96,26 @@ final class CgVfxEntityBoxes {
         placed = false;
     }
 
-    static void bind(CgDispatch d) {
+    public static void bind(CgDispatch d) {
         d.bind("ENTITIES", buffer).set("_Entities", count)
                 .set("_EntityAnchorX", anchorX).set("_EntityAnchorY", anchorY).set("_EntityAnchorZ", anchorZ);
     }
 
+    /** The boxes, two vec4s each from {@link #anchor}: min and the entity's id, max and 0. Null before any upload. */
+    public static CgGraphBuffer buffer() {
+        return buffer;
+    }
+
+    /** The block the boxes are relative to on an axis (0 x, 1 y, 2 z): the floor of where {@link #around} put them. */
+    public static int anchor(int axis) {
+        return axis == 0 ? anchorX : axis == 1 ? anchorY : anchorZ;
+    }
+
     /** A dying context took the buffer. */
-    static void forget() {
+    public static void forget() {
         buffer = null;
         count = 0;
+        uploadedAt = -1;
     }
 
     /** The nearest {@link #MAX}, kept sorted by distance as {@code within} visits them. */
@@ -144,11 +170,12 @@ final class CgVfxEntityBoxes {
     }
 
     /** The gathered boxes' words, {@code count() * 8}. Tests. */
-    static int[] words() {
+    public static int[] words() {
         return Arrays.copyOf(GATHER.words, count * 8);
     }
 
-    static int count() {
+    /** Boxes in {@link #buffer()} as of the last upload. */
+    public static int count() {
         return count;
     }
 }

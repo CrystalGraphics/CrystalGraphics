@@ -178,7 +178,9 @@ CgWorldRenderer.get().media().add((pass, media) -> {             // a volume of 
 - **Lights** (`world.lights()`, `CgWorldLights`): **[`LIGHTS.md`](LIGHTS.md)**. Unreal's local lights (points, spots
   and tubes, with a source radius) from the CPU or appended by kernels, binned into Unreal 5's light grid and lit
   **deferred**: one full-screen pass after the level, its G-buffer rebuilt from Minecraft's depth and colour, so no
-  draw of Minecraft's changes. They only add light, inverse-squared by default; 30,000 cost 0.43 ms.
+  draw of Minecraft's changes. They only add light, inverse-squared by default; 30,000 cost 0.43 ms. Blocks and
+  entities shadow them (MegaLights' rays, through `CgWorldVoxelWindow` and `CgWorldEntityBoxes`); `.shadowed(false)`
+  opts a light out.
 
 ```java
 CgWorldLights lights = CgWorldRenderer.get().lights();                             // each frame, before the world records
@@ -186,6 +188,7 @@ lights.add(x, y + 1.5, z, 6f, 0xFFFF9030, 40f, 0f);                             
 lights.add(x, y + 6, z, 12f, 0xFFFFF0D0, 300f, 0f).spot(0f, -1f, 0f, 20f, 35f);    // a spot, pointing down
 lights.add(midX, midY, midZ, 24f, 0xFF60A0FF, 40f, 0f).tube(dirX, dirY, dirZ, 30f); // a tube, 30 blocks long
 lights.add(x, y + 0.1, z, 3f, 0xFFFFB040, 2f, 0f).source(0.1f);                    // a glowing ball on the ground
+lights.add(x, y, z, 4f, 0xFFFFC080, 10f, 0f).shadowed(false);                       // casts no shadow
 ```
 - **Distortion**: a transparent draw whose material has a Distortion pass (`docs/SHADERS.md` § *The Distortion pass*)
   adds an offset into a layer of an RGBA16F array half the world's size (`world.distortionScale(scale)`) after the

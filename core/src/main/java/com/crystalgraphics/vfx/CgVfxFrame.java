@@ -368,7 +368,7 @@ public final class CgVfxFrame {
             if (skips(effect, placed)) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             if (placed.slotRenderer().light() != null) {
-                pathLights(effect, r, path);
+                pathLights(effect, r, path, placed.slotRenderer().light().castShadows());
                 continue;
             }
             boundPath(effect, path, CgVfxMaterials.size(effect, r));
@@ -415,7 +415,7 @@ public final class CgVfxFrame {
             if (skips(effect, placed)) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             if (placed.slotRenderer().light() != null) {
-                meshLight(effect, r, placed.slotRenderer().light().spot(), x, y, z, transform, presence * ez);
+                meshLight(effect, r, placed.slotRenderer().light(), x, y, z, transform, presence * ez);
                 continue;
             }
             CgVfxTrace.count(DRAWS_MESH, 1);
@@ -431,8 +431,8 @@ public final class CgVfxFrame {
      * times {@code strength}, the effect's presence and {@code s²}; a spot and a source line along the transform's +Y
      * ({@link CgVfxSlotRenderer.Light}).
      */
-    private void meshLight(CgVfxEffect<?> effect, CgVfxMaterials.Resolved r, boolean spot, float x, float y, float z,
-                           Matrix4fc transform, float strength) {
+    private void meshLight(CgVfxEffect<?> effect, CgVfxMaterials.Resolved r, CgVfxSlotRenderer.Light def, float x,
+                           float y, float z, Matrix4fc transform, float strength) {
         float s = (float) Math.sqrt(transform.m00() * transform.m00() + transform.m01() * transform.m01()
                 + transform.m02() * transform.m02());
         CgVfxMaterials.light(effect, r, light);
@@ -440,11 +440,11 @@ public final class CgVfxFrame {
         if (reach <= 0f || k <= 0f) return;
         effect.bound(x, y, z, reach);
         world.lights().addLinear(effect.originX + x, effect.originY + y, effect.originZ + z, reach, light[0] * k,
-                light[1] * k, light[2] * k, 0f).source(light[4] * s);
+                light[1] * k, light[2] * k, 0f).source(light[4] * s).shadowed(def.castShadows());
         float ax = transform.m10(), ay = transform.m11(), az = transform.m12();
         if (ax * ax + ay * ay + az * az > 0f) {
             if (light[5] > 0f) world.lights().tube(ax, ay, az, light[5] * s);
-            if (spot) world.lights().spot(ax, ay, az, light[6], light[7]);
+            if (def.spot()) world.lights().spot(ax, ay, az, light[6], light[7]);
         }
         CgVfxTrace.count(LIGHTS, 1);
     }
@@ -455,7 +455,7 @@ public final class CgVfxFrame {
      * ({@code 1/d²} there, as a point), so one tube the path's length would leave its ends dark; a stretch's colour is
      * times its length and {@code s}, so the chain far off sums to a line of the colour times {@code s} a block.
      */
-    private void pathLights(CgVfxEffect<?> effect, CgVfxMaterials.Resolved r, CgVfxPath path) {
+    private void pathLights(CgVfxEffect<?> effect, CgVfxMaterials.Resolved r, CgVfxPath path, boolean shadows) {
         CgVfxMaterials.light(effect, r, light);
         float presence = effect.presence();
         int last = path.count() - 1;
@@ -472,7 +472,7 @@ public final class CgVfxFrame {
             if (chord <= 0f) continue;
             effect.bound(x, y, z, reach);
             world.lights().addLinear(effect.originX + x, effect.originY + y, effect.originZ + z, reach, light[0] * k,
-                    light[1] * k, light[2] * k, 0f).tube(dx, dy, dz, chord).source(light[4] * s);
+                    light[1] * k, light[2] * k, 0f).tube(dx, dy, dz, chord).source(light[4] * s).shadowed(shadows);
             CgVfxTrace.count(LIGHTS, 1);
         }
     }

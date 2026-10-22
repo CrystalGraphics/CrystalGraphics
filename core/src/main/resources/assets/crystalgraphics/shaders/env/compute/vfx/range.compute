@@ -47,7 +47,7 @@ Properties {
     _Eye         ("Projection [2][2], [2][3], [3][2], [3][3]",       vec4)      = (-1, -1, 0, 0)
     _Pyramid     ("The scene's depth, CgGpuOps.depthPyramid's",      sampler2D) = "white"
     _PyramidSize ("Its width, height and levels; no levels, no test", vec4)     = (0, 0, 0, 0)
-    // CgVfxVoxelWindow.PROPERTIES
+    // CgWorldVoxelWindow.PROPERTIES
     _World         ("The voxel window: a block a texel",    sampler3D) = "black"
     _WorldSections ("Which of its sections are filled",     sampler3D) = "black"
     _WorldBaseX    ("Its lowest block, absolute: x",        int)       = 0

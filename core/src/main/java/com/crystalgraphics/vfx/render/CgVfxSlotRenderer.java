@@ -290,7 +290,7 @@ public final class CgVfxSlotRenderer {
      * @param blue  {@code light_color}'s, linear, times its alpha
      */
     public record Light(float red, float green, float blue, float intensity, float attenuationRadius, float sourceRadius,
-                        float sourceLength, boolean spot, float innerConeAngle, float outerConeAngle) {
+                        float sourceLength, boolean spot, float innerConeAngle, float outerConeAngle, boolean castShadows) {
 
         /** The fields a light binds by, in the order a resolved light reads them. */
         public static final List<String> FIELDS = List.of("light_color", "intensity", "attenuation_radius", "source_radius",
@@ -298,8 +298,9 @@ public final class CgVfxSlotRenderer {
 
         static Light compile(String who, Map<?, ?> fields) {
             for (Object key : fields.keySet()) {
-                if (!"type".equals(key) && !FIELDS.contains(String.valueOf(key))) {
-                    throw new IllegalArgumentException(who + "'s light has " + key + ": a light has type and " + FIELDS);
+                if (!"type".equals(key) && !"cast_shadows".equals(key) && !FIELDS.contains(String.valueOf(key))) {
+                    throw new IllegalArgumentException(who + "'s light has " + key + ": a light has type, cast_shadows and "
+                            + FIELDS);
                 }
             }
             Object type = fields.get("type");
@@ -312,9 +313,14 @@ public final class CgVfxSlotRenderer {
             }
             float[] c = fields.get("light_color") == null ? new float[] {1f, 1f, 1f}
                     : linear(who, fields.get("light_color"));
+            Object shadows = fields.get("cast_shadows");
+            if (shadows != null && !(shadows instanceof Boolean)) {
+                throw new IllegalArgumentException(who + "'s light's cast_shadows is " + shadows + ", not true or false");
+            }
             return new Light(c[0], c[1], c[2], number(who, fields, "intensity", 1f), number(who, fields, "attenuation_radius", 1f),
                     number(who, fields, "source_radius", 0f), number(who, fields, "source_length", 0f), spot,
-                    number(who, fields, "inner_cone_angle", 0f), number(who, fields, "outer_cone_angle", 44f));
+                    number(who, fields, "inner_cone_angle", 0f), number(who, fields, "outer_cone_angle", 44f),
+                    shadows == null || (Boolean) shadows);
         }
 
         private static float number(String who, Map<?, ?> fields, String name, float fallback) {
@@ -407,6 +413,11 @@ public final class CgVfxSlotRenderer {
             return light("source_length", (double) times);
         }
 
+        /** Whether blocks and entities in its way withhold it (Unreal's bCastShadows): true unless set. */
+        public Builder castShadows(boolean cast) {
+            return light("cast_shadows", cast);
+        }
+
         private Builder light(String field, Object value) {
             if (light == null) throw new IllegalStateException(field + " is a light's: build it with CgVfxSlotRenderer.light");
             light.put(field, value);
@@ -461,7 +472,7 @@ public final class CgVfxSlotRenderer {
             if (light != null) {
                 Map<String, Object> fields = new LinkedHashMap<>();
                 for (String key : List.of("type", "light_color", "intensity", "attenuation_radius", "source_radius",
-                        "source_length", "inner_cone_angle", "outer_cone_angle")) {
+                        "source_length", "inner_cone_angle", "outer_cone_angle", "cast_shadows")) {
                     if (light.containsKey(key)) fields.put(key, light.get(key));
                 }
                 entry.put("light", fields);

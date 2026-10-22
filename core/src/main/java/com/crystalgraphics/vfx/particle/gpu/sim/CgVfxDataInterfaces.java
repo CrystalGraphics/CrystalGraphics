@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
+import com.crystalgraphics.render.world.CgWorldEntityBoxes;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgRecording;
@@ -12,7 +13,7 @@ import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDataInterface;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
-import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
+import com.crystalgraphics.render.world.CgWorldVoxelWindow;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -72,7 +73,7 @@ public final class CgVfxDataInterfaces {
      */
     public static final CgVfxDataInterface WORLD = register(new Engine("world", "FxWorld", "step_world(inst)") {
         @Override public List<String> libraries() { return List.of(SIM + "fx_world_at.glsl"); }
-        @Override public String properties() { return CgVfxVoxelWindow.PROPERTIES; }
+        @Override public String properties() { return CgWorldVoxelWindow.PROPERTIES; }
         @Override public String functions(int lanesAt) {
             return """
 
@@ -96,7 +97,7 @@ public final class CgVfxDataInterfaces {
                     }
                     """;
         }
-        @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { CgVfxVoxelWindow.get().use().bind(d); }
+        @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { CgWorldVoxelWindow.get().use().bind(d); }
     });
 
     /**
@@ -105,7 +106,7 @@ public final class CgVfxDataInterfaces {
      */
     public static final CgVfxDataInterface WORLD_DISTANCE = register(new Engine("world_distance", "FxWorld", "step_world(inst)") {
         @Override public List<CgVfxDataInterface> requires() { return List.of(WORLD); }
-        @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { CgVfxVoxelWindow.get().useDistance(); }
+        @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { CgWorldVoxelWindow.get().useDistance(); }
     });
 
     /**
@@ -147,11 +148,11 @@ public final class CgVfxDataInterfaces {
     /**
      * The entities round the camera this frame, as boxes in an {@code FxEntities} that {@code fx_entities_at.glsl}'s
      * readers take ({@code fx_entities_enter}): mobs and players a particle can strike from any side, on screen or not.
-     * At most {@code CgVfxEntityBoxes.MAX} of them, the living nearest the camera.
+     * At most {@code CgWorldEntityBoxes.MAX} of them, the living nearest the camera.
      */
     public static final CgVfxDataInterface ENTITIES = register(new Engine("entities", "FxEntities", "step_entities(inst)") {
         @Override public List<String> libraries() { return List.of(SIM + "fx_entities_at.glsl"); }
-        @Override public String properties() { return CgVfxEntityBoxes.PROPERTIES; }
+        @Override public String properties() { return CgWorldEntityBoxes.PROPERTIES; }
         @Override public String buffers() { return "    ENTITIES      (\"Entity boxes, two rows each\", uvec4,   readonly)\n"; }
         @Override public String functions(int lanesAt) {
             return """
@@ -177,9 +178,9 @@ public final class CgVfxDataInterfaces {
             CgHostView view = frame.host().view();
             CgVfxParticlePool.entities(view.x(), view.y(), view.z(), frame.host().partialTick());
         }
-        @Override public void upload(CgRecording recording) { CgVfxEntityBoxes.upload(recording); }
-        @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { CgVfxEntityBoxes.bind(d); }
-        @Override public void forget() { CgVfxEntityBoxes.forget(); }
+        @Override public void upload(CgRecording recording) { CgWorldEntityBoxes.upload(recording); }
+        @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { CgWorldEntityBoxes.bind(d); }
+        @Override public void forget() { CgWorldEntityBoxes.forget(); }
     });
 
     /**

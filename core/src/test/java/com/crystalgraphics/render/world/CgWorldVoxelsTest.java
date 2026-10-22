@@ -1,4 +1,4 @@
-package com.crystalgraphics.vfx.world;
+package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import org.junit.Test;
@@ -7,7 +7,7 @@ import java.nio.ByteBuffer;
 
 import static org.junit.Assert.*;
 
-public class CgVfxVoxelsTest {
+public class CgWorldVoxelsTest {
 
     /** A full block at (1, 2, 3), a bottom slab at (2, 2, 3), a stair at (3, 2, 3), half-full water at (4, 2, 3). */
     private static final class World implements CgWorldQuery {
@@ -57,25 +57,25 @@ public class CgVfxVoxelsTest {
     @Test
     public void packsOctantsLightAndFluid() {
         World world = new World();
-        ByteBuffer out = ByteBuffer.allocate(CgVfxVoxels.SECTION_BYTES);
-        assertTrue(CgVfxVoxels.pack(world, 0, 0, 0, out, new float[CgVfxVoxels.BOXES * 6]));
-        assertEquals(0xFF, CgVfxVoxels.octants(out.get(at(1, 2, 3))));
-        assertEquals("a bottom slab: the four lower octants", 0b0011_0011, CgVfxVoxels.octants(out.get(at(2, 2, 3))));
-        assertEquals("a stair: the slab and the upper back", 0b1111_0011, CgVfxVoxels.octants(out.get(at(3, 2, 3))));
-        assertEquals(0, CgVfxVoxels.octants(out.get(at(5, 2, 3))));
-        assertEquals(5, CgVfxVoxels.light(out.get(at(5, 2, 3) + 1)));
-        assertEquals(2, CgVfxVoxels.light(out.get(at(5, 2, 3) + 2)));
-        assertEquals(CgWorldQuery.FLUID_WATER, CgVfxVoxels.fluidKind(out.get(at(4, 2, 3) + 3)));
-        assertEquals(0.5f, CgVfxVoxels.fluidHeight(out.get(at(4, 2, 3) + 3)), 1f / 63f);
-        assertEquals("above the level: open sky", 15, CgVfxVoxels.light(out.get(at(0, 12, 0) + 2)));
-        assertEquals("below the level: dark", 0, CgVfxVoxels.light(out.get(at(0, 12, 0) + 1)));
+        ByteBuffer out = ByteBuffer.allocate(CgWorldVoxels.SECTION_BYTES);
+        assertTrue(CgWorldVoxels.pack(world, 0, 0, 0, out, new float[CgWorldVoxels.BOXES * 6]));
+        assertEquals(0xFF, CgWorldVoxels.octants(out.get(at(1, 2, 3))));
+        assertEquals("a bottom slab: the four lower octants", 0b0011_0011, CgWorldVoxels.octants(out.get(at(2, 2, 3))));
+        assertEquals("a stair: the slab and the upper back", 0b1111_0011, CgWorldVoxels.octants(out.get(at(3, 2, 3))));
+        assertEquals(0, CgWorldVoxels.octants(out.get(at(5, 2, 3))));
+        assertEquals(5, CgWorldVoxels.light(out.get(at(5, 2, 3) + 1)));
+        assertEquals(2, CgWorldVoxels.light(out.get(at(5, 2, 3) + 2)));
+        assertEquals(CgWorldQuery.FLUID_WATER, CgWorldVoxels.fluidKind(out.get(at(4, 2, 3) + 3)));
+        assertEquals(0.5f, CgWorldVoxels.fluidHeight(out.get(at(4, 2, 3) + 3)), 1f / 63f);
+        assertEquals("above the level: open sky", 15, CgWorldVoxels.light(out.get(at(0, 12, 0) + 2)));
+        assertEquals("below the level: dark", 0, CgWorldVoxels.light(out.get(at(0, 12, 0) + 1)));
     }
 
     @Test
     public void refusesASectionWithAnUnloadedColumn() {
         World world = new World();
         world.holeAt7 = true;
-        assertFalse(CgVfxVoxels.pack(world, 0, 0, 0, ByteBuffer.allocate(CgVfxVoxels.SECTION_BYTES),
-                new float[CgVfxVoxels.BOXES * 6]));
+        assertFalse(CgWorldVoxels.pack(world, 0, 0, 0, ByteBuffer.allocate(CgWorldVoxels.SECTION_BYTES),
+                new float[CgWorldVoxels.BOXES * 6]));
     }
 }

@@ -1,6 +1,6 @@
-// The voxel window (CgVfxVoxelWindow): the host world around the camera, a block a texel of an RGBA8 volume addressed
+// The voxel window (CgWorldVoxelWindow): the host world around the camera, a block a texel of an RGBA8 volume addressed
 // toroidally, and a texel a section saying whether that section is filled. Arguments only: a kernel declares the
-// window's properties and passes them (CgVfxVoxelWindow.bind and CgVfxVoxelWindow.PROPERTIES).
+// window's properties and passes them (CgWorldVoxelWindow.bind and CgWorldVoxelWindow.PROPERTIES).
 //
 //   world, sections   _World, _WorldSections
 //   distance          _WorldDistance: the distance field, read by fx_world_distance and fx_world_field

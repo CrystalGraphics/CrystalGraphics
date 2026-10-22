@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
+import com.crystalgraphics.render.world.CgWorldEntityBoxes;
 import com.crystalgraphics.vfx.particle.form.CgVfxCurveBlock;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
@@ -44,7 +45,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
-import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
+import com.crystalgraphics.render.world.CgWorldVoxelWindow;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import org.joml.Matrix4f;
 
@@ -567,7 +568,7 @@ public final class CgVfxParticlePool {
      * hand calls it first, or its kinds see no entities. Render thread.
      */
     public static void entities(double x, double y, double z, float partialTick) {
-        CgVfxEntityBoxes.around(x, y, z, partialTick);
+        CgWorldEntityBoxes.around(x, y, z, partialTick);
     }
 
     /** The stage's recording: each data interface a stepping shape takes gathers what it reads first, once. */
@@ -974,7 +975,7 @@ public final class CgVfxParticlePool {
     private void finishStep(CgComputePass pass, int s) {
         // What draws read, written into the drawn buffer at each live record's index.
         CgVfxRecord record = shape.record();
-        CgVfxVoxelWindow.get().bindBlocks(pass.dispatch(look, storage * shape.drawnStride()).bind("IN", records).bind("DRAWN", drawn)
+        CgWorldVoxelWindow.get().bindBlocks(pass.dispatch(look, storage * shape.drawnStride()).bind("IN", records).bind("DRAWN", drawn)
                 .set("_DrawnStride", shape.drawnStride()).set("_Drawn", shape.drawnMask()).set("_RowVectors", shape.rowVectors())
                 .set("_LifeRollAt", shape.lifeRollAt()).set("_LifeRolls", shape.lifeRolls()).set("_LifeBindAt", shape.lifeBindAt())
                 .set("_DrawnBindAt", shape.drawnBindAt()).set("_LightAt", shape.lightAt()).set("_LightBindAt", shape.lightBindAt())

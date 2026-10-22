@@ -359,6 +359,7 @@ public final class CgParticleKinds {
             .property("source_length", FLOAT).defaultValue(0.0)
             .property("inner_cone_angle", FLOAT).defaultValue(0.0)
             .property("outer_cone_angle", FLOAT).defaultValue(44.0)
+            .property("cast_shadows", BOOL).defaultValue(true)
             .register();
 
     /** What a native behaviour's slot draws (ours, with no Unreal counterpart). */

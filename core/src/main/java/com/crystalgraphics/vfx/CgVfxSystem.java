@@ -46,7 +46,7 @@ import com.crystalgraphics.vfx.system.CgVfxBehaviour;
 import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
 import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 import com.crystalgraphics.vfx.system.CgVfxSystemInstancePool;
-import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
+import com.crystalgraphics.render.world.CgWorldVoxelWindow;
 import com.crystalgraphics.world.CgEntityAttachments;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgWorldQueries;
@@ -938,7 +938,7 @@ public final class CgVfxSystem {
             for (int k = 0; k < emitters.size(); k++) {
                 if (!gpuWarming.contains(emitters.get(k))) gpuWarming.add(emitters.get(k));
                 // The window fills only once played, but its kernels are the look's to build now.
-                if (readsWorld(emitters.get(k))) CgVfxVoxelWindow.get().prepare();
+                if (readsWorld(emitters.get(k))) CgWorldVoxelWindow.get().prepare();
             }
             drawWarming.add(look);
             materials.shaders(look, shaders);
@@ -1114,7 +1114,7 @@ public final class CgVfxSystem {
     private static void useWindow(CgVfxLook look) {
         List<CgVfxEmitter> emitters = look.emitters();
         for (int k = 0; k < emitters.size(); k++) {
-            if (readsWorld(emitters.get(k))) CgVfxVoxelWindow.get().use();
+            if (readsWorld(emitters.get(k))) CgWorldVoxelWindow.get().use();
         }
     }
 

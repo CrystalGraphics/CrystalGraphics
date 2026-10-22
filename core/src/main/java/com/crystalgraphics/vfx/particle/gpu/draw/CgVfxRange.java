@@ -26,7 +26,7 @@ import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
-import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
+import com.crystalgraphics.render.world.CgWorldVoxelWindow;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
@@ -524,7 +524,7 @@ public final class CgVfxRange {
             return;
         }
         uploadSlots(recording, view, allSlots);
-        CgVfxVoxelWindow window = CgVfxVoxelWindow.get().use();
+        CgWorldVoxelWindow window = CgWorldVoxelWindow.get().use();
         VIEW_PROJECTION.set(view.projection()).mul(view.view());
         CgCompute kernels = CgCompute.load(KERNELS);
         CgKernel key = kernels.kernel("Key"), place = kernels.kernel("Place"), objected = kernels.kernel("Objects");

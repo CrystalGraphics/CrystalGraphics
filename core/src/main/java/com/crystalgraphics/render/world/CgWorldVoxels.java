@@ -1,17 +1,17 @@
-package com.crystalgraphics.vfx.world;
+package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.platform.world.CgWorldQuery;
 
 import java.nio.ByteBuffer;
 
 /**
- * One section of the host world packed as {@link CgVfxVoxelWindow}'s volume holds it: four bytes a block, x fastest,
+ * One section of the host world packed as {@link CgWorldVoxelWindow}'s volume holds it: four bytes a block, x fastest,
  * then y, then z. GL-free, so a test packs a world of its own.
  *
  * <pre>{@code
- * ByteBuffer section = ByteBuffer.allocateDirect(CgVfxVoxels.SECTION_BYTES);
- * if (CgVfxVoxels.pack(world, 32, 64, -16, section, new float[CgVfxVoxels.BOXES * 6])) upload(section);
- * int octants = CgVfxVoxels.octants(section.get(at)), sky = CgVfxVoxels.light(section.get(at + 2));
+ * ByteBuffer section = ByteBuffer.allocateDirect(CgWorldVoxels.SECTION_BYTES);
+ * if (CgWorldVoxels.pack(world, 32, 64, -16, section, new float[CgWorldVoxels.BOXES * 6])) upload(section);
+ * int octants = CgWorldVoxels.octants(section.get(at)), sky = CgWorldVoxels.light(section.get(at + 2));
  * }</pre>
  *
  * <table>
@@ -23,7 +23,7 @@ import java.nio.ByteBuffer;
  *       63rds</td></tr>
  * </table>
  */
-public final class CgVfxVoxels {
+public final class CgWorldVoxels {
 
     /** A section's blocks on a side. */
     public static final int SECTION = 16;
@@ -31,7 +31,7 @@ public final class CgVfxVoxels {
     /** The collision boxes a block's octants are taken from: more is a shape no block has. */
     public static final int BOXES = 8;
 
-    private CgVfxVoxels() {
+    private CgWorldVoxels() {
     }
 
     /**

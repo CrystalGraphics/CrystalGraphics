@@ -1,6 +1,7 @@
-package com.crystalgraphics.vfx.world;
+package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
+import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
@@ -15,10 +16,9 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
-import com.crystalgraphics.vfx.CgVfxTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.world.CgWorldQueries;
 
 import java.nio.ByteBuffer;
@@ -27,7 +27,7 @@ import java.util.Arrays;
 
 /**
  * The host world around the camera as volumes the GPU reads (vfx-gpu §4.8): per block, which octants are solid, its
- * light and its fluid ({@link CgVfxVoxels}), {@link #WIDTH} x {@link #HEIGHT} x {@link #DEPTH} blocks. What GPU particles
+ * light and its fluid ({@link CgWorldVoxels}), {@link #WIDTH} x {@link #HEIGHT} x {@link #DEPTH} blocks. What GPU particles
  * land on and are lit by. Filled from {@code CgWorldQuery} a section at a time, the nearest unknown first, under a time
  * budget each frame; addressed toroidally, so a camera crossing a section boundary fills only what came into view. With
  * it, while a reader asks for it ({@link #useDistance}), each block's distance to the nearest solid octant, up to 8
@@ -35,7 +35,7 @@ import java.util.Arrays;
  * {@link #DISTANCE_FRAMES}.
  *
  * <pre>{@code
- * CgVfxVoxelWindow window = CgVfxVoxelWindow.get();
+ * CgWorldVoxelWindow window = CgWorldVoxelWindow.get();
  * window.use();                       // any frame something reads it: it fills only while used
  * window.useDistance();               // and any frame something reads its distance field
  * // a kernel recorded on WORLD_OPAQUE after ORDER, which includes lib/vfx/fx_world.glsl and declares PROPERTIES:
@@ -62,12 +62,12 @@ import java.util.Arrays;
  *   <li>Render thread.</li>
  * </ul>
  */
-public final class CgVfxVoxelWindow {
+public final class CgWorldVoxelWindow {
 
     /** The window's blocks on each axis, and its sections. */
     public static final int WIDTH = 128, HEIGHT = 96, DEPTH = 128;
-    public static final int SECTIONS_X = WIDTH / CgVfxVoxels.SECTION, SECTIONS_Y = HEIGHT / CgVfxVoxels.SECTION,
-            SECTIONS_Z = DEPTH / CgVfxVoxels.SECTION;
+    public static final int SECTIONS_X = WIDTH / CgWorldVoxels.SECTION, SECTIONS_Y = HEIGHT / CgWorldVoxels.SECTION,
+            SECTIONS_Z = DEPTH / CgWorldVoxels.SECTION;
     /** Where it records on {@code WORLD_OPAQUE}: ahead of the pools' steps and Range, which read it. */
     public static final int ORDER = CgWorldRenderer.ORDER - 150;
     /** Fill time a frame, at least one section. */
@@ -84,15 +84,15 @@ public final class CgVfxVoxelWindow {
     private static final int SLOTS = SECTIONS_X * SECTIONS_Y * SECTIONS_Z;
     private static final byte UNKNOWN = 0, FILLED = 1, UNLOADED = 2;
     private static final int UNLOADED_RETRY = 20;
-    private static final int FILL_ZONE = CgTrace.name("vfx.world.fill");
-    private static final int SECTIONS_FILLED = CgTrace.name("vfx.world.sections-filled");
-    private static final int GPU_DISTANCE = CgGpuTrace.name("vfx.world.distance");
+    private static final int FILL_ZONE = CgTrace.name("world.voxels.fill");
+    private static final int SECTIONS_FILLED = CgTrace.name("world.voxels.sections-filled");
+    private static final int GPU_DISTANCE = CgGpuTrace.name("world.voxels.distance");
     private static final String DISTANCE_KERNELS = "crystalgraphics:shaders/env/compute/vfx/world_distance.compute";
     /** The flood's steps, in blocks: from the field's reach down, then 1 again (JFA+1). */
     private static final int[] JUMPS = {8, 4, 2, 1, 1};
     /** A slot whose solid octants are not known: no section hashes to it. */
     private static final long UNHASHED = Long.MIN_VALUE;
-    private static final CgVfxVoxelWindow INSTANCE = new CgVfxVoxelWindow();
+    private static final CgWorldVoxelWindow INSTANCE = new CgWorldVoxelWindow();
 
     /** What a kernel reading the window declares in its {@code Properties}, all of which {@link #bind} sets. */
     public static final String PROPERTIES = """
@@ -108,19 +108,19 @@ public final class CgVfxVoxelWindow {
                 _WorldDistance ("Distance to solid over FX_WORLD_FAR",  sampler3D) = "white"
             """;
 
-    private final CgGraphTexture volume = CgGraphTexture.requested("vfx.world",
-            CgTextureDesc.volume(WIDTH, HEIGHT, DEPTH, CgFrameBufferFormat.builder("vfx.world").color(0, CgTextureType.RGBA8).build()));
-    private final CgGraphTexture sections = CgGraphTexture.requested("vfx.world.sections",
+    private final CgGraphTexture volume = CgGraphTexture.requested("world.voxels",
+            CgTextureDesc.volume(WIDTH, HEIGHT, DEPTH, CgFrameBufferFormat.builder("world.voxels").color(0, CgTextureType.RGBA8).build()));
+    private final CgGraphTexture sections = CgGraphTexture.requested("world.voxels.sections",
             CgTextureDesc.volume(SECTIONS_X, SECTIONS_Y, SECTIONS_Z,
-                    CgFrameBufferFormat.builder("vfx.world.sections").color(0, CgTextureType.R8).build()));
+                    CgFrameBufferFormat.builder("world.voxels.sections").color(0, CgTextureType.R8).build()));
     /** What {@link #bind} gives a kernel with no level: the smallest volumes, never read. */
-    private final CgGraphTexture noVolume = CgGraphTexture.requested("vfx.world.none",
-            CgTextureDesc.volume(1, 1, 2, CgFrameBufferFormat.builder("vfx.world").color(0, CgTextureType.RGBA8).build()));
-    private final CgGraphTexture noSections = CgGraphTexture.requested("vfx.world.sections.none",
-            CgTextureDesc.volume(1, 1, 2, CgFrameBufferFormat.builder("vfx.world.sections").color(0, CgTextureType.R8).build()));
+    private final CgGraphTexture noVolume = CgGraphTexture.requested("world.voxels.none",
+            CgTextureDesc.volume(1, 1, 2, CgFrameBufferFormat.builder("world.voxels").color(0, CgTextureType.RGBA8).build()));
+    private final CgGraphTexture noSections = CgGraphTexture.requested("world.voxels.sections.none",
+            CgTextureDesc.volume(1, 1, 2, CgFrameBufferFormat.builder("world.voxels.sections").color(0, CgTextureType.R8).build()));
     /** The distance field and the one before it: a flood writes the other, keeping what it did not flood. */
-    private final CgGraphTexture[] distances = {distanceVolume("vfx.world.distance"), distanceVolume("vfx.world.distance.next")};
-    private final CgFrameBufferFormat seedFormat = CgFrameBufferFormat.builder("vfx.world.seeds").color(0, CgTextureType.R32UI).build();
+    private final CgGraphTexture[] distances = {distanceVolume("world.voxels.distance"), distanceVolume("world.voxels.distance.next")};
+    private final CgFrameBufferFormat seedFormat = CgFrameBufferFormat.builder("world.voxels.seeds").color(0, CgTextureType.R32UI).build();
     /** Per slot: a hash of its section's solid octants, so a refill that changes none floods nothing. */
     private final long[] solids = new long[SLOTS];
     /** The sections whose solid octants changed since the last flood, absolute, from and to, inclusive. */
@@ -136,9 +136,9 @@ public final class CgVfxVoxelWindow {
     private final byte[] state = new byte[SLOTS];
     private final boolean[] stale = new boolean[SLOTS];
     private final long[] filledAt = new long[SLOTS];
-    private final ByteBuffer section = ByteBuffer.allocateDirect(CgVfxVoxels.SECTION_BYTES).order(ByteOrder.nativeOrder());
+    private final ByteBuffer section = ByteBuffer.allocateDirect(CgWorldVoxels.SECTION_BYTES).order(ByteOrder.nativeOrder());
     private final ByteBuffer known = ByteBuffer.allocateDirect(SLOTS).order(ByteOrder.nativeOrder());
-    private final float[] boxes = new float[CgVfxVoxels.BOXES * 6];
+    private final float[] boxes = new float[CgWorldVoxels.BOXES * 6];
     private int[] broken = new int[48];
     private int brokenCount;
     private int baseX, baseY, baseZ, epoch;
@@ -146,7 +146,7 @@ public final class CgVfxVoxelWindow {
     private long frame, usedAt = Long.MIN_VALUE / 2;
     private CgRenderStage.Registration registration;
 
-    private CgVfxVoxelWindow() {
+    private CgWorldVoxelWindow() {
         Arrays.fill(heldY, Integer.MIN_VALUE);
         Arrays.fill(solids, UNHASHED);
         clearChanged();
@@ -162,12 +162,12 @@ public final class CgVfxVoxelWindow {
         });
     }
 
-    public static CgVfxVoxelWindow get() {
+    public static CgWorldVoxelWindow get() {
         return INSTANCE;
     }
 
     /** Keeps it filling: call it each frame something reads the window. The first call registers its recording. */
-    public CgVfxVoxelWindow use() {
+    public CgWorldVoxelWindow use() {
         usedAt = frame;
         if (registration == null) {
             registration = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER,
@@ -202,7 +202,7 @@ public final class CgVfxVoxelWindow {
      * Keeps the distance field flooding: call it, besides {@link #use}, each frame something reads {@code _WorldDistance}.
      * Unused, the field floods nothing; used again after {@link #IDLE_FRAMES}, it floods the whole window first.
      */
-    public CgVfxVoxelWindow useDistance() {
+    public CgWorldVoxelWindow useDistance() {
         if (frame - distanceUsedAt > IDLE_FRAMES) floodWhole = distanceDirty = true;
         distanceUsedAt = frame;
         return use();
@@ -223,6 +223,22 @@ public final class CgVfxVoxelWindow {
         return place(d).set("_WorldLive", 1);
     }
 
+    /**
+     * The volume, its distance field and where it sits, onto a material declaring {@link #PROPERTIES}: its three volumes
+     * at units {@code unit} to {@code unit + 2}. A pass drawing with it is ordered after the window's fill.
+     */
+    public CgShaderBindings bind(CgShaderBindings b, int unit) {
+        if (!live) {
+            return b.sampler("_World", unit, noVolume).sampler("_WorldSections", unit + 1, noSections)
+                    .sampler("_WorldDistance", unit + 2, noSections).set1i("_WorldLive", 0);
+        }
+        return b.sampler("_World", unit, volume).sampler("_WorldSections", unit + 1, sections)
+                .sampler("_WorldDistance", unit + 2, distances[current])
+                .set1i("_WorldBaseX", baseX).set1i("_WorldBaseY", baseY).set1i("_WorldBaseZ", baseZ)
+                .set1i("_WorldWrapX", Math.floorMod(baseX, WIDTH)).set1i("_WorldWrapY", Math.floorMod(baseY, HEIGHT))
+                .set1i("_WorldWrapZ", Math.floorMod(baseZ, DEPTH)).set1i("_WorldLive", 1);
+    }
+
     /** The window's volumes and where it sits, without its distance field: what the flood itself reads. */
     private CgDispatch place(CgDispatch d) {
         return d.texture("_World", volume).texture("_WorldSections", sections)
@@ -236,7 +252,7 @@ public final class CgVfxVoxelWindow {
         return live;
     }
 
-    /** The window's lowest block on each axis (0 x, 1 y, 2 z), absolute: a multiple of {@link CgVfxVoxels#SECTION}. */
+    /** The window's lowest block on each axis (0 x, 1 y, 2 z), absolute: a multiple of {@link CgWorldVoxels#SECTION}. */
     public int base(int axis) {
         return axis == 0 ? baseX : axis == 1 ? baseY : baseZ;
     }
@@ -296,7 +312,7 @@ public final class CgVfxVoxelWindow {
         distanceDirty = false;
         distanceAt = frame;
         int[] size = {WIDTH, HEIGHT, DEPTH}, base = {baseX, baseY, baseZ};
-        int s = CgVfxVoxels.SECTION, r = DISTANCE_REACH;
+        int s = CgWorldVoxels.SECTION, r = DISTANCE_REACH;
         for (int a = 0; a < 3; a++) {
             outLo[a] = floodWhole ? 0 : Math.max(0, Math.min(size[a], changedLo[a] * s - base[a] - r));
             outHi[a] = floodWhole ? size[a] : Math.max(0, Math.min(size[a], (changedHi[a] + 1) * s - base[a] + r));
@@ -313,9 +329,9 @@ public final class CgVfxVoxelWindow {
         CgTextureDesc seeds = CgTextureDesc.volume(domainSize[0], domainSize[1], domainSize[2], seedFormat);
         CgCompute kernels = CgCompute.load(DISTANCE_KERNELS);
         CgKernel jump = kernels.kernel("Jump");
-        CgGraphTexture from = CgGraphTexture.transientTexture("vfx.world.seeds", seeds);
-        CgGraphTexture to = CgGraphTexture.transientTexture("vfx.world.seeds.next", seeds);
-        CgComputePass pass = recording.compute("vfx.world.distance").timed(GPU_DISTANCE).async();
+        CgGraphTexture from = CgGraphTexture.transientTexture("world.voxels.seeds", seeds);
+        CgGraphTexture to = CgGraphTexture.transientTexture("world.voxels.seeds.next", seeds);
+        CgComputePass pass = recording.compute("world.voxels.distance").timed(GPU_DISTANCE).async();
         flooding(pass.dispatch(kernels.kernel("Seed"), domainSize[0], domainSize[1], domainSize[2])).image("SEEDS", from);
         for (int step : JUMPS) {
             flooding(pass.dispatch(jump, domainSize[0], domainSize[1], domainSize[2])).image("FROM", from).image("SEEDS", to)
@@ -359,7 +375,7 @@ public final class CgVfxVoxelWindow {
 
     /** Centres the window on the camera's section, and gives each slot the section it now stands for. */
     private void place(CgHostView view) {
-        int s = CgVfxVoxels.SECTION;
+        int s = CgWorldVoxels.SECTION;
         baseX = (Math.floorDiv((int) Math.floor(view.x()), s) - SECTIONS_X / 2) * s;
         baseY = (Math.floorDiv((int) Math.floor(view.y()), s) - SECTIONS_Y / 2) * s;
         baseZ = (Math.floorDiv((int) Math.floor(view.z()), s) - SECTIONS_Z / 2) * s;
@@ -384,7 +400,7 @@ public final class CgVfxVoxelWindow {
     }
 
     private void takeBroken() {
-        int s = CgVfxVoxels.SECTION;
+        int s = CgWorldVoxels.SECTION;
         for (int i = 0; i < brokenCount; i++) {
             int slot = slotOf(Math.floorDiv(broken[i * 3], s), Math.floorDiv(broken[i * 3 + 1], s),
                     Math.floorDiv(broken[i * 3 + 2], s));
@@ -402,15 +418,15 @@ public final class CgVfxVoxelWindow {
     private void fill(CgRecording recording, CgWorldQuery world, CgHostView view) {
         long start = System.nanoTime();
         int filled = 0;
-        try (CgTrace.Zone zone = CgTrace.zone(CgVfxTrace.CHANNEL, FILL_ZONE)) {
+        try (CgTrace.Zone zone = CgTrace.zone(CgChannels.WORLD, FILL_ZONE)) {
             while (filled == 0 || System.nanoTime() - start < BUDGET_NANOS) {
                 int slot = next(view);
                 if (slot < 0) break;
-                int s = CgVfxVoxels.SECTION;
+                int s = CgWorldVoxels.SECTION;
                 section.clear();
                 filledAt[slot] = frame;
                 stale[slot] = false;
-                if (!CgVfxVoxels.pack(world, heldX[slot] * s, heldY[slot] * s, heldZ[slot] * s, section, boxes)) {
+                if (!CgWorldVoxels.pack(world, heldX[slot] * s, heldY[slot] * s, heldZ[slot] * s, section, boxes)) {
                     if (state[slot] == FILLED) {
                         knownChanged = true;
                         changed(slot);
@@ -424,7 +440,7 @@ public final class CgVfxVoxelWindow {
                     solids[slot] = hash;
                     changed(slot);
                 }
-                section.position(0).limit(CgVfxVoxels.SECTION_BYTES);
+                section.position(0).limit(CgWorldVoxels.SECTION_BYTES);
                 recording.update(volume, 0, Math.floorMod(heldX[slot] * s, WIDTH), Math.floorMod(heldY[slot] * s, HEIGHT),
                         Math.floorMod(heldZ[slot] * s, DEPTH), s, s, s, section);
                 if (state[slot] != FILLED) knownChanged = true;
@@ -432,13 +448,13 @@ public final class CgVfxVoxelWindow {
                 filled++;
             }
         }
-        if (filled > 0) CgVfxTrace.count(SECTIONS_FILLED, filled);
+        if (filled > 0) CgTrace.add(CgChannels.WORLD, SECTIONS_FILLED, filled);
     }
 
     /** A hash of a packed section's solid octants: byte 0 of each block. Never {@link #UNHASHED}. */
     private static long solidHash(ByteBuffer section) {
         int h = 1;
-        for (int at = 0; at < CgVfxVoxels.SECTION_BYTES; at += 4) h = h * 31 + section.get(at);
+        for (int at = 0; at < CgWorldVoxels.SECTION_BYTES; at += 4) h = h * 31 + section.get(at);
         return h;
     }
 
@@ -448,7 +464,7 @@ public final class CgVfxVoxelWindow {
      */
     private int next(CgHostView view) {
         int best = -1, bestRank = Integer.MAX_VALUE;
-        double s = CgVfxVoxels.SECTION;
+        double s = CgWorldVoxels.SECTION;
         for (int slot = 0; slot < SLOTS; slot++) {
             int rank;
             if (state[slot] == UNKNOWN || state[slot] == UNLOADED && frame - filledAt[slot] >= UNLOADED_RETRY) {

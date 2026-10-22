@@ -1,16 +1,19 @@
 package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.api.CgBindingPoints;
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgReadback;
+import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -25,6 +28,8 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
+import com.crystalgraphics.render.graph.CgRehearsal;
+import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
@@ -36,6 +41,7 @@ import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
+import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
@@ -60,6 +66,8 @@ import java.util.function.Consumer;
  * lights.add(x, y + 6, z, 12f, 0xFFFFF0D0, 300f, 0f).spot(0f, -1f, 0f, 20f, 35f);
  * // a tube: the light just added, coming from a line 30 blocks long along the beam (Unreal's SourceLength)
  * lights.add(midX, midY, midZ, 24f, 0xFF60A0FF, 40f, 0f).tube(dirX, dirY, dirZ, 30f);
+ * // one that casts no shadow (Unreal's bCastShadows off): lit through the grid alone, at no tracing cost
+ * lights.add(x, y, z, 4f, 0xFFFFC080, 10f, 0f).shadowed(false);
  * }</pre>
  *
  * <pre>{@code
@@ -102,6 +110,11 @@ import java.util.function.Consumer;
  *       {@code source} radius. A particle's light takes its drawn radius.</li>
  *   <li>A kernel's positions are from the firing's eye ({@link #cameraX()}, {@code _LightEye}), as the froxels are.</li>
  *   <li>Past {@link #CAPACITY} lights a frame the rest are dropped and counted ({@code world.lights-dropped}).</li>
+ *   <li>A light added from the CPU casts shadows unless {@code shadowed(false)}: blocks and entities between it and a
+ *       surface withhold it, traced as Unreal's MegaLights traces them (docs/LIGHTS.md). A kernel's light casts none
+ *       unless its {@code ambient.w} is 1. Past the screen the rays trace the world's blocks round the camera
+ *       ({@link CgWorldVoxelWindow}) and the entities round it ({@link CgWorldEntityBoxes}), each a capsule; meshes drawn
+ *       through the world renderer shadow only where they are on screen.</li>
  * </ul>
  */
 public final class CgWorldLights {
@@ -150,6 +163,22 @@ public final class CgWorldLights {
     static final String APPLY_SHADER = "crystalgraphics:shaders/world_lights.shader";
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
     private static final int GPU_APPLY = CgGpuTrace.name("world.lightsApply");
+    /** The shadow passes, MegaLights': samples traced, shaded, accumulated over frames, filtered across the screen. */
+    static final String SAMPLE_SHADER = "crystalgraphics:shaders/world_lights_sample.shader",
+            SHADE_SHADER = "crystalgraphics:shaders/world_lights_shade.shader",
+            TEMPORAL_SHADER = "crystalgraphics:shaders/world_lights_temporal.shader",
+            DENOISE_SHADER = "crystalgraphics:shaders/world_lights_denoise.shader";
+    private static final int GPU_SAMPLE = CgGpuTrace.name("world.lightsSample"), GPU_SHADE = CgGpuTrace.name("world.lightsShade"),
+            GPU_TEMPORAL = CgGpuTrace.name("world.lightsTemporal"), GPU_DENOISE = CgGpuTrace.name("world.lightsDenoise");
+    /** A sample's light index, exact as a float to 2^24, and its weight. */
+    private static final CgFrameBufferFormat SAMPLES_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.samples")
+            .color(0, CgTextureType.RG32F).build();
+    private static final CgFrameBufferFormat LIGHTING_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.lighting")
+            .color(0, CgTextureType.RGBA16F).build();
+    /** The accumulated lighting and its frames; its luminance's moments, eye depth and confidence. */
+    private static final CgFrameBufferFormat HISTORY_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.history")
+            .color(0, CgTextureType.RGBA16F).color(1, CgTextureType.RGBA16F).build();
+    private static final CgLoad CLEAR = CgLoad.clear(0f, 0f, 0f, 0f);
     private static final int GPU_ZONE = CgGpuTrace.name("world.lights");
     private static final int GPU_COARSE = CgGpuTrace.name("world.lightsCoarse");
     private static final int GPU_CELLS = CgGpuTrace.name("world.lightsCells");
@@ -183,12 +212,51 @@ public final class CgWorldLights {
     private static final CgVar.Num DAY_FADE = CgVar.number("crystalgraphics.world.lightsDayFade", 0.1f, 0f, 1f, CgVar.DEV,
             "A light's strength under a full day's open sky, where an eye adapted to the sun sees it faint; full at night"
                     + " and where no sky reaches. 1 never fades.");
+    /** Unreal's bCastShadows for the world: off lights every light through the grid alone. */
+    private static final CgVar.Bool SHADOWS = CgVar.bool("crystalgraphics.world.lightsShadows", true, CgVar.DEV,
+            "Lights that cast shadows are withheld by the blocks and entities between them and a surface.");
+    /** Unreal's r.MegaLights.ScreenTraces.MaxDistance, in blocks: longer, since the world trace knows only blocks. */
+    private static final CgVar.Num SCREEN_TRACE = CgVar.number("crystalgraphics.world.lightsScreenTrace", 8f, 0f, 64f,
+            CgVar.DEV, "Blocks a shadow ray is followed across the screen's depth before the world's blocks take over.");
+    /** Unreal's r.MegaLights.Temporal.MaxFramesAccumulated. */
+    private static final CgVar.Num MAX_FRAMES = CgVar.number("crystalgraphics.world.lightsShadowFrames", 12f, 1f, 32f,
+            CgVar.DEV, "Frames the shadowed lighting accumulates over: fewer ghost less and shimmer more.");
+    /** Unreal's r.MegaLights.Spatial.KernelRadius, in pixels; 0 filters nothing. */
+    private static final CgVar.Num SPATIAL_RADIUS = CgVar.number("crystalgraphics.world.lightsShadowSpatial", 8f, 0f, 32f,
+            CgVar.DEV, "Pixels the shadowed lighting is filtered across where it is still noisy; 0 for none.");
     /** Unreal's r.Forward.LightGridHZBCull. */
     private static final CgVar.Bool HZB = CgVar.bool("crystalgraphics.world.lightsHzb", true, CgVar.DEV,
             "The light grid skips cells behind the scene and pulls each cell's far edge in to it.");
     private CgKernel view, coarse, cell, countCells, writeCells;
     private float tileU, tileV;
-    private CgMaterial apply;
+    private CgMaterial apply, sample, shade, temporal, denoise;
+    /** Lights added from the CPU this frame that cast shadows. */
+    private int shadowedAdded;
+    private float targetW, targetH;
+    private CgGraphTexture samples, shaded, filtered, scratchHistory, history, accumulated;
+    private long historyMade = -1;
+    private boolean shadowsOn, freshHistory;
+    private CgGraphBuffer noEntities;
+    private final float[] eyeFrac = new float[3];
+    private final int[] eyeBlock = new int[3];
+    private final Consumer<CgShaderBindings> sampleValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, 0f, 0f)
+            .vec4("_Trace", SCREEN_TRACE.get(), 24f, 0.02f, 0.005f).set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1])
+            .set1i("_EyeZ", eyeBlock[2]).vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f)
+            .set1i("_Entities", this.entities));
+    private final Consumer<CgShaderBindings> windowValues = b -> CgWorldVoxelWindow.get().bind(b, 0);
+    private int entities;
+    private final Consumer<CgShaderBindings> shadeValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, 0f, 0f)
+            .sampler("_Samples", 0, samples).set1f("_MaxWeight", 20f));
+    private final Consumer<CgShaderBindings> temporalValues = b -> this.gridValues.accept(b.vec4("_Eye", eye.x, eye.y, eye.z, 0f)
+            .sampler("_Now", 0, shaded).sampler("_Last", 1, freshHistory ? shaded : history.previous())
+            .sampler("_LastMoments", 2, freshHistory ? shaded : history.previous().attachment(1))
+            .set1f("_Fresh", freshHistory ? 1f : 0f)
+            .vec4("_Frames", Math.min(4f, MAX_FRAMES.get()), MAX_FRAMES.get(), 1f, 0.03f));
+    private final Consumer<CgShaderBindings> denoiseValues = b -> this.gridValues.accept(b.sampler("_Lighting", 0, accumulated)
+            .sampler("_Moments", 1, accumulated.attachment(1)).vec4("_Spatial", SPATIAL_RADIUS.get(), 4f, 10000f, 2f)
+            .vec4("_Spread", 2f, 0.15f, MAX_FRAMES.get(), 0f));
+    private final Consumer<CgShaderBindings> applyValues = b -> this.gridValues.accept(b.set1f("_Shadows", shadowsOn ? 1f : 0f)
+            .sampler("_Shadowed", 0, shadowsOn ? filtered : CgFallbackTextures.BLACK_1x1));
     /** The grid's values onto the apply material, read from the fields this firing set. */
     private final Consumer<CgShaderBindings> gridValues = b -> b.vec4("_Grid", gridX, gridY, SLICES, 0f)
             .vec4("_Tile", tileU, tileV, 0f, 0f).vec4("_ZParams", zParams[0], zParams[1], zParams[2], 0f)
@@ -267,7 +335,8 @@ public final class CgWorldLights {
         int lit = CgWorldLight.at(x, y, z);
         light[l + 16] = CgWorldLight.block(lit);
         light[l + 17] = CgWorldLight.sky(lit);
-        light[l + 18] = light[l + 19] = 0f;
+        light[l + 18] = 0f;
+        light[l + 19] = 1f;
         added++;
         return this;
     }
@@ -313,6 +382,15 @@ public final class CgWorldLights {
      */
     public CgWorldLights source(float radius) {
         light[last() + 18] = Math.max(radius, 0f);
+        return this;
+    }
+
+    /**
+     * Whether the light added last casts shadows (Unreal's bCastShadows): true unless set. One that does not is lit
+     * through the grid alone and traces no ray.
+     */
+    public CgWorldLights shadowed(boolean shadowed) {
+        light[last() + 19] = shadowed ? 1f : 0f;
         return this;
     }
 
@@ -460,10 +538,14 @@ public final class CgWorldLights {
                     CgBufferDesc.elements(4, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
         }
         listed = Math.min(cpu, CAPACITY);
+        shadowedAdded = 0;
+        targetW = targetWidth;
+        targetH = targetHeight;
         if (listed > 0) {
             staging.clear();
             for (int i = 0; i < listed; i++) {
                 int p = i * 3, l = i * FLOATS;
+                if (light[l + 19] > 0.5f) shadowedAdded++;
                 staging.putFloat((float) (at[p] - cameraX)).putFloat((float) (at[p + 1] - cameraY))
                         .putFloat((float) (at[p + 2] - cameraZ));
                 for (int w = 3; w < FLOATS; w++) staging.putFloat(light[l + w]);
@@ -495,6 +577,7 @@ public final class CgWorldLights {
         CgTrace.counter(CgChannels.WORLD, "world.lights", listed);
         CgTrace.counter(CgChannels.WORLD, "world.lights-dropped", dropped);
         CgTrace.counter(CgChannels.WORLD, "world.lights-cell-dropped", cellsDropped);
+        CgTrace.counter(CgChannels.WORLD, "world.lights-shadowed", shadowedAdded);
         return listed > 0 || appended;
     }
 
@@ -679,7 +762,8 @@ public final class CgWorldLights {
     void apply(CgStageFrame stage, CgRecording recording) {
         if (apply == null) apply = CgMaterial.newInstance(APPLY_SHADER);
         if (!apply.prepare()) return;
-        apply.buffer("LIGHTS", list).buffer("CELLS", cells).buffer("INDICES", indices).applyProperties(gridValues);
+        shadowsOn = shadowedAdded > 0 && SHADOWS.get() && recordShadows(stage, recording);
+        apply.buffer("LIGHTS", list).buffer("CELLS", cells).buffer("INDICES", indices).applyProperties(applyValues);
         CgPipeline pipeline = apply.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         CgRasterPass add = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED)
@@ -691,5 +775,89 @@ public final class CgWorldLights {
         chunks.instance();
         add.add(chunks.end());
         add.end();
+    }
+
+    /**
+     * The lights casting shadows, lit as Unreal's MegaLights lights them (MegaLights.cpp's pass order): four samples a
+     * half-resolution pixel, picked by weighted reservoir from its cell's lights and traced across the screen then
+     * through the occluders ({@code world_lights_sample}); every pixel shaded from a nearby half-resolution pixel's
+     * samples ({@code world_lights_shade}); accumulated over frames into the first firing's history
+     * ({@code world_lights_temporal}); filtered across the screen where still noisy ({@code world_lights_denoise}). The
+     * apply adds the result. False while a program is unbuilt, and the apply lights every light unshadowed.
+     */
+    private boolean recordShadows(CgStageFrame stage, CgRecording recording) {
+        if (sample == null) {
+            sample = CgMaterial.newInstance(SAMPLE_SHADER);
+            shade = CgMaterial.newInstance(SHADE_SHADER);
+            temporal = CgMaterial.newInstance(TEMPORAL_SHADER);
+            denoise = CgMaterial.newInstance(DENOISE_SHADER);
+        }
+        // Each started, whichever is not ready.
+        boolean ready = sample.prepare() & shade.prepare() & temporal.prepare() & denoise.prepare();
+        if (!ready) return false;
+        int w = Math.max(1, (int) targetW), h = Math.max(1, (int) targetH), sw = (w + 1) / 2 * 2, sh = (h + 1) / 2 * 2;
+        if (samples == null || samples.getWidth() != sw || samples.getHeight() != sh) {
+            samples = CgGraphTexture.transientTexture("cg_world_lights.samples", new CgTextureDesc(sw, sh, SAMPLES_FORMAT));
+        }
+        if (shaded == null || shaded.getWidth() != w || shaded.getHeight() != h) {
+            shaded = CgGraphTexture.transientTexture("cg_world_lights.shaded", new CgTextureDesc(w, h, LIGHTING_FORMAT));
+            filtered = CgGraphTexture.transientTexture("cg_world_lights.filtered", new CgTextureDesc(w, h, LIGHTING_FORMAT));
+            scratchHistory = CgGraphTexture.transientTexture("cg_world_lights.accumulated", new CgTextureDesc(w, h, HISTORY_FORMAT));
+        }
+        // One history, the first firing's: a later firing of the frame (a second eye) accumulates nothing.
+        if (stage.ordinal() == 0 && !CgRehearsal.active()) {
+            if (history == null || history.getWidth() != w || history.getHeight() != h) {
+                if (history != null) recording.release(history);
+                history = CgGraphTexture.history("cg_world_lights.history", new CgTextureDesc(w, h, HISTORY_FORMAT));
+                historyMade = CgFrameRing.frame();
+            }
+            accumulated = history;
+            freshHistory = historyMade == CgFrameRing.frame() || !stage.historyValid();
+        } else {
+            accumulated = scratchHistory;
+            freshHistory = true;
+        }
+        eyeBlock[0] = (int) Math.floor(cameraX);
+        eyeBlock[1] = (int) Math.floor(cameraY);
+        eyeBlock[2] = (int) Math.floor(cameraZ);
+        eyeFrac[0] = (float) (cameraX - eyeBlock[0]);
+        eyeFrac[1] = (float) (cameraY - eyeBlock[1]);
+        eyeFrac[2] = (float) (cameraZ - eyeBlock[2]);
+        if (noEntities == null) {
+            noEntities = CgGraphBuffer.persistent("cg_world_lights.no-entities",
+                    CgBufferDesc.of(32, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+        }
+        // Past the screen: the window's blocks and the entities' capsules round the eye.
+        CgWorldVoxelWindow.get().useDistance();
+        CgWorldEntityBoxes.around(cameraX, cameraY, cameraZ, stage.host().partialTick());
+        CgWorldEntityBoxes.upload(recording);
+        CgGraphBuffer boxes = CgWorldEntityBoxes.buffer();
+        entities = boxes != null ? CgWorldEntityBoxes.count() : 0;
+        sample.buffer("LIGHTS", list).buffer("CELLS", cells).buffer("INDICES", indices)
+                .buffer("ENTITIES", boxes != null ? boxes : noEntities).applyProperties(sampleValues);
+        sample.applyProperties(windowValues);
+        fullScreen(stage, recording, samples, sample, GPU_SAMPLE);
+        shade.buffer("LIGHTS", list).applyProperties(shadeValues);
+        fullScreen(stage, recording, shaded, shade, GPU_SHADE);
+        temporal.applyProperties(temporalValues);
+        fullScreen(stage, recording, accumulated, temporal, GPU_TEMPORAL);
+        denoise.applyProperties(denoiseValues);
+        fullScreen(stage, recording, filtered, denoise, GPU_DENOISE);
+        return true;
+    }
+
+    /** One full-screen draw of {@code material} into {@code target}, reading the stage's depth and the lightmap. */
+    private static void fullScreen(CgStageFrame stage, CgRecording recording, CgGraphTexture target, CgMaterial material,
+                                   int zone) {
+        CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
+        if (pipeline == null) return;
+        CgRasterPass pass = recording.raster(target, CLEAR, stage.constants(), null, CgOrder.SORTED)
+                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
+                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(zone);
+        CgChunkBuilder chunks = recording.chunks().begin();
+        chunks.draw(pipeline, material.captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.instance();
+        pass.add(chunks.end());
+        pass.end();
     }
 }
