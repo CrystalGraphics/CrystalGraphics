@@ -70,6 +70,9 @@ public final class CgVfxEmitterAssets {
     private static final String NS = "crystalgraphics:";
     /** Hermite pieces an eased segment no single cubic reproduces is written as, each key at the easing's own slope. */
     private static final int EASE_STEPS = 32;
+    private static final float HALF_SQRT2 = (float) Math.sqrt(0.5);
+    /** Linear pieces an extrapolated curve is baked into over a life. */
+    private static final int EXTRAPOLATED_STEPS = 128;
 
     private CgVfxEmitterAssets() {
     }
@@ -268,6 +271,7 @@ public final class CgVfxEmitterAssets {
     /** As {@link #compile(String, Map, CgVfxEmitter)}, {@code deps} answering its renderers' materials. */
     public static CgVfxEmitter compile(String name, Map<?, ?> tree, @Nullable CgVfxEmitter template,
                                        @Nullable CgAssetCompiler.Dependencies deps) {
+        tree = toHost(tree, deps == null ? CgUnits.HOST : deps.units());
         CgVfxEmitter.Builder b = CgVfxEmitter.builder(name);
         if (template != null) b.carry(template);
         // Unreal's defaults for what a file leaves out: opaque throughout.
@@ -306,6 +310,7 @@ public final class CgVfxEmitterAssets {
             }
         }
         for (Map<?, ?> entry : entries(tree, "particle_spawn")) {
+            if (Boolean.FALSE.equals(entry.get("enabled"))) continue;
             Map<?, ?> in = inputs(entry);
             switch (moduleId(entry)) {
                 case "initialize_particle" -> initialize(name, b, in, spawnId(b, entry, "init"));
@@ -868,7 +873,7 @@ public final class CgVfxEmitterAssets {
             Object fallback = null;
             if (declared != null) {
                 for (CgProperty p : declared.inputs().properties()) {
-                    if (p.name().equals(key) && p.defaultValue() != null) fallback = CgUnits.UNREAL.toHost(p.defaultValue(), p.quantity());
+                    if (p.name().equals(key) && p.defaultValue() != null) fallback = CgUnits.UNREAL.toHost(p.defaultValue(), p);
                 }
             }
             if (!sameValue(e.getValue(), fallback)) {
@@ -1014,12 +1019,32 @@ public final class CgVfxEmitterAssets {
         if (form.get("by") != null && !by.equals(form.get("by"))) {
             throw new IllegalArgumentException(name + ": a curve by " + form.get("by") + " is not read yet here, only by " + by);
         }
+        if (!by.equals("age") && form.get("curve") instanceof Map<?, ?> m && (isExtrapolated(m.get("pre")) || isExtrapolated(m.get("post")))) {
+            throw new IllegalArgumentException(name + ": an extrapolated curve by " + by + " is not read yet: by age alone");
+        }
         return keyframes(name, CgRichCurve.decode(form.get("curve")), form.get("curve"));
     }
 
     private static CgKeyframes keyframes(String name, CgRichCurve c, Object tree) {
-        if (tree instanceof Map<?, ?> m && (m.get("samples") != null || isExtrapolated(m.get("pre")) || isExtrapolated(m.get("post")))) {
-            throw new IllegalArgumentException(name + ": a sampled or extrapolated curve is not read yet here");
+        if (tree instanceof Map<?, ?> m && m.get("samples") instanceof Map<?, ?> samples) {
+            // Linear between samples and held outside them, as CgRichCurve evaluates them.
+            float[] range = vec(samples.get("range"), 2);
+            int n = c.size();
+            if (n < 2) return CgKeyframes.constant(c.eval(range[0]));
+            CgKeyframes.Builder k = CgKeyframes.start(range[0], c.value(0));
+            for (int i = 1; i < n; i++) k.to(range[0] + (range[1] - range[0]) * i / (n - 1), c.value(i), CgEasings.LINEAR);
+            return k.build();
+        }
+        if (tree instanceof Map<?, ?> m && (isExtrapolated(m.get("pre")) || isExtrapolated(m.get("post")))) {
+            // Over a life, a curve's extrapolation is what it gives between 0 and 1 outside its keys.
+            if (c.size() == 0) return CgKeyframes.constant(c.eval(0f));
+            float from = Math.min(0f, c.time(0)), to = Math.max(1f, c.time(c.size() - 1));
+            CgKeyframes.Builder k = CgKeyframes.start(from, c.eval(from));
+            for (int j = 1; j <= EXTRAPOLATED_STEPS; j++) {
+                float t = from + (to - from) * j / EXTRAPOLATED_STEPS;
+                k.to(t, c.eval(t), CgEasings.LINEAR);
+            }
+            return k.build();
         }
         if (c.size() == 0) return CgKeyframes.constant(c.eval(0f));
         CgKeyframes.Builder k = CgKeyframes.start(c.time(0), c.value(0));
@@ -1204,6 +1229,52 @@ public final class CgVfxEmitterAssets {
         return n.floatValue();
     }
 
+    /**
+     * {@code tree} with each module entry's written inputs in the host's units, each by its declared quantity; a value's
+     * own {@code unit:} converted and dropped. What a stack's modules do not declare stays as written, for the compile to
+     * name.
+     */
+    private static Map<?, ?> toHost(Map<?, ?> tree, CgUnits units) {
+        Map<Object, Object> out = new LinkedHashMap<>(tree);
+        for (String stack : STACKS) {
+            if (!(tree.get(stack) instanceof List<?> list)) continue;
+            List<Object> converted = new ArrayList<>(list.size());
+            for (Object e : list) {
+                CgModuleTypes.Module declared = e instanceof Map<?, ?> entry && entry.get("inputs") instanceof Map<?, ?>
+                        ? CgModuleTypes.builtIn().get(moduleId(entry)) : null;
+                if (declared == null) {
+                    converted.add(e);
+                    continue;
+                }
+                Map<?, ?> entry = (Map<?, ?>) e;
+                Map<Object, Object> in = new LinkedHashMap<>((Map<?, ?>) entry.get("inputs"));
+                for (CgProperty p : declared.inputs().properties()) {
+                    if (in.containsKey(p.name())) in.put(p.name(), units.toHost(in.get(p.name()), p));
+                }
+                // socket_location's points carry their own offsets, which the declaration's loose list does not type.
+                if (in.get("points") instanceof List<?> points && moduleId(entry).equals("socket_location")) {
+                    List<Object> host = new ArrayList<>(points.size());
+                    for (Object point : points) {
+                        if (point instanceof Map<?, ?> m && m.get("offset") instanceof List<?> offset) {
+                            Map<Object, Object> moved = new LinkedHashMap<>(m);
+                            moved.put("offset", units.toHost(offset, CgQuantity.OFFSET));
+                            point = moved;
+                        }
+                        host.add(point);
+                    }
+                    in.put("points", host);
+                }
+                Map<Object, Object> copy = new LinkedHashMap<>(entry);
+                copy.put("inputs", in);
+                converted.add(copy);
+            }
+            out.put(stack, converted);
+        }
+        return out;
+    }
+
+    private static final List<String> STACKS = List.of("emitter_update", "particle_spawn", "particle_update");
+
     private static List<Map<?, ?>> entries(Map<?, ?> tree, String stack) {
         List<Map<?, ?>> out = new ArrayList<>();
         if (tree.get(stack) instanceof List<?> list) for (Object o : list) out.add((Map<?, ?>) o);
@@ -1222,7 +1293,7 @@ public final class CgVfxEmitterAssets {
         if (declared == null) return in;
         for (CgProperty p : declared.inputs().properties()) {
             if (!in.containsKey(p.name()) && p.defaultValue() != null) {
-                in.put(p.name(), CgUnits.UNREAL.toHost(p.defaultValue(), p.quantity()));
+                in.put(p.name(), CgUnits.UNREAL.toHost(p.defaultValue(), p));
             }
         }
         for (CgProperty p : declared.inputs().properties()) {

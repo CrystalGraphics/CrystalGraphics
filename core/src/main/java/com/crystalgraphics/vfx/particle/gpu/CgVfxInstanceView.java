@@ -25,6 +25,11 @@ public interface CgVfxInstanceView {
 
     double originZ();
 
+    /** Its seed's bits: what a roll once an instance keys on. */
+    default int seed() {
+        return 0;
+    }
+
     /** Seconds since the instance started, at the step's start. */
     float time();
 

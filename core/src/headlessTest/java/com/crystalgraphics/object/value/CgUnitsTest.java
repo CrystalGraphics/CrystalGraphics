@@ -44,6 +44,39 @@ public class CgUnitsTest {
     }
 
     @Test
+    public void aValuesOwnUnitOverridesTheAssetsAndIsDropped() {
+        Map<?, ?> r = (Map<?, ?>) CgUnits.UNREAL.toHost(Map.of("range", List.of(0, 0.5), "unit", "turns"), CgQuantity.ANGLE);
+        assertEquals(Math.PI, ((Number) ((List<?>) r.get("range")).get(1)).doubleValue(), 1e-9);
+        assertFalse(r.containsKey("unit"));
+        assertEquals(Math.PI / 2, ((Number) CgUnits.HOST.toHost(Map.of("value", 0.25, "unit", "turns"), CgQuantity.ANGLE))
+                .doubleValue(), 1e-9);
+    }
+
+    @Test
+    public void aKitsUnitsConvertFormsThroughItsAxes() {
+        CgUnits kit = CgUnits.of(Map.of("length", "cm", "axes", "unreal"), CgUnits.HOST);
+        Map<String, Object> curve = Map.of("samples", Map.of("range", List.of(0, 1), "values", List.of(100, 300)));
+        Map<?, ?> curves = (Map<?, ?>) kit.toHost(Map.of("curves", List.of(Map.of("keys", List.of()), Map.of("keys", List.of()), curve),
+                "by", "age"), CgQuantity.OFFSET);
+        Map<?, ?> y = (Map<?, ?>) ((Map<?, ?>) ((List<?>) curves.get("curves")).get(1)).get("samples");
+        assertEquals("Unreal's z curve is the host's y", 3.0, ((Number) ((List<?>) y.get("values")).get(1)).doubleValue(), 1e-9);
+        Map<?, ?> locked = (Map<?, ?>) kit.toHost(Map.of("range", List.of(List.of(1, 1, 1), List.of(2, 2, 2)), "per_channel", true,
+                "locked", "xy"), CgQuantity.SCALE);
+        assertEquals("Unreal's y is the host's z", "xz", locked.get("locked"));
+    }
+
+    @Test
+    public void anUnrealYawTurnsItsXToItsYWhichIsTheHostsZ() {
+        float[] q = CgUnits.rotatorToHost(0, 0, Math.PI / 2);
+        // v' = v + 2w (q x v) + 2 q x (q x v), for v = +X
+        double tx = 0, ty = 2 * q[2], tz = -2 * q[1];
+        double x = 1 + q[3] * tx + (q[1] * tz - q[2] * ty), y = q[3] * ty + (q[2] * tx - q[0] * tz), z = q[3] * tz + (q[0] * ty - q[1] * tx);
+        assertEquals(0, x, 1e-6);
+        assertEquals(0, y, 1e-6);
+        assertEquals(1, z, 1e-6);
+    }
+
+    @Test
     public void unrealFlipsHandednessAndTheHostDoesNot() {
         assertTrue(CgUnits.UNREAL.flipsHandedness());
         assertFalse(CgUnits.HOST.flipsHandedness());

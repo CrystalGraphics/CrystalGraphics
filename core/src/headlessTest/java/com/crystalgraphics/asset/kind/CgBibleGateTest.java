@@ -104,6 +104,11 @@ public class CgBibleGateTest {
             }
             List<Map<String, Object>> inputs = (List<Map<String, Object>>) m.getOrDefault("inputs", new ArrayList<>());
             List<CgProperty> props = module.inputs().properties();
+            // A seeded module loads one input more, its seed, after those it declares.
+            if (Boolean.TRUE.equals(m.get("seeded"))) {
+                if (!props.get(props.size() - 1).name().equals("seed")) found.add(id + ": seeded, and loads no seed last");
+                props = props.subList(0, props.size() - 1);
+            }
             if (inputs.size() != props.size()) found.add(id + ": " + inputs.size() + " inputs declared, " + props.size() + " loaded");
             for (int i = 0; i < Math.min(inputs.size(), props.size()); i++) {
                 Map<String, Object> in = inputs.get(i);

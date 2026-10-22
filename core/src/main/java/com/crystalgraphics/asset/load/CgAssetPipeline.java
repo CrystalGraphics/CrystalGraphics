@@ -27,6 +27,7 @@ import com.crystalgraphics.job.CgJobLoop;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.object.validate.CgValidation;
+import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.object.CgTypes;
 
@@ -234,7 +235,20 @@ public final class CgAssetPipeline {
         for (Map.Entry<String, CgAssetLoad> d : deps.entrySet()) definitions.put(d.getKey(), d.getValue().definition);
         CgAssetData asset = load.asset;
         CgAssetCompiler<?> compiler = CgAssetCompiler.of(load.kind());
-        start(load, () -> compiler.compile(asset, (kind, id) -> definitions.get(key(kind, id))), definition -> {
+        String namespace = load.id().substring(0, Math.max(0, load.id().indexOf(':')));
+        CgUnits units = CgUnits.of(asset.resolved().get(CgType.UNITS), registry.units(namespace));
+        CgAssetCompiler.Dependencies answers = new CgAssetCompiler.Dependencies() {
+            @Override
+            public Object definition(CgType kind, String id) {
+                return definitions.get(key(kind, id));
+            }
+
+            @Override
+            public CgUnits units() {
+                return units;
+            }
+        };
+        start(load, () -> compiler.compile(asset, answers), definition -> {
             load.definition = definition;
             advance(load, CgAssetState.COMPILED);
         }, "does not compile");

@@ -7,6 +7,7 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.object.CgType;
+import com.crystalgraphics.object.value.CgUnits;
 
 /**
  * Turns a kind's resolved, validated asset into the definition what plays it reads: one per kind, run on a worker
@@ -39,12 +40,20 @@ public interface CgAssetCompiler<D> {
     /** {@code asset}'s definition. */
     D compile(CgAssetData asset, Dependencies deps);
 
-    /** The compiled definitions of an asset's hard dependencies. */
+    /** The compiled definitions of an asset's hard dependencies, and the units its values are written in. */
     @FunctionalInterface
     interface Dependencies {
         /** {@code kind}'s {@code id}, compiled; null if the asset holds no hard reference to it. */
         @Nullable
         Object definition(CgType kind, String id);
+
+        /**
+         * The units the asset's values are written in ({@code core.md} § Units): its {@code units:} over its namespace's
+         * {@code units.yaml}. A compiler converts each value by its property's quantity: {@code units().toHost(v, p)}.
+         */
+        default CgUnits units() {
+            return CgUnits.HOST;
+        }
     }
 
     /** Sets {@code kind}'s compiler, replacing {@link #RESOLVED}. */

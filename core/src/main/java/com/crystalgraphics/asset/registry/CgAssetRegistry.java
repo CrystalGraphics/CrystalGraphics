@@ -39,6 +39,7 @@ import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.object.CgPropertyPath;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgValueType;
+import com.crystalgraphics.object.value.CgUnits;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -109,6 +110,8 @@ public final class CgAssetRegistry {
     /** Each referenced key to the keys of the entries naming it. */
     private final Map<String, Set<String>> referencers = new ConcurrentHashMap<>();
     private final Map<String, Map<String, String>> contentIndex = new ConcurrentHashMap<>();
+    /** Each namespace's {@code units.yaml}; a namespace without one is in the host's units. */
+    private final Map<String, CgUnits> units = new ConcurrentHashMap<>();
     private final List<Path> strays = new CopyOnWriteArrayList<>();
     private final List<Consumer<CgAssetRegistryEvent>> listeners = new CopyOnWriteArrayList<>();
     private final List<Consumer<List<CgAssetRegistryEvent>>> batchListeners = new CopyOnWriteArrayList<>();
@@ -192,6 +195,8 @@ public final class CgAssetRegistry {
         }
         Path index = root.resolve("content.yaml");
         if (Files.isRegularFile(index)) contentIndex.put(namespace, readIndex(index));
+        Path unitsFile = root.resolve("units.yaml");
+        if (Files.isRegularFile(unitsFile)) units.put(namespace, readUnits(unitsFile));
         List<CgAssetRegistryEvent> added = new ArrayList<>(found.size());
         for (CgAssetEntry e : found) {
             entries.put(key(e.kind(), e.id()), e);
@@ -375,6 +380,11 @@ public final class CgAssetRegistry {
         return index == null ? null : index.get(hash);
     }
 
+    /** The units a namespace's assets are written in ({@code core.md} § Units): its {@code units.yaml}, else the host's. */
+    public CgUnits units(String namespace) {
+        return units.getOrDefault(namespace, CgUnits.HOST);
+    }
+
     /** Files a scan found that are not the format's, in the order found. */
     public List<Path> strays() {
         return Collections.unmodifiableList(strays);
@@ -526,6 +536,17 @@ public final class CgAssetRegistry {
             // validation names it when the asset loads
         }
         return new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), null, Collections.emptyList());
+    }
+
+    private static CgUnits readUnits(Path file) {
+        try {
+            Object tree = CgAssetYaml.read(new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
+            return CgUnits.of(tree instanceof Map<?, ?> m ? m.get("units") : null, CgUnits.HOST);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        } catch (IllegalArgumentException e) {
+            throw new CgAssetException(file + ": " + e.getMessage());
+        }
     }
 
     private static Map<String, String> readIndex(Path index) {

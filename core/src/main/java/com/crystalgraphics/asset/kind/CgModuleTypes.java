@@ -50,6 +50,19 @@ public final class CgModuleTypes {
     private static volatile CgModuleTypes builtIn;
 
     /**
+     * A seeded module's {@code seed} input: Cascade's {@code FParticleRandomSeedInfo} ({@code ParticleModule.h:86-139},
+     * UE 4.21), its fields and defaults Unreal's ({@code modules.md} § Declaration).
+     */
+    public static final CgType SEED = CgTypes.struct("crystalgraphics:seed")
+            .property("values", CgValueType.listOf(CgValueType.INT))
+            .property("parameter", CgValueType.STRING)
+            .property("from_instance", CgValueType.BOOL).defaultValue(false)
+            .property("instance_is_index", CgValueType.BOOL).defaultValue(false)
+            .property("reset_on_loop", CgValueType.BOOL).defaultValue(true)
+            .property("random_selection", CgValueType.BOOL).defaultValue(false)
+            .register();
+
+    /**
      * A module's declaration: where it may sit in a stack, and its inputs.
      *
      * @param id       {@code crystalgraphics:drag}
@@ -93,6 +106,8 @@ public final class CgModuleTypes {
             for (Object input : asList(m.getOrDefault("inputs", Collections.emptyList()), id + ".inputs")) {
                 declare(b, id, asMap(input, id + "'s input"));
             }
+            // A module that rolls takes Cascade's seed: optional, its rolls otherwise keyed by id and input.
+            if (Boolean.TRUE.equals(m.get("seeded"))) b.property("seed", CgValueType.struct(SEED)).defaultValue(null);
             List<String> groups = new ArrayList<>();
             for (Object g : asList(m.getOrDefault("groups", Collections.emptyList()), id + ".groups")) groups.add(string(g, id + ".groups"));
             Module module = new Module(id, Collections.unmodifiableList(groups), (String) m.get("order"),

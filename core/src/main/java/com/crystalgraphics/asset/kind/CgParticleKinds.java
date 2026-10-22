@@ -45,20 +45,11 @@ public final class CgParticleKinds {
     private CgParticleKinds() {
     }
 
-    /** {@code seed} on a module entry: Cascade's {@code _Seeded} modules. */
-    static final CgType SEED = CgTypes.struct("crystalgraphics:seed")
-            .property("values", CgValueType.listOf(INT))
-            .property("instance_per_seed", BOOL).defaultValue(false)
-            .property("reset_on_loop", BOOL).defaultValue(false)
-            .property("random_selection", BOOL).defaultValue(false)
-            .register();
-
     /** A module entry, Niagara's {@code MergeId} its id: {@code { id, module, enabled, inputs }}. */
     static final CgType MODULE_ENTRY = CgTypes.element("crystalgraphics:emitter.module")
             .property("module", hard("module")).flags(CgPropertyFlag.STRUCTURAL)
             .property("enabled", BOOL).defaultValue(true).flags(CgPropertyFlag.STRUCTURAL)
             .property("inputs", mapOfValues())
-            .property("seed", CgValueType.struct(SEED))
             .property("after", CgValueType.LOCAL_ID)
             .property("before", CgValueType.LOCAL_ID)
             .validator(CgParticleKinds::builtInModule)
@@ -484,7 +475,7 @@ public final class CgParticleKinds {
 
     /**
      * A {@code crystalgraphics:} module is one the catalogue has, and each input one it declares, written in a form
-     * it takes. {@code seed} is every module's, and a struct or array input checks its own shape.
+     * it takes; a seeded module declares {@code seed}. A struct or array input checks its own shape.
      */
     private static void builtInModule(Map<?, ?> entry, CgPropertyPath at, CgValidation into) {
         Object id = entry.get("module");
@@ -498,7 +489,6 @@ public final class CgParticleKinds {
         if (!(inputs instanceof Map)) return;
         for (Map.Entry<?, ?> e : ((Map<?, ?>) inputs).entrySet()) {
             String name = String.valueOf(e.getKey());
-            if (name.equals("seed")) continue;
             CgPropertyPath here = at.key("inputs").key(name);
             CgProperty p = module.inputs().property(name);
             if (p == null) {

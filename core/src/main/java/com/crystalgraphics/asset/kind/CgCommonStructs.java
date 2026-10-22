@@ -195,6 +195,7 @@ public final class CgCommonStructs {
             .property("range", CgValueType.ARRAY).required()
             .property("per_channel", BOOL)
             .property("locked", STRING)
+            .property("rolls", CgValueType.enumOf("tick"))
             .register();
     static final CgType PICK_FORM = form("pick", CgValueType.ARRAY);
     static final CgType CURVE_FORM = CgTypes.struct("crystalgraphics:value.curve")
