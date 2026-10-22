@@ -3,6 +3,7 @@ package com.crystalgraphics.vfx.particle.gpu.sim;
 import com.crystalgraphics.vfx.particle.form.CgVfxCurveBlock;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
@@ -137,7 +138,12 @@ public final class CgVfxParticlePool {
     public static final int ORDER = CgWorldRenderer.ORDER - 100;
 
     /** Every pool, by owner and shape key, and in the order made; and those released since the last recording. */
-    private static final Map<Object, Map<String, CgVfxParticlePool>> POOLS = new IdentityHashMap<>();
+    private static final Map<Object, Map<String, List<CgVfxParticlePool>>> POOLS = new IdentityHashMap<>();
+    /**
+     * The textures a pool keeps per kind sampling them: a slot names its entry, so emitters differing only in their
+     * textures share a pool, up to this many distinct ones; past it a pool of the same shape is made beside it.
+     */
+    public static final int TEXTURE_ENTRIES = 4;
     private static final List<CgVfxParticlePool> RELEASED = new ArrayList<>();
     /** The real frame's pools, and a rehearsal's hidden owners'; {@link #ALL} is whichever records now. */
     private static final List<CgVfxParticlePool> REAL = new ArrayList<>(), REHEARSED = new ArrayList<>();
@@ -293,12 +299,23 @@ public final class CgVfxParticlePool {
     private int current, storage;
     private ByteBuffer staging = ByteBuffer.allocate(0);
     private boolean released;
+    /** Per textured module, its table: each entry's textures and the open slots naming it; each slot's entry per module. */
+    private final CgTexture[][][] textureEntries;
+    private final int[][] textureUses;
+    private int[] slotTexture = new int[0];
 
-    private CgVfxParticlePool(CgVfxShape shape) {
+    private CgVfxParticlePool(CgVfxShape shape, int group) {
         this.shape = shape;
         this.paramWords = shape.paramRowVectors() * 4;
         this.instanceWords = shape.instanceRowVectors() * 4;
-        String name = "vfx.pool[" + shape.key() + "]";
+        textureEntries = new CgTexture[shape.modules()][][];
+        textureUses = new int[shape.modules()][];
+        for (int i = 0; i < shape.modules(); i++) {
+            if (shape.textureCount(i) == 0) continue;
+            textureEntries[i] = new CgTexture[TEXTURE_ENTRIES][];
+            textureUses[i] = new int[TEXTURE_ENTRIES];
+        }
+        String name = "vfx.pool[" + shape.key() + "]" + (group > 0 ? "#" + group : "");
         passName = name + ".step";
         recordsName = name + ".records";
         drawnName = name + ".drawn";
@@ -334,11 +351,14 @@ public final class CgVfxParticlePool {
      */
     public static CgVfxParticlePool of(Object owner, CgVfxGpuEmitter emitter, int tier) {
         CgVfxShape shape = CgVfxShape.of(emitter, tier);
-        Map<String, CgVfxParticlePool> owned = POOLS.get(owner);
+        Map<String, List<CgVfxParticlePool>> owned = POOLS.get(owner);
         if (owned == null) POOLS.put(owner, owned = new HashMap<>());
-        CgVfxParticlePool pool = owned.get(shape.key());
+        List<CgVfxParticlePool> group = owned.get(shape.key());
+        if (group == null) owned.put(shape.key(), group = new ArrayList<>(1));
+        CgVfxParticlePool pool = null;
+        for (int i = 0; i < group.size() && pool == null; i++) if (group.get(i).takesTextures(shape)) pool = group.get(i);
         if (pool == null) {
-            owned.put(shape.key(), pool = new CgVfxParticlePool(shape));
+            group.add(pool = new CgVfxParticlePool(shape, group.size()));
             pool.hidden = HIDDEN.contains(owner);
             (pool.hidden ? REHEARSED : REAL).add(pool);
             if (recording == null) {
@@ -416,9 +436,9 @@ public final class CgVfxParticlePool {
      */
     public static void release(Object owner) {
         HIDDEN.remove(owner);
-        Map<String, CgVfxParticlePool> owned = POOLS.remove(owner);
+        Map<String, List<CgVfxParticlePool>> owned = POOLS.remove(owner);
         if (owned == null) return;
-        for (CgVfxParticlePool pool : owned.values()) {
+        for (List<CgVfxParticlePool> group : owned.values()) for (CgVfxParticlePool pool : group) {
             (pool.hidden ? REHEARSED : REAL).remove(pool);
             pool.released = true;
             releases++;
@@ -908,7 +928,13 @@ public final class CgVfxParticlePool {
         if (shape.readsClips()) CgVfxClipAtlas.bind(stepping);
         for (CgVfxDataInterface di : shape.dataInterfaces()) di.bind(stepping, this);
         for (int i = 0; i < shape.modules(); i++) {
-            for (int t = 0; t < shape.textureCount(i); t++) stepping.texture(CgVfxEmitterCompiler.texture(i, t), shape.texture(i, t));
+            if (textureEntries[i] == null) continue;
+            CgTexture[] any = shape.textures(i);
+            for (int e = 0; e < TEXTURE_ENTRIES; e++) if (textureEntries[i][e] != null) any = textureEntries[i][e];
+            for (int e = 0; e < TEXTURE_ENTRIES; e++) {
+                CgTexture[] entry = textureEntries[i][e] != null ? textureEntries[i][e] : any;   // an empty entry: one bound
+                for (int t = 0; t < entry.length; t++) stepping.texture(CgVfxEmitterCompiler.texture(i, t, e), entry[t]);
+            }
         }
         current = 1 - current;
     }
@@ -1102,9 +1128,15 @@ public final class CgVfxParticlePool {
         int slot = 0;
         while (slot < slotCount && slotEmitter[slot] != null) slot++;
         if (slot == slotCount) growSlots(slotCount + 1);
+        CgVfxShape own = CgVfxShape.of(emitter, shape.tier());
+        if (!takesTextures(own)) {
+            throw new IllegalArgumentException(emitter.name() + "'s textures do not fit this pool's table: open it in the pool "
+                    + "of(owner, emitter) answers");
+        }
         slotEmitter[slot] = emitter;
         slotOwner[slot] = owner;
         slotCapacity[slot] = capacity;
+        takeTextures(slot, own);
         slotRow[slot] = useRow(emitter);
         slotOpened[slot] = ++openings;
         slotScale[slot] = 1f;
@@ -1126,6 +1158,7 @@ public final class CgVfxParticlePool {
         betweenSteps("close");
         CgVfxGpuEmitter emitter = openSlot(slot, "close");
         releaseRow(emitter);
+        giveTextures(slot);
         capacity -= slotCapacity[slot];
         if (ringPoints[slot] > 0) {
             giveRing(ringFirst[slot], slotCapacity[slot] * ringPoints[slot]);
@@ -1156,9 +1189,66 @@ public final class CgVfxParticlePool {
         betweenSteps("rebind");
         CgVfxGpuEmitter was = openSlot(slot, "rebind");
         if (was == emitter) return;
+        CgVfxShape own = CgVfxShape.of(emitter, shape.tier());
+        giveTextures(slot);
+        if (!takesTextures(own)) {
+            takeTextures(slot, CgVfxShape.of(was, shape.tier()));
+            throw new IllegalArgumentException(emitter.name() + "'s textures do not fit this pool's table: open it in a pool "
+                    + "of its own");
+        }
+        takeTextures(slot, own);
         releaseRow(was);
         slotEmitter[slot] = emitter;
         slotRow[slot] = useRow(emitter);
+    }
+
+    /** Whether every texture {@code own}'s kinds sample is in this pool's table, or has a free entry to go in. */
+    private boolean takesTextures(CgVfxShape own) {
+        for (int i = 0; i < shape.modules(); i++) {
+            if (textureEntries[i] == null) continue;
+            if (entryOf(i, own) < 0 && freeEntry(i) < 0) return false;
+        }
+        return true;
+    }
+
+    /** Module {@code i}'s entry holding {@code own}'s textures, by identity; -1 for none. */
+    private int entryOf(int i, CgVfxShape own) {
+        CgTexture[][] entries = textureEntries[i];
+        for (int e = 0; e < TEXTURE_ENTRIES; e++) {
+            if (entries[e] == null) continue;
+            boolean same = true;
+            for (int t = 0; t < entries[e].length && same; t++) same = entries[e][t] == own.texture(i, t);
+            if (same) return e;
+        }
+        return -1;
+    }
+
+    private int freeEntry(int i) {
+        for (int e = 0; e < TEXTURE_ENTRIES; e++) if (textureEntries[i][e] == null) return e;
+        return -1;
+    }
+
+    /** {@code slot}'s entries for {@code own}'s textures, taken or shared. */
+    private void takeTextures(int slot, CgVfxShape own) {
+        for (int i = 0; i < shape.modules(); i++) {
+            if (textureEntries[i] == null) continue;
+            int e = entryOf(i, own);
+            if (e < 0) {
+                e = freeEntry(i);
+                textureEntries[i][e] = own.textures(i);
+            }
+            textureUses[i][e]++;
+            slotTexture[slot * shape.modules() + i] = e;
+        }
+    }
+
+    /** {@code slot}'s entries given back: one no slot uses is free again. */
+    private void giveTextures(int slot) {
+        for (int i = 0; i < shape.modules(); i++) {
+            if (textureEntries[i] == null) continue;
+            int e = slotTexture[slot * shape.modules() + i];
+            if (--textureUses[i][e] == 0) textureEntries[i][e] = null;
+        }
     }
 
     private void releaseRow(CgVfxGpuEmitter emitter) {
@@ -2023,6 +2113,7 @@ public final class CgVfxParticlePool {
         feedParent = Arrays.copyOf(feedParent, size);
         feedSlot = Arrays.copyOf(feedSlot, size);
         feedEvent = Arrays.copyOf(feedEvent, size);
+        slotTexture = Arrays.copyOf(slotTexture, size * shape.modules());
     }
 
     private CgVfxGpuEmitter openSlot(int slot, String call) {

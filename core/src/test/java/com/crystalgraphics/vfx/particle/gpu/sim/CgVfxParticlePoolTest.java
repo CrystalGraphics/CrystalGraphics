@@ -1,5 +1,10 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
+import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.render.graph.CgGraphTexture;
+import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
@@ -109,6 +114,39 @@ public class CgVfxParticlePoolTest {
         }
     }
 
+    /** A kind sampling a texture of its own: a vector field, a heightfield. */
+    private static final class Sampled implements CgVfxGpuModule {
+        static {
+            CgVfxModuleTypes.declare("sampled", Sampled.class, t -> t.property("scale", CgValueType.FLOAT), (m, in) -> in.f("scale", 1f));
+        }
+
+        final CgTexture[] texture;
+
+        Sampled(CgTexture texture) {
+            this.texture = new CgTexture[]{texture};
+        }
+
+        public String gpuKind() {
+            return "sampled";
+        }
+
+        public String gpuSource() {
+            return """
+                    void fx_sampled(inout FxParticle p, inout FxForces f, FxStep s, vec4 m, sampler2D field) {
+                        f.accel += textureLod(field, p.position.xz * m.x, 0.0).xyz;
+                    }
+                    """;
+        }
+
+        public boolean afterSolve() {
+            return false;
+        }
+
+        public CgTexture[] textures() {
+            return texture;
+        }
+    }
+
     private static final class Def implements CgVfxGpuEmitter {
         final String name;
         final CgVfxDrawLayout renderer;
@@ -194,6 +232,37 @@ public class CgVfxParticlePoolTest {
         public float sourceZ() {
             return 3f;
         }
+    }
+
+    @Test
+    public void emittersDifferingOnlyInTheirTextureShareAPool() {
+        CgFrameBufferFormat r32f = CgFrameBufferFormat.builder("fields").color(0, CgTextureType.R32F).build();
+        CgTexture[] fields = new CgTexture[CgVfxParticlePool.TEXTURE_ENTRIES + 1];
+        for (int i = 0; i < fields.length; i++) fields[i] = CgGraphTexture.transientTexture("field" + i, new CgTextureDesc(8, 8, r32f));
+        Def a = new Def("a", CgVfxDrawLayout.QUADS, new Sampled(fields[0]));
+        Def b = new Def("b", CgVfxDrawLayout.QUADS, new Sampled(fields[1]));
+        assertEquals(CgVfxShape.of(a).key(), CgVfxShape.of(b).key());
+        CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, a);
+        assertSame(pool, CgVfxParticlePool.of(OWNER, b));
+        pool.open(a, 10);
+        pool.open(b, 10);
+        pool.open(new Def("a again", CgVfxDrawLayout.QUADS, new Sampled(fields[0])), 10);   // shares a's entry
+        for (int i = 2; i < CgVfxParticlePool.TEXTURE_ENTRIES; i++) {
+            Def d = new Def("d" + i, CgVfxDrawLayout.QUADS, new Sampled(fields[i]));
+            assertSame(pool, CgVfxParticlePool.of(OWNER, d));
+            pool.open(d, 1);
+        }
+        // the table is full: the next texture opens in a pool of the same shape beside it
+        Def past = new Def("past", CgVfxDrawLayout.QUADS, new Sampled(fields[CgVfxParticlePool.TEXTURE_ENTRIES]));
+        assertNotSame(pool, CgVfxParticlePool.of(OWNER, past));
+        try {
+            pool.open(past, 1);
+            fail("a texture past the table opened in it");
+        } catch (IllegalArgumentException expected) {
+        }
+        String glsl = CgVfxEmitterCompiler.source(CgVfxShape.of(a));
+        assertTrue(glsl, glsl.contains("case 1: fx_sampled(") && glsl.contains("_Texture0_0_3"));
+        CgVfxEmitterCompiler.compile(CgVfxShape.of(a)).kernel("Step").check();
     }
 
     @After

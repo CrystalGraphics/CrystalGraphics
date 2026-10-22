@@ -236,8 +236,11 @@ public final class CgVfxEmitterCompiler {
         for (CgVfxDataInterface di : shape.dataInterfaces()) s.append(di.properties());
         for (int i = 0; i < shape.modules(); i++) {
             for (int t = 0; t < shape.textureCount(i); t++) {
-                s.append("    ").append(texture(i, t)).append(" (\"fx_").append(shape.kind(i)).append("'s texture ").append(t)
-                        .append("\", ").append(shape.volume(i, t) ? "sampler3D" : "sampler2D").append(") = \"black\"\n");
+                for (int e = 0; e < CgVfxParticlePool.TEXTURE_ENTRIES; e++) {
+                    s.append("    ").append(texture(i, t, e)).append(" (\"fx_").append(shape.kind(i)).append("'s texture ").append(t)
+                            .append(", entry ").append(e).append("\", ").append(shape.volume(i, t) ? "sampler3D" : "sampler2D")
+                            .append(") = \"black\"\n");
+                }
             }
         }
         s.append("}\n\n");
@@ -888,9 +891,14 @@ public final class CgVfxEmitterCompiler {
         s.append("    }\n");
     }
 
-    /** Module {@code i}'s call: its numbers from the parameter row, its lanes from the instance row, its data interfaces, its textures. */
-    private static void call(StringBuilder s, CgVfxShape shape, int i) {
-        s.append("    fx_").append(shape.kind(i)).append(shape.afterSolve(i) ? "(p, s" : "(p, f, s");
+    /**
+     * Module {@code i}'s call: its numbers from the parameter row, its lanes from the instance row, its data interfaces,
+     * its textures. A kind sampling textures is called once per entry of its pool's table, under a switch on the slot's
+     * entry: each call passes fixed samplers, which every tier and Vulkan's GLSL take.
+     */
+    private static void call(StringBuilder out, CgVfxShape shape, int i) {
+        StringBuilder s = new StringBuilder();
+        s.append("fx_").append(shape.kind(i)).append(shape.afterSolve(i) ? "(p, s" : "(p, f, s");
         for (int j = 0, at = shape.paramAt(i); j < shape.paramVectors(i); j++) {
             int v = at + j;
             String base = shape.userBound(v) ? "step_vector(row, inst, " + v + ")" : "step_param(row + " + v + ")";
@@ -920,8 +928,19 @@ public final class CgVfxEmitterCompiler {
             }
         }
         for (CgVfxDataInterface di : shape.dataInterfaces(i)) s.append(", ").append(di.call());
-        for (int t = 0; t < shape.textureCount(i); t++) s.append(", ").append(texture(i, t));
-        s.append(");\n");
+        int textures = shape.textureCount(i);
+        if (textures == 0) {
+            out.append("    ").append(s).append(");\n");
+            return;
+        }
+        int word = shape.textureEntryWord(i);
+        out.append("    switch (int(INSTANCES(inst + ").append(word / 4).append(").").append(XYZW.charAt(word % 4)).append(")) {\n");
+        for (int e = 0; e < CgVfxParticlePool.TEXTURE_ENTRIES; e++) {
+            out.append(e == 0 ? "    default: " : "    case " + e + ": ").append(s);
+            for (int t = 0; t < textures; t++) out.append(", ").append(texture(i, t, e));
+            out.append("); break;\n");
+        }
+        out.append("    }\n");
     }
 
     private static final String XYZW = "xyzw";
@@ -1004,7 +1023,8 @@ public final class CgVfxEmitterCompiler {
     }
 
     /** Module {@code i}'s texture {@code t}'s sampler property: what the pool binds it as. */
-    static String texture(int i, int t) {
-        return "_Texture" + i + "_" + t;
+    /** Module {@code i}'s texture {@code t} in entry {@code e} of its pool's table: the property the pool binds. */
+    static String texture(int i, int t, int e) {
+        return "_Texture" + i + "_" + t + "_" + e;
     }
 }

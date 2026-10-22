@@ -20,7 +20,6 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -65,12 +64,10 @@ public final class CgVfxShape {
     public static final int TIERS = CgVfxEvent.LEVELS + 1;
     /** Each custom kind's text, as first seen: a kind name means one text. */
     private static final Map<String, String> SOURCES = new ConcurrentHashMap<>();
-    /** A number per texture a shape has sampled, for the pool key: by identity. */
-    private static final Map<CgTexture, Integer> TEXTURE_IDS = new IdentityHashMap<>();
     /** Each definition's shape per tier, made once: a cast prepares and opens its shapes every play. Held weakly. */
     private static final Map<CgVfxGpuEmitter, CgVfxShape[]> SHAPES = new WeakHashMap<>();
 
-    private final String key, kernelKey;
+    private final String key;
     private final CgTexture[][] textures;
     private final boolean[][] volumes;
     private final CgVfxDrawLayout drawLayout;
@@ -84,6 +81,9 @@ public final class CgVfxShape {
     /** Every data interface it takes, its kinds' and what they require, in registration order; where each one's lanes start. */
     private final CgVfxDataInterface[] interfaces;
     private final int[] interfaceLanesAt;
+    /** Each module's place among the textured ones, -1 for none; where their entry indices start in the instance row. */
+    private final int[] textureEntry;
+    private final int texturesAt;
     /** Its user bindings, the parameter-row word each replaces, and where their lanes start: four bindings a lane. */
     private final CgVfxUserBinding[] userBindings;
     private final int[] userWords;
@@ -125,7 +125,7 @@ public final class CgVfxShape {
         reads = new CgVfxDataInterface[n][];
         textures = new CgTexture[n][];
         volumes = new boolean[n][];
-        StringBuilder key = new StringBuilder(drawLayout.name()), identity = new StringBuilder();
+        StringBuilder key = new StringBuilder(drawLayout.name());
         int param = CgVfxGpuEmitter.SPAWN_VECTORS, lane = CgVfxParticlePool.INSTANCE_HEADER;
         for (int i = 0; i < n; i++) {
             CgVfxGpuModule m = modules.get(i);
@@ -169,7 +169,6 @@ public final class CgVfxShape {
                 if (texture == null) throw new IllegalArgumentException(emitter.name() + ": fx_" + kind + "'s texture " + t + " is null");
                 volumes[i][t] = texture instanceof CgGraphTexture graph ? graph.isVolume() : texture.getTarget() == CgGL.GL_TEXTURE_3D;
                 key.append(t == 0 ? '#' : ',').append(volumes[i][t] ? "3d" : "2d");
-                identity.append(t == 0 && identity.length() == 0 ? "|tex:" : ",").append(textureId(texture));
             }
         }
         spawnsOnMesh = emitter.spawnsOnMesh();
@@ -287,10 +286,15 @@ public final class CgVfxShape {
             interfaceLanesAt[d] = lane;
             lane += interfaces[d].instanceLanes();
         }
+        // Each textured module's entry in its pool's texture table, four a lane after the interfaces' lanes.
+        textureEntry = new int[n];
+        int textured = 0;
+        for (int i = 0; i < n; i++) textureEntry[i] = textures[i].length > 0 ? textured++ : -1;
+        texturesAt = lane;
+        lane += (textured + 3) / 4;
         instanceRow = lane;
         floors = taken.contains(CgVfxDataInterfaces.FLOOR_Y);
-        kernelKey = key.toString();
-        this.key = kernelKey + identity;
+        this.key = key.toString();
     }
 
     /** A form's part of the key: what decides its kernel code. */
@@ -311,14 +315,6 @@ public final class CgVfxShape {
         taken.add(di);
     }
 
-    private static int textureId(CgTexture texture) {
-        synchronized (TEXTURE_IDS) {
-            Integer id = TEXTURE_IDS.get(texture);
-            if (id == null) TEXTURE_IDS.put(texture, id = TEXTURE_IDS.size());
-            return id;
-        }
-    }
-
     /** {@code emitter}'s shape as a definition spawned by nothing. */
     public static CgVfxShape of(CgVfxGpuEmitter emitter) {
         return of(emitter, 0);
@@ -336,14 +332,18 @@ public final class CgVfxShape {
         }
     }
 
-    /** One string naming the shape: equal for definitions that share a pool. */
+    /**
+     * One string naming the shape: equal for definitions that share a pool and its kernels. Which textures a kind samples
+     * is not part of it: a pool keeps a table of them ({@link CgVfxParticlePool#TEXTURE_ENTRIES} a kind), each slot
+     * naming its entry.
+     */
     public String key() {
         return key;
     }
 
-    /** {@link #key()} less which textures are sampled: equal for definitions that share kernels. */
+    /** {@link #key()}: what its kernels are compiled under. */
     public String kernelKey() {
-        return kernelKey;
+        return key;
     }
 
     public CgVfxDrawLayout drawLayout() {
@@ -428,6 +428,14 @@ public final class CgVfxShape {
     /** Module {@code i}'s texture {@code t}, as the pool binds it. */
     public CgTexture texture(int i, int t) {
         return textures[i][t];
+    }
+
+    /**
+     * Where module {@code i}'s texture entry index lies in an instance row: the word, from the row's start; -1 for a
+     * module sampling none. Four modules' indices a vec4, as {@code uint}s.
+     */
+    public int textureEntryWord(int i) {
+        return textureEntry[i] < 0 ? -1 : texturesAt * 4 + textureEntry[i];
     }
 
     /** Whether module {@code i}'s texture {@code t} is 3D: a {@code sampler3D}, else a {@code sampler2D}. */
