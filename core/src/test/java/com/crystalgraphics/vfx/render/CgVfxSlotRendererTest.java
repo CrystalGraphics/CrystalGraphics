@@ -92,7 +92,11 @@ public class CgVfxSlotRendererTest {
                 Map.of("id", "l1", "slot", CgBeamBody.HEAD.name(), "light", Map.of(), "size", 2.0),
                 Map.of("id", "l1", "slot", CgBeamBody.HEAD.name(), "light", Map.of("radius", 2.0)),
                 Map.of("id", "l1", "slot", CgBeamBody.HEAD.name(), "light", Map.of(), "bind", Map.of("_Glow", "user.glow")),
-                Map.of("id", "l1", "slot", CgBeamBody.ARCS.name(), "light", Map.of()))) {
+                Map.of("id", "l1", "slot", CgBeamBody.ARCS.name(), "light", Map.of()),
+                Map.of("id", "l1", "slot", CgBeamBody.HEAD.name(), "light", Map.of("type", "rect")),
+                Map.of("id", "l1", "slot", CgBeamBody.HEAD.name(), "light", Map.of("outer_cone_angle", 30.0)),
+                Map.of("id", "l1", "slot", CgBeamBody.BODY.name(), "light", Map.of("type", "spot")),
+                Map.of("id", "l1", "slot", CgBeamBody.BODY.name(), "light", Map.of("source_length", 2.0)))) {
             IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                     () -> CgVfxSlotRenderer.compile("test:wave", entry, deps(shell)));
             assertTrue(e.getMessage(), e.getMessage().startsWith("test:wave's slot l1"));
@@ -113,7 +117,16 @@ public class CgVfxSlotRendererTest {
         assertEquals(0f, light.blue(), 0f);
         assertEquals(4f, light.intensity(), 0f);
         assertEquals(2.2f, light.attenuationRadius(), 1e-6f);
-        assertEquals(new CgVfxSlotRenderer.Light(1f, 1f, 1f, 1f, 1f),
+        assertEquals(new CgVfxSlotRenderer.Light(1f, 1f, 1f, 1f, 1f, 0f, 0f, false, 0f, 44f),
                 CgVfxSlotRenderer.light("l2", CgBeamBody.BODY).build().light());
+    }
+
+    @Test
+    public void aSpotWithASourceIsItsFilesEntry() {
+        CgVfxSlotRenderer built = CgVfxSlotRenderer.light("l1", CgBeamBody.HEAD).spot(10f, 25f).sourceRadius(0.5f)
+                .sourceLength(2f).bind("outer_cone_angle", "user.cone").build();
+        CgVfxSlotRenderer loaded = CgVfxSlotRenderer.compile("test:wave", built.tree(), null);
+        assertEquals(built.tree(), loaded.tree());
+        assertEquals(new CgVfxSlotRenderer.Light(1f, 1f, 1f, 1f, 1f, 0.5f, 2f, true, 10f, 25f), loaded.light());
     }
 }

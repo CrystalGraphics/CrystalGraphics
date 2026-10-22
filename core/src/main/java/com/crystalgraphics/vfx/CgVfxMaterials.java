@@ -262,15 +262,16 @@ final class CgVfxMaterials {
     }
 
     /**
-     * A slot light's resolution, no material: its three fields in {@link #LIGHT_FIELDS} order, each bound (its offset in
-     * the look's values and its factor) or its constant.
+     * A slot light's resolution, no material: its fields in {@link #LIGHT_FIELDS} order, each bound (its offset in the
+     * look's values and its factor) or its constant.
      */
     private static Resolved lit(CgVfxLook look, CgVfxLook.Placed placed) {
         CgVfxSlotRenderer slot = placed.slotRenderer();
         CgVfxSlotRenderer.Light light = slot.light();
-        float[][] fixed = {{light.red(), light.green(), light.blue(), 1f}, {light.intensity()}, {light.attenuationRadius()}};
-        int[] source = {-1, -1, -1}, floats = {4, 1, 1};
-        float[] factor = {1f, 1f, 1f};
+        float[][] fixed = {{light.red(), light.green(), light.blue(), 1f}, {light.intensity()}, {light.attenuationRadius()},
+                {light.sourceRadius()}, {light.sourceLength()}, {light.innerConeAngle()}, {light.outerConeAngle()}};
+        int[] source = {-1, -1, -1, -1, -1, -1, -1}, floats = {4, 1, 1, 1, 1, 1, 1};
+        float[] factor = {1f, 1f, 1f, 1f, 1f, 1f, 1f};
         CgVfxLayout layout = look.layout();
         for (Map.Entry<String, Object> b : slot.bind().entrySet()) {
             Object form = b.getValue();
@@ -290,12 +291,12 @@ final class CgVfxMaterials {
         return new Resolved(placed, null, source, floats, factor, fixed, 0, Map.of(), "");
     }
 
-    private static final List<String> LIGHT_FIELDS = List.of("light_color", "intensity", "attenuation_radius");
+    private static final List<String> LIGHT_FIELDS = CgVfxSlotRenderer.Light.FIELDS;
     private static final int LIGHT_COLOR = 0, LIGHT_INTENSITY = 1, LIGHT_RADIUS = 2;
 
     /**
      * {@code r}'s light for {@code effect} this frame into {@code out}: its linear colour times its intensity, then its
-     * attenuation radius. A bound colour is stored as authored, sRGB times its intensity, so it is read as a linear
+     * attenuation radius, source radius and length, and inner and outer cone angles. A bound colour is stored as authored, sRGB times its intensity, so it is read as a linear
      * reader takes one: its intensity split off its rgb, the rest decoded, times its alpha.
      */
     static void light(CgVfxEffect<?> effect, Resolved r, float[] out) {
@@ -322,6 +323,7 @@ final class CgVfxMaterials {
         out[1] = green * intensity;
         out[2] = blue * intensity;
         out[3] = scalar(values, r, LIGHT_RADIUS);
+        for (int field = LIGHT_RADIUS + 1; field < LIGHT_FIELDS.size(); field++) out[field + 1] = scalar(values, r, field);
     }
 
     private static float scalar(CgVfxValues values, Resolved r, int field) {

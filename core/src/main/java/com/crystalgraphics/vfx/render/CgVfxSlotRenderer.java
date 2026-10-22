@@ -19,7 +19,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * What a native behaviour's slot draws: a material on the slot, fed by user parameters, or a light where the slot
@@ -37,8 +36,8 @@ import java.util.Set;
  * CgVfxSlotRenderer loaded = CgVfxSlotRenderer.compile("mymod:wave", entry, deps);
  * }</pre>
  *
- * <p>A light in place of a material, as Niagara's light renderer adds its system's lights: Unreal's point light, added
- * to the world's light list ({@link CgWorldLights}) each frame the slot draws.
+ * <p>A light in place of a material, as Niagara's light renderer adds its system's lights: Unreal's point or spot light,
+ * added to the world's light list ({@link CgWorldLights}) each frame the slot draws.
  *
  * <pre>{@code
  * CgVfxSlotRenderer glow = CgVfxSlotRenderer.light("light", CgVfxBlast.LIGHT)
@@ -50,6 +49,15 @@ import java.util.Set;
  * //                  slot: crystalgraphics:blast/light
  * //                  light: { light_color: { argb: 0xFFFFC080 }, intensity: 4, attenuation_radius: 2.2 }
  * //                  bind: { light_color: user.glow }
+ *
+ * static final CgVfxSlot LAMP = CgVfxSlot.mesh("mymod:bolt/lamp");
+ * CgVfxSlotRenderer lamp = CgVfxSlotRenderer.light("lamp", LAMP)
+ *         .spot(10f, 25f)                                 // along the slot's +Y: full within 10 degrees, none past 25
+ *         .intensity(40f).attenuationRadius(30f)
+ *         .sourceRadius(0.5f)                             // a ball, so a surface it touches is lit
+ *         .build();
+ * // From a file:   light: { type: spot, inner_cone_angle: 10, outer_cone_angle: 25, intensity: 40,
+ * //                         attenuation_radius: 30, source_radius: 0.5 }
  * }</pre>
  *
  * <ul>
@@ -61,7 +69,8 @@ import java.util.Set;
  *   <li>Drawn in the look's order of its slot renderers, then its material's {@code order}; after its effect's
  *       distortion unless its material has a Distortion pass.</li>
  *   <li>A light takes no {@code material}, {@code size} or {@code mesh}: both a material and a light, or neither, fails
- *       at load. Only mesh and tube slots take one; how each places it is {@link Light}.</li>
+ *       at load. Only mesh and tube slots take one; how each places it is {@link Light}. A tube slot's is its chain of
+ *       tubes: a spot or a {@code source_length} there fails at load, and so do cone angles on a point.</li>
  * </ul>
  */
 public final class CgVfxSlotRenderer {
@@ -169,6 +178,14 @@ public final class CgVfxSlotRenderer {
                 bind.put(String.valueOf(b.getKey()), form);
             }
         }
+        if (light != null) {
+            boolean cone = bind.containsKey("inner_cone_angle") || bind.containsKey("outer_cone_angle");
+            if (cone && !light.spot()) throw new IllegalArgumentException(who + " binds a cone angle of a point: type: spot");
+            if (slot.kind() == CgVfxSlot.Kind.TUBE && (light.spot() || light.sourceLength() > 0f
+                    || bind.containsKey("source_length"))) {
+                throw new IllegalArgumentException(who + "'s light on " + slot + " is its chain of tubes: no spot, no source_length");
+            }
+        }
         float size = tree.get("size") instanceof Number n ? n.floatValue() : 1f;
         String meshPath = null;
         if (tree.get("mesh") instanceof String path) {
@@ -250,15 +267,19 @@ public final class CgVfxSlotRenderer {
     }
 
     /**
-     * A slot's light, Unreal's point light ({@code UPointLightComponent}'s {@code LightColor}, {@code Intensity} and
-     * {@code AttenuationRadius}) with inverse-squared falloff, its colour linear. Where the slot places it:
+     * A slot's light, Unreal's point light ({@code UPointLightComponent}'s {@code LightColor}, {@code Intensity},
+     * {@code AttenuationRadius}, {@code SourceRadius} and {@code SourceLength}) or spot light ({@code USpotLightComponent}'s
+     * {@code InnerConeAngle} and {@code OuterConeAngle}, half angles in degrees) with inverse-squared falloff, its colour
+     * linear. Where the slot places it:
      * <ul>
      *   <li><b>A mesh slot</b>: at the draw's point, its size {@code s} the transform's x scale (the placed sphere's
-     *       radius), its colour times the draw's third number (its strength, {@code ez}).</li>
+     *       radius), its colour times the draw's third number (its strength, {@code ez}). A spot points, and a source
+     *       line runs, along the transform's +Y, the engine's shape axis.</li>
      *   <li><b>A tube slot</b>: a chain of tube lights (Unreal's {@code SourceLength}), one per stretch of half a reach,
      *       chord to chord along the path, {@code s} each stretch's end ring's radius, weighted by the stretch's length
-     *       over {@code s}; its reach measured past the stretch's ends.</li>
+     *       over {@code s}; its reach measured past the stretch's ends. No spot.</li>
      * </ul>
+     * Its source radius and length are times {@code s}, as its reach is.
      * Its reach is {@code attenuationRadius × s}. Its colour is {@code lightColor × intensity × s²} times the
      * effect's presence: under the inverse square in blocks, that is {@code lightColor × intensity}
      * where the light is {@code s} away, falling off with the square of the distance past it, so a slot's light grows
@@ -268,25 +289,37 @@ public final class CgVfxSlotRenderer {
      * @param green {@code light_color}'s, linear, times its alpha
      * @param blue  {@code light_color}'s, linear, times its alpha
      */
-    public record Light(float red, float green, float blue, float intensity, float attenuationRadius) {
+    public record Light(float red, float green, float blue, float intensity, float attenuationRadius, float sourceRadius,
+                        float sourceLength, boolean spot, float innerConeAngle, float outerConeAngle) {
 
-        /** The fields a light binds by. */
-        public static final Set<String> FIELDS = Set.of("light_color", "intensity", "attenuation_radius");
+        /** The fields a light binds by, in the order a resolved light reads them. */
+        public static final List<String> FIELDS = List.of("light_color", "intensity", "attenuation_radius", "source_radius",
+                "source_length", "inner_cone_angle", "outer_cone_angle");
 
         static Light compile(String who, Map<?, ?> fields) {
             for (Object key : fields.keySet()) {
-                if (!FIELDS.contains(String.valueOf(key))) {
-                    throw new IllegalArgumentException(who + "'s light has " + key + ": a light has " + FIELDS);
+                if (!"type".equals(key) && !FIELDS.contains(String.valueOf(key))) {
+                    throw new IllegalArgumentException(who + "'s light has " + key + ": a light has type and " + FIELDS);
                 }
+            }
+            Object type = fields.get("type");
+            boolean spot = "spot".equals(type);
+            if (type != null && !spot && !"point".equals(type)) {
+                throw new IllegalArgumentException(who + "'s light is a " + type + ": a point or a spot");
+            }
+            if (!spot && (fields.containsKey("inner_cone_angle") || fields.containsKey("outer_cone_angle"))) {
+                throw new IllegalArgumentException(who + "'s light has cone angles but is a point: type: spot");
             }
             float[] c = fields.get("light_color") == null ? new float[] {1f, 1f, 1f}
                     : linear(who, fields.get("light_color"));
-            return new Light(c[0], c[1], c[2], number(who, fields, "intensity"), number(who, fields, "attenuation_radius"));
+            return new Light(c[0], c[1], c[2], number(who, fields, "intensity", 1f), number(who, fields, "attenuation_radius", 1f),
+                    number(who, fields, "source_radius", 0f), number(who, fields, "source_length", 0f), spot,
+                    number(who, fields, "inner_cone_angle", 0f), number(who, fields, "outer_cone_angle", 44f));
         }
 
-        private static float number(String who, Map<?, ?> fields, String name) {
+        private static float number(String who, Map<?, ?> fields, String name, float fallback) {
             Object v = fields.get(name);
-            if (v == null) return 1f;
+            if (v == null) return fallback;
             if (v instanceof Number n) return n.floatValue();
             throw new IllegalArgumentException(who + "'s light's " + name + " is " + v + ", not a number");
         }
@@ -354,6 +387,26 @@ public final class CgVfxSlotRenderer {
             return light("attenuation_radius", (double) times);
         }
 
+        /**
+         * A spot along the slot's +Y: full within {@code innerDegrees} of it, nothing past {@code outerDegrees} (half
+         * angles, Unreal's InnerConeAngle and OuterConeAngle). Mesh slots only.
+         */
+        public Builder spot(float innerDegrees, float outerDegrees) {
+            light("type", "spot");
+            light("inner_cone_angle", (double) innerDegrees);
+            return light("outer_cone_angle", (double) outerDegrees);
+        }
+
+        /** Its source a ball this many times its slot's size across from its centre (Unreal's SourceRadius). */
+        public Builder sourceRadius(float times) {
+            return light("source_radius", (double) times);
+        }
+
+        /** Its source a line this many times its slot's size long, along the slot's +Y (Unreal's SourceLength). Mesh slots only. */
+        public Builder sourceLength(float times) {
+            return light("source_length", (double) times);
+        }
+
         private Builder light(String field, Object value) {
             if (light == null) throw new IllegalStateException(field + " is a light's: build it with CgVfxSlotRenderer.light");
             light.put(field, value);
@@ -407,7 +460,8 @@ public final class CgVfxSlotRenderer {
             for (String key : List.of("id", "slot", "material")) if (tree.containsKey(key)) entry.put(key, tree.get(key));
             if (light != null) {
                 Map<String, Object> fields = new LinkedHashMap<>();
-                for (String key : List.of("light_color", "intensity", "attenuation_radius")) {
+                for (String key : List.of("type", "light_color", "intensity", "attenuation_radius", "source_radius",
+                        "source_length", "inner_cone_angle", "outer_cone_angle")) {
                     if (light.containsKey(key)) fields.put(key, light.get(key));
                 }
                 entry.put("light", fields);

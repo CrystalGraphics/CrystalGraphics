@@ -382,9 +382,10 @@ CgVfxLook look = CgEnergyWave.kamehameha().derive().slot(shell).build();
 ### A light on a slot
 
 A slot can light what is round it instead of drawing a material: a `light` in place of `material`, `size` and `mesh`.
-It is Unreal's point light (`LightColor`, `Intensity`, `AttenuationRadius`), added to the world's lights each frame
-the slot draws, and `bind` sets its fields by the same names. The ground under a beam floods with its colour, a wall
-beside a blast glows.
+It is Unreal's point light (`LightColor`, `Intensity`, `AttenuationRadius`, `SourceRadius`, `SourceLength`) or spot
+light (`InnerConeAngle`, `OuterConeAngle`), added to the world's lights each frame the slot draws, and `bind` sets its
+fields by the same names. The ground under a beam floods with its colour, a wall beside a blast glows, a lamp throws a
+cone.
 
 ```yaml
 slots:
@@ -395,6 +396,10 @@ slots:
     slot: crystalgraphics:wave/head
     light: { intensity: 4, attenuation_radius: 9 }
     bind: { light_color: user.glow }         # the effect's own colour, read every frame
+  - id: lamp
+    slot: mymod:bolt/lamp
+    light: { type: spot, inner_cone_angle: 10, outer_cone_angle: 25, intensity: 40, attenuation_radius: 30,
+             source_radius: 0.5 }
 ```
 
 ```java
@@ -402,6 +407,8 @@ CgVfxSlotRenderer glow = CgVfxSlotRenderer.light("light", CgVfxBlast.LIGHT)
         .lightColor(0xFFFFC080, 1f).intensity(4f).attenuationRadius(2.2f).build();
 CgVfxSlotRenderer head = CgVfxSlotRenderer.light("head_light", CgBeamBody.HEAD)
         .intensity(4f).attenuationRadius(9f).bind("light_color", CgEnergyWave.GLOW).build();
+CgVfxSlotRenderer lamp = CgVfxSlotRenderer.light("lamp", LAMP)               // LAMP = CgVfxSlot.mesh("mymod:bolt/lamp")
+        .spot(10f, 25f).intensity(40f).attenuationRadius(30f).sourceRadius(0.5f).build();
 ```
 
 | Field | Default | Means |
@@ -409,16 +416,24 @@ CgVfxSlotRenderer head = CgVfxSlotRenderer.light("head_light", CgBeamBody.HEAD)
 | `light_color` | white | its colour, linear; `{ argb, intensity }` is decoded from sRGB, then times its intensity and alpha |
 | `intensity` | 1 | how bright it is where it is the slot's size `s` away; past that it falls off as the square of the distance |
 | `attenuation_radius` | 1 | its reach, times `s`: nothing past it |
+| `source_radius` | 0 | its source a ball this many times `s` across: a surface it touches or sinks into is lit, where a point in the surface's plane only grazes it |
+| `source_length` | 0 | its source a line this many times `s` long, along the slot's +Y; mesh slots only |
+| `type` | `point` | `spot` for a cone along the slot's +Y; mesh slots only |
+| `inner_cone_angle`, `outer_cone_angle` | 0, 44 | a spot's half angles in degrees: full inside the inner, nothing past the outer |
 
 - **Where it is, and `s`**: on a mesh slot, at the draw's point, `s` the size the effect places the slot's sphere at;
   its brightness is also times the draw's strength, the third of its four numbers (a charge ball's fade, a blast
   light's burn). On a tube slot, a chain of tube lights along the path, one per half
   reach, following its bends, `s` each stretch's ring radius: the ground under a beam lit along its whole length.
 - **Only mesh and tube slots take one.** A light with a `material`, `size` or `mesh`, an entry with neither a material
-  nor a light, and a bind to any other field fail at load, naming the entry.
+  nor a light, a bind to any other field, cone angles on a point, and a spot or `source_length` on a tube slot fail at
+  load, naming the entry.
+- **Its axis** on a mesh slot is the transform's +Y, as the engine's spawn shapes': turn the slot's transform to aim a
+  spot.
 - **It fades with its effect** (`presence()`) and drops out at a quality tier below its `quality`, as a material does.
-- It lights the opaque scene behind each pixel, with no surface colour or facing: Minecraft keeps neither for its
-  world.
+- It lights the opaque scene behind each pixel, the surface's facing rebuilt from depth and its colour from the
+  lightmap: Minecraft keeps neither for its world. A particle's own light (a light renderer) takes its drawn radius as
+  its source's.
 
 ## Easy to get wrong
 

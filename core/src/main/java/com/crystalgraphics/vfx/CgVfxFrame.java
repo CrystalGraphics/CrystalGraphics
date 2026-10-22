@@ -415,7 +415,7 @@ public final class CgVfxFrame {
             if (skips(effect, placed)) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             if (placed.slotRenderer().light() != null) {
-                pointLight(effect, r, x, y, z, transform, presence * ez);
+                meshLight(effect, r, placed.slotRenderer().light().spot(), x, y, z, transform, presence * ez);
                 continue;
             }
             CgVfxTrace.count(DRAWS_MESH, 1);
@@ -428,10 +428,11 @@ public final class CgVfxFrame {
 
     /**
      * A slot light on a mesh slot, at {@code (x, y, z)} from the origin, its size the transform's x scale: its colour
-     * times {@code strength}, the effect's presence and {@code s²} ({@link CgVfxSlotRenderer.Light}).
+     * times {@code strength}, the effect's presence and {@code s²}; a spot and a source line along the transform's +Y
+     * ({@link CgVfxSlotRenderer.Light}).
      */
-    private void pointLight(CgVfxEffect<?> effect, CgVfxMaterials.Resolved r, float x, float y, float z,
-                            Matrix4fc transform, float strength) {
+    private void meshLight(CgVfxEffect<?> effect, CgVfxMaterials.Resolved r, boolean spot, float x, float y, float z,
+                           Matrix4fc transform, float strength) {
         float s = (float) Math.sqrt(transform.m00() * transform.m00() + transform.m01() * transform.m01()
                 + transform.m02() * transform.m02());
         CgVfxMaterials.light(effect, r, light);
@@ -439,7 +440,12 @@ public final class CgVfxFrame {
         if (reach <= 0f || k <= 0f) return;
         effect.bound(x, y, z, reach);
         world.lights().addLinear(effect.originX + x, effect.originY + y, effect.originZ + z, reach, light[0] * k,
-                light[1] * k, light[2] * k, 0f);
+                light[1] * k, light[2] * k, 0f).source(light[4] * s);
+        float ax = transform.m10(), ay = transform.m11(), az = transform.m12();
+        if (ax * ax + ay * ay + az * az > 0f) {
+            if (light[5] > 0f) world.lights().tube(ax, ay, az, light[5] * s);
+            if (spot) world.lights().spot(ax, ay, az, light[6], light[7]);
+        }
         CgVfxTrace.count(LIGHTS, 1);
     }
 
@@ -466,13 +472,13 @@ public final class CgVfxFrame {
             if (chord <= 0f) continue;
             effect.bound(x, y, z, reach);
             world.lights().addLinear(effect.originX + x, effect.originY + y, effect.originZ + z, reach, light[0] * k,
-                    light[1] * k, light[2] * k, 0f).tube(dx, dy, dz, chord);
+                    light[1] * k, light[2] * k, 0f).tube(dx, dy, dz, chord).source(light[4] * s);
             CgVfxTrace.count(LIGHTS, 1);
         }
     }
 
-    /** A slot light's colour and reach, filled per light. */
-    private final float[] light = new float[4];
+    /** A slot light's colour, reach, source radius and length and cone angles, filled per light. */
+    private final float[] light = new float[8];
 
     /**
      * Draws every layer on {@code slot}, a ribbons slot, on the ribbon mesh ({@code CgVfxRibbons}), its unit cube placed
