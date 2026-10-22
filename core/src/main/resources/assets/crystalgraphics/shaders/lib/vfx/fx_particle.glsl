@@ -40,54 +40,47 @@ float fx_particle_heading(vec3 velocity, vec3 right, vec3 up) {
     return atan(dot(velocity, up), dot(velocity, right) + 1.0e-6);
 }
 
-// How a quad faces, the plane fx_particle_facing answers. CAMERA lies in the eye's plane (Godot's billboard, bevy_hanabi's
-// ParallelCameraDepthPlane); UPRIGHT turns round world up alone (Godot's FIXED_Y), for flames and trees; AXIS lies flat
-// across a fixed axis, a ring on the ground. POSITION_UP and ALIGNED are Niagara's, what a sprite renderer names
-// (NiagaraSpriteVertexFactory.ush, GetTangents), in a right-handed Y-up frame: POSITION_UP turns toward the eye round
-// world up (FaceCameraPosition), ALIGNED stands its top along the motion (an aligned sprite), stretched only where the
-// draw asks (_cg_Stretch: a sprite size scaled by speed).
+// How a quad faces: Niagara's sprite facing and alignment (NiagaraSpriteVertexFactory.ush, GetTangents), in a
+// right-handed Y-up frame. The factory's _cg_Facing is facing + 8 * alignment.
+//   facing: CAMERA lies in the eye's plane, CAMERA_PLANE too (the same without a headset's roll), CUSTOM faces a vector
+//           (_cg_FacingVector: flat across it, a ring on the ground), CAMERA_POSITION turns toward the eye round world up.
+//   alignment: UNALIGNED, VELOCITY stands its top along the motion (stretched only where the draw asks, _cg_Stretch),
+//           CUSTOM stands it along a vector (_cg_AlignmentVector: upright flames on world up).
 #define FX_FACE_CAMERA 0
-#define FX_FACE_UPRIGHT 2
-#define FX_FACE_AXIS 4
-#define FX_FACE_POSITION_UP 5
-#define FX_FACE_ALIGNED 6
+#define FX_FACE_CAMERA_PLANE 1
+#define FX_FACE_CUSTOM 2
+#define FX_FACE_CAMERA_POSITION 3
+#define FX_ALIGN_UNALIGNED 0
+#define FX_ALIGN_VELOCITY 1
+#define FX_ALIGN_CUSTOM 2
 
-// The quad's axes for mode at centre: right along its length, up across it. eye is the camera's position, eyeRight and
-// eyeUp its axes, axis the AXIS mode's normal. Ported from Godot's billboard modes (material.cpp) and bevy_hanabi's
-// OrientModifier (MIT both); a degenerate case falls back to the eye's plane.
-void fx_particle_facing(int mode, vec3 centre, vec3 velocity, vec3 axis, vec3 eye, vec3 eyeRight, vec3 eyeUp,
-                        out vec3 right, out vec3 up) {
+// The quad's axes at centre, right along its length and up across it, for facing and alignment: facingVector and
+// alignmentVector their CUSTOM vectors, eye the camera's position, eyeRight and eyeUp its axes. A degenerate case (a
+// vector along the one it is crossed with, a particle at rest aligned to its motion) keeps the eye's plane.
+void fx_particle_facing(int facing, int alignment, vec3 centre, vec3 velocity, vec3 facingVector, vec3 alignmentVector,
+                        vec3 eye, vec3 eyeRight, vec3 eyeUp, out vec3 right, out vec3 up) {
     right = eyeRight;
     up = eyeUp;
-    vec3 toEye = eye - centre;
-    if (mode == FX_FACE_UPRIGHT) {
-        vec3 x = cross(vec3(0.0, 1.0, 0.0), toEye);
-        if (dot(x, x) > 1.0e-8) {
-            right = normalize(x);
-            up = vec3(0.0, 1.0, 0.0);
-        }
-    } else if (mode == FX_FACE_POSITION_UP) {
-        vec3 z = normalize(toEye);
-        vec3 x = cross(vec3(0.0, 1.0, 0.0), z);
-        if (dot(x, x) > 1.0e-8) {
-            right = normalize(x);
-            up = cross(z, right);
-        }
-    } else if (mode == FX_FACE_ALIGNED) {
+    vec3 toEye = normalize(eye - centre);
+    vec3 faces = facing == FX_FACE_CUSTOM ? normalize(facingVector) : toEye;
+    if (alignment != FX_ALIGN_UNALIGNED) {
         float speed = length(velocity);
-        if (speed > 1.0e-5) {
-            vec3 y = velocity / speed;
-            vec3 x = cross(y, normalize(toEye));
-            if (dot(x, x) > 1.0e-8) {
-                right = normalize(x);
-                up = y;
-            }
-        }
-    } else if (mode == FX_FACE_AXIS) {
-        vec3 n = normalize(axis);
-        vec3 x = cross(abs(n.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0), n);
+        if (alignment == FX_ALIGN_VELOCITY && speed <= 1.0e-5) return;
+        vec3 along = alignment == FX_ALIGN_CUSTOM ? normalize(alignmentVector) : velocity / speed;
+        vec3 x = cross(along, faces);
+        if (dot(x, x) <= 1.0e-8) return;
         right = normalize(x);
-        up = cross(n, right);
+        up = facing == FX_FACE_CUSTOM ? cross(faces, right) : along;
+    } else if (facing == FX_FACE_CUSTOM) {
+        vec3 x = cross(eyeUp, faces);
+        if (dot(x, x) <= 1.0e-8) return;
+        right = normalize(x);
+        up = cross(faces, right);
+    } else if (facing == FX_FACE_CAMERA_POSITION) {
+        vec3 x = cross(vec3(0.0, 1.0, 0.0), toEye);
+        if (dot(x, x) <= 1.0e-8) return;
+        right = normalize(x);
+        up = cross(toEye, right);
     }
 }
 

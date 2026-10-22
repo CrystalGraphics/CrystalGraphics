@@ -203,7 +203,7 @@ public class CgMaterialDefinitionsTest {
     public void aMaterialBuiltInJavaIsTheOneItsFileLoads() {
         CgMaterialDefinitions.archetypes(ARCHETYPES);
         try {
-            CgMaterialDefinition.Builder b = CgMaterialDefinition.builder("test:glow", FX)
+            CgMaterialDefinition.Builder b = CgMaterialDefinition.of("test:glow", FX)
                     .blend(CgBlendMode.ADDITIVE).twoSided().keyword("SOFT").color("_Color", 0x80FF8040, 2f)
                     .value("_Speed", 1.5f).texture("_MainTex", "test:textures/noise.png", CgSampler.Filter.BILINEAR,
                             CgSampler.Address.WRAP);
@@ -218,7 +218,7 @@ public class CgMaterialDefinitionsTest {
             assertEquals(Arrays.asList("_v", "shader", "state", "keywords", "values", "textures"),
                     new ArrayList<>(b.tree().keySet()));
             try {
-                CgMaterialDefinition.builder("test:bad", FX).value("_Nope", 1f).build();
+                CgMaterialDefinition.of("test:bad", FX).value("_Nope", 1f).build();
                 fail("an undeclared property must fail at build");
             } catch (CgAssetException expected) {
                 assertTrue(expected.getMessage(), expected.getMessage().contains("_Nope"));

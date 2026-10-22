@@ -29,7 +29,8 @@ import java.util.SplittableRandom;
  * static final CgMesh SWIRL = CgProceduralMesh.ribbons(CgProceduralMesh.cone(1f, 3f))
  *         .count(3).twist(1.5f).width(0.5f, 0.05f).build();
  *
- * layer.on(SLOT).mesh(SLASH)                      // drawn on a mesh slot (CgVfxLayer.mesh)
+ * CgMeshLoader.provide("mymod:models/slash", () -> CgMeshLods.of(SLASH));        // named for a renderer
+ * CgVfxSlotRenderer.of("slash", SLOT).material(FLOW).mesh("mymod:models/slash").build();   // drawn on a mesh slot
  * }</pre>
  *
  * <ul>

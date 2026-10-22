@@ -64,7 +64,7 @@ public class CgVfxRenderersTest {
                 Map.of("id", "r1", "kind", "mesh", "meshes", Map.of("prefab", "test:prefabs/rock")),
                 Map.of("id", "r1", "kind", "ribbon", "shape", "tube"),
                 Map.of("id", "r1", "kind", "trails", "taper", 0.5),
-                Map.of("id", "r1", "kind", "sprite", "facing", "custom"),
+                Map.of("id", "r1", "kind", "sprite", "facing", "camera_distance_blend"),
                 Map.of("id", "r1", "kind", "sprite", "sort", "spawn_order"))) {
             IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                     () -> CgVfxRenderers.compile("sparks", entry));
@@ -84,8 +84,8 @@ public class CgVfxRenderersTest {
     @Test
     public void itsMaterialIsTheDefinitionItsAssetCompiledFirst() {
         CgAssetKinds.register();
-        CgMaterialDefinition spark = CgMaterialDefinition.builder("test:materials/spark", SPRITE).usage(CgMaterialUsage.SPRITES)
-                .blend(CgBlendMode.ADDITIVE).build();
+        CgMaterialDefinition spark = CgMaterialDefinition.of("test:materials/spark", SPRITE).usage(CgMaterialUsage.SPRITES)
+                                                         .blend(CgBlendMode.ADDITIVE).build();
         CgVfxRendererProperties fromFile = CgVfxRenderers.compile("sparks",
                 Map.of("id", "r1", "kind", "sprite", "material", "test:materials/spark"),
                 (kind, id) -> kind == CgLookKinds.MATERIAL && id.equals(spark.id()) ? spark : null);
@@ -101,7 +101,7 @@ public class CgVfxRenderersTest {
     @Test
     public void aMaterialIsDrawnOnlyAsItsUsageSays() {
         CgAssetKinds.register();
-        CgMaterialDefinition spark = CgMaterialDefinition.builder("test:materials/spark", SPRITE)
+        CgMaterialDefinition spark = CgMaterialDefinition.of("test:materials/spark", SPRITE)
                 .usage(CgMaterialUsage.SPRITES, CgMaterialUsage.RIBBONS).build();
         assertEquals(EnumSet.of(CgMaterialUsage.SPRITES, CgMaterialUsage.RIBBONS), spark.usage());
         assertEquals(List.of("sprites", "ribbons"), spark.resolved().get("usage"));
@@ -110,7 +110,7 @@ public class CgVfxRenderersTest {
                 () -> CgVfxRenderers.mesh("r1").material(spark).build());
         assertTrue(outside.getMessage(), outside.getMessage().contains("as mesh_particles"));
         RuntimeException unserved = assertThrows(RuntimeException.class,
-                () -> CgMaterialDefinition.builder("test:materials/raw", SPRITE).build());
+                () -> CgMaterialDefinition.of("test:materials/raw", SPRITE).build());
         assertTrue("a particle program draws no static mesh: " + unserved.getMessage(),
                 unserved.getMessage().contains("static_mesh"));
     }

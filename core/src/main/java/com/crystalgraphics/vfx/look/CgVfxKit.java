@@ -1,7 +1,7 @@
 package com.crystalgraphics.vfx.look;
 
-import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -9,14 +9,15 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * A named piece of a look: layers, emitters, the schemas their parameters live on, and kits inside it. Looks are made of
- * kits, and a look made from another adds, drops or swaps them by name.
+ * A named piece of a look: slot renderers, emitters (whose renderers draw their particles), the schemas their
+ * parameters live on, and kits inside it. Looks are made of kits, and a look made from another adds, drops or swaps them
+ * by name.
  *
  * <pre>{@code
  * public static final CgVfxKit BANDS = CgVfxKit.of("mymod:wave/bands")
- *         .params(BANDS_SCHEMA)                      // the parameters its layers read
- *         .layer(FLAT).layer(FLAMES).layer(SLEEVES)  // drawn in this order within their role
- *         .emitter(SPARKLES).layer(SPARKLE_LAYER)
+ *         .params(BANDS_SCHEMA)                                 // the parameters its renderers bind
+ *         .slot(CgVfxSlotRenderer.of("flat", CgBeamBody.BODY).material(FLAT).bind("_Color", TOP).build())
+ *         .emitter(SPARKLES)                                    // drawn by its own renderers
  *         .build();
  *
  * CgVfxLook mine = CgEnergyWave.kamehameha().derive()
@@ -26,7 +27,7 @@ import java.util.Objects;
  * }</pre>
  *
  * <ul>
- *   <li>A kit inside another can be dropped alone: {@code without(child)} removes the child's layers and leaves its
+ *   <li>A kit inside another can be dropped alone: {@code without(child)} removes the child's parts and leaves its
  *       parent's.</li>
  *   <li>Dropping a kit keeps its schemas in the look: the effect may still read their parameters.</li>
  *   <li>A kit whose emitters are authored at one size of its effect says so ({@link Builder#scalesWith}): its effect
@@ -36,7 +37,7 @@ import java.util.Objects;
 public final class CgVfxKit {
 
     private final String name;
-    /** In order: each a {@link CgVfxLayer}, a {@link CgVfxEmitter} or a {@link CgVfxKit}. */
+    /** In order: each a {@link CgVfxSlotRenderer}, a {@link CgVfxEmitter} or a {@link CgVfxKit}. */
     final List<Object> parts;
     final List<CgVfxSchema> schemas;
     private final CgVfxParam.Scalar scalesWith;
@@ -58,10 +59,10 @@ public final class CgVfxKit {
         return name;
     }
 
-    /** Its layers, its children's included, in order. */
-    public List<CgVfxLayer> layers() {
-        List<CgVfxLayer> out = new ArrayList<>();
-        collect(this, out, CgVfxLayer.class);
+    /** Its slot renderers, its children's included, in order. */
+    public List<CgVfxSlotRenderer> slots() {
+        List<CgVfxSlotRenderer> out = new ArrayList<>();
+        collect(this, out, CgVfxSlotRenderer.class);
         return out;
     }
 
@@ -124,18 +125,13 @@ public final class CgVfxKit {
             this.name = Objects.requireNonNull(name, "name");
         }
 
-        public Builder layer(CgVfxLayer layer) {
-            parts.add(Objects.requireNonNull(layer, "layer"));
-            return this;
-        }
-
-        /** An emitter its effect plays, and whose particles its layers draw ({@code on(emitter)}). */
         /** A slot renderer: what one of its behaviour's slots draws. */
         public Builder slot(CgVfxSlotRenderer renderer) {
             parts.add(Objects.requireNonNull(renderer, "renderer"));
             return this;
         }
 
+        /** An emitter its effect plays, drawn by its own renderers. */
         public Builder emitter(CgVfxEmitter emitter) {
             parts.add(Objects.requireNonNull(emitter, "emitter"));
             return this;
@@ -147,7 +143,7 @@ public final class CgVfxKit {
             return this;
         }
 
-        /** Schemas whose parameters its layers bind and its effect reads. */
+        /** Schemas whose parameters its renderers bind and its effect reads. */
         public Builder params(CgVfxSchema... schemas) {
             for (CgVfxSchema s : schemas) if (!this.schemas.contains(s)) this.schemas.add(s);
             return this;

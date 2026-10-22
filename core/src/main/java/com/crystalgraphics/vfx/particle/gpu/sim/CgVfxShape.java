@@ -16,6 +16,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxModuleWords;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -29,7 +30,7 @@ import java.util.regex.Pattern;
 
 /**
  * What makes two emitter definitions share a pool and its kernels: their module kinds in stack order, what each kind
- * declares it takes, the renderer, and their events' triggers with whether each spawns children and reports to the
+ * declares it takes, its draw layout, and their events' triggers with whether each spawns children and reports to the
  * CPU (and whether each fires at a clip node), and its feed tier: how many events deep its particles are spawned. Never a
  * number, so tuning a definition recompiles nothing. Also the layout of a pool's rows, which follows from
  * it. A module's textures are part of it too, so each sampled texture has a pool of its own; its kernels are keyed by
@@ -74,7 +75,7 @@ public final class CgVfxShape {
     private final String key, kernelKey;
     private final CgTexture[][] textures;
     private final boolean[][] volumes;
-    private final CgVfxEmitter.Renderer renderer;
+    private final CgVfxDrawLayout drawLayout;
     private final String[] kinds, sources, files;
     private final boolean[] afterSolve;
     private final int[] params, paramAt, lanesAt;
@@ -114,7 +115,7 @@ public final class CgVfxShape {
         this.tier = tier;
         List<? extends CgVfxGpuModule> modules = emitter.modules();
         int n = modules.size();
-        renderer = emitter.renderer();
+        drawLayout = emitter.drawLayout();
         kinds = new String[n];
         sources = new String[n];
         files = new String[n];
@@ -126,7 +127,7 @@ public final class CgVfxShape {
         world = new CgVfxWorldInput[n][];
         textures = new CgTexture[n][];
         volumes = new boolean[n][];
-        StringBuilder key = new StringBuilder(renderer.name()), identity = new StringBuilder();
+        StringBuilder key = new StringBuilder(drawLayout.name()), identity = new StringBuilder();
         int param = CgVfxGpuEmitter.SPAWN_VECTORS, lane = CgVfxParticlePool.INSTANCE_HEADER;
         for (int i = 0; i < n; i++) {
             CgVfxGpuModule m = modules.get(i);
@@ -355,8 +356,8 @@ public final class CgVfxShape {
         return kernelKey;
     }
 
-    public CgVfxEmitter.Renderer renderer() {
-        return renderer;
+    public CgVfxDrawLayout drawLayout() {
+        return drawLayout;
     }
 
     /** How many modules the stack has. */

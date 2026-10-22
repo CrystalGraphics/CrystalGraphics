@@ -4,10 +4,12 @@ import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxElement;
 import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.look.CgVfxKit;
-import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.material.CgMaterialRegistry;
+import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 
 /**
  * Smoke and fire as a fluid an effect owns: NVIDIA Flow's grid simulation (BSD-3-Clause, NVIDIA-Omniverse/PhysX
@@ -208,8 +210,12 @@ public final class CgVfxFluid extends CgVfxElement {
      * }</pre>
      */
     public static CgVfxKit kit(String name, CgVfxColormap colormap) {
+        // The colour map is made in code: provided under the kit's name, so its material names it as a texture.
+        String map = name + "/colormap";
+        CgMaterialRegistry.provide(map, colormap::texture);
         return CgVfxKit.of(name).params(SCHEMA)
-                .layer(CgVfxLayer.of(SHADER).on(SLOT).role(CgVfxLayer.Role.SMOKE).texture("_Colormap", colormap::texture)
+                .slot(CgVfxSlotRenderer.of("fluid", SLOT).material(CgMaterialDefinition.of(name + "/fluid", SHADER)
+                                .texture("_Colormap", map).build())
                         .bind("_Attenuation", ATTENUATION).bind("_ShadowFactor", SHADOW_FACTOR)
                         .bind("_ColormapMin", COLORMAP_MIN).bind("_ColormapMax", COLORMAP_MAX)
                         .bind("_Scattering", SCATTERING).bind("_Detail", DETAIL).bind("_DetailSize", DETAIL_SIZE).build())

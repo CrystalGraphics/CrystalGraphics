@@ -1,6 +1,9 @@
 package com.crystalgraphics.vfx.particle;
 
+import com.crystalgraphics.vfx.particle.renderer.CgVfxArcRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxSequenceRendererProperties;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
@@ -10,6 +13,7 @@ import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
 import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
@@ -86,24 +90,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
-    /** How a renderer draws the particles of this emitter. */
-    public enum Renderer {
-        /** A camera-facing quad per particle, stretched along its motion if the layer asks: specks, sparkles. */
-        QUADS,
-        /** A mesh per particle, each its own sorted draw: billows. */
-        MESHES,
-        /** A stroke per particle, an arc round the source through the particle: ink streaks. */
-        ARCS,
-        /**
-         * A clip per particle ({@link Builder#sequence}): its prefab's parts drawn where its nodes are at the particle's
-         * age, a draw a part: a shuriken's spinning blades and rings.
-         */
-        SEQUENCE
-    }
-
     final String name;
     private final CgVfxSlot slot;
-    final Renderer renderer;
+    final CgVfxDrawLayout drawLayout;
     final List<CgVfxRendererProperties> renderers;
     final boolean optional, local;
     final CgVfxEmitterState state;
@@ -168,10 +157,10 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     private CgVfxEmitter(Builder b) {
         name = b.name;
         slot = CgVfxSlot.particles(b.name);
-        renderer = b.renderer;
         renderers = List.copyOf(b.renderers);
         optional = b.optional;
         local = b.local;
+        drawLayout = drawLayout(b.name, renderers, b.clip);
         state = b.state;
         capacity = b.capacity;
         // Stable: two at one time fire in the order given.
@@ -329,8 +318,32 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         return slot;
     }
 
-    public Renderer renderer() {
-        return renderer;
+    /** How its pool lays out what it draws: from its renderers and its clip ({@link CgVfxDrawLayout}). */
+    @Override
+    public CgVfxDrawLayout drawLayout() {
+        return drawLayout;
+    }
+
+    /**
+     * The layout {@code renderers} draw from: a clip's parts, meshes, arcs, else quads; renderers needing two layouts
+     * fail, since one pool lays its records out one way.
+     */
+    private static CgVfxDrawLayout drawLayout(String name, List<CgVfxRendererProperties> renderers, CgVfxNodeClip clip) {
+        CgVfxDrawLayout layout = clip != null ? CgVfxDrawLayout.SEQUENCE : null;
+        for (CgVfxRendererProperties r : renderers) {
+            CgVfxDrawLayout needs = r instanceof CgVfxSequenceRendererProperties ? CgVfxDrawLayout.SEQUENCE
+                    : r instanceof CgVfxMeshRendererProperties ? CgVfxDrawLayout.MESHES
+                    : r instanceof CgVfxArcRendererProperties ? CgVfxDrawLayout.ARCS : CgVfxDrawLayout.QUADS;
+            if (layout != null && layout != needs) {
+                throw new IllegalStateException(name + " has renderers drawing " + layout + " and " + needs
+                        + ": one emitter's particles lay out one way; drawing them both ways is not built yet");
+            }
+            layout = needs;
+        }
+        if (layout == CgVfxDrawLayout.SEQUENCE && clip == null) {
+            throw new IllegalStateException(name + " has a sequence renderer, but plays no clip: use sequence(clip)");
+        }
+        return layout == null ? CgVfxDrawLayout.QUADS : layout;
     }
 
     /** Its renderers ({@code renderers:}), in their order: how its particles draw, each with its own material. */
@@ -338,7 +351,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         return renderers;
     }
 
-    /** The clip each particle plays, a {@link Renderer#SEQUENCE} emitter's; null for any other. */
+    /** The clip each particle plays, a {@link CgVfxDrawLayout#SEQUENCE} emitter's; null for any other. */
     @Override
     @Nullable
     public CgVfxNodeClip clip() {
@@ -631,7 +644,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     public static final class Builder {
 
         private String name;
-        private Renderer renderer = Renderer.QUADS;
         private final List<CgVfxRendererProperties> renderers = new ArrayList<>();
         private boolean optional, local;
         private CgVfxEmitterState state = CgVfxEmitterState.DEFAULT;
@@ -670,7 +682,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
         private Builder(CgVfxEmitter e) {
             name = e.name;
-            renderer = e.renderer;
             renderers.addAll(e.renderers);
             optional = e.optional;
             local = e.local;
@@ -724,11 +735,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
-        public Builder renderer(Renderer renderer) {
-            this.renderer = renderer;
-            return this;
-        }
-
         /**
          * Draws its particles with {@code renderer} too, after those added before: a renderer from
          * {@code CgVfxRenderers}, as its file's {@code renderers:} would hold it.
@@ -739,7 +745,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         }
 
         /**
-         * Each particle plays {@code clip} at its age, drawn by {@link Renderer#SEQUENCE}: its prefab's parts where its
+         * Each particle plays {@code clip} at its age, drawn as {@link CgVfxDrawLayout#SEQUENCE}: its prefab's parts where its
          * nodes are, sized by the particle's size, turned with its effect; its bursts and streams spawn their children
          * at their nodes, as events after this emitter's own.
          *
@@ -765,7 +771,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             if (!(playRate > 0f)) throw new IllegalArgumentException(name + " plays its clip at " + playRate);
             this.clip = Objects.requireNonNull(clip, "clip");
             this.playRate = playRate;
-            this.renderer = Renderer.SEQUENCE;
             return this;
         }
 
@@ -1103,13 +1108,13 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         }
 
         /**
-         * Keeps each particle's last {@code points} positions, one a particle step (60 a second), so a layer with
-         * {@code trails()} on it draws a trail behind every particle: sparks streaking along curved paths, embers swirling.
+         * Keeps each particle's last {@code points} positions, one a particle step (60 a second), so a trails renderer
+         * draws a trail behind every particle: sparks streaking along curved paths, embers swirling.
          * 2 to 64; a trail lasts {@code points - 1} steps.
          *
          * <pre>{@code
          * CgVfxEmitter.builder("embers").capacity(400).trail(16)...   // a quarter of a second behind each
-         * CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/streaks.shader").on(EMBERS).trails().size(0.04f)
+         *         .renderer(CgVfxRenderers.trails("streaks").material(STREAKS).field("points", 16).build())
          * }</pre>
          */
         public Builder trail(int points) {
@@ -1255,11 +1260,10 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         }
 
         /**
-         * What an emitter file does not carry yet, taken from {@code t}: its renderer, trail and clip (P8), its events
+         * What an emitter file does not carry yet, taken from {@code t}: its trail and clip (P8), its events
          * (P9) and its bindings (P6.3).
          */
         Builder carry(CgVfxEmitter t) {
-            renderer = t.renderer;
             trailPoints = t.trailPoints;
             clip = t.clip;
             playRate = t.playRate;
@@ -1462,9 +1466,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             }
             if (state.loops() > 1 && !(state.shortestPeriod() > 0f)) {
                 throw new IllegalStateException(name + " loops in no time: give its loops a duration or a delay");
-            }
-            if ((renderer == Renderer.SEQUENCE) != (clip != null)) {
-                throw new IllegalStateException(name + ": a SEQUENCE emitter plays a clip, and only one does: use sequence(clip)");
             }
             if (clip != null) {
                 for (CgVfxModule m : modules) {

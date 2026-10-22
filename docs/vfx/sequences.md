@@ -10,8 +10,9 @@ Niagara's GPU emitters spawning from another's particles.
 ## A clip
 
 ```java
-static final CgVfxLayer.Builder BLADE = CgVfxLayer.of("crystalgraphics:shaders/vfx/sequence/part.shader")
-        .texture("_MainTex", BLADE_TEXTURE);
+static final CgMaterialDefinition BLADE = CgMaterialDefinition.of("mymod:materials/blade",
+        "crystalgraphics:shaders/vfx/sequence/part.shader").usage(CgMaterialUsage.MESH_PARTICLES)
+        .texture("_MainTex", "mymod:textures/vfx/blade.png").build();
 
 static final CgVfxPrefab SPINNER = CgVfxPrefab.builder("mymod:spinner")
         .node("hub")
@@ -40,7 +41,7 @@ static final CgVfxNodeClip SPIN = CgVfxNodeClip.of(SPINNER, 60)                 
 - **Rotations are Euler degrees, x then y then z intrinsic** (CC2's order, JOML's `rotateXYZ`). A channel no key sets is
   the node's rest; before its first key a channel holds that key's value, after its last the last's.
 - **`LINEAR` keys interpolate, `CONSTANT` keys step** at each key's frame.
-- **A material number no key sets is the material's own**: the layer's value, which the clip leaves alone.
+- **A material number no key sets is the material's own**: its value, which the clip leaves alone.
 
 ## Playing it on particles
 
@@ -51,17 +52,14 @@ static final CgVfxEmitter SHURIKENS = CgVfxEmitter.builder("shurikens").sequence
         .build();
 
 static final CgVfxLook LOOK = CgVfxLook.builder(CgVfxSchema.of("mymod:shurikens"))
-        .with(CgVfxKit.of("mymod:shurikens").emitter(SHURIKENS)
-                .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/spark.shader").on(SPARKS).build())
-                .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/dust.shader").on(SMOKE).build())
-                .build(), SPINNER.kit())
+        .with(CgVfxKit.of("mymod:shurikens").emitter(SHURIKENS).build(), SPINNER.kit())
         .build();
 
 VFX.play(new CgVfxSystemInstance<>(LOOK, x, y, z));
 ```
 
-- **The children are drawn by layers on their slots**, not listed as emitters: a system instance starts every emitter its look
-  lists.
+- **The children draw through their own renderers**, given where they are made (`SPARKS` and `SMOKE` each with a
+  `renderer(...)`), and are not listed in the look: a system instance starts every emitter its look lists.
 
 - **The look draws the prefab's kit**: each part is drawn with its material on every particle, where its node is at the
   particle's age times the play rate, held at the clip's last frame.
@@ -98,7 +96,7 @@ static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks").life(0.5f, 0.8
 
 ## Writing a part's material
 
-`crystalgraphics:shaders/vfx/sequence/part.shader` is CC2's basic part: its texture through layer 0's UV window,
+`crystalgraphics:shaders/vfx/sequence/part.shader` is CC2's basic part: its texture through its first UV window,
 tinted, faded by its node's opacity, alpha-tested by `_Clip`, `_Glare` of it glowing, premultiplied. A material of your
 own draws on clip particles by declaring the `SEQUENCE` kind and placing its vertices by the node:
 

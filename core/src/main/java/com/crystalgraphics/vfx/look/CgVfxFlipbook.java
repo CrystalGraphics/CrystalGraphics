@@ -14,8 +14,8 @@ import java.nio.ByteOrder;
  * the frame runs over the particle's life, loops at a rate, or is drawn at random.
  *
  * <pre>{@code
- * CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/sprite.shader").on(PUFFS).texture("_Sheet", SMOKE)
- *         .flipbook(CgVfxFlipbook.grid(8, 8))                     // 64 frames over each puff's life, blended
+ * CgVfxRenderers.sprite("puffs").material(SMOKE_SPRITE)
+ *         .subImage(Map.of("size", List.of(8, 8), "blend", true))   // 64 frames over each puff's life, blended
  *         .build();
  * }</pre>
  *
@@ -141,7 +141,7 @@ public final class CgVfxFlipbook {
 
     /**
      * What a shader's {@code _SubImage} holds: columns (a table's frames), rows (0 for a table), blends, random start.
-     * {@link CgVfxLayer.Builder#flipbook} sets it; a material of your own sets it by hand.
+     * A sprite renderer's {@code sub_image} sets it; a material of your own sets it by hand.
      */
     public float[] subImage() {
         return new float[] {columns, rows, blend ? 1f : 0f, randomStart ? 1f : 0f};

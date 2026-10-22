@@ -1,6 +1,6 @@
 // Analytic volumes around a path, evaluated per pixel against the view ray: a hard-edged core round the rings of one
 // CgVfxTube chunk, traced through each segment between them, so a bent chunk is right from any side. Drawn on the
-// chunk's closed hull (CgVfxLayer.closed, Cull FRONT), which every ray through the core leaves by.
+// chunk's closed hull ("Tube" = "Closed", Cull FRONT), which every ray through the core leaves by.
 #pragma once
 
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"

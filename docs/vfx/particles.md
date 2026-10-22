@@ -26,7 +26,7 @@ renderers:
 ```
 
 ```java
-CgMaterialDefinition sparks = CgMaterialDefinition.builder("mymod:materials/fx/sparks",
+CgMaterialDefinition sparks = CgMaterialDefinition.of("mymod:materials/fx/sparks",
         "crystalgraphics:shaders/vfx/particle/sprite.shader").blend(CgBlendMode.ADDITIVE).build();
 CgVfxEmitter emitter = CgVfxEmitter.builder("sparks")
         .renderer(CgVfxRenderers.sprite("r1").material(sparks).alignment("velocity")
@@ -49,8 +49,13 @@ CgVfxEmitter emitter = CgVfxEmitter.builder("sparks")
 - **Values on a property the material reads per draw** are constants of the row; **keywords and other values** make a
   child material, shared by every renderer with the same overrides.
 - **What is not drawn yet fails at load by name**, rather than drawing as something else: the `system`, `anim_trail`,
-  `beam` and `light` kinds, a material named by a user parameter, and fields such as a custom sprite facing, a
-  pivot off the middle, a rect-table `sub_image`, a mesh prefab or `locked_axis`, a ribbon's `shape: tube`.
+  `beam` and `light` kinds, a material named by a user parameter, and fields such as a `camera_distance_blend` facing, a
+  pivot off the middle, a rect-table `sub_image`, a mesh prefab or `locked_axis`, a ribbon's `shape: tube`, an adaptive
+  ribbon tessellation (`custom` at an `angle`) or its `tension`.
+- **Its renderers decide its draw layout**: a mesh renderer lays its particles out as meshes, an arc renderer as arcs,
+  every other kind as quads, and an emitter whose renderers need two layouts fails at build.
+- **A ribbon's tessellation** is Niagara's: `{ mode: disabled }` one quad between two particles, `{ mode: custom,
+  factor: n }` n of them, `automatic` (or none) the engine's own.
 - **Order** is the hint, then the look's order; a renderer whose material has a Distortion pass bends what draws before
   it, and every other draws after its effect's own bend.
 
@@ -102,7 +107,8 @@ stopped. `once(seconds)` ends the loop after that long: its rate stops, and a bu
 ```java
 // Kakarot's beam core: one mesh particle renewed every 2.9 s for as long as the beam plays
 static final CgVfxEmitter CORE = CgVfxEmitter.builder("core").state(CgVfxEmitterState.infinite(2.9f))
-        .renderer(CgVfxEmitter.Renderer.MESHES).capacity(4).burst(0f, 1).life(2.9f, 2.9f).build();
+        .renderer(CgVfxRenderers.mesh("core").material(CORE_MATERIAL).build())
+        .capacity(4).burst(0f, 1).life(2.9f, 2.9f).build();
 
 // Three puffs half a second apart, then done
 static final CgVfxEmitter PUFFS = CgVfxEmitter.builder("puffs").state(CgVfxEmitterState.loops(3, 0.5f))
@@ -162,9 +168,9 @@ A burst can roll its count each loop, and fire in only some loops:
 
 ## How each particle looks: colour and size per axis
 
-An emitter gives each particle a colour and a size on each axis, which **multiply what its layers draw**, as Niagara's
-Initialize Particle and its Scale modules do. A layer's `_Color` stays the look's palette; the emitter's colour tints
-it per particle and over its life.
+An emitter gives each particle a colour and a size on each axis, which **multiply what its renderers draw**, as
+Niagara's Initialize Particle and its Scale modules do. A renderer's bound `_Color` stays the look's palette; the
+emitter's colour tints it per particle and over its life.
 
 | Niagara | Here | What it is |
 |---|---|---|
@@ -185,7 +191,8 @@ static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks").state(CgVfxEmi
         .build();
 
 // A beam's streak: one mesh particle six times as long as it is wide, stretching to nine as it lives
-static final CgVfxEmitter STREAK = CgVfxEmitter.builder("streak").renderer(CgVfxEmitter.Renderer.MESHES)
+static final CgVfxEmitter STREAK = CgVfxEmitter.builder("streak")
+        .renderer(CgVfxRenderers.mesh("streak").material(STREAK_MATERIAL).build())
         .state(CgVfxEmitterState.ONCE).capacity(4).burst(0f, 1).life(1f, 1f).size(0.5f, 0.5f).scale(1f, 1f, 6f)
         .scaleOverLife(CgKeyframes.constant(1f), CgKeyframes.constant(1f),
                 CgKeyframes.start(0f, 1f).to(1f, 1.5f, CgEasings.OUT_QUAD).build())

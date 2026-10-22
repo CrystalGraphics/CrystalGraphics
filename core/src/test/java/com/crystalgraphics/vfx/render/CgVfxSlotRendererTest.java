@@ -26,7 +26,7 @@ public class CgVfxSlotRendererTest {
 
     private static CgMaterialDefinition material(String id, String shader) {
         CgAssetKinds.register();
-        return CgMaterialDefinition.builder(id, shader).build();
+        return CgMaterialDefinition.of(id, shader).build();
     }
 
     private static CgAssetCompiler.Dependencies deps(CgMaterialDefinition... materials) {

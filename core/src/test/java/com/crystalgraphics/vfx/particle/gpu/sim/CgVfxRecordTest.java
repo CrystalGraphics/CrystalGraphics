@@ -78,7 +78,7 @@ public class CgVfxRecordTest {
     }
 
     private static CgVfxEmitter.Builder emitter(String name) {
-        return CgVfxEmitter.builder(name).state(CgVfxEmitterState.ONCE).renderer(CgVfxEmitter.Renderer.QUADS)
+        return CgVfxEmitter.builder(name).state(CgVfxEmitterState.ONCE)
                 .capacity(64).burst(0f, 64).life(1f, 2f);
     }
 

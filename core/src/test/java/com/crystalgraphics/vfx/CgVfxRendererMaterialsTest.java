@@ -29,11 +29,11 @@ public class CgVfxRendererMaterialsTest {
     @BeforeClass
     public static void kinds() {
         CgAssetKinds.register();
-        spark = CgMaterialDefinition.builder("test:materials/spark", SPRITE).usage(CgMaterialUsage.SPRITES).blend(CgBlendMode.ADDITIVE).build();
+        spark = CgMaterialDefinition.of("test:materials/spark", SPRITE).usage(CgMaterialUsage.SPRITES).blend(CgBlendMode.ADDITIVE).build();
     }
 
     @Test
-    public void aLookPlacesRenderersAfterItsLayersByHint() {
+    public void aLookPlacesRenderersByHint() {
         CgVfxEmitter sparks = CgVfxEmitter.builder("sparks")
                 .renderer(CgVfxRenderers.sprite("late").material(spark).sortOrderHint(5).build())
                 .renderer(CgVfxRenderers.sprite("early").material(spark).sortOrderHint(-1).build())
@@ -43,8 +43,8 @@ public class CgVfxRendererMaterialsTest {
         CgVfxLook.Placed[] placed = look.renderers(sparks);
         assertEquals("a disabled renderer is not placed", 2, placed.length);
         assertEquals("early", placed[0].renderer().common().id());
-        assertEquals(look.layers().size(), placed[0].order());
-        assertEquals(look.layers().size() + 2, look.draws());
+        assertEquals(0, placed[0].order());
+        assertEquals(2, look.draws());
     }
 
     @Test

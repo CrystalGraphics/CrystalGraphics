@@ -4,11 +4,12 @@ import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.look.CgVfxKit;
-import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import org.joml.Matrix4f;
 
 /**
@@ -44,8 +45,9 @@ public final class CgVfxHeatHaze extends CgVfxEffect<CgVfxHeatHaze> {
 
     /** The haze shader on {@link #HAZE}. */
     public static final CgVfxKit KIT = CgVfxKit.of("crystalgraphics:heat_haze")
-            .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/air/haze.shader").on(HAZE)
-                    .role(CgVfxLayer.Role.DISTORTION).from(CgQuality.MEDIUM).build())
+            .slot(CgVfxSlotRenderer.of("haze", HAZE).material(CgMaterialDefinition.of(
+                    "crystalgraphics:heat_haze/haze", "crystalgraphics:shaders/vfx/air/haze.shader")
+                    .order(2 * CgVfxLook.BAND).build()).quality(CgQuality.MEDIUM).build())
             .build();
 
     private static final CgVfxLook STANDARD = CgVfxLook.builder(SCHEMA).with(KIT).build();

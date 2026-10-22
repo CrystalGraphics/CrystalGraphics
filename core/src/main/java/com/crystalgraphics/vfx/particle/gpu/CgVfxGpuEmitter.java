@@ -87,7 +87,8 @@ public interface CgVfxGpuEmitter {
     /** For messages. */
     String name();
 
-    CgVfxEmitter.Renderer renderer();
+    /** How its pool lays out what it draws. */
+    CgVfxDrawLayout drawLayout();
 
     /** Its module stack, in the order each step runs it. */
     List<? extends CgVfxGpuModule> modules();

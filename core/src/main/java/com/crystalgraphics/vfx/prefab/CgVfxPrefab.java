@@ -1,11 +1,12 @@
 package com.crystalgraphics.vfx.prefab;
 
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.vfx.look.CgVfxKit;
-import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
+import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -22,7 +23,8 @@ import java.util.Objects;
  * through a {@link CgVfxPrefabInstance}, and its look takes the prefab's {@link #kit()}.
  *
  * <pre>{@code
- * static final CgVfxLayer.Builder LENS = CgVfxLayer.of("mymod:shaders/vfx/lens.shader");   // a material, no slot
+ * static final CgMaterialDefinition LENS = CgMaterialDefinition.of("mymod:materials/lens",
+ *         "mymod:shaders/vfx/lens.shader").build();
  *
  * static final CgVfxPrefab CORE = CgVfxPrefab.builder("mymod:core")
  *         .node("ball03")
@@ -34,8 +36,8 @@ import java.util.Objects;
  * }</pre>
  *
  * <ul>
- *   <li>A material is one layer however many parts draw with it: the kit holds a layer per distinct material, built on
- *       a slot of the prefab's own, so give it no slot. A look draws at most 256 layers.</li>
+ *   <li>A material is one slot renderer however many parts draw with it: the kit holds one per distinct material, on
+ *       a slot of the prefab's own. A look draws at most 256.</li>
  *   <li>A parent is named before its children: nodes are kept in that order, which is the order they evaluate in.</li>
  *   <li>Names are unique within a prefab. A node's opacity multiplies down its subtree: half a parent's and half its
  *       own draws a quarter.</li>
@@ -70,7 +72,7 @@ public final class CgVfxPrefab {
         this.opacity = new float[n];
         this.byName = new HashMap<>(b.byName);
         this.partStart = new int[n + 1];
-        Map<CgVfxLayer.Builder, CgVfxSlot> materials = new IdentityHashMap<>();
+        Map<CgMaterialDefinition, CgVfxSlot> materials = new IdentityHashMap<>();
         CgVfxKit.Builder kit = CgVfxKit.of(id);
         List<CgVfxSlot> slots = new ArrayList<>();
         List<Mesh> meshes = new ArrayList<>();
@@ -82,8 +84,8 @@ public final class CgVfxPrefab {
                 CgVfxSlot slot = materials.get(part.material);
                 if (slot == null) {
                     slot = CgVfxSlot.mesh(id + "#" + materials.size());
+                    kit.slot(CgVfxSlotRenderer.of("part" + materials.size(), slot).material(part.material).build());
                     materials.put(part.material, slot);
-                    kit.layer(part.material.on(slot).build());
                 }
                 slots.add(slot);
                 meshes.add(part.mesh);
@@ -147,14 +149,14 @@ public final class CgVfxPrefab {
         return partSlots[part];
     }
 
-    /** Part {@code part}'s mesh, loaded the first time it is asked; null draws its material's own, else the sphere. */
+    /** Part {@code part}'s mesh, loaded the first time it is asked; null draws the unit sphere. */
     @Nullable
     public CgMeshLods partMesh(int part) {
         Mesh mesh = partMeshes[part];
         return mesh == null ? null : mesh.lods();
     }
 
-    /** A layer per material its parts draw with: what a look takes to draw it. */
+    /** A slot renderer per material its parts draw with: what a look takes to draw it. */
     public CgVfxKit kit() {
         return kit;
     }
@@ -183,16 +185,16 @@ public final class CgVfxPrefab {
 
         CgMeshLods lods() {
             CgMeshLods l = lods;
-            if (l == null) lods = l = CgMeshLods.of(CgMeshLoader.load(path));
+            if (l == null) lods = l = CgMeshLoader.lods(path);
             return l;
         }
     }
 
     private static final class Part {
-        final CgVfxLayer.Builder material;
+        final CgMaterialDefinition material;
         final Mesh mesh;
 
-        Part(CgVfxLayer.Builder material, Mesh mesh) {
+        Part(CgMaterialDefinition material, Mesh mesh) {
             this.material = Objects.requireNonNull(material, "material");
             this.mesh = mesh;
         }
@@ -280,24 +282,24 @@ public final class CgVfxPrefab {
             return this;
         }
 
-        /** A mesh it draws with {@code material}: the same builder object is the same material in every part. */
-        public Builder part(CgVfxLayer.Builder material, CgMeshLods mesh) {
+        /** A mesh it draws with {@code material}: one definition is one material in every part. */
+        public Builder part(CgMaterialDefinition material, CgMeshLods mesh) {
             parts.get(current()).add(new Part(material, new Mesh(Objects.requireNonNull(mesh, "mesh"))));
             return this;
         }
 
-        public Builder part(CgVfxLayer.Builder material, CgMesh mesh) {
+        public Builder part(CgMaterialDefinition material, CgMesh mesh) {
             return part(material, CgMeshLods.of(Objects.requireNonNull(mesh, "mesh")));
         }
 
-        /** As {@link #part(CgVfxLayer.Builder, CgMeshLods)}, an OBJ or glTF file loaded at its first draw. */
-        public Builder part(CgVfxLayer.Builder material, String path) {
+        /** As {@link #part(CgMaterialDefinition, CgMeshLods)}, a file or provided mesh loaded at its first draw. */
+        public Builder part(CgMaterialDefinition material, String path) {
             parts.get(current()).add(new Part(material, new Mesh(Objects.requireNonNull(path, "path"))));
             return this;
         }
 
-        /** Its material's own mesh, else the unit sphere. */
-        public Builder part(CgVfxLayer.Builder material) {
+        /** The unit sphere. */
+        public Builder part(CgMaterialDefinition material) {
             parts.get(current()).add(new Part(material, null));
             return this;
         }

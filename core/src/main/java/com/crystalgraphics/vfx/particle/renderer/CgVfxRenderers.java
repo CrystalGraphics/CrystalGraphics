@@ -7,6 +7,8 @@ import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.look.CgVfxFlipbook;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties.Common;
+import com.crystalgraphics.vfx.look.CgVfxLayout;
+import com.crystalgraphics.vfx.look.CgVfxParam;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -134,6 +136,21 @@ public final class CgVfxRenderers {
         return CgMaterialUsage.SPRITES;
     }
 
+    /**
+     * What of a ribbon's tessellation is not built, null for none: Niagara's adaptive factor by angle and curvature
+     * ({@code custom} at an angle, which a GPU ribbon's segments cannot measure on the CPU) and its curve tension.
+     */
+    @Nullable
+    private static String tessellation(Map<String, Object> t) {
+        String mode = String.valueOf(t.getOrDefault("mode", "automatic"));
+        if (!List.of("automatic", "custom", "disabled").contains(mode)) return "tessellation mode " + mode;
+        if (t.get("tension") instanceof Number n && n.floatValue() != 0f) return "tessellation tension";
+        if (mode.equals("custom") && t.get("angle") instanceof Number n && n.floatValue() != 0f) {
+            return "a tessellation angle (an adaptive factor)";
+        }
+        return null;
+    }
+
     /** Fails naming {@code who}'s first field the engine does not draw yet, rather than play it as something else. */
     private static void built(String who, CgVfxRendererProperties r) {
         String unbuilt = null;
@@ -157,7 +174,8 @@ public final class CgVfxRenderers {
             if (b.facing() != CgVfxRibbonRendererProperties.Facing.SCREEN) unbuilt = "facing " + b.facing();
             else if (b.shape() != CgVfxRibbonRendererProperties.Shape.PLANE) unbuilt = "shape " + b.shape();
             else if (b.widthSegments() != 0 || b.maxRibbons() != 0 || b.maxLinkGap() != 0) unbuilt = "width_segments, max_ribbons or max_link_gap";
-            else if (b.uv0() != null || b.uv1() != null || b.tessellation() != null) unbuilt = "uv0, uv1 or tessellation";
+            else if (b.uv0() != null || b.uv1() != null) unbuilt = "uv0 or uv1";
+            else if (b.tessellation() != null) unbuilt = tessellation(b.tessellation());
             else if (b.linkOrderById()) unbuilt = "link_order_by_id";
         } else if (r instanceof CgVfxTrailsRendererProperties t) {
             if (t.taper() != 1f) unbuilt = "taper";
@@ -385,6 +403,20 @@ public final class CgVfxRenderers {
         /** Material parameter {@code parameter} read per draw from user parameter {@code source}, {@code user.<name>}. */
         public Builder bind(String parameter, String source) {
             bind.put(parameter, source);
+            return this;
+        }
+
+        /** Material parameter {@code parameter} read per draw from {@code param}, bound by its full name. */
+        public Builder bind(String parameter, CgVfxParam param) {
+            return bind(parameter, "user." + CgVfxLayout.fullName(param));
+        }
+
+        /** Material parameter {@code parameter} read per draw from {@code param} times {@code scale}. */
+        public Builder bind(String parameter, CgVfxParam param, float scale) {
+            Map<String, Object> form = new LinkedHashMap<>();
+            form.put("bind", "user." + CgVfxLayout.fullName(param));
+            form.put("scale", (double) scale);
+            bind.put(parameter, form);
             return this;
         }
 

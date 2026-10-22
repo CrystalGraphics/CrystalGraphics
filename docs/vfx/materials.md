@@ -20,7 +20,7 @@ textures:
 ```
 
 ```java
-CgMaterialDefinition sparks = CgMaterialDefinition.builder("mymod:materials/fx/sparks",
+CgMaterialDefinition sparks = CgMaterialDefinition.of("mymod:materials/fx/sparks",
                 "crystalgraphics:shaders/vfx/particle/sprite.shader")
         .blend(CgBlendMode.ADDITIVE).twoSided()
         .color("_Color", 0xFFFF8040, 2f)              // 0xAARRGGBB, its rgb times 2

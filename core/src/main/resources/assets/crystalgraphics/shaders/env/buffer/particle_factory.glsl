@@ -42,13 +42,16 @@ struct CgMaterialParticle {
 
 #define cg_material_project(v) (cg_ProjMatrix * cg_ViewMatrix * vec4((v).worldPosition, 1.0))
 
-#if defined(CG_VERTEX_STAGE) && defined(CG_TYPE_NONE)
+// The factory follows the usage a program is compiled for, as Unreal compiles a material once per vertex factory
+// its usages enable: a sprite program (no vertex data, or FX_ON_SPRITES) gets the sprite factory, any other mesh's.
+#if defined(CG_VERTEX_STAGE) && (defined(CG_TYPE_NONE) || defined(FX_ON_SPRITES))
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
 
 // One quad corner of the draw's particle: the placement every sprite of the vfx engine shares.
-void _cg_sprite(float facing, vec4 axis, float stretch, float maxStretch, float cameraOffset, vec4 subImage,
-                vec4 subUv, sampler2D subImages, out CgMaterialVertex v, out CgMaterialParticle p) {
+void _cg_sprite(float facing, vec4 facingVector, vec4 alignmentVector, float stretch, float maxStretch,
+                float cameraOffset, vec4 subImage, vec4 subUv, sampler2D subImages, out CgMaterialVertex v,
+                out CgMaterialParticle p) {
     int n = fx_particle_index(FX_QUAD_INDEX, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM0.y);
     vec2 corner = FX_QUAD_CORNER;
     vec3 origin = CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz;
@@ -60,10 +63,11 @@ void _cg_sprite(float facing, vec4 axis, float stretch, float maxStretch, float 
     float size = n < 0 ? 0.0 : CG_PARTICLE_SIZE(i) * CG_OBJECT_CUSTOM0.z, keep;
     vec3 centre = fx_particle_toward_eye(origin + CG_PARTICLE_POSITION(i), eye, cameraOffset * size, keep);
     size *= keep;
-    int mode = int(facing + 0.5);
+    int mode = int(facing + 0.5), alignment = mode / 8;
     vec3 right, up;
-    fx_particle_facing(mode, centre, velocity, axis.xyz, eye, eyeRight, eyeUp, right, up);
-    bool aligned = mode == FX_FACE_ALIGNED;
+    fx_particle_facing(mode - alignment * 8, alignment, centre, velocity, facingVector.xyz, alignmentVector.xyz, eye,
+                       eyeRight, eyeUp, right, up);
+    bool aligned = alignment == FX_ALIGN_VELOCITY;
     float length_ = aligned ? clamp(1.0 + length(velocity) * stretch, 1.0, maxStretch) : 1.0;
     vec2 extent = size * CG_PARTICLE_SCALE(i).xy * vec2(1.0, length_);
     float spin = aligned ? 0.0 : CG_PARTICLE_SPIN(i);
@@ -93,24 +97,25 @@ void _cg_sprite(float facing, vec4 axis, float stretch, float maxStretch, float 
     p.record = i;
 }
 
-CgMaterialVertex _cg_sprite_vertex(float facing, vec4 axis, float stretch, float maxStretch, float cameraOffset,
-                                   vec4 subImage, vec4 subUv, sampler2D subImages) {
+CgMaterialVertex _cg_sprite_vertex(float facing, vec4 facingVector, vec4 alignmentVector, float stretch,
+                                   float maxStretch, float cameraOffset, vec4 subImage, vec4 subUv, sampler2D subImages) {
     CgMaterialVertex v;
     CgMaterialParticle p;
-    _cg_sprite(facing, axis, stretch, maxStretch, cameraOffset, subImage, subUv, subImages, v, p);
+    _cg_sprite(facing, facingVector, alignmentVector, stretch, maxStretch, cameraOffset, subImage, subUv, subImages, v, p);
     return v;
 }
 
-CgMaterialParticle _cg_sprite_particle(float facing, vec4 axis, float stretch, float maxStretch, float cameraOffset,
-                                       vec4 subImage, vec4 subUv, sampler2D subImages) {
+CgMaterialParticle _cg_sprite_particle(float facing, vec4 facingVector, vec4 alignmentVector, float stretch,
+                                       float maxStretch, float cameraOffset, vec4 subImage, vec4 subUv,
+                                       sampler2D subImages) {
     CgMaterialVertex v;
     CgMaterialParticle p;
-    _cg_sprite(facing, axis, stretch, maxStretch, cameraOffset, subImage, subUv, subImages, v, p);
+    _cg_sprite(facing, facingVector, alignmentVector, stretch, maxStretch, cameraOffset, subImage, subUv, subImages, v, p);
     return p;
 }
 
-#define cg_material_vertex() _cg_sprite_vertex(_cg_Facing, _cg_Axis, _cg_Stretch, _cg_MaxStretch, _cg_CameraOffset, _cg_SubImage, _cg_SubUV, _cg_SubImages)
-#define cg_material_particle() _cg_sprite_particle(_cg_Facing, _cg_Axis, _cg_Stretch, _cg_MaxStretch, _cg_CameraOffset, _cg_SubImage, _cg_SubUV, _cg_SubImages)
+#define cg_material_vertex() _cg_sprite_vertex(_cg_Facing, _cg_FacingVector, _cg_AlignmentVector, _cg_Stretch,         _cg_MaxStretch, _cg_CameraOffset, _cg_SubImage, _cg_SubUV, _cg_SubImages)
+#define cg_material_particle() _cg_sprite_particle(_cg_Facing, _cg_FacingVector, _cg_AlignmentVector, _cg_Stretch,         _cg_MaxStretch, _cg_CameraOffset, _cg_SubImage, _cg_SubUV, _cg_SubImages)
 #elif defined(CG_VERTEX_STAGE) && defined(CG_TYPE_SPATIAL)
 // The mesh factory: a particle's mesh, drawn an instance a particle from Range's object records (CgVfxRange.objects):
 // the model its place, turn and size; custom0 its velocity and age; custom1 its progress, seed, opacity and heat;

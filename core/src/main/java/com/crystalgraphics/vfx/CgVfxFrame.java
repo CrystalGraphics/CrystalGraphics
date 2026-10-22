@@ -28,7 +28,6 @@ import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
 import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
-import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
@@ -43,6 +42,7 @@ import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import com.crystalgraphics.vfx.trail.CgVfxTrail;
 import com.crystalgraphics.vfx.trail.CgVfxTrailTexture;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
@@ -68,7 +68,7 @@ import java.util.Map;
  *
  * <ul>
  *   <li>A slot no layer of the look draws on costs nothing: a look without its realistic body draws no tube.</li>
- *   <li>A layer above this frame's quality tier ({@link CgVfxLayer#from}) draws nothing.</li>
+ *   <li>A renderer above this frame's quality tier (its {@code quality}) draws nothing.</li>
  *   <li>Every draw's {@code CG_OBJECT_CUSTOM3} is its header ({@code fx_draw.glsl}): its row of bound values, the
  *       effect's age, its seed and its presence. The other customs are the slot kind's ({@link CgVfxSlot.Kind}).</li>
  *   <li>Calling a method of another kind than the slot's throws.</li>
@@ -147,7 +147,7 @@ public final class CgVfxFrame {
             CgVfxRange range = CgVfxRange.of(proxy.key.pool());
             if (proxy.meshCapacity != proxy.capacity) {
                 proxy.meshCapacity = proxy.capacity;
-                proxy.mesh = proxy.key.strip() == CgVfxLayer.Strip.NONE ? slotMesh(proxy.key.renderer(), proxy.capacity)
+                proxy.mesh = proxy.key.strip() == Strip.NONE ? slotMesh(proxy.key.renderer(), proxy.capacity)
                         : CgMesh.vertices(sizeClass(proxy.capacity, 1) * proxy.key.factor(), CgMeshTopology.TRIANGLES);
             }
             CgMesh mesh = proxy.mesh;
@@ -185,8 +185,11 @@ public final class CgVfxFrame {
     }
 
     /** What a proxy draws: one pool's slots through one material, each particle as {@code factor} elements. */
-    private record ProxyKey(CgVfxParticlePool pool, CgMaterial material, CgVfxEmitter.Renderer renderer,
-                            CgVfxLayer.Strip strip, int factor) {}
+    private record ProxyKey(CgVfxParticlePool pool, CgMaterial material, CgVfxDrawLayout renderer,
+                            Strip strip, int factor) {}
+
+    /** What strip a proxy's particles draw as: none (a quad, an arc or a mesh each), a trail each, or one ribbon. */
+    private enum Strip { NONE, TRAILS, RIBBON }
 
     /** {@code key}'s proxy, made at its first ask: once per renderer, when the renderer is made. */
     private Proxy proxy(ProxyKey key, CgVfxLook.Placed placed, CgIndirect mode) {
@@ -303,7 +306,7 @@ public final class CgVfxFrame {
     }
 
     /**
-     * Draws every layer on {@code slot}, a mesh slot, on a unit sphere (or the layer's own mesh, {@code CgVfxLayer.mesh})
+     * Draws every slot renderer on {@code slot}, a mesh slot, on a unit sphere (or the renderer's own mesh)
      * placed by {@code transform} (rotation and scale, radius 1 before it) at {@code (x, y, z)} from the origin, scaled
      * again by each layer's size. What its shader reads:
      * <ul>
@@ -421,11 +424,11 @@ public final class CgVfxFrame {
         if (pool.records() == null) return;
         int slot = tenant.slot, capacity = pool.capacity(slot);
         CgVfxRange range = CgVfxRange.of(pool);
-        if (def.renderer() == CgVfxEmitter.Renderer.SEQUENCE) {
+        if (def.drawLayout() == CgVfxDrawLayout.SEQUENCE) {
             sequence(effect, emitter, rs, pool, range, slot, capacity);
             return;
         }
-        boolean arcs = def.renderer() == CgVfxEmitter.Renderer.ARCS;
+        boolean arcs = def.drawLayout() == CgVfxDrawLayout.ARCS;
         float cx = arcs ? emitter.sourceX() : 0f, cy = arcs ? emitter.sourceY() : 0f, cz = arcs ? emitter.sourceZ() : 0f;
         // The instance's origin, not the effect's: a world-space instance stays where it was first stepped.
         double ox = emitter.originX(), oy = emitter.originY(), oz = emitter.originZ();
@@ -480,7 +483,7 @@ public final class CgVfxFrame {
                 case SINGLE -> {
                     if (!rd.unsorted && blendsInOrder(rd.material)) range.sorted(slot);
                     reach = Math.max(reach, Math.max(size, 1f) * 4f);
-                    CgWorldRenderer.Draw draw = world.draw(slotMesh(def.renderer(), capacity), rd.material)
+                    CgWorldRenderer.Draw draw = world.draw(slotMesh(def.drawLayout(), capacity), rd.material)
                             .buffer(CgBindingPoints.PARTICLES, pool.drawn()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
                             .indirect(range.visible(), word, arcs ? CgIndirect.VERTICES : CgIndirect.INDICES,
                                     arcs ? CgVfxRibbons.VERTICES : 6)
@@ -518,7 +521,7 @@ public final class CgVfxFrame {
         CgVfxEmitter def = tenant.instance.emitter();
         CgVfxLook look = effect.look();
         CgVfxParticlePool pool = tenant.pool;
-        if (def.renderer() == CgVfxEmitter.Renderer.SEQUENCE) {
+        if (def.drawLayout() == CgVfxDrawLayout.SEQUENCE) {
             for (CgVfxLook.Placed placed : look.renderers(def)) {
                 if (!(placed.renderer() instanceof CgVfxSequenceRendererProperties)) {
                     throw new IllegalStateException(def.name() + "'s renderer " + placed.renderer().common().id()
@@ -543,45 +546,23 @@ public final class CgVfxFrame {
             }
             return;
         }
-        boolean meshes = def.renderer() == CgVfxEmitter.Renderer.MESHES, arcs = def.renderer() == CgVfxEmitter.Renderer.ARCS;
-        for (CgVfxLook.Placed placed : look.on(def.slot())) {
-            CgVfxLayer layer = placed.layer();
-            if (skips(effect, placed)) continue;
-            if (!meshes && layer.hasMesh()) {
-                throw new IllegalStateException(layer + " draws a mesh, which only a mesh slot or a MESHES emitter takes");
-            }
-            CgVfxMaterials.Resolved r = materials.resolve(look, placed);
-            if (layer.strip() != CgVfxLayer.Strip.NONE) {
-                strip(rs, placed, r, layer.strip() == CgVfxLayer.Strip.TRAILS, layer.subdivisions(), tenant, layer.toString());
-                continue;
-            }
-            CgMaterial material = materials.material(r, CgVfxSlot.Kind.PARTICLES);
-            if (meshes) {
-                Renderer rd = rs.next(Shape.MESHES, placed, r, material);
-                CgMeshLods own = layer.mesh();
-                rd.mesh = own != null ? own : system.particleSphere();
-                rd.meshRadius = layer.meshRadius();
-                continue;
-            }
-            quads(rs, placed, r, material, pool, def, arcs);
-        }
         for (CgVfxLook.Placed placed : look.renderers(def)) {
             CgVfxRendererProperties renderer = placed.renderer();
             String who = def.name() + "'s renderer " + renderer.common().id();
             if (skips(effect, placed)) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             if (renderer instanceof CgVfxTrailsRendererProperties t) {
-                requireRenderer(who, def, CgVfxEmitter.Renderer.QUADS);
+                requireRenderer(who, def, CgVfxDrawLayout.QUADS);
                 strip(rs, placed, r, true, t.subdivisions(), tenant, who);
                 if (rs.list[rs.count - 1].points != t.points()) {
                     throw new IllegalStateException(who + " keeps " + t.points() + " points, but " + def.name()
                             + " keeps " + rs.list[rs.count - 1].points + " a particle: give it trail(" + t.points() + ")");
                 }
-            } else if (renderer instanceof CgVfxRibbonRendererProperties) {
-                requireRenderer(who, def, CgVfxEmitter.Renderer.QUADS);
-                strip(rs, placed, r, false, 0, tenant, who);
+            } else if (renderer instanceof CgVfxRibbonRendererProperties ribbon) {
+                requireRenderer(who, def, CgVfxDrawLayout.QUADS);
+                strip(rs, placed, r, false, ribbon.subSegments(), tenant, who);
             } else if (renderer instanceof CgVfxMeshRendererProperties m) {
-                requireRenderer(who, def, CgVfxEmitter.Renderer.MESHES);
+                requireRenderer(who, def, CgVfxDrawLayout.MESHES);
                 if (m.prefab() != null || m.meshBinding() != null || m.meshes().size() > 1) {
                     throw new IllegalStateException(who + " draws a prefab, a bound mesh or several meshes, which are not"
                             + " built yet: give it one mesh");
@@ -590,11 +571,11 @@ public final class CgVfxFrame {
                 rd.mesh = m.meshes().isEmpty() ? system.particleSphere() : mesh(String.valueOf(m.meshes().get(0).get("mesh")));
                 rd.meshRadius = m.meshes().isEmpty() ? 1f : rd.mesh.reach();
             } else if (renderer instanceof CgVfxSpriteRendererProperties sprite) {
-                requireRenderer(who, def, CgVfxEmitter.Renderer.QUADS);
+                requireRenderer(who, def, CgVfxDrawLayout.QUADS);
                 quads(rs, placed, r, materials.material(r, CgVfxSlot.Kind.PARTICLES), pool, def, false);
                 rs.list[rs.count - 1].unsorted = sprite.sort() == CgVfxSpriteRendererProperties.Sort.NONE;
             } else if (renderer instanceof CgVfxArcRendererProperties) {
-                requireRenderer(who, def, CgVfxEmitter.Renderer.ARCS);
+                requireRenderer(who, def, CgVfxDrawLayout.ARCS);
                 quads(rs, placed, r, materials.material(r, CgVfxSlot.Kind.PARTICLES), pool, def, true);
             } else {
                 throw new IllegalStateException(who + " plays a sequence, which only an emitter playing a clip draws");
@@ -608,7 +589,7 @@ public final class CgVfxFrame {
         if (MERGED.get()) {
             Renderer rd = rs.next(Shape.MERGED, placed, r, material);
             int factor = arcs ? CgVfxRibbons.VERTICES : 6;
-            rd.proxy = proxy(new ProxyKey(pool, material, def.renderer(), CgVfxLayer.Strip.NONE, factor), placed,
+            rd.proxy = proxy(new ProxyKey(pool, material, def.drawLayout(), Strip.NONE, factor), placed,
                     arcs ? CgIndirect.VERTICES : CgIndirect.INDICES);
         } else {
             rs.next(Shape.SINGLE, placed, r, material);
@@ -634,24 +615,24 @@ public final class CgVfxFrame {
         }
         rd.per = (trails ? rd.points - 1 : 1) * rd.subs * 6;
         if (MERGED.get()) {
-            rd.proxy = proxy(new ProxyKey(pool, rd.material, CgVfxEmitter.Renderer.QUADS,
-                    trails ? CgVfxLayer.Strip.TRAILS : CgVfxLayer.Strip.RIBBON, rd.per), placed, CgIndirect.VERTICES);
+            rd.proxy = proxy(new ProxyKey(pool, rd.material, CgVfxDrawLayout.QUADS,
+                    trails ? Strip.TRAILS : Strip.RIBBON, rd.per), placed, CgIndirect.VERTICES);
         }
     }
 
     /** Fails naming {@code who} unless {@code def}'s particles are laid out as {@code renderer} draws them. */
-    private static void requireRenderer(String who, CgVfxEmitter def, CgVfxEmitter.Renderer renderer) {
-        if (def.renderer() != renderer) {
+    private static void requireRenderer(String who, CgVfxEmitter def, CgVfxDrawLayout renderer) {
+        if (def.drawLayout() != renderer) {
             throw new IllegalStateException(who + " draws its particles as " + renderer + ", but " + def.name()
-                    + " lays them out as " + def.renderer());
+                    + " lays them out as " + def.drawLayout());
         }
     }
 
-    /** Every mesh a mesh renderer named, loaded once and kept: a mesh uploaded stays. */
+    /** Every mesh a mesh renderer named, provided or loaded once and kept: a mesh uploaded stays. */
     private final Map<String, CgMeshLods> meshes = new HashMap<>();
 
     private CgMeshLods mesh(String path) {
-        return meshes.computeIfAbsent(path, p -> CgMeshLods.of(CgMeshLoader.load(p)));
+        return meshes.computeIfAbsent(path, CgMeshLoader::lods);
     }
 
     /**
@@ -812,7 +793,7 @@ public final class CgVfxFrame {
      * The shared mesh a GPU slot of {@code capacity} draws a {@code QUADS} or {@code ARCS} layer on, made on its first
      * ask; null for {@code MESHES} and {@code SEQUENCE}, which draw meshes as instances.
      */
-    static CgMesh slotMesh(CgVfxEmitter.Renderer renderer, int capacity) {
+    static CgMesh slotMesh(CgVfxDrawLayout renderer, int capacity) {
         return switch (renderer) {
             case QUADS -> CgMesh.quads(sizeClass(capacity, CgVfxQuads.COUNT));
             case ARCS -> CgMesh.vertices(sizeClass(capacity, CgVfxRibbons.COUNT) * CgVfxRibbons.VERTICES,
@@ -930,7 +911,7 @@ public final class CgVfxFrame {
             if (skips(effect, placed)) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             float size = CgVfxMaterials.size(effect, r);
-            int subs = placed.subdivisions() > 0 ? placed.subdivisions() : TRAIL_QUADS;
+            int subs = TRAIL_QUADS;
             CgMesh mesh = CgMesh.vertices(sizeClass((points - 1) * subs, 16) * 6, CgMeshTopology.TRIANGLES);
             // A ribbon reaches its widest half-width past its points; a blade past its tips as far as its size goes.
             float reach = blade ? Math.max(size - 1f, 0f) * 2f * Math.max(hx, Math.max(hy, hz)) : size * trail.widest();

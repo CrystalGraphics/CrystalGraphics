@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxModuleTypes;
@@ -110,12 +111,12 @@ public class CgVfxParticlePoolTest {
 
     private static final class Def implements CgVfxGpuEmitter {
         final String name;
-        final CgVfxEmitter.Renderer renderer;
+        final CgVfxDrawLayout renderer;
         final List<CgVfxGpuModule> modules;
         final int[] moduleWords;
         int trailPoints;
 
-        Def(String name, CgVfxEmitter.Renderer renderer, CgVfxGpuModule... modules) {
+        Def(String name, CgVfxDrawLayout renderer, CgVfxGpuModule... modules) {
             this.name = name;
             this.renderer = renderer;
             this.modules = Arrays.asList(modules);
@@ -126,7 +127,7 @@ public class CgVfxParticlePoolTest {
             return name;
         }
 
-        public CgVfxEmitter.Renderer renderer() {
+        public CgVfxDrawLayout drawLayout() {
             return renderer;
         }
 
@@ -202,22 +203,22 @@ public class CgVfxParticlePoolTest {
 
     @Test
     public void aShapeIsItsKindsAndCountsNeverItsNumbers() {
-        CgVfxShape a = CgVfxShape.of(new Def("a", CgVfxEmitter.Renderer.QUADS, new Pull(9.8f), new Swirl(0.12)));
-        CgVfxShape b = CgVfxShape.of(new Def("b", CgVfxEmitter.Renderer.QUADS, new Pull(1f), new Swirl(3.0)));
+        CgVfxShape a = CgVfxShape.of(new Def("a", CgVfxDrawLayout.QUADS, new Pull(9.8f), new Swirl(0.12)));
+        CgVfxShape b = CgVfxShape.of(new Def("b", CgVfxDrawLayout.QUADS, new Pull(1f), new Swirl(3.0)));
         assertEquals(a, b);
         assertEquals("QUADS|pull:1|swirl:1:IVEC4,VEC4", a.key());
-        assertNotEquals(a, CgVfxShape.of(new Def("c", CgVfxEmitter.Renderer.QUADS, new Swirl(0.12), new Pull(9.8f))));
-        assertNotEquals(a, CgVfxShape.of(new Def("d", CgVfxEmitter.Renderer.MESHES, new Pull(9.8f), new Swirl(0.12))));
-        assertSame(CgVfxParticlePool.of(OWNER, new Def("a", CgVfxEmitter.Renderer.QUADS, new Pull(9.8f), new Swirl(0.12))),
-                CgVfxParticlePool.of(OWNER, new Def("b", CgVfxEmitter.Renderer.QUADS, new Pull(1f), new Swirl(3.0))));
+        assertNotEquals(a, CgVfxShape.of(new Def("c", CgVfxDrawLayout.QUADS, new Swirl(0.12), new Pull(9.8f))));
+        assertNotEquals(a, CgVfxShape.of(new Def("d", CgVfxDrawLayout.MESHES, new Pull(9.8f), new Swirl(0.12))));
+        assertSame(CgVfxParticlePool.of(OWNER, new Def("a", CgVfxDrawLayout.QUADS, new Pull(9.8f), new Swirl(0.12))),
+                CgVfxParticlePool.of(OWNER, new Def("b", CgVfxDrawLayout.QUADS, new Pull(1f), new Swirl(3.0))));
         // Another simulation steps its own: a step moves every particle of a pool.
-        assertNotSame(CgVfxParticlePool.of(OWNER, new Def("a", CgVfxEmitter.Renderer.QUADS, new Pull(9.8f), new Swirl(0.12))),
-                CgVfxParticlePool.of(new Object(), new Def("a", CgVfxEmitter.Renderer.QUADS, new Pull(9.8f), new Swirl(0.12))));
+        assertNotSame(CgVfxParticlePool.of(OWNER, new Def("a", CgVfxDrawLayout.QUADS, new Pull(9.8f), new Swirl(0.12))),
+                CgVfxParticlePool.of(new Object(), new Def("a", CgVfxDrawLayout.QUADS, new Pull(9.8f), new Swirl(0.12))));
     }
 
     @Test
     public void aParameterRowIsTheSpawnNumbersThenEachModulesNumbers() {
-        Def def = new Def("a", CgVfxEmitter.Renderer.QUADS, new Pull(9.8f), new Swirl(0.12));
+        Def def = new Def("a", CgVfxDrawLayout.QUADS, new Pull(9.8f), new Swirl(0.12));
         CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, def);
         pool.open(def, 100);
         CgVfxShape shape = pool.shape();
@@ -233,7 +234,7 @@ public class CgVfxParticlePoolTest {
 
     @Test
     public void anInstanceRowIsItsHeaderThenEachModulesLanes() {
-        Def def = new Def("a", CgVfxEmitter.Renderer.QUADS, new Pull(9.8f), new Swirl(0.5));
+        Def def = new Def("a", CgVfxDrawLayout.QUADS, new Pull(9.8f), new Swirl(0.5));
         CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, def);
         pool.open(def, 10);
         int slot = pool.open(def, 20);
@@ -260,7 +261,7 @@ public class CgVfxParticlePoolTest {
     @Test
     public void aKindWritingOtherThanItDeclaresIsNamed() {
         Swirl swirl = new Swirl(0.5);
-        Def def = new Def("embers", CgVfxEmitter.Renderer.QUADS, swirl);
+        Def def = new Def("embers", CgVfxDrawLayout.QUADS, swirl);
         CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, def);
         int slot = pool.open(def, 10);
         swirl.writes = 1;
@@ -275,13 +276,13 @@ public class CgVfxParticlePoolTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void worldInputsBeforeTheSolverAreRefused() {
-        CgVfxShape.of(new Def("a", CgVfxEmitter.Renderer.QUADS, new Floor(false)));
+        CgVfxShape.of(new Def("a", CgVfxDrawLayout.QUADS, new Floor(false)));
     }
 
     @Test
     public void slotsAreReusedAndListBasesFollowCapacities() {
-        Def a = new Def("a", CgVfxEmitter.Renderer.MESHES, new Floor(true));
-        Def b = new Def("b", CgVfxEmitter.Renderer.MESHES, new Floor(true));
+        Def a = new Def("a", CgVfxDrawLayout.MESHES, new Floor(true));
+        Def b = new Def("b", CgVfxDrawLayout.MESHES, new Floor(true));
         CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, a);
         int s0 = pool.open(a, 100), s1 = pool.open(b, 50), s2 = pool.open(a, 25);
         assertEquals(175, pool.capacity());
@@ -300,8 +301,8 @@ public class CgVfxParticlePoolTest {
 
     @Test
     public void trailRingsAreASlotsOwnAndGivenBackWhenItCloses() {
-        Def kept = new Def("kept", CgVfxEmitter.Renderer.QUADS, new Pull(1f)).trail(8);
-        Def plain = new Def("plain", CgVfxEmitter.Renderer.QUADS, new Pull(1f));
+        Def kept = new Def("kept", CgVfxDrawLayout.QUADS, new Pull(1f)).trail(8);
+        Def plain = new Def("plain", CgVfxDrawLayout.QUADS, new Pull(1f));
         CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, kept);
         int a = pool.open(kept, 100), b = pool.open(plain, 50), c = pool.open(kept, 20);
         assertEquals(0, pool.ringFirst(a));
@@ -329,7 +330,7 @@ public class CgVfxParticlePoolTest {
 
     @Test
     public void aStepNeedsEveryOpenSlotsRowAndCountsItsSpawns() {
-        Def def = new Def("a", CgVfxEmitter.Renderer.QUADS, new Pull(1f));
+        Def def = new Def("a", CgVfxDrawLayout.QUADS, new Pull(1f));
         CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, def);
         int s0 = pool.open(def, 100), s1 = pool.open(def, 100);
         pool.beginStep(0.01f, 1f, 0f, 0f);
@@ -371,7 +372,7 @@ public class CgVfxParticlePoolTest {
 
     @Test
     public void oneStepAFrameHoldsEachTicksSpawnsAtTheirOffsets() {
-        Def def = new Def("a", CgVfxEmitter.Renderer.QUADS, new Pull(1f));
+        Def def = new Def("a", CgVfxDrawLayout.QUADS, new Pull(1f));
         CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, def);
         int slot = pool.open(def, 100);
         float tick = 1f / 120f;

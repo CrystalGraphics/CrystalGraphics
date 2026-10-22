@@ -1,6 +1,8 @@
 package com.crystalgraphics.demo;
 
 import com.crystalgraphics.api.font.CgFont;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.material.CgMaterialUsage;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.render.world.CgWorldRenderer;
@@ -19,14 +21,16 @@ import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.fluid.CgVfxSmoke;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
 import com.crystalgraphics.vfx.look.CgVfxKit;
-import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
+import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -34,6 +38,7 @@ import org.apache.logging.log4j.Logger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
@@ -80,6 +85,9 @@ public final class CgVfxFluidDemo {
     private static final CgVfxParam.Color FLASH = SCHEMA.color("flash", 0xFFFFF4E0, 6f);
     private static final String PARTICLE = "crystalgraphics:shaders/vfx/particle/";
     private static final String GRID_GLOW = "crystalgraphics:shaders/vfx/grid/glow.shader";
+    private static final String GRID_SMOKE = "crystalgraphics:shaders/vfx/grid/smoke.shader";
+    private static final String MATERIALS = "crystalgraphics:demo/fluid/";
+    private static final AtomicInteger MADE = new AtomicInteger();
     private static final CgKeyframes FADE = CgKeyframes.start(0f, 0f).to(0.08f, 1f, CgEasings.OUT_QUAD)
             .to(0.8f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build();
     /** Flow's editor overrides its fire map's colour scale to 1 for every stage ({@code editorFlowStage_applyOverrides}). */
@@ -312,11 +320,8 @@ public final class CgVfxFluidDemo {
                 .module(new CgVfxModule.Attract(CgSphere.of(2.5), 1.2f))
                 .module(new CgVfxModule.Turbulence(0.8f, 0.3f, 0.5f))
                 .module(new CgVfxModule.LimitSpeed(3.5f)).opacity(FADE).build();
-        CgVfxLook look = CgSmokeGrenade.LOOK.derive().emitter(flies)
-                .layer(CgVfxLayer.of(PARTICLE + "streaks.shader").on(flies).trails().size(0.7f).bind("_Color", FIREFLY)
-                        .bind("_Core", FIREFLY_HOT).build())
-                .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(flies).bind("_Color", FIREFLY).bind("_Hot", FIREFLY_HOT)
-                        .build())
+        CgVfxLook look = CgSmokeGrenade.LOOK.derive()
+                .emitter(drawn(flies, streaks(flies, FIREFLY, FIREFLY_HOT, 0.7f), spark(FIREFLY, FIREFLY_HOT, 1f)))
                 .params(SCHEMA).build();
         stations.add(new Station("CS2: smoke grenade", "its flood, fireflies riding its churn, shot through and blasted open",
                 x, z, look, 8f, 22f,
@@ -358,10 +363,8 @@ public final class CgVfxFluidDemo {
                 .module(new CgVfxModule.Feed(0.03f, 0f))
                 .module(new CgVfxModule.Turbulence(1.2f, 0.4f, 0.6f)).opacity(FADE).build();
         // Flow's fire at its editor's colour scale, its confinement raised to hold the whirl together.
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(EDITOR_FIRE).emitter(embers)
-                .layer(CgVfxLayer.of(PARTICLE + "streaks.shader").on(embers).trails().size(0.6f).bind("_Color", EMBER)
-                        .bind("_Core", FLAME).build())
-                .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(embers).bind("_Color", EMBER).bind("_Hot", FLAME).build())
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(EDITOR_FIRE)
+                .emitter(drawn(embers, streaks(embers, EMBER, FLAME, 0.6f), spark(EMBER, FLAME, 1f)))
                 .set(CgVfxFluid.CELL, 0.2f).set(CgVfxFluid.VORTICITY, 2f)
                 .set(CgVfxFluid.TURBULENCE, 0.6f).set(CgVfxFluid.TURBULENCE_SIZE, 1f).build();
         stations.add(new Station("fire whirl", "a burning pool's swirl, drawn in and spun up into a column", x, z, look, 16f, 26f,
@@ -408,9 +411,8 @@ public final class CgVfxFluidDemo {
                 .opacity(CgKeyframes.start(0f, 1f).to(0.7f, 0.8f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
         // Flow's fire at its editor's colour scale: white only where it is hottest, at the mouth.
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(EDITOR_FIRE).emitter(breath)
-                .layer(CgVfxLayer.of(PARTICLE + "streaks.shader").on(breath).trails().size(0.5f).bind("_Color", EMBER)
-                        .bind("_Core", FLAME).build())
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(EDITOR_FIRE)
+                .emitter(drawn(breath, streaks(breath, EMBER, FLAME, 0.5f)))
                 .set(CgVfxFluid.CELL, 0.22f).set(CgVfxFluid.BUOYANCY_PER_TEMP, 2.5f)
                 .set(CgVfxFluid.VORTICITY, 1.5f).set(CgVfxFluid.TURBULENCE, 1.4f).set(CgVfxFluid.TURBULENCE_SIZE, 1.2f)
                 .set(CgVfxFluid.VELOCITY_DAMPING, 0.1f).set(CgVfxFluid.SMOKE_DAMPING, 0.4f).set(CgVfxFluid.SMOKE_FADE, 0.5f)
@@ -440,11 +442,8 @@ public final class CgVfxFluidDemo {
                 .module(new CgVfxModule.Turbulence(1f, 0.5f, 0.8f))
                 .module(new CgVfxModule.LimitSpeed(7f))
                 .module(new CgVfxModule.Feed(0f, 0f, 10f)).opacity(FADE).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxFluid.SMOKE).emitter(spirits)
-                .layer(CgVfxLayer.of(PARTICLE + "streaks.shader").on(spirits).trails().size(0.6f).bind("_Color", SPIRIT)
-                        .bind("_Core", SPIRIT_HOT).build())
-                .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(spirits).bind("_Color", SPIRIT).bind("_Hot", SPIRIT_HOT)
-                        .build())
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxFluid.SMOKE)
+                .emitter(drawn(spirits, streaks(spirits, SPIRIT, SPIRIT_HOT, 0.6f), spark(SPIRIT, SPIRIT_HOT, 1f)))
                 .set(CgVfxFluid.CELL, 0.2f).set(CgVfxFluid.COMBUSTION, 0f).set(CgVfxFluid.COLORMAP_MIN, -1f)
                 .set(CgVfxFluid.SMOKE_DAMPING, 0.05f).set(CgVfxFluid.SMOKE_FADE, 0f).set(CgVfxFluid.VELOCITY_DAMPING, 0.3f)
                 .set(CgVfxFluid.VORTICITY, 1.2f).set(CgVfxFluid.ATTENUATION, 2.2f).set(CgVfxFluid.DETAIL, 0.7f)
@@ -476,11 +475,8 @@ public final class CgVfxFluidDemo {
                 .module(new CgVfxModule.Gravity(1.5f))
                 .module(new CgVfxModule.Drag(2f, 0f))
                 .module(new CgVfxModule.Feed(0.25f, 0f)).opacity(FADE).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxFluid.SMOKE).emitter(head).emitter(sparks)
-                .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(head).size(1.4f).bind("_Color", FLAME).bind("_Hot", WHITE).build())
-                .layer(CgVfxLayer.of(PARTICLE + "streaks.shader").on(sparks).trails().size(0.6f).bind("_Color", EMBER)
-                        .bind("_Core", FLAME).build())
-                .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(sparks).bind("_Color", EMBER).bind("_Hot", FLAME).build())
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxFluid.SMOKE).emitter(drawn(head, spark(FLAME, WHITE, 1.4f)))
+                .emitter(drawn(sparks, streaks(sparks, EMBER, FLAME, 0.6f), spark(EMBER, FLAME, 1f)))
                 // Flow's smoke with no fire, cold, read at its colour map's middle.
                 .set(CgVfxFluid.CELL, 0.25f).set(CgVfxFluid.COMBUSTION, 0f).set(CgVfxFluid.COLORMAP_MIN, -1f)
                 .set(CgVfxFluid.TURBULENCE, 1.2f).set(CgVfxFluid.TURBULENCE_SIZE, 1.2f).set(CgVfxFluid.ATTENUATION, 3f)
@@ -515,9 +511,7 @@ public final class CgVfxFluidDemo {
                 // Jones's agents only steer: a constant speed, and a domain they bounce off rather than a pull.
                 .module(new CgVfxModule.Collide(CgSphere.of(4.5), 1f, 0f, 0f).container())
                 .module(new CgVfxModule.Splat(1f, 0f, 0f, 0f)).opacity(FADE).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxGrid3D.GLOW).emitter(agents)
-                .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(agents).size(0.6f).bind("_Color", CYAN).bind("_Hot", WHITE)
-                        .build())
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxGrid3D.GLOW).emitter(drawn(agents, spark(CYAN, WHITE, 0.6f)))
                 .set(CgVfxGrid3D.CELL, 0.15f)
                 .set(CgVfxGrid3D.GLOW_COLOR, 0xFF1E5BFF, 1.3f).set(CgVfxGrid3D.HOT, 0xFFAEF4FF, 3f)
                 .set(CgVfxGrid3D.GLOW_GAIN, 0.35f).set(CgVfxGrid3D.HOT_AT, 2.5f).build();
@@ -552,16 +546,16 @@ public final class CgVfxFluidDemo {
                 .rasterize(0.02f, 0f, 0f, 0f).build();
         // Opaque in its core, so it shades as a body: the sun bright on its crown, its middle and underside dark.
         CgVfxLook volume = CgVfxLook.builder(SCHEMA).params(CgVfxGrid3D.SCHEMA).emitter(puffs)
-                .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/grid/smoke.shader").on(CgVfxGrid3D.SLOT)
-                        .role(CgVfxLayer.Role.SMOKE).set("_Detail", 0f).build())
+                .slot(CgVfxSlotRenderer.of("smoke", CgVfxGrid3D.SLOT)
+                        .material(material(GRID_SMOKE, 0, null, m -> m.value("_Detail", 0f))).build())
                 .set(CgVfxGrid3D.CELL, 0.28f).set(CgVfxGrid3D.EXTINCTION, 4f)
                 .set(CgVfxGrid3D.SMOKE_COLOR, 0xFFC9C6C2).build();
         stations.add(new Station("smoke made of particles", "one lit, self-shadowed body they splat", volumeX, z, volume,
                 13f, 24f, List.of(puffs), new float[][] {{0f, 0.5f, 0f}},
                 p -> p.grid = new CgVfxGrid3D(p).place(0f, 5.6f, 0f).channel(0), NOTHING));
-        CgVfxLook sprites = CgVfxLook.builder(SCHEMA).emitter(cards)
-                .layer(CgVfxLayer.of(PARTICLE + "dust.shader").on(cards).set("_Aspect", 1f).set("_Thin", 0f)
-                        .set("_Color", 0.79f, 0.78f, 0.76f, 0.35f).role(CgVfxLayer.Role.SMOKE).build())
+        CgVfxLook sprites = CgVfxLook.builder(SCHEMA)
+                .emitter(drawn(cards, dust(m -> m.value("_Aspect", 1f).value("_Thin", 0f)
+                        .value("_Color", 0.79f, 0.78f, 0.76f, 0.35f))))
                 .build();
         stations.add(new Station("the same particles as sprites", "soft cards, each lit alone", spritesX, z, sprites, 10f,
                 22f, List.of(cards), new float[][] {{0f, 0.5f, 0f}}, p -> { }, NOTHING));
@@ -582,13 +576,15 @@ public final class CgVfxFluidDemo {
                 .module(new CgVfxModule.Turbulence(0.9f, 0.35f, 0.3f))
                 .module(new CgVfxModule.LimitSpeed(2.5f))
                 .module(new CgVfxModule.Splat(0.1f, 0.4f, 0f, 0f)).opacity(FADE).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).params(CgVfxGrid3D.SCHEMA).emitter(stars)
-                .layer(CgVfxLayer.of(GRID_GLOW).on(CgVfxGrid3D.SLOT).set("_Channel", 0f).set("_Gain", 0.5f).set("_HotAt", 3f)
-                        .set("_Detail", 0.75f).set("_DetailSize", 0.8f).bind("_Glow", NEBULA).bind("_Hot", NEBULA_HOT).build())
-                .layer(CgVfxLayer.of(GRID_GLOW).on(CgVfxGrid3D.SLOT).set("_Channel", 1f).set("_Gain", 0.25f).set("_HotAt", 2f)
-                        .set("_Absorb", 0f).bind("_Glow", STARLIGHT).bind("_Hot", WHITE).build())
-                .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(stars).size(0.7f).bind("_Color", STARLIGHT).bind("_Hot", WHITE)
-                        .build())
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).params(CgVfxGrid3D.SCHEMA)
+                .emitter(drawn(stars, spark(STARLIGHT, WHITE, 0.7f)))
+                .slot(CgVfxSlotRenderer.of("gas", CgVfxGrid3D.SLOT).material(material(GRID_GLOW, CgVfxLook.SURFACE, null,
+                                m -> m.value("_Channel", 0f).value("_Gain", 0.5f).value("_HotAt", 3f).value("_Detail", 0.75f)
+                                        .value("_DetailSize", 0.8f)))
+                        .bind("_Glow", NEBULA).bind("_Hot", NEBULA_HOT).build())
+                .slot(CgVfxSlotRenderer.of("starlight", CgVfxGrid3D.SLOT).material(material(GRID_GLOW, CgVfxLook.SURFACE,
+                                null, m -> m.value("_Channel", 1f).value("_Gain", 0.25f).value("_HotAt", 2f).value("_Absorb", 0f)))
+                        .bind("_Glow", STARLIGHT).bind("_Hot", WHITE).build())
                 .set(CgVfxGrid3D.CELL, 0.32f).build();
         stations.add(new Station("nebula", "stars wheeling round a core, splatting gas and starlight", x, z, look, 10f, 24f,
                 List.of(stars), new float[][] {{0f, 5f, 0f}},
@@ -631,13 +627,9 @@ public final class CgVfxFluidDemo {
                 .module(new CgVfxModule.Drag(2.6f, 0f))
                 .module(new CgVfxModule.Ground(0f, 0.8f, 0.6f, 0f))
                 .module(new CgVfxModule.Feed(0.15f, 0f, 2f)).opacity(FADE).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(MUSHROOM).emitter(flash).emitter(debris).emitter(surge)
-                .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(flash).bind("_Color", FLASH).bind("_Hot", FLASH).build())
-                .layer(CgVfxLayer.of(PARTICLE + "streaks.shader").on(debris).trails().size(0.7f).bind("_Color", EMBER)
-                        .bind("_Core", FLAME).build())
-                .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(debris).bind("_Color", EMBER).bind("_Hot", FLAME).build())
-                .layer(CgVfxLayer.of(PARTICLE + "dust.shader").on(surge).set("_Color", 0.66f, 0.6f, 0.52f, 0.25f)
-                        .role(CgVfxLayer.Role.SMOKE).build())
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(MUSHROOM).emitter(drawn(flash, spark(FLASH, FLASH, 1f)))
+                .emitter(drawn(debris, streaks(debris, EMBER, FLAME, 0.7f), spark(EMBER, FLAME, 1f)))
+                .emitter(drawn(surge, dust(m -> m.value("_Color", 0.66f, 0.6f, 0.52f, 0.25f))))
                 .set(CgVfxFluid.CELL, 0.6f).set(CgVfxFluid.BUOYANCY_PER_TEMP, 2.2f).set(CgVfxFluid.COOLING_RATE, 0.3f)
                 .set(CgVfxFluid.DIVERGENCE_PER_BURN, 3f)
                 .set(CgVfxFluid.VELOCITY_DAMPING, 0.02f).set(CgVfxFluid.SMOKE_DAMPING, 0.02f)
@@ -721,5 +713,49 @@ public final class CgVfxFluidDemo {
     public void delete() {
         if (drives) vfx.system().delete();
         else vfx.clear();
+    }
+
+    // ── renderers ─────────────────────────────────────────────────────────────
+
+    /** {@code e} with {@code renderers}: what the look plays, its instances taking it by name. */
+    private static CgVfxEmitter drawn(CgVfxEmitter e, CgVfxRendererProperties... renderers) {
+        CgVfxEmitter.Builder b = e.toBuilder();
+        for (CgVfxRendererProperties r : renderers) b.renderer(r);
+        return b.build();
+    }
+
+    /** A material of one draw's own: {@code shader}, ranked at {@code order}, serving {@code usage} (null: a slot's). */
+    private static CgMaterialDefinition material(String shader, int order, CgMaterialUsage usage,
+                                                 Consumer<CgMaterialDefinition.Builder> values) {
+        String name = shader.substring(shader.lastIndexOf('/') + 1, shader.lastIndexOf('.'));
+        CgMaterialDefinition.Builder b = CgMaterialDefinition.of(MATERIALS + name + "#" + MADE.getAndIncrement(),
+                shader).order(order);
+        if (usage != null) b.usage(usage);
+        if (values != null) values.accept(b);
+        return b.build();
+    }
+
+    /** A glowing spark each, {@code colour} into {@code hot}, {@code size} times its particle's size. */
+    private static CgVfxRendererProperties spark(CgVfxParam.Color colour, CgVfxParam.Color hot, float size) {
+        CgVfxRenderers.Builder r = CgVfxRenderers.sprite("spark")
+                .material(material(PARTICLE + "spark.shader", 0, CgMaterialUsage.SPRITES, null))
+                .bind("_Color", colour).bind("_Hot", hot).sortOrderHint(CgVfxLook.SURFACE);
+        if (size != 1f) r.value("_cg_Size", size);
+        return r.build();
+    }
+
+    /** A streak behind each of {@code e}'s particles, through the positions it keeps. */
+    private static CgVfxRendererProperties streaks(CgVfxEmitter e, CgVfxParam.Color colour, CgVfxParam.Color core,
+                                                   float size) {
+        return CgVfxRenderers.trails("streaks")
+                .material(material(PARTICLE + "streaks.shader", 0, CgMaterialUsage.RIBBONS, null))
+                .field("points", e.trailPoints()).bind("_Color", colour).bind("_Core", core).value("_cg_Size", size)
+                .sortOrderHint(CgVfxLook.SURFACE).build();
+    }
+
+    /** Soft ground dust each, ranked with smoke, its colour and shape {@code values}' constants. */
+    private static CgVfxRendererProperties dust(Consumer<CgMaterialDefinition.Builder> values) {
+        return CgVfxRenderers.sprite("dust").material(material(PARTICLE + "dust.shader", 0, CgMaterialUsage.SPRITES, values))
+                .sortOrderHint(0).build();
     }
 }

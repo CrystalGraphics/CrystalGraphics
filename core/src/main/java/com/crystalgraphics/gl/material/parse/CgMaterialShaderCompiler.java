@@ -292,6 +292,9 @@ public final class CgMaterialShaderCompiler {
                     "Cannot compile: unresolvable #type '" + shader.shaderType()
                     + "'. Known types: " + CgVertexFormat.registeredShaderTypes());
         }
+        // A sprite variant takes the sprite factory, which places quads from CG_VERTEX_ID: it draws CgMesh.quads, and a
+        // vertex input it declared would be one no mesh provides (a Vulkan pipeline refuses it).
+        if (spriteVariant(shader, config)) vertexFormat = CgVertexFormat.NONE;
 
         String vertexSource = buildVertexSource(shader, pass, properties, v2fFields, useSsbo,
                 path, attachedBuffers, requiredExtensions, matPropsEntry, config, vertexFormat);
@@ -299,6 +302,12 @@ public final class CgMaterialShaderCompiler {
                 path, attachedBuffers, requiredExtensions, matPropsEntry, config);
 
         return new CompiledSource(vertexSource, fragmentSource, vertexFormat);
+    }
+
+    /** Whether this variant places its vertices with the particle sprite factory, reading no vertex data. */
+    private static boolean spriteVariant(CgParsedShader shader, CompileConfig config) {
+        return config.activeKeywords().contains("FX_ON_SPRITES") && shader.featureNames().contains("FX_ON_SPRITES")
+                && shader.engineBuffers().contains("particle");
     }
 
     // ── Convenience overloads (delegate to canonical 5-arg via passes().get(0)) ──

@@ -28,7 +28,6 @@ import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
-import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
@@ -46,6 +45,7 @@ import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
 import com.crystalgraphics.world.CgEntityAttachments;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgWorldQueries;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Quaternionf;
@@ -64,7 +64,7 @@ import java.util.function.IntConsumer;
 
 /**
  * Plays {@link CgVfxEffect}s: simulates them on a fixed tick, draws them into a world each frame, and owns what they
- * share on the GPU (the path texture, the meshes, a material per {@link CgVfxLayer}).
+ * share on the GPU (the path texture, the meshes, a material per material definition).
  *
  * <pre>{@code
  * CgVfxSystem vfx = new CgVfxSystem();
@@ -888,7 +888,7 @@ public final class CgVfxSystem {
         for (CgVfxLook look : looks) {
             for (CgVfxEmitter emitter : look.emitters()) {
                 loadAhead(emitter, 0);
-                if (emitter.renderer() == CgVfxEmitter.Renderer.MESHES) CgMeshShapes.sphereLods();
+                if (emitter.drawLayout() == CgVfxDrawLayout.MESHES) CgMeshShapes.sphereLods();
             }
         }
     }
@@ -1053,7 +1053,7 @@ public final class CgVfxSystem {
     private void prepareEmitter(CgVfxEmitter emitter) {
         CgVfxParticlePool.prepare(emitter, 0);
         CgVfxParticlePool.of(gpuSteps, emitter, 0).expect(emitter, emitter.peakAlive());
-        CgVfxFrame.slotMesh(emitter.renderer(), emitter.peakAlive());
+        CgVfxFrame.slotMesh(emitter.drawLayout(), emitter.peakAlive());
         prepareChildren(emitter, -1, 1);
     }
 
@@ -1064,7 +1064,7 @@ public final class CgVfxSystem {
             int alive = parent.peakChildren(e, fedAlive);
             CgVfxParticlePool.prepare(child, tier);
             CgVfxParticlePool.of(gpuSteps, child, tier).expect(child, alive);
-            CgVfxFrame.slotMesh(child.renderer(), alive);
+            CgVfxFrame.slotMesh(child.drawLayout(), alive);
             prepareChildren(child, alive, tier + 1);
         }
     }
@@ -1074,7 +1074,7 @@ public final class CgVfxSystem {
         List<CgVfxEmitter> looked = look.emitters();
         for (int k = 0; k < looked.size(); k++) {
             // The particle sphere's levels are built on first ask: here, not in the first burst's frame.
-            if (looked.get(k).renderer() == CgVfxEmitter.Renderer.MESHES) particleSphere();
+            if (looked.get(k).drawLayout() == CgVfxDrawLayout.MESHES) particleSphere();
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, MATERIALS_ZONE)) {
             materials.prepare(look, warming, halved);
@@ -1190,7 +1190,7 @@ public final class CgVfxSystem {
         return tubeMesh;
     }
 
-    /** A {@link CgVfxLayer#isClosed() closed} layer's chunk mesh. */
+    /** A closed tube's chunk mesh: a slot renderer whose archetype is tagged {@code "Tube" = "Closed"}. */
     CgMesh closedTubeMesh() {
         return closedTubeMesh;
     }
@@ -1215,33 +1215,16 @@ public final class CgVfxSystem {
     }
 
     /**
-     * The sort layer an effect's draw of {@code layer} goes in: its own ({@code CgVfxLayer.Builder.sortLayer}), else
-     * {@link CgSortLayer#EFFECTS}, or with {@code -Dcrystalgraphics.vfx.sharedDistortion=true} every distortion layer
-     * after all of them.
-     */
-    public static CgSortLayer sortLayer(CgVfxLayer layer) {
-        if (layer.sortLayer() != null) return layer.sortLayer();
-        return SHARED_DISTORTION.get() && layer.role() == CgVfxLayer.Role.DISTORTION ? DISTORTION : CgSortLayer.EFFECTS;
-    }
-
-    /**
-     * {@code draw} placed as a draw of {@code placed} in the effect at {@code (ox, oy, oz)}: its sort layer, the effect's
-     * group and the layer's order in its look, and a {@link CgVfxLayer.Role#SURFACE} layer after the distortion apply,
-     * so no haze of its own effect bends it.
+     * {@code draw} placed as a draw of {@code placed} in the effect at {@code (ox, oy, oz)}: its material's sort layer,
+     * the effect's group and its order in its look, and a surface draw ({@link CgVfxLook.Placed#afterDistortion()})
+     * after the distortion apply, so no haze of its own effect bends it.
      */
     public static CgWorldRenderer.Draw place(CgWorldRenderer.Draw draw, CgVfxLook.Placed placed, double ox, double oy,
                                              double oz) {
-        CgVfxLayer layer = placed.layer();
-        if (layer == null) {
-            // A renderer: its material's sort layer; after the apply unless its material distorts, as a SURFACE layer.
-            CgMaterialDefinition material = placed.definition();
-            boolean distorts = material != null && material.distortion();
-            draw.layer(material == null ? CgSortLayer.EFFECTS : sortLayer(material.sortLayer(), distorts))
-                    .group(ox, oy, oz).order(placed.order());
-            return distorts ? draw : draw.afterDistortion();
-        }
-        draw.layer(sortLayer(layer)).group(ox, oy, oz).order(placed.order());
-        return layer.role() == CgVfxLayer.Role.SURFACE ? draw.afterDistortion() : draw;
+        CgMaterialDefinition material = placed.definition();
+        CgSortLayer sortLayer = material == null ? CgSortLayer.EFFECTS : sortLayer(material.sortLayer(), placed.distorts());
+        draw.layer(sortLayer).group(ox, oy, oz).order(placed.order());
+        return placed.afterDistortion() ? draw.afterDistortion() : draw;
     }
 
     /** A material's {@code sort_layer} as the world renderer's, a distorting one after every effect where shared. */

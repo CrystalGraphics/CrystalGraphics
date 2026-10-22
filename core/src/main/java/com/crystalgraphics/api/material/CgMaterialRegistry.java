@@ -1,6 +1,7 @@
 package com.crystalgraphics.api.material;
 
 import com.crystalgraphics.api.texture.CgSampler;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 /**
  * Singleton load/reload/delete lifecycle manager for {@link CgMaterial} instances.
@@ -123,8 +125,37 @@ public final class CgMaterialRegistry {
      * for (CgMaterialDefinition.Texture t : definition.textures().values()) CgMaterialRegistry.texture(t.texture()).getWidth();
      * }</pre>
      */
-    public static CgTexture2D texture(String path) {
+    public static CgTexture texture(String path) {
+        Supplier<? extends CgTexture> provided = PROVIDED.get(path);
+        if (provided != null) return provided.get();
         return TEXTURES.computeIfAbsent(path, p -> CgTextures.of(p, linear(p) ? CgTextureSpec.RGBA8_LINEAR : SRGB));
+    }
+
+    /** Every texture made in code, by the id a material's binding names it by. */
+    private static final Map<String, Supplier<? extends CgTexture>> PROVIDED = new ConcurrentHashMap<>();
+
+    /**
+     * Names a texture made in code, so a material binds it as it binds an image file: a render target, a lookup table,
+     * a procedural sheet. Unreal's renderer texture parameters set to a texture object rather than a file. Any kind
+     * the sampler declares: 2D, an array, a volume.
+     *
+     * <pre>{@code
+     * CgMaterialRegistry.provide("mymod:textures/fx/fire_ramp", FIRE::texture);    // made at its first bind
+     * CgMaterialDefinition.of("mymod:materials/fire", SHADER).texture("_Ramp", "mymod:textures/fx/fire_ramp")
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Provide it before the first material naming it draws; a binding of an id nothing provides is read as a file.</li>
+     *   <li>One supplier an id: providing another under it throws.</li>
+     * </ul>
+     */
+    public static void provide(String id, Supplier<? extends CgTexture> texture) {
+        Supplier<? extends CgTexture> had = PROVIDED.putIfAbsent(id, texture);
+        if (had != null && had != texture) throw new IllegalStateException(id + " is provided already");
+    }
+
+    private static boolean provided(String id) {
+        return PROVIDED.containsKey(id);
     }
 
     private static final CgTextureSpec SRGB = CgTextureType.SRGB8_ALPHA8.toTextureSpec();
@@ -159,10 +190,10 @@ public final class CgMaterialRegistry {
         for (CgMaterialProperty p : m.properties()) if (p.getType().isSampler()) samplers.put(p.getName(), p);
         for (Map.Entry<String, CgMaterialDefinition.Texture> t : d.textures().entrySet()) {
             CgMaterialProperty p = samplers.get(t.getKey());
-            if (p == null || p.getType() != CgMaterialProperty.Type.SAMPLER2D) {
+            if (p == null || !p.getType().isSampler() || !provided(t.getValue().texture()) && p.getType() != CgMaterialProperty.Type.SAMPLER2D) {
                 throw new IllegalStateException(d.id() + " binds " + t.getValue().texture() + " to " + t.getKey()
                         + ", a " + (p == null ? "missing sampler" : p.getType().getPropertyTypeName())
-                        + ": a material's texture is a 2D image");
+                        + ": an image file is a 2D texture; any other kind is provided (CgMaterialRegistry.provide)");
             }
         }
         m.applyProperties(b -> {
@@ -176,7 +207,7 @@ public final class CgMaterialRegistry {
             int unit = 0;
             for (Map.Entry<String, CgMaterialDefinition.Texture> t : d.textures().entrySet()) {
                 CgSampler sampler = sampler(t.getValue().sampler());
-                CgTexture2D texture = texture(t.getValue().texture());
+                CgTexture texture = texture(t.getValue().texture());
                 if (sampler == null) b.sampler(t.getKey(), unit++, texture);
                 else b.sampler(t.getKey(), unit++, texture, sampler);
             }

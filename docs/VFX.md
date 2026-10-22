@@ -5,7 +5,7 @@ dust, trails, smoke and fire. It simulates their particles and their gas on the 
 world renderer, sends them over the network, and can run an effect on the server when gameplay depends on it.
 
 It splits an effect into **what it does** (an effect class and the elements it is made of: Java, ticking at 120 Hz)
-and **how it looks** (a look: parameters, kits of layers, emitters: data). The same Kamehameha class plays as the
+and **how it looks** (a look: parameters, kits of renderers and emitters: data). The same Kamehameha class plays as the
 realistic beam, as a toon beam in flat bands, or as Dragon Forge's anime wave, and only the look differs.
 
 Read sections 1 and 2 first: they give you the words and the picture everything else uses. After that, jump to what
@@ -28,7 +28,7 @@ itself for anyone editing a VFX file.
 **How an effect looks**
 
 6. [Parameters: what a look carries](#6-parameters-what-a-look-carries)
-7. [Kits, layers and slots: how a look draws](#7-kits-layers-and-slots-how-a-look-draws)
+7. [Kits, renderers and slots: how a look draws](#7-kits-renderers-and-slots-how-a-look-draws)
 8. [Meshes](#8-meshes)
 9. [Tweens and endings](#9-tweens-and-endings)
 10. [Tuning a look live, and saving it](#10-tuning-a-look-live-and-saving-it)
@@ -53,7 +53,7 @@ itself for anyone editing a VFX file.
 **Writing your own**
 
 19. [Writing an effect of your own](#19-writing-an-effect-of-your-own)
-20. [Writing a layer's shader](#20-writing-a-layers-shader)
+20. [Writing a material's shader](#20-writing-a-materials-shader)
 21. [Writing a particle module of your own](#21-writing-a-particle-module-of-your-own)
 
 **Running well**
@@ -72,11 +72,11 @@ itself for anyone editing a VFX file.
 | **Element** | A part many effects share, with its own parameters and slots: a charge ball, a blast, a beam's body. An effect is made of elements. | `CgVfxElement`: `CgVfxCharge`, `CgVfxBlast`, `CgBeamBody`, ... |
 | **Look** | How an effect looks: its parameters' values, the kits that draw it, its emitters. Shared, never changed by playing. | `CgVfxLook` |
 | **Schema**, **parameter** | A named set of typed values an effect, element or kit reads: a length, a colour, a palette, a curve, a camera shake. | `CgVfxSchema`, `CgVfxParam` |
-| **Kit** | A named group of layers and emitters, with the schemas they read: the realistic body, the toon body, an explosion. A look is kits added and dropped. | `CgVfxKit` |
-| **Layer** | One draw: a `.shader` on one or more slots, its properties set, bound to parameters, or bound by name. | `CgVfxLayer` |
-| **Slot** | A place an effect draws: its body along a path, its head on a sphere, its sparks. An element declares its slots; a layer names the ones it draws on. | `CgVfxSlot` |
+| **Kit** | A named group of slot renderers and emitters, with the schemas they read: the realistic body, the toon body, an explosion. A look is kits added and dropped. | `CgVfxKit` |
+| **Renderer**, **material** | One draw: a material asset (a `.shader`, its constants, textures and state) drawn by an emitter's renderer on its particles, or by a slot renderer on a slot, its properties bound to parameters. | `CgVfxRenderers`, `CgVfxSlotRenderer`, `CgMaterialDefinition` |
+| **Slot** | A place an effect draws: its body along a path, its head on a sphere. An element declares its slots; a slot renderer names the one it draws on. | `CgVfxSlot` |
 | **Emitter**, **module** | One kind of particle, and the physics pieces it stacks (gravity, drag, collision). Simulated on the GPU. | `CgVfxEmitter`, `CgVfxModule` |
-| **Trail**, **ribbon** | A strip through where something moving has been: a fist's streak, a blade's swoosh, a line behind every spark. | `CgVfxTrail`; a layer's `trails()` and `ribbon()` |
+| **Trail**, **ribbon** | A strip through where something moving has been: a fist's streak, a blade's swoosh, a line behind every spark. | `CgVfxTrail`; the trails and ribbon renderers |
 | **Gas** | Smoke, fire and steam as a fluid on the GPU (NVIDIA Flow's): coupled from emitters, burning, rising, curling round blocks, lit through itself. | `CgVfxFluid`, `CgVfxSmoke` |
 | **Link** | A size that follows another, times a factor: the head is 1.45 times the radius, so setting the radius resizes it. | `SCHEMA.length("head", RADIUS, 1.45f)` |
 | **Tween** | One value moved from where it is to a new one over some seconds, rather than jumping: a beam swelling as it powers up. | `effect.animate(...)` |
@@ -99,8 +99,8 @@ CgVfxSystemInstance playing the CgEnergyWave behaviour (phases, aim, fire, hits)
   ├─ CgBeamContact, CgVfxBlast, CgBeamWake
   └─ plays a CgVfxLook:
         values      RADIUS 0.8, SHELL 0xFF1858FF × 1.6, ...      (every schema the look includes)
-        kits        REALISTIC_BODY  → layers on BODY, ARCS     (each layer: a shader, its bindings)
-                    REALISTIC_HEAD  → layers on HEAD
+        kits        REALISTIC_BODY  → slot renderers on BODY, ARCS   (each: a material, its bindings)
+                    REALISTIC_HEAD  → slot renderers on HEAD
                     CgVfxBlast.KIT  → FIREBALL, HEART, SHOCKWAVE, the explosion's emitters
         links       HEAD_WIDTH = RADIUS × 1.45, ...            (sizes follow the radius)
 ```
@@ -149,7 +149,7 @@ public static final CgVfxLook MINE = CgEnergyWave.kamehameha().derive()
 
 ### An effect that is only particles
 
-A look with emitters and layers on them needs no effect class: a `CgVfxSystemInstance` (`vfx.system`) of it starts
+A look of emitters, their renderers drawing them, needs no effect class: a `CgVfxSystemInstance` (`vfx.system`) of it starts
 every emitter once and dies when
 they finish. Building `PUFF_LOOK` is [§11](#11-particles).
 
@@ -178,7 +178,7 @@ runs on the server too: [§17](#17-effects-gameplay-depends-on-server-authority)
 
 | What | Client | Server |
 |---|---|---|
-| Drawing: meshes, layers, glow | yes | never |
+| Drawing: meshes, materials, glow | yes | never |
 | Particles (simulated on the GPU) | yes | never |
 | Gas (simulated on the GPU) | yes | never: a smoke grenade's server copy floods its cells and answers sight with no fluid |
 | Post effects: flashes, colour shifts, impact frames | yes | never |
@@ -192,8 +192,8 @@ runs on the server too: [§17](#17-effects-gameplay-depends-on-server-authority)
 - **On a server**, nothing plays unless a cue is `authoritative()`. Then the server runs *the same effect class*
   with everything visual switched off.
 - **In singleplayer** an authoritative effect exists twice: the integrated server's copy decides, the client's draws.
-- **Looks, schemas, kits and layers are plain data** and are safe on a server: declare them in common code. Nothing
-  touches the GPU until a layer first draws.
+- **Looks, schemas, kits, renderers and material assets are plain data** and are safe on a server: declare them in
+  common code. Nothing touches the GPU until a material first draws.
 
 ### Threads
 
@@ -387,7 +387,7 @@ Each element's schema, slots and moments are on its class. Any effect may use th
 | `TARGET`, `VIA` | NaN | what the body homes on, and a point it passes, from the origin (`setPoint` takes a point in the world); NaN for none |
 | `COLLIDE` | 0 | 1: it finds its own target where a cast along the aim meets something; a cue's viewer never casts |
 | `RELEASE` | NaN | the age it fires at: NaN at its charge's `TIME`, infinity held; once fired it stays fired |
-| `CORE`, `CORE_RIM`, `SHELL`, `SHELL_HOT`, `SPIRAL`, `GLOW` | | the energy palette its realistic kits read by name |
+| `CORE`, `CORE_RIM`, `SHELL`, `SHELL_HOT`, `SPIRAL`, `GLOW` | | the energy palette its realistic kits bind |
 | `CgBeamBody.HEAD_WIDTH`, `HEAD_LENGTH` | `RADIUS` × 1.45, × 1.9 | the head |
 | `CgVfxCharge.RADIUS`, `ROOT_SIZE` | `RADIUS` × 1.7, 0.8 | the ball, and the root it settles to once fired |
 | `CgVfxBlast.RADIUS` | `RADIUS` × 12 | the blast |
@@ -409,7 +409,7 @@ public static final CgVfxLook KAMEHAMEHA = CgEnergyWave.kamehameha().derive()
         .build();
 ```
 
-- Bind your layers' sizes to `RADIUS` (`bind("_Radius", CgEnergyWave.RADIUS)`, `size(...)`), and `FADE` thins the whole
+- Bind your renderers' sizes to `RADIUS` (`bind("_Radius", CgEnergyWave.RADIUS)`), and `FADE` thins the whole
   of it.
 - A look must carry its elements' schemas: derive it from one of the wave's looks, or add them with `params(...)`.
   The wave's constructor says which is missing.
@@ -517,21 +517,29 @@ A look lays out every schema it includes (`CgVfxLayout`): its effect's first, th
 `params(...)`. The Kamehameha's carries the wave's, the charge's, the body's, the contact's, the blast's and the
 explosion's. A parameter is read the same way whichever schema it is on: `wave.get(CgVfxCharge.RADIUS)`.
 
-`look.describe()` prints every value and every layer's resolved bindings: the first thing to read when a look does
+`look.describe()` prints every value and every draw's hint, material and binds: the first thing to read when a look does
 not draw what you expect.
 
 ---
 
-## 7. Kits, layers and slots: how a look draws
+## 7. Kits, renderers and slots: how a look draws
+
+A look draws through **renderers**, each drawing a material asset: an emitter's renderers draw its particles, and a
+**slot renderer** draws on one of its behaviour's slots. How a material blends, what it samples and where a draw goes
+among the rest is [`vfx/effects.md`](vfx/effects.md); every renderer kind is [`vfx/particles.md`](vfx/particles.md)
+§ *Renderers*.
 
 ### Composing a look from kits
 
 ```java
+static final CgMaterialDefinition FLAT = CgMaterialDefinition.of("mymod:materials/flat",
+        "mymod:shaders/vfx/flat.shader").order(CgVfxLook.SURFACE).build();
+
 public static final CgVfxKit BANDS = CgVfxKit.of("mymod:wave/bands")
-        .layer(CgVfxLayer.of("mymod:shaders/vfx/flat.shader").on(CgBeamBody.BODY, CgBeamBody.HEAD)
-                .size(1.8f).bind("_Color", CgEnergyWave.SPIRAL).build())
-        .layer(CgVfxLayer.of("mymod:shaders/vfx/flat.shader").on(CgBeamBody.BODY, CgBeamBody.HEAD)
-                .size(1.4f).bind("_Color", CgEnergyWave.SHELL).build())
+        .slot(CgVfxSlotRenderer.of("outer", CgBeamBody.BODY).material(FLAT).size(1.8f)
+                .bind("_Color", CgEnergyWave.SPIRAL).build())
+        .slot(CgVfxSlotRenderer.of("inner", CgBeamBody.BODY).material(FLAT).size(1.4f)
+                .bind("_Color", CgEnergyWave.SHELL).build())
         .build();
 
 CgVfxLook mine = CgEnergyWave.kamehameha().derive()
@@ -543,68 +551,62 @@ CgVfxLook swapped = CgEnergyWave.kamehameha().derive().replace(CgEnergyWave.REAL
 CgVfxLook quieter = CgEnergyWave.kamehameha().derive().without(CgVfxBlast.SHOCKWAVE).build();   // a kit inside a kit
 ```
 
-- **A kit** holds layers, emitters, the schemas they read (`params(...)`) and other kits (`kit(...)`).
-- **`without(kit)`** drops its layers and emitters, inside other kits or not; its parameters stay, since effect code
-  may read them. Dropping a kit the look does not hold throws.
+- **A kit** holds slot renderers, emitters (each with its renderers), the schemas they read (`params(...)`) and other
+  kits (`kit(...)`).
+- **`without(kit)`** drops its slot renderers and emitters, inside other kits or not; its parameters stay, since effect
+  code may read them. Dropping a kit the look does not hold throws.
 - **`replace(a, b)`** puts `b` where `a` was in the draw order.
-- A look may also take a loose `layer(...)` or `emitter(...)`; `emitter` replaces one of the same name where it is,
-  which is how a look changes one element's physics.
+- A look may also take a loose `slot(...)` or `emitter(...)`; `emitter` replaces one of the same name where it is,
+  which is how a look changes one element's physics or drawing.
 
-### A layer
+### A slot renderer
 
 ```java
-CgVfxLayer shell = CgVfxLayer.of("crystalgraphics:shaders/vfx/beam/body_shell.shader")
-        .on(CgBeamBody.BODY)                  // the slots it draws on: one or several
-        .size(1.15f)                          // times the slot's own size
-        .set("_Flow", 22f)                    // a constant
-        .build();                             // _Shell and _ShellHot bind to SHELL and SHELL_HOT by name
+static final CgMaterialDefinition SHELL = CgMaterialDefinition.of("mymod:materials/shell",
+        "crystalgraphics:shaders/vfx/beam/body_shell.shader").value("_Flow", 22f).order(CgVfxLook.SURFACE).build();
 
-CgVfxLayer flames = CgVfxLayer.of("mymod:shaders/vfx/ends_aura.shader")
-        .on(CgBeamBody.ARCS)
-        .bind("_Color", CgEnergyWave.SHELL)            // a colour, read every draw
-        .bind("_Radius", CgEnergyWave.RADIUS)          // a number, read every draw: it shrinks as the wave fades
-        .bind("_Reach", CgEnergyWave.RADIUS, 2.6f)     // RADIUS × 2.6
-        .texture("_Aura", AURA_FRAMES)
-        .set("_Spread", 0.25f, 0.7f, 0f, 0f)
+CgVfxSlotRenderer shell = CgVfxSlotRenderer.of("shell", CgBeamBody.BODY)   // the slot it draws on
+        .material(SHELL)
+        .size(1.15f)                                       // times the slot's own size
+        .bind("_Shell", CgEnergyWave.SHELL)                // a colour, read every draw
+        .bind("_Radius", CgEnergyWave.RADIUS, 2.6f)        // a number times 2.6: it shrinks as the wave fades
         .build();
 ```
 
 | Call | Does |
 |---|---|
-| `on(slot...)`, `on(emitter...)` | The slots it draws on, or the emitters whose particles it draws |
-| `size(times)`, `size(param)` | Its size, times its slot's own; or following a number, which can then be tuned, tweened and sent |
-| `set(property, ...)` | A constant: one float, two, four, or `setArray` for an array property |
-| `bind(property, param)`, `bind(property, number, factor)` | Read from the effect's own values every draw |
-| `texture(property, texture)` | A texture ([below](#textures)) |
-| `role(role)` | Where it draws in its effect ([below](#draw-order)) |
-| `from(CgQuality.MEDIUM)` | Drawn only at that quality tier and above: detail a lower tier drops |
-| `volume()` | A tube chunk drawn on a sphere round it, for a shader summing its own chunk's light (`body_light`) |
-| `closed()` | A tube chunk closed at both ends, for a shader tracing the view ray through it (`body_core`) |
-| `keyword(name)` | A `#pragma cg_feature` keyword on its materials |
-| `flipbook(flipbook)` | Which frame of its sheet a sprite particle shows: a grid or a rect table, over its life, looping or at random ([`vfx/effects.md`](vfx/effects.md) § *Flipbooks*) |
-| `mesh(mesh)`, `mesh(lods)`, `mesh(path)` | Draws that mesh instead of the unit sphere: on a mesh slot, or per particle of a `MESHES` emitter. A path loads at its first draw; any other slot throws. `CgProceduralMesh` makes crescents, domes and swirls from a few numbers ([§8](#8-meshes)) |
-| `unbound(property)` | Keeps a colour the shader's own, never bound by name |
-| `named(name)` | What tools and tunings call it; its shader's file name unless given |
+| `of(id, slot)` | the slot it draws on, and its id in the look |
+| `material(definition)` | the material asset it draws: its shader, constants, textures, state and `order` |
+| `size(times)` | its size, times its slot's own |
+| `bind(property, param)`, `bind(property, param, factor)` | read from the effect's own values every draw |
+| `mesh(id)` | a mesh slot only: a file or provided mesh drawn in place of the unit sphere ([§8](#8-meshes)) |
+| `quality(CgQuality.MEDIUM)` | drawn only at that quality tier and above: detail a lower tier drops |
 
-**How a property gets its value**, resolved once when the layer first draws in a look:
+- **Nothing binds by name**: a property reads a user parameter only where it is bound. A bind the look does not
+  declare fails at load, naming the parameters it has.
+- **Bound values are written once a frame per effect and draw into a row**: a small block of numbers that travels with
+  each draw ([§20](#20-writing-a-materials-shader)). So two effects playing different values share one material and batch.
+- **A material is made once per material definition**, so looks built from the same kits share them.
+- **A tube slot draws the geometry its material's shader names** (`Tags { "Tube" = "Volume" | "Closed" }`).
 
-1. `set` makes it a constant of the layer's material.
-2. `bind` reads it from the effect's values every draw.
-3. Else a **colour or palette** property reads the look's colour or palette of its name, the underscore dropped and
-   the first letter lowered: `_ShellHot` reads `shellHot`, `_Bands` reads `bands`. **A number never binds by name**:
-   a shader's `_Speed` is not the effect's `speed`.
-4. Else the shader's default.
+### An emitter's renderers
 
-- A name the shader does not declare, or a value of the wrong kind, throws at the layer's first draw and names the
-  properties the shader has.
-- Bound values are written once a frame per effect and layer into a **row**: a small block of numbers that travels
-  with each draw, which the shader reads in place of the material's value ([§20](#20-writing-a-layers-shader)). So two
-  effects playing different values still share one material and batch.
-- A layer's constants are its material's: two looks sharing a kit share its layers' materials.
+```java
+static final CgMaterialDefinition SPARK = CgMaterialDefinition.of("mymod:materials/spark",
+        "crystalgraphics:shaders/vfx/particle/spark.shader").usage(CgMaterialUsage.SPRITES).build();
+
+static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks").capacity(1200).rate(120f)
+        .renderer(CgVfxRenderers.sprite("sparks").material(SPARK).bind("_Color", EMBER).bind("_Hot", FLAME)
+                .sortOrderHint(CgVfxLook.SURFACE).build())
+        .build();
+```
+
+An emitter's renderers say how its particles draw; their kinds set how the pool lays them out (quads, meshes, arcs).
+A material serves the usages it lists (`sprites`, `mesh_particles`, `ribbons`), each one its shader declares.
 
 ### Slots
 
-An element declares where it draws, and a kit's layers say which of those they draw on:
+An element declares where it draws, and its kit's slot renderers say what draws there:
 
 ```java
 public static final CgVfxSlot BODY = CgVfxSlot.tube("crystalgraphics:wave/body");
@@ -619,60 +621,33 @@ public static final CgVfxSlot ARCS = CgVfxSlot.pathRibbons("crystalgraphics:wave
 | `RIBBONS` | stateless ribbons a shader places, in a unit cube at a transform | `frame.ribbons(...)` |
 | `PATH_RIBBONS` | ribbons riding a path | `frame.pathRibbons(this, slot, path, row, intensity)` |
 | `BILLBOARD` | one camera-facing quad | `frame.billboard(...)` |
-| `PARTICLES` | an emitter's particles: the emitter is its slot (`emitter.slot()`) | the system, for every instance the effect steps |
-| `SEQUENCE` | a prefab's part on each particle of a `sequence(clip)` emitter, where its node is at the particle's age ([`vfx/sequences.md`](vfx/sequences.md)) | the system, as `PARTICLES` |
+| `SEQUENCE` | a prefab's part on each particle of a `sequence(clip)` emitter, where its node is at the particle's age ([`vfx/sequences.md`](vfx/sequences.md)) | the system |
 | `TRAIL` | a strip behind something moving, built on the GPU from a `CgVfxTrail`'s points | `frame.trail(this, slot, trail)` |
 
-- **A frame draws a slot, not a layer**: every layer of the look on that slot draws, in the look's order. A slot no
-  layer draws on costs nothing, and `frame.draws(this, slot)` skips the work of preparing it.
-- **One shader on several kinds**: a layer on a tube and a sphere makes a material per kind and enables the kind's
-  keyword (`FX_ON_TUBE`, `FX_ON_MESH`, ...) where the shader declares it.
+- **A frame draws a slot**: every slot renderer of the look on that slot draws, in the look's order. A slot nothing
+  draws on costs nothing, and `frame.draws(this, slot)` skips the work of preparing it.
+- **One shader on several kinds**: its material is made per kind, enabling the kind's keyword (`FX_ON_TUBE`,
+  `FX_ON_MESH`, ...) where the shader declares it.
 - **Every draw of a slot carries four numbers of its element's choosing** (`ex ey ez ew` above: the head's half width,
-  half length and strength), which its layers' shaders read. Each element documents what its slots' four mean; what each kind
-  passes besides is on `CgVfxSlot.Kind`.
+  half length and strength), which its materials' shaders read. Each element documents what its slots' four mean;
+  what each kind passes besides is on `CgVfxSlot.Kind`.
 
 ### Draw order
 
-Within an effect, layers draw by **role**, then by an order hint where a layer gives one, then in the order the look
-holds them ([`vfx/effects.md`](vfx/effects.md) § *Where a layer draws*). Effects that must stack as one, a move made
-of several, share a `CgVfxSortGroup`, which ranks all their layers together.
-
-| Role | Draws | For |
-|---|---|---|
-| `SMOKE` | first | smoke, dust, soft matter |
-| `LIGHT` | next | light pools on what is round the effect |
-| `DISTORTION` | next | haze and shock fronts: a shader with a Distortion pass, bending what drew before it |
-| `SURFACE` | last (the default) | the effect itself: its body, glows, sparks. Drawn after its own effect's distortion, so its haze never smears it |
-
-A look draws at most 256 layers. A layer whose shader has a Distortion pass must be `DISTORTION`, and only one
-that has may be; the first draw says which is wrong.
-
-### Textures
-
-```java
-static final CgTexture2D SLEEVE = CgTextures.of("mymod:textures/vfx/sleeve.png", CgTextureSpec.RGBA8_LINEAR_REPEAT);
-static final CgTexture2DArray FLAMES = CgTextures.frames("mymod:textures/vfx/flame_%d.png", 3);   // sampler2DArray
-
-layer.texture("_Strip", SLEEVE).texture("_Aura", FLAMES).texture("_Sheet", madeAtRunTime)   // yours to free
-```
-
-- A layer takes any `CgTexture`. `CgTextures` makes one from files (`of`, `frames`, `array`, `volume`, `cubemap`):
-  named in common code, it loads at its first use, so a server that names it never decodes it.
-- Its sampling is its spec's, unless the layer names a sampler (`texture(property, texture, CgSampler)`): one image
-  loaded once, clamped here and tiled there ([`vfx/effects.md`](vfx/effects.md) § *Textures and samplers*).
-- `frames(pattern, count)`, or `array(spec, paths...)`, makes one `sampler2DArray`: a flipbook, or a set of paintings
-  to pick from, past a material's sampler limit. Images of different sizes are each centred on a layer the largest
-  one's size.
-- An image that will not load is logged and drawn as the checkerboard, a missing layer as clear: `isMissing()`.
+Within an effect every draw ranks by its hint, a renderer's `sortOrderHint`, a slot renderer's material `order`, in
+bands of 64: smoke, light, distortion, then the surface (`CgVfxLook.SURFACE`, 192), which draws after its own effect's
+distortion so its haze never smears it ([`vfx/effects.md`](vfx/effects.md) § *Where a draw goes*). Effects that must
+stack as one, a move made of several, share a `CgVfxSortGroup`, which ranks all their draws together. A look draws at
+most 256.
 
 ---
 
 ## 8. Meshes
 
-A layer draws on what its slot gives it: a tube along a path, the unit sphere at a transform, a quad per particle.
-Give it a mesh and it draws that instead: a sword slash's crescent, a shield's dome, a rock for every particle of
+A slot renderer draws on what its slot gives it: a tube along a path, the unit sphere at a transform. Give it a mesh
+and it draws that instead: a sword slash's crescent, a shield's dome; a mesh renderer draws one for every particle of
 debris. A mesh is data (`CgMesh`, [`ENGINE_API.md`](ENGINE_API.md) § *Meshes*): built on any thread, from a file or
-from a few numbers.
+from a few numbers, and named for a renderer by its file's path or an id it is provided under.
 
 ### On a mesh slot
 
@@ -680,10 +655,13 @@ from a few numbers.
 public static final CgVfxSlot SLASH = CgVfxSlot.mesh("mymod:slash");
 static final CgMesh CRESCENT = CgProceduralMesh.revolve(CgProceduralMesh.cylinder(1.25f, 1.6f, 0.06f))
         .angles(-75f, 75f).divisions(48, 3).build();
+static { CgMeshLoader.provide("mymod:models/crescent", () -> CgMeshLods.of(CRESCENT)); }
+
+static final CgMaterialDefinition FLOW = CgMaterialDefinition.of("mymod:materials/slash",
+        "crystalgraphics:shaders/vfx/mesh/flow.shader").value("_Scroll", 2.5f, 0f, 0f, 0f).order(CgVfxLook.SURFACE).build();
 
 public static final CgVfxKit KIT = CgVfxKit.of("mymod:slash")
-        .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/mesh/flow.shader").on(SLASH).mesh(CRESCENT)
-                .bind("_Color", KI).set("_Scroll", 2.5f, 0f, 0f, 0f).build())
+        .slot(CgVfxSlotRenderer.of("slash", SLASH).material(FLOW).mesh("mymod:models/crescent").bind("_Color", KI).build())
         .build();
 
 // in submit: placed by the slot's transform, as the sphere would be. flow.shader's four numbers are how far its
@@ -691,9 +669,9 @@ public static final CgVfxKit KIT = CgVfxKit.of("mymod:slash")
 frame.mesh(this, SLASH, 0f, 1.2f, 0f, transform, reveal, 1f, 0.3f, 0f);
 ```
 
-- **Three ways to name it**: `mesh(CgMesh)`; `mesh(CgMeshLods)`, a level per screen height; `mesh(path)`, an OBJ or
-  glTF file loaded at the layer's first draw, so a constant in common code costs a server nothing.
-- **Only a mesh slot or a `MESHES` emitter takes one**; on any other slot it throws at the first draw.
+- **Two ways to name it**: a path, an OBJ or glTF file loaded at its first draw, so a constant in common code costs a
+  server nothing; or an id `CgMeshLoader.provide`s a mesh made in code under, once.
+- **Only a mesh slot takes one**; on any other slot it fails at load.
 - **`shaders/vfx/mesh/flow.shader`** is the engine's look for one: energy flowing over its UVs (Effekseer's UV-scroll
   and erosion material), white-hot where a reveal sweeps along it, added. `_Scroll`, `_Tiling`, `_Erosion`, `_Edges`
   and `_Rim` shape it.
@@ -701,16 +679,17 @@ frame.mesh(this, SLASH, 0f, 1.2f, 0f, transform, reveal, 1f, 0.3f, 0f);
 ### One for every particle
 
 ```java
-static final CgVfxEmitter ROCKS = CgVfxEmitter.builder("rocks").renderer(CgVfxEmitter.Renderer.MESHES).capacity(40)
-        .state(CgVfxEmitterState.ONCE).burst(0.5f, 24).shape(CgSphere.of(0.5)).hemisphere().direction(0, 1, 0, 60f).speed(4f, 7f).life(3f, 4f)
-        .size(0.12f, 0.3f, 1f).spin(1f, 4f)
-        .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0.2f, 0.4f, 0.6f)).build();
-
-.layer(CgVfxLayer.of("mymod:shaders/vfx/rock.shader").on(ROCKS).mesh(ROCK).build())
+static final CgVfxEmitter ROCKS = CgVfxEmitter.builder("rocks").capacity(40)
+        .state(CgVfxEmitterState.ONCE).burst(0.5f, 24).shape(CgSphere.of(0.5)).hemisphere().direction(0, 1, 0, 60f)
+        .speed(4f, 7f).life(3f, 4f).size(0.12f, 0.3f, 1f).spin(1f, 4f)
+        .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0.2f, 0.4f, 0.6f))
+        .renderer(CgVfxRenderers.mesh("rocks").material(ROCK).field("meshes", List.of(Map.of("mesh", "mymod:models/rock.glb")))
+                .build())
+        .build();
 ```
 
-Each particle draws the mesh turned as it spins and sized by its size times the layer's, drawn as instances and culled
-on the GPU. With no mesh on its layer, a `MESHES` emitter draws the unit sphere's levels.
+Each particle draws the mesh turned as it spins and sized by its size, drawn as instances and culled on the GPU. A
+mesh renderer naming no mesh draws the unit sphere's levels; its material lists `mesh_particles`.
 
 ### From a few numbers: procedural meshes
 
@@ -861,7 +840,7 @@ each client finds the ending declared under that name in its own copy of your co
 - An ending animating a value its effect's look lacks throws at `end`.
 - A second `end`, or one after the effect died, is ignored: the first ending plays out.
 - `fadeOut` fades the effect's **presence**, which every engine shader multiplies its light by (`FX_PRESENCE`). A
-  shader of your own fades only if it does the same ([§20](#20-writing-a-layers-shader)).
+  shader of your own fades only if it does the same ([§20](#20-writing-a-materials-shader)).
 - A fade of another length is an ending of its own: `CgVfxEnding.over("mymod:slow_fade", 1.2f).fadeOut(CgEasings.IN_QUAD).build()`.
 
 **In an effect of your own**, override `ending(CgVfxEnding)` to drop what the graceful end would play; it is heard
@@ -910,7 +889,7 @@ emitter), and the engine compiles that into GPU programs.
 
 ```java
 static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks")   // its name in a look
-        .renderer(CgVfxEmitter.Renderer.QUADS) // a camera-facing quad each; MESHES a mesh each, ARCS a stroke each
+        .renderer(CgVfxRenderers.sprite("sparks").material(SPARK).build())   // a camera-facing quad each
         .capacity(1200)                        // the most alive at once
         .state(CgVfxEmitterState.once(4f))     // one loop of 4 s: unset, an emitter loops for ever
         .rate(120f)                            // 120 a second while it runs
@@ -982,23 +961,26 @@ wake.moveTo(x, y, z);       // in the effect's tick, before tick(wake, dt)
 
 ### In a look
 
-The emitter goes in a kit or a look, and a layer draws its particles:
+The emitter goes in a kit or a look, and its renderers draw its particles:
 
 ```java
 static final CgVfxSchema SCHEMA = CgVfxSchema.of("mymod:sparks");
 static final CgVfxParam.Color EMBER = SCHEMA.color("ember", 0xFFFF4A0B, 1.2f);
 static final CgVfxParam.Color FLAME = SCHEMA.color("flame", 0xFFFFC85B, 1.4f);
 
-static final CgVfxKit KIT = CgVfxKit.of("mymod:sparks").emitter(SPARKS)
-        .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/spark.shader").on(SPARKS)
-                .bind("_Color", EMBER).bind("_Hot", FLAME).build())
+static final CgMaterialDefinition SPARK = CgMaterialDefinition.of("mymod:materials/spark",
+        "crystalgraphics:shaders/vfx/particle/spark.shader").usage(CgMaterialUsage.SPRITES).build();
+static final CgVfxKit KIT = CgVfxKit.of("mymod:sparks")
+        .emitter(SPARKS.toBuilder().renderer(CgVfxRenderers.sprite("sparks").material(SPARK)
+                .bind("_Color", EMBER).bind("_Hot", FLAME).sortOrderHint(CgVfxLook.SURFACE).build()).build())
         .build();
 static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(KIT).build();
 
 VFX.play(new CgVfxSystemInstance<>(LOOK, x, y, z));   // particles alone need no effect class
 ```
 
-**Shared particle shaders** in `shaders/vfx/particle/`, each reading `_Color` and, where it has one, `_Hot`:
+**Shared particle shaders** in `shaders/vfx/particle/`, each reading `_Color` and, where it has one, `_Hot` (bind
+them):
 
 | Shader | Draws |
 |---|---|
@@ -1008,7 +990,7 @@ VFX.play(new CgVfxSystemInstance<>(LOOK, x, y, z));   // particles alone need no
 | `arc` | an ink stroke |
 | `ray` | a hot streak along its velocity |
 | `ring` | a shock front's foot glowing as it runs out |
-| `sprite`, `sprite_glow` | a frame of a flipbook sheet, lit or glowing (`_Color` only); which frame is the layer's `flipbook(...)` ([`vfx/effects.md`](vfx/effects.md) § *Flipbooks*) |
+| `sprite`, `sprite_glow` | a frame of a flipbook sheet, lit or glowing (`_Color` only); which frame is the renderer's `sub_image` ([`vfx/effects.md`](vfx/effects.md) § *Flipbooks*) |
 
 The explosion (`CgVfxBlast.EXPLOSION`, a `CgVfxExplosion`) is a whole kit of them: billows, surge, specks, puffs,
 sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debris`, `dust`, `sparkCore`).
@@ -1021,8 +1003,8 @@ sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debr
   speed, size, forces and a rate per block's spacing, keeping the timing.
 - **`.optional()`** marks detail: halved at the Low quality tier. The player's density setting thins every emitter.
 - **`sweep(speed)`** runs the shape outward, so particles are born on a moving front: a shell's, a ring's.
-- **Each layer on particles draws as one batch for the whole system**, sorted far to near within itself, so two
-  layers order as wholes. A solid look writes depth (`"Depth" = "Clip"`); soft smoke a depth prepass where it is
+- **Each renderer's material on particles draws as one batch for the whole system**, sorted far to near within
+  itself, so two materials order as wholes. A solid look writes depth (`"Depth" = "Clip"`); soft smoke a depth prepass where it is
   solid (`"Depth" = "Prepass"`); only something soft throughout relies on blending
   ([`SHADERS.md`](SHADERS.md) § *Depth from a transparent material*).
 - Effects and their emitters' books tick 120 times a second; the GPU steps the particles once a frame, over the
@@ -1034,7 +1016,7 @@ sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debr
 
 | Call | Sets |
 |---|---|
-| `renderer(QUADS \| MESHES \| ARCS)` | a camera-facing quad each (unless given), a mesh each ([§8](#8-meshes)), a stroke round the source |
+| `renderer(renderer)` | how its particles draw: a sprite, mesh, ribbon, arc, trails or sequence renderer ([`vfx/particles.md`](vfx/particles.md) § *Renderers*); its kinds set the layout |
 | `sequence(clip)`, `sequence(clip, playRate)` | a clip on each particle: its prefab's parts where its nodes are at the particle's age, its bursts and streams spawning children ([`vfx/sequences.md`](vfx/sequences.md)) |
 | `capacity(n)` | the most alive at once: 256 unless given |
 | `state(state)` | its loops, their duration and delay, and what stopping does ([`vfx/particles.md`](vfx/particles.md)) |
@@ -1047,13 +1029,13 @@ sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debr
 | `life(min, max)` | seconds |
 | `size(min, max)`, `size(min, max, skew)`, `size(curve)` | blocks; a skew above 1 makes most small and a few large; a curve over life, a share of the starting size |
 | `opacity(curve)` | 0 to 1 over life |
-| `color`, `colorOverLife`, `intensityOverLife`, `scale`, `scaleOverLife` | its colour and its size on each axis, multiplying its layers' ([`vfx/particles.md`](vfx/particles.md) § *How each particle looks*) |
+| `color`, `colorOverLife`, `intensityOverLife`, `scale`, `scaleOverLife` | its colour and its size on each axis, multiplying what its renderers draw ([`vfx/particles.md`](vfx/particles.md) § *How each particle looks*) |
 | `spin(min, max)` | radians a second, either way: a quad's turn, a mesh's tumble |
 | `heat(h)` | 0 to 1 at birth: `Buoyancy` lifts it, and hot shaders (`spark`) glow by it |
 | `module(m)`, `clearModules()` | a physics piece, run in order ([§12](#12-modules-and-events)) |
 | `event(e)` | children spawned or rows reported when something happens to a particle ([§12](#12-modules-and-events)) |
-| `trail(points)` | its last positions kept, for a `trails()` layer ([§13](#13-trails-and-ribbons)) |
-| `rasterize(x, y, z, w)` | drawn into its instance's grid each frame, a soft ball as wide as it is drawn holding that density in each channel: a body of particles a grid layer draws lit through itself (`CgVfxGrid3D.channel(c)`) |
+| `trail(points)` | its last positions kept, for a trails renderer ([§13](#13-trails-and-ribbons)) |
+| `rasterize(x, y, z, w)` | drawn into its instance's grid each frame, a soft ball as wide as it is drawn holding that density in each channel: a body of particles a grid's slot renderer draws lit through itself (`CgVfxGrid3D.channel(c)`) |
 | `sweep(speed)` | born on a front running out at that speed over each loop: the shape's radius by the loop's seconds |
 | `local()` | its particles ride the effect as it moves, rather than staying where they were born |
 | `optional()` | detail: halved at the Low quality tier |
@@ -1145,7 +1127,8 @@ emitter where it fired, reports to the CPU, or both:
 - **Two levels deep**: a child's events may spawn children of their own; a grandchild's may report rows, never spawn.
 - **At a clip's node, inside a window**: on a `sequence(clip)` emitter an event fires `at(node)`, and a rate
   `between(from, until)` seconds of the particle's age ([`vfx/sequences.md`](vfx/sequences.md)).
-- **Add every child to the look** (its emitter and a layer on it), or it simulates and draws nothing.
+- **Give every child its renderers where it is made**, before the parent's `event(...)` names it: the parent holds
+  the child it was given, and draws it through that child's renderers.
 - At most `CgVfxEvent.MAX_EVENTS` events an emitter and `MAX_CHILDREN` children an event.
 
 ---
@@ -1153,20 +1136,19 @@ emitter where it fired, reports to the CPU, or both:
 ## 13. Trails and ribbons
 
 A trail is where something moving has been: a fist's ki streak, a sword's swoosh, a dash's wake, a meteor's smoke. An
-effect moves a `CgVfxTrail` and a trail slot's layers draw it; particles draw the same strips behind each of them, or
+effect moves a `CgVfxTrail` and a trail slot's slot renderers draw it; particles draw the same strips behind each of them, or
 one through all of them.
 
 ### Behind something an effect moves
 
 The effect moves a `CgVfxTrail` each tick, in world coordinates, so the trail stays behind as the effect moves; a trail
-slot's layers draw it.
+slot's slot renderers draw it.
 
 ```java
 public static final CgVfxSlot STREAK = CgVfxSlot.trail("mymod:dash/streak");
 public static final CgVfxKit KIT = CgVfxKit.of("mymod:dash")
-        .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/trail/haze.shader").on(STREAK).size(1.1f)
-                .role(CgVfxLayer.Role.DISTORTION).from(CgQuality.MEDIUM).build())
-        .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/trail/glow.shader").on(STREAK).size(0.45f)   // half-width, blocks
+        .slot(CgVfxSlotRenderer.of("haze", STREAK).material(HAZE).size(1.1f).quality(CgQuality.MEDIUM).build())
+        .slot(CgVfxSlotRenderer.of("glow", STREAK).material(GLOW).size(0.45f)   // half-width, blocks
                 .bind("_Color", KI).bind("_Core", CORE).build())
         .build();
 
@@ -1193,6 +1175,10 @@ scorch.tick(dt, x, groundY + 0.02, z);
 ```
 
 | Call | Does |
+static final CgMaterialDefinition HAZE = CgMaterialDefinition.of("mymod:materials/dash_haze",
+        "crystalgraphics:shaders/vfx/trail/haze.shader").order(2 * CgVfxLook.BAND).build();
+static final CgMaterialDefinition GLOW = CgMaterialDefinition.of("mymod:materials/dash_glow",
+        "crystalgraphics:shaders/vfx/trail/glow.shader").order(CgVfxLook.SURFACE).build();
 |---|---|
 | `ribbon(life)`, `blade(life)`, `flat(life)` | facing the eye from one point; a sheet between a base and a tip; lying across a normal |
 | `spacing(blocks)` | a point kept each that far (0.12): a still thing leaves none, and its trail runs out |
@@ -1205,9 +1191,9 @@ scorch.tick(dt, x, groundY + 0.02, z);
   Catmull-Rom curve through them (`fx_trail.glsl`), so a fast swing stays round and nothing is meshed on the CPU.
 - **Its head never lags**: drawn between its last two ticks at the frame's alpha, as the effect's own parts are. Its tail
   is cut exactly where a point's age reaches its life, so it shrinks smoothly rather than dropping a point at a time.
-- A layer's size is a ribbon's half-width in blocks, or how far a blade reaches toward its tip (1 to the tip). Its
-  `subdivisions(n)` are the quads it draws between two points (4): more for a fast swing's sparse points.
-- One trail drawn on several layers (a glow and its haze) uploads its points once.
+- A slot renderer's size is a ribbon's half-width in blocks, or how far a blade reaches toward its tip (1 to the
+  tip). It draws four quads between two points.
+- One trail drawn by several slot renderers (a glow and its haze) uploads its points once.
 
 | Shader (`shaders/vfx/trail/`) | Draws |
 |---|---|
@@ -1228,27 +1214,28 @@ Particles draw strips too, built the same way on the GPU, with nothing for the e
 ```java
 // A trail behind each spark: its pool keeps each particle's last 12 positions, one a step
 static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks").capacity(1500).trail(12)...build();
-CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/streaks.shader").on(SPARKS).trails().bind("_Color", FLAME).build()
+CgVfxRenderers.trails("streaks").material(STREAKS).field("points", 12).bind("_Color", FLAME).build()   // on SPARKS
 
 // One ribbon through an instance's particles in spawn order: a stream bent wherever its particles drift
 static final CgVfxEmitter STREAM = CgVfxEmitter.builder("stream").capacity(600).ratePerBlock(16f)
         .module(new CgVfxModule.Turbulence(1.4f, 0.9f, 1.2f))...build();
-CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/ribbon.shader").on(STREAM).ribbon().size(0.2f).build()
+CgVfxRenderers.ribbon("stream").material(RIBBON).value("_cg_Size", 0.2f).build()                         // on STREAM
 ```
 
-| | `trails()` | `ribbon()` |
+| | a trails renderer | a ribbon renderer |
 |---|---|---|
 | Is | a strip behind each particle, through where it was | one strip through all an instance's particles, newest first |
-| Needs | `trail(points)` on the emitter: 2 to 64, lasting `points - 1` particle steps | nothing; joins neighbours at most `_Gap` spawns apart |
-| Width | the particle's size times the layer's, tapering | each particle's size times the layer's: its size curve shapes it |
+| Needs | `trail(points)` on the emitter and the same `points` on the renderer: 2 to 64, lasting `points - 1` particle steps | nothing; joins neighbours at most `_Gap` spawns apart |
+| Width | the particle's size times the renderer's `_cg_Size`, tapering | each particle's size times `_cg_Size`: its size curve shapes it |
 | Shader | `particle/streaks.shader` | `particle/ribbon.shader` |
 
 - Both follow every curve the particles fly, since the points are the particles: curl noise makes a ribbon writhe, a
   vortex coils it, a bounce shows in a spark's trail.
 - **The slot is culled whole**, as one sphere round its source, rather than particle by particle.
 - A particle's trail lives in a ring its pool keeps per slot, written after each step at every tier; each point carries
-  its particle's id, so a reused ring never joins two particles. `layer.subdivisions(n)` sets quads between points (2).
-- Every slot drawing one strip layer from one pool is a record of one draw, as particles are: a hundred sparks' effects
+  its particle's id, so a reused ring never joins two particles. A ribbon's `tessellation` sets the quads between two
+  particles ([`vfx/particles.md`](vfx/particles.md) § *Renderers*).
+- Every slot drawing one strip renderer's material from one pool is a record of one draw, as particles are: a hundred sparks' effects
   cost one draw. A ring is keyed by its particle's spawn id, so where an emitter's capacity binds and the density
   setting thins its spawns, two particles alive at once may share one, the later shortening the earlier's trail.
 
@@ -1287,7 +1274,7 @@ public final class Campfire extends CgVfxEffect<Campfire> {
     }
 }
 
-public static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(CgVfxFluid.FIRE)   // its schema and the fire layer
+public static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(CgVfxFluid.FIRE)   // its schema and the fire's slot renderer
         .set(CgVfxFluid.CELL, 0.15f).build();
 ```
 
@@ -1338,7 +1325,7 @@ Temperature is Flow's, normalized: 0 is the air's, 1 the hottest.
 
 ### How it is drawn
 
-A layer on its fluid slot draws it. `CgVfxFluid.SMOKE` and `FIRE` are Flow's two colour maps on `vfx/fluid/fluid.shader`,
+A slot renderer on its fluid slot draws it. `CgVfxFluid.SMOKE` and `FIRE` are Flow's two colour maps on `vfx/fluid/fluid.shader`,
 Flow's ray march: steps of three quarters of a cell, each taking the colour map's colour and opacity at its temperature,
 the opacity times its smoke and `1 - exp(-ATTENUATION * step)`. A colour up to 1 is what the fluid scatters, lit by the
 sun through the fluid under a two-lobe phase and by the sky; past 1 it is light the fluid gives off, the same by day and
@@ -1868,9 +1855,8 @@ public final class Bolt extends CgVfxEffect<Bolt> {
     public static final CgVfxSlot ORB = CgVfxSlot.mesh("mymod:bolt/orb");
 
     public static final CgVfxKit KIT = CgVfxKit.of("mymod:bolt")
-            .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/beam/orb_light.shader").on(ORB).size(6f)
-                    .bind("_Glow", CORE).role(CgVfxLayer.Role.LIGHT).build())
-            .layer(CgVfxLayer.of("mymod:shaders/vfx/bolt_orb.shader").on(ORB).build())   // _Core binds by name
+            .slot(CgVfxSlotRenderer.of("light", ORB).material(LIGHT).size(6f).bind("_Glow", CORE).build())
+            .slot(CgVfxSlotRenderer.of("orb", ORB).material(BODY).bind("_Core", CORE).build())
             .build();
     public static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(KIT).build();
 
@@ -1888,7 +1874,7 @@ public final class Bolt extends CgVfxEffect<Bolt> {
         if (!frame.draws(this, ORB)) return;
         float r = get(RADIUS);
         transform.scaling(r);
-        frame.mesh(this, ORB, 0f, 1f, 0f, transform, r, r, 1f, 0f);   // every layer on ORB
+        frame.mesh(this, ORB, 0f, 1f, 0f, transform, r, r, 1f, 0f);   // every slot renderer on ORB
     }
 }
 ```
@@ -1897,6 +1883,10 @@ public final class Bolt extends CgVfxEffect<Bolt> {
 - **`age`** is seconds since it started; **`seed`** a stable random number in 0..1 that shaders read too.
 - **Die** with `die()` when done; `stop()` from outside lets it finish gracefully.
 - **Read every number from its parameters**, never a constant in code: then a look, a tuning and a cue reach it.
+    static final CgMaterialDefinition LIGHT = CgMaterialDefinition.of("mymod:materials/bolt_light",
+            "crystalgraphics:shaders/vfx/beam/orb_light.shader").order(CgVfxLook.BAND).build();
+    static final CgMaterialDefinition BODY = CgMaterialDefinition.of("mymod:materials/bolt_orb",
+            "mymod:shaders/vfx/bolt_orb.shader").order(CgVfxLook.SURFACE).build();
 - **Name the class in its declaration** (`extends CgVfxEffect<Bolt>`): every setter (`follow`, `startAt`, `set`,
   `onHit`, ...) then answers a `Bolt`, so `VFX.play(new Bolt(LOOK, x, y, z).follow(id, CHEST).charge(2f))` chains into
   its own methods and stays a `Bolt`. Code holding any effect writes `CgVfxEffect<?>`.
@@ -1905,7 +1895,7 @@ public final class Bolt extends CgVfxEffect<Bolt> {
 
 | Call | Draws |
 |---|---|
-| `frame.mesh(this, slot, x, y, z, transform, ex, ey, ez, ew)` | a sphere at a transform, or its layers' own mesh ([§8](#8-meshes)); four numbers the slot documents |
+| `frame.mesh(this, slot, x, y, z, transform, ex, ey, ez, ew)` | a sphere at a transform, or its slot renderers' own mesh ([§8](#8-meshes)); four numbers the slot documents |
 | `frame.billboard(this, slot, x, y, z, size, ex, ey, ez, ew)` | a camera-facing quad |
 | `int row = frame.path(path, seed, age)`, then `frame.tube(this, slot, path, row)` | a tube along a path |
 | `frame.ribbons(...)`, `frame.pathRibbons(this, slot, path, row, intensity)` | ribbons a shader places |
@@ -1933,7 +1923,7 @@ Take the emitter from the look (`look.emitter(name)`), so a look that replaced i
 emitter per effect; `moveTo(x, y, z)` moves a source without restarting it, `rateScale(s)` scales its rate, `stop()`
 ends an open-ended rate.
 
-- **The system draws its particles**, through every layer on its emitter's slot, as long as the effect steps it and
+- **The system draws its particles**, through every renderer of its emitter, as long as the effect steps it and
   after its effect stops stepping it until its last particle dies. An effect of particles alone needs no `submit`.
 - **Hide one** with `sparks.drawn(false)`: it still simulates, its events' children hidden with it.
 - Its draws are made once, when it first draws, and kept until its slot closes: each frame writes only its values,
@@ -1987,7 +1977,7 @@ holdShake(RUMBLE, 0f, 0f, 0f, radius, level);        // every tick while it last
 moment("impact", hitX, hitY, hitZ, radius);          // a named point in its life, for capture tools
 ```
 
-- **A screen-wide moment is a post volume**, never a layer drawn round the camera. A volume also fades to a colour
+- **A screen-wide moment is a post volume**, never a draw round the camera. A volume also fades to a colour
   (`new CgPostSettings().fade(0xFF000000, 1f)`); a look that is its own shader is a `CgPostMaterial`, and a cut's
   dissolve is `CgPostStack.get().crossfade(seconds)` ([`ENGINE_API.md`](ENGINE_API.md) § *The post stack*).
 - **Shakes are parameters** (`SCHEMA.shake`), so looks can change them.
@@ -2008,14 +1998,14 @@ hitbox(PART_ARC, CgSphere.of(1.5)).at(originX + x, originY + y, originZ + z).act
 
 - **Hot paths do not allocate**: `tick` and `submit` run every frame for every effect.
 - **Never read player settings**: the system applies density, quality and pause. Mark detail with `.optional()` on an
-  emitter or `.from(CgQuality.MEDIUM)` on a layer.
+  emitter or `quality(CgQuality.MEDIUM)` on a renderer.
 - Drawing rules for shader authors (depth, glow, distortion, the impact frame) are `vfx/CLAUDE.md` § *Rules*.
 
 ---
 
-## 20. Writing a layer's shader
+## 20. Writing a material's shader
 
-A layer's shader is an ordinary `.shader` material ([`SHADERS.md`](SHADERS.md)) with three additions:
+A VFX material's shader is an ordinary `.shader` material ([`SHADERS.md`](SHADERS.md)) with three additions:
 
 ```glsl
 #type spatial
@@ -2025,8 +2015,8 @@ A layer's shader is an ordinary `.shader` material ([`SHADERS.md`](SHADERS.md)) 
 #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"   // the draw header
 
 Properties {
-    _Color  ("Its colour; its alpha a strength", color) = (1, 1, 1, 1)      // bound by the layer
-    _Core   ("The effect's core colour, by name", color) = (1, 1, 1, 1)     // reads `core` with no binding
+    _Color  ("Its colour; its alpha a strength", color) = (1, 1, 1, 1)      // bound by the renderer
+    _Core   ("The effect's core colour", color) = (1, 1, 1, 1)               // bound too: bind("_Core", CORE)
     _Bands  ("Its bands", color[3]) = (1, 1, 1, 1), (0, 1, 1, 1), (0, 0.5, 0.9, 1)   // a palette: _Bands(i)
     _Reach  ("How far it reaches, in blocks", float) = 1.0
 }
@@ -2058,14 +2048,14 @@ Pass {
 ```
 
 - **`cg_use rows`** makes every numeric property (float, vector, colour, and arrays of vec4 or colour) read either the
-  material's value or the draw's row, whichever the layer chose. Nothing changes in how the shader reads it.
+  material's value or the draw's row, whichever the renderer chose. Nothing changes in how the shader reads it.
 - **The header** (`fx_draw.glsl`, `CG_OBJECT_CUSTOM3`): `FX_ROW`, `FX_AGE` (the effect's age), `FX_SEED`,
   `FX_PRESENCE` (1 unless an ending fades it). The first three customs are the slot kind's (`CgVfxSlot.Kind`).
-- **Name colours for what they are** (`_Core`, `_Shell`, `_Hot`): a look's colour of that name binds itself.
-  A number never does: bind it in the layer.
+- **Name colours for what they are** (`_Core`, `_Shell`, `_Hot`); a renderer binds each to a parameter. Nothing binds
+  by name.
 - **One shader on several geometries**: declare `FX_ON_TUBE`, `FX_ON_MESH` and so on as features and branch on them.
   `banded.shader` (`shaders/vfx/toon/`) and Dragon Forge's `flat.shader` draw on a tube and a sphere.
-- **Colour is authored in sRGB, above 1 allowed**, and a glowing layer names its glow (`CG_GLOW`) and ends with a
+- **Colour is authored in sRGB, above 1 allowed**, and a glowing material names its glow (`CG_GLOW`) and ends with a
   codeless Emissive pass. The glow, depth and distortion rules: `vfx/CLAUDE.md` § *Rules*.
 - **Libraries** in `shaders/lib/vfx/`: `fx_tube` (the path, tube placement), `fx_volume` (tracing the view ray
   through a tube's rings), `fx_bands` (flat bands by distance from an axis), `fx_ribbon`, `fx_lightning`,
@@ -2103,7 +2093,7 @@ Properties {
   ```
 
 - **Hide it behind the scene** from `cg_DepthBuffer` with `DepthTest ALWAYS`: its half-size target has no depth.
-- **What it hides from the layers drawn over it** comes from the fluid's smoke through the world's media, not from
+- **What it hides from what draws over it** comes from the fluid's smoke through the world's media, not from
   this shader: naming `CG_VOLUME_DEPTH` keeps it from being dimmed by itself.
 - `vfx/fluid/fluid.shader` is the whole of one, from the box's back faces through the page table and the colour map.
 
@@ -2170,10 +2160,10 @@ record Swirl(float strength, float height) implements CgVfxGpuModule {
   their own, about 25-45 µs of GPU a frame each on an RTX 4070 SUPER (`vfx-shapes`, 30 shapes). A move of 30 shapes
   pays about a millisecond for the pools, on GL and Vulkan alike.
 - **An effect's logic** runs on the CPU at 120 Hz, and its draws are built every frame. A bound value costs a vec4 in
-  the effect's row, written once a frame per layer; a constant costs nothing per draw.
-- **A slot costs only the layers on it**: a look without a kit draws none of it.
-- What tends to cost: overdraw from large soft layers (one banded layer is one draw where four stacked bands were
-  four), many separate particle layers (each its own batch), and shaders compiling on first use (`prepare(look)`).
+  the effect's row, written once a frame per draw; a constant costs nothing per draw.
+- **A slot costs only the slot renderers on it**: a look without a kit draws none of it.
+- What tends to cost: overdraw from large soft materials (one banded draw where four stacked bands were four), many
+  separate particle materials (each its own batch), and shaders compiling on first use (`prepare(look)`).
 
 ### Scalability: what is too far, too many or out of view
 
@@ -2193,7 +2183,7 @@ VFX.play(new Aura(LOOK, x, y, z)).scalability(CgVfxScalability.HERO);   // one e
 | `maxDistance(blocks)` | culled once the camera is farther than that from every part of it |
 | `maxInstances(n)`, `maxPerLook(n)` | at most `n` of every look sharing this object, or of one look; the nearest kept, the local player's always |
 | `unseen(seconds)` | culled once nothing of it has been in view that long |
-| `lodDistance(blocks)` | a quality tier lower past it (layers `from` above drop, half the particles), two past twice it (a quarter) |
+| `lodDistance(blocks)` | a quality tier lower past it (renderers of a higher `quality` drop, half the particles), two past twice it (a quarter) |
 | `whenCulled(SLEEP \| STOP \| KILL)` | asleep (the default): no ticks, no draws, its particles freed, and when wanted again it plays on from its true age, as `startAt` starts one; `STOP` ends it its own way; `KILL` at once |
 
 | Preset | For |
@@ -2277,20 +2267,20 @@ wave.onHit(CgEnergyWave.PART_BURST, h -> CgCollisionWorld.of(level).overlap(CgSp
         .at(h.x(), h.y(), h.z()).exposure().forEach(e -> damage(e.entity(), 20f * e.falloff(2, wave.behaviour().blastRadius()))));
 ```
 
-### Where do I put a number: a parameter, a layer constant, or a constant in code?
+### Where do I put a number: a parameter, a material constant, or a constant in code?
 
 | It is | Put it |
 |---|---|
-| read by the effect's logic or by more than one layer, or something a game or look changes | a **parameter** on the schema of the effect or element that reads it |
-| one layer's look, and only that layer reads it | a layer **constant** (`set`): tunable live, saved in overrides |
-| a size a layer should follow as the effect grows or fades | a **binding** to the length (`bind("_Radius", RADIUS)`) |
+| read by the effect's logic or by more than one material, or something a game or look changes | a **parameter** on the schema of the effect or element that reads it |
+| one material's look, and only that material reads it | a material **constant** (`value`): saved in its asset |
+| a size a draw should follow as the effect grows or fades | a **binding** to the length (`bind("_Radius", RADIUS)`) |
 | how the code works, never a look's choice | a constant in code |
 
 ### Why did my colour not bind?
 
-Colours bind by name only when the shader's property and the look's colour have the same name (`_Shell` and
-`shell`). A generic `_Color` matches nothing: bind it (`bind("_Color", SHELL)`). `look.describe()` lists what every
-property resolved to.
+Nothing binds by name: a property reads a parameter only where a renderer binds it (`bind("_Color", SHELL)`), and a
+bind of a parameter the look does not declare fails at load, naming those it has. `look.describe()` lists every draw's
+binds.
 
 ### If I change a parameter on the server's effect, do all clients see it?
 

@@ -143,11 +143,19 @@ public final class CgVfxLayout {
         return params;
     }
 
-    /** The parameter {@link #qualifiedName} names {@code name}; null for none. */
+    /** The parameter {@link #qualifiedName} or {@link #fullName} names {@code name}; null for none. */
     @Nullable
     public CgVfxParam param(String name) {
-        for (CgVfxParam p : params) if (qualifiedName(p).equals(name)) return p;
+        for (CgVfxParam p : params) if (qualifiedName(p).equals(name) || fullName(p).equals(name)) return p;
         return null;
+    }
+
+    /**
+     * {@code param}'s name in any layout: after its schema's always ({@code crystalgraphics.charge.radius}). What a
+     * renderer built in Java binds, since the look it lands in, and so its primary schema, is not known yet.
+     */
+    public static String fullName(CgVfxParam param) {
+        return segments(param.schema.name()) + "." + param.name;
     }
 
     /**

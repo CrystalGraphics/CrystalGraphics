@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.render;
 
+import com.crystalgraphics.api.material.CgMaterialArchetypes;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgMeshLods;
@@ -8,6 +9,8 @@ import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
+import com.crystalgraphics.vfx.look.CgVfxLayout;
+import com.crystalgraphics.vfx.look.CgVfxParam;
 
 import javax.annotation.Nullable;
 import java.util.Collections;
@@ -35,7 +38,8 @@ import java.util.Map;
  * <ul>
  *   <li>Its slot is found by name among the slots the engine's and a mod's behaviours declare; an unknown one fails.</li>
  *   <li>A tube slot draws the geometry its material's archetype names ({@code Tags { "Tube" = "Volume" | "Closed" }});
- *       a Tube-tagged archetype on any other slot fails at load.</li>
+ *       a Tube-tagged archetype on another slot fails at load, unless it draws tubes as a variant
+ *       ({@code #pragma cg_feature FX_ON_TUBE}) beside its own kind.</li>
  *   <li>Binds read user parameters alone, as a particle renderer's do; {@code size} is times the slot's own.</li>
  *   <li>Drawn in the look's order of its slot renderers, then its material's {@code order}; after its effect's
  *       distortion unless its material has a Distortion pass.</li>
@@ -52,7 +56,6 @@ public final class CgVfxSlotRenderer {
     @Nullable private final String meshPath;
     @Nullable private final CgQuality quality;
     private final Map<String, Object> tree;
-    private volatile CgMeshLods mesh;
 
     private CgVfxSlotRenderer(String id, CgVfxSlot slot, String material, @Nullable CgMaterialDefinition definition,
                               Map<String, Object> bind, float size, @Nullable String meshPath,
@@ -97,7 +100,9 @@ public final class CgVfxSlotRenderer {
             if (d instanceof CgMaterialDefinition md) definition = md;
             else if (d != null) throw new IllegalArgumentException(who + "'s material " + material + " is not a material");
         }
-        if (definition != null && definition.tube() != null && slot.kind() != CgVfxSlot.Kind.TUBE) {
+        if (definition != null && definition.tube() != null && slot.kind() != CgVfxSlot.Kind.TUBE
+                && !CgMaterialArchetypes.FILES.parse(definition.permutation().shader()).featureNames()
+                        .contains(CgVfxSlot.Kind.TUBE.keyword())) {
             throw new IllegalArgumentException(who + " draws " + material + ", whose archetype needs a tube (\"Tube\" = \""
                     + definition.tube() + "\"), on " + slot);
         }
@@ -170,10 +175,7 @@ public final class CgVfxSlotRenderer {
     /** Its mesh on a mesh slot, loaded at its first ask and kept; null for the slot's sphere. */
     @Nullable
     public CgMeshLods mesh() {
-        if (meshPath == null) return null;
-        CgMeshLods m = mesh;
-        if (m == null) mesh = m = CgMeshLods.of(CgMeshLoader.load(meshPath));
-        return m;
+        return meshPath == null ? null : CgMeshLoader.lods(meshPath);
     }
 
     /** The entry as its file holds it. */
@@ -210,13 +212,27 @@ public final class CgVfxSlotRenderer {
             return this;
         }
 
+        /** Material parameter {@code parameter} read per draw from {@code param}, bound by its full name. */
+        public Builder bind(String parameter, CgVfxParam param) {
+            return bind(parameter, "user." + CgVfxLayout.fullName(param));
+        }
+
+        /** Material parameter {@code parameter} read per draw from {@code param} times {@code scale}. */
+        public Builder bind(String parameter, CgVfxParam param, float scale) {
+            Map<String, Object> form = new LinkedHashMap<>();
+            form.put("bind", "user." + CgVfxLayout.fullName(param));
+            form.put("scale", (double) scale);
+            bind.put(parameter, form);
+            return this;
+        }
+
         /** Times its slot's own size. */
         public Builder size(float size) {
             tree.put("size", (double) size);
             return this;
         }
 
-        /** A mesh slot's mesh, by path, in place of the sphere. */
+        /** A mesh slot's mesh, by path or {@link CgMeshLoader#provide}d id, in place of the sphere. */
         public Builder mesh(String path) {
             tree.put("mesh", path);
             return this;

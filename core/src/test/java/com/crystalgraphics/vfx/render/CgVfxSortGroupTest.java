@@ -1,35 +1,39 @@
 package com.crystalgraphics.vfx.render;
 
-import com.crystalgraphics.vfx.look.CgVfxLayer;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
+import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
+import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
-import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
-import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 
 public class CgVfxSortGroupTest {
 
+    private static final String PART = "crystalgraphics:shaders/vfx/sequence/part.shader";
     private static final CgVfxSlot BODY = CgVfxSlot.mesh("test:sortgroup/body");
 
-    private static CgVfxLayer layer(String name, int hint) {
-        return CgVfxLayer.of("test:" + name + ".shader").on(BODY).order(hint).build();
+    private static CgVfxSlotRenderer slot(String name, int hint) {
+        return CgVfxSlotRenderer.of(name, BODY)
+                .material(CgMaterialDefinition.of("test:sortgroup/" + name, PART).order(hint).build())
+                .build();
     }
 
     @Test
-    public void twoLooksRankTheirLayersByRoleThenHintTogether() {
-        CgVfxLayer a1 = layer("a1", 10), a2 = layer("a2", 30), b1 = layer("b1", 20), b2 = layer("b2", 30);
-        CgVfxLayer a0 = CgVfxLayer.of("test:a0.shader").on(BODY).order(50).role(CgVfxLayer.Role.SMOKE).build();
-        CgVfxLook a = CgVfxLook.builder(CgVfxSystemDefinition.SCHEMA).layer(a2).layer(a1).layer(a0).build();
-        CgVfxLook b = CgVfxLook.builder(CgVfxSystemDefinition.SCHEMA).layer(b2).layer(b1).build();
+    public void twoLooksRankTheirDrawsByHintTogether() {
+        int surface = CgVfxLook.SURFACE;
+        CgVfxSlotRenderer a1 = slot("a1", surface + 10), a2 = slot("a2", surface + 30), b1 = slot("b1", surface + 20),
+                b2 = slot("b2", surface + 30), a0 = slot("a0", 50);
+        CgVfxLook a = CgVfxLook.builder(CgVfxSystemDefinition.SCHEMA).slot(a2).slot(a1).slot(a0).build();
+        CgVfxLook b = CgVfxLook.builder(CgVfxSystemDefinition.SCHEMA).slot(b2).slot(b1).build();
 
         CgVfxSortGroup group = new CgVfxSortGroup();
         CgVfxSystemInstance<?> first = new CgVfxSystemInstance<>(a, 0, 0, 0).sortGroup(group);
         CgVfxSystemInstance<?> second = new CgVfxSystemInstance<>(b, 10, 0, 0).sortGroup(group);
         assertEquals(2, group.members());
 
-        // Smoke first by role; then surfaces by hint across both looks, the earlier look first on a tie
+        // The smoke band first; then surfaces by hint across both looks, the earlier look first on a tie
         assertEquals(0, rank(group, a, a0));
         assertEquals(1, rank(group, a, a1));
         assertEquals(2, rank(group, b, b1));
@@ -46,8 +50,8 @@ public class CgVfxSortGroupTest {
         assertEquals(group, first.sortGroup());
     }
 
-    private static int rank(CgVfxSortGroup group, CgVfxLook look, CgVfxLayer layer) {
-        for (CgVfxLook.Placed p : look.placed()) if (p.layer() == layer) return group.order(look, p);
-        throw new AssertionError(layer + " is not in the look");
+    private static int rank(CgVfxSortGroup group, CgVfxLook look, CgVfxSlotRenderer slot) {
+        for (CgVfxLook.Placed p : look.placed()) if (p.slotRenderer() == slot) return group.order(look, p);
+        throw new AssertionError(slot + " is not in the look");
     }
 }

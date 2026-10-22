@@ -25,14 +25,13 @@ import com.crystalgraphics.vfx.path.CgVfxPath;
  *
  * <ul>
  *   <li>It starts only where the effect has ground ({@code ground(y)}, or the world's), and never on a server.</li>
- *   <li>Its look needs a kit holding {@link #EMITTER} and a layer on it; {@code CgEnergyWave.WAKE} is one.</li>
+ *   <li>Its look needs a kit holding {@link #EMITTER} with a renderer; {@code CgEnergyWave.WAKE} is one.</li>
  * </ul>
  */
 public final class CgBeamWake extends CgVfxElement {
 
     public static final CgVfxEmitter EMITTER = CgVfxEmitter.builder("crystalgraphics:wave/wake")
             .state(CgVfxEmitterState.ONCE)
-            .renderer(CgVfxEmitter.Renderer.QUADS)
             .optional().capacity(1200).rate(36f).shape(CgRing.of(0.4f, 1.4f, 0.28f))
             .at(0f, 0.35f, 0f).speed(4f, 11f).life(0.9f, 1.8f).size(0.3f, 0.7f, 1.4f)
             .module(new CgVfxModule.Gravity(1.5f))

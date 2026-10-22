@@ -37,22 +37,36 @@ public record CgVfxSpriteRendererProperties(Common common, Map<String, Object> t
     /** {@code ENiagaraSortMode}, and the spawn orders ours adds. */
     public enum Sort { NONE, VIEW_DEPTH, VIEW_DISTANCE, SPAWN_ORDER, OLDEST_FIRST, NEWEST_FIRST }
 
-    /** The sprite factory's facing, {@code fx_particle.glsl}'s {@code FX_FACE_*}: camera 0, position up 5, aligned 6. */
-    public static final float FACE_CAMERA = 0f, FACE_POSITION_UP = 5f, FACE_ALIGNED = 6f;
+    /**
+     * The sprite factory's facing ({@code _cg_Facing}): {@code fx_particle.glsl}'s {@code FX_FACE_*} plus 8 times its
+     * {@code FX_ALIGN_*}. Camera 0, aligned to velocity 8, turned to the eye round up 3.
+     */
+    public static final float FACE_CAMERA = 0f, FACE_POSITION_UP = 3f, FACE_ALIGNED = 8f;
 
     /**
      * How the sprite factory faces it ({@code _cg_Facing}), as {@code NiagaraSpriteVertexFactory.ush}'s
-     * {@code GetTangents} does: an aligned sprite stands along its velocity whatever it faces, an unaligned one lies in
-     * the eye's plane (camera, camera plane) or turns toward the eye round world up (camera position).
+     * {@code GetTangents}: unaligned, it lies in the eye's plane (camera, camera plane), across its custom facing
+     * vector, or turned toward the eye round world up (camera position); aligned, it stands along its velocity or its
+     * custom alignment vector, facing the eye or its custom facing vector.
      *
-     * @throws IllegalArgumentException for a custom axis or facing, or a distance blend: not built yet
+     * <ul>
+     *   <li>The custom vectors are Niagara's {@code Particles.SpriteFacing} and {@code SpriteAlignment}: particles carry
+     *       no such attributes yet, so the renderer's values {@code _cg_FacingVector} and {@code _cg_AlignmentVector}
+     *       hold one for every particle, (1, 0, 0) unless set, Niagara's default.</li>
+     * </ul>
+     *
+     * @throws IllegalArgumentException for a distance blend: not built yet
      */
     public float factoryFacing(String who) {
-        if (alignment == Alignment.CUSTOM || facing == Facing.CUSTOM || facing == Facing.CAMERA_DISTANCE_BLEND) {
-            throw new IllegalArgumentException(who + " aligns " + alignment + " facing " + facing
-                    + ": custom axes and distance blends need the sprite attributes, which are not built yet");
+        if (facing == Facing.CAMERA_DISTANCE_BLEND) {
+            throw new IllegalArgumentException(who + " faces camera_distance_blend, which is not built yet");
         }
-        if (alignment == Alignment.VELOCITY) return FACE_ALIGNED;
-        return facing == Facing.CAMERA_POSITION ? FACE_POSITION_UP : FACE_CAMERA;
+        int f = switch (facing) {
+            case CAMERA -> 0;
+            case CAMERA_PLANE -> 1;
+            case CUSTOM -> 2;
+            default -> 3;
+        };
+        return f + 8 * alignment.ordinal();
     }
 }

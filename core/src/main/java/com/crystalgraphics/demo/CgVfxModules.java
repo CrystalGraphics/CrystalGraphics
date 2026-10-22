@@ -2,7 +2,12 @@ package com.crystalgraphics.demo;
 
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.material.CgMaterialRegistry;
+import com.crystalgraphics.api.material.CgMaterialUsage;
 import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshLoader;
+import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.api.mesh.CgProceduralMesh;
 import com.crystalgraphics.api.texture.CgTexture;
@@ -29,8 +34,6 @@ import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxOwner;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.CgVfxTrace;
-import com.crystalgraphics.vfx.look.CgVfxFlipbook;
-import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
@@ -40,7 +43,10 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxField;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
+import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import com.crystalgraphics.vfx.trail.CgVfxTrail;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
@@ -52,7 +58,11 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -83,7 +93,10 @@ public final class CgVfxModules {
     private static final String PARTICLE = "crystalgraphics:shaders/vfx/particle/";
     private static final float PERIOD = 7f, FOREVER = 1.0e6f;
     /** A 4x4 flame sheet looping twice through a flame's life of about 0.8 s, each flame at its own frame. */
-    private static final CgVfxFlipbook FLAMES = CgVfxFlipbook.grid(4, 4).loop(40f).randomStart();
+    private static final Map<String, Object> FLAMES = Map.of("size", List.of(4, 4), "mode", "loop", "rate", 40,
+            "random_start", true);
+    /** An 8x8 sheet played once over a particle's life. */
+    private static final Map<String, Object> GRID_8 = Map.of("size", List.of(8, 8));
     /** How deep behind the scene's depth a particle still counts as hitting it: under half a block, so one passing behind a mob is not snapped onto it. */
     private static final float DEPTH_THICKNESS = 0.4f;
     private static final int SHEETS_ZONE = CgTrace.name("demo.modules.sheets");
@@ -164,6 +177,8 @@ public final class CgVfxModules {
     private final boolean drives;
     private final List<Station> stations = new ArrayList<>();
     private final List<CgTexture> sheets = new ArrayList<>();
+    /** This demo's run, naming its sheets: a texture is provided under one id once. */
+    private final int instance = INSTANCES.getAndIncrement();
     /** Each sheet's texels, waiting for {@link #fillSheets()}'s worker; and whether {@link #delete()} has run. */
     private final List<Runnable> fills = new ArrayList<>();
     private volatile boolean deleted;
@@ -193,7 +208,8 @@ public final class CgVfxModules {
             float[] b = station.box();
             if (b != null) spawnBox(originX + b[0], originY + b[1], originZ + b[2], b[3], b[4], b[5]);
             for (int i = 0; i < station.emitters().size(); i++) {
-                CgVfxEmitterInstance emitter = new CgVfxEmitterInstance(station.emitters().get(i), seed + i * 0.137f);
+                CgVfxEmitterInstance emitter = new CgVfxEmitterInstance(station.look().emitter(station.emitters().get(i).name()),
+                        seed + i * 0.137f);
                 float[] s = station.sources()[i];
                 emitter.start(s[0], s[1], s[2]);
                 emitter.ground(0f);
@@ -239,14 +255,14 @@ public final class CgVfxModules {
         cube = CgMeshShapes.cube();
         mercury = CgMaterial.load("crystalgraphics:shaders/demo/vfx_mercury.shader");
         copper = CgMaterial.load("crystalgraphics:shaders/demo/vfx_copper.shader");
-        CgTexture smokeSheet = sheet(8, 8, 128, CgVfxModules::smokeFrame);
-        CgTexture fireSheet = sheet(4, 4, 128, CgVfxModules::fireFrame);
-        CgTexture dot = sheet(1, 1, 64, (f, u, v, out) -> dot(u, v, out));
-        CgTexture wispSheet = sheet(4, 4, 128, CgVfxModules::wispFrame);
-        CgTexture star = sheet(1, 1, 128, (f, u, v, out) -> star(u, v, out));
-        CgTexture rune = sheet(1, 1, 128, (f, u, v, out) -> rune(u, v, out));
-        CgTexture ring = sheet(1, 1, 128, (f, u, v, out) -> ring(u, v, out));
-        CgTexture shard = sheet(1, 1, 64, (f, u, v, out) -> shard(u, v, out));
+        String smokeSheet = sheet(8, 8, 128, CgVfxModules::smokeFrame);
+        String fireSheet = sheet(4, 4, 128, CgVfxModules::fireFrame);
+        String dot = sheet(1, 1, 64, (f, u, v, out) -> dot(u, v, out));
+        String wispSheet = sheet(4, 4, 128, CgVfxModules::wispFrame);
+        String star = sheet(1, 1, 128, (f, u, v, out) -> star(u, v, out));
+        String rune = sheet(1, 1, 128, (f, u, v, out) -> rune(u, v, out));
+        String ring = sheet(1, 1, 128, (f, u, v, out) -> ring(u, v, out));
+        String shard = sheet(1, 1, 64, (f, u, v, out) -> shard(u, v, out));
         fillSheets();
 
         gather(COLUMNS[0], ROWS[0]);
@@ -320,8 +336,8 @@ public final class CgVfxModules {
         String[] names = {"cone", "ring", "sphere", "box", "capsule"};
         String[] hints = {"pointed up", "edge, 24 ordered", "surface, hemisphere", "a sheet, upward", "segment, 12 ordered"};
         float[] at = {-6f, -3f, 0f, 3f, 6f};
-        CgVfxLook.Builder look = CgVfxLook.builder(SCHEMA);
-        for (int i = 0; i < emitters.size(); i++) look.emitter(emitters.get(i)).layer(sparkLayer(emitters.get(i), colours[i], WHITE));
+        Look look = new Look();
+        for (int i = 0; i < emitters.size(); i++) look.emitter(emitters.get(i)).draw(spark(emitters.get(i), colours[i], WHITE));
         float[][] sources = {{at[0], 0.3f, 0f}, {at[1], 0.5f, 0f}, {at[2], 0.2f, 0f}, {at[3], 0.4f, 0f}, {at[4], 1f, 0f}};
         stations.add(new Station("shapes: where particles are born", x, z, look.build(), emitters, sources, p -> {
             for (int i = 0; i < names.length; i++) {
@@ -339,7 +355,7 @@ public final class CgVfxModules {
         CgVfxEmitter trail = CgVfxEmitter.builder("movingTrail").state(CgVfxEmitterState.once(PERIOD - 3f))
                 .capacity(2000).rate(600f)
                 .speed(0f, 0.15f).life(1.2f, 1.6f).size(0.05f, 0.05f, 1f).heat(1f).opacity(FADE).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(trail).layer(sparkLayer(trail, GOLD, WHITE)).build();
+        CgVfxLook look = new Look().emitter(trail).draw(spark(trail, GOLD, WHITE)).build();
         Mover round = (i, age, at) -> {
             float a = age * 30f / 3.5f;
             at[0] = 3.5f * (float) Math.cos(a);
@@ -375,8 +391,8 @@ public final class CgVfxModules {
             public void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age) {
             }
         };
-        CgVfxLook sprayLook = CgVfxLook.builder(SCHEMA).emitter(spray).layer(sparkLayer(spray, GOLD, WHITE)).build();
-        CgVfxLook ringLook = CgVfxLook.builder(SCHEMA).emitter(ring).layer(sparkLayer(ring, CYAN, WHITE)).build();
+        CgVfxLook sprayLook = new Look().emitter(spray).draw(spark(spray, GOLD, WHITE)).build();
+        CgVfxLook ringLook = new Look().emitter(ring).draw(spark(ring, CYAN, WHITE)).build();
         stations.add(new Station("turning: a world emitter", x - 4f, z, sprayLook, List.of(spray),
                 new float[][]{{0f, 2f, 0f}}, p -> p.label(0f, 5.2f, 0f, 0.36f, "world: sprayed turned", 0xFFFFFFFF),
                 null, turns, null));
@@ -394,7 +410,7 @@ public final class CgVfxModules {
                 .capacity(3000).ratePerBlock(16f).inherit(0.4f)
                 .shape(CgShell.of(0.05, 0.25)).hemisphere().speed(0.2f, 0.6f).life(1.6f, 2.4f)
                 .size(0.06f, 0.1f, 1f).heat(1f).module(new CgVfxModule.Drag(1.5f, 0f)).opacity(FADE).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(wake).layer(sparkLayer(wake, CYAN, WHITE)).build();
+        CgVfxLook look = new Look().emitter(wake).draw(spark(wake, CYAN, WHITE)).build();
         Mover run = (i, age, at) -> {
             // A run of 1.4 s from x -5 to 5, quicker as it goes; then it is back at -5 at once.
             float t = (age % 1.4f) / 1.4f;
@@ -452,30 +468,26 @@ public final class CgVfxModules {
                 .capacity(900).rate(180f).mesh(swirl)
                 .vertices().ordered(96).speed(0.4f, 0.8f).life(0.7f, 1f).size(0.04f, 0.04f, 1f).heat(1f)
                 .module(new CgVfxModule.Drag(1f, 0f)).opacity(FADE).build();
-        CgVfxEmitter rocks = CgVfxEmitter.builder("meshRocks").state(CgVfxEmitterState.ONCE)
-                .renderer(CgVfxEmitter.Renderer.MESHES).capacity(40)
+        CgVfxEmitter rocks = CgVfxEmitter.builder("meshRocks").state(CgVfxEmitterState.ONCE).capacity(40)
                 .burst(0.5f, 24).shape(CgSphere.of(0.5)).hemisphere().direction(0, 1, 0, 60f).speed(4f, 7f).life(3f, 4f)
                 .size(0.12f, 0.3f, 1f).spin(1f, 4f).module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Ground(0.2f, 0.4f, 0.6f)).opacity(FADE).build();
 
-        String flow = "crystalgraphics:shaders/vfx/mesh/flow.shader";
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(onDome).emitter(onSwirl).emitter(rocks)
-                .layer(CgVfxLayer.of(flow).on(slashSlot).mesh(slash).bind("_Color", CYAN).bind("_Hot", WHITE)
-                        .set("_Scroll", 2.5f, 0f, 0f, 0f).set("_Tiling", 5f, 1f, 0f, 0f).set("_Erosion", 0.35f).build())
-                .layer(CgVfxLayer.of(flow).on(swirlSlot).mesh(swirl).bind("_Color", VIOLET).bind("_Hot", WHITE)
-                        .set("_Scroll", 0f, -1.4f, 0f, 0f).set("_Tiling", 1.5f, 5f, 0f, 0f).set("_Edges", 0.3f).build())
-                .layer(CgVfxLayer.of(flow).on(innerSlot).mesh(inner).bind("_Color", MAGENTA).bind("_Hot", WHITE)
-                        .set("_Scroll", 0f, 2f, 0f, 0f).set("_Tiling", 1.5f, 4f, 0f, 0f).set("_Edges", 0.3f).build())
-                .layer(CgVfxLayer.of(flow).on(domeSlot).mesh(dome).bind("_Color", CYAN).bind("_Hot", ICE)
-                        .set("_Scroll", 0.15f, 0.5f, 0f, 0f).set("_Tiling", 10f, 4f, 0f, 0f).set("_Erosion", 0.55f)
-                        .set("_Edges", 0f).set("_Rim", 1.6f).build())
-                .layer(CgVfxLayer.of(flow).on(shockSlot).mesh(shock).bind("_Color", ICE).bind("_Hot", WHITE)
-                        .set("_Scroll", 0.6f, 0f, 0f, 0f).set("_Tiling", 12f, 1f, 0f, 0f).set("_Erosion", 0.3f).build())
-                .layer(CgVfxLayer.of(flow).on(runeSlot).mesh(rune).bind("_Color", GOLD).bind("_Hot", FLAME)
-                        .set("_Scroll", 0.08f, 0f, 0f, 0f).set("_Tiling", 24f, 1f, 0f, 0f).set("_Erosion", 0.5f)
-                        .set("_Edges", 0.2f).build())
-                .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/smoke/billow.shader").on(rocks).mesh(rock)
-                        .bind("_Color", DEBRIS).bind("_Hot", EMBER).role(CgVfxLayer.Role.SMOKE).build())
+        CgVfxLook look = new Look().emitter(onDome).emitter(onSwirl).emitter(rocks)
+                .slot(flow(slashSlot, slash, CYAN, WHITE, m -> m.value("_Scroll", 2.5f, 0f, 0f, 0f)
+                        .value("_Tiling", 5f, 1f, 0f, 0f).value("_Erosion", 0.35f)).build())
+                .slot(flow(swirlSlot, swirl, VIOLET, WHITE, m -> m.value("_Scroll", 0f, -1.4f, 0f, 0f)
+                        .value("_Tiling", 1.5f, 5f, 0f, 0f).value("_Edges", 0.3f)).build())
+                .slot(flow(innerSlot, inner, MAGENTA, WHITE, m -> m.value("_Scroll", 0f, 2f, 0f, 0f)
+                        .value("_Tiling", 1.5f, 4f, 0f, 0f).value("_Edges", 0.3f)).build())
+                .slot(flow(domeSlot, dome, CYAN, ICE, m -> m.value("_Scroll", 0.15f, 0.5f, 0f, 0f)
+                        .value("_Tiling", 10f, 4f, 0f, 0f).value("_Erosion", 0.55f).value("_Edges", 0f)
+                        .value("_Rim", 1.6f)).build())
+                .slot(flow(shockSlot, shock, ICE, WHITE, m -> m.value("_Scroll", 0.6f, 0f, 0f, 0f)
+                        .value("_Tiling", 12f, 1f, 0f, 0f).value("_Erosion", 0.3f)).build())
+                .slot(flow(runeSlot, rune, GOLD, FLAME, m -> m.value("_Scroll", 0.08f, 0f, 0f, 0f)
+                        .value("_Tiling", 24f, 1f, 0f, 0f).value("_Erosion", 0.5f).value("_Edges", 0.2f)).build())
+                .draw(billow(rocks, rock, DEBRIS, EMBER))
                 .build();
 
         float slashX = -5f, swirlX = 0f, domeX = 5f;
@@ -564,10 +576,6 @@ public final class CgVfxModules {
     /** How long a trail station's things move each play, leaving the rest for their trails to run out. */
     private static final float MOTION = PERIOD - 1.8f;
 
-    private static CgVfxLayer.Builder trail(String shader, CgVfxSlot slot, float size) {
-        return CgVfxLayer.of(TRAIL + shader + ".shader").on(slot).size(size);
-    }
-
     /** Where a moving thing is at {@code t} seconds, from its station, into {@code p}. */
     private interface Path {
         void at(float t, float[] p);
@@ -625,7 +633,7 @@ public final class CgVfxModules {
      * to 23 blocks a second, a white-hot wake behind it with the air bent round it, a thin streak off each hand and foot,
      * sparks shed as it flies; where the loop skims the ground, a scorch torn into it and dust thrown up behind.
      */
-    private void dash(float x, float z, CgTexture smokeSheet) {
+    private void dash(float x, float z, String smokeSheet) {
         CgVfxSlot wakeSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/dash_wake");
         CgVfxSlot limbSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/dash_limbs");
         CgVfxSlot scorchSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/dash_scorch");
@@ -644,18 +652,18 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.5f).to(1f, 2.6f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 0.8f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(sparks).emitter(dust)
-                .layer(layerOf("sprite", dust, DUST, DUST, smokeOf(smokeSheet)))
-                .layer(trail("scorch", scorchSlot, 0.6f).role(CgVfxLayer.Role.SMOKE).build())
-                .layer(trail("haze", wakeSlot, 1.1f).role(CgVfxLayer.Role.DISTORTION).from(CgQuality.MEDIUM).build())
-                .layer(trail("glow", wakeSlot, 0.45f).bind("_Color", CYAN).bind("_Core", WHITE).set("_Tail", 0.04f)
-                        .set("_Flow", 10f).set("_Erode", 0.85f).build())
-                .layer(trail("glow", limbSlot, 0.05f).bind("_Color", ICE).bind("_Core", WHITE).set("_CoreWidth", 0.5f)
-                        .set("_Erode", 0.25f).set("_Tail", 0.4f).set("_Fade", 1f).build())
-                .layer(CgVfxLayer.of(FLOW).on(auraSlot).mesh(shell).bind("_Color", CYAN).bind("_Hot", WHITE)
-                        .set("_Scroll", 0f, -3.2f, 0f, 0f).set("_Tiling", 6f, 3f, 0f, 0f).set("_Erosion", 0.48f)
-                        .set("_Edges", 0f).set("_Rim", 2.4f).build())
-                .layer(sparkLayer(sparks, CYAN, WHITE))
+        CgVfxLook look = new Look().emitter(sparks).emitter(dust)
+                .draw(smoke(dust, DUST, smokeSheet))
+                .slot(trail("scorch", scorchSlot, 0.6f, SMOKE_HINT, null).build())
+                .slot(trail("haze", wakeSlot, 1.1f, HAZE, null).quality(CgQuality.MEDIUM).build())
+                .slot(trail("glow", wakeSlot, 0.45f, SURFACE, m -> m.value("_Tail", 0.04f).value("_Flow", 10f)
+                        .value("_Erode", 0.85f)).bind("_Color", CYAN).bind("_Core", WHITE).build())
+                .slot(trail("glow", limbSlot, 0.05f, SURFACE, m -> m.value("_CoreWidth", 0.5f).value("_Erode", 0.25f)
+                        .value("_Tail", 0.4f).value("_Fade", 1f)).bind("_Color", ICE).bind("_Core", WHITE).build())
+                .slot(flow(auraSlot, shell, CYAN, WHITE, m -> m.value("_Scroll", 0f, -3.2f, 0f, 0f)
+                        .value("_Tiling", 6f, 3f, 0f, 0f).value("_Erosion", 0.48f).value("_Edges", 0f)
+                        .value("_Rim", 2.4f)).build())
+                .draw(spark(sparks, CYAN, WHITE))
                 .build();
         float w = (float) (2.0 * Math.PI / 2.4);
         Mover follow = (i, age, at) -> {
@@ -808,17 +816,18 @@ public final class CgVfxModules {
         hits.burst(fistTo, 260);
         flashes.burst(fistTo, 2);
         CgVfxEmitter hit = hits.build(), flash = flashes.build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(hit).emitter(flash)
-                .layer(trail("swoosh", swooshSlot, 1f).bind("_Color", CYAN).bind("_Hot", WHITE).build())
-                .layer(trail("haze", fistSlot, 0.8f).role(CgVfxLayer.Role.DISTORTION).from(CgQuality.MEDIUM).build())
-                .layer(trail("glow", fistSlot, 0.3f).bind("_Color", GOLD).bind("_Core", WHITE).set("_Tail", 0.2f)
-                        .set("_Flow", 14f).build())
-                .layer(trail("bands", coilSlot, 0.11f).setArray("_Bands", 1.4f, 1.35f, 1.2f, 1f, 1.6f, 1.05f, 0.3f, 1f,
-                        1.3f, 0.45f, 0.05f, 1f).set("_Ink", 0.12f, 0.03f, 0f, 1f).set("_Break", 0.45f).build())
-                .layer(CgVfxLayer.of(FLOW).on(ringSlot).mesh(ring).bind("_Color", ICE).bind("_Hot", WHITE)
-                        .set("_Scroll", 0.6f, 0f, 0f, 0f).set("_Tiling", 12f, 1f, 0f, 0f).set("_Erosion", 0.3f).build())
-                .layer(sparkLayer(hit, GOLD, WHITE))
-                .layer(sparkLayer(flash, WHITE, WHITE))
+        CgVfxLook look = new Look().emitter(hit).emitter(flash)
+                .slot(trail("swoosh", swooshSlot, 1f, SURFACE, null).bind("_Color", CYAN).bind("_Hot", WHITE).build())
+                .slot(trail("haze", fistSlot, 0.8f, HAZE, null).quality(CgQuality.MEDIUM).build())
+                .slot(trail("glow", fistSlot, 0.3f, SURFACE, m -> m.value("_Tail", 0.2f).value("_Flow", 14f))
+                        .bind("_Color", GOLD).bind("_Core", WHITE).build())
+                .slot(trail("bands", coilSlot, 0.11f, SURFACE, m -> m
+                        .value("_Bands", 1.4f, 1.35f, 1.2f, 1f, 1.6f, 1.05f, 0.3f, 1f,
+                        1.3f, 0.45f, 0.05f, 1f).value("_Ink", 0.12f, 0.03f, 0f, 1f).value("_Break", 0.45f)).build())
+                .slot(flow(ringSlot, ring, ICE, WHITE, m -> m.value("_Scroll", 0.6f, 0f, 0f, 0f)
+                        .value("_Tiling", 12f, 1f, 0f, 0f).value("_Erosion", 0.3f)).build())
+                .draw(spark(hit, GOLD, WHITE))
+                .draw(spark(flash, WHITE, WHITE))
                 .build();
         float[] fistStart = {0.6f, 1.3f, 0f};
         Mover at = (i, age, out) -> {
@@ -925,7 +934,7 @@ public final class CgVfxModules {
      * a blazing ball with a hot streak and a thin smoke trail behind it shedding sparks; each landing in a burst of sparks,
      * a puff of dust and a shock ring along the ground.
      */
-    private void volley(float x, float z, CgTexture smokeSheet) {
+    private void volley(float x, float z, String smokeSheet) {
         CgVfxSlot streakSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/volley_streak");
         CgVfxSlot smokeSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/volley_smoke");
         CgVfxSlot ringSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/volley_ring");
@@ -936,7 +945,7 @@ public final class CgVfxModules {
         float[][] targets = new float[n][], controls = new float[n][];
         float[] from = {-5.5f, 1.6f, 0f};
         List<CgVfxEmitter> emitters = new ArrayList<>();
-        CgVfxLook.Builder look = CgVfxLook.builder(SCHEMA);
+        Look look = new Look();
         CgVfxEmitter[] balls = new CgVfxEmitter[n], crumbs = new CgVfxEmitter[n], sprays = new CgVfxEmitter[n],
                 puffs = new CgVfxEmitter[n];
         for (int i = 0; i < n; i++) {
@@ -967,17 +976,18 @@ public final class CgVfxModules {
                     .opacity(CgKeyframes.start(0f, 0f).to(0.12f, 0.85f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                     .build();
             look.emitter(balls[i]).emitter(crumbs[i]).emitter(sprays[i]).emitter(puffs[i])
-                    .layer(sparkLayer(balls[i], GOLD, WHITE)).layer(sparkLayer(crumbs[i], GOLD, WHITE))
-                    .layer(sparkLayer(sprays[i], GOLD, WHITE)).layer(layerOf("sprite", puffs[i], DUST, DUST, smokeOf(smokeSheet)));
+                    .draw(spark(balls[i], GOLD, WHITE)).draw(spark(crumbs[i], GOLD, WHITE))
+                    .draw(spark(sprays[i], GOLD, WHITE)).draw(smoke(puffs[i], DUST, smokeSheet));
         }
         emitters.addAll(List.of(balls));
         emitters.addAll(List.of(crumbs));
         emitters.addAll(List.of(sprays));
         emitters.addAll(List.of(puffs));
-        look.layer(trail("smoke", smokeSlot, 0.1f).set("_Spread", 4f).set("_Rise", 0.5f).build())
-                .layer(trail("glow", streakSlot, 0.2f).bind("_Color", GOLD).bind("_Core", WHITE).set("_Tail", 0.1f).build())
-                .layer(CgVfxLayer.of(FLOW).on(ringSlot).mesh(ring).bind("_Color", GOLD).bind("_Hot", WHITE)
-                        .set("_Scroll", 0.7f, 0f, 0f, 0f).set("_Tiling", 14f, 1f, 0f, 0f).set("_Erosion", 0.3f).build());
+        look.slot(trail("smoke", smokeSlot, 0.1f, SMOKE_HINT, m -> m.value("_Spread", 4f).value("_Rise", 0.5f)).build())
+                .slot(trail("glow", streakSlot, 0.2f, SURFACE, m -> m.value("_Tail", 0.1f)).bind("_Color", GOLD)
+                        .bind("_Core", WHITE).build())
+                .slot(flow(ringSlot, ring, GOLD, WHITE, m -> m.value("_Scroll", 0.7f, 0f, 0f, 0f)
+                        .value("_Tiling", 14f, 1f, 0f, 0f).value("_Erosion", 0.3f)).build());
         // Each blast on its arc: a quadratic Bezier, quicker as it closes in.
         Path[] arcs = new Path[n];
         for (int i = 0; i < n; i++) {
@@ -1066,10 +1076,11 @@ public final class CgVfxModules {
     private void anime(float x, float z) {
         CgVfxSlot stepSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/anime_step");
         CgVfxSlot lineSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/anime_lines");
-        CgVfxLook look = CgVfxLook.builder(SCHEMA)
-                .layer(trail("bands", stepSlot, 0.28f).set("_Ink", 0.02f, 0.04f, 0.12f, 1f).build())
-                .layer(trail("bands", lineSlot, 0.08f).setArray("_Bands", 1.4f, 1.35f, 1.2f, 1f, 1.6f, 1.1f, 0.3f, 1f,
-                        1.4f, 0.55f, 0.05f, 1f).set("_Break", 0.4f).set("_Tail", 0.4f).build())
+        CgVfxLook look = new Look()
+                .slot(trail("bands", stepSlot, 0.28f, SURFACE, m -> m.value("_Ink", 0.02f, 0.04f, 0.12f, 1f)).build())
+                .slot(trail("bands", lineSlot, 0.08f, SURFACE, m -> m
+                        .value("_Bands", 1.4f, 1.35f, 1.2f, 1f, 1.6f, 1.1f, 0.3f, 1f,
+                        1.4f, 0.55f, 0.05f, 1f).value("_Break", 0.4f).value("_Tail", 0.4f)).build())
                 .build();
         float[][] corners = {{-6f, 1.2f, -3f}, {-3f, 4.2f, -1f}, {-0.5f, 1.4f, -4f}, {2.5f, 5f, -1.5f}, {5.5f, 1.8f, -3.5f}};
         float speed = 18f;
@@ -1151,8 +1162,7 @@ public final class CgVfxModules {
     private void storm(float x, float z) {
         CgVfxSlot boltSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/storm_bolts");
         CgVfxEmitter streaks = CgVfxEmitter.builder("stormStreaks")
-                .state(CgVfxEmitterState.once(MOTION - 0.2f).delay(0.2f))
-                .renderer(CgVfxEmitter.Renderer.ARCS).capacity(1000)
+                .state(CgVfxEmitterState.once(MOTION - 0.2f).delay(0.2f)).capacity(1000)
                 .rate(200f).entity().surface().direction(0f, 1f, 0f, 12f).speed(3f, 6f).life(0.25f, 0.45f)
                 .size(0.05f, 0.09f, 1f).heat(1f).opacity(FADE).build();
         CgVfxEmitter motes = CgVfxEmitter.builder("stormMotes").state(CgVfxEmitterState.once(MOTION - 0.2f).delay(0.2f))
@@ -1160,12 +1170,12 @@ public final class CgVfxModules {
                 .entity().surface().speed(0.1f, 0.3f).life(0.8f, 1.4f).size(0.03f, 0.06f, 1.4f).heat(1f)
                 .module(new CgVfxModule.Force(0f, 2.2f, 0f)).module(new CgVfxModule.Turbulence(2f, 0.5f, 0.6f))
                 .opacity(FADE).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(streaks).emitter(motes)
-                .layer(layer("ray", streaks, GOLD, WHITE, 1f, null))
-                .layer(sparkLayer(motes, FLAME, WHITE))
-                .layer(trail("glow", boltSlot, 0.03f).bind("_Color", ICE).bind("_Core", WHITE).set("_Wobble", 1.4f)
-                        .set("_WobbleRate", 45f).set("_Tail", 0.6f).set("_Erode", 0.15f).set("_Fade", 0.7f)
-                        .set("_Flow", 20f).set("_GlowGain", 2.5f).build())
+        CgVfxLook look = new Look().emitter(streaks).emitter(motes)
+                .draw(particle("ray", streaks, GOLD, WHITE, 1f, null, null))
+                .draw(spark(motes, FLAME, WHITE))
+                .slot(trail("glow", boltSlot, 0.03f, SURFACE, m -> m.value("_Wobble", 1.4f).value("_WobbleRate", 45f)
+                        .value("_Tail", 0.6f).value("_Erode", 0.15f).value("_Fade", 0.7f).value("_Flow", 20f)
+                        .value("_GlowGain", 2.5f)).bind("_Color", ICE).bind("_Core", WHITE).build())
                 .build();
         int bolts = 7;
         Supplier<Show> show = () -> new Show() {
@@ -1237,7 +1247,7 @@ public final class CgVfxModules {
      * flash, a shock ring, thrown rocks and sparks and a wall of dust, skids to a stop gouging a glowing scorch, and lies
      * there cooling and smoking.
      */
-    private void meteor(float x, float z, CgTexture smokeSheet) {
+    private void meteor(float x, float z, String smokeSheet) {
         CgVfxSlot fireSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/meteor_fire");
         CgVfxSlot smokeSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/meteor_smoke");
         CgVfxSlot scorchSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/meteor_scorch");
@@ -1254,8 +1264,7 @@ public final class CgVfxModules {
                 .inherit(0.3f).shape(CgSphere.of(0.4)).speed(0.5f, 2f).life(0.6f, 1.3f).size(0.03f, 0.06f, 1.4f).heat(1f)
                 .module(new CgVfxModule.Gravity(6f)).module(new CgVfxModule.Drag(0.8f, 0f))
                 .module(new CgVfxModule.Ground(0.3f, 0.5f, 0.6f)).opacity(FADE).build();
-        CgVfxEmitter debris = CgVfxEmitter.builder("meteorDebris").state(CgVfxEmitterState.ONCE)
-                .renderer(CgVfxEmitter.Renderer.MESHES).capacity(40)
+        CgVfxEmitter debris = CgVfxEmitter.builder("meteorDebris").state(CgVfxEmitterState.ONCE).capacity(40)
                 .burst(impact, 28).shape(CgSphere.of(0.5)).hemisphere().direction(0, 1, 0, 69.51f).speed(4f, 9f).life(2.5f, 3.5f)
                 .size(0.08f, 0.22f, 1.4f).spin(2f, 6f).module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Ground(0.25f, 0.4f, 0.6f)).opacity(FADE).build();
@@ -1292,27 +1301,26 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.6f).to(1f, 3.2f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.2f, 0.8f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(embers).emitter(debris).emitter(sparks).emitter(flash)
+        CgVfxLook look = new Look().emitter(embers).emitter(debris).emitter(sparks).emitter(flash)
                 .emitter(wall).emitter(skid).emitter(smoulder)
-                .layer(layerOf("sprite", wall, DUST, DUST, smokeOf(smokeSheet)))
-                .layer(layerOf("sprite", skid, DUST, DUST, smokeOf(smokeSheet)))
-                .layer(layerOf("sprite", smoulder, SOOT, SOOT, smokeOf(smokeSheet)))
-                .layer(trail("scorch", scorchSlot, 0.65f).role(CgVfxLayer.Role.SMOKE).build())
-                .layer(trail("smoke", smokeSlot, 0.32f).set("_Spread", 5f).set("_Rise", 0.6f)
-                        .set("_Glow", 1.6f, 0.55f, 0.12f, 1f).role(CgVfxLayer.Role.SMOKE).build())
-                .layer(trail("haze", fireSlot, 1.1f).role(CgVfxLayer.Role.DISTORTION).from(CgQuality.MEDIUM).build())
-                .layer(trail("glow", fireSlot, 0.42f).bind("_Color", EMBER).bind("_Core", FLAME).set("_Tail", 0.1f)
-                        .set("_Flow", 6f).set("_Wobble", 0.15f).build())
-                .layer(CgVfxLayer.of(FLOW).on(rockSlot).mesh(rock).bind("_Color", EMBER).bind("_Hot", FLAME)
-                        .set("_Scroll", 0.4f, -1.2f, 0f, 0f).set("_Tiling", 4f, 3f, 0f, 0f).set("_Erosion", 0.1f)
-                        .set("_Edges", 0f).set("_Rim", 1.5f).build())
-                .layer(CgVfxLayer.of(FLOW).on(ringSlot).mesh(ring).bind("_Color", FLAME).bind("_Hot", WHITE)
-                        .set("_Scroll", 0.6f, 0f, 0f, 0f).set("_Tiling", 14f, 1f, 0f, 0f).set("_Erosion", 0.3f).build())
-                .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/smoke/billow.shader").on(debris).mesh(chunk)
-                        .bind("_Color", DEBRIS).bind("_Hot", EMBER).role(CgVfxLayer.Role.SMOKE).build())
-                .layer(sparkLayer(embers, EMBER, FLAME))
-                .layer(sparkLayer(sparks, EMBER, FLAME))
-                .layer(sparkLayer(flash, FLAME, WHITE))
+                .draw(smoke(wall, DUST, smokeSheet))
+                .draw(smoke(skid, DUST, smokeSheet))
+                .draw(smoke(smoulder, SOOT, smokeSheet))
+                .slot(trail("scorch", scorchSlot, 0.65f, SMOKE_HINT, null).build())
+                .slot(trail("smoke", smokeSlot, 0.32f, SMOKE_HINT, m -> m.value("_Spread", 5f).value("_Rise", 0.6f)
+                        .value("_Glow", 1.6f, 0.55f, 0.12f, 1f)).build())
+                .slot(trail("haze", fireSlot, 1.1f, HAZE, null).quality(CgQuality.MEDIUM).build())
+                .slot(trail("glow", fireSlot, 0.42f, SURFACE, m -> m.value("_Tail", 0.1f).value("_Flow", 6f)
+                        .value("_Wobble", 0.15f)).bind("_Color", EMBER).bind("_Core", FLAME).build())
+                .slot(flow(rockSlot, rock, EMBER, FLAME, m -> m.value("_Scroll", 0.4f, -1.2f, 0f, 0f)
+                        .value("_Tiling", 4f, 3f, 0f, 0f).value("_Erosion", 0.1f).value("_Edges", 0f)
+                        .value("_Rim", 1.5f)).build())
+                .slot(flow(ringSlot, ring, FLAME, WHITE, m -> m.value("_Scroll", 0.6f, 0f, 0f, 0f)
+                        .value("_Tiling", 14f, 1f, 0f, 0f).value("_Erosion", 0.3f)).build())
+                .draw(billow(debris, chunk, DEBRIS, EMBER))
+                .draw(spark(embers, EMBER, FLAME))
+                .draw(spark(sparks, EMBER, FLAME))
+                .draw(spark(flash, FLAME, WHITE))
                 .build();
         float[] hit = new float[3], end = new float[3];
         meteorPath(impact, hit);
@@ -1420,15 +1428,13 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.Drag(1.3f, 0f))
                 .opacity(CgKeyframes.start(0f, 1f).to(0.6f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(grinder).emitter(embers).emitter(firework)
-                .layer(CgVfxLayer.of(STREAKS).on(grinder).trails().bind("_Color", FLAME).bind("_Core", WHITE).build())
-                .layer(CgVfxLayer.of(STREAKS).on(embers).trails().size(0.8f).bind("_Color", EMBER).bind("_Core", FLAME)
-                        .set("_Tail", 0.3f).set("_Fade", 0.8f).build())
-                .layer(CgVfxLayer.of(STREAKS).on(firework).trails().size(1.2f).bind("_Color", MAGENTA)
-                        .bind("_Core", WHITE).set("_Erode", 0.7f).build())
-                .layer(sparkLayer(grinder, FLAME, WHITE))
-                .layer(sparkLayer(embers, EMBER, FLAME))
-                .layer(sparkLayer(firework, MAGENTA, WHITE))
+        CgVfxLook look = new Look().emitter(grinder).emitter(embers).emitter(firework)
+                .draw(streaks(grinder, FLAME, WHITE, 1f, null))
+                .draw(streaks(embers, EMBER, FLAME, 0.8f, m -> m.value("_Tail", 0.3f).value("_Fade", 0.8f)))
+                .draw(streaks(firework, MAGENTA, WHITE, 1.2f, m -> m.value("_Erode", 0.7f)))
+                .draw(spark(grinder, FLAME, WHITE))
+                .draw(spark(embers, EMBER, FLAME))
+                .draw(spark(firework, MAGENTA, WHITE))
                 .build();
         float[][] places = {{-5f, 1.2f, -2f}, {3f, 0.2f, 1f}};
         float[][] bursts = {{-3f, 7.5f, 1f}, {2.5f, 8f, -1f}, {0f, 7f, 2.5f}};
@@ -1463,9 +1469,9 @@ public final class CgVfxModules {
                         .to(1f, 0f, CgEasings.IN_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 1f).to(0.75f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        CgVfxLook.Builder look = CgVfxLook.builder(SCHEMA).emitter(helix)
-                .layer(CgVfxLayer.of(RIBBON).on(helix).ribbon().size(0.22f).subdivisions(2).bind("_Color", CYAN)
-                        .bind("_Core", WHITE).build());
+        Look look = new Look().emitter(helix)
+                .draw(ribbon(helix, CYAN, WHITE, 0.22f, null,
+                        r -> r.field("tessellation", Map.of("mode", "custom", "factor", 2))));
         List<CgVfxEmitter> emitters = new ArrayList<>(List.of(helix));
         List<float[]> sources = new ArrayList<>();
         sources.add(new float[]{-4f, 0.5f, 0f});
@@ -1486,8 +1492,7 @@ public final class CgVfxModules {
                     .module(new CgVfxModule.Kill(CgSphere.of(0.55f), true).at(dx, dy, dz))
                     .size(CgKeyframes.start(0f, 0.3f).to(0.2f, 1f, CgEasings.OUT_QUAD).to(1f, 0.4f, CgEasings.LINEAR).build())
                     .opacity(FADE).build();
-            look.emitter(river).layer(CgVfxLayer.of(RIBBON).on(river).ribbon().size(0.12f).bind("_Color", GOLD)
-                    .bind("_Core", WHITE).set("_Tiling", 0.15f, 1.3f, 0f, 0f).build());
+            look.emitter(river).draw(ribbon(river, GOLD, WHITE, 0.12f, m -> m.value("_Tiling", 0.15f, 1.3f, 0f, 0f), null));
             emitters.add(river);
             sources.add(at);
         }
@@ -1497,7 +1502,7 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.2f).to(0.9f, 1f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.08f, 1f, CgEasings.OUT_QUAD).to(1f, 1f, CgEasings.LINEAR).build())
                 .build();
-        look.emitter(ball).layer(sparkLayer(ball, GOLD, WHITE));
+        look.emitter(ball).draw(spark(ball, GOLD, WHITE));
         emitters.add(ball);
         sources.add(core.clone());
         // The stream's source spirals up a column and back down, so it never jumps.
@@ -1552,14 +1557,13 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.Turbulence(2f, 0.15f, 0.6f))
                 .module(new CgVfxModule.LimitSpeed(6f))
                 .opacity(FADE).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(spirits).emitter(school).emitter(embers)
-                .layer(CgVfxLayer.of(STREAKS).on(spirits).trails().bind("_Color", GOLD).bind("_Core", WHITE).build())
-                .layer(CgVfxLayer.of(STREAKS).on(school).trails().size(0.8f).bind("_Color", CYAN).bind("_Core", WHITE).build())
-                .layer(CgVfxLayer.of(STREAKS).on(embers).trails().size(0.7f).bind("_Color", EMBER).bind("_Core", FLAME)
-                        .set("_Tail", 0.2f).build())
-                .layer(sparkLayer(spirits, GOLD, WHITE))
-                .layer(sparkLayer(school, CYAN, WHITE))
-                .layer(sparkLayer(embers, EMBER, FLAME))
+        CgVfxLook look = new Look().emitter(spirits).emitter(school).emitter(embers)
+                .draw(streaks(spirits, GOLD, WHITE, 1f, null))
+                .draw(streaks(school, CYAN, WHITE, 0.8f, null))
+                .draw(streaks(embers, EMBER, FLAME, 0.7f, m -> m.value("_Tail", 0.2f)))
+                .draw(spark(spirits, GOLD, WHITE))
+                .draw(spark(school, CYAN, WHITE))
+                .draw(spark(embers, EMBER, FLAME))
                 .build();
         float[][] sources = {{-6f, 5f, 0f}, {6f, 3f, 0f}, {0f, 1f, 8f}};
         stations.add(new Station("flocks: boids on the neighbour grid", x, z, look, List.of(spirits, school, embers),
@@ -1573,11 +1577,6 @@ public final class CgVfxModules {
     }
 
     /** A flipbook smoke sheet's layer properties, drawn first in its effect. */
-    private static Consumer<CgVfxLayer.Builder> smokeOf(CgTexture smokeSheet) {
-        return b -> b.texture("_Sheet", smokeSheet).flipbook(CgVfxFlipbook.grid(8, 8))
-                .role(CgVfxLayer.Role.SMOKE);
-    }
-
     /** A play's strength: up over its first 0.3 s, down over the period's last 1.5. */
     private static float fade(float age) {
         return smooth(0f, 0.3f, age) * (1f - smooth(PERIOD - 2.5f, PERIOD - 1f, age));
@@ -1602,8 +1601,7 @@ public final class CgVfxModules {
         CgVfxSlot shockSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/aura_shock");
 
         CgVfxEmitter streaks = CgVfxEmitter.builder("auraStreaks")
-                .state(CgVfxEmitterState.once(PERIOD - 2f - 0.2f).delay(0.2f))
-                .renderer(CgVfxEmitter.Renderer.ARCS).capacity(1200)
+                .state(CgVfxEmitterState.once(PERIOD - 2f - 0.2f).delay(0.2f)).capacity(1200)
                 .rate(260f).entity().surface().direction(0f, 1f, 0f, 12f).speed(3f, 6f).life(0.25f, 0.45f).size(0.05f, 0.09f, 1f)
                 .heat(1f).opacity(FADE).build();
         CgVfxEmitter crackle = CgVfxEmitter.builder("auraCrackle")
@@ -1619,27 +1617,24 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.Force(0f, 2.2f, 0f)).module(new CgVfxModule.Turbulence(2f, 0.5f, 0.6f))
                 .opacity(FADE).build();
         CgVfxEmitter pebbles = CgVfxEmitter.builder("auraPebbles")
-                .state(CgVfxEmitterState.once(PERIOD - 3f - 0.3f).delay(0.3f))
-                .renderer(CgVfxEmitter.Renderer.MESHES).capacity(60)
+                .state(CgVfxEmitterState.once(PERIOD - 3f - 0.3f).delay(0.3f)).capacity(60)
                 .rate(9f).shape(CgRing.of(0.5, 1.8, 0)).speed(0f, 0.1f).life(2.5f, 3.5f)
                 .size(0.04f, 0.1f, 1.5f).spin(0.5f, 2f).module(new CgVfxModule.Force(0f, 0.9f, 0f))
                 .module(new CgVfxModule.Turbulence(1f, 0.15f, 0.2f)).opacity(FADE).build();
 
-        String flow = "crystalgraphics:shaders/vfx/mesh/flow.shader";
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(streaks).emitter(crackle).emitter(motes).emitter(pebbles)
-                .layer(CgVfxLayer.of(flow).on(flameSlot).mesh(flame).bind("_Color", GOLD).bind("_Hot", FLAME)
-                        .set("_Scroll", 0.12f, -2.6f, 0f, 0f).set("_Tiling", 7f, 3f, 0f, 0f).set("_Erosion", 0.5f)
-                        .set("_Edges", 1f).set("_Rim", 1.2f).build())
-                .layer(CgVfxLayer.of(flow).on(coreSlot).mesh(core).bind("_Color", FLAME).bind("_Hot", WHITE)
-                        .set("_Scroll", -0.2f, -3.4f, 0f, 0f).set("_Tiling", 6f, 3f, 0f, 0f).set("_Erosion", 0.45f)
-                        .set("_Edges", 1f).set("_Rim", 0.8f).build())
-                .layer(CgVfxLayer.of(flow).on(shockSlot).mesh(shock).bind("_Color", GOLD).bind("_Hot", WHITE)
-                        .set("_Scroll", 0.8f, 0f, 0f, 0f).set("_Tiling", 14f, 1f, 0f, 0f).set("_Erosion", 0.3f).build())
-                .layer(layer("ray", streaks, GOLD, WHITE, 1f, null))
-                .layer(sparkLayer(crackle, CYAN, WHITE))
-                .layer(sparkLayer(motes, FLAME, WHITE))
-                .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/smoke/billow.shader").on(pebbles).mesh(pebble)
-                        .bind("_Color", DEBRIS).bind("_Hot", GOLD).role(CgVfxLayer.Role.SMOKE).build())
+        CgVfxLook look = new Look().emitter(streaks).emitter(crackle).emitter(motes).emitter(pebbles)
+                .slot(flow(flameSlot, flame, GOLD, FLAME, m -> m.value("_Scroll", 0.12f, -2.6f, 0f, 0f)
+                        .value("_Tiling", 7f, 3f, 0f, 0f).value("_Erosion", 0.5f).value("_Edges", 1f)
+                        .value("_Rim", 1.2f)).build())
+                .slot(flow(coreSlot, core, FLAME, WHITE, m -> m.value("_Scroll", -0.2f, -3.4f, 0f, 0f)
+                        .value("_Tiling", 6f, 3f, 0f, 0f).value("_Erosion", 0.45f).value("_Edges", 1f)
+                        .value("_Rim", 0.8f)).build())
+                .slot(flow(shockSlot, shock, GOLD, WHITE, m -> m.value("_Scroll", 0.8f, 0f, 0f, 0f)
+                        .value("_Tiling", 14f, 1f, 0f, 0f).value("_Erosion", 0.3f)).build())
+                .draw(particle("ray", streaks, GOLD, WHITE, 1f, null, null))
+                .draw(spark(crackle, CYAN, WHITE))
+                .draw(spark(motes, FLAME, WHITE))
+                .draw(billow(pebbles, pebble, DEBRIS, GOLD))
                 .build();
         Show show = new Show() {
             private final Matrix4f m = new Matrix4f();
@@ -1678,8 +1673,7 @@ public final class CgVfxModules {
      * core, which swells as it charges and crackles with sparks.
      */
     private void gather(float x, float z) {
-        CgVfxEmitter motes = CgVfxEmitter.builder("gather").state(CgVfxEmitterState.once(PERIOD - 3f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(2500)
+        CgVfxEmitter motes = CgVfxEmitter.builder("gather").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(2500)
                 .rate(380f).shape(CgCylinder.of(6.5f, 2.6f)).speed(0f, 0.3f).life(3f, 4f)
                 .size(0.04f, 0.1f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Attract(CgSphere.of(9f), 30f).attenuation(1.6f))
@@ -1690,24 +1684,22 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.6f).to(0.15f, 1f, CgEasings.OUT_QUAD).to(1f, 0.5f, CgEasings.IN_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.12f, 1f, CgEasings.OUT_QUAD).to(0.85f, 1f, CgEasings.LINEAR)
                         .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter core = CgVfxEmitter.builder("gatherCore").state(CgVfxEmitterState.ONCE)
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(4)
+        CgVfxEmitter core = CgVfxEmitter.builder("gatherCore").state(CgVfxEmitterState.ONCE).capacity(4)
                 .burst(0f, 1).speed(0f, 0f).life(PERIOD - 1.5f, PERIOD - 1.5f).size(0.7f, 0.7f, 1f).heat(1f)
                 .size(CgKeyframes.start(0f, 0.2f).to(0.85f, 1.6f, CgEasings.IN_QUAD).to(0.92f, 2.4f, CgEasings.OUT_QUAD)
                         .to(1f, 0f, CgEasings.IN_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 1f, CgEasings.OUT_QUAD).to(1f, 1f, CgEasings.LINEAR).build())
                 .build();
         CgVfxEmitter crackle = CgVfxEmitter.builder("gatherCrackle")
-                .state(CgVfxEmitterState.once(PERIOD - 2f - 0.8f).delay(0.8f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(600)
+                .state(CgVfxEmitterState.once(PERIOD - 2f - 0.8f).delay(0.8f)).capacity(600)
                 .rate(90f).shape(CgSphere.of(0.4f)).speed(2f, 5f).life(0.08f, 0.2f)
                 .size(0.02f, 0.04f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Turbulence(20f, 2f, 3f))
                 .module(new CgVfxModule.Drag(6f, 0f))
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(motes).emitter(core).emitter(crackle)
-                .layer(sparkLayer(motes, GOLD, WHITE)).layer(sparkLayer(core, GOLD, WHITE))
-                .layer(sparkLayer(crackle, GOLD, WHITE)).build();
+        CgVfxLook look = new Look().emitter(motes).emitter(core).emitter(crackle)
+                .draw(spark(motes, GOLD, WHITE)).draw(spark(core, GOLD, WHITE))
+                .draw(spark(crackle, GOLD, WHITE)).build();
         float[] centre = {0f, 3f, 0f};
         stations.add(new Station("gather: Attract + Vortex + Turbulence + Kill", x, z, look,
                 List.of(motes, core, crackle), new float[][]{centre, centre, centre}, null));
@@ -1719,15 +1711,14 @@ public final class CgVfxModules {
      * the smoke traces the funnel; turbulence makes it wander. Debris, held loosely, is flung round its foot and falls
      * back, under a skirt of dust.
      */
-    private void tornado(float x, float z, CgTexture smokeSheet) {
+    private void tornado(float x, float z, String smokeSheet) {
         // A particle follows air turning at w radians a second only while w / drag stays well under 1: the funnel's
         // drag holds its smoke to the wall above the foot; the debris's lets it fly off.
         float drag = 8f;
         CgVfxField air = tornadoField();
         CgBox box = CgBox.of(TORNADO_HALF, TORNADO_TOP / 2f, TORNADO_HALF);
         float boxY = TORNADO_TOP / 2f - 0.3f;
-        CgVfxEmitter funnel = CgVfxEmitter.builder("tornado").state(CgVfxEmitterState.once(PERIOD - 2.5f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(2000)
+        CgVfxEmitter funnel = CgVfxEmitter.builder("tornado").state(CgVfxEmitterState.once(PERIOD - 2.5f)).capacity(2000)
                 .rate(320f).shape(CgSphere.of(0.6f)).hemisphere().speed(0f, 0.5f).life(3f, 4f)
                 .size(0.25f, 0.4f, 1f).spin(0.5f, 1.5f)
                 .module(new CgVfxModule.VectorField(air, box, drag, 1f).at(0f, boxY, 0f))
@@ -1736,8 +1727,7 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.6f).to(1f, 4f, CgEasings.IN_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 0.9f, CgEasings.OUT_QUAD).to(0.75f, 0.8f, CgEasings.LINEAR)
                         .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter debris = CgVfxEmitter.builder("tornadoDebris").state(CgVfxEmitterState.once(PERIOD - 2.5f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(800)
+        CgVfxEmitter debris = CgVfxEmitter.builder("tornadoDebris").state(CgVfxEmitterState.once(PERIOD - 2.5f)).capacity(800)
                 .rate(120f).shape(CgCylinder.of(2.5f, 0.38f)).at(0f, 0.38f, 0f).speed(0.5f, 2f).life(2f, 3f)
                 .size(0.05f, 0.12f, 1.5f).spin(2f, 8f)
                 .module(new CgVfxModule.VectorField(air, box, 1.2f, 1f).at(0f, boxY, 0f))
@@ -1745,8 +1735,7 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.Drag(0.7f, 0f))
                 .module(new CgVfxModule.Ground(0.2f, 0.05f, 0.3f))
                 .opacity(FADE).build();
-        CgVfxEmitter dust = CgVfxEmitter.builder("tornadoDust").state(CgVfxEmitterState.once(PERIOD - 2.5f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
+        CgVfxEmitter dust = CgVfxEmitter.builder("tornadoDust").state(CgVfxEmitterState.once(PERIOD - 2.5f)).capacity(300)
                 .rate(45f).shape(CgCylinder.of(2.5f, 0.12f)).at(0f, 0.12f, 0f).speed(0.2f, 0.8f).life(1.6f, 2.4f)
                 .size(0.9f, 1.4f, 1f).spin(0.2f, 0.8f)
                 .module(new CgVfxModule.VectorField(air, box, 1.5f, 1f).at(0f, boxY, 0f))
@@ -1756,10 +1745,12 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.6f).to(1f, 2.4f, CgEasings.OUT_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.2f, 0.55f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        Consumer<CgVfxLayer.Builder> sheet = b -> b.texture("_Sheet", smokeSheet).flipbook(CgVfxFlipbook.grid(8, 8));
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(funnel).emitter(debris).emitter(dust)
-                .layer(layerOf("sprite", dust, DUST, DUST, sheet)).layer(layerOf("sprite", funnel, FUNNEL, FUNNEL, sheet))
-                .layer(layer("speck", debris, DEBRIS, DEBRIS, 1f, null)).build();
+        Consumer<CgMaterialDefinition.Builder> sheet = m -> m.texture("_Sheet", smokeSheet);
+        Consumer<CgVfxRenderers.Builder> frames = r -> r.subImage(GRID_8);
+        CgVfxLook look = new Look().emitter(funnel).emitter(debris).emitter(dust)
+                .draw(particle("sprite", dust, DUST, DUST, 1f, sheet, frames))
+                .draw(particle("sprite", funnel, FUNNEL, FUNNEL, 1f, sheet, frames))
+                .draw(particle("speck", debris, DEBRIS, DEBRIS, 1f, null, null)).build();
         float[] base = {0f, 0.3f, 0f};
         stations.add(new Station("tornado: a Rankine funnel VectorField, debris and dust", x, z, look,
                 List.of(funnel, debris, dust), new float[][]{base, base, base}, null));
@@ -1798,7 +1789,7 @@ public final class CgVfxModules {
      * whole field slowly twisting. Its poles pulse and crackle, and a pulse rings out from its middle. The air is a
      * {@link CgVfxField} of the two poles' field, and drag holds each streak to its line.
      */
-    private void field(float x, float z, CgTexture dot, CgTexture ring) {
+    private void field(float x, float z, String dot, String ring) {
         float drag = 10f;
         // Source-relative, from the north pole: the field's box round the magnet, and the south pole under it.
         CgBox box = CgBox.of(MAGNET_HALF, MAGNET_HALF_Y, MAGNET_HALF);
@@ -1809,12 +1800,11 @@ public final class CgVfxModules {
         float[] shares = {-0.65f, -0.45f, -0.25f, -0.08f};
         CgVfxParam.Color[][] colours = {{CYAN, WHITE}, {CYAN, VIOLET}, {VIOLET, MAGENTA}, {MAGENTA, GOLD}};
         float top = 2.4f + 2f * MAGNET_POLE, middle = top - MAGNET_POLE;
-        CgVfxLook.Builder look = CgVfxLook.builder(SCHEMA);
+        Look look = new Look();
         List<CgVfxEmitter> emitters = new ArrayList<>();
         List<float[]> sources = new ArrayList<>();
         for (int s = 0; s < shares.length; s++) {
             CgVfxEmitter shell = CgVfxEmitter.builder("fieldShell" + s).state(CgVfxEmitterState.once(PERIOD - 3.5f))
-                    .renderer(CgVfxEmitter.Renderer.QUADS)
                     .capacity(900).rate(110f).shape(CgSphere.of(0.35f))
                     .direction(0f, 1f, 0f, (float) Math.toDegrees(Math.acos(shares[s] + 0.02f)),
                             (float) Math.toDegrees(Math.acos(shares[s])))
@@ -1827,25 +1817,23 @@ public final class CgVfxModules {
                     .module(new CgVfxModule.Kill(box, false).at(0f, boxY, 0f))
                     .opacity(CgKeyframes.start(0f, 0f).to(0.05f, 1f, CgEasings.OUT_QUAD).to(0.85f, 1f, CgEasings.LINEAR)
                             .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-            look.emitter(shell).layer(layerOf("sprite_glow", shell, colours[s][0], colours[s][1], b -> b
-                    .texture("_Sheet", dot).set("_cg_Facing", 6f)
-                    .set("_cg_Stretch", 3f).set("_cg_MaxStretch", 40f)));
+            look.emitter(shell).draw(facing(shell, colours[s][0], colours[s][1], dot, "camera", "velocity",
+                    m -> m.value("_cg_Stretch", 3f).value("_cg_MaxStretch", 40f), null));
             emitters.add(shell);
             sources.add(new float[]{0f, top, 0f});
         }
         CgVfxEmitter north = pole("fieldNorth"), south = pole("fieldSouth");
         CgVfxEmitter northCrackle = crackle("fieldNorthCrackle"), southCrackle = crackle("fieldSouthCrackle");
         CgVfxEmitter pulse = CgVfxEmitter.builder("fieldPulse")
-                .state(CgVfxEmitterState.once(PERIOD - 3f - 0.5f).delay(0.5f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(8)
+                .state(CgVfxEmitterState.once(PERIOD - 3f - 0.5f).delay(0.5f)).capacity(8)
                 .rate(0.8f).speed(0f, 0f).life(1.6f, 1.6f).size(1f, 1f, 1f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(0f, 1f))
                 .size(CgKeyframes.start(0f, 0.3f).to(1f, 3.6f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0.8f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
         look.emitter(north).emitter(south).emitter(northCrackle).emitter(southCrackle).emitter(pulse)
-                .layer(sparkLayer(north, VIOLET, WHITE)).layer(sparkLayer(south, CYAN, WHITE))
-                .layer(sparkLayer(northCrackle, VIOLET, WHITE)).layer(sparkLayer(southCrackle, CYAN, WHITE))
-                .layer(facing(pulse, VIOLET, WHITE, ring, 4, null));
+                .draw(spark(north, VIOLET, WHITE)).draw(spark(south, CYAN, WHITE))
+                .draw(spark(northCrackle, VIOLET, WHITE)).draw(spark(southCrackle, CYAN, WHITE))
+                .draw(facing(pulse, VIOLET, WHITE, ring, "custom", "unaligned", LIE_FLAT, null));
         emitters.addAll(List.of(north, south, northCrackle, southCrackle, pulse));
         sources.addAll(List.of(new float[]{0f, top, 0f}, new float[]{0f, 2.4f, 0f}, new float[]{0f, top, 0f},
                 new float[]{0f, 2.4f, 0f}, new float[]{0f, middle, 0f}));
@@ -1858,8 +1846,7 @@ public final class CgVfxModules {
 
     /** Sparks crackling round a pole: short-lived, torn about by fast noise. */
     private static CgVfxEmitter crackle(String name) {
-        return CgVfxEmitter.builder(name).state(CgVfxEmitterState.once(PERIOD - 2.5f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
+        return CgVfxEmitter.builder(name).state(CgVfxEmitterState.once(PERIOD - 2.5f)).capacity(300)
                 .rate(70f).shape(CgSphere.of(0.25f)).speed(2f, 5f).life(0.08f, 0.22f).size(0.02f, 0.04f, 1.5f)
                 .heat(1f)
                 .module(new CgVfxModule.Turbulence(20f, 2f, 3f))
@@ -1897,8 +1884,7 @@ public final class CgVfxModules {
 
     /** A pole's glow, beating as it charges and fading as the station's period ends. */
     private static CgVfxEmitter pole(String name) {
-        return CgVfxEmitter.builder(name).state(CgVfxEmitterState.ONCE)
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(4)
+        return CgVfxEmitter.builder(name).state(CgVfxEmitterState.ONCE).capacity(4)
                 .burst(0f, 1).speed(0f, 0f).life(PERIOD - 2f, PERIOD - 2f).size(0.45f, 0.45f, 1f).heat(1f)
                 .size(CgKeyframes.start(0f, 0.6f).to(0.15f, 1.25f, CgEasings.OUT_QUAD).to(0.3f, 0.9f, CgEasings.IN_OUT_QUAD)
                         .to(0.45f, 1.25f, CgEasings.IN_OUT_QUAD).to(0.6f, 0.9f, CgEasings.IN_OUT_QUAD)
@@ -1911,9 +1897,8 @@ public final class CgVfxModules {
      * bevy_hanabi's conform to sphere: a shield taking shape, its motes drawn onto the surface and carried over it by
      * curl-noise currents, which flow and part as one field, round a slow drift.
      */
-    private void shield(float x, float z, CgTexture dot) {
-        CgVfxEmitter motes = CgVfxEmitter.builder("shield").state(CgVfxEmitterState.once(PERIOD - 3f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(2500)
+    private void shield(float x, float z, String dot) {
+        CgVfxEmitter motes = CgVfxEmitter.builder("shield").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(2500)
                 .rate(520f).shape(CgCylinder.of(5.5f, 2.75f)).speed(0.3f, 1.5f).life(2.6f, 3.4f)
                 .size(0.06f, 0.14f, 1.5f).heat(0.7f)
                 .module(new CgVfxModule.Conform(CgSphere.of(2.6f), 4.5f, 40f, 6f))
@@ -1923,8 +1908,7 @@ public final class CgVfxModules {
                 .opacity(CgKeyframes.start(0f, 0f).to(0.2f, 1f, CgEasings.OUT_QUAD).to(0.8f, 1f, CgEasings.LINEAR)
                         .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
         add("shield: Conform + Turbulence", x, z, List.of(motes), new float[][]{{0f, 3.2f, 0f}},
-                layer("sprite_glow", motes, VIOLET, WHITE, 1f,
-                        b -> b.texture("_Sheet", dot)), null);
+                particle("sprite_glow", motes, VIOLET, WHITE, 1f, m -> m.texture("_Sheet", dot), null), null);
     }
 
     /**
@@ -1932,18 +1916,20 @@ public final class CgVfxModules {
      * within a tenth of a second, and a few hot chips glancing off the surface about its normal.
      */
     private void boulder(float x, float z) {
-        CgVfxEmitter flash = CgVfxEmitter.builder("boulderFlash").renderer(CgVfxEmitter.Renderer.QUADS).capacity(64)
+        CgVfxEmitter flash = CgVfxEmitter.builder("boulderFlash").capacity(64)
                 .speed(0f, 0f).life(0.05f, 0.09f).size(0.3f, 0.5f, 1f).heat(1f)
                 .size(CgKeyframes.start(0f, 0.4f).to(0.2f, 1f, CgEasings.OUT_QUAD).to(1f, 0.8f, CgEasings.LINEAR).build())
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.OUT_QUAD).build()).build();
-        CgVfxEmitter chips = CgVfxEmitter.builder("boulderChips").renderer(CgVfxEmitter.Renderer.QUADS).capacity(256)
+        CgVfxEmitter chips = CgVfxEmitter.builder("boulderChips").capacity(256)
                 .direction(0, 1, 0, 25.84f, 81.37f).speed(2.5f, 6f).life(0.15f, 0.4f).size(0.025f, 0.05f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Drag(1.2f, 0f))
                 .module(new CgVfxModule.CollideDepth(0.4f, 0.2f, 0.3f, DEPTH_THICKNESS))
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter sparks = CgVfxEmitter.builder("boulder").state(CgVfxEmitterState.once(PERIOD - 3f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(1200)
+        // Its events' children draw as made: the events name these emitters.
+        flash = drawn(spark(flash, WHITE, FLAME));
+        chips = drawn(spark(chips, FLAME, EMBER));
+        CgVfxEmitter sparks = CgVfxEmitter.builder("boulder").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(1200)
                 .rate(120f).shape(CgSphere.of(1.2f)).hemisphere().pointing(0, -1, 0).direction(0, -1, 0, 45.57f).speed(0.5f, 2f).life(2.5f, 3f)
                 .size(0.08f, 0.14f, 1f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
@@ -1954,9 +1940,8 @@ public final class CgVfxModules {
                 .event(CgVfxEvent.onCollision().spawn(flash, 1))
                 .event(CgVfxEvent.onCollision().spawn(chips, 4))
                 .opacity(FADE).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(sparks).emitter(flash).emitter(chips)
-                .layer(sparkLayer(sparks, EMBER, FLAME)).layer(sparkLayer(flash, WHITE, FLAME))
-                .layer(sparkLayer(chips, FLAME, EMBER)).build();
+        CgVfxLook look = new Look().emitter(sparks).emitter(flash).emitter(chips)
+                .draw(spark(sparks, EMBER, FLAME)).build();
         stations.add(new Station("boulder: Collide sphere, onCollision spawns a flash and chips", x, z, look, List.of(sparks),
                 new float[][]{{0f, 7f, 0f}}, p -> p.sphere(0f, 1.8f, 0f, 1.75f)));
     }
@@ -1966,19 +1951,20 @@ public final class CgVfxModules {
      * settle on its floor, glinting where they strike hard; a second burst halfway knocks the pile about again.
      */
     private void cage(float x, float z) {
-        CgVfxEmitter glint = CgVfxEmitter.builder("cageGlint").renderer(CgVfxEmitter.Renderer.QUADS).capacity(256)
+        CgVfxEmitter glint = CgVfxEmitter.builder("cageGlint").capacity(256)
                 .speed(0f, 0f).life(0.06f, 0.12f).size(0.18f, 0.3f, 1f).heat(1f)
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.OUT_QUAD).build()).build();
-        CgVfxEmitter balls = CgVfxEmitter.builder("cage").state(CgVfxEmitterState.ONCE)
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(500)
+        // Its events' children draw as made: the events name these emitters.
+        glint = drawn(spark(glint, WHITE, WHITE));
+        CgVfxEmitter balls = CgVfxEmitter.builder("cage").state(CgVfxEmitterState.ONCE).capacity(500)
                 .burst(0f, 300).burst(3.5f, 150).shape(CgSphere.of(1f)).speed(4f, 9f)
                 .life(PERIOD - 1f, PERIOD - 0.5f).size(0.1f, 0.2f, 1f).heat(0.9f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Collide(CgBox.of(2.5f, 2.5f, 2.5f), 0.78f, 0.03f, 0.4f).container())
                 .event(CgVfxEvent.onCollision().spawn(glint, 1))
                 .opacity(FADE).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(balls).emitter(glint)
-                .layer(sparkLayer(balls, CYAN, WHITE)).layer(sparkLayer(glint, WHITE, WHITE)).build();
+        CgVfxLook look = new Look().emitter(balls).emitter(glint)
+                .draw(spark(balls, CYAN, WHITE)).build();
         stations.add(new Station("cage: Collide container box, onCollision glints", x, z, look, List.of(balls),
                 new float[][]{{0f, 2.6f, 0f}}, p -> {
                     // The box's twelve edges: along x, y and z in turn, at each corner of the other two axes.
@@ -2001,20 +1987,22 @@ public final class CgVfxModules {
      * An avalanche down a plane collider tilted into a ramp: glowing ice shards tumble onto it, cooling from white to
      * ice blue, each impact kicking up a puff of snow, and slide off onto the floor, killed past a box.
      */
-    private void slope(float x, float z, CgTexture shard, CgTexture smokeSheet) {
+    private void slope(float x, float z, String shard, String smokeSheet) {
         // The plane stands top blocks over the floor at the station's centre; ramp is its length, end to end, from as
         // high again down to the floor.
         float nx = 0.35f, ny = 1f, length = (float) Math.sqrt(nx * nx + ny * ny), top = 1.5f, source = 6.5f;
         float ramp = 2f * top * length / nx;
-        CgVfxEmitter snow = CgVfxEmitter.builder("slopeSnow").renderer(CgVfxEmitter.Renderer.QUADS).capacity(900)
+        CgVfxEmitter snow = CgVfxEmitter.builder("slopeSnow").capacity(900)
                 .direction(0, 1, 0, 72.54f).speed(0.3f, 0.9f).life(0.8f, 1.4f).size(0.25f, 0.4f, 1f).spin(0.2f, 0.8f)
                 .module(new CgVfxModule.Force(0f, 0.3f, 0f))
                 .module(new CgVfxModule.Drag(2f, 0f))
                 .size(CgKeyframes.start(0f, 0.5f).to(1f, 2.2f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.15f, 0.6f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        CgVfxEmitter shards = CgVfxEmitter.builder("slope").state(CgVfxEmitterState.once(PERIOD - 3f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(1500)
+        // Its events' children draw as made: the events name these emitters.
+        snow = drawn(particle("sprite", snow, SNOW, SNOW, 1f, m -> m.texture("_Sheet", smokeSheet),
+                r -> r.subImage(GRID_8)));
+        CgVfxEmitter shards = CgVfxEmitter.builder("slope").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(1500)
                 .rate(200f).shape(CgSphere.of(2.5f)).hemisphere().pointing(0, -1, 0).direction(0, -1, 0, 36.87f).speed(0.5f, 1.5f).life(3f, 4f)
                 .size(0.08f, 0.2f, 1.5f).spin(2f, 8f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
@@ -2025,11 +2013,10 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.CollideWorld(0.3f, 0.05f, 0.1f))
                 .event(CgVfxEvent.onCollision().spawn(snow, 1))
                 .opacity(FADE).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(shards).emitter(snow)
-                .layer(layerOf("sprite", snow, SNOW, SNOW, b -> b.texture("_Sheet", smokeSheet)
-                        .flipbook(CgVfxFlipbook.grid(8, 8))))
+        CgVfxLook look = new Look().emitter(shards).emitter(snow)
                 // Solid pieces: pulled toward the eye to rest on the ramp whole, never faded into it.
-                .layer(facing(shards, ICE, WHITE, shard, 0, b -> b.set("_SoftDistance", 0f).set("_cg_CameraOffset", 1f)))
+                .draw(facing(shards, ICE, WHITE, shard, "camera", "unaligned",
+                        m -> m.value("_SoftDistance", 0f).value("_cg_CameraOffset", 1f), null))
                 .build();
         stations.add(new Station("slope: Collide plane, an avalanche kicking up snow", x, z, look, List.of(shards),
                 new float[][]{{0f, source, 0f}}, p -> {
@@ -2045,24 +2032,27 @@ public final class CgVfxModules {
      * Neon rain on Godot's box collider: streaked drops pelt a block and the floor round it, each splashing into droplets
      * and a ripple ring flat on what it struck, and dying there.
      */
-    private void block(float x, float z, CgTexture dot, CgTexture ring) {
+    private void block(float x, float z, String dot, String ring) {
         float source = 8f;
-        CgVfxEmitter splash = CgVfxEmitter.builder("blockSplash").renderer(CgVfxEmitter.Renderer.QUADS).capacity(2000)
+        CgVfxEmitter splash = CgVfxEmitter.builder("blockSplash").capacity(2000)
                 .direction(0, 1, 0, 60f).speed(1.5f, 3f).life(0.25f, 0.45f).size(0.02f, 0.035f, 1f).heat(0.5f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter ripple = CgVfxEmitter.builder("blockRipple").renderer(CgVfxEmitter.Renderer.QUADS).capacity(600)
+        CgVfxEmitter ripple = CgVfxEmitter.builder("blockRipple").capacity(600)
                 .speed(0f, 0f).life(0.45f, 0.45f).size(1f, 1f, 1f).heat(0.6f)
                 .size(CgKeyframes.start(0f, 0.05f).to(1f, 0.4f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0.9f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
         // A ripple is flat and cannot bend over an edge, so each rain keeps to what it falls on: the block's starts within
         // 1.1 of its middle, a ripple's 0.35 radius short of its 1.5 edge; the floor's dies in the column over the block.
+        Consumer<CgMaterialDefinition.Builder> streak = m -> m.value("_cg_Stretch", 0.25f).value("_cg_MaxStretch", 12f);
+        // Its events' children draw as made: the events name these emitters.
+        splash = drawn(facing(splash, CYAN, WHITE, dot, "camera", "velocity", streak, null));
+        ripple = drawn(facing(ripple, CYAN, WHITE, ring, "custom", "unaligned", LIE_FLAT, null));
         CgVfxEmitter onBlock = rain("block", 180f, 1.1f, source, splash, ripple);
         CgVfxEmitter onFloor = rain("blockFloor", 420f, 3f, source, splash, ripple);
-        Consumer<CgVfxLayer.Builder> streak = b -> b.set("_cg_Stretch", 0.25f).set("_cg_MaxStretch", 12f);
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(onBlock).emitter(onFloor).emitter(splash).emitter(ripple)
-                .layer(facing(onBlock, CYAN, WHITE, dot, 6, streak)).layer(facing(onFloor, CYAN, WHITE, dot, 6, streak))
-                .layer(facing(splash, CYAN, WHITE, dot, 6, streak)).layer(facing(ripple, CYAN, WHITE, ring, 4, null))
+        CgVfxLook look = new Look().emitter(onBlock).emitter(onFloor).emitter(splash).emitter(ripple)
+                .draw(facing(onBlock, CYAN, WHITE, dot, "camera", "velocity", streak, null))
+                .draw(facing(onFloor, CYAN, WHITE, dot, "camera", "velocity", streak, null))
                 .build();
         stations.add(new Station("block: Collide box, rain splashing and rippling", x, z, look, List.of(onBlock, onFloor),
                 new float[][]{{0f, source, 0f}, {0f, source, 0f}}, p -> {
@@ -2080,8 +2070,7 @@ public final class CgVfxModules {
                                      CgVfxEmitter ripple) {
         // Still at launch, so gravity alone sets them falling straight down; born in the lower half of the ball.
         // Long enough lived to fall 90 blocks, to the ground under a station standing in the air.
-        CgVfxEmitter.Builder rain = CgVfxEmitter.builder(name).state(CgVfxEmitterState.once(PERIOD - 3f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(1000).rate(rate).shape(CgSphere.of(spread))
+        CgVfxEmitter.Builder rain = CgVfxEmitter.builder(name).state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(1000).rate(rate).shape(CgSphere.of(spread))
                 .hemisphere().pointing(0f, -1f, 0f).speed(0f, 0f).life(3f, 3f).size(0.025f, 0.035f, 1f).heat(0.4f)
                 .module(new CgVfxModule.Gravity(20f))
                 .module(new CgVfxModule.Collide(CgBox.of(1.5f, 1f, 1.5f), 0f, 0f, 0f).at(0f, 1f - source, 0f))
@@ -2110,13 +2099,14 @@ public final class CgVfxModules {
         float nx = 0.45f, rampY = 2.25f, rampFrom = -5f, rampTo = rampY / nx;   // its height at 0, and where it meets the floor
         float cubeX = -1.5f, cubeHalf = 0.9f, cubeY = rampY - nx * (cubeX + cubeHalf) + cubeHalf;   // resting on the ramp downhill
         float rampLength = (rampTo - rampFrom) * (float) Math.sqrt(1f + nx * nx);
-        CgVfxEmitter sparks = CgVfxEmitter.builder("obstacleSparks").renderer(CgVfxEmitter.Renderer.QUADS).capacity(1500)
+        CgVfxEmitter sparks = CgVfxEmitter.builder("obstacleSparks").capacity(1500)
                 .direction(0, 1, 0, 78.46f).speed(1.5f, 4f).life(0.15f, 0.4f).size(0.015f, 0.03f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Drag(1.5f, 0f))
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter beads = CgVfxEmitter.builder("obstacles").state(CgVfxEmitterState.once(PERIOD - 3f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(1500)
+        // Its events' children draw as made: the events name these emitters.
+        sparks = drawn(spark(sparks, FLAME, WHITE));
+        CgVfxEmitter beads = CgVfxEmitter.builder("obstacles").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(1500)
                 .rate(220f).shape(CgSphere.of(0.4f)).hemisphere().pointing(0, -1, 0).direction(0, -1, 0, 25.84f).speed(0f, 0f).life(4.5f, 5.5f)
                 .size(0.05f, 0.08f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
@@ -2130,8 +2120,8 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.CollideWorld(0.3f, 0.12f, 0.1f))
                 .event(CgVfxEvent.onCollision().spawn(sparks, 2))
                 .opacity(FADE).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(beads).emitter(sparks)
-                .layer(sparkLayer(beads, EMBER, FLAME)).layer(sparkLayer(sparks, FLAME, WHITE)).build();
+        CgVfxLook look = new Look().emitter(beads).emitter(sparks)
+                .draw(spark(beads, EMBER, FLAME)).build();
         float angle = -(float) Math.atan2(nx, 1f), rampMid = (rampFrom + rampTo) / 2f;
         stations.add(new Station("obstacles: a sphere, a cube in a ramp, the floor", x, z, look, List.of(beads),
                 new float[][]{{sx, sy, 0f}}, p -> {
@@ -2150,7 +2140,7 @@ public final class CgVfxModules {
      * to speed, so they stop at speed over it, a straight line. Both reach 3.5 blocks at 7.
      */
     private void dampingAndDrag(float x, float z) {
-        CgVfxLook.Builder look = CgVfxLook.builder(SCHEMA);
+        Look look = new Look();
         List<CgVfxEmitter> emitters = new ArrayList<>();
         List<float[]> sources = new ArrayList<>();
         for (int row = 0; row < 2; row++) {
@@ -2158,14 +2148,13 @@ public final class CgVfxModules {
             for (int c = 0; c < BRAKE_COLUMNS; c++) {
                 float speed = c + 1f;
                 CgVfxEmitter puck = CgVfxEmitter.builder((damping ? "damping" : "drag") + c)
-                        .state(CgVfxEmitterState.ONCE)
-                        .renderer(CgVfxEmitter.Renderer.QUADS).capacity(8)
+                        .state(CgVfxEmitterState.ONCE).capacity(8)
                         .burst(0f, 1).burst(1.3f, 1).burst(2.6f, 1).burst(3.9f, 1).direction(0, 1, 0, 0f).speed(speed, speed)
                         .life(2.6f, 2.6f).size(0.12f, 0.12f, 1f).heat(1f)
                         .module(damping ? new CgVfxModule.Damping(7f) : new CgVfxModule.Drag(2f, 0f))
                         .opacity(CgKeyframes.start(0f, 0f).to(0.03f, 1f, CgEasings.OUT_QUAD).to(0.85f, 1f, CgEasings.LINEAR)
                                 .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-                look.emitter(puck).layer(damping ? sparkLayer(puck, GOLD, WHITE) : sparkLayer(puck, CYAN, WHITE));
+                look.emitter(puck).draw(damping ? spark(puck, GOLD, WHITE) : spark(puck, CYAN, WHITE));
                 emitters.add(puck);
                 sources.add(new float[]{brakeColumn(row, c), 0.3f, 0f});
             }
@@ -2196,16 +2185,15 @@ public final class CgVfxModules {
 
     /** Godot's velocity limit: the same fountain with (gold) and without (cyan) a 3 blocks a second ceiling. */
     private void limit(float x, float z) {
-        CgVfxEmitter free = CgVfxEmitter.builder("free").state(CgVfxEmitterState.once(PERIOD - 3f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(1500)
+        CgVfxEmitter free = CgVfxEmitter.builder("free").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(1500)
                 .rate(120f).direction(0, 1, 0, 31.79f).speed(9f, 12f).life(3f, 3.5f)
                 .size(0.08f, 0.12f, 1f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Ground(0.3f, 0.3f, 0.5f))
                 .opacity(FADE).build();
         CgVfxEmitter limited = free.toBuilder().name("limited").module(new CgVfxModule.LimitSpeed(3f)).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(free).emitter(limited)
-                .layer(sparkLayer(free, CYAN, WHITE)).layer(sparkLayer(limited, GOLD, WHITE)).build();
+        CgVfxLook look = new Look().emitter(free).emitter(limited)
+                .draw(spark(free, CYAN, WHITE)).draw(spark(limited, GOLD, WHITE)).build();
         stations.add(new Station("limit: LimitSpeed 3 (gold) beside none (cyan)", x, z, look, List.of(free, limited),
                 new float[][]{{3f, 0.3f, 0f}, {-3f, 0.3f, 0f}}, null));
     }
@@ -2215,9 +2203,8 @@ public final class CgVfxModules {
      * rolled by slow curl noise as it spreads; and a fire (right), upright flames on a looping sheet, lofted by their
      * heat and reddening as they cool, with embers and its own smoke rising off it.
      */
-    private void flipbooks(float x, float z, CgTexture smokeSheet, CgTexture fireSheet) {
-        CgVfxEmitter puffs = CgVfxEmitter.builder("puffs").state(CgVfxEmitterState.once(PERIOD - 3f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
+    private void flipbooks(float x, float z, String smokeSheet, String fireSheet) {
+        CgVfxEmitter puffs = CgVfxEmitter.builder("puffs").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(300)
                 .rate(18f).shape(CgSphere.of(0.5f)).hemisphere().direction(0, 1, 0, 36.87f).speed(0.8f, 1.5f).life(3f, 4f)
                 .size(0.7f, 1.1f, 1f).spin(0.05f, 0.35f).heat(0.7f)
                 .module(new CgVfxModule.Buoyancy(3f, 1.5f))
@@ -2226,8 +2213,7 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.55f).to(1f, 3f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.15f, 0.95f, CgEasings.OUT_QUAD).to(0.6f, 0.75f, CgEasings.LINEAR)
                         .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter fire = CgVfxEmitter.builder("fire").state(CgVfxEmitterState.once(PERIOD - 3f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
+        CgVfxEmitter fire = CgVfxEmitter.builder("fire").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(300)
                 .rate(55f).shape(CgSphere.of(0.4f)).hemisphere().direction(0, 1, 0, 31.79f).speed(0.4f, 1f).life(0.6f, 1f)
                 .size(0.55f, 0.9f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(5f, 1.2f))
@@ -2236,8 +2222,7 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.7f).to(0.3f, 1.1f, CgEasings.OUT_QUAD).to(1f, 0.55f, CgEasings.IN_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 1f, CgEasings.OUT_QUAD).to(0.7f, 0.9f, CgEasings.LINEAR)
                         .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter embers = CgVfxEmitter.builder("fireEmbers").state(CgVfxEmitterState.once(PERIOD - 3f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(200)
+        CgVfxEmitter embers = CgVfxEmitter.builder("fireEmbers").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(200)
                 .rate(18f).shape(CgSphere.of(0.3f)).hemisphere().direction(0, 1, 0, 36.87f).speed(1f, 2.5f).life(1.2f, 2.2f)
                 .size(0.025f, 0.05f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(7f, 0.9f))
@@ -2245,8 +2230,7 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.Drag(0.8f, 0f))
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
         CgVfxEmitter soot = CgVfxEmitter.builder("fireSmoke")
-                .state(CgVfxEmitterState.once(PERIOD - 3f - 0.4f).delay(0.4f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(100)
+                .state(CgVfxEmitterState.once(PERIOD - 3f - 0.4f).delay(0.4f)).capacity(100)
                 .rate(9f).shape(CgSphere.of(0.3f)).hemisphere().direction(0, 1, 0, 25.84f).speed(0.4f, 0.8f).life(2.5f, 3.5f)
                 .size(0.6f, 0.9f, 1f).spin(0.1f, 0.4f).heat(0.5f)
                 .module(new CgVfxModule.Buoyancy(2.5f, 2f))
@@ -2255,14 +2239,14 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.6f).to(1f, 3.2f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.2f, 1f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        Consumer<CgVfxLayer.Builder> smoke = b -> b.texture("_Sheet", smokeSheet).flipbook(CgVfxFlipbook.grid(8, 8));
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(puffs).emitter(fire).emitter(embers).emitter(soot)
-                .layer(layerOf("sprite", puffs, SMOKE, SMOKE, smoke))
-                .layer(layerOf("sprite", soot, SOOT, SOOT, smoke))
-                .layer(layerOf("sprite_glow", fire, FIRE_COOL, FIRE_HOT,
-                        b -> b.texture("_Sheet", fireSheet).flipbook(FLAMES)
-                                .set("_cg_Facing", 2f)))
-                .layer(sparkLayer(embers, EMBER, FLAME))
+        Consumer<CgMaterialDefinition.Builder> smoke = m -> m.texture("_Sheet", smokeSheet);
+        Consumer<CgVfxRenderers.Builder> frames = r -> r.subImage(GRID_8);
+        CgVfxLook look = new Look().emitter(puffs).emitter(fire).emitter(embers).emitter(soot)
+                .draw(particle("sprite", puffs, SMOKE, SMOKE, 1f, smoke, frames))
+                .draw(particle("sprite", soot, SOOT, SOOT, 1f, smoke, frames))
+                .draw(facing(fire, FIRE_COOL, FIRE_HOT, fireSheet, "camera", "custom", STAND_UP,
+                        r -> r.subImage(FLAMES)))
+                .draw(spark(embers, EMBER, FLAME))
                 .build();
         stations.add(new Station("flipbooks: a smoke column (left), a fire with embers and smoke (right)", x, z, look,
                 List.of(puffs, fire, embers, soot),
@@ -2270,22 +2254,20 @@ public final class CgVfxModules {
     }
 
     /**
-     * The five facing modes, left to right, each on the effect it is for: twinkling glints (camera), runes spiralling up
-     * (camera position), spirit flames that stay standing seen from above (upright), a fountain of sparks streaked along
-     * their arcs (velocity), and shockwaves flat on the floor (axis).
+     * Niagara's facings and alignments, left to right, each on the effect it is for: twinkling glints (camera), runes spiralling up
+     * (camera position), spirit flames that stay standing seen from above (aligned to up), a fountain of sparks streaked
+     * along their arcs (velocity), and shockwaves flat on the floor (facing up).
      */
-    private void facings(float x, float z, CgTexture star, CgTexture rune, CgTexture wisp, CgTexture dot,
-                         CgTexture ring) {
-        CgVfxEmitter glints = CgVfxEmitter.builder("faceCamera").state(CgVfxEmitterState.once(PERIOD - 3f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(120)
+    private void facings(float x, float z, String star, String rune, String wisp, String dot,
+                         String ring) {
+        CgVfxEmitter glints = CgVfxEmitter.builder("faceCamera").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(120)
                 .rate(16f).shape(CgSphere.of(1f)).speed(0.05f, 0.2f).life(1.5f, 2.5f).size(0.2f, 0.45f, 1.5f)
                 .spin(0.3f, 1.2f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(0.4f, 1.5f))
                 .module(new CgVfxModule.Drag(1f, 0f))
                 .opacity(CgKeyframes.start(0f, 0f).to(0.2f, 1f, CgEasings.OUT_QUAD).to(0.45f, 0.35f, CgEasings.IN_OUT_QUAD)
                         .to(0.7f, 1f, CgEasings.IN_OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxEmitter runes = CgVfxEmitter.builder("facePosition").state(CgVfxEmitterState.once(PERIOD - 3.5f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(40)
+        CgVfxEmitter runes = CgVfxEmitter.builder("facePosition").state(CgVfxEmitterState.once(PERIOD - 3.5f)).capacity(40)
                 .rate(4f).shape(CgCylinder.of(0.9f, 0.18f)).speed(0f, 0f).life(3f, 3.5f)
                 .size(0.4f, 0.55f, 1f).spin(0.2f, 0.5f).heat(1f)
                 .module(new CgVfxModule.Vortex(0f, 1f, 0f, 1.2f, -0.8f, 0f, 0f, 0f))
@@ -2293,8 +2275,7 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.Buoyancy(0f, 2f))
                 .module(new CgVfxModule.Drag(1f, 0f))
                 .opacity(FADE).build();
-        CgVfxEmitter flames = CgVfxEmitter.builder("faceUpright").state(CgVfxEmitterState.once(PERIOD - 3f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(150)
+        CgVfxEmitter flames = CgVfxEmitter.builder("faceUpright").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(150)
                 .rate(30f).shape(CgSphere.of(0.3f)).hemisphere().direction(0, 1, 0, 31.79f).speed(0.3f, 0.8f).life(0.6f, 1f)
                 .size(0.55f, 0.85f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(4f, 1f))
@@ -2304,8 +2285,7 @@ public final class CgVfxModules {
                 .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 1f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
         // Near upright, so the fountain stays in its lane: 1.5 blocks out at most, bounces included.
-        CgVfxEmitter sparks = CgVfxEmitter.builder("faceVelocity").state(CgVfxEmitterState.once(PERIOD - 3f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(250)
+        CgVfxEmitter sparks = CgVfxEmitter.builder("faceVelocity").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(250)
                 .rate(90f).shape(CgSphere.of(0.05f)).hemisphere().direction(0, 1, 0, 8.11f).speed(5f, 7f).life(1.2f, 1.8f)
                 .size(0.045f, 0.07f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
@@ -2314,20 +2294,21 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.Ground(0.35f, 0.1f, 0.2f))
                 .opacity(CgKeyframes.start(0f, 1f).to(0.8f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        CgVfxEmitter waves = CgVfxEmitter.builder("faceAxis").state(CgVfxEmitterState.once(PERIOD - 3f))
-                .renderer(CgVfxEmitter.Renderer.QUADS).capacity(8)
+        CgVfxEmitter waves = CgVfxEmitter.builder("faceAxis").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(8)
                 .rate(1.6f).speed(0f, 0f).life(1.4f, 1.4f).size(1f, 1f, 1f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(0f, 0.8f))
                 .size(CgKeyframes.start(0f, 0.15f).to(1f, 1.5f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(glints).emitter(runes).emitter(flames).emitter(sparks)
+        CgVfxLook look = new Look().emitter(glints).emitter(runes).emitter(flames).emitter(sparks)
                 .emitter(waves)
-                .layer(facing(glints, GOLD, WHITE, star, 0, null))
-                .layer(facing(runes, VIOLET, WHITE, rune, 5, null))
-                .layer(facing(flames, SPIRIT_COOL, SPIRIT_HOT, wisp, 2, b -> b.flipbook(FLAMES)))
-                .layer(facing(sparks, GOLD, WHITE, dot, 6, b -> b.set("_cg_Stretch", 0.6f).set("_cg_MaxStretch", 10f)))
-                .layer(facing(waves, CYAN, WHITE, ring, 4, null)).build();
-        stations.add(new Station("facing: camera, position up, upright, aligned, axis", x, z, look,
+                .draw(facing(glints, GOLD, WHITE, star, "camera", "unaligned", null, null))
+                .draw(facing(runes, VIOLET, WHITE, rune, "camera_position", "unaligned", null, null))
+                .draw(facing(flames, SPIRIT_COOL, SPIRIT_HOT, wisp, "camera", "custom", STAND_UP,
+                        r -> r.subImage(FLAMES)))
+                .draw(facing(sparks, GOLD, WHITE, dot, "camera", "velocity",
+                        m -> m.value("_cg_Stretch", 0.6f).value("_cg_MaxStretch", 10f), null))
+                .draw(facing(waves, CYAN, WHITE, ring, "custom", "unaligned", LIE_FLAT, null)).build();
+        stations.add(new Station("facing: camera, position, custom alignment, aligned, custom facing", x, z, look,
                 List.of(glints, runes, flames, sparks, waves),
                 new float[][]{{-7f, 2.5f, 0f}, {-3.5f, 1.8f, 0f}, {0f, 0.2f, 0f}, {3.5f, 0.4f, 0f}, {7f, 0.04f, 0f}}, p -> {
                     for (int lane = 0; lane < 5; lane++) {
@@ -2339,47 +2320,195 @@ public final class CgVfxModules {
     }
 
     /** Each facing lane's mode, and how it turns: what to look for, flying round it. */
-    private static final String[] FACING_NAMES = {"camera", "position up", "upright", "aligned", "axis"};
-    private static final String[] FACING_HINTS = {"lies in the screen", "turns to your eye round up", "stands up, turns round y",
-            "stands along its motion", "flat across an axis"};
+    private static final String[] FACING_NAMES = {"camera", "camera position", "custom alignment", "velocity aligned",
+            "custom facing"};
+    private static final String[] FACING_HINTS = {"lies in the screen", "turns to your eye round up",
+            "stands up, turns round y", "stands along its motion", "flat across a vector"};
 
-    /** A glowing sprite of {@code sheet}, a single frame unless {@code more} says otherwise, facing as {@code mode}. */
-    private static CgVfxLayer facing(CgVfxEmitter e, CgVfxParam.Color cool, CgVfxParam.Color hot, CgTexture sheet, int mode,
-                                     Consumer<CgVfxLayer.Builder> more) {
-        return layerOf("sprite_glow", e, cool, hot, b -> {
-            b.texture("_Sheet", sheet).set("_cg_Facing", mode)
-                    .set("_cg_Axis", 0f, 1f, 0f, 0f);
-            // Lying on a surface on purpose: a soft fade would fade it out.
-            if (mode == 4) b.set("_SoftDistance", 0f);
-            if (more != null) more.accept(b);
+    // ── renderers ─────────────────────────────────────────────────────────────
+
+    private static final String MATERIALS = "crystalgraphics:demo/modules/";
+    private static final String STREAK_SHADER = PARTICLE + "streaks.shader", RIBBON_SHADER = PARTICLE + "ribbon.shader";
+    private static final String BILLOW = "crystalgraphics:shaders/vfx/smoke/billow.shader";
+    /** Where a draw ranks in its look, by {@link CgVfxLook}'s bands: smoke, then haze, then the surface. */
+    private static final int SMOKE_HINT = 0, HAZE = 2 * CgVfxLook.BAND, SURFACE = CgVfxLook.SURFACE;
+    private static final AtomicInteger MADE = new AtomicInteger(), INSTANCES = new AtomicInteger();
+    private static final Map<String, Supplier<CgMeshLods>> MESHES = new ConcurrentHashMap<>();
+
+    /** One draw of a station: an emitter's renderer, or a slot renderer. */
+    private record Draw(CgVfxEmitter on, CgVfxRendererProperties renderer) {}
+
+    /**
+     * A station's look as it is written: its emitters, then what draws them. An emitter takes the renderers drawn on it
+     * when the look is built; one drawn by none is kept as given, so an event naming it as its child still finds it.
+     * An event's child that draws takes its renderer where it is made ({@link #drawn}).
+     */
+    private static final class Look {
+        private final CgVfxLook.Builder look = CgVfxLook.builder(SCHEMA);
+        private final Map<String, CgVfxEmitter> emitters = new LinkedHashMap<>();
+        private final Map<String, List<CgVfxRendererProperties>> renderers = new LinkedHashMap<>();
+        private final List<CgVfxSlotRenderer> slots = new ArrayList<>();
+
+        Look emitter(CgVfxEmitter e) {
+            emitters.put(e.name(), e);
+            return this;
+        }
+
+        Look draw(Draw d) {
+            if (!emitters.containsKey(d.on().name())) {
+                throw new IllegalStateException(d.on().name() + " is drawn, but its look has no such emitter");
+            }
+            renderers.computeIfAbsent(d.on().name(), n -> new ArrayList<>()).add(d.renderer());
+            return this;
+        }
+
+        Look slot(CgVfxSlotRenderer slot) {
+            slots.add(slot);
+            return this;
+        }
+
+        CgVfxLook build() {
+            for (CgVfxEmitter e : emitters.values()) {
+                List<CgVfxRendererProperties> drawn = renderers.get(e.name());
+                if (drawn == null) {
+                    look.emitter(e);
+                    continue;
+                }
+                CgVfxEmitter.Builder b = e.toBuilder();
+                for (CgVfxRendererProperties r : drawn) b.renderer(r);
+                look.emitter(b.build());
+            }
+            for (CgVfxSlotRenderer slot : slots) look.slot(slot);
+            return look.build();
+        }
+    }
+
+    /** {@code draws}' emitter with their renderers: an event's child, which its parent names. */
+    private static CgVfxEmitter drawn(Draw... draws) {
+        CgVfxEmitter.Builder b = draws[0].on().toBuilder();
+        for (Draw d : draws) b.renderer(d.renderer());
+        return b.build();
+    }
+
+    /** A material of one draw's own: {@code shader}, ranked at {@code order}, serving {@code usage} (null: a mesh's). */
+    private static CgMaterialDefinition material(String shader, int order, CgMaterialUsage usage,
+                                                 Consumer<CgMaterialDefinition.Builder> values) {
+        String name = shader.substring(shader.lastIndexOf('/') + 1, shader.lastIndexOf('.'));
+        CgMaterialDefinition.Builder b = CgMaterialDefinition.of(MATERIALS + name + "#" + MADE.getAndIncrement(),
+                shader).order(order);
+        if (usage != null) b.usage(usage);
+        if (values != null) values.accept(b);
+        return b.build();
+    }
+
+    /**
+     * {@code e} drawn by a shared particle shader, {@code _Color} {@code a} and, but on the one-colour sprite and speck,
+     * {@code _Hot} {@code b}; {@code size} times its particles' size. A ray is an arc renderer, every other a sprite.
+     */
+    private static Draw particle(String shader, CgVfxEmitter e, CgVfxParam.Color a, CgVfxParam.Color b, float size,
+                                 Consumer<CgMaterialDefinition.Builder> values, Consumer<CgVfxRenderers.Builder> more) {
+        CgVfxRenderers.Builder r = (shader.equals("ray") ? CgVfxRenderers.arc(shader) : CgVfxRenderers.sprite(shader))
+                .material(material(PARTICLE + shader + ".shader", 0, CgMaterialUsage.SPRITES, values))
+                .bind("_Color", a).sortOrderHint(SURFACE);
+        if (!shader.equals("sprite") && !shader.equals("speck")) r.bind("_Hot", b);
+        if (size != 1f) r.value("_cg_Size", size);
+        if (more != null) more.accept(r);
+        return new Draw(e, r.build());
+    }
+
+    private static Draw spark(CgVfxEmitter e, CgVfxParam.Color a, CgVfxParam.Color b) {
+        return particle("spark", e, a, b, 1f, null, null);
+    }
+
+    /** {@code e} as smoke, a frame of the 8x8 {@code sheet} over its life, ranked with smoke. */
+    private static Draw smoke(CgVfxEmitter e, CgVfxParam.Color colour, String sheet) {
+        return particle("sprite", e, colour, colour, 1f, m -> m.texture("_Sheet", sheet),
+                r -> r.subImage(GRID_8).sortOrderHint(SMOKE_HINT));
+    }
+
+    /** Up, the vector an upright sprite stands along and a flat one lies across. */
+    private static final Consumer<CgMaterialDefinition.Builder> STAND_UP = m -> m
+            .value("_cg_AlignmentVector", 0f, 1f, 0f, 0f),
+            LIE_FLAT = m -> m.value("_cg_FacingVector", 0f, 1f, 0f, 0f);
+
+    /**
+     * A glowing sprite of {@code sheet}, a single frame unless {@code more} gives a flipbook, facing and aligned as
+     * Niagara's sprite renderer: {@code camera}, {@code camera_position} (turned to the eye round up) or {@code custom}
+     * (across {@code _cg_FacingVector}); {@code unaligned}, {@code velocity} or {@code custom} (along
+     * {@code _cg_AlignmentVector}).
+     */
+    private static Draw facing(CgVfxEmitter e, CgVfxParam.Color cool, CgVfxParam.Color hot, String sheet, String facing,
+                               String alignment, Consumer<CgMaterialDefinition.Builder> values,
+                               Consumer<CgVfxRenderers.Builder> more) {
+        return particle("sprite_glow", e, cool, hot, 1f, m -> {
+            m.texture("_Sheet", sheet);
+            if (values != null) values.accept(m);
+        }, r -> {
+            r.facing(facing).alignment(alignment);
+            if (more != null) more.accept(r);
         });
+    }
+
+    /** A trail slot's draw: {@code shader} under {@code shaders/vfx/trail/}, {@code size} its half-width. */
+    private static CgVfxSlotRenderer.Builder trail(String shader, CgVfxSlot slot, float size, int order,
+                                                   Consumer<CgMaterialDefinition.Builder> values) {
+        return CgVfxSlotRenderer.of(shader + "." + part(slot), slot).material(material(TRAIL + shader + ".shader", order, null, values))
+                .size(size);
+    }
+
+    /** A mesh slot's draw of {@code mesh} through the flow shader, coloured {@code a} into {@code b}. */
+    private static CgVfxSlotRenderer.Builder flow(CgVfxSlot slot, CgMesh mesh, CgVfxParam.Color a, CgVfxParam.Color b,
+                                                  Consumer<CgMaterialDefinition.Builder> values) {
+        return CgVfxSlotRenderer.of("flow." + part(slot), slot).material(material(FLOW, SURFACE, null, values))
+                .mesh(mesh(slot.name() + "/mesh", mesh)).bind("_Color", a).bind("_Hot", b);
+    }
+
+    /** {@code e}'s particles each a billow of {@code mesh}, ranked with smoke. */
+    private static Draw billow(CgVfxEmitter e, CgMesh mesh, CgVfxParam.Color a, CgVfxParam.Color b) {
+        return new Draw(e, CgVfxRenderers.mesh("billow").material(material(BILLOW, 0, CgMaterialUsage.MESH_PARTICLES, null))
+                .field("meshes", List.of(Map.of("mesh", mesh(MATERIALS + e.name() + "/mesh", mesh))))
+                .bind("_Color", a).bind("_Hot", b)
+                .sortOrderHint(SMOKE_HINT).build());
+    }
+
+    /** A streak behind each of {@code e}'s particles, through the positions it keeps, {@code size} times as wide. */
+    private static Draw streaks(CgVfxEmitter e, CgVfxParam.Color colour, CgVfxParam.Color core, float size,
+                                Consumer<CgMaterialDefinition.Builder> values) {
+        CgVfxRenderers.Builder r = CgVfxRenderers.trails("streaks")
+                .material(material(STREAK_SHADER, 0, CgMaterialUsage.RIBBONS, values)).field("points", e.trailPoints())
+                .bind("_Color", colour).bind("_Core", core).sortOrderHint(SURFACE);
+        if (size != 1f) r.value("_cg_Size", size);
+        return new Draw(e, r.build());
+    }
+
+    /** One ribbon through {@code e}'s particles, newest first, {@code size} its width. */
+    private static Draw ribbon(CgVfxEmitter e, CgVfxParam.Color colour, CgVfxParam.Color core, float size,
+                               Consumer<CgMaterialDefinition.Builder> values, Consumer<CgVfxRenderers.Builder> more) {
+        CgVfxRenderers.Builder r = CgVfxRenderers.ribbon("ribbon")
+                .material(material(RIBBON_SHADER, 0, CgMaterialUsage.RIBBONS, values)).bind("_Color", colour)
+                .bind("_Core", core).value("_cg_Size", size).sortOrderHint(SURFACE);
+        if (more != null) more.accept(r);
+        return new Draw(e, r.build());
+    }
+
+    /** The last part of {@code slot}'s name: what tells two draws of one shader in a look apart. */
+    private static String part(CgVfxSlot slot) {
+        return slot.name().substring(slot.name().lastIndexOf('/') + 1);
+    }
+
+    /** {@code mesh} provided under {@code id}: once for every run of the demo, made into levels at its first draw. */
+    private static String mesh(String id, CgMesh mesh) {
+        CgMeshLoader.provide(id, MESHES.computeIfAbsent(id, i -> () -> CgMeshLods.of(mesh)));
+        return id;
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private void add(String name, float x, float z, List<CgVfxEmitter> emitters, float[][] sources, CgVfxLayer layer,
+    private void add(String name, float x, float z, List<CgVfxEmitter> emitters, float[][] sources, Draw draw,
                      Consumer<Props> props) {
-        CgVfxLook.Builder look = CgVfxLook.builder(SCHEMA);
+        Look look = new Look();
         for (CgVfxEmitter e : emitters) look.emitter(e);
-        stations.add(new Station(name, x, z, look.layer(layer).build(), emitters, sources, props));
-    }
-
-    private static CgVfxLayer layer(String shader, CgVfxEmitter e, CgVfxParam.Color a, CgVfxParam.Color b, float radius,
-                                    Consumer<CgVfxLayer.Builder> properties) {
-        CgVfxLayer.Builder l = CgVfxLayer.of(PARTICLE + shader + ".shader").on(e).bind("_Color", a).size(radius);
-        // sprite and speck tint by one colour
-        if (!shader.equals("sprite") && !shader.equals("speck")) l.bind("_Hot", b);
-        if (properties != null) properties.accept(l);
-        return l.build();
-    }
-
-    private static CgVfxLayer layerOf(String shader, CgVfxEmitter e, CgVfxParam.Color a, CgVfxParam.Color b,
-                                      Consumer<CgVfxLayer.Builder> properties) {
-        return layer(shader, e, a, b, 1f, properties);
-    }
-
-    private static CgVfxLayer sparkLayer(CgVfxEmitter e, CgVfxParam.Color a, CgVfxParam.Color b) {
-        return layer("spark", e, a, b, 1f, null);
+        stations.add(new Station(name, x, z, look.draw(draw).build(), emitters, sources, props));
     }
 
     /** Fills one texel of a flipbook frame: {@code (u, v)} 0..1 across the frame, v up; straight-alpha RGBA. */
@@ -2391,9 +2520,11 @@ public final class CgVfxModules {
      * A {@code columns} x {@code rows} sheet of {@code cell}-texel frames, frame 0 at the top left: made empty here, its
      * texels computed by {@link #fillSheets()}.
      */
-    private CgTexture sheet(int columns, int rows, int cell, Texel texel) {
+    private String sheet(int columns, int rows, int cell, Texel texel) {
         int w = columns * cell, h = rows * cell;
         CgTexture2D texture = CgTexture2D.createEmpty(w, h, CgTextureSpec.RGBA8_LINEAR);
+        String id = MATERIALS + "sheets/" + instance + "/" + sheets.size();
+        CgMaterialRegistry.provide(id, () -> texture);
         sheets.add(texture);
         fills.add(() -> {
             ByteBuffer pixels = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder());
@@ -2411,7 +2542,7 @@ public final class CgVfxModules {
                 if (!deleted) texture.uploadRegion(0, 0, 0, w, h, pixels, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE);
             }
         });
-        return texture;
+        return id;
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.crystalgraphics.vulkan.shader;
 
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.mesh.CgProceduralMesh;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.compute.emit.CgKernelEmitter;
@@ -9,7 +10,6 @@ import com.crystalgraphics.compute.source.CgComputeSource;
 import com.crystalgraphics.vfx.element.CgVfxExplosion;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
-import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxEmitterCompiler;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
@@ -71,7 +71,9 @@ public class VfxStepKernelSpirvTest {
     private static final CgVfxEmitter MIDDLE = CgVfxEmitter.builder("middle").capacity(64).life(1f, 1f)
             .module(new CgVfxModule.Gravity(9.8f)).event(CgVfxEvent.every(0.1f).between(0.2f, 0.8f).spawn(LEAF, 2)).build();
     private static final CgVfxPrefab SPINNER = CgVfxPrefab.builder("test:spinner").node("hub").node("tip").parent("hub")
-            .at(0f, 1f, 0f).part(CgVfxLayer.of("test:blade.shader")).build();
+            .at(0f, 1f, 0f)
+            .part(CgMaterialDefinition.of("test:blade", "crystalgraphics:shaders/vfx/sequence/part.shader").build())
+            .build();
     private static final CgVfxEmitter SEQUENCE = CgVfxEmitter.builder("sequence").state(CgVfxEmitterState.ONCE).capacity(4)
             .burst(0f, 1).life(1f, 1f).sequence(CgVfxNodeClip.of(SPINNER, 30).channel("hub", CgVfxNodeClip.Channel.ROTATION_Y,
                     CgVfxNodeClip.Interp.LINEAR, 0, 0f, 30, 360f).burst("tip", MIDDLE, 10, 3).stream("tip", MIDDLE, 5, 25, 20f)

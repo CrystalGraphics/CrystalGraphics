@@ -1,10 +1,12 @@
 package com.crystalgraphics.vfx.look;
 
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.object.layout.CgLayout;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import org.junit.Test;
 
 import java.util.List;
@@ -24,16 +26,17 @@ public class CgVfxLookTest {
     private static final CgVfxSchema KIT_SCHEMA = CgVfxSchema.of("test:look/kit");
     private static final CgVfxParam.Scalar BLAST = KIT_SCHEMA.length("blast", 10f);
 
+    private static final String PART = "crystalgraphics:shaders/vfx/sequence/part.shader";
     private static final CgVfxSlot BODY = CgVfxSlot.tube("test:look/body");
     private static final CgVfxSlot HEAD = CgVfxSlot.mesh("test:look/head");
     private static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("test:look/sparks").size(1f, 2f, 1f).build();
     private static final CgVfxEmitter DUST = CgVfxEmitter.builder("test:look/dust").size(1f, 2f, 1f).build();
 
-    private static final CgVfxLayer SURFACE = CgVfxLayer.of("test:surface.shader").on(BODY).build();
-    private static final CgVfxLayer SMOKE = CgVfxLayer.of("test:smoke.shader").on(BODY, HEAD).role(CgVfxLayer.Role.SMOKE).build();
-    private static final CgVfxLayer GLOW = CgVfxLayer.of("test:glow.shader").on(HEAD).build();
-    private static final CgVfxKit BODY_KIT = CgVfxKit.of("test:look/body").layer(SURFACE).layer(SMOKE).build();
-    private static final CgVfxKit HEAD_KIT = CgVfxKit.of("test:look/head").layer(GLOW).emitter(SPARKS).build();
+    private static final CgVfxSlotRenderer SURFACE = slot("surface", BODY, CgVfxLook.SURFACE);
+    private static final CgVfxSlotRenderer SMOKE = slot("smoke", BODY, 0);
+    private static final CgVfxSlotRenderer GLOW = slot("glow", HEAD, CgVfxLook.SURFACE);
+    private static final CgVfxKit BODY_KIT = CgVfxKit.of("test:look/body").slot(SURFACE).slot(SMOKE).build();
+    private static final CgVfxKit HEAD_KIT = CgVfxKit.of("test:look/head").slot(GLOW).emitter(SPARKS).build();
     /** Its emitters authored where BLAST is 10: a look's scaling leaves them to BLAST. */
     private static final CgVfxKit BLAST_KIT = CgVfxKit.of("test:look/blast").params(KIT_SCHEMA).scalesWith(BLAST, 10f)
             .emitter(DUST).build();
@@ -58,41 +61,51 @@ public class CgVfxLookTest {
         assertEquals(0x33 / 255f * 2f, look.get(tint, 0), 1e-6f);
     }
 
+    private static CgVfxSlotRenderer slot(String name, CgVfxSlot slot, int order) {
+        return CgVfxSlotRenderer.of(name, slot)
+                .material(CgMaterialDefinition.of("test:look/" + name, PART).order(order).build())
+                .build();
+    }
+
+    private static List<CgVfxSlotRenderer> slots(CgVfxLook look) {
+        return look.slotted().stream().map(CgVfxLook.Placed::slotRenderer).toList();
+    }
+
     @Test
-    public void layersDrawByRoleThenAsAddedAndSlotsHoldTheirOwn() {
+    public void slotRenderersDrawByHintThenAsAddedAndSlotsHoldTheirOwn() {
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(BODY_KIT, HEAD_KIT).build();
-        assertEquals(List.of(SMOKE, SURFACE, GLOW), look.layers());
+        assertEquals(List.of(SMOKE, SURFACE, GLOW), slots(look));
         assertEquals(2, look.on(BODY).length);
-        assertSame(SMOKE, look.on(HEAD)[0].layer());
-        assertEquals(0, look.on(HEAD)[0].order());
+        assertSame(GLOW, look.on(HEAD)[0].slotRenderer());
+        assertEquals(2, look.on(HEAD)[0].order());
         assertEquals(0, look.on(CgVfxSlot.mesh("test:look/nothing")).length);
     }
 
     @Test
-    public void anOrderHintSortsWithinItsRoleAndTiesKeepTheLooksOrder() {
-        CgVfxLayer late = CgVfxLayer.of("test:late.shader").on(BODY).order(12).build();
-        CgVfxLayer early = CgVfxLayer.of("test:early.shader").on(BODY).order(3).build();
-        CgVfxLayer tie = CgVfxLayer.of("test:tie.shader").on(BODY).order(3).build();
-        CgVfxLayer smoke = CgVfxLayer.of("test:smoke2.shader").on(BODY).role(CgVfxLayer.Role.SMOKE).order(200).build();
-        CgVfxKit kit = CgVfxKit.of("test:look/hints").layer(late).layer(early).layer(tie).layer(smoke).build();
+    public void aHintSortsAcrossTheBandsAndTiesKeepTheLooksOrder() {
+        CgVfxSlotRenderer late = slot("late", BODY, CgVfxLook.SURFACE + 12);
+        CgVfxSlotRenderer early = slot("early", BODY, CgVfxLook.SURFACE + 3);
+        CgVfxSlotRenderer tie = slot("tie", BODY, CgVfxLook.SURFACE + 3);
+        CgVfxSlotRenderer smoke = slot("smoke2", BODY, 40);
+        CgVfxKit kit = CgVfxKit.of("test:look/hints").slot(late).slot(early).slot(tie).slot(smoke).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(kit).build();
-        assertEquals("a role still comes first", List.of(smoke, early, tie, late), look.layers());
+        assertEquals("the smoke band still comes first", List.of(smoke, early, tie, late), slots(look));
         assertEquals(3, look.on(BODY)[3].order());
     }
 
     @Test
-    public void aKitDroppedTakesItsLayersAndEmittersAndAReplacementTakesItsPlace() {
+    public void aKitDroppedTakesItsSlotRenderersAndEmittersAndAReplacementTakesItsPlace() {
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(BODY_KIT, HEAD_KIT, BLAST_KIT).build();
         CgVfxLook without = look.derive().without(HEAD_KIT).build();
-        assertFalse(without.draws(HEAD) && without.on(HEAD).length > 1);
-        assertEquals(1, without.on(HEAD).length);
+        assertFalse(without.draws(HEAD));
+        assertEquals(0, without.on(HEAD).length);
         assertTrue(without.emitter(SPARKS.name()) == null);
         assertTrue(without.layout().includes(BLAST));
         assertTrue(without.has(BODY_KIT) && !without.has(HEAD_KIT));
 
-        CgVfxKit other = CgVfxKit.of("test:look/other").layer(CgVfxLayer.of("test:other.shader").on(BODY).build()).build();
+        CgVfxKit other = CgVfxKit.of("test:look/other").slot(slot("other", BODY, CgVfxLook.SURFACE)).build();
         CgVfxLook replaced = look.derive().replace(BODY_KIT, other).build();
-        assertEquals("test:other.shader", replaced.on(BODY)[0].layer().shader());
+        assertEquals("test:look/other", replaced.on(BODY)[0].slotRenderer().material());
         assertFalse(replaced.has(BODY_KIT));
     }
 

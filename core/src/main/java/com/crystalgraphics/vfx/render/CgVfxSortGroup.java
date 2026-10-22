@@ -1,7 +1,6 @@
 package com.crystalgraphics.vfx.render;
 
 import com.crystalgraphics.vfx.CgVfxEffect;
-import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 
 import java.util.ArrayList;
@@ -10,14 +9,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Effects that sort as one: their transparent draws in one group of the world renderer, at one place, their layers in
+ * Effects that sort as one: their transparent draws in one group of the world renderer, at one place, their draws in
  * one order whatever their distances. A move made of many effects (CC2's clip, whose render layer numbers hold across
  * all of it) keeps its authored layering this way, as Unreal's components sharing a translucency sort priority do.
  *
  * <pre>{@code
  * CgVfxSortGroup move = new CgVfxSortGroup();                       // one per move played
  * VFX.play(new CgVfxSystemInstance<>(SPIRAL, x, y, z).sortGroup(move));
- * VFX.play(new CgVfxSystemInstance<>(SHOCKWAVE, x, y, z).sortGroup(move));     // its layers order against SPIRAL's by their hints
+ * VFX.play(new CgVfxSystemInstance<>(SHOCKWAVE, x, y, z).sortGroup(move));     // its draws order against SPIRAL's by their hints
  * }</pre>
  *
  * <pre>{@code
@@ -25,10 +24,10 @@ import java.util.Map;
  * }</pre>
  *
  * <ul>
- *   <li>Members' layers rank by role, then {@code order} hint, then the member that joined first: a hint means the
- *       same in every member's look.</li>
- *   <li>At most 256 layers across every look its members play.</li>
- *   <li>GPU particles keep their system's group: what this orders is every other layer.</li>
+ *   <li>Members' draws rank by hint (a renderer's sort order hint, a slot renderer's material order), then the member
+ *       that joined first: a hint means the same in every member's look.</li>
+ *   <li>At most 256 draws across every look its members play.</li>
+ *   <li>GPU particles keep their system's group: what this orders is every other draw.</li>
  *   <li>Render thread; a member leaves when it dies.</li>
  * </ul>
  */
@@ -57,7 +56,7 @@ public final class CgVfxSortGroup {
         return this;
     }
 
-    /** {@code effect} draws in it; a look new to the group ranks its layers among the others'. */
+    /** {@code effect} draws in it; a look new to the group ranks its draws among the others'. */
     public void join(CgVfxEffect<?> effect) {
         if (members.contains(effect)) return;
         members.add(effect);
@@ -77,7 +76,7 @@ public final class CgVfxSortGroup {
         return members.size();
     }
 
-    /** The world renderer's order for {@code placed}, a layer of {@code look}: its rank among every member's layers. */
+    /** The world renderer's order for {@code placed}, a draw of {@code look}: its rank among every member's draws. */
     public int order(CgVfxLook look, CgVfxLook.Placed placed) {
         int[] r = ranks.get(look);
         return r == null ? placed.order() : r[placed.order()];
@@ -114,25 +113,15 @@ public final class CgVfxSortGroup {
         z = sz / n;
     }
 
-    /** Every look's layers by (role, hint, the look that joined first, its place in that look), numbered in turn. */
+    /** Every look's draws by (hint, the look that joined first, its place in that look), numbered in turn. */
     private void rank() {
         List<long[]> keys = new ArrayList<>();
         for (int l = 0; l < looks.size(); l++) {
-            List<CgVfxLook.Placed> placed = looks.get(l).placed();
-            for (CgVfxLook.Placed p : placed) {
-                CgVfxLayer layer = p.layer();
-                keys.add(new long[] {layer.role().ordinal(), layer.order(), l, p.order()});
-            }
-            // A slot renderer ranks after every layer's role in its look's order, an emitter's renderer after it by hint.
-            for (CgVfxLook.Placed p : looks.get(l).slotted()) {
-                keys.add(new long[] {CgVfxLayer.Role.values().length, 0, l, p.order()});
-            }
-            for (CgVfxLook.Placed p : looks.get(l).rendered()) {
-                keys.add(new long[] {CgVfxLayer.Role.values().length + 1, p.renderer().common().sortOrderHint(), l, p.order()});
-            }
+            CgVfxLook look = looks.get(l);
+            for (CgVfxLook.Placed p : look.placed()) keys.add(new long[] {p.hint(), l, p.order()});
         }
         if (keys.size() > 256) {
-            throw new IllegalStateException("a sort group ranks at most 256 layers; its looks draw " + keys.size());
+            throw new IllegalStateException("a sort group ranks at most 256 draws; its looks draw " + keys.size());
         }
         keys.sort((a, b) -> {
             for (int i = 0; i < a.length; i++) if (a[i] != b[i]) return Long.compare(a[i], b[i]);
@@ -142,7 +131,7 @@ public final class CgVfxSortGroup {
         for (int l = 0; l < looks.size(); l++) ranks.put(looks.get(l), new int[looks.get(l).draws()]);
         for (int i = 0; i < keys.size(); i++) {
             long[] k = keys.get(i);
-            ranks.get(looks.get((int) k[2]))[(int) k[3]] = i;
+            ranks.get(looks.get((int) k[1]))[(int) k[2]] = i;
         }
     }
 }

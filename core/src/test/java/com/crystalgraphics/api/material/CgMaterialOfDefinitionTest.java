@@ -23,11 +23,11 @@ public class CgMaterialOfDefinitionTest {
     }
 
     private static CgMaterialDefinition sparks() {
-        return CgMaterialDefinition.builder("test:materials/sparks", SPRITE).usage(CgMaterialUsage.SPRITES).blend(CgBlendMode.ADDITIVE).twoSided()
-                .color("_Color", 0xFFFF8040, 2f).value("_SoftDistance", 0.25f)
-                .texture("_Sheet", "crystalgraphics:textures/vfx/smoke.png", CgSampler.Filter.BILINEAR,
+        return CgMaterialDefinition.of("test:materials/sparks", SPRITE).usage(CgMaterialUsage.SPRITES).blend(CgBlendMode.ADDITIVE).twoSided()
+                                   .color("_Color", 0xFFFF8040, 2f).value("_SoftDistance", 0.25f)
+                                   .texture("_Sheet", "crystalgraphics:textures/vfx/smoke.png", CgSampler.Filter.BILINEAR,
                         CgSampler.Address.CLAMP)
-                .build();
+                                   .build();
     }
 
     private static float[] value(CgMaterial m, String name) {

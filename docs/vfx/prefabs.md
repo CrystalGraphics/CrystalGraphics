@@ -8,9 +8,11 @@ look draws it.
 ## Building one
 
 ```java
-// A material: a layer's shader and settings, with no slot. One builder object is one material.
-static final CgVfxLayer.Builder LENS = CgVfxLayer.of("mymod:shaders/vfx/lens.shader").bind("_Color", CORE);
-static final CgVfxLayer.Builder GLOW = CgVfxLayer.of("crystalgraphics:shaders/emission_only.shader");
+// A material asset: one definition is one material, however many parts draw with it.
+static final CgMaterialDefinition LENS = CgMaterialDefinition.of("mymod:materials/lens",
+        "mymod:shaders/vfx/lens.shader").build();
+static final CgMaterialDefinition GLOW = CgMaterialDefinition.of("mymod:materials/lens_glow",
+        "crystalgraphics:shaders/emission_only.shader").build();
 
 static final CgVfxPrefab LENS_CORE = CgVfxPrefab.builder("mymod:lens_core")
         .node("ball03")
@@ -29,7 +31,7 @@ static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(LENS_CORE.kit()).bu
 | `parent(name)` | its parent, a node named before it |
 | `at(x, y, z)`, `rotation(x, y, z, w)`, `scale(...)` | its rest transform in its parent's space; the rotation a quaternion |
 | `opacity(a)` | its own opacity, 0 to 1 |
-| `part(material, mesh)` | a mesh it draws with a material: a `CgMesh`, `CgMeshLods` or a path loaded at its first draw; `part(material)` draws the material's own mesh, else the unit sphere |
+| `part(material, mesh)` | a mesh it draws with a material: a `CgMesh`, `CgMeshLods`, or a file or provided mesh's id loaded at its first draw; `part(material)` draws the unit sphere |
 
 ## Playing one
 
@@ -64,8 +66,10 @@ public final class Shuriken extends CgVfxEffect<Shuriken> {
 - **A node's opacity multiplies down its subtree**: half a parent's and half its own draws a quarter, and 0 hides the
   subtree. It reaches the shader as `FX_PRESENCE`, so a material fades only if it multiplies by it, as every engine
   shader does.
-- **A material is one layer however many parts use it.** The kit holds a layer per distinct material builder, so a
-  prefab of hundreds of nodes and a few materials is a few layers: a look draws at most 256.
+- **A material is one slot renderer however many parts use it.** The kit holds a slot renderer per distinct material,
+  on a slot of the prefab's own, so a prefab of hundreds of nodes and a few materials is a few draws: a look draws at
+  most 256.
+- **Its materials read no user parameter**: a part's colour is its material's, and its node's opacity fades it.
 - **Transforms multiply as matrices, as glTF's do**: a rotated child under a non-uniformly scaled parent shears, as it
   did in the game it came from.
 - Evaluating is CPU matrix work, about 8 microseconds for 458 nodes; nothing allocates once the instance is made.

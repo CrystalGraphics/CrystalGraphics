@@ -1,9 +1,9 @@
-// A textured sprite: a frame of a flipbook sheet on a quad facing as the factory's _cg_Facing says (fx_particle.glsl's FX_FACE_*), lit by
-// the world where it is and blended over what is behind: smoke, dust, leaves. A CgVfxQuads quad placed from its particle
-// record (CgVfxFrame.particles, QUADS). _Color tints the sheet, its alpha a strength.
+// A textured sprite: a frame of a flipbook sheet on a quad facing as its renderer says (fx_particle.glsl's FX_FACE_* and
+// FX_ALIGN_*), lit by the world where it is and blended over what is behind: smoke, dust, leaves. A CgVfxQuads quad
+// placed from its particle record (CgVfxFrame.particles). _Color tints the sheet, its alpha a strength.
 //
-//     CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/sprite.shader").on(PUFFS).bind("_Color", TINT)
-//             .texture("_Sheet", SHEET).flipbook(CgVfxFlipbook.grid(8, 8)).set("_cg_Facing", 2f).build()
+//     CgVfxRenderers.sprite("puffs").material(PUFF).bind("_Color", TINT)      // PUFF: this shader, _Sheet a texture
+//             .subImage(Map.of("size", List.of(8, 8))).alignment("custom").build()
 #type none
 #pragma cg_use particle
 #pragma cg_use rows

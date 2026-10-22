@@ -5,6 +5,8 @@
 #type spatial
 #pragma cg_use rows
 #pragma cg_feature FX_ON_MESH
+// A sequence renderer draws under the mesh_particles usage, FX_ON_SEQUENCE beside it.
+#pragma cg_feature FX_ON_MESH_PARTICLES
 #pragma cg_feature FX_ON_SEQUENCE
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"

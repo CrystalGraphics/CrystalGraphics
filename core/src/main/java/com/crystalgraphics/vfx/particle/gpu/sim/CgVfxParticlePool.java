@@ -41,6 +41,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import org.joml.Matrix4f;
 
 import javax.annotation.Nullable;
@@ -574,7 +575,7 @@ public final class CgVfxParticlePool {
         }
         for (int i = 0; i < STEPPING.size(); i++) {
             CgVfxShape s = STEPPING.get(i).shape;
-            if (s.readsClips() || s.renderer() == CgVfxEmitter.Renderer.SEQUENCE) {
+            if (s.readsClips() || s.drawLayout() == CgVfxDrawLayout.SEQUENCE) {
                 CgVfxClipAtlas.upload(recording);
                 break;
             }

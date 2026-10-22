@@ -16,6 +16,8 @@
 // the lobes near it.
 #type spatial
 #pragma cg_use rows
+// Drawn on a mesh renderer's particles: its own instances, read from the object records.
+#pragma cg_feature FX_ON_MESH_PARTICLES
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_billow.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"

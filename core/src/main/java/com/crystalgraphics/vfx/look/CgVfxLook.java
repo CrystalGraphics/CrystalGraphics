@@ -21,7 +21,7 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * How an effect appears and behaves: its kits (layers and emitters), and a value for every parameter of every schema it
+ * How an effect appears and behaves: its kits (slot renderers and emitters), and a value for every parameter of every schema it
  * includes. Immutable and shared by every effect playing it; a variant is {@link #derive()}d.
  *
  * <pre>{@code
@@ -43,108 +43,115 @@ import java.util.function.Consumer;
  * }</pre>
  *
  * <ul>
- *   <li>Layers draw by role ({@link CgVfxLayer.Role}), then by their order hint ({@code CgVfxLayer.Builder.order}, 0
- *       unless given), then in the order they were added.</li>
+ *   <li>Its draws rank by hint ({@link Placed#hint()}: a renderer's sort order hint, a slot renderer's material
+ *       order), then in the order they were added; the role bands are {@link #BAND} wide.</li>
  *   <li>{@code set}, {@code link} and {@code scaled} apply in the order written: {@code scaled(0.5f)} after
  *       {@code set(RADIUS, 1f)} leaves RADIUS 0.5.</li>
- *   <li>A layer's material is made once per layer object, so looks built from the same kits share them.</li>
+ *   <li>A material is made once per material definition, so looks built from the same kits share them.</li>
  * </ul>
  */
 public final class CgVfxLook {
 
-    /** A layer, an emitter's renderer or a slot renderer, as this look draws it, and where among its draws. */
+    /** An emitter's renderer or a slot renderer, as this look draws it, and where among its draws. */
     public static final class Placed {
-        final CgVfxLayer layer;
         final CgVfxEmitter emitter;
         final CgVfxRendererProperties renderer;
         final CgVfxSlotRenderer slotRenderer;
         final int order;
 
-        Placed(CgVfxLayer layer, int order) {
-            this(layer, null, null, null, order);
-        }
-
         Placed(CgVfxEmitter emitter, CgVfxRendererProperties renderer, int order) {
-            this(null, emitter, renderer, null, order);
+            this(emitter, renderer, null, order);
         }
 
         Placed(CgVfxSlotRenderer slotRenderer, int order) {
-            this(null, null, null, slotRenderer, order);
+            this(null, null, slotRenderer, order);
         }
 
-        private Placed(CgVfxLayer layer, CgVfxEmitter emitter, CgVfxRendererProperties renderer,
-                       CgVfxSlotRenderer slotRenderer, int order) {
-            this.layer = layer;
+        private Placed(CgVfxEmitter emitter, CgVfxRendererProperties renderer, CgVfxSlotRenderer slotRenderer, int order) {
             this.emitter = emitter;
             this.renderer = renderer;
             this.slotRenderer = slotRenderer;
             this.order = order;
         }
 
-        /** The slot renderer it draws; null for a layer or an emitter's renderer. */
+        /** The slot renderer it draws; null for an emitter's renderer. */
         public CgVfxSlotRenderer slotRenderer() {
             return slotRenderer;
         }
 
-        /** Its material definition: a renderer's or a slot renderer's; null for a layer, whose material is its shader. */
+        /** Its material definition; null where it compiled with no dependencies to ask. */
         public CgMaterialDefinition definition() {
             return renderer != null ? renderer.common().definition() : slotRenderer != null ? slotRenderer.definition() : null;
         }
 
-        /** The tier it draws from: a layer's {@code from}, a renderer's {@code quality}; null for every tier. */
+        /** The tier it draws from, its {@code quality}; null for every tier. */
         public CgQuality from() {
-            return layer != null ? layer.from() : renderer != null ? renderer.common().quality() : slotRenderer.quality();
+            return renderer != null ? renderer.common().quality() : slotRenderer.quality();
         }
 
-        /** What a skipped part's name is matched against: a layer's shader, else its material's id. */
+        /** What a skipped part's name is matched against: its material's id. */
         public String partName() {
-            return layer != null ? layer.shader() : renderer != null ? String.valueOf(renderer.common().material())
-                    : slotRenderer.material();
+            return renderer != null ? String.valueOf(renderer.common().material()) : slotRenderer.material();
         }
 
-        /** The mesh it draws on a mesh slot or per particle; null for the slot's own. */
+        /** The mesh it draws on a mesh slot; null for the slot's own. */
         public CgMeshLods mesh() {
-            return layer != null ? layer.mesh() : slotRenderer != null ? slotRenderer.mesh() : null;
+            return slotRenderer != null ? slotRenderer.mesh() : null;
         }
 
-        /** Quads between two points of a strip it draws; 0 for the shader's own. */
-        public int subdivisions() {
-            return layer != null ? layer.subdivisions() : 0;
-        }
-
-        /** Whether a tube slot draws it chunk by chunk on a sphere: a layer's {@code volume()}, an archetype's Volume. */
+        /** Whether a tube slot draws it chunk by chunk on a sphere: its archetype's {@code "Tube" = "Volume"}. */
         public boolean volume() {
-            return layer != null ? layer.isVolume() : slotRenderer != null && slotRenderer.tube() == CgParsedShader.Tube.VOLUME;
+            return slotRenderer != null && slotRenderer.tube() == CgParsedShader.Tube.VOLUME;
         }
 
-        /** Whether a tube slot draws it closed at both ends: a layer's {@code closed()}, an archetype's Closed. */
+        /** Whether a tube slot draws it closed at both ends: its archetype's {@code "Tube" = "Closed"}. */
         public boolean closed() {
-            return layer != null ? layer.isClosed() : slotRenderer != null && slotRenderer.tube() == CgParsedShader.Tube.CLOSED;
+            return slotRenderer != null && slotRenderer.tube() == CgParsedShader.Tube.CLOSED;
         }
 
-        /** The slots it draws on: a layer's, a slot renderer's one; none for an emitter's renderer. */
+        /** The slot it draws on, a slot renderer's; none for an emitter's renderer. */
         public List<CgVfxSlot> slots() {
-            return layer != null ? layer.slots : slotRenderer != null ? List.of(slotRenderer.slot()) : List.of();
+            return slotRenderer != null ? List.of(slotRenderer.slot()) : List.of();
         }
 
-        /** The layer it draws; null for a renderer. */
-        public CgVfxLayer layer() {
-            return layer;
-        }
-
-        /** The emitter whose renderer it is; null for a layer. */
+        /** The emitter whose renderer it is; null for a slot renderer. */
         public CgVfxEmitter emitter() {
             return emitter;
         }
 
-        /** The renderer it draws; null for a layer. */
+        /** The renderer it draws; null for a slot renderer. */
         public CgVfxRendererProperties renderer() {
             return renderer;
         }
 
         /**
-         * Its place among the look's draws, 0 to 255: its index in {@link CgVfxLook#layers()}, and the world renderer's
-         * {@code order} within the effect.
+         * What it ranks by among the look's draws, 0 to 255, then in the look's order: a renderer's sort order hint, a
+         * slot renderer's material {@code order}. The bands: smoke 0 to 63, light 64 to 127, distortion 128 to 191,
+         * surface 192 to 255.
+         */
+        public int hint() {
+            if (renderer != null) return renderer.common().sortOrderHint();
+            CgMaterialDefinition d = slotRenderer.definition();
+            return d == null ? 0 : d.order();
+        }
+
+        /** Whether it bends what is drawn before it: its material's Distortion pass. */
+        public boolean distorts() {
+            CgMaterialDefinition d = definition();
+            return d != null && d.distortion();
+        }
+
+        /**
+         * Whether it draws after its effect's distortion apply, so no haze of its own effect smears it: a surface-band
+         * hint ({@link #SURFACE}) on a material that does not distort.
+         */
+        public boolean afterDistortion() {
+            return !distorts() && hint() >= SURFACE;
+        }
+
+        /**
+         * Its place among the look's draws, 0 to 255: its rank by {@link #hint()}, and the world renderer's {@code order}
+         * within the effect.
          */
         public int order() {
             return order;
@@ -153,13 +160,15 @@ public final class CgVfxLook {
 
     private static final Placed[] NONE = new Placed[0];
 
+    /** The width of a role band of {@link Placed#hint()}; the surface band starts at {@link #SURFACE}. */
+    public static final int BAND = 64, SURFACE = 3 * BAND;
+
     private final CgVfxLayout layout;
     private final CgVfxValues values;
     private final List<Placed> placed;
-    private final List<CgVfxLayer> layers;
     private final Placed[][] bySlot;
     private final List<CgVfxEmitter> emitters;
-    /** Each emitter's renderers as placed, after every layer; and every placement, layers then renderers. */
+    /** Each emitter's renderers as placed. */
     private final Map<CgVfxEmitter, Placed[]> byEmitter = new IdentityHashMap<>();
     private final List<Placed> rendered;
     private final List<Placed> slotted;
@@ -174,80 +183,44 @@ public final class CgVfxLook {
         this.layout = CgVfxLayout.of(schemas);
         this.values = new CgVfxValues(layout);
         for (Consumer<CgVfxValues> op : b.ops) op.accept(values);
-        for (Entry e : b.entries) {
-            if (e.part instanceof CgVfxLayer) {
-                CgVfxParam.Scalar size = ((CgVfxLayer) e.part).sizeParam;
-                if (size != null && !layout.includes(size)) {
-                    throw new IllegalStateException(e.part + " sizes by " + size + ", whose schema this look does not include");
-                }
-                for (CgVfxLayer.Binding binding : ((CgVfxLayer) e.part).bindings) {
-                    if (!layout.includes(binding.param)) {
-                        throw new IllegalStateException(e.part + " binds " + binding.property + " to " + binding.param
-                                + ", whose schema this look does not include: add it with params(...) or its kit");
-                    }
-                }
-            }
+        // Every draw in the look's order (slot renderers, then each emitter's renderers), ranked by hint; ties keep
+        // that order.
+        List<Placed> candidates = new ArrayList<>();
+        for (Entry e : b.entries) if (e.part instanceof CgVfxSlotRenderer) candidates.add(new Placed((CgVfxSlotRenderer) e.part, 0));
+        List<CgVfxEmitter> emitted = new ArrayList<>();
+        for (Entry e : b.entries) if (e.part instanceof CgVfxEmitter) emitted.add((CgVfxEmitter) e.part);
+        for (CgVfxEmitter e : emitted) {
+            for (CgVfxRendererProperties r : e.renderers()) if (r.common().enabled()) candidates.add(new Placed(e, r, 0));
         }
-        List<CgVfxLayer> ordered = new ArrayList<>();
-        for (CgVfxLayer.Role role : CgVfxLayer.Role.values()) {
-            List<CgVfxLayer> ofRole = new ArrayList<>();
-            for (Entry e : b.entries) {
-                if (e.part instanceof CgVfxLayer && ((CgVfxLayer) e.part).role == role) ofRole.add((CgVfxLayer) e.part);
-            }
-            ofRole.sort(Comparator.comparingInt(CgVfxLayer::order));   // stable: ties keep the look's order
-            ordered.addAll(ofRole);
-        }
-        List<Placed> all = new ArrayList<>();
+        candidates.sort(Comparator.comparingInt(Placed::hint));
+        List<Placed> all = new ArrayList<>(), slotPlaced = new ArrayList<>(), renderers = new ArrayList<>();
         List<List<Placed>> slots = new ArrayList<>();
-        for (int i = 0; i < ordered.size(); i++) {
-            Placed p = new Placed(ordered.get(i), i);
+        Map<CgVfxEmitter, List<Placed>> mine = new IdentityHashMap<>();
+        for (int i = 0; i < candidates.size(); i++) {
+            Placed c = candidates.get(i);
+            Placed p = new Placed(c.emitter, c.renderer, c.slotRenderer, i);
             all.add(p);
-            for (CgVfxSlot slot : p.layer.slots) {
+            if (p.slotRenderer != null) {
+                slotPlaced.add(p);
+                CgVfxSlot slot = p.slotRenderer.slot();
                 while (slots.size() <= slot.id) slots.add(null);
                 if (slots.get(slot.id) == null) slots.set(slot.id, new ArrayList<>());
                 slots.get(slot.id).add(p);
+            } else {
+                renderers.add(p);
+                mine.computeIfAbsent(p.emitter, x -> new ArrayList<>()).add(p);
             }
-        }
-        // Slot renderers after the layers, in the look's order, then their material's order.
-        List<CgVfxSlotRenderer> slotted = new ArrayList<>();
-        for (Entry e : b.entries) if (e.part instanceof CgVfxSlotRenderer) slotted.add((CgVfxSlotRenderer) e.part);
-        slotted.sort(Comparator.comparingInt(r -> r.definition() == null ? 0 : r.definition().order()));
-        List<Placed> slotPlaced = new ArrayList<>();
-        for (CgVfxSlotRenderer r : slotted) {
-            Placed p = new Placed(r, ordered.size() + slotPlaced.size());
-            slotPlaced.add(p);
-            CgVfxSlot slot = r.slot();
-            while (slots.size() <= slot.id) slots.add(null);
-            if (slots.get(slot.id) == null) slots.set(slot.id, new ArrayList<>());
-            slots.get(slot.id).add(p);
         }
         this.slotted = Collections.unmodifiableList(slotPlaced);
         this.placed = Collections.unmodifiableList(all);
-        this.layers = Collections.unmodifiableList(ordered);
         this.bySlot = new Placed[slots.size()][];
         for (int i = 0; i < slots.size(); i++) bySlot[i] = slots.get(i) == null ? NONE : slots.get(i).toArray(NONE);
-        List<CgVfxEmitter> emitted = new ArrayList<>();
-        for (Entry e : b.entries) if (e.part instanceof CgVfxEmitter) emitted.add((CgVfxEmitter) e.part);
         this.emitters = Collections.unmodifiableList(emitted);
-        // Renderers after the layers, by Niagara's SortOrderHint, then in the look's order.
-        List<Placed> renderers = new ArrayList<>();
-        List<Object[]> pairs = new ArrayList<>();
-        for (CgVfxEmitter e : emitted) {
-            for (CgVfxRendererProperties r : e.renderers()) if (r.common().enabled()) pairs.add(new Object[] {e, r});
-        }
-        pairs.sort(Comparator.comparingInt(pair -> ((CgVfxRendererProperties) pair[1]).common().sortOrderHint()));
-        Map<CgVfxEmitter, List<Placed>> mine = new IdentityHashMap<>();
-        int first = ordered.size() + slotPlaced.size();
-        for (Object[] pair : pairs) {
-            Placed p = new Placed((CgVfxEmitter) pair[0], (CgVfxRendererProperties) pair[1], first + renderers.size());
-            renderers.add(p);
-            mine.computeIfAbsent(p.emitter, x -> new ArrayList<>()).add(p);
-        }
         for (Map.Entry<CgVfxEmitter, List<Placed>> e : mine.entrySet()) byEmitter.put(e.getKey(), e.getValue().toArray(NONE));
         this.rendered = Collections.unmodifiableList(renderers);
-        this.draws = first + renderers.size();
+        this.draws = candidates.size();
         if (draws > 256) {
-            throw new IllegalStateException("A look draws at most 256 layers and renderers, not " + draws);
+            throw new IllegalStateException("A look draws at most 256 slot renderers and renderers, not " + draws);
         }
         this.scalability = b.scalability;
         this.recipe = b.copy();
@@ -272,17 +245,12 @@ public final class CgVfxLook {
         return layout;
     }
 
-    /** Its layers in draw order: by role, then order hint, then as added. */
-    public List<CgVfxLayer> layers() {
-        return layers;
-    }
-
-    /** Its layers as it draws them. */
+    /** Every draw it places, slot renderers and renderers, in draw order. */
     public List<Placed> placed() {
         return placed;
     }
 
-    /** Its layers on {@code slot}, in draw order; empty for none. Allocates nothing. */
+    /** Its slot renderers on {@code slot}, in draw order; empty for none. Allocates nothing. */
     public Placed[] on(CgVfxSlot slot) {
         return slot.id < bySlot.length ? bySlot[slot.id] : NONE;
     }
@@ -293,22 +261,22 @@ public final class CgVfxLook {
         return p == null ? NONE : p;
     }
 
-    /** Every emitter's renderers as placed, in draw order, after {@link #placed()}. */
+    /** Every emitter's renderers as placed, in draw order. */
     public List<Placed> rendered() {
         return rendered;
     }
 
-    /** Its slot renderers as placed, in draw order, after {@link #placed()}. */
+    /** Its slot renderers as placed, in draw order. */
     public List<Placed> slotted() {
         return slotted;
     }
 
-    /** How many draws it places, layers and renderers: each one's {@link Placed#order()} is below it. */
+    /** How many draws it places: each one's {@link Placed#order()} is below it. */
     public int draws() {
         return draws;
     }
 
-    /** Whether any layer draws on {@code slot}. */
+    /** Whether any slot renderer draws on {@code slot}. */
     public boolean draws(CgVfxSlot slot) {
         return on(slot).length > 0;
     }
@@ -365,19 +333,24 @@ public final class CgVfxLook {
         return values;
     }
 
-    /** Every layer with its slots, role, order, constants and bindings, and every value: for a log or a tool. */
+    /** Every draw with its slot or emitter, hint, material and binds, and every value: for a log or a tool. */
     public String describe() {
         StringBuilder sb = new StringBuilder("look of ").append(layout.schemas()).append('\n');
         for (Placed p : placed) {
-            CgVfxLayer l = p.layer;
-            sb.append("  ").append(p.order).append(' ').append(l.name).append(" [").append(l.role).append("] on ")
-                    .append(l.slots).append(" size ").append(l.size);
-            if (l.sizeParam != null) sb.append(" x ").append(l.sizeParam);
-            for (CgVfxLayer.Binding binding : l.bindings) {
-                sb.append("\n      ").append(binding.property).append(" <- ").append(binding.param);
-                if (binding.factor != 1f) sb.append(" x ").append(binding.factor);
+            sb.append("  ").append(p.order).append(" hint ").append(p.hint()).append(' ');
+            Map<String, Object> bind;
+            if (p.slotRenderer != null) {
+                sb.append(p.slotRenderer.id()).append(" on ").append(p.slotRenderer.slot()).append(" size ")
+                        .append(p.slotRenderer.size()).append(' ').append(p.slotRenderer.material());
+                bind = p.slotRenderer.bind();
+            } else {
+                sb.append(p.renderer.common().id()).append(" of ").append(p.emitter.name()).append(' ')
+                        .append(p.renderer.common().material());
+                bind = p.renderer.common().bind();
             }
-            for (String c : l.constants.keySet()) sb.append("\n      ").append(c).append(" = constant");
+            for (Map.Entry<String, Object> e : bind.entrySet()) {
+                sb.append("\n      ").append(e.getKey()).append(" <- ").append(e.getValue());
+            }
             sb.append('\n');
         }
         for (CgVfxParam param : layout.params()) {
@@ -391,7 +364,7 @@ public final class CgVfxLook {
         return sb.toString();
     }
 
-    /** A layer or an emitter in a look, and the kits it came in. */
+    /** A slot renderer or an emitter in a look, and the kits it came in. */
     private static final class Entry {
         final Object part;
         final List<CgVfxKit> owners;
@@ -408,7 +381,7 @@ public final class CgVfxLook {
         private final List<CgVfxSchema> schemas = new ArrayList<>();
         private final List<Entry> entries = new ArrayList<>();
         private final List<Consumer<CgVfxValues>> ops = new ArrayList<>();
-        /** Kits added that hold no layer or emitter: still {@link #has} them. */
+        /** Kits added that hold no slot renderer or emitter: still {@link #has} them. */
         private final List<CgVfxKit> empty = new ArrayList<>();
         private CgVfxScalability scalability = CgVfxScalability.DEFAULT;
 
@@ -426,7 +399,7 @@ public final class CgVfxLook {
             return b;
         }
 
-        /** Adds kits: their layers after those already here, their emitters and their schemas. */
+        /** Adds kits: their slot renderers and emitters after those already here, and their schemas. */
         public Builder with(CgVfxKit... kits) {
             for (CgVfxKit kit : kits) {
                 if (contains(kit)) throw new IllegalArgumentException(kit + " is in this look already");
@@ -439,7 +412,7 @@ public final class CgVfxLook {
             return this;
         }
 
-        /** Drops kits, inside others or not: their layers and emitters go, their schemas stay. Absent throws. */
+        /** Drops kits, inside others or not: their slot renderers and emitters go, their schemas stay. Absent throws. */
         public Builder without(CgVfxKit... kits) {
             for (CgVfxKit kit : kits) {
                 if (!contains(kit)) throw new IllegalArgumentException(kit + " is not in this look");
@@ -472,12 +445,6 @@ public final class CgVfxLook {
             return this;
         }
 
-        /** A layer of the look's own, after those here. */
-        public Builder layer(CgVfxLayer layer) {
-            entries.add(new Entry(Objects.requireNonNull(layer, "layer"), Collections.emptyList()));
-            return this;
-        }
-
         /** Adds an emitter, or replaces the one of its name where it is: how a look changes one element's physics. */
         public Builder emitter(CgVfxEmitter emitter) {
             for (int i = 0; i < entries.size(); i++) {
@@ -504,7 +471,7 @@ public final class CgVfxLook {
             return this;
         }
 
-        /** Schemas of the look's own: parameters its layers bind and no kit brought. */
+        /** Schemas of the look's own: parameters its renderers bind and no kit brought. */
         public Builder params(CgVfxSchema... more) {
             for (CgVfxSchema s : more) if (s != primary && !schemas.contains(s)) schemas.add(s);
             return this;

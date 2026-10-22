@@ -1,5 +1,7 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
+import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgPlane;
@@ -14,7 +16,6 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
-import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import org.junit.Test;
@@ -30,7 +31,6 @@ public class CgVfxEmitterCompilerTest {
 
     /** Every module kind, the ground the one after the solver, and drag twice. */
     private static final CgVfxEmitter EVERY_KIND = CgVfxEmitter.builder("every").state(CgVfxEmitterState.ONCE)
-            .renderer(CgVfxEmitter.Renderer.QUADS)
             .capacity(64).burst(0f, 64).life(1f, 2f)
             .module(new CgVfxModule.Gravity(9.8f))
             .module(new CgVfxModule.Drag(0.3f, 0.15f))
@@ -106,7 +106,7 @@ public class CgVfxEmitterCompilerTest {
         }
 
         public String name() { return of.name(); }
-        public CgVfxEmitter.Renderer renderer() { return of.renderer(); }
+        public CgVfxDrawLayout drawLayout() { return of.drawLayout(); }
         public void writeSpawn(CgVfxWords out) { of.writeSpawn(out); }
         public void writeCurves(float[] out, int at, int texels) { of.writeCurves(out, at, texels); }
     }
@@ -139,7 +139,6 @@ public class CgVfxEmitterCompilerTest {
         CgSphere sphere = CgSphere.of(2);
         CgVfxField field = CgVfxField.of(4, 4, 4, true, (x, y, z, out) -> out[0] = x);
         CgVfxEmitter catalogue = CgVfxEmitter.builder("catalogue").state(CgVfxEmitterState.ONCE)
-                .renderer(CgVfxEmitter.Renderer.QUADS)
                 .capacity(64).burst(0f, 64).life(1f, 2f)
                 .module(new CgVfxModule.Attract(sphere, 20f).attenuation(2f).directed(0.3f, 0f, 1f, 0f).at(0f, 1f, 0f))
                 .module(new CgVfxModule.Vortex(0f, 1f, 0f, 10f, -3f, 0f, 0f, 0f))
@@ -175,7 +174,8 @@ public class CgVfxEmitterCompilerTest {
                 .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0.3f, 0.5f, 0.8f))
                 .event(CgVfxEvent.onLanding().spawn(leaf, 2)).build();
         CgVfxPrefab prefab = CgVfxPrefab.builder("test:spinner").node("hub").node("tip").parent("hub").at(0f, 1f, 0f)
-                .part(CgVfxLayer.of("test:blade.shader")).build();
+                .part(CgMaterialDefinition.of("test:blade", "crystalgraphics:shaders/vfx/sequence/part.shader").build())
+                .build();
         CgVfxNodeClip clip = CgVfxNodeClip.of(prefab, 30).channel("hub", CgVfxNodeClip.Channel.ROTATION_Y,
                 CgVfxNodeClip.Interp.LINEAR, 0, 0f, 30, 360f).burst("tip", middle, 10, 3).stream("tip", middle, 5, 25, 20f).build();
         CgVfxEmitter root = CgVfxEmitter.builder("root").sequence(clip).state(CgVfxEmitterState.ONCE).capacity(4)

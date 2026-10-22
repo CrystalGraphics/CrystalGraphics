@@ -27,6 +27,7 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector4f;
@@ -591,7 +592,7 @@ public final class CgVfxRange {
                             .bind("OBJECTS", objects, drawnFirst * bytes, capacity * bytes)
                             .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst)
                             .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
-                            .set("_Sequence", p.shape().renderer() == CgVfxEmitter.Renderer.SEQUENCE ? 1 : 0)
+                            .set("_Sequence", p.shape().drawLayout() == CgVfxDrawLayout.SEQUENCE ? 1 : 0)
                             .set("_DrawnFirst", drawnFirst));
                 }
             }

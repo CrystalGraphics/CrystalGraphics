@@ -17,7 +17,7 @@ import java.util.Map;
  * @param maxRibbons      the most ribbons it draws, 0 for no limit
  * @param uv0             its first UV channel's settings ({@code FNiagaraRibbonUVSettings}), null for Unreal's
  * @param uv1             its second, null for Unreal's
- * @param tessellation    {@code { mode, factor, tension, angle }}, null for none
+ * @param tessellation    {@code { mode, factor, tension, angle }}, null for Niagara's automatic
  * @param linkOrderById   whether it joins particles by spawn id rather than spawn order
  * @param maxLinkGap      the most spawns two linked particles may be apart, 0 for any
  */
@@ -32,4 +32,22 @@ public record CgVfxRibbonRendererProperties(Common common, Map<String, Object> t
 
     /** {@code ENiagaraRibbonShapeMode}. */
     public enum Shape { PLANE, MULTI_PLANE, TUBE, CUSTOM }
+
+    /**
+     * Quads between two linked particles, as Niagara's {@code CalculateTessellationFactor} answers them: 1 with
+     * tessellation {@code disabled}, the {@code factor} (1 to 16) for {@code custom} at {@code angle} 0 (a constant
+     * factor), 0 for {@code automatic} or none, the engine's own.
+     *
+     * <pre>{@code
+     * CgVfxRenderers.ribbon("r1").material(STREAM).field("tessellation", Map.of("mode", "custom", "factor", 2)).build();
+     * }</pre>
+     */
+    public int subSegments() {
+        if (tessellation == null) return 0;
+        return switch (String.valueOf(tessellation.getOrDefault("mode", "automatic"))) {
+            case "disabled" -> 1;
+            case "custom" -> Math.max(1, Math.min(16, tessellation.get("factor") instanceof Number n ? n.intValue() : 16));
+            default -> 0;
+        };
+    }
 }

@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.element;
 
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
@@ -19,16 +20,18 @@ import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.camera.CgCameraShakes;
 import com.crystalgraphics.vfx.look.CgVfxKit;
-import com.crystalgraphics.vfx.look.CgVfxLayer;
+import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
+import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * A big explosion with an impact frame before it: ignited at a point, it holds at its ignition while {@link #BEATS} play,
@@ -46,9 +49,9 @@ import java.util.List;
  * }</pre>
  *
  * <ul>
- *   <li>Its look needs {@link #KIT}, or a kit of its own on its slots. {@code KIT}'s light layers read the look's
- *       energy palette by name ({@code core}, {@code coreRim}, {@code shell}, {@code shellHot}, {@code glow}), as
- *       {@code CgEnergyWave}'s do.</li>
+ *   <li>Its look needs {@link #KIT}, or a kit of its own on its slots. {@code KIT}'s slot renderers read the playing
+ *       system's energy palette, {@code user.core}, {@code coreRim}, {@code shell}, {@code shellHot} and {@code glow}:
+ *       a look without them fails at load, naming the bind.</li>
  *   <li>An impact frame is whole or absent: {@link #IMPACT} at 0 when it ignites plays none, and its burst then shakes
  *       with the arriving front ({@link #SHAKE}) rather than the cut ({@link #CUT_SHAKE}, {@link #RETURN}).</li>
  *   <li>On a server it bursts and its front hits, with no particles, flash or shake.</li>
@@ -147,27 +150,40 @@ public final class CgVfxBlast extends CgVfxElement {
     /** Its debris: ribbons, one burst, {@code .w} the seconds since it burst. */
     public static final CgVfxSlot DEBRIS = CgVfxSlot.ribbons("crystalgraphics:blast/debris");
 
-    private static final String BEAM = "crystalgraphics:shaders/vfx/beam/";
+    private static final String BEAM = "crystalgraphics:shaders/vfx/beam/", AIR = "crystalgraphics:shaders/vfx/air/";
     /** The dome, its light on what is round it, and the debris thrown off it. */
     public static final CgVfxKit FIREBALL = CgVfxKit.of("crystalgraphics:blast/fireball")
-            .layer(CgVfxLayer.of(BEAM + "orb_light.shader").on(LIGHT).size(2.2f).role(CgVfxLayer.Role.LIGHT).build())
-            .layer(CgVfxLayer.of(BEAM + "blast_dome.shader").on(DOME).build())
-            .layer(CgVfxLayer.of(BEAM + "impact_splash.shader").on(DEBRIS)
-                    .set("_Burst", 1f).set("_Count", 90f).set("_Speed", 18f).set("_Life", 1.2f).set("_Width", 0.08f)
-                    .set("_Streak", 0.08f).build())
+            .slot(CgVfxSlotRenderer.of("light", LIGHT).material(material("light", BEAM + "orb_light.shader",
+                    CgVfxLook.BAND, b -> {})).bind("_Glow", "user.glow").size(2.2f).build())
+            .slot(CgVfxSlotRenderer.of("dome", DOME).material(material("dome", BEAM + "blast_dome.shader",
+                    CgVfxLook.SURFACE, b -> {})).bind("_Core", "user.core").bind("_Shell", "user.shell").build())
+            .slot(CgVfxSlotRenderer.of("debris", DEBRIS).material(material("debris", BEAM + "impact_splash.shader",
+                    CgVfxLook.SURFACE, b -> b.value("_Burst", 1f).value("_Count", 90f).value("_Speed", 18f)
+                            .value("_Life", 1.2f).value("_Width", 0.08f).value("_Streak", 0.08f)))
+                    .bind("_ShellHot", "user.shellHot").bind("_Core", "user.core").build())
             .build();
     /** The plasma heart blazing in the dome, and the haze round it. */
     public static final CgVfxKit HEART = CgVfxKit.of("crystalgraphics:blast/heart")
-            .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/air/haze_orb.shader").on(CORE).size(3.4f)
-                    .role(CgVfxLayer.Role.DISTORTION).from(CgQuality.MEDIUM).build())
-            .layer(CgVfxLayer.of(BEAM + "orb_plasma.shader").on(CORE).build())
+            .slot(CgVfxSlotRenderer.of("haze", CORE).material(material("haze", AIR + "haze_orb.shader",
+                    2 * CgVfxLook.BAND, b -> {})).size(3.4f).quality(CgQuality.MEDIUM).build())
+            .slot(CgVfxSlotRenderer.of("core", CORE).material(material("core", BEAM + "orb_plasma.shader",
+                    CgVfxLook.SURFACE, b -> {})).bind("_Core", "user.core").bind("_Shell", "user.shell").build())
             .build();
     /** The shock front bending the air, and the ring it leaves on the ground. */
     public static final CgVfxKit SHOCKWAVE = CgVfxKit.of("crystalgraphics:blast/shockwave")
-            .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/air/shock.shader").on(SHOCK)
-                    .role(CgVfxLayer.Role.DISTORTION).from(CgQuality.MEDIUM).build())
-            .layer(CgVfxLayer.of(BEAM + "disc_shock.shader").on(RING).build())
+            .slot(CgVfxSlotRenderer.of("shock", SHOCK).material(material("shock", AIR + "shock.shader",
+                    2 * CgVfxLook.BAND, b -> {})).quality(CgQuality.MEDIUM).build())
+            .slot(CgVfxSlotRenderer.of("ring", RING).material(material("ring", BEAM + "disc_shock.shader",
+                    CgVfxLook.SURFACE, b -> {})).bind("_CoreRim", "user.coreRim").bind("_Shell", "user.shell").build())
             .build();
+
+    /** A blast part's material, {@code crystalgraphics:blast/<part>}, at {@code order} among its effect's draws. */
+    private static CgMaterialDefinition material(String part, String shader, int order,
+                                                 Consumer<CgMaterialDefinition.Builder> values) {
+        CgMaterialDefinition.Builder b = CgMaterialDefinition.of("crystalgraphics:blast/" + part, shader).order(order);
+        values.accept(b);
+        return b.build();
+    }
     /**
      * The engine's blast: {@link #FIREBALL}, {@link #HEART}, {@link #SHOCKWAVE} and {@link #EXPLOSION}'s kit, each of
      * which a look may drop alone; its emitters authored for a blast of {@link #RADIUS} 9.6.

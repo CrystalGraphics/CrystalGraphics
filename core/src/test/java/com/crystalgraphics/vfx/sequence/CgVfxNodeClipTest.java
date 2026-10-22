@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx.sequence;
 
-import com.crystalgraphics.vfx.look.CgVfxLayer;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip.Channel;
@@ -15,7 +15,8 @@ import static org.junit.Assert.assertThrows;
 
 public class CgVfxNodeClipTest {
 
-    private static final CgVfxLayer.Builder SKIN = CgVfxLayer.of("test:skin.shader");
+    private static final CgMaterialDefinition SKIN =
+            CgMaterialDefinition.of("test:skin", "crystalgraphics:shaders/vfx/sequence/part.shader").build();
     private static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks").build();
 
     private static CgVfxPrefab chain() {

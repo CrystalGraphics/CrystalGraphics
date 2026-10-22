@@ -14,7 +14,7 @@
 #include "crystalgraphics:shaders/lib/vfx/fx_bands.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Tube" = "Closed" }
 Queue = "Transparent"
 
 Properties {

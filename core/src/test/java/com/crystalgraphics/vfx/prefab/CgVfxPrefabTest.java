@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx.prefab;
 
-import com.crystalgraphics.vfx.look.CgVfxLayer;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import org.joml.Vector3f;
 import org.junit.Test;
 
@@ -13,7 +13,9 @@ public class CgVfxPrefabTest {
 
     private static final float HALF_TURN_Y = (float) Math.sqrt(0.5);
 
-    private static final CgVfxLayer.Builder SKIN = CgVfxLayer.of("test:skin.shader"), GLOW = CgVfxLayer.of("test:glow.shader");
+    private static final String PART = "crystalgraphics:shaders/vfx/sequence/part.shader";
+    private static final CgMaterialDefinition SKIN = CgMaterialDefinition.of("test:skin", PART).build(),
+            GLOW = CgMaterialDefinition.of("test:glow", PART).build();
 
     private static CgVfxPrefab chain() {
         return CgVfxPrefab.builder("test:chain")
@@ -51,9 +53,9 @@ public class CgVfxPrefabTest {
         int arm = prefab.node("arm"), hand = prefab.node("hand");
         assertEquals(0, prefab.firstPart(arm) - prefab.firstPart(prefab.node("root")));
         assertEquals(2, prefab.firstPart(hand + 1) - prefab.firstPart(hand));
-        assertEquals(2, prefab.kit().layers().size());
+        assertEquals(2, prefab.kit().slots().size());
         assertSame(prefab.partSlot(prefab.firstPart(arm)), prefab.partSlot(prefab.firstPart(hand)));
-        assertSame(prefab.partSlot(prefab.firstPart(hand) + 1), prefab.kit().layers().get(1).slots().get(0));
+        assertSame(prefab.partSlot(prefab.firstPart(hand) + 1), prefab.kit().slots().get(1).slot());
         assertNull(prefab.partMesh(prefab.firstPart(arm)));
     }
 

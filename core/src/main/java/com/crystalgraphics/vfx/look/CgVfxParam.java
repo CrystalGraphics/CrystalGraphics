@@ -19,8 +19,7 @@ import com.crystalgraphics.vfx.camera.CgCameraShake;
  * }</pre>
  *
  * <ul>
- *   <li>A colour's or a palette's name is a shader property's: a layer's {@code _Core} reads {@code core} with no
- *       binding. A number binds only by {@link CgVfxLayer.Builder#bind}.</li>
+ *   <li>A renderer reads it only where it binds it ({@code bind("_Core", CORE)}): nothing binds by name.</li>
  *   <li>Its name is a network field's and a tuning variable's too: renaming one is a network change.</li>
  * </ul>
  */

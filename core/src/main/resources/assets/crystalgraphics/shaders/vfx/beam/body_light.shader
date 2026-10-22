@@ -1,7 +1,7 @@
 // The light an energy wave's body casts on the scene around it: each ring a point light on the surfaces nearby, so the
-// ground under the beam floods with its colour. A volume layer (CgVfxLayer.volume): each chunk lights from only the
+// ground under the beam floods with its colour. A volume tube ("Tube" = "Volume"): each chunk lights from only the
 // rings it owns, on a sphere whose far wall covers each pixel once. _Glow is the light, its alpha a strength. The
-// layer's size is how far the light reaches, in the rings' radii. CgEnergyWave.
+// slot renderer's size is how far the light reaches, in the rings' radii. CgEnergyWave.
 #type spatial
 #pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"

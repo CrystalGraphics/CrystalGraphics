@@ -9,8 +9,9 @@ import java.util.Objects;
 
 /**
  * A place an effect draws: its body along a path, its head on a sphere, its sparks as particles. An effect declares
- * its slots as constants and draws each through {@code CgVfxFrame}; a layer says which slots it draws on
- * ({@link CgVfxLayer.Builder#on}). The kind says what geometry the shader is given, and what each draw's customs hold.
+ * its slots as constants and draws each through {@code CgVfxFrame}; a slot renderer says which slot it draws on
+ * ({@code CgVfxSlotRenderer.of(id, slot)}). The kind says what geometry the shader is given, and what each draw's customs
+ * hold.
  *
  * <pre>{@code
  * public static final CgVfxSlot BODY = CgVfxSlot.tube("mymod:bolt/body");

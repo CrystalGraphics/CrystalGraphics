@@ -98,7 +98,9 @@ CgShaderParser.parse(source, path)
 
 CgMaterialShaderCompiler.compile(shader, pass, attachedBuffers, matPropsUbo, config)
     ├── CgShaderParser.parseV2fFields(pass)
-    ├── CgVertexFormat.forShaderType(shader.shaderType())  → resolves vertex format
+    ├── CgVertexFormat.forShaderType(shader.shaderType())  → resolves vertex format; NONE for a
+    │                                                         cg_use particle variant with FX_ON_SPRITES (the
+    │                                                         sprite factory, drawn on CgMesh.quads)
     ├── CgGlslEmitter.emitVertexInputs(format)             (injected in vertex source only)
     ├── CgGlslEmitter.emitSsbo/emitTbo/emitUbo()  (per attached buffer)
     └── → CompiledSource { vertexSource, fragmentSource, vertexFormat }

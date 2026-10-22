@@ -15,7 +15,7 @@ Structural skeleton (all sections are optional except `#type` and at least one `
 
 **`#type <name>`** selects the vertex format by its registered `key`. The compiler resolves the name against `CgVertexFormat.REGISTRY` at parse time and injects the format's vertex attribute declarations (`in <glslType> <name>;`) into the generated vertex GLSL immediately after the `cg_env.glsl` include. Unknown names throw `CgShaderParseException` at parse time listing all registered types.
 
-Built-in types: `spatial` (`CgVertexFormat.SPATIAL` — position, normal, colour and two UV sets, packed in 32 bytes: every mesh a material draws), `pos3_uv2_col4ub`, `pos2_uv2_col4ub`, and `none` (`CgVertexFormat.NONE`, no attributes: every quad, curve and text shader, drawn on `CgMesh.quads(1)`). Custom formats self-register on `CgVertexFormat.build()` under their `debugName` and become immediately usable as a `#type`.
+Built-in types: `spatial` (`CgVertexFormat.SPATIAL` — position, normal, colour and two UV sets, packed in 32 bytes: every mesh a material draws), `pos3_uv2_col4ub`, `pos2_uv2_col4ub`, and `none` (`CgVertexFormat.NONE`, no attributes: every quad, curve and text shader, drawn on `CgMesh.quads(1)`). Custom formats self-register on `CgVertexFormat.build()` under their `debugName` and become immediately usable as a `#type`. A `#pragma cg_use particle` program compiled with `FX_ON_SPRITES` reads no vertex data whatever its `#type`: the sprite factory places it on `CgMesh.quads`.
 
 ```glsl
 #type spatial
@@ -392,7 +392,7 @@ fragColor = _Color * _Bands(1);    // read as always: the row's value where boun
   place in the row, `CgMaterialProperty.rowSlotName(name)`, an `int` the compiler adds; -1 is unbound.
 - **An array** is `color[n]` or `vec4[n]`, n at most 256 (past 16 read a chunk of 16 at a time), its default each element's in order; read as `_Name(i)` in
   every shader, with `rows` or without.
-- The VFX engine is the binder: a layer's `bind` and its colours bound by name ([`VFX.md`](VFX.md) § *Kits, layers and slots: how a look draws* and § *Writing a layer's shader*).
+- The VFX engine is the binder: a renderer's `bind` ([`vfx/effects.md`](vfx/effects.md) § *Constants, binds and keywords*).
 
 #### Global parameters: `cg_use globals`
 
@@ -810,7 +810,7 @@ CgMaterial ink = CgMaterial.newInstance("mymod:shaders/fx/ink.shader",
   whatever it copied from the Forward pass (blend, depth), a blend of its own kept; a Distortion pass keeps the engine's.
 - Refused at parse: `depthWrite` under a `"Depth"` tag or with `clip()`; `clip()` on a `"Prepass"` shader.
 - The queue stays the shader's.
-- In a look: `CgVfxLayer.Builder.state` ([`vfx/effects.md`](vfx/effects.md)).
+- In a look: a material asset's `state` ([`vfx/effects.md`](vfx/effects.md)).
 
 ### GLSL Standard Library
 

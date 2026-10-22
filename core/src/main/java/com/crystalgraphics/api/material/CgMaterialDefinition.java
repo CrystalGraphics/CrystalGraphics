@@ -65,7 +65,7 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
      * A material written in Java: the same tree its file holds, compiled by the same compiler.
      *
      * <pre>{@code
-     * CgMaterialDefinition glow = CgMaterialDefinition.builder("mymod:materials/glow", "mymod:shaders/fx/soft.shader")
+     * CgMaterialDefinition glow = CgMaterialDefinition.of("mymod:materials/glow", "mymod:shaders/fx/soft.shader")
      *         .blend(CgBlendMode.ADDITIVE).twoSided()
      *         .keyword("SOFT")
      *         .color("_Color", 0xFFFF8A20, 2f)                                   // rgb times 2: past white
@@ -80,7 +80,7 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
      *   <li>{@link Builder#masked(float)} is a blend of its own: it clips at the threshold and writes depth there.</li>
      * </ul>
      */
-    public static Builder builder(String id, String shader) {
+    public static Builder of(String id, String shader) {
         return new Builder(id, shader);
     }
 
@@ -207,7 +207,7 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
         return names;
     }
 
-    /** Writes a material's tree and compiles it: see {@link CgMaterialDefinition#builder}. */
+    /** Writes a material's tree and compiles it: see {@link CgMaterialDefinition#of}. */
     public static final class Builder {
         private final String id, shader;
         private final Map<String, Object> state = new LinkedHashMap<>(), values = new LinkedHashMap<>(),

@@ -8,6 +8,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxInactiveResponse;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -133,7 +134,7 @@ public final class CgVfxEmitterInstance {
      */
     public boolean canAdopt(CgVfxEmitter next) {
         if (next.capacity != emitter.capacity || next.lifeMax != emitter.lifeMax || next.local != emitter.local
-                || next.renderer() != emitter.renderer() || (feed == null && next.capacity < next.uncappedPeak()) != (dying != null)
+                || next.drawLayout() != emitter.drawLayout() || (feed == null && next.capacity < next.uncappedPeak()) != (dying != null)
                 || next.events.size() != children.length) {
             return false;
         }

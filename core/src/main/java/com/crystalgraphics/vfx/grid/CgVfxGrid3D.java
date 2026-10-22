@@ -4,11 +4,12 @@ import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxElement;
 import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.look.CgVfxKit;
-import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
-import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.vfx.look.CgVfxLook;
+import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 
 /**
  * A grid of cells an effect owns, riding with it, four channels a cell (x, y, z, w), on the GPU: what particles write
@@ -103,13 +104,14 @@ public final class CgVfxGrid3D extends CgVfxElement {
     public static final CgVfxSlot SLOT = CgVfxSlot.grid("crystalgraphics:grid");
     /** Channel x as lit smoke on {@link #SLOT}: the sun through itself and the sky over it. */
     public static final CgVfxKit SMOKE = CgVfxKit.of("crystalgraphics:grid/smoke").params(SCHEMA)
-            .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/grid/smoke.shader").on(SLOT).role(CgVfxLayer.Role.SMOKE)
-                    .build())
+            .slot(CgVfxSlotRenderer.of("smoke", SLOT).material(CgMaterialDefinition.of("crystalgraphics:grid/smoke",
+                    "crystalgraphics:shaders/vfx/grid/smoke.shader").build()).bind("_Smoke", SMOKE_COLOR).build())
             .build();
     /** Channel x as light on {@link #SLOT}, from {@link #GLOW_COLOR} where faint to {@link #HOT} where strong, blooming. */
     public static final CgVfxKit GLOW = CgVfxKit.of("crystalgraphics:grid/glow").params(SCHEMA)
-            .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/grid/glow.shader").on(SLOT).bind("_Gain", GLOW_GAIN)
-                    .bind("_HotAt", HOT_AT).build())
+            .slot(CgVfxSlotRenderer.of("glow", SLOT).material(CgMaterialDefinition.of("crystalgraphics:grid/glow",
+                    "crystalgraphics:shaders/vfx/grid/glow.shader").order(CgVfxLook.SURFACE).build())
+                    .bind("_Gain", GLOW_GAIN).bind("_HotAt", HOT_AT).bind("_Glow", GLOW_COLOR).bind("_Hot", HOT).build())
             .build();
 
     private final CgVfxSlot slot;
