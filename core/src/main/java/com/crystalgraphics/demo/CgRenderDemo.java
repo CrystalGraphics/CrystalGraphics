@@ -66,6 +66,7 @@ import java.util.function.Supplier;
  * blast     CgVfxBlastFlash: one wave at a time bursting on the ground, for its flash and impact frame
  * collision CgCollisionDemo: every collision shape, a cast, rays and a hitbox against the world, as debug lines
  * lights    CgLightsDemo: a light show of every kind of world light, particle lights and lightning; best at night
+ * shadows   CgShadowsDemo: every caster on every receiver, our objects, the player, mobs and Minecraft's blocks and torches
  *
  * H    the HUD on or off
  * N    the next scene, placed ahead of the camera; Shift+N the previous one
@@ -73,6 +74,7 @@ import java.util.function.Supplier;
  * L    bloom in the target's encoding, in linear light, then off
  * G    the HDR scene on or off
  * [ ]  the HDR scene's glow gain down or up a quarter;  - =  bloom's intensity
+ * O    every world shadow off or on (crystalgraphics.world.lightsShadows), to compare
  * F I B Y , .  CgVfxDemoControls, shared by every scene: flash, impact frame, billows, time (Shift+Y slower), the wait
  * </pre>
  *
@@ -107,7 +109,7 @@ public final class CgRenderDemo {
     private static final Logger LOGGER = LogManager.getLogger("CgRenderDemo");
 
     private static final String MODE = CgVar.text("crystalgraphics.demo", "", CgVar.DEV | CgVar.RESTART,
-            "false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision, lights) starts on it;"
+            "false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision, lights, shadows) starts on it;"
                     + " empty on"
                     + " blasts.").get();
     private static final boolean ENABLED = !"false".equals(MODE);
@@ -151,6 +153,11 @@ public final class CgRenderDemo {
         default boolean waves() {
             return false;
         }
+
+        /** Lines of its own for the HUD, each starting with a line break; none by default. */
+        default String hud() {
+            return "";
+        }
     }
 
     /** A scene by name: {@code ahead} blocks from the eye to its anchor, along the view. */
@@ -166,6 +173,7 @@ public final class CgRenderDemo {
             new Kind("blasts", (int) CgVfxBlasts.REACH + 10, this::blasts),
             new Kind("collision", 24, this::collision),
             new Kind("lights", 30, this::lights),
+            new Kind("shadows", 22, this::shadows),
     };
 
     private boolean installed;
@@ -199,7 +207,7 @@ public final class CgRenderDemo {
     /** The demo's keys, then the scenes' own. */
     private static final int[] KEYS = keys(new int[]{CgKeyCodes.KEY_H, CgKeyCodes.KEY_N, CgKeyCodes.KEY_C,
             CgKeyCodes.KEY_L, CgKeyCodes.KEY_V, CgKeyCodes.KEY_G, CgKeyCodes.KEY_LBRACKET, CgKeyCodes.KEY_RBRACKET,
-            CgKeyCodes.KEY_MINUS, CgKeyCodes.KEY_EQUALS}, CgVfxDemoControls.KEYS);
+            CgKeyCodes.KEY_MINUS, CgKeyCodes.KEY_EQUALS, CgKeyCodes.KEY_O}, CgVfxDemoControls.KEYS);
     private final boolean[] held = new boolean[KEYS.length];
     private static float bloomIntensity = 1f;
     private boolean hudShown = true;
@@ -504,6 +512,39 @@ public final class CgRenderDemo {
         };
     }
 
+    private Scene shadows() {
+        CgShadowsDemo shadows = new CgShadowsDemo();
+        return new Scene() {
+            @Override
+            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
+                shadows.submit(world, x, y, z, seconds);
+            }
+
+            @Override
+            public void prepare() {
+                shadows.prepare();
+            }
+
+            @Override
+            public boolean warmed() {
+                return shadows.warmed();
+            }
+
+            @Override
+            public void clear() {
+            }
+
+            @Override
+            public void delete() {
+            }
+
+            @Override
+            public String hud() {
+                return CgShadowsDemo.hud();
+            }
+        };
+    }
+
     // ── frame ─────────────────────────────────────────────────────────────────
 
     private void frame(CgHostView view) {
@@ -661,6 +702,7 @@ public final class CgRenderDemo {
             case CgKeyCodes.KEY_RBRACKET -> CgWorldRenderer.get().sceneEmission(CgWorldRenderer.get().sceneEmission() * 1.25f);
             case CgKeyCodes.KEY_MINUS -> scaleBloom(1f / 1.25f);
             case CgKeyCodes.KEY_EQUALS -> scaleBloom(1.25f);
+            case CgKeyCodes.KEY_O -> CgShadowsDemo.toggleShadows();
             default -> CgVfxDemoControls.get().press(key, shift);
         }
         hudDirty = true;
@@ -744,6 +786,7 @@ public final class CgRenderDemo {
                 + String.format(Locale.ROOT, "\nParticles: %,d", particles)
                 + ("lights".equals(kinds[wanted].name()) ? String.format(Locale.ROOT, " | Lights dropped: %,d, budget %d a cell",
                         CgWorldRenderer.get().lights().cellsDropped(), CgWorldRenderer.get().lights().budgetPerCell()) : "")
+                + (scenes[wanted] != null ? scenes[wanted].hud() : "")
                 + (CgCameraShake.enabled() ? String.format(Locale.ROOT, "\n\nShake [C]: on, trauma %.2f", CgCameraShake.trauma())
                 : "\n\nShake [C]: off")
                 + "\nHDR [G]: " + (CgWorldRenderer.get().hdrScene() ? "on" : "off")

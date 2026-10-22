@@ -211,4 +211,6 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
 | `--mode=lights-bench` | the cost: `-Dcrystalgraphics.harness.lights=10000` and profile `world.lights`, `world.lightsCoarse`, `world.lightsCells`, `world.lightsApply` |
 
 `CgWorldLightsTest` holds the view-bob split. In Minecraft, `CgRenderDemo`'s `lights` scene shows every kind; its HUD
-reads how many lights a frame dropped and the cells' budget.
+reads how many lights a frame dropped and the cells' budget. Its `shadows` scene shows every caster on every receiver
+(our shapes, the player, mobs, Minecraft's blocks, the sun and a torch placed by its east pillar), O turning every
+shadow off and on to compare.
