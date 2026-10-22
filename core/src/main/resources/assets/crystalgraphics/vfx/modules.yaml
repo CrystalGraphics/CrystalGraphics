@@ -175,8 +175,9 @@ modules:
       { name: field, type: field, forms: [data, constant] }, { name: global, type: bool, default: false },
       { name: intensity, type: float, default: 1 }, { name: scale, type: float, by: [age], default: 1 },
       { name: tightness, type: float, default: 0 },
-      { name: translation, type: vec3, quantity: offset, default: [0, 0, 0] }, { name: rotation, type: vec3, quantity: angle, default: [0, 0, 0] },
-      { name: rotation_rate, type: vec3, quantity: angular_speed, default: [0, 0, 0] },
+      { name: translation, type: vec3, quantity: offset, default: [0, 0, 0] }, { name: rotation, type: rotation, default: [0, 0, 0] },
+      { name: initial_rotation, type: rotation, rolls: instance, default: [0, 0, 0] },
+      { name: rotation_rate, type: rotation, quantity: angular_speed, default: [0, 0, 0] },
       { name: tile, type: string, default: "" }, { name: ignore_component_transform, type: bool, default: false }, { name: use_fix_dt, type: bool, default: true },
       { name: volume, type: vec3, quantity: length, default: null }, { name: attenuation, type: float, default: 1 } ] }
   - { id: physics_field, groups: [particle_update], order: forces, unreal: { niagara: PhysicsField }, inputs: [

@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.asset.kind.CgFieldKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
@@ -23,6 +24,7 @@ import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.look.CgVfxUnit;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterAssets;
+import com.crystalgraphics.vfx.particle.CgVfxGridField;
 import com.crystalgraphics.vfx.particle.CgVfxEventHandler;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
@@ -80,11 +82,13 @@ public final class CgVfxSystemAssets {
 
     /**
      * Sets {@link #COMPILER} as the system kind's, and the emitter kind's: an emitter file compiles against its own
-     * hard references (its renderers' materials), which a system referencing it does not hold.
+     * hard references (its renderers' materials, its vector fields' grids), which a system referencing it does not hold;
+     * and the field kind's ({@link CgVfxGridField}).
      */
     public static void register() {
         CgAssetCompiler.register(CgParticleKinds.SYSTEM, COMPILER);
         CgAssetCompiler.register(CgParticleKinds.EMITTER, CgVfxEmitterAssets.compiler(id -> null));
+        CgAssetCompiler.register(CgFieldKinds.FIELD, CgVfxGridField.COMPILER);
     }
 
     /** Names {@code factory} as the behaviour a system's {@code effect: id} plays with, drawing the file's look. At init. */

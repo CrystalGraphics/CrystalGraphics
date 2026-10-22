@@ -27,7 +27,7 @@ import com.crystalgraphics.object.CgValueType;
  *   <li>Only asset references: a binary ({@code .png}, {@code .glb}) is a file, not an asset to compile.</li>
  *   <li>An {@code unreal:} id is listed as written; the host's alias table resolves it.</li>
  *   <li>A reference is found only where a declaration types it: a value kept as written ({@code TREE}, {@code VALUE})
- *       is not searched.</li>
+ *       is not searched, but for a value in the field form, {@code { field: <id> }}: a hard reference to that field.</li>
  * </ul>
  */
 public final class CgAssetReferences {
@@ -104,6 +104,14 @@ public final class CgAssetReferences {
             case MAP: {
                 if (!(v instanceof Map)) return;
                 for (Map.Entry<?, ?> e : ((Map<?, ?>) v).entrySet()) walk(t.element(), e.getValue(), at.key(String.valueOf(e.getKey())));
+                return;
+            }
+            case VALUE: {
+                // The field form names an asset whatever input it fills: a vector field module's grid.
+                if (v instanceof Map<?, ?> m && m.size() == 1 && m.get("field") instanceof String field) {
+                    CgType kind = CgTypes.get("crystalgraphics:field");
+                    if (kind != null) out.add(new Reference(kind, field, CgValueType.Strength.HARD, at.key("field")));
+                }
                 return;
             }
             case ONE_OF: {

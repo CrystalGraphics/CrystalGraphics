@@ -292,13 +292,25 @@ public final class CgVfxModuleTypes {
                 (m, in) -> in.v3("force", m.x(), m.y(), m.z()),
                 r -> new CgVfxModule.Force(r.f("force", 0), r.f("force", 1), r.f("force", 2)));
         kind("vector_field", CgVfxModule.VectorField.class,
-                t -> { t.property("field", CgValueType.FIELD); v3(t, "volume"); t.property("tiles", CgValueType.BOOL);
-                    fl(t, "strength", "attenuation"); offset(t); },
+                t -> { t.property("field", CgValueType.FIELD); v3(t, "volume"); t.property("tiles", CgValueType.INT);
+                    fl(t, "strength", "attenuation", "tightness"); v3(t, "pivot"); offset(t); },
                 (m, in) -> in.o("field", m.field()).v3("volume", (float) m.box().halfX(), (float) m.box().halfY(), (float) m.box().halfZ())
-                        .b("tiles", m.field().tiles()).f("strength", m.strength()).f("attenuation", m.attenuation())
+                        .i("tiles", m.field().tileAxes()).f("strength", m.strength()).f("attenuation", m.attenuation())
+                        .f("tightness", m.tightness()).v3("pivot", m.turn().pivot()[0], m.turn().pivot()[1], m.turn().pivot()[2])
                         .v3("offset", m.x(), m.y(), m.z()),
                 r -> new CgVfxModule.VectorField((CgVfxField) r.o("field"), CgBox.of(r.f("volume", 0), r.f("volume", 1), r.f("volume", 2)),
-                        r.f("offset", 0), r.f("offset", 1), r.f("offset", 2), r.f("strength"), r.f("attenuation")));
+                        r.f("offset", 0), r.f("offset", 1), r.f("offset", 2), r.f("strength"), r.f("attenuation"), r.f("tightness"),
+                        new CgVfxFieldTurn(new float[]{r.f("pivot", 0), r.f("pivot", 1), r.f("pivot", 2)}, new float[]{0f, 0f, 0f, 1f},
+                                new float[3], new float[3], new float[3])));
+        kind("set_position", CgVfxModule.SetPosition.class,
+                t -> { v3(t, "position"); v3(t, "offset"); v3(t, "scale"); },
+                (m, in) -> in.v3("position", m.x(), m.y(), m.z()).v3("offset", m.ox(), m.oy(), m.oz()).v3("scale", m.share(), 1f, 1f),
+                r -> new CgVfxModule.SetPosition(r.f("position", 0), r.f("position", 1), r.f("position", 2),
+                        r.f("offset", 0), r.f("offset", 1), r.f("offset", 2), r.f("scale", 0)));
+        kind("scale_velocity", CgVfxModule.ScaleVelocity.class,
+                t -> { v3(t, "scale"); t.property("absolute", CgValueType.BOOL); },
+                (m, in) -> in.v3("scale", m.x(), m.y(), m.z()).b("absolute", m.absolute()),
+                r -> new CgVfxModule.ScaleVelocity(r.f("scale", 0), r.f("scale", 1), r.f("scale", 2), r.b("absolute")));
         kind("damping", CgVfxModule.Damping.class, t -> fl(t, "rate"),
                 (m, in) -> in.f("rate", m.rate()), r -> new CgVfxModule.Damping(r.f("rate")));
         kind("limit_speed", CgVfxModule.LimitSpeed.class, t -> fl(t, "max_speed"),

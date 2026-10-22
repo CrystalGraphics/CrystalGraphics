@@ -59,7 +59,7 @@ public class CgVfxModuleWordsTest {
             {2.0f, 1.5f, 0.4f, 3.0f, 0.9f, 0.0f, 0.0f, 0.0f},   // grid_follow
             {1.0f, -2.0f, 0.0f, 0.0f},   // grid_gradient
             {1.0f, -2.0f, 3.0f, 0.0f},   // force
-            {2.0f, 3.0f, 4.0f, 1.0f, 5.0f, 0.5f, 0.0f, 0.0f},   // vector_field
+            {2.0f, 3.0f, 4.0f, 7.0f, 5.0f, 0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},   // vector_field, tiling on every axis
             {2.0f, 0.0f, 0.0f, 0.0f},   // damping
             {4.0f, 0.0f, 0.0f, 0.0f},   // limit_speed
             {2.0f, 1.0f, 3.0f, 2.0f, 0.1f, 2.0f, 0.0f, 0.0f},   // conform

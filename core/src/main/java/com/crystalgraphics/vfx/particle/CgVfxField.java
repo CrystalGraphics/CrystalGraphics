@@ -24,7 +24,8 @@ import java.nio.ByteOrder;
  * <ul>
  *   <li>Its texture is made the first time a pool asks; a server never makes one.</li>
  *   <li>A field that does not tile ({@code tiles} false) pushes nothing outside its box, as Godot's; one that tiles
- *       repeats past it.</li>
+ *       repeats past it. {@link #tiledOn} tiles some axes alone, as Cascade's {@code bTileX/Y/Z}: past its box on one
+ *       of the others it pushes nothing.</li>
  * </ul>
  */
 public final class CgVfxField {
@@ -35,17 +36,18 @@ public final class CgVfxField {
     }
 
     private final int width, height, depth;
-    private final boolean tiles;
+    /** The axes it tiles on, a bit each: 1 x, 2 y, 4 z. */
+    private final int tileAxes;
     /** xyz a texel, x fastest. */
     private final float[] vectors;
     private final float largest;
     private CgTexture[] texture;
 
-    private CgVfxField(int width, int height, int depth, boolean tiles, float[] vectors) {
+    private CgVfxField(int width, int height, int depth, int tileAxes, float[] vectors) {
         this.width = width;
         this.height = height;
         this.depth = depth;
-        this.tiles = tiles;
+        this.tileAxes = tileAxes;
         this.vectors = vectors;
         float most = 0f;
         for (int i = 0; i < vectors.length; i += 3) {
@@ -69,7 +71,17 @@ public final class CgVfxField {
                 }
             }
         }
-        return new CgVfxField(width, height, depth, tiles, vectors);
+        return new CgVfxField(width, height, depth, tiles ? 7 : 0, vectors);
+    }
+
+    /** The same vectors, tiling past its box on every axis or none. */
+    public CgVfxField tiled(boolean tile) {
+        return tiledOn(tile ? 7 : 0);
+    }
+
+    /** The same vectors, tiling on the axes of {@code axes}: 1 x, 2 y, 4 z. */
+    public CgVfxField tiledOn(int axes) {
+        return axes == tileAxes ? this : new CgVfxField(width, height, depth, axes, vectors);
     }
 
     public int width() {
@@ -84,8 +96,14 @@ public final class CgVfxField {
         return depth;
     }
 
+    /** Whether it tiles on any axis. */
     public boolean tiles() {
-        return tiles;
+        return tileAxes != 0;
+    }
+
+    /** The axes it tiles on: 1 x, 2 y, 4 z. */
+    public int tileAxes() {
+        return tileAxes;
     }
 
     /** The longest vector it holds: what bounds how hard it pushes. */
@@ -102,8 +120,8 @@ public final class CgVfxField {
         float x0f = (float) Math.floor(fx), y0f = (float) Math.floor(fy), z0f = (float) Math.floor(fz);
         float tx = fx - x0f, ty = fy - y0f, tz = fz - z0f;
         int x0 = (int) x0f, y0 = (int) y0f, z0 = (int) z0f;
-        int ax = index(x0, width), bx = index(x0 + 1, width), ay = index(y0, height), by = index(y0 + 1, height);
-        int az = index(z0, depth), bz = index(z0 + 1, depth);
+        int ax = index(x0, width, 1), bx = index(x0 + 1, width, 1), ay = index(y0, height, 2), by = index(y0 + 1, height, 2);
+        int az = index(z0, depth, 4), bz = index(z0 + 1, depth, 4);
         for (int c = 0; c < 3; c++) {
             float c00 = lerp(at(ax, ay, az, c), at(bx, ay, az, c), tx), c10 = lerp(at(ax, by, az, c), at(bx, by, az, c), tx);
             float c01 = lerp(at(ax, ay, bz, c), at(bx, ay, bz, c), tx), c11 = lerp(at(ax, by, bz, c), at(bx, by, bz, c), tx);
@@ -111,8 +129,8 @@ public final class CgVfxField {
         }
     }
 
-    private int index(int i, int size) {
-        return tiles ? Math.floorMod(i, size) : Math.max(0, Math.min(i, size - 1));
+    private int index(int i, int size, int axis) {
+        return (tileAxes & axis) != 0 ? Math.floorMod(i, size) : Math.max(0, Math.min(i, size - 1));
     }
 
     private float at(int x, int y, int z, int c) {

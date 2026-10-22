@@ -5,6 +5,7 @@ import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgPlane;
 import com.crystalgraphics.shape.primitive.CgSphere;
+import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDataInterface;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
@@ -793,14 +794,18 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * A {@link CgVfxField} over a box (Godot's vector field attractor): each particle pushed by the field where it is,
      * {@code strength} blocks a second squared for a unit vector, a longer one as {@code length^attenuation}. Outside the
      * box nothing pushes, unless the field tiles. The box is centred on the source, or {@link #at} a point from it.
+     * {@code tightness} draws each particle's velocity toward the field's own each step, Cascade's vector field
+     * tightness ({@code ParticleSimulationShader.usf:236-245, 584-585}): 0 pushes alone, 1 moves with the field.
      *
      * <pre>{@code
      * new CgVfxModule.VectorField(swirl, CgBox.of(4, 4, 4), 3f, 1f).at(0f, 4f, 0f)
      * }</pre>
      */
-    record VectorField(CgVfxField field, CgBox box, float x, float y, float z, float strength, float attenuation)
-            implements CgVfxModule {
-        private static final CgVfxLane[] LANES = {CgVfxLane.VEC4};
+    record VectorField(CgVfxField field, CgBox box, float x, float y, float z, float strength, float attenuation,
+                       float tightness, CgVfxFieldTurn turn) implements CgVfxModule {
+        private static final CgVfxLane[] LANES = {CgVfxLane.VEC4, CgVfxLane.VEC4};
+        /** Its turn's roll once an instance, keyed as a form's roll is by its module and input. */
+        private static final int TURN_KEY = CgVfxFormCompiler.key("vector_field", "initial_rotation");
 
         public VectorField {
             Objects.requireNonNull(field, "field");
@@ -809,12 +814,16 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         public VectorField(CgVfxField field, CgBox box, float strength, float attenuation) {
-            this(field, box, 0f, 0f, 0f, strength, attenuation);
+            this(field, box, 0f, 0f, 0f, strength, attenuation, 0f, CgVfxFieldTurn.NONE);
+        }
+
+        public VectorField(CgVfxField field, CgBox box, float x, float y, float z, float strength, float attenuation, float tightness) {
+            this(field, box, x, y, z, strength, attenuation, tightness, CgVfxFieldTurn.NONE);
         }
 
         /** The box centred {@code (x, y, z)} from the source. */
         public VectorField at(float x, float y, float z) {
-            return new VectorField(field, box, x, y, z, strength, attenuation);
+            return new VectorField(field, box, x, y, z, strength, attenuation, tightness, turn);
         }
 
         @Override
@@ -835,11 +844,20 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
             CgVfxShapeRows.writeCentre(box, x, y, z, instance, out);
+            float[] q = TURNED.get();
+            turn.at(CgVfxEmitterInstance.rand(instance.seed() ^ TURN_KEY, 0, 0), instance.time(), q);
+            out.vec4(q[0], q[1], q[2], q[3]);
         }
 
         @Override
         public CgTexture[] textures() {
             return field.textures();
+        }
+
+        /** A turn being written, a thread's own: instances write on the render thread and the books' workers. */
+        private static final ThreadLocal<float[]> TURNED = ThreadLocal.withInitial(() -> new float[4]);
+    }
+
     /**
      * Cascade's LocationDirect (ParticleModules_Location.cpp:353-385): each step each particle is aimed at
      * {@code (x, y, z)} plus {@code (ox, oy, oz)} from its effect's origin, {@code share} of the way by the velocity it

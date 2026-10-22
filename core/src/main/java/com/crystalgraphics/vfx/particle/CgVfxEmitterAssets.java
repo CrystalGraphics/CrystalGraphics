@@ -12,11 +12,13 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Function;
 
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.asset.curve.CgRichCurve;
+import com.crystalgraphics.asset.kind.CgFieldKinds;
 import com.crystalgraphics.asset.kind.CgModuleTypes;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.easing.CgEasing;
@@ -29,6 +31,7 @@ import com.crystalgraphics.vfx.look.CgVfxFlipbook;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.shape.primitive.CgPlane;
+import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.vfx.particle.form.CgVfxCurveBlock;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
@@ -832,6 +835,84 @@ public final class CgVfxEmitterAssets {
         if (in.get("inherit") instanceof Number i) b.inherit(i.floatValue());
     }
 
+    /**
+     * {@code vector_field}: Cascade's {@code VectorFieldLocal}, its grid a field asset ({@link CgVfxGridField}) placed at
+     * its translation and scaled by its intensity and the grid's, its velocity drawn toward the field's by tightness.
+     * {@code global} adds the scene's global fields, of which the host has none; {@code use_fix_dt} is the GPU's step,
+     * which ours is.
+     */
+    private static CgVfxModule vectorField(String name, Map<?, ?> in, @Nullable CgAssetCompiler.Dependencies deps) {
+        if (!(in.get("field") instanceof Map<?, ?> ref) || !(ref.get("field") instanceof String id)) {
+            throw new IllegalArgumentException(name + ": vector_field's field is { field: <id> }, not " + in.get("field"));
+        }
+        if (!(deps != null && deps.definition(CgFieldKinds.FIELD, id) instanceof CgVfxGridField grid)) {
+            throw new IllegalArgumentException(name + ": vector_field's field " + id + " is no grid that loaded");
+        }
+        float[] place = vectorFieldPlacement(name, in.get("rotation"), deps == null ? CgUnits.HOST : deps.units());
+        Rotators start = rotators(name, "vector_field's initial_rotation", in.get("initial_rotation") != null ? in.get("initial_rotation") : List.of(0, 0, 0));
+        if (start.rolls()[1] != 0 || start.rolls()[2] != 0) {
+            throw new IllegalArgumentException(name + ": vector_field's initial_rotation rolls once for every axis, as Cascade's: no per_channel");
+        }
+        float[] rate = in.get("rotation_rate") != null ? vec(in.get("rotation_rate"), 3) : new float[3];
+        CgVfxFieldTurn turn = new CgVfxFieldTurn(grid.centre().clone(), place, start.from(), start.to(), rate);
+        String tile = in.get("tile") == null ? "" : String.valueOf(in.get("tile"));
+        if (!tile.matches("[xyz]*")) throw new IllegalArgumentException(name + ": vector_field's tile " + tile + ": axis letters");
+        // Cascade's bTileX/Y/Z, its axes the asset's, named in the host's.
+        String hostTile = (deps == null ? CgUnits.HOST : deps.units()).hostAxes(tile);
+        int tileAxes = (hostTile.contains("x") ? 1 : 0) | (hostTile.contains("y") ? 2 : 0) | (hostTile.contains("z") ? 4 : 0);
+        if (in.get("volume") != null) throw new IllegalArgumentException(name + ": vector_field's volume is not read yet: its grid's");
+        if (in.get("scale") != null && !(in.get("scale") instanceof Number)) {
+            throw new IllegalArgumentException(name + ": vector_field's scale " + in.get("scale") + " is not read yet: a number");
+        }
+        float scale = in.get("scale") instanceof Number s ? s.floatValue() : 1f;
+        float intensity = in.get("intensity") instanceof Number n ? n.floatValue() : 1f;
+        float tightness = in.get("tightness") instanceof Number t ? t.floatValue() : 0f;
+        float[] at = in.get("translation") != null ? vec(in.get("translation"), 3) : new float[3];
+        return new CgVfxModule.VectorField(grid.field().tiledOn(tileAxes), CgBox.of(grid.half()[0], grid.half()[1], grid.half()[2]),
+                at[0], at[1], at[2], intensity * grid.intensity() * scale, 1f, tightness, turn);
+    }
+
+    /**
+     * A vector field's placement rotation as a host quaternion: a rotator (roll, pitch, yaw), or Unreal's {@code FRotator}
+     * written by name, {@code { pitch, yaw, roll }}, in the asset's angle units.
+     */
+    private static float[] vectorFieldPlacement(String name, @Nullable Object rotation, CgUnits units) {
+        if (rotation == null) return new float[]{0f, 0f, 0f, 1f};
+        if (rotation instanceof Map<?, ?> m && m.keySet().containsAll(List.of("pitch", "yaw", "roll"))) {
+            return CgUnits.rotatorToHost(num(m.get("roll")) * units.radians(), num(m.get("pitch")) * units.radians(),
+                    num(m.get("yaw")) * units.radians());
+        }
+        if (!isVector(rotation, 3)) throw new IllegalArgumentException(name + ": vector_field's rotation " + rotation + " is not a rotator");
+        float[] r = vec(rotation, 3);
+        return CgUnits.rotatorToHost(r[0], r[1], r[2]);
+    }
+
+    /** Whether {@code tree} draws a mesh a particle. */
+    private static boolean drawsMeshes(Map<?, ?> tree) {
+        if (!(tree.get("renderers") instanceof List<?> renderers)) return false;
+        for (Object r : renderers) if (r instanceof Map<?, ?> m && "mesh".equals(m.get("kind"))) return true;
+        return false;
+    }
+
+    /** {@code value} for a spawn input with no spawn-row word: a form whatever its form, a constant too. */
+    private static CgVfxSpawnForm valueForm(CgVfxSpawnInput target, String element, Object value) {
+        return CgVfxSpawnForm.of(target, element, target.input(), value);
+    }
+
+    /** The quaternion {@code a b}: {@code b}'s turn, then {@code a}'s. */
+    private static float[] multiply(float[] a, float[] b) {
+        return new float[]{
+                a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+                a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+                a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+                a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]};
+    }
+
+    /** Whether {@code value} is {@code n} numbers as written: a constant vector. */
+    private static boolean isVector(Object value, int n) {
+        return value instanceof List<?> l && l.size() == n && l.stream().allMatch(x -> x instanceof Number);
+    }
+
     /** {@code value} as a spawn form: null for a constant or a range, which the spawn row's two ends give. */
     @Nullable
     private static CgVfxSpawnForm spawnForm(CgVfxSpawnInput target, String element, String input, Object value) {
@@ -1301,6 +1382,7 @@ public final class CgVfxEmitterAssets {
                 read.add("tile");
                 take(in, read, out, names, "volume", "volume");
                 take(in, read, out, names, "attenuation", "attenuation");
+                take(in, read, out, names, "tightness", "tightness");
             }
             case "conform" -> {
                 kind = "conform";
