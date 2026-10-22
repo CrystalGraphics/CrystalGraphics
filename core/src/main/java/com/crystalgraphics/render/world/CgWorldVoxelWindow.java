@@ -134,6 +134,9 @@ public final class CgWorldVoxelWindow {
     /** Per slot: the absolute section it holds (x, y, z), its state, and the frame it was filled or last tried. */
     private final int[] heldX = new int[SLOTS], heldY = new int[SLOTS], heldZ = new int[SLOTS];
     private final byte[] state = new byte[SLOTS];
+    /** Per slot: its light-giving blocks, x, y, z absolute and their light level, four ints each, and how many. */
+    private final int[][] emitters = new int[SLOTS][];
+    private final int[] emitterCount = new int[SLOTS];
     private final boolean[] stale = new boolean[SLOTS];
     private final long[] filledAt = new long[SLOTS];
     private final ByteBuffer section = ByteBuffer.allocateDirect(CgWorldVoxels.SECTION_BYTES).order(ByteOrder.nativeOrder());
@@ -394,6 +397,7 @@ public final class CgWorldVoxelWindow {
                     state[slot] = UNKNOWN;
                     stale[slot] = false;
                     solids[slot] = UNHASHED;
+                    emitterCount[slot] = 0;
                 }
             }
         }
@@ -433,8 +437,10 @@ public final class CgWorldVoxelWindow {
                     }
                     state[slot] = UNLOADED;
                     solids[slot] = UNHASHED;
+                    emitterCount[slot] = 0;
                     continue;
                 }
+                findEmitters(slot, world);
                 long hash = solidHash(section);
                 if (hash != solids[slot]) {
                     solids[slot] = hash;
@@ -449,6 +455,58 @@ public final class CgWorldVoxelWindow {
             }
         }
         if (filled > 0) CgTrace.add(CgChannels.WORLD, SECTIONS_FILLED, filled);
+    }
+
+    /**
+     * The light-giving blocks of the section just packed into {@link #section}: each block whose block light no
+     * neighbour in the section beats (where Minecraft's flood starts) and which the world says gives light. A few
+     * queries a section, not one a block.
+     */
+    private void findEmitters(int slot, CgWorldQuery world) {
+        int s = CgWorldVoxels.SECTION, x0 = heldX[slot] * s, y0 = heldY[slot] * s, z0 = heldZ[slot] * s, n = 0;
+        int[] out = emitters[slot];
+        for (int z = 0; z < s; z++) {
+            for (int y = 0; y < s; y++) {
+                for (int x = 0; x < s; x++) {
+                    int level = blockLight(x, y, z);
+                    if (level == 0 || x > 0 && blockLight(x - 1, y, z) > level || x < s - 1 && blockLight(x + 1, y, z) > level
+                            || y > 0 && blockLight(x, y - 1, z) > level || y < s - 1 && blockLight(x, y + 1, z) > level
+                            || z > 0 && blockLight(x, y, z - 1) > level || z < s - 1 && blockLight(x, y, z + 1) > level) {
+                        continue;
+                    }
+                    int emission = world.lightEmission(x0 + x, y0 + y, z0 + z);
+                    if (emission <= 0) continue;
+                    if (out == null || out.length < (n + 1) * 4) out = emitters[slot] = Arrays.copyOf(out == null ? new int[0] : out, Math.max(16, n * 8));
+                    out[n * 4] = x0 + x;
+                    out[n * 4 + 1] = y0 + y;
+                    out[n * 4 + 2] = z0 + z;
+                    out[n * 4 + 3] = emission;
+                    n++;
+                }
+            }
+        }
+        emitterCount[slot] = n;
+    }
+
+    /** Block light at a block of the packed section, 0 to 15. */
+    private int blockLight(int x, int y, int z) {
+        int s = CgWorldVoxels.SECTION;
+        return CgWorldVoxels.light(section.get((x + s * (y + s * z)) * 4 + 1));
+    }
+
+    /** Where a light-giving block is: its block, absolute, and its light level, 1 to 15. */
+    @FunctionalInterface
+    public interface Emitters {
+        void emitter(int x, int y, int z, int level);
+    }
+
+    /** Each light-giving block of the filled sections, in no order. Render thread. */
+    public void emitters(Emitters visitor) {
+        for (int slot = 0; slot < SLOTS; slot++) {
+            if (state[slot] != FILLED) continue;
+            int[] e = emitters[slot];
+            for (int i = 0; i < emitterCount[slot]; i++) visitor.emitter(e[i * 4], e[i * 4 + 1], e[i * 4 + 2], e[i * 4 + 3]);
+        }
     }
 
     /** A hash of a packed section's solid octants: byte 0 of each block. Never {@link #UNHASHED}. */

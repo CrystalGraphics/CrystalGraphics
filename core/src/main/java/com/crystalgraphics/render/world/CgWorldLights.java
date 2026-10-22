@@ -115,6 +115,9 @@ import java.util.function.Consumer;
  *       unless its {@code ambient.w} is 1. Past the screen the rays trace the world's blocks round the camera
  *       ({@link CgWorldVoxelWindow}) and the entities round it ({@link CgWorldEntityBoxes}), each a capsule; meshes drawn
  *       through the world renderer shadow only where they are on screen.</li>
+ *   <li>Minecraft's own light is shadowed by our objects too: the sun's, and the block light of every light-giving block
+ *       within {@code -Dcrystalgraphics.world.blockShadowReach} blocks (torches, glowstone, lava) the voxel window has
+ *       found, while something of ours is drawn opaque.</li>
  * </ul>
  */
 public final class CgWorldLights {
@@ -178,9 +181,9 @@ public final class CgWorldLights {
     /** The lighting, alpha where valid; the sun's visibility. */
     private static final CgFrameBufferFormat LIGHTING_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.lighting")
             .color(0, CgTextureType.RGBA16F).color(1, CgTextureType.RGBA16F).build();
-    /** The accumulated lighting and its frames; its luminance's moments, eye depth and confidence; the sun's visibility. */
+    /** The accumulated lighting and its frames; its luminance's moments, eye depth and confidence; the sun's and block light's visibility. */
     private static final CgFrameBufferFormat HISTORY_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.history")
-            .color(0, CgTextureType.RGBA16F).color(1, CgTextureType.RGBA16F).color(2, CgTextureType.R16F).build();
+            .color(0, CgTextureType.RGBA16F).color(1, CgTextureType.RGBA16F).color(2, CgTextureType.RG16F).build();
     /** The host's window depth before our opaque draws. */
     private static final CgFrameBufferFormat HOST_DEPTH_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.host-depth")
             .color(0, CgTextureType.R32F).build();
@@ -242,6 +245,11 @@ public final class CgWorldLights {
     /** How far a sun ray from Minecraft's world is followed across the screen for one of our objects. */
     private static final CgVar.Num SUN_TRACE = CgVar.number("crystalgraphics.world.sunScreenTrace", 24f, 0f, 128f,
             CgVar.DEV, "Blocks a sun ray from Minecraft's world is followed across the screen: our objects' longest shadow.");
+    /** Minecraft's light-giving blocks as lights our objects shadow: how far from the eye, in blocks; 0 for none. */
+    private static final CgVar.Num BLOCK_REACH = CgVar.number("crystalgraphics.world.blockShadowReach", 48f, 0f, 64f,
+            CgVar.DEV, "Blocks from the eye a torch, glowstone or any light-giving block is shadowed by our objects; 0 for none.");
+    /** The most of them a frame, nearest found first only by the window's order. */
+    private static final int BLOCK_MOST = 1024;
     /** Unreal's r.Forward.LightGridHZBCull. */
     private static final CgVar.Bool HZB = CgVar.bool("crystalgraphics.world.lightsHzb", true, CgVar.DEV,
             "The light grid skips cells behind the scene and pulls each cell's far edge in to it.");
@@ -250,6 +258,20 @@ public final class CgWorldLights {
     private CgMaterial apply, sample, shade, temporal, denoise;
     /** Lights added from the CPU this frame that cast shadows. */
     private int shadowedAdded;
+    /** This firing's light-giving blocks, x, y, z and level each, and how many: the list's last lights. */
+    private int[] blocks = new int[4 * 64];
+    private int blockCount;
+    private float blockReach;
+    private final CgWorldVoxelWindow.Emitters gatherBlock = (x, y, z, level) -> {
+        double dx = x + 0.5 - this.cameraX, dy = y + 0.5 - this.cameraY, dz = z + 0.5 - this.cameraZ;
+        if (this.blockCount == BLOCK_MOST || dx * dx + dy * dy + dz * dz > (double) this.blockReach * this.blockReach) return;
+        if (this.blockCount * 4 == this.blocks.length) this.blocks = Arrays.copyOf(this.blocks, this.blocks.length * 2);
+        int b = this.blockCount++ * 4;
+        this.blocks[b] = x;
+        this.blocks[b + 1] = y;
+        this.blocks[b + 2] = z;
+        this.blocks[b + 3] = level;
+    };
     private float targetW, targetH;
     private CgGraphTexture samples, shaded, filtered, scratchHistory, history, accumulated;
     private long historyMade = -1;
@@ -563,7 +585,15 @@ public final class CgWorldLights {
         binned = false;
         gridX = gridY = 1;
         shadowedAdded = 0;
-        if (cpu == 0 && appenders.isEmpty()) return false;
+        // Minecraft's light-giving blocks, only where something of ours can shadow them.
+        blockCount = 0;
+        blockReach = BLOCK_REACH.get();
+        if (SHADOWS.get() && blockReach > 0f && ownPixels()) {
+            CgWorldVoxelWindow window = CgWorldVoxelWindow.get();
+            window.useDistance();
+            window.emitters(gatherBlock);
+        }
+        if (cpu == 0 && blockCount == 0 && appenders.isEmpty()) return false;
         if (list == null) {
             list = CgGraphBuffer.persistent("cg_world_lights",
                     CgBufferDesc.of((long) CAPACITY * FLOATS * 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
@@ -576,7 +606,9 @@ public final class CgWorldLights {
                     CgBufferDesc.elements(4, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
         }
         listed = Math.min(cpu, CAPACITY);
-        if (listed > 0) {
+        long cpuDropped = cpu - listed;
+        blockCount = Math.min(blockCount, CAPACITY - listed);
+        if (listed + blockCount > 0) {
             staging.clear();
             for (int i = 0; i < listed; i++) {
                 int p = i * 3, l = i * FLOATS;
@@ -585,8 +617,19 @@ public final class CgWorldLights {
                         .putFloat((float) (at[p + 2] - cameraZ));
                 for (int w = 3; w < FLOATS; w++) staging.putFloat(light[l + w]);
             }
+            // CG_LIGHT_MINECRAFT: black, reaching its level, its ambient.w 2.
+            for (int i = 0; i < blockCount; i++) {
+                int b = i * 4;
+                staging.putFloat((float) (blocks[b] + 0.5 - cameraX)).putFloat((float) (blocks[b + 1] + 0.5 - cameraY))
+                        .putFloat((float) (blocks[b + 2] + 0.5 - cameraZ)).putFloat(blocks[b + 3] + 0.5f)
+                        .putFloat(0f).putFloat(0f).putFloat(0f).putFloat(0f)
+                        .putFloat(0f).putFloat(0f).putFloat(0f).putFloat(-2f)
+                        .putFloat(0f).putFloat(0f).putFloat(0f).putFloat(0f)
+                        .putFloat(-1f).putFloat(-1f).putFloat(0.5f).putFloat(2f);
+            }
             staging.flip();
             recording.update(list, 0, staging);
+            listed += blockCount;
         }
         start[0] = listed;
         recording.update(count, 0, start, 0, 4);
@@ -602,7 +645,6 @@ public final class CgWorldLights {
         else pass.end();
         // Every firing: a surge (a flash, a burst) drops lights the frame it comes, and the budget grows for the next.
         if (binned) recording.readback(alloc, 4, 4, readAlloc);
-        long cpuDropped = cpu - listed;
         if (appended && firings++ % COUNT_EVERY == 0) {
             readCpuDropped = cpuDropped;
             recording.readback(count, 0, 4, readCount);
@@ -613,6 +655,7 @@ public final class CgWorldLights {
         CgTrace.counter(CgChannels.WORLD, "world.lights-dropped", dropped);
         CgTrace.counter(CgChannels.WORLD, "world.lights-cell-dropped", cellsDropped);
         CgTrace.counter(CgChannels.WORLD, "world.lights-shadowed", shadowedAdded);
+        CgTrace.counter(CgChannels.WORLD, "world.lights-blocks", blockCount);
         return listed > 0 || appended;
     }
 
@@ -808,7 +851,7 @@ public final class CgWorldLights {
         if (apply == null) apply = CgMaterial.newInstance(APPLY_SHADER);
         if (!apply.prepare()) return;
         sunOn = sunWanted(stage);
-        shadowsOn = SHADOWS.get() && (shadowedAdded > 0 || sunOn) && recordShadows(stage, recording);
+        shadowsOn = SHADOWS.get() && (shadowedAdded > 0 || blockCount > 0 || sunOn) && recordShadows(stage, recording);
         if (!binned && !shadowsOn) return;
         CgGraphBuffer none = zeroes(recording);
         apply.buffer("LIGHTS", binned ? list : none).buffer("CELLS", binned ? cells : none)

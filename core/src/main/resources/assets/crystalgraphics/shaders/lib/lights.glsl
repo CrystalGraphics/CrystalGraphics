@@ -11,7 +11,7 @@
 // cone. segmentCone: a tube's length along its axis as one vector (0 for a point), and a spot's 1 / (cos inner - cos
 // outer). ambient: the block and sky light (0 to 15) at the light, what the scene there was lit by and is divided by to
 // find its albedo, x -1 where unknown and the scene taken as it is; then its source radius (Unreal's SourceRadius, 0 a
-// point), and 1 where it casts shadows (CG_LIGHT_SHADOWED).
+// point), and 1 where it casts shadows (CG_LIGHT_SHADOWED), 2 for a Minecraft light (CG_LIGHT_MINECRAFT).
 #pragma once
 
 #define cg_light(position, radius, color, exponent) \
@@ -37,6 +37,11 @@
 
 // Whether a light casts shadows (CgWorldLights.shadowed): traced by the shadow passes, not lit by the grid's own.
 #define CG_LIGHT_SHADOWED(light) ((light).ambient.w > 0.5)
+
+// A light-giving block of Minecraft's (CgWorldLights' own, from the voxel window): it adds nothing, its colour black,
+// and only says where Minecraft's block light comes from, so the shadow passes can withhold it. Its level is its radius
+// less a half.
+#define CG_LIGHT_MINECRAFT(light) ((light).ambient.w > 1.5)
 
 // The eye depth slice z starts at: 0 for the first, and far past the world for the end of the last, as Unreal's.
 float cg_light_slice_depth(int z, vec3 zParams) {

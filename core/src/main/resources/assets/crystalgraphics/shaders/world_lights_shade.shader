@@ -4,7 +4,8 @@
 // upsample), then each light among that pixel's visible samples lights it exactly, times the sum of those samples'
 // weights (1 / pdf, at most MaxShadingWeight) over the samples taken. What it writes is demodulated, as Unreal's
 // resolved lighting is: what the scene is multiplied by, the denoisers' input; alpha 1 where it holds lighting, 0 where
-// no half-resolution pixel near stands for this one. RT1: the sun's visibility, that pixel's four samples' mean.
+// no half-resolution pixel near stands for this one. RT1: the sun's and the block light's visibility, that pixel's four
+// samples' means.
 #type none
 #include "crystalgraphics:shaders/lib/math.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
@@ -114,7 +115,7 @@ Pass {
     void fragment(in v2f i, out Shaded o) {
         ivec2 px = ivec2(gl_FragCoord.xy);
         o.lighting = vec4(0.0);
-        o.visibility = vec4(1.0, 0.0, 0.0, 0.0);
+        o.visibility = vec4(1.0, 1.0, 0.0, 0.0);
         vec3 p = surface(px);
         if (p.z >= 0.0) return;
         vec3 n = normal_at(px, p);
@@ -153,11 +154,11 @@ Pass {
 
         // AccumulateLightSample: each light once, its visible samples' weights summed, merged samples counted in.
         vec2 samples[4];
-        float sun = 0.0;
+        vec2 vis = vec2(0.0);
         for (int s = 0; s < 4; s++) {
             vec4 texel = texelFetch(_Samples, d * 2 + ivec2(s & 1, s >> 1), 0);
             samples[s] = texel.xy;
-            sun += texel.z * 0.25;
+            vis += texel.zw * 0.25;
         }
         vec3 sum = vec3(0.0);
         for (int s = 0; s < 4; s++) {
@@ -179,6 +180,6 @@ Pass {
             if (weight > 0.0) sum += lighting(LIGHTS(int(index)), p, n) * (weight * 0.25);
         }
         o.lighting = vec4(sum, 1.0);
-        o.visibility = vec4(sun, 0.0, 0.0, 1.0);
+        o.visibility = vec4(vis, 0.0, 1.0);
     }
 }

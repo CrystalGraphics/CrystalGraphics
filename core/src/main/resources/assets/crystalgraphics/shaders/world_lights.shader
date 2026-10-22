@@ -1,9 +1,9 @@
 // The world's lights (CgWorldLights) lighting the scene behind each pixel, as Unreal lights a surface with a simple light
-// (DeferredLightingCommon.ush's GetSimpleDynamicLighting, its diffuse half): colour × attenuation × N·L × albedo / π.
+// (DeferredLightingCommon.ush's GetSimpleDynamicLighting, its diffuse half): colour * attenuation * N.L * albedo / pi.
 // Minecraft keeps neither albedo nor normals, so both are rebuilt. The surface and its normal come from depth, the
 // normal from whichever neighbour each way is the nearer step, so a block's edge does not bend it (Wicked Engine's
 // improved normal reconstruction, MIT), held to a world axis near one, as Minecraft's blocks are. The albedo is the scene's colour over the lightmap Minecraft lit it by, read
-// at the light's own block (CgWorldLights' ambient): what the light adds is scene × light / lightmap, which the blend
+// at the light's own block (CgWorldLights' ambient): what the light adds is scene * light / lightmap, which the blend
 // does. Minecraft has no exposure, so its noon is as bright as its moonlight is dim; a light is adapted to the sun as
 // an eye would be, for the lights alone: full at night and wherever no sky reaches it, fading to _DayFade under the
 // full daylight of an open sky (CG_DAYLIGHT times the sky light at it). Specular is left out: Minecraft has no
@@ -12,8 +12,9 @@
 //
 // Where the sun is withheld (_Visibility), the pixel's sky light loses its direct share: the scene is scaled by the
 // lightmap at the reduced sky light over the lightmap at its own, both read from the voxel window at the block the
-// pixel's face looks into, as Unreal's shadow takes a directional light's part and leaves the sky light. The pass reads
-// the scene and writes the whole pixel, so it can darken as well as add.
+// pixel's face looks into, as Unreal's shadow takes a directional light's part and leaves the sky light. Where
+// Minecraft's light-giving blocks are withheld (_Visibility's y), its block light is cut by the share withheld the same
+// way. The pass reads the scene and writes the whole pixel, so it can darken as well as add.
 #type none
 #include "crystalgraphics:shaders/lib/math.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
@@ -35,7 +36,7 @@ Properties {
     _DayFade ("A light's strength under a full day's open sky; 1 for never fading", float) = 0.1
     _Shadows ("1 while the shadow passes light the lights that cast shadows", float) = 0.0
     _Shadowed ("Their lighting, denoised",                         sampler2D) = "black"
-    _Visibility ("The sun's visibility, denoised",                 sampler2D) = "white"
+    _Visibility ("The sun's and the block light's visibility, denoised", sampler2D) = "white"
     _World         ("The voxel window's blocks",                   sampler3D) = "black"
     _WorldSections ("Which of its sections are filled",            sampler3D) = "black"
     _WorldDistance ("Its distance to solid over FX_WORLD_FAR",      sampler3D) = "white"
@@ -149,19 +150,21 @@ Pass {
         }
         if (shadows) sum += texelFetch(_Shadowed, px, 0).rgb;
 
-        // The sun withheld: the sky light at the block this face looks into, less the sun's direct share.
+        // The sun withheld: the sky light at the block this face looks into, less the sun's direct share; the block
+        // light less the share of it withheld.
         vec3 ratio = vec3(1.0);
         float window = texelFetch(cg_DepthBuffer, px, 0).r;
         bool sky = cg_DepthParams.x > 0.5 ? window <= 0.0 : window >= 1.0;
-        float vis = _Sun.x > 0.5 ? texelFetch(_Visibility, px, 0).x : 1.0;
-        if (!sky && vis < 0.999 && _WorldLive != 0) {
+        vec2 seen = shadows ? texelFetch(_Visibility, px, 0).xy : vec2(1.0);
+        float vis = _Sun.x > 0.5 ? seen.x : 1.0;
+        if (!sky && min(vis, seen.y) < 0.999 && _WorldLive != 0) {
             vec3 w = to_world_dir(p + n * 0.5 - vec3(_ToView0.w, _ToView1.w, _ToView2.w)) + _EyeFrac.xyz;
             ivec3 block = ivec3(_EyeX, _EyeY, _EyeZ) + ivec3(floor(w));
             vec2 light = fx_world_light(_World, _WorldSections, ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ),
                     ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ), block, vec2(-1.0));
             if (light.x >= 0.0) {
                 float reduced = light.y * (1.0 - _Sun.y * clamp(CG_DAYLIGHT, 0.0, 1.0) * (1.0 - vis));
-                ratio = lightmap(vec2(light.x, reduced)) / max(lightmap(light), vec3(1.0e-3));
+                ratio = lightmap(vec2(light.x * seen.y, reduced)) / max(lightmap(light), vec3(1.0e-3));
             }
         }
         vec4 scene = texelFetch(cg_SceneColor, px, 0);

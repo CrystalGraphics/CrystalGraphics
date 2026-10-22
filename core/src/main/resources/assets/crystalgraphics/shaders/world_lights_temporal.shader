@@ -7,8 +7,8 @@
 // spatial pass's variance.
 //
 // Written into a history of three slots: RT0 the lighting and the frames accumulated (0 where nothing is lit); RT1 the
-// luminance and its square, the eye depth, and the history's confidence; RT2 the sun's visibility, its history clamped
-// to this frame's 3x3 range and blended at the same rate.
+// luminance and its square, the eye depth, and the history's confidence; RT2 the sun's and the block light's
+// visibility, each one's history clamped to this frame's 3x3 range and blended at the same rate.
 #type none
 #include "crystalgraphics:shaders/lib/math.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
@@ -27,8 +27,8 @@ Properties {
     _Now     ("This frame's shaded lighting, alpha 1 where valid",   sampler2D) = "black"
     _Last    ("Last frame's accumulated lighting and frames",       sampler2D) = "black"
     _LastMoments ("Last frame's moments, eye depth and confidence", sampler2D) = "black"
-    _NowVis  ("This frame's sun visibility, alpha 1 where valid",   sampler2D) = "white"
-    _LastVis ("Last frame's accumulated sun visibility",            sampler2D) = "white"
+    _NowVis  ("This frame's sun and block light visibility, alpha 1 where valid", sampler2D) = "white"
+    _LastVis ("Last frame's accumulated visibility",                sampler2D) = "white"
     _Fresh   ("1 where the history holds no frame of this view",     float) = 1.0
     _Frames  ("MinFramesAccumulatedForHistoryMiss, MaxFramesAccumulated, NeighborhoodClampScale, HistoryDistanceThreshold", vec4) = (4, 12, 1, 0.03)
 }
@@ -85,7 +85,8 @@ Pass {
         // The history: this surface's point, camera-relative, in last frame's clip space; the four texels round it,
         // each kept where its depth then lies within the threshold of the point's (GetHistorySampleValidity).
         vec4 history = vec4(0.0), historyMoments = vec4(0.0);
-        float historyWeight = 0.0, historyVis = 0.0;
+        float historyWeight = 0.0;
+        vec2 historyVis = vec2(0.0);
         if (_Fresh < 0.5 && CG_HISTORY_VALID) {
             vec2 uv = (vec2(px) + 0.5) / vec2(size);
             vec3 p = vec3(mix(_Rays.xy, _Rays.zw, uv) * depth, -depth);
@@ -103,7 +104,7 @@ Pass {
                     float b = ((k & 1) != 0 ? f.x : 1.0 - f.x) * ((k >> 1) != 0 ? f.y : 1.0 - f.y);
                     history += texelFetch(_Last, t, 0) * b;
                     historyMoments += m * b;
-                    historyVis += texelFetch(_LastVis, t, 0).x * b;
+                    historyVis += texelFetch(_LastVis, t, 0).xy * b;
                     historyWeight += b;
                 }
             }
@@ -114,7 +115,7 @@ Pass {
             float lum = luminance(centre.rgb);
             o.lighting = vec4(centre.rgb, 1.0);
             o.moments = vec4(lum, min(lum * lum, 65504.0), depth, 1.0);
-            o.visibility = vec4(nowVis.x, 0.0, 0.0, 1.0);
+            o.visibility = vec4(nowVis.xy, 0.0, 1.0);
             return;
         }
         history /= historyWeight;
@@ -124,7 +125,7 @@ Pass {
             // No sample this frame: the history as it was.
             o.lighting = history;
             o.moments = vec4(historyMoments.xy, depth, historyMoments.w);
-            o.visibility = vec4(historyVis, 0.0, 0.0, 1.0);
+            o.visibility = vec4(historyVis, 0.0, 1.0);
             return;
         }
 
@@ -163,15 +164,15 @@ Pass {
         lighting = clamp(lighting, vec3(0.0), vec3(65504.0));
         o.lighting = vec4(lighting, frames);
         o.moments = vec4(moments, depth, confidence);
-        // The sun's visibility: its history held to this frame's 3x3 range, then blended at the lighting's rate.
-        float visLow = nowVis.x, visHigh = nowVis.x;
+        // The visibilities: each history held to this frame's 3x3 range, then blended at the lighting's rate.
+        vec2 visLow = nowVis.xy, visHigh = nowVis.xy;
         for (int k = 0; k < 9; k++) {
             ivec2 q = clamp(px + ivec2(k % 3 - 1, k / 3 - 1), ivec2(0), size - 1);
             vec4 v = texelFetch(_NowVis, q, 0);
             if (v.w < 0.5) continue;
-            visLow = min(visLow, v.x);
-            visHigh = max(visHigh, v.x);
+            visLow = min(visLow, v.xy);
+            visHigh = max(visHigh, v.xy);
         }
-        o.visibility = vec4(mix(clamp(historyVis, visLow, visHigh), nowVis.x, alpha), 0.0, 0.0, 1.0);
+        o.visibility = vec4(mix(clamp(historyVis, visLow, visHigh), nowVis.xy, alpha), 0.0, 1.0);
     }
 }

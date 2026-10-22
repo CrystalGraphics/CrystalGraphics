@@ -171,6 +171,13 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
   direct share (`crystalgraphics.world.sunShare`, 0.6) out of the pixel's sky light, through Minecraft's own lightmap,
   so the shade is Minecraft's. Our pixels are found from the host's depth snapshotted before our opaque pass.
   `crystalgraphics.world.sunShadows=false` turns it off; `--mode=lights-sun` is its gate.
+- **Minecraft's block light** is shadowed by our objects the same way. Each light-giving block the voxel window finds
+  (a torch, glowstone, lava: a local maximum of block light the world says emits) within
+  `crystalgraphics.world.blockShadowReach` blocks (48) joins the list as a black light (`CG_LIGHT_MINECRAFT`), while
+  something of ours is drawn. Each sample picks one in proportion to the light Minecraft's flood gives the pixel from it
+  (its level less the blocks between) and traces it; the share that gets through scales the pixel's block light, again
+  through the lightmap. Casters are as for the sun. A block placed after its section was read waits for the window's
+  refresh; `--mode=lights-torch` is the gate.
 - **What casts**: Minecraft's blocks within the window, its living entities within 64 blocks, and anything on screen.
   Meshes drawn through `CgWorldRenderer` shadow only where they are on screen; Unreal's mesh distance fields have no
   counterpart yet.
@@ -191,7 +198,6 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
 | Lighting the air (fog and smoke glowing round a light) | volumetric fog's local-light injection | after shadows (task #29), into `CgWorldMedia`'s froxels |
 | Rect lights, IES profiles, light functions | rect lights, IES atlases, light function atlases | none yet |
 | Specular | GGX from the G-buffer's roughness | none: Minecraft has no roughness |
-| The sun's shadows | virtual shadow maps | none: vanilla Minecraft has no sun shadows |
 
 ## 9. Checking and measuring
 
@@ -199,6 +205,8 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
 |---|---|
 | `--mode=lights-grid` | every light word, every cell's list and the falloffs against Java, at every tier and on Vulkan |
 | `--mode=lights-shadow` | a light behind a wall of blocks withheld, in the open kept, on GL and Vulkan |
+| `--mode=lights-sun` | our box shadows the host's ground, blocks off screen shadow our box, open ground kept, on GL and Vulkan |
+| `--mode=lights-torch` | a torch's light on the host's ground withheld behind our box, kept in the open, on GL and Vulkan |
 | `--mode=vfx-lights` | every particle light (where, how far, how bright, its block and sky light, its source radius) against a Java gather |
 | `--mode=lights-bench` | the cost: `-Dcrystalgraphics.harness.lights=10000` and profile `world.lights`, `world.lightsCoarse`, `world.lightsCells`, `world.lightsApply` |
 

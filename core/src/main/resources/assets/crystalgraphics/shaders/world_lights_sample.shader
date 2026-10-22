@@ -9,9 +9,13 @@
 // What casts depends on the receiver: on our objects' pixels (nearer than the host's depth before our opaque draws)
 // everything does; on Minecraft's, only our objects, its own blocks keeping the light it baked.
 //
+// Minecraft's light-giving blocks are lights of their own (CG_LIGHT_MINECRAFT): each sample picks one in proportion to
+// the block light Minecraft's flood gives the pixel from it, level less the blocks between, and traces it as it traces
+// a light of ours. Their mean is the share of the pixel's block light still reaching it.
+//
 // Written: x the light's index, -1 for none; y its shading weight (WeightSum / weight, 1 / pdf), 0 where a sample of
 // the same light after it took its ray (Unreal's MergeRays), negative where the ray was blocked; z the sun's
-// visibility, 1 with no sun.
+// visibility, 1 with no sun; w the block light's visibility, 1 with no Minecraft light.
 #type none
 #include "crystalgraphics:shaders/lib/math.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
@@ -72,6 +76,9 @@ Pass {
         DepthWrite OFF
         Cull OFF
     }
+
+    // How deep one of our objects is taken to be behind its surface on screen, in blocks.
+    const float OWN_THICKNESS = 1.5;
 
     vec3 to_view_dir(vec3 w) { return vec3(dot(_ToView0.xyz, w), dot(_ToView1.xyz, w), dot(_ToView2.xyz, w)); }
     vec3 to_world_dir(vec3 v) {
@@ -139,8 +146,10 @@ Pass {
         return adapt / (CG_PI * luminance(ambient));
     }
 
-    // The screen trace (TraceScreen) from a along dir for len: 1 a hit within the depth thickness (on our objects alone
-    // where ownOnly), -1 uncertain, the ray behind the scene or off screen, with reached where it got to; 0 clear.
+    // The screen trace (TraceScreen) from a along dir for len: 1 a hit within the depth thickness, -1 uncertain, the ray
+    // behind the scene or off screen, with reached where it got to; 0 clear. Where ownOnly only our objects cast: a ray
+    // behind one of them is taken as inside it for OWN_THICKNESS blocks, since nothing else holds their volume, and a ray
+    // behind the host's surfaces goes on.
     int screen_trace(vec3 a, vec3 dir, float len, int steps, float jit, bool ownOnly, out float reached) {
         reached = len;
         float last = 0.0;
@@ -157,7 +166,12 @@ Pass {
             float scene = eye_depth(at);
             float behind = rayDepth - scene, stepDepth = abs(dir.z) * len / float(steps);
             if (scene > 0.0 && behind > 0.0) {
-                if (behind < max(_Trace.w * scene, stepDepth) && (!ownOnly || own(at, scene))) return 1;
+                if (ownOnly) {
+                    if (own(at, scene) && behind < max(OWN_THICKNESS, stepDepth)) return 1;
+                    last = t;
+                    continue;
+                }
+                if (behind < max(_Trace.w * scene, stepDepth)) return 1;
                 reached = last;
                 return -1;
             }
@@ -205,6 +219,53 @@ Pass {
         if (screen == 1) return 0.0;
         // Past the screen: the window's blocks to its edge, and the entities.
         return world_trace(to_world(a), to_world_dir(dir), reached, 96.0) ? 0.0 : 1.0;
+    }
+
+    // The block a surface's light is read at: the one its face looks into, from the eye's block.
+    vec3 block_of(vec3 w) { return floor(w + _EyeFrac.xyz); }
+
+    // Whether Minecraft's block light from the light-giving block at eye-relative c reaches p facing n: 1 or 0. One
+    // block, picked from the cell's Minecraft lights by the light Minecraft's flood gives the pixel from each.
+    float block_visibility(vec3 p, vec3 n, bool ownPixel, ivec2 sampleCoord) {
+        ivec3 cell = cg_light_cell(p, _ZParams.xyz, _Rays.xy, _Rays.zw, _Tile.xy, ivec2(_Grid.xy));
+        int e = (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;
+        int count = int(CELLS(e * 2)), from = int(CELLS(e * 2 + 1));
+        vec3 at = block_of(to_world(p + n * 0.5));
+        float pick = cg_shadow_noise(vec2(sampleCoord) + 113.0, CG_FRAME_INDEX), weightSum = 0.0;
+        int chosen = -1;
+        for (int k = 0; k < count; k++) {
+            int index = int(INDICES(from + k));
+            CgLight light = LIGHTS(index);
+            if (!CG_LIGHT_MINECRAFT(light)) continue;
+            vec3 steps = abs(block_of(light.positionRadius.xyz) - at);
+            float weight = light.positionRadius.w - 0.5 - (steps.x + steps.y + steps.z);
+            if (weight <= 0.0) continue;
+            float tau = weightSum / (weightSum + weight);
+            weightSum += weight;
+            if (pick < tau) {
+                pick /= tau;
+            } else {
+                pick = (pick - tau) / (1.0 - tau);
+                chosen = index;
+            }
+            pick = clamp(pick, 0.0, 0.9999);
+        }
+        if (chosen < 0) return 1.0;
+        vec3 centre = to_view_dir(LIGHTS(chosen).positionRadius.xyz) + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
+        vec3 toLight = centre - p;
+        if (dot(n, toLight) <= 0.0) return ownPixel ? 0.0 : 1.0;
+        vec2 u = vec2(cg_shadow_noise(vec2(sampleCoord) + 131.0, CG_FRAME_INDEX), cg_shadow_noise(vec2(sampleCoord) + 151.0, CG_FRAME_INDEX));
+        vec3 a = p + n * (_Trace.z + 0.002 * -p.z);
+        vec4 ray = cg_shadow_sphere_ray(centre - a, 0.3, u);
+        // Stopped short of the block it comes from, which may be solid (glowstone).
+        float rayEnd = max(ray.w - 0.9, 0.0);
+        float jit = cg_shadow_noise(vec2(sampleCoord) + 173.0, CG_FRAME_INDEX), reached;
+        // Minecraft's world keeps its own blocks' shadows: only our objects take its light from it.
+        if (!ownPixel) return screen_trace(a, ray.xyz, min(rayEnd, _Sun.y), int(_Sun.z), jit, true, reached) == 1 ? 0.0 : 1.0;
+        int screen = screen_trace(a, ray.xyz, min(rayEnd, _Trace.x), int(_Trace.y), jit, false, reached);
+        if (screen == 1) return 0.0;
+        if (screen == 0) reached = min(rayEnd, _Trace.x);
+        return reached < rayEnd && world_trace(to_world(a), to_world_dir(ray.xyz), reached, rayEnd) ? 0.0 : 1.0;
     }
 
     // This sample's light: x its index, -1 for none; y its weight, 0 merged, -1 blocked.
@@ -283,13 +344,14 @@ Pass {
     void fragment(in v2f i, out vec4 fragColor) {
         ivec2 sampleCoord = ivec2(gl_FragCoord.xy), d = sampleCoord >> 1;
         int mine = (sampleCoord.x & 1) + 2 * (sampleCoord.y & 1);
-        fragColor = vec4(-1.0, 0.0, 1.0, 0.0);
+        fragColor = vec4(-1.0, 0.0, 1.0, 1.0);
         ivec2 px = d * 2 + jitter(d);
         if (px.x >= int(_Screen.x) || px.y >= int(_Screen.y)) return;
         vec3 p = surface(px);
         if (p.z >= 0.0) return;
         vec3 n = normal_at(px, p);
         bool ownPixel = own(px, -p.z);
-        fragColor = vec4(light_sample(p, n, d, sampleCoord, mine), sun_visibility(p, n, ownPixel, sampleCoord), 0.0);
+        fragColor = vec4(light_sample(p, n, d, sampleCoord, mine), sun_visibility(p, n, ownPixel, sampleCoord),
+                block_visibility(p, n, ownPixel, sampleCoord));
     }
 }
