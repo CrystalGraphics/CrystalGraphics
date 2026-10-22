@@ -2212,7 +2212,7 @@ public final class CgVfxParticlePool {
         for (int i = 0, l = shape.lifeRollAt() * 4; i < rolls.size(); i++) {
             CgVfxLifeRoll roll = rolls.get(i);
             for (int a = 0; a < 3; a++) curveScratch[l + a] = roll.rolls()[a];
-            curveScratch[l + 3] = roll.target().ordinal() + (roll.curved() ? 3 : 0);
+            curveScratch[l + 3] = roll.target().ordinal() + (roll.curved() ? 3 : 0) + (roll.picks() ? 6 : 0);
             if (roll.curved()) {
                 for (int s = 0; s < CgVfxGpuEmitter.CURVE_TEXELS; s++) {
                     float t = s / (float) (CgVfxGpuEmitter.CURVE_TEXELS - 1);

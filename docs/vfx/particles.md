@@ -149,6 +149,23 @@ A burst can roll its count each loop, and fire in only some loops:
 .burst(CgVfxSpawnBurst.at(0.1f, 1).probability(0.3f))    // one, in three loops of ten
 ```
 
+In a file, a rate can also follow the effect's own parameter, or be drawn each step between two curves:
+
+```yaml
+emitter_update:
+  - id: rate
+    module: crystalgraphics:spawn_rate
+    inputs:
+      rate: { bind: user.SpawnOff, default: 20, mode: direct }   # the effect's SpawnOff, read each step
+      scale: { fn: crystalgraphics:random_range, inputs: { min: { curve: <falling>, by: loop }, max: { curve: <rising>, by: loop } } }
+  - id: trail
+    module: crystalgraphics:spawn_per_unit
+    inputs: { per_unit: { curve: { samples: { range: [0, 0.5], values: [1, 0] } }, by: loop } }   # fewer a block as the loop runs
+```
+
+- A bound rate with no `remap` has no most: the emitter's `capacity` holds it.
+- A rate drawn between two ends and a scale drawn between two curves are drawn apart, each step.
+
 ### Easy to get wrong
 
 - **A burst emitter without `state(...)` re-fires every loop.** Give a one-off `CgVfxEmitterState.ONCE`.

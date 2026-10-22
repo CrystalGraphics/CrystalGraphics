@@ -830,8 +830,13 @@ public final class CgVfxEmitterInstance {
             stepLoopFrom = Math.max(0f, age);
             stepLoopTo = stepLoopFrom + dt;
             if (!loopsOver && time < stoppedAt && age >= 0f && age < loopLength) {
-                float u = e.rate.drawn() ? rand(seed ^ e.rateKey, rateDraws++, 0) : 0f;
-                rateOwed += (e.rate.at(age, u) * dt + e.perUnit.perBlock() * travelled) * rateScale;
+                float u = 0f, v = 0f;
+                if (e.rate.drawn()) {
+                    v = rand(seed ^ e.rateKey, rateDraws, 1);
+                    u = rand(seed ^ e.rateKey, rateDraws++, 0);
+                }
+                float bound = e.rate.bound() == null ? 1f : e.rate.bound().value(this);
+                rateOwed += (e.rate.at(age, u, v) * bound * dt + e.perUnit.at(age) * travelled) * rateScale;
                 int n = (int) rateOwed;
                 rateOwed -= n;
                 // Spawn i of n is born (i + 1) / n of the way through the step, so the last is at its end.

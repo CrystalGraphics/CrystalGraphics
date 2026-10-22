@@ -1,6 +1,11 @@
 package com.crystalgraphics.vfx.particle.spawn;
 
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
+
+import javax.annotation.Nullable;
+import java.util.Map;
 
 import java.util.Objects;
 
@@ -20,25 +25,65 @@ import java.util.Objects;
  *   <li>Across loops with no curve it is one continuous rate: loop boundaries do not show.</li>
  *   <li>A rate between two ends ({@code most} above {@code perSecond}) is drawn again each step, as Cascade evaluates
  *       its spawn rate's distribution each tick.</li>
+ *   <li>A rate or scale bound to a user parameter ({@link Bound}) multiplies it by the parameter's value each step,
+ *       as Cascade reads its parameter distribution each tick. A binding with no remap has no most: the emitter's
+ *       capacity holds it.</li>
  * </ul>
  *
  * @param perSecond particles a second, or the least where it is drawn between two ends
  * @param most      the most a second: {@code perSecond} for one rate
  * @param scale     its scale by the loop's seconds
+ * @param bound     a user parameter it is multiplied by each step, or null
+ * @param scaleTo   where its scale is drawn each step between {@code scale} and this curve (Cascade's
+ *                  {@code UniformCurve}), or null
  */
-public record CgVfxSpawnRate(float perSecond, float most, CgKeyframes scale) {
+public record CgVfxSpawnRate(float perSecond, float most, CgKeyframes scale, @Nullable Bound bound,
+                             @Nullable CgKeyframes scaleTo) {
 
     /** No rate: what an emitter has until it is given one. */
     public static final CgVfxSpawnRate NONE = new CgVfxSpawnRate(0f, CgKeyframes.constant(1f));
+
+    /**
+     * A spawn rate's {@code input} ({@code rate} or {@code scale}) bound to a user parameter: {@code bind}, compiled
+     * from {@code source}, the form as its file wrote it.
+     */
+    public record Bound(String input, CgVfxFormInput.Binding bind, Map<?, ?> source) {
+        /** Its value for an instance this step: never below 0. */
+        public float value(CgVfxInstanceView view) {
+            String path = bind.path();
+            float raw = view.user(path.startsWith("user.") ? path.substring("user.".length()) : path, 0, bind.fallback()[0]);
+            return Math.max(0f, bind.apply(raw, 0));
+        }
+
+        /** The most it gives: its remap's ends; unbounded with no remap. */
+        public float most() {
+            if (bind.inLo() == null || "direct".equals(bind.modes()[0])) return Float.POSITIVE_INFINITY;
+            return Math.max(0f, Math.max(bind.apply(bind.inLo()[0], 0), bind.apply(bind.inHi()[0], 0)));
+        }
+    }
 
     public CgVfxSpawnRate {
         if (!(perSecond >= 0f) || !(most >= perSecond)) throw new IllegalArgumentException("a rate of " + perSecond + " to " + most);
         Objects.requireNonNull(scale, "scale");
     }
 
+    public CgVfxSpawnRate(float perSecond, float most, CgKeyframes scale) {
+        this(perSecond, most, scale, null, null);
+    }
+
     /** One rate, {@code perSecond}, scaled by {@code scale}. */
     public CgVfxSpawnRate(float perSecond, CgKeyframes scale) {
-        this(perSecond, perSecond, scale);
+        this(perSecond, perSecond, scale, null, null);
+    }
+
+    /** This, multiplied each step by {@code bound}. */
+    public CgVfxSpawnRate bound(@Nullable Bound bound) {
+        return new CgVfxSpawnRate(perSecond, most, scale, bound, scaleTo);
+    }
+
+    /** This, its scale drawn each step between its curve and {@code to}. */
+    public CgVfxSpawnRate scaleTo(CgKeyframes to) {
+        return new CgVfxSpawnRate(perSecond, most, scale, bound, to);
     }
 
     /** {@code perSecond} particles a second, all through each loop. */
@@ -48,12 +93,21 @@ public record CgVfxSpawnRate(float perSecond, float most, CgKeyframes scale) {
 
     /** Particles a second {@code seconds} into the loop, {@code u} of the way between its ends (0 to 1). */
     public float at(float seconds, float u) {
-        return (perSecond + (most - perSecond) * u) * scale.at(seconds);
+        return at(seconds, u, u);
+    }
+
+    /**
+     * Particles a second {@code seconds} into the loop: its rate {@code u} of the way between its ends, its scale
+     * {@code v} of the way between its curves, each drawn apart as Cascade draws each distribution.
+     */
+    public float at(float seconds, float u, float v) {
+        float by = scaleTo == null ? scale.at(seconds) : scale.at(seconds) + (scaleTo.at(seconds) - scale.at(seconds)) * v;
+        return (perSecond + (most - perSecond) * u) * by;
     }
 
     /** Whether it is drawn between two ends each step. */
     public boolean drawn() {
-        return most > perSecond;
+        return most > perSecond || scaleTo != null;
     }
 
     /**
@@ -62,10 +116,15 @@ public record CgVfxSpawnRate(float perSecond, float most, CgKeyframes scale) {
      */
     public float peak(float duration) {
         if (most == 0f) return 0f;
-        float end = Math.min(duration, Math.max(scale.end(), 0f)), peak = scale.at(0f);
+        float end = Math.min(duration, Math.max(Math.max(scale.end(), scaleTo == null ? 0f : scaleTo.end()), 0f));
+        float peak = highest(0f);
         // Sampled: an eased segment may overshoot its keys.
-        for (int i = 1; i <= 256; i++) peak = Math.max(peak, scale.at(end * i / 256f));
-        if (duration > end) peak = Math.max(peak, scale.at(duration));
-        return most * Math.max(peak, 0f);
+        for (int i = 1; i <= 256; i++) peak = Math.max(peak, highest(end * i / 256f));
+        if (duration > end) peak = Math.max(peak, highest(duration));
+        return most * Math.max(peak, 0f) * (bound == null ? 1f : bound.most());
+    }
+
+    private float highest(float seconds) {
+        return scaleTo == null ? scale.at(seconds) : Math.max(scale.at(seconds), scaleTo.at(seconds));
     }
 }

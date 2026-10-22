@@ -1266,6 +1266,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
+        /** Spawns by distance travelled, {@code perUnit} a block scaled by its curve over the loop's seconds. */
+        public Builder ratePerBlock(CgVfxSpawnPerUnit perUnit) {
+            this.perUnit = perUnit;
+            return this;
+        }
+
         /** The farthest a source may move in one step and still spawn by distance and give its velocity: 8 blocks unless given. */
         public Builder maxStep(float blocks) {
             this.maxStep = blocks;

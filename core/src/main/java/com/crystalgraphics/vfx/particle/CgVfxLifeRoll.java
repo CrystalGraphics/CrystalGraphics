@@ -29,6 +29,8 @@ import java.util.Map;
  *   <li>An emitter's rolls multiply together, each rolled apart.</li>
  *   <li>Its ends may be curves by age, Cascade's {@code UniformCurve}: rolled each tick between the two at the
  *       particle's life.</li>
+ *   <li>A {@code pick} of two takes one end or the other, every channel the same, rolled each tick: Cascade's uniform
+ *       with {@code bUseExtremes}, the high end above half ({@code Distributions.cpp}).</li>
  * </ul>
  *
  * @param target what it multiplies
@@ -37,15 +39,21 @@ import java.util.Map;
  * @param rolls  which of three rolls each channel takes
  * @param fromCurves its low end by age, three channels, or null for {@code from}
  * @param toCurves   its high end by age, or null for {@code to}
+ * @param picks      whether it takes one end or the other rather than between them
  */
 public record CgVfxLifeRoll(Target target, float[] from, float[] to, int[] rolls, @Nullable CgKeyframes[] fromCurves,
-                            @Nullable CgKeyframes[] toCurves) {
+                            @Nullable CgKeyframes[] toCurves, boolean picks) {
 
     /** What a roll multiplies: the size's axes, the colour's rgb, or its alpha (the first channel). */
     public enum Target { MESH_SCALE, COLOR, ALPHA }
 
     public CgVfxLifeRoll(Target target, float[] from, float[] to, int[] rolls) {
-        this(target, from, to, rolls, null, null);
+        this(target, from, to, rolls, null, null, false);
+    }
+
+    /** Whether {@code form} is one a roll reads: a {@code range}, or a {@code pick} of two. */
+    public static boolean rolled(@Nullable Object form) {
+        return form instanceof Map<?, ?> m && (m.get("range") != null || m.get("pick") instanceof List<?> p && p.size() == 2);
     }
 
     /** Rolled each tick between curves {@code min} and {@code max} by age, every channel apart. */
@@ -58,7 +66,7 @@ public record CgVfxLifeRoll(Target target, float[] from, float[] to, int[] rolls
                 to[c] = i == 0 ? Math.max(a, b) : Math.max(to[c], Math.max(a, b));
             }
         }
-        return new CgVfxLifeRoll(target, from, to, new int[]{0, 1, 2}, min.clone(), max.clone());
+        return new CgVfxLifeRoll(target, from, to, new int[]{0, 1, 2}, min.clone(), max.clone(), false);
     }
 
     /** Whether its ends are curves by age. */
@@ -73,6 +81,9 @@ public record CgVfxLifeRoll(Target target, float[] from, float[] to, int[] rolls
 
     /** A range form, {@code { range, per_channel, locked }}, of {@code n} channels (2 or 3), or of one number for every one. */
     public static CgVfxLifeRoll of(Target target, Map<?, ?> form, int n) {
+        if (form.get("pick") instanceof List<?> pick) {
+            return new CgVfxLifeRoll(target, axes(pick.get(0), n), axes(pick.get(1), n), new int[3], null, null, true);
+        }
         List<?> ends = (List<?>) form.get("range");
         float[] from = axes(ends.get(0), n), to = axes(ends.get(1), n);
         return new CgVfxLifeRoll(target, from, to, rolls(form));
@@ -111,6 +122,10 @@ public record CgVfxLifeRoll(Target target, float[] from, float[] to, int[] rolls
     /** As a range form again, three axes: what a file writes. */
     public Map<String, Object> form() {
         Map<String, Object> m = new LinkedHashMap<>();
+        if (picks) {
+            m.put("pick", List.of(axesList(from), axesList(to)));
+            return m;
+        }
         m.put("range", List.of(axesList(from), axesList(to)));
         putRolls(m, rolls);
         return m;

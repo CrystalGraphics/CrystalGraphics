@@ -42,6 +42,7 @@ import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxInactiveResponse;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxLoopBehavior;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnPerUnit;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnRate;
 
 /**
@@ -100,7 +101,13 @@ public final class CgVfxEmitterAssets {
         update.add(entry(e.id("state"), "emitter_state", state(e.state)));
         if (e.rate.most() > 0f) {
             Map<String, Object> rate = map("rate", range(e.rate.perSecond(), e.rate.most()));
-            if (!isOne(e.rate.scale())) rate.put("scale", curve(e.rate.scale(), "loop"));
+            if (e.rate.scaleTo() != null) {
+                rate.put("scale", map("fn", NS + "random_range", "inputs", map("min", curve(e.rate.scale(), "loop"),
+                        "max", curve(e.rate.scaleTo(), "loop"))));
+            } else if (!isOne(e.rate.scale())) {
+                rate.put("scale", curve(e.rate.scale(), "loop"));
+            }
+            if (e.rate.bound() != null) rate.put(e.rate.bound().input(), e.rate.bound().source());
             update.add(entry(e.id("rate"), "spawn_rate", rate));
         }
         for (int i = 0; i < e.bursts.length; i++) {
@@ -109,7 +116,8 @@ public final class CgVfxEmitterAssets {
                     "probability", (double) b.probability())));
         }
         if (e.perUnit.perBlock() > 0f) {
-            update.add(entry("per_unit", "spawn_per_unit", map("per_unit", (double) e.perUnit.perBlock(), "max_step", (double) e.maxStep)));
+            update.add(entry("per_unit", "spawn_per_unit", map("per_unit", isOne(e.perUnit.scale()) ? (Object) (double) e.perUnit.perBlock()
+                    : curve(product(CgKeyframes.constant(e.perUnit.perBlock()), e.perUnit.scale()), "loop"), "max_step", (double) e.maxStep)));
         }
         tree.put("emitter_update", update);
 
@@ -390,7 +398,7 @@ public final class CgVfxEmitterAssets {
                     b.state(state(in)).id("state", idOf(entry, "state"));
                     break;
                 case "spawn_rate": {
-                    b.rate(spawnRate(name, in.get("rate"), in.get("scale"))).id("rate", idOf(entry, "rate"));
+                    b.rate(boundRate(name, entry, in)).id("rate", idOf(entry, "rate"));
                     break;
                 }
                 case "spawn_burst": {
@@ -401,7 +409,12 @@ public final class CgVfxEmitterAssets {
                     break;
                 }
                 case "spawn_per_unit":
-                    b.ratePerBlock(num(in.get("per_unit")));
+                    // Cascade reads SpawnPerUnit at the emitter's time: a curve by the loop scales it.
+                    if (in.get("per_unit") instanceof Map<?, ?> curve && curve.get("curve") != null) {
+                        b.ratePerBlock(new CgVfxSpawnPerUnit(1f, keyframes(name, curve, "loop")));
+                    } else {
+                        b.ratePerBlock(num(in.get("per_unit")));
+                    }
                     if (in.get("max_step") instanceof Number s) b.maxStep(s.floatValue());
                     break;
                 default:
@@ -451,7 +464,7 @@ public final class CgVfxEmitterAssets {
                         continue;
                     } else if (between != null) {
                         b.lifeRoll(between);
-                    } else if (scale instanceof Map<?, ?> m && m.get("range") != null) {
+                    } else if (CgVfxLifeRoll.rolled(scale) && scale instanceof Map<?, ?> m) {
                         b.lifeRoll(CgVfxLifeRoll.of(CgVfxLifeRoll.Target.MESH_SCALE, m, 2));
                     } else if (scale instanceof Map<?, ?> m && m.get("curves") != null) {
                         CgKeyframes[] xy = axes(name, scale, 2);
@@ -469,7 +482,7 @@ public final class CgVfxEmitterAssets {
                         b.lifeRoll(between);
                         continue;
                     }
-                    if (scale instanceof Map<?, ?> m && m.get("range") != null) {
+                    if (CgVfxLifeRoll.rolled(scale) && scale instanceof Map<?, ?> m) {
                         b.lifeRoll(CgVfxLifeRoll.of(CgVfxLifeRoll.Target.MESH_SCALE, m, 3));
                         continue;
                     }
@@ -481,7 +494,7 @@ public final class CgVfxEmitterAssets {
                     Map<?, ?> in = inputs(entry);
                     if (lifeBind(name, entry, "scale", CgVfxLifeBind.Target.COLOR, forms, b)) {
                         // bound: the same every particle, multiplying the curves
-                    } else if (in.get("scale") instanceof Map<?, ?> m && m.get("range") != null) {
+                    } else if (CgVfxLifeRoll.rolled(in.get("scale")) && in.get("scale") instanceof Map<?, ?> m) {
                         b.lifeRoll(CgVfxLifeRoll.of(CgVfxLifeRoll.Target.COLOR, m, 3));
                     } else if (curveRoll(CgVfxLifeRoll.Target.COLOR, name, in.get("scale"), 3) instanceof CgVfxLifeRoll between) {
                         b.lifeRoll(between);
@@ -491,6 +504,9 @@ public final class CgVfxEmitterAssets {
                     }
                     if (lifeBind(name, entry, "alpha", CgVfxLifeBind.Target.ALPHA, forms, b)) {
                         // bound, as the scale
+                    } else if (CgVfxLifeRoll.rolled(in.get("alpha")) && in.get("alpha") instanceof Map<?, ?> m) {
+                        // ColorScaleOverLife's alpha on a uniform: rolled every tick.
+                        b.lifeRoll(CgVfxLifeRoll.of(CgVfxLifeRoll.Target.ALPHA, m, 1));
                     } else if (curveRoll(CgVfxLifeRoll.Target.ALPHA, name, in.get("alpha"), 1) instanceof CgVfxLifeRoll between) {
                         b.lifeRoll(between);
                     } else if (in.get("alpha") != null) {
@@ -984,7 +1000,7 @@ public final class CgVfxEmitterAssets {
     private static void color(String name, CgVfxEmitter.Builder b, Map<?, ?> in, boolean colorBound, boolean alphaBound) {
         b.colors(WHITE.clone(), WHITE.clone());
         Object c = colorBound ? null : in.get("color");
-        if (c instanceof Map<?, ?> m && m.get("range") != null) {
+        if (CgVfxLifeRoll.rolled(c) && c instanceof Map<?, ?> m) {
             // ColorOverLife on a uniform: rolled every tick.
             b.lifeRoll(CgVfxLifeRoll.of(CgVfxLifeRoll.Target.COLOR, m, 3));
             c = null;
@@ -1002,8 +1018,13 @@ public final class CgVfxEmitterAssets {
             b.colorOverLife(rgb[0], rgb[1], rgb[2]);
         }
         if (alphaBound) return;
-        if (curveRoll(CgVfxLifeRoll.Target.ALPHA, name, in.get("alpha"), 1) instanceof CgVfxLifeRoll between) b.lifeRoll(between);
-        else if (in.get("alpha") != null) b.opacity(keyframes(name, in.get("alpha"), "age"));
+        if (CgVfxLifeRoll.rolled(in.get("alpha")) && in.get("alpha") instanceof Map<?, ?> m) {
+            b.lifeRoll(CgVfxLifeRoll.of(CgVfxLifeRoll.Target.ALPHA, m, 1));
+        } else if (curveRoll(CgVfxLifeRoll.Target.ALPHA, name, in.get("alpha"), 1) instanceof CgVfxLifeRoll between) {
+            b.lifeRoll(between);
+        } else if (in.get("alpha") != null) {
+            b.opacity(keyframes(name, in.get("alpha"), "age"));
+        }
         else if (gradientAlpha != null) b.opacity(gradientAlpha);
     }
 
@@ -2054,10 +2075,37 @@ public final class CgVfxEmitterAssets {
     }
 
     /**
+     * {@code spawn_rate}, its rate or its scale bound to a user parameter where either is a binding: the other read as
+     * {@link #spawnRate} reads it, times the parameter each step. Both bound is not read yet.
+     */
+    private static CgVfxSpawnRate boundRate(String name, Map<?, ?> entry, Map<?, ?> in) {
+        boolean rateBound = in.get("rate") instanceof Map<?, ?> r && r.get("bind") != null;
+        boolean scaleBound = in.get("scale") instanceof Map<?, ?> s && s.get("bind") != null;
+        if (!rateBound && !scaleBound) return spawnRate(name, in.get("rate"), in.get("scale"));
+        if (rateBound && scaleBound) throw new IllegalArgumentException(name + ": spawn_rate's rate and scale both bound is not read yet");
+        String input = rateBound ? "rate" : "scale";
+        Map<?, ?> source = (Map<?, ?>) in.get(input);
+        CgModuleTypes.Module declared = CgModuleTypes.builtIn().get(moduleId(entry));
+        CgProperty property = property(declared != null ? declared.inputs().properties() : null, input);
+        if (!(new CgVfxFormCompiler(new CgVfxCurveBlock(), id -> null).compile(idOf(entry, "rate"), property, source)
+                instanceof CgVfxFormInput.Binding bind) || !bind.path().startsWith("user.")) {
+            throw new IllegalArgumentException(name + ": spawn_rate's " + input + " " + source + " is not read yet: a user parameter");
+        }
+        CgVfxSpawnRate rest = spawnRate(name, rateBound ? 1.0 : in.get("rate"), rateBound ? in.get("scale") : null);
+        return rest.bound(new CgVfxSpawnRate.Bound(input, bind, source));
+    }
+
+    /**
      * {@code spawn_rate}'s rate times its scale: each a number, a range drawn each step, or a curve by the loop's seconds,
      * as Cascade evaluates its rate's distribution at the emitter's time each tick. Two ranges at once are not read.
      */
     private static CgVfxSpawnRate spawnRate(String name, Object rate, Object scale) {
+        // Cascade's UniformCurve: the scale drawn each tick between two curves at the emitter's time.
+        if (scale instanceof Map<?, ?> f && (NS + "random_range").equals(f.get("fn")) && f.get("inputs") instanceof Map<?, ?> between
+                && between.get("min") instanceof Map<?, ?> lo && lo.get("curve") != null
+                && between.get("max") instanceof Map<?, ?> hi && hi.get("curve") != null) {
+            return spawnRate(name, rate, lo).scaleTo(keyframes(name, hi, "loop"));
+        }
         boolean rateCurve = rate instanceof Map<?, ?> r && r.get("curve") != null;
         boolean scaleCurve = scale instanceof Map<?, ?> s && s.get("curve") != null;
         float[] ends = rateCurve ? new float[]{1f, 1f} : rangeOf(rate);

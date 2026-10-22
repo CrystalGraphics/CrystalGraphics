@@ -415,6 +415,48 @@ public class CgVfxEmitterAssetsTest {
         refuses(tree, "chained by scaling");
     }
 
+    /**
+     * Cascade's spawn and look values in the forms its kits write: a rate bound to a user parameter, a scale drawn
+     * between two curves, a rate per block by the loop, a colour picked from two ends and an alpha rolled each tick;
+     * each read, and written back alike.
+     */
+    @Test
+    public void spawnAndLookFormsRoundTrip() {
+        Object falling = Map.of("curve", Map.of("samples", Map.of("range", List.of(0.0, 0.5), "values", List.of(1.0, 0.0))), "by", "loop");
+        Object rising = Map.of("curve", Map.of("samples", Map.of("range", List.of(0.0, 0.5), "values", List.of(0.0, 2.0))), "by", "loop");
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 64));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                        "inputs", Map.of("loop", "once", "duration", 1.0)),
+                Map.of("id", "rate", "module", "crystalgraphics:spawn_rate", "inputs", Map.of("rate", Map.of("bind", "user.SpawnOff",
+                        "default", 20.0, "remap", Map.of("in", List.of(0.0, 1.0), "out", List.of(0.0, 1.0)), "mode", "direct"),
+                        "scale", Map.of("fn", "crystalgraphics:random_range", "inputs", Map.of("min", falling, "max", rising)))),
+                Map.of("id", "per_unit", "module", "crystalgraphics:spawn_per_unit", "inputs", Map.of("per_unit", falling))));
+        tree.put("particle_update", List.of(Map.of("id", "tint", "module", "crystalgraphics:color", "inputs", Map.of(
+                        "color", Map.of("pick", List.of(List.of(0.75, 1.5, 30.0), List.of(1.5, 7.5, 30.0))))),
+                Map.of("id", "fade", "module", "crystalgraphics:scale_color", "inputs", Map.of("alpha", Map.of("range", List.of(0.0, 0.3))))));
+        CgVfxEmitter e = CgVfxEmitterAssets.compile("forms", tree, null);
+        assertEquals("rate", e.rate.bound().input());
+        assertTrue(e.rate.scaleTo() != null && e.rate.drawn());
+        assertEquals(2f * 1f, e.rate.at(0.5f, 1f) / e.rate.at(0f, 0f) * 1f * e.rate.scale().at(0f), 1e-5f);
+        assertEquals(0.5f, e.perUnit.at(0.25f), 1e-5f);
+        assertTrue(e.lifeRolls.get(0).picks());
+        assertEquals(CgVfxLifeRoll.Target.ALPHA, e.lifeRolls.get(1).target());
+
+        CgVfxEmitter back = CgVfxEmitterAssets.compile("forms", CgVfxEmitterAssets.write(e), null);
+        assertEquals(e.rate.bound().source(), back.rate.bound().source());
+        for (float t = 0f; t <= 0.5f; t += 0.125f) {
+            assertEquals("rate at " + t, e.rate.at(t, 0.3f), back.rate.at(t, 0.3f), 1e-4f);
+            assertEquals("per block at " + t, e.perUnit.at(t), back.perUnit.at(t), 1e-4f);
+        }
+        assertEquals(e.lifeRolls.size(), back.lifeRolls.size());
+        for (int i = 0; i < e.lifeRolls.size(); i++) {
+            assertEquals(e.lifeRolls.get(i).picks(), back.lifeRolls.get(i).picks());
+            assertArrayEquals(e.lifeRolls.get(i).to(), back.lifeRolls.get(i).to(), 0f);
+        }
+    }
+
     private static void refuses(Map<String, Object> tree, String why) {
         try {
             CgVfxEmitterAssets.compile("orbits", tree, null);
@@ -464,7 +506,8 @@ public class CgVfxEmitterAssetsTest {
         // Its state as written: the class keeps no equals of its own.
         assertEquals(n + " state", stack(e, "emitter_update").get(0).toString(), stack(back, "emitter_update").get(0).toString());
         assertEquals(n + " bursts", Arrays.asList(e.bursts), Arrays.asList(back.bursts));
-        assertEquals(n + " per unit", e.perUnit, back.perUnit);
+        assertEquals(n + " per unit", e.perUnit.perBlock(), back.perUnit.perBlock(), 0f);
+        for (int i = 0; i <= 10; i++) near(n + " per unit's scale", e.perUnit.scale().at(i / 10f), back.perUnit.scale().at(i / 10f));
         assertEquals(n + " max step", e.maxStep, back.maxStep, 0f);
         assertArrayEquals(n + " rasterized", e.rasterized, back.rasterized, 0f);
         assertEquals(n + " rate", e.rate.perSecond(), back.rate.perSecond(), 0f);

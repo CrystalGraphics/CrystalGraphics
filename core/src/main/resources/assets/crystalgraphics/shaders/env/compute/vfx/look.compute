@@ -207,9 +207,13 @@ void Look() {
         }
         for (int i = 0, l = at + _LifeRollAt; i < _LifeRolls; i++) {
             // CgVfxLifeRoll, Cascade's size and colour over life on a uniform: rolled again each step, keyed by its age;
-            // a header, then two ends, or two curves by life where its code is past 2.
+            // a header, then two ends, or two curves by life where its code is 3 to 5; past 5, one end or the other
+            // (Cascade's bUseExtremes).
             vec4 sel = CURVES(l);
-            int code = int(sel.w + 0.5), target = code % 3;
+            int code = int(sel.w + 0.5);
+            bool picks = code >= 6;
+            if (picks) code -= 6;
+            int target = code % 3;
             vec3 lo, hi;
             if (code >= 3) {
                 lo = look_curve(l + 1, t).xyz;
@@ -222,7 +226,9 @@ void Look() {
             }
             uint key = bits ^ floatBitsToUint(age);
             vec3 r = vec3(fx_rand(key, uint(i), 50u), fx_rand(key, uint(i), 51u), fx_rand(key, uint(i), 52u));
-            vec3 m = mix(lo, hi, vec3(r[int(sel.x)], r[int(sel.y)], r[int(sel.z)]));
+            vec3 rolled = vec3(r[int(sel.x)], r[int(sel.y)], r[int(sel.z)]);
+            if (picks) rolled = step(vec3(0.5), rolled);
+            vec3 m = mix(lo, hi, rolled);
             if (target == 0) shape.xyz *= m;
             else if (target == 1) tint.rgb *= m;
             else tint.a *= m.x;
