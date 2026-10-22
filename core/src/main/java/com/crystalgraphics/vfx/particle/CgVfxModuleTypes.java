@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -76,6 +77,10 @@ public final class CgVfxModuleTypes {
 
     private static final CgTypes REGISTRY = CgTypes.create();
     private static final CgValueType SHAPE = CgValueType.enumOf("sphere", "box", "plane");
+    private static final CgVfxModule.BeamSource.Tangent[] TANGENTS = CgVfxModule.BeamSource.Tangent.values();
+    private static final CgValueType TANGENT = CgValueType.enumOf("direct", "user_set", "distribution");
+    private static final String[] MODIFIER_FLAGS = {"modify_position", "scale_position", "modify_tangent", "scale_tangent",
+            "modify_strength", "scale_strength"};
     private static final Map<String, Kind<?>> BY_ID = new LinkedHashMap<>();
     private static final Map<Class<?>, Kind<?>> BY_CLASS = new LinkedHashMap<>();
 
@@ -350,6 +355,75 @@ public final class CgVfxModuleTypes {
                 (m, in) -> in.shape(m.shape()).b("inside", m.inside()).v3("offset", m.x(), m.y(), m.z())
                         .f("plane_radius", planeRadius(m.shape())),
                 r -> new CgVfxModule.Kill(r.shape(), r.f("offset", 0), r.f("offset", 1), r.f("offset", 2), r.b("inside")));
+        kind("beam_source", CgVfxModule.BeamSource.class, t -> beamEnd(t, false),
+                (m, in) -> beamEnd(in, m.x(), m.y(), m.z(), m.absolute(), m.tx(), m.ty(), m.tz(), m.method(), m.strength(),
+                        m.lock(), m.lockTangent(), m.lockStrength()),
+                r -> new CgVfxModule.BeamSource(r.f("point", 0), r.f("point", 1), r.f("point", 2), r.b("absolute"),
+                        r.f("tangent", 0), r.f("tangent", 1), r.f("tangent", 2), TANGENTS[r.i("tangent_method")],
+                        r.f("strength"), r.b("lock"), r.b("lock_tangent"), r.b("lock_strength")));
+        kind("beam_target", CgVfxModule.BeamTarget.class, t -> beamEnd(t, true),
+                (m, in) -> beamEnd(in, m.x(), m.y(), m.z(), m.absolute(), m.tx(), m.ty(), m.tz(), m.method(), m.strength(),
+                        m.lock(), m.lockTangent(), m.lockStrength()).f("lock_radius", m.lockRadius()).f("speed", m.speed()),
+                r -> new CgVfxModule.BeamTarget(r.f("point", 0), r.f("point", 1), r.f("point", 2), r.b("absolute"),
+                        r.f("tangent", 0), r.f("tangent", 1), r.f("tangent", 2), TANGENTS[r.i("tangent_method")],
+                        r.f("strength"), r.b("lock"), r.b("lock_tangent"), r.b("lock_strength"), r.f("lock_radius"), r.f("speed")));
+        // Words as beam.compute's Noise reads them from the parameter row: keep the order.
+        kind("beam_noise", CgVfxModule.BeamNoise.class,
+                t -> { t.property("frequency", CgValueType.INT); t.property("frequency_low", CgValueType.INT);
+                    fl(t, "lock_time"); t.property("smooth", CgValueType.BOOL);
+                    v3(t, "range_min"); t.property("oscillate", CgValueType.BOOL);
+                    v3(t, "range_max"); t.property("uniform", CgValueType.BOOL);
+                    v3(t, "speed"); fl(t, "lock_radius", "range_scale", "tangent_strength");
+                    t.property("tessellation", CgValueType.INT); fl(t, "tension", "frequency_distance", "scale");
+                    t.property("target_noise", CgValueType.BOOL); t.property("sheets", CgValueType.INT).defaultValue(1); },
+                (m, in) -> in.i("frequency", m.frequency()).i("frequency_low", m.frequencyLow()).f("lock_time", m.lockTime())
+                        .b("smooth", m.smooth()).v3("range_min", m.minX(), m.minY(), m.minZ()).b("oscillate", m.oscillate())
+                        .v3("range_max", m.maxX(), m.maxY(), m.maxZ()).b("uniform", m.uniform())
+                        .v3("speed", m.speedX(), m.speedY(), m.speedZ()).f("lock_radius", m.lockRadius())
+                        .f("range_scale", m.rangeScale()).f("tangent_strength", m.tangentStrength())
+                        .i("tessellation", m.tessellation()).f("tension", m.tension())
+                        .f("frequency_distance", m.frequencyDistance()).f("scale", m.scale())
+                        .b("target_noise", m.targetNoise()).i("sheets", m.sheets()),
+                r -> new CgVfxModule.BeamNoise(r.i("frequency"), r.i("frequency_low"), r.f("lock_time"), r.b("smooth"),
+                        r.f("range_min", 0), r.f("range_min", 1), r.f("range_min", 2),
+                        r.f("range_max", 0), r.f("range_max", 1), r.f("range_max", 2), r.b("uniform"), r.b("oscillate"),
+                        r.f("speed", 0), r.f("speed", 1), r.f("speed", 2), r.f("lock_radius"), r.f("range_scale"),
+                        r.f("tangent_strength"), r.i("tessellation"), r.f("tension"), r.f("frequency_distance"), r.f("scale"),
+                        r.b("target_noise"), r.i("sheets")));
+        kind("beam_modifier", CgVfxModule.BeamModifier.class,
+                t -> { v3(t, "position"); t.property("target", CgValueType.BOOL); v3(t, "tangent");
+                    t.property("absolute_tangent", CgValueType.BOOL); fl(t, "strength");
+                    for (String b : MODIFIER_FLAGS) t.property(b, CgValueType.BOOL); },
+                (m, in) -> in.v3("position", m.x(), m.y(), m.z()).b("target", m.target()).v3("tangent", m.tx(), m.ty(), m.tz())
+                        .b("absolute_tangent", m.absoluteTangent()).f("strength", m.strength())
+                        .b("modify_position", m.modifyPosition()).b("scale_position", m.scalePosition())
+                        .b("modify_tangent", m.modifyTangent()).b("scale_tangent", m.scaleTangent())
+                        .b("modify_strength", m.modifyStrength()).b("scale_strength", m.scaleStrength()),
+                r -> new CgVfxModule.BeamModifier(r.b("target"), r.f("position", 0), r.f("position", 1), r.f("position", 2),
+                        r.b("modify_position"), r.b("scale_position"), r.f("tangent", 0), r.f("tangent", 1), r.f("tangent", 2),
+                        r.b("modify_tangent"), r.b("scale_tangent"), r.b("absolute_tangent"), r.f("strength"),
+                        r.b("modify_strength"), r.b("scale_strength")));
+    }
+
+    /** A beam end's inputs, as {@code fx_beam_source}/{@code fx_beam_target} read them; a target's two more. */
+    private static void beamEnd(CgType.Builder t, boolean target) {
+        v3(t, "point");
+        t.property("absolute", CgValueType.BOOL);
+        v3(t, "tangent");
+        t.property("tangent_method", TANGENT).defaultValue("direct");
+        fl(t, "strength");
+        t.property("lock", CgValueType.BOOL);
+        t.property("lock_tangent", CgValueType.BOOL);
+        t.property("lock_strength", CgValueType.BOOL);
+        if (target) fl(t, "lock_radius", "speed");
+    }
+
+    private static Inputs beamEnd(Inputs in, float x, float y, float z, boolean absolute, float tx, float ty, float tz,
+                                  CgVfxModule.BeamSource.Tangent method, float strength, boolean lock, boolean lockTangent,
+                                  boolean lockStrength) {
+        in.v3("point", x, y, z).b("absolute", absolute).v3("tangent", tx, ty, tz);
+        in.map.put("tangent_method", method.name().toLowerCase(Locale.ROOT));
+        return in.f("strength", strength).b("lock", lock).b("lock_tangent", lockTangent).b("lock_strength", lockStrength);
     }
 
     private CgVfxModuleTypes() {

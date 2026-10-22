@@ -124,6 +124,12 @@ public final class CgBindingPoints {
      */
     public static Binding PARTICLE_ORDER;
 
+    /**
+     * Reserved binding pair for {@code CgParticleBeamBuffer}, a beam draw's noise points (one below
+     * {@link #PARTICLE_ORDER}'s). Read from the vertex stage.
+     */
+    public static Binding PARTICLE_BEAMS;
+
     /** How many buffers a material's {@code Buffers { }} may declare. */
     public static final int MATERIAL_BUFFER_COUNT = 4;
 
@@ -260,6 +266,7 @@ public final class CgBindingPoints {
         PROPERTY_ROWS = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         GLOBALS = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         PARTICLE_ORDER = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
+        PARTICLE_BEAMS = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         maxSsboBindings -= MATERIAL_BUFFER_COUNT;
         MATERIAL_BUFFERS_SSBO = maxSsboBindings;
 

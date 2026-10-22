@@ -1,0 +1,121 @@
+// Every beam's run (CgVfxBeams): after a step, each live beam particle's state for its strip, one element a vec4,
+// written from the step's record and the last step's run. A run is a tag (1 + its particle's id, the picks it was
+// written at, its noise tessellation and tangent strength), then the record's BEAM tail (fx_beam.glsl), FX_BEAM_HEADER
+// vec4s in all, then its current noise points, then the next ones a smooth beam heads for. A run belongs to spawn ids
+// alike modulo its slot's capacity, so a tag naming another particle is a newborn's. A scatter, so it runs at every
+// tier: it reads the last step's runs and writes this one's, which Keep then copies back, so a draw reads one buffer.
+//
+// Picks (ParticleBeamModules.cpp:1428-1457, :1524-1544): at birth each point rolls in range min..max, a uniform range
+// oscillating takes its extremes, alternating along the beam (a smooth beam: its points at the top, the next at the
+// bottom); a pick after birth takes the noise's next extreme, which Cascade toggles once a particle an update, here by
+// the particle's id and its picks. Smooth points (ParticleSystemRender.cpp:2509-2524) move toward the next by speed
+// times the seconds since the pick, arriving within the lock radius on every axis, each time a sheet of the beam is
+// filled: twice a sheet a frame.
+#pragma kernel Noise scatter
+#pragma kernel Keep map
+
+#include "crystalgraphics:shaders/lib/vfx/fx_rand.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_record.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_beam.glsl"
+
+Properties {
+    _RecordVectors ("A record's uvec4s: its pool's layout",                    int) = 4
+    _BeamAt        ("The BEAM tail's word in a record",                         int) = 0
+    _ParamRow      ("A parameter row's vec4s",                                  int) = 0
+    _NoiseAt       ("The beam_noise module's first vec4 in a row; -1 for none", int) = -1
+    _Points        ("Noise points a beam keeps: CgVfxShape.beamPoints",         int) = 0
+}
+
+Buffers {
+    RECORDS ("Particles, after the step",                                   uvec4, readonly)
+    LIVE    ("How many are alive",                                          uint,  readonly)
+    PARAMS  ("Parameter rows",                                              vec4,  readonly)
+    RUNS    ("Each slot's beams: first vec4, beams (its capacity), vec4s a beam, 0", uvec4, readonly)
+    LAST    ("Every beam's run, as the last step wrote it",                 vec4,  readonly)
+    NEXT    ("Every beam's run, as this step writes it",                    vec4,  writeonly)
+    WRITTEN ("Keep: NEXT, as Noise wrote it",                               vec4,  readonly)
+    KEPT    ("Keep: LAST, for the next step",                               vec4,  writeonly)
+}
+
+float beam_word(int r, int w) {
+    return uintBitsToFloat(RECORDS(r + w / 4)[w % 4]);
+}
+
+vec4 beam_tail(int r, int v) {
+    int w = _BeamAt + v * 4;
+    return vec4(beam_word(r, w), beam_word(r, w + 1), beam_word(r, w + 2), beam_word(r, w + 3));
+}
+
+// Point j's pick: which 0 the point, 1 the next a smooth beam heads for.
+vec3 beam_pick(int j, int which, bool born, float picks, uint seed, uint id, vec4 m0, vec4 m1, vec4 m2) {
+    float extreme = 0.0;
+    if (m2.w > 0.5 && m1.w > 0.5) {
+        if (!born) extreme = ((id + uint(picks)) & 1u) == 0u ? 1.0 : -1.0;
+        else if (m0.w > 0.5) extreme = which == 0 ? 1.0 : -1.0;
+        else extreme = (j & 1) == 0 ? 1.0 : -1.0;
+    }
+    if (extreme > 0.0) return m2.xyz;
+    if (extreme < 0.0) return m1.xyz;
+    uint key = seed ^ (uint(picks) * 0x9E3779B1u);
+    uint k = uint(j * 8 + which * 4);
+    return mix(m1.xyz, m2.xyz, vec3(fx_rand(key, id, k), fx_rand(key, id, k + 1u), fx_rand(key, id, k + 2u)));
+}
+
+void Noise() {
+    int per = FX_BEAM_HEADER + 2 * _Points;
+    int e = CG_ELEMENT / per, k = CG_ELEMENT - e * per;
+    if (e >= int(LIVE(0))) return;
+    int r = e * _RecordVectors;
+    uvec4 heatId = RECORDS(r + FX_RECORD_HEAT_ID);
+    uint id = heatId.y;
+    uvec4 run = RUNS(int(heatId.z));
+    if (run.y == 0u) return;
+    int at = int(run.x + (id % run.y) * run.z);
+    int row = int(heatId.w) * _ParamRow + max(_NoiseAt, 0);
+    vec4 noise = beam_tail(r, FX_BEAM_NOISE - 1);
+    float picks = noise.z, clock = noise.y;
+    if (k == 0) {
+        vec4 m4 = _NoiseAt >= 0 ? PARAMS(row + 4) : vec4(0.0);
+        NEXT_STORE(at, vec4(float(id & 16777215u) + 1.0, picks, max(m4.z, 1.0), m4.y));
+        return;
+    }
+    if (k < FX_BEAM_HEADER) {
+        NEXT_STORE(at + k, beam_tail(r, k - 1));
+        return;
+    }
+    vec4 m0 = PARAMS(row), m1 = PARAMS(row + 1), m2 = PARAMS(row + 2), m3 = PARAMS(row + 3), m5 = PARAMS(row + 5);
+    vec4 tag = LAST(at);
+    bool born = abs(tag.x - float(id & 16777215u) - 1.0) > 0.5;
+    bool picked = born || tag.y != picks;
+    bool smoothed = m0.w > 0.5;
+    int j = (k - FX_BEAM_HEADER) % _Points;
+    bool isNext = k >= FX_BEAM_HEADER + _Points;
+    uint seed = RECORDS(r + FX_RECORD_LIFE_SEED).y;
+    int pointAt = at + FX_BEAM_HEADER + j, nextAt = pointAt + _Points;
+    vec3 point = LAST(pointAt).xyz, next = LAST(nextAt).xyz;
+    if (born) {
+        point = beam_pick(j, 0, true, picks, seed, id, m0, m1, m2);
+        next = smoothed ? beam_pick(j, 1, true, picks, seed, id, m0, m1, m2) : point;
+    } else if (picked) {
+        if (m0.z > 1e-4 && smoothed) next = beam_pick(j, 1, false, picks, seed, id, m0, m1, m2);
+        else point = beam_pick(j, 0, false, picks, seed, id, m0, m1, m2);
+    }
+    if (isNext) {
+        NEXT_STORE(nextAt, vec4(next, 0.0));
+        return;
+    }
+    if (smoothed && m0.z >= 0.0) {
+        int moves = 2 * max(int(m5.w + 0.5), 1);
+        for (int i = 0; i < moves; i++) {
+            vec3 d = next - point;
+            float l = length(d);
+            vec3 check = point + (l > 1e-8 ? d / l : vec3(0.0)) * m3.xyz * clock;
+            point = all(lessThan(abs(check - next), vec3(m3.w))) ? next : check;
+        }
+    }
+    NEXT_STORE(pointAt, vec4(point, 0.0));
+}
+
+void Keep() {
+    KEPT_WRITE(WRITTEN(CG_ELEMENT));
+}

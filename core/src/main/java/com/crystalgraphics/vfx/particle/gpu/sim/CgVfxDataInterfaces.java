@@ -414,6 +414,31 @@ public final class CgVfxDataInterfaces {
         @Override public void forget() { CgVfxSpawnMeshes.forget(); }
     });
 
+    /**
+     * What a beam kind reads of its instance ({@code CgVfxModule.BeamSource} and the rest), as an {@code FxBeamFrame}
+     * ({@code fx_beam.glsl}): its orientation, its origin in the world and its loop's seconds. A shape taking it with a
+     * {@code beam_noise} keeps its beams' noise points ({@code CgVfxBeams}), written after each step.
+     */
+    public static final CgVfxDataInterface BEAM = register(new Engine("beam", "FxBeamFrame", "step_beam_frame(inst)") {
+        @Override public List<String> libraries() { return List.of("crystalgraphics:shaders/lib/vfx/fx_beam.glsl"); }
+        @Override public String functions(int lanesAt) {
+            return """
+
+                    FxBeamFrame step_beam_frame(int inst) {
+                        FxBeamFrame b;
+                        b.turn = step_instance(inst + 7);
+                        b.origin = vec3(ivec3(INSTANCES(inst + 3).xyz)) + step_instance(inst + 4).xyz;
+                        b.loop = step_instance(inst + 5).w;
+                        return b;
+                    }
+                    """;
+        }
+        @Override public void prepare() { CgVfxBeams.prepare(); }
+        @Override public void reserve(CgRecording recording, CgVfxParticlePool pool) { pool.reserveBeams(recording); }
+        @Override public void afterStep(CgComputePass pass, CgVfxParticlePool pool) { pool.stepBeams(pass); }
+        @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { }
+    });
+
     private CgVfxDataInterfaces() {
     }
 

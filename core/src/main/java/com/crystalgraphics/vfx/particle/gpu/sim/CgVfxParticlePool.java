@@ -303,6 +303,9 @@ public final class CgVfxParticlePool {
 
     // The GPU half: made at the first recording, grown as slots open.
     private CgKernel step, look, store, gridKeys, gridRuns;
+    /** Its beams' noise points, where its shape draws beams with noise. */
+    @Nullable
+    private final CgVfxBeams beams;
     private CgGraphBuffer records, drawn, paramBuffer, curveBuffer, instanceBuffer, spawnBuffer, history, ringTable;
     /** The neighbour grid (CgVfxDataInterfaces.NEIGHBOURS): each record's key and index, sorted; each hashed cell's run. */
     private CgGraphBuffer cellKeys, cellValues, cellRuns;
@@ -343,6 +346,7 @@ public final class CgVfxParticlePool {
         gridKeysName = name + ".grid-keys";
         gridValuesName = name + ".grid-values";
         gridRunsName = name + ".grid-runs";
+        beams = shape.beams() ? new CgVfxBeams(this, name) : null;
     }
 
     /**
@@ -518,6 +522,7 @@ public final class CgVfxParticlePool {
         records = drawn = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = feedBuffer = counts[0] = counts[1] = null;
         history = ringTable = historyFrom = null;
         cellKeys = cellValues = cellRuns = null;
+        if (beams != null) beams.forget();
         historyDrops.clear();
         historyFresh = false;
         current = storage = 0;
@@ -1129,6 +1134,7 @@ public final class CgVfxParticlePool {
         records = drawn = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = counts[0] = counts[1] = null;
         history = ringTable = historyFrom = null;
         cellKeys = cellValues = cellRuns = null;
+        if (beams != null) beams.release(recording);
         historyDrops.clear();
     }
 
@@ -1173,6 +1179,7 @@ public final class CgVfxParticlePool {
         Arrays.fill(socketPrev, slot * CgVfxSockets.MAX * 4, (slot + 1) * CgVfxSockets.MAX * 4, 0);
         slotSourceReach[slot] = 0f;
         ringPoints[slot] = emitter.trailPoints();
+        if (beams != null) beams.open(slot, capacity);
         if (ringPoints[slot] > 0) {
             ringFirst[slot] = takeRing(capacity * ringPoints[slot]);
             ringSlots++;
@@ -1191,6 +1198,7 @@ public final class CgVfxParticlePool {
         releaseRow(emitter);
         giveTextures(slot);
         capacity -= slotCapacity[slot];
+        if (beams != null) beams.close(slot);
         if (ringPoints[slot] > 0) {
             giveRing(ringFirst[slot], slotCapacity[slot] * ringPoints[slot]);
             ringPoints[slot] = 0;
@@ -1656,6 +1664,37 @@ public final class CgVfxParticlePool {
     /** How many records the newest version of {@link #records()} holds: a {@code uint} at word 0. */
     public CgGraphBuffer live() {
         return counts[current];
+    }
+
+    /** Each slot's parameter row: what its Step reads as {@code PARAMS}. */
+    CgGraphBuffer params() {
+        return paramBuffer;
+    }
+
+    /** Before a step of a shape taking {@code CgVfxDataInterfaces.BEAM}: its beams' runs. */
+    void reserveBeams(CgRecording recording) {
+        if (beams != null) beams.reserve(recording, slotCount);
+    }
+
+    /** After each step: its beams' runs, from the step's records. */
+    void stepBeams(CgComputePass pass) {
+        if (beams != null) beams.step(pass);
+    }
+
+    /**
+     * Every beam's run as the newest step wrote it, vec4s each: a tag and its record's beam state
+     * ({@code fx_beam.glsl}'s {@code FX_BEAM_*}), then {@code shape().beamPoints()} noise points, then as many it heads
+     * for; null where its particles are no beams. A beam draw binds it at {@code CgBindingPoints.PARTICLE_BEAMS}.
+     */
+    @Nullable
+    public CgGraphBuffer beamRuns() {
+        return beams == null ? null : beams.runs();
+    }
+
+    /** Each slot's beam runs, a uvec4 a slot: its first vec4, its beams, vec4s a beam, 0; null as {@link #beamRuns()}. */
+    @Nullable
+    public CgGraphBuffer beamTable() {
+        return beams == null ? null : beams.table();
     }
 
     /**

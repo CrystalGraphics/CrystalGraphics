@@ -4,6 +4,7 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.CgVfxModuleTypes;
 import com.crystalgraphics.vfx.particle.CgVfxLifeBind;
 import com.crystalgraphics.vfx.particle.CgVfxLifeRoll;
@@ -624,6 +625,21 @@ public final class CgVfxShape {
     /** The drawn slots its particles carry, a bit each ({@code CgVfxDrawnChannel.DYNAMIC_0} to {@code SPRITE}). */
     public int drawnMask() {
         return drawnMask;
+    }
+
+    /** Whether its particles are beams ({@code CgVfxModule.BeamSource} and the rest), each keeping a run in its pool. */
+    public boolean beams() {
+        return beams;
+    }
+
+    /** Noise points each beam of it keeps (a power of two), 0 without beam noise. */
+    public int beamPoints() {
+        return beamPoints;
+    }
+
+    /** Where its {@code beam_noise} module's words start in a parameter row, in vec4s; -1 without one. */
+    public int beamNoiseAt() {
+        return beamNoiseAt;
     }
 
     /**

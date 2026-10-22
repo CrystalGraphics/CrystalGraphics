@@ -15,7 +15,10 @@
 // hit.w is FX_HIT_ENTITY. A kind kills a particle by setting life to its age: it dies, and its death events fire, at the
 // end of this step.
 struct FxParticle {
-    vec3 position, previous, velocity;
+    vec4 color;
+    vec3 position, previous, velocity, scale, turn, turnRate;
+    // A beam's state (fx_beam.glsl's FX_BEAM_*): stored only where a kind writes it.
+    vec4 beamSource, beamSourceTangent, beamTarget, beamTargetTangent, beamNoise, beamTurn;
     float age, life, size, seed, spin, spinRate, heat;
     bool resting;
     uint id, slot, collisions, hitEntity;

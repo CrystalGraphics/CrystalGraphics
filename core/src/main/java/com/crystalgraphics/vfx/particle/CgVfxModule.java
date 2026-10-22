@@ -880,6 +880,168 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
     }
 
     /**
+     * A beam's start, Cascade's BeamSource ({@code ParticleBeamModules.cpp:1874-2130}): each beam particle's source
+     * point, its tangent and the tangent's strength, resolved at its birth and again each step unless locked. A beam
+     * emitter's renderer is a {@code beam}; its far end is {@link BeamTarget}.
+     *
+     * <pre>{@code
+     * .module(new CgVfxModule.BeamSource(0f, 0f, 0f, false, 1f, 0f, 0f, Tangent.DIRECT, 25f, true, true, true))
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code point} is from the effect's origin, turned with it, unless {@code absolute}: then a world position.</li>
+     *   <li>{@link Tangent#DIRECT} is the effect's own forward (+X turned by its rotation), and ignores {@code tangent}.</li>
+     *   <li>A range on {@code point} rolls once a particle: a locked end keeps it, as Cascade's does.</li>
+     * </ul>
+     */
+    record BeamSource(float x, float y, float z, boolean absolute, float tx, float ty, float tz, Tangent method,
+                      float strength, boolean lock, boolean lockTangent, boolean lockStrength) implements CgVfxModule {
+        private static final CgVfxDataInterface[] BEAM = {CgVfxDataInterfaces.BEAM};
+
+        /**
+         * How an end's tangent is found ({@code ParticleBeamModules.cpp:2044-2092}): the effect's forward; {@code tangent}
+         * turned with the effect unless {@code absolute} (Cascade's user-set, which nothing sets here); or {@code tangent}
+         * as written.
+         */
+        public enum Tangent { DIRECT, USER_SET, DISTRIBUTION }
+
+        public BeamSource {
+            Objects.requireNonNull(method, "method");
+        }
+
+        @Override
+        public String gpuKind() {
+            return "beam_source";
+        }
+
+        @Override
+        public boolean afterSolve() {
+            return true;
+        }
+
+        @Override
+        public CgVfxDataInterface[] dataInterfaces() {
+            return BEAM;
+        }
+    }
+
+    /**
+     * A beam's far end, Cascade's BeamTarget ({@code ParticleBeamModules.cpp:2324-2560}): {@link BeamSource}'s inputs
+     * for the target, and how its end travels there. At {@code speed} 0 the beam reaches its target at once; above it the
+     * particle flies from the source at {@code speed} blocks a second and the beam is drawn to where it has got, locking
+     * on within {@code lockRadius} ({@code :300-326}).
+     *
+     * <pre>{@code
+     * .module(new CgVfxModule.BeamTarget(8f, 0f, 0f, false, -1f, 0f, 0f, BeamSource.Tangent.DIRECT, 25f, true, true, true, 0f, 0f))
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code speed} is its renderer's; an asset's compiler copies it here.</li>
+     * </ul>
+     */
+    record BeamTarget(float x, float y, float z, boolean absolute, float tx, float ty, float tz, BeamSource.Tangent method,
+                      float strength, boolean lock, boolean lockTangent, boolean lockStrength, float lockRadius, float speed)
+            implements CgVfxModule {
+        private static final CgVfxDataInterface[] BEAM = {CgVfxDataInterfaces.BEAM};
+
+        public BeamTarget {
+            Objects.requireNonNull(method, "method");
+        }
+
+        @Override
+        public String gpuKind() {
+            return "beam_target";
+        }
+
+        @Override
+        public boolean afterSolve() {
+            return true;
+        }
+
+        @Override
+        public CgVfxDataInterface[] dataInterfaces() {
+            return BEAM;
+        }
+    }
+
+    /**
+     * Lightning along a beam, Cascade's BeamNoise ({@code ParticleBeamModules.cpp:1372-1570}): {@code frequency + 1}
+     * points along it, each offset by a pick from {@code min..max} (blocks, in the effect's frame), picked again each
+     * {@code lockTime} seconds (each step at 0, never below 0). With {@code smooth} a new pick is where each point heads,
+     * at {@code speed} times the seconds since the pick, arriving within {@code lockRadius}.
+     *
+     * <pre>{@code
+     * .module(new CgVfxModule.BeamNoise(12, 0, 0.06f, false, -0.3f, -0.3f, -0.3f, 0.3f, 0.3f, 0.3f, true, false,
+     *         0.5f, 0.5f, 0.5f, 0f, 1f, 0f, 2, 0.5f, 0f, 1f, false, 1))
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code uniform} with {@code oscillate} alternates each point between {@code min} and {@code max}, as a uniform
+     *       distribution's extremes; otherwise each channel rolls between them.</li>
+     *   <li>{@code frequencyDistance} above 0 sets the points by the beam's length, one each that many blocks, at most
+     *       {@code frequency}, scaled by {@code scale}.</li>
+     *   <li>{@code sheets} is its renderer's: Cascade's smooth points move once each time a sheet is drawn.</li>
+     * </ul>
+     */
+    record BeamNoise(int frequency, int frequencyLow, float lockTime, boolean smooth, float minX, float minY, float minZ,
+                     float maxX, float maxY, float maxZ, boolean uniform, boolean oscillate, float speedX, float speedY,
+                     float speedZ, float lockRadius, float rangeScale, float tangentStrength, int tessellation,
+                     float tension, float frequencyDistance, float scale, boolean targetNoise, int sheets)
+            implements CgVfxModule {
+        private static final CgVfxDataInterface[] BEAM = {CgVfxDataInterfaces.BEAM};
+
+        public BeamNoise {
+            if (frequency < 1) throw new IllegalArgumentException("a beam's noise of frequency " + frequency);
+            if (sheets < 1) throw new IllegalArgumentException("a beam of " + sheets + " sheets");
+        }
+
+        @Override
+        public String gpuKind() {
+            return "beam_noise";
+        }
+
+        @Override
+        public boolean afterSolve() {
+            return true;
+        }
+
+        @Override
+        public CgVfxDataInterface[] dataInterfaces() {
+            return BEAM;
+        }
+    }
+
+    /**
+     * Shifts one end of a beam after it resolves, Cascade's BeamModifier ({@code ParticleBeamModules.cpp:1083-1180},
+     * {@code ParticleHelper.h}'s {@code FBeamParticleModifierPayloadData}): its position, tangent and strength each
+     * added to, or multiplied by where {@code scale...}, when {@code modify...}. A tangent is turned from +X onto the end's
+     * own unless {@code absoluteTangent}.
+     *
+     * <pre>{@code
+     * .module(new CgVfxModule.BeamModifier(true, 0f, 1f, 0f, true, false, 0f, 0f, 0f, false, false, false, 0f, false, false))
+     * }</pre>
+     *
+     * <ul>
+     *   <li>List it after its end's module. On an end that is locked it applies every step, so an offset adds up, as
+     *       Cascade's does.</li>
+     * </ul>
+     */
+    record BeamModifier(boolean target, float x, float y, float z, boolean modifyPosition, boolean scalePosition,
+                        float tx, float ty, float tz, boolean modifyTangent, boolean scaleTangent, boolean absoluteTangent,
+                        float strength, boolean modifyStrength, boolean scaleStrength) implements CgVfxModule {
+
+        @Override
+        public String gpuKind() {
+            return "beam_modifier";
+        }
+
+        @Override
+        public boolean afterSolve() {
+            return true;
+        }
+    }
+
+    /**
      * Cascade's velocity over life (ParticleModules_Velocity.cpp:266-330): each particle moves at its velocity times
      * {@code (x, y, z)}, or at {@code (x, y, z)} itself when {@code absolute}, while its velocity keeps what the forces
      * give it, as Cascade's base velocity does. A curve over life is its input's form.

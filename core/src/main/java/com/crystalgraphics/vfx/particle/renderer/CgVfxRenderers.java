@@ -113,7 +113,7 @@ public final class CgVfxRenderers {
             }
             case "system" -> throw new IllegalArgumentException(who + ": a system renderer places analytic emitters, which are not built yet");
             case "anim_trail" -> throw new IllegalArgumentException(who + ": an anim trail renderer is not built yet");
-            case "beam" -> throw new IllegalArgumentException(who + ": a beam renderer needs the beam modules, which are not built yet");
+            case "beam" -> beam(who, common, tree);
             case "light" -> throw new IllegalArgumentException(who + ": a light renderer needs the clustered light bins, which are not built yet");
             default -> throw new IllegalArgumentException(who + " has no kind '" + kind + "'");
         };
@@ -124,13 +124,14 @@ public final class CgVfxRenderers {
 
     /**
      * The usage a renderer draws its material as: sprites and arcs {@code sprites}, meshes and clips' parts {@code
-     * mesh_particles}, ribbons and trails {@code ribbons}.
+     * mesh_particles}, ribbons, trails and beams {@code ribbons} (Unreal's beam-and-trail usage).
      */
     public static CgMaterialUsage usage(CgVfxRendererProperties r) {
         if (r instanceof CgVfxMeshRendererProperties || r instanceof CgVfxSequenceRendererProperties) {
             return CgMaterialUsage.MESH_PARTICLES;
         }
-        if (r instanceof CgVfxRibbonRendererProperties || r instanceof CgVfxTrailsRendererProperties) {
+        if (r instanceof CgVfxRibbonRendererProperties || r instanceof CgVfxTrailsRendererProperties
+                || r instanceof CgVfxBeamRendererProperties) {
             return CgMaterialUsage.RIBBONS;
         }
         return CgMaterialUsage.SPRITES;
@@ -223,6 +224,33 @@ public final class CgVfxRenderers {
         return new Common(id, !Boolean.FALSE.equals(tree.get("enabled")), quality, integer(tree.get("sort_order_hint")),
                 Boolean.TRUE.equals(tree.get("motion_vectors")), material, definition, bind,
                 stringKeyed(tree.get("values")), Collections.unmodifiableList(keywords));
+    }
+
+    /**
+     * A beam renderer: Cascade's TypeDataBeam2 fields; what is not built fails by name. Its {@code distance} is read only
+     * by Cascade's distance method, which a beam with a target never takes.
+     */
+    private static CgVfxBeamRendererProperties beam(String who, Common common, Map<String, Object> tree) {
+        String unbuilt = null;
+        if (!"target".equals(String.valueOf(tree.getOrDefault("beam_method", "target")))) unbuilt = "beam_method " + tree.get("beam_method");
+        else if (!"none".equals(String.valueOf(tree.getOrDefault("taper_method", "none")))) unbuilt = "taper_method " + tree.get("taper_method");
+        else if (Boolean.FALSE.equals(tree.get("render_geometry"))) unbuilt = "render_geometry false";
+        else if (Boolean.TRUE.equals(tree.get("render_direct_line")) || Boolean.TRUE.equals(tree.get("render_lines"))
+                || Boolean.TRUE.equals(tree.get("render_tessellation"))) unbuilt = "its editor lines";
+        if (unbuilt != null) throw new IllegalArgumentException(who + " sets " + unbuilt + ", which is not built yet");
+        int sheets = tree.get("sheets") instanceof Number n ? n.intValue() : 1;
+        int points = integer(tree.get("interpolation_points"));
+        if (sheets < 1) throw new IllegalArgumentException(who + " has " + sheets + " sheets");
+        if (points < 0 || points > CgVfxBeamRendererProperties.MAX_INTERPOLATION_POINTS) {
+            throw new IllegalArgumentException(who + " has " + points + " interpolation points; 0 to "
+                    + CgVfxBeamRendererProperties.MAX_INTERPOLATION_POINTS);
+        }
+        int count = tree.get("max_beam_count") instanceof Number n ? n.intValue() : 0;
+        return new CgVfxBeamRendererProperties(common, tree, sheets, count < 1 ? 1 : count,
+                tree.get("speed") instanceof Number n ? n.floatValue() : 0f, points, integer(tree.get("up_vector_step_size")),
+                tree.get("texture_tile") instanceof Number n ? n.floatValue() : 1f,
+                tree.get("texture_tile_distance") instanceof Number n ? n.floatValue() : 0f,
+                Boolean.TRUE.equals(tree.get("always_on")));
     }
 
     private static CgVfxMeshRendererProperties mesh(String who, Common common, Map<String, Object> tree) {
@@ -325,6 +353,11 @@ public final class CgVfxRenderers {
     /** An arc renderer of id {@code id}. */
     public static Builder arc(String id) {
         return new Builder(id, "arc");
+    }
+
+    /** A beam renderer of id {@code id}: its particles need a beam_source and a beam_target. */
+    public static Builder beam(String id) {
+        return new Builder(id, "beam");
     }
 
     /** A trails renderer of id {@code id}. */

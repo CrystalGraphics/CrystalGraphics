@@ -24,7 +24,7 @@ import java.util.Map;
  *   <li>A kind no renderer is built for yet fails at compile, naming what builds it.</li>
  * </ul>
  */
-public sealed interface CgVfxRendererProperties permits CgVfxSpriteRendererProperties, CgVfxMeshRendererProperties,
+public sealed interface CgVfxRendererProperties permits CgVfxSpriteRendererProperties, CgVfxMeshRendererProperties, CgVfxBeamRendererProperties,
         CgVfxRibbonRendererProperties, CgVfxArcRendererProperties, CgVfxTrailsRendererProperties,
         CgVfxSequenceRendererProperties {
 

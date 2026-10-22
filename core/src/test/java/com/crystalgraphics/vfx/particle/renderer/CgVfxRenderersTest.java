@@ -75,7 +75,7 @@ public class CgVfxRenderersTest {
 
     @Test
     public void anUnbuiltKindFailsNamingWhatItNeeds() {
-        for (String kind : List.of("system", "anim_trail", "beam", "light")) {
+        for (String kind : List.of("system", "anim_trail", "light")) {
             IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                     () -> CgVfxRenderers.compile("sparks", Map.of("id", "r1", "kind", kind)));
             assertTrue(e.getMessage(), e.getMessage().contains("not built yet"));
