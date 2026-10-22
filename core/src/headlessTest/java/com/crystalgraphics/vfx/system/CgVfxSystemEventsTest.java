@@ -59,6 +59,33 @@ public class CgVfxSystemEventsTest {
         assertEquals(0, glints.events().size());
     }
 
+    /** Cascade's receiver: no source and no spawned handle, fed by every handle raising its trigger under its name. */
+    @Test
+    public void aNamedHandlerTakesEveryHandleRaisingItsNameAndSpawnsItsOwn() {
+        String raises = """
+                      particle_update:
+                        - { id: g, module: crystalgraphics:generate_event, inputs: { type: death, name: %s } }
+                """;
+        CgVfxSystemDefinition d = compile("""
+                _v: 1
+                emitters:
+                  - id: h1
+                %1$s%2$s  - id: h2
+                %1$s%2$s  - id: h3
+                %1$s%3$s  - id: h4
+                %1$s      events:
+                        - { id: e1, trigger: death, name: big, spawn: { count: 2 } }
+                """.formatted(EMITTER, raises.formatted("big"), raises.formatted("small")));
+        List<CgVfxEmitter> emitters = d.emitters();
+        CgVfxEmitter receiver = emitters.get(3);
+        for (int i = 0; i < 2; i++) {
+            assertEquals(1, emitters.get(i).events().size());
+            assertSame(receiver, emitters.get(i).events().get(0).child());
+            assertEquals(CgVfxEvent.Trigger.DEATH, emitters.get(i).events().get(0).trigger());
+        }
+        assertEquals("a name it does not raise feeds nothing", 0, emitters.get(2).events().size());
+    }
+
     @Test
     public void aSystemWritesItsEventsAsTheHandlersItRead() {
         CgVfxSystemDefinition d = compile(SPARKS);

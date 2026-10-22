@@ -142,8 +142,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final CgVfxMeshRotation meshRotation;
     final List<CgVfxLifeRoll> lifeRolls;
     final List<CgVfxLifeBind> lifeBinds;
-    /** Whether a collision event fires at each particle's first collision alone (Cascade's FirstTimeOnly). */
-    final boolean firstCollisionOnly;
+    /** The events it raises, its {@code generate_event} entries: what a handler's name and trigger are matched against. */
+    final List<CgVfxEventGenerator> generators;
     private final float sweptOut;
     /** Whether its lifetime is a form: the books then book every particle at its longest. */
     final boolean lifeFormed;
@@ -225,7 +225,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         meshRotation = b.meshRotation;
         lifeRolls = List.copyOf(b.lifeRolls);
         lifeBinds = List.copyOf(b.lifeBinds);
-        firstCollisionOnly = b.firstCollisionOnly;
+        generators = List.copyOf(b.generators);
         speedMin = b.speedMin;
         speedMax = Math.max(b.speedMax, high(CgVfxSpawnInput.SPEED, b.speedMax));
         lifeMin = b.lifeMin;
@@ -545,11 +545,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     }
 
     /**
-     * Whether the collision events put on it fire at each particle's first collision alone: its {@code generate_event}'s
-     * {@code first_time_only} (ParticleModules_Event.cpp:185-191, 4.21).
+     * The events it raises ({@link CgVfxEventGenerator}): its system puts a handler's event on it when one matches the
+     * handler's trigger and name.
      */
-    public boolean firstCollisionOnly() {
-        return firstCollisionOnly;
+    public List<CgVfxEventGenerator> generators() {
+        return generators;
     }
 
     @Override
@@ -773,7 +773,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private CgVfxMeshRotation meshRotation;
         private final List<CgVfxLifeRoll> lifeRolls = new ArrayList<>();
         private final List<CgVfxLifeBind> lifeBinds = new ArrayList<>();
-        private boolean firstCollisionOnly;
+        private final List<CgVfxEventGenerator> generators = new ArrayList<>();
         private final Map<String, String> ids = new HashMap<>();
         private final List<String> burstIds = new ArrayList<>();
         private final List<String> moduleIds = new ArrayList<>();
@@ -831,7 +831,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             meshRotation = e.meshRotation;
             lifeRolls.addAll(e.lifeRolls);
             lifeBinds.addAll(e.lifeBinds);
-            firstCollisionOnly = e.firstCollisionOnly;
+            generators.addAll(e.generators);
             speedMin = e.speedMin;
             speedMax = e.speedMax;
             lifeMin = e.lifeMin;
@@ -1121,9 +1121,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
-        /** Its collision events at each particle's first collision alone ({@link CgVfxEmitter#firstCollisionOnly()}). */
-        public Builder firstCollisionOnly(boolean only) {
-            firstCollisionOnly = only;
+        /** An event it raises ({@link CgVfxEmitter#generators()}). */
+        public Builder generator(CgVfxEventGenerator generator) {
+            generators.add(generator);
             return this;
         }
 

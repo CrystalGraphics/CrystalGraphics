@@ -25,6 +25,7 @@ import com.crystalgraphics.vfx.look.CgVfxUnit;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterAssets;
 import com.crystalgraphics.vfx.particle.CgVfxGridField;
+import com.crystalgraphics.vfx.particle.CgVfxEventGenerator;
 import com.crystalgraphics.vfx.particle.CgVfxEventHandler;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
@@ -345,15 +346,22 @@ public final class CgVfxSystemAssets {
         for (Map.Entry<String, CgVfxEmitter> receiver : base.entrySet()) {
             for (CgVfxEventHandler h : receiver.getValue().handlers()) {
                 String at = system + ": emitters." + receiver.getKey() + " events." + h.id();
-                if (!base.containsKey(h.source())) throw new IllegalArgumentException(at + ": its source " + h.source() + " is no enabled handle");
-                if (!h.source().equals(handle)) continue;
-                if (!base.containsKey(h.spawn())) throw new IllegalArgumentException(at + ": it spawns " + h.spawn() + ", no enabled handle");
-                CgVfxEmitter child = resolve(system, h.spawn(), base, done, path);
+                if (h.source() != null && !base.containsKey(h.source())) {
+                    throw new IllegalArgumentException(at + ": its source " + h.source() + " is no enabled handle");
+                }
+                // Cascade's receiver spawns into its own emitter.
+                String spawns = h.spawn() != null ? h.spawn() : receiver.getKey();
+                if (!base.containsKey(spawns)) throw new IllegalArgumentException(at + ": it spawns " + spawns + ", no enabled handle");
+                List<CgVfxEventGenerator> raising = raising(h, handle, base.get(handle));
+                if (raising == null) continue;
+                CgVfxEmitter child = resolve(system, spawns, base, done, path);
                 if (b == null) b = base.get(handle).toBuilder();
                 try {
                     CgVfxEvent event = h.compile(child);
-                    // Its source's generate_event: a collision event at each particle's first alone.
-                    if (base.get(handle).firstCollisionOnly() && event.trigger() == CgVfxEvent.Trigger.COLLISION) event = event.firings(1);
+                    if (event.trigger() == CgVfxEvent.Trigger.COLLISION && !raising.isEmpty()
+                            && raising.stream().allMatch(CgVfxEventGenerator::firstTimeOnly)) {
+                        event = event.firings(1);
+                    }
                     b.event(event);
                 } catch (RuntimeException failed) {
                     throw new IllegalArgumentException(at + ": " + why(failed), failed);
@@ -364,6 +372,21 @@ public final class CgVfxSystemAssets {
         CgVfxEmitter out = b == null ? base.get(handle) : b.build();
         done.put(handle, out);
         return out;
+    }
+
+    /**
+     * The generators of handle {@code handle} that feed handler {@code h}, or null where it is not {@code h}'s source:
+     * the one {@code h} names, or, naming none, any whose generator raises {@code h}'s trigger under {@code h}'s name
+     * (Cascade's receiver match, ParticleModules_Event.cpp:278). A source named with no event name feeds it whatever it
+     * raises.
+     */
+    @Nullable
+    private static List<CgVfxEventGenerator> raising(CgVfxEventHandler h, String handle, CgVfxEmitter source) {
+        if (h.source() != null && !h.source().equals(handle)) return null;
+        List<CgVfxEventGenerator> raising = new ArrayList<>();
+        for (CgVfxEventGenerator g : source.generators()) if (g.feeds(h.trigger(), h.name())) raising.add(g);
+        if (h.source() != null && h.name() == null) return raising;
+        return raising.isEmpty() ? null : raising;
     }
 
     /** Its message, or, lacking one, its type and the frame that threw it: a bare null names nothing. */

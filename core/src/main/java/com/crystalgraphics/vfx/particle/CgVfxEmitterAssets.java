@@ -211,8 +211,12 @@ public final class CgVfxEmitterAssets {
             float[] r = e.rasterized;
             modules.add(entry("rasterize", "grid_rasterize", map("density", list(r[0], r[1], r[2], r[3]))));
         }
-        if (e.firstCollisionOnly) {
-            modules.add(entry(e.id("generate_event"), "generate_event", map("type", "collision", "first_time_only", true)));
+        for (int i = 0; i < e.generators.size(); i++) {
+            CgVfxEventGenerator g = e.generators.get(i);
+            Map<String, Object> in = map("type", g.trigger());
+            if (!g.name().isEmpty()) in.put("name", g.name());
+            if (g.firstTimeOnly()) in.put("first_time_only", true);
+            modules.add(entry(e.id("generate_event_" + i), "generate_event", in));
         }
         writeDrawn(e, modules);
         Map<String, Integer> seen = new LinkedHashMap<>();
@@ -373,7 +377,7 @@ public final class CgVfxEmitterAssets {
         Map<?, ?> beam = beamRenderer(name, tree);
         if (beam != null) b.capacity(beam.get("max_beam_count") instanceof Number c && c.intValue() > 0 ? c.intValue() : 1);
 
-        int bursts = 0;
+        int bursts = 0, generators = 0;
         for (Map<?, ?> entry : entries(tree, "emitter_update")) {
             Map<?, ?> in = inputs(entry);
             switch (moduleId(entry)) {
@@ -410,6 +414,10 @@ public final class CgVfxEmitterAssets {
                 case "shape_location" -> shape(name, b, in, spawnId(b, entry, "shape"));
                 case "socket_location" -> sockets(name, b, in, spawnId(b, entry, "socket"));
                 case "initial_mesh_orientation" -> meshOrientation(name, b, in, spawnId(b, entry, "orientation"));
+                case "generate_event" -> {
+                    b.id("generate_event_" + generators, idOf(entry, "generate_event_" + generators++));
+                    generateEvent(name, in, b);
+                }
                 default -> throw new IllegalArgumentException(name + ": particle_spawn has no " + entry.get("module"));
             }
         }
@@ -492,6 +500,7 @@ public final class CgVfxEmitterAssets {
                     continue;
                 }
                 case "generate_event" -> {
+                    b.id("generate_event_" + generators, idOf(entry, "generate_event_" + generators++));
                     generateEvent(name, inputs(entry), b);
                     continue;
                 }
@@ -609,9 +618,9 @@ public final class CgVfxEmitterAssets {
 
     /**
      * {@code generate_event}: Cascade's EventGenerator, which runs nothing itself (ParticleModules_Event.cpp:51-57) and
-     * reports every event of its type where its frequency is 0 (:126, :156). The events it reports are this emitter's
-     * handlers' triggers (an {@code events:} entry naming it as the source), so a generator at its defaults declares nothing more; one that filters
-     * (every n-th, first or last only, the reflected impact vector) fails by name until the filter is built.
+     * reports every event of its type where its frequency is 0 (:126, :156), under its name: the handlers its trigger and
+     * name match receive them. One that filters (every n-th, last only, the reflected impact vector) fails by name until
+     * the filter is built.
      */
     private static void generateEvent(String name, Map<?, ?> in, CgVfxEmitter.Builder b) {
         Object type = in.get("type");
@@ -624,7 +633,8 @@ public final class CgVfxEmitterAssets {
             }
         }
         // Cascade reads FirstTimeOnly on collisions alone: a particle's first, which a firing limit of 1 is.
-        if ("collision".equals(type) && Boolean.TRUE.equals(in.get("first_time_only"))) b.firstCollisionOnly(true);
+        CgVfxEventGenerator g = CgVfxEventGenerator.of((String) type, in.get("name") instanceof String n ? n : "");
+        b.generator("collision".equals(type) && Boolean.TRUE.equals(in.get("first_time_only")) ? g.atFirstOnly() : g);
         for (String k : List.of("last_time_only", "use_reflected_impact_vector")) {
             if (Boolean.TRUE.equals(in.get(k))) {
                 throw new IllegalArgumentException(name + ": generate_event's " + k + " is not read yet: every event alone");

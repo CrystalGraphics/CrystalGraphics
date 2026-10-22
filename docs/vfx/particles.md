@@ -336,6 +336,52 @@ collisions and what the last one does.
 - **A frozen particle still ages and dies**, and its colour keeps playing over its life.
 - **Damping or freezing the turn of a mesh whose rotation rate changes over life** fails at load: not built yet.
 
+## Events: one emitter's particles spawning another's
+
+An event fires where a particle is born, dies, collides or each tick, and spawns another emitter's particles there.
+In Java, put the event on the emitter that fires it:
+
+```java
+CgVfxEmitter chips = CgVfxEmitter.builder("chips").state(CgVfxEmitterState.ONCE).life(0.4f, 0.8f).build();
+CgVfxEmitter debris = CgVfxEmitter.builder("debris").rate(20f)
+        .module(new CgVfxModule.CollideWorld(0.3f, 0.4f, 0.1f))
+        .event(CgVfxEvent.onCollision().spawn(chips, 3, 5).inherit(0.3f))   // 3 to 5 chips at each hit
+        .build();
+```
+
+In a system file, a handler sits on an emitter and names the handle that fires and the one that spawns:
+
+```yaml
+emitters:
+  - id: h1                       # debris
+    emitter: { ... }
+  - id: h2                       # chips
+    emitter:
+      events:
+        - { id: e1, trigger: collision, source: h1, spawn: { emitter: h2, count: { range: [3, 5] }, inherit_velocity: [0.3, 0.3, 0.3] } }
+```
+
+Or by name, as Cascade's receivers work: the firing emitter raises a named event with `generate_event`, and a handler
+with that name and no `source` takes it from every handle that raises it. With no `spawn.emitter` it spawns its own
+emitter's particles.
+
+```yaml
+emitters:
+  - id: h1                       # rocks: raise "shatter" as each one dies
+    emitter:
+      particle_update:
+        - { id: g, module: crystalgraphics:generate_event, inputs: { type: death, name: shatter } }
+  - id: h2                       # shards: spawn 5 to 15 wherever a rock shatters
+    emitter:
+      events:
+        - { id: e1, trigger: death, name: shatter, spawn: { count: { range: [5, 15] } } }
+```
+
+- **Names match exactly.** A handler named `shatter` ignores unnamed events, and a name nothing raises spawns nothing.
+- **A handler with a `source` but no name** takes that handle's events of its trigger, raised or not.
+- **`first_time_only`** on a collision `generate_event` fires once a particle, at its first contact.
+- **A spawn that comes back to its own source** fails at load, naming the loop.
+
 ## Beams: a strip from a source to a target
 
 A beam emitter draws each particle as a strip from its source to its target: lightning, a tether, a laser. Its
