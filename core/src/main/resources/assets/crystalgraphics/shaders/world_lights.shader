@@ -14,9 +14,10 @@ Properties {
     _Tile    ("A tile's share of the target across and up",        vec4) = (1, 1, 0, 0)
     _ZParams ("The slices' B, O and S",                            vec4) = (1, 1, 1, 0)
     _Rays    ("Unit-depth view rays at the target's edges: left, bottom, right, top", vec4) = (-1, -1, 1, 1)
-    _ToView0 ("Camera-relative world to view, the first row",      vec4) = (1, 0, 0, 0)
+    _ToView0 ("Camera-relative world to the bobbed view, the first row, its shift in w", vec4) = (1, 0, 0, 0)
     _ToView1 ("The second row",                                    vec4) = (0, 1, 0, 0)
     _ToView2 ("The third row",                                     vec4) = (0, 0, 1, 0)
+    _Depth   ("The perspective's m22, m32, m23 and m33: window depth to eye depth", vec4) = (1, 0, -1, 0)
 }
 
 struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; };
@@ -46,7 +47,10 @@ Pass {
 
     void fragment(in v2f i, out vec4 fragColor) {
         vec2 uv = gl_FragCoord.xy / CG_RESOLUTION;
-        float depth = CG_SCENE_EYE_DEPTH(uv);
+        // cg_LinearEyeDepth under the bob-free perspective (CgWorldLights.splitPerspective).
+        float window = texture(cg_DepthBuffer, uv).r, ndc = cg_DepthParams.y > 0.5 ? window : window * 2.0 - 1.0;
+        float depth = _Depth.z == 0.0 ? (_Depth.y - ndc) / _Depth.x
+                : (_Depth.y - _Depth.x / _Depth.z * _Depth.w) / (ndc - _Depth.x / _Depth.z);
         vec3 p = vec3(mix(_Rays.xy, _Rays.zw, uv) * depth, -depth);
         ivec3 cell = cg_light_cell(p, _ZParams.xyz, _Rays.xy, _Rays.zw, _Tile.xy, ivec2(_Grid.xy));
         int e = (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;
@@ -55,7 +59,8 @@ Pass {
         for (int k = 0; k < n; k++) {
             CgLight light = LIGHTS(int(INDICES(e * CG_LIGHT_PER_CELL + k)));
             vec3 at = light.positionRadius.xyz, way = light.spotCos.xyz, along = light.segmentCone.xyz;
-            vec3 v = vec3(dot(_ToView0.xyz, at), dot(_ToView1.xyz, at), dot(_ToView2.xyz, at));
+            vec3 v = vec3(dot(_ToView0.xyz, at), dot(_ToView1.xyz, at), dot(_ToView2.xyz, at))
+                    + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
             vec4 spot = vec4(dot(_ToView0.xyz, way), dot(_ToView1.xyz, way), dot(_ToView2.xyz, way), light.spotCos.w);
             vec4 segment = vec4(dot(_ToView0.xyz, along), dot(_ToView1.xyz, along), dot(_ToView2.xyz, along), light.segmentCone.w);
             sum += light.colorExponent.rgb

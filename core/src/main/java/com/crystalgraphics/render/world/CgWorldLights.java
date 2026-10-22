@@ -147,7 +147,8 @@ public final class CgWorldLights {
 
     private final List<Appender> appenders = new CopyOnWriteArrayList<>();
     private final Vector3f eye = new Vector3f();
-    private final Matrix4f unproject = new Matrix4f(), toView = new Matrix4f();
+    private final Matrix4f unproject = new Matrix4f(), toView = new Matrix4f(), perspective = new Matrix4f(),
+            bob = new Matrix4f();
     private final Vector4f corner = new Vector4f();
     /** The grid this firing: cells across and up, unit-depth rays at the target's edges, the slices' B, O and S. */
     private int gridX, gridY;
@@ -160,9 +161,10 @@ public final class CgWorldLights {
     private final Consumer<CgShaderBindings> gridValues = b -> b.vec4("_Grid", gridX, gridY, SLICES, 0f)
             .vec4("_Tile", tileU, tileV, 0f, 0f).vec4("_ZParams", zParams[0], zParams[1], zParams[2], 0f)
             .vec4("_Rays", rays[0], rays[1], rays[2], rays[3])
-            .vec4("_ToView0", toView.m00(), toView.m10(), toView.m20(), 0f)
-            .vec4("_ToView1", toView.m01(), toView.m11(), toView.m21(), 0f)
-            .vec4("_ToView2", toView.m02(), toView.m12(), toView.m22(), 0f);
+            .vec4("_ToView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
+            .vec4("_ToView1", toView.m01(), toView.m11(), toView.m21(), toView.m31())
+            .vec4("_ToView2", toView.m02(), toView.m12(), toView.m22(), toView.m32())
+            .vec4("_Depth", perspective.m22(), perspective.m32(), perspective.m23(), perspective.m33());
     private double[] at = new double[3 * 64];
     private float[] light = new float[FLOATS * 64];
     private int added;
@@ -435,7 +437,10 @@ public final class CgWorldLights {
         zParams[0] = (float) ((1 - o) / GRID_NEAR);
         zParams[1] = (float) o;
         zParams[2] = GRID_SPREAD;
-        projection.invert(unproject);
+        // The grid lives in the bobbed view: a host folding its camera's bob into the projection (Minecraft 1.17-1.21.5)
+        // keeps a pure perspective over it, so the rays and the depth come from that and the lights go through the bob.
+        splitPerspective(projection, perspective, bob);
+        perspective.invert(unproject);
         for (int c = 0; c < 2; c++) {
             float ndc = c == 0 ? -1f : 1f;
             unproject.transform(corner.set(ndc, ndc, 0.5f, 1f));
@@ -444,6 +449,7 @@ public final class CgWorldLights {
             rays[c * 2 + 1] = corner.y / corner.w / z;
         }
         toWorld.invert(toView);
+        bob.mul(toView, toView);
         tileU = TILE / targetWidth;
         tileV = TILE / targetHeight;
         if (bin == null) {
@@ -455,9 +461,51 @@ public final class CgWorldLights {
                 .set("_Tile", tileU, tileV, 0f, 0f)
                 .set("_ZParams", zParams[0], zParams[1], zParams[2], 0f)
                 .set("_Rays", rays[0], rays[1], rays[2], rays[3])
-                .set("_ToView0", toView.m00(), toView.m10(), toView.m20(), 0f)
-                .set("_ToView1", toView.m01(), toView.m11(), toView.m21(), 0f)
-                .set("_ToView2", toView.m02(), toView.m12(), toView.m22(), 0f);
+                .set("_ToView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
+                .set("_ToView1", toView.m01(), toView.m11(), toView.m21(), toView.m31())
+                .set("_ToView2", toView.m02(), toView.m12(), toView.m22(), toView.m32());
+    }
+
+    /**
+     * {@code projection} as {@code perspective × bob}: a perspective looking down -z from the origin, and the rigid
+     * turn and shift a host folded in after it (Minecraft's view bobbing, carried in its projection). Without one,
+     * {@code perspective} is {@code projection} and {@code bob} the identity. An RQ split of the x, y and w rows.
+     */
+    static void splitPerspective(Matrix4fc projection, Matrix4f perspective, Matrix4f bob) {
+        Vector3f a0 = new Vector3f(projection.m00(), projection.m10(), projection.m20());
+        Vector3f a1 = new Vector3f(projection.m01(), projection.m11(), projection.m21());
+        Vector3f r2 = new Vector3f(projection.m03(), projection.m13(), projection.m23());
+        float k22 = r2.length();
+        // An orthographic projection's w row is constant: no eye to turn about.
+        if (k22 < 1e-6f) {
+            perspective.set(projection);
+            bob.identity();
+            return;
+        }
+        r2.div(k22);
+        float k12 = a1.dot(r2);
+        Vector3f r1 = new Vector3f(r2).mul(-k12).add(a1);
+        float k11 = r1.length();
+        r1.div(k11);
+        float k02 = a0.dot(r2), k01 = a0.dot(r1);
+        Vector3f r0 = new Vector3f(a0).sub(new Vector3f(r1).mul(k01)).sub(new Vector3f(r2).mul(k02));
+        float k00 = r0.length();
+        r0.div(k00);
+        // A flipped axis (a y-down projection) stays the perspective's, so the bob is a turn and never a mirror.
+        if (r0.x < 0f) {
+            r0.negate();
+            k00 = -k00;
+        }
+        if (r1.y < 0f) {
+            r1.negate();
+            k11 = -k11;
+            k01 = -k01;
+        }
+        float t2 = projection.m33() / k22, t1 = (projection.m31() - k12 * t2) / k11;
+        float t0 = (projection.m30() - k01 * t1 - k02 * t2) / k00;
+        // The w row is -z: the bob's third row is r2 turned round, so no bob is the identity.
+        bob.set(r0.x, r1.x, -r2.x, 0f, r0.y, r1.y, -r2.y, 0f, r0.z, r1.z, -r2.z, 0f, t0, t1, -t2, 1f);
+        projection.mul(bob.invertAffine(perspective), perspective);
     }
 
     /**

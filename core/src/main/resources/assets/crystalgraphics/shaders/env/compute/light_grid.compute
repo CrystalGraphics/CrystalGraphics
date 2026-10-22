@@ -14,7 +14,7 @@ Properties {
     _Tile     ("A tile's share of the target across and up",          vec4) = (1, 1, 0, 0)
     _ZParams  ("The slices' B, O and S",                              vec4) = (1, 1, 1, 0)
     _Rays     ("Unit-depth view rays at the target's edges: left, bottom, right, top", vec4) = (-1, -1, 1, 1)
-    _ToView0  ("Camera-relative world to view, the first row",        vec4) = (1, 0, 0, 0)
+    _ToView0  ("Camera-relative world to the bobbed view, the first row, its shift in w", vec4) = (1, 0, 0, 0)
     _ToView1  ("The second row",                                      vec4) = (0, 1, 0, 0)
     _ToView2  ("The third row",                                       vec4) = (0, 0, 1, 0)
 }
@@ -40,7 +40,8 @@ void Bin() {
     for (int i = 0; i < lights; i++) {
         CgLight light = LIGHTS(i);
         vec3 at = light.positionRadius.xyz, way = light.spotCos.xyz;
-        vec3 v = vec3(dot(_ToView0.xyz, at), dot(_ToView1.xyz, at), dot(_ToView2.xyz, at));
+        vec3 v = vec3(dot(_ToView0.xyz, at), dot(_ToView1.xyz, at), dot(_ToView2.xyz, at))
+                + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
         vec4 spot = vec4(dot(_ToView0.xyz, way), dot(_ToView1.xyz, way), dot(_ToView2.xyz, way), light.spotCos.w);
         if (cg_light_reaches(v, light.positionRadius.w, spot, centre, extent)) {
             if (n < CG_LIGHT_PER_CELL) INDICES_STORE(e * CG_LIGHT_PER_CELL + n, uint(i));
