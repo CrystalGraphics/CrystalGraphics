@@ -92,7 +92,7 @@ import java.util.function.Consumer;
  *       albedo the scene's colour over the lightmap at the light's block (read when it is added; a kernel's light sets
  *       its {@code ambient}, or the scene is taken as it is).</li>
  *   <li>Author a light for a moonlit night. Where Minecraft's light is brighter it fades, as an eye adapting to the
- *       daylight would see it (Unreal's auto exposure, for the lights alone): about a tenth at noon
+ *       daylight would see it (auto exposure, for the lights alone): full at midnight, about a tenth at noon
  *       ({@code -Dcrystalgraphics.world.lightsAdapted}, 0 for never).</li>
  *   <li>Exponent 0 is inverse-squared falloff in blocks, faded to nothing at the radius: a quarter as strong at two
  *       blocks as at one. Any other exponent is Unreal's {@code (1 - d²/r²)^exponent}.</li>
@@ -177,10 +177,13 @@ public final class CgWorldLights {
     /** Unreal's r.MinScreenRadiusForLights: a light whose bound is smaller on screen is not drawn. */
     private static final CgVar.Num MIN_SCREEN = CgVar.number("crystalgraphics.world.lightsMinScreenRadius", 0.03f, 0f, 1f,
             CgVar.DEV, "A light whose bounding sphere is smaller than this share of the screen is not drawn; 0 keeps all.");
-    /** The lightmap luminance a light is authored at: brighter, and it fades as an eye adapting to it would. */
-    private static final CgVar.Num ADAPTED = CgVar.number("crystalgraphics.world.lightsAdapted", 0.08f, 0f, 1f, CgVar.DEV,
-            "Linear lightmap luminance lights are authored at (a moonlit night); brighter, they fade by it over the"
-                    + " luminance, as exposure adapts. 0 never adapts.");
+    /**
+     * The lightmap luminance a light is authored at: brighter, and it fades as an eye adapting to it would. Minecraft
+     * 1.20.1's midnight sky (LightTexture.updateLightTexture) is 0.09 at default brightness, 0.2 at full.
+     */
+    private static final CgVar.Num ADAPTED = CgVar.number("crystalgraphics.world.lightsAdapted", 0.2f, 0f, 1f, CgVar.DEV,
+            "Linear lightmap luminance lights are authored at (a moonlit night); brighter, they fade by"
+                    + " (it / luminance)^1.5, as exposure adapts. 0 never adapts.");
     /** Unreal's r.Forward.LightGridHZBCull. */
     private static final CgVar.Bool HZB = CgVar.bool("crystalgraphics.world.lightsHzb", true, CgVar.DEV,
             "The light grid skips cells behind the scene and pulls each cell's far edge in to it.");

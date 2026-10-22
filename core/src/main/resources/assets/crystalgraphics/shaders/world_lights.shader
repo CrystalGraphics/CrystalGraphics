@@ -4,10 +4,10 @@
 // normal from whichever neighbour each way is the nearer step, so a block's edge does not bend it (Wicked Engine's
 // improved normal reconstruction, MIT), held to a world axis near one, as Minecraft's blocks are. The albedo is the scene's colour over the lightmap Minecraft lit it by, read
 // at the light's own block (CgWorldLights' ambient): what the light adds is scene × light / lightmap, which the blend
-// does. Minecraft has no exposure, so its noon is as bright as its moonlight is dim; a light is adapted as Unreal's auto
-// exposure adapts the whole scene (exposure = 1 / luminance), for the lights alone: full where the lightmap at it is no
-// brighter than the moonlit night it is authored for, and that much fainter where it is brighter. Specular is left
-// out: Minecraft has no roughness to give it.
+// does. Minecraft has no exposure, so its noon is as bright as its moonlight is dim; a light is adapted as auto exposure
+// adapts a scene, for the lights alone: full where the lightmap at it is no brighter than the moonlit night it is
+// authored for, and (night / lightmap)^1.5 where it is brighter, steeper than Unreal's 1 / luminance so a light is full
+// at midnight at any brightness setting and a tenth at noon. Specular is left out: Minecraft has no roughness.
 #type none
 #include "crystalgraphics:shaders/lib/math.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
@@ -25,7 +25,7 @@ Properties {
     _ToView1 ("The second row",                                    vec4) = (0, 1, 0, 0)
     _ToView2 ("The third row",                                     vec4) = (0, 0, 1, 0)
     _Depth   ("The perspective's m22, m32, m23 and m33: window depth to eye depth", vec4) = (1, 0, -1, 0)
-    _Adapted ("The linear lightmap luminance a light is authored at; 0 for no adapting", float) = 0.08
+    _Adapted ("The linear lightmap luminance a light is authored at; 0 for no adapting", float) = 0.2
 }
 
 struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; };
@@ -110,7 +110,7 @@ Pass {
             if (light.ambient.x >= 0.0) {
                 vec3 lightmap = srgb_to_linear(CG_LIGHTMAP(light.ambient.xy));
                 float level = dot(lightmap, vec3(0.2126, 0.7152, 0.0722));
-                if (_Adapted > 0.0) adapt = min(1.0, _Adapted / max(level, 1.0e-4));
+                if (_Adapted > 0.0) adapt = min(1.0, pow(_Adapted / max(level, 1.0e-4), 1.5));
                 ambient = max(CG_LINEAR_SCENE ? lightmap : CG_LIGHTMAP(light.ambient.xy), vec3(floorLight));
             }
             sum += light.colorExponent.rgb * (falloff * nol * adapt / CG_PI) / ambient;
