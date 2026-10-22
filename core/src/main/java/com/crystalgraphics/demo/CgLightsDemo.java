@@ -15,26 +15,24 @@ import com.crystalgraphics.vfx.CgVfxOwner;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 
 /**
- * Every kind of world light ({@link CgWorldLights}) on the ground round a point, each station moving so its falloff is
- * seen sweeping over the blocks: best at night. Each light's source is a small sphere of debug lines; a spot's cone and
- * a tube's line are drawn too.
+ * A light show over the ground round a point, every kind of world light ({@link CgWorldLights}) at once, made for the
+ * night: a mirror ball sweeping coloured spots over the ground, two searchlights crossing the arena, a carousel of
+ * rainbow lights, a neon arch of tubes with colour chasing along it, a lightsaber duel flashing where the blades meet,
+ * fireworks and a swarm of fireflies whose particles are lights, and lightning flooding everything every few seconds.
  *
  * <pre>
- * west to east, front row:
- *   point     inverse-squared, orange, circling
- *   point     exponent 8, cyan, pulsing
- *   spot      a lamp high up, pointing down, sweeping a circle
- *   spot      a lighthouse at head height, turning
- *   tube      a magenta neon bar lying along the ground
- * back row:
- *   tube      a blue saber swinging upright
- *   embers    particles rising from the ground, each a light (Cascade's Light module, half of them)
+ *                  arch (tubes)
+ *   fireflies    ball (spots)    duel (tubes)
+ *                carousel (points)
+ *   searchlight    fireworks     searchlight
  * </pre>
  *
  * <pre>{@code
@@ -48,14 +46,17 @@ import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 public final class CgLightsDemo {
 
     private static final CgVfxSchema SCHEMA = CgVfxSchema.of("crystalgraphics:demo/lights");
-    private static final int ORANGE = 0xFFFF8A30, CYAN = 0xFF40E0FF, WHITE = 0xFFFFF2D8, YELLOW = 0xFFFFD060,
-            MAGENTA = 0xFFFF40C0, BLUE = 0xFF4080FF;
-    private static final CgSphere SOURCE = CgSphere.of(0.15);
-    /** A light's peak on a surface it faces: π for Unreal's Lambert, twice over so it carries at night. */
-    private static final float LIT = 2f * (float) Math.PI;
+    private static final CgSphere MARK = CgSphere.of(0.12), BALL_MARK = CgSphere.of(0.6);
+    private static final int BALL = 16, CAROUSEL = 12, ARCH = 9;
+    /** Seconds between lightning strikes, and when in it each of its three flashes falls and how long it lasts. */
+    private static final float STORM = 9f;
+    private static final float[][] FLASHES = {{0f, 0.07f}, {0.16f, 0.06f}, {0.34f, 0.22f}};
 
     private final CgVfxOwner vfx;
-    private final CgVfxLook embers = CgVfxLook.builder(SCHEMA).emitter(embers()).build();
+    private final CgVfxLook particles = CgVfxLook.builder(SCHEMA)
+            .emitter(fireworks("fireworksGold", 0xFFFFC040, 0xFFFF4020, 3.1f, -4f))
+            .emitter(fireworks("fireworksNeon", 0xFF40E0FF, 0xFFFF40E0, 2.3f, 4f))
+            .emitter(fireflies()).build();
     private final CgPose pose = new CgPose();
     private CgVfxSystemInstance<?> playing;
     private double playingX = Double.NaN, playingY, playingZ;
@@ -64,109 +65,163 @@ public final class CgLightsDemo {
         this.vfx = vfx;
     }
 
-    /** Embers drifting up off a patch of ground, each glowing and half of them lighting it. */
-    private static CgVfxEmitter embers() {
-        return CgVfxEmitter.builder("embers").capacity(256).state(CgVfxEmitterState.infinite(1f)).rate(30f)
-                .shape(CgBox.of(3, 0.05, 3)).direction(0f, 1f, 0f, 25f).speed(0.3f, 1.2f).life(4f, 7f).size(0.15f, 0.35f)
-                .color(0xFFFF7020, 6f)
-                .light(10f, 4f, CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
-                        CgVfxDrawnChannel.over(CgKeyframes.constant(0.8f)), CgVfxDrawnChannel.over(CgKeyframes.constant(0.6f)),
-                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 0f).to(0.15f, 3f, CgEasings.LINEAR)
-                                .to(1f, 0f, CgEasings.LINEAR).build()))
-                .renderer(CgVfxRenderers.sprite("ember").material(CgMaterialDefinition.of(
-                        "crystalgraphics:materials/demo_lights_ember", "crystalgraphics:shaders/vfx/particle/spark.shader")
-                        .blend(CgBlendMode.ADDITIVE).usage(CgMaterialUsage.SPRITES).build()).build())
-                .renderer(CgVfxRenderers.light("glow").field("spawn_fraction", 0.5).field("inverse_squared_falloff", false)
-                        .build())
+    /**
+     * An intensity lighting a surface it faces {@code d} blocks off to {@code peak} times its colour: Unreal's simple
+     * light gives albedo × intensity × N·L / (π d²).
+     */
+    private static float lit(float peak, float d) {
+        return peak * (float) Math.PI * d * d;
+    }
+
+    /** Glowing sparks, added over the scene. */
+    private static CgVfxRendererProperties sparks(String id) {
+        return CgVfxRenderers.sprite(id).material(CgMaterialDefinition.of("crystalgraphics:materials/demo_lights_" + id,
+                "crystalgraphics:shaders/vfx/particle/spark.shader").blend(CgBlendMode.ADDITIVE).usage(CgMaterialUsage.SPRITES)
+                .build()).build();
+    }
+
+    /** A shell bursting high over the arena every {@code every} seconds, its sparks falling as lights. */
+    private static CgVfxEmitter fireworks(String name, int a, int b, float every, float dx) {
+        return CgVfxEmitter.builder(name).capacity(600).state(CgVfxEmitterState.infinite(every)).burst(0f, 220)
+                .at(dx, 14f, 0f).shape(CgSphere.of(0.2)).outward().speed(6f, 9f).life(1.4f, 2.2f).size(0.06f, 0.1f)
+                .color(a, 6f, b, 6f).module(new CgVfxModule.Gravity(4f)).module(new CgVfxModule.Drag(1.2f, 0f))
+                .opacity(CgKeyframes.start(0f, 1f).to(0.6f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
+                .light(70f, 2f, CgVfxDrawnChannel.over(CgKeyframes.constant(1f)), CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
+                        CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
+                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 3f).to(1f, 0f, CgEasings.IN_QUAD).build()))
+                .renderer(sparks(name)).renderer(CgVfxRenderers.light(name + "Light").field("spawn_fraction", 0.4)
+                        .field("inverse_squared_falloff", false).build())
+                .build();
+    }
+
+    /** Fireflies drifting over a meadow beside the arena, every one a small light fading in and out. */
+    private static CgVfxEmitter fireflies() {
+        return CgVfxEmitter.builder("fireflies").capacity(512).state(CgVfxEmitterState.infinite(1f)).rate(70f)
+                .at(-11f, 1.2f, 4f).shape(CgBox.of(5, 1, 5)).speed(0.1f, 0.5f).life(4f, 7f).size(0.05f, 0.09f)
+                .color(0xFFC8FF50, 5f, 0xFF60FF90, 5f).module(new CgVfxModule.Turbulence(1.4f, 0.6f, 0.5f))
+                .module(new CgVfxModule.Drag(1.5f, 0f))
+                .opacity(CgKeyframes.start(0f, 0f).to(0.2f, 1f, CgEasings.OUT_QUAD).to(0.8f, 1f, CgEasings.LINEAR)
+                        .to(1f, 0f, CgEasings.IN_QUAD).build())
+                .light(40f, 2f, CgVfxDrawnChannel.over(CgKeyframes.constant(1f)), CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
+                        CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
+                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 0f).to(0.2f, 1.5f, CgEasings.OUT_QUAD)
+                                .to(0.8f, 1.5f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build()))
+                .renderer(sparks("fireflies")).renderer(CgVfxRenderers.light("firefliesLight").field("spawn_fraction", 1.0)
+                        .field("inverse_squared_falloff", false).build())
                 .build();
     }
 
     public void prepare() {
-        vfx.prepare(embers);
+        vfx.prepare(particles);
     }
 
     public boolean warmed() {
         return vfx.warmed();
     }
 
-    /** The lights round a ground point {@code (x, y, z)} as they are at {@code seconds}. */
+    /** The show round a ground point {@code (x, y, z)} as it is at {@code seconds}. */
     public void submit(CgWorldRenderer world, double x, double y, double z, double seconds) {
         CgWorldLights lights = world.lights();
         float t = (float) (seconds % 3600.0);
-
-        // Inverse-squared, circling 1.5 blocks up: the ground below lit to about 1.5 times its colour, times two.
-        double px = x - 12 + 3 * Math.cos(t * 0.8), pz = z + 3 * Math.sin(t * 0.8);
-        source(px, y + 1.5, pz, ORANGE);
-        lights.add(px, y + 1.5, pz, 10f, ORANGE, 1.5f * 1.5f * 1.5f * LIT, 0f);
-
-        // Unreal's exponent, pulsing: the brightness at its centre.
-        source(x - 6, y + 2, z, CYAN);
-        lights.add(x - 6, y + 2, z, 7f, CYAN, (1.2f + (float) Math.sin(t * 2.0)) * LIT, 8f);
-
-        // A lamp 8 blocks up, its cone sweeping a circle on the ground.
-        float sx = 0.45f * (float) Math.cos(t * 0.6), sz = 0.45f * (float) Math.sin(t * 0.6);
-        spot(lights, x, y + 8, z, sx, -1f, sz, 12f, 22f, 20f, WHITE, 2f * 8f * 8f * LIT);
-
-        // A lighthouse at head height, turning.
-        spot(lights, x + 6, y + 1.7, z, (float) Math.cos(t * 0.9), -0.08f, (float) Math.sin(t * 0.9), 6f, 14f, 24f, YELLOW,
-                2f * 6f * 6f * LIT);
-
-        // A neon bar lying along x, half a block up.
-        tube(lights, x + 12, y + 0.5, z, 1f, 0f, 0f, 5f, 8f, MAGENTA, 1.2f * 0.5f * 0.5f * LIT);
-
-        // A saber swinging upright, behind.
-        float swing = 0.9f * (float) Math.sin(t * 1.3);
-        tube(lights, x - 4, y + 1.8, z + 8, (float) Math.sin(swing), (float) Math.cos(swing), 0f, 3f, 7f, BLUE,
-                1.5f * 1.8f * 1.8f * LIT);
-
-        // The embers: played once where the scene stands, again where it moves to.
+        mirrorBall(lights, x, y + 10, z - 2, t);
+        searchlights(lights, x, y, z, t);
+        carousel(lights, x, y, z + 4, t);
+        arch(lights, x, y, z - 13, t);
+        duel(lights, x + 11, y, z + 3, t);
+        lightning(lights, x, y, z, t);
+        // The particles: played once where the show stands, again where it moves to.
         if (playing == null || playing.state() == CgVfxSystemInstance.State.DEAD || playingX != x || playingY != y
                 || playingZ != z) {
             if (playing != null) playing.kill();
-            playing = vfx.play(new CgVfxSystemInstance<>(embers, x + 4, y, z + 8));
+            playing = vfx.play(new CgVfxSystemInstance<>(particles, x, y, z));
             playingX = x;
             playingY = y;
             playingZ = z;
         }
     }
 
-    private void spot(CgWorldLights lights, double x, double y, double z, float dx, float dy, float dz, float inner,
-                      float outer, float radius, int argb, float intensity) {
-        float n = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
-        dx /= n;
-        dy /= n;
-        dz /= n;
-        lights.add(x, y, z, radius, argb, intensity, 0f).spot(dx, dy, dz, inner, outer);
-        source(x, y, z, argb);
-        // The cone's axis and four edges, three blocks long.
-        CgCollisionDebug.line(x, y, z, x + dx * 3, y + dy * 3, z + dz * 3, argb);
-        float ux = Math.abs(dy) < 0.9f ? 0f : 1f, uy = Math.abs(dy) < 0.9f ? 1f : 0f;
-        float ax = uy * dz, ay = -ux * dz, az = ux * dy - uy * dx;
-        float m = (float) Math.sqrt(ax * ax + ay * ay + az * az);
-        ax /= m;
-        ay /= m;
-        az /= m;
-        float bx = dy * az - dz * ay, by = dz * ax - dx * az, bz = dx * ay - dy * ax;
-        double tan = Math.tan(Math.toRadians(outer)) * 3;
-        for (int k = 0; k < 4; k++) {
-            double c = Math.cos(k * Math.PI / 2) * tan, s = Math.sin(k * Math.PI / 2) * tan;
-            CgCollisionDebug.line(x, y, z, x + dx * 3 + ax * c + bx * s, y + dy * 3 + ay * c + by * s,
-                    z + dz * 3 + az * c + bz * s, argb);
+    /** Sixteen narrow spots round a turning ball, each its own colour, sweeping circles over the ground. */
+    private void mirrorBall(CgWorldLights lights, double x, double y, double z, float t) {
+        CgCollisionDebug.shape(BALL_MARK, pose.at(x, y, z), 0xFFFFFFFF);
+        for (int i = 0; i < BALL; i++) {
+            double turn = i * 2 * Math.PI / BALL + t * 0.7, tilt = Math.toRadians(30 + 35 * ((i * 7) % BALL) / (double) BALL);
+            float dx = (float) (Math.cos(turn) * Math.sin(tilt)), dy = (float) -Math.cos(tilt);
+            float dz = (float) (Math.sin(turn) * Math.sin(tilt));
+            lights.add(x, y, z, 30f, hue(i / (float) BALL + t * 0.05f), lit(4f, 14f), 0f).spot(dx, dy, dz, 3f, 7f);
         }
     }
 
-    private void tube(CgWorldLights lights, double x, double y, double z, float dx, float dy, float dz, float length,
-                      float radius, int argb, float intensity) {
-        lights.add(x, y, z, radius, argb, intensity, 0f).tube(dx, dy, dz, length);
-        float n = (float) Math.sqrt(dx * dx + dy * dy + dz * dz), h = length / (2 * n);
-        CgCollisionDebug.line(x - dx * h, y - dy * h, z - dz * h, x + dx * h, y + dy * h, z + dz * h, argb);
+    /** Two white searchlights from the arena's front corners, crossing and parting over it. */
+    private void searchlights(CgWorldLights lights, double x, double y, double z, float t) {
+        for (int side = -1; side <= 1; side += 2) {
+            double sx = x + side * 15, sz = z + 12, sweep = Math.sin(t * 0.45 + side) * 0.9;
+            float dx = (float) (-side * Math.cos(sweep) * 0.7), dz = (float) (-Math.cos(sweep * 0.7) * 0.9 + Math.sin(sweep) * 0.3);
+            CgCollisionDebug.shape(MARK, pose.at(sx, y + 1.5, sz), 0xFFFFF4E0);
+            lights.add(sx, y + 1.5, sz, 45f, 0xFFFFF4E0, lit(3f, 18f), 0f).spot(dx, -0.12f, dz, 4f, 9f);
+        }
     }
 
-    private void source(double x, double y, double z, int argb) {
-        CgCollisionDebug.shape(SOURCE, pose.at(x, y, z), argb);
+    /** Twelve rainbow lights wheeling round the arena's middle, bobbing as they go. */
+    private void carousel(CgWorldLights lights, double x, double y, double z, float t) {
+        for (int i = 0; i < CAROUSEL; i++) {
+            double a = i * 2 * Math.PI / CAROUSEL + t * 0.9;
+            double lx = x + Math.cos(a) * 6, lz = z + Math.sin(a) * 6, ly = y + 1.4 + 0.6 * Math.sin(t * 2.2 + i);
+            int colour = hue(i / (float) CAROUSEL + t * 0.08f);
+            CgCollisionDebug.shape(MARK, pose.at(lx, ly, lz), colour);
+            lights.add(lx, ly, lz, 7f, colour, lit(3f, 1.4f), 0f);
+        }
     }
 
-    /** Ends the embers; the next submit plays them again. */
+    /** A neon arch of tubes, a pulse of brightness chasing round it as its colours turn. */
+    private void arch(CgWorldLights lights, double x, double y, double z, float t) {
+        double radius = 6;
+        for (int i = 0; i < ARCH; i++) {
+            double a0 = Math.PI * i / ARCH, a1 = Math.PI * (i + 1) / ARCH;
+            double x0 = x + Math.cos(a0) * radius, y0 = y + Math.sin(a0) * radius;
+            double x1 = x + Math.cos(a1) * radius, y1 = y + Math.sin(a1) * radius;
+            float pulse = 0.35f + 0.65f * (float) Math.pow(0.5 + 0.5 * Math.cos((i / (float) ARCH - t * 0.6) * 2 * Math.PI), 4);
+            int colour = hue(0.75f + 0.25f * i / ARCH + t * 0.1f);
+            CgCollisionDebug.line(x0, y0, z, x1, y1, z, colour);
+            lights.add((x0 + x1) / 2, (y0 + y1) / 2, z, 9f, colour, lit(3f * pulse, 1.5f), 0f)
+                    .tube((float) (x1 - x0), (float) (y1 - y0), 0f, (float) Math.hypot(x1 - x0, y1 - y0));
+        }
+    }
+
+    /** A red and a blue saber swinging at each other; where they meet, a white flash. */
+    private void duel(CgWorldLights lights, double x, double y, double z, float t) {
+        float swing = (float) Math.sin(t * 2.6);
+        float clash = (float) Math.pow(Math.max(0, Math.sin(t * 2.6 + Math.PI / 2)), 12);
+        for (int side = -1; side <= 1; side += 2) {
+            double hx = x + side * 1.3, hy = y + 1.1, a = Math.PI / 2 - side * (0.2 + 0.7 * (0.5 + 0.5 * swing));
+            float dx = (float) (Math.cos(a) * -side), dy = (float) Math.sin(a);
+            int colour = side < 0 ? 0xFFFF3030 : 0xFF3060FF;
+            CgCollisionDebug.line(hx, hy, z, hx + dx * 1.8, hy + dy * 1.8, z, colour);
+            lights.add(hx + dx * 0.9, hy + dy * 0.9, z, 8f, colour, lit(4f, 1.1f), 0f).tube(dx, dy, 0f, 1.8f);
+        }
+        if (clash > 0.05f) lights.add(x, y + 2.6, z, 12f, 0xFFFFFFFF, lit(6f * clash, 2.6f), 0f);
+    }
+
+    /** Lightning far overhead every {@link #STORM} seconds: three flashes flooding the whole arena. */
+    private void lightning(CgWorldLights lights, double x, double y, double z, float t) {
+        float at = t % STORM, strength = 0f;
+        for (float[] flash : FLASHES) {
+            if (at >= flash[0] && at < flash[0] + flash[1]) strength = Math.max(strength, 1f - (at - flash[0]) / flash[1] * 0.6f);
+        }
+        if (strength > 0f) lights.add(x - 6, y + 40, z - 10, 90f, 0xFFD8E4FF, lit(2.5f * strength, 40f), 0f);
+    }
+
+    /** A saturated colour round the hue wheel, {@code h} in turns. */
+    private static int hue(float h) {
+        float r = channel(h + 1f / 3), g = channel(h), b = channel(h - 1f / 3);
+        return 0xFF000000 | Math.round(r * 255) << 16 | Math.round(g * 255) << 8 | Math.round(b * 255);
+    }
+
+    private static float channel(float h) {
+        h -= (float) Math.floor(h);
+        return Math.max(0f, Math.min(1f, Math.abs(h * 6f - 3f) - 1f));
+    }
+
+    /** Ends the particles; the next submit plays them again. */
     public void clear() {
         if (playing != null) playing.kill();
         playing = null;

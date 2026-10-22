@@ -65,7 +65,7 @@ import java.util.function.Supplier;
  * modules   CgVfxModules: X6's particle modules, a station each
  * blast     CgVfxBlastFlash: one wave at a time bursting on the ground, for its flash and impact frame
  * collision CgCollisionDemo: every collision shape, a cast, rays and a hitbox against the world, as debug lines
- * lights    CgLightsDemo: point, spot and tube lights and particle lights moving over the ground; best at night
+ * lights    CgLightsDemo: a light show of every kind of world light, particle lights and lightning; best at night
  *
  * H    the HUD on or off
  * N    the next scene, placed ahead of the camera; Shift+N the previous one
@@ -165,7 +165,7 @@ public final class CgRenderDemo {
             new Kind("fluid", 90, this::fluid),
             new Kind("blasts", (int) CgVfxBlasts.REACH + 10, this::blasts),
             new Kind("collision", 24, this::collision),
-            new Kind("lights", 20, this::lights),
+            new Kind("lights", 30, this::lights),
     };
 
     private boolean installed;
