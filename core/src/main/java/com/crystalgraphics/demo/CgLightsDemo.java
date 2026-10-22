@@ -88,7 +88,9 @@ public final class CgLightsDemo {
                 .opacity(CgKeyframes.start(0f, 1f).to(0.6f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .light(160f, 2f, CgVfxDrawnChannel.over(CgKeyframes.constant(1f)), CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
                         CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
-                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 1.2f).to(1f, 0f, CgEasings.IN_QUAD).build()))
+                        // About 90 sparks a burst, each nearly full 5 blocks off (Cascade's (1 - d²/r²)²): together
+                        // about three times the colour of what they light there.
+                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 0.15f).to(1f, 0f, CgEasings.IN_QUAD).build()))
                 .renderer(sparks(name)).renderer(CgVfxRenderers.light(name + "Light").field("spawn_fraction", 0.4)
                         .field("inverse_squared_falloff", false).build())
                 .build();
