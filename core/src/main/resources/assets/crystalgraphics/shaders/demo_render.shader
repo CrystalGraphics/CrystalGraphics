@@ -1,9 +1,10 @@
 // -----------------------------------------------------------------------------
-// demo_render.shader -- minimal lit shader used by CgRenderDemo.
+// demo_render.shader -- a matte shape lit as Minecraft lights a block: the world's
+// lightmap at its light, times Minecraft's face shading (top 1.0, north and south
+// 0.8, east and west 0.6, bottom 0.5), blended by the normal for a curved surface.
+// The sun's direction comes from the world's shadows alone (CgShadowsDemo).
 //
-// Per-cube colour is read from CG_OBJECT_CUSTOM0.rgb (set by each draw's
-// custom(0, ...)). No Properties block needed -- all appearance data
-// comes through the per-instance buffer.
+// Colour is read from CG_OBJECT_CUSTOM0.rgb (set by each draw's custom(0, ...)).
 // -----------------------------------------------------------------------------
 #type spatial
 
@@ -27,8 +28,9 @@ Pass {
 
     void fragment(in v2f i, out vec4 fragColor) {
         vec3  n     = normalize(i.normalWs);
-        float ndotl = max(dot(n, normalize(vec3(1.0, 2.0, 1.0))), 0.0);
-        vec3  col   = CG_OBJECT_CUSTOM0.rgb * (0.2 + 0.8 * ndotl);
+        vec3  w     = n * n;
+        float shade = w.x * 0.6 + w.z * 0.8 + w.y * (n.y > 0.0 ? 1.0 : 0.5);
+        vec3  col   = CG_OBJECT_CUSTOM0.rgb * shade;
         fragColor   = vec4(col, 1.0);
     }
 }
