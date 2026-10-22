@@ -325,6 +325,9 @@ public final class CgWorldRenderer {
     // Distortion: what plans and records it, and the distorting draws this firing.
     private final CgWorldDistortion distortion = new CgWorldDistortion();
     private final CgWorldMedia media = new CgWorldMedia();
+    private final CgWorldLights pointLights = new CgWorldLights();
+    /** Whether this transparent firing's light list holds any light. */
+    private boolean lit;
     /** This transparent firing's froxel transmittance, bound at {@code MEDIA_TEXTURE_UNIT}; null with nothing in the air. */
     @Nullable
     private CgGraphTexture mediaOut;
@@ -379,7 +382,8 @@ public final class CgWorldRenderer {
     private static void parsePassesAhead() {
         CgMaterialShaderRegistry registry = CgMaterialShaderRegistry.get();
         List<CgMaterialShader> shaders = List.of(registry.getOrCreate(UPSAMPLE_SHADER), registry.getOrCreate(RESOLVE_SHADER),
-                registry.getOrCreate(COMPOSITE_SHADER), registry.getOrCreate(CgWorldDistortion.APPLY_SHADER));
+                registry.getOrCreate(COMPOSITE_SHADER), registry.getOrCreate(CgWorldDistortion.APPLY_SHADER),
+                registry.getOrCreate(CgWorldLights.APPLY_SHADER));
         CgJob.executor(CgJobLane.LATENCY).execute(() -> {
             for (CgMaterialShader shader : shaders) shader.ensureParsed();
         });
@@ -540,6 +544,18 @@ public final class CgWorldRenderer {
      */
     public CgWorldMedia media() {
         return media;
+    }
+
+    /**
+     * The point lights in the world this frame, which light the scene behind each pixel: an effect's or a mod's from
+     * the CPU, and a kernel's appended.
+     *
+     * <pre>{@code
+     * CgWorldRenderer.get().lights().add(x, y, z, 6f, 0xFFFF9030, 4f, 0f);
+     * }</pre>
+     */
+    public CgWorldLights lights() {
+        return pointLights;
     }
 
     /**
@@ -1473,7 +1489,16 @@ public final class CgWorldRenderer {
         CgHostView view = stage.host().view();
         beginFrame(view);
         if (count == 0) {
-            if (which == TRANSPARENT && !CgRehearsal.active()) text.record(stage, view);
+            if (which == TRANSPARENT) {
+                // Lights fall on the opaque scene, so a frame drawing nothing of ours still lights it.
+                targetWidth = stage.host().width();
+                targetHeight = stage.host().height();
+                prepare(view);
+                if (pointLights.record(stage.recording(), stage.constants(), view, toWorld, targetWidth, targetHeight)) {
+                    pointLights.apply(stage, stage.recording());
+                }
+                if (!CgRehearsal.active()) text.record(stage, view);
+            }
             return;
         }
         if (!irisWarned && CgIrisCompat.isShaderPackActive()) {
@@ -1554,6 +1579,10 @@ public final class CgWorldRenderer {
             // Before any glow: a label's text then hides the glows behind it from the emission, as from the colour.
             if (which == TRANSPARENT && !CgRehearsal.active()) text.recordDepth(stage, view);
             CgGraphTexture emission = which == TRANSPARENT && drawn > 0 ? mergedEmission(stage, recording) : null;
+            // Lights fall on the opaque scene, so a firing with nothing transparent still lists them.
+            lit = which == TRANSPARENT && pointLights.record(recording, stage.constants(), view, toWorld, targetWidth, targetHeight);
+            // Onto the opaque scene, before any transparent draw blends over it.
+            if (lit) pointLights.apply(stage, recording);
             mediaOut = which == TRANSPARENT && drawn > 0
                     ? media.record(recording, stage.constants(), view, toWorld, targetWidth, targetHeight) : null;
             if (scene) recordSceneGlows(stage, recording, view);

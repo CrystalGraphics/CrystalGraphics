@@ -1,0 +1,50 @@
+// The world's light grid (CgWorldLights): each cell's lights, as Unreal's LightGridInjectionCS bins them
+// (LightGridInjection.usf): a cell's view-space box from its tile's edges at its slice's near and far depth, and every
+// light whose sphere reaches that box listed in it, the first CG_LIGHT_PER_CELL kept. An element a cell, x fastest,
+// then y, then the slice.
+#pragma kernel Bin scatter
+
+#include "crystalgraphics:shaders/lib/lights.glsl"
+
+struct CgLight { vec4 positionRadius; vec4 colorExponent; };
+
+Properties {
+    _Grid     ("Cells across, up and deep, and the list's capacity",  vec4) = (1, 1, 32, 0)
+    _Tile     ("A tile's share of the target across and up",          vec4) = (1, 1, 0, 0)
+    _ZParams  ("The slices' B, O and S",                              vec4) = (1, 1, 1, 0)
+    _Rays     ("Unit-depth view rays at the target's edges: left, bottom, right, top", vec4) = (-1, -1, 1, 1)
+    _ToView0  ("Camera-relative world to view, the first row",        vec4) = (1, 0, 0, 0)
+    _ToView1  ("The second row",                                      vec4) = (0, 1, 0, 0)
+    _ToView2  ("The third row",                                       vec4) = (0, 0, 1, 0)
+}
+
+Buffers {
+    LIGHTS  ("The firing's lights",                     CgLight, readonly)
+    COUNT   ("Lights listed, possibly past the capacity", uint,   readonly)
+    CELLS   ("Each cell's lights, at most CG_LIGHT_PER_CELL", uint, writeonly)
+    INDICES ("Each cell's light indices, CG_LIGHT_PER_CELL a cell", uint, writeonly)
+}
+
+void Bin() {
+    ivec3 grid = ivec3(_Grid.xyz);
+    int e = CG_ELEMENT;
+    if (e >= grid.x * grid.y * grid.z) return;
+    int x = e % grid.x, y = (e / grid.x) % grid.y, z = e / (grid.x * grid.y);
+    // ComputeCellViewAABB: the tile's rays at both depths; the last tile may reach past the target, as Unreal's.
+    vec2 r0 = mix(_Rays.xy, _Rays.zw, vec2(x, y) * _Tile.xy), r1 = mix(_Rays.xy, _Rays.zw, vec2(x + 1, y + 1) * _Tile.xy);
+    float d0 = cg_light_slice_depth(z, _ZParams.xyz), d1 = cg_light_slice_depth(z + 1, _ZParams.xyz);
+    vec2 lo = min(min(r0 * d0, r1 * d0), min(r0 * d1, r1 * d1)), hi = max(max(r0 * d0, r1 * d0), max(r0 * d1, r1 * d1));
+    vec3 centre = vec3(lo + hi, -d0 - d1) * 0.5, extent = vec3(hi - lo, d1 - d0) * 0.5;
+    int lights = int(min(COUNT(0), uint(_Grid.w))), n = 0;
+    for (int i = 0; i < lights; i++) {
+        vec4 light = LIGHTS(i).positionRadius;
+        vec3 v = vec3(dot(_ToView0.xyz, light.xyz), dot(_ToView1.xyz, light.xyz), dot(_ToView2.xyz, light.xyz));
+        // ComputeSquaredDistanceFromBoxToPoint.
+        vec3 outside = max(abs(v - centre) - extent, 0.0);
+        if (dot(outside, outside) < light.w * light.w) {
+            if (n < CG_LIGHT_PER_CELL) INDICES_STORE(e * CG_LIGHT_PER_CELL + n, uint(i));
+            n++;
+        }
+    }
+    CELLS_STORE(e, uint(min(n, CG_LIGHT_PER_CELL)));
+}
