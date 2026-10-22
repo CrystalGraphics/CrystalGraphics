@@ -195,9 +195,11 @@ Available in the vertex stage only. Locations are bound by `CgShaderFactory` bef
 | `cg_Color` | `vec4` | 2 |
 | `cg_TexCoord0` | `vec2` | 3 |
 | `cg_TexCoord1` | `vec2` | 4 |
+| `cg_TexCoord2` | `vec2` | 5 |
+| `cg_TexCoord3` | `vec2` | 6 |
 
-Unreal's local vertex factory's slots, in its order. A mesh written with no colour reads white, and with no second
-UV set its first: Unreal's null colour stream and its repeated UV channel. A `SECOND_LAYER` material reads
+Unreal's local vertex factory's slots, in its order. A mesh written with no colour reads white, and a UV set it
+was not given repeats the set before: Unreal's null colour stream and its repeated UV channel. A `SECOND_LAYER` material reads
 `cg_TexCoord1` (`CgVertexFormat.SPATIAL`'s javadoc has the storage).
 
 #### Why the Engine's Blocks Must NOT Be Attached
@@ -661,6 +663,9 @@ void fragment(in v2f i, out vec4 fragColor) {
 
 - **The threshold** is `CG_CLIP_THRESHOLD`: the material's `_Clip` (a `float` property) where it declares one, else 0.5.
 - **Clip** discards below it in every pass and writes depth in the Forward pass, whatever its `DepthWrite`.
+- **Only a material that clips cuts**: with no `"Depth"` tag, and no state `clip()`, `cg_Clip` does nothing. Unreal
+  applies the opacity mask to a Masked material alone, so a port calls `cg_Clip(mask)` unguarded and its masked
+  master declares `"Depth" = "Clip"` (or its material asset's blend is `masked`).
 - **Prepass** is for a transparent queue only, and fails to parse on another. The world renderer draws a depth pass
   of every such draw (`CgPipeline.depthPrepass()`: the Forward pass compiled with `CG_DEPTH_PREPASS`, no colour, no
   blend) before the transparent pass, where `cg_Clip` discards below the threshold and returns above it: compute
@@ -808,7 +813,11 @@ CgMaterial ink = CgMaterial.newInstance("mymod:shaders/fx/ink.shader",
   pipeline state** on the shader's own programs (`CgMaterialState.onPass`).
 - Applied to the parse (`CgParsedShader.withState`): each Forward pass takes the blend; a codeless Emissive pass takes
   whatever it copied from the Forward pass (blend, depth), a blend of its own kept; a Distortion pass keeps the engine's.
-- Refused at parse: `depthWrite` under a `"Depth"` tag or with `clip()`; `clip()` on a `"Prepass"` shader.
+- **A blend without `clip()` replaces a `"Depth" = "Clip"` shader's whole**, as an instance's `bOverride_BlendMode`
+  replaces its parent's Masked: it no longer clips, and writes depth only when opaque. A translucent instance of a
+  masked master cuts nothing.
+- Refused at parse: `depthWrite` under a `"Depth"` tag (unless a blend without `clip()` dropped it) or with `clip()`;
+  `clip()` on a `"Prepass"` shader.
 - The queue stays the shader's.
 - In a look: a material asset's `state` ([`vfx/effects.md`](vfx/effects.md)).
 

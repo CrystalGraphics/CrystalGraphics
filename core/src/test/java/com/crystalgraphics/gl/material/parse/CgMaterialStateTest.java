@@ -168,6 +168,30 @@ public class CgMaterialStateTest {
         assertTrue(fragment.contains("#define CG_CLIP_THRESHOLD _Clip"));
     }
 
+    /** Unreal: an instance overriding a masked parent's blend takes it whole, and only a masked material clips. */
+    @Test
+    public void aBlendWithoutClipUnmasksAMaskedShader() {
+        CgParsedShader masked = CgShaderParser.parse(shader("\"Depth\" = \"Clip\"", "DepthWrite OFF", ""), "test:masked");
+        CgParsedShader translucent = masked.withState(CgMaterialState.builder().blend(CgBlendMode.ALPHA).depthWrite(false)
+                .build(), "test:masked");
+        assertEquals(CgParsedShader.DepthMode.NONE, translucent.depthMode());
+        assertFalse(translucent.getPassByLightMode("Forward").renderState().getDepth().write());
+        String fragment = CgMaterialShaderCompiler.compile(translucent, NO_BUFFERS).fragmentSource();
+        assertTrue(fragment.contains("#define cg_Clip(v)\n"));
+        assertFalse(fragment.contains("discard"));
+        CgParsedShader opaque = masked.withState(CgMaterialState.builder().blend(CgBlendMode.OPAQUE).build(), "test:masked");
+        assertTrue("an opaque one writes depth", opaque.getPassByLightMode("Forward").renderState().getDepth().write());
+        assertEquals(CgParsedShader.DepthMode.CLIP, masked.withState(CgMaterialState.builder().twoSided().build(), "test")
+                .depthMode());
+    }
+
+    @Test
+    public void cgClipCutsNothingWhereTheMaterialDoesNotClip() {
+        String fragment = CgMaterialShaderCompiler.compile(CgShaderParser.parse(STATELESS, "test"), NO_BUFFERS).fragmentSource();
+        assertTrue(fragment.contains("#define cg_Clip(v)\n"));
+        assertFalse(fragment.contains("discard"));
+    }
+
     @Test
     public void cullAndDepthWriteArePipelineStateAlone() {
         CgMaterialState twoSided = CgMaterialState.builder().twoSided().depthWrite(true).build();

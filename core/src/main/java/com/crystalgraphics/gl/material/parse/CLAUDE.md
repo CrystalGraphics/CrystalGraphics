@@ -211,7 +211,8 @@ Authoring: `docs/SHADERS.md` § *Depth from a transparent material*. The `"Depth
 (`NONE`, `CLIP`, `PREPASS`; Prepass on a queue below transparent throws). The parser sets each Forward pass's depth
 write (on for Clip, off for Prepass). The compiler defines `CG_CLIP_THRESHOLD` (`_Clip`, else 0.5) and `cg_Clip` in
 the fragment stage of a tagged material or a pass naming it: a discard; a discard then `return` in a Depth pass or under `DEPTH_PREPASS`; nothing in a Prepass
-material's other passes. A Prepass material's vertex stages are `invariant gl_Position`. `clips(pass)` (`discard` or
+material's other passes, and nothing in every pass of a material that does not clip (no tag, or `withState`'s blend
+without `clip()` dropping a Clip tag, Unreal's Masked override). A Prepass material's vertex stages are `invariant gl_Position`. `clips(pass)` (`discard` or
 `cg_Clip`) keeps the depth auto-gen's fragment body.
 
 ## The HDR scene's decode

@@ -1057,12 +1057,16 @@ public final class CgMaterialShaderCompiler {
      * {@code CG_CLIP_THRESHOLD}, the threshold ({@code _Clip} where the shader declares it, else 0.5), and {@code cg_Clip(v)}
      * for this pass: in a depth pass (a Depth pass, or {@link #DEPTH_PREPASS}) a discard below it and a return at it,
      * so nothing after it runs; in a {@code "Depth" = "Prepass"} material's other passes nothing; else the discard.
-     * Only where it can be called: a material with a {@code "Depth"} tag, or a pass naming it.
+     * Only where it can be called: a material with a {@code "Depth"} tag, or a pass naming it. A material that does not
+     * clip (no tag, or a state's blend without its clip) gets nothing in every pass: Unreal applies the opacity mask
+     * only to a Masked material, so a translucent instance of a masked parent cuts nothing.
      */
     private static void appendClip(StringBuilder sb, CgParsedShader shader, CgParsedPass pass, CompileConfig config) {
         if (shader.depthMode() == CgParsedShader.DepthMode.NONE && !names(pass, "cg_Clip")) return;
         sb.append("#define CG_CLIP_THRESHOLD ").append(hasProperty(shader, "_Clip", 1) ? "_Clip" : "0.5").append('\n');
-        if (CgParsedPass.LIGHT_MODE_DEPTH.equals(pass.lightMode()) || config.activeKeywords().contains(DEPTH_PREPASS)) {
+        if (shader.depthMode() == CgParsedShader.DepthMode.NONE) {
+            sb.append("#define cg_Clip(v)\n");
+        } else if (CgParsedPass.LIGHT_MODE_DEPTH.equals(pass.lightMode()) || config.activeKeywords().contains(DEPTH_PREPASS)) {
             sb.append("#define cg_Clip(v) { if ((v) < CG_CLIP_THRESHOLD) discard; return; }\n");
         } else if (shader.depthMode() == CgParsedShader.DepthMode.PREPASS) {
             sb.append("#define cg_Clip(v)\n");

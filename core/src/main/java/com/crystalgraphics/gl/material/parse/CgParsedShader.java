@@ -158,13 +158,17 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
      *       {@link CgBlendMode#SUBTRACT} it adds, since light is never subtracted from the glow. One with a blend of its
      *       own keeps it, and a Distortion pass keeps the engine's.</li>
      *   <li>The pass bodies are the same strings, so a codeless Emissive pass is still recognised as one.</li>
+     *   <li>A blend without {@code clip()} drops a {@code "Depth" = "Clip"} tag, as an instance overriding its masked
+     *       parent's blend mode takes the new one whole: no clip, and depth written only under {@link CgBlendMode#OPAQUE}.</li>
      * </ul>
      *
      * @throws CgShaderParseException for a state the shader refuses: a depth write where its {@code "Depth"} tag owns
-     *                                depth, or a clip on a {@code "Prepass"} shader
+     *                                depth (unless its blend dropped a Clip tag), or a clip on a {@code "Prepass"} shader
      */
     public CgParsedShader withState(CgMaterialState state, String resourcePath) {
-        if (state.depthWrite() != null && depthMode != DepthMode.NONE) {
+        // A blend without its clip replaces a masked shader's whole, as an instance's bOverride_BlendMode does.
+        boolean unclip = state.blend() != null && !state.clip() && depthMode == DepthMode.CLIP;
+        if (state.depthWrite() != null && depthMode != DepthMode.NONE && !unclip) {
             throw new CgShaderParseException("[" + resourcePath + "] Its \"Depth\" = \"" + (depthMode == DepthMode.CLIP
                     ? "Clip" : "Prepass") + "\" owns its depth write: a material state may not set depthWrite");
         }
@@ -180,11 +184,11 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
         for (CgParsedPass pass : passes) {
             CgRenderState rs = pass.renderState();
             if (CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode())) {
-                rs = forwardUnder(rs, state);
+                rs = forwardUnder(rs, state, unclip);
             } else if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode()) && authored != null
                     && pass.fragmentBody() == firstForward.fragmentBody()) {
                 // A codeless pass copied the Forward pass's state where it authored none: what it copied follows.
-                CgRenderState forward = forwardUnder(authored, state);
+                CgRenderState forward = forwardUnder(authored, state, unclip);
                 if (mode != null && Objects.equals(rs.getBlend(), authored.getBlend())) {
                     rs = rs.withBlend((mode == CgBlendMode.SUBTRACT ? CgBlendMode.ADDITIVE : mode).state());
                 }
@@ -195,15 +199,20 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
         }
         return new CgParsedShader(shaderType, properties, featureNames, engineBuffers, renderQueue, renderType,
                 castShadows, sceneColorMargin, unlit, unfogged, linearColor, unmediated, emissiveOpacity,
-                state.clip() ? DepthMode.CLIP : depthMode, tube, Collections.unmodifiableList(out), buffers, bufferStructs);
+                state.clip() ? DepthMode.CLIP : unclip ? DepthMode.NONE : depthMode, tube, Collections.unmodifiableList(out),
+                buffers, bufferStructs);
     }
 
-    /** A Forward pass's {@code rs} under {@code state}'s blend, and with its clip writing depth as the parser makes it. */
-    private static CgRenderState forwardUnder(CgRenderState rs, CgMaterialState state) {
+    /**
+     * A Forward pass's {@code rs} under {@code state}'s blend, and with its clip writing depth as the parser makes it;
+     * {@code unclip}, the shader's clip dropped, writing depth only under an opaque blend, as Unreal's blend modes do.
+     */
+    private static CgRenderState forwardUnder(CgRenderState rs, CgMaterialState state, boolean unclip) {
         if (state.blend() != null) rs = rs.withBlend(state.blend().state());
-        if (state.clip()) {
+        if (state.clip() || unclip) {
             CgDepthState depth = rs.getDepth() != null ? rs.getDepth() : CgDepthState.TEST_WRITE;
-            rs = rs.withDepth(new CgDepthState(depth.test(), true, depth.compareFunc()));
+            rs = rs.withDepth(new CgDepthState(depth.test(), state.clip() || state.blend() == CgBlendMode.OPAQUE,
+                    depth.compareFunc()));
         }
         return rs;
     }
