@@ -58,8 +58,8 @@ public final class CgMasterNode implements CgShaderNode {
      * <p>Unity's Fragment block also carries Metallic, Smoothness, Ambient Occlusion, Emission and a
      * tangent-space Normal. <b>Every one of them is consumed by a lighting model, and this engine has
      * none</b> — its one light is the host's lightmap, which the compiler multiplies a world material's whole
-     * colour by, and {@code CgMaterialShader.SHADOWS_SUPPORTED} is false with "deferred to v2" written
-     * beside it. A port whose only consumer does not exist accepts a wire, displays a value, changes no
+     * colour by; the world's lights and their shadows are deferred ({@code CgWorldLights}) and never read a
+     * material's outputs. A port whose only consumer does not exist accepts a wire, displays a value, changes no
      * pixel, and gives no clue which of those three it is failing at; that is strictly worse than not
      * offering it, because absence is at least legible.</p>
      *
@@ -152,7 +152,7 @@ public final class CgMasterNode implements CgShaderNode {
         return this;
     }
 
-    /** {@code Tags { "RenderType" = ... }}. Drives shadow auto-generation. */
+    /** {@code Tags { "RenderType" = ... }}. Drives depth auto-generation. */
     public CgMasterNode renderType(String value) {
         if (!Objects.equals(renderType, value)) revision++;
         this.renderType = value;

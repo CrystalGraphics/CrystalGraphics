@@ -15,12 +15,12 @@ import com.crystalgraphics.api.state.CgRenderState;
  *
  * <p>All fields are non-null by contract:</p>
  * <ul>
- *   <li>{@link #lightMode()} — one of {@link #LIGHT_MODE_FORWARD}, {@link #LIGHT_MODE_SHADOW_CASTER},
- *       {@link #LIGHT_MODE_DEPTH} or {@link #LIGHT_MODE_EMISSIVE}. Auto-defaulted to {@code "Forward"} by the
+ *   <li>{@link #lightMode()} — one of {@link #LIGHT_MODE_FORWARD}, {@link #LIGHT_MODE_DEPTH},
+ *       {@link #LIGHT_MODE_EMISSIVE} or {@link #LIGHT_MODE_DISTORTION}. Auto-defaulted to {@code "Forward"} by the
  *       parser if absent or unknown.</li>
  *   <li>{@link #name()} — auto-assigned by the parser if absent:
  *       Forward passes → {@code "Pass0"}, {@code "Pass1"}, …;
- *       ShadowCaster → {@code "ShadowCaster"}; Depth → {@code "Depth"}; Emissive is always {@code "Emissive"}.</li>
+ *       Depth → {@code "Depth"}; Emissive is always {@code "Emissive"}.</li>
  *   <li>{@link #renderState()} — defaults to {@link CgRenderState#DEFAULT} when the
  *       {@code RenderState { }} block is absent from the pass.</li>
  *   <li>{@link #v2fStructBody()}, {@link #globalDecls()}, {@link #vertexBody()},
@@ -67,9 +67,6 @@ public record CgParsedPass(String lightMode, String name, CgRenderState renderSt
 
     /** LightMode tag value for standard forward-lit passes. */
     static final String LIGHT_MODE_FORWARD = CgRenderPassVariant.FORWARD.lightModeName();
-
-    /** LightMode tag value for shadow-caster passes (depth from light). */
-    static final String LIGHT_MODE_SHADOW_CASTER = CgRenderPassVariant.SHADOW.lightModeName();
 
     /** LightMode tag value for depth-only pre-pass (v2 — not executed in MVP). */
     static final String LIGHT_MODE_DEPTH = CgRenderPassVariant.DEPTH.lightModeName();

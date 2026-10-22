@@ -55,7 +55,7 @@ final class CgTagParser {
      * any {@code Pass { }} block (i.e. at material scope, not pass scope).
      *
      * <p>Returns an empty map when no top-level {@code Tags { }} block is present.
-     * Typical use: extracting {@code "RenderType"} and {@code "CastShadows"}.</p>
+     * Typical use: extracting {@code "RenderType"} and {@code "Lighting"}.</p>
      *
      * @param source       the full {@code .shader} source
      * @param resourcePath used in exception messages

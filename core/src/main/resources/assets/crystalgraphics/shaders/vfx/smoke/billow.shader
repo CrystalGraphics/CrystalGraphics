@@ -22,7 +22,7 @@
 #include "crystalgraphics:shaders/lib/vfx/fx_billow.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
-Tags { "RenderType" = "Transparent" "CastShadows" = "Off" "Lighting" = "Unlit" "Depth" = "Prepass" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Depth" = "Prepass" }
 Queue = "Transparent"
 
 Properties {

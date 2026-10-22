@@ -22,10 +22,10 @@ Tags {
     "RenderType" = "Transparent"
 }
 
-// Transparent (3000) is >= TRANSPARENT_THRESHOLD (2500), so attemptShadowAutoGen /
-// attemptDepthAutoGen bail out on their isOpaque check and a stroke never gets an
-// auto-generated ShadowCaster or Depth pass. An alpha-blended SDF has no meaningful
-// depth-only representation, so those passes would be wrong, not merely wasteful.
+// Transparent (3000) is >= TRANSPARENT_THRESHOLD (2500), so attemptDepthAutoGen bails out
+// on its isOpaque check and a stroke never gets an auto-generated Depth pass. An
+// alpha-blended SDF has no meaningful depth-only representation, so that pass would be
+// wrong, not merely wasteful.
 Queue = "Transparent"
 
 struct v2f {

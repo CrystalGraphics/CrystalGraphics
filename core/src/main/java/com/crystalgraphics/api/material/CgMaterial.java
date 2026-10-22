@@ -239,8 +239,8 @@ public final class CgMaterial {
      * ordering instead of Godot's sort-queue-based execution which has known ordering bugs.</p>
      *
      * <p>The CrystalShader {@code .shader} format handles the "different pass types in one
-     * material" axis via {@code LightMode} tags ({@code Forward}, {@code ShadowCaster},
-     * {@code Depth}). This field handles the orthogonal "same pass type, drawn twice for
+     * material" axis via {@code LightMode} tags ({@code Forward}, {@code Depth},
+     * {@code Emissive}, {@code Distortion}). This field handles the orthogonal "same pass type, drawn twice for
      * a visual effect" axis.</p>
      *
      * -- GETTER --
@@ -1244,7 +1244,7 @@ public final class CgMaterial {
      * Returns the render state for the given pass variant from the last successful compile.
      * Falls back to the per-instance {@code renderState} field for forTest materials.
      *
-     * <p>For FORWARD: resolves via the first Forward-lit pass. For SHADOW/DEPTH: resolves by
+     * <p>For FORWARD: resolves via the first Forward-lit pass. For the others: resolves by
      * LightMode tag name. Returns {@link CgRenderState#DEFAULT} when the pass is not found.</p>
      *
      * @param variant the pass variant whose render state to retrieve; must not be null
@@ -1282,13 +1282,11 @@ public final class CgMaterial {
     /**
      * Binds the compiled program for the given pass variant.
      *
-     * <p>FORWARD uses the active enabled-keyword set. SHADOW and DEPTH always use an empty
+     * <p>FORWARD uses the active enabled-keyword set. DEPTH always uses an empty
      * keyword set — keywords apply to forward passes only. The render state for the targeted
      * pass is applied. Per-instance property UBO is wired and uploaded as needed.</p>
      *
-     * <p>Designed for orchestrators that drive multi-pass shadow / depth rendering externally
-     * (e.g. a shadow renderer that calls {@code bindForPass(CgRenderPassVariant.SHADOW)} and
-     * then draws into a shadow map FBO).</p>
+     * <p>Designed for orchestrators that drive a depth pass externally, as the world renderer's prepass does.</p>
      *
      * @param variant the pass variant to bind; must not be null
      */
@@ -1382,26 +1380,6 @@ public final class CgMaterial {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, "doBind.shaderBind")) {
             shader.bind();
         }
-    }
-
-    /**
-     * Returns {@code true} when this material will cast shadows.
-     *
-     * <p>Based on the {@code castShadows} flag from the last successful parse and the render
-     * queue — opaque/alpha-test materials ({@code renderQueue < CgRenderQueue.TRANSPARENT})
-     * with {@code CastShadows = true} (the default) return {@code true} regardless of whether
-     * a ShadowCaster program has been compiled yet. Transparent materials always return
-     * {@code false}.</p>
-     *
-     * <p>A shadow renderer should call {@code bindForPass(CgRenderPassVariant.SHADOW)} only when
-     * this method returns {@code true}.</p>
-     */
-    public boolean hasShadowCasterPass() {
-        if (cgMaterialShader == null) return false;
-        if (getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) return false;
-        CgParsedShader parsed = cgMaterialShader.getLastParsed();
-        if (parsed == null) return false;
-        return parsed.castShadows();
     }
 
     /**

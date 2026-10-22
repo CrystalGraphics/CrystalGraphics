@@ -356,90 +356,6 @@ public final class CgMaterialShaderCompiler {
         return compile(parsed, parsed.passes().get(0), attachedBuffers, matPropsEntry, config);
     }
 
-    // ── Shadow auto-generation ────────────────────────────────────────────────
-
-    /**
-     * Auto-generates a ShadowCaster program from an existing Forward pass.
-     *
-     * <p>The shadow vertex shader either uses a minimal position-only transform
-     * (when {@link #isSimpleVertex(CgParsedPass)} is true) or re-runs the forward
-     * vertex body and overrides {@code gl_Position} with the light-space transform
-     * (for complex vertices with animation or custom attributes).</p>
-     *
-     * <p>The fragment shader is depth-only (empty body; depth written automatically
-     * by the rasterizer).</p>
-     *
-     * <p><strong>⚠ UBO contract — NOT YET SATISFIED.</strong> The generated GLSL references
-     * {@code cg_ShadowViewProjMatrix}, {@code cg_LightDirection} and {@code cg_ShadowParams} as plain
-     * identifiers, on the assumption that {@code CgFrameBlock} declares them (injected via
-     * {@code cg_env.glsl}). <b>It does not, and never has</b> — that block carries view, projection, time
-     * and resolution and nothing else, so everything produced here fails to compile with
-     * {@code undefined variable}. This javadoc asserted the contract rather than the code establishing it,
-     * which is why it went unnoticed for so long.</p>
-     *
-     * <p>Nothing calls this today: {@code CgMaterialShader.attemptShadowAutoGen} skips shadow generation
-     * entirely while {@code CgMaterialShader.SHADOWS_SUPPORTED} is false. Declaring the three uniforms in
-     * {@code cg_env.glsl} and flipping that flag are one change, enforced by
-     * {@code CgShadowUniformContractTest}.</p>
-     *
-     * <p>The identifier style is right and worth keeping: plain references, never standalone
-     * {@code uniform} declarations, which would collide with the block once it exists.</p>
-     *
-     * @param shader          material-level parse result (properties, featureNames)
-     * @param forwardPass     the Forward pass to derive the shadow vertex from; must not be null
-     * @param attachedBuffers user-defined SSBO/TBO and UBO buffers to inject
-     * @param matPropsUbo     engine-managed material properties UBO, or {@code null}
-     * @param config          active-keyword config (typically {@link CompileConfig#DEFAULT})
-     * @return a {@link CompiledSource} holding the complete shadow vertex and depth-only fragment
-     * @throws IllegalArgumentException if {@code ShaderBufferPath} is {@code NONE}
-     */
-    public static CompiledSource compileShadowAutoGen(CgParsedShader shader,
-                                                       CgParsedPass forwardPass,
-                                                       List<CgAttachedBuffer> attachedBuffers,
-                                                       CgUniformBuffer matPropsUbo,
-                                                       CompileConfig config) {
-        final String shadowVertexBody;
-        if (isSimpleVertex(forwardPass) && !readsBuffers(shader, forwardPass)) {
-            // Simple path: minimal position-only transform using the frame UBO shadow matrix
-            shadowVertexBody =
-                    "    // Auto-generated shadow caster -- minimal position transform\n"
-                    + "    gl_Position = cg_ShadowViewProjMatrix * CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);\n"
-                    + "    // Depth bias to prevent shadow acne (cg_ShadowParams.z)\n"
-                    + "    gl_Position.z += cg_ShadowParams.z * gl_Position.w;\n"
-                    + "    // Pancaking: clamp to avoid near-plane clipping on thin objects\n"
-                    + "    gl_Position.z = max(gl_Position.z, -gl_Position.w);\n";
-        } else {
-            // Complex path: run forward vertex body, then override gl_Position with shadow transform
-            shadowVertexBody =
-                    "    // Auto-generated shadow caster -- complex vertex (has animation or custom attributes)\n"
-                    + forwardPass.vertexBody() + "\n"
-                    + "    // Override gl_Position with light-space transform\n"
-                    + "    gl_Position = cg_ShadowViewProjMatrix * CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);\n"
-                    + "    // Depth bias and pancaking (cg_ShadowParams.z)\n"
-                    + "    gl_Position.z += cg_ShadowParams.z * gl_Position.w;\n"
-                    + "    gl_Position.z = max(gl_Position.z, -gl_Position.w);\n";
-        }
-
-        // Fragment: depth-only — empty body, rasterizer writes depth automatically
-        final String shadowFragmentBody =
-                "    // Depth-only shadow pass -- rasterizer writes depth automatically.\n";
-
-        // Build synthetic shadow pass reusing forward pass's v2f for interface block consistency
-        CgFragOutputParser.FragOutput shadowFragOutput =
-                CgFragOutputParser.FragOutput.singleOutput("fragColor");
-        CgParsedPass shadowPass = new CgParsedPass(
-                CgParsedPass.LIGHT_MODE_SHADOW_CASTER,
-                CgParsedPass.LIGHT_MODE_SHADOW_CASTER,
-                CgRenderState.DEFAULT,
-                forwardPass.v2fStructBody(),
-                forwardPass.globalDecls(),
-                shadowVertexBody,
-                shadowFragmentBody,
-                shadowFragOutput);
-
-        return compile(shader, shadowPass, attachedBuffers, matPropsUbo, config);
-    }
-
     /**
      * Auto-generates a depth-prepass program from an existing Forward pass.
      *
@@ -615,11 +531,11 @@ public final class CgMaterialShaderCompiler {
         sb.append("#include \"").append(ENV_INCLUDE).append("\"\n");
 
         // Inject vertex attribute declarations for this format immediately after cg_env.glsl.
-        // Known limitation: compileShadowAutoGen / compileDepthAutoGen generate vertex bodies
+        // Known limitation: compileDepthAutoGen generates vertex bodies
         // that reference cg_Position by literal name — this only works correctly for formats
         // where the position attribute is named cg_Position (i.e. SPATIAL and SPATIAL-derived
         // formats). Custom formats with a differently-named position attribute must author an
-        // explicit ShadowCaster / Depth pass to bypass auto-generation.
+        // explicit Depth pass to bypass auto-generation.
         sb.append(CgGlslEmitter.emitVertexInputs(vertexFormat));
         // A strip variant draws no mesh: its #type's attributes stand at their defaults for a port naming one directly.
         if (stripVariant(shader, config)) {

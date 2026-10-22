@@ -40,7 +40,7 @@ public final class CgShaderEmitter {
      *
      * <h3>{@link #PREVIEW_LIT} is viewport shading, not a lighting model</h3>
      * <p>This engine has no lighting model: in the world the compiler multiplies a material's whole colour by the
-     * host's lightmap, and a preview has none ({@code CgMaterialShader.SHADOWS_SUPPORTED} is false). What {@code PREVIEW_LIT} adds is a fixed
+     * host's lightmap, and a preview has none (the world's lights are deferred, {@code CgWorldLights}). What {@code PREVIEW_LIT} adds is a fixed
      * key light baked into the generated source as constants, exactly the way a modelling tool's
      * "material preview" viewport differs from its final render. <b>No engine state is involved</b>, so
      * nothing here pre-empts what a real lighting model will eventually look like.</p>

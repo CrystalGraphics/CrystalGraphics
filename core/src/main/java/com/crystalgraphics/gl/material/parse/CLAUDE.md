@@ -19,9 +19,9 @@ static final fields.
 |-------|--------|------|
 | `CgShaderParser` | `public final` | Public parse facade. `parse(String)` / `parse(String, String)` → `CgParsedShader`. `parseV2fFields(CgParsedPass)` → `List<V2fField>`. Nested `V2fField` record (public). Dispatches pass-aware parse flow (see Pipeline Flow below). |
 | `CgShaderParseException` | `public` | `RuntimeException` thrown on any `.shader` format violation. All messages include a `[resourcePath]` prefix. |
-| `CgParsedShader` | `public record` | Immutable material-level parse result. Fields: `shaderType`, `properties`, `featureNames`, `renderQueue`, `renderType`, `castShadows`, `passes`, `buffers` (the `Buffers { }` block, as `CgBufferDecl`s) and `bufferStructs` (the structs they name, as written). `getPassByName(String)`, `getPassByLightMode(String)` and `buffer(String)` are convenience lookups. `withState(CgMaterialState, path)` is the parse under a material's blend and clip, as if authored: the Forward passes take them, a codeless Emissive pass what it copied (a `SUBTRACT` glow adds), refusals thrown as `CgShaderParseException`. Per-pass data lives on each `CgParsedPass` — not on this record. Consumed by `CgMaterialShaderCompiler`. |
-| `CgParsedPass` | `public record` | Immutable per-pass parse result. Fields: `lightMode`, `name`, `renderState`, `v2fStructBody`, `globalDecls`, `vertexBody`, `fragmentBody`, `fragOutput`. Package-private constants `LIGHT_MODE_FORWARD`, `LIGHT_MODE_SHADOW_CASTER`, `LIGHT_MODE_DEPTH` — **use `CgRenderPassVariant.*.lightModeName()` from outside this package**. |
-| `CgMaterialShaderCompiler` | `public final` | Generates complete GLSL vertex + fragment source strings from a `(CgParsedShader, CgParsedPass)` pair. Canonical 5-arg entry point: `compile(shader, pass, attachedBuffers, matPropsEntry, config)`. Convenience overloads delegate to the canonical via `passes().get(0)`. `compileShadowAutoGen(shader, forwardPass, ...)` auto-generates a shadow-caster program from a Forward pass. `compileDepthAutoGen(shader, forwardPass, ...)` auto-generates a depth-prepass program (three cases: (1) simple vertex → minimal `CG_MATRIX_MVP` transform; (2) complex vertex → forward body copied verbatim to preserve animation; (3) alpha-clip → forward vertex + forward fragment body so `discard` fires). `isSimpleVertex(pass)` — no user props, no `cg_Time`/`CG_OBJECT_CUSTOM0-3`, no `discard`, cull ≠ NONE; a vertex reading a `Buffers { }` buffer is never simple. Each stage declares the material's buffers after the attached ones: the structs, then `CgLoweredEmitter.reader` per buffer, a storage block or a `usamplerBuffer` by path. Nested `CompiledSource` record: `vertexSource`, `fragmentSource`, `vertexFormat` (resolved from `#type` at compile time). Nested `CompileConfig` record: `activeKeywords`, `DEFAULT`. **Known limitation**: `compileShadowAutoGen`/`compileDepthAutoGen` generate vertex bodies that reference `cg_Position` by literal name — only correct for SPATIAL and SPATIAL-derived formats. Custom formats with differently-named position attributes must author an explicit `ShadowCaster`/`Depth` pass. |
+| `CgParsedShader` | `public record` | Immutable material-level parse result. Fields: `shaderType`, `properties`, `featureNames`, `renderQueue`, `renderType`, `passes`, `buffers` (the `Buffers { }` block, as `CgBufferDecl`s) and `bufferStructs` (the structs they name, as written). `getPassByName(String)`, `getPassByLightMode(String)` and `buffer(String)` are convenience lookups. `withState(CgMaterialState, path)` is the parse under a material's blend and clip, as if authored: the Forward passes take them, a codeless Emissive pass what it copied (a `SUBTRACT` glow adds), refusals thrown as `CgShaderParseException`. Per-pass data lives on each `CgParsedPass` — not on this record. Consumed by `CgMaterialShaderCompiler`. |
+| `CgParsedPass` | `public record` | Immutable per-pass parse result. Fields: `lightMode`, `name`, `renderState`, `v2fStructBody`, `globalDecls`, `vertexBody`, `fragmentBody`, `fragOutput`. Package-private constants `LIGHT_MODE_FORWARD`, `LIGHT_MODE_DEPTH`, `LIGHT_MODE_EMISSIVE`, `LIGHT_MODE_DISTORTION` — **use `CgRenderPassVariant.*.lightModeName()` from outside this package**. |
+| `CgMaterialShaderCompiler` | `public final` | Generates complete GLSL vertex + fragment source strings from a `(CgParsedShader, CgParsedPass)` pair. Canonical 5-arg entry point: `compile(shader, pass, attachedBuffers, matPropsEntry, config)`. Convenience overloads delegate to the canonical via `passes().get(0)`. `compileDepthAutoGen(shader, forwardPass, ...)` auto-generates a depth-prepass program (three cases: (1) simple vertex → minimal `CG_MATRIX_MVP` transform; (2) complex vertex → forward body copied verbatim to preserve animation; (3) alpha-clip → forward vertex + forward fragment body so `discard` fires). `isSimpleVertex(pass)` — no user props, no `cg_Time`/`CG_OBJECT_CUSTOM0-3`, no `discard`, cull ≠ NONE; a vertex reading a `Buffers { }` buffer is never simple. Each stage declares the material's buffers after the attached ones: the structs, then `CgLoweredEmitter.reader` per buffer, a storage block or a `usamplerBuffer` by path. Nested `CompiledSource` record: `vertexSource`, `fragmentSource`, `vertexFormat` (resolved from `#type` at compile time). Nested `CompileConfig` record: `activeKeywords`, `DEFAULT`. **Known limitation**: `compileDepthAutoGen` generates vertex bodies that reference `cg_Position` by literal name — only correct for SPATIAL and SPATIAL-derived formats. Custom formats with differently-named position attributes must author an explicit `Depth` pass. |
 | `CgFragOutputParser` | package-private | Parses the `void fragment()` signature to produce a `CgFragOutputParser.FragOutput`. Handles single-output (`out vec4`) and MRT struct path (`out GBuffer o`), including `: RTN` annotation resolution, all-or-none validation, duplicate/range checks, and clean struct body construction. Owns the nested `FragOutput` public record (see below). |
 | `CgFragOutputParser.FragOutput` | `public static record` (nested) | Fragment output descriptor, nested inside `CgFragOutputParser`. `isMrt()` distinguishes single-output (`mrtStructName==null`) from MRT struct path. Fields: `mrtStructName`, `outParamName`, `fieldNames`, `locations`, `mrtStructBody`. Static factory: `singleOutput(String)`. |
 | `CgGlslEmitter` | package-private | Pure GLSL string generator for SSBO, TBO, UBO blocks, and vertex format attribute declarations. Package-private test seam: `emitSsbo/emitTbo/emitUbo(CgBufferFormat, String, ...)`. `emitVertexInputs(CgVertexFormat)` generates `in <glslType> <name>;` declarations for all format attributes — called only from `buildVertexSource()`, never from the fragment stage. Renamed from `CgGlslEmitter`. |
@@ -58,7 +58,7 @@ All other classes are package-private implementation details.
 - **`#` directive passthrough** — top-level preamble `#`-lines are collected by `CgStructureParser.parsePreambleDirectives()` and prepended to each pass's `globalDecls`; the compiler emits them immediately after `#version`.
 - **Auto-inject extensions** — `CgGpuType.requiredExtension()` drives automatic `#extension` emission for `INT64`/`UINT64` buffer fields.
 - **Fragment output ownership** — `CgFragOutputParser` owns all fragment-output parse logic; `CgStructureParser` does not parse fragment outputs.
-- **Shadow UBO contract** — auto-generated shadow shaders reference `cg_ShadowViewProjMatrix`, `cg_LightDirection`, `cg_ShadowParams` as plain identifiers from the `CgFrameBlock` UBO — never as standalone `uniform` declarations.
+- **No shadow pass** — `"LightMode" = "ShadowCaster"` and a `"CastShadows"` tag throw: shadows are ray-traced from each pixel (`CgWorldLights`).
 
 ## Internal Pipeline Flow
 
@@ -73,7 +73,7 @@ CgShaderParser.parse(source, path)
     ├── CgPropertiesParser.parse()                  ← material-level Properties {}
     ├── CgStructureParser.parseBuffers()            ← material-level Buffers {} and the structs before it
     ├── CgQueueParser.parse()                       ← Queue = "..." (material-level)
-    ├── CgTagParser.parseTopLevelTags()       → renderType, castShadows
+    ├── CgTagParser.parseTopLevelTags()       → renderType, Lighting, Fog, ...
     ├── CgStructureParser.extractPassBlocks()       → List<String> pass bodies
     │   └── throws if empty ("No Pass {} blocks found")
     ├── CgStructureParser.parseSharedV2f()          ← top-level struct v2f (optional)
@@ -82,7 +82,7 @@ CgShaderParser.parse(source, path)
     └── for each passBody:
         ├── CgTagParser.parseTagsBlock()      → lightMode, name
         ├── lightMode validation/default (→ "Forward" if absent/unknown)
-        ├── dedup check for ShadowCaster/Depth (warn + skip if duplicate)
+        ├── dedup check for Depth/Emissive/Distortion (warn + skip if duplicate)
         ├── CgRenderStateParser.parse(passBody)
         ├── CgStructureParser.parsePassV2fBody()    (per-pass or shared fallback)
         ├── CgStructureParser.parsePassGlobalDecls()
@@ -94,7 +94,7 @@ CgShaderParser.parse(source, path)
         └── → CgParsedPass
 
     → CgParsedShader(shaderType, properties, featureNames, renderQueue,
-                      renderType, castShadows, passes, buffers, bufferStructs)
+                      renderType, passes, buffers, bufferStructs)
 
 CgMaterialShaderCompiler.compile(shader, pass, attachedBuffers, matPropsUbo, config)
     ├── CgShaderParser.parseV2fFields(pass)
@@ -105,9 +105,6 @@ CgMaterialShaderCompiler.compile(shader, pass, attachedBuffers, matPropsUbo, con
     ├── CgGlslEmitter.emitSsbo/emitTbo/emitUbo()  (per attached buffer)
     └── → CompiledSource { vertexSource, fragmentSource, vertexFormat }
 
-CgMaterialShaderCompiler.compileShadowAutoGen(shader, forwardPass, ...)
-    ├── isSimpleVertex(forwardPass)  → simple (position-only) or complex (full body + override)
-    └── → CompiledSource { shadowVertexSource, depthOnlyFragmentSource }
 ```
 
 ## `#pragma cg_feature` — Keyword Parsing
@@ -167,16 +164,6 @@ shader in the engine.
 **How the attach happens:** `CgMaterialShader.recompile()` step 2b resolves each token through
 `CgEngineBufferRegistry` and calls `attach(...)` — after parse, before compile. Covered by
 `CgShaderParserUsePragmaTest`.
-
-## Shadow Auto-Generation
-
-`CgMaterialShaderCompiler.compileShadowAutoGen(shader, forwardPass, attachedBuffers, matPropsUbo, config)`:
-
-- **Simple vertex path** (`isSimpleVertex(pass)` = no user props, no `discard`, cull ≠ `NONE`): emits a minimal position-only transform using `cg_ShadowViewProjMatrix` from the frame UBO.
-- **Complex vertex path**: re-runs the full forward vertex body, then overrides `gl_Position` with the shadow matrix.
-- **Fragment**: depth-only (empty body — rasterizer writes depth automatically).
-
-Called by `CgMaterialShader.recompile()` when `castShadows && renderQueue < 3000` and no explicit `ShadowCaster` pass was authored.
 
 ## The Emissive pass
 

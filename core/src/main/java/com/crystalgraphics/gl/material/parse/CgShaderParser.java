@@ -42,10 +42,12 @@ import java.util.regex.Matcher;
  *   <li>At least one {@code Pass { }} block is required; the parser throws when none are found.</li>
  *   <li>Each pass may declare {@code Tags { "LightMode" = "..." "Name" = "..." }}.</li>
  *   <li>Unknown or absent {@code LightMode} values default to {@code "Forward"} with a warning.</li>
- *   <li>Duplicate {@code ShadowCaster} or {@code Depth} passes: first is kept, subsequent
+ *   <li>{@code "LightMode" = "ShadowCaster"} and a material-level {@code "CastShadows"} tag throw: no material
+ *       draws from a light's side, since the world's shadows are traced from each pixel.</li>
+ *   <li>Duplicate {@code Depth}, {@code Emissive} or {@code Distortion} passes: first is kept, subsequent
  *       are dropped with a warning.</li>
  *   <li>Pass names are auto-assigned when absent: Forward passes → {@code "Pass0"}, {@code "Pass1"}, …;
- *       ShadowCaster → {@code "ShadowCaster"}; Depth → {@code "Depth"}.</li>
+ *       Depth → {@code "Depth"}.</li>
  * </ul>
  *
  * <h3>Enforcement summary</h3>
@@ -208,7 +210,7 @@ public final class CgShaderParser {
         CgStructureParser.MaterialBuffers buffers = CgStructureParser.parseBuffers(uncommented, resourcePath);
         int renderQueue                = CgQueueParser.parse(source, resourcePath);
 
-        // ── Step 3: top-level Tags block → RenderType, CastShadows ────────
+        // ── Step 3: top-level Tags block → RenderType and the rest ────────
         Map<String, String> topTags = CgTagParser.parseTopLevelTags(source, resourcePath);
 
         String renderType = topTags.getOrDefault("RenderType", "Opaque");
@@ -217,8 +219,10 @@ public final class CgShaderParser {
                     + "Add: Tags {{ \"RenderType\" = \"Opaque\" }} before your first Pass block.", resourcePath);
         }
 
-        // CastShadows is opt-out: absent or any value other than "Off" means true
-        boolean castShadows = !"Off".equalsIgnoreCase(topTags.getOrDefault("CastShadows", "On"));
+        if (topTags.containsKey("CastShadows")) {
+            throw new CgShaderParseException("[" + resourcePath + "] CastShadows is gone: no material draws a shadow pass, "
+                    + "the world's shadows are traced from each pixel. Remove the tag.");
+        }
         float sceneColorMargin = sceneColorMargin(topTags.get("SceneColorMargin"), resourcePath);
         String lighting = topTags.getOrDefault("Lighting", "Lit");
         if (!"Lit".equals(lighting) && !"Unlit".equals(lighting)) {
@@ -269,7 +273,7 @@ public final class CgShaderParser {
 
         // ── Step 7: parse each Pass block ─────────────────────────────────
         List<CgParsedPass> passes = new ArrayList<>();
-        // Track seen unique-only light modes (ShadowCaster, Depth, Emissive) for dedup warning
+        // Track seen unique-only light modes (Depth, Emissive, Distortion) for dedup warning
         Set<String> seenUniqueLightModes = new HashSet<>();
         int forwardPassIndex = 0;
 
@@ -286,8 +290,10 @@ public final class CgShaderParser {
                 lightMode = CgParsedPass.LIGHT_MODE_FORWARD;
                 LOGGER.warn("[" + resourcePath + "] Pass #" + i + " has no 'LightMode' tag. Defaulting to '" + CgParsedPass.LIGHT_MODE_FORWARD + "'. "
                         + "Add: Tags {{ \"LightMode\" = \"Forward\" }} inside the Pass block.");
+            } else if ("ShadowCaster".equals(rawLightMode)) {
+                throw new CgShaderParseException("[" + resourcePath + "] Pass #" + i + " is a ShadowCaster: that pass is gone, "
+                        + "the world's shadows are traced from each pixel. Remove the Pass block.");
             } else if (CgParsedPass.LIGHT_MODE_FORWARD.equals(rawLightMode)
-                    || CgParsedPass.LIGHT_MODE_SHADOW_CASTER.equals(rawLightMode)
                     || CgParsedPass.LIGHT_MODE_DEPTH.equals(rawLightMode)
                     || CgParsedPass.LIGHT_MODE_EMISSIVE.equals(rawLightMode)
                     || CgParsedPass.LIGHT_MODE_DISTORTION.equals(rawLightMode)) {
@@ -295,10 +301,10 @@ public final class CgShaderParser {
             } else {
                 lightMode = CgParsedPass.LIGHT_MODE_FORWARD;
                 LOGGER.warn("[" + resourcePath + "] Pass #" + i + " has unrecognised LightMode '" + rawLightMode + "'. Defaulting to '" + CgParsedPass.LIGHT_MODE_FORWARD + "'. "
-                        + "Valid values: Forward, ShadowCaster, Depth, Emissive, Distortion.");
+                        + "Valid values: Forward, Depth, Emissive, Distortion.");
             }
 
-            // 7c. Deduplicate ShadowCaster, Depth and Emissive — only one of each is allowed
+            // 7c. Deduplicate Depth, Emissive and Distortion — only one of each is allowed
             if (!CgParsedPass.LIGHT_MODE_FORWARD.equals(lightMode)) {
                 if (seenUniqueLightModes.contains(lightMode)) {
                     LOGGER.warn("[" + resourcePath + "] Duplicate '" + lightMode + "' pass found (Pass #" + i + "). Only the first occurrence is used. "
@@ -317,7 +323,7 @@ public final class CgShaderParser {
             } else if (CgParsedPass.LIGHT_MODE_FORWARD.equals(lightMode)) {
                 passName = "Pass" + forwardPassIndex;
             } else {
-                // ShadowCaster and Depth use their lightMode as default name
+                // Depth uses its lightMode as default name
                 passName = lightMode;
             }
 
@@ -436,7 +442,7 @@ public final class CgShaderParser {
 
         // ── Step 8: return assembled parsed shader ─────────────────────────
         return new CgParsedShader(shaderType, props, featureNames, engineBuffers, renderQueue,
-                renderType, castShadows, sceneColorMargin, "Unlit".equals(lighting), "Off".equals(fog),
+                renderType, sceneColorMargin, "Unlit".equals(lighting), "Off".equals(fog),
                 "Linear".equals(colorSpace), "Off".equals(media), "EmissiveOpacity".equals(output), depthMode, tube,
                 Collections.unmodifiableList(passes),
                 buffers.buffers(),

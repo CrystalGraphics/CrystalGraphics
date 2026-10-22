@@ -47,11 +47,6 @@ import java.util.Objects;
  * @param renderType
  *     Material-level {@code "RenderType"} tag value (e.g. {@code "Opaque"},
  *     {@code "Transparent"}). Defaults to {@code "Opaque"} when absent or unknown.
- * @param castShadows
- *     {@code false} when the material-level {@code Tags} block contains
- *     {@code "CastShadows" = "Off"}; {@code true} in all other cases (including
- *     when the tag is absent). Controls whether the shadow auto-generation ladder
- *     runs during {@code recompile()}.
  * @param tube
  *     The tube geometry it needs on a tube slot, by its material-level {@code "Tube"} tag: {@code Volume} a chunk on a
  *     sphere round it, {@code Closed} a chunk closed at both ends; null for the chunked tube.
@@ -83,7 +78,7 @@ import java.util.Objects;
  *     Ordered, unmodifiable list of parsed {@link CgParsedPass} records.
  *     Contains at least one entry — the parser throws
  *     {@link CgShaderParseException} when no {@code Pass { }} blocks are found.
- *     Duplicate Depth/ShadowCaster passes are silently removed (first kept).
+ *     Duplicate Depth passes are silently removed (first kept).
  * @param buffers
  *     The material-level {@code Buffers { }}: buffers a kernel writes, which every pass reads. Buffer {@code i} is
  *     bound by {@code CgMaterial.buffer(name, buffer)}. Empty when there is none.
@@ -93,7 +88,7 @@ import java.util.Objects;
 @Desugar
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties,
                               List<String> featureNames, List<String> engineBuffers, int renderQueue,
-                              String renderType, boolean castShadows, float sceneColorMargin, boolean unlit,
+                              String renderType, float sceneColorMargin, boolean unlit,
                               boolean unfogged, boolean linearColor, boolean unmediated, boolean emissiveOpacity,
                               DepthMode depthMode, @Nullable Tube tube,
                               List<CgParsedPass> passes, List<CgBufferDecl> buffers, String bufferStructs) {
@@ -198,7 +193,7 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
                     pass.v2fStructBody(), pass.globalDecls(), pass.vertexBody(), pass.fragmentBody(), pass.fragOutput()));
         }
         return new CgParsedShader(shaderType, properties, featureNames, engineBuffers, renderQueue, renderType,
-                castShadows, sceneColorMargin, unlit, unfogged, linearColor, unmediated, emissiveOpacity,
+                sceneColorMargin, unlit, unfogged, linearColor, unmediated, emissiveOpacity,
                 state.clip() ? DepthMode.CLIP : unclip ? DepthMode.NONE : depthMode, tube, Collections.unmodifiableList(out),
                 buffers, bufferStructs);
     }

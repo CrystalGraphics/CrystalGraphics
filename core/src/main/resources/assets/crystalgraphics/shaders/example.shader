@@ -14,13 +14,12 @@
 // Max 8 flags per shader. OFF by default -- no #define injected unless enabled.
 //
 // Java:
-//   material.enableKeyword("RECEIVE_SHADOWS");   // -> #define RECEIVE_SHADOWS 1
-//   material.disableKeyword("RECEIVE_SHADOWS");  // -> no define
+//   material.enableKeyword("NORMAL_MAP");        // -> #define NORMAL_MAP 1
+//   material.disableKeyword("NORMAL_MAP");       // -> no define
 //   material.isKeywordEnabled("FOG_ON");         // -> false by default
 //
 // Each unique (passName x keyword-set) combination is a separately compiled
 // program, cached lazily on first use under a flat ProgramKey.
-#pragma cg_feature RECEIVE_SHADOWS
 #pragma cg_feature FOG_ON
 #pragma cg_feature NORMAL_MAP
 
@@ -53,13 +52,11 @@
 // CgQuadRenderer, so it deliberately declares no cg_use.
 
 // -- Material-level tags -------------------------------------------------------
-// "RenderType" controls the shadow auto-generation ladder:
-//   Opaque (default) -- castShadows=true and queue<3000 -> auto-generate ShadowCaster pass
-//   Transparent      -- no auto-gen (translucent objects don't cast hard shadows)
-// "CastShadows" = "Off" disables shadow auto-generation regardless of RenderType.
+// "RenderType" and the queue decide depth auto-generation:
+//   Opaque (default) -- queue<3000 -> a Depth pass is generated from the Forward pass
+//   Transparent      -- none
 Tags {
     "RenderType" = "Opaque"
-    // "CastShadows" = "Off"    // uncomment to suppress shadow auto-gen
 }
 
 // -- Render queue --------------------------------------------------------------
@@ -100,7 +97,6 @@ struct v2f {
 // Each Pass { } owns its render state, vertex, and fragment.
 // Tags { "LightMode" = "..." } routes the pass into the correct rendering stage:
 //   Forward      -- standard forward-lit draw (default when LightMode is absent)
-//   ShadowCaster -- depth-from-light (typically auto-generated; no need to author)
 //   Depth        -- early depth pre-pass
 //   Emissive     -- the light the material gives off, bloomed (below; docs/SHADERS.md)
 //   Distortion   -- screen-space offsets that bend what is behind (docs/SHADERS.md)
@@ -195,13 +191,6 @@ Pass {
         vec3 n = normalize(i.normalWs);
 #endif
 
-#ifdef RECEIVE_SHADOWS
-        // Shadow map sampling would go here -- cg_ShadowViewProjMatrix,
-        // cg_LightDirection, cg_ShadowParams are available from the frame UBO.
-        float shadow = 1.0;
-        albedo.rgb  *= shadow;
-#endif
-
 #ifdef FOG_ON
         float dist    = length(i.worldPos);
         float fogFact = exp(-_FogDensity * dist);
@@ -253,44 +242,7 @@ Pass {
 //     }
 // Pass { Tags { "LightMode" = "Emissive" } }
 
-// -- ShadowCaster pass -- auto-generated ---------------------------------------
-// Because this shader has Tags { "RenderType" = "Opaque" } and does NOT declare
-// an explicit ShadowCaster Pass block, the material pipeline auto-generates one
-// during recompile() when castShadows=true (the default) and renderQueue < 3000.
-//
-// The generated pass:
-//   - Simple vertex (no custom attributes or discard): minimal position-only transform
-//       gl_Position = cg_ShadowViewProjMatrix * CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);
-//   - Fragment: depth-only (empty body -- rasterizer writes depth automatically)
-//
-// To opt out of auto-gen, add "CastShadows" = "Off" to the top-level Tags block,
-// or author an explicit ShadowCaster Pass block above.
-//
-// To force a custom shadow vertex (e.g. vertex animation must affect shadow silhouette),
-// author an explicit ShadowCaster Pass below. The auto-gen will be skipped entirely
-// when an explicit one is present.
-//
-// Pass {
-//     Tags { "LightMode" = "ShadowCaster" }
-//     RenderState {
-//         Cull OFF      // double-sided for thin surfaces
-//         ColorMask 0   // write depth only
-//         DepthTest LEQUAL
-//         DepthWrite ON
-//     }
-//     void vertex(out v2f o) {
-//         // Run your custom vertex animation here.
-//         // The engine overrides gl_Position with the shadow matrix automatically
-//         // when using compileShadowAutoGen(); if you author this pass manually
-//         // you must compute gl_Position yourself:
-//         gl_Position = cg_ShadowViewProjMatrix * CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);
-//         o.uv = cg_TexCoord0;
-//         o.worldPos = vec3(0.0);
-//         o.normalWs = vec3(0.0);
-//     }
-//     void fragment(in v2f i, out vec4 fragColor) {
-//         // Depth-only: leave fragColor untouched or discard for alpha-tested shadows:
-//         // if (texture(_MainTex, i.uv).a < 0.5) discard;
-//         fragColor = vec4(0.0);
-//     }
-// }
+// -- No shadow pass -------------------------------------------------------------
+// A material draws nothing from a light's side: the world's shadows are traced
+// from each pixel against the blocks and entities (CgWorldLights, docs/LIGHTS.md).
+// A "ShadowCaster" pass or a "CastShadows" tag is a parse error.

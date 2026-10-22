@@ -185,13 +185,7 @@ public final class CgPreviewEmitter {
         // Opaque and Geometry: a thumbnail draws into a cleared private target with nothing behind it,
         // so there is nothing to blend with and sorting has no meaning.
         //
-        // CastShadows Off is NOT optional, and leaving it out was a genuine hang. RenderType=Opaque with
-        // a queue under 3000 makes the compiler auto-generate a ShadowCaster pass; that generated pass
-        // references cg_ShadowViewProjMatrix, which nothing in a preview context declares, so it failed
-        // to compile on EVERY material — two ERROR lines per attempt, per preview, per retry. The
-        // symptom was the editor becoming unusable the moment the page opened, with the actual cause
-        // buried in a log nobody was reading. A thumbnail casts no shadows by definition.
-        out.append("Tags { \"RenderType\" = \"Opaque\" \"CastShadows\" = \"Off\" }\n");
+        out.append("Tags { \"RenderType\" = \"Opaque\" }\n");
         out.append("Queue = \"Geometry\"\n\n");
         out.append(V2F).append('\n');
 

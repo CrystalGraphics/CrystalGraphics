@@ -54,9 +54,8 @@ Tags {
     "RenderType" = "Transparent"
 }
 
-// Overlay (>= TRANSPARENT_THRESHOLD) -- load-bearing: keeps attemptShadowAutoGen/
-// attemptDepthAutoGen bailing out via their isOpaque check, so text never gets an
-// auto-generated ShadowCaster/Depth pass.
+// Overlay (>= TRANSPARENT_THRESHOLD) -- load-bearing: keeps attemptDepthAutoGen bailing
+// out via its isOpaque check, so text never gets an auto-generated Depth pass.
 Queue = "Overlay"
 
 Properties {

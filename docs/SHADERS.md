@@ -19,11 +19,11 @@ Built-in types: `spatial` (`CgVertexFormat.SPATIAL` — position, normal, colour
 
 ```glsl
 #type spatial
-#pragma cg_feature RECEIVE_SHADOWS    // compile-time keyword; max 16 per shader
+#pragma cg_feature NORMAL_MAP         // compile-time keyword; max 16 per shader
 #pragma cg_feature FOG_ON
 #pragma cg_use quad                   // opt into an engine buffer (see below); omit if unused
 
-Tags { "RenderType" = "Opaque" }      // controls shadow auto-generation; "Lighting" = "Unlit", "Fog" = "Off" opt out;
+Tags { "RenderType" = "Opaque" }      // controls depth auto-generation; "Lighting" = "Unlit", "Fog" = "Off" opt out;
                                       // "Depth" = "Clip" | "Prepass": a transparent material writing depth (below)
                                       // "Media" = "Off": a transparent world material not dimmed by smoke (below)
                                       // "Tube" = "Volume" | "Closed": the tube geometry a VFX slot draws it on
@@ -43,7 +43,7 @@ Buffers { SPARKS ("Sparks", Spark, readonly) }   // a buffer a kernel wrote, rea
 struct v2f { vec2 uv; vec3 worldPos; };
 
 Pass {
-    Tags { "LightMode" = "Forward" }  // Forward (default) | ShadowCaster | Depth
+    Tags { "LightMode" = "Forward" }  // Forward (default) | Depth | Emissive | Distortion
     RenderState {
         Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA
         DepthTest LEQUAL
@@ -53,7 +53,8 @@ Pass {
     void vertex(out v2f o) { ... }
     void fragment(in v2f i, out vec4 fragColor) { ... }
 }
-// ShadowCaster pass is auto-generated for Opaque + castShadows=true + queue < 3000
+// A Depth pass is auto-generated for Opaque + queue < 3000. There is no shadow pass: the world's
+// shadows are traced from each pixel (CgWorldLights, LIGHTS.md), and "ShadowCaster" fails to parse.
 ```
 
 ### cg_env.glsl — The Backbone
@@ -265,7 +266,6 @@ Three things enforce this so it cannot regress silently:
 Each `#pragma cg_feature` declares a compile-time flag. Enabling a keyword at runtime injects `#define NAME 1` into both vertex and fragment. **Every unique combination of enabled keywords is a separately compiled and cached GL program** — zero runtime branch cost.
 
 ```glsl
-#pragma cg_feature RECEIVE_SHADOWS
 #pragma cg_feature FOG_ON
 #pragma cg_feature NORMAL_MAP   // max 16 per shader
 ```
@@ -280,7 +280,7 @@ Each `#pragma cg_feature` declares a compile-time flag. Enabling a keyword at ru
 | Lines stripped | `#pragma cg_feature` lines never appear in generated GLSL output |
 
 ```java
-material.enableKeyword("RECEIVE_SHADOWS");  // compiled + cached on next bind()
+material.enableKeyword("NORMAL_MAP");       // compiled + cached on next bind()
 material.disableKeyword("FOG_ON");
 boolean on = material.isKeywordEnabled("NORMAL_MAP"); // false by default
 ```
@@ -470,7 +470,7 @@ world.draw(CgMesh.quads(CAPACITY), sparkMaterial).indirect(count, 0, CgIndirect.
 - **Without storage blocks**, samplers and buffers share the units below the engine's scene samplers, and a material
   needing more is refused at compile; a buffer of more texels than the context reads as one texture
   (`GL_MAX_TEXTURE_BUFFER_SIZE`, at least 65536) throws at capture.
-- A vertex stage reading a buffer keeps its body in the generated depth and shadow passes.
+- A vertex stage reading a buffer keeps its body in the generated depth pass.
 
 ---
 
@@ -483,10 +483,13 @@ Each `Pass { }` carries a `Tags { "LightMode" = "..." }` that routes it to the c
 | LightMode | Stage | Notes |
 |---|---|---|
 | `Forward` | Standard forward-lit draw | Default when `LightMode` is absent |
-| `ShadowCaster` | Depth-from-light pass | Auto-generated for `RenderType=Opaque`, `castShadows=true`, `queue < 3000` |
 | `Depth` | Early depth pre-pass | Auto-generated for opaque materials |
 | `Emissive` | The world's bloom: light the material gives off, blurred over the scene | Never generated; at most one per shader. Below |
 | `Distortion` | How the surface bends what is behind it: an offset, applied to the scene once after the transparent pass | Never generated; at most one per shader. Below |
+
+There is no `ShadowCaster`, as Unreal has none to author: the world's shadows are rays traced from each pixel against
+the blocks and entities (`CgWorldLights`, [`LIGHTS.md`](LIGHTS.md) §7), so nothing draws from a light's side. A
+`ShadowCaster` pass or a `"CastShadows"` tag fails to parse.
 
 The `"Name"` tag sets the pass key dimension for the `ProgramKey` variant cache. Auto-assigned as `Pass0`, `Pass1`, … when absent.
 
@@ -705,7 +708,7 @@ float t = cg_MediaTransmit(gl_FragCoord.xy / CG_RESOLUTION, cg_LinearEyeDepth(gl
 
 #### Pass Types vs. Multi-Draw Chains — Two Orthogonal Axes
 
-The `.shader` format handles **pass type routing** via `LightMode` tags — one `Forward` pass, optionally a `ShadowCaster`, optionally a `Depth`. These are different rendering stages, not sequential draws of the same mesh.
+The `.shader` format handles **pass type routing** via `LightMode` tags — one `Forward` pass, optionally a `Depth`, an `Emissive` and a `Distortion`. These are different rendering stages, not sequential draws of the same mesh.
 
 `CgMaterial.nextPass` handles the **orthogonal axis**: the same mesh drawn twice (or more) for decorative effects — outline, additive glow, stencil fill. Each entry in the chain is a fully independent `CgMaterial` with its own shader, render state, and properties. This is NOT Unity built-in multi-pass (multiple `Pass` blocks in one shader file). It is analogous to Godot's `next_pass` but with deterministic immediate ordering instead of Godot's sort-queue execution, which has known ordering bugs.
 
@@ -731,14 +734,10 @@ material.bind();                                     // activates Forward pass, 
 CgGL.glDrawArraysInstanced(CgGL.GL_TRIANGLES, 0, vertexCount, n);   // geometry the caller bound
 material.unbind();
 
-// Shadow pass (no keywords applied — shadow passes always use empty keyword set):
-if (material.hasShadowCasterPass()) {
-    shadowMapFbo.bind();
-    material.bindForPass(CgRenderPassVariant.SHADOW);
-    CgGL.glDrawArraysInstanced(CgGL.GL_TRIANGLES, 0, vertexCount, n);   // geometry the caller bound
-    material.unbind();
-    shadowMapFbo.unbind();
-}
+// Depth-only (no keywords applied):
+material.bindForPass(CgRenderPassVariant.DEPTH);
+CgGL.glDrawArraysInstanced(CgGL.GL_TRIANGLES, 0, vertexCount, n);
+material.unbind();
 ```
 
 #### MRT (Multiple Render Targets)
@@ -780,7 +779,7 @@ mat.applyProperties(b -> {
 // Safe to call before first bind() — buffered and replayed after compile
 
 // Keywords:
-mat.enableKeyword("RECEIVE_SHADOWS");  // compiles+caches variant lazily on next bind()
+mat.enableKeyword("NORMAL_MAP");       // compiles+caches variant lazily on next bind()
 mat.disableKeyword("FOG_ON");
 boolean on = mat.isKeywordEnabled("FOG_ON");  // false by default
 // Throws IllegalArgumentException for undeclared names

@@ -73,11 +73,6 @@ import java.util.concurrent.CompletableFuture;
  * {@link #recompile()} method resets the entire cache and immediately compiles the no-keyword
  * variant of every pass declared in the source.</p>
  *
- * <h3>Shadow auto-generation</h3>
- * <p>If the material has no explicit {@code ShadowCaster} pass, is not transparent, and
- * {@code castShadows} is true, {@link #recompile()} automatically generates a shadow-caster
- * program from the first Forward pass. It is stored under
- * {@code ProgramKey("ShadowCaster", emptySet)} like any other pass — no separate field.</p>
  *
  * <h3>Lifecycle</h3>
  * <p>Created exclusively by {@link CgMaterialShaderRegistry#getOrCreate(String)}. Deleted by
@@ -128,7 +123,7 @@ public final class CgMaterialShader implements CgReloadable {
      * Two keys with {@code ("Forward", {"A","B"})} and {@code ("Forward", {"B","A"})} are
      * equal and share the same cache entry.</p>
      *
-     * @param passName  authored or auto-assigned pass name (e.g. {@code "Pass0"}, {@code "ShadowCaster"})
+     * @param passName  authored or auto-assigned pass name (e.g. {@code "Pass0"}, {@code "Depth"})
      * @param keywords  always an unmodifiable, insertion-ordered copy
      */
     @Desugar
@@ -432,18 +427,11 @@ public final class CgMaterialShader implements CgReloadable {
      * materials detect the change on the next {@code bind()} call.
      * Keyword variants are compiled lazily via {@link #getOrCompile(String, Set)}.</p>
      *
-     * <h3>Shadow auto-generation</h3>
-     * <p>When no explicit {@code ShadowCaster} pass is authored, the shader renders
-     * in queue &lt; {@link CgRenderQueue#TRANSPARENT}, and {@code castShadows == true},
-     * a shadow-caster program is auto-generated from the first Forward pass and cached
-     * under {@code ProgramKey("ShadowCaster", emptySet)}.</p>
-     *
      * <h3>Depth auto-generation</h3>
      * <p>When no explicit {@code Depth} pass is authored and the shader renders in queue
      * &lt; {@link CgRenderQueue#TRANSPARENT}, a depth-prepass program is auto-generated
      * from the first Forward pass and cached under {@code ProgramKey("Depth", emptySet)}.
-     * Unlike shadow auto-gen there is no {@code castShadows} gate — every opaque material
-     * needs a correct depth variant. Failure is non-fatal: a warning is logged and the
+     * Every opaque material needs a correct depth variant. Failure is non-fatal: a warning is logged and the
      * engine depth shader fallback is used instead.</p>
      */
     public void recompile() {
@@ -668,14 +656,9 @@ public final class CgMaterialShader implements CgReloadable {
 
         Set<ProgramKey> declared = new HashSet<>(newCache.keySet());
 
-        // Steps 6 and 6.5 wait for the first pass that asks, for a caller drawing only the Forward pass.
+        // Step 6.5 waits for the first pass that asks, for a caller drawing only the Forward pass.
         // @see #ensureAutoGen
         if (!forwardOnly) {
-            // ── Step 6: Shadow auto-generation ────────────────────────────────────────
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.shadowAutoGen")) {
-                if (!attemptShadowAutoGen(parsed, newMatPropsUbo, newCache, newShaders, isFirst, true)) return;
-            }
-
             // ── Step 6.5: Depth auto-generation ───────────────────────────────────────
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.depthAutoGen")) {
                 if (!attemptDepthAutoGen(parsed, newMatPropsUbo, newCache, newShaders, isFirst, true)) return;
@@ -692,7 +675,7 @@ public final class CgMaterialShader implements CgReloadable {
     }
 
     /**
-     * Builds the shadow and depth programs a forward-only compile left out, the first time a pass asks for one.
+     * Builds the depth program a forward-only compile left out, the first time a pass asks for one.
      * Synchronous: it is what an eager compile would have done at load, paid at first use instead.
      */
     private void ensureAutoGen() {
@@ -701,7 +684,6 @@ public final class CgMaterialShader implements CgReloadable {
         Map<ProgramKey, CgShader> generated = new LinkedHashMap<>();
         List<CgShader> made = new ArrayList<>();
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.lateAutoGen")) {
-            attemptShadowAutoGen(lastParsed, matPropsUbo, generated, made, false, false);
             attemptDepthAutoGen(lastParsed, matPropsUbo, generated, made, false, false);
         }
         for (CgShader shader : generated.values()) wireShader(shader);
@@ -712,7 +694,7 @@ public final class CgMaterialShader implements CgReloadable {
     /** Set for the length of a forward-only {@link #submitRecompile}. */
     private boolean forwardOnly;
 
-    /** The committed programs came from a forward-only compile, so no shadow or depth pass was tried yet. */
+    /** The committed programs came from a forward-only compile, so no depth pass was tried yet. */
     private boolean autoGenSkipped;
 
     /** Steps 7 to 9: the new programs replace the old, and are wired. */
@@ -1041,9 +1023,7 @@ public final class CgMaterialShader implements CgReloadable {
         if (pass != null) return CgMaterialShaderCompiler.compile(parsed, pass, buffers, ubo, config);
         if (!isAutoGenerated(passName)) return null;
         CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-        return passName.equals(CgRenderPassVariant.DEPTH.lightModeName())
-                ? CgMaterialShaderCompiler.compileDepthAutoGen(parsed, forward, buffers, ubo, config)
-                : CgMaterialShaderCompiler.compileShadowAutoGen(parsed, forward, buffers, ubo, config);
+        return CgMaterialShaderCompiler.compileDepthAutoGen(parsed, forward, buffers, ubo, config);
     }
 
     /** The sources of a pass and keyword set, or null, logged, when the shader has no such pass. */
@@ -1061,9 +1041,7 @@ public final class CgMaterialShader implements CgReloadable {
         if (isAutoGenerated(passName) && programCache.containsKey(new ProgramKey(passName, Collections.emptySet()))) {
             // A keyword variant of a generated pass (a multi-draw's depth prepass): generated again, with the keywords.
             CgParsedPass forward = lastParsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-            return passName.equals(CgRenderPassVariant.DEPTH.lightModeName())
-                    ? CgMaterialShaderCompiler.compileDepthAutoGen(lastParsed, forward, attachedBuffers, matPropsUbo, config)
-                    : CgMaterialShaderCompiler.compileShadowAutoGen(lastParsed, forward, attachedBuffers, matPropsUbo, config);
+            return CgMaterialShaderCompiler.compileDepthAutoGen(lastParsed, forward, attachedBuffers, matPropsUbo, config);
         }
         LOGGER.error("Cannot compile variant: pass '" + passName + "' not found in shader '" + resourcePath + "'");
         return null;
@@ -1103,7 +1081,7 @@ public final class CgMaterialShader implements CgReloadable {
      * Convenience: finds the first Forward-lit pass and returns or compiles the keyword variant
      * for that pass.
      *
-     * <p>SHADOW and DEPTH variants always use an empty keyword set via
+     * <p>DEPTH variants always use an empty keyword set via
      * {@link #getOrCompile(String, Set)} directly — keywords apply to Forward passes only.</p>
      *
      * @param activeKeywords active feature-flag keyword names
@@ -1155,10 +1133,9 @@ public final class CgMaterialShader implements CgReloadable {
         return programCache.containsKey(new ProgramKey(passName, Collections.emptySet()));
     }
 
-    /** The passes steps 6 and 6.5 generate when the shader does not author them. */
+    /** The pass step 6.5 generates when the shader does not author it. */
     private static boolean isAutoGenerated(String passName) {
-        return passName.equals(CgRenderPassVariant.SHADOW.lightModeName())
-                || passName.equals(CgRenderPassVariant.DEPTH.lightModeName());
+        return passName.equals(CgRenderPassVariant.DEPTH.lightModeName());
     }
 
     /** Returns an unmodifiable view of the attached SSBO/TBO and UBO buffers. */
@@ -1668,13 +1645,6 @@ public final class CgMaterialShader implements CgReloadable {
         return new CgShaderPreprocessor().mentions(source, resourcePath, "cg_SceneColor", "CG_SCENE_COLOR");
     }
 
-    /**
-     * Whether the engine has a shadow system: it does not. {@code CgFrameBlock} carries the sun's direction but no shadow
-     * matrix or shadow params, so an auto-generated shadow-caster pass names uniforms that do not exist. Turning
-     * this on needs those three in the block in the same change; {@code CgShadowUniformContractTest} holds it.
-     */
-    public static final boolean SHADOWS_SUPPORTED = false;
-
     private void wireShader(CgShader shader) {
         // Links finish while a stage records, outside any scope: the host's program goes back, since Minecraft from
         // 1.21.5 rebinds its own only when its pipeline changes.
@@ -1731,79 +1701,10 @@ public final class CgMaterialShader implements CgReloadable {
     }
 
     /**
-     * ── Step 6: Shadow auto-generation ──────────────────────────────────────────
-     *
-     * <p>Conditions: {@code castShadows=true}, opaque queue, and no explicit ShadowCaster pass.
-     * When all conditions are met, compiles a shadow-caster program from the first Forward pass
-     * and stores it under {@code ProgramKey("ShadowCaster", emptySet)}.</p>
-     *
-     * @return {@code true} to proceed with the rest of recompile(); {@code false} to abort
-     *         (only on buffer injection error — newShaders and newMatPropsUbo already cleaned up)
-     */
-    private boolean attemptShadowAutoGen(CgParsedShader parsed, CgUniformBuffer newMatPropsUbo,
-                                         Map<ProgramKey, CgShader> newCache, List<CgShader> newShaders,
-                                         boolean isFirst, boolean ownsBuffers) {
-        // Nothing to generate while the engine has no shadow system. The GLSL below references
-        // cg_ShadowViewProjMatrix and cg_ShadowParams, which CgFrameBlock has never declared — so this
-        // pass has never compiled for any material, and every opaque one logged two driver errors on
-        // load before being swallowed as "continuing without shadow pass". Harmless-looking at one
-        // material per session; a shader graph recompiling on every edit turned it into a stream.
-        //
-        // Skipped silently rather than warned about: a capability the engine does not have yet is not a
-        // fault of the material being compiled, and a warning per material would be the same noise in a
-        // politer font. @see #SHADOWS_SUPPORTED
-        if (!SHADOWS_SUPPORTED) return true;
-
-        boolean hasExplicitShadow = parsed.getPassByLightMode(CgRenderPassVariant.SHADOW.lightModeName()) != null;
-        boolean isOpaque = parsed.renderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD;
-
-        if (!parsed.castShadows() || !isOpaque || hasExplicitShadow) return true;
-
-        CgParsedPass forwardPass = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-        if (forwardPass == null) {
-            LOGGER.warn("'{}': castShadows=true but no Forward pass found — shadow auto-gen skipped.",
-                    resourcePath);
-            return true;
-        }
-
-        CgMaterialShaderCompiler.CompiledSource shadowCompiled;
-        try {
-            shadowCompiled = CgMaterialShaderCompiler.compileShadowAutoGen(parsed, forwardPass,
-                    attachedBuffers, newMatPropsUbo, CgMaterialShaderCompiler.CompileConfig.DEFAULT);
-        } catch (CgPreprocessorException e) {
-            // Non-fatal for hot-reload; fatal for first compile
-            if (ownsBuffers) {
-                for (CgShader s : newShaders) s.delete();
-                if (newMatPropsUbo != null) newMatPropsUbo.delete();
-            }
-            if (isFirst) throw e;
-            LOGGER.error("Reload failed for '{}' shadow auto-gen: buffer injection error — {}",
-                    resourcePath, e.getMessage());
-            return false;
-        }
-
-        String shadowVert = new CgShaderPreprocessor().process(shadowCompiled.vertexSource(), resourcePath);
-        String shadowFrag = new CgShaderPreprocessor().process(shadowCompiled.fragmentSource(), resourcePath);
-
-        CgShader shadowShader = build(shadowVert, shadowFrag, shadowCompiled.vertexFormat());
-        if (!deferring && !shadowShader.isCompiled()) {
-            String err = shadowShader.getLastCompileError();
-            shadowShader.delete();
-            // Shadow auto-gen failure: non-fatal — log and continue without shadow pass
-            LOGGER.error("'" + resourcePath + "' shadow auto-gen failed (continuing without shadow pass): " + err);
-        } else {
-            newShaders.add(shadowShader);
-            newCache.put(new ProgramKey(CgRenderPassVariant.SHADOW.lightModeName(), Collections.emptySet()),
-                    shadowShader);
-        }
-        return true;
-    }
-
-    /**
      * ── Step 6.5: Depth auto-generation ─────────────────────────────────────────
      *
-     * <p>Conditions: opaque queue and no explicit Depth pass. No {@code castShadows} gate —
-     * every opaque material needs a correct depth variant.
+     * <p>Conditions: opaque queue and no explicit Depth pass: every opaque material needs a
+     * correct depth variant.
      * When all conditions are met, compiles a depth-prepass program from the first Forward pass
      * and stores it under {@code ProgramKey("Depth", emptySet)}.</p>
      *

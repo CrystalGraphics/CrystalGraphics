@@ -265,7 +265,7 @@ compile errors if attempted:
 - Missing `#type` header
 - Missing `Properties` block
 - Missing `struct v2f` block
-- Pass variants (DEPTH/SHADOW) — not in MVP
+- Pass variants (DEPTH) — not in MVP
 - Render state setters (blend, depth, cull) — not in MVP
 - Hot reload at runtime — not in MVP
 - User-declared custom shader buffers — not in MVP

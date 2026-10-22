@@ -127,10 +127,8 @@ public class EngineOnTrackedBackendTest {
                 }
                 multiDrawn.add(pass.name());
             }
-            for (CgRenderPassVariant generated : List.of(CgRenderPassVariant.DEPTH, CgRenderPassVariant.SHADOW)) {
-                String name = generated.lightModeName();
-                if (parsed.getPassByName(name) == null && shader.hasCompiledPass(name)) multiDrawn.add(name);
-            }
+            String depth = CgRenderPassVariant.DEPTH.lightModeName();
+            if (parsed.getPassByName(depth) == null && shader.hasCompiledPass(depth)) multiDrawn.add(depth);
             for (String pass : multiDrawn) {   // what an executor binds for a run of draws joined into one call
                 programs++;
                 if (shader.getOrCompile(pass, Set.of(CgMaterialShaderCompiler.MULTI_DRAW)) == null)
@@ -148,8 +146,6 @@ public class EngineOnTrackedBackendTest {
                 }
             }
             CgMaterial material = CgMaterial.newInstance(path);
-            if (CgMaterialShader.SHADOWS_SUPPORTED && material.hasShadowCasterPass() && !shader.hasCompiledPass(CgRenderPassVariant.SHADOW.lightModeName()))
-                failures.add(path + ": the generated shadow pass did not link (see log)");
             if (parsed.renderQueue() < 3000 && forward != null && !material.hasDepthPass()
                     && !shader.hasCompiledPass(CgRenderPassVariant.DEPTH.lightModeName()))
                 failures.add(path + ": the generated depth pass did not link (see log)");
