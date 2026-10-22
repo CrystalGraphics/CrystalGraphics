@@ -193,6 +193,11 @@ public final class CgVfxEmitterAssets {
         } else if (e.spawnForm(CgVfxSpawnInput.MESH_ROTATION_RATE) != null) {
             modules.add(entry(e.id("rotation_rate"), "mesh_rotation_rate", map("rate", e.spawnForm(CgVfxSpawnInput.MESH_ROTATION_RATE).value())));
         }
+        if (e.spawnForm(CgVfxSpawnInput.ORBIT_OFFSET) != null) {
+            modules.add(entry(e.id("orbit"), "orbit", map("offset", e.spawnForm(CgVfxSpawnInput.ORBIT_OFFSET).value(),
+                    "rotation", e.spawnForm(CgVfxSpawnInput.ORBIT_ROTATION).value(),
+                    "rotation_rate", e.spawnForm(CgVfxSpawnInput.ORBIT_RATE).value())));
+        }
         if (e.meshRotation != null) {
             List<CgVfxMeshRotation.Step> steps = e.meshRotation.steps();
             for (int i = 0; i < steps.size(); i++) {
@@ -504,6 +509,10 @@ public final class CgVfxEmitterAssets {
                     generateEvent(name, inputs(entry), b);
                     continue;
                 }
+                case "orbit" -> {
+                    orbit(name, entry, b);
+                    continue;
+                }
                 case "mesh_rotation_rate" -> {
                     b.id("rotation_rate", idOf(entry, "rotation_rate"));
                     meshRotationRate(name, b, inputs(entry), idOf(entry, "rotation_rate"));
@@ -614,6 +623,31 @@ public final class CgVfxEmitterAssets {
             return true;
         }
         throw new IllegalArgumentException(name + ": scalability " + scalability + " is not read yet: the Low tier's half alone");
+    }
+
+    /**
+     * {@code orbit}: Cascade's Orbit, its offset, rotation and rate taken at birth and drawn by Look
+     * ({@code ParticleModules_Orbit.cpp:111-165}). One module, chained by adding or linking, which with one module are
+     * the same ({@code ParticleEmitterInstances.cpp UpdateOrbitData}), taken during spawn alone; a second module, a
+     * scaling chain and an option to take its values during update fail by name until they are built.
+     */
+    private static void orbit(String name, Map<?, ?> entry, CgVfxEmitter.Builder b) {
+        Map<?, ?> in = inputs(entry);
+        if (b.spawnForm(CgVfxSpawnInput.ORBIT_OFFSET) != null) {
+            throw new IllegalArgumentException(name + ": a second orbit is not built yet: one module a particle");
+        }
+        if ("scale".equals(in.get("chain"))) throw new IllegalArgumentException(name + ": an orbit chained by scaling is not built yet");
+        for (String k : List.of("offset_options", "rotation_options", "rotation_rate_options")) {
+            if (in.get(k) instanceof Map<?, ?> o && (Boolean.FALSE.equals(o.get("spawn")) || Boolean.TRUE.equals(o.get("update"))
+                    || (o.get("by") != null && !"age".equals(o.get("by"))))) {
+                throw new IllegalArgumentException(name + ": orbit's " + k + " " + o + " is not built yet: taken at birth by age");
+            }
+        }
+        String element = idOf(entry, "orbit");
+        b.id("orbit", element);
+        b.spawnForm(CgVfxSpawnForm.of(CgVfxSpawnInput.ORBIT_OFFSET, element, "offset", in.get("offset")));
+        b.spawnForm(CgVfxSpawnForm.of(CgVfxSpawnInput.ORBIT_ROTATION, element, "rotation", in.get("rotation")));
+        b.spawnForm(CgVfxSpawnForm.of(CgVfxSpawnInput.ORBIT_RATE, element, "rotation_rate", in.get("rotation_rate")));
     }
 
     /**

@@ -28,6 +28,8 @@ struct FxParticle {
     // Its mesh turn as Look takes it, start + rate * (turnBase + turnScale * age): a collision damps the rate from the
     // age it strikes at, keeping the turn so far. (0, 1) unless a kind writes them.
     vec3 turnBase, turnScale;
+    // Its orbit from birth (CgVfxRecord.Tail.ORBIT): the offset drawn from its place, its rotation and rotation rate.
+    vec3 orbitOffset, orbitTurn, orbitRate;
     uint id, slot, collisions, hitEntity;
     vec4 hit;
 };

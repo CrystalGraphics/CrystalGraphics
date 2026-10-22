@@ -25,6 +25,8 @@ package com.crystalgraphics.vfx.particle.form;
  *   <li>{@link #LIGHT_RADIUS} and {@link #LIGHT_EXPONENT} are always stored: Cascade's light payload, read once at
  *       birth by the emitter's time ({@code ParticleModules.cpp:3110-3112}). The radius is a multiple of the
  *       particle's size, unitless.</li>
+ *   <li>{@link #ORBIT_OFFSET}, {@link #ORBIT_ROTATION} and {@link #ORBIT_RATE} are always stored: Cascade's orbit
+ *       payload, taken at birth ({@code ParticleModules_Orbit.cpp:111-165}), which Look turns into the place drawn.</li>
  *   <li>{@link #scales()} says whether {@code CgVfxEmitter.scaled} scales it: lengths and speeds do, a lifetime or an
  *       angle does not.</li>
  * </ul>
@@ -44,7 +46,10 @@ public enum CgVfxSpawnInput {
     COLOR("initialize_particle", "color", 4, -1, false),
     MESH_SCALE("initialize_particle", "mesh_scale", 3, -1, false),
     LIGHT_RADIUS("light_attributes", "radius", 1, -1, false),
-    LIGHT_EXPONENT("light_attributes", "exponent", 1, -1, false);
+    LIGHT_EXPONENT("light_attributes", "exponent", 1, -1, false),
+    ORBIT_OFFSET("orbit", "offset", 3, -1, true),
+    ORBIT_ROTATION("orbit", "rotation", 3, -1, false),
+    ORBIT_RATE("orbit", "rotation_rate", 3, -1, false);
 
     private final String module, input;
     private final int components, word;

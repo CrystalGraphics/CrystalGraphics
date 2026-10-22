@@ -289,6 +289,32 @@ particle slowed to a crawl by a curve speeds up again as the curve rises; `absol
 
 - Collisions, alignment and stretch read the velocity, not the scaled motion.
 
+## Drawn off its place: orbit
+
+`orbit` draws each particle away from where it is: an offset, turned by a rotation plus a rotation rate times its age.
+The particle itself stays put, so collisions and forces see its place; only the draw moves. All three are taken at
+birth, in any form.
+
+```java
+CgVfxEmitter.builder("halo").rate(40f).life(2f, 2f)
+        .orbit(0.5f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, (float) Math.PI)   // half a metre out, half a turn a second round up
+        .build();
+```
+
+```yaml
+particle_update:
+  - id: o1
+    module: crystalgraphics:orbit
+    inputs:
+      offset: { range: [[0, 0, 40], [0, 0, 60]], per_channel: true }   # centimetres, Unreal's axes
+      rotation: [0, 0, 0]
+      rotation_rate: { value: [0, 0, 0.5], unit: turns }               # half a turn a second
+```
+
+- **Rotations are Unreal's roll, pitch and yaw**, about its x, y and z, as Cascade turns its orbit.
+- **One orbit an emitter.** A second, a `scale` chain, or options taking its values during update fail at load.
+- **A particle a collision freezes** cannot also orbit yet: Cascade holds a frozen orbit still, which is not built.
+
 ## What a collision does: bounce, damping, a count and its end
 
 A collider (`collision`, against the world, the screen's depth, entities or a shape) bounces what strikes it. Its

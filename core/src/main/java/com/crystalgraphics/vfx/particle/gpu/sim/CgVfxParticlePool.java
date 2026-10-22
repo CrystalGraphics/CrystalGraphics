@@ -982,7 +982,7 @@ public final class CgVfxParticlePool {
                 .set("_RecordVectors", record.vectors()).set("_PreviousAt", record.word(CgVfxRecord.Tail.PREVIOUS))
                 .set("_ColorAt", record.word(CgVfxRecord.Tail.COLOR)).set("_ScaleAt", record.word(CgVfxRecord.Tail.SCALE))
                 .set("_TurnAt", record.word(CgVfxRecord.Tail.TURN)).set("_TurnRateAt", record.word(CgVfxRecord.Tail.TURN_RATE))
-                .set("_TurnStateAt", record.word(CgVfxRecord.Tail.TURN_STATE))
+                .set("_TurnStateAt", record.word(CgVfxRecord.Tail.TURN_STATE)).set("_OrbitAt", record.word(CgVfxRecord.Tail.ORBIT))
                 .bind("LIVE", counts[current]).bind("INSTANCES", instanceBuffer).bind("CURVES", curveBuffer)
                 .set("_InstanceAt", stepInstanceAt[s] / 4).set("_InstanceRow", shape.instanceRowVectors())
                 .set("_Floors", shape.floors() ? 1 : 0).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS));

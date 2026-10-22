@@ -78,7 +78,12 @@ public final class CgVfxRecord {
          * {@code turnBase + turnScale * age}, which a collision damps from the age it strikes at
          * ({@code ParticleModules_Collision.cpp:421-426}).
          */
-        TURN_STATE(6);
+        TURN_STATE(6),
+        /**
+         * Its orbit at birth, offset, rotation then rotation rate: Cascade's orbit payload
+         * ({@code ParticleModules_Orbit.cpp:111-165}), which Look draws it away from its place by.
+         */
+        ORBIT(9);
 
         private final int components;
 

@@ -1427,6 +1427,39 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
+        /**
+         * Draws each particle away from its place: {@code offset} turned by Euler angles {@code (roll, pitch, yaw)}
+         * plus their rates times its age, Cascade's Orbit taken at birth ({@code ParticleModules_Orbit.cpp:111-165}).
+         * The particle itself does not move; only where it is drawn.
+         *
+         * <pre>{@code
+         * CgVfxEmitter.builder("halo").orbit(0.5f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, (float) Math.PI)   // half a turn a second round y
+         * }</pre>
+         *
+         * <ul>
+         *   <li>Angles are Unreal's roll, pitch and yaw, about x, y and z of Unreal's axes, in radians; the offset is
+         *       the host's, in metres.</li>
+         *   <li>A file gives each of the three in any form: a range, a curve by the loop, a pick.</li>
+         * </ul>
+         */
+        public Builder orbit(float x, float y, float z, float roll, float pitch, float yaw, float rollRate, float pitchRate,
+                             float yawRate) {
+            spawnForm(CgVfxSpawnForm.of(CgVfxSpawnInput.ORBIT_OFFSET, "orbit", "offset", vector(x, y, z)));
+            spawnForm(CgVfxSpawnForm.of(CgVfxSpawnInput.ORBIT_ROTATION, "orbit", "rotation", vector(roll, pitch, yaw)));
+            return spawnForm(CgVfxSpawnForm.of(CgVfxSpawnInput.ORBIT_RATE, "orbit", "rotation_rate", vector(rollRate, pitchRate, yawRate)));
+        }
+
+        private static List<Object> vector(float x, float y, float z) {
+            return List.of((double) x, (double) y, (double) z);
+        }
+
+        /** Its spawn value for {@code target} given so far in a form, or null. */
+        @Nullable
+        CgVfxSpawnForm spawnForm(CgVfxSpawnInput target) {
+            for (CgVfxSpawnForm f : spawnForms) if (f.target() == target) return f;
+            return null;
+        }
+
         /** Spin rate in radians a second, either way. */
         public Builder spin(float min, float max) {
             spinMin = min;
@@ -1711,6 +1744,16 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             }
             if (state.loops() > 1 && !(state.shortestPeriod() > 0f)) {
                 throw new IllegalStateException(name + " loops in no time: give its loops a duration or a delay");
+            }
+            if (spawnForm(CgVfxSpawnInput.ORBIT_OFFSET) != null) {
+                for (CgVfxModule m : modules) {
+                    CgVfxModule.CollisionResponse r = CgVfxModule.CollisionResponse.of(m);
+                    if (r != null && (r.completion() == CgVfxModule.CollisionCompletion.FREEZE
+                            || r.completion() == CgVfxModule.CollisionCompletion.FREEZE_MOVEMENT)) {
+                        // Cascade holds a frozen particle's orbit where it was (UpdateOrbitData skips it); Look turns it by age.
+                        throw new IllegalStateException(name + "'s orbit on a particle a collision freezes is not built yet");
+                    }
+                }
             }
             if (meshRotation != null && !meshRotation.steps().isEmpty()) {
                 for (CgVfxModule m : modules) {

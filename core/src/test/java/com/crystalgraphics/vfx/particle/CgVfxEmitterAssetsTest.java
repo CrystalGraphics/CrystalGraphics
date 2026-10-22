@@ -379,6 +379,51 @@ public class CgVfxEmitterAssetsTest {
         }
     }
 
+    /**
+     * Cascade's orbit: its offset, rotation and rate stored at birth whatever their form, written back alike; a second
+     * orbit and a scaling chain refused by name.
+     */
+    @Test
+    public void orbitsAreStoredAndWrittenBack() {
+        Object rising = Map.of("samples", Map.of("range", List.of(0.0, 2.0), "values", List.of(0.0, 3.0)));
+        Map<String, Object> orbit = new LinkedHashMap<>(Map.of("id", "o1", "module", "crystalgraphics:orbit", "inputs", Map.of(
+                "offset", Map.of("range", List.of(List.of(0.0, 0.5, 0.0), List.of(0.0, 1.0, 0.0)), "per_channel", true),
+                "rotation", List.of(0.0, 0.0, 0.25), "rotation_rate", Map.of("curves", List.of(rising, rising, rising), "by", "loop"))));
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 64));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 2.0))));
+        tree.put("particle_update", List.of(orbit));
+        CgVfxEmitter e = CgVfxEmitterAssets.compile("orbits", tree, null);
+        assertTrue(CgVfxShape.of(e).record().word(CgVfxRecord.Tail.ORBIT) >= 0);
+        CgVfxEmitter back = CgVfxEmitterAssets.compile("orbits", CgVfxEmitterAssets.write(e), null);
+        for (CgVfxSpawnInput stored : new CgVfxSpawnInput[]{CgVfxSpawnInput.ORBIT_OFFSET, CgVfxSpawnInput.ORBIT_ROTATION,
+                CgVfxSpawnInput.ORBIT_RATE}) {
+            assertEquals(stored + " written back", value(e, stored), value(back, stored));
+        }
+        CgVfxEmitter built = CgVfxEmitter.builder("halo").orbit(0.5f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 3f).build();
+        assertEquals(value(built, CgVfxSpawnInput.ORBIT_RATE),
+                value(CgVfxEmitterAssets.compile("halo", CgVfxEmitterAssets.write(built), null), CgVfxSpawnInput.ORBIT_RATE));
+
+        tree.put("particle_update", List.of(orbit, orbit));
+        refuses(tree, "a second orbit");
+        Map<String, Object> scaling = new LinkedHashMap<>(orbit);
+        scaling.put("inputs", Map.of("chain", "scale", "offset", List.of(0.0, 1.0, 0.0), "rotation", List.of(0.0, 0.0, 0.0),
+                "rotation_rate", List.of(0.0, 0.0, 0.0)));
+        tree.put("particle_update", List.of(scaling));
+        refuses(tree, "chained by scaling");
+    }
+
+    private static void refuses(Map<String, Object> tree, String why) {
+        try {
+            CgVfxEmitterAssets.compile("orbits", tree, null);
+            fail("compiled, which " + why + " should refuse");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains(why));
+        }
+    }
+
     private static Object value(CgVfxEmitter e, CgVfxSpawnInput target) {
         for (CgVfxSpawnForm f : e.spawnForms()) if (f.target() == target) return f.value();
         return null;

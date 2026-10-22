@@ -41,6 +41,7 @@ Properties {
     _TurnAt        ("Its stored rotator's word; -1 rolls the row's start", int)     = -1
     _TurnRateAt    ("Its stored rotation rate's word; -1 rolls the row's rate", int) = -1
     _TurnStateAt   ("Its stored turn age map's word; -1 turns by its age", int) = -1
+    _OrbitAt       ("Its stored orbit's word; -1 for none",               int)       = -1
 }
 
 // A particle's drawn part: CgVfxRecord.DRAWN_GLSL.
@@ -184,6 +185,15 @@ void Look() {
         float age = positionAge.w, life = lifeSeed.x, size = velocitySize.w;
         float seed = lifeSeed.y, spin = lifeSeed.z, heat = uintBitsToFloat(heatId.x);
         float t = min(age / life, 1.0);
+        if (_OrbitAt >= 0) {
+            // Cascade's Orbit: drawn at its offset turned by its rotation plus its rate times its age, Euler angles in
+            // Unreal's (roll, pitch, yaw) (ParticleEmitterInstances.cpp CalculateOrbitOffset, reset each tick :1712-1720).
+            vec3 offset = vec3(look_word(e, _OrbitAt), look_word(e, _OrbitAt + 1), look_word(e, _OrbitAt + 2));
+            vec3 turn = vec3(look_word(e, _OrbitAt + 3), look_word(e, _OrbitAt + 4), look_word(e, _OrbitAt + 5));
+            vec3 rate = vec3(look_word(e, _OrbitAt + 6), look_word(e, _OrbitAt + 7), look_word(e, _OrbitAt + 8));
+            vec4 q = look_rotator(turn + rate * age);
+            position += offset + 2.0 * cross(q.xyz, cross(q.xyz, offset) + q.w * offset);
+        }
         int at = int(heatId.w) * _RowVectors, starts = at + 2 * _Texels;
         vec4 speeds = CURVES(starts + 4);
         float u = speeds.x < 0.0 ? t : clamp((length(velocity) - speeds.x) / (speeds.y - speeds.x), 0.0, 1.0);

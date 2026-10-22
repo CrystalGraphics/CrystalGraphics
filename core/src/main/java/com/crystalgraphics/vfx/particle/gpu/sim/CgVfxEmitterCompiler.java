@@ -76,6 +76,7 @@ public final class CgVfxEmitterCompiler {
         int color = record.word(CgVfxRecord.Tail.COLOR), scale = record.word(CgVfxRecord.Tail.SCALE);
         int turn = record.word(CgVfxRecord.Tail.TURN), turnRate = record.word(CgVfxRecord.Tail.TURN_RATE);
         int beam = record.word(CgVfxRecord.Tail.BEAM), light = record.word(CgVfxRecord.Tail.LIGHT);
+        int orbit = record.word(CgVfxRecord.Tail.ORBIT);
         int turnState = record.word(CgVfxRecord.Tail.TURN_STATE);
         s.append("\nFxParticle step_unpack(FxRecord r) {\n    FxParticle p;\n");
         unpack(s, "position", "uintBitsToFloat", CgVfxRecord.POSITION, 3);
@@ -105,6 +106,13 @@ public final class CgVfxEmitterCompiler {
         }
         if (light >= 0) unpack(s, "light", "uintBitsToFloat", light, 2);
         else s.append("    p.light = vec2(0.0);\n");
+        if (orbit >= 0) {
+            unpack(s, "orbitOffset", "uintBitsToFloat", orbit, 3);
+            unpack(s, "orbitTurn", "uintBitsToFloat", orbit + 3, 3);
+            unpack(s, "orbitRate", "uintBitsToFloat", orbit + 6, 3);
+        } else {
+            s.append("    p.orbitOffset = p.orbitTurn = p.orbitRate = vec3(0.0);\n");
+        }
         if (turnState >= 0) {
             unpack(s, "turnBase", "uintBitsToFloat", turnState, 3);
             unpack(s, "turnScale", "uintBitsToFloat", turnState + 3, 3);
@@ -141,6 +149,11 @@ public final class CgVfxEmitterCompiler {
         if (turnRate >= 0) pack(w, "p.turnRate", turnRate, 3);
         if (beam >= 0) for (int v = 0; v < BEAM_FIELDS.length; v++) pack(w, "p." + BEAM_FIELDS[v], beam + v * 4, 4);
         if (light >= 0) pack(w, "p.light", light, 2);
+        if (orbit >= 0) {
+            pack(w, "p.orbitOffset", orbit, 3);
+            pack(w, "p.orbitTurn", orbit + 3, 3);
+            pack(w, "p.orbitRate", orbit + 6, 3);
+        }
         if (turnState >= 0) {
             pack(w, "p.turnBase", turnState, 3);
             pack(w, "p.turnScale", turnState + 3, 3);
@@ -193,7 +206,8 @@ public final class CgVfxEmitterCompiler {
             Pattern.compile("\\bp\\.turnRate\\s*([-+*]?=(?!=))"),
             Pattern.compile("\\bp\\.beam\\w*\\s*([-+*]?=(?!=))"),
             Pattern.compile("\\bp\\.light\\s*([-+*]?=(?!=))"),
-            Pattern.compile("\\bp\\.turn(Base|Scale)\\s*([-+*]?=(?!=))")};
+            Pattern.compile("\\bp\\.turn(Base|Scale)\\s*([-+*]?=(?!=))"),
+            Pattern.compile("\\bp\\.orbit(Offset|Turn|Rate)\\s*([-+*]?=(?!=))")};
     /** The {@code BEAM} tail's vec4s, in order: {@code FxParticle}'s fields. */
     private static final String[] BEAM_FIELDS = {"beamSource", "beamSourceTangent", "beamTarget", "beamTargetTangent", "beamNoise", "beamTurn"};
     private static final Pattern INCLUDE = Pattern.compile("#include\\s+\"([^\"]+)\"");
@@ -243,6 +257,9 @@ public final class CgVfxEmitterCompiler {
         }
         if (shape.spawnFormOf(CgVfxSpawnInput.LIGHT_RADIUS) >= 0) {
             first[CgVfxRecord.Tail.LIGHT.ordinal()] = Math.min(first[CgVfxRecord.Tail.LIGHT.ordinal()], code.length() + 6);
+        }
+        if (shape.spawnFormOf(CgVfxSpawnInput.ORBIT_OFFSET) >= 0) {
+            first[CgVfxRecord.Tail.ORBIT.ordinal()] = Math.min(first[CgVfxRecord.Tail.ORBIT.ordinal()], code.length() + 7);
         }
         List<CgVfxRecord.Tail> tail = new ArrayList<>();
         for (CgVfxRecord.Tail t : tails) if (first[t.ordinal()] != Integer.MAX_VALUE) tail.add(t);
@@ -618,6 +635,9 @@ public final class CgVfxEmitterCompiler {
                     p.turn = @TURN@;
                     p.turnRate = @TURN_RATE@;
                     p.light = @LIGHT@;
+                    p.orbitOffset = @ORBIT_OFFSET@;
+                    p.orbitTurn = @ORBIT_TURN@;
+                    p.orbitRate = @ORBIT_RATE@;
                     p.resting = false;
                     p.state = 0u;
                     p.turnBase = vec3(0.0);
@@ -668,6 +688,9 @@ public final class CgVfxEmitterCompiler {
                 .replace("@SCALE@", spawnValue(shape, CgVfxSpawnInput.MESH_SCALE, null, "vec3(1.0)", ""))
                 .replace("@TURN@", spawnValue(shape, CgVfxSpawnInput.MESH_ORIENTATION, null, "vec3(0.0)", ""))
                 .replace("@TURN_RATE@", spawnValue(shape, CgVfxSpawnInput.MESH_ROTATION_RATE, null, "vec3(0.0)", ""))
+                .replace("@ORBIT_OFFSET@", spawnValue(shape, CgVfxSpawnInput.ORBIT_OFFSET, null, "vec3(0.0)", ""))
+                .replace("@ORBIT_TURN@", spawnValue(shape, CgVfxSpawnInput.ORBIT_ROTATION, null, "vec3(0.0)", ""))
+                .replace("@ORBIT_RATE@", spawnValue(shape, CgVfxSpawnInput.ORBIT_RATE, null, "vec3(0.0)", ""))
                 .replace("@LIGHT@", "vec2(" + spawnValue(shape, CgVfxSpawnInput.LIGHT_RADIUS, null, "0.0", "") + ", "
                         + spawnValue(shape, CgVfxSpawnInput.LIGHT_EXPONENT, null, "0.0", "") + ")")
                 .replace("@SPIN@", spawnValue(shape, CgVfxSpawnInput.SPRITE_ROTATION, null,
