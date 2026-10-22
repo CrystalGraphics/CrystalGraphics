@@ -583,7 +583,7 @@ public final class CgVfxRange {
                         .bind("ORDER", drawn, (long) drawnFirst * DRAWN_BYTES, (long) capacity * DRAWN_BYTES)
                         .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst)
                         .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
-                        .set("_Floors", p.shape().floors() ? 1 : 0));
+                        .set("_Floors", p.shape().floors() ? 1 : 0).set("_DrawnStride", p.shape().drawnStride()));
                 if (objects != null) {
                     long bytes = CgGpuOps.cullRecordBytes();
                     window.bind(pass.dispatch(objected, capacity).bind("RECORDS", p.records()).bind("DRAWN", p.drawn())
@@ -593,7 +593,8 @@ public final class CgVfxRange {
                             .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst)
                             .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
                             .set("_Sequence", p.shape().drawLayout() == CgVfxDrawLayout.SEQUENCE ? 1 : 0)
-                            .set("_DrawnFirst", drawnFirst));
+                            .set("_DrawnFirst", drawnFirst).set("_DrawnStride", p.shape().drawnStride())
+                            .set("_Drawn", p.shape().drawnMask()));
                 }
             }
             drawnFirst += align(capacity, RECORD_ALIGN);

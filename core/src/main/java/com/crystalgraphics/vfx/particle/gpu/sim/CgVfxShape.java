@@ -17,6 +17,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxModuleWords;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
 
 import java.util.Arrays;
 import java.util.Comparator;
@@ -77,7 +78,14 @@ public final class CgVfxShape {
     private final CgVfxLane[][] lanes;
     private final CgVfxDataInterface[][] reads;
     private final int paramRow, instanceRow;
-    private final boolean floors, spawnsOnMesh;
+    private final boolean floors, spawnsOnMesh, turnsOverLife;
+    private final int lifeRolls, lifeRollVectors;
+    /** The drawn slots its particles carry after their drawn part ({@link CgVfxGpuEmitter#drawnMask}). */
+    private final int drawnMask;
+    /** Noise points each beam keeps, a power of two at least its noise's frequency + 1, 0 without; that module's words. */
+    private final int beamPoints, beamNoiseAt;
+    /** Whether a kind of it takes {@code CgVfxDataInterfaces.BEAM}: its particles are beams, each keeping a run. */
+    private final boolean beams;
     /** Every data interface it takes, its kinds' and what they require, in registration order; where each one's lanes start. */
     private final CgVfxDataInterface[] interfaces;
     private final List<CgVfxDataInterface> interfaceList;
@@ -96,6 +104,14 @@ public final class CgVfxShape {
     private final CgVfxUserBinding[] userBindings;
     private final int[] userWords;
     private final int userAt;
+    /** Its look over life's bound multipliers' first vec4 in the instance row, or -1. */
+    private final int lifeBindAt;
+    /** Where its drawn slots' bound channels sit in the instance row, a vec4 a slot; -1 where none binds. */
+    private final int drawnBindAt;
+    /** Its forms' user bindings, each one's parameter name, and its vec4 in the instance row. */
+    private final CgVfxFormInput.Binding[] formBindings;
+    private final String[] formBindingNames;
+    private final int[] formBindingLanes;
     /** Its module forms and, per form, the row word each component replaces and where its own vec4s start. */
     private final CgVfxModuleForm[] forms;
     private final int[][] formWords;
@@ -181,6 +197,32 @@ public final class CgVfxShape {
         }
         spawnsOnMesh = emitter.spawnsOnMesh();
         if (spawnsOnMesh) key.append("|mesh");
+        drawnMask = CgVfxGpuEmitter.drawnMask(emitter);
+        if (drawnMask != 0) key.append("|drawn:").append(drawnMask);
+        int noisePoints = 0, noiseAt = -1;
+        boolean beam = false;
+        for (int i = 0; i < n; i++) {
+            for (CgVfxDataInterface di : reads[i]) beam |= di == CgVfxDataInterfaces.BEAM;
+            if (!(modules.get(i) instanceof CgVfxModule.BeamNoise noise)) continue;
+            if (noiseAt >= 0) throw new IllegalArgumentException(emitter.name() + " has two beam_noise modules: Cascade reads one");
+            noisePoints = Integer.highestOneBit(noise.frequency()) << 1;
+            noiseAt = paramAt[i];
+        }
+        beamPoints = noisePoints;
+        beamNoiseAt = noiseAt;
+        beams = beam;
+        if (beams) key.append("|beam:").append(beamPoints);
+        lifeRolls = emitter.lifeRolls().size();
+        int rollVectors = 0;
+        StringBuilder rollKey = new StringBuilder();
+        for (CgVfxLifeRoll roll : emitter.lifeRolls()) {
+            rollVectors += roll.vectors(CgVfxGpuEmitter.CURVE_TEXELS);
+            rollKey.append(roll.curved() ? 'v' : 'c');
+        }
+        lifeRollVectors = rollVectors;
+        turnsOverLife = emitter.meshRotation() != null && !emitter.meshRotation().steps().isEmpty();
+        if (turnsOverLife) key.append("|turnlife");
+        if (lifeRolls > 0) key.append("|liferoll:").append(rollKey);
         List<CgVfxEvent> events = emitter.events();
         if (events.size() > CgVfxEvent.MAX_EVENTS) {
             throw new IllegalArgumentException(emitter.name() + " lists " + events.size() + " events, past " + CgVfxEvent.MAX_EVENTS);
@@ -506,6 +548,33 @@ public final class CgVfxShape {
     public boolean floors() {
         return floors;
     }
+
+    /** The drawn slots its particles carry, a bit each ({@code CgVfxDrawnChannel.DYNAMIC_0} to {@code SPRITE}). */
+    public int drawnMask() {
+        return drawnMask;
+    }
+
+    /**
+     * The drawn buffer's elements a particle: its drawn part, then one holding its drawn slots where it carries any.
+     * Range writes each particle's first element into the order, so a draw finds its slots at the next.
+     */
+    public int drawnStride() {
+        return drawnMask == 0 ? 1 : 2;
+    }
+
+    /**
+     * A parameter row's vec4s in its pool: the curves and starts ({@code CgVfxParticlePool.CURVE_VECTORS}), size by
+     * speed, then per drawn slot its two curves and its rolls, then a mesh orientation's start and rate, two ends each,
+     * and its rate's two integrals over life where it changes over life, then a life roll's ends and roll slots.
+     */
+    public int rowVectors() {
+        int slots = Integer.bitCount(drawnMask & (1 << CgVfxDrawnChannel.SLOTS) - 1);
+        return CgVfxParticlePool.CURVE_VECTORS + 1 + slots * (2 * CgVfxGpuEmitter.CURVE_TEXELS + 1)
+                + ((drawnMask & 1 << CgVfxDrawnChannel.ORIENTATION) != 0 ? ORIENTATION_VECTORS : 0)
+                + (turnsOverLife ? 2 * CgVfxGpuEmitter.CURVE_TEXELS : 0)
+                + lifeRollVectors;
+    }
+
 
     /** How many events its definitions list. */
     public int events() {

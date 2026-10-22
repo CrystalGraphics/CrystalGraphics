@@ -43,10 +43,12 @@ void fx_hit(inout FxParticle p, vec3 n) {
 }
 
 // What modules before the solver add to: acceleration in blocks a second squared, linear drag a second, quadratic
-// drag a block. Zeroed each step, never stored.
+// drag a block; and how the solve moves it, velocity times motionScale plus motionSet (1 and 0 unless a module sets
+// them), the stored velocity left as the forces made it, as Cascade's base velocity is. Reset each step, never stored.
 struct FxForces {
     vec3 accel;
     float drag, dragQuad;
+    vec3 motionScale, motionSet;
 };
 
 // The step: its length in seconds, and the system's wind in blocks a second.

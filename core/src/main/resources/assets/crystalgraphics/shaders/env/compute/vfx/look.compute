@@ -2,7 +2,8 @@
 // pool's drawn buffer at its record's index, which draws read through Range's order: its look over life or speed from its row's curves, its starts rolled
 // per channel from its seed (Niagara's non-uniform ranges), its light from the voxel window at its block, and the floor
 // under it. A stage of its own rather than the Step's tail, so the Step keeps its units below compute; a map, so it runs
-// at every tier.
+// at every tier. A shape whose particles carry drawn slots (CgVfxDrawnChannel) takes two elements a particle: the drawn
+// part, then its slots, each channel a value over life rolled between two as its row says.
 #pragma kernel Look map
 
 #include "crystalgraphics:shaders/lib/vfx/fx_rand.glsl"
@@ -14,6 +15,13 @@ Properties {
     _InstanceRow   ("An instance row's vec4s",                            int)       = 0
     _Floors        ("1 when the pool's kinds land on a floor",           int)       = 0
     _Texels        ("Samples each curve of a row holds",                  int)       = 256
+    _RowVectors    ("A parameter row's vec4s: CgVfxShape.rowVectors",    int)       = 518
+    _DrawnStride   ("Drawn elements a particle: 2 with drawn slots",      int)       = 1
+    _Drawn         ("The drawn slots it carries, a bit each; 32 a mesh orientation", int) = 0
+    _LifeRollAt    ("Its life rolls' first vec4 in a row: CgVfxShape.lifeRollAt", int) = -1
+    _LifeRolls     ("How many: CgVfxShape.lifeRolls",                    int)       = 0
+    _LifeBindAt    ("Bound multipliers' vec4 in an instance row: CgVfxShape.lifeBindAt", int) = -1
+    _DrawnBindAt   ("Drawn slots' bound channels in an instance row, a vec4 a slot: CgVfxShape.drawnBindAt", int) = -1
     _World         ("The voxel window: a block a texel",                  sampler3D) = "black"
     _WorldSections ("Which of its sections are filled",                   sampler3D) = "black"
     _WorldBaseX    ("Its lowest block, absolute: x",                      int)       = 0
@@ -51,11 +59,90 @@ vec4 look_curve(int at, float t) {
     return mix(CURVES(at + i0), CURVES(at + i1), x - float(i0));
 }
 
+// Drawn slot s's channels at t, its block b: its low and high ends over life, mixed by each channel's roll (0 the low
+// end alone; 1 by the seed, fixed for its life; 2 rolled again each step, keyed by its age; 3 its instance's bound
+// user parameter, lane s from _DrawnBindAt), plus 10 on the viewer's clock: its life over the instance's time rate, as
+// Cascade's SubUV bUseRealTime divides its relative time by the time dilation.
+vec4 look_drawn(int at, int b, int s, float t, uint bits, float age, int inst) {
+    int block = at + _Texels * 2 + 6 + b * (2 * _Texels + 1);
+    vec4 rolls = CURVES(block + 2 * _Texels), mixed, value;
+    float rate = look_instance(inst + 2).z;
+    for (int c = 0; c < 4; c++) {
+        bool real = rolls[c] > 9.5;
+        float roll = real ? rolls[c] - 10.0 : rolls[c];
+        float u = real ? (rate > 0.0 ? min(t / rate, 1.0) : 1.0) : t;
+        uint key = roll > 1.5 ? bits ^ floatBitsToUint(age) : bits;
+        float m = roll > 0.5 && roll < 2.5 ? fx_rand(key, uint(b), 40u + uint(c)) : 0.0;
+        value[c] = mix(look_curve(block, u)[c], look_curve(block + _Texels, u)[c], m);
+        if (roll > 2.5 && _DrawnBindAt >= 0) value[c] = look_instance(inst + _DrawnBindAt + s)[c];
+    }
+    return value;
+}
+
+// Unreal's rotator (roll, pitch, yaw) as the host's quaternion: Niagara's RotatorToQuat on radians, then through Unreal's
+// axes, which swap y and z (CgUnits.rotatorToHost).
+vec4 look_rotator(vec3 r) {
+    vec3 h = r * 0.5, s = sin(h), c = cos(h);
+    float x = c.x * s.y * s.z - s.x * c.y * c.z, y = -c.x * s.y * c.z - s.x * c.y * s.z;
+    float z = c.x * c.y * s.z - s.x * s.y * c.z, w = c.x * c.y * c.z + s.x * s.y * s.z;
+    return vec4(-x, -z, -y, w);
+}
+
+// Three rolls picked per axis by a vec4's w, 1 + x + 3y + 9z (CgVfxMeshRotation.rollCode).
+vec3 look_rolls(vec3 roll, float w) {
+    int code = int(w + 0.5) - 1;
+    return vec3(roll[code % 3], roll[code / 3 % 3], roll[code / 9]);
+}
+
+// a b: b's turn, then a's.
+vec4 look_mul(vec4 a, vec4 b) {
+    return vec4(a.w * b.xyz + b.w * a.xyz + cross(a.xyz, b.xyz), a.w * b.w - dot(a.xyz, b.xyz));
+}
+
 void Look() {
     FxDrawn d;
     d.place = d.motion = d.state = d.light = d.color = d.scale = vec4(0.0);
-    if (CG_ELEMENT < int(LIVE(0))) {
-        int e = CG_ELEMENT * _RecordVectors;
+    int particle = CG_ELEMENT / _DrawnStride, part = CG_ELEMENT - particle * _DrawnStride;
+    if (part == 1 && particle < int(LIVE(0))) {
+        int e = particle * _RecordVectors;
+        vec4 positionAge = uintBitsToFloat(IN(e + FX_RECORD_POSITION_AGE));
+        vec4 lifeSeed = uintBitsToFloat(IN(e + FX_RECORD_LIFE_SEED));
+        float t = min(positionAge.w / lifeSeed.x, 1.0);
+        int at = int(IN(e + FX_RECORD_HEAT_ID).w) * _RowVectors;
+        uint bits = floatBitsToUint(lifeSeed.y);
+        int slotInst = _InstanceAt + int(IN(e + FX_RECORD_HEAT_ID).z) * _InstanceRow;
+        vec4 slots[5];
+        int b = 0;
+        for (int s = 0; s < 5; s++) {
+            slots[s] = vec4(0.0);
+            if ((_Drawn & (1 << s)) != 0) slots[s] = look_drawn(at, b++, s, t, bits, positionAge.w, slotInst);
+        }
+        d.place = slots[0]; d.motion = slots[1]; d.state = slots[2]; d.light = slots[3]; d.color = slots[4];
+        if ((_Drawn & 32) != 0) {
+            // CgVfxMeshRotation, Cascade's: its start plus its rate times its age, each rolled from its seed, or where its
+            // rate changes over life (the rate's end's w) its life times the rolled rate times one integral plus the
+            // other; then its instance's turn where it inherits it.
+            int r = at + _Texels * 2 + 6 + b * (2 * _Texels + 1);
+            vec4 from = CURVES(r), to = CURVES(r + 1), rateFrom = CURVES(r + 2), rateTo = CURVES(r + 3);
+            vec3 roll = vec3(fx_rand(bits, 0u, 30u), fx_rand(bits, 0u, 31u), fx_rand(bits, 0u, 32u));
+            vec3 rateRoll = vec3(fx_rand(bits, 0u, 33u), fx_rand(bits, 0u, 34u), fx_rand(bits, 0u, 35u));
+            vec3 rate = mix(rateFrom.xyz, rateTo.xyz, look_rolls(rateRoll, rateFrom.w));
+            // A start or a rate stored at birth (CgVfxSpawnInput.MESH_ORIENTATION, MESH_ROTATION_RATE).
+            if (_TurnRateAt >= 0) rate = vec3(look_word(e, _TurnRateAt), look_word(e, _TurnRateAt + 1), look_word(e, _TurnRateAt + 2));
+            vec3 turned = rate * positionAge.w;
+            if (rateTo.w > 0.5) turned = lifeSeed.x * (rate * look_curve(r + 4, t).xyz + look_curve(r + 4 + _Texels, t).xyz);
+            vec3 start = _TurnAt >= 0 ? vec3(look_word(e, _TurnAt), look_word(e, _TurnAt + 1), look_word(e, _TurnAt + 2))
+                    : mix(from.xyz, to.xyz, look_rolls(roll, from.w));
+            vec3 rotator = start + turned;
+            vec4 q = look_rotator(rotator);
+            if (to.w > 0.5) {
+                int inst = _InstanceAt + int(IN(e + FX_RECORD_HEAT_ID).z) * _InstanceRow;
+                q = look_mul(look_instance(inst + 7), q);
+            }
+            d.scale = q;
+        }
+    } else if (part == 0 && particle < int(LIVE(0))) {
+        int e = particle * _RecordVectors;
         vec4 positionAge = uintBitsToFloat(IN(e + FX_RECORD_POSITION_AGE));
         vec4 velocitySize = uintBitsToFloat(IN(e + FX_RECORD_VELOCITY_SIZE));
         vec4 lifeSeed = uintBitsToFloat(IN(e + FX_RECORD_LIFE_SEED));
@@ -65,7 +152,7 @@ void Look() {
         float seed = lifeSeed.y, spin = lifeSeed.z, heat = uintBitsToFloat(heatId.x);
         int inst = _InstanceAt + int(heatId.z) * _InstanceRow;
         float t = min(age / life, 1.0);
-        int at = int(heatId.w) * (2 * _Texels + 5), starts = at + 2 * _Texels;
+        int at = int(heatId.w) * _RowVectors, starts = at + 2 * _Texels;
         vec4 speeds = CURVES(starts + 4);
         float u = speeds.x < 0.0 ? t : clamp((length(velocity) - speeds.x) / (speeds.y - speeds.x), 0.0, 1.0);
         vec4 shape = look_curve(at, u), tint = look_curve(at + _Texels, u);

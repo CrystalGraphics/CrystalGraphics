@@ -214,6 +214,82 @@ CgVfxEmitter.builder("rain").size(0.03f, 0.05f).scale(0.8f, 2f, 1f, 1.2f, 3f, 1f
   on a mesh particle, and multiplies them in: a shader that ignores them draws every particle the same.
 - **The grids' rasterize keeps the uniform size**: a particle splats a ball whatever its axes.
 
+### Size by speed
+
+Cascade's Size Scale By Speed stretches a particle as it moves faster: x and y each times
+`clamp(speed * scale, 1, max)`, speed in blocks a second. A size over life after it multiplies it; one before it is
+dropped, as Cascade's sets the size outright.
+
+```java
+CgVfxEmitter.builder("streaks").sizeBySpeed(0f, 0.5f, 1f, 3f)   // up to three times as tall, from 2 blocks a second
+```
+
+```yaml
+- { module: crystalgraphics:scale_size_by_speed, inputs: { speed_scale: [0, 0.5], max_scale: [1, 3] } }
+```
+
+## Values a particle carries for its material
+
+A module can give each particle values only its draws read, as Niagara's DynamicMaterialParameter, SubImageIndex and
+CameraOffset attributes are: four dynamic parameters a material reads with `cg_dynamic_parameter`, the frame of its
+sheet, and how far toward the eye it draws. Each channel is a value over life, or a range rolled once at birth or again
+every step.
+
+```java
+static final CgVfxEmitter EMBERS = CgVfxEmitter.builder("embers")
+        // dynamic parameter 0: x fades in over life, y each ember's own between 0.1 and 0.2
+        .drawn(CgVfxDrawnChannel.DYNAMIC_0, 0, CgVfxDrawnChannel.over(
+                CgKeyframes.start(0f, 0f).to(1f, 1f, CgEasings.LINEAR).build()))
+        .drawn(CgVfxDrawnChannel.DYNAMIC_0, 1, CgVfxDrawnChannel.spawn(0.1f, 0.2f))
+        // frame 0 to 15 of its sprite's sheet over life; the renderer's sub_image is { size: [4, 4], mode: direct }
+        .drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.SUB_IMAGE, CgVfxDrawnChannel.over(
+                CgKeyframes.start(0f, 0f).to(1f, 15f, CgEasings.LINEAR).build()))
+        .build();
+```
+
+```yaml
+particle_update:
+  - module: crystalgraphics:dynamic_material_parameters
+    inputs:
+      dynamic_0:
+        - { value: { curve: { keys: [[0, 0, linear], [1, 1, linear]] }, by: age } }
+        - { value: { range: [0.1, 0.2] }, spawn_only: true }
+        - { value: 0 }
+        - { value: 0 }
+  - { module: crystalgraphics:sub_uv_animation, inputs: { mode: direct, frame: { curve: { keys: [[0, 0, linear], [1, 15, linear]] }, by: age } } }
+  - { module: crystalgraphics:camera_offset, inputs: { offset: -0.2 } }
+```
+
+| Module | Sets | Read by |
+|---|---|---|
+| `dynamic_material_parameters` | `dynamic_0` to `dynamic_3`, four channels each | `cg_dynamic_parameter(p, i, fallback)` in the material |
+| `sub_uv_animation`, `mode: direct` | the frame of its renderer's `sub_image` | the sprite factory, which truncates it unless the sheet blends |
+| `sub_uv_animation`, `mode: loop` | its renderer's flipbook loop at `frame_rate`, each particle its own start at `start_frame: 0` | the sprite factory |
+| `camera_offset` | blocks toward the eye, sprites and meshes alike | the factories |
+
+- **A range rolls every step unless `spawn_only`**, as Cascade's distributions roll on every update: a flicker, not a
+  value per particle. `spawn_only` holds a curve at its value at birth.
+- **A constant camera offset or one bound to a user parameter is its renderers'** (`_cg_CameraOffset`); only one that
+  differs per particle is carried by each.
+- **Each slot carried costs the pool a second drawn element a particle**, and only emitters carrying the same slots
+  share a pool.
+- **A sheet with no `sub_uv_animation`** plays over its life, where Unreal shows frame 0.
+
+## Moving slower than it is pushed: velocity scale
+
+Cascade's Velocity Over Lifetime scales how fast a particle moves while its velocity keeps what forces give it, so a
+particle slowed to a crawl by a curve speeds up again as the curve rises; `absolute` moves it at the vector itself.
+
+```java
+.module(new CgVfxModule.ScaleVelocity(0.5f, 0.5f, 0.5f, false))
+```
+
+```yaml
+- { module: crystalgraphics:scale_velocity, inputs: { scale: { curves: [...], by: age } } }
+```
+
+- Collisions, alignment and stretch read the velocity, not the scaled motion.
+
 ## Turning an emitter: its effect's orientation
 
 An emitter spawns through its effect's **orientation**, as a Niagara emitter spawns through its component's transform:

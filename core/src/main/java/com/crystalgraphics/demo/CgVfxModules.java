@@ -39,6 +39,7 @@ import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.CgVfxSubUvAnimation;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxField;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
@@ -58,6 +59,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -93,8 +95,11 @@ public final class CgVfxModules {
     private static final String PARTICLE = "crystalgraphics:shaders/vfx/particle/";
     private static final float PERIOD = 7f, FOREVER = 1.0e6f;
     /** A 4x4 flame sheet looping twice through a flame's life of about 0.8 s, each flame at its own frame. */
-    private static final Map<String, Object> FLAMES = Map.of("size", List.of(4, 4), "mode", "loop", "rate", 40,
-            "random_start", true);
+    private static final Map<String, Object> FLAMES = Map.of("size", List.of(4, 4));
+    /** How a flame plays its sheet: 40 frames a second, each its own phase. */
+    private static final CgVfxSubUvAnimation FLAME_LOOP = CgVfxSubUvAnimation.loop(40f).randomStart();
+    /** How smoke plays its sheet: once over each life. */
+    private static final CgVfxSubUvAnimation OVER_LIFE = CgVfxSubUvAnimation.linear();
     /** An 8x8 sheet played once over a particle's life. */
     private static final Map<String, Object> GRID_8 = Map.of("size", List.of(8, 8));
     /** How deep behind the scene's depth a particle still counts as hitting it: under half a block, so one passing behind a mob is not snapped onto it. */
@@ -1748,8 +1753,8 @@ public final class CgVfxModules {
         Consumer<CgMaterialDefinition.Builder> sheet = m -> m.texture("_Sheet", smokeSheet);
         Consumer<CgVfxRenderers.Builder> frames = r -> r.subImage(GRID_8);
         CgVfxLook look = new Look().emitter(funnel).emitter(debris).emitter(dust)
-                .draw(particle("sprite", dust, DUST, DUST, 1f, sheet, frames))
-                .draw(particle("sprite", funnel, FUNNEL, FUNNEL, 1f, sheet, frames))
+                .draw(particle("sprite", dust, DUST, DUST, 1f, sheet, frames).played(OVER_LIFE))
+                .draw(particle("sprite", funnel, FUNNEL, FUNNEL, 1f, sheet, frames).played(OVER_LIFE))
                 .draw(particle("speck", debris, DEBRIS, DEBRIS, 1f, null, null)).build();
         float[] base = {0f, 0.3f, 0f};
         stations.add(new Station("tornado: a Rankine funnel VectorField, debris and dust", x, z, look,
@@ -2001,7 +2006,7 @@ public final class CgVfxModules {
                 .build();
         // Its events' children draw as made: the events name these emitters.
         snow = drawn(particle("sprite", snow, SNOW, SNOW, 1f, m -> m.texture("_Sheet", smokeSheet),
-                r -> r.subImage(GRID_8)));
+                r -> r.subImage(GRID_8)).played(OVER_LIFE));
         CgVfxEmitter shards = CgVfxEmitter.builder("slope").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(1500)
                 .rate(200f).shape(CgSphere.of(2.5f)).hemisphere().pointing(0, -1, 0).direction(0, -1, 0, 36.87f).speed(0.5f, 1.5f).life(3f, 4f)
                 .size(0.08f, 0.2f, 1.5f).spin(2f, 8f).heat(1f)
@@ -2016,7 +2021,7 @@ public final class CgVfxModules {
         CgVfxLook look = new Look().emitter(shards).emitter(snow)
                 // Solid pieces: pulled toward the eye to rest on the ramp whole, never faded into it.
                 .draw(facing(shards, ICE, WHITE, shard, "camera", "unaligned",
-                        m -> m.value("_SoftDistance", 0f).value("_cg_CameraOffset", 1f), null))
+                        m -> m.value("_SoftDistance", 0f).value("_cg_CameraOffset", 0.2f), null))
                 .build();
         stations.add(new Station("slope: Collide plane, an avalanche kicking up snow", x, z, look, List.of(shards),
                 new float[][]{{0f, source, 0f}}, p -> {
@@ -2242,10 +2247,10 @@ public final class CgVfxModules {
         Consumer<CgMaterialDefinition.Builder> smoke = m -> m.texture("_Sheet", smokeSheet);
         Consumer<CgVfxRenderers.Builder> frames = r -> r.subImage(GRID_8);
         CgVfxLook look = new Look().emitter(puffs).emitter(fire).emitter(embers).emitter(soot)
-                .draw(particle("sprite", puffs, SMOKE, SMOKE, 1f, smoke, frames))
-                .draw(particle("sprite", soot, SOOT, SOOT, 1f, smoke, frames))
+                .draw(particle("sprite", puffs, SMOKE, SMOKE, 1f, smoke, frames).played(OVER_LIFE))
+                .draw(particle("sprite", soot, SOOT, SOOT, 1f, smoke, frames).played(OVER_LIFE))
                 .draw(facing(fire, FIRE_COOL, FIRE_HOT, fireSheet, "camera", "custom", STAND_UP,
-                        r -> r.subImage(FLAMES)))
+                        r -> r.subImage(FLAMES)).played(FLAME_LOOP))
                 .draw(spark(embers, EMBER, FLAME))
                 .build();
         stations.add(new Station("flipbooks: a smoke column (left), a fire with embers and smoke (right)", x, z, look,
@@ -2304,7 +2309,7 @@ public final class CgVfxModules {
                 .draw(facing(glints, GOLD, WHITE, star, "camera", "unaligned", null, null))
                 .draw(facing(runes, VIOLET, WHITE, rune, "camera_position", "unaligned", null, null))
                 .draw(facing(flames, SPIRIT_COOL, SPIRIT_HOT, wisp, "camera", "custom", STAND_UP,
-                        r -> r.subImage(FLAMES)))
+                        r -> r.subImage(FLAMES)).played(FLAME_LOOP))
                 .draw(facing(sparks, GOLD, WHITE, dot, "camera", "velocity",
                         m -> m.value("_cg_Stretch", 0.6f).value("_cg_MaxStretch", 10f), null))
                 .draw(facing(waves, CYAN, WHITE, ring, "custom", "unaligned", LIE_FLAT, null)).build();
@@ -2336,7 +2341,16 @@ public final class CgVfxModules {
     private static final Map<String, Supplier<CgMeshLods>> MESHES = new ConcurrentHashMap<>();
 
     /** One draw of a station: an emitter's renderer, or a slot renderer. */
-    private record Draw(CgVfxEmitter on, CgVfxRendererProperties renderer) {}
+    private record Draw(CgVfxEmitter on, CgVfxRendererProperties renderer, CgVfxSubUvAnimation subUv) {
+        Draw(CgVfxEmitter on, CgVfxRendererProperties renderer) {
+            this(on, renderer, null);
+        }
+
+        /** This draw, its emitter playing its sheet as {@code play} says. */
+        Draw played(CgVfxSubUvAnimation play) {
+            return new Draw(on, renderer, play);
+        }
+    }
 
     /**
      * A station's look as it is written: its emitters, then what draws them. An emitter takes the renderers drawn on it
@@ -2347,6 +2361,7 @@ public final class CgVfxModules {
         private final CgVfxLook.Builder look = CgVfxLook.builder(SCHEMA);
         private final Map<String, CgVfxEmitter> emitters = new LinkedHashMap<>();
         private final Map<String, List<CgVfxRendererProperties>> renderers = new LinkedHashMap<>();
+        private final Map<String, CgVfxSubUvAnimation> subUvs = new HashMap<>();
         private final List<CgVfxSlotRenderer> slots = new ArrayList<>();
 
         Look emitter(CgVfxEmitter e) {
@@ -2359,6 +2374,7 @@ public final class CgVfxModules {
                 throw new IllegalStateException(d.on().name() + " is drawn, but its look has no such emitter");
             }
             renderers.computeIfAbsent(d.on().name(), n -> new ArrayList<>()).add(d.renderer());
+            if (d.subUv() != null) subUvs.put(d.on().name(), d.subUv());
             return this;
         }
 
@@ -2376,6 +2392,7 @@ public final class CgVfxModules {
                 }
                 CgVfxEmitter.Builder b = e.toBuilder();
                 for (CgVfxRendererProperties r : drawn) b.renderer(r);
+                if (subUvs.containsKey(e.name())) b.subUv(subUvs.get(e.name()));
                 look.emitter(b.build());
             }
             for (CgVfxSlotRenderer slot : slots) look.slot(slot);
@@ -2386,7 +2403,10 @@ public final class CgVfxModules {
     /** {@code draws}' emitter with their renderers: an event's child, which its parent names. */
     private static CgVfxEmitter drawn(Draw... draws) {
         CgVfxEmitter.Builder b = draws[0].on().toBuilder();
-        for (Draw d : draws) b.renderer(d.renderer());
+        for (Draw d : draws) {
+            b.renderer(d.renderer());
+            if (d.subUv() != null) b.subUv(d.subUv());
+        }
         return b.build();
     }
 
@@ -2423,7 +2443,7 @@ public final class CgVfxModules {
     /** {@code e} as smoke, a frame of the 8x8 {@code sheet} over its life, ranked with smoke. */
     private static Draw smoke(CgVfxEmitter e, CgVfxParam.Color colour, String sheet) {
         return particle("sprite", e, colour, colour, 1f, m -> m.texture("_Sheet", sheet),
-                r -> r.subImage(GRID_8).sortOrderHint(SMOKE_HINT));
+                r -> r.subImage(GRID_8).sortOrderHint(SMOKE_HINT)).played(OVER_LIFE);
     }
 
     /** Up, the vector an upright sprite stands along and a flat one lies across. */

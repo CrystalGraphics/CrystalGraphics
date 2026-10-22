@@ -18,7 +18,9 @@ import com.crystalgraphics.vfx.look.CgVfxValues;
 import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
 import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.CgVfxSubUvAnimation;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxSpriteRendererProperties;
@@ -29,6 +31,8 @@ import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -179,8 +183,19 @@ final class CgVfxMaterials {
             rowValues.put(FACING, sprite.factoryFacing(who));
             CgVfxFlipbook flipbook = sprite.subImage();
             if (flipbook != null) {
+                // The renderer holds the frames; its emitter's sub-UV animation plays them, frame 0 without one.
+                CgVfxSubUvAnimation subUv = placed.emitter().subUv();
+                flipbook = subUv != null ? subUv.play(flipbook) : flipbook.direct();
                 rowValues.put(SUB_IMAGE, floats(flipbook.subImage()));
                 rowValues.put(SUB_UV, floats(flipbook.subUv()));
+            }
+        }
+        if (placed.slotRenderer() == null && (renderer instanceof CgVfxSpriteRendererProperties
+                || renderer instanceof CgVfxMeshRendererProperties)) {
+            int bits = drawnBits(placed.emitter());
+            if (bits != 0) {
+                material.requireRow(DRAWN, who);
+                rowValues.put(DRAWN, (float) bits);
             }
         }
         CgVfxLayout layout = look.layout();
@@ -245,7 +260,18 @@ final class CgVfxMaterials {
     /** The sprite factory's facing and flipbook settings, which a sprite renderer's fields write. */
     /** A renderer's drawn extent ({@code _cg_Size}), what it sets through its {@code values}: the draw's size. */
     private static final String DRAW_SIZE = "_cg_Size";
-    private static final String FACING = "_cg_Facing", SUB_IMAGE = "_cg_SubImage", SUB_UV = "_cg_SubUV";
+    private static final String FACING = "_cg_Facing", SUB_IMAGE = "_cg_SubImage", SUB_UV = "_cg_SubUV", DRAWN = "_cg_Drawn";
+
+    /**
+     * The factory's {@code _cg_Drawn} for {@code emitter}'s renderers: its dynamic parameter slots a bit each, then 32
+     * where it sets a sub-image index and 64 a camera offset.
+     */
+    private static int drawnBits(CgVfxEmitter emitter) {
+        int bits = CgVfxGpuEmitter.drawnMask(emitter) & 15;
+        if (emitter.drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.SUB_IMAGE) != null) bits |= 32;
+        if (emitter.drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.CAMERA_OFFSET) != null) bits |= 64;
+        return bits;
+    }
 
     private static List<Object> floats(float[] v) {
         List<Object> out = new ArrayList<>(v.length);

@@ -108,11 +108,7 @@ public final class CgParticleKinds {
     static final CgType SUB_IMAGE = CgTypes.struct("crystalgraphics:renderer.sub_image")
             .property("size", VEC2)
             .property("rects", CgValueType.listOf(VEC4))
-            .property("mode", CgValueType.enumOf("linear", "loop", "random", "direct")).defaultValue("linear")
-            .property("rate", FLOAT).quantity(CgQuantity.RATE)
-            .property("frames", CgValueType.listOf(INT))
             .property("blend", BOOL).defaultValue(false)
-            .property("random_start", BOOL).defaultValue(false)
             .register();
 
     static final CgType MESH_ENTRY = CgTypes.struct("crystalgraphics:renderer.mesh_entry")

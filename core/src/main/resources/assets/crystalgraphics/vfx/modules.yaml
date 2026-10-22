@@ -252,7 +252,7 @@ modules:
   - { id: camera_offset, groups: [particle_update], analytic: true, unreal: { niagara: CameraOffset, cascade: [CameraOffset] }, inputs: [
       { name: offset, type: float, quantity: length, by: [age], default: 0 },
       { name: update, type: enum, values: [direct, additive, scalar], default: direct }, { name: spawn_only, type: bool, default: false } ] }
-  - { id: dynamic_material_parameters, groups: [particle_update], analytic: true, unreal: { niagara: DynamicMaterialParameters, cascade: [ParameterDynamic] }, inputs: [
+  - { id: dynamic_material_parameters, groups: [particle_update], seeded: true, analytic: true, unreal: { niagara: DynamicMaterialParameters, cascade: [ParameterDynamic] }, inputs: [
       { name: dynamic_0, type: struct, default: null }, { name: dynamic_1, type: struct, default: null }, { name: dynamic_2, type: struct, default: null }, { name: dynamic_3, type: struct, default: null },
       { name: use_emitter_time, type: bool, default: false } ] }
   - { id: light_attributes, groups: [particle_update], analytic: true, unreal: { niagara: LightAttributes, cascade: [Light] }, inputs: [

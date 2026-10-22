@@ -37,14 +37,16 @@ import java.nio.ByteOrder;
  */
 public final class CgVfxFlipbook {
 
-    /** How the frame is picked: Niagara's {@code ENSMSubUVAnimation_Mode}, less DirectSet. */
+    /** How the frame is picked: Niagara's {@code ENSMSubUVAnimation_Mode}. */
     public enum Mode {
         /** First to last over the particle's life. */
         LINEAR,
         /** Round the range at a number of frames a second. */
         LOOP,
         /** A whole frame of the range, drawn again at a number of times a second. */
-        RANDOM
+        RANDOM,
+        /** The frame each particle carries, its SubImageIndex: what its emitter's {@code sub_uv_animation} sets. */
+        DIRECT
     }
 
     /** A rect table's texels to a row: {@code FX_SUBIMAGE_ROW}. */
@@ -105,6 +107,22 @@ public final class CgVfxFlipbook {
     public CgVfxFlipbook random(float changesPerSecond) {
         if (!(changesPerSecond >= 0f)) throw new IllegalArgumentException(changesPerSecond + " changes a second");
         return new CgVfxFlipbook(columns, rows, table, Mode.RANDOM, first, last, changesPerSecond, blend, randomStart);
+    }
+
+    /**
+     * The frame each particle carries ({@code CgVfxDrawnChannel.SUB_IMAGE}), as Niagara's DirectSet and Cascade's SubUV
+     * set it: blended into the next where this blends.
+     *
+     * <pre>{@code
+     * CgVfxFlipbook.grid(4, 4).direct()   // with .drawn(SPRITE, SUB_IMAGE, ...) on the emitter
+     * }</pre>
+     *
+     * <ul>
+     *   <li>An emitter that sets no sub-image index shows frame 0.</li>
+     * </ul>
+     */
+    public CgVfxFlipbook direct() {
+        return new CgVfxFlipbook(columns, rows, table, Mode.DIRECT, first, last, 0f, blend, randomStart);
     }
 
     /** Plays frames {@code first} to {@code last} alone, both included: Niagara's start and end frame overrides. */

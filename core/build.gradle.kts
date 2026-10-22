@@ -167,6 +167,11 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
     }
     // The shape census over a slice of the kits' moves: -PcensusPacks=<text>,...
     providers.gradleProperty("censusPacks").orNull?.let { systemProperty("crystalgraphics.census.packs", it) }
+    // -PcensusMaterials=false leaves materials uncompiled: each emitter then compiles to its renderers' materials,
+    // which fail last, so the census shows the emitters' own causes past the materials not ported yet
+    providers.gradleProperty("censusMaterials").orNull?.let { systemProperty("crystalgraphics.census.materials", it) }
+    // The kits' binaries (a field's FGA) read as a game reads them: -PkitRoots=<a folder holding assets/<kit>>
+    providers.gradleProperty("kitRoots").orNull?.let { systemProperty("crystalgraphics.resourceOverrideDirs", it) }
 }
 
 tasks.named("check") { dependsOn(headlessTestTask) }

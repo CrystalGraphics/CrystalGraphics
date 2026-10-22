@@ -7,6 +7,7 @@ import com.crystalgraphics.vfx.particle.renderer.CgVfxSequenceRendererProperties
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
@@ -122,6 +123,13 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final int trailPoints;
     /** The density each particle draws into its grid's four channels each frame; null for none. */
     final float[] rasterized;
+    /** What its particles carry for their draws alone, [slot][channel]; null where unset. */
+    final CgVfxDrawnChannel[][] drawn;
+    /** Cascade's size by speed: x and y scales a block a second, then their most. */
+    final float[] sizeBySpeed;
+    /** How its particles play their sheets' frames; null shows frame 0. */
+    @Nullable
+    final CgVfxSubUvAnimation subUv;
     final float sizeMin, sizeMax, spinMin, spinMax, heat;
     /** Its spawn values given in a form, one a target; how far a radius form moves its birth out at most. */
     final List<CgVfxSpawnForm> spawnForms;
@@ -204,6 +212,10 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         inherit = b.inherit;
         trailPoints = b.trailPoints;
         rasterized = b.rasterized != null ? b.rasterized.clone() : null;
+        drawn = new CgVfxDrawnChannel[CgVfxDrawnChannel.SLOTS][];
+        for (int i = 0; i < drawn.length; i++) drawn[i] = b.drawn[i].clone();
+        sizeBySpeed = b.sizeBySpeed.clone();
+        subUv = b.subUv;
         spawnForms = List.copyOf(b.spawnForms);
         sockets = b.sockets;
         meshRotation = b.meshRotation;
@@ -457,6 +469,23 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     @Override
     public float[] rasterized() {
         return rasterized;
+    }
+
+    @Override
+    @Nullable
+    public CgVfxDrawnChannel drawn(int slot, int channel) {
+        return drawn[slot][channel];
+    }
+
+    @Override
+    public float[] sizeBySpeed() {
+        return sizeBySpeed.clone();
+    }
+
+    /** How its particles play their sheets' frames; null where they show frame 0. */
+    @Nullable
+    public CgVfxSubUvAnimation subUv() {
+        return subUv;
     }
 
     @Override
@@ -740,6 +769,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private final List<String> moduleIds = new ArrayList<>();
         private int trailPoints;
         private float[] rasterized;
+        private final CgVfxDrawnChannel[][] drawn = new CgVfxDrawnChannel[CgVfxDrawnChannel.SLOTS][4];
+        private float[] sizeBySpeed = {0f, 0f, 1f, 1f};
+        private CgVfxSubUvAnimation subUv;
         private float speedMin, speedMax;
         private float lifeMin = 1f, lifeMax = 1f;
         private float sizeMin = 1f, sizeMax = 1f;
@@ -779,6 +811,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             inherit = e.inherit;
             trailPoints = e.trailPoints;
             rasterized = e.rasterized;
+            for (int i = 0; i < drawn.length; i++) drawn[i] = e.drawn[i].clone();
+            sizeBySpeed = e.sizeBySpeed.clone();
+            subUv = e.subUv;
             spawnForms.addAll(e.spawnForms);
             sockets = e.sockets;
             meshRotation = e.meshRotation;
@@ -1229,6 +1264,51 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
          */
         public Builder rasterize(float x, float y, float z, float w) {
             this.rasterized = new float[] {x, y, z, w};
+            return this;
+        }
+
+        /**
+         * Channel {@code channel} (0 to 3) of drawn slot {@code slot} ({@link CgVfxDrawnChannel#DYNAMIC_0} to
+         * {@link CgVfxDrawnChannel#SPRITE}): a value each particle carries for its draws alone.
+         *
+         * <pre>{@code
+         * .drawn(CgVfxDrawnChannel.DYNAMIC_0, 0, CgVfxDrawnChannel.over(CgKeyframes.start(0f, 0f).to(1f, 1f, CgEasings.LINEAR).build()))
+         * }</pre>
+         *
+         * <ul>
+         *   <li>Only a pool whose emitters set the same slots shares a draw: each slot set is a vec4 a particle.</li>
+         * </ul>
+         */
+        public Builder drawn(int slot, int channel, CgVfxDrawnChannel value) {
+            if (slot < 0 || slot >= CgVfxDrawnChannel.SLOTS || channel < 0 || channel > 3) {
+                throw new IllegalArgumentException("no drawn slot " + slot + " channel " + channel);
+            }
+            drawn[slot][channel] = value;
+            return this;
+        }
+
+        /**
+         * How its particles play their renderers' sheets ({@link CgVfxSubUvAnimation}); unset, they show frame 0.
+         *
+         * <pre>{@code
+         * .subUv(CgVfxSubUvAnimation.loop(24f).randomStart())
+         * }</pre>
+         */
+        public Builder subUv(@Nullable CgVfxSubUvAnimation subUv) {
+            this.subUv = subUv;
+            return this;
+        }
+
+        /**
+         * Cascade's size by speed: x and y each times {@code clamp(speed * scale, 1, max)}, speed in blocks a second,
+         * multiplying the size over life after it.
+         *
+         * <pre>{@code
+         * .sizeBySpeed(0f, 0.5f, 1f, 3f)   // stretched up to three times as tall, from 2 blocks a second
+         * }</pre>
+         */
+        public Builder sizeBySpeed(float scaleX, float scaleY, float maxX, float maxY) {
+            sizeBySpeed = new float[] {scaleX, scaleY, maxX, maxY};
             return this;
         }
 

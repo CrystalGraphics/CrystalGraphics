@@ -32,6 +32,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxDataInterface;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventRows;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
@@ -130,7 +131,7 @@ public final class CgVfxParticlePool {
 
     /** A curve row's vec4s: what {@link CgVfxGpuEmitter#writeCurves} writes, then its {@link CgVfxCurveDomain}'s speeds. */
     public static final int CURVE_VECTORS = 2 * CgVfxGpuEmitter.CURVE_TEXELS + CgVfxGpuEmitter.CURVE_STARTS + 1;
-    /** A curve row's words; its speeds are (-1, -1) over life. */
+    /** A curve row's words; its speeds are (-1, -1) over life. A pool's rows add size by speed and drawn slots: {@link #rowWords()}. */
     public static final int CURVE_WORDS = 4 * CURVE_VECTORS;
 
     /** Where the pools record their steps on {@link CgRenderStage#WORLD_OPAQUE}: ahead of the world renderer and Range. */
@@ -956,7 +957,10 @@ public final class CgVfxParticlePool {
     private void finishStep(CgComputePass pass, int s) {
         // What draws read, written into the drawn buffer at each live record's index.
         CgVfxRecord record = shape.record();
-        CgVfxVoxelWindow.get().bindBlocks(pass.dispatch(look, storage).bind("IN", records).bind("DRAWN", drawn)
+        CgVfxVoxelWindow.get().bindBlocks(pass.dispatch(look, storage * shape.drawnStride()).bind("IN", records).bind("DRAWN", drawn)
+                .set("_DrawnStride", shape.drawnStride()).set("_Drawn", shape.drawnMask()).set("_RowVectors", shape.rowVectors())
+                .set("_LifeRollAt", shape.lifeRollAt()).set("_LifeRolls", shape.lifeRolls()).set("_LifeBindAt", shape.lifeBindAt())
+                .set("_DrawnBindAt", shape.drawnBindAt())
                 .set("_RecordVectors", record.vectors()).set("_PreviousAt", record.word(CgVfxRecord.Tail.PREVIOUS))
                 .bind("LIVE", counts[current]).bind("INSTANCES", instanceBuffer).bind("CURVES", curveBuffer)
                 .set("_InstanceAt", stepInstanceAt[s] / 4).set("_InstanceRow", shape.instanceRowVectors())
@@ -1652,7 +1656,7 @@ public final class CgVfxParticlePool {
         return storage;
     }
 
-    /** Each parameter row's curves, {@link #CURVE_WORDS} floats a row; null before the first step is recorded. */
+    /** Each parameter row's curves, {@link CgVfxShape#rowVectors()} vec4s a row; null before the first step is recorded. */
     public CgGraphBuffer curves() {
         return curveBuffer;
     }
@@ -1827,7 +1831,7 @@ public final class CgVfxParticlePool {
         if (records == null) {
             storage = sizeClass(need);
             records = CgGraphBuffer.history(recordsName, recordsDesc(storage));
-            drawn = CgGraphBuffer.persistent(drawnName, drawnDesc(storage));
+            drawn = CgGraphBuffer.persistent(drawnName, drawnDesc(storage * shape.drawnStride()));
             for (int c = 0; c < 2; c++) {
                 counts[c] = CgGraphBuffer.persistent(countNames[c],
                         CgBufferDesc.of(16, CgBufferUsage.STORAGE, CgBufferUsage.COPY, CgBufferUsage.INDIRECT));
@@ -1838,14 +1842,14 @@ public final class CgVfxParticlePool {
             records = recording.resize(records, recordsDesc(storage));
             // The step's last stage rewrites every live particle's drawn part before a draw reads it.
             recording.release(drawn);
-            drawn = CgGraphBuffer.persistent(drawnName, drawnDesc(storage));
+            drawn = CgGraphBuffer.persistent(drawnName, drawnDesc(storage * shape.drawnStride()));
             CgVfxTrace.count(STORAGE_GROWS, 1);
         }
     }
 
     /** This frame's instance and spawn rows, and the parameter table when a row was written since the last. */
     private void upload(CgRecording recording) {
-        int paramEnd = rowCount * paramWords, curveEnd = rowCount * CURVE_WORDS;
+        int paramEnd = rowCount * paramWords, curveEnd = rowCount * rowWords();
         CgGraphBuffer params = fit(recording, paramBuffer, paramsName, paramEnd);
         CgGraphBuffer rowCurves = fit(recording, curveBuffer, curvesName, curveEnd);
         if (paramsChanged || params != paramBuffer) put(recording, params, this.params, paramEnd);
@@ -1880,6 +1884,29 @@ public final class CgVfxParticlePool {
 
     private CgBufferDesc recordsDesc(int storage) {
         return CgBufferDesc.elements(storage, shape.record().bytes(), CgBufferUsage.STORAGE, CgBufferUsage.COPY);
+    }
+
+    /** A parameter row's words in this pool: {@link CgVfxShape#rowVectors()}'s. */
+    private int rowWords() {
+        return 4 * shape.rowVectors();
+    }
+
+    /**
+     * Drawn slot {@code slot}'s block of a row from {@code out[at]}: each channel's low end over life, its high end, then
+     * how each rolls ({@link CgVfxDrawnChannel.Roll}'s ordinal), a channel the emitter leaves unset 0 throughout.
+     */
+    private static void writeDrawn(CgVfxGpuEmitter emitter, int slot, float[] out, int at) {
+        int texels = CgVfxGpuEmitter.CURVE_TEXELS, high = at + 4 * texels, rolls = at + 8 * texels;
+        for (int c = 0; c < 4; c++) {
+            CgVfxDrawnChannel ch = emitter.drawn(slot, c);
+            for (int i = 0; i < texels; i++) {
+                float progress = (float) i / (texels - 1);
+                out[at + 4 * i + c] = ch == null ? 0f : ch.from().at(progress);
+                out[high + 4 * i + c] = ch == null ? 0f : ch.to().at(progress);
+            }
+            // Its roll, plus 10 on the viewer's clock (Look reads both).
+            out[rolls + c] = ch == null ? 0f : ch.roll().ordinal() + (ch.realTime() ? 10f : 0f);
+        }
     }
 
     private static CgBufferDesc drawnDesc(int storage) {
@@ -1976,8 +2003,8 @@ public final class CgVfxParticlePool {
         if (expectedRows.add(emitter)) {
             int rows = rowCount + expectedRows.size();
             if (params.length < rows * paramWords) params = Arrays.copyOf(params, rows * paramWords);
-            if (curves.length < rows * CURVE_WORDS) {
-                curves = Arrays.copyOf(curves, rows * CURVE_WORDS);
+            if (curves.length < rows * rowWords()) {
+                curves = Arrays.copyOf(curves, rows * rowWords());
                 rowSizeMax = Arrays.copyOf(rowSizeMax, rows);
             }
         }
@@ -2006,17 +2033,62 @@ public final class CgVfxParticlePool {
                     + " declarations lay out " + expected);
         }
         System.arraycopy(moduleWords, 0, params, at + CgVfxGpuEmitter.SPAWN_VECTORS * 4, expected);
-        if (curves.length < (index + 1) * CURVE_WORDS) {
-            curves = Arrays.copyOf(curves, Math.max((index + 1) * CURVE_WORDS, curves.length * 2));
-            rowSizeMax = Arrays.copyOf(rowSizeMax, curves.length / CURVE_WORDS);
+        int rowWords = rowWords();
+        if (curves.length < (index + 1) * rowWords) {
+            curves = Arrays.copyOf(curves, Math.max((index + 1) * rowWords, curves.length * 2));
+            rowSizeMax = Arrays.copyOf(rowSizeMax, curves.length / rowWords);
         }
+        if (curveScratch == null) curveScratch = new float[rowWords];
         emitter.writeCurves(curveScratch, 0, CgVfxGpuEmitter.CURVE_TEXELS);
         CgVfxCurveDomain domain = emitter.curveDomain();
         curveScratch[CURVE_WORDS - 4] = domain.min();
         curveScratch[CURVE_WORDS - 3] = domain.max();
         curveScratch[CURVE_WORDS - 2] = 0f;
         curveScratch[CURVE_WORDS - 1] = 0f;
-        for (int w = 0; w < CURVE_WORDS; w++) curves[index * CURVE_WORDS + w] = Float.floatToRawIntBits(curveScratch[w]);
+        System.arraycopy(emitter.sizeBySpeed(), 0, curveScratch, CURVE_WORDS, 4);
+        int slotAt = CURVE_WORDS + 4;
+        for (int slot = 0; slot < CgVfxDrawnChannel.SLOTS; slot++) {
+            if ((shape.drawnMask() & 1 << slot) == 0) continue;
+            writeDrawn(emitter, slot, curveScratch, slotAt);
+            slotAt += 4 * (2 * CgVfxGpuEmitter.CURVE_TEXELS + 1);
+        }
+        CgVfxMeshRotation turn = emitter.meshRotation();
+        if (turn != null) {
+            // look.compute's: each vec4's w, the start's and the rate's rolls, inheriting for the start's end.
+            orientation(curveScratch, slotAt, turn.from(), CgVfxMeshRotation.rollCode(turn.rolls()));
+            orientation(curveScratch, slotAt + 4, turn.to(), turn.inheritParent() ? 1f : 0f);
+            orientation(curveScratch, slotAt + 8, turn.rateFrom(), CgVfxMeshRotation.rollCode(turn.rateRolls()));
+            orientation(curveScratch, slotAt + 12, turn.rateTo(), turn.steps().isEmpty() ? 0f : 1f);
+            if (!turn.steps().isEmpty()) {
+                int lives = slotAt + 4 * CgVfxShape.ORIENTATION_VECTORS;
+                turn.integrals(curveScratch, lives, curveScratch, lives + 4 * CgVfxGpuEmitter.CURVE_TEXELS, CgVfxGpuEmitter.CURVE_TEXELS);
+            }
+        }
+        // look.compute's: each roll a header (each channel's roll, its target plus 3 where curved), then its ends.
+        List<CgVfxLifeRoll> rolls = emitter.lifeRolls();
+        float rolled = 1f;
+        for (int i = 0, l = shape.lifeRollAt() * 4; i < rolls.size(); i++) {
+            CgVfxLifeRoll roll = rolls.get(i);
+            for (int a = 0; a < 3; a++) curveScratch[l + a] = roll.rolls()[a];
+            curveScratch[l + 3] = roll.target().ordinal() + (roll.curved() ? 3 : 0);
+            if (roll.curved()) {
+                for (int s = 0; s < CgVfxGpuEmitter.CURVE_TEXELS; s++) {
+                    float t = s / (float) (CgVfxGpuEmitter.CURVE_TEXELS - 1);
+                    for (int a = 0; a < 3; a++) {
+                        curveScratch[l + 4 + 4 * s + a] = roll.fromCurves()[a].at(t);
+                        curveScratch[l + 4 + 4 * (CgVfxGpuEmitter.CURVE_TEXELS + s) + a] = roll.toCurves()[a].at(t);
+                    }
+                }
+            } else {
+                for (int a = 0; a < 3; a++) {
+                    curveScratch[l + 4 + a] = roll.from()[a];
+                    curveScratch[l + 8 + a] = roll.to()[a];
+                }
+            }
+            l += 4 * roll.vectors(CgVfxGpuEmitter.CURVE_TEXELS);
+            if (roll.target() == CgVfxLifeRoll.Target.MESH_SCALE) rolled *= roll.most();
+        }
+        for (int w = 0; w < rowWords; w++) curves[index * rowWords + w] = Float.floatToRawIntBits(curveScratch[w]);
         // The largest a particle draws: its size times its widest axis, at its widest start scale.
         float most = 0f, start = 0f;
         for (int i = 0; i < CgVfxGpuEmitter.CURVE_TEXELS; i++) {

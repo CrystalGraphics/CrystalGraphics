@@ -39,5 +39,9 @@
 // Its age in seconds: what a flipbook's loop and random frames run on (progress alone is a fraction of its life).
 #define CG_PARTICLE_AGE(n) (CG_PARTICLE(n).scale.w)
 
+// Its drawn slots (CgVfxDrawnChannel), at the element after its drawn part where its pool writes any (a renderer's
+// _cg_Drawn says which): place to light are dynamic parameters 0 to 3, color.xy its sub-image index and camera offset.
+#define CG_PARTICLE_DRAWN(n) PARTICLE_DATA(int(PARTICLE_ORDER_DATA(n).index) + 1)
+
 // The vertex factory a kit's material program reads: cg_material_vertex(), cg_material_particle().
 #include "crystalgraphics:shaders/env/buffer/particle_factory.glsl"

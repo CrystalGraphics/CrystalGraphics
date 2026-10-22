@@ -91,6 +91,7 @@ void fx_particle_facing(int facing, int alignment, vec3 centre, vec3 velocity, v
 #define FX_SUBUV_LINEAR 0
 #define FX_SUBUV_LOOP 1
 #define FX_SUBUV_RANDOM 2
+#define FX_SUBUV_DIRECT 3
 // A rect table's texels to a row: GL 3.3's smallest texture limit.
 #define FX_SUBIMAGE_ROW 1024
 
@@ -100,8 +101,9 @@ float fx_subimage_count(vec4 subImage) {
 
 // The frames a particle shows, a and b, and how far it is from a to b: Niagara's stateless Sub UV Animation from its age
 // (seconds), progress (0..1) and seed. Linear runs first to last over the life; a loop wraps inside the range once every
-// count / rate seconds; random holds a whole frame between changes and never blends.
-void fx_subuv_frames(vec4 subUv, vec4 subImage, float age, float progress, float seed,
+// count / rate seconds; random holds a whole frame between changes and never blends; direct shows frame index, the
+// particle's SubImageIndex (Cascade's SubUV, ParticleModules.cpp:2209-2230), blending into the next where it blends.
+void fx_subuv_frames(vec4 subUv, vec4 subImage, float age, float progress, float seed, float index,
                      out float a, out float b, out float blend) {
     float frames = fx_subimage_count(subImage);
     float first = clamp(floor(subUv.y + 0.5), 0.0, frames - 1.0);
@@ -112,6 +114,8 @@ void fx_subuv_frames(vec4 subUv, vec4 subImage, float age, float progress, float
     if (mode == FX_SUBUV_RANDOM) {
         uint step = subUv.w > 0.0 ? uint(max(age, 0.0) * subUv.w) : 0u;
         at = min(floor(cg_rng_unit(cg_rng(floatBitsToUint(seed), 0u, step, 7u)) * count), count - 1.0);
+    } else if (mode == FX_SUBUV_DIRECT) {
+        at = clamp(index - first, 0.0, count - 1.0);
     } else if (mode == FX_SUBUV_LOOP) {
         at = mod(max(age, 0.0) * subUv.w + (subImage.w > 0.5 ? seed * count : 0.0), count);
     } else {

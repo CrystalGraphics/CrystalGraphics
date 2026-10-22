@@ -24,6 +24,9 @@ import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.object.CgProperty;
 import com.crystalgraphics.object.CgPropertyFlag;
+import com.crystalgraphics.object.value.CgQuantity;
+import com.crystalgraphics.vfx.look.CgVfxFlipbook;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.shape.primitive.CgPlane;
 import com.crystalgraphics.vfx.particle.form.CgVfxCurveBlock;
@@ -329,6 +332,7 @@ public final class CgVfxEmitterAssets {
         }
         CgVfxFormCompiler forms = new CgVfxFormCompiler(new CgVfxCurveBlock(), id -> null);
         int stacked = 0;
+        List<Map<?, ?>> drawn = new ArrayList<>();
         for (Map<?, ?> entry : entries(tree, "particle_update")) {
             if (Boolean.FALSE.equals(entry.get("enabled"))) continue;
             String id = moduleId(entry);
@@ -373,6 +377,39 @@ public final class CgVfxEmitterAssets {
                     b.rasterize(d[0], d[1], d[2], d[3]);
                     continue;
                 }
+                case "camera_offset" -> {
+                    Map<?, ?> in = inputs(entry);
+                    if (in.get("offset") instanceof Map<?, ?> form && form.get("bind") == null) {
+                        // Per particle: its own channel, which the factories read in place of the renderer's.
+                        b.drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.CAMERA_OFFSET,
+                                drawnChannel(name, "camera_offset's offset", form, Boolean.TRUE.equals(in.get("spawn_only"))));
+                    }
+                    drawn.add(entry);
+                    continue;
+                }
+                case "sprite_facing_and_alignment" -> {
+                    drawn.add(entry);
+                    continue;
+                }
+                case "sub_uv_animation" -> {
+                    subUv(name, b, inputs(entry));
+                    continue;
+                }
+                case "dynamic_material_parameters" -> {
+                    dynamicParameters(name, b, inputs(entry), forms, idOf(entry, id));
+                    continue;
+                }
+                case "vector_field" -> {
+                    // Without a grid of its own it moves by the scene's global fields, of which a host has none.
+                    if (entry.get("inputs") instanceof Map<?, ?> raw && raw.get("field") == null) continue;
+                    b.module(vectorField(name, inputs(entry), deps), idOf(entry, "vector_field"));
+                    stacked++;
+                    continue;
+                }
+                case "scale_size_by_speed" -> {
+                    sizeBySpeed(name, b, inputs(entry), deps == null ? CgUnits.HOST : deps.units());
+                    continue;
+                }
                 default -> {
                 }
             }
@@ -386,7 +423,8 @@ public final class CgVfxEmitterAssets {
             }
             b.module(module, idOf(entry, m.module));
         }
-        for (CgVfxRendererProperties r : CgVfxRenderers.compileAll(name, tree.get("renderers"), deps)) b.renderer(r);
+        Object renderers = drawnBy(name, tree.get("renderers"), drawn, deps == null ? CgUnits.HOST : deps.units());
+        for (CgVfxRendererProperties r : CgVfxRenderers.compileAll(name, renderers, deps)) b.renderer(r);
         // Its handlers name its system's handles: the system resolves them (CgVfxSystemAssets).
         for (Map<?, ?> entry : entries(tree, "events")) b.handler(CgVfxEventHandler.of(name, entry));
         return b.build();
@@ -407,6 +445,275 @@ public final class CgVfxEmitterAssets {
             return true;
         }
         throw new IllegalArgumentException(name + ": scalability " + scalability + " is not read yet: the Low tier's half alone");
+    }
+
+    /**
+     * {@code renderers} with what {@code modules} ({@code camera_offset}, {@code sprite_facing_and_alignment}) write for
+     * every particle set on them. Niagara's modules write Particles.CameraOffset, SpriteFacing and SpriteAlignment, which
+     * its renderers read; a value the same for every particle is the renderer's own here ({@code _cg_CameraOffset},
+     * {@code _cg_FacingVector}, {@code _cg_AlignmentVector}).
+     */
+    private static Object drawnBy(String name, Object renderers, List<Map<?, ?>> modules, CgUnits units) {
+        if (modules.isEmpty() || !(renderers instanceof List<?> list)) return renderers;
+        List<Object> out = new ArrayList<>(list.size());
+        for (Object r : list) {
+            if (!(r instanceof Map<?, ?> m)) {
+                out.add(r);
+                continue;
+            }
+            Map<String, Object> renderer = keyed(m);
+            Map<String, Object> values = renderer.get("values") instanceof Map<?, ?> v ? keyed(v) : new LinkedHashMap<>();
+            Map<String, Object> binds = renderer.get("bind") instanceof Map<?, ?> v ? keyed(v) : new LinkedHashMap<>();
+            for (Map<?, ?> module : modules) {
+                switch (moduleId(module)) {
+                    case "camera_offset" -> cameraOffset(name, renderer, inputs(module), values, binds, units);
+                    default -> axisLock(name, renderer, inputs(module), values, units);
+                }
+            }
+            if (!values.isEmpty()) renderer.put("values", values);
+            if (!binds.isEmpty()) renderer.put("bind", binds);
+            out.add(renderer);
+        }
+        return out;
+    }
+
+    private static Map<String, Object> keyed(Map<?, ?> m) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : m.entrySet()) out.put(String.valueOf(e.getKey()), e.getValue());
+        return out;
+    }
+
+    /**
+     * {@code camera_offset}: Cascade's CameraOffset, a particle drawn {@code offset} blocks toward the eye
+     * (ParticleModules_Camera.cpp:71-130; ParticleSystemRender.cpp:150-193). Sprites and meshes move by it (:473,
+     * :1434-1445); Cascade's trails and beams never read it, nor do ours.
+     */
+    private static void cameraOffset(String name, Map<String, Object> renderer, Map<?, ?> in, Map<String, Object> values,
+                                     Map<String, Object> binds, CgUnits units) {
+        Object kind = renderer.get("kind");
+        if (!"sprite".equals(kind) && !"mesh".equals(kind)) return;
+        if (in.get("update") != null && !"direct".equals(in.get("update"))) {
+            throw new IllegalArgumentException(name + ": camera_offset's update " + in.get("update") + " is not read yet: direct alone");
+        }
+        Object offset = in.get("offset");
+        if (offset == null || offset instanceof Number) {
+            values.put("_cg_CameraOffset", offset == null ? 0.0 : ((Number) offset).doubleValue());
+        } else if (offset instanceof Map<?, ?> form && form.get("bind") != null) {
+            if (!isIdentity(form.get("remap"))) {
+                throw new IllegalArgumentException(name + ": camera_offset's bind remaps " + form.get("remap") + ", which is not read yet");
+            }
+            // A binding converts nothing: the user parameter is in the asset's lengths.
+            binds.put("_cg_CameraOffset", Map.of("bind", form.get("bind"), "scale", units.toHost(1.0, CgQuantity.LENGTH)));
+        }
+        // Any other form is each particle's own: a drawn channel, set on the emitter.
+    }
+
+    /**
+     * A per-particle value's form as a drawn channel: a number or a curve by age over life; a range rolled each update,
+     * as Cascade's distributions roll on every {@code GetValue}, or once at birth where {@code spawnOnly}, which also
+     * holds a curve at its value at birth (ParticleModules_Parameter.cpp:138-167).
+     */
+    private static CgVfxDrawnChannel drawnChannel(String name, String what, Object value, boolean spawnOnly) {
+        if (value instanceof Map<?, ?> form && form.get("range") instanceof List<?> ends && ends.size() == 2
+                && ends.get(0) instanceof Number lo && ends.get(1) instanceof Number hi) {
+            return new CgVfxDrawnChannel(CgKeyframes.constant(lo.floatValue()), CgKeyframes.constant(hi.floatValue()),
+                    spawnOnly ? CgVfxDrawnChannel.Roll.SPAWN : CgVfxDrawnChannel.Roll.UPDATE);
+        }
+        if (value instanceof Number || value instanceof Map<?, ?> form && form.get("curve") != null) {
+            CgKeyframes over = keyframes(name, value, "age");
+            return CgVfxDrawnChannel.over(spawnOnly ? CgKeyframes.constant(over.at(0f)) : over);
+        }
+        // random_range of two values over life: Cascade's uniform curve distribution, a value between them rolled on
+        // every GetValue, so each update unless spawnOnly.
+        if (value instanceof Map<?, ?> form && (NS + "random_range").equals(form.get("fn")) && form.get("inputs") instanceof Map<?, ?> in
+                && in.get("min") != null && in.get("max") != null) {
+            CgKeyframes lo = keyframes(name, in.get("min"), "age"), hi = keyframes(name, in.get("max"), "age");
+            if (spawnOnly) {
+                lo = CgKeyframes.constant(lo.at(0f));
+                hi = CgKeyframes.constant(hi.at(0f));
+            }
+            return new CgVfxDrawnChannel(lo, hi, spawnOnly ? CgVfxDrawnChannel.Roll.SPAWN : CgVfxDrawnChannel.Roll.UPDATE);
+        }
+        throw new IllegalArgumentException(name + ": " + what + " " + value + " is not read yet: a number, a range or a curve by age");
+    }
+
+    /**
+     * {@code dynamic_material_parameters}: Cascade's ParameterDynamic, each of a vector's four channels a value the
+     * particle carries for its material (ParticleModules_Parameter.cpp:138-167), read by {@code cg_dynamic_parameter}.
+     */
+    private static void dynamicParameters(String name, CgVfxEmitter.Builder b, Map<?, ?> in, CgVfxFormCompiler forms,
+                                          String element) {
+        if (Boolean.TRUE.equals(in.get("use_emitter_time"))) {
+            throw new IllegalArgumentException(name + ": dynamic_material_parameters' use_emitter_time is not read yet");
+        }
+        for (int slot = 0; slot < 4; slot++) {
+            if (!(in.get("dynamic_" + slot) instanceof List<?> channels)) continue;
+            for (int c = 0; c < Math.min(4, channels.size()); c++) {
+                if (!(channels.get(c) instanceof Map<?, ?> ch)) continue;
+                Object source = ch.get("source");
+                if (source != null && !"user".equals(source)) {
+                    throw new IllegalArgumentException(name + ": a dynamic parameter from " + source + " is not read yet: user values alone");
+                }
+                String what = "dynamic_" + slot + "[" + c + "]";
+                if (ch.get("value") instanceof Map<?, ?> form && form.get("bind") != null) {
+                    // Cascade's particle parameter distribution (ParticleModules_Parameter.cpp:138-167): its instance's
+                    // user parameter, remapped, read again each step.
+                    if (!(forms.compile(element, channelProperty(), form) instanceof CgVfxFormInput.Binding bound)) {
+                        throw new IllegalArgumentException(name + ": " + what + " " + form + " is not a binding");
+                    }
+                    b.drawn(slot, c, CgVfxDrawnChannel.bound(bound));
+                    continue;
+                }
+                b.drawn(slot, c, drawnChannel(name, what, ch.get("value") == null ? 0.0 : ch.get("value"),
+                        Boolean.TRUE.equals(ch.get("spawn_only"))));
+            }
+        }
+    }
+
+    /** The input a drawn channel's binding is read as: a float over life with no unit, as SubUV's frame is. */
+    private static CgProperty channelProperty() {
+        return property(CgModuleTypes.builtIn().get("sub_uv_animation").inputs().properties(), "frame");
+    }
+
+    /**
+     * {@code sub_uv_animation}: how the particles play their renderers' frames (Niagara's Sub UV Animation). Direct is
+     * Cascade's SubUV, each particle's frame its curve over life (ParticleModules.cpp:2209-2230); loop is SubUVMovie at a
+     * rate (:2393-2421), each particle starting at a frame of its own from {@code start_frame} 0 (:2373-2376).
+     */
+    private static void subUv(String name, CgVfxEmitter.Builder b, Map<?, ?> in) {
+        if (Boolean.TRUE.equals(in.get("use_emitter_time"))) {
+            throw new IllegalArgumentException(name + ": sub_uv_animation's use_emitter_time is not read yet");
+        }
+        boolean realTime = Boolean.TRUE.equals(in.get("use_real_time"));
+        if (realTime && !"direct".equals(in.get("mode"))) {
+            throw new IllegalArgumentException(name + ": sub_uv_animation's use_real_time in a " + in.get("mode")
+                    + " is not read yet: direct alone");
+        }
+        Object interpolation = in.get("interpolation");
+        if (interpolation != null && !"none".equals(interpolation)) {
+            throw new IllegalArgumentException(name + ": sub_uv_animation's interpolation " + interpolation + " is not read yet");
+        }
+        String mode = String.valueOf(in.get("mode") == null ? "linear" : in.get("mode"));
+        Object rateIn = in.get("frame_rate") == null ? 30.0 : in.get("frame_rate");
+        if ((mode.equals("loop") || mode.equals("random")) && !(rateIn instanceof Number)) {
+            throw new IllegalArgumentException(name + ": sub_uv_animation's frame_rate " + rateIn + " is not read yet: a number");
+        }
+        float rate = rateIn instanceof Number n ? n.floatValue() : 0f;
+        switch (mode) {
+            case "linear" -> b.subUv(CgVfxSubUvAnimation.linear());
+            case "random" -> b.subUv(CgVfxSubUvAnimation.random(rate));
+            case "direct" -> {
+                b.subUv(CgVfxSubUvAnimation.direct());
+                CgVfxDrawnChannel frame = drawnChannel(name, "sub_uv_animation's frame",
+                        in.get("frame") == null ? 0.0 : in.get("frame"), false);
+                b.drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.SUB_IMAGE, realTime ? frame.inRealTime() : frame);
+            }
+            case "loop" -> {
+                int startFrame = in.get("start_frame") instanceof Number n ? n.intValue() : 0;
+                if (startFrame > 1) {
+                    throw new IllegalArgumentException(name + ": sub_uv_animation's start_frame " + startFrame + " is not read yet: 0 or 1");
+                }
+                CgVfxSubUvAnimation loop = CgVfxSubUvAnimation.loop(rate);
+                b.subUv(startFrame == 0 ? loop.randomStart() : loop);
+            }
+            default -> throw new IllegalArgumentException(name + ": sub_uv_animation's mode " + mode + " is not read yet");
+        }
+    }
+
+    /**
+     * {@code scale_size_by_speed}: Cascade's SizeScaleBySpeed, which sets size to the base size times
+     * {@code clamp(speed * speed_scale, 1, max_scale)} per axis every update (ParticleModules_Size.cpp:419-430), so a size
+     * over life before it is lost and one after multiplies it. {@code speed_scale} is a scale a unit of the asset's
+     * speed, so it converts by the inverse of a length.
+     */
+    private static void sizeBySpeed(String name, CgVfxEmitter.Builder b, Map<?, ?> in, CgUnits units) {
+        if (in.get("curve") != null) throw new IllegalArgumentException(name + ": scale_size_by_speed's curve is not read yet");
+        float[] scale = xy(name, in.get("speed_scale"), 0f), most = xy(name, in.get("max_scale"), 1f);
+        float perBlock = (float) (1.0 / ((Number) units.toHost(1.0, CgQuantity.LENGTH)).doubleValue());
+        b.size(CgKeyframes.constant(1f));
+        b.scaleOverLife(CgKeyframes.constant(1f), CgKeyframes.constant(1f), CgKeyframes.constant(1f));
+        b.sizeBySpeed(scale[0] * perBlock, scale[1] * perBlock, most[0], most[1]);
+    }
+
+    /** Two numbers, as a list or Unreal's {@code {X, Y}}; {@code fallback} each when absent. */
+    private static float[] xy(String name, @Nullable Object v, float fallback) {
+        if (v == null) return new float[] {fallback, fallback};
+        if (v instanceof List<?> l && l.size() == 2) return new float[] {((Number) l.get(0)).floatValue(), ((Number) l.get(1)).floatValue()};
+        if (v instanceof Map<?, ?> m && m.get("X") instanceof Number x && m.get("Y") instanceof Number y) {
+            return new float[] {x.floatValue(), y.floatValue()};
+        }
+        throw new IllegalArgumentException(name + ": two numbers, not " + v);
+    }
+
+    /** A remap that changes nothing: none, or its {@code in} range the same as its {@code out}. */
+    private static boolean isIdentity(@Nullable Object remap) {
+        return remap == null || remap instanceof Map<?, ?> m && sameValue(m.get("in"), m.get("out"));
+    }
+
+    /**
+     * {@code sprite_facing_and_alignment}'s {@code lock_axis}: Cascade's OrientationAxisLock, which runs nothing itself
+     * (ParticleModules.cpp:1005-1012); its sprites take its axes (ParticleSystemRender.cpp:106-146, :882-922). A lock on
+     * an axis lays the sprite in that axis's plane, its right and up fixed; a rotation lock stands it along the axis,
+     * turning to the eye, a quarter turn about its normal unless the axis is Z. A sprite aligned to its velocity ignores
+     * the lock (:884). Axes are the asset's, so they go through its units.
+     */
+    private static void axisLock(String name, Map<String, Object> renderer, Map<?, ?> in, Map<String, Object> values,
+                                 CgUnits units) {
+        for (String k : List.of("facing", "alignment")) {
+            if (in.get(k) != null && !sameValue(in.get(k), List.of(1.0, 0.0, 0.0))) {
+                throw new IllegalArgumentException(name + ": sprite_facing_and_alignment's " + k + " is not read yet: lock_axis alone");
+            }
+        }
+        String lock = String.valueOf(in.get("lock_axis") == null ? "none" : in.get("lock_axis"));
+        if (lock.equals("none")) return;
+        Object kind = renderer.get("kind");
+        if ("mesh".equals(kind)) {
+            throw new IllegalArgumentException(name + ": a mesh renderer's locked axis (ParticleSystemRender.cpp:1575) is not built yet");
+        }
+        if (!"sprite".equals(kind) || "velocity".equals(renderer.get("alignment"))) return;
+        if (lock.startsWith("rotate_")) {
+            double[] axis = axis(lock.substring("rotate_".length()));
+            renderer.put("facing", "camera");
+            renderer.put("alignment", "custom");
+            values.put("_cg_AlignmentVector", vec4(direction(axis, units)));
+            if (!lock.equals("rotate_z")) values.put("_cg_RotationBias", Math.PI / 2);
+            return;
+        }
+        // Cascade's right and up; its up runs down the texture, so the sprite's up is its negation.
+        double[] right, up;
+        switch (lock) {
+            case "x" -> { right = axis("-y"); up = axis("z"); }
+            case "y" -> { right = axis("x"); up = axis("z"); }
+            case "z" -> { right = axis("y"); up = axis("x"); }
+            case "-x" -> { right = axis("y"); up = axis("z"); }
+            case "-y" -> { right = axis("-x"); up = axis("z"); }
+            case "-z" -> { right = axis("-y"); up = axis("x"); }
+            default -> throw new IllegalArgumentException(name + ": no lock_axis " + lock);
+        }
+        double[] r = direction(right, units), u = direction(up, units);
+        double[] facing = {r[1] * u[2] - r[2] * u[1], r[2] * u[0] - r[0] * u[2], r[0] * u[1] - r[1] * u[0]};
+        renderer.put("facing", "custom");
+        renderer.put("alignment", "custom");
+        values.put("_cg_FacingVector", vec4(facing));
+        values.put("_cg_AlignmentVector", vec4(u));
+    }
+
+    /** A unit axis by name: x, y, z, each optionally negated. */
+    private static double[] axis(String name) {
+        double sign = name.startsWith("-") ? -1 : 1;
+        int i = "xyz".indexOf(name.charAt(name.length() - 1));
+        double[] a = new double[3];
+        a[i] = sign;
+        return a;
+    }
+
+    private static double[] direction(double[] v, CgUnits units) {
+        List<?> host = (List<?>) units.toHost(List.of(v[0], v[1], v[2]), CgQuantity.DIRECTION);
+        return new double[] {((Number) host.get(0)).doubleValue(), ((Number) host.get(1)).doubleValue(), ((Number) host.get(2)).doubleValue()};
+    }
+
+    private static List<Double> vec4(double[] v) {
+        return List.of(v[0], v[1], v[2], 0.0);
     }
 
     private static void initialize(String name, CgVfxEmitter.Builder b, Map<?, ?> in, String element) {
@@ -792,6 +1099,21 @@ public final class CgVfxEmitterAssets {
                 if (kind.equals("collide_depth")) take(in, read, out, names, "depth_thickness", "thickness");
                 if (kind.equals("collide_entities")) take(in, read, out, names, "entity_size", "size");
             }
+            case "set_position" -> {
+                kind = "set_position";
+                take(in, read, out, names, "position", "position");
+                take(in, read, out, names, "offset", "offset");
+                take(in, read, out, names, "scale", "scale");
+                // Cascade's LocationDirect never reads its direction (ParticleModules_Location.cpp:330-385).
+                read.add("direction");
+            }
+            case "scale_velocity" -> {
+                kind = "scale_velocity";
+                take(in, read, out, names, "scale", "scale");
+                take(in, read, out, names, "absolute", "absolute");
+                // The engine's frame is the world's: Cascade's bInWorldSpace.
+                if ("world".equals(in.get("space"))) read.add("space");
+            }
             case "kill_volume" -> {
                 kind = "kill";
                 shapeToEngine(in, read, out, names);
@@ -1051,6 +1373,77 @@ public final class CgVfxEmitterAssets {
     }
 
     /** {@code k} by {@code by}: a number where it holds one value. */
+    /** {@code e}'s drawn channels as the modules that set them: dynamic parameters, a sub-image index, a camera offset. */
+    private static void writeDrawn(CgVfxEmitter e, List<Object> modules) {
+        Map<String, Object> dynamics = new LinkedHashMap<>();
+        for (int slot = 0; slot < 4; slot++) {
+            List<Object> channels = new ArrayList<>();
+            boolean any = false;
+            for (int c = 0; c < 4; c++) {
+                CgVfxDrawnChannel ch = e.drawn[slot][c];
+                any |= ch != null;
+                Map<String, Object> channel = new LinkedHashMap<>();
+                channel.put("value", ch == null ? 0.0 : drawnForm(e.name, ch));
+                if (ch != null && ch.roll() == CgVfxDrawnChannel.Roll.SPAWN) channel.put("spawn_only", true);
+                channel.put("source", "user");
+                channels.add(channel);
+            }
+            if (any) dynamics.put("dynamic_" + slot, channels);
+        }
+        if (!dynamics.isEmpty()) modules.add(entry("dynamic_parameters", "dynamic_material_parameters", dynamics));
+        CgVfxDrawnChannel frame = e.drawn[CgVfxDrawnChannel.SPRITE][CgVfxDrawnChannel.SUB_IMAGE];
+        if (frame != null && (e.subUv == null || e.subUv.mode() != CgVfxFlipbook.Mode.DIRECT)) {
+            throw new IllegalArgumentException(e.name + " carries a sub-image index its sub-UV animation does not play: subUv(direct())");
+        }
+        if (e.subUv != null) {
+            Map<String, Object> in = new LinkedHashMap<>();
+            in.put("mode", e.subUv.mode().name().toLowerCase(Locale.ROOT));
+            switch (e.subUv.mode()) {
+                case LOOP -> {
+                    in.put("frame_rate", (double) e.subUv.rate());
+                    in.put("start_frame", e.subUv.startsRandom() ? 0 : 1);
+                }
+                case RANDOM -> in.put("frame_rate", (double) e.subUv.rate());
+                case DIRECT -> {
+                    if (frame != null && frame.roll() == CgVfxDrawnChannel.Roll.SPAWN) {
+                        throw new IllegalArgumentException(e.name + "'s sub-image index is rolled at birth, which no file writes");
+                    }
+                    in.put("frame", frame == null ? 0.0 : drawnForm(e.name, frame));
+                    if (frame != null && frame.realTime()) in.put("use_real_time", true);
+                }
+                default -> { }
+            }
+            modules.add(entry("sub_uv", "sub_uv_animation", in));
+        }
+        CgVfxDrawnChannel offset = e.drawn[CgVfxDrawnChannel.SPRITE][CgVfxDrawnChannel.CAMERA_OFFSET];
+        if (offset != null) {
+            Map<String, Object> in = map("offset", drawnForm(e.name, offset), "update", "direct");
+            if (offset.roll() == CgVfxDrawnChannel.Roll.SPAWN) in.put("spawn_only", true);
+            modules.add(entry("camera_offset", "camera_offset", in));
+        }
+    }
+
+    /** A drawn channel as the form that reads back to it: its curve over life, or the range its roll spans. */
+    private static Object drawnForm(String name, CgVfxDrawnChannel ch) {
+        if (ch.roll() == CgVfxDrawnChannel.Roll.BIND) {
+            CgVfxFormInput.Binding u = ch.bind();
+            Map<String, Object> form = new LinkedHashMap<>();
+            form.put("bind", u.path());
+            form.put("default", (double) u.fallback()[0]);
+            if (u.inLo() != null) {
+                form.put("remap", map("in", list(u.inLo()[0], u.inHi()[0]), "out", list(u.outLo()[0], u.outHi()[0])));
+                form.put("mode", u.modes()[0]);
+            }
+            if (u.scale() != 1f) form.put("scale", (double) u.scale());
+            return form;
+        }
+        if (ch.roll() == CgVfxDrawnChannel.Roll.NONE) return curve(ch.from(), "age");
+        if (ch.from().size() != 1 || ch.to().size() != 1) {
+            throw new IllegalArgumentException(name + ": a drawn channel rolled between curves, which no file writes");
+        }
+        return map("range", list(ch.from().value(0), ch.to().value(0)));
+    }
+
     private static Object curve(CgKeyframes k, String by) {
         if (k.size() == 1) return (double) k.value(0);
         return map("curve", richCurve(k), "by", by);

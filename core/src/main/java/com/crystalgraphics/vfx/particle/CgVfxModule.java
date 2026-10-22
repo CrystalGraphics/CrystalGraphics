@@ -840,6 +840,45 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public CgTexture[] textures() {
             return field.textures();
+    /**
+     * Cascade's LocationDirect (ParticleModules_Location.cpp:353-385): each step each particle is aimed at
+     * {@code (x, y, z)} plus {@code (ox, oy, oz)} from its effect's origin, {@code share} of the way by the velocity it
+     * is given and the rest moved at once. A curve over life on the position is its input's form: a path to follow.
+     *
+     * <pre>{@code
+     * .module(new CgVfxModule.SetPosition(0f, 2f, 0f, 0f, 0f, 0f, 1f))   // held 2 blocks above its source
+     * }</pre>
+     *
+     * <ul>
+     *   <li>It overrides the velocity forces before it gave; list it first.</li>
+     * </ul>
+     */
+    record SetPosition(float x, float y, float z, float ox, float oy, float oz, float share) implements CgVfxModule {
+
+        @Override
+        public String gpuKind() {
+            return "set_position";
+        }
+    }
+
+    /**
+     * Cascade's velocity over life (ParticleModules_Velocity.cpp:266-330): each particle moves at its velocity times
+     * {@code (x, y, z)}, or at {@code (x, y, z)} itself when {@code absolute}, while its velocity keeps what the forces
+     * give it, as Cascade's base velocity does. A curve over life is its input's form.
+     *
+     * <pre>{@code
+     * .module(new CgVfxModule.ScaleVelocity(0.5f, 0.5f, 0.5f, false))   // half as fast, however it is pushed
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Collisions and what reads the velocity see the stored velocity, not the scaled motion.</li>
+     * </ul>
+     */
+    record ScaleVelocity(float x, float y, float z, boolean absolute) implements CgVfxModule {
+
+        @Override
+        public String gpuKind() {
+            return "scale_velocity";
         }
     }
 

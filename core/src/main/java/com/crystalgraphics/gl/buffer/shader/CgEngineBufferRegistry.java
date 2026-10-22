@@ -79,7 +79,9 @@ public final class CgEngineBufferRegistry {
                     _cg_Stretch ("ALIGNED facing: how much longer per block a second; 0 unstretched, as Niagara", float) = 0
                     _cg_MaxStretch ("ALIGNED facing: longest, in widths", float) = 4.0
                     _cg_Size ("The drawn extent, a sprite's or a strip's width, times this; never the simulated size", float) = 1
-                    _cg_CameraOffset ("Drawn this many of its sizes toward the eye", float) = 0
+                    _cg_CameraOffset ("Drawn this many blocks toward the eye, Niagara's Particles.CameraOffset", float) = 0
+                    _cg_RotationBias ("Radians added to each sprite's rotation: Cascade's axis lock bias", float) = 0
+                    _cg_Drawn ("Drawn slots its pool writes: dynamic parameters 0-3 a bit each, 32 sub-image, 64 camera offset", float) = 0
                     _cg_SubImage ("CgVfxFlipbook: columns (a table's frames), rows (0: a table), blends, random start", vec4) = (1, 1, 1, 0)
                     _cg_SubUV ("CgVfxFlipbook: mode, first frame, last frame (-1: the last), rate", vec4) = (0, 0, -1, 0)
                     _cg_SubImages ("CgVfxFlipbook: a rect table, a rect a texel", sampler2D) = "white"

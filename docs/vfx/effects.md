@@ -232,6 +232,7 @@ sub_image: { size: [8, 8], frames: [16, 31] }                            # rows 
 | `mode: linear` (the default) | first to last over each particle's life | Linear |
 | `mode: loop`, `rate` | round the range at that rate, last back to first | Infinite Loop, by frames a second |
 | `mode: random`, `rate` | a whole frame of the range, drawn again that often; 0 keeps the first | Random |
+| `mode: direct` | the frame each particle carries, set by its emitter's `sub_uv_animation` ([particles](particles.md) § *Values a particle carries for its material*); frame 0 where it sets none | Direct Set |
 | `frames: [first, last]` | only those frames, both included | Start and End Frame Range Override |
 | `blend` | each frame fading into the next; never for random | Sub UV Blending Enabled |
 | `random_start` | each particle's loop at a frame of its own | Random Start Frame |
@@ -242,7 +243,8 @@ sub_image: { size: [8, 8], frames: [16, 31] }                            # rows 
   short-lived one; linear runs on its life.
 - A rect table (`rects`) is not built yet and fails at load.
 - A shader of your own reads the same: `_cg_SubImage`, `_cg_SubUV` and `_cg_SubImages`, through `fx_particle.glsl`'s
-  `fx_subuv_frames` and `fx_subimage_uv`, as the sprite factory does.
+  `fx_subuv_frames` (a direct frame from `CG_PARTICLE_DRAWN(n).color.x`) and `fx_subimage_uv`, as the sprite factory
+  does.
 
 ## How a sprite faces
 

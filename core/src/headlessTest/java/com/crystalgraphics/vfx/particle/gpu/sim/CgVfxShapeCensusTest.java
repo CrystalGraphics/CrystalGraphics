@@ -5,6 +5,7 @@ import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetReferences;
 import com.crystalgraphics.asset.load.CgAssetLoad;
+import com.crystalgraphics.asset.load.CgBuiltInCompilers;
 import com.crystalgraphics.asset.load.CgAssetPipeline;
 import com.crystalgraphics.asset.load.CgAssetState;
 import com.crystalgraphics.asset.registry.CgAssetEntry;
@@ -48,6 +49,10 @@ public class CgVfxShapeCensusTest {
         boolean all = packs.equals("*");
         long began = System.nanoTime();
         CgAssetKinds.register();
+        // Materials compile to definitions, as the engine's init does; with -PcensusMaterials=false they stay raw, so an
+        // emitter's modules all compile before its renderer fails on its material, which the report then names apart.
+        boolean materials = !"false".equals(System.getProperty("crystalgraphics.census.materials"));
+        if (materials) CgBuiltInCompilers.register();
         CgVfxSystemAssets.register();
         CgAssetRegistry registry = new CgAssetRegistry();
         registry.registerEngine();
@@ -128,7 +133,8 @@ public class CgVfxShapeCensusTest {
         List<Map.Entry<String, Set<String>>> worst = new ArrayList<>(full.entrySet());
         worst.sort((a, b) -> b.getValue().size() - a.getValue().size());
         StringBuilder report = new StringBuilder();
-        report.append(String.format("%d systems over %d moves (sequences); %d failed to compile%n", ids.size(), full.size(), failed));
+        report.append(String.format("%d systems over %d moves (sequences); %d failed to compile%s%n", ids.size(), full.size(), failed,
+                materials ? "" : " (materials uncompiled: \"not a material\" means its emitter compiled up to its renderers)"));
         why.entrySet().stream().sorted((x, y) -> y.getValue() - x.getValue()).limit(40).forEach(e -> {
             report.append(String.format("  failed %5d  %s%n", e.getValue(), e.getKey()));
             detail.get(e.getKey()).entrySet().stream().sorted((x, y) -> y.getValue() - x.getValue()).limit(6)

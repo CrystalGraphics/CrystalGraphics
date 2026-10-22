@@ -38,6 +38,8 @@ Properties {
     _Pool        ("The pool's place among those keyed: Order's high bits", int) = 0
     _IdBits      ("The spawn id's bits Order keys by",               int)       = 24
     _RecordVectors ("A record's uvec4s: the pool's layout",          int)       = 4
+    _DrawnStride ("Drawn elements a particle: its drawn part, then its drawn slots", int) = 1
+    _Drawn       ("Its drawn slots, a bit each; 32 a mesh orientation in the slots' scale", int) = 0
     _ClipX       ("Projection times view: row 0",                    vec4)      = (1, 0, 0, 0)
     _ClipY       ("Row 1",                                           vec4)      = (0, 1, 0, 0)
     _ClipZ       ("Row 2",                                           vec4)      = (0, 0, 1, 0)
@@ -150,7 +152,8 @@ int range_slot(int e, out int rank) {
 void Place() {
     int rank;
     int lo = range_slot(CG_ELEMENT, rank);
-    ORDER_WRITE(rank < int(VISIBLE(lo)) ? float(INDICES(int(STARTS(lo)) + rank)) : -1.0);
+    // Its drawn part's element: a draw finds its drawn slots at the next.
+    ORDER_WRITE(rank < int(VISIBLE(lo)) ? float(int(INDICES(int(STARTS(lo)) + rank)) * _DrawnStride) : -1.0);
 }
 
 // What a mesh particle at p from slot's origin rests against (CG_OBJECT_SPARE): the nearest solid's surface in the
@@ -194,12 +197,13 @@ void Objects() {
     o.custom0 = vec4(0.0); o.custom1 = vec4(0.0); o.custom2 = vec4(0.0); o.custom3 = vec4(0.0);
     if (rank < int(VISIBLE(lo))) {
         int e = int(INDICES(int(STARTS(lo)) + rank));
-        FxDrawn r = DRAWN(e);
+        FxDrawn r = DRAWN(e * _DrawnStride);
         float t = r.motion.w;
         // CgVfxFrame.particleMeshes: turned by its seed and spin, sized on each of its own axes by its size over life.
         // A clip's particle plays in its effect's frame at its size at birth, as the Step places its events there.
         float turn = r.state.x * 6.2831853 + r.state.y;
-        mat3 turned = _Sequence != 0 ? range_quat(ORIGINS(lo).turn) : range_turn(turn * 1.7, turn * 2.3, turn);
+        mat3 turned = _Sequence != 0 ? range_quat(ORIGINS(lo).turn)
+                : (_Drawn & 32) != 0 ? range_quat(DRAWN(e * _DrawnStride + 1).scale) : range_turn(turn * 1.7, turn * 2.3, turn);
         vec3 size = _Sequence != 0 ? vec3(uintBitsToFloat(RECORDS(e * _RecordVectors + FX_RECORD_VELOCITY_SIZE).w))
                 : r.place.w * r.scale.xyz;
         vec3 inverse = vec3(size.x != 0.0 ? 1.0 / size.x : 0.0, size.y != 0.0 ? 1.0 / size.y : 0.0,

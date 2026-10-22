@@ -220,6 +220,37 @@ public interface CgVfxGpuEmitter {
     void writeCurves(float[] out, int at, int texels);
 
     /**
+     * Channel {@code channel} (0 to 3) of drawn slot {@code slot}: what its particles carry for their draws alone
+     * ({@link CgVfxDrawnChannel}); null where it sets none.
+     */
+    @Nullable
+    default CgVfxDrawnChannel drawn(int slot, int channel) {
+        return null;
+    }
+
+    /**
+     * The drawn slots {@code emitter} sets a channel of, a bit each, and {@link CgVfxDrawnChannel#ORIENTATION} where its
+     * meshes turn as a {@link CgVfxMeshRotation} says: what its pool writes after each drawn part.
+     */
+    static int drawnMask(CgVfxGpuEmitter emitter) {
+        int mask = 0;
+        for (int s = 0; s < CgVfxDrawnChannel.SLOTS; s++) {
+            for (int c = 0; c < 4; c++) if (emitter.drawn(s, c) != null) mask |= 1 << s;
+        }
+        if (emitter.meshRotation() != null) mask |= 1 << CgVfxDrawnChannel.ORIENTATION;
+        return mask;
+    }
+
+    /**
+     * Cascade's size by speed (ParticleModules_Size.cpp:419-430): each of x and y times
+     * {@code clamp(speed * scale, 1, max)}, as {@code {scaleX, scaleY, maxX, maxY}}, speed in blocks a second. The
+     * default, {@code {0, 0, 1, 1}}, scales nothing.
+     */
+    default float[] sizeBySpeed() {
+        return new float[] {0f, 0f, 1f, 1f};
+    }
+
+    /**
      * What its curves are sampled by: over life, or by speed.
      *
      * <pre>{@code

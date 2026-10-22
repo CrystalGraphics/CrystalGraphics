@@ -123,9 +123,13 @@ void vertex(out v2f o) {
 | `record` | its record: `CG_PARTICLE_HEAT(p.record)` and the rest of `cg_use particle`'s macros read what these fields do not |
 
 - `cg_material_project(v)` is the clip position of `v.worldPosition`: call it last, after any offset.
-- `cg_dynamic_parameter(p, i, fallback)` is the renderer's dynamic parameter `i`, and `fallback` where it binds none.
-- A sprite's facing, stretch, camera offset and flipbook are its renderer's (`_cg_Facing`, `_cg_SubImage`, ...): never
-  declare a `_cg_` property in a material.
+- `cg_dynamic_parameter(p, i, fallback)` is the particle's dynamic parameter `i` (0 to 3), set by its emitter's
+  `dynamic_material_parameters` ([particles](particles.md) § *Values a particle carries for its material*), and
+  `fallback` where its emitter sets none: Unreal's DynamicParameter node and its defaults. It reads `p`, so a fragment
+  stage gets it from what its vertex stage passes on.
+- A sprite's facing, stretch, camera offset (blocks toward the eye) and flipbook are its renderer's (`_cg_Facing`,
+  `_cg_CameraOffset`, `_cg_SubImage`, ...), or its particle's where its emitter sets them per particle: never declare a
+  `_cg_` property in a material.
 
 ### Emissive and opacity: `"Output" = "EmissiveOpacity"`
 

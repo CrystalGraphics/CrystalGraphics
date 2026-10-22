@@ -265,20 +265,8 @@ public final class CgVfxRenderers {
             if (size == null) throw new IllegalArgumentException(who + "'s sub_image has neither size nor rects");
             f = CgVfxFlipbook.grid((int) size[0], (int) size[1]);
         }
-        float rate = s.get("rate") instanceof Number n ? n.floatValue() : 0f;
-        String mode = s.get("mode") instanceof String m ? m : "linear";
-        f = switch (mode) {
-            case "linear" -> f.linear();
-            case "loop" -> f.loop(rate);
-            case "random" -> f.random(rate);
-            case "direct" -> throw new IllegalArgumentException(who + "'s sub_image mode direct needs a module setting its frame, not built yet");
-            default -> throw new IllegalArgumentException(who + "'s sub_image has no mode '" + mode + "'");
-        };
-        if (s.get("frames") instanceof List<?> frames && frames.size() == 2) {
-            f = f.frames(((Number) frames.get(0)).intValue(), ((Number) frames.get(1)).intValue());
-        }
-        f = f.blend(Boolean.TRUE.equals(s.get("blend")));
-        return Boolean.TRUE.equals(s.get("random_start")) ? f.randomStart() : f;
+        // Its frames alone: its emitter's sub_uv_animation plays them (CgVfxSubUvAnimation), frame 0 without one.
+        return f.direct().blend(Boolean.TRUE.equals(s.get("blend")));
     }
 
     private static <E extends Enum<E>> E choice(String who, Map<String, Object> tree, String key, Class<E> type, String fallback) {

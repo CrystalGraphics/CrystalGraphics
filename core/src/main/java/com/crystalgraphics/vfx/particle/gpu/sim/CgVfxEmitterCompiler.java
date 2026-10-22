@@ -768,6 +768,8 @@ public final class CgVfxEmitterCompiler {
                     f.accel = vec3(0.0);
                     f.drag = 0.0;
                     f.dragQuad = 0.0;
+                    f.motionScale = vec3(1.0);
+                    f.motionSet = vec3(0.0);
                 """);
         for (int i = 0; i < shape.modules(); i++) if (!shape.afterSolve(i)) call(s, shape, i);
         s.append("""
@@ -778,7 +780,7 @@ public final class CgVfxEmitterCompiler {
                         vec3 v = p.velocity + f.accel * s.dt;
                         float keep = 1.0 / (1.0 + (f.drag + f.dragQuad * length(v)) * s.dt);
                         p.velocity = v * keep;
-                        p.position += p.velocity * s.dt;
+                        p.position += (p.velocity * f.motionScale + f.motionSet) * s.dt;
                         p.spin += p.spinRate * s.dt;
                     }
 @FOLLOW@                    // What it struck with: a landing's and a collision's velocity.

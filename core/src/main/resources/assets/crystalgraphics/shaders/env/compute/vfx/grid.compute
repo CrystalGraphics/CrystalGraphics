@@ -29,6 +29,7 @@ Properties {
     _Before ("The coarsened grid's page table before",         sampler3D) = "black"
     _Coarsened ("The grid coarsened this frame",               int)       = -1
     _Texels ("Samples a curve row holds",                       int)       = 256
+    _RowVectors ("A parameter row's vec4s: CgVfxShape.rowVectors", int)      = 518
     _RecordVectors ("A record's uvec4s: its pool's layout",       int)       = 4
 }
 
@@ -176,7 +177,7 @@ vec2 g_curve(uint row, float t) {
     float x = clamp(t, 0.0, 1.0) * float(_Texels - 1);
     int i0 = int(floor(x));
     int i1 = min(i0 + 1, _Texels - 1);
-    int at = int(row) * (2 * _Texels + 5);
+    int at = int(row) * _RowVectors;
     float f = x - float(i0);
     return vec2(mix(CURVES(at + i0).w, CURVES(at + i1).w, f), mix(CURVES(at + _Texels + i0).w, CURVES(at + _Texels + i1).w, f));
 }
@@ -184,7 +185,7 @@ vec2 g_curve(uint row, float t) {
 // Where a particle of row `row` samples its curves: life progress, or its speed between its row's two (range.compute's
 // range_curve_at).
 float g_curve_at(uint row, vec3 velocity, float progress) {
-    vec4 speeds = CURVES(int(row) * (2 * _Texels + 5) + 2 * _Texels + 4);
+    vec4 speeds = CURVES(int(row) * _RowVectors + 2 * _Texels + 4);
     if (speeds.x < 0.0) return progress;
     return clamp((length(velocity) - speeds.x) / (speeds.y - speeds.x), 0.0, 1.0);
 }

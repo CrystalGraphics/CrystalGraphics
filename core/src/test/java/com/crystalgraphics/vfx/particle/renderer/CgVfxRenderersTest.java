@@ -10,6 +10,7 @@ import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.object.validate.CgValidation;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.look.CgVfxFlipbook;
+import com.crystalgraphics.vfx.particle.CgVfxSubUvAnimation;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterAssets;
 import org.junit.Test;
@@ -50,12 +51,12 @@ public class CgVfxRenderersTest {
     @Test
     public void aSubImageIsItsFlipbook() {
         CgVfxSpriteRendererProperties sprite = (CgVfxSpriteRendererProperties) CgVfxRenderers.sprite("r1")
-                .subImage(Map.of("size", List.of(4, 2), "mode", "loop", "rate", 30, "blend", true)).build();
+                .subImage(Map.of("size", List.of(4, 2), "blend", true)).build();
         CgVfxFlipbook f = sprite.subImage();
         assertEquals(8, f.frames());
-        assertEquals(CgVfxFlipbook.Mode.LOOP, f.mode());
-        assertThrows(IllegalArgumentException.class, () -> CgVfxRenderers.sprite("r2")
-                .subImage(Map.of("size", List.of(4, 4), "mode", "direct")).build());
+        // The renderer holds the frames, shown at frame 0; its emitter's sub-UV animation plays them.
+        assertEquals(CgVfxFlipbook.Mode.DIRECT, f.mode());
+        assertEquals(CgVfxFlipbook.Mode.LOOP, CgVfxSubUvAnimation.loop(30f).play(f).mode());
     }
 
     @Test
