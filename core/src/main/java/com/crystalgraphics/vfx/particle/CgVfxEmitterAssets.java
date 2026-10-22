@@ -150,6 +150,11 @@ public final class CgVfxEmitterAssets {
             for (CgVfxRendererProperties r : e.renderers) renderers.add(r.tree());
             tree.put("renderers", renderers);
         }
+        if (!e.handlers.isEmpty()) {
+            List<Object> events = new ArrayList<>();
+            for (CgVfxEventHandler h : e.handlers) events.add(h.tree());
+            tree.put("events", events);
+        }
         return tree;
     }
 
@@ -369,6 +374,8 @@ public final class CgVfxEmitterAssets {
             b.module(module, idOf(entry, m.module));
         }
         for (CgVfxRendererProperties r : CgVfxRenderers.compileAll(name, tree.get("renderers"), deps)) b.renderer(r);
+        // Its handlers name its system's handles: the system resolves them (CgVfxSystemAssets).
+        for (Map<?, ?> entry : entries(tree, "events")) b.handler(CgVfxEventHandler.of(name, entry));
         return b.build();
     }
 

@@ -3,10 +3,10 @@ package com.crystalgraphics.vfx.particle.gpu;
 import javax.annotation.Nullable;
 
 /**
- * Something a particle does that its emitter reacts to: it lands, it hits something, it dies, it reaches an age, or
- * another period of its life passes. A definition
- * lists its events ({@link CgVfxGpuEmitter#events()}); each spawns children of another definition where it happened,
- * sends rows to the CPU, or both. On the GPU no CPU is in the loop: a child spawns in the step its parent's event fired.
+ * Something a particle does that its emitter reacts to: it is born, lands, hits something, dies, reaches an age, passes
+ * another period of its life or another step, or its emitter spawns a batch. A definition lists its events
+ * ({@link CgVfxGpuEmitter#events()}); each spawns children of another definition where it happened, sends rows to the
+ * CPU, or both. On the GPU no CPU is in the loop: a child spawns in the step its parent's event fired.
  *
  * <pre>{@code
  * // debris landing raises three puffs of dust, carrying a fifth of its speed
@@ -15,55 +15,65 @@ import javax.annotation.Nullable;
  * // an ember's death reported to the CPU, at most 16 a step: a hiss, a scorch decal
  * CgVfxEvent hiss = CgVfxEvent.onDeath().readback(16);
  *
- * // both at once, at an age
- * CgVfxEvent burst = CgVfxEvent.onAge(0.5f).spawn(SPARKS, 8).readback(4);
+ * // three to five chips at each impact, at most 64 impacts' worth a frame (Unreal's default)
+ * CgVfxEvent chips = CgVfxEvent.onCollision().spawn(CHIPS, 3, 5).inherit(0.3f);
  *
- * // a spark at every bounce, and a puff of smoke every tenth of a second of an ember's life
- * CgVfxEvent bounce = CgVfxEvent.onCollision().spawn(SPARKS, 2);
+ * // a puff of smoke every tenth of a second of an ember's life; a spark each step it lives, 256 a frame at most
  * CgVfxEvent smoke = CgVfxEvent.every(0.1f).spawn(SMOKE, 1).inherit(0.5f);
+ * CgVfxEvent trail = CgVfxEvent.onLocation().spawn(SPARK, 1).maxPerFrame(256);
  *
- * // a sequence particle's: sparks at its clip's "tip" node on frame 20, and smoke from it between 0.3 s and 1.5 s
+ * // a ring at the effect's origin each time the emitter spawns a batch (Cascade's burst event)
+ * CgVfxEvent ring = CgVfxEvent.onBurst().spawn(RING, 2).fromEmitter();
+ *
+ * // a sequence particle's: sparks at its clip's "tip" node on frame 20
  * CgVfxEvent sparks = CgVfxEvent.onAge(20f / 30f).spawn(SPARKS, 8).at(CLIP.prefab().node("tip"));
- * CgVfxEvent trail = CgVfxEvent.every(0.05f).between(0.3f, 1.5f).spawn(SMOKE, 1).at(CLIP.prefab().node("tip"));
  * }</pre>
  *
- * <p>When each fires, on both paths:</p>
+ * <p>When each fires:</p>
  * <ul>
  *   <li>{@link Trigger#LANDING}: the step Ground sets the particle resting. Its normal is the floor's: up, on the fixed
  *       ground and on the voxel window's floors alike.</li>
  *   <li>{@link Trigger#DEATH}: the step its age reaches its life and it is removed. Never when an effect is stopped or
  *       its slot closes. Its normal is its velocity's direction, up when it barely moves.</li>
- *   <li>{@link Trigger#AGE}: the step {@code age - dt < seconds <= age}. Its normal as a death's.</li>
+ *   <li>{@link Trigger#AGE}: the step {@code age - dt < seconds <= age}; at 0 its first step, the format's
+ *       {@code spawn}. Its normal as a death's.</li>
  *   <li>{@link Trigger#COLLISION}: each step a kind after the solver reports an impact ({@code fx_hit} in
  *       {@code fx_types.glsl}: Unity VFX Graph's punctual contact, never resting or sliding), the surface's normal its
- *       normal, its velocity the one it struck with: after the solver, before the kinds after it. Firing n is the
- *       particle's n-th impact, from 1.</li>
- *   <li>{@link Trigger#RATE}: each step {@code floor((age - dt - from) / period) < floor((age - from) / period)}, the age
- *       after the step, while {@code age <= until} ({@link #between}; from birth for ever unless given): first one
- *       period past {@code from}, never at it, and at most once a step (Godot's constant sub-emitter). Its normal as a
- *       death's. Firing n is {@code floor((age - from) / period)}.</li>
- *   <li>{@link #at}: on a {@code SEQUENCE} emitter, any trigger fires at a node of the particle's clip, where that node
- *       is at the particle's age (its size times the node's place, turned with the effect), its normal the node's +Y.</li>
+ *       normal, its velocity the one it struck with. Firing n is the particle's n-th impact, from 1.</li>
+ *   <li>{@link Trigger#RATE}: each step {@code floor((age - dt - from) / period) < floor((age - from) / period)}, while
+ *       {@code age <= until} ({@link #between}): first one period past {@code from}, at most once a step.</li>
+ *   <li>{@link Trigger#LOCATION}: every step the particle lives, its death's included (Niagara's location event).</li>
+ *   <li>{@link Trigger#BURST}: each batch its emitter spawns, at the batch's source and with no velocity: a tick's
+ *       bursts are one batch and its rate spawns another (Cascade's {@code HandleParticleBurst},
+ *       {@code ParticleModules_Event.cpp}). The batch's first spawn index is the event's parent id.</li>
+ *   <li>{@link #at}: on a {@code SEQUENCE} emitter, any trigger fires at a node of the particle's clip, its normal the
+ *       node's +Y.</li>
  * </ul>
  *
  * <p>Easy to get wrong:</p>
  * <ul>
- *   <li>Two levels of children: a child's events may spawn children, theirs may not ({@link #spawn} throws). A
- *       grandchild is keyed by {@link #grandchildKey}, whatever its trigger.</li>
- *   <li>A child is spawn {@link #childKey}{@code (parent id, event, i)} of its slot: the same particle on every path and
- *       tier, whatever order the events were found in. A trigger that {@linkplain #repeats repeats} mixes in which
- *       firing it is ({@link #childKey(int, int, int, int)}), so each firing's children differ. A definition lists at most {@link #MAX_EVENTS} events, each
- *       spawning at most {@link #MAX_CHILDREN}, and a parent's id stays below 2^24.</li>
- *   <li>Readback rows past the cap of a step are counted, never delivered.</li>
+ *   <li>{@link #LEVELS} levels of children ({@link #spawn} throws past them), Sparking! Zero's deepest chain.</li>
+ *   <li>At most {@link #maxPerFrame()} of an event's firings a frame spawn children, over every instance of its
+ *       definition in a pool: Unreal's {@code MaxEventsPerFrame}, 64 unless told. Which ones past it is the GPU's
+ *       order. Readback rows have their own cap.</li>
+ *   <li>A child is spawn {@link #childKey}{@code (parent id, event, i)} of its slot, hashed: the same particle on every
+ *       path and tier. A definition lists at most {@link #MAX_EVENTS} events, each spawning at most
+ *       {@link #MAX_CHILDREN}.</li>
  *   <li>A repeating event fires its first {@link #firings(int)} only: a collision's first eight unless told.</li>
  * </ul>
  */
 public final class CgVfxEvent {
 
-    public enum Trigger { LANDING, DEATH, AGE, COLLISION, RATE }
+    public enum Trigger { LANDING, DEATH, AGE, COLLISION, RATE, LOCATION, BURST }
 
-    /** Events a definition lists, and children an event spawns, at most: what {@link #childKey} has room for. */
-    public static final int MAX_EVENTS = 8, MAX_CHILDREN = 32;
+    /** Events a definition lists, and children an event spawns, at most (P0's census: 1,000). */
+    public static final int MAX_EVENTS = 8, MAX_CHILDREN = 1000;
+
+    /** Levels of children below a definition spawned by nothing: a pool's feed tiers less one (P0's census: 3). */
+    public static final int LEVELS = 3;
+
+    /** Firings a frame that spawn children unless told: Unreal's {@code MaxEventsPerFrame} ({@code NiagaraEmitter.h}). */
+    public static final int MAX_PER_FRAME = 64;
 
     /** {@link #childKey}'s GLSL twin, bit for bit: {@code lib/vfx/fx_event.glsl} holds it. */
     public static final String CHILD_KEY_GLSL = "uint fx_child_key(uint parent, uint event, uint i)";
@@ -77,54 +87,71 @@ public final class CgVfxEvent {
     /** {@link #node()} for an event fired where its particle is. */
     public static final int NO_NODE = -1;
 
+    /** A collision's firings at most by default: Niagara and Unity cap event output, and children are sized by it. */
+    public static final int COLLISION_FIRINGS = 8;
+
     private final Trigger trigger;
     private final float age;
     @Nullable
     private final CgVfxGpuEmitter child;
-    private final int count, readback, firings;
+    private final int countMin, countMax, readback, firings, maxPerFrame;
     private final float inherit;
     private final int node;
     private final float from, until;
+    private final boolean fromEmitter;
 
-    /** A collision's firings at most by default: Niagara and Unity cap event output, and children are sized by it. */
-    public static final int COLLISION_FIRINGS = 8;
-
-    private CgVfxEvent(Trigger trigger, float age, @Nullable CgVfxGpuEmitter child, int count, float inherit, int readback,
-                       int firings, int node, float from, float until) {
+    private CgVfxEvent(Trigger trigger, float age, @Nullable CgVfxGpuEmitter child, int countMin, int countMax, float inherit,
+                       int readback, int firings, int node, float from, float until, int maxPerFrame, boolean fromEmitter) {
         this.trigger = trigger;
         this.age = age;
         this.child = child;
-        this.count = count;
+        this.countMin = countMin;
+        this.countMax = countMax;
         this.inherit = inherit;
         this.readback = readback;
         this.firings = firings;
         this.node = node;
         this.from = from;
         this.until = until;
+        this.maxPerFrame = maxPerFrame;
+        this.fromEmitter = fromEmitter;
     }
 
     private CgVfxEvent(Trigger trigger, float age, int firings) {
-        this(trigger, age, null, 0, 0f, 0, firings, NO_NODE, 0f, Float.POSITIVE_INFINITY);
+        this(trigger, age, null, 0, 0, 0f, 0, firings, NO_NODE, 0f, Float.POSITIVE_INFINITY, MAX_PER_FRAME, false);
     }
 
     /**
      * The event the asset format's trigger names: {@code spawn} (the particle's first step), {@code death},
-     * {@code collision}, {@code location} (every {@code seconds} of its life, Niagara's location event). The format's
-     * {@code burst} has no GPU trigger yet and throws, naming it.
+     * {@code collision}, {@code location} (every step) and {@code burst} (every batch): Cascade's five. A landing is
+     * Java's alone, Unreal having none.
      *
      * <pre>{@code
-     * CgVfxEvent.ofSpec("collision", 0f).spawn(CHIPS, 4);
-     * CgVfxEvent.ofSpec("location", 0.1f).spawn(SMOKE, 1);   // a puff every tenth of a second of flight
+     * CgVfxEvent.ofSpec("collision").spawn(CHIPS, 4);
      * }</pre>
      */
-    public static CgVfxEvent ofSpec(String trigger, float seconds) {
+    public static CgVfxEvent ofSpec(String trigger) {
         return switch (trigger) {
             case "spawn" -> new CgVfxEvent(Trigger.AGE, 0f, 1);
             case "death" -> onDeath();
             case "collision" -> onCollision();
-            case "location" -> every(seconds);
-            default -> throw new IllegalArgumentException("event trigger '" + trigger + "': the GPU events take spawn, death, "
-                    + "collision and location");
+            case "location" -> onLocation();
+            case "burst" -> onBurst();
+            default -> throw new IllegalArgumentException("event trigger '" + trigger + "': spawn, death, collision, "
+                    + "location or burst");
+        };
+    }
+
+    /** The format's name for this event's trigger ({@link #ofSpec}), or null where the format has none. */
+    @Nullable
+    public String specTrigger() {
+        return switch (trigger) {
+            case AGE -> age == 0f ? "spawn" : null;
+            case DEATH -> "death";
+            case COLLISION -> firings == COLLISION_FIRINGS ? "collision" : null;
+            case LOCATION -> "location";
+            case BURST -> "burst";
+            case LANDING, RATE -> null;
         };
     }
 
@@ -152,44 +179,83 @@ public final class CgVfxEvent {
         return new CgVfxEvent(Trigger.RATE, seconds, Integer.MAX_VALUE);
     }
 
+    /** Every step the particle lives. */
+    public static CgVfxEvent onLocation() {
+        return new CgVfxEvent(Trigger.LOCATION, 0f, Integer.MAX_VALUE);
+    }
+
+    /** Every batch its emitter spawns, at the batch's source. */
+    public static CgVfxEvent onBurst() {
+        return new CgVfxEvent(Trigger.BURST, 0f, 1);
+    }
+
     /** {@code count} children of {@code child} at each event, launched by its own spawn numbers about the event's normal. */
     public CgVfxEvent spawn(CgVfxGpuEmitter child, int count) {
-        if (count < 1 || count > MAX_CHILDREN) throw new IllegalArgumentException(count + " children an event: 1 to " + MAX_CHILDREN);
-        for (CgVfxEvent e : child.events()) {
-            if (e.child == null) continue;
-            for (CgVfxEvent g : e.child.events()) {
-                if (g.child != null) {
-                    throw new IllegalArgumentException(child.name() + "'s child " + e.child.name() + " spawns " + g.child.name()
-                            + " itself: two levels of children, so a grandchild's events may report rows but not spawn");
-                }
-            }
+        return spawn(child, count, count);
+    }
+
+    /**
+     * Between {@code min} and {@code max} children of {@code child} at each event, rolled per firing: Cascade's spawn
+     * count over a range.
+     */
+    public CgVfxEvent spawn(CgVfxGpuEmitter child, int min, int max) {
+        if (min < 1 || max < min || max > MAX_CHILDREN) {
+            throw new IllegalArgumentException(min + " to " + max + " children an event: 1 to " + MAX_CHILDREN);
         }
-        return new CgVfxEvent(trigger, age, child, count, inherit, readback, firings, node, from, until);
+        int below = levels(child);
+        if (below >= LEVELS) {
+            throw new IllegalArgumentException(child.name() + " spawns children " + below + " levels deep itself: " + LEVELS
+                    + " levels of children at most");
+        }
+        return new CgVfxEvent(trigger, age, child, min, max, inherit, readback, firings, node, from, until, maxPerFrame, fromEmitter);
+    }
+
+    /** The levels of children below {@code e}: 0 for one whose events spawn none. */
+    private static int levels(CgVfxGpuEmitter e) {
+        int deepest = 0;
+        for (CgVfxEvent ev : e.events()) if (ev.child != null) deepest = Math.max(deepest, 1 + levels(ev.child));
+        return deepest;
     }
 
     /** The share of the parent's velocity a child takes on, added to its own launch; 0 by default. */
     public CgVfxEvent inherit(float share) {
-        return new CgVfxEvent(trigger, age, child, count, share, readback, firings, node, from, until);
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, share, readback, firings, node, from, until, maxPerFrame,
+                fromEmitter);
     }
 
     /** Rows to the CPU, at most {@code cap} a step ({@link CgVfxEventListener}). */
     public CgVfxEvent readback(int cap) {
         if (cap < 1) throw new IllegalArgumentException("a cap of " + cap);
-        return new CgVfxEvent(trigger, age, child, count, inherit, cap, firings, node, from, until);
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, inherit, cap, firings, node, from, until, maxPerFrame,
+                fromEmitter);
+    }
+
+    /** At most {@code most} of its firings a frame spawn children: {@link #MAX_PER_FRAME} unless told. */
+    public CgVfxEvent maxPerFrame(int most) {
+        if (most < 1) throw new IllegalArgumentException("at most " + most + " a frame");
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, inherit, readback, firings, node, from, until, most,
+                fromEmitter);
+    }
+
+    /** Its children born at the effect's origin rather than where it fired: the format's {@code use_emitter_location}. */
+    public CgVfxEvent fromEmitter() {
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, inherit, readback, firings, node, from, until, maxPerFrame,
+                true);
     }
 
     /**
      * A repeating event's first {@code most} firings only, per particle: {@link #COLLISION_FIRINGS} for a collision by
-     * default, every one for a rate. What its children are sized by ({@code CgVfxEmitter.peakChildren}), on both paths.
+     * default, every one for a rate or a location. What its children are sized by ({@code CgVfxEmitter.peakChildren}).
      *
      * <pre>{@code
      * CgVfxEvent.onCollision().spawn(SPARKS, 3).firings(2);   // sparks at the first two bounces only
      * }</pre>
      */
     public CgVfxEvent firings(int most) {
-        if (!repeats()) throw new IllegalArgumentException(trigger + " fires once: only a collision or a rate repeats");
+        if (!repeats()) throw new IllegalArgumentException(trigger + " fires once: only a collision, a rate or a location repeats");
         if (most < 1) throw new IllegalArgumentException("at most " + most + " firings");
-        return new CgVfxEvent(trigger, age, child, count, inherit, readback, most, node, from, until);
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, inherit, readback, most, node, from, until, maxPerFrame,
+                fromEmitter);
     }
 
     /**
@@ -199,7 +265,9 @@ public final class CgVfxEvent {
      */
     public CgVfxEvent at(int node) {
         if (node < 0) throw new IllegalArgumentException("node " + node);
-        return new CgVfxEvent(trigger, age, child, count, inherit, readback, firings, node, from, until);
+        if (trigger == Trigger.BURST) throw new IllegalArgumentException("a burst fires at its batch's source, never at a node");
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, inherit, readback, firings, node, from, until, maxPerFrame,
+                fromEmitter);
     }
 
     /**
@@ -209,7 +277,8 @@ public final class CgVfxEvent {
     public CgVfxEvent between(float from, float until) {
         if (trigger != Trigger.RATE) throw new IllegalArgumentException(trigger + " has no window: only a rate fires within one");
         if (!(from >= 0f) || !(until > from)) throw new IllegalArgumentException("a window from " + from + " to " + until);
-        return new CgVfxEvent(trigger, age, child, count, inherit, readback, firings, node, from, until);
+        return new CgVfxEvent(trigger, age, child, countMin, countMax, inherit, readback, firings, node, from, until, maxPerFrame,
+                fromEmitter);
     }
 
     /** The clip node it fires at, or {@link #NO_NODE}. */
@@ -240,9 +309,9 @@ public final class CgVfxEvent {
         return age;
     }
 
-    /** Whether it may fire more than once in a particle's life: a collision, or a rate. */
+    /** Whether it may fire more than once in a particle's life: a collision, a rate or a location. */
     public boolean repeats() {
-        return trigger == Trigger.COLLISION || trigger == Trigger.RATE;
+        return trigger == Trigger.COLLISION || trigger == Trigger.RATE || trigger == Trigger.LOCATION;
     }
 
     /** The definition it spawns, or null for none. */
@@ -251,9 +320,14 @@ public final class CgVfxEvent {
         return child;
     }
 
-    /** Children an event spawns; 0 with no child. */
+    /** Children an event spawns at most; 0 with no child. */
     public int count() {
-        return count;
+        return countMax;
+    }
+
+    /** Children an event spawns at least; {@link #count()} unless a range was given. */
+    public int countMin() {
+        return countMin;
     }
 
     public float inherit() {
@@ -265,10 +339,20 @@ public final class CgVfxEvent {
         return readback;
     }
 
+    /** Firings a frame that spawn children at most. */
+    public int maxPerFrame() {
+        return maxPerFrame;
+    }
+
+    /** Whether its children are born at the effect's origin. */
+    public boolean atEmitter() {
+        return fromEmitter;
+    }
+
     /**
      * Child {@code i} of event {@code event} (its index in the parent's {@link CgVfxGpuEmitter#events()}) of parent
      * particle {@code parentId}, as a spawn index of the child's slot: what {@code rand(seed, key, k)} draws from, and the
-     * child's id. Injective inside the limits above.
+     * child's id. Hashed: two keys alike at 2^-32 a pair.
      *
      * <pre>{@code
      * int key = CgVfxEvent.childKey(parent.id, 0, i);
@@ -276,29 +360,42 @@ public final class CgVfxEvent {
      * }</pre>
      */
     public static int childKey(int parentId, int event, int i) {
-        return parentId << 8 | event << 5 | i;
+        return mix(parentId ^ mix(event << 10 | i));
     }
 
     /**
      * {@link #childKey(int, int, int)} for an event that {@linkplain #repeats repeats}, at its {@code firing}-th firing
-     * (the trigger says how they are numbered): hashed with it, so two firings' children differ. Not injective, at
-     * 2^-32 a pair.
+     * (the trigger says how they are numbered): each firing's children differ.
      *
      * <pre>{@code
      * int key = event.repeats() ? CgVfxEvent.childKey(parent.id, e, i, parent.collisions) : CgVfxEvent.childKey(parent.id, e, i);
      * }</pre>
      */
     public static int childKey(int parentId, int event, int i, int firing) {
-        return mix(childKey(parentId, event, i) ^ mix(firing));
+        // A Weyl step, as splitmix's: an xor of two mixes is symmetric, parent p's firing f parent f's firing p.
+        return mix(childKey(parentId, event, i) + firing * 0x9E3779B9);
     }
 
     /**
      * Child {@code i} of event {@code event} of child particle {@code parentId}, at its {@code firing}-th firing (0 for
-     * an event that fires once): a grandchild's key. Its parent's id is a full 32-bit key, past what
-     * {@link #childKey(int, int, int)} packs, so every bit of it is hashed in. Not injective, at 2^-32 a pair.
+     * an event that fires once): the key of every level past the first. Its parent's id is a full 32-bit key.
      */
     public static int grandchildKey(int parentId, int event, int i, int firing) {
-        return mix(mix(parentId ^ mix(firing)) + (event << 5 | i));
+        return mix(mix(parentId ^ mix(firing)) + (event << 10 | i));
+    }
+
+    /**
+     * How many children a firing with a ranged count spawns, from {@code min} to {@code max}: drawn by
+     * {@code rand(seed, key, 0)}, where {@code key} is the firing's {@code childKey} (or {@code grandchildKey}) at
+     * {@code i = MAX_CHILDREN}, which no child takes. {@code step_child}'s, bit for bit given {@code rand}.
+     *
+     * <pre>{@code
+     * int n = CgVfxEvent.rolledCount(2, 4, CgVfxEmitterInstance.rand(seed, CgVfxEvent.childKey(parentId, e, CgVfxEvent.MAX_CHILDREN), 0));
+     * }</pre>
+     */
+    public static int rolledCount(int min, int max, float rand) {
+        if (min >= max) return max;
+        return min + Math.min((int) (rand * (max - min + 1)), max - min);
     }
 
     // Chris Wellons's lowbias32 (hash-prospector, public domain).

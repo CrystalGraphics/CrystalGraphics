@@ -64,7 +64,7 @@ public final class CgVfxShape {
     public static final int EVENT_AGES = 0, EVENT_FIRINGS = 2, EVENT_FROM = 4, EVENT_UNTIL = 6, EVENT_NODES = 8,
             EVENT_CLIP = 10, EVENT_VECTORS = 11;
     /** Feed tiers: a definition spawned by nothing, by a root's events, by a child's. */
-    public static final int TIERS = 3;
+    public static final int TIERS = CgVfxEvent.LEVELS + 1;
     /** Each custom kind's text, as first seen: a kind name means one text. */
     private static final Map<String, String> SOURCES = new ConcurrentHashMap<>();
     /** A number per texture a shape has sampled, for the pool key: by identity. */
@@ -106,7 +106,7 @@ public final class CgVfxShape {
     /** Where its roll keys start: the launch's {@code ROLL_KEYS}, then each module form's, then each spawn form's. */
     private final int keysAt;
     private final CgVfxEvent.Trigger[] triggers;
-    private final boolean[] eventSpawns, eventReports, eventNodes;
+    private final boolean[] eventSpawns, eventReports, eventNodes, eventAtEmitter;
     private final int eventsAt, tier;
     private final boolean spawns, reports, readsClips;
 
@@ -185,6 +185,7 @@ public final class CgVfxShape {
         eventSpawns = new boolean[events.size()];
         eventReports = new boolean[events.size()];
         eventNodes = new boolean[events.size()];
+        eventAtEmitter = new boolean[events.size()];
         boolean anySpawns = false, anyReports = false, anyNodes = false;
         for (int e = 0; e < triggers.length; e++) {
             CgVfxEvent event = events.get(e);
@@ -192,14 +193,16 @@ public final class CgVfxShape {
             eventSpawns[e] = event.child() != null;
             eventReports[e] = event.readback() > 0;
             eventNodes[e] = event.node() != CgVfxEvent.NO_NODE;
+            eventAtEmitter[e] = event.atEmitter();
             anySpawns |= eventSpawns[e];
             anyReports |= eventReports[e];
             anyNodes |= eventNodes[e];
             key.append(e == 0 ? "|ev:" : ",").append(triggers[e].name()).append(eventSpawns[e] ? "+s" : "")
-                    .append(eventReports[e] ? "+r" : "").append(eventNodes[e] ? "@n" : "");
+                    .append(eventReports[e] ? "+r" : "").append(eventNodes[e] ? "@n" : "").append(eventAtEmitter[e] ? "@e" : "");
         }
         if (anySpawns && tier == TIERS - 1) {
-            throw new IllegalArgumentException(emitter.name() + " is a grandchild that spawns: two levels of children");
+            throw new IllegalArgumentException(emitter.name() + " spawns at the last feed tier: " + CgVfxEvent.LEVELS
+                    + " levels of children");
         }
         if (tier > 0) key.append("|tier").append(tier);
         spawns = anySpawns;
@@ -550,6 +553,11 @@ public final class CgVfxShape {
     /** Whether event {@code e} reports rows to the CPU. */
     public boolean eventReports(int e) {
         return eventReports[e];
+    }
+
+    /** Whether event {@code e}'s children are born at the effect's origin ({@link CgVfxEvent#fromEmitter}). */
+    public boolean eventAtEmitter(int e) {
+        return eventAtEmitter[e];
     }
 
     /** Whether event {@code e} fires at a clip node ({@link CgVfxEvent#at}). */

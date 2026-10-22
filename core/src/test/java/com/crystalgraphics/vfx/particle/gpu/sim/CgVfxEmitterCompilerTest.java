@@ -189,10 +189,13 @@ public class CgVfxEmitterCompilerTest {
         assertTrue(CgVfxEmitterCompiler.source(mid).contains("fx_child_key_at(ev.ids.x"));
         assertTrue(CgVfxEmitterCompiler.source(low).contains("fx_grandchild_key(ev.ids.x"));
         assertTrue("each tier its own pool", !mid.key().equals(CgVfxShape.of(middle).key()));
-        for (CgVfxShape shape : new CgVfxShape[]{top, mid, low}) CgVfxEmitterCompiler.compile(shape).kernel("Step").check();
+        CgVfxShape deepest = CgVfxShape.of(leaf, CgVfxShape.TIERS - 1);
+        assertTrue(CgVfxEmitterCompiler.source(deepest).contains("fx_grandchild_key(ev.ids.x"));
+        for (CgVfxShape shape : new CgVfxShape[]{top, mid, low, deepest}) CgVfxEmitterCompiler.compile(shape).kernel("Step").check();
 
-        // root already has children's children: spawning it would be a third level
-        assertThrows(IllegalArgumentException.class, () -> CgVfxEvent.onDeath().spawn(root, 1));
+        // root has children's children: one more level above it is the third, and the fourth is refused
+        CgVfxEmitter apex = CgVfxEmitter.builder("apex").capacity(4).event(CgVfxEvent.onDeath().spawn(root, 1)).build();
+        assertThrows(IllegalArgumentException.class, () -> CgVfxEvent.onDeath().spawn(apex, 1));
         assertThrows(IllegalStateException.class, () -> CgVfxEmitter.builder("grounded").sequence(clip)
                 .module(new CgVfxModule.Ground(0.3f, 0.5f, 0.8f)).build());
         assertThrows(IllegalStateException.class, () -> CgVfxEmitter.builder("loose")

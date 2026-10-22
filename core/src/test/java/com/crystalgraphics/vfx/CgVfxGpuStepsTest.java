@@ -244,7 +244,8 @@ public class CgVfxGpuStepsTest {
             assertEquals(spawned, instance.books().stepFirstSpawn());
         }
         assertTrue(steps.isEmpty());
-        assertTrue("coasted " + coasted + " steps", coasted <= Math.ceil(0.6f / DT) + 1);
+        // Its longest life, born up to a step late (P13's birth offsets), and the step that sees it finished.
+        assertTrue("coasted " + coasted + " steps", coasted <= Math.ceil(0.6f / DT + 1) + 1);
         assertEquals(0, CgVfxParticlePool.of(steps, EMBERS).openSlots());
     }
 }

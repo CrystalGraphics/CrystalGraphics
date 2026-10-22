@@ -1115,16 +1115,46 @@ static final CgVfxEmitter SPIRITS = CgVfxEmitter.builder("spirits").state(CgVfxE
 
 ### Events: particles spawning particles
 
-An event fires per particle (landing, death, an age, each collision, every period) and spawns children of another
-emitter where it fired, reports to the CPU, or both:
+An event fires per particle (its birth, landing, death, an age, each collision, every period, every step) or per batch
+its emitter spawns, and spawns children of another emitter where it fired, reports to the CPU, or both:
 
 ```java
-.event(CgVfxEvent.onCollision().spawn(FLASH, 1))                 // a flash at each bounce
-.event(CgVfxEvent.onCollision().spawn(CHIPS, 4).inherit(0.3f))   // four chips taking 30% of the parent's velocity
-.event(CgVfxEvent.onLanding().readback(64))                      // each landing reported, a few frames later
+.event(CgVfxEvent.onCollision().spawn(FLASH, 1))                    // a flash at each bounce
+.event(CgVfxEvent.onCollision().spawn(CHIPS, 3, 5).inherit(0.3f))   // three to five chips, 30% of the parent's velocity
+.event(CgVfxEvent.onLocation().spawn(SPARK, 1).maxPerFrame(256))    // a spark each step, 256 a frame at most
+.event(CgVfxEvent.onBurst().spawn(RING, 2).fromEmitter())           // two rings at the effect's origin each batch
+.event(CgVfxEvent.onLanding().readback(64))                         // each landing reported, a few frames later
 ```
 
-- **Two levels deep**: a child's events may spawn children of their own; a grandchild's may report rows, never spawn.
+A system file says the same as handlers on the emitter they spawn, each naming its source by handle
+(`FNiagaraEventScriptProperties`):
+
+```yaml
+emitters:
+  - id: h1
+    emitter: { ... }                  # the debris
+  - id: h2
+    emitter:
+      ...
+      events:
+        - { id: e1, trigger: collision, source: h1, spawn: { emitter: h2, count: { range: [3, 5] }, inherit_velocity: [0.3, 0.3, 0.3] }, max_per_frame: 64 }
+```
+
+| Trigger | Fires | In Java |
+|---|---|---|
+| `spawn` | its first step | `onAge(0)`'s, from the file |
+| `death` | the step it dies | `onDeath()` |
+| `collision` | each impact, its first 8 | `onCollision()` |
+| `location` | every step it lives | `onLocation()` |
+| `burst` | each batch its emitter spawns, at the batch's source (Cascade's) | `onBurst()` |
+| none: Java's alone, Unreal having none | the step it comes to rest on the ground | `onLanding()` |
+
+- **Three levels deep**: a child's events may spawn children, and theirs, and theirs may report rows but not spawn.
+- **At most `max_per_frame` firings a frame spawn children**, 64 unless told (Unreal's `MaxEventsPerFrame`), counted
+  over every instance of the emitter in its pool; past it the GPU's order decides which. Up to 1,000 children a firing.
+- **What a file refuses, by name**: `kill`, an event `name`, a count given as a curve, `inherit_velocity` with three
+  different shares, and a spawn loop. Rows to the CPU, a landing, an age past birth, a rate and a clip node are Java's
+  alone: a system holding one cannot be written to a file.
 - **At a clip's node, inside a window**: on a `sequence(clip)` emitter an event fires `at(node)`, and a rate
   `between(from, until)` seconds of the particle's age ([`vfx/sequences.md`](vfx/sequences.md)).
 - **Give every child its renderers where it is made**, before the parent's `event(...)` names it: the parent holds
@@ -1146,6 +1176,10 @@ slot's slot renderers draw it.
 
 ```java
 public static final CgVfxSlot STREAK = CgVfxSlot.trail("mymod:dash/streak");
+static final CgMaterialDefinition HAZE = CgMaterialDefinition.of("mymod:materials/dash_haze",
+        "crystalgraphics:shaders/vfx/trail/haze.shader").order(2 * CgVfxLook.BAND).build();
+static final CgMaterialDefinition GLOW = CgMaterialDefinition.of("mymod:materials/dash_glow",
+        "crystalgraphics:shaders/vfx/trail/glow.shader").order(CgVfxLook.SURFACE).build();
 public static final CgVfxKit KIT = CgVfxKit.of("mymod:dash")
         .slot(CgVfxSlotRenderer.of("haze", STREAK).material(HAZE).size(1.1f).quality(CgQuality.MEDIUM).build())
         .slot(CgVfxSlotRenderer.of("glow", STREAK).material(GLOW).size(0.45f)   // half-width, blocks
@@ -1175,10 +1209,6 @@ scorch.tick(dt, x, groundY + 0.02, z);
 ```
 
 | Call | Does |
-static final CgMaterialDefinition HAZE = CgMaterialDefinition.of("mymod:materials/dash_haze",
-        "crystalgraphics:shaders/vfx/trail/haze.shader").order(2 * CgVfxLook.BAND).build();
-static final CgMaterialDefinition GLOW = CgMaterialDefinition.of("mymod:materials/dash_glow",
-        "crystalgraphics:shaders/vfx/trail/glow.shader").order(CgVfxLook.SURFACE).build();
 |---|---|
 | `ribbon(life)`, `blade(life)`, `flat(life)` | facing the eye from one point; a sheet between a base and a tip; lying across a normal |
 | `spacing(blocks)` | a point kept each that far (0.12): a still thing leaves none, and its trail runs out |
@@ -1854,6 +1884,10 @@ public final class Bolt extends CgVfxEffect<Bolt> {
     public static final CgVfxParam.Color CORE = SCHEMA.color("core", 0xFFFFE9A0, 1.5f);
     public static final CgVfxSlot ORB = CgVfxSlot.mesh("mymod:bolt/orb");
 
+    static final CgMaterialDefinition LIGHT = CgMaterialDefinition.of("mymod:materials/bolt_light",
+            "crystalgraphics:shaders/vfx/beam/orb_light.shader").order(CgVfxLook.BAND).build();
+    static final CgMaterialDefinition BODY = CgMaterialDefinition.of("mymod:materials/bolt_orb",
+            "mymod:shaders/vfx/bolt_orb.shader").order(CgVfxLook.SURFACE).build();
     public static final CgVfxKit KIT = CgVfxKit.of("mymod:bolt")
             .slot(CgVfxSlotRenderer.of("light", ORB).material(LIGHT).size(6f).bind("_Glow", CORE).build())
             .slot(CgVfxSlotRenderer.of("orb", ORB).material(BODY).bind("_Core", CORE).build())
@@ -1883,10 +1917,6 @@ public final class Bolt extends CgVfxEffect<Bolt> {
 - **`age`** is seconds since it started; **`seed`** a stable random number in 0..1 that shaders read too.
 - **Die** with `die()` when done; `stop()` from outside lets it finish gracefully.
 - **Read every number from its parameters**, never a constant in code: then a look, a tuning and a cue reach it.
-    static final CgMaterialDefinition LIGHT = CgMaterialDefinition.of("mymod:materials/bolt_light",
-            "crystalgraphics:shaders/vfx/beam/orb_light.shader").order(CgVfxLook.BAND).build();
-    static final CgMaterialDefinition BODY = CgMaterialDefinition.of("mymod:materials/bolt_orb",
-            "mymod:shaders/vfx/bolt_orb.shader").order(CgVfxLook.SURFACE).build();
 - **Name the class in its declaration** (`extends CgVfxEffect<Bolt>`): every setter (`follow`, `startAt`, `set`,
   `onHit`, ...) then answers a `Bolt`, so `VFX.play(new Bolt(LOOK, x, y, z).follow(id, CHEST).charge(2f))` chains into
   its own methods and stays a `Bolt`. Code holding any effect writes `CgVfxEffect<?>`.

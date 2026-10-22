@@ -2,6 +2,8 @@ package com.crystalgraphics.vfx.system;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +23,8 @@ import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.look.CgVfxUnit;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterAssets;
+import com.crystalgraphics.vfx.particle.CgVfxEventHandler;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 
 /**
@@ -130,13 +134,38 @@ public final class CgVfxSystemAssets {
         }
         if (!user.isEmpty()) tree.put("user", user);
         List<Object> handles = new ArrayList<>();
+        Map<CgVfxEmitter, Map<String, Object>> trees = new IdentityHashMap<>();
+        Map<CgVfxEmitter, String> ids = new IdentityHashMap<>();
         for (CgVfxEmitter e : definition.emitters()) {
             Map<String, Object> handle = new LinkedHashMap<>();
             String id = e.name().replaceAll("[^a-z0-9_]", "_");
             handle.put("id", id);
             if (!id.equals(e.name())) handle.put("name", e.name());
-            handle.put("emitter", CgVfxEmitterAssets.write(e));
+            Map<String, Object> written = CgVfxEmitterAssets.write(e);
+            written.remove("events");
+            handle.put("emitter", written);
             handles.add(handle);
+            trees.put(e, written);
+            ids.put(e, id);
+        }
+        // Each event as a handler on the emitter it spawns (FNiagaraEventScriptProperties), its source by handle.
+        int handlers = 0;
+        for (CgVfxEmitter source : definition.emitters()) {
+            for (CgVfxEvent event : source.ownEvents()) {
+                if (event.child() == null) {
+                    throw new IllegalArgumentException(definition.name() + ": " + source.name() + "'s " + event.trigger()
+                            + " event spawns nothing: rows to the CPU are Java's alone");
+                }
+                Map<String, Object> child = trees.get((CgVfxEmitter) event.child());
+                if (child == null) {
+                    throw new IllegalArgumentException(definition.name() + ": " + source.name() + " spawns "
+                            + event.child().name() + ", which is not one of its emitters");
+                }
+                CgVfxEventHandler h = CgVfxEventHandler.of("e" + ++handlers, ids.get(source), ids.get((CgVfxEmitter) event.child()), event);
+                @SuppressWarnings("unchecked")
+                List<Object> list = (List<Object>) child.computeIfAbsent("events", k -> new ArrayList<>());
+                list.add(h.tree());
+            }
         }
         if (!handles.isEmpty() || effectId == null) tree.put("emitters", handles);
         if (effectId != null) tree.put("effect", effectId);
@@ -206,10 +235,15 @@ public final class CgVfxSystemAssets {
             }
         }
         if (tree.get("emitters") instanceof List<?> handles) {
+            Map<String, CgVfxEmitter> base = new LinkedHashMap<>();
             for (Object o : handles) {
                 Map<?, ?> h = (Map<?, ?>) o;
                 if (Boolean.FALSE.equals(h.get("enabled"))) continue;
-                CgVfxEmitter e = emitter(id, h, deps);
+                base.put(String.valueOf(h.get("id")), emitter(id, h, deps));
+            }
+            Map<String, CgVfxEmitter> done = new HashMap<>();
+            for (String handle : base.keySet()) {
+                CgVfxEmitter e = resolve(id, handle, base, done, new ArrayList<>());
                 kit.emitter(e);
                 emitters.add(e);
             }
@@ -276,6 +310,40 @@ public final class CgVfxSystemAssets {
             throw new IllegalArgumentException(id + ": user." + name + " is a " + type + ", where " + effect + " reads "
                     + target);
         }
+    }
+
+    /**
+     * Handle {@code handle}'s emitter with the events its system's handlers put on it, each spawning its handle resolved
+     * the same way first: an emitter is final once its children are. A loop of spawns fails, naming it.
+     */
+    private static CgVfxEmitter resolve(String system, String handle, Map<String, CgVfxEmitter> base,
+                                        Map<String, CgVfxEmitter> done, List<String> path) {
+        CgVfxEmitter ready = done.get(handle);
+        if (ready != null) return ready;
+        if (path.contains(handle)) {
+            throw new IllegalArgumentException(system + ": events spawn in a loop: " + String.join(" -> ", path) + " -> " + handle);
+        }
+        path.add(handle);
+        CgVfxEmitter.Builder b = null;
+        for (Map.Entry<String, CgVfxEmitter> receiver : base.entrySet()) {
+            for (CgVfxEventHandler h : receiver.getValue().handlers()) {
+                String at = system + ": emitters." + receiver.getKey() + " events." + h.id();
+                if (!base.containsKey(h.source())) throw new IllegalArgumentException(at + ": its source " + h.source() + " is no enabled handle");
+                if (!h.source().equals(handle)) continue;
+                if (!base.containsKey(h.spawn())) throw new IllegalArgumentException(at + ": it spawns " + h.spawn() + ", no enabled handle");
+                CgVfxEmitter child = resolve(system, h.spawn(), base, done, path);
+                if (b == null) b = base.get(handle).toBuilder();
+                try {
+                    b.event(h.compile(child));
+                } catch (RuntimeException failed) {
+                    throw new IllegalArgumentException(at + ": " + failed.getMessage(), failed);
+                }
+            }
+        }
+        path.remove(path.size() - 1);
+        CgVfxEmitter out = b == null ? base.get(handle) : b.build();
+        done.put(handle, out);
+        return out;
     }
 
     private static CgVfxEmitter emitter(String system, Map<?, ?> handle, CgAssetCompiler.Dependencies deps) {

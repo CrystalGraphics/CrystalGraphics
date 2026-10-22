@@ -134,6 +134,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     /** Its own events, then its clip's bursts and streams as events; how many are its own. */
     final List<CgVfxEvent> events;
     private final int ownEvents;
+    /** The handlers its file declares, which its system resolves into its sources' events. */
+    final List<CgVfxEventHandler> handlers;
     /** Its inputs bound to user parameters. */
     final List<CgVfxUserBinding> userBindings;
     /** Its module inputs given in a form other than a constant: an emitter file's. */
@@ -158,9 +160,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         name = b.name;
         slot = CgVfxSlot.particles(b.name);
         renderers = List.copyOf(b.renderers);
+        drawLayout = drawLayout(b.name, renderers, b.clip);
         optional = b.optional;
         local = b.local;
-        drawLayout = drawLayout(b.name, renderers, b.clip);
         state = b.state;
         capacity = b.capacity;
         // Stable: two at one time fire in the order given.
@@ -218,6 +220,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         clip = b.clip;
         playRate = b.playRate;
         ownEvents = b.events.size();
+        handlers = List.copyOf(b.handlers);
         userBindings = List.copyOf(b.userBindings);
         forms = List.copyOf(b.forms);
         for (CgVfxModuleForm f : forms) {
@@ -265,7 +268,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             CgVfxEvent e = s.isStream()
                     ? CgVfxEvent.every(1f / (s.perSecond() * playRate)).between(s.from() / perSecond, s.until() / perSecond)
                     : CgVfxEvent.onAge(Math.max(s.from() / perSecond, FIRST_FRAME));
-            out.add(e.spawn(s.child(), s.count()).at(s.node()));
+            // A clip's every particle bursts on its frame: no frame's cap.
+            out.add(e.spawn(s.child(), s.count()).at(s.node()).maxPerFrame(Integer.MAX_VALUE));
         }
         return out;
     }
@@ -304,7 +308,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             b.sizeMin *= s;
             b.sizeMax *= s;
             b.modules.replaceAll(m -> m.scaled(s));
-            b.events.replaceAll(e -> e.child() == null ? e : e.spawn(((CgVfxEmitter) e.child()).scaled(s), e.count()));
+            b.events.replaceAll(e -> e.child() == null ? e : e.spawn(((CgVfxEmitter) e.child()).scaled(s), e.countMin(), e.count()));
             return b.build();
         });
     }
@@ -403,6 +407,16 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     @Override
     public int[] moduleWords() {
         return moduleWords;
+    }
+
+    /** The event handlers its file declares ({@link CgVfxEventHandler}): what its system resolves into events. */
+    public List<CgVfxEventHandler> handlers() {
+        return handlers;
+    }
+
+    /** Its own events, without its clip's: what a file writes as handlers. */
+    public List<CgVfxEvent> ownEvents() {
+        return events.subList(0, ownEvents);
     }
 
     @Override
@@ -559,21 +573,33 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         CgVfxEvent e = events.get(event);
         CgVfxEmitter child = (CgVfxEmitter) e.child();
         if (child == null) return 0;
+        float within = child.lifeMax + 0.1f;
+        // Its firings a frame spawn at most maxPerFrame's worth, frames at STEP_RATE a second at most.
+        long capped = (long) e.maxPerFrame() * e.count() * (long) Math.ceil(within * STEP_RATE);
+        if (e.trigger() == CgVfxEvent.Trigger.BURST) {
+            // A batch a step while a rate runs, and every burst of a loop.
+            long batches = (rate != CgVfxSpawnRate.NONE || perUnit.perBlock() > 0f ? (long) Math.ceil(within * STEP_RATE) : 0L)
+                    + (long) bursts.length * Math.max(1, Math.min(state.loops(), (long) Math.ceil(within / Math.max(state.durationMin(), 1e-3f)) + 1));
+            return saturate(Math.min(capped, batches * e.count()));
+        }
         if (e.repeats()) {
             // Each parent that can have fired within a child's life fires at most this often in it: a rate by its period,
-            // a collision at most once a 60 Hz step, and neither past its firings. An upper bound; never drops a child.
-            float within = child.lifeMax + 0.1f;
-            double often = Math.ceil(e.trigger() == CgVfxEvent.Trigger.RATE ? within / e.age() : within * 60f);
+            // a location every step, a collision at most once a 60 Hz step, and none past its firings. An upper bound.
+            double often = Math.ceil(switch (e.trigger()) {
+                case RATE -> within / e.age();
+                case LOCATION -> within * STEP_RATE;
+                default -> within * 60f;
+            });
             int per = (int) Math.min(e.firings(), often);
-            return saturate((long) births(lifeMax + within, fedAlive) * per * e.count());
+            return saturate(Math.min(capped, (long) births(lifeMax + within, fedAlive) * per * e.count()));
         }
         // A parent fires once, this long after its birth at most; its children then live up to the child's longest life.
         float spread = switch (e.trigger()) {
             case AGE -> 0f;
             case DEATH -> lifeMax - lifeMin;
-            case LANDING, COLLISION, RATE -> lifeMax;
+            case LANDING, COLLISION, RATE, LOCATION, BURST -> lifeMax;
         };
-        return saturate((long) births(spread + child.lifeMax + 0.1f, fedAlive) * e.count());
+        return saturate(Math.min(capped, (long) births(spread + within, fedAlive) * e.count()));
     }
 
     /** The particles born within {@code span} seconds: its own spawns, or a fed instance's renewals of {@code fedAlive}. */
@@ -581,6 +607,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         if (fedAlive < 0) return spawnsWithin(span);
         return saturate((long) fedAlive * (1L + (long) Math.ceil(span / Math.max(lifeMin, 1f / 60f))));
     }
+
+    /** Steps a second at most that a frame's cap is counted over: a host's frame rate past it under-sizes a child slot. */
+    private static final float STEP_RATE = 240f;
 
     private static int saturate(long n) {
         return (int) Math.min(n, Integer.MAX_VALUE);
@@ -666,6 +695,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private float heat;
         private final List<CgVfxModule> modules = new ArrayList<>();
         private final List<CgVfxEvent> events = new ArrayList<>();
+        private final List<CgVfxEventHandler> handlers = new ArrayList<>();
         private final List<CgVfxUserBinding> userBindings = new ArrayList<>();
         private final List<CgVfxModuleForm> forms = new ArrayList<>();
         private CgVfxNodeClip clip;
@@ -710,6 +740,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             modules.addAll(e.modules);
             moduleIds.addAll(Arrays.asList(e.moduleIds));
             events.addAll(e.events.subList(0, e.ownEvents));
+            handlers.addAll(e.handlers);
             userBindings.addAll(e.userBindings);
             forms.addAll(e.forms);
             clip = e.clip;
@@ -1260,15 +1291,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         }
 
         /**
-         * What an emitter file does not carry yet, taken from {@code t}: its trail and clip (P8), its events
-         * (P9) and its bindings (P6.3).
+         * What an emitter file does not carry yet, taken from {@code t}: its trail and clip (P8) and its bindings (P6.3).
          */
         Builder carry(CgVfxEmitter t) {
             trailPoints = t.trailPoints;
             clip = t.clip;
             playRate = t.playRate;
-            events.clear();
-            events.addAll(t.events.subList(0, t.ownEvents));
             userBindings.clear();
             userBindings.addAll(t.userBindings);
             return this;
@@ -1303,12 +1331,18 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
          *
          * <ul>
          *   <li>At most {@link CgVfxEvent#MAX_EVENTS}, in the order given: an event's index is its place here.</li>
-         *   <li>Two levels: a child's events may spawn children of their own, a grandchild's may not.</li>
+         *   <li>{@link CgVfxEvent#LEVELS} levels of children at most below an emitter spawned by nothing.</li>
          *   <li>An event {@link CgVfxEvent#at at} a node needs a {@link #sequence} whose clip bakes that node.</li>
          *   <li>A child spawns only from its parent's events: its own bursts and rate are ignored, so one definition can
          *       play alone and as a child.</li>
          * </ul>
          */
+        /** An event handler of its file's ({@link CgVfxEventHandler}): its system resolves it. */
+        public Builder handler(CgVfxEventHandler handler) {
+            handlers.add(handler);
+            return this;
+        }
+
         public Builder event(CgVfxEvent event) {
             if (events.size() == CgVfxEvent.MAX_EVENTS) {
                 throw new IllegalArgumentException(name + " has " + CgVfxEvent.MAX_EVENTS + " events already");

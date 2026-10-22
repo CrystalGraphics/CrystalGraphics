@@ -1,0 +1,39 @@
+// A tier's spawn events, capped per region (CgVfxParticlePool): after its pools step, Keys reads each row's region
+// (a pool's event, CgVfxEvent.maxPerFrame: Unreal's MaxEventsPerFrame), CgGpuOps.sort orders the rows by it, and Runs
+// marks where each region's run starts and ends, and Gather copies the rows in that order. A child reads its region's
+// first rows, as many as its cap: one buffer fewer than reading through the order, for a lowered Step's 16. No atomic
+// answers a value, so every tier runs it, as the neighbour grid's.
+#pragma kernel Keys map
+#pragma kernel Runs scatter
+#pragma kernel Gather map
+
+// CgVfxParticlePool.EVENT_GLSL; a spawning row's region is position.w's bits.
+struct FxEvent { vec4 position; vec4 velocityAge; vec4 normal; ivec4 block; uvec4 ids; };
+
+Buffers {
+    EVENTS ("This step's rows of the tier",                       FxEvent, readonly)
+    COUNT  ("How many",                                           uint,    readonly)
+    KEYS   ("Each row's region; sorted, the runs' order",          uint,    readwrite)
+    VALUES ("Each row's index, sorted with its key",              uint,    readwrite)
+    RUNS   ("Each region's first sorted row, then its end",       uint,    writeonly)
+    SORTED ("The rows in the order",                              FxEvent, writeonly)
+}
+
+void Keys() {
+    uint key = 0u;
+    if (CG_ELEMENT < int(COUNT(0))) key = floatBitsToUint(EVENTS(CG_ELEMENT).position.w);
+    KEYS_WRITE(key);
+    VALUES_WRITE(uint(CG_ELEMENT));
+}
+
+void Runs() {
+    int count = int(COUNT(0));
+    if (CG_ELEMENT >= count) return;
+    uint key = KEYS(CG_ELEMENT);
+    if (CG_ELEMENT == 0 || KEYS(CG_ELEMENT - 1) != key) RUNS_STORE(int(key) * 2, uint(CG_ELEMENT));
+    if (CG_ELEMENT == count - 1 || KEYS(CG_ELEMENT + 1) != key) RUNS_STORE(int(key) * 2 + 1, uint(CG_ELEMENT + 1));
+}
+
+void Gather() {
+    SORTED_WRITE(EVENTS(int(VALUES(CG_ELEMENT))));
+}
