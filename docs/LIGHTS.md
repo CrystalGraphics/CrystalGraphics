@@ -1,0 +1,167 @@
+# Lights — the world's lights, and how they light Minecraft
+
+`CgWorldLights` (`world.lights()`) adds Unreal's local lights to the world: points, spots and tubes, from the CPU or
+appended by a kernel. They light everything on screen: Minecraft's blocks and entities, and the engine's own draws.
+Tens of thousands a frame are affordable.
+
+They are **deferred**: nothing changes Minecraft's draw calls or its shaders. Read § 2 before adding anything that
+must light Minecraft's world.
+
+## Contents
+
+1. [Adding lights](#1-adding-lights)
+2. [How they light Minecraft: deferred, from what Minecraft drew](#2-how-they-light-minecraft-deferred-from-what-minecraft-drew)
+3. [How a light falls off](#3-how-a-light-falls-off)
+4. [Day and night](#4-day-and-night)
+5. [Tens of thousands: the light grid](#5-tens-of-thousands-the-light-grid)
+6. [Lights from effects](#6-lights-from-effects)
+7. [What they do not do yet](#7-what-they-do-not-do-yet)
+8. [Checking and measuring](#8-checking-and-measuring)
+
+---
+
+## 1. Adding lights
+
+Add every light every frame it shines, before the world records (a tick function in `CgTickGroup.SUBMIT`, or the
+same place a draw is submitted):
+
+```java
+CgWorldLights lights = CgWorldRenderer.get().lights();
+lights.add(x, y + 1.5, z, 6f, 0xFFFF9030, 40f, 0f);                                 // a point
+lights.add(x, y + 6, z, 12f, 0xFFFFF0D0, 300f, 0f).spot(0f, -1f, 0f, 20f, 35f);     // a spot, pointing down
+lights.add(midX, midY, midZ, 24f, 0xFF60A0FF, 40f, 0f).tube(dirX, dirY, dirZ, 30f); // a tube, 30 blocks long
+lights.add(x, y + 0.1, z, 3f, 0xFFFFB040, 2f, 0f).source(0.1f);                     // a glowing ball on the ground
+```
+
+`add(x, y, z, radius, argb, intensity, exponent)`:
+
+| Argument | Means |
+|---|---|
+| `x, y, z` | absolute world position, in doubles |
+| `radius` | blocks to where it reaches nothing (Unreal's AttenuationRadius) |
+| `argb` | its colour, `0xAARRGGBB` in sRGB; alpha multiplies it |
+| `intensity` | its brightness: under the inverse square, the surface colour it adds one block away facing it is `colour × intensity / π` |
+| `exponent` | 0 for the inverse square (physical, the default everywhere); any other is Cascade's `(1 - d²/r²)^exponent` (§ 3) |
+
+| Then | Makes the light added last |
+|---|---|
+| `.spot(dx, dy, dz, inner, outer)` | a spot along the direction, full within `inner` degrees, nothing past `outer` (half angles, Unreal's InnerConeAngle and OuterConeAngle, clamped as SpotLightComponent clamps them) |
+| `.tube(dx, dy, dz, length)` | a line `length` blocks long along the direction, centred where it was added (Unreal's SourceLength) |
+| `.source(radius)` | a ball `radius` blocks across (Unreal's SourceRadius), so a surface it touches or half sinks into is lit |
+
+- **A light lives one frame.** Add it again each frame it shines.
+- `addLinear(x, y, z, radius, r, g, b, exponent)` takes a linear colour already times its intensity: what code that
+  works out its colour adds.
+- Past `CAPACITY` (65,536, `-Dcrystalgraphics.world.lights`) lights a frame, the rest are dropped and counted.
+- A kernel's lights: an `Appender` (`world.lights().add(appender)`), its positions from the firing's eye
+  (`cameraX()`, `_LightEye`); `CgWorldLights`' javadoc has the example.
+
+## 2. How they light Minecraft: deferred, from what Minecraft drew
+
+An old forward renderer lights an object in that object's own draw: its shader loops over the lights. That is
+impossible here. Minecraft draws its own blocks and entities, version by version, and Sodium, Embeddium and Iris
+replace that drawing.
+
+So the lights are **deferred**, as Unreal and every engine since about 2010 light a scene. Minecraft draws the world
+first. Then one full-screen pass lights every pixel from what it left. A deferred engine reads a G-buffer its
+objects wrote. Minecraft writes none, so the pass **rebuilds one from Minecraft's depth and colour** every frame:
+
+| A G-buffer stores | Rebuilt from |
+|---|---|
+| Position | the depth at the pixel, unprojected |
+| Normal | the neighbouring depths: whichever neighbour each way is the smaller step, so a block's edge does not bend it (Wicked Engine's improved normal reconstruction), snapped to a world axis within 10 degrees, as blocks are |
+| Albedo | the scene's colour over Minecraft's lightmap value at the light's block: what the surface would be under white light |
+| Roughness, metalness | nothing: no specular |
+
+In GL terms, after Minecraft's level has drawn:
+
+```
+bind Minecraft's depth (cg_DepthBuffer)
+glBlendFunc(GL_DST_COLOR, GL_ONE)            // result = scene + scene × added
+draw a full-screen triangle with world_lights.shader:
+    p = unproject(depth); n = normal from the neighbouring depths
+    for each light in p's light-grid cell:
+        added += colour × falloff × N·L / π / lightmap(light's block)
+    out = added
+```
+
+**What follows from it:**
+- **The lights only add.** Minecraft's own light (torches, the sky, its baked ambient occlusion and darker side faces)
+  is never darkened. A shadow (plan `render-shadows`) will only withhold one of our lights.
+- **Anything new that lights Minecraft's world goes into this pass**, never into a draw's shader: shadows, light
+  functions, new light kinds.
+- **Only the front surface of each pixel exists.** Water, glass, particles and smoke behind or in front of it are not
+  in the rebuilt buffer, so they need their own path (§ 7).
+- **Normals are per block face**, not per texture pixel, and Minecraft's baked face shading stays in the albedo: a
+  light falls a little dimmer on side faces and in corners, which usually reads as right.
+- Everything drawn into the world's depth is lit alike: Minecraft's blocks and entities, and the engine's own opaque
+  draws.
+
+## 3. How a light falls off
+
+| Exponent | Falloff | Up close |
+|---|---|---|
+| **0** (the default) | the inverse square in blocks, with Unreal's square centimetre as the bias, faded to nothing at the radius | grows without limit as a surface nears it: a firefly touching a sleeve flares |
+| any other | Cascade's `(1 - d²/r²)^exponent` | flat near the light, never past its colour: a soft, capped glow |
+
+**Use the inverse square.** It is Unreal's, Niagara's and Cascade's default, and what a light looks like: a pool from
+afar, a hot spot up close. Tame a light by its intensity, never by switching to an exponent.
+
+Up close, the hot spot on a dark surface clips to white: Minecraft's frame has no tonemapper.
+
+N·L comes from the light's centre for a point, the nearest point of its line for a tube. A light with a source
+radius wraps N·L over its sphere above the surface's horizon (Unreal's `SphereHorizonCosWrap`, `CapsuleLight.ush`),
+so one whose centre sits in or just behind a surface still lights it.
+
+## 4. Day and night
+
+Minecraft has no exposure: its noon is as bright as its moonlight is dim, so a light bright enough for a night would
+vanish at noon. A light is **authored for the night** and fades under an open sky by day, as an eye adapted to the
+sun sees it:
+
+- full at night, and wherever no sky reaches it (caves, inside);
+- a tenth under a full day's open sky (`-Dcrystalgraphics.world.lightsDayFade`, 1 for never).
+
+## 5. Tens of thousands: the light grid
+
+Lights are binned into Unreal 5's light grid before the pass: 64-pixel tiles, 32 depth slices. A parent grid four
+cells a side is culled first, then each cell from its parent's list, a work group a cell where compute runs. Cells
+behind the scene are skipped by its depth pyramid (Unreal's HZB cull, `-Dcrystalgraphics.world.lightsHzb=false` to
+turn it off). Each cell's list is whole, from a budget shared by every cell that grows when a frame overflows it.
+
+A light smaller on screen than Unreal's `r.MinScreenRadiusForLights` (0.03, `-Dcrystalgraphics.world.lightsMinScreenRadius`)
+is not drawn: past 50 blocks for one reaching under a block and a half, past 33 times its reach for larger ones.
+
+30,000 lights over a floor cost 0.43 ms on an RTX 4070 SUPER, binning and lighting together.
+
+## 6. Lights from effects
+
+Effects add lights without calling `add`:
+
+- **A particle light**: an emitter's `light(...)` and a `light` renderer: a light a particle (Cascade's Light module,
+  Niagara's light renderer), its source radius the particle's drawn radius. [`vfx/particles.md`](vfx/particles.md)
+  § *Renderers: how an emitter's particles draw*.
+- **A slot light**: a slot renderer that lights instead of drawing a material, a point or a spot with a source radius
+  and length. [`vfx/effects.md`](vfx/effects.md) § *A light on a slot*.
+
+## 7. What they do not do yet
+
+| Missing | Unreal's answer | Plan |
+|---|---|---|
+| **Shadows**: lights pass through blocks | MegaLights: a few light samples a pixel, each traced (screen, then a distance field), denoised | `render-shadows`, through the voxel window's distance field |
+| Lighting transparent surfaces and particles | MegaLights' translucency lighting volume | after shadows (task #28) |
+| Lighting the air (fog and smoke glowing round a light) | volumetric fog's local-light injection | after shadows (task #29), into `CgWorldMedia`'s froxels |
+| Rect lights, IES profiles, light functions | rect lights, IES atlases, light function atlases | none yet |
+| Specular | GGX from the G-buffer's roughness | none: Minecraft has no roughness |
+| The sun's shadows | virtual shadow maps | none: vanilla Minecraft has no sun shadows |
+
+## 8. Checking and measuring
+
+| Gate | Holds |
+|---|---|
+| `--mode=lights-grid` | every light word, every cell's list and the falloffs against Java, at every tier and on Vulkan |
+| `--mode=vfx-lights` | every particle light (where, how far, how bright, its block and sky light, its source radius) against a Java gather |
+| `--mode=lights-bench` | the cost: `-Dcrystalgraphics.harness.lights=10000` and profile `world.lights`, `world.lightsCoarse`, `world.lightsCells`, `world.lightsApply` |
+
+`CgWorldLightsTest` holds the view-bob split. In Minecraft, `CgRenderDemo`'s `lights` scene shows every kind; its HUD
+reads how many lights a frame dropped and the cells' budget.

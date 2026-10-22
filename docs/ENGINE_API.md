@@ -175,21 +175,10 @@ CgWorldRenderer.get().media().add((pass, media) -> {             // a volume of 
 
   An injector with rows of its own placed from the firing's eye (camera-relative corners, as the fluids') uploads them
   in `Injector.upload(recording, media)`, which runs before the firing's pass opens, and binds them in `inject`.
-- **Lights** (`world.lights()`, `CgWorldLights`): Unreal's local lights (points, spots and tubes) added onto the scene
-  behind each pixel, a light a frame each, from the CPU or appended by a kernel (particle and slot lights append
-  themselves). Binned into a light grid as Unreal 5's (64-pixel tiles, 32 slices): a parent grid four cells a side
-  culled first, then each cell from its parent's list, a work group a cell where compute runs, cells behind the scene
-  skipped by its depth pyramid, every cell's list whole (32 lights a cell on average shared, what passes counted as
-  `world.lights-cell-dropped`). A light smaller on screen than Unreal's r.MinScreenRadiusForLights (0.03,
-  `-Dcrystalgraphics.world.lightsMinScreenRadius`) is not drawn: past 50 blocks under a block and a half of reach, past
-  33 times its reach above. 30,000 lights over a floor cost 0.43 ms on an RTX 4070 SUPER. Lit deferred, with nothing
-  changed in Minecraft's own draws: one full-screen pass after the level, as Unreal's simple lights light a surface, colour × intensity × falloff × N·L × albedo / π: the normal rebuilt
-  from depth, the albedo the scene's colour over the lightmap at the light's own block. A light is authored for the
-  night and fades under an open sky by day, as an eye adapted to the sun sees it (for the lights alone;
-  `-Dcrystalgraphics.world.lightsDayFade`, 1 for never): full at night and underground, a tenth at noon. A light's source radius (`.source(r)`, a particle's its drawn radius) wraps N·L over its sphere as Unreal's
-  SphereHorizonCosWrap does, so one touching a surface lights it. No specular: Minecraft has no roughness. Exponent 0 is the inverse square in blocks; any other is Unreal's
-  `(1 - d²/r²)^exponent`. GPU zones `world.lights`, `world.lightsCoarse`, `world.lightsCells` and `world.lightsApply`;
-  `-Dcrystalgraphics.world.lightsHzb=false` turns the depth cull off. The demo's `lights` scene shows each kind.
+- **Lights** (`world.lights()`, `CgWorldLights`): **[`LIGHTS.md`](LIGHTS.md)**. Unreal's local lights (points, spots
+  and tubes, with a source radius) from the CPU or appended by kernels, binned into Unreal 5's light grid and lit
+  **deferred**: one full-screen pass after the level, its G-buffer rebuilt from Minecraft's depth and colour, so no
+  draw of Minecraft's changes. They only add light, inverse-squared by default; 30,000 cost 0.43 ms.
 
 ```java
 CgWorldLights lights = CgWorldRenderer.get().lights();                             // each frame, before the world records
