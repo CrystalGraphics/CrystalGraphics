@@ -576,7 +576,8 @@ public final class CgWorldLights {
             rays[c * 2] = corner.x / corner.w / z;
             rays[c * 2 + 1] = corner.y / corner.w / z;
         }
-        toWorld.invert(toView);
+        // The lights are placed from the eye, not the view's position: back to the view's, then into the view.
+        toWorld.invert(toView).translate(eye);
         bob.mul(toView, toView);
         tileU = TILE / targetWidth;
         tileV = TILE / targetHeight;
