@@ -972,21 +972,24 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      *
      * <pre>{@code
      * .module(new CgVfxModule.BeamNoise(12, 0, 0.06f, false, -0.3f, -0.3f, -0.3f, 0.3f, 0.3f, 0.3f, true, false,
-     *         0.5f, 0.5f, 0.5f, 0f, 1f, 0f, 2, 0.5f, 0f, 1f, false, 1))
+     *         0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0f, 2, 1f, 1f, 0.5f, 0.5f, 0f, 1f, false, 1))
      * }</pre>
      *
      * <ul>
      *   <li>{@code uniform} with {@code oscillate} alternates each point between {@code min} and {@code max}, as a uniform
      *       distribution's extremes; otherwise each channel rolls between them.</li>
+     *   <li>Speed, range scale and tangent strength are each a range Cascade reads at its emitter's time each frame: one
+     *       roll an emitter a step between its two ends, equal ends for a constant.</li>
      *   <li>{@code frequencyDistance} above 0 sets the points by the beam's length, one each that many blocks, at most
      *       {@code frequency}, scaled by {@code scale}.</li>
      *   <li>{@code sheets} is its renderer's: Cascade's smooth points move once each time a sheet is drawn.</li>
      * </ul>
      */
     record BeamNoise(int frequency, int frequencyLow, float lockTime, boolean smooth, float minX, float minY, float minZ,
-                     float maxX, float maxY, float maxZ, boolean uniform, boolean oscillate, float speedX, float speedY,
-                     float speedZ, float lockRadius, float rangeScale, float tangentStrength, int tessellation,
-                     float tension, float frequencyDistance, float scale, boolean targetNoise, int sheets)
+                     float maxX, float maxY, float maxZ, boolean uniform, boolean oscillate, float speedMinX,
+                     float speedMinY, float speedMinZ, float speedMaxX, float speedMaxY, float speedMaxZ, float lockRadius,
+                     int tessellation, float rangeScaleMin, float rangeScaleMax, float tangentStrengthMin,
+                     float tangentStrengthMax, float frequencyDistance, float scale, boolean targetNoise, int sheets)
             implements CgVfxModule {
         private static final CgVfxDataInterface[] BEAM = {CgVfxDataInterfaces.BEAM};
 

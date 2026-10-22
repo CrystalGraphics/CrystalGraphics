@@ -5,6 +5,7 @@ import com.crystalgraphics.compute.lower.CgLoweredEmitter;
 import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
+import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.github.bsideup.jabel.Desugar;
@@ -107,6 +108,14 @@ public final class CgMaterialShaderCompiler {
      * command rather than from uniforms. Defined whether or not the shader declares it.
      */
     public static final String MULTI_DRAW = "CG_MULTI_DRAW";
+
+    /**
+     * The keyword every {@code #pragma cg_use particle} program takes without declaring it (the parser adds it): its
+     * strip variant, where {@code particle_factory.glsl}'s strip factory places each particle's strip from
+     * {@code CG_VERTEX_ID}, as Unreal compiles a material for its beam-and-trail vertex factory. What a beam draws a
+     * ported material with.
+     */
+    public static final String STRIP = "FX_ON_RIBBONS";
 
     /**
      * The engine's keyword for the overdraw view's variant of any pass: the pass's own vertex stage, depth test (as a
@@ -294,7 +303,7 @@ public final class CgMaterialShaderCompiler {
         }
         // A sprite variant takes the sprite factory, which places quads from CG_VERTEX_ID: it draws CgMesh.quads, and a
         // vertex input it declared would be one no mesh provides (a Vulkan pipeline refuses it).
-        if (spriteVariant(shader, config)) vertexFormat = CgVertexFormat.NONE;
+        if (spriteVariant(shader, config) || stripVariant(shader, config)) vertexFormat = CgVertexFormat.NONE;
 
         String vertexSource = buildVertexSource(shader, pass, properties, v2fFields, useSsbo,
                 path, attachedBuffers, requiredExtensions, matPropsEntry, config, vertexFormat);
@@ -302,6 +311,11 @@ public final class CgMaterialShaderCompiler {
                 path, attachedBuffers, requiredExtensions, matPropsEntry, config);
 
         return new CompiledSource(vertexSource, fragmentSource, vertexFormat);
+    }
+
+    /** Whether this variant places its vertices with the strip factory, reading no vertex data. */
+    private static boolean stripVariant(CgParsedShader shader, CompileConfig config) {
+        return config.activeKeywords().contains(STRIP) && shader.engineBuffers().contains("particle");
     }
 
     /** Whether this variant places its vertices with the particle sprite factory, reading no vertex data. */
@@ -607,6 +621,15 @@ public final class CgMaterialShaderCompiler {
         // formats). Custom formats with a differently-named position attribute must author an
         // explicit ShadowCaster / Depth pass to bypass auto-generation.
         sb.append(CgGlslEmitter.emitVertexInputs(vertexFormat));
+        // A strip variant draws no mesh: its #type's attributes stand at their defaults for a port naming one directly.
+        if (stripVariant(shader, config)) {
+            CgVertexFormat declared = CgVertexFormat.forShaderType(shader.shaderType());
+            for (int i = 0; declared != null && i < declared.getAttributeCount(); i++) {
+                CgVertexAttribute a = declared.getAttribute(i);
+                sb.append("#define ").append(a.getName()).append(' ').append(a.getGlslType())
+                        .append(a.getName().equals("cg_Color") ? "(1.0)\n" : "(0.0)\n");
+            }
+        }
 
         // Property uniform declarations (sampler types only; non-sampler go into CgMaterialBlock UBO)
         appendPropertyUniforms(sb, properties);

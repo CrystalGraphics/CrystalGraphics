@@ -273,7 +273,6 @@ particle_update:
   differs per particle is carried by each.
 - **Each slot carried costs the pool a second drawn element a particle**, and only emitters carrying the same slots
   share a pool.
-- **A sheet with no `sub_uv_animation`** plays over its life, where Unreal shows frame 0.
 
 ## Moving slower than it is pushed: velocity scale
 
@@ -289,6 +288,67 @@ particle slowed to a crawl by a curve speeds up again as the curve rises; `absol
 ```
 
 - Collisions, alignment and stretch read the velocity, not the scaled motion.
+
+## Beams: a strip from a source to a target
+
+A beam emitter draws each particle as a strip from its source to its target: lightning, a tether, a laser. Its
+particles are placed by four modules (Cascade's beam modules) and drawn by a `beam` renderer (Cascade's TypeDataBeam2).
+A beam's ends are its modules', never its motion.
+
+```java
+static final CgMaterialDefinition BOLT = CgMaterialDefinition.of("mymod:materials/bolt",
+        "mymod:shaders/lightning.shader").usage(CgMaterialUsage.RIBBONS).build();
+
+static final CgVfxEmitter LIGHTNING = CgVfxEmitter.builder("lightning").capacity(6).rate(20f).life(0.15f, 0.25f)
+        .size(0.08f, 0.12f)
+        .module(new CgVfxModule.BeamSource(0f, 0f, 0f, false, 1f, 0f, 0f,
+                CgVfxModule.BeamSource.Tangent.DIRECT, 0.25f, true, true, true))       // from the effect's origin
+        .module(new CgVfxModule.BeamTarget(8f, 0f, 0f, false, -1f, 0f, 0f,
+                CgVfxModule.BeamSource.Tangent.USER_SET, 0.25f, true, true, true, 0.1f, 0f))   // 8 blocks along +X
+        .module(new CgVfxModule.BeamNoise(12, 4, 0.06f, false, -0.4f, -0.4f, -0.1f, 0.4f, 0.4f, 0.1f, true, false,
+                0f, 0f, 0f, 0f, 0f, 0f, 0f, 2, 1f, 1f, 0f, 0f, 0f, 1f, false, 2))       // jagged, re-picked 16 times a second
+        .renderer(CgVfxRenderers.beam("bolt").material(BOLT).field("sheets", 2).field("max_beam_count", 6).build())
+        .build();
+```
+
+```yaml
+# the same emitter as a file
+properties: { capacity: 6 }
+particle_spawn:
+  - { id: source, module: crystalgraphics:beam_source, inputs: { tangent_method: direct, strength: 25, lock: true, lock_tangent: true } }
+  - { id: target, module: crystalgraphics:beam_target,
+      inputs: { point: [800, 0, 0], tangent: [-1, 0, 0], tangent_method: user_set, strength: 25, lock: true, lock_radius: 10 } }
+particle_update:
+  - { id: noise, module: crystalgraphics:beam_noise, inputs: { enabled_low_frequency: true, frequency: 12, frequency_low: 4,
+      range: { range: [[-40, -40, -10], [40, 40, 10]], per_channel: true }, lock_time: 0.06, tessellation: 2,
+      speed: [0, 0, 0], lock_radius: 0, range_scale: 1, tangent_strength: 0 } }
+renderers:
+  - { id: bolt, kind: beam, material: mymod:materials/bolt, sheets: 2, max_beam_count: 6 }
+```
+
+| Module | Does |
+|---|---|
+| `beam_source`, `beam_target` | where the beam starts and ends, from the effect's origin and turned with it (or `absolute` in the world); each end's tangent, the effect's forward (`direct`) or `tangent`, and its strength; each part resolved at birth and again each step unless `lock`ed |
+| `beam_noise` | `frequency + 1` points along the beam, each offset by a pick in `range`, picked again each `lock_time` seconds (each step at 0); `smooth` heads for each new pick at `speed`; `tessellation` curves between points |
+| `beam_modifier` | an end's position, tangent or strength added to or multiplied by, after it resolves |
+
+| Renderer field | Does |
+|---|---|
+| `sheets` | strips about the beam, each turned π / sheets from the last, so it reads from every side |
+| `max_beam_count` | the most beams alive at once: the emitter's capacity |
+| `speed` | how fast the beam reaches its target, blocks a second; 0 arrives at once |
+| `interpolation_points` | segments along the curve its tangents make, without noise; 0 a straight line |
+| `texture_tile`, `texture_tile_distance` | how often its texture repeats along it, or one repeat a distance |
+| `up_vector_step_size` | 1 turns the whole beam to the eye by its first segment, 0 each segment |
+
+- **A beam's material is drawn as a ribbon's** (`usage: [ribbons]`): any particle program draws it, placed by the
+  engine's strip factory; U runs along the beam, V across it.
+- **Width is the particle's size**, times its x scale: `size` and `scale_sprite_size` shape it as for a sprite.
+- **Speed, range scale and tangent strength roll each frame**, as Cascade reads them at its emitter's time: a range
+  on one is a flicker shared by the emitter's beams, not a value a beam.
+- **Refused at load, by name**: `beam_method: distance | branch`, `taper_method: full | partial`, `always_on`, an
+  `emitter`, `particle` or `actor` end, an `emitter` tangent, and the editor's lines.
+- **A beam is culled whole**, within 256 blocks of its source: its ends are on the GPU alone.
 
 ## Turning an emitter: its effect's orientation
 

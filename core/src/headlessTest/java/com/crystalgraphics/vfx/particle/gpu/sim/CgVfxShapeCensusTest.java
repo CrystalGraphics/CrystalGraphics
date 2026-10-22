@@ -37,7 +37,8 @@ import java.util.TreeMap;
  * coalescing could reach. Writes {@code build/kit-gates/shape-census.txt}.
  *
  * <p>Runs over {@code -Pkits=<namespace>=<dir>;...}; {@code -Dcrystalgraphics.census.packs=<text>,...} keeps the
- * sequences whose id contains one, for a timed slice. Skipped without kits.</p>
+ * sequences whose id contains one, for a timed slice; {@code -Dcrystalgraphics.census.systems=<text>,...} adds the systems
+ * whose id contains one, moves or not. Skipped without kits.</p>
  */
 public class CgVfxShapeCensusTest {
 
@@ -46,6 +47,7 @@ public class CgVfxShapeCensusTest {
         String kits = System.getProperty("crystalgraphics.kits");
         Assume.assumeTrue("no -Pkits: the census did not run", kits != null && !kits.isEmpty());
         String packs = System.getProperty("crystalgraphics.census.packs", "");
+        String systemsWanted = System.getProperty("crystalgraphics.census.systems", "");
         boolean all = packs.equals("*");
         long began = System.nanoTime();
         CgAssetKinds.register();
@@ -73,6 +75,13 @@ public class CgVfxShapeCensusTest {
                 if (systems.isEmpty()) continue;
                 moveSystems.put(e.id(), systems);
                 wanted.addAll(systems);
+            }
+        }
+        if (!systemsWanted.isEmpty()) {
+            for (String ns : namespaces) {
+                for (CgAssetEntry e : registry.entries(ns)) {
+                    if (e.kind() == CgParticleKinds.SYSTEM && matches(e.id(), systemsWanted)) wanted.add(e.id());
+                }
             }
         }
         if (all) {

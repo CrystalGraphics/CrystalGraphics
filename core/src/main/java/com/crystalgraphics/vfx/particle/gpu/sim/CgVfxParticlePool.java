@@ -1691,6 +1691,16 @@ public final class CgVfxParticlePool {
         return beams == null ? null : beams.runs();
     }
 
+    /** Where {@code slot}'s beam runs start in {@link #beamRuns()}, in vec4s: a run a particle of its capacity. */
+    public int beamFirst(int slot) {
+        return beams == null ? 0 : beams.first(slot);
+    }
+
+    /** vec4s each beam's run takes: {@code fx_beam.glsl}'s header, then its noise points twice; 0 for no beams. */
+    public int beamRunVectors() {
+        return beams == null ? 0 : beams.per();
+    }
+
     /** Each slot's beam runs, a uvec4 a slot: its first vec4, its beams, vec4s a beam, 0; null as {@link #beamRuns()}. */
     @Nullable
     public CgGraphBuffer beamTable() {

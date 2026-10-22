@@ -43,5 +43,8 @@
 // _cg_Drawn says which): place to light are dynamic parameters 0 to 3, color.xy its sub-image index and camera offset.
 #define CG_PARTICLE_DRAWN(n) PARTICLE_DATA(int(PARTICLE_ORDER_DATA(n).index) + 1)
 
+// A beam draw's run, vec4 i of its pool's beam runs (CgParticleBeamBuffer): what the strip factory places a beam from.
+#define CG_PARTICLE_BEAM(i) (PARTICLE_BEAM_DATA(i).value)
+
 // The vertex factory a kit's material program reads: cg_material_vertex(), cg_material_particle().
 #include "crystalgraphics:shaders/env/buffer/particle_factory.glsl"

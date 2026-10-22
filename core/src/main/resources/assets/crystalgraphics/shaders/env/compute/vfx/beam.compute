@@ -10,7 +10,8 @@
 // bottom); a pick after birth takes the noise's next extreme, which Cascade toggles once a particle an update, here by
 // the particle's id and its picks. Smooth points (ParticleSystemRender.cpp:2509-2524) move toward the next by speed
 // times the seconds since the pick, arriving within the lock radius on every axis, each time a sheet of the beam is
-// filled: twice a sheet a frame.
+// filled: twice a sheet a frame. Speed and tangent strength are ranges Cascade reads at its emitter's time each
+// frame (ParticleBeam2EmitterInstance.cpp:1400-1412): a roll a slot a step, keyed by _Step.
 #pragma kernel Noise scatter
 #pragma kernel Keep map
 
@@ -24,6 +25,7 @@ Properties {
     _ParamRow      ("A parameter row's vec4s",                                  int) = 0
     _NoiseAt       ("The beam_noise module's first vec4 in a row; -1 for none", int) = -1
     _Points        ("Noise points a beam keeps: CgVfxShape.beamPoints",         int) = 0
+    _Step          ("Steps this pool has written its beams: each frame's roll",   int) = 0
 }
 
 Buffers {
@@ -75,15 +77,17 @@ void Noise() {
     vec4 noise = beam_tail(r, FX_BEAM_NOISE - 1);
     float picks = noise.z, clock = noise.y;
     if (k == 0) {
-        vec4 m4 = _NoiseAt >= 0 ? PARAMS(row + 4) : vec4(0.0);
-        NEXT_STORE(at, vec4(float(id & 16777215u) + 1.0, picks, max(m4.z, 1.0), m4.y));
+        vec4 m4 = _NoiseAt >= 0 ? PARAMS(row + 4) : vec4(0.0), m5 = _NoiseAt >= 0 ? PARAMS(row + 5) : vec4(0.0);
+        float tangent = mix(m5.z, m5.w, fx_rand(heatId.z, uint(_Step), 0xBEA2u));
+        NEXT_STORE(at, vec4(float(id & 16777215u) + 1.0, picks, max(m4.w, 1.0), tangent));
         return;
     }
     if (k < FX_BEAM_HEADER) {
         NEXT_STORE(at + k, beam_tail(r, k - 1));
         return;
     }
-    vec4 m0 = PARAMS(row), m1 = PARAMS(row + 1), m2 = PARAMS(row + 2), m3 = PARAMS(row + 3), m5 = PARAMS(row + 5);
+    vec4 m0 = PARAMS(row), m1 = PARAMS(row + 1), m2 = PARAMS(row + 2), m3 = PARAMS(row + 3), m4 = PARAMS(row + 4);
+    vec4 m6 = PARAMS(row + 6);
     vec4 tag = LAST(at);
     bool born = abs(tag.x - float(id & 16777215u) - 1.0) > 0.5;
     bool picked = born || tag.y != picks;
@@ -105,11 +109,13 @@ void Noise() {
         return;
     }
     if (smoothed && m0.z >= 0.0) {
-        int moves = 2 * max(int(m5.w + 0.5), 1);
+        int moves = 2 * max(int(m6.w + 0.5), 1);
+        vec3 speed = mix(m3.xyz, m4.xyz, vec3(fx_rand(heatId.z, uint(_Step), 0xBEA3u), fx_rand(heatId.z, uint(_Step), 0xBEA4u),
+                fx_rand(heatId.z, uint(_Step), 0xBEA5u)));
         for (int i = 0; i < moves; i++) {
             vec3 d = next - point;
             float l = length(d);
-            vec3 check = point + (l > 1e-8 ? d / l : vec3(0.0)) * m3.xyz * clock;
+            vec3 check = point + (l > 1e-8 ? d / l : vec3(0.0)) * speed * clock;
             point = all(lessThan(abs(check - next), vec3(m3.w))) ? next : check;
         }
     }

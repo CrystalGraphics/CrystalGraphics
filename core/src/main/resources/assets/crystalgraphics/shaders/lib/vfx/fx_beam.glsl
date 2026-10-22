@@ -62,3 +62,78 @@ void fx_beam_resolve(inout vec4 point, inout vec4 tangent, bool born, vec4 m0, v
     }
     if (born || m2.w < 0.5) tangent.w = m2.x;
 }
+
+// A drawn beam's points, read from its run (at its first vec4) through FX_BEAM_RUN(at), which the includer defines
+// first: the strip factory reads CG_PARTICLE_BEAM. noisePoints is its pool's CgVfxShape.beamPoints, end where its far
+// end has travelled to, and c2 its draw's interpolation points, flags (1 noise on the target) and noise frequency (w).
+#ifdef FX_BEAM_RUN
+// A tangent and its strength, Cascade's: a zero tangent is the effect's forward (ParticleBeamModules.cpp:497-514).
+vec3 fx_beam_tangent(vec4 tangent, vec4 turn) {
+    return (dot(tangent.xyz, tangent.xyz) > 1e-12 ? tangent.xyz : fx_beam_turn(turn, vec3(1.0, 0.0, 0.0))) * tangent.w;
+}
+
+// Noise point j of the run at, in the effect's frame and scaled: Cascade's NoiseRangeScale * LocalToWorld(point).
+vec3 fx_beam_offset(int at, int j) {
+    return FX_BEAM_RUN(at + FX_BEAM_NOISE).w * fx_beam_turn(FX_BEAM_RUN(at + FX_BEAM_TURN), FX_BEAM_RUN(at + FX_BEAM_HEADER + j).xyz);
+}
+
+// The tangents' curve at a, InterpolatedPoints' (ParticleBeamModules.cpp:483-527).
+vec3 fx_beam_curve(int at, float a) {
+    vec4 turn = FX_BEAM_RUN(at + FX_BEAM_TURN);
+    return fx_beam_cubic(FX_BEAM_RUN(at + FX_BEAM_SOURCE).xyz, fx_beam_tangent(FX_BEAM_RUN(at + FX_BEAM_SOURCE_TANGENT), turn),
+                         FX_BEAM_RUN(at + FX_BEAM_TARGET).xyz, fx_beam_tangent(FX_BEAM_RUN(at + FX_BEAM_TARGET_TANGENT), turn), a);
+}
+
+// Noise draw point j of steps (0 the source, steps + 1 the target): the line's point, or on interpolation points the
+// curve's as FillData_InterpolatedNoise indexes it (ParticleSystemRender.cpp:4441-4627), plus its noise.
+vec3 fx_beam_draw(int at, int j, int steps, float points, float frequency, bool targetNoise) {
+    vec3 s = FX_BEAM_RUN(at + FX_BEAM_SOURCE).xyz, t = FX_BEAM_RUN(at + FX_BEAM_TARGET).xyz;
+    if (j <= 0) return s;
+    if (j > steps) return t + (targetNoise ? fx_beam_offset(at, int(frequency + 0.5)) : vec3(0.0));
+    vec3 line;
+    if (points > 0.0) {
+        float stepSize = points / float(steps), frac = fract(stepSize);
+        int index = int(stepSize), s0 = (j - 1) * index, last = int(points + 0.5) - 1;
+        vec3 a = fx_beam_curve(at, float(min(s0, last) + 1) / points);
+        vec3 b = j == steps ? t : fx_beam_curve(at, float(min(s0 + 1, last) + 1) / points);
+        line = a * (1.0 - frac) + b * frac;
+    } else {
+        line = s + (t - s) * (float(j) / float(steps + 1));
+    }
+    return line + fx_beam_offset(at, j - 1);
+}
+
+// Point k of the beam's strip, whose segments it is drawn with: ParticleSystemRender.cpp's FillVertexData_NoNoise
+// (:2948) and FillData_Noise (:3361), tessellating between noise points by FMath::CubicInterp, each inner tangent along
+// its neighbours at the noise's tangent strength (:3640-3650).
+vec3 fx_beam_point(int at, int k, int segments, int noisePoints, vec3 end, vec4 c2) {
+    vec4 source = FX_BEAM_RUN(at + FX_BEAM_SOURCE);
+    k = clamp(k, 0, segments);
+    if (source.w < 0.5) return mix(source.xyz, end, float(k) / float(max(segments, 1)));
+    if (noisePoints == 0) {
+        if (c2.x <= 0.0) return mix(source.xyz, FX_BEAM_RUN(at + FX_BEAM_TARGET).xyz, float(min(k, 1)));
+        return fx_beam_curve(at, float(k) / c2.x);
+    }
+    vec4 tag = FX_BEAM_RUN(at + FX_BEAM_TAG);
+    int steps = int(FX_BEAM_RUN(at + FX_BEAM_TARGET).w + 0.5), tess = max(int(tag.z + 0.5), 1);
+    bool targetNoise = (int(c2.y + 0.5) & 1) != 0;
+    int j = min(k / tess, steps + 1), within = k - j * tess;
+    vec3 a = fx_beam_draw(at, j, steps, c2.x, c2.w, targetNoise);
+    if (within == 0 || tess <= 1 || j > steps) return a;
+    vec3 b = fx_beam_draw(at, j + 1, steps, c2.x, c2.w, targetNoise);
+    vec4 turn = FX_BEAM_RUN(at + FX_BEAM_TURN);
+    vec3 ta = j == 0 ? fx_beam_tangent(FX_BEAM_RUN(at + FX_BEAM_SOURCE_TANGENT), turn)
+            : fx_beam_unit(b - fx_beam_draw(at, j - 1, steps, c2.x, c2.w, targetNoise), vec3(0.0)) * tag.w;
+    vec3 tb = j + 1 > steps ? fx_beam_unit(FX_BEAM_RUN(at + FX_BEAM_TARGET_TANGENT).xyz, vec3(0.0)) * FX_BEAM_RUN(at + FX_BEAM_TARGET_TANGENT).w
+            : fx_beam_unit(fx_beam_draw(at, j + 2, steps, c2.x, c2.w, targetNoise) - a, vec3(0.0)) * tag.w;
+    return fx_beam_cubic(a, ta, b, tb, float(within) / float(tess));
+}
+
+// The segments a beam of the draw's segments fills: its noise steps times its tessellation, the rest folding onto its
+// last point; all of them for a beam without noise, or before its far end arrives.
+int fx_beam_filled(int at, int noisePoints, int segments) {
+    int filled = noisePoints > 0 && FX_BEAM_RUN(at + FX_BEAM_SOURCE).w > 0.5
+            ? (int(FX_BEAM_RUN(at + FX_BEAM_TARGET).w + 0.5) + 1) * max(int(FX_BEAM_RUN(at + FX_BEAM_TAG).z + 0.5), 1) : segments;
+    return min(filled, segments);
+}
+#endif

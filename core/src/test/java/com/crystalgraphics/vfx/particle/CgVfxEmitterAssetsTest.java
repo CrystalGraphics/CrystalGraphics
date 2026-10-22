@@ -172,6 +172,53 @@ public class CgVfxEmitterAssetsTest {
         assertEquals(e.moduleForms().toString().replaceAll("@[0-9a-f]+", ""), back.moduleForms().toString().replaceAll("@[0-9a-f]+", ""));
     }
 
+    /** A Cascade beam: its ends and modifier in forms, its noise's ranges, its renderer's count; written back and read again alike. */
+    @Test
+    public void beamsRoundTrip() {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0))));
+        Object point = Map.of("range", List.of(List.of(0.1, -0.2, -0.2), List.of(0.4, 0.2, -0.2)), "per_channel", true);
+        tree.put("particle_spawn", List.of(
+                Map.of("id", "source", "module", "crystalgraphics:beam_source", "inputs", Map.of("point", point,
+                        "tangent_method", "direct", "strength", 0.25, "lock", true, "lock_tangent", true)),
+                Map.of("id", "target", "module", "crystalgraphics:beam_target", "inputs", Map.of("point", List.of(8.0, 0.0, 0.0),
+                        "tangent", List.of(-1.0, 0.0, 0.0), "tangent_method", "user_set", "strength", 0.25, "lock", true,
+                        "lock_radius", 0.1))));
+        Map<String, Object> noise = new LinkedHashMap<>();
+        noise.put("enabled_low_frequency", true);
+        noise.put("frequency", 12);
+        noise.put("frequency_low", 4);
+        noise.put("range", Map.of("range", List.of(List.of(-1.0, -1.0, -0.15), List.of(1.0, 1.0, 0.15)), "per_channel", true));
+        noise.put("range_scale", Map.of("range", List.of(0.5, 1.0)));
+        noise.put("speed", List.of(0.5, 0.5, 0.5));
+        noise.put("smooth", true);
+        noise.put("lock_time", 0.06);
+        noise.put("lock_radius", 0.01);
+        noise.put("oscillate", true);
+        noise.put("tessellation", 2);
+        noise.put("tangent_strength", 0.0);
+        noise.put("tension", 0.5);
+        tree.put("particle_update", List.of(
+                Map.of("id", "noise", "module", "crystalgraphics:beam_noise", "inputs", noise),
+                Map.of("id", "shake", "module", "crystalgraphics:beam_modifier", "inputs", Map.of("end", "target",
+                        "position", Map.of("value", Map.of("range", List.of(List.of(-0.05, -0.05, 0.0), List.of(0.05, 0.05, 0.0)),
+                                "per_channel", true), "modify", true),
+                        "tangent", Map.of("value", List.of(0.0, 0.0, 0.0)), "strength", Map.of("value", 0.0)))));
+        tree.put("renderers", List.of(Map.of("id", "bolt", "kind", "beam", "sheets", 3, "max_beam_count", 6, "speed", 0.0,
+                "interpolation_points", 25)));
+        CgVfxEmitter e = CgVfxEmitterAssets.compile("bolt", tree, null);
+        assertEquals(6, e.capacity);
+        List<String> kinds = new ArrayList<>();
+        for (CgVfxModule m : e.modules()) kinds.add(m.gpuKind());
+        assertEquals(List.of("beam_source", "beam_target", "beam_noise", "beam_modifier"), kinds);
+        assertEquals(3, ((CgVfxModule.BeamNoise) e.modules().get(2)).sheets());
+        CgVfxEmitter back = CgVfxEmitterAssets.compile("bolt", CgVfxEmitterAssets.write(e), null);
+        same(e, back);
+        assertEquals(e.moduleForms().toString().replaceAll("@[0-9a-f]+", ""), back.moduleForms().toString().replaceAll("@[0-9a-f]+", ""));
+    }
+
     /** A size range over life, rolled each step, with a locked pair: read, written back and read again alike. */
     @Test
     public void lifeRollsRoundTrip() {

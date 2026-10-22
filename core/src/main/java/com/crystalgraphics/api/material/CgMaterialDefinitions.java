@@ -193,7 +193,8 @@ public final class CgMaterialDefinitions {
         if (usage.isEmpty()) usage.add(CgMaterialUsage.STATIC_MESH);
         Set<CgMaterialUsage> serves = EnumSet.noneOf(CgMaterialUsage.class);
         for (CgMaterialUsage u : CgMaterialUsage.values()) {
-            if (u.keyword() != null && parsed.featureNames().contains(u.keyword())) serves.add(u);
+            // Every particle program takes FX_ON_RIBBONS undeclared (CgMaterialShaderCompiler.STRIP): it says nothing.
+            if (u.keyword() != null && u != CgMaterialUsage.RIBBONS && parsed.featureNames().contains(u.keyword())) serves.add(u);
         }
         boolean particles = parsed.engineBuffers().contains("particle");
         if (!serves.isEmpty()) serves.add(CgMaterialUsage.STATIC_MESH);

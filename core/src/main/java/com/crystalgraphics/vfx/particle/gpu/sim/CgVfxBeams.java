@@ -37,6 +37,8 @@ final class CgVfxBeams {
     /** Per slot: its first vec4 and its beams (its capacity), 0 for none. */
     private int[] first = new int[0], beams = new int[0];
     private int end, freeCount, clearCount;
+    /** Steps written: what the kernel keys each frame's rolls of speed and tangent strength by. */
+    private int steps;
     private int[] free = new int[0], clears = new int[0], words = new int[0];
 
     CgVfxBeams(CgVfxParticlePool pool, String name) {
@@ -124,9 +126,19 @@ final class CgVfxBeams {
                 .bind("PARAMS", pool.params()).bind("RUNS", table).bind("LAST", last).bind("NEXT", runs)
                 .set("_RecordVectors", record.vectors()).set("_BeamAt", record.word(CgVfxRecord.Tail.BEAM))
                 .set("_ParamRow", shape.paramRowVectors()).set("_NoiseAt", shape.beamNoiseAt())
-                .set("_Points", shape.beamPoints());
+                .set("_Points", shape.beamPoints()).set("_Step", steps++);
         // Keep copies every run given out: what the next step reads as the last.
         pass.dispatch(keep, end).bind("WRITTEN", runs).bind("KEPT", last);
+    }
+
+    /** Where slot {@code slot}'s runs start, in vec4s of {@link #runs()}. */
+    int first(int slot) {
+        return first[slot];
+    }
+
+    /** vec4s a run. */
+    int per() {
+        return per;
     }
 
     /** Every beam's run as the newest step wrote it: what a beam's strip reads. */

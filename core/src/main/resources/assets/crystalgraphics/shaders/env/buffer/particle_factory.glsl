@@ -75,10 +75,105 @@ void _cg_dynamics(int n, int drawn, inout CgMaterialParticle p) {
 #endif
 
 // The factory follows the usage a program is compiled for, as Unreal compiles a material once per vertex factory
-// its usages enable: a sprite program (no vertex data, or FX_ON_SPRITES) gets the sprite factory, any other mesh's.
-#if defined(CG_VERTEX_STAGE) && (defined(CG_TYPE_NONE) || defined(FX_ON_SPRITES))
+// its usages enable: a strip (FX_ON_RIBBONS, which every particle program takes) gets the strip factory, a sprite
+// program (no vertex data, or FX_ON_SPRITES) the sprite factory, any other mesh's.
+// The strip factory: Unreal's beam-and-trail vertex factory (ParticleBeamTrailVertexFactory), compiled where a draw
+// enables FX_ON_RIBBONS, which every particle program takes. Each particle is a strip, placed from CG_VERTEX_ID, of the
+// draw's kind; a beam (CgVfxBeamRendererProperties) is a run of its pool's PARTICLE_BEAMS (fx_beam.glsl's FX_BEAM_*)
+// drawn as ParticleSystemRender.cpp's beam fills draw it. What CgVfxFrame passes:
+//   CUSTOM0  the draw's first particle, its count, the renderer's size, sheets + 256 * segments a sheet
+//   CUSTOM1  the slot's first run, its runs (its capacity), vec4s a run, noise points a run
+//   CUSTOM2  interpolation points, flags (1 noise on the target, 2 one up for the whole beam, 4 tiles by distance), its
+//            tiles or the blocks a tile, the noise's frequency
+// An include is resolved once whatever #if it sits in, so what both factories read is included ahead of either.
+#if defined(CG_VERTEX_STAGE) && (defined(FX_ON_RIBBONS) || defined(CG_TYPE_NONE) || defined(FX_ON_SPRITES))
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
+#endif
+#if defined(CG_VERTEX_STAGE) && defined(FX_ON_RIBBONS)
+#define FX_BEAM_RUN(at) CG_PARTICLE_BEAM(at)
+#include "crystalgraphics:shaders/lib/vfx/fx_beam.glsl"
+
+// One vertex of the draw's beam strips: the particle CG_VERTEX_ID falls in, its sheet, its point along and its side.
+void _cg_strip(float cameraOffset, float drawnBits, out CgMaterialVertex v, out CgMaterialParticle p) {
+    int drawn = int(drawnBits + 0.5);
+    int sheets = int(mod(CG_OBJECT_CUSTOM0.w, 256.0) + 0.5), segments = int(CG_OBJECT_CUSTOM0.w / 256.0);
+    int per = sheets * segments * 6, rank = CG_VERTEX_ID / per, local = CG_VERTEX_ID - rank * per;
+    int sheet = local / (segments * 6), q = local - sheet * segments * 6, corner = q % 6;
+    int k = q / 6 + ((0x34 >> corner) & 1);
+    float side = ((0x1A >> corner) & 1) == 0 ? 1.0 : -1.0;
+    int n = fx_particle_index(float(rank), CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM0.y), i = max(n, 0);
+    int id = int(CG_PARTICLE_ID(i) + 0.5);
+    int at = int(CG_OBJECT_CUSTOM1.x + 0.5) + (id % max(int(CG_OBJECT_CUSTOM1.y + 0.5), 1)) * int(CG_OBJECT_CUSTOM1.z + 0.5);
+    vec4 c2 = CG_OBJECT_CUSTOM2;
+    int flags = int(c2.y + 0.5);
+    vec3 origin = CG_OBJECT_TO_WORLD[3].xyz, eye = _CG_EYE;
+    vec3 end = CG_PARTICLE_POSITION(i);
+    // How many of its segments this beam fills: the rest fold onto its last point.
+    vec4 tag = FX_BEAM_RUN(at + FX_BEAM_TAG);
+    int noisePoints = int(CG_OBJECT_CUSTOM1.w + 0.5), filled = fx_beam_filled(at, noisePoints, segments);
+    vec3 here = origin + fx_beam_point(at, min(k, filled), filled, noisePoints, end, c2);
+    int from = (flags & 2) != 0 ? 0 : max(min(k, filled) - 1, 0), to = (flags & 2) != 0 ? 1 : max(min(k, filled), 1);
+    vec3 location = origin + fx_beam_point(at, from, filled, noisePoints, end, c2);
+    vec3 right = fx_beam_unit(location - (origin + fx_beam_point(at, to, filled, noisePoints, end, c2)), vec3(1.0, 0.0, 0.0));
+    vec3 up = fx_beam_unit(cross(right, location - eye), vec3(cg_ViewMatrix[0][1], cg_ViewMatrix[1][1], cg_ViewMatrix[2][1]));
+    if (sheet > 0) {
+        float angle = 3.14159265 / float(sheets) * float(sheet);
+        up = fx_beam_turn(vec4(right * sin(angle * 0.5), cos(angle * 0.5)), up);
+    }
+    float size = n < 0 ? 0.0 : CG_PARTICLE_SIZE(i) * CG_PARTICLE_SCALE(i).x * CG_OBJECT_CUSTOM0.z;
+    float u;
+    if (int(CG_OBJECT_CUSTOM1.w + 0.5) > 0) {
+        u = float(min(k, filled)) / (max(c2.w, 1.0) * max(tag.z, 1.0));
+    } else {
+        float tiles = (flags & 4) != 0 ? length(FX_BEAM_RUN(at + FX_BEAM_TARGET).xyz - FX_BEAM_RUN(at + FX_BEAM_SOURCE).xyz) / max(c2.z, 1e-4)
+                : max(c2.z, 1.0);
+        u = tiles * float(min(k, filled)) / float(max(filled, 1));
+    }
+    vec2 uv = vec2(u, side > 0.0 ? 0.0 : 1.0);
+    vec4 color = CG_PARTICLE_COLOR(i);
+    here += _cg_toward_eye(here, eye, cameraOffset);
+
+    v.worldPosition = here + up * size * side;
+    v.texCoords[0] = uv;
+    v.texCoords[1] = uv;
+    v.texCoords[2] = uv;
+    v.texCoords[3] = uv;
+    v.tangentToWorld = mat3(-right, up, normalize(cross(-right, up)));
+    v.vertexColor = vec4(color.rgb, color.a * CG_PARTICLE_OPACITY(i));
+
+    vec3 velocity = CG_PARTICLE_VELOCITY(i);
+    p.color = v.vertexColor;
+    p.relativeTime = CG_PARTICLE_PROGRESS(i);
+    p.random = CG_PARTICLE_SEED(i);
+    p.velocity = vec4(length(velocity) > 0.0 ? normalize(velocity) : vec3(0.0), length(velocity));
+    p.positionAndSize = vec4(origin + end, size);
+    p.size = vec2(size);
+    p.spriteRotation = 0.0;
+    p.subUVCoords0 = uv;
+    p.subUVCoords1 = uv;
+    p.subUVLerp = 0.0;
+    p.record = i;
+    _cg_dynamics(i, drawn, p);
+}
+
+CgMaterialVertex _cg_strip_vertex(float cameraOffset, float drawnBits) {
+    CgMaterialVertex v;
+    CgMaterialParticle p;
+    _cg_strip(cameraOffset, drawnBits, v, p);
+    return v;
+}
+
+CgMaterialParticle _cg_strip_particle(float cameraOffset, float drawnBits) {
+    CgMaterialVertex v;
+    CgMaterialParticle p;
+    _cg_strip(cameraOffset, drawnBits, v, p);
+    return p;
+}
+
+#define cg_material_vertex() _cg_strip_vertex(_cg_CameraOffset, _cg_Drawn)
+#define cg_material_particle() _cg_strip_particle(_cg_CameraOffset, _cg_Drawn)
+#elif defined(CG_VERTEX_STAGE) && (defined(CG_TYPE_NONE) || defined(FX_ON_SPRITES))
 
 // One quad corner of the draw's particle: the placement every sprite of the vfx engine shares.
 void _cg_sprite(float facing, vec4 facingVector, vec4 alignmentVector, float stretch, float maxStretch,

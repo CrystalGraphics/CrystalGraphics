@@ -223,7 +223,11 @@ public final class CgVfxEmitterAssets {
             for (CgVfxModuleForm form : e.forms) if (form.module() == i) f.inputs.put(f.fileName(form.input()), form.value());
             int n = seen.merge(f.module, 1, Integer::sum);
             String id = e.moduleIds[i] != null ? e.moduleIds[i] : n == 1 ? f.module : f.module + "_" + n;
-            modules.add(entry(id, f.module, f.inputs));
+            if (f.module.equals("beam_source") || f.module.equals("beam_target")) {
+                spawn.add(entry(id, f.module, f.inputs));
+                continue;
+            }
+            modules.add(entry(id, f.module, f.module.equals("beam_modifier") ? modifierToFile(f.inputs) : f.inputs));
         }
         tree.put("particle_update", modules);
         if (!e.renderers.isEmpty()) {
@@ -366,6 +370,8 @@ public final class CgVfxEmitterAssets {
         if (props.get("capacity") instanceof Number c) b.capacity(c.intValue());
         b.local(Boolean.TRUE.equals(props.get("local_space")));
         if (props.get("scalability") != null) b.optional(halvedAtLow(name, props.get("scalability")));
+        Map<?, ?> beam = beamRenderer(name, tree);
+        if (beam != null) b.capacity(beam.get("max_beam_count") instanceof Number c && c.intValue() > 0 ? c.intValue() : 1);
 
         int bursts = 0;
         for (Map<?, ?> entry : entries(tree, "emitter_update")) {
@@ -393,10 +399,12 @@ public final class CgVfxEmitterAssets {
                     throw new IllegalArgumentException(name + ": emitter_update has no " + entry.get("module"));
             }
         }
+        List<Map<?, ?>> beamEnds = new ArrayList<>();
         for (Map<?, ?> entry : entries(tree, "particle_spawn")) {
             if (Boolean.FALSE.equals(entry.get("enabled"))) continue;
             Map<?, ?> in = inputs(entry);
             switch (moduleId(entry)) {
+                case "beam_source", "beam_target" -> beamEnds.add(entry);
                 case "initialize_particle" -> initialize(name, b, in, spawnId(b, entry, "init"));
                 case "add_velocity" -> velocity(name, b, in, spawnId(b, entry, "velocity"));
                 case "shape_location" -> shape(name, b, in, spawnId(b, entry, "shape"));
@@ -410,6 +418,15 @@ public final class CgVfxEmitterAssets {
         CgVfxFormCompiler forms = new CgVfxFormCompiler(new CgVfxCurveBlock(), id -> null);
         int stacked = 0;
         List<Map<?, ?>> drawn = new ArrayList<>();
+        // A beam's ends run first, each step, as Cascade's spawn modules and its TypeDataBeam2 update do.
+        for (Map<?, ?> entry : beamEnds) {
+            if (beam == null) throw new IllegalArgumentException(name + ": " + entry.get("module") + " needs a beam renderer");
+            Mapped m = beamEnd(name, entry, beam);
+            CgVfxModuleTypes.Kind<?> kind = CgVfxModuleTypes.kind(m.module);
+            formed(name, entry, m, kind, stacked, forms, b);
+            stacked++;
+            b.module((CgVfxModule) kind.compile(m.inputs), idOf(entry, m.module));
+        }
         for (Map<?, ?> entry : entries(tree, "particle_update")) {
             if (Boolean.FALSE.equals(entry.get("enabled"))) continue;
             String id = moduleId(entry);
@@ -491,6 +508,22 @@ public final class CgVfxEmitterAssets {
                     }
                     float[] spin = rangeOf(rate);
                     b.spin(spin[0], spin[1]);
+                    continue;
+                }
+                case "beam_noise" -> {
+                    // Off, Cascade's noise neither updates nor draws (ParticleBeamModules.cpp:1462, ParticleSystemRender.cpp:2160).
+                    if (!Boolean.TRUE.equals(inputs(entry).get("enabled_low_frequency"))) continue;
+                    if (beam == null) throw new IllegalArgumentException(name + ": beam_noise needs a beam renderer");
+                    b.module(beamNoise(name, entry, beam), idOf(entry, "beam_noise"));
+                    stacked++;
+                    continue;
+                }
+                case "beam_modifier" -> {
+                    Mapped m = beamModifier(name, entry, deps == null ? CgUnits.HOST : deps.units());
+                    CgVfxModuleTypes.Kind<?> kind = CgVfxModuleTypes.kind(m.module);
+                    formed(name, entry, m, kind, stacked, forms, b);
+                    stacked++;
+                    b.module((CgVfxModule) kind.compile(m.inputs), idOf(entry, m.module));
                     continue;
                 }
                 case "grid_rasterize" -> {
@@ -727,8 +760,10 @@ public final class CgVfxEmitterAssets {
      * rate (:2393-2421), each particle starting at a frame of its own from {@code start_frame} 0 (:2373-2376).
      */
     private static void subUv(String name, CgVfxEmitter.Builder b, Map<?, ?> in) {
-        if (Boolean.TRUE.equals(in.get("use_emitter_time"))) {
-            throw new IllegalArgumentException(name + ": sub_uv_animation's use_emitter_time is not read yet");
+        // Emitter time only picks where SubUVMovie samples its frame rate (ParticleModules.cpp:2367, :2397): a constant
+        // rate reads the same either way.
+        if (Boolean.TRUE.equals(in.get("use_emitter_time")) && !(in.get("frame_rate") == null || in.get("frame_rate") instanceof Number)) {
+            throw new IllegalArgumentException(name + ": sub_uv_animation's use_emitter_time over a varying frame_rate is not read yet");
         }
         boolean realTime = Boolean.TRUE.equals(in.get("use_real_time"));
         if (realTime && !"direct".equals(in.get("mode"))) {
@@ -1440,6 +1475,23 @@ public final class CgVfxEmitterAssets {
     /** Unreal's {@code WORLD_MAX}, 2,097,152 cm, in blocks: a collision distance this far or further is none. */
     private static final double WORLD_MAX = 20971.52;
 
+    /** Two ends as a file writes them: a constant where they agree, else a range (per channel for a vector). */
+    private static Object rangeToFile(Object lo, Object hi, boolean perChannel) {
+        if (Objects.equals(lo, hi)) return lo;
+        return perChannel ? map("range", Arrays.asList(lo, hi), "per_channel", true) : map("range", Arrays.asList(lo, hi));
+    }
+
+    /** A beam_modifier's engine inputs as its file's {@code { value, modify, scale }} blocks. */
+    private static Map<String, Object> modifierToFile(Map<String, Object> in) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("end", Boolean.TRUE.equals(in.get("target")) ? "target" : "source");
+        for (String part : List.of("position", "tangent", "strength")) {
+            out.put(part, map("value", in.get(part), "modify", in.get("modify_" + part), "scale", in.get("scale_" + part)));
+        }
+        out.put("absolute_tangent", in.get("absolute_tangent"));
+        return out;
+    }
+
     /** Kind {@code kind}'s inputs as the file names them (aaa-design 2.60, 2.61). */
     private static Mapped toFile(String name, String kind, Map<String, Object> in) {
         Map<String, Object> out = new LinkedHashMap<>();
@@ -1510,6 +1562,24 @@ public final class CgVfxEmitterAssets {
                 out.putAll(in);
                 out.put("origin", out.remove("offset"));
                 return new Mapped("conform", out, Set.of(), names);
+            }
+            case "beam_source", "beam_target" -> {
+                out.putAll(in);
+                out.remove("speed");   // its renderer's
+                return new Mapped(kind, out, Set.of(), names);
+            }
+            case "beam_noise" -> {
+                out.put("enabled_low_frequency", true);
+                for (String k : List.of("frequency", "frequency_low", "lock_time", "smooth", "oscillate", "lock_radius",
+                        "tessellation", "target_noise", "frequency_distance", "scale")) {
+                    out.put(k, in.get(k));
+                }
+                out.put("range", Boolean.TRUE.equals(in.get("uniform"))
+                        ? map("range", Arrays.asList(in.get("range_min"), in.get("range_max")), "per_channel", true) : in.get("range_min"));
+                out.put("speed", rangeToFile(in.get("speed_min"), in.get("speed_max"), true));
+                out.put("range_scale", rangeToFile(in.get("range_scale_min"), in.get("range_scale_max"), false));
+                out.put("tangent_strength", rangeToFile(in.get("tangent_strength_min"), in.get("tangent_strength_max"), false));
+                return new Mapped(kind, out, Set.of(), names);
             }
             case "orbit" -> {
                 // Ours, beside Unreal's Orbit of another shape (aaa-design 2.61).
@@ -2226,6 +2296,16 @@ public final class CgVfxEmitterAssets {
         throw new IllegalArgumentException("a number or a range, not " + value);
     }
 
+    /** {@code o} as a float, {@code fallback} where absent. */
+    private static float numOr(@Nullable Object o, float fallback) {
+        return o == null ? fallback : num(o);
+    }
+
+    /** {@code o} as an int, 0 where absent. */
+    private static int integer(@Nullable Object o) {
+        return o instanceof Number n ? n.intValue() : 0;
+    }
+
     private static float num(Object o) {
         if (!(o instanceof Number n)) throw new IllegalArgumentException("a number, not " + o);
         return n.floatValue();
@@ -2236,6 +2316,162 @@ public final class CgVfxEmitterAssets {
      * own {@code unit:} converted and dropped. What a stack's modules do not declare stays as written, for the compile to
      * name.
      */
+    /**
+     * The emitter's beam renderer, null for none; refused where it asks for what is not built. Its fields are in host
+     * units ({@link #toHost}).
+     */
+    @Nullable
+    private static Map<?, ?> beamRenderer(String name, Map<?, ?> tree) {
+        Map<?, ?> found = null;
+        for (Map<?, ?> r : entries(tree, "renderers")) {
+            if (!"beam".equals(r.get("kind"))) continue;
+            if (found != null) throw new IllegalArgumentException(name + " has two beam renderers: Cascade's type data is one");
+            if (Boolean.TRUE.equals(r.get("always_on"))) {
+                throw new IllegalArgumentException(name + "'s beam renderer sets always_on, which is not built yet");
+            }
+            found = r;
+        }
+        return found;
+    }
+
+    /** {@code beam}'s speed, host units ({@link #toHost}): Cascade's TypeDataBeam2 Speed (ParticleBeamModules.cpp:300-326). */
+    private static float beamSpeed(Map<?, ?> beam) {
+        return beam.get("speed") instanceof Number n ? n.floatValue() : 0f;
+    }
+
+    /**
+     * A beam_source or beam_target entry as its engine kind (ParticleBeamModules.cpp:1874-2130, :2324-2560): its point,
+     * tangent and strength by their file names; a target's lock radius and its renderer's speed. An actor, an emitter or
+     * a particle as an end, and an emitter's tangent, are refused.
+     */
+    private static Mapped beamEnd(String name, Map<?, ?> entry, Map<?, ?> beam) {
+        Map<?, ?> in = inputs(entry);
+        String id = moduleId(entry);
+        Map<String, Object> out = new LinkedHashMap<>();
+        Map<String, String> names = new HashMap<>();
+        Set<String> read = new HashSet<>();
+        String method = String.valueOf(in.get("method") != null ? in.get("method") : "default");
+        if (!method.equals("default") && !method.equals("user_set")) {
+            throw new IllegalArgumentException(name + ": " + id + ".method " + method + " is not built yet: default or user_set");
+        }
+        if ("emitter".equals(in.get("tangent_method"))) {
+            throw new IllegalArgumentException(name + ": " + id + ".tangent_method emitter is not built yet");
+        }
+        // A default or user-set end names no actor or emitter: nothing here sets a user point, so it is the distribution.
+        read.add("method");
+        read.add("name");
+        for (String k : List.of("point", "absolute", "tangent", "tangent_method", "strength", "lock", "lock_tangent", "lock_strength")) {
+            take(in, read, out, names, k, k);
+        }
+        if (id.equals("beam_target")) {
+            take(in, read, out, names, "lock_radius", "lock_radius");
+            out.put("speed", (double) beamSpeed(beam));
+        } else {
+            read.add("lock_radius");   // a source does not travel: BeamSource never reads it
+        }
+        unread(name, entry, in, read);
+        return new Mapped(id, out, read, names);
+    }
+
+    /**
+     * A beam_noise entry (ParticleBeamModules.cpp:1372-1570): its range's two ends, uniform where written as a range;
+     * speed, range scale and tangent strength each a range Cascade reads at its emitter's time each frame. Its renderer's
+     * sheets ride along, for Cascade's smooth points that move once a sheet.
+     */
+    private static CgVfxModule.BeamNoise beamNoise(String name, Map<?, ?> entry, Map<?, ?> beam) {
+        Map<?, ?> in = inputs(entry);
+        String who = name + ": beam_noise";
+        if (Boolean.TRUE.equals(in.get("lock"))) throw new IllegalArgumentException(who + ".lock is not built yet");
+        float[][] range = ends(who + ".range", in.get("range"), 3, 0.5f);
+        float[][] speed = ends(who + ".speed", in.get("speed"), 3, 0.5f);
+        float[][] scale = ends(who + ".range_scale", in.get("range_scale"), 1, 1f);
+        float[][] tangent = ends(who + ".tangent_strength", in.get("tangent_strength"), 1, 2.5f);
+        Set<String> read = new HashSet<>(List.of("frequency", "frequency_low", "enabled_low_frequency", "range", "range_scale",
+                "speed", "smooth", "lock", "lock_radius", "lock_time", "oscillate", "tangent_strength", "tessellation",
+                "target_noise", "frequency_distance", "scale",
+                // Tension scales a tangent Cascade then normalizes (ParticleSystemRender.cpp:3640-3650), and bNoiseTangents
+                // drives no fill: neither moves a drawn point.
+                "tension", "tangents"));
+        unread(name, entry, in, read);
+        float frequencyDistance = numOr(in.get("frequency_distance"), 0f), distanceScale = numOr(in.get("scale"), 1f);
+        if (in.get("scale") instanceof Map<?, ?>) throw new IllegalArgumentException(who + ".scale as a curve is not built yet");
+        int sheets = beam.get("sheets") instanceof Number s ? Math.max(1, s.intValue()) : 1;
+        return new CgVfxModule.BeamNoise(integer(in.get("frequency")), integer(in.get("frequency_low")),
+                numOr(in.get("lock_time"), 0f), Boolean.TRUE.equals(in.get("smooth")),
+                range[0][0], range[0][1], range[0][2], range[1][0], range[1][1], range[1][2],
+                in.get("range") instanceof Map<?, ?>, Boolean.TRUE.equals(in.get("oscillate")),
+                speed[0][0], speed[0][1], speed[0][2], speed[1][0], speed[1][1], speed[1][2], numOr(in.get("lock_radius"), 0.01f),
+                integer(in.get("tessellation")), scale[0][0], scale[1][0], tangent[0][0], tangent[1][0],
+                frequencyDistance, distanceScale, Boolean.TRUE.equals(in.get("target_noise")), sheets);
+    }
+
+    /** A constant's or a range's two ends, each {@code n} channels; {@code fallback} where absent. */
+    private static float[][] ends(String who, @Nullable Object value, int n, float fallback) {
+        if (value == null) {
+            float[] f = new float[n];
+            Arrays.fill(f, fallback);
+            return new float[][] {f, f};
+        }
+        if (value instanceof Map<?, ?> m) {
+            if (!(m.get("range") instanceof List<?> r) || r.size() != 2) {
+                throw new IllegalArgumentException(who + " is written as " + m.keySet() + ": a constant or a range is built");
+            }
+            return new float[][] {channels(r.get(0), n), channels(r.get(1), n)};
+        }
+        float[] v = channels(value, n);
+        return new float[][] {v, v};
+    }
+
+    /** A vector of {@code n}, or a number where {@code n} is 1. */
+    private static float[] channels(Object value, int n) {
+        return n == 1 && value instanceof Number v ? new float[]{v.floatValue()} : vec(value, n);
+    }
+
+    /**
+     * A beam_modifier entry (ParticleBeamModules.cpp:1083-1180): its position, tangent and strength each {@code { value,
+     * modify, scale, lock }}, flattened onto the kind's inputs. A value nested in its block is converted here, which the
+     * declaration's loose struct does not type; a form on one is the kind's input's.
+     */
+    private static Mapped beamModifier(String name, Map<?, ?> entry, CgUnits units) {
+        Map<?, ?> in = inputs(entry);
+        Map<String, Object> out = new LinkedHashMap<>();
+        Map<String, String> names = new HashMap<>();
+        Set<String> read = new HashSet<>(List.of("end", "position", "tangent", "strength", "absolute_tangent"));
+        unread(name, entry, in, read);
+        out.put("target", "target".equals(in.get("end")));
+        out.put("absolute_tangent", Boolean.TRUE.equals(in.get("absolute_tangent")));
+        modifierPart(name, in.get("position"), "position", CgQuantity.OFFSET, units, out, names);
+        modifierPart(name, in.get("tangent"), "tangent", CgQuantity.DIRECTION, units, out, names);
+        Object strength = in.get("strength");
+        boolean scaled = strength instanceof Map<?, ?> m && Boolean.TRUE.equals(m.get("scale"));
+        modifierPart(name, strength, "strength", scaled ? CgQuantity.NONE : CgQuantity.LENGTH, units, out, names);
+        return new Mapped("beam_modifier", out, read, names);
+    }
+
+    private static void modifierPart(String name, @Nullable Object part, String input, CgQuantity quantity, CgUnits units,
+                                     Map<String, Object> out, Map<String, String> names) {
+        Map<?, ?> p = part instanceof Map<?, ?> m ? m : Map.of();
+        for (Object k : p.keySet()) {
+            if (!List.of("value", "modify", "scale", "lock").contains(String.valueOf(k))) {
+                throw new IllegalArgumentException(name + ": beam_modifier." + input + "." + k + " is no option of it");
+            }
+        }
+        // A form's ends roll once a particle, which a locked part keeps and an unlocked one Cascade rolls each update.
+        Object value = p.get("value");
+        if (value instanceof Map<?, ?> form && form.get("range") instanceof List<?> r) {
+            Map<Object, Object> host = new LinkedHashMap<>(form);
+            host.put("range", List.of(units.toHost(r.get(0), quantity), units.toHost(r.get(1), quantity)));
+            value = host;
+        } else if (value != null) {
+            value = units.toHost(value, quantity);
+        }
+        out.put(input, value != null ? value : input.equals("strength") ? 0.0 : List.of(0.0, 0.0, 0.0));
+        out.put("modify_" + input, Boolean.TRUE.equals(p.get("modify")));
+        out.put("scale_" + input, Boolean.TRUE.equals(p.get("scale")));
+        // The file's struct has no type a form compiles against: the kind's own input does.
+        names.put(input, input + ".value");
+    }
+
     private static Map<?, ?> toHost(Map<?, ?> tree, CgUnits units) {
         Map<Object, Object> out = new LinkedHashMap<>(tree);
         for (String stack : STACKS) {
@@ -2271,6 +2507,22 @@ public final class CgVfxEmitterAssets {
                 converted.add(copy);
             }
             out.put(stack, converted);
+        }
+        // A beam renderer's speed and lengths, which the renderer's own compile takes as written.
+        if (tree.get("renderers") instanceof List<?> renderers) {
+            List<Object> converted = new ArrayList<>(renderers.size());
+            for (Object r : renderers) {
+                if (r instanceof Map<?, ?> m && "beam".equals(m.get("kind"))) {
+                    Map<Object, Object> host = new LinkedHashMap<>(m);
+                    if (m.get("speed") instanceof Number) host.put("speed", units.toHost(m.get("speed"), CgQuantity.SPEED));
+                    for (String k : List.of("texture_tile_distance", "distance")) {
+                        if (m.get(k) instanceof Number) host.put(k, units.toHost(m.get(k), CgQuantity.LENGTH));
+                    }
+                    r = host;
+                }
+                converted.add(r);
+            }
+            out.put("renderers", converted);
         }
         return out;
     }

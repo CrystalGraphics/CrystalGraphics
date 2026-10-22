@@ -201,10 +201,13 @@ public final class CgParticleKinds {
             .register();
 
     static final CgType BEAM = renderer("beam")
-            .property("beam_method", CgValueType.enumOf("distance", "target", "branch")).defaultValue("distance")
+            // Cascade's default (ParticleBeamModules.cpp:50).
+            .property("beam_method", CgValueType.enumOf("distance", "target", "branch")).defaultValue("target")
             .property("sheets", INT)
             .property("max_beam_count", INT)
             .property("speed", FLOAT).quantity(CgQuantity.SPEED)
+            .property("always_on", BOOL)
+            .property("distance", FLOAT).quantity(CgQuantity.LENGTH)
             .property("interpolation_points", INT)
             .property("taper_method", CgValueType.enumOf("none", "full", "partial")).defaultValue("none")
             .property("taper_factor", FLOAT)

@@ -66,7 +66,7 @@ public class CgVfxModuleWordsTest {
             {1.0f, 2.0f, 3.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 25.0f, 1.0f, 1.0f, 0.0f},   // beam_source: point, tangent, strength and locks
             {8.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.5f, 10.0f, 0.0f, 0.0f},   // beam_target
             {12.0f, 4.0f, 0.06f, 1.0f, -0.3f, -0.3f, -0.3f, 1.0f, 0.3f, 0.3f, 0.3f, 1.0f, 0.5f, 0.5f, 0.5f, 0.1f,
-                    1.0f, 0.5f, 2.0f, 0.5f, 10.0f, 2.0f, 0.0f, 3.0f},   // beam_noise
+                    0.6f, 0.6f, 0.6f, 2.0f, 1.0f, 2.0f, 0.5f, 1.5f, 10.0f, 2.0f, 0.0f, 3.0f},   // beam_noise
             {0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 2.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f},   // beam_modifier
             {4.0f, 0.0f, 0.0f, 0.0f},   // limit_speed
             {2.0f, 1.0f, 3.0f, 2.0f, 0.1f, 2.0f, 0.0f, 0.0f},   // conform
@@ -114,8 +114,8 @@ public class CgVfxModuleWordsTest {
                 new CgVfxModule.BeamSource(1f, 2f, 3f, false, 1f, 0f, 0f, CgVfxModule.BeamSource.Tangent.DIRECT, 25f, true, true, false),
                 new CgVfxModule.BeamTarget(8f, 0f, 0f, true, 0f, 1f, 0f, CgVfxModule.BeamSource.Tangent.USER_SET, 1f, false, false,
                         true, 0.5f, 10f),
-                new CgVfxModule.BeamNoise(12, 4, 0.06f, true, -0.3f, -0.3f, -0.3f, 0.3f, 0.3f, 0.3f, true, true, 0.5f, 0.5f, 0.5f,
-                        0.1f, 1f, 0.5f, 2, 0.5f, 10f, 2f, false, 3),
+                new CgVfxModule.BeamNoise(12, 4, 0.06f, true, -0.3f, -0.3f, -0.3f, 0.3f, 0.3f, 0.3f, true, true, 0.5f, 0.5f,
+                        0.5f, 0.6f, 0.6f, 0.6f, 0.1f, 2, 1f, 2f, 0.5f, 1.5f, 10f, 2f, false, 3),
                 new CgVfxModule.BeamModifier(true, 0f, 1f, 0f, true, false, 0f, 0f, 1f, true, true, false, 2f, true, false),
                 new CgVfxModule.LimitSpeed(4f),
                 new CgVfxModule.Conform(CgSphere.of(2), 1f, 3f, 2f),

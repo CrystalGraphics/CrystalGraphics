@@ -167,6 +167,8 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
     }
     // The shape census over a slice of the kits' moves: -PcensusPacks=<text>,...
     providers.gradleProperty("censusPacks").orNull?.let { systemProperty("crystalgraphics.census.packs", it) }
+    // And systems whose id contains one, in a move or not: -PcensusSystems=<text>,...
+    providers.gradleProperty("censusSystems").orNull?.let { systemProperty("crystalgraphics.census.systems", it) }
     // -PcensusMaterials=false leaves materials uncompiled: each emitter then compiles to its renderers' materials,
     // which fail last, so the census shows the emitters' own causes past the materials not ported yet
     providers.gradleProperty("censusMaterials").orNull?.let { systemProperty("crystalgraphics.census.materials", it) }

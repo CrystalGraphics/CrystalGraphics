@@ -14,6 +14,7 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxArcRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxBeamRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRibbonRendererProperties;
@@ -23,6 +24,7 @@ import com.crystalgraphics.vfx.particle.renderer.CgVfxTrailsRendererProperties;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.variable.CgVar;
+import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
@@ -31,6 +33,7 @@ import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
@@ -107,6 +110,8 @@ public final class CgVfxFrame {
     private final float[] trailBounds = new float[8];
     /** Quads between two points unless a layer gives its own: a trail slot's sparse points, a particle's dense ones. */
     private static final int TRAIL_QUADS = 4, PARTICLE_STRIP_QUADS = 2;
+    /** Blocks from its source a beam slot is drawn within: its far ends are on the GPU alone. */
+    private static final float BEAM_REACH = 256f;
     /** How far the unit cube's corners are from its middle: what a ribbons or billboard draw reaches. */
     private static final float CUBE_REACH = 1.7320508f;
     private CgWorldRenderer world;
@@ -145,6 +150,8 @@ public final class CgVfxFrame {
             // A pool that has not recorded its first step has no storage yet, and no particle to draw.
             if (proxy.key.pool().records() == null) continue;
             CgVfxRange range = CgVfxRange.of(proxy.key.pool());
+            boolean beams = proxy.key.strip() == Strip.BEAM;
+            if (beams && proxy.key.pool().beamRuns() == null) continue;
             if (proxy.meshCapacity != proxy.capacity) {
                 proxy.meshCapacity = proxy.capacity;
                 proxy.mesh = proxy.key.strip() == Strip.NONE ? slotMesh(proxy.key.renderer(), proxy.capacity)
@@ -157,6 +164,7 @@ public final class CgVfxFrame {
                     .indirectEach(range.visible(), proxy.mode, proxy.key.factor())
                     .gpuCulled()
                     .at(groupX, groupY, groupZ);
+            if (beams) draw.buffer(CgBindingPoints.PARTICLE_BEAMS, proxy.key.pool().beamRuns());
             CgVfxSystem.place(draw, proxy.placed, groupX, groupY, groupZ);
             draw.group(groupX, groupY, groupZ).batchKey(materials.key(proxy.key.material()));
             for (int r = 0; r < proxy.records; r++) {
@@ -242,8 +250,8 @@ public final class CgVfxFrame {
 
     private final ProxyKey probe = new ProxyKey();
 
-    /** What strip a proxy's particles draw as: none (a quad, an arc or a mesh each), a trail each, or one ribbon. */
-    private enum Strip { NONE, TRAILS, RIBBON }
+    /** What strip a proxy's particles draw as: none (a quad, an arc or a mesh each), a trail or a beam each, or one ribbon. */
+    private enum Strip { NONE, TRAILS, RIBBON, BEAM }
 
     /** {@link #probe}'s proxy, made at its first ask with a key of its own: once per renderer, when the renderer is made. */
     private Proxy proxy(ProxyKey probe, CgVfxLook.Placed placed, CgIndirect mode) {
@@ -492,7 +500,7 @@ public final class CgVfxFrame {
         int base = range.laidBase(slot), visible = range.laidWord(slot);
         long word = visible * 4L;
         float reach = 0f;
-        boolean strips = false;
+        boolean strips = false, beams = false;
         for (int i = 0; i < rs.count; i++) {
             Renderer rd = rs.list[i];
             float size = CgVfxMaterials.size(effect, rd.r);
@@ -502,7 +510,12 @@ public final class CgVfxFrame {
                 case STRIP -> {
                     strips = true;
                     reach = Math.max(reach, size);
-                    strip(effect, emitter, rd, size, row, pool, range, slot, capacity, base, word, ox, oy, oz);
+                    if (rd.beam != null) {
+                        beams = true;
+                        beam(effect, rd, size, row, pool, range, slot, capacity, base, word, ox, oy, oz);
+                    } else {
+                        strip(effect, emitter, rd, size, row, pool, range, slot, capacity, base, word, ox, oy, oz);
+                    }
                 }
                 case MESHES -> {
                     if (!rd.unsorted && blendsInOrder(rd.material)) range.sorted(slot);
@@ -555,7 +568,10 @@ public final class CgVfxFrame {
             }
         }
         if (reach <= 0f) return;
-        if (arcs || strips) {
+        if (beams) {
+            // Its ends are its modules' and never read back: culled only past BEAM_REACH of its source.
+            pool.cullAbout(slot, BEAM_REACH);
+        } else if (arcs || strips) {
             // An arc reaches from its source to its particle, which no radius about the particle covers.
             pool.cullAbout(slot, rs.still + rs.perWind * system.air().maxSpeed() - def.largestSize() - rs.clipReach
                     + emitter.books().entityBoxReach() + def.largestSize() * reach);
@@ -614,6 +630,9 @@ public final class CgVfxFrame {
                     throw new IllegalStateException(who(def, renderer) + " keeps " + t.points() + " points, but " + def.name()
                             + " keeps " + rs.list[rs.count - 1].points + " a particle: give it trail(" + t.points() + ")");
                 }
+            } else if (renderer instanceof CgVfxBeamRendererProperties beam) {
+                requireRenderer(renderer, def, CgVfxDrawLayout.QUADS);
+                beam(rs, placed, r, beam, tenant);
             } else if (renderer instanceof CgVfxRibbonRendererProperties ribbon) {
                 requireRenderer(renderer, def, CgVfxDrawLayout.QUADS);
                 strip(rs, placed, r, false, ribbon.subSegments(), tenant, renderer);
@@ -673,6 +692,34 @@ public final class CgVfxFrame {
         if (MERGED.get()) {
             rd.proxy = proxy(probe.set(pool, rd.material, CgVfxDrawLayout.QUADS,
                     trails ? Strip.TRAILS : Strip.RIBBON, rd.per), placed, CgIndirect.VERTICES);
+        }
+    }
+
+    /**
+     * A beam renderer: a strip a particle, placed by the strip factory from its pool's beam runs (CgVfxBeams), as
+     * many segments a sheet as its noise steps times their tessellation, or its interpolation points.
+     */
+    private void beam(Renderers rs, CgVfxLook.Placed placed, CgVfxMaterials.Resolved r, CgVfxBeamRendererProperties beam,
+                      CgVfxGpuSteps.Tenant tenant) {
+        CgVfxParticlePool pool = tenant.pool;
+        CgVfxEmitter def = tenant.instance.emitter();
+        if (!pool.shape().beams()) {
+            throw new IllegalStateException(who(def, beam) + " draws beams, but " + def.name()
+                    + " has no beam_source or beam_target to place them");
+        }
+        Renderer rd = rs.next(Shape.STRIP, placed, r, materials.material(r, CgVfxSlot.Kind.PARTICLES));
+        rd.beam = beam;
+        CgVfxModule.BeamNoise noise = null;
+        for (CgVfxModule m : def.modules()) if (m instanceof CgVfxModule.BeamNoise n) noise = n;
+        rd.subs = noise != null ? (noise.frequency() + 1) * Math.max(noise.tessellation(), 1)
+                : Math.max(beam.interpolationPoints(), 1);
+        rd.per = beam.sheets() * rd.subs * 6;
+        rd.beamFrequency = noise != null ? noise.frequency() : 0;
+        rd.beamFlags = (noise != null && noise.targetNoise() ? 1 : 0) | (beam.upVectorStepSize() == 1 ? 2 : 0)
+                | (beam.textureTileDistance() > 0f ? 4 : 0);
+        if (MERGED.get()) {
+            rd.proxy = proxy(probe.set(pool, rd.material, CgVfxDrawLayout.QUADS, Strip.BEAM, rd.per), placed,
+                    CgIndirect.VERTICES);
         }
     }
 
@@ -768,6 +815,8 @@ public final class CgVfxFrame {
             rd.mesh = null;
             rd.meshRadius = rd.carried = 0f;
             rd.subs = rd.points = rd.firstRing = rd.per = rd.node = 0;
+            rd.beam = null;
+            rd.beamFlags = rd.beamFrequency = 0;
             rd.trails = rd.unsorted = false;
             return rd;
         }
@@ -790,9 +839,63 @@ public final class CgVfxFrame {
         boolean unsorted;
         /** {@code STRIP}: quads a segment, ring points (trails), the ring's first point, vertices a particle. */
         int subs, points, firstRing, per;
+        /** {@code STRIP}, a beam: its renderer, its flags (1 noise on the target, 2 one up, 4 tiles by distance), its noise's frequency. */
+        CgVfxBeamRendererProperties beam;
+        int beamFlags, beamFrequency;
         /** {@code SEQUENCE}: its node, and how far the clip carries its part from its particle, a size's worth. */
         int node;
         float carried;
+    }
+
+    /**
+     * One beam layer's draw of {@code slot}: a strip a visible particle, placed by {@code particle_factory.glsl}'s strip
+     * factory from the pool's beam runs. What it reads:
+     * <ul>
+     *   <li>{@code CG_OBJECT_CUSTOM0}: the first record, the slot's capacity, the layer's size, sheets + 256 * segments.</li>
+     *   <li>{@code CG_OBJECT_CUSTOM1}: the slot's first run, its runs, vec4s a run, noise points a run.</li>
+     *   <li>{@code CG_OBJECT_CUSTOM2}: interpolation points, flags, tiles or blocks a tile, the noise's frequency.</li>
+     * </ul>
+     */
+    private void beam(CgVfxEffect<?> effect, Renderer rd, float size, int row, CgVfxParticlePool pool, CgVfxRange range,
+                      int slot, int capacity, int base, long word, double ox, double oy, double oz) {
+        CgGraphBuffer runs = pool.beamRuns();
+        if (runs == null) return;
+        CgVfxBeamRendererProperties b = rd.beam;
+        float sheets = b.sheets() + 256f * rd.subs;
+        float tiles = b.textureTileDistance() > 0f ? b.textureTileDistance() : b.textureTile();
+        if (rd.proxy != null) {
+            int f = rd.proxy.add(this, capacity, ox, oy, oz, word);
+            float[] c = rd.proxy.custom;
+            c[f] = base;
+            c[f + 1] = capacity;
+            c[f + 2] = size;
+            c[f + 3] = sheets;
+            c[f + 4] = pool.beamFirst(slot);
+            c[f + 5] = capacity;
+            c[f + 6] = pool.beamRunVectors();
+            c[f + 7] = pool.shape().beamPoints();
+            c[f + 8] = b.interpolationPoints();
+            c[f + 9] = rd.beamFlags;
+            c[f + 10] = tiles;
+            c[f + 11] = rd.beamFrequency;
+            c[f + 12] = row;
+            c[f + 13] = effect.age;
+            c[f + 14] = effect.seed;
+            c[f + 15] = effect.presence();
+            return;
+        }
+        CgWorldRenderer.Draw draw = world.draw(CgMesh.vertices(sizeClass(capacity, 1) * rd.per, CgMeshTopology.TRIANGLES),
+                        rd.material)
+                .buffer(CgBindingPoints.PARTICLES, pool.drawn()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
+                .buffer(CgBindingPoints.PARTICLE_BEAMS, runs)
+                .indirect(range.visible(), word, CgIndirect.VERTICES, rd.per)
+                .gpuCulled()
+                .at(ox, oy, oz)
+                .custom(0, base, capacity, size, sheets)
+                .custom(1, pool.beamFirst(slot), capacity, pool.beamRunVectors(), pool.shape().beamPoints())
+                .custom(2, b.interpolationPoints(), rd.beamFlags, tiles, rd.beamFrequency)
+                .custom(3, row, effect.age, effect.seed, effect.presence());
+        CgVfxSystem.place(draw, rd.placed, effect).submit();
     }
 
     /**

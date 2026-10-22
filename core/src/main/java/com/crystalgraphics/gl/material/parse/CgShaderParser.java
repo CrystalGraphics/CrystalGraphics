@@ -193,6 +193,12 @@ public final class CgShaderParser {
         List<String> featureNames      = CgStructureParser.parseFeaturePragmas(source, resourcePath);
         List<String> engineBuffers     = CgEngineBufferRegistry.withRequirements(
                 CgStructureParser.parseUsePragmas(source, resourcePath));
+        // Every particle program takes the strip variant, undeclared: a beam draws a ported material through it.
+        if (engineBuffers.contains("particle") && !featureNames.contains(CgMaterialShaderCompiler.STRIP)) {
+            List<String> withStrip = new ArrayList<>(featureNames);
+            withStrip.add(CgMaterialShaderCompiler.STRIP);
+            featureNames = Collections.unmodifiableList(withStrip);
+        }
         validateEngineBufferUsage(source, engineBuffers, resourcePath);
         noteGeneratedReads(engineBuffers);
         List<CgMaterialProperty> props = withEngineProperties(CgPropertiesParser.parse(source, resourcePath), engineBuffers);

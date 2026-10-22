@@ -306,17 +306,17 @@ modules:
       { name: point, type: vec3, quantity: position, by: [loop], default: [0, 0, 0] }, { name: lock, type: bool, default: false },
       { name: tangent_method, type: enum, values: [direct, user_set, distribution, emitter], default: direct },
       { name: tangent, type: vec3, quantity: direction, by: [loop], default: [1, 0, 0] }, { name: lock_tangent, type: bool, default: false },
-      { name: strength, type: float, by: [loop], default: 25 }, { name: lock_strength, type: bool, default: false },
+      { name: strength, type: float, quantity: length, by: [loop], default: 25 }, { name: lock_strength, type: bool, default: false },
       { name: lock_radius, type: float, quantity: length, default: 10 } ] }
   - { id: beam_target, groups: [particle_spawn], unreal: { cascade: [BeamTarget] }, inputs: *beam_end }
   - { id: beam_noise, groups: [particle_update], unreal: { cascade: [BeamNoise] }, inputs: [
       { name: frequency, type: int, default: 0 }, { name: frequency_low, type: int, default: 0 }, { name: enabled_low_frequency, type: bool, default: false },
       { name: range, type: vec3, quantity: length, default: [50, 50, 50] },
       { name: range_scale, type: float, by: [age, loop], default: 1 },
-      { name: speed, type: vec3, default: [50, 50, 50] }, { name: smooth, type: bool, default: false },
+      { name: speed, type: vec3, quantity: speed, default: [50, 50, 50] }, { name: smooth, type: bool, default: false },
       { name: lock, type: bool, default: false }, { name: lock_radius, type: float, quantity: length, default: 1 }, { name: lock_time, type: float, quantity: time, default: 0 },
       { name: oscillate, type: bool, default: false }, { name: tension, type: float, default: 0.5 }, { name: tangents, type: bool, default: false },
-      { name: tangent_strength, type: float, default: 250 }, { name: tessellation, type: int, default: 1 },
+      { name: tangent_strength, type: float, quantity: length, default: 250 }, { name: tessellation, type: int, default: 1 },
       { name: target_noise, type: bool, default: false }, { name: frequency_distance, type: float, quantity: length, default: 0 },
       { name: scale, type: float, by: [age], default: 1 } ] }
   - { id: beam_modifier, groups: [particle_update], unreal: { cascade: [BeamModifier] }, inputs: [

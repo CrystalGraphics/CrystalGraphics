@@ -373,23 +373,28 @@ public final class CgVfxModuleTypes {
                     fl(t, "lock_time"); t.property("smooth", CgValueType.BOOL);
                     v3(t, "range_min"); t.property("oscillate", CgValueType.BOOL);
                     v3(t, "range_max"); t.property("uniform", CgValueType.BOOL);
-                    v3(t, "speed"); fl(t, "lock_radius", "range_scale", "tangent_strength");
-                    t.property("tessellation", CgValueType.INT); fl(t, "tension", "frequency_distance", "scale");
+                    v3(t, "speed_min"); fl(t, "lock_radius");
+                    v3(t, "speed_max"); t.property("tessellation", CgValueType.INT);
+                    fl(t, "range_scale_min", "range_scale_max", "tangent_strength_min", "tangent_strength_max",
+                            "frequency_distance", "scale");
                     t.property("target_noise", CgValueType.BOOL); t.property("sheets", CgValueType.INT).defaultValue(1); },
                 (m, in) -> in.i("frequency", m.frequency()).i("frequency_low", m.frequencyLow()).f("lock_time", m.lockTime())
                         .b("smooth", m.smooth()).v3("range_min", m.minX(), m.minY(), m.minZ()).b("oscillate", m.oscillate())
                         .v3("range_max", m.maxX(), m.maxY(), m.maxZ()).b("uniform", m.uniform())
-                        .v3("speed", m.speedX(), m.speedY(), m.speedZ()).f("lock_radius", m.lockRadius())
-                        .f("range_scale", m.rangeScale()).f("tangent_strength", m.tangentStrength())
-                        .i("tessellation", m.tessellation()).f("tension", m.tension())
+                        .v3("speed_min", m.speedMinX(), m.speedMinY(), m.speedMinZ()).f("lock_radius", m.lockRadius())
+                        .v3("speed_max", m.speedMaxX(), m.speedMaxY(), m.speedMaxZ()).i("tessellation", m.tessellation())
+                        .f("range_scale_min", m.rangeScaleMin()).f("range_scale_max", m.rangeScaleMax())
+                        .f("tangent_strength_min", m.tangentStrengthMin()).f("tangent_strength_max", m.tangentStrengthMax())
                         .f("frequency_distance", m.frequencyDistance()).f("scale", m.scale())
                         .b("target_noise", m.targetNoise()).i("sheets", m.sheets()),
                 r -> new CgVfxModule.BeamNoise(r.i("frequency"), r.i("frequency_low"), r.f("lock_time"), r.b("smooth"),
                         r.f("range_min", 0), r.f("range_min", 1), r.f("range_min", 2),
                         r.f("range_max", 0), r.f("range_max", 1), r.f("range_max", 2), r.b("uniform"), r.b("oscillate"),
-                        r.f("speed", 0), r.f("speed", 1), r.f("speed", 2), r.f("lock_radius"), r.f("range_scale"),
-                        r.f("tangent_strength"), r.i("tessellation"), r.f("tension"), r.f("frequency_distance"), r.f("scale"),
-                        r.b("target_noise"), r.i("sheets")));
+                        r.f("speed_min", 0), r.f("speed_min", 1), r.f("speed_min", 2),
+                        r.f("speed_max", 0), r.f("speed_max", 1), r.f("speed_max", 2), r.f("lock_radius"),
+                        r.i("tessellation"), r.f("range_scale_min"), r.f("range_scale_max"), r.f("tangent_strength_min"),
+                        r.f("tangent_strength_max"), r.f("frequency_distance"), r.f("scale"), r.b("target_noise"),
+                        r.i("sheets")));
         kind("beam_modifier", CgVfxModule.BeamModifier.class,
                 t -> { v3(t, "position"); t.property("target", CgValueType.BOOL); v3(t, "tangent");
                     t.property("absolute_tangent", CgValueType.BOOL); fl(t, "strength");
