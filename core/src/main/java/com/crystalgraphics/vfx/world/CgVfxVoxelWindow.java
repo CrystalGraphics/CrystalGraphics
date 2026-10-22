@@ -182,12 +182,20 @@ public final class CgVfxVoxelWindow {
                     knownChanged = floodWhole = true;
                 }
             });
-            CgCompute kernels = CgCompute.load(DISTANCE_KERNELS);
-            kernels.kernel("Seed").prepare();
-            kernels.kernel("Jump").prepare();
-            kernels.kernel("Settle").prepare();
+            prepare();
         }
         return this;
+    }
+
+    /**
+     * Starts its distance kernels without filling anything: what a look reading the world warms at load, so its first
+     * {@link #use} compiles nothing. Render thread.
+     */
+    public void prepare() {
+        CgCompute kernels = CgCompute.load(DISTANCE_KERNELS);
+        kernels.kernel("Seed").prepare();
+        kernels.kernel("Jump").prepare();
+        kernels.kernel("Settle").prepare();
     }
 
     /**

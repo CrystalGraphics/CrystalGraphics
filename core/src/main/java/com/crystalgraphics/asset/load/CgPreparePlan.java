@@ -1,12 +1,10 @@
 package com.crystalgraphics.asset.load;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.function.BooleanSupplier;
 
-/** One asset's prepare: its steps in order, run a frame's budget at a time, and its peaks per shape. */
+/** One asset's prepare: its steps in order, run a frame's budget at a time. */
 final class CgPreparePlan implements CgAssetPreparer.Plan {
 
     /** A step of the plan; true once done. Render thread. */
@@ -15,7 +13,6 @@ final class CgPreparePlan implements CgAssetPreparer.Plan {
     }
 
     final List<Step> steps = new ArrayList<>();
-    final Map<Object, Integer> peaks = new LinkedHashMap<>();
     long bytes;
     long uploaded;
     private int at;
@@ -52,12 +49,6 @@ final class CgPreparePlan implements CgAssetPreparer.Plan {
             budget.warmed(System.nanoTime() - t);
             return done;
         });
-        return this;
-    }
-
-    @Override
-    public CgAssetPreparer.Plan peak(Object shapeKey, int alive) {
-        peaks.merge(shapeKey, alive, Integer::sum);
         return this;
     }
 

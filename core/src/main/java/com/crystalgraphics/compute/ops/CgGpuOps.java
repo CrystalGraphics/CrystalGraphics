@@ -8,6 +8,7 @@ import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.compute.CgKernelForm;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -428,11 +429,13 @@ public final class CgGpuOps {
     }
 
     /**
-     * {@link #prepareSort}, for the kernel writing every indirect draw's command: what a draw's {@code .indirect} or
-     * {@code .instances} costs at its first frame otherwise.
+     * {@link #prepareSort}, for the kernels writing every indirect draw's command: what a draw's {@code .indirect} or
+     * {@code .instances} costs at its first frame otherwise. As compute a pass's commands are one {@code DrawArgsMany}
+     * dispatch; lowered, a {@code DrawArgs} each.
      */
     public static void prepareIndirect() {
-        prepare(CgCompute.load(INDIRECT_ARGS).kernel("DrawArgs"));
+        CgKernel each = CgCompute.load(INDIRECT_ARGS).kernel("DrawArgs");
+        prepare(each.form().how() == CgKernelForm.How.COMPUTE ? CgCompute.load(INDIRECT_ARGS).kernel("DrawArgsMany") : each);
     }
 
     /** {@link #prepareSort}, for {@link #cull}; with {@code ordered}, its {@link CgCull#ordered} form too. */

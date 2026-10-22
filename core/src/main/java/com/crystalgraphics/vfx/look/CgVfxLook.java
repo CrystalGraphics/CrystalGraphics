@@ -329,6 +329,11 @@ public final class CgVfxLook {
         return values.copy();
     }
 
+    /** Every value, as {@link #copyValues} makes them, written into {@code into} in place: a pooled effect's start. */
+    public void copyValuesInto(CgVfxValues into) {
+        into.set(values);
+    }
+
     CgVfxValues values() {
         return values;
     }

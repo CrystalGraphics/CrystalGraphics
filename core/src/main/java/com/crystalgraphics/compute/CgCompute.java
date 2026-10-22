@@ -19,6 +19,7 @@ import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.io.CgIO;
 import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.variable.CgVar;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -68,6 +69,8 @@ public final class CgCompute implements CgReloadable {
     private static final Queue<CgCompute> RETIRED = new ConcurrentLinkedQueue<>();
     private static final int COMPILE = CgTrace.name("compute.compile"), COMPILE_LOWERED = CgTrace.name("compute.compileLowered");
     private static final int COMPILES = CgTrace.name("compute.compiles");
+    private static final CgVar.Bool LOG_COMPILES = CgVar.bool("crystalgraphics.compute.logCompiles", false, CgVar.DEV,
+            "Log each kernel program compiled or started, by file and program key, with whether a dispatch waited.");
     /** Of {@link #COMPILES}, those whose sources a worker made ahead ({@link CgKernel#ahead}). */
     private static final int AHEAD_HITS = CgTrace.name("compute.compiles-ahead");
     private static final int PREPARE = CgTrace.name("compute.prepare"), COMPILE_WAIT = CgTrace.name("compute.compileWait");
@@ -184,11 +187,13 @@ public final class CgCompute implements CgReloadable {
                     program = pending.finish();
                 }
                 CgTrace.add(CgChannels.GL, COMPILE_WAITS, 1);
+                if (LOG_COMPILES.get()) LOGGER.warn("compute dispatch waited for: {} {}", path, key);
             } else {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, COMPILE)) {
                     program = build(source, decl(kernel), kernel);
                 }
                 CgTrace.add(CgChannels.GL, COMPILES, 1);
+                if (LOG_COMPILES.get()) LOGGER.warn("compute compiled at dispatch: {} {}", path, key);
             }
             programs.put(key, program);
         }
@@ -228,6 +233,7 @@ public final class CgCompute implements CgReloadable {
             PREPARING.add(this);
             CgTrace.add(CgChannels.GL, COMPILES, 1);
             CgTrace.add(CgChannels.GL, AHEAD_HITS, 1);
+            if (LOG_COMPILES.get()) LOGGER.info("compute prepared: {} {}", path, key);
             return;
         }
         CgIO.Reads recorded = CgIO.recordReads();
@@ -239,6 +245,7 @@ public final class CgCompute implements CgReloadable {
         }
         PREPARING.add(this);
         CgTrace.add(CgChannels.GL, COMPILES, 1);
+        if (LOG_COMPILES.get()) LOGGER.info("compute prepared: {} {}", path, key);
     }
 
     private CgKernelDecl decl(CgKernel kernel) {

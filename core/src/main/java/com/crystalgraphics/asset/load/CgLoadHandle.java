@@ -28,8 +28,8 @@ public final class CgLoadHandle {
     CgLoadPriority priority;
     private final List<Runnable> onReady = new ArrayList<>(1);
     boolean fired;
-    /** Whether the bundle's peaks reached the pool sizer. */
-    boolean pooled;
+    /** Whether every asset of the bundle has planned its prepare. */
+    boolean planned;
 
     CgLoadHandle(List<CgAssetRef<?>> primaries, List<CgAssetRef<?>> assets, CgLoadPriority priority) {
         this.primaries = Collections.unmodifiableList(primaries);
@@ -39,7 +39,7 @@ public final class CgLoadHandle {
 
     /** Whether every asset of every bundle is READY. */
     public boolean ready() {
-        if (!pooled) return false;
+        if (!planned) return false;
         for (int i = 0, n = assets.size(); i < n; i++) if (!assets.get(i).ready) return false;
         return true;
     }

@@ -51,7 +51,7 @@ public final class CgVfxEmitterInstance {
 
     private CgVfxEmitter emitter;
     private final Books books = new Books();
-    private final int seed;
+    private int seed;
     private float time = -1f, sourceX, sourceY, sourceZ, groundY = Float.NaN;
     private double originX, originY, originZ;
     /**
@@ -125,6 +125,61 @@ public final class CgVfxEmitterInstance {
             CgVfxEvent event = events.get(e);
             // Seeded as its parent, as the kernel keys a child by its parent's id.
             if (event.child() != null) children[e] = new CgVfxEmitterInstance((CgVfxEmitter) event.child(), seedBits, event, local);
+        }
+    }
+
+    /**
+     * Makes it as its constructor left it, seeded by {@code seed}, keeping what it allocated: an instance of a pooled
+     * system taken again (Niagara's {@code OnPooledReuse}). Its children too. Nothing spawns until its next
+     * {@link #start}.
+     *
+     * <pre>{@code
+     * sparks.reuse(seed);           // its slot closed: its system has released it
+     * sparks.start(0f, 1f, 0f);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Only once its slot has closed: a reuse while its system still steps it books from nothing into a slot
+     *       holding live particles.</li>
+     *   <li>Gas, grid, rate scale and {@link #drawn} go back to none, 1 and true: set them again after.</li>
+     * </ul>
+     */
+    public void reuse(float seed) {
+        reuse(Float.floatToIntBits(seed));
+    }
+
+    private void reuse(int seedBits) {
+        seed = seedBits;
+        time = -1f;
+        sourceX = sourceY = sourceZ = 0f;
+        groundY = Float.NaN;
+        originX = originY = originZ = 0;
+        anchorX = Double.NaN;
+        anchorY = anchorZ = 0;
+        driftX = driftY = driftZ = 0f;
+        gas = null;
+        grid = null;
+        spawned = burstsDone = loop = 0;
+        loopStart = loopLength = stepLoopFrom = stepLoopTo = 0f;
+        loopsOver = false;
+        rateOwed = 0f;
+        share = 1f;
+        stoppedAt = Float.POSITIVE_INFINITY;
+        rateScale = 1f;
+        scheduled = killed = killPending = stepped = turned = false;
+        stepFirst = stepCandidates = stepBursts = 0;
+        fromX = fromY = fromZ = lastX = lastY = lastZ = 0f;
+        boxX = boxY = boxZ = boxHalfX = boxHalfY = boxHalfZ = 0f;
+        rotX = rotY = rotZ = lastRotX = lastRotY = lastRotZ = turnX = turnY = turnZ = 0f;
+        rotW = lastRotW = turnW = 1f;
+        if (dying != null) Arrays.fill(dying, 0);
+        alive = 0;
+        retired = 0;
+        lastDeath = -1f;
+        stepDt = stepTime = 0f;
+        drawn = true;
+        for (CgVfxEmitterInstance child : children) {
+            if (child != null) child.reuse(seedBits);
         }
     }
 

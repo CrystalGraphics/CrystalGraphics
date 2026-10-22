@@ -2262,17 +2262,13 @@ com/crystalgraphics/asset/load/CgAssetPipeline
 com/crystalgraphics/asset/load/CgAssetPreparer
   access public,abstract,interface
   extends java/lang/Object
+  method public plan (Lcom/crystalgraphics/asset/load/CgAssetRef;Ljava/lang/Object;Lcom/crystalgraphics/asset/load/CgAssetPreparer$Plan;)V
   method public,abstract plan (Ljava/lang/Object;Lcom/crystalgraphics/asset/load/CgAssetPreparer$Plan;)V
 com/crystalgraphics/asset/load/CgAssetPreparer$Plan
   access public,abstract,interface
   extends java/lang/Object
-  method public,abstract peak (Ljava/lang/Object;I)Lcom/crystalgraphics/asset/load/CgAssetPreparer$Plan;
   method public,abstract upload (JLcom/crystalgraphics/asset/load/CgAssetPreparer$Upload;)Lcom/crystalgraphics/asset/load/CgAssetPreparer$Plan;
   method public,abstract warm (Ljava/lang/String;Ljava/util/function/BooleanSupplier;)Lcom/crystalgraphics/asset/load/CgAssetPreparer$Plan;
-com/crystalgraphics/asset/load/CgAssetPreparer$PoolSizer
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract reserve (Ljava/lang/Object;I)V
 com/crystalgraphics/asset/load/CgAssetPreparer$Upload
   access public,abstract,interface
   extends java/lang/Object
@@ -2387,7 +2383,6 @@ com/crystalgraphics/asset/load/CgVfxAssets
   method public edit (Lcom/crystalgraphics/asset/load/CgAssetRef;Ljava/util/List;)Ljava/util/List;
   method public load (Ljava/util/List;Lcom/crystalgraphics/asset/load/CgLoadPriority;)Lcom/crystalgraphics/asset/load/CgLoadHandle;
   method public pipeline ()Lcom/crystalgraphics/asset/load/CgAssetPipeline;
-  method public poolSizer (Lcom/crystalgraphics/asset/load/CgAssetPreparer$PoolSizer;)Lcom/crystalgraphics/asset/load/CgVfxAssets;
   method public preparer (Lcom/crystalgraphics/object/CgType;Lcom/crystalgraphics/asset/load/CgAssetPreparer;)Lcom/crystalgraphics/asset/load/CgVfxAssets;
   method public publish ()V
   method public registry ()Lcom/crystalgraphics/asset/registry/CgAssetRegistry;
@@ -10925,7 +10920,7 @@ com/crystalgraphics/vfx/CgVfxEffect
   field protected originX D
   field protected originY D
   field protected originZ D
-  field protected,final seed F
+  field protected seed F
   field protected,final subject I
   method protected <init> (Lcom/crystalgraphics/vfx/look/CgVfxLook;DDD)V
   method protected adopt ()Lcom/crystalgraphics/asset/load/CgAssetFollower$Adoption;
@@ -10933,6 +10928,9 @@ com/crystalgraphics/vfx/CgVfxEffect
   method protected definitionKey ()Ljava/lang/Object;
   method protected ending (Lcom/crystalgraphics/vfx/look/CgVfxEnding;)V
   method protected followed (DDD)V
+  method protected pooled ()Z
+  method protected pooledReuse (DDD)V
+  method protected reclaim ()V
   method protected submit (Lcom/crystalgraphics/vfx/CgVfxFrame;)V
   method protected,abstract tick (F)V
   method protected,final die ()V
@@ -11161,9 +11159,13 @@ com/crystalgraphics/vfx/CgVfxSystem
   method public onEvents (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEventListener;)V
   method public onMoment (Lcom/crystalgraphics/vfx/CgVfxMomentListener;)V
   method public play (Lcom/crystalgraphics/vfx/CgVfxEffect;)Lcom/crystalgraphics/vfx/CgVfxEffect;
+  method public pool (Lcom/crystalgraphics/asset/load/CgAssetRef;)Lcom/crystalgraphics/vfx/system/CgVfxSystemInstancePool;
+  method public pool (Lcom/crystalgraphics/vfx/system/CgVfxSystemDefinition;)Lcom/crystalgraphics/vfx/system/CgVfxSystemInstancePool;
   method public prepare ([Lcom/crystalgraphics/vfx/look/CgVfxLook;)V
   method public quality ()Lcom/crystalgraphics/settings/CgQuality;
   method public rehearse (Ljava/util/function/Consumer;)Lcom/crystalgraphics/render/graph/CgRehearsal;
+  method public spawn (Lcom/crystalgraphics/asset/load/CgAssetRef;DDD)Lcom/crystalgraphics/vfx/system/CgVfxSystemInstance;
+  method public spawn (Lcom/crystalgraphics/vfx/system/CgVfxSystemDefinition;DDD)Lcom/crystalgraphics/vfx/system/CgVfxSystemInstance;
   method public spawnShare (Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;)F
   method public stop ()V
   method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;)V
@@ -11906,6 +11908,7 @@ com/crystalgraphics/vfx/look/CgVfxLook
   field public,static,final BAND I
   field public,static,final SURFACE I
   method public copyValues ()Lcom/crystalgraphics/vfx/look/CgVfxValues;
+  method public copyValuesInto (Lcom/crystalgraphics/vfx/look/CgVfxValues;)V
   method public curve (Lcom/crystalgraphics/vfx/look/CgVfxParam$Curve;)Lcom/crystalgraphics/easing/CgKeyframes;
   method public derive ()Lcom/crystalgraphics/vfx/look/CgVfxLook$Builder;
   method public describe ()Ljava/lang/String;
@@ -12111,6 +12114,7 @@ com/crystalgraphics/vfx/look/CgVfxValues
   method public set (Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;F)Lcom/crystalgraphics/vfx/look/CgVfxValues;
   method public set (Lcom/crystalgraphics/vfx/look/CgVfxParam$Shake;Lcom/crystalgraphics/vfx/camera/CgCameraShake;)Lcom/crystalgraphics/vfx/look/CgVfxValues;
   method public set (Lcom/crystalgraphics/vfx/look/CgVfxParam$Vector;FFF)Lcom/crystalgraphics/vfx/look/CgVfxValues;
+  method public set (Lcom/crystalgraphics/vfx/look/CgVfxValues;)V
   method public setRaw (IF)V
   method public shake (Lcom/crystalgraphics/vfx/look/CgVfxParam$Shake;)Lcom/crystalgraphics/vfx/camera/CgCameraShake;
 com/crystalgraphics/vfx/net/CgVfxCue
@@ -12382,6 +12386,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance
   method public originY ()D
   method public originZ ()D
   method public rateScale (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;
+  method public reuse (F)V
   method public sourceX ()F
   method public sourceY ()F
   method public sourceZ ()F
@@ -14365,14 +14370,20 @@ com/crystalgraphics/vfx/system/CgVfxSystemAssets
 com/crystalgraphics/vfx/system/CgVfxSystemDefinition
   access public,final,record
   extends java/lang/Record
+  field public,static,final MAX_POOL_SIZE I
+  field public,static,final POOL_PRIME_SIZE I
   field public,static,final SCHEMA Lcom/crystalgraphics/vfx/look/CgVfxSchema;
   method public <init> (Ljava/lang/String;Lcom/crystalgraphics/vfx/look/CgVfxLook;Lcom/crystalgraphics/vfx/system/CgVfxBehaviour$Factory;)V
   method public <init> (Ljava/lang/String;Lcom/crystalgraphics/vfx/look/CgVfxLook;Lcom/crystalgraphics/vfx/system/CgVfxBehaviour$Factory;Ljava/util/List;)V
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/vfx/look/CgVfxLook;Lcom/crystalgraphics/vfx/system/CgVfxBehaviour$Factory;Ljava/util/List;II)V
   method public behaviour ()Lcom/crystalgraphics/vfx/system/CgVfxBehaviour$Factory;
   method public emitters ()Ljava/util/List;
   method public look ()Lcom/crystalgraphics/vfx/look/CgVfxLook;
+  method public maxPoolSize ()I
   method public name ()Ljava/lang/String;
+  method public poolPrimeSize ()I
   method public withBehaviour (Lcom/crystalgraphics/vfx/system/CgVfxBehaviour$Factory;)Lcom/crystalgraphics/vfx/system/CgVfxSystemDefinition;
+  method public withPool (II)Lcom/crystalgraphics/vfx/system/CgVfxSystemDefinition;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -14399,11 +14410,20 @@ com/crystalgraphics/vfx/system/CgVfxSystemInstance
   method public publish (Lcom/crystalgraphics/vfx/net/CgVfxCue$Play;)V
   method public request (Lcom/crystalgraphics/vfx/system/CgVfxExecutionState;Lcom/crystalgraphics/vfx/system/CgVfxExecutionSource;)Z
   method public stop ()V
+com/crystalgraphics/vfx/system/CgVfxSystemInstancePool
+  access public,final
+  extends java/lang/Object
+  method public <init> (Lcom/crystalgraphics/asset/load/CgAssetRef;)V
+  method public <init> (Lcom/crystalgraphics/vfx/system/CgVfxSystemDefinition;)V
+  method public acquire (DDD)Lcom/crystalgraphics/vfx/system/CgVfxSystemInstance;
+  method public idle ()I
+  method public prime (I)V
 com/crystalgraphics/vfx/system/CgVfxSystemPreparer
   access public,final
   extends java/lang/Object
   implements com/crystalgraphics/asset/load/CgAssetPreparer
   method public <init> (Ljava/util/function/Supplier;)V
+  method public plan (Lcom/crystalgraphics/asset/load/CgAssetRef;Ljava/lang/Object;Lcom/crystalgraphics/asset/load/CgAssetPreparer$Plan;)V
   method public plan (Ljava/lang/Object;Lcom/crystalgraphics/asset/load/CgAssetPreparer$Plan;)V
 com/crystalgraphics/vfx/trail/CgVfxTrail
   access public,final
@@ -14476,6 +14496,7 @@ com/crystalgraphics/vfx/world/CgVfxVoxelWindow
   method public bindBlocks (Lcom/crystalgraphics/render/graph/CgDispatch;)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public distance ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public live ()Z
+  method public prepare ()V
   method public record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/stage/CgHostView;)V
   method public sections ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public use ()Lcom/crystalgraphics/vfx/world/CgVfxVoxelWindow;

@@ -295,6 +295,34 @@ compared with the one it replaces and turned into the edits an editor would make
   it takes effect.
 - A restart makes the behaviour anew: hold the instance, not `instance.behaviour()`, across a save.
 
+### Spawning from a pool
+
+A system played often (a hit spark, a muzzle flash, a footstep's dust) is spawned rather than made: its system keeps
+a pool of idle instances per ref or definition, takes one, and takes it back once it completes and its particles are
+gone, as Unreal's component pool does. Playing it again then allocates nothing.
+
+```java
+CgVfxSystem vfx = CgVfx.world();
+vfx.spawn(SPARK, hitX, hitY, hitZ).ground(floorY);   // taken from SPARK's pool, or made when none is idle
+vfx.spawn(SPARK.get(), x, y, z);                     // a definition's pool: never follows the asset
+```
+
+```yaml
+# assets/mymod/vfx/systems/spark.yaml
+pool_prime_size: 4     # made when the asset is ready, before its first play: 0 by default, and the engine makes 1
+max_pool_size: 8       # idle ones kept; one past it is dropped: 32 by default
+```
+
+```java
+CgVfxSystemDefinition.of("mymod:spark", LOOK).withPool(4, 8);   // the same, in code
+vfx.pool(SPARK).prime(4);                                         // by hand: what a READY asset does
+```
+
+- **Hold nothing of a spawned instance past its completion**: the next spawn may take it again, its age, values,
+  seed, emitters and behaviour started over.
+- A spawned instance is a fresh one in every other way: set its ground, follow and values after `spawn`.
+- `spawn` and `pool` are the render thread's; a pool itself may be primed or taken from on any thread.
+
 ## Checking an asset
 
 An asset is checked whole, with what it inherits, as Unreal's data validation checks an object: every key one its

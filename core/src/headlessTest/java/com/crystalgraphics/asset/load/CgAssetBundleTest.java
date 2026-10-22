@@ -5,9 +5,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import org.junit.Before;
 import org.junit.Rule;
@@ -33,7 +31,6 @@ public class CgAssetBundleTest {
 
     private CgVfxAssets assets;
     private final List<long[]> pieces = new ArrayList<>();
-    private final Map<Object, Integer> reserved = new HashMap<>();
 
     @Before
     public void kit() throws IOException {
@@ -51,9 +48,7 @@ public class CgAssetBundleTest {
             String id = ((CgAssetData) definition).id();
             plan.upload(20 * MB, (offset, length) -> pieces.add(new long[] {id.endsWith("core") ? 0 : 1, offset, length}));
             plan.warm("kernel", () -> ++attempts[0] >= 3);
-            plan.peak("sprite", id.endsWith("core") ? 100 : 40);
         });
-        assets.poolSizer((shape, alive) -> reserved.merge(shape, alive, Math::max));
     }
 
     private int settle(CgLoadHandle... hs) throws InterruptedException {
@@ -88,7 +83,6 @@ public class CgAssetBundleTest {
         assertEquals(20 * MB, total);
         assertEquals(5, pieces.size());
         assertEquals(1f, h.progress(), 0f);
-        assertEquals(Integer.valueOf(100), reserved.get("sprite"));
     }
 
     @Test

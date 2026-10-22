@@ -46,37 +46,53 @@ final class CgVfxGpuSteps {
     /** Per step: pools stepped, each one Step dispatch however many slots it holds, and the slots stepped in them. */
     private static final int POOLS = CgTrace.name("vfx.gpu.pools-stepped"), SLOTS = CgTrace.name("vfx.gpu.slots-stepped");
 
-    /** One scheduled instance and its slot. */
+    /** One scheduled instance and its slot; given out again from {@link #idle} once released, so a play makes none. */
     static final class Tenant {
-        final CgVfxEmitterInstance instance;
-        final CgVfxParticlePool pool;
-        final int slot;
+        CgVfxEmitterInstance instance;
+        CgVfxParticlePool pool;
+        int slot;
         /** Its time after the last step: still that after the workers, its effect did not step it. */
         float timeAfter;
         /** A child's parent tenant, which releases it; null for a parent. */
-        final Tenant parent;
+        Tenant parent;
         /** Admitted by a prewarm: what {@link #prewarmStep} steps. */
         boolean warm;
         /** Its particles end in the next step, and then its slot closes. */
         boolean killed;
         /** The effect that stepped it, whose look draws it; null for an instance admitted without one (a test's). */
         @Nullable
-        final CgVfxEffect<?> effect;
-        /** Its renderers, made at its first drawn frame ({@link CgVfxFrame#particles}). */
+        CgVfxEffect<?> effect;
+        /**
+         * Its renderers, made at its first drawn frame ({@link CgVfxFrame#particles}) and kept through its reuse, built
+         * again for each tenancy: a trails renderer reads its slot's ring.
+         */
         CgVfxFrame.Renderers renderers;
         /** Its time as this frame's step began; NaN before its first book in the frame. */
-        float stepTime = Float.NaN;
+        float stepTime;
         /** Its rotation's change over this frame's ticks, a quaternion: what a local slot's live particles turn by. */
-        float turnX, turnY, turnZ, turnW = 1f;
+        float turnX, turnY, turnZ, turnW;
 
-        private Tenant(CgVfxEmitterInstance instance, CgVfxParticlePool pool, int slot, Tenant parent,
-                       @Nullable CgVfxEffect<?> effect) {
+        private void open(CgVfxEmitterInstance instance, CgVfxParticlePool pool, int slot, Tenant parent,
+                          @Nullable CgVfxEffect<?> effect) {
             this.instance = instance;
             this.pool = pool;
             this.slot = slot;
             this.parent = parent;
             this.effect = effect;
             timeAfter = instance.books().stepTime();
+            warm = killed = false;
+            stepTime = Float.NaN;
+            turnX = turnY = turnZ = 0f;
+            turnW = 1f;
+            if (renderers != null) renderers.stale(instance.emitter());
+        }
+
+        /** Drops what it pointed at, so an idle tenant holds no effect alive. */
+        private void close() {
+            instance = null;
+            pool = null;
+            parent = null;
+            effect = null;
         }
 
         /**
@@ -139,6 +155,9 @@ final class CgVfxGpuSteps {
     }
 
     private final List<Tenant> tenants = new ArrayList<>();
+    /** Released tenants, given out again by {@link #add}. */
+    private Tenant[] idle = new Tenant[16];
+    private int idleCount;
     private final IdentityHashMap<CgVfxEmitterInstance, Tenant> byInstance = new IdentityHashMap<>();
     /** The pools with tenants, in the order first used. */
     private final List<CgVfxParticlePool> pools = new ArrayList<>();
@@ -188,7 +207,9 @@ final class CgVfxGpuSteps {
         CgVfxEmitter definition = instance.emitter();
         CgVfxParticlePool pool = CgVfxParticlePool.of(this, definition, tier);
         if (!pools.contains(pool)) pools.add(pool);
-        Tenant tenant = new Tenant(instance, pool, pool.open(definition, capacity, owner), parent,
+        Tenant tenant = idleCount > 0 ? idle[--idleCount] : new Tenant();
+        idle[idleCount] = null;
+        tenant.open(instance, pool, pool.open(definition, capacity, owner), parent,
                 owner instanceof CgVfxEffect<?> effect ? effect : null);
         tenant.warm = warming;
         tenants.add(tenant);
@@ -284,7 +305,7 @@ final class CgVfxGpuSteps {
             CgVfxEmitter now = tenant.instance.emitter();
             if (tenant.pool.emitter(tenant.slot) == now) continue;
             tenant.pool.rebind(tenant.slot, now);
-            tenant.renderers = null;
+            if (tenant.renderers != null) tenant.renderers.stale(now);
         }
     }
 
@@ -396,8 +417,9 @@ final class CgVfxGpuSteps {
             Tenant tenant = tenants.get(i);
             // Killed: this step ended its particles, so its slot holds none to hand on. Started again, it asks anew.
             if (tenant.killed) {
+                CgVfxEmitterInstance instance = tenant.parent == null ? tenant.instance : null;
                 release(i);
-                if (tenant.parent == null) tenant.instance.books().slotLost();
+                if (instance != null) instance.books().slotLost();
                 continue;
             }
             // A parent finishes once its children have; a child alone may look finished before its parent spawns any.
@@ -431,10 +453,14 @@ final class CgVfxGpuSteps {
     private void release(int i) {
         Tenant tenant = tenants.remove(i);
         byInstance.remove(tenant.instance);
-        tenant.pool.close(tenant.slot);
+        CgVfxParticlePool pool = tenant.pool;
+        pool.close(tenant.slot);
+        tenant.close();
+        if (idleCount == idle.length) idle = Arrays.copyOf(idle, Math.max(16, idleCount * 2));
+        idle[idleCount++] = tenant;
         for (int k = 0; k < tenants.size(); k++) {
-            if (tenants.get(k).pool == tenant.pool) return;
+            if (tenants.get(k).pool == pool) return;
         }
-        pools.remove(tenant.pool);
+        pools.remove(pool);
     }
 }

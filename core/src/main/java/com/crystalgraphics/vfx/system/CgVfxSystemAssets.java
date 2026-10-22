@@ -178,6 +178,10 @@ public final class CgVfxSystemAssets {
             if (!theirs) slots.add(placed.slotRenderer().tree());
         }
         if (!slots.isEmpty()) tree.put("slots", slots);
+        if (definition.poolPrimeSize() != CgVfxSystemDefinition.POOL_PRIME_SIZE) {
+            tree.put("pool_prime_size", definition.poolPrimeSize());
+        }
+        if (definition.maxPoolSize() != CgVfxSystemDefinition.MAX_POOL_SIZE) tree.put("max_pool_size", definition.maxPoolSize());
         return tree;
     }
 
@@ -254,13 +258,22 @@ public final class CgVfxSystemAssets {
             if (effect == null) throw new IllegalArgumentException(id + ": effect " + name + " has no behaviour registered");
             if (effect.contract() != null) {
                 CgVfxLook look = contracted(id, name, effect.contract(), user, emitters.isEmpty() && !slotted ? null : kit.build());
-                return new CgVfxSystemDefinition(id, look, effect.factory(), emitters);
+                return new CgVfxSystemDefinition(id, look, effect.factory(), emitters, prime(tree), max(tree));
             }
         }
         CgVfxSchema schema = CgVfxSchema.of(id);
         for (Map.Entry<?, ?> e : user.entrySet()) param(id, schema, String.valueOf(e.getKey()), (Map<?, ?>) e.getValue());
         CgVfxLook look = CgVfxLook.builder(schema).with(kit.build()).build();
-        return new CgVfxSystemDefinition(id, look, effect == null ? null : effect.factory(), emitters);
+        return new CgVfxSystemDefinition(id, look, effect == null ? null : effect.factory(), emitters, prime(tree),
+                max(tree));
+    }
+
+    private static int prime(Map<Object, Object> tree) {
+        return tree.get("pool_prime_size") instanceof Number n ? n.intValue() : CgVfxSystemDefinition.POOL_PRIME_SIZE;
+    }
+
+    private static int max(Map<Object, Object> tree) {
+        return tree.get("max_pool_size") instanceof Number n ? n.intValue() : CgVfxSystemDefinition.MAX_POOL_SIZE;
     }
 
     /**

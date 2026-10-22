@@ -383,6 +383,8 @@ public final class CgParticleKinds {
             .property("fixed_bounds", CgValueType.listOf(VEC3)).quantity(CgQuantity.POSITION)
             .property("effect", CgValueType.NAMESPACED_ID).flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
             .property("slots", CgValueType.idList(SLOT)).flags(CgPropertyFlag.STRUCTURAL)
+            .property("pool_prime_size", INT).range(0, null).defaultValue(0)
+            .property("max_pool_size", INT).range(0, null).defaultValue(32)
             .register();
 
     // ── Module, effect type, ending ──────────────────────────────────────────────────────

@@ -206,6 +206,31 @@ public final class CgVfxValues {
     }
 
     /**
+     * Takes every value and link of {@code from} in place, allocating nothing once its links fit: a pooled effect
+     * starting again from its look.
+     *
+     * <pre>{@code
+     * values.set(look.values());   // as look.copyValues() would make them, into these arrays
+     * }</pre>
+     *
+     * @throws IllegalArgumentException when {@code from} lays its values out otherwise
+     */
+    public void set(CgVfxValues from) {
+        if (from.layout != layout) throw new IllegalArgumentException("another layout's values");
+        System.arraycopy(from.values, 0, values, 0, values.length);
+        System.arraycopy(from.objects, 0, objects, 0, objects.length);
+        if (linkTo.length < from.links) {
+            linkTo = new int[from.links];
+            linkFrom = new int[from.links];
+            linkFactor = new float[from.links];
+        }
+        System.arraycopy(from.linkTo, 0, linkTo, 0, from.links);
+        System.arraycopy(from.linkFrom, 0, linkFrom, 0, from.links);
+        System.arraycopy(from.linkFactor, 0, linkFactor, 0, from.links);
+        links = from.links;
+    }
+
+    /**
      * Keeps over these what {@code current} changed from {@code was}'s own values: a playing effect's values carried
      * onto a newer look, as Unreal's component keeps its user parameter overrides through a reinit. A value it never
      * changed takes the newer look's; links it made or broke keep too.

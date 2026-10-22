@@ -7,6 +7,7 @@ import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.asset.load.CgAssetFollower;
+import com.crystalgraphics.asset.load.CgAssetRef;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.texture.CgTexture2D;
@@ -41,6 +42,10 @@ import com.crystalgraphics.vfx.trail.CgVfxTrailTexture;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxSortGroup;
 import com.crystalgraphics.vfx.render.CgVfxTube;
+import com.crystalgraphics.vfx.system.CgVfxBehaviour;
+import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
+import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
+import com.crystalgraphics.vfx.system.CgVfxSystemInstancePool;
 import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
 import com.crystalgraphics.world.CgEntityAttachments;
 import com.crystalgraphics.world.CgEntityQueries;
@@ -134,6 +139,8 @@ public final class CgVfxSystem {
         return skipped;
     }
 
+    /** What {@link #update} and {@link #submit} allocate on their thread, reported per frame under these groups. */
+    private static final int UPDATE_ALLOCATION = CgTrace.name("vfx.update"), SUBMIT_ALLOCATION = CgTrace.name("vfx.submit");
     private static final int TICK_ZONE = CgTrace.name("vfx.tick"), SUBMIT_ZONE = CgTrace.name("vfx.submit"),
             WARM_ZONE = CgTrace.name("vfx.warm"), EFFECT_ZONE = CgTrace.name("vfx.effect.submit"),
             PATHS_ZONE = CgTrace.name("vfx.paths.upload"), MATERIALS_ZONE = CgTrace.name("vfx.prepare.materials"),
@@ -181,6 +188,10 @@ public final class CgVfxSystem {
     private static final CgSortLayer DISTORTION = CgSortLayer.after("crystalgraphics:vfx-distortion", CgSortLayer.EFFECTS);
 
     private final List<CgVfxEffect<?>> effects = new ArrayList<>();
+    /** Each definition's and ref's pool of idle instances ({@link #spawn}). */
+    private final Map<Object, CgVfxSystemInstancePool> instancePools = new IdentityHashMap<>();
+    /** Pooled effects that died, each back to its pool once its slots have closed. */
+    private final List<CgVfxEffect<?>> reclaiming = new ArrayList<>();
     private final List<CgVfxMomentListener> momentListeners = new ArrayList<>();
     private final List<CgVfxEventListener> eventListeners = new ArrayList<>();
     private final CgVfxPathTexture paths = new CgVfxPathTexture();
@@ -239,6 +250,44 @@ public final class CgVfxSystem {
     /** Load on its budgets, smoothed: 1 at rest, above while over; and the CPU nanoseconds this frame's update took. */
     private float pressure = 1f;
     private long updateNanos, submitNanos;
+
+    /**
+     * {@code definition} played at {@code (x, y, z)} from its pool: an idle instance started again, or a new one, handed
+     * back to the pool once it completes and its particles are gone. Unreal's {@code SpawnSystemAtLocation} with
+     * {@code AutoRelease} pooling. Render thread.
+     *
+     * <pre>{@code
+     * vfx.spawn(SPARK_REF, hitX, hitY, hitZ).ground(floorY);   // as play(new CgVfxSystemInstance<>(SPARK_REF, ...))
+     * }</pre>
+     *
+     * Hold nothing of what it answers past its completion: the next spawn may take it again.
+     */
+    public <B extends CgVfxBehaviour> CgVfxSystemInstance<B> spawn(CgVfxSystemDefinition definition, double x, double y, double z) {
+        return play(pool(definition).<B>acquire(x, y, z));
+    }
+
+    /** As {@link #spawn(CgVfxSystemDefinition, double, double, double)}, its instances following {@code ref}. */
+    public <B extends CgVfxBehaviour> CgVfxSystemInstance<B> spawn(CgAssetRef<CgVfxSystemDefinition> ref, double x, double y, double z) {
+        return play(pool(ref).<B>acquire(x, y, z));
+    }
+
+    /** {@code definition}'s pool on this system, made at the first ask: what {@link #spawn} takes from. */
+    public CgVfxSystemInstancePool pool(CgVfxSystemDefinition definition) {
+        synchronized (instancePools) {
+            CgVfxSystemInstancePool pool = instancePools.get(definition);
+            if (pool == null) instancePools.put(definition, pool = new CgVfxSystemInstancePool(definition));
+            return pool;
+        }
+    }
+
+    /** {@code ref}'s pool on this system, made at the first ask; a READY asset primes it. */
+    public CgVfxSystemInstancePool pool(CgAssetRef<CgVfxSystemDefinition> ref) {
+        synchronized (instancePools) {
+            CgVfxSystemInstancePool pool = instancePools.get(ref);
+            if (pool == null) instancePools.put(ref, pool = new CgVfxSystemInstancePool(ref));
+            return pool;
+        }
+    }
 
     public <E extends CgVfxEffect<?>> E play(E effect) {
         if (effect.system != null) throw new IllegalStateException("already played: " + effect);
@@ -309,11 +358,12 @@ public final class CgVfxSystem {
      * paused or frozen, slower or faster under {@code /tick rate}.
      */
     public void update(double seconds) {
-        long began = System.nanoTime();
+        long began = System.nanoTime(), mark = CgTrace.allocationBegin(CgVfxTrace.CHANNEL);
         try {
             updateTimed(seconds);
         } finally {
             updateNanos = System.nanoTime() - began;
+            CgTrace.allocationEnd(CgVfxTrace.CHANNEL, UPDATE_ALLOCATION, mark);
         }
     }
 
@@ -432,12 +482,30 @@ public final class CgVfxSystem {
                 if (effect.owner != null) effect.owner.release(effect);
                 effect.leaveGroup();
                 leaveSimulation(effect);
+                if (effect.pooled()) reclaiming.add(effect);
                 continue;
             }
             if (kept != i) effects.set(kept, effect);
             kept++;
         }
         for (int i = effects.size() - 1; i >= kept; i--) effects.remove(i);
+        reclaim(false);
+    }
+
+    /**
+     * Hands each dead pooled effect back to its pool once its slots have closed, or every one at once ({@code all}),
+     * as Unreal's pool waits for a component to complete before {@code Reclaim}.
+     */
+    private void reclaim(boolean all) {
+        for (int i = reclaiming.size() - 1; i >= 0; i--) {
+            CgVfxEffect<?> effect = reclaiming.get(i);
+            if (!all && effect.holdsSlots(gpuSteps)) continue;
+            int last = reclaiming.size() - 1;
+            reclaiming.set(i, reclaiming.get(last));
+            reclaiming.remove(last);
+            effect.system = null;
+            effect.reclaim();
+        }
     }
 
     /** Its simulation is dropped with its last effect. */
@@ -471,8 +539,9 @@ public final class CgVfxSystem {
         effect.simulation = simulation;
     }
 
+    /** Its simulation goes with its last effect, unless that one is pooled: its next play would make it again. */
     private void leaveSimulation(CgVfxEffect<?> effect) {
-        if (effect.simulation.remove(effect)) simulations.remove(effect.simulation.key());
+        if (effect.simulation.remove(effect) && !effect.pooled()) simulations.remove(effect.simulation.key());
     }
 
     /**
@@ -756,11 +825,12 @@ public final class CgVfxSystem {
             submitNanos = 0L;
             return;
         }
-        long began = System.nanoTime();
+        long began = System.nanoTime(), mark = CgTrace.allocationBegin(CgVfxTrace.CHANNEL);
         try {
             submitTimed(world);
         } finally {
             submitNanos = System.nanoTime() - began;
+            CgTrace.allocationEnd(CgVfxTrace.CHANNEL, SUBMIT_ALLOCATION, mark);
         }
     }
 
@@ -863,6 +933,8 @@ public final class CgVfxSystem {
             List<CgVfxEmitter> emitters = look.emitters();
             for (int k = 0; k < emitters.size(); k++) {
                 if (!gpuWarming.contains(emitters.get(k))) gpuWarming.add(emitters.get(k));
+                // The window fills only once played, but its kernels are the look's to build now.
+                if (readsWorld(emitters.get(k))) CgVfxVoxelWindow.get().prepare();
             }
             drawWarming.add(look);
             materials.shaders(look, shaders);
@@ -1007,14 +1079,17 @@ public final class CgVfxSystem {
      */
     public void clear() {
         for (int i = 0; i < effects.size(); i++) {
-            effects.get(i).kill();
-            effects.get(i).leaveGroup();
+            CgVfxEffect<?> effect = effects.get(i);
+            effect.kill();
+            effect.leaveGroup();
+            if (effect.pooled()) reclaiming.add(effect);
         }
         effects.clear();
         simulations.clear();
         releaseOwners();
         // Drops the pools, not just their slots: a slot reopened over live particles hands them to its next owner.
         gpuSteps.clear();
+        reclaim(true);
         frame.clear();
         clock = Double.NaN;
         owed = 0f;
@@ -1148,6 +1223,10 @@ public final class CgVfxSystem {
         if (rehearsal != null) endRehearsal();
         for (int i = 0; i < effects.size(); i++) effects.get(i).leaveGroup();
         effects.clear();
+        reclaiming.clear();
+        synchronized (instancePools) {
+            instancePools.clear();
+        }
         simulations.clear();
         releaseOwners();
         for (int i = 0; i < eventListeners.size(); i++) CgVfxParticlePool.stopListening(eventListeners.get(i));

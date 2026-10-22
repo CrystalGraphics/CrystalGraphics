@@ -63,6 +63,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.compute.checked` | true, false | `false` | Kernels run as compute bounds-check every buffer and image access: one out of range is skipped, and the first of each dispatch logged once with its .compute line. Every access tests its index. Read at launch. |
+| `crystalgraphics.compute.logCompiles` | true, false | `false` | Logs each kernel compiled at its first dispatch, each dispatch that waited on a compile, and each kernel prepared ahead: what a warm-up missed. |
 | `crystalgraphics.compute.selfTest` | true, false | `false` | At the first frames, run a kernel of every shape and every GPU op on this context and check each result against Java; logs [crystalgraphics] compute self-test <tier>: PASS\|FAIL, which prodSmoke gathers. |
 | `crystalgraphics.compute.tier` | text | empty | V, G43, G40 or G33: kernels run as that tier would, where the context has what it needs, refused naming what is missing where not; empty for the best. Taken at each context's capability probe. |
 

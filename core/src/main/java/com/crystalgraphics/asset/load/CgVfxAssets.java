@@ -87,7 +87,6 @@ public final class CgVfxAssets {
     private final CgAssetPipeline pipeline;
     private final Map<String, CgAssetRef<?>> refs = new HashMap<>();
     private final Map<CgType, CgAssetPreparer> preparers = new ConcurrentHashMap<>();
-    @Nullable private volatile CgAssetPreparer.PoolSizer poolSizer;
     private final CgPrepareBudget budget = new CgPrepareBudget();
     /** Requested, not yet compiled or failed. */
     private final List<CgAssetRef<?>> loading = new ArrayList<>();
@@ -171,12 +170,6 @@ public final class CgVfxAssets {
         return this;
     }
 
-    /** Sets what grows the particle pools to each bundle's peak. */
-    public CgVfxAssets poolSizer(CgAssetPreparer.PoolSizer sizer) {
-        poolSizer = sizer;
-        return this;
-    }
-
     /** The frame's prepare budget. */
     public CgPrepareBudget budget() {
         return budget;
@@ -252,7 +245,7 @@ public final class CgVfxAssets {
         }
         for (int i = handles.size() - 1; i >= 0; i--) {
             CgLoadHandle h = handles.get(i);
-            if (!h.pooled) pool(h);
+            if (!h.planned) markPlanned(h);
             if (h.fireIfReady()) removeAt(handles, i);
         }
     }
@@ -423,7 +416,7 @@ public final class CgVfxAssets {
     private void plan(CgAssetRef<?> ref, CgAssetLoad l) {
         CgPreparePlan plan = new CgPreparePlan();
         CgAssetPreparer p = preparers.get(ref.kind());
-        if (p != null && ref.definition != null) p.plan(ref.definition, plan);
+        if (p != null && ref.definition != null) p.plan(ref, ref.definition, plan);
         CgAssetData asset = l.asset();
         if (asset != null) {
             List<CgAssetRef<?>> hard = new ArrayList<>();
@@ -447,19 +440,11 @@ public final class CgVfxAssets {
         return true;
     }
 
-    /** Once every asset of {@code h} planned, hands the bundle's peaks to the pool sizer. */
-    private void pool(CgLoadHandle h) {
+    /** Marks {@code h} planned once every asset of it has planned its prepare: until then it is not ready. */
+    private void markPlanned(CgLoadHandle h) {
         List<CgAssetRef<?>> assets = h.assets();
         for (int i = 0, n = assets.size(); i < n; i++) if (assets.get(i).plan == null) return;
-        CgAssetPreparer.PoolSizer sizer = poolSizer;
-        if (sizer != null) {
-            Map<Object, Integer> peaks = new LinkedHashMap<>();
-            for (CgAssetRef<?> a : assets) {
-                for (Map.Entry<Object, Integer> e : a.plan.peaks.entrySet()) peaks.merge(e.getKey(), e.getValue(), Integer::sum);
-            }
-            for (Map.Entry<Object, Integer> e : peaks.entrySet()) sizer.reserve(e.getKey(), e.getValue());
-        }
-        h.pooled = true;
+        h.planned = true;
     }
 
     // ── Changes ──────────────────────────────────────────────────────────────────────────
@@ -557,7 +542,7 @@ public final class CgVfxAssets {
             for (int i = 0; i < refs.size(); i++) {
                 CgPreparePlan plan = new CgPreparePlan();
                 CgAssetPreparer p = preparers.get(refs.get(i).kind());
-                if (p != null) p.plan(definitions.get(i), plan);
+                if (p != null) p.plan(refs.get(i), definitions.get(i), plan);
                 s.plans.add(plan);
             }
             swaps.add(s);

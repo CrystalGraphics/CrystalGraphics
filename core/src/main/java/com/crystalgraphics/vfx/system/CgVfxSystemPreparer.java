@@ -12,6 +12,7 @@ import java.util.function.Supplier;
 
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.asset.load.CgAssetPreparer;
+import com.crystalgraphics.asset.load.CgAssetRef;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.vfx.CgVfxSystem;
@@ -20,7 +21,8 @@ import com.crystalgraphics.vfx.look.CgVfxLook;
 /**
  * A system asset's GPU work before it is {@code READY}: its layers' textures decoded on a worker and uploaded, then its
  * look prepared on a VFX system ({@link CgVfxSystem#prepare}: kernels, pools, slot meshes, every program its draws
- * take). A system played once its bundle is ready then uploads and compiles nothing.
+ * take), and its pool there primed ({@link CgVfxSystem#pool}). A system played once its bundle is ready then uploads
+ * and compiles nothing, and {@link CgVfxSystem#spawn} takes a primed instance.
  *
  * <pre>{@code
  * CgVfxAssets.instance().preparer(CgParticleKinds.SYSTEM, new CgVfxSystemPreparer(CgVfx::world));   // the client's
@@ -55,6 +57,23 @@ public final class CgVfxSystemPreparer implements CgAssetPreparer {
                 vfx.prepare(look);
             }
             return vfx.warmed();
+        });
+    }
+
+    /**
+     * As {@link #plan(Object, Plan)}, then primes the ref's pool on the system with {@code pool_prime_size} instances, at
+     * least one: Unreal primes {@code PoolPrimeSize} at load (0 by default), but a first play that makes its instance
+     * allocates, which a READY asset never should.
+     */
+    @Override
+    @SuppressWarnings("unchecked")   // a SYSTEM preparer's refs are refs to system definitions
+    public void plan(CgAssetRef<?> ref, Object definition, Plan plan) {
+        plan(definition, plan);
+        CgAssetRef<CgVfxSystemDefinition> systemRef = (CgAssetRef<CgVfxSystemDefinition>) ref;
+        int prime = Math.max(((CgVfxSystemDefinition) definition).poolPrimeSize(), 1);
+        plan.warm("pool of " + ((CgVfxSystemDefinition) definition).name(), () -> {
+            system.get().pool(systemRef).prime(prime);
+            return true;
         });
     }
 

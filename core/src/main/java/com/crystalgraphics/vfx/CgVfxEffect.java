@@ -180,7 +180,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
      * A stable random number for this effect, 0..1, which shaders read to tell two effects apart. Drawn from the
      * engine's stream ({@link CgRandom}) unless {@link #seeded} gave it one: Niagara's system instance does the same.
      */
-    protected final float seed;
+    protected float seed;
     /**
      * Its draws' impact frame subject key ({@code CgWorldRenderer.Draw.subject}), never 0: an impact frame it opens
      * names it ({@code CgPostSettings.subject}) to fill this effect alone in ink.
@@ -688,6 +688,72 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     }
 
     /**
+     * Starts it again at {@code (x, y, z)} as its constructor left it, keeping what it built (its arrays, its values'
+     * storage, its warmed look): a pooled instance taken again, Unreal's {@code UNiagaraComponent::OnPooledReuse}. Its
+     * seed is drawn again, or {@link #seeded}'s pending one. Called by its pool on an effect no system plays: one its
+     * system handed back ({@link #reclaim}), or one primed and never played.
+     */
+    protected void pooledReuse(double x, double y, double z) {
+        if (system != null) throw new IllegalStateException("reused while it plays: " + this);
+        originX = x;
+        originY = y;
+        originZ = z;
+        simulation = null;
+        simulationSlot = -1;
+        owner = null;
+        ownerSlot = -1;
+        followEntity = -1;
+        followPoint = 0;
+        clock = null;
+        clockVersion = -1;
+        timeRate = 1f;
+        followKeep = false;
+        followDx = Double.NaN;
+        followDy = followDz = 0;
+        followBoxX = followBoxY = followBoxZ = 0;
+        followHalfX = followHalfY = followHalfZ = 0f;
+        followTurn.identity();
+        ownTurn.identity();
+        orientation.identity();
+        startAge = 0f;
+        seeking = false;
+        failure = null;
+        killed = false;
+        Arrays.fill(scheduled, 0, scheduledCount, null);
+        scheduledCount = 0;
+        scalability = null;
+        sortGroup = null;
+        boundMinX = Float.POSITIVE_INFINITY;
+        boundMaxX = Float.NEGATIVE_INFINITY;
+        boundMinY = boundMinZ = boundMaxY = boundMaxZ = 0f;
+        asleep = false;
+        sleptFor = unseenFor = 0f;
+        wanted = true;
+        cullDistance = 0f;
+        lowered = 0;
+        distanceShare = 1f;
+        look.copyValuesInto(values);
+        state = State.PLAYING;
+        groundY = Double.NaN;
+        if (held != null) {
+            Arrays.fill(held, null);
+            Arrays.fill(heldParams, null);
+        }
+        if (hitListeners != null) hitListeners.clear();
+        dueCount = 0;
+        admittedCount = 0;
+        tweens = 0;
+        presence = 1f;
+        ending = null;
+        endingAge = 0f;
+        rowsFrame = -1;
+        age = 0f;
+        float[] pending = PENDING_SEED.get();
+        seed = Float.isNaN(pending[0]) ? CgRandom.unit() : pending[0];
+        pending[0] = Float.NaN;
+    }
+
+    /**
      * A post volume applying {@code settings} at {@code priority}, centred at {@code (x, y, z)} relative to the
      * origin, at weight 0: size it, then weigh it each tick. It closes when the effect dies.
      *
@@ -1104,6 +1170,25 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     /** Whether it has scheduled {@code emitter} before: one killed and started again asks for a slot anew. */
     private boolean isScheduled(CgVfxEmitterInstance emitter) {
         for (int i = 0; i < scheduledCount; i++) if (scheduled[i] == emitter) return true;
+        return false;
+    }
+
+    /**
+     * Whether its system hands it back to a pool once it has died and its slots have closed ({@link #reclaim}), rather
+     * than dropping it: a pooled system instance.
+     */
+    protected boolean pooled() {
+        return false;
+    }
+
+    /** Hands it back to its pool, its system having dropped it and its slots closed: only where {@link #pooled}. */
+    protected void reclaim() {
+        throw new IllegalStateException(this + " has no pool");
+    }
+
+    /** Whether an instance it scheduled still holds a slot of {@code steps}: coasting, or killed and not yet stepped. */
+    final boolean holdsSlots(CgVfxGpuSteps steps) {
+        for (int i = 0; i < scheduledCount; i++) if (steps.of(scheduled[i]) != null) return true;
         return false;
     }
 

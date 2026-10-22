@@ -61,6 +61,9 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
     /** The standing request's source: the lowest until something asks. */
     private CgVfxExecutionSource source = CgVfxExecutionSource.SCALABILITY;
     private boolean grounded;
+    /** The pool it goes back to once it completes; null for one made by {@code new}. */
+    @Nullable
+    private CgVfxSystemInstancePool pool;
 
     public CgVfxSystemInstance(CgVfxSystemDefinition definition, double x, double y, double z) {
         this(definition, null, x, y, z);
@@ -92,6 +95,41 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
             made[i].start(0f, 0f, 0f);
         }
         return made;
+    }
+
+    /** Made by {@code pool}, which takes it back once it completes. */
+    CgVfxSystemInstance(CgVfxSystemInstancePool pool, CgVfxSystemDefinition definition,
+                        @Nullable CgAssetFollower<CgVfxSystemDefinition> follower) {
+        this(definition, follower, 0, 0, 0);
+        this.pool = pool;
+    }
+
+    /**
+     * Starts it again at {@code (x, y, z)} as made: its effect's state, its emitters reused and started, its behaviour
+     * made anew. Its pool's, on one no system plays.
+     */
+    @SuppressWarnings("unchecked")
+    void reuse(double x, double y, double z) {
+        pooledReuse(x, y, z);
+        requested = CgVfxExecutionState.ACTIVE;
+        source = CgVfxExecutionSource.SCALABILITY;
+        grounded = false;
+        for (int i = 0; i < emitters.length; i++) {
+            emitters[i].reuse(seed + i * 0.137f);
+            emitters[i].start(0f, 0f, 0f);
+        }
+        behaviour = definition.behaviour() == null ? null : (B) definition.behaviour().make(this);
+    }
+
+    @Override
+    protected boolean pooled() {
+        return pool != null;
+    }
+
+    @Override
+    protected void reclaim() {
+        if (pool == null) throw new IllegalStateException(definition.name() + " was made by new, not taken from a pool");
+        pool.reclaim(this);
     }
 
     /** {@code look}'s emitters played once from the origin: a burst ({@link CgVfxSystemDefinition#of(CgVfxLook)}). */
