@@ -1968,13 +1968,21 @@ public final class CgVfxEmitterAssets {
     // ── emitter_state ────────────────────────────────────────────────────────────────────
 
     private static Map<String, Object> state(CgVfxEmitterState s) {
-        return map("loop", s.loopBehavior().name().toLowerCase(Locale.ROOT), "loop_count", s.loopCount(),
-                "duration", range(s.durationMin(), s.durationMax()),
+        // A loop that never ends is Niagara's infinite duration mode, which the format offers a single loop alone.
+        boolean endless = s.durationMax() == Float.POSITIVE_INFINITY;
+        if (endless && s.loopBehavior() != CgVfxLoopBehavior.ONCE) {
+            throw new IllegalArgumentException("a " + s.loopBehavior() + " emitter state of endless loops has no form in the format");
+        }
+        Map<String, Object> out = map("loop", s.loopBehavior().name().toLowerCase(Locale.ROOT), "loop_count", s.loopCount(),
+                "duration_mode", endless ? "infinite" : "fixed",
+                "duration", endless ? null : range(s.durationMin(), s.durationMax()),
                 "recalculate_each_loop", s.recalculatesDurationEachLoop(),
                 "delay", range(s.delayMin(), s.delayMax()),
                 "delay_first_loop_only", s.delaysFirstLoopOnly(),
                 "recalculate_delay_each_loop", s.recalculatesDelayEachLoop(),
                 "inactive", s.inactiveResponse().name().toLowerCase(Locale.ROOT));
+        if (endless) out.remove("duration");
+        return out;
     }
 
     /**
@@ -2016,7 +2024,8 @@ public final class CgVfxEmitterAssets {
 
     private static CgVfxEmitterState state(Map<?, ?> in) {
         CgVfxLoopBehavior loop = CgVfxLoopBehavior.valueOf(String.valueOf(in.get("loop")).toUpperCase(Locale.ROOT));
-        float[] d = rangeOf(in.get("duration"));
+        float[] d = loop == CgVfxLoopBehavior.ONCE && "infinite".equals(in.get("duration_mode"))
+                ? new float[]{Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY} : rangeOf(in.get("duration"));
         int count = in.get("loop_count") instanceof Number n ? n.intValue() : 1;
         CgVfxEmitterState s = switch (loop) {
             case ONCE -> CgVfxEmitterState.once(d[0], d[1]);
@@ -2672,8 +2681,10 @@ public final class CgVfxEmitterAssets {
                 in.put(p.name(), CgUnits.UNREAL.toHost(p.defaultValue(), p));
             }
         }
+        // A gate reads its input's value hidden or not, as Unreal's EditCondition does: judged before any is dropped.
+        Map<Object, Object> filled = new LinkedHashMap<>(in);
         for (CgProperty p : declared.inputs().properties()) {
-            if (!gateHolds(p, in)) {
+            if (!gateHolds(p, filled)) {
                 in.remove(p.name());
             } else if (!in.containsKey(p.name()) && p.flags().contains(CgPropertyFlag.NO_DEFAULT)) {
                 throw new IllegalArgumentException(entry.get("module") + ".inputs." + p.name()

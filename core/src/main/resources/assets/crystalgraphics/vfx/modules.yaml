@@ -9,7 +9,8 @@ modules:
   - { id: emitter_state, groups: [emitter_update], once: true, order: emitter, analytic: true, unreal: { niagara: EmitterState, cascade: [Required, Spawn] }, inputs: [
       { name: loop, type: enum, values: [infinite, multiple, once], default: infinite },
       { name: loop_count, type: int, default: 1, timeline: loop_count, visible_when: { loop: multiple } },
-      { name: duration, type: float, quantity: time, default: 1 },
+      { name: duration_mode, type: enum, values: [fixed, infinite], default: fixed, visible_when: { loop: once } },
+      { name: duration, type: float, quantity: time, default: 1, visible_when: { duration_mode: fixed } },
       { name: recalculate_each_loop, type: bool, default: false, visible_when: { loop: [infinite, multiple] } },
       { name: delay, type: float, quantity: time, default: 0 },
       { name: delay_first_loop_only, type: bool, default: false, visible_when: { loop: [infinite, multiple] } }, { name: recalculate_delay_each_loop, type: bool, default: false, visible_when: { loop: [infinite, multiple] } },
