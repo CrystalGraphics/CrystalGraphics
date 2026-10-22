@@ -444,24 +444,29 @@ public final class CgVfxFrame {
     }
 
     /**
-     * A slot light on a tube slot: a light every half reach along {@code path}, at each ring's radius {@code s}, standing
-     * for the path since the last, so its colour is times that length over {@code s} as well as {@code s²}.
+     * A slot light on a tube slot: a chain of tube lights along {@code path}, one per stretch of half a reach, chord to
+     * chord so it follows the bend, each at its end ring's radius {@code s}. A tube is brightest across its middle
+     * ({@code 1/d²} there, as a point), so one tube the path's length would leave its ends dark; a stretch's colour is
+     * times its length and {@code s}, so the chain far off sums to a line of the colour times {@code s} a block.
      */
     private void pathLights(CgVfxEffect<?> effect, CgVfxMaterials.Resolved r, CgVfxPath path) {
         CgVfxMaterials.light(effect, r, light);
         float presence = effect.presence();
         int last = path.count() - 1;
-        if (presence <= 0f || light[3] <= 0f || last < 0) return;
-        float since = 0f;
-        for (int i = 0; i <= last; i++) {
-            if (i > 0) since += path.arc(i) - path.arc(i - 1);
-            float s = path.radius(i);
+        if (presence <= 0f || light[3] <= 0f || last < 1) return;
+        int from = 0;
+        for (int i = 1; i <= last; i++) {
+            float s = path.radius(i), since = path.arc(i) - path.arc(from);
             if (s <= 0f || since < 0.5f * light[3] * s && i < last) continue;
-            float reach = light[3] * s, k = presence * since * s;
-            since = 0f;
-            effect.bound(path.x(i), path.y(i), path.z(i), reach);
-            world.lights().addLinear(effect.originX + path.x(i), effect.originY + path.y(i), effect.originZ + path.z(i),
-                    reach, light[0] * k, light[1] * k, light[2] * k, 0f);
+            float dx = path.x(i) - path.x(from), dy = path.y(i) - path.y(from), dz = path.z(i) - path.z(from);
+            float chord = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+            float x = 0.5f * (path.x(i) + path.x(from)), y = 0.5f * (path.y(i) + path.y(from)), z = 0.5f * (path.z(i) + path.z(from));
+            float reach = light[3] * s + 0.5f * chord, k = presence * since * s;
+            from = i;
+            if (chord <= 0f) continue;
+            effect.bound(x, y, z, reach);
+            world.lights().addLinear(effect.originX + x, effect.originY + y, effect.originZ + z, reach, light[0] * k,
+                    light[1] * k, light[2] * k, 0f).tube(dx, dy, dz, chord);
             CgVfxTrace.count(LIGHTS, 1);
         }
     }

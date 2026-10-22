@@ -255,8 +255,9 @@ public final class CgVfxSlotRenderer {
      * <ul>
      *   <li><b>A mesh slot</b>: at the draw's point, its size {@code s} the transform's x scale (the placed sphere's
      *       radius), its colour times the draw's third number (its strength, {@code ez}).</li>
-     *   <li><b>A tube slot</b>: a light every half reach along the path, at each ring's radius {@code s}, weighted by the
-     *       path's length it stands for over {@code s}.</li>
+     *   <li><b>A tube slot</b>: a chain of tube lights (Unreal's {@code SourceLength}), one per stretch of half a reach,
+     *       chord to chord along the path, {@code s} each stretch's end ring's radius, weighted by the stretch's length
+     *       over {@code s}; its reach measured past the stretch's ends.</li>
      * </ul>
      * Its reach is {@code attenuationRadius × s}. Its colour is {@code lightColor × intensity × s²} times the
      * effect's presence: under the inverse square in blocks, that is {@code lightColor × intensity}

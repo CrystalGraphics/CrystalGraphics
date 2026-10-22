@@ -412,7 +412,8 @@ CgVfxSlotRenderer head = CgVfxSlotRenderer.light("head_light", CgBeamBody.HEAD)
 
 - **Where it is, and `s`**: on a mesh slot, at the draw's point, `s` the size the effect places the slot's sphere at;
   its brightness is also times the draw's strength, the third of its four numbers (a charge ball's fade, a blast
-  light's burn). On a tube slot, a light every half reach along the path, `s` each ring's radius.
+  light's burn). On a tube slot, a chain of tube lights along the path, one per half
+  reach, following its bends, `s` each stretch's ring radius: the ground under a beam lit along its whole length.
 - **Only mesh and tube slots take one.** A light with a `material`, `size` or `mesh`, an entry with neither a material
   nor a light, and a bind to any other field fail at load, naming the entry.
 - **It fades with its effect** (`presence()`) and drops out at a quality tier below its `quality`, as a material does.
