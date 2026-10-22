@@ -379,6 +379,46 @@ CgVfxLook look = CgEnergyWave.kamehameha().derive().slot(shell).build();
 - **Binds read user parameters alone**, `user.<name>`; a `particles.*` bind fails at load.
 - An unknown slot, or a mesh on a slot that is not a mesh slot, fails at load, naming the entry.
 
+### A light on a slot
+
+A slot can light what is round it instead of drawing a material: a `light` in place of `material`, `size` and `mesh`.
+It is Unreal's point light (`LightColor`, `Intensity`, `AttenuationRadius`), added to the world's lights each frame
+the slot draws, and `bind` sets its fields by the same names. The ground under a beam floods with its colour, a wall
+beside a blast glows.
+
+```yaml
+slots:
+  - id: light
+    slot: crystalgraphics:blast/light
+    light: { light_color: { argb: 0xFFFFC080 }, intensity: 4, attenuation_radius: 2.2 }
+  - id: head_light
+    slot: crystalgraphics:wave/head
+    light: { intensity: 4, attenuation_radius: 9 }
+    bind: { light_color: user.glow }         # the effect's own colour, read every frame
+```
+
+```java
+CgVfxSlotRenderer glow = CgVfxSlotRenderer.light("light", CgVfxBlast.LIGHT)
+        .lightColor(0xFFFFC080, 1f).intensity(4f).attenuationRadius(2.2f).build();
+CgVfxSlotRenderer head = CgVfxSlotRenderer.light("head_light", CgBeamBody.HEAD)
+        .intensity(4f).attenuationRadius(9f).bind("light_color", CgEnergyWave.GLOW).build();
+```
+
+| Field | Default | Means |
+|---|---|---|
+| `light_color` | white | its colour, linear; `{ argb, intensity }` is decoded from sRGB, then times its intensity and alpha |
+| `intensity` | 1 | how bright it is where it is the slot's size `s` away; past that it falls off as the square of the distance |
+| `attenuation_radius` | 1 | its reach, times `s`: nothing past it |
+
+- **Where it is, and `s`**: on a mesh slot, at the draw's point, `s` the size the effect places the slot's sphere at;
+  its brightness is also times the draw's strength, the third of its four numbers (a charge ball's fade, a blast
+  light's burn). On a tube slot, a light every half reach along the path, `s` each ring's radius.
+- **Only mesh and tube slots take one.** A light with a `material`, `size` or `mesh`, an entry with neither a material
+  nor a light, and a bind to any other field fail at load, naming the entry.
+- **It fades with its effect** (`presence()`) and drops out at a quality tier below its `quality`, as a material does.
+- It lights the opaque scene behind each pixel, with no surface colour or facing: Minecraft keeps neither for its
+  world.
+
 ## Easy to get wrong
 
 - **The mode is not the shader's queue.** A shader in the opaque queue drawn `ADDITIVE` still draws with the opaque

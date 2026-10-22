@@ -443,10 +443,11 @@ public class CgBibleGateTest {
                         || t.kind() == CgValueType.Kind.BINARY_REF || t.kind() == CgValueType.Kind.ENUM
                         || t.kind() == CgValueType.Kind.ELEMENT_REF;
                 case "object": return t.kind() == CgValueType.Kind.STRUCT || t.kind() == CgValueType.Kind.MAP || t.kind() == CgValueType.Kind.CURVE
-                        || t.kind() == CgValueType.Kind.DISPATCH || t.kind() == CgValueType.Kind.TREE;
+                        || t.kind() == CgValueType.Kind.DISPATCH || t.kind() == CgValueType.Kind.TREE
+                        || t.kind() == CgValueType.Kind.COLOUR;
                 case "array": return t.kind() == CgValueType.Kind.LIST || t.kind() == CgValueType.Kind.ID_LIST
                         || t.kind() == CgValueType.Kind.ARRAY || t.kind() == CgValueType.Kind.VEC2 || t.kind() == CgValueType.Kind.VEC3
-                        || t.kind() == CgValueType.Kind.VEC4;
+                        || t.kind() == CgValueType.Kind.VEC4 || t.kind() == CgValueType.Kind.COLOUR;
                 case "boolean": return t.kind() == CgValueType.Kind.BOOL;
                 case "number": return t.kind() == CgValueType.Kind.FLOAT || t.kind() == CgValueType.Kind.INT;
                 case "integer": return t.kind() == CgValueType.Kind.INT;

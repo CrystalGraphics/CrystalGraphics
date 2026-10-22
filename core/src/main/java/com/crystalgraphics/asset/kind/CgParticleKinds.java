@@ -349,10 +349,18 @@ public final class CgParticleKinds {
             .property("fixed", FLOAT).quantity(CgQuantity.TIME)
             .register();
 
+    /** A slot's light in place of a material: Unreal's point light, its reach times the slot's size. */
+    static final CgType SLOT_LIGHT = CgTypes.struct("crystalgraphics:system.slot_light")
+            .property("light_color", CgValueType.COLOUR)
+            .property("intensity", FLOAT).defaultValue(1.0)
+            .property("attenuation_radius", FLOAT).defaultValue(1.0)
+            .register();
+
     /** What a native behaviour's slot draws (ours, with no Unreal counterpart). */
     static final CgType SLOT = CgTypes.element("crystalgraphics:system.slot")
             .property("slot", CgValueType.NAMESPACED_ID).required()
             .property("material", hard("material")).flags(CgPropertyFlag.STRUCTURAL)
+            .property("light", CgValueType.struct(SLOT_LIGHT)).flags(CgPropertyFlag.STRUCTURAL)
             .property("bind", mapOfValues())
             .property("size", FLOAT).quantity(CgQuantity.LENGTH).forms(CgValueForm.CONSTANT)
             .property("mesh", VALUE)

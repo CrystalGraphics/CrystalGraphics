@@ -72,7 +72,11 @@ public final class CgVfxLook {
             this.renderer = renderer;
             this.slotRenderer = slotRenderer;
             this.order = order;
+            this.partName = renderer != null ? String.valueOf(renderer.common().material())
+                    : slotRenderer.light() != null ? "light/" + slotRenderer.id() : slotRenderer.material();
         }
+
+        private final String partName;
 
         /** The slot renderer it draws; null for an emitter's renderer. */
         public CgVfxSlotRenderer slotRenderer() {
@@ -89,9 +93,9 @@ public final class CgVfxLook {
             return renderer != null ? renderer.common().quality() : slotRenderer.quality();
         }
 
-        /** What a skipped part's name is matched against: its material's id. */
+        /** What a skipped part's name is matched against: its material's id, or {@code light/<id>} for a slot's light. */
         public String partName() {
-            return renderer != null ? String.valueOf(renderer.common().material()) : slotRenderer.material();
+            return partName;
         }
 
         /** The mesh it draws on a mesh slot; null for the slot's own. */
@@ -346,7 +350,7 @@ public final class CgVfxLook {
             Map<String, Object> bind;
             if (p.slotRenderer != null) {
                 sb.append(p.slotRenderer.id()).append(" on ").append(p.slotRenderer.slot()).append(" size ")
-                        .append(p.slotRenderer.size()).append(' ').append(p.slotRenderer.material());
+                        .append(p.slotRenderer.size()).append(' ').append(p.partName);
                 bind = p.slotRenderer.bind();
             } else {
                 sb.append(p.renderer.common().id()).append(" of ").append(p.emitter.name()).append(' ')

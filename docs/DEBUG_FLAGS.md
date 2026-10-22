@@ -292,7 +292,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.vfx.parallelBooks` | 1 to 2147483647 | `4096` | Effects with emitters due a tick past which their books run on the workers, in batches of one simulation's effects; fewer book on the render thread alone. |
 | `crystalgraphics.vfx.sharedDistortion` | true, false | `false` | Measurement: distortion layers after every effect's draws, so they share one copy of the target. |
 | `crystalgraphics.vfx.simBudgetMs` | 0.0 to 1000.0 | `12.0` | Wall milliseconds an update may spend catching up ticks before it drops the rest and effects slow down. |
-| `crystalgraphics.vfx.skip` | text | empty | Comma-separated: layers whose shader path contains any of these draw nothing, to see what a frame's GPU time is spent on, one profile per group (body_light,haze). |
+| `crystalgraphics.vfx.skip` | text | empty | Comma-separated: layers whose shader path (light/<id> for a slot's light) contains any of these draw nothing, to see what a frame's GPU time is spent on, one profile per group (light/,haze). |
 | `crystalgraphics.vfx.skipIdleEmitters` | true, false | `true` | An emitter before its first spawn or after its last death submits no draws. |
 | `crystalgraphics.vfx.traceAuthority` | true, false | `false` | Logs each cast a server's wave makes for its beam: from where, along what, what it met, and every entity its level lists along the first 32 blocks. |
 

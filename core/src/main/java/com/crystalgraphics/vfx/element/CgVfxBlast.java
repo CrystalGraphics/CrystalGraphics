@@ -139,7 +139,7 @@ public final class CgVfxBlast extends CgVfxElement {
 
     /** The dome: a sphere facing as it was ignited. */
     public static final CgVfxSlot DOME = CgVfxSlot.mesh("crystalgraphics:blast/dome");
-    /** The dome's light on what is round it: a sphere the dome's size, burning down as it cools. */
+    /** The dome's light on what is round it: a light the dome's size, burning down as it cools ({@code .z}). */
     public static final CgVfxSlot LIGHT = CgVfxSlot.mesh("crystalgraphics:blast/light");
     /** Its heart: a sphere half the dome's, turning, while it glows. */
     public static final CgVfxSlot CORE = CgVfxSlot.mesh("crystalgraphics:blast/core");
@@ -153,8 +153,8 @@ public final class CgVfxBlast extends CgVfxElement {
     private static final String BEAM = "crystalgraphics:shaders/vfx/beam/", AIR = "crystalgraphics:shaders/vfx/air/";
     /** The dome, its light on what is round it, and the debris thrown off it. */
     public static final CgVfxKit FIREBALL = CgVfxKit.of("crystalgraphics:blast/fireball")
-            .slot(CgVfxSlotRenderer.of("light", LIGHT).material(material("light", BEAM + "orb_light.shader",
-                    CgVfxLook.BAND, b -> {})).bind("_Glow", "user.glow").size(2.2f).build())
+            .slot(CgVfxSlotRenderer.light("light", LIGHT).intensity(4f).attenuationRadius(2.2f)
+                    .bind("light_color", "user.glow").build())
             .slot(CgVfxSlotRenderer.of("dome", DOME).material(material("dome", BEAM + "blast_dome.shader",
                     CgVfxLook.SURFACE, b -> {})).bind("_Core", "user.core").bind("_Shell", "user.shell").build())
             .slot(CgVfxSlotRenderer.of("debris", DEBRIS).material(material("debris", BEAM + "impact_splash.shader",

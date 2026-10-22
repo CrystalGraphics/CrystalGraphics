@@ -43,6 +43,7 @@ import com.crystalgraphics.vfx.path.CgVfxPath;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
 import com.crystalgraphics.vfx.render.CgVfxQuads;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
+import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import com.crystalgraphics.vfx.trail.CgVfxTrail;
@@ -84,7 +85,7 @@ public final class CgVfxFrame {
     private static final int DRAWS_MESH = CgTrace.name("vfx.draws.mesh"), DRAWS_RIBBONS = CgTrace.name("vfx.draws.ribbons"),
             DRAWS_BILLBOARD = CgTrace.name("vfx.draws.billboard"), DRAWS_PATH_RIBBONS = CgTrace.name("vfx.draws.path-ribbons"),
             DRAWS_TRAIL = CgTrace.name("vfx.draws.trail"), DRAWS_VOLUME = CgTrace.name("vfx.draws.volume"),
-            DRAWS_FLUID = CgTrace.name("vfx.draws.fluid"),
+            DRAWS_FLUID = CgTrace.name("vfx.draws.fluid"), LIGHTS = CgTrace.name("vfx.lights.slot"),
             DRAWS_PARTICLE_GPU = CgTrace.name("vfx.draws.particle-gpu"), DRAWS_PARTICLE_SETS = CgTrace.name("vfx.draws.particle-sets"),
             GPU_ZONE = CgTrace.name("vfx.particles.gpu");
     /**
@@ -366,6 +367,10 @@ public final class CgVfxFrame {
         for (CgVfxLook.Placed placed : on) {
             if (skips(effect, placed)) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
+            if (placed.slotRenderer().light() != null) {
+                pathLights(effect, r, path);
+                continue;
+            }
             boundPath(effect, path, CgVfxMaterials.size(effect, r));
             CgMesh mesh = placed.volume() ? system.volumeMesh() : placed.closed() ? system.closedTubeMesh() : system.tubeMesh();
             system.tube().submit(world, mesh, materials.material(r, CgVfxSlot.Kind.TUBE), placed, path, row, effect,
@@ -408,14 +413,63 @@ public final class CgVfxFrame {
         CgVfxLook look = effect.look();
         for (CgVfxLook.Placed placed : look.on(slot)) {
             if (skips(effect, placed)) continue;
-            CgVfxTrace.count(DRAWS_MESH, 1);
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
+            if (placed.slotRenderer().light() != null) {
+                pointLight(effect, r, x, y, z, transform, presence * ez);
+                continue;
+            }
+            CgVfxTrace.count(DRAWS_MESH, 1);
             CgMaterial material = materials.material(r, CgVfxSlot.Kind.MESH);
             CgMeshLods own = mesh != null ? mesh : placed.mesh();
             dress(own != null ? world.draw(own, material) : world.draw(system.sphereMesh(), material), effect, r, x, y, z,
                     transform, own != null ? own.reach() : 1f, presence, ex, ey, ez, ew).submit();
         }
     }
+
+    /**
+     * A slot light on a mesh slot, at {@code (x, y, z)} from the origin, its size the transform's x scale: its colour
+     * times {@code strength}, the effect's presence and {@code (100 s)²} ({@link CgVfxSlotRenderer.Light}).
+     */
+    private void pointLight(CgVfxEffect<?> effect, CgVfxMaterials.Resolved r, float x, float y, float z,
+                            Matrix4fc transform, float strength) {
+        float s = (float) Math.sqrt(transform.m00() * transform.m00() + transform.m01() * transform.m01()
+                + transform.m02() * transform.m02());
+        CgVfxMaterials.light(effect, r, light);
+        float reach = light[3] * s, k = strength * effect.presence() * CM_SQUARED * s * s;
+        if (reach <= 0f || k <= 0f) return;
+        effect.bound(x, y, z, reach);
+        world.lights().addLinear(effect.originX + x, effect.originY + y, effect.originZ + z, reach, light[0] * k,
+                light[1] * k, light[2] * k, 0f);
+        CgVfxTrace.count(LIGHTS, 1);
+    }
+
+    /**
+     * A slot light on a tube slot: a light every half reach along {@code path}, at each ring's radius {@code s}, standing
+     * for the path since the last, so its colour is times that length over {@code s} as well as {@code (100 s)²}.
+     */
+    private void pathLights(CgVfxEffect<?> effect, CgVfxMaterials.Resolved r, CgVfxPath path) {
+        CgVfxMaterials.light(effect, r, light);
+        float presence = effect.presence();
+        int last = path.count() - 1;
+        if (presence <= 0f || light[3] <= 0f || last < 0) return;
+        float since = 0f;
+        for (int i = 0; i <= last; i++) {
+            if (i > 0) since += path.arc(i) - path.arc(i - 1);
+            float s = path.radius(i);
+            if (s <= 0f || since < 0.5f * light[3] * s && i < last) continue;
+            float reach = light[3] * s, k = presence * CM_SQUARED * since * s;
+            since = 0f;
+            effect.bound(path.x(i), path.y(i), path.z(i), reach);
+            world.lights().addLinear(effect.originX + path.x(i), effect.originY + path.y(i), effect.originZ + path.z(i),
+                    reach, light[0] * k, light[1] * k, light[2] * k, 0f);
+            CgVfxTrace.count(LIGHTS, 1);
+        }
+    }
+
+    /** Unreal's simple light falls off as {@code 1 / (d² + 1)} in centimetres: a block's in its units, squared. */
+    private static final float CM_SQUARED = 1.0e4f;
+    /** A slot light's colour and reach, filled per light. */
+    private final float[] light = new float[4];
 
     /**
      * Draws every layer on {@code slot}, a ribbons slot, on the ribbon mesh ({@code CgVfxRibbons}), its unit cube placed

@@ -101,8 +101,8 @@ import java.util.function.IntConsumer;
 public final class CgVfxSystem {
 
     private static final CgVar.Text SKIP = CgVar.text("crystalgraphics.vfx.skip", "", CgVar.DEV,
-            "Comma-separated: layers whose shader path contains any of these draw nothing, to see what a frame's GPU"
-                    + " time is spent on, one profile per group (body_light,haze).");
+            "Comma-separated: layers whose shader path (light/<id> for a slot's light) contains any of these draw nothing,"
+                    + " to see what a frame's GPU time is spent on, one profile per group (light/,haze).");
     private static final CgVar.Num CPU_BUDGET_MS = CgVar.number("crystalgraphics.vfx.cpuBudgetMs", 4f, 0.1f, 1000f, CgVar.DEV,
             "CPU milliseconds a frame a system's updates and draws may take before its scalability shrinks every distance and cap.");
     private static final CgVar.Num SIM_BUDGET_MS = CgVar.number("crystalgraphics.vfx.simBudgetMs", 12f, 0f, 1000f, CgVar.DEV,
@@ -114,11 +114,12 @@ public final class CgVfxSystem {
             "Measurement: distortion layers after every effect's draws, so they share one copy of the target.");
 
     /**
-     * Layers whose shader path contains any of these draw nothing, in every system: to see or time a frame without
-     * them. {@code -Dcrystalgraphics.vfx.skip=haze,body_light} sets it at launch and {@link #skip(String...)} live.
+     * Layers whose shader path ({@code light/<id>} for a slot's light) contains any of these draw nothing, in every
+     * system: to see or time a frame without them. {@code -Dcrystalgraphics.vfx.skip=haze,light/} sets it at launch and
+     * {@link #skip(String...)} live.
      *
      * <pre>{@code
-     * CgVfxSystem.skip("body_light", "orb_light");  // the beams' light pools off
+     * CgVfxSystem.skip("light/");                   // every slot's light off
      * CgVfxSystem.skip();                           // everything back
      * }</pre>
      */

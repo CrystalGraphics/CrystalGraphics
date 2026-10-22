@@ -1884,12 +1884,10 @@ public final class Bolt extends CgVfxEffect<Bolt> {
     public static final CgVfxParam.Color CORE = SCHEMA.color("core", 0xFFFFE9A0, 1.5f);
     public static final CgVfxSlot ORB = CgVfxSlot.mesh("mymod:bolt/orb");
 
-    static final CgMaterialDefinition LIGHT = CgMaterialDefinition.of("mymod:materials/bolt_light",
-            "crystalgraphics:shaders/vfx/beam/orb_light.shader").order(CgVfxLook.BAND).build();
     static final CgMaterialDefinition BODY = CgMaterialDefinition.of("mymod:materials/bolt_orb",
             "mymod:shaders/vfx/bolt_orb.shader").order(CgVfxLook.SURFACE).build();
     public static final CgVfxKit KIT = CgVfxKit.of("mymod:bolt")
-            .slot(CgVfxSlotRenderer.of("light", ORB).material(LIGHT).size(6f).bind("_Glow", CORE).build())
+            .slot(CgVfxSlotRenderer.light("light", ORB).intensity(4f).attenuationRadius(6f).bind("light_color", CORE).build())
             .slot(CgVfxSlotRenderer.of("orb", ORB).material(BODY).bind("_Core", CORE).build())
             .build();
     public static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(KIT).build();
