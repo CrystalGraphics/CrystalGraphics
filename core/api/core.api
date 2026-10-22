@@ -1895,6 +1895,7 @@ com/crystalgraphics/api/texture/CgTextures
   method public,static frames (Ljava/lang/String;ILcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2DArray;
   method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
   method public,static of (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
+  method public,static stackedCube (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTextureCubemap;
   method public,static volume (Lcom/crystalgraphics/api/texture/CgTextureSpec;[Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture3D;
   method public,static volume (Ljava/lang/String;I)Lcom/crystalgraphics/gl/texture/CgTexture3D;
   method public,static volume (Ljava/lang/String;ILcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture3D;
@@ -5467,12 +5468,14 @@ com/crystalgraphics/gl/texture/CgTextureCubemap
   field public,static,final POSITIVE_Z I
   method public getSourcePaths ()[Ljava/lang/String;
   method public getTarget ()I
+  method public upload (I[Ljava/nio/ByteBuffer;II)V
   method public upload ([Lcom/crystalgraphics/util/io/CgTextureIO$CgImageData;)V
   method public uploadFace (IIIIIILcom/crystalgraphics/gpu/CgUploadLease;II)V
   method public uploadFace (IIIIIILjava/nio/ByteBuffer;II)V
   method public,static create (Lcom/crystalgraphics/api/texture/CgTextureSpec;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTextureCubemap;
   method public,static createDirect (Lcom/crystalgraphics/api/texture/CgTextureSpec;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTextureCubemap;
   method public,static createEmpty (ILcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTextureCubemap;
+  method public,static createStacked (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTextureCubemap;
 com/crystalgraphics/gl/texture/CgTextureManager
   access public,final
   extends java/lang/Object
@@ -10795,6 +10798,7 @@ com/crystalgraphics/util/CgContentHash
 com/crystalgraphics/util/CgHalfFloat
   access public,final
   extends java/lang/Object
+  method public,static halves ([F)Ljava/nio/ByteBuffer;
   method public,static toFloat (S)F
   method public,static toHalf (F)S
 com/crystalgraphics/util/CgRandom
@@ -10862,6 +10866,22 @@ com/crystalgraphics/util/io/CgIO$Reads
   implements java/lang/AutoCloseable
   method public close ()V
   method public paths ()Ljava/util/Set;
+com/crystalgraphics/util/io/CgRadianceHdr
+  access public,final
+  extends java/lang/Object
+  method public,static is (Ljava/lang/String;)Z
+  method public,static read (Ljava/lang/String;)Lcom/crystalgraphics/util/io/CgRadianceHdr$Image;
+  method public,static read ([BLjava/lang/String;)Lcom/crystalgraphics/util/io/CgRadianceHdr$Image;
+com/crystalgraphics/util/io/CgRadianceHdr$Image
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (II[F)V
+  method public height ()I
+  method public rgba ()[F
+  method public width ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/util/io/CgTextureIO
   access public,final
   extends java/lang/Object

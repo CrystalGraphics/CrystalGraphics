@@ -18,6 +18,7 @@ import java.util.Locale;
  * static final CgTexture2DArray PAINTINGS = CgTextures.array(CgTextureSpec.RGBA8_LINEAR,
  *         "mymod:textures/vfx/wide.png", "mymod:textures/vfx/thin.png");
  * static final CgTexture3D LUT = CgTextures.volume("mymod:textures/lut/lut_%d.png", 16);                 // lut_0..15
+ * static final CgTexture2D RAMP = CgTextures.of("mymod:textures/fx/ramp.hdr", CgTextureSpec.RGBA16F_LINEAR);  // float colour
  * static final CgTextureCubemap SKY = CgTextures.cubemap(CgTextureSpec.RGBA8_LINEAR,
  *         "mymod:sky/px.png", "mymod:sky/nx.png", "mymod:sky/py.png", "mymod:sky/ny.png", "mymod:sky/pz.png", "mymod:sky/nz.png");
  * }</pre>
@@ -158,6 +159,20 @@ public final class CgTextures {
     public static CgTextureCubemap cubemap(CgTextureSpec spec, String posX, String negX, String posY, String negY,
                                            String posZ, String negZ) {
         return CgTextureCubemap.create(spec, posX, negX, posY, negY, posZ, negZ);
+    }
+
+    /**
+     * Six square faces stacked top to bottom in one image, {@code w x 6w}: +X, -X, +Y, -Y, +Z, -Z, each face i of the
+     * cube unchanged. What a {@code texture} asset with {@code cube: true} is.
+     *
+     * <pre>{@code
+     * static final CgTextureCubemap BIKE = CgTextures.stackedCube("mymod:textures/fx/bike_cubemap.png", CgTextureSpec.RGBA8_LINEAR);
+     * }</pre>
+     *
+     * <p>An image of another shape throws at its first use; a {@code .hdr} wants {@link CgTextureSpec#RGBA16F_LINEAR}.</p>
+     */
+    public static CgTextureCubemap stackedCube(String path, CgTextureSpec spec) {
+        return CgTextureCubemap.createStacked(path, spec);
     }
 
     private static String[] numbered(String pattern, int count) {

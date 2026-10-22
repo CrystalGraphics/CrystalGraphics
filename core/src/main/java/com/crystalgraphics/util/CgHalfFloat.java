@@ -1,5 +1,8 @@
 package com.crystalgraphics.util;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+
 /**
  * IEEE-754 binary16 ("half float") conversion — the format behind {@code GL_HALF_FLOAT} and the
  * {@code *16F} texture internal formats.
@@ -17,12 +20,8 @@ package com.crystalgraphics.util;
  * anyway, so converting on the CPU is free precision-wise while halving bus traffic and skipping
  * the driver's per-pixel conversion.</p>
  *
- * <p><strong>Currently unused.</strong> Its one caller was the distance-field glyph atlas upload
- * path, which moved to 8-bit unorm once measurement showed {@code RGBA16F} bought no visible
- * quality for distance fields (see {@code CgMsdfFieldStorageTest}). Kept because half-float
- * conversion is a general primitive with a passing test and is the obvious thing to reach for the
- * next time anything targets an {@code RGBA16F} texture — HDR render targets, packed instance
- * data — not because anything depends on it today.</p>
+ * <p>{@link #halves(float[])} is what a float texture's file uploads through: a {@code .hdr} image and a long-lat
+ * cube's faces.</p>
  *
  * <h3>Correctness</h3>
  * <p>Round-to-nearest-even, with the edge cases such conversions classically get wrong handled
@@ -34,6 +33,14 @@ package com.crystalgraphics.util;
 public final class CgHalfFloat {
 
     private CgHalfFloat() {}
+
+    /** {@code values} as binary16, two bytes each in native order, in a direct buffer ready for a {@code GL_HALF_FLOAT} upload. */
+    public static ByteBuffer halves(float[] values) {
+        ByteBuffer out = ByteBuffer.allocateDirect(values.length * 2).order(ByteOrder.nativeOrder());
+        for (float v : values) out.putShort(toHalf(v));
+        out.flip();
+        return out;
+    }
 
     /**
      * Converts a binary32 {@code float} to the raw 16 bits of its binary16 equivalent.

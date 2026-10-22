@@ -2,8 +2,11 @@ package com.crystalgraphics.gl.texture;
 
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.gpu.CgUploads;
+import com.crystalgraphics.util.CgHalfFloat;
+import com.crystalgraphics.util.io.CgRadianceHdr;
 import com.crystalgraphics.util.io.CgTextureIO;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 
@@ -11,6 +14,8 @@ import lombok.Getter;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 
+import javax.annotation.Nullable;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.function.Consumer;
 import java.util.logging.Level;
@@ -33,8 +38,17 @@ import java.util.logging.Logger;
  *       one square size, are logged and leave a clear 1x1 cube: {@link #isMissing()}.</li>
  *   <li>{@link #createDirect(CgTextureSpec, String, String, String, String, String, String)} — the same decoded here,
  *       not cached.</li>
+ *   <li>{@link #createStacked(String, CgTextureSpec)} — one image of its six faces stacked top to bottom, {@code w x 6w},
+ *       as a {@code texture} asset with {@code cube: true} holds them: cached, loaded at its first use. A {@code .hdr}
+ *       wants an {@code RGBA16F} spec, as a {@link CgTexture2D} of one does.</li>
  *   <li>{@link #createEmpty(int, CgTextureSpec)} — empty faces; caller owns lifecycle.</li>
  * </ul>
+ *
+ * <pre>{@code
+ * // 128 x 768: six 128 x 128 faces, +X at the top
+ * static final CgTextureCubemap BIKE = CgTextureCubemap.createStacked(
+ *         "kakarot_kit:textures/MasterMaterials/AT_Materials/Texture/gim_s04a_bike01_cubemap.png", CgTextureSpec.RGBA8_LINEAR);
+ * }</pre>
  *
  * <p>Made, filled and deleted from any thread, as a {@link CgTexture2D} is: off the render thread its GL work waits
  * for the render thread, and the pixels for it are copied into a lease by the thread that passed them.</p>
@@ -68,12 +82,19 @@ public final class CgTextureCubemap extends CgTextureAbstract {
 
     /** Source face paths for reload; {@code null} for createDirect and createEmpty. */
     @Getter private final String[] sourcePaths;
+    /** The one image its faces are stacked in; null for six face files or none. */
+    @Nullable private final String stacked;
 
     private final Consumer<CgUploadLease> landing = this::land;
 
     private CgTextureCubemap(int textureId, int size, CgTextureSpec spec, String[] sourcePaths) {
+        this(textureId, size, spec, sourcePaths, null);
+    }
+
+    private CgTextureCubemap(int textureId, int size, CgTextureSpec spec, String[] sourcePaths, @Nullable String stacked) {
         super(textureId, size, size, spec);
         this.sourcePaths = sourcePaths;
+        this.stacked = stacked;
     }
 
     // ── Factories ────────────────────────────────────────────────────
@@ -90,6 +111,22 @@ public final class CgTextureCubemap extends CgTextureAbstract {
             return tex;
         });
         return (CgTextureCubemap) result;
+    }
+
+    /**
+     * Six faces stacked top to bottom in one image, +X, -X, +Y, -Y, +Z, -Z (Unreal's slice order, which GL's and
+     * Vulkan's face order is), sampled as {@code spec}: cached by the path and spec, loaded at its first use. Face i
+     * goes to face i unchanged, as Unreal's GL backend uploads slice i.
+     *
+     * @throws IllegalStateException at its first use, for an image not {@code w x 6w}, or a {@code .hdr} under a spec
+     *                               that is not RGBA16F
+     */
+    public static CgTextureCubemap createStacked(String path, CgTextureSpec spec) {
+        return (CgTextureCubemap) CgTextureManager.get().getOrCreate(path, spec, () -> {
+            CgTextureCubemap tex = new CgTextureCubemap(0, 0, spec, null, path);
+            tex.loadOnFirstUse();
+            return tex;
+        });
     }
 
     /** {@link #create} decoded here, not cached: the caller owns it. */
@@ -120,13 +157,21 @@ public final class CgTextureCubemap extends CgTextureAbstract {
      * waits. Also reapplies the spec's filter/wrap params and regenerates mipmaps if enabled.
      */
     public void upload(CgImageData[] faces) {
+        ByteBuffer[] pixels = new ByteBuffer[6];
+        for (int i = 0; i < 6; i++) pixels[i] = faces[i].pixels();
+        upload(faces[0].width(), pixels, pixelFormatForChannels(faces[0].channels()), GL_UNSIGNED_BYTE);
+    }
+
+    /**
+     * Six faces in place, +X to -Z, each {@code size} square, rows top first in {@code pixelFormat} and
+     * {@code pixelType}: as {@link #upload(CgImageData[])}, for pixels of any type.
+     */
+    public void upload(int size, ByteBuffer[] faces, int pixelFormat, int pixelType) {
         checkUsable();
-        int size = faces[0].width();
-        int format = pixelFormatForChannels(faces[0].channels());
         this.width = size;
         this.height = size;
         gpu.run(() -> storage(size));
-        for (int i = 0; i < 6; i++) uploadFace(i, 0, 0, 0, size, size, faces[i].pixels(), format, GL_UNSIGNED_BYTE);
+        for (int i = 0; i < 6; i++) uploadFace(i, 0, 0, 0, size, size, faces[i], pixelFormat, pixelType);
         gpu.run(this::applySpec);
     }
 
@@ -215,6 +260,10 @@ public final class CgTextureCubemap extends CgTextureAbstract {
 
     @Override
     protected void load() {
+        if (stacked != null) {
+            loadStacked();
+            return;
+        }
         if (sourcePaths == null) return;
         CgImageData[] faces = new CgImageData[6];
         for (int i = 0; i < 6; i++) {
@@ -236,6 +285,60 @@ public final class CgTextureCubemap extends CgTextureAbstract {
         }
         missing = false;
         upload(faces);
+    }
+
+    /** The stacked image cut into its six faces: each a run of rows, top first. */
+    private void loadStacked() {
+        ByteBuffer pixels = null;
+        int w = 0, h = 0, texel = 0, format = CgGL.GL_RGBA, type = GL_UNSIGNED_BYTE;
+        if (CgRadianceHdr.is(stacked)) {
+            if (spec.getType() != CgTextureType.RGBA16F) {
+                throw new IllegalStateException(stacked + " is float colour, but its cube is " + spec.getType()
+                        + ": make it with an RGBA16F spec");
+            }
+            try {
+                CgRadianceHdr.Image image = CgRadianceHdr.read(stacked);
+                pixels = CgHalfFloat.halves(image.rgba());
+                w = image.width();
+                h = image.height();
+                texel = 8;
+                type = CgGL.GL_HALF_FLOAT;
+            } catch (IOException e) {
+                LOGGER.log(Level.WARNING, "[CgTextureCubemap] " + e.getMessage());
+            }
+        } else {
+            CgImageData image = CgTextureIO.load(stacked);
+            if (image != null) {
+                pixels = image.pixels();
+                w = image.width();
+                h = image.height();
+                texel = image.channels();
+                format = pixelFormatForChannels(image.channels());
+            }
+        }
+        if (pixels == null) {
+            LOGGER.log(Level.WARNING, "[CgTextureCubemap] {0} would not load", stacked);
+            if (width != 0) return;
+            missing = true;
+            width = height = 1;
+            gpu.run(() -> {
+                storage(1);
+                applySpec();
+            });
+            return;
+        }
+        if (h != 6 * w) {
+            throw new IllegalStateException(stacked + " is " + w + " x " + h + ": a cube's six faces stack as w x 6w");
+        }
+        int face = w * w * texel;
+        ByteBuffer[] faces = new ByteBuffer[6];
+        for (int i = 0; i < 6; i++) {
+            ByteBuffer slice = pixels.duplicate();
+            slice.position(i * face).limit((i + 1) * face);
+            faces[i] = slice.slice().order(pixels.order());
+        }
+        missing = false;
+        upload(w, faces, format, type);
     }
 
     @Override public int getTarget() { return CgGL.GL_TEXTURE_CUBE_MAP; }

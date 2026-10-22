@@ -94,8 +94,9 @@ public final class CgLookKinds {
     public static final CgType TEXTURE = CgTypes.kind("crystalgraphics:texture").folder("textures").version(1)
             .property("colour", CgValueType.enumOf("srgb", "linear")).flags(CgPropertyFlag.STRUCTURAL)
             .property("mips", BOOL).flags(CgPropertyFlag.STRUCTURAL)
-            .property("compression", CgValueType.enumOf("bc7", "normal_map", "masks", "grayscale", "alpha", "hdr", "none"))
-                    .flags(CgPropertyFlag.STRUCTURAL)
+            .property("compression", CgValueType.enumOf("bc7", "normal_map", "masks", "grayscale", "alpha", "hdr",
+                    "hdr_compressed", "none")).flags(CgPropertyFlag.STRUCTURAL)
+            .property("cube", BOOL).flags(CgPropertyFlag.STRUCTURAL)
             .property("sampler", CgValueType.struct(SAMPLER))
             .property("render_target", CgValueType.struct(RENDER_TARGET))
             .register();

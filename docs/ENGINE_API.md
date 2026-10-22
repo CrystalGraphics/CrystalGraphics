@@ -374,7 +374,13 @@ wrote (§ *Async*).
 - **A texture from files loads at its first use**: its size, its id, a bind or a write decode it on the thread that
   asks, and a bind uploads it. So a constant in common code costs a dedicated server nothing.
 - **`CgTextures` is the shorthand for every texture from files**: `of` (2D), `frames` and `array` (2D array),
-  `volume` (3D), `cubemap`. Each type's own `create` is what it calls.
+  `volume` (3D), `cubemap` and `stackedCube` (six faces stacked in one `w x 6w` image, +X at the top). Each type's
+  own `create` is what it calls.
+- **A `.hdr` is float colour** (Radiance RGBE, linear past 1, `util/io/CgRadianceHdr`), uploaded as half floats: give
+  it `CgTextureSpec.RGBA16F_LINEAR`.
+- **A material's textures are made as their `texture` asset says** (`CgMaterialRegistry.texture`, `looks.md`
+  § Texture): sRGB unless `colour: linear`, mips unless `mips: false`, `cube: true` stacked faces. `compression`
+  picks no format yet: every image loads uncompressed.
 - **`create` is cached by the paths and the spec**, and the spec's filter and wrap are the texture's own sampling. To
   sample one image two ways, load it once and give a binding a `CgSampler` (below). `createDirect` decodes
   at once and is the caller's.

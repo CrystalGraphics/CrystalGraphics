@@ -2,7 +2,10 @@ package com.crystalgraphics.api.material;
 
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.gl.texture.CgTexture2D;
+import com.crystalgraphics.api.texture.CgMipmapConfig;
+import com.crystalgraphics.asset.tree.CgAssetException;
+import com.crystalgraphics.gl.texture.CgTextureCubemap;
+import com.crystalgraphics.util.io.CgRadianceHdr;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.api.texture.CgTextures;
@@ -113,22 +116,72 @@ public final class CgMaterialRegistry {
     }
 
     /** Every texture a definition's binding names, one a path: what a preparer warms is what the material samples. */
-    private static final Map<String, CgTexture2D> TEXTURES = new ConcurrentHashMap<>();
+    private static final Map<String, CgTexture> TEXTURES = new ConcurrentHashMap<>();
 
     /**
      * The texture a material definition's binding names, made at its first ask and shared: warm it ahead of a first
-     * draw, as a system's preparer does, and the draw loads nothing. Its colour space is its settings file's, the
-     * {@code texture} asset beside the image ({@code noise.png}'s {@code noise.yaml}): {@code colour: linear} for data
-     * (masks, normals), else sRGB, decoded as it is sampled, as Unreal's {@code SRGB} defaults on.
+     * draw, as a system's preparer does, and the draw loads nothing. Made as its settings file says, the {@code texture}
+     * asset beside the image ({@code noise.png}'s {@code noise.yaml}, {@code looks.md} § Texture):
+     *
+     * <ul>
+     *   <li>a {@code .png} sRGB unless {@code colour: linear} (data: masks, normals), as Unreal's {@code SRGB} defaults
+     *       on; a {@code .hdr} linear half floats;</li>
+     *   <li>with mips unless {@code mips: false}, as Unreal's texture group gives them;</li>
+     *   <li>{@code cube: true}: the image is a cube's six faces stacked top to bottom, {@code w x 6w}, in Unreal's slice
+     *       order ({@link CgTextureCubemap#createStacked}).</li>
+     * </ul>
      *
      * <pre>{@code
      * for (CgMaterialDefinition.Texture t : definition.textures().values()) CgMaterialRegistry.texture(t.texture()).getWidth();
      * }</pre>
+     *
+     * @throws CgAssetException naming both, for a {@code .png} and a {@code .hdr} at one path, {@code colour: srgb} on a
+     *                          {@code .hdr}, or {@code compression: hdr} or {@code hdr_compressed} on a {@code .png}
      */
     public static CgTexture texture(String path) {
         Supplier<? extends CgTexture> provided = PROVIDED.get(path);
         if (provided != null) return provided.get();
-        return TEXTURES.computeIfAbsent(path, p -> CgTextures.of(p, linear(p) ? CgTextureSpec.RGBA8_LINEAR : SRGB));
+        return TEXTURES.computeIfAbsent(path, CgMaterialRegistry::fromFile);
+    }
+
+    /**
+     * A texture asset's settings, Unreal's {@code UTexture} properties a load reads. {@code compression} picks no format
+     * yet: every image loads uncompressed, a {@code .hdr} as RGBA16F, which {@code hdr_compressed}'s BC6H falls back to
+     * where a device has none ({@code Texture.cpp:1102-1104}); a cooked {@code .cgtex} carries its own blocks.
+     */
+    private record Settings(@Nullable String colour, boolean mips, @Nullable String compression, boolean cube) {
+    }
+
+    private static CgTexture fromFile(String path) {
+        Settings s = settings(path);
+        boolean hdr = CgRadianceHdr.is(path);
+        int dot = path.lastIndexOf('.');
+        if (hdr || path.endsWith(".png")) {
+            String other = path.substring(0, dot) + (hdr ? ".png" : ".hdr");
+            if (exists(other)) throw new CgAssetException(path + " and " + other + " are two images at one path: keep one");
+        }
+        if (hdr && "srgb".equals(s.colour())) {
+            throw new CgAssetException(path + " is linear float colour, but its settings say colour: srgb");
+        }
+        if (!hdr && ("hdr".equals(s.compression()) || "hdr_compressed".equals(s.compression()))) {
+            throw new CgAssetException(path + " says compression: " + s.compression() + ", which is a .hdr's, not an 8-bit image's");
+        }
+        CgMipmapConfig mips = s.mips() ? CgMipmapConfig.TRILINEAR : CgMipmapConfig.NONE;
+        boolean srgb = !hdr && !"linear".equals(s.colour());
+        CgTextureSpec spec = spec(hdr ? CgTextureType.RGBA16F : srgb ? CgTextureType.SRGB8_ALPHA8 : CgTextureType.RGBA8, mips);
+        return s.cube() ? CgTextureCubemap.createStacked(path, spec) : CgTextures.of(path, spec);
+    }
+
+    private static CgTextureSpec spec(CgTextureType type, CgMipmapConfig mips) {
+        return type.toTextureSpec().toBuilder().mipmaps(mips).build();
+    }
+
+    private static boolean exists(String path) {
+        try (InputStream in = CgIO.openStream(path)) {
+            return in != null;
+        } catch (IOException e) {
+            return true;
+        }
     }
 
     /** Every texture made in code, by the id a material's binding names it by. */
@@ -158,16 +211,17 @@ public final class CgMaterialRegistry {
         return PROVIDED.containsKey(id);
     }
 
-    private static final CgTextureSpec SRGB = CgTextureType.SRGB8_ALPHA8.toTextureSpec();
-
-    /** Whether {@code image}'s settings file says {@code colour: linear}; an image with none is colour. */
-    private static boolean linear(String image) {
+    /** {@code image}'s settings file, or every default where it has none. */
+    private static Settings settings(String image) {
         int dot = image.lastIndexOf('.');
-        if (dot < 0) return false;
+        if (dot < 0) return new Settings(null, true, null, false);
         try (InputStream in = CgIO.openStream(image.substring(0, dot) + ".yaml")) {
-            if (in == null) return false;
+            if (in == null) return new Settings(null, true, null, false);
             Object tree = CgAssetYaml.read(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-            return tree instanceof Map<?, ?> m && "linear".equals(m.get("colour"));
+            Map<?, ?> m = tree instanceof Map<?, ?> map ? map : Map.of();
+            Object colour = m.get("colour"), compression = m.get("compression");
+            return new Settings(colour == null ? null : colour.toString(), !Boolean.FALSE.equals(m.get("mips")),
+                    compression == null ? null : compression.toString(), Boolean.TRUE.equals(m.get("cube")));
         } catch (IOException e) {
             throw new UncheckedIOException(image + "'s settings do not read", e);
         }
@@ -190,10 +244,18 @@ public final class CgMaterialRegistry {
         for (CgMaterialProperty p : m.properties()) if (p.getType().isSampler()) samplers.put(p.getName(), p);
         for (Map.Entry<String, CgMaterialDefinition.Texture> t : d.textures().entrySet()) {
             CgMaterialProperty p = samplers.get(t.getKey());
-            if (p == null || !p.getType().isSampler() || !provided(t.getValue().texture()) && p.getType() != CgMaterialProperty.Type.SAMPLER2D) {
-                throw new IllegalStateException(d.id() + " binds " + t.getValue().texture() + " to " + t.getKey()
-                        + ", a " + (p == null ? "missing sampler" : p.getType().getPropertyTypeName())
-                        + ": an image file is a 2D texture; any other kind is provided (CgMaterialRegistry.provide)");
+            String path = t.getValue().texture();
+            if (p == null || !p.getType().isSampler()) {
+                throw new IllegalStateException(d.id() + " binds " + path + " to " + t.getKey() + ", a "
+                        + (p == null ? "missing sampler" : p.getType().getPropertyTypeName()));
+            }
+            if (provided(path)) continue;
+            boolean cube = texture(path) instanceof CgTextureCubemap;
+            CgMaterialProperty.Type wants = cube ? CgMaterialProperty.Type.SAMPLER_CUBE : CgMaterialProperty.Type.SAMPLER2D;
+            if (p.getType() != wants) {
+                throw new CgAssetException(d.id() + " binds " + path + ", a " + (cube ? "cube" : "2D") + " texture, to "
+                        + t.getKey() + ", a " + p.getType().getPropertyTypeName() + ": a cube takes a texture with cube: true,"
+                        + " a sampler2D one without; any other kind is provided (CgMaterialRegistry.provide)");
             }
         }
         m.applyProperties(b -> {

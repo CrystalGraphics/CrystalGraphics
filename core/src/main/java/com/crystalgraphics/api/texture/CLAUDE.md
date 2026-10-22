@@ -19,7 +19,7 @@ directly.
 | Type | Role |
 |------|------|
 | `CgTexture` | The single common interface: `bind()`, `bind(unit)`, `getId()`, `getTarget()`, `getWidth()/getHeight()`, `delete()`, `isDeleted()`, `isMissing()` (its files would not load). A texture from files loads at its first use: `gl/texture/CLAUDE.md`. |
-| `CgTextures` | The shorthand for textures from files: `of(path[, spec])` 2D, `frames(pattern, count)` and `array(spec, paths...)` 2D array, `volume(pattern, count)` and `volume(spec, paths...)` 3D, `cubemap(spec, six paths)`. |
+| `CgTextures` | The shorthand for textures from files: `of(path[, spec])` 2D, `frames(pattern, count)` and `array(spec, paths...)` 2D array, `volume(pattern, count)` and `volume(spec, paths...)` 3D, `cubemap(spec, six paths)`, `stackedCube(path, spec)` one image of six faces stacked (`w x 6w`). A `.hdr` path is a Radiance image, loaded as RGBA16F half floats (`util/io/CgRadianceHdr`). |
 | `CgTextureType` | Typed enum of ~42 GL format constants. Single source of truth for the (internalFormat, baseFormat, type) triple. Used by `CgTextureSpec` and `CgFrameBufferFormat`. |
 | `CgTextureSpec` | Immutable Lombok `@Builder` describing format (`CgTextureType`), mipmap policy (`CgMipmapConfig`), filter, wrap, and optional shadow comparison. Pre-built constants: `RGBA8_LINEAR`, `RGBA8_NEAREST`, `RGBA16F_LINEAR`, `DEPTH24_SHADOW`, and more. |
 | `CgMipmapConfig` | Mipmap policy: whether to generate mipmaps and which filters to use. Named constants: `NONE`, `TRILINEAR`, `NEAREST`. |
@@ -152,7 +152,7 @@ CgTextureSpec spec = CgTextureSpec.builder()
 | `gl.texture.CgTexture2D` | Single 2D image (`GL_TEXTURE_2D`). Static factories `create(path)`, `create(path, spec)`, `createEmpty(w, h, spec)`. Supports `upload(w, h, pixels)` re-upload. |
 | `gl.texture.CgTexture2DArray` | A stack of 2D images (`GL_TEXTURE_2D_ARRAY`), smaller ones centred. `create(spec, paths...)`. |
 | `gl.texture.CgTexture3D` | Volumetric (`GL_TEXTURE_3D`). `create(spec, paths...)`, `createEmpty(w, h, d, spec)`. |
-| `gl.texture.CgTextureCubemap` | Cubemap (`GL_TEXTURE_CUBE_MAP`). `create(spec, posX...negZ)`, `createEmpty(size, spec)`. |
+| `gl.texture.CgTextureCubemap` | Cubemap (`GL_TEXTURE_CUBE_MAP`). `create(spec, posX...negZ)`, `createStacked(path, spec)`, `createEmpty(size, spec)`. |
 
 ## Ownership Model
 

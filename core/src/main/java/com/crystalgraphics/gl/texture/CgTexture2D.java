@@ -8,7 +8,9 @@ import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.util.io.CgBc7;
+import com.crystalgraphics.util.CgHalfFloat;
 import com.crystalgraphics.util.io.CgCookedTexture;
+import com.crystalgraphics.util.io.CgRadianceHdr;
 import com.crystalgraphics.util.io.CgTextureIO;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 
@@ -18,6 +20,7 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.function.Consumer;
 import java.util.logging.Level;
@@ -54,6 +57,14 @@ import java.util.logging.Logger;
  *
  * <pre>{@code
  * static final CgTexture2D SMOKE = CgTextures.of("mymod:cooked/fx/smoke.cgtex", CgTextureSpec.RGBA8_LINEAR_REPEAT);
+ * }</pre>
+ *
+ * <h3>Float colour</h3>
+ * <p>A path ending in {@code .hdr} is a Radiance image ({@link CgRadianceHdr}): linear RGB past 1, uploaded as half
+ * floats. Its spec must be {@code RGBA16F}; any other throws at its first use, naming both.</p>
+ *
+ * <pre>{@code
+ * static final CgTexture2D RAMP = CgTextures.of("mymod:textures/fx/fire_ramp.hdr", CgTextureSpec.RGBA16F_LINEAR);
  * }</pre>
  *
  * <h3>Upload</h3>
@@ -369,10 +380,29 @@ public final class CgTexture2D extends CgTextureAbstract {
     }
 
     private boolean loadImage() {
+        if (CgRadianceHdr.is(sourcePath)) return loadRadiance();
         CgImageData data = CgTextureIO.load(sourcePath);
         if (data == null) return false;
         cooked = false;
         upload(data);
+        return true;
+    }
+
+    /** A Radiance image as half floats: its spec must be {@code RGBA16F}, which the file's colour needs. */
+    private boolean loadRadiance() {
+        if (spec.getType() != CgTextureType.RGBA16F) {
+            throw new IllegalStateException(sourcePath + " is float colour, but its texture is " + spec.getType()
+                    + ": make it with an RGBA16F spec");
+        }
+        CgRadianceHdr.Image image;
+        try {
+            image = CgRadianceHdr.read(sourcePath);
+        } catch (IOException e) {
+            LOGGER.log(Level.WARNING, "[CgTexture2D] " + e.getMessage());
+            return false;
+        }
+        cooked = false;
+        upload(image.width(), image.height(), CgHalfFloat.halves(image.rgba()), GL_RGBA, CgGL.GL_HALF_FLOAT);
         return true;
     }
 
