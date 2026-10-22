@@ -168,6 +168,9 @@ public final class CgWorldLights {
     private CgGraphTexture pyramid;
     /** The pyramid's slack: its eye depth is linearised under the host's projection, bob and all. */
     private static final float HZB_MARGIN = 0.02f;
+    /** Unreal's r.MinScreenRadiusForLights: a light whose bound is smaller on screen is not drawn. */
+    private static final CgVar.Num MIN_SCREEN = CgVar.number("crystalgraphics.world.lightsMinScreenRadius", 0.03f, 0f, 1f,
+            CgVar.DEV, "A light whose bounding sphere is smaller than this share of the screen is not drawn; 0 keeps all.");
     /** Unreal's r.Forward.LightGridHZBCull. */
     private static final CgVar.Bool HZB = CgVar.bool("crystalgraphics.world.lightsHzb", true, CgVar.DEV,
             "The light grid skips cells behind the scene and pulls each cell's far edge in to it.");
@@ -324,6 +327,11 @@ public final class CgWorldLights {
     /** Lights past {@link #CAPACITY} in a recent firing, read back a few frames late; the CPU's at once. */
     public long dropped() {
         return dropped;
+    }
+
+    /** {@code -Dcrystalgraphics.world.lightsMinScreenRadius}: Unreal's r.MinScreenRadiusForLights, 0.03 unless set. */
+    public static float minScreenRadius() {
+        return MIN_SCREEN.get();
     }
 
     /** Lights a recent firing's cells dropped past their shared budget, read back a few frames late. */
@@ -527,8 +535,8 @@ public final class CgWorldLights {
         bob.mul(toView, toView);
         tileU = TILE / targetWidth;
         tileV = TILE / targetHeight;
-        grid(pass.dispatch(view, CAPACITY).bind("LIGHTS", list).bind("COUNT", count).bind("VIEW", viewed), gx, gy, 0, 0, 0,
-                0, budget, parentBudget);
+        grid(pass.dispatch(view, CAPACITY).bind("LIGHTS", list).bind("COUNT", count).bind("VIEW", viewed)
+                .set("_MinScreen", MIN_SCREEN.get()), gx, gy, 0, 0, 0, 0, budget, parentBudget);
         pass.end();
         // A pass a level, each timed: what the levels cost is the lever.
         if (twoLevel) {

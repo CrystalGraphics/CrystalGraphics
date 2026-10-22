@@ -1,5 +1,6 @@
 // The world's light grid (CgWorldLights), as Unreal 5's LightGridInjection.usf builds it. View turns each light into
-// the grid's space once (Unreal's LightViewSpacePositionAndRadius). Coarse culls every light into a parent grid a factor
+// the grid's space once (Unreal's LightViewSpacePositionAndRadius) and drops one too small on screen to draw
+// (ComputeLightVisibility's r.MinScreenRadiusForLights) by giving it no reach. Coarse culls every light into a parent grid a factor
 // smaller each way, a work group a parent cell (r.LightCulling.TwoLevel, CullLights_ThreadGroup), its lists packed into
 // one buffer in index order. Where compute runs, Cell lists each cell's lights from its parent's list, a work group a
 // cell (r.LightCulling.WorkloadDistributionMode 1), its run taken with an atomic. Below compute Count counts each
@@ -36,6 +37,7 @@ Properties {
     _ToView2  ("The third row",                                       vec4) = (0, 0, 1, 0)
     _Pyramid  ("The scene's farthest eye depth, a pyramid",            sampler2D) = "black"
     _Hzb      ("Cull by the pyramid (1), unused, its slack, its last level", vec4) = (0, 0, 0, 0)
+    _MinScreen ("r.MinScreenRadiusForLights; 0 keeps every light",     float) = 0
 }
 
 Buffers {
@@ -59,7 +61,26 @@ void View() {
     vec3 v = vec3(dot(_ToView0.xyz, at), dot(_ToView1.xyz, at), dot(_ToView2.xyz, at))
             + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
     vec3 w = vec3(dot(_ToView0.xyz, way), dot(_ToView1.xyz, way), dot(_ToView2.xyz, way));
-    VIEW_WRITE(CgViewLight(vec4(v, light.positionRadius.w), vec4(w, light.spotCos.w)));
+    float radius = light.positionRadius.w;
+    if (_MinScreen > 0.0) {
+        // Its bounding sphere (a spot's round its cone, as Unreal's spot proxy's), drawn while
+        // d * min(0.0002 / cm, MinScreenRadius / R) < 1 (SceneVisibility.cpp, LODDistanceFactor 1): past 50 blocks
+        // for a light under a block and a half, past R / MinScreenRadius for a larger one.
+        vec3 centre = v;
+        float bound = radius, c = light.spotCos.w;
+        if (c > -1.5) {
+            float s = sqrt(max(1.0 - c * c, 0.0));
+            if (c < 0.707107) {
+                centre += w * radius * c;
+                bound = radius * s;
+            } else {
+                bound = radius / (2.0 * c);
+                centre += w * bound;
+            }
+        }
+        if (length(centre) * min(0.02, _MinScreen / max(bound, 1e-6)) >= 1.0) radius = 0.0;
+    }
+    VIEW_WRITE(CgViewLight(vec4(v, radius), vec4(w, light.spotCos.w)));
 }
 
 // ComputeCellViewAABB over tiles [lo.xy, hi.xy) and slices [lo.z, hi.z): the tiles' rays at both depths; the last tile

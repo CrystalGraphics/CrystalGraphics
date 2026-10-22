@@ -180,7 +180,9 @@ CgWorldRenderer.get().media().add((pass, media) -> {             // a volume of 
   themselves). Binned into a light grid as Unreal 5's (64-pixel tiles, 32 slices): a parent grid four cells a side
   culled first, then each cell from its parent's list, a work group a cell where compute runs, cells behind the scene
   skipped by its depth pyramid, every cell's list whole (32 lights a cell on average shared, what passes counted as
-  `world.lights-cell-dropped`). At 30,000 lights binning costs 0.6 ms on an RTX 4070 SUPER. Added in one full-screen
+  `world.lights-cell-dropped`). A light smaller on screen than Unreal's r.MinScreenRadiusForLights (0.03,
+  `-Dcrystalgraphics.world.lightsMinScreenRadius`) is not drawn: past 50 blocks under a block and a half of reach, past
+  33 times its reach above. 30,000 lights over a floor cost 0.43 ms on an RTX 4070 SUPER. Added in one full-screen
   pass, the scene's colour standing in for the albedo Minecraft does not keep (`scene × (1 + light)`), with no facing.
   Exponent 0 is the inverse square in blocks (an intensity of 1 is 1 at a block); any other is Unreal's
   `(1 - d²/r²)^exponent`. GPU zones `world.lights`, `world.lightsCoarse`, `world.lightsCells` and `world.lightsApply`;
