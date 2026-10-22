@@ -203,6 +203,9 @@ public final class CgVfxParticlePool {
     private int rowCount;
     private int[] freeRows = new int[0];
     private int freeRowCount;
+    /** The {@link #rows} entries given back, reused: a replay takes its row again without allocating. */
+    private int[][] spareEntries = new int[0][];
+    private int spareCount;
     private boolean paramsChanged;
     /** Per row: its curve row's words ({@link #CURVE_WORDS}), and the largest size multiplier on it. */
     private int[] curves = new int[0];
@@ -1266,6 +1269,8 @@ public final class CgVfxParticlePool {
             rows.remove(emitter);
             if (freeRows.length == freeRowCount) freeRows = Arrays.copyOf(freeRows, Math.max(4, freeRowCount * 2));
             freeRows[freeRowCount++] = row[0];
+            if (spareEntries.length == spareCount) spareEntries = Arrays.copyOf(spareEntries, Math.max(4, spareCount * 2));
+            spareEntries[spareCount++] = row;
         }
     }
 
@@ -2010,7 +2015,10 @@ public final class CgVfxParticlePool {
         }
         // Its draws read the clip's rows from its first step's upload on.
         if (emitter.clip() != null) CgVfxClipAtlas.of(emitter.clip());
-        rows.put(emitter, new int[]{index, 1});
+        int[] entry = spareCount > 0 ? spareEntries[--spareCount] : new int[2];
+        entry[0] = index;
+        entry[1] = 1;
+        rows.put(emitter, entry);
         paramsChanged = true;
         return index;
     }
