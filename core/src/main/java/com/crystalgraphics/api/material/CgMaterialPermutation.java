@@ -29,19 +29,19 @@ import com.github.bsideup.jabel.Desugar;
  * @param shader   the archetype's path
  * @param keywords its keywords, sorted
  * @param blend    the format's blend class: {@code opaque}, {@code masked}, {@code translucent}, {@code additive},
- *                 {@code modulate}, {@code premultiplied}, {@code subtract}
+ *                 {@code modulate}, {@code premultiplied}, {@code subtract}; null for its archetype's own {@code Blend}
  * @param clip     whether it clips ({@code masked})
  * @param shading  the shading model it names, null for its archetype's own
  */
 @Desugar
-public record CgMaterialPermutation(String shader, List<String> keywords, String blend, boolean clip,
+public record CgMaterialPermutation(String shader, List<String> keywords, @Nullable String blend, boolean clip,
                                     @Nullable String shading) {
 
     private static final Map<CgMaterialPermutation, CgMaterialPermutation> INTERNED = new ConcurrentHashMap<>();
 
     /** The interned permutation of these parts; keywords in any order. */
-    public static CgMaterialPermutation of(String shader, Collection<String> keywords, String blend, boolean clip,
-                                           @Nullable String shading) {
+    public static CgMaterialPermutation of(String shader, Collection<String> keywords, @Nullable String blend,
+                                           boolean clip, @Nullable String shading) {
         List<String> sorted = new ArrayList<>(keywords);
         Collections.sort(sorted);
         CgMaterialPermutation p = new CgMaterialPermutation(shader, Collections.unmodifiableList(sorted), blend, clip,
@@ -52,10 +52,11 @@ public record CgMaterialPermutation(String shader, List<String> keywords, String
 
     /**
      * The engine's state for it: blend, clip and depth write; a shading model is not state. An archetype with a
-     * {@code "Depth"} tag refuses the depth write: give it none.
+     * {@code "Depth"} tag refuses the depth write: give it none. With no blend class it is the archetype's own state.
      */
     public CgMaterialState state() {
         CgMaterialState.Builder b = CgMaterialState.builder();
+        if (blend == null) return b.build();
         switch (blend) {
             case "opaque":
             case "masked":

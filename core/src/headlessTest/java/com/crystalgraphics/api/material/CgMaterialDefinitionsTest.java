@@ -118,6 +118,19 @@ public class CgMaterialDefinitionsTest {
     }
 
     @Test
+    public void noBlendKeepsTheArchetypesOwnAndASetOneOverrides() {
+        CgMaterialDefinition own = CgMaterialDefinitions.compile(asset("test:own", tree("shader", FX), null), ARCHETYPES);
+        assertEquals(null, own.permutation().blend());
+        assertEquals(null, own.state().blend());
+        CgMaterialDefinition child = CgMaterialDefinitions.compile(asset("test:own_fast", tree("parent", "test:own",
+                "values", map("_Speed", 3.0)), asset("test:own", tree("shader", FX), null)), ARCHETYPES);
+        assertSame(own.permutation(), child.permutation());
+        CgMaterialDefinition opaque = CgMaterialDefinitions.compile(asset("test:opaque", tree("shader", FX,
+                "state", map("blend", "opaque")), null), ARCHETYPES);
+        assertEquals(CgBlendMode.OPAQUE, opaque.state().blend());
+    }
+
+    @Test
     public void anInstanceChangingOnlyValuesSharesItsParentsPrograms() {
         CgAssetData parent = root();
         CgMaterialDefinition p = CgMaterialDefinitions.compile(parent, ARCHETYPES);

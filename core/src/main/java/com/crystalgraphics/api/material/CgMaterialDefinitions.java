@@ -98,7 +98,8 @@ public final class CgMaterialDefinitions {
             }
         }
         Map<Object, Object> state = map(m.get("state"));
-        String blend = state != null && state.get("blend") instanceof String ? (String) state.get("blend") : "opaque";
+        // No blend keeps the archetype's own, as an instance without bOverride_BlendMode keeps its parent's.
+        String blend = state != null && state.get("blend") instanceof String ? (String) state.get("blend") : null;
         String shading = state != null && state.get("shading") instanceof String ? (String) state.get("shading") : null;
         CgShadingModel model = null;
         if (shading != null) {

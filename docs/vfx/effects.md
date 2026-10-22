@@ -33,7 +33,8 @@ renderers:
 ## A material's render state: blend, two-sided, depth, clip
 
 A shader authors its own `RenderState`. A material can draw it under another one, so one shader serves every way a kit
-draws it: the same soft sprite added for fire and blended over for smoke.
+draws it: the same soft sprite added for fire and blended over for smoke. A material that names no blend draws as its
+shader authors, as an Unreal instance keeps its parent's blend mode unless it overrides it.
 
 ```java
 static final String SOFT = "mymod:shaders/vfx/soft.shader";
