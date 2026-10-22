@@ -942,7 +942,11 @@ public final class CgVfxEmitterAssets {
         if (lock.equals("none")) return;
         Object kind = renderer.get("kind");
         if ("mesh".equals(kind)) {
-            throw new IllegalArgumentException(name + ": a mesh renderer's locked axis (ParticleSystemRender.cpp:1575) is not built yet");
+            // Cascade's mesh draw reads this lock's axis only under a camera facing that locks to it
+            // (ParticleSystemRender.cpp:1505-1521, :2096-2100, :2206, 4.21): with the default facing it turns nothing.
+            if (renderer.get("facing") == null || "default".equals(renderer.get("facing"))) return;
+            throw new IllegalArgumentException(name + ": a mesh renderer's locked axis under facing " + renderer.get("facing")
+                    + " is not built yet");
         }
         if (!"sprite".equals(kind) || "velocity".equals(renderer.get("alignment"))) return;
         if (lock.startsWith("rotate_")) {
