@@ -1058,6 +1058,14 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
     }
 
+    /** A collider's lane: 1 while the camera is within its reach of the effect this step, else 0. */
+    CgVfxLane[] NEAR_LANES = {CgVfxLane.VEC4};
+
+    /** 1 where the camera is within {@code reach}, grown by Cascade's 7.5%, of {@code instance}'s effect; else 0. */
+    static float near(CgVfxInstanceView instance, float reach) {
+        return reach == Float.POSITIVE_INFINITY || instance.cameraDistance() <= reach * 1.075f ? 1f : 0f;
+    }
+
     /**
      * The host world's blocks, with {@link Collide}'s response: every solid half-block octant of the voxel window, a
      * particle inside one leaving by the face the distance field points through. With no level, the instance's ground
@@ -1067,17 +1075,44 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * <pre>{@code
      * new CgVfxModule.CollideWorld(0.4f, 0.3f, 0.3f)             // debris on stairs and walls
      * new CgVfxModule.CollideWorld(0f, 0f, 0f).killing()          // sparks die on any block
+     * new CgVfxModule.CollideWorld(0.4f, 0.3f, 0.3f).within(10f)  // only while a camera is within 10 blocks
      * }</pre>
+     *
+     * <ul>
+     *   <li>{@code reach}: Cascade's {@code MaxCollisionDistance}, its instance colliding only while the camera is
+     *       within that of its effect's bounds, grown by 7.5% (ParticleModules_Collision.cpp:227-262, 4.21); infinite
+     *       for always. Its effect's bounds hold its emitter's, so it collides as far as Cascade's or a little
+     *       further.</li>
+     * </ul>
      */
-    record CollideWorld(float bounce, float friction, float rest, boolean kill) implements CgVfxModule {
+    record CollideWorld(float bounce, float friction, float rest, boolean kill, float reach) implements CgVfxModule {
         private static final CgVfxDataInterface[] WORLD = {CgVfxDataInterfaces.WORLD_DISTANCE};
 
         public CollideWorld(float bounce, float friction, float rest) {
             this(bounce, friction, rest, false);
         }
 
+        public CollideWorld(float bounce, float friction, float rest, boolean kill) {
+            this(bounce, friction, rest, kill, Float.POSITIVE_INFINITY);
+        }
+
         public CollideWorld killing() {
-            return new CollideWorld(bounce, friction, rest, true);
+            return new CollideWorld(bounce, friction, rest, true, reach);
+        }
+
+        /** The same, colliding only while the camera is within {@code blocks} of its effect. */
+        public CollideWorld within(float blocks) {
+            return new CollideWorld(bounce, friction, rest, kill, blocks);
+        }
+
+        @Override
+        public CgVfxLane[] instanceLanes() {
+            return NEAR_LANES;
+        }
+
+        @Override
+        public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
+            out.vec4(near(instance, reach), 0f, 0f, 0f);
         }
 
         @Override
@@ -1105,15 +1140,34 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * new CgVfxModule.CollideDepth(0.5f, 0.2f, 0.3f, 0.6f)       // sparks off anything on screen
      * }</pre>
      */
-    record CollideDepth(float bounce, float friction, float rest, float thickness, boolean kill) implements CgVfxModule {
+    record CollideDepth(float bounce, float friction, float rest, float thickness, boolean kill, float reach) implements CgVfxModule {
         private static final CgVfxDataInterface[] DEPTH = {CgVfxDataInterfaces.DEPTH};
 
         public CollideDepth(float bounce, float friction, float rest, float thickness) {
             this(bounce, friction, rest, thickness, false);
         }
 
+        public CollideDepth(float bounce, float friction, float rest, float thickness, boolean kill) {
+            this(bounce, friction, rest, thickness, kill, Float.POSITIVE_INFINITY);
+        }
+
         public CollideDepth killing() {
-            return new CollideDepth(bounce, friction, rest, thickness, true);
+            return new CollideDepth(bounce, friction, rest, thickness, true, reach);
+        }
+
+        /** The same, colliding only while the camera is within {@code blocks} of its effect ({@link CollideWorld#reach}). */
+        public CollideDepth within(float blocks) {
+            return new CollideDepth(bounce, friction, rest, thickness, kill, blocks);
+        }
+
+        @Override
+        public CgVfxLane[] instanceLanes() {
+            return NEAR_LANES;
+        }
+
+        @Override
+        public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
+            out.vec4(near(instance, reach), 0f, 0f, 0f);
         }
 
         @Override

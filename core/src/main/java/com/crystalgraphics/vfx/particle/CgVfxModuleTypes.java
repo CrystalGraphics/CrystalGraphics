@@ -330,14 +330,16 @@ public final class CgVfxModuleTypes {
                 r -> new CgVfxModule.Collide(r.shape(), r.f("offset", 0), r.f("offset", 1), r.f("offset", 2), r.f("bounce"),
                         r.f("friction"), r.f("rest"), r.f("radius"), r.b("keeps_inside"), r.b("kill")));
         kind("collide_world", CgVfxModule.CollideWorld.class,
-                t -> { fl(t, "bounce", "friction", "rest"); t.property("kill", CgValueType.BOOL); },
-                (m, in) -> in.f("bounce", m.bounce()).f("friction", m.friction()).f("rest", m.rest()).b("kill", m.kill()),
-                r -> new CgVfxModule.CollideWorld(r.f("bounce"), r.f("friction"), r.f("rest"), r.b("kill")));
-        kind("collide_depth", CgVfxModule.CollideDepth.class,
-                t -> { fl(t, "bounce", "friction", "rest"); t.property("kill", CgValueType.BOOL); fl(t, "thickness"); },
+                t -> { fl(t, "bounce", "friction", "rest"); t.property("kill", CgValueType.BOOL); fl(t, "reach"); },
                 (m, in) -> in.f("bounce", m.bounce()).f("friction", m.friction()).f("rest", m.rest()).b("kill", m.kill())
-                        .f("thickness", m.thickness()),
-                r -> new CgVfxModule.CollideDepth(r.f("bounce"), r.f("friction"), r.f("rest"), r.f("thickness"), r.b("kill")));
+                        .f("reach", m.reach()),
+                r -> new CgVfxModule.CollideWorld(r.f("bounce"), r.f("friction"), r.f("rest"), r.b("kill"), r.f("reach")));
+        kind("collide_depth", CgVfxModule.CollideDepth.class,
+                t -> { fl(t, "bounce", "friction", "rest"); t.property("kill", CgValueType.BOOL); fl(t, "thickness", "reach"); },
+                (m, in) -> in.f("bounce", m.bounce()).f("friction", m.friction()).f("rest", m.rest()).b("kill", m.kill())
+                        .f("thickness", m.thickness()).f("reach", m.reach()),
+                r -> new CgVfxModule.CollideDepth(r.f("bounce"), r.f("friction"), r.f("rest"), r.f("thickness"), r.b("kill"),
+                        r.f("reach")));
         kind("collide_entities", CgVfxModule.CollideEntities.class,
                 t -> { fl(t, "bounce", "friction", "rest"); t.property("kill", CgValueType.BOOL); fl(t, "size"); },
                 (m, in) -> in.f("bounce", m.bounce()).f("friction", m.friction()).f("rest", m.rest()).b("kill", m.kill())

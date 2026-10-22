@@ -351,7 +351,10 @@ public final class CgVfxSystemAssets {
                 CgVfxEmitter child = resolve(system, h.spawn(), base, done, path);
                 if (b == null) b = base.get(handle).toBuilder();
                 try {
-                    b.event(h.compile(child));
+                    CgVfxEvent event = h.compile(child);
+                    // Its source's generate_event: a collision event at each particle's first alone.
+                    if (base.get(handle).firstCollisionOnly() && event.trigger() == CgVfxEvent.Trigger.COLLISION) event = event.firings(1);
+                    b.event(event);
                 } catch (RuntimeException failed) {
                     throw new IllegalArgumentException(at + ": " + failed.getMessage(), failed);
                 }

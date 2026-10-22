@@ -211,6 +211,10 @@ public final class CgVfxEmitterAssets {
             float[] r = e.rasterized;
             modules.add(entry("rasterize", "grid_rasterize", map("density", list(r[0], r[1], r[2], r[3]))));
         }
+        if (e.firstCollisionOnly) {
+            modules.add(entry(e.id("generate_event"), "generate_event", map("type", "collision", "first_time_only", true)));
+        }
+        writeDrawn(e, modules);
         Map<String, Integer> seen = new LinkedHashMap<>();
         for (int i = 0; i < e.modules.size(); i++) {
             CgVfxModule m = e.modules.get(i);
@@ -465,6 +469,20 @@ public final class CgVfxEmitterAssets {
                     if (in.get("intensity") != null) b.intensityOverLife(keyframes(name, in.get("intensity"), "age"));
                     continue;
                 }
+                case "color" -> {
+                    color(name, b, inputs(entry), lifeBind(name, entry, "color", CgVfxLifeBind.Target.COLOR, forms, b),
+                            lifeBind(name, entry, "alpha", CgVfxLifeBind.Target.ALPHA, forms, b));
+                    continue;
+                }
+                case "generate_event" -> {
+                    generateEvent(name, inputs(entry), b);
+                    continue;
+                }
+                case "mesh_rotation_rate" -> {
+                    b.id("rotation_rate", idOf(entry, "rotation_rate"));
+                    meshRotationRate(name, b, inputs(entry), idOf(entry, "rotation_rate"));
+                    continue;
+                }
                 case "sprite_rotation_rate" -> {
                     b.id("spin_rate", idOf(entry, "spin_rate"));
                     Object rate = inputs(entry).get("rate");
@@ -548,6 +566,31 @@ public final class CgVfxEmitterAssets {
             return true;
         }
         throw new IllegalArgumentException(name + ": scalability " + scalability + " is not read yet: the Low tier's half alone");
+    }
+
+    /**
+     * {@code generate_event}: Cascade's EventGenerator, which runs nothing itself (ParticleModules_Event.cpp:51-57) and
+     * reports every event of its type where its frequency is 0 (:126, :156). The events it reports are this emitter's
+     * handlers' triggers (an {@code events:} entry naming it as the source), so a generator at its defaults declares nothing more; one that filters
+     * (every n-th, first or last only, the reflected impact vector) fails by name until the filter is built.
+     */
+    private static void generateEvent(String name, Map<?, ?> in, CgVfxEmitter.Builder b) {
+        Object type = in.get("type");
+        if (!List.of("spawn", "death", "collision", "burst", "location").contains(type)) {
+            throw new IllegalArgumentException(name + ": generate_event's type " + type + " is not spawn, death, collision, burst or location");
+        }
+        for (String k : List.of("frequency", "particle_frequency")) {
+            if (in.get(k) instanceof Number n && n.intValue() != 0) {
+                throw new IllegalArgumentException(name + ": generate_event's " + k + " " + n + " is not read yet: every event alone");
+            }
+        }
+        // Cascade reads FirstTimeOnly on collisions alone: a particle's first, which a firing limit of 1 is.
+        if ("collision".equals(type) && Boolean.TRUE.equals(in.get("first_time_only"))) b.firstCollisionOnly(true);
+        for (String k : List.of("last_time_only", "use_reflected_impact_vector")) {
+            if (Boolean.TRUE.equals(in.get(k))) {
+                throw new IllegalArgumentException(name + ": generate_event's " + k + " is not read yet: every event alone");
+            }
+        }
     }
 
     /**
@@ -1394,6 +1437,9 @@ public final class CgVfxEmitterAssets {
         }
     }
 
+    /** Unreal's {@code WORLD_MAX}, 2,097,152 cm, in blocks: a collision distance this far or further is none. */
+    private static final double WORLD_MAX = 20971.52;
+
     /** Kind {@code kind}'s inputs as the file names them (aaa-design 2.60, 2.61). */
     private static Mapped toFile(String name, String kind, Map<String, Object> in) {
         Map<String, Object> out = new LinkedHashMap<>();
@@ -1423,6 +1469,10 @@ public final class CgVfxEmitterAssets {
                 if (Boolean.TRUE.equals(in.get("kill"))) {
                     out.put("max_collisions", 1);
                     out.put("on_complete", "kill");
+                }
+                if (in.get("reach") instanceof Number r) {
+                    out.put("max_distance", Double.isInfinite(r.doubleValue()) ? WORLD_MAX : r.doubleValue());
+                    names.put("reach", "max_distance");
                 }
                 // Ours: the depth a screen collider reaches behind what it sees, an entity's box grown by.
                 if (in.containsKey("thickness")) give(out, names, "depth_thickness", in, "thickness");
@@ -1483,6 +1533,8 @@ public final class CgVfxEmitterAssets {
             case "acceleration" -> {
                 kind = "force";
                 take(in, read, out, names, "acceleration", "force");
+                // A force is in the world's axes: Cascade's bAlwaysInWorldSpace (ParticleModules.cpp:2880-2885).
+                if ("world".equals(in.get("space"))) read.add("space");
             }
             case "collision" -> {
                 String against = String.valueOf(in.get("against"));
@@ -1508,14 +1560,32 @@ public final class CgVfxEmitterAssets {
                 out.put("bounce", r.get(0));
                 take(in, read, out, names, "friction", "friction");
                 take(in, read, out, names, "static_friction_speed", "rest");
+                // Cascade's particle mass pushes only the physics body it hits, under apply_physics
+                // (ParticleModules_Collision.cpp:436-473), which is refused unread: without it, mass changes nothing.
+                if (!Boolean.TRUE.equals(in.get("apply_physics"))) read.add("mass");
+                // Cascade skips a collision while its world drops detail under load (ParticleModules_Collision.cpp:179,
+                // 4.21); the engine never drops it, which a file's false is exactly.
+                read.add("drop_detail");
+                // Cascade stops colliding once its component goes 0.1 s unrendered (:186-194, 4.21); an effect out of
+                // view sleeps here, so both values collide only while it is seen. No trigger volumes to ignore.
+                read.add("only_if_visible");
+                read.add("ignore_triggers");
+                // The world's blocks are never the source actor; the scene's depth holds it, so there it collides.
+                if (!kind.equals("collide_depth") || Boolean.FALSE.equals(in.get("ignore_source"))) read.add("ignore_source");
                 Object most = in.get("max_collisions");
-                if (most != null && !(most instanceof Number n && n.intValue() == 1 && "kill".equals(in.get("on_complete")))) {
+                // 0 ends at the first collision as 1 does: the count is decremented, then tested above 0 (:406-412).
+                if (most != null && !(most instanceof Number n && n.intValue() <= 1 && "kill".equals(in.get("on_complete")))) {
                     throw new IllegalArgumentException(name + ": collision's max_collisions " + most + " is not read yet: 1 and kill alone");
                 }
                 read.add("max_collisions");
                 read.add("on_complete");
                 out.put("kill", most != null);
                 if (kind.equals("collide_depth")) take(in, read, out, names, "depth_thickness", "thickness");
+                if (kind.equals("collide_world") || kind.equals("collide_depth")) {
+                    take(in, read, out, names, "max_distance", "reach");
+                    // Cascade checks no distance at or past its world's size (:227-228).
+                    if (out.get("reach") instanceof Number far && far.doubleValue() >= WORLD_MAX) out.put("reach", Double.POSITIVE_INFINITY);
+                }
                 if (kind.equals("collide_entities")) take(in, read, out, names, "entity_size", "size");
             }
             case "set_position" -> {
