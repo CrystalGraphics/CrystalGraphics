@@ -1,12 +1,13 @@
 // The world's light grid (CgWorldLights): each cell's lights, as Unreal's LightGridInjectionCS bins them
 // (LightGridInjection.usf): a cell's view-space box from its tile's edges at its slice's near and far depth, and every
-// light whose sphere reaches that box listed in it, the first CG_LIGHT_PER_CELL kept. An element a cell, x fastest,
+// light whose sphere reaches that box listed in it (a spot's cone first, cg_light_reaches), the first CG_LIGHT_PER_CELL
+// kept. An element a cell, x fastest,
 // then y, then the slice.
 #pragma kernel Bin scatter
 
 #include "crystalgraphics:shaders/lib/lights.glsl"
 
-struct CgLight { vec4 positionRadius; vec4 colorExponent; };
+struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; };
 
 Properties {
     _Grid     ("Cells across, up and deep, and the list's capacity",  vec4) = (1, 1, 32, 0)
@@ -37,11 +38,11 @@ void Bin() {
     vec3 centre = vec3(lo + hi, -d0 - d1) * 0.5, extent = vec3(hi - lo, d1 - d0) * 0.5;
     int lights = int(min(COUNT(0), uint(_Grid.w))), n = 0;
     for (int i = 0; i < lights; i++) {
-        vec4 light = LIGHTS(i).positionRadius;
-        vec3 v = vec3(dot(_ToView0.xyz, light.xyz), dot(_ToView1.xyz, light.xyz), dot(_ToView2.xyz, light.xyz));
-        // ComputeSquaredDistanceFromBoxToPoint.
-        vec3 outside = max(abs(v - centre) - extent, 0.0);
-        if (dot(outside, outside) < light.w * light.w) {
+        CgLight light = LIGHTS(i);
+        vec3 at = light.positionRadius.xyz, way = light.spotCos.xyz;
+        vec3 v = vec3(dot(_ToView0.xyz, at), dot(_ToView1.xyz, at), dot(_ToView2.xyz, at));
+        vec4 spot = vec4(dot(_ToView0.xyz, way), dot(_ToView1.xyz, way), dot(_ToView2.xyz, way), light.spotCos.w);
+        if (cg_light_reaches(v, light.positionRadius.w, spot, centre, extent)) {
             if (n < CG_LIGHT_PER_CELL) INDICES_STORE(e * CG_LIGHT_PER_CELL + n, uint(i));
             n++;
         }

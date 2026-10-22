@@ -21,11 +21,13 @@ import java.util.Map;
  *
  * @param inverseSquaredFalloff whether it falls off by the inverse square, its exponent ignored, as Cascade's
  *                              {@code bUseInverseSquaredFalloff}
+ * @param intensityScale        an inverse-squared light's colour times this: its asset's square length unit in square
+ *                              blocks, 1e-4 for Unreal's centimetres (the {@code intensity_scale} field), 1 by default
  * @param spawnFraction         the share of particles with a light, each rolled once from its seed
  * @param affectsTranslucency   whether it lights translucent materials too
  * @param volumetricScattering  how much it lights the air's fog
  */
 public record CgVfxLightRendererProperties(Common common, Map<String, Object> tree, boolean inverseSquaredFalloff,
-                                           float spawnFraction, boolean affectsTranslucency, float volumetricScattering)
+                                           float intensityScale, float spawnFraction, boolean affectsTranslucency, float volumetricScattering)
         implements CgVfxRendererProperties {
 }

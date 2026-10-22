@@ -1,4 +1,4 @@
-// Particles as lights (clustered-lights-decals L4, CgVfxParticleLights): each live particle of a slot drawing a light
+// Particles as lights (CgVfxParticleLights): each live particle of a slot drawing a light
 // renderer appends one world light, as Cascade gathers them (ParticleSystemRender.cpp:870-935): its radius scale times
 // its size, its colour times its alpha times its light's colour scale and brightness (Look's third element), its
 // exponent from birth or 0 for the inverse square; none where both radius and colour are nothing, or where its spawn
@@ -17,7 +17,7 @@ Properties {
 }
 
 // A world light: CgWorldLights.STRUCT.
-struct CgLight { vec4 positionRadius; vec4 colorExponent; };
+struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; };
 
 // A particle's drawn part: CgVfxRecord.DRAWN_GLSL.
 struct FxDrawn { vec4 place; vec4 motion; vec4 state; vec4 light; vec4 color; vec4 scale; };
@@ -26,7 +26,7 @@ Buffers {
     RECORDS ("Particles",                                                       uvec4,   readonly)
     DRAWN   ("Their drawn parts, the third their light",                        FxDrawn, readonly)
     LIVE    ("How many are alive",                                              uint,    readonly)
-    SLOTS   ("Each slot's two vec4s: its origin from the eye and its share; 1 for the inverse square", vec4, readonly)
+    SLOTS   ("Each slot's two vec4s: its origin from the eye and its share; the inverse square's intensity scale, 0 for none", vec4, readonly)
     LIGHTS  ("Lights",                                                          CgLight, append)
 }
 
@@ -46,5 +46,6 @@ void Lights() {
     float radius = radiusScale * (size.x + size.y) * 0.5;
     vec3 color = d.color.rgb * d.color.a * l.place.rgb * l.place.a;
     if (radius <= 1e-4 && max(color.r, max(color.g, color.b)) <= 1e-4) return;
-    LIGHTS_APPEND(cg_light(origin.xyz + d.place.xyz, radius, color, falloff.x > 0.5 ? 0.0 : exponent));
+    if (falloff.x > 0.0) color *= falloff.x;
+    LIGHTS_APPEND(cg_light(origin.xyz + d.place.xyz, radius, color, falloff.x > 0.0 ? 0.0 : exponent));
 }

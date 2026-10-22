@@ -258,8 +258,8 @@ public final class CgVfxSlotRenderer {
      *   <li><b>A tube slot</b>: a light every half reach along the path, at each ring's radius {@code s}, weighted by the
      *       path's length it stands for over {@code s}.</li>
      * </ul>
-     * Its reach is {@code attenuationRadius × s}. Its colour is {@code lightColor × intensity × (100 s)²} times the
-     * effect's presence: under Unreal's {@code 1 / (d² + 1)} in centimetres, that is {@code lightColor × intensity}
+     * Its reach is {@code attenuationRadius × s}. Its colour is {@code lightColor × intensity × s²} times the
+     * effect's presence: under the inverse square in blocks, that is {@code lightColor × intensity}
      * where the light is {@code s} away, falling off with the square of the distance past it, so a slot's light grows
      * with what it lights from.
      *

@@ -115,7 +115,7 @@ public final class CgVfxRenderers {
             case "anim_trail" -> throw new IllegalArgumentException(who + ": an anim trail renderer is not built yet");
             case "beam" -> beam(who, common, tree);
             case "light" -> new CgVfxLightRendererProperties(common, tree, !Boolean.FALSE.equals(tree.get("inverse_squared_falloff")),
-                    tree.get("spawn_fraction") instanceof Number n ? n.floatValue() : 1f,
+                    tree.get("intensity_scale") instanceof Number n ? n.floatValue() : 1f, tree.get("spawn_fraction") instanceof Number n ? n.floatValue() : 1f,
                     Boolean.TRUE.equals(tree.get("affects_translucency")),
                     tree.get("volumetric_scattering") instanceof Number n ? n.floatValue() : 0f);
             default -> throw new IllegalArgumentException(who + " has no kind '" + kind + "'");

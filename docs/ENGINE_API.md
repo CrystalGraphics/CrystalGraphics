@@ -175,6 +175,19 @@ CgWorldRenderer.get().media().add((pass, media) -> {             // a volume of 
 
   An injector with rows of its own placed from the firing's eye (camera-relative corners, as the fluids') uploads them
   in `Injector.upload(recording, media)`, which runs before the firing's pass opens, and binds them in `inject`.
+- **Lights** (`world.lights()`, `CgWorldLights`): Unreal's local lights (points, spots and tubes) added onto the scene
+  behind each pixel, a light a frame each, from the CPU or appended by a kernel (particle and slot lights append
+  themselves). Binned into a light grid as Unreal's (64-pixel tiles, 32 slices, 32 lights a cell) and added in one
+  full-screen pass with no albedo or facing, since Minecraft keeps neither. Exponent 0 is the inverse square in blocks
+  (an intensity of 1 is 1 at a block); any other is Unreal's `(1 - d²/r²)^exponent`. GPU zones `world.lights` and
+  `world.lightsApply`; the demo's `lights` scene shows each kind.
+
+```java
+CgWorldLights lights = CgWorldRenderer.get().lights();                             // each frame, before the world records
+lights.add(x, y + 1.5, z, 6f, 0xFFFF9030, 4f, 0f);                                 // a point: 1 at two blocks
+lights.add(x, y + 6, z, 12f, 0xFFFFF0D0, 36f, 0f).spot(0f, -1f, 0f, 20f, 35f);     // a spot, pointing down
+lights.add(midX, midY, midZ, 24f, 0xFF60A0FF, 4f, 0f).tube(dirX, dirY, dirZ, 30f); // a tube, 30 blocks long
+```
 - **Distortion**: a transparent draw whose material has a Distortion pass (`docs/SHADERS.md` § *The Distortion pass*)
   adds an offset into a layer of an RGBA16F array half the world's size (`world.distortionScale(scale)`) after the
   transparent pass, hidden by the scene's depth; an apply over the hazes' rect then bends the target by it, reading the offsets

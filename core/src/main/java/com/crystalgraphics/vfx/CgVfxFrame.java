@@ -428,14 +428,14 @@ public final class CgVfxFrame {
 
     /**
      * A slot light on a mesh slot, at {@code (x, y, z)} from the origin, its size the transform's x scale: its colour
-     * times {@code strength}, the effect's presence and {@code (100 s)²} ({@link CgVfxSlotRenderer.Light}).
+     * times {@code strength}, the effect's presence and {@code s²} ({@link CgVfxSlotRenderer.Light}).
      */
     private void pointLight(CgVfxEffect<?> effect, CgVfxMaterials.Resolved r, float x, float y, float z,
                             Matrix4fc transform, float strength) {
         float s = (float) Math.sqrt(transform.m00() * transform.m00() + transform.m01() * transform.m01()
                 + transform.m02() * transform.m02());
         CgVfxMaterials.light(effect, r, light);
-        float reach = light[3] * s, k = strength * effect.presence() * CM_SQUARED * s * s;
+        float reach = light[3] * s, k = strength * effect.presence() * s * s;
         if (reach <= 0f || k <= 0f) return;
         effect.bound(x, y, z, reach);
         world.lights().addLinear(effect.originX + x, effect.originY + y, effect.originZ + z, reach, light[0] * k,
@@ -445,7 +445,7 @@ public final class CgVfxFrame {
 
     /**
      * A slot light on a tube slot: a light every half reach along {@code path}, at each ring's radius {@code s}, standing
-     * for the path since the last, so its colour is times that length over {@code s} as well as {@code (100 s)²}.
+     * for the path since the last, so its colour is times that length over {@code s} as well as {@code s²}.
      */
     private void pathLights(CgVfxEffect<?> effect, CgVfxMaterials.Resolved r, CgVfxPath path) {
         CgVfxMaterials.light(effect, r, light);
@@ -457,7 +457,7 @@ public final class CgVfxFrame {
             if (i > 0) since += path.arc(i) - path.arc(i - 1);
             float s = path.radius(i);
             if (s <= 0f || since < 0.5f * light[3] * s && i < last) continue;
-            float reach = light[3] * s, k = presence * CM_SQUARED * since * s;
+            float reach = light[3] * s, k = presence * since * s;
             since = 0f;
             effect.bound(path.x(i), path.y(i), path.z(i), reach);
             world.lights().addLinear(effect.originX + path.x(i), effect.originY + path.y(i), effect.originZ + path.z(i),
@@ -466,8 +466,6 @@ public final class CgVfxFrame {
         }
     }
 
-    /** Unreal's simple light falls off as {@code 1 / (d² + 1)} in centimetres: a block's in its units, squared. */
-    private static final float CM_SQUARED = 1.0e4f;
     /** A slot light's colour and reach, filled per light. */
     private final float[] light = new float[4];
 
@@ -562,7 +560,8 @@ public final class CgVfxFrame {
             Renderer rd = rs.list[i];
             if (rd.shape == Shape.LIGHT) {
                 CgVfxLightRendererProperties light = (CgVfxLightRendererProperties) rd.placed.renderer();
-                CgVfxParticleLights.get().note(pool, slot, light.spawnFraction(), light.inverseSquaredFalloff());
+                CgVfxParticleLights.get().note(pool, slot, light.spawnFraction(),
+                        light.inverseSquaredFalloff() ? light.intensityScale() : 0f);
                 continue;
             }
             float size = CgVfxMaterials.size(effect, rd.r);

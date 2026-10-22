@@ -40,15 +40,22 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 /**
- * The point lights in the world this frame: Unreal's simple lights, a position, a radius, a colour and a falloff each,
- * which the world renderer bins into its froxels and adds onto the scene behind each pixel. An effect or a mod adds
- * its lights from the CPU; a kernel appends its own into the same list (a light per particle).
+ * The lights in the world this frame, Unreal's local lights: points, spots and tubes, each a position, a radius, a
+ * colour and a falloff, which the world renderer bins into its light grid and adds onto the scene behind each pixel. An
+ * effect or a mod adds its lights from the CPU; a kernel appends its own into the same list (a light per particle).
  *
  * <pre>{@code
  * // from the CPU, once a frame, before the world records (a tick function of the client world)
  * CgWorldLights lights = CgWorldRenderer.get().lights();
- * lights.add(x, y + 1.5, z, 6f, 0xFFFF9030, 4f, 0f);      // an orange glow, 6 blocks, inverse-squared
- * lights.add(x, y, z, 3f, 0xFF40A0FF, 2f, 8f);            // a blue one, falling off as Unreal's exponent 8
+ * lights.add(x, y + 1.5, z, 6f, 0xFFFF9030, 4f, 0f);      // an orange glow, 6 blocks, inverse-squared: 1 at 2 blocks
+ * lights.add(x, y, z, 3f, 0xFF40A0FF, 2f, 8f);            // a blue one, falling off as Unreal's exponent 8: 2 at its centre
+ * }</pre>
+ *
+ * <pre>{@code
+ * // a spot: the light just added, limited to a cone pointing down, full inside 20 degrees, gone past 35
+ * lights.add(x, y + 6, z, 12f, 0xFFFFF0D0, 36f, 0f).spot(0f, -1f, 0f, 20f, 35f);
+ * // a tube: the light just added, coming from a line 30 blocks long along the beam (Unreal's SourceLength)
+ * lights.add(midX, midY, midZ, 24f, 0xFF60A0FF, 4f, 0f).tube(dirX, dirY, dirZ, 30f);
  * }</pre>
  *
  * <pre>{@code
@@ -64,7 +71,7 @@ import java.util.function.Consumer;
  * // its kernel: CgLight declared in its own file (STRUCT), LIGHTS an append buffer of it
  * #pragma kernel Gather append
  * #include "crystalgraphics:shaders/lib/lights.glsl"
- * struct CgLight { vec4 positionRadius; vec4 colorExponent; };
+ * struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; };
  * Properties { _LightEye ("The firing's eye, absolute", vec4) = (0, 0, 0, 0) }
  * Buffers { EMBERS ("Embers", vec4, readonly)  LIGHTS ("Lights", CgLight, append) }
  * void Gather() {
@@ -77,8 +84,11 @@ import java.util.function.Consumer;
  *   <li>A light lives one frame: add it again each frame it shines.</li>
  *   <li>{@code add}'s colour is sRGB, as authored colours are; a kernel appends linear colour, premultiplied by its
  *       intensity.</li>
- *   <li>Exponent 0 is inverse-squared falloff, faded to nothing at the radius; any other is Unreal's
- *       {@code (1 - d²/r²)^exponent}.</li>
+ *   <li>Exponent 0 is inverse-squared falloff in blocks, faded to nothing at the radius: an intensity of 1 is 1 at a
+ *       block, a quarter at two. Any other exponent is Unreal's
+ *       {@code (1 - d²/r²)^exponent}, its intensity the brightness at the centre.</li>
+ *   <li>{@code spot} and {@code tube} change the light added last, and both may: a spot that comes from a line. The
+ *       radius is still from the centre, so a tube's radius reaches past its ends.</li>
  *   <li>A kernel's positions are from the firing's eye ({@link #cameraX()}, {@code _LightEye}), as the froxels are.</li>
  *   <li>Past {@link #CAPACITY} lights a frame the rest are dropped and counted ({@code world.lights-dropped}).</li>
  * </ul>
@@ -93,9 +103,13 @@ public final class CgWorldLights {
      * The light as a kernel declares it, in its own file before its {@code Buffers}: a buffer's element is laid out
      * from the kernel's file alone, not its includes.
      */
-    public static final String STRUCT = "struct CgLight { vec4 positionRadius; vec4 colorExponent; };";
-    /** Floats a light: position and radius, colour and exponent. */
-    public static final int FLOATS = 8;
+    public static final String STRUCT =
+            "struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; };";
+    /**
+     * Floats a light: position and radius, colour and exponent, a spot's direction and the cosine of its outer angle (-2
+     * for none), a tube's length along its axis and a spot's 1 / (cos inner - cos outer).
+     */
+    public static final int FLOATS = 16;
 
     /** Adds lights from a kernel, each transparent firing. */
     public interface Appender {
@@ -201,8 +215,52 @@ public final class CgWorldLights {
         light[l + 5] = g;
         light[l + 6] = b;
         light[l + 7] = exponent;
+        light[l + 8] = light[l + 9] = light[l + 10] = 0f;
+        light[l + 11] = -2f;
+        light[l + 12] = light[l + 13] = light[l + 14] = light[l + 15] = 0f;
         added++;
         return this;
+    }
+
+    /**
+     * The light added last as a spot pointing along {@code (dx, dy, dz)}: full within {@code innerDegrees} of that axis,
+     * fading to nothing at {@code outerDegrees} (half angles, Unreal's InnerConeAngle and OuterConeAngle, clamped as
+     * SpotLightComponent.cpp:49-55 does: the inner to 0-89, the outer just past it and at most 89).
+     */
+    public CgWorldLights spot(float dx, float dy, float dz, float innerDegrees, float outerDegrees) {
+        int l = last();
+        float length = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (length == 0f) throw new IllegalArgumentException("a spot points somewhere: (0, 0, 0)");
+        double inner = Math.toRadians(Math.max(0f, Math.min(89f, innerDegrees)));
+        double outer = Math.max(inner + 0.001, Math.min(Math.toRadians(outerDegrees), Math.toRadians(89) + 0.001));
+        double cosOuter = Math.cos(outer);
+        light[l + 8] = dx / length;
+        light[l + 9] = dy / length;
+        light[l + 10] = dz / length;
+        light[l + 11] = (float) cosOuter;
+        light[l + 15] = (float) (1.0 / (Math.cos(inner) - cosOuter));
+        return this;
+    }
+
+    /**
+     * The light added last as a tube: coming from a line {@code length} blocks long along {@code (dx, dy, dz)}, centred
+     * where it was added (Unreal's SourceLength). Its radius stays measured from that centre.
+     */
+    public CgWorldLights tube(float dx, float dy, float dz, float length) {
+        int l = last();
+        float norm = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (norm == 0f) throw new IllegalArgumentException("a tube runs along something: (0, 0, 0)");
+        float s = Math.max(length, 0f) / norm;
+        light[l + 12] = dx * s;
+        light[l + 13] = dy * s;
+        light[l + 14] = dz * s;
+        return this;
+    }
+
+    /** The light added last's first float; it throws when none was added this frame. */
+    private int last() {
+        if (added == 0 || addedFrame != CgFrameRing.frame()) throw new IllegalStateException("no light added this frame to change");
+        return (added - 1) * FLOATS;
     }
 
     /** An sRGB channel decoded to linear, 0 to 1; past 1 (a colour times an intensity) it carries on linearly. */
@@ -325,8 +383,8 @@ public final class CgWorldLights {
             for (int i = 0; i < listed; i++) {
                 int p = i * 3, l = i * FLOATS;
                 staging.putFloat((float) (at[p] - cameraX)).putFloat((float) (at[p + 1] - cameraY))
-                        .putFloat((float) (at[p + 2] - cameraZ)).putFloat(light[l + 3])
-                        .putFloat(light[l + 4]).putFloat(light[l + 5]).putFloat(light[l + 6]).putFloat(light[l + 7]);
+                        .putFloat((float) (at[p + 2] - cameraZ));
+                for (int w = 3; w < FLOATS; w++) staging.putFloat(light[l + w]);
             }
             staging.flip();
             recording.update(list, 0, staging);

@@ -61,7 +61,7 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
     }
 
     /** {@code slot} of {@code pool} gives light this frame: {@code share} of its particles, by the inverse square or its exponent. */
-    public void note(CgVfxParticlePool pool, int slot, float share, boolean inverseSquared) {
+    public void note(CgVfxParticlePool pool, int slot, float share, float inverseSquared) {
         writing.add(pool, slot, share, inverseSquared);
     }
 
@@ -122,7 +122,7 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
             staging.putFloat(at + 4, (float) (pool.origin(s, 1) - lights.cameraY()));
             staging.putFloat(at + 8, (float) (pool.origin(s, 2) - lights.cameraZ()));
             staging.putFloat(at + 12, f.shares[j]);
-            staging.putFloat(at + 16, f.inverse[j] ? 1f : 0f);
+            staging.putFloat(at + 16, f.inverse[j]);
         }
         staging.limit(bytes);
         recording.update(buffer, 0, staging);
@@ -133,10 +133,10 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
         CgVfxParticlePool[] pools = new CgVfxParticlePool[16];
         int[] slots = new int[16];
         float[] shares = new float[16];
-        boolean[] inverse = new boolean[16];
+        float[] inverse = new float[16];
         int count;
 
-        void add(CgVfxParticlePool pool, int slot, float share, boolean inverseSquared) {
+        void add(CgVfxParticlePool pool, int slot, float share, float inverseSquared) {
             if (count == pools.length) {
                 pools = Arrays.copyOf(pools, count * 2);
                 slots = Arrays.copyOf(slots, count * 2);

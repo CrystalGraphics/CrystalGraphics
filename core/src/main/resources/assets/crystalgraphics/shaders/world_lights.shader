@@ -1,8 +1,7 @@
-// The world's point lights (CgWorldLights) added onto the scene behind each pixel: the surface rebuilt from depth, its
-// light grid cell found as the binning placed it, and each of the cell's lights attenuated as Unreal's simple lights are
-// (DeferredLightingCommon.ush's GetSimpleDynamicLighting): exponent 0 is inverse-squared, 1 / (d² + 1) in Unreal's
-// centimetres, faded to nothing at the radius; any other is (1 - d²/r²)^exponent. The light is added as it falls, with
-// no albedo or facing: Minecraft keeps neither for its scene, and a normal rebuilt from depth flickers.
+// The world's lights (CgWorldLights) added onto the scene behind each pixel: the surface rebuilt from depth, its light
+// grid cell found as the binning placed it, and each of the cell's lights, a point, a spot or a tube, attenuated as
+// Unreal's local lights are with no surface (lights.glsl's cg_light_falloff). The light is added as it falls, with no
+// albedo or facing: Minecraft keeps neither for its scene, and a normal rebuilt from depth flickers.
 #type none
 #include "crystalgraphics:shaders/lib/math.glsl"
 #include "crystalgraphics:shaders/lib/lights.glsl"
@@ -20,7 +19,7 @@ Properties {
     _ToView2 ("The third row",                                     vec4) = (0, 0, 1, 0)
 }
 
-struct CgLight { vec4 positionRadius; vec4 colorExponent; };
+struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; };
 
 Buffers {
     LIGHTS  ("The firing's lights",            CgLight, readonly)
@@ -55,13 +54,12 @@ Pass {
         vec3 sum = vec3(0.0);
         for (int k = 0; k < n; k++) {
             CgLight light = LIGHTS(int(INDICES(e * CG_LIGHT_PER_CELL + k)));
-            vec3 at = light.positionRadius.xyz;
-            vec3 v = vec3(dot(_ToView0.xyz, at), dot(_ToView1.xyz, at), dot(_ToView2.xyz, at)) - p;
-            float d2 = dot(v, v), x = d2 / sq(light.positionRadius.w);
-            float attenuation = light.colorExponent.w == 0.0
-                    ? sq(saturate(1.0 - x * x)) / (d2 * sq(CG_LIGHT_CM) + 1.0)
-                    : pow(saturate(1.0 - x), light.colorExponent.w);
-            sum += light.colorExponent.rgb * attenuation;
+            vec3 at = light.positionRadius.xyz, way = light.spotCos.xyz, along = light.segmentCone.xyz;
+            vec3 v = vec3(dot(_ToView0.xyz, at), dot(_ToView1.xyz, at), dot(_ToView2.xyz, at));
+            vec4 spot = vec4(dot(_ToView0.xyz, way), dot(_ToView1.xyz, way), dot(_ToView2.xyz, way), light.spotCos.w);
+            vec4 segment = vec4(dot(_ToView0.xyz, along), dot(_ToView1.xyz, along), dot(_ToView2.xyz, along), light.segmentCone.w);
+            sum += light.colorExponent.rgb
+                    * cg_light_falloff(v, light.positionRadius.w, light.colorExponent.w, spot, segment, p);
         }
         fragColor = vec4(sum, 0.0);
     }

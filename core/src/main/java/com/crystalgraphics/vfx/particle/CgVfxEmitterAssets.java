@@ -639,7 +639,7 @@ public final class CgVfxEmitterAssets {
      * {@code _cg_FacingVector}, {@code _cg_AlignmentVector}).
      */
     private static Object drawnBy(String name, Object renderers, List<Map<?, ?>> modules, CgUnits units) {
-        if (modules.isEmpty() || !(renderers instanceof List<?> list)) return renderers;
+        if (!(renderers instanceof List<?> list)) return renderers;
         List<Object> out = new ArrayList<>(list.size());
         for (Object r : list) {
             if (!(r instanceof Map<?, ?> m)) {
@@ -647,6 +647,11 @@ public final class CgVfxEmitterAssets {
                 continue;
             }
             Map<String, Object> renderer = keyed(m);
+            // An inverse-squared light's brightness is per the asset's square length unit: Unreal's square centimetre.
+            if ("light".equals(renderer.get("kind")) && !renderer.containsKey("intensity_scale")) {
+                double length = ((Number) units.toHost(1.0, CgQuantity.LENGTH)).doubleValue();
+                renderer.put("intensity_scale", length * length);
+            }
             Map<String, Object> values = renderer.get("values") instanceof Map<?, ?> v ? keyed(v) : new LinkedHashMap<>();
             Map<String, Object> binds = renderer.get("bind") instanceof Map<?, ?> v ? keyed(v) : new LinkedHashMap<>();
             for (Map<?, ?> module : modules) {
