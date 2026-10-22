@@ -125,7 +125,7 @@ public final class CgRadianceHdr {
 
         String line() throws IOException {
             ByteArrayOutputStream line = new ByteArrayOutputStream();
-            for (int c = u8(); c != '\n'; c = u8()) line.write(c);
+            for (int c = u8(); c != '\n'; c = u8()) if (c != '\r') line.write(c);   // a header checked out with CRLF
             return line.toString(StandardCharsets.US_ASCII.name());
         }
     }
