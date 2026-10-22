@@ -182,8 +182,8 @@ CgWorldRenderer.get().media().add((pass, media) -> {             // a volume of 
   skipped by its depth pyramid, every cell's list whole (32 lights a cell on average shared, what passes counted as
   `world.lights-cell-dropped`). A light smaller on screen than Unreal's r.MinScreenRadiusForLights (0.03,
   `-Dcrystalgraphics.world.lightsMinScreenRadius`) is not drawn: past 50 blocks under a block and a half of reach, past
-  33 times its reach above. 30,000 lights over a floor cost 0.43 ms on an RTX 4070 SUPER. Lit in one full-screen
-  pass as Unreal's simple lights light a surface, colour × intensity × falloff × N·L × albedo / π: the normal rebuilt
+  33 times its reach above. 30,000 lights over a floor cost 0.43 ms on an RTX 4070 SUPER. Lit deferred, with nothing
+  changed in Minecraft's own draws: one full-screen pass after the level, as Unreal's simple lights light a surface, colour × intensity × falloff × N·L × albedo / π: the normal rebuilt
   from depth, the albedo the scene's colour over the lightmap at the light's own block. A light is authored for the
   night and fades under an open sky by day, as an eye adapted to the sun sees it (for the lights alone;
   `-Dcrystalgraphics.world.lightsDayFade`, 1 for never): full at night and underground, a tenth at noon. A light's source radius (`.source(r)`, a particle's its drawn radius) wraps N·L over its sphere as Unreal's
