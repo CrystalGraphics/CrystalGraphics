@@ -88,7 +88,7 @@ public final class CgVfxRenderers {
                     choice(who, tree, "alignment", CgVfxSpriteRendererProperties.Alignment.class, "unaligned"),
                     choice(who, tree, "facing", CgVfxSpriteRendererProperties.Facing.class, "camera"),
                     floats(tree.get("facing_blend"), 2), sort(who, tree),
-                    tree.get("pivot") != null ? floats(tree.get("pivot"), 2) : new float[] {0.5f, 0.5f},
+                    tree.get("pivot") != null ? vector(who, "pivot", tree.get("pivot"), 2) : new float[] {0.5f, 0.5f},
                     flipbook(who, tree.get("sub_image")), floats(tree.get("camera_distance"), 2),
                     Boolean.TRUE.equals(tree.get("cast_shadows")),
                     tree.get("soft_depth") instanceof Number n ? n.floatValue() : Float.NaN);
@@ -319,6 +319,14 @@ public final class CgVfxRenderers {
         float[] out = new float[n];
         for (int i = 0; i < Math.min(n, list.size()); i++) out[i] = ((Number) list.get(i)).floatValue();
         return out;
+    }
+
+    /** {@code value}, a field of {@code n} numbers: refused by name in any other form. */
+    private static float[] vector(String who, String field, Object value, int n) {
+        if (!(value instanceof List<?> list) || list.size() != n || !list.stream().allMatch(Number.class::isInstance)) {
+            throw new IllegalArgumentException(who + "'s " + field + " is " + value + ", not " + n + " numbers");
+        }
+        return floats(value, n);
     }
 
     private static int integer(@Nullable Object value) {

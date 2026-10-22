@@ -356,7 +356,7 @@ public final class CgVfxSystemAssets {
                     if (base.get(handle).firstCollisionOnly() && event.trigger() == CgVfxEvent.Trigger.COLLISION) event = event.firings(1);
                     b.event(event);
                 } catch (RuntimeException failed) {
-                    throw new IllegalArgumentException(at + ": " + failed.getMessage(), failed);
+                    throw new IllegalArgumentException(at + ": " + why(failed), failed);
                 }
             }
         }
@@ -364,6 +364,13 @@ public final class CgVfxSystemAssets {
         CgVfxEmitter out = b == null ? base.get(handle) : b.build();
         done.put(handle, out);
         return out;
+    }
+
+    /** Its message, or, lacking one, its type and the frame that threw it: a bare null names nothing. */
+    private static String why(RuntimeException failed) {
+        if (failed.getMessage() != null) return failed.getMessage();
+        StackTraceElement[] at = failed.getStackTrace();
+        return failed.getClass().getSimpleName() + (at.length > 0 ? " at " + at[0] : "");
     }
 
     private static CgVfxEmitter emitter(String system, Map<?, ?> handle, CgAssetCompiler.Dependencies deps) {
@@ -384,7 +391,7 @@ public final class CgVfxSystemAssets {
         try {
             return CgVfxEmitterAssets.compile(name, tree, null, deps);
         } catch (RuntimeException failed) {
-            throw new IllegalArgumentException(at + ": " + failed.getMessage(), failed);
+            throw new IllegalArgumentException(at + ": " + why(failed), failed);
         }
     }
 
