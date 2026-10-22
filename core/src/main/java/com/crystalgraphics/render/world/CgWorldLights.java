@@ -211,8 +211,14 @@ public final class CgWorldLights {
     private final CgReadback.Sink readCount =
             data -> dropped = readCpuDropped + Math.max(0L, Integer.toUnsignedLong(data.getInt(0)) - CAPACITY);
     private final int[] zeros = new int[4];
-    private int binnings;
     private volatile long cellsDropped;
+    /**
+     * The cells' shared budget, in {@link #PER_CELL}s a cell: doubled whenever a firing drops lights past it, up to
+     * {@link #MOST_BUDGET}. Unreal's is fixed and warns; a flash lighting every cell would otherwise blank the cells
+     * that allocate last, the far slices, along tile edges.
+     */
+    private int budgetScale = 2;
+    private static final int MOST_BUDGET = 32;
     private final CgReadback.Sink readAlloc = data -> cellsDropped = Integer.toUnsignedLong(data.getInt(0));
 
     CgWorldLights() {
@@ -350,6 +356,11 @@ public final class CgWorldLights {
         return MIN_SCREEN.get();
     }
 
+    /** The cells' shared budget this firing, in lights a cell on average. */
+    public int budgetPerCell() {
+        return PER_CELL * budgetScale;
+    }
+
     /** Lights a recent firing's cells dropped past their shared budget, read back a few frames late. */
     public long cellsDropped() {
         return cellsDropped;
@@ -461,7 +472,8 @@ public final class CgWorldLights {
         boolean binned = listed > 0 || appended;
         if (binned) bin(recording, stage, pass, view.projection(), toWorld, targetWidth, targetHeight);
         else pass.end();
-        if (binned && binnings++ % COUNT_EVERY == 0) recording.readback(alloc, 4, 4, readAlloc);
+        // Every firing: a surge (a flash, a burst) drops lights the frame it comes, and the budget grows for the next.
+        if (binned) recording.readback(alloc, 4, 4, readAlloc);
         long cpuDropped = cpu - listed;
         if (appended && firings++ % COUNT_EVERY == 0) {
             readCpuDropped = cpuDropped;
@@ -507,9 +519,14 @@ public final class CgWorldLights {
         boolean twoLevel = coarse.runs();
         int px = (gx + PARENT - 1) / PARENT, py = (gy + PARENT - 1) / PARENT, pz = SLICES / PARENT;
         // Persistent, grown only: what a later recording reads back is the last firing's grid.
-        int n = gx * gy * SLICES, budget = n * PER_CELL, parentBudget = twoLevel ? budget : 1, parents = px * py * pz;
+        if (cellsDropped > 0 && budgetScale < MOST_BUDGET) {
+            budgetScale *= 2;
+            cellsDropped = 0;
+        }
+        int n = gx * gy * SLICES, budget = n * PER_CELL * budgetScale, parentBudget = twoLevel ? budget : 1,
+                parents = px * py * pz;
         if (cells == null || cells.size() < n * 8L || parentCells.size() < parents * 8L
-                || parentIndices.size() < parentBudget * 4L) {
+                || parentIndices.size() < parentBudget * 4L || indices.size() < budget * 4L) {
             if (cells != null) {
                 recording.release(cells);
                 recording.release(indices);

@@ -742,6 +742,8 @@ public final class CgRenderDemo {
         return String.format(Locale.ROOT, "FPS: %.1f", fps)
                 + "\nScene [N]: " + kinds[wanted].name() + " - Hide [H]"
                 + String.format(Locale.ROOT, "\nParticles: %,d", particles)
+                + ("lights".equals(kinds[wanted].name()) ? String.format(Locale.ROOT, " | Lights dropped: %,d, budget %d a cell",
+                        CgWorldRenderer.get().lights().cellsDropped(), CgWorldRenderer.get().lights().budgetPerCell()) : "")
                 + (CgCameraShake.enabled() ? String.format(Locale.ROOT, "\n\nShake [C]: on, trauma %.2f", CgCameraShake.trauma())
                 : "\n\nShake [C]: off")
                 + "\nHDR [G]: " + (CgWorldRenderer.get().hdrScene() ? "on" : "off")
