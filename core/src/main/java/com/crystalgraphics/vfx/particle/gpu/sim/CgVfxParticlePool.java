@@ -53,7 +53,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -404,7 +403,8 @@ public final class CgVfxParticlePool {
             CgCompute.load(EVENT_CAP_KERNELS).kernel("Gather").prepare();
             CgGpuOps.prepareSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING);
         }
-        for (CgVfxDataInterface di : shape.dataInterfaces()) di.prepare();
+        List<CgVfxDataInterface> interfaces = shape.dataInterfaces();
+        for (int d = 0; d < interfaces.size(); d++) interfaces.get(d).prepare();
     }
 
     /** The neighbour grid's kernels, for {@code CgVfxDataInterfaces.NEIGHBOURS}' {@code prepare}. */
@@ -552,14 +552,20 @@ public final class CgVfxParticlePool {
         TAKEN.clear();
         for (int i = 0; i < ALL.size(); i++) {
             CgVfxParticlePool pool = ALL.get(i);
-            if (pool.steps > 0) TAKEN.addAll(pool.shape.dataInterfaces());
+            if (pool.steps > 0) take(pool.shape);
         }
-        for (CgVfxDataInterface di : TAKEN) di.beforeFrame(frame);
+        for (int d = 0; d < TAKEN.size(); d++) TAKEN.get(d).beforeFrame(frame);
         recordAll(frame.recording());
     }
 
     /** The data interfaces the stepping pools take, each once: a frame's and a recording's scratch. */
-    private static final Set<CgVfxDataInterface> TAKEN = new LinkedHashSet<>();
+    private static final List<CgVfxDataInterface> TAKEN = new ArrayList<>();
+
+    /** {@code shape}'s data interfaces into {@link #TAKEN}, each once: a short list, searched rather than hashed. */
+    private static void take(CgVfxShape shape) {
+        List<CgVfxDataInterface> interfaces = shape.dataInterfaces();
+        for (int d = 0; d < interfaces.size(); d++) if (!TAKEN.contains(interfaces.get(d))) TAKEN.add(interfaces.get(d));
+    }
 
     /** Records every pool's queued steps into {@code recording}, once a host frame. Render thread. */
     static void recordAll(CgRecording recording) {
@@ -623,8 +629,8 @@ public final class CgVfxParticlePool {
         }
         for (int i = 0; i < STEPPING.size(); i++) STEPPING.get(i).uploadFeeds(recording);
         TAKEN.clear();
-        for (int i = 0; i < STEPPING.size(); i++) TAKEN.addAll(STEPPING.get(i).shape.dataInterfaces());
-        for (CgVfxDataInterface di : TAKEN) di.upload(recording);
+        for (int i = 0; i < STEPPING.size(); i++) take(STEPPING.get(i).shape);
+        for (int d = 0; d < TAKEN.size(); d++) TAKEN.get(d).upload(recording);
         for (int i = 0; i < STEPPING.size(); i++) {
             CgVfxShape s = STEPPING.get(i).shape;
             if (s.readsClips() || s.drawLayout() == CgVfxDrawLayout.SEQUENCE) {
@@ -693,7 +699,8 @@ public final class CgVfxParticlePool {
         reserve(recording, capacity);
         upload(recording);
         if (ringSlots > 0) reserveRings(recording);
-        for (CgVfxDataInterface di : shape.dataInterfaces()) di.reserve(recording, this);
+        List<CgVfxDataInterface> interfaces = shape.dataInterfaces();
+        for (int d = 0; d < interfaces.size(); d++) interfaces.get(d).reserve(recording, this);
         return true;
     }
 
@@ -926,7 +933,8 @@ public final class CgVfxParticlePool {
                     .set("_ParentRegions", children ? REGION_COUNT[tier - 1] : 0).bind("FEEDS", children ? feedBuffer : unfed);
         }
         if (shape.readsClips()) CgVfxClipAtlas.bind(stepping);
-        for (CgVfxDataInterface di : shape.dataInterfaces()) di.bind(stepping, this);
+        List<CgVfxDataInterface> interfaces = shape.dataInterfaces();
+        for (int d = 0; d < interfaces.size(); d++) interfaces.get(d).bind(stepping, this);
         for (int i = 0; i < shape.modules(); i++) {
             if (textureEntries[i] == null) continue;
             CgTexture[] any = shape.textures(i);
@@ -948,7 +956,8 @@ public final class CgVfxParticlePool {
                 .bind("LIVE", counts[current]).bind("INSTANCES", instanceBuffer).bind("CURVES", curveBuffer)
                 .set("_InstanceAt", stepInstanceAt[s] / 4).set("_InstanceRow", shape.instanceRowVectors())
                 .set("_Floors", shape.floors() ? 1 : 0).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS));
-        for (CgVfxDataInterface di : shape.dataInterfaces()) di.afterStep(pass, this);
+        List<CgVfxDataInterface> interfaces = shape.dataInterfaces();
+        for (int d = 0; d < interfaces.size(); d++) interfaces.get(d).afterStep(pass, this);
         if (stepStores[s]) {
             if (ringSlots > 0) {
                 pass.dispatch(store, storage).bind("RECORDS", records).bind("LIVE", counts[current])
@@ -1427,9 +1436,9 @@ public final class CgVfxParticlePool {
         for (int d = 0; d < interfaces.size(); d++) {
             CgVfxDataInterface di = interfaces.get(d);
             if (di.instanceLanes() == 0) continue;
-            words.target(instances, at + shape.dataLanesAt(d) * 4, di.instanceLanes(), who + "'s " + di.id());
+            words.target(instances, at + shape.dataLanesAt(d) * 4, di.instanceLanes(), who, di.id());
             di.writeInstance(view, ox, oy, oz, words);
-            words.finish("its " + di.id() + " lanes");
+            words.finish("its data interface lanes");
         }
     }
 

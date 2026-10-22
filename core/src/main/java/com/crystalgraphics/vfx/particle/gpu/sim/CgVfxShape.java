@@ -80,6 +80,7 @@ public final class CgVfxShape {
     private final boolean floors, spawnsOnMesh;
     /** Every data interface it takes, its kinds' and what they require, in registration order; where each one's lanes start. */
     private final CgVfxDataInterface[] interfaces;
+    private final List<CgVfxDataInterface> interfaceList;
     private final int[] interfaceLanesAt;
     /** Each module's place among the textured ones, -1 for none; where their entry indices start in the instance row. */
     private final int[] textureEntry;
@@ -281,6 +282,7 @@ public final class CgVfxShape {
         if (spawnsOnMesh) take(CgVfxDataInterfaces.SPAWN_MESHES, taken);
         interfaces = taken.toArray(new CgVfxDataInterface[0]);
         Arrays.sort(interfaces, Comparator.comparingInt(CgVfxDataInterfaces::order));
+        interfaceList = List.of(interfaces);
         interfaceLanesAt = new int[interfaces.length];
         for (int d = 0; d < interfaces.length; d++) {
             interfaceLanesAt[d] = lane;
@@ -401,7 +403,7 @@ public final class CgVfxShape {
 
     /** Every data interface it takes, what its kinds require included, in registration order: the order the Step writes them in. */
     public List<CgVfxDataInterface> dataInterfaces() {
-        return Arrays.asList(interfaces);
+        return interfaceList;
     }
 
     /** Where interface {@code d}'s ({@link #dataInterfaces()}) lanes start in an instance row, in vec4s. */
