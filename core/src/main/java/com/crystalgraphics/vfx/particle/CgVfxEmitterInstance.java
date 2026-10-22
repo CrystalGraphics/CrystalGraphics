@@ -75,6 +75,8 @@ public final class CgVfxEmitterInstance {
     private float stepLoopFrom, stepLoopTo;
     private boolean loopsOver;
     private float rateOwed, share = 1f;
+    /** Steps whose rate was drawn: the next draw's index. */
+    private int rateDraws;
     /** When {@link #stop} ended its spawning; infinite until then. What {@link #rateScale} multiplies its rate by. */
     private float stoppedAt = Float.POSITIVE_INFINITY, rateScale = 1f;
     /** Stepped by {@link #schedule} at least once: its slot is open. */
@@ -87,6 +89,10 @@ public final class CgVfxEmitterInstance {
     private boolean stepped;
     /** The followed entity's box, relative to the origin: its centre and half extents, 0 for none. */
     private float boxX, boxY, boxZ, boxHalfX, boxHalfY, boxHalfZ;
+    /** What answers its skeleton points ({@link Books#sockets}); null while its effect gives none. */
+    @Nullable
+    private CgVfxSockets.Source socketSource;
+    private final double[] socketScratch = new double[3];
     /**
      * Its effect's rotation ({@link Books#orientation}), the one its last step was taken at, and their difference for a
      * local instance: unit quaternions, the identity unless turned. {@code turned} once a step has been taken at one.
@@ -711,6 +717,11 @@ public final class CgVfxEmitterInstance {
             return CgVfxEmitterInstance.this.sourceZ();
         }
 
+        /** What answers its emitter's skeleton points: the effect sets it each tick it steps this instance. */
+        public void sockets(@Nullable CgVfxSockets.Source source) {
+            socketSource = source;
+        }
+
         /**
          * The box of the entity its effect follows, its centre relative to the effect's origin: what an {@code entity()}
          * emitter spawns in. The effect sets it each tick it steps this instance; all 0 while it follows none.
@@ -819,7 +830,8 @@ public final class CgVfxEmitterInstance {
             stepLoopFrom = Math.max(0f, age);
             stepLoopTo = stepLoopFrom + dt;
             if (!loopsOver && time < stoppedAt && age >= 0f && age < loopLength) {
-                rateOwed += (e.rate.at(age) * dt + e.perUnit.perBlock() * travelled) * rateScale;
+                float u = e.rate.drawn() ? rand(seed ^ e.rateKey, rateDraws++, 0) : 0f;
+                rateOwed += (e.rate.at(age, u) * dt + e.perUnit.perBlock() * travelled) * rateScale;
                 int n = (int) rateOwed;
                 rateOwed -= n;
                 // Spawn i of n is born (i + 1) / n of the way through the step, so the last is at its end.
@@ -946,6 +958,22 @@ public final class CgVfxEmitterInstance {
         @Override
         public float fromZ() {
             return fromZ;
+        }
+
+        @Override
+        public boolean socket(int i, float[] out) {
+            CgVfxSockets points = emitter.sockets();
+            CgVfxSockets.Source source = socketSource;
+            if (points == null || source == null || !source.point(points.names().get(i), socketScratch)) return false;
+            out[0] = (float) (socketScratch[0] - originX);
+            out[1] = (float) (socketScratch[1] - originY);
+            out[2] = (float) (socketScratch[2] - originZ);
+            return true;
+        }
+
+        @Override
+        public int seed() {
+            return seed;
         }
 
         @Override

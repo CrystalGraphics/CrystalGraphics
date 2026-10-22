@@ -187,6 +187,12 @@ public interface CgVfxGpuEmitter {
         return List.of();
     }
 
+    /** The skeleton points it spawns at ({@link CgVfxSockets}); null for none. Their count is part of the shape. */
+    @Nullable
+    default CgVfxSockets sockets() {
+        return null;
+    }
+
     /** Samples each of a curve row's two curves holds. */
     int CURVE_TEXELS = 256;
 

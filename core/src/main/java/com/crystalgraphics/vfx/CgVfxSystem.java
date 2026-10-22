@@ -617,6 +617,9 @@ public final class CgVfxSystem {
                 effect.followBoxZ = pose[CgEntityQuery.Z];
                 effect.followHalfX = effect.followHalfZ = (float) (pose[CgEntityQuery.WIDTH] * 0.5);
                 effect.followHalfY = (float) half;
+                if (effect.followPose == null) effect.followPose = new double[CgEntityQuery.POSE_LENGTH];
+                System.arraycopy(pose, 0, effect.followPose, 0, CgEntityQuery.POSE_LENGTH);
+                effect.followTick = partialTick;
             } else {
                 effect.followEntity = -1;
                 effect.followHalfX = effect.followHalfY = effect.followHalfZ = 0f;

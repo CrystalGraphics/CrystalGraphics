@@ -109,7 +109,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final String[] moduleIds;
     private final int[] rollKeys;
     /** The books' keys: the loop's delay and duration, each burst's count and probability. */
-    final int delayKey, durationKey;
+    final int delayKey, durationKey, rateKey;
     final int[] burstCountKeys, burstProbabilityKeys;
     final CgVfxSpawnRate rate;
     final CgVfxSpawnPerUnit perUnit;
@@ -125,6 +125,14 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final float sizeMin, sizeMax, spinMin, spinMax, heat;
     /** Its spawn values given in a form, one a target; how far a radius form moves its birth out at most. */
     final List<CgVfxSpawnForm> spawnForms;
+    @Nullable
+    final CgVfxSockets sockets;
+    @Nullable
+    final CgVfxMeshRotation meshRotation;
+    final List<CgVfxLifeRoll> lifeRolls;
+    final List<CgVfxLifeBind> lifeBinds;
+    /** Whether a collision event fires at each particle's first collision alone (Cascade's FirstTimeOnly). */
+    final boolean firstCollisionOnly;
     private final float sweptOut;
     /** Whether its lifetime is a form: the books then book every particle at its longest. */
     final boolean lifeFormed;
@@ -188,6 +196,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         }
         delayKey = CgVfxFormCompiler.key(id("state"), "loop_delay");
         durationKey = CgVfxFormCompiler.key(id("state"), "loop_duration");
+        rateKey = CgVfxFormCompiler.key(id("rate"), "rate");
         rate = b.rate;
         spawn = b.spawn.build(b.name);
         perUnit = b.perUnit;
@@ -196,6 +205,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         trailPoints = b.trailPoints;
         rasterized = b.rasterized != null ? b.rasterized.clone() : null;
         spawnForms = List.copyOf(b.spawnForms);
+        sockets = b.sockets;
+        meshRotation = b.meshRotation;
+        lifeRolls = List.copyOf(b.lifeRolls);
+        lifeBinds = List.copyOf(b.lifeBinds);
+        firstCollisionOnly = b.firstCollisionOnly;
         speedMin = b.speedMin;
         speedMax = Math.max(b.speedMax, high(CgVfxSpawnInput.SPEED, b.speedMax));
         lifeMin = b.lifeMin;
@@ -303,6 +317,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             b.perUnit = perUnit.scaled(s);
             b.maxStep *= s;
             b.spawnForms.replaceAll(f -> f.scaled(s));
+            if (b.sockets != null) b.sockets = b.sockets.scaled(s);
             b.speedMin *= s;
             b.speedMax *= s;
             b.sizeMin *= s;
@@ -471,6 +486,36 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     @Override
     public List<CgVfxSpawnForm> spawnForms() {
         return spawnForms;
+    }
+
+    @Override
+    @Nullable
+    public CgVfxSockets sockets() {
+        return sockets;
+    }
+
+    @Override
+    @Nullable
+    public CgVfxMeshRotation meshRotation() {
+        return meshRotation;
+    }
+
+    @Override
+    public List<CgVfxLifeRoll> lifeRolls() {
+        return lifeRolls;
+    }
+
+    /**
+     * Whether the collision events put on it fire at each particle's first collision alone: its {@code generate_event}'s
+     * {@code first_time_only} (ParticleModules_Event.cpp:185-191, 4.21).
+     */
+    public boolean firstCollisionOnly() {
+        return firstCollisionOnly;
+    }
+
+    @Override
+    public List<CgVfxLifeBind> lifeBinds() {
+        return lifeBinds;
     }
 
     @Override
@@ -683,6 +728,13 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private CgVfxSpawnShape.Builder spawn = new CgVfxSpawnShape.Builder();
         private float sweep, inherit, maxStep = 8f;
         private final List<CgVfxSpawnForm> spawnForms = new ArrayList<>();
+        @Nullable
+        private CgVfxSockets sockets;
+        @Nullable
+        private CgVfxMeshRotation meshRotation;
+        private final List<CgVfxLifeRoll> lifeRolls = new ArrayList<>();
+        private final List<CgVfxLifeBind> lifeBinds = new ArrayList<>();
+        private boolean firstCollisionOnly;
         private final Map<String, String> ids = new HashMap<>();
         private final List<String> burstIds = new ArrayList<>();
         private final List<String> moduleIds = new ArrayList<>();
@@ -728,6 +780,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             trailPoints = e.trailPoints;
             rasterized = e.rasterized;
             spawnForms.addAll(e.spawnForms);
+            sockets = e.sockets;
+            meshRotation = e.meshRotation;
+            lifeRolls.addAll(e.lifeRolls);
+            lifeBinds.addAll(e.lifeBinds);
+            firstCollisionOnly = e.firstCollisionOnly;
             speedMin = e.speedMin;
             speedMax = e.speedMax;
             lifeMin = e.lifeMin;

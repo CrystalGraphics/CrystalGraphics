@@ -85,6 +85,13 @@ public final class CgVfxShape {
     /** Each module's place among the textured ones, -1 for none; where their entry indices start in the instance row. */
     private final int[] textureEntry;
     private final int texturesAt;
+    /**
+     * Its skeleton points ({@code CgVfxSockets}): how many, 0 for none; where their lanes start in the instance row, one
+     * a point (its place from the origin, 1 where answered); where their vec4s start in the parameter row, a header
+     * {@code (count, 1 in turn, the pick's key, 0)} then each point's offset.
+     */
+    private final int sockets, socketsAt, socketParamsAt;
+    private final boolean socketsFollow, socketsInherit;
     /** Its user bindings, the parameter-row word each replaces, and where their lanes start: four bindings a lane. */
     private final CgVfxUserBinding[] userBindings;
     private final int[] userWords;
@@ -240,8 +247,12 @@ public final class CgVfxShape {
         spawnLayouts = new CgVfxFormLayout[spawnForms.length];
         for (int f = 0; f < spawnForms.length; f++) {
             spawnFormAt[f] = param;
+            // A range's or a pick's first end sits in its spawn-row word, where the value has one.
+            CgVfxFormInput root = spawnForms[f].compiled();
+            boolean top = spawnForms[f].target().word() >= 0
+                    && (root instanceof CgVfxFormInput.Range || root instanceof CgVfxFormInput.Pick);
             spawnLayouts[f] = CgVfxFormLayout.of(emitter.name() + "'s " + spawnForms[f].target().module() + " " + spawnForms[f].input(),
-                    spawnForms[f].compiled(), true, true, param, keySlot);
+                    root, top, true, param, keySlot);
             param += spawnLayouts[f].vectors();
             keySlot += spawnLayouts[f].keys();
             key.append(f == 0 ? "|spawn:" : ",").append(spawnForms[f].target()).append('=').append(formKey(spawnForms[f].compiled()));
@@ -250,6 +261,16 @@ public final class CgVfxShape {
         keyCount = keySlot;
         keysAt = param;
         param += (keys() + 3) / 4;
+        CgVfxSockets points = emitter.sockets();
+        sockets = points == null ? 0 : points.names().size();
+        socketsFollow = points != null && points.follow();
+        socketsInherit = points != null && points.inherit() != 0f;
+        socketParamsAt = param;
+        if (sockets > 0) {
+            param += 1 + sockets;
+            key.append("|sockets:").append(sockets).append(points.sequential() ? "s" : "r").append(points.follow() ? "f" : "")
+                    .append(socketsInherit ? "v" : "");
+        }
         paramRow = param;
         List<CgVfxUserBinding> bound = emitter.userBindings();
         if (bound.size() > MAX_USER_BINDINGS) {
@@ -294,6 +315,8 @@ public final class CgVfxShape {
         for (int i = 0; i < n; i++) textureEntry[i] = textures[i].length > 0 ? textured++ : -1;
         texturesAt = lane;
         lane += (textured + 3) / 4;
+        socketsAt = lane;
+        lane += socketsInherit ? 2 * sockets : sockets;
         instanceRow = lane;
         floors = taken.contains(CgVfxDataInterfaces.FLOOR_Y);
         this.key = key.toString();
@@ -568,6 +591,31 @@ public final class CgVfxShape {
             for (int k = 0; k < formWords[f].length; k++) if (formWords[f][k] == word) return new int[]{f, k};
         }
         return null;
+    }
+
+    /** How many skeleton points it spawns at; 0 for none. */
+    public int sockets() {
+        return sockets;
+    }
+
+    /** Whether its particles stay on their skeleton points each step. */
+    public boolean socketsFollow() {
+        return socketsFollow;
+    }
+
+    /** Whether its particles take a share of their point's velocity: each point's lane then a velocity lane after all. */
+    public boolean socketsInherit() {
+        return socketsInherit;
+    }
+
+    /** Where its skeleton points' lanes start in an instance row. */
+    public int socketsAt() {
+        return socketsAt;
+    }
+
+    /** Where its skeleton points' header and offsets start in a parameter row. */
+    public int socketParamsAt() {
+        return socketParamsAt;
     }
 
     /** Where the roll keys start in a parameter row, a word each. */

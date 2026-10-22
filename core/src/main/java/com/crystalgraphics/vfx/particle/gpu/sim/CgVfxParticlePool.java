@@ -226,6 +226,8 @@ public final class CgVfxParticlePool {
     private long openings;
     /** Per slot: its ground as its last step gave it, relative to its origin; NaN for none. */
     private float[] slotGround = new float[0];
+    /** Each slot's skeleton points in the world last step, and 1 where answered: their velocity's other end. */
+    private double[] socketPrev = new double[0];
     /** Per slot: the radius it is culled as one sphere of about its origin, or 0 to cull each particle by its size. */
     private float[] slotSourceReach = new float[0];
     /** Per slot: the grid its particles are drawn into each frame ({@code CgVfxEmitter.Builder.rasterize}), or null. */
@@ -1445,6 +1447,27 @@ public final class CgVfxParticlePool {
             di.writeInstance(view, ox, oy, oz, words);
             words.finish("its data interface lanes");
         }
+        float dt = stepDt(s);
+        for (int i = 0, base = at + shape.socketsAt() * 4; i < shape.sockets(); i++, base += 4) {
+            boolean answered = view.socket(i, socketPoint);
+            instances[base] = Float.floatToRawIntBits(answered ? socketPoint[0] : 0f);
+            instances[base + 1] = Float.floatToRawIntBits(answered ? socketPoint[1] : 0f);
+            instances[base + 2] = Float.floatToRawIntBits(answered ? socketPoint[2] : 0f);
+            instances[base + 3] = Float.floatToRawIntBits(answered ? 1f : 0f);
+            if (!shape.socketsInherit()) continue;
+            // Its velocity: its point in the world now against last step's (Cascade's bone velocity).
+            int prev = (slot * CgVfxSockets.MAX + i) * 4, vel = base + shape.sockets() * 4;
+            double wx = ox + socketPoint[0], wy = oy + socketPoint[1], wz = oz + socketPoint[2];
+            boolean moved = answered && socketPrev[prev + 3] != 0 && dt > 0f;
+            instances[vel] = Float.floatToRawIntBits(moved ? (float) ((wx - socketPrev[prev]) / dt) : 0f);
+            instances[vel + 1] = Float.floatToRawIntBits(moved ? (float) ((wy - socketPrev[prev + 1]) / dt) : 0f);
+            instances[vel + 2] = Float.floatToRawIntBits(moved ? (float) ((wz - socketPrev[prev + 2]) / dt) : 0f);
+            instances[vel + 3] = 0;
+            socketPrev[prev] = wx;
+            socketPrev[prev + 1] = wy;
+            socketPrev[prev + 2] = wz;
+            socketPrev[prev + 3] = answered ? 1 : 0;
+        }
     }
 
     /**
@@ -2010,8 +2033,18 @@ public final class CgVfxParticlePool {
         for (int f = 0; f < shape.forms(); f++) writeForm(shape.layout(f), at, keys);
         for (int f = 0; f < shape.spawnForms(); f++) {
             CgVfxSpawnForm form = shape.spawnForm(f);
-            params[at + form.target().word()] = Float.floatToRawIntBits(form.firstEnd());
-            writeForm(shape.spawnLayout(f), at, keys);
+            CgVfxFormLayout layout = shape.spawnLayout(f);
+            if (layout.node(layout.root()).top()) params[at + form.target().word()] = Float.floatToRawIntBits(form.firstEnd());
+            writeForm(layout, at, keys);
+        }
+        CgVfxSockets points = emitter.sockets();
+        if (points != null) {
+            int s = at + shape.socketParamsAt() * 4;
+            params[s] = points.names().size();
+            params[s + 1] = points.sequential() ? 1 : 0;
+            params[s + 2] = points.key();
+            params[s + 3] = Float.floatToRawIntBits(points.inherit());
+            for (int i = 0; i < points.names().size(); i++) vector(s + 4 * (1 + i), points.offsets()[i]);
         }
         // Its draws read the clip's rows from its first step's upload on.
         if (emitter.clip() != null) CgVfxClipAtlas.of(emitter.clip());
@@ -2122,6 +2155,7 @@ public final class CgVfxParticlePool {
         slotScale = Arrays.copyOf(slotScale, size);
         slotOpened = Arrays.copyOf(slotOpened, size);
         slotGround = Arrays.copyOf(slotGround, size);
+        socketPrev = Arrays.copyOf(socketPrev, size * CgVfxSockets.MAX * 4);
         slotSourceReach = Arrays.copyOf(slotSourceReach, size);
         slotGrid = Arrays.copyOf(slotGrid, size);
         ringFirst = Arrays.copyOf(ringFirst, size);

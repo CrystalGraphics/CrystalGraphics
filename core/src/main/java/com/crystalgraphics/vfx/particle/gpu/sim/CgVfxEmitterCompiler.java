@@ -402,8 +402,8 @@ public final class CgVfxEmitterCompiler {
                 }
 
                 // CgVfxSpawnShape: where spawn k of the instance at inst is born in its shape's sampling frame (axis
-                // +Y), and the way out of the shape's middle there.
-                void step_place(uint seed, uint k, int row, int inst, out vec3 pos, out vec3 way) {
+                // +Y), and the way out of the shape's middle there; a cylinder's half height is the launch's.
+                void step_place(uint seed, uint k, int row, int inst, float halfHeight, out vec3 pos, out vec3 way) {
                     seed ^= step_key(row, STEP_KEY_SHAPE);
                     vec4 s6 = step_vector(row, inst, 6), n = step_vector(row, inst, 7);
                     int kind = int(s6.x), flags = int(s6.y), placement = flags & 3;
@@ -444,23 +444,23 @@ public final class CgVfxEmitterCompiler {
                     vec3 ring = vec3(cos(h), 0.0, sin(h));
                     if (kind == 3) {
                         // A cylinder or ring: inner and outer radius, half height.
-                        float r, y;
+                        float r, y, hz = halfHeight;
                         if (placement == 0) {
                             r = sqrt(mix(n.x * n.x, n.y * n.y, u2));
-                            y = (u3 * 2.0 - 1.0) * n.z;
+                            y = (u3 * 2.0 - 1.0) * hz;
                         } else if (placement == 1) {
-                            float outer = n.y * 2.0 * n.z, inner = n.x * 2.0 * n.z, caps = n.y * n.y - n.x * n.x;
+                            float outer = n.y * 2.0 * hz, inner = n.x * 2.0 * hz, caps = n.y * n.y - n.x * n.x;
                             float t = u2 * (outer + inner + caps);
                             if (t < outer + inner) {
                                 r = t < outer ? n.y : n.x;
-                                y = (u3 * 2.0 - 1.0) * n.z;
+                                y = (u3 * 2.0 - 1.0) * hz;
                             } else {
                                 r = sqrt(mix(n.x * n.x, n.y * n.y, u3));
-                                y = u4 < 0.5 ? -n.z : n.z;
+                                y = u4 < 0.5 ? -hz : hz;
                             }
                         } else {
                             r = n.y;
-                            y = n.z == 0.0 ? 0.0 : u3 < 0.5 ? -n.z : n.z;
+                            y = hz == 0.0 ? 0.0 : u3 < 0.5 ? -hz : hz;
                         }
                         pos = vec3(ring.x * r, upper ? abs(y) : y, ring.z * r);
                         way = ring;
@@ -519,14 +519,14 @@ public final class CgVfxEmitterCompiler {
 
                 // Spawn k of the instance at inst from seed with the row's numbers, at `at`, its frame turned by `turn` (the
                 // instance's rotation, a quaternion) then its up turned to n (an event's normal), front blocks further out;
-                // `loop` is its loop's seconds, what a spawn form by the loop reads.
-                void step_launch(uint seed, uint k, int row, int inst, vec3 at, vec3 n, vec4 turn, float front, float loop,
+                // `loop` is its loop's seconds, what a spawn form by the loop reads. False where it spawns nothing.
+                bool step_launch(uint seed, uint k, int row, int inst, vec3 at, vec3 n, vec4 turn, float front, float loop,
                                  out FxParticle p) {
                     vec4 s0 = step_vector(row, inst, 0), s1 = step_vector(row, inst, 1), s2 = step_vector(row, inst, 2);
                     vec4 s4 = step_vector(row, inst, 4);
                     vec4 q = step_vector(row, inst, 8);
                     vec3 local, way;
-                    step_place(seed, k, row, inst, local, way);
+                    step_place(seed, k, row, inst, @HALF_HEIGHT@, local, way);
                     vec3 outward = step_rotate(q, way), dir;
                     int mode = int(s4.w);
                     if (mode == 0) dir = outward;
@@ -534,16 +534,16 @@ public final class CgVfxEmitterCompiler {
                     else {
                         // Niagara's cone: the angle from its axis drawn evenly between its inner and outer half angles,
                         // the turn round it evenly (NiagaraStatelessModule_SolveVelocitiesAndForces.ush).
-                        float angle = mix(s4.x, s4.y, fx_rand(seed ^ step_key(row, STEP_KEY_CONE), k, 0u)),
+                        float angle = mix(s4.x, @CONE@, fx_rand(seed ^ step_key(row, STEP_KEY_CONE), k, 0u)),
                               phi = fx_rand(seed ^ step_key(row, STEP_KEY_CONE), k, 1u) * STEP_TAU;
                         float st = sin(angle);
                         dir = step_orient(vec3(st * cos(phi), cos(angle), st * sin(phi)), step_vector(row, inst, 5).xyz);
                     }
-                    vec3 place = step_rotate(q, local) + step_vector(row, inst, 9).xyz;
+                    vec3 place = step_rotate(q, local) + @OFFSET@;
                     float speed = @SPEED@;
                     p.position = at + step_orient(step_rotate(turn, place + outward * front), n);
                     p.previous = p.position;
-                    p.velocity = step_orient(step_rotate(turn, dir), n) * speed;
+                    p.velocity = step_orient(step_rotate(turn, dir), n) * speed@VELOCITY@;
                     p.age = 0.0;
                     p.life = @LIFE@;
                     p.size = @SIZE@;
@@ -551,12 +551,13 @@ public final class CgVfxEmitterCompiler {
                     uint spinKey = seed ^ step_key(row, STEP_KEY_SPIN);
                     float spin = s2.x + (s2.y - s2.x) * fx_rand(spinKey, k, 0u);
                     p.spinRate = fx_rand(spinKey, k, 1u) < 0.5 ? -spin : spin;
-                    p.spin = fx_rand(seed ^ step_key(row, STEP_KEY_ROTATION), k, 0u) * 6.2831853;
+                    p.spin = @SPIN@;
                     p.heat = s1.w;
                     p.resting = false;
                     p.collisions = 0u;
                     p.hit = vec4(0.0);
                     p.hitEntity = 0u;
+@SOCKETS@                    return true;
                 }
 
                 // Spawn k, the i-th of the n of the spawn row at `at` (one CPU tick's), of the instance in slot, unless its
@@ -577,8 +578,8 @@ public final class CgVfxEmitterCompiler {
                     float along = i >= bursts ? float(i - bursts + 1) / float(n - bursts) : 0.0;
                     born = mix(when.x, when.y, along);
                     float loop = mix(from.w, to.w, along);
-                    step_launch(seed, k, row, inst, mix(from.xyz, to.xyz, along), vec3(0.0, 1.0, 0.0), step_instance(inst + 7),
-                            @FRONT@, loop, p);
+                    if (!step_launch(seed, k, row, inst, mix(from.xyz, to.xyz, along), vec3(0.0, 1.0, 0.0), step_instance(inst + 7),
+                            @FRONT@, loop, p)) return false;
                     p.velocity += step_vector(row, inst, 2).z * (to.xyz - from.xyz) / when.w;
                     p.id = k;
                     p.slot = slot;
@@ -632,7 +633,9 @@ public final class CgVfxEmitterCompiler {
                     // From the parent's block and the place within it to this slot's origin.
                     vec3 at = vec3(ev.block.xyz - ivec3(INSTANCES(inst + 3).xyz)) + ev.position.xyz - step_instance(inst + 4).xyz;
                     // Launched about the event's normal: the instance's rotation turned its parent already.
-                    step_launch(seed, k, int(head.x) * STEP_PARAM_ROW, inst, at, ev.normal.xyz, vec4(0.0, 0.0, 0.0, 1.0), 0.0, 0.0, p);
+                    if (!step_launch(seed, k, int(head.x) * STEP_PARAM_ROW, inst, at, ev.normal.xyz, vec4(0.0, 0.0, 0.0, 1.0), 0.0, 0.0, p)) {
+                        return false;
+                    }
                     p.velocity += uintBitsToFloat(feed.w) * ev.velocityAge.xyz;
                     p.id = k;
                     p.slot = slot;
@@ -778,11 +781,11 @@ public final class CgVfxEmitterCompiler {
                         p.position += p.velocity * s.dt;
                         p.spin += p.spinRate * s.dt;
                     }
-                    // What it struck with: a landing's and a collision's velocity.
+@FOLLOW@                    // What it struck with: a landing's and a collision's velocity.
                     vec3 impact = p.velocity;
                     p.hit = vec4(0.0);
                     p.hitEntity = 0u;
-                """);
+                """.replace("@FOLLOW@", follow(shape)));
         for (int i = 0; i < shape.modules(); i++) if (shape.afterSolve(i)) call(s, shape, i);
         s.append("""
                     p.age += s.dt;
@@ -951,7 +954,11 @@ public final class CgVfxEmitterCompiler {
     }
 
     /** A spawn value: its spawn form's expression for channel 0, else the spawn row's range as {@code otherwise}. */
-    private static String spawnValue(CgVfxShape shape, CgVfxSpawnInput target, String first, String otherwise) {
+    /**
+     * {@code target}'s value at the launch: its spawn form's expression, {@code times} before it, a vector as a
+     * {@code vecN} of its components; {@code otherwise} where it has no form. {@code first} is its spawn-row word.
+     */
+    private static String spawnValue(CgVfxShape shape, CgVfxSpawnInput target, String first, String otherwise, String times) {
         int f = shape.spawnFormOf(target);
         return f < 0 ? otherwise : formExpr(shape.spawnLayout(f), shape.spawnForm(f).compiled(), 0, first, "seed", "k", "loop");
     }
@@ -962,6 +969,47 @@ public final class CgVfxEmitterCompiler {
         if (f < 0) return "0.0";
         String radius = "step_vector(row, inst, 7).y";
         return "(" + formExpr(shape.spawnLayout(f), shape.spawnForm(f).compiled(), 0, radius, "seed", "k", "loop") + " - " + radius + ")";
+    }
+
+    /**
+     * The launch's skeleton point, where {@code shape} spawns at its effect's ({@code CgVfxSockets}): picked in turn by
+     * the spawn's key or at random as Cascade draws it ({@code ParticleModules_Location.cpp:1438-1449}), the particle
+     * placed there plus its offset; an unanswered point spawns nothing.
+     */
+    private static String sockets(CgVfxShape shape) {
+        if (shape.sockets() == 0) return "";
+        int head = shape.socketParamsAt(), at = shape.socketsAt();
+        return """
+                    {
+                        uvec4 points = PARAMS(row + %d);
+                        float count = float(points.x);
+                        int s = points.y != 0u ? int(k %% points.x) : int(fx_rand(seed ^ points.z, k, 0u) * (count - 0.5));
+                        vec4 point = step_instance(inst + %d + s);
+                        if (point.w == 0.0) return false;
+                        p.position = point.xyz + step_orient(step_rotate(turn, step_param(row + %d + s).xyz), n);
+                        p.previous = p.position;
+                        %s
+                    }
+                """.formatted(head, at, head + 1, shape.socketsInherit()
+                        ? "p.velocity += uintBitsToFloat(points.w) * step_instance(inst + " + (at + shape.sockets()) + " + s).xyz;" : "");
+    }
+
+    /**
+     * A following shape's particle put back on its skeleton point after the solve, the one its launch took from its id
+     * and its instance's seed ({@link #sockets}), as Cascade's update each frame sets it ({@code ParticleModules_Location.cpp:1632-1686}).
+     */
+    private static String follow(CgVfxShape shape) {
+        if (!shape.socketsFollow()) return "";
+        int head = shape.socketParamsAt(), at = shape.socketsAt();
+        return """
+                    {
+                        uvec4 points = PARAMS(row + %d);
+                        float count = float(points.x);
+                        int sp = points.y != 0u ? int(p.id %% points.x) : int(fx_rand(formSeed ^ points.z, p.id, 0u) * (count - 0.5));
+                        vec4 point = step_instance(inst + %d + sp);
+                        if (point.w != 0.0) p.position = point.xyz + step_rotate(step_instance(inst + 7), step_param(row + %d + sp).xyz);
+                    }
+                """.formatted(head, at, head + 1);
     }
 
     /** The loop's seconds an update reads: the instance header's (CgVfxParticlePool.INSTANCE_HEADER). */

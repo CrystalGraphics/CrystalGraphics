@@ -26,6 +26,8 @@ import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.vfx.effect.beam.CgBeamWake;
 import com.crystalgraphics.vfx.element.CgVfxExplosion;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
+import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
+import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;

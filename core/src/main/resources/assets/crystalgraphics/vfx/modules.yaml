@@ -68,11 +68,11 @@ modules:
       { name: add_velocity, type: struct, default: { outward: 0 } } ] }
   - { id: socket_location, groups: [particle_spawn], order: spawn_place, unreal: { niagara: SkeletalMeshLocation, cascade: [LocationBoneSocket] }, inputs: [
       { name: points, type: array, default: [] }, { name: source, type: enum, values: [sockets, bones], default: sockets },
-      { name: mesh, type: struct, forms: [constant, binding] },
+      { name: mesh, type: struct, forms: [constant, binding], default: { bind: user.BoneSocketActor } },
       { name: offsets, type: array, quantity: offset, default: [] }, { name: universal_offset, type: vec3, quantity: offset, default: [0, 0, 0] },
       { name: selection, type: enum, values: [random, sequential], default: random },
       { name: update_each_frame, type: bool, default: false }, { name: orient_meshes, type: bool, default: true },
-      { name: inherit_velocity, type: float, default: 0 },
+      { name: inherit_velocity, type: float, default: 0 }, { name: preselect, type: int, default: 10 },
       { name: segments, type: bool, default: false }, { name: offset, type: float, quantity: length, default: 0 },
       { name: bias, type: enum, values: [none, along, against, away_from_end], default: none } ] }
   - { id: skeletal_mesh_location, groups: [particle_spawn], order: spawn_place, unreal: { niagara: SkeletalMeshLocation, cascade: [LocationSkelVertSurface] }, inputs: [

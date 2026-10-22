@@ -80,6 +80,14 @@ public interface CgVfxInstanceView {
     }
 
     /**
+     * Skeleton point {@code i} of its emitter's {@code CgVfxSockets}, relative to the origin, into {@code out}; false where
+     * nothing answers it, and there it spawns nothing. Render thread.
+     */
+    default boolean socket(int i, float[] out) {
+        return false;
+    }
+
+    /**
      * How the instance is turned in the world at the step's end, a unit quaternion: its effect's orientation. Its spawns'
      * shape, offset and launch turn by it; the identity unless its effect is turned or follows a turned point.
      */

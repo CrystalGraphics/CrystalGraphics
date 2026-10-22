@@ -7,6 +7,7 @@ import java.util.Map;
 
 import com.crystalgraphics.asset.kind.CgModuleTypes;
 import com.crystalgraphics.object.CgProperty;
+import com.crystalgraphics.object.CgPropertyMeta;
 
 /**
  * One spawn value an emitter gives in a form (a pick, a curve by random, id or the loop's seconds) rather than a plain
@@ -42,7 +43,10 @@ public record CgVfxSpawnForm(CgVfxSpawnInput target, String element, String inpu
         CgProperty property = null;
         for (CgProperty p : CgModuleTypes.builtIn().get(module).inputs().properties()) if (p.name().equals(input)) property = p;
         if (property == null) throw new IllegalArgumentException(module + " has no input " + input);
-        CgVfxFormInput compiled = new CgVfxFormCompiler(new CgVfxCurveBlock(), id -> null).compile(element, property, value);
+        // A start Look rolls at draw is rolled at birth once stored: one roll a particle either way.
+        CgPropertyMeta.Rolls rolls = property.meta().rolls() == CgPropertyMeta.Rolls.DRAW ? CgPropertyMeta.Rolls.PARTICLE
+                : property.meta().rolls();
+        CgVfxFormInput compiled = new CgVfxFormCompiler(new CgVfxCurveBlock(), id -> null).compile(element, property, value, rolls);
         return new CgVfxSpawnForm(target, element, input, value, compiled);
     }
 
@@ -71,28 +75,56 @@ public record CgVfxSpawnForm(CgVfxSpawnInput target, String element, String inpu
         return of(target, element, input, scaledValue(value, s));
     }
 
-    /** Its first channel's first end: a pick's first, a curve's value at its domain's start. */
+    /** Its first channel's first end: a pick's first, a curve's value at its domain's start, else its least. */
     public float firstEnd() {
         if (compiled instanceof CgVfxFormInput.Range r) return r.min()[0];
         if (compiled instanceof CgVfxFormInput.Pick p) return p.a()[0];
         if (compiled instanceof CgVfxFormInput.Curve c) return c.block().sample(c.slot(), c.block().start(c.slot()), 0);
-        throw new IllegalStateException(target + " in the " + compiled.form().specName() + " form has no first end");
+        return bounds()[0];
     }
 
     /** The least and the most its first channel takes, as {@code {low, high}}. */
     public float[] bounds() {
-        if (compiled instanceof CgVfxFormInput.Range r) return order(r.min()[0], r.max()[0]);
-        if (compiled instanceof CgVfxFormInput.Pick p) return order(p.a()[0], p.b()[0]);
-        if (compiled instanceof CgVfxFormInput.Curve c) {
+        return bounds(compiled, 0);
+    }
+
+    /** The least and the most channel {@code k} takes. */
+    public float[] bounds(int k) {
+        return bounds(compiled, k);
+    }
+
+    private float[] bounds(CgVfxFormInput c, int k) {
+        k = Math.min(k, c.components() - 1);
+        if (c instanceof CgVfxFormInput.Constant v) return new float[]{v.values()[k], v.values()[k]};
+        if (c instanceof CgVfxFormInput.Range r) return order(r.min()[k], r.max()[k]);
+        if (c instanceof CgVfxFormInput.Pick p) return order(p.a()[k], p.b()[k]);
+        if (c instanceof CgVfxFormInput.Curve curve) {
             float lo = Float.POSITIVE_INFINITY, hi = Float.NEGATIVE_INFINITY;
-            float[] texels = c.block().texels();
-            for (int i = 0, at = c.slot() * CgVfxCurveBlock.TEXELS * 4; i < CgVfxCurveBlock.TEXELS; i++) {
+            float[] texels = curve.block().texels();
+            for (int i = 0, at = curve.slot() * CgVfxCurveBlock.TEXELS * 4 + k; i < CgVfxCurveBlock.TEXELS; i++) {
                 lo = Math.min(lo, texels[at + 4 * i]);
                 hi = Math.max(hi, texels[at + 4 * i]);
             }
             return new float[]{lo, hi};
         }
-        throw new IllegalStateException(target + " in the " + compiled.form().specName() + " form has no bounds");
+        if (c instanceof CgVfxFormInput.Array array) {
+            float lo = Float.POSITIVE_INFINITY, hi = Float.NEGATIVE_INFINITY;
+            for (float[] v : array.values()) {
+                lo = Math.min(lo, v[k]);
+                hi = Math.max(hi, v[k]);
+            }
+            return new float[]{lo, hi};
+        }
+        if (c instanceof CgVfxFormInput.Function fn) {
+            float[] a = bounds(fn.first(), k), b = bounds(fn.second(), k);
+            return fn.fn().endsWith(":add") ? new float[]{a[0] + b[0], a[1] + b[1]}
+                    : new float[]{Math.min(a[0], b[0]), Math.max(a[1], b[1])};
+        }
+        // A remap clamps a bound parameter into its out range; read directly it has none.
+        if (c instanceof CgVfxFormInput.Binding b && b.inLo() != null && !"direct".equals(b.modes()[Math.min(k, b.modes().length - 1)])) {
+            return order(b.scale() * b.outLo()[k], b.scale() * b.outHi()[k]);
+        }
+        throw new IllegalStateException(target + " in the " + c.form().specName() + " form has no bounds");
     }
 
     private static float[] order(float a, float b) {

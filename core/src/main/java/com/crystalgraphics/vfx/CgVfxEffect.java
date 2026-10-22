@@ -14,6 +14,7 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.util.CgRandom;
 import com.crystalgraphics.world.CgCharacterClock;
+import com.crystalgraphics.world.CgEntityAttachments;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
@@ -23,6 +24,7 @@ import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxValues;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
+import com.crystalgraphics.vfx.particle.CgVfxSockets;
 import com.crystalgraphics.vfx.render.CgVfxSortGroup;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -103,6 +105,11 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     /** The followed entity's box this frame: its centre in the world and half extents; halves 0 while it follows none. */
     double followBoxX, followBoxY, followBoxZ;
     float followHalfX, followHalfY, followHalfZ;
+    /** The followed entity's pose this frame and the partial tick it was taken at: what its skeleton points are read from. */
+    double[] followPose;
+    float followTick;
+    /** Its emitters' skeleton points, from the entity it follows ({@link CgVfxSockets}). */
+    private final CgVfxSockets.Source sockets = this::socketPoint;
     /** How the point it follows is turned this frame; the identity while it follows nothing. */
     final Quaternionf followTurn = new Quaternionf();
     /** Its own turn ({@link #orient}), and the two together: its orientation in the world. */
@@ -1136,6 +1143,15 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         due[dueCount++] = emitter;
     }
 
+    /** Point {@code name} of the entity it follows, posed this frame; none while it follows nothing or nothing answers it. */
+    private boolean socketPoint(String name, double[] out) {
+        if (followEntity < 0 || followPose == null) return false;
+        int point = CgEntityAttachments.find(name);
+        if (point < 0) return false;
+        CgEntityAttachments.point(followEntity, point, followTick, followPose, out);
+        return true;
+    }
+
     /** Whether {@link #tick(CgVfxEmitterInstance, float)} queued emitters this tick. */
     final boolean hasEmitterTicks() {
         return dueCount > 0;
@@ -1152,6 +1168,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
             emitter.books().entityBox((float) (followBoxX - originX), (float) (followBoxY - originY), (float) (followBoxZ - originZ),
                     followHalfX, followHalfY, followHalfZ);
             emitter.books().orientation(orientation.x, orientation.y, orientation.z, orientation.w);
+            emitter.books().sockets(sockets);
             emitter.books().schedule(dueDts[i], originX, originY, originZ);
             // Not started, it booked nothing and needs no slot.
             if (fresh && emitter.books().scheduled()) {

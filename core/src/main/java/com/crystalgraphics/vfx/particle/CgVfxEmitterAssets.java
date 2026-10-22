@@ -92,10 +92,10 @@ public final class CgVfxEmitterAssets {
 
         List<Object> update = new ArrayList<>();
         update.add(entry(e.id("state"), "emitter_state", state(e.state)));
-        if (e.rate.perSecond() > 0f) {
-            Map<String, Object> rate = map("rate", (double) e.rate.perSecond());
+        if (e.rate.most() > 0f) {
+            Map<String, Object> rate = map("rate", range(e.rate.perSecond(), e.rate.most()));
             if (!isOne(e.rate.scale())) rate.put("scale", curve(e.rate.scale(), "loop"));
-            update.add(entry("rate", "spawn_rate", rate));
+            update.add(entry(e.id("rate"), "spawn_rate", rate));
         }
         for (int i = 0; i < e.bursts.length; i++) {
             CgVfxSpawnBurst b = e.bursts[i];
@@ -110,6 +110,8 @@ public final class CgVfxEmitterAssets {
         List<Object> spawn = new ArrayList<>();
         Map<String, Object> init = map("lifetime", written(e, CgVfxSpawnInput.LIFETIME, range(e.lifeMin, e.lifeMax)),
                 "heat", (double) e.heat, "sprite_size", written(e, CgVfxSpawnInput.SPRITE_SIZE, spriteSize(e.sizeMin, e.sizeMax)));
+        // Unreal starts a sprite unturned; ours turns it at random unless a file says otherwise.
+        init.put("sprite_rotation", written(e, CgVfxSpawnInput.SPRITE_ROTATION, range(0f, (float) (2 * Math.PI))));
         if (!same(e.colorFrom, WHITE) || !same(e.colorTo, WHITE)) init.put("color", vector(e.colorFrom, e.colorTo));
         if (!same(e.scaleFrom, UNIT) || !same(e.scaleTo, UNIT)) init.put("mesh_scale", vector(e.scaleFrom, e.scaleTo));
         spawn.add(entry(e.id("init"), "initialize_particle", init));
@@ -184,7 +186,7 @@ public final class CgVfxEmitterAssets {
             case CgVfxSpawnShape.CYLINDER -> {
                 in.put("shape", "cylinder");
                 in.put("cylinder_radius", radius);
-                in.put("cylinder_height", (double) (2f * s.c));
+                in.put("cylinder_height", written(e, CgVfxSpawnInput.CYLINDER_HEIGHT, (double) (2f * s.c)));
                 band(e.name, s, in);
             }
             case CgVfxSpawnShape.CONE -> {
@@ -216,7 +218,8 @@ public final class CgVfxEmitterAssets {
         if (s.ordered > 0) in.put("ordered", s.ordered);
         float[] q = e.spawn.turn(), o = e.spawn.place();
         if (q[0] != 0f || q[1] != 0f || q[2] != 0f || q[3] != 1f) in.put("rotation", list(q[0], q[1], q[2], q[3]));
-        if (o[0] != 0f || o[1] != 0f || o[2] != 0f) in.put("offset", list(o[0], o[1], o[2]));
+        if (e.spawnForm(CgVfxSpawnInput.OFFSET) != null) in.put("offset", e.spawnForm(CgVfxSpawnInput.OFFSET).value());
+        else if (o[0] != 0f || o[1] != 0f || o[2] != 0f) in.put("offset", list(o[0], o[1], o[2]));
         return in.size() == 1 && "point".equals(in.get("shape")) ? null : in;
     }
 
@@ -245,13 +248,20 @@ public final class CgVfxEmitterAssets {
     private static Map<String, Object> velocity(CgVfxEmitter e) {
         CgVfxSpawnShape.Builder s = e.spawn.given();
         Map<String, Object> in = new LinkedHashMap<>();
+        CgVfxSpawnForm linear = e.spawnForm(CgVfxSpawnInput.VELOCITY);
+        if (linear != null) {
+            in.put("mode", "linear");
+            in.put("linear", linear.value());
+            in.put("inherit", (double) e.inherit);
+            return in;
+        }
         switch (s.mode) {
             case CgVfxSpawnShape.INWARD -> in.put("mode", "inward");
             case CgVfxSpawnShape.DIRECTION -> {
                 in.put("mode", "in_cone");
                 in.put("cone_axis", list(s.dirX, s.dirY, s.dirZ));
                 // Unreal's cone angles are apex angles: twice the half angles drawn between.
-                in.put("cone_angle", 2.0 * s.spread);
+                in.put("cone_angle", written(e, CgVfxSpawnInput.CONE_ANGLE, 2.0 * s.spread));
                 if (s.innerSpread != 0f) in.put("inner_cone", 2.0 * s.innerSpread);
             }
             default -> in.put("mode", "outward");
@@ -289,9 +299,7 @@ public final class CgVfxEmitterAssets {
                     b.state(state(in)).id("state", idOf(entry, "state"));
                     break;
                 case "spawn_rate": {
-                    Object scale = in.get("scale");
-                    b.rate(scale == null || scale instanceof Number ? new CgVfxSpawnRate(num(in.get("rate")), CgKeyframes.constant(scale == null ? 1f : num(scale)))
-                            : new CgVfxSpawnRate(num(in.get("rate")), keyframes(name, scale, "loop")));
+                    b.rate(spawnRate(name, in.get("rate"), in.get("scale"))).id("rate", idOf(entry, "rate"));
                     break;
                 }
                 case "spawn_burst": {
@@ -407,6 +415,7 @@ public final class CgVfxEmitterAssets {
         b.life(lives[0], lives[1]);
         if (life != null) b.spawnForm(life);
         if (in.get("heat") instanceof Number h) b.heat(h.floatValue());
+        if (in.get("sprite_rotation") != null) b.spawnForm(valueForm(CgVfxSpawnInput.SPRITE_ROTATION, element, in.get("sprite_rotation")));
         Object size = in.get("sprite_size");
         CgVfxSpawnForm sized = spawnForm(CgVfxSpawnInput.SPRITE_SIZE, element, "sprite_size", size);
         if (sized != null) {
@@ -417,8 +426,13 @@ public final class CgVfxEmitterAssets {
             float[] width = spriteWidth(size);
             b.size(width[0], width[1]);
         }
-        if (in.get("color") != null) {
-            float alpha = in.get("alpha") instanceof Number a ? a.floatValue() : 1f;
+        float alpha = in.get("alpha") instanceof Number a ? a.floatValue() : 1f;
+        CgVfxSpawnForm colored = spawnForm(CgVfxSpawnInput.COLOR, element, "color", in.get("color"));
+        if (colored != null) {
+            // Stored at birth; the row's starts keep the alpha an rgb form leaves to them.
+            b.spawnForm(colored);
+            b.colors(new float[]{1f, 1f, 1f, alpha}, new float[]{1f, 1f, 1f, alpha});
+        } else if (in.get("color") != null) {
             float[][] c = colourEnds(in.get("color"), alpha);
             b.colors(c[0], c[1]);
         }
@@ -440,10 +454,24 @@ public final class CgVfxEmitterAssets {
                 s.dirX = axis[0];
                 s.dirY = axis[1];
                 s.dirZ = axis[2];
-                s.spread = num(in.get("cone_angle")) / 2f;
+                Object angle = in.get("cone_angle");
+                if (angle instanceof Number a) {
+                    s.spread = a.floatValue() / 2f;
+                } else {
+                    CgVfxSpawnForm cone = valueForm(CgVfxSpawnInput.CONE_ANGLE, element, angle);
+                    s.spread = cone.bounds()[1] / 2f;
+                    b.spawnForm(cone);
+                }
                 s.innerSpread = in.get("inner_cone") instanceof Number n ? n.floatValue() / 2f : 0f;
             }
             case "linear" -> {
+                if (!isVector(in.get("linear"), 3)) {
+                    // Any other form adds to a launch of no speed of its own (Niagara's AddVelocity, Linear).
+                    b.spawnForm(valueForm(CgVfxSpawnInput.VELOCITY, element, in.get("linear")));
+                    b.speed(0f, 0f);
+                    if (in.get("inherit") instanceof Number i) b.inherit(i.floatValue());
+                    return;
+                }
                 float[] v = vec(in.get("linear"), 3);
                 float speed = (float) Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
                 if (speed > 0f) b.direction(v[0], v[1], v[2], 0f);
@@ -481,6 +509,7 @@ public final class CgVfxEmitterAssets {
 
     private static void shape(String name, CgVfxEmitter.Builder b, Map<?, ?> in, String element) {
         CgVfxSpawnShape.Builder s = b.spawn();
+        float[] axisTurn = null;
         String shape = String.valueOf(in.get("shape"));
         s.a = s.b = s.c = 0f;
         s.placement = CgVfxSpawnShape.VOLUME;
@@ -500,12 +529,24 @@ public final class CgVfxEmitterAssets {
                 placement(s, in);
             }
             case "cylinder" -> {
-                if (in.get("cylinder_axis") != null && !"z".equals(in.get("cylinder_axis"))) {
-                    throw new IllegalArgumentException(name + ": a cylinder along " + in.get("cylinder_axis") + " is not read yet: turn it");
-                }
+                // Unreal's cylinder stands on its z, the host's y and ours; along its x or y it is ours turned there.
+                Object axis = in.get("cylinder_axis");
+                if ("x".equals(axis)) axisTurn = new float[]{0f, 0f, -HALF_SQRT2, HALF_SQRT2};
+                else if ("y".equals(axis)) axisTurn = new float[]{HALF_SQRT2, 0f, 0f, HALF_SQRT2};
+                else if (axis != null && !"z".equals(axis)) throw new IllegalArgumentException(name + ": no cylinder axis " + axis);
                 s.kind = CgVfxSpawnShape.CYLINDER;
                 s.b = radius(b, element, "cylinder_radius", in.get("cylinder_radius"));
-                s.c = num(in.get("cylinder_height")) / 2f;
+                CgVfxSpawnForm height = spawnForm(CgVfxSpawnInput.CYLINDER_HEIGHT, element, "cylinder_height", in.get("cylinder_height"));
+                if (height == null) {
+                    s.c = rangeOf(in.get("cylinder_height"))[1] / 2f;
+                    if (in.get("cylinder_height") instanceof Map<?, ?>) {
+                        b.spawnForm(valueForm(CgVfxSpawnInput.CYLINDER_HEIGHT, element, in.get("cylinder_height")));
+                    }
+                } else {
+                    // Drawn per particle; the shape's own half height its tallest, which its reach takes.
+                    s.c = Math.max(Math.abs(height.bounds()[0]), Math.abs(height.bounds()[1])) / 2f;
+                    b.spawnForm(height);
+                }
                 band(s, in);
             }
             case "ring" -> {
@@ -544,17 +585,58 @@ public final class CgVfxEmitterAssets {
         s.arc = in.get("arc") instanceof Number a ? a.floatValue() : CgVfxSpawnShape.TAU;
         s.ordered = in.get("ordered") instanceof Number n ? n.intValue() : 0;
         Object r = in.get("rotation");
-        if (r instanceof List<?> q && q.size() == 3 && q.stream().allMatch(v -> v instanceof Number n && n.doubleValue() == 0.0)) r = null;
-        if (r != null && !(r instanceof List<?> q4 && q4.size() == 4)) {
-            throw new IllegalArgumentException(name + ": shape_location's rotation " + r + " is not read yet: a quaternion (x, y, z, w)");
+        float[] turn;
+        if (r == null) {
+            turn = new float[]{0f, 0f, 0f, 1f};
+        } else if (isVector(r, 3)) {
+            float[] rotator = vec(r, 3);
+            turn = CgUnits.rotatorToHost(rotator[0], rotator[1], rotator[2]);
+        } else if (isVector(r, 4)) {
+            turn = vec(r, 4);
+        } else {
+            throw new IllegalArgumentException(name + ": shape_location's rotation " + r + " is not read yet: a rotator or a quaternion");
         }
-        s.turn = r == null ? new float[]{0f, 0f, 0f, 1f} : vec(r, 4);
-        s.place = in.get("offset") != null ? vec(in.get("offset"), 3) : new float[3];
+        s.turn = axisTurn == null ? turn : multiply(turn, axisTurn);
+        Object offset = in.get("offset");
+        if (offset == null || isVector(offset, 3)) {
+            s.place = offset != null ? vec(offset, 3) : new float[3];
+        } else {
+            s.place = new float[3];
+            b.spawnForm(valueForm(CgVfxSpawnInput.OFFSET, element, offset));
+        }
+    }
+
+    /**
+     * {@code socket_location}: Cascade's {@code LocationBoneSocket} ({@link CgVfxSockets}). Sockets and bones are both
+     * points by name; its mesh is the entity the effect follows, whatever it binds. Its rotation is the identity, as
+     * Cascade's is ({@code ParticleModules_Location.cpp:1577-1580}), so {@code orient_meshes} changes nothing.
+     */
+    private static void sockets(String name, CgVfxEmitter.Builder b, Map<?, ?> in, String element) {
+        if (Boolean.TRUE.equals(in.get("segments"))) throw new IllegalArgumentException(name + ": socket_location's segments is not read yet");
+        List<?> points = in.get("points") instanceof List<?> l ? l : List.of();
+        float[] universal = in.get("universal_offset") != null ? vec(in.get("universal_offset"), 3) : new float[3];
+        List<String> names = new ArrayList<>(points.size());
+        float[][] offsets = new float[points.size()][];
+        for (int i = 0; i < points.size(); i++) {
+            if (!(points.get(i) instanceof Map<?, ?> p) || !(p.get("name") instanceof String point)) {
+                throw new IllegalArgumentException(name + ": socket_location's point " + points.get(i) + " has no name");
+            }
+            names.add(point);
+            float[] o = p.get("offset") instanceof List<?> offset && !offset.isEmpty() ? vec(offset, 3) : new float[3];
+            offsets[i] = new float[]{o[0] + universal[0], o[1] + universal[1], o[2] + universal[2]};
+        }
+        if (names.isEmpty()) throw new IllegalArgumentException(name + ": socket_location names no points");
+        float inherit = in.get("inherit_velocity") instanceof Number v ? v.floatValue() : 0f;
+        b.sockets(new CgVfxSockets(element, names, offsets, !"random".equals(in.get("selection")),
+                Boolean.TRUE.equals(in.get("update_each_frame")), inherit));
+    }
+
     }
 
     /** A radius, or one in a form (a sweep's is a curve by the loop's seconds, aaa-design 2.60): its first end. */
     private static float radius(CgVfxEmitter.Builder b, String element, String input, Object value) {
-        CgVfxSpawnForm formed = spawnForm(CgVfxSpawnInput.RADIUS, element, input, value);
+        // The row holds one radius, not two ends: a range is a form too.
+        CgVfxSpawnForm formed = value instanceof Map<?, ?> ? CgVfxSpawnForm.of(CgVfxSpawnInput.RADIUS, element, input, value) : null;
         if (formed == null) return num(value);
         b.spawnForm(formed);
         return formed.firstEnd();
@@ -904,6 +986,43 @@ public final class CgVfxEmitterAssets {
                 "delay_first_loop_only", s.delaysFirstLoopOnly(),
                 "recalculate_delay_each_loop", s.recalculatesDelayEachLoop(),
                 "inactive", s.inactiveResponse().name().toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * {@code spawn_rate}'s rate times its scale: each a number, a range drawn each step, or a curve by the loop's seconds,
+     * as Cascade evaluates its rate's distribution at the emitter's time each tick. Two ranges at once are not read.
+     */
+    private static CgVfxSpawnRate spawnRate(String name, Object rate, Object scale) {
+        boolean rateCurve = rate instanceof Map<?, ?> r && r.get("curve") != null;
+        boolean scaleCurve = scale instanceof Map<?, ?> s && s.get("curve") != null;
+        float[] ends = rateCurve ? new float[]{1f, 1f} : rangeOf(rate);
+        float[] by = scale == null ? new float[]{1f, 1f} : scaleCurve ? new float[]{1f, 1f} : rangeOf(scale);
+        if (ends[1] > ends[0] && by[1] > by[0]) {
+            throw new IllegalArgumentException(name + ": spawn_rate's rate and scale both drawn between two ends is not read yet");
+        }
+        CgKeyframes curve = rateCurve ? keyframes(name, rate, "loop") : null;
+        if (scaleCurve) {
+            CgKeyframes s = keyframes(name, scale, "loop");
+            curve = curve == null ? s : product(curve, s);
+        }
+        return new CgVfxSpawnRate(ends[0] * by[0], ends[1] * by[1], curve != null ? curve : CgKeyframes.constant(1f));
+    }
+
+    /** {@code a} times {@code b}, sampled at each one's keys and between them. */
+    private static CgKeyframes product(CgKeyframes a, CgKeyframes b) {
+        TreeSet<Float> times = new TreeSet<>();
+        for (CgKeyframes k : List.of(a, b)) {
+            for (int i = 0; i < k.size(); i++) {
+                times.add(k.time(i));
+                if (i > 0) for (int j = 1; j < EASE_STEPS; j++) times.add(k.time(i - 1) + (k.time(i) - k.time(i - 1)) * j / EASE_STEPS);
+            }
+        }
+        CgKeyframes.Builder out = null;
+        for (float t : times) {
+            float v = a.at(t) * b.at(t);
+            out = out == null ? CgKeyframes.start(t, v) : out.to(t, v, CgEasings.LINEAR);
+        }
+        return out.build();
     }
 
     private static CgVfxEmitterState state(Map<?, ?> in) {
