@@ -70,19 +70,22 @@ public class CgVfxModuleWordsTest {
             {0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 2.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f},   // beam_modifier
             {4.0f, 0.0f, 0.0f, 0.0f},   // limit_speed
             {2.0f, 1.0f, 3.0f, 2.0f, 0.1f, 2.0f, 0.0f, 0.0f},   // conform
-            // A collider's own lanes, then its response: damping's ends with its mode and the delay, the rotation
-            // restitution with the completion, the count's range.
-            {0.37139067f, 0.9284767f, 0.0f, 2.0f, 0.3f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},   // collide
-            {2.0f, 2.0f, 2.0f, 0.0f, 0.5f, 0.1f, 0.2f, 0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f},   // collide
-            {1.0f, 2.0f, 3.0f, 1.0f, 0.1f, 0.2f, 0.3f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},   // collide
-            {0.35f, 0.4f, 0.4f, Float.POSITIVE_INFINITY, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.5714286f, 0.0f},   // collide_world
-            {0.0f, 0.0f, 0.0f, Float.POSITIVE_INFINITY, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5714286f, 0.0f},   // collide_world
-            {0.2f, 0.3f, 0.4f, 0.5f, Float.POSITIVE_INFINITY, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},   // collide_depth
-            {0.0f, 0.0f, 0.0f, Float.POSITIVE_INFINITY, 0.5f, 0.25f, 0.5f, 1.0f, 0.6f, 0.3f, 0.6f, 0.1f, 0.5f, 0.5f, 0.5f, 2.0f, 1.0f, 3.0f, 0.5f, 0.0f},   // collide_world
-            {0.2f, 0.3f, 0.4f, 1.2f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f},   // collide_entities
+            // A collider's own lanes, then its response: damping's ends with its rolls and the delay, the rotation
+            // restitution with the completion, the count's range with the lead and the vertical fudge (-1 for every hit
+            // counting), the rotation's high end with its rolls (0 for a constant).
+            {0.37139067f, 0.9284767f, 0.0f, 2.0f, 0.3f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f, 0.0f},   // collide
+            {2.0f, 2.0f, 2.0f, 0.0f, 0.5f, 0.1f, 0.2f, 0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f, 0.0f},   // collide
+            {1.0f, 2.0f, 3.0f, 1.0f, 0.1f, 0.2f, 0.3f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f, 0.0f},   // collide
+            {0.35f, 0.4f, 0.4f, Float.POSITIVE_INFINITY, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.5714286f, -1.0f, 1.0f, 1.0f, 1.0f, 0.0f},   // collide_world
+            {0.0f, 0.0f, 0.0f, Float.POSITIVE_INFINITY, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5714286f, -1.0f, 1.0f, 1.0f, 1.0f, 0.0f},   // collide_world
+            {0.2f, 0.3f, 0.4f, 0.5f, Float.POSITIVE_INFINITY, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f, 0.0f},   // collide_depth
+            {0.0f, 0.0f, 0.0f, Float.POSITIVE_INFINITY, 0.5f, 0.25f, 0.5f, 6.0f, 0.6f, 0.3f, 0.6f, 0.1f, 0.4f, 0.5f, 0.6f, 2.0f, 1.0f, 3.0f, 0.5f, 0.1f, 0.8f, 0.9f, 1.0f, 1.0f},   // collide_world
+
+            {0.2f, 0.3f, 0.4f, 1.2f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f, 0.0f},   // collide_entities
             {0.3f, 0.3f, 0.3f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f},   // kill
             {4.0f, 1.0f, 4.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f},   // kill
             {0.0f, 1.0f, 0.0f, 2.0f, 1.0f, 0.0f, 0.0f, 0.0f},   // kill
+            {0.5f, 1.0f, 0.0f, 0.0f},   // sprite_rotation
     };
 
     /** Example configurations: every kind at least once, every shape on the shape kinds. */
@@ -128,12 +131,14 @@ public class CgVfxModuleWordsTest {
                 new CgVfxModule.CollideWorld(0.35f, 0.4f, 0.4f), new CgVfxModule.CollideWorld(0f, 0f, 0f).killing(),
                 new CgVfxModule.CollideDepth(0.2f, 0.3f, 0.4f, 0.5f),
                 new CgVfxModule.CollideWorld(0f, 0f, 0f).response(CgVfxModule.CollisionResponse.NONE
-                        .damping(0.5f, 0.25f, 0.5f, 0.6f, 0.3f, 0.6f, false).delay(0.1f).rotation(0.5f, 0.5f, 0.5f)
-                        .limit(1f, 3f, CgVfxModule.CollisionCompletion.FREEZE).lead(0.5f)),
+                        .damping(0.5f, 0.25f, 0.5f, 0.6f, 0.3f, 0.6f, CgVfxModule.CollisionResponse.PER_AXIS).delay(0.1f)
+                        .rotation(0.4f, 0.5f, 0.6f, 0.8f, 0.9f, 1.0f, CgVfxModule.CollisionResponse.ONE_ROLL)
+                        .limit(1f, 3f, CgVfxModule.CollisionCompletion.FREEZE).lead(0.5f).onlyVertical(0.1f)),
                 new CgVfxModule.CollideEntities(0.2f, 0.3f, 0.4f, 1.2f).killing(),
                 new CgVfxModule.Kill(CgSphere.of(0.3), true).at(0f, 1.5f, 0f),
                 new CgVfxModule.Kill(CgBox.of(4, 1, 4), false),
-                new CgVfxModule.Kill(CgPlane.of(0, 1, 0), true)));
+                new CgVfxModule.Kill(CgPlane.of(0, 1, 0), true),
+                new CgVfxModule.SpriteRotation(0.5f, true)));
     }
 
     @Test

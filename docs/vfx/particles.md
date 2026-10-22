@@ -321,12 +321,13 @@ collisions and what the last one does.
 
 | Field | Means |
 |---|---|
-| `damping` | the whole velocity mirrored about the surface and scaled per axis, rolled per particle between a range's ends; set, `restitution` and `friction` are unread |
+| `damping` | the whole velocity mirrored about the surface and scaled per axis, rolled per particle between a range's ends (one roll for all axes, or per axis with `per_channel`, `locked` sharing them); set, `restitution` and `friction` are unread |
 | `restitution`, `friction` | without damping: the speed into the surface bounced back at `restitution`, the slide kept less `friction` |
 | `delay` | the share of its life, 0 to 1, before a particle collides |
-| `rotation_restitution` | each bounce scales its rotation rates: a sprite's spin by x, a mesh's turn per axis |
+| `rotation_restitution` | each bounce scales its rotation rates: a sprite's spin by x, a mesh's turn per axis; a range rolls per particle as `damping`'s does |
 | `max_collisions` | contacts until `on_complete`, rolled and rounded per particle; absent, it bounces for ever |
 | `on_complete` | `kill`; `freeze` (still and unturned where it struck); `halt` (carries on, colliding no more); `freeze_translation`, `freeze_rotation`, `freeze_movement` |
+| `only_vertical_counts`, `vertical_fudge` | only a hit whose normal's vertical plus the fudge reaches 1 spends the count; the others still bounce and fire events |
 | `radius_scale` | a world collider tests the particle's size over this ahead of it along its motion (3.5) |
 
 - **With a count, every contact counts**, sliding included, and each fires a collision event; the one that spends the

@@ -357,6 +357,24 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
     }
 
     /**
+     * Turns a sprite by {@code radians} each update, or scales its turn by it: Cascade's RotationOverLifetime, which
+     * adds its value to the particle's rotation every update rather than once (ParticleModules.cpp:2000-2019). Half a
+     * turn flips a sprite every frame; a whole number of turns shows nothing.
+     *
+     * <pre>{@code
+     * new CgVfxModule.SpriteRotation((float) Math.PI, false)   // mirrored every other frame
+     * new CgVfxModule.SpriteRotation(0.5f, true)               // its turn scaled by half each update
+     * }</pre>
+     */
+    record SpriteRotation(float radians, boolean scales) implements CgVfxModule {
+
+        @Override
+        public String gpuKind() {
+            return "sprite_rotation";
+        }
+    }
+
+    /**
      * A pull toward a sphere or box (Godot's attractors): {@code strength} blocks a second squared at the centre, falling
      * to nothing at the edge as {@code (1 - d)^attenuation}, d being 0 at the centre and 1 at the edge. A negative
      * strength pushes out. Directionality turns the pull, 0 to 1, into a push along {@code axis}. The shape is centred
@@ -1266,7 +1284,8 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      *         .damping(0.5f, 0.25f, 0.5f)                                  // Cascade's DampingFactor, y vertical
      *         .limit(3, CgVfxModule.CollisionCompletion.FREEZE))           // two bounces, then lies where the third lands
      *
-     * CgVfxModule.CollisionResponse.NONE.damping(0f, 0f, 0f, 0.3f, 0.1f, 0.3f, false)   // each particle its own
+     * CgVfxModule.CollisionResponse.NONE
+     *         .damping(0f, 0f, 0f, 0.3f, 0.1f, 0.3f, CgVfxModule.CollisionResponse.PER_AXIS)   // each its own
      *         .delay(0.2f)                                                 // nothing for its first fifth of life
      *         .rotation(0.5f, 0.5f, 0.5f)                                  // each bounce halves its spin
      *         .limit(1f, 3f, CgVfxModule.CollisionCompletion.KILL)         // a count rolled and rounded per particle
@@ -1274,6 +1293,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      *
      * <ul>
      *   <li>Damping's axes are the world's: its vertical is y.</li>
+     *   <li>A range's rolls are {@link CgVfxLifeRoll#rolls}': which of three rolls each axis takes, x always its own.</li>
      *   <li>The delay is a share of the particle's life, 0 to 1, as Cascade compares it, not seconds.</li>
      *   <li>A count below 1 is 1: Cascade decrements it before it tests it.</li>
      *   <li>A frozen particle's colour still plays over its life, which Cascade's {@code Freeze} holds at its start.</li>
@@ -1281,43 +1301,64 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      *
      * @param dampingMin    the damping's low end per axis; null for none: the collider's bounce and friction
      * @param dampingMax    its high end
-     * @param dampingLocked whether one roll sets every axis
+     * @param dampingRolls  which roll each axis of it takes
      * @param delay         the share of its life a particle collides after
-     * @param rotation      what each bounce scales its rotation rates by: a sprite's by x, a mesh's per axis
+     * @param rotation      what each bounce scales its rotation rates by, its low end: a sprite's by x, a mesh's per axis
+     * @param rotationMax   its high end; null for the constant {@code rotation}
+     * @param rotationRolls which roll each axis of it takes
      * @param completion    what spending its count does; null for no count
      * @param mostMin       the count's low end, contacts until the completion
      * @param mostMax       its high end
      * @param lead          a world collider's test led along the particle's motion by this many times its size:
      *                      Cascade's trace reaching its size over {@code DirScalar} ahead ({@code :360}); 0 for none
      */
-    record CollisionResponse(@Nullable Vector3fc dampingMin, @Nullable Vector3fc dampingMax, boolean dampingLocked,
-                             float delay, Vector3fc rotation, @Nullable CollisionCompletion completion, float mostMin,
-                             float mostMax, float lead) {
+    record CollisionResponse(@Nullable Vector3fc dampingMin, @Nullable Vector3fc dampingMax, int[] dampingRolls,
+                             float delay, Vector3fc rotation, @Nullable Vector3fc rotationMax, int[] rotationRolls,
+                             @Nullable CollisionCompletion completion, float mostMin, float mostMax, float lead,
+                             boolean onlyVertical, float verticalFudge) {
+        /** A roll for each axis: Cascade's per-channel range. */
+        public static final int[] PER_AXIS = {0, 1, 2};
+        /** One roll for every axis. */
+        public static final int[] ONE_ROLL = {0, 0, 0};
         /** The collider's bounce alone, at every contact, with no count. */
-        public static final CollisionResponse NONE = new CollisionResponse(null, null, false, 0f, new Vector3f(1f), null, 0f, 0f, 0f);
+        public static final CollisionResponse NONE = new CollisionResponse(null, null, PER_AXIS, 0f, new Vector3f(1f), null,
+                PER_AXIS, null, 0f, 0f, 0f, false, 0.1f);
         /** Death at the first contact. */
         public static final CollisionResponse KILL = NONE.limit(1, CollisionCompletion.KILL);
 
-        /** Damped by {@code (x, y, z)} at every bounce. */
-        public CollisionResponse damping(float x, float y, float z) {
-            return damping(x, y, z, x, y, z, false);
+        public CollisionResponse {
+            dampingRolls = dampingRolls.clone();
+            rotationRolls = rotationRolls.clone();
+            if (dampingRolls.length != 3 || rotationRolls.length != 3) throw new IllegalArgumentException("three rolls an axis");
         }
 
-        /** Damped between the two ends, rolled per particle, per axis or, {@code locked}, once for all three. */
-        public CollisionResponse damping(float x0, float y0, float z0, float x1, float y1, float z1, boolean locked) {
-            return new CollisionResponse(new Vector3f(x0, y0, z0), new Vector3f(x1, y1, z1), locked, delay, rotation,
-                    completion, mostMin, mostMax, lead);
+        /** Damped by {@code (x, y, z)} at every bounce. */
+        public CollisionResponse damping(float x, float y, float z) {
+            return damping(x, y, z, x, y, z, PER_AXIS);
+        }
+
+        /** Damped between the two ends, rolled per particle, each axis taking the roll {@code rolls} names. */
+        public CollisionResponse damping(float x0, float y0, float z0, float x1, float y1, float z1, int[] rolls) {
+            return new CollisionResponse(new Vector3f(x0, y0, z0), new Vector3f(x1, y1, z1), rolls, delay, rotation,
+                    rotationMax, rotationRolls, completion, mostMin, mostMax, lead, onlyVertical, verticalFudge);
         }
 
         /** Colliding only after {@code share} of a particle's life. */
         public CollisionResponse delay(float share) {
-            return new CollisionResponse(dampingMin, dampingMax, dampingLocked, share, rotation, completion, mostMin, mostMax, lead);
+            return new CollisionResponse(dampingMin, dampingMax, dampingRolls, share, rotation, rotationMax, rotationRolls,
+                    completion, mostMin, mostMax, lead, onlyVertical, verticalFudge);
         }
 
         /** Each bounce scaling its rotation rates by {@code (x, y, z)}. */
         public CollisionResponse rotation(float x, float y, float z) {
-            return new CollisionResponse(dampingMin, dampingMax, dampingLocked, delay, new Vector3f(x, y, z), completion,
-                    mostMin, mostMax, lead);
+            return new CollisionResponse(dampingMin, dampingMax, dampingRolls, delay, new Vector3f(x, y, z), null, PER_AXIS,
+                    completion, mostMin, mostMax, lead, onlyVertical, verticalFudge);
+        }
+
+        /** Each bounce scaling its rotation rates between the two ends, rolled per particle as {@code rolls} names. */
+        public CollisionResponse rotation(float x0, float y0, float z0, float x1, float y1, float z1, int[] rolls) {
+            return new CollisionResponse(dampingMin, dampingMax, dampingRolls, delay, new Vector3f(x0, y0, z0),
+                    new Vector3f(x1, y1, z1), rolls, completion, mostMin, mostMax, lead, onlyVertical, verticalFudge);
         }
 
         /** {@code most} contacts, the last running {@code completion}. */
@@ -1327,17 +1368,30 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         /** A count rolled between the two and rounded per particle, the last contact running {@code completion}. */
         public CollisionResponse limit(float mostMin, float mostMax, CollisionCompletion completion) {
-            return new CollisionResponse(dampingMin, dampingMax, dampingLocked, delay, rotation, completion, mostMin, mostMax, lead);
+            return new CollisionResponse(dampingMin, dampingMax, dampingRolls, delay, rotation, rotationMax, rotationRolls,
+                    completion, mostMin, mostMax, lead, onlyVertical, verticalFudge);
+        }
+
+        /**
+         * Only near-vertical hits spending its count: those whose normal's vertical, plus {@code fudge}, reaches 1
+         * (Cascade's {@code bOnlyVerticalNormalsDecrementCount}, ParticleModules_Collision.cpp:397-408). The others
+         * still bounce and fire their collision events.
+         */
+        public CollisionResponse onlyVertical(float fudge) {
+            return new CollisionResponse(dampingMin, dampingMax, dampingRolls, delay, rotation, rotationMax, rotationRolls,
+                    completion, mostMin, mostMax, lead, true, fudge);
         }
 
         /** A world collider's test led {@code times} a particle's size along its motion. */
         public CollisionResponse lead(float times) {
-            return new CollisionResponse(dampingMin, dampingMax, dampingLocked, delay, rotation, completion, mostMin, mostMax, times);
+            return new CollisionResponse(dampingMin, dampingMax, dampingRolls, delay, rotation, rotationMax, rotationRolls,
+                    completion, mostMin, mostMax, times, onlyVertical, verticalFudge);
         }
 
         /** Whether it changes a particle's rotation rates: a rotation restitution other than 1, or a completion freezing rotation. */
         public boolean turns() {
-            return rotation.x() != 1f || rotation.y() != 1f || rotation.z() != 1f || completion == CollisionCompletion.FREEZE
+            return rotation.x() != 1f || rotation.y() != 1f || rotation.z() != 1f || rotationMax != null
+                    || completion == CollisionCompletion.FREEZE
                     || completion == CollisionCompletion.FREEZE_ROTATION || completion == CollisionCompletion.FREEZE_MOVEMENT;
         }
 

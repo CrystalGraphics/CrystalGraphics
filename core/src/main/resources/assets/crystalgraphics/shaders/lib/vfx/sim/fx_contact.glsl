@@ -99,7 +99,7 @@ bool fx_volume_contact(vec4 e, bool container, vec3 r, float size, out vec3 n, o
 // A collider's Cascade half, four vec4s of its words (CgVfxModule.CollisionResponse): damping's low end and whether it
 // is set (1 a roll per axis, 2 one roll); its high end and the delay, a share of life; the rotation restitution and
 // the completion (FX_COMPLETE_*, 0 for no count); the count's range and a world collider's lead.
-struct FxCollision { vec4 low, high, turn, most; };
+struct FxCollision { vec4 low, high, turn, most, turnHigh; };
 
 #define FX_COMPLETE_KILL 1.0
 #define FX_COMPLETE_FREEZE 2.0
@@ -125,11 +125,29 @@ float fx_collision_most(FxParticle p, FxCollision c) {
     return max(floor(mix(c.most.x, c.most.y, fx_rand(p.id, FX_COLLISION_KEY, 3u)) + 0.5), 1.0);
 }
 
-// Cascade's DampingFactor for p, rolled from its id: per axis, or one roll for all.
+// Three rolls of p from channel `first`, each axis taking the one its code names (CgVfxLifeRoll.rolls): code - 1 is
+// y's roll plus twice z's, x always its own; Cascade's per-channel range and its LockedAxes.
+vec3 fx_collision_rolls(FxParticle p, float code, uint first) {
+    vec3 r = vec3(fx_rand(p.id, FX_COLLISION_KEY, first), fx_rand(p.id, FX_COLLISION_KEY, first + 1u),
+            fx_rand(p.id, FX_COLLISION_KEY, first + 2u));
+    int c = int(code + 0.5) - 1;
+    return vec3(r.x, r[c % 2], r[c / 2]);
+}
+
+// Whether a hit along n spends the count: every one, or with c.most.w at 0 or above only one whose normal's vertical
+// plus that fudge reaches 1 (bOnlyVerticalNormalsDecrementCount, :397-408; Unreal's z is the host's y).
+bool fx_collision_counts(vec3 n, FxCollision c) {
+    return c.most.w < 0.0 || dot(n, n) < 1e-8 || abs(n.y) + c.most.w >= 1.0;
+}
+
+// Cascade's DampingFactor for p, rolled from its id (:153).
 vec3 fx_collision_damping(FxParticle p, FxCollision c) {
-    vec3 roll = vec3(fx_rand(p.id, FX_COLLISION_KEY, 0u), fx_rand(p.id, FX_COLLISION_KEY, 1u), fx_rand(p.id, FX_COLLISION_KEY, 2u));
-    if (c.low.w > 1.5) roll = vec3(roll.x);
-    return mix(c.low.xyz, c.high.xyz, roll);
+    return mix(c.low.xyz, c.high.xyz, fx_collision_rolls(p, c.low.w, 0u));
+}
+
+// Cascade's DampingFactorRotation for p: its constant, or rolled from its id between its ends (:154).
+vec3 fx_collision_rotation(FxParticle p, FxCollision c) {
+    return c.turnHigh.w > 0.5 ? mix(c.turn.xyz, c.turnHigh.xyz, fx_collision_rolls(p, c.turnHigh.w, 4u)) : c.turn.xyz;
 }
 
 // Damps p's rotation rates by d from now: a sprite's by d.x, a mesh's per axis (:421-426), its turn so far kept.
@@ -167,7 +185,8 @@ void fx_contact_respond(inout FxParticle p, vec3 n, float depth, vec3 g, FxColli
     p.position += n * depth;
     bool counted = c.turn.w > 0.0;
     if (counted) {
-        fx_hit(p, n, what);
+        if (fx_collision_counts(n, c)) fx_hit(p, n, what);
+        else p.hit = vec4(n, what);
         if (float(p.collisions) >= fx_collision_most(p, c)) {
             fx_collision_complete(p, c.turn.w);
             return;
@@ -178,7 +197,7 @@ void fx_contact_respond(inout FxParticle p, vec3 n, float depth, vec3 g, FxColli
     if (c.low.w > 0.0) {
         p.velocity = fx_collision_damping(p, c) * reflect(p.velocity, n);
         if (!counted) fx_hit(p, n, what);
-        fx_collision_turn(p, c.turn.xyz);
+        fx_collision_turn(p, fx_collision_rotation(p, c));
         return;
     }
     float trigger = -response < 2.0 / max(1.0, min(g.x + 1.0, 2.0)) ? 0.0 : 1.0;
@@ -187,7 +206,7 @@ void fx_contact_respond(inout FxParticle p, vec3 n, float depth, vec3 g, FxColli
     p.velocity -= n * response * (g.x * trigger);
     if (trigger > 0.0) {
         if (!counted) fx_hit(p, n, what);
-        fx_collision_turn(p, c.turn.xyz);
+        fx_collision_turn(p, fx_collision_rotation(p, c));
     }
     if (length(p.velocity) < g.z) {
         p.velocity = vec3(0.0);

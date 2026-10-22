@@ -61,7 +61,7 @@ public class CgVfxEmitterAssetsTest {
                 .module(new CgVfxModule.Collide(CgSphere.of(2), 0.5f, 0.1f, 0f).at(0f, 1f, 0f))
                 .module(new CgVfxModule.CollideWorld(0.35f, 0.4f, 0.4f).killing())
                 .module(new CgVfxModule.CollideWorld(0f, 0f, 0f).response(CgVfxModule.CollisionResponse.NONE
-                        .damping(0.5f, 0.25f, 0.5f, 0.6f, 0.3f, 0.6f, false).delay(0.1f).rotation(0.5f, 0.5f, 0.5f)
+                        .damping(0.5f, 0.25f, 0.5f, 0.6f, 0.3f, 0.6f, CgVfxModule.CollisionResponse.PER_AXIS).delay(0.1f).rotation(0.5f, 0.5f, 0.5f)
                         .limit(1f, 3f, CgVfxModule.CollisionCompletion.FREEZE).lead(0.5f)))
                 .module(new CgVfxModule.CollideDepth(0.2f, 0.3f, 0.1f, 0.6f))
                 .module(new CgVfxModule.CollideEntities(0.2f, 0.3f, 0.1f, 0.25f))

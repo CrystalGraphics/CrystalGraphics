@@ -1560,16 +1560,22 @@ public final class CgVfxEmitterAssets {
                 double mode = ((Number) in.get("damping_mode")).doubleValue();
                 if (mode > 0) {
                     out.put("damping", Objects.equals(in.get("damping_min"), in.get("damping_max")) ? in.get("damping_min")
-                            : mode > 1.5 ? map("range", Arrays.asList(in.get("damping_min"), in.get("damping_max")), "locked", true)
-                            : map("range", Arrays.asList(in.get("damping_min"), in.get("damping_max"))));
+                            : rolledToFile(in.get("damping_min"), in.get("damping_max"), mode));
                 } else {
                     double bounce = ((Number) in.get("bounce")).doubleValue();
                     out.put("restitution", List.of(bounce, bounce, bounce));
                     give(out, names, "friction", in, "friction");
                 }
                 give(out, names, "static_friction_speed", in, "rest");
-                out.put("rotation_restitution", in.get("rotation"));
+                double turnMode = ((Number) in.get("rotation_mode")).doubleValue();
+                out.put("rotation_restitution", turnMode > 0 ? rolledToFile(in.get("rotation"), in.get("rotation_max"), turnMode)
+                        : in.get("rotation"));
                 names.put("rotation", "rotation_restitution");
+                double vertical = ((Number) in.get("vertical")).doubleValue();
+                if (vertical >= 0) {
+                    out.put("only_vertical_counts", true);
+                    out.put("vertical_fudge", vertical);
+                }
                 out.put("delay", in.get("delay"));
                 if (in.get("lead") instanceof Number lead && lead.doubleValue() > 0) out.put("radius_scale", 2.0 / lead.doubleValue());
                 int complete = (int) Math.round(((Number) in.get("complete")).doubleValue());
@@ -1652,18 +1658,25 @@ public final class CgVfxEmitterAssets {
      */
     private static void collisionDamping(String name, Object damping, Map<String, Object> out) {
         Object lo = damping, hi = damping;
-        boolean locked = false;
+        int[] rolls = CgVfxModule.CollisionResponse.PER_AXIS;
         if (damping instanceof Map<?, ?> m && m.get("range") instanceof List<?> r && r.size() == 2) {
             lo = r.get(0);
             hi = r.get(1);
-            locked = Boolean.TRUE.equals(m.get("locked"));
+            rolls = CgVfxLifeRoll.rolls(m);
         } else if (damping instanceof Map<?, ?>) {
             throw new IllegalArgumentException(name + ": collision's damping " + damping + " is not read yet: a constant or"
                     + " a range");
         }
         out.put("damping_min", vectorOf(name, "collision's damping", lo));
         out.put("damping_max", vectorOf(name, "collision's damping", hi));
-        out.put("damping_mode", locked ? 2.0 : 1.0);
+        out.put("damping_mode", (double) CgVfxModuleTypes.rollCode(rolls));
+    }
+
+    /** A range between {@code lo} and {@code hi} whose rolls are word {@code code}'s, as a file writes it. */
+    private static Map<String, Object> rolledToFile(Object lo, Object hi, double code) {
+        Map<String, Object> range = map("range", Arrays.asList(lo, hi));
+        CgVfxLifeRoll.putRolls(range, CgVfxModuleTypes.rolls((float) code));
+        return range;
     }
 
     /** {@code value} as three doubles: a vector, or one number on every axis. */
@@ -1725,10 +1738,21 @@ public final class CgVfxEmitterAssets {
                     out.put("bounce", r.get(0));
                     take(in, read, out, names, "friction", "friction");
                 }
-                if (in.get("rotation_restitution") != null) {
-                    out.put("rotation", vectorOf(name, "collision's rotation_restitution", in.get("rotation_restitution")));
-                    read.add("rotation_restitution");
+                Object turn = in.get("rotation_restitution");
+                if (turn instanceof Map<?, ?> m && m.get("range") instanceof List<?> r && r.size() == 2) {
+                    out.put("rotation", vectorOf(name, "collision's rotation_restitution", r.get(0)));
+                    out.put("rotation_max", vectorOf(name, "collision's rotation_restitution", r.get(1)));
+                    out.put("rotation_mode", (double) CgVfxModuleTypes.rollCode(CgVfxLifeRoll.rolls(m)));
+                } else if (turn != null) {
+                    out.put("rotation", vectorOf(name, "collision's rotation_restitution", turn));
                 }
+                read.add("rotation_restitution");
+                // Cascade's bOnlyVerticalNormalsDecrementCount and its VerticalFudgeFactor (:397-408).
+                if (Boolean.TRUE.equals(in.get("only_vertical_counts")) && in.get("vertical_fudge") instanceof Number fudge) {
+                    out.put("vertical", fudge.doubleValue());
+                }
+                read.add("only_vertical_counts");
+                read.add("vertical_fudge");
                 // A share of the particle's life, as Cascade compares it to its relative time (:314-321).
                 take(in, read, out, names, "delay", "delay");
                 take(in, read, out, names, "static_friction_speed", "rest");

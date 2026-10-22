@@ -80,6 +80,7 @@ public final class CgVfxModuleTypes {
     private static final CgValueType SHAPE = CgValueType.enumOf("sphere", "box", "plane");
     private static final CgVfxModule.BeamSource.Tangent[] TANGENTS = CgVfxModule.BeamSource.Tangent.values();
     private static final CgValueType TANGENT = CgValueType.enumOf("direct", "user_set", "distribution");
+    private static final CgValueType ROTATION_MODE = CgValueType.enumOf("add", "scale");
     private static final String[] MODIFIER_FLAGS = {"modify_position", "scale_position", "modify_tangent", "scale_tangent",
             "modify_strength", "scale_strength"};
     private static final Map<String, Kind<?>> BY_ID = new LinkedHashMap<>();
@@ -317,6 +318,10 @@ public final class CgVfxModuleTypes {
                 t -> { v3(t, "scale"); t.property("absolute", CgValueType.BOOL); },
                 (m, in) -> in.v3("scale", m.x(), m.y(), m.z()).b("absolute", m.absolute()),
                 r -> new CgVfxModule.ScaleVelocity(r.f("scale", 0), r.f("scale", 1), r.f("scale", 2), r.b("absolute")));
+        kind("sprite_rotation", CgVfxModule.SpriteRotation.class,
+                t -> { fl(t, "rotation"); t.property("mode", ROTATION_MODE).defaultValue("add"); },
+                (m, in) -> in.f("rotation", m.radians()).o("mode", m.scales() ? "scale" : "add"),
+                r -> new CgVfxModule.SpriteRotation(r.f("rotation"), r.i("mode") == 1));
         kind("damping", CgVfxModule.Damping.class, t -> fl(t, "rate"),
                 (m, in) -> in.f("rate", m.rate()), r -> new CgVfxModule.Damping(r.f("rate")));
         kind("limit_speed", CgVfxModule.LimitSpeed.class, t -> fl(t, "max_speed"),
@@ -508,30 +513,50 @@ public final class CgVfxModuleTypes {
         t.property("most_min", CgValueType.FLOAT).defaultValue(0.0);
         t.property("most_max", CgValueType.FLOAT).defaultValue(0.0);
         t.property("lead", CgValueType.FLOAT).defaultValue(0.0);
+        t.property("vertical", CgValueType.FLOAT).defaultValue(-1.0);
+        t.property("rotation_max", CgValueType.VEC3).defaultValue(Arrays.asList(1.0, 1.0, 1.0));
+        t.property("rotation_mode", CgValueType.FLOAT).defaultValue(0.0);
+    }
+
+    /** {@code rolls} as a word: 1 plus y's roll plus twice z's ({@code fx_collision_rolls}); 0 marks none. */
+    static float rollCode(int[] rolls) {
+        return 1f + rolls[1] + 2f * rolls[2];
+    }
+
+    static int[] rolls(float code) {
+        int c = Math.round(code) - 1;
+        return new int[]{0, c % 2, c / 2};
     }
 
     private static Inputs response(Inputs in, CgVfxModule.CollisionResponse r) {
         Vector3fc lo = r.dampingMin(), hi = r.dampingMax();
         if (lo != null && hi != null) {
-            in.v3("damping_min", lo.x(), lo.y(), lo.z()).f("damping_mode", r.dampingLocked() ? 2f : 1f)
+            in.v3("damping_min", lo.x(), lo.y(), lo.z()).f("damping_mode", rollCode(r.dampingRolls()))
                     .v3("damping_max", hi.x(), hi.y(), hi.z());
         } else {
             in.v3("damping_min", 0f, 0f, 0f).f("damping_mode", 0f).v3("damping_max", 0f, 0f, 0f);
         }
-        Vector3fc turn = r.rotation();
+        Vector3fc turn = r.rotation(), most = r.rotationMax() != null ? r.rotationMax() : turn;
+        in.v3("rotation_max", most.x(), most.y(), most.z())
+                .f("rotation_mode", r.rotationMax() != null ? rollCode(r.rotationRolls()) : 0f);
         return in.f("delay", r.delay()).v3("rotation", turn.x(), turn.y(), turn.z())
                 .f("complete", r.completion() == null ? 0f : r.completion().ordinal() + 1f)
-                .f("most_min", r.mostMin()).f("most_max", r.mostMax()).f("lead", r.lead());
+                .f("most_min", r.mostMin()).f("most_max", r.mostMax()).f("lead", r.lead())
+                .f("vertical", r.onlyVertical() ? r.verticalFudge() : -1f);
     }
 
     private static CgVfxModule.CollisionResponse response(Read r) {
-        CgVfxModule.CollisionResponse out = CgVfxModule.CollisionResponse.NONE.delay(r.f("delay"))
-                .rotation(r.f("rotation", 0), r.f("rotation", 1), r.f("rotation", 2)).lead(r.f("lead"));
+        CgVfxModule.CollisionResponse out = CgVfxModule.CollisionResponse.NONE.delay(r.f("delay")).lead(r.f("lead"));
+        out = r.f("rotation_mode") > 0f
+                ? out.rotation(r.f("rotation", 0), r.f("rotation", 1), r.f("rotation", 2), r.f("rotation_max", 0),
+                        r.f("rotation_max", 1), r.f("rotation_max", 2), rolls(r.f("rotation_mode")))
+                : out.rotation(r.f("rotation", 0), r.f("rotation", 1), r.f("rotation", 2));
         float mode = r.f("damping_mode");
         if (mode > 0f) {
             out = out.damping(r.f("damping_min", 0), r.f("damping_min", 1), r.f("damping_min", 2), r.f("damping_max", 0),
-                    r.f("damping_max", 1), r.f("damping_max", 2), mode > 1.5f);
+                    r.f("damping_max", 1), r.f("damping_max", 2), rolls(mode));
         }
+        if (r.f("vertical") >= 0f) out = out.onlyVertical(r.f("vertical"));
         int complete = Math.round(r.f("complete"));
         if (complete > 0) {
             out = out.limit(r.f("most_min"), r.f("most_max"), CgVfxModule.CollisionCompletion.values()[complete - 1]);
