@@ -1134,7 +1134,7 @@ public final class CgVfxSystem {
 
     private static boolean readsWorld(CgVfxEmitter emitter) {
         for (int i = 0; i < emitter.modules().size(); i++) {
-            if (emitter.modules().get(i).worldInputs().length > 0) return true;
+            if (emitter.modules().get(i).dataInterfaces().length > 0) return true;
         }
         return false;
     }

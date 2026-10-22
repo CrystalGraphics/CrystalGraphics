@@ -9,18 +9,19 @@ import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
 import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDataInterface;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxModuleWords;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
-import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 
+import java.util.Arrays;
 import java.util.Comparator;
-import java.util.EnumSet;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -52,9 +53,6 @@ import java.util.regex.Pattern;
 public final class CgVfxShape {
 
     private static final Pattern KIND = Pattern.compile("[a-z][a-z0-9_]*");
-    /** What a kind before the solver may take: inputs the pool supplies whatever the window holds. */
-    private static final Set<CgVfxWorldInput> BEFORE_SOLVER = EnumSet.of(CgVfxWorldInput.NEIGHBOURS, CgVfxWorldInput.GAS,
-            CgVfxWorldInput.GAS_FEED, CgVfxWorldInput.GRID, CgVfxWorldInput.GRID_SPLAT);
     /**
      * The vec4s a parameter row gives its events, when it has any, {@link CgVfxEvent#MAX_EVENTS} of each in two vec4s
      * from these offsets: each one's age or period, its most firings, its window's start and end, and its clip node's
@@ -80,12 +78,12 @@ public final class CgVfxShape {
     private final boolean[] afterSolve;
     private final int[] params, paramAt, lanesAt;
     private final CgVfxLane[][] lanes;
-    private final CgVfxWorldInput[][] world;
+    private final CgVfxDataInterface[][] reads;
     private final int paramRow, instanceRow;
-    private final boolean readsWorld, usesDistance, usesDepth, usesEntities, usesNeighbours, usesGas, feedsGas, usesGrid,
-            splatsGrid, floors, spawnsOnMesh;
-    /** Where the gas's and the grid's two lanes each start in the instance row, after every module's: the pool's, not a kind's. */
-    private final int gasAt, gridAt;
+    private final boolean floors, spawnsOnMesh;
+    /** Every data interface it takes, its kinds' and what they require, in registration order; where each one's lanes start. */
+    private final CgVfxDataInterface[] interfaces;
+    private final int[] interfaceLanesAt;
     /** Its user bindings, the parameter-row word each replaces, and where their lanes start: four bindings a lane. */
     private final CgVfxUserBinding[] userBindings;
     private final int[] userWords;
@@ -124,7 +122,7 @@ public final class CgVfxShape {
         paramAt = new int[n];
         lanesAt = new int[n];
         lanes = new CgVfxLane[n][];
-        world = new CgVfxWorldInput[n][];
+        reads = new CgVfxDataInterface[n][];
         textures = new CgTexture[n][];
         volumes = new boolean[n][];
         StringBuilder key = new StringBuilder(drawLayout.name()), identity = new StringBuilder();
@@ -149,13 +147,12 @@ public final class CgVfxShape {
             afterSolve[i] = m.afterSolve();
             params[i] = CgVfxModuleTypes.vectors(m);
             lanes[i] = m.instanceLanes().clone();
-            world[i] = m.worldInputs().clone();
-            if (!afterSolve[i]) {
-                for (CgVfxWorldInput input : world[i]) {
-                    if (!BEFORE_SOLVER.contains(input)) {
-                        throw new IllegalArgumentException(emitter.name() + ": fx_" + kind + " takes " + input
-                                + " but runs before the solver, which takes " + BEFORE_SOLVER + " alone");
-                    }
+            reads[i] = m.dataInterfaces().clone();
+            for (CgVfxDataInterface di : reads[i]) {
+                if (di == null) throw new IllegalArgumentException(emitter.name() + ": fx_" + kind + " takes a null data interface");
+                if (!afterSolve[i] && !di.beforeSolver()) {
+                    throw new IllegalArgumentException(emitter.name() + ": fx_" + kind + " takes " + di.id()
+                            + " but runs before the solver, which takes only data interfaces that say beforeSolver()");
                 }
             }
             paramAt[i] = param;
@@ -164,7 +161,7 @@ public final class CgVfxShape {
             lane += lanes[i].length;
             key.append('|').append(kind).append(afterSolve[i] ? ">" : ":").append(params[i]);
             for (int l = 0; l < lanes[i].length; l++) key.append(l == 0 ? ':' : ',').append(lanes[i][l].name());
-            for (int w = 0; w < world[i].length; w++) key.append(w == 0 ? '@' : ',').append(world[i][w].name());
+            for (int w = 0; w < reads[i].length; w++) key.append(w == 0 ? '@' : ',').append(reads[i][w].id());
             textures[i] = m.textures().clone();
             volumes[i] = new boolean[textures[i].length];
             for (int t = 0; t < textures[i].length; t++) {
@@ -280,35 +277,18 @@ public final class CgVfxShape {
         }
         userAt = lane;
         lane += userLanes(userBindings.length);
-        boolean reads = false, distance = false, depth = false, entities = false, neighbours = false, gas = false,
-                feeds = false, grid = false, splats = false, floor = false;
-        for (CgVfxWorldInput[] inputs : world) {
-            for (CgVfxWorldInput input : inputs) {
-                reads |= input != CgVfxWorldInput.DEPTH && input != CgVfxWorldInput.ENTITIES && !BEFORE_SOLVER.contains(input);
-                neighbours |= input == CgVfxWorldInput.NEIGHBOURS;
-                gas |= input == CgVfxWorldInput.GAS || input == CgVfxWorldInput.GAS_FEED;
-                feeds |= input == CgVfxWorldInput.GAS_FEED;
-                grid |= input == CgVfxWorldInput.GRID || input == CgVfxWorldInput.GRID_SPLAT;
-                splats |= input == CgVfxWorldInput.GRID_SPLAT;
-                distance |= input == CgVfxWorldInput.WORLD_DISTANCE;
-                depth |= input == CgVfxWorldInput.DEPTH;
-                entities |= input == CgVfxWorldInput.ENTITIES;
-                floor |= input == CgVfxWorldInput.FLOOR_Y;
-            }
+        Set<CgVfxDataInterface> taken = new LinkedHashSet<>();
+        for (CgVfxDataInterface[] read : reads) for (CgVfxDataInterface di : read) take(di, taken);
+        if (spawnsOnMesh) take(CgVfxDataInterfaces.SPAWN_MESHES, taken);
+        interfaces = taken.toArray(new CgVfxDataInterface[0]);
+        Arrays.sort(interfaces, Comparator.comparingInt(CgVfxDataInterfaces::order));
+        interfaceLanesAt = new int[interfaces.length];
+        for (int d = 0; d < interfaces.length; d++) {
+            interfaceLanesAt[d] = lane;
+            lane += interfaces[d].instanceLanes();
         }
-        readsWorld = reads;
-        usesDistance = distance;
-        usesDepth = depth;
-        usesEntities = entities;
-        usesNeighbours = neighbours;
-        usesGas = gas;
-        feedsGas = feeds;
-        usesGrid = grid;
-        splatsGrid = splats;
-        gasAt = lane;
-        gridAt = lane + (gas ? GAS_LANES : 0);
-        instanceRow = gridAt + (grid ? GRID_LANES : 0);
-        floors = floor;
+        instanceRow = lane;
+        floors = taken.contains(CgVfxDataInterfaces.FLOOR_Y);
         kernelKey = key.toString();
         this.key = kernelKey + identity;
     }
@@ -322,6 +302,13 @@ public final class CgVfxShape {
             return "FN:" + f.fn() + "(" + formKey(f.first()) + "," + formKey(f.second()) + ")";
         }
         return c.form().name();
+    }
+
+    /** {@code di} and what it requires, each once, required first. */
+    private static void take(CgVfxDataInterface di, Set<CgVfxDataInterface> taken) {
+        if (taken.contains(di)) return;
+        for (CgVfxDataInterface r : di.requires()) take(r, taken);
+        taken.add(di);
     }
 
     private static int textureId(CgTexture texture) {
@@ -407,9 +394,25 @@ public final class CgVfxShape {
         return lanesAt[i];
     }
 
-    /** Module {@code i}'s world inputs; a copy. */
-    public CgVfxWorldInput[] worldInputs(int i) {
-        return world[i].clone();
+    /** Module {@code i}'s data interfaces, in the order its function takes them; a copy. */
+    public CgVfxDataInterface[] dataInterfaces(int i) {
+        return reads[i].clone();
+    }
+
+    /** Every data interface it takes, what its kinds require included, in registration order: the order the Step writes them in. */
+    public List<CgVfxDataInterface> dataInterfaces() {
+        return Arrays.asList(interfaces);
+    }
+
+    /** Where interface {@code d}'s ({@link #dataInterfaces()}) lanes start in an instance row, in vec4s. */
+    public int dataLanesAt(int d) {
+        return interfaceLanesAt[d];
+    }
+
+    /** Whether it takes {@code di}, as a kind's or as what one requires. */
+    public boolean takes(CgVfxDataInterface di) {
+        for (CgVfxDataInterface t : interfaces) if (t == di) return true;
+        return false;
     }
 
     /** Module {@code i}'s textures; a copy. */
@@ -432,64 +435,9 @@ public final class CgVfxShape {
         return volumes[i][t];
     }
 
-    /** Whether any module takes {@link CgVfxWorldInput#DEPTH}: its Step kernel reads the scene's depth. */
-    public boolean usesDepth() {
-        return usesDepth;
-    }
-
     /** Whether its emitter spawns on a mesh ({@link CgVfxGpuEmitter#spawnsOnMesh}): its Step kernel reads {@code CgVfxSpawnMeshes}. */
     public boolean spawnsOnMesh() {
         return spawnsOnMesh;
-    }
-
-    /** Whether any module takes {@link CgVfxWorldInput#ENTITIES}: its Step kernel reads the entity boxes. */
-    public boolean usesEntities() {
-        return usesEntities;
-    }
-
-    /** Whether any module takes {@link CgVfxWorldInput#NEIGHBOURS}: its pool builds a neighbour grid after each step. */
-    public boolean usesNeighbours() {
-        return usesNeighbours;
-    }
-
-    /**
-     * Whether any module takes {@link CgVfxWorldInput#GAS} or {@link CgVfxWorldInput#GAS_FEED}: its instance rows carry
-     * {@link #GAS_LANES} at {@link #gasAt()}.
-     */
-    public boolean usesGas() {
-        return usesGas;
-    }
-
-    /** Whether any module takes {@link CgVfxWorldInput#GAS_FEED}: its Step appends deposits into the gas. */
-    public boolean feedsGas() {
-        return feedsGas;
-    }
-
-    /** The gas's lanes: the instance's origin from the gas's middle and its brick, then a cell's width. */
-    public static final int GAS_LANES = 2;
-
-    public int gasAt() {
-        return gasAt;
-    }
-
-    /**
-     * Whether any module takes {@link CgVfxWorldInput#GRID} or {@link CgVfxWorldInput#GRID_SPLAT}: its instance rows carry
-     * {@link #GRID_LANES} at {@link #gridAt()}.
-     */
-    public boolean usesGrid() {
-        return usesGrid;
-    }
-
-    /** Whether any module takes {@link CgVfxWorldInput#GRID_SPLAT}: its Step appends splats into the grid. */
-    public boolean splatsGrid() {
-        return splatsGrid;
-    }
-
-    /** The grid's lanes: the instance's origin from the grid's low corner and its brick, then a cell's width and its cells. */
-    public static final int GRID_LANES = 2;
-
-    public int gridAt() {
-        return gridAt;
     }
 
     /** The most user bindings a definition takes: a word each of its parameter row. */
@@ -521,19 +469,9 @@ public final class CgVfxShape {
         return false;
     }
 
-    /** Whether any module takes a voxel window input: its Step kernel reads the window. */
-    public boolean readsWorld() {
-        return readsWorld;
-    }
-
-    /** Whether any module takes {@link CgVfxWorldInput#FLOOR_Y}: Range then gives its draws the floor under each particle. */
+    /** Whether it takes {@link CgVfxDataInterfaces#FLOOR_Y}: Range then gives its draws the floor under each particle. */
     public boolean floors() {
         return floors;
-    }
-
-    /** Whether any module takes {@link CgVfxWorldInput#WORLD_DISTANCE}: the window's distance field is kept current. */
-    public boolean usesDistance() {
-        return usesDistance;
     }
 
     /** How many events its definitions list. */

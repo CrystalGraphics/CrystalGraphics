@@ -23,12 +23,11 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxTrace;
-import com.crystalgraphics.vfx.fluid.CgVfxFluid;
-import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
 import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxCurveDomain;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDataInterface;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventRows;
@@ -37,7 +36,6 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
-import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
@@ -54,6 +52,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -285,7 +284,7 @@ public final class CgVfxParticlePool {
     // The GPU half: made at the first recording, grown as slots open.
     private CgKernel step, look, store, gridKeys, gridRuns;
     private CgGraphBuffer records, drawn, paramBuffer, curveBuffer, instanceBuffer, spawnBuffer, history, ringTable;
-    /** The neighbour grid (CgVfxWorldInput.NEIGHBOURS): each record's key and index, sorted; each hashed cell's run. */
+    /** The neighbour grid (CgVfxDataInterfaces.NEIGHBOURS): each record's key and index, sorted; each hashed cell's run. */
     private CgGraphBuffer cellKeys, cellValues, cellRuns;
     private int cells;
     private float cellWidth = 1f;
@@ -385,11 +384,14 @@ public final class CgVfxParticlePool {
             CgCompute.load(EVENT_CAP_KERNELS).kernel("Gather").prepare();
             CgGpuOps.prepareSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING);
         }
-        if (shape.usesNeighbours()) {
-            CgCompute.load(NEIGHBOUR_KERNELS).kernel("Keys").prepare();
-            CgCompute.load(NEIGHBOUR_KERNELS).kernel("Runs").prepare();
-            CgGpuOps.prepareSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING);
-        }
+        for (CgVfxDataInterface di : shape.dataInterfaces()) di.prepare();
+    }
+
+    /** The neighbour grid's kernels, for {@code CgVfxDataInterfaces.NEIGHBOURS}' {@code prepare}. */
+    static void prepareGrid() {
+        CgCompute.load(NEIGHBOUR_KERNELS).kernel("Keys").prepare();
+        CgCompute.load(NEIGHBOUR_KERNELS).kernel("Runs").prepare();
+        CgGpuOps.prepareSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING);
     }
 
     /**
@@ -472,8 +474,7 @@ public final class CgVfxParticlePool {
             Arrays.fill(SPAWN_ORDER, null);
             Arrays.fill(SPAWN_SORTED, null);
             Arrays.fill(SPAWN_RUNS, null);
-            CgVfxEntityBoxes.forget();
-            CgVfxSpawnMeshes.forget();
+            for (CgVfxDataInterface di : CgVfxDataInterfaces.all()) di.forget();
             CgVfxClipAtlas.forget();
         }
     };
@@ -503,7 +504,7 @@ public final class CgVfxParticlePool {
     }
 
     /**
-     * The scene's depth the next {@link #record} steps against, for kinds taking {@link CgVfxWorldInput#DEPTH}: the
+     * The scene's depth the next {@link #record} steps against, for kinds taking {@link CgVfxDataInterfaces#DEPTH}: the
      * camera's view and {@code pyramid}, {@link CgGpuOps#depthPyramid}'s, in that recording. The stage does this
      * itself, with its own pyramid; a check scene recording its pools by hand calls it first. Render thread.
      *
@@ -518,7 +519,7 @@ public final class CgVfxParticlePool {
     }
 
     /**
-     * What the next {@link #record} gathers the entity boxes round, for kinds taking {@link CgVfxWorldInput#ENTITIES}:
+     * What the next {@link #record} gathers the entity boxes round, for kinds taking {@link CgVfxDataInterfaces#ENTITIES}:
      * the camera, and the partial tick to pose them at. The stage does this itself; a check scene recording its pools by
      * hand calls it first, or its kinds see no entities. Render thread.
      */
@@ -526,20 +527,19 @@ public final class CgVfxParticlePool {
         CgVfxEntityBoxes.around(x, y, z, partialTick);
     }
 
-    /** The stage's recording: the depth and the entities asked for only when a stepping shape reads them. */
+    /** The stage's recording: each data interface a stepping shape takes gathers what it reads first, once. */
     private static void recordStage(CgStageFrame frame) {
-        boolean depth = false, entities = false;
+        TAKEN.clear();
         for (int i = 0; i < ALL.size(); i++) {
             CgVfxParticlePool pool = ALL.get(i);
-            if (pool.steps == 0) continue;
-            depth |= pool.shape.usesDepth();
-            entities |= pool.shape.usesEntities();
+            if (pool.steps > 0) TAKEN.addAll(pool.shape.dataInterfaces());
         }
-        CgHostView view = frame.host().view();
-        if (depth) depth(view, frame.depthPyramid());
-        if (entities) entities(view.x(), view.y(), view.z(), frame.host().partialTick());
+        for (CgVfxDataInterface di : TAKEN) di.beforeFrame(frame);
         recordAll(frame.recording());
     }
+
+    /** The data interfaces the stepping pools take, each once: a frame's and a recording's scratch. */
+    private static final Set<CgVfxDataInterface> TAKEN = new LinkedHashSet<>();
 
     /** Records every pool's queued steps into {@code recording}, once a host frame. Render thread. */
     static void recordAll(CgRecording recording) {
@@ -602,18 +602,9 @@ public final class CgVfxParticlePool {
             reportCounts = fit(recording, reportCounts, "vfx.pool.report-counts", maxSteps);
         }
         for (int i = 0; i < STEPPING.size(); i++) STEPPING.get(i).uploadFeeds(recording);
-        for (int i = 0; i < STEPPING.size(); i++) {
-            if (STEPPING.get(i).shape.usesEntities()) {
-                CgVfxEntityBoxes.upload(recording);
-                break;
-            }
-        }
-        for (int i = 0; i < STEPPING.size(); i++) {
-            if (STEPPING.get(i).shape.spawnsOnMesh()) {
-                CgVfxSpawnMeshes.upload(recording);
-                break;
-            }
-        }
+        TAKEN.clear();
+        for (int i = 0; i < STEPPING.size(); i++) TAKEN.addAll(STEPPING.get(i).shape.dataInterfaces());
+        for (CgVfxDataInterface di : TAKEN) di.upload(recording);
         for (int i = 0; i < STEPPING.size(); i++) {
             CgVfxShape s = STEPPING.get(i).shape;
             if (s.readsClips() || s.drawLayout() == CgVfxDrawLayout.SEQUENCE) {
@@ -682,7 +673,7 @@ public final class CgVfxParticlePool {
         reserve(recording, capacity);
         upload(recording);
         if (ringSlots > 0) reserveRings(recording);
-        if (shape.usesNeighbours()) reserveGrid(recording);
+        for (CgVfxDataInterface di : shape.dataInterfaces()) di.reserve(recording, this);
         return true;
     }
 
@@ -690,7 +681,7 @@ public final class CgVfxParticlePool {
      * The neighbour grid's buffers for this storage, its runs cleared when new, and its cells as wide as the widest
      * {@code neighbourRadius} of the open slots' kinds.
      */
-    private void reserveGrid(CgRecording recording) {
+    void reserveGrid(CgRecording recording) {
         if (gridKeys == null) {
             CgCompute file = CgCompute.load(NEIGHBOUR_KERNELS);
             gridKeys = file.kernel("Keys");
@@ -712,7 +703,7 @@ public final class CgVfxParticlePool {
     }
 
     /** After a step: the newest records' keys, sorted with their indices, and each hashed cell's run among them. */
-    private void buildGrid(CgComputePass pass) {
+    void buildGrid(CgComputePass pass) {
         CgGraphBuffer live = counts[current];
         pass.dispatch(gridKeys, storage).bind("RECORDS", records).bind("LIVE", live).bind("KEYS", cellKeys)
                 .bind("VALUES", cellValues).set("_Cell", cellWidth).set("_Cells", cells)
@@ -915,22 +906,7 @@ public final class CgVfxParticlePool {
                     .set("_ParentRegions", children ? REGION_COUNT[tier - 1] : 0).bind("FEEDS", children ? feedBuffer : unfed);
         }
         if (shape.readsClips()) CgVfxClipAtlas.bind(stepping);
-        if (shape.readsWorld()) {
-            CgVfxVoxelWindow window = CgVfxVoxelWindow.get().use();
-            if (shape.usesDistance()) window.useDistance();
-            window.bind(stepping);
-        }
-        if (shape.usesDepth()) bindDepth(stepping);
-        if (shape.usesEntities()) CgVfxEntityBoxes.bind(stepping);
-        if (shape.spawnsOnMesh()) CgVfxSpawnMeshes.bind(stepping);
-        if (shape.usesGas()) CgVfxFluidAtlas.get().bindFlow(stepping);
-        if (shape.feedsGas()) CgVfxFluidAtlas.get().bindDeposits(stepping);
-        if (shape.usesGrid()) CgVfxGridAtlas.get().bindView(stepping);
-        if (shape.splatsGrid()) CgVfxGridAtlas.get().bindSplats(stepping);
-        if (shape.usesNeighbours()) {
-            stepping.bind("SORTED", cellValues).bind("CELL_RUNS", cellRuns).set("_NeighbourCell", cellWidth)
-                    .set("_NeighbourCells", cells);
-        }
+        for (CgVfxDataInterface di : shape.dataInterfaces()) di.bind(stepping, this);
         for (int i = 0; i < shape.modules(); i++) {
             for (int t = 0; t < shape.textureCount(i); t++) stepping.texture(CgVfxEmitterCompiler.texture(i, t), shape.texture(i, t));
         }
@@ -946,7 +922,7 @@ public final class CgVfxParticlePool {
                 .bind("LIVE", counts[current]).bind("INSTANCES", instanceBuffer).bind("CURVES", curveBuffer)
                 .set("_InstanceAt", stepInstanceAt[s] / 4).set("_InstanceRow", shape.instanceRowVectors())
                 .set("_Floors", shape.floors() ? 1 : 0).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS));
-        if (shape.usesNeighbours()) buildGrid(pass);
+        for (CgVfxDataInterface di : shape.dataInterfaces()) di.afterStep(pass, this);
         if (stepStores[s]) {
             if (ringSlots > 0) {
                 pass.dispatch(store, storage).bind("RECORDS", records).bind("LIVE", counts[current])
@@ -958,8 +934,13 @@ public final class CgVfxParticlePool {
         }
     }
 
+    /** The neighbour grid the last step built, for {@code CgVfxDataInterfaces.NEIGHBOURS}' binding. */
+    void bindGrid(CgDispatch d) {
+        d.bind("SORTED", cellValues).bind("CELL_RUNS", cellRuns).set("_NeighbourCell", cellWidth).set("_NeighbourCells", cells);
+    }
+
     /** The scene's depth as {@code fx_depth_at.glsl} reads it, or none. */
-    private static void bindDepth(CgDispatch d) {
+    static void bindDepth(CgDispatch d) {
         if (depthPyramid == null) {
             d.set("_DepthSize", 0f, 0f, 0f, 0f);
             return;
@@ -1352,31 +1333,13 @@ public final class CgVfxParticlePool {
             }
             for (int w = base + bound; w < end; w++) instances[w] = 0;
         }
-        if (shape.usesGas()) {
-            words.target(instances, at + shape.gasAt() * 4, CgVfxShape.GAS_LANES, who + "'s gas");
-            CgVfxFluid gas = view.gas();
-            if (gas == null || gas.index() < 0 || CgVfxFluidAtlas.get().flow() == null) {
-                words.vec4(0f, 0f, 0f, -1f).vec4(1f, 0f, 0f, 0f);
-            } else {
-                // The instance's origin from its fluid's grid's low corner, in blocks.
-                float cell = gas.cellSize(), grid = CgVfxFluidAtlas.SPAN * 0.5f * cell;
-                words.vec4((float) (ox - gas.x()) + grid, (float) (oy - gas.y()) + grid, (float) (oz - gas.z()) + grid,
-                        gas.index()).vec4(cell, 0f, 0f, 0f);
-            }
-            words.finish("its gas lanes");
-        }
-        if (shape.usesGrid()) {
-            words.target(instances, at + shape.gridAt() * 4, CgVfxShape.GRID_LANES, who + "'s grid");
-            CgVfxGrid3D grid = view.grid();
-            if (grid == null || grid.index() < 0 || grid.cellSize() <= 0f || CgVfxGridAtlas.get().view() == null) {
-                words.vec4(0f, 0f, 0f, -1f).vec4(1f, 0f, 0f, 0f);
-            } else {
-                // The instance's origin from its grid's low corner, in blocks: its middle less half its span.
-                float half = CgVfxGridAtlas.SPAN * 0.5f * grid.cellSize();
-                words.vec4((float) (ox - grid.x()) + half, (float) (oy - grid.y()) + half, (float) (oz - grid.z()) + half,
-                        grid.index()).vec4(grid.cellSize(), 0f, 0f, 0f);
-            }
-            words.finish("its grid lanes");
+        List<CgVfxDataInterface> interfaces = shape.dataInterfaces();
+        for (int d = 0; d < interfaces.size(); d++) {
+            CgVfxDataInterface di = interfaces.get(d);
+            if (di.instanceLanes() == 0) continue;
+            words.target(instances, at + shape.dataLanesAt(d) * 4, di.instanceLanes(), who + "'s " + di.id());
+            di.writeInstance(view, ox, oy, oz, words);
+            words.finish("its " + di.id() + " lanes");
         }
     }
 

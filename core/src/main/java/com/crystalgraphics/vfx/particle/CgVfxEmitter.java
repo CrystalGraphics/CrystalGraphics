@@ -17,8 +17,8 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
-import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
+import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxDataInterfaces;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnPerUnit;
@@ -212,8 +212,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         moduleWords = CgVfxModuleTypes.words(modules);
         boolean feeds = false, splats = false;
         for (CgVfxModule m : modules) {
-            feeds |= Arrays.asList(m.worldInputs()).contains(CgVfxWorldInput.GAS_FEED);
-            splats |= Arrays.asList(m.worldInputs()).contains(CgVfxWorldInput.GRID_SPLAT);
+            feeds |= Arrays.asList(m.dataInterfaces()).contains(CgVfxDataInterfaces.GAS_FEED);
+            splats |= Arrays.asList(m.dataInterfaces()).contains(CgVfxDataInterfaces.GRID_SPLAT);
         }
         feedsGas = feeds;
         splatsGrid = splats;
@@ -1503,9 +1503,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             }
             if (clip != null) {
                 for (CgVfxModule m : modules) {
-                    if (m.worldInputs().length > 0) {
+                    if (m.dataInterfaces().length > 0) {
                         throw new IllegalStateException(name + " plays a clip, so its particles read no world, but "
-                                + m.getClass().getSimpleName() + " takes " + Arrays.toString(m.worldInputs()));
+                                + m.getClass().getSimpleName() + " takes " + Arrays.toString(m.dataInterfaces()));
                     }
                 }
                 if (events.size() + clip.spawns().size() > CgVfxEvent.MAX_EVENTS) {

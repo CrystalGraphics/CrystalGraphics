@@ -9,7 +9,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
-import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDataInterface;
 import org.junit.After;
 import org.junit.Test;
 
@@ -85,7 +85,7 @@ public class CgVfxParticlePoolTest {
 
     /** A kind after the solver taking the floor. */
     private static final class Floor implements CgVfxGpuModule {
-        private static final CgVfxWorldInput[] WORLD = {CgVfxWorldInput.FLOOR_Y};
+        private static final CgVfxDataInterface[] WORLD = {CgVfxDataInterfaces.FLOOR_Y};
         static {
             CgVfxModuleTypes.declare("floor", Floor.class, t -> t.property("rest", CgValueType.FLOAT), (m, in) -> in.f("rest", 0.5f));
         }
@@ -104,7 +104,7 @@ public class CgVfxParticlePoolTest {
             return after;
         }
 
-        public CgVfxWorldInput[] worldInputs() {
+        public CgVfxDataInterface[] dataInterfaces() {
             return WORLD;
         }
     }
@@ -275,7 +275,7 @@ public class CgVfxParticlePoolTest {
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void worldInputsBeforeTheSolverAreRefused() {
+    public void dataInterfacesBeforeTheSolverAreRefused() {
         CgVfxShape.of(new Def("a", CgVfxDrawLayout.QUADS, new Floor(false)));
     }
 

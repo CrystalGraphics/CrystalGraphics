@@ -124,13 +124,13 @@ public interface CgVfxInstanceView {
         return param.defaultValue();
     }
 
-    /** The fluid its particles are carried by, for kinds taking {@link CgVfxWorldInput#GAS}; null for none. */
+    /** The fluid its particles are carried by, for kinds taking {@code CgVfxDataInterfaces.GAS}; null for none. */
     @Nullable
     default CgVfxFluid gas() {
         return null;
     }
 
-    /** The grid its particles are in, for kinds taking {@link CgVfxWorldInput#GRID}; null for none. */
+    /** The grid its particles are in, for kinds taking {@code CgVfxDataInterfaces.GRID}; null for none. */
     @Nullable
     default CgVfxGrid3D grid() {
         return null;

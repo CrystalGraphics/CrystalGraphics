@@ -30,11 +30,11 @@ import com.crystalgraphics.api.texture.CgTexture;
  * // void fx_curl_noise(inout FxParticle p, inout FxForces f, FxStep s, vec4 m, ivec4 cell, vec4 frac)
  * }</pre>
  *
- * <p>After the solver: no forces, and the world values it declares after its lanes:</p>
+ * <p>After the solver: no forces, and the data interfaces it reads after its lanes ({@link CgVfxDataInterface}):</p>
  * <pre>{@code
- * private static final CgVfxWorldInput[] WORLD = {CgVfxWorldInput.FLOOR_Y};
+ * private static final CgVfxDataInterface[] READS = {CgVfxDataInterfaces.FLOOR_Y};
  * public boolean afterSolve() { return true; }
- * public CgVfxWorldInput[] worldInputs() { return WORLD; }
+ * public CgVfxDataInterface[] dataInterfaces() { return READS; }
  * // void fx_ground(inout FxParticle p, FxStep s, vec4 m, float floorY)
  * }</pre>
  *
@@ -57,7 +57,7 @@ import com.crystalgraphics.api.texture.CgTexture;
  *   <li>Answer the arrays as constants: they are asked for every step.</li>
  *   <li>Its declared numbers are the definition's, shared by every instance of it; anything that differs per instance
  *       is a lane. Numbers never recompile anything: the shape holds the kind and its counts only.</li>
- *   <li>World inputs are for a kind after the solver; one before it declaring any is refused.</li>
+ *   <li>A kind before the solver takes only data interfaces that say {@link CgVfxDataInterface#beforeSolver}.</li>
  * </ul>
  */
 public interface CgVfxGpuModule {
@@ -90,7 +90,7 @@ public interface CgVfxGpuModule {
     boolean afterSolve();
 
     /**
-     * How far it looks for neighbours, in blocks, for a kind taking {@link CgVfxWorldInput#NEIGHBOURS}: the grid's cells
+     * How far it looks for neighbours, in blocks, for a kind taking {@code CgVfxDataInterfaces.NEIGHBOURS}: the grid's cells
      * are at least this wide, so the 27 round a particle hold every neighbour within it. 0 for any other kind.
      */
     default float neighbourRadius() {
@@ -102,13 +102,16 @@ public interface CgVfxGpuModule {
         return CgVfxLane.NONE;
     }
 
-    /** The world values it takes after its lanes; only after the solver, but {@link CgVfxWorldInput#NEIGHBOURS}. */
-    default CgVfxWorldInput[] worldInputs() {
-        return CgVfxWorldInput.NONE;
+    /** What it reads besides its particle, passed after its lanes in this order. */
+    default CgVfxDataInterface[] dataInterfaces() {
+        return NO_INTERFACES;
     }
 
+    /** No data interfaces. Never write into it. */
+    CgVfxDataInterface[] NO_INTERFACES = {};
+
     /**
-     * Textures it samples, passed after its world inputs as {@code sampler2D} or {@code sampler3D} by each one's kind:
+     * Textures it samples, passed after its data interfaces as {@code sampler2D} or {@code sampler3D} by each one's kind:
      * a vector field (Unity's Vector Field Force, Niagara's Sample Vector Field), a heightfield (Godot's). Each texture
      * is part of the pool's identity, so definitions sampling different ones step in different pools; numbers placing it
      * stay in its declared inputs and the lanes.

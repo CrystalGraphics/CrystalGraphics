@@ -5,12 +5,13 @@ import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgPlane;
 import com.crystalgraphics.shape.primitive.CgSphere;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDataInterface;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
-import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
+import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxDataInterfaces;
 
 import java.util.Objects;
 
@@ -262,7 +263,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * {@link Collide} does.
      */
     record Ground(float restitution, float friction, float rest, float radius) implements CgVfxModule {
-        private static final CgVfxWorldInput[] WORLD = {CgVfxWorldInput.FLOOR_Y};
+        private static final CgVfxDataInterface[] WORLD = {CgVfxDataInterfaces.FLOOR_Y};
 
         public Ground(float restitution, float friction, float rest) {
             this(restitution, friction, rest, 1f);
@@ -289,7 +290,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public CgVfxWorldInput[] worldInputs() {
+        public CgVfxDataInterface[] dataInterfaces() {
             return WORLD;
         }
     }
@@ -311,7 +312,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * }</pre>
      */
     record Current(float depth, float roll, float loft, float slow) implements CgVfxModule {
-        private static final CgVfxWorldInput[] WORLD = {CgVfxWorldInput.FLOOR_Y};
+        private static final CgVfxDataInterface[] WORLD = {CgVfxDataInterfaces.FLOOR_Y};
 
         @Override
         public CgVfxModule scaled(float scale) {
@@ -335,7 +336,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public CgVfxWorldInput[] worldInputs() {
+        public CgVfxDataInterface[] dataInterfaces() {
             return WORLD;
         }
     }
@@ -524,7 +525,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      */
     record Flock(float radius, float apart, float separation, float alignment, float cohesion, int most)
             implements CgVfxModule {
-        private static final CgVfxWorldInput[] NEIGHBOURS = {CgVfxWorldInput.NEIGHBOURS};
+        private static final CgVfxDataInterface[] NEIGHBOURS = {CgVfxDataInterfaces.NEIGHBOURS};
 
         public Flock {
             if (!(radius > 0f)) throw new IllegalArgumentException("a flock's radius " + radius);
@@ -551,7 +552,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public CgVfxWorldInput[] worldInputs() {
+        public CgVfxDataInterface[] dataInterfaces() {
             return NEIGHBOURS;
         }
 
@@ -577,7 +578,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * </ul>
      */
     record Flow(float follow) implements CgVfxModule {
-        private static final CgVfxWorldInput[] GAS = {CgVfxWorldInput.GAS};
+        private static final CgVfxDataInterface[] GAS = {CgVfxDataInterfaces.GAS};
         /** The fastest a gas is taken to move, blocks a second: what bounds the pull for culling. */
         private static final float FASTEST = 20f;
 
@@ -596,7 +597,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public CgVfxWorldInput[] worldInputs() {
+        public CgVfxDataInterface[] dataInterfaces() {
             return GAS;
         }
     }
@@ -627,7 +628,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * </ul>
      */
     record Feed(float density, float heat, float push) implements CgVfxModule {
-        private static final CgVfxWorldInput[] FEEDS = {CgVfxWorldInput.GAS_FEED};
+        private static final CgVfxDataInterface[] FEEDS = {CgVfxDataInterfaces.GAS_FEED};
 
         public Feed {
             if (!(density >= 0f) || !(heat >= 0f) || !(push >= 0f)) {
@@ -646,7 +647,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public CgVfxWorldInput[] worldInputs() {
+        public CgVfxDataInterface[] dataInterfaces() {
             return FEEDS;
         }
     }
@@ -669,7 +670,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * </ul>
      */
     record Splat(float x, float y, float z, float w) implements CgVfxModule {
-        private static final CgVfxWorldInput[] SPLATS = {CgVfxWorldInput.GRID_SPLAT};
+        private static final CgVfxDataInterface[] SPLATS = {CgVfxDataInterfaces.GRID_SPLAT};
 
         @Override
         public String gpuKind() {
@@ -687,7 +688,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public CgVfxWorldInput[] worldInputs() {
+        public CgVfxDataInterface[] dataInterfaces() {
             return SPLATS;
         }
     }
@@ -714,7 +715,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * </ul>
      */
     record Follow(int channel, float sense, float angle, float turn, float full) implements CgVfxModule {
-        private static final CgVfxWorldInput[] GRID = {CgVfxWorldInput.GRID};
+        private static final CgVfxDataInterface[] GRID = {CgVfxDataInterfaces.GRID};
 
         public Follow {
             if (channel < 0 || channel > 3) throw new IllegalArgumentException("a grid's channel " + channel + ": 0 to 3");
@@ -737,7 +738,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public CgVfxWorldInput[] worldInputs() {
+        public CgVfxDataInterface[] dataInterfaces() {
             return GRID;
         }
     }
@@ -752,7 +753,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * }</pre>
      */
     record Gradient(int channel, float strength) implements CgVfxModule {
-        private static final CgVfxWorldInput[] GRID = {CgVfxWorldInput.GRID};
+        private static final CgVfxDataInterface[] GRID = {CgVfxDataInterfaces.GRID};
 
         public Gradient {
             if (channel < 0 || channel > 3) throw new IllegalArgumentException("a grid's channel " + channel + ": 0 to 3");
@@ -769,7 +770,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public CgVfxWorldInput[] worldInputs() {
+        public CgVfxDataInterface[] dataInterfaces() {
             return GRID;
         }
     }
@@ -1012,7 +1013,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * }</pre>
      */
     record CollideWorld(float bounce, float friction, float rest, boolean kill) implements CgVfxModule {
-        private static final CgVfxWorldInput[] WORLD = {CgVfxWorldInput.WORLD_DISTANCE};
+        private static final CgVfxDataInterface[] WORLD = {CgVfxDataInterfaces.WORLD_DISTANCE};
 
         public CollideWorld(float bounce, float friction, float rest) {
             this(bounce, friction, rest, false);
@@ -1033,7 +1034,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public CgVfxWorldInput[] worldInputs() {
+        public CgVfxDataInterface[] dataInterfaces() {
             return WORLD;
         }
     }
@@ -1048,7 +1049,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * }</pre>
      */
     record CollideDepth(float bounce, float friction, float rest, float thickness, boolean kill) implements CgVfxModule {
-        private static final CgVfxWorldInput[] DEPTH = {CgVfxWorldInput.DEPTH};
+        private static final CgVfxDataInterface[] DEPTH = {CgVfxDataInterfaces.DEPTH};
 
         public CollideDepth(float bounce, float friction, float rest, float thickness) {
             this(bounce, friction, rest, thickness, false);
@@ -1069,7 +1070,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public CgVfxWorldInput[] worldInputs() {
+        public CgVfxDataInterface[] dataInterfaces() {
             return DEPTH;
         }
     }
@@ -1094,7 +1095,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * @param size the share of a particle's size that collides: its box is grown by that
      */
     record CollideEntities(float bounce, float friction, float rest, float size, boolean kill) implements CgVfxModule {
-        private static final CgVfxWorldInput[] ENTITIES = {CgVfxWorldInput.ENTITIES};
+        private static final CgVfxDataInterface[] ENTITIES = {CgVfxDataInterfaces.ENTITIES};
 
         public CollideEntities(float bounce, float friction, float rest, float size) {
             this(bounce, friction, rest, size, false);
@@ -1115,7 +1116,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public CgVfxWorldInput[] worldInputs() {
+        public CgVfxDataInterface[] dataInterfaces() {
             return ENTITIES;
         }
     }

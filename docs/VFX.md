@@ -2160,13 +2160,13 @@ record Swirl(float strength, float height) implements CgVfxGpuModule {
 | more numbers | more inputs in its declaration | `vec4 m0, m1, ...` once they pass four lanes |
 | an input an effect drives | nothing: the emitter binds it by name, `CgVfxUserBinding.module(i, "strength", PARAM, scale, offset)` | the same argument, read from the instance each step |
 | a value per instance each step (a moving centre) | `instanceLanes()`, `writeInstance` | one argument per lane, after the numbers |
-| the world after the solver (floor, blocks, light) | `afterSolve()` true, `worldInputs()` | the world values, after the lanes; `FxWorld` for the voxel window |
+| the world after the solver (floor, blocks, light) | `afterSolve()` true, `dataInterfaces()` | the world values, after the lanes; `FxWorld` for the voxel window |
 | a texture (a field, a heightfield) | `textures()` | a `sampler2D` or `sampler3D` each, after the world |
 | an impact that fires `onCollision` | after the solver; call `fx_hit(p, n, FX_HIT_BLOCK)` on a punctual impact | — |
-| the entities round the camera | `worldInputs()` of `ENTITIES` | `FxEntities` (`fx_entities_at.glsl`) |
-| the particles near it, as a force before the solver | `worldInputs()` of `NEIGHBOURS`, `neighbourRadius()` | `FxNeighbours` (`fx_neighbours_at.glsl`: 27 cells to walk) |
-| the fluid its instance is in, before or after the solver | `worldInputs()` of `GAS` | `FxGas` (`fx_gas_at.glsl`: `fx_gas_flow`, its velocity and 1 inside its box) |
-| to pour into that fluid, or push it | `worldInputs()` of `GAS_FEED` | `FxGas`, and `step_feed(gas, p.position, p.velocity, density, heat, couple, s.dt)` (`fx_gas_feed.glsl`) |
+| the entities round the camera | `dataInterfaces()` of `ENTITIES` | `FxEntities` (`fx_entities_at.glsl`) |
+| the particles near it, as a force before the solver | `dataInterfaces()` of `NEIGHBOURS`, `neighbourRadius()` | `FxNeighbours` (`fx_neighbours_at.glsl`: 27 cells to walk) |
+| the fluid its instance is in, before or after the solver | `dataInterfaces()` of `GAS` | `FxGas` (`fx_gas_at.glsl`: `fx_gas_flow`, its velocity and 1 inside its box) |
+| to pour into that fluid, or push it | `dataInterfaces()` of `GAS_FEED` | `FxGas`, and `step_feed(gas, p.position, p.velocity, density, heat, couple, s.dt)` (`fx_gas_feed.glsl`) |
 
 - `fx_types.glsl` defines `FxParticle`, `FxForces` and `FxStep`. Kill a particle with `p.life = p.age`.
 - **A pool stores only what outlives a step** (`CgVfxRecord`, a layout per shape): `p.resting` and `p.collisions`

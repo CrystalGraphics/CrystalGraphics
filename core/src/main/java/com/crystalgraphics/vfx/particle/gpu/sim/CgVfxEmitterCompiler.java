@@ -5,13 +5,10 @@ import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
 import java.util.Locale;
 import com.crystalgraphics.compute.CgCompute;
-import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
-import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDataInterface;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
-import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
-import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
 
 import com.crystalgraphics.util.io.CgIO;
 
@@ -51,24 +48,6 @@ public final class CgVfxEmitterCompiler {
 
     private static final String KIND_DIR = "crystalgraphics:shaders/lib/vfx/sim/fx_";
 
-    /** The scene's depth as {@code fx_depth_at.glsl} reads it; the pool binds them ({@code CgVfxParticlePool.depth}). */
-    static final String DEPTH_PROPERTIES = """
-                _DepthPyramid ("The scene's eye depth: CgGpuOps.depthPyramid's level 0", sampler2D) = "white"
-                _DepthSize    ("Its width and height; 0 with no depth",                   vec4)      = (0, 0, 0, 0)
-                _DepthClipX   ("Projection times view, camera-relative: row 0",            vec4)      = (1, 0, 0, 0)
-                _DepthClipY   ("Row 1",                                                   vec4)      = (0, 1, 0, 0)
-                _DepthClipW   ("Row 3",                                                   vec4)      = (0, 0, 0, 1)
-                _DepthLens    ("Projection [0][0], [1][1], [2][0], [2][1]",               vec4)      = (1, 1, 0, 0)
-                _DepthViewX   ("The view's inverse: column 0",                            vec4)      = (1, 0, 0, 0)
-                _DepthViewY   ("Column 1",                                                vec4)      = (0, 1, 0, 0)
-                _DepthViewZ   ("Column 2",                                                vec4)      = (0, 0, 1, 0)
-                _DepthViewW   ("Column 3",                                                vec4)      = (0, 0, 0, 1)
-                _DepthEyeX    ("The camera's block: x",                                   int)       = 0
-                _DepthEyeY    ("y",                                                       int)       = 0
-                _DepthEyeZ    ("z",                                                       int)       = 0
-                _DepthEyeFrac ("Where in that block",                                     vec4)      = (0, 0, 0, 0)
-            """;
-
     private CgVfxEmitterCompiler() {
     }
 
@@ -82,11 +61,6 @@ public final class CgVfxEmitterCompiler {
                 : COMPILED.computeIfAbsent(shape.kernelKey(), k -> CgCompute.fromSource(key(shape), source(shape)));
     }
 
-    /** The neighbour grid's properties, for a shape taking {@code NEIGHBOURS}: the pool sets them each step. */
-    private static final String NEIGHBOUR_PROPERTIES = """
-                _NeighbourCell  ("The neighbour grid's cell width, blocks", float) = 1.0
-                _NeighbourCells ("Its hashed cells; 0 before it is built", int)   = 0
-            """;
 
     /** What {@link #compile} registers the source under. */
     public static String key(CgVfxShape shape) {
@@ -170,12 +144,7 @@ public final class CgVfxEmitterCompiler {
     private static List<String> libraries(CgVfxShape shape) {
         List<String> libs = new ArrayList<>();
         if (shape.readsClips()) libs.add("crystalgraphics:shaders/lib/vfx/fx_clip.glsl");
-        if (shape.readsWorld()) libs.add("crystalgraphics:shaders/lib/vfx/sim/fx_world_at.glsl");
-        if (shape.usesDepth()) libs.add("crystalgraphics:shaders/lib/vfx/sim/fx_depth_at.glsl");
-        if (shape.usesEntities()) libs.add("crystalgraphics:shaders/lib/vfx/sim/fx_entities_at.glsl");
-        if (shape.usesNeighbours()) libs.add("crystalgraphics:shaders/lib/vfx/sim/fx_neighbours_at.glsl");
-        if (shape.usesGas()) libs.add("crystalgraphics:shaders/lib/vfx/sim/fx_gas_at.glsl");
-        if (shape.usesGrid()) libs.add("crystalgraphics:shaders/lib/vfx/sim/grid/fx_grid_at.glsl");
+        for (CgVfxDataInterface di : shape.dataInterfaces()) libs.addAll(di.libraries());
         return libs;
     }
 
@@ -239,10 +208,7 @@ public final class CgVfxEmitterCompiler {
         for (String lib : STEP_LIBRARIES) s.append("#include \"").append(lib).append("\"\n");
         for (String lib : libraries(shape)) s.append("#include \"").append(lib).append("\"\n");
         // Declared ahead of the kinds' functions that call them; defined with the other step_ functions.
-        if (shape.feedsGas()) {
-            s.append("void step_feed(FxGas g, vec3 p, vec3 velocity, float density, float heat, float couple, float dt);\n");
-        }
-        if (shape.splatsGrid()) s.append("void step_splat(FxGrid g, vec3 p, vec4 amounts, float dt);\n");
+        for (CgVfxDataInterface di : shape.dataInterfaces()) s.append(di.declarations());
         Set<String> kinds = new LinkedHashSet<>();
         for (int i = 0; i < shape.modules(); i++) {
             if (!kinds.add(shape.kind(i))) continue;
@@ -267,12 +233,7 @@ public final class CgVfxEmitterCompiler {
                     _ChildMax   ("Children an event spawns at most", int)  = 0
                     _Feeds      ("Feed rows",                        int)  = 0
                 """);
-        if (shape.readsWorld()) s.append(CgVfxVoxelWindow.PROPERTIES);
-        if (shape.usesDepth()) s.append(DEPTH_PROPERTIES);
-        if (shape.usesEntities()) s.append(CgVfxEntityBoxes.PROPERTIES);
-        if (shape.usesNeighbours()) s.append(NEIGHBOUR_PROPERTIES);
-        if (shape.usesGas()) s.append(CgVfxFluidAtlas.FLOW_PROPERTIES);
-        if (shape.usesGrid()) s.append(CgVfxGridAtlas.VIEW_PROPERTIES);
+        for (CgVfxDataInterface di : shape.dataInterfaces()) s.append(di.properties());
         for (int i = 0; i < shape.modules(); i++) {
             for (int t = 0; t < shape.textureCount(i); t++) {
                 s.append("    ").append(texture(i, t)).append(" (\"fx_").append(shape.kind(i)).append("'s texture ").append(t)
@@ -283,8 +244,7 @@ public final class CgVfxEmitterCompiler {
         CgVfxRecord record = shape.record();
         s.append(record.glsl()).append("\n");
         s.append(CgVfxParticlePool.EVENT_GLSL).append("\n\n");
-        if (shape.feedsGas()) s.append(CgVfxFluidAtlas.DEPOSIT_GLSL).append("\n\n");
-        if (shape.splatsGrid()) s.append(CgVfxGridAtlas.SPLAT_GLSL).append("\n\n");
+        for (CgVfxDataInterface di : shape.dataInterfaces()) s.append(di.structs());
         s.append("""
                 Buffers {
                     IN        ("Particles",       FxRecord, readonly)
@@ -296,14 +256,7 @@ public final class CgVfxEmitterCompiler {
                 """);
         if (shape.spawns()) s.append("    SPAWN_EVENTS  (\"Events that spawn children, each tagged with its region\", FxEvent, append)\n");
         if (shape.reports()) s.append("    REPORT_EVENTS (\"Events the CPU hears\",       FxEvent, append)\n");
-        if (shape.usesEntities()) s.append("    ENTITIES      (\"Entity boxes, two rows each\", uvec4,   readonly)\n");
-        if (shape.feedsGas()) s.append("    GAS_DEPOSITS  (\"What particles pour into the gas\", FxDeposit, append)\n");
-        if (shape.splatsGrid()) s.append("    GRID_SPLATS   (\"What particles splat into the grid\", FxSplat, append)\n");
-        if (shape.spawnsOnMesh()) s.append("    MESHES        (\"Spawn meshes' triangles and vertices\", uvec4, readonly)\n");
-        if (shape.usesNeighbours()) {
-            s.append("    SORTED        (\"Last step's particles by hashed cell\", uint, readonly)\n");
-            s.append("    CELL_RUNS     (\"Each hashed cell's run in SORTED, first then end\", uint, readonly)\n");
-        }
+        for (CgVfxDataInterface di : shape.dataInterfaces()) s.append(di.buffers());
         if (shape.readsClips()) s.append("    FX_CLIPS      (\"Baked clips\", vec4, readonly)\n");
         if (shape.tier() > 0) {
             s.append("    PARENT_EVENTS  (\"This step's parents' events, sorted by region\",      FxEvent, readonly)\n");
@@ -345,150 +298,9 @@ public final class CgVfxEmitterCompiler {
                 }
 """);
         stepVector(s, shape);
-        if (shape.readsWorld()) {
-            s.append("""
-
-                    // The floor under p from the voxel window (a stair's step included), relative to its origin; the
-                    // instance's fixed height with no level.
-                    float step_floor(FxParticle p, int inst) {
-                        if (_WorldLive == 0) return step_instance(inst + 2).y;
-                        return fx_world_floor(_World, _WorldSections, ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ),
-                                ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ), ivec3(INSTANCES(inst + 3).xyz),
-                                step_instance(inst + 4).xyz, p.position, p.previous.y);
-                    }
-
-                    // The window as a kind taking WORLD reads it: from this instance's origin.
-                    FxWorld step_world(int inst) {
-                        FxWorld w;
-                        w.originBlock = ivec3(INSTANCES(inst + 3).xyz);
-                        w.originFrac = step_instance(inst + 4).xyz;
-                        w.live = _WorldLive != 0;
-                        w.floorY = step_instance(inst + 2).y;
-                        return w;
-                    }
-                    """);
-        }
-        if (shape.usesDepth()) {
-            s.append("""
-
-                    // The scene's depth as a kind taking DEPTH reads it: the camera from this instance's origin.
-                    FxDepth step_depth(int inst) {
-                        FxDepth d;
-                        d.eye = vec3(ivec3(_DepthEyeX, _DepthEyeY, _DepthEyeZ) - ivec3(INSTANCES(inst + 3).xyz))
-                                + _DepthEyeFrac.xyz - step_instance(inst + 4).xyz;
-                        d.live = _DepthSize.x > 0.0;
-                        return d;
-                    }
-                    """);
-        }
-        if (shape.usesEntities()) {
-            s.append("""
-
-                    // The entity boxes as a kind taking ENTITIES reads them: this instance's origin in their frame.
-                    FxEntities step_entities(int inst) {
-                        FxEntities e;
-                        e.origin = vec3(ivec3(INSTANCES(inst + 3).xyz) - ivec3(_EntityAnchorX, _EntityAnchorY, _EntityAnchorZ))
-                                + step_instance(inst + 4).xyz;
-                        e.count = _Entities;
-                        return e;
-                    }
-
-                    void step_entity(int i, out vec3 lo, out vec3 hi, out uint id) {
-                        uvec4 a = ENTITIES(i * 2), b = ENTITIES(i * 2 + 1);
-                        lo = uintBitsToFloat(a.xyz);
-                        hi = uintBitsToFloat(b.xyz);
-                        id = a.w;
-                    }
-                    """);
-        }
-        if (shape.usesGas()) {
-            s.append("\n// The gas as a kind taking GAS reads it: this instance's origin from the gas's grid's low corner.\n")
-                    .append("FxGas step_gas(int inst) {\n")
-                    .append("    vec4 a = step_instance(inst + ").append(shape.gasAt()).append("), b = step_instance(inst + ")
-                    .append(shape.gasAt() + 1).append(");\n")
-                    .append("""
-                                FxGas g;
-                                g.offset = a.xyz;
-                                g.gas = int(a.w + 0.5);
-                                g.cell = b.x;
-                                g.live = a.w >= 0.0 && _GasLive != 0;
-                                return g;
-                            }
-                            """);
-        }
-        if (shape.feedsGas()) {
-            s.append("""
-
-                    // What a kind taking GAS_FEED pours: density and heat a second into the gas at p (from the instance's
-                    // origin), for this step's dt, and its velocity coupled at couple a second (Flow's point emitter), as
-                    // a deposit its next step takes.
-                    void step_feed(FxGas g, vec3 p, vec3 velocity, float density, float heat, float couple, float dt) {
-                        if (!g.live) return;
-                        GAS_DEPOSITS_APPEND(FxDeposit(vec4((p + g.offset) / g.cell, float(g.gas)),
-                                vec4(density * dt, heat * dt, couple, 0.0), vec4(velocity, 0.0)));
-                    }
-                    """);
-        }
-        if (shape.usesGrid()) {
-            s.append("\n// The grid as a kind taking GRID reads it: this instance's origin from the grid's low corner.\n")
-                    .append("FxGrid step_grid(int inst) {\n")
-                    .append("    vec4 a = step_instance(inst + ").append(shape.gridAt()).append("), b = step_instance(inst + ")
-                    .append(shape.gridAt() + 1).append(");\n")
-                    .append("""
-                                FxGrid g;
-                                g.offset = a.xyz;
-                                g.brick = int(a.w + 0.5);
-                                g.cell = b.x;
-                                g.live = a.w >= 0.0 && _GridLive != 0;
-                                return g;
-                            }
-                            """);
-        }
-        if (shape.splatsGrid()) {
-            s.append("""
-
-                    // What a kind taking GRID_SPLAT adds: amounts a second into the grid's cell at p (from the instance's
-                    // origin), for this step's dt, as a splat the grid takes this frame.
-                    void step_splat(FxGrid g, vec3 p, vec4 amounts, float dt) {
-                        if (!g.live) return;
-                        GRID_SPLATS_APPEND(FxSplat(vec4((p + g.offset) / g.cell, float(g.brick)), amounts * dt));
-                    }
-                    """);
-        }
-        if (shape.spawnsOnMesh()) s.append("""
-
-                vec4 step_mesh_word(int at) {
-                    return uintBitsToFloat(MESHES(at));
-                }
-
-                // CgVfxSpawnMeshes: a triangle by area through its alias table (a column by u1, then u4 against its
-                // share), a point in it by one uniform barycentric; or a vertex, drawn or the k-th of `ordered` spread
-                // through them. Its normal is the way out.
-                void step_mesh(uint k, vec4 n, int placement, vec4 s6, float u1, float u2, float u3, float u4,
-                               out vec3 pos, out vec3 way) {
-                    int first = int(n.x), count = int(n.y);
-                    if (placement == 3) {
-                        int ordered = int(s6.w);
-                        int v = ordered > 0 ? int(k % uint(ordered)) * count / ordered : min(int(u1 * float(count)), count - 1);
-                        pos = step_mesh_word(first + v * 2).xyz * n.z;
-                        way = step_mesh_word(first + v * 2 + 1).xyz;
-                        return;
-                    }
-                    int t = min(int(u1 * float(count)), count - 1);
-                    vec4 a = step_mesh_word(first + t * 3);
-                    if (u4 >= a.w) {
-                        t = int(step_mesh_word(first + t * 3 + 1).w);
-                        a = step_mesh_word(first + t * 3);
-                    }
-                    vec3 b = step_mesh_word(first + t * 3 + 1).xyz, c = step_mesh_word(first + t * 3 + 2).xyz;
-                    float r = sqrt(u2);
-                    pos = (a.xyz * (1.0 - r) + b * (r * (1.0 - u3)) + c * (r * u3)) * n.z;
-                    vec3 f = cross(b - a.xyz, c - a.xyz);
-                    float d = dot(f, f);
-                    way = d > 1e-20 ? f * inversesqrt(d) : vec3(0.0, 1.0, 0.0);
-                }
-                """);
         recordCode(s, record);
+        List<CgVfxDataInterface> interfaces = shape.dataInterfaces();
+        for (int d = 0; d < interfaces.size(); d++) s.append(interfaces.get(d).functions(shape.dataLanesAt(d)));
         s.append("""
 
                 // A launch's local (x, up, z) turned so up is n: Duff et al. 2017's basis, the identity for straight up.
@@ -878,33 +690,6 @@ public final class CgVfxEmitterCompiler {
                     return ev;
                 }
 """);
-        if (shape.usesNeighbours()) s.append("""
-
-                uvec2 step_cell_run(int h) {
-                    return uvec2(CELL_RUNS(h * 2), CELL_RUNS(h * 2 + 1));
-                }
-
-                FxNeighbour step_neighbour(uint k) {
-                    int i = int(SORTED(int(k)));
-                    FxParticle q = step_unpack(IN(i));
-                    FxNeighbour n;
-                    n.position = q.position;
-                    n.velocity = q.velocity;
-                    n.slot = q.slot;
-                    n.index = i;
-                    return n;
-                }
-
-                // The grid as a kind taking NEIGHBOURS reads it: p is last step's particle self, or a newborn (-1).
-                FxNeighbours step_neighbours(int self, uint slot) {
-                    FxNeighbours n;
-                    n.cell = _NeighbourCell;
-                    n.cells = _NeighbourCells;
-                    n.slot = slot;
-                    n.self = self;
-                    return n;
-                }
-                """);
         s.append("""
 
                 void Step() {
@@ -1103,7 +888,7 @@ public final class CgVfxEmitterCompiler {
         s.append("    }\n");
     }
 
-    /** Module {@code i}'s call: its numbers from the parameter row, its lanes from the instance row, its world inputs, its textures. */
+    /** Module {@code i}'s call: its numbers from the parameter row, its lanes from the instance row, its data interfaces, its textures. */
     private static void call(StringBuilder s, CgVfxShape shape, int i) {
         s.append("    fx_").append(shape.kind(i)).append(shape.afterSolve(i) ? "(p, s" : "(p, f, s");
         for (int j = 0, at = shape.paramAt(i); j < shape.paramVectors(i); j++) {
@@ -1134,17 +919,7 @@ public final class CgVfxEmitterCompiler {
                 case UVEC4 -> s.append(", INSTANCES(inst + ").append(at + l).append(')');
             }
         }
-        for (CgVfxWorldInput input : shape.worldInputs(i)) {
-            switch (input) {
-                case FLOOR_Y -> s.append(", step_floor(p, inst)");
-                case WORLD, WORLD_DISTANCE -> s.append(", step_world(inst)");
-                case DEPTH -> s.append(", step_depth(inst)");
-                case ENTITIES -> s.append(", step_entities(inst)");
-                case NEIGHBOURS -> s.append(", step_neighbours(CG_ELEMENT < live ? CG_ELEMENT : -1, p.slot)");
-                case GAS, GAS_FEED -> s.append(", step_gas(inst)");
-                case GRID, GRID_SPLAT -> s.append(", step_grid(inst)");
-            }
-        }
+        for (CgVfxDataInterface di : shape.dataInterfaces(i)) s.append(", ").append(di.call());
         for (int t = 0; t < shape.textureCount(i); t++) s.append(", ").append(texture(i, t));
         s.append(");\n");
     }
