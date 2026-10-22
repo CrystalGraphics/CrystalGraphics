@@ -1,6 +1,10 @@
 package com.crystalgraphics.vfx.particle.gpu;
 
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.CgVfxLifeBind;
+import com.crystalgraphics.vfx.particle.CgVfxLifeRoll;
+import com.crystalgraphics.vfx.particle.CgVfxMeshRotation;
+import com.crystalgraphics.vfx.particle.CgVfxSockets;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 
@@ -239,6 +243,16 @@ public interface CgVfxGpuEmitter {
         }
         if (emitter.meshRotation() != null) mask |= 1 << CgVfxDrawnChannel.ORIENTATION;
         return mask;
+    }
+
+    /** Its look over life bound to user parameters ({@link CgVfxLifeBind}). */
+    default List<CgVfxLifeBind> lifeBinds() {
+        return List.of();
+    }
+
+    /** Its look over life's ranges rolled each step ({@link CgVfxLifeRoll}). */
+    default List<CgVfxLifeRoll> lifeRolls() {
+        return List.of();
     }
 
     /** How its mesh particles turn ({@link CgVfxMeshRotation}); null for at random by their seed. */

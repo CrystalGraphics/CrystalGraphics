@@ -73,6 +73,9 @@ public final class CgVfxEmitterCompiler {
      */
     private static void recordCode(StringBuilder s, CgVfxRecord record) {
         int previous = record.word(CgVfxRecord.Tail.PREVIOUS), flags = record.word(CgVfxRecord.Tail.FLAGS);
+        int color = record.word(CgVfxRecord.Tail.COLOR), scale = record.word(CgVfxRecord.Tail.SCALE);
+        int turn = record.word(CgVfxRecord.Tail.TURN), turnRate = record.word(CgVfxRecord.Tail.TURN_RATE);
+        int beam = record.word(CgVfxRecord.Tail.BEAM);
         s.append("\nFxParticle step_unpack(FxRecord r) {\n    FxParticle p;\n");
         unpack(s, "position", "uintBitsToFloat", CgVfxRecord.POSITION, 3);
         unpack(s, "age", "uintBitsToFloat", CgVfxRecord.AGE, 1);
@@ -87,6 +90,18 @@ public final class CgVfxEmitterCompiler {
         unpack(s, "slot", "", CgVfxRecord.SLOT, 1);
         if (previous >= 0) unpack(s, "previous", "uintBitsToFloat", previous, 3);
         else s.append("    p.previous = p.position;\n");
+        if (color >= 0) unpack(s, "color", "uintBitsToFloat", color, 4);
+        else s.append("    p.color = vec4(1.0);\n");
+        if (scale >= 0) unpack(s, "scale", "uintBitsToFloat", scale, 3);
+        else s.append("    p.scale = vec3(1.0);\n");
+        if (turn >= 0) unpack(s, "turn", "uintBitsToFloat", turn, 3);
+        else s.append("    p.turn = vec3(0.0);\n");
+        if (turnRate >= 0) unpack(s, "turnRate", "uintBitsToFloat", turnRate, 3);
+        else s.append("    p.turnRate = vec3(0.0);\n");
+        for (int v = 0; v < BEAM_FIELDS.length; v++) {
+            if (beam >= 0) unpack(s, BEAM_FIELDS[v], "uintBitsToFloat", beam + v * 4, 4);
+            else s.append("    p.").append(BEAM_FIELDS[v]).append(" = vec4(0.0);\n");
+        }
         if (flags >= 0) {
             String w = CgVfxRecord.lane("r", flags);
             s.append("    p.resting = (").append(w).append(" & 1u) != 0u;\n    p.collisions = ").append(w).append(" >> 16u;\n");
@@ -110,6 +125,11 @@ public final class CgVfxEmitterCompiler {
         w[CgVfxRecord.PARAM_ROW] = "paramRow";
         if (previous >= 0) pack(w, "p.previous", previous, 3);
         if (flags >= 0) w[flags] = "((p.resting ? 1u : 0u) | p.collisions << 16u)";
+        if (color >= 0) pack(w, "p.color", color, 4);
+        if (scale >= 0) pack(w, "p.scale", scale, 3);
+        if (turn >= 0) pack(w, "p.turn", turn, 3);
+        if (turnRate >= 0) pack(w, "p.turnRate", turnRate, 3);
+        if (beam >= 0) for (int v = 0; v < BEAM_FIELDS.length; v++) pack(w, "p." + BEAM_FIELDS[v], beam + v * 4, 4);
         // The simulated part; the drawn part is the Look stage's (env/compute/vfx/look.compute).
         s.append("\nFxRecord step_pack(FxParticle p, uint paramRow) {\n    FxRecord r;\n");
         for (int v = 0; v < record.vectors(); v++) {
@@ -133,7 +153,7 @@ public final class CgVfxEmitterCompiler {
 
     /** The n words from {@code word} as {@code value}'s components' bits. */
     private static void pack(String[] w, String value, int word, int n) {
-        for (int k = 0; k < n; k++) w[word + k] = "floatBitsToUint(" + value + (n > 1 ? "." + "xyz".charAt(k) : "") + ")";
+        for (int k = 0; k < n; k++) w[word + k] = "floatBitsToUint(" + value + (n > 1 ? "." + "xyzw".charAt(k) : "") + ")";
     }
 
     /** The libraries every Step includes: the step's own code, not a kind's. */
@@ -151,7 +171,14 @@ public final class CgVfxEmitterCompiler {
     /** What writes each tail attribute in a kind's or a library's code: a value only read stays its default. */
     private static final Pattern[] TAIL_WRITES = {
             Pattern.compile("\\bp\\.previous\\s*([-+|]?=(?!=))"),
-            Pattern.compile("\\bp\\.(resting|collisions)\\s*([-+|]?=(?!=))|\\bfx_hit\\s*\\(")};
+            Pattern.compile("\\bp\\.(resting|collisions)\\s*([-+|]?=(?!=))|\\bfx_hit\\s*\\("),
+            Pattern.compile("\\bp\\.color\\s*([-+*]?=(?!=))"),
+            Pattern.compile("\\bp\\.scale\\s*([-+*]?=(?!=))"),
+            Pattern.compile("\\bp\\.turn\\s*([-+*]?=(?!=))"),
+            Pattern.compile("\\bp\\.turnRate\\s*([-+*]?=(?!=))"),
+            Pattern.compile("\\bp\\.beam\\w*\\s*([-+*]?=(?!=))")};
+    /** The {@code BEAM} tail's vec4s, in order: {@code FxParticle}'s fields. */
+    private static final String[] BEAM_FIELDS = {"beamSource", "beamSourceTangent", "beamTarget", "beamTargetTangent", "beamNoise", "beamTurn"};
     private static final Pattern INCLUDE = Pattern.compile("#include\\s+\"([^\"]+)\"");
 
     /**
@@ -183,6 +210,19 @@ public final class CgVfxEmitterCompiler {
         }
         if (shape.floors()) {
             first[CgVfxRecord.Tail.PREVIOUS.ordinal()] = Math.min(first[CgVfxRecord.Tail.PREVIOUS.ordinal()], code.length() + 1);
+        }
+        // A start in a form is the launch's to store: the Look stage reads it.
+        if (shape.spawnFormOf(CgVfxSpawnInput.COLOR) >= 0) {
+            first[CgVfxRecord.Tail.COLOR.ordinal()] = Math.min(first[CgVfxRecord.Tail.COLOR.ordinal()], code.length() + 2);
+        }
+        if (shape.spawnFormOf(CgVfxSpawnInput.MESH_SCALE) >= 0) {
+            first[CgVfxRecord.Tail.SCALE.ordinal()] = Math.min(first[CgVfxRecord.Tail.SCALE.ordinal()], code.length() + 3);
+        }
+        if (shape.spawnFormOf(CgVfxSpawnInput.MESH_ORIENTATION) >= 0) {
+            first[CgVfxRecord.Tail.TURN.ordinal()] = Math.min(first[CgVfxRecord.Tail.TURN.ordinal()], code.length() + 4);
+        }
+        if (shape.spawnFormOf(CgVfxSpawnInput.MESH_ROTATION_RATE) >= 0) {
+            first[CgVfxRecord.Tail.TURN_RATE.ordinal()] = Math.min(first[CgVfxRecord.Tail.TURN_RATE.ordinal()], code.length() + 5);
         }
         List<CgVfxRecord.Tail> tail = new ArrayList<>();
         for (CgVfxRecord.Tail t : tails) if (first[t.ordinal()] != Integer.MAX_VALUE) tail.add(t);
@@ -553,6 +593,10 @@ public final class CgVfxEmitterCompiler {
                     p.spinRate = fx_rand(spinKey, k, 1u) < 0.5 ? -spin : spin;
                     p.spin = @SPIN@;
                     p.heat = s1.w;
+                    p.color = @COLOR@;
+                    p.scale = @SCALE@;
+                    p.turn = @TURN@;
+                    p.turnRate = @TURN_RATE@;
                     p.resting = false;
                     p.collisions = 0u;
                     p.hit = vec4(0.0);
@@ -586,10 +630,22 @@ public final class CgVfxEmitterCompiler {
                     return true;
                 }
 
-                """.replace("@SPEED@", spawnValue(shape, CgVfxSpawnInput.SPEED, "s0.x", "s0.x + (s0.y - s0.x) * " + roll(CgVfxGpuEmitter.KEY_SPEED)))
-                .replace("@LIFE@", spawnValue(shape, CgVfxSpawnInput.LIFETIME, "s0.z", "s0.z + (s0.w - s0.z) * " + roll(CgVfxGpuEmitter.KEY_LIFE)))
-                .replace("@SIZE@", spawnValue(shape, CgVfxSpawnInput.SPRITE_SIZE, "s1.x", "s1.x + (s1.y - s1.x) * " + roll(CgVfxGpuEmitter.KEY_SIZE)))
-                .replace("@FRONT@", front(shape)));
+                """.replace("@SPEED@", spawnValue(shape, CgVfxSpawnInput.SPEED, "s0.x", "s0.x + (s0.y - s0.x) * " + roll(CgVfxGpuEmitter.KEY_SPEED), ""))
+                .replace("@LIFE@", spawnValue(shape, CgVfxSpawnInput.LIFETIME, "s0.z", "s0.z + (s0.w - s0.z) * " + roll(CgVfxGpuEmitter.KEY_LIFE), ""))
+                .replace("@SIZE@", spawnValue(shape, CgVfxSpawnInput.SPRITE_SIZE, "s1.x", "s1.x + (s1.y - s1.x) * " + roll(CgVfxGpuEmitter.KEY_SIZE), ""))
+                .replace("@FRONT@", front(shape))
+                .replace("@SOCKETS@", sockets(shape))
+                .replace("@CONE@", spawnValue(shape, CgVfxSpawnInput.CONE_ANGLE, null, "s4.y", "0.5 * "))
+                .replace("@OFFSET@", spawnValue(shape, CgVfxSpawnInput.OFFSET, null, "step_vector(row, inst, 9).xyz", ""))
+                .replace("@VELOCITY@", shape.spawnFormOf(CgVfxSpawnInput.VELOCITY) < 0 ? ""
+                        : " + step_orient(step_rotate(turn, " + spawnValue(shape, CgVfxSpawnInput.VELOCITY, null, null, "") + "), n)")
+                .replace("@COLOR@", colorStart(shape))
+                .replace("@HALF_HEIGHT@", spawnValue(shape, CgVfxSpawnInput.CYLINDER_HEIGHT, null, "step_vector(row, inst, 7).z", "0.5 * "))
+                .replace("@SCALE@", spawnValue(shape, CgVfxSpawnInput.MESH_SCALE, null, "vec3(1.0)", ""))
+                .replace("@TURN@", spawnValue(shape, CgVfxSpawnInput.MESH_ORIENTATION, null, "vec3(0.0)", ""))
+                .replace("@TURN_RATE@", spawnValue(shape, CgVfxSpawnInput.MESH_ROTATION_RATE, null, "vec3(0.0)", ""))
+                .replace("@SPIN@", spawnValue(shape, CgVfxSpawnInput.SPRITE_ROTATION, null,
+                        "fx_rand(seed ^ step_key(row, STEP_KEY_ROTATION), k, 0u) * 6.2831853", "")));
         if (shape.tier() > 0) s.append("""
                 // Child c of this step's parent events: row c / _ChildMax's child c % _ChildMax, for the slot its feed
                 // names, launched about the event's normal from where it fired, with a share of its velocity. The
@@ -962,7 +1018,27 @@ public final class CgVfxEmitterCompiler {
      */
     private static String spawnValue(CgVfxShape shape, CgVfxSpawnInput target, String first, String otherwise, String times) {
         int f = shape.spawnFormOf(target);
-        return f < 0 ? otherwise : formExpr(shape.spawnLayout(f), shape.spawnForm(f).compiled(), 0, first, "seed", "k", "loop");
+        if (f < 0) return otherwise;
+        CgVfxFormInput form = shape.spawnForm(f).compiled();
+        int n = target.components();
+        StringBuilder s = new StringBuilder(n > 1 ? "vec" + n + "(" : "(").append(times);
+        for (int k = 0; k < n; k++) {
+            s.append(k > 0 ? ", " : "").append(formExpr(shape.spawnLayout(f), form, Math.min(k, form.components() - 1), first, "seed", "k", "loop"));
+        }
+        return s.append(')').toString();
+    }
+
+    /** A colour start's form as a vec4: an rgb form's alpha -1, which the Look stage takes from the row's starts. */
+    private static String colorStart(CgVfxShape shape) {
+        int f = shape.spawnFormOf(CgVfxSpawnInput.COLOR);
+        if (f < 0) return "vec4(1.0)";
+        CgVfxFormInput form = shape.spawnForm(f).compiled();
+        StringBuilder s = new StringBuilder("vec4(");
+        for (int k = 0; k < 4; k++) {
+            s.append(k > 0 ? ", " : "").append(k < form.components()
+                    ? formExpr(shape.spawnLayout(f), form, k, null, "seed", "k", "loop") : "-1.0");
+        }
+        return s.append(')').toString();
     }
 
     /** How far out a spawn is born past its shape: a radius form's value less the shape's radius; 0 without one. */
@@ -1051,6 +1127,8 @@ public final class CgVfxEmitterCompiler {
             return "mix(" + a + ", " + b + ", fx_rand(" + keyed + ", " + id + ", 0u))";
         }
         CgVfxFormInput.Binding b = (CgVfxFormInput.Binding) c;
+        // A user parameter's is its instance lane, written each step remapped and scaled.
+        if (n.lane() >= 0) return "step_instance(inst + " + (layout.laneBase() + n.lane()) + ")" + lane;
         return "(p.age * " + glsl(b.scale()) + ")";
     }
 

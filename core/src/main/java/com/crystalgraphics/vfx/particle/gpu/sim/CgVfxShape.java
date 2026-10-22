@@ -5,6 +5,9 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxModuleTypes;
+import com.crystalgraphics.vfx.particle.CgVfxLifeBind;
+import com.crystalgraphics.vfx.particle.CgVfxLifeRoll;
+import com.crystalgraphics.vfx.particle.CgVfxSockets;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
 import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
@@ -22,6 +25,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -340,6 +344,44 @@ public final class CgVfxShape {
         }
         userAt = lane;
         lane += userLanes(userBindings.length);
+        // Each form's user bindings: a vec4 of the instance row a node.
+        List<CgVfxFormInput.Binding> bindings = new ArrayList<>();
+        List<Integer> bindingLanes = new ArrayList<>();
+        for (CgVfxFormLayout[] group : new CgVfxFormLayout[][]{layouts, spawnLayouts}) {
+            for (CgVfxFormLayout layout : group) {
+                layout.laneBase(lane);
+                for (CgVfxFormLayout.Node node : layout.nodes()) {
+                    if (node.lane() < 0) continue;
+                    bindings.add((CgVfxFormInput.Binding) node.form());
+                    bindingLanes.add(lane + node.lane());
+                }
+                lane += layout.lanes();
+            }
+        }
+        formBindings = bindings.toArray(new CgVfxFormInput.Binding[0]);
+        formBindingNames = new String[formBindings.length];
+        formBindingLanes = new int[formBindings.length];
+        for (int b = 0; b < formBindings.length; b++) {
+            formBindingNames[b] = formBindings[b].path().substring("user.".length());
+            formBindingLanes[b] = bindingLanes.get(b);
+        }
+        boolean drawnBinds = false;
+        for (int s = 0; s < CgVfxDrawnChannel.SLOTS; s++) {
+            for (int c = 0; c < 4; c++) {
+                CgVfxDrawnChannel ch = emitter.drawn(s, c);
+                drawnBinds |= ch != null && ch.bind() != null;
+            }
+        }
+        drawnBindAt = drawnBinds ? lane : -1;
+        if (drawnBinds) {
+            lane += CgVfxDrawnChannel.SLOTS;
+            key.append("|drawnbind");
+        }
+        lifeBindAt = emitter.lifeBinds().isEmpty() ? -1 : lane;
+        if (lifeBindAt >= 0) {
+            lane += CgVfxLifeBind.LANES / 4;
+            key.append("|lifebind");
+        }
         Set<CgVfxDataInterface> taken = new LinkedHashSet<>();
         for (CgVfxDataInterface[] read : reads) for (CgVfxDataInterface di : read) take(di, taken);
         if (spawnsOnMesh) take(CgVfxDataInterfaces.SPAWN_MESHES, taken);
@@ -372,6 +414,8 @@ public final class CgVfxShape {
         if (c instanceof CgVfxFormInput.Function f) {
             return "FN:" + f.fn() + "(" + formKey(f.first()) + "," + formKey(f.second()) + ")";
         }
+        // A user parameter is a lane, its value never in the code; a particle's attribute is read scaled in it.
+        if (c instanceof CgVfxFormInput.Binding b) return b.path().startsWith("user.") ? "BIND:user" : "BIND:" + b.path() + "*" + b.scale();
         return c.form().name();
     }
 
@@ -538,6 +582,34 @@ public final class CgVfxShape {
         return userAt;
     }
 
+    /** How many of its forms' nodes bind a user parameter. */
+    public int formBindings() {
+        return formBindings.length;
+    }
+
+    /** Form binding {@code b}: its node, its parameter's name without {@code user.}, its vec4 in the instance row. */
+    public CgVfxFormInput.Binding formBinding(int b) {
+        return formBindings[b];
+    }
+
+    public String formBindingName(int b) {
+        return formBindingNames[b];
+    }
+
+    public int formBindingLane(int b) {
+        return formBindingLanes[b];
+    }
+
+    /** The vec4 a drawn slot of its bound channels in the instance row ({@code CgVfxDrawnChannel.bound}), or -1. */
+    public int drawnBindAt() {
+        return drawnBindAt;
+    }
+
+    /** The two vec4s of its look's bound multipliers in the instance row ({@code CgVfxLifeBind}), or -1 without binds. */
+    public int lifeBindAt() {
+        return lifeBindAt;
+    }
+
     /** Whether any user binding replaces a word of parameter-row vector {@code v}. */
     public boolean userBound(int v) {
         for (int w : userWords) if (w / 4 == v) return true;
@@ -574,6 +646,17 @@ public final class CgVfxShape {
                 + (turnsOverLife ? 2 * CgVfxGpuEmitter.CURVE_TEXELS : 0)
                 + lifeRollVectors;
     }
+
+    /** Its life rolls' first vec4 in a parameter row, or -1 without any ({@code CgVfxLifeRoll}). */
+    public int lifeRollAt() {
+        return lifeRolls > 0 ? rowVectors() - lifeRollVectors : -1;
+    }
+
+    /** How many life rolls its rows hold. */
+    public int lifeRolls() {
+        return lifeRolls;
+    }
+
 
     /** A mesh orientation's vec4s in a parameter row: its start's two ends, then its rate's. */
     public static final int ORIENTATION_VECTORS = 4;

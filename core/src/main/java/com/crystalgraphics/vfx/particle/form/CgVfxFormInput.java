@@ -224,6 +224,11 @@ public sealed interface CgVfxFormInput {
                 float[] bound = ctx.parameter(path);
                 v = bound != null ? bound[Math.min(c, bound.length - 1)] : fallback[c];
             }
+            return apply(v, c);
+        }
+
+        /** Channel {@code c} of the bound value {@code v}: its mode, remap and scale. */
+        public float apply(float v, int c) {
             String mode = modes[Math.min(c, modes.length - 1)];
             if (!mode.equals("direct") && inLo != null) {
                 if (mode.equals("absolute")) v = Math.abs(v);

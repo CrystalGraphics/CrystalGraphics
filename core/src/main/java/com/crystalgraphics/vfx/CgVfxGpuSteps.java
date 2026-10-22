@@ -152,6 +152,16 @@ final class CgVfxGpuSteps {
         public CgVfxFluid gas() { return of.books().gas(); }
         public CgVfxGrid3D grid() { return of.books().grid(); }
         public float user(CgVfxParam.Scalar param) { return values == null ? param.defaultValue() : values.get(param); }
+
+        public float cameraDistance() { return tenant.effect == null ? 0f : tenant.effect.cullDistance; }
+
+        public float user(String name, int component, float fallback) {
+            CgVfxParam p = values == null ? null : values.layout().param(name);
+            if (p instanceof CgVfxParam.Scalar s) return values.get(s);
+            if (p instanceof CgVfxParam.Vector v) return values.get(v, component);
+            if (p instanceof CgVfxParam.Color c) return values.get(c, component);
+            return fallback;
+        }
     }
 
     private final List<Tenant> tenants = new ArrayList<>();

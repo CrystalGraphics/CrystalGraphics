@@ -27,6 +27,10 @@ import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
 import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.CgVfxLifeBind;
+import com.crystalgraphics.vfx.particle.CgVfxLifeRoll;
+import com.crystalgraphics.vfx.particle.CgVfxMeshRotation;
+import com.crystalgraphics.vfx.particle.CgVfxSockets;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxCurveDomain;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDataInterface;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
@@ -211,7 +215,12 @@ public final class CgVfxParticlePool {
     /** Per row: its curve row's words ({@link #CURVE_WORDS}), and the largest size multiplier on it. */
     private int[] curves = new int[0];
     private float[] rowSizeMax = new float[0];
-    private final float[] curveScratch = new float[CURVE_WORDS];
+    /** Each slot's largest bound size multiplier this step ({@code CgVfxLifeBind}), which its cull radius takes. */
+    private float[] slotBindScale = new float[0];
+    private final float[] bindScratch = new float[CgVfxLifeBind.LANES];
+    private float[] curveScratch;
+    /** A skeleton point an instance view answers, for its row. */
+    private final float[] socketPoint = new float[3];
 
     private CgVfxGpuEmitter[] slotEmitter = new CgVfxGpuEmitter[0];
     /** Per slot: what played it ({@link #open(CgVfxGpuEmitter, int, Object)}), handed back with its event rows. */
@@ -962,6 +971,8 @@ public final class CgVfxParticlePool {
                 .set("_LifeRollAt", shape.lifeRollAt()).set("_LifeRolls", shape.lifeRolls()).set("_LifeBindAt", shape.lifeBindAt())
                 .set("_DrawnBindAt", shape.drawnBindAt())
                 .set("_RecordVectors", record.vectors()).set("_PreviousAt", record.word(CgVfxRecord.Tail.PREVIOUS))
+                .set("_ColorAt", record.word(CgVfxRecord.Tail.COLOR)).set("_ScaleAt", record.word(CgVfxRecord.Tail.SCALE))
+                .set("_TurnAt", record.word(CgVfxRecord.Tail.TURN)).set("_TurnRateAt", record.word(CgVfxRecord.Tail.TURN_RATE))
                 .bind("LIVE", counts[current]).bind("INSTANCES", instanceBuffer).bind("CURVES", curveBuffer)
                 .set("_InstanceAt", stepInstanceAt[s] / 4).set("_InstanceRow", shape.instanceRowVectors())
                 .set("_Floors", shape.floors() ? 1 : 0).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS));
@@ -1158,6 +1169,8 @@ public final class CgVfxParticlePool {
         slotRow[slot] = useRow(emitter);
         slotOpened[slot] = ++openings;
         slotScale[slot] = 1f;
+        slotBindScale[slot] = 1f;
+        Arrays.fill(socketPrev, slot * CgVfxSockets.MAX * 4, (slot + 1) * CgVfxSockets.MAX * 4, 0);
         slotSourceReach[slot] = 0f;
         ringPoints[slot] = emitter.trailPoints();
         if (ringPoints[slot] > 0) {
@@ -1442,6 +1455,48 @@ public final class CgVfxParticlePool {
                 instances[base + b] = Float.floatToRawIntBits(u.apply(view.user(u.param())));
             }
             for (int w = base + bound; w < end; w++) instances[w] = 0;
+        }
+        for (int b = 0; b < shape.formBindings(); b++) {
+            CgVfxFormInput.Binding u = shape.formBinding(b);
+            float[] fallback = u.fallback();
+            int base = at + shape.formBindingLane(b) * 4;
+            for (int c = 0; c < 4; c++) {
+                int k = Math.min(c, fallback.length - 1);
+                instances[base + c] = Float.floatToRawIntBits(u.apply(view.user(shape.formBindingName(b), k, fallback[k]), k));
+            }
+        }
+        if (shape.drawnBindAt() >= 0) {
+            // A drawn slot's bound channels: its user parameter remapped, a vec4 a slot.
+            int base = at + shape.drawnBindAt() * 4;
+            for (int ds = 0; ds < CgVfxDrawnChannel.SLOTS; ds++) {
+                for (int c = 0; c < 4; c++) {
+                    CgVfxDrawnChannel ch = emitter.drawn(ds, c);
+                    float v = 0f;
+                    if (ch != null && ch.bind() != null) {
+                        CgVfxFormInput.Binding u = ch.bind();
+                        float fallback = u.fallback()[0];
+                        v = u.apply(view.user(u.path().substring("user.".length()), 0, fallback), 0);
+                    }
+                    instances[base + 4 * ds + c] = Float.floatToRawIntBits(v);
+                }
+            }
+        }
+        slotBindScale[slot] = 1f;
+        if (shape.lifeBindAt() >= 0) {
+            int base = at + shape.lifeBindAt() * 4;
+            for (int w = 0; w < CgVfxLifeBind.LANES; w++) bindScratch[w] = 1f;
+            List<CgVfxLifeBind> binds = emitter.lifeBinds();
+            for (int b = 0; b < binds.size(); b++) {
+                CgVfxLifeBind u = binds.get(b);
+                float[] fallback = u.bind().fallback();
+                for (int c = 0; c < u.target().lanes; c++) {
+                    float raw = view.user(u.parameter(), c, fallback[Math.min(c, fallback.length - 1)]);
+                    bindScratch[u.target().lane + c] *= u.bind().apply(raw, Math.min(c, fallback.length - 1));
+                }
+            }
+            for (int w = 0; w < CgVfxLifeBind.LANES; w++) instances[base + w] = Float.floatToRawIntBits(bindScratch[w]);
+            // A bound size widens its particles' cull radius.
+            for (int w = 0; w < 4; w++) slotBindScale[slot] = Math.max(slotBindScale[slot], Math.abs(bindScratch[w]));
         }
         List<CgVfxDataInterface> interfaces = shape.dataInterfaces();
         for (int d = 0; d < interfaces.size(); d++) {
@@ -1766,7 +1821,7 @@ public final class CgVfxParticlePool {
     /** What a cull takes as the radius of each of {@code slot}'s particles, times its size at birth. */
     public float cullRadius(int slot) {
         openSlot(slot, "cullRadius");
-        return rowSizeMax[slotRow[slot]] * slotScale[slot];
+        return rowSizeMax[slotRow[slot]] * slotScale[slot] * slotBindScale[slot];
     }
 
     /**
@@ -2097,7 +2152,7 @@ public final class CgVfxParticlePool {
         }
         int starts = 8 * CgVfxGpuEmitter.CURVE_TEXELS + 8;
         for (int w = starts; w < starts + 8; w++) if ((w & 3) != 3) start = Math.max(start, Math.abs(curveScratch[w]));
-        rowSizeMax[index] = most * start;
+        rowSizeMax[index] = most * start * rolled;
         if (shape.events() > 0) writeEvents(emitter, at + shape.eventsAt() * 4);
         // Each roll's key, by its element's id and its input's name (core.md § Values): the kernel reads its word.
         int keys = at + shape.keysAt() * 4;
@@ -2230,6 +2285,7 @@ public final class CgVfxParticlePool {
         slotTurn = Arrays.copyOf(slotTurn, size * 4);
         for (int s = was; s < size; s++) slotTurn[s * 4 + 3] = 1f;
         slotScale = Arrays.copyOf(slotScale, size);
+        slotBindScale = Arrays.copyOf(slotBindScale, size);
         slotOpened = Arrays.copyOf(slotOpened, size);
         slotGround = Arrays.copyOf(slotGround, size);
         socketPrev = Arrays.copyOf(socketPrev, size * CgVfxSockets.MAX * 4);

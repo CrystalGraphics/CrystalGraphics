@@ -120,6 +120,9 @@ public final class CgVfxEmitterAssets {
         init.put("sprite_rotation", written(e, CgVfxSpawnInput.SPRITE_ROTATION, range(0f, (float) (2 * Math.PI))));
         if (!same(e.colorFrom, WHITE) || !same(e.colorTo, WHITE)) init.put("color", vector(e.colorFrom, e.colorTo));
         if (!same(e.scaleFrom, UNIT) || !same(e.scaleTo, UNIT)) init.put("mesh_scale", vector(e.scaleFrom, e.scaleTo));
+        for (CgVfxSpawnInput stored : new CgVfxSpawnInput[]{CgVfxSpawnInput.COLOR, CgVfxSpawnInput.MESH_SCALE}) {
+            for (CgVfxSpawnForm form : e.spawnForms()) if (form.target() == stored) init.put(stored.input(), form.value());
+        }
         spawn.add(entry(e.id("init"), "initialize_particle", init));
         Map<String, Object> shape = shape(e);
         if (shape != null) spawn.add(entry(e.id("shape"), "shape_location", shape));
@@ -145,9 +148,39 @@ public final class CgVfxEmitterAssets {
         tree.put("particle_spawn", spawn);
 
         List<Object> modules = new ArrayList<>();
+        // First: reading it drops a size over life before it, as Cascade's does.
+        if (e.sizeBySpeed[0] != 0f || e.sizeBySpeed[1] != 0f || e.sizeBySpeed[2] != 1f || e.sizeBySpeed[3] != 1f) {
+            modules.add(entry("size_by_speed", "scale_size_by_speed", map("speed_scale", list(e.sizeBySpeed[0], e.sizeBySpeed[1]),
+                    "max_scale", list(e.sizeBySpeed[2], e.sizeBySpeed[3]))));
+        }
         if (!isOne(e.sizeOverLife)) modules.add(entry("size", "scale_sprite_size", map("scale", curve(e.sizeOverLife, "age"))));
         if (!isOne(e.scaleX) || !isOne(e.scaleY) || !isOne(e.scaleZ)) {
             modules.add(entry("scale", "scale_mesh_size", map("scale", curves("age", e.scaleX, e.scaleY, e.scaleZ))));
+        }
+        for (int i = 0; i < e.lifeRolls.size(); i++) {
+            CgVfxLifeRoll roll = e.lifeRolls.get(i);
+            String module = roll.target() == CgVfxLifeRoll.Target.MESH_SCALE ? "scale_mesh_size" : "scale_color";
+            String input = roll.target() == CgVfxLifeRoll.Target.ALPHA ? "alpha" : "scale";
+            Object value;
+            if (!roll.curved()) {
+                value = roll.form();
+            } else if (roll.target() == CgVfxLifeRoll.Target.ALPHA) {
+                value = map("fn", NS + "random_range", "inputs", map("min", curve(roll.fromCurves()[0], "age"),
+                        "max", curve(roll.toCurves()[0], "age")));
+            } else {
+                CgKeyframes[] lo = roll.fromCurves(), hi = roll.toCurves();
+                value = map("fn", NS + "random_range", "inputs", map("min", curves("age", lo[0], lo[1], lo[2]),
+                        "max", curves("age", hi[0], hi[1], hi[2])));
+            }
+            modules.add(entry(e.id("life_roll_" + i), module, map(input, value)));
+        }
+        for (int i = 0; i < e.lifeBinds.size(); i++) {
+            CgVfxLifeBind u = e.lifeBinds.get(i);
+            modules.add(entry(e.id("life_bind_" + i), switch (u.target()) {
+                case MESH_SCALE -> "scale_mesh_size";
+                case SPRITE_SIZE -> "scale_sprite_size";
+                case COLOR, ALPHA -> "scale_color";
+            }, map(u.target() == CgVfxLifeBind.Target.ALPHA ? "alpha" : "scale", u.source())));
         }
         Map<String, Object> color = new LinkedHashMap<>();
         if (!isOne(e.red) || !isOne(e.green) || !isOne(e.blue)) color.put("scale", curves("age", e.red, e.green, e.blue));
@@ -379,7 +412,14 @@ public final class CgVfxEmitterAssets {
             switch (id) {   // over life by age, and the grid's density: the builder's fields, not modules
                 case "scale_sprite_size" -> {
                     Object scale = inputs(entry).get("scale");
-                    if (scale instanceof Map<?, ?> m && m.get("curves") != null) {
+                    CgVfxLifeRoll between = curveRoll(CgVfxLifeRoll.Target.MESH_SCALE, name, scale, 2);
+                    if (lifeBind(name, entry, "scale", CgVfxLifeBind.Target.SPRITE_SIZE, forms, b)) {
+                        continue;
+                    } else if (between != null) {
+                        b.lifeRoll(between);
+                    } else if (scale instanceof Map<?, ?> m && m.get("range") != null) {
+                        b.lifeRoll(CgVfxLifeRoll.of(CgVfxLifeRoll.Target.MESH_SCALE, m, 2));
+                    } else if (scale instanceof Map<?, ?> m && m.get("curves") != null) {
                         CgKeyframes[] xy = axes(name, scale, 2);
                         b.scaleOverLife(xy[0], xy[1], CgKeyframes.constant(1f));
                     } else {
@@ -388,17 +428,40 @@ public final class CgVfxEmitterAssets {
                     continue;
                 }
                 case "scale_mesh_size" -> {
-                    CgKeyframes[] xyz = axes(name, inputs(entry).get("scale"), 3);
+                    Object scale = inputs(entry).get("scale");
+                    if (lifeBind(name, entry, "scale", CgVfxLifeBind.Target.MESH_SCALE, forms, b)) continue;
+                    CgVfxLifeRoll between = curveRoll(CgVfxLifeRoll.Target.MESH_SCALE, name, scale, 3);
+                    if (between != null) {
+                        b.lifeRoll(between);
+                        continue;
+                    }
+                    if (scale instanceof Map<?, ?> m && m.get("range") != null) {
+                        b.lifeRoll(CgVfxLifeRoll.of(CgVfxLifeRoll.Target.MESH_SCALE, m, 3));
+                        continue;
+                    }
+                    CgKeyframes[] xyz = axes(name, scale, 3);
                     b.scaleOverLife(xyz[0], xyz[1], xyz[2]);
                     continue;
                 }
                 case "scale_color" -> {
                     Map<?, ?> in = inputs(entry);
-                    if (in.get("scale") != null) {
+                    if (lifeBind(name, entry, "scale", CgVfxLifeBind.Target.COLOR, forms, b)) {
+                        // bound: the same every particle, multiplying the curves
+                    } else if (in.get("scale") instanceof Map<?, ?> m && m.get("range") != null) {
+                        b.lifeRoll(CgVfxLifeRoll.of(CgVfxLifeRoll.Target.COLOR, m, 3));
+                    } else if (curveRoll(CgVfxLifeRoll.Target.COLOR, name, in.get("scale"), 3) instanceof CgVfxLifeRoll between) {
+                        b.lifeRoll(between);
+                    } else if (in.get("scale") != null) {
                         CgKeyframes[] rgb = axes(name, in.get("scale"), 3);
                         b.colorOverLife(rgb[0], rgb[1], rgb[2]);
                     }
-                    if (in.get("alpha") != null) b.opacity(keyframes(name, in.get("alpha"), "age"));
+                    if (lifeBind(name, entry, "alpha", CgVfxLifeBind.Target.ALPHA, forms, b)) {
+                        // bound, as the scale
+                    } else if (curveRoll(CgVfxLifeRoll.Target.ALPHA, name, in.get("alpha"), 1) instanceof CgVfxLifeRoll between) {
+                        b.lifeRoll(between);
+                    } else if (in.get("alpha") != null) {
+                        b.opacity(keyframes(name, in.get("alpha"), "age"));
+                    }
                     if (in.get("intensity") != null) b.intensityOverLife(keyframes(name, in.get("intensity"), "age"));
                     continue;
                 }
@@ -756,6 +819,110 @@ public final class CgVfxEmitterAssets {
         return List.of(v[0], v[1], v[2], 0.0);
     }
 
+    /**
+     * {@code color}: Cascade's ColorOverLife, which sets each particle's colour and alpha from their curves at spawn and
+     * every update, the start colour overwritten (ParticleModules_Color.cpp:368-423). So the start colour goes white and
+     * the curves are its colour over life. {@code clamp_alpha} is the curve editor's range only
+     * (ParticleModules_Color.cpp:136-138): an alpha past 1 stays. A gradient's alpha is the alpha unless {@code alpha}
+     * is given.
+     */
+    private static void color(String name, CgVfxEmitter.Builder b, Map<?, ?> in, boolean colorBound, boolean alphaBound) {
+        b.colors(WHITE.clone(), WHITE.clone());
+        Object c = colorBound ? null : in.get("color");
+        if (c instanceof Map<?, ?> m && m.get("range") != null) {
+            // ColorOverLife on a uniform: rolled every tick.
+            b.lifeRoll(CgVfxLifeRoll.of(CgVfxLifeRoll.Target.COLOR, m, 3));
+            c = null;
+        }
+        CgKeyframes gradientAlpha = null;
+        if (c instanceof Map<?, ?> m && m.get("gradient") instanceof Map<?, ?> g) {
+            if (m.get("by") != null && !"age".equals(m.get("by"))) {
+                throw new IllegalArgumentException(name + ": a gradient by " + m.get("by") + " is not read yet here, only by age");
+            }
+            CgKeyframes[] rgba = gradient(name, g);
+            b.colorOverLife(rgba[0], rgba[1], rgba[2]);
+            gradientAlpha = rgba[3];
+        } else if (c != null) {
+            CgKeyframes[] rgb = axes(name, c, 3);
+            b.colorOverLife(rgb[0], rgb[1], rgb[2]);
+        }
+        if (alphaBound) return;
+        if (curveRoll(CgVfxLifeRoll.Target.ALPHA, name, in.get("alpha"), 1) instanceof CgVfxLifeRoll between) b.lifeRoll(between);
+        else if (in.get("alpha") != null) b.opacity(keyframes(name, in.get("alpha"), "age"));
+        else if (gradientAlpha != null) b.opacity(gradientAlpha);
+    }
+
+    /**
+     * {@code entry}'s {@code input} where it binds a user parameter: Cascade's particle parameter distribution in a size
+     * or colour module, given to {@code b} on {@code target} ({@link CgVfxLifeBind}). False where it binds nothing.
+     */
+    private static boolean lifeBind(String name, Map<?, ?> entry, String input, CgVfxLifeBind.Target target,
+                                    CgVfxFormCompiler forms, CgVfxEmitter.Builder b) {
+        if (!(inputs(entry).get(input) instanceof Map<?, ?> m) || m.get("bind") == null) return false;
+        CgModuleTypes.Module declared = CgModuleTypes.builtIn().get(moduleId(entry));
+        CgProperty property = property(declared != null ? declared.inputs().properties() : null, input);
+        if (!(forms.compile(idOf(entry, moduleId(entry)), property, m) instanceof CgVfxFormInput.Binding bound)) {
+            throw new IllegalArgumentException(name + ": " + entry.get("module") + "'s " + input + " " + m + " is not a binding");
+        }
+        if (target == CgVfxLifeBind.Target.SPRITE_SIZE && bound.components() > 1 && !uniformBind(bound)) {
+            throw new IllegalArgumentException(name + ": scale_sprite_size's " + m + " binds x and y apart, which is not read yet");
+        }
+        b.lifeBind(CgVfxLifeBind.of(target, bound, m));
+        return true;
+    }
+
+    /**
+     * {@code random_range} between two curves by age, as Cascade's {@code UniformCurve} in a size or colour module:
+     * rolled each tick between the two at the particle's life ({@link CgVfxLifeRoll#between}); null for another form.
+     */
+    @Nullable
+    private static CgVfxLifeRoll curveRoll(CgVfxLifeRoll.Target target, String name, @Nullable Object value, int n) {
+        if (!(value instanceof Map<?, ?> m) || !(NS + "random_range").equals(m.get("fn")) || !(m.get("inputs") instanceof Map<?, ?> in)) {
+            return null;
+        }
+        return CgVfxLifeRoll.between(target, threeChannels(axes(name, in.get("min"), n)), threeChannels(axes(name, in.get("max"), n)));
+    }
+
+    /** {@code c}'s channels, the missing ones 1. */
+    private static CgKeyframes[] threeChannels(CgKeyframes[] c) {
+        CgKeyframes[] out = new CgKeyframes[3];
+        for (int i = 0; i < 3; i++) out[i] = i < c.length ? c[i] : CgKeyframes.constant(1f);
+        return out;
+    }
+
+    /** Whether every channel of {@code bound} is the same: its default, and its remap where it has one. */
+    private static boolean uniformBind(CgVfxFormInput.Binding bound) {
+        for (int c = 1; c < bound.components(); c++) {
+            if (bound.fallback()[c] != bound.fallback()[0]) return false;
+            if (bound.inLo() != null && (bound.inLo()[c] != bound.inLo()[0] || bound.inHi()[c] != bound.inHi()[0]
+                    || bound.outLo()[c] != bound.outLo()[0] || bound.outHi()[c] != bound.outHi()[0])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** A gradient's keys, {@code [time, [r, g, b, a]]}, as four keyframes linear between keys; a missing alpha 1. */
+    private static CgKeyframes[] gradient(String name, Map<?, ?> g) {
+        if (!(g.get("keys") instanceof List<?> keys) || keys.isEmpty()) {
+            throw new IllegalArgumentException(name + ": a gradient of keys [time, colour], not " + g);
+        }
+        CgKeyframes.Builder[] out = new CgKeyframes.Builder[4];
+        for (Object k : keys) {
+            if (!(k instanceof List<?> key) || key.size() < 2 || !(key.get(1) instanceof List<?> v) || v.size() < 3) {
+                throw new IllegalArgumentException(name + ": a gradient key [time, [r, g, b, a]], not " + k);
+            }
+            float t = num(key.get(0));
+            for (int ch = 0; ch < 4; ch++) {
+                float value = ch < v.size() ? num(v.get(ch)) : 1f;
+                out[ch] = out[ch] == null ? CgKeyframes.start(t, value) : out[ch].to(t, value, CgEasings.LINEAR);
+            }
+        }
+        CgKeyframes[] built = new CgKeyframes[4];
+        for (int ch = 0; ch < 4; ch++) built[ch] = out[ch].build();
+        return built;
+    }
+
     private static void initialize(String name, CgVfxEmitter.Builder b, Map<?, ?> in, String element) {
         CgVfxSpawnForm life = spawnForm(CgVfxSpawnInput.LIFETIME, element, "lifetime", in.get("lifetime"));
         float[] lives = life != null ? life.bounds() : rangeOf(in.get("lifetime"));
@@ -783,7 +950,18 @@ public final class CgVfxEmitterAssets {
             float[][] c = colourEnds(in.get("color"), alpha);
             b.colors(c[0], c[1]);
         }
-        if (in.get("mesh_scale") != null) {
+        CgVfxSpawnForm scaled = spawnForm(CgVfxSpawnInput.MESH_SCALE, element, "mesh_scale", in.get("mesh_scale"));
+        if (scaled != null) {
+            // Stored at birth; the row's starts its widest, which a cull's radius takes.
+            float[] lo = new float[3], hi = new float[3];
+            for (int k = 0; k < 3; k++) {
+                float[] s = scaled.bounds(k);
+                lo[k] = s[0];
+                hi[k] = s[1];
+            }
+            b.spawnForm(scaled);
+            b.scale(lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]);
+        } else if (in.get("mesh_scale") != null) {
             float[][] s = ends(in.get("mesh_scale"), 3);
             b.scale(s[0][0], s[0][1], s[0][2], s[1][0], s[1][1], s[1][2]);
         }

@@ -63,7 +63,17 @@ public final class CgVfxFormCompiler {
             throw new IllegalArgumentException(element + "'s " + input.name() + " is written as a " + form.specName()
                     + ", and takes " + input.forms());
         }
-        return compile(element, input.name(), components(input.type()), input.meta().rolls(), form, value);
+        return compile(element, input, value, input.meta().rolls());
+    }
+
+    /** {@code value} for {@code input}, its ranges rolling per {@code rolls} rather than as the input declares. */
+    public CgVfxFormInput compile(String element, CgProperty input, Object value, @Nullable CgPropertyMeta.Rolls rolls) {
+        CgValueForm form = CgValueForm.of(value);
+        if (!input.accepts(form)) {
+            throw new IllegalArgumentException(element + "'s " + input.name() + " is written as a " + form.specName()
+                    + ", and takes " + input.forms());
+        }
+        return compile(element, input.name(), components(input.type()), rolls, form, value);
     }
 
     private CgVfxFormInput compile(String moduleId, String name, int n, @Nullable CgPropertyMeta.Rolls rolls,

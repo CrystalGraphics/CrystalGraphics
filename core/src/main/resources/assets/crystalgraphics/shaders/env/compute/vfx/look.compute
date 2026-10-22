@@ -33,6 +33,10 @@ Properties {
     _WorldLive     ("1 with a level, else 0: read nothing",               int)       = 0
     _RecordVectors ("A record's uvec4s: its pool's layout",               int)       = 4
     _PreviousAt    ("Its previous position's word; -1 reads the position", int)      = -1
+    _ColorAt       ("Its stored colour's word; -1 rolls the row's starts", int)       = -1
+    _ScaleAt       ("Its stored mesh scale's word; -1 rolls the row's starts", int)   = -1
+    _TurnAt        ("Its stored rotator's word; -1 rolls the row's start", int)     = -1
+    _TurnRateAt    ("Its stored rotation rate's word; -1 rolls the row's rate", int) = -1
 }
 
 // A particle's drawn part: CgVfxRecord.DRAWN_GLSL.
@@ -48,6 +52,11 @@ Buffers {
 
 vec4 look_instance(int at) {
     return uintBitsToFloat(INSTANCES(at));
+}
+
+// Record e's word w, a float.
+float look_word(int e, int w) {
+    return uintBitsToFloat(IN(e + w / 4)[w % 4]);
 }
 
 // A curve row's vec4s: _Texels shape samples, _Texels tint samples, two start colours, two start scales, then its
@@ -150,21 +159,59 @@ void Look() {
         vec3 position = positionAge.xyz, velocity = velocitySize.xyz;
         float age = positionAge.w, life = lifeSeed.x, size = velocitySize.w;
         float seed = lifeSeed.y, spin = lifeSeed.z, heat = uintBitsToFloat(heatId.x);
-        int inst = _InstanceAt + int(heatId.z) * _InstanceRow;
         float t = min(age / life, 1.0);
         int at = int(heatId.w) * _RowVectors, starts = at + 2 * _Texels;
         vec4 speeds = CURVES(starts + 4);
         float u = speeds.x < 0.0 ? t : clamp((length(velocity) - speeds.x) / (speeds.y - speeds.x), 0.0, 1.0);
         vec4 shape = look_curve(at, u), tint = look_curve(at + _Texels, u);
         uint bits = floatBitsToUint(seed);
+        int inst = _InstanceAt + int(heatId.z) * _InstanceRow;
+        if (_LifeBindAt >= 0) {
+            // CgVfxLifeBind: user parameters this step, mesh scale and sprite size, then colour and alpha.
+            shape *= look_instance(inst + _LifeBindAt);
+            tint *= look_instance(inst + _LifeBindAt + 1);
+        }
+        for (int i = 0, l = at + _LifeRollAt; i < _LifeRolls; i++) {
+            // CgVfxLifeRoll, Cascade's size and colour over life on a uniform: rolled again each step, keyed by its age;
+            // a header, then two ends, or two curves by life where its code is past 2.
+            vec4 sel = CURVES(l);
+            int code = int(sel.w + 0.5), target = code % 3;
+            vec3 lo, hi;
+            if (code >= 3) {
+                lo = look_curve(l + 1, t).xyz;
+                hi = look_curve(l + 1 + _Texels, t).xyz;
+                l += 1 + 2 * _Texels;
+            } else {
+                lo = CURVES(l + 1).xyz;
+                hi = CURVES(l + 2).xyz;
+                l += 3;
+            }
+            uint key = bits ^ floatBitsToUint(age);
+            vec3 r = vec3(fx_rand(key, uint(i), 50u), fx_rand(key, uint(i), 51u), fx_rand(key, uint(i), 52u));
+            vec3 m = mix(lo, hi, vec3(r[int(sel.x)], r[int(sel.y)], r[int(sel.z)]));
+            if (target == 0) shape.xyz *= m;
+            else if (target == 1) tint.rgb *= m;
+            else tint.a *= m.x;
+        }
         vec4 colorRoll = vec4(fx_rand(bits, 0u, 20u), fx_rand(bits, 0u, 21u), fx_rand(bits, 0u, 22u), fx_rand(bits, 0u, 23u));
         vec3 scaleRoll = vec3(fx_rand(bits, 0u, 24u), fx_rand(bits, 0u, 25u), fx_rand(bits, 0u, 26u));
-        vec4 color = mix(CURVES(starts), CURVES(starts + 1), colorRoll) * tint;
+        vec4 color = mix(CURVES(starts), CURVES(starts + 1), colorRoll);
+        if (_ColorAt >= 0) {
+            // A start stored at birth (CgVfxSpawnInput.COLOR); an alpha below 0 keeps the rolled one.
+            vec4 born = vec4(look_word(e, _ColorAt), look_word(e, _ColorAt + 1), look_word(e, _ColorAt + 2), look_word(e, _ColorAt + 3));
+            color = vec4(born.rgb, born.a < 0.0 ? color.a : born.a);
+        }
+        color *= tint;
         d.place = vec4(position, size * shape.w);
         d.motion = vec4(velocity, t);
         d.state = vec4(seed, spin, heat, color.a);
         d.color = color;
-        d.scale = vec4(mix(CURVES(starts + 2).xyz, CURVES(starts + 3).xyz, scaleRoll) * shape.xyz, age);
+        // Cascade's size by speed: x and y times clamp(speed * scale, 1, max).
+        vec4 bySpeed = CURVES(starts + 5);
+        vec2 speedScale = clamp(length(velocity) * bySpeed.xy, vec2(1.0), bySpeed.zw);
+        vec3 start = _ScaleAt >= 0 ? vec3(look_word(e, _ScaleAt), look_word(e, _ScaleAt + 1), look_word(e, _ScaleAt + 2))
+                : mix(CURVES(starts + 2).xyz, CURVES(starts + 3).xyz, scaleRoll);
+        d.scale = vec4(start * shape.xyz * vec3(speedScale, 1.0), age);
         ivec3 base = ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ), wrap = ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ);
         ivec3 originBlock = ivec3(INSTANCES(inst + 3).xyz);
         vec3 originFrac = look_instance(inst + 4).xyz;

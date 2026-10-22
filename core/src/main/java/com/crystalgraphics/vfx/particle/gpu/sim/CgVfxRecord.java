@@ -53,7 +53,21 @@ public final class CgVfxRecord {
         /** The position before the last step: a collision's sweep, a floor's stair test. */
         PREVIOUS(3),
         /** {@link #RESTING}, and the collisions so far from {@link #COLLISIONS_SHIFT}. */
-        FLAGS(1);
+        FLAGS(1),
+        /** Its colour at birth from a spawn form; an alpha below 0 takes the row's rolled alpha. */
+        COLOR(4),
+        /** Its mesh scale at birth from a spawn form. */
+        SCALE(3),
+        /** Its mesh rotator at birth from a spawn form. */
+        TURN(3),
+        /** Its mesh rotation rate at birth from a spawn form. */
+        TURN_RATE(3),
+        /**
+         * A beam's state ({@code fx_beam.glsl}): its source and the source's tangent and strength, its target and the
+         * target's, its noise clock and its effect's orientation: six vec4s, what Cascade's beam payload keeps between
+         * updates.
+         */
+        BEAM(24);
 
         private final int components;
 

@@ -137,6 +137,20 @@ public interface CgVfxInstanceView {
         return param.defaultValue();
     }
 
+    /**
+     * Component {@code component} of user parameter {@code name} (without {@code user.}) this step, for
+     * {@code CgVfxLifeBind}s: a number's value, a vector's or a colour's channel; {@code fallback} where its effect's
+     * look has none.
+     */
+    default float user(String name, int component, float fallback) {
+        return fallback;
+    }
+
+    /** Its effect's distance from the camera to its bounds, 0 inside: what a collider's reach reads. */
+    default float cameraDistance() {
+        return 0f;
+    }
+
     /** The fluid its particles are carried by, for kinds taking {@code CgVfxDataInterfaces.GAS}; null for none. */
     @Nullable
     default CgVfxFluid gas() {

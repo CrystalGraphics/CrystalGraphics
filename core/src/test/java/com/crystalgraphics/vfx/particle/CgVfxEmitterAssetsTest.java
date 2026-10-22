@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.particle;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.util.ArrayList;
@@ -30,6 +31,8 @@ import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
+import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxRecord;
+import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
 
@@ -169,6 +172,27 @@ public class CgVfxEmitterAssetsTest {
         assertEquals(e.moduleForms().toString().replaceAll("@[0-9a-f]+", ""), back.moduleForms().toString().replaceAll("@[0-9a-f]+", ""));
     }
 
+    /** A size range over life, rolled each step, with a locked pair: read, written back and read again alike. */
+    @Test
+    public void lifeRollsRoundTrip() {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 64));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0))));
+        Object range = Map.of("range", List.of(List.of(1.0, 0.7, 0.7), List.of(1.5, 1.0, 1.0)), "per_channel", true, "locked", "yz");
+        tree.put("particle_update", List.of(Map.of("id", "flicker", "module", "crystalgraphics:scale_mesh_size",
+                "inputs", Map.of("scale", range))));
+        CgVfxLifeRoll roll = CgVfxEmitterAssets.compile("flicker", tree, null).lifeRolls().get(0);
+        assertArrayEquals(new int[]{0, 1, 1}, roll.rolls());
+        assertArrayEquals(new float[]{1f, 0.7f, 0.7f}, roll.from(), 0f);
+        CgVfxLifeRoll back = CgVfxEmitterAssets.compile("flicker", CgVfxEmitterAssets.write(
+                CgVfxEmitterAssets.compile("flicker", tree, null)), null).lifeRolls().get(0);
+        assertArrayEquals(roll.from(), back.from(), 0f);
+        assertArrayEquals(roll.to(), back.to(), 0f);
+        assertArrayEquals(roll.rolls(), back.rolls());
+    }
+
     /**
      * Cascade's rotation rate, its multiplier and its rate by life in stack order: the rolled rate integrates through
      * the multiplier; the rate added after it does not. Read, baked and written back alike.
@@ -206,6 +230,96 @@ public class CgVfxEmitterAssetsTest {
         assertArrayEquals(scale, scaleBack, 1e-5f);
         assertArrayEquals(added, addedBack, 1e-5f);
         assertArrayEquals(turn.rateTo(), back.rateTo(), 0f);
+    }
+
+    /** A size and an alpha bound to user parameters, remapped: read on their targets, applied, and written back alike. */
+    @Test
+    public void lifeBindsRoundTrip() {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 64));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0))));
+        Object length = Map.of("bind", "user.BeamLength", "default", List.of(100.0, 1.0, 1.0),
+                "remap", Map.of("in", List.of(List.of(0.0, 0.0, 0.0), List.of(10.0, 10.0, 10.0)),
+                        "out", List.of(List.of(0.0, 0.0, 0.0), List.of(20.0, 20.0, 20.0))));
+        tree.put("particle_update", List.of(
+                Map.of("id", "length", "module", "crystalgraphics:scale_mesh_size", "inputs", Map.of("scale", length)),
+                Map.of("id", "fade", "module", "crystalgraphics:scale_color", "inputs",
+                        Map.of("alpha", Map.of("bind", "user.Opacity", "default", 0.5)))));
+        CgVfxEmitter e = CgVfxEmitterAssets.compile("binds", tree, null);
+        assertEquals(2, e.lifeBinds().size());
+        CgVfxLifeBind scale = e.lifeBinds().get(0), alpha = e.lifeBinds().get(1);
+        assertEquals(CgVfxLifeBind.Target.MESH_SCALE, scale.target());
+        assertEquals("BeamLength", scale.parameter());
+        // Remapped and clamped: 3 of 0..10 is 6 of 0..20; the default 100 past the range, 20.
+        assertEquals(6f, scale.bind().apply(3f, 0), 1e-6f);
+        assertEquals(20f, scale.bind().apply(scale.bind().fallback()[0], 0), 1e-6f);
+        assertEquals(CgVfxLifeBind.Target.ALPHA, alpha.target());
+        assertEquals(0.5f, alpha.bind().apply(alpha.bind().fallback()[0], 0), 1e-6f);
+        CgVfxEmitter back = CgVfxEmitterAssets.compile("binds", CgVfxEmitterAssets.write(e), null);
+        assertEquals(e.lifeBinds().size(), back.lifeBinds().size());
+        for (int i = 0; i < 2; i++) {
+            assertEquals(e.lifeBinds().get(i).target(), back.lifeBinds().get(i).target());
+            assertEquals(e.lifeBinds().get(i).source(), back.lifeBinds().get(i).source());
+        }
+    }
+
+    /** A colour by the loop and a mesh scale by a function: stored at birth, in their record words, and written back. */
+    @Test
+    public void startsInFormsAreStored() {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 64));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 2.0))));
+        Object rising = Map.of("samples", Map.of("range", List.of(0.0, 2.0), "values", List.of(0.2, 1.0)));
+        Object color = Map.of("curves", List.of(rising, rising, rising), "by", "loop");
+        Object scale = Map.of("fn", "crystalgraphics:random_range", "inputs", Map.of("min", List.of(0.5, 0.5, 0.5),
+                "max", List.of(2.0, 3.0, 4.0)));
+        tree.put("particle_spawn", List.of(Map.of("id", "init", "module", "crystalgraphics:initialize_particle",
+                "inputs", Map.of("lifetime", 2.0, "color", color, "mesh_scale", scale))));
+        CgVfxEmitter e = CgVfxEmitterAssets.compile("starts", tree, null);
+        assertTrue(value(e, CgVfxSpawnInput.COLOR) != null && value(e, CgVfxSpawnInput.MESH_SCALE) != null);
+        CgVfxRecord record = CgVfxShape.of(e).record();
+        assertTrue(record.word(CgVfxRecord.Tail.COLOR) >= 0);
+        assertTrue(record.word(CgVfxRecord.Tail.SCALE) >= 0);
+        CgVfxEmitter back = CgVfxEmitterAssets.compile("starts", CgVfxEmitterAssets.write(e), null);
+        for (CgVfxSpawnInput stored : new CgVfxSpawnInput[]{CgVfxSpawnInput.COLOR, CgVfxSpawnInput.MESH_SCALE}) {
+            assertEquals(stored + " written back", value(e, stored), value(back, stored));
+        }
+    }
+
+    private static Object value(CgVfxEmitter e, CgVfxSpawnInput target) {
+        for (CgVfxSpawnForm f : e.spawnForms()) if (f.target() == target) return f.value();
+        return null;
+    }
+
+    /** A sprite size rolled each tick between two curves by age: read as a curved roll, and written back alike. */
+    @Test
+    public void curvedLifeRollsRoundTrip() {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 64));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0))));
+        Object low = Map.of("samples", Map.of("range", List.of(0.0, 1.0), "values", List.of(1.0, 0.5)));
+        Object high = Map.of("samples", Map.of("range", List.of(0.0, 1.0), "values", List.of(2.0, 3.0)));
+        tree.put("particle_update", List.of(Map.of("id", "flicker", "module", "crystalgraphics:scale_sprite_size", "inputs",
+                Map.of("scale", Map.of("fn", "crystalgraphics:random_range", "inputs", Map.of(
+                        "min", Map.of("curves", List.of(low, low), "by", "age"), "max", Map.of("curves", List.of(high, high), "by", "age")))))));
+        CgVfxLifeRoll roll = CgVfxEmitterAssets.compile("between", tree, null).lifeRolls().get(0);
+        assertTrue(roll.curved());
+        assertEquals(0.75f, roll.fromCurves()[0].at(0.5f), 1e-5f);
+        assertEquals(3f, roll.to()[1], 1e-5f);
+        CgVfxLifeRoll back = CgVfxEmitterAssets.compile("between", CgVfxEmitterAssets.write(
+                CgVfxEmitterAssets.compile("between", tree, null)), null).lifeRolls().get(0);
+        for (float t : new float[]{0f, 0.3f, 1f}) {
+            for (int c = 0; c < 3; c++) {
+                assertEquals(roll.fromCurves()[c].at(t), back.fromCurves()[c].at(t), 1e-5f);
+                assertEquals(roll.toCurves()[c].at(t), back.toCurves()[c].at(t), 1e-5f);
+            }
+        }
     }
 
     private static void same(CgVfxEmitter e, CgVfxEmitter back) {

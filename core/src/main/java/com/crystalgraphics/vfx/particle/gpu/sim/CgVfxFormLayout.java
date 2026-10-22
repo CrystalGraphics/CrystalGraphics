@@ -21,20 +21,22 @@ import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
  * <ul>
  *   <li>A top-level range or pick keeps its first end in its row word, so its node holds the other end alone; nested,
  *       a node holds both.</li>
+ *   <li>A binding to a user parameter takes a vec4 of the instance row, which the pool writes each step: its node's
+ *       {@code lane}, from the layout's {@link #laneBase}, which its shape sets.</li>
  *   <li>Throws, naming {@code what}, for a form the kernel does not build: a curve or array by {@code length}, a binding
- *       to anything but {@code particles.age}, a roll per loop or instance, or at spawn a lookup the newborn has no
- *       value for.</li>
+ *       to anything but a user parameter or {@code particles.age}, a roll per loop or instance, or at spawn a lookup the
+ *       newborn has no value for.</li>
  * </ul>
  */
 final class CgVfxFormLayout {
 
-    /** A node: its form, its first row vector, its roll key's slot (-1 for none). */
-    record Node(CgVfxFormInput form, int at, int key, boolean top) {
+    /** A node: its form, its first row vector, its roll key's slot (-1 for none), its instance lane from the base (-1). */
+    record Node(CgVfxFormInput form, int at, int key, boolean top, int lane) {
     }
 
     private final Map<CgVfxFormInput, Node> nodes = new IdentityHashMap<>();
     private final CgVfxFormInput root;
-    private int vectors, keys;
+    private int vectors, keys, lanes, laneBase = -1;
 
     private CgVfxFormLayout(CgVfxFormInput root) {
         this.root = root;
@@ -78,16 +80,19 @@ final class CgVfxFormLayout {
         } else if (c instanceof CgVfxFormInput.Function f) {
             perParticle(what, f.rolls());
             key = keys++;
-            nodes.put(c, new Node(c, at, key, top));
+            nodes.put(c, new Node(c, at, key, top, -1));
             add(what, f.first(), false, spawn);
             add(what, f.second(), false, spawn);
             return;
         } else if (c instanceof CgVfxFormInput.Binding b && b.path().equals("particles.age") && b.inLo() == null && !spawn) {
             // Read in the kernel: nothing in the row.
+        } else if (c instanceof CgVfxFormInput.Binding b && b.path().startsWith("user.")) {
+            nodes.put(c, new Node(c, at, key, top, lanes++));
+            return;
         } else {
             throw new IllegalArgumentException(what + ": the " + c.form().specName() + " form is not built in the Step yet");
         }
-        nodes.put(c, new Node(c, at, key, top));
+        nodes.put(c, new Node(c, at, key, top, -1));
     }
 
     private static void perParticle(String what, CgPropertyMeta.Rolls rolls) {
@@ -126,5 +131,20 @@ final class CgVfxFormLayout {
     /** Its roll keys. */
     int keys() {
         return keys;
+    }
+
+    /** Its user bindings' instance lanes, a vec4 each. */
+    int lanes() {
+        return lanes;
+    }
+
+    /** Where its lanes start in the instance row: its shape's to say. */
+    int laneBase() {
+        if (lanes > 0 && laneBase < 0) throw new IllegalStateException(root.name() + "'s lanes have no place yet");
+        return laneBase;
+    }
+
+    void laneBase(int base) {
+        laneBase = base;
     }
 }
