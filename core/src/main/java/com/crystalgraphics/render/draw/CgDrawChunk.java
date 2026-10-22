@@ -385,7 +385,8 @@ public final class CgDrawChunk {
             this.each = ownEach;
             int n = records[CgInstanceKind.OBJECT.ordinal()];
             if (ownRecordCounts == null || ownRecordCounts.length < n) ownRecordCounts = new long[Math.max(n, 64)];
-            System.arraycopy(recordCounts, 0, ownRecordCounts, 0, n);
+            // The builder grows its counts only for indirectEach() records: one past them is another draw's, never read.
+            System.arraycopy(recordCounts, 0, ownRecordCounts, 0, Math.min(n, recordCounts.length));
             this.recordCounts = ownRecordCounts;
         }
     }
