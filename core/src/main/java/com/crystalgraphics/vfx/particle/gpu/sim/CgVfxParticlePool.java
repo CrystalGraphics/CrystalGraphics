@@ -32,6 +32,7 @@ import com.crystalgraphics.vfx.particle.CgVfxLifeBind;
 import com.crystalgraphics.vfx.particle.CgVfxLifeRoll;
 import com.crystalgraphics.vfx.particle.CgVfxMeshRotation;
 import com.crystalgraphics.vfx.particle.CgVfxSockets;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxCurveDomain;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDataInterface;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
@@ -171,6 +172,17 @@ public final class CgVfxParticlePool {
      * {@code uvec4(first capped row, cap, 0, 0)}. After the tier steps its rows are sorted by region
      * ({@code event_cap.compute}), and a child reads each region's first rows up to its cap.
      */
+    /**
+     * Per tier: its publishing pools' live particles this step, appended as event rows keyed by their slot's place among
+     * the tier's publishing slots, then sorted by it as spawn events are, each slot's run marked; the tier after's
+     * readers are born on them. Rows for every publishing pool's capacity, a key for each of their slots.
+     */
+    private static final CgGraphBuffer[] BIN_STREAMS = new CgGraphBuffer[CgVfxShape.TIERS - 1],
+            BIN_COUNT = new CgGraphBuffer[CgVfxShape.TIERS - 1], BIN_KEYS = new CgGraphBuffer[CgVfxShape.TIERS - 1],
+            BIN_ORDER = new CgGraphBuffer[CgVfxShape.TIERS - 1], BIN_SORTED = new CgGraphBuffer[CgVfxShape.TIERS - 1],
+            BIN_RUNS = new CgGraphBuffer[CgVfxShape.TIERS - 1];
+    private static final int[] BIN_ROWS = new int[CgVfxShape.TIERS - 1], BIN_SLOTS = new int[CgVfxShape.TIERS - 1];
+    private static final CgGpuCount[] BIN_RUN_FILLS = new CgGpuCount[CgVfxShape.TIERS - 1];
     private static final int[] SPAWN_ROWS = new int[CgVfxShape.TIERS - 1], REGION_COUNT = new int[CgVfxShape.TIERS - 1],
             CAPPED_ROWS = new int[CgVfxShape.TIERS - 1];
     private static final int[][] REGION_WORDS = new int[CgVfxShape.TIERS - 1][64];
@@ -250,6 +262,14 @@ public final class CgVfxParticlePool {
     private ByteBuffer rasterBytes = ByteBuffer.allocate(0).order(ByteOrder.nativeOrder());
     /** Per slot: the parent slot and event it is fed by, and the parent's definition then; null pool for none. */
     private CgVfxParticlePool[] feedPool = new CgVfxParticlePool[0];
+    /** Per slot: the source pool and slot its particles are born on ({@link #readFrom}); null pool for none. */
+    private CgVfxParticlePool[] readPool = new CgVfxParticlePool[0];
+    private int[] readSlot = new int[0];
+    private CgVfxGpuEmitter[] readSource = new CgVfxGpuEmitter[0];
+    /** This recording's first publishing slot in its tier, and its readers' sources. */
+    private int binKeyBase;
+    private int[] readWords = new int[0];
+    private CgGraphBuffer readsBuffer;
     private CgVfxGpuEmitter[] feedParent = new CgVfxGpuEmitter[0];
     private int[] feedSlot = new int[0], feedEvent = new int[0];
     /** This recording's feeds, four words a slot fed, by key; how many, and the most children an event spawns. */
@@ -420,7 +440,7 @@ public final class CgVfxParticlePool {
         CgCompute.load(LOOK_KERNELS).kernel("Look").prepare();
         CgGpuOps.prepareFill();
         if (emitter.trailPoints() > 0) CgCompute.load(TRAIL_KERNELS).kernel("Store").prepare();
-        if (shape.spawns()) {
+        if (shape.spawns() || shape.publishes()) {
             CgCompute.load(EVENT_CAP_KERNELS).kernel("Keys").prepare();
             CgCompute.load(EVENT_CAP_KERNELS).kernel("Runs").prepare();
             CgCompute.load(EVENT_CAP_KERNELS).kernel("Gather").prepare();
@@ -609,12 +629,15 @@ public final class CgVfxParticlePool {
         Arrays.fill(SPAWN_ROWS, 0);
         Arrays.fill(REGION_COUNT, 0);
         Arrays.fill(CAPPED_ROWS, 0);
+        Arrays.fill(BIN_ROWS, 0);
+        Arrays.fill(BIN_SLOTS, 0);
         for (int i = 0; i < pools.size(); i++) {
             CgVfxParticlePool pool = pools.get(i);
             if (!pool.begin(recording)) continue;
             STEPPING.add(pool);
             maxSteps = Math.max(maxSteps, pool.steps);
             if (pool.shape.spawns()) pool.claimRegions();
+            if (pool.shape.publishes()) pool.claimBins();
             reportRows += pool.reportRows();
         }
         if (STEPPING.isEmpty()) {
@@ -640,18 +663,28 @@ public final class CgVfxParticlePool {
             SPAWN_SORTED[t] = fitRows(recording, SPAWN_SORTED[t], "vfx.pool.spawn-sorted" + t, SPAWN_ROWS[t]);
             SPAWN_RUNS[t] = fit(recording, SPAWN_RUNS[t], "vfx.pool.spawn-runs" + t, REGION_COUNT[t] * 2);
             RUN_FILLS[t] = CgGpuCount.of(REGION_COUNT[t] * 2);
-            if (capKeys == null) {
-                CgCompute file = CgCompute.load(EVENT_CAP_KERNELS);
-                capKeys = file.kernel("Keys");
-                capRuns = file.kernel("Runs");
-                capGather = file.kernel("Gather");
-            }
+            loadCapKernels();
         }
         if (reportRows > 0) {
             reportStream = fitRows(recording, reportStream, "vfx.pool.report-events", reportRows * maxSteps);
             reportCounts = fit(recording, reportCounts, "vfx.pool.report-counts", maxSteps);
         }
-        for (int i = 0; i < STEPPING.size(); i++) STEPPING.get(i).uploadFeeds(recording);
+        for (int t = 0; t < BIN_ROWS.length; t++) {
+            if (BIN_SLOTS[t] == 0) continue;
+            BIN_STREAMS[t] = fitRows(recording, BIN_STREAMS[t], "vfx.pool.published" + t, BIN_ROWS[t]);
+            BIN_COUNT[t] = fit(recording, BIN_COUNT[t], "vfx.pool.published-count" + t, 1);
+            BIN_KEYS[t] = fit(recording, BIN_KEYS[t], "vfx.pool.published-keys" + t, BIN_ROWS[t]);
+            BIN_ORDER[t] = fit(recording, BIN_ORDER[t], "vfx.pool.published-order" + t, BIN_ROWS[t]);
+            BIN_SORTED[t] = fitRows(recording, BIN_SORTED[t], "vfx.pool.published-sorted" + t, BIN_ROWS[t]);
+            BIN_RUNS[t] = fit(recording, BIN_RUNS[t], "vfx.pool.published-runs" + t, BIN_SLOTS[t] * 2);
+            BIN_RUN_FILLS[t] = CgGpuCount.of(BIN_SLOTS[t] * 2);
+            loadCapKernels();
+        }
+        for (int i = 0; i < STEPPING.size(); i++) {
+            CgVfxParticlePool pool = STEPPING.get(i);
+            pool.uploadFeeds(recording);
+            if (pool.shape.spawnFrom() != null) pool.uploadReads(recording);
+        }
         TAKEN.clear();
         for (int i = 0; i < STEPPING.size(); i++) take(STEPPING.get(i).shape);
         for (int d = 0; d < TAKEN.size(); d++) TAKEN.get(d).upload(recording);
@@ -683,6 +716,9 @@ public final class CgVfxParticlePool {
                     CgVfxParticlePool pool = STEPPING.get(i);
                     if (pool.shape.tier() == tier && s < pool.steps) pool.clearNext(pass);
                 }
+                // A tier's published rows are this step's alone: cleared before it publishes again.
+                boolean publishing = tier < BIN_SLOTS.length && BIN_SLOTS[tier] > 0;
+                if (publishing) CgGpuOps.fill(pass, BIN_COUNT[tier], 0, ONE);
                 for (int i = 0; i < STEPPING.size(); i++) {
                     CgVfxParticlePool pool = STEPPING.get(i);
                     if (pool.shape.tier() == tier && s < pool.steps) pool.dispatchStep(pass, s, childRows, reportRows);
@@ -691,7 +727,14 @@ public final class CgVfxParticlePool {
                     CgVfxParticlePool pool = STEPPING.get(i);
                     if (pool.shape.tier() == tier && s < pool.steps) pool.finishStep(pass, s);
                 }
-                if (tier < SPAWN_ROWS.length && (parents >> tier & 1) != 0 && SPAWN_ROWS[tier] > 0) capEvents(pass, tier);
+                if (tier < SPAWN_ROWS.length && (parents >> tier & 1) != 0 && SPAWN_ROWS[tier] > 0) {
+                    sortByKey(pass, SPAWN_ROWS[tier], REGION_COUNT[tier], SPAWN_STREAMS[tier], SPAWN_COUNTS[tier],
+                            SPAWN_KEYS[tier], SPAWN_ORDER[tier], SPAWN_RUNS[tier], RUN_FILLS[tier], SPAWN_SORTED[tier]);
+                }
+                if (publishing) {
+                    sortByKey(pass, BIN_ROWS[tier], BIN_SLOTS[tier], BIN_STREAMS[tier], BIN_COUNT[tier], BIN_KEYS[tier],
+                            BIN_ORDER[tier], BIN_RUNS[tier], BIN_RUN_FILLS[tier], BIN_SORTED[tier]);
+                }
             }
         }
         pass.end();
@@ -848,16 +891,28 @@ public final class CgVfxParticlePool {
         }
     }
 
-    /** Tier {@code t}'s rows this step sorted by region, and each region's run among them: what its children read. */
-    private static void capEvents(CgComputePass pass, int t) {
-        int rows = SPAWN_ROWS[t];
-        pass.dispatch(capKeys, rows).bind("EVENTS", SPAWN_STREAMS[t]).bind("COUNT", SPAWN_COUNTS[t])
-                .bind("KEYS", SPAWN_KEYS[t]).bind("VALUES", SPAWN_ORDER[t]);
-        int bits = Math.max(1, 32 - Integer.numberOfLeadingZeros(REGION_COUNT[t] - 1));
-        CgGpuOps.sort(pass, bits, CgGpuOps.Order.ASCENDING, SPAWN_KEYS[t], SPAWN_ORDER[t], CgGpuCount.at(SPAWN_COUNTS[t], 0, rows));
-        CgGpuOps.fill(pass, SPAWN_RUNS[t], 0, RUN_FILLS[t]);
-        pass.dispatch(capRuns, rows).bind("COUNT", SPAWN_COUNTS[t]).bind("KEYS", SPAWN_KEYS[t]).bind("RUNS", SPAWN_RUNS[t]);
-        pass.dispatch(capGather, rows).bind("EVENTS", SPAWN_STREAMS[t]).bind("VALUES", SPAWN_ORDER[t]).bind("SORTED", SPAWN_SORTED[t]);
+    private static void loadCapKernels() {
+        if (capKeys != null) return;
+        CgCompute file = CgCompute.load(EVENT_CAP_KERNELS);
+        capKeys = file.kernel("Keys");
+        capRuns = file.kernel("Runs");
+        capGather = file.kernel("Gather");
+    }
+
+    /**
+     * A tier's rows this step, {@code count} of at most {@code rows}, sorted by the key in each one's position.w and each
+     * of the {@code keys} keys' run among them marked: a spawn event's region, what its children read; a published
+     * particle's slot, what its readers read.
+     */
+    private static void sortByKey(CgComputePass pass, int rows, int keys, CgGraphBuffer stream, CgGraphBuffer count,
+                                  CgGraphBuffer keyed, CgGraphBuffer order, CgGraphBuffer runs, CgGpuCount runWords,
+                                  CgGraphBuffer sorted) {
+        pass.dispatch(capKeys, rows).bind("EVENTS", stream).bind("COUNT", count).bind("KEYS", keyed).bind("VALUES", order);
+        int bits = Math.max(1, 32 - Integer.numberOfLeadingZeros(keys - 1));
+        CgGpuOps.sort(pass, bits, CgGpuOps.Order.ASCENDING, keyed, order, CgGpuCount.at(count, 0, rows));
+        CgGpuOps.fill(pass, runs, 0, runWords);
+        pass.dispatch(capRuns, rows).bind("COUNT", count).bind("KEYS", keyed).bind("RUNS", runs);
+        pass.dispatch(capGather, rows).bind("EVENTS", stream).bind("VALUES", order).bind("SORTED", sorted);
     }
 
     /** The rows one step of this pool can report: its capacity once for each event that reports. */
@@ -955,6 +1010,15 @@ public final class CgVfxParticlePool {
                     .bind("PARENT_RUNS", children ? SPAWN_RUNS[tier - 1] : unfed)
                     .bind("PARENT_REGIONS", children ? SPAWN_REGIONS[tier - 1] : unfed)
                     .set("_ParentRegions", children ? REGION_COUNT[tier - 1] : 0).bind("FEEDS", children ? feedBuffer : unfed);
+        }
+        if (shape.publishes()) {
+            stepping.bind("PUBLISHED", BIN_STREAMS[tier]).counter("PUBLISHED", BIN_COUNT[tier], 0)
+                    .set("_BinKeyBase", binKeyBase);
+        }
+        if (shape.spawnFrom() != null) {
+            boolean published = BIN_SLOTS[tier - 1] > 0;
+            stepping.bind("SOURCE_ROWS", published ? BIN_SORTED[tier - 1] : unfed)
+                    .bind("SOURCE_RUNS", published ? BIN_RUNS[tier - 1] : unfed).bind("READS", readsBuffer);
         }
         if (shape.readsClips()) CgVfxClipAtlas.bind(stepping);
         List<CgVfxDataInterface> interfaces = shape.dataInterfaces();
@@ -1214,6 +1278,8 @@ public final class CgVfxParticlePool {
         slotCapacity[slot] = 0;
         slotGrid[slot] = null;
         feedPool[slot] = null;
+        readPool[slot] = null;
+        readSource[slot] = null;
         openSlots--;
         while (slotCount > 0 && slotEmitter[slotCount - 1] == null) slotCount--;
         basesStale = true;
@@ -1329,6 +1395,58 @@ public final class CgVfxParticlePool {
         feedParent[slot] = from;
         feedSlot[slot] = parentSlot;
         feedEvent[slot] = event;
+    }
+
+    /**
+     * Births {@code slot}'s particles on {@code source}'s slot {@code sourceSlot}: its definition reads another emitter's
+     * particles ({@code CgVfxSpawnFrom}) and that slot plays its source. The source steps a tier before, publishing its
+     * live particles each step.
+     *
+     * <pre>{@code
+     * int sparks = sparkPool.open(SPARKS, n), rocks = rockPool.open(ROCKS, m);
+     * sparkPool.readFrom(sparks, rockPool, rocks);     // SPARKS is born on ROCKS' particles
+     * }</pre>
+     */
+    public void readFrom(int slot, CgVfxParticlePool source, int sourceSlot) {
+        betweenSteps("readFrom");
+        CgVfxGpuEmitter reader = openSlot(slot, "readFrom");
+        CgVfxGpuEmitter from = source.openSlot(sourceSlot, "readFrom's source");
+        if (shape.spawnFrom() == null || !source.shape.publishes() || shape.tier() != source.shape.tier() + 1) {
+            throw new IllegalArgumentException(reader.name() + " at feed tier " + shape.tier() + " is not born on " + from.name()
+                    + " at " + source.shape.tier() + ": a reader steps the tier after a source that publishes");
+        }
+        readPool[slot] = source;
+        readSlot[slot] = sourceSlot;
+        readSource[slot] = from;
+    }
+
+    /** Claims this recording's room in its tier's published rows and keys: its capacity and its slots. */
+    private void claimBins() {
+        int t = shape.tier();
+        binKeyBase = BIN_SLOTS[t];
+        BIN_ROWS[t] += capacity;
+        BIN_SLOTS[t] += slotCount;
+    }
+
+    /**
+     * Each slot's source this recording: its slot's key among its tier's published rows, then the shares of velocity
+     * and spin it inherits; a key of {@code 0xFFFFFFFF} where its source is not stepping, which reads as none published.
+     */
+    private void uploadReads(CgRecording recording) {
+        if (readWords.length < slotCount * 4) readWords = new int[Math.max(16, slotCount * 8)];
+        for (int slot = 0; slot < slotCount; slot++) {
+            CgVfxParticlePool source = readPool[slot];
+            int at = slot * 4;
+            boolean live = source != null && STEPPING.contains(source) && source.isOpen(readSlot[slot])
+                    && source.slotEmitter[readSlot[slot]] == readSource[slot];
+            readWords[at] = live ? source.binKeyBase + readSlot[slot] : -1;
+            readWords[at + 1] = 0;
+            CgVfxSpawnFrom from = slotEmitter[slot] == null ? null : slotEmitter[slot].spawnFrom();
+            readWords[at + 2] = Float.floatToRawIntBits(from == null ? 0f : from.inheritVelocity());
+            readWords[at + 3] = Float.floatToRawIntBits(from == null ? 0f : from.inheritRotation());
+        }
+        readsBuffer = fit(recording, readsBuffer, name() + ".reads", Math.max(1, slotCount) * 4);
+        put(recording, readsBuffer, readWords, slotCount * 4);
     }
 
     /**
@@ -2381,6 +2499,9 @@ public final class CgVfxParticlePool {
         ringFirst = Arrays.copyOf(ringFirst, size);
         ringPoints = Arrays.copyOf(ringPoints, size);
         feedPool = Arrays.copyOf(feedPool, size);
+        readPool = Arrays.copyOf(readPool, size);
+        readSlot = Arrays.copyOf(readSlot, size);
+        readSource = Arrays.copyOf(readSource, size);
         feedParent = Arrays.copyOf(feedParent, size);
         feedSlot = Arrays.copyOf(feedSlot, size);
         feedEvent = Arrays.copyOf(feedEvent, size);

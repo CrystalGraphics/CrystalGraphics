@@ -13,6 +13,7 @@ import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
 import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDataInterface;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
@@ -23,6 +24,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
 
+import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -137,7 +139,9 @@ public final class CgVfxShape {
     private final CgVfxEvent.Trigger[] triggers;
     private final boolean[] eventSpawns, eventReports, eventNodes, eventAtEmitter;
     private final int eventsAt, tier;
-    private final boolean spawns, reports, readsClips;
+    private final boolean spawns, reports, readsClips, publishes;
+    @Nullable
+    private final CgVfxSpawnFrom spawnFrom;
 
     private CgVfxShape(CgVfxGpuEmitter emitter, int tier) {
         if (tier < 0 || tier >= TIERS) throw new IllegalArgumentException(emitter.name() + " at feed tier " + tier);
@@ -416,7 +420,29 @@ public final class CgVfxShape {
         lane += socketsInherit ? 2 * sockets : sockets;
         instanceRow = lane;
         floors = taken.contains(CgVfxDataInterfaces.FLOOR_Y);
+        // Born on another emitter's particles: how they are picked and placed decides the launch's code.
+        spawnFrom = emitter.spawnFrom();
+        if (spawnFrom != null) {
+            if (tier == 0) throw new IllegalArgumentException(emitter.name() + " reads another emitter's particles at feed tier 0");
+            key.append("|reads:").append(spawnFrom.selection()).append(spawnFrom.placeAfter() ? ":after" : "");
+        }
+        publishes = emitter.publishes();
+        if (publishes && tier == TIERS - 1) {
+            throw new IllegalArgumentException(emitter.name() + " publishes its particles at the last feed tier, which no reader can follow");
+        }
+        if (publishes) key.append("|publishes");
         this.key = key.toString();
+    }
+
+    /** What its particles are born on ({@link CgVfxSpawnFrom}), read from the tier before; null for none. */
+    @Nullable
+    public CgVfxSpawnFrom spawnFrom() {
+        return spawnFrom;
+    }
+
+    /** Whether its steps publish its live particles, a slot at a time, for the tier after to be born on. */
+    public boolean publishes() {
+        return publishes;
     }
 
     /** A form's part of the key: what decides its kernel code. */

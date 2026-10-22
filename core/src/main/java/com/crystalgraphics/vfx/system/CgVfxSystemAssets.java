@@ -28,6 +28,8 @@ import com.crystalgraphics.vfx.particle.CgVfxGridField;
 import com.crystalgraphics.vfx.particle.CgVfxEventGenerator;
 import com.crystalgraphics.vfx.particle.CgVfxEventHandler;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
+import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 
 /**
@@ -153,6 +155,20 @@ public final class CgVfxSystemAssets {
             trees.put(e, written);
             ids.put(e, id);
         }
+        // A reader's source by the handle written for it.
+        for (CgVfxEmitter e : definition.emitters()) {
+            if (e.spawnFrom() == null || e.spawnFrom().sourceIndex() < 0) continue;
+            String source = ids.get(definition.emitters().get(e.spawnFrom().sourceIndex()));
+            for (Object o : (List<?>) trees.get(e).get("particle_spawn")) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> entry = (Map<String, Object>) o;
+                if ("crystalgraphics:spawn_from_emitter".equals(entry.get("module"))) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> inputs = (Map<String, Object>) entry.get("inputs");
+                    inputs.put("source", source);
+                }
+            }
+        }
         // Each event as a handler on the emitter it spawns (FNiagaraEventScriptProperties), its source by handle.
         int handlers = 0;
         for (CgVfxEmitter source : definition.emitters()) {
@@ -250,6 +266,7 @@ public final class CgVfxSystemAssets {
                 if (Boolean.FALSE.equals(h.get("enabled"))) continue;
                 base.put(String.valueOf(h.get("id")), emitter(id, h, deps));
             }
+            readers(id, base);
             Map<String, CgVfxEmitter> done = new HashMap<>();
             for (String handle : base.keySet()) {
                 CgVfxEmitter e = resolve(id, handle, base, done, new ArrayList<>());
@@ -372,6 +389,30 @@ public final class CgVfxSystemAssets {
         CgVfxEmitter out = b == null ? base.get(handle) : b.build();
         done.put(handle, out);
         return out;
+    }
+
+    /**
+     * Each {@code spawn_from_emitter} resolved: its source handle to its place in the system's emitters, and the source
+     * marked as publishing its particles. A source that is no enabled handle, the emitter itself, a loop of readers, or
+     * a chain deeper than the step's tiers fails, naming it.
+     */
+    private static void readers(String system, Map<String, CgVfxEmitter> base) {
+        List<String> handles = new ArrayList<>(base.keySet());
+        for (String handle : handles) {
+            CgVfxSpawnFrom from = base.get(handle).spawnFrom();
+            if (from == null) continue;
+            String at = system + ": emitters." + handle + "'s spawn_from_emitter";
+            int source = handles.indexOf(from.source());
+            if (source < 0) throw new IllegalArgumentException(at + " reads " + from.source() + ", no enabled handle");
+            int depth = 0;
+            for (String h = handle; base.get(h).spawnFrom() != null; h = base.get(h).spawnFrom().source()) {
+                if (++depth >= CgVfxShape.TIERS) {
+                    throw new IllegalArgumentException(at + " reads a chain " + depth + " deep or a loop: at most " + (CgVfxShape.TIERS - 1));
+                }
+            }
+            base.put(handle, base.get(handle).toBuilder().spawnFrom(from.at(source)).build());
+            base.put(from.source(), base.get(from.source()).toBuilder().publishes(true).build());
+        }
     }
 
     /**

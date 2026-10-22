@@ -8,8 +8,10 @@ import org.junit.Test;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
+import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
@@ -115,5 +117,65 @@ public class CgVfxSystemEventsTest {
                 + "        - { id: e1, trigger: burst, source: h1, spawn: { emitter: h9 } }\n";
         e = assertThrows(IllegalArgumentException.class, () -> compile(missing));
         assertTrue(e.getMessage(), e.getMessage().contains("h9"));
+    }
+
+    /**
+     * Cascade's LocationEmitter: a reader names its source by handle; the system resolves it to the source's place and
+     * marks the source as publishing; written back under the handles the writer gives; a missing source and a loop of
+     * readers fail naming them.
+     */
+    @Test
+    public void aReaderIsBornOnItsSourcesParticles() {
+        String reads = """
+                      particle_spawn:
+                        - { id: r, module: crystalgraphics:spawn_from_emitter, inputs: { source: %s, selection: sequential, inherit_velocity: 0.5 } }
+                """;
+        CgVfxSystemDefinition d = compile("""
+                _v: 1
+                emitters:
+                  - id: rocks
+                %1$s  - id: sparks
+                %1$s%2$s""".formatted(EMITTER, reads.formatted("rocks")));
+        CgVfxEmitter rocks = d.emitters().get(0), sparks = d.emitters().get(1);
+        assertTrue(rocks.publishes());
+        assertEquals(0, sparks.spawnFrom().sourceIndex());
+        assertEquals(CgVfxSpawnFrom.Selection.SEQUENTIAL, sparks.spawnFrom().selection());
+        assertEquals(0.5f, sparks.spawnFrom().inheritVelocity(), 0f);
+
+        Map<String, Object> tree = CgVfxSystemAssets.write(d);
+        CgVfxSystemDefinition again = CgVfxSystemAssets.compile(
+                CgAssetData.of("mymod:sparks", CgParticleKinds.SYSTEM, tree, null), (kind, ref) -> null);
+        assertEquals(0, again.emitters().get(1).spawnFrom().sourceIndex());
+        assertTrue(again.emitters().get(0).publishes());
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> compile("""
+                _v: 1
+                emitters:
+                  - id: sparks
+                %1$s%2$s""".formatted(EMITTER, reads.formatted("h9"))));
+        assertTrue(e.getMessage(), e.getMessage().contains("h9"));
+        e = assertThrows(IllegalArgumentException.class, () -> compile("""
+                _v: 1
+                emitters:
+                  - id: a
+                %1$s%2$s  - id: b
+                %1$s%3$s""".formatted(EMITTER, reads.formatted("b"), reads.formatted("a"))));
+        assertTrue(e.getMessage(), e.getMessage().contains("loop"));
+    }
+
+    /** In Java a reader names its source's emitter, which must publish; the system finds it by name. */
+    @Test
+    public void aJavaReaderFindsItsSourceByName() {
+        CgVfxEmitter rocks = CgVfxEmitter.builder("rocks").publishes(true).build();
+        CgVfxEmitter sparks = CgVfxEmitter.builder("sparks")
+                .spawnFrom(CgVfxSpawnFrom.of("rocks", CgVfxSpawnFrom.Selection.RANDOM)).build();
+        CgVfxSystemDefinition d = CgVfxSystemDefinition.of("mymod:sparks",
+                CgVfxLook.builder(CgVfxSystemDefinition.SCHEMA).emitter(rocks).emitter(sparks).build());
+        assertEquals(0, CgVfxSystemDefinition.sourceOf(d.name(), d.emitters(), 1));
+
+        CgVfxEmitter quiet = CgVfxEmitter.builder("rocks").build();
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> CgVfxSystemDefinition.of(
+                "mymod:sparks", CgVfxLook.builder(CgVfxSystemDefinition.SCHEMA).emitter(quiet).emitter(sparks).build()));
+        assertTrue(e.getMessage(), e.getMessage().contains("publishes(true)"));
     }
 }

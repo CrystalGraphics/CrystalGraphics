@@ -2,7 +2,8 @@
 // (a pool's event, CgVfxEvent.maxPerFrame: Unreal's MaxEventsPerFrame), CgGpuOps.sort orders the rows by it, and Runs
 // marks where each region's run starts and ends, and Gather copies the rows in that order. A child reads its region's
 // first rows, as many as its cap: one buffer fewer than reading through the order, for a lowered Step's 16. No atomic
-// answers a value, so every tier runs it, as the neighbour grid's.
+// answers a value, so every tier runs it, as the neighbour grid's. A tier's published particles take the same path,
+// keyed by their slot, and a reader picks among its source slot's run (CgVfxSpawnFrom).
 #pragma kernel Keys map
 #pragma kernel Runs scatter
 #pragma kernel Gather map

@@ -197,7 +197,17 @@ final class CgVfxGpuSteps {
     void admit(CgVfxEmitterInstance instance, Object owner) {
         if (byInstance.containsKey(instance)) return;
         int alive = instance.emitter().peakAlive();
-        admitChildren(add(instance, alive, null, owner, 0), alive, owner);
+        CgVfxEmitterInstance source = instance.source();
+        if (source == null) {
+            admitChildren(add(instance, alive, null, owner, 0), alive, owner);
+            return;
+        }
+        // A reader steps the tier after its source, which publishes its particles: admitted first.
+        admit(source, owner);
+        Tenant from = byInstance.get(source);
+        Tenant reader = add(instance, alive, null, owner, from.pool.shape().tier() + 1);
+        reader.pool.readFrom(reader.slot, from.pool, from.slot);
+        admitChildren(reader, alive, owner);
     }
 
     private void admitChildren(Tenant tenant, int alive, Object owner) {

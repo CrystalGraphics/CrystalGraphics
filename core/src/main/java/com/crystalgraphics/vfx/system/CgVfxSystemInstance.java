@@ -94,6 +94,10 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
             made[i] = new CgVfxEmitterInstance(kinds.get(i), seed + i * 0.137f);
             made[i].start(0f, 0f, 0f);
         }
+        // A reader born on its sibling's particles, which its definition checked.
+        for (int i = 0; i < made.length; i++) {
+            if (kinds.get(i).spawnFrom() != null) made[i].bornOn(made[CgVfxSystemDefinition.sourceOf(d.name(), kinds, i)]);
+        }
         return made;
     }
 

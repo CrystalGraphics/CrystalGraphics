@@ -111,6 +111,9 @@ public final class CgVfxEmitterInstance {
     private float lastDeath = -1f, stepDt, stepTime;
     /** By event index: the instance its children run in; null where it spawns none. */
     private final CgVfxEmitterInstance[] children;
+    /** The instance whose particles its own are born on ({@code CgVfxSpawnFrom}), or null. */
+    @Nullable
+    private CgVfxEmitterInstance source;
     /** A child's: the event that feeds it. */
     private CgVfxEvent feed;
 
@@ -617,6 +620,28 @@ public final class CgVfxEmitterInstance {
     public CgVfxEmitterInstance drawn(boolean drawn) {
         this.drawn = drawn;
         return this;
+    }
+
+    /**
+     * Births its particles on {@code source}'s, the instance of its system that plays its {@code spawn_from_emitter}'s
+     * source: what its system sets as it makes its emitters.
+     *
+     * <pre>{@code
+     * sparks.bornOn(rocks);   // sparks' definition reads rocks' particles
+     * }</pre>
+     */
+    public CgVfxEmitterInstance bornOn(@Nullable CgVfxEmitterInstance source) {
+        if (source != null && emitter.spawnFrom() == null) {
+            throw new IllegalArgumentException(emitter.name() + " reads no other emitter's particles");
+        }
+        this.source = source;
+        return this;
+    }
+
+    /** The instance its particles are born on, or null. */
+    @Nullable
+    public CgVfxEmitterInstance source() {
+        return source;
     }
 
     /** The instance event {@code e}'s children run in, or null where it spawns none. */

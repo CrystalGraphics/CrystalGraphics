@@ -42,6 +42,7 @@ import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxInactiveResponse;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxLoopBehavior;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnPerUnit;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnRate;
 
@@ -133,7 +134,9 @@ public final class CgVfxEmitterAssets {
         }
         spawn.add(entry(e.id("init"), "initialize_particle", init));
         Map<String, Object> shape = shape(e);
+        if (e.spawnFrom != null && e.spawnFrom.placeAfter()) spawn.add(spawnFromEntry(e));
         if (shape != null) spawn.add(entry(e.id("shape"), "shape_location", shape));
+        if (e.spawnFrom != null && !e.spawnFrom.placeAfter()) spawn.add(spawnFromEntry(e));
         if (e.meshRotation != null) {
             CgVfxMeshRotation r = e.meshRotation;
             Map<String, Object> turn = map("mode", "none", "rotation", written(e, CgVfxSpawnInput.MESH_ORIENTATION,
@@ -422,7 +425,8 @@ public final class CgVfxEmitterAssets {
             }
         }
         List<Map<?, ?>> beamEnds = new ArrayList<>();
-        for (Map<?, ?> entry : entries(tree, "particle_spawn")) {
+        List<Map<?, ?>> spawnStack = entries(tree, "particle_spawn");
+        for (Map<?, ?> entry : spawnStack) {
             if (Boolean.FALSE.equals(entry.get("enabled"))) continue;
             Map<?, ?> in = inputs(entry);
             switch (moduleId(entry)) {
@@ -432,6 +436,7 @@ public final class CgVfxEmitterAssets {
                 case "shape_location" -> shape(name, b, in, spawnId(b, entry, "shape"));
                 case "socket_location" -> sockets(name, b, in, spawnId(b, entry, "socket"));
                 case "initial_mesh_orientation" -> meshOrientation(name, b, in, spawnId(b, entry, "orientation"));
+                case "spawn_from_emitter" -> spawnFrom(name, b, in, spawnStack, entry);
                 case "generate_event" -> {
                     b.id("generate_event_" + generators, idOf(entry, "generate_event_" + generators++));
                     generateEvent(name, in, b);
@@ -639,6 +644,38 @@ public final class CgVfxEmitterAssets {
             return true;
         }
         throw new IllegalArgumentException(name + ": scalability " + scalability + " is not read yet: the Low tier's half alone");
+    }
+
+    /**
+     * {@code spawn_from_emitter}: Cascade's LocationEmitter ({@code ParticleModules_Location.cpp:419-553}), its source a
+     * handle its system resolves. A shape later in the stack offsets the place, as Cascade's later location modules add
+     * to it; one before is replaced. LocationEmitterDirect ({@code follow}) fails by name until it is built.
+     */
+    private static void spawnFrom(String name, CgVfxEmitter.Builder b, Map<?, ?> in, List<Map<?, ?>> stack, Map<?, ?> entry) {
+        if (Boolean.TRUE.equals(in.get("follow"))) {
+            throw new IllegalArgumentException(name + ": spawn_from_emitter's follow (Cascade's LocationEmitterDirect) is not built yet");
+        }
+        if (!(in.get("source") instanceof String source) || source.isEmpty()) {
+            throw new IllegalArgumentException(name + ": spawn_from_emitter names no source");
+        }
+        boolean after = false;
+        for (int i = stack.indexOf(entry) + 1; i < stack.size(); i++) {
+            Map<?, ?> later = stack.get(i);
+            if (!Boolean.FALSE.equals(later.get("enabled")) && moduleId(later).equals("shape_location")) after = true;
+        }
+        CgVfxSpawnFrom.Selection selection = "sequential".equals(in.get("selection"))
+                ? CgVfxSpawnFrom.Selection.SEQUENTIAL : CgVfxSpawnFrom.Selection.RANDOM;
+        b.id("spawn_from", idOf(entry, "spawn_from"));
+        b.spawnFrom(CgVfxSpawnFrom.of(source, selection).inherit(numOr(in.get("inherit_velocity"), 0f),
+                numOr(in.get("inherit_rotation"), 0f)).placedAfter(after));
+    }
+
+    /** {@code e}'s spawn read as a file writes it. */
+    private static Map<String, Object> spawnFromEntry(CgVfxEmitter e) {
+        CgVfxSpawnFrom f = e.spawnFrom;
+        return entry(e.id("spawn_from"), "spawn_from_emitter", map("source", f.source(),
+                "selection", f.selection().name().toLowerCase(Locale.ROOT), "inherit_velocity", (double) f.inheritVelocity(),
+                "inherit_rotation", (double) f.inheritRotation()));
     }
 
     /**

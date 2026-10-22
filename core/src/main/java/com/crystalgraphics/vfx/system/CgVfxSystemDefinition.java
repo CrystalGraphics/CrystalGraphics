@@ -64,7 +64,25 @@ public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfx
         if (name == null || name.isEmpty()) throw new IllegalArgumentException("a system needs a name");
         if (look == null) throw new IllegalArgumentException(name + " needs a look");
         emitters = List.copyOf(emitters);
+        for (int i = 0; i < emitters.size(); i++) {
+            if (emitters.get(i).spawnFrom() != null) sourceOf(name, emitters, i);
+        }
         if (poolPrimeSize < 0 || maxPoolSize < 0) throw new IllegalArgumentException(name + ": a pool size is negative");
+    }
+
+    /**
+     * Where emitter {@code reader}'s source is among {@code emitters}: the place its file resolved, else the emitter of
+     * its source's name. Fails naming a source it lacks, the reader itself, or one that does not publish.
+     */
+    static int sourceOf(String system, List<CgVfxEmitter> emitters, int reader) {
+        CgVfxEmitter e = emitters.get(reader);
+        String source = e.spawnFrom().source();
+        int at = e.spawnFrom().sourceIndex();
+        for (int i = 0; at < 0 && i < emitters.size(); i++) if (emitters.get(i).name().equals(source)) at = i;
+        String why = at < 0 || at >= emitters.size() ? "no emitter of the system" : at == reader ? "itself"
+                : !emitters.get(at).publishes() ? "which does not publish: build it with publishes(true)" : null;
+        if (why != null) throw new IllegalArgumentException(system + ": " + e.name() + " is born on " + source + ", " + why);
+        return at;
     }
 
     /** With Unreal's pool sizes ({@link #POOL_PRIME_SIZE}, {@link #MAX_POOL_SIZE}). */

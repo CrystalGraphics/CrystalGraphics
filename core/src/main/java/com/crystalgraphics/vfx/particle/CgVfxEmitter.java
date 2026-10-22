@@ -22,6 +22,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxDataInterfaces;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnPerUnit;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnRate;
 import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
@@ -144,6 +145,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final List<CgVfxLifeBind> lifeBinds;
     /** The events it raises, its {@code generate_event} entries: what a handler's name and trigger are matched against. */
     final List<CgVfxEventGenerator> generators;
+    /** Where its particles are born on another emitter's, or null. */
+    @Nullable
+    final CgVfxSpawnFrom spawnFrom;
+    /** Whether another emitter is born on its particles. */
+    final boolean publishes;
     private final float sweptOut;
     /** Whether its lifetime is a form: the books then book every particle at its longest. */
     final boolean lifeFormed;
@@ -226,6 +232,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         lifeRolls = List.copyOf(b.lifeRolls);
         lifeBinds = List.copyOf(b.lifeBinds);
         generators = List.copyOf(b.generators);
+        spawnFrom = b.spawnFrom;
+        publishes = b.publishes;
         speedMin = b.speedMin;
         speedMax = Math.max(b.speedMax, high(CgVfxSpawnInput.SPEED, b.speedMax));
         lifeMin = b.lifeMin;
@@ -548,6 +556,17 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
      * The events it raises ({@link CgVfxEventGenerator}): its system puts a handler's event on it when one matches the
      * handler's trigger and name.
      */
+    @Override
+    @Nullable
+    public CgVfxSpawnFrom spawnFrom() {
+        return spawnFrom;
+    }
+
+    @Override
+    public boolean publishes() {
+        return publishes;
+    }
+
     public List<CgVfxEventGenerator> generators() {
         return generators;
     }
@@ -774,6 +793,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private final List<CgVfxLifeRoll> lifeRolls = new ArrayList<>();
         private final List<CgVfxLifeBind> lifeBinds = new ArrayList<>();
         private final List<CgVfxEventGenerator> generators = new ArrayList<>();
+        @Nullable
+        private CgVfxSpawnFrom spawnFrom;
+        private boolean publishes;
         private final Map<String, String> ids = new HashMap<>();
         private final List<String> burstIds = new ArrayList<>();
         private final List<String> moduleIds = new ArrayList<>();
@@ -832,6 +854,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             lifeRolls.addAll(e.lifeRolls);
             lifeBinds.addAll(e.lifeBinds);
             generators.addAll(e.generators);
+            spawnFrom = e.spawnFrom;
+            publishes = e.publishes;
             speedMin = e.speedMin;
             speedMax = e.speedMax;
             lifeMin = e.lifeMin;
@@ -1118,6 +1142,24 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         /** Its size or colour over life multiplied by a range rolled anew each step ({@link CgVfxLifeRoll}), with any others. */
         public Builder lifeRoll(CgVfxLifeRoll roll) {
             lifeRolls.add(roll);
+            return this;
+        }
+
+        /**
+         * Its particles born on another emitter's of its system ({@link CgVfxSpawnFrom}): a system file's
+         * {@code spawn_from_emitter}, resolved by its system.
+         */
+        public Builder spawnFrom(@Nullable CgVfxSpawnFrom from) {
+            spawnFrom = from;
+            return this;
+        }
+
+        /**
+         * Whether another emitter of its system is born on its particles ({@link #spawnFrom}): a system file sets it on
+         * the source its readers name; in Java, set it on the source.
+         */
+        public Builder publishes(boolean publishing) {
+            publishes = publishing;
             return this;
         }
 

@@ -426,6 +426,48 @@ emitters:
 - **`first_time_only`** on a collision `generate_event` fires once a particle, at its first contact.
 - **A spawn that comes back to its own source** fails at load, naming the loop.
 
+## Born on another emitter's particles
+
+An emitter can take its new particles' places from another emitter's live particles, as Cascade's Emitter Initial
+Location does: sparks shed by flying rocks, embers along a ribbon of fire. Each new particle is born where one of the
+source's particles is this step, picked at random or in turn, and may take a share of its velocity and spin.
+
+```yaml
+emitters:
+  - id: rocks
+    emitter: { ... }
+  - id: sparks
+    emitter:
+      particle_spawn:
+        - { id: s1, module: crystalgraphics:spawn_from_emitter, inputs: { source: rocks, selection: random, inherit_velocity: 0.5 } }
+```
+
+In Java the reader names its source's emitter, and the source is built to publish its particles:
+
+```java
+CgVfxEmitter rocks = CgVfxEmitter.builder("rocks").rate(8f).speed(4f, 6f).publishes(true).build();
+CgVfxEmitter sparks = CgVfxEmitter.builder("sparks").rate(120f).life(0.3f, 0.5f)
+        .spawnFrom(CgVfxSpawnFrom.of("rocks", CgVfxSpawnFrom.Selection.RANDOM).inherit(0.5f, 0f))
+        .build();
+CgVfxLook look = CgVfxLook.builder(CgVfxSystemDefinition.SCHEMA).emitter(rocks).emitter(sparks).build();
+```
+
+| Input | Means |
+|---|---|
+| `source` | the handle, or in Java the emitter's name, of the same system |
+| `selection` | `random`, or `sequential`: each new particle the next of the source's in turn |
+| `inherit_velocity`, `inherit_rotation` | the share of the source particle's velocity and spin it takes |
+
+- **The place replaces its shape's**, unless a `shape_location` comes after it in the stack: then the shape's offset
+  is added to it.
+- **A source with no live particle** leaves each new one where its own shape put it.
+- **`sequential` walks the source's particles in the order the GPU wrote them**, which changes as they die, so which
+  one comes next is not fixed from run to run.
+- **A reader steps after its source**, so a chain of readers is at most two deep. A source that is no emitter of the
+  system, the reader itself, a deeper chain or a loop fails at load, naming it. In Java, a source not built with
+  `publishes(true)` fails the same way.
+- `follow` (a particle that keeps moving with its source) is refused at load.
+
 ## Beams: a strip from a source to a target
 
 A beam emitter draws each particle as a strip from its source to its target: lightning, a tether, a laser. Its

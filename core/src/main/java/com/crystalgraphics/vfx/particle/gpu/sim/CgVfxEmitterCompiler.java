@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.particle.gpu.sim;
 
 import com.crystalgraphics.vfx.particle.form.CgVfxCurveBlock;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
 import java.util.Locale;
 import com.crystalgraphics.compute.CgCompute;
@@ -310,6 +311,7 @@ public final class CgVfxEmitterCompiler {
                     _ChildMax   ("Children an event spawns at most", int)  = 0
                     _Feeds      ("Feed rows",                        int)  = 0
                 """);
+        if (shape.publishes()) s.append("    _BinKeyBase (\"This pool's first published slot in its tier\", int) = 0\n");
         for (CgVfxDataInterface di : shape.dataInterfaces()) s.append(di.properties());
         for (int i = 0; i < shape.modules(); i++) {
             for (int t = 0; t < shape.textureCount(i); t++) {
@@ -338,6 +340,14 @@ public final class CgVfxEmitterCompiler {
         if (shape.reports()) s.append("    REPORT_EVENTS (\"Events the CPU hears\",       FxEvent, append)\n");
         for (CgVfxDataInterface di : shape.dataInterfaces()) s.append(di.buffers());
         if (shape.readsClips()) s.append("    FX_CLIPS      (\"Baked clips\", vec4, readonly)\n");
+        if (shape.publishes()) {
+            s.append("    PUBLISHED     (\"Live particles, keyed by slot, for the tier after to be born on\", FxEvent, append)\n");
+        }
+        if (shape.spawnFrom() != null) {
+            s.append("    SOURCE_ROWS   (\"The tier before's published particles, sorted by slot\", FxEvent, readonly)\n");
+            s.append("    SOURCE_RUNS   (\"Each published slot's first sorted row, then its end\", uint, readonly)\n");
+            s.append("    READS         (\"Each slot's source: its published slot, inherited velocity and spin\", uvec4, readonly)\n");
+        }
         if (shape.tier() > 0) {
             s.append("    PARENT_EVENTS  (\"This step's parents' events, sorted by region\",      FxEvent, readonly)\n");
             s.append("    PARENT_RUNS    (\"Each region's first sorted row, then its end\",       uint,    readonly)\n");
@@ -669,7 +679,7 @@ public final class CgVfxEmitterCompiler {
                     if (!step_launch(seed, k, row, inst, mix(from.xyz, to.xyz, along), vec3(0.0, 1.0, 0.0), step_instance(inst + 7),
                             @FRONT@, loop, p)) return false;
                     p.velocity += step_vector(row, inst, 2).z * (to.xyz - from.xyz) / when.w;
-                    p.id = k;
+@READ@                    p.id = k;
                     p.slot = slot;
                     return true;
                 }
@@ -678,6 +688,7 @@ public final class CgVfxEmitterCompiler {
                 .replace("@LIFE@", spawnValue(shape, CgVfxSpawnInput.LIFETIME, "s0.z", "s0.z + (s0.w - s0.z) * " + roll(CgVfxGpuEmitter.KEY_LIFE), ""))
                 .replace("@SIZE@", spawnValue(shape, CgVfxSpawnInput.SPRITE_SIZE, "s1.x", "s1.x + (s1.y - s1.x) * " + roll(CgVfxGpuEmitter.KEY_SIZE), ""))
                 .replace("@FRONT@", front(shape))
+                .replace("@READ@", read(shape))
                 .replace("@SOCKETS@", sockets(shape))
                 .replace("@CONE@", spawnValue(shape, CgVfxSpawnInput.CONE_ANGLE, null, "s4.y", "0.5 * "))
                 .replace("@OFFSET@", spawnValue(shape, CgVfxSpawnInput.OFFSET, null, "step_vector(row, inst, 9).xyz", ""))
@@ -930,8 +941,12 @@ public final class CgVfxEmitterCompiler {
                         return;
                     }
                     OUT_APPEND(step_pack(p, paramRow));
-                }
+@PUBLISH@                }
                 """);
+        int publishAt = s.indexOf("@PUBLISH@");
+        s.replace(publishAt, publishAt + "@PUBLISH@".length(), !shape.publishes() ? ""
+                : "    PUBLISHED_APPEND(FxEvent(vec4(p.position, uintBitsToFloat(uint(_BinKeyBase + int(p.slot)))),\n"
+                + "            vec4(p.velocity, p.spin), vec4(0.0), ivec4(0), uvec4(0u)));\n");
         int burstsAt = s.indexOf("@BURSTS@");
         s.replace(burstsAt, burstsAt + "@BURSTS@".length(), bursts.toString());
         String out = s.toString();
@@ -1077,6 +1092,37 @@ public final class CgVfxEmitterCompiler {
             s.append(k > 0 ? ", " : "").append(formExpr(shape.spawnLayout(f), form, Math.min(k, form.components() - 1), first, "seed", "k", "loop"));
         }
         return s.append(')').toString();
+    }
+
+    /**
+     * A reader's birth on its source's particles ({@link CgVfxShape#spawnFrom}): Cascade's LocationEmitter
+     * ({@code ParticleModules_Location.cpp:449-553}), one of its source slot's published particles (its run of the sorted
+     * rows) picked at random or in turn; its place for the emitter's, plus the shape's offset where the shape comes after; a share of its velocity
+     * and spin. With none published the new particle stays where its emitter put it, as Cascade's finds none to copy.
+     */
+    private static String read(CgVfxShape shape) {
+        CgVfxSpawnFrom from = shape.spawnFrom();
+        if (from == null) return "";
+        String pick = from.selection() == CgVfxSpawnFrom.Selection.RANDOM
+                ? "min(uint(fx_rand(seed ^ 0x53524345u, k, 0u) * float(count)), count - 1u)" : "(k + 1u) % count";
+        String place = from.placeAfter() ? "b.position.xyz + (p.position - mix(from.xyz, to.xyz, along))" : "b.position.xyz";
+        return """
+                                    {
+                                        uvec4 rd = READS(int(slot));
+                                        uint first = 0u, count = 0u;
+                                        if (rd.x != 0xFFFFFFFFu) {
+                                            first = SOURCE_RUNS(int(rd.x) * 2);
+                                            count = SOURCE_RUNS(int(rd.x) * 2 + 1) - first;
+                                        }
+                                        if (count > 0u) {
+                                            FxEvent b = SOURCE_ROWS(int(first + @PICK@));
+                                            p.position = @PLACE@;
+                                            p.previous = p.position;
+                                            p.velocity += b.velocityAge.xyz * uintBitsToFloat(rd.z);
+                                            p.spin += b.velocityAge.w * uintBitsToFloat(rd.w);
+                                        }
+                                    }
+                """.replace("@PICK@", pick).replace("@PLACE@", place);
     }
 
     /** A colour start's form as a vec4: an rgb form's alpha -1, which the Look stage takes from the row's starts. */

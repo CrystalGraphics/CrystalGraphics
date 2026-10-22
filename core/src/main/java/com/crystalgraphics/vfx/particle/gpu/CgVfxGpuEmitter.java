@@ -6,6 +6,7 @@ import com.crystalgraphics.vfx.particle.CgVfxLifeRoll;
 import com.crystalgraphics.vfx.particle.CgVfxMeshRotation;
 import com.crystalgraphics.vfx.particle.CgVfxSockets;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 
 import javax.annotation.Nullable;
@@ -152,6 +153,17 @@ public interface CgVfxGpuEmitter {
      */
     default List<CgVfxEvent> events() {
         return List.of();
+    }
+
+    /** Another emitter of its system whose live particles its own are born on ({@link CgVfxSpawnFrom}), or null. */
+    @Nullable
+    default CgVfxSpawnFrom spawnFrom() {
+        return null;
+    }
+
+    /** Whether another emitter of its system is born on its particles: its steps then publish them, a slot at a time. */
+    default boolean publishes() {
+        return false;
     }
 
     /**
