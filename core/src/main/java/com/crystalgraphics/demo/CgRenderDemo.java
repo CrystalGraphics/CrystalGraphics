@@ -65,6 +65,7 @@ import java.util.function.Supplier;
  * modules   CgVfxModules: X6's particle modules, a station each
  * blast     CgVfxBlastFlash: one wave at a time bursting on the ground, for its flash and impact frame
  * collision CgCollisionDemo: every collision shape, a cast, rays and a hitbox against the world, as debug lines
+ * lights    CgLightsDemo: point, spot and tube lights and particle lights moving over the ground; best at night
  *
  * H    the HUD on or off
  * N    the next scene, placed ahead of the camera; Shift+N the previous one
@@ -106,7 +107,8 @@ public final class CgRenderDemo {
     private static final Logger LOGGER = LogManager.getLogger("CgRenderDemo");
 
     private static final String MODE = CgVar.text("crystalgraphics.demo", "", CgVar.DEV | CgVar.RESTART,
-            "false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision) starts on it; empty on"
+            "false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision, lights) starts on it;"
+                    + " empty on"
                     + " blasts.").get();
     private static final boolean ENABLED = !"false".equals(MODE);
     private static final boolean SKY = CgVar.bool("crystalgraphics.demo.sky", true, CgVar.DEV | CgVar.RESTART,
@@ -163,6 +165,7 @@ public final class CgRenderDemo {
             new Kind("fluid", 90, this::fluid),
             new Kind("blasts", (int) CgVfxBlasts.REACH + 10, this::blasts),
             new Kind("collision", 24, this::collision),
+            new Kind("lights", 20, this::lights),
     };
 
     private boolean installed;
@@ -467,6 +470,36 @@ public final class CgRenderDemo {
             @Override
             public void delete() {
                 demo.clear();
+            }
+        };
+    }
+
+    private Scene lights() {
+        CgLightsDemo lights = new CgLightsDemo(VFX);
+        return new Scene() {
+            @Override
+            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
+                lights.submit(world, x, y, z, seconds);
+            }
+
+            @Override
+            public void prepare() {
+                lights.prepare();
+            }
+
+            @Override
+            public boolean warmed() {
+                return lights.warmed();
+            }
+
+            @Override
+            public void clear() {
+                lights.clear();
+            }
+
+            @Override
+            public void delete() {
+                lights.delete();
             }
         };
     }

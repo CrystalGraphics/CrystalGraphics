@@ -65,6 +65,9 @@ public final class CgVfxShowcase {
             {1.5f, 0.7f, 0.25f, 0.5f}, {0.5f, 0.4f, 1.4f, 0.5f}, {0.3f, 0.6f, 1.6f, 0.6f}, {0.2f, 0.9f, 1.6f, 0.6f},
     };
 
+    /** Blocks a glowing sphere's world light reaches. */
+    private static final float LIGHT_RADIUS = 6f;
+
     /** How far each sphere's glow reaches, as a multiple of its radius. */
     private static final float[] GLOW_REACH = {
             1f, 1f, 1f, 1f, 1.35f, 1f, 1.5f, 1.45f, 1.75f, 1.7f, 1.6f, 2.1f, 1.7f, 1.55f, 1.5f, 1.5f,
@@ -267,9 +270,13 @@ public final class CgVfxShowcase {
                 world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).layer(CgSortLayer.EFFECTS).submit();
             }
             float strength = GLOW[k][3];
-            // The black hole has no ball to glow round: its disk lights the floor alone.
-            if (strength <= 0f || k == BLACK_HOLE) continue;
+            if (strength <= 0f) continue;
             strength *= k == STORM ? 0.55f + 0.9f * flicker(seconds, k) : 0.85f + 0.15f * (float) Math.sin(seconds * 2.3 + k);
+            // Each glowing sphere lights the world round it, about its strength on the ground below.
+            float light = strength * above * above;
+            world.lights().addLinear(cx, cy, cz, LIGHT_RADIUS, GLOW[k][0] * light, GLOW[k][1] * light, GLOW[k][2] * light, 0f);
+            // The black hole has no ball to glow round: its disk lights the floor alone.
+            if (k == BLACK_HOLE) continue;
             transform.identity().scale(GLOW_REACH[k]);
             world.draw(sphere, glow).at(cx, cy, cz).transform(transform)
                     .custom(1, GLOW[k][0], GLOW[k][1], GLOW[k][2], strength)
