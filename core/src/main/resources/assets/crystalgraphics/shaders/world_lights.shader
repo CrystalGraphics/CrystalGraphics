@@ -2,7 +2,7 @@
 // (DeferredLightingCommon.ush's GetSimpleDynamicLighting, its diffuse half): colour × attenuation × N·L × albedo / π.
 // Minecraft keeps neither albedo nor normals, so both are rebuilt. The surface and its normal come from depth, the
 // normal from whichever neighbour each way is the nearer step, so a block's edge does not bend it (Wicked Engine's
-// improved normal reconstruction, MIT). The albedo is the scene's colour over the lightmap Minecraft lit it by, read
+// improved normal reconstruction, MIT), held to a world axis near one, as Minecraft's blocks are. The albedo is the scene's colour over the lightmap Minecraft lit it by, read
 // at the light's own block (CgWorldLights' ambient): what the light adds is scene × light / lightmap, which the blend
 // does, so a light reads as strong at night as by day. Specular is left out: Minecraft has no roughness to give it.
 #type none
@@ -72,6 +72,16 @@ Pass {
         // No plane where the neighbours give none (the sky's far plane): face the eye.
         n = dot(n, n) > 1.0e-20 ? n * inversesqrt(dot(n, n)) : normalize(-p);
         if (dot(n, p) > 0.0) n = -n;
+        // Minecraft's terrain is axis-aligned: a normal within 10 degrees of a world axis is that axis. Depth's precision
+        // tilts a rebuilt normal row to row on far grazing ground, which a low light's N.L turns into stripes.
+        vec3 world = vec3(dot(vec3(_ToView0.x, _ToView1.x, _ToView2.x), n), dot(vec3(_ToView0.y, _ToView1.y, _ToView2.y), n),
+                dot(vec3(_ToView0.z, _ToView1.z, _ToView2.z), n));
+        vec3 size = abs(world);
+        float most = max(size.x, max(size.y, size.z));
+        if (most > 0.985) {
+            world = sign(world) * step(vec3(most), size);
+            n = vec3(dot(_ToView0.xyz, world), dot(_ToView1.xyz, world), dot(_ToView2.xyz, world));
+        }
         ivec3 cell = cg_light_cell(p, _ZParams.xyz, _Rays.xy, _Rays.zw, _Tile.xy, ivec2(_Grid.xy));
         int e = (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;
         int count = int(CELLS(e * 2)), from = int(CELLS(e * 2 + 1));

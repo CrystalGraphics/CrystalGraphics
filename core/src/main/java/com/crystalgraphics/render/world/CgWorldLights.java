@@ -643,7 +643,9 @@ public final class CgWorldLights {
         CgPipeline pipeline = apply.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         CgRasterPass add = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED)
-                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT).timed(GPU_APPLY);
+                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
+                // What the scene was lit by, divided out to find its albedo: unbound, it reads white and divides by 1.
+                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_APPLY);
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(pipeline, apply.captureBindings(recording.bindings()), FULLSCREEN);
         chunks.instance();
