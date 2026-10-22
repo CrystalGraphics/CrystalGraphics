@@ -167,17 +167,25 @@ public final class CgWorldLights {
     static final String SAMPLE_SHADER = "crystalgraphics:shaders/world_lights_sample.shader",
             SHADE_SHADER = "crystalgraphics:shaders/world_lights_shade.shader",
             TEMPORAL_SHADER = "crystalgraphics:shaders/world_lights_temporal.shader",
-            DENOISE_SHADER = "crystalgraphics:shaders/world_lights_denoise.shader";
+            DENOISE_SHADER = "crystalgraphics:shaders/world_lights_denoise.shader",
+            HOST_DEPTH_SHADER = "crystalgraphics:shaders/world_lights_host_depth.shader";
     private static final int GPU_SAMPLE = CgGpuTrace.name("world.lightsSample"), GPU_SHADE = CgGpuTrace.name("world.lightsShade"),
-            GPU_TEMPORAL = CgGpuTrace.name("world.lightsTemporal"), GPU_DENOISE = CgGpuTrace.name("world.lightsDenoise");
-    /** A sample's light index, exact as a float to 2^24, and its weight. */
+            GPU_TEMPORAL = CgGpuTrace.name("world.lightsTemporal"), GPU_DENOISE = CgGpuTrace.name("world.lightsDenoise"),
+            GPU_HOST_DEPTH = CgGpuTrace.name("world.lightsHostDepth");
+    /** A sample's light index, exact as a float to 2^24, its weight, and the sun's visibility. */
     private static final CgFrameBufferFormat SAMPLES_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.samples")
-            .color(0, CgTextureType.RG32F).build();
+            .color(0, CgTextureType.RGBA32F).build();
+    /** The lighting, alpha where valid; the sun's visibility. */
     private static final CgFrameBufferFormat LIGHTING_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.lighting")
-            .color(0, CgTextureType.RGBA16F).build();
-    /** The accumulated lighting and its frames; its luminance's moments, eye depth and confidence. */
-    private static final CgFrameBufferFormat HISTORY_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.history")
             .color(0, CgTextureType.RGBA16F).color(1, CgTextureType.RGBA16F).build();
+    /** The accumulated lighting and its frames; its luminance's moments, eye depth and confidence; the sun's visibility. */
+    private static final CgFrameBufferFormat HISTORY_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.history")
+            .color(0, CgTextureType.RGBA16F).color(1, CgTextureType.RGBA16F).color(2, CgTextureType.R16F).build();
+    /** The host's window depth before our opaque draws. */
+    private static final CgFrameBufferFormat HOST_DEPTH_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.host-depth")
+            .color(0, CgTextureType.R32F).build();
+    /** Unreal's default LightSourceAngle for a directional light, 0.5357 degrees: the tangent of half of it. */
+    private static final float SUN_DISC = (float) Math.tan(Math.toRadians(0.5357 / 2));
     private static final CgLoad CLEAR = CgLoad.clear(0f, 0f, 0f, 0f);
     private static final int GPU_ZONE = CgGpuTrace.name("world.lights");
     private static final int GPU_COARSE = CgGpuTrace.name("world.lightsCoarse");
@@ -224,6 +232,16 @@ public final class CgWorldLights {
     /** Unreal's r.MegaLights.Spatial.KernelRadius, in pixels; 0 filters nothing. */
     private static final CgVar.Num SPATIAL_RADIUS = CgVar.number("crystalgraphics.world.lightsShadowSpatial", 8f, 0f, 32f,
             CgVar.DEV, "Pixels the shadowed lighting is filtered across where it is still noisy; 0 for none.");
+    /** The sun's shadows: our objects cast them on everything, and receive them from everything. */
+    private static final CgVar.Bool SUN = CgVar.bool("crystalgraphics.world.sunShadows", true, CgVar.DEV,
+            "The sun is withheld from our objects by blocks, entities and each other, and from Minecraft's world by our"
+                    + " objects.");
+    /** How much of Minecraft's sky light is the sun's own: what a shadow of it takes away. */
+    private static final CgVar.Num SUN_SHARE = CgVar.number("crystalgraphics.world.sunShare", 0.6f, 0f, 1f, CgVar.DEV,
+            "The sun's direct share of a full day's sky light: how dark its shadow is. 0 casts none.");
+    /** How far a sun ray from Minecraft's world is followed across the screen for one of our objects. */
+    private static final CgVar.Num SUN_TRACE = CgVar.number("crystalgraphics.world.sunScreenTrace", 24f, 0f, 128f,
+            CgVar.DEV, "Blocks a sun ray from Minecraft's world is followed across the screen: our objects' longest shadow.");
     /** Unreal's r.Forward.LightGridHZBCull. */
     private static final CgVar.Bool HZB = CgVar.bool("crystalgraphics.world.lightsHzb", true, CgVar.DEV,
             "The light grid skips cells behind the scene and pulls each cell's far edge in to it.");
@@ -235,14 +253,21 @@ public final class CgWorldLights {
     private float targetW, targetH;
     private CgGraphTexture samples, shaded, filtered, scratchHistory, history, accumulated;
     private long historyMade = -1;
-    private boolean shadowsOn, freshHistory;
-    private CgGraphBuffer noEntities;
+    private boolean shadowsOn, freshHistory, binned, sunOn;
+    /** Zeros: the light list, cells and entities when none were made this firing. */
+    private CgGraphBuffer zeroes;
+    private CgGraphTexture hostDepth;
+    private long hostDepthFrame = -1;
+    private CgMaterial hostDepthCopy;
+    private final float[] sunDirection = new float[3];
     private final float[] eyeFrac = new float[3];
     private final int[] eyeBlock = new int[3];
     private final Consumer<CgShaderBindings> sampleValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, 0f, 0f)
             .vec4("_Trace", SCREEN_TRACE.get(), 24f, 0.02f, 0.005f).set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1])
             .set1i("_EyeZ", eyeBlock[2]).vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f)
-            .set1i("_Entities", this.entities));
+            .set1i("_Entities", this.entities).vec4("_Sun", this.sunOn ? 1f : 0f, SUN_TRACE.get(), 24f, SUN_DISC)
+            .set1f("_Own", this.ownPixels() ? 1f : 0f)
+            .sampler("_HostDepth", 3, this.ownPixels() ? this.hostDepth : CgFallbackTextures.WHITE_1x1));
     private final Consumer<CgShaderBindings> windowValues = b -> CgWorldVoxelWindow.get().bind(b, 0);
     private int entities;
     private final Consumer<CgShaderBindings> shadeValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, 0f, 0f)
@@ -250,13 +275,21 @@ public final class CgWorldLights {
     private final Consumer<CgShaderBindings> temporalValues = b -> this.gridValues.accept(b.vec4("_Eye", eye.x, eye.y, eye.z, 0f)
             .sampler("_Now", 0, shaded).sampler("_Last", 1, freshHistory ? shaded : history.previous())
             .sampler("_LastMoments", 2, freshHistory ? shaded : history.previous().attachment(1))
+            .sampler("_NowVis", 3, shaded.attachment(1))
+            .sampler("_LastVis", 4, freshHistory ? shaded.attachment(1) : history.previous().attachment(2))
             .set1f("_Fresh", freshHistory ? 1f : 0f)
             .vec4("_Frames", Math.min(4f, MAX_FRAMES.get()), MAX_FRAMES.get(), 1f, 0.03f));
     private final Consumer<CgShaderBindings> denoiseValues = b -> this.gridValues.accept(b.sampler("_Lighting", 0, accumulated)
-            .sampler("_Moments", 1, accumulated.attachment(1)).vec4("_Spatial", SPATIAL_RADIUS.get(), 4f, 10000f, 2f)
+            .sampler("_Moments", 1, accumulated.attachment(1)).sampler("_Vis", 2, accumulated.attachment(2))
+            .vec4("_Spatial", SPATIAL_RADIUS.get(), 4f, 10000f, 2f)
             .vec4("_Spread", 2f, 0.15f, MAX_FRAMES.get(), 0f));
     private final Consumer<CgShaderBindings> applyValues = b -> this.gridValues.accept(b.set1f("_Shadows", shadowsOn ? 1f : 0f)
-            .sampler("_Shadowed", 0, shadowsOn ? filtered : CgFallbackTextures.BLACK_1x1));
+            .sampler("_Shadowed", 0, shadowsOn ? filtered : CgFallbackTextures.BLACK_1x1)
+            .sampler("_Visibility", 1, shadowsOn ? filtered.attachment(1) : CgFallbackTextures.WHITE_1x1)
+            .vec4("_Sun", shadowsOn && sunOn ? 1f : 0f, SUN_SHARE.get(), 0f, 0f)
+            .set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1]).set1i("_EyeZ", eyeBlock[2])
+            .vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f));
+    private final Consumer<CgShaderBindings> applyWindow = b -> CgWorldVoxelWindow.get().bind(b, 2);
     /** The grid's values onto the apply material, read from the fields this firing set. */
     private final Consumer<CgShaderBindings> gridValues = b -> b.vec4("_Grid", gridX, gridY, SLICES, 0f)
             .vec4("_Tile", tileU, tileV, 0f, 0f).vec4("_ZParams", zParams[0], zParams[1], zParams[2], 0f)
@@ -520,12 +553,17 @@ public final class CgWorldLights {
         CgRecording recording = frame.recording();
         CgPassConstants stage = frame.constants();
         int cpu = addedFrame == CgFrameRing.frame() ? added : 0;
-        if (cpu == 0 && appenders.isEmpty()) return false;
         // The froxels' eye (CgWorldMedia's): the view's position plus where toWorld puts the eye.
         toWorld.transformPosition(eye.set(0f, 0f, 0f));
         cameraX = view.x() + eye.x;
         cameraY = view.y() + eye.y;
         cameraZ = view.z() + eye.z;
+        // The view, every firing: the sun's shadows need it with no light listed.
+        place(view.projection(), toWorld, targetWidth, targetHeight);
+        binned = false;
+        gridX = gridY = 1;
+        shadowedAdded = 0;
+        if (cpu == 0 && appenders.isEmpty()) return false;
         if (list == null) {
             list = CgGraphBuffer.persistent("cg_world_lights",
                     CgBufferDesc.of((long) CAPACITY * FLOATS * 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
@@ -538,9 +576,6 @@ public final class CgWorldLights {
                     CgBufferDesc.elements(4, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
         }
         listed = Math.min(cpu, CAPACITY);
-        shadowedAdded = 0;
-        targetW = targetWidth;
-        targetH = targetHeight;
         if (listed > 0) {
             staging.clear();
             for (int i = 0; i < listed; i++) {
@@ -592,6 +627,7 @@ public final class CgWorldLights {
         int gx = Math.max(1, (int) Math.ceil(targetWidth / TILE)), gy = Math.max(1, (int) Math.ceil(targetHeight / TILE));
         gridX = gx;
         gridY = gy;
+        binned = true;
         if (view == null) {
             CgCompute kernels = CgCompute.load(KERNELS);
             view = kernels.kernel("View");
@@ -642,28 +678,6 @@ public final class CgWorldLights {
             parentIndices = CgGraphBuffer.persistent("cg_world_lights.parent-indices",
                     CgBufferDesc.elements(parentBudget, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
         }
-        // GetLightGridZParams: slice = log2(z * B + O) * S, with the last slice's start at GRID_FAR.
-        double o = (GRID_FAR - GRID_NEAR * Math.pow(2, (SLICES - 1) / GRID_SPREAD)) / (GRID_FAR - GRID_NEAR);
-        zParams[0] = (float) ((1 - o) / GRID_NEAR);
-        zParams[1] = (float) o;
-        zParams[2] = GRID_SPREAD;
-        // The grid lives in the bobbed view: a host folding its camera's bob into the projection (Minecraft 1.17-1.21.5)
-        // keeps a pure perspective over it, so the rays and the depth come from that and the lights go through the bob.
-        splitPerspective(projection, perspective, bob);
-        host.set(projection);
-        perspective.invert(unproject);
-        for (int c = 0; c < 2; c++) {
-            float ndc = c == 0 ? -1f : 1f;
-            unproject.transform(corner.set(ndc, ndc, 0.5f, 1f));
-            float z = -corner.z / corner.w;
-            rays[c * 2] = corner.x / corner.w / z;
-            rays[c * 2 + 1] = corner.y / corner.w / z;
-        }
-        // The lights are placed from the eye, not the view's position: back to the view's, then into the view.
-        toWorld.invert(toView).translate(eye);
-        bob.mul(toView, toView);
-        tileU = TILE / targetWidth;
-        tileV = TILE / targetHeight;
         grid(pass.dispatch(view, CAPACITY).bind("LIGHTS", list).bind("COUNT", count).bind("VIEW", viewed)
                 .set("_MinScreen", MIN_SCREEN.get()), gx, gy, 0, 0, 0, 0, budget, parentBudget);
         pass.end();
@@ -693,6 +707,37 @@ public final class CgWorldLights {
                 .bind("PARENT_CELLS", parentCells).bind("PARENT_INDICES", parentIndices).bind("STARTS", starts)
                 .bind("CELLS", cells).bind("INDICES", indices), gx, gy, px, py, pz, factor, budget, parentBudget);
         pass.end();
+    }
+
+    /**
+     * The firing's view: the slices, the bob-free perspective and the bob, the unit-depth rays at the target's edges, the
+     * eye-relative world to the view, and the tile size. What the grid, the apply and the shadow passes are placed by.
+     */
+    private void place(Matrix4fc projection, Matrix4fc toWorld, float targetWidth, float targetHeight) {
+        targetW = targetWidth;
+        targetH = targetHeight;
+        // GetLightGridZParams: slice = log2(z * B + O) * S, with the last slice's start at GRID_FAR.
+        double o = (GRID_FAR - GRID_NEAR * Math.pow(2, (SLICES - 1) / GRID_SPREAD)) / (GRID_FAR - GRID_NEAR);
+        zParams[0] = (float) ((1 - o) / GRID_NEAR);
+        zParams[1] = (float) o;
+        zParams[2] = GRID_SPREAD;
+        // The grid lives in the bobbed view: a host folding its camera's bob into the projection (Minecraft 1.17-1.21.5)
+        // keeps a pure perspective over it, so the rays and the depth come from that and the lights go through the bob.
+        splitPerspective(projection, perspective, bob);
+        host.set(projection);
+        perspective.invert(unproject);
+        for (int c = 0; c < 2; c++) {
+            float ndc = c == 0 ? -1f : 1f;
+            unproject.transform(corner.set(ndc, ndc, 0.5f, 1f));
+            float z = -corner.z / corner.w;
+            rays[c * 2] = corner.x / corner.w / z;
+            rays[c * 2 + 1] = corner.y / corner.w / z;
+        }
+        // The lights are placed from the eye, not the view's position: back to the view's, then into the view.
+        toWorld.invert(toView).translate(eye);
+        bob.mul(toView, toView);
+        tileU = TILE / targetWidth;
+        tileV = TILE / targetHeight;
     }
 
     /** The grid's values onto one of its kernels' dispatches. */
@@ -762,12 +807,17 @@ public final class CgWorldLights {
     void apply(CgStageFrame stage, CgRecording recording) {
         if (apply == null) apply = CgMaterial.newInstance(APPLY_SHADER);
         if (!apply.prepare()) return;
-        shadowsOn = shadowedAdded > 0 && SHADOWS.get() && recordShadows(stage, recording);
-        apply.buffer("LIGHTS", list).buffer("CELLS", cells).buffer("INDICES", indices).applyProperties(applyValues);
+        sunOn = sunWanted(stage);
+        shadowsOn = SHADOWS.get() && (shadowedAdded > 0 || sunOn) && recordShadows(stage, recording);
+        if (!binned && !shadowsOn) return;
+        CgGraphBuffer none = zeroes(recording);
+        apply.buffer("LIGHTS", binned ? list : none).buffer("CELLS", binned ? cells : none)
+                .buffer("INDICES", binned ? indices : none).applyProperties(applyValues);
+        apply.applyProperties(applyWindow);
         CgPipeline pipeline = apply.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         CgRasterPass add = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED)
-                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
+                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT).sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
                 // What the scene was lit by, divided out to find its albedo: unbound, it reads white and divides by 1.
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_APPLY);
         CgChunkBuilder chunks = recording.chunks().begin();
@@ -823,27 +873,62 @@ public final class CgWorldLights {
         eyeFrac[0] = (float) (cameraX - eyeBlock[0]);
         eyeFrac[1] = (float) (cameraY - eyeBlock[1]);
         eyeFrac[2] = (float) (cameraZ - eyeBlock[2]);
-        if (noEntities == null) {
-            noEntities = CgGraphBuffer.persistent("cg_world_lights.no-entities",
-                    CgBufferDesc.of(32, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-        }
+        CgGraphBuffer none = zeroes(recording);
         // Past the screen: the window's blocks and the entities' capsules round the eye.
         CgWorldVoxelWindow.get().useDistance();
         CgWorldEntityBoxes.around(cameraX, cameraY, cameraZ, stage.host().partialTick());
         CgWorldEntityBoxes.upload(recording);
         CgGraphBuffer boxes = CgWorldEntityBoxes.buffer();
         entities = boxes != null ? CgWorldEntityBoxes.count() : 0;
-        sample.buffer("LIGHTS", list).buffer("CELLS", cells).buffer("INDICES", indices)
-                .buffer("ENTITIES", boxes != null ? boxes : noEntities).applyProperties(sampleValues);
+        sample.buffer("LIGHTS", binned ? list : none).buffer("CELLS", binned ? cells : none)
+                .buffer("INDICES", binned ? indices : none).buffer("ENTITIES", boxes != null ? boxes : none)
+                .applyProperties(sampleValues);
         sample.applyProperties(windowValues);
         fullScreen(stage, recording, samples, sample, GPU_SAMPLE);
-        shade.buffer("LIGHTS", list).applyProperties(shadeValues);
+        shade.buffer("LIGHTS", binned ? list : none).applyProperties(shadeValues);
         fullScreen(stage, recording, shaded, shade, GPU_SHADE);
         temporal.applyProperties(temporalValues);
         fullScreen(stage, recording, accumulated, temporal, GPU_TEMPORAL);
         denoise.applyProperties(denoiseValues);
         fullScreen(stage, recording, filtered, denoise, GPU_DENOISE);
         return true;
+    }
+
+    /**
+     * The host's depth as it stands before our opaque draws, kept for this frame's transparent firing: a pixel nearer than
+     * it then is ours. The world renderer's opaque firing calls it before its passes, where it draws anything opaque.
+     */
+    void snapshotHostDepth(CgStageFrame stage, CgRecording recording) {
+        if (hostDepthCopy == null) hostDepthCopy = CgMaterial.newInstance(HOST_DEPTH_SHADER);
+        if (!hostDepthCopy.prepare()) return;
+        int w = Math.max(1, stage.host().width()), h = Math.max(1, stage.host().height());
+        if (hostDepth == null || hostDepth.getWidth() != w || hostDepth.getHeight() != h) {
+            if (hostDepth != null) recording.release(hostDepth);
+            hostDepth = CgGraphTexture.requested("cg_world_lights.host-depth", new CgTextureDesc(w, h, HOST_DEPTH_FORMAT));
+        }
+        fullScreen(stage, recording, hostDepth, hostDepthCopy, GPU_HOST_DEPTH);
+        hostDepthFrame = CgFrameRing.frame();
+    }
+
+    /** Whether this frame's opaque firing drew something of ours: the host's depth before it was kept. */
+    private boolean ownPixels() {
+        return hostDepthFrame == CgFrameRing.frame() && hostDepth != null;
+    }
+
+    /** Whether the sun's shadows run this firing: something of ours drawn, under a sun above the horizon. */
+    private boolean sunWanted(CgStageFrame stage) {
+        if (!SHADOWS.get() || !SUN.get() || SUN_SHARE.get() <= 0f || !ownPixels()) return false;
+        stage.host().environment().sunDirection(sunDirection);
+        return sunDirection[1] > 0f;
+    }
+
+    /** A kilobyte of zeros, made once: no lights, no cells, no entities. */
+    private CgGraphBuffer zeroes(CgRecording recording) {
+        if (zeroes == null) {
+            zeroes = CgGraphBuffer.persistent("cg_world_lights.zeroes", CgBufferDesc.of(1024, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+            recording.fill(zeroes, 0);
+        }
+        return zeroes;
     }
 
     /** One full-screen draw of {@code material} into {@code target}, reading the stage's depth and the lightmap. */

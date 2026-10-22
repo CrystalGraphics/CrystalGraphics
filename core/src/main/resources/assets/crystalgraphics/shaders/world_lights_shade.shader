@@ -4,7 +4,7 @@
 // upsample), then each light among that pixel's visible samples lights it exactly, times the sum of those samples'
 // weights (1 / pdf, at most MaxShadingWeight) over the samples taken. What it writes is demodulated, as Unreal's
 // resolved lighting is: what the scene is multiplied by, the denoisers' input; alpha 1 where it holds lighting, 0 where
-// no half-resolution pixel near stands for this one.
+// no half-resolution pixel near stands for this one. RT1: the sun's visibility, that pixel's four samples' mean.
 #type none
 #include "crystalgraphics:shaders/lib/math.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
@@ -42,6 +42,11 @@ Pass {
         DepthWrite OFF
         Cull OFF
     }
+
+    struct Shaded {
+        vec4 lighting : RT0;
+        vec4 visibility : RT1;
+    };
 
     vec3 to_view_dir(vec3 w) { return vec3(dot(_ToView0.xyz, w), dot(_ToView1.xyz, w), dot(_ToView2.xyz, w)); }
     vec3 to_world_dir(vec3 v) {
@@ -106,9 +111,10 @@ Pass {
         gl_Position = vec4(p, 0.0, 1.0);
     }
 
-    void fragment(in v2f i, out vec4 fragColor) {
+    void fragment(in v2f i, out Shaded o) {
         ivec2 px = ivec2(gl_FragCoord.xy);
-        fragColor = vec4(0.0);
+        o.lighting = vec4(0.0);
+        o.visibility = vec4(1.0, 0.0, 0.0, 0.0);
         vec3 p = surface(px);
         if (p.z >= 0.0) return;
         vec3 n = normal_at(px, p);
@@ -147,7 +153,12 @@ Pass {
 
         // AccumulateLightSample: each light once, its visible samples' weights summed, merged samples counted in.
         vec2 samples[4];
-        for (int s = 0; s < 4; s++) samples[s] = texelFetch(_Samples, d * 2 + ivec2(s & 1, s >> 1), 0).xy;
+        float sun = 0.0;
+        for (int s = 0; s < 4; s++) {
+            vec4 texel = texelFetch(_Samples, d * 2 + ivec2(s & 1, s >> 1), 0);
+            samples[s] = texel.xy;
+            sun += texel.z * 0.25;
+        }
         vec3 sum = vec3(0.0);
         for (int s = 0; s < 4; s++) {
             float index = samples[s].x;
@@ -167,6 +178,7 @@ Pass {
             }
             if (weight > 0.0) sum += lighting(LIGHTS(int(index)), p, n) * (weight * 0.25);
         }
-        fragColor = vec4(sum, 1.0);
+        o.lighting = vec4(sum, 1.0);
+        o.visibility = vec4(sun, 0.0, 0.0, 1.0);
     }
 }

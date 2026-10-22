@@ -2,7 +2,8 @@
 // does (MegaLightsDenoiserSpatial.usf's DenoiserSpatialCS): a few samples on a disk round each pixel, weighed by how
 // near their plane is, how alike their normal and how near their luminance within the pixel's spread. Its spread is
 // the temporal moments', or for the first frames after a disocclusion a 5x5 Gaussian of them, doubled, with twice the
-// samples. A pixel filters only where its relative spread or its history's spatial spread says it is noisy.
+// samples. A pixel filters only where its relative spread or its history's spatial spread says it is noisy. The sun's
+// visibility (RT1) is filtered by depth and normal alone, in its penumbras and after a disocclusion.
 #type none
 #include "crystalgraphics:shaders/lib/math.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
@@ -19,6 +20,7 @@ Properties {
     _Depth   ("The perspective's m22, m32, m23 and m33: window depth to eye depth", vec4) = (1, 0, -1, 0)
     _Lighting ("The accumulated lighting and frames",              sampler2D) = "black"
     _Moments  ("The accumulated moments, eye depth and confidence", sampler2D) = "black"
+    _Vis      ("The accumulated sun visibility",                   sampler2D) = "white"
     _Spatial ("KernelRadius, NumSamples, DepthWeightScale, MaxDisocclusionFrames", vec4) = (8, 4, 10000, 2)
     _Spread  ("DisocclusionDiffuseSpatialVarianceScale, HistorySpatialStdDevThreshold, MaxFramesAccumulated", vec4) = (2, 0.15, 12, 0)
 }
@@ -33,6 +35,11 @@ Pass {
         DepthWrite OFF
         Cull OFF
     }
+
+    struct Filtered {
+        vec4 lighting : RT0;
+        vec4 visibility : RT1;
+    };
 
     vec3 to_view_dir(vec3 w) { return vec3(dot(_ToView0.xyz, w), dot(_ToView1.xyz, w), dot(_ToView2.xyz, w)); }
     vec3 to_world_dir(vec3 v) {
@@ -75,13 +82,16 @@ Pass {
         gl_Position = vec4(p, 0.0, 1.0);
     }
 
-    void fragment(in v2f i, out vec4 fragColor) {
+    void fragment(in v2f i, out Filtered o) {
         ivec2 px = ivec2(gl_FragCoord.xy), size = textureSize(_Lighting, 0);
         vec4 centre = texelFetch(_Lighting, px, 0);
-        fragColor = vec4(0.0);
+        float vis = texelFetch(_Vis, px, 0).x;
+        o.lighting = vec4(0.0);
+        o.visibility = vec4(1.0);
         float frames = centre.a;
         if (frames <= 0.0) return;
-        fragColor = vec4(centre.rgb, 1.0);
+        o.lighting = vec4(centre.rgb, 1.0);
+        o.visibility = vec4(vis, 0.0, 0.0, 1.0);
 
         // Boost the filter until enough frames are in for the temporal variance to be trusted.
         float most = min(_Spatial.w, _Spread.z - 1.0);
@@ -122,12 +132,13 @@ Pass {
             bool noisy = sqrt(max(squares / n - m1 * m1, 0.0)) > _Spread.y;
             filtering = (_Spread.z >= 8.0 || noisy) && _Spread.z > 1.0 && (stdDev / max(moments.x, 0.1) > 0.5 || noisy);
         }
-        if (!filtering || _Spatial.x <= 0.0) return;
+        bool filterVis = disocclusion > 0.01 || vis > 0.02 && vis < 0.98;
+        if (_Spatial.x <= 0.0 || !filtering && !filterVis) return;
 
         vec3 p = surface(px), n = normal_at(px, p);
         float centreLum = luminance(centre.rgb);
         vec3 sum = centre.rgb;
-        float weightSum = 1.0;
+        float weightSum = 1.0, visSum = vis, visWeight = 1.0;
         uvec2 seed = cg_rand_pcg16(ivec3(px % 2, CG_FRAME_INDEX)).xy;
         uint count = uint(mix(_Spatial.y, 2.0 * _Spatial.y, disocclusion) + 0.5);
         for (uint k = 0u; k < count; k++) {
@@ -141,11 +152,18 @@ Pass {
             float relative = abs(dot(s - p, n)) / -p.z;
             float depthWeight = exp2(-_Spatial.z * relative * relative);
             float normalWeight = 1.0 - clamp(acos(clamp(dot(n, normal_at(q, s)), 0.0, 1.0)), 0.0, 1.0);
-            float lumWeight = exp2(-abs(centreLum - luminance(neighbour.rgb)) / max(stdDev, 0.001));
-            float w = depthWeight * normalWeight * lumWeight;
-            sum += neighbour.rgb * w;
-            weightSum += w;
+            float geometry = depthWeight * normalWeight;
+            if (filtering) {
+                float w = geometry * exp2(-abs(centreLum - luminance(neighbour.rgb)) / max(stdDev, 0.001));
+                sum += neighbour.rgb * w;
+                weightSum += w;
+            }
+            if (filterVis) {
+                visSum += texelFetch(_Vis, q, 0).x * geometry;
+                visWeight += geometry;
+            }
         }
-        fragColor = vec4(sum / weightSum, 1.0);
+        if (filtering) o.lighting = vec4(sum / weightSum, 1.0);
+        if (filterVis) o.visibility = vec4(visSum / visWeight, 0.0, 0.0, 1.0);
     }
 }

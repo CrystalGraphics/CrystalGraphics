@@ -1494,9 +1494,8 @@ public final class CgWorldRenderer {
                 targetWidth = stage.host().width();
                 targetHeight = stage.host().height();
                 prepare(view);
-                if (pointLights.record(stage, view, toWorld, targetWidth, targetHeight)) {
-                    pointLights.apply(stage, stage.recording());
-                }
+                pointLights.record(stage, view, toWorld, targetWidth, targetHeight);
+                pointLights.apply(stage, stage.recording());
                 if (!CgRehearsal.active()) text.record(stage, view);
             }
             return;
@@ -1550,6 +1549,8 @@ public final class CgWorldRenderer {
             }
 
             CgRecording recording = stage.recording();
+            // Before our opaque draws: a pixel nearer than this later is ours (the world lights' sun shadows).
+            if (which == OPAQUE && drawn > 0) pointLights.snapshotHostDepth(stage, recording);
             CgPassConstants constants = stage.constants().sceneGlow(sceneEmission);
             bindings.clear();
             // Before the opaque pass: its depth then holds the host's world and none of the draws below.
@@ -1581,8 +1582,8 @@ public final class CgWorldRenderer {
             CgGraphTexture emission = which == TRANSPARENT && drawn > 0 ? mergedEmission(stage, recording) : null;
             // Lights fall on the opaque scene, so a firing with nothing transparent still lists them.
             lit = which == TRANSPARENT && pointLights.record(stage, view, toWorld, targetWidth, targetHeight);
-            // Onto the opaque scene, before any transparent draw blends over it.
-            if (lit) pointLights.apply(stage, recording);
+            // Onto the opaque scene, before any transparent draw blends over it; the sun's shadows run with no light.
+            if (which == TRANSPARENT) pointLights.apply(stage, recording);
             mediaOut = which == TRANSPARENT && drawn > 0
                     ? media.record(recording, stage.constants(), view, toWorld, targetWidth, targetHeight) : null;
             if (scene) recordSceneGlows(stage, recording, view);

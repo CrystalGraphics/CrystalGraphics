@@ -165,6 +165,12 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
 | Spatial | `DenoiserSpatialCS`: where still noisy, a disk of 4 (8 after a disocclusion) samples by depth, normal and luminance | `world_lights_denoise.shader` (`crystalgraphics.world.lightsShadowSpatial`, pixels) |
 | Composite | adds into scene colour | `world_lights.shader` adds it beside the unshadowed lights |
 
+- **The sun** is traced in the same passes, a ray a sample over its disc (Unreal's `LightSourceAngle`), while it is up
+  and something of ours is drawn. Our objects receive its shadow from blocks, entities and each other; Minecraft's
+  world receives it from our objects alone, its own blocks keeping the light Minecraft baked. A shadow takes the sun's
+  direct share (`crystalgraphics.world.sunShare`, 0.6) out of the pixel's sky light, through Minecraft's own lightmap,
+  so the shade is Minecraft's. Our pixels are found from the host's depth snapshotted before our opaque pass.
+  `crystalgraphics.world.sunShadows=false` turns it off; `--mode=lights-sun` is its gate.
 - **What casts**: Minecraft's blocks within the window, its living entities within 64 blocks, and anything on screen.
   Meshes drawn through `CgWorldRenderer` shadow only where they are on screen; Unreal's mesh distance fields have no
   counterpart yet.

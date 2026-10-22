@@ -3,10 +3,15 @@
 // half-resolution pixel's four samples are its 2x2 block, as Unreal's NumSamplesPerPixel 2x2 lays them. Every fragment
 // runs the pixel's weighted reservoir over its light-grid cell's shadowed lights, stratified four ways, keeps its own
 // pick, and traces a ray to a point on that light: across the screen's depth first, then through the voxel window's
-// blocks from where that stopped, and against the boxes of the entities round the camera.
+// blocks from where that stopped, and against the boxes of the entities round the camera. It traces the sun too, a ray
+// a sample over its disc (MegaLights takes a directional light as one more light).
+//
+// What casts depends on the receiver: on our objects' pixels (nearer than the host's depth before our opaque draws)
+// everything does; on Minecraft's, only our objects, its own blocks keeping the light it baked.
 //
 // Written: x the light's index, -1 for none; y its shading weight (WeightSum / weight, 1 / pdf), 0 where a sample of
-// the same light after it took its ray (Unreal's MergeRays), negative where the ray was blocked.
+// the same light after it took its ray (Unreal's MergeRays), negative where the ray was blocked; z the sun's
+// visibility, 1 with no sun.
 #type none
 #include "crystalgraphics:shaders/lib/math.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
@@ -28,6 +33,8 @@ Properties {
     _DayFade ("A light's strength under a full day's open sky; 1 for never fading", float) = 0.1
     _Screen  ("The full target's width and height",                vec4) = (1, 1, 0, 0)
     _Trace   ("Screen trace: blocks, steps, normal bias in blocks, relative depth thickness", vec4) = (8, 24, 0.02, 0.005)
+    _Sun     ("The sun: 1 to trace it, its screen trace's blocks and steps, the tangent of its disc's half angle", vec4) = (0, 24, 24, 0.004675)
+    _Own     ("1 where the host's depth before our opaque draws was taken this frame", float) = 0.0
     _EyeX    ("The eye's block: x",                                int) = 0
     _EyeY    ("y",                                                 int) = 0
     _EyeZ    ("z",                                                 int) = 0
@@ -35,6 +42,7 @@ Properties {
     _World         ("The voxel window's blocks",                   sampler3D) = "black"
     _WorldSections ("Which of its sections are filled",            sampler3D) = "black"
     _WorldDistance ("Its distance to solid over FX_WORLD_FAR",      sampler3D) = "white"
+    _HostDepth     ("The host's window depth before our opaque draws", sampler2D) = "white"
     _WorldBaseX    ("Its lowest block, absolute: x",               int) = 0
     _WorldBaseY    ("y",                                           int) = 0
     _WorldBaseZ    ("z",                                           int) = 0
@@ -72,14 +80,24 @@ Pass {
     }
     vec3 to_world(vec3 v) { return to_world_dir(v - vec3(_ToView0.w, _ToView1.w, _ToView2.w)); }
 
-    // The scene's eye depth at a pixel of the full target, under the bob-free perspective; 0 for none (the sky).
-    float eye_depth(ivec2 px) {
-        px = clamp(px, ivec2(0), ivec2(_Screen.xy) - 1);
-        float window = texelFetch(cg_DepthBuffer, px, 0).r;
+    // A window depth's eye depth under the bob-free perspective; 0 for none (the sky).
+    float eye_depth_of(float window) {
         if (cg_DepthParams.x > 0.5 ? window <= 0.0 : window >= 1.0) return 0.0;
         float ndc = cg_DepthParams.y > 0.5 ? window : window * 2.0 - 1.0;
         return _Depth.z == 0.0 ? (_Depth.y - ndc) / _Depth.x
                 : (_Depth.y - _Depth.x / _Depth.z * _Depth.w) / (ndc - _Depth.x / _Depth.z);
+    }
+
+    // The scene's eye depth at a pixel of the full target; 0 for none.
+    float eye_depth(ivec2 px) {
+        return eye_depth_of(texelFetch(cg_DepthBuffer, clamp(px, ivec2(0), ivec2(_Screen.xy) - 1), 0).r);
+    }
+
+    // Whether pixel px is one of our objects': nearer than the host's depth was before our opaque draws.
+    bool own(ivec2 px, float depth) {
+        if (_Own < 0.5 || depth <= 0.0) return false;
+        float host = eye_depth_of(texelFetch(_HostDepth, clamp(px, ivec2(0), ivec2(_Screen.xy) - 1), 0).r);
+        return host <= 0.0 || depth < host - max(0.01, 0.002 * depth);
     }
 
     vec3 surface(ivec2 px) {
@@ -121,21 +139,76 @@ Pass {
         return adapt / (CG_PI * luminance(ambient));
     }
 
-    void vertex(out v2f o) {
-        vec2 p = vec2(float((CG_VERTEX_ID & 1) << 2) - 1.0, float((CG_VERTEX_ID & 2) << 1) - 1.0);
-        o.uv = p * 0.5 + 0.5;
-        gl_Position = vec4(p, 0.0, 1.0);
+    // The screen trace (TraceScreen) from a along dir for len: 1 a hit within the depth thickness (on our objects alone
+    // where ownOnly), -1 uncertain, the ray behind the scene or off screen, with reached where it got to; 0 clear.
+    int screen_trace(vec3 a, vec3 dir, float len, int steps, float jit, bool ownOnly, out float reached) {
+        reached = len;
+        float last = 0.0;
+        for (int k = 0; k < steps; k++) {
+            float t = (float(k) + jit) / float(steps) * len;
+            vec3 q = a + dir * t;
+            float rayDepth = -q.z;
+            vec2 uv = (q.xy / max(rayDepth, 1.0e-4) - _Rays.xy) / (_Rays.zw - _Rays.xy);
+            if (rayDepth <= 0.05 || any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
+                reached = last;
+                return -1;
+            }
+            ivec2 at = ivec2(uv * _Screen.xy);
+            float scene = eye_depth(at);
+            float behind = rayDepth - scene, stepDepth = abs(dir.z) * len / float(steps);
+            if (scene > 0.0 && behind > 0.0) {
+                if (behind < max(_Trace.w * scene, stepDepth) && (!ownOnly || own(at, scene))) return 1;
+                reached = last;
+                return -1;
+            }
+            last = t;
+        }
+        return 0;
     }
 
-    void fragment(in v2f i, out vec4 fragColor) {
-        ivec2 sampleCoord = ivec2(gl_FragCoord.xy), d = sampleCoord >> 1;
-        int mine = (sampleCoord.x & 1) + 2 * (sampleCoord.y & 1);
-        fragColor = vec4(-1.0, 0.0, 0.0, 0.0);
-        ivec2 px = d * 2 + jitter(d);
-        if (px.x >= int(_Screen.x) || px.y >= int(_Screen.y)) return;
-        vec3 p = surface(px);
-        if (p.z >= 0.0) return;
-        vec3 n = normal_at(px, p);
+    // Whether the window's blocks or an entity's capsule lie on the eye-relative world segment a to a + dir * t1, from
+    // t0: the world trace past the screen.
+    bool world_trace(vec3 aw, vec3 dir, float t0, float t1) {
+        if (_WorldLive != 0 && t0 < t1 && cg_shadow_window(_World, _WorldSections, _WorldDistance,
+                ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ), ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ),
+                ivec3(_EyeX, _EyeY, _EyeZ), _EyeFrac.xyz, aw, dir, max(t0, 0.05), t1)) {
+            return true;
+        }
+        // The entities round the camera, each a vertical capsule in its box (Unreal's capsule shadows' stand-in for a
+        // character), skipped where the ray starts or ends inside it: the surface or the light is that entity's own.
+        vec3 bw = aw + dir * t1;
+        for (int k = 0; k < _Entities; k++) {
+            vec3 lo = ENTITIES(k * 2).xyz - _EyeFrac.xyz, hi = ENTITIES(k * 2 + 1).xyz - _EyeFrac.xyz;
+            if (all(greaterThan(aw, lo - 0.1)) && all(lessThan(aw, hi + 0.1))) continue;
+            if (all(greaterThan(bw, lo)) && all(lessThan(bw, hi))) continue;
+            vec3 c = (lo + hi) * 0.5;
+            float r = 0.45 * min(hi.x - lo.x, hi.z - lo.z);
+            vec3 c0 = vec3(c.x, lo.y + r, c.z), c1 = vec3(c.x, max(hi.y - r, lo.y + r), c.z);
+            if (cg_shadow_capsule(aw, bw, c0, c1, r)) return true;
+        }
+        return false;
+    }
+
+    // The sun's visibility at p facing n, one ray over its disc: 1 lit, 0 shadowed. A face turned from it is shadowed
+    // on our objects; on Minecraft's it is left as Minecraft lit it.
+    float sun_visibility(vec3 p, vec3 n, bool ownPixel, ivec2 sampleCoord) {
+        if (_Sun.x < 0.5 || CG_DAYLIGHT <= 0.0 || CG_SUN_DIRECTION.y <= 0.0) return 1.0;
+        vec3 toSun = normalize(to_view_dir(CG_SUN_DIRECTION));
+        if (dot(n, toSun) <= 0.0) return ownPixel ? 0.0 : 1.0;
+        vec2 u = vec2(cg_shadow_noise(vec2(sampleCoord) + 53.0, CG_FRAME_INDEX), cg_shadow_noise(vec2(sampleCoord) + 71.0, CG_FRAME_INDEX));
+        // The sun as a sphere far off whose disc spans Unreal's LightSourceAngle.
+        vec3 dir = cg_shadow_sphere_ray(toSun * 1000.0, 1000.0 * _Sun.w, u).xyz;
+        vec3 a = p + n * (_Trace.z + 0.002 * -p.z);
+        float jit = cg_shadow_noise(vec2(sampleCoord) + 97.0, CG_FRAME_INDEX), reached;
+        if (!ownPixel) return screen_trace(a, dir, _Sun.y, int(_Sun.z), jit, true, reached) == 1 ? 0.0 : 1.0;
+        int screen = screen_trace(a, dir, _Trace.x, int(_Trace.y), jit, false, reached);
+        if (screen == 1) return 0.0;
+        // Past the screen: the window's blocks to its edge, and the entities.
+        return world_trace(to_world(a), to_world_dir(dir), reached, 96.0) ? 0.0 : 1.0;
+    }
+
+    // This sample's light: x its index, -1 for none; y its weight, 0 merged, -1 blocked.
+    vec2 light_sample(vec3 p, vec3 n, ivec2 d, ivec2 sampleCoord, int mine) {
         ivec3 cell = cg_light_cell(p, _ZParams.xyz, _Rays.xy, _Rays.zw, _Tile.xy, ivec2(_Grid.xy));
         int e = (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;
         int count = int(CELLS(e * 2)), from = int(CELLS(e * 2 + 1));
@@ -150,8 +223,7 @@ Pass {
             int index = int(INDICES(from + k));
             CgLight light = LIGHTS(index);
             if (!CG_LIGHT_SHADOWED(light)) continue;
-            vec3 at = light.positionRadius.xyz;
-            vec3 v = to_view_dir(at) + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
+            vec3 v = to_view_dir(light.positionRadius.xyz) + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
             vec4 spot = vec4(to_view_dir(light.spotCos.xyz), light.spotCos.w);
             vec4 segment = vec4(to_view_dir(light.segmentCone.xyz), light.segmentCone.w);
             float lit = cg_light_surface(v, light.positionRadius.w, light.colorExponent.w, spot, segment, light.ambient.z, p, n);
@@ -175,14 +247,11 @@ Pass {
             }
         }
         int index = chosen[mine];
-        if (index < 0) return;
+        if (index < 0) return vec2(-1.0, 0.0);
         CgLight light = LIGHTS(index);
         bool area = light.ambient.z > 0.001 || dot(light.segmentCone.xyz, light.segmentCone.xyz) > 1.0e-4;
         // MergeRays: the next sample of the same light takes this one's ray, unless the light has an area to sample.
-        if (!area && mine < 3 && chosen[mine + 1] == index) {
-            fragColor = vec4(float(index), 0.0, 0.0, 0.0);
-            return;
-        }
+        if (!area && mine < 3 && chosen[mine + 1] == index) return vec2(float(index), 0.0);
         float weight = weightSum / chosenWeight[mine];
 
         // GetLightSampleTrace: toward a point of the light sampled over the solid angle its sphere covers, along its
@@ -196,56 +265,31 @@ Pass {
         // Unreal's ray end bias: a centimetre short of the light.
         float rayEnd = max(ray.w - 0.01, 0.0);
 
-        // The screen trace (TraceScreen): marched over the scene's depth; a hit within the depth thickness is final,
-        // a point further behind the scene is uncertain and leaves the rest to the world trace, as does the screen's edge.
-        float screenEnd = min(rayEnd, _Trace.x), reached = screenEnd;
-        int steps = int(_Trace.y);
-        float jit = cg_shadow_noise(vec2(sampleCoord) + 31.0, CG_FRAME_INDEX), last = 0.0;
-        for (int k = 0; k < steps; k++) {
-            float t = (float(k) + jit) / float(steps) * screenEnd;
-            vec3 q = a + ray.xyz * t;
-            float rayDepth = -q.z;
-            vec2 uv = (q.xy / max(rayDepth, 1.0e-4) - _Rays.xy) / (_Rays.zw - _Rays.xy);
-            if (rayDepth <= 0.05 || any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
-                reached = last;
-                break;
-            }
-            float scene = eye_depth(ivec2(uv * _Screen.xy));
-            float behind = rayDepth - scene, stepDepth = abs(ray.z) * screenEnd / float(steps);
-            if (scene > 0.0 && behind > 0.0) {
-                if (behind < max(_Trace.w * scene, stepDepth)) {
-                    fragColor = vec4(float(index), -1.0, 0.0, 0.0);
-                    return;
-                }
-                reached = last;
-                break;
-            }
-            last = t;
-        }
+        // The screen trace, then the world trace from where it left off: a lamp of ours is shadowed by everything.
+        float jit = cg_shadow_noise(vec2(sampleCoord) + 31.0, CG_FRAME_INDEX), reached;
+        int screen = screen_trace(a, ray.xyz, min(rayEnd, _Trace.x), int(_Trace.y), jit, false, reached);
+        if (screen == 1) return vec2(float(index), -1.0);
+        if (screen == 0) reached = min(rayEnd, _Trace.x);
+        if (reached < rayEnd && world_trace(to_world(a), to_world_dir(ray.xyz), reached, rayEnd)) return vec2(float(index), -1.0);
+        return vec2(float(index), weight);
+    }
 
-        // The world trace, from where the screen's left off, in eye-relative world space.
-        vec3 aw = to_world(a), dir = to_world_dir(ray.xyz);
-        if (_WorldLive != 0 && reached < rayEnd && cg_shadow_window(_World, _WorldSections, _WorldDistance,
-                ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ), ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ),
-                ivec3(_EyeX, _EyeY, _EyeZ), _EyeFrac.xyz, aw, dir, max(reached, 0.05), rayEnd)) {
-            fragColor = vec4(float(index), -1.0, 0.0, 0.0);
-            return;
-        }
-        // The entities round the camera, each a vertical capsule in its box (Unreal's capsule shadows' stand-in for a
-        // character), skipped where the ray starts or ends inside it: the surface or the light is that entity's own.
-        vec3 bw = aw + dir * rayEnd;
-        for (int k = 0; k < _Entities; k++) {
-            vec3 lo = ENTITIES(k * 2).xyz - _EyeFrac.xyz, hi = ENTITIES(k * 2 + 1).xyz - _EyeFrac.xyz;
-            if (all(greaterThan(aw, lo - 0.1)) && all(lessThan(aw, hi + 0.1))) continue;
-            if (all(greaterThan(bw, lo)) && all(lessThan(bw, hi))) continue;
-            vec3 c = (lo + hi) * 0.5;
-            float r = 0.45 * min(hi.x - lo.x, hi.z - lo.z);
-            vec3 c0 = vec3(c.x, lo.y + r, c.z), c1 = vec3(c.x, max(hi.y - r, lo.y + r), c.z);
-            if (cg_shadow_capsule(aw, bw, c0, c1, r)) {
-                fragColor = vec4(float(index), -1.0, 0.0, 0.0);
-                return;
-            }
-        }
-        fragColor = vec4(float(index), weight, 0.0, 0.0);
+    void vertex(out v2f o) {
+        vec2 p = vec2(float((CG_VERTEX_ID & 1) << 2) - 1.0, float((CG_VERTEX_ID & 2) << 1) - 1.0);
+        o.uv = p * 0.5 + 0.5;
+        gl_Position = vec4(p, 0.0, 1.0);
+    }
+
+    void fragment(in v2f i, out vec4 fragColor) {
+        ivec2 sampleCoord = ivec2(gl_FragCoord.xy), d = sampleCoord >> 1;
+        int mine = (sampleCoord.x & 1) + 2 * (sampleCoord.y & 1);
+        fragColor = vec4(-1.0, 0.0, 1.0, 0.0);
+        ivec2 px = d * 2 + jitter(d);
+        if (px.x >= int(_Screen.x) || px.y >= int(_Screen.y)) return;
+        vec3 p = surface(px);
+        if (p.z >= 0.0) return;
+        vec3 n = normal_at(px, p);
+        bool ownPixel = own(px, -p.z);
+        fragColor = vec4(light_sample(p, n, d, sampleCoord, mine), sun_visibility(p, n, ownPixel, sampleCoord), 0.0);
     }
 }
