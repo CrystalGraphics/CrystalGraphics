@@ -1091,6 +1091,42 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
+        /** Its mesh orientation so far: an emitter file's reader composes its rate onto its start. */
+        @Nullable
+        CgVfxMeshRotation meshRotation() {
+            return meshRotation;
+        }
+
+        /** Its mesh particles turned as {@code turn} says ({@link CgVfxMeshRotation}); null for at random by their seed. */
+        public Builder meshRotation(@Nullable CgVfxMeshRotation turn) {
+            meshRotation = turn;
+            return this;
+        }
+
+        /** Its size or colour over life multiplied by a range rolled anew each step ({@link CgVfxLifeRoll}), with any others. */
+        public Builder lifeRoll(CgVfxLifeRoll roll) {
+            lifeRolls.add(roll);
+            return this;
+        }
+
+        /** Its collision events at each particle's first collision alone ({@link CgVfxEmitter#firstCollisionOnly()}). */
+        public Builder firstCollisionOnly(boolean only) {
+            firstCollisionOnly = only;
+            return this;
+        }
+
+        /** Its look over life multiplied by a user parameter ({@link CgVfxLifeBind}), with any others. */
+        public Builder lifeBind(CgVfxLifeBind bind) {
+            lifeBinds.add(bind);
+            return this;
+        }
+
+        /** Spawns on its effect's skeleton, at these points ({@link CgVfxSockets}); null for none. */
+        public Builder sockets(@Nullable CgVfxSockets points) {
+            sockets = points;
+            return this;
+        }
+
         /** Born on the shape's surface, by area, rather than filling it. */
         public Builder surface() {
             spawn.placement = CgVfxSpawnShape.SURFACE;

@@ -2178,6 +2178,11 @@ public final class CgVfxParticlePool {
         }
     }
 
+    private static void orientation(float[] row, int at, float[] rotator, float w) {
+        System.arraycopy(rotator, 0, row, at, 3);
+        row[at + 3] = w;
+    }
+
     /** {@code v}'s numbers into the vec4 at word {@code at}, zero past them. */
     private void vector(int at, float[] v) {
         for (int k = 0; k < 4; k++) params[at + k] = Float.floatToRawIntBits(k < v.length ? v[k] : 0f);

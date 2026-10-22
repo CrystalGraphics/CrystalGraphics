@@ -169,6 +169,45 @@ public class CgVfxEmitterAssetsTest {
         assertEquals(e.moduleForms().toString().replaceAll("@[0-9a-f]+", ""), back.moduleForms().toString().replaceAll("@[0-9a-f]+", ""));
     }
 
+    /**
+     * Cascade's rotation rate, its multiplier and its rate by life in stack order: the rolled rate integrates through
+     * the multiplier; the rate added after it does not. Read, baked and written back alike.
+     */
+    @Test
+    public void rotationRatesOverLifeIntegrate() {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 64));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0))));
+        Object falling = Map.of("samples", Map.of("range", List.of(0.0, 1.0), "values", List.of(1.0, 0.0)));
+        Object flat = Map.of("samples", Map.of("range", List.of(0.0, 1.0), "values", List.of(2.0, 2.0)));
+        Object zero = Map.of("samples", Map.of("range", List.of(0.0, 1.0), "values", List.of(0.0, 0.0)));
+        tree.put("particle_update", List.of(
+                Map.of("id", "base", "module", "crystalgraphics:mesh_rotation_rate", "inputs", Map.of("rate", List.of(0.0, 0.0, 3.0))),
+                Map.of("id", "slowing", "module", "crystalgraphics:mesh_rotation_rate", "inputs",
+                        Map.of("mode", "scale", "rate_scale", Map.of("curves", List.of(falling, falling, falling), "by", "age"))),
+                Map.of("id", "after", "module", "crystalgraphics:mesh_rotation_rate", "inputs",
+                        Map.of("rate", Map.of("curves", List.of(zero, zero, flat), "by", "age")))));
+        CgVfxMeshRotation turn = CgVfxEmitterAssets.compile("turns", tree, null).meshRotation();
+        assertEquals(2, turn.steps().size());
+        int texels = 5;
+        float[] scale = new float[4 * texels], added = new float[4 * texels];
+        turn.integrals(scale, 0, added, 0, texels);
+        // ∫(1 - t) to 1 is 0.5; to 0.5, 0.375. The added 2 integrates alone: 2t.
+        assertEquals(0.5f, scale[4 * 4 + 2], 1e-4f);
+        assertEquals(0.375f, scale[4 * 2 + 2], 1e-4f);
+        assertEquals(2f, added[4 * 4 + 2], 1e-4f);
+        assertEquals(3f, turn.rateTo()[2], 0f);
+        CgVfxMeshRotation back = CgVfxEmitterAssets.compile("turns", CgVfxEmitterAssets.write(
+                CgVfxEmitterAssets.compile("turns", tree, null)), null).meshRotation();
+        float[] scaleBack = new float[4 * texels], addedBack = new float[4 * texels];
+        back.integrals(scaleBack, 0, addedBack, 0, texels);
+        assertArrayEquals(scale, scaleBack, 1e-5f);
+        assertArrayEquals(added, addedBack, 1e-5f);
+        assertArrayEquals(turn.rateTo(), back.rateTo(), 0f);
+    }
+
     private static void same(CgVfxEmitter e, CgVfxEmitter back) {
         String n = e.name();
         assertEquals(n + " capacity", e.capacity, back.capacity);

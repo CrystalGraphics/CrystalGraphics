@@ -120,6 +120,24 @@ public final class CgVfxEmitterAssets {
         spawn.add(entry(e.id("init"), "initialize_particle", init));
         Map<String, Object> shape = shape(e);
         if (shape != null) spawn.add(entry(e.id("shape"), "shape_location", shape));
+        if (e.meshRotation != null) {
+            CgVfxMeshRotation r = e.meshRotation;
+            Map<String, Object> turn = map("mode", "none", "rotation", written(e, CgVfxSpawnInput.MESH_ORIENTATION,
+                    rotatorValue(r.from(), r.to(), r.rolls())));
+            if (r.inheritParent()) turn.put("inherit_parent", true);
+            spawn.add(entry(e.id("orientation"), "initial_mesh_orientation", turn));
+        }
+        if (e.sockets != null) {
+            List<Object> points = new ArrayList<>();
+            for (int i = 0; i < e.sockets.names().size(); i++) {
+                float[] o = e.sockets.offsets()[i];
+                points.add(map("name", e.sockets.names().get(i), "offset", list(o[0], o[1], o[2])));
+            }
+            Map<String, Object> socket = map("points", points, "selection", e.sockets.sequential() ? "sequential" : "random");
+            if (e.sockets.follow()) socket.put("update_each_frame", true);
+            if (e.sockets.inherit() != 0f) socket.put("inherit_velocity", (double) e.sockets.inherit());
+            spawn.add(entry(e.id("socket"), "socket_location", socket));
+        }
         spawn.add(entry(e.id("velocity"), "add_velocity", velocity(e)));
         tree.put("particle_spawn", spawn);
 
@@ -133,6 +151,21 @@ public final class CgVfxEmitterAssets {
         if (!isOne(e.opacityOverLife)) color.put("alpha", curve(e.opacityOverLife, "age"));
         if (!isOne(e.intensity)) color.put("intensity", curve(e.intensity, "age"));
         if (!color.isEmpty()) modules.add(entry("color", "scale_color", color));
+        if (e.meshRotation != null && !(Arrays.equals(e.meshRotation.rateFrom(), new float[3]) && Arrays.equals(e.meshRotation.rateTo(), new float[3]))) {
+            CgVfxMeshRotation r = e.meshRotation;
+            modules.add(entry(e.id("rotation_rate"), "mesh_rotation_rate", map("rate", rotatorValue(r.rateFrom(), r.rateTo(), r.rateRolls()))));
+        } else if (e.spawnForm(CgVfxSpawnInput.MESH_ROTATION_RATE) != null) {
+            modules.add(entry(e.id("rotation_rate"), "mesh_rotation_rate", map("rate", e.spawnForm(CgVfxSpawnInput.MESH_ROTATION_RATE).value())));
+        }
+        if (e.meshRotation != null) {
+            List<CgVfxMeshRotation.Step> steps = e.meshRotation.steps();
+            for (int i = 0; i < steps.size(); i++) {
+                CgKeyframes[] a = steps.get(i).axes();
+                modules.add(entry(e.id("rotation_life_" + i), "mesh_rotation_rate", steps.get(i).scale()
+                        ? map("mode", "scale", "rate_scale", curves("age", a[0], a[1], a[2]))
+                        : map("mode", "add", "rate", curves("age", a[0], a[1], a[2]))));
+            }
+        }
         if (e.spinMin != 0f || e.spinMax != 0f) {
             // Ours rolls the sense too: Unreal's rate is signed.
             modules.add(entry(e.id("spin_rate"), "sprite_rotation_rate", map("rate",
@@ -327,9 +360,13 @@ public final class CgVfxEmitterAssets {
                 case "initialize_particle" -> initialize(name, b, in, spawnId(b, entry, "init"));
                 case "add_velocity" -> velocity(name, b, in, spawnId(b, entry, "velocity"));
                 case "shape_location" -> shape(name, b, in, spawnId(b, entry, "shape"));
+                case "socket_location" -> sockets(name, b, in, spawnId(b, entry, "socket"));
+                case "initial_mesh_orientation" -> meshOrientation(name, b, in, spawnId(b, entry, "orientation"));
                 default -> throw new IllegalArgumentException(name + ": particle_spawn has no " + entry.get("module"));
             }
         }
+        // A file's mesh particles are unturned without an orientation module, as Unreal's are.
+        if (b.meshRotation() == null && drawsMeshes(tree)) b.meshRotation(CgVfxMeshRotation.NONE);
         CgVfxFormCompiler forms = new CgVfxFormCompiler(new CgVfxCurveBlock(), id -> null);
         int stacked = 0;
         List<Map<?, ?>> drawn = new ArrayList<>();
@@ -938,6 +975,129 @@ public final class CgVfxEmitterAssets {
                 Boolean.TRUE.equals(in.get("update_each_frame")), inherit));
     }
 
+    /** A rotator's two ends, and whether each axis rolls its own. */
+    private record Rotators(float[] from, float[] to, int[] rolls) {
+    }
+
+    /** {@code value}, a rotator, as its two ends: a constant, or a range rolled once or per channel. */
+    private static Rotators rotators(String name, String what, Object value) {
+        if (isVector(value, 3)) {
+            float[] v = vec(value, 3);
+            return new Rotators(v, v, new int[3]);
+        }
+        if (value instanceof Map<?, ?> m && m.get("range") instanceof List<?> ends && ends.size() == 2
+                && m.get("by") == null) {
+            return new Rotators(vec(ends.get(0), 3), vec(ends.get(1), 3), CgVfxLifeRoll.rolls(m));
+        }
+        throw new IllegalArgumentException(name + ": " + what + " " + value + " is not read yet: a constant or a range");
+    }
+
+    /**
+     * {@code initial_mesh_orientation}: Cascade's {@code MeshRotation}, Niagara's {@code InitialMeshOrientation}, its
+     * rotator rolled from the particle's seed ({@link CgVfxMeshRotation}).
+     */
+    private static void meshOrientation(String name, CgVfxEmitter.Builder b, Map<?, ?> in, String element) {
+        if (!"none".equals(String.valueOf(in.get("mode")))) {
+            throw new IllegalArgumentException(name + ": initial_mesh_orientation's mode " + in.get("mode") + " is not read yet: none alone");
+        }
+        CgVfxMeshRotation was = b.meshRotation() != null ? b.meshRotation() : CgVfxMeshRotation.NONE;
+        Object rotation = in.get("rotation");
+        Rotators r;
+        CgVfxSpawnForm stored = spawnForm(CgVfxSpawnInput.MESH_ORIENTATION, element, "rotation", rotation);
+        if (stored != null) {
+            // Stored at birth: the row's ends unread.
+            b.spawnForm(stored);
+            r = new Rotators(new float[3], new float[3], new int[3]);
+        } else {
+            r = rotators(name, "initial_mesh_orientation's rotation", rotation);
+        }
+        b.meshRotation(new CgVfxMeshRotation(r.from(), r.to(), r.rolls(), was.rateFrom(), was.rateTo(), was.rateRolls(),
+                Boolean.TRUE.equals(in.get("inherit_parent")), was.steps()));
+    }
+
+    /**
+     * {@code mesh_rotation_rate}: Cascade's {@code MeshRotationRate} (a rate rolled from the seed), {@code OverLife} (a
+     * rate by age, added) and {@code MultiplyLife} (mode {@code scale}: the rate times {@code rate_scale} by age), in
+     * the stack's order ({@link CgVfxMeshRotation#steps()}). A constant before any scale joins the rolled rate.
+     */
+    private static void meshRotationRate(String name, CgVfxEmitter.Builder b, Map<?, ?> in, String element) {
+        CgVfxMeshRotation was = b.meshRotation() != null ? b.meshRotation() : CgVfxMeshRotation.NONE;
+        if ("scale".equals(in.get("mode"))) {
+            if (in.get("rate") != null && !isZero(in.get("rate"))) {
+                throw new IllegalArgumentException(name + ": mesh_rotation_rate's mode scale takes rate_scale, not a rate");
+            }
+            b.meshRotation(was.over(new CgVfxMeshRotation.Step(true, byAge(name, "rate_scale", in.get("rate_scale")))));
+            return;
+        }
+        Object scale = in.get("rate_scale");
+        if (scale != null && !(isVector(scale, 3) && Arrays.equals(vec(scale, 3), new float[]{1f, 1f, 1f}))) {
+            throw new IllegalArgumentException(name + ": mesh_rotation_rate's rate_scale " + scale + " is read in mode scale alone");
+        }
+        Object rate = in.get("rate");
+        if (rate instanceof Map<?, ?> m && m.get("curves") != null && !"loop".equals(m.get("by"))) {
+            b.meshRotation(was.over(new CgVfxMeshRotation.Step(false, byAge(name, "rate", rate))));
+            return;
+        }
+        if (rate instanceof Map<?, ?> m && "tick".equals(m.get("rolls"))) {
+            // OverLife on a uniform rolls each tick (ParticleModules.cpp:1732): integrated, its rate is its mean.
+            Map<Object, Object> ends = new LinkedHashMap<>(m);
+            ends.remove("rolls");
+            Rotators r = rotators(name, "mesh_rotation_rate's rate", ends);
+            float[] mean = new float[3];
+            for (int c = 0; c < 3; c++) mean[c] = 0.5f * (r.from()[c] + r.to()[c]);
+            b.meshRotation(was.over(new CgVfxMeshRotation.Step(false, axes(name, list(mean[0], mean[1], mean[2]), 3))));
+            return;
+        }
+        if (!(rate instanceof Map<?, ?> rm && rm.get("range") != null) && spawnForm(CgVfxSpawnInput.MESH_ROTATION_RATE, element, "rate", rate) != null) {
+            // A pick or a curve by the loop, drawn at birth as Cascade's MeshRotationRate is: the particle's rolled rate.
+            if (was.scaled() || !Arrays.equals(was.rateFrom(), was.rateTo()) || !Arrays.equals(was.rateFrom(), new float[3])) {
+                throw new IllegalArgumentException(name + ": mesh_rotation_rate's stored rate is read first and alone, before any other");
+            }
+            b.spawnForm(spawnForm(CgVfxSpawnInput.MESH_ROTATION_RATE, element, "rate", rate));
+            return;
+        }
+        Rotators r = rotators(name, "mesh_rotation_rate's rate", rate);
+        boolean constant = Arrays.equals(r.from(), r.to());
+        if (constant && was.scaled()) {
+            b.meshRotation(was.over(new CgVfxMeshRotation.Step(false, axes(name, list(r.from()[0], r.from()[1], r.from()[2]), 3))));
+            return;
+        }
+        if (!constant && was.scaled()) {
+            throw new IllegalArgumentException(name + ": mesh_rotation_rate's range after a scale is not read yet: before it");
+        }
+        boolean rolled = !Arrays.equals(was.rateFrom(), was.rateTo());
+        if (!constant && rolled) {
+            throw new IllegalArgumentException(name + ": a second mesh_rotation_rate range is not read yet: one rolled rate");
+        }
+        float[] from = new float[3], to = new float[3];
+        for (int c = 0; c < 3; c++) {
+            from[c] = was.rateFrom()[c] + r.from()[c];
+            to[c] = was.rateTo()[c] + r.to()[c];
+        }
+        b.meshRotation(was.rate(from, to, rolled ? was.rateRolls() : r.rolls()));
+    }
+
+    /** Three curves by age, or a constant: a rotation rate's step over life. */
+    private static CgKeyframes[] byAge(String name, String input, Object value) {
+        if (value instanceof Map<?, ?> m && m.get("by") != null && !"age".equals(m.get("by"))) {
+            throw new IllegalArgumentException(name + ": mesh_rotation_rate's " + input + " by " + m.get("by") + " is not read yet: by age");
+        }
+        if (value instanceof Map<?, ?> m && m.get("curves") == null) {
+            throw new IllegalArgumentException(name + ": mesh_rotation_rate's " + input + " " + value + " is not read yet: curves or a constant");
+        }
+        return axes(name, value, 3);
+    }
+
+    private static boolean isZero(Object value) {
+        return isVector(value, 3) && Arrays.equals(vec(value, 3), new float[3]);
+    }
+
+    /** A rotator's two ends as a file writes them: one value, or a range. */
+    private static Object rotatorValue(float[] from, float[] to, int[] rolls) {
+        if (Arrays.equals(from, to)) return list(from[0], from[1], from[2]);
+        Map<String, Object> m = map("range", List.of(list(from[0], from[1], from[2]), list(to[0], to[1], to[2])));
+        CgVfxLifeRoll.putRolls(m, rolls);
+        return m;
     }
 
     /** A radius, or one in a form (a sweep's is a curve by the loop's seconds, aaa-design 2.60): its first end. */

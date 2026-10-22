@@ -199,8 +199,9 @@ void Objects() {
         int e = int(INDICES(int(STARTS(lo)) + rank));
         FxDrawn r = DRAWN(e * _DrawnStride);
         float t = r.motion.w;
-        // CgVfxFrame.particleMeshes: turned by its seed and spin, sized on each of its own axes by its size over life.
-        // A clip's particle plays in its effect's frame at its size at birth, as the Step places its events there.
+        // CgVfxFrame.particleMeshes: turned by its seed and spin, or as its mesh orientation says (Look's quaternion),
+        // sized on each of its own axes by its size over life. A clip's particle plays in its effect's frame at its size
+        // at birth, as the Step places its events there.
         float turn = r.state.x * 6.2831853 + r.state.y;
         mat3 turned = _Sequence != 0 ? range_quat(ORIGINS(lo).turn)
                 : (_Drawn & 32) != 0 ? range_quat(DRAWN(e * _DrawnStride + 1).scale) : range_turn(turn * 1.7, turn * 2.3, turn);

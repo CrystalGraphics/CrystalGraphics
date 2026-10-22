@@ -575,6 +575,8 @@ public final class CgVfxShape {
                 + lifeRollVectors;
     }
 
+    /** A mesh orientation's vec4s in a parameter row: its start's two ends, then its rate's. */
+    public static final int ORIENTATION_VECTORS = 4;
 
     /** How many events its definitions list. */
     public int events() {

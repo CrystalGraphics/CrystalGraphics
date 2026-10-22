@@ -97,7 +97,7 @@ modules:
       { name: inherit, type: float, by: [loop], default: 0 },
       { name: space, type: enum, values: [emitter, world], default: emitter },
       { name: owner_scale, type: bool, default: false } ] }
-  - { id: initial_mesh_orientation, groups: [particle_spawn], analytic: true, unreal: { niagara: InitialMeshOrientation, cascade: [MeshRotation] }, inputs: [
+  - { id: initial_mesh_orientation, groups: [particle_spawn], seeded: true, analytic: true, unreal: { niagara: InitialMeshOrientation, cascade: [MeshRotation] }, inputs: [
       { name: mode, type: enum, values: [none, orient_to_vector, random], default: none },
       { name: orientation_vector, type: vec3, quantity: direction, default: [1, 0, 0], visible_when: { mode: orient_to_vector } },
       { name: mesh_axis, type: vec3, quantity: direction, default: [1, 0, 0], visible_when: { mode: orient_to_vector } },
@@ -239,8 +239,8 @@ modules:
       { name: rate, type: float, quantity: angular_speed, by: [loop], default: 1 },
       { name: rate_scale, type: float, by: [age], default: 1 },
       { name: mode, type: enum, values: [add, scale], default: add } ] }
-  - { id: mesh_rotation_rate, groups: [particle_update], analytic: true, unreal: { niagara: MeshRotationRate, cascade: [MeshRotationRate, MeshRotationRateMultiplyLife, MeshRotationRateOverLife] }, inputs: [
-      { name: rate, type: vec3, quantity: angular_speed, by: [loop, age], default: [0, 0, 0] },
+  - { id: mesh_rotation_rate, groups: [particle_update], seeded: true, analytic: true, unreal: { niagara: MeshRotationRate, cascade: [MeshRotationRate, MeshRotationRateMultiplyLife, MeshRotationRateOverLife] }, inputs: [
+      { name: rate, type: rotation, quantity: angular_speed, by: [loop, age], default: [0, 0, 0] },
       { name: rate_scale, type: vec3, by: [age], default: [1, 1, 1] },
       { name: mode, type: enum, values: [add, scale], default: add } ] }
   - { id: sub_uv_animation, groups: [particle_update], analytic: true, unreal: { niagara: SubUVAnimation, cascade: [SubUV, SubUVMovie] }, inputs: [

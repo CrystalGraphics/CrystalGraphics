@@ -241,6 +241,12 @@ public interface CgVfxGpuEmitter {
         return mask;
     }
 
+    /** How its mesh particles turn ({@link CgVfxMeshRotation}); null for at random by their seed. */
+    @Nullable
+    default CgVfxMeshRotation meshRotation() {
+        return null;
+    }
+
     /**
      * Cascade's size by speed (ParticleModules_Size.cpp:419-430): each of x and y times
      * {@code clamp(speed * scale, 1, max)}, as {@code {scaleX, scaleY, maxX, maxY}}, speed in blocks a second. The
