@@ -38,6 +38,8 @@ Properties {
     _Pyramid  ("The scene's farthest eye depth, a pyramid",            sampler2D) = "black"
     _Hzb      ("Cull by the pyramid (1), unused, its slack, its last level", vec4) = (0, 0, 0, 0)
     _MinScreen ("r.MinScreenRadiusForLights; 0 keeps every light",     float) = 0
+    _HostDepth ("The host projection's m22, m32, m23 and m33: what the pyramid's depth was linearised by", vec4) = (1, 0, -1, 0)
+    _Depth    ("The bob-free perspective's m22, m32, m23 and m33",        vec4) = (1, 0, -1, 0)
 }
 
 Buffers {
@@ -93,6 +95,22 @@ void cell_box(ivec3 lo, ivec3 hi, out vec3 centre, out vec3 extent) {
     extent = vec3(b - a, d1 - d0) * 0.5;
 }
 
+// The pyramid's eye depth (cg_LinearEyeDepth under the host's projection, its view bob and all) as the grid's: back
+// to the window depth through the host's projection, then out through the bob-free perspective. Both rise with depth,
+// so the farthest stays the farthest.
+float grid_depth(float hostDepth) {
+    if (hostDepth > 1.0e30) return 3.4e38;
+    float ndc;
+    if (_HostDepth.z == 0.0) {
+        ndc = _HostDepth.y - hostDepth * _HostDepth.x;
+    } else {
+        float p22 = -_HostDepth.x / _HostDepth.z, p32 = _HostDepth.y + p22 * _HostDepth.w;
+        ndc = p32 / hostDepth - p22;
+    }
+    return _Depth.z == 0.0 ? (_Depth.y - ndc) / _Depth.x
+            : (_Depth.y - _Depth.x / _Depth.z * _Depth.w) / (ndc - _Depth.x / _Depth.z);
+}
+
 // The scene's farthest eye depth over tiles [lo, hi), with slack; past every depth where there is no pyramid. A texel's
 // share of the target is its level's size against the base's, and a texel more each side keeps it conservative where
 // odd sizes do not halve evenly (IsVisibleHZB samples 4x4 for the same reason).
@@ -109,7 +127,7 @@ float tiles_farthest(ivec2 lo, ivec2 hi) {
     for (int y = a.y; y <= b.y; y++) {
         for (int x = a.x; x <= b.x; x++) farthest = max(farthest, texelFetch(_Pyramid, ivec2(x, y), level).r);
     }
-    return farthest * (1.0 + _Hzb.z);
+    return grid_depth(farthest) * (1.0 + _Hzb.z);
 }
 
 // The box of tiles [lo, hi) and slices [lo.z, hi.z), its far edge at the scene's farthest depth; false where the scene

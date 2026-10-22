@@ -184,9 +184,9 @@ CgWorldRenderer.get().media().add((pass, media) -> {             // a volume of 
   `-Dcrystalgraphics.world.lightsMinScreenRadius`) is not drawn: past 50 blocks under a block and a half of reach, past
   33 times its reach above. 30,000 lights over a floor cost 0.43 ms on an RTX 4070 SUPER. Lit in one full-screen
   pass as Unreal's simple lights light a surface, colour × intensity × falloff × N·L × albedo / π: the normal rebuilt
-  from depth, the albedo the scene's colour over the lightmap at the light's own block. A light is authored for a
-  moonlit night and fades where Minecraft is brighter, as an eye adapts (auto exposure, for the lights alone;
-  `-Dcrystalgraphics.world.lightsAdapted`, 0 for never): full at midnight at any brightness setting, a tenth at noon. No specular: Minecraft has no roughness. Exponent 0 is the inverse square in blocks; any other is Unreal's
+  from depth, the albedo the scene's colour over the lightmap at the light's own block. A light is authored for the
+  night and fades under an open sky by day, as an eye adapted to the sun sees it (for the lights alone;
+  `-Dcrystalgraphics.world.lightsDayFade`, 1 for never): full at night and underground, a tenth at noon. No specular: Minecraft has no roughness. Exponent 0 is the inverse square in blocks; any other is Unreal's
   `(1 - d²/r²)^exponent`. GPU zones `world.lights`, `world.lightsCoarse`, `world.lightsCells` and `world.lightsApply`;
   `-Dcrystalgraphics.world.lightsHzb=false` turns the depth cull off. The demo's `lights` scene shows each kind.
 
