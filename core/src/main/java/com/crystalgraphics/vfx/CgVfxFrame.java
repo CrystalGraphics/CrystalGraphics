@@ -15,6 +15,7 @@ import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxArcRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxBeamRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRibbonRendererProperties;
@@ -35,6 +36,7 @@ import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
+import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxParticleLights;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.path.CgVfxPath;
@@ -145,6 +147,7 @@ public final class CgVfxFrame {
      * {@link #particles}. Proxies of a released pool are dropped.
      */
     void end() {
+        CgVfxParticleLights.get().publish();
         for (int i = 0; i < used.size(); i++) {
             Proxy proxy = used.get(i);
             // A pool that has not recorded its first step has no storage yet, and no particle to draw.
@@ -503,6 +506,11 @@ public final class CgVfxFrame {
         boolean strips = false, beams = false;
         for (int i = 0; i < rs.count; i++) {
             Renderer rd = rs.list[i];
+            if (rd.shape == Shape.LIGHT) {
+                CgVfxLightRendererProperties light = (CgVfxLightRendererProperties) rd.placed.renderer();
+                CgVfxParticleLights.get().note(pool, slot, light.spawnFraction(), light.inverseSquaredFalloff());
+                continue;
+            }
             float size = CgVfxMaterials.size(effect, rd.r);
             int row = materials.row(effect, rd.r);
             CgVfxTrace.count(DRAWS_PARTICLE_GPU, 1);
@@ -622,6 +630,15 @@ public final class CgVfxFrame {
         for (CgVfxLook.Placed placed : look.renderers(def)) {
             CgVfxRendererProperties renderer = placed.renderer();
             if (skips(effect, placed)) continue;
+            if (renderer instanceof CgVfxLightRendererProperties) {
+                // No material: its particles join the world's light list (CgVfxParticleLights).
+                if (!pool.shape().lights()) {
+                    throw new IllegalStateException(who(def, renderer) + " gives light, but " + def.name()
+                            + " has no light_attributes to give its particles one");
+                }
+                rs.next(Shape.LIGHT, placed, null, null);
+                continue;
+            }
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             if (renderer instanceof CgVfxTrailsRendererProperties t) {
                 requireRenderer(renderer, def, CgVfxDrawLayout.QUADS);
@@ -773,7 +790,7 @@ public final class CgVfxFrame {
     }
 
     /** How a renderer draws its slot. */
-    private enum Shape { MERGED, SINGLE, STRIP, MESHES, SEQUENCE }
+    private enum Shape { MERGED, SINGLE, STRIP, MESHES, SEQUENCE, LIGHT }
 
     /**
      * An emitter instance's renderers, kept on its tenancy from its first drawn frame until its slot closes: Niagara's

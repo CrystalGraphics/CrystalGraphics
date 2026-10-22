@@ -114,7 +114,10 @@ public final class CgVfxRenderers {
             case "system" -> throw new IllegalArgumentException(who + ": a system renderer places analytic emitters, which are not built yet");
             case "anim_trail" -> throw new IllegalArgumentException(who + ": an anim trail renderer is not built yet");
             case "beam" -> beam(who, common, tree);
-            case "light" -> throw new IllegalArgumentException(who + ": a light renderer needs the clustered light bins, which are not built yet");
+            case "light" -> new CgVfxLightRendererProperties(common, tree, !Boolean.FALSE.equals(tree.get("inverse_squared_falloff")),
+                    tree.get("spawn_fraction") instanceof Number n ? n.floatValue() : 1f,
+                    Boolean.TRUE.equals(tree.get("affects_translucency")),
+                    tree.get("volumetric_scattering") instanceof Number n ? n.floatValue() : 0f);
             default -> throw new IllegalArgumentException(who + " has no kind '" + kind + "'");
         };
         built(who, r);
@@ -182,6 +185,10 @@ public final class CgVfxRenderers {
             if (t.taper() != 1f) unbuilt = "taper";
         } else if (r instanceof CgVfxArcRendererProperties a) {
             if (a.subdivisions() != 0) unbuilt = "subdivisions";
+        } else if (r instanceof CgVfxLightRendererProperties l) {
+            // Lit transparents and the lights' fog are clustered-lights-decals L5 and after (aaa-design 2.69).
+            if (l.affectsTranslucency()) unbuilt = "affects_translucency";
+            else if (l.volumetricScattering() != 0f) unbuilt = "volumetric_scattering";
         }
         if (unbuilt != null) throw new IllegalArgumentException(who + " sets " + unbuilt + ", which is not built yet");
     }
@@ -358,6 +365,11 @@ public final class CgVfxRenderers {
     /** A beam renderer of id {@code id}: its particles need a beam_source and a beam_target. */
     public static Builder beam(String id) {
         return new Builder(id, "beam");
+    }
+
+    /** A light renderer of id {@code id}: its particles need a light_attributes module. */
+    public static Builder light(String id) {
+        return new Builder(id, "light");
     }
 
     /** A trails renderer of id {@code id}. */

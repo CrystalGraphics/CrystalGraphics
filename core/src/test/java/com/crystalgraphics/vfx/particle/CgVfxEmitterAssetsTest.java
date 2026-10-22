@@ -29,10 +29,12 @@ import com.crystalgraphics.vfx.element.CgVfxExplosion;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxRecord;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
 
@@ -310,6 +312,43 @@ public class CgVfxEmitterAssetsTest {
             assertEquals(e.lifeBinds().get(i).target(), back.lifeBinds().get(i).target());
             assertEquals(e.lifeBinds().get(i).source(), back.lifeBinds().get(i).source());
         }
+    }
+
+    /**
+     * Cascade's Light: a brightness bound to a user parameter, a constant colour scale, a ranged radius scale and an
+     * exponent stored at birth, and a light renderer's fields; read, laid out a third drawn element, written back alike.
+     */
+    @Test
+    public void lightsRoundTrip() {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 64));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0))));
+        Object glow = Map.of("bind", "user.Glow", "default", 0.5, "remap", Map.of("in", List.of(0.0, 1.0), "out", List.of(0.0, 40.0)));
+        tree.put("particle_update", List.of(Map.of("id", "lamp", "module", "crystalgraphics:light_attributes", "inputs",
+                Map.of("brightness", glow, "radius", Map.of("range", List.of(10.0, 20.0)), "exponent", 8.0,
+                        "color_scale", List.of(1.0, 0.1, 0.5)))));
+        tree.put("renderers", List.of(Map.of("id", "r1", "kind", "light", "inverse_squared_falloff", false, "spawn_fraction", 0.5)));
+        CgVfxEmitter e = CgVfxEmitterAssets.compile("lamp", tree, null);
+        CgVfxDrawnChannel brightness = e.light(CgVfxDrawnChannel.LIGHT_BRIGHTNESS);
+        assertEquals(CgVfxDrawnChannel.Roll.BIND, brightness.roll());
+        assertEquals(20f, brightness.bind().apply(brightness.bind().fallback()[0], 0), 1e-6f);
+        assertEquals(0.1f, e.light(CgVfxDrawnChannel.LIGHT_GREEN).from().value(0), 1e-6f);
+        assertEquals(8.0, ((Number) e.spawnForm(CgVfxSpawnInput.LIGHT_EXPONENT).value()).doubleValue(), 1e-9);
+        CgVfxLightRendererProperties r = (CgVfxLightRendererProperties) e.renderers().get(0);
+        assertEquals(0.5f, r.spawnFraction(), 0f);
+        assertTrue(!r.inverseSquaredFalloff());
+        CgVfxShape shape = CgVfxShape.of(e);
+        assertTrue(shape.lights());
+        assertEquals(3, shape.drawnStride());
+        assertTrue(shape.record().word(CgVfxRecord.Tail.LIGHT) >= 0);
+
+        CgVfxEmitter back = CgVfxEmitterAssets.compile("lamp", CgVfxEmitterAssets.write(e), null);
+        for (int c = 0; c < 4; c++) assertEquals(e.light(c).roll(), back.light(c).roll());
+        assertEquals(0.5f, back.light(CgVfxDrawnChannel.LIGHT_BLUE).from().value(0), 1e-6f);
+        assertEquals(e.spawnForm(CgVfxSpawnInput.LIGHT_RADIUS).value(), back.spawnForm(CgVfxSpawnInput.LIGHT_RADIUS).value());
+        assertEquals(e.spawnForm(CgVfxSpawnInput.LIGHT_EXPONENT).value(), back.spawnForm(CgVfxSpawnInput.LIGHT_EXPONENT).value());
     }
 
     /** A colour by the loop and a mesh scale by a function: stored at birth, in their record words, and written back. */

@@ -113,6 +113,8 @@ public final class CgVfxShape {
     private final int lifeBindAt;
     /** Where its drawn slots' bound channels sit in the instance row, a vec4 a slot; -1 where none binds. */
     private final int drawnBindAt;
+    /** Where its light's bound channels sit in the instance row, one vec4; -1 where none binds. */
+    private final int lightBindAt;
     /** Its forms' user bindings, each one's parameter name, and its vec4 in the instance row. */
     private final CgVfxFormInput.Binding[] formBindings;
     private final String[] formBindingNames;
@@ -378,6 +380,16 @@ public final class CgVfxShape {
             lane += CgVfxDrawnChannel.SLOTS;
             key.append("|drawnbind");
         }
+        boolean lightBinds = false;
+        for (int c = 0; c < 4; c++) {
+            CgVfxDrawnChannel ch = emitter.light(c);
+            lightBinds |= ch != null && ch.bind() != null;
+        }
+        lightBindAt = lightBinds ? lane : -1;
+        if (lightBinds) {
+            lane++;
+            key.append("|lightbind");
+        }
         lifeBindAt = emitter.lifeBinds().isEmpty() ? -1 : lane;
         if (lifeBindAt >= 0) {
             lane += CgVfxLifeBind.LANES / 4;
@@ -606,6 +618,21 @@ public final class CgVfxShape {
         return drawnBindAt;
     }
 
+    /** Where its light's bound channels sit in the instance row, one vec4; -1 where none binds. */
+    public int lightBindAt() {
+        return lightBindAt;
+    }
+
+    /** Whether its particles give light ({@link CgVfxDrawnChannel#LIGHT}): a third drawn element each. */
+    public boolean lights() {
+        return (drawnMask & 1 << CgVfxDrawnChannel.LIGHT) != 0;
+    }
+
+    /** Its light's block in a parameter row, as a drawn slot's: two curves and its rolls; -1 where it gives none. */
+    public int lightAt() {
+        return lights() ? rowVectors() - lifeRollVectors - LIGHT_VECTORS : -1;
+    }
+
     /** The two vec4s of its look's bound multipliers in the instance row ({@code CgVfxLifeBind}), or -1 without binds. */
     public int lifeBindAt() {
         return lifeBindAt;
@@ -647,7 +674,7 @@ public final class CgVfxShape {
      * Range writes each particle's first element into the order, so a draw finds its slots at the next.
      */
     public int drawnStride() {
-        return drawnMask == 0 ? 1 : 2;
+        return lights() ? 3 : drawnMask == 0 ? 1 : 2;
     }
 
     /**
@@ -660,6 +687,7 @@ public final class CgVfxShape {
         return CgVfxParticlePool.CURVE_VECTORS + 1 + slots * (2 * CgVfxGpuEmitter.CURVE_TEXELS + 1)
                 + ((drawnMask & 1 << CgVfxDrawnChannel.ORIENTATION) != 0 ? ORIENTATION_VECTORS : 0)
                 + (turnsOverLife ? 2 * CgVfxGpuEmitter.CURVE_TEXELS : 0)
+                + (lights() ? LIGHT_VECTORS : 0)
                 + lifeRollVectors;
     }
 
@@ -676,6 +704,9 @@ public final class CgVfxShape {
 
     /** A mesh orientation's vec4s in a parameter row: its start's two ends, then its rate's. */
     public static final int ORIENTATION_VECTORS = 4;
+
+    /** A light's vec4s in a parameter row: a drawn slot's block. */
+    public static final int LIGHT_VECTORS = 2 * CgVfxGpuEmitter.CURVE_TEXELS + 1;
 
     /** How many events its definitions list. */
     public int events() {

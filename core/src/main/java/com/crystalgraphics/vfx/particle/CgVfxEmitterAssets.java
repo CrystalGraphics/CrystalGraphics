@@ -564,6 +564,12 @@ public final class CgVfxEmitterAssets {
                     sizeBySpeed(name, b, inputs(entry), deps == null ? CgUnits.HOST : deps.units());
                     continue;
                 }
+                case "light_attributes" -> {
+                    String element = idOf(entry, "light");
+                    b.id("light", element);
+                    lightAttributes(name, b, inputs(entry), forms, element);
+                    continue;
+                }
                 default -> {
                 }
             }
@@ -747,6 +753,28 @@ public final class CgVfxEmitterAssets {
                         Boolean.TRUE.equals(ch.get("spawn_only"))));
             }
         }
+    }
+
+    /**
+     * {@code light_attributes}: Cascade's Light module (ParticleModules.cpp:3101-3123, :3239-3270). Its colour scale and
+     * brightness each frame by age, a brightness bound to a user parameter read again each step as Cascade's particle
+     * parameter distribution is; its radius scale and exponent spawn forms, read once at birth by the emitter's time.
+     */
+    private static void lightAttributes(String name, CgVfxEmitter.Builder b, Map<?, ?> in, CgVfxFormCompiler forms,
+                                        String element) {
+        CgVfxDrawnChannel brightness;
+        if (in.get("brightness") instanceof Map<?, ?> form && form.get("bind") != null) {
+            if (!(forms.compile(element, channelProperty(), form) instanceof CgVfxFormInput.Binding bound)) {
+                throw new IllegalArgumentException(name + ": light_attributes' brightness " + form + " is not a binding");
+            }
+            brightness = CgVfxDrawnChannel.bound(bound);
+        } else {
+            brightness = drawnChannel(name, "light_attributes' brightness", in.get("brightness"), false);
+        }
+        CgKeyframes[] rgb = axes(name, in.get("color_scale"), 3);
+        b.light(15f, 16f, CgVfxDrawnChannel.over(rgb[0]), CgVfxDrawnChannel.over(rgb[1]), CgVfxDrawnChannel.over(rgb[2]), brightness);
+        b.spawnForm(valueForm(CgVfxSpawnInput.LIGHT_RADIUS, element, in.get("radius")));
+        b.spawnForm(valueForm(CgVfxSpawnInput.LIGHT_EXPONENT, element, in.get("exponent")));
     }
 
     /** The input a drawn channel's binding is read as: a float over life with no unit, as SubUV's frame is. */
@@ -1980,6 +2008,21 @@ public final class CgVfxEmitterAssets {
             Map<String, Object> in = map("offset", drawnForm(e.name, offset), "update", "direct");
             if (offset.roll() == CgVfxDrawnChannel.Roll.SPAWN) in.put("spawn_only", true);
             modules.add(entry("camera_offset", "camera_offset", in));
+        }
+        if (e.light != null) {
+            CgVfxDrawnChannel[] rgb = {e.light[0], e.light[1], e.light[2]};
+            boolean constant = true;
+            for (CgVfxDrawnChannel ch : rgb) {
+                if (ch.roll() != CgVfxDrawnChannel.Roll.NONE) {
+                    throw new IllegalArgumentException(e.name + "'s light colour scale rolls, which no file writes: over(curve) each");
+                }
+                constant &= ch.from().size() == 1;
+            }
+            Object scale = constant ? list(rgb[0].from().value(0), rgb[1].from().value(0), rgb[2].from().value(0))
+                    : curves("age", rgb[0].from(), rgb[1].from(), rgb[2].from());
+            modules.add(entry("light", "light_attributes", map("brightness", drawnForm(e.name, e.light[CgVfxDrawnChannel.LIGHT_BRIGHTNESS]),
+                    "radius", written(e, CgVfxSpawnInput.LIGHT_RADIUS, 15.0), "exponent", written(e, CgVfxSpawnInput.LIGHT_EXPONENT, 16.0),
+                    "color_scale", scale)));
         }
     }
 

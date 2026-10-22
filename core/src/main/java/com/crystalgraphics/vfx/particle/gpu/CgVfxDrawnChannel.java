@@ -56,6 +56,15 @@ public record CgVfxDrawnChannel(CgKeyframes from, CgKeyframes to, Roll roll, @Nu
      */
     public static final int ORIENTATION = 5;
 
+    /**
+     * A drawn mask's bit for a light ({@code CgVfxEmitter.Builder.light}), past the orientation: Look writes its colour
+     * scale and brightness into a third element a particle, which Range's lights read.
+     */
+    public static final int LIGHT = 6;
+
+    /** The {@link #LIGHT} element's channels: Cascade's colour scale, then its brightness. */
+    public static final int LIGHT_RED = 0, LIGHT_GREEN = 1, LIGHT_BLUE = 2, LIGHT_BRIGHTNESS = 3;
+
     /** The {@link #SPRITE} slot's channels: its frame of the renderer's sub-images, and blocks drawn toward the eye. */
     public static final int SUB_IMAGE = 0, CAMERA_OFFSET = 1;
 

@@ -3,7 +3,8 @@
 // per channel from its seed (Niagara's non-uniform ranges), its light from the voxel window at its block, and the floor
 // under it. A stage of its own rather than the Step's tail, so the Step keeps its units below compute; a map, so it runs
 // at every tier. A shape whose particles carry drawn slots (CgVfxDrawnChannel) takes two elements a particle: the drawn
-// part, then its slots, each channel a value over life rolled between two as its row says.
+// part, then its slots, each channel a value over life rolled between two as its row says; one whose particles give
+// light a third, its light's colour scale and brightness (Cascade's Light module), which Range's lights read.
 #pragma kernel Look map
 
 #include "crystalgraphics:shaders/lib/vfx/fx_rand.glsl"
@@ -22,6 +23,8 @@ Properties {
     _LifeRolls     ("How many: CgVfxShape.lifeRolls",                    int)       = 0
     _LifeBindAt    ("Bound multipliers' vec4 in an instance row: CgVfxShape.lifeBindAt", int) = -1
     _DrawnBindAt   ("Drawn slots' bound channels in an instance row, a vec4 a slot: CgVfxShape.drawnBindAt", int) = -1
+    _LightAt       ("Its light's block in a row: CgVfxShape.lightAt",    int)       = -1
+    _LightBindAt   ("Its light's bound channels in an instance row: CgVfxShape.lightBindAt", int) = -1
     _World         ("The voxel window: a block a texel",                  sampler3D) = "black"
     _WorldSections ("Which of its sections are filled",                   sampler3D) = "black"
     _WorldBaseX    ("Its lowest block, absolute: x",                      int)       = 0
@@ -68,12 +71,11 @@ vec4 look_curve(int at, float t) {
     return mix(CURVES(at + i0), CURVES(at + i1), x - float(i0));
 }
 
-// Drawn slot s's channels at t, its block b: its low and high ends over life, mixed by each channel's roll (0 the low
-// end alone; 1 by the seed, fixed for its life; 2 rolled again each step, keyed by its age; 3 its instance's bound
-// user parameter, lane s from _DrawnBindAt), plus 10 on the viewer's clock: its life over the instance's time rate, as
-// Cascade's SubUV bUseRealTime divides its relative time by the time dilation.
-vec4 look_drawn(int at, int b, int s, float t, uint bits, float age, int inst) {
-    int block = at + _Texels * 2 + 6 + b * (2 * _Texels + 1);
+// A block of four channels at vec4 block, a drawn slot's or a light's: its low and high ends over life, mixed by each
+// channel's roll (0 the low end alone; 1 by the seed, fixed for its life; 2 rolled again each step, keyed by its age;
+// 3 its instance's bound user parameter, from instance vec4 bound), plus 10 on the viewer's clock: its life over the
+// instance's time rate, as Cascade's SubUV bUseRealTime divides its relative time by the time dilation. b salts its rolls.
+vec4 look_block(int block, int b, float t, uint bits, float age, int bound, int inst) {
     vec4 rolls = CURVES(block + 2 * _Texels), mixed, value;
     float rate = look_instance(inst + 2).z;
     for (int c = 0; c < 4; c++) {
@@ -83,9 +85,14 @@ vec4 look_drawn(int at, int b, int s, float t, uint bits, float age, int inst) {
         uint key = roll > 1.5 ? bits ^ floatBitsToUint(age) : bits;
         float m = roll > 0.5 && roll < 2.5 ? fx_rand(key, uint(b), 40u + uint(c)) : 0.0;
         value[c] = mix(look_curve(block, u)[c], look_curve(block + _Texels, u)[c], m);
-        if (roll > 2.5 && _DrawnBindAt >= 0) value[c] = look_instance(inst + _DrawnBindAt + s)[c];
+        if (roll > 2.5 && bound >= 0) value[c] = look_instance(bound)[c];
     }
     return value;
+}
+
+// Drawn slot s's channels, its block b from the slots' first, its bound channels lane s from _DrawnBindAt.
+vec4 look_drawn(int at, int b, int s, float t, uint bits, float age, int inst) {
+    return look_block(at + _Texels * 2 + 6 + b * (2 * _Texels + 1), b, t, bits, age, _DrawnBindAt >= 0 ? inst + _DrawnBindAt + s : -1, inst);
 }
 
 // Unreal's rotator (roll, pitch, yaw) as the host's quaternion: Niagara's RotatorToQuat on radians, then through Unreal's
@@ -150,6 +157,16 @@ void Look() {
             }
             d.scale = q;
         }
+    } else if (part == 2 && particle < int(LIVE(0))) {
+        // Its light: Cascade's colour scale and brightness at its relative time, each frame (ParticleModules.cpp:3266-3267).
+        int e = particle * _RecordVectors;
+        vec4 positionAge = uintBitsToFloat(IN(e + FX_RECORD_POSITION_AGE));
+        vec4 lifeSeed = uintBitsToFloat(IN(e + FX_RECORD_LIFE_SEED));
+        float t = min(positionAge.w / lifeSeed.x, 1.0);
+        int at = int(IN(e + FX_RECORD_HEAT_ID).w) * _RowVectors;
+        int inst = _InstanceAt + int(IN(e + FX_RECORD_HEAT_ID).z) * _InstanceRow;
+        d.place = look_block(at + _LightAt, 7, t, floatBitsToUint(lifeSeed.y), positionAge.w,
+                _LightBindAt >= 0 ? inst + _LightBindAt : -1, inst);
     } else if (part == 0 && particle < int(LIVE(0))) {
         int e = particle * _RecordVectors;
         vec4 positionAge = uintBitsToFloat(IN(e + FX_RECORD_POSITION_AGE));

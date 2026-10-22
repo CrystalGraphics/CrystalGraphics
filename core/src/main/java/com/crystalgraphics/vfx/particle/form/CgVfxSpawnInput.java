@@ -22,6 +22,9 @@ package com.crystalgraphics.vfx.particle.form;
  *   <li>{@link #COLOR}, {@link #MESH_SCALE}, {@link #MESH_ORIENTATION} and {@link #MESH_ROTATION_RATE} are stored
  *       with the particle (Niagara's {@code Particles.Color} and {@code Particles.Scale}, Cascade's mesh rotation
  *       payload) where their form is more than a range, which Look rolls from the seed instead.</li>
+ *   <li>{@link #LIGHT_RADIUS} and {@link #LIGHT_EXPONENT} are always stored: Cascade's light payload, read once at
+ *       birth by the emitter's time ({@code ParticleModules.cpp:3110-3112}). The radius is a multiple of the
+ *       particle's size, unitless.</li>
  *   <li>{@link #scales()} says whether {@code CgVfxEmitter.scaled} scales it: lengths and speeds do, a lifetime or an
  *       angle does not.</li>
  * </ul>
@@ -39,7 +42,9 @@ public enum CgVfxSpawnInput {
     MESH_ORIENTATION("initial_mesh_orientation", "rotation", 3, -1, false),
     MESH_ROTATION_RATE("mesh_rotation_rate", "rate", 3, -1, false),
     COLOR("initialize_particle", "color", 4, -1, false),
-    MESH_SCALE("initialize_particle", "mesh_scale", 3, -1, false);
+    MESH_SCALE("initialize_particle", "mesh_scale", 3, -1, false),
+    LIGHT_RADIUS("light_attributes", "radius", 1, -1, false),
+    LIGHT_EXPONENT("light_attributes", "exponent", 1, -1, false);
 
     private final String module, input;
     private final int components, word;

@@ -75,7 +75,7 @@ public final class CgVfxEmitterCompiler {
         int previous = record.word(CgVfxRecord.Tail.PREVIOUS), flags = record.word(CgVfxRecord.Tail.FLAGS);
         int color = record.word(CgVfxRecord.Tail.COLOR), scale = record.word(CgVfxRecord.Tail.SCALE);
         int turn = record.word(CgVfxRecord.Tail.TURN), turnRate = record.word(CgVfxRecord.Tail.TURN_RATE);
-        int beam = record.word(CgVfxRecord.Tail.BEAM);
+        int beam = record.word(CgVfxRecord.Tail.BEAM), light = record.word(CgVfxRecord.Tail.LIGHT);
         s.append("\nFxParticle step_unpack(FxRecord r) {\n    FxParticle p;\n");
         unpack(s, "position", "uintBitsToFloat", CgVfxRecord.POSITION, 3);
         unpack(s, "age", "uintBitsToFloat", CgVfxRecord.AGE, 1);
@@ -102,6 +102,8 @@ public final class CgVfxEmitterCompiler {
             if (beam >= 0) unpack(s, BEAM_FIELDS[v], "uintBitsToFloat", beam + v * 4, 4);
             else s.append("    p.").append(BEAM_FIELDS[v]).append(" = vec4(0.0);\n");
         }
+        if (light >= 0) unpack(s, "light", "uintBitsToFloat", light, 2);
+        else s.append("    p.light = vec2(0.0);\n");
         if (flags >= 0) {
             String w = CgVfxRecord.lane("r", flags);
             s.append("    p.resting = (").append(w).append(" & 1u) != 0u;\n    p.collisions = ").append(w).append(" >> 16u;\n");
@@ -130,6 +132,7 @@ public final class CgVfxEmitterCompiler {
         if (turn >= 0) pack(w, "p.turn", turn, 3);
         if (turnRate >= 0) pack(w, "p.turnRate", turnRate, 3);
         if (beam >= 0) for (int v = 0; v < BEAM_FIELDS.length; v++) pack(w, "p." + BEAM_FIELDS[v], beam + v * 4, 4);
+        if (light >= 0) pack(w, "p.light", light, 2);
         // The simulated part; the drawn part is the Look stage's (env/compute/vfx/look.compute).
         s.append("\nFxRecord step_pack(FxParticle p, uint paramRow) {\n    FxRecord r;\n");
         for (int v = 0; v < record.vectors(); v++) {
@@ -176,7 +179,8 @@ public final class CgVfxEmitterCompiler {
             Pattern.compile("\\bp\\.scale\\s*([-+*]?=(?!=))"),
             Pattern.compile("\\bp\\.turn\\s*([-+*]?=(?!=))"),
             Pattern.compile("\\bp\\.turnRate\\s*([-+*]?=(?!=))"),
-            Pattern.compile("\\bp\\.beam\\w*\\s*([-+*]?=(?!=))")};
+            Pattern.compile("\\bp\\.beam\\w*\\s*([-+*]?=(?!=))"),
+            Pattern.compile("\\bp\\.light\\s*([-+*]?=(?!=))")};
     /** The {@code BEAM} tail's vec4s, in order: {@code FxParticle}'s fields. */
     private static final String[] BEAM_FIELDS = {"beamSource", "beamSourceTangent", "beamTarget", "beamTargetTangent", "beamNoise", "beamTurn"};
     private static final Pattern INCLUDE = Pattern.compile("#include\\s+\"([^\"]+)\"");
@@ -223,6 +227,9 @@ public final class CgVfxEmitterCompiler {
         }
         if (shape.spawnFormOf(CgVfxSpawnInput.MESH_ROTATION_RATE) >= 0) {
             first[CgVfxRecord.Tail.TURN_RATE.ordinal()] = Math.min(first[CgVfxRecord.Tail.TURN_RATE.ordinal()], code.length() + 5);
+        }
+        if (shape.spawnFormOf(CgVfxSpawnInput.LIGHT_RADIUS) >= 0) {
+            first[CgVfxRecord.Tail.LIGHT.ordinal()] = Math.min(first[CgVfxRecord.Tail.LIGHT.ordinal()], code.length() + 6);
         }
         List<CgVfxRecord.Tail> tail = new ArrayList<>();
         for (CgVfxRecord.Tail t : tails) if (first[t.ordinal()] != Integer.MAX_VALUE) tail.add(t);
@@ -597,6 +604,7 @@ public final class CgVfxEmitterCompiler {
                     p.scale = @SCALE@;
                     p.turn = @TURN@;
                     p.turnRate = @TURN_RATE@;
+                    p.light = @LIGHT@;
                     p.resting = false;
                     p.collisions = 0u;
                     p.hit = vec4(0.0);
@@ -644,6 +652,8 @@ public final class CgVfxEmitterCompiler {
                 .replace("@SCALE@", spawnValue(shape, CgVfxSpawnInput.MESH_SCALE, null, "vec3(1.0)", ""))
                 .replace("@TURN@", spawnValue(shape, CgVfxSpawnInput.MESH_ORIENTATION, null, "vec3(0.0)", ""))
                 .replace("@TURN_RATE@", spawnValue(shape, CgVfxSpawnInput.MESH_ROTATION_RATE, null, "vec3(0.0)", ""))
+                .replace("@LIGHT@", "vec2(" + spawnValue(shape, CgVfxSpawnInput.LIGHT_RADIUS, null, "0.0", "") + ", "
+                        + spawnValue(shape, CgVfxSpawnInput.LIGHT_EXPONENT, null, "0.0", "") + ")")
                 .replace("@SPIN@", spawnValue(shape, CgVfxSpawnInput.SPRITE_ROTATION, null,
                         "fx_rand(seed ^ step_key(row, STEP_KEY_ROTATION), k, 0u) * 6.2831853", "")));
         if (shape.tier() > 0) s.append("""

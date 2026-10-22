@@ -257,10 +257,10 @@ modules:
       { name: dynamic_0, type: struct, default: null }, { name: dynamic_1, type: struct, default: null }, { name: dynamic_2, type: struct, default: null }, { name: dynamic_3, type: struct, default: null },
       { name: use_emitter_time, type: bool, default: false } ] }
   - { id: light_attributes, groups: [particle_update], analytic: true, unreal: { niagara: LightAttributes, cascade: [Light] }, inputs: [
-      { name: radius, type: float, quantity: length, by: [age], default: 100 },
-      { name: brightness, type: float, by: [age], default: 1 },
+      { name: radius, type: float, by: [loop], default: 15 },
+      { name: brightness, type: float, by: [age], default: 32 },
       { name: color_scale, type: colour, by: [age], default: { argb: 0xFFFFFFFF } },
-      { name: exponent, type: float, default: 1 }, { name: spawn_fraction, type: float, default: 1 },
+      { name: exponent, type: float, by: [loop], default: 16 }, { name: spawn_fraction, type: float, default: 1 },
       { name: inverse_squared_falloff, type: bool, default: true }, { name: affects_translucency, type: bool, default: false } ] }
 
   # contacts and kills

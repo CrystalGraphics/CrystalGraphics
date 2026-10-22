@@ -1,0 +1,50 @@
+// Particles as lights (clustered-lights-decals L4, CgVfxParticleLights): each live particle of a slot drawing a light
+// renderer appends one world light, as Cascade gathers them (ParticleSystemRender.cpp:870-935): its radius scale times
+// its size, its colour times its alpha times its light's colour scale and brightness (Look's third element), its
+// exponent from birth or 0 for the inverse square; none where both radius and colour are nothing, or where its spawn
+// roll is past the renderer's share. Positions are from the firing's eye.
+#pragma kernel Lights append
+
+#include "crystalgraphics:shaders/lib/vfx/fx_rand.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_record.glsl"
+#include "crystalgraphics:shaders/lib/lights.glsl"
+
+Properties {
+    _LightEye      ("The firing's eye, absolute",                         vec4) = (0, 0, 0, 0)
+    _RecordVectors ("A record's uvec4s: the pool's layout",               int)  = 4
+    _DrawnStride   ("Drawn elements a particle: 3 with a light",          int)  = 3
+    _LightTail     ("Its stored radius scale's word, then its exponent's", int) = 0
+}
+
+// A world light: CgWorldLights.STRUCT.
+struct CgLight { vec4 positionRadius; vec4 colorExponent; };
+
+// A particle's drawn part: CgVfxRecord.DRAWN_GLSL.
+struct FxDrawn { vec4 place; vec4 motion; vec4 state; vec4 light; vec4 color; vec4 scale; };
+
+Buffers {
+    RECORDS ("Particles",                                                       uvec4,   readonly)
+    DRAWN   ("Their drawn parts, the third their light",                        FxDrawn, readonly)
+    LIVE    ("How many are alive",                                              uint,    readonly)
+    SLOTS   ("Each slot's two vec4s: its origin from the eye and its share; 1 for the inverse square", vec4, readonly)
+    LIGHTS  ("Lights",                                                          CgLight, append)
+}
+
+void Lights() {
+    if (CG_ELEMENT >= int(LIVE(0))) return;
+    int e = CG_ELEMENT * _RecordVectors;
+    uvec4 heatId = RECORDS(e + FX_RECORD_HEAT_ID);
+    vec4 origin = SLOTS(int(heatId.z) * 2), falloff = SLOTS(int(heatId.z) * 2 + 1);
+    // Its share is rolled once from its seed, Cascade's bValid (ParticleModules.cpp:3114-3115).
+    uint bits = RECORDS(e + FX_RECORD_LIFE_SEED).y;
+    if (origin.w <= 0.0 || fx_rand(bits, 0u, 60u) >= origin.w) return;
+    FxDrawn d = DRAWN(CG_ELEMENT * _DrawnStride), l = DRAWN(CG_ELEMENT * _DrawnStride + 2);
+    float radiusScale = uintBitsToFloat(RECORDS(e + _LightTail / 4)[_LightTail % 4]);
+    int x = _LightTail + 1;
+    float exponent = uintBitsToFloat(RECORDS(e + x / 4)[x % 4]);
+    vec2 size = d.place.w * d.scale.xy;
+    float radius = radiusScale * (size.x + size.y) * 0.5;
+    vec3 color = d.color.rgb * d.color.a * l.place.rgb * l.place.a;
+    if (radius <= 1e-4 && max(color.r, max(color.g, color.b)) <= 1e-4) return;
+    LIGHTS_APPEND(cg_light(origin.xyz + d.place.xyz, radius, color, falloff.x > 0.5 ? 0.0 : exponent));
+}

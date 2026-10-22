@@ -19,6 +19,8 @@ struct FxParticle {
     vec3 position, previous, velocity, scale, turn, turnRate;
     // A beam's state (fx_beam.glsl's FX_BEAM_*): stored only where a kind writes it.
     vec4 beamSource, beamSourceTangent, beamTarget, beamTargetTangent, beamNoise, beamTurn;
+    // Its light's radius scale and exponent from birth (CgVfxRecord.Tail.LIGHT).
+    vec2 light;
     float age, life, size, seed, spin, spinRate, heat;
     bool resting;
     uint id, slot, collisions, hitEntity;

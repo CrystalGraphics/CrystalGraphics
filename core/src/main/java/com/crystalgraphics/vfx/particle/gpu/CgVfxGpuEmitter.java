@@ -233,8 +233,18 @@ public interface CgVfxGpuEmitter {
     }
 
     /**
-     * The drawn slots {@code emitter} sets a channel of, a bit each, and {@link CgVfxDrawnChannel#ORIENTATION} where its
-     * meshes turn as a {@link CgVfxMeshRotation} says: what its pool writes after each drawn part.
+     * Channel {@code channel} of its light ({@link CgVfxDrawnChannel#LIGHT_RED} to {@code LIGHT_BRIGHTNESS}), Cascade's
+     * {@code ColorScaleOverLife} and {@code BrightnessOverLife}; null for every channel where its particles give no light.
+     */
+    @Nullable
+    default CgVfxDrawnChannel light(int channel) {
+        return null;
+    }
+
+    /**
+     * The drawn slots {@code emitter} sets a channel of, a bit each, {@link CgVfxDrawnChannel#ORIENTATION} where its
+     * meshes turn as a {@link CgVfxMeshRotation} says, and {@link CgVfxDrawnChannel#LIGHT} where its particles give
+     * light: what its pool writes after each drawn part.
      */
     static int drawnMask(CgVfxGpuEmitter emitter) {
         int mask = 0;
@@ -242,6 +252,7 @@ public interface CgVfxGpuEmitter {
             for (int c = 0; c < 4; c++) if (emitter.drawn(s, c) != null) mask |= 1 << s;
         }
         if (emitter.meshRotation() != null) mask |= 1 << CgVfxDrawnChannel.ORIENTATION;
+        if (emitter.light(CgVfxDrawnChannel.LIGHT_BRIGHTNESS) != null) mask |= 1 << CgVfxDrawnChannel.LIGHT;
         return mask;
     }
 

@@ -125,6 +125,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final float[] rasterized;
     /** What its particles carry for their draws alone, [slot][channel]; null where unset. */
     final CgVfxDrawnChannel[][] drawn;
+    /** Its light's colour scale and brightness ({@link CgVfxDrawnChannel#LIGHT_RED} on); null where it gives none. */
+    @Nullable
+    final CgVfxDrawnChannel[] light;
     /** Cascade's size by speed: x and y scales a block a second, then their most. */
     final float[] sizeBySpeed;
     /** How its particles play their sheets' frames; null shows frame 0. */
@@ -214,6 +217,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         rasterized = b.rasterized != null ? b.rasterized.clone() : null;
         drawn = new CgVfxDrawnChannel[CgVfxDrawnChannel.SLOTS][];
         for (int i = 0; i < drawn.length; i++) drawn[i] = b.drawn[i].clone();
+        light = b.light != null ? b.light.clone() : null;
         sizeBySpeed = b.sizeBySpeed.clone();
         subUv = b.subUv;
         spawnForms = List.copyOf(b.spawnForms);
@@ -534,6 +538,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         return lifeRolls;
     }
 
+    @Override
+    @Nullable
+    public CgVfxDrawnChannel light(int channel) {
+        return light != null ? light[channel] : null;
+    }
+
     /**
      * Whether the collision events put on it fire at each particle's first collision alone: its {@code generate_event}'s
      * {@code first_time_only} (ParticleModules_Event.cpp:185-191, 4.21).
@@ -770,6 +780,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private int trailPoints;
         private float[] rasterized;
         private final CgVfxDrawnChannel[][] drawn = new CgVfxDrawnChannel[CgVfxDrawnChannel.SLOTS][4];
+        private CgVfxDrawnChannel[] light;
         private float[] sizeBySpeed = {0f, 0f, 1f, 1f};
         private CgVfxSubUvAnimation subUv;
         private float speedMin, speedMax;
@@ -812,6 +823,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             trailPoints = e.trailPoints;
             rasterized = e.rasterized;
             for (int i = 0; i < drawn.length; i++) drawn[i] = e.drawn[i].clone();
+            light = e.light != null ? e.light.clone() : null;
             sizeBySpeed = e.sizeBySpeed.clone();
             subUv = e.subUv;
             spawnForms.addAll(e.spawnForms);
@@ -1320,6 +1332,32 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
                 throw new IllegalArgumentException("no drawn slot " + slot + " channel " + channel);
             }
             drawn[slot][channel] = value;
+            return this;
+        }
+
+        /**
+         * Its particles' light, Cascade's {@code Light} module: each a light {@code radiusScale} times its size across,
+         * falling off by {@code exponent} (0 for the inverse square), its colour times the colour scale and brightness,
+         * which change by age. A {@code light} renderer draws them.
+         *
+         * <pre>{@code
+         * .light(15f, 16f, CgVfxDrawnChannel.over(CgKeyframes.constant(1f)), CgVfxDrawnChannel.over(CgKeyframes.constant(0.5f)),
+         *        CgVfxDrawnChannel.over(CgKeyframes.constant(0.2f)), CgVfxDrawnChannel.update(20f, 40f))   // a flicker
+         * }</pre>
+         *
+         * <ul>
+         *   <li>The radius scale and exponent are read once at birth ({@link CgVfxSpawnInput#LIGHT_RADIUS},
+         *       {@code LIGHT_EXPONENT}); an emitter file gives them in any form, by the emitter's time.</li>
+         *   <li>A channel that does not change is {@code over(constant)}.</li>
+         *   <li>A particle gives light only through a {@code light} renderer, which also says which share of them do.</li>
+         * </ul>
+         */
+        public Builder light(float radiusScale, float exponent, CgVfxDrawnChannel red, CgVfxDrawnChannel green,
+                             CgVfxDrawnChannel blue, CgVfxDrawnChannel brightness) {
+            light = new CgVfxDrawnChannel[] {red, green, blue, brightness};
+            String element = ids.getOrDefault("light", "light");
+            spawnForm(CgVfxSpawnForm.of(CgVfxSpawnInput.LIGHT_RADIUS, element, "radius", (double) radiusScale));
+            spawnForm(CgVfxSpawnForm.of(CgVfxSpawnInput.LIGHT_EXPONENT, element, "exponent", (double) exponent));
             return this;
         }
 

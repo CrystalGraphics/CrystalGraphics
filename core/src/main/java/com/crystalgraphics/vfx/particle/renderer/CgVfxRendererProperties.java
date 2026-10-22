@@ -26,7 +26,7 @@ import java.util.Map;
  */
 public sealed interface CgVfxRendererProperties permits CgVfxSpriteRendererProperties, CgVfxMeshRendererProperties, CgVfxBeamRendererProperties,
         CgVfxRibbonRendererProperties, CgVfxArcRendererProperties, CgVfxTrailsRendererProperties,
-        CgVfxSequenceRendererProperties {
+        CgVfxSequenceRendererProperties, CgVfxLightRendererProperties {
 
     /** What every renderer holds. */
     Common common();

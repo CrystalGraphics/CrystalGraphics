@@ -61,6 +61,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.IntFunction;
 
 /**
  * Every particle of every playing emitter instance whose definition has one {@link CgVfxShape}: one simulation on the
@@ -309,6 +310,8 @@ public final class CgVfxParticlePool {
     private CgGraphBuffer records, drawn, paramBuffer, curveBuffer, instanceBuffer, spawnBuffer, history, ringTable;
     /** The neighbour grid (CgVfxDataInterfaces.NEIGHBOURS): each record's key and index, sorted; each hashed cell's run. */
     private CgGraphBuffer cellKeys, cellValues, cellRuns;
+    /** Each slot's light row, CgVfxParticleLights's: fitted by the firing that uploads it. */
+    private CgGraphBuffer lightSlots;
     private int cells;
     private float cellWidth = 1f;
     /** Ping-ponged append counts: {@code counts[current]} is how many records the newest version holds. */
@@ -520,7 +523,7 @@ public final class CgVfxParticlePool {
 
     private void forgetStorage() {
         records = drawn = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = feedBuffer = counts[0] = counts[1] = null;
-        history = ringTable = historyFrom = null;
+        history = ringTable = historyFrom = lightSlots = null;
         cellKeys = cellValues = cellRuns = null;
         if (beams != null) beams.forget();
         historyDrops.clear();
@@ -974,7 +977,7 @@ public final class CgVfxParticlePool {
         CgVfxVoxelWindow.get().bindBlocks(pass.dispatch(look, storage * shape.drawnStride()).bind("IN", records).bind("DRAWN", drawn)
                 .set("_DrawnStride", shape.drawnStride()).set("_Drawn", shape.drawnMask()).set("_RowVectors", shape.rowVectors())
                 .set("_LifeRollAt", shape.lifeRollAt()).set("_LifeRolls", shape.lifeRolls()).set("_LifeBindAt", shape.lifeBindAt())
-                .set("_DrawnBindAt", shape.drawnBindAt())
+                .set("_DrawnBindAt", shape.drawnBindAt()).set("_LightAt", shape.lightAt()).set("_LightBindAt", shape.lightBindAt())
                 .set("_RecordVectors", record.vectors()).set("_PreviousAt", record.word(CgVfxRecord.Tail.PREVIOUS))
                 .set("_ColorAt", record.word(CgVfxRecord.Tail.COLOR)).set("_ScaleAt", record.word(CgVfxRecord.Tail.SCALE))
                 .set("_TurnAt", record.word(CgVfxRecord.Tail.TURN)).set("_TurnRateAt", record.word(CgVfxRecord.Tail.TURN_RATE))
@@ -1128,11 +1131,11 @@ public final class CgVfxParticlePool {
 
     private void releaseStorage(CgRecording recording) {
         CgGraphBuffer[] owned = {records, drawn, counts[0], counts[1], paramBuffer, curveBuffer, instanceBuffer, spawnBuffer,
-                history, ringTable, historyFrom, cellKeys, cellValues, cellRuns};
+                history, ringTable, historyFrom, cellKeys, cellValues, cellRuns, lightSlots};
         for (CgGraphBuffer buffer : owned) if (buffer != null) recording.release(buffer);
         for (int i = 0; i < historyDrops.size(); i++) recording.release(historyDrops.get(i));
         records = drawn = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = counts[0] = counts[1] = null;
-        history = ringTable = historyFrom = null;
+        history = ringTable = historyFrom = lightSlots = null;
         cellKeys = cellValues = cellRuns = null;
         if (beams != null) beams.release(recording);
         historyDrops.clear();
@@ -1487,6 +1490,19 @@ public final class CgVfxParticlePool {
                     }
                     instances[base + 4 * ds + c] = Float.floatToRawIntBits(v);
                 }
+            }
+        }
+        if (shape.lightBindAt() >= 0) {
+            // Its light's bound channels: as a drawn slot's, one vec4.
+            int base = at + shape.lightBindAt() * 4;
+            for (int c = 0; c < 4; c++) {
+                CgVfxDrawnChannel ch = emitter.light(c);
+                float v = 0f;
+                if (ch != null && ch.bind() != null) {
+                    CgVfxFormInput.Binding u = ch.bind();
+                    v = u.apply(view.user(u.path().substring("user.".length()), 0, u.fallback()[0]), 0);
+                }
+                instances[base + c] = Float.floatToRawIntBits(v);
             }
         }
         slotBindScale[slot] = 1f;
@@ -1967,6 +1983,20 @@ public final class CgVfxParticlePool {
         put(recording, spawnBuffer, spawns, spawnEnd);
     }
 
+    /**
+     * Each slot's light row ({@code CgVfxParticleLights}), at least {@code words} long: fitted by the world renderer's
+     * firing that uploads it, released with the pool's storage.
+     */
+    public CgGraphBuffer lightSlots(CgRecording recording, int words) {
+        lightSlots = fit(recording, lightSlots, "vfx.pool.lights", words);
+        return lightSlots;
+    }
+
+    /** Each slot's light row as last fitted; null before. */
+    public CgGraphBuffer lightSlots() {
+        return lightSlots;
+    }
+
     /** {@code buffer}, or one of the next size class in its place when it holds fewer than {@code words}. */
     private static CgGraphBuffer fit(CgRecording recording, CgGraphBuffer buffer, String name, int words) {
         long bytes = Math.max(256L, words * 4L);
@@ -2000,9 +2030,14 @@ public final class CgVfxParticlePool {
      * how each rolls ({@link CgVfxDrawnChannel.Roll}'s ordinal), a channel the emitter leaves unset 0 throughout.
      */
     private static void writeDrawn(CgVfxGpuEmitter emitter, int slot, float[] out, int at) {
+        writeBlock(c -> emitter.drawn(slot, c), out, at);
+    }
+
+    /** A drawn slot's or a light's block at word {@code at}: each channel's two curves, then their rolls. */
+    private static void writeBlock(IntFunction<CgVfxDrawnChannel> channel, float[] out, int at) {
         int texels = CgVfxGpuEmitter.CURVE_TEXELS, high = at + 4 * texels, rolls = at + 8 * texels;
         for (int c = 0; c < 4; c++) {
-            CgVfxDrawnChannel ch = emitter.drawn(slot, c);
+            CgVfxDrawnChannel ch = channel.apply(c);
             for (int i = 0; i < texels; i++) {
                 float progress = (float) i / (texels - 1);
                 out[at + 4 * i + c] = ch == null ? 0f : ch.from().at(progress);
@@ -2168,6 +2203,7 @@ public final class CgVfxParticlePool {
                 turn.integrals(curveScratch, lives, curveScratch, lives + 4 * CgVfxGpuEmitter.CURVE_TEXELS, CgVfxGpuEmitter.CURVE_TEXELS);
             }
         }
+        if (shape.lights()) writeBlock(emitter::light, curveScratch, shape.lightAt() * 4);
         // look.compute's: each roll a header (each channel's roll, its target plus 3 where curved), then its ends.
         List<CgVfxLifeRoll> rolls = emitter.lifeRolls();
         float rolled = 1f;

@@ -23,6 +23,7 @@ import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxBeamRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxSpriteRendererProperties;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
@@ -527,6 +528,8 @@ final class CgVfxMaterials {
     void prepare(CgVfxLook look, int i, List<CgMaterial> warming, Set<CgMaterial> halved) {
         CgVfxLook.Placed placed = look.placed().get(i);
         if (placed.slotRenderer() == null && placed.emitter().drawLayout() == CgVfxDrawLayout.SEQUENCE) return;
+        // A light renderer draws no material: its particles join the world's light list.
+        if (placed.renderer() instanceof CgVfxLightRendererProperties) return;
         CgVfxSlot.Kind kind = placed.slotRenderer() != null ? placed.slotRenderer().slot().kind() : CgVfxSlot.Kind.PARTICLES;
         CgMaterial material = material(resolve(look, placed), kind);
         if (!warming.contains(material)) warming.add(material);

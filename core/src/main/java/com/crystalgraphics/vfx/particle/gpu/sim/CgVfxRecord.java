@@ -67,7 +67,12 @@ public final class CgVfxRecord {
          * target's, its noise clock and its effect's orientation: six vec4s, what Cascade's beam payload keeps between
          * updates.
          */
-        BEAM(24);
+        BEAM(24),
+        /**
+         * Its light's radius scale and exponent, read once at birth by the emitter's time: Cascade's light payload
+         * ({@code ParticleModules.cpp:3110-3112}).
+         */
+        LIGHT(2);
 
         private final int components;
 
