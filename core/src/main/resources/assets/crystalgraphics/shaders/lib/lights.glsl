@@ -22,7 +22,7 @@
     CgLight(vec4(position, radius), vec4(color, exponent), vec4(0.0, 0.0, 0.0, -2.0), vec4(segment, 0.0))
 
 // The light grid (CgWorldLights), Unreal's (LightGridInjection.cpp:34-50, LightGridCommon.ush): CG_LIGHT_TILE pixels
-// across, CG_LIGHT_SLICES slices deep at log2(depth * B + O) * S, up to CG_LIGHT_PER_CELL lights a cell. zParams is
+// across, CG_LIGHT_SLICES slices deep at log2(depth * B + O) * S, CG_LIGHT_PER_CELL lights a cell on average. zParams is
 // (B, O, S); a cell's x and y run along the view's rays at unit eye depth, rayMin at the target's left and bottom edge
 // and rayMax at its right and top, so binning and reading place a point alike whichever way a device's y runs.
 #define CG_LIGHT_TILE 64

@@ -1494,7 +1494,7 @@ public final class CgWorldRenderer {
                 targetWidth = stage.host().width();
                 targetHeight = stage.host().height();
                 prepare(view);
-                if (pointLights.record(stage.recording(), stage.constants(), view, toWorld, targetWidth, targetHeight)) {
+                if (pointLights.record(stage, view, toWorld, targetWidth, targetHeight)) {
                     pointLights.apply(stage, stage.recording());
                 }
                 if (!CgRehearsal.active()) text.record(stage, view);
@@ -1580,7 +1580,7 @@ public final class CgWorldRenderer {
             if (which == TRANSPARENT && !CgRehearsal.active()) text.recordDepth(stage, view);
             CgGraphTexture emission = which == TRANSPARENT && drawn > 0 ? mergedEmission(stage, recording) : null;
             // Lights fall on the opaque scene, so a firing with nothing transparent still lists them.
-            lit = which == TRANSPARENT && pointLights.record(recording, stage.constants(), view, toWorld, targetWidth, targetHeight);
+            lit = which == TRANSPARENT && pointLights.record(stage, view, toWorld, targetWidth, targetHeight);
             // Onto the opaque scene, before any transparent draw blends over it.
             if (lit) pointLights.apply(stage, recording);
             mediaOut = which == TRANSPARENT && drawn > 0

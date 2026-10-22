@@ -1,7 +1,8 @@
-// The world's lights (CgWorldLights) added onto the scene behind each pixel: the surface rebuilt from depth, its light
+// The world's lights (CgWorldLights) lighting the scene behind each pixel: the surface rebuilt from depth, its light
 // grid cell found as the binning placed it, and each of the cell's lights, a point, a spot or a tube, attenuated as
-// Unreal's local lights are with no surface (lights.glsl's cg_light_falloff). The light is added as it falls, with no
-// albedo or facing: Minecraft keeps neither for its scene, and a normal rebuilt from depth flickers.
+// Unreal's local lights are with no surface (lights.glsl's cg_light_falloff). Unreal multiplies light by the surface's
+// diffuse colour; Minecraft keeps none, so the scene's own colour stands in for it: the pixel becomes
+// scene × (1 + light). There is no facing either: a normal rebuilt from depth flickers.
 #type none
 #include "crystalgraphics:shaders/lib/math.glsl"
 #include "crystalgraphics:shaders/lib/lights.glsl"
@@ -24,8 +25,8 @@ struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 seg
 
 Buffers {
     LIGHTS  ("The firing's lights",            CgLight, readonly)
-    CELLS   ("Each cell's light count",        uint,    readonly)
-    INDICES ("Each cell's light indices",      uint,    readonly)
+    CELLS   ("Each cell's light count and start", uint, readonly)
+    INDICES ("The cells' light indices",       uint,    readonly)
 }
 
 struct v2f { vec2 uv; };
@@ -33,7 +34,7 @@ struct v2f { vec2 uv; };
 Pass {
     Tags { "LightMode" = "Forward" }
     RenderState {
-        Blend ONE ONE
+        Blend DST_COLOR ONE
         DepthTest ALWAYS
         DepthWrite OFF
         Cull OFF
@@ -54,10 +55,10 @@ Pass {
         vec3 p = vec3(mix(_Rays.xy, _Rays.zw, uv) * depth, -depth);
         ivec3 cell = cg_light_cell(p, _ZParams.xyz, _Rays.xy, _Rays.zw, _Tile.xy, ivec2(_Grid.xy));
         int e = (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;
-        int n = int(CELLS(e));
+        int n = int(CELLS(e * 2)), from = int(CELLS(e * 2 + 1));
         vec3 sum = vec3(0.0);
         for (int k = 0; k < n; k++) {
-            CgLight light = LIGHTS(int(INDICES(e * CG_LIGHT_PER_CELL + k)));
+            CgLight light = LIGHTS(int(INDICES(from + k)));
             vec3 at = light.positionRadius.xyz, way = light.spotCos.xyz, along = light.segmentCone.xyz;
             vec3 v = vec3(dot(_ToView0.xyz, at), dot(_ToView1.xyz, at), dot(_ToView2.xyz, at))
                     + vec3(_ToView0.w, _ToView1.w, _ToView2.w);

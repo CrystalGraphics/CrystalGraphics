@@ -1,52 +1,279 @@
-// The world's light grid (CgWorldLights): each cell's lights, as Unreal's LightGridInjectionCS bins them
-// (LightGridInjection.usf): a cell's view-space box from its tile's edges at its slice's near and far depth, and every
-// light whose sphere reaches that box listed in it (a spot's cone first, cg_light_reaches), the first CG_LIGHT_PER_CELL
-// kept. An element a cell, x fastest,
-// then y, then the slice.
-#pragma kernel Bin scatter
+// The world's light grid (CgWorldLights), as Unreal 5's LightGridInjection.usf builds it. View turns each light into
+// the grid's space once (Unreal's LightViewSpacePositionAndRadius). Coarse culls every light into a parent grid a factor
+// smaller each way, a work group a parent cell (r.LightCulling.TwoLevel, CullLights_ThreadGroup), its lists packed into
+// one buffer in index order. Where compute runs, Cell lists each cell's lights from its parent's list, a work group a
+// cell (r.LightCulling.WorkloadDistributionMode 1), its run taken with an atomic. Below compute Count counts each
+// cell's lights from every light, an exclusive scan of the counts places each list (CgGpuOps.scan, since an atomic
+// there answers nothing), and Write writes them: the same lists.
+// A cell's list has no cap of its own: the cells share one budget of CG_LIGHT_PER_CELL a cell on average (Unreal's
+// linked lists, MaxCulledLightsPerCell), and what passes it is dropped and counted. A cell is a cell's view-space box
+// from its tile's edges at its slice's near and far depth, culled where it lies past the scene's farthest depth over its
+// tiles and its far edge pulled in to it (Unreal's HZB cull, LightGridInjection.usf:870-905); a light reaches it as
+// cg_light_reaches says.
+#pragma kernel View map
+#pragma kernel Coarse 64 general
+#pragma compute_only Coarse
+#pragma kernel Cell 64 general
+#pragma compute_only Cell
+#pragma kernel Count gather
+#pragma kernel Write scatter
 
 #include "crystalgraphics:shaders/lib/lights.glsl"
 
 struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; };
+// A light in the grid's space: its position and radius, the way a spot points and its outer cosine.
+struct CgViewLight { vec4 positionRadius; vec4 spot; };
 
 Properties {
     _Grid     ("Cells across, up and deep, and the list's capacity",  vec4) = (1, 1, 32, 0)
+    _Parent   ("Parent cells across, up and deep, and the factor: 0 for none", vec4) = (1, 1, 1, 0)
+    _Budget   ("Indices the parent lists and the cells' lists may take", vec4) = (0, 0, 0, 0)
     _Tile     ("A tile's share of the target across and up",          vec4) = (1, 1, 0, 0)
     _ZParams  ("The slices' B, O and S",                              vec4) = (1, 1, 1, 0)
     _Rays     ("Unit-depth view rays at the target's edges: left, bottom, right, top", vec4) = (-1, -1, 1, 1)
     _ToView0  ("Camera-relative world to the bobbed view, the first row, its shift in w", vec4) = (1, 0, 0, 0)
     _ToView1  ("The second row",                                      vec4) = (0, 1, 0, 0)
     _ToView2  ("The third row",                                       vec4) = (0, 0, 1, 0)
+    _Pyramid  ("The scene's farthest eye depth, a pyramid",            sampler2D) = "black"
+    _Hzb      ("Cull by the pyramid (1), unused, its slack, its last level", vec4) = (0, 0, 0, 0)
 }
 
 Buffers {
-    LIGHTS  ("The firing's lights",                     CgLight, readonly)
-    COUNT   ("Lights listed, possibly past the capacity", uint,   readonly)
-    CELLS   ("Each cell's lights, at most CG_LIGHT_PER_CELL", uint, writeonly)
-    INDICES ("Each cell's light indices, CG_LIGHT_PER_CELL a cell", uint, writeonly)
+    LIGHTS         ("The firing's lights",                                 CgLight,     readonly)
+    COUNT          ("Lights listed, possibly past the capacity",           uint,        readonly)
+    VIEW           ("Each light in the grid's space",                      CgViewLight, writeonly)
+    VIEWED         ("Each light in the grid's space, read",                CgViewLight, readonly)
+    ALLOC          ("Indices the parents took, the cells dropped, the cells took", uint, counter)
+    PARENT_CELLS   ("Each parent cell's count and start, ~0 overflowed",   uint,        readwrite)
+    PARENT_INDICES ("The parents' lists",                                  uint,        readwrite)
+    COUNTS         ("Each cell's light count",                             uint,        writeonly)
+    STARTS         ("Where each cell's list starts: the counts scanned",   uint,        readonly)
+    CELLS          ("Each cell's count and start",                         uint,        writeonly)
+    INDICES        ("The cells' lists",                                    uint,        writeonly)
 }
 
-void Bin() {
+void View() {
+    if (uint(CG_ELEMENT) >= min(COUNT(0), uint(_Grid.w))) return;
+    CgLight light = LIGHTS(CG_ELEMENT);
+    vec3 at = light.positionRadius.xyz, way = light.spotCos.xyz;
+    vec3 v = vec3(dot(_ToView0.xyz, at), dot(_ToView1.xyz, at), dot(_ToView2.xyz, at))
+            + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
+    vec3 w = vec3(dot(_ToView0.xyz, way), dot(_ToView1.xyz, way), dot(_ToView2.xyz, way));
+    VIEW_WRITE(CgViewLight(vec4(v, light.positionRadius.w), vec4(w, light.spotCos.w)));
+}
+
+// ComputeCellViewAABB over tiles [lo.xy, hi.xy) and slices [lo.z, hi.z): the tiles' rays at both depths; the last tile
+// may reach past the target, as Unreal's.
+void cell_box(ivec3 lo, ivec3 hi, out vec3 centre, out vec3 extent) {
+    vec2 r0 = mix(_Rays.xy, _Rays.zw, vec2(lo.xy) * _Tile.xy), r1 = mix(_Rays.xy, _Rays.zw, vec2(hi.xy) * _Tile.xy);
+    float d0 = cg_light_slice_depth(lo.z, _ZParams.xyz), d1 = cg_light_slice_depth(hi.z, _ZParams.xyz);
+    vec2 a = min(min(r0 * d0, r1 * d0), min(r0 * d1, r1 * d1)), b = max(max(r0 * d0, r1 * d0), max(r0 * d1, r1 * d1));
+    centre = vec3(a + b, -d0 - d1) * 0.5;
+    extent = vec3(b - a, d1 - d0) * 0.5;
+}
+
+// The scene's farthest eye depth over tiles [lo, hi), with slack; past every depth where there is no pyramid. A texel's
+// share of the target is its level's size against the base's, and a texel more each side keeps it conservative where
+// odd sizes do not halve evenly (IsVisibleHZB samples 4x4 for the same reason).
+float tiles_farthest(ivec2 lo, ivec2 hi) {
+    if (_Hzb.x < 0.5) return 3.4e38;
+    vec2 base = vec2(textureSize(_Pyramid, 0));
+    vec2 p0 = vec2(lo) * _Tile.xy * base, p1 = min(vec2(hi) * _Tile.xy * base, base) - 1.0;
+    float span = max(max(p1.x - p0.x, p1.y - p0.y), 1.0);
+    int level = min(int(ceil(log2(span))), int(_Hzb.w));
+    ivec2 size = textureSize(_Pyramid, level);
+    vec2 scale = vec2(size) / base;
+    ivec2 a = max(ivec2(floor(p0 * scale)) - 1, ivec2(0)), b = min(ivec2(floor(p1 * scale)) + 1, size - 1);
+    float farthest = 0.0;
+    for (int y = a.y; y <= b.y; y++) {
+        for (int x = a.x; x <= b.x; x++) farthest = max(farthest, texelFetch(_Pyramid, ivec2(x, y), level).r);
+    }
+    return farthest * (1.0 + _Hzb.z);
+}
+
+// The box of tiles [lo, hi) and slices [lo.z, hi.z), its far edge at the scene's farthest depth; false where the scene
+// is nearer than its near edge everywhere, so nothing it holds is lit.
+bool culled_box(ivec3 lo, ivec3 hi, out vec3 centre, out vec3 extent) {
+    float near = cg_light_slice_depth(lo.z, _ZParams.xyz), farthest = tiles_farthest(lo.xy, hi.xy);
+    cell_box(lo, hi, centre, extent);
+    if (near > farthest) return false;
+    float far = cg_light_slice_depth(hi.z, _ZParams.xyz);
+    if (farthest < far) {
+        // Tightened as Unreal's MaxTileZ: the same box, its far depth the scene's.
+        vec2 r0 = mix(_Rays.xy, _Rays.zw, vec2(lo.xy) * _Tile.xy), r1 = mix(_Rays.xy, _Rays.zw, vec2(hi.xy) * _Tile.xy);
+        vec2 a = min(min(r0 * near, r1 * near), min(r0 * farthest, r1 * farthest));
+        vec2 b = max(max(r0 * near, r1 * near), max(r0 * farthest, r1 * farthest));
+        centre = vec3(a + b, -near - farthest) * 0.5;
+        extent = vec3(b - a, farthest - near) * 0.5;
+    }
+    return true;
+}
+
+bool viewed_reaches(uint i, vec3 centre, vec3 extent) {
+    CgViewLight l = VIEWED(int(i));
+    return cg_light_reaches(l.positionRadius.xyz, l.positionRadius.w, l.spot, centre, extent);
+}
+
+shared uint groupScan[64];
+shared uint groupCount;
+shared uint groupStart;
+shared uint groupWritten;
+shared uint groupKept;
+
+// Each of the 64 invocations' place among those whose hit is 1, counted from 1: an inclusive prefix sum over the group
+// (ThreadGroupPrefixSum). Called by the whole group; groupScan[63] is the hits.
+uint group_scan(uint hit, uint local) {
+    groupScan[local] = hit;
+    barrier();
+    for (uint o = 1u; o < 64u; o <<= 1u) {
+        uint add = local >= o ? groupScan[local - o] : 0u;
+        barrier();
+        groupScan[local] += add;
+        barrier();
+    }
+    return groupScan[local];
+}
+
+// A parent cell a work group: its lights counted, its run of the parents' list taken, then written in index order by a
+// prefix sum over each 64 lights (CullLights_ThreadGroup's ThreadGroupPrefixSum).
+void Coarse() {
+    uint local = uint(CG_LOCAL_INDEX);
+    ivec3 p = ivec3(CG_GROUP_ID), grid = ivec3(_Grid.xyz), parents = ivec3(_Parent.xyz);
+    int factor = int(_Parent.w);
+    vec3 centre, extent;
+    bool seen = culled_box(p * factor, min((p + 1) * factor, grid), centre, extent);
+    uint lights = seen ? min(COUNT(0), uint(_Grid.w)) : 0u, e = uint((p.z * parents.y + p.y) * parents.x + p.x);
+    if (local == 0u) groupCount = 0u;
+    barrier();
+    uint mine = 0u;
+    for (uint i = local; i < lights; i += 64u) {
+        if (viewed_reaches(i, centre, extent)) mine++;
+    }
+    atomicAdd(groupCount, mine);
+    barrier();
+    if (local == 0u) {
+        uint start = atomicAdd(ALLOC_DATA[0], groupCount);
+        bool fits = start + groupCount <= uint(_Budget.x);
+        groupStart = fits ? start : 0xFFFFFFFFu;
+        groupWritten = 0u;
+        PARENT_CELLS_DATA[e * 2u] = fits ? groupCount : 0xFFFFFFFFu;
+        PARENT_CELLS_DATA[e * 2u + 1u] = start;
+    }
+    barrier();
+    // Overflowed: its cells read every light instead.
+    if (groupStart == 0xFFFFFFFFu) return;
+    for (uint base = 0u; base < lights; base += 64u) {
+        uint i = base + local;
+        uint hit = i < lights && viewed_reaches(i, centre, extent) ? 1u : 0u;
+        uint place = group_scan(hit, local);
+        if (hit == 1u) PARENT_INDICES_DATA[groupStart + groupWritten + place - 1u] = i;
+        barrier();
+        if (local == 63u) groupWritten += groupScan[63];
+        barrier();
+    }
+}
+
+// The lights cell e may hold, as Cell, Count and Write walk them: n of its parent's list from `from`, or every light.
+void candidates(int e, out ivec3 cell, out uint n, out uint from, out bool parented) {
+    ivec3 grid = ivec3(_Grid.xyz);
+    cell = ivec3(e % grid.x, (e / grid.x) % grid.y, e / (grid.x * grid.y));
+    n = min(COUNT(0), uint(_Grid.w));
+    from = 0u;
+    parented = false;
+    if (_Parent.w > 0.5) {
+        ivec3 p = cell / int(_Parent.w), parents = ivec3(_Parent.xyz);
+        int pe = (p.z * parents.y + p.y) * parents.x + p.x;
+        uint count = PARENT_CELLS(pe * 2);
+        if (count != 0xFFFFFFFFu) {
+            parented = true;
+            n = count;
+            from = PARENT_CELLS(pe * 2 + 1);
+        }
+    }
+}
+
+// A cell an element, x fastest, then y, then the slice.
+void Count() {
+    ivec3 grid = ivec3(_Grid.xyz);
+    if (CG_ELEMENT >= grid.x * grid.y * grid.z) return;
+    ivec3 cell;
+    uint n, from;
+    bool parented;
+    candidates(CG_ELEMENT, cell, n, from, parented);
+    vec3 centre, extent;
+    if (!culled_box(cell, cell + 1, centre, extent)) n = 0u;
+    uint count = 0u;
+    for (uint k = 0u; k < n; k++) {
+        if (viewed_reaches(parented ? PARENT_INDICES(int(from + k)) : k, centre, extent)) count++;
+    }
+    COUNTS_WRITE(count);
+}
+
+void Write() {
     ivec3 grid = ivec3(_Grid.xyz);
     int e = CG_ELEMENT;
     if (e >= grid.x * grid.y * grid.z) return;
-    int x = e % grid.x, y = (e / grid.x) % grid.y, z = e / (grid.x * grid.y);
-    // ComputeCellViewAABB: the tile's rays at both depths; the last tile may reach past the target, as Unreal's.
-    vec2 r0 = mix(_Rays.xy, _Rays.zw, vec2(x, y) * _Tile.xy), r1 = mix(_Rays.xy, _Rays.zw, vec2(x + 1, y + 1) * _Tile.xy);
-    float d0 = cg_light_slice_depth(z, _ZParams.xyz), d1 = cg_light_slice_depth(z + 1, _ZParams.xyz);
-    vec2 lo = min(min(r0 * d0, r1 * d0), min(r0 * d1, r1 * d1)), hi = max(max(r0 * d0, r1 * d0), max(r0 * d1, r1 * d1));
-    vec3 centre = vec3(lo + hi, -d0 - d1) * 0.5, extent = vec3(hi - lo, d1 - d0) * 0.5;
-    int lights = int(min(COUNT(0), uint(_Grid.w))), n = 0;
-    for (int i = 0; i < lights; i++) {
-        CgLight light = LIGHTS(i);
-        vec3 at = light.positionRadius.xyz, way = light.spotCos.xyz;
-        vec3 v = vec3(dot(_ToView0.xyz, at), dot(_ToView1.xyz, at), dot(_ToView2.xyz, at))
-                + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
-        vec4 spot = vec4(dot(_ToView0.xyz, way), dot(_ToView1.xyz, way), dot(_ToView2.xyz, way), light.spotCos.w);
-        if (cg_light_reaches(v, light.positionRadius.w, spot, centre, extent)) {
-            if (n < CG_LIGHT_PER_CELL) INDICES_STORE(e * CG_LIGHT_PER_CELL + n, uint(i));
-            n++;
+    ivec3 cell;
+    uint n, from;
+    bool parented;
+    candidates(e, cell, n, from, parented);
+    vec3 centre, extent;
+    if (!culled_box(cell, cell + 1, centre, extent)) n = 0u;
+    uint start = STARTS(e), budget = uint(_Budget.y), kept = 0u;
+    for (uint k = 0u; k < n; k++) {
+        uint i = parented ? PARENT_INDICES(int(from + k)) : k;
+        if (!viewed_reaches(i, centre, extent)) continue;
+        if (start + kept < budget) {
+            INDICES_STORE(int(start + kept), i);
+            kept++;
+        } else {
+            ALLOC_ADD(1, 1u);
         }
     }
-    CELLS_STORE(e, uint(min(n, CG_LIGHT_PER_CELL)));
+    CELLS_STORE(e * 2, kept);
+    CELLS_STORE(e * 2 + 1, start);
+}
+
+// A cell a work group, its candidates shared out 64 at a time: counted, its run of the cells' list taken, then written
+// in index order. Unreal's CullLights_ThreadGroup, counting first where it keeps hits in LDS and a linked list.
+void Cell() {
+    uint local = uint(CG_LOCAL_INDEX);
+    ivec3 grid = ivec3(_Grid.xyz), g = ivec3(CG_GROUP_ID);
+    int e = (g.z * grid.y + g.y) * grid.x + g.x;
+    ivec3 cell;
+    uint n, from;
+    bool parented;
+    candidates(e, cell, n, from, parented);
+    vec3 centre, extent;
+    if (!culled_box(cell, cell + 1, centre, extent)) n = 0u;
+    if (local == 0u) groupCount = 0u;
+    barrier();
+    uint mine = 0u;
+    for (uint k = local; k < n; k += 64u) {
+        if (viewed_reaches(parented ? PARENT_INDICES(int(from + k)) : k, centre, extent)) mine++;
+    }
+    atomicAdd(groupCount, mine);
+    barrier();
+    if (local == 0u) {
+        uint start = groupCount == 0u ? 0u : atomicAdd(ALLOC_DATA[2], groupCount), budget = uint(_Budget.y);
+        uint kept = start >= budget ? 0u : min(groupCount, budget - start);
+        if (kept < groupCount) atomicAdd(ALLOC_DATA[1], groupCount - kept);
+        groupStart = start;
+        groupKept = kept;
+        groupWritten = 0u;
+        CELLS_STORE(e * 2, kept);
+        CELLS_STORE(e * 2 + 1, start);
+    }
+    barrier();
+    uint kept = groupKept;
+    for (uint base = 0u; base < n && groupWritten < kept; base += 64u) {
+        uint k = base + local;
+        uint i = k < n ? (parented ? PARENT_INDICES(int(from + k)) : k) : 0u;
+        uint hit = k < n && viewed_reaches(i, centre, extent) ? 1u : 0u;
+        uint at = groupWritten + group_scan(hit, local) - 1u;
+        if (hit == 1u && at < kept) INDICES_STORE(int(groupStart + at), i);
+        barrier();
+        if (local == 63u) groupWritten += groupScan[63];
+        barrier();
+    }
 }
