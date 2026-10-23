@@ -181,9 +181,10 @@ Pass {
             }
             ivec2 at = ivec2(uv * _Screen.xy);
             float scene = eye_depth(at);
-            float behind = rayDepth - scene, stepDepth = abs(dir.z) * len / float(steps);
+            float behind = rayDepth - scene;
             if (scene > 0.0 && behind > 0.0) {
-                if (behind < max(_Trace.w * scene, stepDepth)) return 1;
+                // Unreal's RelativeDepthThickness alone: a ray further behind passed behind the surface, not into it.
+                if (behind < _Trace.w * scene) return 1;
                 reached = last;
                 return -1;
             }

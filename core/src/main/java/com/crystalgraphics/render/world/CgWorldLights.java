@@ -227,8 +227,9 @@ public final class CgWorldLights {
     private static final CgVar.Bool SHADOWS = CgVar.bool("crystalgraphics.world.lightsShadows", true, CgVar.DEV,
             "Lights that cast shadows are withheld by the blocks and entities between them and a surface.");
     /** Unreal's r.MegaLights.ScreenTraces.MaxDistance, in blocks: longer, since the world trace knows only blocks. */
-    private static final CgVar.Num SCREEN_TRACE = CgVar.number("crystalgraphics.world.lightsScreenTrace", 8f, 0f, 64f,
-            CgVar.DEV, "Blocks a shadow ray is followed across the screen's depth before the world's blocks take over.");
+    private static final CgVar.Num SCREEN_TRACE = CgVar.number("crystalgraphics.world.lightsScreenTrace", 1f, 0f, 64f,
+            CgVar.DEV, "Blocks a shadow ray is followed across the screen's depth before the world trace takes over: "
+                    + "Unreal's r.MegaLights.ScreenTraces.MaxDistance, 100 cm.");
     /** Unreal's r.MegaLights.Temporal.MaxFramesAccumulated. */
     private static final CgVar.Num DOWNSAMPLE = CgVar.number("crystalgraphics.world.lightsDownsample", 0f, 0f, 2f, CgVar.DEV,
             "Unreal's r.MegaLights.DownsampleMode: 0 traces every pixel, 1 every other (2x1), 2 a quarter (2x2). Unreal's 2 "
