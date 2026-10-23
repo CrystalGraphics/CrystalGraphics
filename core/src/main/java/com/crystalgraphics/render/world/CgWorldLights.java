@@ -551,7 +551,8 @@ public final class CgWorldLights {
         light[l + 18] = 0f;
         light[l + 19] = 1f;
         light[l + 20] = 1f;
-        light[l + 21] = light[l + 22] = light[l + 23] = 0f;
+        light[l + 21] = light[l + 23] = 0f;
+        light[l + 22] = 1f;
         added++;
         return this;
     }
@@ -606,6 +607,20 @@ public final class CgWorldLights {
      */
     public CgWorldLights shadowed(boolean shadowed) {
         light[last() + 19] = shadowed ? 1f : 0f;
+        return this;
+    }
+
+    /**
+     * Whether the shadow passes sample the light added last, as MegaLights does (Unreal's bAllowMegaLights): true unless
+     * set. One that is not is shaded exactly at every pixel it reaches, as Unreal's clustered deferred lighting does: for
+     * a few small lights that must not turn grainy. A light that casts shadows is always sampled.
+     *
+     * <pre>{@code
+     * lights.add(x, y, z, 2f, 0xFFFFE080, 4f, 0f).shadowed(false).sampled(false);   // a lantern's glow, exact
+     * }</pre>
+     */
+    public CgWorldLights sampled(boolean sampled) {
+        light[last() + 22] = sampled ? 1f : 0f;
         return this;
     }
 

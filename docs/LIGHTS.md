@@ -158,7 +158,8 @@ as Unreal 5's **MegaLights** does, ported from its shaders pass by pass.
 
 ```java
 lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f);                    // casts shadows
-lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCastShadows off: the grid alone, no rays
+lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCastShadows off: sampled, no rays
+lights.add(x, y, z, 2f, 0xFFFFE080, 4f, 0f).shadowed(false).sampled(false);   // bAllowMegaLights off: shaded exactly
 ```
 
 | Pass | Unreal (MegaLights) | Here |
@@ -212,9 +213,11 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
   samples a pixel and 3.2-3.4 at 1 (RTX 4070 Super, Minecraft 1.20.1).
 - **The blocks' trace** sphere-steps the window's distance field, and within a block and a half of solid walks its grid
   (Amanatides and Woo): an empty block in one step, a block with solid octants octant by octant.
-- **Every light is sampled**, as MegaLights samples them: one that casts no shadow (a particle's) takes no ray. The
-  apply pass shades the grid's lights exactly only when the shadow passes do not run. A swarm of particle lights shaded
-  exactly at every pixel took 1.15 ms of the lights demo at 2560x1440 in game.
+- **Which lights are sampled** is Unreal's bAllowMegaLights (`CG_LIGHT_SAMPLED`): every light that casts shadows, and
+  one added from the CPU unless `sampled(false)`; one that casts no shadow takes no ray. A kernel's particle lights are
+  not (Niagara's default, NiagaraLightRendererProperties.cpp:41): the apply pass shades them exactly, as Unreal's
+  clustered deferred does, reading a light's flag and reach before its record. Sampled, a swarm of fireflies lit the
+  ground in grainy blotches away from them, four picks a 2x2 block among hundreds of lights.
 - **Departures from Unreal**: a linear screen trace rather than a hierarchical one; no visible-light hash guiding the
   next frame's samples; the shading confidence is 1.
 - The gate is `--mode=lights-shadow`: a wall of blocks between a light and the floor, the light behind it gone and in the

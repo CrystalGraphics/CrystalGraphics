@@ -136,13 +136,18 @@ Pass {
         float floorLight = CG_LINEAR_SCENE ? 0.02 : 0.15;
         vec3 sum = vec3(0.0);
         bool shadows = _Shadows > 0.5;
-        // With the shadow passes running every light is theirs, sampled as MegaLights samples (_Shadowed); without them
-        // each is shaded here exactly.
-        for (int k = 0; k < (shadows ? 0 : count); k++) {
-            CgLight light = LIGHTS(int(INDICES(from + k)));
-            vec3 at = light.positionRadius.xyz, way = light.spotCos.xyz, along = light.segmentCone.xyz;
-            vec3 v = vec3(dot(_ToView0.xyz, at), dot(_ToView1.xyz, at), dot(_ToView2.xyz, at))
+        // With the shadow passes running the lights they sample are theirs (_Shadowed); the rest, and without them
+        // every light, are shaded here exactly. The flag and the reach are read before the record: a cell lists many
+        // small lights that reach few of its pixels.
+        for (int k = 0; k < count; k++) {
+            int index = int(INDICES(from + k));
+            if (shadows && CG_LIGHT_SAMPLED(LIGHTS(index))) continue;
+            vec4 reach = LIGHTS(index).positionRadius;
+            vec3 v = vec3(dot(_ToView0.xyz, reach.xyz), dot(_ToView1.xyz, reach.xyz), dot(_ToView2.xyz, reach.xyz))
                     + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
+            if (dot(v - p, v - p) >= reach.w * reach.w) continue;
+            CgLight light = LIGHTS(index);
+            vec3 way = light.spotCos.xyz, along = light.segmentCone.xyz;
             vec4 spot = vec4(dot(_ToView0.xyz, way), dot(_ToView1.xyz, way), dot(_ToView2.xyz, way), light.spotCos.w);
             vec4 segment = vec4(dot(_ToView0.xyz, along), dot(_ToView1.xyz, along), dot(_ToView2.xyz, along), light.segmentCone.w);
             float lit = cg_light_surface(v, light.positionRadius.w, light.colorExponent.w, spot, segment, light.ambient.z, p, n);

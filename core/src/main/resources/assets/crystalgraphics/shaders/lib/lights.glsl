@@ -13,7 +13,8 @@
 // find its albedo, x -1 where unknown and the scene taken as it is; then its source radius (Unreal's SourceRadius, 0 a
 // point), and 1 where it casts shadows (CG_LIGHT_SHADOWED), 2 for a Minecraft light (CG_LIGHT_MINECRAFT). air: x its
 // light in the air's multiplier (Unreal's VolumetricScatteringIntensity, 1 unless set); y 1 where it leaves transparent
-// surfaces unlit (CG_LIGHT_OPAQUE_ONLY: Unreal's bAffectTranslucentLighting off), the rest unused.
+// surfaces unlit (CG_LIGHT_OPAQUE_ONLY: Unreal's bAffectTranslucentLighting off); z 1 where the shadow passes sample it
+// (CG_LIGHT_SAMPLED), the rest unused.
 #pragma once
 
 #define cg_light(position, radius, color, exponent) \
@@ -46,6 +47,12 @@
 // and only says where Minecraft's block light comes from, so the shadow passes can withhold it. Its level is its radius
 // less a half.
 #define CG_LIGHT_MINECRAFT(light) ((light).ambient.w > 1.5)
+
+// Whether the shadow passes sample the light as MegaLights does (Unreal's bAllowMegaLights): every light that casts
+// shadows, and one added from the CPU unless set. The rest, a kernel's particle lights by default (Niagara's
+// bAllowMegaLights is 0, NiagaraLightRendererProperties.cpp:41), the apply pass shades exactly, as Unreal's clustered
+// deferred does: a swarm of small lights sampled a few times a pixel is noise.
+#define CG_LIGHT_SAMPLED(light) ((light).ambient.w > 0.5 || (light).air.z > 0.5)
 
 // A light kept out of the translucency lighting volume: transparent surfaces and particles are not lit by it.
 #define CG_LIGHT_OPAQUE_ONLY(light) ((light).air.y > 0.5)

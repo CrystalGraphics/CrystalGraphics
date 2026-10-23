@@ -1,8 +1,9 @@
 // The world's lights' samples, as Unreal's MegaLights picks and traces them (MegaLightsSampling.usf's
 // GenerateLightSamplesCS, MegaLightsRayTracing.usf). The target is twice the size of a half-resolution grid: each
 // half-resolution pixel's four samples are its 2x2 block, as Unreal's NumSamplesPerPixel 2x2 lays them. Every fragment
-// runs the pixel's weighted reservoir over its light-grid cell's lights, stratified four ways, keeps its own pick, and
-// for a light that casts shadows traces a ray to a point on it (one that casts none, a particle's, reaches it unasked): across the screen's depth first, then through the voxel window's
+// runs the pixel's weighted reservoir over its light-grid cell's sampled lights (CG_LIGHT_SAMPLED), stratified four
+// ways, keeps its own pick, and for a light that casts shadows traces a ray to a point on it (one that casts none
+// reaches it unasked): across the screen's depth first, then through the voxel window's
 // blocks from where that stopped, and against the boxes of the entities round the camera. The sun is not one of its
 // lights (Unreal's r.MegaLights.DirectionalLights 0): our objects shadow it through its cascaded shadow map, read with
 // Unreal's Manual3x3PCF, and on our objects' pixels a ray toward it is traced through the blocks and the entities.
@@ -362,6 +363,7 @@ Pass {
         float weightSum = 0.0;
         for (int k = 0; k < count; k++) {
             int index = int(INDICES(from + k));
+            if (!CG_LIGHT_SAMPLED(LIGHTS(index))) continue;
             CgLight light = LIGHTS(index);
             vec3 v = to_view_dir(light.positionRadius.xyz) + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
             vec4 spot = vec4(to_view_dir(light.spotCos.xyz), light.spotCos.w);
