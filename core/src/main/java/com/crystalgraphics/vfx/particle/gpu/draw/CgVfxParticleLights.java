@@ -21,7 +21,7 @@ import java.util.Arrays;
  *
  * <pre>{@code
  * CgVfxParticleLights lights = CgVfxParticleLights.get();   // registers itself with the world's lights once
- * lights.note(pool, slot, 0.5f, 1e-4f, 0f, false);           // each frame a slot draws its light renderer
+ * lights.note(pool, slot, 0.5f, 1e-4f, 0f, false, false);    // each frame a slot draws its light renderer
  * lights.publish();                                          // once the frame's draws are noted
  * }</pre>
  *
@@ -36,7 +36,8 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
     private static final String KERNELS = "crystalgraphics:shaders/env/compute/vfx/lights.compute";
     /**
      * Floats a slot in {@code SLOTS}: its origin from the eye and its share; then the inverse square's intensity scale (0
-     * for none), its light in the air, and 1 where it leaves transparent surfaces unlit.
+     * for none), its light in the air, 1 where it leaves transparent surfaces unlit, and 1 where the shadow passes sample
+     * its lights.
      */
     private static final int SLOT_FLOATS = 8;
     private static volatile CgVfxParticleLights instance;
@@ -67,10 +68,12 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
      * {@code slot} of {@code pool} gives light this frame: {@code share} of its particles, by the inverse square's
      * intensity scale or, at 0, their exponent; {@code scattering} times their light in the air (Unreal's
      * VolumetricScatteringIntensity, 0 for none), and lighting transparent surfaces where {@code translucent}
-     * (bAffectsTranslucency), as Unreal's simple lights do ({@code ParticleSystemRender.cpp:919-920}).
+     * (bAffectsTranslucency), as Unreal's simple lights do ({@code ParticleSystemRender.cpp:919-920}); sampled by the
+     * shadow passes where {@code sampled} (Niagara's bAllowMegaLights), else shaded exactly.
      */
-    public void note(CgVfxParticlePool pool, int slot, float share, float inverseSquared, float scattering, boolean translucent) {
-        writing.add(pool, slot, share, inverseSquared, scattering, translucent);
+    public void note(CgVfxParticlePool pool, int slot, float share, float inverseSquared, float scattering, boolean translucent,
+                     boolean sampled) {
+        writing.add(pool, slot, share, inverseSquared, scattering, translucent, sampled);
     }
 
     /** Hands the frame's notes to the world renderer's next firings and starts the next frame's. */
@@ -133,6 +136,7 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
             staging.putFloat(at + 16, f.inverse[j]);
             staging.putFloat(at + 20, f.scattering[j]);
             staging.putFloat(at + 24, f.translucent[j] ? 0f : 1f);
+            staging.putFloat(at + 28, f.sampled[j] ? 1f : 0f);
         }
         staging.limit(bytes);
         recording.update(buffer, 0, staging);
@@ -145,10 +149,11 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
         float[] shares = new float[16];
         float[] inverse = new float[16];
         float[] scattering = new float[16];
-        boolean[] translucent = new boolean[16];
+        boolean[] translucent = new boolean[16], sampled = new boolean[16];
         int count;
 
-        void add(CgVfxParticlePool pool, int slot, float share, float inverseSquared, float scatter, boolean lightsTranslucent) {
+        void add(CgVfxParticlePool pool, int slot, float share, float inverseSquared, float scatter, boolean lightsTranslucent,
+                 boolean megaLights) {
             if (count == pools.length) {
                 pools = Arrays.copyOf(pools, count * 2);
                 slots = Arrays.copyOf(slots, count * 2);
@@ -156,6 +161,7 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
                 inverse = Arrays.copyOf(inverse, count * 2);
                 scattering = Arrays.copyOf(scattering, count * 2);
                 translucent = Arrays.copyOf(translucent, count * 2);
+                sampled = Arrays.copyOf(sampled, count * 2);
             }
             pools[count] = pool;
             slots[count] = slot;
@@ -163,6 +169,7 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
             inverse[count] = inverseSquared;
             scattering[count] = scatter;
             translucent[count] = lightsTranslucent;
+            sampled[count] = megaLights;
             count++;
         }
     }

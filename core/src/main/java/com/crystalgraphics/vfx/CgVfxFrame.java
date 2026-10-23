@@ -569,7 +569,7 @@ public final class CgVfxFrame {
                 CgVfxLightRendererProperties light = (CgVfxLightRendererProperties) rd.placed.renderer();
                 CgVfxParticleLights.get().note(pool, slot, light.spawnFraction(),
                         light.inverseSquaredFalloff() ? light.intensityScale() : 0f, light.volumetricScattering(),
-                        light.affectsTranslucency());
+                        light.affectsTranslucency(), light.allowMegaLights());
                 continue;
             }
             float size = CgVfxMaterials.size(effect, rd.r);

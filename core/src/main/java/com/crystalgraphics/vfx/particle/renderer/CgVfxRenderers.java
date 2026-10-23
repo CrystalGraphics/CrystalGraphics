@@ -107,7 +107,8 @@ public final class CgVfxRenderers {
             case "light" -> new CgVfxLightRendererProperties(common, tree, !Boolean.FALSE.equals(tree.get("inverse_squared_falloff")),
                     tree.get("intensity_scale") instanceof Number n ? n.floatValue() : 1f, tree.get("spawn_fraction") instanceof Number n ? n.floatValue() : 1f,
                     Boolean.TRUE.equals(tree.get("affects_translucency")),
-                    tree.get("volumetric_scattering") instanceof Number n ? n.floatValue() : 0f);
+                    tree.get("volumetric_scattering") instanceof Number n ? n.floatValue() : 0f,
+                    Boolean.TRUE.equals(tree.get("allow_mega_lights")));
             default -> throw new IllegalArgumentException(who + " has no kind '" + kind + "'");
         };
         built(who, r);
