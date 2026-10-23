@@ -15,7 +15,9 @@
 // Scatter lights the air the same way: each froxel of the world's media (CgWorldMedia) holding extinction takes its
 // light-grid cell's lights as Unreal's volumetric fog does (VolumetricFog.usf's LightScatteringCS, :1085-1169): colour
 // times falloff times the Henyey-Greenstein phase toward the eye, times the froxel's scattering (its extinction, albedo
-// white). A light that casts shadows is traced from the froxel, at most _AirShadowRays a froxel.
+// white). A light that casts shadows is traced from the froxel, at most _AirShadowRays a froxel. As Unreal's temporal
+// reprojection (:856-921, :1173-1180), each froxel is lit at a point jittered through it each firing and blended into
+// what the last firing's grid held at its middle, so a froxel's light is the average over its whole cell.
 #pragma kernel Fill 4 4 4 image
 #pragma kernel Scatter 4 4 4 image
 
@@ -67,6 +69,13 @@ Properties {
     _MediaRay11 ("At the top right",                                vec4) = (0, 0, -1, 0)
     _PhaseG     ("The air's phase: Unreal's VolumetricFogScatteringDistribution", float) = 0.2
     _AirShadowRays ("Shadowed lights traced a froxel; the rest unshadowed", int) = 4
+    _Jitter     ("Where in its froxel each is lit this firing, 0 to 1 each way", vec4) = (0.5, 0.5, 0.5, 0)
+    _History    ("The last firing's lit air",                       sampler3D) = "black"
+    _HistoryWeight ("How much of the history is kept; 0 with none", float) = 0
+    _Reproject0 ("This firing's eye-relative world to the last firing's clip: the first row", vec4) = (1, 0, 0, 0)
+    _Reproject1 ("The second row",                                  vec4) = (0, 1, 0, 0)
+    _Reproject2 ("The third row",                                   vec4) = (0, 0, 1, 0)
+    _Reproject3 ("The fourth row",                                  vec4) = (0, 0, 0, 1)
 }
 
 Buffers {
@@ -195,10 +204,11 @@ void Scatter() {
         MEDIA_SCATTER_WRITE(vec4(0.0));
         return;
     }
-    vec3 w = media_point(t, MEDIA_SCATTER_SIZE(), _MediaRay00, _MediaRay10, _MediaRay01, _MediaRay11);
+    vec3 middle = media_point(t, MEDIA_SCATTER_SIZE(), _MediaRay00, _MediaRay10, _MediaRay01, _MediaRay11);
+    vec3 w = media_point_at(vec3(t) + _Jitter.xyz, MEDIA_SCATTER_SIZE(), _MediaRay00, _MediaRay10, _MediaRay01, _MediaRay11);
     vec3 view = normalize(w);
     // Unreal's distance bias: the froxel's radius, at least a centimetre, added to the inverse square's denominator.
-    float cell = distance(w, media_point(t + ivec3(1), MEDIA_SCATTER_SIZE(), _MediaRay00, _MediaRay10, _MediaRay01, _MediaRay11));
+    float cell = distance(middle, media_point(t + ivec3(1), MEDIA_SCATTER_SIZE(), _MediaRay00, _MediaRay10, _MediaRay01, _MediaRay11));
     float biasSqr = max(cell, 0.01) * max(cell, 0.01);
     ivec2 list = cell_lights(w);
     vec3 sum = vec3(0.0);
@@ -216,5 +226,13 @@ void Scatter() {
         vec3 toLight = normalize(light.positionRadius.xyz - w);
         sum += light.colorExponent.rgb * (falloff * day_fade(light) * hg_phase(_PhaseG, dot(toLight, view)));
     }
-    MEDIA_SCATTER_WRITE(vec4(sum * sigma, 0.0));
+    vec4 lit = vec4(sum * sigma, 0.0);
+    if (_HistoryWeight > 0.0) {
+        vec4 at = vec4(middle, 1.0);
+        vec3 uv = media_uv(vec4(dot(_Reproject0, at), dot(_Reproject1, at), dot(_Reproject2, at), dot(_Reproject3, at)));
+        if (all(greaterThanEqual(uv, vec3(0.0))) && all(lessThanEqual(uv, vec3(1.0)))) {
+            lit = mix(lit, textureLod(_History, uv, 0.0), _HistoryWeight);
+        }
+    }
+    MEDIA_SCATTER_WRITE(lit);
 }

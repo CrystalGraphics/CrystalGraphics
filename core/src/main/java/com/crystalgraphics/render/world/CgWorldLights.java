@@ -181,6 +181,10 @@ public final class CgWorldLights {
             "Smoke, gas and haze in the air lit by the world's lights: Unreal's volumetric fog's light scattering.");
     private static final CgVar.Int AIR_RAYS = CgVar.integer("crystalgraphics.world.lightsAirShadowRays", 4, 0, 64, CgVar.DEV,
             "Shadowed lights traced from each froxel of lit air; past them a froxel's lights shine unshadowed.");
+    private static final CgVar.Bool AIR_HISTORY = CgVar.bool("crystalgraphics.world.lightsAirHistory", true, CgVar.DEV,
+            "Lit air jittered through each froxel and blended over the last frames: Unreal's r.VolumetricFog.TemporalReprojection.");
+    /** Unreal's r.VolumetricFog.HistoryWeight. */
+    private static final float AIR_HISTORY_WEIGHT = 0.9f;
     /** Unreal's ExponentialHeightFog VolumetricFogScatteringDistribution: a little forward scattering. */
     private static final float AIR_PHASE = 0.2f;
     private static final CgVar.Num VOLUME_OUTER = CgVar.number("crystalgraphics.world.lightsVolumeOuter", 50f, 2f, 256f,
@@ -329,8 +333,11 @@ public final class CgWorldLights {
     private CgGraphTexture localLights;
     private CgGraphTexture volume;
     private CgKernel fill, scatterKernel;
-    /** The air lit this firing: each froxel's light scattered toward the eye. */
-    private CgGraphTexture air;
+    /** The air lit, this firing's and the last's, swapped each firing: each froxel's light scattered toward the eye. */
+    private final CgGraphTexture[] air = new CgGraphTexture[2];
+    private int airNewest;
+    /** The media's firing that last lit the air: the history holds that firing's alone. */
+    private long airFiring = -2;
     private final float[] cascades = new float[8];
     /** This firing's entities per tile, and the farthest a shadowed light's ray runs, blocks. */
     private CgGraphTexture entityTiles;
@@ -1348,14 +1355,46 @@ public final class CgWorldLights {
             scatterKernel = CgCompute.load(VOLUME_KERNELS).kernel("Scatter");
             scatterKernel.prepare();
         }
-        if (air == null || air.getWidth() != media.width() || air.getHeight() != media.height()) {
-            air = CgGraphTexture.transientTexture("cg_world_lights.air",
-                    CgTextureDesc.volume(media.width(), media.height(), CgWorldMedia.SLICES, VOLUME_FORMAT));
+        if (air[0] == null || air[0].getWidth() != media.width() || air[0].getHeight() != media.height()) {
+            for (int k = 0; k < 2; k++) {
+                if (air[k] != null) recording.release(air[k]);
+                air[k] = CgGraphTexture.requested("cg_world_lights.air" + k,
+                        CgTextureDesc.volume(media.width(), media.height(), CgWorldMedia.SLICES, VOLUME_FORMAT));
+            }
+            airFiring = -2;
         }
-        traceInputs(media.rays(pass.dispatch(scatterKernel, media.width(), media.height(), CgWorldMedia.SLICES))
-                .image("MEDIA_SCATTER", air).texture("_Media", extinction).set("_PhaseG", AIR_PHASE)
-                .set("_AirShadowRays", AIR_RAYS.get()), CgFallbackTextures.WHITE_1x1, zeroes(recording));
-        return air;
+        // Unreal's VolumetricFogTemporalRandom (VolumetricFog.cpp:270-278): Halton 2, 3 and 5 of the frame, or the middle.
+        boolean temporal = AIR_HISTORY.get();
+        Matrix4fc reproject = media.reproject();
+        boolean kept = temporal && reproject != null && airFiring == media.firing() - 1;
+        int n = (int) (media.firing() & 1023);
+        CgGraphTexture into = air[1 - airNewest], last = air[airNewest];
+        CgDispatch d = media.rays(pass.dispatch(scatterKernel, media.width(), media.height(), CgWorldMedia.SLICES))
+                .image("MEDIA_SCATTER", into).texture("_Media", extinction).set("_PhaseG", AIR_PHASE)
+                .set("_AirShadowRays", AIR_RAYS.get())
+                .set("_Jitter", temporal ? halton(n, 2) : 0.5f, temporal ? halton(n, 3) : 0.5f, temporal ? halton(n, 5) : 0.5f, 0f)
+                .set("_HistoryWeight", kept ? AIR_HISTORY_WEIGHT : 0f)
+                .texture("_History", kept ? last : CgFallbackTextures.BLACK_VOLUME);
+        if (kept) {
+            d.set("_Reproject0", reproject.m00(), reproject.m10(), reproject.m20(), reproject.m30())
+                    .set("_Reproject1", reproject.m01(), reproject.m11(), reproject.m21(), reproject.m31())
+                    .set("_Reproject2", reproject.m02(), reproject.m12(), reproject.m22(), reproject.m32())
+                    .set("_Reproject3", reproject.m03(), reproject.m13(), reproject.m23(), reproject.m33());
+        }
+        traceInputs(d, CgFallbackTextures.WHITE_1x1, zeroes(recording));
+        airNewest = 1 - airNewest;
+        airFiring = media.firing();
+        return into;
+    }
+
+    /** The radical inverse of {@code index} in {@code base}: a low-discrepancy point from 0 to 1. */
+    private static float halton(int index, int base) {
+        float result = 0f, f = 1f;
+        for (int i = index + 1; i > 0; i /= base) {
+            f /= base;
+            result += f * (i % base);
+        }
+        return result;
     }
 
     /** What both of light_volume.compute's kernels read: the lights, their grid, and the shadows' inputs this firing. */

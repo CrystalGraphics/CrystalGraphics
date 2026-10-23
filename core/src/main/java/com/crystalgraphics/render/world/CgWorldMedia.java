@@ -124,6 +124,12 @@ public final class CgWorldMedia {
 
     private final List<Injector> injectors = new CopyOnWriteArrayList<>();
     private final Matrix4f unproject = new Matrix4f();
+    /** The last firing's renderer-relative world to clip, and that space's origin; this firing's eye to it. */
+    private final Matrix4f lastToClip = new Matrix4f(), reproject = new Matrix4f();
+    private double lastX, lastY, lastZ;
+    private boolean hadLast, reprojects;
+    /** Firings recorded, with or without anything in the air. */
+    private long firings;
     private final Vector4f corner = new Vector4f();
     private final Vector3f ray = new Vector3f(), eye = new Vector3f();
     private final float[] rays = new float[12];
@@ -177,6 +183,20 @@ public final class CgWorldMedia {
         return height;
     }
 
+    /** Which firing this is, counted with or without anything in the air: a history kept across firings checks it. */
+    long firing() {
+        return firings;
+    }
+
+    /**
+     * This firing's eye-relative points to the last firing's clip space, for a history of the grid read through
+     * {@code media.glsl}'s {@code media_uv}; null at the first firing, after one with nothing in the air, or a resize.
+     */
+    @Nullable
+    Matrix4fc reproject() {
+        return reprojects ? reproject : null;
+    }
+
     /** The view's corner rays onto {@code d}: {@code media_point}'s, as {@link #dispatch} sets them. */
     public CgDispatch rays(CgDispatch d) {
         return d.set("_MediaRay00", rays[0], rays[1], rays[2], 0f).set("_MediaRay10", rays[3], rays[4], rays[5], 0f)
@@ -204,9 +224,14 @@ public final class CgWorldMedia {
     CgGraphTexture record(CgRecording recording, CgPassConstants stage, CgHostView view, Matrix4fc toWorld,
                           float targetWidth, float targetHeight, CgWorldLights lights) {
         lit = false;
-        if (injectors.isEmpty()) return null;
+        firings++;
+        if (injectors.isEmpty()) {
+            hadLast = false;
+            return null;
+        }
         int w = Math.max(1, (int) Math.ceil(targetWidth / TILE)), h = Math.max(1, (int) Math.ceil(targetHeight / TILE));
-        if (a == null || w != width || h != height) {
+        boolean resized = a == null || w != width || h != height;
+        if (resized) {
             width = w;
             height = h;
             a = CgGraphTexture.transientTexture("cg_world_media_a", CgTextureDesc.volume(w, h, SLICES, R16F));
@@ -220,6 +245,15 @@ public final class CgWorldMedia {
         cameraX = view.x() + eye.x;
         cameraY = view.y() + eye.y;
         cameraZ = view.z() + eye.z;
+        reprojects = hadLast && !resized;
+        if (reprojects) {
+            reproject.set(lastToClip).translate((float) (cameraX - lastX), (float) (cameraY - lastY), (float) (cameraZ - lastZ));
+        }
+        toWorld.invert(lastToClip).mulLocal(view.projection());
+        lastX = view.x();
+        lastY = view.y();
+        lastZ = view.z();
+        hadLast = true;
         if (integrate == null) {
             integrate = CgCompute.load(KERNELS).kernel("Integrate");
             integrate.prepare();

@@ -263,13 +263,19 @@ CgWorldRenderer.get().media().add(haze);      // a haze to see the lights in; VF
   falloff x day fade x the Henyey-Greenstein phase toward the eye (g 0.2, the height fog's default) x the froxel's
   scattering (its extinction, albedo white). A shadowed light is traced from the froxel, at most
   `crystalgraphics.world.lightsAirShadowRays` (4) a froxel; past them a froxel's lights are unshadowed.
+- **History** (Unreal's temporal reprojection, VolumetricFog.usf:856-921, :1173-1180): each firing lights a froxel at a
+  Halton 2, 3, 5 point inside it and blends 0.9 of what the last firing's grid held at its middle, reprojected through
+  the last firing's view, so a narrow beam is averaged over each cell instead of read at its centre. Dropped at the first
+  firing, after a resize or a firing with nothing in the air, and outside the last grid.
+  `crystalgraphics.world.lightsAirHistory=false` lights froxel middles alone.
 - **Integration** (`media.compute`): Unreal's `FinalIntegrationCS`, Frostbite's energy-conserving sum, into `cg_Media`'s
   rgb (the light scattered toward the eye) beside its alpha (what gets through, `cg_MediaTransmit`).
 - **Composite** (`world_media_light.shader`, GPU zone `world.mediaLight`): the scattered light added over the opaque
   scene at each pixel's depth, out to the grid's far end where there is sky, before the transparent passes. The media
   is recorded whenever an injector is added, transparent draws or not.
 - **Departures from Unreal**: the opaque scene is not dimmed by the transmittance (what puts smoke in the air draws its
-  own look; only the light is added); no temporal jitter and history; a budget of shadow rays a froxel.
+  own look; only the light is added); no conservative-depth rejection of the history and no supersampling where it
+  misses; a budget of shadow rays a froxel.
 - `crystalgraphics.world.lightsAir=false` turns it off; `--mode=lights-air` is the gate. At 320x240 with one light the
   media pass took 0.10 ms and the composite 0.02 (RTX 4070 Super); the grid grows with the screen. `CgLightsDemo` stands
   in a haze.
