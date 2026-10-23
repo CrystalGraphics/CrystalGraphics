@@ -265,7 +265,8 @@ mat3 range_facing(int lo, vec3 toEye, vec3 velocity, float spin, mat3 own, vec3 
     m = m * mat3(vec3(size.x * f5.x, 0.0, 0.0), vec3(0.0, size.y * f5.y, 0.0), vec3(0.0, 0.0, size.z * f5.z));
     if (f3.w > 0.5) {
         vec3 rolls = vec3(fx_rand(bits, 0u, 61u), fx_rand(bits, 0u, 62u), fx_rand(bits, 0u, 63u));
-        if (f3.w < 1.5) rolls = vec3(rolls.x);
+        if (f3.w > 2.5) rolls = vec3(rolls.x > 0.5 ? 1.0 : 0.0);   // a pick: one end or the other
+        else if (f3.w < 1.5) rolls = vec3(rolls.x);
         m = m * range_quat(range_rotator(mix(f3.xyz, f4.xyz, rolls)));
     }
     return m;

@@ -7,6 +7,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -622,15 +623,17 @@ public final class CgVfxEmitterAssets {
                 default -> {
                 }
             }
-            Mapped m = toEngine(name, entry);
-            CgVfxModuleTypes.Kind<?> kind = CgVfxModuleTypes.kind(m.module);
-            if (kind == null) throw new IllegalArgumentException(name + ": no module " + entry.get("module"));
-            formed(name, entry, m, kind, stacked, forms, b);
-            stacked++;
-            if (!(kind.compile(m.inputs) instanceof CgVfxModule module)) {
-                throw new IllegalArgumentException(name + ": module " + entry.get("module") + " is a mod's kind; an asset names the engine's");
+            for (String half : collisionHalves(name, entry)) {
+                Mapped m = toEngine(name, entry, half);
+                CgVfxModuleTypes.Kind<?> kind = CgVfxModuleTypes.kind(m.module);
+                if (kind == null) throw new IllegalArgumentException(name + ": no module " + entry.get("module"));
+                formed(name, entry, m, kind, stacked, forms, b);
+                stacked++;
+                if (!(kind.compile(m.inputs) instanceof CgVfxModule module)) {
+                    throw new IllegalArgumentException(name + ": module " + entry.get("module") + " is a mod's kind; an asset names the engine's");
+                }
+                b.module(module, idOf(entry, m.module));
             }
-            b.module(module, idOf(entry, m.module));
         }
         Object renderers = drawnBy(name, tree.get("renderers"), drawn, deps == null ? CgUnits.HOST : deps.units());
         for (CgVfxRendererProperties r : CgVfxRenderers.compileAll(name, renderers, deps)) b.renderer(r);
@@ -1673,6 +1676,7 @@ public final class CgVfxEmitterAssets {
                     case "collide_depth" -> "depth";
                     default -> "entities";
                 });
+                if (kind.equals("collide_entities")) give(out, names, "pawns_keep_count", in, "keeps_count");
                 if (kind.equals("collide")) {
                     shapeToFile(in, out);
                     give(out, names, "shape_offset", in, "offset");
@@ -1812,7 +1816,37 @@ public final class CgVfxEmitterAssets {
     }
 
     /** A particle_update entry as the engine kind it names and that kind's inputs. */
-    private static Mapped toEngine(String name, Map<?, ?> entry) {
+    /** A module entry compiled whole: what {@link #collisionHalves} answers for anything but a world collision. */
+    private static final List<String> WHOLE = Collections.singletonList(null);
+    private static final String BLOCKS = "blocks", PAWNS = "pawns";
+
+    /**
+     * The colliders a world collision's {@code object_types} meet, one engine module each: blocks for
+     * {@code world_static} and {@code world_dynamic}, the living entities for {@code pawn}. Both share the particle's
+     * count, as Cascade's one trace does. {@code physics_body} is the host's simulated bodies, of which a host has none.
+     */
+    private static List<String> collisionHalves(String name, Map<?, ?> entry) {
+        if (!"collision".equals(moduleId(entry))) return WHOLE;
+        Map<?, ?> in = inputs(entry);
+        if (!"world".equals(in.get("against"))) return WHOLE;
+        List<?> types = in.get("object_types") instanceof List<?> l ? l : List.of("world_static");
+        boolean blocks = false, pawns = false;
+        for (Object t : types) {
+            switch (String.valueOf(t)) {
+                case "world_static", "world_dynamic" -> blocks = true;
+                case "pawn" -> pawns = true;
+                case "physics_body" -> {
+                }
+                default -> throw new IllegalArgumentException(name + ": collision's object type " + t + " is not one a host"
+                        + " has: world_static, world_dynamic, pawn or physics_body");
+            }
+        }
+        if (!blocks && !pawns) throw new IllegalArgumentException(name + ": a collision with " + types + " meets nothing a host has");
+        return blocks && pawns ? List.of(BLOCKS, PAWNS) : List.of(blocks ? BLOCKS : PAWNS);
+    }
+
+    /** {@code entry} as the engine's module; {@code half} the collider a world collision's object types split it to. */
+    private static Mapped toEngine(String name, Map<?, ?> entry, @Nullable String half) {
         Map<?, ?> in = inputs(entry);
         String id = moduleId(entry);
         Map<String, Object> out = new LinkedHashMap<>();
@@ -1827,8 +1861,9 @@ public final class CgVfxEmitterAssets {
                 if ("world".equals(in.get("space"))) read.add("space");
             }
             case "collision" -> {
-                String against = String.valueOf(in.get("against"));
+                String against = half == null ? String.valueOf(in.get("against")) : half.equals(PAWNS) ? "entities" : "world";
                 read.add("against");
+                read.add("object_types");
                 kind = switch (against) {
                     case "shape" -> "collide";
                     case "world" -> "collide_world";
@@ -1917,12 +1952,22 @@ public final class CgVfxEmitterAssets {
                     out.put("lead", 2.0 / scale.doubleValue());
                     read.add("radius_scale");
                 }
-                if (kind.equals("collide_world") || kind.equals("collide_depth")) {
+                if (kind.equals("collide_world") || kind.equals("collide_depth") || kind.equals("collide_entities")) {
                     take(in, read, out, names, "max_distance", "reach");
                     // Cascade checks no distance at or past its world's size (:227-228).
                     if (out.get("reach") instanceof Number far && far.doubleValue() >= WORLD_MAX) out.put("reach", Double.POSITIVE_INFINITY);
                 }
-                if (kind.equals("collide_entities")) take(in, read, out, names, "entity_size", "size");
+                if (kind.equals("collide_entities")) {
+                    take(in, read, out, names, "entity_size", "size");
+                    // Cascade spares a pawn's hit the count (:388-390).
+                    out.put("keeps_count", !Boolean.FALSE.equals(in.get("pawns_keep_count")));
+                    read.add("pawns_keep_count");
+                    // A world collision's trace led by its size over DirScalar (:360), as the box grown by it.
+                    if (half != null && in.get("radius_scale") instanceof Number scale && scale.doubleValue() > 0) {
+                        out.put("size", 2.0 / scale.doubleValue());
+                        read.add("radius_scale");
+                    }
+                }
             }
             case "set_position" -> {
                 kind = "set_position";
@@ -1957,6 +2002,14 @@ public final class CgVfxEmitterAssets {
                 take(in, read, out, names, "directionality", "directionality");
                 take(in, read, out, names, "axis", "axis");
                 take(in, read, out, names, "affect_base_velocity", "lasting");
+                // Cascade's StrengthByDistance only picks the clock of a strength curve (ParticleModules.cpp:4447-4466,
+                // 4.21): by loop is its false, and a strength that is no curve reads alike either way.
+                if (!(in.get("strength") instanceof Map<?, ?> s && (s.get("curve") != null || s.get("curves") != null))
+                        || Boolean.FALSE.equals(in.get("by_distance"))) {
+                    read.add("by_distance");
+                }
+                // Cascade declares bOverrideVelocity and never reads it (ParticleModules.cpp:4424; Update, :4417-4491).
+                read.add("override_velocity");
             }
             case "vector_field" -> {
                 kind = "vector_field";
@@ -2169,7 +2222,7 @@ public final class CgVfxEmitterAssets {
 
     /**
      * {@code spawn_rate}'s rate times its scale: each a number, a range drawn each step, or a curve by the loop's seconds,
-     * as Cascade evaluates its rate's distribution at the emitter's time each tick. Two ranges at once are not read.
+     * as Cascade evaluates its rate's distribution at the emitter's time each tick.
      */
     private static CgVfxSpawnRate spawnRate(String name, Object rate, Object scale) {
         // Cascade's UniformCurve: the scale drawn each tick between two curves at the emitter's time.
@@ -2183,7 +2236,8 @@ public final class CgVfxEmitterAssets {
         float[] ends = rateCurve ? new float[]{1f, 1f} : rangeOf(rate);
         float[] by = scale == null ? new float[]{1f, 1f} : scaleCurve ? new float[]{1f, 1f} : rangeOf(scale);
         if (ends[1] > ends[0] && by[1] > by[0]) {
-            throw new IllegalArgumentException(name + ": spawn_rate's rate and scale both drawn between two ends is not read yet");
+            // Each drawn apart each tick (ParticleEmitterInstances.cpp:2014-2015): the scale between two flat curves.
+            return new CgVfxSpawnRate(ends[0], ends[1], CgKeyframes.constant(by[0])).scaleTo(CgKeyframes.constant(by[1]));
         }
         CgKeyframes curve = rateCurve ? keyframes(name, rate, "loop") : null;
         if (scaleCurve) {

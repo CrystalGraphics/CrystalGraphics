@@ -9,7 +9,7 @@ void fx_attract(inout FxParticle p, inout FxForces f, FxStep s, vec4 m0, vec4 m1
     vec3 r = p.position - centre.xyz;
     float d = fx_volume_reach(m0, r);
     if (d > 1.0) return;
-    float amount = pow(max(0.0, 1.0 - d), m1.y);
+    float amount = m1.y == 0.0 ? 1.0 : pow(max(0.0, 1.0 - d), m1.y);   // no attenuation: Cascade's, even at its rim
     vec3 dir = fx_safe_normalize(mix(fx_safe_normalize(r), -m2.xyz, m1.z));
     vec3 pull = -dir * (amount * m1.x);
     if (m1.w > 0.5) f.accel += pull;

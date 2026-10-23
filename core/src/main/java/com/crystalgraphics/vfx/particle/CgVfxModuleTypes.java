@@ -353,10 +353,12 @@ public final class CgVfxModuleTypes {
                 r -> new CgVfxModule.CollideDepth(r.f("bounce"), r.f("friction"), r.f("rest"), r.f("thickness"), response(r),
                         r.f("reach")));
         kind("collide_entities", CgVfxModule.CollideEntities.class,
-                t -> { fl(t, "bounce", "friction", "rest", "size"); response(t); },
+                t -> { fl(t, "bounce", "friction", "rest", "size"); response(t); t.property("keeps_count", CgValueType.BOOL);
+                    t.property("reach", CgValueType.FLOAT).defaultValue(Double.POSITIVE_INFINITY); },
                 (m, in) -> response(in.f("bounce", m.bounce()).f("friction", m.friction()).f("rest", m.rest())
-                        .f("size", m.size()), m.response()),
-                r -> new CgVfxModule.CollideEntities(r.f("bounce"), r.f("friction"), r.f("rest"), r.f("size"), response(r)));
+                        .f("size", m.size()), m.response()).b("keeps_count", m.keepsCount()).f("reach", m.reach()),
+                r -> new CgVfxModule.CollideEntities(r.f("bounce"), r.f("friction"), r.f("rest"), r.f("size"), response(r),
+                        r.b("keeps_count"), r.f("reach")));
         kind("kill", CgVfxModule.Kill.class,
                 t -> { shape(t); t.property("inside", CgValueType.BOOL); offset(t); planeRadius(t); },
                 (m, in) -> in.shape(m.shape()).b("inside", m.inside()).v3("offset", m.x(), m.y(), m.z())

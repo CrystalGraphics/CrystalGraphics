@@ -180,12 +180,12 @@ void fx_collision_complete(inout FxParticle p, float how) {
 // is left alone. With Cascade's damping (c.low.w) the whole velocity is mirrored and damped per axis, with no friction
 // (:453); else Godot's rigid response: the speed into the surface taken away, g.y of the rest as friction, and a
 // bounce of g.x once the impact is fast enough (slide_to_bounce_trigger), the punctual hit a collision event fires on,
-// slower than g.z after it resting. what: the FX_HIT_ code.
-void fx_contact_respond(inout FxParticle p, vec3 n, float depth, vec3 g, FxCollision c, float what) {
+// slower than g.z after it resting. what: the FX_HIT_ code; spends: whether a counted hit spends the count.
+void fx_contact_respond(inout FxParticle p, vec3 n, float depth, vec3 g, FxCollision c, float what, bool spends) {
     p.position += n * depth;
     bool counted = c.turn.w > 0.0;
     if (counted) {
-        if (fx_collision_counts(n, c)) fx_hit(p, n, what);
+        if (spends) fx_hit(p, n, what);
         else p.hit = vec4(n, what);
         if (float(p.collisions) >= fx_collision_most(p, c)) {
             fx_collision_complete(p, c.turn.w);
@@ -213,4 +213,9 @@ void fx_contact_respond(inout FxParticle p, vec3 n, float depth, vec3 g, FxColli
         p.spinRate = 0.0;
         p.resting = true;
     }
+}
+
+// fx_contact_respond, the hit spending the count as fx_collision_counts says.
+void fx_contact_respond(inout FxParticle p, vec3 n, float depth, vec3 g, FxCollision c, float what) {
+    fx_contact_respond(p, n, depth, g, c, what, fx_collision_counts(n, c));
 }

@@ -24,13 +24,14 @@ import java.util.Objects;
  *       last. Keys at one time make a step.</li>
  *   <li>Across loops with no curve it is one continuous rate: loop boundaries do not show.</li>
  *   <li>A rate between two ends ({@code most} above {@code perSecond}) is drawn again each step, as Cascade evaluates
- *       its spawn rate's distribution each tick.</li>
+ *       its spawn rate's distribution each tick. A draw below zero spawns nothing, as Cascade clamps it.</li>
  *   <li>A rate or scale bound to a user parameter ({@link Bound}) multiplies it by the parameter's value each step,
  *       as Cascade reads its parameter distribution each tick. A binding with no remap has no most: the emitter's
  *       capacity holds it.</li>
  * </ul>
  *
- * @param perSecond particles a second, or the least where it is drawn between two ends
+ * @param perSecond particles a second, or the least where it is drawn between two ends: below zero, a share of
+ *                  the draws that spawn nothing
  * @param most      the most a second: {@code perSecond} for one rate
  * @param scale     its scale by the loop's seconds
  * @param bound     a user parameter it is multiplied by each step, or null
@@ -63,7 +64,7 @@ public record CgVfxSpawnRate(float perSecond, float most, CgKeyframes scale, @Nu
     }
 
     public CgVfxSpawnRate {
-        if (!(perSecond >= 0f) || !(most >= perSecond)) throw new IllegalArgumentException("a rate of " + perSecond + " to " + most);
+        if (!Float.isFinite(perSecond) || !(most >= perSecond)) throw new IllegalArgumentException("a rate of " + perSecond + " to " + most);
         Objects.requireNonNull(scale, "scale");
     }
 
@@ -102,7 +103,8 @@ public record CgVfxSpawnRate(float perSecond, float most, CgKeyframes scale, @Nu
      */
     public float at(float seconds, float u, float v) {
         float by = scaleTo == null ? scale.at(seconds) : scale.at(seconds) + (scaleTo.at(seconds) - scale.at(seconds)) * v;
-        return (perSecond + (most - perSecond) * u) * by;
+        // Cascade's drawn rate is clamped at zero (ParticleEmitterInstances.cpp:2014-2016).
+        return Math.max(0f, (perSecond + (most - perSecond) * u) * by);
     }
 
     /** Whether it is drawn between two ends each step. */
@@ -115,7 +117,7 @@ public record CgVfxSpawnRate(float perSecond, float most, CgKeyframes scale, @Nu
      * pool's slot is sized by.
      */
     public float peak(float duration) {
-        if (most == 0f) return 0f;
+        if (most <= 0f) return 0f;
         float end = Math.min(duration, Math.max(Math.max(scale.end(), scaleTo == null ? 0f : scaleTo.end()), 0f));
         float peak = highest(0f);
         // Sampled: an eased segment may overshoot its keys.

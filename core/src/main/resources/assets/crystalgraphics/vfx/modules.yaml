@@ -294,7 +294,7 @@ modules:
       { name: delay, type: float, default: 0 }, { name: max_distance, type: float, quantity: length, default: 1000 },
       # Cascade's own: what its world trace reads
       { name: apply_physics, type: bool, default: false }, { name: ignore_triggers, type: bool, default: true },
-      { name: ignore_source, type: bool, default: true }, { name: drop_detail, type: bool, default: true }, { name: object_types, type: array, default: [] },
+      { name: ignore_source, type: bool, default: true }, { name: drop_detail, type: bool, default: true }, { name: object_types, type: array, default: [world_static] },
       { name: radius_scale, type: float, default: 3.5 }, { name: vertical_fudge, type: float, default: 0.1 },
       { name: pawns_keep_count, type: bool, default: true }, { name: only_vertical_counts, type: bool, default: false },
       { name: only_if_visible, type: bool, default: true }, { name: mass, type: float, default: 0.1 } ] }

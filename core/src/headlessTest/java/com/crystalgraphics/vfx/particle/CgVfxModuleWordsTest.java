@@ -81,7 +81,7 @@ public class CgVfxModuleWordsTest {
             {0.2f, 0.3f, 0.4f, 0.5f, Float.POSITIVE_INFINITY, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f, 0.0f},   // collide_depth
             {0.0f, 0.0f, 0.0f, Float.POSITIVE_INFINITY, 0.5f, 0.25f, 0.5f, 6.0f, 0.6f, 0.3f, 0.6f, 0.1f, 0.4f, 0.5f, 0.6f, 2.0f, 1.0f, 3.0f, 0.5f, 0.1f, 0.8f, 0.9f, 1.0f, 1.0f},   // collide_world
 
-            {0.2f, 0.3f, 0.4f, 1.2f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f, 0.0f},   // collide_entities
+            {0.2f, 0.3f, 0.4f, 1.2f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, Float.POSITIVE_INFINITY, 0.0f, 0.0f},   // collide_entities
             {0.3f, 0.3f, 0.3f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f},   // kill
             {4.0f, 1.0f, 4.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f},   // kill
             {0.0f, 1.0f, 0.0f, 2.0f, 1.0f, 0.0f, 0.0f, 0.0f},   // kill

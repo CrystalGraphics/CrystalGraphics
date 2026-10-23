@@ -1572,14 +1572,17 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      *   <li>An entity walking into resting or slow particles engulfs them: they began the step inside.</li>
      * </ul>
      *
-     * @param size the share of a particle's size that collides: its box is grown by that
+     * @param size       the share of a particle's size that collides: its box is grown by that
+     * @param keepsCount whether a hit spends none of {@code response}'s count: Cascade's
+     *                   {@code bPawnsDoNotDecrementCount}, every entity here a pawn
+     * @param reach      how near the camera must be, in blocks, for it to collide: infinite for always
      */
-    record CollideEntities(float bounce, float friction, float rest, float size, CollisionResponse response)
-            implements CgVfxModule {
+    record CollideEntities(float bounce, float friction, float rest, float size, CollisionResponse response,
+                           boolean keepsCount, float reach) implements CgVfxModule {
         private static final CgVfxDataInterface[] ENTITIES = {CgVfxDataInterfaces.ENTITIES};
 
         public CollideEntities(float bounce, float friction, float rest, float size) {
-            this(bounce, friction, rest, size, CollisionResponse.NONE);
+            this(bounce, friction, rest, size, CollisionResponse.NONE, false, Float.POSITIVE_INFINITY);
         }
 
         public CollideEntities killing() {
@@ -1588,7 +1591,27 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         /** Responds with {@code response}'s damping, delay, count and completion. */
         public CollideEntities response(CollisionResponse response) {
-            return new CollideEntities(bounce, friction, rest, size, response);
+            return new CollideEntities(bounce, friction, rest, size, response, keepsCount, reach);
+        }
+
+        /** Its hits bounce but spend none of the count, as Cascade spares a pawn's. */
+        public CollideEntities keepingCount() {
+            return new CollideEntities(bounce, friction, rest, size, response, true, reach);
+        }
+
+        /** The same, colliding only while the camera is within {@code blocks} of its effect. */
+        public CollideEntities within(float blocks) {
+            return new CollideEntities(bounce, friction, rest, size, response, keepsCount, blocks);
+        }
+
+        @Override
+        public CgVfxLane[] instanceLanes() {
+            return NEAR_LANES;
+        }
+
+        @Override
+        public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
+            out.vec4(near(instance, reach), 0f, 0f, 0f);
         }
 
         @Override

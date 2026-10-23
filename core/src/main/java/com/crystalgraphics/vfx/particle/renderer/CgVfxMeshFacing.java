@@ -100,8 +100,14 @@ public record CgVfxMeshFacing(float[] words) {
             System.arraycopy(vector(who, "pre_rotation's low end", ends.get(0), null), 0, w, 12, 3);
             System.arraycopy(vector(who, "pre_rotation's high end", ends.get(1), null), 0, w, 16, 3);
             w[15] = Boolean.TRUE.equals(range.get("per_channel")) ? 2f : 1f;
+        } else if (pre instanceof Map<?, ?> pick && pick.size() == 1 && pick.get("pick") instanceof List<?> ends && ends.size() == 2) {
+            // Cascade's extremes: one roll for the whole rotation, the second end above a half (Distributions.cpp:731-741).
+            System.arraycopy(vector(who, "pre_rotation's first end", ends.get(0), null), 0, w, 12, 3);
+            System.arraycopy(vector(who, "pre_rotation's second end", ends.get(1), null), 0, w, 16, 3);
+            w[15] = 3f;
         } else if (pre != null) {
-            throw new IllegalArgumentException(who + "'s pre_rotation " + pre + " is not read yet: a rotation, or a range of them");
+            throw new IllegalArgumentException(who + "'s pre_rotation " + pre + " is not read yet: a rotation, a range of them or a"
+                    + " pick of two");
         }
         return w;
     }
@@ -167,7 +173,7 @@ public record CgVfxMeshFacing(float[] words) {
         if (words[15] != 0f) {
             float[] r = new float[3];
             for (int c = 0; c < 3; c++) {
-                float u = words[15] == 2f ? rolls[c] : rolls[0];
+                float u = words[15] == 3f ? (rolls[0] > 0.5f ? 1f : 0f) : words[15] == 2f ? rolls[c] : rolls[0];
                 r[c] = words[12 + c] + (words[16 + c] - words[12 + c]) * u;
             }
             float[] q = CgUnits.rotatorToHost(r[0], r[1], r[2]);
