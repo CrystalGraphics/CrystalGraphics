@@ -171,7 +171,7 @@ public final class CgVfxRenderers {
             else if (!m.materialOverrides().isEmpty()) unbuilt = "material_overrides";
             else if (!m.meshes().isEmpty() && (m.meshes().get(0).get("pivot_offset") != null
                     || m.meshes().get(0).get("pivot_space") != null)) unbuilt = "a mesh's pivot_offset";
-            else if (m.subImage() != null) unbuilt = "sub_image";
+            else if (m.subImage() != null && m.subImage().isTable()) unbuilt = "a rect-table sub_image";
             else if (m.cameraDistance() != null) unbuilt = "camera_distance";
             else if (m.castShadows()) unbuilt = "cast_shadows";
         } else if (r instanceof CgVfxRibbonRendererProperties b) {

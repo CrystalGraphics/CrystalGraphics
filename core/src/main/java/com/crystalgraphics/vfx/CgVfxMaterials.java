@@ -185,14 +185,15 @@ final class CgVfxMaterials {
             // The sprite factory's settings, the renderer's own: rows, so renderers differing only in them share a draw.
             material.requireRow(FACING, who);
             rowValues.put(FACING, sprite.factoryFacing(who));
-            CgVfxFlipbook flipbook = sprite.subImage();
-            if (flipbook != null) {
-                // The renderer holds the frames; its emitter's sub-UV animation plays them, frame 0 without one.
-                CgVfxSubUvAnimation subUv = placed.emitter().subUv();
-                flipbook = subUv != null ? subUv.play(flipbook) : flipbook.direct();
-                rowValues.put(SUB_IMAGE, floats(flipbook.subImage()));
-                rowValues.put(SUB_UV, floats(flipbook.subUv()));
-            }
+        }
+        CgVfxFlipbook flipbook = renderer instanceof CgVfxSpriteRendererProperties sprite ? sprite.subImage()
+                : renderer instanceof CgVfxMeshRendererProperties mesh ? mesh.subImage() : null;
+        if (flipbook != null) {
+            // The renderer holds the frames; its emitter's sub-UV animation plays them, frame 0 without one.
+            CgVfxSubUvAnimation subUv = placed.emitter().subUv();
+            flipbook = subUv != null ? subUv.play(flipbook) : flipbook.direct();
+            rowValues.put(SUB_IMAGE, floats(flipbook.subImage()));
+            rowValues.put(SUB_UV, floats(flipbook.subUv()));
         }
         if (placed.slotRenderer() == null && (renderer instanceof CgVfxSpriteRendererProperties
                 || renderer instanceof CgVfxMeshRendererProperties)) {

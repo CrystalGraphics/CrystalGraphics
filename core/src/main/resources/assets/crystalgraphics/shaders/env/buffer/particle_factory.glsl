@@ -86,7 +86,7 @@ void _cg_dynamics(int n, int drawn, inout CgMaterialParticle p) {
 //   CUSTOM2  interpolation points, flags (1 noise on the target, 2 one up for the whole beam, 4 tiles by distance), its
 //            tiles or the blocks a tile, the noise's frequency
 // An include is resolved once whatever #if it sits in, so what both factories read is included ahead of either.
-#if defined(CG_VERTEX_STAGE) && (defined(FX_ON_RIBBONS) || defined(CG_TYPE_NONE) || defined(FX_ON_SPRITES))
+#if defined(CG_VERTEX_STAGE) && (defined(FX_ON_RIBBONS) || defined(CG_TYPE_NONE) || defined(FX_ON_SPRITES) || defined(CG_TYPE_SPATIAL))
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
 #endif
@@ -273,7 +273,7 @@ CgMaterialVertex _cg_mesh_vertex(float cameraOffset, float drawnBits) {
     return v;
 }
 
-CgMaterialParticle _cg_mesh_particle(float drawnBits) {
+CgMaterialParticle _cg_mesh_particle(vec4 subImage, vec4 subUv, sampler2D subImages, float drawnBits) {
     CgMaterialParticle p;
     vec3 velocity = CG_OBJECT_CUSTOM0.xyz;
     float speed = length(velocity);
@@ -284,17 +284,22 @@ CgMaterialParticle _cg_mesh_particle(float drawnBits) {
     p.positionAndSize = vec4(CG_OBJECT_TO_WORLD[3].xyz, 1.0);   // Unreal's mesh factory sizes it 1
     p.size = vec2(0.0);
     p.spriteRotation = 0.0;
-    // One sub-image until a mesh renderer sets its grid: Unreal's (SubUVParams + uv) * SubImageSize at 1x1.
-    p.subUVCoords0 = cg_TexCoord0;
-    p.subUVCoords1 = cg_TexCoord0;
-    p.subUVLerp = 0.0;
     p.record = int(CG_OBJECT_CUSTOM2.w);
+    // Niagara's mesh sub-UVs (NiagaraMeshVertexFactory.ush): the mesh's own UVs laid into each of its two frames,
+    // (frame + uv) * SubImageSize; the whole image without a flipbook.
+    int drawn = int(drawnBits + 0.5), i = p.record;
+    float index = (drawn & _CG_DRAWN_SUB_IMAGE) != 0 ? CG_PARTICLE_DRAWN(i).color.x : 0.0, a, b, blend;
+    fx_subuv_frames(subUv, subImage, CG_PARTICLE_AGE(i), CG_PARTICLE_PROGRESS(i), CG_PARTICLE_SEED(i), index, a, b, blend);
+    vec4 rectA = fx_subimage_rect(subImages, subImage, a), rectB = fx_subimage_rect(subImages, subImage, b);
+    p.subUVCoords0 = mix(rectA.xy, rectA.zw, cg_TexCoord0);
+    p.subUVCoords1 = mix(rectB.xy, rectB.zw, cg_TexCoord0);
+    p.subUVLerp = blend;
     _cg_dynamics(p.record, int(drawnBits + 0.5), p);
     return p;
 }
 
 #define cg_material_vertex() _cg_mesh_vertex(_cg_CameraOffset, _cg_Drawn)
-#define cg_material_particle() _cg_mesh_particle(_cg_Drawn)
+#define cg_material_particle() _cg_mesh_particle(_cg_SubImage, _cg_SubUV, _cg_SubImages, _cg_Drawn)
 #elif defined(CG_VERTEX_STAGE)
 // No factory for this #type: a port calling one fails here, by name.
 #define cg_material_vertex() cg_material_vertex_has_no_factory_for_this_type()
