@@ -853,7 +853,7 @@ public final class CgWorldLights {
                         CgBufferDesc.of(16, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
                 staging = ByteBuffer.allocateDirect(CAPACITY * FLOATS * 4).order(ByteOrder.nativeOrder());
                 viewed = CgGraphBuffer.persistent("cg_world_lights.view",
-                        CgBufferDesc.elements(CAPACITY, 32, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+                        CgBufferDesc.elements(CAPACITY, 48, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
                 alloc = CgGraphBuffer.persistent("cg_world_lights.alloc",
                         CgBufferDesc.elements(4, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
             }
@@ -960,7 +960,7 @@ public final class CgWorldLights {
             }
             int n = gx * gy * SLICES, budget = n * PER_CELL * budgetScale, parentBudget = twoLevel ? budget : 1,
                     parents = px * py * pz;
-            if (cells == null || cells.size() < n * 8L || parentCells.size() < parents * 8L
+            if (cells == null || cells.size() < n * 16L || parentCells.size() < parents * 8L
                     || parentIndices.size() < parentBudget * 4L || indices.size() < budget * 4L) {
                 if (cells != null) {
                     recording.release(cells);
@@ -974,8 +974,9 @@ public final class CgWorldLights {
                         CgBufferDesc.elements(n, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
                 starts = CgGraphBuffer.persistent("cg_world_lights.starts",
                         CgBufferDesc.elements(n, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+                // Four words a cell: lights.glsl's CG_LIGHT_CELL_START.
                 cells = CgGraphBuffer.persistent("cg_world_lights.cells",
-                        CgBufferDesc.elements(n * 2, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+                        CgBufferDesc.elements(n * 4, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
                 indices = CgGraphBuffer.persistent("cg_world_lights.indices",
                         CgBufferDesc.elements(budget, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
                 parentCells = CgGraphBuffer.persistent("cg_world_lights.parent-cells",
@@ -1123,7 +1124,8 @@ public final class CgWorldLights {
             if (!binned && !shadowsOn) return;
             CgGraphBuffer none = zeroes(recording);
             apply.buffer("LIGHTS", binned ? list : none).buffer("CELLS", binned ? cells : none)
-                    .buffer("INDICES", binned ? indices : none).applyProperties(applyValues);
+                    .buffer("INDICES", binned ? indices : none).buffer("VIEWED", binned ? viewed : none)
+                    .applyProperties(applyValues);
             apply.applyProperties(applyWindow);
             CgPipeline pipeline = apply.pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) return;

@@ -54,6 +54,23 @@
 // deferred does: a swarm of small lights sampled a few times a pixel is noise.
 #define CG_LIGHT_SAMPLED(light) ((light).ambient.w > 0.5 || (light).air.z > 0.5)
 
+// A light's run in its cells' lists (light_grid.compute): each pass reads its own lights as one run, as Unreal keeps
+// MegaLights' lights as a list's tail (LightGridCommon.ush:107-127), rather than walking the list to drop the rest.
+// Shaded exactly (not CG_LIGHT_SAMPLED) first, those in the air (air.x > 0) either side of the middle, sampled after,
+// Minecraft's own last.
+#define CG_LIGHT_RUN(light) (CG_LIGHT_MINECRAFT(light) ? 4 : CG_LIGHT_SAMPLED(light) ? ((light).air.x > 0.0 ? 2 : 3) \
+        : ((light).air.x > 0.0 ? 1 : 0))
+// Cell e's header, four words of CELLS: its count, its list's start in INDICES, then where runs 1 to 4 start, two to a
+// word. Each pass's run is its first and its end, counted from the start.
+#define CG_LIGHT_CELL_START(e) int(CELLS((e) * 4 + 1))
+#define CG_LIGHT_RUN_AT(e, r) int((CELLS((e) * 4 + 2 + ((r) - 1) / 2) >> (16u * uint(((r) - 1) & 1))) & 0xFFFFu)
+#define CG_LIGHTS_EXACT(e) ivec2(0, CG_LIGHT_RUN_AT(e, 2))
+#define CG_LIGHTS_AIR_EXACT(e) ivec2(CG_LIGHT_RUN_AT(e, 1), CG_LIGHT_RUN_AT(e, 2))
+#define CG_LIGHTS_AIR_SAMPLED(e) ivec2(CG_LIGHT_RUN_AT(e, 2), CG_LIGHT_RUN_AT(e, 3))
+#define CG_LIGHTS_SAMPLED(e) ivec2(CG_LIGHT_RUN_AT(e, 2), CG_LIGHT_RUN_AT(e, 4))
+#define CG_LIGHTS_LIT(e) ivec2(0, CG_LIGHT_RUN_AT(e, 4))
+#define CG_LIGHTS_MINECRAFT(e) ivec2(CG_LIGHT_RUN_AT(e, 4), int(CELLS((e) * 4)))
+
 // A light kept out of the translucency lighting volume: transparent surfaces and particles are not lit by it.
 #define CG_LIGHT_OPAQUE_ONLY(light) ((light).air.y > 0.5)
 

@@ -1,7 +1,7 @@
 // The world's light grid (CgWorldLights), as Unreal 5's LightGridInjection.usf builds it. View turns each light into
 // the grid's space once (Unreal's LightViewSpacePositionAndRadius) and drops one too small on screen to draw
 // (ComputeLightVisibility's r.MinScreenRadiusForLights) by giving it no reach. Coarse culls every light into a parent grid a factor
-// smaller each way, a work group a parent cell (r.LightCulling.TwoLevel, CullLights_ThreadGroup), its lists packed into
+// smaller each way, a work group a parent cell (r.LightCulling.TwoLevel, CullLights_ThreadGroup), its lists bits into
 // one buffer in index order. Where compute runs, Cell lists each cell's lights from its parent's list, a work group a
 // cell (r.LightCulling.WorkloadDistributionMode 1), its run taken with an atomic. Below compute Count counts each
 // cell's lights from every light, an exclusive scan of the counts places each list (CgGpuOps.scan, since an atomic
@@ -10,7 +10,8 @@
 // linked lists, MaxCulledLightsPerCell), and what passes it is dropped and counted. A cell is a cell's view-space box
 // from its tile's edges at its slice's near and far depth, culled where it lies past the scene's farthest depth over its
 // tiles and its far edge pulled in to it (Unreal's HZB cull, LightGridInjection.usf:870-905); a light reaches it as
-// cg_light_reaches says.
+// cg_light_reaches says. Each cell's list is in index order within each light's run (CG_LIGHT_RUN), the runs in order,
+// and its header says where each starts, so a pass reads its own lights alone (LightGridCommon.ush's NumMegaLights).
 #pragma kernel View map
 #pragma kernel Coarse 64 general
 #pragma compute_only Coarse
@@ -22,8 +23,8 @@
 #include "crystalgraphics:shaders/lib/lights.glsl"
 
 struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; vec4 air; };
-// A light in the grid's space: its position and radius, the way a spot points and its outer cosine.
-struct CgViewLight { vec4 positionRadius; vec4 spot; };
+// A light in the grid's space: its position and radius, the way a spot points and its outer cosine, its run (CG_LIGHT_RUN) in x.
+struct CgViewLight { vec4 positionRadius; vec4 spot; vec4 kind; };
 
 Properties {
     _Grid     ("Cells across, up and deep, and the list's capacity",  vec4) = (1, 1, 32, 0)
@@ -53,7 +54,7 @@ Buffers {
     PARENT_INDICES ("The parents' lists",                                  uint,        readwrite)
     COUNTS         ("Each cell's light count",                             uint,        writeonly)
     STARTS         ("Where each cell's list starts: the counts scanned",   uint,        readonly)
-    CELLS          ("Each cell's count and start",                         uint,        writeonly)
+    CELLS          ("Each cell's count, start and runs (lights.glsl's CG_LIGHT_CELL_START)", uint, writeonly)
     INDICES        ("The cells' lists",                                    uint,        writeonly)
 }
 
@@ -83,7 +84,7 @@ void View() {
         }
         if (length(centre) * min(0.02, _MinScreen / max(bound, 1e-6)) >= 1.0) radius = 0.0;
     }
-    VIEW_WRITE(CgViewLight(vec4(v, radius), vec4(w, light.spotCos.w)));
+    VIEW_WRITE(CgViewLight(vec4(v, radius), vec4(w, light.spotCos.w), vec4(float(CG_LIGHT_RUN(light)), 0.0, 0.0, 0.0)));
 }
 
 // ComputeCellViewAABB over tiles [lo.xy, hi.xy) and slices [lo.z, hi.z): the tiles' rays at both depths; the last tile
@@ -164,6 +165,40 @@ shared uint groupCount;
 shared uint groupStart;
 shared uint groupWritten;
 shared uint groupKept;
+shared uvec2 runScan[64];
+shared uint runCount[5];
+shared uint runBase[5];
+shared uint runWritten[5];
+
+int run_of(uint i) { return int(VIEWED(int(i)).kind.x); }
+
+// A hit as packed run counts: runs 0 to 3 a byte each of x (a chunk of 64 fits), Minecraft's (4) y.
+uvec2 run_hit(int kind) { return kind < 4 ? uvec2(1u << (8u * uint(kind)), 0u) : uvec2(0u, 1u); }
+
+uint run_field(uvec2 bits, int kind) { return kind < 4 ? (bits.x >> (8u * uint(kind))) & 255u : bits.y; }
+
+// group_scan over bits run hits: each invocation's place in its own kind, counted from 1; runScan[63] is each run's
+// hits. One scan places every run (a single ThreadGroupPrefixSum, its counter split by kind).
+uvec2 run_scan(uvec2 hit, uint local) {
+    runScan[local] = hit;
+    barrier();
+    for (uint o = 1u; o < 64u; o <<= 1u) {
+        uvec2 add = local >= o ? runScan[local - o] : uvec2(0u);
+        barrier();
+        runScan[local] += add;
+        barrier();
+    }
+    return runScan[local];
+}
+
+// A cell's header: its count (at most 65535: the runs' starts are 16 bits), its start, and where runs 1 to 4 start,
+// each held to the count.
+void store_cell(int e, uint kept, uint start, uint b1, uint b2, uint b3, uint b4) {
+    CELLS_STORE(e * 4, kept);
+    CELLS_STORE(e * 4 + 1, start);
+    CELLS_STORE(e * 4 + 2, min(b1, kept) | (min(b2, kept) << 16));
+    CELLS_STORE(e * 4 + 3, min(b3, kept) | (min(b4, kept) << 16));
+}
 
 // Each of the 64 invocations' place among those whose hit is 1, counted from 1: an inclusive prefix sum over the group
 // (ThreadGroupPrefixSum). Called by the whole group; groupScan[63] is the hits.
@@ -264,19 +299,29 @@ void Write() {
     candidates(e, cell, n, from, parented);
     vec3 centre, extent;
     if (!culled_box(cell, cell + 1, centre, extent)) n = 0u;
-    uint start = STARTS(e), budget = uint(_Budget.y), kept = 0u;
+    uint start = STARTS(e), budget = uint(_Budget.y);
+    uint counts[5] = uint[5](0u, 0u, 0u, 0u, 0u);
+    for (uint k = 0u; k < n; k++) {
+        uint i = parented ? PARENT_INDICES(int(from + k)) : k;
+        if (viewed_reaches(i, centre, extent)) counts[run_of(i)]++;
+    }
+    uint total = counts[0] + counts[1] + counts[2] + counts[3] + counts[4];
+    uint kept = min(min(total, start >= budget ? 0u : budget - start), 65535u);
+    if (kept < total) ALLOC_ADD(1, total - kept);
+    uint at[5];
+    uint b = 0u;
+    for (int r = 0; r < 5; r++) {
+        at[r] = b;
+        b += counts[r];
+    }
+    store_cell(e, kept, start, at[1], at[2], at[3], at[4]);
     for (uint k = 0u; k < n; k++) {
         uint i = parented ? PARENT_INDICES(int(from + k)) : k;
         if (!viewed_reaches(i, centre, extent)) continue;
-        if (start + kept < budget) {
-            INDICES_STORE(int(start + kept), i);
-            kept++;
-        } else {
-            ALLOC_ADD(1, 1u);
-        }
+        int kind = run_of(i);
+        if (at[kind] < kept) INDICES_STORE(int(start + at[kind]), i);
+        at[kind]++;
     }
-    CELLS_STORE(e * 2, kept);
-    CELLS_STORE(e * 2 + 1, start);
 }
 
 // A cell a work group, its candidates shared out 64 at a time: counted, its run of the cells' list taken, then written
@@ -291,34 +336,49 @@ void Cell() {
     candidates(e, cell, n, from, parented);
     vec3 centre, extent;
     if (!culled_box(cell, cell + 1, centre, extent)) n = 0u;
-    if (local == 0u) groupCount = 0u;
+    if (local < 5u) runCount[local] = 0u;
     barrier();
-    uint mine = 0u;
+    uint mine[5] = uint[5](0u, 0u, 0u, 0u, 0u);
     for (uint k = local; k < n; k += 64u) {
-        if (viewed_reaches(parented ? PARENT_INDICES(int(from + k)) : k, centre, extent)) mine++;
+        uint i = parented ? PARENT_INDICES(int(from + k)) : k;
+        if (viewed_reaches(i, centre, extent)) mine[run_of(i)]++;
     }
-    atomicAdd(groupCount, mine);
+    for (int r = 0; r < 5; r++) {
+        if (mine[r] > 0u) atomicAdd(runCount[r], mine[r]);
+    }
     barrier();
     if (local == 0u) {
-        uint start = groupCount == 0u ? 0u : atomicAdd(ALLOC_DATA[2], groupCount), budget = uint(_Budget.y);
-        uint kept = start >= budget ? 0u : min(groupCount, budget - start);
-        if (kept < groupCount) atomicAdd(ALLOC_DATA[1], groupCount - kept);
+        uint total = runCount[0] + runCount[1] + runCount[2] + runCount[3] + runCount[4];
+        uint start = total == 0u ? 0u : atomicAdd(ALLOC_DATA[2], total), budget = uint(_Budget.y);
+        uint kept = min(start >= budget ? 0u : min(total, budget - start), 65535u);
+        if (kept < total) atomicAdd(ALLOC_DATA[1], total - kept);
+        uint b = 0u;
+        for (int r = 0; r < 5; r++) {
+            runBase[r] = b;
+            runWritten[r] = 0u;
+            b += runCount[r];
+        }
         groupStart = start;
         groupKept = kept;
-        groupWritten = 0u;
-        CELLS_STORE(e * 2, kept);
-        CELLS_STORE(e * 2 + 1, start);
+        store_cell(e, kept, start, runBase[1], runBase[2], runBase[3], runBase[4]);
     }
     barrier();
     uint kept = groupKept;
-    for (uint base = 0u; base < n && groupWritten < kept; base += 64u) {
+    if (kept == 0u) return;
+    for (uint base = 0u; base < n; base += 64u) {
         uint k = base + local;
         uint i = k < n ? (parented ? PARENT_INDICES(int(from + k)) : k) : 0u;
-        uint hit = k < n && viewed_reaches(i, centre, extent) ? 1u : 0u;
-        uint at = groupWritten + group_scan(hit, local) - 1u;
-        if (hit == 1u && at < kept) INDICES_STORE(int(groupStart + at), i);
+        bool hit = k < n && viewed_reaches(i, centre, extent);
+        int kind = hit ? run_of(i) : 0;
+        uvec2 placed = run_scan(hit ? run_hit(kind) : uvec2(0u), local);
+        if (hit) {
+            uint at = runBase[kind] + runWritten[kind] + run_field(placed, kind) - 1u;
+            if (at < kept) INDICES_STORE(int(groupStart + at), i);
+        }
         barrier();
-        if (local == 63u) groupWritten += groupScan[63];
+        if (local == 63u) {
+            for (int r = 0; r < 5; r++) runWritten[r] += run_field(runScan[63], r);
+        }
         barrier();
     }
 }

@@ -308,14 +308,14 @@ Pass {
         if ((_Skip & 2) != 0) return 1.0;
         ivec3 cell = cg_light_cell(p, _ZParams.xyz, _Rays.xy, _Rays.zw, _Tile.xy, ivec2(_Grid.xy));
         int e = (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;
-        int count = int(CELLS(e * 2)), from = int(CELLS(e * 2 + 1));
+        int from = CG_LIGHT_CELL_START(e);
+        ivec2 span = CG_LIGHTS_MINECRAFT(e);
         vec3 at = block_of(to_world(p + n * 0.5));
         float pick = cg_shadow_noise(vec2(sampleCoord) + 113.0, CG_FRAME_INDEX), weightSum = 0.0;
         int chosen = -1;
-        for (int k = 0; k < count; k++) {
+        for (int k = span.x; k < span.y; k++) {
             int index = int(INDICES(from + k));
             CgLight light = LIGHTS(index);
-            if (!CG_LIGHT_MINECRAFT(light)) continue;
             vec3 steps = abs(block_of(light.positionRadius.xyz) - at);
             float weight = light.positionRadius.w - 0.5 - (steps.x + steps.y + steps.z);
             if (weight <= 0.0) continue;
@@ -353,7 +353,8 @@ Pass {
         if ((_Skip & 4) != 0) return vec2(-1.0, 0.0);
         ivec3 cell = cg_light_cell(p, _ZParams.xyz, _Rays.xy, _Rays.zw, _Tile.xy, ivec2(_Grid.xy));
         int e = (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;
-        int count = int(CELLS(e * 2)), from = int(CELLS(e * 2 + 1));
+        int from = CG_LIGHT_CELL_START(e);
+        ivec2 span = CG_LIGHTS_SAMPLED(e);
 
         // InitLightSamplerStratified and AddLightSample (MegaLightsSampling.ush): four stratified picks in one pass.
         float rnd = cg_shadow_noise(vec2(d), CG_FRAME_INDEX);
@@ -361,9 +362,8 @@ Pass {
         ivec4 chosen = ivec4(-1);
         vec4 chosenWeight = vec4(0.0);
         float weightSum = 0.0;
-        for (int k = 0; k < count; k++) {
+        for (int k = span.x; k < span.y; k++) {
             int index = int(INDICES(from + k));
-            if (!CG_LIGHT_SAMPLED(LIGHTS(index))) continue;
             CgLight light = LIGHTS(index);
             vec3 v = to_view_dir(light.positionRadius.xyz) + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
             vec4 spot = vec4(to_view_dir(light.spotCos.xyz), light.spotCos.w);

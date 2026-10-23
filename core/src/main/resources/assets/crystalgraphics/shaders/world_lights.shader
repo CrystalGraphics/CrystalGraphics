@@ -56,11 +56,13 @@ Properties {
 }
 
 struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; vec4 air; };
+struct CgViewLight { vec4 positionRadius; vec4 spot; vec4 kind; };
 
 Buffers {
     LIGHTS  ("The firing's lights",            CgLight, readonly)
     CELLS   ("Each cell's light count and start", uint, readonly)
     INDICES ("The cells' light indices",       uint,    readonly)
+    VIEWED  ("Each light in the grid's view, as the grid binned it", CgViewLight, readonly)
 }
 
 struct v2f { vec2 uv; };
@@ -131,20 +133,20 @@ Pass {
         }
         ivec3 cell = cg_light_cell(p, _ZParams.xyz, _Rays.xy, _Rays.zw, _Tile.xy, ivec2(_Grid.xy));
         int e = (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;
-        int count = int(CELLS(e * 2)), from = int(CELLS(e * 2 + 1));
+        int from = CG_LIGHT_CELL_START(e);
         // The darkest lightmap the albedo is recovered from: below it the scene's noise would be lit as colour.
         float floorLight = CG_LINEAR_SCENE ? 0.02 : 0.15;
         vec3 sum = vec3(0.0);
         bool shadows = _Shadows > 0.5;
         // With the shadow passes running the lights they sample are theirs (_Shadowed); the rest, and without them
-        // every light, are shaded here exactly. The flag and the reach are read before the record: a cell lists many
-        // small lights that reach few of its pixels.
-        for (int k = 0; k < count; k++) {
+        // every lit light, are shaded here exactly: one run of the cell's list. A cell lists many small lights that
+        // reach few of its pixels: each is rejected by the grid's view-space copy (one load, no transform) before its
+        // record.
+        ivec2 span = shadows ? CG_LIGHTS_EXACT(e) : CG_LIGHTS_LIT(e);
+        for (int k = span.x; k < span.y; k++) {
             int index = int(INDICES(from + k));
-            if (shadows && CG_LIGHT_SAMPLED(LIGHTS(index))) continue;
-            vec4 reach = LIGHTS(index).positionRadius;
-            vec3 v = vec3(dot(_ToView0.xyz, reach.xyz), dot(_ToView1.xyz, reach.xyz), dot(_ToView2.xyz, reach.xyz))
-                    + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
+            vec4 reach = VIEWED(index).positionRadius;
+            vec3 v = reach.xyz;
             if (dot(v - p, v - p) >= reach.w * reach.w) continue;
             CgLight light = LIGHTS(index);
             vec3 way = light.spotCos.xyz, along = light.segmentCone.xyz;

@@ -149,14 +149,20 @@ float light_scale(CgLight light) {
     return day_fade(light) / luminance(ambient);
 }
 
-// The light grid's cell's lights at eye-relative w, inside the view: its count, and where its list starts.
-ivec2 cell_lights(vec3 w) {
+// The light grid's cell at eye-relative w, inside the view.
+int cell_at(vec3 w) {
     vec3 p = to_view(w);
     float depth = max(-p.z, 0.01);
     vec3 q = vec3(clamp(p.xy, _Rays.xy * depth, _Rays.zw * depth), -depth);
     ivec3 cell = cg_light_cell(q, _ZParams.xyz, _Rays.xy, _Rays.zw, _Tile.xy, ivec2(_Grid.xy));
-    int e = (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;
-    return ivec2(int(CELLS(e * 2)), int(CELLS(e * 2 + 1)));
+    return (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;
+}
+
+// Cell e's run of lights as INDICES' first and end. CELLS is named here, not only through lights.glsl's macros: a
+// kernel binds the buffers its own code names.
+ivec2 run_in(int e, ivec2 span) {
+    int from = int(CELLS(e * 4 + 1));
+    return ivec2(from + span.x, from + span.y);
 }
 
 // Whether a shadowed light's ray from w is blocked on its way to the light.
@@ -185,12 +191,15 @@ void Fill() {
         LOCAL_LIGHTS_WRITE(vec4(0.0));
         return;
     }
-    ivec2 list = cell_lights(w);
-    int count = list.x, from = list.y, rays = 0;
+    // The sampled run first, which holds every light that casts shadows: its rays come at the same place in every cell's
+    // list, so a warp's cells trace them together; behind exact lights, whose count differs cell to cell, they would
+    // come one by one. The exact run after, with no shadow to trace.
+    int e = cell_at(w), rays = 0;
+    ivec2 sampled = run_in(e, CG_LIGHTS_SAMPLED(e)), exact = run_in(e, CG_LIGHTS_EXACT(e));
     vec3 sum = vec3(0.0);
-    for (int k = 0; k < count; k++) {
-        CgLight light = LIGHTS(int(INDICES(from + k)));
-        if (CG_LIGHT_MINECRAFT(light) || CG_LIGHT_OPAQUE_ONLY(light)) continue;
+    for (int k = sampled.x; k < sampled.y; k++) {
+        CgLight light = LIGHTS(int(INDICES(k)));
+        if (CG_LIGHT_OPAQUE_ONLY(light)) continue;
         float falloff = cg_light_falloff(light.positionRadius.xyz, light.positionRadius.w, light.colorExponent.w,
                 light.spotCos, light.segmentCone, w);
         if (falloff <= 0.0) continue;
@@ -199,6 +208,12 @@ void Fill() {
             if (shadowed(light, w)) continue;
         }
         sum += light.colorExponent.rgb * (falloff * light_scale(light));
+    }
+    for (int k = exact.x; k < exact.y; k++) {
+        CgLight light = LIGHTS(int(INDICES(k)));
+        if (CG_LIGHT_OPAQUE_ONLY(light)) continue;
+        sum += light.colorExponent.rgb * (cg_light_falloff(light.positionRadius.xyz, light.positionRadius.w,
+                light.colorExponent.w, light.spotCos, light.segmentCone, w) * light_scale(light));
     }
     // Over pi, then the ambient band read non-directionally: pi * 0.282095^2, a quarter.
     LOCAL_LIGHTS_WRITE(vec4(sum * (0.25 / 3.14159265), 1.0));
@@ -222,17 +237,16 @@ float halton(int i, int b) {
     return result;
 }
 
-// Which of a froxel's lights (list, from its middle) are shadowed there, a bit each: traced once at the middle and
-// shared by its jittered points, at most _AirShadowRays a froxel, the first that reach it; past them, unshadowed.
+// Which of a froxel's sampled air lights (list: INDICES' first and end, from its middle; every light that casts shadows
+// is sampled) are shadowed there, a bit each: traced once at the middle and shared by its jittered points, at most
+// _AirShadowRays a froxel, the first that reach it; past them, unshadowed.
 uint shadowed_at(vec3 middle, ivec2 list, float biasSqr, float spread) {
     uint mask = 0u;
     if (_Shadows < 0.5) return mask;
     int rays = 0;
-    for (int k = 0; k < min(list.x, 32) && rays < _AirShadowRays; k++) {
-        int index = int(INDICES(list.y + k));
-        if (LIGHTS(index).air.x <= 0.0) continue;
-        CgLight light = LIGHTS(index);
-        if (CG_LIGHT_MINECRAFT(light) || !CG_LIGHT_SHADOWED(light)) continue;
+    for (int k = 0; k < min(list.y - list.x, 32) && rays < _AirShadowRays; k++) {
+        CgLight light = LIGHTS(int(INDICES(list.x + k)));
+        if (!CG_LIGHT_SHADOWED(light)) continue;
         if (cg_light_falloff_filtered(light.positionRadius.xyz, light.positionRadius.w, light.colorExponent.w,
                 light.spotCos, light.segmentCone, middle, biasSqr, spread) <= 0.0) continue;
         rays++;
@@ -241,24 +255,25 @@ uint shadowed_at(vec3 middle, ivec2 list, float biasSqr, float spread) {
     return mask;
 }
 
-// The light reaching eye-relative w and scattered toward the eye, a froxel's worth: bias and spread its size; list its
-// middle's lights and shadow which of them its middle found shadowed.
-vec3 scatter_at(vec3 w, ivec2 list, uint shadow, float biasSqr, float spread) {
+// One air light's light at eye-relative w scattered toward the eye (view), a froxel's worth: bias and spread its size.
+vec3 air_light(CgLight light, vec3 w, vec3 view, float biasSqr, float spread) {
+    float falloff = cg_light_falloff_filtered(light.positionRadius.xyz, light.positionRadius.w, light.colorExponent.w,
+            light.spotCos, light.segmentCone, w, biasSqr, spread);
+    if (falloff <= 0.0) return vec3(0.0);
+    vec3 toLight = normalize(light.positionRadius.xyz - w);
+    return light.colorExponent.rgb * (falloff * day_fade(light) * hg_phase(_PhaseG, dot(toLight, view)) * light.air.x);
+}
+
+// The light reaching eye-relative w and scattered toward the eye: the middle's sampled air lights, less those its middle
+// found shadowed, then its exact ones.
+vec3 scatter_at(vec3 w, ivec2 sampled, ivec2 exact, uint shadow, float biasSqr, float spread) {
     vec3 view = normalize(w);
     vec3 sum = vec3(0.0);
-    for (int k = 0; k < list.x; k++) {
+    for (int k = 0; k < sampled.y - sampled.x; k++) {
         if (k < 32 && (shadow & (1u << uint(k))) != 0u) continue;
-        // A light that does not shine in the air (a particle's, Niagara's default) costs its scattering flag alone.
-        int index = int(INDICES(list.y + k));
-        if (LIGHTS(index).air.x <= 0.0) continue;
-        CgLight light = LIGHTS(index);
-        if (CG_LIGHT_MINECRAFT(light)) continue;
-        float falloff = cg_light_falloff_filtered(light.positionRadius.xyz, light.positionRadius.w, light.colorExponent.w,
-                light.spotCos, light.segmentCone, w, biasSqr, spread);
-        if (falloff <= 0.0) continue;
-        vec3 toLight = normalize(light.positionRadius.xyz - w);
-        sum += light.colorExponent.rgb * (falloff * day_fade(light) * hg_phase(_PhaseG, dot(toLight, view)) * light.air.x);
+        sum += air_light(LIGHTS(int(INDICES(sampled.x + k))), w, view, biasSqr, spread);
     }
+    for (int k = exact.x; k < exact.y; k++) sum += air_light(LIGHTS(int(INDICES(k))), w, view, biasSqr, spread);
     return sum;
 }
 
@@ -281,15 +296,16 @@ void Scatter() {
     }
     bool kept = all(greaterThanEqual(uv, vec3(0.0))) && all(lessThanEqual(uv, vec3(1.0)));
     int samples = _Jittered == 0 ? 1 : kept ? _Samples : max(_Samples, HISTORY_MISS_SAMPLES);
-    ivec2 list = cell_lights(middle);
-    uint shadow = shadowed_at(middle, list, biasSqr, 0.5 * cell);
+    int e = cell_at(middle);
+    ivec2 sampled = run_in(e, CG_LIGHTS_AIR_SAMPLED(e)), exact = run_in(e, CG_LIGHTS_AIR_EXACT(e));
+    uint shadow = shadowed_at(middle, sampled, biasSqr, 0.5 * cell);
     vec3 sum = vec3(0.0);
     for (int s = 0; s < samples; s++) {
         // Unreal's FrameJitterOffsets: this firing's Halton points, then the ones before them.
         int n = (_Frame * _Samples - s) & 1023;
         vec3 offset = _Jittered != 0 ? vec3(halton(n + 1, 2), halton(n + 1, 3), halton(n + 1, 5)) : vec3(0.5);
         sum += scatter_at(media_point_at(vec3(t) + offset, size, _MediaRay00, _MediaRay10, _MediaRay01, _MediaRay11),
-                list, shadow, biasSqr, 0.5 * cell);
+                sampled, exact, shadow, biasSqr, 0.5 * cell);
     }
     vec4 lit = vec4(sum * (sigma / float(samples)), 0.0);
     if (kept) lit = mix(lit, textureLod(_History, uv, 0.0), _HistoryWeight);

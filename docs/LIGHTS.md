@@ -134,6 +134,11 @@ it on): in Minecraft 1.20.1 it cut the lit air into the grid's 64-pixel squares,
 the lights demo it saved 0.02 ms. A spot is listed out past its outer cone by as much as the lit air's froxels widen
 it (`cg_light_reaches_by`, about half a froxel's diagonal at the cell's far depth): else a softened beam edge in a cell
 that does not list it was cut along the cell's side, in 64-pixel steps. Each cell's list is whole, from a budget shared by every cell that grows when a frame overflows it.
+Its lights are in runs by kind (`CG_LIGHT_RUN`): shaded exactly, those in the air either side of the middle, sampled,
+then Minecraft's own, each run in index order and its start in the cell's header (four words a cell). Each pass reads
+its run alone: the apply the exact lights, MegaLights' sample the sampled ones, the air its own, Minecraft's block
+light its blocks, as Unreal keeps MegaLights' lights as a list's tail (LightGridCommon.ush:107-127). Walking the whole
+list and dropping other kinds cost 1.2-1.9 ms a thousand lights at 2560x1440 (`plan/crystalgraphics/lights-300fps-notes.md`).
 
 A light smaller on screen than Unreal's `r.MinScreenRadiusForLights` (0.03, `-Dcrystalgraphics.world.lightsMinScreenRadius`)
 is not drawn: past 50 blocks for one reaching under a block and a half, past 33 times its reach for larger ones.
