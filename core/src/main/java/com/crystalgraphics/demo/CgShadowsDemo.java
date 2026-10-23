@@ -29,6 +29,9 @@ import org.joml.Matrix4f;
  * demo.prepare();                                         // then nothing until demo.warmed()
  * demo.submit(CgWorldRenderer.get(), x, y, z, seconds);   // each frame, before the world records
  * CgShadowsDemo.toggleShadows();                          // every world shadow off and on, to compare
+ * CgShadowsDemo.toggleTemporal();                         // the shadows' accumulation over frames off and on
+ * CgShadowsDemo.toggleSpatial();                          // their filter across the screen off and on
+ * CgShadowsDemo.toggleScreenTrace();                      // their rays' screen trace off and on
  * }</pre>
  *
  * <p>{@code CgRenderDemo}'s {@code shadows}.</p>
@@ -37,6 +40,8 @@ public final class CgShadowsDemo {
 
     private static final String MATERIAL = "crystalgraphics:shaders/demo_render.shader";
     private static final String SHADOWS = "crystalgraphics.world.lightsShadows";
+    private static final String FRAMES = "crystalgraphics.world.lightsShadowFrames", SPATIAL = "crystalgraphics.world.lightsShadowSpatial";
+    private static final String SCREEN = "crystalgraphics.world.lightsScreenTrace";
     private static final CgSphere MARK = CgSphere.of(0.15);
     /** The plaza's half width, and the stations' distance from its middle. */
     private static final double PLAZA = 7, STATION = 12;
@@ -49,6 +54,24 @@ public final class CgShadowsDemo {
     public static void toggleShadows() {
         CgVar.Bool shadows = (CgVar.Bool) CgVars.get(SHADOWS);
         shadows.set(!shadows.get());
+    }
+
+    /** The shadows' temporal accumulation: one frame, or the default twelve. */
+    public static void toggleTemporal() {
+        CgVar.Num frames = (CgVar.Num) CgVars.get(FRAMES);
+        frames.set(frames.get() > 1f ? 1f : 12f);
+    }
+
+    /** The shadows' spatial filter: none, or the default eight pixels. */
+    public static void toggleSpatial() {
+        CgVar.Num radius = (CgVar.Num) CgVars.get(SPATIAL);
+        radius.set(radius.get() > 0f ? 0f : 8f);
+    }
+
+    /** The shadow rays' screen trace: none, or Unreal's one block. */
+    public static void toggleScreenTrace() {
+        CgVar.Num reach = (CgVar.Num) CgVars.get(SCREEN);
+        reach.set(reach.get() > 0f ? 0f : 1f);
     }
 
     public static boolean shadowsOn() {
@@ -110,6 +133,9 @@ public final class CgShadowsDemo {
     /** What the HUD says under the scene's line. */
     public static String hud() {
         return "\nShadows [O]: " + (shadowsOn() ? "on" : "off")
-                + " | east pillar: place a torch beside it; west cube: by day";
+                + " | temporal [K]: " + (((CgVar.Num) CgVars.get(FRAMES)).get() > 1f ? "on" : "off")
+                + " | spatial [J]: " + (((CgVar.Num) CgVars.get(SPATIAL)).get() > 0f ? "on" : "off")
+                + " | screen trace [U]: " + (((CgVar.Num) CgVars.get(SCREEN)).get() > 0f ? "on" : "off")
+                + "\neast pillar: place a torch beside it; west cube: by day";
     }
 }
