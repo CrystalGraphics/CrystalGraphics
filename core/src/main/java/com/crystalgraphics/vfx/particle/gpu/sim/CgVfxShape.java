@@ -424,9 +424,14 @@ public final class CgVfxShape {
         // Born on another emitter's particles: how they are picked and placed decides the launch's code.
         spawnFrom = emitter.spawnFrom();
         if (spawnFrom != null) {
-            if (tier == 0) throw new IllegalArgumentException(emitter.name() + " reads another emitter's particles at feed tier 0");
+            if (tier == 0 && !spawnFrom.itself()) {
+                throw new IllegalArgumentException(emitter.name() + " reads another emitter's particles at feed tier 0");
+            }
+            if (spawnFrom.itself() && !emitter.publishes()) {
+                throw new IllegalArgumentException(emitter.name() + " is born on its own particles, which it does not publish");
+            }
             key.append("|reads:").append(spawnFrom.selection()).append(spawnFrom.placeAfter() ? ":after" : "")
-                    .append(spawnFrom.follow() ? ":follow" : "");
+                    .append(spawnFrom.follow() ? ":follow" : "").append(spawnFrom.itself() ? ":itself" : "");
         }
         publishes = emitter.publishes();
         if (publishes && tier == TIERS - 1) {
@@ -436,7 +441,7 @@ public final class CgVfxShape {
         this.key = key.toString();
     }
 
-    /** What its particles are born on ({@link CgVfxSpawnFrom}), read from the tier before; null for none. */
+    /** What its particles are born on ({@link CgVfxSpawnFrom}), read from the tier before or its own; null for none. */
     @Nullable
     public CgVfxSpawnFrom spawnFrom() {
         return spawnFrom;

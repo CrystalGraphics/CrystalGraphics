@@ -38,6 +38,8 @@ import java.util.Objects;
  *       it in the spawn stack ({@link #placeAfter}): Cascade sets the location, and later location modules add to it.</li>
  *   <li>{@code SEQUENTIAL} walks the source's live particles in their order in its pool, which their deaths reshuffle,
  *       as Cascade's kills reshuffle its active list.</li>
+ *   <li>An emitter may be born on its own live particles ({@link #ofItself}), as Cascade's LocationEmitter may name its
+ *       own emitter: each new one on a particle it had at the step's start, none while it has none.</li>
  *   <li>A follower takes the whole of its source's velocity and ignores the selection; a file giving it a share to
  *       inherit fails at load. Its particle whose source is gone keeps its own state, aging on.</li>
  * </ul>
@@ -49,9 +51,10 @@ import java.util.Objects;
  * @param inheritRotation the share of its spin
  * @param placeAfter      whether the emitter's shape offsets the place (a shape later in the stack)
  * @param follow          whether each particle stays on its source particle every step
+ * @param itself          whether its source is its own emitter
  */
 public record CgVfxSpawnFrom(String source, int sourceIndex, Selection selection, float inheritVelocity,
-                             float inheritRotation, boolean placeAfter, boolean follow) {
+                             float inheritRotation, boolean placeAfter, boolean follow, boolean itself) {
 
     /** How a source particle is picked for each new one. */
     public enum Selection {
@@ -64,30 +67,41 @@ public record CgVfxSpawnFrom(String source, int sourceIndex, Selection selection
     public CgVfxSpawnFrom {
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(selection, "selection");
+        if (itself && follow) throw new IllegalArgumentException("an emitter cannot follow its own particles");
     }
 
     /** Born on handle {@code source}'s particles, picked by {@code selection}, inheriting nothing. */
     public static CgVfxSpawnFrom of(String source, Selection selection) {
-        return new CgVfxSpawnFrom(source, -1, selection, 0f, 0f, false, false);
+        return new CgVfxSpawnFrom(source, -1, selection, 0f, 0f, false, false, false);
+    }
+
+    /** Born on its own emitter's live particles, picked by {@code selection}: the emitter must publish them. */
+    public static CgVfxSpawnFrom ofItself(Selection selection) {
+        return new CgVfxSpawnFrom("", -1, selection, 0f, 0f, false, false, true);
     }
 
     /** Each particle on handle {@code source}'s particle of the same spawn, every step: Cascade's LocationEmitterDirect. */
     public static CgVfxSpawnFrom following(String source) {
-        return new CgVfxSpawnFrom(source, -1, Selection.RANDOM, 0f, 0f, false, true);
+        return new CgVfxSpawnFrom(source, -1, Selection.RANDOM, 0f, 0f, false, true, false);
     }
 
     /** This, inheriting {@code velocity} of its source particle's velocity and {@code rotation} of its spin. */
     public CgVfxSpawnFrom inherit(float velocity, float rotation) {
-        return new CgVfxSpawnFrom(source, sourceIndex, selection, velocity, rotation, placeAfter, follow);
+        return new CgVfxSpawnFrom(source, sourceIndex, selection, velocity, rotation, placeAfter, follow, itself);
     }
 
     /** This, its emitter's shape offsetting the place. */
     public CgVfxSpawnFrom placedAfter(boolean after) {
-        return new CgVfxSpawnFrom(source, sourceIndex, selection, inheritVelocity, inheritRotation, after, follow);
+        return new CgVfxSpawnFrom(source, sourceIndex, selection, inheritVelocity, inheritRotation, after, follow, itself);
     }
 
     /** This, its source at {@code index} in its system's emitters. */
     public CgVfxSpawnFrom at(int index) {
-        return new CgVfxSpawnFrom(source, index, selection, inheritVelocity, inheritRotation, placeAfter, follow);
+        return new CgVfxSpawnFrom(source, index, selection, inheritVelocity, inheritRotation, placeAfter, follow, itself);
+    }
+
+    /** This, born on its own emitter's particles. */
+    public CgVfxSpawnFrom onItself() {
+        return new CgVfxSpawnFrom(source, sourceIndex, selection, inheritVelocity, inheritRotation, placeAfter, follow, true);
     }
 }

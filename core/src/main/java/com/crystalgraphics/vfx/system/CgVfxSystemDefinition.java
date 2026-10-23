@@ -72,10 +72,16 @@ public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfx
 
     /**
      * Where emitter {@code reader}'s source is among {@code emitters}: the place its file resolved, else the emitter of
-     * its source's name. Fails naming a source it lacks, the reader itself, or one that does not publish.
+     * its source's name; itself where it is born on its own particles. Fails naming a source it lacks, the reader
+     * itself otherwise, or one that does not publish.
      */
     static int sourceOf(String system, List<CgVfxEmitter> emitters, int reader) {
         CgVfxEmitter e = emitters.get(reader);
+        if (e.spawnFrom().itself()) {
+            if (!e.publishes()) throw new IllegalArgumentException(system + ": " + e.name() + " is born on its own particles,"
+                    + " which it does not publish: build it with publishes(true)");
+            return reader;
+        }
         String source = e.spawnFrom().source();
         int at = e.spawnFrom().sourceIndex();
         for (int i = 0; at < 0 && i < emitters.size(); i++) if (emitters.get(i).name().equals(source)) at = i;

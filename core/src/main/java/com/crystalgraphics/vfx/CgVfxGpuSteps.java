@@ -202,6 +202,13 @@ final class CgVfxGpuSteps {
             admitChildren(add(instance, alive, null, owner, 0), alive, owner);
             return;
         }
+        if (source == instance) {
+            // Born on its own particles: its own tier, reading what it published the step before.
+            Tenant self = add(instance, alive, null, owner, 0);
+            self.pool.readFrom(self.slot, self.pool, self.slot);
+            admitChildren(self, alive, owner);
+            return;
+        }
         // A reader steps the tier after its source, which publishes its particles: admitted first.
         admit(source, owner);
         Tenant from = byInstance.get(source);

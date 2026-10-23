@@ -312,6 +312,9 @@ public final class CgVfxEmitterCompiler {
                     _Feeds      ("Feed rows",                        int)  = 0
                 """);
         if (shape.publishes()) s.append("    _BinKeyBase (\"This pool's first published slot in its tier\", int) = 0\n");
+        if (shape.spawnFrom() != null && shape.spawnFrom().itself()) {
+            s.append("    _StepIndex  (\"This step's place in the frame's\", int) = 0\n");
+        }
         for (CgVfxDataInterface di : shape.dataInterfaces()) s.append(di.properties());
         for (int i = 0; i < shape.modules(); i++) {
             for (int t = 0; t < shape.textureCount(i); t++) {
@@ -1123,6 +1126,8 @@ public final class CgVfxEmitterCompiler {
      * ({@code ParticleModules_Location.cpp:449-553}), one of its source slot's published particles (its run of the sorted
      * rows) picked at random or in turn; its place for the emitter's, plus the shape's offset where the shape comes after; a share of its velocity
      * and spin. With none published the new particle stays where its emitter put it, as Cascade's finds none to copy.
+     * Born on its own particles, a frame's first step reads its slot's key from the frame before, and later ones this
+     * frame's: what its own tier sorted the step before.
      */
     private static String read(CgVfxShape shape) {
         CgVfxSpawnFrom from = shape.spawnFrom();
@@ -1145,10 +1150,10 @@ public final class CgVfxEmitterCompiler {
         return """
                                     {
                                         uvec4 rd = READS(int(slot));
-                                        uint first = 0u, count = 0u;
-                                        if (rd.x != 0xFFFFFFFFu) {
-                                            first = SOURCE_RUNS(int(rd.x) * 2);
-                                            count = SOURCE_RUNS(int(rd.x) * 2 + 1) - first;
+                                        uint key = @KEY@, first = 0u, count = 0u;
+                                        if (key != 0xFFFFFFFFu) {
+                                            first = SOURCE_RUNS(int(key) * 2);
+                                            count = SOURCE_RUNS(int(key) * 2 + 1) - first;
                                         }
                                         if (count > 0u) {
                                             FxEvent b = SOURCE_ROWS(int(first + @PICK@));
@@ -1158,7 +1163,8 @@ public final class CgVfxEmitterCompiler {
                                             p.spin += b.velocityAge.w * uintBitsToFloat(rd.w);
                                         }
                                     }
-                """.replace("@PICK@", pick).replace("@PLACE@", place);
+                """.replace("@PICK@", pick).replace("@PLACE@", place)
+                .replace("@KEY@", from.itself() ? "(_StepIndex == 0 ? rd.x : rd.y)" : "rd.x");
     }
 
     /**

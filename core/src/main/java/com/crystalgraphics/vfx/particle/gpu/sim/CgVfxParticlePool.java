@@ -276,6 +276,16 @@ public final class CgVfxParticlePool {
     private CgVfxGpuEmitter[] readSource = new CgVfxGpuEmitter[0];
     /** This recording's first publishing slot in its tier, and its readers' sources. */
     private int binKeyBase;
+    /**
+     * The first publishing slot it had in the recording before, -1 where it published in none, and which opening each
+     * slot held then: what a slot born on its own particles reads on a frame's first step.
+     */
+    private int lastBinKeyBase = -1;
+    private long binRecording = -2;
+    private long[] binOpened = new long[0], lastBinOpened = new long[0];
+    /** Pool recordings so far, and the tiers whose published rows were made anew this one, holding nothing yet. */
+    private static long recordings;
+    private static final boolean[] BINS_FRESH = new boolean[CgVfxShape.TIERS - 1];
     private int[] readWords = new int[0];
     private CgGraphBuffer readsBuffer;
     private CgVfxGpuEmitter[] feedParent = new CgVfxGpuEmitter[0];
@@ -638,6 +648,7 @@ public final class CgVfxParticlePool {
      * for the CPU are read back.
      */
     private static void recordPools(CgRecording recording, List<CgVfxParticlePool> pools) {
+        recordings++;
         STEPPING.clear();
         int maxSteps = 0, reportRows = 0;
         Arrays.fill(SPAWN_ROWS, 0);
@@ -689,8 +700,10 @@ public final class CgVfxParticlePool {
             BIN_COUNT[t] = fit(recording, BIN_COUNT[t], "vfx.pool.published-count" + t, 1);
             BIN_KEYS[t] = fit(recording, BIN_KEYS[t], "vfx.pool.published-keys" + t, BIN_ROWS[t]);
             BIN_ORDER[t] = fit(recording, BIN_ORDER[t], "vfx.pool.published-order" + t, BIN_ROWS[t]);
+            CgGraphBuffer sorted = BIN_SORTED[t], runs = BIN_RUNS[t];
             BIN_SORTED[t] = fitRows(recording, BIN_SORTED[t], "vfx.pool.published-sorted" + t, BIN_ROWS[t]);
             BIN_RUNS[t] = fit(recording, BIN_RUNS[t], "vfx.pool.published-runs" + t, BIN_SLOTS[t] * 2);
+            BINS_FRESH[t] = BIN_SORTED[t] != sorted || BIN_RUNS[t] != runs;
             BIN_RUN_FILLS[t] = CgGpuCount.of(BIN_SLOTS[t] * 2);
             BIN_DIRECT[t] = fitRows(recording, BIN_DIRECT[t], "vfx.pool.published-direct" + t, BIN_ROWS[t]);
             BIN_DIRECT_SLOTS[t] = fit(recording, BIN_DIRECT_SLOTS[t], "vfx.pool.published-direct-slots" + t, BIN_SLOTS[t] * 2);
@@ -1049,9 +1062,12 @@ public final class CgVfxParticlePool {
                     .set("_BinKeyBase", binKeyBase);
         }
         if (shape.spawnFrom() != null) {
-            boolean published = BIN_SLOTS[tier - 1] > 0;
-            stepping.bind("SOURCE_ROWS", published ? BIN_SORTED[tier - 1] : unfed)
-                    .bind("SOURCE_RUNS", published ? BIN_RUNS[tier - 1] : unfed).bind("READS", readsBuffer);
+            // Its own particles are its own tier's, as sorted the step before; another emitter's the tier before's.
+            int from = shape.spawnFrom().itself() ? tier : tier - 1;
+            boolean published = BIN_SLOTS[from] > 0;
+            stepping.bind("SOURCE_ROWS", published ? BIN_SORTED[from] : unfed)
+                    .bind("SOURCE_RUNS", published ? BIN_RUNS[from] : unfed).bind("READS", readsBuffer);
+            if (shape.spawnFrom().itself()) stepping.set("_StepIndex", s);
             if (shape.spawnFrom().follow()) {
                 stepping.bind("SOURCE_DIRECT", published ? BIN_DIRECT[tier - 1] : unfed)
                         .bind("SOURCE_SLOTS", published ? BIN_DIRECT_SLOTS[tier - 1] : unfed);
@@ -1448,7 +1464,8 @@ public final class CgVfxParticlePool {
         betweenSteps("readFrom");
         CgVfxGpuEmitter reader = openSlot(slot, "readFrom");
         CgVfxGpuEmitter from = source.openSlot(sourceSlot, "readFrom's source");
-        if (shape.spawnFrom() == null || !source.shape.publishes() || shape.tier() != source.shape.tier() + 1) {
+        boolean itself = source == this && sourceSlot == slot && shape.spawnFrom() != null && shape.spawnFrom().itself();
+        if (!itself && (shape.spawnFrom() == null || !source.shape.publishes() || shape.tier() != source.shape.tier() + 1)) {
             throw new IllegalArgumentException(reader.name() + " at feed tier " + shape.tier() + " is not born on " + from.name()
                     + " at " + source.shape.tier() + ": a reader steps the tier after a source that publishes");
         }
@@ -1463,6 +1480,16 @@ public final class CgVfxParticlePool {
      */
     private void claimBins() {
         int t = shape.tier();
+        lastBinKeyBase = binRecording == recordings - 1 ? binKeyBase : -1;
+        binRecording = recordings;
+        if (binOpened.length < slotCount) {
+            binOpened = Arrays.copyOf(binOpened, slotCount);
+            lastBinOpened = Arrays.copyOf(lastBinOpened, slotCount);
+        }
+        for (int slot = 0; slot < slotCount; slot++) {
+            lastBinOpened[slot] = binOpened[slot];
+            binOpened[slot] = opening(slot);
+        }
         binKeyBase = BIN_SLOTS[t];
         int rowBase = BIN_ROWS[t];
         BIN_ROWS[t] += capacity;
@@ -1488,6 +1515,14 @@ public final class CgVfxParticlePool {
                     && source.slotEmitter[readSlot[slot]] == readSource[slot];
             readWords[at] = live ? source.binKeyBase + readSlot[slot] : -1;
             readWords[at + 1] = 0;
+            if (live && source == this && readSlot[slot] == slot) {
+                // Its own particles: on a frame's first step what it published the recording before, where the slot
+                // held the same opening and its tier's rows were not made anew; this frame's on later steps.
+                boolean was = lastBinKeyBase >= 0 && !BINS_FRESH[shape.tier()] && slot < lastBinOpened.length
+                        && lastBinOpened[slot] == opening(slot) && opening(slot) != 0L;
+                readWords[at] = was ? lastBinKeyBase + slot : -1;
+                readWords[at + 1] = binKeyBase + slot;
+            }
             CgVfxSpawnFrom from = slotEmitter[slot] == null ? null : slotEmitter[slot].spawnFrom();
             readWords[at + 2] = Float.floatToRawIntBits(from == null ? 0f : from.inheritVelocity());
             readWords[at + 3] = Float.floatToRawIntBits(from == null ? 0f : from.inheritRotation());

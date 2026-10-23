@@ -393,8 +393,8 @@ public final class CgVfxSystemAssets {
 
     /**
      * Each {@code spawn_from_emitter} resolved: its source handle to its place in the system's emitters, and the source
-     * marked as publishing its particles. A source that is no enabled handle, the emitter itself, a loop of readers, or
-     * a chain deeper than the step's tiers fails, naming it.
+     * marked as publishing its particles. An emitter naming itself is born on its own particles, as Cascade's may be. A
+     * source that is no enabled handle, a loop of readers, or a chain deeper than the step's tiers fails, naming it.
      */
     private static void readers(String system, Map<String, CgVfxEmitter> base) {
         List<String> handles = new ArrayList<>(base.keySet());
@@ -404,8 +404,15 @@ public final class CgVfxSystemAssets {
             String at = system + ": emitters." + handle + "'s spawn_from_emitter";
             int source = handles.indexOf(from.source());
             if (source < 0) throw new IllegalArgumentException(at + " reads " + from.source() + ", no enabled handle");
+            if (from.source().equals(handle)) {
+                if (from.follow()) throw new IllegalArgumentException(at + " follows its own particles");
+                base.put(handle, base.get(handle).toBuilder().spawnFrom(from.at(source).onItself()).publishes(true).build());
+                continue;
+            }
             int depth = 0;
-            for (String h = handle; base.get(h).spawnFrom() != null; h = base.get(h).spawnFrom().source()) {
+            // An emitter on its own particles ends a chain: it steps at its own tier.
+            for (String h = handle; base.get(h).spawnFrom() != null && !base.get(h).spawnFrom().source().equals(h);
+                 h = base.get(h).spawnFrom().source()) {
                 if (++depth >= CgVfxShape.TIERS) {
                     throw new IllegalArgumentException(at + " reads a chain " + depth + " deep or a loop: at most " + (CgVfxShape.TIERS - 1));
                 }

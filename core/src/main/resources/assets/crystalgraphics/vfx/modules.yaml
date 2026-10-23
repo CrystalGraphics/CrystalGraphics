@@ -165,7 +165,7 @@ modules:
       { name: rotation_rate, type: rotation, quantity: angular_speed, by: [age, loop], default: { range: [[0, 0, 0], [1, 1, 1]] } },
       { name: rotation_rate_options, type: struct, default: { spawn: true, update: false, by: age } } ] }
   - { id: source_movement, groups: [particle_update], unreal: { cascade: [SourceMovement] }, inputs: [
-      { name: scale, type: vec3, by: [loop, age], default: [1, 1, 1] } ] }
+      { name: scale, type: vec3, by: [age], default: [1, 1, 1] } ] }
   - { id: set_position, groups: [particle_update], unreal: { cascade: [LocationDirect] }, inputs: [
       { name: position, type: vec3, quantity: position, by: [age], default: [0, 0, 0] },
       { name: offset, type: vec3, quantity: offset, by: [age], default: [0, 0, 0] },
