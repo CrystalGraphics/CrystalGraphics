@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.particle.renderer;
 
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.vfx.look.CgVfxFlipbook;
 
 import javax.annotation.Nullable;
@@ -19,6 +20,7 @@ import java.util.Map;
  * @param prefab            the prefab each particle plays, null for meshes
  * @param meshBinding       the user parameter naming its mesh, null otherwise
  * @param materialOverrides a material a section, in place of the meshes' own
+ * @param overrideDefinitions each override compiled, where its asset's dependencies were given; null entries otherwise
  * @param facing            {@code ENiagaraMeshFacingMode}
  * @param lockedAxis        {@code { axis, space }}, null for none
  * @param facingUp          Cascade's up while facing, null for Niagara's ({@link CgVfxMeshFacing})
@@ -31,7 +33,8 @@ import java.util.Map;
  */
 public record CgVfxMeshRendererProperties(Common common, Map<String, Object> tree, List<Map<String, Object>> meshes,
                                           @Nullable String prefab, @Nullable String meshBinding,
-                                          List<String> materialOverrides, Facing facing,
+                                          List<String> materialOverrides, List<CgMaterialDefinition> overrideDefinitions,
+                                          Facing facing,
                                           @Nullable Map<String, Object> lockedAxis, @Nullable FacingUp facingUp,
                                           @Nullable RollAbout rollAbout, @Nullable Object preRotation,
                                           CgVfxSpriteRendererProperties.Sort sort, @Nullable CgVfxFlipbook subImage,
@@ -40,6 +43,9 @@ public record CgVfxMeshRendererProperties(Common common, Map<String, Object> tre
 
     /** {@code ENiagaraMeshFacingMode}. */
     public enum Facing { DEFAULT, VELOCITY, CAMERA_POSITION, CAMERA_PLANE }
+
+    /** The most sections a renderer overrides the materials of. */
+    public static final int MAX_OVERRIDES = 8;
 
     /**
      * Cascade's up while facing, which Niagara lacks: world up for every mode, Z turned toward the camera across the

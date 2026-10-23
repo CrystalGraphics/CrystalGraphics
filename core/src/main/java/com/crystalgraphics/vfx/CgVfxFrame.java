@@ -603,6 +603,7 @@ public final class CgVfxFrame {
                             // the records a mesh factory's CG_PARTICLE_* reads, at each record's custom2.w
                             .buffer(CgBindingPoints.PARTICLES, pool.drawn())
                             .buffer(CgBindingPoints.PARTICLE_ORDER, range.order());
+                    if (rd.submesh >= 0) draw.submesh(rd.submesh);
                     CgVfxSystem.place(draw, rd.placed, effect).submit();
                 }
                 case MERGED -> {
@@ -723,11 +724,19 @@ public final class CgVfxFrame {
                     throw new IllegalStateException(who(def, renderer) + " draws a prefab, a bound mesh or several meshes, which are not"
                             + " built yet: give it one mesh");
                 }
-                Renderer rd = rs.next(Shape.MESHES, placed, r, materials.material(r, CgVfxSlot.Kind.PARTICLES));
-                rd.mesh = m.meshes().isEmpty() ? system.particleSphere() : mesh(String.valueOf(m.meshes().get(0).get("mesh")));
-                rd.meshRadius = m.meshes().isEmpty() ? 1f : rd.mesh.reach();
-                rd.unsorted = m.sort() == CgVfxSpriteRendererProperties.Sort.NONE;
-                rd.sort = rangeSort(m.sort());
+                CgMeshLods lods = m.meshes().isEmpty() ? system.particleSphere() : mesh(String.valueOf(m.meshes().get(0).get("mesh")));
+                // A draw a section where its materials are overridden: each section's override, past them the
+                // renderer's own (Cascade's mesh material module over its required material).
+                int sections = m.materialOverrides().isEmpty() ? 1 : Math.max(lods.finest().submeshCount(), m.materialOverrides().size());
+                for (int s = 0; s < sections; s++) {
+                    CgVfxMaterials.Resolved section = s < m.materialOverrides().size() ? materials.resolve(look, placed, s) : r;
+                    Renderer rd = rs.next(Shape.MESHES, placed, section, materials.material(section, CgVfxSlot.Kind.PARTICLES));
+                    rd.mesh = lods;
+                    rd.meshRadius = m.meshes().isEmpty() ? 1f : lods.reach();
+                    rd.unsorted = m.sort() == CgVfxSpriteRendererProperties.Sort.NONE;
+                    rd.sort = rangeSort(m.sort());
+                    rd.submesh = m.materialOverrides().isEmpty() ? -1 : s;
+                }
             } else if (renderer instanceof CgVfxSpriteRendererProperties sprite) {
                 requireRenderer(renderer, def, CgVfxDrawLayout.QUADS);
                 quads(rs, placed, r, materials.material(r, CgVfxSlot.Kind.PARTICLES), pool, def, false);
@@ -913,6 +922,7 @@ public final class CgVfxFrame {
             rd.beamFlags = rd.beamFrequency = 0;
             rd.trails = rd.unsorted = false;
             rd.sort = CgVfxRange.Sort.VIEW_DEPTH;
+            rd.submesh = -1;
             return rd;
         }
     }
@@ -932,6 +942,8 @@ public final class CgVfxFrame {
         boolean trails;
         /** A renderer sorting none: drawn in the order Range keeps, however it blends. */
         boolean unsorted;
+        /** {@code MESHES}: the section it draws, -1 for the whole mesh. */
+        int submesh = -1;
         /** How it sorts its particles when it blends them. */
         CgVfxRange.Sort sort = CgVfxRange.Sort.VIEW_DEPTH;
         /** {@code STRIP}: quads a segment, ring points (trails), the ring's first point, vertices a particle. */

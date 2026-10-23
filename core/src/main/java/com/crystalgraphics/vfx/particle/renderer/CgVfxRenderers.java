@@ -92,7 +92,7 @@ public final class CgVfxRenderers {
                     flipbook(who, tree.get("sub_image")), floats(tree.get("camera_distance"), 2),
                     Boolean.TRUE.equals(tree.get("cast_shadows")),
                     tree.get("soft_depth") instanceof Number n ? n.floatValue() : Float.NaN);
-            case "mesh" -> mesh(who, common, tree);
+            case "mesh" -> mesh(who, common, tree, deps);
             case "ribbon" -> new CgVfxRibbonRendererProperties(common, tree,
                     choice(who, tree, "facing", CgVfxRibbonRendererProperties.Facing.class, "screen"),
                     choice(who, tree, "shape", CgVfxRibbonRendererProperties.Shape.class, "plane"),
@@ -167,7 +167,6 @@ public final class CgVfxRenderers {
             else if (!Float.isNaN(s.softDepth())) unbuilt = "soft_depth";
         } else if (r instanceof CgVfxMeshRendererProperties m) {
             if (m.prefab() != null || m.meshBinding() != null || m.meshes().size() > 1) unbuilt = "a prefab, a bound mesh or several meshes";
-            else if (!m.materialOverrides().isEmpty()) unbuilt = "material_overrides";
             else if (m.sort() == CgVfxSpriteRendererProperties.Sort.SPAWN_ORDER) unbuilt = "sort " + m.sort();
             else if (!m.meshes().isEmpty() && (m.meshes().get(0).get("pivot_offset") != null
                     || m.meshes().get(0).get("pivot_space") != null)) unbuilt = "a mesh's pivot_offset";
@@ -260,7 +259,8 @@ public final class CgVfxRenderers {
                 Boolean.TRUE.equals(tree.get("always_on")));
     }
 
-    private static CgVfxMeshRendererProperties mesh(String who, Common common, Map<String, Object> tree) {
+    private static CgVfxMeshRendererProperties mesh(String who, Common common, Map<String, Object> tree,
+                                                    @Nullable CgAssetCompiler.Dependencies deps) {
         List<Map<String, Object>> meshes = new ArrayList<>();
         String prefab = null, binding = null;
         Object m = tree.get("meshes");
@@ -274,9 +274,24 @@ public final class CgVfxRenderers {
             throw new IllegalArgumentException(who + "'s meshes are a list, { prefab } or { bind }, not " + m);
         }
         List<String> overrides = new ArrayList<>();
-        if (tree.get("material_overrides") instanceof List<?> list) for (Object o : list) overrides.add(String.valueOf(o));
+        List<CgMaterialDefinition> definitions = new ArrayList<>();
+        if (tree.get("material_overrides") instanceof List<?> list) {
+            if (list.size() > CgVfxMeshRendererProperties.MAX_OVERRIDES) {
+                throw new IllegalArgumentException(who + " overrides " + list.size() + " sections' materials; at most "
+                        + CgVfxMeshRendererProperties.MAX_OVERRIDES);
+            }
+            for (Object o : list) {
+                String id = String.valueOf(o);
+                overrides.add(id);
+                Object d = deps == null ? null : deps.definition(CgLookKinds.MATERIAL, id);
+                if (d != null && !(d instanceof CgMaterialDefinition)) {
+                    throw new IllegalArgumentException(who + "'s material override " + id + " compiled to " + d.getClass().getSimpleName() + ", not a material");
+                }
+                definitions.add((CgMaterialDefinition) d);
+            }
+        }
         return new CgVfxMeshRendererProperties(common, tree, Collections.unmodifiableList(meshes), prefab, binding,
-                Collections.unmodifiableList(overrides),
+                Collections.unmodifiableList(overrides), Collections.unmodifiableList(definitions),
                 choice(who, tree, "facing", CgVfxMeshRendererProperties.Facing.class, "default"), map(tree.get("locked_axis")),
                 tree.get("facing_up") == null ? null : choice(who, tree, "facing_up", CgVfxMeshRendererProperties.FacingUp.class, null),
                 tree.get("roll_about") == null ? null : choice(who, tree, "roll_about", CgVfxMeshRendererProperties.RollAbout.class, null),
@@ -408,6 +423,7 @@ public final class CgVfxRenderers {
         private final Map<String, Object> bind = new LinkedHashMap<>(), values = new LinkedHashMap<>();
         private final List<String> keywords = new ArrayList<>();
         private CgMaterialDefinition definition;
+        private final List<CgMaterialDefinition> overrides = new ArrayList<>();
 
         private Builder(String id, String kind) {
             tree.put("id", id);
@@ -424,6 +440,27 @@ public final class CgVfxRenderers {
         public Builder material(CgMaterialDefinition material) {
             definition = material;
             return material(material.id());
+        }
+
+        /**
+         * A mesh renderer's materials a section, in place of its material on the sections they reach: compiled, so
+         * their ids are written and each is what its section draws with.
+         *
+         * <pre>{@code
+         * CgVfxRenderers.mesh("blade").material(STEEL).field("meshes", List.of(Map.of("mesh", "mymod:models/sword.glb")))
+         *         .materialOverrides(STEEL, GLOW)   // section 0 steel, section 1 glowing, any later section STEEL
+         *         .build();
+         * }</pre>
+         */
+        public Builder materialOverrides(CgMaterialDefinition... materials) {
+            overrides.clear();
+            List<String> ids = new ArrayList<>();
+            for (CgMaterialDefinition m : materials) {
+                overrides.add(m);
+                ids.add(m.id());
+            }
+            tree.put("material_overrides", ids);
+            return this;
         }
 
         /** Drawn from {@code quality} up. */
@@ -512,7 +549,13 @@ public final class CgVfxRenderers {
             }
             for (Map.Entry<String, Object> e : tree.entrySet()) entry.putIfAbsent(e.getKey(), e.getValue());
             CgMaterialDefinition d = definition;
-            return compile("java", entry, d == null ? null : (kind, id) -> id.equals(d.id()) ? d : null);
+            List<CgMaterialDefinition> more = List.copyOf(overrides);
+            if (d == null && more.isEmpty()) return compile("java", entry, null);
+            return compile("java", entry, (kind, id) -> {
+                if (d != null && id.equals(d.id())) return d;
+                for (CgMaterialDefinition o : more) if (id.equals(o.id())) return o;
+                return null;
+            });
         }
     }
 }

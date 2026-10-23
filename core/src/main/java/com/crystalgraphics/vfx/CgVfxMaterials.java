@@ -116,6 +116,8 @@ final class CgVfxMaterials {
 
     /** Each look's draws as this system resolved them, by their order; made at each one's first draw. */
     private final Map<CgVfxLook, Resolved[]> resolved = new IdentityHashMap<>();
+    /** A mesh renderer's sections' resolutions, {@code CgVfxMeshRendererProperties.MAX_OVERRIDES} a draw. */
+    private final Map<CgVfxLook, Resolved[]> overridden = new IdentityHashMap<>();
     /** The look asked for last, and its array: one effect's draws ask for one look many times in a row. */
     private CgVfxLook lastLook;
     private Resolved[] lastResolved;
@@ -127,7 +129,20 @@ final class CgVfxMaterials {
             lastResolved = resolved.computeIfAbsent(look, l -> new Resolved[l.draws()]);
         }
         Resolved r = lastResolved[placed.order()];
-        if (r == null) lastResolved[placed.order()] = r = rendered(look, placed);
+        if (r == null) lastResolved[placed.order()] = r = rendered(look, placed, -1);
+        return r;
+    }
+
+    /**
+     * {@code placed}'s resolution for its mesh's section {@code section}, a mesh renderer's {@code material_overrides}
+     * entry in place of its material: Cascade's mesh material module, Niagara's OverrideMaterials. Its binds, values
+     * and keywords are the renderer's.
+     */
+    Resolved resolve(CgVfxLook look, CgVfxLook.Placed placed, int section) {
+        Resolved[] all = overridden.computeIfAbsent(look, l -> new Resolved[l.draws() * CgVfxMeshRendererProperties.MAX_OVERRIDES]);
+        int at = placed.order() * CgVfxMeshRendererProperties.MAX_OVERRIDES + section;
+        Resolved r = all[at];
+        if (r == null) all[at] = r = rendered(look, placed, section);
         return r;
     }
 
@@ -136,7 +151,7 @@ final class CgVfxMaterials {
      * rows change it (05's interning), its {@code bind}s to the look's user parameters by name and its values on row
      * properties into the row, in the shader's declaration order.
      */
-    private Resolved rendered(CgVfxLook look, CgVfxLook.Placed placed) {
+    private Resolved rendered(CgVfxLook look, CgVfxLook.Placed placed, int section) {
         if (placed.slotRenderer() != null && placed.slotRenderer().light() != null) return lit(look, placed);
         CgVfxRendererProperties renderer = placed.renderer();
         String who;
@@ -149,6 +164,11 @@ final class CgVfxMaterials {
             who = placed.emitter().name() + "'s renderer " + common.id();
             materialId = common.material();
             definition = common.definition();
+            if (section >= 0) {
+                CgVfxMeshRendererProperties mesh = (CgVfxMeshRendererProperties) renderer;
+                materialId = mesh.materialOverrides().get(section);
+                definition = mesh.overrideDefinitions().get(section);
+            }
             values = common.values();
             binds = common.bind();
             moreKeywords = common.keywords();
