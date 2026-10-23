@@ -14,8 +14,8 @@
 //
 // Scatter lights the air the same way: each froxel of the world's media (CgWorldMedia) holding extinction takes its
 // light-grid cell's lights as Unreal's volumetric fog does (VolumetricFog.usf's LightScatteringCS, :1085-1169): colour
-// times falloff times the Henyey-Greenstein phase toward the eye, times the froxel's scattering (its extinction, albedo
-// white). A light that casts shadows is traced from the froxel, at most _AirShadowRays a froxel. As Unreal's temporal
+// times falloff times the Henyey-Greenstein phase toward the eye, times the light's VolumetricScatteringIntensity
+// (:554), times the froxel's scattering (its extinction, albedo white). A light that casts shadows is traced from the froxel, at most _AirShadowRays a froxel. As Unreal's temporal
 // reprojection (:856-921, :1173-1180), each froxel is lit at a point jittered through it each firing and blended into
 // what the last firing's grid held at its middle, so a froxel's light is the average over its whole cell; one with no
 // history is lit at HISTORY_MISS_SAMPLES points (r.VolumetricFog.HistoryMissSupersampleCount, Epic's 4). A spot's cone
@@ -30,7 +30,7 @@
 #include "crystalgraphics:shaders/lib/world_light_trace.glsl"
 #include "crystalgraphics:shaders/lib/media.glsl"
 
-struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; };
+struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; vec4 air; };
 
 Properties {
     _Cascade0 ("Cascade 0's lowest corner from the eye, and its cell's size", vec4) = (0, 0, 0, 1)
@@ -230,7 +230,7 @@ vec3 scatter_at(vec3 w, float biasSqr, float spread) {
             if (shadowed(light, w)) continue;
         }
         vec3 toLight = normalize(light.positionRadius.xyz - w);
-        sum += light.colorExponent.rgb * (falloff * day_fade(light) * hg_phase(_PhaseG, dot(toLight, view)));
+        sum += light.colorExponent.rgb * (falloff * day_fade(light) * hg_phase(_PhaseG, dot(toLight, view)) * light.air.x);
     }
     return sum;
 }

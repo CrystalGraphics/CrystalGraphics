@@ -17,7 +17,7 @@ Properties {
 }
 
 // A world light: CgWorldLights.STRUCT.
-struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; };
+struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; vec4 air; };
 
 // A particle's drawn part: CgVfxRecord.DRAWN_GLSL.
 struct FxDrawn { vec4 place; vec4 motion; vec4 state; vec4 light; vec4 color; vec4 scale; };

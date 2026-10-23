@@ -85,7 +85,7 @@ import java.util.function.Consumer;
  * // its kernel: CgLight declared in its own file (STRUCT), LIGHTS an append buffer of it
  * #pragma kernel Gather append
  * #include "crystalgraphics:shaders/lib/lights.glsl"
- * struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; };
+ * struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; vec4 air; };
  * Properties { _LightEye ("The firing's eye, absolute", vec4) = (0, 0, 0, 0) }
  * Buffers { EMBERS ("Embers", vec4, readonly)  LIGHTS ("Lights", CgLight, append) }
  * void Gather() {
@@ -133,13 +133,13 @@ public final class CgWorldLights {
      * from the kernel's file alone, not its includes.
      */
     public static final String STRUCT =
-            "struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; };";
+            "struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; vec4 air; };";
     /**
      * Floats a light: position and radius, colour and exponent, a spot's direction and the cosine of its outer angle (-2
      * for none), a tube's length along its axis and a spot's 1 / (cos inner - cos outer), the block and sky light at
      * the light (-1 unknown) and its source radius.
      */
-    public static final int FLOATS = 20;
+    public static final int FLOATS = 24;
 
     /** Adds lights from a kernel, each transparent firing. */
     public interface Appender {
@@ -531,6 +531,8 @@ public final class CgWorldLights {
         light[l + 17] = CgWorldLight.sky(lit);
         light[l + 18] = 0f;
         light[l + 19] = 1f;
+        light[l + 20] = 1f;
+        light[l + 21] = light[l + 22] = light[l + 23] = 0f;
         added++;
         return this;
     }
@@ -585,6 +587,20 @@ public final class CgWorldLights {
      */
     public CgWorldLights shadowed(boolean shadowed) {
         light[last() + 19] = shadowed ? 1f : 0f;
+        return this;
+    }
+
+    /**
+     * How strongly the light added last shines in the air ({@code docs/LIGHTS.md} § In the air), as a multiple of its
+     * intensity: Unreal's VolumetricScatteringIntensity, 1 unless set. A beam meant to be seen in a thin haze takes
+     * more; 0 lights surfaces alone.
+     *
+     * <pre>{@code
+     * lights.add(x, y, z, 45f, 0xFFFFF4E0, 1800f, 0f).spot(dx, -0.3f, dz, 5f, 10f).scattering(6f);   // a searchlight
+     * }</pre>
+     */
+    public CgWorldLights scattering(float intensity) {
+        light[last() + 20] = Math.max(intensity, 0f);
         return this;
     }
 
@@ -825,7 +841,8 @@ public final class CgWorldLights {
                         .putFloat(0f).putFloat(0f).putFloat(0f).putFloat(0f)
                         .putFloat(0f).putFloat(0f).putFloat(0f).putFloat(-2f)
                         .putFloat(0f).putFloat(0f).putFloat(0f).putFloat(0f)
-                        .putFloat(-1f).putFloat(-1f).putFloat(0.5f).putFloat(2f);
+                        .putFloat(-1f).putFloat(-1f).putFloat(0.5f).putFloat(2f)
+                        .putFloat(0f).putFloat(0f).putFloat(0f).putFloat(0f);
             }
             staging.flip();
             recording.update(list, 0, staging);

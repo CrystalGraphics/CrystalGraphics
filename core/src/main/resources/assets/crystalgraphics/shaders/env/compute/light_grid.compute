@@ -21,7 +21,7 @@
 
 #include "crystalgraphics:shaders/lib/lights.glsl"
 
-struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; };
+struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; vec4 air; };
 // A light in the grid's space: its position and radius, the way a spot points and its outer cosine.
 struct CgViewLight { vec4 positionRadius; vec4 spot; };
 

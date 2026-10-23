@@ -75,6 +75,12 @@ public final class CgLightsDemo {
      * to light a floor several times its colour, and a thicker haze glows white round them.
      */
     private static final float HAZE = Float.parseFloat(System.getProperty("crystalgraphics.demo.lightsHaze", "0.003"));
+    /**
+     * How strongly the beams (the mirror ball's spots and the searchlights) shine in the haze, over their intensity:
+     * Unreal's VolumetricScatteringIntensity, raised as an artist raises it on a light meant to show its beam. At 1
+     * a beam eight blocks from its source adds 2 of 255 to the haze round it (--mode=lights-air-quality).
+     */
+    private static final float BEAM_SCATTERING = 8f;
     /** The haze over the arena, added to the world's media while the show plays. */
     private final CgWorldHaze haze = new CgWorldHaze();
     private boolean hazing;
@@ -200,7 +206,8 @@ public final class CgLightsDemo {
             double turn = i * 2 * Math.PI / BALL + t * 0.7, tilt = Math.toRadians(30 + 35 * ((i * 7) % BALL) / (double) BALL);
             float dx = (float) (Math.cos(turn) * Math.sin(tilt)), dy = (float) -Math.cos(tilt);
             float dz = (float) (Math.sin(turn) * Math.sin(tilt));
-            lights.add(x, y, z, 30f, hue(i / (float) BALL + t * 0.05f), lit(4f, 14f), 0f).spot(dx, dy, dz, 3f, 7f);
+            lights.add(x, y, z, 30f, hue(i / (float) BALL + t * 0.05f), lit(4f, 14f), 0f).spot(dx, dy, dz, 3f, 7f)
+                    .scattering(BEAM_SCATTERING);
         }
     }
 
@@ -210,7 +217,8 @@ public final class CgLightsDemo {
             double sx = x + side * 15, sz = z + 12, sweep = Math.sin(t * 0.45 + side) * 0.9;
             float dx = (float) (-side * Math.cos(sweep) * 0.7), dz = (float) (-Math.cos(sweep * 0.7) * 0.9 + Math.sin(sweep) * 0.3);
             CgCollisionDebug.shape(MARK, pose.at(sx, y + 3, sz), 0xFFFFF4E0);
-            lights.add(sx, y + 3, sz, 45f, 0xFFFFF4E0, lit(4f, 12f), 0f).spot(dx, -0.3f, dz, 5f, 10f);
+            lights.add(sx, y + 3, sz, 45f, 0xFFFFF4E0, lit(4f, 12f), 0f).spot(dx, -0.3f, dz, 5f, 10f)
+                    .scattering(BEAM_SCATTERING);
         }
     }
 

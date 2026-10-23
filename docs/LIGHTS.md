@@ -263,6 +263,15 @@ CgWorldRenderer.get().media().add(haze);      // a haze to see the lights in; VF
   falloff x day fade x the Henyey-Greenstein phase toward the eye (g 0.2, the height fog's default) x the froxel's
   scattering (its extinction, albedo white). A shadowed light is traced from the froxel, at most
   `crystalgraphics.world.lightsAirShadowRays` (4) a froxel; past them a froxel's lights are unshadowed.
+- **A light's strength in the air** is its intensity times its `scattering` (Unreal's VolumetricScatteringIntensity,
+  VolumetricFog.usf:554; 1 unless set, 0 for none), apart from how it lights surfaces. At 1, in the demo's thin haze,
+  a searchlight's beam eight blocks from its source adds 2 of 255 to the haze: a light meant to show its beam takes
+  more, as an artist raises it in Unreal (`CgLightsDemo`'s beams take 8).
+
+```java
+lights.add(x, y, z, 45f, 0xFFFFF4E0, 1800f, 0f).spot(dx, -0.3f, dz, 5f, 10f).scattering(8f);
+```
+
 - **History** (Unreal's temporal reprojection, VolumetricFog.usf:856-921, :1173-1180): each firing lights a froxel at a
   Halton 2, 3, 5 point inside it and blends 0.9 of what the last firing's grid held at its middle, reprojected through
   the last firing's view, so a narrow beam is averaged over each cell instead of read at its centre. Dropped at the first
@@ -288,7 +297,8 @@ CgWorldRenderer.get().media().add(haze);      // a haze to see the lights in; VF
   a spot's cone edge widened by the froxel's size seen from the light (`cg_light_falloff_filtered`), since a cone
   narrower than a froxel near its light flickers as the jittered point falls in and out of it, which Unreal leaves to
   its temporal anti-aliasing.
-- `crystalgraphics.world.lightsAir=false` turns it off; `--mode=lights-air` is the gate. At 320x240 with one light the
+- `crystalgraphics.world.lightsAir=false` turns it off; `--mode=lights-air` is the gate, and `--mode=lights-air-quality`
+  measures the look (a searchlight's base frame to frame, its beam from 10 and 40 blocks). At 320x240 with one light the
   media pass took 0.10 ms and the composite 0.02 (RTX 4070 Super); the grid grows with the screen. `CgLightsDemo` stands
   in a haze.
 

@@ -69,7 +69,7 @@ Properties {
     _Casters       ("Our meshes casting shadows in _CasterRows",   int) = 0
 }
 
-struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; };
+struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; vec4 air; };
 
 Buffers {
     LIGHTS   ("The firing's lights",                               CgLight, readonly)

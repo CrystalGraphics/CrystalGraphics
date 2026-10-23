@@ -1,8 +1,8 @@
-// A world light (CgWorldLights), as the list holds it: Unreal's local light, a point, a spot or a tube, five vec4s. A
+// A world light (CgWorldLights), as the list holds it: Unreal's local light, a point, a spot or a tube, six vec4s. A
 // kernel reading or appending lights declares the struct itself, before its Buffers block, since a buffer's element is
 // laid out from the kernel's own file (CgWorldLights.STRUCT):
 //
-//     struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; };
+//     struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; vec4 air; };
 //     Buffers { LIGHTS ("Lights", CgLight, append) }
 //     LIGHTS_APPEND(cg_light(position - _LightEye.xyz, radius, linearColour * intensity, 0.0));
 //
@@ -11,18 +11,21 @@
 // cone. segmentCone: a tube's length along its axis as one vector (0 for a point), and a spot's 1 / (cos inner - cos
 // outer). ambient: the block and sky light (0 to 15) at the light, what the scene there was lit by and is divided by to
 // find its albedo, x -1 where unknown and the scene taken as it is; then its source radius (Unreal's SourceRadius, 0 a
-// point), and 1 where it casts shadows (CG_LIGHT_SHADOWED), 2 for a Minecraft light (CG_LIGHT_MINECRAFT).
+// point), and 1 where it casts shadows (CG_LIGHT_SHADOWED), 2 for a Minecraft light (CG_LIGHT_MINECRAFT). air: x its
+// light in the air's multiplier (Unreal's VolumetricScatteringIntensity, 1 unless set), the rest unused.
 #pragma once
 
 #define cg_light(position, radius, color, exponent) \
-    CgLight(vec4(position, radius), vec4(color, exponent), vec4(0.0, 0.0, 0.0, -2.0), vec4(0.0), vec4(-1.0))
+    CgLight(vec4(position, radius), vec4(color, exponent), vec4(0.0, 0.0, 0.0, -2.0), vec4(0.0), vec4(-1.0), \
+            vec4(1.0, 0.0, 0.0, 0.0))
 // A spot: SpotLightComponent's angles, already clamped and as cosines (CgWorldLights.spot does it on the CPU).
 #define cg_spot_light(position, radius, color, exponent, forward, cosOuter, invConeDifference) \
     CgLight(vec4(position, radius), vec4(color, exponent), vec4(forward, cosOuter), vec4(0.0, 0.0, 0.0, invConeDifference), \
-            vec4(-1.0))
+            vec4(-1.0), vec4(1.0, 0.0, 0.0, 0.0))
 // A tube: SourceLength along segment's direction, segment its whole length as a vector, centred on position.
 #define cg_tube_light(position, radius, color, exponent, segment) \
-    CgLight(vec4(position, radius), vec4(color, exponent), vec4(0.0, 0.0, 0.0, -2.0), vec4(segment, 0.0), vec4(-1.0))
+    CgLight(vec4(position, radius), vec4(color, exponent), vec4(0.0, 0.0, 0.0, -2.0), vec4(segment, 0.0), vec4(-1.0), \
+            vec4(1.0, 0.0, 0.0, 0.0))
 
 // The light grid (CgWorldLights), Unreal's (LightGridInjection.cpp:34-50, LightGridCommon.ush): CG_LIGHT_TILE pixels
 // across, CG_LIGHT_SLICES slices deep at log2(depth * B + O) * S, CG_LIGHT_PER_CELL lights a cell on average. zParams is
