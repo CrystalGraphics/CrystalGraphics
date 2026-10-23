@@ -391,12 +391,14 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      *   <li>A lasting pull builds up velocity, a force (Niagara's, and Cascade's {@code bAffectBaseVelocity}). A
      *       {@link #momentary} one moves the particle for the step alone, as Cascade's other pull does over a base
      *       velocity reset each tick ({@code ParticleModules.cpp}, {@code UParticleModuleAttractorPoint::Update}).</li>
+     *   <li>{@link #byInverseSquare} pulls by Cascade's GPU attractor instead: {@code strength} out to the edge, then
+     *       falling with the square of the distance past it, and never cut off.</li>
      *   <li>A plane attracts nothing, and is refused, as is any shape but a sphere or box.</li>
      *   <li>Pair it with {@link Orbit} round the same centre for a spiral in, Godot's orbit velocity.</li>
      * </ul>
      */
     record Attract(CgShape shape, float x, float y, float z, float strength, float attenuation, float directionality,
-                   float axisX, float axisY, float axisZ, boolean lasting) implements CgVfxModule {
+                   float axisX, float axisY, float axisZ, boolean lasting, boolean inverseSquare) implements CgVfxModule {
         private static final CgVfxLane[] LANES = {CgVfxLane.VEC4};
 
         public Attract {
@@ -411,33 +413,47 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         public Attract(CgShape shape, float strength) {
-            this(shape, 0f, 0f, 0f, strength, 1f, 0f, 0f, 1f, 0f, true);
+            this(shape, 0f, 0f, 0f, strength, 1f, 0f, 0f, 1f, 0f, true, false);
+        }
+
+        /** A pull by attenuation, every field but that one given. */
+        public Attract(CgShape shape, float x, float y, float z, float strength, float attenuation, float directionality,
+                       float axisX, float axisY, float axisZ, boolean lasting) {
+            this(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, lasting, false);
         }
 
         /** A lasting pull, every field but that one given. */
         public Attract(CgShape shape, float x, float y, float z, float strength, float attenuation, float directionality,
                        float axisX, float axisY, float axisZ) {
-            this(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, true);
+            this(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, true, false);
         }
 
         /** This pull for the step alone, leaving the velocity it builds on as it was. */
         public Attract momentary() {
-            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, false);
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, false, inverseSquare);
+        }
+
+        /**
+         * This pull by Cascade's GPU attractor: {@code strength} within the shape, {@code strength * (r / d)^2} past it,
+         * with no edge ({@code ParticleSimulationShader.usf}, {@code ComputeAttractionForce}). Its attenuation goes unread.
+         */
+        public Attract byInverseSquare() {
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, lasting, true);
         }
 
         /** The shape centred {@code (x, y, z)} from the source. */
         public Attract at(float x, float y, float z) {
-            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, lasting);
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, lasting, inverseSquare);
         }
 
         /** How the pull falls off toward the edge: 0 even, 1 linear (the default), 2 and up held to the centre. */
         public Attract attenuation(float attenuation) {
-            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, lasting);
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, lasting, inverseSquare);
         }
 
         /** A push along {@code (ax, ay, az)} in place of {@code directionality} of the pull. */
         public Attract directed(float directionality, float ax, float ay, float az) {
-            return new Attract(shape, x, y, z, strength, attenuation, directionality, ax, ay, az, lasting);
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, ax, ay, az, lasting, inverseSquare);
         }
 
         @Override

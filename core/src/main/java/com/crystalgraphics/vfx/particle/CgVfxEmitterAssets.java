@@ -2002,6 +2002,12 @@ public final class CgVfxEmitterAssets {
                 take(in, read, out, names, "directionality", "directionality");
                 take(in, read, out, names, "axis", "axis");
                 take(in, read, out, names, "affect_base_velocity", "lasting");
+                read.add("law");
+                if ("inverse_square".equals(in.get("law"))) {
+                    out.put("inverse_square", true);
+                    out.remove("attenuation");
+                    read.add("falloff");
+                }
                 // Cascade's StrengthByDistance only picks the clock of a strength curve (ParticleModules.cpp:4447-4466,
                 // 4.21): by loop is its false, and a strength that is no curve reads alike either way.
                 if (!(in.get("strength") instanceof Map<?, ?> s && (s.get("curve") != null || s.get("curves") != null))

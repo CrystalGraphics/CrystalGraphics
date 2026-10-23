@@ -260,12 +260,13 @@ public final class CgVfxModuleTypes {
                 (m, in) -> in.f("drag", m.drag()), r -> new CgVfxModule.Spin(r.f("drag")));
         kind("attract", CgVfxModule.Attract.class,
                 t -> { shape(t); fl(t, "strength", "attenuation", "directionality"); t.property("lasting", CgValueType.BOOL).defaultValue(true);
-                    v3(t, "axis"); offset(t); },
+                    v3(t, "axis"); t.property("inverse_square", CgValueType.BOOL); offset(t); },
                 (m, in) -> in.shape(m.shape()).f("strength", m.strength()).f("attenuation", m.attenuation())
                         .f("directionality", m.directionality()).b("lasting", m.lasting()).v3("axis", m.axisX(), m.axisY(), m.axisZ())
-                        .v3("offset", m.x(), m.y(), m.z()),
+                        .b("inverse_square", m.inverseSquare()).v3("offset", m.x(), m.y(), m.z()),
                 r -> new CgVfxModule.Attract(r.shape(), r.f("offset", 0), r.f("offset", 1), r.f("offset", 2), r.f("strength"),
-                        r.f("attenuation"), r.f("directionality"), r.f("axis", 0), r.f("axis", 1), r.f("axis", 2), r.b("lasting")));
+                        r.f("attenuation"), r.f("directionality"), r.f("axis", 0), r.f("axis", 1), r.f("axis", 2), r.b("lasting"),
+                        r.b("inverse_square")));
         kind("orbit", CgVfxModule.Orbit.class, t -> { v3(t, "axis"); fl(t, "turns"); offset(t); },
                 (m, in) -> in.v3("axis", m.axisX(), m.axisY(), m.axisZ()).f("turns", m.turns()).v3("offset", m.x(), m.y(), m.z()),
                 r -> new CgVfxModule.Orbit(r.f("turns"), r.f("axis", 0), r.f("axis", 1), r.f("axis", 2),
