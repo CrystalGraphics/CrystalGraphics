@@ -15,6 +15,8 @@ import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.util.Arrays;
 
@@ -45,6 +47,8 @@ public final class CgCollisionDebug {
 
     static final String SHADER = "crystalgraphics:shaders/debug/collision_lines.shader";
     private static final double MARK = 0.4;
+    private static final int ZONE_SHOW = CgTrace.name("collision.debug.show"), ZONE_FACES = CgTrace.name("collision.debug.faces"),
+            ZONE_LINES = CgTrace.name("collision.debug.lines"), ZONE_WRITE = CgTrace.name("collision.debug.write");
 
     private static final Batch LINES = new Batch(2), FACES = new Batch(3);
     private static final CgShapeLines SHAPES = new CgShapeLines();
@@ -144,9 +148,15 @@ public final class CgCollisionDebug {
         // for what is written before the next frame: the outline lags the camera by a frame
         SHAPES.eye(view.x(), view.y(), view.z());
         transparent = CgCollisionShow.transparent();
-        CgCollisionShow.drawTo(view.x(), view.y(), view.z(), SHOWN);
-        FACES.draw(view.x(), view.y(), view.z());
-        LINES.draw(view.x(), view.y(), view.z());
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, ZONE_SHOW)) {
+            CgCollisionShow.drawTo(view.x(), view.y(), view.z(), SHOWN);
+        }
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, ZONE_FACES)) {
+            FACES.draw(view.x(), view.y(), view.z());
+        }
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, ZONE_LINES)) {
+            LINES.draw(view.x(), view.y(), view.z());
+        }
     }
 
     private static void write(CgMeshWriter m, Batch batch) {
@@ -268,10 +278,13 @@ public final class CgCollisionDebug {
             if (from == to) return into;
             this.from = from;
             this.to = to;
-            if (into == null) {
-                into = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> write(m, this));
-            } else {
-                into.edit(this, CgCollisionDebug::write);
+            CgTrace.add(CgChannels.MISC, "collision.debug.vertices", (to - from) * corners);
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, ZONE_WRITE)) {
+                if (into == null) {
+                    into = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> write(m, this));
+                } else {
+                    into.edit(this, CgCollisionDebug::write);
+                }
             }
             // one group at the eye, so back faces, lines and front faces draw in that order whatever their distances
             CgWorldRenderer.get().draw(into, material).at(ox, oy, oz).layer(CgSortLayer.OVERLAY).group(ex, ey, ez)

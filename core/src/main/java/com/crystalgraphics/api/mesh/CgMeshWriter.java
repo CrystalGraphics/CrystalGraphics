@@ -5,7 +5,6 @@ import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.api.vertex.CgVertexSemantic;
 
-import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 
@@ -61,10 +60,13 @@ public final class CgMeshWriter {
     private final int[] uvAttributes = {-1, -1, -1, -1};
     private final int required;
 
+    /** A component's encoding: its type, {@link #NORM} added where the attribute normalises it. */
+    private static final int F32 = 0, HALF = 1, U8 = 2, I8 = 3, U16 = 4, I16 = 5, U32 = 6, I32 = 7, NORM = 8;
+    private static final boolean LITTLE = ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN;
+    /** Each attribute's encoding, byte offset, components, bytes a component and bytes in all, resolved once. */
+    private final int[] encodings, offsets, components, sizes, byteSizes;
+
     private final byte[] scratchBytes;
-    private final ByteBuffer scratch;
-    private final float[] values = new float[4];
-    private final int[] integers = new int[4];
     private int given;
     private boolean open;
 
@@ -83,10 +85,21 @@ public final class CgMeshWriter {
         this.format = format;
         this.stride = format.getStride();
         this.attributes = new CgVertexAttribute[format.getAttributeCount()];
+        int n = attributes.length;
+        this.encodings = new int[n];
+        this.offsets = new int[n];
+        this.components = new int[n];
+        this.sizes = new int[n];
+        this.byteSizes = new int[n];
         int position = -1, normal = -1, color = -1;
         for (int i = 0; i < attributes.length; i++) {
             CgVertexAttribute a = format.getAttribute(i);
             attributes[i] = a;
+            encodings[i] = encoding(a.getType()) + (a.isNormalized() ? NORM : 0);
+            offsets[i] = a.getOffset();
+            components[i] = a.getComponents();
+            sizes[i] = a.getType().getByteSize();
+            byteSizes[i] = a.getByteSize();
             if (a.getSemantic() == CgVertexSemantic.UV && a.getSemanticIndex() < uvAttributes.length) uvAttributes[a.getSemanticIndex()] = i;
             if (a.getSemanticIndex() != 0) continue;
             switch (a.getSemantic()) {
@@ -102,7 +115,6 @@ public final class CgMeshWriter {
         this.colorAttribute = color;
         this.required = (1 << attributes.length) - 1;
         this.scratchBytes = new byte[stride];
-        this.scratch = ByteBuffer.wrap(scratchBytes).order(ByteOrder.nativeOrder());
         this.vertices = new byte[Math.max(stride, 1) * 16];
         this.indices = new int[48];
     }
@@ -243,9 +255,9 @@ public final class CgMeshWriter {
         for (int set = 1; set < uvAttributes.length; set++) {
             int before = uvAttributes[set - 1], at = uvAttributes[set];
             if (at < 0 || before < 0 || (given & (1 << at)) != 0 || (given & (1 << before)) == 0) continue;
-            CgVertexAttribute from = attributes[before], to = attributes[at];
-            if (from.getByteSize() != to.getByteSize()) continue;
-            System.arraycopy(scratchBytes, from.getOffset(), scratchBytes, to.getOffset(), to.getByteSize());
+            int size = byteSizes[at], from = offsets[before], to = offsets[at];
+            if (byteSizes[before] != size) continue;
+            for (int b = 0; b < size; b++) scratchBytes[to + b] = scratchBytes[from + b];
             given |= 1 << at;
         }
         if (given != required) throw new IllegalStateException(missing());
@@ -319,36 +331,41 @@ public final class CgMeshWriter {
 
     // ── Encoding ───────────────────────────────────────────────────────────────
 
+    // Unrolled, the encoding an int resolved at construction: per vertex this path is the whole cost of an edit.
     private CgMeshWriter floats(int attribute, float x, float y, float z, float w, int n) {
         requireOpen(attribute);
-        values[0] = x;
-        values[1] = y;
-        values[2] = z;
-        values[3] = w;
-        CgVertexAttribute a = attributes[attribute];
-        int components = a.getComponents(), size = a.getType().getByteSize();
-        for (int c = 0; c < components; c++) {
-            float v = c < n ? values[c] : c == 3 ? 1f : 0f;
-            putFloat(a.getType(), a.isNormalized(), a.getOffset() + c * size, v);
-        }
+        int e = encodings[attribute], at = offsets[attribute], count = components[attribute], size = sizes[attribute];
+        putFloat(e, at, x);
+        if (count > 1) putFloat(e, at + size, n > 1 ? y : 0f);
+        if (count > 2) putFloat(e, at + 2 * size, n > 2 ? z : 0f);
+        if (count > 3) putFloat(e, at + 3 * size, n > 3 ? w : 1f);
         given |= 1 << attribute;
         return this;
     }
 
     private CgMeshWriter ints(int attribute, int x, int y, int z, int w, int n) {
         requireOpen(attribute);
-        integers[0] = x;
-        integers[1] = y;
-        integers[2] = z;
-        integers[3] = w;
-        CgVertexAttribute a = attributes[attribute];
-        int components = a.getComponents(), size = a.getType().getByteSize();
-        for (int c = 0; c < components; c++) {
-            int v = c < n ? integers[c] : c == 3 ? 1 : 0;
-            putInt(a.getType(), a.getOffset() + c * size, v);
-        }
+        int e = encodings[attribute] & ~NORM, at = offsets[attribute], count = components[attribute], size = sizes[attribute];
+        putInt(e, at, x);
+        if (count > 1) putInt(e, at + size, n > 1 ? y : 0);
+        if (count > 2) putInt(e, at + 2 * size, n > 2 ? z : 0);
+        if (count > 3) putInt(e, at + 3 * size, n > 3 ? w : 1);
         given |= 1 << attribute;
         return this;
+    }
+
+    private static int encoding(CgAttribType type) {
+        switch (type) {
+            case FLOAT: return F32;
+            case HALF_FLOAT: return HALF;
+            case UNSIGNED_BYTE: return U8;
+            case BYTE: return I8;
+            case UNSIGNED_SHORT: return U16;
+            case SHORT: return I16;
+            case UNSIGNED_INT: return U32;
+            case INT: return I32;
+            default: throw new IllegalStateException("no encoding for " + type);
+        }
     }
 
     private void requireOpen(int attribute) {
@@ -358,28 +375,58 @@ public final class CgMeshWriter {
         }
     }
 
-    private void putFloat(CgAttribType type, boolean normalized, int at, float v) {
-        switch (type) {
-            case FLOAT: scratch.putFloat(at, v); break;
-            case HALF_FLOAT: scratch.putShort(at, toHalf(v)); break;
-            case UNSIGNED_BYTE: scratch.put(at, (byte) (normalized ? Math.round(clamp(v, 0f) * 255f) : Math.round(v))); break;
-            case BYTE: scratch.put(at, (byte) (normalized ? Math.round(clamp(v, -1f) * 127f) : Math.round(v))); break;
-            case UNSIGNED_SHORT: scratch.putShort(at, (short) (normalized ? Math.round(clamp(v, 0f) * 65535f) : Math.round(v))); break;
-            case SHORT: scratch.putShort(at, (short) (normalized ? Math.round(clamp(v, -1f) * 32767f) : Math.round(v))); break;
-            case UNSIGNED_INT: scratch.putInt(at, (int) (normalized ? Math.round(clamp(v, 0f) * 4294967295.0) : Math.round((double) v))); break;
-            case INT: scratch.putInt(at, (int) (normalized ? Math.round(clamp(v, -1f) * 2147483647.0) : Math.round((double) v))); break;
-            default: throw new IllegalStateException("no encoding for " + type);
+    private void putFloat(int encoding, int at, float v) {
+        switch (encoding) {
+            case F32: case F32 + NORM: put32(at, Float.floatToRawIntBits(v)); break;
+            case HALF: case HALF + NORM: put16(at, toHalf(v)); break;
+            case U8: case I8: scratchBytes[at] = (byte) Math.round(v); break;
+            case U8 + NORM: scratchBytes[at] = (byte) Math.round(clamp(v, 0f) * 255f); break;
+            case I8 + NORM: scratchBytes[at] = (byte) Math.round(clamp(v, -1f) * 127f); break;
+            case U16: case I16: put16(at, Math.round(v)); break;
+            case U16 + NORM: put16(at, Math.round(clamp(v, 0f) * 65535f)); break;
+            case I16 + NORM: put16(at, Math.round(clamp(v, -1f) * 32767f)); break;
+            case U32: case I32: put32(at, (int) Math.round((double) v)); break;
+            case U32 + NORM: put32(at, (int) Math.round(clamp(v, 0f) * 4294967295.0)); break;
+            case I32 + NORM: put32(at, (int) Math.round(clamp(v, -1f) * 2147483647.0)); break;
+            default: throw new IllegalStateException("encoding " + encoding);
         }
     }
 
-    private void putInt(CgAttribType type, int at, int v) {
-        switch (type) {
-            case FLOAT: scratch.putFloat(at, v); break;
-            case HALF_FLOAT: scratch.putShort(at, toHalf(v)); break;
-            case UNSIGNED_BYTE: case BYTE: scratch.put(at, (byte) v); break;
-            case UNSIGNED_SHORT: case SHORT: scratch.putShort(at, (short) v); break;
-            case UNSIGNED_INT: case INT: scratch.putInt(at, v); break;
-            default: throw new IllegalStateException("no encoding for " + type);
+    private void putInt(int encoding, int at, int v) {
+        switch (encoding) {
+            case F32: put32(at, Float.floatToRawIntBits(v)); break;
+            case HALF: put16(at, toHalf(v)); break;
+            case U8: case I8: scratchBytes[at] = (byte) v; break;
+            case U16: case I16: put16(at, v); break;
+            case U32: case I32: put32(at, v); break;
+            default: throw new IllegalStateException("encoding " + encoding);
+        }
+    }
+
+    /** The low 16 bits of {@code v}, in native order. */
+    private void put16(int at, int v) {
+        byte[] b = scratchBytes;
+        if (LITTLE) {
+            b[at] = (byte) v;
+            b[at + 1] = (byte) (v >>> 8);
+        } else {
+            b[at] = (byte) (v >>> 8);
+            b[at + 1] = (byte) v;
+        }
+    }
+
+    private void put32(int at, int v) {
+        byte[] b = scratchBytes;
+        if (LITTLE) {
+            b[at] = (byte) v;
+            b[at + 1] = (byte) (v >>> 8);
+            b[at + 2] = (byte) (v >>> 16);
+            b[at + 3] = (byte) (v >>> 24);
+        } else {
+            b[at] = (byte) (v >>> 24);
+            b[at + 1] = (byte) (v >>> 16);
+            b[at + 2] = (byte) (v >>> 8);
+            b[at + 3] = (byte) v;
         }
     }
 
