@@ -185,6 +185,12 @@ final class CgVfxMaterials {
             // The sprite factory's settings, the renderer's own: rows, so renderers differing only in them share a draw.
             material.requireRow(FACING, who);
             rowValues.put(FACING, sprite.factoryFacing(who));
+            float[] pivot = sprite.pivot();
+            if (pivot[0] != 0.5f || pivot[1] != 0.5f) {
+                // A material placing its own quads has no pivot to take: it fails here rather than draw centred.
+                material.requireRow(PIVOT, who);
+                rowValues.put(PIVOT, floats(new float[]{pivot[0], pivot[1], 0f, 0f}));
+            }
         }
         CgVfxFlipbook flipbook = renderer instanceof CgVfxSpriteRendererProperties sprite ? sprite.subImage()
                 : renderer instanceof CgVfxMeshRendererProperties mesh ? mesh.subImage() : null;
@@ -334,7 +340,8 @@ final class CgVfxMaterials {
     /** The sprite factory's facing and flipbook settings, which a sprite renderer's fields write. */
     /** A renderer's drawn extent ({@code _cg_Size}), what it sets through its {@code values}: the draw's size. */
     private static final String DRAW_SIZE = "_cg_Size";
-    private static final String FACING = "_cg_Facing", SUB_IMAGE = "_cg_SubImage", SUB_UV = "_cg_SubUV", DRAWN = "_cg_Drawn";
+    private static final String FACING = "_cg_Facing", SUB_IMAGE = "_cg_SubImage", SUB_UV = "_cg_SubUV", DRAWN = "_cg_Drawn",
+            PIVOT = "_cg_Pivot";
 
     /**
      * The factory's {@code _cg_Drawn} for {@code emitter}'s renderers: its dynamic parameter slots a bit each, then 32

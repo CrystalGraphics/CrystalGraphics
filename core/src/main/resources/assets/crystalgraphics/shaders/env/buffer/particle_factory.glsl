@@ -178,7 +178,7 @@ CgMaterialParticle _cg_strip_particle(float cameraOffset, float drawnBits) {
 // One quad corner of the draw's particle: the placement every sprite of the vfx engine shares.
 void _cg_sprite(float facing, vec4 facingVector, vec4 alignmentVector, float stretch, float maxStretch,
                 float cameraOffset, float rotationBias, vec4 subImage, vec4 subUv, sampler2D subImages, float drawnBits,
-                out CgMaterialVertex v, out CgMaterialParticle p) {
+                vec4 pivot, out CgMaterialVertex v, out CgMaterialParticle p) {
     int drawn = int(drawnBits + 0.5);
     int n = fx_particle_index(FX_QUAD_INDEX, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM0.y);
     vec2 corner = FX_QUAD_CORNER;
@@ -207,7 +207,8 @@ void _cg_sprite(float facing, vec4 facingVector, vec4 alignmentVector, float str
     vec2 uvA = fx_subimage_uv(subImages, subImage, a, corner), uvB = fx_subimage_uv(subImages, subImage, b, corner);
     vec4 color = CG_PARTICLE_COLOR(i);
 
-    v.worldPosition = fx_particle_corner(centre, corner, extent, spin, right, up);
+    // Niagara's Size * (UVForPosition - PivotOffset): the corner from the pivot, its V down where the corner's y is up.
+    v.worldPosition = fx_particle_corner(centre, corner - vec2(2.0 * pivot.x - 1.0, 1.0 - 2.0 * pivot.y), extent, spin, right, up);
     v.texCoords[0] = uvA;
     v.texCoords[1] = uvB;
     v.texCoords[2] = uvA;
@@ -231,26 +232,26 @@ void _cg_sprite(float facing, vec4 facingVector, vec4 alignmentVector, float str
 
 CgMaterialVertex _cg_sprite_vertex(float facing, vec4 facingVector, vec4 alignmentVector, float stretch,
                                    float maxStretch, float cameraOffset, float rotationBias, vec4 subImage, vec4 subUv,
-                                   sampler2D subImages, float drawnBits) {
+                                   sampler2D subImages, float drawnBits, vec4 pivot) {
     CgMaterialVertex v;
     CgMaterialParticle p;
     _cg_sprite(facing, facingVector, alignmentVector, stretch, maxStretch, cameraOffset, rotationBias, subImage, subUv,
-               subImages, drawnBits, v, p);
+               subImages, drawnBits, pivot, v, p);
     return v;
 }
 
 CgMaterialParticle _cg_sprite_particle(float facing, vec4 facingVector, vec4 alignmentVector, float stretch,
                                        float maxStretch, float cameraOffset, float rotationBias, vec4 subImage,
-                                       vec4 subUv, sampler2D subImages, float drawnBits) {
+                                       vec4 subUv, sampler2D subImages, float drawnBits, vec4 pivot) {
     CgMaterialVertex v;
     CgMaterialParticle p;
     _cg_sprite(facing, facingVector, alignmentVector, stretch, maxStretch, cameraOffset, rotationBias, subImage, subUv,
-               subImages, drawnBits, v, p);
+               subImages, drawnBits, pivot, v, p);
     return p;
 }
 
-#define cg_material_vertex() _cg_sprite_vertex(_cg_Facing, _cg_FacingVector, _cg_AlignmentVector, _cg_Stretch,         _cg_MaxStretch, _cg_CameraOffset, _cg_RotationBias, _cg_SubImage, _cg_SubUV, _cg_SubImages, _cg_Drawn)
-#define cg_material_particle() _cg_sprite_particle(_cg_Facing, _cg_FacingVector, _cg_AlignmentVector, _cg_Stretch,         _cg_MaxStretch, _cg_CameraOffset, _cg_RotationBias, _cg_SubImage, _cg_SubUV, _cg_SubImages, _cg_Drawn)
+#define cg_material_vertex() _cg_sprite_vertex(_cg_Facing, _cg_FacingVector, _cg_AlignmentVector, _cg_Stretch,         _cg_MaxStretch, _cg_CameraOffset, _cg_RotationBias, _cg_SubImage, _cg_SubUV, _cg_SubImages, _cg_Drawn, _cg_Pivot)
+#define cg_material_particle() _cg_sprite_particle(_cg_Facing, _cg_FacingVector, _cg_AlignmentVector, _cg_Stretch,         _cg_MaxStretch, _cg_CameraOffset, _cg_RotationBias, _cg_SubImage, _cg_SubUV, _cg_SubImages, _cg_Drawn, _cg_Pivot)
 #elif defined(CG_VERTEX_STAGE) && defined(CG_TYPE_SPATIAL)
 // The mesh factory: a particle's mesh, drawn an instance a particle from Range's object records (CgVfxRange.objects):
 // the model its place, turn and size; custom0 its velocity and age; custom1 its progress, seed, opacity and heat;

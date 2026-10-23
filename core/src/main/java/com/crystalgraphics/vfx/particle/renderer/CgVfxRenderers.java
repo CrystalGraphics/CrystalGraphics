@@ -161,7 +161,6 @@ public final class CgVfxRenderers {
         if (r instanceof CgVfxSpriteRendererProperties s) {
             s.factoryFacing(who);
             if (s.sort() != CgVfxSpriteRendererProperties.Sort.NONE && s.sort() != CgVfxSpriteRendererProperties.Sort.VIEW_DEPTH) unbuilt = "sort " + s.sort();
-            else if (s.pivot()[0] != 0.5f || s.pivot()[1] != 0.5f) unbuilt = "a pivot off its middle";
             else if (s.subImage() != null && s.subImage().isTable()) unbuilt = "a rect-table sub_image";
             else if (s.cameraDistance() != null) unbuilt = "camera_distance";
             else if (s.castShadows()) unbuilt = "cast_shadows";
