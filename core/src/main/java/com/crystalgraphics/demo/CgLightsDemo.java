@@ -74,7 +74,7 @@ public final class CgLightsDemo {
      * The haze's extinction a block (-Dcrystalgraphics.demo.lightsHaze): thin, since the show's lights are bright enough
      * to light a floor several times its colour, and a thicker haze glows white round them.
      */
-    private static final float HAZE = Float.parseFloat(System.getProperty("crystalgraphics.demo.lightsHaze", "0.001"));
+    private static final float HAZE = Float.parseFloat(System.getProperty("crystalgraphics.demo.lightsHaze", "0.003"));
     /** The haze over the arena, added to the world's media while the show plays. */
     private final CgWorldHaze haze = new CgWorldHaze();
     private boolean hazing;
