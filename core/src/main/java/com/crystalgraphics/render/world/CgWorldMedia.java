@@ -24,6 +24,7 @@ import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.variable.CgVar;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
@@ -62,7 +63,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * }</pre>
  *
  * <ul>
- *   <li>A froxel is {@link #TILE} pixels of the target across and one of {@link #SLICES} slices deep, spaced in eye
+ *   <li>A froxel is {@code crystalgraphics.world.mediaPixels} pixels of the target across and one of {@link #SLICES} slices deep, spaced in eye
  *       depth from {@link #NEAR} to {@link #FAR} blocks as Unreal's volumetric fog spaces them: what
  *       {@code cg_env.glsl}'s {@code CG_MEDIA_*} reads by.</li>
  *   <li>Points are camera-relative, as the world renderer's are.</li>
@@ -73,8 +74,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public final class CgWorldMedia {
 
-    /** Pixels of the target a froxel spans across. */
-    public static final int TILE = 16;
+    /** Unreal's r.VolumetricFog.GridPixelSize by scalability (BaseScalability.ini): Epic 8, High 16, Cinematic 4. */
+    private static final CgVar.Int PIXELS = CgVar.integer("crystalgraphics.world.mediaPixels", 8, 4, 32, CgVar.DEV,
+            "Pixels of the screen a froxel of the air's grid spans across: Unreal's Epic 8, High 16. 1.7 ms at 8 in 1080p.");
     /** Slices deep, and the eye depths they run between: as {@code cg_env.glsl}'s {@code CG_MEDIA_*}. */
     public static final int SLICES = 128;
     public static final float NEAR = 0.095f, FAR = 256f;
@@ -229,7 +231,8 @@ public final class CgWorldMedia {
             hadLast = false;
             return null;
         }
-        int w = Math.max(1, (int) Math.ceil(targetWidth / TILE)), h = Math.max(1, (int) Math.ceil(targetHeight / TILE));
+        int tile = PIXELS.get();
+        int w = Math.max(1, (int) Math.ceil(targetWidth / tile)), h = Math.max(1, (int) Math.ceil(targetHeight / tile));
         boolean resized = a == null || w != width || h != height;
         if (resized) {
             width = w;

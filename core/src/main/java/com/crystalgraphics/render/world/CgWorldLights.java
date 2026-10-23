@@ -1367,12 +1367,11 @@ public final class CgWorldLights {
         boolean temporal = AIR_HISTORY.get();
         Matrix4fc reproject = media.reproject();
         boolean kept = temporal && reproject != null && airFiring == media.firing() - 1;
-        int n = (int) (media.firing() & 1023);
         CgGraphTexture into = air[1 - airNewest], last = air[airNewest];
         CgDispatch d = media.rays(pass.dispatch(scatterKernel, media.width(), media.height(), CgWorldMedia.SLICES))
                 .image("MEDIA_SCATTER", into).texture("_Media", extinction).set("_PhaseG", AIR_PHASE)
-                .set("_AirShadowRays", AIR_RAYS.get())
-                .set("_Jitter", temporal ? halton(n, 2) : 0.5f, temporal ? halton(n, 3) : 0.5f, temporal ? halton(n, 5) : 0.5f, 0f)
+                .set("_AirShadowRays", AIR_RAYS.get()).set("_Frame", (int) (media.firing() & 1023))
+                .set("_Jittered", temporal ? 1 : 0)
                 .set("_HistoryWeight", kept ? AIR_HISTORY_WEIGHT : 0f)
                 .texture("_History", kept ? last : CgFallbackTextures.BLACK_VOLUME);
         if (kept) {
@@ -1387,15 +1386,6 @@ public final class CgWorldLights {
         return into;
     }
 
-    /** The radical inverse of {@code index} in {@code base}: a low-discrepancy point from 0 to 1. */
-    private static float halton(int index, int base) {
-        float result = 0f, f = 1f;
-        for (int i = index + 1; i > 0; i /= base) {
-            f /= base;
-            result += f * (i % base);
-        }
-        return result;
-    }
 
     /** What both of light_volume.compute's kernels read: the lights, their grid, and the shadows' inputs this firing. */
     private void traceInputs(CgDispatch d, CgTexture lightmap, CgGraphBuffer none) {

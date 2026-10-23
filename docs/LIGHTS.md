@@ -266,8 +266,12 @@ CgWorldRenderer.get().media().add(haze);      // a haze to see the lights in; VF
 - **History** (Unreal's temporal reprojection, VolumetricFog.usf:856-921, :1173-1180): each firing lights a froxel at a
   Halton 2, 3, 5 point inside it and blends 0.9 of what the last firing's grid held at its middle, reprojected through
   the last firing's view, so a narrow beam is averaged over each cell instead of read at its centre. Dropped at the first
-  firing, after a resize or a firing with nothing in the air, and outside the last grid.
+  firing, after a resize or a firing with nothing in the air, and outside the last grid; a froxel without one is lit at
+  four Halton points (Epic's `r.VolumetricFog.HistoryMissSupersampleCount`).
   `crystalgraphics.world.lightsAirHistory=false` lights froxel middles alone.
+- **The grid across**: 8 pixels a froxel, Unreal's Epic `r.VolumetricFog.GridPixelSize` (BaseScalability.ini; High is
+  16), set by `crystalgraphics.world.mediaPixels`. A beam about a froxel wide is spread over it, so at 16 a beam 40
+  blocks off faded into the haze. At 8 in 1920x1080 the lights demo's media pass takes 1.7 ms (RTX 4070 Super).
 - **Integration** (`media.compute`): Unreal's `FinalIntegrationCS`, Frostbite's energy-conserving sum, into `cg_Media`'s
   rgb (the light scattered toward the eye) beside its alpha (what gets through, `cg_MediaTransmit`).
 - **The grid's depth**: 128 slices to 256 blocks, spaced by Unreal's `CalculateGridZParams` at its depth distribution
@@ -280,8 +284,10 @@ CgWorldRenderer.get().media().add(haze);      // a haze to see the lights in; VF
   Unreal leaves that to its temporal anti-aliasing, which a Minecraft frame does not have. The media
   is recorded whenever an injector is added, transparent draws or not.
 - **Departures from Unreal**: the opaque scene is not dimmed by the transmittance (what puts smoke in the air draws its
-  own look; only the light is added); no conservative-depth rejection of the history and no supersampling where it
-  misses; a budget of shadow rays a froxel.
+  own look; only the light is added); no conservative-depth rejection of the history; a budget of shadow rays a froxel;
+  a spot's cone edge widened by the froxel's size seen from the light (`cg_light_falloff_filtered`), since a cone
+  narrower than a froxel near its light flickers as the jittered point falls in and out of it, which Unreal leaves to
+  its temporal anti-aliasing.
 - `crystalgraphics.world.lightsAir=false` turns it off; `--mode=lights-air` is the gate. At 320x240 with one light the
   media pass took 0.10 ms and the composite 0.02 (RTX 4070 Super); the grid grows with the screen. `CgLightsDemo` stands
   in a haze.

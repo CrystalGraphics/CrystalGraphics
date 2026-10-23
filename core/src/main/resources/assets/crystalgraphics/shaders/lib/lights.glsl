@@ -69,15 +69,18 @@ ivec3 cg_light_cell(vec3 p, vec3 zParams, vec2 rayMin, vec2 rayMax, vec2 tile, i
 // biasSqr, in square blocks, is the inverse square's bias: Unreal's square centimetre on a surface; its volumetric fog
 // gives it a froxel's radius squared (VolumetricFog.usf:1061, r.VolumetricFog.InverseSquaredLightDistanceBiasScale 1), so a cell
 // near a light takes its average rather than the spike at the light.
-float cg_light_falloff_biased(vec3 position, float radius, float exponent, vec4 spotCos, vec4 segmentCone, vec3 p,
-                              float biasSqr) {
+// spread, in blocks, is how far round p the answer stands for: a cone's edge is widened by the angle it spans from the
+// light, so a region straddling the edge takes its share of the cone rather than whether its one point fell inside.
+float cg_light_falloff_filtered(vec3 position, float radius, float exponent, vec4 spotCos, vec4 segmentCone, vec3 p,
+                                float biasSqr, float spread) {
     vec3 toLight = position - p;
     float d2 = dot(toLight, toLight), x = d2 / (radius * radius);
     float fade = clamp(1.0 - x * x, 0.0, 1.0);
     float mask = exponent == 0.0 ? fade * fade : pow(1.0 - clamp(x, 0.0, 1.0), exponent);
     if (spotCos.w > -1.5) {
-        float c = dot(-toLight * inversesqrt(max(d2, 1.0e-12)), spotCos.xyz);
-        float cone = clamp((c - spotCos.w) * segmentCone.w, 0.0, 1.0);
+        float invD = inversesqrt(max(d2, 1.0e-12)), c = dot(-toLight * invD, spotCos.xyz);
+        float ramp = 1.0 / segmentCone.w, width = ramp + sqrt(max(1.0 - c * c, 0.0)) * min(spread * invD, 1.0);
+        float cone = clamp(0.5 + (c - spotCos.w - 0.5 * ramp) / max(width, 1.0e-6), 0.0, 1.0);
         mask *= cone * cone;
     }
     if (exponent != 0.0 || mask <= 0.0) return mask;
@@ -85,6 +88,12 @@ float cg_light_falloff_biased(vec3 position, float radius, float exponent, vec4 
     float inv01 = inversesqrt(max(dot(l0, l0), 1.0e-12)) * inversesqrt(max(dot(l1, l1), 1.0e-12));
     float cosSubtended = dot(l0, l1) * inv01;
     return mask * inv01 / (cosSubtended * 0.5 + 0.5 + biasSqr * inv01);
+}
+
+// cg_light_falloff_filtered at a point.
+float cg_light_falloff_biased(vec3 position, float radius, float exponent, vec4 spotCos, vec4 segmentCone, vec3 p,
+                              float biasSqr) {
+    return cg_light_falloff_filtered(position, radius, exponent, spotCos, segmentCone, p, biasSqr, 0.0);
 }
 
 // cg_light_falloff_biased with Unreal's square centimetre: what a surface takes.

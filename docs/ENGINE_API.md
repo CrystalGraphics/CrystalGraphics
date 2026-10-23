@@ -160,7 +160,7 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   with `DepthTest ALWAYS`, since that target has no depth. `world.halfResolution(false)` draws them at full size.
 - **Media: smoke dims what is inside it.** What is drawn over the volumes is dimmed by the smoke in front of it instead
   (`docs/SHADERS.md` § *Dimmed by the smoke in front*): at the top of each transparent firing every injector
-  (`world.media().add(injector)`) adds its extinction into a froxel grid over the view (`CgWorldMedia`: 16 pixels
+  (`world.media().add(injector)`) adds its extinction into a froxel grid over the view (`CgWorldMedia`: 8 pixels
   across, 128 slices to 256 blocks spaced as Unreal's volumetric fog spaces them), which is summed from the eye
   out into what gets through, bound as `cg_Media` to every transparent pass. The fluids and lit grids inject themselves.
   The world's lights glow in what is there (`CgWorldHaze` is a box of haze to see them in; `LIGHTS.md` § *In the
