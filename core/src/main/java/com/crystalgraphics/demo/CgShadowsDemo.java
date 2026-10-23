@@ -8,6 +8,9 @@ import com.crystalgraphics.render.world.CgWorldLights;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.primitive.CgSphere;
+import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.variable.CgVars;
 import org.joml.Matrix4f;
@@ -41,7 +44,17 @@ public final class CgShadowsDemo {
     private static final String MATERIAL = "crystalgraphics:shaders/demo_render.shader";
     private static final String SHADOWS = "crystalgraphics.world.lightsShadows";
     private static final String FRAMES = "crystalgraphics.world.lightsShadowFrames", SPATIAL = "crystalgraphics.world.lightsShadowSpatial";
-    private static final String SCREEN = "crystalgraphics.world.lightsScreenTrace";
+    private static final String SCREEN = "crystalgraphics.world.lightsScreenTrace", SKIP = "crystalgraphics.world.lightsSampleSkip";
+    /**
+     * Stand still over a shadow: each part of the shadow rays is left out in turn, a second and a half each, and the log says
+     * what the sample pass cost a frame without it ({@code [shadows-bisect]}). Needs the trace's {@code gpu} channel.
+     */
+    private static final boolean BISECT = Boolean.getBoolean("crystalgraphics.demo.shadowsBisect");
+    private static final int[] BISECT_SKIPS = {0, 1, 2, 4, 8, 16, 32, 64, 32 | 64, 0};
+    private static final double BISECT_STEP = 1.5, BISECT_SETTLE = 0.4;
+    private int bisectStep = -1;
+    private double bisectFrom;
+    private boolean bisectReset;
     private static final CgSphere MARK = CgSphere.of(0.15);
     /** The plaza's half width, and the stations' distance from its middle. */
     private static final double PLAZA = 7, STATION = 12;
@@ -50,10 +63,14 @@ public final class CgShadowsDemo {
     private final CgPose pose = new CgPose();
     private CgMaterial material;
 
-    /** Every shadow off, or back on: the lamps, the sun and Minecraft's lights alike. */
+    /**
+     * Every shadow off, or back on: the lamps, the sun and Minecraft's lights alike. Marks the trace {@code demo.shadows},
+     * so {@code -Dcrystalgraphics.trace.splitAt=demo.shadows} reports the frames either side apart.
+     */
     public static void toggleShadows() {
         CgVar.Bool shadows = (CgVar.Bool) CgVars.get(SHADOWS);
         shadows.set(!shadows.get());
+        CgTrace.marker(CgChannels.WORLD, "demo.shadows", shadows.get() ? "on" : "off");
     }
 
     /** The shadows' temporal accumulation: one frame, or the default twelve. */
@@ -90,6 +107,7 @@ public final class CgShadowsDemo {
     /** The scene round a ground point {@code (x, y, z)} as it is at {@code seconds}. */
     public void submit(CgWorldRenderer world, double x, double y, double z, double seconds) {
         if (material == null) return;
+        if (BISECT) bisect(seconds);
         float t = (float) (seconds % 3600.0);
         CgMesh cube = CgMeshShapes.cube(), ball = CgMeshShapes.sphere(24, 32);
         CgWorldLights lights = world.lights();
@@ -117,6 +135,31 @@ public final class CgShadowsDemo {
         double px = x + STATION + 2, pz = z - 3;
         CgCollisionDebug.shape(MARK, pose.at(px, y + 1.2, pz), 0xFFB0D0FF);
         lights.add(px, y + 1.2, pz, 12f, 0xFFB0D0FF, lit(2.5f, 3f), 0f).source(0.1f);
+    }
+
+    private void bisect(double seconds) {
+        if (bisectStep < 0) {
+            bisectStep = 0;
+            bisectFrom = seconds + 20.0;
+            bisectReset = false;
+            ((CgVar.Int) CgVars.get(SKIP)).set(BISECT_SKIPS[0]);
+            System.out.println("[shadows-bisect] walk to a shadow and stand still over it; starting in 20 s, done 15 s after");
+            return;
+        }
+        if (bisectStep >= BISECT_SKIPS.length) return;
+        if (!bisectReset && seconds >= bisectFrom + BISECT_SETTLE) {
+            CgGpuTrace.resetTotals();
+            bisectReset = true;
+        }
+        if (seconds < bisectFrom + BISECT_STEP) return;
+        long[] sample = CgGpuTrace.totals().get("world.lightsSample");
+        System.out.printf("[shadows-bisect] skip %3d: sample %.2f ms a frame over %d frames%n", BISECT_SKIPS[bisectStep],
+                sample == null || sample[1] == 0 ? Double.NaN : sample[0] / 1e6 / sample[1], sample == null ? 0 : sample[1]);
+        bisectStep++;
+        bisectFrom = seconds;
+        bisectReset = false;
+        if (bisectStep < BISECT_SKIPS.length) ((CgVar.Int) CgVars.get(SKIP)).set(BISECT_SKIPS[bisectStep]);
+        else System.out.println("[shadows-bisect] done");
     }
 
     /** An intensity lighting a surface it faces {@code d} blocks off to {@code peak} times its colour, as Unreal's simple light. */
