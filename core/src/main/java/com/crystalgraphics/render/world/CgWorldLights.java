@@ -172,10 +172,19 @@ public final class CgWorldLights {
             SHADE_SHADER = "crystalgraphics:shaders/world_lights_shade.shader",
             TEMPORAL_SHADER = "crystalgraphics:shaders/world_lights_temporal.shader",
             DENOISE_SHADER = "crystalgraphics:shaders/world_lights_denoise.shader",
-            HOST_DEPTH_SHADER = "crystalgraphics:shaders/world_lights_host_depth.shader";
+            HOST_DEPTH_SHADER = "crystalgraphics:shaders/world_lights_host_depth.shader",
+            TILES_SHADER = "crystalgraphics:shaders/world_lights_tiles.shader";
     private static final int GPU_SAMPLE = CgGpuTrace.name("world.lightsSample"), GPU_SHADE = CgGpuTrace.name("world.lightsShade"),
             GPU_TEMPORAL = CgGpuTrace.name("world.lightsTemporal"), GPU_DENOISE = CgGpuTrace.name("world.lightsDenoise"),
-            GPU_HOST_DEPTH = CgGpuTrace.name("world.lightsHostDepth");
+            GPU_HOST_DEPTH = CgGpuTrace.name("world.lightsHostDepth"), GPU_TILES = CgGpuTrace.name("world.lightsTiles");
+    /** Unreal's capsule shadow tiles: a tile's entities, a bit each, 16 a channel. */
+    private static final int ENTITY_TILE = 16;
+    private static final CgFrameBufferFormat TILES_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.tiles")
+            .color(0, CgTextureType.RGBA32F).build();
+    private static final CgVar.Bool ENTITY_TILES = CgVar.bool("crystalgraphics.world.lightsEntityTiles", true, CgVar.DEV,
+            "A shadow ray tests only the entities its 16x16 tile can meet; off, every tile keeps every entity.");
+    /** How far a kernel's light may reach, unknown here: what a tile keeps entities within while any appends. */
+    private static final float KERNEL_REACH = 64f;
     /** A sample's light index, exact as a float to 2^24, its weight, and the sun's visibility. */
     private static final CgFrameBufferFormat SAMPLES_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.samples")
             .color(0, CgTextureType.RGBA32F).build();
@@ -194,6 +203,8 @@ public final class CgWorldLights {
      */
     private static final int CASCADES = 4;
     private static final float CASCADE_EXPONENT = 3f, CASCADE_TRANSITION = 0.1f, SUN_NEAR = 0.05f;
+    /** Blocks the sun's ray through the blocks and entities runs: world_lights_sample.shader's sun_visibility. */
+    private static final float SUN_RAY = 96f;
     static final String SUN_SHADOW_SHADER = "crystalgraphics:shaders/world_sun_shadow.shader";
     private static final int GPU_SUN = CgGpuTrace.name("world.sunShadow");
     /** The cascades' atlas, a quadrant each: the casters' depth from the light in blocks, and the depth test's. */
@@ -290,7 +301,18 @@ public final class CgWorldLights {
             "The light grid skips cells behind the scene and pulls each cell's far edge in to it.");
     private CgKernel view, coarse, cell, countCells, writeCells;
     private float tileU, tileV;
-    private CgMaterial apply, sample, shade, temporal, denoise;
+    private CgMaterial apply, sample, shade, temporal, denoise, tiles;
+    /** This firing's entities per tile, and the farthest a shadowed light's ray runs, blocks. */
+    private CgGraphTexture entityTiles;
+    private float rayReach;
+    private final Consumer<CgShaderBindings> tileValues = b -> b.vec4("_Screen", this.targetW, this.targetH, 0f, 0f)
+            .vec4("_Rays", rays[0], rays[1], rays[2], rays[3])
+            .vec4("_ToView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
+            .vec4("_ToView1", toView.m01(), toView.m11(), toView.m21(), toView.m31())
+            .vec4("_ToView2", toView.m02(), toView.m12(), toView.m22(), toView.m32())
+            .vec4("_Depth", perspective.m22(), perspective.m32(), perspective.m23(), perspective.m33())
+            .vec4("_EyeFrac", this.eyeFrac[0], this.eyeFrac[1], this.eyeFrac[2], 0f)
+            .vec4("_Reach", ENTITY_TILES.get() ? this.rayReach : 1.0e9f, this.sunOn ? 1f : 0f, SUN_RAY, 0f).set1i("_Entities", this.entities);
     /** Lights added from the CPU this frame that cast shadows. */
     private int shadowedAdded;
     /** Our meshes' distance fields, and this firing's casters: {@link #CASTER_FLOATS} floats each. */
@@ -360,7 +382,8 @@ public final class CgWorldLights {
             .sampler("_CasterRows", 4, this.casterCount > 0 || this.sunMapped ? this.casters : CgFallbackTextures.BLACK_1x1)
             .sampler("_MeshFields", 5, this.casterCount > 0 ? this.meshFields.atlas() : CgFallbackTextures.BLACK_1x1)
             .sampler("_Normals", 6, this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1)
-            .sampler("_SunMap", 7, this.sunMapped ? this.sunMap : CgFallbackTextures.WHITE_1x1));
+            .sampler("_SunMap", 7, this.sunMapped ? this.sunMap : CgFallbackTextures.WHITE_1x1)
+            .sampler("_EntityTiles", 8, this.entities > 0 ? this.entityTiles : CgFallbackTextures.BLACK_1x1));
     private final Consumer<CgShaderBindings> windowValues = b -> CgWorldVoxelWindow.get().bind(b, 0);
     private int entities;
     /** The downsample factor the sample and shade passes read this frame: {@link #DOWNSAMPLE}'s mode. */
@@ -725,6 +748,7 @@ public final class CgWorldLights {
             window.useDistance();
             window.emitters(gatherBlock);
         }
+        rayReach = appenders.isEmpty() ? 0f : KERNEL_REACH;
         if (cpu == 0 && blockCount == 0 && appenders.isEmpty()) return false;
         if (list == null) {
             list = CgGraphBuffer.persistent("cg_world_lights",
@@ -744,7 +768,13 @@ public final class CgWorldLights {
             staging.clear();
             for (int i = 0; i < listed; i++) {
                 int p = i * 3, l = i * FLOATS;
-                if (light[l + 19] > 0.5f) shadowedAdded++;
+                if (light[l + 19] > 0.5f) {
+                    shadowedAdded++;
+                    // A lit surface is within its radius of the centre; the ray ends on its line or its sphere.
+                    float s0 = light[l + 12], s1 = light[l + 13], s2 = light[l + 14];
+                    rayReach = Math.max(rayReach, light[l + 3] + 0.5f * (float) Math.sqrt(s0 * s0 + s1 * s1 + s2 * s2)
+                            + light[l + 18]);
+                }
                 staging.putFloat((float) (at[p] - cameraX)).putFloat((float) (at[p + 1] - cameraY))
                         .putFloat((float) (at[p + 2] - cameraZ));
                 for (int w = 3; w < FLOATS; w++) staging.putFloat(light[l + w]);
@@ -752,6 +782,7 @@ public final class CgWorldLights {
             // CG_LIGHT_MINECRAFT: black, reaching its level, its ambient.w 2.
             for (int i = 0; i < blockCount; i++) {
                 int b = i * 4;
+                rayReach = Math.max(rayReach, blocks[b + 3] + 0.5f);
                 staging.putFloat((float) (blocks[b] + 0.5 - cameraX)).putFloat((float) (blocks[b + 1] + 0.5 - cameraY))
                         .putFloat((float) (blocks[b + 2] + 0.5 - cameraZ)).putFloat(blocks[b + 3] + 0.5f)
                         .putFloat(0f).putFloat(0f).putFloat(0f).putFloat(0f)
@@ -1016,9 +1047,10 @@ public final class CgWorldLights {
             shade = CgMaterial.newInstance(SHADE_SHADER);
             temporal = CgMaterial.newInstance(TEMPORAL_SHADER);
             denoise = CgMaterial.newInstance(DENOISE_SHADER);
+            tiles = CgMaterial.newInstance(TILES_SHADER);
         }
         // Each started, whichever is not ready.
-        boolean ready = sample.prepare() & shade.prepare() & temporal.prepare() & denoise.prepare();
+        boolean ready = sample.prepare() & shade.prepare() & temporal.prepare() & denoise.prepare() & tiles.prepare();
         if (!ready) return false;
         int mode = Math.round(DOWNSAMPLE.get());
         downX = mode > 0 ? 2 : 1;
@@ -1075,6 +1107,14 @@ public final class CgWorldLights {
         }
         CgTrace.counter(CgChannels.WORLD, "world.lights-casters", casterCount);
         sunMapped = sunOn && recordSun(stage, recording);
+        if (entities > 0) {
+            int tx = (w + ENTITY_TILE - 1) / ENTITY_TILE, ty = (h + ENTITY_TILE - 1) / ENTITY_TILE;
+            if (entityTiles == null || entityTiles.getWidth() != tx || entityTiles.getHeight() != ty) {
+                entityTiles = CgGraphTexture.transientTexture("cg_world_lights.tiles", new CgTextureDesc(tx, ty, TILES_FORMAT));
+            }
+            tiles.buffer("ENTITIES", boxes).applyProperties(tileValues);
+            fullScreen(stage, recording, entityTiles, tiles, GPU_TILES);
+        }
         sample.buffer("LIGHTS", binned ? list : none).buffer("CELLS", binned ? cells : none)
                 .buffer("INDICES", binned ? indices : none).buffer("ENTITIES", boxes != null ? boxes : none)
                 .applyProperties(sampleValues);

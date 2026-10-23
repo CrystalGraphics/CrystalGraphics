@@ -55,6 +55,7 @@ Properties {
     _CasterRows    ("Our meshes casting shadows, five texels each: eye-relative world to field voxels (three rows), the field's size and first float, its scales; from SUN_ROWS_AT the sun's cascades, four each: to uv, to depth, view depths and depth bias", sampler2D) = "black"
     _MeshFields    ("Every mesh's distance field in its own units, MESH_FIELD_ROW floats a row", sampler2D) = "black"
     _Normals       ("Our surfaces' normals, world, n * 0.5 + 0.5, alpha 1 where drawn", sampler2D) = "black"
+    _EntityTiles   ("Each 16x16 tile's entities a ray from it can meet: 16 bits a channel (world_lights_tiles.shader)", sampler2D) = "black"
     _SunMap        ("The sun's cascades, a quadrant each, nearest bottom left: our casters' depth from the light, blocks", sampler2D) = "white"
     _WorldBaseX    ("Its lowest block, absolute: x",               int) = 0
     _WorldBaseY    ("y",                                           int) = 0
@@ -201,6 +202,9 @@ Pass {
         return 0;
     }
 
+    // This pixel's tile's entities, a bit each: the only capsules its rays test.
+    uvec4 entityTiles;
+
     // Whether the window's blocks or an entity's capsule lie on the eye-relative world segment a to a + dir * t1, from
     // t0: the world trace past the screen.
     bool world_trace(vec3 aw, vec3 dir, float t0, float t1) {
@@ -213,6 +217,7 @@ Pass {
         // character), skipped where the ray starts or ends inside it: the surface or the light is that entity's own.
         vec3 bw = aw + dir * t1;
         for (int k = 0; k < ((_Skip & 64) != 0 ? 0 : _Entities); k++) {
+            if (((entityTiles[k >> 4] >> uint(k & 15)) & 1u) == 0u) continue;
             vec3 lo = ENTITIES(k * 2).xyz - _EyeFrac.xyz, hi = ENTITIES(k * 2 + 1).xyz - _EyeFrac.xyz;
             if (all(greaterThan(aw, lo - 0.1)) && all(lessThan(aw, hi + 0.1))) continue;
             if (all(greaterThan(bw, lo)) && all(lessThan(bw, hi))) continue;
@@ -468,6 +473,7 @@ Pass {
         if (p.z >= 0.0) return;
         vec3 n = normal_at(px, p);
         bool ownPixel = own(px, -p.z);
+        entityTiles = uvec4(texelFetch(_EntityTiles, min(px / 16, textureSize(_EntityTiles, 0) - 1), 0));
         // The sun and Minecraft's block light take one ray a pixel, in its first sample: MegaLights spends a pixel's
         // four on every light together, and the frames average the rest.
         bool first = mine == 0;
