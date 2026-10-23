@@ -179,8 +179,21 @@ public class CgVfxEmitterStateTest {
         assertTrue("a recalculated duration varies by loop", varies);
     }
 
-    @Test(expected = IllegalStateException.class)
-    public void loopsInNoTimeAreRefused() {
-        CgVfxEmitter.builder("never").state(CgVfxEmitterState.infinite(0f)).burst(0f, 1).build();
+    /** As Unreal steps an emitter's loop: a loop of no length never ends, and a short one ends once a step. */
+    @Test
+    public void loopsStepOnceAStepAndOneOfNoLengthNeverEnds() {
+        CgVfxEmitter never = CgVfxEmitter.builder("never").state(CgVfxEmitterState.infinite(0f)).burst(0f, 1).build();
+        CgVfxEmitterInstance held = new CgVfxEmitterInstance(never, 0.4f);
+        held.start(0f, 0f, 0f);
+        assertEquals(List.of(0), burstSteps(held, 60));
+
+        CgVfxEmitter brief = CgVfxEmitter.builder("brief").state(CgVfxEmitterState.infinite(0.001f)).capacity(64)
+                .burst(0f, 1).life(0.1f, 0.1f).build();
+        CgVfxEmitterInstance stepped = new CgVfxEmitterInstance(brief, 0.4f);
+        stepped.start(0f, 0f, 0f);
+        for (int i = 0; i < 30; i++) {
+            stepped.books().schedule(DT, 0.0, 0.0, 0.0);
+            assertEquals("step " + i + "'s bursts", 1, stepped.books().stepBursts());
+        }
     }
 }

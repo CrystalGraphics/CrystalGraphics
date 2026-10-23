@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.particle;
 
+import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxArcRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
@@ -490,8 +491,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     }
 
     @Override
-    public float[] sizeBySpeed() {
-        return sizeBySpeed.clone();
+    public void sizeBySpeed(float[] out, int at) {
+        System.arraycopy(sizeBySpeed, 0, out, at, 4);
     }
 
     /** How its particles play their sheets' frames; null where they show frame 0. */
@@ -736,7 +737,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             long perLoop = 0;
             for (CgVfxSpawnBurst b : bursts) if (b.time() <= duration) perLoop += b.countMax();
             // Every loop that can begin within the span, the one under way at its start too.
-            fromBursts = perLoop * Math.min(loops, (long) Math.ceil(span / state.shortestPeriod()) + 1);
+            // A loop lasts a step at least: its emitter crosses one a step.
+            fromBursts = perLoop * Math.min(loops, (long) Math.ceil(span / Math.max(state.shortestPeriod(), CgVfxSystem.TICK)) + 1);
         }
         float active = loops == Integer.MAX_VALUE ? Float.POSITIVE_INFINITY : duration * loops;
         float peak = rate.peak(duration);
@@ -1789,9 +1791,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
                 spawnForm(CgVfxSpawnForm.of(CgVfxSpawnInput.RADIUS, ids.getOrDefault("shape", "shape"), radius,
                         CgVfxSpawnForm.swept(spawn.b, sweep, state.durationMax())));
                 sweep = 0f;
-            }
-            if (state.loops() > 1 && !(state.shortestPeriod() > 0f)) {
-                throw new IllegalStateException(name + " loops in no time: give its loops a duration or a delay");
             }
             if (spawnForm(CgVfxSpawnInput.ORBIT_OFFSET) != null) {
                 for (CgVfxModule m : modules) {

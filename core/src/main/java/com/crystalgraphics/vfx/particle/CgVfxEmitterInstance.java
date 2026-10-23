@@ -530,14 +530,16 @@ public final class CgVfxEmitterInstance {
     }
 
     /**
-     * Fires every burst whose time in its loop has come, at this step's start, and moves on to each loop whose time has
-     * come: its delay and length picked, its bursts armed again. A step longer than a loop crosses several.
+     * Fires every burst whose time in its loop has come, at this step's start, and moves on to the next loop once its
+     * time has come: its delay and length picked, its bursts armed again. At most one loop a step, as Unreal steps an
+     * emitter's loop once a tick, and a loop of no length never ends (Cascade's {@code bLooped},
+     * {@code ParticleEmitterInstances.cpp:947-982}).
      */
     private void fireBursts() {
         CgVfxEmitterState state = emitter.state;
         CgVfxSpawnBurst[] bursts = emitter.bursts;
         int loops = state.loops();
-        while (!loopsOver && time < stoppedAt) {
+        for (boolean wrapped = false; !loopsOver && time < stoppedAt; wrapped = true) {
             float age = time - loopStart, duration = loopLength;
             // A burst past the loop's end never fires; in the delay, age is negative and none does.
             while (burstsDone < bursts.length && bursts[burstsDone].time() <= Math.min(age, duration)) {
@@ -545,7 +547,7 @@ public final class CgVfxEmitterInstance {
                 for (int n = 0; n < fit; n++) scheduleOne(stepDt, 0f);
                 burstsDone++;
             }
-            if (age < duration) {
+            if (wrapped || !(duration > 0f) || age < duration) {
                 // Once its last loop's bursts are spent, one spawning by bursts alone has spawned everything.
                 if (loop + 1 >= loops && burstsDone == bursts.length && !emitter.spawnsContinuously()) loopsOver = true;
                 return;

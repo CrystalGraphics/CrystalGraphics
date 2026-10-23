@@ -179,7 +179,8 @@ emitter_update:
 - **An effect's seed is drawn from the engine's random stream** unless `CgVfxEffect.seeded(...)` or a cue gave it one.
   A capture that must repeat run to run turns on `-Dcrystalgraphics.fixedSeed=true` (or `CgRandom.fixedSeed(true)` at
   startup; the harness does), which seeds that stream from a constant, as Unreal's `-FixedSeed` does.
-- **Loops of no time are refused**: a looping state needs a duration or a delay, or `build()` throws.
+- **A loop moves on at most once a step**, as Unreal steps an emitter's loop once a tick: a loop shorter than a step
+  lasts a step, and a loop of no length (a duration rolled at 0) never ends, its bursts fired once.
 - **`sweep(speed)` needs a sphere, shell, cylinder or ring and a loop of finite length**: its front runs over each
   loop, the radius as a curve by the loop's seconds, its longest loop's length.
 
