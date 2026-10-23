@@ -278,6 +278,11 @@ lights.add(x, y, z, 45f, 0xFFFFF4E0, 1800f, 0f).spot(dx, -0.3f, dz, 5f, 10f).sca
   firing, after a resize or a firing with nothing in the air, and outside the last grid; a froxel without one is lit at
   four Halton points (Epic's `r.VolumetricFog.HistoryMissSupersampleCount`).
   `crystalgraphics.world.lightsAirHistory=false` lights froxel middles alone.
+- **Four points a froxel every frame** (`crystalgraphics.world.lightsAirSamples`), where Unreal lights one and leaves the
+  noise to its temporal anti-aliasing, which a Minecraft frame does not have. At one, a searchlight's beam flickered 4 of
+  255 at its base (`--mode=lights-air-quality`, 99th percentile); at four 1.2, and down its length 0.7, as steady as
+  froxel middles (0.6). The history weight stays Unreal's 0.9 (`crystalgraphics.world.lightsAirHistoryWeight`): 0.95
+  is steadier still and leaves moving beams trailing.
 - **The grid across**: 8 pixels a froxel, Unreal's Epic `r.VolumetricFog.GridPixelSize` (BaseScalability.ini; High is
   16), set by `crystalgraphics.world.mediaPixels`. A beam about a froxel wide is spread over it, so at 16 a beam 40
   blocks off faded into the haze. At 8 in 1920x1080 the lights demo's media pass takes 1.7 ms (RTX 4070 Super).

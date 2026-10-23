@@ -183,8 +183,15 @@ public final class CgWorldLights {
             "Shadowed lights traced from each froxel of lit air; past them a froxel's lights shine unshadowed.");
     private static final CgVar.Bool AIR_HISTORY = CgVar.bool("crystalgraphics.world.lightsAirHistory", true, CgVar.DEV,
             "Lit air jittered through each froxel and blended over the last frames: Unreal's r.VolumetricFog.TemporalReprojection.");
-    /** Unreal's r.VolumetricFog.HistoryWeight. */
-    private static final float AIR_HISTORY_WEIGHT = 0.9f;
+    private static final CgVar.Num AIR_HISTORY_WEIGHT = CgVar.number("crystalgraphics.world.lightsAirHistoryWeight", 0.9f, 0f,
+            0.99f, CgVar.DEV, "How much of the lit air's last frames each frame keeps: Unreal's r.VolumetricFog.HistoryWeight.");
+    /**
+     * Unreal lights a froxel at one point a frame and leaves the noise to its temporal anti-aliasing, which a Minecraft
+     * frame lacks: at one, a searchlight's beam flickered 4 of 255 at its base (lights-air-quality's 99th percentile),
+     * at four 1.2, and down its length as steady as froxel middles.
+     */
+    private static final CgVar.Int AIR_SAMPLES = CgVar.integer("crystalgraphics.world.lightsAirSamples", 4, 1, 8, CgVar.DEV,
+            "Jittered points each froxel of lit air is lit at a frame: its noise falls with their square root, its cost rises with them.");
     /** Unreal's ExponentialHeightFog VolumetricFogScatteringDistribution: a little forward scattering. */
     private static final float AIR_PHASE = 0.2f;
     private static final CgVar.Num VOLUME_OUTER = CgVar.number("crystalgraphics.world.lightsVolumeOuter", 50f, 2f, 256f,
@@ -1389,7 +1396,7 @@ public final class CgWorldLights {
                 .image("MEDIA_SCATTER", into).texture("_Media", extinction).set("_PhaseG", AIR_PHASE)
                 .set("_AirShadowRays", AIR_RAYS.get()).set("_Frame", (int) (media.firing() & 1023))
                 .set("_Jittered", temporal ? 1 : 0)
-                .set("_HistoryWeight", kept ? AIR_HISTORY_WEIGHT : 0f)
+                .set("_HistoryWeight", kept ? AIR_HISTORY_WEIGHT.get() : 0f).set("_Samples", AIR_SAMPLES.get())
                 .texture("_History", kept ? last : CgFallbackTextures.BLACK_VOLUME);
         if (kept) {
             d.set("_Reproject0", reproject.m00(), reproject.m10(), reproject.m20(), reproject.m30())

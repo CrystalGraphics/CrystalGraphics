@@ -74,6 +74,7 @@ Properties {
     _AirShadowRays ("Shadowed lights traced a froxel; the rest unshadowed", int) = 4
     _Frame      ("The firing's index: its jitter, Halton 2, 3 and 5 of it", int) = 0
     _Jittered   ("1 to light froxels at jittered points, 0 at their middles", int) = 0
+    _Samples    ("Jittered points a froxel each firing it keeps its history", int) = 1
     _History    ("The last firing's lit air",                       sampler3D) = "black"
     _HistoryWeight ("How much of the history is kept; 0 with none", float) = 0
     _Reproject0 ("This firing's eye-relative world to the last firing's clip: the first row", vec4) = (1, 0, 0, 0)
@@ -253,11 +254,11 @@ void Scatter() {
         uv = media_uv(vec4(dot(_Reproject0, at), dot(_Reproject1, at), dot(_Reproject2, at), dot(_Reproject3, at)));
     }
     bool kept = all(greaterThanEqual(uv, vec3(0.0))) && all(lessThanEqual(uv, vec3(1.0)));
-    int samples = kept || _Jittered == 0 ? 1 : HISTORY_MISS_SAMPLES;
+    int samples = _Jittered == 0 ? 1 : kept ? _Samples : max(_Samples, HISTORY_MISS_SAMPLES);
     vec3 sum = vec3(0.0);
     for (int s = 0; s < samples; s++) {
-        // Unreal's FrameJitterOffsets: this firing's Halton point, then the ones before it.
-        int n = (_Frame - s) & 1023;
+        // Unreal's FrameJitterOffsets: this firing's Halton points, then the ones before them.
+        int n = (_Frame * _Samples - s) & 1023;
         vec3 offset = _Jittered != 0 ? vec3(halton(n + 1, 2), halton(n + 1, 3), halton(n + 1, 5)) : vec3(0.5);
         sum += scatter_at(media_point_at(vec3(t) + offset, size, _MediaRay00, _MediaRay10, _MediaRay01, _MediaRay11),
                 biasSqr, 0.5 * cell);
