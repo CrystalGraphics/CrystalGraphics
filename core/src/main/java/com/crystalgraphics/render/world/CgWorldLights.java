@@ -181,7 +181,7 @@ public final class CgWorldLights {
             "Smoke, gas and haze in the air lit by the world's lights: Unreal's volumetric fog's light scattering.");
     private static final CgVar.Int VOLUME_RAYS = CgVar.integer("crystalgraphics.world.lightsVolumeShadowRays", 4, 0, 64,
             CgVar.DEV, "Shadowed lights traced from each cell of the translucency volume; past them a cell's lights shine unshadowed.");
-    private static final CgVar.Int AIR_RAYS = CgVar.integer("crystalgraphics.world.lightsAirShadowRays", 4, 0, 64, CgVar.DEV,
+    private static final CgVar.Int AIR_RAYS = CgVar.integer("crystalgraphics.world.lightsAirShadowRays", 1, 0, 64, CgVar.DEV,
             "Shadowed lights traced from each froxel of lit air; past them a froxel's lights shine unshadowed.");
     private static final CgVar.Bool AIR_HISTORY = CgVar.bool("crystalgraphics.world.lightsAirHistory", true, CgVar.DEV,
             "Lit air jittered through each froxel and blended over the last frames: Unreal's r.VolumetricFog.TemporalReprojection.");

@@ -267,7 +267,8 @@ CgWorldRenderer.get().media().add(haze);      // a haze to see the lights in; VF
   extinction takes its light-grid cell's lights as `LightScatteringCS` does (VolumetricFog.usf:1085-1169): colour x
   falloff x day fade x the Henyey-Greenstein phase toward the eye (g 0.2, the height fog's default) x the froxel's
   scattering (its extinction, albedo white). A shadowed light is traced from the froxel, at most
-  `crystalgraphics.world.lightsAirShadowRays` (4) a froxel; past them a froxel's lights are unshadowed.
+  `crystalgraphics.world.lightsAirShadowRays` (1) a froxel; past them a froxel's lights are unshadowed. At 4 in the lights
+  demo at 2560x1440 in game the air took 1.5 ms to light, at 1 0.6.
 - **A light's strength in the air** is its intensity times its `scattering` (Unreal's VolumetricScatteringIntensity,
   VolumetricFog.usf:554; 1 unless set, 0 for none), apart from how it lights surfaces. At 1, in the demo's thin haze,
   a searchlight's beam eight blocks from its source adds 2 of 255 to the haze: a light meant to show its beam takes
