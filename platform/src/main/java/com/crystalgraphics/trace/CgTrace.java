@@ -377,14 +377,12 @@ public final class CgTrace {
     private static volatile CgTraceEvents headEvents = newEvents(firstFrames);
 
     /**
-     * Counter values a frame may hold — a ceiling, not an allocation: the store starts small and doubles as it
-     * is written. A busy UI frame writes several hundred.
+     * Counters are written per frame, so a ring is sized from its frames: {@link #COUNTER_CAPACITY} a frame, a ceiling
+     * the store grows to as it is written. Read here, not into a field declared below {@link #events}, which runs
+     * this first and would read it as 0: every ring the static start made held 4,096 values, about 240 frames.
      */
-    private static final int COUNTERS_PER_FRAME = COUNTER_CAPACITY.get();
-
-    /** Counters are written per frame, so a ring is sized from its frames. */
     private static CgTraceEvents newEvents(int frames) {
-        int counters = roundUpPowerOfTwo((int) Math.max(1 << 12, Math.min(1 << 26, (long) frames * COUNTERS_PER_FRAME)));
+        int counters = roundUpPowerOfTwo((int) Math.max(1 << 12, Math.min(1 << 26, (long) frames * COUNTER_CAPACITY.get())));
         return new CgTraceEvents(counters, 1 << 12, 1 << 12);
     }
 
