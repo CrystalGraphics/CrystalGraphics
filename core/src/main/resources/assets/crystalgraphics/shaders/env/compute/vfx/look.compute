@@ -147,14 +147,19 @@ void Look() {
             vec3 rate = mix(rateFrom.xyz, rateTo.xyz, look_rolls(rateRoll, rateFrom.w));
             // A start or a rate stored at birth (CgVfxSpawnInput.MESH_ORIENTATION, MESH_ROTATION_RATE).
             if (_TurnRateAt >= 0) rate = vec3(look_word(e, _TurnRateAt), look_word(e, _TurnRateAt + 1), look_word(e, _TurnRateAt + 2));
-            vec3 turned = rate * positionAge.w;
-            // A collision damps the rate from the age it strikes at: rate * (base + scale * age), the turn so far kept.
+            // Its clock: the age, or where the rate changes over life its scale integrated to the age (the Step's
+            // step_turn_clock); the other integral is what the steps add.
+            bool overLife = rateTo.w > 0.5;
+            vec3 clock = overLife ? lifeSeed.x * look_curve(r + 4, t).xyz : vec3(positionAge.w);
+            vec3 added = overLife ? lifeSeed.x * look_curve(r + 4 + _Texels, t).xyz : vec3(0.0);
+            vec3 turned = rate * clock + added;
+            // A collision damps the base rate from the clock it strikes at: rate * (base + scale * clock), the turn so
+            // far kept (ParticleModules_Collision.cpp:421-426).
             if (_TurnStateAt >= 0) {
                 vec3 base = vec3(look_word(e, _TurnStateAt), look_word(e, _TurnStateAt + 1), look_word(e, _TurnStateAt + 2));
                 vec3 scale = vec3(look_word(e, _TurnStateAt + 3), look_word(e, _TurnStateAt + 4), look_word(e, _TurnStateAt + 5));
-                turned = rate * (base + scale * positionAge.w);
+                turned = rate * (base + scale * clock) + added;
             }
-            if (rateTo.w > 0.5) turned = lifeSeed.x * (rate * look_curve(r + 4, t).xyz + look_curve(r + 4 + _Texels, t).xyz);
             vec3 start = _TurnAt >= 0 ? vec3(look_word(e, _TurnAt), look_word(e, _TurnAt + 1), look_word(e, _TurnAt + 2))
                     : mix(from.xyz, to.xyz, look_rolls(roll, from.w));
             vec3 rotator = start + turned;

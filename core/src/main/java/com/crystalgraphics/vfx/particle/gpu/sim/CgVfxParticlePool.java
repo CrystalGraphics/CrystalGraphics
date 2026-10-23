@@ -256,6 +256,8 @@ public final class CgVfxParticlePool {
     private long openings;
     /** Per slot: its ground as its last step gave it, relative to its origin; NaN for none. */
     private float[] slotGround = new float[0];
+    /** Each slot's loop seconds at its last instance row: what a child's count curve reads ({@link CgVfxEvent#countAt}). */
+    private float[] slotLoop = new float[0];
     /** Each slot's skeleton points in the world last step, and 1 where answered: their velocity's other end. */
     private double[] socketPrev = new double[0];
     /** Per slot: the radius it is culled as one sphere of about its origin, or 0 to cull each particle by its size. */
@@ -903,7 +905,12 @@ public final class CgVfxParticlePool {
             int at = feeds * FEED_WORDS;
             feedWords[at] = parent.id << 16 | feedSlot[slot];
             feedWords[at + 1] = slot | feedEvent[slot] << 16;
-            feedWords[at + 2] = event.countMin() | event.count() << 16;
+            if (event.countCurve() != null) {
+                int n = event.countAt(parent.slotLoop[feedSlot[slot]]);
+                feedWords[at + 2] = n | n << 16;
+            } else {
+                feedWords[at + 2] = event.countMin() | event.count() << 16;
+            }
             feedWords[at + 3] = event.rounded() ? Float.floatToRawIntBits(event.roundMin()) : 0;
             for (int a = 0; a < 3; a++) feedWords[at + 4 + a] = Float.floatToRawIntBits(event.inherit(a));
             feedWords[at + 7] = event.rounded() ? Float.floatToRawIntBits(event.roundMax()) : 0;
@@ -966,6 +973,7 @@ public final class CgVfxParticlePool {
                 .set("_SpawnRows", stepSpawnRows[s]).set("_Spawned", stepSpawned[s]).set("_PoolId", id)
                 .set("_ChildRows", children ? spawnRows : 0).set("_ChildMax", children ? childMax : 0)
                 .set("_Feeds", children ? feeds : 0);
+        if (shape.turnLifeAt() >= 0) stepping.bind("CURVES", curveBuffer);
         if (shape.trails()) stepping.bind("TRAILS", trailBuffer).set("_TrailAt", stepTrailAt[s] / 4);
         if (shape.heads()) stepping.bind("HEADS", headBuffer).set("_HeadVecs", headVecs());
         int tier = shape.tier();
@@ -1567,6 +1575,7 @@ public final class CgVfxParticlePool {
         slotTurn[slot * 4 + 2] = view.rotationZ();
         slotTurn[slot * 4 + 3] = view.rotationW();
         slotGround[slot] = groundY;
+        slotLoop[slot] = view.loopSeconds();
         slotGrid[slot] = emitter.rasterized() != null ? view.grid() : null;
         int at = stepInstanceAt[s] + slot * instanceWords;
         String who = emitter.name();
@@ -2561,6 +2570,7 @@ public final class CgVfxParticlePool {
         slotBindScale = Arrays.copyOf(slotBindScale, size);
         slotOpened = Arrays.copyOf(slotOpened, size);
         slotGround = Arrays.copyOf(slotGround, size);
+        slotLoop = Arrays.copyOf(slotLoop, size);
         socketPrev = Arrays.copyOf(socketPrev, size * CgVfxSockets.MAX * 4);
         slotSourceReach = Arrays.copyOf(slotSourceReach, size);
         slotGrid = Arrays.copyOf(slotGrid, size);

@@ -283,10 +283,6 @@ public final class CgVfxRenderers {
             else if (b.maxRibbons() != 0) unbuilt = "max_ribbons";
         } else if (r instanceof CgVfxArcRendererProperties a) {
             if (a.subdivisions() != 0) unbuilt = "subdivisions";
-        } else if (r instanceof CgVfxLightRendererProperties l) {
-            // Lit transparents and the lights' fog are clustered-lights-decals L5 and after (aaa-design 2.69).
-            if (l.affectsTranslucency()) unbuilt = "affects_translucency";
-            else if (l.volumetricScattering() != 0f) unbuilt = "volumetric_scattering";
         }
         if (unbuilt != null) throw new IllegalArgumentException(who + " sets " + unbuilt + ", which is not built yet");
     }

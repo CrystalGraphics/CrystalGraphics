@@ -1150,7 +1150,7 @@ emitters:
 - **Three levels deep**: a child's events may spawn children, and theirs, and theirs may report rows but not spawn.
 - **At most `max_per_frame` firings a frame spawn children**, 64 unless told (Unreal's `MaxEventsPerFrame`), counted
   over every instance of the emitter in its pool; past it the GPU's order decides which. Up to 1,000 children a firing.
-- **What a file refuses, by name**: `kill`, a count given as a curve, and a spawn loop. `inherit_velocity` is a share
+- **What a file refuses, by name**: a spawn loop. `inherit_velocity` is a share
   per axis. Rows to the CPU, a landing, an age past birth, a rate and a clip node are Java's
   alone: a system holding one cannot be written to a file.
 - **At a clip's node, inside a window**: on a `sequence(clip)` emitter an event fires `at(node)`, and a rate

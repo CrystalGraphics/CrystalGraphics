@@ -53,8 +53,9 @@ vec3 fx_beam_unit(vec3 v, vec3 fallback) {
 // step after where its lock is off. m0 the point and absolute, m1 the tangent and its method (0 the effect's forward,
 // 1 the tangent turned with it unless absolute, 2 the tangent as written), m2 the strength and the point's, the
 // tangent's and the strength's locks. A point is from the effect's origin and turned with it, or absolute in the world.
-void fx_beam_resolve(inout vec4 point, inout vec4 tangent, bool born, vec4 m0, vec4 m1, vec4 m2, FxBeamFrame b) {
-    if (born || m2.y < 0.5) point.xyz = m0.w > 0.5 ? m0.xyz - b.origin : fx_beam_turn(b.turn, m0.xyz);
+void fx_beam_resolve(inout vec4 point, inout vec4 tangent, bool born, vec4 m0, vec4 m1, vec4 m2, vec4 actor, FxBeamFrame b) {
+    // An actor answered is the end; else the distribution, as Cascade's falls back (ParticleBeamModules.cpp:1985-2015).
+    if (born || m2.y < 0.5) point.xyz = actor.w > 0.5 ? actor.xyz : m0.w > 0.5 ? m0.xyz - b.origin : fx_beam_turn(b.turn, m0.xyz);
     if (born || m2.z < 0.5) {
         if (m1.w < 0.5) tangent.xyz = fx_beam_turn(b.turn, vec3(1.0, 0.0, 0.0));
         else if (m1.w < 1.5 && m0.w < 0.5) tangent.xyz = fx_beam_turn(b.turn, m1.xyz);

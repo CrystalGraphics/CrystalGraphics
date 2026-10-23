@@ -750,6 +750,16 @@ public final class CgVfxShape {
     }
 
 
+    /**
+     * Where a mesh turn's two rate integrals over life start in Look's curve row ({@link #rowVectors}), or -1 where its
+     * rate holds over life: the clock a collision damps its turn by.
+     */
+    public int turnLifeAt() {
+        if (!turnsOverLife) return -1;
+        int slots = Integer.bitCount(drawnMask & (1 << CgVfxDrawnChannel.SLOTS) - 1);
+        return CgVfxParticlePool.CURVE_VECTORS + 1 + slots * (2 * CgVfxGpuEmitter.CURVE_TEXELS + 1) + ORIENTATION_VECTORS;
+    }
+
     /** A mesh orientation's vec4s in a parameter row: its start's two ends, then its rate's. */
     public static final int ORIENTATION_VECTORS = 4;
 

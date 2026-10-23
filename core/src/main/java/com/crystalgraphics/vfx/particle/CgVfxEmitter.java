@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxArcRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxBeamRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshFacing;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
@@ -102,6 +103,14 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final CgVfxDrawLayout drawLayout;
     private final CgVfxMeshFacing meshFacing;
     final List<CgVfxRendererProperties> renderers;
+    /**
+     * A beam's spawns beside its rate and bursts, each step its loops run and fewer than its count live: its count with
+     * {@code always_on}, else one where no rate runs and no burst fires; 0 for no beam
+     * ({@code ParticleBeam2EmitterInstance.cpp:502-517}).
+     */
+    final int beamRefill;
+    /** Whether its beam refills every step its loops run ({@code always_on}), not only where nothing else spawns. */
+    final boolean beamAlwaysOn;
     final boolean optional, local;
     final CgVfxEmitterState state;
     final int capacity;
@@ -138,7 +147,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     /** How its particles play their sheets' frames; null shows frame 0. */
     @Nullable
     final CgVfxSubUvAnimation subUv;
-    final float sizeMin, sizeMax, spinMin, spinMax, heat;
+    final float sizeMin, sizeMax, spinMin, spinMax, spinBack, heat;
     /** Its spawn values given in a form, one a target; how far a radius form moves its birth out at most. */
     final List<CgVfxSpawnForm> spawnForms;
     @Nullable
@@ -189,6 +198,16 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         name = b.name;
         slot = CgVfxSlot.particles(b.name);
         renderers = List.copyOf(b.renderers);
+        int refill = 0;
+        boolean alwaysOn = false;
+        for (CgVfxRendererProperties r : renderers) {
+            if (r instanceof CgVfxBeamRendererProperties beam) {
+                alwaysOn = beam.alwaysOn();
+                refill = alwaysOn ? Math.max(1, beam.maxBeamCount()) : 1;
+            }
+        }
+        beamRefill = refill;
+        beamAlwaysOn = alwaysOn;
         drawLayout = drawLayout(b.name, renderers, b.clip);
         optional = b.optional;
         local = b.local;
@@ -249,6 +268,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         sweptOut = radius == null ? 0f : Math.max(0f, radius.bounds()[1] - radius.firstEnd());
         spinMin = b.spinMin;
         spinMax = b.spinMax;
+        spinBack = b.spinBack;
         heat = b.heat;
         modules = Collections.unmodifiableList(new ArrayList<>(b.modules));
         moduleWords = CgVfxModuleTypes.words(modules);
@@ -351,7 +371,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             b.sizeMin *= s;
             b.sizeMax *= s;
             b.modules.replaceAll(m -> m.scaled(s));
-            b.events.replaceAll(e -> e.child() == null ? e : e.spawn(((CgVfxEmitter) e.child()).scaled(s), e.countMin(), e.count()));
+            b.events.replaceAll(e -> e.child() == null ? e : e.withChild(((CgVfxEmitter) e.child()).scaled(s)));
             return b.build();
         });
     }
@@ -569,7 +589,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     public void writeSpawn(CgVfxWords out) {
         out.vec4(speedMin, speedMax, lifeMin, lifeMax)
            .vec4(sizeMin, sizeMax, 0f, heat)
-           .vec4(spinMin, spinMax, inherit, 0f)
+           .vec4(spinMin, spinMax, inherit, spinBack)
            .vec4(0f, 0f, 0f, 0f);
         spawn.write(out);
     }
@@ -697,7 +717,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     /** The most alive at once if nothing held it to its capacity: unbounded for a rate per block. */
     int uncappedPeak() {
         // A particle can outlast its life by its last step: a tenth of a second covers any particle step.
-        return perUnit.perBlock() > 0f ? Integer.MAX_VALUE : spawnsWithin(lifeMax + 0.1f);
+        return perUnit.perBlock() > 0f || beamRefill > 0 ? Integer.MAX_VALUE : spawnsWithin(lifeMax + 0.1f);
     }
 
     /**
@@ -821,7 +841,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
     /** Whether its loops spawn by time or distance, not by bursts alone. */
     boolean spawnsContinuously() {
-        return rate.perSecond() > 0f || perUnit.perBlock() > 0f;
+        return rate.perSecond() > 0f || perUnit.perBlock() > 0f || beamRefill > 0;
     }
 
     public static final class Builder {
@@ -858,7 +878,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private float speedMin, speedMax;
         private float lifeMin = 1f, lifeMax = 1f;
         private float sizeMin = 1f, sizeMax = 1f;
-        private float spinMin, spinMax;
+        private float spinMin, spinMax, spinBack;
         private float heat;
         private final List<CgVfxModule> modules = new ArrayList<>();
         private final List<CgVfxEvent> events = new ArrayList<>();
@@ -913,6 +933,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             sizeMax = e.sizeMax;
             spinMin = e.spinMin;
             spinMax = e.spinMax;
+            spinBack = e.spinBack;
             heat = e.heat;
             modules.addAll(e.modules);
             moduleIds.addAll(Arrays.asList(e.moduleIds));
@@ -1562,8 +1583,21 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
         /** Spin rate in radians a second, either way. */
         public Builder spin(float min, float max) {
+            return spin(min, max, true);
+        }
+
+        /**
+         * Spin rate in radians a second: signed as given, as Cascade's {@code RotationRate} is, or either way at random.
+         *
+         * <pre>{@code
+         * b.spin(-1f, 2f, false);   // Cascade's: between -1 and 2, its sign kept
+         * b.spin(1f, 2f, true);     // as spin(1f, 2f): 1 to 2 either way
+         * }</pre>
+         */
+        public Builder spin(float min, float max, boolean eitherWay) {
             spinMin = min;
             spinMax = max;
+            spinBack = eitherWay ? 0.5f : 0f;
             return this;
         }
 
@@ -1848,15 +1882,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
                             || r.completion() == CgVfxModule.CollisionCompletion.FREEZE_MOVEMENT)) {
                         // Cascade holds a frozen particle's orbit where it was (UpdateOrbitData skips it); Look turns it by age.
                         throw new IllegalStateException(name + "'s orbit on a particle a collision freezes is not built yet");
-                    }
-                }
-            }
-            if (meshRotation != null && !meshRotation.steps().isEmpty()) {
-                for (CgVfxModule m : modules) {
-                    CgVfxModule.CollisionResponse r = CgVfxModule.CollisionResponse.of(m);
-                    if (r != null && r.turns()) {
-                        throw new IllegalStateException(name + "'s collision damps or freezes its turn, whose rate changes"
-                                + " over life: not built yet");
                     }
                 }
             }

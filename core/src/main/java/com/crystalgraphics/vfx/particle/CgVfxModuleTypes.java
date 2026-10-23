@@ -260,13 +260,17 @@ public final class CgVfxModuleTypes {
                 (m, in) -> in.f("drag", m.drag()), r -> new CgVfxModule.Spin(r.f("drag")));
         kind("attract", CgVfxModule.Attract.class,
                 t -> { shape(t); fl(t, "strength", "attenuation", "directionality"); t.property("lasting", CgValueType.BOOL).defaultValue(true);
-                    v3(t, "axis"); t.property("inverse_square", CgValueType.BOOL); offset(t); },
+                    v3(t, "axis"); t.property("inverse_square", CgValueType.BOOL);
+                    t.property("clamp_min", CgValueType.VEC3).defaultValue(Arrays.asList(-1.0, -1.0, -1.0));
+                    t.property("clamp_max", CgValueType.VEC3).defaultValue(Arrays.asList(1.0, 1.0, 1.0)); offset(t); },
                 (m, in) -> in.shape(m.shape()).f("strength", m.strength()).f("attenuation", m.attenuation())
                         .f("directionality", m.directionality()).b("lasting", m.lasting()).v3("axis", m.axisX(), m.axisY(), m.axisZ())
-                        .b("inverse_square", m.inverseSquare()).v3("offset", m.x(), m.y(), m.z()),
+                        .b("inverse_square", m.inverseSquare()).v3("clamp_min", m.lowX(), m.lowY(), m.lowZ())
+                        .v3("clamp_max", m.highX(), m.highY(), m.highZ()).v3("offset", m.x(), m.y(), m.z()),
                 r -> new CgVfxModule.Attract(r.shape(), r.f("offset", 0), r.f("offset", 1), r.f("offset", 2), r.f("strength"),
                         r.f("attenuation"), r.f("directionality"), r.f("axis", 0), r.f("axis", 1), r.f("axis", 2), r.b("lasting"),
-                        r.b("inverse_square")));
+                        r.b("inverse_square"), r.f("clamp_min", 0), r.f("clamp_min", 1), r.f("clamp_min", 2),
+                        r.f("clamp_max", 0), r.f("clamp_max", 1), r.f("clamp_max", 2)));
         kind("source_movement", CgVfxModule.SourceMovement.class, t -> v3(t, "scale"),
                 (m, in) -> in.v3("scale", m.x(), m.y(), m.z()),
                 r -> new CgVfxModule.SourceMovement(r.f("scale", 0), r.f("scale", 1), r.f("scale", 2)));
@@ -370,16 +374,18 @@ public final class CgVfxModuleTypes {
                 r -> new CgVfxModule.Kill(r.shape(), r.f("offset", 0), r.f("offset", 1), r.f("offset", 2), r.b("inside")));
         kind("beam_source", CgVfxModule.BeamSource.class, t -> beamEnd(t, false),
                 (m, in) -> beamEnd(in, m.x(), m.y(), m.z(), m.absolute(), m.tx(), m.ty(), m.tz(), m.method(), m.strength(),
-                        m.lock(), m.lockTangent(), m.lockStrength()),
+                        m.lock(), m.lockTangent(), m.lockStrength()).o("actor", m.actor()),
                 r -> new CgVfxModule.BeamSource(r.f("point", 0), r.f("point", 1), r.f("point", 2), r.b("absolute"),
                         r.f("tangent", 0), r.f("tangent", 1), r.f("tangent", 2), TANGENTS[r.i("tangent_method")],
-                        r.f("strength"), r.b("lock"), r.b("lock_tangent"), r.b("lock_strength")));
+                        r.f("strength"), r.b("lock"), r.b("lock_tangent"), r.b("lock_strength"), (String) r.o("actor")));
         kind("beam_target", CgVfxModule.BeamTarget.class, t -> beamEnd(t, true),
                 (m, in) -> beamEnd(in, m.x(), m.y(), m.z(), m.absolute(), m.tx(), m.ty(), m.tz(), m.method(), m.strength(),
-                        m.lock(), m.lockTangent(), m.lockStrength()).f("lock_radius", m.lockRadius()).f("speed", m.speed()),
+                        m.lock(), m.lockTangent(), m.lockStrength()).f("lock_radius", m.lockRadius()).f("speed", m.speed())
+                        .o("actor", m.actor()),
                 r -> new CgVfxModule.BeamTarget(r.f("point", 0), r.f("point", 1), r.f("point", 2), r.b("absolute"),
                         r.f("tangent", 0), r.f("tangent", 1), r.f("tangent", 2), TANGENTS[r.i("tangent_method")],
-                        r.f("strength"), r.b("lock"), r.b("lock_tangent"), r.b("lock_strength"), r.f("lock_radius"), r.f("speed")));
+                        r.f("strength"), r.b("lock"), r.b("lock_tangent"), r.b("lock_strength"), r.f("lock_radius"), r.f("speed"),
+                        (String) r.o("actor")));
         // Words as beam.compute's Noise reads them from the parameter row: keep the order.
         kind("beam_noise", CgVfxModule.BeamNoise.class,
                 t -> { t.property("frequency", CgValueType.INT); t.property("frequency_low", CgValueType.INT);
@@ -434,6 +440,7 @@ public final class CgVfxModuleTypes {
         t.property("lock_tangent", CgValueType.BOOL);
         t.property("lock_strength", CgValueType.BOOL);
         if (target) fl(t, "lock_radius", "speed");
+        t.property("actor", CgValueType.STRING);
     }
 
     private static Inputs beamEnd(Inputs in, float x, float y, float z, boolean absolute, float tx, float ty, float tz,

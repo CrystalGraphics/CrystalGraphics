@@ -25,9 +25,10 @@ struct FxParticle {
     bool resting;
     // A collision's completion (fx_contact.glsl's FX_STATE_*): stored with resting and the collisions.
     uint state;
-    // Its mesh turn as Look takes it, start + rate * (turnBase + turnScale * age): a collision damps the rate from the
-    // age it strikes at, keeping the turn so far. (0, 1) unless a kind writes them.
-    vec3 turnBase, turnScale;
+    // Its mesh turn as Look takes it, start + rate * (turnBase + turnScale * turnClock): a collision damps the rate from
+    // the clock it strikes at, keeping the turn so far. (0, 1) unless a kind writes them. turnClock is the age, or where
+    // the rate changes over life its scale integrated to the age; set each step, never stored.
+    vec3 turnBase, turnScale, turnClock;
     // Its orbit from birth (CgVfxRecord.Tail.ORBIT): the offset drawn from its place, its rotation and rotation rate.
     vec3 orbitOffset, orbitTurn, orbitRate;
     // A Cascade trail's payload (CgVfxRecord.Tail.RIBBON): its tangent, trail + 1024 * spawned points; its up (an anim

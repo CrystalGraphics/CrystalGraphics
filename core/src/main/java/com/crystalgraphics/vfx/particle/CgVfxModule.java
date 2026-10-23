@@ -395,10 +395,14 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      *       falling with the square of the distance past it, and never cut off.</li>
      *   <li>A plane attracts nothing, and is refused, as is any shape but a sphere or box.</li>
      *   <li>Pair it with {@link Orbit} round the same centre for a spiral in, Godot's orbit velocity.</li>
+     *   <li>{@link #clamped} holds the pull's direction to some axes and senses, as Cascade's {@code Positive_X} to
+     *       {@code Negative_Z} do: each component of it, pointing the way the pull goes, kept between its low and high
+     *       ends ({@code ParticleModules.cpp}, {@code UParticleModuleAttractorPoint::Update}).</li>
      * </ul>
      */
     record Attract(CgShape shape, float x, float y, float z, float strength, float attenuation, float directionality,
-                   float axisX, float axisY, float axisZ, boolean lasting, boolean inverseSquare) implements CgVfxModule {
+                   float axisX, float axisY, float axisZ, boolean lasting, boolean inverseSquare,
+                   float lowX, float lowY, float lowZ, float highX, float highY, float highZ) implements CgVfxModule {
         private static final CgVfxLane[] LANES = {CgVfxLane.VEC4};
 
         public Attract {
@@ -416,6 +420,26 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
             this(shape, 0f, 0f, 0f, strength, 1f, 0f, 0f, 1f, 0f, true, false);
         }
 
+        /** A pull every way, every other field given. */
+        public Attract(CgShape shape, float x, float y, float z, float strength, float attenuation, float directionality,
+                       float axisX, float axisY, float axisZ, boolean lasting, boolean inverseSquare) {
+            this(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, lasting, inverseSquare,
+                    -1f, -1f, -1f, 1f, 1f, 1f);
+        }
+
+        /**
+         * This pull's direction held between {@code (lx, ly, lz)} and {@code (hx, hy, hz)}, component by component, -1 to 1:
+         * Cascade's {@code Negative_X} is {@code lx} -1 (0 without it), {@code Positive_X} {@code hx} 1.
+         *
+         * <pre>{@code
+         * new CgVfxModule.Attract(CgSphere.of(5), 20f).momentary().clamped(0f, -1f, -1f, 1f, 1f, 1f)   // never toward -x
+         * }</pre>
+         */
+        public Attract clamped(float lx, float ly, float lz, float hx, float hy, float hz) {
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, lasting, inverseSquare,
+                    lx, ly, lz, hx, hy, hz);
+        }
+
         /** A pull by attenuation, every field but that one given. */
         public Attract(CgShape shape, float x, float y, float z, float strength, float attenuation, float directionality,
                        float axisX, float axisY, float axisZ, boolean lasting) {
@@ -430,7 +454,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         /** This pull for the step alone, leaving the velocity it builds on as it was. */
         public Attract momentary() {
-            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, false, inverseSquare);
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, false, inverseSquare, lowX, lowY, lowZ, highX, highY, highZ);
         }
 
         /**
@@ -438,22 +462,22 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
          * with no edge ({@code ParticleSimulationShader.usf}, {@code ComputeAttractionForce}). Its attenuation goes unread.
          */
         public Attract byInverseSquare() {
-            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, lasting, true);
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, lasting, true, lowX, lowY, lowZ, highX, highY, highZ);
         }
 
         /** The shape centred {@code (x, y, z)} from the source. */
         public Attract at(float x, float y, float z) {
-            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, lasting, inverseSquare);
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, lasting, inverseSquare, lowX, lowY, lowZ, highX, highY, highZ);
         }
 
         /** How the pull falls off toward the edge: 0 even, 1 linear (the default), 2 and up held to the centre. */
         public Attract attenuation(float attenuation) {
-            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, lasting, inverseSquare);
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, lasting, inverseSquare, lowX, lowY, lowZ, highX, highY, highZ);
         }
 
         /** A push along {@code (ax, ay, az)} in place of {@code directionality} of the pull. */
         public Attract directed(float directionality, float ax, float ay, float az) {
-            return new Attract(shape, x, y, z, strength, attenuation, directionality, ax, ay, az, lasting, inverseSquare);
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, ax, ay, az, lasting, inverseSquare, lowX, lowY, lowZ, highX, highY, highZ);
         }
 
         @Override
@@ -985,10 +1009,19 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      *   <li>{@code point} is from the effect's origin, turned with it, unless {@code absolute}: then a world position.</li>
      *   <li>{@link Tangent#DIRECT} is the effect's own forward (+X turned by its rotation), and ignores {@code tangent}.</li>
      *   <li>A range on {@code point} rolls once a particle: a locked end keeps it, as Cascade's does.</li>
+     *   <li>{@code actor} names a point of the entity its effect follows ({@code CgEntityAttachments}), as Cascade's
+     *       {@code Actor} method names an actor parameter; where nothing answers it, {@code point} is the end, as
+     *       Cascade's falls back to its distribution ({@code ParticleBeamModules.cpp:1985-2015}).</li>
      * </ul>
+     *
+     * <pre>{@code
+     * // from the followed character's right hand, or 1.5 blocks up when it has none
+     * .module(new CgVfxModule.BeamSource(0f, 1.5f, 0f, false, 1f, 0f, 0f, Tangent.DIRECT, 25f, false, true, true, "hand_r"))
+     * }</pre>
      */
     record BeamSource(float x, float y, float z, boolean absolute, float tx, float ty, float tz, Tangent method,
-                      float strength, boolean lock, boolean lockTangent, boolean lockStrength) implements CgVfxModule {
+                      float strength, boolean lock, boolean lockTangent, boolean lockStrength, @Nullable String actor)
+            implements CgVfxModule {
         private static final CgVfxDataInterface[] BEAM = {CgVfxDataInterfaces.BEAM};
 
         /**
@@ -1002,9 +1035,37 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
             Objects.requireNonNull(method, "method");
         }
 
+        /** Its actor's point: one vec4 an end. */
+        static final CgVfxLane[] ACTOR_LANES = {CgVfxLane.VEC4};
+        /** A point being written, a thread's own: instances write on the render thread and the books' workers. */
+        private static final ThreadLocal<float[]> POINT = ThreadLocal.withInitial(() -> new float[3]);
+
+        static void writeActor(@Nullable String actor, CgVfxInstanceView instance, CgVfxWords out) {
+            float[] p = POINT.get();
+            if (actor != null && instance.point(actor, p)) out.vec4(p[0], p[1], p[2], 1f);
+            else out.vec4(0f, 0f, 0f, 0f);
+        }
+
+        /** An end at {@code point} alone, naming no actor. */
+        public BeamSource(float x, float y, float z, boolean absolute, float tx, float ty, float tz, Tangent method,
+                          float strength, boolean lock, boolean lockTangent, boolean lockStrength) {
+            this(x, y, z, absolute, tx, ty, tz, method, strength, lock, lockTangent, lockStrength, null);
+        }
+
         @Override
         public String gpuKind() {
             return "beam_source";
+        }
+
+        @Override
+        public CgVfxLane[] instanceLanes() {
+            return BeamSource.ACTOR_LANES;
+        }
+
+        /** Its actor's point from the effect's origin, w 1 where something answers it, else 0. */
+        @Override
+        public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
+            BeamSource.writeActor(actor, instance, out);
         }
 
         @Override
@@ -1030,20 +1091,38 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      *
      * <ul>
      *   <li>{@code speed} is its renderer's; an asset's compiler copies it here.</li>
+     *   <li>{@code actor} as {@link BeamSource}'s.</li>
      * </ul>
      */
     record BeamTarget(float x, float y, float z, boolean absolute, float tx, float ty, float tz, BeamSource.Tangent method,
-                      float strength, boolean lock, boolean lockTangent, boolean lockStrength, float lockRadius, float speed)
-            implements CgVfxModule {
+                      float strength, boolean lock, boolean lockTangent, boolean lockStrength, float lockRadius, float speed,
+                      @Nullable String actor) implements CgVfxModule {
         private static final CgVfxDataInterface[] BEAM = {CgVfxDataInterfaces.BEAM};
 
         public BeamTarget {
             Objects.requireNonNull(method, "method");
         }
 
+        /** A far end at {@code point} alone, naming no actor. */
+        public BeamTarget(float x, float y, float z, boolean absolute, float tx, float ty, float tz, BeamSource.Tangent method,
+                          float strength, boolean lock, boolean lockTangent, boolean lockStrength, float lockRadius, float speed) {
+            this(x, y, z, absolute, tx, ty, tz, method, strength, lock, lockTangent, lockStrength, lockRadius, speed, null);
+        }
+
         @Override
         public String gpuKind() {
             return "beam_target";
+        }
+
+        @Override
+        public CgVfxLane[] instanceLanes() {
+            return BeamSource.ACTOR_LANES;
+        }
+
+        /** Its actor's point from the effect's origin, w 1 where something answers it, else 0. */
+        @Override
+        public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
+            BeamSource.writeActor(actor, instance, out);
         }
 
         @Override

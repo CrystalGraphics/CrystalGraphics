@@ -127,6 +127,14 @@ public interface CgVfxInstanceView {
         return 1f;
     }
 
+    /**
+     * Point {@code name} of the entity its effect follows ({@code CgEntityAttachments}), relative to the origin, into
+     * {@code out}; false where nothing answers it. What a beam end naming an actor reads. Render thread or a books worker.
+     */
+    default boolean point(String name, float[] out) {
+        return false;
+    }
+
     /** Its loop's seconds as this step ends: what a module input's curve or array by the loop reads. */
     default float loopSeconds() {
         return 0f;

@@ -184,7 +184,7 @@ void Fill() {
     vec3 sum = vec3(0.0);
     for (int k = 0; k < count; k++) {
         CgLight light = LIGHTS(int(INDICES(from + k)));
-        if (CG_LIGHT_MINECRAFT(light)) continue;
+        if (CG_LIGHT_MINECRAFT(light) || CG_LIGHT_OPAQUE_ONLY(light)) continue;
         float falloff = cg_light_falloff(light.positionRadius.xyz, light.positionRadius.w, light.colorExponent.w,
                 light.spotCos, light.segmentCone, w);
         if (falloff <= 0.0) continue;

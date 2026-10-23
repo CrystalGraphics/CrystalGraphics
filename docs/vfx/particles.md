@@ -620,6 +620,50 @@ emitters:
 - **`first_time_only`** on a collision `generate_event` fires once a particle, at its first contact.
 - **A spawn that comes back to its own source** fails at load, naming the loop.
 
+### A count that changes over the loop
+
+A count may be a curve by the loop's seconds, as Cascade reads its receiver's count at the emitter's time: rounded to
+the nearest, and read once a frame for each playing instance.
+
+```yaml
+events:
+  - { id: e1, trigger: collision, source: h1, spawn: { count: { curve: { keys: [[0, 4], [1, 0, linear]] }, by: loop } } }
+```
+
+```java
+.event(CgVfxEvent.onCollision().spawnOver(CHIPS, CgKeyframes.start(0f, 4f).to(1f, 0f, CgEasings.LINEAR).build()))
+```
+
+- Every firing of one frame spawns the same count; a firing past the curve's last key reads its last value.
+
+### Killing the receiver's particles
+
+`kill: true` ends every particle of the handler's own emitter when its source raises the event, and spawns nothing:
+Cascade's Kill Particles receiver. A light that goes out when the dummy it marks dies:
+
+```yaml
+emitters:
+  - id: h1                       # the dummy: raise "gone" as it dies
+    emitter:
+      particle_update:
+        - { id: g, module: crystalgraphics:generate_event, inputs: { type: death, name: gone } }
+  - id: h2                       # the light
+    emitter:
+      events:
+        - { id: e1, trigger: death, name: gone, kill: true }
+```
+
+```java
+// in Java: the definition names it, the source's event reading its rows back
+new CgVfxSystemDefinition("mymod:flash", look, null, List.of(dummy, light), 0, 32,
+        List.of(new CgVfxSystemDefinition.Kill(0, 0, 1)));
+light.killParticles();   // or by hand, on a playing instance
+```
+
+- **It lands a frame or two late**: the source's event reaches the CPU from the GPU's rows, then the receiver's next
+  step ends its particles.
+- **The receiver keeps spawning**: its rate and bursts run on. Its events' children live on in their own slots.
+
 ## Born on another emitter's particles
 
 An emitter can take its new particles' places from another emitter's live particles, as Cascade's Emitter Initial
@@ -743,8 +787,12 @@ renderers:
 - **Width is the particle's size**, times its x scale: `size` and `scale_sprite_size` shape it as for a sprite.
 - **Speed, range scale and tangent strength roll each frame**, as Cascade reads them at its emitter's time: a range
   on one is a flicker shared by the emitter's beams, not a value a beam.
-- **Refused at load, by name**: `beam_method: distance | branch`, `taper_method: full | partial`, `always_on`, an
-  `emitter`, `particle` or `actor` end, an `emitter` tangent, and the editor's lines.
+- **A beam keeps its count up, as Cascade's does**: while its loops run and fewer than `max_beam_count` live, one
+  spawns each step that nothing else spawns, and with `always_on` it spawns back up to the count every step.
+- **An `actor` end** is a point of the entity its effect follows, by the end's `name` (`CgEntityAttachments`), resolved
+  each step its lock leaves open; where nothing answers it, the end is its `point`, as Cascade's with no actor set.
+- **Refused at load, by name**: `beam_method: distance | branch`, `taper_method: full | partial`, an `emitter` or
+  `particle` end, an `emitter` tangent, and the editor's lines.
 - **A beam is culled whole**, within 256 blocks of its source: its ends are on the GPU alone.
 
 ## Turning an emitter: its effect's orientation

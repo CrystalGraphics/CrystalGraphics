@@ -12,7 +12,8 @@
 // outer). ambient: the block and sky light (0 to 15) at the light, what the scene there was lit by and is divided by to
 // find its albedo, x -1 where unknown and the scene taken as it is; then its source radius (Unreal's SourceRadius, 0 a
 // point), and 1 where it casts shadows (CG_LIGHT_SHADOWED), 2 for a Minecraft light (CG_LIGHT_MINECRAFT). air: x its
-// light in the air's multiplier (Unreal's VolumetricScatteringIntensity, 1 unless set), the rest unused.
+// light in the air's multiplier (Unreal's VolumetricScatteringIntensity, 1 unless set); y 1 where it leaves transparent
+// surfaces unlit (CG_LIGHT_OPAQUE_ONLY: Unreal's bAffectTranslucentLighting off), the rest unused.
 #pragma once
 
 #define cg_light(position, radius, color, exponent) \
@@ -45,6 +46,9 @@
 // and only says where Minecraft's block light comes from, so the shadow passes can withhold it. Its level is its radius
 // less a half.
 #define CG_LIGHT_MINECRAFT(light) ((light).ambient.w > 1.5)
+
+// A light kept out of the translucency lighting volume: transparent surfaces and particles are not lit by it.
+#define CG_LIGHT_OPAQUE_ONLY(light) ((light).air.y > 0.5)
 
 // The eye depth slice z starts at: 0 for the first, and far past the world for the end of the last, as Unreal's.
 float cg_light_slice_depth(int z, vec3 zParams) {

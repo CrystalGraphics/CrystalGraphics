@@ -15,8 +15,8 @@ import java.util.Map;
  *
  * <ul>
  *   <li>Its emitter needs a {@code light_attributes} module, which gives every particle its light.</li>
- *   <li>{@code affects_translucency} and {@code volumetric_scattering} fail at compile until lit transparents and the
- *       lights' fog are built.</li>
+ *   <li>Its lights reach transparent surfaces only with {@code affects_translucency}, and the air only by
+ *       {@code volumetric_scattering}: both off unless set, as Cascade's simple lights are.</li>
  * </ul>
  *
  * @param inverseSquaredFalloff whether it falls off by the inverse square, its exponent ignored, as Cascade's

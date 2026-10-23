@@ -3,6 +3,8 @@ package com.crystalgraphics.vfx.particle;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 
+import com.crystalgraphics.easing.CgKeyframes;
+
 import javax.annotation.Nullable;
 
 import java.util.LinkedHashMap;
@@ -35,18 +37,21 @@ import java.util.Map;
  * }</pre>
  *
  * <ul>
- *   <li>{@code kill} is refused, naming the emitter: no engine path runs it.</li>
+ *   <li>{@code kill: true} ends every particle of its own emitter when its source raises the event, and spawns
+ *       nothing: Cascade's {@code EventReceiverKillParticles} (ParticleModules_Event.cpp:276-283). It is heard from
+ *       the source's rows read back, a frame or two after the step that raised it.</li>
  *   <li>A {@code name} with a {@code source} still needs that source to raise it; a name nothing raises spawns nothing,
  *       as Cascade's receiver does.</li>
- *   <li>A count is a number or a {@code range}; a curve is refused. A count of 0 spawns nothing, as Cascade's receiver
- *       rounds it (ParticleModules_Event.cpp:346-380), so its system puts no event on any source. {@code use_particle_time} reads a count over time,
- *       so with neither it changes nothing.</li>
+ *   <li>A count is a number, a {@code range}, or a curve by the loop's seconds, read once a frame at the emitter's
+ *       time and rounded, as Cascade's receiver reads it (ParticleModules_Event.cpp:345-362). A count of 0 spawns
+ *       nothing, so a constant 0 puts no event on any source. A curve by the particle's age is refused.</li>
  *   <li>{@code inherit_velocity} is a share per axis, Cascade's {@code InheritVelocityScale}.</li>
  * </ul>
  */
 public record CgVfxEventHandler(String id, String trigger, @Nullable String source, @Nullable String name,
-                                @Nullable String spawn, float countMin, float countMax, boolean rounded, List<Float> inherit,
-                                boolean atEmitter, int maxPerFrame) {
+                                @Nullable String spawn, float countMin, float countMax, boolean rounded,
+                                @Nullable CgKeyframes countCurve, List<Float> inherit, boolean atEmitter, int maxPerFrame,
+                                boolean kill) {
 
     public CgVfxEventHandler {
         CgVfxEvent.ofSpec(trigger);
@@ -62,7 +67,7 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
     /** The event it puts on its source, spawning {@code child}: the handle {@link #spawn} resolved to. */
     public CgVfxEvent compile(CgVfxGpuEmitter child) {
         CgVfxEvent spec = CgVfxEvent.ofSpec(trigger);
-        CgVfxEvent e = (rounded ? spec.spawnRounded(child, countMin, countMax)
+        CgVfxEvent e = (countCurve != null ? spec.spawnOver(child, countCurve) : rounded ? spec.spawnRounded(child, countMin, countMax)
                 : spec.spawn(child, Math.round(countMin), Math.round(countMax))).maxPerFrame(maxPerFrame);
         e = e.inherit(inherit.get(0), inherit.get(1), inherit.get(2));
         return atEmitter ? e.fromEmitter() : e;
@@ -72,7 +77,7 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
     public static CgVfxEventHandler of(String emitter, Map<?, ?> entry) {
         String id = String.valueOf(entry.get("id"));
         String at = emitter + ": events." + id;
-        if (Boolean.TRUE.equals(entry.get("kill"))) throw new IllegalArgumentException(at + ": kill is not run by any engine path");
+        boolean kill = Boolean.TRUE.equals(entry.get("kill"));
         String source = entry.get("source") instanceof String s ? s : null;
         String name = entry.get("name") instanceof String n && !n.isEmpty() ? n : null;
         if (source == null && name == null) throw new IllegalArgumentException(at + ": no source and no name, so nothing feeds it");
@@ -80,8 +85,13 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
         String child = spawn.get("emitter") instanceof String c ? c : null;
         float min, max;
         boolean rounded = false;
+        CgKeyframes curve = null;
         Object count = spawn.get("count");
-        if (count == null) {
+        if (count instanceof Map<?, ?> m && m.get("curve") != null) {
+            curve = CgVfxEmitterAssets.keyframes(at + ": count", count, "loop");
+            min = 0f;
+            max = 1f;
+        } else if (count == null) {
             min = max = 1;
         } else if (count instanceof Number n) {
             min = max = Math.round(n.floatValue());
@@ -105,8 +115,8 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
             inherit = List.of(x.floatValue(), y.floatValue(), z.floatValue());
         }
         int most = entry.get("max_per_frame") instanceof Number n ? n.intValue() : CgVfxEvent.MAX_PER_FRAME;
-        return new CgVfxEventHandler(id, String.valueOf(entry.get("trigger")), source, name, child, min, max, rounded, inherit,
-                Boolean.TRUE.equals(spawn.get("use_emitter_location")), most);
+        return new CgVfxEventHandler(id, String.valueOf(entry.get("trigger")), source, name, child, min, max, rounded, curve, inherit,
+                Boolean.TRUE.equals(spawn.get("use_emitter_location")), most, kill);
     }
 
     /**
@@ -122,14 +132,31 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
         if (event.readback() > 0) throw new IllegalArgumentException(what + " reports rows to the CPU: Java's alone");
         boolean rounded = event.rounded();
         return new CgVfxEventHandler(id, trigger, source, null, spawn, rounded ? event.roundMin() : event.countMin(),
-                rounded ? event.roundMax() : event.count(), rounded, List.of(event.inherit(0), event.inherit(1), event.inherit(2)), event.atEmitter(), event.maxPerFrame());
+                rounded ? event.roundMax() : event.count(), rounded, event.countCurve(), List.of(event.inherit(0), event.inherit(1), event.inherit(2)), event.atEmitter(), event.maxPerFrame(), false);
+    }
+
+    /** A kill of handle {@code receiver}'s particles when handle {@code source} raises {@code trigger}: what a file writes. */
+    public static CgVfxEventHandler kill(String id, String source, String trigger) {
+        return new CgVfxEventHandler(id, trigger, source, null, null, 0f, 0f, false, null, List.of(0f, 0f, 0f), false,
+                CgVfxEvent.MAX_PER_FRAME, true);
     }
 
     /** As a file writes it. */
     public Map<String, Object> tree() {
+        if (kill) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("id", id);
+            out.put("trigger", trigger);
+            if (source != null) out.put("source", source);
+            if (name != null) out.put("name", name);
+            out.put("kill", true);
+            return out;
+        }
         Map<String, Object> spawned = new LinkedHashMap<>();
         if (spawn != null) spawned.put("emitter", spawn);
-        if (rounded) {
+        if (countCurve != null) {
+            spawned.put("count", CgVfxEmitterAssets.curve(countCurve, "loop"));
+        } else if (rounded) {
             spawned.put("count", Map.of("range", List.of((double) countMin, (double) countMax), "rounding", "nearest"));
         } else {
             int least = Math.round(countMin), most = Math.round(countMax);

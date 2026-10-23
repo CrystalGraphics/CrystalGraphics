@@ -62,6 +62,8 @@ final class CgVfxGpuSteps {
         boolean warm;
         /** Its particles end in the next step, and then its slot closes. */
         boolean killed;
+        /** Its particles end this step and it stays open, spawning nothing this step ({@link CgVfxEmitterInstance#killParticles}). */
+        boolean cleared;
         /** The effect that stepped it, whose look draws it; null for an instance admitted without one (a test's). */
         @Nullable
         CgVfxEffect<?> effect;
@@ -402,6 +404,7 @@ final class CgVfxGpuSteps {
                 if (coasting && instance.emitter().state().inactiveResponse() == CgVfxInactiveResponse.KILL) instance.kill();
                 // Its children come after it in the list, so they see the kill this tick.
                 if (instance.books().takeKill()) kill(instance);
+                else if (instance.books().takeClear()) tenant.cleared = true;
             }
             if (tenant.killed || warmOnly && !tenant.warm || scale == 0f) continue;
             float began;
@@ -478,19 +481,19 @@ final class CgVfxGpuSteps {
             view.values = tenant.effect == null ? null : tenant.effect.values();
             boolean held = tenant.killed || warmOnly && !tenant.warm || scale == 0f;
             tenant.pool.instance(tenant.slot, instance.books().seedBits(), instance.books().share(), instance.groundY(), view,
-                    held ? 0f : scale, tenant.killed);
+                    held ? 0f : scale, tenant.killed || tenant.cleared);
             tenant.stepTime = Float.NaN;
             tenant.turnX = tenant.turnY = tenant.turnZ = 0f;
             tenant.turnW = 1f;
             CgVfxTrailRows trail = instance.trailSource();
-            if (trail != null) tenant.flushTrail(trail, !tenant.killed);
+            if (trail != null) tenant.flushTrail(trail, !tenant.killed && !tenant.cleared);
         }
         view.of = null;
         view.tenant = null;
         view.values = null;
         for (int k = 0; k < pending; k++) {
             Tenant tenant = pendingTenant[k];
-            if (!tenant.killed && byInstance.get(tenant.instance) == tenant) {
+            if (!tenant.killed && !tenant.cleared && byInstance.get(tenant.instance) == tenant) {
                 int i = k * 3, f = k * PENDING_FLOATS;
                 tenant.pool.spawn(tenant.slot, pendingInts[i], pendingInts[i + 1], pendingInts[i + 2], pendingFloats[f],
                         CgVfxSystem.TICK, pendingFloats[f + 1], pendingFloats[f + 2], pendingFloats[f + 3],
@@ -504,6 +507,7 @@ final class CgVfxGpuSteps {
         for (int i = tenants.size() - 1; i >= 0; i--) {
             if (i >= tenants.size()) continue;
             Tenant tenant = tenants.get(i);
+            tenant.cleared = false;
             // Killed: this step ended its particles, so its slot holds none to hand on. Started again, it asks anew.
             if (tenant.killed) {
                 CgVfxEmitterInstance instance = tenant.parent == null ? tenant.instance : null;

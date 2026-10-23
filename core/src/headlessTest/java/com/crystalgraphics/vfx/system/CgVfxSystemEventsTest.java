@@ -61,6 +61,25 @@ public class CgVfxSystemEventsTest {
         assertEquals(0, glints.events().size());
     }
 
+    /**
+     * Cascade's EventReceiverKillParticles: a kill handler puts a read-back event on its source and names its receiver in
+     * the definition, spawns nothing, and is written back as it was read.
+     */
+    @Test
+    public void aKillEndsItsReceiversParticles() {
+        String kill = "_v: 1\nemitters:\n  - id: h1\n" + EMITTER + "  - id: h2\n" + EMITTER + "      events:\n"
+                + "        - { id: e1, trigger: death, source: h1, kill: true }\n";
+        CgVfxSystemDefinition d = compile(kill);
+        assertEquals(List.of(new CgVfxSystemDefinition.Kill(0, 0, 1)), d.kills());
+        CgVfxEvent death = d.emitters().get(0).events().get(0);
+        assertEquals(CgVfxEvent.Trigger.DEATH, death.trigger());
+        assertTrue(death.readback() > 0);
+        assertEquals(null, death.child());
+        Map<String, Object> tree = CgVfxSystemAssets.write(d);
+        assertEquals(tree, CgVfxSystemAssets.write(CgVfxSystemAssets.compile(
+                CgAssetData.of("mymod:sparks", CgParticleKinds.SYSTEM, tree, null), (kind, ref) -> null)));
+    }
+
     /** Cascade's count, a float rolled between the ends and rounded: read, compiled and written back as given. */
     @Test
     public void aRoundedCountKeepsItsEnds() {
@@ -126,10 +145,10 @@ public class CgVfxSystemEventsTest {
                 + "        - { id: e2, trigger: death, source: h1, spawn: { emitter: h2 } }\n";
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> compile(loop));
         assertTrue(e.getMessage(), e.getMessage().contains("loop"));
-        String kill = "_v: 1\nemitters:\n  - id: h1\n" + EMITTER + "      events:\n"
-                + "        - { id: e1, trigger: death, source: h1, spawn: { emitter: h1 }, kill: true }\n";
-        e = assertThrows(IllegalArgumentException.class, () -> compile(kill));
-        assertTrue(e.getMessage(), e.getMessage().contains("kill"));
+        String missing0 = "_v: 1\nemitters:\n  - id: h1\n" + EMITTER + "      events:\n"
+                + "        - { id: e1, trigger: burst, source: h9, spawn: { emitter: h1 } }\n";
+        e = assertThrows(IllegalArgumentException.class, () -> compile(missing0));
+        assertTrue(e.getMessage(), e.getMessage().contains("h9"));
         String missing = "_v: 1\nemitters:\n  - id: h1\n" + EMITTER + "      events:\n"
                 + "        - { id: e1, trigger: burst, source: h1, spawn: { emitter: h9 } }\n";
         e = assertThrows(IllegalArgumentException.class, () -> compile(missing));

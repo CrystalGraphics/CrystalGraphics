@@ -173,6 +173,15 @@ public final class CgVfxSystemAssets {
         int handlers = 0;
         for (CgVfxEmitter source : definition.emitters()) {
             for (CgVfxEvent event : source.ownEvents()) {
+                CgVfxSystemDefinition.Kill kill = killOf(definition, source, event);
+                if (kill != null) {
+                    CgVfxEmitter receiver = definition.emitters().get(kill.receiver());
+                    CgVfxEventHandler h = CgVfxEventHandler.kill("e" + ++handlers, ids.get(source), event.specTrigger());
+                    @SuppressWarnings("unchecked")
+                    List<Object> list = (List<Object>) trees.get(receiver).computeIfAbsent("events", k -> new ArrayList<>());
+                    list.add(h.tree());
+                    continue;
+                }
                 if (event.child() == null) {
                     throw new IllegalArgumentException(definition.name() + ": " + source.name() + "'s " + event.trigger()
                             + " event spawns nothing: rows to the CPU are Java's alone");
@@ -259,6 +268,7 @@ public final class CgVfxSystemAssets {
                 slotted = true;
             }
         }
+        List<CgVfxSystemDefinition.Kill> kills = new ArrayList<>();
         if (tree.get("emitters") instanceof List<?> handles) {
             Map<String, CgVfxEmitter> base = new LinkedHashMap<>();
             for (Object o : handles) {
@@ -268,10 +278,16 @@ public final class CgVfxSystemAssets {
             }
             readers(id, base);
             Map<String, CgVfxEmitter> done = new HashMap<>();
+            List<HeardKill> heard = new ArrayList<>();
             for (String handle : base.keySet()) {
-                CgVfxEmitter e = resolve(id, handle, base, done, new ArrayList<>());
+                CgVfxEmitter e = resolve(id, handle, base, done, new ArrayList<>(), heard);
                 kit.emitter(e);
                 emitters.add(e);
+            }
+            List<String> order = new ArrayList<>(base.keySet());
+            for (HeardKill k : heard) {
+                kills.add(new CgVfxSystemDefinition.Kill(order.indexOf(k.source()), done.get(k.source()).events().indexOf(k.event()),
+                        order.indexOf(k.receiver())));
             }
         }
         Effect effect = null;
@@ -280,14 +296,14 @@ public final class CgVfxSystemAssets {
             if (effect == null) throw new IllegalArgumentException(id + ": effect " + name + " has no behaviour registered");
             if (effect.contract() != null) {
                 CgVfxLook look = contracted(id, name, effect.contract(), user, emitters.isEmpty() && !slotted ? null : kit.build());
-                return new CgVfxSystemDefinition(id, look, effect.factory(), emitters, prime(tree), max(tree));
+                return new CgVfxSystemDefinition(id, look, effect.factory(), emitters, prime(tree), max(tree), kills);
             }
         }
         CgVfxSchema schema = CgVfxSchema.of(id);
         for (Map.Entry<?, ?> e : user.entrySet()) param(id, schema, String.valueOf(e.getKey()), (Map<?, ?>) e.getValue());
         CgVfxLook look = CgVfxLook.builder(schema).with(kit.build()).build();
         return new CgVfxSystemDefinition(id, look, effect == null ? null : effect.factory(), emitters, prime(tree),
-                max(tree));
+                max(tree), kills);
     }
 
     private static int prime(Map<Object, Object> tree) {
@@ -352,7 +368,7 @@ public final class CgVfxSystemAssets {
      * the same way first: an emitter is final once its children are. A loop of spawns fails, naming it.
      */
     private static CgVfxEmitter resolve(String system, String handle, Map<String, CgVfxEmitter> base,
-                                        Map<String, CgVfxEmitter> done, List<String> path) {
+                                        Map<String, CgVfxEmitter> done, List<String> path, List<HeardKill> heard) {
         CgVfxEmitter ready = done.get(handle);
         if (ready != null) return ready;
         if (path.contains(handle)) {
@@ -366,12 +382,21 @@ public final class CgVfxSystemAssets {
                 if (h.source() != null && !base.containsKey(h.source())) {
                     throw new IllegalArgumentException(at + ": its source " + h.source() + " is no enabled handle");
                 }
+                if (h.kill()) {
+                    // Cascade's EventReceiverKillParticles: its source's rows read back kill the receiver's particles.
+                    if (raising(h, handle, base.get(handle)) == null) continue;
+                    if (b == null) b = base.get(handle).toBuilder();
+                    CgVfxEvent rows = CgVfxEvent.ofSpec(h.trigger()).readback(KILL_ROWS);
+                    b.event(rows);
+                    heard.add(new HeardKill(handle, rows, receiver.getKey()));
+                    continue;
+                }
                 // Cascade's receiver spawns into its own emitter.
                 String spawns = h.spawn() != null ? h.spawn() : receiver.getKey();
                 if (!base.containsKey(spawns)) throw new IllegalArgumentException(at + ": it spawns " + spawns + ", no enabled handle");
                 List<CgVfxEventGenerator> raising = raising(h, handle, base.get(handle));
                 if (raising == null || Math.round(h.countMax()) == 0) continue;
-                CgVfxEmitter child = resolve(system, spawns, base, done, path);
+                CgVfxEmitter child = resolve(system, spawns, base, done, path, heard);
                 if (b == null) b = base.get(handle).toBuilder();
                 try {
                     CgVfxEvent event = h.compile(child);
@@ -389,6 +414,13 @@ public final class CgVfxSystemAssets {
         CgVfxEmitter out = b == null ? base.get(handle) : b.build();
         done.put(handle, out);
         return out;
+    }
+
+    /** Rows a kill's source reads back a step: one is enough per instance, the rest for the instances sharing it. */
+    private static final int KILL_ROWS = 64;
+
+    /** A kill handler resolved: handle {@code source}'s event {@code event} ends handle {@code receiver}'s particles. */
+    private record HeardKill(String source, CgVfxEvent event, String receiver) {
     }
 
     /**
@@ -448,6 +480,16 @@ public final class CgVfxSystemAssets {
         for (CgVfxEventGenerator g : source.generators()) if (g.feeds(h.trigger(), h.name())) raising.add(g);
         if (h.source() != null && h.name() == null) return raising;
         return raising.isEmpty() ? null : raising;
+    }
+
+    /** The kill {@code source}'s {@code event} raises in {@code d}, or null for an event that kills nothing. */
+    @Nullable
+    private static CgVfxSystemDefinition.Kill killOf(CgVfxSystemDefinition d, CgVfxEmitter source, CgVfxEvent event) {
+        int s = d.emitters().indexOf(source);
+        for (CgVfxSystemDefinition.Kill k : d.kills()) {
+            if (k.source() == s && source.events().get(k.event()) == event) return k;
+        }
+        return null;
     }
 
     /** Its message, or, lacking one, its type and the frame that threw it: a bare null names nothing. */

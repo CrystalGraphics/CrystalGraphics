@@ -26,7 +26,7 @@ Buffers {
     RECORDS ("Particles",                                                       uvec4,   readonly)
     DRAWN   ("Their drawn parts, the third their light",                        FxDrawn, readonly)
     LIVE    ("How many are alive",                                              uint,    readonly)
-    SLOTS   ("Each slot's two vec4s: its origin from the eye and its share; the inverse square's intensity scale, 0 for none", vec4, readonly)
+    SLOTS   ("Each slot's two vec4s: its origin from the eye and its share; the inverse square's intensity scale (0 for none), its light in the air, 1 leaving transparents unlit", vec4, readonly)
     LIGHTS  ("Lights",                                                          CgLight, append)
 }
 
@@ -53,5 +53,7 @@ void Lights() {
     // Its drawn radius as its source's: a departure from Unreal, whose particle lights are simple lights with none,
     // so a particle touching a surface lights it.
     light.ambient = vec4(mod(blockSky, 16.0), floor(blockSky / 16.0), (size.x + size.y) * 0.25, 0.0);
+    // Unreal's simple lights: in the air only by their scattering, on transparents only where asked.
+    light.air = vec4(falloff.y, falloff.z, 0.0, 0.0);
     LIGHTS_APPEND(light);
 }

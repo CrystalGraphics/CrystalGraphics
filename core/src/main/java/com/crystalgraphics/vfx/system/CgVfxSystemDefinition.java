@@ -52,7 +52,25 @@ import java.util.WeakHashMap;
  * @param maxPoolSize   finished instances kept for reuse; one past it is freed
  */
 public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfxBehaviour.Factory behaviour,
-                                    List<CgVfxEmitter> emitters, int poolPrimeSize, int maxPoolSize) {
+                                    List<CgVfxEmitter> emitters, int poolPrimeSize, int maxPoolSize, List<Kill> kills) {
+
+    /**
+     * Emitter {@code receiver}'s particles all end when emitter {@code source}'s event {@code event} (its place in that
+     * emitter's {@code events()}, read back) fires in the same instance: a file's {@code kill: true} handler, Cascade's
+     * {@code EventReceiverKillParticles}.
+     *
+     * <pre>{@code
+     * new CgVfxSystemDefinition("mymod:blast", look, null, List.of(dummy, light), 0, 32,
+     *         List.of(new CgVfxSystemDefinition.Kill(0, 0, 1)));   // the light goes when the dummy's death fires
+     * }</pre>
+     *
+     * <ul>
+     *   <li>The source's event must read its rows back ({@code CgVfxEvent.readback}); the kill lands a frame or two after
+     *       the step that raised it.</li>
+     * </ul>
+     */
+    public record Kill(int source, int event, int receiver) {
+    }
 
     /** Unreal's {@code UNiagaraSystem} defaults: none made ahead, 32 kept. */
     public static final int POOL_PRIME_SIZE = 0, MAX_POOL_SIZE = 32;
@@ -68,6 +86,20 @@ public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfx
             if (emitters.get(i).spawnFrom() != null) sourceOf(name, emitters, i);
         }
         if (poolPrimeSize < 0 || maxPoolSize < 0) throw new IllegalArgumentException(name + ": a pool size is negative");
+        kills = List.copyOf(kills);
+        for (Kill k : kills) {
+            if (k.source() < 0 || k.source() >= emitters.size() || k.receiver() < 0 || k.receiver() >= emitters.size()
+                    || k.event() < 0 || k.event() >= emitters.get(k.source()).events().size()
+                    || emitters.get(k.source()).events().get(k.event()).readback() <= 0) {
+                throw new IllegalArgumentException(name + ": " + k + " names no emitter, or an event that reads no rows back");
+            }
+        }
+    }
+
+    /** Killing nothing. */
+    public CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfxBehaviour.Factory behaviour,
+                                 List<CgVfxEmitter> emitters, int poolPrimeSize, int maxPoolSize) {
+        this(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, List.of());
     }
 
     /**

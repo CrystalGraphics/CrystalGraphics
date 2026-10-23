@@ -372,6 +372,7 @@ public final class CgVfxEmitterCompiler {
         if (shape.reports()) s.append("    REPORT_EVENTS (\"Events the CPU hears\",       FxEvent, append)\n");
         for (CgVfxDataInterface di : shape.dataInterfaces()) s.append(di.buffers());
         if (shape.readsClips()) s.append("    FX_CLIPS      (\"Baked clips\", vec4, readonly)\n");
+        if (shape.turnLifeAt() >= 0) s.append("    CURVES        (\"Look's curve rows: a mesh turn's rate integrals\", vec4, readonly)\n");
         if (shape.publishes()) {
             s.append("    PUBLISHED     (\"Live particles, keyed by slot, for the tier after to be born on\", FxEvent, append)\n");
         }
@@ -400,6 +401,21 @@ public final class CgVfxEmitterCompiler {
                 .append(CgVfxGpuEmitter.KEY_ROTATION).append(", STEP_KEY_THIN = ").append(CgVfxGpuEmitter.KEY_THIN).append(";\n");
         s.append("const int STEP_CURVE_TEXELS = ").append(CgVfxCurveBlock.TEXELS).append(";\n");
         s.append("const int STEP_INSTANCE_ROW = ").append(shape.instanceRowVectors()).append(";\n");
+        if (shape.turnLifeAt() >= 0) {
+            s.append("const int STEP_ROW_VECTORS = ").append(shape.rowVectors()).append(", STEP_TURN_LIFE_AT = ")
+                    .append(shape.turnLifeAt()).append(", STEP_TURN_TEXELS = ").append(CgVfxGpuEmitter.CURVE_TEXELS).append(";\n");
+            // Look's own reading of it (look.compute, look_curve), so a collision folds the turn Look draws.
+            s.append("""
+                    // A mesh turn's clock where its rate changes over life: the rate's scale integrated to its age, in
+                    // seconds, as Look turns it (CgVfxMeshRotation).
+                    vec3 step_turn_clock(FxParticle p, uint paramRow) {
+                        int at = int(paramRow) * STEP_ROW_VECTORS + STEP_TURN_LIFE_AT;
+                        float x = clamp(p.age / max(p.life, 1e-6), 0.0, 1.0) * float(STEP_TURN_TEXELS - 1);
+                        int i0 = int(floor(x)), i1 = min(i0 + 1, STEP_TURN_TEXELS - 1);
+                        return p.life * mix(CURVES(at + i0).xyz, CURVES(at + i1).xyz, x - float(i0));
+                    }
+                    """);
+        }
         s.append("const int STEP_SPAWN_ROW = ").append(CgVfxParticlePool.SPAWN_ROW_WORDS / 4).append(";\n");
         if (shape.events() > 0) {
             s.append("const int STEP_EVENT_NODES = ").append(shape.eventField(CgVfxShape.EVENT_NODES)).append(";\n");
@@ -698,8 +714,8 @@ public final class CgVfxEmitterCompiler {
                     }
                     p.seed = fx_rand(seed ^ step_key(row, STEP_KEY_SEED), k, 0u);
                     uint spinKey = seed ^ step_key(row, STEP_KEY_SPIN);
-                    float spin = s2.x + (s2.y - s2.x) * fx_rand(spinKey, k, 0u);
-                    p.spinRate = fx_rand(spinKey, k, 1u) < 0.5 ? -spin : spin;
+                    float spin = @SPIN_RATE@;
+                    p.spinRate = fx_rand(spinKey, k, 1u) < s2.w ? -spin : spin;
                     p.spin = @SPIN@;
                     p.heat = s1.w;
                     p.color = @COLOR@;
@@ -762,6 +778,8 @@ public final class CgVfxEmitterCompiler {
                 .replace("@HALF_HEIGHT@", spawnValue(shape, CgVfxSpawnInput.CYLINDER_HEIGHT, null, "step_vector(row, inst, 7).z", "0.5 * "))
                 .replace("@SCALE@", spawnValue(shape, CgVfxSpawnInput.MESH_SCALE, null, "vec3(1.0)", ""))
                 .replace("@TURN@", spawnValue(shape, CgVfxSpawnInput.MESH_ORIENTATION, null, "vec3(0.0)", ""))
+                .replace("@SPIN_RATE@", spawnValue(shape, CgVfxSpawnInput.SPRITE_ROTATION_RATE, null,
+                        "s2.x + (s2.y - s2.x) * fx_rand(spinKey, k, 0u)", ""))
                 .replace("@TURN_RATE@", spawnValue(shape, CgVfxSpawnInput.MESH_ROTATION_RATE, null, "vec3(0.0)", ""))
                 .replace("@ORBIT_OFFSET@", spawnValue(shape, CgVfxSpawnInput.ORBIT_OFFSET, null, "vec3(0.0)", ""))
                 .replace("@ORBIT_TURN@", spawnValue(shape, CgVfxSpawnInput.ORBIT_ROTATION, null, "vec3(0.0)", ""))
@@ -945,6 +963,7 @@ public final class CgVfxEmitterCompiler {
                     }
                     uint paramRow = INSTANCES(inst).x;
                     int row = int(paramRow) * STEP_PARAM_ROW;
+                    p.turnClock = @TURN_CLOCK@;
                     // What a form's rolls key on, with its module and input: the instance's seed.
                     uint formSeed = INSTANCES(inst).y;
                     FxStep s;
@@ -958,7 +977,7 @@ public final class CgVfxEmitterCompiler {
                     f.dragQuad = 0.0;
                     f.motionScale = vec3(1.0);
                     f.motionSet = vec3(0.0);
-                """);
+                """.replace("@TURN_CLOCK@", shape.turnLifeAt() >= 0 ? "step_turn_clock(p, paramRow)" : "vec3(p.age)"));
         for (int i = 0; i < shape.modules(); i++) if (!shape.afterSolve(i)) call(s, shape, i);
         s.append("""
                     // The solve: forces into velocity, drag implicit, then position

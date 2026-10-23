@@ -4,11 +4,11 @@
 #include "crystalgraphics:shaders/lib/vfx/sim/fx_types.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_beam.glsl"
 
-void fx_beam_source(inout FxParticle p, FxStep s, vec4 m0, vec4 m1, vec4 m2, FxBeamFrame b) {
+void fx_beam_source(inout FxParticle p, FxStep s, vec4 m0, vec4 m1, vec4 m2, vec4 actor, FxBeamFrame b) {
     bool born = p.age <= 0.0;
     vec4 point = p.beamSource, tangent = p.beamSourceTangent;
     if (born) point.w = 0.0;
-    fx_beam_resolve(point, tangent, born, m0, m1, m2, b);
+    fx_beam_resolve(point, tangent, born, m0, m1, m2, actor, b);
     p.beamSource = point;
     p.beamSourceTangent = tangent;
     if (born) p.position = point.xyz;

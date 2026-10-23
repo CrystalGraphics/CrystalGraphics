@@ -26,7 +26,7 @@ import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
  * public void writeSpawn(CgVfxWords out) {
  *     out.vec4(speedMin, speedMax, lifeMin, lifeMax)
  *        .vec4(sizeMin, sizeMax, 0f, heat)
- *        .vec4(spinMin, spinMax, inherit, 0f)
+ *        .vec4(spinMin, spinMax, inherit, spinBack)       // spinBack: the chance it turns the other way
  *        .vec4(0f, 0f, 0f, 0f);
  *     spawnShape.write(out);                          // six more: where it is born, which way it flies
  * }

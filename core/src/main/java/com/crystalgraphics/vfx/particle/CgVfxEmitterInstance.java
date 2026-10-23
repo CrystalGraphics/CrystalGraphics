@@ -92,6 +92,8 @@ public final class CgVfxEmitterInstance {
     private boolean scheduled;
     /** {@link #kill}ed since its last {@link #start}; a kill of its slot not yet taken by its system ({@link Books#takeKill}). */
     private boolean killed, killPending;
+    /** {@link #killParticles} asked since its system last looked ({@link Books#takeClear}). */
+    private boolean clearPending;
     private int stepFirst, stepCandidates, stepBursts;
     /** Where the source was at the step's start, and at the last step's end; whether there was a last step. */
     private float fromX, fromY, fromZ, lastX, lastY, lastZ;
@@ -385,6 +387,33 @@ public final class CgVfxEmitterInstance {
         // Without a slot nothing is alive on the GPU to end.
         killPending |= scheduled;
         killChildren();
+    }
+
+    /**
+     * Ends every particle it has alive at its next step and goes on spawning: Cascade's
+     * {@code EventReceiverKillParticles} ({@code ParticleModules_Event.cpp:276-283}). A kit's {@code kill: true}
+     * handler calls it.
+     *
+     * <pre>{@code
+     * light.killParticles();   // the flash's light goes out; its emitter spawns again by its rate
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Its events' children live on, in their own slots.</li>
+     *   <li>Spawns booked in the tick it lands in are dropped with the rest.</li>
+     *   <li>{@link #kill} ends it too; {@link #stop} only stops what spawns.</li>
+     * </ul>
+     */
+    public void killParticles() {
+        if (time < 0f || !scheduled) return;
+        clearPending = true;
+        if (dying != null) {
+            Arrays.fill(dying, 0);
+            alive = 0;
+        }
+        if (trail != null) trail.reset();
+        if (heads != null) heads.reset();
+        if (anim != null) anim.reset();
     }
 
     private void killChildren() {
@@ -997,12 +1026,16 @@ public final class CgVfxEmitterInstance {
                     moved = travelled > e.perUnit.tolerance() * e.perUnit.unit();
                     rateOwed += byDistance * rateScale;
                 }
-                if (!(e.perUnit.ignoreRateWhenMoving() && moved)) rateOwed += e.rate.at(age, u, v) * bound * dt * rateScale;
+                float rate = e.rate.at(age, u, v) * bound;
+                if (!(e.perUnit.ignoreRateWhenMoving() && moved)) rateOwed += rate * dt * rateScale;
                 int n = (int) rateOwed;
                 rateOwed -= n;
                 // Spawn i of n is born (i + 1) / n of the way through the step, so the last is at its end.
                 int fit = fit(n);
                 for (int i = 0; i < fit; i++) scheduleOne(dt, (float) (i + 1) / fit);
+                // A beam back up to its count, at the step's start: always on, or one where nothing else spawns.
+                int refill = e.beamAlwaysOn || (rate <= 0f && n == 0 && stepBursts == 0) ? e.beamRefill : 0;
+                for (int i = fit(refill); i > 0; i--) scheduleOne(dt, 0f);
             }
             stepCandidates = spawned - stepFirst;
             time += dt;
@@ -1041,6 +1074,13 @@ public final class CgVfxEmitterInstance {
         public boolean takeKill() {
             boolean pending = killPending;
             killPending = false;
+            return pending;
+        }
+
+        /** Whether {@link CgVfxEmitterInstance#killParticles} was asked since the last call: its system clears its slot. */
+        public boolean takeClear() {
+            boolean pending = clearPending;
+            clearPending = false;
             return pending;
         }
 
@@ -1133,8 +1173,13 @@ public final class CgVfxEmitterInstance {
         @Override
         public boolean socket(int i, float[] out) {
             CgVfxSockets points = emitter.sockets();
+            return points != null && point(points.names().get(i), out);
+        }
+
+        @Override
+        public boolean point(String name, float[] out) {
             CgVfxSockets.Source source = socketSource;
-            if (points == null || source == null || !source.point(points.names().get(i), socketScratch)) return false;
+            if (source == null || !source.point(name, socketScratch)) return false;
             out[0] = (float) (socketScratch[0] - originX);
             out[1] = (float) (socketScratch[1] - originY);
             out[2] = (float) (socketScratch[2] - originZ);

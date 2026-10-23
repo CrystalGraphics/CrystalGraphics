@@ -27,6 +27,8 @@ package com.crystalgraphics.vfx.particle.form;
  *       particle's size, unitless.</li>
  *   <li>{@link #ORBIT_OFFSET}, {@link #ORBIT_ROTATION} and {@link #ORBIT_RATE} are always stored: Cascade's orbit
  *       payload, taken at birth ({@code ParticleModules_Orbit.cpp:111-165}), which Look turns into the place drawn.</li>
+ *   <li>{@link #SPRITE_ROTATION_RATE} is the launch's spin rate in radians a second, read by the emitter's time as
+ *       Cascade's {@code RotationRate} reads its distribution ({@code ParticleModules.cpp:1908}).</li>
  *   <li>{@link #scales()} says whether {@code CgVfxEmitter.scaled} scales it: lengths and speeds do, a lifetime or an
  *       angle does not.</li>
  * </ul>
@@ -49,7 +51,8 @@ public enum CgVfxSpawnInput {
     LIGHT_EXPONENT("light_attributes", "exponent", 1, -1, false),
     ORBIT_OFFSET("orbit", "offset", 3, -1, true),
     ORBIT_ROTATION("orbit", "rotation", 3, -1, false),
-    ORBIT_RATE("orbit", "rotation_rate", 3, -1, false);
+    ORBIT_RATE("orbit", "rotation_rate", 3, -1, false),
+    SPRITE_ROTATION_RATE("sprite_rotation_rate", "rate", 1, -1, false);
 
     private final String module, input;
     private final int components, word;

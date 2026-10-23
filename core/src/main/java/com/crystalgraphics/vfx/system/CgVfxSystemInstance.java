@@ -9,6 +9,9 @@ import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.net.CgVfxCue;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxEventRows;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
+import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
 
 import javax.annotation.Nullable;
@@ -49,6 +52,11 @@ import java.util.List;
  */
 public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEffect<CgVfxSystemInstance<B>>
         implements CgVfxCue.Live, CgVfxCue.Authoritative {
+
+    static {
+        // Every instance's kill handlers, heard from their sources' rows (CgVfxSystemDefinition.Kill).
+        CgVfxParticlePool.listen(CgVfxSystemInstance::heard);
+    }
 
     private CgVfxSystemDefinition definition;
     private CgVfxEmitterInstance[] emitters;
@@ -148,6 +156,23 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
     /** How many emitters it plays: its definition's, in its order. */
     public int emitters() {
         return emitters.length;
+    }
+
+    /** Each owning instance's receivers of {@code source}'s event {@code event}, their particles ended. Render thread. */
+    private static void heard(CgVfxGpuEmitter source, int event, CgVfxEventRows rows) {
+        for (int r = 0; r < rows.count(); r++) {
+            if (rows.owner(r) instanceof CgVfxSystemInstance<?> owner) owner.killed(source, event);
+        }
+    }
+
+    private void killed(CgVfxGpuEmitter source, int event) {
+        List<CgVfxSystemDefinition.Kill> kills = definition.kills();
+        for (int k = 0; k < kills.size(); k++) {
+            CgVfxSystemDefinition.Kill kill = kills.get(k);
+            if (kill.event() == event && definition.emitters().get(kill.source()) == source && kill.receiver() < emitters.length) {
+                emitters[kill.receiver()].killParticles();
+            }
+        }
     }
 
     /** Emitter {@code i}'s running instance. */

@@ -153,7 +153,7 @@ vec3 fx_collision_rotation(FxParticle p, FxCollision c) {
 // Damps p's rotation rates by d from now: a sprite's by d.x, a mesh's per axis (:421-426), its turn so far kept.
 void fx_collision_turn(inout FxParticle p, vec3 d) {
     p.spinRate *= d.x;
-    p.turnBase += (p.turnScale - p.turnScale * d) * p.age;
+    p.turnBase += (p.turnScale - p.turnScale * d) * p.turnClock;
     p.turnScale *= d;
 }
 

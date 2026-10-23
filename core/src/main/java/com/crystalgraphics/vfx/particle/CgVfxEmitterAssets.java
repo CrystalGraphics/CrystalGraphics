@@ -228,10 +228,12 @@ public final class CgVfxEmitterAssets {
                         : map("mode", "add", "rate", curves("age", a[0], a[1], a[2]))));
             }
         }
-        if (e.spinMin != 0f || e.spinMax != 0f) {
-            // Ours rolls the sense too: Unreal's rate is signed.
-            modules.add(entry(e.id("spin_rate"), "sprite_rotation_rate", map("rate",
-                    map("fn", NS + "random_sign", "inputs", map("value", range(e.spinMin, e.spinMax))))));
+        CgVfxSpawnForm spinForm = e.spawnForm(CgVfxSpawnInput.SPRITE_ROTATION_RATE);
+        if (spinForm != null || e.spinMin != 0f || e.spinMax != 0f) {
+            Object rate = spinForm != null ? spinForm.value() : range(e.spinMin, e.spinMax);
+            // Unreal's rate is signed; ours either way is random_sign round it.
+            modules.add(entry(e.id("spin_rate"), "sprite_rotation_rate", map("rate", e.spinBack > 0f
+                    ? map("fn", NS + "random_sign", "inputs", map("value", rate)) : rate)));
         }
         if (e.rasterized != null) {
             float[] r = e.rasterized;
@@ -553,13 +555,19 @@ public final class CgVfxEmitterAssets {
                     continue;
                 }
                 case "sprite_rotation_rate" -> {
-                    b.id("spin_rate", idOf(entry, "spin_rate"));
+                    String element = idOf(entry, "spin_rate");
+                    b.id("spin_rate", element);
                     Object rate = inputs(entry).get("rate");
-                    if (rate instanceof Map<?, ?> fn && (NS + "random_sign").equals(fn.get("fn")) && fn.get("inputs") instanceof Map<?, ?> fin) {
-                        rate = fin.get("value");
+                    boolean eitherWay = rate instanceof Map<?, ?> fn && (NS + "random_sign").equals(fn.get("fn"));
+                    if (eitherWay && ((Map<?, ?>) rate).get("inputs") instanceof Map<?, ?> fin) rate = fin.get("value");
+                    CgVfxSpawnForm form = spawnForm(CgVfxSpawnInput.SPRITE_ROTATION_RATE, element, "rate", rate);
+                    if (form != null) {
+                        // A curve by the emitter's time, read at birth (ParticleModules.cpp:1908).
+                        b.spawnForm(form).spin(0f, 0f, eitherWay);
+                    } else {
+                        float[] spin = rangeOf(rate);
+                        b.spin(spin[0], spin[1], eitherWay);
                     }
-                    float[] spin = rangeOf(rate);
-                    b.spin(spin[0], spin[1]);
                     continue;
                 }
                 case "beam_noise" -> {
@@ -1758,6 +1766,15 @@ public final class CgVfxEmitterAssets {
                 give(out, names, "directionality", in, "directionality");
                 give(out, names, "axis", in, "axis");
                 give(out, names, "affect_base_velocity", in, "lasting");
+                if (in.get("clamp_min") instanceof List<?> lo && in.get("clamp_max") instanceof List<?> hi) {
+                    StringBuilder d = new StringBuilder();
+                    for (int a = 0; a < 3; a++) {
+                        String axis = "xyz".substring(a, a + 1);
+                        if (((Number) hi.get(a)).floatValue() > 0f) d.append('+').append(axis);
+                        if (((Number) lo.get(a)).floatValue() < 0f) d.append('-').append(axis);
+                    }
+                    if (!d.toString().equals("+x-x+y-y+z-z")) out.put("directions", d.toString());
+                }
                 return new Mapped("point_attractor", out, Set.of(), names);
             }
             case "vector_field" -> {
@@ -1777,6 +1794,10 @@ public final class CgVfxEmitterAssets {
             case "beam_source", "beam_target" -> {
                 out.putAll(in);
                 out.remove("speed");   // its renderer's
+                if (out.remove("actor") instanceof String actor) {
+                    out.put("method", "actor");
+                    out.put("name", actor);
+                }
                 return new Mapped(kind, out, Set.of(), names);
             }
             case "beam_noise" -> {
@@ -2039,6 +2060,20 @@ public final class CgVfxEmitterAssets {
                 }
                 // Cascade declares bOverrideVelocity and never reads it (ParticleModules.cpp:4424; Update, :4417-4491).
                 read.add("override_velocity");
+                if (in.get("directions") instanceof String d) {
+                    read.add("directions");
+                    float[] lo = new float[3], hi = new float[3];
+                    String rest = d.toLowerCase(Locale.ROOT);
+                    for (int a = 0; a < 3; a++) {
+                        String axis = "xyz".substring(a, a + 1);
+                        if (rest.contains("-" + axis)) lo[a] = -1f;
+                        if (rest.contains("+" + axis)) hi[a] = 1f;
+                        rest = rest.replace("-" + axis, "").replace("+" + axis, "");
+                    }
+                    if (!rest.isEmpty()) throw new IllegalArgumentException(name + ": point_attractor.directions " + d + ": signed axes, +x to -z");
+                    out.put("clamp_min", list(lo[0], lo[1], lo[2]));
+                    out.put("clamp_max", list(hi[0], hi[1], hi[2]));
+                }
             }
             case "vector_field" -> {
                 kind = "vector_field";
@@ -2269,11 +2304,11 @@ public final class CgVfxEmitterAssets {
      */
     private static CgVfxSpawnRate spawnRate(String name, Object rate, Object scale) {
         // Cascade's UniformCurve: the scale drawn each tick between two curves at the emitter's time.
-        if (scale instanceof Map<?, ?> f && (NS + "random_range").equals(f.get("fn")) && f.get("inputs") instanceof Map<?, ?> between
-                && between.get("min") instanceof Map<?, ?> lo && lo.get("curve") != null
-                && between.get("max") instanceof Map<?, ?> hi && hi.get("curve") != null) {
-            return spawnRate(name, rate, lo).scaleTo(keyframes(name, hi, "loop"));
+        if (uniformCurve(scale) instanceof Map<?, ?> between) {
+            return spawnRate(name, rate, between.get("min")).scaleTo(keyframes(name, between.get("max"), "loop"));
         }
+        // The rate as one: rate times scale, the scale's place the one that draws between curves.
+        if (uniformCurve(rate) != null && uniformCurve(scale) == null) return spawnRate(name, scale == null ? 1.0 : scale, rate);
         boolean rateCurve = rate instanceof Map<?, ?> r && r.get("curve") != null;
         boolean scaleCurve = scale instanceof Map<?, ?> s && s.get("curve") != null;
         float[] ends = rateCurve ? new float[]{1f, 1f} : rangeOf(rate);
@@ -2290,6 +2325,14 @@ public final class CgVfxEmitterAssets {
         // Cascade's uniform is Max + (Min - Max) * rand (Distributions.cpp:2032): either end may be the larger.
         float lo = ends[0] * by[0], hi = ends[1] * by[1];
         return new CgVfxSpawnRate(Math.min(lo, hi), Math.max(lo, hi), curve != null ? curve : CgKeyframes.constant(1f));
+    }
+
+    /** {@code value}'s min and max where it is a random range between two curves, else null. */
+    @Nullable
+    private static Map<?, ?> uniformCurve(Object value) {
+        return value instanceof Map<?, ?> f && (NS + "random_range").equals(f.get("fn")) && f.get("inputs") instanceof Map<?, ?> between
+                && between.get("min") instanceof Map<?, ?> lo && lo.get("curve") != null
+                && between.get("max") instanceof Map<?, ?> hi && hi.get("curve") != null ? between : null;
     }
 
     /** {@code a} times {@code b}, sampled at each one's keys and between them. */
@@ -2424,7 +2467,7 @@ public final class CgVfxEmitterAssets {
         return map("range", list(ch.from().value(0), ch.to().value(0)));
     }
 
-    private static Object curve(CgKeyframes k, String by) {
+    static Object curve(CgKeyframes k, String by) {
         if (k.size() == 1) return (double) k.value(0);
         return map("curve", richCurve(k), "by", by);
     }
@@ -2503,7 +2546,7 @@ public final class CgVfxEmitterAssets {
      * A curve value read as keyframes: a number constant; {@code { curve, by }} its keys, a linear segment linear, a
      * constant one a step and a cubic one eased along the curve itself, so it evaluates as the file's curve.
      */
-    private static CgKeyframes keyframes(String name, Object value, String by) {
+    static CgKeyframes keyframes(String name, Object value, String by) {
         if (value instanceof Number n) return CgKeyframes.constant(n.floatValue());
         if (!(value instanceof Map<?, ?> form) || form.get("curve") == null) {
             throw new IllegalArgumentException(name + ": a number or a curve by " + by + ", not " + value);
@@ -2764,9 +2807,6 @@ public final class CgVfxEmitterAssets {
         for (Map<?, ?> r : entries(tree, "renderers")) {
             if (!"beam".equals(r.get("kind"))) continue;
             if (found != null) throw new IllegalArgumentException(name + " has two beam renderers: Cascade's type data is one");
-            if (Boolean.TRUE.equals(r.get("always_on"))) {
-                throw new IllegalArgumentException(name + "'s beam renderer sets always_on, which is not built yet");
-            }
             found = r;
         }
         return found;
@@ -2789,9 +2829,11 @@ public final class CgVfxEmitterAssets {
         Map<String, String> names = new HashMap<>();
         Set<String> read = new HashSet<>();
         String method = String.valueOf(in.get("method") != null ? in.get("method") : "default");
-        if (!method.equals("default") && !method.equals("user_set")) {
-            throw new IllegalArgumentException(name + ": " + id + ".method " + method + " is not built yet: default or user_set");
+        if (!method.equals("default") && !method.equals("user_set") && !method.equals("actor")) {
+            throw new IllegalArgumentException(name + ": " + id + ".method " + method + " is not built yet: default, user_set or actor");
         }
+        // An actor is a point of the followed entity, by name; with none named Cascade reads the distribution (:1985).
+        if (method.equals("actor") && in.get("name") instanceof String actor && !actor.isEmpty()) out.put("actor", actor);
         if ("emitter".equals(in.get("tangent_method"))) {
             throw new IllegalArgumentException(name + ": " + id + ".tangent_method emitter is not built yet");
         }
