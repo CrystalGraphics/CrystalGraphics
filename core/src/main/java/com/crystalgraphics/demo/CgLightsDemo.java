@@ -70,6 +70,11 @@ public final class CgLightsDemo {
             {0.75f, 1f, 0.75f, 0.45f}};
     private final Matrix4f pane = new Matrix4f();
     private CgMaterial glass;
+    /**
+     * The haze's extinction a block (-Dcrystalgraphics.demo.lightsHaze): thin, since the show's lights are bright enough
+     * to light a floor several times its colour, and a thicker haze glows white round them.
+     */
+    private static final float HAZE = Float.parseFloat(System.getProperty("crystalgraphics.demo.lightsHaze", "0.001"));
     /** The haze over the arena, added to the world's media while the show plays. */
     private final CgWorldHaze haze = new CgWorldHaze();
     private boolean hazing;
@@ -163,7 +168,7 @@ public final class CgLightsDemo {
     public void submit(CgWorldRenderer world, double x, double y, double z, double seconds) {
         CgWorldLights lights = world.lights();
         float t = (float) (seconds % 3600.0);
-        haze.box(x - 24, y - 1, z - 20, x + 24, y + 18, z + 20).density(0.03f, 4f);
+        haze.box(x - 24, y - 1, z - 20, x + 24, y + 18, z + 20).density(HAZE, 4f);
         if (!hazing) {
             world.media().add(haze);
             hazing = true;

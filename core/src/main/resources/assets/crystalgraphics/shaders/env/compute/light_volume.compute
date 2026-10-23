@@ -197,14 +197,17 @@ void Scatter() {
     }
     vec3 w = media_point(t, MEDIA_SCATTER_SIZE(), _MediaRay00, _MediaRay10, _MediaRay01, _MediaRay11);
     vec3 view = normalize(w);
+    // Unreal's distance bias: the froxel's radius, at least a centimetre, added to the inverse square's denominator.
+    float cell = distance(w, media_point(t + ivec3(1), MEDIA_SCATTER_SIZE(), _MediaRay00, _MediaRay10, _MediaRay01, _MediaRay11));
+    float biasSqr = max(cell, 0.01) * max(cell, 0.01);
     ivec2 list = cell_lights(w);
     vec3 sum = vec3(0.0);
     int rays = 0;
     for (int k = 0; k < list.x; k++) {
         CgLight light = LIGHTS(int(INDICES(list.y + k)));
         if (CG_LIGHT_MINECRAFT(light)) continue;
-        float falloff = cg_light_falloff(light.positionRadius.xyz, light.positionRadius.w, light.colorExponent.w,
-                light.spotCos, light.segmentCone, w);
+        float falloff = cg_light_falloff_biased(light.positionRadius.xyz, light.positionRadius.w, light.colorExponent.w,
+                light.spotCos, light.segmentCone, w, biasSqr);
         if (falloff <= 0.0) continue;
         if (_Shadows > 0.5 && CG_LIGHT_SHADOWED(light) && rays < _AirShadowRays) {
             rays++;

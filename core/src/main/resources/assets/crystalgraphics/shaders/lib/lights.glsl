@@ -65,9 +65,12 @@ ivec3 cg_light_cell(vec3 p, vec3 zParams, vec2 rayMin, vec2 rayMax, vec2 tile, i
 // then the non-directional IntegrateLight of CapsuleLightIntegrate.ush): a mask from the light's centre, radial to its
 // radius and Square(saturate((cos - cosOuter) / (cosInner - cosOuter))) inside a cone (DynamicLightingCommon.ush:46-50),
 // times, for the inverse square, the irradiance of its segment (CapsuleLight.ush's LineIrradiance, 1 / (d² + 1) at a
-// point), in blocks with Unreal's square centimetre as the bias. A source's radius shapes only N.L at the horizon
-// (cg_light_surface): Minecraft has no highlight.
-float cg_light_falloff(vec3 position, float radius, float exponent, vec4 spotCos, vec4 segmentCone, vec3 p) {
+// point), in blocks. A source's radius shapes only N.L at the horizon (cg_light_surface): Minecraft has no highlight.
+// biasSqr, in square blocks, is the inverse square's bias: Unreal's square centimetre on a surface; its volumetric fog
+// gives it a froxel's radius squared (VolumetricFog.usf:1061, r.VolumetricFog.InverseSquaredLightDistanceBiasScale 1), so a cell
+// near a light takes its average rather than the spike at the light.
+float cg_light_falloff_biased(vec3 position, float radius, float exponent, vec4 spotCos, vec4 segmentCone, vec3 p,
+                              float biasSqr) {
     vec3 toLight = position - p;
     float d2 = dot(toLight, toLight), x = d2 / (radius * radius);
     float fade = clamp(1.0 - x * x, 0.0, 1.0);
@@ -81,7 +84,12 @@ float cg_light_falloff(vec3 position, float radius, float exponent, vec4 spotCos
     vec3 l0 = toLight - 0.5 * segmentCone.xyz, l1 = toLight + 0.5 * segmentCone.xyz;
     float inv01 = inversesqrt(max(dot(l0, l0), 1.0e-12)) * inversesqrt(max(dot(l1, l1), 1.0e-12));
     float cosSubtended = dot(l0, l1) * inv01;
-    return mask * inv01 / (cosSubtended * 0.5 + 0.5 + CG_LIGHT_BIAS * inv01);
+    return mask * inv01 / (cosSubtended * 0.5 + 0.5 + biasSqr * inv01);
+}
+
+// cg_light_falloff_biased with Unreal's square centimetre: what a surface takes.
+float cg_light_falloff(vec3 position, float radius, float exponent, vec4 spotCos, vec4 segmentCone, vec3 p) {
+    return cg_light_falloff_biased(position, radius, exponent, spotCos, segmentCone, p, CG_LIGHT_BIAS);
 }
 
 // N.L for a sphere of sin^2(alpha) = radius^2 / (d^2 + bias) as seen from the surface: Unreal's SphereHorizonCosWrap, its
