@@ -122,6 +122,7 @@ final class CgVfxGpuSteps {
                 }
                 pool.trailTable(slot, source.minIds(), source.trails(), trailRefits, trailRefitCount);
             }
+            source.stepped();
             trailRows = trailRefitCount = 0;
         }
 

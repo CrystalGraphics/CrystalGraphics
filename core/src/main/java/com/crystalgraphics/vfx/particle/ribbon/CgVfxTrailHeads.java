@@ -28,8 +28,9 @@ import java.util.Arrays;
  * }</pre>
  *
  * <ul>
- *   <li>Each row reserves {@code max_particles} spawn indices (the most a trail can spawn in a step) and the heads
- *       kernel spawns as many of them as the source's move asks for.</li>
+ *   <li>Each trail reserves {@code max_particles} spawn indices (the most it can spawn in a step) once a pool step,
+ *       however many ticks the step holds, and the heads kernel spawns as many of them as the source's move asks
+ *       for.</li>
  *   <li>It spawns by its source particles' moves alone: a rate or a burst on such an emitter fails at load.</li>
  *   <li>Each trail keeps a ring of its spawns, a block a pool step, sized for steps of {@link #RING_STEP}; faster frames
  *       merge its oldest two blocks, their births laid evenly between, which a trail's one life keeps close.</li>
@@ -56,6 +57,8 @@ public final class CgVfxTrailHeads implements CgVfxTrailRows {
     private final int trails, budget;
     private final int[] rows, rowFirst, minIds = new int[0], refits = new int[0];
     private int rowsUsed;
+    /** Whether {@link #rowFirst} holds this pool step's spawn indices, reserved by an earlier tick of it. */
+    private boolean reserved;
 
     /**
      * The heads of an emitter drawing {@code trail}: {@code perUnit} its spawn per unit, {@code maxStep} its farthest
@@ -100,8 +103,10 @@ public final class CgVfxTrailHeads implements CgVfxTrailRows {
         float perBlock = spawning && perUnit.perBlock() > 0f ? perUnitNow / perUnit.unit() : 0f;
         Arrays.fill(rows, 0);
         rowsUsed = trails;
+        // A pool step spawns on its first tick's indices: later ticks of it keep the emitter alive and take none.
+        if (reserved) books.reserve(0);
         for (int t = 0; t < trails; t++) {
-            rowFirst[t] = books.reserve(budget);
+            if (!reserved) rowFirst[t] = books.reserve(budget);
             int at = t * CgVfxTrailSource.ROW_WORDS;
             rows[at] = Float.floatToRawIntBits(time);
             rows[at + 1] = Float.floatToRawIntBits(perBlock);
@@ -123,6 +128,7 @@ public final class CgVfxTrailHeads implements CgVfxTrailRows {
             rows[at + 17] = Float.floatToRawIntBits(trails);
             rows[at + 19] = Float.floatToRawIntBits(HEAD);
         }
+        reserved = true;
     }
 
     @Override
@@ -168,5 +174,11 @@ public final class CgVfxTrailHeads implements CgVfxTrailRows {
     @Override
     public void reset() {
         rowsUsed = 0;
+        reserved = false;
+    }
+
+    @Override
+    public void stepped() {
+        reserved = false;
     }
 }

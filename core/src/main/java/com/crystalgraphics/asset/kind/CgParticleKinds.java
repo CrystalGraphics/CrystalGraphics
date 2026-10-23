@@ -185,7 +185,7 @@ public final class CgParticleKinds {
             .register();
 
     static final CgType TRAIL_RETRACT = CgTypes.struct("crystalgraphics:renderer.trail_retract")
-            .property("retract", FLOAT).quantity(CgQuantity.TIME)
+            .property("retract", FLOAT)
             .property("fade", CgValueType.struct(TRAIL_FADE))
             .register();
 

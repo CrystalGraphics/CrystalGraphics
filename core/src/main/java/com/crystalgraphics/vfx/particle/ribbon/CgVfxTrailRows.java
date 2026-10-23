@@ -45,4 +45,8 @@ public interface CgVfxTrailRows {
 
     /** Forgets every trail: a fresh slot. */
     void reset();
+
+    /** Its rows have been handed to a pool step: spawn indices kept for that step are spent. */
+    default void stepped() {
+    }
 }
