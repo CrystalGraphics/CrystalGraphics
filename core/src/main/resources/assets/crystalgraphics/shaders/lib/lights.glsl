@@ -54,6 +54,13 @@
 // deferred does: a swarm of small lights sampled a few times a pixel is noise.
 #define CG_LIGHT_SAMPLED(light) ((light).ambient.w > 0.5 || (light).air.z > 0.5)
 
+// light_grid.compute's view record, kind.w: 1 while the light casts shadows, 2 for a spot, 4 for a tube. A pass reads a
+// light's spot and segment only where these say it has them, a spot's cone ramp from segment.w: most lights are points,
+// and loading both for every light was half of the apply's loop.
+#define CG_VIEW_SHADOWED(kind) ((int((kind).w) & 1) != 0)
+#define CG_VIEW_SPOT(kind) ((int((kind).w) & 2) != 0)
+#define CG_VIEW_TUBE(kind) ((int((kind).w) & 4) != 0)
+
 // A light's run in its cells' lists (light_grid.compute): each pass reads its own lights as one run, as Unreal keeps
 // MegaLights' lights as a list's tail (LightGridCommon.ush:107-127), rather than walking the list to drop the rest.
 // Shaded exactly (not CG_LIGHT_SAMPLED) first, those in the air (air.x > 0) either side of the middle, sampled after,
@@ -153,6 +160,27 @@ float cg_light_surface(vec3 position, float radius, float exponent, vec4 spotCos
     float t = length2 > 0.0 ? clamp(dot(p - position, segmentCone.xyz) / length2, -0.5, 0.5) : 0.0;
     vec3 toLight = position + segmentCone.xyz * t - p;
     float d2 = dot(toLight, toLight), nol = dot(n, toLight) * inversesqrt(max(d2, 1.0e-12));
+    if (source > 0.0) nol = cg_sphere_horizon_wrap(nol, clamp(source * source / (d2 + CG_LIGHT_BIAS), 0.0, 1.0));
+    return falloff * clamp(nol, 0.0, 1.0);
+}
+
+// cg_light_surface for a light with no cone and no segment, a point: the same light, through a path a fraction of the
+// general one's code. A pass picks it per light (CG_VIEW_SPOT, CG_VIEW_TUBE), as Unreal compiles its deferred light
+// shaders per light type: carrying every shape's code made a point cost half as much again. With both ends at its
+// centre, the line's irradiance is the point's 1 / (d² + bias).
+float cg_light_point(vec3 position, float radius, float exponent, float source, vec3 p, vec3 n) {
+    vec3 toLight = position - p;
+    float d2 = dot(toLight, toLight), x = d2 / (radius * radius), falloff;
+    if (exponent == 0.0) {
+        float fade = clamp(1.0 - x * x, 0.0, 1.0);
+        falloff = fade * fade / (d2 + CG_LIGHT_BIAS);
+    } else {
+        // 2, Cascade's and the particle lights' usual exponent, squared: pow is two transcendentals a pixel and light.
+        float s = 1.0 - clamp(x, 0.0, 1.0);
+        falloff = exponent == 2.0 ? s * s : pow(s, exponent);
+    }
+    if (falloff <= 0.0) return 0.0;
+    float nol = dot(n, toLight) * inversesqrt(max(d2, 1.0e-12));
     if (source > 0.0) nol = cg_sphere_horizon_wrap(nol, clamp(source * source / (d2 + CG_LIGHT_BIAS), 0.0, 1.0));
     return falloff * clamp(nol, 0.0, 1.0);
 }

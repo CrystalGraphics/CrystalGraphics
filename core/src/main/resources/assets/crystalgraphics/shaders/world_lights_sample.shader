@@ -327,12 +327,14 @@ Pass {
         float weightSum = 0.0;
         for (int k = span.x; k < span.y; k++) {
             int index = int(INDICES(from + k));
-            CgViewLight light = VIEWED(index);
-            vec4 reach = light.positionRadius;
+            vec4 reach = VIEWED(index).positionRadius;
             if (dot(reach.xyz - p, reach.xyz - p) >= reach.w * reach.w) continue;
-            float lit = cg_light_surface(reach.xyz, reach.w, light.kind.y, light.spot, light.segment, light.kind.z, p, n);
+            vec4 kind = VIEWED(index).kind;
+            float lit = CG_VIEW_SPOT(kind) || CG_VIEW_TUBE(kind)
+                    ? cg_light_surface(reach.xyz, reach.w, kind.y, VIEWED(index).spot, VIEWED(index).segment, kind.z, p, n)
+                    : cg_light_point(reach.xyz, reach.w, kind.y, kind.z, p, n);
             // GetLocalLightTargetPDF: log2 of the lighting's luminance, smoothly zero below MinSampleWeight.
-            float lum = lit * light.radiance.w;
+            float lum = lit * VIEWED(index).radiance.w;
             if (lum <= 0.001) continue;
             lum *= clamp((lum - 0.001) / 0.001, 0.0, 1.0);
             float weight = log2(lum + 1.0);
@@ -357,7 +359,7 @@ Pass {
         // MergeRays: the next sample of the same light takes this one's ray, unless the light has an area to sample.
         if (!area && mine < int(_SampleGrid.z) - 1 && chosen[mine + 1] == index) return vec2(float(index), 0.0);
         float weight = weightSum / chosenWeight[mine];
-        if (light.kind.w < 0.5) return vec2(float(index), weight);
+        if (!CG_VIEW_SHADOWED(light.kind)) return vec2(float(index), weight);
 
         // GetLightSampleTrace: toward a point of the light sampled over the solid angle its sphere covers, along its
         // line for a tube.

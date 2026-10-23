@@ -117,11 +117,14 @@ Pass {
         // is rejected by its reach first.
         ivec2 span = shadows ? CG_LIGHTS_EXACT(e) : CG_LIGHTS_LIT(e);
         for (int k = span.x; k < span.y; k++) {
-            CgViewLight light = VIEWED(int(INDICES(from + k)));
-            vec4 reach = light.positionRadius;
+            int index = int(INDICES(from + k));
+            vec4 reach = VIEWED(index).positionRadius;
             if (dot(reach.xyz - p, reach.xyz - p) >= reach.w * reach.w) continue;
-            float lit = cg_light_surface(reach.xyz, reach.w, light.kind.y, light.spot, light.segment, light.kind.z, p, n);
-            if (lit > 0.0) sum += light.radiance.rgb * lit;
+            vec4 kind = VIEWED(index).kind;
+            float lit = CG_VIEW_SPOT(kind) || CG_VIEW_TUBE(kind)
+                    ? cg_light_surface(reach.xyz, reach.w, kind.y, VIEWED(index).spot, VIEWED(index).segment, kind.z, p, n)
+                    : cg_light_point(reach.xyz, reach.w, kind.y, kind.z, p, n);
+            if (lit > 0.0) sum += VIEWED(index).radiance.rgb * lit;
         }
         if (shadows) sum += texelFetch(_Shadowed, px, 0).rgb;
 

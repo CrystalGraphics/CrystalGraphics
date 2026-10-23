@@ -26,7 +26,7 @@
 struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; vec4 air; };
 // A light in the grid's space: its position and radius, the way a spot points and its outer cosine, its run (CG_LIGHT_RUN) in x.
 // A light in the grid's view, and what the apply and MegaLights' sampling shade it with: kind is its run, exponent,
-// source radius and 1 while it casts shadows, segment its tube in the view (w its cone's ramp), radiance its colour over
+// source radius and its shape bits (lights.glsl's CG_VIEW_SHADOWED, CG_VIEW_SPOT, CG_VIEW_TUBE), segment its tube in the view (w its cone's ramp), radiance its colour over
 // pi, faded by day and divided by the lightmap at its block (world_lights.shader), and in w the same as a luminance, the
 // sampling's weight (world_lights_sample.shader). Each the same for every pixel, so worked out here once.
 struct CgViewLight { vec4 positionRadius; vec4 spot; vec4 kind; vec4 segment; vec4 radiance; };
@@ -105,7 +105,8 @@ void View() {
     }
     vec3 colour = light.colorExponent.rgb;
     VIEW_WRITE(CgViewLight(vec4(v, radius), vec4(w, light.spotCos.w),
-            vec4(float(CG_LIGHT_RUN(light)), light.colorExponent.w, light.ambient.z, CG_LIGHT_SHADOWED(light) ? 1.0 : 0.0),
+            vec4(float(CG_LIGHT_RUN(light)), light.colorExponent.w, light.ambient.z,
+                    float((CG_LIGHT_SHADOWED(light) ? 1 : 0) + (light.spotCos.w > -1.5 ? 2 : 0) + (dot(along, along) > 0.0 ? 4 : 0))),
             vec4(segment, light.segmentCone.w),
             vec4(colour * adapt / (CG_PI * ambient), luminance(colour) * adapt / (CG_PI * luminance(ambient)))));
 }

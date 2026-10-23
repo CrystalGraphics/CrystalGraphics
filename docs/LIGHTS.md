@@ -222,7 +222,12 @@ lights.add(x, y, z, 2f, 0xFFFFE080, 4f, 0f).shadowed(false).sampled(false);   //
   one added from the CPU unless `sampled(false)`; one that casts no shadow takes no ray. A kernel's particle lights are
   not (Niagara's default, NiagaraLightRendererProperties.cpp:41): the apply pass shades them exactly, as Unreal's
   clustered deferred does, reading a light's flag and reach before its record. Sampled, a swarm of fireflies lit the
-  ground in grainy blotches away from them, four picks a 2x2 block among hundreds of lights.
+  ground in grainy blotches away from them, four picks a 2x2 block among hundreds of lights. A light renderer's
+  `allow_mega_lights` samples its lights all the same: for a few sparse ones. Many alike lights over one pixel darken,
+  since each sample's weight is held to `r.MegaLights.MaxShadingWeight`'s 20: a firework burst's floor lost a fifth.
+- **A point's own path**: a light with no cone and no segment is shaded by `cg_light_point`, picked per light from the
+  view record's shape bits (`CG_VIEW_SPOT`, `CG_VIEW_TUBE`), as Unreal compiles a deferred light shader per light
+  type. The same light, a fifth to a quarter cheaper than through the general `cg_light_surface`.
 - **Departures from Unreal**: a linear screen trace rather than a hierarchical one; no visible-light hash guiding the
   next frame's samples; the shading confidence is 1.
 - The gate is `--mode=lights-shadow`: a wall of blocks between a light and the floor, the light behind it gone and in the
