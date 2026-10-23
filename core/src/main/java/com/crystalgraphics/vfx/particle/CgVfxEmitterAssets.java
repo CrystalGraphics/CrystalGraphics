@@ -312,6 +312,12 @@ public final class CgVfxEmitterAssets {
                 if (s.placement == CgVfxSpawnShape.VERTICES) in.put("vertices", true);
                 if (s.a != 1f) in.put("scale", list(s.a, s.a, s.a));
             }
+            case CgVfxSpawnShape.TRIANGLE -> {
+                in.put("shape", "triangle");
+                in.put("triangle_height", (double) s.a);
+                in.put("triangle_angle", (double) s.b);
+                in.put("triangle_thickness", (double) s.c);
+            }
             default -> {
                 in.put("shape", "entity");
                 writePlacement(s, in);
@@ -1403,6 +1409,16 @@ public final class CgVfxEmitterAssets {
                 b.entity();
                 placement(s, in);
             }
+            case "triangle" -> {
+                // Cascade rolls each per particle; a file's constants are all a kit has written.
+                for (String k : List.of("triangle_height", "triangle_angle", "triangle_thickness")) {
+                    if (in.get(k) != null && !(in.get(k) instanceof Number)) {
+                        throw new IllegalArgumentException(name + ": shape_location's " + k + " " + in.get(k) + " is not read yet: a number");
+                    }
+                }
+                s.triangle(numOr(in.get("triangle_height"), 0.5f), numOr(in.get("triangle_angle"), (float) (Math.PI / 2)),
+                        numOr(in.get("triangle_thickness"), 0f), name);
+            }
             default -> throw new IllegalArgumentException(name + ": shape_location's shape " + shape + " is not read yet");
         }
         s.hemisphere = Boolean.TRUE.equals(in.get("hemisphere"));
@@ -1866,6 +1882,8 @@ public final class CgVfxEmitterAssets {
                 // view sleeps here, so both values collide only while it is seen. No trigger volumes to ignore.
                 read.add("only_if_visible");
                 read.add("ignore_triggers");
+                // Cascade spares a pawn's hit the count (:390); the world's blocks are no pawn, so either value counts alike.
+                if (kind.equals("collide_world")) read.add("pawns_keep_count");
                 // The world's blocks are never the source actor; the scene's depth holds it, so there it collides.
                 if (!kind.equals("collide_depth") || Boolean.FALSE.equals(in.get("ignore_source"))) read.add("ignore_source");
                 // Cascade's MaxCollisions, rolled and rounded per particle (:155); 0 ends at the first collision as 1

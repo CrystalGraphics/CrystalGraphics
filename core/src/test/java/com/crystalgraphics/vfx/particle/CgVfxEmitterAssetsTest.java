@@ -79,6 +79,7 @@ public class CgVfxEmitterAssetsTest {
                 .speed(0.2f, 0.6f).ratePerBlock(6f).maxStep(4f).inherit(0.4f).local().build());
         all.add(CgVfxEmitter.builder("arc").rate(30f).shape(CgSphere.of(2)).surface().hemisphere().arc(120f).ordered(12)
                 .speed(1f, 2f).build());
+        all.add(CgVfxEmitter.builder("triangle").rate(40f).triangle(4f, 70f, 0.5f).pointing(0f, 0f, 1f).speed(1f, 2f).build());
         return all;
     }
 

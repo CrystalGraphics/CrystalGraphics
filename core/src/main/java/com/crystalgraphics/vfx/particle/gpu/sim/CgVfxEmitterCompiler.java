@@ -513,6 +513,17 @@ public final class CgVfxEmitterCompiler {
                         step_box(n.xyz, placement, upper, u1, u2, u3, u4, pos, way);
                         return;
                     }
+                    if (kind == 8) {
+                        // Cascade's triangle (LocationPrimitiveTriangle::SpawnEx): height, half base, thickness; its
+                        // corners weighted by three uniforms over their sum, launched out of its middle.
+                        float hx = n.x * 0.5, sum = max(u1 + u2 + u3, 1e-4);
+                        pos = (u1 * vec3(hx, 0.0, 0.0) + u2 * vec3(-hx, 0.0, n.y) + u3 * vec3(-hx, 0.0, -n.y)) / sum;
+                        pos.y = u4 * n.z - 0.5 * n.z;
+                        vec3 from = pos - vec3(-n.x / 6.0, 0.0, 0.0);
+                        float d = dot(from, from);
+                        way = d > 1e-12 ? from * inversesqrt(d) : vec3(0.0, 1.0, 0.0);
+                        return;
+                    }
                     if (kind == 7) {
                         // The followed entity's box, from the instance row: its centre from the source, its halves.
                         step_box(step_instance(inst + 6).xyz, placement, upper, u1, u2, u3, u4, pos, way);

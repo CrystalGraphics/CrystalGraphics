@@ -1110,6 +1110,25 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         }
 
         /**
+         * Born in Cascade's triangle: corners at {@code (height / 2, 0)} and {@code (-height / 2, ±height·tan(apex / 2))}
+         * across the shape's plane, {@code thickness} along its axis. A point is three uniform weights over their sum, as
+         * Cascade's {@code LocationPrimitiveTriangle} draws it, so its middle is fuller than its corners.
+         *
+         * <pre>{@code
+         * .triangle(4f, 70f, 0f).pointing(0, 0, 1)   // a flat wedge 4 blocks long, its apex 70 degrees
+         * }</pre>
+         *
+         * <ul>
+         *   <li>Degrees, more than 0 and less than 180; a thickness of 0 is flat.</li>
+         *   <li>It fills itself: {@link #surface}, {@link #edge}, {@link #hemisphere}, {@link #arc} and {@link #ordered} throw.</li>
+         * </ul>
+         */
+        public Builder triangle(float height, float apexDegrees, float thickness) {
+            spawn.triangle(height, (float) Math.toRadians(apexDegrees), thickness, name);
+            return this;
+        }
+
+        /**
          * Born in the box of the entity its effect follows ({@code CgVfxEffect.follow}), as it stands each step, and
          * launched out of its middle: an aura round whoever casts it, embers off a burning mob. {@link #surface} and
          * {@link #edge} put them on its faces or edges.

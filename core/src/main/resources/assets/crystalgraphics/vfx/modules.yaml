@@ -56,7 +56,9 @@ modules:
       { name: cone_length, type: float, quantity: length, default: 50, visible_when: { shape: cone } },
       { name: cone_angle, type: float, quantity: angle, default: 30, visible_when: { shape: cone } },
       { name: capsule_radius, type: float, quantity: length, visible_when: { shape: capsule } }, { name: capsule_height, type: float, quantity: length, visible_when: { shape: capsule } },
-      { name: plane_size, type: vec2, quantity: length, default: [100, 100], visible_when: { shape: plane } }, { name: triangle, type: array, quantity: position, visible_when: { shape: triangle } },
+      { name: plane_size, type: vec2, quantity: length, default: [100, 100], visible_when: { shape: plane } }, { name: triangle_height, type: float, quantity: length, default: 50, visible_when: { shape: triangle } },
+      { name: triangle_angle, type: float, quantity: angle, default: 90, visible_when: { shape: triangle } },
+      { name: triangle_thickness, type: float, quantity: length, default: 0, visible_when: { shape: triangle } },
       { name: torus_radius, type: float, quantity: length, default: 100, visible_when: { shape: torus } },
       { name: surface_only, type: bool, default: false }, { name: surface_thickness, type: float, quantity: length, default: 0, visible_when: { surface_only: true } },
       { name: edge_only, type: bool, default: false }, { name: hemisphere, type: bool, default: false }, { name: arc, type: float, quantity: angle, default: 360 },
@@ -157,9 +159,9 @@ modules:
       { name: chain, type: enum, values: [add, scale, link], default: add },
       { name: offset, type: vec3, quantity: offset, by: [age, loop], default: { range: [[0, 0, 0], [0, 50, 0]] } },
       { name: offset_options, type: struct, default: { spawn: true, update: false, by: age } },
-      { name: rotation, type: vec3, quantity: angle, by: [age, loop], default: { range: [[0, 0, 0], [1, 1, 1]] } },
+      { name: rotation, type: rotation, quantity: angle, by: [age, loop], default: { range: [[0, 0, 0], [1, 1, 1]] } },
       { name: rotation_options, type: struct, default: { spawn: true, update: false, by: age } },
-      { name: rotation_rate, type: vec3, quantity: angular_speed, by: [age, loop], default: { range: [[0, 0, 0], [1, 1, 1]] } },
+      { name: rotation_rate, type: rotation, quantity: angular_speed, by: [age, loop], default: { range: [[0, 0, 0], [1, 1, 1]] } },
       { name: rotation_rate_options, type: struct, default: { spawn: true, update: false, by: age } } ] }
   - { id: source_movement, groups: [particle_update], unreal: { cascade: [SourceMovement] }, inputs: [
       { name: scale, type: vec3, by: [loop, age], default: [1, 1, 1] } ] }
