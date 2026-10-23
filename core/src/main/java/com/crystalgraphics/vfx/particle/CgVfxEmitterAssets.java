@@ -1730,6 +1730,7 @@ public final class CgVfxEmitterAssets {
                 give(out, names, "falloff", in, "attenuation");
                 give(out, names, "directionality", in, "directionality");
                 give(out, names, "axis", in, "axis");
+                give(out, names, "affect_base_velocity", in, "lasting");
                 return new Mapped("point_attractor", out, Set.of(), names);
             }
             case "vector_field" -> {
@@ -1955,6 +1956,7 @@ public final class CgVfxEmitterAssets {
                 take(in, read, out, names, "falloff", "attenuation");
                 take(in, read, out, names, "directionality", "directionality");
                 take(in, read, out, names, "axis", "axis");
+                take(in, read, out, names, "affect_base_velocity", "lasting");
             }
             case "vector_field" -> {
                 kind = "vector_field";

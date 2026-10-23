@@ -46,9 +46,9 @@ public class CgVfxModuleWordsTest {
             {0.0f, 0.02f, 0.0f, 0.3f},   // ground
             {2.0f, 0.3f, 2.0f, 2.5f},   // current
             {0.8f, 0.0f, 0.0f, 0.0f},   // spin
-            {6.0f, 6.0f, 6.0f, 0.0f, 30.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f},   // attract
-            {3.0f, 3.0f, 3.0f, 1.0f, 12.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f},   // attract
-            {4.0f, 4.0f, 4.0f, 0.0f, 10.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f},   // attract
+            {6.0f, 6.0f, 6.0f, 0.0f, 30.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f},   // attract
+            {3.0f, 3.0f, 3.0f, 1.0f, 12.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f},   // attract: its fourth word 1 for a lasting pull
+            {4.0f, 4.0f, 4.0f, 0.0f, 10.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f},   // attract
             {0.0f, 1.0f, 0.0f, 0.6f},   // orbit
             {0.0f, 0.70710677f, 0.70710677f, 3.0f, -1.0f, 0.0f, 0.0f, 0.0f},   // vortex
             {1.6f, 3.0f, 1.5f, 0.8f, 0.5f, 24.0f, 0.0f, 0.0f},   // flock

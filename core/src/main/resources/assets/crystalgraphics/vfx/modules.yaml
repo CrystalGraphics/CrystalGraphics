@@ -137,7 +137,7 @@ modules:
       { name: strength, type: float, quantity: acceleration, by: [age, loop], default: 1 },
       { name: radius, type: float, quantity: length, by: [loop], default: 100 },
       { name: falloff, type: float, default: 0.5 }, { name: kill_radius, type: float, quantity: length, default: 0 },
-      { name: by_distance, type: bool, default: true }, { name: affect_base_velocity, type: bool, default: false }, { name: override_velocity, type: bool, default: false },
+      { name: by_distance, type: bool, default: true }, { name: affect_base_velocity, type: bool, default: true }, { name: override_velocity, type: bool, default: false },
       { name: positive_only, type: bool, default: false }, { name: directions, type: string, default: "+x-x+y-y+z-z" },
       { name: space, type: enum, values: [emitter, world], default: emitter },
       { name: directionality, type: float, default: 0 }, { name: axis, type: vec3, quantity: direction, default: [0, 0, 1] } ] }

@@ -384,15 +384,19 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * new CgVfxModule.Attract(CgSphere.of(6), 30f).at(0f, 1.5f, 0f)              // energy gathering in a hand
      * new CgVfxModule.Attract(CgBox.of(3, 3, 3), 12f).attenuation(0f)            // even over the box
      * new CgVfxModule.Attract(CgSphere.of(4), 10f).directed(1f, 0f, 1f, 0f)      // a lift inside the sphere
+     * new CgVfxModule.Attract(CgSphere.of(6), 30f).momentary()                  // Cascade's, its base velocity untouched
      * }</pre>
      *
      * <ul>
+     *   <li>A lasting pull builds up velocity, a force (Niagara's, and Cascade's {@code bAffectBaseVelocity}). A
+     *       {@link #momentary} one moves the particle for the step alone, as Cascade's other pull does over a base
+     *       velocity reset each tick ({@code ParticleModules.cpp}, {@code UParticleModuleAttractorPoint::Update}).</li>
      *   <li>A plane attracts nothing, and is refused, as is any shape but a sphere or box.</li>
      *   <li>Pair it with {@link Orbit} round the same centre for a spiral in, Godot's orbit velocity.</li>
      * </ul>
      */
     record Attract(CgShape shape, float x, float y, float z, float strength, float attenuation, float directionality,
-                   float axisX, float axisY, float axisZ) implements CgVfxModule {
+                   float axisX, float axisY, float axisZ, boolean lasting) implements CgVfxModule {
         private static final CgVfxLane[] LANES = {CgVfxLane.VEC4};
 
         public Attract {
@@ -407,22 +411,33 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         public Attract(CgShape shape, float strength) {
-            this(shape, 0f, 0f, 0f, strength, 1f, 0f, 0f, 1f, 0f);
+            this(shape, 0f, 0f, 0f, strength, 1f, 0f, 0f, 1f, 0f, true);
+        }
+
+        /** A lasting pull, every field but that one given. */
+        public Attract(CgShape shape, float x, float y, float z, float strength, float attenuation, float directionality,
+                       float axisX, float axisY, float axisZ) {
+            this(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, true);
+        }
+
+        /** This pull for the step alone, leaving the velocity it builds on as it was. */
+        public Attract momentary() {
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, false);
         }
 
         /** The shape centred {@code (x, y, z)} from the source. */
         public Attract at(float x, float y, float z) {
-            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ);
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, lasting);
         }
 
         /** How the pull falls off toward the edge: 0 even, 1 linear (the default), 2 and up held to the centre. */
         public Attract attenuation(float attenuation) {
-            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ);
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ, lasting);
         }
 
         /** A push along {@code (ax, ay, az)} in place of {@code directionality} of the pull. */
         public Attract directed(float directionality, float ax, float ay, float az) {
-            return new Attract(shape, x, y, z, strength, attenuation, directionality, ax, ay, az);
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, ax, ay, az, lasting);
         }
 
         @Override
