@@ -1,16 +1,28 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
+import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.gl.texture.CgFallbackTextures;
+import com.crystalgraphics.render.draw.CgChunkBuilder;
+import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
+import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphTexture;
+import com.crystalgraphics.render.graph.CgLoad;
+import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
@@ -103,6 +115,12 @@ public final class CgWorldMedia {
     private static final int GPU_ZONE = CgGpuTrace.name("world.media");
     private static final CgFrameBufferFormat R16F = CgFrameBufferFormat.builder("cg_world_media.r16f")
             .color(0, CgTextureType.R16F).build();
+    /** What reaches the eye: the light scattered toward it, then what gets through. */
+    private static final CgFrameBufferFormat TRANSMIT = CgFrameBufferFormat.builder("cg_world_media.transmit")
+            .color(0, CgTextureType.RGBA16F).build();
+    static final String LIGHT_SHADER = "crystalgraphics:shaders/world_media_light.shader";
+    private static final int GPU_LIGHT = CgGpuTrace.name("world.mediaLight");
+    private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
 
     private final List<Injector> injectors = new CopyOnWriteArrayList<>();
     private final Matrix4f unproject = new Matrix4f();
@@ -116,6 +134,9 @@ public final class CgWorldMedia {
     private boolean first;
     @Nullable
     private CgKernel integrate;
+    /** Whether this firing's air was lit: the composite has light to add. */
+    private boolean lit;
+    private CgMaterial light;
 
     CgWorldMedia() {
     }
@@ -127,6 +148,11 @@ public final class CgWorldMedia {
 
     public void remove(Injector injector) {
         injectors.remove(injector);
+    }
+
+    /** Whether any injector is added: the air may hold something to dim or to light. */
+    boolean holdsAny() {
+        return !injectors.isEmpty();
     }
 
     /** Where the firing's eye is, absolute: what an injector subtracts to place what it holds as froxels are placed. */
@@ -151,16 +177,20 @@ public final class CgWorldMedia {
         return height;
     }
 
+    /** The view's corner rays onto {@code d}: {@code media_point}'s, as {@link #dispatch} sets them. */
+    public CgDispatch rays(CgDispatch d) {
+        return d.set("_MediaRay00", rays[0], rays[1], rays[2], 0f).set("_MediaRay10", rays[3], rays[4], rays[5], 0f)
+                .set("_MediaRay01", rays[6], rays[7], rays[8], 0f).set("_MediaRay11", rays[9], rays[10], rays[11], 0f);
+    }
+
     /**
      * {@code kernel} over every froxel, reading what came before it and writing its sum into {@link #OUT}: what an
      * injector calls. Bind the kernel's own inputs on what it answers.
      */
     public CgDispatch dispatch(CgComputePass pass, CgKernel kernel) {
         CgGraphTexture into = current == a ? b : a, before = current != null ? current : b;
-        CgDispatch d = pass.dispatch(kernel, width, height, SLICES).image(OUT, into).texture("_MediaIn", before)
-                .set("_MediaFirst", first ? 1 : 0)
-                .set("_MediaRay00", rays[0], rays[1], rays[2], 0f).set("_MediaRay10", rays[3], rays[4], rays[5], 0f)
-                .set("_MediaRay01", rays[6], rays[7], rays[8], 0f).set("_MediaRay11", rays[9], rays[10], rays[11], 0f);
+        CgDispatch d = rays(pass.dispatch(kernel, width, height, SLICES).image(OUT, into).texture("_MediaIn", before)
+                .set("_MediaFirst", first ? 1 : 0));
         current = into;
         first = false;
         return d;
@@ -172,7 +202,8 @@ public final class CgWorldMedia {
      */
     @Nullable
     CgGraphTexture record(CgRecording recording, CgPassConstants stage, CgHostView view, Matrix4fc toWorld,
-                          float targetWidth, float targetHeight) {
+                          float targetWidth, float targetHeight, CgWorldLights lights) {
+        lit = false;
         if (injectors.isEmpty()) return null;
         int w = Math.max(1, (int) Math.ceil(targetWidth / TILE)), h = Math.max(1, (int) Math.ceil(targetHeight / TILE));
         if (a == null || w != width || h != height) {
@@ -180,7 +211,7 @@ public final class CgWorldMedia {
             height = h;
             a = CgGraphTexture.transientTexture("cg_world_media_a", CgTextureDesc.volume(w, h, SLICES, R16F));
             b = CgGraphTexture.transientTexture("cg_world_media_b", CgTextureDesc.volume(w, h, SLICES, R16F));
-            transmit = CgGraphTexture.transientTexture("cg_world_media", CgTextureDesc.volume(w, h, SLICES, R16F));
+            transmit = CgGraphTexture.transientTexture("cg_world_media", CgTextureDesc.volume(w, h, SLICES, TRANSMIT));
         }
         corners(view.projection(), toWorld);
         // The eye in the renderer's camera-relative space, which a host may keep off its origin (the harness's view
@@ -200,10 +231,33 @@ public final class CgWorldMedia {
         boolean added = false;
         for (Injector injector : injectors) added |= injector.inject(pass, this);
         if (added && current != null) {
-            pass.dispatch(integrate, width, height, SLICES).texture("_Media", current).image("MEDIA_TRANSMIT", transmit);
+            CgGraphTexture scattered = lights.scatter(recording, pass, this, current);
+            lit = scattered != null;
+            pass.dispatch(integrate, width, height, SLICES).texture("_Media", current).image("MEDIA_TRANSMIT", transmit)
+                    .texture("_Scatter", lit ? scattered : CgFallbackTextures.BLACK_VOLUME);
         }
         pass.end();
         return added && current != null ? transmit : null;
+    }
+
+    /**
+     * The light the lit air scattered toward the eye, added over the opaque scene before the transparent passes
+     * ({@code world_media_light.shader}): after {@link #record} answered {@code media}, when the air was lit.
+     */
+    void composite(CgStageFrame stage, CgRecording recording, CgGraphTexture media) {
+        if (!lit) return;
+        if (light == null) light = CgMaterial.newInstance(LIGHT_SHADER);
+        if (!light.prepare()) return;
+        CgPipeline pipeline = light.pipeline(CgInstanceKind.OBJECT);
+        if (pipeline == null) return;
+        CgRasterPass pass = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED)
+                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT).texture(CgBindingPoints.MEDIA_TEXTURE_UNIT, media)
+                .timed(GPU_LIGHT);
+        CgChunkBuilder chunks = recording.chunks().begin();
+        chunks.draw(pipeline, light.captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.instance();
+        pass.add(chunks.end());
+        pass.end();
     }
 
     /** The view ray through each corner of the target, camera-relative, scaled to a unit of eye depth. */

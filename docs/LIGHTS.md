@@ -17,8 +17,9 @@ must light Minecraft's world.
 6. [Lights from effects](#6-lights-from-effects)
 7. [Shadows](#7-shadows)
 8. [On transparent surfaces and particles](#8-on-transparent-surfaces-and-particles)
-9. [What they do not do yet](#9-what-they-do-not-do-yet)
-10. [Checking and measuring](#10-checking-and-measuring)
+9. [In the air](#9-in-the-air)
+10. [What they do not do yet](#10-what-they-do-not-do-yet)
+11. [Checking and measuring](#11-checking-and-measuring)
 
 ---
 
@@ -247,15 +248,40 @@ vec3 extra = cg_LocalLightAt(cg_FragmentPosition());     // the same light by ha
 - `crystalgraphics.world.lightsVolume=false` turns it off; `--mode=lights-volume` is the gate. `CgLightsDemo` shows it:
   glass round the carousel, smoke behind the duel.
 
-## 9. What they do not do yet
+## 9. In the air
+
+Smoke, gas and haze in the world's media (`CgWorldMedia`'s froxels: whatever an injector puts there) glow round the
+lights, with shafts where the lights' shadows cut them: Unreal's volumetric fog lighting its froxels.
+
+```java
+CgWorldHaze haze = new CgWorldHaze().box(x - 24, y, z - 20, x + 24, y + 18, z + 20).density(0.03f, 4f);
+CgWorldRenderer.get().media().add(haze);      // a haze to see the lights in; VFX smoke lights the same way
+```
+
+- **Scattering** (`light_volume.compute`'s `Scatter`, between the injectors and the integration): each froxel holding
+  extinction takes its light-grid cell's lights as `LightScatteringCS` does (VolumetricFog.usf:1085-1169): colour x
+  falloff x day fade x the Henyey-Greenstein phase toward the eye (g 0.2, the height fog's default) x the froxel's
+  scattering (its extinction, albedo white). A shadowed light is traced from the froxel, at most
+  `crystalgraphics.world.lightsAirShadowRays` (4) a froxel; past them a froxel's lights are unshadowed.
+- **Integration** (`media.compute`): Unreal's `FinalIntegrationCS`, Frostbite's energy-conserving sum, into `cg_Media`'s
+  rgb (the light scattered toward the eye) beside its alpha (what gets through, `cg_MediaTransmit`).
+- **Composite** (`world_media_light.shader`, GPU zone `world.mediaLight`): the scattered light added over the opaque
+  scene at each pixel's depth, out to the grid's far end where there is sky, before the transparent passes. The media
+  is recorded whenever an injector is added, transparent draws or not.
+- **Departures from Unreal**: the opaque scene is not dimmed by the transmittance (what puts smoke in the air draws its
+  own look; only the light is added); no temporal jitter and history; a budget of shadow rays a froxel.
+- `crystalgraphics.world.lightsAir=false` turns it off; `--mode=lights-air` is the gate. At 320x240 with one light the
+  media pass took 0.10 ms and the composite 0.02 (RTX 4070 Super); the grid grows with the screen. `CgLightsDemo` stands
+  in a haze.
+
+## 10. What they do not do yet
 
 | Missing | Unreal's answer | Plan |
 |---|---|---|
-| Lighting the air (fog and smoke glowing round a light) | volumetric fog's local-light injection | after shadows (task #29), into `CgWorldMedia`'s froxels |
 | Rect lights, IES profiles, light functions | rect lights, IES atlases, light function atlases | none yet |
 | Specular | GGX from the G-buffer's roughness | none: Minecraft has no roughness |
 
-## 10. Checking and measuring
+## 11. Checking and measuring
 
 | Gate | Holds |
 |---|---|

@@ -1,21 +1,30 @@
 // The world's media (CgWorldMedia): what gets through from the eye to each froxel's far edge, summed from the eye
-// outward through the extinction the injectors added. What cg_MediaTransmit reads.
+// outward through the extinction the injectors added, and the light the world's lights scattered toward the eye on the
+// way (_Scatter, CgWorldLights' lit air): Unreal's FinalIntegrationCS (VolumetricFog.usf:1210-1250), Frostbite's
+// energy-conserving sum. What cg_MediaTransmit and cg_MediaLight read.
 #pragma kernel Integrate 4 4 4 image
 
 #include "crystalgraphics:shaders/lib/media.glsl"
 
 Properties {
     _Media ("Extinction a block, each froxel", sampler3D) = "black"
+    _Scatter ("Light scattered toward the eye a block, each froxel: the scattering times the light", sampler3D) = "black"
 }
 
 Images {
-    MEDIA_TRANSMIT ("What gets through to each froxel's far edge", r16f, writeonly, 3d)
+    MEDIA_TRANSMIT ("To each froxel's far edge: the light scattered toward the eye, then what gets through", rgba16f, writeonly, 3d)
 }
 
 void Integrate() {
-    float tau = 0.0;
+    vec3 light = vec3(0.0);
+    float through = 1.0;
     for (int s = 0; s <= CG_TEXEL.z; s++) {
-        tau += max(texelFetch(_Media, ivec3(CG_TEXEL.xy, s), 0).x, 0.0) * (media_eye(float(s + 1)) - media_eye(float(s)));
+        ivec3 at = ivec3(CG_TEXEL.xy, s);
+        float sigma = max(texelFetch(_Media, at, 0).x, 0.0), dz = media_eye(float(s + 1)) - media_eye(float(s));
+        vec3 scatter = texelFetch(_Scatter, at, 0).rgb;
+        float t = exp(-sigma * dz);
+        light += through * (sigma > 1.0e-5 ? (scatter - scatter * t) / sigma : scatter * dz);
+        through *= t;
     }
-    MEDIA_TRANSMIT_WRITE(vec4(exp(-tau), 0.0, 0.0, 1.0));
+    MEDIA_TRANSMIT_WRITE(vec4(light, through));
 }

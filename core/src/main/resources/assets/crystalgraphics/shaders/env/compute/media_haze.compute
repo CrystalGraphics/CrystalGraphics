@@ -1,0 +1,28 @@
+// A box of haze in the world's media (CgWorldHaze): the same extinction a block throughout, thinning to nothing over its
+// edge, added to what the injectors before it put in each froxel.
+#pragma kernel Haze 4 4 4 image
+
+#include "crystalgraphics:shaders/lib/media.glsl"
+
+Properties {
+    _MediaIn    ("The extinction added before this kernel", sampler3D) = "black"
+    _MediaFirst ("1 for the first kernel: nothing before it",  int)       = 1
+    _MediaRay00 ("The view ray at the bottom left, a unit of eye depth", vec4) = (0, 0, -1, 0)
+    _MediaRay10 ("At the bottom right",                    vec4)      = (0, 0, -1, 0)
+    _MediaRay01 ("At the top left",                        vec4)      = (0, 0, -1, 0)
+    _MediaRay11 ("At the top right",                       vec4)      = (0, 0, -1, 0)
+    _HazeMin     ("The box's lowest corner from the eye",   vec4)      = (0, 0, 0, 0)
+    _HazeMax     ("Its highest",                            vec4)      = (0, 0, 0, 0)
+    _HazeDensity ("Extinction a block, and the blocks its edge thins over", vec4) = (0, 1, 0, 0)
+}
+
+Images {
+    MEDIA_OUT ("Extinction so far", r16f, writeonly, 3d)
+}
+
+void Haze() {
+    vec3 p = media_point(CG_TEXEL, MEDIA_OUT_SIZE(), _MediaRay00, _MediaRay10, _MediaRay01, _MediaRay11);
+    vec3 inside = min(p - _HazeMin.xyz, _HazeMax.xyz - p);
+    float edge = clamp(min(inside.x, min(inside.y, inside.z)) / max(_HazeDensity.y, 1.0e-3), 0.0, 1.0);
+    MEDIA_OUT_WRITE(vec4(media_before(_MediaIn, _MediaFirst, CG_TEXEL) + _HazeDensity.x * edge, 0.0, 0.0, 0.0));
+}

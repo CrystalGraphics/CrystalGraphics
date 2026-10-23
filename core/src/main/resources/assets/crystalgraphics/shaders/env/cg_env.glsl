@@ -166,8 +166,8 @@ float cg_LinearEyeDepth(float windowDepth) {
 #define CG_SCENE_EYE_DEPTH(uv) cg_LinearEyeDepth(texture(cg_DepthBuffer, (uv)).r)
 
 // cg_Media: the world's froxel transmittance (CgWorldMedia), a volume over the screen whose slices run exponentially in
-// eye depth from CG_MEDIA_NEAR to CG_MEDIA_FAR, each texel what gets through from the eye to its slice's far edge;
-// white in a pass that binds none. Bound to CgBindingPoints.MEDIA_TEXTURE_UNIT; do NOT use that unit in Properties.
+// eye depth from CG_MEDIA_NEAR to CG_MEDIA_FAR, each texel to its slice's far edge the light the air scattered toward the
+// eye (rgb) and what gets through (a); white in a pass that binds none. Bound to CgBindingPoints.MEDIA_TEXTURE_UNIT; do NOT use that unit in Properties.
 uniform sampler3D cg_Media;
 #define CG_MEDIA_NEAR 0.5
 #define CG_MEDIA_FAR 256.0
@@ -176,8 +176,15 @@ uniform sampler3D cg_Media;
 // What of the light from eye depth `eye` at screen `uv` reaches the eye through smoke and gas, 0 to 1.
 float cg_MediaTransmit(vec2 uv, float eye) {
     float k = CG_MEDIA_SLICES * log(max(eye, 1.0e-3) / CG_MEDIA_NEAR) / log(CG_MEDIA_FAR / CG_MEDIA_NEAR);
-    float t = textureLod(cg_Media, vec3(uv, (k - 0.5) / CG_MEDIA_SLICES), 0.0).r;
+    float t = textureLod(cg_Media, vec3(uv, (k - 0.5) / CG_MEDIA_SLICES), 0.0).a;
     return mix(1.0, t, clamp(k, 0.0, 1.0));
+}
+
+// The light the smoke and gas between the eye and eye depth `eye` at screen `uv` scattered toward the eye: the world's
+// lights in the air. Only where a pass binds the world's media: the white fallback reads 1.
+vec3 cg_MediaLight(vec2 uv, float eye) {
+    float k = CG_MEDIA_SLICES * log(max(eye, 1.0e-3) / CG_MEDIA_NEAR) / log(CG_MEDIA_FAR / CG_MEDIA_NEAR);
+    return textureLod(cg_Media, vec3(uv, (k - 0.5) / CG_MEDIA_SLICES), 0.0).rgb * clamp(k, 0.0, 1.0);
 }
 #if !defined(CG_COMPUTE_STAGE)
 // cg_LocalLights: the world's lights on transparent surfaces (CgWorldLights' translucency lighting volume, Unreal's), 65 x

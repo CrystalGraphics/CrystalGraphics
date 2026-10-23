@@ -8,6 +8,7 @@ import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.collision.debug.CgCollisionDebug;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.render.world.CgWorldHaze;
 import com.crystalgraphics.render.world.CgWorldLights;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.shape.CgPose;
@@ -31,7 +32,8 @@ import org.joml.Matrix4f;
  * rainbow lights, a neon arch of tubes with colour chasing along it, a lightsaber duel flashing where the blades meet,
  * fireworks and a swarm of fireflies whose particles are lights, and lightning flooding everything every few seconds.
  * The lights light what is transparent too (the world lights' translucency volume): a ring of tinted glass round the
- * carousel, and smoke rising behind the duel.
+ * carousel, and smoke rising behind the duel. And the whole arena stands in a thin haze the lights glow in, the spots
+ * and searchlights as beams.
  *
  * <pre>
  *                  arch (tubes)
@@ -68,6 +70,9 @@ public final class CgLightsDemo {
             {0.75f, 1f, 0.75f, 0.45f}};
     private final Matrix4f pane = new Matrix4f();
     private CgMaterial glass;
+    /** The haze over the arena, added to the world's media while the show plays. */
+    private final CgWorldHaze haze = new CgWorldHaze();
+    private boolean hazing;
     private final CgPose pose = new CgPose();
     private CgVfxSystemInstance<?> playing;
     private double playingX = Double.NaN, playingY, playingZ;
@@ -158,6 +163,11 @@ public final class CgLightsDemo {
     public void submit(CgWorldRenderer world, double x, double y, double z, double seconds) {
         CgWorldLights lights = world.lights();
         float t = (float) (seconds % 3600.0);
+        haze.box(x - 24, y - 1, z - 20, x + 24, y + 18, z + 20).density(0.03f, 4f);
+        if (!hazing) {
+            world.media().add(haze);
+            hazing = true;
+        }
         mirrorBall(lights, x, y + 10, z - 2, t);
         searchlights(lights, x, y, z, t);
         carousel(lights, x, y, z + 4, t);
@@ -268,10 +278,12 @@ public final class CgLightsDemo {
         return Math.max(0f, Math.min(1f, Math.abs(h * 6f - 3f) - 1f));
     }
 
-    /** Ends the particles; the next submit plays them again. */
+    /** Ends the particles and the haze; the next submit plays them again. */
     public void clear() {
         if (playing != null) playing.kill();
         playing = null;
+        if (hazing) CgWorldRenderer.get().media().remove(haze);
+        hazing = false;
     }
 
     public void delete() {

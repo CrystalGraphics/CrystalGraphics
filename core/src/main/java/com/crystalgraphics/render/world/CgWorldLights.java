@@ -177,6 +177,12 @@ public final class CgWorldLights {
     private static final CgVar.Num VOLUME_INNER = CgVar.number("crystalgraphics.world.lightsVolumeInner", 15f, 1f, 128f,
             CgVar.DEV, "Blocks from the eye the translucency lighting volume's first cascade reaches: Unreal's "
                     + "r.TranslucencyLightingVolume.InnerDistance, 15 m.");
+    private static final CgVar.Bool AIR = CgVar.bool("crystalgraphics.world.lightsAir", true, CgVar.DEV,
+            "Smoke, gas and haze in the air lit by the world's lights: Unreal's volumetric fog's light scattering.");
+    private static final CgVar.Int AIR_RAYS = CgVar.integer("crystalgraphics.world.lightsAirShadowRays", 4, 0, 64, CgVar.DEV,
+            "Shadowed lights traced from each froxel of lit air; past them a froxel's lights shine unshadowed.");
+    /** Unreal's ExponentialHeightFog VolumetricFogScatteringDistribution: a little forward scattering. */
+    private static final float AIR_PHASE = 0.2f;
     private static final CgVar.Num VOLUME_OUTER = CgVar.number("crystalgraphics.world.lightsVolumeOuter", 50f, 2f, 256f,
             CgVar.DEV, "Blocks from the eye its second reaches: r.TranslucencyLightingVolume.OuterDistance, 50 m.");
     /** What adds the lights onto the scene: a full-screen pass reading the grid. */
@@ -322,7 +328,9 @@ public final class CgWorldLights {
     @Nullable
     private CgGraphTexture localLights;
     private CgGraphTexture volume;
-    private CgKernel fill;
+    private CgKernel fill, scatterKernel;
+    /** The air lit this firing: each froxel's light scattered toward the eye. */
+    private CgGraphTexture air;
     private final float[] cascades = new float[8];
     /** This firing's entities per tile, and the farthest a shadowed light's ray runs, blocks. */
     private CgGraphTexture entityTiles;
@@ -1317,32 +1325,58 @@ public final class CgWorldLights {
             cascades[c * 4 + 2] = (float) (Math.floor((cameraZ + fz * along) / cell) * cell - cameraZ) - radius;
             cascades[c * 4 + 3] = (float) cell;
         }
-        CgGraphBuffer none = zeroes(recording);
-        CgGraphBuffer boxes = CgWorldEntityBoxes.buffer();
-        boolean traced = shadowsOn, meshes = traced && casterCount > 0;
         CgTexture lightmap = stage.host().textures().lightmapTexture();
         CgComputePass pass = recording.compute("world.lightsVolume", stage.constants()).timed(GPU_VOLUME);
-        CgDispatch d = pass.dispatch(fill, VOLUME_CELLS + 1, VOLUME_CELLS, 2 * VOLUME_CELLS).image("LOCAL_LIGHTS", volume)
-                .bind("LIGHTS", list).bind("CELLS", cells).bind("INDICES", indices)
-                .bind("ENTITIES", traced && boxes != null ? boxes : none)
+        traceInputs(pass.dispatch(fill, VOLUME_CELLS + 1, VOLUME_CELLS, 2 * VOLUME_CELLS).image("LOCAL_LIGHTS", volume)
                 .set("_Cascade0", cascades[0], cascades[1], cascades[2], cascades[3])
                 .set("_Cascade1", cascades[4], cascades[5], cascades[6], cascades[7])
-                .set("_EyeOffset", eye.x, eye.y, eye.z, 0f)
+                .set("_EyeOffset", eye.x, eye.y, eye.z, 0f), lightmap != null ? lightmap : CgFallbackTextures.WHITE_1x1,
+                zeroes(recording));
+        pass.end();
+        localLights = volume;
+    }
+
+    /**
+     * The air lit, after the media's injectors and before their integration: each froxel holding extinction lit by its
+     * light-grid cell's lights through light_volume.compute's {@code Scatter} (Unreal's LightScatteringCS), into a
+     * froxel volume of the light scattered toward the eye. Null with no light binned this firing.
+     */
+    @Nullable
+    CgGraphTexture scatter(CgRecording recording, CgComputePass pass, CgWorldMedia media, CgGraphTexture extinction) {
+        if (!binned || !AIR.get()) return null;
+        if (scatterKernel == null) {
+            scatterKernel = CgCompute.load(VOLUME_KERNELS).kernel("Scatter");
+            scatterKernel.prepare();
+        }
+        if (air == null || air.getWidth() != media.width() || air.getHeight() != media.height()) {
+            air = CgGraphTexture.transientTexture("cg_world_lights.air",
+                    CgTextureDesc.volume(media.width(), media.height(), CgWorldMedia.SLICES, VOLUME_FORMAT));
+        }
+        traceInputs(media.rays(pass.dispatch(scatterKernel, media.width(), media.height(), CgWorldMedia.SLICES))
+                .image("MEDIA_SCATTER", air).texture("_Media", extinction).set("_PhaseG", AIR_PHASE)
+                .set("_AirShadowRays", AIR_RAYS.get()), CgFallbackTextures.WHITE_1x1, zeroes(recording));
+        return air;
+    }
+
+    /** What both of light_volume.compute's kernels read: the lights, their grid, and the shadows' inputs this firing. */
+    private void traceInputs(CgDispatch d, CgTexture lightmap, CgGraphBuffer none) {
+        CgGraphBuffer boxes = CgWorldEntityBoxes.buffer();
+        boolean traced = shadowsOn, meshes = traced && casterCount > 0;
+        d.bind("LIGHTS", list).bind("CELLS", cells).bind("INDICES", indices)
+                .bind("ENTITIES", traced && boxes != null ? boxes : none)
                 .set("_Grid", gridX, gridY, SLICES, 0f).set("_Tile", tileU, tileV, 0f, 0f)
                 .set("_ZParams", zParams[0], zParams[1], zParams[2], 0f).set("_Rays", rays[0], rays[1], rays[2], rays[3])
                 .set("_ToView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
                 .set("_ToView1", toView.m01(), toView.m11(), toView.m21(), toView.m31())
                 .set("_ToView2", toView.m02(), toView.m12(), toView.m22(), toView.m32())
                 .set("_DayFade", DAY_FADE.get()).set("_Shadows", traced ? 1f : 0f)
-                .texture("_Lightmap", lightmap != null ? lightmap : CgFallbackTextures.WHITE_1x1)
+                .texture("_Lightmap", lightmap)
                 .set("_Skip", SAMPLE_SKIP.get()).set("_EyeX", eyeBlock[0]).set("_EyeY", eyeBlock[1]).set("_EyeZ", eyeBlock[2])
                 .set("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f)
                 .set("_Entities", traced && boxes != null ? entities : 0).set("_Casters", meshes ? casterCount : 0)
                 .texture("_CasterRows", meshes ? casters : CgFallbackTextures.BLACK_1x1)
                 .texture("_MeshFields", meshes ? meshFields.atlas() : CgFallbackTextures.BLACK_1x1);
         CgWorldVoxelWindow.get().bind(d);
-        pass.end();
-        localLights = volume;
     }
 
     /** Unreal's ComputeAccumulatedScale: where split {@code index} of {@link #CASCADES} falls, 0 to 1. */

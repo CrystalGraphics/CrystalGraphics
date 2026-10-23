@@ -163,7 +163,8 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   (`world.media().add(injector)`) adds its extinction into a froxel grid over the view (`CgWorldMedia`: 16 pixels
   across, 64 slices from 0.5 to 256 blocks, as Frostbite's and Unreal's volumetric fog), which is summed from the eye
   out into what gets through, bound as `cg_Media` to every transparent pass. The fluids and lit grids inject themselves.
-  GPU zone `world.media`; a firing with nothing in the air records nothing.
+  The world's lights glow in what is there (`CgWorldHaze` is a box of haze to see them in; `LIGHTS.md` § *In the
+  air*). GPU zone `world.media`; a firing with nothing in the air records nothing.
 
 ```java
 CgWorldRenderer.get().media().add((pass, media) -> {             // a volume of your own hiding what is behind it

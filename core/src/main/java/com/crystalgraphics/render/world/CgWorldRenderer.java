@@ -1610,8 +1610,10 @@ public final class CgWorldRenderer {
             if (which == TRANSPARENT) casters();
             // Onto the opaque scene, before any transparent draw blends over it; the sun's shadows run with no light.
             if (which == TRANSPARENT) pointLights.apply(stage, recording, drawn > 0);
-            mediaOut = which == TRANSPARENT && drawn > 0
-                    ? media.record(recording, stage.constants(), view, toWorld, targetWidth, targetHeight) : null;
+            // Something transparent reads the air, or a light may glow in it.
+            mediaOut = which == TRANSPARENT && (drawn > 0 || media.holdsAny())
+                    ? media.record(recording, stage.constants(), view, toWorld, targetWidth, targetHeight, pointLights) : null;
+            if (mediaOut != null) media.composite(stage, recording, mediaOut);
             if (scene) recordSceneGlows(stage, recording, view);
             if (drawn > 0) {
                 cullSets(stage, recording, view, false);
