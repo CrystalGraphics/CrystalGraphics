@@ -864,7 +864,7 @@ public final class CgWorldLights {
                         CgBufferDesc.of(16, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
                 staging = ByteBuffer.allocateDirect(CAPACITY * FLOATS * 4).order(ByteOrder.nativeOrder());
                 viewed = CgGraphBuffer.persistent("cg_world_lights.view",
-                        CgBufferDesc.elements(CAPACITY, 48, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+                        CgBufferDesc.elements(CAPACITY, 80, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
                 alloc = CgGraphBuffer.persistent("cg_world_lights.alloc",
                         CgBufferDesc.elements(4, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
             }
@@ -912,7 +912,8 @@ public final class CgWorldLights {
             CgComputePass pass = recording.compute("world.lights", stage).timed(GPU_ZONE);
             for (Appender a : appenders) appended |= a.append(pass, this);
             boolean binned = listed > 0 || appended;
-            if (binned) bin(recording, stage, pass, view.projection(), toWorld, targetWidth, targetHeight);
+            if (binned) bin(recording, stage, pass, view.projection(), toWorld, targetWidth, targetHeight,
+                    frame.host().textures().lightmapTexture());
             else pass.end();
             // Every firing: a surge (a flash, a burst) drops lights the frame it comes, and the budget grows for the next.
             if (binned) recording.readback(alloc, 4, 4, readAlloc);
@@ -938,7 +939,7 @@ public final class CgWorldLights {
      * (LightGridInjection.cpp:659-670).
      */
     private void bin(CgRecording recording, CgPassConstants stage, CgComputePass pass, Matrix4fc projection,
-                     Matrix4fc toWorld, float targetWidth, float targetHeight) {
+                     Matrix4fc toWorld, float targetWidth, float targetHeight, CgTexture lightmap) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_BIN)) {
             int gx = Math.max(1, (int) Math.ceil(targetWidth / TILE)), gy = Math.max(1, (int) Math.ceil(targetHeight / TILE));
             gridX = gx;
@@ -996,7 +997,9 @@ public final class CgWorldLights {
                         CgBufferDesc.elements(parentBudget, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
             }
             grid(pass.dispatch(view, CAPACITY).bind("LIGHTS", list).bind("COUNT", count).bind("VIEW", viewed)
-                    .set("_MinScreen", MIN_SCREEN.get()), gx, gy, 0, 0, 0, 0, budget, parentBudget);
+                    .set("_MinScreen", MIN_SCREEN.get()).set("_DayFade", DAY_FADE.get())
+                    .texture("_Lightmap", lightmap != null ? lightmap : CgFallbackTextures.WHITE_1x1),
+                    gx, gy, 0, 0, 0, 0, budget, parentBudget);
             pass.end();
             // A pass a level, each timed: what the levels cost is the lever.
             if (twoLevel) {
@@ -1138,7 +1141,7 @@ public final class CgWorldLights {
             if (transparents && binned && VOLUME.get()) recordVolume(stage, recording);
             if (!binned && !shadowsOn) return;
             CgGraphBuffer none = zeroes(recording);
-            apply.buffer("LIGHTS", binned ? list : none).buffer("CELLS", binned ? cells : none)
+            apply.buffer("CELLS", binned ? cells : none)
                     .buffer("INDICES", binned ? indices : none).buffer("VIEWED", binned ? viewed : none)
                     .applyProperties(applyValues);
             apply.applyProperties(applyWindow);

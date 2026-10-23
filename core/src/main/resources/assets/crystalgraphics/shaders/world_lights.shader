@@ -55,11 +55,10 @@ Properties {
     _EyeFrac ("The eye within its block",                          vec4) = (0, 0, 0, 0)
 }
 
-struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; vec4 air; };
-struct CgViewLight { vec4 positionRadius; vec4 spot; vec4 kind; };
+// light_grid.compute's: each light in the view with what it is shaded by, worked out once a light.
+struct CgViewLight { vec4 positionRadius; vec4 spot; vec4 kind; vec4 segment; vec4 radiance; };
 
 Buffers {
-    LIGHTS  ("The firing's lights",            CgLight, readonly)
     CELLS   ("Each cell's light count and start", uint, readonly)
     INDICES ("The cells' light indices",       uint,    readonly)
     VIEWED  ("Each light in the grid's view, as the grid binned it", CgViewLight, readonly)
@@ -111,34 +110,19 @@ Pass {
         ivec3 cell = cg_light_cell(p, _ZParams.xyz, _Rays.xy, _Rays.zw, _Tile.xy, ivec2(_Grid.xy));
         int e = (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;
         int from = CG_LIGHT_CELL_START(e);
-        // The darkest lightmap the albedo is recovered from: below it the scene's noise would be lit as colour.
-        float floorLight = CG_LINEAR_SCENE ? 0.02 : 0.15;
         vec3 sum = vec3(0.0);
         bool shadows = _Shadows > 0.5;
         // With the shadow passes running the lights they sample are theirs (_Shadowed); the rest, and without them
-        // every lit light, are shaded here exactly: one run of the cell's list. A cell lists many small lights that
-        // reach few of its pixels: each is rejected by the grid's view-space copy (one load, no transform) before its
-        // record.
+        // every lit light, are shaded here exactly: one run of the cell's list, each light read from the grid's view,
+        // which holds everything it is shaded with. A cell lists many small lights that reach few of its pixels: each
+        // is rejected by its reach first.
         ivec2 span = shadows ? CG_LIGHTS_EXACT(e) : CG_LIGHTS_LIT(e);
         for (int k = span.x; k < span.y; k++) {
-            int index = int(INDICES(from + k));
-            vec4 reach = VIEWED(index).positionRadius;
-            vec3 v = reach.xyz;
-            if (dot(v - p, v - p) >= reach.w * reach.w) continue;
-            CgLight light = LIGHTS(index);
-            vec3 way = light.spotCos.xyz, along = light.segmentCone.xyz;
-            vec4 spot = vec4(dot(_ToView0.xyz, way), dot(_ToView1.xyz, way), dot(_ToView2.xyz, way), light.spotCos.w);
-            vec4 segment = vec4(dot(_ToView0.xyz, along), dot(_ToView1.xyz, along), dot(_ToView2.xyz, along), light.segmentCone.w);
-            float lit = cg_light_surface(v, light.positionRadius.w, light.colorExponent.w, spot, segment, light.ambient.z, p, n);
-            if (lit <= 0.0) continue;
-            vec3 ambient = vec3(1.0);
-            float adapt = 1.0;
-            if (light.ambient.x >= 0.0) {
-                vec3 lightmap = CG_LIGHTMAP(light.ambient.xy);
-                adapt = mix(1.0, _DayFade, clamp(CG_DAYLIGHT, 0.0, 1.0) * light.ambient.y / 15.0);
-                ambient = max(CG_LINEAR_SCENE ? srgb_to_linear(lightmap) : lightmap, vec3(floorLight));
-            }
-            sum += light.colorExponent.rgb * (lit * adapt / CG_PI) / ambient;
+            CgViewLight light = VIEWED(int(INDICES(from + k)));
+            vec4 reach = light.positionRadius;
+            if (dot(reach.xyz - p, reach.xyz - p) >= reach.w * reach.w) continue;
+            float lit = cg_light_surface(reach.xyz, reach.w, light.kind.y, light.spot, light.segment, light.kind.z, p, n);
+            if (lit > 0.0) sum += light.radiance.rgb * lit;
         }
         if (shadows) sum += texelFetch(_Shadowed, px, 0).rgb;
 

@@ -21,10 +21,14 @@
 #pragma kernel Write scatter
 
 #include "crystalgraphics:shaders/lib/lights.glsl"
+#include "crystalgraphics:shaders/lib/color.glsl"
 
 struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; vec4 air; };
 // A light in the grid's space: its position and radius, the way a spot points and its outer cosine, its run (CG_LIGHT_RUN) in x.
-struct CgViewLight { vec4 positionRadius; vec4 spot; vec4 kind; };
+// A light in the grid's view, and what the apply shades it with: kind is its run, exponent and source radius, segment
+// its tube in the view (w its cone's ramp), radiance its colour over pi, faded by day and divided by the lightmap at its
+// block (world_lights.shader). Each the same for every pixel, so worked out here once.
+struct CgViewLight { vec4 positionRadius; vec4 spot; vec4 kind; vec4 segment; vec4 radiance; };
 
 Properties {
     _Grid     ("Cells across, up and deep, and the list's capacity",  vec4) = (1, 1, 32, 0)
@@ -39,6 +43,8 @@ Properties {
     _Pyramid  ("The scene's farthest eye depth, a pyramid",            sampler2D) = "black"
     _Hzb      ("Cull by the pyramid (1), unused, its slack, its last level", vec4) = (0, 0, 0, 0)
     _MinScreen ("r.MinScreenRadiusForLights; 0 keeps every light",     float) = 0
+    _DayFade  ("A light's strength under a full day's open sky; 1 for never fading", float) = 0.1
+    _Lightmap ("The host's lightmap",                                 sampler2D) = "white"
     _AirSpread ("How far past its cone the lit air widens a spot at eye depth z: z * x + y", vec4) = (0, 0, 0, 0)
     _HostDepth ("The host projection's m22, m32, m23 and m33: what the pyramid's depth was linearised by", vec4) = (1, 0, -1, 0)
     _Depth    ("The bob-free perspective's m22, m32, m23 and m33",        vec4) = (1, 0, -1, 0)
@@ -84,7 +90,21 @@ void View() {
         }
         if (length(centre) * min(0.02, _MinScreen / max(bound, 1e-6)) >= 1.0) radius = 0.0;
     }
-    VIEW_WRITE(CgViewLight(vec4(v, radius), vec4(w, light.spotCos.w), vec4(float(CG_LIGHT_RUN(light)), 0.0, 0.0, 0.0)));
+    vec3 along = light.segmentCone.xyz;
+    vec3 segment = vec3(dot(_ToView0.xyz, along), dot(_ToView1.xyz, along), dot(_ToView2.xyz, along));
+    // Adapted to the sun as an eye would be, and the albedo recovered over the lightmap at its block: the apply's
+    // scene * light / lightmap.
+    vec3 radiance = light.colorExponent.rgb / CG_PI;
+    if (light.ambient.x >= 0.0) {
+        vec3 lightmap = textureLod(_Lightmap, (clamp(light.ambient.xy, 0.0, 15.0) + 0.5) / 16.0, 0.0).rgb;
+        float adapt = mix(1.0, _DayFade, clamp(CG_DAYLIGHT, 0.0, 1.0) * light.ambient.y / 15.0);
+        // The darkest lightmap the albedo is recovered from: below it the scene's noise would be lit as colour.
+        vec3 ambient = max(CG_LINEAR_SCENE ? srgb_to_linear(lightmap) : lightmap, vec3(CG_LINEAR_SCENE ? 0.02 : 0.15));
+        radiance *= adapt / ambient;
+    }
+    VIEW_WRITE(CgViewLight(vec4(v, radius), vec4(w, light.spotCos.w),
+            vec4(float(CG_LIGHT_RUN(light)), light.colorExponent.w, light.ambient.z, 0.0),
+            vec4(segment, light.segmentCone.w), vec4(radiance, 0.0)));
 }
 
 // ComputeCellViewAABB over tiles [lo.xy, hi.xy) and slices [lo.z, hi.z): the tiles' rays at both depths; the last tile
