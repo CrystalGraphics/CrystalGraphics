@@ -97,6 +97,7 @@ public final class CgParticleKinds {
             .property("name", STRING)
             .property("spawn", CgValueType.struct(SPAWN))
             .property("kill", BOOL)
+            .property("stop_spawning", BOOL)
             .property("max_per_frame", INT).forms(CgValueForm.CONSTANT)
             .register();
 

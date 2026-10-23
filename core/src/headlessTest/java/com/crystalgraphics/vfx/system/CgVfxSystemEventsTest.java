@@ -68,9 +68,9 @@ public class CgVfxSystemEventsTest {
     @Test
     public void aKillEndsItsReceiversParticles() {
         String kill = "_v: 1\nemitters:\n  - id: h1\n" + EMITTER + "  - id: h2\n" + EMITTER + "      events:\n"
-                + "        - { id: e1, trigger: death, source: h1, kill: true }\n";
+                + "        - { id: e1, trigger: death, source: h1, kill: true, stop_spawning: true }\n";
         CgVfxSystemDefinition d = compile(kill);
-        assertEquals(List.of(new CgVfxSystemDefinition.Kill(0, 0, 1)), d.kills());
+        assertEquals(List.of(new CgVfxSystemDefinition.Kill(0, 0, 1, true)), d.kills());
         CgVfxEvent death = d.emitters().get(0).events().get(0);
         assertEquals(CgVfxEvent.Trigger.DEATH, death.trigger());
         assertTrue(death.readback() > 0);

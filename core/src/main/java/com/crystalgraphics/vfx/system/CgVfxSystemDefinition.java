@@ -61,7 +61,8 @@ public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfx
      *
      * <pre>{@code
      * new CgVfxSystemDefinition("mymod:blast", look, null, List.of(dummy, light), 0, 32,
-     *         List.of(new CgVfxSystemDefinition.Kill(0, 0, 1)));   // the light goes when the dummy's death fires
+     *         List.of(new CgVfxSystemDefinition.Kill(0, 0, 1)));         // the light goes when the dummy's death fires
+     * new CgVfxSystemDefinition.Kill(0, 0, 1, true);                       // and spawns no more: Cascade's bStopSpawning
      * }</pre>
      *
      * <ul>
@@ -69,7 +70,12 @@ public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfx
      *       the step that raised it.</li>
      * </ul>
      */
-    public record Kill(int source, int event, int receiver) {
+    public record Kill(int source, int event, int receiver, boolean stopSpawning) {
+
+        /** Its particles killed, its spawning left running. */
+        public Kill(int source, int event, int receiver) {
+            this(source, event, receiver, false);
+        }
     }
 
     /** Unreal's {@code UNiagaraSystem} defaults: none made ahead, 32 kept. */

@@ -176,7 +176,8 @@ public final class CgVfxSystemAssets {
                 CgVfxSystemDefinition.Kill kill = killOf(definition, source, event);
                 if (kill != null) {
                     CgVfxEmitter receiver = definition.emitters().get(kill.receiver());
-                    CgVfxEventHandler h = CgVfxEventHandler.kill("e" + ++handlers, ids.get(source), event.specTrigger());
+                    CgVfxEventHandler h = CgVfxEventHandler.kill("e" + ++handlers, ids.get(source), event.specTrigger(),
+                            kill.stopSpawning());
                     @SuppressWarnings("unchecked")
                     List<Object> list = (List<Object>) trees.get(receiver).computeIfAbsent("events", k -> new ArrayList<>());
                     list.add(h.tree());
@@ -287,7 +288,7 @@ public final class CgVfxSystemAssets {
             List<String> order = new ArrayList<>(base.keySet());
             for (HeardKill k : heard) {
                 kills.add(new CgVfxSystemDefinition.Kill(order.indexOf(k.source()), done.get(k.source()).events().indexOf(k.event()),
-                        order.indexOf(k.receiver())));
+                        order.indexOf(k.receiver()), k.stopSpawning()));
             }
         }
         Effect effect = null;
@@ -388,7 +389,7 @@ public final class CgVfxSystemAssets {
                     if (b == null) b = base.get(handle).toBuilder();
                     CgVfxEvent rows = CgVfxEvent.ofSpec(h.trigger()).readback(KILL_ROWS);
                     b.event(rows);
-                    heard.add(new HeardKill(handle, rows, receiver.getKey()));
+                    heard.add(new HeardKill(handle, rows, receiver.getKey(), h.stopSpawning()));
                     continue;
                 }
                 // Cascade's receiver spawns into its own emitter.
@@ -420,7 +421,7 @@ public final class CgVfxSystemAssets {
     private static final int KILL_ROWS = 64;
 
     /** A kill handler resolved: handle {@code source}'s event {@code event} ends handle {@code receiver}'s particles. */
-    private record HeardKill(String source, CgVfxEvent event, String receiver) {
+    private record HeardKill(String source, CgVfxEvent event, String receiver, boolean stopSpawning) {
     }
 
     /**

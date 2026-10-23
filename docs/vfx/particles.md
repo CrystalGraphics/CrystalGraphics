@@ -650,7 +650,7 @@ emitters:
   - id: h2                       # the light
     emitter:
       events:
-        - { id: e1, trigger: death, name: gone, kill: true }
+        - { id: e1, trigger: death, name: gone, kill: true, stop_spawning: true }
 ```
 
 ```java
@@ -662,7 +662,8 @@ light.killParticles();   // or by hand, on a playing instance
 
 - **It lands a frame or two late**: the source's event reaches the CPU from the GPU's rows, then the receiver's next
   step ends its particles.
-- **The receiver keeps spawning**: its rate and bursts run on. Its events' children live on in their own slots.
+- **The receiver keeps spawning** unless `stop_spawning` stops it, Cascade's Stop Spawning (`Kill(..., true)` in
+  Java). Its events' children live on in their own slots.
 
 ## Born on another emitter's particles
 

@@ -39,7 +39,8 @@ import java.util.Map;
  * <ul>
  *   <li>{@code kill: true} ends every particle of its own emitter when its source raises the event, and spawns
  *       nothing: Cascade's {@code EventReceiverKillParticles} (ParticleModules_Event.cpp:276-283). It is heard from
- *       the source's rows read back, a frame or two after the step that raised it.</li>
+ *       the source's rows read back, a frame or two after the step that raised it. With {@code stop_spawning} its
+ *       emitter stops spawning too, Cascade's {@code bStopSpawning}.</li>
  *   <li>A {@code name} with a {@code source} still needs that source to raise it; a name nothing raises spawns nothing,
  *       as Cascade's receiver does.</li>
  *   <li>A count is a number, a {@code range}, or a curve by the loop's seconds, read once a frame at the emitter's
@@ -51,7 +52,7 @@ import java.util.Map;
 public record CgVfxEventHandler(String id, String trigger, @Nullable String source, @Nullable String name,
                                 @Nullable String spawn, float countMin, float countMax, boolean rounded,
                                 @Nullable CgKeyframes countCurve, List<Float> inherit, boolean atEmitter, int maxPerFrame,
-                                boolean kill) {
+                                boolean kill, boolean stopSpawning) {
 
     public CgVfxEventHandler {
         CgVfxEvent.ofSpec(trigger);
@@ -78,6 +79,8 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
         String id = String.valueOf(entry.get("id"));
         String at = emitter + ": events." + id;
         boolean kill = Boolean.TRUE.equals(entry.get("kill"));
+        boolean stop = Boolean.TRUE.equals(entry.get("stop_spawning"));
+        if (stop && !kill) throw new IllegalArgumentException(at + ": stop_spawning without kill");
         String source = entry.get("source") instanceof String s ? s : null;
         String name = entry.get("name") instanceof String n && !n.isEmpty() ? n : null;
         if (source == null && name == null) throw new IllegalArgumentException(at + ": no source and no name, so nothing feeds it");
@@ -116,7 +119,7 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
         }
         int most = entry.get("max_per_frame") instanceof Number n ? n.intValue() : CgVfxEvent.MAX_PER_FRAME;
         return new CgVfxEventHandler(id, String.valueOf(entry.get("trigger")), source, name, child, min, max, rounded, curve, inherit,
-                Boolean.TRUE.equals(spawn.get("use_emitter_location")), most, kill);
+                Boolean.TRUE.equals(spawn.get("use_emitter_location")), most, kill, stop);
     }
 
     /**
@@ -132,13 +135,16 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
         if (event.readback() > 0) throw new IllegalArgumentException(what + " reports rows to the CPU: Java's alone");
         boolean rounded = event.rounded();
         return new CgVfxEventHandler(id, trigger, source, null, spawn, rounded ? event.roundMin() : event.countMin(),
-                rounded ? event.roundMax() : event.count(), rounded, event.countCurve(), List.of(event.inherit(0), event.inherit(1), event.inherit(2)), event.atEmitter(), event.maxPerFrame(), false);
+                rounded ? event.roundMax() : event.count(), rounded, event.countCurve(), List.of(event.inherit(0), event.inherit(1), event.inherit(2)), event.atEmitter(), event.maxPerFrame(), false, false);
     }
 
-    /** A kill of handle {@code receiver}'s particles when handle {@code source} raises {@code trigger}: what a file writes. */
-    public static CgVfxEventHandler kill(String id, String source, String trigger) {
+    /**
+     * A kill of its receiver's particles when handle {@code source} raises {@code trigger}, its spawning stopped too where
+     * {@code stopSpawning}: what a file writes.
+     */
+    public static CgVfxEventHandler kill(String id, String source, String trigger, boolean stopSpawning) {
         return new CgVfxEventHandler(id, trigger, source, null, null, 0f, 0f, false, null, List.of(0f, 0f, 0f), false,
-                CgVfxEvent.MAX_PER_FRAME, true);
+                CgVfxEvent.MAX_PER_FRAME, true, stopSpawning);
     }
 
     /** As a file writes it. */
@@ -150,6 +156,7 @@ public record CgVfxEventHandler(String id, String trigger, @Nullable String sour
             if (source != null) out.put("source", source);
             if (name != null) out.put("name", name);
             out.put("kill", true);
+            if (stopSpawning) out.put("stop_spawning", true);
             return out;
         }
         Map<String, Object> spawned = new LinkedHashMap<>();

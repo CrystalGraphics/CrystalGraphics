@@ -171,6 +171,8 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
             CgVfxSystemDefinition.Kill kill = kills.get(k);
             if (kill.event() == event && definition.emitters().get(kill.source()) == source && kill.receiver() < emitters.length) {
                 emitters[kill.receiver()].killParticles();
+                // Cascade's bStopSpawning: SetHaltSpawning (ParticleModules_Event.cpp:281-285).
+                if (kill.stopSpawning()) emitters[kill.receiver()].stop();
             }
         }
     }
