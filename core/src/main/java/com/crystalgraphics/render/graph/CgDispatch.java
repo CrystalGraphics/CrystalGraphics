@@ -59,6 +59,10 @@ public final class CgDispatch {
     final CgGraphBuffer[] buffers;
     final long[] offsets, sizes;
     final int[] bufferAccess;
+    /** Per declared buffer: whether its writes skip the barrier against the pass's other skipping writes to it. */
+    final boolean[] skipBarrier;
+    /** Per declared buffer and count: the executing pass whose start barriered it, so binding it issues none. */
+    final int[] hoisted, counterHoisted;
     /** Per declared buffer: an append buffer's count, its offset, and the access to it; null where none. */
     final CgGraphBuffer[] counters;
     final long[] counterOffsets;
@@ -92,6 +96,9 @@ public final class CgDispatch {
         offsets = new long[n];
         sizes = new long[n];
         bufferAccess = new int[n];
+        skipBarrier = new boolean[n];
+        hoisted = new int[n];
+        counterHoisted = new int[n];
         counters = new CgGraphBuffer[n];
         counterOffsets = new long[n];
         counterAccess = new int[n];
@@ -119,6 +126,7 @@ public final class CgDispatch {
         Arrays.fill(offsets, 0L);
         Arrays.fill(sizes, 0L);
         Arrays.fill(bufferAccess, 0);
+        Arrays.fill(skipBarrier, false);
         Arrays.fill(counterAccess, 0);
         Arrays.fill(imageAccess, 0);
         if (values != null) kernel.compute().properties().defaultsInto(values);
@@ -174,6 +182,34 @@ public final class CgDispatch {
         sizes[b.index()] = size;
         bufferAccess[b.index()] = access;
         log(buffer, access);
+        return this;
+    }
+
+    /**
+     * Lets buffer {@code name}'s writes skip the barrier after the last dispatch of this pass that wrote the same
+     * storage through a skipping binding too: Unreal RDG's {@code SkipBarrier}, Niagara's UAV overlap. For dispatches
+     * that each write their own slice of one buffer, which would otherwise wait for each other one by one.
+     *
+     * <pre>{@code
+     * for (Pool p : pools) {
+     *     pass.dispatch(key, p.size()).bind("KEYS", keys, p.first() * 4L, p.size() * 4L).skipBarrier("KEYS");
+     * }
+     * pass.dispatch(sort, all).bind("KEYS", keys);   // waits for every slice
+     * }</pre>
+     *
+     * <ul>
+     *   <li>The caller promises the writes touch disjoint words, and that no write reads what another wrote: nothing
+     *       checks it, and a race is silent. Synchronization validation reports overlapping words, so keep it clean.</li>
+     *   <li>An append buffer's count is never skipped: every append writes the same word.</li>
+     *   <li>Bind first: it names a binding already made. Any read of the storage, or a write without it, waits as
+     *       usual, and so does the first skipping write of each pass.</li>
+     * </ul>
+     */
+    public CgDispatch skipBarrier(String name) {
+        pass.requireOpen();
+        CgBufferDecl b = bufferDecl(name);
+        if (buffers[b.index()] == null) throw new IllegalStateException(name + " is not bound yet");
+        skipBarrier[b.index()] = true;
         return this;
     }
 

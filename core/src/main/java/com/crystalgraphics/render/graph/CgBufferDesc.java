@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Set;
 
@@ -17,7 +18,8 @@ public record CgBufferDesc(long bytes, Set<CgBufferUsage> usages) {
     public CgBufferDesc {
         if (bytes <= 0) throw new IllegalArgumentException("a buffer of " + bytes + " bytes");
         if (usages.isEmpty()) throw new IllegalArgumentException("a buffer with no use");
-        usages = Set.copyOf(usages);
+        // An enum set: has() is a bit test, asked for every binding of every dispatch.
+        usages = Collections.unmodifiableSet(EnumSet.copyOf(usages));
     }
 
     public static CgBufferDesc of(long bytes, CgBufferUsage first, CgBufferUsage... more) {

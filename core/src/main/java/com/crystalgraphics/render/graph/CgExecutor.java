@@ -87,7 +87,8 @@ import java.util.function.IntConsumer;
  *       own ring and instance buffers, so the outer frame's are still bound when it returns.</li>
  *   <li>Barriers come from each storage's accesses as executed, across frames and executions
  *       ({@code CgHazards}); {@code -Dcrystalgraphics.graph.barriers=false} records them and issues none, which
- *       synchronization validation must then report.</li>
+ *       synchronization validation must then report. A compute pass barriers each storage's first access before its
+ *       first dispatch, and {@link CgDispatch#skipBarrier} writes of one pass wait for nothing between them.</li>
  *   <li>A compute pass needs a context that runs compute shaders, and throws naming the tier where it does not; so
  *       does a raster pass holding an indirect draw, whose command a kernel writes before the pass begins.</li>
  *   <li>An {@code async()} compute pass goes to the device's compute queue, where it has one; the first later step
@@ -121,6 +122,11 @@ public final class CgExecutor {
     private static final CgComposedTargets COMPOSED = new CgComposedTargets(true), BESIDE = new CgComposedTargets(false);
     private static final CgBufferPool BUFFERS = new CgBufferPool();
     private static final CgHazards HAZARDS = new CgHazards();
+    /**
+     * The compute pass executing, numbered: its overlap set ({@link CgDispatch#skipBarrier} writes skip barriers within
+     * one pass) and its claims on storage ({@link #prologue}).
+     */
+    private static int passSerial;
     private static final IntConsumer FORGET_BUFFER = CgExecutor::forget;
     /** Persistent and history buffers whose storage this executor made, freed at teardown if never released. */
     private static final List<CgGraphBuffer> KEPT = new ArrayList<>();
@@ -636,8 +642,10 @@ public final class CgExecutor {
 
     private void compute(CgFrame frame, CgComputePass pass, CgFrame.Compute packed) {
         List<CgDispatch> dispatches = pass.dispatches();
+        if (++passSerial == 0) passSerial = 1;
         boolean draws = false;
         for (int d = 0; d < dispatches.size(); d++) draws |= dispatches.get(d).kernel.form().how() != CgKernelForm.How.COMPUTE;
+        if (!draws) prologue(dispatches);
         int lowered = 0, cpu = 0;
         // A lowered dispatch is draws: what they bind must not reach the passes after, which draw into what is bound.
         try (CgTrace.Zone ignored = CgTrace.isEnabled(CgChannels.GL) ? CgTrace.zone(CgChannels.GL, CgTrace.name(pass.name())) : null;
@@ -660,6 +668,31 @@ public final class CgExecutor {
         CgTrace.add(CgChannels.GL, DISPATCH_COUNT, dispatches.size());
         if (lowered > 0) CgTrace.add(CgChannels.GL, LOWERED_COUNT, lowered);
         if (cpu > 0) CgTrace.add(CgChannels.GL, CPU_COUNT, cpu);
+    }
+
+    /**
+     * Barriers every storage's first access in the pass before its first dispatch, as Unreal RDG batches a pass's
+     * prologue barriers: dispatches reading what earlier passes wrote then wait once together, not each in turn. A
+     * history is left to its binding, since its version moves within the pass.
+     */
+    private static void prologue(List<CgDispatch> dispatches) {
+        for (int d = 0; d < dispatches.size(); d++) {
+            CgDispatch dispatch = dispatches.get(d);
+            // Claimed, never hoisted: a write later in the pass must not move ahead of this read.
+            if (dispatch.args != null) HAZARDS.claim(CgHazards.buffer(bufferStorage(dispatch.args, false)), passSerial, d);
+            for (int b = 0; b < dispatch.buffers.length; b++) {
+                hoist(d, dispatch.buffers[b], dispatch.bufferAccess[b], dispatch.skipBarrier[b], dispatch.hoisted, b);
+                hoist(d, dispatch.counters[b], dispatch.counterAccess[b], false, dispatch.counterHoisted, b);
+            }
+        }
+    }
+
+    private static void hoist(int dispatch, @Nullable CgGraphBuffer buffer, int access, boolean skip, int[] hoisted, int b) {
+        if (buffer == null || access == 0 || buffer.resource().kind() == CgGraphBuffer.Kind.HISTORY) return;
+        int id = bufferStorage(buffer, (access & CgAccess.COMPUTE_WRITE) != 0);
+        if (!HAZARDS.claim(CgHazards.buffer(id), passSerial, dispatch)) return;
+        barrier(id, access, skip ? passSerial : 0);
+        hoisted[b] = passSerial;
     }
 
     /** What {@code pass} bound, noted for {@link CgBufferInspector}, and the reads armed for it copied as it left them. */
@@ -898,10 +931,14 @@ public final class CgExecutor {
         frame.bindings.bind(bindings);
         for (String token : d.source.engineBuffers()) CgEngineBufferRegistry.get(token).buffer().get().bind();
         for (int b = 0; b < d.buffers.length; b++) {
-            if (d.buffers[b] != null) bindStorage(b, d.buffers[b], d.offsets[b], d.sizes[b], d.bufferAccess[b]);
+            if (d.buffers[b] != null) {
+                int access = d.hoisted[b] == passSerial ? 0 : d.bufferAccess[b];
+                bindStorage(b, d.buffers[b], d.offsets[b], d.sizes[b], access, d.skipBarrier[b] ? passSerial : 0);
+            }
             if (d.counters[b] != null) {
                 long base = CgKernelProgram.counterBase(d.counterOffsets[b]);
-                bindStorage(program.counterPoint(b), d.counters[b], base, d.counterOffsets[b] - base + 4, d.counterAccess[b]);
+                int access = d.counterHoisted[b] == passSerial ? 0 : d.counterAccess[b];
+                bindStorage(program.counterPoint(b), d.counters[b], base, d.counterOffsets[b] - base + 4, access, 0);
                 program.counterWord(b, d.counterOffsets[b]);
             }
         }
@@ -947,9 +984,9 @@ public final class CgExecutor {
         return true;
     }
 
-    private static void bindStorage(int point, CgGraphBuffer buffer, long offset, long size, int access) {
+    private static void bindStorage(int point, CgGraphBuffer buffer, long offset, long size, int access, int set) {
         int id = bufferStorage(buffer, (access & CgAccess.COMPUTE_WRITE) != 0);
-        if (access != 0) barrier(true, id, access);
+        if (access != 0) barrier(id, access, set);
         if (offset == 0 && size == 0) CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, point, id);
         else CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, point, id, offset, size == 0 ? buffer.size() - offset : size);
     }
@@ -1079,7 +1116,16 @@ public final class CgExecutor {
 
     /** The barrier an access of {@code bits} to buffer or texture {@code id} needs, issued. */
     private static void barrier(boolean buffer, int id, int bits) {
-        int from = HAZARDS.access(buffer ? CgHazards.buffer(id) : CgHazards.texture(id), bits);
+        if (buffer) barrier(id, bits, 0);
+        else issue(false, id, HAZARDS.access(CgHazards.texture(id), bits), bits);
+    }
+
+    /** {@link #barrier(boolean, int, int)} for buffer {@code id}, through overlap set {@code set} (0 for none). */
+    private static void barrier(int id, int bits, int set) {
+        issue(true, id, HAZARDS.access(CgHazards.buffer(id), bits, set), bits);
+    }
+
+    private static void issue(boolean buffer, int id, int from, int bits) {
         if (from == 0 || !computeBarriers) return;
         if (buffer) CgGL.cgBufferBarrier(id, from, bits);
         else CgGL.cgImageBarrier(id, from, bits);

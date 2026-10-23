@@ -175,6 +175,25 @@ name, so pooled transients, a history's two versions and a buffer used across fr
 fail `--mode=compute-graph`. Below compute (G40, G33, CPU) the bookkeeping runs and no barrier is issued: a lowered
 kernel's writes are draws, ordered like any draw, and a CPU body's are uploads.
 
+Two rules keep a pass of many small dispatches from waiting dispatch by dispatch, Unreal RDG's:
+
+- **A compute pass's prologue**: each storage's first access in the pass, by whichever dispatch touches it first, is
+  barriered before the pass's first dispatch, so dispatches reading what earlier passes wrote wait once together. A
+  history is left to its binding, since its version moves within the pass.
+- **Skip sets** (`CgDispatch.skipBarrier(name)`, RDG's `SkipBarrier`, Niagara's UAV overlap): writes through
+  skipping bindings of one pass to the same storage wait for nothing between them; any other access waits for all of
+  them. For dispatches writing disjoint slices of one buffer: the particle range's keys and draw order, a slice a pool.
+
+```java
+for (Pool p : pools) {
+    pass.dispatch(key, p.size()).bind("KEYS", keys, p.first() * 4L, p.size() * 4L).skipBarrier("KEYS");
+}
+pass.dispatch(sort, all).bind("KEYS", keys);   // waits for every slice
+```
+
+- Nothing checks that the slices are disjoint; synchronization validation does, so a gate using one runs with it.
+- An append's count is never skipped: every append writes its one word, which validation reports.
+
 **Reading the target** (`CgRasterPass.sceneColor(unit)`, `sceneDepth(unit)`): a draw whose shader reads
 `cg_SceneColor` or `cg_DepthBuffer` samples a copy of the pass's own target (`CgTargetCopy`). The builder walks the
 pass's batches in their sorted order and places a copy before a reader of what a draw since the last copy wrote:

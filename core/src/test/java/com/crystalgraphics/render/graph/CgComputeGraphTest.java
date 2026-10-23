@@ -313,6 +313,31 @@ public class CgComputeGraphTest {
     }
 
     @Test
+    public void barrierRule_writesOfOneOverlapSetWaitForNothingBetweenThem_butAnyOtherAccessWaitsForAll() {
+        CgHazards hazards = new CgHazards();
+        long key = CgHazards.buffer(7);
+        hazards.access(key, CgAccess.COMPUTE_READ);
+        assertEquals(CgAccess.COMPUTE_READ, hazards.access(key, CgAccess.COMPUTE_WRITE, 5));   // the set's first waits
+        assertEquals(0, hazards.access(key, CgAccess.COMPUTE_WRITE, 5));
+        assertEquals(0, hazards.access(key, CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE, 5));
+        assertEquals(CgAccess.COMPUTE_WRITE, hazards.access(key, CgAccess.COMPUTE_WRITE, 6));   // another set
+        assertEquals(CgAccess.COMPUTE_WRITE, hazards.access(key, CgAccess.COMPUTE_WRITE));      // no set
+        hazards.access(key, CgAccess.COMPUTE_WRITE, 5);
+        assertEquals(CgAccess.COMPUTE_WRITE, hazards.access(key, CgAccess.COMPUTE_READ));
+        assertEquals(CgAccess.COMPUTE_READ, hazards.access(key, CgAccess.COMPUTE_WRITE, 5));    // a read broke the run
+    }
+
+    @Test
+    public void barrierRule_aStorageIsClaimedByThePassesFirstDispatchToTouchIt() {
+        CgHazards hazards = new CgHazards();
+        long key = CgHazards.buffer(7);
+        assertTrue(hazards.claim(key, 1, 0));
+        assertTrue(hazards.claim(key, 1, 0));    // another binding of the same dispatch
+        assertFalse(hazards.claim(key, 1, 3));
+        assertTrue(hazards.claim(key, 2, 3));    // the next pass
+    }
+
+    @Test
     public void barrierRule_aStorageIsItsOwn_andForgottenWhenFreed() {
         CgHazards hazards = new CgHazards();
         hazards.access(CgHazards.buffer(1), CgAccess.COMPUTE_WRITE);

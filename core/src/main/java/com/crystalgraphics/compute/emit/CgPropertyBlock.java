@@ -11,7 +11,9 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * How a {@code .compute}'s {@code Properties} sit in the block its kernels read, {@code CgKernelBlock}: each value's
@@ -32,12 +34,15 @@ public final class CgPropertyBlock {
     private final List<String> samplers;
     /** The {@code sampler3D} ones. */
     private final List<String> volumes;
+    /** Its value fields by name: a dispatch sets each by name every frame. */
+    private final Map<String, CgBufferField> fields = new HashMap<>();
 
     private CgPropertyBlock(@Nullable CgBufferFormat format, float[] defaults, List<String> samplers, List<String> volumes) {
         this.format = format;
         this.defaults = defaults;
         this.samplers = samplers;
         this.volumes = volumes;
+        if (format != null) for (int i = 0; i < format.getFieldCount(); i++) fields.put(format.getField(i).getName(), format.getField(i));
     }
 
     public static CgPropertyBlock of(List<CgMaterialProperty> properties) {
@@ -116,9 +121,7 @@ public final class CgPropertyBlock {
 
     @Nullable
     private CgBufferField field(String name) {
-        if (format == null) return null;
-        for (int i = 0; i < format.getFieldCount(); i++) if (format.getField(i).getName().equals(name)) return format.getField(i);
-        return null;
+        return fields.get(name);
     }
 
     /** The sampler properties, each bound at its index as a texture unit. */

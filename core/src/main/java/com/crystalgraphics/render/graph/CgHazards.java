@@ -15,6 +15,10 @@ import java.util.Arrays;
  * if (from != 0) CgGL.cgBufferBarrier(buffer, from, CgAccess.COMPUTE_READ);
  * }</pre>
  *
+ * <p>Writes may overlap: consecutive writes through one overlap set, a compute pass's {@code skipBarrier} bindings,
+ * wait for nothing between them, Unreal RDG's {@code SkipBarrier} UAVs (the caller promises they touch disjoint words).
+ * Any other access after them waits for all of them.</p>
+ *
  * <p>Only a hazard a kernel takes part in answers a barrier. Between draws, copies and uploads the backend orders
  * everything itself, as it did before the graph had kernels; their accesses are still recorded, so the kernel after
  * them waits for them.</p>
@@ -24,9 +28,14 @@ final class CgHazards {
     static final int WRITES = CgAccess.COMPUTE_WRITE | CgAccess.COPY_WRITE | CgAccess.COLOR_WRITE;
     private static final int COMPUTE = CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE;
 
-    /** Open addressing over storage keys; per entry the last write's bits, reads since, and reads made visible. */
+    /**
+     * Open addressing over storage keys; per entry the last write's bits, reads since, reads made visible, and the
+     * overlap set the last write was made through (0 for none).
+     */
     private long[] keys = new long[64];
-    private int[] lastWrite = new int[64], reads = new int[64], visible = new int[64];
+    private int[] lastWrite = new int[64], reads = new int[64], visible = new int[64], overlap = new int[64];
+    /** Per entry: the compute pass that last claimed it, and which of its dispatches touches it first. */
+    private int[] claimPass = new int[64], claimDispatch = new int[64];
     private boolean[] used = new boolean[64];
     private int size;
 
@@ -45,9 +54,22 @@ final class CgHazards {
      * accesses it must wait for, or 0.
      */
     int access(long key, int bits) {
+        return access(key, bits, 0);
+    }
+
+    /**
+     * {@link #access(long, int)} through overlap set {@code set}, or 0 for none: a write following a write of the same
+     * set, with no read between, needs no barrier.
+     */
+    int access(long key, int bits, int set) {
         int e = entry(key);
         int write = bits & WRITES, read = bits & ~WRITES;
         int from;
+        if (write != 0 && set != 0 && overlap[e] == set && reads[e] == 0) {
+            lastWrite[e] |= write;
+            return 0;
+        }
+        overlap[e] = write != 0 ? set : 0;
         if (write != 0) {
             // Readers that each waited for the last write carry it: waiting for them is enough.
             boolean chained = reads[e] != 0 && (visible[e] & reads[e]) == reads[e];
@@ -63,6 +85,20 @@ final class CgHazards {
         return from != 0 && ((from | bits) & COMPUTE) != 0 ? from : 0;
     }
 
+    /**
+     * Whether dispatch {@code dispatch} of compute pass {@code pass} is the first of the pass to touch {@code key}: the
+     * one whose accesses to it may be barriered at the pass's start. The first call for a key in a pass claims it.
+     */
+    boolean claim(long key, int pass, int dispatch) {
+        int e = entry(key);
+        if (claimPass[e] != pass) {
+            claimPass[e] = pass;
+            claimDispatch[e] = dispatch;
+            return true;
+        }
+        return claimDispatch[e] == dispatch;
+    }
+
     /** Forgets a storage that was freed: its name may be someone else's next. */
     void forget(long key) {
         int e = find(key);
@@ -70,6 +106,7 @@ final class CgHazards {
         lastWrite[e] = 0;
         reads[e] = 0;
         visible[e] = 0;
+        overlap[e] = 0;
     }
 
     private int find(long key) {
@@ -88,20 +125,24 @@ final class CgHazards {
         }
         used[i] = true;
         keys[i] = key;
-        lastWrite[i] = reads[i] = visible[i] = 0;
+        lastWrite[i] = reads[i] = visible[i] = overlap[i] = claimPass[i] = claimDispatch[i] = 0;
         size++;
         return i;
     }
 
     private void grow() {
         long[] oldKeys = keys;
-        int[] oldWrite = lastWrite, oldReads = reads, oldVisible = visible;
+        int[] oldWrite = lastWrite, oldReads = reads, oldVisible = visible, oldOverlap = overlap;
+        int[] oldClaimPass = claimPass, oldClaimDispatch = claimDispatch;
         boolean[] oldUsed = used;
         int n = keys.length * 2;
         keys = new long[n];
         lastWrite = new int[n];
         reads = new int[n];
         visible = new int[n];
+        overlap = new int[n];
+        claimPass = new int[n];
+        claimDispatch = new int[n];
         used = new boolean[n];
         size = 0;
         for (int i = 0; i < oldKeys.length; i++) {
@@ -110,6 +151,9 @@ final class CgHazards {
             lastWrite[e] = oldWrite[i];
             reads[e] = oldReads[i];
             visible[e] = oldVisible[i];
+            overlap[e] = oldOverlap[i];
+            claimPass[e] = oldClaimPass[i];
+            claimDispatch[e] = oldClaimDispatch[i];
         }
     }
 

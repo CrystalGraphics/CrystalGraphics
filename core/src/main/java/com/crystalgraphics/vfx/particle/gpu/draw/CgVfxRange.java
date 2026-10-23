@@ -590,6 +590,7 @@ public final class CgVfxRange {
                         .bind("SLOTS", slots).bind("SORTS", sorts)
                         .bind("KEYS", keyBuffer, keyFirst * 4L, p.storage() * 4L)
                         .bind("INDICES", indices, keyFirst * 4L, p.storage() * 4L)
+                        .skipBarrier("KEYS").skipBarrier("INDICES")   // each pool its own slice
                         .set("_SlotFirst", slotFirst).set("_AllSlots", allSlots).set("_DepthBits", depthBits)
                         .set("_Ordered", ordered ? 1 : 0)
                         .set("_ClipX", vp.m00(), vp.m10(), vp.m20(), vp.m30()).set("_ClipY", vp.m01(), vp.m11(), vp.m21(), vp.m31())
@@ -622,7 +623,7 @@ public final class CgVfxRange {
             if (keyed(p) && capacity > 0) {
                 window.bind(pass.dispatch(place, capacity).bind("INDICES", indices)
                         .bind("VISIBLE", visible).bind("STARTS", starts).bind("BASES", bases).bind("ORIGINS", origins)
-                        .bind("ORDER", drawn, (long) drawnFirst * DRAWN_BYTES, (long) capacity * DRAWN_BYTES)
+                        .bind("ORDER", drawn, (long) drawnFirst * DRAWN_BYTES, (long) capacity * DRAWN_BYTES).skipBarrier("ORDER")
                         .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst)
                         .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
                         .set("_Floors", p.shape().floors() ? 1 : 0).set("_DrawnStride", p.shape().drawnStride()));
@@ -631,7 +632,7 @@ public final class CgVfxRange {
                     window.bind(pass.dispatch(objected, capacity).bind("RECORDS", p.records()).bind("DRAWN", p.drawn())
                             .set("_RecordVectors", p.record().vectors()).bind("INDICES", indices)
                             .bind("VISIBLE", visible).bind("STARTS", starts).bind("BASES", bases).bind("ORIGINS", origins)
-                            .bind("OBJECTS", objects, drawnFirst * bytes, capacity * bytes)
+                            .bind("OBJECTS", objects, drawnFirst * bytes, capacity * bytes).skipBarrier("OBJECTS")
                             .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst)
                             .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
                             .set("_Sequence", p.shape().drawLayout() == CgVfxDrawLayout.SEQUENCE ? 1 : 0)
