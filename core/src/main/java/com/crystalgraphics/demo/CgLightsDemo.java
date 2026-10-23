@@ -110,8 +110,9 @@ public final class CgLightsDemo {
                 .light(160f, 2f, CgVfxDrawnChannel.over(CgKeyframes.constant(1f)), CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
                         CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
                         // About 90 sparks a burst, each nearly full 5 blocks off (Cascade's (1 - d²/r²)²): together
-                        // about three times the colour of what they light there.
-                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 2.15f).to(1f, 0f, CgEasings.IN_QUAD).build()))
+                        // about a sixth of the colour of what they light there at night, each divided by the night's
+                        // lightmap at it as every world light is.
+                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 0.11f).to(1f, 0f, CgEasings.IN_QUAD).build()))
                 .renderer(sparks(name)).renderer(CgVfxRenderers.light(name + "Light").field("spawn_fraction", 0.4)
                         .field("inverse_squared_falloff", false).build())
                 .build();
@@ -147,8 +148,9 @@ public final class CgLightsDemo {
                 // Inverse-squared, as the world's lights: brighter the nearer, where a falloff exponent caps at its colour.
                 .light(40f, 0f, CgVfxDrawnChannel.over(CgKeyframes.constant(1f)), CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
                         CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
-                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 0f).to(0.2f, 4.5f, CgEasings.OUT_QUAD)
-                                .to(0.8f, 1.5f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build()))
+                        // At its brightest about a third of the colour of what it lights a block off at night.
+                        CgVfxDrawnChannel.over(CgKeyframes.start(0f, 0f).to(0.2f, 0.225f, CgEasings.OUT_QUAD)
+                                .to(0.8f, 0.075f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build()))
                 .renderer(sparks("fireflies")).renderer(CgVfxRenderers.light("firefliesLight").field("spawn_fraction", 1.0)
                         .build())
                 .build();
