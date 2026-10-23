@@ -763,6 +763,10 @@ Pass {
 }
 ```
 
+An opaque world material with one output gets a G-buffer normal without asking: `CgWorldRenderer` draws it compiled
+with `CG_NORMAL_TARGET`, which writes the vertex normal (`cg_Normal` through `CG_NORMAL_MATRIX`) at location 1 for the
+world lights (`docs/LIGHTS.md` §7). An MRT pass is left alone, so it gives up that normal.
+
 ---
 
 ### Loading and Using a Material

@@ -159,7 +159,7 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
 | Pass | Unreal (MegaLights) | Here |
 |---|---|---|
 | Sample | `GenerateLightSamplesCS`: 4 samples a half-resolution pixel, a weighted reservoir over its tile's lights, weight `log2(luminance + 1)`; a sample of the same light merged into the next one's ray | `world_lights_sample.shader`, over the light grid's cell, the shadowed lights alone |
-| Trace | screen trace (hierarchical, 1 m), then the global distance field | screen trace (24 steps over 8 blocks, `crystalgraphics.world.lightsScreenTrace`), then `CgWorldVoxelWindow`'s distance field (blocks, 128x96x128 round the camera), then each of `CgWorldEntityBoxes`' entities as a capsule (Unreal's capsule shadows) |
+| Trace | screen trace (hierarchical, 1 m), then the global distance field | screen trace (24 steps over 8 blocks, `crystalgraphics.world.lightsScreenTrace`), then `CgWorldVoxelWindow`'s distance field (blocks, 128x96x128 round the camera), then each of `CgWorldEntityBoxes`' entities as a capsule (Unreal's capsule shadows), then our meshes' distance fields |
 | Shade | `ShadeLightSamplesCS`: each pixel picks a nearby half-resolution pixel by bilinear, depth and normal weight; each visible light lit exactly, times its samples' weights | `world_lights_shade.shader` |
 | Temporal | `DenoiserTemporalCS`: history clamped in YCoCg to the neighbourhood, 4 to 12 frames by confidence, moments kept | `world_lights_temporal.shader`, one history for the first firing (`crystalgraphics.world.lightsShadowFrames`) |
 | Spatial | `DenoiserSpatialCS`: where still noisy, a disk of 4 (8 after a disocclusion) samples by depth, normal and luminance | `world_lights_denoise.shader` (`crystalgraphics.world.lightsShadowSpatial`, pixels) |
@@ -178,9 +178,17 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
   (its level less the blocks between) and traces it; the share that gets through scales the pixel's block light, again
   through the lightmap. Casters are as for the sun. A block placed after its section was read waits for the window's
   refresh; `--mode=lights-torch` is the gate.
-- **What casts**: Minecraft's blocks within the window, its living entities within 64 blocks, and anything on screen.
-  Meshes drawn through `CgWorldRenderer` shadow only where they are on screen; Unreal's mesh distance fields have no
-  counterpart yet.
+- **What casts**: Minecraft's blocks within the window, its living entities within 64 blocks, anything on screen, and
+  our meshes through their **mesh distance fields** (Unreal's `MeshDistanceFieldUtilities.cpp`, traced as
+  `DistanceFieldShadowingShared.ush` does). `CgMeshDistanceFields` builds one per mesh and submesh on first draw: 16
+  voxels a block, at most 48 an axis, the nearest triangle's distance, inside by a back-face vote. Each frame the
+  opaque draws within `crystalgraphics.world.sunCasterReach` blocks (48), at most 256, become casters; a ray
+  sphere-traces each field it crosses, 32 steps at most, ignoring a hit within two voxels of its start (the self-shadow
+  bias). Counter `world.lights-casters`; `--mode=lights-casters` is the gate.
+- **Normals**: our opaque materials write their vertex normal into `cg_world.normals` (the `CG_NORMAL_TARGET`
+  variant, `CgPipeline.normalTarget()`), and every pass reads it where drawn, as Unreal's passes read the G-buffer's;
+  Minecraft's pixels rebuild theirs from depth, held to a world axis. On our pixels the sun fades over a face's last
+  few degrees toward it, so a face edge-on to the sun holds still.
 - **What does not**: a particle's light (Unreal's simple lights cast none), a slot light with `cast_shadows: false`,
   any light under `-Dcrystalgraphics.world.lightsShadows=false`.
 - **Departures from Unreal**: a linear screen trace, longer than Unreal's, because the world trace knows only blocks;
@@ -207,6 +215,7 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
 | `--mode=lights-shadow` | a light behind a wall of blocks withheld, in the open kept, on GL and Vulkan |
 | `--mode=lights-sun` | our box shadows the host's ground, blocks off screen shadow our box, open ground kept, on GL and Vulkan |
 | `--mode=lights-torch` | a torch's light on the host's ground withheld behind our box, kept in the open, on GL and Vulkan |
+| `--mode=lights-casters` | our box shadows the host's ground and our ball our slab off their distance fields, the ground beside kept, the sun's edge across the ball steady as the camera turns, on GL and Vulkan |
 | `--mode=vfx-lights` | every particle light (where, how far, how bright, its block and sky light, its source radius) against a Java gather |
 | `--mode=lights-bench` | the cost: `-Dcrystalgraphics.harness.lights=10000` and profile `world.lights`, `world.lightsCoarse`, `world.lightsCells`, `world.lightsApply` |
 

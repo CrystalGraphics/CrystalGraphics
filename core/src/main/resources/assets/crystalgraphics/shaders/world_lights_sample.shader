@@ -7,7 +7,9 @@
 // a sample over its disc (MegaLights takes a directional light as one more light).
 //
 // What casts depends on the receiver: on our objects' pixels (nearer than the host's depth before our opaque draws)
-// everything does; on Minecraft's, only our objects, its own blocks keeping the light it baked.
+// everything does; on Minecraft's, only our objects, its own blocks keeping the light it baked. Our objects cast through
+// their meshes' distance fields (_CasterRows, _MeshFields), on screen or off, as Unreal's distance field shadows trace them
+// (DistanceFieldShadowingShared.ush's ShadowRayTraceThroughCulledObjects).
 //
 // Minecraft's light-giving blocks are lights of their own (CG_LIGHT_MINECRAFT): each sample picks one in proportion to
 // the block light Minecraft's flood gives the pixel from it, level less the blocks between, and traces it as it traces
@@ -47,6 +49,9 @@ Properties {
     _WorldSections ("Which of its sections are filled",            sampler3D) = "black"
     _WorldDistance ("Its distance to solid over FX_WORLD_FAR",      sampler3D) = "white"
     _HostDepth     ("The host's window depth before our opaque draws", sampler2D) = "white"
+    _CasterRows    ("Our meshes casting shadows, five texels each: eye-relative world to field voxels (three rows), the field's size and first float, its scales", sampler2D) = "black"
+    _MeshFields    ("Every mesh's distance field in its own units, MESH_FIELD_ROW floats a row", sampler2D) = "black"
+    _Normals       ("Our surfaces' normals, world, n * 0.5 + 0.5, alpha 1 where drawn", sampler2D) = "black"
     _WorldBaseX    ("Its lowest block, absolute: x",               int) = 0
     _WorldBaseY    ("y",                                           int) = 0
     _WorldBaseZ    ("z",                                           int) = 0
@@ -55,6 +60,7 @@ Properties {
     _WorldWrapZ    ("z",                                           int) = 0
     _WorldLive     ("1 with a level, else 0: read nothing",        int) = 0
     _Entities      ("Entity boxes in ENTITIES",                    int) = 0
+    _Casters       ("Our meshes casting shadows in _CasterRows",   int) = 0
 }
 
 struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; };
@@ -76,9 +82,6 @@ Pass {
         DepthWrite OFF
         Cull OFF
     }
-
-    // How deep one of our objects is taken to be behind its surface on screen, in blocks.
-    const float OWN_THICKNESS = 1.5;
 
     vec3 to_view_dir(vec3 w) { return vec3(dot(_ToView0.xyz, w), dot(_ToView1.xyz, w), dot(_ToView2.xyz, w)); }
     vec3 to_world_dir(vec3 v) {
@@ -113,8 +116,21 @@ Pass {
         return vec3(mix(_Rays.xy, _Rays.zw, uv) * depth, -depth);
     }
 
-    // world_lights.shader's normal: from the nearer neighbour each way, held to a world axis within 10 degrees.
+    // world_lights.shader's normal: ours as drawn; Minecraft's from the nearer neighbour each way, held to a world axis
+    // within 10 degrees, as its blocks are.
+    // Our surfaces' own normal where the opaque pass wrote one (Unreal's G-buffer normal); else rebuilt from depth.
+    vec3 drawn_normal(ivec2 px, vec3 p, vec2 size, out bool given) {
+        vec4 t = texelFetch(_Normals, clamp(px, ivec2(0), ivec2(size) - 1), 0);
+        given = t.a > 0.5;
+        if (!given) return vec3(0.0);
+        vec3 n = to_view_dir(normalize(t.xyz * 2.0 - 1.0));
+        return dot(n, p) > 0.0 ? -n : n;
+    }
+
     vec3 normal_at(ivec2 px, vec3 p) {
+        bool given;
+        vec3 drawn = drawn_normal(px, p, _Screen.xy, given);
+        if (given) return drawn;
         vec3 left = surface(px - ivec2(1, 0)), right = surface(px + ivec2(1, 0));
         vec3 down = surface(px - ivec2(0, 1)), up = surface(px + ivec2(0, 1));
         vec3 across = abs(left.z - p.z) < abs(right.z - p.z) ? p - left : right - p;
@@ -147,10 +163,8 @@ Pass {
     }
 
     // The screen trace (TraceScreen) from a along dir for len: 1 a hit within the depth thickness, -1 uncertain, the ray
-    // behind the scene or off screen, with reached where it got to; 0 clear. Where ownOnly only our objects cast: a ray
-    // behind one of them is taken as inside it for OWN_THICKNESS blocks, since nothing else holds their volume, and a ray
-    // behind the host's surfaces goes on.
-    int screen_trace(vec3 a, vec3 dir, float len, int steps, float jit, bool ownOnly, out float reached) {
+    // behind the scene or off screen, with reached where it got to; 0 clear.
+    int screen_trace(vec3 a, vec3 dir, float len, int steps, float jit, out float reached) {
         reached = len;
         float last = 0.0;
         for (int k = 0; k < steps; k++) {
@@ -166,11 +180,6 @@ Pass {
             float scene = eye_depth(at);
             float behind = rayDepth - scene, stepDepth = abs(dir.z) * len / float(steps);
             if (scene > 0.0 && behind > 0.0) {
-                if (ownOnly) {
-                    if (own(at, scene) && behind < max(OWN_THICKNESS, stepDepth)) return 1;
-                    last = t;
-                    continue;
-                }
                 if (behind < max(_Trace.w * scene, stepDepth)) return 1;
                 reached = last;
                 return -1;
@@ -203,22 +212,74 @@ Pass {
         return false;
     }
 
-    // The sun's visibility at p facing n, one ray over its disc: 1 lit, 0 shadowed. A face turned from it is shadowed
-    // on our objects; on Minecraft's it is left as Minecraft lit it.
+    // CgMeshDistanceFields.ROW: floats a row of the atlas.
+    const int MESH_FIELD_ROW = 1024;
+
+    // A mesh field's distance at voxel c, clamped to the field.
+    float field_at(int first, ivec3 n, ivec3 c) {
+        c = clamp(c, ivec3(0), n - 1);
+        int i = first + (c.z * n.y + c.y) * n.x + c.x;
+        return texelFetch(_MeshFields, ivec2(i % MESH_FIELD_ROW, i / MESH_FIELD_ROW), 0).r;
+    }
+
+    // A mesh field's distance at voxel position v, trilinear, in the mesh's units; outside the field, plus the way to it.
+    float field_sample(int first, ivec3 n, vec3 v, float voxel) {
+        vec3 c = clamp(v, vec3(0.0), vec3(n - 1));
+        ivec3 i = min(ivec3(floor(c)), n - 2);
+        vec3 f = c - vec3(i);
+        float x00 = mix(field_at(first, n, i), field_at(first, n, i + ivec3(1, 0, 0)), f.x);
+        float x10 = mix(field_at(first, n, i + ivec3(0, 1, 0)), field_at(first, n, i + ivec3(1, 1, 0)), f.x);
+        float x01 = mix(field_at(first, n, i + ivec3(0, 0, 1)), field_at(first, n, i + ivec3(1, 0, 1)), f.x);
+        float x11 = mix(field_at(first, n, i + ivec3(0, 1, 1)), field_at(first, n, i + ivec3(1, 1, 1)), f.x);
+        return mix(mix(x00, x10, f.y), mix(x01, x11, f.y), f.z) + length(v - c) * voxel;
+    }
+
+    // Whether one of our meshes lies on the eye-relative world segment aw + dir * t, t from t0 to t1: each caster's field
+    // sphere-traced over the part of the segment inside it, at most 32 steps, a hit within two voxels of the ray's start
+    // ignored as the object's own (Unreal's self-shadow bias).
+    bool caster_trace(vec3 aw, vec3 dir, float t0, float t1) {
+        for (int k = 0; k < _Casters; k++) {
+            vec4 r0 = texelFetch(_CasterRows, ivec2(k * 5, 0), 0), r1 = texelFetch(_CasterRows, ivec2(k * 5 + 1, 0), 0);
+            vec4 r2 = texelFetch(_CasterRows, ivec2(k * 5 + 2, 0), 0), size = texelFetch(_CasterRows, ivec2(k * 5 + 3, 0), 0);
+            vec4 scale = texelFetch(_CasterRows, ivec2(k * 5 + 4, 0), 0);
+            vec3 vo = vec3(dot(r0.xyz, aw) + r0.w, dot(r1.xyz, aw) + r1.w, dot(r2.xyz, aw) + r2.w);
+            vec3 vd = vec3(dot(r0.xyz, dir), dot(r1.xyz, dir), dot(r2.xyz, dir));
+            ivec3 n = ivec3(size.xyz);
+            vec3 safe = mix(vd, vec3(1.0e-8), lessThan(abs(vd), vec3(1.0e-8)));
+            vec3 ta = -vo / safe, tb = (vec3(n - 1) - vo) / safe;
+            vec3 tIn = min(ta, tb), tOut = max(ta, tb);
+            float enter = max(max(tIn.x, tIn.y), max(tIn.z, t0)), leave = min(min(tOut.x, tOut.y), min(tOut.z, t1));
+            if (enter >= leave) continue;
+            float t = enter, selfBias = 2.0 * scale.y;
+            for (int s = 0; s < 32 && t < leave; s++) {
+                float d = field_sample(int(size.w), n, vo + vd * t, scale.z) * scale.x;
+                if (d < 0.1 * scale.y && t > selfBias) return true;
+                t += max(d, 0.25 * scale.y);
+            }
+        }
+        return false;
+    }
+
+    // The sun's visibility at p facing n, one ray over its disc: 1 lit, 0 shadowed. On our objects it fades out over
+    // the last few degrees before a face turns from it, so a face edge-on to it (Minecraft's sun crosses east to west:
+    // a north face is exactly edge-on) holds still rather than flipping with a normal's last bit; on Minecraft's a face
+    // turned from it is left as Minecraft lit it.
     float sun_visibility(vec3 p, vec3 n, bool ownPixel, ivec2 sampleCoord) {
         if (_Sun.x < 0.5 || CG_DAYLIGHT <= 0.0 || CG_SUN_DIRECTION.y <= 0.0) return 1.0;
         vec3 toSun = normalize(to_view_dir(CG_SUN_DIRECTION));
+        float facing = ownPixel ? smoothstep(0.0, 0.2, dot(n, toSun)) : 1.0;
         if (dot(n, toSun) <= 0.0) return ownPixel ? 0.0 : 1.0;
         vec2 u = vec2(cg_shadow_noise(vec2(sampleCoord) + 53.0, CG_FRAME_INDEX), cg_shadow_noise(vec2(sampleCoord) + 71.0, CG_FRAME_INDEX));
         // The sun as a sphere far off whose disc spans Unreal's LightSourceAngle.
         vec3 dir = cg_shadow_sphere_ray(toSun * 1000.0, 1000.0 * _Sun.w, u).xyz;
         vec3 a = p + n * (_Trace.z + 0.002 * -p.z);
         float jit = cg_shadow_noise(vec2(sampleCoord) + 97.0, CG_FRAME_INDEX), reached;
-        if (!ownPixel) return screen_trace(a, dir, _Sun.y, int(_Sun.z), jit, true, reached) == 1 ? 0.0 : 1.0;
-        int screen = screen_trace(a, dir, _Trace.x, int(_Trace.y), jit, false, reached);
+        if (caster_trace(to_world(a), to_world_dir(dir), 0.0, _Sun.y)) return 0.0;
+        if (!ownPixel) return 1.0;
+        int screen = screen_trace(a, dir, _Trace.x, int(_Trace.y), jit, reached);
         if (screen == 1) return 0.0;
         // Past the screen: the window's blocks to its edge, and the entities.
-        return world_trace(to_world(a), to_world_dir(dir), reached, 96.0) ? 0.0 : 1.0;
+        return world_trace(to_world(a), to_world_dir(dir), reached, 96.0) ? 0.0 : facing;
     }
 
     // The block a surface's light is read at: the one its face looks into, from the eye's block.
@@ -261,8 +322,9 @@ Pass {
         float rayEnd = max(ray.w - 0.9, 0.0);
         float jit = cg_shadow_noise(vec2(sampleCoord) + 173.0, CG_FRAME_INDEX), reached;
         // Minecraft's world keeps its own blocks' shadows: only our objects take its light from it.
-        if (!ownPixel) return screen_trace(a, ray.xyz, min(rayEnd, _Sun.y), int(_Sun.z), jit, true, reached) == 1 ? 0.0 : 1.0;
-        int screen = screen_trace(a, ray.xyz, min(rayEnd, _Trace.x), int(_Trace.y), jit, false, reached);
+        if (caster_trace(to_world(a), to_world_dir(ray.xyz), 0.0, rayEnd)) return 0.0;
+        if (!ownPixel) return 1.0;
+        int screen = screen_trace(a, ray.xyz, min(rayEnd, _Trace.x), int(_Trace.y), jit, reached);
         if (screen == 1) return 0.0;
         if (screen == 0) reached = min(rayEnd, _Trace.x);
         return reached < rayEnd && world_trace(to_world(a), to_world_dir(ray.xyz), reached, rayEnd) ? 0.0 : 1.0;
@@ -328,7 +390,8 @@ Pass {
 
         // The screen trace, then the world trace from where it left off: a lamp of ours is shadowed by everything.
         float jit = cg_shadow_noise(vec2(sampleCoord) + 31.0, CG_FRAME_INDEX), reached;
-        int screen = screen_trace(a, ray.xyz, min(rayEnd, _Trace.x), int(_Trace.y), jit, false, reached);
+        if (caster_trace(to_world(a), to_world_dir(ray.xyz), 0.0, rayEnd)) return vec2(float(index), -1.0);
+        int screen = screen_trace(a, ray.xyz, min(rayEnd, _Trace.x), int(_Trace.y), jit, reached);
         if (screen == 1) return vec2(float(index), -1.0);
         if (screen == 0) reached = min(rayEnd, _Trace.x);
         if (reached < rayEnd && world_trace(to_world(a), to_world_dir(ray.xyz), reached, rayEnd)) return vec2(float(index), -1.0);

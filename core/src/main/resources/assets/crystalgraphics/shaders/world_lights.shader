@@ -40,6 +40,7 @@ Properties {
     _World         ("The voxel window's blocks",                   sampler3D) = "black"
     _WorldSections ("Which of its sections are filled",            sampler3D) = "black"
     _WorldDistance ("Its distance to solid over FX_WORLD_FAR",      sampler3D) = "white"
+    _Normals       ("Our surfaces' normals, world, n * 0.5 + 0.5, alpha 1 where drawn", sampler2D) = "black"
     _WorldBaseX    ("Its lowest block, absolute: x",               int) = 0
     _WorldBaseY    ("y",                                           int) = 0
     _WorldBaseZ    ("z",                                           int) = 0
@@ -118,7 +119,13 @@ Pass {
                 dot(vec3(_ToView0.z, _ToView1.z, _ToView2.z), n));
         vec3 size = abs(world);
         float most = max(size.x, max(size.y, size.z));
-        if (most > 0.985) {
+        // Our surfaces' own normal where the opaque pass wrote one (Unreal's G-buffer normal).
+        vec4 drawn = texelFetch(_Normals, px, 0);
+        if (drawn.a > 0.5) {
+            vec3 g = normalize(drawn.xyz * 2.0 - 1.0);
+            n = vec3(dot(_ToView0.xyz, g), dot(_ToView1.xyz, g), dot(_ToView2.xyz, g));
+            if (dot(n, p) > 0.0) n = -n;
+        } else if (most > 0.985) {
             world = sign(world) * step(vec3(most), size);
             n = vec3(dot(_ToView0.xyz, world), dot(_ToView1.xyz, world), dot(_ToView2.xyz, world));
         }

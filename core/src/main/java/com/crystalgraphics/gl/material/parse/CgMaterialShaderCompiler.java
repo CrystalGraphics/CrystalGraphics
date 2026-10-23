@@ -154,6 +154,14 @@ public final class CgMaterialShaderCompiler {
      */
     public static final String VOLUME_TARGET = "CG_VOLUME_TARGET";
 
+    /**
+     * The engine's keyword for a Forward pass drawn into the world renderer's opaque pass with a normal target beside
+     * it, Unreal's G-buffer normal: the vertex normal, through the normal matrix, written at location 1 as
+     * {@code n * 0.5 + 0.5} with alpha 1, flipped on a back face; alpha 0 for a mesh with no normals. What the world
+     * lights read in place of a normal rebuilt from depth.
+     */
+    public static final String NORMAL_TARGET = "CG_NORMAL_TARGET";
+
     /** A fragment naming the depth it marched to ({@code CG_VOLUME_DEPTH(eye)}). */
     private static final Pattern NAMES_VOLUME_DEPTH = Pattern.compile("\\bCG_VOLUME_DEPTH\\b");
 
@@ -568,8 +576,9 @@ public final class CgMaterialShaderCompiler {
         // Compiler-wired flat int varying for instance ID bridging (vertex → fragment)
         sb.append("flat out int cg_InstanceId;\n");
 
-        // v2f varying outputs
-        appendV2fVaryingOutputs(sb, v2fFields);
+        // v2f varying outputs: the normal target's normal rides in the block, matched with it on every device
+        boolean normals = writesNormals(pass, config);
+        appendV2fVaryingOutputs(sb, v2fFields, normals);
 
         // Global declarations (code lines only — directives emitted above)
         appendGlobalDecls(sb, codeLines);
@@ -585,8 +594,19 @@ public final class CgMaterialShaderCompiler {
 
         // Generated main()
         appendVertexMain(sb, v2fFields);
+        if (normals) {
+            // At the end of the generated main itself: a backend may rewrite main, so no macro renames it.
+            String normal = vertexFormat.indexOf("cg_Normal") >= 0 ? "CG_NORMAL_MATRIX * cg_Normal" : "vec3(0.0)";
+            sb.insert(sb.lastIndexOf("}"), "  _cg_v2f._cg_normalWs = " + normal + ";\n");
+        }
 
         return sb.toString();
+    }
+
+    /** Whether a pass compiled under {@code config} writes the normal target ({@link #NORMAL_TARGET}). */
+    private static boolean writesNormals(CgParsedPass pass, CompileConfig config) {
+        return config.activeKeywords().contains(NORMAL_TARGET) && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode())
+                && !pass.fragOutput().isMrt();
     }
 
     // ── Fragment shader builder ───────────────────────────────────────────────
@@ -648,7 +668,8 @@ public final class CgMaterialShaderCompiler {
         appendV2fStruct(sb, pass.v2fStructBody());
 
         // v2f varying inputs
-        appendV2fVaryingInputs(sb, v2fFields);
+        boolean normals = writesNormals(pass, config);
+        appendV2fVaryingInputs(sb, v2fFields, normals);
 
         // Global declarations (code lines only — directives emitted above)
         appendGlobalDecls(sb, codeLines);
@@ -663,6 +684,8 @@ public final class CgMaterialShaderCompiler {
                 && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) && !pass.fragOutput().isMrt();
         appendFragmentOutputDeclarations(sb, pass, merge);
         if (volume) sb.append("layout(location = 1) out vec4 _cg_volumeDepth;\n");
+        normals &= !volume && merge == EmissionMerge.NONE;
+        if (normals) sb.append("layout(location = 1) out vec4 _cg_normalOut;\n");
 
         // User fragment function
         sb.append("// User fragment function\n");
@@ -676,6 +699,12 @@ public final class CgMaterialShaderCompiler {
                 && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) && sceneFolds(shader);
         appendFragmentMain(sb, v2fFields, pass, shader, config.activeKeywords().contains(DEBUG_OVERDRAW), merge, cover, fold);
         if (volume) sb.append("#undef main\nvoid main() {\n  _cg_volumeEye = 0.0;\n  _cg_main();\n  _cg_volumeDepth = vec4(_cg_volumeEye, 0.0, 0.0, _cg_volumeEye > 0.0 ? 1.0 : 0.0);\n}\n");
+        if (normals) {
+            // First in the generated main, before any return in it: a pixel discarded later writes nothing anyway.
+            int open = sb.indexOf("{", sb.lastIndexOf("void main()")) + 1;
+            sb.insert(open, "\n  vec3 _cg_n = _cg_v2f._cg_normalWs;\n"
+                    + "  _cg_normalOut = dot(_cg_n, _cg_n) > 1.0e-12 ? vec4(normalize(gl_FrontFacing ? _cg_n : -_cg_n) * 0.5 + 0.5, 1.0) : vec4(0.0);\n");
+        }
 
         return sb.toString();
     }
@@ -904,21 +933,22 @@ public final class CgMaterialShaderCompiler {
         sb.append("};\n");
     }
 
-    private static void appendV2fVaryingOutputs(StringBuilder sb, List<CgShaderParser.V2fField> fields) {
-        if (fields.isEmpty()) return;
-        sb.append("out _CgV2fBlock {\n");
-        for (CgShaderParser.V2fField f : fields) {
-            sb.append("    ").append(f.type()).append(" ").append(f.name()).append(";\n");
-        }
-        sb.append("} _cg_v2f;\n");
+    private static void appendV2fVaryingOutputs(StringBuilder sb, List<CgShaderParser.V2fField> fields, boolean normals) {
+        appendV2fBlock(sb, "out", fields, normals);
     }
 
-    private static void appendV2fVaryingInputs(StringBuilder sb, List<CgShaderParser.V2fField> fields) {
-        if (fields.isEmpty()) return;
-        sb.append("in _CgV2fBlock {\n");
+    private static void appendV2fVaryingInputs(StringBuilder sb, List<CgShaderParser.V2fField> fields, boolean normals) {
+        appendV2fBlock(sb, "in", fields, normals);
+    }
+
+    /** The v2f interface block; with {@code normals}, the normal target's normal last in it. */
+    private static void appendV2fBlock(StringBuilder sb, String direction, List<CgShaderParser.V2fField> fields, boolean normals) {
+        if (fields.isEmpty() && !normals) return;
+        sb.append(direction).append(" _CgV2fBlock {\n");
         for (CgShaderParser.V2fField f : fields) {
             sb.append("    ").append(f.type()).append(" ").append(f.name()).append(";\n");
         }
+        if (normals) sb.append("    vec3 _cg_normalWs;\n");
         sb.append("} _cg_v2f;\n");
     }
 

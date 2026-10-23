@@ -242,14 +242,17 @@ public final class CgWorldLights {
     /** How much of Minecraft's sky light is the sun's own: what a shadow of it takes away. */
     private static final CgVar.Num SUN_SHARE = CgVar.number("crystalgraphics.world.sunShare", 0.6f, 0f, 1f, CgVar.DEV,
             "The sun's direct share of a full day's sky light: how dark its shadow is. 0 casts none.");
-    /** How far a sun ray from Minecraft's world is followed across the screen for one of our objects. */
-    private static final CgVar.Num SUN_TRACE = CgVar.number("crystalgraphics.world.sunScreenTrace", 24f, 0f, 128f,
-            CgVar.DEV, "Blocks a sun ray from Minecraft's world is followed across the screen: our objects' longest shadow.");
+    /** How far a sun ray is followed for our objects. */
+    private static final CgVar.Num SUN_TRACE = CgVar.number("crystalgraphics.world.sunCasterReach", 48f, 0f, 128f,
+            CgVar.DEV, "Blocks a sun ray is followed for our objects: their longest shadow.");
     /** Minecraft's light-giving blocks as lights our objects shadow: how far from the eye, in blocks; 0 for none. */
     private static final CgVar.Num BLOCK_REACH = CgVar.number("crystalgraphics.world.blockShadowReach", 48f, 0f, 64f,
             CgVar.DEV, "Blocks from the eye a torch, glowstone or any light-giving block is shadowed by our objects; 0 for none.");
     /** The most of them a frame, nearest found first only by the window's order. */
     private static final int BLOCK_MOST = 1024;
+    /** Our opaque draws casting shadows through their meshes' distance fields: how many a firing, and how far. */
+    private static final int MOST_CASTERS = 256, CASTER_FLOATS = 20;
+    private static final float CASTER_REACH = 96f;
     /** Unreal's r.Forward.LightGridHZBCull. */
     private static final CgVar.Bool HZB = CgVar.bool("crystalgraphics.world.lightsHzb", true, CgVar.DEV,
             "The light grid skips cells behind the scene and pulls each cell's far edge in to it.");
@@ -258,6 +261,15 @@ public final class CgWorldLights {
     private CgMaterial apply, sample, shade, temporal, denoise;
     /** Lights added from the CPU this frame that cast shadows. */
     private int shadowedAdded;
+    /** Our meshes' distance fields, and this firing's casters: {@link #CASTER_FLOATS} floats each. */
+    private final CgMeshDistanceFields meshFields = new CgMeshDistanceFields();
+    private final float[] casterRows = new float[MOST_CASTERS * CASTER_FLOATS];
+    private int casterCount;
+    /** The casters' rows, five RGBA32F texels each: a texture, since the sample pass reads four buffers already. */
+    private CgGraphTexture casters;
+    private ByteBuffer casterStaging;
+    private final Matrix4f casterLocal = new Matrix4f(), casterInverse = new Matrix4f(), casterVoxel = new Matrix4f();
+    private final Vector3f casterScale = new Vector3f();
     /** This firing's light-giving blocks, x, y, z and level each, and how many: the list's last lights. */
     private int[] blocks = new int[4 * 64];
     private int blockCount;
@@ -280,6 +292,9 @@ public final class CgWorldLights {
     private CgGraphBuffer zeroes;
     private CgGraphTexture hostDepth;
     private long hostDepthFrame = -1;
+    /** Our opaque surfaces' normals this frame (the world renderer's normal target), alpha 1 where one was drawn. */
+    private CgGraphTexture normals;
+    private long normalsFrame = -1;
     private CgMaterial hostDepthCopy;
     private final float[] sunDirection = new float[3];
     private final float[] eyeFrac = new float[3];
@@ -287,13 +302,17 @@ public final class CgWorldLights {
     private final Consumer<CgShaderBindings> sampleValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, 0f, 0f)
             .vec4("_Trace", SCREEN_TRACE.get(), 24f, 0.02f, 0.005f).set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1])
             .set1i("_EyeZ", eyeBlock[2]).vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f)
-            .set1i("_Entities", this.entities).vec4("_Sun", this.sunOn ? 1f : 0f, SUN_TRACE.get(), 24f, SUN_DISC)
+            .set1i("_Entities", this.entities).set1i("_Casters", this.casterCount).vec4("_Sun", this.sunOn ? 1f : 0f, SUN_TRACE.get(), 24f, SUN_DISC)
             .set1f("_Own", this.ownPixels() ? 1f : 0f)
-            .sampler("_HostDepth", 3, this.ownPixels() ? this.hostDepth : CgFallbackTextures.WHITE_1x1));
+            .sampler("_HostDepth", 3, this.ownPixels() ? this.hostDepth : CgFallbackTextures.WHITE_1x1)
+            .sampler("_CasterRows", 4, this.casterCount > 0 ? this.casters : CgFallbackTextures.BLACK_1x1)
+            .sampler("_MeshFields", 5, this.casterCount > 0 ? this.meshFields.atlas() : CgFallbackTextures.BLACK_1x1)
+            .sampler("_Normals", 6, this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1));
     private final Consumer<CgShaderBindings> windowValues = b -> CgWorldVoxelWindow.get().bind(b, 0);
     private int entities;
     private final Consumer<CgShaderBindings> shadeValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, 0f, 0f)
-            .sampler("_Samples", 0, samples).set1f("_MaxWeight", 20f));
+            .sampler("_Samples", 0, samples).set1f("_MaxWeight", 20f)
+            .sampler("_Normals", 1, this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1));
     private final Consumer<CgShaderBindings> temporalValues = b -> this.gridValues.accept(b.vec4("_Eye", eye.x, eye.y, eye.z, 0f)
             .sampler("_Now", 0, shaded).sampler("_Last", 1, freshHistory ? shaded : history.previous())
             .sampler("_LastMoments", 2, freshHistory ? shaded : history.previous().attachment(1))
@@ -303,6 +322,7 @@ public final class CgWorldLights {
             .vec4("_Frames", Math.min(4f, MAX_FRAMES.get()), MAX_FRAMES.get(), 1f, 0.03f));
     private final Consumer<CgShaderBindings> denoiseValues = b -> this.gridValues.accept(b.sampler("_Lighting", 0, accumulated)
             .sampler("_Moments", 1, accumulated.attachment(1)).sampler("_Vis", 2, accumulated.attachment(2))
+            .sampler("_Normals", 3, this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1)
             .vec4("_Spatial", SPATIAL_RADIUS.get(), 4f, 10000f, 2f)
             .vec4("_Spread", 2f, 0.15f, MAX_FRAMES.get(), 0f));
     private final Consumer<CgShaderBindings> applyValues = b -> this.gridValues.accept(b.set1f("_Shadows", shadowsOn ? 1f : 0f)
@@ -310,7 +330,8 @@ public final class CgWorldLights {
             .sampler("_Visibility", 1, shadowsOn ? filtered.attachment(1) : CgFallbackTextures.WHITE_1x1)
             .vec4("_Sun", shadowsOn && sunOn ? 1f : 0f, SUN_SHARE.get(), 0f, 0f)
             .set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1]).set1i("_EyeZ", eyeBlock[2])
-            .vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f));
+            .vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f)
+            .sampler("_Normals", 5, this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1));
     private final Consumer<CgShaderBindings> applyWindow = b -> CgWorldVoxelWindow.get().bind(b, 2);
     /** The grid's values onto the apply material, read from the fields this firing set. */
     private final Consumer<CgShaderBindings> gridValues = b -> b.vec4("_Grid", gridX, gridY, SLICES, 0f)
@@ -557,6 +578,35 @@ public final class CgWorldLights {
         return zParams;
     }
 
+    /**
+     * One of our opaque draws as a shadow caster this firing, after {@link #record}: {@code submesh}, {@code first} and
+     * {@code count} its range (submesh -1 the whole mesh), at an absolute position, its local transform the 16 floats
+     * from {@code at}. Traced through its mesh's distance field once that is made; past {@link #MOST_CASTERS} or
+     * {@link #CASTER_REACH} blocks, not at all.
+     */
+    void caster(CgMesh mesh, int submesh, int first, int count, double x, double y, double z, float[] transforms, int at) {
+        if (casterCount == MOST_CASTERS || !SHADOWS.get()) return;
+        double dx = x - cameraX, dy = y - cameraY, dz = z - cameraZ;
+        if (dx * dx + dy * dy + dz * dz > (double) CASTER_REACH * CASTER_REACH) return;
+        CgMeshDistanceFields.Entry entry = meshFields.field(mesh, submesh, first, count);
+        if (entry == null) return;
+        CgMeshDistanceFields.Field field = entry.made;
+        casterLocal.set(transforms, at);
+        casterInverse.translation((float) dx, (float) dy, (float) dz).mul(casterLocal).invertAffine();
+        casterVoxel.scaling(1f / field.voxel()).translate(-field.ox(), -field.oy(), -field.oz()).mul(casterInverse);
+        // World units a unit of the mesh, its narrowest axis: a distance read from the field never overstates the world's.
+        casterLocal.getScale(casterScale);
+        float scale = Math.min(casterScale.x, Math.min(casterScale.y, casterScale.z));
+        int r = casterCount++ * CASTER_FLOATS;
+        Matrix4f m = casterVoxel;
+        float[] c = casterRows;
+        c[r] = m.m00(); c[r + 1] = m.m10(); c[r + 2] = m.m20(); c[r + 3] = m.m30();
+        c[r + 4] = m.m01(); c[r + 5] = m.m11(); c[r + 6] = m.m21(); c[r + 7] = m.m31();
+        c[r + 8] = m.m02(); c[r + 9] = m.m12(); c[r + 10] = m.m22(); c[r + 11] = m.m32();
+        c[r + 12] = field.nx(); c[r + 13] = field.ny(); c[r + 14] = field.nz(); c[r + 15] = entry.offset(meshFields);
+        c[r + 16] = scale; c[r + 17] = field.voxel() * scale; c[r + 18] = field.voxel(); c[r + 19] = 0f;
+    }
+
     /** This firing's list: {@link #FLOATS} floats a light, camera-relative. */
     public CgGraphBuffer list() {
         return list;
@@ -585,6 +635,7 @@ public final class CgWorldLights {
         binned = false;
         gridX = gridY = 1;
         shadowedAdded = 0;
+        casterCount = 0;
         // Minecraft's light-giving blocks, only where something of ours can shadow them.
         blockCount = 0;
         blockReach = BLOCK_REACH.get();
@@ -923,6 +974,21 @@ public final class CgWorldLights {
         CgWorldEntityBoxes.upload(recording);
         CgGraphBuffer boxes = CgWorldEntityBoxes.buffer();
         entities = boxes != null ? CgWorldEntityBoxes.count() : 0;
+        // Our meshes: the fields made since the last firing, then this firing's casters.
+        meshFields.upload(recording);
+        if (meshFields.atlas() == null) casterCount = 0;
+        if (casterCount > 0) {
+            if (casters == null) {
+                casters = CgGraphTexture.requested("cg_world_lights.casters", new CgTextureDesc(MOST_CASTERS * CASTER_FLOATS / 4, 1,
+                        CgFrameBufferFormat.builder("cg_world_lights.casters").color(0, CgTextureType.RGBA32F).build()));
+                casterStaging = ByteBuffer.allocateDirect(MOST_CASTERS * CASTER_FLOATS * 4).order(ByteOrder.nativeOrder());
+            }
+            casterStaging.clear();
+            for (int i = 0; i < casterCount * CASTER_FLOATS; i++) casterStaging.putFloat(casterRows[i]);
+            casterStaging.flip();
+            recording.update(casters, 0, 0, 0, casterCount * CASTER_FLOATS / 4, 1, casterStaging);
+        }
+        CgTrace.counter(CgChannels.WORLD, "world.lights-casters", casterCount);
         sample.buffer("LIGHTS", binned ? list : none).buffer("CELLS", binned ? cells : none)
                 .buffer("INDICES", binned ? indices : none).buffer("ENTITIES", boxes != null ? boxes : none)
                 .applyProperties(sampleValues);
@@ -951,6 +1017,21 @@ public final class CgWorldLights {
         }
         fullScreen(stage, recording, hostDepth, hostDepthCopy, GPU_HOST_DEPTH);
         hostDepthFrame = CgFrameRing.frame();
+    }
+
+    /** Whether the world renderer should write our surfaces' normals: the shadow passes read them. */
+    boolean wantsNormals() {
+        return SHADOWS.get();
+    }
+
+    /** This frame's normal target, from the world renderer's opaque firing. */
+    void normals(CgGraphTexture target) {
+        normals = target;
+        normalsFrame = CgFrameRing.frame();
+    }
+
+    private boolean normalsNow() {
+        return normalsFrame == CgFrameRing.frame() && normals != null;
     }
 
     /** Whether this frame's opaque firing drew something of ours: the host's depth before it was kept. */

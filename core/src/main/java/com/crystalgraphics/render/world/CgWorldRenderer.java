@@ -278,6 +278,10 @@ public final class CgWorldRenderer {
     /** 0 until set: the tier's share then. */
     private float emissionScale;
     private CgGraphTexture emissionTarget, subjectTarget;
+    /** Our opaque surfaces' normals, Unreal's G-buffer normal, for the world lights; this firing's, or null. */
+    private CgGraphTexture normalTarget, normalsInto;
+    private static final CgFrameBufferFormat NORMAL_FORMAT = CgFrameBufferFormat.builder("cg_world.normals")
+            .color(0, CgTextureType.RGBA16F).build();
 
     /** An impact frame's subject drawn at the opaque stage ({@link #recordOwnedSubject}), and the ring frame it holds. */
     private CgGraphTexture ownedSubject;
@@ -760,6 +764,9 @@ public final class CgWorldRenderer {
             if (link.hasDepthPass()) ready &= prepared(link.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT), joins);
             CgPipeline forward = link.pipeline(CgInstanceKind.OBJECT);
             if (forward != null) ready &= prepared(forward.depthPrepass(), joins);
+            if (forward != null && link.getRenderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD && pointLights.wantsNormals()) {
+                ready &= prepared(forward.normalTarget(), joins);
+            }
             if (link.hasEmissivePass()) {
                 ready &= prepared(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), joins);
                 if (forward != null && settings.mergeEmission()) {
@@ -1454,6 +1461,23 @@ public final class CgWorldRenderer {
     // ── Recording ────────────────────────────────────────────────────────────────────────────────
 
     private static final int OPAQUE = 0, TRANSPARENT = 1;
+
+    /**
+     * This frame's opaque draws as the lights' shadow casters, each traced through its mesh's distance field (Unreal's
+     * bCastShadow is on for every opaque primitive). Draws whose geometry the CPU cannot see cast none: instance sets,
+     * indirect counts, half-size draws and meshes the shader places.
+     */
+    private void casters() {
+        for (int i = 0; i < count; i++) {
+            CgMesh mesh = lods[i] != null ? lods[i].finest() : meshes[i];
+            if (mesh == null || sets[i] != null || counts[i] != null || halves[i] || culledOnGpu[i]
+                    || queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
+                continue;
+            }
+            pointLights.caster(mesh, ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2], positions[i * 3],
+                    positions[i * 3 + 1], positions[i * 3 + 2], transforms, i * 16);
+        }
+    }
     private static final byte SKIP = -1, FORWARD = 0, FORWARD_AND_PREPASS = 1, HALF = 2, AFTER = 3, VOLUME = 4;
     /** The clip-space w a draw's screen rect is cut at: nearer than any host's near plane (Minecraft's is 0.05). */
     private static final float NEAR_W = 0.01f;
@@ -1551,6 +1575,7 @@ public final class CgWorldRenderer {
             CgRecording recording = stage.recording();
             // Before our opaque draws: a pixel nearer than this later is ours (the world lights' sun shadows).
             if (which == OPAQUE && drawn > 0) pointLights.snapshotHostDepth(stage, recording);
+            normalsInto = which == OPAQUE && drawn > 0 ? normalsFor(stage, recording) : null;
             CgPassConstants constants = stage.constants().sceneGlow(sceneEmission);
             bindings.clear();
             // Before the opaque pass: its depth then holds the host's world and none of the draws below.
@@ -1582,6 +1607,7 @@ public final class CgWorldRenderer {
             CgGraphTexture emission = which == TRANSPARENT && drawn > 0 ? mergedEmission(stage, recording) : null;
             // Lights fall on the opaque scene, so a firing with nothing transparent still lists them.
             lit = which == TRANSPARENT && pointLights.record(stage, view, toWorld, targetWidth, targetHeight);
+            if (which == TRANSPARENT) casters();
             // Onto the opaque scene, before any transparent draw blends over it; the sun's shadows run with no light.
             if (which == TRANSPARENT) pointLights.apply(stage, recording);
             mediaOut = which == TRANSPARENT && drawn > 0
@@ -1987,6 +2013,24 @@ public final class CgWorldRenderer {
         return emissionFull;
     }
 
+    /**
+     * The normal target the opaque pass writes beside the host's target this firing, cleared, and handed to the world
+     * lights; null where they cast no shadows or the host's framebuffer takes no second attachment.
+     */
+    @Nullable
+    private CgGraphTexture normalsFor(CgStageFrame stage, CgRecording recording) {
+        int fb = stage.host().mainFramebuffer();
+        if (!pointLights.wantsNormals() || fb <= 0 || CgRasterPass.refusesAttachment(fb)) return null;
+        int w = Math.max(1, (int) targetWidth), h = Math.max(1, (int) targetHeight);
+        if (normalTarget == null || normalTarget.getWidth() != w || normalTarget.getHeight() != h) {
+            if (normalTarget != null) recording.release(normalTarget);
+            normalTarget = CgGraphTexture.requested("cg_world.normals", new CgTextureDesc(w, h, NORMAL_FORMAT));
+        }
+        recording.raster(normalTarget, CLEAR, stage.constants(), null, CgOrder.SORTED).end();
+        pointLights.normals(normalTarget);
+        return normalTarget;
+    }
+
     /** Whether a link's Emissive pass is drawn by its Forward draw ({@code CgPipeline.emissionTarget}). */
     private static boolean foldsEmission(CgMaterial link) {
         if (!link.hasEmissivePass()) return false;
@@ -2340,6 +2384,8 @@ public final class CgWorldRenderer {
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
         if (!depthOnlyPass) mediated(pass);
         if (emission != null) pass.attachmentIfTaken(emission);
+        boolean normals = normalsInto != null && state == OPAQUE_STATE && !depthOnlyPass;
+        if (normals) pass.attachmentIfTaken(normalsInto);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
             if (phase[i] == SKIP || halfSize(i)) continue;
@@ -2368,6 +2414,10 @@ public final class CgWorldRenderer {
                     CgPipeline glowing = merged[i] && link.hasEmissivePass() ? pipeline.emissionTarget() : null;
                     if (glowing == null) glowing = pipeline.emissionCover();
                     if (glowing != null) pipeline = glowing;
+                }
+                if (normals) {
+                    CgPipeline normalled = pipeline.normalTarget();
+                    if (normalled != null) pipeline = normalled;
                 }
                 passDraw(chunks, pipeline, link, recording, i);
             }

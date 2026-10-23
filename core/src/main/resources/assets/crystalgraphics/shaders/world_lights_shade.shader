@@ -24,6 +24,7 @@ Properties {
     _DayFade ("A light's strength under a full day's open sky; 1 for never fading", float) = 0.1
     _Screen  ("The full target's width and height",                vec4) = (1, 1, 0, 0)
     _Samples ("The shadowed lights' samples, four a half-resolution pixel", sampler2D) = "black"
+    _Normals ("Our surfaces' normals, world, n * 0.5 + 0.5, alpha 1 where drawn", sampler2D) = "black"
     _MaxWeight ("Unreal's r.MegaLights.MaxShadingWeight",          float) = 20.0
 }
 
@@ -70,7 +71,19 @@ Pass {
         return vec3(mix(_Rays.xy, _Rays.zw, uv) * depth, -depth);
     }
 
+    // Our surfaces' own normal where the opaque pass wrote one (Unreal's G-buffer normal); else rebuilt from depth.
+    vec3 drawn_normal(ivec2 px, vec3 p, vec2 size, out bool given) {
+        vec4 t = texelFetch(_Normals, clamp(px, ivec2(0), ivec2(size) - 1), 0);
+        given = t.a > 0.5;
+        if (!given) return vec3(0.0);
+        vec3 n = to_view_dir(normalize(t.xyz * 2.0 - 1.0));
+        return dot(n, p) > 0.0 ? -n : n;
+    }
+
     vec3 normal_at(ivec2 px, vec3 p) {
+        bool given;
+        vec3 drawn = drawn_normal(px, p, _Screen.xy, given);
+        if (given) return drawn;
         vec3 left = surface(px - ivec2(1, 0)), right = surface(px + ivec2(1, 0));
         vec3 down = surface(px - ivec2(0, 1)), up = surface(px + ivec2(0, 1));
         vec3 across = abs(left.z - p.z) < abs(right.z - p.z) ? p - left : right - p;

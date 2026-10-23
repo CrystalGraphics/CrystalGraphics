@@ -6,9 +6,10 @@ import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.job.CgJob;
-import com.crystalgraphics.render.graph.CgBufferDesc;
-import com.crystalgraphics.render.graph.CgBufferUsage;
-import com.crystalgraphics.render.graph.CgGraphBuffer;
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
+import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.render.graph.CgGraphTexture;
+import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.mesh.CgOffsetAllocator;
 import com.crystalgraphics.trace.CgTrace;
@@ -30,13 +31,15 @@ import java.util.Map;
  * the mesh's own units, negative inside, clamped to a band of {@link #BAND} voxels.
  *
  * <p>Inside is Unreal's vote: more than a quarter of the rays from the voxel hit a back face first, so a mesh with holes
- * still has an inside. A field is made once a mesh (and index range) on a worker from its CPU copy and kept in one
- * storage buffer for the session; none for a mesh with no CPU copy, no triangles, or rewritten every frame.</p>
+ * still has an inside. A field is made once a mesh (and index range) on a worker from its CPU copy and kept for the
+ * session in one R32F atlas {@link #ROW} floats wide, whole rows a field, float i of a field at (i % ROW, i / ROW) from
+ * its first; none for a mesh with no CPU copy, no triangles, or rewritten every frame. A texture rather than a buffer:
+ * a material reads at most four buffers, and the lights' passes use them.</p>
  *
  * <pre>{@code
- * CgMeshDistanceFields.Entry field = fields.field(mesh, firstIndex, indexCount);   // render thread; null until ready
+ * CgMeshDistanceFields.Entry field = fields.field(mesh, submesh, first, count);   // render thread; null until ready
  * fields.upload(recording);                                                        // each firing, before a pass reads it
- * pass.bind("MESH_FIELDS", fields.buffer());
+ * material.applyProperties(b -> b.sampler("_MeshFields", unit, fields.atlas()));
  * }</pre>
  */
 final class CgMeshDistanceFields {
@@ -51,7 +54,9 @@ final class CgMeshDistanceFields {
     private static final CgVar.Int CAPACITY = CgVar.integer("crystalgraphics.world.meshFieldFloats", 8 << 20, 1 << 16,
             1 << 26, CgVar.DEV | CgVar.RESTART, "Floats our meshes' distance fields share on the GPU; the least recently"
                     + " used are dropped past it.");
-    private static final int CAPACITY_FLOATS = CAPACITY.get();
+    /** Floats a row of the atlas: a shader reads float i of a field at (i % ROW, i / ROW) from the field's first. */
+    static final int ROW = 1024;
+    private static final int ROWS = Math.max(64, CAPACITY.get() / ROW);
     /** Unreal's vote: directions round the sphere, the 26 of a cube's neighbours. */
     private static final float[] DIRECTIONS = directions();
     private static final int CELL = 4;
@@ -63,46 +68,49 @@ final class CgMeshDistanceFields {
     /** A mesh's field as the cache keeps it. */
     static final class Entry {
         final CgMesh mesh;
-        final int first, count, revision;
+        final int submesh, first, count, revision;
         volatile Field made;
         volatile boolean failed;
         int node = CgOffsetAllocator.NO_SPACE;
         long used;
 
-        Entry(CgMesh mesh, int first, int count, int revision) {
+        Entry(CgMesh mesh, int submesh, int first, int count, int revision) {
             this.mesh = mesh;
+            this.submesh = submesh;
             this.first = first;
             this.count = count;
             this.revision = revision;
         }
 
-        /** Where its floats start in {@link #buffer()}; valid once {@link CgMeshDistanceFields#field} returned it. */
+        /** Its first float in the atlas, a row's start; valid once {@link CgMeshDistanceFields#field} returned it. */
         int offset(CgMeshDistanceFields owner) {
-            return owner.alloc.offset(node);
+            return owner.alloc.offset(node) * ROW;
         }
     }
 
     private final Map<CgMesh, List<Entry>> entries = new IdentityHashMap<>();
     private final List<Entry> pending = new ArrayList<>();
+    /** Rows of the atlas. */
     private CgOffsetAllocator alloc;
-    private CgGraphBuffer buffer;
+    private CgGraphTexture atlas;
 
-    /** The buffer every field lives in, floats; null until the first field is uploaded. */
-    CgGraphBuffer buffer() {
-        return buffer;
+    /** The atlas every field lives in; null until the first field is uploaded. */
+    CgGraphTexture atlas() {
+        return atlas;
     }
 
     /**
-     * The field of {@code mesh}'s indices {@code first} to {@code first + count} (all of a mesh without indices when
-     * count is -1), uploaded; null while it is made or where it cannot be. Render thread.
+     * The field of what a draw of {@code mesh} draws: {@code submesh}'s indices from {@code first}, {@code count} of them
+     * (-1 to its end), or the whole mesh for submesh -1; uploaded, else null while it is made or where it cannot be.
+     * Render thread.
      */
-    Entry field(CgMesh mesh, int first, int count) {
+    Entry field(CgMesh mesh, int submesh, int first, int count) {
         List<Entry> list = entries.get(mesh);
         int revision = mesh.revision();
         if (list != null) {
             for (int i = 0; i < list.size(); i++) {
                 Entry e = list.get(i);
-                if (e.first != first || e.count != count) continue;
+                if (e.submesh != submesh || e.first != first || e.count != count) continue;
                 if (e.revision != revision) {
                     drop(e);
                     list.remove(i);
@@ -116,14 +124,14 @@ final class CgMeshDistanceFields {
                 || mesh.topology() != CgMeshTopology.TRIANGLES) {
             return null;
         }
-        Entry e = new Entry(mesh, first, count, revision);
+        Entry e = new Entry(mesh, submesh, first, count, revision);
         e.used = CgFrameRing.frame();
         entries.computeIfAbsent(mesh, m -> new ArrayList<>()).add(e);
         float[] positions;
         int[] triangles;
         try {
             positions = positions(mesh);
-            triangles = triangles(mesh, first, count);
+            triangles = triangles(mesh, submesh, first, count);
         } catch (RuntimeException noCopy) {
             e.failed = true;
             return null;
@@ -154,21 +162,22 @@ final class CgMeshDistanceFields {
                 e.failed = true;
                 continue;
             }
-            if (buffer == null) {
-                alloc = new CgOffsetAllocator(CAPACITY_FLOATS);
-                buffer = CgGraphBuffer.persistent("cg_world_lights.mesh-fields",
-                        CgBufferDesc.of((long) CAPACITY_FLOATS * 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+            if (atlas == null) {
+                alloc = new CgOffsetAllocator(ROWS);
+                atlas = CgGraphTexture.requested("cg_world_lights.mesh-fields", new CgTextureDesc(ROW, ROWS,
+                        CgFrameBufferFormat.builder("cg_world_lights.mesh-fields").color(0, CgTextureType.R32F).build()));
             }
-            int node = alloc.allocate(f.distances.length);
-            while (node == CgOffsetAllocator.NO_SPACE && evictOldest()) node = alloc.allocate(f.distances.length);
+            int rows = (f.distances.length + ROW - 1) / ROW;
+            int node = alloc.allocate(rows);
+            while (node == CgOffsetAllocator.NO_SPACE && evictOldest()) node = alloc.allocate(rows);
             if (node == CgOffsetAllocator.NO_SPACE) {
                 e.failed = true;
                 continue;
             }
             e.node = node;
-            ByteBuffer bytes = ByteBuffer.allocateDirect(f.distances.length * 4).order(ByteOrder.nativeOrder());
+            ByteBuffer bytes = ByteBuffer.allocateDirect(rows * ROW * 4).order(ByteOrder.nativeOrder());
             bytes.asFloatBuffer().put(f.distances);
-            recording.update(buffer, (long) alloc.offset(node) * 4, bytes);
+            recording.update(atlas, 0, 0, alloc.offset(node), ROW, rows, bytes);
             CgTrace.add(CgChannels.WORLD, "world.mesh-fields-made", 1);
         }
     }
@@ -214,25 +223,26 @@ final class CgMeshDistanceFields {
         return out;
     }
 
-    private static int[] triangles(CgMesh mesh, int first, int count) {
+    /** The vertex indices a draw's range covers, three a triangle, counted from the mesh's first vertex. */
+    private static int[] triangles(CgMesh mesh, int submesh, int first, int count) {
+        int[] s = submesh < 0 ? new int[]{0, mesh.indexCount(), 0, mesh.vertexCount()} : mesh.submesh(submesh, new int[4]);
+        if (submesh < 0) first = 0;
         if (!mesh.isIndexed()) {
-            int n = mesh.vertexCount() / 3 * 3;
-            int[] out = new int[n];
-            for (int i = 0; i < n; i++) out[i] = i;
+            int n = (count < 0 ? s[3] - first : Math.min(count, s[3] - first)) / 3 * 3;
+            int[] out = new int[Math.max(0, n)];
+            for (int i = 0; i < out.length; i++) out[i] = s[2] + first + i;
             return out;
         }
-        if (count < 0) {
-            first = 0;
-            count = mesh.indexCount();
-        }
-        int[] out = new int[count / 3 * 3];
-        mesh.readIndices(first, out.length, out, 0);
+        int n = (count < 0 || submesh < 0 ? s[1] - first : Math.min(count, s[1] - first)) / 3 * 3;
+        int[] out = new int[Math.max(0, n)];
+        mesh.readIndices(s[0] + first, out.length, out, 0);
+        for (int i = 0; i < out.length; i++) out[i] += s[2];
         return out;
     }
 
     /** A field for all of {@code mesh}'s triangles, made here: what a test checks. */
     static Field generate(CgMesh mesh) {
-        return generate(positions(mesh), triangles(mesh, 0, -1));
+        return generate(positions(mesh), triangles(mesh, -1, 0, -1));
     }
 
     /**

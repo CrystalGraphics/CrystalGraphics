@@ -21,6 +21,7 @@ Properties {
     _Lighting ("The accumulated lighting and frames",              sampler2D) = "black"
     _Moments  ("The accumulated moments, eye depth and confidence", sampler2D) = "black"
     _Vis      ("The accumulated sun and block light visibility",   sampler2D) = "white"
+    _Normals  ("Our surfaces' normals, world, n * 0.5 + 0.5, alpha 1 where drawn", sampler2D) = "black"
     _Spatial ("KernelRadius, NumSamples, DepthWeightScale, MaxDisocclusionFrames", vec4) = (8, 4, 10000, 2)
     _Spread  ("DisocclusionDiffuseSpatialVarianceScale, HistorySpatialStdDevThreshold, MaxFramesAccumulated", vec4) = (2, 0.15, 12, 0)
 }
@@ -62,7 +63,19 @@ Pass {
         return vec3(mix(_Rays.xy, _Rays.zw, uv) * depth, -depth);
     }
 
+    // Our surfaces' own normal where the opaque pass wrote one (Unreal's G-buffer normal); else rebuilt from depth.
+    vec3 drawn_normal(ivec2 px, vec3 p, vec2 size, out bool given) {
+        vec4 t = texelFetch(_Normals, clamp(px, ivec2(0), ivec2(size) - 1), 0);
+        given = t.a > 0.5;
+        if (!given) return vec3(0.0);
+        vec3 n = to_view_dir(normalize(t.xyz * 2.0 - 1.0));
+        return dot(n, p) > 0.0 ? -n : n;
+    }
+
     vec3 normal_at(ivec2 px, vec3 p) {
+        bool given;
+        vec3 drawn = drawn_normal(px, p, CG_RESOLUTION, given);
+        if (given) return drawn;
         vec3 left = surface(px - ivec2(1, 0)), right = surface(px + ivec2(1, 0));
         vec3 down = surface(px - ivec2(0, 1)), up = surface(px + ivec2(0, 1));
         vec3 across = abs(left.z - p.z) < abs(right.z - p.z) ? p - left : right - p;
