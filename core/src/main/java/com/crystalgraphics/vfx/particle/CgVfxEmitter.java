@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxArcRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshFacing;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxSequenceRendererProperties;
@@ -96,6 +97,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final String name;
     private final CgVfxSlot slot;
     final CgVfxDrawLayout drawLayout;
+    private final CgVfxMeshFacing meshFacing;
     final List<CgVfxRendererProperties> renderers;
     final boolean optional, local;
     final CgVfxEmitterState state;
@@ -189,6 +191,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         drawLayout = drawLayout(b.name, renderers, b.clip);
         optional = b.optional;
         local = b.local;
+        meshFacing = CgVfxMeshFacing.of(b.name, renderers, b.local);
         state = b.state;
         capacity = b.capacity;
         // Stable: two at one time fire in the order given.
@@ -414,6 +417,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     /** Whether the Low quality tier halves it ({@link Builder#optional}). */
     public boolean optional() {
         return optional;
+    }
+
+    /** How its mesh particles face, from its mesh renderers. */
+    @Override
+    public CgVfxMeshFacing meshFacing() {
+        return meshFacing;
     }
 
     /** Whether its particles ride the effect rather than stay in the world ({@link Builder#local}). */

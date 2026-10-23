@@ -6,6 +6,7 @@ import com.crystalgraphics.vfx.particle.CgVfxLifeRoll;
 import com.crystalgraphics.vfx.particle.CgVfxMeshRotation;
 import com.crystalgraphics.vfx.particle.CgVfxSockets;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshFacing;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 
@@ -94,6 +95,11 @@ public interface CgVfxGpuEmitter {
 
     /** How its pool lays out what it draws. */
     CgVfxDrawLayout drawLayout();
+
+    /** How its mesh particles face; facing nothing unless it has mesh renderers saying so. */
+    default CgVfxMeshFacing meshFacing() {
+        return CgVfxMeshFacing.NONE;
+    }
 
     /** Its module stack, in the order each step runs it. */
     List<? extends CgVfxGpuModule> modules();

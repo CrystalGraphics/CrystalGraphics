@@ -169,8 +169,8 @@ public final class CgVfxRenderers {
         } else if (r instanceof CgVfxMeshRendererProperties m) {
             if (m.prefab() != null || m.meshBinding() != null || m.meshes().size() > 1) unbuilt = "a prefab, a bound mesh or several meshes";
             else if (!m.materialOverrides().isEmpty()) unbuilt = "material_overrides";
-            else if (m.facing() != CgVfxMeshRendererProperties.Facing.DEFAULT) unbuilt = "facing " + m.facing();
-            else if (m.lockedAxis() != null) unbuilt = "locked_axis";
+            else if (!m.meshes().isEmpty() && (m.meshes().get(0).get("pivot_offset") != null
+                    || m.meshes().get(0).get("pivot_space") != null)) unbuilt = "a mesh's pivot_offset";
             else if (m.subImage() != null) unbuilt = "sub_image";
             else if (m.cameraDistance() != null) unbuilt = "camera_distance";
             else if (m.castShadows()) unbuilt = "cast_shadows";
@@ -278,6 +278,9 @@ public final class CgVfxRenderers {
         return new CgVfxMeshRendererProperties(common, tree, Collections.unmodifiableList(meshes), prefab, binding,
                 Collections.unmodifiableList(overrides),
                 choice(who, tree, "facing", CgVfxMeshRendererProperties.Facing.class, "default"), map(tree.get("locked_axis")),
+                tree.get("facing_up") == null ? null : choice(who, tree, "facing_up", CgVfxMeshRendererProperties.FacingUp.class, null),
+                tree.get("roll_about") == null ? null : choice(who, tree, "roll_about", CgVfxMeshRendererProperties.RollAbout.class, null),
+                tree.get("pre_rotation"),
                 sort(who, tree), flipbook(who, tree.get("sub_image")), floats(tree.get("camera_distance"), 2),
                 Boolean.TRUE.equals(tree.get("cast_shadows")));
     }

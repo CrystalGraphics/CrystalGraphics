@@ -21,6 +21,9 @@ import java.util.Map;
  * @param materialOverrides a material a section, in place of the meshes' own
  * @param facing            {@code ENiagaraMeshFacingMode}
  * @param lockedAxis        {@code { axis, space }}, null for none
+ * @param facingUp          Cascade's up while facing, null for Niagara's ({@link CgVfxMeshFacing})
+ * @param rollAbout         the axis the sprite rotation rolls a facing mesh about, null for no roll
+ * @param preRotation       a rotation or a range of them, rolled per particle and applied innermost; null for none
  * @param sort              how its particles are ordered for blending
  * @param subImage          its flipbook, null for none
  * @param cameraDistance    the camera distances it draws between, null for any
@@ -29,11 +32,21 @@ import java.util.Map;
 public record CgVfxMeshRendererProperties(Common common, Map<String, Object> tree, List<Map<String, Object>> meshes,
                                           @Nullable String prefab, @Nullable String meshBinding,
                                           List<String> materialOverrides, Facing facing,
-                                          @Nullable Map<String, Object> lockedAxis,
+                                          @Nullable Map<String, Object> lockedAxis, @Nullable FacingUp facingUp,
+                                          @Nullable RollAbout rollAbout, @Nullable Object preRotation,
                                           CgVfxSpriteRendererProperties.Sort sort, @Nullable CgVfxFlipbook subImage,
                                           @Nullable float[] cameraDistance, boolean castShadows)
         implements CgVfxRendererProperties {
 
     /** {@code ENiagaraMeshFacingMode}. */
     public enum Facing { DEFAULT, VELOCITY, CAMERA_POSITION, CAMERA_PLANE }
+
+    /**
+     * Cascade's up while facing, which Niagara lacks: world up for every mode, Z turned toward the camera across the
+     * facing direction (Cascade's VelocityAligned), or X turned to it by the shortest arc (Cascade's NoUp).
+     */
+    public enum FacingUp { WORLD, CAMERA, NONE }
+
+    /** What the particle's sprite rotation rolls a facing mesh about: the direction it faces along, or the camera's. */
+    public enum RollAbout { FACING, CAMERA }
 }

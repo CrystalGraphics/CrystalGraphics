@@ -28,6 +28,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.render.world.CgWorldVoxelWindow;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshFacing;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector4f;
@@ -116,7 +117,7 @@ public final class CgVfxRange {
     private static List<CgVfxRange> ALL = REAL;
     private static CgRenderStage.Registration registration;
 
-    private static CgGraphBuffer drawn, visible, slots, bases, objects, sorts, origins;
+    private static CgGraphBuffer drawn, visible, slots, bases, objects, sorts, origins, facings;
     private static final List<CgGraphBuffer> RETIRED = new ArrayList<>();
     private static boolean anySorted;
     /** Whether {@link #objects()} was asked for since the last recording. */
@@ -532,7 +533,7 @@ public final class CgVfxRange {
         CgGraphBuffer indices = recording.scratch("vfx.range.indices", keys * 4L, CgBufferUsage.STORAGE);
         CgGraphBuffer starts = recording.scratch("vfx.range.starts", sizeClass(allSlots + 1) * 4L, CgBufferUsage.STORAGE);
         int depthBits = anySorted ? DEPTH_BITS : 0;
-        Matrix4fc projection = view.projection();
+        Matrix4fc projection = view.projection(), eye = view.view();
         Matrix4f vp = VIEW_PROJECTION;
 
         CgComputePass pass = recording.compute("vfx.range").timed(GPU_RANGE);
@@ -594,7 +595,10 @@ public final class CgVfxRange {
                             .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
                             .set("_Sequence", p.shape().drawLayout() == CgVfxDrawLayout.SEQUENCE ? 1 : 0)
                             .set("_DrawnFirst", drawnFirst).set("_DrawnStride", p.shape().drawnStride())
-                            .set("_Drawn", p.shape().drawnMask()));
+                            .set("_Drawn", p.shape().drawnMask())
+                            .bind("SLOTS", slots).bind("FACINGS", facings)
+                            .set("_CamForward", -eye.m02(), -eye.m12(), -eye.m22(), 0f)
+                            .set("_CamUp", eye.m01(), eye.m11(), eye.m21(), 0f));
                 }
             }
             drawnFirst += align(capacity, RECORD_ALIGN);
@@ -686,15 +690,31 @@ public final class CgVfxRange {
         }
         staging.limit(allSlots * ORIGIN_BYTES);
         recording.update(origins, 0, staging);
+        int facingBytes = CgVfxMeshFacing.VECTORS * 16;
+        facings = fit(recording, facings, "vfx.range.facings", allSlots * (long) facingBytes);
+        if (staging.capacity() < allSlots * facingBytes) {
+            staging = ByteBuffer.allocate(Math.max(allSlots * facingBytes, staging.capacity() * 2)).order(ByteOrder.nativeOrder());
+        }
+        staging.clear();
+        for (int i = 0, g = 0; i < ALL.size(); i++) {
+            CgVfxParticlePool p = ALL.get(i).pool;
+            if (p.isReleased()) continue;
+            for (int s = 0; s < p.slotCount(); s++, g++) {
+                float[] words = (p.isOpen(s) ? p.emitter(s).meshFacing() : CgVfxMeshFacing.NONE).words();
+                for (int w = 0; w < words.length; w++) staging.putFloat(g * facingBytes + w * 4, words[w]);
+            }
+        }
+        staging.limit(allSlots * facingBytes);
+        recording.update(facings, 0, staging);
     }
 
     /** The shared buffers, once no pool is left. */
     private static void release(CgRecording recording) {
         for (int i = 0; i < RETIRED.size(); i++) recording.release(RETIRED.get(i));
         RETIRED.clear();
-        CgGraphBuffer[] owned = {drawn, visible, slots, bases, objects, sorts, origins};
+        CgGraphBuffer[] owned = {drawn, visible, slots, bases, objects, sorts, origins, facings};
         for (CgGraphBuffer buffer : owned) if (buffer != null) recording.release(buffer);
-        drawn = visible = slots = bases = objects = sorts = origins = null;
+        drawn = visible = slots = bases = objects = sorts = origins = facings = null;
     }
 
     /** {@code buffer}, or one of the next size class in its place when it holds fewer than {@code bytes}. */

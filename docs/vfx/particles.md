@@ -37,7 +37,7 @@ CgVfxEmitter emitter = CgVfxEmitter.builder("sparks")
 | Kind | Draws | Its emitter |
 |---|---|---|
 | `sprite` | a quad a particle: `alignment` (`unaligned`, `velocity`), `facing` (`camera`, `camera_plane`, `camera_position`), `sort` (`none`, `view_depth`), `sub_image` (a grid flipbook) | quads |
-| `mesh` | one mesh a particle (`meshes: [{ mesh: <path> }]`), the unit sphere with none | `MESHES` |
+| `mesh` | one mesh a particle (`meshes: [{ mesh: <path>, rotation, scale }]`), the unit sphere with none; `facing`, `locked_axis`, `facing_up`, `roll_about`, `pre_rotation` ([below](#mesh-particles-that-face-something)) | `MESHES` |
 | `ribbon` | one strip through an instance's particles, newest first | quads |
 | `trails` | a strip behind each particle; its `points` are the ring its emitter keeps (`trail(points)`) | quads |
 | `arc` | a stroke round the source | `ARCS` |
@@ -50,10 +50,41 @@ CgVfxEmitter emitter = CgVfxEmitter.builder("sparks")
   child material, shared by every renderer with the same overrides.
 - **What is not drawn yet fails at load by name**, rather than drawing as something else: the `system`, `anim_trail`,
   `beam` and `light` kinds, a material named by a user parameter, and fields such as a `camera_distance_blend` facing, a
-  pivot off the middle, a rect-table `sub_image`, a mesh prefab or `locked_axis`, a ribbon's `shape: tube`, an adaptive
+  pivot off the middle, a rect-table `sub_image`, a mesh prefab or a mesh's `pivot_offset`, a ribbon's `shape: tube`, an adaptive
   ribbon tessellation (`custom` at an `angle`) or its `tension`.
 - **Its renderers decide its draw layout**: a mesh renderer lays its particles out as meshes, an arc renderer as arcs,
   every other kind as quads, and an emitter whose renderers need two layouts fails at build.
+### Mesh particles that face something
+
+A mesh renderer turns each mesh toward the camera, along its velocity, or about a locked axis, as Niagara's mesh
+renderer does, with three of Cascade's options Niagara lacks:
+
+```yaml
+- { id: r1, kind: mesh, meshes: [{ mesh: mymod:models/ring.glb }], facing: camera_position }      # x at the eye, z up
+- { id: r2, kind: mesh, meshes: [{ mesh: mymod:models/shard.glb }], facing: velocity, facing_up: camera, roll_about: camera }
+- { id: r3, kind: mesh, meshes: [{ mesh: mymod:models/disc.glb }], facing: camera_position, facing_up: none, roll_about: facing,
+    pre_rotation: { range: [[0, 0, 0], [0, 0, 6.2832]], per_channel: true } }
+```
+
+```java
+CgVfxRenderers.mesh("r1").material(RING).field("meshes", List.of(Map.of("mesh", "mymod:models/ring.glb")))
+        .field("facing", "camera_position").field("roll_about", "facing").build();
+```
+
+| Field | Means |
+|---|---|
+| `facing` | `default` (the particle's own turn), `velocity`, `camera_position`, `camera_plane`: where the mesh's x axis points |
+| `locked_axis` | `{ axis, space }`: z held on the axis, x as near the facing as it can turn (`space: local` turns it with its effect) |
+| `facing_up` | absent, Niagara's up (world up; the camera's for `camera_plane`); `world`; `camera` (z turned toward the camera); `none` (x turned there by the shortest arc) |
+| `roll_about` | the particle's sprite rotation rolls the mesh about the direction it faces (`facing`) or the one to the camera (`camera`) |
+| `pre_rotation` | a rotation, or a range rolled per particle, applied to the mesh before anything else, before its scale |
+| `meshes[].rotation`, `scale` | the mesh's own turn and size, inside the particle's |
+
+- **A facing mesh ignores the particle's tumble**: only a mesh orientation module turns it besides its facing.
+- **A locked axis turns only a facing mesh**; under `default` it does nothing, as in Niagara.
+- **All of an emitter's mesh renderers must face alike**: its particles are placed once for all of them, and renderers
+  that differ fail at load.
+
 - **A ribbon's tessellation** is Niagara's: `{ mode: disabled }` one quad between two particles, `{ mode: custom,
   factor: n }` n of them, `automatic` (or none) the engine's own.
 - **Order** is the hint, then the look's order; a renderer whose material has a Distortion pass bends what draws before

@@ -45,6 +45,8 @@ Properties {
     _ClipZ       ("Row 2",                                           vec4)      = (0, 0, 1, 0)
     _ClipW       ("Row 3",                                           vec4)      = (0, 0, 0, 1)
     _Eye         ("Projection [2][2], [2][3], [3][2], [3][3]",       vec4)      = (-1, -1, 0, 0)
+    _CamForward  ("The camera's forward, world axes",                vec4)      = (0, 0, -1, 0)
+    _CamUp       ("The camera's up, world axes",                     vec4)      = (0, 1, 0, 0)
     _Pyramid     ("The scene's depth, CgGpuOps.depthPyramid's",      sampler2D) = "white"
     _PyramidSize ("Its width, height and levels; no levels, no test", vec4)     = (0, 0, 0, 0)
     // CgWorldVoxelWindow.PROPERTIES
@@ -88,6 +90,7 @@ Buffers {
     ORIGINS ("Each slot's origin, absolute",                      FxOrigin, readonly)
     ORDER   ("Each drawn particle's record in its pool, -1 for none: a float, as a buffer texture reads it", float, writeonly)
     OBJECTS ("The particles a mesh draws",                        FxObject, writeonly)
+    FACINGS ("Each slot's mesh facing, CgVfxMeshFacing's six vec4s", vec4,     readonly)
 }
 
 bool range_outside(vec4 plane, vec3 c, float r) {
@@ -188,6 +191,75 @@ mat3 range_turn(float ax, float ay, float az) {
                 vec3(sy, nm21 * cy, nm22 * cy));
 }
 
+// Unreal's rotator (roll, pitch, yaw) as the host's quaternion: look.compute's look_rotator, CgUnits.rotatorToHost.
+vec4 range_rotator(vec3 r) {
+    vec3 h = r * 0.5, s = sin(h), c = cos(h);
+    float x = c.x * s.y * s.z - s.x * c.y * c.z, y = -c.x * s.y * c.z - s.x * c.y * s.z;
+    float z = c.x * c.y * s.z - s.x * s.y * c.z, w = c.x * c.y * c.z + s.x * s.y * s.z;
+    return vec4(-x, -z, -y, w);
+}
+
+// Unreal's FindBetweenNormals: the shortest turn from a to b, half a turn about an axis across a when opposed.
+vec4 range_between(vec3 a, vec3 b) {
+    float w = 1.0 + dot(a, b);
+    if (w < 1.0e-6) {
+        vec3 axis = abs(a.x) > abs(a.z) ? vec3(-a.y, a.x, 0.0) : vec3(0.0, -a.z, a.y);
+        return vec4(normalize(axis), 0.0);
+    }
+    return normalize(vec4(cross(a, b), w));
+}
+
+// A mesh particle's turn and size (CgVfxMeshFacing.model, its twin): its pre-rotation innermost, rolled from its seed,
+// then sized, turned by its mesh's rotation and its own, faced as Niagara's NiagaraGetMeshFacingMatrix with Cascade's
+// ups (ParticleSystemRender.cpp, CalculateParticleTransform), then rolled by its sprite rotation. Unreal's axes swap
+// y and z, a reflection, so a facing's Y and Z land on the mesh's z and y and a roll's sense flips.
+mat3 range_facing(int lo, vec3 toEye, vec3 velocity, float spin, mat3 own, vec3 size, uint bits) {
+    vec4 f0 = FACINGS(lo * 6), f1 = FACINGS(lo * 6 + 1), f3 = FACINGS(lo * 6 + 3), f4 = FACINGS(lo * 6 + 4);
+    vec4 f5 = FACINGS(lo * 6 + 5);
+    vec3 up = vec3(0.0, 1.0, 0.0), worldX = vec3(1.0, 0.0, 0.0);
+    vec3 eye = dot(toEye, toEye) > 0.0 ? normalize(toEye) : worldX;
+    int mode = int(f0.x + 0.5), upMode = int(f0.y + 0.5), roll = int(f0.z + 0.5);
+    mat3 facing = mat3(1.0);
+    vec3 faced = worldX, locked = vec3(0.0);
+    if (mode != 0) {
+        faced = mode == 1 ? (dot(velocity, velocity) > 0.0 ? normalize(velocity) : up)
+                : mode == 2 ? eye : -normalize(_CamForward.xyz);
+        if (f0.w > 0.5) {
+            locked = f1.w > 0.5 ? range_quat(ORIGINS(lo).turn) * f1.xyz : f1.xyz;
+            if (abs(dot(faced, locked)) > 0.99) faced = abs(locked.y) > 0.99 ? worldX : up;
+            vec3 y = normalize(cross(faced, locked));
+            facing = mat3(cross(locked, y), locked, y);
+        } else if (upMode == 3) {
+            facing = range_quat(range_between(worldX, faced));
+        } else {
+            vec3 ref;
+            if (upMode == 0 && mode == 3) {
+                ref = _CamUp.xyz;
+            } else {
+                ref = upMode == 2 ? eye : up;
+                if (abs(dot(faced, ref)) > 0.99) ref = up;
+                float d = dot(faced, ref);
+                if (abs(d) > 0.99) ref = worldX * -sign(d);
+            }
+            vec3 y = normalize(cross(faced, ref));
+            facing = mat3(faced, cross(y, faced), y);
+        }
+    }
+    mat3 m = facing * own * range_quat(FACINGS(lo * 6 + 2));
+    if (mode != 0 && roll != 0) {
+        vec3 axis = roll == 2 ? eye : f0.w > 0.5 ? locked : faced;
+        float h = -0.5 * spin;
+        m = range_quat(vec4(axis * sin(h), cos(h))) * m;
+    }
+    m = m * mat3(vec3(size.x * f5.x, 0.0, 0.0), vec3(0.0, size.y * f5.y, 0.0), vec3(0.0, 0.0, size.z * f5.z));
+    if (f3.w > 0.5) {
+        vec3 rolls = vec3(fx_rand(bits, 0u, 61u), fx_rand(bits, 0u, 62u), fx_rand(bits, 0u, 63u));
+        if (f3.w < 1.5) rolls = vec3(rolls.x);
+        m = m * range_quat(range_rotator(mix(f3.xyz, f4.xyz, rolls)));
+    }
+    return m;
+}
+
 void Objects() {
     int rank;
     int lo = range_slot(CG_ELEMENT, rank);
@@ -203,21 +275,26 @@ void Objects() {
         // sized on each of its own axes by its size over life. A clip's particle plays in its effect's frame at its size
         // at birth, as the Step places its events there.
         float turn = r.state.x * 6.2831853 + r.state.y;
+        // A facing mesh turns by its own orientation alone: Niagara's, and Cascade's, which drops its rotation payload.
+        bool faces = _Sequence == 0 && FACINGS(lo * 6).x > 0.5;
         mat3 turned = _Sequence != 0 ? range_quat(ORIGINS(lo).turn)
-                : (_Drawn & 32) != 0 ? range_quat(DRAWN(e * _DrawnStride + 1).scale) : range_turn(turn * 1.7, turn * 2.3, turn);
+                : (_Drawn & 32) != 0 ? range_quat(DRAWN(e * _DrawnStride + 1).scale)
+                : faces ? mat3(1.0) : range_turn(turn * 1.7, turn * 2.3, turn);
         vec3 size = _Sequence != 0 ? vec3(uintBitsToFloat(RECORDS(e * _RecordVectors + FX_RECORD_VELOCITY_SIZE).w))
                 : r.place.w * r.scale.xyz;
-        vec3 inverse = vec3(size.x != 0.0 ? 1.0 / size.x : 0.0, size.y != 0.0 ? 1.0 / size.y : 0.0,
-                size.z != 0.0 ? 1.0 / size.z : 0.0);
-        o.model0 = vec4(turned[0] * size.x, 0.0);
-        o.model1 = vec4(turned[1] * size.y, 0.0);
-        o.model2 = vec4(turned[2] * size.z, 0.0);
+        mat3 model = _Sequence != 0 ? turned * mat3(vec3(size.x, 0.0, 0.0), vec3(0.0, size.y, 0.0), vec3(0.0, 0.0, size.z))
+                : range_facing(lo, -(SLOTS(lo).xyz + r.place.xyz), r.motion.xyz, r.state.y, turned, size,
+                        RECORDS(e * _RecordVectors + FX_RECORD_LIFE_SEED).y);
+        o.model0 = vec4(model[0], 0.0);
+        o.model1 = vec4(model[1], 0.0);
+        o.model2 = vec4(model[2], 0.0);
         o.model3 = vec4(r.place.xyz, 1.0);
-        // Matrix4f.normal: the inverse transpose, the rotation over each axis's size; its spare lanes what it rests on
+        // Matrix4f.normal: the inverse transpose; its spare lanes what it rests on.
+        mat3 normal = determinant(model) != 0.0 ? transpose(inverse(model)) : mat3(0.0);
         vec4 contact = range_contact(lo, o.model3.xyz);
-        o.normal0 = vec4(turned[0] * inverse.x, contact.x);
-        o.normal1 = vec4(turned[1] * inverse.y, contact.y);
-        o.normal2 = vec4(turned[2] * inverse.z, contact.z);
+        o.normal0 = vec4(normal[0], contact.x);
+        o.normal1 = vec4(normal[1], contact.y);
+        o.normal2 = vec4(normal[2], contact.z);
         o.normal3 = vec4(mod(r.light.x, 16.0), floor(r.light.x / 16.0), 0.0, contact.w);
         // Its age: what a clip plays at.
         o.custom0 = vec4(r.motion.xyz, r.scale.w);
