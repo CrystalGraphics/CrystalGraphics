@@ -401,9 +401,22 @@ public final class CgVfxSystemAssets {
         for (String handle : handles) {
             CgVfxSpawnFrom from = base.get(handle).spawnFrom();
             if (from == null) continue;
-            String at = system + ": emitters." + handle + "'s spawn_from_emitter";
+            String at = system + ": emitters." + handle + "'s " + (from.trails() ? "ribbon_source" : "spawn_from_emitter");
             int source = handles.indexOf(from.source());
+            if (source < 0 && from.trails()) {
+                // A trail's source is named as an emitter is, the first of that name (Cascade's ResolveSource).
+                for (int h = 0; h < handles.size() && source < 0; h++) {
+                    if (base.get(handles.get(h)).name().equals(from.source())) source = h;
+                }
+            }
             if (source < 0) throw new IllegalArgumentException(at + " reads " + from.source() + ", no enabled handle");
+            String named = handles.get(Math.max(source, 0));
+            if (from.trails() && source >= 0) {
+                if (named.equals(handle)) throw new IllegalArgumentException(at + " follows its own particles");
+                base.put(handle, base.get(handle).toBuilder().spawnFrom(CgVfxSpawnFrom.trailing(named, from.selection()).at(source)).build());
+                base.put(named, base.get(named).toBuilder().publishes(true).build());
+                continue;
+            }
             if (from.source().equals(handle)) {
                 if (from.follow()) throw new IllegalArgumentException(at + " follows its own particles");
                 base.put(handle, base.get(handle).toBuilder().spawnFrom(from.at(source).onItself()).publishes(true).build());
@@ -483,7 +496,9 @@ public final class CgVfxSystemAssets {
                 schema.color(name, argb, intensity);
                 break;
             }
-            case "vec3": {
+            // A position is a point from the effect's origin, which whatever plays the effect sets each tick.
+            case "vec3":
+            case "position": {
                 float[] xyz = vec3(system, name, v);
                 schema.vector(name, xyz[0], xyz[1], xyz[2]);
                 break;

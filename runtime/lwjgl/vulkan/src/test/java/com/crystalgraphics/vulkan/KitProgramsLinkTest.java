@@ -11,6 +11,7 @@ import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
+import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import org.junit.AfterClass;
@@ -319,7 +320,10 @@ public class KitProgramsLinkTest {
         }
     }
 
-    /** Every pass with no keyword, each keyword alone and all of them: the programs counted, the failures listed. */
+    /**
+     * Every pass with no keyword, each keyword alone and all of them, and a particle program on the strip factory a
+     * ribbon or beam draws it with: the programs counted, the failures listed.
+     */
     private static int link(String name, CgMaterialShader shader, List<String> failures) {
         if (shader.getLastParsed() == null || shader.hasCompileFailed()) shader.recompile();
         if (shader.hasCompileFailed()) {
@@ -331,6 +335,7 @@ public class KitProgramsLinkTest {
         variants.add(Set.of());
         for (String keyword : parsed.featureNames()) variants.add(Set.of(keyword));
         if (parsed.featureNames().size() > 1) variants.add(new HashSet<>(parsed.featureNames()));
+        if (parsed.engineBuffers().contains("particle")) variants.add(Set.of(CgMaterialShaderCompiler.STRIP));
         int programs = 0;
         for (CgParsedPass pass : parsed.passes()) {
             for (Set<String> keywords : variants) {

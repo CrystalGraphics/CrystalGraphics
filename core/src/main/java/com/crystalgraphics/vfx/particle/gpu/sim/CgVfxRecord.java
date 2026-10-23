@@ -83,7 +83,14 @@ public final class CgVfxRecord {
          * Its orbit at birth, offset, rotation then rotation rate: Cascade's orbit payload
          * ({@code ParticleModules_Orbit.cpp:111-165}), which Look draws it away from its place by.
          */
-        ORBIT(9);
+        ORBIT(9),
+        /**
+         * A Cascade trail particle's tangent with its trail and spawned points ({@code trail + 1024 * points}); its up (an
+         * anim trail's edge, half its width) with the trail's distance at its birth; its chain, which a trail's restart
+         * breaks, and an anim trail's interpolation parameter: Cascade's {@code FRibbonTypeDataPayload} and
+         * {@code FAnimTrailTypeDataPayload}, which the ribbon generation and the Step's refits read.
+         */
+        RIBBON(12);
 
         private final int components;
 

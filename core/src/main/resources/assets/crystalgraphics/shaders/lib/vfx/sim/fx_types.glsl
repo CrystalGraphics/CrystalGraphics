@@ -30,6 +30,9 @@ struct FxParticle {
     vec3 turnBase, turnScale;
     // Its orbit from birth (CgVfxRecord.Tail.ORBIT): the offset drawn from its place, its rotation and rotation rate.
     vec3 orbitOffset, orbitTurn, orbitRate;
+    // A Cascade trail's payload (CgVfxRecord.Tail.RIBBON): its tangent, trail + 1024 * spawned points; its up (an anim
+    // trail's edge), the trail's distance at its birth; its chain, an anim trail's interpolation parameter.
+    vec4 trailTangent, trailUp, trailExtra;
     uint id, slot, collisions, hitEntity;
     vec4 hit;
 };

@@ -38,7 +38,8 @@ CgVfxEmitter emitter = CgVfxEmitter.builder("sparks")
 |---|---|---|
 | `sprite` | a quad a particle: `alignment` (`unaligned`, `velocity`), `facing` (`camera`, `camera_plane`, `camera_position`), `sort` (`none`, `view_depth`), `sub_image` (a grid flipbook) | quads |
 | `mesh` | one mesh a particle (`meshes: [{ mesh: <path>, rotation, scale }]`), the unit sphere with none; `facing`, `locked_axis`, `facing_up`, `roll_about`, `pre_rotation` ([below](#mesh-particles-that-face-something)) | `MESHES` |
-| `ribbon` | one strip through an instance's particles, newest first | quads |
+| `ribbon` | one strip through an instance's particles, newest first; with a `trail`, Cascade's trail ([below](#ribbons-and-trails-strips-through-particles)) | quads |
+| `anim_trail` | a sheet swept by an edge between two points the effect moves ([below](#cascades-anim-trail)) | quads |
 | `trails` | a strip behind each particle; its `points` are the ring its emitter keeps (`trail(points)`) | quads |
 | `arc` | a stroke round the source | `ARCS` |
 | `sequence` | a clip's parts at each particle, drawn by the clip's prefab | a clip |
@@ -48,10 +49,9 @@ CgVfxEmitter emitter = CgVfxEmitter.builder("sparks")
   (`cg_dynamic_parameter`, `CG_PARTICLE_COLOR`), so `particles.*` fails at load.
 - **Values on a property the material reads per draw** are constants of the row; **keywords and other values** make a
   child material, shared by every renderer with the same overrides.
-- **What is not drawn yet fails at load by name**, rather than drawing as something else: the `system`, `anim_trail`,
-  `beam` and `light` kinds, a material named by a user parameter, and fields such as a `camera_distance_blend` facing, a
-  pivot off the middle, a rect-table `sub_image`, a mesh prefab or a mesh's `pivot_offset`, a ribbon's `shape: tube`, an adaptive
-  ribbon tessellation (`custom` at an `angle`) or its `tension`.
+- **What is not drawn yet fails at load by name**, rather than drawing as something else: the `system` kind, a
+  material named by a user parameter, and fields such as a `camera_distance_blend` facing, a pivot off the middle, a
+  rect-table `sub_image`, a mesh prefab or a mesh's `pivot_offset`, a ribbon's `shape: custom` or its `max_ribbons`.
 - **Its renderers decide its draw layout**: a mesh renderer lays its particles out as meshes, an arc renderer as arcs,
   every other kind as quads, and an emitter whose renderers need two layouts fails at build.
 ### Mesh particles that face something
@@ -89,6 +89,133 @@ CgVfxRenderers.mesh("r1").material(RING).field("meshes", List.of(Map.of("mesh", 
   factor: n }` n of them, `automatic` (or none) the engine's own.
 - **Order** is the hint, then the look's order; a renderer whose material has a Distortion pass bends what draws before
   it, and every other draws after its effect's own bend.
+
+## Ribbons and trails: strips through particles
+
+A `ribbon` renderer draws a strip through an emitter's particles. Without a `trail` it is Niagara's ribbon: one strip
+an instance through its particles, newest first, cut finer where it bends. With a `trail` it is Cascade's ribbon trail:
+the emitter spawns its particles along its source's path and the strip runs through them. An `anim_trail` renderer is
+Cascade's anim trail, a sheet swept by an edge between two points the effect moves: a sword's hilt and tip.
+
+### Niagara's ribbon
+
+```yaml
+renderers:
+  - { id: r1, kind: ribbon, material: mymod:materials/stream }                       # through every particle, by age
+  - { id: r2, kind: ribbon, material: mymod:materials/stream, shape: tube, width_segments: 2,
+      uv0: { distribution: tiled_from_start_over_ribbon_length, tiling_length: 2.0 },
+      tessellation: { mode: custom, factor: 8, tension: 0.3 } }
+```
+
+```java
+CgVfxRenderers.ribbon("r1").material(STREAM).build();
+CgVfxRenderers.ribbon("r2").material(STREAM).field("shape", "tube")
+        .field("uv0", Map.of("distribution", "tiled_from_start_over_ribbon_length", "tiling_length", 2.0)).build();
+```
+
+| Field | Means |
+|---|---|
+| `shape` | `plane`, `multi_plane` (two crossed), `tube` (three sides) |
+| `width_segments` | cuts across each plane |
+| `uv0`, `uv1` | `distribution` (`scaled_uniformly`, `scaled_using_ribbon_segment_length`, `tiled_over_ribbon_length`, `tiled_from_start_over_ribbon_length`), `leading_edge` and `trailing_edge` (`locked`, `smooth_transition`), `tiling_length`, `scale`, `offset` |
+| `tessellation` | `mode` (`automatic`, `custom` with `factor` and `angle`, `disabled`), `tension` |
+| `link_order_by_id`, `max_link_gap` | link by spawn, newest first, breaking where two are more than the gap apart |
+
+### Cascade's ribbon trail
+
+An emitter with a `trail` spawns as Cascade's trail emitter does: a particle each `unit` its source moves
+(`spawn_per_unit`), laid on a curve from where the source was to where it is, the trail's width each particle's size
+either side.
+
+```yaml
+emitter:
+  emitter_update:
+    - { id: u1, module: crystalgraphics:spawn_per_unit, inputs: { per_unit: 1, unit: 0.25 } }
+renderers:
+  - { id: r1, kind: ribbon, material: mymod:materials/streak,
+      trail: { max_particles: 40, render_axis: camera_up, tessellation: { distance: 0.1 }, tiling_distance: 2.0 } }
+```
+
+```java
+CgVfxRibbonRendererProperties streak = (CgVfxRibbonRendererProperties) CgVfxRenderers.ribbon("r1").material(STREAK)
+        .field("trail", Map.of("max_particles", 40, "tessellation", Map.of("distance", 0.1))).build();
+CgVfxEmitter.builder("streak").ratePerBlock(CgVfxSpawnPerUnit.every(1f, 0.25f)).renderer(streak).build();
+```
+
+| `trail` field | Means |
+|---|---|
+| `max_trails`, `max_particles` | trails an emitter keeps, particles a trail keeps (its oldest go first) |
+| `render_axis` | `camera_up` (the strip faces the eye), `source_up` (the effect's up), `world_up` |
+| `tessellation` | `distance` (a point each this much), `tangent_scale`, `max`, `tangent_interp` |
+| `tangents` | `recalculate_previous` (the chain before is laid again beside the next), `every_frame` |
+| `tiling_distance` | the second UV tiles once each this many blocks |
+
+### Trails behind another emitter's particles
+
+A `ribbon_source` with `method: particle` gives each trail one of another emitter's particles to follow, picked at
+random, and another once it dies: smoke behind each flying rock.
+
+```yaml
+emitters:
+  - id: rocks
+    emitter: { ... }
+  - id: smoke
+    emitter:
+      emitter_update:
+        - { id: u1, module: crystalgraphics:spawn_per_unit, inputs: { per_unit: 1, unit: 0.5 } }
+      particle_spawn:
+        - { id: s1, module: crystalgraphics:ribbon_source, inputs: { method: particle, name: rocks } }
+    renderers:
+      - { id: r1, kind: ribbon, material: mymod:materials/smoke, trail: { max_trails: 8, max_particles: 30 } }
+```
+
+```java
+CgVfxEmitter rocks = CgVfxEmitter.builder("rocks").publishes(true).rate(4f).speed(6f, 9f).build();
+CgVfxEmitter smoke = CgVfxEmitter.builder("smoke").ratePerBlock(CgVfxSpawnPerUnit.every(1f, 0.5f))
+        .spawnFrom(CgVfxSpawnFrom.trailing("rocks", CgVfxSpawnFrom.Selection.RANDOM)).renderer(smokeTrail).build();
+```
+
+- **The source is named as Cascade names it**: by an emitter's name, or by its handle.
+- **It spawns by its sources' moves alone**: a rate or a burst on it fails at load.
+- **Its trails are worked out on the GPU**, where the particles they follow are. A trail whose particle dies starts
+  again on another.
+
+### Cascade's anim trail
+
+```yaml
+user:
+  hilt: { type: position, default: [0, 0, 0] }
+  tip: { type: position, default: [0, 1, 0] }
+emitters:
+  - id: blade
+    renderers:
+      - { id: r1, kind: anim_trail, material: mymod:materials/swoosh, edge: [user.hilt, user.tip],
+          tessellation: { distance: 0.1, angle: 10 }, width: { curve: { keys: [[0, 1], [1, 0]] }, by: length } }
+```
+
+```java
+CgVfxRenderers.animTrail("r1", "hilt", "tip").material(SWOOSH)
+        .field("tessellation", Map.of("distance", 0.1, "angle", 10.0)).build();
+// each tick, from the effect's origin:
+effect.values().set(HILT, hiltX, hiltY, hiltZ);
+effect.values().set(TIP, tipX, tipY, tipZ);
+```
+
+| Field | Means |
+|---|---|
+| `edge` | the two `position` user parameters it samples, once a tick |
+| `width_mode` | `centre`, `first`, `second`: where the edge lies about its two points |
+| `tessellation` | `distance`, `angle` (degrees), `width`: a point more each step of each; `max` points a segment |
+| `width`, `colour` | a value, or up to four keys `by: length`, newest 0 to oldest 1 |
+| `life` | samples it keeps, 0 for as long as each lives |
+| `stop` | `dead_on_deactivate`, or `{ retract: n, fade: { alpha, width } }`: stopped, it loses n samples a tick while it keeps sampling, fading |
+
+### Easy to get wrong
+
+- **A trail samples its edge or source as each tick ends**: a thing moved between ticks shows only where a tick finds it.
+- **An edge's points are from the effect's origin**, as every point user parameter is.
+- **A Cascade trail's width is its particles' size either side**, twice a Niagara ribbon's of the same size.
+- **An anim trail's width or colour keeps four keys at most**; more fail at load.
 
 ## When particles spawn: emitter time
 

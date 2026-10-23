@@ -151,6 +151,34 @@ public final class CgParticleKinds {
             .property("max", INT)
             .register();
 
+    static final CgType TRAIL_TANGENTS = CgTypes.struct("crystalgraphics:renderer.trail_tangents")
+            .property("recalculate_previous", BOOL).defaultValue(true)
+            .property("every_frame", BOOL).defaultValue(false)
+            .register();
+
+    // UParticleModuleTypeDataRibbon's defaults (ParticleModuleTypeDataRibbon.h).
+    static final CgType RIBBON_TRAIL_TESSELLATION = CgTypes.struct("crystalgraphics:renderer.ribbon_trail_tessellation")
+            .property("distance", FLOAT).quantity(CgQuantity.LENGTH)
+            .property("max", INT).defaultValue(25)
+            .property("tangent_scale", FLOAT).defaultValue(5.0)
+            .property("tangent_interp", BOOL).defaultValue(false)
+            .register();
+
+    static final CgType RIBBON_TRAIL = CgTypes.struct("crystalgraphics:renderer.ribbon_trail")
+            .property("max_trails", INT).defaultValue(1)
+            .property("max_particles", INT).defaultValue(500)
+            .property("sheets", INT).defaultValue(1)
+            .property("render_axis", CgValueType.enumOf("camera_up", "source_up", "world_up")).defaultValue("camera_up")
+            .property("tessellation", CgValueType.struct(RIBBON_TRAIL_TESSELLATION))
+            .property("tangents", CgValueType.struct(TRAIL_TANGENTS))
+            .property("tangent_spawn_scale", FLOAT).defaultValue(0.0)
+            .property("spawn_initial_particle", BOOL).defaultValue(false)
+            .property("clip_source_segment", BOOL).defaultValue(true)
+            .property("dead_on_deactivate", BOOL).defaultValue(true)
+            .property("dead_on_source_loss", BOOL).defaultValue(true)
+            .property("tiling_distance", FLOAT).quantity(CgQuantity.LENGTH)
+            .register();
+
     static final CgType TRAIL_FADE = CgTypes.struct("crystalgraphics:renderer.trail_fade")
             .property("alpha", FLOAT)
             .property("width", FLOAT)
@@ -201,6 +229,7 @@ public final class CgParticleKinds {
             .property("tessellation", CgValueType.struct(RIBBON_TESSELLATION))
             .property("link_order_by_id", BOOL)
             .property("max_link_gap", INT)
+            .property("trail", CgValueType.struct(RIBBON_TRAIL))
             .register();
 
     static final CgType BEAM = renderer("beam")
@@ -253,6 +282,7 @@ public final class CgParticleKinds {
             .property("width_mode", CgValueType.enumOf("centre", "first", "second")).defaultValue("centre")
             .property("life", INT)
             .property("tessellation", CgValueType.struct(TRAIL_TESSELLATION))
+            .property("tangents", CgValueType.struct(TRAIL_TANGENTS))
             .property("width", FLOAT).quantity(CgQuantity.LENGTH)
             .property("colour", CgValueType.COLOUR)
             .property("uv0", CgValueType.struct(RIBBON_UV))

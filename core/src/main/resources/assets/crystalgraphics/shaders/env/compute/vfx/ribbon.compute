@@ -1,0 +1,495 @@
+// A pool's ribbons (CgVfxRibbonGeneration): Niagara's GPU ribbon init (NiagaraRendererRibbons.cpp,
+// InitializeVertexBuffersGPU) over every ribbon slot of one pool at once, after Range has placed the frame's particles.
+// A position is a place in the pool's part of Range's ORDER, a slot's from its list base; a ribbon slot is culled as
+// one sphere, so its first VISIBLE positions are its live particles.
+//
+//   Keys, then a float sort: each position by its link order (NiagaraRibbonSortParticles.usf's MergeSortCompare).
+//   Links, then a sort by bits: by slot, then ribbon id, stably, so each slot's particles stay at its positions.
+//   Init: VertexGenInitialize (NiagaraRibbonVertexReductionInitialization.usf:40-225), and for a Cascade trail each
+//     segment's points (ParticleTrail2EmitterInstance.cpp:2399-2578).
+//   Propagate: VertexGenPrefixSumPropagation, a segmented Hillis-Steele scan: distances restart at each ribbon, stats
+//     at each slot, segment and ribbon counts run on.
+//   Finish: the packed run a draw reads, and each ribbon's first and last position (OutputRibbonStats).
+//   Ribbons: each ribbon's U scale, offset and distribution, and its reflected end tangents
+//     (NiagaraRibbonRibbonUVParamCalculation.usf:112-288).
+//   Args: each slot's tessellation factor, smoothed across frames (OutputRibbonStats, InitializeIndices), and its draw.
+//
+// The run, vec4s: each slot's record (2), then each position's (2), then each ribbon's (2):
+//   slot     (first unit, units, factor, 1 / factor), (first position, last position, first position record, first ribbon record),
+//            then an anim trail's width keys' times and values, its colour keys' times and colours, and its fade
+//   position (tangent, distance from its ribbon's start), (position, units before it, ribbon, its units), (a Cascade
+//            trail's stored up or an anim trail's edge, its tiled U), (an anim trail's interpolation parameter, 0, 0, 0)
+//   ribbon   (U scale, U offset, U distribution, first position) for UV0, then for UV1 with its last position
+// A unit is a segment for Niagara, a rendered point for a Cascade trail.
+#pragma kernel Keys map
+#pragma kernel Links map
+#pragma kernel Init gather
+#pragma kernel Propagate gather
+#pragma kernel Finish scatter
+#pragma kernel Ribbons scatter
+#pragma kernel Args scatter
+
+Properties {
+    _Slots       ("The pool's slots",                                        int)   = 0
+    _Positions   ("The pool's positions: its capacity",                       int)   = 0
+    _RibbonBits  ("Bits a ribbon id takes; all ones is no particle",          int)   = 1
+    _Stride      ("Propagate: how far back this pass adds",                   int)   = 1
+    _SlotAt      ("The run's first slot record",                              int)   = 0
+    _PositionAt  ("The run's first position record",                          int)   = 0
+    _RibbonAt    ("The run's first ribbon record",                            int)   = 0
+    _RecordVectors ("A record's uvec4s: the pool's layout",                    int)   = 4
+    _DrawnStride  ("Drawn elements a particle",                               int)   = 1
+    _RibbonTail   ("A Cascade trail's payload's first word in a record; -1 none", int) = -1
+    _Tessellation ("Niagara's CVars: max factor, min angle (radians), screen share, min error (blocks)", vec4) = (16, 0.2618, 0.002, 0.005)
+}
+
+// A slot's settings (CgVfxRibbonGeneration.slot): where its positions are, and its renderer's.
+//   place   list base, capacity, its word in VISIBLE, flags (1 a ribbon slot, 2 a Cascade trail, 4 linked by spawn id,
+//           8 its smoothing starts again, 16 Cascade's tangent difference scales its distance, 32 Cascade
+//           recalculates its tangents every frame, 64 an anim trail (with 2), 128 an anim trail recalculates the
+//           sample before the newest)
+//   link    curve tension, the most spawns two linked particles are apart (0 any), the eye's distance squared, 0
+//   tess    mode (0 automatic, 1 custom, 2 disabled), custom factor, custom minimum angle (radians), 1 constant + 2 screen space
+//   uv0     distribution, leading edge, trailing edge, tiling length: FNiagaraRibbonUVSettings
+//   uv1     the same for UV1
+//   uvScale UV0's scale.x and offset.x, UV1's
+//   trail   Cascade: distance tessellation step (0 none), tangent tessellation scalar, tiling distance (0 none), 0
+//   width*  an anim trail's width along its length: four keys' times, then their values
+//   colour* its colour along its length: four keys' times, then each key's RGBA
+//   anim    its distance step, tangent step (over 180 degrees), width step (each 0 none), most points a segment (0 none)
+//   fade    its alpha and width this frame, 1 until a retracting trail stops
+struct FxRibbonSlot { uvec4 place; vec4 link; vec4 tess; vec4 uv0; vec4 uv1; vec4 uvScale; vec4 trail;
+                      vec4 widthTimes; vec4 widthValues; vec4 colourTimes; vec4 colour0; vec4 colour1; vec4 colour2;
+                      vec4 colour3; vec4 anim; vec4 fade; };
+// A particle's drawn part: CgVfxRecord.DRAWN_GLSL.
+struct FxDrawn { vec4 place; vec4 motion; vec4 state; vec4 light; vec4 color; vec4 scale; };
+// The tessellation stats a position sums (Niagara's five): total length, length², length x angle, length x twist,
+// then length x width.
+struct FxRibbonStats { vec4 a; vec4 b; };
+
+Buffers {
+    SLOTS   ("Each slot's settings",                                     FxRibbonSlot,  readonly)
+    VISIBLE ("Range's visible particles a slot",                         uint,          readonly)
+    ORDER   ("Range's order from the pool's first position: a drawn element, -1 none", float, readonly)
+    DRAWN   ("The pool's drawn parts",                                   FxDrawn,       readonly)
+    RECORDS ("The pool's particles: a Cascade trail's payload",          uvec4,         readonly)
+    KEYS    ("Keys: link order, or slot and ribbon",                     uint,          readwrite)
+    LINKS   ("Keys: link order",                                         float,         writeonly)
+    VALUES  ("The position each sorted place holds",                     uint,          readwrite)
+    T_IN    ("Tangent, distance",                                        vec4,          readonly)
+    T_OUT   ("Tangent, distance",                                        vec4,          writeonly)
+    U_IN    ("Units, ribbons, flags, own units and flags",               uvec4,         readonly)
+    U_OUT   ("Units, ribbons, flags, own units and flags",               uvec4,         writeonly)
+    S_IN    ("Tessellation stats",                                       FxRibbonStats, readonly)
+    S_OUT   ("Tessellation stats",                                       FxRibbonStats, writeonly)
+    RUN     ("The packed run a draw reads",                              vec4,          readwrite)
+    STATE   ("Each slot's smoothed tessellation: angle, curvature, twist angle, twist curvature; total length", vec4, readwrite)
+    ARGS    ("Each slot's draw: vertices",                               uint,          writeonly)
+}
+
+// U's flags: a ribbon starts here, a slot starts here, it has a next.
+const uint RIBBON_HEAD = 1u;
+const uint SLOT_HEAD = 2u;
+const uint HAS_NEXT = 4u;
+
+// The slot position p belongs to: the last list base at or below it.
+int ribbon_slot(int p) {
+    int lo = 0, hi = _Slots - 1;
+    while (lo < hi) {
+        int mid = (lo + hi + 1) >> 1;
+        if (int(SLOTS(mid).place.x) <= p) lo = mid; else hi = mid - 1;
+    }
+    return lo;
+}
+
+uint ribbon_none() {
+    return (1u << uint(_RibbonBits)) - 1u;
+}
+
+// Word w of drawn element e's Cascade trail payload (CgVfxRecord.Tail.RIBBON): its tangent, its trail + 1024 x its
+// spawned points, its up, the trail's distance at its birth.
+float ribbon_payload(float e, int w) {
+    int at = (int(e) / _DrawnStride) * _RecordVectors, x = _RibbonTail + w;
+    return uintBitsToFloat(RECORDS(at + x / 4)[x % 4]);
+}
+
+// A ribbon id: a Cascade trail's index, a ribbon each (FParticleRibbonEmitterInstance's TrailIdx); else the slot's one.
+uint ribbon_id(FxRibbonSlot slot, float element) {
+    if ((slot.place.w & 2u) == 0u || _RibbonTail < 0) return 0u;
+    return min(uint(mod(ribbon_payload(element, 3), 1024.0) + 0.5), ribbon_none() - 1u);
+}
+
+void Keys() {
+    int p = CG_ELEMENT;
+    int s = ribbon_slot(p);
+    FxRibbonSlot slot = SLOTS(s);
+    // Past a slot's visible count lies no particle, and past the pool's capacity no order to read.
+    bool valid = (slot.place.w & 1u) != 0u && p - int(slot.place.x) < int(VISIBLE(int(slot.place.z)));
+    float element = valid ? ORDER(p) : -1.0;
+    valid = valid && element >= 0.0;
+    float link = 3.0e38;
+    if (valid) {
+        FxDrawn d = DRAWN(int(element));
+        // Niagara's default link order is the normalized age (NiagaraRibbonCommon.ush:235); a Cascade trail runs
+        // from its newest particle, as its spawn time does; by id, newest first.
+        if ((slot.place.w & 2u) != 0u) link = d.scale.w;
+        else if ((slot.place.w & 4u) != 0u) link = -d.light.y;
+        else link = d.motion.w;
+    }
+    LINKS_WRITE(link);
+    VALUES_WRITE(uint(p));
+}
+
+void Links() {
+    int p = int(VALUES(CG_ELEMENT));
+    int s = ribbon_slot(p);
+    FxRibbonSlot slot = SLOTS(s);
+    bool valid = (slot.place.w & 1u) != 0u && p - int(slot.place.x) < int(VISIBLE(int(slot.place.z)));
+    float element = valid ? ORDER(p) : -1.0;
+    valid = valid && element >= 0.0;
+    KEYS_WRITE((uint(s) << uint(_RibbonBits)) | (valid ? ribbon_id(slot, element) : ribbon_none()));
+}
+
+// Whether sorted place q holds a particle, and its drawn part.
+bool ribbon_at(int q, out FxDrawn d) {
+    d = FxDrawn(vec4(0.0), vec4(0.0), vec4(0.0), vec4(0.0), vec4(0.0), vec4(0.0));
+    if (q < 0 || q >= _Positions || (KEYS(q) & ribbon_none()) == ribbon_none()) return false;
+    d = DRAWN(int(ORDER(int(VALUES(q)))));
+    return true;
+}
+
+// Whether q and its neighbour n are one ribbon: one key, no further apart in spawns than the slot allows, and for a
+// Cascade trail one chain, which a restart of the trail breaks.
+bool ribbon_linked(int q, int n, FxDrawn a, FxDrawn b, FxRibbonSlot slot) {
+    if (KEYS(q) != KEYS(n) || (slot.link.y > 0.0 && abs(a.light.y - b.light.y) > slot.link.y)) return false;
+    return (slot.place.w & 2u) == 0u || _RibbonTail < 0
+            || ribbon_payload(ORDER(int(VALUES(q))), 8) == ribbon_payload(ORDER(int(VALUES(n))), 8);
+}
+
+// FVector::Normalize: zero stays zero.
+vec3 ribbon_unit(vec3 v) {
+    float l = length(v);
+    return l > 1.0e-8 ? v / l : vec3(0.0);
+}
+
+// The tangent of the Cascade trail particle at sorted place q: its stored one, or recalculated every frame from its
+// neighbours (TrailsBase_CalculateTangent, ParticleTrail2EmitterInstance.cpp:834-856, from Tick_RecalculateTangents
+// :863-925): newer to older over their spawn times apart, times its own time to the older's, over its points. Places
+// run newest first, so the newer is q - 1; spawn times run against age.
+vec3 ribbon_trail_tangent(int q, FxRibbonSlot slot) {
+    FxDrawn d, prev, next;
+    if (!ribbon_at(q, d)) return vec3(0.0);
+    float e = ORDER(int(VALUES(q)));
+    vec3 stored = vec3(ribbon_payload(e, 0), ribbon_payload(e, 1), ribbon_payload(e, 2));
+    if ((slot.place.w & 32u) == 0u) return stored;
+    bool hasPrev = ribbon_at(q - 1, prev) && ribbon_linked(q, q - 1, d, prev, slot);
+    bool hasNext = ribbon_at(q + 1, next) && ribbon_linked(q, q + 1, d, next, slot);
+    if (!hasPrev && !hasNext) return stored;
+    FxDrawn newer = hasPrev ? prev : d, older = hasNext ? next : d;
+    float apart = abs(older.scale.w - newer.scale.w);
+    apart = apart == 0.0 ? 0.0032 : apart;
+    float own = hasNext ? next.scale.w - d.scale.w : d.scale.w - prev.scale.w;
+    return (newer.place.xyz - older.place.xyz) / apart * own / floor(ribbon_payload(e, 3) / 1024.0);
+}
+
+// The anim trail sample at sorted place q's tangent and interpolation parameter: as its source laid them, or with
+// every-frame recalculation from its neighbours (Tick_RecalculateTangents, ParticleTrail2EmitterInstance.cpp:2940-2989,
+// by RecalculateTangentAndInterpolationParam :2901-2932); the newest keeps its own.
+vec4 ribbon_anim(int q, FxRibbonSlot slot) {
+    FxDrawn d, prev, next;
+    if (!ribbon_at(q, d)) return vec4(0.0);
+    float e = ORDER(int(VALUES(q)));
+    vec4 stored = vec4(ribbon_payload(e, 0), ribbon_payload(e, 1), ribbon_payload(e, 2), ribbon_payload(e, 9));
+    if ((slot.place.w & 32u) == 0u) return stored;
+    if (!(ribbon_at(q - 1, prev) && ribbon_linked(q, q - 1, d, prev, slot))) return stored;
+    vec3 toPrev = prev.place.xyz - d.place.xyz;
+    float segment = length(toPrev);
+    vec3 tangent = segment > 0.0 ? toPrev / segment : vec3(0.0);
+    if (ribbon_at(q + 1, next) && ribbon_linked(q, q + 1, d, next, slot)) {
+        vec3 across = prev.place.xyz - next.place.xyz;
+        tangent = all(lessThanEqual(abs(across), vec3(1.0e-6))) ? across : normalize(across);
+    }
+    return vec4(tangent, sqrt(segment));
+}
+
+// The anim trail sample at drawn element e's half edge: Cascade's Length.
+float ribbon_edge(float e) {
+    return length(vec3(ribbon_payload(e, 4), ribbon_payload(e, 5), ribbon_payload(e, 6)));
+}
+
+void Init() {
+    int q = CG_ELEMENT;
+    uint key = KEYS(q);
+    int s = int(key >> uint(_RibbonBits));
+    FxRibbonSlot slot = SLOTS(s);
+    bool slotHead = q == 0 || (KEYS(q - 1) >> uint(_RibbonBits)) != uint(s);
+    FxDrawn d, prev, next;
+    bool valid = ribbon_at(q, d);
+    bool hasPrev = valid && ribbon_at(q - 1, prev) && ribbon_linked(q, q - 1, d, prev, slot);
+    bool hasNext = valid && ribbon_at(q + 1, next) && ribbon_linked(q, q + 1, d, next, slot);
+    vec4 tangent = vec4(0.0);
+    FxRibbonStats stats = FxRibbonStats(vec4(0.0), vec4(0.0));
+    vec3 here = d.place.xyz;
+    if (hasNext && hasPrev) {
+        vec3 toNext = next.place.xyz - here, fromPrev = here - prev.place.xyz;
+        float toNextSize = length(toNext), fromPrevSize = length(fromPrev);
+        if (toNextSize > 0.0) toNext /= toNextSize;
+        if (fromPrevSize > 0.0) fromPrev /= fromPrevSize;
+        vec3 average = normalize(fromPrev + toNext);
+        tangent = toNextSize + fromPrevSize > 0.0 ? vec4((1.0 - slot.link.x) * average, fromPrevSize) : vec4(0.0);
+        stats.a = vec4(toNextSize, toNextSize * toNextSize, toNextSize * acos(clamp(dot(fromPrev, toNext), -1.0, 1.0)), 0.0);
+    } else if (hasNext) {
+        vec3 toNext = next.place.xyz - here;
+        float toNextSize = length(toNext);
+        tangent = vec4(toNextSize > 0.0 ? toNext / toNextSize : toNext, 0.0);
+    } else if (hasPrev) {
+        vec3 fromPrev = here - prev.place.xyz;
+        float fromPrevSize = length(fromPrev);
+        tangent = vec4(fromPrevSize > 0.0 ? fromPrev / fromPrevSize : fromPrev, fromPrevSize);
+    }
+    uint units = hasNext ? 1u : 0u;
+    if (valid && (slot.place.w & 66u) == 2u) tangent.xyz = ribbon_trail_tangent(q, slot);
+    if (hasNext && (slot.place.w & 64u) != 0u) {
+        // DetermineVertexAndTriangleCount (:3697-3884): between the older (its Curr) and the newer (its Prev), a point
+        // more each distance step, tangent step and width step, the older's older (its Next) counted as Cascade does.
+        FxDrawn nn;
+        bool hasNN = ribbon_at(q + 2, nn) && ribbon_linked(q + 1, q + 2, next, nn, slot);
+        vec4 curr = ribbon_anim(q + 1, slot), newer = ribbon_anim(q, slot);
+        int count = 1;
+        if (slot.anim.x > 0.0) count += int(trunc(length(next.place.xyz - here) / slot.anim.x));
+        if (slot.anim.y > 0.0) {
+            float check = (dot(curr.xyz, newer.xyz) - 1.0) * -0.5;
+            if ((slot.place.w & 128u) != 0u && hasNN) check = max(check, (dot(ribbon_anim(q + 2, slot).xyz, curr.xyz) - 1.0) * -0.5);
+            count += int(trunc(check / slot.anim.y));
+        }
+        if (slot.anim.z > 0.0) {
+            float lc = ribbon_edge(ORDER(int(VALUES(q + 1))));
+            float w = abs(lc - ribbon_edge(ORDER(int(VALUES(q)))));
+            if (hasNN) w = max(w, abs(ribbon_edge(ORDER(int(VALUES(q + 2)))) - lc));
+            count += int(trunc(w / slot.anim.z));
+        }
+        // The most points a segment the draw holds: its renderer's, else 64.
+        units = uint(clamp(count, 1, slot.anim.w > 0.0 ? int(slot.anim.w) : 64));
+    }
+    if (hasNext && (slot.place.w & 66u) == 2u) {
+        // DetermineVertexAndTriangleCount: the older particle's points toward the newer, by their distance over the
+        // step and their tangents' difference mapped to 0..1 for 0..180 degrees, at least one.
+        vec3 older = ribbon_unit(ribbon_trail_tangent(q + 1, slot));
+        vec3 newer = ribbon_unit(tangent.xyz);
+        float distance = length(here - next.place.xyz);
+        float turn = slot.trail.y != 0.0 || (slot.place.w & 16u) != 0u ? (dot(older, newer) - 1.0) * -0.5 : 0.0;
+        float steps = 0.0;
+        if (slot.trail.x > 0.0) {
+            steps = distance / slot.trail.x;
+            if ((slot.place.w & 16u) != 0u && turn < 0.5) steps *= 2.0 * clamp(turn, 0.0, 0.5);
+        }
+        int count = int(trunc(steps)) + int(trunc(turn * slot.trail.y));
+        units = uint(max(count, 1));
+    }
+    uint flags = (valid && !hasPrev ? RIBBON_HEAD : 0u) | (!valid ? RIBBON_HEAD : 0u) | (slotHead ? SLOT_HEAD : 0u)
+            | (hasNext ? HAS_NEXT : 0u);
+    T_OUT_WRITE(tangent);
+    U_OUT_WRITE(uvec4(units, valid && !hasPrev ? 1u : 0u, flags, units | (flags << 24u)));
+    S_OUT_WRITE(stats);
+}
+
+void Propagate() {
+    int q = CG_ELEMENT;
+    vec4 t = T_IN(q);
+    uvec4 u = U_IN(q);
+    FxRibbonStats st = S_IN(q);
+    if (q >= _Stride) {
+        int from = q - _Stride;
+        uvec4 v = U_IN(from);
+        // Segmented sums: a value adds the one before only while no head lies between them; the heads OR on.
+        if ((u.z & RIBBON_HEAD) == 0u) t.w += T_IN(from).w;
+        if ((u.z & SLOT_HEAD) == 0u) {
+            FxRibbonStats o = S_IN(from);
+            st.a += o.a;
+            st.b += o.b;
+        }
+        u.x += v.x;
+        u.y += v.y;
+        u.z |= v.z & (RIBBON_HEAD | SLOT_HEAD);
+    }
+    T_OUT_WRITE(t);
+    U_OUT_WRITE(u);
+    S_OUT_WRITE(st);
+}
+
+void Finish() {
+    int q = CG_ELEMENT;
+    uvec4 u = U_IN(q);
+    uint own = u.w & 16777215u, flags = u.w >> 24u;
+    bool valid = (KEYS(q) & ribbon_none()) != ribbon_none();
+    RUN_STORE(_PositionAt + q * 4, T_IN(q));
+    RUN_STORE(_PositionAt + q * 4 + 1, vec4(valid ? float(VALUES(q)) : -1.0, float(u.x - own), float(u.y) - 1.0, float(own)));
+    vec4 trail = vec4(0.0);
+    if (valid && _RibbonTail >= 0) {
+        FxRibbonSlot slot = SLOTS(int(KEYS(q) >> uint(_RibbonBits)));
+        float e = ORDER(int(VALUES(q)));
+        // Cascade's TiledU: the trail's distance at its birth over the tiling distance.
+        if ((slot.place.w & 2u) != 0u) {
+            trail = vec4(ribbon_payload(e, 4), ribbon_payload(e, 5), ribbon_payload(e, 6),
+                         slot.trail.z > 0.0 ? ribbon_payload(e, 7) / slot.trail.z : 0.0);
+        }
+    }
+    RUN_STORE(_PositionAt + q * 4 + 2, trail);
+    vec4 interp = vec4(0.0);
+    if (valid && _RibbonTail >= 0) {
+        FxRibbonSlot slot = SLOTS(int(KEYS(q) >> uint(_RibbonBits)));
+        if ((slot.place.w & 64u) != 0u) interp.x = ribbon_anim(q, slot).w;
+    }
+    RUN_STORE(_PositionAt + q * 4 + 3, interp);
+    if (!valid) return;
+    int r = int(u.y) - 1;
+    if ((flags & RIBBON_HEAD) != 0u) RUN_STORE(_RibbonAt + r * 2, vec4(1.0, 0.0, 1.0, float(q)));
+    if ((flags & HAS_NEXT) == 0u) RUN_STORE(_RibbonAt + r * 2 + 1, vec4(1.0, 0.0, 1.0, float(q)));
+}
+
+float ribbon_distance(int q) {
+    return RUN(_PositionAt + q * 4).w;
+}
+
+float ribbon_age(int q) {
+    return DRAWN(int(ORDER(int(VALUES(q))))).motion.w;
+}
+
+// CalculateUVScaleAndOffsets (NiagaraRibbonRibbonUVParamCalculation.usf:112-201): U scale, offset and distribution
+// scalar for one channel. uv is (distribution, leading, trailing, tiling length), scale its scale.x and offset.x.
+vec3 ribbon_uv(vec4 uv, vec2 scale, int first, int last, float total) {
+    float segments = float(last - first + 1);
+    float leading = 0.0, trailing = 0.0;
+    if (int(uv.y) == 0) {
+        float a = ribbon_age(first), b = ribbon_age(first + 1);
+        float step = b - a, offset = a < step ? step - a : 0.0;
+        leading = step > 0.0 ? offset / step : 0.0;
+    }
+    if (int(uv.z) == 0) {
+        float a = ribbon_age(last - 1), b = ribbon_age(last);
+        float step = b - a, offset = 1.0 - b < step ? step - (1.0 - b) : 0.0;
+        trailing = step > 0.0 ? offset / step : 0.0;
+    }
+    float uScale, uOffset, distribution;
+    int mode = int(uv.x);
+    if (mode == 0) {
+        float available = segments - (leading + trailing);
+        uScale = segments / available;
+        uOffset = -((leading / segments) * uScale);
+        distribution = 1.0 / segments;
+    } else if (mode == 1) {
+        float lead = ribbon_distance(first + 1) * leading;
+        float trail = (ribbon_distance(last) - ribbon_distance(last - 1)) * trailing;
+        float available = total - (lead + trail);
+        uScale = total / available;
+        uOffset = -((lead / total) * uScale);
+        distribution = 1.0 / total;
+    } else if (mode == 2) {
+        float lead = ribbon_distance(first + 1) * leading;
+        uScale = total / uv.w;
+        uOffset = -(lead / uv.w);
+        distribution = 1.0 / total;
+    } else if (mode == 3) {
+        uScale = total / uv.w;
+        uOffset = 0.0;
+        distribution = 1.0 / total;
+    } else {
+        uScale = 1.0;
+        uOffset = 0.0;
+        distribution = 1.0;
+    }
+    return vec3(uScale * scale.x, uOffset * scale.x + scale.y, distribution);
+}
+
+void Ribbons() {
+    int r = CG_ELEMENT;
+    uvec4 last = U_IN(_Positions - 1);
+    if (r >= int(last.y)) return;
+    vec4 a = RUN(_RibbonAt + r * 2), b = RUN(_RibbonAt + r * 2 + 1);
+    int first = int(a.w), end = int(b.w);
+    FxRibbonSlot slot = SLOTS(int(KEYS(first) >> uint(_RibbonBits)));
+    if ((slot.place.w & 66u) == 2u) {
+        // A Cascade trail's U runs uniformly over its rendered points (FDynamicRibbonEmitterData::FillVertexData):
+        // its points' increment, and the units before its first.
+        float units = RUN(_PositionAt + end * 4 + 1).y - RUN(_PositionAt + first * 4 + 1).y;
+        RUN_STORE(_RibbonAt + r * 2, vec4(units > 0.0 ? 1.0 / units : 0.0, RUN(_PositionAt + first * 4 + 1).y, 0.0, a.w));
+        RUN_STORE(_RibbonAt + r * 2 + 1, vec4(0.0, 0.0, 0.0, b.w));
+        return;
+    }
+    float total = ribbon_distance(end);
+    if (end - first > 1) {
+        vec3 uv0 = ribbon_uv(slot.uv0, slot.uvScale.xy, first, end, total);
+        vec3 uv1 = ribbon_uv(slot.uv1, slot.uvScale.zw, first, end, total);
+        RUN_STORE(_RibbonAt + r * 2, vec4(uv0, a.w));
+        RUN_STORE(_RibbonAt + r * 2 + 1, vec4(uv1, b.w));
+        // The end tangents reflected, so the curvature carries on through the ends.
+        vec4 t0 = RUN(_PositionAt + first * 4), t1 = RUN(_PositionAt + (first + 1) * 4);
+        RUN_STORE(_PositionAt + first * 4, vec4((2.0 * dot(t0.xyz, t1.xyz)) * t0.xyz - t1.xyz, t0.w));
+        vec4 tl = RUN(_PositionAt + end * 4), tp = RUN(_PositionAt + (end - 1) * 4);
+        RUN_STORE(_PositionAt + end * 4, vec4((2.0 * dot(tl.xyz, tp.xyz)) * tl.xyz - tp.xyz, tl.w));
+    } else {
+        RUN_STORE(_RibbonAt + r * 2, vec4(1.0, 0.0, 1.0, a.w));
+        RUN_STORE(_RibbonAt + r * 2 + 1, vec4(1.0, 0.0, 1.0, b.w));
+    }
+}
+
+void Args() {
+    int s = CG_ELEMENT;
+    FxRibbonSlot slot = SLOTS(s);
+    int first = int(slot.place.x), last = first + int(slot.place.y) - 1;
+    uint visible = (slot.place.w & 1u) != 0u && slot.place.y > 0u ? VISIBLE(int(slot.place.z)) : 0u;
+    uint before = first > 0 ? U_IN(first - 1).x : 0u;
+    uint units = visible > 1u ? U_IN(last).x - before : 0u;
+    uint factor = 1u;
+    if ((slot.place.w & 2u) == 0u && units > 0u) {
+        // CalculateTessellationFactor (NiagaraRibbonInitializeIndices.usf:60-117): the slot's stats smoothed across
+        // frames, then the factor its curvature needs at this distance.
+        FxRibbonStats st = S_IN(last);
+        vec4 smoothed = (slot.place.w & 8u) != 0u ? vec4(0.0) : STATE(s * 2);
+        float smoothedLength = (slot.place.w & 8u) != 0u ? 0.0 : STATE(s * 2 + 1).x;
+        float totalLength = st.a.x;
+        if (totalLength > 0.0) {
+            float inverse = 1.0 / max(1.0, totalLength);
+            float averaging = smoothedLength / (totalLength + smoothedLength);
+            smoothedLength = totalLength;
+            float angle = st.a.z * inverse, segment = st.a.y * inverse;
+            float curvature = segment / max(1.0e-8, abs(sin(angle)));
+            smoothed.x = mix(angle, max(smoothed.x, angle), averaging);
+            smoothed.y = mix(curvature, max(smoothed.y, curvature), averaging);
+        }
+        STATE_STORE(s * 2, smoothed);
+        STATE_STORE(s * 2 + 1, vec4(smoothedLength, 0.0, 0.0, 0.0));
+        int mode = int(slot.tess.x);
+        uint most = uint(_Tessellation.x);
+        bool constant = false;
+        float minAngle = _Tessellation.y, screen = _Tessellation.z;
+        if (mode == 1) {
+            most = min(most, uint(slot.tess.y));
+            constant = (int(slot.tess.w) & 1) != 0;
+            minAngle = slot.tess.z;
+            screen = (int(slot.tess.w) & 2) != 0 && !constant ? _Tessellation.z : 0.0;
+        } else if (mode == 2) {
+            most = 1u;
+        }
+        if (constant) {
+            factor = most;
+        } else if (most > 1u && smoothed.y > 1.0e-8) {
+            float least = minAngle == 0.0 ? float(most) : max(1.0, max(smoothed.z, smoothed.x) / max(1.0e-8, minAngle));
+            float error = max(_Tessellation.w, screen * sqrt(slot.link.z));
+            float tess = smoothed.x / max(0.002, acos(smoothed.y / (smoothed.y + error)));
+            factor = clamp(uint(round(tess)), uint(round(least)), most);
+            factor = min(factor, uint(_Tessellation.x));
+        }
+    }
+    RUN_STORE(_SlotAt + s * 10, vec4(float(before), float(units), float(factor), 1.0 / float(factor)));
+    RUN_STORE(_SlotAt + s * 10 + 1, vec4(float(first), float(last), float(_PositionAt), float(_RibbonAt)));
+    RUN_STORE(_SlotAt + s * 10 + 2, slot.widthTimes);
+    RUN_STORE(_SlotAt + s * 10 + 3, slot.widthValues);
+    RUN_STORE(_SlotAt + s * 10 + 4, slot.colourTimes);
+    RUN_STORE(_SlotAt + s * 10 + 5, slot.colour0);
+    RUN_STORE(_SlotAt + s * 10 + 6, slot.colour1);
+    RUN_STORE(_SlotAt + s * 10 + 7, slot.colour2);
+    RUN_STORE(_SlotAt + s * 10 + 8, slot.colour3);
+    RUN_STORE(_SlotAt + s * 10 + 9, slot.fade);
+    ARGS_STORE(s, units * factor);
+}

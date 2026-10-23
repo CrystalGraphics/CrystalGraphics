@@ -23,7 +23,7 @@ import com.crystalgraphics.vfx.particle.CgVfxSubUvAnimation;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
-import com.crystalgraphics.vfx.particle.renderer.CgVfxBeamRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxTrailsRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxSpriteRendererProperties;
@@ -486,8 +486,8 @@ final class CgVfxMaterials {
         CgMaterialUsage usage = r.placed.renderer() != null ? CgVfxRenderers.usage(r.placed.renderer())
                 : CgMaterialUsage.STATIC_MESH;
         String keyword = r.definition.requireUsage(usage, r.placed.toString());
-        // The strip factory places beams alone so far: a ribbon or trails layer keeps its own placement.
-        return usage == CgMaterialUsage.RIBBONS && !(r.placed.renderer() instanceof CgVfxBeamRendererProperties) ? null : keyword;
+        // The strip factory places beams and ribbons; a trails layer keeps its own placement.
+        return usage == CgMaterialUsage.RIBBONS && r.placed.renderer() instanceof CgVfxTrailsRendererProperties ? null : keyword;
     }
 
     /** A new material of {@code r} for slots of {@code kind}, from its definition, under its usage's keyword. */

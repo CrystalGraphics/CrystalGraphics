@@ -6,6 +6,8 @@ import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshFacing;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxRibbonRendererProperties;
+import com.crystalgraphics.vfx.particle.ribbon.CgVfxTrailHeads;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxSequenceRendererProperties;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.easing.CgEasings;
@@ -488,6 +490,50 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     @Override
     public int trailPoints() {
         return trailPoints;
+    }
+
+    /** Its ribbon renderer's Cascade trail, null where none draws it: how its particles are born. */
+    @Nullable
+    public CgVfxRibbonRendererProperties.Trail trail() {
+        for (CgVfxRendererProperties r : renderers) {
+            if (r instanceof CgVfxRibbonRendererProperties ribbon && ribbon.trail() != null) return ribbon.trail();
+        }
+        return null;
+    }
+
+    /** Its anim trail renderer's trail, null where none draws it: how its particles are born. */
+    @Nullable
+    public CgVfxRibbonRendererProperties.AnimTrail animTrail() {
+        for (CgVfxRendererProperties r : renderers) {
+            if (r instanceof CgVfxRibbonRendererProperties ribbon && ribbon.anim() != null) return ribbon.anim();
+        }
+        return null;
+    }
+
+    @Override
+    public boolean cascadeTrail() {
+        return trail() != null || animTrail() != null;
+    }
+
+    @Override
+    public int headTrails() {
+        return spawnFrom != null && spawnFrom.trails() && trail() != null ? Math.max(1, trail().maxTrails()) : 0;
+    }
+
+    @Override
+    public int headBlocks() {
+        return (int) Math.ceil(lifeMax / CgVfxTrailHeads.SHORTEST_STEP) + 2;
+    }
+
+    /**
+     * Its spawn offset from its source, in its source's frame, into {@code out}: true where it is constant, a point
+     * shape with no offset form; false (and zeros) where each particle draws its own.
+     */
+    public boolean constantSpawnOffset(float[] out) {
+        boolean constant = spawn.kind() == CgVfxSpawnShape.POINT && spawnForm(CgVfxSpawnInput.OFFSET) == null;
+        float[] at = constant ? spawn.place() : new float[3];
+        System.arraycopy(at, 0, out, 0, 3);
+        return constant;
     }
 
     @Override
@@ -1858,6 +1904,17 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
                 if (clip == null || e.node() >= clip.prefab().nodes() || !CgVfxClipAtlas.bakes(clip, e.node())) {
                     throw new IllegalStateException(name + ": an event at node " + e.node() + " needs a clip that bakes it: "
                             + "a node with parts, or one its bursts and streams start at");
+                }
+            }
+            if (spawnFrom != null && spawnFrom.trails()) {
+                boolean trailed = false;
+                for (CgVfxRendererProperties r : renderers) {
+                    if (r instanceof CgVfxRibbonRendererProperties ribbon && ribbon.trail() != null) trailed = true;
+                }
+                if (!trailed) throw new IllegalStateException(name + "'s trails follow " + spawnFrom.source() + "'s particles but it draws no ribbon trail");
+                // FParticleRibbonEmitterInstance::Spawn: particle-sourced trails spawn by their sources' moves.
+                if (rate != CgVfxSpawnRate.NONE || !bursts.isEmpty()) {
+                    throw new IllegalStateException(name + "'s trails follow particles, which spawn by their moves alone: no rate or burst");
                 }
             }
             return new CgVfxEmitter(this);

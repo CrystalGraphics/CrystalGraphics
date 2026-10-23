@@ -122,8 +122,13 @@ public final class CgVfxEmitterAssets {
                     "probability", (double) b.probability())));
         }
         if (e.perUnit.perBlock() > 0f) {
-            update.add(entry("per_unit", "spawn_per_unit", map("per_unit", isOne(e.perUnit.scale()) ? (Object) (double) e.perUnit.perBlock()
-                    : curve(product(CgKeyframes.constant(e.perUnit.perBlock()), e.perUnit.scale()), "loop"), "max_step", (double) e.maxStep)));
+            CgVfxSpawnPerUnit u = e.perUnit;
+            int ig = u.ignored();
+            update.add(entry("per_unit", "spawn_per_unit", map("per_unit", isOne(u.scale()) ? (Object) (double) u.perUnit()
+                    : curve(product(CgKeyframes.constant(u.perUnit()), u.scale()), "loop"), "unit", (double) u.unit(),
+                    "movement_tolerance", (double) u.tolerance(), "ignore_spawn_rate_when_moving", u.ignoreRateWhenMoving(),
+                    "ignore_axes", ((ig & 1) != 0 ? "x" : "") + ((ig & 2) != 0 ? "y" : "") + ((ig & 4) != 0 ? "z" : ""),
+                    "max_step", (double) e.maxStep)));
         }
         tree.put("emitter_update", update);
 
@@ -423,12 +428,8 @@ public final class CgVfxEmitterAssets {
                     break;
                 }
                 case "spawn_per_unit":
-                    // Cascade reads SpawnPerUnit at the emitter's time: a curve by the loop scales it.
-                    if (in.get("per_unit") instanceof Map<?, ?> curve && curve.get("curve") != null) {
-                        b.ratePerBlock(new CgVfxSpawnPerUnit(1f, keyframes(name, curve, "loop")));
-                    } else {
-                        b.ratePerBlock(num(in.get("per_unit")));
-                    }
+                    b.ratePerBlock(perUnit(name, in));
+                    // Cascade's MaxFrameDistance: 0 is no limit.
                     if (in.get("max_step") instanceof Number s) b.maxStep(s.floatValue());
                     break;
                 default:
@@ -448,6 +449,7 @@ public final class CgVfxEmitterAssets {
                 case "socket_location" -> sockets(name, b, in, spawnId(b, entry, "socket"));
                 case "initial_mesh_orientation" -> meshOrientation(name, b, in, spawnId(b, entry, "orientation"));
                 case "spawn_from_emitter" -> spawnFrom(name, b, in, spawnStack, entry);
+                case "ribbon_source" -> ribbonSource(name, b, in, entry);
                 case "generate_event" -> {
                     b.id("generate_event_" + generators, idOf(entry, "generate_event_" + generators++));
                     generateEvent(name, in, b);
@@ -688,9 +690,27 @@ public final class CgVfxEmitterAssets {
                 numOr(in.get("inherit_rotation"), 0f)).placedAfter(after));
     }
 
+    /**
+     * {@code ribbon_source}: Cascade's TrailSource (ParticleTrail2EmitterInstance.cpp:2186-2340), each trail behind a
+     * particle of the emitter it names, picked at random. Its strength and rotation Cascade's ribbon never reads; an
+     * offset, a sequential pick and a method other than particle fail until they are built.
+     */
+    private static void ribbonSource(String name, CgVfxEmitter.Builder b, Map<?, ?> in, Map<?, ?> entry) {
+        String method = String.valueOf(in.get("method") != null ? in.get("method") : "default");
+        if (!method.equals("particle")) throw new IllegalArgumentException(name + ": ribbon_source.method " + method + " is not built yet: particle");
+        if (!(in.get("name") instanceof String source) || source.isEmpty()) throw new IllegalArgumentException(name + ": ribbon_source names no emitter");
+        if (numOr(in.get("offset_count"), 0f) != 0f || in.get("offsets") instanceof List<?> l && !l.isEmpty()) {
+            throw new IllegalArgumentException(name + ": ribbon_source.offsets are not built yet");
+        }
+        if ("sequential".equals(in.get("selection"))) throw new IllegalArgumentException(name + ": ribbon_source.selection sequential is not built yet");
+        b.id("spawn_from", idOf(entry, "ribbon_source"));
+        b.spawnFrom(CgVfxSpawnFrom.trailing(source, CgVfxSpawnFrom.Selection.RANDOM));
+    }
+
     /** {@code e}'s spawn read as a file writes it. */
     private static Map<String, Object> spawnFromEntry(CgVfxEmitter e) {
         CgVfxSpawnFrom f = e.spawnFrom;
+        if (f.trails()) return entry(e.id("spawn_from"), "ribbon_source", map("method", "particle", "name", f.source(), "selection", "random"));
         if (f.follow()) return entry(e.id("spawn_from"), "spawn_from_emitter", map("source", f.source(), "follow", true));
         return entry(e.id("spawn_from"), "spawn_from_emitter", map("source", f.source(),
                 "selection", f.selection().name().toLowerCase(Locale.ROOT), "inherit_velocity", (double) f.inheritVelocity(),
@@ -2209,6 +2229,20 @@ public final class CgVfxEmitterAssets {
      * {@code spawn_rate}, its rate or its scale bound to a user parameter where either is a binding: the other read as
      * {@link #spawnRate} reads it, times the parameter each step. Both bound is not read yet.
      */
+    /** A file's {@code spawn_per_unit}: Cascade's per unit and unit, or Niagara's spacing. */
+    private static CgVfxSpawnPerUnit perUnit(String name, Map<?, ?> in) {
+        float unit = in.get("unit") instanceof Number n ? n.floatValue() : 0.5f;
+        if (in.get("spacing") instanceof Number s && !(in.get("per_unit") != null)) unit = s.floatValue();
+        CgVfxSpawnPerUnit u = in.get("per_unit") instanceof Map<?, ?> curve && curve.get("curve") != null
+                ? CgVfxSpawnPerUnit.every(1f, unit).over(keyframes(name, curve, "loop"))
+                : CgVfxSpawnPerUnit.every(in.get("per_unit") instanceof Number n ? n.floatValue() : 1f, unit);
+        if (in.get("movement_tolerance") instanceof Number t) u = u.tolerance(t.floatValue());
+        if (Boolean.TRUE.equals(in.get("ignore_spawn_rate_when_moving"))) u = u.ignoringRateWhenMoving();
+        String axes = in.get("ignore_axes") instanceof String a ? a.toLowerCase(Locale.ROOT) : "";
+        if (!axes.isEmpty()) u = u.ignoring(axes.contains("x"), axes.contains("y"), axes.contains("z"));
+        return u;
+    }
+
     private static CgVfxSpawnRate boundRate(String name, Map<?, ?> entry, Map<?, ?> in) {
         boolean rateBound = in.get("rate") instanceof Map<?, ?> r && r.get("bind") != null;
         boolean scaleBound = in.get("scale") instanceof Map<?, ?> s && s.get("bind") != null;

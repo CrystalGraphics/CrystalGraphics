@@ -63,7 +63,7 @@ public class CgVfxRenderersTest {
     public void aFieldNotBuiltYetFailsAtLoadNamingIt() {
         for (Map<String, Object> entry : List.<Map<String, Object>>of(
                 Map.of("id", "r1", "kind", "mesh", "meshes", Map.of("prefab", "test:prefabs/rock")),
-                Map.of("id", "r1", "kind", "ribbon", "shape", "tube"),
+                Map.of("id", "r1", "kind", "ribbon", "shape", "custom"),
                 Map.of("id", "r1", "kind", "trails", "taper", 0.5),
                 Map.of("id", "r1", "kind", "sprite", "facing", "camera_distance_blend"),
                 Map.of("id", "r1", "kind", "sprite", "sort", "spawn_order"))) {
@@ -75,11 +75,20 @@ public class CgVfxRenderersTest {
 
     @Test
     public void anUnbuiltKindFailsNamingWhatItNeeds() {
-        for (String kind : List.of("system", "anim_trail")) {
-            IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                    () -> CgVfxRenderers.compile("sparks", Map.of("id", "r1", "kind", kind)));
-            assertTrue(e.getMessage(), e.getMessage().contains("not built yet"));
-        }
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> CgVfxRenderers.compile("sparks", Map.of("id", "r1", "kind", "system")));
+        assertTrue(e.getMessage(), e.getMessage().contains("not built yet"));
+    }
+
+    @Test
+    public void anAnimTrailNeedsItsEdgeAsUserParameters() {
+        IllegalArgumentException none = assertThrows(IllegalArgumentException.class,
+                () -> CgVfxRenderers.compile("sparks", Map.of("id", "r1", "kind", "anim_trail")));
+        assertTrue(none.getMessage(), none.getMessage().contains("edge"));
+        CgVfxRibbonRendererProperties trail = (CgVfxRibbonRendererProperties) CgVfxRenderers.animTrail("r1", "hilt", "tip").build();
+        assertEquals("hilt", trail.anim().first());
+        assertEquals("tip", trail.anim().second());
+        assertEquals(null, trail.trail());
     }
 
     @Test

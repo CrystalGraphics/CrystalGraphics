@@ -9,6 +9,12 @@ import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxInactiveResponse;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
+import com.crystalgraphics.vfx.look.CgVfxParam;
+import com.crystalgraphics.vfx.look.CgVfxValues;
+import com.crystalgraphics.vfx.particle.ribbon.CgVfxAnimTrailSource;
+import com.crystalgraphics.vfx.particle.ribbon.CgVfxTrailHeads;
+import com.crystalgraphics.vfx.particle.ribbon.CgVfxTrailRows;
+import com.crystalgraphics.vfx.particle.ribbon.CgVfxTrailSource;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -75,6 +81,8 @@ public final class CgVfxEmitterInstance {
     private float stepLoopFrom, stepLoopTo;
     private boolean loopsOver;
     private float rateOwed, share = 1f;
+    /** The distance its spawn per unit carries to the next step: Cascade's {@code CurrentDistanceTravelled}. */
+    private float unitLeft;
     /** Steps whose rate was drawn: the next draw's index. */
     private int rateDraws;
     /** When {@link #stop} ended its spawning; infinite until then. What {@link #rateScale} multiplies its rate by. */
@@ -116,6 +124,46 @@ public final class CgVfxEmitterInstance {
     private CgVfxEmitterInstance source;
     /** A child's: the event that feeds it. */
     private CgVfxEvent feed;
+    /** A Cascade trail's spawning (its emitter's ribbon renderer's trail), null for an ordinary emitter. */
+    @Nullable
+    private final CgVfxTrailSource trail;
+    /** An anim trail's spawning (its emitter's anim trail renderer), null for any other emitter. */
+    @Nullable
+    private final CgVfxAnimTrailSource anim;
+    /** The heads of a trail following another emitter's particles, worked out on the GPU; null for any other emitter. */
+    @Nullable
+    private final CgVfxTrailHeads heads;
+    /** Its effect's values, what its user parameters read: set each tick it is stepped. */
+    @Nullable
+    private CgVfxValues userValues;
+    private final CgVfxTrailSource.Spawner trailSpawner = new CgVfxTrailSource.Spawner() {
+        @Override
+        public int spawn(float born, int key) {
+            if (fit(1) == 0) return -1;
+            int k = spawned;
+            scheduleOne(stepDt, born / stepDt, key);
+            return k;
+        }
+
+        @Override
+        public boolean thinned(int k) {
+            return share < 1f && keyed(CgVfxGpuEmitter.KEY_THIN, k) >= share;
+        }
+
+        @Override
+        public float life(int key) {
+            return lifeOf(key);
+        }
+
+        @Override
+        public int reserve(int n) {
+            int k = spawned;
+            spawned += n;
+            // The GPU spawns on them as their sources move: kept until its longest-lived could have gone.
+            lastDeath = Math.max(lastDeath, time + stepDt * (float) Math.ceil(emitter.lifeMax / stepDt + 1f));
+            return k;
+        }
+    };
 
     public CgVfxEmitterInstance(CgVfxEmitter emitter, float seed) {
         this(emitter, Float.floatToIntBits(seed), null, emitter.local);
@@ -126,6 +174,13 @@ public final class CgVfxEmitterInstance {
         this.seed = seedBits;
         this.feed = feed;
         this.local = local;
+        float[] offset = new float[3];
+        emitter.constantSpawnOffset(offset);
+        boolean followed = emitter.spawnFrom() != null && emitter.spawnFrom().trails();
+        trail = emitter.trail() == null || followed ? null
+                : new CgVfxTrailSource(emitter.trail(), emitter.perUnit, emitter.maxStep, emitter.capacity, offset);
+        heads = followed ? new CgVfxTrailHeads(emitter.trail(), emitter.perUnit, emitter.maxStep, emitter.capacity) : null;
+        anim = emitter.animTrail() == null ? null : new CgVfxAnimTrailSource(emitter.animTrail(), emitter.capacity);
         List<CgVfxEvent> events = emitter.events;
         boolean capped = feed == null && emitter.capacity < emitter.uncappedPeak();
         dying = capped ? new int[(int) Math.ceil((emitter.lifeMax + 1f) / BUCKET) + 4] : null;
@@ -171,10 +226,13 @@ public final class CgVfxEmitterInstance {
         spawned = burstsDone = loop = 0;
         loopStart = loopLength = stepLoopFrom = stepLoopTo = 0f;
         loopsOver = false;
-        rateOwed = 0f;
+        rateOwed = unitLeft = 0f;
         share = 1f;
         stoppedAt = Float.POSITIVE_INFINITY;
         rateScale = 1f;
+        if (trail != null) trail.reset();
+        if (anim != null) anim.reset();
+        if (heads != null) heads.reset();
         scheduled = killed = killPending = stepped = turned = false;
         stepFirst = stepCandidates = stepBursts = 0;
         fromX = fromY = fromZ = lastX = lastY = lastZ = 0f;
@@ -252,9 +310,12 @@ public final class CgVfxEmitterInstance {
         loopStart = emitter.state.delayBefore(seed, emitter.delayKey, 0);
         loopLength = emitter.state.durationOf(seed, emitter.durationKey, 0);
         loopsOver = false;
-        rateOwed = 0f;
+        rateOwed = unitLeft = 0f;
         lastDeath = -1f;
         stoppedAt = Float.POSITIVE_INFINITY;
+        if (trail != null) trail.reset();
+        if (anim != null) anim.reset();
+        if (heads != null) heads.reset();
         // A kill not yet taken still ends the old slot's particles; this start spawns in a fresh one.
         killed = false;
         stepped = false;
@@ -389,19 +450,26 @@ public final class CgVfxEmitterInstance {
         return this;
     }
 
-    /** The source's start this step, from where the last ended: how far it went, or 0 for none or a teleport. */
+    /**
+     * The source's start this step, from where the last ended: how far it went along the axes its spawn per unit counts,
+     * or 0 for none or a teleport (farther than a {@code maxStep} above 0, Cascade's {@code MaxFrameDistance}).
+     */
     private float travel() {
         float x = sourceX(), y = sourceY(), z = sourceZ(), travelled = 0f;
         fromX = x;
         fromY = y;
         fromZ = z;
         if (stepped) {
-            float dx = x - lastX, dy = y - lastY, dz = z - lastZ, d = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
-            if (d <= emitter.maxStep) {
+            int ignored = emitter.perUnit.ignored();
+            float dx = (ignored & 1) != 0 ? 0f : x - lastX, dy = (ignored & 2) != 0 ? 0f : y - lastY;
+            float dz = (ignored & 4) != 0 ? 0f : z - lastZ, d = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (emitter.maxStep <= 0f || d <= emitter.maxStep) {
                 fromX = lastX;
                 fromY = lastY;
                 fromZ = lastZ;
                 travelled = d;
+            } else {
+                unitLeft = 0f;
             }
         }
         lastX = x;
@@ -515,11 +583,14 @@ public final class CgVfxEmitterInstance {
      * death kept if it spawns.
      */
     private void scheduleOne(float dt, float born) {
+        scheduleOne(dt, born, -1);
+    }
+
+    /** {@link #scheduleOne(float, float)} living the life spawn {@code lifeKey} rolls, -1 its own: a trail's first's. */
+    private void scheduleOne(float dt, float born, int lifeKey) {
         int k = spawned++;
         if (share < 1f && keyed(CgVfxGpuEmitter.KEY_THIN, k) >= share) return;
-        // A lifetime in a form is booked at its longest: the kernel alone evaluates it.
-        float life = emitter.lifeFormed ? emitter.lifeMax
-                : emitter.lifeMin + (emitter.lifeMax - emitter.lifeMin) * keyed(CgVfxGpuEmitter.KEY_LIFE, k);
+        float life = lifeOf(lifeKey < 0 ? k : lifeKey);
         // It ages the rest of this step, then a step at a time, and goes at the end of the step its age reaches its life.
         float death = time + dt * (float) Math.ceil(life / dt + born);
         lastDeath = Math.max(lastDeath, death);
@@ -527,6 +598,24 @@ public final class CgVfxEmitterInstance {
             alive++;
             dying[(int) ((long) Math.ceil((death + dt) / BUCKET) % dying.length)]++;
         }
+    }
+
+    /** The life spawn {@code k} rolls; one in a form at its longest, which the kernel alone evaluates. */
+    private float lifeOf(int k) {
+        return emitter.lifeFormed ? emitter.lifeMax
+                : emitter.lifeMin + (emitter.lifeMax - emitter.lifeMin) * keyed(CgVfxGpuEmitter.KEY_LIFE, k);
+    }
+
+    /** Its Cascade trail's spawning, null where it is no trail: its rows and kills its system hands its pool. */
+    @Nullable
+    public CgVfxTrailRows trailSource() {
+        return trail != null ? trail : anim != null ? anim : heads;
+    }
+
+    /** Its anim trail's spawning, null where it is none: its fade, which its draws read. */
+    @Nullable
+    public CgVfxAnimTrailSource animTrailSource() {
+        return anim;
     }
 
     /**
@@ -543,7 +632,9 @@ public final class CgVfxEmitterInstance {
             float age = time - loopStart, duration = loopLength;
             // A burst past the loop's end never fires; in the delay, age is negative and none does.
             while (burstsDone < bursts.length && bursts[burstsDone].time() <= Math.min(age, duration)) {
-                int fit = fit(bursts[burstsDone].count(seed, emitter.burstCountKeys[burstsDone], emitter.burstProbabilityKeys[burstsDone], loop));
+                // A Cascade trail spawns by its rate and its source's move alone (FParticleRibbonEmitterInstance::Spawn).
+                int fit = trail != null || anim != null || heads != null ? 0
+                        : fit(bursts[burstsDone].count(seed, emitter.burstCountKeys[burstsDone], emitter.burstProbabilityKeys[burstsDone], loop));
                 for (int n = 0; n < fit; n++) scheduleOne(stepDt, 0f);
                 burstsDone++;
             }
@@ -749,6 +840,20 @@ public final class CgVfxEmitterInstance {
             socketSource = source;
         }
 
+        /** What its user parameters read: its effect's values, which the effect sets each tick it steps this instance. */
+        public void values(@Nullable CgVfxValues values) {
+            userValues = values;
+        }
+
+        @Override
+        public float user(String name, int component, float fallback) {
+            CgVfxParam p = userValues == null ? null : userValues.layout().param(name);
+            if (p instanceof CgVfxParam.Scalar s) return userValues.get(s);
+            if (p instanceof CgVfxParam.Vector v) return userValues.get(v, component);
+            if (p instanceof CgVfxParam.Color c) return userValues.get(c, component);
+            return fallback;
+        }
+
         /**
          * The box of the entity its effect follows, its centre relative to the effect's origin: what an {@code entity()}
          * emitter spawns in. The effect sets it each tick it steps this instance; all 0 while it follows none.
@@ -856,14 +961,41 @@ public final class CgVfxEmitterInstance {
             float age = time - loopStart;
             stepLoopFrom = Math.max(0f, age);
             stepLoopTo = stepLoopFrom + dt;
-            if (!loopsOver && time < stoppedAt && age >= 0f && age < loopLength) {
+            boolean spawning = !loopsOver && time < stoppedAt && age >= 0f && age < loopLength;
+            if (anim != null) {
+                anim.tick(trailSpawner, dt, time, this, spawning, stepLoopFrom, stepLoopTo);
+            } else if (heads != null) {
+                heads.tick(trailSpawner, dt, time, rotX, rotY, rotZ, rotW, e.perUnit.at(Math.max(age, 0f)) * rateScale, spawning,
+                        stepLoopFrom, stepLoopTo);
+            } else if (trail != null) {
+                float u = 0f, v = 0f;
+                if (spawning && e.rate.drawn()) {
+                    v = rand(seed ^ e.rateKey, rateDraws, 1);
+                    u = rand(seed ^ e.rateKey, rateDraws++, 0);
+                }
+                float bound = e.rate.bound() == null ? 1f : e.rate.bound().value(this);
+                trail.tick(trailSpawner, dt, time, sourceX(), sourceY(), sourceZ(), rotX, rotY, rotZ, rotW,
+                        spawning ? e.rate.at(age, u, v) * bound * rateScale : 0f, e.perUnit.at(Math.max(age, 0f)) * rateScale,
+                        spawning, stepLoopFrom, stepLoopTo);
+            } else if (spawning) {
                 float u = 0f, v = 0f;
                 if (e.rate.drawn()) {
                     v = rand(seed ^ e.rateKey, rateDraws, 1);
                     u = rand(seed ^ e.rateKey, rateDraws++, 0);
                 }
                 float bound = e.rate.bound() == null ? 1f : e.rate.bound().value(this);
-                rateOwed += (e.rate.at(age, u, v) * bound * dt + e.perUnit.at(age) * travelled) * rateScale;
+                // Cascade's GetSpawnAmount: whole particles for the distance and what was carried, the carry the rest
+                // less a unit a particle; a moving step may skip the rate.
+                boolean moved = false;
+                float perBlock = e.perUnit.perBlockAt(age);
+                if (travelled > 0f && perBlock > 0f) {
+                    float total = travelled + unitLeft;
+                    int byDistance = (int) Math.floor(total * perBlock);
+                    unitLeft = Math.max(0f, total - byDistance * e.perUnit.unit());
+                    moved = travelled > e.perUnit.tolerance() * e.perUnit.unit();
+                    rateOwed += byDistance * rateScale;
+                }
+                if (!(e.perUnit.ignoreRateWhenMoving() && moved)) rateOwed += e.rate.at(age, u, v) * bound * dt * rateScale;
                 int n = (int) rateOwed;
                 rateOwed -= n;
                 // Spawn i of n is born (i + 1) / n of the way through the step, so the last is at its end.
@@ -922,6 +1054,10 @@ public final class CgVfxEmitterInstance {
             retired = -1;
             lastDeath = -1f;
             if (dying != null) Arrays.fill(dying, 0);
+            // Its trails' particles went with the slot.
+            if (trail != null) trail.reset();
+        if (anim != null) anim.reset();
+        if (heads != null) heads.reset();
             for (CgVfxEmitterInstance child : children) {
                 if (child != null) child.books.slotLost();
             }

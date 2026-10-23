@@ -39,6 +39,8 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxParticleLights;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
+import com.crystalgraphics.vfx.particle.ribbon.CgVfxRibbonGeneration;
+import com.crystalgraphics.vfx.particle.ribbon.CgVfxRibbonShape;
 import com.crystalgraphics.vfx.path.CgVfxPath;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
 import com.crystalgraphics.vfx.render.CgVfxQuads;
@@ -589,6 +591,11 @@ public final class CgVfxFrame {
                         strip(effect, emitter, rd, size, row, pool, range, slot, capacity, base, word, ox, oy, oz);
                     }
                 }
+                case RIBBON -> {
+                    strips = true;
+                    reach = Math.max(reach, size);
+                    ribbon(effect, emitter, rd, size, row, pool, range, slot, ox, oy, oz);
+                }
                 case MESHES -> {
                     if (!rd.unsorted && blendsInOrder(rd.material)) range.sorted(slot, rd.sort);
                     // One record set for every layer: the cull stamps each draw's customs and scale onto it, leaving
@@ -717,7 +724,9 @@ public final class CgVfxFrame {
                 beam(rs, placed, r, beam, tenant);
             } else if (renderer instanceof CgVfxRibbonRendererProperties ribbon) {
                 requireRenderer(renderer, def, CgVfxDrawLayout.QUADS);
-                strip(rs, placed, r, false, ribbon.subSegments(), tenant, renderer);
+                Renderer rd = rs.next(Shape.RIBBON, placed, r, materials.material(r, CgVfxSlot.Kind.PARTICLES));
+                rd.ribbon = ribbon;
+                rd.ribbonShape = CgVfxRibbonShape.of(ribbon);
             } else if (renderer instanceof CgVfxMeshRendererProperties m) {
                 requireRenderer(renderer, def, CgVfxDrawLayout.MESHES);
                 if (m.prefab() != null || m.meshBinding() != null || m.meshes().size() > 1) {
@@ -876,7 +885,7 @@ public final class CgVfxFrame {
     }
 
     /** How a renderer draws its slot. */
-    private enum Shape { MERGED, SINGLE, STRIP, MESHES, SEQUENCE, LIGHT }
+    private enum Shape { MERGED, SINGLE, STRIP, RIBBON, MESHES, SEQUENCE, LIGHT }
 
     /**
      * An emitter instance's renderers, kept on its tenancy from its first drawn frame until its slot closes: Niagara's
@@ -951,6 +960,9 @@ public final class CgVfxFrame {
         /** {@code STRIP}, a beam: its renderer, its flags (1 noise on the target, 2 one up, 4 tiles by distance), its noise's frequency. */
         CgVfxBeamRendererProperties beam;
         int beamFlags, beamFrequency;
+        /** {@code RIBBON}: its renderer and cross section. */
+        CgVfxRibbonRendererProperties ribbon;
+        CgVfxRibbonShape ribbonShape;
         /** {@code SEQUENCE}: its node, and how far the clip carries its part from its particle, a size's worth. */
         int node;
         float carried;
@@ -1003,6 +1015,38 @@ public final class CgVfxFrame {
                 .custom(0, base, capacity, size, sheets)
                 .custom(1, pool.beamFirst(slot), capacity, pool.beamRunVectors(), pool.shape().beamPoints())
                 .custom(2, b.interpolationPoints(), rd.beamFlags, tiles, rd.beamFrequency)
+                .custom(3, row, effect.age, effect.seed, effect.presence());
+        CgVfxSystem.place(draw, rd.placed, effect).submit();
+    }
+
+    /**
+     * One ribbon layer's draw of {@code slot}: the pool's ribbons generated on the GPU this frame
+     * ({@code CgVfxRibbonGeneration}), placed by {@code particle_factory.glsl}'s ribbon factory from the run at
+     * {@code PARTICLE_BEAMS}, its vertices counted by the generation. Its customs are the factory's ({@code _cg_ribbon}).
+     */
+    private void ribbon(CgVfxEffect<?> effect, CgVfxEmitterInstance instance, Renderer rd, float size, int row,
+                        CgVfxParticlePool pool, CgVfxRange range, int slot, double ox, double oy, double oz) {
+        CgVfxRibbonGeneration ribbons = CgVfxRibbonGeneration.of(pool).ribbon(slot, rd.ribbon);
+        CgVfxRibbonRendererProperties b = rd.ribbon;
+        CgVfxRibbonShape shape = rd.ribbonShape;
+        if (b.anim() != null && instance.animTrailSource() != null) {
+            ribbons.fade(slot, instance.animTrailSource().fadeAlpha(), instance.animTrailSource().fadeWidth());
+        }
+        int mode = (b.trail() != null || b.anim() != null ? 1 : 0) | (shape.flipToView() ? 2 : 0) | b.uv0().distribution().ordinal() << 2
+                | b.uv1().distribution().ordinal() << 4
+                | (b.trail() != null && b.trail().renderAxis() != CgVfxRibbonRendererProperties.RenderAxis.CAMERA_UP ? 64 : 0)
+                | (b.trail() != null && b.trail().tilingDistance() > 0f || b.anim() != null && b.anim().tilingDistance() > 0f ? 128 : 0)
+                | (b.anim() != null ? 256 : 0);
+        CgWorldRenderer.Draw draw = world.draw(CgMesh.vertices(sizeClass(ribbons.vertices(slot, b), 1), CgMeshTopology.TRIANGLES),
+                        rd.material)
+                .buffer(CgBindingPoints.PARTICLES, pool.drawn()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
+                .buffer(CgBindingPoints.PARTICLE_BEAMS, ribbons.run())
+                .indirect(ribbons.args(), ribbons.argsWord(slot), CgIndirect.VERTICES, 1)
+                .gpuCulled()
+                .at(ox, oy, oz)
+                .custom(0, range.laidBase(slot) - pool.listBase(slot), ribbons.slotRecord(slot), size, -1f - mode)
+                .custom(1, shape.code(), shape.segments(), shape.planes(), shape.edges())
+                .custom(2, b.uv0().scaleV(), b.uv0().offsetV(), b.uv1().scaleV(), b.uv1().offsetV())
                 .custom(3, row, effect.age, effect.seed, effect.presence());
         CgVfxSystem.place(draw, rd.placed, effect).submit();
     }

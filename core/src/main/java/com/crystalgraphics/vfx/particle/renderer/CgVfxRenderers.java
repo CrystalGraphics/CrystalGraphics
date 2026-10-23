@@ -12,6 +12,7 @@ import com.crystalgraphics.vfx.look.CgVfxParam;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -93,12 +94,7 @@ public final class CgVfxRenderers {
                     Boolean.TRUE.equals(tree.get("cast_shadows")),
                     tree.get("soft_depth") instanceof Number n ? n.floatValue() : Float.NaN);
             case "mesh" -> mesh(who, common, tree, deps);
-            case "ribbon" -> new CgVfxRibbonRendererProperties(common, tree,
-                    choice(who, tree, "facing", CgVfxRibbonRendererProperties.Facing.class, "screen"),
-                    choice(who, tree, "shape", CgVfxRibbonRendererProperties.Shape.class, "plane"),
-                    integer(tree.get("width_segments")), integer(tree.get("max_ribbons")), map(tree.get("uv0")),
-                    map(tree.get("uv1")), map(tree.get("tessellation")), Boolean.TRUE.equals(tree.get("link_order_by_id")),
-                    integer(tree.get("max_link_gap")));
+            case "ribbon" -> ribbon(who, common, tree);
             case "arc" -> new CgVfxArcRendererProperties(common, tree, integer(tree.get("subdivisions")));
             case "trails" -> {
                 int points = tree.get("points") instanceof Number n ? n.intValue() : 8;
@@ -112,7 +108,7 @@ public final class CgVfxRenderers {
                         tree.get("play_rate") instanceof Number n ? n.floatValue() : 1f);
             }
             case "system" -> throw new IllegalArgumentException(who + ": a system renderer places analytic emitters, which are not built yet");
-            case "anim_trail" -> throw new IllegalArgumentException(who + ": an anim trail renderer is not built yet");
+            case "anim_trail" -> animTrail(who, common, tree);
             case "beam" -> beam(who, common, tree);
             case "light" -> new CgVfxLightRendererProperties(common, tree, !Boolean.FALSE.equals(tree.get("inverse_squared_falloff")),
                     tree.get("intensity_scale") instanceof Number n ? n.floatValue() : 1f, tree.get("spawn_fraction") instanceof Number n ? n.floatValue() : 1f,
@@ -140,19 +136,133 @@ public final class CgVfxRenderers {
         return CgMaterialUsage.SPRITES;
     }
 
-    /**
-     * What of a ribbon's tessellation is not built, null for none: Niagara's adaptive factor by angle and curvature
-     * ({@code custom} at an angle, which a GPU ribbon's segments cannot measure on the CPU) and its curve tension.
-     */
-    @Nullable
-    private static String tessellation(Map<String, Object> t) {
-        String mode = String.valueOf(t.getOrDefault("mode", "automatic"));
-        if (!List.of("automatic", "custom", "disabled").contains(mode)) return "tessellation mode " + mode;
-        if (t.get("tension") instanceof Number n && n.floatValue() != 0f) return "tessellation tension";
-        if (mode.equals("custom") && t.get("angle") instanceof Number n && n.floatValue() != 0f) {
-            return "a tessellation angle (an adaptive factor)";
+    private static CgVfxRibbonRendererProperties ribbon(String who, Common common, Map<String, Object> tree) {
+        Map<String, Object> t = fields(tree.get("tessellation"));
+        CgVfxRibbonRendererProperties.Tessellation d = CgVfxRibbonRendererProperties.Tessellation.DEFAULT;
+        float angle = t.get("angle") instanceof Number n ? n.floatValue() : 15f;
+        // InitializeTessellation: an angle under a degree is a degree.
+        if (angle > 0f && angle < 1f) angle = 1f;
+        CgVfxRibbonRendererProperties.Tessellation tessellation = new CgVfxRibbonRendererProperties.Tessellation(
+                choice(who, t, "mode", CgVfxRibbonRendererProperties.TessellationMode.class, "automatic"),
+                t.get("factor") instanceof Number n ? n.intValue() : d.factor(), (float) Math.toRadians(angle),
+                d.constant(), d.screenSpace(), t.get("tension") instanceof Number n ? n.floatValue() : 0f);
+        int widthSegments = tree.get("width_segments") instanceof Number n ? n.intValue() : 1;
+        if (widthSegments < 1) throw new IllegalArgumentException(who + " has " + widthSegments + " width segments");
+        return new CgVfxRibbonRendererProperties(common, tree,
+                choice(who, tree, "facing", CgVfxRibbonRendererProperties.Facing.class, "screen"),
+                choice(who, tree, "shape", CgVfxRibbonRendererProperties.Shape.class, "plane"),
+                widthSegments, integer(tree.get("max_ribbons")), uv(who, fields(tree.get("uv0"))), uv(who, fields(tree.get("uv1"))),
+                tessellation, Boolean.TRUE.equals(tree.get("link_order_by_id")), integer(tree.get("max_link_gap")),
+                tree.get("trail") instanceof Map<?, ?> trail ? trail(who, copy(trail)) : null, null);
+    }
+
+    // UParticleModuleTypeDataAnimTrail's defaults (ParticleTrailModules.cpp:243-251), its 10 Unreal units in blocks.
+    private static CgVfxRibbonRendererProperties animTrail(String who, Common common, Map<String, Object> tree) {
+        if (!(tree.get("edge") instanceof List<?> edge) || edge.size() != 2) throw new IllegalArgumentException(who + " names no edge of two points");
+        String[] points = new String[2];
+        for (int i = 0; i < 2; i++) {
+            if (!(edge.get(i) instanceof String s) || !s.startsWith("user.")) {
+                throw new IllegalArgumentException(who + ".edge " + edge.get(i) + " is no user parameter");
+            }
+            points[i] = s.substring("user.".length());
         }
-        return null;
+        Map<String, Object> t = fields(tree.get("tessellation")), tangents = fields(tree.get("tangents"));
+        float angle = t.get("angle") instanceof Number n ? n.floatValue() : 0f;
+        int retract = 0;
+        float fadeAlpha = 0f, fadeWidth = 0f;
+        Object stop = tree.get("stop");
+        if (stop instanceof Map<?, ?> s) {
+            retract = s.get("retract") instanceof Number n ? Math.round(n.floatValue()) : 0;
+            Map<String, Object> fade = fields(s.get("fade"));
+            fadeAlpha = fade.get("alpha") instanceof Number n ? n.floatValue() : 0f;
+            fadeWidth = fade.get("width") instanceof Number n ? n.floatValue() : 0f;
+        } else if (stop != null && !"dead_on_deactivate".equals(stop)) {
+            throw new IllegalArgumentException(who + ".stop " + stop + ": dead_on_deactivate or a retract");
+        }
+        CgVfxRibbonRendererProperties.AnimTrail anim = new CgVfxRibbonRendererProperties.AnimTrail(points[0], points[1],
+                choice(who, tree, "width_mode", CgVfxRibbonRendererProperties.WidthMode.class, "centre"),
+                integer(tree.get("life")), t.get("distance") instanceof Number n ? n.floatValue() : 0.1f,
+                (angle % 180f) / 180f, t.get("width") instanceof Number n ? n.floatValue() : 0f, integer(t.get("max")),
+                !Boolean.FALSE.equals(tangents.get("recalculate_previous")), Boolean.TRUE.equals(tangents.get("every_frame")),
+                along(who, "width", tree.get("width"), 1, new float[] {1f}),
+                along(who, "colour", tree.get("colour"), 4, new float[] {1f, 1f, 1f, 1f}),
+                tree.get("tiling_distance") instanceof Number n ? n.floatValue() : 0f, retract, fadeAlpha, fadeWidth);
+        return new CgVfxRibbonRendererProperties(common, tree, CgVfxRibbonRendererProperties.Facing.SCREEN,
+                CgVfxRibbonRendererProperties.Shape.PLANE, 1, 0, uv(who, fields(tree.get("uv0"))),
+                CgVfxRibbonRendererProperties.Uv.DEFAULT, CgVfxRibbonRendererProperties.Tessellation.DEFAULT, false, 0, null, anim);
+    }
+
+    /** An anim trail's width or colour: a constant, or keys {@code by: length}, newest 0 to oldest 1. */
+    private static CgVfxRibbonRendererProperties.Along along(String who, String field, @Nullable Object value, int components,
+                                                             float[] fallback) {
+        if (value == null) return CgVfxRibbonRendererProperties.Along.constant(fallback);
+        if (value instanceof Number n) return CgVfxRibbonRendererProperties.Along.constant(n.floatValue());
+        if (value instanceof List<?>) return CgVfxRibbonRendererProperties.Along.constant(channels(who, field, value, components));
+        if (!(value instanceof Map<?, ?> m) || !"length".equals(m.get("by"))) {
+            throw new IllegalArgumentException(who + "." + field + " " + value + ": a value or keys by length");
+        }
+        Map<String, Object> form = fields(m.get(components == 1 ? "curve" : "gradient"));
+        if (!(form.get("keys") instanceof List<?> keys) || keys.isEmpty()) throw new IllegalArgumentException(who + "." + field + " has no keys");
+        if (keys.size() > CgVfxRibbonRendererProperties.Along.MAX_KEYS) {
+            throw new IllegalArgumentException(who + "." + field + " has " + keys.size() + " keys; an anim trail holds "
+                    + CgVfxRibbonRendererProperties.Along.MAX_KEYS);
+        }
+        float[] times = new float[keys.size()], values = new float[keys.size() * components];
+        for (int i = 0; i < keys.size(); i++) {
+            if (!(keys.get(i) instanceof List<?> key) || key.size() != 2 || !(key.get(0) instanceof Number at)) {
+                throw new IllegalArgumentException(who + "." + field + " key " + keys.get(i) + " is no [time, value]");
+            }
+            times[i] = at.floatValue();
+            float[] v = components == 1 && key.get(1) instanceof Number n ? new float[] {n.floatValue()} : channels(who, field, key.get(1), components);
+            System.arraycopy(v, 0, values, i * components, components);
+        }
+        return new CgVfxRibbonRendererProperties.Along(times, values, components);
+    }
+
+    /** A colour of three or four channels, alpha 1 where it has three. */
+    private static float[] channels(String who, String field, Object value, int components) {
+        if (!(value instanceof List<?> list) || list.size() < Math.min(components, 3) || list.size() > components) {
+            throw new IllegalArgumentException(who + "." + field + " " + value + " is no " + components + "-channel value");
+        }
+        float[] out = new float[components];
+        Arrays.fill(out, 1f);
+        for (int i = 0; i < list.size(); i++) out[i] = ((Number) list.get(i)).floatValue();
+        return out;
+    }
+
+    /** A struct field's entries, none where it is absent. */
+    private static Map<String, Object> fields(@Nullable Object value) {
+        return value instanceof Map<?, ?> m ? copy(m) : Map.of();
+    }
+
+    private static CgVfxRibbonRendererProperties.Uv uv(String who, Map<String, Object> u) {
+        CgVfxRibbonRendererProperties.Uv d = CgVfxRibbonRendererProperties.Uv.DEFAULT;
+        float[] offset = u.get("offset") != null ? vector(who, "offset", u.get("offset"), 2) : new float[] {d.offsetU(), d.offsetV()};
+        float[] scale = u.get("scale") != null ? vector(who, "scale", u.get("scale"), 2) : new float[] {d.scaleU(), d.scaleV()};
+        return new CgVfxRibbonRendererProperties.Uv(
+                choice(who, u, "distribution", CgVfxRibbonRendererProperties.Distribution.class, "scaled_using_ribbon_segment_length"),
+                choice(who, u, "leading_edge", CgVfxRibbonRendererProperties.Edge.class, "locked"),
+                choice(who, u, "trailing_edge", CgVfxRibbonRendererProperties.Edge.class, "locked"),
+                u.get("tiling_length") instanceof Number n ? n.floatValue() : d.tilingLength(), offset[0], offset[1], scale[0], scale[1]);
+    }
+
+    // UParticleModuleTypeDataRibbon's defaults, its 15 Unreal units of distance step in blocks.
+    private static CgVfxRibbonRendererProperties.Trail trail(String who, Map<String, Object> t) {
+        Map<String, Object> tess = fields(t.get("tessellation")), tangents = fields(t.get("tangents"));
+        return new CgVfxRibbonRendererProperties.Trail(
+                t.get("max_trails") instanceof Number n ? n.intValue() : 1,
+                t.get("max_particles") instanceof Number n ? n.intValue() : 500,
+                t.get("sheets") instanceof Number n ? n.intValue() : 1,
+                choice(who, t, "render_axis", CgVfxRibbonRendererProperties.RenderAxis.class, "camera_up"),
+                tess.get("distance") instanceof Number n ? n.floatValue() : 0.15f,
+                tess.get("max") instanceof Number n ? n.intValue() : 25,
+                tess.get("tangent_scale") instanceof Number n ? n.floatValue() : 5f,
+                Boolean.TRUE.equals(tess.get("tangent_interp")),
+                !Boolean.FALSE.equals(tangents.get("recalculate_previous")), Boolean.TRUE.equals(tangents.get("every_frame")),
+                t.get("tangent_spawn_scale") instanceof Number n ? n.floatValue() : 0f,
+                Boolean.TRUE.equals(t.get("spawn_initial_particle")), !Boolean.FALSE.equals(t.get("clip_source_segment")),
+                !Boolean.FALSE.equals(t.get("dead_on_deactivate")), !Boolean.FALSE.equals(t.get("dead_on_source_loss")),
+                t.get("tiling_distance") instanceof Number n ? n.floatValue() : 0f);
     }
 
     /** Fails naming {@code who}'s first field the engine does not draw yet, rather than play it as something else. */
@@ -174,12 +284,10 @@ public final class CgVfxRenderers {
             else if (m.cameraDistance() != null) unbuilt = "camera_distance";
             else if (m.castShadows()) unbuilt = "cast_shadows";
         } else if (r instanceof CgVfxRibbonRendererProperties b) {
+            // Custom facing reads a facing particles carry no attribute for; a custom shape has no vertices to read.
             if (b.facing() != CgVfxRibbonRendererProperties.Facing.SCREEN) unbuilt = "facing " + b.facing();
-            else if (b.shape() != CgVfxRibbonRendererProperties.Shape.PLANE) unbuilt = "shape " + b.shape();
-            else if (b.widthSegments() != 0 || b.maxRibbons() != 0 || b.maxLinkGap() != 0) unbuilt = "width_segments, max_ribbons or max_link_gap";
-            else if (b.uv0() != null || b.uv1() != null) unbuilt = "uv0 or uv1";
-            else if (b.tessellation() != null) unbuilt = tessellation(b.tessellation());
-            else if (b.linkOrderById()) unbuilt = "link_order_by_id";
+            else if (b.shape() == CgVfxRibbonRendererProperties.Shape.CUSTOM) unbuilt = "shape custom";
+            else if (b.maxRibbons() != 0) unbuilt = "max_ribbons";
         } else if (r instanceof CgVfxTrailsRendererProperties t) {
             if (t.taper() != 1f) unbuilt = "taper";
         } else if (r instanceof CgVfxArcRendererProperties a) {
@@ -396,6 +504,14 @@ public final class CgVfxRenderers {
     /** A light renderer of id {@code id}: its particles need a light_attributes module. */
     public static Builder light(String id) {
         return new Builder(id, "light");
+    }
+
+    /**
+     * An anim trail renderer of id {@code id}: a strip swept by the edge between user parameters {@code first} and
+     * {@code second}, points from its effect's origin, which the effect sets each tick.
+     */
+    public static Builder animTrail(String id, String first, String second) {
+        return new Builder(id, "anim_trail").field("edge", List.of("user." + first, "user." + second));
     }
 
     /** A trails renderer of id {@code id}. */

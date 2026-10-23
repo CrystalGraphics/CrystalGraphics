@@ -26,6 +26,7 @@ import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
+import com.crystalgraphics.vfx.particle.ribbon.CgVfxRibbonGeneration;
 import com.crystalgraphics.render.world.CgWorldVoxelWindow;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshFacing;
@@ -225,6 +226,7 @@ public final class CgVfxRange {
     private static final CgLifecycleListener CONTEXT = new CgLifecycleListener() {
         @Override
         public void onDestroy() {
+            CgVfxRibbonGeneration.forgetAll();
             RETIRED.clear();
             drawn = visible = slots = bases = objects = sorts = origins = null;
         }
@@ -505,6 +507,7 @@ public final class CgVfxRange {
             if (range.pool.isReleased()) {
                 RANGES.remove(range.pool);
                 ALL.remove(i);
+                CgVfxRibbonGeneration.release(range.pool, frame.recording());
             }
         }
         if (ALL.isEmpty()) {
@@ -553,12 +556,26 @@ public final class CgVfxRange {
             if (keyed(p)) keys = align(keys, KEY_ALIGN) + p.storage();
         }
         if (keys == 0) {
+            for (int i = 0; i < ALL.size(); i++) {
+                CgVfxRibbonGeneration ribbons = CgVfxRibbonGeneration.existing(ALL.get(i).pool);
+                if (ribbons != null) ribbons.skip(recording);
+            }
             recording.fill(visible, 0);
             visibleCount = 0;
             clearSorted();
             return;
         }
         uploadSlots(recording, view, allSlots);
+        for (int i = 0, slotFirst = 0; i < ALL.size(); i++) {
+            CgVfxParticlePool p = ALL.get(i).pool;
+            if (p.isReleased()) continue;
+            CgVfxRibbonGeneration ribbons = CgVfxRibbonGeneration.existing(p);
+            if (ribbons != null) {
+                if (keyed(p)) ribbons.upload(recording, view, slotFirst);
+                else ribbons.skip(recording);
+            }
+            slotFirst += p.slotCount();
+        }
         CgWorldVoxelWindow window = CgWorldVoxelWindow.get().use();
         VIEW_PROJECTION.set(view.projection()).mul(view.view());
         CgCompute kernels = CgCompute.load(KERNELS);
@@ -635,6 +652,9 @@ public final class CgVfxRange {
                             .set("_CamUp", eye.m01(), eye.m11(), eye.m21(), 0f));
                 }
             }
+            // Its ribbons, from the order Place just wrote (CgVfxRibbonGeneration).
+            CgVfxRibbonGeneration ribbons = keyed(p) && capacity > 0 ? CgVfxRibbonGeneration.existing(p) : null;
+            if (ribbons != null) ribbons.dispatch(pass, drawn, (long) drawnFirst * DRAWN_BYTES, visible);
             drawnFirst += align(capacity, RECORD_ALIGN);
             slotFirst += p.slotCount();
         }

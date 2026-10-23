@@ -10,6 +10,9 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
+import com.crystalgraphics.vfx.particle.ribbon.CgVfxTrailHeads;
+import com.crystalgraphics.vfx.particle.ribbon.CgVfxTrailRows;
+import com.crystalgraphics.vfx.particle.ribbon.CgVfxTrailSource;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxInactiveResponse;
 
 import javax.annotation.Nullable;
@@ -71,6 +74,56 @@ final class CgVfxGpuSteps {
         float stepTime;
         /** Its rotation's change over this frame's ticks, a quaternion: what a local slot's live particles turn by. */
         float turnX, turnY, turnZ, turnW;
+        /** A trail's rows over this frame's ticks: each one's first spawn, candidates and offset into the step, then its words. */
+        private int[] trailFirst = new int[0], trailCount = new int[0], trailWords = new int[0], trailRefits = new int[0];
+        private float[] trailAt = new float[0];
+        private int trailRows, trailRefitCount;
+
+        /** Keeps a trail's tick, born from {@code at} seconds into the frame's step. */
+        private void keepTrail(CgVfxTrailRows source, float at) {
+            int rows = source.rows(), w = CgVfxTrailSource.ROW_WORDS;
+            if (source instanceof CgVfxTrailHeads && trailRows > 0) {
+                // One pool step a frame, so one head a trail: its first tick's time and spawn indices, all its ticks'
+                // seconds, its last tick's spawning.
+                int[] words = source.rowWords();
+                for (int r = 0; r < rows; r++) {
+                    int o = r * w;
+                    trailWords[o + 3] = Float.floatToRawIntBits(Float.intBitsToFloat(trailWords[o + 3]) + Float.intBitsToFloat(words[o + 3]));
+                    trailWords[o + 1] = words[o + 1];
+                    System.arraycopy(words, o + 8, trailWords, o + 8, 3);
+                    trailWords[o + 13] = words[o + 13];
+                }
+                return;
+            }
+            if (trailFirst.length < trailRows + rows) {
+                int n = Math.max(8, (trailRows + rows) * 2);
+                trailFirst = Arrays.copyOf(trailFirst, n);
+                trailCount = Arrays.copyOf(trailCount, n);
+                trailAt = Arrays.copyOf(trailAt, n);
+                trailWords = Arrays.copyOf(trailWords, n * w);
+            }
+            for (int r = 0; r < rows; r++, trailRows++) {
+                trailFirst[trailRows] = source.rowFirst(r);
+                trailCount[trailRows] = source.rowCount(r);
+                trailAt[trailRows] = at;
+            }
+            System.arraycopy(source.rowWords(), 0, trailWords, (trailRows - rows) * w, rows * w);
+            int refits = source.refits() * CgVfxTrailSource.REFIT_WORDS, used = trailRefitCount * CgVfxTrailSource.REFIT_WORDS;
+            if (trailRefits.length < used + refits) trailRefits = Arrays.copyOf(trailRefits, Math.max(64, (used + refits) * 2));
+            System.arraycopy(source.refitWords(), 0, trailRefits, used, refits);
+            trailRefitCount += source.refits();
+        }
+
+        /** Hands its pool the frame's trail rows, then its kills and refits; after its instance row. */
+        private void flushTrail(CgVfxTrailRows source, boolean live) {
+            if (live) {
+                for (int r = 0; r < trailRows; r++) {
+                    pool.spawnTrail(slot, trailFirst[r], trailCount[r], trailWords, r * CgVfxTrailSource.ROW_WORDS, trailAt[r]);
+                }
+                pool.trailTable(slot, source.minIds(), source.trails(), trailRefits, trailRefitCount);
+            }
+            trailRows = trailRefitCount = 0;
+        }
 
         private void open(CgVfxEmitterInstance instance, CgVfxParticlePool pool, int slot, Tenant parent,
                           @Nullable CgVfxEffect<?> effect) {
@@ -81,6 +134,7 @@ final class CgVfxGpuSteps {
             this.effect = effect;
             timeAfter = instance.books().stepTime();
             warm = killed = false;
+            trailRows = trailRefitCount = 0;
             stepTime = Float.NaN;
             turnX = turnY = turnZ = 0f;
             turnW = 1f;
@@ -359,8 +413,13 @@ final class CgVfxGpuSteps {
             tenant.timeAfter = instance.time();
             if (Float.isNaN(tenant.stepTime)) tenant.stepTime = began;
             turn(tenant, instance.books());
-            // A fed slot spawns only what its parent's events spawn.
-            if (tenant.parent == null && instance.books().stepCandidates() > 0) keep(tenant, at);
+            // A fed slot spawns only what its parent's events spawn; a trail its source's rows.
+            CgVfxTrailRows trail = instance.trailSource();
+            if (trail != null) {
+                tenant.keepTrail(trail, at);
+            } else if (tenant.parent == null && instance.books().stepCandidates() > 0) {
+                keep(tenant, at);
+            }
         }
     }
 
@@ -422,6 +481,8 @@ final class CgVfxGpuSteps {
             tenant.stepTime = Float.NaN;
             tenant.turnX = tenant.turnY = tenant.turnZ = 0f;
             tenant.turnW = 1f;
+            CgVfxTrailRows trail = instance.trailSource();
+            if (trail != null) tenant.flushTrail(trail, !tenant.killed);
         }
         view.of = null;
         view.tenant = null;

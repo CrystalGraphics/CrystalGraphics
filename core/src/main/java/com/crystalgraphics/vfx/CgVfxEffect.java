@@ -1127,6 +1127,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
                     Math.min(CgVfxTiles.TILE * painted.cellSize(), emitter.emitter().reach(0f)));
         }
         if (system == null) {
+            emitter.books().values(values);
             emitter.books().schedule(dt, originX, originY, originZ);
             return;
         }
@@ -1169,6 +1170,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
                     followHalfX, followHalfY, followHalfZ);
             emitter.books().orientation(orientation.x, orientation.y, orientation.z, orientation.w);
             emitter.books().sockets(sockets);
+            emitter.books().values(values);
             emitter.books().schedule(dueDts[i], originX, originY, originZ);
             // Not started, it booked nothing and needs no slot.
             if (fresh && emitter.books().scheduled()) {

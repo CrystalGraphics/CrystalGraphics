@@ -93,6 +93,8 @@ public final class CgVfxShape {
     private final int beamPoints, beamNoiseAt;
     /** Whether a kind of it takes {@code CgVfxDataInterfaces.BEAM}: its particles are beams, each keeping a run. */
     private final boolean beams;
+    /** Whether its particles are a Cascade trail's ({@code CgVfxRibbonRendererProperties.trail}), keeping its payload. */
+    private final boolean trails;
     /** Every data interface it takes, its kinds' and what they require, in registration order; where each one's lanes start. */
     private final CgVfxDataInterface[] interfaces;
     private final List<CgVfxDataInterface> interfaceList;
@@ -223,6 +225,8 @@ public final class CgVfxShape {
         beamNoiseAt = noiseAt;
         beams = beam;
         if (beams) key.append("|beam:").append(beamPoints);
+        trails = emitter.cascadeTrail();
+        if (trails) key.append("|trail");
         lifeRolls = emitter.lifeRolls().size();
         int rollVectors = 0;
         StringBuilder rollKey = new StringBuilder();
@@ -431,7 +435,8 @@ public final class CgVfxShape {
                 throw new IllegalArgumentException(emitter.name() + " is born on its own particles, which it does not publish");
             }
             key.append("|reads:").append(spawnFrom.selection()).append(spawnFrom.placeAfter() ? ":after" : "")
-                    .append(spawnFrom.follow() ? ":follow" : "").append(spawnFrom.itself() ? ":itself" : "");
+                    .append(spawnFrom.follow() ? ":follow" : "").append(spawnFrom.itself() ? ":itself" : "")
+                    .append(spawnFrom.trails() ? ":trails" : "");
         }
         publishes = emitter.publishes();
         if (publishes && tier == TIERS - 1) {
@@ -445,6 +450,11 @@ public final class CgVfxShape {
     @Nullable
     public CgVfxSpawnFrom spawnFrom() {
         return spawnFrom;
+    }
+
+    /** Whether its trails follow another emitter's particles: its heads are worked out on the GPU ({@code CgVfxTrailHeads}). */
+    public boolean heads() {
+        return spawnFrom != null && spawnFrom.trails();
     }
 
     /** Whether its steps publish its live particles, a slot at a time, for the tier after to be born on. */
@@ -690,6 +700,11 @@ public final class CgVfxShape {
     /** Whether its particles are beams ({@code CgVfxModule.BeamSource} and the rest), each keeping a run in its pool. */
     public boolean beams() {
         return beams;
+    }
+
+    /** Whether its particles are a Cascade trail's: born by its trail source, keeping the trail payload. */
+    public boolean trails() {
+        return trails;
     }
 
     /** Noise points each beam of it keeps (a power of two), 0 without beam noise. */

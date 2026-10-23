@@ -139,6 +139,24 @@ public interface CgVfxGpuEmitter {
     }
 
     /**
+     * Whether its particles are a Cascade ribbon trail's (a ribbon renderer with a {@code trail}): born by its trail
+     * source ({@code CgVfxTrailSource}), each keeping its tangent, up, trail and distance.
+     */
+    default boolean cascadeTrail() {
+        return false;
+    }
+
+    /** The trails a slot's heads keep where its trails follow another emitter's particles, else 0. */
+    default int headTrails() {
+        return 0;
+    }
+
+    /** The spawns a head's ring keeps: a step's each, as many steps as its particles live and two more. */
+    default int headBlocks() {
+        return 1;
+    }
+
+    /**
      * The density each particle holds at its middle in the four channels of its instance's grid, drawn there each frame
      * where the particle is drawn; null for none. The array itself, read every frame: never written.
      */

@@ -40,6 +40,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventRows;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
+import com.crystalgraphics.vfx.particle.ribbon.CgVfxTrailHeads;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
@@ -124,7 +125,7 @@ public final class CgVfxParticlePool {
      * end, its loop's seconds then)}. The born window is seconds into the step: a row is one CPU tick's spawns, its bursts
      * born at its start and the rest spread across it.
      */
-    public static final int SPAWN_ROW_WORDS = 16;
+    public static final int SPAWN_ROW_WORDS = 36;
     /** Seconds of particle time between two trail points: trails sample by time, whatever the frame rate. */
     public static final float TRAIL_INTERVAL = 1f / 60f;
 
@@ -345,6 +346,19 @@ public final class CgVfxParticlePool {
     /** {@link #SPAWN_ROW_WORDS} a spawn row. */
     private int[] spawns = new int[0];
     private int spawnEnd;
+    /** A trail shape's table a step (CgVfxTrailSource): a header a slot, then each trail slot's kills and refits. */
+    private int[] trailWords = new int[0], stepTrailAt = new int[0];
+    private int trailEnd;
+    private CgGraphBuffer trailBuffer;
+    /**
+     * Particle-sourced trails' heads ({@code CgVfxTrailHeads}): slot {@code s}'s trail {@code t} at head
+     * {@code s * headStride + t}, each {@link #headVecs()} vec4s; made again, zeroed, where a slot outgrows them.
+     */
+    private CgGraphBuffer headBuffer;
+    private CgKernel headsKernel;
+    private int headStride = 1, headBlocks = 1, headClearCount, headListCount;
+    private boolean headsStale = true;
+    private int[] headClears = new int[4], headList = new int[16], stepHeadListAt = new int[0], stepHeads = new int[0];
 
     // The GPU half: made at the first recording, grown as slots open.
     private CgKernel step, look, store, gridKeys, gridRuns;
@@ -568,7 +582,8 @@ public final class CgVfxParticlePool {
 
     private void forgetStorage() {
         records = drawn = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = feedBuffer = counts[0] = counts[1] = null;
-        history = ringTable = historyFrom = lightSlots = null;
+        history = ringTable = historyFrom = lightSlots = trailBuffer = headBuffer = null;
+        headsStale = true;
         cellKeys = cellValues = cellRuns = null;
         if (beams != null) beams.forget();
         historyDrops.clear();
@@ -1031,6 +1046,20 @@ public final class CgVfxParticlePool {
 
     /** Step {@code s}'s dispatch, its children read from {@code spawnRows} rows of the tier before when its parents stepped. */
     private void dispatchStep(CgComputePass pass, int s, int spawnRows, int reportRows) {
+        if (stepHeads[s] > 0) {
+            // Each particle-sourced trail's head first: what the Step spawns, kills and refits.
+            if (headsKernel == null) headsKernel = CgVfxEmitterCompiler.compile(shape).kernel("Heads");
+            int from = shape.tier() - 1;
+            boolean published = BIN_SLOTS[from] > 0;
+            pass.dispatch(headsKernel, stepHeads[s]).bind("SPAWNS", spawnBuffer).bind("TRAILS", trailBuffer)
+                    .bind("HEADS", headBuffer).bind("INSTANCES", instanceBuffer).bind("PARAMS", paramBuffer)
+                    .bind("READS", readsBuffer).bind("SOURCE_ROWS", published ? BIN_SORTED[from] : unfed)
+                    .bind("SOURCE_RUNS", published ? BIN_RUNS[from] : unfed)
+                    .bind("SOURCE_DIRECT", published ? BIN_DIRECT[from] : unfed)
+                    .bind("SOURCE_SLOTS", published ? BIN_DIRECT_SLOTS[from] : unfed)
+                    .set("_InstanceAt", stepInstanceAt[s] / 4).set("_HeadListAt", stepHeadListAt[s])
+                    .set("_HeadVecs", headVecs()).set("_HeadBlocks", headBlocks);
+        }
         CgGraphBuffer next = counts[1 - current];
         boolean children = feeds > 0 && spawnRows > 0;
         int live = Math.min(storage, stepCapacity[s]);
@@ -1042,6 +1071,8 @@ public final class CgVfxParticlePool {
                 .set("_SpawnRows", stepSpawnRows[s]).set("_Spawned", stepSpawned[s]).set("_PoolId", id)
                 .set("_ChildRows", children ? spawnRows : 0).set("_ChildMax", children ? childMax : 0)
                 .set("_Feeds", children ? feeds : 0);
+        if (shape.trails()) stepping.bind("TRAILS", trailBuffer).set("_TrailAt", stepTrailAt[s] / 4);
+        if (shape.heads()) stepping.bind("HEADS", headBuffer).set("_HeadVecs", headVecs());
         int tier = shape.tier();
         if (shape.spawns()) {
             stepping.bind("SPAWN_EVENTS", SPAWN_STREAMS[tier]).counter("SPAWN_EVENTS", SPAWN_COUNTS[tier], 0)
@@ -1068,7 +1099,7 @@ public final class CgVfxParticlePool {
             stepping.bind("SOURCE_ROWS", published ? BIN_SORTED[from] : unfed)
                     .bind("SOURCE_RUNS", published ? BIN_RUNS[from] : unfed).bind("READS", readsBuffer);
             if (shape.spawnFrom().itself()) stepping.set("_StepIndex", s);
-            if (shape.spawnFrom().follow()) {
+            if (shape.spawnFrom().follow() || shape.spawnFrom().trails()) {
                 stepping.bind("SOURCE_DIRECT", published ? BIN_DIRECT[tier - 1] : unfed)
                         .bind("SOURCE_SLOTS", published ? BIN_DIRECT_SLOTS[tier - 1] : unfed);
             }
@@ -1250,11 +1281,12 @@ public final class CgVfxParticlePool {
 
     private void releaseStorage(CgRecording recording) {
         CgGraphBuffer[] owned = {records, drawn, counts[0], counts[1], paramBuffer, curveBuffer, instanceBuffer, spawnBuffer,
-                history, ringTable, historyFrom, cellKeys, cellValues, cellRuns, lightSlots};
+                history, ringTable, historyFrom, cellKeys, cellValues, cellRuns, lightSlots, trailBuffer, headBuffer};
         for (CgGraphBuffer buffer : owned) if (buffer != null) recording.release(buffer);
         for (int i = 0; i < historyDrops.size(); i++) recording.release(historyDrops.get(i));
         records = drawn = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = counts[0] = counts[1] = null;
-        history = ringTable = historyFrom = lightSlots = null;
+        history = ringTable = historyFrom = lightSlots = trailBuffer = headBuffer = null;
+        headsStale = true;
         cellKeys = cellValues = cellRuns = null;
         if (beams != null) beams.release(recording);
         historyDrops.clear();
@@ -1301,6 +1333,15 @@ public final class CgVfxParticlePool {
         Arrays.fill(socketPrev, slot * CgVfxSockets.MAX * 4, (slot + 1) * CgVfxSockets.MAX * 4, 0);
         slotSourceReach[slot] = 0f;
         ringPoints[slot] = emitter.trailPoints();
+        if (emitter.headTrails() > 0) {
+            if (emitter.headTrails() > headStride || emitter.headBlocks() > headBlocks) {
+                headStride = Math.max(headStride, emitter.headTrails());
+                headBlocks = Math.max(headBlocks, emitter.headBlocks());
+                headsStale = true;
+            }
+            headClears = reserve(headClears, headClearCount + 1);
+            headClears[headClearCount++] = slot;
+        }
         if (beams != null) beams.open(slot, capacity);
         if (ringPoints[slot] > 0) {
             ringFirst[slot] = takeRing(capacity * ringPoints[slot]);
@@ -1591,6 +1632,18 @@ public final class CgVfxParticlePool {
             stepSpawned = Arrays.copyOf(stepSpawned, n);
             stepCapacity = Arrays.copyOf(stepCapacity, n);
             stepStores = Arrays.copyOf(stepStores, n);
+            stepTrailAt = Arrays.copyOf(stepTrailAt, n);
+            stepHeadListAt = Arrays.copyOf(stepHeadListAt, n);
+            stepHeads = Arrays.copyOf(stepHeads, n);
+        }
+        stepTrailAt[s] = trailEnd;
+        stepHeads[s] = 0;
+        headListCount = 0;
+        if (shape.trails()) {
+            int words = Math.max(slotCount, 1) * 8;
+            trailWords = reserve(trailWords, trailEnd + words);
+            Arrays.fill(trailWords, trailEnd, trailEnd + words, 0);
+            trailEnd += words;
         }
         stepCapacity[s] = capacity;
         stepBlock[s * 4] = dt;
@@ -1810,9 +1863,90 @@ public final class CgVfxParticlePool {
         w[at + 13] = Float.floatToRawIntBits(toY);
         w[at + 14] = Float.floatToRawIntBits(toZ);
         w[at + 15] = Float.floatToRawIntBits(loopTo);
+        Arrays.fill(w, at + 16, at + SPAWN_ROW_WORDS, 0);
         spawnEnd += SPAWN_ROW_WORDS;
         stepSpawnRows[s]++;
         stepSpawned[s] += candidates;
+    }
+
+    /**
+     * Queues a Cascade trail's spawn row for {@code slot} this step: {@code candidates} spawn indices from
+     * {@code firstSpawn}, its words {@code words[from]} to {@code words[from + CgVfxTrailSource.ROW_WORDS)} as the trail
+     * source wrote them, born {@code bornAt} seconds into the step on. After the slot's {@link #instance} row.
+     */
+    public void spawnTrail(int slot, int firstSpawn, int candidates, int[] words, int from, float bornAt) {
+        inStep("spawnTrail");
+        openSlot(slot, "spawnTrail");
+        if (!shape.trails()) throw new IllegalStateException(slotEmitter[slot].name() + " is no trail: its rows are spawn rows");
+        if (candidates <= 0) return;
+        int s = steps;
+        if (written[slot] != s + 1) throw new IllegalStateException("slot " + slot + " spawned before its instance row");
+        spawns = reserve(spawns, spawnEnd + SPAWN_ROW_WORDS);
+        int at = spawnEnd;
+        spawns[at] = slot;
+        spawns[at + 1] = firstSpawn;
+        spawns[at + 2] = candidates;
+        spawns[at + 3] = stepSpawned[s];
+        System.arraycopy(words, from, spawns, at + 4, SPAWN_ROW_WORDS - 4);
+        if (Float.intBitsToFloat(words[from + 19]) == CgVfxTrailHeads.HEAD) {
+            // A head row: its trail's head, and its place in the step's list the heads kernel walks.
+            spawns[at + 4 + 14] = slot * headStride + Math.round(Float.intBitsToFloat(words[from + 15]));
+            headList = reserve(headList, headListCount + 1);
+            headList[headListCount++] = at / 4;
+        } else {
+            spawns[at + 4] = Float.floatToRawIntBits(Float.intBitsToFloat(spawns[at + 4]) + bornAt);
+            spawns[at + 5] = Float.floatToRawIntBits(Float.intBitsToFloat(spawns[at + 5]) + bornAt);
+        }
+        spawnEnd += SPAWN_ROW_WORDS;
+        stepSpawnRows[s]++;
+        stepSpawned[s] += candidates;
+    }
+
+    /** A head's vec4s: its state (10), what the Step reads of it (11), and its ring of spawns, two each. */
+    public int headVecs() {
+        return 21 + 2 * headBlocks;
+    }
+
+    /** The heads of particle-sourced trails, null before the first record: slot {@code s}'s trail {@code t} at {@link #head}. */
+    @Nullable
+    public CgGraphBuffer heads() {
+        return headBuffer;
+    }
+
+    /** Where slot {@code slot}'s trail {@code trail}'s head starts in {@link #heads()}, in vec4s. */
+    public int head(int slot, int trail) {
+        return (slot * headStride + trail) * headVecs();
+    }
+
+    /**
+     * Gives trail slot {@code slot} this step's kills and refits: each of its {@code trails} trails' oldest spawn kept,
+     * and {@code refits} refits of {@code CgVfxTrailSource.REFIT_WORDS} words each from {@code refitWords[0]}. Once a
+     * step, after its rows.
+     */
+    public void trailTable(int slot, int[] minIds, int trails, int[] refitWords, int refits) {
+        inStep("trailTable");
+        openSlot(slot, "trailTable");
+        if (!shape.trails()) throw new IllegalStateException(slotEmitter[slot].name() + " is no trail");
+        int kills = (trails + 3) / 4 * 4, words = kills + refits * 16;
+        trailWords = reserve(trailWords, trailEnd + words);
+        int header = stepTrailAt[steps] + slot * 8;
+        trailWords[header] = trailEnd / 4;
+        trailWords[header + 1] = trails;
+        trailWords[header + 2] = (trailEnd + kills) / 4;
+        trailWords[header + 3] = refits;
+        if (slotEmitter[slot].headTrails() > 0) {
+            trailWords[header + 4] = slot * headStride;
+            trailWords[header + 5] = headStride;
+            trailWords[header + 6] = 1;
+        }
+        Arrays.fill(trailWords, trailEnd, trailEnd + kills, 0);
+        System.arraycopy(minIds, 0, trailWords, trailEnd, trails);
+        System.arraycopy(refitWords, 0, trailWords, trailEnd + kills, refits * 16);
+        trailEnd += words;
+    }
+
+    private static int[] reserve(int[] words, int need) {
+        return words.length >= need ? words : Arrays.copyOf(words, Math.max(need, words.length * 2));
     }
 
     /** Ends the step, throwing if an open slot got no {@link #instance} row. */
@@ -1825,9 +1959,23 @@ public final class CgVfxParticlePool {
                 // The step is dropped whole, so the queue holds only complete steps.
                 instanceEnd = stepInstanceAt[s];
                 spawnEnd = stepSpawnAt[s];
+                trailEnd = stepTrailAt[s];
+                headListCount = 0;
                 for (int w = 0; w < slotCount; w++) if (written[w] == s + 1) written[w] = 0;
                 throw new IllegalStateException(slotEmitter[slot].name() + "'s slot " + slot + " got no instance row this step");
             }
+        }
+        if (headListCount > 0) {
+            // The step's head rows, a uvec4 each in the trail table: what its heads kernel walks.
+            trailWords = reserve(trailWords, trailEnd + headListCount * 4);
+            stepHeadListAt[s] = trailEnd / 4;
+            stepHeads[s] = headListCount;
+            for (int i = 0; i < headListCount; i++) {
+                trailWords[trailEnd + i * 4] = headList[i];
+                trailWords[trailEnd + i * 4 + 1] = trailWords[trailEnd + i * 4 + 2] = trailWords[trailEnd + i * 4 + 3] = 0;
+            }
+            trailEnd += headListCount * 4;
+            headListCount = 0;
         }
         // A trail point each TRAIL_INTERVAL of particle time, at most one a step.
         trailSince += stepBlock[s * 4];
@@ -2183,6 +2331,24 @@ public final class CgVfxParticlePool {
         put(recording, instanceBuffer, instances, instanceEnd);
         spawnBuffer = fit(recording, spawnBuffer, spawnsName, spawnEnd);
         put(recording, spawnBuffer, spawns, spawnEnd);
+        if (shape.trails()) {
+            trailBuffer = fit(recording, trailBuffer, spawnsName + ".trails", trailEnd);
+            put(recording, trailBuffer, trailWords, trailEnd);
+        }
+        if (shape.heads()) {
+            long per = (long) headStride * headVecs() * 16L, need = Math.max(slotCount, 1) * per;
+            if (headBuffer == null || headsStale || headBuffer.size() < need) {
+                // Every head starts again: zero is a trail never begun.
+                if (headBuffer != null) recording.release(headBuffer);
+                headBuffer = CgGraphBuffer.persistent(spawnsName + ".heads", CgBufferDesc.of(Long.highestOneBit(need) << 1,
+                        CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+                recording.fill(headBuffer, 0);
+                headsStale = false;
+                headClearCount = 0;
+            }
+            for (int i = 0; i < headClearCount; i++) recording.fill(headBuffer, headClears[i] * per, per, 0);
+            headClearCount = 0;
+        }
     }
 
     /**
@@ -2315,6 +2481,7 @@ public final class CgVfxParticlePool {
         steps = 0;
         instanceEnd = 0;
         spawnEnd = 0;
+        trailEnd = 0;
         Arrays.fill(written, 0);
     }
 
