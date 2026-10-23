@@ -128,9 +128,10 @@ sun sees it:
 ## 5. Tens of thousands: the light grid
 
 Lights are binned into Unreal 5's light grid before the pass: 64-pixel tiles, 32 depth slices. A parent grid four
-cells a side is culled first, then each cell from its parent's list, a work group a cell where compute runs. Cells
-behind the scene are skipped by its depth pyramid (Unreal's HZB cull, `-Dcrystalgraphics.world.lightsHzb=false` to
-turn it off). Each cell's list is whole, from a budget shared by every cell that grows when a frame overflows it.
+cells a side is culled first, then each cell from its parent's list, a work group a cell where compute runs. Unreal's
+HZB cull, skipping cells behind the scene by its depth pyramid, is off (`-Dcrystalgraphics.world.lightsHzb=true` turns
+it on): in Minecraft 1.20.1 it cut the lit air into the grid's 64-pixel squares, which the harness never shows, and in
+the lights demo it saved 0.02 ms. Each cell's list is whole, from a budget shared by every cell that grows when a frame overflows it.
 
 A light smaller on screen than Unreal's `r.MinScreenRadiusForLights` (0.03, `-Dcrystalgraphics.world.lightsMinScreenRadius`)
 is not drawn: past 50 blocks for one reaching under a block and a half, past 33 times its reach for larger ones.

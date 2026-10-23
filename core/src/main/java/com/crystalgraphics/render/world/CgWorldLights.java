@@ -334,7 +334,11 @@ public final class CgWorldLights {
     private static final int SUN_ROWS_AT = MOST_CASTERS * CASTER_FLOATS / 4;
     private static final float CASTER_REACH = 96f;
     /** Unreal's r.Forward.LightGridHZBCull. */
-    private static final CgVar.Bool HZB = CgVar.bool("crystalgraphics.world.lightsHzb", true, CgVar.DEV,
+    /**
+     * Off: in Minecraft 1.20.1 it cut the lit air into the grid's 64-pixel squares (the harness never shows it), and in
+     * the lights demo at 2560x1440 it saved 0.02 ms.
+     */
+    private static final CgVar.Bool HZB = CgVar.bool("crystalgraphics.world.lightsHzb", false, CgVar.DEV,
             "The light grid skips cells behind the scene and pulls each cell's far edge in to it.");
     private CgKernel view, coarse, cell, countCells, writeCells;
     private float tileU, tileV;
