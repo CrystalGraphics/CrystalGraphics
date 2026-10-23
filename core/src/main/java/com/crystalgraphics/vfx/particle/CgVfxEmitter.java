@@ -126,8 +126,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final CgVfxSpawnShape spawn;
     /** The most blocks a step may move and still spread its spawns and give its velocity; its velocity's share. */
     final float maxStep, inherit;
-    /** Each particle's last positions its pool keeps for a {@code trails()} layer; 0 for none. */
-    final int trailPoints;
     /** The density each particle draws into its grid's four channels each frame; null for none. */
     final float[] rasterized;
     /** What its particles carry for their draws alone, [slot][channel]; null where unset. */
@@ -226,7 +224,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         perUnit = b.perUnit;
         maxStep = b.maxStep;
         inherit = b.inherit;
-        trailPoints = b.trailPoints;
         rasterized = b.rasterized != null ? b.rasterized.clone() : null;
         drawn = new CgVfxDrawnChannel[CgVfxDrawnChannel.SLOTS][];
         for (int i = 0; i < drawn.length; i++) drawn[i] = b.drawn[i].clone();
@@ -487,11 +484,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         return forms;
     }
 
-    @Override
-    public int trailPoints() {
-        return trailPoints;
-    }
-
     /** Its ribbon renderer's Cascade trail, null where none draws it: how its particles are born. */
     @Nullable
     public CgVfxRibbonRendererProperties.Trail trail() {
@@ -522,7 +514,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
     @Override
     public int headBlocks() {
-        return (int) Math.ceil(lifeMax / CgVfxTrailHeads.SHORTEST_STEP) + 2;
+        return (int) Math.ceil(lifeMax / CgVfxTrailHeads.RING_STEP) + 2;
     }
 
     /**
@@ -858,7 +850,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private final Map<String, String> ids = new HashMap<>();
         private final List<String> burstIds = new ArrayList<>();
         private final List<String> moduleIds = new ArrayList<>();
-        private int trailPoints;
         private float[] rasterized;
         private final CgVfxDrawnChannel[][] drawn = new CgVfxDrawnChannel[CgVfxDrawnChannel.SLOTS][4];
         private CgVfxDrawnChannel[] light;
@@ -901,7 +892,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             perUnit = e.perUnit;
             maxStep = e.maxStep;
             inherit = e.inherit;
-            trailPoints = e.trailPoints;
             rasterized = e.rasterized;
             for (int i = 0; i < drawn.length; i++) drawn[i] = e.drawn[i].clone();
             light = e.light != null ? e.light.clone() : null;
@@ -1405,22 +1395,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         }
 
         /**
-         * Keeps each particle's last {@code points} positions, one a particle step (60 a second), so a trails renderer
-         * draws a trail behind every particle: sparks streaking along curved paths, embers swirling.
-         * 2 to 64; a trail lasts {@code points - 1} steps.
-         *
-         * <pre>{@code
-         * CgVfxEmitter.builder("embers").capacity(400).trail(16)...   // a quarter of a second behind each
-         *         .renderer(CgVfxRenderers.trails("streaks").material(STREAKS).field("points", 16).build())
-         * }</pre>
-         */
-        public Builder trail(int points) {
-            if (points < 2 || points > 64) throw new IllegalArgumentException("trail(" + points + "): 2 to 64 points");
-            this.trailPoints = points;
-            return this;
-        }
-
-        /**
          * Draws its particles into their instance's grid each frame ({@code CgVfxEmitterInstance.inGrid}): each a soft
          * ball as wide as it is drawn, holding this density at its middle in the grid's four channels, scaled by its
          * opacity over life. The grid's rebuilt channels ({@code CgVfxGrid3D.channel(c)}) hold only this frame's balls, so
@@ -1661,10 +1635,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         }
 
         /**
-         * What an emitter file does not carry yet, taken from {@code t}: its trail and clip (P8) and its bindings (P6.3).
+         * What an emitter file does not carry yet, taken from {@code t}: its clip (P8) and its bindings (P6.3).
          */
         Builder carry(CgVfxEmitter t) {
-            trailPoints = t.trailPoints;
             clip = t.clip;
             playRate = t.playRate;
             userBindings.clear();

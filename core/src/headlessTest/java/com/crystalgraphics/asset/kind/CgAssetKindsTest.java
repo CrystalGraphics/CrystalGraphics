@@ -79,7 +79,7 @@ public class CgAssetKindsTest {
     @Test
     public void everyFamilyHasTheSpecsMembers() {
         CgAssetKinds.register();
-        assertEquals(Arrays.asList("sprite", "mesh", "ribbon", "beam", "light", "system", "sequence", "anim_trail", "arc", "trails"),
+        assertEquals(Arrays.asList("sprite", "mesh", "ribbon", "beam", "light", "system", "sequence", "anim_trail", "arc"),
                 Arrays.asList(CgParticleKinds.RENDERERS.members().keySet().toArray()));
         assertEquals(23, CgSequenceKinds.TRACKS.members().size());
         assertEquals(20, CgCameraKinds.NODES.members().size());

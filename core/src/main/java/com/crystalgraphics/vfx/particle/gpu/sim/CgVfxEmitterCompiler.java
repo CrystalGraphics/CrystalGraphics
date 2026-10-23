@@ -301,6 +301,7 @@ public final class CgVfxEmitterCompiler {
         StringBuilder s = new StringBuilder(4096);
         s.append("// Written by CgVfxEmitterCompiler for ").append(shape.kernelKey()).append("\n");
         s.append("#pragma kernel Step append\n");
+        if (shape.heads() && sequential(shape)) s.append("#pragma kernel Picks scatter\n");
         if (shape.heads()) s.append("#pragma kernel Heads scatter\n");
         s.append('\n');
         for (String lib : STEP_LIBRARIES) s.append("#include \"").append(lib).append("\"\n");
@@ -1275,23 +1276,8 @@ public final class CgVfxEmitterCompiler {
         return "(" + formExpr(shape.spawnLayout(f), shape.spawnForm(f).compiled(), 0, radius, "seed", "k", "loop") + " - " + radius + ")";
     }
 
-    /**
-     * The launch's skeleton point, where {@code shape} spawns at its effect's ({@code CgVfxSockets}): picked in turn by
-     * the spawn's key or at random as Cascade draws it ({@code ParticleModules_Location.cpp:1438-1449}), the particle
-     * placed there plus its offset; an unanswered point spawns nothing.
-     */
-    /**
-     * A Cascade trail's spawn row (CgVfxTrailSource): its spawn i of n on the Hermite between the last source and this
-     * one, or at the source for a rate spawn; born at its own increment; its life and size its trail's first particle's;
-     * its payload, the curve's derivative over its count (a rate spawn's minus its velocity over the tick, repaired
-     * toward the newest spawned where nearly zero), its up, and the trail's distance at its birth.
-     */
-    private static String trailSpawn(CgVfxShape shape) {
-        if (!shape.trails()) return "";
-        return """
-                    vec4 tr0 = uintBitsToFloat(SPAWNS(at + 4)), tr1 = uintBitsToFloat(SPAWNS(at + 5));
-                    vec4 tr2 = uintBitsToFloat(SPAWNS(at + 6)), tr3 = uintBitsToFloat(SPAWNS(at + 7));
-                    int trailKind = int(tr1.w + 0.5);
+    /** A head's spawns in the Step, for a shape whose trails follow another emitter's particles. */
+    private static final String HEAD_SPAWN = """
                     if (trailKind == 4) {
                         // A head's spawns, as its heads kernel worked them out this step: spawn i of its count, on the
                         // Hermite from its source's last place to where it is; numbered by its trail.
@@ -1321,7 +1307,26 @@ public final class CgVfxEmitterCompiler {
                         p.slot = slot;
                         return true;
                     }
-                    if (trailKind != 0) {
+            """;
+
+    /**
+     * The launch's skeleton point, where {@code shape} spawns at its effect's ({@code CgVfxSockets}): picked in turn by
+     * the spawn's key or at random as Cascade draws it ({@code ParticleModules_Location.cpp:1438-1449}), the particle
+     * placed there plus its offset; an unanswered point spawns nothing.
+     */
+    /**
+     * A Cascade trail's spawn row (CgVfxTrailSource): its spawn i of n on the Hermite between the last source and this
+     * one, or at the source for a rate spawn; born at its own increment; its life and size its trail's first particle's;
+     * its payload, the curve's derivative over its count (a rate spawn's minus its velocity over the tick, repaired
+     * toward the newest spawned where nearly zero), its up, and the trail's distance at its birth.
+     */
+    private static String trailSpawn(CgVfxShape shape) {
+        if (!shape.trails()) return "";
+        return """
+                    vec4 tr0 = uintBitsToFloat(SPAWNS(at + 4)), tr1 = uintBitsToFloat(SPAWNS(at + 5));
+                    vec4 tr2 = uintBitsToFloat(SPAWNS(at + 6)), tr3 = uintBitsToFloat(SPAWNS(at + 7));
+                    int trailKind = int(tr1.w + 0.5);
+@HEAD_SPAWN@                    if (trailKind != 0) {
                         float s = trailKind == 1 ? float(i + 1) / float(n) : 1.0;
                         born = when.x + float(i) * when.z;
                         vec3 here = trailKind == 1 ? step_cubic(from.xyz, tr0.xyz, to.xyz, tr1.xyz, s) : to.xyz;
@@ -1359,7 +1364,7 @@ public final class CgVfxEmitterCompiler {
                         p.slot = slot;
                         return true;
                     }
-                """;
+                """.replace("@HEAD_SPAWN@", shape.heads() ? HEAD_SPAWN : "");
     }
 
     /**
@@ -1475,13 +1480,18 @@ public final class CgVfxEmitterCompiler {
                         if (q == 0u) minAlive = floatBitsToUint(b0.x) + uint(m);
                         living += uint(n - m);
                     }
-                    // Its source: the particle it follows while that lives, else one of the source's picked at random.
+                    // Its source: the particle it follows while that lives, else one of the source's: picked at random
+                    // here, or in turn by the picks kernel (state bit 4, its id already in the head).
                     int inst = _InstanceAt + int(slot) * STEP_INSTANCE_ROW;
                     uint seed = INSTANCES(inst).y;
                     FxEvent src;
-                    bool bound = (state & 2u) != 0u && step_direct(slot, sourceId, src) && src.normal.x <= src.normal.y;
+                    bool picked = (state & 4u) != 0u;
+                    state &= ~4u;
+                    bool bound = !picked && (state & 2u) != 0u && step_direct(slot, sourceId, src) && src.normal.x <= src.normal.y;
                     bool lost = (state & 2u) != 0u && !bound, fresh = false;
-                    if (!bound) {
+                    if (picked) {
+                        bound = fresh = step_direct(slot, sourceId, src);
+                    } else if (!bound && (flags & 16u) == 0u) {
                         uint key = READS(int(slot)).x, first = 0u, n = 0u;
                         if (key != 0xFFFFFFFFu) {
                             first = SOURCE_RUNS(int(key) * 2);
@@ -1602,6 +1612,14 @@ public final class CgVfxEmitterCompiler {
                                 life = @LIFE@;
                             }
                             if (blocks == uint(_HeadBlocks)) {
+                                // Full, from frames quicker than its ring is sized for: its oldest two blocks become
+                                // one, their births evenly between the first's and the second's last. A trail's
+                                // particles share one life, so its living stay counted close.
+                                int oldest = hv + 21 + int(blockHead) * 2;
+                                int next = hv + 21 + int((blockHead + 1u) % uint(_HeadBlocks)) * 2;
+                                vec4 o0 = HEADS(oldest), o1 = HEADS(next);
+                                float total = o0.y + o1.y, lastBorn = o1.z + max(o1.y - 1.0, 0.0) * o1.w;
+                                HEADS_STORE(next, vec4(o0.x, total, o0.z, total > 1.0 ? (lastBorn - o0.z) / (total - 1.0) : 0.0));
                                 blockHead = (blockHead + 1u) % uint(_HeadBlocks);
                                 blocks--;
                             }
@@ -1625,7 +1643,7 @@ public final class CgVfxEmitterCompiler {
                     HEADS_STORE(hv + 6, h6);
                     HEADS_STORE(hv + 7, h7);
                     HEADS_STORE(hv + 8, h8);
-                    HEADS_STORE(hv + 9, vec4(h9.x, uintBitsToFloat(anchored), 0.0, 0.0));
+                    HEADS_STORE(hv + 9, vec4(h9.x, uintBitsToFloat(anchored), h9.z, 0.0));
                     HEADS_STORE(hv + 10, vec4(float(count), uintBitsToFloat(threshold), uintBitsToFloat(refit), chain));
                     HEADS_STORE(hv + 11, r1);
                     HEADS_STORE(hv + 12, r2);
@@ -1639,8 +1657,72 @@ public final class CgVfxEmitterCompiler {
                     HEADS_STORE(hv + 20, r10);
                 }
 
-                """;
+                """ + (sequential(shape) ? PICKS : "");
     }
+
+    /** Whether a shape's particle-sourced trails pick their sources in turn. */
+    private static boolean sequential(CgVfxShape shape) {
+        return shape.heads() && shape.spawnFrom().selection() == CgVfxSpawnFrom.Selection.SEQUENTIAL;
+    }
+
+    /**
+     * The picks kernel, one thread a slot's first head before the heads kernel: Cascade's sequential selection
+     * (ParticleTrail2EmitterInstance.cpp:2221-2257) over the slot's trails in order, each trail with no live source taking
+     * the next source particle no trail follows, its cursor wrapping to none for a step past the last. The cursor is kept
+     * in trail 0's head, vec4 9's z, plus one.
+     */
+    private static final String PICKS = """
+            void Picks() {
+                int at0 = int(TRAILS(_HeadListAt + CG_ELEMENT).x);
+                if (uint(uintBitsToFloat(SPAWNS(at0 + 4).w) + 0.5) != 0u) return;
+                uint slot = SPAWNS(at0).x;
+                int trails = int(uintBitsToFloat(SPAWNS(at0 + 5).y) + 0.5);
+                uint key = READS(int(slot)).x, first = 0u, n = 0u, cap = 1u;
+                if (key != 0xFFFFFFFFu) {
+                    first = SOURCE_RUNS(int(key) * 2);
+                    n = SOURCE_RUNS(int(key) * 2 + 1) - first;
+                    cap = max(SOURCE_SLOTS(int(key) * 2 + 1), 1u);
+                }
+                uint used[128];
+                uint bound[32];
+                for (int i = 0; i < 128; i++) used[i] = 0u;
+                for (int i = 0; i < 32; i++) bound[i] = 0u;
+                for (int k = 0; k < trails; k++) {
+                    int hv = int(floatBitsToUint(uintBitsToFloat(SPAWNS(int(TRAILS(_HeadListAt + CG_ELEMENT + k).x) + 4).z))) * _HeadVecs;
+                    vec4 h0 = HEADS(hv);
+                    uint id = floatBitsToUint(h0.x);
+                    FxEvent src;
+                    if ((floatBitsToUint(h0.y) & 2u) != 0u && step_direct(slot, id, src) && src.normal.x <= src.normal.y) {
+                        uint u = id % cap;
+                        used[u >> 5] |= 1u << (u & 31u);
+                        bound[k >> 5] |= 1u << (k & 31);
+                    }
+                }
+                int hv0 = int(floatBitsToUint(uintBitsToFloat(SPAWNS(at0 + 4).z))) * _HeadVecs;
+                vec4 c9 = HEADS(hv0 + 9);
+                int last = int(c9.z + 0.5) - 1;
+                for (int k = 0; k < trails; k++) {
+                    if ((bound[k >> 5] & (1u << (k & 31))) != 0u || n == 0u) continue;
+                    last++;
+                    if (last >= int(n)) last = -1;
+                    while (last >= 0 && last < int(n)) {
+                        uint u = SOURCE_ROWS(int(first) + last).ids.x % cap;
+                        if ((used[u >> 5] & (1u << (u & 31u))) == 0u) break;
+                        last++;
+                    }
+                    if (last >= int(n)) last = -1;
+                    if (last < 0) continue;
+                    uint id = SOURCE_ROWS(int(first) + last).ids.x, u = id % cap;
+                    used[u >> 5] |= 1u << (u & 31u);
+                    int hv = int(floatBitsToUint(uintBitsToFloat(SPAWNS(int(TRAILS(_HeadListAt + CG_ELEMENT + k).x) + 4).z))) * _HeadVecs;
+                    vec4 h0 = HEADS(hv);
+                    HEADS_STORE(hv, vec4(uintBitsToFloat(id), uintBitsToFloat(floatBitsToUint(h0.y) | 4u), h0.z, h0.w));
+                }
+                c9 = HEADS(hv0 + 9);
+                HEADS_STORE(hv0 + 9, vec4(c9.xy, float(last + 1), c9.w));
+            }
+
+            """;
 
     private static String sockets(CgVfxShape shape) {
         if (shape.sockets() == 0) return "";

@@ -3,6 +3,7 @@ package com.crystalgraphics.render.graph;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.CgBindingPoints;
+import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.state.CgAlphaState;
@@ -167,6 +168,8 @@ public final class CgExecutor {
     private final CgStreamBuffer ring;
     private final CgShaderBuffer[] instanceBuffers = new CgShaderBuffer[KINDS];
     private final int[] scissorRect = new int[4], scissorPart = new int[4];
+    /** The engine buffers the last batch's buffer()s stood in for: the batch loop's, kept so it allocates nothing. */
+    private final CgBindingPoints.Binding[] standIn = new CgBindingPoints.Binding[CgDrawChunk.BUFFERS];
     private final CgIndirectArgs commands = new CgIndirectArgs();
     /** Per file, what its dispatches below compute bind: lowered, or run by a Java body. */
     private final Map<CgComputeSource, CgDispatchBindings> belowCompute = new IdentityHashMap<>();
@@ -1153,7 +1156,8 @@ public final class CgExecutor {
         CgPipeline pipeline = null;
         boolean usable = false, objectsBound = false;
         // The engine buffers a batch's buffer()s stand in for, bound again once a batch without them draws.
-        CgBindingPoints.Binding standIn = null, standIn2 = null;
+        CgBindingPoints.Binding[] standIn = this.standIn;
+        Arrays.fill(standIn, null);
         boolean groups = CgTrace.isEnabled(CgChannels.GPU_GROUPS) && CgGpuTrace.isMeasuring();
         int slots = colorSlots(pass);
         int slot = 0;
@@ -1172,7 +1176,7 @@ public final class CgExecutor {
                     for (int k = b; k <= end; k++) commandCount += commandsOf(packed, k);
                     slot += commandCount;
                 } else {
-                    end = packed.objects[b] == null && packed.buffers[b * 2] == null && multiDraw && b + 1 < packed.count
+                    end = packed.objects[b] == null && packed.buffers[b * CgDrawChunk.BUFFERS] == null && multiDraw && b + 1 < packed.count
                             && joinable(packed, b, b + 1)
                             ? joinRun(packed, b) : b;
                     if (multiDraw && end + 1 < packed.count && CgTrace.isEnabled(CgChannels.GL)
@@ -1233,13 +1237,15 @@ public final class CgExecutor {
                     instanceBuffers[OBJECT].bind();
                     objectsBound = false;
                 }
-                CgBindingPoints.Binding at0 = packed.bufferAt[b * 2], at1 = packed.bufferAt[b * 2 + 1];
-                if (standIn != null && !standIn.equals(at0) && !standIn.equals(at1)) bindEngineBuffer(standIn);
-                if (standIn2 != null && !standIn2.equals(at0) && !standIn2.equals(at1)) bindEngineBuffer(standIn2);
-                if (at0 != null) bindRecords(packed.buffers[b * 2], at0);
-                if (at1 != null) bindRecords(packed.buffers[b * 2 + 1], at1);
-                standIn = at0;
-                standIn2 = at1;
+                int first = b * CgDrawChunk.BUFFERS;
+                for (int s = 0; s < CgDrawChunk.BUFFERS; s++) {
+                    if (standIn[s] != null && !reads(packed, first, standIn[s])) bindEngineBuffer(standIn[s]);
+                }
+                for (int s = 0; s < CgDrawChunk.BUFFERS; s++) {
+                    CgBindingPoints.Binding at = packed.bufferAt[first + s];
+                    if (at != null) bindRecords(packed.buffers[first + s], at);
+                    standIn[s] = at;
+                }
                 if (joinedDraw) {
                     try (CgTrace.Zone drawing = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_DRAW)) {
                         if (command >= 0) {
@@ -1287,8 +1293,7 @@ public final class CgExecutor {
                     }
                 }
             }
-            if (standIn != null) bindEngineBuffer(standIn);
-            if (standIn2 != null) bindEngineBuffer(standIn2);
+            for (CgBindingPoints.Binding at : standIn) if (at != null) bindEngineBuffer(at);
         } finally {
             if (groups) CgGpuTrace.markEnd();
             if (pass.targetCopy() != null) pass.targetCopy().release(POOL);
@@ -1337,7 +1342,7 @@ public final class CgExecutor {
 
     /** Batch {@code k} drawn directly under {@code b}'s pipeline, bindings and scissor, with no target copy before it. */
     private static boolean joinable(CgFrame.Raster packed, int b, int k) {
-        return packed.counts[k] == null && packed.objects[k] == null && packed.buffers[k * 2] == null
+        return packed.counts[k] == null && packed.objects[k] == null && packed.buffers[k * CgDrawChunk.BUFFERS] == null
                 && packed.copyBefore[k] == 0 && packed.pipeline[k] == packed.pipeline[b]
                 && packed.binding[k] == packed.binding[b] && packed.scissor[k] == packed.scissor[b]
                 && packed.group[k] == packed.group[b];
@@ -1390,12 +1395,19 @@ public final class CgExecutor {
 
     /** Whether batches {@code b} and {@code k} read the same buffers at the same bindings. */
     private static boolean sameBuffers(CgFrame.Raster packed, int b, int k) {
-        for (int s = 0; s < 2; s++) {
-            if (packed.buffers[k * 2 + s] != packed.buffers[b * 2 + s] || packed.bufferAt[k * 2 + s] != packed.bufferAt[b * 2 + s]) {
+        int n = CgDrawChunk.BUFFERS;
+        for (int s = 0; s < n; s++) {
+            if (packed.buffers[k * n + s] != packed.buffers[b * n + s] || packed.bufferAt[k * n + s] != packed.bufferAt[b * n + s]) {
                 return false;
             }
         }
         return true;
+    }
+
+    /** Whether the batch whose buffer slots start at {@code first} reads a buffer of its own at {@code at}. */
+    private static boolean reads(CgFrame.Raster packed, int first, CgBindingPoints.Binding at) {
+        for (int s = 0; s < CgDrawChunk.BUFFERS; s++) if (at.equals(packed.bufferAt[first + s])) return true;
+        return false;
     }
 
     /** Binds a GPU buffer of records where an engine buffer's macros read the frame's own. */

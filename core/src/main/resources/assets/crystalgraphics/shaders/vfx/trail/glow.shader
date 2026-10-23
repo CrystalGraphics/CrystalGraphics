@@ -1,12 +1,13 @@
-// A ki streak: a trail of energy, white-hot down its middle and its own colour out to soft edges (Effekseer's track,
-// centre colour over side colours), its head rounded where it leaves the thing it follows, energy flowing back along it
-// in streaks and eaten away toward its tail as it fades, tapering as it goes. _Wobble shakes its line across, more
-// toward the tail: energy too wild to hold one. Added, so crossing streaks pile into light, and it blooms.
-// On a trail slot (CgVfxFrame.trail): the layer's size is its half-width in blocks.
+// A ki streak: a strip of energy, white-hot down its middle and its own colour out to soft edges (Effekseer's track,
+// centre colour over side colours), energy flowing back along it in streaks and eaten away toward its tail as it fades.
+// _Wobble shakes its line across, more toward the tail: energy too wild to hold one. Added, so crossing streaks pile
+// into light, and it blooms. A ribbon's material: a Cascade trail behind a moving thing, or a ribbon through particles;
+// its renderer tiles UV1 once a block (fx_strip.glsl), and its emitter's size over life tapers it.
 #type none
+#pragma cg_use particle
 #pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_trail.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_strip.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
@@ -17,8 +18,6 @@ Properties {
     _Core       ("The white-hot middle", color) = (1.2, 1.25, 1.4, 1)
     _CoreWidth  ("The middle's share of the width", float) = 0.28
     _Softness   ("How soft its edges are: higher thins them", float) = 1.6
-    _Tail       ("Its width at its tail, times its head's", float) = 0.15
-    _TaperPower ("How late it tapers: 1 steadily, higher holds its width longer", float) = 0.8
     _Fade       ("How fast it fades along its life: higher sooner", float) = 1.4
     _Tiling     ("Noise cells a block along it, and across it", vec4) = (0.9, 1.3, 0, 0)
     _Flow       ("How fast its energy flows back from the head, blocks a second", float) = 7.0
@@ -27,11 +26,10 @@ Properties {
     _WobbleRate ("How fast it shakes, a second", float) = 9.0
     _GlowGain   ("Its glow past white", float) = 1.6
     _Noise  ("Noise", sampler3D) = "cg_noise"
-    _FxTrail ("Trail points", sampler2D) = "black"
 }
 
-// trail: life 0..1, across -1..1, blocks along, blocks back from the head; shape: half-width, intensity, alive
-struct v2f { vec4 trail; vec3 shape; };
+// trail: life 0..1, across -1..1, blocks along; tint: its particles' colour and opacity
+struct v2f { vec3 trail; vec4 tint; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
@@ -43,30 +41,27 @@ Pass {
     }
 
     void vertex(out v2f o) {
-        FxTrailVertex v = fx_trail_vertex(_FxTrail, CG_VERTEX_ID, CG_OBJECT_CUSTOM0, CG_OBJECT_CUSTOM2,
-                CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz, FX_CAMERA);
-        float u = v.uv.x;
-        float taper = mix(1.0, _Tail, pow(u, _TaperPower));
-        vec3 world = fx_trail_place(v, taper);
-        if (_Wobble > 0.0 && v.alive > 0.0) {
-            float shake = fx_noise(vec3(v.along * 1.7, FX_AGE * _WobbleRate, FX_SEED * 13.0))
-                    + 0.5 * fx_noise(vec3(v.along * 4.3, FX_AGE * _WobbleRate * 2.1, FX_SEED * 7.0));
-            world += v.span * (shake * _Wobble * (0.25 + u));
+        CgMaterialVertex v = cg_material_vertex();
+        CgMaterialParticle p = cg_material_particle();
+        o.trail = fx_strip(v.texCoords[0], v.texCoords[1], p.relativeTime);
+        vec3 world = v.worldPosition;
+        if (_Wobble > 0.0) {
+            float shake = fx_noise(vec3(o.trail.z * 1.7, FX_AGE * _WobbleRate, FX_SEED * 13.0))
+                    + 0.5 * fx_noise(vec3(o.trail.z * 4.3, FX_AGE * _WobbleRate * 2.1, FX_SEED * 7.0));
+            world += v.tangentToWorld[0] * (p.positionAndSize.w * shake * _Wobble * (0.25 + o.trail.x));
         }
-        o.trail = vec4(u, v.side, v.along, v.fromHead);
-        o.shape = vec3(length(v.span) * taper, v.extra.y, v.alive);
+        o.tint = p.color;
         gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(world, 1.0);
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
-        if (i.shape.z < 0.5) discard;
         FxGlow g = FxGlow(_Color.rgb, _Core.rgb, _CoreWidth, _Softness, _Fade, _Tiling.xy, _Flow, _Erode);
         vec3 glow;
-        vec3 light = fx_trail_glow(g, _Noise, i.trail, i.shape.x, FX_AGE, FX_SEED, glow);
-        float strength = i.shape.y * _Color.a * FX_PRESENCE;
+        vec3 light = fx_strip_glow(g, _Noise, i.trail, FX_AGE, FX_SEED, glow);
         if (dot(light, light) == 0.0) discard;
-        fragColor = vec4(light * strength, 0.0);
-        CG_GLOW(glow * strength * _GlowGain);
+        float strength = i.tint.a * _Color.a * FX_PRESENCE;
+        fragColor = vec4(light * i.tint.rgb * strength, 0.0);
+        CG_GLOW(glow * i.tint.rgb * strength * _GlowGain);
     }
 }
 

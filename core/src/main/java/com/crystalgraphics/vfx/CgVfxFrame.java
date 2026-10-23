@@ -21,7 +21,6 @@ import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRibbonRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxSequenceRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxSpriteRendererProperties;
-import com.crystalgraphics.vfx.particle.renderer.CgVfxTrailsRendererProperties;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.variable.CgVar;
@@ -48,8 +47,6 @@ import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
-import com.crystalgraphics.vfx.trail.CgVfxTrail;
-import com.crystalgraphics.vfx.trail.CgVfxTrailTexture;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
@@ -86,7 +83,7 @@ public final class CgVfxFrame {
 
     private static final int DRAWS_MESH = CgTrace.name("vfx.draws.mesh"), DRAWS_RIBBONS = CgTrace.name("vfx.draws.ribbons"),
             DRAWS_BILLBOARD = CgTrace.name("vfx.draws.billboard"), DRAWS_PATH_RIBBONS = CgTrace.name("vfx.draws.path-ribbons"),
-            DRAWS_TRAIL = CgTrace.name("vfx.draws.trail"), DRAWS_VOLUME = CgTrace.name("vfx.draws.volume"),
+            DRAWS_VOLUME = CgTrace.name("vfx.draws.volume"),
             DRAWS_FLUID = CgTrace.name("vfx.draws.fluid"), LIGHTS = CgTrace.name("vfx.lights.slot"),
             DRAWS_PARTICLE_GPU = CgTrace.name("vfx.draws.particle-gpu"), DRAWS_PARTICLE_SETS = CgTrace.name("vfx.draws.particle-sets"),
             GPU_ZONE = CgTrace.name("vfx.particles.gpu");
@@ -112,9 +109,6 @@ public final class CgVfxFrame {
     /** A gas's box, from its middle: lo xyz then hi xyz. */
     private final float[] volumeBox = new float[6];
     private final Vector3f scale = new Vector3f();
-    private final float[] trailBounds = new float[8];
-    /** Quads between two points unless a layer gives its own: a trail slot's sparse points, a particle's dense ones. */
-    private static final int TRAIL_QUADS = 4, PARTICLE_STRIP_QUADS = 2;
     /** Blocks from its source a beam slot is drawn within: its far ends are on the GPU alone. */
     private static final float BEAM_REACH = 256f;
     /** How far the unit cube's corners are from its middle: what a ribbons or billboard draw reaches. */
@@ -256,8 +250,8 @@ public final class CgVfxFrame {
 
     private final ProxyKey probe = new ProxyKey();
 
-    /** What strip a proxy's particles draw as: none (a quad, an arc or a mesh each), a trail or a beam each, or one ribbon. */
-    private enum Strip { NONE, TRAILS, RIBBON, BEAM }
+    /** What strip a proxy's particles draw as: none (a quad, an arc or a mesh each), or a beam each. */
+    private enum Strip { NONE, BEAM }
 
     /** {@link #probe}'s proxy, made at its first ask with a key of its own: once per renderer, when the renderer is made. */
     private Proxy proxy(ProxyKey probe, CgVfxLook.Placed placed, CgIndirect mode) {
@@ -581,15 +575,10 @@ public final class CgVfxFrame {
             int row = materials.row(effect, rd.r);
             CgVfxTrace.count(DRAWS_PARTICLE_GPU, 1);
             switch (rd.shape) {
-                case STRIP -> {
-                    strips = true;
+                case BEAM -> {
+                    beams = true;
                     reach = Math.max(reach, size);
-                    if (rd.beam != null) {
-                        beams = true;
-                        beam(effect, rd, size, row, pool, range, slot, capacity, base, word, ox, oy, oz);
-                    } else {
-                        strip(effect, emitter, rd, size, row, pool, range, slot, capacity, base, word, ox, oy, oz);
-                    }
+                    beam(effect, rd, size, row, pool, range, slot, capacity, base, word, ox, oy, oz);
                 }
                 case RIBBON -> {
                     strips = true;
@@ -712,14 +701,7 @@ public final class CgVfxFrame {
                 continue;
             }
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
-            if (renderer instanceof CgVfxTrailsRendererProperties t) {
-                requireRenderer(renderer, def, CgVfxDrawLayout.QUADS);
-                strip(rs, placed, r, true, t.subdivisions(), tenant, renderer);
-                if (rs.list[rs.count - 1].points != t.points()) {
-                    throw new IllegalStateException(who(def, renderer) + " keeps " + t.points() + " points, but " + def.name()
-                            + " keeps " + rs.list[rs.count - 1].points + " a particle: give it trail(" + t.points() + ")");
-                }
-            } else if (renderer instanceof CgVfxBeamRendererProperties beam) {
+            if (renderer instanceof CgVfxBeamRendererProperties beam) {
                 requireRenderer(renderer, def, CgVfxDrawLayout.QUADS);
                 beam(rs, placed, r, beam, tenant);
             } else if (renderer instanceof CgVfxRibbonRendererProperties ribbon) {
@@ -773,30 +755,6 @@ public final class CgVfxFrame {
         }
     }
 
-    /** A strip's renderer: a trail behind each particle through its ring, or a ribbon through them; {@code renderer} names it in errors. */
-    private void strip(Renderers rs, CgVfxLook.Placed placed, CgVfxMaterials.Resolved r, boolean trails, int subdivisions,
-                       CgVfxGpuSteps.Tenant tenant, CgVfxRendererProperties renderer) {
-        CgVfxParticlePool pool = tenant.pool;
-        CgVfxEmitter def = tenant.instance.emitter();
-        Renderer rd = rs.next(Shape.STRIP, placed, r,
-                trails ? materials.material(r, pool) : materials.material(r, CgVfxSlot.Kind.PARTICLES));
-        rd.trails = trails;
-        rd.subs = subdivisions > 0 ? subdivisions : PARTICLE_STRIP_QUADS;
-        if (trails) {
-            rd.points = pool.ringPoints(tenant.slot);
-            if (rd.points < 2) {
-                throw new IllegalStateException(who(def, renderer) + " draws trails, but " + def.name()
-                        + " keeps no positions: give it trail(points)");
-            }
-            rd.firstRing = pool.ringFirst(tenant.slot);
-        }
-        rd.per = (trails ? rd.points - 1 : 1) * rd.subs * 6;
-        if (MERGED.get()) {
-            rd.proxy = proxy(probe.set(pool, rd.material, CgVfxDrawLayout.QUADS,
-                    trails ? Strip.TRAILS : Strip.RIBBON, rd.per), placed, CgIndirect.VERTICES);
-        }
-    }
-
     /**
      * A beam renderer: a strip a particle, placed by the strip factory from its pool's beam runs (CgVfxBeams), as
      * many segments a sheet as its noise steps times their tessellation, or its interpolation points.
@@ -809,7 +767,7 @@ public final class CgVfxFrame {
             throw new IllegalStateException(who(def, beam) + " draws beams, but " + def.name()
                     + " has no beam_source or beam_target to place them");
         }
-        Renderer rd = rs.next(Shape.STRIP, placed, r, materials.material(r, CgVfxSlot.Kind.PARTICLES));
+        Renderer rd = rs.next(Shape.BEAM, placed, r, materials.material(r, CgVfxSlot.Kind.PARTICLES));
         rd.beam = beam;
         CgVfxModule.BeamNoise noise = null;
         for (CgVfxModule m : def.modules()) if (m instanceof CgVfxModule.BeamNoise n) noise = n;
@@ -885,7 +843,7 @@ public final class CgVfxFrame {
     }
 
     /** How a renderer draws its slot. */
-    private enum Shape { MERGED, SINGLE, STRIP, RIBBON, MESHES, SEQUENCE, LIGHT }
+    private enum Shape { MERGED, SINGLE, BEAM, RIBBON, MESHES, SEQUENCE, LIGHT }
 
     /**
      * An emitter instance's renderers, kept on its tenancy from its first drawn frame until its slot closes: Niagara's
@@ -926,10 +884,10 @@ public final class CgVfxFrame {
             rd.proxy = null;
             rd.mesh = null;
             rd.meshRadius = rd.carried = 0f;
-            rd.subs = rd.points = rd.firstRing = rd.per = rd.node = 0;
+            rd.subs = rd.per = rd.node = 0;
             rd.beam = null;
             rd.beamFlags = rd.beamFrequency = 0;
-            rd.trails = rd.unsorted = false;
+            rd.unsorted = false;
             rd.sort = CgVfxRange.Sort.VIEW_DEPTH;
             rd.submesh = -1;
             return rd;
@@ -942,22 +900,20 @@ public final class CgVfxFrame {
         CgVfxLook.Placed placed;
         CgVfxMaterials.Resolved r;
         CgMaterial material;
-        /** Its merged draw: {@code MERGED}, and {@code STRIP} unless merging is off. */
+        /** Its merged draw: {@code MERGED}, and {@code BEAM} unless merging is off. */
         Proxy proxy;
         /** {@code MESHES} and {@code SEQUENCE}: what it draws per particle (a part with none, the sphere), its radius. */
         CgMeshLods mesh;
         float meshRadius;
-        /** {@code STRIP}: whether it trails behind each particle, else a ribbon through them. */
-        boolean trails;
         /** A renderer sorting none: drawn in the order Range keeps, however it blends. */
         boolean unsorted;
         /** {@code MESHES}: the section it draws, -1 for the whole mesh. */
         int submesh = -1;
         /** How it sorts its particles when it blends them. */
         CgVfxRange.Sort sort = CgVfxRange.Sort.VIEW_DEPTH;
-        /** {@code STRIP}: quads a segment, ring points (trails), the ring's first point, vertices a particle. */
-        int subs, points, firstRing, per;
-        /** {@code STRIP}, a beam: its renderer, its flags (1 noise on the target, 2 one up, 4 tiles by distance), its noise's frequency. */
+        /** {@code BEAM}: segments a sheet, vertices a particle. */
+        int subs, per;
+        /** {@code BEAM}: its renderer, its flags (1 noise on the target, 2 one up, 4 tiles by distance), its noise's frequency. */
         CgVfxBeamRendererProperties beam;
         int beamFlags, beamFrequency;
         /** {@code RIBBON}: its renderer and cross section. */
@@ -1047,57 +1003,6 @@ public final class CgVfxFrame {
                 .custom(0, range.laidBase(slot) - pool.listBase(slot), ribbons.slotRecord(slot), size, -1f - mode)
                 .custom(1, shape.code(), shape.segments(), shape.planes(), shape.edges())
                 .custom(2, b.uv0().scaleV(), b.uv0().offsetV(), b.uv1().scaleV(), b.uv1().offsetV())
-                .custom(3, row, effect.age, effect.seed, effect.presence());
-        CgVfxSystem.place(draw, rd.placed, effect).submit();
-    }
-
-    /**
-     * One strip layer's draw of {@code slot}, vertex-pulled ({@code fx_trail.glsl}): a trail behind each visible particle
-     * through its ring, or one ribbon through them newest first; a record of its pool's merged draw unless
-     * {@code mergeParticles} is off. What its shader reads:
-     * <ul>
-     *   <li>{@code CG_OBJECT_CUSTOM0}: the first record, the slot's capacity, the layer's size, quads a segment.</li>
-     *   <li>{@code CG_OBJECT_CUSTOM1}: particle seconds since the newest ring point, seconds between two points, 0, the
-     *       effect's age.</li>
-     *   <li>{@code CG_OBJECT_CUSTOM2}, trails: the slot's first ring point, rings, points a ring, the newest step.</li>
-     * </ul>
-     * Drawn at the instance's origin; culled as one sphere about it, the slot whole.
-     */
-    private void strip(CgVfxEffect<?> effect, CgVfxEmitterInstance emitter, Renderer rd, float size, int row,
-                       CgVfxParticlePool pool, CgVfxRange range, int slot, int capacity, int base, long word, double ox,
-                       double oy, double oz) {
-        boolean trails = rd.trails;
-        if (!trails) range.ribbon(slot, emitter.books().spawnedSoFar());
-        float step = trails ? pool.lastStep() : 0f;
-        if (rd.proxy != null) {
-            int f = rd.proxy.add(this, capacity, ox, oy, oz, word);
-            float[] c = rd.proxy.custom;
-            c[f] = base;
-            c[f + 1] = capacity;
-            c[f + 2] = size;
-            c[f + 3] = rd.subs;
-            c[f + 4] = pool.trailSince();
-            c[f + 5] = CgVfxParticlePool.TRAIL_INTERVAL;
-            c[f + 7] = effect.age;
-            c[f + 8] = rd.firstRing;
-            c[f + 9] = capacity;
-            c[f + 10] = rd.points;
-            c[f + 11] = step;
-            c[f + 12] = row;
-            c[f + 13] = effect.age;
-            c[f + 14] = effect.seed;
-            c[f + 15] = effect.presence();
-            return;
-        }
-        CgWorldRenderer.Draw draw = world.draw(CgMesh.vertices(sizeClass(capacity, 1) * rd.per, CgMeshTopology.TRIANGLES),
-                        rd.material)
-                .buffer(CgBindingPoints.PARTICLES, pool.drawn()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
-                .indirect(range.visible(), word, CgIndirect.VERTICES, rd.per)
-                .gpuCulled()
-                .at(ox, oy, oz)
-                .custom(0, base, capacity, size, rd.subs)
-                .custom(1, pool.trailSince(), CgVfxParticlePool.TRAIL_INTERVAL, 0f, effect.age)
-                .custom(2, rd.firstRing, capacity, rd.points, step)
                 .custom(3, row, effect.age, effect.seed, effect.presence());
         CgVfxSystem.place(draw, rd.placed, effect).submit();
     }
@@ -1202,56 +1107,6 @@ public final class CgVfxFrame {
                     .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
             CgVfxSystem.place(draw, placed, effect).submit();
             CgVfxTrace.count(DRAWS_PATH_RIBBONS, 1);
-        }
-    }
-
-    /**
-     * Draws every layer on {@code slot}, a trail slot, along {@code trail}: a strip each layer's shader builds per vertex
-     * from the trail's points ({@code fx_trail.glsl}), its head where the trail's thing is this frame. A layer's size is
-     * a ribbon's half-width in blocks, or how far a blade reaches from its base toward its tip (1 to the tip). What its
-     * shader reads is {@link CgVfxSlot.Kind#TRAIL}'s.
-     *
-     * <pre>{@code
-     * frame.trail(this, STREAK, streak);
-     * }</pre>
-     */
-    public void trail(CgVfxEffect<?> effect, CgVfxSlot slot, CgVfxTrail trail) {
-        kind(slot, CgVfxSlot.Kind.TRAIL);
-        CgVfxLook look = effect.look();
-        CgVfxLook.Placed[] on = look.on(slot);
-        if (on.length == 0) return;
-        double ax = trail.anchorX(), ay = trail.anchorY(), az = trail.anchorZ();
-        CgVfxTrailTexture trails = system.trails();
-        int first = trails.add(trail, alpha, ax, ay, az, trailBounds);
-        if (first < 0) return;
-        int points = trails.points(first);
-        float[] b = trailBounds;
-        float cx = (b[0] + b[3]) * 0.5f, cy = (b[1] + b[4]) * 0.5f, cz = (b[2] + b[5]) * 0.5f;
-        float hx = (b[3] - b[0]) * 0.5f, hy = (b[4] - b[1]) * 0.5f, hz = (b[5] - b[2]) * 0.5f;
-        boolean blade = trail.mode() == CgVfxTrail.Mode.BLADE;
-        float ox = (float) (ax - effect.originX), oy = (float) (ay - effect.originY), oz = (float) (az - effect.originZ);
-        for (CgVfxLook.Placed placed : on) {
-            if (skips(effect, placed)) continue;
-            CgVfxMaterials.Resolved r = materials.resolve(look, placed);
-            float size = CgVfxMaterials.size(effect, r);
-            int subs = TRAIL_QUADS;
-            CgMesh mesh = CgMesh.vertices(sizeClass((points - 1) * subs, 16) * 6, CgMeshTopology.TRIANGLES);
-            // A ribbon reaches its widest half-width past its points; a blade past its tips as far as its size goes.
-            float reach = blade ? Math.max(size - 1f, 0f) * 2f * Math.max(hx, Math.max(hy, hz)) : size * trail.widest();
-            reach += 0.05f;
-            effect.boundBox(ox + b[0] - reach, oy + b[1] - reach, oz + b[2] - reach,
-                    ox + b[3] + reach, oy + b[4] + reach, oz + b[5] + reach);
-            scaled.scaling(hx + reach, hy + reach, hz + reach);
-            CgWorldRenderer.Draw draw = world.draw(mesh, materials.material(r, CgVfxSlot.Kind.TRAIL))
-                    .bounds(CgAABBc.UNIT)
-                    .at(ax + cx, ay + cy, az + cz).transform(scaled)
-                    .subject(effect.subject)
-                    .custom(0, first, points, size, trail.life())
-                    .custom(1, cx, cy, cz, 0f)
-                    .custom(2, subs, trail.mode().ordinal(), b[6], b[6] - b[7])
-                    .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
-            CgVfxSystem.place(draw, placed, effect).submit();
-            CgVfxTrace.count(DRAWS_TRAIL, 1);
         }
     }
 

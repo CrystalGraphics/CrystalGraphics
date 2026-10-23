@@ -131,14 +131,6 @@ public interface CgVfxGpuEmitter {
     }
 
     /**
-     * How many of each particle's last positions its pool keeps, one a step, for a {@code trails()} layer to draw: 0
-     * keeps none.
-     */
-    default int trailPoints() {
-        return 0;
-    }
-
-    /**
      * Whether its particles are a Cascade ribbon trail's (a ribbon renderer with a {@code trail}): born by its trail
      * source ({@code CgVfxTrailSource}), each keeping its tangent, up, trail and distance.
      */

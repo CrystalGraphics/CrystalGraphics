@@ -40,7 +40,6 @@ CgVfxEmitter emitter = CgVfxEmitter.builder("sparks")
 | `mesh` | one mesh a particle (`meshes: [{ mesh: <path>, rotation, scale }]`), the unit sphere with none; `facing`, `locked_axis`, `facing_up`, `roll_about`, `pre_rotation` ([below](#mesh-particles-that-face-something)) | `MESHES` |
 | `ribbon` | one strip through an instance's particles, newest first; with a `trail`, Cascade's trail ([below](#ribbons-and-trails-strips-through-particles)) | quads |
 | `anim_trail` | a sheet swept by an edge between two points the effect moves ([below](#cascades-anim-trail)) | quads |
-| `trails` | a strip behind each particle; its `points` are the ring its emitter keeps (`trail(points)`) | quads |
 | `arc` | a stroke round the source | `ARCS` |
 | `sequence` | a clip's parts at each particle, drawn by the clip's prefab | a clip |
 
@@ -175,10 +174,28 @@ CgVfxEmitter smoke = CgVfxEmitter.builder("smoke").ratePerBlock(CgVfxSpawnPerUni
         .spawnFrom(CgVfxSpawnFrom.trailing("rocks", CgVfxSpawnFrom.Selection.RANDOM)).renderer(smokeTrail).build();
 ```
 
+A trail behind every particle is `selection: sequential`, `max_trails` as many as the source keeps alive: each trail
+takes the next particle no other trail follows, as Cascade's sequential selection does.
+
+```yaml
+- { id: s1, module: crystalgraphics:ribbon_source, inputs: { method: particle, name: sparks, selection: sequential } }
+```
+
+```java
+CgVfxEmitter.builder("streaks").ratePerBlock(CgVfxSpawnPerUnit.every(1f, 0.08f)).life(0.15f, 0.15f).capacity(256 * 24)
+        .spawnFrom(CgVfxSpawnFrom.trailing("sparks", CgVfxSpawnFrom.Selection.SEQUENTIAL))
+        .renderer(CgVfxRenderers.ribbon("r1").material(GLOW)
+                .field("trail", Map.of("max_trails", 256, "max_particles", 24)).build()).build();
+```
+
 - **The source is named as Cascade names it**: by an emitter's name, or by its handle.
 - **It spawns by its sources' moves alone**: a rate or a burst on it fails at load.
 - **Its trails are worked out on the GPU**, where the particles they follow are. A trail whose particle dies starts
   again on another.
+- **`random` may set two trails on one particle**, as Cascade's does; `sequential` never does, and its source may keep
+  at most 4,096 particles. An emitter keeps at most 1,024 trails.
+- **Thousands of fast sparks** are cheaper as Niagara draws them: a sprite stretched along its velocity
+  (`alignment: velocity`), or an `arc` renderer's `ray`, rather than a trail each.
 
 ### Cascade's anim trail
 
@@ -209,6 +226,24 @@ effect.values().set(TIP, tipX, tipY, tipZ);
 | `width`, `colour` | a value, or up to four keys `by: length`, newest 0 to oldest 1 |
 | `life` | samples it keeps, 0 for as long as each lives |
 | `stop` | `dead_on_deactivate`, or `{ retract: n, fade: { alpha, width } }`: stopped, it loses n samples a tick while it keeps sampling, fading |
+
+### The trail looks
+
+`shaders/vfx/trail/` holds ribbon materials for every kind of strip above. Each reads its life from its particles, across
+from V, and blocks along from UV1, so its renderer tiles UV1 once a block: a Cascade trail's `tiling_distance: 1`, an
+anim trail's `tiling_distance: 1`, a Niagara ribbon's `uv1: { distribution: tiled_over_ribbon_length, tiling_length: 1 }`.
+Its emitter's size over life tapers it.
+
+| Shader | Draws |
+|---|---|
+| `glow` | a ki streak: a white-hot core (`_Core`) to its colour (`_Color`) at soft edges, energy flowing back, its tail eaten away; `_Wobble` shakes it into lightning |
+| `bands` | anime cel bands (`_Bands`: core, middle, edge), each narrowing toward the tail, which breaks into brushed strands; `_Ink` an outline |
+| `swoosh` | an anim trail's sheet from base to tip: a hot leading edge (`_Hot`), streaks along the swing, faded edge-on |
+| `haze` | the air bent behind it: a Distortion pass only |
+| `smoke` | lit smoke billowing wider and drifting up as it ages; `_Glow` a fire's hot head |
+| `scorch` | burnt ground with embers cooling in its cracks: an anim trail along the ground, its edge either side of the path |
+
+`lib/vfx/fx_strip.glsl` has what they read (`fx_strip`) and the glow they share (`fx_strip_glow`), for a look of your own.
 
 ### Easy to get wrong
 

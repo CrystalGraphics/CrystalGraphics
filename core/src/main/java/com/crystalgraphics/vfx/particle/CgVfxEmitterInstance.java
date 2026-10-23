@@ -8,6 +8,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxInactiveResponse;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxValues;
@@ -179,7 +180,8 @@ public final class CgVfxEmitterInstance {
         boolean followed = emitter.spawnFrom() != null && emitter.spawnFrom().trails();
         trail = emitter.trail() == null || followed ? null
                 : new CgVfxTrailSource(emitter.trail(), emitter.perUnit, emitter.maxStep, emitter.capacity, offset);
-        heads = followed ? new CgVfxTrailHeads(emitter.trail(), emitter.perUnit, emitter.maxStep, emitter.capacity) : null;
+        heads = followed ? new CgVfxTrailHeads(emitter.trail(), emitter.perUnit, emitter.maxStep, emitter.capacity,
+                emitter.spawnFrom().selection() == CgVfxSpawnFrom.Selection.SEQUENTIAL) : null;
         anim = emitter.animTrail() == null ? null : new CgVfxAnimTrailSource(emitter.animTrail(), emitter.capacity);
         List<CgVfxEvent> events = emitter.events;
         boolean capped = feed == null && emitter.capacity < emitter.uncappedPeak();

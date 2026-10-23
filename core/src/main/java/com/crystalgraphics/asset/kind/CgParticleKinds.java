@@ -294,12 +294,6 @@ public final class CgParticleKinds {
             .property("subdivisions", INT)
             .register();
 
-    static final CgType TRAILS = renderer("trails")
-            .property("points", INT).flags(CgPropertyFlag.STRUCTURAL)
-            .property("subdivisions", INT)
-            .property("taper", FLOAT)
-            .register();
-
     /**
      * A renderer member: the fields every renderer holds, then its kind's. The
      * family's {@code kind} key is written after the id.

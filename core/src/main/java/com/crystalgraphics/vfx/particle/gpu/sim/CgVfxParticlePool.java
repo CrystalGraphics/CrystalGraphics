@@ -126,8 +126,6 @@ public final class CgVfxParticlePool {
      * born at its start and the rest spread across it.
      */
     public static final int SPAWN_ROW_WORDS = 36;
-    /** Seconds of particle time between two trail points: trails sample by time, whatever the frame rate. */
-    public static final float TRAIL_INTERVAL = 1f / 60f;
 
     /**
      * An event row, as a Step kernel appends it and a child's reads it: where it fired within its slot's origin's block,
@@ -209,7 +207,6 @@ public final class CgVfxParticlePool {
     private static final int GPU_STEP = CgGpuTrace.name("vfx.pool.step");
     private static final CgGpuCount ONE = CgGpuCount.of(1);
     private static final int MIN_STORAGE = 1024;
-    private static final String TRAIL_KERNELS = "crystalgraphics:shaders/env/compute/vfx/trail.compute";
     /** The Step's last stage: each live particle's drawn part, written into its record. */
     private static final String LOOK_KERNELS = "crystalgraphics:shaders/env/compute/vfx/look.compute";
     private static final String NEIGHBOUR_KERNELS = "crystalgraphics:shaders/env/compute/vfx/neighbours.compute";
@@ -221,7 +218,7 @@ public final class CgVfxParticlePool {
     private final int id = nextId++ & 0x1FFF;
     private final CgVfxWords words = new CgVfxWords();
     private final int paramWords, instanceWords;
-    private final String passName, recordsName, drawnName, paramsName, curvesName, instancesName, spawnsName, historyName, ringsName,
+    private final String passName, recordsName, drawnName, paramsName, curvesName, instancesName, spawnsName,
             gridKeysName, gridValuesName, gridRunsName;
     private final String[] countNames;
 
@@ -304,28 +301,6 @@ public final class CgVfxParticlePool {
     private CgGraphBuffer feedBuffer;
     private int slotCount, openSlots, capacity;
     private boolean basesStale;
-    /**
-     * Per slot: where its trail rings start in {@link #history()}, a ring a particle of its capacity, and points a ring
-     * (0: it keeps none). Its region is its own while it is open, so a ring's points never move.
-     */
-    private int[] ringFirst = new int[0], ringPoints = new int[0];
-    /** Points the history has given out, its free runs as (start, length) pairs, and the slots keeping trails. */
-    private int ringEnd, ringFreeCount, ringSlots;
-    private int[] ringFree = new int[0];
-    /** Runs given out since the last recording, cleared there so a new slot reads no old slot's tags: (start, length). */
-    private int[] ringClears = new int[0];
-    private int ringClearCount;
-    /** Each slot's ring words, four a slot: what {@code trail.compute} reads as RINGS. */
-    private int[] ringWords = new int[0];
-    /** Trail points this pool has stored: each point's place in every ring. */
-    private int stepsStored;
-    /** Particle seconds since the newest trail point, once the queued steps record; queued steps that store one. */
-    private float trailSince;
-    private int pendingStores;
-    /** Whether the history is new since the last recording; the one it replaced, and any between, to release there. */
-    private boolean historyFresh;
-    private CgGraphBuffer historyFrom;
-    private final List<CgGraphBuffer> historyDrops = new ArrayList<>();
 
     /** The steps queued since the last {@link #takeSteps()}: four floats each (dt, wind). */
     private int steps;
@@ -337,8 +312,6 @@ public final class CgVfxParticlePool {
      */
     private int[] stepInstanceAt = new int[0], stepSlots = new int[0], stepSpawnAt = new int[0], stepSpawnRows = new int[0],
             stepSpawned = new int[0], stepCapacity = new int[0];
-    /** Per step: whether it stores a trail point. */
-    private boolean[] stepStores = new boolean[0];
     private int[] instances = new int[0];
     private int instanceEnd;
     /** Which step last wrote each slot's row, as 1 + its index. */
@@ -355,17 +328,17 @@ public final class CgVfxParticlePool {
      * {@code s * headStride + t}, each {@link #headVecs()} vec4s; made again, zeroed, where a slot outgrows them.
      */
     private CgGraphBuffer headBuffer;
-    private CgKernel headsKernel;
+    private CgKernel headsKernel, picksKernel;
     private int headStride = 1, headBlocks = 1, headClearCount, headListCount;
     private boolean headsStale = true;
     private int[] headClears = new int[4], headList = new int[16], stepHeadListAt = new int[0], stepHeads = new int[0];
 
     // The GPU half: made at the first recording, grown as slots open.
-    private CgKernel step, look, store, gridKeys, gridRuns;
+    private CgKernel step, look, gridKeys, gridRuns;
     /** Its beams' noise points, where its shape draws beams with noise. */
     @Nullable
     private final CgVfxBeams beams;
-    private CgGraphBuffer records, drawn, paramBuffer, curveBuffer, instanceBuffer, spawnBuffer, history, ringTable;
+    private CgGraphBuffer records, drawn, paramBuffer, curveBuffer, instanceBuffer, spawnBuffer;
     /** The neighbour grid (CgVfxDataInterfaces.NEIGHBOURS): each record's key and index, sorted; each hashed cell's run. */
     private CgGraphBuffer cellKeys, cellValues, cellRuns;
     /** Each slot's light row, CgVfxParticleLights's: fitted by the firing that uploads it. */
@@ -402,8 +375,6 @@ public final class CgVfxParticlePool {
         instancesName = name + ".instances";
         spawnsName = name + ".spawns";
         countNames = new String[]{name + ".live0", name + ".live1"};
-        historyName = name + ".trails";
-        ringsName = name + ".rings";
         gridKeysName = name + ".grid-keys";
         gridValuesName = name + ".grid-values";
         gridRunsName = name + ".grid-runs";
@@ -476,7 +447,6 @@ public final class CgVfxParticlePool {
         CgVfxEmitterCompiler.compile(shape).kernel("Step").prepare();
         CgCompute.load(LOOK_KERNELS).kernel("Look").prepare();
         CgGpuOps.prepareFill();
-        if (emitter.trailPoints() > 0) CgCompute.load(TRAIL_KERNELS).kernel("Store").prepare();
         if (shape.spawns() || shape.publishes()) {
             CgCompute.load(EVENT_CAP_KERNELS).kernel("Keys").prepare();
             CgCompute.load(EVENT_CAP_KERNELS).kernel("Runs").prepare();
@@ -582,12 +552,10 @@ public final class CgVfxParticlePool {
 
     private void forgetStorage() {
         records = drawn = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = feedBuffer = counts[0] = counts[1] = null;
-        history = ringTable = historyFrom = lightSlots = trailBuffer = headBuffer = null;
+        lightSlots = trailBuffer = headBuffer = null;
         headsStale = true;
         cellKeys = cellValues = cellRuns = null;
         if (beams != null) beams.forget();
-        historyDrops.clear();
-        historyFresh = false;
         current = storage = 0;
         paramsChanged = true;
     }
@@ -817,7 +785,6 @@ public final class CgVfxParticlePool {
         if (look == null) look = CgCompute.load(LOOK_KERNELS).kernel("Look");
         reserve(recording, capacity);
         upload(recording);
-        if (ringSlots > 0) reserveRings(recording);
         List<CgVfxDataInterface> interfaces = shape.dataInterfaces();
         for (int d = 0; d < interfaces.size(); d++) interfaces.get(d).reserve(recording, this);
         return true;
@@ -858,89 +825,6 @@ public final class CgVfxParticlePool {
                 CgGpuCount.at(live, 0, storage));
         CgGpuOps.fill(pass, cellRuns, 0, CgGpuCount.of(cells * 2));
         pass.dispatch(gridRuns, storage).bind("LIVE", live).bind("KEYS", cellKeys).bind("RUNS", cellRuns);
-    }
-
-    /**
-     * Fills a history {@link #history()} made since the last recording, the old one's points copied into it, clears runs
-     * given out since, and writes each slot's rings.
-     */
-    private void reserveRings(CgRecording recording) {
-        if (store == null) store = CgCompute.load(TRAIL_KERNELS).kernel("Store");
-        CgGraphBuffer into = history();
-        if (historyFresh) {
-            recording.fill(into, 0);
-            if (historyFrom != null) {
-                recording.copy(historyFrom, 0, into, 0, historyFrom.size());
-                recording.release(historyFrom);
-                historyFrom = null;
-            }
-            for (int i = 0; i < historyDrops.size(); i++) recording.release(historyDrops.get(i));
-            historyDrops.clear();
-            historyFresh = false;
-        }
-        for (int i = 0; i < ringClearCount; i++) {
-            recording.fill(history, ringClears[i * 2] * 16L, ringClears[i * 2 + 1] * 16L, 0);
-        }
-        ringClearCount = 0;
-        if (ringWords.length < slotCount * 4) ringWords = new int[Math.max(16, slotCount * 8)];
-        for (int s = 0; s < slotCount; s++) {
-            boolean keeps = slotEmitter[s] != null && ringPoints[s] > 0;
-            ringWords[s * 4] = keeps ? ringFirst[s] : 0;
-            ringWords[s * 4 + 1] = keeps ? slotCapacity[s] : 1;
-            ringWords[s * 4 + 2] = keeps ? ringPoints[s] : 0;
-            ringWords[s * 4 + 3] = 0;
-        }
-        ringTable = fit(recording, ringTable, ringsName, slotCount * 4);
-        put(recording, ringTable, ringWords, slotCount * 4);
-    }
-
-    /** A run of {@code points} in the history: the first free run it fits, else past the end. */
-    private int takeRing(int points) {
-        for (int i = 0; i < ringFreeCount; i++) {
-            int start = ringFree[i * 2], length = ringFree[i * 2 + 1];
-            if (length < points) continue;
-            if (length == points) {
-                System.arraycopy(ringFree, (i + 1) * 2, ringFree, i * 2, (ringFreeCount - i - 1) * 2);
-                ringFreeCount--;
-            } else {
-                ringFree[i * 2] = start + points;
-                ringFree[i * 2 + 1] = length - points;
-            }
-            return clearLater(start, points);
-        }
-        int start = ringEnd;
-        ringEnd += points;
-        return clearLater(start, points);
-    }
-
-    private int clearLater(int start, int points) {
-        if (ringClears.length < (ringClearCount + 1) * 2) ringClears = Arrays.copyOf(ringClears, Math.max(8, ringClearCount * 4));
-        ringClears[ringClearCount * 2] = start;
-        ringClears[ringClearCount * 2 + 1] = points;
-        ringClearCount++;
-        return start;
-    }
-
-    /** Gives back a run, joined to the free runs it touches, and the end drawn in past a run that reaches it. */
-    private void giveRing(int start, int points) {
-        int at = 0;
-        while (at < ringFreeCount && ringFree[at * 2] < start) at++;
-        if (ringFree.length < (ringFreeCount + 1) * 2) ringFree = Arrays.copyOf(ringFree, Math.max(8, ringFreeCount * 4));
-        System.arraycopy(ringFree, at * 2, ringFree, (at + 1) * 2, (ringFreeCount - at) * 2);
-        ringFree[at * 2] = start;
-        ringFree[at * 2 + 1] = points;
-        ringFreeCount++;
-        for (int i = ringFreeCount - 2; i >= 0; i--) {
-            if (ringFree[i * 2] + ringFree[i * 2 + 1] == ringFree[(i + 1) * 2]) {
-                ringFree[i * 2 + 1] += ringFree[(i + 1) * 2 + 1];
-                System.arraycopy(ringFree, (i + 2) * 2, ringFree, (i + 1) * 2, (ringFreeCount - i - 2) * 2);
-                ringFreeCount--;
-            }
-        }
-        if (ringFreeCount > 0 && ringFree[(ringFreeCount - 1) * 2] + ringFree[(ringFreeCount - 1) * 2 + 1] == ringEnd) {
-            ringEnd = ringFree[(ringFreeCount - 1) * 2];
-            ringFreeCount--;
-        }
     }
 
     private static void loadCapKernels() {
@@ -1051,6 +935,17 @@ public final class CgVfxParticlePool {
             if (headsKernel == null) headsKernel = CgVfxEmitterCompiler.compile(shape).kernel("Heads");
             int from = shape.tier() - 1;
             boolean published = BIN_SLOTS[from] > 0;
+            if (shape.spawnFrom().selection() == CgVfxSpawnFrom.Selection.SEQUENTIAL) {
+                // Cascade's sequential selection first: each trail's source, in trail order.
+                if (picksKernel == null) picksKernel = CgVfxEmitterCompiler.compile(shape).kernel("Picks");
+                pass.dispatch(picksKernel, stepHeads[s]).bind("SPAWNS", spawnBuffer).bind("TRAILS", trailBuffer)
+                        .bind("HEADS", headBuffer).bind("READS", readsBuffer)
+                        .bind("SOURCE_ROWS", published ? BIN_SORTED[from] : unfed)
+                        .bind("SOURCE_RUNS", published ? BIN_RUNS[from] : unfed)
+                        .bind("SOURCE_DIRECT", published ? BIN_DIRECT[from] : unfed)
+                        .bind("SOURCE_SLOTS", published ? BIN_DIRECT_SLOTS[from] : unfed)
+                        .set("_HeadListAt", stepHeadListAt[s]).set("_HeadVecs", headVecs());
+            }
             pass.dispatch(headsKernel, stepHeads[s]).bind("SPAWNS", spawnBuffer).bind("TRAILS", trailBuffer)
                     .bind("HEADS", headBuffer).bind("INSTANCES", instanceBuffer).bind("PARAMS", paramBuffer)
                     .bind("READS", readsBuffer).bind("SOURCE_ROWS", published ? BIN_SORTED[from] : unfed)
@@ -1119,7 +1014,7 @@ public final class CgVfxParticlePool {
         current = 1 - current;
     }
 
-    /** Step {@code s}'s last stages, after {@link #dispatchStep}: the drawn record, the neighbour grid, the history. */
+    /** Step {@code s}'s last stages, after {@link #dispatchStep}: the drawn record and the neighbour grid. */
     private void finishStep(CgComputePass pass, int s) {
         // What draws read, written into the drawn buffer at each live record's index.
         CgVfxRecord record = shape.record();
@@ -1136,15 +1031,6 @@ public final class CgVfxParticlePool {
                 .set("_Floors", shape.floors() ? 1 : 0).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS));
         List<CgVfxDataInterface> interfaces = shape.dataInterfaces();
         for (int d = 0; d < interfaces.size(); d++) interfaces.get(d).afterStep(pass, this);
-        if (stepStores[s]) {
-            if (ringSlots > 0) {
-                pass.dispatch(store, storage).bind("RECORDS", records).bind("LIVE", counts[current])
-                        .bind("RINGS", ringTable).bind("HISTORY", history).set("_Step", stepsStored)
-                        .set("_RecordVectors", record.vectors());
-            }
-            stepsStored++;
-            pendingStores--;
-        }
     }
 
     /** The neighbour grid the last step built, for {@code CgVfxDataInterfaces.NEIGHBOURS}' binding. */
@@ -1281,15 +1167,13 @@ public final class CgVfxParticlePool {
 
     private void releaseStorage(CgRecording recording) {
         CgGraphBuffer[] owned = {records, drawn, counts[0], counts[1], paramBuffer, curveBuffer, instanceBuffer, spawnBuffer,
-                history, ringTable, historyFrom, cellKeys, cellValues, cellRuns, lightSlots, trailBuffer, headBuffer};
+                cellKeys, cellValues, cellRuns, lightSlots, trailBuffer, headBuffer};
         for (CgGraphBuffer buffer : owned) if (buffer != null) recording.release(buffer);
-        for (int i = 0; i < historyDrops.size(); i++) recording.release(historyDrops.get(i));
         records = drawn = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = counts[0] = counts[1] = null;
-        history = ringTable = historyFrom = lightSlots = trailBuffer = headBuffer = null;
+        lightSlots = trailBuffer = headBuffer = null;
         headsStale = true;
         cellKeys = cellValues = cellRuns = null;
         if (beams != null) beams.release(recording);
-        historyDrops.clear();
     }
 
     public CgVfxShape shape() {
@@ -1332,7 +1216,6 @@ public final class CgVfxParticlePool {
         slotBindScale[slot] = 1f;
         Arrays.fill(socketPrev, slot * CgVfxSockets.MAX * 4, (slot + 1) * CgVfxSockets.MAX * 4, 0);
         slotSourceReach[slot] = 0f;
-        ringPoints[slot] = emitter.trailPoints();
         if (emitter.headTrails() > 0) {
             if (emitter.headTrails() > headStride || emitter.headBlocks() > headBlocks) {
                 headStride = Math.max(headStride, emitter.headTrails());
@@ -1343,10 +1226,6 @@ public final class CgVfxParticlePool {
             headClears[headClearCount++] = slot;
         }
         if (beams != null) beams.open(slot, capacity);
-        if (ringPoints[slot] > 0) {
-            ringFirst[slot] = takeRing(capacity * ringPoints[slot]);
-            ringSlots++;
-        }
         if (slot == slotCount) slotCount++;
         openSlots++;
         this.capacity += capacity;
@@ -1362,11 +1241,6 @@ public final class CgVfxParticlePool {
         giveTextures(slot);
         capacity -= slotCapacity[slot];
         if (beams != null) beams.close(slot);
-        if (ringPoints[slot] > 0) {
-            giveRing(ringFirst[slot], slotCapacity[slot] * ringPoints[slot]);
-            ringPoints[slot] = 0;
-            ringSlots--;
-        }
         slotEmitter[slot] = null;
         slotOwner[slot] = null;
         slotCapacity[slot] = 0;
@@ -1510,6 +1384,11 @@ public final class CgVfxParticlePool {
             throw new IllegalArgumentException(reader.name() + " at feed tier " + shape.tier() + " is not born on " + from.name()
                     + " at " + source.shape.tier() + ": a reader steps the tier after a source that publishes");
         }
+        if (shape.heads() && shape.spawnFrom().selection() == CgVfxSpawnFrom.Selection.SEQUENTIAL
+                && source.capacity(sourceSlot) > CgVfxTrailHeads.MAX_SEQUENTIAL_SOURCES) {
+            throw new IllegalArgumentException(reader.name() + "'s trails follow " + from.name() + "'s particles in turn, which may"
+                    + " hold " + source.capacity(sourceSlot) + ": at most " + CgVfxTrailHeads.MAX_SEQUENTIAL_SOURCES);
+        }
         readPool[slot] = source;
         readSlot[slot] = sourceSlot;
         readSource[slot] = from;
@@ -1631,7 +1510,6 @@ public final class CgVfxParticlePool {
             stepSpawnRows = Arrays.copyOf(stepSpawnRows, n);
             stepSpawned = Arrays.copyOf(stepSpawned, n);
             stepCapacity = Arrays.copyOf(stepCapacity, n);
-            stepStores = Arrays.copyOf(stepStores, n);
             stepTrailAt = Arrays.copyOf(stepTrailAt, n);
             stepHeadListAt = Arrays.copyOf(stepHeadListAt, n);
             stepHeads = Arrays.copyOf(stepHeads, n);
@@ -1977,13 +1855,6 @@ public final class CgVfxParticlePool {
             trailEnd += headListCount * 4;
             headListCount = 0;
         }
-        // A trail point each TRAIL_INTERVAL of particle time, at most one a step.
-        trailSince += stepBlock[s * 4];
-        stepStores[s] = trailSince >= TRAIL_INTERVAL;
-        if (stepStores[s]) {
-            trailSince = Math.min(trailSince - TRAIL_INTERVAL, TRAIL_INTERVAL);
-            pendingStores++;
-        }
         steps++;
     }
 
@@ -1994,10 +1865,6 @@ public final class CgVfxParticlePool {
      */
     public void discardQueued() {
         betweenSteps("discardQueued");
-        while (pendingStores > 0) {
-            stepsStored++;
-            pendingStores--;
-        }
         takeSteps();
     }
 
@@ -2071,54 +1938,6 @@ public final class CgVfxParticlePool {
     @Nullable
     public CgGraphBuffer beamTable() {
         return beams == null ? null : beams.table();
-    }
-
-    /**
-     * Every trail ring's points, a {@code vec4} each: position from its slot's origin, and 1 + its particle's id (low 24
-     * bits), 0 where none has stored. Slot {@code s}'s particle {@code id} keeps its ring at
-     * {@code ringFirst(s) + (id % capacity(s)) * ringPoints(s)}, and step {@code k}'s point at {@code k % ringPoints(s)}
-     * (where a capacity binds and the share thins spawns, two live ids can share a ring: the later shortens the earlier)
-     * of it. A new handle when slots keeping trails grew it, so ask each frame; render thread, between steps.
-     */
-    public CgGraphBuffer history() {
-        long need = Math.max(ringEnd, 1) * 16L;
-        if (history == null || history.size() < need) {
-            // A new handle now, so a draw submitted before the recording binds the buffer it will read; the recording
-            // copies the old one's points into it.
-            if (history != null) {
-                if (historyFrom == null) historyFrom = history;
-                else historyDrops.add(history);
-            }
-            history = CgGraphBuffer.persistent(historyName, CgBufferDesc.of(Math.max(256L, Long.highestOneBit(need - 1) << 1),
-                    CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-            historyFresh = true;
-        }
-        return history;
-    }
-
-    /** Where {@code slot}'s trail rings start in {@link #history()}. */
-    public int ringFirst(int slot) {
-        openSlot(slot, "ringFirst");
-        return ringFirst[slot];
-    }
-
-    /** Points each of {@code slot}'s rings holds: its definition's {@code trailPoints()}, 0 for none. */
-    public int ringPoints(int slot) {
-        openSlot(slot, "ringPoints");
-        return ringPoints[slot];
-    }
-
-    /**
-     * The trail point that is the newest in every ring once this frame's queued steps record: what a draw submitted now
-     * reads as its head's last point. Points are {@link #TRAIL_INTERVAL} of particle time apart.
-     */
-    public int lastStep() {
-        return stepsStored + pendingStores - 1;
-    }
-
-    /** Particle seconds from {@link #lastStep()}'s point to where the particles are once this frame's steps record. */
-    public float trailSince() {
-        return trailSince;
     }
 
     /** The records {@link #records()} has room for. */
@@ -2745,8 +2564,6 @@ public final class CgVfxParticlePool {
         socketPrev = Arrays.copyOf(socketPrev, size * CgVfxSockets.MAX * 4);
         slotSourceReach = Arrays.copyOf(slotSourceReach, size);
         slotGrid = Arrays.copyOf(slotGrid, size);
-        ringFirst = Arrays.copyOf(ringFirst, size);
-        ringPoints = Arrays.copyOf(ringPoints, size);
         feedPool = Arrays.copyOf(feedPool, size);
         readPool = Arrays.copyOf(readPool, size);
         readSlot = Arrays.copyOf(readSlot, size);

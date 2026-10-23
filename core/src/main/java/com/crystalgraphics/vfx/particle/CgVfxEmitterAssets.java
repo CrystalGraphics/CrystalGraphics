@@ -692,8 +692,8 @@ public final class CgVfxEmitterAssets {
 
     /**
      * {@code ribbon_source}: Cascade's TrailSource (ParticleTrail2EmitterInstance.cpp:2186-2340), each trail behind a
-     * particle of the emitter it names, picked at random. Its strength and rotation Cascade's ribbon never reads; an
-     * offset, a sequential pick and a method other than particle fail until they are built.
+     * particle of the emitter it names, picked at random or in turn. Its strength and rotation Cascade's ribbon never
+     * reads; an offset and a method other than particle fail until they are built.
      */
     private static void ribbonSource(String name, CgVfxEmitter.Builder b, Map<?, ?> in, Map<?, ?> entry) {
         String method = String.valueOf(in.get("method") != null ? in.get("method") : "default");
@@ -702,15 +702,18 @@ public final class CgVfxEmitterAssets {
         if (numOr(in.get("offset_count"), 0f) != 0f || in.get("offsets") instanceof List<?> l && !l.isEmpty()) {
             throw new IllegalArgumentException(name + ": ribbon_source.offsets are not built yet");
         }
-        if ("sequential".equals(in.get("selection"))) throw new IllegalArgumentException(name + ": ribbon_source.selection sequential is not built yet");
         b.id("spawn_from", idOf(entry, "ribbon_source"));
-        b.spawnFrom(CgVfxSpawnFrom.trailing(source, CgVfxSpawnFrom.Selection.RANDOM));
+        b.spawnFrom(CgVfxSpawnFrom.trailing(source, "sequential".equals(in.get("selection"))
+                ? CgVfxSpawnFrom.Selection.SEQUENTIAL : CgVfxSpawnFrom.Selection.RANDOM));
     }
 
     /** {@code e}'s spawn read as a file writes it. */
     private static Map<String, Object> spawnFromEntry(CgVfxEmitter e) {
         CgVfxSpawnFrom f = e.spawnFrom;
-        if (f.trails()) return entry(e.id("spawn_from"), "ribbon_source", map("method", "particle", "name", f.source(), "selection", "random"));
+        if (f.trails()) {
+            return entry(e.id("spawn_from"), "ribbon_source", map("method", "particle", "name", f.source(), "selection",
+                    f.selection() == CgVfxSpawnFrom.Selection.SEQUENTIAL ? "sequential" : "random"));
+        }
         if (f.follow()) return entry(e.id("spawn_from"), "spawn_from_emitter", map("source", f.source(), "follow", true));
         return entry(e.id("spawn_from"), "spawn_from_emitter", map("source", f.source(),
                 "selection", f.selection().name().toLowerCase(Locale.ROOT), "inherit_velocity", (double) f.inheritVelocity(),

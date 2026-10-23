@@ -34,8 +34,7 @@ public class CgVfxRenderersTest {
                 Map.of("id", "r2", "kind", "mesh", "meshes", List.of(Map.of("mesh", "test:models/rock.glb"))),
                 Map.of("id", "r3", "kind", "ribbon", "shape", "plane"),
                 Map.of("id", "r4", "kind", "arc"),
-                Map.of("id", "r5", "kind", "trails", "points", 12),
-                Map.of("id", "r6", "kind", "sequence", "sequence", "test:sequences/blades", "play_rate", 2.0)));
+                Map.of("id", "r5", "kind", "sequence", "sequence", "test:sequences/blades", "play_rate", 2.0)));
         CgVfxSpriteRendererProperties sprite = (CgVfxSpriteRendererProperties) all.get(0);
         assertEquals(CgVfxSpriteRendererProperties.Alignment.VELOCITY, sprite.alignment());
         assertEquals(CgVfxSpriteRendererProperties.Facing.CAMERA_PLANE, sprite.facing());
@@ -44,8 +43,7 @@ public class CgVfxRenderersTest {
         assertEquals(1, ((CgVfxMeshRendererProperties) all.get(1)).meshes().size());
         assertEquals(CgVfxRibbonRendererProperties.Shape.PLANE, ((CgVfxRibbonRendererProperties) all.get(2)).shape());
         assertEquals(0, ((CgVfxArcRendererProperties) all.get(3)).subdivisions());
-        assertEquals(12, ((CgVfxTrailsRendererProperties) all.get(4)).points());
-        assertEquals(2f, ((CgVfxSequenceRendererProperties) all.get(5)).playRate(), 0f);
+        assertEquals(2f, ((CgVfxSequenceRendererProperties) all.get(4)).playRate(), 0f);
     }
 
     @Test
@@ -64,7 +62,6 @@ public class CgVfxRenderersTest {
         for (Map<String, Object> entry : List.<Map<String, Object>>of(
                 Map.of("id", "r1", "kind", "mesh", "meshes", Map.of("prefab", "test:prefabs/rock")),
                 Map.of("id", "r1", "kind", "ribbon", "shape", "custom"),
-                Map.of("id", "r1", "kind", "trails", "taper", 0.5),
                 Map.of("id", "r1", "kind", "sprite", "facing", "camera_distance_blend"),
                 Map.of("id", "r1", "kind", "sprite", "sort", "spawn_order"))) {
             IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
@@ -115,7 +112,7 @@ public class CgVfxRenderersTest {
                 .usage(CgMaterialUsage.SPRITES, CgMaterialUsage.RIBBONS).build();
         assertEquals(EnumSet.of(CgMaterialUsage.SPRITES, CgMaterialUsage.RIBBONS), spark.usage());
         assertEquals(List.of("sprites", "ribbons"), spark.resolved().get("usage"));
-        CgVfxRenderers.trails("r1").material(spark).build();
+        CgVfxRenderers.ribbon("r1").material(spark).build();
         RuntimeException outside = assertThrows(RuntimeException.class,
                 () -> CgVfxRenderers.mesh("r1").material(spark).build());
         assertTrue(outside.getMessage(), outside.getMessage().contains("as mesh_particles"));
@@ -141,8 +138,9 @@ public class CgVfxRenderersTest {
     public void aRendererBuiltInJavaIsTheOneItsFileLoads() {
         CgVfxRendererProperties sprite = CgVfxRenderers.sprite("r1").material("test:materials/spark")
                 .bind("_Color", "user.ember").value("_Soft", 0.5).keyword("SOFT").alignment("velocity").build();
-        CgVfxRendererProperties tails = CgVfxRenderers.trails("r2").material("test:materials/streaks").field("points", 12).build();
-        CgVfxEmitter built = CgVfxEmitter.builder("sparks").renderer(sprite).renderer(tails).build();
+        CgVfxRendererProperties ribbon = CgVfxRenderers.ribbon("r2").material("test:materials/streaks")
+                .field("trail", Map.of("max_particles", 12, "tiling_distance", 1.0)).build();
+        CgVfxEmitter built = CgVfxEmitter.builder("sparks").renderer(sprite).renderer(ribbon).build();
         Map<String, Object> file = CgVfxEmitterAssets.write(built);
         CgVfxEmitter loaded = CgVfxEmitterAssets.compile("sparks", file, null);
         assertEquals(2, loaded.renderers().size());

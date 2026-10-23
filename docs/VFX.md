@@ -76,7 +76,7 @@ itself for anyone editing a VFX file.
 | **Renderer**, **material** | One draw: a material asset (a `.shader`, its constants, textures and state) drawn by an emitter's renderer on its particles, or by a slot renderer on a slot, its properties bound to parameters. | `CgVfxRenderers`, `CgVfxSlotRenderer`, `CgMaterialDefinition` |
 | **Slot** | A place an effect draws: its body along a path, its head on a sphere. An element declares its slots; a slot renderer names the one it draws on. | `CgVfxSlot` |
 | **Emitter**, **module** | One kind of particle, and the physics pieces it stacks (gravity, drag, collision). Simulated on the GPU. | `CgVfxEmitter`, `CgVfxModule` |
-| **Trail**, **ribbon** | A strip through where something moving has been: a fist's streak, a blade's swoosh, a line behind every spark. | `CgVfxTrail`; the trails and ribbon renderers |
+| **Trail**, **ribbon** | A strip through where something moving has been: a fist's streak, a blade's swoosh, a line behind every spark. | the ribbon and anim trail renderers |
 | **Gas** | Smoke, fire and steam as a fluid on the GPU (NVIDIA Flow's): coupled from emitters, burning, rising, curling round blocks, lit through itself. | `CgVfxFluid`, `CgVfxSmoke` |
 | **Link** | A size that follows another, times a factor: the head is 1.45 times the radius, so setting the radius resizes it. | `SCHEMA.length("head", RADIUS, 1.45f)` |
 | **Tween** | One value moved from where it is to a new one over some seconds, rather than jumping: a beam swelling as it powers up. | `effect.animate(...)` |
@@ -622,7 +622,6 @@ public static final CgVfxSlot ARCS = CgVfxSlot.pathRibbons("crystalgraphics:wave
 | `PATH_RIBBONS` | ribbons riding a path | `frame.pathRibbons(this, slot, path, row, intensity)` |
 | `BILLBOARD` | one camera-facing quad | `frame.billboard(...)` |
 | `SEQUENCE` | a prefab's part on each particle of a `sequence(clip)` emitter, where its node is at the particle's age ([`vfx/sequences.md`](vfx/sequences.md)) | the system |
-| `TRAIL` | a strip behind something moving, built on the GPU from a `CgVfxTrail`'s points | `frame.trail(this, slot, trail)` |
 
 - **A frame draws a slot**: every slot renderer of the look on that slot draws, in the look's order. A slot nothing
   draws on costs nothing, and `frame.draws(this, slot)` skips the work of preparing it.
@@ -1016,7 +1015,7 @@ sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debr
 
 | Call | Sets |
 |---|---|
-| `renderer(renderer)` | how its particles draw: a sprite, mesh, ribbon, arc, trails or sequence renderer ([`vfx/particles.md`](vfx/particles.md) § *Renderers*); its kinds set the layout |
+| `renderer(renderer)` | how its particles draw: a sprite, mesh, ribbon, anim trail, arc or sequence renderer ([`vfx/particles.md`](vfx/particles.md) § *Renderers*); its kinds set the layout |
 | `sequence(clip)`, `sequence(clip, playRate)` | a clip on each particle: its prefab's parts where its nodes are at the particle's age, its bursts and streams spawning children ([`vfx/sequences.md`](vfx/sequences.md)) |
 | `capacity(n)` | the most alive at once: 256 unless given |
 | `state(state)` | its loops, their duration and delay, and what stopping does ([`vfx/particles.md`](vfx/particles.md)) |
@@ -1034,7 +1033,6 @@ sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debr
 | `heat(h)` | 0 to 1 at birth: `Buoyancy` lifts it, and hot shaders (`spark`) glow by it |
 | `module(m)`, `clearModules()` | a physics piece, run in order ([§12](#12-modules-and-events)) |
 | `event(e)` | children spawned or rows reported when something happens to a particle ([§12](#12-modules-and-events)) |
-| `trail(points)` | its last positions kept, for a trails renderer ([§13](#13-trails-and-ribbons)) |
 | `rasterize(x, y, z, w)` | drawn into its instance's grid each frame, a soft ball as wide as it is drawn holding that density in each channel: a body of particles a grid's slot renderer draws lit through itself (`CgVfxGrid3D.channel(c)`) |
 | `sweep(speed)` | born on a front running out at that speed over each loop: the shape's radius by the loop's seconds |
 | `local()` | its particles ride the effect as it moves, rather than staying where they were born |
@@ -1093,7 +1091,7 @@ of embers.
 
 ```java
 static final CgVfxEmitter SPIRITS = CgVfxEmitter.builder("spirits").state(CgVfxEmitterState.ONCE).capacity(300).burst(0f, 300)
-        .shape(CgSphere.of(3)).speed(1f, 2f).life(30f, 30f).trail(16)
+        .shape(CgSphere.of(3)).speed(1f, 2f).life(30f, 30f).publishes(true)    // a trail behind each: §13
         .module(new CgVfxModule.Flock(1.6f, 0.5f, 3f, 1.5f, 0.8f))       // radius, apart, separation, alignment, cohesion
         .module(new CgVfxModule.Attract(CgSphere.of(1), 2f))             // round a heart
         .module(new CgVfxModule.LimitSpeed(4f))                           // boids want a top speed
@@ -1165,111 +1163,21 @@ emitters:
 
 ## 13. Trails and ribbons
 
-A trail is where something moving has been: a fist's ki streak, a sword's swoosh, a dash's wake, a meteor's smoke. An
-effect moves a `CgVfxTrail` and a trail slot's slot renderers draw it; particles draw the same strips behind each of them, or
-one through all of them.
-
-### Behind something an effect moves
-
-The effect moves a `CgVfxTrail` each tick, in world coordinates, so the trail stays behind as the effect moves; a trail
-slot's slot renderers draw it.
+Trails and ribbons are Unreal's, drawn by an emitter's renderers: Niagara's ribbon through an instance's particles,
+Cascade's ribbon trail behind a source its effect moves or behind each of another emitter's particles, and Cascade's
+anim trail swept by an edge between two points. All of it, with the looks in `shaders/vfx/trail/`, is
+[`vfx/particles.md`](vfx/particles.md) § *Ribbons and trails: strips through particles*.
 
 ```java
-public static final CgVfxSlot STREAK = CgVfxSlot.trail("mymod:dash/streak");
-static final CgMaterialDefinition HAZE = CgMaterialDefinition.of("mymod:materials/dash_haze",
-        "crystalgraphics:shaders/vfx/trail/haze.shader").order(2 * CgVfxLook.BAND).build();
-static final CgMaterialDefinition GLOW = CgMaterialDefinition.of("mymod:materials/dash_glow",
-        "crystalgraphics:shaders/vfx/trail/glow.shader").order(CgVfxLook.SURFACE).build();
-public static final CgVfxKit KIT = CgVfxKit.of("mymod:dash")
-        .slot(CgVfxSlotRenderer.of("haze", STREAK).material(HAZE).size(1.1f).quality(CgQuality.MEDIUM).build())
-        .slot(CgVfxSlotRenderer.of("glow", STREAK).material(GLOW).size(0.45f)   // half-width, blocks
-                .bind("_Color", KI).bind("_Core", CORE).build())
+// a streak behind a hand: a Cascade trail whose source the effect moves each tick
+static final CgVfxEmitter STREAK = CgVfxEmitter.builder("streak").capacity(64)
+        .ratePerBlock(CgVfxSpawnPerUnit.every(1f, 0.12f)).speed(0f, 0f).life(0.5f, 0.5f).size(0.2f, 0.2f, 1f)
+        .renderer(CgVfxRenderers.ribbon("glow").material(GLOW).field("trail", Map.of("max_particles", 64)).build())
         .build();
 
-private final CgVfxTrail streak = CgVfxTrail.ribbon(0.5f);         // each point lasts half a second
-
-@Override protected void tick(float dt) {
-    streak.tick(dt, handX, handY, handZ);                           // world coordinates
-    if (finishing) streak.emitting(false);                          // it runs out, then done()
-}
-
-@Override protected void submit(CgVfxFrame frame) {
-    frame.trail(this, STREAK, streak);
-}
+streak.moveTo(handX, handY, handZ);   // in the effect's tick, from its origin
+tick(streak, dt);
 ```
-
-A swing's swoosh is a blade between two points; a scorch along the ground lies flat across a normal:
-
-```java
-private final CgVfxTrail swoosh = CgVfxTrail.blade(0.2f).spacing(0.04f);
-swoosh.tick(dt, elbowX, elbowY, elbowZ, fistX, fistY, fistZ);       // base, then tip
-
-private final CgVfxTrail scorch = CgVfxTrail.flat(4f).facing(0, 1, 0);
-scorch.tick(dt, x, groundY + 0.02, z);
-```
-
-| Call | Does |
-|---|---|
-| `ribbon(life)`, `blade(life)`, `flat(life)` | facing the eye from one point; a sheet between a base and a tip; lying across a normal |
-| `spacing(blocks)` | a point kept each that far (0.12): a still thing leaves none, and its trail runs out |
-| `width(s)`, `intensity(s)`, `user(a, b)` | carried by the points kept from then on: a streak swelling with speed |
-| `head(x, y, z)` | its head exactly where something is this frame (a hand marked as the model drew it); else between its last two ticks |
-| `emitting(false)`, `done()` | stop keeping points, and whether all have run out; `clear()` forgets them |
-| `maxStep(blocks)` | a step farther than this (8) is a teleport: it starts again there rather than streak across |
-
-- **Its strip is built on the GPU**: every trail's points go up once a frame, and each vertex is placed on a centripetal
-  Catmull-Rom curve through them (`fx_trail.glsl`), so a fast swing stays round and nothing is meshed on the CPU.
-- **Its head never lags**: drawn between its last two ticks at the frame's alpha, as the effect's own parts are. Its tail
-  is cut exactly where a point's age reaches its life, so it shrinks smoothly rather than dropping a point at a time.
-- A slot renderer's size is a ribbon's half-width in blocks, or how far a blade reaches toward its tip (1 to the
-  tip). It draws four quads between two points.
-- One trail drawn by several slot renderers (a glow and its haze) uploads its points once.
-
-| Shader (`shaders/vfx/trail/`) | Draws |
-|---|---|
-| `glow` | a ki streak: white-hot core (`_Core`), its colour (`_Color`) to soft edges, energy flowing back, its tail eaten away; `_Wobble` shakes it into lightning |
-| `bands` | anime cel bands (`_Bands`, a palette: core, middle, edge), each narrowing toward the tail, which breaks into brushed strands; `_Ink` an outline |
-| `swoosh` | a blade's sheet: a hot leading edge (`_Hot`), streaks along the swing, faded edge-on |
-| `haze` | the air bent behind it: a Distortion pass only (`Role.DISTORTION`) |
-| `smoke` | lit smoke billowing wider and drifting up as it ages; `_Glow` a fire's hot head |
-| `scorch` | burnt ground with embers cooling in its cracks: for a `flat` trail facing up |
-
-A shader of your own declares `_FxTrail ("Trail points", sampler2D) = "black"`, has no vertex data (`#type none`), and
-places each vertex with `fx_trail_vertex`; `fx_trail_place(v, scale)` scales its width by a taper of its own.
-
-### A trail behind every particle, and ribbons through them
-
-Particles draw strips too, built the same way on the GPU, with nothing for the effect to do:
-
-```java
-// A trail behind each spark: its pool keeps each particle's last 12 positions, one a step
-static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks").capacity(1500).trail(12)...build();
-CgVfxRenderers.trails("streaks").material(STREAKS).field("points", 12).bind("_Color", FLAME).build()   // on SPARKS
-
-// One ribbon through an instance's particles in spawn order: a stream bent wherever its particles drift
-static final CgVfxEmitter STREAM = CgVfxEmitter.builder("stream").capacity(600).ratePerBlock(16f)
-        .module(new CgVfxModule.Turbulence(1.4f, 0.9f, 1.2f))...build();
-CgVfxRenderers.ribbon("stream").material(RIBBON).value("_cg_Size", 0.2f).build()                         // on STREAM
-```
-
-| | a trails renderer | a ribbon renderer |
-|---|---|---|
-| Is | a strip behind each particle, through where it was | one strip through all an instance's particles, newest first |
-| Needs | `trail(points)` on the emitter and the same `points` on the renderer: 2 to 64, lasting `points - 1` particle steps | nothing; joins neighbours at most `_Gap` spawns apart |
-| Width | the particle's size times the renderer's `_cg_Size`, tapering | each particle's size times `_cg_Size`: its size curve shapes it |
-| Shader | `particle/streaks.shader` | `particle/ribbon.shader` |
-
-- Both follow every curve the particles fly, since the points are the particles: curl noise makes a ribbon writhe, a
-  vortex coils it, a bounce shows in a spark's trail.
-- **The slot is culled whole**, as one sphere round its source, rather than particle by particle.
-- A particle's trail lives in a ring its pool keeps per slot, written after each step at every tier; each point carries
-  its particle's id, so a reused ring never joins two particles. A ribbon's `tessellation` sets the quads between two
-  particles ([`vfx/particles.md`](vfx/particles.md) § *Renderers*).
-- Every slot drawing one strip renderer's material from one pool is a record of one draw, as particles are: a hundred sparks' effects
-  cost one draw. A ring is keyed by its particle's spawn id, so where an emitter's capacity binds and the density
-  setting thins its spawns, two particles alive at once may share one, the later shortening the earlier's trail.
-
----
 
 ## 14. Gas
 
@@ -1927,7 +1835,6 @@ public final class Bolt extends CgVfxEffect<Bolt> {
 | `frame.billboard(this, slot, x, y, z, size, ex, ey, ez, ew)` | a camera-facing quad |
 | `int row = frame.path(path, seed, age)`, then `frame.tube(this, slot, path, row)` | a tube along a path |
 | `frame.ribbons(...)`, `frame.pathRibbons(this, slot, path, row, intensity)` | ribbons a shader places |
-| `frame.trail(this, slot, trail)` | a trail behind something moving ([§13](#13-trails-and-ribbons)) |
 | `fluid.submit(frame)` | a fluid, on its fluid slot ([§14](#14-gas)) |
 
 ### Particles in an effect
@@ -2367,8 +2274,8 @@ In game and in the harness, `vfx-modules` is a station per feature, replayed eve
 |---|---|
 | Modules | one per module: gravity to kill volumes, collisions against the world, the screen and entities |
 | Spawning | one per spawn shape; a source moving 30 blocks a second; a wake by distance; procedural meshes on mesh slots with sparks born on them; rocks as meshes; an aura round a mannequin (`entity()`) |
-| Trails | a fighter's wake and limb streaks; blade swooshes; ki blasts with smoke trails; cel streaks; lightning; a meteor's scorch |
-| Particle strips | a trail behind every particle (sparks, embers, fireworks); ribbons through particles |
+| Trails | Cascade's trails behind moving things (a fighter's wake and limb streaks, ki blasts with smoke trails, cel streaks, lightning, a meteor's fire and smoke) and its anim trails (blade swooshes, scorches torn along the ground) |
+| Particle strips | a Cascade trail behind every particle (sparks, embers, fireworks); Niagara's ribbons through particles |
 | Flocking | spirits round a heart, a school round a vortex, a murmuration of embers |
 
 Unit tests (`./gradlew :core:test --tests "<class>"`): `CgVfxLookTest`, `CgVfxEndingTest`,

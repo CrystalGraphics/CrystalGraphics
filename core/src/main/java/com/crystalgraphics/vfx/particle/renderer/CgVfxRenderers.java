@@ -96,12 +96,6 @@ public final class CgVfxRenderers {
             case "mesh" -> mesh(who, common, tree, deps);
             case "ribbon" -> ribbon(who, common, tree);
             case "arc" -> new CgVfxArcRendererProperties(common, tree, integer(tree.get("subdivisions")));
-            case "trails" -> {
-                int points = tree.get("points") instanceof Number n ? n.intValue() : 8;
-                if (points < 2 || points > 64) throw new IllegalArgumentException(who + " keeps " + points + " points; 2 to 64");
-                yield new CgVfxTrailsRendererProperties(common, tree, points, integer(tree.get("subdivisions")),
-                        tree.get("taper") instanceof Number n ? n.floatValue() : 1f);
-            }
             case "sequence" -> {
                 if (!(tree.get("sequence") instanceof String sequence)) throw new IllegalArgumentException(who + " names no sequence");
                 yield new CgVfxSequenceRendererProperties(common, tree, sequence,
@@ -129,8 +123,7 @@ public final class CgVfxRenderers {
         if (r instanceof CgVfxMeshRendererProperties || r instanceof CgVfxSequenceRendererProperties) {
             return CgMaterialUsage.MESH_PARTICLES;
         }
-        if (r instanceof CgVfxRibbonRendererProperties || r instanceof CgVfxTrailsRendererProperties
-                || r instanceof CgVfxBeamRendererProperties) {
+        if (r instanceof CgVfxRibbonRendererProperties || r instanceof CgVfxBeamRendererProperties) {
             return CgMaterialUsage.RIBBONS;
         }
         return CgMaterialUsage.SPRITES;
@@ -288,8 +281,6 @@ public final class CgVfxRenderers {
             if (b.facing() != CgVfxRibbonRendererProperties.Facing.SCREEN) unbuilt = "facing " + b.facing();
             else if (b.shape() == CgVfxRibbonRendererProperties.Shape.CUSTOM) unbuilt = "shape custom";
             else if (b.maxRibbons() != 0) unbuilt = "max_ribbons";
-        } else if (r instanceof CgVfxTrailsRendererProperties t) {
-            if (t.taper() != 1f) unbuilt = "taper";
         } else if (r instanceof CgVfxArcRendererProperties a) {
             if (a.subdivisions() != 0) unbuilt = "subdivisions";
         } else if (r instanceof CgVfxLightRendererProperties l) {
@@ -512,11 +503,6 @@ public final class CgVfxRenderers {
      */
     public static Builder animTrail(String id, String first, String second) {
         return new Builder(id, "anim_trail").field("edge", List.of("user." + first, "user." + second));
-    }
-
-    /** A trails renderer of id {@code id}. */
-    public static Builder trails(String id) {
-        return new Builder(id, "trails");
     }
 
     /** A sequence renderer of id {@code id}, each particle playing {@code sequence}. */

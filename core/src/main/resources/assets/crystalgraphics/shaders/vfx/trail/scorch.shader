@@ -1,14 +1,16 @@
-// A scorch torn along the ground: what a dash skimming the earth or a beam raking it leaves. A flat trail
-// (CgVfxTrail.flat, facing up) of burnt earth, darkest down its middle and ragged at its edges, with embers glowing in
-// its cracks that are hottest just behind the thing and cool to nothing as it ages, the scorch itself lasting. Blended
-// over the ground, lifted a touch toward the eye so it never fights it. The layer's size is its half-width in blocks.
+// A scorch torn along the ground: what a dash skimming the earth or a beam raking it leaves. Burnt earth, darkest down
+// its middle and ragged at its edges, with embers glowing in its cracks that are hottest just behind the thing and cool
+// to nothing as it ages, the scorch itself lasting. Blended over the ground, lifted a touch toward the eye so it never
+// fights it. An anim trail's material, its edge two points either side of the path on the ground; its renderer tiles
+// UV1 once a block (fx_strip.glsl).
 #type none
+#pragma cg_use particle
 #pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_trail.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_strip.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
-Tags { "RenderType" = "Transparent" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
@@ -20,10 +22,10 @@ Properties {
     _Lift     ("How far it is drawn toward the eye, blocks", float) = 0.03
     _Noise  ("Noise", sampler3D) = "cg_noise"
     _Voronoi ("Voronoi", sampler3D) = "cg_voronoi"
-    _FxTrail ("Trail points", sampler2D) = "black"
 }
 
-struct v2f { vec4 trail; vec2 shape; };
+// trail: life 0..1, across -1..1, blocks along, seconds old; its samples' opacity
+struct v2f { vec4 trail; float alpha; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
@@ -35,17 +37,16 @@ Pass {
     }
 
     void vertex(out v2f o) {
-        FxTrailVertex v = fx_trail_vertex(_FxTrail, CG_VERTEX_ID, CG_OBJECT_CUSTOM0, CG_OBJECT_CUSTOM2,
-                CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz, FX_CAMERA);
-        vec3 world = v.world;
-        world += normalize(FX_CAMERA - world) * _Lift;
-        o.trail = vec4(v.uv.x, v.side, v.along, v.age);
-        o.shape = vec2(v.extra.y, v.alive);
+        CgMaterialVertex v = cg_material_vertex();
+        CgMaterialParticle p = cg_material_particle();
+        // The world position is from the eye: toward it is toward the origin.
+        vec3 world = v.worldPosition - normalize(v.worldPosition + vec3(1.0e-6)) * _Lift;
+        o.trail = vec4(fx_strip(v.texCoords[0], v.texCoords[1], p.relativeTime), CG_PARTICLE_AGE(p.record));
+        o.alpha = p.color.a;
         gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(world, 1.0);
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
-        if (i.shape.y < 0.5) discard;
         float u = i.trail.x, across = abs(i.trail.y), age = i.trail.w;
         vec3 p = vec3(i.trail.z * _Scale, i.trail.y * _Scale * 0.8, FX_SEED * 3.0);
         float ragged = 0.18 * fx_fbm(p * 1.6, 3);
@@ -57,13 +58,14 @@ Pass {
         float crack = 1.0 - smoothstep(0.0, 0.08, cells.y - cells.x);
         float heat = exp(-age * _Cool) * edge;
         float ember = crack * heat * (0.6 + 0.4 * fx_noise(p * 3.0 + vec3(0.0, 0.0, FX_AGE * 2.0)));
-        float alpha = burnt * _Color.a * pow(1.0 - u, 0.6) * i.shape.x * FX_PRESENCE;
-        vec3 glow = mix(_Ember.rgb, _Hot.rgb, heat * heat) * ember * i.shape.x * FX_PRESENCE;
+        float alpha = burnt * _Color.a * pow(1.0 - u, 0.6) * i.alpha * FX_PRESENCE;
+        vec3 glow = mix(_Ember.rgb, _Hot.rgb, heat * heat) * ember * i.alpha * FX_PRESENCE;
         fragColor = vec4(_Color.rgb * alpha + glow, alpha);
         CG_GLOW(glow);
     }
 }
 
+// Its embers' glow (CG_GLOW) into the world's bloom.
 Pass {
     Tags { "LightMode" = "Emissive" }
     RenderState {

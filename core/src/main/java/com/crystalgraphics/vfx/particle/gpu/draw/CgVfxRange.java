@@ -201,7 +201,7 @@ public final class CgVfxRange {
     private static ByteBuffer staging = ByteBuffer.allocate(0);
 
     private final CgVfxParticlePool pool;
-    /** Per slot, this frame's order: 0 the pool's, 1 far to near, 2 + its newest spawn's id for a ribbon. */
+    /** Per slot, this frame's order: 0 the pool's, else its {@link Sort}'s mode. */
     private int[] slotOrder = new int[8];
 
     private CgVfxRange(CgVfxParticlePool pool) {
@@ -342,16 +342,6 @@ public final class CgVfxRange {
         Sort(int code) {
             this.code = code;
         }
-    }
-
-    /**
-     * Has this frame's {@link #order()} hold {@code slot}'s particles in spawn order, newest first, for a ribbon through
-     * them: {@code newest} is the id the slot's next spawn takes ({@code CgVfxEmitterInstance.spawnedSoFar}). Spawns more
-     * than 65,535 back share the last place. Cull such a slot as one sphere ({@code CgVfxParticlePool.cullAbout}), or a
-     * particle culled mid-ribbon joins its neighbours across the gap. Each frame, before the world records.
-     */
-    public CgVfxRange ribbon(int slot, int newest) {
-        return order(slot, 2 | newest << 3);
     }
 
     private CgVfxRange order(int slot, int code) {

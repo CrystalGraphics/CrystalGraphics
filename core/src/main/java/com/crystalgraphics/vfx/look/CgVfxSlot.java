@@ -66,12 +66,6 @@ public final class CgVfxSlot {
          */
         SEQUENCE,
         /**
-         * A {@code CgVfxTrail}'s strip, built per vertex ({@code fx_trail.glsl}, {@code #type none}): {@code CUSTOM0} its
-         * first texel, its points, the layer's size and its life; {@code CUSTOM1} the draw's centre less the anchor the
-         * points are from; {@code CUSTOM2} its sub-segments, its mode, its head's distance along and its length.
-         */
-        TRAIL,
-        /**
          * A {@code CgVfxFluid}, marched through a box round the tiles it holds ({@code fx_fluid.glsl}), reading
          * {@code CgVfxFluidAtlas.shade()} as {@code _FluidShade}, {@code restA()} and {@code restB()} as
          * {@code _FluidRestA} and {@code _FluidRestB}, and {@code pages()} as {@code _FluidPages}, declared first and in
@@ -141,10 +135,6 @@ public final class CgVfxSlot {
 
     public static CgVfxSlot billboard(String name) {
         return of(Kind.BILLBOARD, name);
-    }
-
-    public static CgVfxSlot trail(String name) {
-        return of(Kind.TRAIL, name);
     }
 
     public static CgVfxSlot fluid(String name) {

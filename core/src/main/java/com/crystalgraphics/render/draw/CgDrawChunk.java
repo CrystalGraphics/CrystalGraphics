@@ -238,7 +238,7 @@ public final class CgDrawChunk {
     }
 
     /** How many buffers a draw may read in place of engine buffers ({@code CgChunkBuilder.buffer}). */
-    public static final int BUFFERS = 2;
+    public static final int BUFFERS = 3;
 
     /** The {@code slot}th buffer a draw of {@code buffer()} reads in place of an engine buffer; null for none. */
     @Nullable

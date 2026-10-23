@@ -30,6 +30,8 @@ import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnPerUnit;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
@@ -38,6 +40,7 @@ import org.apache.logging.log4j.Logger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -83,7 +86,7 @@ public final class CgVfxFluidDemo {
     private static final CgVfxParam.Color SPIRIT = SCHEMA.color("spirit", 0xFF7FE8FF, 1.5f);
     private static final CgVfxParam.Color SPIRIT_HOT = SCHEMA.color("spiritHot", 0xFFE8FFFF, 2.2f);
     private static final CgVfxParam.Color FLASH = SCHEMA.color("flash", 0xFFFFF4E0, 6f);
-    private static final String PARTICLE = "crystalgraphics:shaders/vfx/particle/";
+    private static final String PARTICLE = "crystalgraphics:shaders/vfx/particle/", TRAIL = "crystalgraphics:shaders/vfx/trail/";
     private static final String GRID_GLOW = "crystalgraphics:shaders/vfx/grid/glow.shader";
     private static final String GRID_SMOKE = "crystalgraphics:shaders/vfx/grid/smoke.shader";
     private static final String MATERIALS = "crystalgraphics:demo/fluid/";
@@ -161,6 +164,12 @@ public final class CgVfxFluidDemo {
                 if (fluid != null) e.inGas(fluid);
                 if (grid != null) e.inGrid(grid);
                 emitters.add(e);
+            }
+            // A trail behind another emitter's particles reads that emitter's instance.
+            for (CgVfxEmitterInstance e : emitters) {
+                CgVfxSpawnFrom from = e.emitter().spawnFrom();
+                if (from == null) continue;
+                for (CgVfxEmitterInstance s : emitters) if (s.emitter().name().equals(from.source())) e.bornOn(s);
             }
         }
 
@@ -314,19 +323,20 @@ public final class CgVfxFluidDemo {
     private void grenade(float x, float z) {
         CgVfxEmitter flies = CgVfxEmitter.builder("smokeFireflies").state(CgVfxEmitterState.ONCE)
                 .capacity(450).burst(0.5f, 450).shape(CgSphere.of(2.5))
-                .speed(1f, 2f).life(LIFE, LIFE).size(0.04f, 0.06f).heat(1f).trail(12)
+                .speed(1f, 2f).life(LIFE, LIFE).size(0.04f, 0.06f).heat(1f).publishes(true)
                 .module(new CgVfxModule.Flock(1.4f, 0.45f, 3f, 1.5f, 0.7f))
                 .module(new CgVfxModule.Flow(1.2f))
                 .module(new CgVfxModule.Attract(CgSphere.of(2.5), 1.2f))
                 .module(new CgVfxModule.Turbulence(0.8f, 0.3f, 0.5f))
                 .module(new CgVfxModule.LimitSpeed(3.5f)).opacity(FADE).build();
+        CgVfxEmitter flyTrails = streaks(flies, 450, 3.5f, 0.2f, 0.05f, 0.04f, FIREFLY, FIREFLY_HOT);
         CgVfxLook look = CgSmokeGrenade.LOOK.derive()
-                .emitter(drawn(flies, streaks(flies, FIREFLY, FIREFLY_HOT, 0.7f), spark(FIREFLY, FIREFLY_HOT, 1f)))
+                .emitter(drawn(flies, spark(FIREFLY, FIREFLY_HOT, 1f))).emitter(flyTrails)
                 .params(SCHEMA).build();
         stations.add(new Station("CS2: smoke grenade", "its flood, fireflies riding its churn, shot through and blasted open",
                 x, z, look, 8f, 22f,
                 // Inside the dome: open ground floods about 4 blocks tall, its top 1.5 the soft shell.
-                List.of(flies), new float[][] {{0f, 1.5f, 0f}},
+                List.of(flies, flyTrails), new float[][] {{0f, 1.5f, 0f}, {0f, 1.5f, 0f}},
                 p -> {
                     p.smoke = new CgVfxSmoke(p);
                     p.smoke.fluid().domain(9f, 6f, 9f);
@@ -356,7 +366,6 @@ public final class CgVfxFluidDemo {
         CgVfxEmitter embers = CgVfxEmitter.builder("whirlEmbers").state(CgVfxEmitterState.once(PERIOD - 4f))
                 .capacity(4000).rate(600f)
                 .shape(CgRing.of(1.2, 2.4, 0)).direction(0, 1, 0, 45.57f).speed(1f, 3f).life(2.5f, 4f).size(0.03f, 0.06f).heat(1f)
-                .trail(10)
                 .module(new CgVfxModule.Vortex(0f, 1f, 0f, 7f, -1.2f, 0f, 0f, 0f))
                 .module(new CgVfxModule.Force(0f, 3f, 0f))
                 .module(new CgVfxModule.Flow(1.8f))
@@ -364,7 +373,7 @@ public final class CgVfxFluidDemo {
                 .module(new CgVfxModule.Turbulence(1.2f, 0.4f, 0.6f)).opacity(FADE).build();
         // Flow's fire at its editor's colour scale, its confinement raised to hold the whirl together.
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(EDITOR_FIRE)
-                .emitter(drawn(embers, streaks(embers, EMBER, FLAME, 0.6f), spark(EMBER, FLAME, 1f)))
+                .emitter(drawn(embers, ray(EMBER, FLAME, 0.6f), spark(EMBER, FLAME, 1f)))
                 .set(CgVfxFluid.CELL, 0.2f).set(CgVfxFluid.VORTICITY, 2f)
                 .set(CgVfxFluid.TURBULENCE, 0.6f).set(CgVfxFluid.TURBULENCE_SIZE, 1f).build();
         stations.add(new Station("fire whirl", "a burning pool's swirl, drawn in and spun up into a column", x, z, look, 16f, 26f,
@@ -403,7 +412,6 @@ public final class CgVfxFluidDemo {
                 .state(CgVfxEmitterState.once(PERIOD - 6f - 1f).delay(1f))
                 .capacity(2400).rate(1400f)
                 .direction(0f, -0.2f, -1f, 7f).speed(20f, 26f).inherit(0.6f).life(0.7f, 1f).size(0.08f, 0.14f).heat(1f)
-                .trail(6)
                 .module(new CgVfxModule.Drag(1.4f, 0f))
                 .module(new CgVfxModule.Gravity(2f))
                 .module(new CgVfxModule.Ground(0.1f, 0.5f, 0.3f, 0f))
@@ -412,7 +420,7 @@ public final class CgVfxFluidDemo {
                 .build();
         // Flow's fire at its editor's colour scale: white only where it is hottest, at the mouth.
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(EDITOR_FIRE)
-                .emitter(drawn(breath, streaks(breath, EMBER, FLAME, 0.5f)))
+                .emitter(drawn(breath, ray(EMBER, FLAME, 0.5f)))
                 .set(CgVfxFluid.CELL, 0.22f).set(CgVfxFluid.BUOYANCY_PER_TEMP, 2.5f)
                 .set(CgVfxFluid.VORTICITY, 1.5f).set(CgVfxFluid.TURBULENCE, 1.4f).set(CgVfxFluid.TURBULENCE_SIZE, 1.2f)
                 .set(CgVfxFluid.VELOCITY_DAMPING, 0.1f).set(CgVfxFluid.SMOKE_DAMPING, 0.4f).set(CgVfxFluid.SMOKE_FADE, 0.5f)
@@ -436,20 +444,21 @@ public final class CgVfxFluidDemo {
     private void fogWakes(float x, float z) {
         CgVfxEmitter spirits = CgVfxEmitter.builder("fogSpirits").state(CgVfxEmitterState.ONCE)
                 .capacity(260).burst(0.3f, 260).shape(CgSphere.of(5))
-                .speed(4f, 6f).life(LIFE, LIFE).size(0.05f, 0.08f).heat(1f).trail(16)
+                .speed(4f, 6f).life(LIFE, LIFE).size(0.05f, 0.08f).heat(1f).publishes(true)
                 .module(new CgVfxModule.Flock(1.6f, 0.5f, 3f, 1.5f, 0.8f))
                 .module(new CgVfxModule.Attract(CgBox.of(6, 0.4, 6), 1.5f).at(0f, 1f, 0f))
                 .module(new CgVfxModule.Turbulence(1f, 0.5f, 0.8f))
                 .module(new CgVfxModule.LimitSpeed(7f))
                 .module(new CgVfxModule.Feed(0f, 0f, 10f)).opacity(FADE).build();
+        CgVfxEmitter spiritTrails = streaks(spirits, 260, 7f, 0.25f, 0.08f, 0.05f, SPIRIT, SPIRIT_HOT);
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxFluid.SMOKE)
-                .emitter(drawn(spirits, streaks(spirits, SPIRIT, SPIRIT_HOT, 0.6f), spark(SPIRIT, SPIRIT_HOT, 1f)))
+                .emitter(drawn(spirits, spark(SPIRIT, SPIRIT_HOT, 1f))).emitter(spiritTrails)
                 .set(CgVfxFluid.CELL, 0.2f).set(CgVfxFluid.COMBUSTION, 0f).set(CgVfxFluid.COLORMAP_MIN, -1f)
                 .set(CgVfxFluid.SMOKE_DAMPING, 0.05f).set(CgVfxFluid.SMOKE_FADE, 0f).set(CgVfxFluid.VELOCITY_DAMPING, 0.3f)
                 .set(CgVfxFluid.VORTICITY, 1.2f).set(CgVfxFluid.ATTENUATION, 2.2f).set(CgVfxFluid.DETAIL, 0.7f)
                 .set(CgVfxFluid.DETAIL_SIZE, 0.4f).build();
         stations.add(new Station("spirits through a fog bank", "a flock that only pushes: every wake is the fog answering",
-                x, z, look, 7f, 26f, List.of(spirits), new float[][] {{0f, 1.2f, 0f}},
+                x, z, look, 7f, 26f, List.of(spirits, spiritTrails), new float[][] {{0f, 1.2f, 0f}, {0f, 1.2f, 0f}},
                 p -> {
                     p.fluid = new CgVfxFluid(p).place(0f, 3f, 0f).domain(8f, 3f, 8f);
                     p.sources.add(p.fluid.emitter(0f, 0.6f, 0f, 1f).box(7f, 0.5f, 7f).smoke(0.9f, 1.5f)
@@ -471,12 +480,12 @@ public final class CgVfxFluidDemo {
                 .shape(CgSphere.of(0.25)).speed(0.2f, 0.6f).life(0.15f, 0.3f).size(0.12f, 0.2f).heat(1f).opacity(FADE).build();
         CgVfxEmitter sparks = CgVfxEmitter.builder("cometSparks").state(CgVfxEmitterState.once(PERIOD - 3f))
                 .capacity(2500).ratePerBlock(16f)
-                .shape(CgSphere.of(0.2)).speed(0.3f, 1.2f).inherit(0.1f).life(0.8f, 1.4f).size(0.03f, 0.05f).heat(1f).trail(8)
+                .shape(CgSphere.of(0.2)).speed(0.3f, 1.2f).inherit(0.1f).life(0.8f, 1.4f).size(0.03f, 0.05f).heat(1f)
                 .module(new CgVfxModule.Gravity(1.5f))
                 .module(new CgVfxModule.Drag(2f, 0f))
                 .module(new CgVfxModule.Feed(0.25f, 0f)).opacity(FADE).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxFluid.SMOKE).emitter(drawn(head, spark(FLAME, WHITE, 1.4f)))
-                .emitter(drawn(sparks, streaks(sparks, EMBER, FLAME, 0.6f), spark(EMBER, FLAME, 1f)))
+                .emitter(drawn(sparks, ray(EMBER, FLAME, 0.6f), spark(EMBER, FLAME, 1f)))
                 // Flow's smoke with no fire, cold, read at its colour map's middle.
                 .set(CgVfxFluid.CELL, 0.25f).set(CgVfxFluid.COMBUSTION, 0f).set(CgVfxFluid.COLORMAP_MIN, -1f)
                 .set(CgVfxFluid.TURBULENCE, 1.2f).set(CgVfxFluid.TURBULENCE_SIZE, 1.2f).set(CgVfxFluid.ATTENUATION, 3f)
@@ -614,7 +623,7 @@ public final class CgVfxFluidDemo {
         CgVfxEmitter debris = CgVfxEmitter.builder("mushroomDebris").state(CgVfxEmitterState.ONCE)
                 .capacity(400).burst(0.05f, 400)
                 .shape(CgSphere.of(3)).hemisphere().direction(0, 1, 0, 60f).speed(8f, 20f).life(2.5f, 4f).size(0.05f, 0.1f, 2f).heat(1f)
-                .trail(14)
+                .publishes(true)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Drag(0.25f, 0f))
                 .module(new CgVfxModule.Flow(0.6f))
@@ -627,8 +636,9 @@ public final class CgVfxFluidDemo {
                 .module(new CgVfxModule.Drag(2.6f, 0f))
                 .module(new CgVfxModule.Ground(0f, 0.8f, 0.6f, 0f))
                 .module(new CgVfxModule.Feed(0.15f, 0f, 2f)).opacity(FADE).build();
+        CgVfxEmitter debrisTrails = streaks(debris, 400, 20f, 0.25f, 0.15f, 0.07f, EMBER, FLAME);
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(MUSHROOM).emitter(drawn(flash, spark(FLASH, FLASH, 1f)))
-                .emitter(drawn(debris, streaks(debris, EMBER, FLAME, 0.7f), spark(EMBER, FLAME, 1f)))
+                .emitter(drawn(debris, spark(EMBER, FLAME, 1f))).emitter(debrisTrails)
                 .emitter(drawn(surge, dust(m -> m.value("_Color", 0.66f, 0.6f, 0.52f, 0.25f))))
                 .set(CgVfxFluid.CELL, 0.6f).set(CgVfxFluid.BUOYANCY_PER_TEMP, 2.2f).set(CgVfxFluid.COOLING_RATE, 0.3f)
                 .set(CgVfxFluid.DIVERGENCE_PER_BURN, 3f)
@@ -640,7 +650,8 @@ public final class CgVfxFluidDemo {
                 .set(CgVfxFluid.ATTENUATION, 1.2f).set(CgVfxFluid.SHADOW_ATTENUATION, 0.8f)
                 .set(CgVfxFluid.SHADOW_MIN_INTENSITY, 0.15f).set(CgVfxFluid.SCATTERING, 0.5f).build();
         stations.add(new Station("mushroom cloud", "a fireball rising into a ring, its stem of dust, its surge along the ground",
-                x, z, look, 64f, 110f, List.of(flash, debris, surge), new float[][] {{0f, 8f, 0f}, {0f, 6f, 0f}, {0f, 0.4f, 0f}},
+                x, z, look, 64f, 110f, List.of(flash, debris, surge, debrisTrails),
+                new float[][] {{0f, 8f, 0f}, {0f, 6f, 0f}, {0f, 0.4f, 0f}, {0f, 6f, 0f}},
                 p -> {
                     p.fluid = new CgVfxFluid(p).place(0f, 30f, 0f).domain(20f, 30f, 20f);
                     p.sources.add(p.fluid.emitter(0f, 8f, 0f, 6f).temperature(1f, 40f).fuel(0.6f, 40f).smoke(1f, 20f)
@@ -744,13 +755,32 @@ public final class CgVfxFluidDemo {
         return r.build();
     }
 
-    /** A streak behind each of {@code e}'s particles, through the positions it keeps. */
-    private static CgVfxRendererProperties streaks(CgVfxEmitter e, CgVfxParam.Color colour, CgVfxParam.Color core,
-                                                   float size) {
-        return CgVfxRenderers.trails("streaks")
-                .material(material(PARTICLE + "streaks.shader", 0, CgMaterialUsage.RIBBONS, null))
-                .field("points", e.trailPoints()).bind("_Color", colour).bind("_Core", core).value("_cg_Size", size)
-                .sortOrderHint(CgVfxLook.SURFACE).build();
+    /**
+     * A trail behind each of {@code source}'s particles, up to {@code trails}: Cascade's trails by particle, each taking a
+     * particle no other follows, a point each {@code spacing} blocks living {@code life}, {@code width} either side and
+     * tapering to a fifth, its particles kept for a source flying at most {@code fastest} blocks a second. {@code source}
+     * must publish its particles.
+     */
+    private static CgVfxEmitter streaks(CgVfxEmitter source, int trails, float fastest, float life, float spacing, float width,
+                                        CgVfxParam.Color colour, CgVfxParam.Color core) {
+        int points = (int) Math.ceil(life * fastest / spacing) + 4;
+        CgVfxRendererProperties r = CgVfxRenderers.ribbon("glow")
+                .material(material(TRAIL + "glow.shader", 0, CgMaterialUsage.RIBBONS, null))
+                .field("trail", Map.of("max_trails", trails, "max_particles", points, "tiling_distance", 1.0))
+                .bind("_Color", colour).bind("_Core", core).sortOrderHint(CgVfxLook.SURFACE).build();
+        return CgVfxEmitter.builder(source.name() + "Trails").state(CgVfxEmitterState.once(LIFE)).capacity(trails * points)
+                .ratePerBlock(CgVfxSpawnPerUnit.every(1f, spacing)).maxStep(3f).speed(0f, 0f).life(life, life)
+                .size(width, width, 1f).size(CgKeyframes.start(0f, 1f).to(1f, 0.2f, CgEasings.LINEAR).build())
+                .spawnFrom(CgVfxSpawnFrom.trailing(source.name(), CgVfxSpawnFrom.Selection.SEQUENTIAL)).renderer(r).build();
+    }
+
+    /** A hot streak along each particle's velocity, {@code size} times its size: Niagara's velocity-aligned spark. */
+    private static CgVfxRendererProperties ray(CgVfxParam.Color colour, CgVfxParam.Color hot, float size) {
+        CgVfxRenderers.Builder r = CgVfxRenderers.arc("ray")
+                .material(material(PARTICLE + "ray.shader", 0, CgMaterialUsage.SPRITES, null))
+                .bind("_Color", colour).bind("_Hot", hot).sortOrderHint(CgVfxLook.SURFACE);
+        if (size != 1f) r.value("_cg_Size", size);
+        return r.build();
     }
 
     /** Soft ground dust each, ranked with smoke, its colour and shape {@code values}' constants. */

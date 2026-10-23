@@ -23,7 +23,6 @@ import com.crystalgraphics.vfx.particle.CgVfxSubUvAnimation;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
-import com.crystalgraphics.vfx.particle.renderer.CgVfxTrailsRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxSpriteRendererProperties;
@@ -84,8 +83,6 @@ final class CgVfxMaterials {
         /** The signature its materials are shared by: the bound properties and their places. */
         final String signature;
         final CgMaterial[] byKind = new CgMaterial[CgVfxSlot.Kind.values().length];
-        /** Its trails renderer's materials by pool, each bound to that pool's history ({@link #material(Resolved, CgVfxParticlePool)}). */
-        final Map<CgVfxParticlePool, CgMaterial> byPool = new IdentityHashMap<>();
 
         Resolved(CgVfxLook.Placed placed, CgMaterialDefinition definition, int[] source, int[] floats, float[] factor,
                  float[][] fixed, int vec4s, Map<String, Integer> slots, String signature) {
@@ -448,26 +445,6 @@ final class CgVfxMaterials {
         return material;
     }
 
-    /**
-     * {@code r}'s particle material for {@code pool}'s trails, its {@code HISTORY} that pool's ({@code trails()} layers):
-     * one per pool, since a material's bindings are captured once a stage, so two pools drawing one layer through one
-     * material would both read the last history set. Made at its first ask, tuned with the rest.
-     */
-    CgMaterial material(Resolved r, CgVfxParticlePool pool) {
-        material(r, CgVfxSlot.Kind.PARTICLES);
-        CgMaterial material = r.byPool.get(pool);
-        if (material == null) {
-            material = made(r, CgVfxSlot.Kind.PARTICLES);
-            materials.get(owner(r)).put(CgVfxSlot.Kind.PARTICLES + "|" + r.signature + "|pool" + (nextPool++), material);
-            all.add(material);
-            keys.put(material, batchKey(r, CgVfxSlot.Kind.PARTICLES, pool.shape().key()));
-            r.byPool.put(pool, material);
-        }
-        material.buffer("HISTORY", pool.history());
-        return material;
-    }
-
-    private int nextPool;
 
     /** What {@code r}'s materials are kept under: its material definition. */
     private static Object owner(Resolved r) {
@@ -485,9 +462,7 @@ final class CgVfxMaterials {
     private static String usageKeyword(Resolved r) {
         CgMaterialUsage usage = r.placed.renderer() != null ? CgVfxRenderers.usage(r.placed.renderer())
                 : CgMaterialUsage.STATIC_MESH;
-        String keyword = r.definition.requireUsage(usage, r.placed.toString());
-        // The strip factory places beams and ribbons; a trails layer keeps its own placement.
-        return usage == CgMaterialUsage.RIBBONS && r.placed.renderer() instanceof CgVfxTrailsRendererProperties ? null : keyword;
+        return r.definition.requireUsage(usage, r.placed.toString());
     }
 
     /** A new material of {@code r} for slots of {@code kind}, from its definition, under its usage's keyword. */

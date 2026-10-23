@@ -47,8 +47,9 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnPerUnit;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
-import com.crystalgraphics.vfx.trail.CgVfxTrail;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -129,6 +130,20 @@ public final class CgVfxModules {
     private static final CgVfxParam.Color SNOW = SCHEMA.color("snow", 0x8CD9E6FF);
     private static final CgVfxParam.Color SPIRIT_COOL = SCHEMA.color("spiritCool", 0x801A4CFF);
     private static final CgVfxParam.Color SPIRIT_HOT = SCHEMA.color("spiritHot", 0xFF80DCFF, 1.1f);
+    // The anim trails' edges, from a station's origin, which its show sets each tick: the rush's three swooshes (base
+    // to tip), and the scorches the dash and the meteor tear along the ground (either side of their path).
+    private static final CgVfxParam.Vector[] SWOOSH_BASE = new CgVfxParam.Vector[3], SWOOSH_TIP = new CgVfxParam.Vector[3];
+    private static final CgVfxParam.Vector DASH_SCORCH_A = SCHEMA.vector("dashScorchA", 0f, 0f, 0f),
+            DASH_SCORCH_B = SCHEMA.vector("dashScorchB", 0f, 0f, 0f),
+            METEOR_SCORCH_A = SCHEMA.vector("meteorScorchA", 0f, 0f, 0f),
+            METEOR_SCORCH_B = SCHEMA.vector("meteorScorchB", 0f, 0f, 0f);
+
+    static {
+        for (int k = 0; k < SWOOSH_BASE.length; k++) {
+            SWOOSH_BASE[k] = SCHEMA.vector("swooshBase" + k, 0f, 0f, 0f);
+            SWOOSH_TIP[k] = SCHEMA.vector("swooshTip" + k, 0f, 0f, 0f);
+        }
+    }
 
     private static final CgKeyframes FADE = CgKeyframes.start(0f, 0f).to(0.1f, 1f, CgEasings.OUT_QUAD)
             .to(0.7f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build();
@@ -220,11 +235,27 @@ public final class CgVfxModules {
                 emitter.ground(0f);
                 emitters.add(emitter);
             }
+            // A trail behind another emitter's particles reads that emitter's instance.
+            for (CgVfxEmitterInstance e : emitters) {
+                CgVfxSpawnFrom from = e.emitter().spawnFrom();
+                if (from != null) e.bornOn(emitter(from.source()));
+            }
+        }
+
+        /** Its instance of the station's emitter {@code name}. */
+        CgVfxEmitterInstance emitter(String name) {
+            for (CgVfxEmitterInstance e : emitters) if (e.emitter().name().equals(name)) return e;
+            throw new IllegalArgumentException("no emitter " + name + " in this station");
         }
 
         @Override
         protected void tick(float dt) {
+            // The show first: an anim trail samples the edge it sets this tick.
             boolean done = true;
+            if (show != null) {
+                show.tick(this, dt, age);
+                done = show.done(age);
+            }
             for (int i = 0; i < emitters.size(); i++) {
                 if (mover != null) {
                     mover.at(i, age, at);
@@ -232,10 +263,6 @@ public final class CgVfxModules {
                 }
                 tick(emitters.get(i), dt);
                 done &= emitters.get(i).finished();
-            }
-            if (show != null) {
-                show.tick(this, dt, age);
-                done &= show.done(age);
             }
             if (done && age > 1f) die();
         }
@@ -620,11 +647,6 @@ public final class CgVfxModules {
         }
     }
 
-    /** {@code trail} moved to {@code (x, y, z)} from {@code effect}'s origin. */
-    private static void move(CgVfxTrail trail, CgVfxEffect<?> effect, float dt, float x, float y, float z) {
-        trail.tick(dt, effect.originX() + x, effect.originY() + y, effect.originZ() + z);
-    }
-
     /** The dash station's flight, from its middle: a figure eight two and a half seconds round, skimming the ground at its middle. */
     private static void dashPath(float t, float[] p) {
         float w = (float) (2.0 * Math.PI / 2.4);
@@ -639,9 +661,6 @@ public final class CgVfxModules {
      * sparks shed as it flies; where the loop skims the ground, a scorch torn into it and dust thrown up behind.
      */
     private void dash(float x, float z, String smokeSheet) {
-        CgVfxSlot wakeSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/dash_wake");
-        CgVfxSlot limbSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/dash_limbs");
-        CgVfxSlot scorchSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/dash_scorch");
         CgVfxSlot auraSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/dash_aura");
         CgMesh shell = CgProceduralMesh.revolve(CgProceduralMesh.sphere(1f, -1f, 1f)).divisions(32, 16)
                 .curl(1.4f, 0.12f).noiseSeed(5).build();
@@ -657,94 +676,77 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.5f).to(1f, 2.6f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 0.8f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        CgVfxLook look = new Look().emitter(sparks).emitter(dust)
+        CgVfxEmitter wake = trail("dashWake", MOTION, 0.5f, 0.2f, 0.45f, 0.04f).capacity(48).build();
+        CgVfxEmitter haze = trail("dashWakeHaze", MOTION, 0.5f, 0.2f, 1.1f, 1f).capacity(48).build();
+        CgVfxEmitter[] limbs = new CgVfxEmitter[4];
+        for (int k = 0; k < limbs.length; k++) limbs[k] = trail("dashLimb" + k, MOTION, 0.3f, 0.15f, 0.05f, 0.4f).capacity(32).build();
+        CgVfxEmitter scorch = anim("dashScorch", MOTION, 4f);
+        Look look = new Look().emitter(sparks).emitter(dust).emitter(wake).emitter(haze).emitter(scorch)
                 .draw(smoke(dust, DUST, smokeSheet))
-                .slot(trail("scorch", scorchSlot, 0.6f, SMOKE_HINT, null).build())
-                .slot(trail("haze", wakeSlot, 1.1f, HAZE, null).quality(CgQuality.MEDIUM).build())
-                .slot(trail("glow", wakeSlot, 0.45f, SURFACE, m -> m.value("_Tail", 0.04f).value("_Flow", 10f)
-                        .value("_Erode", 0.85f)).bind("_Color", CYAN).bind("_Core", WHITE).build())
-                .slot(trail("glow", limbSlot, 0.05f, SURFACE, m -> m.value("_CoreWidth", 0.5f).value("_Erode", 0.25f)
-                        .value("_Tail", 0.4f).value("_Fade", 1f)).bind("_Color", ICE).bind("_Core", WHITE).build())
-                .slot(flow(auraSlot, shell, CYAN, WHITE, m -> m.value("_Scroll", 0f, -3.2f, 0f, 0f)
+                .draw(sweep(scorch, "scorch", SMOKE_HINT, DASH_SCORCH_A, DASH_SCORCH_B, null, null))
+                .draw(strip(haze, "haze", HAZE, 48, null, r -> r.quality(CgQuality.MEDIUM)))
+                .draw(strip(wake, "glow", SURFACE, 48, m -> m.value("_Flow", 10f).value("_Erode", 0.85f),
+                        r -> r.bind("_Color", CYAN).bind("_Core", WHITE)));
+        for (CgVfxEmitter limb : limbs) {
+            look.emitter(limb).draw(strip(limb, "glow", SURFACE, 32, m -> m.value("_CoreWidth", 0.5f).value("_Erode", 0.25f)
+                    .value("_Fade", 1f), r -> r.bind("_Color", ICE).bind("_Core", WHITE)));
+        }
+        look.slot(flow(auraSlot, shell, CYAN, WHITE, m -> m.value("_Scroll", 0f, -3.2f, 0f, 0f)
                         .value("_Tiling", 6f, 3f, 0f, 0f).value("_Erosion", 0.48f).value("_Edges", 0f)
                         .value("_Rim", 2.4f)).build())
-                .draw(spark(sparks, CYAN, WHITE))
-                .build();
+                .draw(spark(sparks, CYAN, WHITE));
         float w = (float) (2.0 * Math.PI / 2.4);
-        Mover follow = (i, age, at) -> {
-            if (i == 0) {
-                dashPath(age, at);
-                return;
-            }
-            // The dust: under the fighter while it skims the ground, held where it last did, so none rises aloft.
-            float t = age;
-            for (int k = 0; k < 240 && 3f + 2.6f * (float) Math.cos(w * t) > 1.2f; k++) t -= 0.01f;
-            dashPath(t, at);
-            at[1] = 0.1f;
-        };
         float[][] offsets = {{-0.1f, 0.45f, 0.15f}, {-0.1f, -0.45f, 0.15f}, {-0.35f, 0.18f, -0.85f}, {-0.35f, -0.18f, -0.85f}};
+        Rig limbRig = new Rig();
+        // Sparks, the wake and its haze ride the fighter; the dust is under it while it skims the ground, held where it
+        // last did, so none rises aloft; a limb's streak is off its hand or foot.
+        Mover follow = (i, age, at) -> {
+            if (i == 1) {
+                float t = age;
+                for (int k = 0; k < 240 && 3f + 2.6f * (float) Math.cos(w * t) > 1.2f; k++) t -= 0.01f;
+                dashPath(t, at);
+                at[1] = 0.1f;
+            } else if (i >= 4 && i < 4 + limbs.length) {
+                float[] o = offsets[i - 4];
+                limbRig.at(CgVfxModules::dashPath, age);
+                for (int a = 0; a < 3; a++) at[a] = limbRig.off(a, o[0], o[1], o[2]);
+            } else {
+                dashPath(age, at);
+            }
+        };
         Supplier<Show> show = () -> new Show() {
-            private final CgVfxTrail wake = CgVfxTrail.ribbon(0.5f).spacing(0.2f);
-            private final CgVfxTrail scorch = CgVfxTrail.flat(4f).spacing(0.25f);
-            private final CgVfxTrail[] limbs = new CgVfxTrail[4];
             private final Rig rig = new Rig();
             private final Matrix4f m = new Matrix4f();
 
-            {
-                for (int k = 0; k < limbs.length; k++) limbs[k] = CgVfxTrail.ribbon(0.3f).spacing(0.15f);
-            }
-
             @Override
             public void tick(CgVfxEffect<?> effect, float dt, float age) {
-                boolean flying = age < MOTION;
-                wake.emitting(flying);
-                for (CgVfxTrail limb : limbs) limb.emitting(flying);
-                if (!flying) {
-                    scorch.emitting(false);
-                    wake.tick(dt);
-                    scorch.tick(dt);
-                    for (CgVfxTrail limb : limbs) limb.tick(dt);
-                    return;
-                }
+                // The scorch's edge across the path on the ground, as wide as the fighter is low.
                 rig.at(CgVfxModules::dashPath, age);
-                move(wake, effect, dt, rig.p[0], rig.p[1], rig.p[2]);
-                for (int k = 0; k < limbs.length; k++) {
-                    float[] o = offsets[k];
-                    move(limbs[k], effect, dt, rig.off(0, o[0], o[1], o[2]), rig.off(1, o[0], o[1], o[2]), rig.off(2, o[0], o[1], o[2]));
-                }
-                boolean low = rig.p[1] < 1.1f;
-                scorch.emitting(low);
-                if (low) move(scorch, effect, dt, rig.p[0], 0.02f, rig.p[2]);
-                else scorch.tick(dt);
+                float half = 0.6f * Math.min(Math.max((1.4f - rig.p[1]) / 0.3f, 0f), 1f);
+                effect.set(DASH_SCORCH_A, rig.p[0] - rig.r[0] * half, 0.02f, rig.p[2] - rig.r[2] * half);
+                effect.set(DASH_SCORCH_B, rig.p[0] + rig.r[0] * half, 0.02f, rig.p[2] + rig.r[2] * half);
             }
 
             @Override
             public void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age) {
-                frame.trail(effect, scorchSlot, scorch);
-                frame.trail(effect, wakeSlot, wake);
-                for (CgVfxTrail limb : limbs) frame.trail(effect, limbSlot, limb);
                 if (age >= MOTION) return;
                 rig.at(CgVfxModules::dashPath, age - (1f - frame.alpha()) * TICK);
                 frame.mesh(effect, auraSlot, rig.p[0], rig.p[1], rig.p[2], rig.basis(m, 0.55f, 0.6f, 1.05f), 2f,
                         fade(age), 0f, 0f);
             }
-
-            @Override
-            public boolean done(float age) {
-                boolean done = wake.done() && scorch.done();
-                for (CgVfxTrail limb : limbs) done &= limb.done();
-                return done;
-            }
         };
         float[] start = new float[3];
         dashPath(0f, start);
-        stations.add(new Station("dash: a fighter in flight", x, z, look, List.of(sparks, dust),
-                new float[][]{start.clone(), {start[0], 0.1f, start[2]}}, p -> {
+        List<CgVfxEmitter> emitters = new ArrayList<>(List.of(sparks, dust, wake, haze));
+        emitters.addAll(List.of(limbs));
+        emitters.add(scorch);
+        stations.add(new Station("dash: a fighter in flight", x, z, look.build(), emitters, sources(emitters.size(), start),
+                p -> {
                     p.label(0f, 7.6f, 0f, 0.42f, "glow + haze", 0xFFFFFFFF);
                     p.label(0f, 7.1f, 0f, 0.26f, "a white-hot wake, the air bent behind it", 0xFFB8D8FF);
-                    p.label(-6f, 7.6f, 0f, 0.42f, "four thin ribbons", 0xFFFFFFFF);
+                    p.label(-6f, 7.6f, 0f, 0.42f, "four thin trails", 0xFFFFFFFF);
                     p.label(-6f, 7.1f, 0f, 0.26f, "a streak off each hand and foot", 0xFFB8D8FF);
-                    p.label(6f, 7.6f, 0f, 0.42f, "flat + scorch", 0xFFFFFFFF);
+                    p.label(6f, 7.6f, 0f, 0.42f, "anim trail + scorch", 0xFFFFFFFF);
                     p.label(6f, 7.1f, 0f, 0.26f, "torn into the ground it skims", 0xFFB8D8FF);
                 }, follow, show, null));
     }
@@ -791,9 +793,6 @@ public final class CgVfxModules {
      * streak with two anime ribbons corkscrewing round it, bursting at its end.
      */
     private void rush(float x, float z) {
-        CgVfxSlot swooshSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/rush_swoosh");
-        CgVfxSlot fistSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/rush_fist");
-        CgVfxSlot coilSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/rush_coil");
         CgVfxSlot ringSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/rush_ring");
         CgMesh ring = CgProceduralMesh.revolve(CgProceduralMesh.cylinder(1f, 1f, 0.12f)).divisions(64, 2).build();
         Swing[] combo = {
@@ -821,87 +820,85 @@ public final class CgVfxModules {
         hits.burst(fistTo, 260);
         flashes.burst(fistTo, 2);
         CgVfxEmitter hit = hits.build(), flash = flashes.build();
-        CgVfxLook look = new Look().emitter(hit).emitter(flash)
-                .slot(trail("swoosh", swooshSlot, 1f, SURFACE, null).bind("_Color", CYAN).bind("_Hot", WHITE).build())
-                .slot(trail("haze", fistSlot, 0.8f, HAZE, null).quality(CgQuality.MEDIUM).build())
-                .slot(trail("glow", fistSlot, 0.3f, SURFACE, m -> m.value("_Tail", 0.2f).value("_Flow", 14f))
-                        .bind("_Color", GOLD).bind("_Core", WHITE).build())
-                .slot(trail("bands", coilSlot, 0.11f, SURFACE, m -> m
-                        .value("_Bands", 1.4f, 1.35f, 1.2f, 1f, 1.6f, 1.05f, 0.3f, 1f,
-                        1.3f, 0.45f, 0.05f, 1f).value("_Ink", 0.12f, 0.03f, 0f, 1f).value("_Break", 0.45f)).build())
-                .slot(flow(ringSlot, ring, ICE, WHITE, m -> m.value("_Scroll", 0.6f, 0f, 0f, 0f)
+        CgVfxEmitter fist = trail("rushFist", fistTo + 0.05f, 0.45f, 0.15f, 0.3f, 0.2f).capacity(48).build();
+        CgVfxEmitter fistHaze = trail("rushFistHaze", fistTo + 0.05f, 0.45f, 0.15f, 0.8f, 1f).capacity(48).build();
+        CgVfxEmitter[] coils = new CgVfxEmitter[2];
+        for (int k = 0; k < coils.length; k++) coils[k] = trail("rushCoil" + k, fistTo + 0.05f, 0.5f, 0.08f, 0.11f, 0.25f).capacity(96).build();
+        CgVfxEmitter[] swooshes = new CgVfxEmitter[SWOOSH_BASE.length];
+        for (int k = 0; k < swooshes.length; k++) swooshes[k] = anim("rushSwoosh" + k, PERIOD, 0.22f);
+        Look look = new Look().emitter(hit).emitter(flash).emitter(fist).emitter(fistHaze)
+                .draw(strip(fistHaze, "haze", HAZE, 48, null, r -> r.quality(CgQuality.MEDIUM)))
+                .draw(strip(fist, "glow", SURFACE, 48, m -> m.value("_Flow", 14f), r -> r.bind("_Color", GOLD).bind("_Core", WHITE)));
+        for (CgVfxEmitter coil : coils) {
+            look.emitter(coil).draw(strip(coil, "bands", SURFACE, 96, m -> m
+                    .value("_Bands", 1.4f, 1.35f, 1.2f, 1f, 1.6f, 1.05f, 0.3f, 1f, 1.3f, 0.45f, 0.05f, 1f)
+                    .value("_Ink", 0.12f, 0.03f, 0f, 1f).value("_Break", 0.45f), null));
+        }
+        for (int k = 0; k < swooshes.length; k++) {
+            look.emitter(swooshes[k]).draw(sweep(swooshes[k], "swoosh", SURFACE, SWOOSH_BASE[k], SWOOSH_TIP[k], null,
+                    r -> r.bind("_Color", CYAN).bind("_Hot", WHITE)));
+        }
+        look.slot(flow(ringSlot, ring, ICE, WHITE, m -> m.value("_Scroll", 0.6f, 0f, 0f, 0f)
                         .value("_Tiling", 12f, 1f, 0f, 0f).value("_Erosion", 0.3f)).build())
                 .draw(spark(hit, GOLD, WHITE))
-                .draw(spark(flash, WHITE, WHITE))
-                .build();
+                .draw(spark(flash, WHITE, WHITE));
         float[] fistStart = {0.6f, 1.3f, 0f};
         Mover at = (i, age, out) -> {
-            // Each burst where its swing lands: the next swing's end until it is reached, then the fist's.
-            for (Swing s : combo) {
-                if (s.end() >= age - 1e-3f) {
-                    for (int a = 0; a < 3; a++) out[a] = s.at(a, Swing.ARC, s.reach());
-                    return;
+            if (i < 2) {
+                // Each burst where its swing lands: the next swing's end until it is reached, then the fist's.
+                for (Swing s : combo) {
+                    if (s.end() >= age - 1e-3f) {
+                        for (int a = 0; a < 3; a++) out[a] = s.at(a, Swing.ARC, s.reach());
+                        return;
+                    }
                 }
+                out[0] = fistStart[0] + fistReach;
+                out[1] = fistStart[1];
+                out[2] = fistStart[2];
+                return;
             }
-            out[0] = fistStart[0] + fistReach;
-            out[1] = fistStart[1];
-            out[2] = fistStart[2];
+            // The fist drives out between fistFrom and fistTo, its two coils corkscrewing round it.
+            float u = Math.min(Math.max((age - fistFrom) / (fistTo - fistFrom), 0f), 1f), eased = u * u * (3f - 2f * u);
+            float fx = fistStart[0] + fistReach * eased;
+            if (i < 4 || i >= 4 + coils.length) {
+                out[0] = fx;
+                out[1] = fistStart[1];
+                out[2] = fistStart[2];
+                return;
+            }
+            float radius = 0.75f * (1f - 0.45f * eased), a = Math.max(age - fistFrom, 0f) * 22f + (i - 4) * (float) Math.PI;
+            out[0] = fx - 0.3f;
+            out[1] = fistStart[1] + radius * (float) Math.cos(a);
+            out[2] = fistStart[2] + radius * (float) Math.sin(a);
         };
         Supplier<Show> show = () -> new Show() {
-            private final CgVfxTrail[] swooshes = new CgVfxTrail[3];
-            private final CgVfxTrail fist = CgVfxTrail.ribbon(0.45f).spacing(0.15f);
-            private final CgVfxTrail[] coils = {CgVfxTrail.ribbon(0.5f).spacing(0.08f), CgVfxTrail.ribbon(0.5f).spacing(0.08f)};
             private final Matrix4f m = new Matrix4f();
             private final Quaternionf turn = new Quaternionf();
 
-            {
-                for (int k = 0; k < swooshes.length; k++) swooshes[k] = CgVfxTrail.blade(0.22f).spacing(0.04f);
-            }
-
             @Override
             public void tick(CgVfxEffect<?> effect, float dt, float age) {
-                for (int k = 0; k < swooshes.length; k++) {
-                    // The swing this trail sweeps now, or the last it swept, running out.
-                    int swing = -1;
-                    for (int s = k; s < combo.length; s += swooshes.length) if (combo[s].start() <= age) swing = s;
-                    CgVfxTrail trail = swooshes[k];
-                    if (swing < 0 || age > combo[swing].end() + 0.02f) {
-                        trail.emitting(false);
-                        trail.tick(dt);
-                        continue;
+                // Swoosh k sweeps swings k, k + 3: from forearm to fist while one runs; else its edge shut at the next
+                // one's base, or the last's, so a sample between two swings lays nothing.
+                for (int k = 0; k < SWOOSH_BASE.length; k++) {
+                    Swing s = null;
+                    boolean sweeping = false;
+                    for (int j = k; j < combo.length; j += SWOOSH_BASE.length) {
+                        s = combo[j];
+                        if (age < s.start()) break;
+                        if (age <= s.end() + 0.02f) {
+                            sweeping = true;
+                            break;
+                        }
                     }
-                    Swing s = combo[swing];
-                    if (age - dt < s.start()) trail.clear();
-                    trail.emitting(true);
-                    float a = s.angle(age);
-                    trail.tick(dt, effect.originX() + s.at(0, a, 0.35f), effect.originY() + s.at(1, a, 0.35f),
-                            effect.originZ() + s.at(2, a, 0.35f), effect.originX() + s.at(0, a, s.reach()),
-                            effect.originY() + s.at(1, a, s.reach()), effect.originZ() + s.at(2, a, s.reach()));
-                }
-                boolean driving = age >= fistFrom && age <= fistTo + 0.02f;
-                fist.emitting(driving);
-                for (CgVfxTrail coil : coils) coil.emitting(driving);
-                if (!driving) {
-                    fist.tick(dt);
-                    for (CgVfxTrail coil : coils) coil.tick(dt);
-                    return;
-                }
-                float u = Math.min((age - fistFrom) / (fistTo - fistFrom), 1f), eased = u * u * (3f - 2f * u);
-                float fx = fistStart[0] + fistReach * eased;
-                move(fist, effect, dt, fx, fistStart[1], fistStart[2]);
-                float radius = 0.75f * (1f - 0.45f * eased);
-                for (int k = 0; k < coils.length; k++) {
-                    float a = (age - fistFrom) * 22f + k * (float) Math.PI;
-                    move(coils[k], effect, dt, fx - 0.3f, fistStart[1] + radius * (float) Math.cos(a),
-                            fistStart[2] + radius * (float) Math.sin(a));
+                    float a = sweeping ? s.angle(age) : age < s.start() ? 0f : Swing.ARC;
+                    float tip = sweeping ? s.reach() : 0.35f;
+                    effect.set(SWOOSH_BASE[k], s.at(0, a, 0.35f), s.at(1, a, 0.35f), s.at(2, a, 0.35f));
+                    effect.set(SWOOSH_TIP[k], s.at(0, a, tip), s.at(1, a, tip), s.at(2, a, tip));
                 }
             }
 
             @Override
             public void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age) {
-                for (CgVfxTrail swoosh : swooshes) frame.trail(effect, swooshSlot, swoosh);
-                frame.trail(effect, fistSlot, fist);
-                for (CgVfxTrail coil : coils) frame.trail(effect, coilSlot, coil);
                 for (Swing s : combo) ring(effect, frame, age - s.end(), s.at(0, Swing.ARC, s.reach()),
                         s.at(1, Swing.ARC, s.reach()), s.at(2, Swing.ARC, s.reach()), s.nx(), s.ny(), s.nz(), 1f);
                 ring(effect, frame, age - fistTo, fistStart[0] + fistReach, fistStart[1], fistStart[2], 1f, 0f, 0f, 2.2f);
@@ -918,16 +915,17 @@ public final class CgVfxModules {
 
             @Override
             public boolean done(float age) {
-                boolean done = age > fistTo + 0.5f && fist.done();
-                for (CgVfxTrail swoosh : swooshes) done &= swoosh.done();
-                return done;
+                return age > fistTo + 0.5f;
             }
         };
+        List<CgVfxEmitter> emitters = new ArrayList<>(List.of(hit, flash, fist, fistHaze));
+        emitters.addAll(List.of(coils));
+        emitters.addAll(List.of(swooshes));
         Matrix4f body = new Matrix4f().scale(0.6f, 1.8f, 0.6f);
-        stations.add(new Station("rush: a combo, then a dragon fist", x, z, look, List.of(hit, flash),
-                new float[][]{{0f, 1.3f, 1.6f}, {0f, 1.3f, 1.6f}}, p -> {
+        stations.add(new Station("rush: a combo, then a dragon fist", x, z, look.build(), emitters,
+                sources(emitters.size(), fistStart), p -> {
                     p.box(0f, 0.9f, 0f, body);
-                    p.label(0f, 5.2f, 0f, 0.42f, "blade + swoosh", 0xFFFFFFFF);
+                    p.label(0f, 5.2f, 0f, 0.42f, "anim trail + swoosh", 0xFFFFFFFF);
                     p.label(0f, 4.7f, 0f, 0.26f, "each swing from forearm to fist", 0xFFB8D8FF);
                     p.label(6f, 5.2f, 0f, 0.42f, "glow + bands", 0xFFFFFFFF);
                     p.label(6f, 4.7f, 0f, 0.26f, "a dragon fist, two coils round it", 0xFFB8D8FF);
@@ -940,8 +938,6 @@ public final class CgVfxModules {
      * a puff of dust and a shock ring along the ground.
      */
     private void volley(float x, float z, String smokeSheet) {
-        CgVfxSlot streakSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/volley_streak");
-        CgVfxSlot smokeSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/volley_smoke");
         CgVfxSlot ringSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/volley_ring");
         CgMesh ring = CgProceduralMesh.revolve(CgProceduralMesh.cylinder(1f, 1f, 0.1f)).divisions(64, 2).build();
         int n = 5;
@@ -952,7 +948,7 @@ public final class CgVfxModules {
         List<CgVfxEmitter> emitters = new ArrayList<>();
         Look look = new Look();
         CgVfxEmitter[] balls = new CgVfxEmitter[n], crumbs = new CgVfxEmitter[n], sprays = new CgVfxEmitter[n],
-                puffs = new CgVfxEmitter[n];
+                puffs = new CgVfxEmitter[n], streaks = new CgVfxEmitter[n], smokes = new CgVfxEmitter[n];
         for (int i = 0; i < n; i++) {
             launch[i] = 0.4f + 0.3f * i;
             targets[i] = new float[]{5f, 0.15f, (i - 2) * 1.7f};
@@ -980,18 +976,25 @@ public final class CgVfxModules {
                     .size(CgKeyframes.start(0f, 0.5f).to(1f, 2.4f, CgEasings.OUT_CUBIC).build())
                     .opacity(CgKeyframes.start(0f, 0f).to(0.12f, 0.85f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                     .build();
-            look.emitter(balls[i]).emitter(crumbs[i]).emitter(sprays[i]).emitter(puffs[i])
+            streaks[i] = trail("volleyStreak" + i, fly, 0.28f, 0.12f, 0.2f, 0.1f)
+                    .state(CgVfxEmitterState.once(fly).delay(launch[i])).capacity(48).build();
+            smokes[i] = trail("volleySmoke" + i, fly, 1.6f, 0.2f, 0.1f, 1f)
+                    .state(CgVfxEmitterState.once(fly).delay(launch[i])).capacity(96).build();
+            look.emitter(balls[i]).emitter(crumbs[i]).emitter(sprays[i]).emitter(puffs[i]).emitter(smokes[i])
+                    .emitter(streaks[i])
                     .draw(spark(balls[i], GOLD, WHITE)).draw(spark(crumbs[i], GOLD, WHITE))
-                    .draw(spark(sprays[i], GOLD, WHITE)).draw(smoke(puffs[i], DUST, smokeSheet));
+                    .draw(spark(sprays[i], GOLD, WHITE)).draw(smoke(puffs[i], DUST, smokeSheet))
+                    .draw(strip(smokes[i], "smoke", SMOKE_HINT, 96, m -> m.value("_Spread", 4f).value("_Rise", 0.5f), null))
+                    .draw(strip(streaks[i], "glow", SURFACE, 48, m -> m.value("_Flow", 7f),
+                            r -> r.bind("_Color", GOLD).bind("_Core", WHITE)));
         }
         emitters.addAll(List.of(balls));
         emitters.addAll(List.of(crumbs));
         emitters.addAll(List.of(sprays));
         emitters.addAll(List.of(puffs));
-        look.slot(trail("smoke", smokeSlot, 0.1f, SMOKE_HINT, m -> m.value("_Spread", 4f).value("_Rise", 0.5f)).build())
-                .slot(trail("glow", streakSlot, 0.2f, SURFACE, m -> m.value("_Tail", 0.1f)).bind("_Color", GOLD)
-                        .bind("_Core", WHITE).build())
-                .slot(flow(ringSlot, ring, GOLD, WHITE, m -> m.value("_Scroll", 0.7f, 0f, 0f, 0f)
+        emitters.addAll(List.of(streaks));
+        emitters.addAll(List.of(smokes));
+        look.slot(flow(ringSlot, ring, GOLD, WHITE, m -> m.value("_Scroll", 0.7f, 0f, 0f, 0f)
                         .value("_Tiling", 14f, 1f, 0f, 0f).value("_Erosion", 0.3f)).build());
         // Each blast on its arc: a quadratic Bezier, quicker as it closes in.
         Path[] arcs = new Path[n];
@@ -1006,7 +1009,7 @@ public final class CgVfxModules {
             };
         }
         Mover along = (i, age, out) -> {
-            if (i < 2 * n) {
+            if (i < 2 * n || i >= 4 * n) {
                 arcs[i % n].at(age, out);
                 return;
             }
@@ -1015,42 +1018,14 @@ public final class CgVfxModules {
             out[1] = t[1];
             out[2] = t[2];
         };
-        float[][] sources = new float[4 * n][];
-        for (int i = 0; i < 4 * n; i++) sources[i] = i < 2 * n ? from.clone() : targets[i % n].clone();
+        float[][] sources = new float[6 * n][];
+        for (int i = 0; i < 6 * n; i++) sources[i] = i < 2 * n || i >= 4 * n ? from.clone() : targets[i % n].clone();
         Supplier<Show> show = () -> new Show() {
-            private final CgVfxTrail[] streaks = new CgVfxTrail[n], smokes = new CgVfxTrail[n];
-            private final float[] p = new float[3];
             private final Matrix4f m = new Matrix4f();
-
-            {
-                for (int i = 0; i < n; i++) {
-                    streaks[i] = CgVfxTrail.ribbon(0.28f).spacing(0.12f);
-                    smokes[i] = CgVfxTrail.ribbon(1.6f).spacing(0.2f);
-                }
-            }
-
-            @Override
-            public void tick(CgVfxEffect<?> effect, float dt, float age) {
-                for (int i = 0; i < n; i++) {
-                    boolean flying = age >= launch[i] && age < launch[i] + fly;
-                    streaks[i].emitting(flying);
-                    smokes[i].emitting(flying);
-                    if (!flying) {
-                        streaks[i].tick(dt);
-                        smokes[i].tick(dt);
-                        continue;
-                    }
-                    arcs[i].at(age, p);
-                    move(streaks[i], effect, dt, p[0], p[1], p[2]);
-                    move(smokes[i], effect, dt, p[0], p[1], p[2]);
-                }
-            }
 
             @Override
             public void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age) {
                 for (int i = 0; i < n; i++) {
-                    frame.trail(effect, smokeSlot, smokes[i]);
-                    frame.trail(effect, streakSlot, streaks[i]);
                     float t = age - launch[i] - fly;
                     if (t < 0f || t > 0.45f) continue;
                     float r = 0.3f + 3.2f * t / 0.45f;
@@ -1061,9 +1036,7 @@ public final class CgVfxModules {
 
             @Override
             public boolean done(float age) {
-                boolean done = age > launch[n - 1] + fly;
-                for (int i = 0; i < n; i++) done &= streaks[i].done() && smokes[i].done();
-                return done;
+                return age > launch[n - 1] + fly + 0.45f;
             }
         };
         stations.add(new Station("volley: ki blasts curving in", x, z, look.build(), emitters, sources, p -> {
@@ -1079,14 +1052,6 @@ public final class CgVfxModules {
      * and breaking into brushed strands at its tail; and a ring of power-up lines shooting up round a point, gold.
      */
     private void anime(float x, float z) {
-        CgVfxSlot stepSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/anime_step");
-        CgVfxSlot lineSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/anime_lines");
-        CgVfxLook look = new Look()
-                .slot(trail("bands", stepSlot, 0.28f, SURFACE, m -> m.value("_Ink", 0.02f, 0.04f, 0.12f, 1f)).build())
-                .slot(trail("bands", lineSlot, 0.08f, SURFACE, m -> m
-                        .value("_Bands", 1.4f, 1.35f, 1.2f, 1f, 1.6f, 1.1f, 0.3f, 1f,
-                        1.4f, 0.55f, 0.05f, 1f).value("_Break", 0.4f).value("_Tail", 0.4f)).build())
-                .build();
         float[][] corners = {{-6f, 1.2f, -3f}, {-3f, 4.2f, -1f}, {-0.5f, 1.4f, -4f}, {2.5f, 5f, -1.5f}, {5.5f, 1.8f, -3.5f}};
         float speed = 18f;
         float[] lengths = new float[corners.length];
@@ -1104,60 +1069,39 @@ public final class CgVfxModules {
         };
         int lines = 12;
         float cycle = 0.55f, rise = 0.22f;
-        Supplier<Show> show = () -> new Show() {
-            private final CgVfxTrail flash = CgVfxTrail.ribbon(0.45f).spacing(0.1f);
-            private final CgVfxTrail[] power = new CgVfxTrail[lines];
-            private final float[] p = new float[3];
-
-            {
-                for (int j = 0; j < lines; j++) power[j] = CgVfxTrail.ribbon(0.16f).spacing(0.1f);
+        CgVfxEmitter flash = trail("animeStep", MOTION, 0.45f, 0.1f, 0.28f, 0.25f).capacity(64).build();
+        Look look = new Look().emitter(flash)
+                .draw(strip(flash, "bands", SURFACE, 64, m -> m.value("_Ink", 0.02f, 0.04f, 0.12f, 1f), null));
+        List<CgVfxEmitter> emitters = new ArrayList<>(List.of(flash));
+        for (int j = 0; j < lines; j++) {
+            CgVfxEmitter line = trail("animeLine" + j, MOTION, 0.16f, 0.1f, 0.08f, 0.4f).capacity(32).build();
+            look.emitter(line).draw(strip(line, "bands", SURFACE, 32, m -> m
+                    .value("_Bands", 1.4f, 1.35f, 1.2f, 1f, 1.6f, 1.1f, 0.3f, 1f, 1.4f, 0.55f, 0.05f, 1f).value("_Break", 0.4f), null));
+            emitters.add(line);
+        }
+        // The flash step runs its course; each power-up line shoots up, holds at its top, then starts again from the
+        // ground, a jump its trail takes as a teleport.
+        Mover move = (i, age, at) -> {
+            if (i == 0) {
+                step.at(age, at);
+                return;
             }
-
-            @Override
-            public void tick(CgVfxEffect<?> effect, float dt, float age) {
-                boolean on = age < MOTION;
-                flash.emitting(on);
-                if (on) {
-                    step.at(age, p);
-                    move(flash, effect, dt, p[0], p[1], p[2]);
-                } else {
-                    flash.tick(dt);
-                }
-                for (int j = 0; j < lines; j++) {
-                    float phase = (age + j * 0.137f * cycle) % cycle;
-                    boolean rising = on && phase < rise;
-                    if (rising && phase < dt) power[j].clear();
-                    power[j].emitting(rising);
-                    if (!rising) {
-                        power[j].tick(dt);
-                        continue;
-                    }
-                    float a = j * (float) (2.0 * Math.PI / lines) + 0.3f * (float) Math.sin(j * 7.1f);
-                    float r = 1.3f + 0.3f * (float) Math.sin(j * 3.7f);
-                    float u = phase / rise, y = 0.1f + 5.2f * (1f - (1f - u) * (1f - u));
-                    move(power[j], effect, dt, r * (float) Math.cos(a), y, 3f + r * (float) Math.sin(a));
-                }
-            }
-
-            @Override
-            public void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age) {
-                frame.trail(effect, stepSlot, flash);
-                for (CgVfxTrail line : power) frame.trail(effect, lineSlot, line);
-            }
-
-            @Override
-            public boolean done(float age) {
-                boolean done = flash.done();
-                for (CgVfxTrail line : power) done &= line.done();
-                return done;
-            }
+            int j = i - 1;
+            float phase = (age + j * 0.137f * cycle) % cycle;
+            float a = j * (float) (2.0 * Math.PI / lines) + 0.3f * (float) Math.sin(j * 7.1f);
+            float r = 1.3f + 0.3f * (float) Math.sin(j * 3.7f);
+            float u = Math.min(phase / rise, 1f);
+            at[0] = r * (float) Math.cos(a);
+            at[1] = 0.1f + 5.2f * (1f - (1f - u) * (1f - u));
+            at[2] = 3f + r * (float) Math.sin(a);
         };
-        stations.add(new Station("anime: cel-banded streaks", x, z, look, List.of(), new float[0][], p -> {
-            p.label(0f, 6.6f, -3f, 0.42f, "bands, inked", 0xFFFFFFFF);
-            p.label(0f, 6.1f, -3f, 0.26f, "a flash step's hard turns", 0xFFB8D8FF);
-            p.label(0f, 6.6f, 3f, 0.42f, "bands, gold", 0xFFFFFFFF);
-            p.label(0f, 6.1f, 3f, 0.26f, "power-up lines shooting up", 0xFFB8D8FF);
-        }, null, show, null));
+        stations.add(new Station("anime: cel-banded streaks", x, z, look.build(), emitters,
+                sources(emitters.size(), corners[0]), p -> {
+                    p.label(0f, 6.6f, -3f, 0.42f, "bands, inked", 0xFFFFFFFF);
+                    p.label(0f, 6.1f, -3f, 0.26f, "a flash step's hard turns", 0xFFB8D8FF);
+                    p.label(0f, 6.6f, 3f, 0.42f, "bands, gold", 0xFFFFFFFF);
+                    p.label(0f, 6.1f, 3f, 0.26f, "power-up lines shooting up", 0xFFB8D8FF);
+                }, move, null, null));
     }
 
     /**
@@ -1165,7 +1109,6 @@ public final class CgVfxModules {
      * shaking across its own line and flickering on and off, white-blue through a gold aura's rising streaks and motes.
      */
     private void storm(float x, float z) {
-        CgVfxSlot boltSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/storm_bolts");
         CgVfxEmitter streaks = CgVfxEmitter.builder("stormStreaks")
                 .state(CgVfxEmitterState.once(MOTION - 0.2f).delay(0.2f)).capacity(1000)
                 .rate(200f).entity().surface().direction(0f, 1f, 0f, 12f).speed(3f, 6f).life(0.25f, 0.45f)
@@ -1175,61 +1118,45 @@ public final class CgVfxModules {
                 .entity().surface().speed(0.1f, 0.3f).life(0.8f, 1.4f).size(0.03f, 0.06f, 1.4f).heat(1f)
                 .module(new CgVfxModule.Force(0f, 2.2f, 0f)).module(new CgVfxModule.Turbulence(2f, 0.5f, 0.6f))
                 .opacity(FADE).build();
-        CgVfxLook look = new Look().emitter(streaks).emitter(motes)
+        Look look = new Look().emitter(streaks).emitter(motes)
                 .draw(particle("ray", streaks, GOLD, WHITE, 1f, null, null))
-                .draw(spark(motes, FLAME, WHITE))
-                .slot(trail("glow", boltSlot, 0.03f, SURFACE, m -> m.value("_Wobble", 1.4f).value("_WobbleRate", 45f)
-                        .value("_Tail", 0.6f).value("_Erode", 0.15f).value("_Fade", 0.7f).value("_Flow", 20f)
-                        .value("_GlowGain", 2.5f)).bind("_Color", ICE).bind("_Core", WHITE).build())
-                .build();
+                .draw(spark(motes, FLAME, WHITE));
         int bolts = 7;
-        Supplier<Show> show = () -> new Show() {
-            private final CgVfxTrail[] trails = new CgVfxTrail[bolts];
-
-            {
-                for (int j = 0; j < bolts; j++) trails[j] = CgVfxTrail.ribbon(0.11f).spacing(0.05f);
+        List<CgVfxEmitter> emitters = new ArrayList<>(List.of(streaks, motes));
+        for (int j = 0; j < bolts; j++) {
+            CgVfxEmitter bolt = trail("stormBolt" + j, MOTION, 0.11f, 0.05f, 0.03f, 0.6f).capacity(32).build();
+            look.emitter(bolt).draw(strip(bolt, "glow", SURFACE, 32, m -> m.value("_Wobble", 1.4f).value("_WobbleRate", 45f)
+                    .value("_Erode", 0.15f).value("_Fade", 0.7f).value("_Flow", 20f).value("_GlowGain", 2.5f),
+                    r -> r.bind("_Color", ICE).bind("_Core", WHITE)));
+            emitters.add(bolt);
+        }
+        float[] middle = {0f, 0.9f, 0f};
+        // Each bolt on an erratic orbit, flickering on and off in ninths of a second, each its own: off, it holds where
+        // it went off, so it lays nothing.
+        Mover orbit = (i, age, at) -> {
+            if (i < 2) {
+                System.arraycopy(middle, 0, at, 0, 3);
+                return;
             }
-
-            @Override
-            public void tick(CgVfxEffect<?> effect, float dt, float age) {
-                for (int j = 0; j < bolts; j++) {
-                    // On and off in flickers, each its own: a spark, not a light.
-                    boolean on = age < MOTION && hash((int) (age * 9f), j * 17 + 3) > 0.35f;
-                    trails[j].emitting(on);
-                    if (!on) {
-                        trails[j].tick(dt);
-                        continue;
-                    }
-                    float a = 9f + j, b = 13f + 1.7f * j;
-                    float dx = (float) Math.sin(a * age + j * 1.3f), dy = 0.8f * (float) Math.sin(b * age + j * 2.1f);
-                    float dz = (float) Math.cos(a * age * 0.93f + j * 0.7f);
-                    float l = (float) Math.sqrt(dx * dx + dy * dy + dz * dz) + 1e-4f;
-                    float r = 0.75f + 0.25f * (float) Math.sin(5f * age + j);
-                    move(trails[j], effect, dt, dx / l * r, 1f + 0.95f * dy / l, dz / l * r);
-                }
-            }
-
-            @Override
-            public void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age) {
-                for (CgVfxTrail bolt : trails) frame.trail(effect, boltSlot, bolt);
-            }
-
-            @Override
-            public boolean done(float age) {
-                boolean done = age >= MOTION;
-                for (CgVfxTrail bolt : trails) done &= bolt.done();
-                return done;
-            }
+            int j = i - 2, window = (int) (age * 9f);
+            float t = hash(window, j * 17 + 3) > 0.35f ? age : window / 9f;
+            float a = 9f + j, b = 13f + 1.7f * j;
+            float dx = (float) Math.sin(a * t + j * 1.3f), dy = 0.8f * (float) Math.sin(b * t + j * 2.1f);
+            float dz = (float) Math.cos(a * t * 0.93f + j * 0.7f);
+            float l = (float) Math.sqrt(dx * dx + dy * dy + dz * dz) + 1e-4f;
+            float r = 0.75f + 0.25f * (float) Math.sin(5f * t + j);
+            at[0] = dx / l * r;
+            at[1] = 1f + 0.95f * dy / l;
+            at[2] = dz / l * r;
         };
         float[] box = {0f, 0.9f, 0f, 0.3f, 0.9f, 0.3f};
         Matrix4f body = new Matrix4f().scale(0.6f, 1.8f, 0.6f);
-        float[] middle = {0f, 0.9f, 0f};
-        stations.add(new Station("storm: lightning round a Super Saiyan 2", x, z, look, List.of(streaks, motes),
-                new float[][]{middle, middle}, p -> {
+        stations.add(new Station("storm: lightning round a Super Saiyan 2", x, z, look.build(), emitters,
+                sources(emitters.size(), middle), p -> {
                     p.box(0f, 0.9f, 0f, body);
                     p.label(0f, 5.2f, 0f, 0.42f, "glow, _Wobble", 0xFFFFFFFF);
                     p.label(0f, 4.7f, 0f, 0.26f, "seven bolts shaking across their lines", 0xFFB8D8FF);
-                }, null, show, box));
+                }, orbit, null, box));
     }
 
     /** The meteor station's rock, from its middle: falling faster and faster, then skidding to a stop along the ground. */
@@ -1253,9 +1180,6 @@ public final class CgVfxModules {
      * there cooling and smoking.
      */
     private void meteor(float x, float z, String smokeSheet) {
-        CgVfxSlot fireSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/meteor_fire");
-        CgVfxSlot smokeSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/meteor_smoke");
-        CgVfxSlot scorchSlot = CgVfxSlot.trail("crystalgraphics:demo/modules/meteor_scorch");
         CgVfxSlot rockSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/meteor_rock");
         CgVfxSlot ringSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/meteor_ring");
         CgMesh rock = CgProceduralMesh.revolve(CgProceduralMesh.sphere(1f, -1f, 1f)).divisions(20, 12).curl(1.2f, 0.3f)
@@ -1306,17 +1230,22 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.6f).to(1f, 3.2f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.2f, 0.8f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
+        CgVfxEmitter fire = trail("meteorFire", rest, 0.22f, 0.15f, 0.42f, 0.1f).capacity(48).build();
+        CgVfxEmitter fireHaze = trail("meteorFireHaze", rest, 0.22f, 0.15f, 1.1f, 1f).capacity(48).build();
+        CgVfxEmitter trailSmoke = trail("meteorSmoke", rest, 3.2f, 0.25f, 0.32f, 1f).capacity(160).build();
+        CgVfxEmitter scorch = anim("meteorScorch", MOTION, 4.5f);
         CgVfxLook look = new Look().emitter(embers).emitter(debris).emitter(sparks).emitter(flash)
-                .emitter(wall).emitter(skid).emitter(smoulder)
+                .emitter(wall).emitter(skid).emitter(smoulder).emitter(fire).emitter(fireHaze).emitter(trailSmoke)
+                .emitter(scorch)
                 .draw(smoke(wall, DUST, smokeSheet))
                 .draw(smoke(skid, DUST, smokeSheet))
                 .draw(smoke(smoulder, SOOT, smokeSheet))
-                .slot(trail("scorch", scorchSlot, 0.65f, SMOKE_HINT, null).build())
-                .slot(trail("smoke", smokeSlot, 0.32f, SMOKE_HINT, m -> m.value("_Spread", 5f).value("_Rise", 0.6f)
-                        .value("_Glow", 1.6f, 0.55f, 0.12f, 1f)).build())
-                .slot(trail("haze", fireSlot, 1.1f, HAZE, null).quality(CgQuality.MEDIUM).build())
-                .slot(trail("glow", fireSlot, 0.42f, SURFACE, m -> m.value("_Tail", 0.1f).value("_Flow", 6f)
-                        .value("_Wobble", 0.15f)).bind("_Color", EMBER).bind("_Core", FLAME).build())
+                .draw(sweep(scorch, "scorch", SMOKE_HINT, METEOR_SCORCH_A, METEOR_SCORCH_B, null, null))
+                .draw(strip(trailSmoke, "smoke", SMOKE_HINT, 160, m -> m.value("_Spread", 5f).value("_Rise", 0.6f)
+                        .value("_Glow", 1.6f, 0.55f, 0.12f, 1f), null))
+                .draw(strip(fireHaze, "haze", HAZE, 48, null, r -> r.quality(CgQuality.MEDIUM)))
+                .draw(strip(fire, "glow", SURFACE, 48, m -> m.value("_Flow", 6f).value("_Wobble", 0.15f),
+                        r -> r.bind("_Color", EMBER).bind("_Core", FLAME)))
                 .slot(flow(rockSlot, rock, EMBER, FLAME, m -> m.value("_Scroll", 0.4f, -1.2f, 0f, 0f)
                         .value("_Tiling", 4f, 3f, 0f, 0f).value("_Erosion", 0.1f).value("_Edges", 0f)
                         .value("_Rim", 1.5f)).build())
@@ -1338,40 +1267,30 @@ public final class CgVfxModules {
                 at[1] = 0.1f;
             } else if (i == 6) {
                 System.arraycopy(end, 0, at, 0, 3);
+            } else if (i >= 7) {
+                meteorPath(Math.min(age, rest), at);
             } else {
                 System.arraycopy(hit, 0, at, 0, 3);
             }
         };
         Supplier<Show> show = () -> new Show() {
-            private final CgVfxTrail fire = CgVfxTrail.ribbon(0.22f).spacing(0.15f);
-            private final CgVfxTrail smoke = CgVfxTrail.ribbon(3.2f).spacing(0.25f);
-            private final CgVfxTrail scorch = CgVfxTrail.flat(4.5f).spacing(0.15f);
-            private final float[] p = new float[3];
+            private final float[] p = new float[3], q = new float[3];
             private final Matrix4f m = new Matrix4f();
 
             @Override
             public void tick(CgVfxEffect<?> effect, float dt, float age) {
-                meteorPath(age, p);
-                boolean falling = age < rest, skidding = age >= impact && age < rest;
-                fire.emitting(falling);
-                smoke.emitting(falling);
-                scorch.emitting(skidding);
-                if (falling) {
-                    move(fire, effect, dt, p[0], p[1], p[2]);
-                    move(smoke, effect, dt, p[0], p[1], p[2]);
-                } else {
-                    fire.tick(dt);
-                    smoke.tick(dt);
-                }
-                if (skidding) move(scorch, effect, dt, p[0], 0.02f, p[2]);
-                else scorch.tick(dt);
+                // The scorch's edge across the skid on the ground, shut before and after it.
+                float t = Math.min(Math.max(age, impact), rest);
+                meteorPath(t, p);
+                meteorPath(t + 0.01f, q);
+                float fx = q[0] - p[0], fz = q[2] - p[2], l = (float) Math.sqrt(fx * fx + fz * fz);
+                float half = age >= impact && age < rest && l > 1e-6f ? 0.65f / l : 0f;
+                effect.set(METEOR_SCORCH_A, p[0] + fz * half, 0.02f, p[2] - fx * half);
+                effect.set(METEOR_SCORCH_B, p[0] - fz * half, 0.02f, p[2] + fx * half);
             }
 
             @Override
             public void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age) {
-                frame.trail(effect, scorchSlot, scorch);
-                frame.trail(effect, smokeSlot, smoke);
-                frame.trail(effect, fireSlot, fire);
                 float t = age - (1f - frame.alpha()) * TICK;
                 meteorPath(t, p);
                 float spin = Math.min(t, rest) * 7f;
@@ -1389,54 +1308,53 @@ public final class CgVfxModules {
 
             @Override
             public boolean done(float age) {
-                return age > MOTION && fire.done() && smoke.done() && scorch.done();
+                return age > MOTION;
             }
         };
         float[] start = new float[3];
         meteorPath(0f, start);
         stations.add(new Station("meteor: fire, smoke, a scorch", x, z, look,
-                List.of(embers, debris, sparks, flash, wall, skid, smoulder),
-                new float[][]{start, hit, hit, hit, hit, {hit[0], 0.1f, hit[2]}, end}, p -> {
+                List.of(embers, debris, sparks, flash, wall, skid, smoulder, fire, fireHaze, trailSmoke, scorch),
+                new float[][]{start, hit, hit, hit, hit, {hit[0], 0.1f, hit[2]}, end, start, start, start, start}, p -> {
                     p.label(-5f, 5.2f, 0f, 0.42f, "glow + smoke + haze", 0xFFFFFFFF);
                     p.label(-5f, 4.7f, 0f, 0.26f, "fire round it, smoke billowing behind", 0xFFB8D8FF);
-                    p.label(4f, 3.6f, 1f, 0.42f, "flat + scorch", 0xFFFFFFFF);
+                    p.label(4f, 3.6f, 1f, 0.42f, "anim trail + scorch", 0xFFFFFFFF);
                     p.label(4f, 3.1f, 1f, 0.26f, "gouged as it skids", 0xFFB8D8FF);
                 }, follow, show, null));
     }
 
-    private static final String STREAKS = "crystalgraphics:shaders/vfx/particle/streaks.shader",
-            RIBBON = "crystalgraphics:shaders/vfx/particle/ribbon.shader";
-
     /**
-     * A trail behind every particle, each through the places its pool kept, so it follows the curve its particle flew: a
+     * A trail behind every particle, Cascade's trails by particle, so each follows the curve its particle flew: a
      * grinder's fountain of sparks arcing out and skipping off the ground, embers spiralling up a vortex through curling
      * air, and a firework bursting overhead every two seconds into drooping streamers.
      */
     private void sparks(float x, float z) {
         CgVfxEmitter grinder = CgVfxEmitter.builder("sparksGrinder").state(CgVfxEmitterState.once(MOTION))
-                .capacity(1500).rate(320f).trail(10)
+                .capacity(1500).rate(320f).publishes(true)
                 .shape(CgCone.of(0.05, Math.toRadians(22))).pointing(1f, 0.55f, 0f).speed(6f, 11f).life(0.7f, 1.5f)
                 .size(0.03f, 0.05f, 1.4f).heat(1f).module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Drag(0.4f, 0f)).module(new CgVfxModule.Ground(0.45f, 0.3f, 0.5f))
                 .opacity(CgKeyframes.start(0f, 1f).to(0.7f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
         CgVfxEmitter embers = CgVfxEmitter.builder("sparksEmbers").state(CgVfxEmitterState.once(MOTION))
-                .capacity(500).rate(80f).trail(30)
+                .capacity(500).rate(80f).publishes(true)
                 .shape(CgRing.of(0.3, 1.4, 0)).speed(0.2f, 0.6f).life(2.4f, 3.4f).size(0.035f, 0.06f, 1.4f).heat(1f)
                 .module(new CgVfxModule.Vortex(0f, 1f, 0f, 5f, -1.2f, 0f, 0f, 0f))
                 .module(new CgVfxModule.Force(0f, 2.2f, 0f)).module(new CgVfxModule.Turbulence(2.2f, 0.7f, 0.9f))
                 .module(new CgVfxModule.Drag(1f, 0f)).opacity(FADE).build();
         CgVfxEmitter firework = CgVfxEmitter.builder("sparksFirework").state(CgVfxEmitterState.ONCE)
                 .capacity(900).burst(0.5f, 280).burst(2.5f, 280)
-                .burst(4.5f, 280).trail(24).shape(CgSphere.of(0.1)).speed(5f, 6.5f).life(1.6f, 2.3f)
+                .burst(4.5f, 280).publishes(true).shape(CgSphere.of(0.1)).speed(5f, 6.5f).life(1.6f, 2.3f)
                 .size(0.03f, 0.05f, 1.2f).heat(1f).module(new CgVfxModule.Gravity(3.2f))
                 .module(new CgVfxModule.Drag(1.3f, 0f))
                 .opacity(CgKeyframes.start(0f, 1f).to(0.6f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        CgVfxLook look = new Look().emitter(grinder).emitter(embers).emitter(firework)
-                .draw(streaks(grinder, FLAME, WHITE, 1f, null))
-                .draw(streaks(embers, EMBER, FLAME, 0.8f, m -> m.value("_Tail", 0.3f).value("_Fade", 0.8f)))
-                .draw(streaks(firework, MAGENTA, WHITE, 1.2f, m -> m.value("_Erode", 0.7f)))
+        CgVfxEmitter grinderStreaks = streaks(grinder, 400, 11f, 0.15f, 0.08f, 0.04f, 0.15f, FLAME, WHITE, null);
+        CgVfxEmitter emberStreaks = streaks(embers, 256, 3f, 0.5f, 0.05f, 0.03f, 0.3f, EMBER, FLAME, m -> m.value("_Fade", 0.8f));
+        CgVfxEmitter fireworkStreaks = streaks(firework, 560, 6.5f, 0.4f, 0.08f, 0.04f, 0.15f, MAGENTA, WHITE,
+                m -> m.value("_Erode", 0.7f));
+        CgVfxLook look = new Look().emitter(grinder).emitter(embers).emitter(firework).emitter(grinderStreaks)
+                .emitter(emberStreaks).emitter(fireworkStreaks)
                 .draw(spark(grinder, FLAME, WHITE))
                 .draw(spark(embers, EMBER, FLAME))
                 .draw(spark(firework, MAGENTA, WHITE))
@@ -1445,17 +1363,18 @@ public final class CgVfxModules {
         float[][] bursts = {{-3f, 7.5f, 1f}, {2.5f, 8f, -1f}, {0f, 7f, 2.5f}};
         // The firework bursts somewhere new each time; the fountain and the embers stay.
         Mover burstAt = (i, age, at) -> {
-            float[] b = i < 2 ? places[i] : bursts[age < 1.5f ? 0 : age < 3.5f ? 1 : 2];
+            float[] b = i % 3 < 2 ? places[i % 3] : bursts[age < 1.5f ? 0 : age < 3.5f ? 1 : 2];
             at[0] = b[0];
             at[1] = b[1];
             at[2] = b[2];
         };
-        stations.add(new Station("sparks: a trail behind every particle", x, z, look, List.of(grinder, embers, firework),
-                new float[][]{places[0], places[1], bursts[0]}, p -> {
+        stations.add(new Station("sparks: a trail behind every particle", x, z, look,
+                List.of(grinder, embers, firework, grinderStreaks, emberStreaks, fireworkStreaks),
+                new float[][]{places[0], places[1], bursts[0], places[0], places[1], bursts[0]}, p -> {
                     p.sphere(-5f, 1.2f, -2f, 0.35f);
-                    p.label(-5f, 5.2f, -2f, 0.42f, "trail(10) + trails()", 0xFFFFFFFF);
+                    p.label(-5f, 5.2f, -2f, 0.42f, "trails by particle", 0xFFFFFFFF);
                     p.label(-5f, 4.7f, -2f, 0.26f, "sparks arcing, skipping off the ground", 0xFFB8D8FF);
-                    p.label(3f, 5.2f, 1f, 0.42f, "trail(30)", 0xFFFFFFFF);
+                    p.label(3f, 5.2f, 1f, 0.42f, "a trail each, in turn", 0xFFFFFFFF);
                     p.label(3f, 4.7f, 1f, 0.26f, "embers up a vortex through curling air", 0xFFB8D8FF);
                 }, burstAt, null, null));
     }
@@ -1541,7 +1460,7 @@ public final class CgVfxModules {
     private void flocks(float x, float z) {
         CgVfxEmitter spirits = CgVfxEmitter.builder("flockSpirits").state(CgVfxEmitterState.ONCE)
                 .capacity(320).burst(0f, 320).shape(CgSphere.of(4))
-                .speed(1.5f, 3f).life(MOTION, MOTION).size(0.05f, 0.08f).heat(1f).trail(14)
+                .speed(1.5f, 3f).life(MOTION, MOTION).size(0.05f, 0.08f).heat(1f).publishes(true)
                 .module(new CgVfxModule.Flock(1.6f, 0.5f, 3f, 1.5f, 0.6f))
                 .module(new CgVfxModule.Attract(CgSphere.of(7), 2.5f))
                 .module(new CgVfxModule.Turbulence(1.2f, 0.25f, 0.4f))
@@ -1549,29 +1468,31 @@ public final class CgVfxModules {
                 .opacity(FADE).build();
         CgVfxEmitter school = CgVfxEmitter.builder("flockSchool").state(CgVfxEmitterState.ONCE)
                 .capacity(220).burst(0f, 220).shape(CgRing.of(3, 4, 1))
-                .speed(2f, 3f).life(MOTION, MOTION).size(0.04f, 0.06f).heat(1f).trail(10)
+                .speed(2f, 3f).life(MOTION, MOTION).size(0.04f, 0.06f).heat(1f).publishes(true)
                 .module(new CgVfxModule.Flock(0.9f, 0.35f, 6f, 4f, 0.4f, 16))
                 .module(new CgVfxModule.Vortex(0f, 1f, 0f, 3f, -0.8f, 0f, 0f, 0f))
                 .module(new CgVfxModule.LimitSpeed(4f))
                 .opacity(FADE).build();
         CgVfxEmitter embers = CgVfxEmitter.builder("flockEmbers").state(CgVfxEmitterState.ONCE)
                 .capacity(700).burst(0f, 700).shape(CgBox.of(5, 1, 5))
-                .speed(1f, 2f).life(MOTION, MOTION).size(0.03f, 0.05f).heat(1f).trail(8)
+                .speed(1f, 2f).life(MOTION, MOTION).size(0.03f, 0.05f).heat(1f).publishes(true)
                 .module(new CgVfxModule.Flock(1.1f, 0.3f, 4f, 2.5f, 1f, 20))
                 .module(new CgVfxModule.Attract(CgSphere.of(5), 1.5f).at(0f, 3f, 0f))
                 .module(new CgVfxModule.Turbulence(2f, 0.15f, 0.6f))
                 .module(new CgVfxModule.LimitSpeed(6f))
                 .opacity(FADE).build();
-        CgVfxLook look = new Look().emitter(spirits).emitter(school).emitter(embers)
-                .draw(streaks(spirits, GOLD, WHITE, 1f, null))
-                .draw(streaks(school, CYAN, WHITE, 0.8f, null))
-                .draw(streaks(embers, EMBER, FLAME, 0.7f, m -> m.value("_Tail", 0.2f)))
+        CgVfxEmitter spiritStreaks = streaks(spirits, 320, 5f, 0.25f, 0.05f, 0.05f, 0.15f, GOLD, WHITE, null);
+        CgVfxEmitter schoolStreaks = streaks(school, 220, 4f, 0.2f, 0.05f, 0.04f, 0.15f, CYAN, WHITE, null);
+        CgVfxEmitter emberStreaks = streaks(embers, 700, 6f, 0.15f, 0.05f, 0.03f, 0.2f, EMBER, FLAME, null);
+        CgVfxLook look = new Look().emitter(spirits).emitter(school).emitter(embers).emitter(spiritStreaks)
+                .emitter(schoolStreaks).emitter(emberStreaks)
                 .draw(spark(spirits, GOLD, WHITE))
                 .draw(spark(school, CYAN, WHITE))
                 .draw(spark(embers, EMBER, FLAME))
                 .build();
-        float[][] sources = {{-6f, 5f, 0f}, {6f, 3f, 0f}, {0f, 1f, 8f}};
-        stations.add(new Station("flocks: boids on the neighbour grid", x, z, look, List.of(spirits, school, embers),
+        float[][] sources = {{-6f, 5f, 0f}, {6f, 3f, 0f}, {0f, 1f, 8f}, {-6f, 5f, 0f}, {6f, 3f, 0f}, {0f, 1f, 8f}};
+        stations.add(new Station("flocks: boids on the neighbour grid", x, z, look,
+                List.of(spirits, school, embers, spiritStreaks, schoolStreaks, emberStreaks),
                 sources, p -> {
                     p.sphere(-6f, 5f, 0f, 0.3f);
                     p.label(-6f, 10.5f, 0f, 0.42f, "Flock", 0xFFFFFFFF);
@@ -2333,7 +2254,6 @@ public final class CgVfxModules {
     // ── renderers ─────────────────────────────────────────────────────────────
 
     private static final String MATERIALS = "crystalgraphics:demo/modules/";
-    private static final String STREAK_SHADER = PARTICLE + "streaks.shader", RIBBON_SHADER = PARTICLE + "ribbon.shader";
     private static final String BILLOW = "crystalgraphics:shaders/vfx/smoke/billow.shader";
     /** Where a draw ranks in its look, by {@link CgVfxLook}'s bands: smoke, then haze, then the surface. */
     private static final int SMOKE_HINT = 0, HAZE = 2 * CgVfxLook.BAND, SURFACE = CgVfxLook.SURFACE;
@@ -2469,11 +2389,73 @@ public final class CgVfxModules {
         });
     }
 
-    /** A trail slot's draw: {@code shader} under {@code shaders/vfx/trail/}, {@code size} its half-width. */
-    private static CgVfxSlotRenderer.Builder trail(String shader, CgVfxSlot slot, float size, int order,
-                                                   Consumer<CgMaterialDefinition.Builder> values) {
-        return CgVfxSlotRenderer.of(shader + "." + part(slot), slot).material(material(TRAIL + shader + ".shader", order, null, values))
-                .size(size);
+    /**
+     * A Cascade ribbon trail's emitter: a particle each {@code spacing} blocks its source moves while it runs, for
+     * {@code duration} seconds, each living {@code life}; {@code width} blocks either side at its head, {@code tail} of
+     * that at its end. A station's mover moves its source, or {@link #streaks} sets it behind another's particles. Its
+     * capacity is the caller's.
+     */
+    private static CgVfxEmitter.Builder trail(String name, float duration, float life, float spacing, float width, float tail) {
+        return CgVfxEmitter.builder(name).state(CgVfxEmitterState.once(duration))
+                .ratePerBlock(CgVfxSpawnPerUnit.every(1f, spacing)).maxStep(3f).speed(0f, 0f).life(life, life)
+                .size(width, width, 1f).size(CgKeyframes.start(0f, 1f).to(1f, tail, CgEasings.LINEAR).build());
+    }
+
+    /** An anim trail's emitter: a sample of its edge each tick for {@code duration} seconds, each living {@code life}. */
+    private static CgVfxEmitter anim(String name, float duration, float life) {
+        return CgVfxEmitter.builder(name).state(CgVfxEmitterState.once(duration))
+                .capacity((int) Math.ceil(life * 120f) + 8).speed(0f, 0f).life(life, life).size(1f, 1f, 1f).build();
+    }
+
+    /** {@code e}'s Cascade trail drawn by {@code shaders/vfx/trail/<shader>}: at most {@code points} particles, UV1 a block. */
+    private static Draw strip(CgVfxEmitter e, String shader, int order, int points,
+                              Consumer<CgMaterialDefinition.Builder> values, Consumer<CgVfxRenderers.Builder> more) {
+        return new Draw(e, stripRenderer(shader, order, 1, points, values, more));
+    }
+
+    private static CgVfxRendererProperties stripRenderer(String shader, int order, int trails, int points,
+                                                         Consumer<CgMaterialDefinition.Builder> values,
+                                                         Consumer<CgVfxRenderers.Builder> more) {
+        CgVfxRenderers.Builder r = CgVfxRenderers.ribbon(shader)
+                .material(material(TRAIL + shader + ".shader", order, CgMaterialUsage.RIBBONS, values))
+                .field("trail", Map.of("max_trails", trails, "max_particles", points, "tiling_distance", 1.0))
+                .sortOrderHint(order);
+        if (more != null) more.accept(r);
+        return r.build();
+    }
+
+    /** {@code e}'s anim trail along the edge from {@code first} to {@code second}, drawn by {@code shaders/vfx/trail/<shader>}. */
+    private static Draw sweep(CgVfxEmitter e, String shader, int order, CgVfxParam.Vector first, CgVfxParam.Vector second,
+                              Consumer<CgMaterialDefinition.Builder> values, Consumer<CgVfxRenderers.Builder> more) {
+        CgVfxRenderers.Builder r = CgVfxRenderers.animTrail(shader, first.name(), second.name())
+                .material(material(TRAIL + shader + ".shader", order, CgMaterialUsage.RIBBONS, values))
+                .field("tiling_distance", 1.0).sortOrderHint(order);
+        if (more != null) more.accept(r);
+        return new Draw(e, r.build());
+    }
+
+    /**
+     * A streak behind each of {@code source}'s particles, up to {@code trails}: Cascade's trails by particle, each taking a
+     * particle no other follows, a point each {@code spacing} blocks living {@code life}, {@code width} either side and
+     * {@code tail} of it at its end, its particles kept for a source flying at most {@code fastest} blocks a second.
+     * {@code source} must publish its particles.
+     */
+    private static CgVfxEmitter streaks(CgVfxEmitter source, int trails, float fastest, float life, float spacing, float width, float tail,
+                                        CgVfxParam.Color colour, CgVfxParam.Color core,
+                                        Consumer<CgMaterialDefinition.Builder> values) {
+        int points = (int) Math.ceil(life * fastest / spacing) + 4;
+        return trail(source.name() + "Streaks", PERIOD, life, spacing, width, tail).capacity(trails * points)
+                .spawnFrom(CgVfxSpawnFrom.trailing(source.name(), CgVfxSpawnFrom.Selection.SEQUENTIAL))
+                .renderer(stripRenderer("glow", SURFACE, trails, points, values,
+                        r -> r.bind("_Color", colour).bind("_Core", core)))
+                .build();
+    }
+
+    /** {@code n} sources, each at {@code at}: a station whose mover sets them. */
+    private static float[][] sources(int n, float[] at) {
+        float[][] s = new float[n][];
+        for (int i = 0; i < n; i++) s[i] = at.clone();
+        return s;
     }
 
     /** A mesh slot's draw of {@code mesh} through the flow shader, coloured {@code a} into {@code b}. */
@@ -2491,22 +2473,13 @@ public final class CgVfxModules {
                 .sortOrderHint(SMOKE_HINT).build());
     }
 
-    /** A streak behind each of {@code e}'s particles, through the positions it keeps, {@code size} times as wide. */
-    private static Draw streaks(CgVfxEmitter e, CgVfxParam.Color colour, CgVfxParam.Color core, float size,
-                                Consumer<CgMaterialDefinition.Builder> values) {
-        CgVfxRenderers.Builder r = CgVfxRenderers.trails("streaks")
-                .material(material(STREAK_SHADER, 0, CgMaterialUsage.RIBBONS, values)).field("points", e.trailPoints())
-                .bind("_Color", colour).bind("_Core", core).sortOrderHint(SURFACE);
-        if (size != 1f) r.value("_cg_Size", size);
-        return new Draw(e, r.build());
-    }
-
     /** One ribbon through {@code e}'s particles, newest first, {@code size} its width. */
     private static Draw ribbon(CgVfxEmitter e, CgVfxParam.Color colour, CgVfxParam.Color core, float size,
                                Consumer<CgMaterialDefinition.Builder> values, Consumer<CgVfxRenderers.Builder> more) {
         CgVfxRenderers.Builder r = CgVfxRenderers.ribbon("ribbon")
-                .material(material(RIBBON_SHADER, 0, CgMaterialUsage.RIBBONS, values)).bind("_Color", colour)
-                .bind("_Core", core).value("_cg_Size", size).sortOrderHint(SURFACE);
+                .material(material(TRAIL + "glow.shader", SURFACE, CgMaterialUsage.RIBBONS, values)).bind("_Color", colour)
+                .bind("_Core", core).value("_cg_Size", size).sortOrderHint(SURFACE)
+                .field("uv1", Map.of("distribution", "tiled_over_ribbon_length", "tiling_length", 1.0));
         if (more != null) more.accept(r);
         return new Draw(e, r.build());
     }

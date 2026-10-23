@@ -1,12 +1,12 @@
 // A blade's swoosh: the sheet a swing sweeps between its base and its tip, as action games draw a sword's or a fist's
 // arc. Brightest along the tip's edge, where it is newest, in a hot line; streaks of light running along the swing,
 // thinning toward the base and eaten away toward the tail; faded where it is seen edge-on, so it never shows as a
-// line. Added, and it blooms. On a blade trail (CgVfxTrail.blade): the layer's size is how far it reaches toward the
-// tip, 1 to it.
+// line. Added, and it blooms. An anim trail's material: its edge's first point the base, its second the tip.
 #type none
+#pragma cg_use particle
 #pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_trail.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_strip.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
@@ -23,11 +23,10 @@ Properties {
     _Erode    ("How much its tail is eaten away, 0..1", float) = 0.85
     _GlowGain ("Its glow past white", float) = 1.8
     _Noise  ("Noise", sampler3D) = "cg_noise"
-    _FxTrail ("Trail points", sampler2D) = "black"
 }
 
-// trail: life 0..1, base to tip 0..1, facing, intensity; alive
-struct v2f { vec4 trail; float alive; };
+// trail: life 0..1, base to tip 0..1, how squarely it faces the eye, its samples' opacity
+struct v2f { vec4 trail; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
@@ -39,15 +38,15 @@ Pass {
     }
 
     void vertex(out v2f o) {
-        FxTrailVertex v = fx_trail_vertex(_FxTrail, CG_VERTEX_ID, CG_OBJECT_CUSTOM0, CG_OBJECT_CUSTOM2,
-                CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz, FX_CAMERA);
-        o.trail = vec4(v.uv.x, v.uv.y, fx_trail_facing(v, FX_CAMERA), v.extra.y);
-        o.alive = v.alive;
-        gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(v.world, 1.0);
+        CgMaterialVertex v = cg_material_vertex();
+        CgMaterialParticle p = cg_material_particle();
+        // The world position is from the eye, so the eye is the origin.
+        float facing = abs(dot(normalize(v.tangentToWorld[2]), normalize(-v.worldPosition + vec3(1.0e-6))));
+        o.trail = vec4(p.relativeTime, v.texCoords[0].y, facing, p.color.a);
+        gl_Position = cg_material_project(v);
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
-        if (i.alive < 0.5) discard;
         float u = i.trail.x, outward = i.trail.y;
         float sheet = smoothstep(_Base, 1.0, outward);
         float edge = exp(-(1.0 - outward) * _Edge) * exp(-u * 4.0);
@@ -67,6 +66,7 @@ Pass {
     }
 }
 
+// Its glow (CG_GLOW) into the world's bloom.
 Pass {
     Tags { "LightMode" = "Emissive" }
     RenderState {

@@ -3,8 +3,7 @@
 // Slots are numbered across every pool, each pool's from _SlotFirst. Key, once per pool, gives each live particle a
 // key, its slot if it may be on screen (inside the view, and not behind the scene's depth) and _AllSlots if not, so
 // the culled sort past the end; and its index in its pool, which the sort carries. With _DepthBits 16 a slot that
-// sorts takes its view depth in the low bits, far first, and a ribbon slot how many spawns ago it was born, newest
-// first. CgGpuOps then sorts every pool's keys at once, counts each
+// sorts takes its view depth in the low bits, far first, or its distance or its age as its Sort says. CgGpuOps then sorts every pool's keys at once, counts each
 // slot's visible particles and scans the counts into each slot's start. Place, once per pool, writes the index of
 // each particle a slot draws into ORDER from the slot's list base: draws read the pool's records through it, whose
 // drawn part the Step wrote. Objects writes the same particles as object records, for a mesh drawn per particle. Under crystalgraphics.vfx.orderedTies, Order first sorts each pool's live particles by spawn
@@ -81,7 +80,7 @@ Buffers {
     DRAWN   ("Their drawn parts, at the same index",              FxDrawn,  readonly)
     LIVE    ("How many are alive",                                uint,     readonly)
     SLOTS   ("Each slot's origin from the camera, and its reach (below 0: one sphere's)", vec4, readonly)
-    SORTS   ("Each slot's: 1 far to near, 2 + its newest spawn's id for a ribbon in spawn order", uint, readonly)
+    SORTS   ("Each slot's CgVfxRange.Sort: 1 far to near, 3 by distance, 4 oldest first, 5 newest first", uint, readonly)
     KEYS    ("Keys",                                              uint,     writeonly)
     INDICES ("Indices, sorted by slot",                           uint,     readwrite)
     VISIBLE ("Each slot's visible particles",                     uint,     readonly)
@@ -137,11 +136,10 @@ void Key() {
         vec3 lo = c - vec3(reach), hi = c + vec3(reach);
         if (!outside && !cg_occluded(_Pyramid, _PyramidSize, _ClipX, _ClipY, _ClipZ, _ClipW, _Eye, lo, hi)) {
             key = owner << _DepthBits;
-            // The slot's order (CgVfxRange.Sort) in its low 3 bits, a ribbon's next spawn id above; each drawn as
-            // Cascade sorts (ParticleSystemRender.cpp, SortSpriteParticles): the largest first.
+            // The slot's order (CgVfxRange.Sort) in its low 3 bits, each drawn as Cascade sorts
+            // (ParticleSystemRender.cpp, SortSpriteParticles): the largest first.
             uint order = SORTS(int(owner)), mode = order & 7u;
             if (_DepthBits > 0 && mode == 1u) key |= 65535u - range_depth(p);
-            else if (_DepthBits > 0 && mode == 2u) key |= min((order >> 3u) - heatId.y, 65535u);
             else if (_DepthBits > 0 && mode == 3u) key |= 65535u - range_distance(p);
             else if (_DepthBits > 0 && mode == 4u) key |= 65535u - (heatId.y & 65535u);
             else if (_DepthBits > 0 && mode == 5u) key |= heatId.y & 65535u;
