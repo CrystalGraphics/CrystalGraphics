@@ -373,7 +373,7 @@ public final class CgVfxFluidDemo {
                 .module(new CgVfxModule.Turbulence(1.2f, 0.4f, 0.6f)).opacity(FADE).build();
         // Flow's fire at its editor's colour scale, its confinement raised to hold the whirl together.
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(EDITOR_FIRE)
-                .emitter(drawn(embers, ray(EMBER, FLAME, 0.6f), spark(EMBER, FLAME, 1f)))
+                .emitter(drawn(embers, ray(EMBER, FLAME, 0.6f)))
                 .set(CgVfxFluid.CELL, 0.2f).set(CgVfxFluid.VORTICITY, 2f)
                 .set(CgVfxFluid.TURBULENCE, 0.6f).set(CgVfxFluid.TURBULENCE_SIZE, 1f).build();
         stations.add(new Station("fire whirl", "a burning pool's swirl, drawn in and spun up into a column", x, z, look, 16f, 26f,
@@ -485,7 +485,7 @@ public final class CgVfxFluidDemo {
                 .module(new CgVfxModule.Drag(2f, 0f))
                 .module(new CgVfxModule.Feed(0.25f, 0f)).opacity(FADE).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxFluid.SMOKE).emitter(drawn(head, spark(FLAME, WHITE, 1.4f)))
-                .emitter(drawn(sparks, ray(EMBER, FLAME, 0.6f), spark(EMBER, FLAME, 1f)))
+                .emitter(drawn(sparks, ray(EMBER, FLAME, 0.6f)))
                 // Flow's smoke with no fire, cold, read at its colour map's middle.
                 .set(CgVfxFluid.CELL, 0.25f).set(CgVfxFluid.COMBUSTION, 0f).set(CgVfxFluid.COLORMAP_MIN, -1f)
                 .set(CgVfxFluid.TURBULENCE, 1.2f).set(CgVfxFluid.TURBULENCE_SIZE, 1.2f).set(CgVfxFluid.ATTENUATION, 3f)

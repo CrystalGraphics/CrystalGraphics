@@ -235,6 +235,9 @@ public final class CgVfxRibbonGeneration {
         }
         slotCount = pool.slotCount();
         trails = 1;
+        // The pool may open more slots than ever had a ribbon set.
+        if (seen.length < slotCount) seen = Arrays.copyOf(seen, slotCount);
+        if (fade.length < slotCount * 2) fade = Arrays.copyOf(fade, slotCount * 2);
         if (words.length < slotCount * SLOT_WORDS) words = new int[Math.max(slotCount * SLOT_WORDS, words.length * 2)];
         Arrays.fill(words, 0, slotCount * SLOT_WORDS, 0);
         for (int s = 0, base = 0; s < slotCount; s++) {

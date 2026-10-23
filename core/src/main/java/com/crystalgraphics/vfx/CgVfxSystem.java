@@ -37,6 +37,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
+import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
 import com.crystalgraphics.vfx.path.CgVfxPathTexture;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxSortGroup;
@@ -55,6 +56,8 @@ import org.apache.logging.log4j.Logger;
 import org.joml.Quaternionf;
 
 import javax.annotation.Nullable;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -207,6 +210,10 @@ public final class CgVfxSystem {
     private final Set<CgMaterial> halved = Collections.newSetFromMap(new IdentityHashMap<>());
     /** Emitters {@link #prepare} queued whose kernels and slot meshes are still to start, one a step under the budget. */
     private final List<CgVfxEmitter> gpuWarming = new ArrayList<>();
+    /** Each warming emitter's feed tier in the look it came from: one past its source's for a reader of particles. */
+    private final Map<CgVfxEmitter, Integer> gpuWarmingTier = new IdentityHashMap<>();
+    /** Emitters whose kernels failed to prepare: logged once and skipped, as Niagara disables an emitter that fails. */
+    private final Set<CgVfxEmitter> unprepared = Collections.newSetFromMap(new IdentityHashMap<>());
     /** Looks {@link #prepare} queued whose materials are still to make, a placed layer a step under the budget. */
     private final List<CgVfxLook> drawWarming = new ArrayList<>();
     /** The first look of {@link #drawWarming}'s next placed layer; its count means its clips are next. */
@@ -932,7 +939,10 @@ public final class CgVfxSystem {
             if (!gpuLooks.add(look)) continue;
             List<CgVfxEmitter> emitters = look.emitters();
             for (int k = 0; k < emitters.size(); k++) {
-                if (!gpuWarming.contains(emitters.get(k))) gpuWarming.add(emitters.get(k));
+                if (!gpuWarming.contains(emitters.get(k))) {
+                    gpuWarming.add(emitters.get(k));
+                    gpuWarmingTier.put(emitters.get(k), feedTier(look, emitters.get(k)));
+                }
                 // The window fills only once played, but its kernels are the look's to build now.
                 if (readsWorld(emitters.get(k))) CgWorldVoxelWindow.get().prepare();
             }
@@ -1101,7 +1111,7 @@ public final class CgVfxSystem {
         List<CgVfxEmitter> emitters = look.emitters();
         for (int k = 0; k < emitters.size(); k++) {
             CgVfxEmitter emitter = emitters.get(k);
-            prepareEmitter(emitter);
+            prepareEmitter(emitter, feedTier(look, emitter));
         }
         if (useWindow) useWindow(look);
     }
@@ -1122,14 +1132,37 @@ public final class CgVfxSystem {
     }
 
     /**
-     * {@code emitter}'s Step kernels and slot meshes, its children's and theirs too, each at its feed tier: built here, not
-     * in the first burst's frame.
+     * {@code emitter}'s Step kernels and slot meshes at feed {@code tier}, its children's and theirs too, each at its
+     * own: built here, not in the first burst's frame. One that fails is logged once and skipped, never thrown out of the
+     * submit that warms it: its effect then fails alone when it plays.
      */
-    private void prepareEmitter(CgVfxEmitter emitter) {
-        CgVfxParticlePool.prepare(emitter, 0);
-        CgVfxParticlePool.of(gpuSteps, emitter, 0).expect(emitter, emitter.peakAlive());
-        CgVfxFrame.slotMesh(emitter.drawLayout(), emitter.peakAlive());
-        prepareChildren(emitter, -1, 1);
+    private void prepareEmitter(CgVfxEmitter emitter, int tier) {
+        if (unprepared.contains(emitter)) return;
+        try {
+            CgVfxParticlePool.prepare(emitter, tier);
+            CgVfxParticlePool.of(gpuSteps, emitter, tier).expect(emitter, emitter.peakAlive());
+            CgVfxFrame.slotMesh(emitter.drawLayout(), emitter.peakAlive());
+            prepareChildren(emitter, -1, tier + 1);
+        } catch (RuntimeException e) {
+            unprepared.add(emitter);
+            LOGGER.error("[vfx] {} failed to prepare and is skipped", emitter.name(), e);
+        }
+    }
+
+    /**
+     * The feed tier {@code emitter} plays at in {@code look}: 0, or one past its source's for an emitter born on another
+     * emitter's particles, as {@code CgVfxGpuSteps.admit} steps a reader the tier after its source.
+     */
+    private static int feedTier(CgVfxLook look, CgVfxEmitter emitter) {
+        List<CgVfxEmitter> emitters = look.emitters();
+        int tier = 0;
+        for (CgVfxEmitter e = emitter; e != null && e.spawnFrom() != null && !e.spawnFrom().itself()
+                && tier < CgVfxShape.TIERS; tier++) {
+            CgVfxSpawnFrom from = e.spawnFrom();
+            e = from.sourceIndex() >= 0 && from.sourceIndex() < emitters.size() ? emitters.get(from.sourceIndex())
+                    : look.emitter(from.source());
+        }
+        return tier;
     }
 
     private void prepareChildren(CgVfxEmitter parent, int fedAlive, int tier) {
@@ -1194,7 +1227,11 @@ public final class CgVfxSystem {
                     CgVfxRange.PREPARE_STEPS.get(rangeStep++).run();
                     rangePrepared = rangeStep == CgVfxRange.PREPARE_STEPS.size();
                 }
-                else prepareEmitter(gpuWarming.remove(0));
+                else {
+                    CgVfxEmitter next = gpuWarming.remove(0);
+                    Integer tier = gpuWarmingTier.remove(next);
+                    prepareEmitter(next, tier != null ? tier : 0);
+                }
             }
             CgWarmBudget.spend(System.nanoTime() - start);
         }
@@ -1247,6 +1284,7 @@ public final class CgVfxSystem {
         warming.clear();
         halved.clear();
         gpuWarming.clear();
+        gpuWarmingTier.clear();
         drawWarming.clear();
         drawPlaced = 0;
     }
