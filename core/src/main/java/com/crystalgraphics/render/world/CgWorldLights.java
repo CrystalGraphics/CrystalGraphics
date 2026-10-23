@@ -32,6 +32,7 @@ import com.crystalgraphics.render.graph.CgRehearsal;
 import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -187,8 +188,25 @@ public final class CgWorldLights {
     /** The host's window depth before our opaque draws. */
     private static final CgFrameBufferFormat HOST_DEPTH_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.host-depth")
             .color(0, CgTextureType.R32F).build();
-    /** Unreal's default LightSourceAngle for a directional light, 0.5357 degrees: the tangent of half of it. */
-    private static final float SUN_DISC = (float) Math.tan(Math.toRadians(0.5357 / 2));
+    /**
+     * The sun's cascaded shadow map, Unreal's for a movable directional light (DirectionalLightComponent.cpp:1043-1057):
+     * 4 cascades, each 3 times the depth of the last, overlapping by a tenth of each for the blend into the next.
+     */
+    private static final int CASCADES = 4;
+    private static final float CASCADE_EXPONENT = 3f, CASCADE_TRANSITION = 0.1f, SUN_NEAR = 0.05f;
+    static final String SUN_SHADOW_SHADER = "crystalgraphics:shaders/world_sun_shadow.shader";
+    private static final int GPU_SUN = CgGpuTrace.name("world.sunShadow");
+    /** The cascades' atlas, a quadrant each: the casters' depth from the light in blocks, and the depth test's. */
+    private static final CgFrameBufferFormat SUN_MAP_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.sun")
+            .color(0, CgTextureType.R32F).depth(CgTextureType.DEPTH32F).build();
+    /** Nothing cast: a depth past any receiver's. */
+    private static final CgLoad SUN_CLEAR = CgLoad.clear(1.0e30f, 0f, 0f, 0f).andDepth(1.0);
+    private static final CgVar.Num SUN_DISTANCE = CgVar.number("crystalgraphics.world.sunShadowDistance", 96f, 8f, 512f,
+            CgVar.DEV, "Blocks from the eye the sun's shadow map reaches, in four cascades: Unreal's "
+                    + "DynamicShadowDistanceMovableLight.");
+    /** Unreal's r.Shadow.MaxCSMResolution is 2048 of depth alone; ours keeps a float copy beside it, so half. */
+    private static final CgVar.Int SUN_RESOLUTION = CgVar.integer("crystalgraphics.world.sunShadowResolution", 1024, 256,
+            2048, CgVar.DEV, "Texels a side of each of the sun's four shadow cascades, 8 bytes each: the atlas is twice it.");
     private static final CgLoad CLEAR = CgLoad.clear(0f, 0f, 0f, 0f);
     private static final int GPU_ZONE = CgGpuTrace.name("world.lights");
     private static final int GPU_COARSE = CgGpuTrace.name("world.lightsCoarse");
@@ -254,9 +272,9 @@ public final class CgWorldLights {
     /** How much of Minecraft's sky light is the sun's own: what a shadow of it takes away. */
     private static final CgVar.Num SUN_SHARE = CgVar.number("crystalgraphics.world.sunShare", 0.6f, 0f, 1f, CgVar.DEV,
             "The sun's direct share of a full day's sky light: how dark its shadow is. 0 casts none.");
-    /** How far a sun ray is followed for our objects. */
+    /** How far toward the sun past a cascade its map takes casters from. */
     private static final CgVar.Num SUN_TRACE = CgVar.number("crystalgraphics.world.sunCasterReach", 48f, 0f, 128f,
-            CgVar.DEV, "Blocks a sun ray is followed for our objects: their longest shadow.");
+            CgVar.DEV, "Blocks toward the sun past each shadow cascade its casters are taken from: their longest shadow.");
     /** Minecraft's light-giving blocks as lights our objects shadow: how far from the eye, in blocks; 0 for none. */
     private static final CgVar.Num BLOCK_REACH = CgVar.number("crystalgraphics.world.blockShadowReach", 48f, 0f, 64f,
             CgVar.DEV, "Blocks from the eye a torch, glowstone or any light-giving block is shadowed by our objects; 0 for none.");
@@ -264,6 +282,8 @@ public final class CgWorldLights {
     private static final int BLOCK_MOST = 1024;
     /** Our opaque draws casting shadows through their meshes' distance fields: how many a firing, and how far. */
     private static final int MOST_CASTERS = 256, CASTER_FLOATS = 20;
+    /** Where the sun's cascade rows start in the casters' texture: world_lights_sample.shader's SUN_ROWS_AT. */
+    private static final int SUN_ROWS_AT = MOST_CASTERS * CASTER_FLOATS / 4;
     private static final float CASTER_REACH = 96f;
     /** Unreal's r.Forward.LightGridHZBCull. */
     private static final CgVar.Bool HZB = CgVar.bool("crystalgraphics.world.lightsHzb", true, CgVar.DEV,
@@ -281,6 +301,24 @@ public final class CgWorldLights {
     private CgGraphTexture casters;
     private ByteBuffer casterStaging;
     private final Matrix4f casterLocal = new Matrix4f(), casterInverse = new Matrix4f(), casterVoxel = new Matrix4f();
+    /** This firing's casters for the sun's map: mesh, range, eye-relative model and bounding sphere. */
+    private final CgMesh[] sunMeshes = new CgMesh[MOST_CASTERS];
+    private final int[] sunRanges = new int[MOST_CASTERS * 3];
+    private final float[] sunModels = new float[MOST_CASTERS * 16], sunBounds = new float[MOST_CASTERS * 4];
+    private int sunCasterCount;
+    private final CgAABB sunBox = new CgAABB();
+    private final Matrix4f sunModel = new Matrix4f(), sunRotation = new Matrix4f(), viewToEye = new Matrix4f();
+    private final Vector3f sunCentre = new Vector3f();
+    private CgMaterial sunShadow;
+    private CgGraphTexture sunMap;
+    /**
+     * Each cascade's rows, four texels after the casters' in {@link #casters}: eye-relative world to its uv (two), to
+     * its depth from the light, then its view depths and depth bias.
+     */
+    private final float[] sunRowData = new float[CASCADES * 16];
+    private ByteBuffer sunRowStaging;
+    private final CgPassConstants sunConstants = new CgPassConstants();
+    private boolean sunMapped;
     private final Vector3f casterScale = new Vector3f();
     /** This firing's light-giving blocks, x, y, z and level each, and how many: the list's last lights. */
     private int[] blocks = new int[4 * 64];
@@ -314,13 +352,15 @@ public final class CgWorldLights {
     private final Consumer<CgShaderBindings> sampleValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, this.downX, this.downY)
             .vec4("_Trace", SCREEN_TRACE.get(), 24f, 0.02f, 0.005f).set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1])
             .set1i("_EyeZ", eyeBlock[2]).vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f)
-            .set1i("_Entities", this.entities).set1i("_Casters", this.casterCount).vec4("_Sun", this.sunOn ? 1f : 0f, SUN_TRACE.get(), 24f, SUN_DISC)
+            .set1i("_Entities", this.entities).set1i("_Casters", this.casterCount)
+            .vec4("_Sun", this.sunOn ? 1f : 0f, this.sunMapped ? 1f : 0f, 0f, 0f)
             .set1f("_Own", this.ownPixels() ? 1f : 0f).set1i("_Skip", SAMPLE_SKIP.get())
             .vec4("_SampleGrid", this.sampleX, this.sampleY, this.sampleX * this.sampleY, 0f)
             .sampler("_HostDepth", 3, this.ownPixels() ? this.hostDepth : CgFallbackTextures.WHITE_1x1)
-            .sampler("_CasterRows", 4, this.casterCount > 0 ? this.casters : CgFallbackTextures.BLACK_1x1)
+            .sampler("_CasterRows", 4, this.casterCount > 0 || this.sunMapped ? this.casters : CgFallbackTextures.BLACK_1x1)
             .sampler("_MeshFields", 5, this.casterCount > 0 ? this.meshFields.atlas() : CgFallbackTextures.BLACK_1x1)
-            .sampler("_Normals", 6, this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1));
+            .sampler("_Normals", 6, this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1)
+            .sampler("_SunMap", 7, this.sunMapped ? this.sunMap : CgFallbackTextures.WHITE_1x1));
     private final Consumer<CgShaderBindings> windowValues = b -> CgWorldVoxelWindow.get().bind(b, 0);
     private int entities;
     /** The downsample factor the sample and shade passes read this frame: {@link #DOWNSAMPLE}'s mode. */
@@ -603,9 +643,11 @@ public final class CgWorldLights {
      * {@link #CASTER_REACH} blocks, not at all.
      */
     void caster(CgMesh mesh, int submesh, int first, int count, double x, double y, double z, float[] transforms, int at) {
-        if (casterCount == MOST_CASTERS || !SHADOWS.get()) return;
+        if (!SHADOWS.get()) return;
         double dx = x - cameraX, dy = y - cameraY, dz = z - cameraZ;
         if (dx * dx + dy * dy + dz * dz > (double) CASTER_REACH * CASTER_REACH) return;
+        if (sunCasterCount < MOST_CASTERS) sunCaster(mesh, submesh, first, count, (float) dx, (float) dy, (float) dz, transforms, at);
+        if (casterCount == MOST_CASTERS) return;
         CgMeshDistanceFields.Entry entry = meshFields.field(mesh, submesh, first, count);
         if (entry == null) return;
         CgMeshDistanceFields.Field field = entry.made;
@@ -623,6 +665,26 @@ public final class CgWorldLights {
         c[r + 8] = m.m02(); c[r + 9] = m.m12(); c[r + 10] = m.m22(); c[r + 11] = m.m32();
         c[r + 12] = field.nx(); c[r + 13] = field.ny(); c[r + 14] = field.nz(); c[r + 15] = entry.offset(meshFields);
         c[r + 16] = scale; c[r + 17] = field.voxel() * scale; c[r + 18] = field.voxel(); c[r + 19] = 0f;
+    }
+
+    /** One caster of the sun's map: its eye-relative model, and its bounds as a sphere for the cascades' culling. */
+    private void sunCaster(CgMesh mesh, int submesh, int first, int count, float dx, float dy, float dz, float[] transforms,
+                           int at) {
+        if (mesh.bounds(sunBox) == null) return;
+        int s = sunCasterCount++;
+        sunMeshes[s] = mesh;
+        sunRanges[s * 3] = submesh;
+        sunRanges[s * 3 + 1] = first;
+        sunRanges[s * 3 + 2] = count;
+        sunModel.set(transforms, at).translateLocal(dx, dy, dz).get(sunModels, s * 16);
+        sunModel.transformPosition(sunCentre.set((float) sunBox.centerX(), (float) sunBox.centerY(), (float) sunBox.centerZ()));
+        sunModel.getScale(casterScale);
+        float half = (float) Math.sqrt(sunBox.halfX() * sunBox.halfX() + sunBox.halfY() * sunBox.halfY()
+                + sunBox.halfZ() * sunBox.halfZ());
+        sunBounds[s * 4] = sunCentre.x;
+        sunBounds[s * 4 + 1] = sunCentre.y;
+        sunBounds[s * 4 + 2] = sunCentre.z;
+        sunBounds[s * 4 + 3] = half * Math.max(casterScale.x, Math.max(casterScale.y, casterScale.z));
     }
 
     /** This firing's list: {@link #FLOATS} floats a light, camera-relative. */
@@ -654,6 +716,7 @@ public final class CgWorldLights {
         gridX = gridY = 1;
         shadowedAdded = 0;
         casterCount = 0;
+        sunCasterCount = 0;
         // Minecraft's light-giving blocks, only where something of ours can shadow them.
         blockCount = 0;
         blockReach = BLOCK_REACH.get();
@@ -1004,17 +1067,14 @@ public final class CgWorldLights {
         meshFields.upload(recording);
         if (meshFields.atlas() == null) casterCount = 0;
         if (casterCount > 0) {
-            if (casters == null) {
-                casters = CgGraphTexture.requested("cg_world_lights.casters", new CgTextureDesc(MOST_CASTERS * CASTER_FLOATS / 4, 1,
-                        CgFrameBufferFormat.builder("cg_world_lights.casters").color(0, CgTextureType.RGBA32F).build()));
-                casterStaging = ByteBuffer.allocateDirect(MOST_CASTERS * CASTER_FLOATS * 4).order(ByteOrder.nativeOrder());
-            }
+            casterTexture();
             casterStaging.clear();
             for (int i = 0; i < casterCount * CASTER_FLOATS; i++) casterStaging.putFloat(casterRows[i]);
             casterStaging.flip();
             recording.update(casters, 0, 0, 0, casterCount * CASTER_FLOATS / 4, 1, casterStaging);
         }
         CgTrace.counter(CgChannels.WORLD, "world.lights-casters", casterCount);
+        sunMapped = sunOn && recordSun(stage, recording);
         sample.buffer("LIGHTS", binned ? list : none).buffer("CELLS", binned ? cells : none)
                 .buffer("INDICES", binned ? indices : none).buffer("ENTITIES", boxes != null ? boxes : none)
                 .applyProperties(sampleValues);
@@ -1027,6 +1087,140 @@ public final class CgWorldLights {
         denoise.applyProperties(denoiseValues);
         fullScreen(stage, recording, filtered, denoise, GPU_DENOISE);
         return true;
+    }
+
+    /**
+     * The sun's cascaded shadow map, Unreal's for a directional light: each cascade a sphere round its slice of the view
+     * (GetShadowSplitBoundsDepthRange, DirectionalLightComponent.cpp:818-925), grown into the next by the transition
+     * (:947-969), its centre snapped to whole texels in absolute light space (ShadowSetup.cpp:1090-1100), and our opaque
+     * casters within its box drawn depth-only under its orthographic light view. False while its program is unbuilt.
+     */
+    private boolean recordSun(CgStageFrame stage, CgRecording recording) {
+        if (sunShadow == null) sunShadow = CgMaterial.newInstance(SUN_SHADOW_SHADER);
+        if (!sunShadow.prepare()) return false;
+        CgPipeline pipeline = sunShadow.pipeline(CgInstanceKind.OBJECT);
+        if (pipeline == null) return false;
+        int res = SUN_RESOLUTION.get();
+        casterTexture();
+        if (sunMap == null || sunMap.getWidth() != 2 * res) {
+            sunMap = CgGraphTexture.transientTexture("cg_world_lights.sun", new CgTextureDesc(2 * res, 2 * res, SUN_MAP_FORMAT));
+        }
+        // The pass places each vertex itself, from its cascade's rows: only its depth convention matters.
+        stage.defaults(sunConstants).resolution(2 * res, 2 * res);
+        sunConstants.view.identity();
+        sunConstants.projection.identity();
+        CgRasterPass pass = recording.raster(sunMap, SUN_CLEAR, sunConstants, null, CgOrder.SORTED).timed(GPU_SUN);
+        CgChunkBuilder chunks = recording.chunks().begin();
+        float length = (float) Math.sqrt(sunDirection[0] * sunDirection[0] + sunDirection[1] * sunDirection[1]
+                + sunDirection[2] * sunDirection[2]);
+        float sx = sunDirection[0] / length, sy = sunDirection[1] / length, sz = sunDirection[2] / length;
+        // Any up not along the sun: Minecraft's sun crosses the x-y plane, so z.
+        boolean alongZ = Math.abs(sz) > 0.9f;
+        sunRotation.setLookAlong(-sx, -sy, -sz, alongZ ? 1f : 0f, 0f, alongZ ? 0f : 1f);
+        toView.invertAffine(viewToEye);
+        float distance = SUN_DISTANCE.get(), back = SUN_TRACE.get();
+        float tanX = (rays[2] - rays[0]) * 0.5f, tanY = (rays[3] - rays[1]) * 0.5f;
+        int binding = sunShadow.captureBindings(recording.bindings());
+        float[] rows = sunRowData;
+        for (int k = 0; k < CASCADES; k++) {
+            float splitNear = SUN_NEAR + accumulatedScale(k) * (distance - SUN_NEAR);
+            float splitFar = SUN_NEAR + accumulatedScale(k + 1) * (distance - SUN_NEAR);
+            float fade = (splitFar - splitNear) * CASCADE_TRANSITION, fadeStart, fadeEnd;
+            if (k < CASCADES - 1) {
+                fadeStart = splitFar;
+                splitFar += fade;
+                fadeEnd = splitFar;
+            } else {
+                fadeStart = splitFar - fade;
+                fadeEnd = splitFar;
+            }
+            float span = splitFar - splitNear;
+            float diagonalFar = (tanX * splitFar) * (tanX * splitFar) + (tanY * splitFar) * (tanY * splitFar);
+            float diagonalNear = (tanX * splitNear) * (tanX * splitNear) + (tanY * splitNear) * (tanY * splitNear);
+            float centreZ = splitFar - ((diagonalNear - diagonalFar) / (2f * span) + span * 0.5f);
+            centreZ = Math.max(splitNear, Math.min(splitFar, centreZ));
+            float radius = 0f;
+            for (int c = 0; c < 8; c++) {
+                float z = (c & 1) == 0 ? splitNear : splitFar;
+                float x = ((c & 2) == 0 ? rays[0] : rays[2]) * z, y = ((c & 4) == 0 ? rays[1] : rays[3]) * z;
+                radius = Math.max(radius, x * x + y * y + (z - centreZ) * (z - centreZ));
+            }
+            radius = Math.max((float) Math.sqrt(radius), 1f);
+            viewToEye.transformPosition(sunCentre.set(0f, 0f, -centreZ));
+            // Snapped in absolute light space: a sub-texel move of the eye leaves the map's texels where they were.
+            double ax = cameraX + sunCentre.x, ay = cameraY + sunCentre.y, az = cameraZ + sunCentre.z;
+            Matrix4f r = sunRotation;
+            double lx = r.m00() * ax + r.m10() * ay + r.m20() * az, ly = r.m01() * ax + r.m11() * ay + r.m21() * az;
+            double texel = 2.0 * radius / res;
+            float dlx = (float) (Math.floor(lx / texel) * texel - lx), dly = (float) (Math.floor(ly / texel) * texel - ly);
+            sunCentre.add(r.m00() * dlx + r.m01() * dly, r.m10() * dlx + r.m11() * dly, r.m20() * dlx + r.m21() * dly);
+            // The light's eye: past the cascade toward the sun by the casters' reach.
+            float lift = radius + back, far = 2f * radius + back;
+            float ex = sunCentre.x + sx * lift, ey = sunCentre.y + sy * lift, ez = sunCentre.z + sz * lift;
+            // The receiver's rows: eye-relative world to the map's uv, then to depth from the light.
+            float inv = 0.5f / radius;
+            int o = k * 16;
+            rows[o] = r.m00() * inv; rows[o + 1] = r.m10() * inv; rows[o + 2] = r.m20() * inv;
+            rows[o + 3] = 0.5f - (r.m00() * ex + r.m10() * ey + r.m20() * ez) * inv;
+            rows[o + 4] = r.m01() * inv; rows[o + 5] = r.m11() * inv; rows[o + 6] = r.m21() * inv;
+            rows[o + 7] = 0.5f - (r.m01() * ex + r.m11() * ey + r.m21() * ez) * inv;
+            rows[o + 8] = -r.m02(); rows[o + 9] = -r.m12(); rows[o + 10] = -r.m22();
+            rows[o + 11] = r.m02() * ex + r.m12() * ey + r.m22() * ez;
+            // Unreal's r.Shadow.CSMDepthBias of 10 times the cascade's world texel scale, its radius over its
+            // resolution (ShadowRendering.cpp:1985-1995): the casters' bias, and the receivers' soft transition.
+            rows[o + 12] = splitNear; rows[o + 13] = fadeStart; rows[o + 14] = fadeEnd; rows[o + 15] = 10f * radius / res;
+            float qx = (k & 1) == 0 ? -0.5f : 0.5f, qy = (k & 2) == 0 ? -0.5f : 0.5f;
+            for (int i = 0; i < sunCasterCount; i++) {
+                float bx = sunBounds[i * 4] - ex, by = sunBounds[i * 4 + 1] - ey, bz = sunBounds[i * 4 + 2] - ez;
+                float br = sunBounds[i * 4 + 3];
+                float vx = r.m00() * bx + r.m10() * by + r.m20() * bz, vy = r.m01() * bx + r.m11() * by + r.m21() * bz;
+                float depth = -(r.m02() * bx + r.m12() * by + r.m22() * bz);
+                if (Math.abs(vx) > radius + br || Math.abs(vy) > radius + br || depth + br < 0f || depth - br > far) continue;
+                chunks.draw(pipeline, binding, sunMeshes[i]);
+                if (sunRanges[i * 3] >= 0) chunks.range(sunRanges[i * 3], sunRanges[i * 3 + 1], sunRanges[i * 3 + 2]);
+                int at = chunks.instance();
+                float[] data = chunks.data();
+                System.arraycopy(sunModels, i * 16, data, at, 16);
+                // CUSTOM0 to 3: the uv rows as -1 to 1 across the cascade, the depth row, the quadrant, 1 / far, the bias.
+                for (int c = 0; c < 4; c++) {
+                    data[at + 32 + c] = 2f * rows[o + c] - (c == 3 ? 1f : 0f);
+                    data[at + 36 + c] = 2f * rows[o + 4 + c] - (c == 3 ? 1f : 0f);
+                    data[at + 40 + c] = rows[o + 8 + c];
+                }
+                data[at + 44] = qx;
+                data[at + 45] = qy;
+                data[at + 46] = 1f / far;
+                data[at + 47] = rows[o + 15];
+            }
+        }
+        pass.add(chunks.end());
+        pass.end();
+        sunRowStaging.clear();
+        for (float v : rows) sunRowStaging.putFloat(v);
+        sunRowStaging.flip();
+        recording.update(casters, 0, SUN_ROWS_AT, 0, CASCADES * 4, 1, sunRowStaging);
+        Arrays.fill(sunMeshes, 0, sunCasterCount, null);
+        return true;
+    }
+
+    /** The casters' rows, then the sun's cascades' ({@link #SUN_ROWS_AT}): made once. */
+    private void casterTexture() {
+        if (casters != null) return;
+        casters = CgGraphTexture.requested("cg_world_lights.casters", new CgTextureDesc(SUN_ROWS_AT + CASCADES * 4, 1,
+                CgFrameBufferFormat.builder("cg_world_lights.casters").color(0, CgTextureType.RGBA32F).build()));
+        casterStaging = ByteBuffer.allocateDirect(MOST_CASTERS * CASTER_FLOATS * 4).order(ByteOrder.nativeOrder());
+        sunRowStaging = ByteBuffer.allocateDirect(CASCADES * 16 * 4).order(ByteOrder.nativeOrder());
+    }
+
+    /** Unreal's ComputeAccumulatedScale: where split {@code index} of {@link #CASCADES} falls, 0 to 1. */
+    private static float accumulatedScale(int index) {
+        float scale = 1f, total = 0f, at = 0f;
+        for (int i = 0; i < CASCADES; i++) {
+            if (i < index) at += scale;
+            total += scale;
+            scale *= CASCADE_EXPONENT;
+        }
+        return at / total;
     }
 
     /**

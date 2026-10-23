@@ -49,7 +49,8 @@ import java.util.Objects;
  */
 public final class CgBindingTable {
 
-    public static final int MAX_TEXTURES = 8;
+    /** GL's floor of 16 units a stage, less the four the engine binds from the top (CgBindingPoints). */
+    public static final int MAX_TEXTURES = 12;
     public static final int MAX_BLOCKS = 4;
     public static final int MAX_BUFFERS = 4;
     public static final int MAX_STORAGE = 4;

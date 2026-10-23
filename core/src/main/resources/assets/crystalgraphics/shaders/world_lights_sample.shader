@@ -3,13 +3,14 @@
 // half-resolution pixel's four samples are its 2x2 block, as Unreal's NumSamplesPerPixel 2x2 lays them. Every fragment
 // runs the pixel's weighted reservoir over its light-grid cell's shadowed lights, stratified four ways, keeps its own
 // pick, and traces a ray to a point on that light: across the screen's depth first, then through the voxel window's
-// blocks from where that stopped, and against the boxes of the entities round the camera. It traces the sun too, a ray
-// a sample over its disc (MegaLights takes a directional light as one more light).
+// blocks from where that stopped, and against the boxes of the entities round the camera. The sun is not one of its
+// lights (Unreal's r.MegaLights.DirectionalLights 0): our objects shadow it through its cascaded shadow map, read with
+// Unreal's Manual3x3PCF, and on our objects' pixels a ray toward it is traced through the blocks and the entities.
 //
 // What casts depends on the receiver: on our objects' pixels (nearer than the host's depth before our opaque draws)
-// everything does; on Minecraft's, only our objects, its own blocks keeping the light it baked. Our objects cast through
-// their meshes' distance fields (_CasterRows, _MeshFields), on screen or off, as Unreal's distance field shadows trace them
-// (DistanceFieldShadowingShared.ush's ShadowRayTraceThroughCulledObjects).
+// everything does; on Minecraft's, only our objects, its own blocks keeping the light it baked. Our objects cast a
+// light's shadow through their meshes' distance fields (_CasterRows, _MeshFields), on screen or off, as Unreal's
+// distance field shadows trace them (DistanceFieldShadowingShared.ush's ShadowRayTraceThroughCulledObjects).
 //
 // Minecraft's light-giving blocks are lights of their own (CG_LIGHT_MINECRAFT): each sample picks one in proportion to
 // the block light Minecraft's flood gives the pixel from it, level less the blocks between, and traces it as it traces
@@ -39,7 +40,7 @@ Properties {
     _DayFade ("A light's strength under a full day's open sky; 1 for never fading", float) = 0.1
     _Screen  ("The full target's width and height, then the downsample factor", vec4) = (1, 1, 2, 2)
     _Trace   ("Screen trace: blocks, steps, normal bias in blocks, relative depth thickness", vec4) = (8, 24, 0.02, 0.005)
-    _Sun     ("The sun: 1 to trace it, its screen trace's blocks and steps, the tangent of its disc's half angle", vec4) = (0, 24, 24, 0.004675)
+    _Sun     ("The sun: 1 for its shadows, 1 where its map was drawn", vec4) = (0, 0, 0, 0)
     _Own     ("1 where the host's depth before our opaque draws was taken this frame", float) = 0.0
     _SampleGrid ("Unreal's NumSamplesPerPixel as a block of the samples texture: its width, height and count", vec4) = (2, 2, 4, 0)
     _Skip    ("Parts left out, to measure each: 1 sun, 2 block light, 4 lights, 8 meshes, 16 screen, 32 blocks, 64 entities", int) = 0
@@ -51,9 +52,10 @@ Properties {
     _WorldSections ("Which of its sections are filled",            sampler3D) = "black"
     _WorldDistance ("Its distance to solid over FX_WORLD_FAR",      sampler3D) = "white"
     _HostDepth     ("The host's window depth before our opaque draws", sampler2D) = "white"
-    _CasterRows    ("Our meshes casting shadows, five texels each: eye-relative world to field voxels (three rows), the field's size and first float, its scales", sampler2D) = "black"
+    _CasterRows    ("Our meshes casting shadows, five texels each: eye-relative world to field voxels (three rows), the field's size and first float, its scales; from SUN_ROWS_AT the sun's cascades, four each: to uv, to depth, view depths and depth bias", sampler2D) = "black"
     _MeshFields    ("Every mesh's distance field in its own units, MESH_FIELD_ROW floats a row", sampler2D) = "black"
     _Normals       ("Our surfaces' normals, world, n * 0.5 + 0.5, alpha 1 where drawn", sampler2D) = "black"
+    _SunMap        ("The sun's cascades, a quadrant each, nearest bottom left: our casters' depth from the light, blocks", sampler2D) = "white"
     _WorldBaseX    ("Its lowest block, absolute: x",               int) = 0
     _WorldBaseY    ("y",                                           int) = 0
     _WorldBaseZ    ("z",                                           int) = 0
@@ -270,26 +272,66 @@ Pass {
         return false;
     }
 
-    // The sun's visibility at p facing n, one ray over its disc: 1 lit, 0 shadowed. On our objects it fades out over
-    // the last few degrees before a face turns from it, so a face edge-on to it (Minecraft's sun crosses east to west:
-    // a north face is exactly edge-on) holds still rather than flipping with a normal's last bit; on Minecraft's a face
-    // turned from it is left as Minecraft lit it.
-    float sun_visibility(vec3 p, vec3 n, bool ownPixel, ivec2 sampleCoord) {
+    // CgWorldLights.SUN_ROWS_AT: where the sun's cascade rows start in _CasterRows.
+    const int SUN_ROWS_AT = 1280;
+
+    vec4 sun_row(int k, int r) { return texelFetch(_CasterRows, ivec2(SUN_ROWS_AT + k * 4 + r, 0), 0); }
+
+    // Cascade k's visibility at eye-relative w, n.l the receiver's toward the sun: Unreal's Manual3x3PCF
+    // (ShadowFilteringCommon.ush:245-262), a 4x4 texel footprint weighted to a 3x3 tent by the fraction, each texel's
+    // soft comparison saturate((caster - receiver) * scale + 1) over the caster bias, its scale lerp(0.9, 1, n.l) of it
+    // (ShadowProjectionPixelShader.usf:249, r.Shadow.CSMReceiverBias). Past the last cascade, lit.
+    float sun_cascade(int k, vec3 w, float nol) {
+        if (k > 3) return 1.0;
+        vec4 r0 = sun_row(k, 0), r1 = sun_row(k, 1), r2 = sun_row(k, 2), range = sun_row(k, 3);
+        vec2 uv = vec2(dot(r0.xyz, w) + r0.w, dot(r1.xyz, w) + r1.w);
+        float depth = dot(r2.xyz, w) + r2.w;
+        float scale = mix(0.9, 1.0, nol) / range.w;
+        int size = textureSize(_SunMap, 0).x / 2;
+        ivec2 origin = ivec2(k & 1, k >> 1) * size;
+        vec2 texel = uv * float(size) - 0.5;
+        vec2 f = fract(texel);
+        ivec2 corner = ivec2(floor(texel)) - 1;
+        float lit = 0.0;
+        for (int y = 0; y < 4; y++) {
+            float wy = y == 0 ? 1.0 - f.y : y == 3 ? f.y : 1.0;
+            for (int x = 0; x < 4; x++) {
+                float wx = x == 0 ? 1.0 - f.x : x == 3 ? f.x : 1.0;
+                ivec2 at = origin + clamp(corner + ivec2(x, y), ivec2(0), ivec2(size - 1));
+                lit += wx * wy * clamp((texelFetch(_SunMap, at, 0).r - depth) * scale + 1.0, 0.0, 1.0);
+            }
+        }
+        return lit / 9.0;
+    }
+
+    // Our casters' shadow of the sun at view depth z: the cascade z falls in, blended into the next over its fade
+    // region, the last fading to lit (Unreal's SplitFarFadeRegion).
+    float sun_map(float z, vec3 w, float nol) {
+        if (_Sun.y < 0.5) return 1.0;
+        for (int k = 0; k < 4; k++) {
+            vec4 range = sun_row(k, 3);
+            if (z >= range.z) continue;
+            float v = sun_cascade(k, w, nol);
+            if (z <= range.y) return v;
+            return mix(v, sun_cascade(k + 1, w, nol), (z - range.y) / max(range.z - range.y, 1.0e-4));
+        }
+        return 1.0;
+    }
+
+    // The sun's visibility at p facing n: 1 lit, 0 shadowed. Our casters through its map; on our objects' pixels the
+    // blocks and entities too, a ray toward it through the world. On our objects it fades out over the last few degrees
+    // before a face turns from it, so a face edge-on to it (Minecraft's sun crosses east to west: a north face is exactly
+    // edge-on) holds still rather than flipping with a normal's last bit; on Minecraft's a face turned from it is left as
+    // Minecraft lit it.
+    float sun_visibility(vec3 p, vec3 n, bool ownPixel) {
         if ((_Skip & 1) != 0 || _Sun.x < 0.5 || CG_DAYLIGHT <= 0.0 || CG_SUN_DIRECTION.y <= 0.0) return 1.0;
         vec3 toSun = normalize(to_view_dir(CG_SUN_DIRECTION));
         float facing = ownPixel ? smoothstep(0.0, 0.2, dot(n, toSun)) : 1.0;
         if (dot(n, toSun) <= 0.0) return ownPixel ? 0.0 : 1.0;
-        vec2 u = vec2(cg_shadow_noise(vec2(sampleCoord) + 53.0, CG_FRAME_INDEX), cg_shadow_noise(vec2(sampleCoord) + 71.0, CG_FRAME_INDEX));
-        // The sun as a sphere far off whose disc spans Unreal's LightSourceAngle.
-        vec3 dir = cg_shadow_sphere_ray(toSun * 1000.0, 1000.0 * _Sun.w, u).xyz;
-        vec3 a = p + n * (_Trace.z + 0.002 * -p.z);
-        float jit = cg_shadow_noise(vec2(sampleCoord) + 97.0, CG_FRAME_INDEX), reached;
-        if (caster_trace(to_world(a), to_world_dir(dir), 0.0, _Sun.y)) return 0.0;
-        if (!ownPixel) return 1.0;
-        int screen = screen_trace(a, dir, _Trace.x, int(_Trace.y), jit, reached);
-        if (screen == 1) return 0.0;
-        // Past the screen: the window's blocks to its edge, and the entities.
-        return world_trace(to_world(a), to_world_dir(dir), reached, 96.0) ? 0.0 : facing;
+        float v = sun_map(-p.z, to_world(p), clamp(dot(n, toSun), 0.0, 1.0));
+        if (!ownPixel || v <= 0.0) return v;
+        vec3 a = to_world(p + n * (_Trace.z + 0.002 * -p.z));
+        return world_trace(a, normalize(CG_SUN_DIRECTION), 0.0, 96.0) ? 0.0 : v * facing;
     }
 
     // The block a surface's light is read at: the one its face looks into, from the eye's block.
@@ -429,7 +471,7 @@ Pass {
         // The sun and Minecraft's block light take one ray a pixel, in its first sample: MegaLights spends a pixel's
         // four on every light together, and the frames average the rest.
         bool first = mine == 0;
-        fragColor = vec4(light_sample(p, n, d, sampleCoord, mine), first ? sun_visibility(p, n, ownPixel, sampleCoord) : 1.0,
+        fragColor = vec4(light_sample(p, n, d, sampleCoord, mine), first ? sun_visibility(p, n, ownPixel) : 1.0,
                 first ? block_visibility(p, n, ownPixel, sampleCoord) : 1.0);
     }
 }
