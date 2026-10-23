@@ -159,15 +159,20 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
 | Pass | Unreal (MegaLights) | Here |
 |---|---|---|
 | Sample | `GenerateLightSamplesCS`: 4 samples a half-resolution pixel, a weighted reservoir over its tile's lights, weight `log2(luminance + 1)`; a sample of the same light merged into the next one's ray | `world_lights_sample.shader`, over the light grid's cell, the shadowed lights alone; every pixel by default (below) |
-| Trace | screen trace (hierarchical, 1 m, a hit within 0.005 of the depth), then the global distance field | screen trace (24 steps over 1 block, `crystalgraphics.world.lightsScreenTrace`, the same thickness), then `CgWorldVoxelWindow`'s distance field (blocks, 128x96x128 round the camera), then each of `CgWorldEntityBoxes`' entities as a capsule (Unreal's capsule shadows), then our meshes' distance fields |
+| Trace | screen trace (hierarchical, 1 m, a hit within 0.005 of the depth), then the global distance field | screen trace (24 steps over 1 block, `crystalgraphics.world.lightsScreenTrace`, the same thickness), then `CgWorldVoxelWindow`'s distance field (blocks, 128x96x128 round the camera), then `CgWorldEntityBoxes`' entities as capsules, only those its 16x16 tile can meet (Unreal's capsule shadow tiles, `world_lights_tiles.shader`; `crystalgraphics.world.lightsEntityTiles=false` keeps all), then our meshes' distance fields |
 | Shade | `ShadeLightSamplesCS`: each pixel picks a nearby half-resolution pixel by bilinear, depth and normal weight; each visible light lit exactly, times its samples' weights | `world_lights_shade.shader` |
 | Temporal | `DenoiserTemporalCS`: history clamped in YCoCg to the neighbourhood, 4 to 12 frames by confidence, moments kept | `world_lights_temporal.shader`, one history for the first firing (`crystalgraphics.world.lightsShadowFrames`); the sun's and block light's visibility clamped and accumulated the same way, with their moments |
 | Spatial | `DenoiserSpatialCS`: where still noisy, a disk of 4 (8 after a disocclusion) samples by depth, normal and luminance | `world_lights_denoise.shader` (`crystalgraphics.world.lightsShadowSpatial`, pixels); the visibility by the same rule from its own moments, its difference standing for luminance |
 | Composite | adds into scene colour | `world_lights.shader` adds it beside the unshadowed lights |
 
-- **The sun** is traced in the same passes, a ray a sample over its disc (Unreal's `LightSourceAngle`), while it is up
-  and something of ours is drawn. Our objects receive its shadow from blocks, entities and each other; Minecraft's
-  world receives it from our objects alone, its own blocks keeping the light Minecraft baked. A shadow takes the sun's
+- **The sun** is not one of MegaLights' lights (Unreal's `r.MegaLights.DirectionalLights` is 0): our objects shadow it
+  through a **cascaded shadow map**, Unreal's for a movable directional light, while it is up and something of ours is
+  drawn. Four cascades to `crystalgraphics.world.sunShadowDistance` (96 blocks), each 3 times the depth of the last
+  and a tenth into the next, a sphere round each slice of the view snapped to whole texels, in one atlas of
+  `crystalgraphics.world.sunShadowResolution` (1024) a cascade; our opaque casters drawn into it with Unreal's caster
+  bias, read with its `Manual3x3PCF` and soft comparison. On our objects' pixels a ray toward it also crosses the
+  blocks and entities. So our objects receive its shadow from blocks, entities and each other; Minecraft's world
+  receives it from our objects alone, its own blocks keeping the light Minecraft baked. A shadow takes the sun's
   direct share (`crystalgraphics.world.sunShare`, 0.6) out of the pixel's sky light, through Minecraft's own lightmap,
   so the shade is Minecraft's. Our pixels are found from the host's depth snapshotted before our opaque pass.
   `crystalgraphics.world.sunShadows=false` turns it off; `--mode=lights-sun` is its gate.
@@ -182,7 +187,8 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
   our meshes through their **mesh distance fields** (Unreal's `MeshDistanceFieldUtilities.cpp`, traced as
   `DistanceFieldShadowingShared.ush` does). `CgMeshDistanceFields` builds one per mesh and submesh on first draw: 16
   voxels a block, at most 48 an axis, the nearest triangle's distance, inside by a back-face vote. Each frame the
-  opaque draws within `crystalgraphics.world.sunCasterReach` blocks (48), at most 256, become casters; a ray
+  opaque draws within 96 blocks, at most 256, become casters (of the sun's map too, taken from
+  `crystalgraphics.world.sunCasterReach` blocks, 48, toward the sun past each cascade); a ray
   sphere-traces each field it crosses, 32 steps at most, ignoring a hit within two voxels of its start (the self-shadow
   bias). Counter `world.lights-casters`; `--mode=lights-casters` is the gate.
 - **Normals**: our opaque materials write their vertex normal into `cg_world.normals` (the `CG_NORMAL_TARGET`
@@ -195,16 +201,16 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
   every pixel, 1 every other (2x1), 2 a quarter (2x2); `crystalgraphics.world.lightsSamplesPerPixel` its
   `NumSamplesPerPixel`, 1, 2 or 4 samples each. Unreal's default, 4 samples on a 2x2 pixel, is a ray a screen pixel and
   leans on TSR to hide the 2-pixel steps; Minecraft's frame has no temporal anti-aliasing, so the default is the same
-  budget at full resolution: 1 sample a pixel, the frames averaging the rest. The sun and Minecraft's block light take
-  that sample's one ray too. Standing over the shadows demo's plaza at 2000x1080 the sample pass took 12-13 ms at 4
+  budget at full resolution: 1 sample a pixel, the frames averaging the rest. Minecraft's block light takes
+  that sample's one ray too, and on our pixels the sun's. Standing over the shadows demo's plaza at 2000x1080 the sample pass took 12-13 ms at 4
   samples a pixel and 3.2-3.4 at 1 (RTX 4070 Super, Minecraft 1.20.1).
 - **The blocks' trace** sphere-steps the window's distance field, and within a block and a half of solid walks its grid
   (Amanatides and Woo): an empty block in one step, a block with solid octants octant by octant.
 - **Departures from Unreal**: a linear screen trace rather than a hierarchical one; no visible-light hash guiding the next frame's samples; lights that cast no shadow stay on the grid's exact pass
   rather than being sampled; the shading confidence is 1; every pixel traced by default (above).
 - The gate is `--mode=lights-shadow`: a wall of blocks between a light and the floor, the light behind it gone and in the
-  open the same as unshadowed. GPU zones `world.lightsSample`, `world.lightsShade`, `world.lightsTemporal`,
-  `world.lightsDenoise`.
+  open the same as unshadowed. GPU zones `world.sunShadow`, `world.lightsTiles`, `world.lightsSample`,
+  `world.lightsShade`, `world.lightsTemporal`, `world.lightsDenoise`.
 - **What a ray's parts cost, in game**: `-Dcrystalgraphics.demo=shadows -Dcrystalgraphics.demo.shadowsBisect=true
   -Dcrystalgraphics.trace.channels=gpu` leaves each part out in turn (`crystalgraphics.world.lightsSampleSkip`: 1 the
   sun, 2 block light, 4 the lights, 8 our meshes, 16 the screen trace, 32 the blocks, 64 the entities) while the player
