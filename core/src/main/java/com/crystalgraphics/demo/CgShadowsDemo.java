@@ -35,6 +35,7 @@ import org.joml.Matrix4f;
  * CgShadowsDemo.toggleTemporal();                         // the shadows' accumulation over frames off and on
  * CgShadowsDemo.toggleSpatial();                          // their filter across the screen off and on
  * CgShadowsDemo.toggleScreenTrace();                      // their rays' screen trace off and on
+ * CgShadowsDemo.cycleResolution();                        // their rays at full, checkerboard and half resolution
  * }</pre>
  *
  * <p>{@code CgRenderDemo}'s {@code shadows}.</p>
@@ -45,6 +46,8 @@ public final class CgShadowsDemo {
     private static final String SHADOWS = "crystalgraphics.world.lightsShadows";
     private static final String FRAMES = "crystalgraphics.world.lightsShadowFrames", SPATIAL = "crystalgraphics.world.lightsShadowSpatial";
     private static final String SCREEN = "crystalgraphics.world.lightsScreenTrace", SKIP = "crystalgraphics.world.lightsSampleSkip";
+    private static final String DOWNSAMPLE = "crystalgraphics.world.lightsDownsample";
+    private static final String[] RESOLUTIONS = {"full", "checkerboard", "half"};
     /**
      * Stand still over a shadow: each part of the shadow rays is left out in turn, a second and a half each, and the log says
      * what the sample pass cost a frame without it ({@code [shadows-bisect]}). Needs the trace's {@code gpu} channel.
@@ -89,6 +92,12 @@ public final class CgShadowsDemo {
     public static void toggleScreenTrace() {
         CgVar.Num reach = (CgVar.Num) CgVars.get(SCREEN);
         reach.set(reach.get() > 0f ? 0f : 1f);
+    }
+
+    /** The shadow rays' resolution, Unreal's DownsampleMode: full, checkerboard (2x1), half (2x2), and round again. */
+    public static void cycleResolution() {
+        CgVar.Num mode = (CgVar.Num) CgVars.get(DOWNSAMPLE);
+        mode.set((Math.round(mode.get()) + 1) % 3);
     }
 
     public static boolean shadowsOn() {
@@ -179,6 +188,7 @@ public final class CgShadowsDemo {
                 + " | temporal [K]: " + (((CgVar.Num) CgVars.get(FRAMES)).get() > 1f ? "on" : "off")
                 + " | spatial [J]: " + (((CgVar.Num) CgVars.get(SPATIAL)).get() > 0f ? "on" : "off")
                 + " | screen trace [U]: " + (((CgVar.Num) CgVars.get(SCREEN)).get() > 0f ? "on" : "off")
+                + " | resolution [M]: " + RESOLUTIONS[Math.round(((CgVar.Num) CgVars.get(DOWNSAMPLE)).get())]
                 + "\neast pillar: place a torch beside it; west cube: by day";
     }
 }

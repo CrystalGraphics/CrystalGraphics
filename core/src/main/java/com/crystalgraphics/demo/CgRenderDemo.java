@@ -76,6 +76,7 @@ import java.util.function.Supplier;
  * [ ]  the HDR scene's glow gain down or up a quarter;  - =  bloom's intensity
  * O    every world shadow off or on (crystalgraphics.world.lightsShadows), to compare
  * K J U  the shadows' temporal accumulation, their spatial filter, their rays' screen trace, off or on
+ * M    the shadow rays' resolution: full, checkerboard, half
  * F I B Y , .  CgVfxDemoControls, shared by every scene: flash, impact frame, billows, time (Shift+Y slower), the wait
  * </pre>
  *
@@ -209,7 +210,7 @@ public final class CgRenderDemo {
     private static final int[] KEYS = keys(new int[]{CgKeyCodes.KEY_H, CgKeyCodes.KEY_N, CgKeyCodes.KEY_C,
             CgKeyCodes.KEY_L, CgKeyCodes.KEY_V, CgKeyCodes.KEY_G, CgKeyCodes.KEY_LBRACKET, CgKeyCodes.KEY_RBRACKET,
             CgKeyCodes.KEY_MINUS, CgKeyCodes.KEY_EQUALS, CgKeyCodes.KEY_O, CgKeyCodes.KEY_K, CgKeyCodes.KEY_J,
-            CgKeyCodes.KEY_U},
+            CgKeyCodes.KEY_U, CgKeyCodes.KEY_M},
             CgVfxDemoControls.KEYS);
     private final boolean[] held = new boolean[KEYS.length];
     private static float bloomIntensity = 1f;
@@ -709,6 +710,7 @@ public final class CgRenderDemo {
             case CgKeyCodes.KEY_K -> CgShadowsDemo.toggleTemporal();
             case CgKeyCodes.KEY_J -> CgShadowsDemo.toggleSpatial();
             case CgKeyCodes.KEY_U -> CgShadowsDemo.toggleScreenTrace();
+            case CgKeyCodes.KEY_M -> CgShadowsDemo.cycleResolution();
             default -> CgVfxDemoControls.get().press(key, shift);
         }
         hudDirty = true;
