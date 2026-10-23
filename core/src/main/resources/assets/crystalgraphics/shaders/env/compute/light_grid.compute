@@ -38,6 +38,7 @@ Properties {
     _Pyramid  ("The scene's farthest eye depth, a pyramid",            sampler2D) = "black"
     _Hzb      ("Cull by the pyramid (1), unused, its slack, its last level", vec4) = (0, 0, 0, 0)
     _MinScreen ("r.MinScreenRadiusForLights; 0 keeps every light",     float) = 0
+    _AirSpread ("How far past its cone the lit air widens a spot at eye depth z: z * x + y", vec4) = (0, 0, 0, 0)
     _HostDepth ("The host projection's m22, m32, m23 and m33: what the pyramid's depth was linearised by", vec4) = (1, 0, -1, 0)
     _Depth    ("The bob-free perspective's m22, m32, m23 and m33",        vec4) = (1, 0, -1, 0)
 }
@@ -148,9 +149,14 @@ bool culled_box(ivec3 lo, ivec3 hi, out vec3 centre, out vec3 extent) {
     return true;
 }
 
+// A spot is listed out to where the lit air's froxels widen its cone (light_volume.compute's Scatter), at the cell's far
+// depth: else a froxel past the cone's edge, lit through a cell that does not list it, is cut along the cell's side.
 bool viewed_reaches(uint i, vec3 centre, vec3 extent) {
     CgViewLight l = VIEWED(int(i));
-    return cg_light_reaches(l.positionRadius.xyz, l.positionRadius.w, l.spot, centre, extent);
+    // A light too small on screen to draw (View's _MinScreen) has radius 0: the margin must not bring it back.
+    if (l.positionRadius.w <= 0.0) return false;
+    float margin = max(extent.z - centre.z, 0.0) * _AirSpread.x + _AirSpread.y;
+    return cg_light_reaches_by(l.positionRadius.xyz, l.positionRadius.w, l.spot, centre, extent, margin);
 }
 
 shared uint groupScan[64];

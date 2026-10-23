@@ -131,7 +131,9 @@ Lights are binned into Unreal 5's light grid before the pass: 64-pixel tiles, 32
 cells a side is culled first, then each cell from its parent's list, a work group a cell where compute runs. Unreal's
 HZB cull, skipping cells behind the scene by its depth pyramid, is off (`-Dcrystalgraphics.world.lightsHzb=true` turns
 it on): in Minecraft 1.20.1 it cut the lit air into the grid's 64-pixel squares, which the harness never shows, and in
-the lights demo it saved 0.02 ms. Each cell's list is whole, from a budget shared by every cell that grows when a frame overflows it.
+the lights demo it saved 0.02 ms. A spot is listed out past its outer cone by as much as the lit air's froxels widen
+it (`cg_light_reaches_by`, about half a froxel's diagonal at the cell's far depth): else a softened beam edge in a cell
+that does not list it was cut along the cell's side, in 64-pixel steps. Each cell's list is whole, from a budget shared by every cell that grows when a frame overflows it.
 
 A light smaller on screen than Unreal's `r.MinScreenRadiusForLights` (0.03, `-Dcrystalgraphics.world.lightsMinScreenRadius`)
 is not drawn: past 50 blocks for one reaching under a block and a half, past 33 times its reach for larger ones.
@@ -239,7 +241,8 @@ vec3 extra = cg_LocalLightAt(cg_FragmentPosition());     // the same light by ha
   (TranslucentLighting.cpp:270-370). Filled each transparent firing that draws something, after the light grid: each
   cell inside the view's frustum takes every light of its light-grid cell, lit as the deferred pass lights a surface
   less N.L (the same falloff, day fade and lightmap scale), over pi; a light that casts shadows is traced from the cell
-  through the blocks, the entities and our meshes. Cells outside the frustum stay black.
+  through the blocks, the entities and our meshes, at most `crystalgraphics.world.lightsVolumeShadowRays` (4) a cell,
+  past which a cell's lights shine unshadowed. Cells outside the frustum stay black.
 - **Read non-directionally**, as Unreal's `Volumetric NonDirectional` translucency: the ambient band times
   pi x 0.282095, a quarter of what a surface squarely facing the light takes. `cg_Lit` multiplies the colour by
   `1 + volume` beside the lightmap, as the deferred pass multiplies the scene, the inner cascade blending into the
@@ -248,7 +251,7 @@ vec3 extra = cg_LocalLightAt(cg_FragmentPosition());     // the same light by ha
 - **Departures from Unreal**: every light of a cell traced every frame, where MegaLights samples a few and blends
   frames; no marking of the cells a translucent pixel reads; the ambient band alone, until a directional consumer.
 - `crystalgraphics.world.lightsVolume=false` turns it off; `--mode=lights-volume` is the gate. `CgLightsDemo` shows it:
-  glass round the carousel, smoke behind the duel.
+  glass round the carousel.
 
 ## 9. In the air
 

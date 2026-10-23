@@ -77,7 +77,8 @@ ivec3 cg_light_cell(vec3 p, vec3 zParams, vec2 rayMin, vec2 rayMax, vec2 tile, i
 // gives it a froxel's radius squared (VolumetricFog.usf:1061, r.VolumetricFog.InverseSquaredLightDistanceBiasScale 1), so a cell
 // near a light takes its average rather than the spike at the light.
 // spread, in blocks, is how far round p the answer stands for: a cone's edge is widened by the angle it spans from the
-// light, so a region straddling the edge takes its share of the cone rather than whether its one point fell inside.
+// light, so a region straddling the edge takes its share of the cone rather than whether its one point fell inside. It
+// reaches up to spread past the outer cone: a grid binning it passes cg_light_reaches_by that margin.
 float cg_light_falloff_filtered(vec3 position, float radius, float exponent, vec4 spotCos, vec4 segmentCone, vec3 p,
                                 float biasSqr, float spread) {
     vec3 toLight = position - p;
@@ -134,10 +135,11 @@ float cg_light_surface(vec3 position, float radius, float exponent, vec4 spotCos
 
 // Whether a light at position (radius blocks) with cone spotCos reaches a box of centre and extent, all in one space:
 // Unreal's binning (LightGridInjection.usf:132-171), a spot first tested against the box's bounding sphere
-// (IntersectConeWithSphere) and then bounded by the smallest sphere round its cone (Wronski's).
-bool cg_light_reaches(vec3 position, float radius, vec4 spotCos, vec3 centre, vec3 extent) {
+// (IntersectConeWithSphere) and then bounded by the smallest sphere round its cone (Wronski's). margin widens a spot's
+// cone that many blocks past its outer cone (cg_light_falloff_filtered's spread): the box is taken that much larger.
+bool cg_light_reaches_by(vec3 position, float radius, vec4 spotCos, vec3 centre, vec3 extent, float margin) {
     if (spotCos.w > -1.5) {
-        float c = spotCos.w, s = sqrt(max(1.0 - c * c, 0.0)), r = length(extent);
+        float c = spotCos.w, s = sqrt(max(1.0 - c * c, 0.0)), r = length(extent) + margin;
         vec3 toBox = centre - position;
         float along = dot(toBox, spotCos.xyz);
         float closest = c * sqrt(max(dot(toBox, toBox) - along * along, 0.0)) - along * s;
@@ -149,7 +151,13 @@ bool cg_light_reaches(vec3 position, float radius, vec4 spotCos, vec3 centre, ve
             radius /= 2.0 * c;
             position += spotCos.xyz * radius;
         }
+        radius += margin;
     }
     vec3 outside = max(abs(position - centre) - extent, 0.0);
     return dot(outside, outside) < radius * radius;
+}
+
+// cg_light_reaches_by with no margin.
+bool cg_light_reaches(vec3 position, float radius, vec4 spotCos, vec3 centre, vec3 extent) {
+    return cg_light_reaches_by(position, radius, spotCos, centre, extent, 0.0);
 }

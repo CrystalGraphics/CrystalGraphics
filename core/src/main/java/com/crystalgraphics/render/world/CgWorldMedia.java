@@ -82,6 +82,8 @@ public final class CgWorldMedia {
     /** Slices deep, and the eye depths they run between: as {@code cg_env.glsl}'s {@code CG_MEDIA_*}. */
     public static final int SLICES = 128;
     public static final float NEAR = 0.095f, FAR = 256f;
+    /** Unreal's r.VolumetricFog.DepthDistributionScale: cg_env.glsl's CG_MEDIA_SPREAD. */
+    private static final float DEPTH_SPREAD = 32f;
     /** What an injecting kernel declares, all of which {@link #dispatch} sets. */
     public static final String PROPERTIES = """
                 _MediaIn    ("The extinction added before this kernel", sampler3D) = "black"
@@ -204,6 +206,18 @@ public final class CgWorldMedia {
     @Nullable
     Matrix4fc reproject() {
         return reprojects ? reproject : null;
+    }
+
+    /**
+     * How far past a spot's cone the lit air widens it, at most {@code z * out[0] + out[1]} blocks at eye depth z: half a
+     * froxel's diagonal (light_volume.compute's spread), from a pixel's width at unit depth across and up and the
+     * slices' depth (cg_env.glsl's {@code CG_MEDIA_*}: (z + O / B) ln 2 / spread a slice).
+     */
+    static void spread(float acrossPerPixel, float upPerPixel, float[] out) {
+        double o = (FAR - NEAR * Math.pow(2, (SLICES - 1) / DEPTH_SPREAD)) / (FAR - NEAR), b = (1 - o) / NEAR;
+        double slice = Math.log(2) / DEPTH_SPREAD;
+        out[0] = (float) (0.5 * (PIXELS.get() * (acrossPerPixel + upPerPixel) + slice));
+        out[1] = (float) (0.5 * o / b * slice);
     }
 
     /** The view's corner rays onto {@code d}: {@code media_point}'s, as {@link #dispatch} sets them. */

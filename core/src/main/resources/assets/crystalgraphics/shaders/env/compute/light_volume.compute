@@ -76,6 +76,7 @@ Properties {
     _MediaRay11 ("At the top right",                                vec4) = (0, 0, -1, 0)
     _PhaseG     ("The air's phase: Unreal's VolumetricFogScatteringDistribution", float) = 0.2
     _AirShadowRays ("Shadowed lights traced a froxel; the rest unshadowed", int) = 4
+    _VolumeShadowRays ("Shadowed lights traced a cell of the translucency volume; the rest unshadowed", int) = 4
     _Frame      ("The firing's index: its jitter, Halton 2, 3 and 5 of it", int) = 0
     _Jittered   ("1 to light froxels at jittered points, 0 at their middles", int) = 0
     _Samples    ("Jittered points a froxel each firing it keeps its history", int) = 1
@@ -185,7 +186,7 @@ void Fill() {
         return;
     }
     ivec2 list = cell_lights(w);
-    int count = list.x, from = list.y;
+    int count = list.x, from = list.y, rays = 0;
     vec3 sum = vec3(0.0);
     for (int k = 0; k < count; k++) {
         CgLight light = LIGHTS(int(INDICES(from + k)));
@@ -193,7 +194,10 @@ void Fill() {
         float falloff = cg_light_falloff(light.positionRadius.xyz, light.positionRadius.w, light.colorExponent.w,
                 light.spotCos, light.segmentCone, w);
         if (falloff <= 0.0) continue;
-        if (_Shadows > 0.5 && CG_LIGHT_SHADOWED(light) && shadowed(light, w)) continue;
+        if (_Shadows > 0.5 && CG_LIGHT_SHADOWED(light) && rays < _VolumeShadowRays) {
+            rays++;
+            if (shadowed(light, w)) continue;
+        }
         sum += light.colorExponent.rgb * (falloff * light_scale(light));
     }
     // Over pi, then the ambient band read non-directionally: pi * 0.282095^2, a quarter.

@@ -179,6 +179,8 @@ public final class CgWorldLights {
                     + "r.TranslucencyLightingVolume.InnerDistance, 15 m.");
     private static final CgVar.Bool AIR = CgVar.bool("crystalgraphics.world.lightsAir", true, CgVar.DEV,
             "Smoke, gas and haze in the air lit by the world's lights: Unreal's volumetric fog's light scattering.");
+    private static final CgVar.Int VOLUME_RAYS = CgVar.integer("crystalgraphics.world.lightsVolumeShadowRays", 4, 0, 64,
+            CgVar.DEV, "Shadowed lights traced from each cell of the translucency volume; past them a cell's lights shine unshadowed.");
     private static final CgVar.Int AIR_RAYS = CgVar.integer("crystalgraphics.world.lightsAirShadowRays", 4, 0, 64, CgVar.DEV,
             "Shadowed lights traced from each froxel of lit air; past them a froxel's lights shine unshadowed.");
     private static final CgVar.Bool AIR_HISTORY = CgVar.bool("crystalgraphics.world.lightsAirHistory", true, CgVar.DEV,
@@ -278,6 +280,8 @@ public final class CgWorldLights {
     /** The grid this firing: cells across and up, unit-depth rays at the target's edges, the slices' B, O and S. */
     private int gridX, gridY;
     private final float[] rays = new float[4], zParams = new float[3];
+    /** How far past a spot's cone the lit air widens it: CgWorldMedia.spread's. */
+    private final float[] airSpread = new float[2];
     private CgGraphBuffer cells, indices, viewed, alloc, parentCells, parentIndices, counts, starts;
     private CgGraphTexture pyramid;
     /** The pyramid's slack: its eye depth is linearised under the host's projection, bob and all. */
@@ -703,6 +707,14 @@ public final class CgWorldLights {
     }
 
     /** Unit-depth view rays at the target's left, bottom, right and top edges: what a cell's x and y run along. */
+    /**
+     * How far past its cone the light grid lists a spot at eye depth z, {@code z * [0] + [1]} blocks: the lit air's
+     * widening of its cone ({@link CgWorldMedia}). Read only.
+     */
+    public float[] airSpread() {
+        return airSpread;
+    }
+
     public float[] rays() {
         return rays;
     }
@@ -1017,6 +1029,7 @@ public final class CgWorldLights {
         bob.mul(toView, toView);
         tileU = TILE / targetWidth;
         tileV = TILE / targetHeight;
+        CgWorldMedia.spread((rays[2] - rays[0]) / targetWidth, (rays[3] - rays[1]) / targetHeight, airSpread);
     }
 
     /** The grid's values onto one of its kernels' dispatches. */
@@ -1034,7 +1047,8 @@ public final class CgWorldLights {
                 .set("_Rays", rays[0], rays[1], rays[2], rays[3])
                 .set("_ToView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
                 .set("_ToView1", toView.m01(), toView.m11(), toView.m21(), toView.m31())
-                .set("_ToView2", toView.m02(), toView.m12(), toView.m22(), toView.m32());
+                .set("_ToView2", toView.m02(), toView.m12(), toView.m22(), toView.m32())
+                .set("_AirSpread", airSpread[0], airSpread[1], 0f, 0f);
     }
 
     /**
@@ -1378,6 +1392,7 @@ public final class CgWorldLights {
             CgTexture lightmap = stage.host().textures().lightmapTexture();
             CgComputePass pass = recording.compute("world.lightsVolume", stage.constants()).timed(GPU_VOLUME);
             traceInputs(pass.dispatch(fill, VOLUME_CELLS + 1, VOLUME_CELLS, 2 * VOLUME_CELLS).image("LOCAL_LIGHTS", volume)
+                    .set("_VolumeShadowRays", VOLUME_RAYS.get())
                     .set("_Cascade0", cascades[0], cascades[1], cascades[2], cascades[3])
                     .set("_Cascade1", cascades[4], cascades[5], cascades[6], cascades[7])
                     .set("_EyeOffset", eye.x, eye.y, eye.z, 0f), lightmap != null ? lightmap : CgFallbackTextures.WHITE_1x1,
