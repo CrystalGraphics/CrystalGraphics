@@ -22,7 +22,7 @@ Properties {
     _ToView2 ("The third row",                                     vec4) = (0, 0, 1, 0)
     _Depth   ("The perspective's m22, m32, m23 and m33: window depth to eye depth", vec4) = (1, 0, -1, 0)
     _DayFade ("A light's strength under a full day's open sky; 1 for never fading", float) = 0.1
-    _Screen  ("The full target's width and height",                vec4) = (1, 1, 0, 0)
+    _Screen  ("The full target's width and height, then the downsample factor", vec4) = (1, 1, 2, 2)
     _Samples ("The shadowed lights' samples, four a half-resolution pixel", sampler2D) = "black"
     _Normals ("Our surfaces' normals, world, n * 0.5 + 0.5, alpha 1 where drawn", sampler2D) = "black"
     _MaxWeight ("Unreal's r.MegaLights.MaxShadingWeight",          float) = 20.0
@@ -97,9 +97,12 @@ Pass {
         return n;
     }
 
+    // Unreal's r.MegaLights.DownsampleMode as a factor: 1x1, 2x1 (checkerboard) or 2x2 (half resolution).
+    ivec2 down() { return ivec2(_Screen.zw); }
+
     ivec2 jitter(ivec2 d) {
         int k = (CG_FRAME_INDEX + d.x * 3 + d.y * 5) & 3;
-        return ivec2(k & 1, k >> 1);
+        return ivec2(k & 1, k >> 1) % down();
     }
 
     // world_lights.shader's lighting of p facing n by one light, times the scene.
@@ -133,16 +136,16 @@ Pass {
         if (p.z >= 0.0) return;
         vec3 n = normal_at(px, p);
 
-        // The stochastic bilinear upsample: the four half-resolution pixels round this one, each weighed by its
+        // The stochastic bilinear upsample: the four downsampled pixels round this one, each weighed by its
         // bilinear weight, its plane's distance (MegaLights' spatial depth weight) and its normal (GetNormalWeight).
         ivec2 halfSize = ivec2(textureSize(_Samples, 0)) >> 1;
-        vec2 at = (vec2(px) + 0.5) * 0.5 - 0.5;
+        vec2 at = (vec2(px) + 0.5) / vec2(down()) - 0.5;
         ivec2 d00 = ivec2(floor(at));
         vec2 f = at - vec2(d00);
         vec4 weights = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
         for (int k = 0; k < 4; k++) {
             ivec2 d = clamp(d00 + ivec2(k & 1, k >> 1), ivec2(0), halfSize - 1);
-            ivec2 rep = d * 2 + jitter(d);
+            ivec2 rep = d * down() + jitter(d);
             vec3 q = surface(rep);
             if (q.z >= 0.0) {
                 weights[k] = 0.0;

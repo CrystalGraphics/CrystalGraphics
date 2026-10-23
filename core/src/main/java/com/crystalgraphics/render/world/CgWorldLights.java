@@ -181,9 +181,9 @@ public final class CgWorldLights {
     /** The lighting, alpha where valid; the sun's visibility. */
     private static final CgFrameBufferFormat LIGHTING_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.lighting")
             .color(0, CgTextureType.RGBA16F).color(1, CgTextureType.RGBA16F).build();
-    /** The accumulated lighting and its frames; its luminance's moments, eye depth and confidence; the sun's and block light's visibility. */
+    /** The accumulated lighting and its frames; its luminance's moments, eye depth and confidence; the sun's and block light's visibility and their squares. */
     private static final CgFrameBufferFormat HISTORY_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.history")
-            .color(0, CgTextureType.RGBA16F).color(1, CgTextureType.RGBA16F).color(2, CgTextureType.RG16F).build();
+            .color(0, CgTextureType.RGBA16F).color(1, CgTextureType.RGBA16F).color(2, CgTextureType.RGBA16F).build();
     /** The host's window depth before our opaque draws. */
     private static final CgFrameBufferFormat HOST_DEPTH_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.host-depth")
             .color(0, CgTextureType.R32F).build();
@@ -230,6 +230,10 @@ public final class CgWorldLights {
     private static final CgVar.Num SCREEN_TRACE = CgVar.number("crystalgraphics.world.lightsScreenTrace", 8f, 0f, 64f,
             CgVar.DEV, "Blocks a shadow ray is followed across the screen's depth before the world's blocks take over.");
     /** Unreal's r.MegaLights.Temporal.MaxFramesAccumulated. */
+    private static final CgVar.Num DOWNSAMPLE = CgVar.number("crystalgraphics.world.lightsDownsample", 0f, 0f, 2f, CgVar.DEV,
+            "Unreal's r.MegaLights.DownsampleMode: 0 traces every pixel, 1 every other (2x1), 2 a quarter (2x2). Unreal's 2 "
+                    + "leans on TSR to hide its steps, and Minecraft's frame has none.");
+
     private static final CgVar.Num MAX_FRAMES = CgVar.number("crystalgraphics.world.lightsShadowFrames", 12f, 1f, 32f,
             CgVar.DEV, "Frames the shadowed lighting accumulates over: fewer ghost less and shimmer more.");
     /** Unreal's r.MegaLights.Spatial.KernelRadius, in pixels; 0 filters nothing. */
@@ -299,7 +303,7 @@ public final class CgWorldLights {
     private final float[] sunDirection = new float[3];
     private final float[] eyeFrac = new float[3];
     private final int[] eyeBlock = new int[3];
-    private final Consumer<CgShaderBindings> sampleValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, 0f, 0f)
+    private final Consumer<CgShaderBindings> sampleValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, this.downX, this.downY)
             .vec4("_Trace", SCREEN_TRACE.get(), 24f, 0.02f, 0.005f).set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1])
             .set1i("_EyeZ", eyeBlock[2]).vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f)
             .set1i("_Entities", this.entities).set1i("_Casters", this.casterCount).vec4("_Sun", this.sunOn ? 1f : 0f, SUN_TRACE.get(), 24f, SUN_DISC)
@@ -310,7 +314,9 @@ public final class CgWorldLights {
             .sampler("_Normals", 6, this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1));
     private final Consumer<CgShaderBindings> windowValues = b -> CgWorldVoxelWindow.get().bind(b, 0);
     private int entities;
-    private final Consumer<CgShaderBindings> shadeValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, 0f, 0f)
+    /** The downsample factor the sample and shade passes read this frame: {@link #DOWNSAMPLE}'s mode. */
+    private int downX = 2, downY = 2;
+    private final Consumer<CgShaderBindings> shadeValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, this.downX, this.downY)
             .sampler("_Samples", 0, samples).set1f("_MaxWeight", 20f)
             .sampler("_Normals", 1, this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1));
     private final Consumer<CgShaderBindings> temporalValues = b -> this.gridValues.accept(b.vec4("_Eye", eye.x, eye.y, eye.z, 0f)
@@ -923,8 +929,8 @@ public final class CgWorldLights {
 
     /**
      * The lights casting shadows, lit as Unreal's MegaLights lights them (MegaLights.cpp's pass order): four samples a
-     * half-resolution pixel, picked by weighted reservoir from its cell's lights and traced across the screen then
-     * through the occluders ({@code world_lights_sample}); every pixel shaded from a nearby half-resolution pixel's
+     * pixel, or a downsampled one ({@link #DOWNSAMPLE}), picked by weighted reservoir from its cell's lights and traced across the screen then
+     * through the occluders ({@code world_lights_sample}); every pixel shaded from a nearby downsampled pixel's
      * samples ({@code world_lights_shade}); accumulated over frames into the first firing's history
      * ({@code world_lights_temporal}); filtered across the screen where still noisy ({@code world_lights_denoise}). The
      * apply adds the result. False while a program is unbuilt, and the apply lights every light unshadowed.
@@ -939,7 +945,12 @@ public final class CgWorldLights {
         // Each started, whichever is not ready.
         boolean ready = sample.prepare() & shade.prepare() & temporal.prepare() & denoise.prepare();
         if (!ready) return false;
-        int w = Math.max(1, (int) targetW), h = Math.max(1, (int) targetH), sw = (w + 1) / 2 * 2, sh = (h + 1) / 2 * 2;
+        int mode = Math.round(DOWNSAMPLE.get());
+        downX = mode > 0 ? 2 : 1;
+        downY = mode > 1 ? 2 : 1;
+        // Four samples a downsampled pixel, in a 2x2 block of the samples texture.
+        int w = Math.max(1, (int) targetW), h = Math.max(1, (int) targetH);
+        int sw = (w + downX - 1) / downX * 2, sh = (h + downY - 1) / downY * 2;
         if (samples == null || samples.getWidth() != sw || samples.getHeight() != sh) {
             samples = CgGraphTexture.transientTexture("cg_world_lights.samples", new CgTextureDesc(sw, sh, SAMPLES_FORMAT));
         }

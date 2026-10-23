@@ -37,7 +37,7 @@ Properties {
     _ToView2 ("The third row",                                     vec4) = (0, 0, 1, 0)
     _Depth   ("The perspective's m22, m32, m23 and m33: window depth to eye depth", vec4) = (1, 0, -1, 0)
     _DayFade ("A light's strength under a full day's open sky; 1 for never fading", float) = 0.1
-    _Screen  ("The full target's width and height",                vec4) = (1, 1, 0, 0)
+    _Screen  ("The full target's width and height, then the downsample factor", vec4) = (1, 1, 2, 2)
     _Trace   ("Screen trace: blocks, steps, normal bias in blocks, relative depth thickness", vec4) = (8, 24, 0.02, 0.005)
     _Sun     ("The sun: 1 to trace it, its screen trace's blocks and steps, the tangent of its disc's half angle", vec4) = (0, 24, 24, 0.004675)
     _Own     ("1 where the host's depth before our opaque draws was taken this frame", float) = 0.0
@@ -144,10 +144,13 @@ Pass {
         return n;
     }
 
-    // Unreal's GetDownsampleJitter2x2: which pixel of a half-resolution pixel's 2x2 block it stands for this frame.
+    // Unreal's r.MegaLights.DownsampleMode as a factor: 1x1, 2x1 (checkerboard) or 2x2 (half resolution).
+    ivec2 down() { return ivec2(_Screen.zw); }
+
+    // Unreal's GetDownsampleJitter2x2: which pixel of a downsampled pixel's block it stands for this frame.
     ivec2 jitter(ivec2 d) {
         int k = (CG_FRAME_INDEX + d.x * 3 + d.y * 5) & 3;
-        return ivec2(k & 1, k >> 1);
+        return ivec2(k & 1, k >> 1) % down();
     }
 
     // A light's lighting at p facing n, times the scene: world_lights.shader's, before its colour.
@@ -408,7 +411,7 @@ Pass {
         ivec2 sampleCoord = ivec2(gl_FragCoord.xy), d = sampleCoord >> 1;
         int mine = (sampleCoord.x & 1) + 2 * (sampleCoord.y & 1);
         fragColor = vec4(-1.0, 0.0, 1.0, 1.0);
-        ivec2 px = d * 2 + jitter(d);
+        ivec2 px = d * down() + jitter(d);
         if (px.x >= int(_Screen.x) || px.y >= int(_Screen.y)) return;
         vec3 p = surface(px);
         if (p.z >= 0.0) return;

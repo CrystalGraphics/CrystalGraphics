@@ -3,7 +3,8 @@
 // near their plane is, how alike their normal and how near their luminance within the pixel's spread. Its spread is
 // the temporal moments', or for the first frames after a disocclusion a 5x5 Gaussian of them, doubled, with twice the
 // samples. A pixel filters only where its relative spread or its history's spatial spread says it is noisy. The sun's
-// and the block light's visibility (RT1) are filtered by depth and normal alone, in penumbras and after a disocclusion.
+// and the block light's visibility (RT1) are filtered by the same rule, each from its own moments, a neighbour weighed
+// by how near its visibility is within the pixel's spread: a lit pixel keeps no shadow from a pixel beside it.
 #type none
 #include "crystalgraphics:shaders/lib/math.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
@@ -20,7 +21,7 @@ Properties {
     _Depth   ("The perspective's m22, m32, m23 and m33: window depth to eye depth", vec4) = (1, 0, -1, 0)
     _Lighting ("The accumulated lighting and frames",              sampler2D) = "black"
     _Moments  ("The accumulated moments, eye depth and confidence", sampler2D) = "black"
-    _Vis      ("The accumulated sun and block light visibility",   sampler2D) = "white"
+    _Vis      ("The accumulated sun and block light visibility, then their squares", sampler2D) = "white"
     _Normals  ("Our surfaces' normals, world, n * 0.5 + 0.5, alpha 1 where drawn", sampler2D) = "black"
     _Spatial ("KernelRadius, NumSamples, DepthWeightScale, MaxDisocclusionFrames", vec4) = (8, 4, 10000, 2)
     _Spread  ("DisocclusionDiffuseSpatialVarianceScale, HistorySpatialStdDevThreshold, MaxFramesAccumulated", vec4) = (2, 0.15, 12, 0)
@@ -98,7 +99,8 @@ Pass {
     void fragment(in v2f i, out Filtered o) {
         ivec2 px = ivec2(gl_FragCoord.xy), size = textureSize(_Lighting, 0);
         vec4 centre = texelFetch(_Lighting, px, 0);
-        vec2 vis = texelFetch(_Vis, px, 0).xy;
+        vec4 visMoments = texelFetch(_Vis, px, 0);
+        vec2 vis = visMoments.xy;
         o.lighting = vec4(0.0);
         o.visibility = vec4(1.0);
         float frames = centre.a;
@@ -125,10 +127,14 @@ Pass {
             moments = texelFetch(_Moments, px, 0);
         }
         float stdDev = sqrt(max(moments.y - moments.x * moments.x, 0.0));
-        bool filtering;
+        vec2 visStdDev = sqrt(max(visMoments.zw - vis * vis, vec2(0.0)));
+        bool filtering, noisy = false;
+        bvec2 filterVis;
         if (disocclusion > 0.01) {
             stdDev *= _Spread.x;
+            visStdDev *= _Spread.x;
             filtering = stdDev / max(moments.x, 0.1) > 0.2;
+            filterVis = greaterThan(visStdDev / max(vis, vec2(0.1)), vec2(0.2));
         } else {
             // GetHistoryConfidenceSpatialStdDev: how unevenly the history was trusted round this pixel.
             float sum = 0.0, squares = 0.0, n = 0.0;
@@ -142,16 +148,18 @@ Pass {
                 }
             }
             float m1 = sum / n;
-            bool noisy = sqrt(max(squares / n - m1 * m1, 0.0)) > _Spread.y;
+            noisy = sqrt(max(squares / n - m1 * m1, 0.0)) > _Spread.y;
             filtering = (_Spread.z >= 8.0 || noisy) && _Spread.z > 1.0 && (stdDev / max(moments.x, 0.1) > 0.5 || noisy);
+            vec2 relative = visStdDev / max(vis, vec2(0.1));
+            filterVis = bvec2(relative.x > 0.5 || noisy, relative.y > 0.5 || noisy);
         }
-        bool filterVis = disocclusion > 0.01 || vis.x > 0.02 && vis.x < 0.98 || vis.y > 0.02 && vis.y < 0.98;
-        if (_Spatial.x <= 0.0 || !filtering && !filterVis) return;
+        if (_Spatial.x <= 0.0 || !filtering && !any(filterVis)) return;
 
         vec3 p = surface(px), n = normal_at(px, p);
         float centreLum = luminance(centre.rgb);
         vec3 sum = centre.rgb;
-        float weightSum = 1.0, visWeight = 1.0;
+        float weightSum = 1.0;
+        vec2 visWeight = vec2(1.0);
         vec2 visSum = vis;
         uvec2 seed = cg_rand_pcg16(ivec3(px % 2, CG_FRAME_INDEX)).xy;
         uint count = uint(mix(_Spatial.y, 2.0 * _Spatial.y, disocclusion) + 0.5);
@@ -172,12 +180,14 @@ Pass {
                 sum += neighbour.rgb * w;
                 weightSum += w;
             }
-            if (filterVis) {
-                visSum += texelFetch(_Vis, q, 0).xy * geometry;
-                visWeight += geometry;
+            if (any(filterVis)) {
+                vec2 q2 = texelFetch(_Vis, q, 0).xy;
+                vec2 w = geometry * exp2(-abs(vis - q2) / max(visStdDev, vec2(0.001))) * vec2(filterVis);
+                visSum += q2 * w;
+                visWeight += w;
             }
         }
         if (filtering) o.lighting = vec4(sum / weightSum, 1.0);
-        if (filterVis) o.visibility = vec4(visSum / visWeight, 0.0, 1.0);
+        o.visibility = vec4(visSum / visWeight, 0.0, 1.0);
     }
 }

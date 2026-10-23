@@ -158,11 +158,11 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
 
 | Pass | Unreal (MegaLights) | Here |
 |---|---|---|
-| Sample | `GenerateLightSamplesCS`: 4 samples a half-resolution pixel, a weighted reservoir over its tile's lights, weight `log2(luminance + 1)`; a sample of the same light merged into the next one's ray | `world_lights_sample.shader`, over the light grid's cell, the shadowed lights alone |
+| Sample | `GenerateLightSamplesCS`: 4 samples a half-resolution pixel, a weighted reservoir over its tile's lights, weight `log2(luminance + 1)`; a sample of the same light merged into the next one's ray | `world_lights_sample.shader`, over the light grid's cell, the shadowed lights alone; every pixel by default (below) |
 | Trace | screen trace (hierarchical, 1 m), then the global distance field | screen trace (24 steps over 8 blocks, `crystalgraphics.world.lightsScreenTrace`), then `CgWorldVoxelWindow`'s distance field (blocks, 128x96x128 round the camera), then each of `CgWorldEntityBoxes`' entities as a capsule (Unreal's capsule shadows), then our meshes' distance fields |
 | Shade | `ShadeLightSamplesCS`: each pixel picks a nearby half-resolution pixel by bilinear, depth and normal weight; each visible light lit exactly, times its samples' weights | `world_lights_shade.shader` |
-| Temporal | `DenoiserTemporalCS`: history clamped in YCoCg to the neighbourhood, 4 to 12 frames by confidence, moments kept | `world_lights_temporal.shader`, one history for the first firing (`crystalgraphics.world.lightsShadowFrames`) |
-| Spatial | `DenoiserSpatialCS`: where still noisy, a disk of 4 (8 after a disocclusion) samples by depth, normal and luminance | `world_lights_denoise.shader` (`crystalgraphics.world.lightsShadowSpatial`, pixels) |
+| Temporal | `DenoiserTemporalCS`: history clamped in YCoCg to the neighbourhood, 4 to 12 frames by confidence, moments kept | `world_lights_temporal.shader`, one history for the first firing (`crystalgraphics.world.lightsShadowFrames`); the sun's and block light's visibility clamped and accumulated the same way, with their moments |
+| Spatial | `DenoiserSpatialCS`: where still noisy, a disk of 4 (8 after a disocclusion) samples by depth, normal and luminance | `world_lights_denoise.shader` (`crystalgraphics.world.lightsShadowSpatial`, pixels); the visibility by the same rule from its own moments, its difference standing for luminance |
 | Composite | adds into scene colour | `world_lights.shader` adds it beside the unshadowed lights |
 
 - **The sun** is traced in the same passes, a ray a sample over its disc (Unreal's `LightSourceAngle`), while it is up
@@ -191,9 +191,13 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
   few degrees toward it, so a face edge-on to the sun holds still.
 - **What does not**: a particle's light (Unreal's simple lights cast none), a slot light with `cast_shadows: false`,
   any light under `-Dcrystalgraphics.world.lightsShadows=false`.
+- **Resolution**: `crystalgraphics.world.lightsDownsample` is Unreal's `r.MegaLights.DownsampleMode`: 0 traces every
+  pixel, 1 every other (2x1), 2 a quarter (2x2). Unreal defaults to 2 and lets TSR hide its 2-pixel steps; Minecraft's
+  frame has no temporal anti-aliasing, so the default is 0. With 1,000 shadowed lights at 1080p the sample pass took
+  3.36 ms at 0, 1.83 at 1 and 1.09 at 2 (RTX 4070 Super, gl).
 - **Departures from Unreal**: a linear screen trace, longer than Unreal's, because the world trace knows only blocks;
   no visible-light hash guiding the next frame's samples; lights that cast no shadow stay on the grid's exact pass
-  rather than being sampled; the shading confidence is 1.
+  rather than being sampled; the shading confidence is 1; every pixel traced by default (above).
 - The gate is `--mode=lights-shadow`: a wall of blocks between a light and the floor, the light behind it gone and in the
   open the same as unshadowed. GPU zones `world.lightsSample`, `world.lightsShade`, `world.lightsTemporal`,
   `world.lightsDenoise`.
@@ -215,7 +219,7 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
 | `--mode=lights-shadow` | a light behind a wall of blocks withheld, in the open kept, on GL and Vulkan |
 | `--mode=lights-sun` | our box shadows the host's ground, blocks off screen shadow our box, open ground kept, on GL and Vulkan |
 | `--mode=lights-torch` | a torch's light on the host's ground withheld behind our box, kept in the open, on GL and Vulkan |
-| `--mode=lights-casters` | our box shadows the host's ground and our ball our slab off their distance fields, the ground beside kept, the sun's edge across the ball steady as the camera turns, on GL and Vulkan |
+| `--mode=lights-casters` | our box shadows the host's ground and our ball our slab off their distance fields, the ground beside kept, no shadow more than 3 pixels past the exact one, the sun's edge across the ball steady as the camera turns, on GL and Vulkan |
 | `--mode=vfx-lights` | every particle light (where, how far, how bright, its block and sky light, its source radius) against a Java gather |
 | `--mode=lights-bench` | the cost: `-Dcrystalgraphics.harness.lights=10000` and profile `world.lights`, `world.lightsCoarse`, `world.lightsCells`, `world.lightsApply` |
 
