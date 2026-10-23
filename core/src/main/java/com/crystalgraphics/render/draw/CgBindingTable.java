@@ -49,7 +49,7 @@ import java.util.Objects;
  */
 public final class CgBindingTable {
 
-    /** GL's floor of 16 units a stage, less the four the engine binds from the top (CgBindingPoints). */
+    /** A snapshot's cap. What a GPU leaves a material is below CgBindingPoints' lowest reserved unit, checked at compile. */
     public static final int MAX_TEXTURES = 12;
     public static final int MAX_BLOCKS = 4;
     public static final int MAX_BUFFERS = 4;

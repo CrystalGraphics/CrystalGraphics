@@ -35,6 +35,9 @@ public final class CgFallbackTextures {
     /** A 1×1×1 opaque white volume: what a pass with no world media reads through {@code cg_Media}, everything let through. */
     public static CgTexture WHITE_VOLUME;
 
+    /** A 1×1×1 black volume: what a pass with no world lights on transparent surfaces reads through {@code cg_LocalLights}. */
+    public static CgTexture BLACK_VOLUME;
+
     private CgFallbackTextures() {}
 
     /**
@@ -51,6 +54,11 @@ public final class CgFallbackTextures {
         white.put((byte) 255).put((byte) 255).put((byte) 255).put((byte) 255).flip();
         volume.uploadRegion(0, 0, 0, 0, 1, 1, 1, white, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE);
         WHITE_VOLUME = volume;
+        CgTexture3D black = CgTexture3D.createEmpty(1, 1, 1, CgTextureSpec.RGBA8_LINEAR);
+        ByteBuffer zero = ByteBuffer.allocateDirect(4);
+        zero.put((byte) 0).put((byte) 0).put((byte) 0).put((byte) 0).flip();
+        black.uploadRegion(0, 0, 0, 0, 1, 1, 1, zero, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE);
+        BLACK_VOLUME = black;
     }
 
     /**
@@ -68,6 +76,8 @@ public final class CgFallbackTextures {
         TRANSPARENT = null;
         deleteAndNull(WHITE_VOLUME);
         WHITE_VOLUME = null;
+        deleteAndNull(BLACK_VOLUME);
+        BLACK_VOLUME = null;
     }
 
     private static CgTexture createPixel(int r, int g, int b, int a) {

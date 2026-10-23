@@ -1519,7 +1519,7 @@ public final class CgWorldRenderer {
                 targetHeight = stage.host().height();
                 prepare(view);
                 pointLights.record(stage, view, toWorld, targetWidth, targetHeight);
-                pointLights.apply(stage, stage.recording());
+                pointLights.apply(stage, stage.recording(), false);
                 if (!CgRehearsal.active()) text.record(stage, view);
             }
             return;
@@ -1609,7 +1609,7 @@ public final class CgWorldRenderer {
             lit = which == TRANSPARENT && pointLights.record(stage, view, toWorld, targetWidth, targetHeight);
             if (which == TRANSPARENT) casters();
             // Onto the opaque scene, before any transparent draw blends over it; the sun's shadows run with no light.
-            if (which == TRANSPARENT) pointLights.apply(stage, recording);
+            if (which == TRANSPARENT) pointLights.apply(stage, recording, drawn > 0);
             mediaOut = which == TRANSPARENT && drawn > 0
                     ? media.record(recording, stage.constants(), view, toWorld, targetWidth, targetHeight) : null;
             if (scene) recordSceneGlows(stage, recording, view);
@@ -2433,6 +2433,8 @@ public final class CgWorldRenderer {
     /** {@code pass} reading this firing's media, where anything is in the air. */
     private void mediated(CgRasterPass pass) {
         if (mediaOut != null) pass.texture(CgBindingPoints.MEDIA_TEXTURE_UNIT, mediaOut);
+        CgGraphTexture lit = pointLights.localLights();
+        if (lit != null) pass.texture(CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT, lit);
     }
 
     /**

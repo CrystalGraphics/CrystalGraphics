@@ -16,8 +16,9 @@ must light Minecraft's world.
 5. [Tens of thousands: the light grid](#5-tens-of-thousands-the-light-grid)
 6. [Lights from effects](#6-lights-from-effects)
 7. [Shadows](#7-shadows)
-8. [What they do not do yet](#8-what-they-do-not-do-yet)
-9. [Checking and measuring](#9-checking-and-measuring)
+8. [On transparent surfaces and particles](#8-on-transparent-surfaces-and-particles)
+9. [What they do not do yet](#9-what-they-do-not-do-yet)
+10. [Checking and measuring](#10-checking-and-measuring)
 
 ---
 
@@ -217,16 +218,44 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
   stands over a shadow, and logs `[shadows-bisect]` the sample pass's GPU time without each. `--mode=lights-shadows-bench`
   is the harness's version of that view (animals, eye height and the sun's angle by `-D`).
 
-## 8. What they do not do yet
+## 8. On transparent surfaces and particles
+
+The deferred pass lights only the front opaque surface of each pixel. What is transparent (glass, smoke, every lit
+particle) reads **Unreal's translucency lighting volume** instead, its default for particles: its cost is the volume's,
+not every transparent pixel's.
+
+```glsl
+// nothing to write: a lit Forward pass (the default; "Lighting" = "Unlit" opts out) takes it through cg_Lit
+fragColor = vec4(albedo, alpha);                         // in a transparent firing, lit by the lights round it too
+vec3 extra = cg_LocalLightAt(cg_FragmentPosition());     // the same light by hand, for a material that opted out
+```
+
+- **The volume** (`env/compute/light_volume.compute`, GPU zone `world.lightsVolume`): two cascades of 64 cells a side,
+  the first to `crystalgraphics.world.lightsVolumeInner` blocks (15), the second to `...lightsVolumeOuter` (50), each
+  the sphere round its slice of a fixed 45-degree view, weighted to its far end and snapped to whole cells
+  (TranslucentLighting.cpp:270-370). Filled each transparent firing that draws something, after the light grid: each
+  cell inside the view's frustum takes every light of its light-grid cell, lit as the deferred pass lights a surface
+  less N.L (the same falloff, day fade and lightmap scale), over pi; a light that casts shadows is traced from the cell
+  through the blocks, the entities and our meshes. Cells outside the frustum stay black.
+- **Read non-directionally**, as Unreal's `Volumetric NonDirectional` translucency: the ambient band times
+  pi x 0.282095, a quarter of what a surface squarely facing the light takes. `cg_Lit` multiplies the colour by
+  `1 + volume` beside the lightmap, as the deferred pass multiplies the scene, the inner cascade blending into the
+  outer over its edge (`TransitionScale` 6). Bound at `CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT` (`cg_LocalLights`) on
+  the world renderer's transparent passes; black elsewhere, so an opaque pass is lit by the deferred pass alone.
+- **Departures from Unreal**: every light of a cell traced every frame, where MegaLights samples a few and blends
+  frames; no marking of the cells a translucent pixel reads; the ambient band alone, until a directional consumer.
+- `crystalgraphics.world.lightsVolume=false` turns it off; `--mode=lights-volume` is the gate. `CgLightsDemo` shows it:
+  glass round the carousel, smoke behind the duel.
+
+## 9. What they do not do yet
 
 | Missing | Unreal's answer | Plan |
 |---|---|---|
-| Lighting transparent surfaces and particles | MegaLights' translucency lighting volume | after shadows (task #28) |
 | Lighting the air (fog and smoke glowing round a light) | volumetric fog's local-light injection | after shadows (task #29), into `CgWorldMedia`'s froxels |
 | Rect lights, IES profiles, light functions | rect lights, IES atlases, light function atlases | none yet |
 | Specular | GGX from the G-buffer's roughness | none: Minecraft has no roughness |
 
-## 9. Checking and measuring
+## 10. Checking and measuring
 
 | Gate | Holds |
 |---|---|

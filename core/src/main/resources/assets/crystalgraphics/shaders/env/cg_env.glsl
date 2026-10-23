@@ -179,6 +179,33 @@ float cg_MediaTransmit(vec2 uv, float eye) {
     float t = textureLod(cg_Media, vec3(uv, (k - 0.5) / CG_MEDIA_SLICES), 0.0).r;
     return mix(1.0, t, clamp(k, 0.0, 1.0));
 }
+#if !defined(CG_COMPUTE_STAGE)
+// cg_LocalLights: the world's lights on transparent surfaces (CgWorldLights' translucency lighting volume, Unreal's), 65 x
+// 64 x 128: two cascades of 64 cells round the view, cascade 1 behind cascade 0 in z, and a column at x 64 whose texel
+// (64, 0, 64 * cascade) holds the cascade's lowest corner from the camera and its size. Black, and 1 texel, in a pass
+// that binds none. Bound to CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT; do NOT use that unit in Properties.
+uniform sampler3D cg_LocalLights;
+
+vec3 cg_local_light_cascade(vec3 u, float cascade) {
+    vec3 t = clamp(u * 64.0, 0.5, 63.5);
+    return textureLod(cg_LocalLights, vec3(t.x / 65.0, t.y / 64.0, (t.z + 64.0 * cascade) / 128.0), 0.0).rgb;
+}
+
+// What the world's lights add at camera-relative point p, non-directional: the light a particle or a pane takes, as
+// Unreal's Volumetric NonDirectional translucency does. The inner cascade blends into the outer over its edge
+// (TranslucencyVolumeCommon.ush's ComputeVolumeUVs, TransitionScale 6); past the outer, nothing.
+vec3 cg_LocalLightAt(vec3 p) {
+    if (textureSize(cg_LocalLights, 0).x < 65) return vec3(0.0);
+    vec4 c0 = texelFetch(cg_LocalLights, ivec3(64, 0, 0), 0), c1 = texelFetch(cg_LocalLights, ivec3(64, 0, 64), 0);
+    vec3 u0 = (p - c0.xyz) / c0.w, u1 = (p - c1.xyz) / c1.w;
+    if (any(lessThan(u1, vec3(0.0))) || any(greaterThan(u1, vec3(1.0)))) return vec3(0.0);
+    vec3 edge = clamp((0.5 - abs(u0 - 0.5)) * 6.0, 0.0, 1.0);
+    float inner = edge.x * edge.y * edge.z;
+    vec3 outer = cg_local_light_cascade(u1, 1.0);
+    return inner > 0.0 ? mix(outer, cg_local_light_cascade(u0, 0.0), inner) : outer;
+}
+#endif
+
 // A Distortion pass's output: the offset in UV units, the chromatic split, and the eye depth the haze starts at. The
 // apply pulls nothing nearer than that depth into the bend. Alpha is the closeness, kept by a MAX blend.
 #define CG_DISTORTION(offset, split, eyeDepth) vec4((offset), (split), 1.0 / max((eyeDepth), 0.01))
@@ -238,9 +265,22 @@ float cg_FragmentDistance() {
     return eye * length(vec3(ndc.x / cg_ProjMatrix[0][0], ndc.y / cg_ProjMatrix[1][1], 1.0));
 }
 
-// What a lit material's colour becomes: times the lightmap at cg_Light.
+// This fragment's camera-relative position, from its window position and the view: what the world's lights reach it at.
+vec3 cg_FragmentPosition() {
+    vec2 ndc = gl_FragCoord.xy / cg_Resolution * 2.0 - 1.0;
+    float eye = cg_ProjMatrix[2][3] == 0.0 ? cg_LinearEyeDepth(gl_FragCoord.z) : 1.0 / gl_FragCoord.w;
+    vec3 v = vec3((ndc.x + cg_ProjMatrix[2][0]) * eye / cg_ProjMatrix[0][0],
+            (ndc.y + cg_ProjMatrix[2][1]) * eye / cg_ProjMatrix[1][1], -eye);
+    return transpose(mat3(cg_ViewMatrix)) * (v - cg_ViewMatrix[3].xyz);
+}
+
+// What a lit material's colour becomes: times the lightmap at cg_Light, and lit by the world's lights as the opaque
+// scene is (world_lights.shader adds scene x light): in a transparent firing, at this fragment. In the linear scene the
+// colour is decoded after, so the gain is taken to the decode's inverse power.
 vec4 cg_Lit(vec4 color) {
-    return vec4(color.rgb * CG_LIGHTMAP(cg_Light), color.a);
+    vec3 local = cg_LocalLightAt(cg_FragmentPosition());
+    vec3 gain = CG_LINEAR_SCENE ? pow(1.0 + local, vec3(1.0 / 2.4)) : 1.0 + local;
+    return vec4(color.rgb * CG_LIGHTMAP(cg_Light) * gain, color.a);
 }
 
 // What a colour becomes behind this fragment's fog, for the pass's blend (CG_FOG_MODE, set by the compiler): mixed

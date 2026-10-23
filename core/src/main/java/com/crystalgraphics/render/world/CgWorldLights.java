@@ -6,6 +6,7 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
@@ -163,6 +164,21 @@ public final class CgWorldLights {
      */
     private static final float GRID_NEAR = 0.05f + 0.095f, GRID_FAR = 256.1f, GRID_SPREAD = 4.05f;
     private static final String KERNELS = "crystalgraphics:shaders/env/compute/light_grid.compute";
+    /**
+     * Unreal's translucency lighting volume (TranslucentLighting.cpp): two cascades of {@link #VOLUME_CELLS} a side round
+     * the view, which light_volume.compute fills and every lit transparent pass reads ({@code cg_LocalLights}).
+     */
+    private static final String VOLUME_KERNELS = "crystalgraphics:shaders/env/compute/light_volume.compute";
+    private static final int VOLUME_CELLS = 64, GPU_VOLUME = CgGpuTrace.name("world.lightsVolume");
+    private static final CgFrameBufferFormat VOLUME_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.volume")
+            .color(0, CgTextureType.RGBA16F).build();
+    private static final CgVar.Bool VOLUME = CgVar.bool("crystalgraphics.world.lightsVolume", true, CgVar.DEV,
+            "Transparent surfaces and particles lit by the world's lights, through Unreal's translucency lighting volume.");
+    private static final CgVar.Num VOLUME_INNER = CgVar.number("crystalgraphics.world.lightsVolumeInner", 15f, 1f, 128f,
+            CgVar.DEV, "Blocks from the eye the translucency lighting volume's first cascade reaches: Unreal's "
+                    + "r.TranslucencyLightingVolume.InnerDistance, 15 m.");
+    private static final CgVar.Num VOLUME_OUTER = CgVar.number("crystalgraphics.world.lightsVolumeOuter", 50f, 2f, 256f,
+            CgVar.DEV, "Blocks from the eye its second reaches: r.TranslucencyLightingVolume.OuterDistance, 50 m.");
     /** What adds the lights onto the scene: a full-screen pass reading the grid. */
     static final String APPLY_SHADER = "crystalgraphics:shaders/world_lights.shader";
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
@@ -302,6 +318,12 @@ public final class CgWorldLights {
     private CgKernel view, coarse, cell, countCells, writeCells;
     private float tileU, tileV;
     private CgMaterial apply, sample, shade, temporal, denoise, tiles;
+    /** The translucency lighting volume: this firing's, or null; each cascade's lowest corner from the eye and cell size. */
+    @Nullable
+    private CgGraphTexture localLights;
+    private CgGraphTexture volume;
+    private CgKernel fill;
+    private final float[] cascades = new float[8];
     /** This firing's entities per tile, and the farthest a shadowed light's ray runs, blocks. */
     private CgGraphTexture entityTiles;
     private float rayReach;
@@ -1010,11 +1032,13 @@ public final class CgWorldLights {
      * Adds this firing's lights onto the scene behind each pixel, after {@link #record} answered true: one full-screen
      * pass over the stage's target, Unreal's simple lights through the grid. Skipped while its program is unbuilt.
      */
-    void apply(CgStageFrame stage, CgRecording recording) {
+    void apply(CgStageFrame stage, CgRecording recording, boolean transparents) {
+        localLights = null;
         if (apply == null) apply = CgMaterial.newInstance(APPLY_SHADER);
         if (!apply.prepare()) return;
         sunOn = sunWanted(stage);
         shadowsOn = SHADOWS.get() && (shadowedAdded > 0 || blockCount > 0 || sunOn) && recordShadows(stage, recording);
+        if (transparents && binned && VOLUME.get()) recordVolume(stage, recording);
         if (!binned && !shadowsOn) return;
         CgGraphBuffer none = zeroes(recording);
         apply.buffer("LIGHTS", binned ? list : none).buffer("CELLS", binned ? cells : none)
@@ -1250,6 +1274,75 @@ public final class CgWorldLights {
                 CgFrameBufferFormat.builder("cg_world_lights.casters").color(0, CgTextureType.RGBA32F).build()));
         casterStaging = ByteBuffer.allocateDirect(MOST_CASTERS * CASTER_FLOATS * 4).order(ByteOrder.nativeOrder());
         sunRowStaging = ByteBuffer.allocateDirect(CASCADES * 16 * 4).order(ByteOrder.nativeOrder());
+    }
+
+    /** The world's lights on transparent surfaces this firing, for {@code LOCAL_LIGHTS_TEXTURE_UNIT}; null for none. */
+    @Nullable
+    CgGraphTexture localLights() {
+        return localLights;
+    }
+
+    /**
+     * Unreal's translucency lighting volume (TranslucentLighting.cpp:270-370): each cascade the sphere round its slice of
+     * a fixed 45-degree, square view (r.TranslucencyLightingVolume.AdaptToPerspective 0), its centre weighted to the far
+     * end and snapped to whole cells in absolute space; then light_volume.compute lights every cell, after the light
+     * grid and the shadows' inputs are this firing's.
+     */
+    private void recordVolume(CgStageFrame stage, CgRecording recording) {
+        if (fill == null) {
+            fill = CgCompute.load(VOLUME_KERNELS).kernel("Fill");
+            fill.prepare();
+        }
+        if (volume == null) {
+            volume = CgGraphTexture.transientTexture("cg_world_lights.volume",
+                    CgTextureDesc.volume(VOLUME_CELLS + 1, VOLUME_CELLS, 2 * VOLUME_CELLS, VOLUME_FORMAT));
+        }
+        // The view's forward in eye-relative world: the view's third row turned round.
+        float fx = -toView.m02(), fy = -toView.m12(), fz = -toView.m22();
+        float norm = (float) Math.sqrt(fx * fx + fy * fy + fz * fz);
+        fx /= norm;
+        fy /= norm;
+        fz /= norm;
+        float inner = VOLUME_INNER.get(), outer = Math.max(VOLUME_OUTER.get(), inner + 1f);
+        for (int c = 0; c < 2; c++) {
+            float start = c == 0 ? 0f : inner, end = c == 0 ? inner : outer;
+            // A 45-degree square view's corners are their distance out each way; the far four weigh 1 / 4.4 each and the
+            // near 1 / 44 (FarVertexWeightScale 10).
+            float along = start / 11f + end / 1.1f;
+            float radius = (float) Math.max(Math.sqrt(2.0 * end * end + (end - along) * (end - along)),
+                    Math.sqrt(2.0 * start * start + (along - start) * (along - start)));
+            double cell = 2.0 * radius / VOLUME_CELLS;
+            cascades[c * 4] = (float) (Math.floor((cameraX + fx * along) / cell) * cell - cameraX) - radius;
+            cascades[c * 4 + 1] = (float) (Math.floor((cameraY + fy * along) / cell) * cell - cameraY) - radius;
+            cascades[c * 4 + 2] = (float) (Math.floor((cameraZ + fz * along) / cell) * cell - cameraZ) - radius;
+            cascades[c * 4 + 3] = (float) cell;
+        }
+        CgGraphBuffer none = zeroes(recording);
+        CgGraphBuffer boxes = CgWorldEntityBoxes.buffer();
+        boolean traced = shadowsOn, meshes = traced && casterCount > 0;
+        CgTexture lightmap = stage.host().textures().lightmapTexture();
+        CgComputePass pass = recording.compute("world.lightsVolume", stage.constants()).timed(GPU_VOLUME);
+        CgDispatch d = pass.dispatch(fill, VOLUME_CELLS + 1, VOLUME_CELLS, 2 * VOLUME_CELLS).image("LOCAL_LIGHTS", volume)
+                .bind("LIGHTS", list).bind("CELLS", cells).bind("INDICES", indices)
+                .bind("ENTITIES", traced && boxes != null ? boxes : none)
+                .set("_Cascade0", cascades[0], cascades[1], cascades[2], cascades[3])
+                .set("_Cascade1", cascades[4], cascades[5], cascades[6], cascades[7])
+                .set("_EyeOffset", eye.x, eye.y, eye.z, 0f)
+                .set("_Grid", gridX, gridY, SLICES, 0f).set("_Tile", tileU, tileV, 0f, 0f)
+                .set("_ZParams", zParams[0], zParams[1], zParams[2], 0f).set("_Rays", rays[0], rays[1], rays[2], rays[3])
+                .set("_ToView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
+                .set("_ToView1", toView.m01(), toView.m11(), toView.m21(), toView.m31())
+                .set("_ToView2", toView.m02(), toView.m12(), toView.m22(), toView.m32())
+                .set("_DayFade", DAY_FADE.get()).set("_Shadows", traced ? 1f : 0f)
+                .texture("_Lightmap", lightmap != null ? lightmap : CgFallbackTextures.WHITE_1x1)
+                .set("_Skip", SAMPLE_SKIP.get()).set("_EyeX", eyeBlock[0]).set("_EyeY", eyeBlock[1]).set("_EyeZ", eyeBlock[2])
+                .set("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f)
+                .set("_Entities", traced && boxes != null ? entities : 0).set("_Casters", meshes ? casterCount : 0)
+                .texture("_CasterRows", meshes ? casters : CgFallbackTextures.BLACK_1x1)
+                .texture("_MeshFields", meshes ? meshFields.atlas() : CgFallbackTextures.BLACK_1x1);
+        CgWorldVoxelWindow.get().bind(d);
+        pass.end();
+        localLights = volume;
     }
 
     /** Unreal's ComputeAccumulatedScale: where split {@code index} of {@link #CASCADES} falls, 0 to 1. */

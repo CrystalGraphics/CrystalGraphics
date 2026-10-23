@@ -88,7 +88,8 @@ A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available
 | `cg_DepthBuffer` | `uniform sampler2D` | `CgBindingPoints.DEPTH_TEXTURE_UNIT` | The target's depth as it stands at the draw, in its own depth format: a copy the frame graph takes before the first reader and again after a draw that wrote depth (`render/graph/CLAUDE.md` § *Reading the target*). An opaque material sees the host's world and the opaque draws sorted before it, a transparent one every opaque draw. **Raw values are the host's convention** — reversed-Z on 26.2 — so compare depths as eye distances: `CG_SCENE_EYE_DEPTH(uv)` against `cg_LinearEyeDepth(gl_FragCoord.z)`. Valid in both vertex and fragment stages of all passes. **Do not bind user Properties samplers to `CgBindingPoints.DEPTH_TEXTURE_UNIT`.** |
 | `cg_SceneColor` | `uniform sampler2D` | `CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT` | The target's colour as it stands at the draw, copied the same way: everything sorted before the reader, transparent draws included, but other readers in a row with it, which share its copy. RGBA8, linearly filtered, for a material that bends what is behind it (heat haze, a shockwave). **Do not bind user Properties samplers to that unit either.** |
 | `cg_Lightmap` | `uniform sampler2D` | `CgBindingPoints.LIGHTMAP_TEXTURE_UNIT` | The host's lightmap in a world pass, block light along u and sky light along v; 1x1 white in any other pass. Read through `CG_LIGHTMAP(light)`. **Do not bind user Properties samplers to that unit.** |
-| `cg_Media` | `uniform sampler3D` | `CgBindingPoints.MEDIA_TEXTURE_UNIT` | What gets through the smoke and gas in front, a froxel volume over the screen (`CgWorldMedia`); 1x1x1 white where nothing is in the air or the pass is not a world pass. Read through `cg_MediaTransmit(uv, eyeDepth)`. The lowest unit the engine reserves: user samplers stay below it. |
+| `cg_Media` | `uniform sampler3D` | `CgBindingPoints.MEDIA_TEXTURE_UNIT` | What gets through the smoke and gas in front, a froxel volume over the screen (`CgWorldMedia`); 1x1x1 white where nothing is in the air or the pass is not a world pass. Read through `cg_MediaTransmit(uv, eyeDepth)`. |
+| `cg_LocalLights` | `uniform sampler3D` | `CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT` | The world's lights on transparent surfaces, the translucency lighting volume (`CgWorldLights`, `docs/LIGHTS.md` §8) in a transparent world pass; 1x1x1 black in any other. `cg_Lit` adds it; read by hand through `cg_LocalLightAt(position)`. Fragment and vertex stages only. The lowest unit the engine reserves: user samplers stay below it. |
 
 Convenience macros over the frame block:
 
@@ -120,7 +121,8 @@ void fragment(in v2f i, out vec4 fragColor) {
 | `cg_Light` | fragment only: this fragment's `vec2(block, sky)`, `CG_OBJECT_LIGHT` unless the shader sets it |
 | `CG_OBJECT_LIGHT` | the draw's light, in the normal matrix's unused column: `CgWorldRenderer`'s `.light`, else the world's at its position |
 | `CG_LIGHTMAP(light)` | the lightmap's colour for a `vec2(block, sky)` |
-| `cg_Lit(color)`, `cg_Fog(color)` | fragment only: what the generated `main` applies, for a material that opted out and wants them on part of its colour |
+| `cg_Lit(color)`, `cg_Fog(color)` | fragment only: what the generated `main` applies, for a material that opted out and wants them on part of its colour. `cg_Lit` is the lightmap times `1 +` the world's lights at the fragment (`cg_LocalLights`, transparent passes) |
+| `cg_LocalLightAt(p)`, `cg_FragmentPosition()` | the world's lights at camera-relative `p`, non-directional; this fragment's camera-relative position |
 | `cg_FogAmount(distance)`, `CG_FOG_AMOUNT(worldPos)` | 0 to 1, vanilla's smoothstep from `cg_FogParams` |
 | `CG_FOG_MODE` | set by the compiler from the pass's blend: 0 mixes toward the fog colour, 1 does so premultiplied, 2 (additive) fades the colour out, 3 (modulate) fades it toward white |
 

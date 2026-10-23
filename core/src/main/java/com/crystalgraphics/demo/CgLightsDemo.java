@@ -1,8 +1,10 @@
 package com.crystalgraphics.demo;
 
 import com.crystalgraphics.api.material.CgBlendMode;
+import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.material.CgMaterialUsage;
+import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.collision.debug.CgCollisionDebug;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
@@ -21,17 +23,20 @@ import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
+import org.joml.Matrix4f;
 
 /**
  * A light show over the ground round a point, every kind of world light ({@link CgWorldLights}) at once, made for the
  * night: a mirror ball sweeping coloured spots over the ground, two searchlights crossing the arena, a carousel of
  * rainbow lights, a neon arch of tubes with colour chasing along it, a lightsaber duel flashing where the blades meet,
  * fireworks and a swarm of fireflies whose particles are lights, and lightning flooding everything every few seconds.
+ * The lights light what is transparent too (the world lights' translucency volume): a ring of tinted glass round the
+ * carousel, and smoke rising behind the duel.
  *
  * <pre>
  *                  arch (tubes)
- *   fireflies    ball (spots)    duel (tubes)
- *                carousel (points)
+ *   fireflies    ball (spots)    duel (tubes), smoke
+ *                carousel (points) in glass
  *   searchlight    fireworks     searchlight
  * </pre>
  *
@@ -56,7 +61,13 @@ public final class CgLightsDemo {
     private final CgVfxLook particles = CgVfxLook.builder(SCHEMA)
             .emitter(fireworks("fireworksGold", 0xFFFFC040, 0xFFFF4020, 3.1f, -4f))
             .emitter(fireworks("fireworksNeon", 0xFF40E0FF, 0xFFFF40E0, 2.3f, 4f))
-            .emitter(fireflies()).build();
+            .emitter(fireflies()).emitter(smoke()).build();
+    /** The glass ring's panes round the carousel, and their tints, each with its alpha. */
+    private static final int PANES = 8;
+    private static final float[][] TINTS = {{0.85f, 0.9f, 1f, 0.35f}, {0.6f, 0.8f, 1f, 0.45f}, {1f, 0.7f, 0.8f, 0.45f},
+            {0.75f, 1f, 0.75f, 0.45f}};
+    private final Matrix4f pane = new Matrix4f();
+    private CgMaterial glass;
     private final CgPose pose = new CgPose();
     private CgVfxSystemInstance<?> playing;
     private double playingX = Double.NaN, playingY, playingZ;
@@ -96,6 +107,25 @@ public final class CgLightsDemo {
                 .build();
     }
 
+    /**
+     * Smoke rising just behind the duel, the sabers a block or two off it and the clash between: transparent, so lit
+     * through the world lights' translucency volume rather than the scene's lighting.
+     */
+    private static CgVfxEmitter smoke() {
+        CgKeyframes grow = CgKeyframes.start(0f, 1f).to(1f, 2.6f, CgEasings.OUT_QUAD).build();
+        return CgVfxEmitter.builder("smoke").capacity(400).state(CgVfxEmitterState.infinite(1f)).rate(14f)
+                .at(11f, 0.4f, 2.2f).shape(CgBox.of(0.5, 0.1, 0.5)).direction(0f, 1f, 0f, 15f).speed(0.7f, 1.1f)
+                .life(5f, 7f).size(0.9f, 1.3f).color(0xFFB8B8B8, 1f, 0xFF9A9A9A, 1f)
+                .module(new CgVfxModule.Turbulence(0.8f, 0.4f, 0.4f)).module(new CgVfxModule.Drag(0.4f, 0f))
+                .scaleOverLife(grow, grow, grow)
+                .opacity(CgKeyframes.start(0f, 0f).to(0.15f, 0.55f, CgEasings.OUT_QUAD).to(0.7f, 0.4f, CgEasings.LINEAR)
+                        .to(1f, 0f, CgEasings.IN_QUAD).build())
+                .renderer(CgVfxRenderers.sprite("smoke").material(CgMaterialDefinition.of("crystalgraphics:materials/demo_lights_smoke",
+                        "crystalgraphics:shaders/demo/demo_lit_smoke.shader").blend(CgBlendMode.PREMULTIPLIED)
+                        .usage(CgMaterialUsage.SPRITES).build()).build())
+                .build();
+    }
+
     /** Fireflies drifting over a meadow beside the arena, every one a small light fading in and out. */
     private static CgVfxEmitter fireflies() {
         return CgVfxEmitter.builder("fireflies").capacity(512).state(CgVfxEmitterState.infinite(1f)).rate(70f)
@@ -116,10 +146,12 @@ public final class CgLightsDemo {
 
     public void prepare() {
         vfx.prepare(particles);
+        glass = CgMaterial.load("crystalgraphics:shaders/demo/demo_glass.shader");
+        CgWorldRenderer.get().prepare(glass);
     }
 
     public boolean warmed() {
-        return vfx.warmed();
+        return vfx.warmed() && glass != null && CgWorldRenderer.get().prepare(glass);
     }
 
     /** The show round a ground point {@code (x, y, z)} as it is at {@code seconds}. */
@@ -129,6 +161,7 @@ public final class CgLightsDemo {
         mirrorBall(lights, x, y + 10, z - 2, t);
         searchlights(lights, x, y, z, t);
         carousel(lights, x, y, z + 4, t);
+        glass(world, x, y, z + 4);
         arch(lights, x, y, z - 13, t);
         duel(lights, x + 11, y, z + 3, t);
         lightning(lights, x, y, z, t);
@@ -172,6 +205,17 @@ public final class CgLightsDemo {
             int colour = hue(i / (float) CAROUSEL + t * 0.08f);
             CgCollisionDebug.shape(MARK, pose.at(lx, ly, lz), colour);
             lights.add(lx, ly, lz, 7f, colour, lit(3f, 1.4f), 0f);
+        }
+    }
+
+    /** Tinted panes standing in a ring just outside the carousel, facing in: each light lights the glass it passes. */
+    private void glass(CgWorldRenderer world, double x, double y, double z) {
+        for (int i = 0; i < PANES; i++) {
+            double a = (i + 0.5) * 2 * Math.PI / PANES;
+            float[] tint = TINTS[i % TINTS.length];
+            pane.rotationY((float) (Math.PI / 2 - a)).scale(2.6f, 2.8f, 0.06f);
+            world.draw(CgMeshShapes.cube(), glass).at(x + Math.cos(a) * 7.3, y + 1.4, z + Math.sin(a) * 7.3).transform(pane)
+                    .custom(0, tint[0], tint[1], tint[2], tint[3]).submit();
         }
     }
 

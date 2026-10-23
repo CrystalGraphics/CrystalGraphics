@@ -206,12 +206,22 @@ public final class CgBindingPoints {
 
     /**
      * GL texture unit reserved for {@code cg_Media}, the world's froxel transmittance ({@code CgWorldMedia}): the world
-     * renderer's transparent passes bind it, every other pass a white volume. The lowest reserved unit: a material's
-     * own samplers and buffers read as textures sit below it. Shader authors must not use it in material Properties.
+     * renderer's transparent passes bind it, every other pass a white volume. Shader authors must not use it in material
+     * Properties.
      */
     public static int MEDIA_TEXTURE_UNIT = -1;
 
     public static final String MEDIA_TEXTURE_UNIFORM = "cg_Media";
+
+    /**
+     * GL texture unit reserved for {@code cg_LocalLights}, the world's lights on transparent surfaces ({@code
+     * CgWorldLights}' translucency lighting volume): the world renderer's transparent passes bind it, every other pass a
+     * black volume. The lowest reserved unit: a material's own samplers and buffers read as textures sit below it.
+     * Shader authors must not use it in material Properties.
+     */
+    public static int LOCAL_LIGHTS_TEXTURE_UNIT = -1;
+
+    public static final String LOCAL_LIGHTS_TEXTURE_UNIFORM = "cg_LocalLights";
 
     // ── User buffers — allocated from bottom of available range ──────────────
 
@@ -280,6 +290,7 @@ public final class CgBindingPoints {
         SCENE_COLOR_TEXTURE_UNIT = --maxTextureUnits;
         LIGHTMAP_TEXTURE_UNIT = --maxTextureUnits;
         MEDIA_TEXTURE_UNIT = --maxTextureUnits;
+        LOCAL_LIGHTS_TEXTURE_UNIT = --maxTextureUnits;
     }
 
     /**

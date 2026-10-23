@@ -1,0 +1,153 @@
+// The world's lights on transparent surfaces and particles (CgWorldLights): Unreal's translucency lighting volume
+// (TranslucentLighting.cpp, MegaLightsVolumeShading.usf), two cascades of 64 cells a side round the view, each cell the
+// light of every light of the light-grid cell it falls in, as a non-directional transparent material reads it.
+//
+// Each light gives what Unreal's volume shading does (MegaLightsVolume.ush's GetMegaLightsVolumeLighting): its colour
+// times its falloff without N.L, over pi (TranslucentyLightingScale), with world_lights.shader's day fade and lightmap
+// scale; a light that casts shadows traced from the cell as the sample pass traces a surface. A cell keeps the ambient
+// band of its SH and is read non-directionally (GetVolumeLightingNonDirectional): the band times pi * 0.282095, so
+// what is written is a quarter of that light. Cells outside the view's frustum are black, as Unreal shades only the
+// cells a translucent pixel reads (MarkVoxels).
+//
+// The volume is 65 x 64 x 128: x the cells, then one column holding each cascade's placement at (64, 0, 64 * cascade),
+// its lowest corner from the view's position and its size; z cascade 0's 64 cells, then cascade 1's.
+#pragma kernel Fill 4 4 4 image
+
+#include "crystalgraphics:shaders/lib/lights.glsl"
+#include "crystalgraphics:shaders/lib/color.glsl"
+#include "crystalgraphics:shaders/lib/light_shadow.glsl"
+#include "crystalgraphics:shaders/lib/world_light_trace.glsl"
+
+struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; };
+
+Properties {
+    _Cascade0 ("Cascade 0's lowest corner from the eye, and its cell's size", vec4) = (0, 0, 0, 1)
+    _Cascade1 ("Cascade 1's",                                     vec4) = (0, 0, 0, 1)
+    _EyeOffset ("The eye from the view's position: what the placement is written from", vec4) = (0, 0, 0, 0)
+    _Grid     ("Cells across, up and deep",                         vec4) = (1, 1, 32, 0)
+    _Tile     ("A tile's share of the target across and up",        vec4) = (1, 1, 0, 0)
+    _ZParams  ("The slices' B, O and S",                            vec4) = (1, 1, 1, 0)
+    _Rays     ("Unit-depth view rays at the target's edges: left, bottom, right, top", vec4) = (-1, -1, 1, 1)
+    _ToView0  ("Eye-relative world to the bobbed view, the first row, its shift in w", vec4) = (1, 0, 0, 0)
+    _ToView1  ("The second row",                                    vec4) = (0, 1, 0, 0)
+    _ToView2  ("The third row",                                     vec4) = (0, 0, 1, 0)
+    _DayFade  ("A light's strength under a full day's open sky; 1 for never fading", float) = 0.1
+    _Shadows  ("1 to trace the lights that cast shadows",           float) = 0
+    _Lightmap ("The host's lightmap",                               sampler2D) = "white"
+    _Skip     ("Parts of the rays left out: 8 meshes, 32 blocks, 64 entities", int) = 0
+    _EyeX     ("The eye's block: x",                                int) = 0
+    _EyeY     ("y",                                                 int) = 0
+    _EyeZ     ("z",                                                 int) = 0
+    _EyeFrac  ("The eye within its block",                          vec4) = (0, 0, 0, 0)
+    _World         ("The voxel window: a block a texel",            sampler3D) = "black"
+    _WorldSections ("Which of its sections are filled",             sampler3D) = "black"
+    _WorldBaseX    ("Its lowest block, absolute: x",                int) = 0
+    _WorldBaseY    ("y",                                            int) = 0
+    _WorldBaseZ    ("z",                                            int) = 0
+    _WorldWrapX    ("That block's texel: x",                        int) = 0
+    _WorldWrapY    ("y",                                            int) = 0
+    _WorldWrapZ    ("z",                                            int) = 0
+    _WorldLive     ("1 with a level, else 0: read nothing",         int) = 0
+    _WorldDistance ("Distance to solid over FX_WORLD_FAR",          sampler3D) = "white"
+    _Entities ("Entity boxes in ENTITIES",                          int) = 0
+    _Casters  ("Our meshes casting shadows in _CasterRows",         int) = 0
+    _CasterRows ("Our meshes casting shadows, five texels each",    sampler2D) = "black"
+    _MeshFields ("Every mesh's distance field",                     sampler2D) = "black"
+}
+
+Buffers {
+    LIGHTS   ("The firing's lights",                               CgLight, readonly)
+    CELLS    ("Each cell's light count and start",                 uint,    readonly)
+    INDICES  ("The cells' light indices",                          uint,    readonly)
+    ENTITIES ("Entity boxes, two vec4s each: min and max from the eye's block", vec4, readonly)
+}
+
+Images {
+    LOCAL_LIGHTS ("Each cell's light, then each cascade's placement", rgba16f, writeonly, 3d)
+}
+
+// Every entity is tested: a cell has no screen tile.
+uvec4 entityTiles = uvec4(0xFFFFu);
+
+// Whether the window's blocks or an entity's capsule lie on the eye-relative world segment a to a + dir * t1, from
+// t0: the world trace past the screen.
+bool world_trace(vec3 aw, vec3 dir, float t0, float t1) {
+    if ((_Skip & 32) == 0 && _WorldLive != 0 && t0 < t1 && cg_shadow_window(_World, _WorldSections, _WorldDistance,
+            ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ), ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ),
+            ivec3(_EyeX, _EyeY, _EyeZ), _EyeFrac.xyz, aw, dir, max(t0, 0.05), t1)) {
+        return true;
+    }
+    // The entities round the camera, each a vertical capsule in its box (Unreal's capsule shadows' stand-in for a
+    // character), skipped where the ray starts or ends inside it: the surface or the light is that entity's own.
+    vec3 bw = aw + dir * t1;
+    for (int k = 0; k < ((_Skip & 64) != 0 ? 0 : _Entities); k++) {
+        if (((entityTiles[k >> 4] >> uint(k & 15)) & 1u) == 0u) continue;
+        vec3 lo = ENTITIES(k * 2).xyz - _EyeFrac.xyz, hi = ENTITIES(k * 2 + 1).xyz - _EyeFrac.xyz;
+        if (all(greaterThan(aw, lo - 0.1)) && all(lessThan(aw, hi + 0.1))) continue;
+        if (all(greaterThan(bw, lo)) && all(lessThan(bw, hi))) continue;
+        vec3 c = (lo + hi) * 0.5;
+        float r = 0.45 * min(hi.x - lo.x, hi.z - lo.z);
+        vec3 c0 = vec3(c.x, lo.y + r, c.z), c1 = vec3(c.x, max(hi.y - r, lo.y + r), c.z);
+        if (cg_shadow_capsule(aw, bw, c0, c1, r)) return true;
+    }
+    return false;
+}
+
+// Whether one of our meshes lies on the segment: lib/world_light_trace.glsl's casters, less what _Skip leaves out.
+bool caster_trace(vec3 aw, vec3 dir, float t0, float t1) {
+    return cg_trace_casters(_CasterRows, _MeshFields, (_Skip & 8) != 0 ? 0 : _Casters, aw, dir, t0, t1);
+}
+
+vec3 to_view(vec3 w) {
+    return vec3(dot(_ToView0.xyz, w), dot(_ToView1.xyz, w), dot(_ToView2.xyz, w)) + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
+}
+
+// world_lights.shader's scale for a light: its day fade over the luminance of the lightmap at the light.
+float light_scale(CgLight light) {
+    if (light.ambient.x < 0.0) return 1.0;
+    vec3 lightmap = texture(_Lightmap, (clamp(light.ambient.xy, 0.0, 15.0) + 0.5) / 16.0).rgb;
+    float adapt = mix(1.0, _DayFade, clamp(CG_DAYLIGHT, 0.0, 1.0) * light.ambient.y / 15.0);
+    vec3 ambient = max(CG_LINEAR_SCENE ? srgb_to_linear(lightmap) : lightmap, vec3(CG_LINEAR_SCENE ? 0.02 : 0.15));
+    return adapt / luminance(ambient);
+}
+
+void Fill() {
+    ivec3 t = CG_TEXEL;
+    int cascade = t.z >> 6;
+    vec4 box = cascade == 0 ? _Cascade0 : _Cascade1;
+    if (t.x == 64) {
+        LOCAL_LIGHTS_WRITE((t.y == 0 && (t.z & 63) == 0) ? vec4(box.xyz + _EyeOffset.xyz, box.w * 64.0) : vec4(0.0));
+        return;
+    }
+    vec3 w = box.xyz + (vec3(t.x, t.y, t.z & 63) + 0.5) * box.w;
+    vec3 p = to_view(w);
+    // Outside the view's frustum, a cell's size of slack each way, nothing reads it.
+    float depth = -p.z, slack = box.w * 1.75;
+    vec2 lo = _Rays.xy * depth - slack, hi = _Rays.zw * depth + slack;
+    if (depth < -slack || any(lessThan(p.xy, lo)) || any(greaterThan(p.xy, hi))) {
+        LOCAL_LIGHTS_WRITE(vec4(0.0));
+        return;
+    }
+    vec3 q = vec3(clamp(p.xy, _Rays.xy * max(depth, 0.01), _Rays.zw * max(depth, 0.01)), -max(depth, 0.01));
+    ivec3 cell = cg_light_cell(q, _ZParams.xyz, _Rays.xy, _Rays.zw, _Tile.xy, ivec2(_Grid.xy));
+    int e = (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;
+    int count = int(CELLS(e * 2)), from = int(CELLS(e * 2 + 1));
+    vec3 sum = vec3(0.0);
+    for (int k = 0; k < count; k++) {
+        CgLight light = LIGHTS(int(INDICES(from + k)));
+        if (CG_LIGHT_MINECRAFT(light)) continue;
+        float falloff = cg_light_falloff(light.positionRadius.xyz, light.positionRadius.w, light.colorExponent.w,
+                light.spotCos, light.segmentCone, w);
+        if (falloff <= 0.0) continue;
+        if (_Shadows > 0.5 && CG_LIGHT_SHADOWED(light)) {
+            vec3 toLight = light.positionRadius.xyz - w;
+            float d = length(toLight);
+            vec3 dir = toLight / max(d, 1.0e-4);
+            float end = max(d - 0.01, 0.0);
+            if (caster_trace(w, dir, 0.0, end) || world_trace(w, dir, 0.05, end)) continue;
+        }
+        sum += light.colorExponent.rgb * (falloff * light_scale(light));
+    }
+    // Over pi, then the ambient band read non-directionally: pi * 0.282095^2, a quarter.
+    LOCAL_LIGHTS_WRITE(vec4(sum * (0.25 / 3.14159265), 1.0));
+}
