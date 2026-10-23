@@ -253,6 +253,10 @@ public final class CgWorldLights {
             2048, CgVar.DEV, "Texels a side of each of the sun's four shadow cascades, 8 bytes each: the atlas is twice it.");
     private static final CgLoad CLEAR = CgLoad.clear(0f, 0f, 0f, 0f);
     private static final int GPU_ZONE = CgGpuTrace.name("world.lights");
+    /** The CPU's recording of each part, inside world.recordTransparent. */
+    private static final int ZONE_RECORD = CgTrace.name("world.lights.record"), ZONE_BIN = CgTrace.name("world.lights.bin"),
+            ZONE_APPLY = CgTrace.name("world.lights.apply"), ZONE_SHADOWS = CgTrace.name("world.lights.shadows"),
+            ZONE_SUN = CgTrace.name("world.lights.sun"), ZONE_VOLUME = CgTrace.name("world.lights.volume");
     private static final int GPU_COARSE = CgGpuTrace.name("world.lightsCoarse");
     private static final int GPU_CELLS = CgGpuTrace.name("world.lightsCells");
     /** Firings between reads of the count, for what was dropped. */
@@ -785,102 +789,104 @@ public final class CgWorldLights {
      * holds none, and nothing is recorded.
      */
     boolean record(CgStageFrame frame, CgHostView view, Matrix4fc toWorld, float targetWidth, float targetHeight) {
-        CgRecording recording = frame.recording();
-        CgPassConstants stage = frame.constants();
-        int cpu = addedFrame == CgFrameRing.frame() ? added : 0;
-        // The froxels' eye (CgWorldMedia's): the view's position plus where toWorld puts the eye.
-        toWorld.transformPosition(eye.set(0f, 0f, 0f));
-        cameraX = view.x() + eye.x;
-        cameraY = view.y() + eye.y;
-        cameraZ = view.z() + eye.z;
-        // The view, every firing: the sun's shadows need it with no light listed.
-        place(view.projection(), toWorld, targetWidth, targetHeight);
-        binned = false;
-        gridX = gridY = 1;
-        shadowedAdded = 0;
-        casterCount = 0;
-        sunCasterCount = 0;
-        // Minecraft's light-giving blocks, only where something of ours can shadow them.
-        blockCount = 0;
-        blockReach = BLOCK_REACH.get();
-        if (SHADOWS.get() && blockReach > 0f && ownPixels()) {
-            CgWorldVoxelWindow window = CgWorldVoxelWindow.get();
-            window.useDistance();
-            window.emitters(gatherBlock);
-        }
-        rayReach = appenders.isEmpty() ? 0f : KERNEL_REACH;
-        if (cpu == 0 && blockCount == 0 && appenders.isEmpty()) return false;
-        if (list == null) {
-            list = CgGraphBuffer.persistent("cg_world_lights",
-                    CgBufferDesc.of((long) CAPACITY * FLOATS * 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-            count = CgGraphBuffer.persistent("cg_world_lights.count",
-                    CgBufferDesc.of(16, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-            staging = ByteBuffer.allocateDirect(CAPACITY * FLOATS * 4).order(ByteOrder.nativeOrder());
-            viewed = CgGraphBuffer.persistent("cg_world_lights.view",
-                    CgBufferDesc.elements(CAPACITY, 32, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-            alloc = CgGraphBuffer.persistent("cg_world_lights.alloc",
-                    CgBufferDesc.elements(4, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-        }
-        listed = Math.min(cpu, CAPACITY);
-        long cpuDropped = cpu - listed;
-        blockCount = Math.min(blockCount, CAPACITY - listed);
-        if (listed + blockCount > 0) {
-            staging.clear();
-            for (int i = 0; i < listed; i++) {
-                int p = i * 3, l = i * FLOATS;
-                if (light[l + 19] > 0.5f) {
-                    shadowedAdded++;
-                    // A lit surface is within its radius of the centre; the ray ends on its line or its sphere.
-                    float s0 = light[l + 12], s1 = light[l + 13], s2 = light[l + 14];
-                    rayReach = Math.max(rayReach, light[l + 3] + 0.5f * (float) Math.sqrt(s0 * s0 + s1 * s1 + s2 * s2)
-                            + light[l + 18]);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_RECORD)) {
+            CgRecording recording = frame.recording();
+            CgPassConstants stage = frame.constants();
+            int cpu = addedFrame == CgFrameRing.frame() ? added : 0;
+            // The froxels' eye (CgWorldMedia's): the view's position plus where toWorld puts the eye.
+            toWorld.transformPosition(eye.set(0f, 0f, 0f));
+            cameraX = view.x() + eye.x;
+            cameraY = view.y() + eye.y;
+            cameraZ = view.z() + eye.z;
+            // The view, every firing: the sun's shadows need it with no light listed.
+            place(view.projection(), toWorld, targetWidth, targetHeight);
+            binned = false;
+            gridX = gridY = 1;
+            shadowedAdded = 0;
+            casterCount = 0;
+            sunCasterCount = 0;
+            // Minecraft's light-giving blocks, only where something of ours can shadow them.
+            blockCount = 0;
+            blockReach = BLOCK_REACH.get();
+            if (SHADOWS.get() && blockReach > 0f && ownPixels()) {
+                CgWorldVoxelWindow window = CgWorldVoxelWindow.get();
+                window.useDistance();
+                window.emitters(gatherBlock);
+            }
+            rayReach = appenders.isEmpty() ? 0f : KERNEL_REACH;
+            if (cpu == 0 && blockCount == 0 && appenders.isEmpty()) return false;
+            if (list == null) {
+                list = CgGraphBuffer.persistent("cg_world_lights",
+                        CgBufferDesc.of((long) CAPACITY * FLOATS * 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+                count = CgGraphBuffer.persistent("cg_world_lights.count",
+                        CgBufferDesc.of(16, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+                staging = ByteBuffer.allocateDirect(CAPACITY * FLOATS * 4).order(ByteOrder.nativeOrder());
+                viewed = CgGraphBuffer.persistent("cg_world_lights.view",
+                        CgBufferDesc.elements(CAPACITY, 32, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+                alloc = CgGraphBuffer.persistent("cg_world_lights.alloc",
+                        CgBufferDesc.elements(4, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+            }
+            listed = Math.min(cpu, CAPACITY);
+            long cpuDropped = cpu - listed;
+            blockCount = Math.min(blockCount, CAPACITY - listed);
+            if (listed + blockCount > 0) {
+                staging.clear();
+                for (int i = 0; i < listed; i++) {
+                    int p = i * 3, l = i * FLOATS;
+                    if (light[l + 19] > 0.5f) {
+                        shadowedAdded++;
+                        // A lit surface is within its radius of the centre; the ray ends on its line or its sphere.
+                        float s0 = light[l + 12], s1 = light[l + 13], s2 = light[l + 14];
+                        rayReach = Math.max(rayReach, light[l + 3] + 0.5f * (float) Math.sqrt(s0 * s0 + s1 * s1 + s2 * s2)
+                                + light[l + 18]);
+                    }
+                    staging.putFloat((float) (at[p] - cameraX)).putFloat((float) (at[p + 1] - cameraY))
+                            .putFloat((float) (at[p + 2] - cameraZ));
+                    for (int w = 3; w < FLOATS; w++) staging.putFloat(light[l + w]);
                 }
-                staging.putFloat((float) (at[p] - cameraX)).putFloat((float) (at[p + 1] - cameraY))
-                        .putFloat((float) (at[p + 2] - cameraZ));
-                for (int w = 3; w < FLOATS; w++) staging.putFloat(light[l + w]);
+                // CG_LIGHT_MINECRAFT: black, reaching its level, its ambient.w 2.
+                for (int i = 0; i < blockCount; i++) {
+                    int b = i * 4;
+                    rayReach = Math.max(rayReach, blocks[b + 3] + 0.5f);
+                    staging.putFloat((float) (blocks[b] + 0.5 - cameraX)).putFloat((float) (blocks[b + 1] + 0.5 - cameraY))
+                            .putFloat((float) (blocks[b + 2] + 0.5 - cameraZ)).putFloat(blocks[b + 3] + 0.5f)
+                            .putFloat(0f).putFloat(0f).putFloat(0f).putFloat(0f)
+                            .putFloat(0f).putFloat(0f).putFloat(0f).putFloat(-2f)
+                            .putFloat(0f).putFloat(0f).putFloat(0f).putFloat(0f)
+                            .putFloat(-1f).putFloat(-1f).putFloat(0.5f).putFloat(2f)
+                            .putFloat(0f).putFloat(0f).putFloat(0f).putFloat(0f);
+                }
+                staging.flip();
+                recording.update(list, 0, staging);
+                listed += blockCount;
             }
-            // CG_LIGHT_MINECRAFT: black, reaching its level, its ambient.w 2.
-            for (int i = 0; i < blockCount; i++) {
-                int b = i * 4;
-                rayReach = Math.max(rayReach, blocks[b + 3] + 0.5f);
-                staging.putFloat((float) (blocks[b] + 0.5 - cameraX)).putFloat((float) (blocks[b + 1] + 0.5 - cameraY))
-                        .putFloat((float) (blocks[b + 2] + 0.5 - cameraZ)).putFloat(blocks[b + 3] + 0.5f)
-                        .putFloat(0f).putFloat(0f).putFloat(0f).putFloat(0f)
-                        .putFloat(0f).putFloat(0f).putFloat(0f).putFloat(-2f)
-                        .putFloat(0f).putFloat(0f).putFloat(0f).putFloat(0f)
-                        .putFloat(-1f).putFloat(-1f).putFloat(0.5f).putFloat(2f)
-                        .putFloat(0f).putFloat(0f).putFloat(0f).putFloat(0f);
+            start[0] = listed;
+            recording.update(count, 0, start, 0, 4);
+            recording.update(alloc, 0, zeros, 0, 4);
+            boolean appended = false;
+            for (Appender a : appenders) a.upload(recording, this);
+            // The scene's farthest depth per tile, for Unreal's HZB cull: built before the passes that read it open.
+            pyramid = frame.depthPyramid();
+            CgComputePass pass = recording.compute("world.lights", stage).timed(GPU_ZONE);
+            for (Appender a : appenders) appended |= a.append(pass, this);
+            boolean binned = listed > 0 || appended;
+            if (binned) bin(recording, stage, pass, view.projection(), toWorld, targetWidth, targetHeight);
+            else pass.end();
+            // Every firing: a surge (a flash, a burst) drops lights the frame it comes, and the budget grows for the next.
+            if (binned) recording.readback(alloc, 4, 4, readAlloc);
+            if (appended && firings++ % COUNT_EVERY == 0) {
+                readCpuDropped = cpuDropped;
+                recording.readback(count, 0, 4, readCount);
+            } else if (!appended) {
+                dropped = cpuDropped;
             }
-            staging.flip();
-            recording.update(list, 0, staging);
-            listed += blockCount;
+            CgTrace.counter(CgChannels.WORLD, "world.lights", listed);
+            CgTrace.counter(CgChannels.WORLD, "world.lights-dropped", dropped);
+            CgTrace.counter(CgChannels.WORLD, "world.lights-cell-dropped", cellsDropped);
+            CgTrace.counter(CgChannels.WORLD, "world.lights-shadowed", shadowedAdded);
+            CgTrace.counter(CgChannels.WORLD, "world.lights-blocks", blockCount);
+            return listed > 0 || appended;
         }
-        start[0] = listed;
-        recording.update(count, 0, start, 0, 4);
-        recording.update(alloc, 0, zeros, 0, 4);
-        boolean appended = false;
-        for (Appender a : appenders) a.upload(recording, this);
-        // The scene's farthest depth per tile, for Unreal's HZB cull: built before the passes that read it open.
-        pyramid = frame.depthPyramid();
-        CgComputePass pass = recording.compute("world.lights", stage).timed(GPU_ZONE);
-        for (Appender a : appenders) appended |= a.append(pass, this);
-        boolean binned = listed > 0 || appended;
-        if (binned) bin(recording, stage, pass, view.projection(), toWorld, targetWidth, targetHeight);
-        else pass.end();
-        // Every firing: a surge (a flash, a burst) drops lights the frame it comes, and the budget grows for the next.
-        if (binned) recording.readback(alloc, 4, 4, readAlloc);
-        if (appended && firings++ % COUNT_EVERY == 0) {
-            readCpuDropped = cpuDropped;
-            recording.readback(count, 0, 4, readCount);
-        } else if (!appended) {
-            dropped = cpuDropped;
-        }
-        CgTrace.counter(CgChannels.WORLD, "world.lights", listed);
-        CgTrace.counter(CgChannels.WORLD, "world.lights-dropped", dropped);
-        CgTrace.counter(CgChannels.WORLD, "world.lights-cell-dropped", cellsDropped);
-        CgTrace.counter(CgChannels.WORLD, "world.lights-shadowed", shadowedAdded);
-        CgTrace.counter(CgChannels.WORLD, "world.lights-blocks", blockCount);
-        return listed > 0 || appended;
     }
 
     /**
@@ -891,89 +897,91 @@ public final class CgWorldLights {
      */
     private void bin(CgRecording recording, CgPassConstants stage, CgComputePass pass, Matrix4fc projection,
                      Matrix4fc toWorld, float targetWidth, float targetHeight) {
-        int gx = Math.max(1, (int) Math.ceil(targetWidth / TILE)), gy = Math.max(1, (int) Math.ceil(targetHeight / TILE));
-        gridX = gx;
-        gridY = gy;
-        binned = true;
-        if (view == null) {
-            CgCompute kernels = CgCompute.load(KERNELS);
-            view = kernels.kernel("View");
-            coarse = kernels.kernel("Coarse");
-            cell = kernels.kernel("Cell");
-            countCells = kernels.kernel("Count");
-            writeCells = kernels.kernel("Write");
-            view.prepare();
-            if (coarse.runs()) {
-                coarse.prepare();
-                cell.prepare();
-            } else {
-                countCells.prepare();
-                writeCells.prepare();
-                CgGpuOps.prepareScan(CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_BIN)) {
+            int gx = Math.max(1, (int) Math.ceil(targetWidth / TILE)), gy = Math.max(1, (int) Math.ceil(targetHeight / TILE));
+            gridX = gx;
+            gridY = gy;
+            binned = true;
+            if (view == null) {
+                CgCompute kernels = CgCompute.load(KERNELS);
+                view = kernels.kernel("View");
+                coarse = kernels.kernel("Coarse");
+                cell = kernels.kernel("Cell");
+                countCells = kernels.kernel("Count");
+                writeCells = kernels.kernel("Write");
+                view.prepare();
+                if (coarse.runs()) {
+                    coarse.prepare();
+                    cell.prepare();
+                } else {
+                    countCells.prepare();
+                    writeCells.prepare();
+                    CgGpuOps.prepareScan(CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT);
+                }
             }
-        }
-        // Below compute, every cell reads every light: the same lists, by the longer route.
-        boolean twoLevel = coarse.runs();
-        int px = (gx + PARENT - 1) / PARENT, py = (gy + PARENT - 1) / PARENT, pz = SLICES / PARENT;
-        // Persistent, grown only: what a later recording reads back is the last firing's grid.
-        if (cellsDropped > 0 && budgetScale < MOST_BUDGET) {
-            budgetScale *= 2;
-            cellsDropped = 0;
-        }
-        int n = gx * gy * SLICES, budget = n * PER_CELL * budgetScale, parentBudget = twoLevel ? budget : 1,
-                parents = px * py * pz;
-        if (cells == null || cells.size() < n * 8L || parentCells.size() < parents * 8L
-                || parentIndices.size() < parentBudget * 4L || indices.size() < budget * 4L) {
-            if (cells != null) {
-                recording.release(cells);
-                recording.release(indices);
-                recording.release(parentCells);
-                recording.release(parentIndices);
-                recording.release(counts);
-                recording.release(starts);
+            // Below compute, every cell reads every light: the same lists, by the longer route.
+            boolean twoLevel = coarse.runs();
+            int px = (gx + PARENT - 1) / PARENT, py = (gy + PARENT - 1) / PARENT, pz = SLICES / PARENT;
+            // Persistent, grown only: what a later recording reads back is the last firing's grid.
+            if (cellsDropped > 0 && budgetScale < MOST_BUDGET) {
+                budgetScale *= 2;
+                cellsDropped = 0;
             }
-            counts = CgGraphBuffer.persistent("cg_world_lights.counts",
-                    CgBufferDesc.elements(n, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-            starts = CgGraphBuffer.persistent("cg_world_lights.starts",
-                    CgBufferDesc.elements(n, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-            cells = CgGraphBuffer.persistent("cg_world_lights.cells",
-                    CgBufferDesc.elements(n * 2, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-            indices = CgGraphBuffer.persistent("cg_world_lights.indices",
-                    CgBufferDesc.elements(budget, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-            parentCells = CgGraphBuffer.persistent("cg_world_lights.parent-cells",
-                    CgBufferDesc.elements(parents * 2, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-            parentIndices = CgGraphBuffer.persistent("cg_world_lights.parent-indices",
-                    CgBufferDesc.elements(parentBudget, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-        }
-        grid(pass.dispatch(view, CAPACITY).bind("LIGHTS", list).bind("COUNT", count).bind("VIEW", viewed)
-                .set("_MinScreen", MIN_SCREEN.get()), gx, gy, 0, 0, 0, 0, budget, parentBudget);
-        pass.end();
-        // A pass a level, each timed: what the levels cost is the lever.
-        if (twoLevel) {
-            pass = recording.compute("world.lightsCoarse", stage).timed(GPU_COARSE);
-            grid(pass.dispatchGroups(coarse, px, py, pz).bind("COUNT", count).bind("VIEWED", viewed).bind("ALLOC", alloc)
-                    .bind("PARENT_CELLS", parentCells).bind("PARENT_INDICES", parentIndices), gx, gy, px, py, pz, PARENT,
-                    budget, parentBudget);
+            int n = gx * gy * SLICES, budget = n * PER_CELL * budgetScale, parentBudget = twoLevel ? budget : 1,
+                    parents = px * py * pz;
+            if (cells == null || cells.size() < n * 8L || parentCells.size() < parents * 8L
+                    || parentIndices.size() < parentBudget * 4L || indices.size() < budget * 4L) {
+                if (cells != null) {
+                    recording.release(cells);
+                    recording.release(indices);
+                    recording.release(parentCells);
+                    recording.release(parentIndices);
+                    recording.release(counts);
+                    recording.release(starts);
+                }
+                counts = CgGraphBuffer.persistent("cg_world_lights.counts",
+                        CgBufferDesc.elements(n, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+                starts = CgGraphBuffer.persistent("cg_world_lights.starts",
+                        CgBufferDesc.elements(n, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+                cells = CgGraphBuffer.persistent("cg_world_lights.cells",
+                        CgBufferDesc.elements(n * 2, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+                indices = CgGraphBuffer.persistent("cg_world_lights.indices",
+                        CgBufferDesc.elements(budget, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+                parentCells = CgGraphBuffer.persistent("cg_world_lights.parent-cells",
+                        CgBufferDesc.elements(parents * 2, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+                parentIndices = CgGraphBuffer.persistent("cg_world_lights.parent-indices",
+                        CgBufferDesc.elements(parentBudget, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+            }
+            grid(pass.dispatch(view, CAPACITY).bind("LIGHTS", list).bind("COUNT", count).bind("VIEW", viewed)
+                    .set("_MinScreen", MIN_SCREEN.get()), gx, gy, 0, 0, 0, 0, budget, parentBudget);
+            pass.end();
+            // A pass a level, each timed: what the levels cost is the lever.
+            if (twoLevel) {
+                pass = recording.compute("world.lightsCoarse", stage).timed(GPU_COARSE);
+                grid(pass.dispatchGroups(coarse, px, py, pz).bind("COUNT", count).bind("VIEWED", viewed).bind("ALLOC", alloc)
+                        .bind("PARENT_CELLS", parentCells).bind("PARENT_INDICES", parentIndices), gx, gy, px, py, pz, PARENT,
+                        budget, parentBudget);
+                pass.end();
+            }
+            pass = recording.compute("world.lightsCells", stage).timed(GPU_CELLS);
+            int factor = twoLevel ? PARENT : 0;
+            if (twoLevel) {
+                grid(pass.dispatchGroups(cell, gx, gy, SLICES).bind("COUNT", count).bind("VIEWED", viewed).bind("ALLOC", alloc)
+                        .bind("PARENT_CELLS", parentCells).bind("PARENT_INDICES", parentIndices).bind("CELLS", cells)
+                        .bind("INDICES", indices), gx, gy, px, py, pz, factor, budget, parentBudget);
+                pass.end();
+                return;
+            }
+            grid(pass.dispatch(countCells, n).bind("COUNT", count).bind("VIEWED", viewed).bind("PARENT_CELLS", parentCells)
+                    .bind("PARENT_INDICES", parentIndices).bind("COUNTS", counts), gx, gy, px, py, pz, factor, budget,
+                    parentBudget);
+            CgGpuOps.scan(pass, CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT, counts, CgGpuCount.of(n),
+                    starts);
+            grid(pass.dispatch(writeCells, n).bind("COUNT", count).bind("VIEWED", viewed).bind("ALLOC", alloc)
+                    .bind("PARENT_CELLS", parentCells).bind("PARENT_INDICES", parentIndices).bind("STARTS", starts)
+                    .bind("CELLS", cells).bind("INDICES", indices), gx, gy, px, py, pz, factor, budget, parentBudget);
             pass.end();
         }
-        pass = recording.compute("world.lightsCells", stage).timed(GPU_CELLS);
-        int factor = twoLevel ? PARENT : 0;
-        if (twoLevel) {
-            grid(pass.dispatchGroups(cell, gx, gy, SLICES).bind("COUNT", count).bind("VIEWED", viewed).bind("ALLOC", alloc)
-                    .bind("PARENT_CELLS", parentCells).bind("PARENT_INDICES", parentIndices).bind("CELLS", cells)
-                    .bind("INDICES", indices), gx, gy, px, py, pz, factor, budget, parentBudget);
-            pass.end();
-            return;
-        }
-        grid(pass.dispatch(countCells, n).bind("COUNT", count).bind("VIEWED", viewed).bind("PARENT_CELLS", parentCells)
-                .bind("PARENT_INDICES", parentIndices).bind("COUNTS", counts), gx, gy, px, py, pz, factor, budget,
-                parentBudget);
-        CgGpuOps.scan(pass, CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT, counts, CgGpuCount.of(n),
-                starts);
-        grid(pass.dispatch(writeCells, n).bind("COUNT", count).bind("VIEWED", viewed).bind("ALLOC", alloc)
-                .bind("PARENT_CELLS", parentCells).bind("PARENT_INDICES", parentIndices).bind("STARTS", starts)
-                .bind("CELLS", cells).bind("INDICES", indices), gx, gy, px, py, pz, factor, budget, parentBudget);
-        pass.end();
     }
 
     /**
@@ -1072,28 +1080,30 @@ public final class CgWorldLights {
      * pass over the stage's target, Unreal's simple lights through the grid. Skipped while its program is unbuilt.
      */
     void apply(CgStageFrame stage, CgRecording recording, boolean transparents) {
-        localLights = null;
-        if (apply == null) apply = CgMaterial.newInstance(APPLY_SHADER);
-        if (!apply.prepare()) return;
-        sunOn = sunWanted(stage);
-        shadowsOn = SHADOWS.get() && (shadowedAdded > 0 || blockCount > 0 || sunOn) && recordShadows(stage, recording);
-        if (transparents && binned && VOLUME.get()) recordVolume(stage, recording);
-        if (!binned && !shadowsOn) return;
-        CgGraphBuffer none = zeroes(recording);
-        apply.buffer("LIGHTS", binned ? list : none).buffer("CELLS", binned ? cells : none)
-                .buffer("INDICES", binned ? indices : none).applyProperties(applyValues);
-        apply.applyProperties(applyWindow);
-        CgPipeline pipeline = apply.pipeline(CgInstanceKind.OBJECT);
-        if (pipeline == null) return;
-        CgRasterPass add = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED)
-                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT).sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
-                // What the scene was lit by, divided out to find its albedo: unbound, it reads white and divides by 1.
-                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_APPLY);
-        CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(pipeline, apply.captureBindings(recording.bindings()), FULLSCREEN);
-        chunks.instance();
-        add.add(chunks.end());
-        add.end();
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_APPLY)) {
+            localLights = null;
+            if (apply == null) apply = CgMaterial.newInstance(APPLY_SHADER);
+            if (!apply.prepare()) return;
+            sunOn = sunWanted(stage);
+            shadowsOn = SHADOWS.get() && (shadowedAdded > 0 || blockCount > 0 || sunOn) && recordShadows(stage, recording);
+            if (transparents && binned && VOLUME.get()) recordVolume(stage, recording);
+            if (!binned && !shadowsOn) return;
+            CgGraphBuffer none = zeroes(recording);
+            apply.buffer("LIGHTS", binned ? list : none).buffer("CELLS", binned ? cells : none)
+                    .buffer("INDICES", binned ? indices : none).applyProperties(applyValues);
+            apply.applyProperties(applyWindow);
+            CgPipeline pipeline = apply.pipeline(CgInstanceKind.OBJECT);
+            if (pipeline == null) return;
+            CgRasterPass add = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED)
+                    .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT).sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
+                    // What the scene was lit by, divided out to find its albedo: unbound, it reads white and divides by 1.
+                    .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_APPLY);
+            CgChunkBuilder chunks = recording.chunks().begin();
+            chunks.draw(pipeline, apply.captureBindings(recording.bindings()), FULLSCREEN);
+            chunks.instance();
+            add.add(chunks.end());
+            add.end();
+        }
     }
 
     /**
@@ -1105,91 +1115,93 @@ public final class CgWorldLights {
      * apply adds the result. False while a program is unbuilt, and the apply lights every light unshadowed.
      */
     private boolean recordShadows(CgStageFrame stage, CgRecording recording) {
-        if (sample == null) {
-            sample = CgMaterial.newInstance(SAMPLE_SHADER);
-            shade = CgMaterial.newInstance(SHADE_SHADER);
-            temporal = CgMaterial.newInstance(TEMPORAL_SHADER);
-            denoise = CgMaterial.newInstance(DENOISE_SHADER);
-            tiles = CgMaterial.newInstance(TILES_SHADER);
-        }
-        // Each started, whichever is not ready.
-        boolean ready = sample.prepare() & shade.prepare() & temporal.prepare() & denoise.prepare() & tiles.prepare();
-        if (!ready) return false;
-        int mode = Math.round(DOWNSAMPLE.get());
-        downX = mode > 0 ? 2 : 1;
-        downY = mode > 1 ? 2 : 1;
-        // GetNumSamplesPerPixel2d: a downsampled pixel's samples as a block of the samples texture, 1x1, 2x1 or 2x2.
-        int count = SAMPLES.get();
-        sampleX = count >= 2 ? 2 : 1;
-        sampleY = count >= 4 ? 2 : 1;
-        int w = Math.max(1, (int) targetW), h = Math.max(1, (int) targetH);
-        int sw = (w + downX - 1) / downX * sampleX, sh = (h + downY - 1) / downY * sampleY;
-        if (samples == null || samples.getWidth() != sw || samples.getHeight() != sh) {
-            samples = CgGraphTexture.transientTexture("cg_world_lights.samples", new CgTextureDesc(sw, sh, SAMPLES_FORMAT));
-        }
-        if (shaded == null || shaded.getWidth() != w || shaded.getHeight() != h) {
-            shaded = CgGraphTexture.transientTexture("cg_world_lights.shaded", new CgTextureDesc(w, h, LIGHTING_FORMAT));
-            filtered = CgGraphTexture.transientTexture("cg_world_lights.filtered", new CgTextureDesc(w, h, LIGHTING_FORMAT));
-            scratchHistory = CgGraphTexture.transientTexture("cg_world_lights.accumulated", new CgTextureDesc(w, h, HISTORY_FORMAT));
-        }
-        // One history, the first firing's: a later firing of the frame (a second eye) accumulates nothing.
-        if (stage.ordinal() == 0 && !CgRehearsal.active()) {
-            if (history == null || history.getWidth() != w || history.getHeight() != h) {
-                if (history != null) recording.release(history);
-                history = CgGraphTexture.history("cg_world_lights.history", new CgTextureDesc(w, h, HISTORY_FORMAT));
-                historyMade = CgFrameRing.frame();
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_SHADOWS)) {
+            if (sample == null) {
+                sample = CgMaterial.newInstance(SAMPLE_SHADER);
+                shade = CgMaterial.newInstance(SHADE_SHADER);
+                temporal = CgMaterial.newInstance(TEMPORAL_SHADER);
+                denoise = CgMaterial.newInstance(DENOISE_SHADER);
+                tiles = CgMaterial.newInstance(TILES_SHADER);
             }
-            accumulated = history;
-            freshHistory = historyMade == CgFrameRing.frame() || !stage.historyValid();
-        } else {
-            accumulated = scratchHistory;
-            freshHistory = true;
-        }
-        eyeBlock[0] = (int) Math.floor(cameraX);
-        eyeBlock[1] = (int) Math.floor(cameraY);
-        eyeBlock[2] = (int) Math.floor(cameraZ);
-        eyeFrac[0] = (float) (cameraX - eyeBlock[0]);
-        eyeFrac[1] = (float) (cameraY - eyeBlock[1]);
-        eyeFrac[2] = (float) (cameraZ - eyeBlock[2]);
-        CgGraphBuffer none = zeroes(recording);
-        // Past the screen: the window's blocks and the entities' capsules round the eye.
-        CgWorldVoxelWindow.get().useDistance();
-        CgWorldEntityBoxes.around(cameraX, cameraY, cameraZ, stage.host().partialTick());
-        CgWorldEntityBoxes.upload(recording);
-        CgGraphBuffer boxes = CgWorldEntityBoxes.buffer();
-        entities = boxes != null ? CgWorldEntityBoxes.count() : 0;
-        // Our meshes: the fields made since the last firing, then this firing's casters.
-        meshFields.upload(recording);
-        if (meshFields.atlas() == null) casterCount = 0;
-        if (casterCount > 0) {
-            casterTexture();
-            casterStaging.clear();
-            for (int i = 0; i < casterCount * CASTER_FLOATS; i++) casterStaging.putFloat(casterRows[i]);
-            casterStaging.flip();
-            recording.update(casters, 0, 0, 0, casterCount * CASTER_FLOATS / 4, 1, casterStaging);
-        }
-        CgTrace.counter(CgChannels.WORLD, "world.lights-casters", casterCount);
-        sunMapped = sunOn && recordSun(stage, recording);
-        if (entities > 0) {
-            int tx = (w + ENTITY_TILE - 1) / ENTITY_TILE, ty = (h + ENTITY_TILE - 1) / ENTITY_TILE;
-            if (entityTiles == null || entityTiles.getWidth() != tx || entityTiles.getHeight() != ty) {
-                entityTiles = CgGraphTexture.transientTexture("cg_world_lights.tiles", new CgTextureDesc(tx, ty, TILES_FORMAT));
+            // Each started, whichever is not ready.
+            boolean ready = sample.prepare() & shade.prepare() & temporal.prepare() & denoise.prepare() & tiles.prepare();
+            if (!ready) return false;
+            int mode = Math.round(DOWNSAMPLE.get());
+            downX = mode > 0 ? 2 : 1;
+            downY = mode > 1 ? 2 : 1;
+            // GetNumSamplesPerPixel2d: a downsampled pixel's samples as a block of the samples texture, 1x1, 2x1 or 2x2.
+            int count = SAMPLES.get();
+            sampleX = count >= 2 ? 2 : 1;
+            sampleY = count >= 4 ? 2 : 1;
+            int w = Math.max(1, (int) targetW), h = Math.max(1, (int) targetH);
+            int sw = (w + downX - 1) / downX * sampleX, sh = (h + downY - 1) / downY * sampleY;
+            if (samples == null || samples.getWidth() != sw || samples.getHeight() != sh) {
+                samples = CgGraphTexture.transientTexture("cg_world_lights.samples", new CgTextureDesc(sw, sh, SAMPLES_FORMAT));
             }
-            tiles.buffer("ENTITIES", boxes).applyProperties(tileValues);
-            fullScreen(stage, recording, entityTiles, tiles, GPU_TILES);
+            if (shaded == null || shaded.getWidth() != w || shaded.getHeight() != h) {
+                shaded = CgGraphTexture.transientTexture("cg_world_lights.shaded", new CgTextureDesc(w, h, LIGHTING_FORMAT));
+                filtered = CgGraphTexture.transientTexture("cg_world_lights.filtered", new CgTextureDesc(w, h, LIGHTING_FORMAT));
+                scratchHistory = CgGraphTexture.transientTexture("cg_world_lights.accumulated", new CgTextureDesc(w, h, HISTORY_FORMAT));
+            }
+            // One history, the first firing's: a later firing of the frame (a second eye) accumulates nothing.
+            if (stage.ordinal() == 0 && !CgRehearsal.active()) {
+                if (history == null || history.getWidth() != w || history.getHeight() != h) {
+                    if (history != null) recording.release(history);
+                    history = CgGraphTexture.history("cg_world_lights.history", new CgTextureDesc(w, h, HISTORY_FORMAT));
+                    historyMade = CgFrameRing.frame();
+                }
+                accumulated = history;
+                freshHistory = historyMade == CgFrameRing.frame() || !stage.historyValid();
+            } else {
+                accumulated = scratchHistory;
+                freshHistory = true;
+            }
+            eyeBlock[0] = (int) Math.floor(cameraX);
+            eyeBlock[1] = (int) Math.floor(cameraY);
+            eyeBlock[2] = (int) Math.floor(cameraZ);
+            eyeFrac[0] = (float) (cameraX - eyeBlock[0]);
+            eyeFrac[1] = (float) (cameraY - eyeBlock[1]);
+            eyeFrac[2] = (float) (cameraZ - eyeBlock[2]);
+            CgGraphBuffer none = zeroes(recording);
+            // Past the screen: the window's blocks and the entities' capsules round the eye.
+            CgWorldVoxelWindow.get().useDistance();
+            CgWorldEntityBoxes.around(cameraX, cameraY, cameraZ, stage.host().partialTick());
+            CgWorldEntityBoxes.upload(recording);
+            CgGraphBuffer boxes = CgWorldEntityBoxes.buffer();
+            entities = boxes != null ? CgWorldEntityBoxes.count() : 0;
+            // Our meshes: the fields made since the last firing, then this firing's casters.
+            meshFields.upload(recording);
+            if (meshFields.atlas() == null) casterCount = 0;
+            if (casterCount > 0) {
+                casterTexture();
+                casterStaging.clear();
+                for (int i = 0; i < casterCount * CASTER_FLOATS; i++) casterStaging.putFloat(casterRows[i]);
+                casterStaging.flip();
+                recording.update(casters, 0, 0, 0, casterCount * CASTER_FLOATS / 4, 1, casterStaging);
+            }
+            CgTrace.counter(CgChannels.WORLD, "world.lights-casters", casterCount);
+            sunMapped = sunOn && recordSun(stage, recording);
+            if (entities > 0) {
+                int tx = (w + ENTITY_TILE - 1) / ENTITY_TILE, ty = (h + ENTITY_TILE - 1) / ENTITY_TILE;
+                if (entityTiles == null || entityTiles.getWidth() != tx || entityTiles.getHeight() != ty) {
+                    entityTiles = CgGraphTexture.transientTexture("cg_world_lights.tiles", new CgTextureDesc(tx, ty, TILES_FORMAT));
+                }
+                tiles.buffer("ENTITIES", boxes).applyProperties(tileValues);
+                fullScreen(stage, recording, entityTiles, tiles, GPU_TILES);
+            }
+            sample.buffer("LIGHTS", binned ? list : none).buffer("CELLS", binned ? cells : none)
+                    .buffer("INDICES", binned ? indices : none).buffer("ENTITIES", boxes != null ? boxes : none)
+                    .applyProperties(sampleValues);
+            sample.applyProperties(windowValues);
+            fullScreen(stage, recording, samples, sample, GPU_SAMPLE);
+            shade.buffer("LIGHTS", binned ? list : none).applyProperties(shadeValues);
+            fullScreen(stage, recording, shaded, shade, GPU_SHADE);
+            temporal.applyProperties(temporalValues);
+            fullScreen(stage, recording, accumulated, temporal, GPU_TEMPORAL);
+            denoise.applyProperties(denoiseValues);
+            fullScreen(stage, recording, filtered, denoise, GPU_DENOISE);
+            return true;
         }
-        sample.buffer("LIGHTS", binned ? list : none).buffer("CELLS", binned ? cells : none)
-                .buffer("INDICES", binned ? indices : none).buffer("ENTITIES", boxes != null ? boxes : none)
-                .applyProperties(sampleValues);
-        sample.applyProperties(windowValues);
-        fullScreen(stage, recording, samples, sample, GPU_SAMPLE);
-        shade.buffer("LIGHTS", binned ? list : none).applyProperties(shadeValues);
-        fullScreen(stage, recording, shaded, shade, GPU_SHADE);
-        temporal.applyProperties(temporalValues);
-        fullScreen(stage, recording, accumulated, temporal, GPU_TEMPORAL);
-        denoise.applyProperties(denoiseValues);
-        fullScreen(stage, recording, filtered, denoise, GPU_DENOISE);
-        return true;
     }
 
     /**
@@ -1199,111 +1211,113 @@ public final class CgWorldLights {
      * casters within its box drawn depth-only under its orthographic light view. False while its program is unbuilt.
      */
     private boolean recordSun(CgStageFrame stage, CgRecording recording) {
-        if (sunShadow == null) sunShadow = CgMaterial.newInstance(SUN_SHADOW_SHADER);
-        if (!sunShadow.prepare()) return false;
-        CgPipeline pipeline = sunShadow.pipeline(CgInstanceKind.OBJECT);
-        if (pipeline == null) return false;
-        int res = SUN_RESOLUTION.get();
-        casterTexture();
-        if (sunMap == null || sunMap.getWidth() != 2 * res) {
-            sunMap = CgGraphTexture.transientTexture("cg_world_lights.sun", new CgTextureDesc(2 * res, 2 * res, SUN_MAP_FORMAT));
-        }
-        // The pass places each vertex itself, from its cascade's rows: only its depth convention matters.
-        stage.defaults(sunConstants).resolution(2 * res, 2 * res);
-        sunConstants.view.identity();
-        sunConstants.projection.identity();
-        CgRasterPass pass = recording.raster(sunMap, SUN_CLEAR, sunConstants, null, CgOrder.SORTED).timed(GPU_SUN);
-        CgChunkBuilder chunks = recording.chunks().begin();
-        float length = (float) Math.sqrt(sunDirection[0] * sunDirection[0] + sunDirection[1] * sunDirection[1]
-                + sunDirection[2] * sunDirection[2]);
-        float sx = sunDirection[0] / length, sy = sunDirection[1] / length, sz = sunDirection[2] / length;
-        // Any up not along the sun: Minecraft's sun crosses the x-y plane, so z.
-        boolean alongZ = Math.abs(sz) > 0.9f;
-        sunRotation.setLookAlong(-sx, -sy, -sz, alongZ ? 1f : 0f, 0f, alongZ ? 0f : 1f);
-        toView.invertAffine(viewToEye);
-        float distance = SUN_DISTANCE.get(), back = SUN_TRACE.get();
-        float tanX = (rays[2] - rays[0]) * 0.5f, tanY = (rays[3] - rays[1]) * 0.5f;
-        int binding = sunShadow.captureBindings(recording.bindings());
-        float[] rows = sunRowData;
-        for (int k = 0; k < CASCADES; k++) {
-            float splitNear = SUN_NEAR + accumulatedScale(k) * (distance - SUN_NEAR);
-            float splitFar = SUN_NEAR + accumulatedScale(k + 1) * (distance - SUN_NEAR);
-            float fade = (splitFar - splitNear) * CASCADE_TRANSITION, fadeStart, fadeEnd;
-            if (k < CASCADES - 1) {
-                fadeStart = splitFar;
-                splitFar += fade;
-                fadeEnd = splitFar;
-            } else {
-                fadeStart = splitFar - fade;
-                fadeEnd = splitFar;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_SUN)) {
+            if (sunShadow == null) sunShadow = CgMaterial.newInstance(SUN_SHADOW_SHADER);
+            if (!sunShadow.prepare()) return false;
+            CgPipeline pipeline = sunShadow.pipeline(CgInstanceKind.OBJECT);
+            if (pipeline == null) return false;
+            int res = SUN_RESOLUTION.get();
+            casterTexture();
+            if (sunMap == null || sunMap.getWidth() != 2 * res) {
+                sunMap = CgGraphTexture.transientTexture("cg_world_lights.sun", new CgTextureDesc(2 * res, 2 * res, SUN_MAP_FORMAT));
             }
-            float span = splitFar - splitNear;
-            float diagonalFar = (tanX * splitFar) * (tanX * splitFar) + (tanY * splitFar) * (tanY * splitFar);
-            float diagonalNear = (tanX * splitNear) * (tanX * splitNear) + (tanY * splitNear) * (tanY * splitNear);
-            float centreZ = splitFar - ((diagonalNear - diagonalFar) / (2f * span) + span * 0.5f);
-            centreZ = Math.max(splitNear, Math.min(splitFar, centreZ));
-            float radius = 0f;
-            for (int c = 0; c < 8; c++) {
-                float z = (c & 1) == 0 ? splitNear : splitFar;
-                float x = ((c & 2) == 0 ? rays[0] : rays[2]) * z, y = ((c & 4) == 0 ? rays[1] : rays[3]) * z;
-                radius = Math.max(radius, x * x + y * y + (z - centreZ) * (z - centreZ));
-            }
-            radius = Math.max((float) Math.sqrt(radius), 1f);
-            viewToEye.transformPosition(sunCentre.set(0f, 0f, -centreZ));
-            // Snapped in absolute light space: a sub-texel move of the eye leaves the map's texels where they were.
-            double ax = cameraX + sunCentre.x, ay = cameraY + sunCentre.y, az = cameraZ + sunCentre.z;
-            Matrix4f r = sunRotation;
-            double lx = r.m00() * ax + r.m10() * ay + r.m20() * az, ly = r.m01() * ax + r.m11() * ay + r.m21() * az;
-            double texel = 2.0 * radius / res;
-            float dlx = (float) (Math.floor(lx / texel) * texel - lx), dly = (float) (Math.floor(ly / texel) * texel - ly);
-            sunCentre.add(r.m00() * dlx + r.m01() * dly, r.m10() * dlx + r.m11() * dly, r.m20() * dlx + r.m21() * dly);
-            // The light's eye: past the cascade toward the sun by the casters' reach.
-            float lift = radius + back, far = 2f * radius + back;
-            float ex = sunCentre.x + sx * lift, ey = sunCentre.y + sy * lift, ez = sunCentre.z + sz * lift;
-            // The receiver's rows: eye-relative world to the map's uv, then to depth from the light.
-            float inv = 0.5f / radius;
-            int o = k * 16;
-            rows[o] = r.m00() * inv; rows[o + 1] = r.m10() * inv; rows[o + 2] = r.m20() * inv;
-            rows[o + 3] = 0.5f - (r.m00() * ex + r.m10() * ey + r.m20() * ez) * inv;
-            rows[o + 4] = r.m01() * inv; rows[o + 5] = r.m11() * inv; rows[o + 6] = r.m21() * inv;
-            rows[o + 7] = 0.5f - (r.m01() * ex + r.m11() * ey + r.m21() * ez) * inv;
-            rows[o + 8] = -r.m02(); rows[o + 9] = -r.m12(); rows[o + 10] = -r.m22();
-            rows[o + 11] = r.m02() * ex + r.m12() * ey + r.m22() * ez;
-            // Unreal's r.Shadow.CSMDepthBias of 10 times the cascade's world texel scale, its radius over its
-            // resolution (ShadowRendering.cpp:1985-1995): the casters' bias, and the receivers' soft transition.
-            rows[o + 12] = splitNear; rows[o + 13] = fadeStart; rows[o + 14] = fadeEnd; rows[o + 15] = 10f * radius / res;
-            float qx = (k & 1) == 0 ? -0.5f : 0.5f, qy = (k & 2) == 0 ? -0.5f : 0.5f;
-            for (int i = 0; i < sunCasterCount; i++) {
-                float bx = sunBounds[i * 4] - ex, by = sunBounds[i * 4 + 1] - ey, bz = sunBounds[i * 4 + 2] - ez;
-                float br = sunBounds[i * 4 + 3];
-                float vx = r.m00() * bx + r.m10() * by + r.m20() * bz, vy = r.m01() * bx + r.m11() * by + r.m21() * bz;
-                float depth = -(r.m02() * bx + r.m12() * by + r.m22() * bz);
-                if (Math.abs(vx) > radius + br || Math.abs(vy) > radius + br || depth + br < 0f || depth - br > far) continue;
-                chunks.draw(pipeline, binding, sunMeshes[i]);
-                if (sunRanges[i * 3] >= 0) chunks.range(sunRanges[i * 3], sunRanges[i * 3 + 1], sunRanges[i * 3 + 2]);
-                int at = chunks.instance();
-                float[] data = chunks.data();
-                System.arraycopy(sunModels, i * 16, data, at, 16);
-                // CUSTOM0 to 3: the uv rows as -1 to 1 across the cascade, the depth row, the quadrant, 1 / far, the bias.
-                for (int c = 0; c < 4; c++) {
-                    data[at + 32 + c] = 2f * rows[o + c] - (c == 3 ? 1f : 0f);
-                    data[at + 36 + c] = 2f * rows[o + 4 + c] - (c == 3 ? 1f : 0f);
-                    data[at + 40 + c] = rows[o + 8 + c];
+            // The pass places each vertex itself, from its cascade's rows: only its depth convention matters.
+            stage.defaults(sunConstants).resolution(2 * res, 2 * res);
+            sunConstants.view.identity();
+            sunConstants.projection.identity();
+            CgRasterPass pass = recording.raster(sunMap, SUN_CLEAR, sunConstants, null, CgOrder.SORTED).timed(GPU_SUN);
+            CgChunkBuilder chunks = recording.chunks().begin();
+            float length = (float) Math.sqrt(sunDirection[0] * sunDirection[0] + sunDirection[1] * sunDirection[1]
+                    + sunDirection[2] * sunDirection[2]);
+            float sx = sunDirection[0] / length, sy = sunDirection[1] / length, sz = sunDirection[2] / length;
+            // Any up not along the sun: Minecraft's sun crosses the x-y plane, so z.
+            boolean alongZ = Math.abs(sz) > 0.9f;
+            sunRotation.setLookAlong(-sx, -sy, -sz, alongZ ? 1f : 0f, 0f, alongZ ? 0f : 1f);
+            toView.invertAffine(viewToEye);
+            float distance = SUN_DISTANCE.get(), back = SUN_TRACE.get();
+            float tanX = (rays[2] - rays[0]) * 0.5f, tanY = (rays[3] - rays[1]) * 0.5f;
+            int binding = sunShadow.captureBindings(recording.bindings());
+            float[] rows = sunRowData;
+            for (int k = 0; k < CASCADES; k++) {
+                float splitNear = SUN_NEAR + accumulatedScale(k) * (distance - SUN_NEAR);
+                float splitFar = SUN_NEAR + accumulatedScale(k + 1) * (distance - SUN_NEAR);
+                float fade = (splitFar - splitNear) * CASCADE_TRANSITION, fadeStart, fadeEnd;
+                if (k < CASCADES - 1) {
+                    fadeStart = splitFar;
+                    splitFar += fade;
+                    fadeEnd = splitFar;
+                } else {
+                    fadeStart = splitFar - fade;
+                    fadeEnd = splitFar;
                 }
-                data[at + 44] = qx;
-                data[at + 45] = qy;
-                data[at + 46] = 1f / far;
-                data[at + 47] = rows[o + 15];
+                float span = splitFar - splitNear;
+                float diagonalFar = (tanX * splitFar) * (tanX * splitFar) + (tanY * splitFar) * (tanY * splitFar);
+                float diagonalNear = (tanX * splitNear) * (tanX * splitNear) + (tanY * splitNear) * (tanY * splitNear);
+                float centreZ = splitFar - ((diagonalNear - diagonalFar) / (2f * span) + span * 0.5f);
+                centreZ = Math.max(splitNear, Math.min(splitFar, centreZ));
+                float radius = 0f;
+                for (int c = 0; c < 8; c++) {
+                    float z = (c & 1) == 0 ? splitNear : splitFar;
+                    float x = ((c & 2) == 0 ? rays[0] : rays[2]) * z, y = ((c & 4) == 0 ? rays[1] : rays[3]) * z;
+                    radius = Math.max(radius, x * x + y * y + (z - centreZ) * (z - centreZ));
+                }
+                radius = Math.max((float) Math.sqrt(radius), 1f);
+                viewToEye.transformPosition(sunCentre.set(0f, 0f, -centreZ));
+                // Snapped in absolute light space: a sub-texel move of the eye leaves the map's texels where they were.
+                double ax = cameraX + sunCentre.x, ay = cameraY + sunCentre.y, az = cameraZ + sunCentre.z;
+                Matrix4f r = sunRotation;
+                double lx = r.m00() * ax + r.m10() * ay + r.m20() * az, ly = r.m01() * ax + r.m11() * ay + r.m21() * az;
+                double texel = 2.0 * radius / res;
+                float dlx = (float) (Math.floor(lx / texel) * texel - lx), dly = (float) (Math.floor(ly / texel) * texel - ly);
+                sunCentre.add(r.m00() * dlx + r.m01() * dly, r.m10() * dlx + r.m11() * dly, r.m20() * dlx + r.m21() * dly);
+                // The light's eye: past the cascade toward the sun by the casters' reach.
+                float lift = radius + back, far = 2f * radius + back;
+                float ex = sunCentre.x + sx * lift, ey = sunCentre.y + sy * lift, ez = sunCentre.z + sz * lift;
+                // The receiver's rows: eye-relative world to the map's uv, then to depth from the light.
+                float inv = 0.5f / radius;
+                int o = k * 16;
+                rows[o] = r.m00() * inv; rows[o + 1] = r.m10() * inv; rows[o + 2] = r.m20() * inv;
+                rows[o + 3] = 0.5f - (r.m00() * ex + r.m10() * ey + r.m20() * ez) * inv;
+                rows[o + 4] = r.m01() * inv; rows[o + 5] = r.m11() * inv; rows[o + 6] = r.m21() * inv;
+                rows[o + 7] = 0.5f - (r.m01() * ex + r.m11() * ey + r.m21() * ez) * inv;
+                rows[o + 8] = -r.m02(); rows[o + 9] = -r.m12(); rows[o + 10] = -r.m22();
+                rows[o + 11] = r.m02() * ex + r.m12() * ey + r.m22() * ez;
+                // Unreal's r.Shadow.CSMDepthBias of 10 times the cascade's world texel scale, its radius over its
+                // resolution (ShadowRendering.cpp:1985-1995): the casters' bias, and the receivers' soft transition.
+                rows[o + 12] = splitNear; rows[o + 13] = fadeStart; rows[o + 14] = fadeEnd; rows[o + 15] = 10f * radius / res;
+                float qx = (k & 1) == 0 ? -0.5f : 0.5f, qy = (k & 2) == 0 ? -0.5f : 0.5f;
+                for (int i = 0; i < sunCasterCount; i++) {
+                    float bx = sunBounds[i * 4] - ex, by = sunBounds[i * 4 + 1] - ey, bz = sunBounds[i * 4 + 2] - ez;
+                    float br = sunBounds[i * 4 + 3];
+                    float vx = r.m00() * bx + r.m10() * by + r.m20() * bz, vy = r.m01() * bx + r.m11() * by + r.m21() * bz;
+                    float depth = -(r.m02() * bx + r.m12() * by + r.m22() * bz);
+                    if (Math.abs(vx) > radius + br || Math.abs(vy) > radius + br || depth + br < 0f || depth - br > far) continue;
+                    chunks.draw(pipeline, binding, sunMeshes[i]);
+                    if (sunRanges[i * 3] >= 0) chunks.range(sunRanges[i * 3], sunRanges[i * 3 + 1], sunRanges[i * 3 + 2]);
+                    int at = chunks.instance();
+                    float[] data = chunks.data();
+                    System.arraycopy(sunModels, i * 16, data, at, 16);
+                    // CUSTOM0 to 3: the uv rows as -1 to 1 across the cascade, the depth row, the quadrant, 1 / far, the bias.
+                    for (int c = 0; c < 4; c++) {
+                        data[at + 32 + c] = 2f * rows[o + c] - (c == 3 ? 1f : 0f);
+                        data[at + 36 + c] = 2f * rows[o + 4 + c] - (c == 3 ? 1f : 0f);
+                        data[at + 40 + c] = rows[o + 8 + c];
+                    }
+                    data[at + 44] = qx;
+                    data[at + 45] = qy;
+                    data[at + 46] = 1f / far;
+                    data[at + 47] = rows[o + 15];
+                }
             }
+            pass.add(chunks.end());
+            pass.end();
+            sunRowStaging.clear();
+            for (float v : rows) sunRowStaging.putFloat(v);
+            sunRowStaging.flip();
+            recording.update(casters, 0, SUN_ROWS_AT, 0, CASCADES * 4, 1, sunRowStaging);
+            Arrays.fill(sunMeshes, 0, sunCasterCount, null);
+            return true;
         }
-        pass.add(chunks.end());
-        pass.end();
-        sunRowStaging.clear();
-        for (float v : rows) sunRowStaging.putFloat(v);
-        sunRowStaging.flip();
-        recording.update(casters, 0, SUN_ROWS_AT, 0, CASCADES * 4, 1, sunRowStaging);
-        Arrays.fill(sunMeshes, 0, sunCasterCount, null);
-        return true;
     }
 
     /** The casters' rows, then the sun's cascades' ({@link #SUN_ROWS_AT}): made once. */
@@ -1328,43 +1342,45 @@ public final class CgWorldLights {
      * grid and the shadows' inputs are this firing's.
      */
     private void recordVolume(CgStageFrame stage, CgRecording recording) {
-        if (fill == null) {
-            fill = CgCompute.load(VOLUME_KERNELS).kernel("Fill");
-            fill.prepare();
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_VOLUME)) {
+            if (fill == null) {
+                fill = CgCompute.load(VOLUME_KERNELS).kernel("Fill");
+                fill.prepare();
+            }
+            if (volume == null) {
+                volume = CgGraphTexture.transientTexture("cg_world_lights.volume",
+                        CgTextureDesc.volume(VOLUME_CELLS + 1, VOLUME_CELLS, 2 * VOLUME_CELLS, VOLUME_FORMAT));
+            }
+            // The view's forward in eye-relative world: the view's third row turned round.
+            float fx = -toView.m02(), fy = -toView.m12(), fz = -toView.m22();
+            float norm = (float) Math.sqrt(fx * fx + fy * fy + fz * fz);
+            fx /= norm;
+            fy /= norm;
+            fz /= norm;
+            float inner = VOLUME_INNER.get(), outer = Math.max(VOLUME_OUTER.get(), inner + 1f);
+            for (int c = 0; c < 2; c++) {
+                float start = c == 0 ? 0f : inner, end = c == 0 ? inner : outer;
+                // A 45-degree square view's corners are their distance out each way; the far four weigh 1 / 4.4 each and the
+                // near 1 / 44 (FarVertexWeightScale 10).
+                float along = start / 11f + end / 1.1f;
+                float radius = (float) Math.max(Math.sqrt(2.0 * end * end + (end - along) * (end - along)),
+                        Math.sqrt(2.0 * start * start + (along - start) * (along - start)));
+                double cell = 2.0 * radius / VOLUME_CELLS;
+                cascades[c * 4] = (float) (Math.floor((cameraX + fx * along) / cell) * cell - cameraX) - radius;
+                cascades[c * 4 + 1] = (float) (Math.floor((cameraY + fy * along) / cell) * cell - cameraY) - radius;
+                cascades[c * 4 + 2] = (float) (Math.floor((cameraZ + fz * along) / cell) * cell - cameraZ) - radius;
+                cascades[c * 4 + 3] = (float) cell;
+            }
+            CgTexture lightmap = stage.host().textures().lightmapTexture();
+            CgComputePass pass = recording.compute("world.lightsVolume", stage.constants()).timed(GPU_VOLUME);
+            traceInputs(pass.dispatch(fill, VOLUME_CELLS + 1, VOLUME_CELLS, 2 * VOLUME_CELLS).image("LOCAL_LIGHTS", volume)
+                    .set("_Cascade0", cascades[0], cascades[1], cascades[2], cascades[3])
+                    .set("_Cascade1", cascades[4], cascades[5], cascades[6], cascades[7])
+                    .set("_EyeOffset", eye.x, eye.y, eye.z, 0f), lightmap != null ? lightmap : CgFallbackTextures.WHITE_1x1,
+                    zeroes(recording));
+            pass.end();
+            localLights = volume;
         }
-        if (volume == null) {
-            volume = CgGraphTexture.transientTexture("cg_world_lights.volume",
-                    CgTextureDesc.volume(VOLUME_CELLS + 1, VOLUME_CELLS, 2 * VOLUME_CELLS, VOLUME_FORMAT));
-        }
-        // The view's forward in eye-relative world: the view's third row turned round.
-        float fx = -toView.m02(), fy = -toView.m12(), fz = -toView.m22();
-        float norm = (float) Math.sqrt(fx * fx + fy * fy + fz * fz);
-        fx /= norm;
-        fy /= norm;
-        fz /= norm;
-        float inner = VOLUME_INNER.get(), outer = Math.max(VOLUME_OUTER.get(), inner + 1f);
-        for (int c = 0; c < 2; c++) {
-            float start = c == 0 ? 0f : inner, end = c == 0 ? inner : outer;
-            // A 45-degree square view's corners are their distance out each way; the far four weigh 1 / 4.4 each and the
-            // near 1 / 44 (FarVertexWeightScale 10).
-            float along = start / 11f + end / 1.1f;
-            float radius = (float) Math.max(Math.sqrt(2.0 * end * end + (end - along) * (end - along)),
-                    Math.sqrt(2.0 * start * start + (along - start) * (along - start)));
-            double cell = 2.0 * radius / VOLUME_CELLS;
-            cascades[c * 4] = (float) (Math.floor((cameraX + fx * along) / cell) * cell - cameraX) - radius;
-            cascades[c * 4 + 1] = (float) (Math.floor((cameraY + fy * along) / cell) * cell - cameraY) - radius;
-            cascades[c * 4 + 2] = (float) (Math.floor((cameraZ + fz * along) / cell) * cell - cameraZ) - radius;
-            cascades[c * 4 + 3] = (float) cell;
-        }
-        CgTexture lightmap = stage.host().textures().lightmapTexture();
-        CgComputePass pass = recording.compute("world.lightsVolume", stage.constants()).timed(GPU_VOLUME);
-        traceInputs(pass.dispatch(fill, VOLUME_CELLS + 1, VOLUME_CELLS, 2 * VOLUME_CELLS).image("LOCAL_LIGHTS", volume)
-                .set("_Cascade0", cascades[0], cascades[1], cascades[2], cascades[3])
-                .set("_Cascade1", cascades[4], cascades[5], cascades[6], cascades[7])
-                .set("_EyeOffset", eye.x, eye.y, eye.z, 0f), lightmap != null ? lightmap : CgFallbackTextures.WHITE_1x1,
-                zeroes(recording));
-        pass.end();
-        localLights = volume;
     }
 
     /**

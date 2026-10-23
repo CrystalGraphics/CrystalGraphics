@@ -15,10 +15,14 @@
 // Scatter lights the air the same way: each froxel of the world's media (CgWorldMedia) holding extinction takes its
 // light-grid cell's lights as Unreal's volumetric fog does (VolumetricFog.usf's LightScatteringCS, :1085-1169): colour
 // times falloff times the Henyey-Greenstein phase toward the eye, times the light's VolumetricScatteringIntensity
-// (:554), times the froxel's scattering (its extinction, albedo white). A light that casts shadows is traced from the froxel, at most _AirShadowRays a froxel. As Unreal's temporal
-// reprojection (:856-921, :1173-1180), each froxel is lit at a point jittered through it each firing and blended into
-// what the last firing's grid held at its middle, so a froxel's light is the average over its whole cell; one with no
-// history is lit at HISTORY_MISS_SAMPLES points (r.VolumetricFog.HistoryMissSupersampleCount, Epic's 4). A spot's cone
+// (:554), times the froxel's scattering (its extinction, albedo white). A light that casts shadows is traced from the
+// froxel's middle, at most _AirShadowRays a froxel, and its answer shared by the froxel's jittered points, which all take
+// the middle's light-grid cell.
+//
+// As Unreal's temporal reprojection (:856-921, :1173-1180), each froxel is lit at _Samples points jittered through it
+// each firing and blended into what the last firing's grid held at its middle, so a froxel's light is the average over
+// its whole cell; one with no history is lit at HISTORY_MISS_SAMPLES points
+// (r.VolumetricFog.HistoryMissSupersampleCount, Epic's 4). A spot's cone
 // edge is widened by the froxel's size seen from the light (cg_light_falloff_filtered): a departure, since Unreal leaves
 // a cone narrower than a froxel to its temporal anti-aliasing, and a jittered point in or out of it flickers.
 #pragma kernel Fill 4 4 4 image
@@ -214,22 +218,35 @@ float halton(int i, int b) {
     return result;
 }
 
-// The light reaching eye-relative w and scattered toward the eye, a froxel's worth: bias and spread its size.
-vec3 scatter_at(vec3 w, float biasSqr, float spread) {
-    vec3 view = normalize(w);
-    ivec2 list = cell_lights(w);
-    vec3 sum = vec3(0.0);
+// Which of a froxel's lights (list, from its middle) are shadowed there, a bit each: traced once at the middle and
+// shared by its jittered points, at most _AirShadowRays a froxel, the first that reach it; past them, unshadowed.
+uint shadowed_at(vec3 middle, ivec2 list, float biasSqr, float spread) {
+    uint mask = 0u;
+    if (_Shadows < 0.5) return mask;
     int rays = 0;
+    for (int k = 0; k < min(list.x, 32) && rays < _AirShadowRays; k++) {
+        CgLight light = LIGHTS(int(INDICES(list.y + k)));
+        if (CG_LIGHT_MINECRAFT(light) || !CG_LIGHT_SHADOWED(light)) continue;
+        if (cg_light_falloff_filtered(light.positionRadius.xyz, light.positionRadius.w, light.colorExponent.w,
+                light.spotCos, light.segmentCone, middle, biasSqr, spread) <= 0.0) continue;
+        rays++;
+        if (shadowed(light, middle)) mask |= 1u << uint(k);
+    }
+    return mask;
+}
+
+// The light reaching eye-relative w and scattered toward the eye, a froxel's worth: bias and spread its size; list its
+// middle's lights and shadow which of them its middle found shadowed.
+vec3 scatter_at(vec3 w, ivec2 list, uint shadow, float biasSqr, float spread) {
+    vec3 view = normalize(w);
+    vec3 sum = vec3(0.0);
     for (int k = 0; k < list.x; k++) {
+        if (k < 32 && (shadow & (1u << uint(k))) != 0u) continue;
         CgLight light = LIGHTS(int(INDICES(list.y + k)));
         if (CG_LIGHT_MINECRAFT(light)) continue;
         float falloff = cg_light_falloff_filtered(light.positionRadius.xyz, light.positionRadius.w, light.colorExponent.w,
                 light.spotCos, light.segmentCone, w, biasSqr, spread);
         if (falloff <= 0.0) continue;
-        if (_Shadows > 0.5 && CG_LIGHT_SHADOWED(light) && rays < _AirShadowRays) {
-            rays++;
-            if (shadowed(light, w)) continue;
-        }
         vec3 toLight = normalize(light.positionRadius.xyz - w);
         sum += light.colorExponent.rgb * (falloff * day_fade(light) * hg_phase(_PhaseG, dot(toLight, view)) * light.air.x);
     }
@@ -255,13 +272,15 @@ void Scatter() {
     }
     bool kept = all(greaterThanEqual(uv, vec3(0.0))) && all(lessThanEqual(uv, vec3(1.0)));
     int samples = _Jittered == 0 ? 1 : kept ? _Samples : max(_Samples, HISTORY_MISS_SAMPLES);
+    ivec2 list = cell_lights(middle);
+    uint shadow = shadowed_at(middle, list, biasSqr, 0.5 * cell);
     vec3 sum = vec3(0.0);
     for (int s = 0; s < samples; s++) {
         // Unreal's FrameJitterOffsets: this firing's Halton points, then the ones before them.
         int n = (_Frame * _Samples - s) & 1023;
         vec3 offset = _Jittered != 0 ? vec3(halton(n + 1, 2), halton(n + 1, 3), halton(n + 1, 5)) : vec3(0.5);
         sum += scatter_at(media_point_at(vec3(t) + offset, size, _MediaRay00, _MediaRay10, _MediaRay01, _MediaRay11),
-                biasSqr, 0.5 * cell);
+                list, shadow, biasSqr, 0.5 * cell);
     }
     vec4 lit = vec4(sum * (sigma / float(samples)), 0.0);
     if (kept) lit = mix(lit, textureLod(_History, uv, 0.0), _HistoryWeight);

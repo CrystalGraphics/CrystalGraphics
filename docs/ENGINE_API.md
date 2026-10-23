@@ -164,7 +164,8 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   across, 128 slices to 256 blocks spaced as Unreal's volumetric fog spaces them), which is summed from the eye
   out into what gets through, bound as `cg_Media` to every transparent pass. The fluids and lit grids inject themselves.
   The world's lights glow in what is there (`CgWorldHaze` is a box of haze to see them in; `LIGHTS.md` § *In the
-  air*). GPU zone `world.media`; a firing with nothing in the air records nothing.
+  air*). GPU zones `world.mediaInject`, `world.mediaScatter` and `world.mediaIntegrate`; a firing with nothing in the
+  air records nothing.
 
 ```java
 CgWorldRenderer.get().media().add((pass, media) -> {             // a volume of your own hiding what is behind it

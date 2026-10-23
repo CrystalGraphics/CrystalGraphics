@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -114,7 +116,10 @@ public final class CgWorldMedia {
     }
 
     private static final String KERNELS = "crystalgraphics:shaders/env/compute/media.compute";
-    private static final int GPU_ZONE = CgGpuTrace.name("world.media");
+    /** The GPU's three steps, each a pass of its own: the injectors, the world's lights lighting it, the sum. */
+    private static final int GPU_INJECT = CgGpuTrace.name("world.mediaInject"), GPU_SCATTER = CgGpuTrace.name("world.mediaScatter"),
+            GPU_INTEGRATE = CgGpuTrace.name("world.mediaIntegrate");
+    private static final int ZONE_RECORD = CgTrace.name("world.media.record");
     private static final CgFrameBufferFormat R16F = CgFrameBufferFormat.builder("cg_world_media.r16f")
             .color(0, CgTextureType.R16F).build();
     /** What reaches the eye: the light scattered toward it, then what gets through. */
@@ -142,6 +147,8 @@ public final class CgWorldMedia {
     private boolean first;
     @Nullable
     private CgKernel integrate;
+    /** Whether integrate is IntegrateColumns, a thread a column, or Integrate, a thread a froxel (no compute). */
+    private boolean byColumn;
     /** Whether this firing's air was lit: the composite has light to add. */
     private boolean lit;
     private CgMaterial light;
@@ -225,56 +232,64 @@ public final class CgWorldMedia {
     @Nullable
     CgGraphTexture record(CgRecording recording, CgPassConstants stage, CgHostView view, Matrix4fc toWorld,
                           float targetWidth, float targetHeight, CgWorldLights lights) {
-        lit = false;
-        firings++;
-        if (injectors.isEmpty()) {
-            hadLast = false;
-            return null;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_RECORD)) {
+            lit = false;
+            firings++;
+            if (injectors.isEmpty()) {
+                hadLast = false;
+                return null;
+            }
+            int tile = PIXELS.get();
+            int w = Math.max(1, (int) Math.ceil(targetWidth / tile)), h = Math.max(1, (int) Math.ceil(targetHeight / tile));
+            boolean resized = a == null || w != width || h != height;
+            if (resized) {
+                width = w;
+                height = h;
+                a = CgGraphTexture.transientTexture("cg_world_media_a", CgTextureDesc.volume(w, h, SLICES, R16F));
+                b = CgGraphTexture.transientTexture("cg_world_media_b", CgTextureDesc.volume(w, h, SLICES, R16F));
+                transmit = CgGraphTexture.transientTexture("cg_world_media", CgTextureDesc.volume(w, h, SLICES, TRANSMIT));
+            }
+            corners(view.projection(), toWorld);
+            // The eye in the renderer's camera-relative space, which a host may keep off its origin (the harness's view
+            // holds its own translation): froxels are placed from it, so what an injector places goes from it too.
+            toWorld.transformPosition(eye.set(0f, 0f, 0f));
+            cameraX = view.x() + eye.x;
+            cameraY = view.y() + eye.y;
+            cameraZ = view.z() + eye.z;
+            reprojects = hadLast && !resized;
+            if (reprojects) {
+                reproject.set(lastToClip).translate((float) (cameraX - lastX), (float) (cameraY - lastY), (float) (cameraZ - lastZ));
+            }
+            toWorld.invert(lastToClip).mulLocal(view.projection());
+            lastX = view.x();
+            lastY = view.y();
+            lastZ = view.z();
+            hadLast = true;
+            if (integrate == null) {
+                CgKernel columns = CgCompute.load(KERNELS).kernel("IntegrateColumns");
+                byColumn = columns.runs();
+                integrate = byColumn ? columns : CgCompute.load(KERNELS).kernel("Integrate");
+                integrate.prepare();
+            }
+            current = null;
+            first = true;
+            for (Injector injector : injectors) injector.upload(recording, this);
+            CgComputePass pass = recording.compute("world.media", stage).timed(GPU_INJECT);
+            boolean added = false;
+            for (Injector injector : injectors) added |= injector.inject(pass, this);
+            pass.end();
+            if (added && current != null) {
+                CgComputePass scatter = recording.compute("world.mediaScatter", stage).timed(GPU_SCATTER);
+                CgGraphTexture scattered = lights.scatter(recording, scatter, this, current);
+                scatter.end();
+                lit = scattered != null;
+                CgComputePass sum = recording.compute("world.mediaIntegrate", stage).timed(GPU_INTEGRATE);
+                sum.dispatch(integrate, width, height, byColumn ? 1 : SLICES).texture("_Media", current).image("MEDIA_TRANSMIT", transmit)
+                        .texture("_Scatter", lit ? scattered : CgFallbackTextures.BLACK_VOLUME);
+                sum.end();
+            }
+            return added && current != null ? transmit : null;
         }
-        int tile = PIXELS.get();
-        int w = Math.max(1, (int) Math.ceil(targetWidth / tile)), h = Math.max(1, (int) Math.ceil(targetHeight / tile));
-        boolean resized = a == null || w != width || h != height;
-        if (resized) {
-            width = w;
-            height = h;
-            a = CgGraphTexture.transientTexture("cg_world_media_a", CgTextureDesc.volume(w, h, SLICES, R16F));
-            b = CgGraphTexture.transientTexture("cg_world_media_b", CgTextureDesc.volume(w, h, SLICES, R16F));
-            transmit = CgGraphTexture.transientTexture("cg_world_media", CgTextureDesc.volume(w, h, SLICES, TRANSMIT));
-        }
-        corners(view.projection(), toWorld);
-        // The eye in the renderer's camera-relative space, which a host may keep off its origin (the harness's view
-        // holds its own translation): froxels are placed from it, so what an injector places goes from it too.
-        toWorld.transformPosition(eye.set(0f, 0f, 0f));
-        cameraX = view.x() + eye.x;
-        cameraY = view.y() + eye.y;
-        cameraZ = view.z() + eye.z;
-        reprojects = hadLast && !resized;
-        if (reprojects) {
-            reproject.set(lastToClip).translate((float) (cameraX - lastX), (float) (cameraY - lastY), (float) (cameraZ - lastZ));
-        }
-        toWorld.invert(lastToClip).mulLocal(view.projection());
-        lastX = view.x();
-        lastY = view.y();
-        lastZ = view.z();
-        hadLast = true;
-        if (integrate == null) {
-            integrate = CgCompute.load(KERNELS).kernel("Integrate");
-            integrate.prepare();
-        }
-        current = null;
-        first = true;
-        for (Injector injector : injectors) injector.upload(recording, this);
-        CgComputePass pass = recording.compute("world.media", stage).timed(GPU_ZONE);
-        boolean added = false;
-        for (Injector injector : injectors) added |= injector.inject(pass, this);
-        if (added && current != null) {
-            CgGraphTexture scattered = lights.scatter(recording, pass, this, current);
-            lit = scattered != null;
-            pass.dispatch(integrate, width, height, SLICES).texture("_Media", current).image("MEDIA_TRANSMIT", transmit)
-                    .texture("_Scatter", lit ? scattered : CgFallbackTextures.BLACK_VOLUME);
-        }
-        pass.end();
-        return added && current != null ? transmit : null;
     }
 
     /**

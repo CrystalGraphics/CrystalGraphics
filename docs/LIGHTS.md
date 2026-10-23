@@ -286,7 +286,8 @@ lights.add(x, y, z, 45f, 0xFFFFF4E0, 1800f, 0f).spot(dx, -0.3f, dz, 5f, 10f).sca
 - **The grid across**: 8 pixels a froxel, Unreal's Epic `r.VolumetricFog.GridPixelSize` (BaseScalability.ini; High is
   16), set by `crystalgraphics.world.mediaPixels`. A beam about a froxel wide is spread over it, so at 16 a beam 40
   blocks off faded into the haze. At 8 in 1920x1080 the lights demo's media pass takes 1.7 ms (RTX 4070 Super).
-- **Integration** (`media.compute`): Unreal's `FinalIntegrationCS`, Frostbite's energy-conserving sum, into `cg_Media`'s
+- **Integration** (`media.compute`'s `IntegrateColumns`, a thread a column walking it once; `Integrate`, a thread a
+  froxel, where there is no compute): Unreal's `FinalIntegrationCS`, Frostbite's energy-conserving sum, into `cg_Media`'s
   rgb (the light scattered toward the eye) beside its alpha (what gets through, `cg_MediaTransmit`).
 - **The grid's depth**: 128 slices to 256 blocks, spaced by Unreal's `CalculateGridZParams` at its depth distribution
   scale 32 (`cg_env.glsl`'s `CG_MEDIA_*`): a cell 40 blocks out is 1.2 blocks deep, as Unreal's 64 slices to 60 m

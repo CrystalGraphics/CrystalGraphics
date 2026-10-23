@@ -1,5 +1,7 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
@@ -59,6 +61,7 @@ public final class CgLightsDemo {
     private static final float STORM = 9f;
     private static final float[][] FLASHES = {{0f, 0.07f}, {0.16f, 0.06f}, {0.34f, 0.22f}};
 
+    private static final int ZONE_SUBMIT = CgTrace.name("demo.lights.submit");
     private final CgVfxOwner vfx;
     private final CgVfxLook particles = CgVfxLook.builder(SCHEMA)
             .emitter(fireworks("fireworksGold", 0xFFFFC040, 0xFFFF4020, 3.1f, -20f, -12f))
@@ -158,28 +161,30 @@ public final class CgLightsDemo {
 
     /** The show round a ground point {@code (x, y, z)} as it is at {@code seconds}. */
     public void submit(CgWorldRenderer world, double x, double y, double z, double seconds) {
-        CgWorldLights lights = world.lights();
-        float t = (float) (seconds % 3600.0);
-        haze.box(x - 24, y - 1, z - 20, x + 24, y + 18, z + 20).density(HAZE, 4f);
-        if (!hazing) {
-            world.media().add(haze);
-            hazing = true;
-        }
-        mirrorBall(lights, x, y + 10, z - 2, t);
-        searchlights(lights, x, y, z, t);
-        carousel(lights, x, y, z + 4, t);
-        glass(world, x, y, z + 4);
-        arch(lights, x, y, z - 13, t);
-        duel(lights, x + 11, y, z + 3, t);
-        lightning(lights, x, y, z, t);
-        // The particles: played once where the show stands, again where it moves to.
-        if (playing == null || playing.state() == CgVfxSystemInstance.State.DEAD || playingX != x || playingY != y
-                || playingZ != z) {
-            if (playing != null) playing.kill();
-            playing = vfx.play(new CgVfxSystemInstance<>(particles, x, y, z));
-            playingX = x;
-            playingY = y;
-            playingZ = z;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, ZONE_SUBMIT)) {
+            CgWorldLights lights = world.lights();
+            float t = (float) (seconds % 3600.0);
+            haze.box(x - 24, y - 1, z - 20, x + 24, y + 18, z + 20).density(HAZE, 4f);
+            if (!hazing) {
+                world.media().add(haze);
+                hazing = true;
+            }
+            mirrorBall(lights, x, y + 10, z - 2, t);
+            searchlights(lights, x, y, z, t);
+            carousel(lights, x, y, z + 4, t);
+            glass(world, x, y, z + 4);
+            arch(lights, x, y, z - 13, t);
+            duel(lights, x + 11, y, z + 3, t);
+            lightning(lights, x, y, z, t);
+            // The particles: played once where the show stands, again where it moves to.
+            if (playing == null || playing.state() == CgVfxSystemInstance.State.DEAD || playingX != x || playingY != y
+                    || playingZ != z) {
+                if (playing != null) playing.kill();
+                playing = vfx.play(new CgVfxSystemInstance<>(particles, x, y, z));
+                playingX = x;
+                playingY = y;
+                playingZ = z;
+            }
         }
     }
 
