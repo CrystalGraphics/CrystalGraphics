@@ -77,8 +77,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public final class CgWorldMedia {
 
     /** Unreal's r.VolumetricFog.GridPixelSize by scalability (BaseScalability.ini): Epic 8, High 16, Cinematic 4. */
-    private static final CgVar.Int PIXELS = CgVar.integer("crystalgraphics.world.mediaPixels", 8, 4, 32, CgVar.DEV,
-            "Pixels of the screen a froxel of the air's grid spans across: Unreal's Epic 8, High 16. 1.7 ms at 8 in 1080p.");
+    private static final CgVar.Int PIXELS = CgVar.integer("crystalgraphics.world.mediaPixels", 16, 4, 32, CgVar.DEV,
+            "Pixels of the screen a froxel of the air's grid spans across: Unreal's High 16, Epic 8 (four times the froxels).");
     /** Slices deep, and the eye depths they run between: as {@code cg_env.glsl}'s {@code CG_MEDIA_*}. */
     public static final int SLICES = 128;
     public static final float NEAR = 0.095f, FAR = 256f;

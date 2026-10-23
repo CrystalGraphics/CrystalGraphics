@@ -202,8 +202,9 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
 - **Resolution and rays**: `crystalgraphics.world.lightsDownsample` is Unreal's `r.MegaLights.DownsampleMode`: 0 traces
   every pixel, 1 every other (2x1), 2 a quarter (2x2); `crystalgraphics.world.lightsSamplesPerPixel` its
   `NumSamplesPerPixel`, 1, 2 or 4 samples each. Unreal's default, 4 samples on a 2x2 pixel, is a ray a screen pixel and
-  leans on TSR to hide the 2-pixel steps; Minecraft's frame has no temporal anti-aliasing, so the default is the same
-  budget at full resolution: 1 sample a pixel, the frames averaging the rest. Minecraft's block light takes
+  leans on TSR to hide the 2-pixel steps. The default is 2x2 at 1 sample a pixel, a quarter of Unreal's rays, the frames
+  averaging the rest: in the lights demo at 2560x1440 in game, the sample pass took 1.9 ms at full resolution and 0.65
+  at 2x2. Minecraft's block light takes
   that sample's one ray too, and on our pixels the sun's. Standing over the shadows demo's plaza at 2000x1080 the sample pass took 12-13 ms at 4
   samples a pixel and 3.2-3.4 at 1 (RTX 4070 Super, Minecraft 1.20.1).
 - **The blocks' trace** sphere-steps the window's distance field, and within a block and a half of solid walks its grid
@@ -283,9 +284,10 @@ lights.add(x, y, z, 45f, 0xFFFFF4E0, 1800f, 0f).spot(dx, -0.3f, dz, 5f, 10f).sca
   255 at its base (`--mode=lights-air-quality`, 99th percentile); at four 1.2, and down its length 0.7, as steady as
   froxel middles (0.6). The history weight stays Unreal's 0.9 (`crystalgraphics.world.lightsAirHistoryWeight`): 0.95
   is steadier still and leaves moving beams trailing.
-- **The grid across**: 8 pixels a froxel, Unreal's Epic `r.VolumetricFog.GridPixelSize` (BaseScalability.ini; High is
-  16), set by `crystalgraphics.world.mediaPixels`. A beam about a froxel wide is spread over it, so at 16 a beam 40
-  blocks off faded into the haze. At 8 in 1920x1080 the lights demo's media pass takes 1.7 ms (RTX 4070 Super).
+- **The grid across**: 16 pixels a froxel, Unreal's High `r.VolumetricFog.GridPixelSize` (BaseScalability.ini; Epic
+  is 8), set by `crystalgraphics.world.mediaPixels`. In the lights demo at 2560x1440 in game, 8 took 4.1 ms to light the
+  air and 16 1.5 (RTX 4070 Super); a beam about a froxel wide is spread over it, so at 16 the demo's searchlight seen
+  side-on from 40 blocks keeps 70% of its brightness from 10 (92% at 8).
 - **Integration** (`media.compute`'s `IntegrateColumns`, a thread a column walking it once; `Integrate`, a thread a
   froxel, where there is no compute): Unreal's `FinalIntegrationCS`, Frostbite's energy-conserving sum, into `cg_Media`'s
   rgb (the light scattered toward the eye) beside its alpha (what gets through, `cg_MediaTransmit`).
