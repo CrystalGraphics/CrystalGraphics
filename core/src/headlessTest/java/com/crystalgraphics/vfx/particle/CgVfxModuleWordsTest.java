@@ -86,6 +86,7 @@ public class CgVfxModuleWordsTest {
             {4.0f, 1.0f, 4.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f},   // kill
             {0.0f, 1.0f, 0.0f, 2.0f, 1.0f, 0.0f, 0.0f, 0.0f},   // kill
             {0.5f, 1.0f, 0.0f, 0.0f},   // sprite_rotation
+            {1.0f, 0.0f, 0.5f, 0.0f},   // source_movement
     };
 
     /** Example configurations: every kind at least once, every shape on the shape kinds. */
@@ -138,7 +139,8 @@ public class CgVfxModuleWordsTest {
                 new CgVfxModule.Kill(CgSphere.of(0.3), true).at(0f, 1.5f, 0f),
                 new CgVfxModule.Kill(CgBox.of(4, 1, 4), false),
                 new CgVfxModule.Kill(CgPlane.of(0, 1, 0), true),
-                new CgVfxModule.SpriteRotation(0.5f, true)));
+                new CgVfxModule.SpriteRotation(0.5f, true),
+                new CgVfxModule.SourceMovement(1f, 0f, 0.5f)));
     }
 
     @Test

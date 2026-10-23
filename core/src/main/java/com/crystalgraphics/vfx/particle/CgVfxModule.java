@@ -478,6 +478,45 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
     }
 
     /**
+     * Carries each particle along with its source's movement this step, times {@code (x, y, z)} per axis, once it has
+     * lived past two steps: Cascade's SourceMovement, which moves a world-space emitter's particles with its component.
+     * Runs after the solver.
+     *
+     * <pre>{@code
+     * new CgVfxModule.SourceMovement(1f, 1f, 1f)     // sparks that stay with a moving hand
+     * new CgVfxModule.SourceMovement(1f, 0f, 1f)     // follow across the ground, keep their own height
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A particle's first two steps are left alone, as Cascade's are: a new one already starts at the source.</li>
+     * </ul>
+     */
+    record SourceMovement(float x, float y, float z) implements CgVfxModule {
+        private static final CgVfxLane[] LANES = {CgVfxLane.VEC4};
+
+        @Override
+        public boolean afterSolve() {
+            return true;
+        }
+
+        @Override
+        public String gpuKind() {
+            return "source_movement";
+        }
+
+        @Override
+        public CgVfxLane[] instanceLanes() {
+            return LANES;
+        }
+
+        @Override
+        public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
+            out.vec4(instance.sourceX() - instance.fromX(), instance.sourceY() - instance.fromY(),
+                    instance.sourceZ() - instance.fromZ(), 0f);
+        }
+    }
+
+    /**
      * Turns particles round an axis through a point {@code (x, y, z)} from the source, {@code turns} a second (Godot's
      * orbit velocity): it moves them without adding to their velocity, so it never flings one out. Runs after the solver.
      *

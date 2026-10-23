@@ -267,6 +267,9 @@ public final class CgVfxModuleTypes {
                 r -> new CgVfxModule.Attract(r.shape(), r.f("offset", 0), r.f("offset", 1), r.f("offset", 2), r.f("strength"),
                         r.f("attenuation"), r.f("directionality"), r.f("axis", 0), r.f("axis", 1), r.f("axis", 2), r.b("lasting"),
                         r.b("inverse_square")));
+        kind("source_movement", CgVfxModule.SourceMovement.class, t -> v3(t, "scale"),
+                (m, in) -> in.v3("scale", m.x(), m.y(), m.z()),
+                r -> new CgVfxModule.SourceMovement(r.f("scale", 0), r.f("scale", 1), r.f("scale", 2)));
         kind("orbit", CgVfxModule.Orbit.class, t -> { v3(t, "axis"); fl(t, "turns"); offset(t); },
                 (m, in) -> in.v3("axis", m.axisX(), m.axisY(), m.axisZ()).f("turns", m.turns()).v3("offset", m.x(), m.y(), m.z()),
                 r -> new CgVfxModule.Orbit(r.f("turns"), r.f("axis", 0), r.f("axis", 1), r.f("axis", 2),
