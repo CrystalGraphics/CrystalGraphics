@@ -32,14 +32,14 @@ import org.joml.Matrix4f;
  * rainbow lights, a neon arch of tubes with colour chasing along it, a lightsaber duel flashing where the blades meet,
  * fireworks and a swarm of fireflies whose particles are lights, and lightning flooding everything every few seconds.
  * The lights light what is transparent too (the world lights' translucency volume): a ring of tinted glass round the
- * carousel, and smoke rising behind the duel. And the whole arena stands in a thin haze the lights glow in, the spots
+ * carousel. And the whole arena stands in a thin haze the lights glow in, the spots
  * and searchlights as beams.
  *
  * <pre>
- *                  arch (tubes)
- *   fireflies    ball (spots)    duel (tubes), smoke
+ *   fireworks      arch (tubes)      fireworks
+ *   fireflies    ball (spots)    duel (tubes)
  *                carousel (points) in glass
- *   searchlight    fireworks     searchlight
+ *   searchlight                  searchlight
  * </pre>
  *
  * <pre>{@code
@@ -61,9 +61,9 @@ public final class CgLightsDemo {
 
     private final CgVfxOwner vfx;
     private final CgVfxLook particles = CgVfxLook.builder(SCHEMA)
-            .emitter(fireworks("fireworksGold", 0xFFFFC040, 0xFFFF4020, 3.1f, -4f))
-            .emitter(fireworks("fireworksNeon", 0xFF40E0FF, 0xFFFF40E0, 2.3f, 4f))
-            .emitter(fireflies()).emitter(smoke()).build();
+            .emitter(fireworks("fireworksGold", 0xFFFFC040, 0xFFFF4020, 3.1f, -20f, -12f))
+            .emitter(fireworks("fireworksNeon", 0xFF40E0FF, 0xFFFF40E0, 2.3f, 20f, -12f))
+            .emitter(fireflies()).build();
     /** The glass ring's panes round the carousel, and their tints, each with its alpha. */
     private static final int PANES = 8;
     private static final float[][] TINTS = {{0.85f, 0.9f, 1f, 0.35f}, {0.6f, 0.8f, 1f, 0.45f}, {1f, 0.7f, 0.8f, 0.45f},
@@ -107,10 +107,13 @@ public final class CgLightsDemo {
                 .build()).build();
     }
 
-    /** A shell bursting high over the arena every {@code every} seconds, its sparks falling as lights. */
-    private static CgVfxEmitter fireworks(String name, int a, int b, float every, float dx) {
+    /**
+     * A shell bursting high over one of the arena's back corners every {@code every} seconds, its sparks falling as
+     * lights: away from the mirror ball, whose beams they would hide.
+     */
+    private static CgVfxEmitter fireworks(String name, int a, int b, float every, float dx, float dz) {
         return CgVfxEmitter.builder(name).capacity(600).state(CgVfxEmitterState.infinite(every)).burst(0f, 220)
-                .at(dx, 11f, 0f).shape(CgSphere.of(0.2)).outward().speed(6f, 9f).life(1.4f, 2.2f).size(0.06f, 0.1f)
+                .at(dx, 11f, dz).shape(CgSphere.of(0.2)).outward().speed(6f, 9f).life(1.4f, 2.2f).size(0.06f, 0.1f)
                 .color(a, 6f, b, 6f).module(new CgVfxModule.Gravity(4f)).module(new CgVfxModule.Drag(1.2f, 0f))
                 .opacity(CgKeyframes.start(0f, 1f).to(0.6f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .light(160f, 2f, CgVfxDrawnChannel.over(CgKeyframes.constant(1f)), CgVfxDrawnChannel.over(CgKeyframes.constant(1f)),
@@ -121,25 +124,6 @@ public final class CgLightsDemo {
                         CgVfxDrawnChannel.over(CgKeyframes.start(0f, 0.11f).to(1f, 0f, CgEasings.IN_QUAD).build()))
                 .renderer(sparks(name)).renderer(CgVfxRenderers.light(name + "Light").field("spawn_fraction", 0.4)
                         .field("inverse_squared_falloff", false).build())
-                .build();
-    }
-
-    /**
-     * Smoke rising just behind the duel, the sabers a block or two off it and the clash between: transparent, so lit
-     * through the world lights' translucency volume rather than the scene's lighting.
-     */
-    private static CgVfxEmitter smoke() {
-        CgKeyframes grow = CgKeyframes.start(0f, 1f).to(1f, 2.6f, CgEasings.OUT_QUAD).build();
-        return CgVfxEmitter.builder("smoke").capacity(400).state(CgVfxEmitterState.infinite(1f)).rate(14f)
-                .at(11f, 0.4f, 2.2f).shape(CgBox.of(0.5, 0.1, 0.5)).direction(0f, 1f, 0f, 15f).speed(0.7f, 1.1f)
-                .life(5f, 7f).size(0.9f, 1.3f).color(0xFFB8B8B8, 1f, 0xFF9A9A9A, 1f)
-                .module(new CgVfxModule.Turbulence(0.8f, 0.4f, 0.4f)).module(new CgVfxModule.Drag(0.4f, 0f))
-                .scaleOverLife(grow, grow, grow)
-                .opacity(CgKeyframes.start(0f, 0f).to(0.15f, 0.55f, CgEasings.OUT_QUAD).to(0.7f, 0.4f, CgEasings.LINEAR)
-                        .to(1f, 0f, CgEasings.IN_QUAD).build())
-                .renderer(CgVfxRenderers.sprite("smoke").material(CgMaterialDefinition.of("crystalgraphics:materials/demo_lights_smoke",
-                        "crystalgraphics:shaders/demo/demo_lit_smoke.shader").blend(CgBlendMode.PREMULTIPLIED)
-                        .usage(CgMaterialUsage.SPRITES).build()).build())
                 .build();
     }
 
