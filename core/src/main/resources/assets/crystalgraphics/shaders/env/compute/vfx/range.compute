@@ -103,6 +103,12 @@ uint range_depth(vec3 c) {
     return uint(clamp((log2(w) + 6.0) / 16.0, 0.0, 1.0) * 65535.0);
 }
 
+// A distance from the eye as 16 bits, logarithmic as range_depth: Cascade's DistanceToView, Niagara's ViewDistance.
+uint range_distance(vec3 c) {
+    float d = max(length(c), 1.0 / 64.0);
+    return uint(clamp((log2(d) + 6.0) / 16.0, 0.0, 1.0) * 65535.0);
+}
+
 // The pool, then dead after live, then the spawn id's low bits.
 void Order() {
     bool live = CG_ELEMENT < int(LIVE(0));
@@ -131,9 +137,14 @@ void Key() {
         vec3 lo = c - vec3(reach), hi = c + vec3(reach);
         if (!outside && !cg_occluded(_Pyramid, _PyramidSize, _ClipX, _ClipY, _ClipZ, _ClipW, _Eye, lo, hi)) {
             key = owner << _DepthBits;
-            uint order = SORTS(int(owner));
-            if (_DepthBits > 0 && order == 1u) key |= 65535u - range_depth(p);
-            else if (_DepthBits > 0 && order >= 2u) key |= min(order - 2u - heatId.y, 65535u);
+            // The slot's order (CgVfxRange.Sort) in its low 3 bits, a ribbon's next spawn id above; each drawn as
+            // Cascade sorts (ParticleSystemRender.cpp, SortSpriteParticles): the largest first.
+            uint order = SORTS(int(owner)), mode = order & 7u;
+            if (_DepthBits > 0 && mode == 1u) key |= 65535u - range_depth(p);
+            else if (_DepthBits > 0 && mode == 2u) key |= min((order >> 3u) - heatId.y, 65535u);
+            else if (_DepthBits > 0 && mode == 3u) key |= 65535u - range_distance(p);
+            else if (_DepthBits > 0 && mode == 4u) key |= 65535u - (heatId.y & 65535u);
+            else if (_DepthBits > 0 && mode == 5u) key |= heatId.y & 65535u;
         }
     }
     KEYS_WRITE(key);

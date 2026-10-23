@@ -590,7 +590,7 @@ public final class CgVfxFrame {
                     }
                 }
                 case MESHES -> {
-                    if (!rd.unsorted && blendsInOrder(rd.material)) range.sorted(slot);
+                    if (!rd.unsorted && blendsInOrder(rd.material)) range.sorted(slot, rd.sort);
                     // One record set for every layer: the cull stamps each draw's customs and scale onto it, leaving
                     // custom 0, Range's velocity.
                     reach = Math.max(reach, size * rd.meshRadius);
@@ -606,7 +606,7 @@ public final class CgVfxFrame {
                     CgVfxSystem.place(draw, rd.placed, effect).submit();
                 }
                 case MERGED -> {
-                    if (!rd.unsorted && blendsInOrder(rd.material)) range.sorted(slot);
+                    if (!rd.unsorted && blendsInOrder(rd.material)) range.sorted(slot, rd.sort);
                     reach = Math.max(reach, Math.max(size, 1f) * 4f);
                     int f = rd.proxy.add(this, capacity, ox + cx, oy + cy, oz + cz, word);
                     float[] c = rd.proxy.custom;
@@ -623,7 +623,7 @@ public final class CgVfxFrame {
                     c[f + 15] = effect.presence();
                 }
                 case SINGLE -> {
-                    if (!rd.unsorted && blendsInOrder(rd.material)) range.sorted(slot);
+                    if (!rd.unsorted && blendsInOrder(rd.material)) range.sorted(slot, rd.sort);
                     reach = Math.max(reach, Math.max(size, 1f) * 4f);
                     CgWorldRenderer.Draw draw = world.draw(slotMesh(def.drawLayout(), capacity), rd.material)
                             .buffer(CgBindingPoints.PARTICLES, pool.drawn()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
@@ -726,10 +726,13 @@ public final class CgVfxFrame {
                 Renderer rd = rs.next(Shape.MESHES, placed, r, materials.material(r, CgVfxSlot.Kind.PARTICLES));
                 rd.mesh = m.meshes().isEmpty() ? system.particleSphere() : mesh(String.valueOf(m.meshes().get(0).get("mesh")));
                 rd.meshRadius = m.meshes().isEmpty() ? 1f : rd.mesh.reach();
+                rd.unsorted = m.sort() == CgVfxSpriteRendererProperties.Sort.NONE;
+                rd.sort = rangeSort(m.sort());
             } else if (renderer instanceof CgVfxSpriteRendererProperties sprite) {
                 requireRenderer(renderer, def, CgVfxDrawLayout.QUADS);
                 quads(rs, placed, r, materials.material(r, CgVfxSlot.Kind.PARTICLES), pool, def, false);
                 rs.list[rs.count - 1].unsorted = sprite.sort() == CgVfxSpriteRendererProperties.Sort.NONE;
+                rs.list[rs.count - 1].sort = rangeSort(sprite.sort());
             } else if (renderer instanceof CgVfxArcRendererProperties) {
                 requireRenderer(renderer, def, CgVfxDrawLayout.ARCS);
                 quads(rs, placed, r, materials.material(r, CgVfxSlot.Kind.PARTICLES), pool, def, true);
@@ -853,6 +856,16 @@ public final class CgVfxFrame {
         if (reach > 0f) pool.cullScale(slot, reach);
     }
 
+    /** A renderer's sort as Range orders it; none and spawn order keep the pool's order, which the renderers refuse first. */
+    private static CgVfxRange.Sort rangeSort(CgVfxSpriteRendererProperties.Sort sort) {
+        return switch (sort) {
+            case VIEW_DISTANCE -> CgVfxRange.Sort.VIEW_DISTANCE;
+            case OLDEST_FIRST -> CgVfxRange.Sort.OLDEST_FIRST;
+            case NEWEST_FIRST -> CgVfxRange.Sort.NEWEST_FIRST;
+            default -> CgVfxRange.Sort.VIEW_DEPTH;
+        };
+    }
+
     /** How a renderer draws its slot. */
     private enum Shape { MERGED, SINGLE, STRIP, MESHES, SEQUENCE, LIGHT }
 
@@ -899,6 +912,7 @@ public final class CgVfxFrame {
             rd.beam = null;
             rd.beamFlags = rd.beamFrequency = 0;
             rd.trails = rd.unsorted = false;
+            rd.sort = CgVfxRange.Sort.VIEW_DEPTH;
             return rd;
         }
     }
@@ -918,6 +932,8 @@ public final class CgVfxFrame {
         boolean trails;
         /** A renderer sorting none: drawn in the order Range keeps, however it blends. */
         boolean unsorted;
+        /** How it sorts its particles when it blends them. */
+        CgVfxRange.Sort sort = CgVfxRange.Sort.VIEW_DEPTH;
         /** {@code STRIP}: quads a segment, ring points (trails), the ring's first point, vertices a particle. */
         int subs, points, firstRing, per;
         /** {@code STRIP}, a beam: its renderer, its flags (1 noise on the target, 2 one up, 4 tiles by distance), its noise's frequency. */

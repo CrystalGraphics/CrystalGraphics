@@ -160,7 +160,7 @@ public final class CgVfxRenderers {
         String unbuilt = null;
         if (r instanceof CgVfxSpriteRendererProperties s) {
             s.factoryFacing(who);
-            if (s.sort() != CgVfxSpriteRendererProperties.Sort.NONE && s.sort() != CgVfxSpriteRendererProperties.Sort.VIEW_DEPTH) unbuilt = "sort " + s.sort();
+            if (s.sort() == CgVfxSpriteRendererProperties.Sort.SPAWN_ORDER) unbuilt = "sort " + s.sort();
             else if (s.subImage() != null && s.subImage().isTable()) unbuilt = "a rect-table sub_image";
             else if (s.cameraDistance() != null) unbuilt = "camera_distance";
             else if (s.castShadows()) unbuilt = "cast_shadows";
@@ -168,6 +168,7 @@ public final class CgVfxRenderers {
         } else if (r instanceof CgVfxMeshRendererProperties m) {
             if (m.prefab() != null || m.meshBinding() != null || m.meshes().size() > 1) unbuilt = "a prefab, a bound mesh or several meshes";
             else if (!m.materialOverrides().isEmpty()) unbuilt = "material_overrides";
+            else if (m.sort() == CgVfxSpriteRendererProperties.Sort.SPAWN_ORDER) unbuilt = "sort " + m.sort();
             else if (!m.meshes().isEmpty() && (m.meshes().get(0).get("pivot_offset") != null
                     || m.meshes().get(0).get("pivot_space") != null)) unbuilt = "a mesh's pivot_offset";
             else if (m.subImage() != null && m.subImage().isTable()) unbuilt = "a rect-table sub_image";

@@ -305,7 +305,41 @@ public final class CgVfxRange {
      * frame, before the world records.
      */
     public CgVfxRange sorted(int slot) {
-        return order(slot, 1);
+        return sorted(slot, Sort.VIEW_DEPTH);
+    }
+
+    /**
+     * Has this frame's {@link #order()} hold {@code slot}'s particles as {@code sort} says, the largest key first as
+     * Cascade's sort draws them; the other slots keep the pool's order. Each frame, before the world records.
+     *
+     * <pre>{@code
+     * range.sorted(slot, CgVfxRange.Sort.VIEW_DISTANCE);   // farthest from the eye first
+     * }</pre>
+     */
+    public CgVfxRange sorted(int slot, Sort sort) {
+        return order(slot, sort.code);
+    }
+
+    /**
+     * How a slot's particles are ordered for blending: Cascade's sort modes ({@code ParticleSystemRender.cpp},
+     * {@code SortSpriteParticles}) and Niagara's view depth and distance. An age is a spawn's place: 65,536 spawns apart
+     * share a place.
+     */
+    public enum Sort {
+        /** Far to near along the view: Cascade's ViewProjDepth, Niagara's ViewDepth. */
+        VIEW_DEPTH(1),
+        /** Far to near from the eye: Cascade's DistanceToView, Niagara's ViewDistance. */
+        VIEW_DISTANCE(3),
+        /** Cascade's Age_OldestFirst: the newest spawns first, so the oldest lie on top. */
+        OLDEST_FIRST(4),
+        /** Cascade's Age_NewestFirst: the oldest spawns first, so the newest lie on top. */
+        NEWEST_FIRST(5);
+
+        final int code;
+
+        Sort(int code) {
+            this.code = code;
+        }
     }
 
     /**
@@ -315,7 +349,7 @@ public final class CgVfxRange {
      * particle culled mid-ribbon joins its neighbours across the gap. Each frame, before the world records.
      */
     public CgVfxRange ribbon(int slot, int newest) {
-        return order(slot, 2 + newest);
+        return order(slot, 2 | newest << 3);
     }
 
     private CgVfxRange order(int slot, int code) {
