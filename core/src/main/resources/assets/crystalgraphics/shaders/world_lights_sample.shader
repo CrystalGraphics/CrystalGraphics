@@ -1,8 +1,8 @@
-// The world's shadowed lights' samples, as Unreal's MegaLights picks and traces them (MegaLightsSampling.usf's
+// The world's lights' samples, as Unreal's MegaLights picks and traces them (MegaLightsSampling.usf's
 // GenerateLightSamplesCS, MegaLightsRayTracing.usf). The target is twice the size of a half-resolution grid: each
 // half-resolution pixel's four samples are its 2x2 block, as Unreal's NumSamplesPerPixel 2x2 lays them. Every fragment
-// runs the pixel's weighted reservoir over its light-grid cell's shadowed lights, stratified four ways, keeps its own
-// pick, and traces a ray to a point on that light: across the screen's depth first, then through the voxel window's
+// runs the pixel's weighted reservoir over its light-grid cell's lights, stratified four ways, keeps its own pick, and
+// for a light that casts shadows traces a ray to a point on it (one that casts none, a particle's, reaches it unasked): across the screen's depth first, then through the voxel window's
 // blocks from where that stopped, and against the boxes of the entities round the camera. The sun is not one of its
 // lights (Unreal's r.MegaLights.DirectionalLights 0): our objects shadow it through its cascaded shadow map, read with
 // Unreal's Manual3x3PCF, and on our objects' pixels a ray toward it is traced through the blocks and the entities.
@@ -363,7 +363,6 @@ Pass {
         for (int k = 0; k < count; k++) {
             int index = int(INDICES(from + k));
             CgLight light = LIGHTS(index);
-            if (!CG_LIGHT_SHADOWED(light)) continue;
             vec3 v = to_view_dir(light.positionRadius.xyz) + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
             vec4 spot = vec4(to_view_dir(light.spotCos.xyz), light.spotCos.w);
             vec4 segment = vec4(to_view_dir(light.segmentCone.xyz), light.segmentCone.w);
@@ -394,6 +393,7 @@ Pass {
         // MergeRays: the next sample of the same light takes this one's ray, unless the light has an area to sample.
         if (!area && mine < int(_SampleGrid.z) - 1 && chosen[mine + 1] == index) return vec2(float(index), 0.0);
         float weight = weightSum / chosenWeight[mine];
+        if (!CG_LIGHT_SHADOWED(light)) return vec2(float(index), weight);
 
         // GetLightSampleTrace: toward a point of the light sampled over the solid angle its sphere covers, along its
         // line for a tube.

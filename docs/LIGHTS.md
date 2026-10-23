@@ -212,8 +212,11 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
   samples a pixel and 3.2-3.4 at 1 (RTX 4070 Super, Minecraft 1.20.1).
 - **The blocks' trace** sphere-steps the window's distance field, and within a block and a half of solid walks its grid
   (Amanatides and Woo): an empty block in one step, a block with solid octants octant by octant.
-- **Departures from Unreal**: a linear screen trace rather than a hierarchical one; no visible-light hash guiding the next frame's samples; lights that cast no shadow stay on the grid's exact pass
-  rather than being sampled; the shading confidence is 1; every pixel traced by default (above).
+- **Every light is sampled**, as MegaLights samples them: one that casts no shadow (a particle's) takes no ray. The
+  apply pass shades the grid's lights exactly only when the shadow passes do not run. A swarm of particle lights shaded
+  exactly at every pixel took 1.15 ms of the lights demo at 2560x1440 in game.
+- **Departures from Unreal**: a linear screen trace rather than a hierarchical one; no visible-light hash guiding the
+  next frame's samples; the shading confidence is 1.
 - The gate is `--mode=lights-shadow`: a wall of blocks between a light and the floor, the light behind it gone and in the
   open the same as unshadowed. GPU zones `world.sunShadow`, `world.lightsTiles`, `world.lightsSample`,
   `world.lightsShade`, `world.lightsTemporal`, `world.lightsDenoise`.

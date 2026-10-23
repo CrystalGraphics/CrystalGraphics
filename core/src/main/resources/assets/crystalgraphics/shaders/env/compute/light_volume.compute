@@ -229,7 +229,9 @@ uint shadowed_at(vec3 middle, ivec2 list, float biasSqr, float spread) {
     if (_Shadows < 0.5) return mask;
     int rays = 0;
     for (int k = 0; k < min(list.x, 32) && rays < _AirShadowRays; k++) {
-        CgLight light = LIGHTS(int(INDICES(list.y + k)));
+        int index = int(INDICES(list.y + k));
+        if (LIGHTS(index).air.x <= 0.0) continue;
+        CgLight light = LIGHTS(index);
         if (CG_LIGHT_MINECRAFT(light) || !CG_LIGHT_SHADOWED(light)) continue;
         if (cg_light_falloff_filtered(light.positionRadius.xyz, light.positionRadius.w, light.colorExponent.w,
                 light.spotCos, light.segmentCone, middle, biasSqr, spread) <= 0.0) continue;
@@ -246,7 +248,10 @@ vec3 scatter_at(vec3 w, ivec2 list, uint shadow, float biasSqr, float spread) {
     vec3 sum = vec3(0.0);
     for (int k = 0; k < list.x; k++) {
         if (k < 32 && (shadow & (1u << uint(k))) != 0u) continue;
-        CgLight light = LIGHTS(int(INDICES(list.y + k)));
+        // A light that does not shine in the air (a particle's, Niagara's default) costs its scattering flag alone.
+        int index = int(INDICES(list.y + k));
+        if (LIGHTS(index).air.x <= 0.0) continue;
+        CgLight light = LIGHTS(index);
         if (CG_LIGHT_MINECRAFT(light)) continue;
         float falloff = cg_light_falloff_filtered(light.positionRadius.xyz, light.positionRadius.w, light.colorExponent.w,
                 light.spotCos, light.segmentCone, w, biasSqr, spread);

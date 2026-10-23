@@ -136,11 +136,10 @@ Pass {
         float floorLight = CG_LINEAR_SCENE ? 0.02 : 0.15;
         vec3 sum = vec3(0.0);
         bool shadows = _Shadows > 0.5;
-        for (int k = 0; k < count; k++) {
-            // Most lights cast shadows and are the shadow passes' (_Shadowed): read their flag alone, not the record.
-            int index = int(INDICES(from + k));
-            if (shadows && LIGHTS(index).ambient.w > 0.5) continue;
-            CgLight light = LIGHTS(index);
+        // With the shadow passes running every light is theirs, sampled as MegaLights samples (_Shadowed); without them
+        // each is shaded here exactly.
+        for (int k = 0; k < (shadows ? 0 : count); k++) {
+            CgLight light = LIGHTS(int(INDICES(from + k)));
             vec3 at = light.positionRadius.xyz, way = light.spotCos.xyz, along = light.segmentCone.xyz;
             vec3 v = vec3(dot(_ToView0.xyz, at), dot(_ToView1.xyz, at), dot(_ToView2.xyz, at))
                     + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
