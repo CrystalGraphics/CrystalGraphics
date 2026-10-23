@@ -271,8 +271,9 @@ final class CgMeshDistanceFields {
         Grid grid = new Grid(positions, triangles, origin, voxel * CELL, n);
         float band = BAND * voxel;
         float[] out = new float[n[0] * n[1] * n[2]];
-        float[] q = new float[3], scratch = new float[3];
-        for (int z = 0; z < n[2]; z++) {
+        // A slice a task, across the workers: the grid is read only, each slice's scratch its own.
+        CgJob.forEach(n[2], z -> {
+            float[] q = new float[3], scratch = new float[3];
             for (int y = 0; y < n[1]; y++) {
                 for (int x = 0; x < n[0]; x++) {
                     q[0] = origin[0] + x * voxel;
@@ -282,7 +283,7 @@ final class CgMeshDistanceFields {
                     out[(z * n[1] + y) * n[0] + x] = grid.inside(q) ? -d : d;
                 }
             }
-        }
+        });
         return new Field(n[0], n[1], n[2], origin[0], origin[1], origin[2], voxel, out);
     }
 
