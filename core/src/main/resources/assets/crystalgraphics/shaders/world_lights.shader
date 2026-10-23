@@ -137,8 +137,10 @@ Pass {
         vec3 sum = vec3(0.0);
         bool shadows = _Shadows > 0.5;
         for (int k = 0; k < count; k++) {
-            CgLight light = LIGHTS(int(INDICES(from + k)));
-            if (shadows && CG_LIGHT_SHADOWED(light)) continue;
+            // Most lights cast shadows and are the shadow passes' (_Shadowed): read their flag alone, not the record.
+            int index = int(INDICES(from + k));
+            if (shadows && LIGHTS(index).ambient.w > 0.5) continue;
+            CgLight light = LIGHTS(index);
             vec3 at = light.positionRadius.xyz, way = light.spotCos.xyz, along = light.segmentCone.xyz;
             vec3 v = vec3(dot(_ToView0.xyz, at), dot(_ToView1.xyz, at), dot(_ToView2.xyz, at))
                     + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
