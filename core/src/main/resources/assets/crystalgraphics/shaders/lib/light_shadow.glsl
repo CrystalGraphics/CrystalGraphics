@@ -84,6 +84,13 @@ vec4 cg_shadow_sphere_ray(vec3 toCentre, float radius, vec2 u) {
 // relative to the eye, at block eyeBlock + eyeFrac. Sphere-traced on the window's distance field (a block's centre is
 // at least d from solid, so any point of it at least d - sqrt(3) / 2), then octant by octant where solid is near.
 // Clear outside the window and where a section is not filled.
+// How far along dir a point at f inside a cube cell of side size, from its low corner, leaves it.
+float cg_shadow_cell_exit(vec3 f, vec3 dir, float size) {
+    vec3 ahead = mix(f, vec3(size) - f, step(0.0, dir));
+    vec3 t = mix(ahead / max(abs(dir), vec3(1.0e-6)), vec3(1.0e9), lessThan(abs(dir), vec3(1.0e-6)));
+    return min(t.x, min(t.y, t.z));
+}
+
 bool cg_shadow_window(sampler3D world, sampler3D sections, sampler3D distance, ivec3 base, ivec3 wrap, ivec3 eyeBlock,
                       vec3 eyeFrac, vec3 a, vec3 dir, float t0, float t1) {
     float t = t0;
@@ -100,11 +107,18 @@ bool cg_shadow_window(sampler3D world, sampler3D sections, sampler3D distance, i
             t += d - 0.866;
             continue;
         }
+        // Near solid, a grid walk (Amanatides and Woo): an empty block crossed in one step, a block with solid
+        // octants octant by octant, each one the ray passes through tested.
         uint solid = fx_world_bytes(world, base, wrap, b).x;
         vec3 f = q - whole;
-        uint octant = uint(f.x >= 0.5) | (uint(f.y >= 0.5) << 1) | (uint(f.z >= 0.5) << 2);
+        if (solid == 0u) {
+            t += cg_shadow_cell_exit(f, dir, 1.0) + 1.0e-3;
+            continue;
+        }
+        vec3 upper = step(vec3(0.5), f);
+        uint octant = uint(upper.x) | (uint(upper.y) << 1) | (uint(upper.z) << 2);
         if ((solid & (1u << octant)) != 0u) return true;
-        t += 0.125;
+        t += cg_shadow_cell_exit(f - upper * 0.5, dir, 0.5) + 1.0e-3;
     }
     return false;
 }

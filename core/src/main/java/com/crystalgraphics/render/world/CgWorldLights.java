@@ -231,6 +231,13 @@ public final class CgWorldLights {
             CgVar.DEV, "Blocks a shadow ray is followed across the screen's depth before the world trace takes over: "
                     + "Unreal's r.MegaLights.ScreenTraces.MaxDistance, 100 cm.");
     /** Unreal's r.MegaLights.Temporal.MaxFramesAccumulated. */
+    private static final CgVar.Int SAMPLE_SKIP = CgVar.integer("crystalgraphics.world.lightsSampleSkip", 0, 0, 127, CgVar.DEV,
+            "Parts of the shadow rays left out, to measure what each costs: 1 the sun, 2 Minecraft's block light, 4 the "
+                    + "lights, 8 our meshes, 16 the screen trace, 32 the blocks, 64 the entities.");
+
+    private static final CgVar.Int SAMPLES = CgVar.integer("crystalgraphics.world.lightsSamplesPerPixel", 1, 1, 4, CgVar.DEV,
+            "Unreal's r.MegaLights.NumSamplesPerPixel: 1, 2 or 4 shadow rays a pixel (or a downsampled one). Unreal's 4 "
+                    + "fall on a 2x2 downsampled pixel, a ray a screen pixel; 1 at full resolution is the same budget.");
     private static final CgVar.Num DOWNSAMPLE = CgVar.number("crystalgraphics.world.lightsDownsample", 0f, 0f, 2f, CgVar.DEV,
             "Unreal's r.MegaLights.DownsampleMode: 0 traces every pixel, 1 every other (2x1), 2 a quarter (2x2). Unreal's 2 "
                     + "leans on TSR to hide its steps, and Minecraft's frame has none.");
@@ -308,7 +315,8 @@ public final class CgWorldLights {
             .vec4("_Trace", SCREEN_TRACE.get(), 24f, 0.02f, 0.005f).set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1])
             .set1i("_EyeZ", eyeBlock[2]).vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f)
             .set1i("_Entities", this.entities).set1i("_Casters", this.casterCount).vec4("_Sun", this.sunOn ? 1f : 0f, SUN_TRACE.get(), 24f, SUN_DISC)
-            .set1f("_Own", this.ownPixels() ? 1f : 0f)
+            .set1f("_Own", this.ownPixels() ? 1f : 0f).set1i("_Skip", SAMPLE_SKIP.get())
+            .vec4("_SampleGrid", this.sampleX, this.sampleY, this.sampleX * this.sampleY, 0f)
             .sampler("_HostDepth", 3, this.ownPixels() ? this.hostDepth : CgFallbackTextures.WHITE_1x1)
             .sampler("_CasterRows", 4, this.casterCount > 0 ? this.casters : CgFallbackTextures.BLACK_1x1)
             .sampler("_MeshFields", 5, this.casterCount > 0 ? this.meshFields.atlas() : CgFallbackTextures.BLACK_1x1)
@@ -317,8 +325,11 @@ public final class CgWorldLights {
     private int entities;
     /** The downsample factor the sample and shade passes read this frame: {@link #DOWNSAMPLE}'s mode. */
     private int downX = 2, downY = 2;
+    /** The samples a downsampled pixel takes, as their block of the samples texture: {@link #SAMPLES}' layout. */
+    private int sampleX = 2, sampleY = 2;
     private final Consumer<CgShaderBindings> shadeValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, this.downX, this.downY)
             .sampler("_Samples", 0, samples).set1f("_MaxWeight", 20f)
+            .vec4("_SampleGrid", this.sampleX, this.sampleY, this.sampleX * this.sampleY, 0f)
             .sampler("_Normals", 1, this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1));
     private final Consumer<CgShaderBindings> temporalValues = b -> this.gridValues.accept(b.vec4("_Eye", eye.x, eye.y, eye.z, 0f)
             .sampler("_Now", 0, shaded).sampler("_Last", 1, freshHistory ? shaded : history.previous())
@@ -949,9 +960,12 @@ public final class CgWorldLights {
         int mode = Math.round(DOWNSAMPLE.get());
         downX = mode > 0 ? 2 : 1;
         downY = mode > 1 ? 2 : 1;
-        // Four samples a downsampled pixel, in a 2x2 block of the samples texture.
+        // GetNumSamplesPerPixel2d: a downsampled pixel's samples as a block of the samples texture, 1x1, 2x1 or 2x2.
+        int count = SAMPLES.get();
+        sampleX = count >= 2 ? 2 : 1;
+        sampleY = count >= 4 ? 2 : 1;
         int w = Math.max(1, (int) targetW), h = Math.max(1, (int) targetH);
-        int sw = (w + downX - 1) / downX * 2, sh = (h + downY - 1) / downY * 2;
+        int sw = (w + downX - 1) / downX * sampleX, sh = (h + downY - 1) / downY * sampleY;
         if (samples == null || samples.getWidth() != sw || samples.getHeight() != sh) {
             samples = CgGraphTexture.transientTexture("cg_world_lights.samples", new CgTextureDesc(sw, sh, SAMPLES_FORMAT));
         }

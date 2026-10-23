@@ -41,6 +41,8 @@ Properties {
     _Trace   ("Screen trace: blocks, steps, normal bias in blocks, relative depth thickness", vec4) = (8, 24, 0.02, 0.005)
     _Sun     ("The sun: 1 to trace it, its screen trace's blocks and steps, the tangent of its disc's half angle", vec4) = (0, 24, 24, 0.004675)
     _Own     ("1 where the host's depth before our opaque draws was taken this frame", float) = 0.0
+    _SampleGrid ("Unreal's NumSamplesPerPixel as a block of the samples texture: its width, height and count", vec4) = (2, 2, 4, 0)
+    _Skip    ("Parts left out, to measure each: 1 sun, 2 block light, 4 lights, 8 meshes, 16 screen, 32 blocks, 64 entities", int) = 0
     _EyeX    ("The eye's block: x",                                int) = 0
     _EyeY    ("y",                                                 int) = 0
     _EyeZ    ("z",                                                 int) = 0
@@ -169,6 +171,10 @@ Pass {
     // behind the scene or off screen, with reached where it got to; 0 clear.
     int screen_trace(vec3 a, vec3 dir, float len, int steps, float jit, out float reached) {
         reached = len;
+        if ((_Skip & 16) != 0) {
+            reached = 0.0;
+            return -1;
+        }
         float last = 0.0;
         for (int k = 0; k < steps; k++) {
             float t = (float(k) + jit) / float(steps) * len;
@@ -196,7 +202,7 @@ Pass {
     // Whether the window's blocks or an entity's capsule lie on the eye-relative world segment a to a + dir * t1, from
     // t0: the world trace past the screen.
     bool world_trace(vec3 aw, vec3 dir, float t0, float t1) {
-        if (_WorldLive != 0 && t0 < t1 && cg_shadow_window(_World, _WorldSections, _WorldDistance,
+        if ((_Skip & 32) == 0 && _WorldLive != 0 && t0 < t1 && cg_shadow_window(_World, _WorldSections, _WorldDistance,
                 ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ), ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ),
                 ivec3(_EyeX, _EyeY, _EyeZ), _EyeFrac.xyz, aw, dir, max(t0, 0.05), t1)) {
             return true;
@@ -204,7 +210,7 @@ Pass {
         // The entities round the camera, each a vertical capsule in its box (Unreal's capsule shadows' stand-in for a
         // character), skipped where the ray starts or ends inside it: the surface or the light is that entity's own.
         vec3 bw = aw + dir * t1;
-        for (int k = 0; k < _Entities; k++) {
+        for (int k = 0; k < ((_Skip & 64) != 0 ? 0 : _Entities); k++) {
             vec3 lo = ENTITIES(k * 2).xyz - _EyeFrac.xyz, hi = ENTITIES(k * 2 + 1).xyz - _EyeFrac.xyz;
             if (all(greaterThan(aw, lo - 0.1)) && all(lessThan(aw, hi + 0.1))) continue;
             if (all(greaterThan(bw, lo)) && all(lessThan(bw, hi))) continue;
@@ -242,7 +248,7 @@ Pass {
     // sphere-traced over the part of the segment inside it, at most 32 steps, a hit within two voxels of the ray's start
     // ignored as the object's own (Unreal's self-shadow bias).
     bool caster_trace(vec3 aw, vec3 dir, float t0, float t1) {
-        for (int k = 0; k < _Casters; k++) {
+        for (int k = 0; k < ((_Skip & 8) != 0 ? 0 : _Casters); k++) {
             vec4 r0 = texelFetch(_CasterRows, ivec2(k * 5, 0), 0), r1 = texelFetch(_CasterRows, ivec2(k * 5 + 1, 0), 0);
             vec4 r2 = texelFetch(_CasterRows, ivec2(k * 5 + 2, 0), 0), size = texelFetch(_CasterRows, ivec2(k * 5 + 3, 0), 0);
             vec4 scale = texelFetch(_CasterRows, ivec2(k * 5 + 4, 0), 0);
@@ -269,7 +275,7 @@ Pass {
     // a north face is exactly edge-on) holds still rather than flipping with a normal's last bit; on Minecraft's a face
     // turned from it is left as Minecraft lit it.
     float sun_visibility(vec3 p, vec3 n, bool ownPixel, ivec2 sampleCoord) {
-        if (_Sun.x < 0.5 || CG_DAYLIGHT <= 0.0 || CG_SUN_DIRECTION.y <= 0.0) return 1.0;
+        if ((_Skip & 1) != 0 || _Sun.x < 0.5 || CG_DAYLIGHT <= 0.0 || CG_SUN_DIRECTION.y <= 0.0) return 1.0;
         vec3 toSun = normalize(to_view_dir(CG_SUN_DIRECTION));
         float facing = ownPixel ? smoothstep(0.0, 0.2, dot(n, toSun)) : 1.0;
         if (dot(n, toSun) <= 0.0) return ownPixel ? 0.0 : 1.0;
@@ -292,6 +298,7 @@ Pass {
     // Whether Minecraft's block light from the light-giving block at eye-relative c reaches p facing n: 1 or 0. One
     // block, picked from the cell's Minecraft lights by the light Minecraft's flood gives the pixel from each.
     float block_visibility(vec3 p, vec3 n, bool ownPixel, ivec2 sampleCoord) {
+        if ((_Skip & 2) != 0) return 1.0;
         ivec3 cell = cg_light_cell(p, _ZParams.xyz, _Rays.xy, _Rays.zw, _Tile.xy, ivec2(_Grid.xy));
         int e = (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;
         int count = int(CELLS(e * 2)), from = int(CELLS(e * 2 + 1));
@@ -336,13 +343,14 @@ Pass {
 
     // This sample's light: x its index, -1 for none; y its weight, 0 merged, -1 blocked.
     vec2 light_sample(vec3 p, vec3 n, ivec2 d, ivec2 sampleCoord, int mine) {
+        if ((_Skip & 4) != 0) return vec2(-1.0, 0.0);
         ivec3 cell = cg_light_cell(p, _ZParams.xyz, _Rays.xy, _Rays.zw, _Tile.xy, ivec2(_Grid.xy));
         int e = (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;
         int count = int(CELLS(e * 2)), from = int(CELLS(e * 2 + 1));
 
         // InitLightSamplerStratified and AddLightSample (MegaLightsSampling.ush): four stratified picks in one pass.
         float rnd = cg_shadow_noise(vec2(d), CG_FRAME_INDEX);
-        vec4 pick = (vec4(0.0, 1.0, 2.0, 3.0) + rnd) * 0.25;
+        vec4 pick = (vec4(0.0, 1.0, 2.0, 3.0) + rnd) / _SampleGrid.z;
         ivec4 chosen = ivec4(-1);
         vec4 chosenWeight = vec4(0.0);
         float weightSum = 0.0;
@@ -378,7 +386,7 @@ Pass {
         CgLight light = LIGHTS(index);
         bool area = light.ambient.z > 0.001 || dot(light.segmentCone.xyz, light.segmentCone.xyz) > 1.0e-4;
         // MergeRays: the next sample of the same light takes this one's ray, unless the light has an area to sample.
-        if (!area && mine < 3 && chosen[mine + 1] == index) return vec2(float(index), 0.0);
+        if (!area && mine < int(_SampleGrid.z) - 1 && chosen[mine + 1] == index) return vec2(float(index), 0.0);
         float weight = weightSum / chosenWeight[mine];
 
         // GetLightSampleTrace: toward a point of the light sampled over the solid angle its sphere covers, along its
@@ -409,8 +417,8 @@ Pass {
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
-        ivec2 sampleCoord = ivec2(gl_FragCoord.xy), d = sampleCoord >> 1;
-        int mine = (sampleCoord.x & 1) + 2 * (sampleCoord.y & 1);
+        ivec2 grid = ivec2(_SampleGrid.xy), sampleCoord = ivec2(gl_FragCoord.xy), d = sampleCoord / grid;
+        int mine = sampleCoord.x % grid.x + grid.x * (sampleCoord.y % grid.y);
         fragColor = vec4(-1.0, 0.0, 1.0, 1.0);
         ivec2 px = d * down() + jitter(d);
         if (px.x >= int(_Screen.x) || px.y >= int(_Screen.y)) return;
@@ -418,7 +426,10 @@ Pass {
         if (p.z >= 0.0) return;
         vec3 n = normal_at(px, p);
         bool ownPixel = own(px, -p.z);
-        fragColor = vec4(light_sample(p, n, d, sampleCoord, mine), sun_visibility(p, n, ownPixel, sampleCoord),
-                block_visibility(p, n, ownPixel, sampleCoord));
+        // The sun and Minecraft's block light take one ray a pixel, in its first sample: MegaLights spends a pixel's
+        // four on every light together, and the frames average the rest.
+        bool first = mine == 0;
+        fragColor = vec4(light_sample(p, n, d, sampleCoord, mine), first ? sun_visibility(p, n, ownPixel, sampleCoord) : 1.0,
+                first ? block_visibility(p, n, ownPixel, sampleCoord) : 1.0);
     }
 }

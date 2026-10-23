@@ -191,15 +191,25 @@ lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCa
   few degrees toward it, so a face edge-on to the sun holds still.
 - **What does not**: a particle's light (Unreal's simple lights cast none), a slot light with `cast_shadows: false`,
   any light under `-Dcrystalgraphics.world.lightsShadows=false`.
-- **Resolution**: `crystalgraphics.world.lightsDownsample` is Unreal's `r.MegaLights.DownsampleMode`: 0 traces every
-  pixel, 1 every other (2x1), 2 a quarter (2x2). Unreal defaults to 2 and lets TSR hide its 2-pixel steps; Minecraft's
-  frame has no temporal anti-aliasing, so the default is 0. With 1,000 shadowed lights at 1080p the sample pass took
-  3.36 ms at 0, 1.83 at 1 and 1.09 at 2 (RTX 4070 Super, gl).
+- **Resolution and rays**: `crystalgraphics.world.lightsDownsample` is Unreal's `r.MegaLights.DownsampleMode`: 0 traces
+  every pixel, 1 every other (2x1), 2 a quarter (2x2); `crystalgraphics.world.lightsSamplesPerPixel` its
+  `NumSamplesPerPixel`, 1, 2 or 4 samples each. Unreal's default, 4 samples on a 2x2 pixel, is a ray a screen pixel and
+  leans on TSR to hide the 2-pixel steps; Minecraft's frame has no temporal anti-aliasing, so the default is the same
+  budget at full resolution: 1 sample a pixel, the frames averaging the rest. The sun and Minecraft's block light take
+  that sample's one ray too. Standing over the shadows demo's plaza at 2000x1080 the sample pass took 12-13 ms at 4
+  samples a pixel and 3.2-3.4 at 1 (RTX 4070 Super, Minecraft 1.20.1).
+- **The blocks' trace** sphere-steps the window's distance field, and within a block and a half of solid walks its grid
+  (Amanatides and Woo): an empty block in one step, a block with solid octants octant by octant.
 - **Departures from Unreal**: a linear screen trace rather than a hierarchical one; no visible-light hash guiding the next frame's samples; lights that cast no shadow stay on the grid's exact pass
   rather than being sampled; the shading confidence is 1; every pixel traced by default (above).
 - The gate is `--mode=lights-shadow`: a wall of blocks between a light and the floor, the light behind it gone and in the
   open the same as unshadowed. GPU zones `world.lightsSample`, `world.lightsShade`, `world.lightsTemporal`,
   `world.lightsDenoise`.
+- **What a ray's parts cost, in game**: `-Dcrystalgraphics.demo=shadows -Dcrystalgraphics.demo.shadowsBisect=true
+  -Dcrystalgraphics.trace.channels=gpu` leaves each part out in turn (`crystalgraphics.world.lightsSampleSkip`: 1 the
+  sun, 2 block light, 4 the lights, 8 our meshes, 16 the screen trace, 32 the blocks, 64 the entities) while the player
+  stands over a shadow, and logs `[shadows-bisect]` the sample pass's GPU time without each. `--mode=lights-shadows-bench`
+  is the harness's version of that view (animals, eye height and the sun's angle by `-D`).
 
 ## 8. What they do not do yet
 

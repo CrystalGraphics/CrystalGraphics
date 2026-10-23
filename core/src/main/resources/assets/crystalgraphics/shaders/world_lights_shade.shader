@@ -26,6 +26,7 @@ Properties {
     _Samples ("The shadowed lights' samples, four a half-resolution pixel", sampler2D) = "black"
     _Normals ("Our surfaces' normals, world, n * 0.5 + 0.5, alpha 1 where drawn", sampler2D) = "black"
     _MaxWeight ("Unreal's r.MegaLights.MaxShadingWeight",          float) = 20.0
+    _SampleGrid ("Unreal's NumSamplesPerPixel as a block of the samples texture: its width, height and count", vec4) = (2, 2, 4, 0)
 }
 
 struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; };
@@ -138,7 +139,8 @@ Pass {
 
         // The stochastic bilinear upsample: the four downsampled pixels round this one, each weighed by its
         // bilinear weight, its plane's distance (MegaLights' spatial depth weight) and its normal (GetNormalWeight).
-        ivec2 halfSize = ivec2(textureSize(_Samples, 0)) >> 1;
+        ivec2 grid = ivec2(_SampleGrid.xy), halfSize = ivec2(textureSize(_Samples, 0)) / grid;
+        int count = int(_SampleGrid.z);
         vec2 at = (vec2(px) + 0.5) / vec2(down()) - 0.5;
         ivec2 d00 = ivec2(floor(at));
         vec2 f = at - vec2(d00);
@@ -169,12 +171,13 @@ Pass {
         ivec2 d = clamp(d00 + ivec2(chosen & 1, chosen >> 1), ivec2(0), halfSize - 1);
 
         // AccumulateLightSample: each light once, its visible samples' weights summed, merged samples counted in.
-        vec2 samples[4];
+        vec2 samples[4] = vec2[4](vec2(-1.0), vec2(-1.0), vec2(-1.0), vec2(-1.0));
         vec2 vis = vec2(0.0);
-        for (int s = 0; s < 4; s++) {
-            vec4 texel = texelFetch(_Samples, d * 2 + ivec2(s & 1, s >> 1), 0);
+        for (int s = 0; s < count; s++) {
+            vec4 texel = texelFetch(_Samples, d * grid + ivec2(s % grid.x, s / grid.x), 0);
             samples[s] = texel.xy;
-            vis += texel.zw * 0.25;
+            // The sun's and block light's one ray, the first sample's.
+            if (s == 0) vis = texel.zw;
         }
         vec3 sum = vec3(0.0);
         for (int s = 0; s < 4; s++) {
@@ -193,7 +196,7 @@ Pass {
                     merged = 1.0;
                 }
             }
-            if (weight > 0.0) sum += lighting(LIGHTS(int(index)), p, n) * (weight * 0.25);
+            if (weight > 0.0) sum += lighting(LIGHTS(int(index)), p, n) * (weight / float(count));
         }
         o.lighting = vec4(sum, 1.0);
         o.visibility = vec4(vis, 0.0, 1.0);
