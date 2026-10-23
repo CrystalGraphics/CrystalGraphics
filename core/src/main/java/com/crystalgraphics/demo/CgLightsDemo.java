@@ -84,6 +84,14 @@ public final class CgLightsDemo {
      * a beam eight blocks from its source adds 2 of 255 to the haze round it (--mode=lights-air-quality).
      */
     private static final float BEAM_SCATTERING = 8f;
+    /**
+     * Extra point lights on a disc over the arena, in its haze, for measuring what a light costs
+     * (-Dcrystalgraphics.demo.lightsSweep=n, none by default), all of one kind (-Dcrystalgraphics.demo.lightsSweepKind):
+     * {@code exact} a particle light's defaults (no shadow, not sampled, not in the air), {@code shadowed} MegaLights'
+     * rays, {@code scatter} glowing in the haze.
+     */
+    private static final int SWEEP = Integer.getInteger("crystalgraphics.demo.lightsSweep", 0);
+    private static final String SWEEP_KIND = System.getProperty("crystalgraphics.demo.lightsSweepKind", "exact");
     /** The haze over the arena, added to the world's media while the show plays. */
     private final CgWorldHaze haze = new CgWorldHaze();
     private boolean hazing;
@@ -176,6 +184,7 @@ public final class CgLightsDemo {
             arch(lights, x, y, z - 13, t);
             duel(lights, x + 11, y, z + 3, t);
             lightning(lights, x, y, z, t);
+            sweep(lights, x, y, z);
             // The particles: played once where the show stands, again where it moves to.
             if (playing == null || playing.state() == CgVfxSystemInstance.State.DEAD || playingX != x || playingY != y
                     || playingZ != z) {
@@ -269,6 +278,21 @@ public final class CgLightsDemo {
             if (at >= flash[0] && at < flash[0] + flash[1]) strength = Math.max(strength, 1f - (at - flash[0]) / flash[1] * 0.6f);
         }
         if (strength > 0f) lights.add(x - 6, y + 40, z - 10, 90f, 0xFFD8E4FF, lit(2.5f * strength, 40f), 0f);
+    }
+
+    /** {@link #SWEEP}'s lights, on a golden-angle disc so any count covers it evenly. */
+    private static void sweep(CgWorldLights lights, double x, double y, double z) {
+        for (int i = 0; i < SWEEP; i++) {
+            double r = 16 * Math.sqrt((i + 0.5) / SWEEP), a = i * 2.399963;
+            lights.add(x + Math.cos(a) * r, y + 1.5, z + Math.sin(a) * r, 7f, hue(i * 0.618f), lit(3f, 1.4f), 0f);
+            switch (SWEEP_KIND) {
+                case "exact" -> lights.shadowed(false).sampled(false).scattering(0f);
+                case "shadowed" -> lights.scattering(0f);
+                case "scatter" -> lights.shadowed(false).sampled(false);
+                default -> throw new IllegalArgumentException("crystalgraphics.demo.lightsSweepKind: " + SWEEP_KIND
+                        + ", not exact, shadowed or scatter");
+            }
+        }
     }
 
     /** A saturated colour round the hue wheel, {@code h} in turns. */
