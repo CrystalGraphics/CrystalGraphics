@@ -24,7 +24,7 @@ Properties {
     _DayFade ("A light's strength under a full day's open sky; 1 for never fading", float) = 0.1
     _Screen  ("The full target's width and height, then the downsample factor", vec4) = (1, 1, 2, 2)
     _Samples ("The shadowed lights' samples, four a half-resolution pixel", sampler2D) = "black"
-    _Normals ("Our surfaces' normals, world, n * 0.5 + 0.5, alpha 1 where drawn", sampler2D) = "black"
+    _GBuffer ("Each pixel's normal in the view (world_lights_gbuffer)", sampler2D) = "black"
     _MaxWeight ("Unreal's r.MegaLights.MaxShadingWeight",          float) = 20.0
     _SampleGrid ("Unreal's NumSamplesPerPixel as a block of the samples texture: its width, height and count", vec4) = (2, 2, 4, 0)
 }
@@ -72,31 +72,8 @@ Pass {
         return vec3(mix(_Rays.xy, _Rays.zw, uv) * depth, -depth);
     }
 
-    // Our surfaces' own normal where the opaque pass wrote one (Unreal's G-buffer normal); else rebuilt from depth.
-    vec3 drawn_normal(ivec2 px, vec3 p, vec2 size, out bool given) {
-        vec4 t = texelFetch(_Normals, clamp(px, ivec2(0), ivec2(size) - 1), 0);
-        given = t.a > 0.5;
-        if (!given) return vec3(0.0);
-        vec3 n = to_view_dir(normalize(t.xyz * 2.0 - 1.0));
-        return dot(n, p) > 0.0 ? -n : n;
-    }
-
-    vec3 normal_at(ivec2 px, vec3 p) {
-        bool given;
-        vec3 drawn = drawn_normal(px, p, _Screen.xy, given);
-        if (given) return drawn;
-        vec3 left = surface(px - ivec2(1, 0)), right = surface(px + ivec2(1, 0));
-        vec3 down = surface(px - ivec2(0, 1)), up = surface(px + ivec2(0, 1));
-        vec3 across = abs(left.z - p.z) < abs(right.z - p.z) ? p - left : right - p;
-        vec3 rising = abs(down.z - p.z) < abs(up.z - p.z) ? p - down : up - p;
-        vec3 n = cross(across, rising);
-        n = dot(n, n) > 1.0e-20 ? n * inversesqrt(dot(n, n)) : normalize(-p);
-        if (dot(n, p) > 0.0) n = -n;
-        vec3 world = to_world_dir(n), size = abs(world);
-        float most = max(size.x, max(size.y, size.z));
-        if (most > 0.985) n = to_view_dir(sign(world) * step(vec3(most), size));
-        return n;
-    }
+    // Pixel px's normal in the view, written once a firing (world_lights_gbuffer, Unreal's GBufferA in role).
+    vec3 normal_at(ivec2 px) { return texelFetch(_GBuffer, clamp(px, ivec2(0), ivec2(_Screen.xy) - 1), 0).xyz; }
 
     // Unreal's r.MegaLights.DownsampleMode as a factor: 1x1, 2x1 (checkerboard) or 2x2 (half resolution).
     ivec2 down() { return ivec2(_Screen.zw); }
@@ -135,7 +112,7 @@ Pass {
         o.visibility = vec4(1.0, 1.0, 0.0, 0.0);
         vec3 p = surface(px);
         if (p.z >= 0.0) return;
-        vec3 n = normal_at(px, p);
+        vec3 n = normal_at(px);
 
         // The stochastic bilinear upsample: the four downsampled pixels round this one, each weighed by its
         // bilinear weight, its plane's distance (MegaLights' spatial depth weight) and its normal (GetNormalWeight).
@@ -154,7 +131,7 @@ Pass {
                 continue;
             }
             float relative = abs(dot(q - p, n)) / -p.z;
-            float normalWeight = 1.0 - clamp(acos(clamp(dot(normal_at(rep, q), n), -1.0, 1.0)), 0.0, 1.0);
+            float normalWeight = 1.0 - clamp(acos(clamp(dot(normal_at(rep), n), -1.0, 1.0)), 0.0, 1.0);
             weights[k] *= exp2(-10000.0 * relative * relative) * normalWeight * normalWeight;
         }
         float total = dot(weights, vec4(1.0));

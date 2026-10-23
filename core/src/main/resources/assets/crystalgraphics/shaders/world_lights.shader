@@ -40,7 +40,7 @@ Properties {
     _World         ("The voxel window's blocks",                   sampler3D) = "black"
     _WorldSections ("Which of its sections are filled",            sampler3D) = "black"
     _WorldDistance ("Its distance to solid over FX_WORLD_FAR",      sampler3D) = "white"
-    _Normals       ("Our surfaces' normals, world, n * 0.5 + 0.5, alpha 1 where drawn", sampler2D) = "black"
+    _GBuffer       ("Each pixel's normal in the view (world_lights_gbuffer)", sampler2D) = "black"
     _WorldBaseX    ("Its lowest block, absolute: x",               int) = 0
     _WorldBaseY    ("y",                                           int) = 0
     _WorldBaseZ    ("z",                                           int) = 0
@@ -106,31 +106,8 @@ Pass {
     void fragment(in v2f i, out vec4 fragColor) {
         ivec2 px = ivec2(gl_FragCoord.xy);
         vec3 p = surface(px);
-        // Each way, the side whose depth steps less: across a block's edge the other side is another surface.
-        vec3 left = surface(px - ivec2(1, 0)), right = surface(px + ivec2(1, 0));
-        vec3 down = surface(px - ivec2(0, 1)), up = surface(px + ivec2(0, 1));
-        vec3 across = abs(left.z - p.z) < abs(right.z - p.z) ? p - left : right - p;
-        vec3 rising = abs(down.z - p.z) < abs(up.z - p.z) ? p - down : up - p;
-        vec3 n = cross(across, rising);
-        // No plane where the neighbours give none (the sky's far plane): face the eye.
-        n = dot(n, n) > 1.0e-20 ? n * inversesqrt(dot(n, n)) : normalize(-p);
-        if (dot(n, p) > 0.0) n = -n;
-        // Minecraft's terrain is axis-aligned: a normal within 10 degrees of a world axis is that axis. Depth's precision
-        // tilts a rebuilt normal row to row on far grazing ground, which a low light's N.L turns into stripes.
-        vec3 world = vec3(dot(vec3(_ToView0.x, _ToView1.x, _ToView2.x), n), dot(vec3(_ToView0.y, _ToView1.y, _ToView2.y), n),
-                dot(vec3(_ToView0.z, _ToView1.z, _ToView2.z), n));
-        vec3 size = abs(world);
-        float most = max(size.x, max(size.y, size.z));
-        // Our surfaces' own normal where the opaque pass wrote one (Unreal's G-buffer normal).
-        vec4 drawn = texelFetch(_Normals, px, 0);
-        if (drawn.a > 0.5) {
-            vec3 g = normalize(drawn.xyz * 2.0 - 1.0);
-            n = vec3(dot(_ToView0.xyz, g), dot(_ToView1.xyz, g), dot(_ToView2.xyz, g));
-            if (dot(n, p) > 0.0) n = -n;
-        } else if (most > 0.985) {
-            world = sign(world) * step(vec3(most), size);
-            n = vec3(dot(_ToView0.xyz, world), dot(_ToView1.xyz, world), dot(_ToView2.xyz, world));
-        }
+        // Its normal, written once a firing for every lighting pass (world_lights_gbuffer).
+        vec3 n = texelFetch(_GBuffer, px, 0).xyz;
         ivec3 cell = cg_light_cell(p, _ZParams.xyz, _Rays.xy, _Rays.zw, _Tile.xy, ivec2(_Grid.xy));
         int e = (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;
         int from = CG_LIGHT_CELL_START(e);

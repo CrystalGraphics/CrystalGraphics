@@ -22,7 +22,7 @@ Properties {
     _Lighting ("The accumulated lighting and frames",              sampler2D) = "black"
     _Moments  ("The accumulated moments, eye depth and confidence", sampler2D) = "black"
     _Vis      ("The accumulated sun and block light visibility, then their squares", sampler2D) = "white"
-    _Normals  ("Our surfaces' normals, world, n * 0.5 + 0.5, alpha 1 where drawn", sampler2D) = "black"
+    _GBuffer  ("Each pixel's normal in the view (world_lights_gbuffer)", sampler2D) = "black"
     _Spatial ("KernelRadius, NumSamples, DepthWeightScale, MaxDisocclusionFrames", vec4) = (8, 4, 10000, 2)
     _Spread  ("DisocclusionDiffuseSpatialVarianceScale, HistorySpatialStdDevThreshold, MaxFramesAccumulated", vec4) = (2, 0.15, 12, 0)
 }
@@ -64,31 +64,8 @@ Pass {
         return vec3(mix(_Rays.xy, _Rays.zw, uv) * depth, -depth);
     }
 
-    // Our surfaces' own normal where the opaque pass wrote one (Unreal's G-buffer normal); else rebuilt from depth.
-    vec3 drawn_normal(ivec2 px, vec3 p, vec2 size, out bool given) {
-        vec4 t = texelFetch(_Normals, clamp(px, ivec2(0), ivec2(size) - 1), 0);
-        given = t.a > 0.5;
-        if (!given) return vec3(0.0);
-        vec3 n = to_view_dir(normalize(t.xyz * 2.0 - 1.0));
-        return dot(n, p) > 0.0 ? -n : n;
-    }
-
-    vec3 normal_at(ivec2 px, vec3 p) {
-        bool given;
-        vec3 drawn = drawn_normal(px, p, CG_RESOLUTION, given);
-        if (given) return drawn;
-        vec3 left = surface(px - ivec2(1, 0)), right = surface(px + ivec2(1, 0));
-        vec3 down = surface(px - ivec2(0, 1)), up = surface(px + ivec2(0, 1));
-        vec3 across = abs(left.z - p.z) < abs(right.z - p.z) ? p - left : right - p;
-        vec3 rising = abs(down.z - p.z) < abs(up.z - p.z) ? p - down : up - p;
-        vec3 n = cross(across, rising);
-        n = dot(n, n) > 1.0e-20 ? n * inversesqrt(dot(n, n)) : normalize(-p);
-        if (dot(n, p) > 0.0) n = -n;
-        vec3 world = to_world_dir(n), size = abs(world);
-        float most = max(size.x, max(size.y, size.z));
-        if (most > 0.985) n = to_view_dir(sign(world) * step(vec3(most), size));
-        return n;
-    }
+    // Pixel px's normal in the view, written once a firing (world_lights_gbuffer, Unreal's GBufferA in role).
+    vec3 normal_at(ivec2 px) { return texelFetch(_GBuffer, clamp(px, ivec2(0), ivec2(CG_RESOLUTION) - 1), 0).xyz; }
 
     void vertex(out v2f o) {
         vec2 p = vec2(float((CG_VERTEX_ID & 1) << 2) - 1.0, float((CG_VERTEX_ID & 2) << 1) - 1.0);
@@ -155,7 +132,7 @@ Pass {
         }
         if (_Spatial.x <= 0.0 || !filtering && !any(filterVis)) return;
 
-        vec3 p = surface(px), n = normal_at(px, p);
+        vec3 p = surface(px), n = normal_at(px);
         float centreLum = luminance(centre.rgb);
         vec3 sum = centre.rgb;
         float weightSum = 1.0;
@@ -173,7 +150,7 @@ Pass {
             if (s.z >= 0.0) continue;
             float relative = abs(dot(s - p, n)) / -p.z;
             float depthWeight = exp2(-_Spatial.z * relative * relative);
-            float normalWeight = 1.0 - clamp(acos(clamp(dot(n, normal_at(q, s)), 0.0, 1.0)), 0.0, 1.0);
+            float normalWeight = 1.0 - clamp(acos(clamp(dot(n, normal_at(q)), 0.0, 1.0)), 0.0, 1.0);
             float geometry = depthWeight * normalWeight;
             if (filtering) {
                 float w = geometry * exp2(-abs(centreLum - luminance(neighbour.rgb)) / max(stdDev, 0.001));

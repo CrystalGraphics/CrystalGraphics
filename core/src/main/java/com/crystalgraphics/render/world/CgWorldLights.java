@@ -200,6 +200,14 @@ public final class CgWorldLights {
             CgVar.DEV, "Blocks from the eye its second reaches: r.TranslucencyLightingVolume.OuterDistance, 50 m.");
     /** What adds the lights onto the scene: a full-screen pass reading the grid. */
     static final String APPLY_SHADER = "crystalgraphics:shaders/world_lights.shader";
+    /**
+     * Each pixel's normal in the view, written once a firing for every lighting pass (Unreal's GBufferA in role): half
+     * floats, so it is the normal each pass rebuilt from depth, to a thousandth.
+     */
+    static final String GBUFFER_SHADER = "crystalgraphics:shaders/world_lights_gbuffer.shader";
+    private static final CgFrameBufferFormat GBUFFER_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.gbuffer")
+            .color(0, CgTextureType.RGBA16F).build();
+    private static final int GPU_GBUFFER = CgGpuTrace.name("world.lightsGBuffer");
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
     private static final int GPU_APPLY = CgGpuTrace.name("world.lightsApply");
     /** The shadow passes, MegaLights': samples traced, shaded, accumulated over frames, filtered across the screen. */
@@ -346,7 +354,10 @@ public final class CgWorldLights {
             "The light grid skips cells behind the scene and pulls each cell's far edge in to it.");
     private CgKernel view, coarse, cell, countCells, writeCells;
     private float tileU, tileV;
-    private CgMaterial apply, sample, shade, temporal, denoise, tiles;
+    private CgMaterial apply, gbufferPass, sample, shade, temporal, denoise, tiles;
+    private CgGraphTexture gbuffer;
+    private final Consumer<CgShaderBindings> gbufferValues = b -> this.gridValues.accept(b.sampler("_Normals", 0,
+            this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1));
     /** The translucency lighting volume: this firing's, or null; each cascade's lowest corner from the eye and cell size. */
     @Nullable
     private CgGraphTexture localLights;
@@ -437,7 +448,7 @@ public final class CgWorldLights {
             .sampler("_HostDepth", 3, this.ownPixels() ? this.hostDepth : CgFallbackTextures.WHITE_1x1)
             .sampler("_CasterRows", 4, this.casterCount > 0 || this.sunMapped ? this.casters : CgFallbackTextures.BLACK_1x1)
             .sampler("_MeshFields", 5, this.casterCount > 0 ? this.meshFields.atlas() : CgFallbackTextures.BLACK_1x1)
-            .sampler("_Normals", 6, this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1)
+            .sampler("_GBuffer", 6, this.gbuffer)
             .sampler("_SunMap", 7, this.sunMapped ? this.sunMap : CgFallbackTextures.WHITE_1x1)
             .sampler("_EntityTiles", 8, this.entities > 0 ? this.entityTiles : CgFallbackTextures.BLACK_1x1));
     private final Consumer<CgShaderBindings> windowValues = b -> CgWorldVoxelWindow.get().bind(b, 0);
@@ -449,7 +460,7 @@ public final class CgWorldLights {
     private final Consumer<CgShaderBindings> shadeValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, this.downX, this.downY)
             .sampler("_Samples", 0, samples).set1f("_MaxWeight", 20f)
             .vec4("_SampleGrid", this.sampleX, this.sampleY, this.sampleX * this.sampleY, 0f)
-            .sampler("_Normals", 1, this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1));
+            .sampler("_GBuffer", 1, this.gbuffer));
     private final Consumer<CgShaderBindings> temporalValues = b -> this.gridValues.accept(b.vec4("_Eye", eye.x, eye.y, eye.z, 0f)
             .sampler("_Now", 0, shaded).sampler("_Last", 1, freshHistory ? shaded : history.previous())
             .sampler("_LastMoments", 2, freshHistory ? shaded : history.previous().attachment(1))
@@ -459,7 +470,7 @@ public final class CgWorldLights {
             .vec4("_Frames", Math.min(4f, MAX_FRAMES.get()), MAX_FRAMES.get(), 1f, 0.03f));
     private final Consumer<CgShaderBindings> denoiseValues = b -> this.gridValues.accept(b.sampler("_Lighting", 0, accumulated)
             .sampler("_Moments", 1, accumulated.attachment(1)).sampler("_Vis", 2, accumulated.attachment(2))
-            .sampler("_Normals", 3, this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1)
+            .sampler("_GBuffer", 3, this.gbuffer)
             .vec4("_Spatial", SPATIAL_RADIUS.get(), 4f, 10000f, 2f)
             .vec4("_Spread", 2f, 0.15f, MAX_FRAMES.get(), 0f));
     private final Consumer<CgShaderBindings> applyValues = b -> this.gridValues.accept(b.set1f("_Shadows", shadowsOn ? 1f : 0f)
@@ -468,7 +479,7 @@ public final class CgWorldLights {
             .vec4("_Sun", shadowsOn && sunOn ? 1f : 0f, SUN_SHARE.get(), 0f, 0f)
             .set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1]).set1i("_EyeZ", eyeBlock[2])
             .vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f)
-            .sampler("_Normals", 5, this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1));
+            .sampler("_GBuffer", 5, this.gbuffer));
     private final Consumer<CgShaderBindings> applyWindow = b -> CgWorldVoxelWindow.get().bind(b, 2);
     /** The grid's values onto the apply material, read from the fields this firing set. */
     private final Consumer<CgShaderBindings> gridValues = b -> b.vec4("_Grid", gridX, gridY, SLICES, 0f)
@@ -1116,8 +1127,12 @@ public final class CgWorldLights {
     void apply(CgStageFrame stage, CgRecording recording, boolean transparents) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_APPLY)) {
             localLights = null;
-            if (apply == null) apply = CgMaterial.newInstance(APPLY_SHADER);
-            if (!apply.prepare()) return;
+            if (apply == null) {
+                apply = CgMaterial.newInstance(APPLY_SHADER);
+                gbufferPass = CgMaterial.newInstance(GBUFFER_SHADER);
+            }
+            if (!apply.prepare() | !gbufferPass.prepare()) return;
+            recordGBuffer(stage, recording);
             sunOn = sunWanted(stage);
             shadowsOn = SHADOWS.get() && (shadowedAdded > 0 || blockCount > 0 || sunOn) && recordShadows(stage, recording);
             if (transparents && binned && VOLUME.get()) recordVolume(stage, recording);
@@ -1139,6 +1154,16 @@ public final class CgWorldLights {
             add.add(chunks.end());
             add.end();
         }
+    }
+
+    /** This firing's G-buffer: every pixel's normal, which the apply and the shadow passes read. */
+    private void recordGBuffer(CgStageFrame stage, CgRecording recording) {
+        int w = Math.max(1, (int) targetW), h = Math.max(1, (int) targetH);
+        if (gbuffer == null || gbuffer.getWidth() != w || gbuffer.getHeight() != h) {
+            gbuffer = CgGraphTexture.transientTexture("cg_world_lights.gbuffer", new CgTextureDesc(w, h, GBUFFER_FORMAT));
+        }
+        gbufferPass.applyProperties(gbufferValues);
+        fullScreen(stage, recording, gbuffer, gbufferPass, GPU_GBUFFER);
     }
 
     /**

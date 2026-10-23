@@ -72,7 +72,7 @@ objects wrote. Minecraft writes none, so the pass **rebuilds one from Minecraft'
 | A G-buffer stores | Rebuilt from |
 |---|---|
 | Position | the depth at the pixel, unprojected |
-| Normal | the neighbouring depths: whichever neighbour each way is the smaller step, so a block's edge does not bend it (Wicked Engine's improved normal reconstruction), snapped to a world axis within 10 degrees, as blocks are |
+| Normal | the neighbouring depths: whichever neighbour each way is the smaller step, so a block's edge does not bend it (Wicked Engine's improved normal reconstruction), snapped to a world axis within 10 degrees, as blocks are; our meshes' own where the opaque pass drew them. Written once a firing (`world_lights_gbuffer.shader`, half floats) and read by the apply and every shadow pass, which each rebuilt it before, the shade and denoise passes once per neighbour they weigh |
 | Albedo | the scene's colour over Minecraft's lightmap value at the light's block: what the surface would be under white light |
 | Roughness, metalness | nothing: no specular |
 

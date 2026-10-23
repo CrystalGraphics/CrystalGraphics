@@ -56,7 +56,7 @@ Properties {
     _HostDepth     ("The host's window depth before our opaque draws", sampler2D) = "white"
     _CasterRows    ("Our meshes casting shadows, five texels each: eye-relative world to field voxels (three rows), the field's size and first float, its scales; from SUN_ROWS_AT the sun's cascades, four each: to uv, to depth, view depths and depth bias", sampler2D) = "black"
     _MeshFields    ("Every mesh's distance field in its own units, MESH_FIELD_ROW floats a row", sampler2D) = "black"
-    _Normals       ("Our surfaces' normals, world, n * 0.5 + 0.5, alpha 1 where drawn", sampler2D) = "black"
+    _GBuffer       ("Each pixel's normal in the view (world_lights_gbuffer)", sampler2D) = "black"
     _EntityTiles   ("Each 16x16 tile's entities a ray from it can meet: 16 bits a channel (world_lights_tiles.shader)", sampler2D) = "black"
     _SunMap        ("The sun's cascades, a quadrant each, nearest bottom left: our casters' depth from the light, blocks", sampler2D) = "white"
     _WorldBaseX    ("Its lowest block, absolute: x",               int) = 0
@@ -123,33 +123,8 @@ Pass {
         return vec3(mix(_Rays.xy, _Rays.zw, uv) * depth, -depth);
     }
 
-    // world_lights.shader's normal: ours as drawn; Minecraft's from the nearer neighbour each way, held to a world axis
-    // within 10 degrees, as its blocks are.
-    // Our surfaces' own normal where the opaque pass wrote one (Unreal's G-buffer normal); else rebuilt from depth.
-    vec3 drawn_normal(ivec2 px, vec3 p, vec2 size, out bool given) {
-        vec4 t = texelFetch(_Normals, clamp(px, ivec2(0), ivec2(size) - 1), 0);
-        given = t.a > 0.5;
-        if (!given) return vec3(0.0);
-        vec3 n = to_view_dir(normalize(t.xyz * 2.0 - 1.0));
-        return dot(n, p) > 0.0 ? -n : n;
-    }
-
-    vec3 normal_at(ivec2 px, vec3 p) {
-        bool given;
-        vec3 drawn = drawn_normal(px, p, _Screen.xy, given);
-        if (given) return drawn;
-        vec3 left = surface(px - ivec2(1, 0)), right = surface(px + ivec2(1, 0));
-        vec3 down = surface(px - ivec2(0, 1)), up = surface(px + ivec2(0, 1));
-        vec3 across = abs(left.z - p.z) < abs(right.z - p.z) ? p - left : right - p;
-        vec3 rising = abs(down.z - p.z) < abs(up.z - p.z) ? p - down : up - p;
-        vec3 n = cross(across, rising);
-        n = dot(n, n) > 1.0e-20 ? n * inversesqrt(dot(n, n)) : normalize(-p);
-        if (dot(n, p) > 0.0) n = -n;
-        vec3 world = to_world_dir(n), size = abs(world);
-        float most = max(size.x, max(size.y, size.z));
-        if (most > 0.985) n = to_view_dir(sign(world) * step(vec3(most), size));
-        return n;
-    }
+    // Pixel px's normal in the view, written once a firing (world_lights_gbuffer, Unreal's GBufferA in role).
+    vec3 normal_at(ivec2 px) { return texelFetch(_GBuffer, clamp(px, ivec2(0), ivec2(_Screen.xy) - 1), 0).xyz; }
 
     // Unreal's r.MegaLights.DownsampleMode as a factor: 1x1, 2x1 (checkerboard) or 2x2 (half resolution).
     ivec2 down() { return ivec2(_Screen.zw); }
@@ -432,7 +407,7 @@ Pass {
         if (px.x >= int(_Screen.x) || px.y >= int(_Screen.y)) return;
         vec3 p = surface(px);
         if (p.z >= 0.0) return;
-        vec3 n = normal_at(px, p);
+        vec3 n = normal_at(px);
         bool ownPixel = own(px, -p.z);
         entityTiles = uvec4(texelFetch(_EntityTiles, min(px / 16, textureSize(_EntityTiles, 0) - 1), 0));
         // The sun and Minecraft's block light take one ray a pixel, in its first sample: MegaLights spends a pixel's
