@@ -718,10 +718,10 @@ public final class CgVfxEmitterAssets {
         if (!List.of("spawn", "death", "collision", "burst", "location").contains(type)) {
             throw new IllegalArgumentException(name + ": generate_event's type " + type + " is not spawn, death, collision, burst or location");
         }
-        for (String k : List.of("frequency", "particle_frequency")) {
-            if (in.get(k) instanceof Number n && n.intValue() != 0) {
-                throw new IllegalArgumentException(name + ": generate_event's " + k + " " + n + " is not read yet: every event alone");
-            }
+        // Cascade fires when frequency is 0 or divides its count, so 1 is every event too
+        // (ParticleModules_Event.cpp:126-246); it never reads particle_frequency.
+        if (in.get("frequency") instanceof Number n && n.intValue() > 1) {
+            throw new IllegalArgumentException(name + ": generate_event's frequency " + n + " is not read yet: every event alone");
         }
         // Cascade reads FirstTimeOnly on collisions alone: a particle's first, which a firing limit of 1 is.
         CgVfxEventGenerator g = CgVfxEventGenerator.of((String) type, in.get("name") instanceof String n ? n : "");
@@ -2198,7 +2198,9 @@ public final class CgVfxEmitterAssets {
         };
         if (Boolean.TRUE.equals(in.get("recalculate_each_loop"))) s = s.recalculateDurationEachLoop();
         float[] delay = in.get("delay") != null ? rangeOf(in.get("delay")) : new float[2];
-        if (delay[1] > 0f) s = s.delay(delay[0], delay[1]);
+        // Cascade rolls low + (high - low) * rand (ParticleEmitterInstances.cpp:2568): ends either way round.
+        float low = Math.min(delay[0], delay[1]), high = Math.max(delay[0], delay[1]);
+        if (high > 0f) s = s.delay(low, high);
         if (Boolean.TRUE.equals(in.get("delay_first_loop_only"))) s = s.delayFirstLoopOnly();
         if (Boolean.TRUE.equals(in.get("recalculate_delay_each_loop"))) s = s.recalculateDelayEachLoop();
         if ("kill".equals(in.get("inactive"))) s = s.inactiveResponse(CgVfxInactiveResponse.KILL);
