@@ -226,6 +226,10 @@ float hg_phase(float g, float cosTheta) {
 }
 
 #define HISTORY_MISS_SAMPLES 4
+// The most jittered points a froxel takes: crystalgraphics.world.lightsAirSamples' ceiling.
+#define MAX_AIR_SAMPLES 8
+// Froxels from a light's line inside which its inverse square changes enough across one to take every point.
+#define AIR_NEAR 4.0
 
 // The radical inverse of i in base b: Unreal's Halton.
 float halton(int i, int b) {
@@ -255,6 +259,27 @@ uint shadowed_at(vec3 middle, ivec2 list, float biasSqr, float spread) {
     return mask;
 }
 
+// How many of a froxel's points a light is lit at: every one where its light changes most across the froxel (within
+// AIR_NEAR froxels of its line, or across a spot's edge) and where the froxel has no history; else this firing's first,
+// the history averaging what one point misses. A departure: Unreal lights one point everywhere and leaves the rest to
+// its temporal anti-aliasing, which a Minecraft frame lacks.
+int air_points(CgLight light, vec3 middle, float cell, int samples, bool kept) {
+    if (!kept) return samples;
+    vec3 position = light.positionRadius.xyz, segment = light.segmentCone.xyz;
+    float length2 = dot(segment, segment);
+    float t = length2 > 0.0 ? clamp(dot(middle - position, segment) / length2, -0.5, 0.5) : 0.0;
+    vec3 toLine = position + segment * t - middle;
+    float near = AIR_NEAR * cell;
+    if (dot(toLine, toLine) < near * near) return samples;
+    if (light.spotCos.w > -1.5) {
+        vec3 toLight = position - middle;
+        float invD = inversesqrt(max(dot(toLight, toLight), 1.0e-12)), c = dot(-toLight * invD, light.spotCos.xyz);
+        float ramp = 1.0 / light.segmentCone.w, band = ramp + sqrt(max(1.0 - c * c, 0.0)) * min(cell * invD, 1.0);
+        if (abs(c - light.spotCos.w - 0.5 * ramp) < band) return samples;
+    }
+    return 1;
+}
+
 // One air light's light at eye-relative w scattered toward the eye (view), a froxel's worth: bias and spread its size.
 vec3 air_light(CgLight light, vec3 w, vec3 view, float biasSqr, float spread) {
     float falloff = cg_light_falloff_filtered(light.positionRadius.xyz, light.positionRadius.w, light.colorExponent.w,
@@ -262,19 +287,6 @@ vec3 air_light(CgLight light, vec3 w, vec3 view, float biasSqr, float spread) {
     if (falloff <= 0.0) return vec3(0.0);
     vec3 toLight = normalize(light.positionRadius.xyz - w);
     return light.colorExponent.rgb * (falloff * day_fade(light) * hg_phase(_PhaseG, dot(toLight, view)) * light.air.x);
-}
-
-// The light reaching eye-relative w and scattered toward the eye: the middle's sampled air lights, less those its middle
-// found shadowed, then its exact ones.
-vec3 scatter_at(vec3 w, ivec2 sampled, ivec2 exact, uint shadow, float biasSqr, float spread) {
-    vec3 view = normalize(w);
-    vec3 sum = vec3(0.0);
-    for (int k = 0; k < sampled.y - sampled.x; k++) {
-        if (k < 32 && (shadow & (1u << uint(k))) != 0u) continue;
-        sum += air_light(LIGHTS(int(INDICES(sampled.x + k))), w, view, biasSqr, spread);
-    }
-    for (int k = exact.x; k < exact.y; k++) sum += air_light(LIGHTS(int(INDICES(k))), w, view, biasSqr, spread);
-    return sum;
 }
 
 void Scatter() {
@@ -299,15 +311,35 @@ void Scatter() {
     int e = cell_at(middle);
     ivec2 sampled = run_in(e, CG_LIGHTS_AIR_SAMPLED(e)), exact = run_in(e, CG_LIGHTS_AIR_EXACT(e));
     uint shadow = shadowed_at(middle, sampled, biasSqr, 0.5 * cell);
-    vec3 sum = vec3(0.0);
+    samples = min(samples, MAX_AIR_SAMPLES);
+    vec3 points[MAX_AIR_SAMPLES], views[MAX_AIR_SAMPLES];
     for (int s = 0; s < samples; s++) {
         // Unreal's FrameJitterOffsets: this firing's Halton points, then the ones before them.
         int n = (_Frame * _Samples - s) & 1023;
         vec3 offset = _Jittered != 0 ? vec3(halton(n + 1, 2), halton(n + 1, 3), halton(n + 1, 5)) : vec3(0.5);
-        sum += scatter_at(media_point_at(vec3(t) + offset, size, _MediaRay00, _MediaRay10, _MediaRay01, _MediaRay11),
-                sampled, exact, shadow, biasSqr, 0.5 * cell);
+        points[s] = media_point_at(vec3(t) + offset, size, _MediaRay00, _MediaRay10, _MediaRay01, _MediaRay11);
+        views[s] = normalize(points[s]);
     }
-    vec4 lit = vec4(sum * (sigma / float(samples)), 0.0);
+    // The middle's sampled air lights, less those it found shadowed, then its exact ones: each read once and lit at
+    // its air_points, their mean weighted as a froxel's.
+    float spread = 0.5 * cell;
+    vec3 sum = vec3(0.0);
+    for (int k = 0; k < sampled.y - sampled.x; k++) {
+        if (k < 32 && (shadow & (1u << uint(k))) != 0u) continue;
+        CgLight light = LIGHTS(int(INDICES(sampled.x + k)));
+        int n = air_points(light, middle, cell, samples, kept);
+        vec3 one = vec3(0.0);
+        for (int s = 0; s < n; s++) one += air_light(light, points[s], views[s], biasSqr, spread);
+        sum += one / float(n);
+    }
+    for (int k = exact.x; k < exact.y; k++) {
+        CgLight light = LIGHTS(int(INDICES(k)));
+        int n = air_points(light, middle, cell, samples, kept);
+        vec3 one = vec3(0.0);
+        for (int s = 0; s < n; s++) one += air_light(light, points[s], views[s], biasSqr, spread);
+        sum += one / float(n);
+    }
+    vec4 lit = vec4(sum * sigma, 0.0);
     if (kept) lit = mix(lit, textureLod(_History, uv, 0.0), _HistoryWeight);
     MEDIA_SCATTER_WRITE(lit);
 }

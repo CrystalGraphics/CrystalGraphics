@@ -300,6 +300,9 @@ lights.add(x, y, z, 45f, 0xFFFFF4E0, 1800f, 0f).spot(dx, -0.3f, dz, 5f, 10f).sca
   255 at its base (`--mode=lights-air-quality`, 99th percentile); at four 1.2, and down its length 0.7, as steady as
   froxel middles (0.6). The history weight stays Unreal's 0.9 (`crystalgraphics.world.lightsAirHistoryWeight`): 0.95
   is steadier still and leaves moving beams trailing.
+- **Only where a light changes across the froxel** (`air_points`): a light takes every point within 4 froxels of its
+  line and across a spot's edge, else one point, the history averaging the rest. 1,000 overlapping scattering points cost
+  0.80 ms of air instead of 1.38, every flicker measure unchanged and the pictures within 1 of 255.
 - **The grid across**: 16 pixels a froxel, Unreal's High `r.VolumetricFog.GridPixelSize` (BaseScalability.ini; Epic
   is 8), set by `crystalgraphics.world.mediaPixels`. In the lights demo at 2560x1440 in game, 8 took 4.1 ms to light the
   air and 16 1.5 (RTX 4070 Super); a beam about a froxel wide is spread over it, so at 16 the demo's searchlight seen
