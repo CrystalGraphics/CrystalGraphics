@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxArcRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshFacing;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
@@ -373,11 +374,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
     /**
      * The layout {@code renderers} draw from: a clip's parts, meshes, arcs, else quads; renderers needing two layouts
-     * fail, since one pool lays its records out one way.
+     * fail, since one pool lays its records out one way. A light draws nothing of its own, so it needs none.
      */
     private static CgVfxDrawLayout drawLayout(String name, List<CgVfxRendererProperties> renderers, CgVfxNodeClip clip) {
         CgVfxDrawLayout layout = clip != null ? CgVfxDrawLayout.SEQUENCE : null;
         for (CgVfxRendererProperties r : renderers) {
+            if (r instanceof CgVfxLightRendererProperties) continue;
             CgVfxDrawLayout needs = r instanceof CgVfxSequenceRendererProperties ? CgVfxDrawLayout.SEQUENCE
                     : r instanceof CgVfxMeshRendererProperties ? CgVfxDrawLayout.MESHES
                     : r instanceof CgVfxArcRendererProperties ? CgVfxDrawLayout.ARCS : CgVfxDrawLayout.QUADS;
