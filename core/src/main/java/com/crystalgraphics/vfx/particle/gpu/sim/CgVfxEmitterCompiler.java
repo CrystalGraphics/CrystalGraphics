@@ -347,6 +347,10 @@ public final class CgVfxEmitterCompiler {
             s.append("    SOURCE_ROWS   (\"The tier before's published particles, sorted by slot\", FxEvent, readonly)\n");
             s.append("    SOURCE_RUNS   (\"Each published slot's first sorted row, then its end\", uint, readonly)\n");
             s.append("    READS         (\"Each slot's source: its published slot, inherited velocity and spin\", uvec4, readonly)\n");
+            if (shape.spawnFrom().follow()) {
+                s.append("    SOURCE_DIRECT (\"The tier before's published particles by slot and id\", FxEvent, readonly)\n");
+                s.append("    SOURCE_SLOTS  (\"Each published slot's direct base, then its capacity\", uint, readonly)\n");
+            }
         }
         if (shape.tier() > 0) {
             s.append("    PARENT_EVENTS  (\"This step's parents' events, sorted by region\",      FxEvent, readonly)\n");
@@ -669,7 +673,7 @@ public final class CgVfxEmitterCompiler {
 @SOCKETS@                    return true;
                 }
 
-                // Spawn k, the i-th of the n of the spawn row at `at` (one CPU tick's), of the instance in slot, unless its
+@DIRECT@                // Spawn k, the i-th of the n of the spawn row at `at` (one CPU tick's), of the instance in slot, unless its
                 // share thins it out: a burst where the source was as the tick began, else a rate spawn (i - bursts + 1) /
                 // (n - bursts) of the way across the tick to where it ended. `born` is the seconds into the step it was
                 // born at: it is stepped for the rest.
@@ -700,6 +704,7 @@ public final class CgVfxEmitterCompiler {
                 .replace("@SIZE@", spawnValue(shape, CgVfxSpawnInput.SPRITE_SIZE, "s1.x", "s1.x + (s1.y - s1.x) * " + roll(CgVfxGpuEmitter.KEY_SIZE), ""))
                 .replace("@FRONT@", front(shape))
                 .replace("@READ@", read(shape))
+                .replace("@DIRECT@", direct(shape))
                 .replace("@SOCKETS@", sockets(shape))
                 .replace("@CONE@", spawnValue(shape, CgVfxSpawnInput.CONE_ANGLE, null, "s4.y", "0.5 * "))
                 .replace("@OFFSET@", spawnValue(shape, CgVfxSpawnInput.OFFSET, null, "step_vector(row, inst, 9).xyz", ""))
@@ -928,7 +933,7 @@ public final class CgVfxEmitterCompiler {
         for (int i = 0; i < shape.modules(); i++) if (shape.afterSolve(i)) call(s, shape, i);
         s.append("""
                     p.age += s.dt;
-                """);
+                """).append(directUpdate(shape));
         for (int e = 0; e < shape.events(); e++) {
             switch (shape.trigger(e)) {
                 case LANDING -> event(s, shape, e, "p.resting && !wasResting", "impact", "vec3(0.0, 1.0, 0.0)", "FX_HIT_GROUND", "0u");
@@ -965,7 +970,7 @@ public final class CgVfxEmitterCompiler {
         int publishAt = s.indexOf("@PUBLISH@");
         s.replace(publishAt, publishAt + "@PUBLISH@".length(), !shape.publishes() ? ""
                 : "    PUBLISHED_APPEND(FxEvent(vec4(p.position, uintBitsToFloat(uint(_BinKeyBase + int(p.slot)))),\n"
-                + "            vec4(p.velocity, p.spin), vec4(0.0), ivec4(0), uvec4(0u)));\n");
+                + "            vec4(p.velocity, p.spin), vec4(p.age, p.life, 0.0, 0.0), ivec4(0), uvec4(p.id, 0u, 0u, 0u)));\n");
         int burstsAt = s.indexOf("@BURSTS@");
         s.replace(burstsAt, burstsAt + "@BURSTS@".length(), bursts.toString());
         String out = s.toString();
@@ -1122,6 +1127,18 @@ public final class CgVfxEmitterCompiler {
     private static String read(CgVfxShape shape) {
         CgVfxSpawnFrom from = shape.spawnFrom();
         if (from == null) return "";
+        if (from.follow()) {
+            return """
+                                    {
+                                        FxEvent b;
+                                        if (step_direct(slot, k, b)) {
+                                            p.position = b.position.xyz;
+                                            p.previous = p.position;
+                                            p.velocity = b.velocityAge.xyz;
+                                        }
+                                    }
+                    """;
+        }
         String pick = from.selection() == CgVfxSpawnFrom.Selection.RANDOM
                 ? "min(uint(fx_rand(seed ^ 0x53524345u, k, 0u) * float(count)), count - 1u)" : "(k + 1u) % count";
         String place = from.placeAfter() ? "b.position.xyz + (p.position - mix(from.xyz, to.xyz, along))" : "b.position.xyz";
@@ -1142,6 +1159,46 @@ public final class CgVfxEmitterCompiler {
                                         }
                                     }
                 """.replace("@PICK@", pick).replace("@PLACE@", place);
+    }
+
+    /**
+     * A follower's source particle ({@link CgVfxSpawnFrom#follow}): the one of its own id its source slot published this
+     * step into the direct rows, Cascade's {@code GetParticle(Index)} ({@code ParticleModules_Location.cpp:583-660}),
+     * null past the source's live ones.
+     */
+    private static String direct(CgVfxShape shape) {
+        if (shape.spawnFrom() == null || !shape.spawnFrom().follow()) return "";
+        return """
+                bool step_direct(uint slot, uint id, out FxEvent b) {
+                    b = FxEvent(vec4(0.0), vec4(0.0), vec4(0.0), ivec4(0), uvec4(0u));
+                    uint key = READS(int(slot)).x;
+                    if (key == 0xFFFFFFFFu) return false;
+                    uint cap = SOURCE_SLOTS(int(key) * 2 + 1);
+                    if (cap == 0u) return false;
+                    b = SOURCE_DIRECT(int(SOURCE_SLOTS(int(key) * 2) + id % cap));
+                    return b.ids.x == id;
+                }
+
+                """;
+    }
+
+    /**
+     * A follower on its source particle each step, once aged: its place, velocity, age and life, as Cascade's update
+     * copies its location, velocity and relative time; where the source is gone it keeps its own.
+     */
+    private static String directUpdate(CgVfxShape shape) {
+        if (shape.spawnFrom() == null || !shape.spawnFrom().follow()) return "";
+        return """
+                    {
+                        FxEvent b;
+                        if (step_direct(p.slot, p.id, b)) {
+                            p.position = b.position.xyz;
+                            p.velocity = b.velocityAge.xyz;
+                            p.age = b.normal.x;
+                            p.life = b.normal.y;
+                        }
+                    }
+                """;
     }
 
     /** A colour start's form as a vec4: an rgb form's alpha -1, which the Look stage takes from the row's starts. */

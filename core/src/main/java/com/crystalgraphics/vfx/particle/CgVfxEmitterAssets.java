@@ -659,14 +659,19 @@ public final class CgVfxEmitterAssets {
     /**
      * {@code spawn_from_emitter}: Cascade's LocationEmitter ({@code ParticleModules_Location.cpp:419-553}), its source a
      * handle its system resolves. A shape later in the stack offsets the place, as Cascade's later location modules add
-     * to it; one before is replaced. LocationEmitterDirect ({@code follow}) fails by name until it is built.
+     * to it; one before is replaced. {@code follow} is LocationEmitterDirect, which copies the whole velocity.
      */
     private static void spawnFrom(String name, CgVfxEmitter.Builder b, Map<?, ?> in, List<Map<?, ?>> stack, Map<?, ?> entry) {
-        if (Boolean.TRUE.equals(in.get("follow"))) {
-            throw new IllegalArgumentException(name + ": spawn_from_emitter's follow (Cascade's LocationEmitterDirect) is not built yet");
-        }
         if (!(in.get("source") instanceof String source) || source.isEmpty()) {
             throw new IllegalArgumentException(name + ": spawn_from_emitter names no source");
+        }
+        if (Boolean.TRUE.equals(in.get("follow"))) {
+            if (numOr(in.get("inherit_velocity"), 0f) != 0f || numOr(in.get("inherit_rotation"), 0f) != 0f) {
+                throw new IllegalArgumentException(name + ": spawn_from_emitter follows its source, taking its whole velocity: no inherit shares");
+            }
+            b.id("spawn_from", idOf(entry, "spawn_from"));
+            b.spawnFrom(CgVfxSpawnFrom.following(source));
+            return;
         }
         boolean after = false;
         for (int i = stack.indexOf(entry) + 1; i < stack.size(); i++) {
@@ -683,6 +688,7 @@ public final class CgVfxEmitterAssets {
     /** {@code e}'s spawn read as a file writes it. */
     private static Map<String, Object> spawnFromEntry(CgVfxEmitter e) {
         CgVfxSpawnFrom f = e.spawnFrom;
+        if (f.follow()) return entry(e.id("spawn_from"), "spawn_from_emitter", map("source", f.source(), "follow", true));
         return entry(e.id("spawn_from"), "spawn_from_emitter", map("source", f.source(),
                 "selection", f.selection().name().toLowerCase(Locale.ROOT), "inherit_velocity", (double) f.inheritVelocity(),
                 "inherit_rotation", (double) f.inheritRotation()));

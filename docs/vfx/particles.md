@@ -458,12 +458,36 @@ CgVfxLook look = CgVfxLook.builder(CgVfxSystemDefinition.SCHEMA).emitter(rocks).
 | `source` | the handle, or in Java the emitter's name, of the same system |
 | `selection` | `random`, or `sequential`: each new particle the next of the source's in turn |
 | `inherit_velocity`, `inherit_rotation` | the share of the source particle's velocity and spin it takes |
+| `follow` | `true`: each particle stays on its source particle every step ([below](#a-particle-that-follows-another)) |
 
 - **The place replaces its shape's**, unless a `shape_location` comes after it in the stack: then the shape's offset
   is added to it.
 - **A source with no live particle** leaves each new one where its own shape put it.
 - **`sequential` walks the source's particles in the order the GPU wrote them**, which changes as they die, so which
   one comes next is not fixed from run to run.
+### A particle that follows another
+
+A follower stays on its source particle for its whole life, as Cascade's Emitter Direct Location does: a glow riding a
+dummy point, a flash on each bolt. Its first particle takes the source's first, its second the second, and every step it
+copies that particle's place, velocity, age and life. So its curves over life run on the source's clock, and it dies
+with it.
+
+```yaml
+- { id: s1, module: crystalgraphics:spawn_from_emitter, inputs: { source: core, follow: true } }
+```
+
+```java
+CgVfxEmitter glow = CgVfxEmitter.builder("glow").burst(0f, 1)
+        .spawnFrom(CgVfxSpawnFrom.following("core")).build();
+```
+
+- **It takes the whole of the source's velocity**: `inherit_velocity` or `inherit_rotation` with `follow` fails at load,
+  and `selection` means nothing.
+- **Its own lifetime is overridden** while its source lives. A follower whose source is gone keeps its own state and
+  ages on from there.
+- **Match their spawns**: follower n is source particle n by spawn. A follower spawned past the source's count has
+  nothing to follow.
+
 - **A reader steps after its source**, so a chain of readers is at most two deep. A source that is no emitter of the
   system, the reader itself, a deeper chain or a loop fails at load, naming it. In Java, a source not built with
   `publishes(true)` fails the same way.

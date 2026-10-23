@@ -425,7 +425,8 @@ public final class CgVfxShape {
         spawnFrom = emitter.spawnFrom();
         if (spawnFrom != null) {
             if (tier == 0) throw new IllegalArgumentException(emitter.name() + " reads another emitter's particles at feed tier 0");
-            key.append("|reads:").append(spawnFrom.selection()).append(spawnFrom.placeAfter() ? ":after" : "");
+            key.append("|reads:").append(spawnFrom.selection()).append(spawnFrom.placeAfter() ? ":after" : "")
+                    .append(spawnFrom.follow() ? ":follow" : "");
         }
         publishes = emitter.publishes();
         if (publishes && tier == TIERS - 1) {

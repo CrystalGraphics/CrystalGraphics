@@ -180,6 +180,35 @@ public class CgVfxSystemEventsTest {
         assertTrue(e.getMessage(), e.getMessage().contains("loop"));
     }
 
+    /** Cascade's LocationEmitterDirect: a follower read, written back as it was read; a share to inherit refused by name. */
+    @Test
+    public void aFollowerStaysOnItsSource() {
+        String follows = """
+                      particle_spawn:
+                        - { id: r, module: crystalgraphics:spawn_from_emitter, inputs: { source: rocks, follow: true%s } }
+                """;
+        CgVfxSystemDefinition d = compile("""
+                _v: 1
+                emitters:
+                  - id: rocks
+                %1$s  - id: glow
+                %1$s%2$s""".formatted(EMITTER, follows.formatted("")));
+        assertTrue(d.emitters().get(0).publishes());
+        assertTrue(d.emitters().get(1).spawnFrom().follow());
+        Map<String, Object> tree = CgVfxSystemAssets.write(d);
+        CgVfxSystemDefinition again = CgVfxSystemAssets.compile(
+                CgAssetData.of("mymod:glow", CgParticleKinds.SYSTEM, tree, null), (kind, ref) -> null);
+        assertTrue(again.emitters().get(1).spawnFrom().follow());
+        assertEquals(tree, CgVfxSystemAssets.write(again));
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> compile("""
+                _v: 1
+                emitters:
+                  - id: rocks
+                %1$s  - id: glow
+                %1$s%2$s""".formatted(EMITTER, follows.formatted(", inherit_velocity: 0.5"))));
+        assertTrue(e.getMessage(), e.getMessage().contains("inherit"));
+    }
+
     /** In Java a reader names its source's emitter, which must publish; the system finds it by name. */
     @Test
     public void aJavaReaderFindsItsSourceByName() {

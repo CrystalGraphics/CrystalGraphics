@@ -3,10 +3,12 @@
 // marks where each region's run starts and ends, and Gather copies the rows in that order. A child reads its region's
 // first rows, as many as its cap: one buffer fewer than reading through the order, for a lowered Step's 16. No atomic
 // answers a value, so every tier runs it, as the neighbour grid's. A tier's published particles take the same path,
-// keyed by their slot, and a reader picks among its source slot's run (CgVfxSpawnFrom).
+// keyed by their slot, and a reader picks among its source slot's run (CgVfxSpawnFrom); Direct also places each at its
+// slot's base plus its id, where a follower finds the one of its own id.
 #pragma kernel Keys map
 #pragma kernel Runs scatter
 #pragma kernel Gather map
+#pragma kernel Direct scatter
 
 // CgVfxParticlePool.EVENT_GLSL; a spawning row's region is position.w's bits.
 struct FxEvent { vec4 position; vec4 velocityAge; vec4 normal; ivec4 block; uvec4 ids; };
@@ -18,6 +20,8 @@ Buffers {
     VALUES ("Each row's index, sorted with its key",              uint,    readwrite)
     RUNS   ("Each region's first sorted row, then its end",       uint,    writeonly)
     SORTED ("The rows in the order",                              FxEvent, writeonly)
+    DIRECT_SLOTS ("Each published slot's direct base, then its capacity", uint, readonly)
+    DIRECT ("Published rows at their slot's base plus their id",  FxEvent, writeonly)
 }
 
 void Keys() {
@@ -37,4 +41,13 @@ void Runs() {
 
 void Gather() {
     SORTED_WRITE(EVENTS(int(VALUES(CG_ELEMENT))));
+}
+
+// A published row's slot key in position.w's bits, its particle's id in ids.x.
+void Direct() {
+    if (CG_ELEMENT >= int(COUNT(0))) return;
+    FxEvent e = EVENTS(CG_ELEMENT);
+    int ds = int(floatBitsToUint(e.position.w)) * 2;
+    uint cap = DIRECT_SLOTS(ds + 1);
+    if (cap > 0u) DIRECT_STORE(int(DIRECT_SLOTS(ds) + e.ids.x % cap), e);
 }

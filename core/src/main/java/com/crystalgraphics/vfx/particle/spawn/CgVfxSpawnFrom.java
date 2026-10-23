@@ -21,6 +21,15 @@ import java.util.Objects;
  *         .spawnFrom(CgVfxSpawnFrom.of("rocks", CgVfxSpawnFrom.Selection.SEQUENTIAL).inherit(0.5f, 0f))...build();
  * }</pre>
  *
+ * <p>A follower stays on its source particle every step (Cascade's {@code LocationEmitterDirect},
+ * {@code ParticleModules_Location.cpp:583-660}): its n-th particle takes the source's n-th by spawn, its place, velocity,
+ * age and life, so its curves over life run on the source's clock and it dies with it.</p>
+ *
+ * <pre>{@code
+ * - { id: s1, module: crystalgraphics:spawn_from_emitter, inputs: { source: h1, follow: true } }
+ * CgVfxEmitter.builder("glow").spawnFrom(CgVfxSpawnFrom.following("core"))...build();
+ * }</pre>
+ *
  * <ul>
  *   <li>The source is a handle of the same system, or in Java an emitter's name; its system resolves it to
  *       {@link #sourceIndex}, and fails at load where it lacks it or it does not publish. A source with no live
@@ -29,6 +38,8 @@ import java.util.Objects;
  *       it in the spawn stack ({@link #placeAfter}): Cascade sets the location, and later location modules add to it.</li>
  *   <li>{@code SEQUENTIAL} walks the source's live particles in their order in its pool, which their deaths reshuffle,
  *       as Cascade's kills reshuffle its active list.</li>
+ *   <li>A follower takes the whole of its source's velocity and ignores the selection; a file giving it a share to
+ *       inherit fails at load. Its particle whose source is gone keeps its own state, aging on.</li>
  * </ul>
  *
  * @param source          the source's handle, or in Java its emitter's name
@@ -37,9 +48,10 @@ import java.util.Objects;
  * @param inheritVelocity the share of the source particle's velocity a new one takes
  * @param inheritRotation the share of its spin
  * @param placeAfter      whether the emitter's shape offsets the place (a shape later in the stack)
+ * @param follow          whether each particle stays on its source particle every step
  */
 public record CgVfxSpawnFrom(String source, int sourceIndex, Selection selection, float inheritVelocity,
-                             float inheritRotation, boolean placeAfter) {
+                             float inheritRotation, boolean placeAfter, boolean follow) {
 
     /** How a source particle is picked for each new one. */
     public enum Selection {
@@ -56,21 +68,26 @@ public record CgVfxSpawnFrom(String source, int sourceIndex, Selection selection
 
     /** Born on handle {@code source}'s particles, picked by {@code selection}, inheriting nothing. */
     public static CgVfxSpawnFrom of(String source, Selection selection) {
-        return new CgVfxSpawnFrom(source, -1, selection, 0f, 0f, false);
+        return new CgVfxSpawnFrom(source, -1, selection, 0f, 0f, false, false);
+    }
+
+    /** Each particle on handle {@code source}'s particle of the same spawn, every step: Cascade's LocationEmitterDirect. */
+    public static CgVfxSpawnFrom following(String source) {
+        return new CgVfxSpawnFrom(source, -1, Selection.RANDOM, 0f, 0f, false, true);
     }
 
     /** This, inheriting {@code velocity} of its source particle's velocity and {@code rotation} of its spin. */
     public CgVfxSpawnFrom inherit(float velocity, float rotation) {
-        return new CgVfxSpawnFrom(source, sourceIndex, selection, velocity, rotation, placeAfter);
+        return new CgVfxSpawnFrom(source, sourceIndex, selection, velocity, rotation, placeAfter, follow);
     }
 
     /** This, its emitter's shape offsetting the place. */
     public CgVfxSpawnFrom placedAfter(boolean after) {
-        return new CgVfxSpawnFrom(source, sourceIndex, selection, inheritVelocity, inheritRotation, after);
+        return new CgVfxSpawnFrom(source, sourceIndex, selection, inheritVelocity, inheritRotation, after, follow);
     }
 
     /** This, its source at {@code index} in its system's emitters. */
     public CgVfxSpawnFrom at(int index) {
-        return new CgVfxSpawnFrom(source, index, selection, inheritVelocity, inheritRotation, placeAfter);
+        return new CgVfxSpawnFrom(source, index, selection, inheritVelocity, inheritRotation, placeAfter, follow);
     }
 }
