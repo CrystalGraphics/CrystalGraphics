@@ -25,9 +25,10 @@
 
 struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; vec4 air; };
 // A light in the grid's space: its position and radius, the way a spot points and its outer cosine, its run (CG_LIGHT_RUN) in x.
-// A light in the grid's view, and what the apply shades it with: kind is its run, exponent and source radius, segment
-// its tube in the view (w its cone's ramp), radiance its colour over pi, faded by day and divided by the lightmap at its
-// block (world_lights.shader). Each the same for every pixel, so worked out here once.
+// A light in the grid's view, and what the apply and MegaLights' sampling shade it with: kind is its run, exponent,
+// source radius and 1 while it casts shadows, segment its tube in the view (w its cone's ramp), radiance its colour over
+// pi, faded by day and divided by the lightmap at its block (world_lights.shader), and in w the same as a luminance, the
+// sampling's weight (world_lights_sample.shader). Each the same for every pixel, so worked out here once.
 struct CgViewLight { vec4 positionRadius; vec4 spot; vec4 kind; vec4 segment; vec4 radiance; };
 
 Properties {
@@ -94,17 +95,19 @@ void View() {
     vec3 segment = vec3(dot(_ToView0.xyz, along), dot(_ToView1.xyz, along), dot(_ToView2.xyz, along));
     // Adapted to the sun as an eye would be, and the albedo recovered over the lightmap at its block: the apply's
     // scene * light / lightmap.
-    vec3 radiance = light.colorExponent.rgb / CG_PI;
+    float adapt = 1.0;
+    vec3 ambient = vec3(1.0);
     if (light.ambient.x >= 0.0) {
         vec3 lightmap = textureLod(_Lightmap, (clamp(light.ambient.xy, 0.0, 15.0) + 0.5) / 16.0, 0.0).rgb;
-        float adapt = mix(1.0, _DayFade, clamp(CG_DAYLIGHT, 0.0, 1.0) * light.ambient.y / 15.0);
+        adapt = mix(1.0, _DayFade, clamp(CG_DAYLIGHT, 0.0, 1.0) * light.ambient.y / 15.0);
         // The darkest lightmap the albedo is recovered from: below it the scene's noise would be lit as colour.
-        vec3 ambient = max(CG_LINEAR_SCENE ? srgb_to_linear(lightmap) : lightmap, vec3(CG_LINEAR_SCENE ? 0.02 : 0.15));
-        radiance *= adapt / ambient;
+        ambient = max(CG_LINEAR_SCENE ? srgb_to_linear(lightmap) : lightmap, vec3(CG_LINEAR_SCENE ? 0.02 : 0.15));
     }
+    vec3 colour = light.colorExponent.rgb;
     VIEW_WRITE(CgViewLight(vec4(v, radius), vec4(w, light.spotCos.w),
-            vec4(float(CG_LIGHT_RUN(light)), light.colorExponent.w, light.ambient.z, 0.0),
-            vec4(segment, light.segmentCone.w), vec4(radiance, 0.0)));
+            vec4(float(CG_LIGHT_RUN(light)), light.colorExponent.w, light.ambient.z, CG_LIGHT_SHADOWED(light) ? 1.0 : 0.0),
+            vec4(segment, light.segmentCone.w),
+            vec4(colour * adapt / (CG_PI * ambient), luminance(colour) * adapt / (CG_PI * luminance(ambient)))));
 }
 
 // ComputeCellViewAABB over tiles [lo.xy, hi.xy) and slices [lo.z, hi.z): the tiles' rays at both depths; the last tile

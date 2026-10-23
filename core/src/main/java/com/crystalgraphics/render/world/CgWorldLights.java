@@ -1252,7 +1252,7 @@ public final class CgWorldLights {
                 tiles.buffer("ENTITIES", boxes).applyProperties(tileValues);
                 fullScreen(stage, recording, entityTiles, tiles, GPU_TILES);
             }
-            sample.buffer("LIGHTS", binned ? list : none).buffer("CELLS", binned ? cells : none)
+            sample.buffer("VIEWED", binned ? viewed : none).buffer("CELLS", binned ? cells : none)
                     .buffer("INDICES", binned ? indices : none).buffer("ENTITIES", boxes != null ? boxes : none)
                     .applyProperties(sampleValues);
             sample.applyProperties(windowValues);

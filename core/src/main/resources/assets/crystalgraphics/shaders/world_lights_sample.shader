@@ -39,7 +39,6 @@ Properties {
     _ToView1 ("The second row",                                    vec4) = (0, 1, 0, 0)
     _ToView2 ("The third row",                                     vec4) = (0, 0, 1, 0)
     _Depth   ("The perspective's m22, m32, m23 and m33: window depth to eye depth", vec4) = (1, 0, -1, 0)
-    _DayFade ("A light's strength under a full day's open sky; 1 for never fading", float) = 0.1
     _Screen  ("The full target's width and height, then the downsample factor", vec4) = (1, 1, 2, 2)
     _Trace   ("Screen trace: blocks, steps, normal bias in blocks, relative depth thickness", vec4) = (8, 24, 0.02, 0.005)
     _Sun     ("The sun: 1 for its shadows, 1 where its map was drawn", vec4) = (0, 0, 0, 0)
@@ -70,10 +69,11 @@ Properties {
     _Casters       ("Our meshes casting shadows in _CasterRows",   int) = 0
 }
 
-struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; vec4 air; };
+// light_grid.compute's: each light in the view with what it is shaded by, worked out once a light.
+struct CgViewLight { vec4 positionRadius; vec4 spot; vec4 kind; vec4 segment; vec4 radiance; };
 
 Buffers {
-    LIGHTS   ("The firing's lights",                               CgLight, readonly)
+    VIEWED   ("Each light in the grid's view, as the grid binned it", CgViewLight, readonly)
     CELLS    ("Each cell's light count and start",                 uint,    readonly)
     INDICES  ("The cells' light indices",                          uint,    readonly)
     ENTITIES ("Entity boxes, two vec4s each: min and max from the eye's block", vec4, readonly)
@@ -133,18 +133,6 @@ Pass {
     ivec2 jitter(ivec2 d) {
         int k = (CG_FRAME_INDEX + d.x * 3 + d.y * 5) & 3;
         return ivec2(k & 1, k >> 1) % down();
-    }
-
-    // A light's lighting at p facing n, times the scene: world_lights.shader's, before its colour.
-    float light_scale(CgLight light) {
-        float adapt = 1.0;
-        vec3 ambient = vec3(1.0);
-        if (light.ambient.x >= 0.0) {
-            vec3 lightmap = CG_LIGHTMAP(light.ambient.xy);
-            adapt = mix(1.0, _DayFade, clamp(CG_DAYLIGHT, 0.0, 1.0) * light.ambient.y / 15.0);
-            ambient = max(CG_LINEAR_SCENE ? srgb_to_linear(lightmap) : lightmap, vec3(CG_LINEAR_SCENE ? 0.02 : 0.15));
-        }
-        return adapt / (CG_PI * luminance(ambient));
     }
 
     // The screen trace (TraceScreen) from a along dir for len: 1 a hit within the depth thickness, -1 uncertain, the ray
@@ -290,9 +278,9 @@ Pass {
         int chosen = -1;
         for (int k = span.x; k < span.y; k++) {
             int index = int(INDICES(from + k));
-            CgLight light = LIGHTS(index);
-            vec3 steps = abs(block_of(light.positionRadius.xyz) - at);
-            float weight = light.positionRadius.w - 0.5 - (steps.x + steps.y + steps.z);
+            vec4 light = VIEWED(index).positionRadius;
+            vec3 steps = abs(block_of(to_world(light.xyz)) - at);
+            float weight = light.w - 0.5 - (steps.x + steps.y + steps.z);
             if (weight <= 0.0) continue;
             float tau = weightSum / (weightSum + weight);
             weightSum += weight;
@@ -305,7 +293,7 @@ Pass {
             pick = clamp(pick, 0.0, 0.9999);
         }
         if (chosen < 0) return 1.0;
-        vec3 centre = to_view_dir(LIGHTS(chosen).positionRadius.xyz) + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
+        vec3 centre = VIEWED(chosen).positionRadius.xyz;
         vec3 toLight = centre - p;
         if (dot(n, toLight) <= 0.0) return ownPixel ? 0.0 : 1.0;
         vec2 u = vec2(cg_shadow_noise(vec2(sampleCoord) + 131.0, CG_FRAME_INDEX), cg_shadow_noise(vec2(sampleCoord) + 151.0, CG_FRAME_INDEX));
@@ -339,13 +327,12 @@ Pass {
         float weightSum = 0.0;
         for (int k = span.x; k < span.y; k++) {
             int index = int(INDICES(from + k));
-            CgLight light = LIGHTS(index);
-            vec3 v = to_view_dir(light.positionRadius.xyz) + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
-            vec4 spot = vec4(to_view_dir(light.spotCos.xyz), light.spotCos.w);
-            vec4 segment = vec4(to_view_dir(light.segmentCone.xyz), light.segmentCone.w);
-            float lit = cg_light_surface(v, light.positionRadius.w, light.colorExponent.w, spot, segment, light.ambient.z, p, n);
+            CgViewLight light = VIEWED(index);
+            vec4 reach = light.positionRadius;
+            if (dot(reach.xyz - p, reach.xyz - p) >= reach.w * reach.w) continue;
+            float lit = cg_light_surface(reach.xyz, reach.w, light.kind.y, light.spot, light.segment, light.kind.z, p, n);
             // GetLocalLightTargetPDF: log2 of the lighting's luminance, smoothly zero below MinSampleWeight.
-            float lum = luminance(light.colorExponent.rgb) * lit * light_scale(light);
+            float lum = lit * light.radiance.w;
             if (lum <= 0.001) continue;
             lum *= clamp((lum - 0.001) / 0.001, 0.0, 1.0);
             float weight = log2(lum + 1.0);
@@ -365,21 +352,19 @@ Pass {
         }
         int index = chosen[mine];
         if (index < 0) return vec2(-1.0, 0.0);
-        CgLight light = LIGHTS(index);
-        bool area = light.ambient.z > 0.001 || dot(light.segmentCone.xyz, light.segmentCone.xyz) > 1.0e-4;
+        CgViewLight light = VIEWED(index);
+        bool area = light.kind.z > 0.001 || dot(light.segment.xyz, light.segment.xyz) > 1.0e-4;
         // MergeRays: the next sample of the same light takes this one's ray, unless the light has an area to sample.
         if (!area && mine < int(_SampleGrid.z) - 1 && chosen[mine + 1] == index) return vec2(float(index), 0.0);
         float weight = weightSum / chosenWeight[mine];
-        if (!CG_LIGHT_SHADOWED(light)) return vec2(float(index), weight);
+        if (light.kind.w < 0.5) return vec2(float(index), weight);
 
         // GetLightSampleTrace: toward a point of the light sampled over the solid angle its sphere covers, along its
         // line for a tube.
         vec2 u = vec2(cg_shadow_noise(vec2(sampleCoord), CG_FRAME_INDEX), cg_shadow_noise(vec2(sampleCoord) + 17.0, CG_FRAME_INDEX));
         vec3 a = p + n * (_Trace.z + 0.002 * -p.z);
-        vec3 centre = to_view_dir(light.positionRadius.xyz) + vec3(_ToView0.w, _ToView1.w, _ToView2.w);
-        vec3 segment = to_view_dir(light.segmentCone.xyz);
-        centre += segment * (u.x - 0.5);
-        vec4 ray = cg_shadow_sphere_ray(centre - a, light.ambient.z, u);
+        vec3 centre = light.positionRadius.xyz + light.segment.xyz * (u.x - 0.5);
+        vec4 ray = cg_shadow_sphere_ray(centre - a, light.kind.z, u);
         // Unreal's ray end bias: a centimetre short of the light.
         float rayEnd = max(ray.w - 0.01, 0.0);
 

@@ -33,7 +33,6 @@ Properties {
     _ToView1 ("The second row",                                    vec4) = (0, 1, 0, 0)
     _ToView2 ("The third row",                                     vec4) = (0, 0, 1, 0)
     _Depth   ("The perspective's m22, m32, m23 and m33: window depth to eye depth", vec4) = (1, 0, -1, 0)
-    _DayFade ("A light's strength under a full day's open sky; 1 for never fading", float) = 0.1
     _Shadows ("1 while the shadow passes light the lights that cast shadows", float) = 0.0
     _Shadowed ("Their lighting, denoised",                         sampler2D) = "black"
     _Visibility ("The sun's and the block light's visibility, denoised", sampler2D) = "white"
