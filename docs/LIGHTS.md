@@ -270,8 +270,14 @@ CgWorldRenderer.get().media().add(haze);      // a haze to see the lights in; VF
   `crystalgraphics.world.lightsAirHistory=false` lights froxel middles alone.
 - **Integration** (`media.compute`): Unreal's `FinalIntegrationCS`, Frostbite's energy-conserving sum, into `cg_Media`'s
   rgb (the light scattered toward the eye) beside its alpha (what gets through, `cg_MediaTransmit`).
+- **The grid's depth**: 128 slices to 256 blocks, spaced by Unreal's `CalculateGridZParams` at its depth distribution
+  scale 32 (`cg_env.glsl`'s `CG_MEDIA_*`): a cell 40 blocks out is 1.2 blocks deep, as Unreal's 64 slices to 60 m
+  make it. The distance bias is the cell's size, so slices as deep as an exponential spacing gives (3.7 blocks there)
+  dimmed a light's beam near the light seen from afar.
 - **Composite** (`world_media_light.shader`, GPU zone `world.mediaLight`): the scattered light added over the opaque
-  scene at each pixel's depth, out to the grid's far end where there is sky, before the transparent passes. The media
+  scene at each pixel's depth, out to the grid's far end where there is sky, before the transparent passes. The grid is
+  read cubic B-spline across the screen (`cg_MediaSample`, four trilinear reads), so a beam's edge shows no cells:
+  Unreal leaves that to its temporal anti-aliasing, which a Minecraft frame does not have. The media
   is recorded whenever an injector is added, transparent draws or not.
 - **Departures from Unreal**: the opaque scene is not dimmed by the transmittance (what puts smoke in the air draws its
   own look; only the light is added); no conservative-depth rejection of the history and no supersampling where it

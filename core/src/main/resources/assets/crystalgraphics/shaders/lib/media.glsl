@@ -7,7 +7,7 @@
 
 // The eye depth slice boundary s stands at, 0 to CG_MEDIA_SLICES.
 float media_eye(float s) {
-    return CG_MEDIA_NEAR * pow(CG_MEDIA_FAR / CG_MEDIA_NEAR, s / CG_MEDIA_SLICES);
+    return cg_MediaEye(s);
 }
 
 // The camera-relative middle of froxel t of a grid `size` froxels, from the view's corner rays (a unit of eye depth each).
@@ -29,7 +29,7 @@ vec3 media_point_at(vec3 g, ivec3 size, vec4 r00, vec4 r10, vec4 r01, vec4 r11) 
 // history of the grid is sampled at. Outside 0 to 1 it lies outside the grid.
 vec3 media_uv(vec4 clip) {
     float depth = max(clip.w, 1.0e-4);
-    return vec3(clip.xy / depth * 0.5 + 0.5, log(depth / CG_MEDIA_NEAR) / log(CG_MEDIA_FAR / CG_MEDIA_NEAR));
+    return vec3(clip.xy / depth * 0.5 + 0.5, cg_MediaSlice(depth) / CG_MEDIA_SLICES);
 }
 
 // The extinction the kernels before this one added at froxel t: nothing for the first.

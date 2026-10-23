@@ -165,26 +165,55 @@ float cg_LinearEyeDepth(float windowDepth) {
 }
 #define CG_SCENE_EYE_DEPTH(uv) cg_LinearEyeDepth(texture(cg_DepthBuffer, (uv)).r)
 
-// cg_Media: the world's froxel transmittance (CgWorldMedia), a volume over the screen whose slices run exponentially in
-// eye depth from CG_MEDIA_NEAR to CG_MEDIA_FAR, each texel to its slice's far edge the light the air scattered toward the
-// eye (rgb) and what gets through (a); white in a pass that binds none. Bound to CgBindingPoints.MEDIA_TEXTURE_UNIT; do NOT use that unit in Properties.
+// cg_Media: the world's froxel transmittance (CgWorldMedia), a volume over the screen, each texel to its slice's far edge
+// the light the air scattered toward the eye (rgb) and what gets through (a); white in a pass that binds none. Bound to
+// CgBindingPoints.MEDIA_TEXTURE_UNIT; do NOT use that unit in Properties.
 uniform sampler3D cg_Media;
-#define CG_MEDIA_NEAR 0.5
+// Its slices in eye depth as Unreal's volumetric fog spaces them (CalculateGridZParams, r.VolumetricFog.
+// DepthDistributionScale 32): slice s's near edge at (2^(s / SPREAD) - O) / B, from CG_MEDIA_NEAR (Unreal's 9.5 cm) to
+// CG_MEDIA_FAR at the last. Twice Unreal's 64 slices, for four times its 60 m: each about as deep as Unreal's at 40 blocks.
+#define CG_MEDIA_NEAR 0.095
 #define CG_MEDIA_FAR 256.0
-#define CG_MEDIA_SLICES 64.0
+#define CG_MEDIA_SLICES 128.0
+#define CG_MEDIA_SPREAD 32.0
+#define CG_MEDIA_O ((CG_MEDIA_FAR - CG_MEDIA_NEAR * exp2((CG_MEDIA_SLICES - 1.0) / CG_MEDIA_SPREAD)) / (CG_MEDIA_FAR - CG_MEDIA_NEAR))
+#define CG_MEDIA_B ((1.0 - CG_MEDIA_O) / CG_MEDIA_NEAR)
+
+// The slice coordinate at eye depth `eye`: slice s spans s to s + 1.
+float cg_MediaSlice(float eye) {
+    return log2(max(eye, 0.0) * CG_MEDIA_B + CG_MEDIA_O) * CG_MEDIA_SPREAD;
+}
+
+// The eye depth at slice coordinate `s`.
+float cg_MediaEye(float s) {
+    return (exp2(s / CG_MEDIA_SPREAD) - CG_MEDIA_O) / CG_MEDIA_B;
+}
+
+// cg_Media at `p`, cubic B-spline across the screen and linear in depth: four trilinear reads (Sigg and Hadwiger, GPU
+// Gems 2 ch. 20). A froxel is 16 pixels wide, and read linearly a light's edge shows the grid's cells.
+vec4 cg_MediaSample(vec3 p) {
+    vec2 size = vec2(textureSize(cg_Media, 0).xy);
+    vec2 x = p.xy * size - 0.5, i = floor(x), f = x - i;
+    vec2 w0 = (1.0 - f) * (1.0 - f) * (1.0 - f) / 6.0, w1 = (4.0 - 6.0 * f * f + 3.0 * f * f * f) / 6.0;
+    vec2 w3 = f * f * f / 6.0, w2 = 1.0 - w0 - w1 - w3;
+    vec2 g0 = w0 + w1, g1 = w2 + w3;
+    vec2 h0 = (i - 0.5 + w1 / g0) / size, h1 = (i + 1.5 + w3 / g1) / size;
+    return g0.y * (g0.x * textureLod(cg_Media, vec3(h0.x, h0.y, p.z), 0.0) + g1.x * textureLod(cg_Media, vec3(h1.x, h0.y, p.z), 0.0))
+         + g1.y * (g0.x * textureLod(cg_Media, vec3(h0.x, h1.y, p.z), 0.0) + g1.x * textureLod(cg_Media, vec3(h1.x, h1.y, p.z), 0.0));
+}
 
 // What of the light from eye depth `eye` at screen `uv` reaches the eye through smoke and gas, 0 to 1.
 float cg_MediaTransmit(vec2 uv, float eye) {
-    float k = CG_MEDIA_SLICES * log(max(eye, 1.0e-3) / CG_MEDIA_NEAR) / log(CG_MEDIA_FAR / CG_MEDIA_NEAR);
-    float t = textureLod(cg_Media, vec3(uv, (k - 0.5) / CG_MEDIA_SLICES), 0.0).a;
+    float k = cg_MediaSlice(eye);
+    float t = cg_MediaSample(vec3(uv, (k - 0.5) / CG_MEDIA_SLICES)).a;
     return mix(1.0, t, clamp(k, 0.0, 1.0));
 }
 
 // The light the smoke and gas between the eye and eye depth `eye` at screen `uv` scattered toward the eye: the world's
 // lights in the air. Only where a pass binds the world's media: the white fallback reads 1.
 vec3 cg_MediaLight(vec2 uv, float eye) {
-    float k = CG_MEDIA_SLICES * log(max(eye, 1.0e-3) / CG_MEDIA_NEAR) / log(CG_MEDIA_FAR / CG_MEDIA_NEAR);
-    return textureLod(cg_Media, vec3(uv, (k - 0.5) / CG_MEDIA_SLICES), 0.0).rgb * clamp(k, 0.0, 1.0);
+    float k = cg_MediaSlice(eye);
+    return cg_MediaSample(vec3(uv, (k - 0.5) / CG_MEDIA_SLICES)).rgb * clamp(k, 0.0, 1.0);
 }
 #if !defined(CG_COMPUTE_STAGE)
 // cg_LocalLights: the world's lights on transparent surfaces (CgWorldLights' translucency lighting volume, Unreal's), 65 x

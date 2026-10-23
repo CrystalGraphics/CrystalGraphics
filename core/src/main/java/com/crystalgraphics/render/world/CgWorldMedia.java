@@ -62,9 +62,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * }</pre>
  *
  * <ul>
- *   <li>A froxel is {@link #TILE} pixels of the target across and one of {@link #SLICES} slices deep, spaced
- *       exponentially in eye depth from {@link #NEAR} to {@link #FAR} blocks: what {@code cg_env.glsl}'s
- *       {@code CG_MEDIA_*} reads by.</li>
+ *   <li>A froxel is {@link #TILE} pixels of the target across and one of {@link #SLICES} slices deep, spaced in eye
+ *       depth from {@link #NEAR} to {@link #FAR} blocks as Unreal's volumetric fog spaces them: what
+ *       {@code cg_env.glsl}'s {@code CG_MEDIA_*} reads by.</li>
  *   <li>Points are camera-relative, as the world renderer's are.</li>
  *   <li>Each injector reads what those before it added ({@code _MediaIn}, nothing for the first) and writes the sum:
  *       {@code media_before} does it.</li>
@@ -75,9 +75,9 @@ public final class CgWorldMedia {
 
     /** Pixels of the target a froxel spans across. */
     public static final int TILE = 16;
-    /** Slices deep, and the eye depths they run between, exponentially: as {@code cg_env.glsl}'s {@code CG_MEDIA_*}. */
-    public static final int SLICES = 64;
-    public static final float NEAR = 0.5f, FAR = 256f;
+    /** Slices deep, and the eye depths they run between: as {@code cg_env.glsl}'s {@code CG_MEDIA_*}. */
+    public static final int SLICES = 128;
+    public static final float NEAR = 0.095f, FAR = 256f;
     /** What an injecting kernel declares, all of which {@link #dispatch} sets. */
     public static final String PROPERTIES = """
                 _MediaIn    ("The extinction added before this kernel", sampler3D) = "black"
