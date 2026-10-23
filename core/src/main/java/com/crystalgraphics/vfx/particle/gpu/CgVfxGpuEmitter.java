@@ -287,10 +287,18 @@ public interface CgVfxGpuEmitter {
     /**
      * Cascade's size by speed (ParticleModules_Size.cpp:419-430): each of x and y times
      * {@code clamp(speed * scale, 1, max)}, as {@code {scaleX, scaleY, maxX, maxY}}, speed in blocks a second. The
-     * default, {@code {0, 0, 1, 1}}, scales nothing.
+     * default, {@code {0, 0, 1, 1}}, scales nothing. Written into {@code out} from {@code at}, so a slot's opening
+     * allocates nothing.
+     *
+     * <pre>{@code
+     * emitter.sizeBySpeed(row, CURVE_WORDS);   // four floats from CURVE_WORDS
+     * }</pre>
      */
-    default float[] sizeBySpeed() {
-        return new float[] {0f, 0f, 1f, 1f};
+    default void sizeBySpeed(float[] out, int at) {
+        out[at] = 0f;
+        out[at + 1] = 0f;
+        out[at + 2] = 1f;
+        out[at + 3] = 1f;
     }
 
     /**

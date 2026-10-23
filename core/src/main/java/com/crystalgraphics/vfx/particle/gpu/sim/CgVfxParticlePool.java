@@ -2317,7 +2317,7 @@ public final class CgVfxParticlePool {
         curveScratch[CURVE_WORDS - 3] = domain.max();
         curveScratch[CURVE_WORDS - 2] = 0f;
         curveScratch[CURVE_WORDS - 1] = 0f;
-        System.arraycopy(emitter.sizeBySpeed(), 0, curveScratch, CURVE_WORDS, 4);
+        emitter.sizeBySpeed(curveScratch, CURVE_WORDS);
         int slotAt = CURVE_WORDS + 4;
         for (int slot = 0; slot < CgVfxDrawnChannel.SLOTS; slot++) {
             if ((shape.drawnMask() & 1 << slot) == 0) continue;
