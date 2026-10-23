@@ -9,6 +9,9 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxModuleTypes;
+import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
+import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
@@ -289,6 +292,25 @@ public class CgVfxParticlePoolTest {
         assertEquals(9.8f, Float.intBitsToFloat(words[shape.paramAt(0) * 4]), 0f);
         assertEquals(0.12f, Float.intBitsToFloat(words[shape.paramAt(1) * 4]), 0f);
         assertTrue(pool.paramsChanged());
+    }
+
+    @Test
+    public void definitionsSharingAPoolEachWriteTheirOwnFormValues() {
+        CgVfxDrawnChannel one = CgVfxDrawnChannel.over(CgKeyframes.constant(1f));
+        CgVfxEmitter near = CgVfxEmitter.builder("near").capacity(8).rate(1f).light(1f, 16f, one, one, one, one).build();
+        CgVfxEmitter far = CgVfxEmitter.builder("far").capacity(8).rate(1f).light(2f, 16f, one, one, one, one).build();
+        assertEquals(CgVfxShape.of(near).key(), CgVfxShape.of(far).key());
+        CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, near);
+        int a = pool.open(near, 8), b = pool.open(far, 8);
+        CgVfxShape shape = pool.shape();
+        int radius = -1;
+        for (int f = 0; f < shape.spawnForms(); f++) {
+            if (shape.spawnForm(f).target() == CgVfxSpawnInput.LIGHT_RADIUS) radius = f;
+        }
+        int at = shape.spawnLayout(radius).node(shape.spawnLayout(radius).root()).at() * 4, row = shape.paramRowVectors() * 4;
+        int[] words = pool.paramWords();
+        assertEquals(1f, Float.intBitsToFloat(words[pool.paramRow(a) * row + at]), 0f);
+        assertEquals(2f, Float.intBitsToFloat(words[pool.paramRow(b) * row + at]), 0f);
     }
 
     @Test

@@ -42,7 +42,9 @@ import java.util.regex.Pattern;
  * CPU (and whether each fires at a clip node), and its feed tier: how many events deep its particles are spawned. Never a
  * number, so tuning a definition recompiles nothing. Also the layout of a pool's rows, which follows from
  * it. A module's textures are part of it too, so each sampled texture has a pool of its own; its kernels are keyed by
- * {@link #kernelKey()}, which names only whether each is 2D or 3D.
+ * {@link #kernelKey()}, which names only whether each is 2D or 3D. Past the pool budget, definitions differing only in
+ * how their inputs are given share one, each input raised to a form every one of them can take
+ * ({@link CgVfxShapeCoalescing}).
  *
  * <pre>{@code
  * CgVfxShape shape = CgVfxShape.of(EMBERS);
@@ -72,8 +74,6 @@ public final class CgVfxShape {
     public static final int TIERS = CgVfxEvent.LEVELS + 1;
     /** Each custom kind's text, as first seen: a kind name means one text. */
     private static final Map<String, String> SOURCES = new ConcurrentHashMap<>();
-    /** Each definition's shape per tier, made once: a cast prepares and opens its shapes every play. Held weakly. */
-    private static final Map<CgVfxGpuEmitter, CgVfxShape[]> SHAPES = new WeakHashMap<>();
 
     private final String key;
     private final CgTexture[][] textures;
@@ -145,7 +145,13 @@ public final class CgVfxShape {
     @Nullable
     private final CgVfxSpawnFrom spawnFrom;
 
-    private CgVfxShape(CgVfxGpuEmitter emitter, int tier) {
+    /** {@code emitter}'s shape at {@code tier} as its own forms give it, raised by nothing. */
+    CgVfxShape(CgVfxGpuEmitter emitter, int tier) {
+        this(emitter, tier, emitter.moduleForms(), emitter.spawnForms());
+    }
+
+    /** {@code emitter}'s shape at {@code tier} with {@code moduleForms} and {@code givenSpawnForms} for its own. */
+    CgVfxShape(CgVfxGpuEmitter emitter, int tier, List<CgVfxModuleForm> moduleForms, List<CgVfxSpawnForm> givenSpawnForms) {
         if (tier < 0 || tier >= TIERS) throw new IllegalArgumentException(emitter.name() + " at feed tier " + tier);
         this.tier = tier;
         List<? extends CgVfxGpuModule> modules = emitter.modules();
@@ -273,7 +279,7 @@ public final class CgVfxShape {
         // Sized by the events it lists, so a row pays for no more than it has.
         if (triggers.length > 0) param += EVENT_CLIP * eventGroups() + 1;
         // The form area: each form's nodes (CgVfxFormLayout); the key area after it, the launch's keys first.
-        List<CgVfxModuleForm> given = emitter.moduleForms();
+        List<CgVfxModuleForm> given = moduleForms;
         forms = given.toArray(new CgVfxModuleForm[0]);
         formWords = new int[forms.length][];
         formAt = new int[forms.length];
@@ -300,7 +306,7 @@ public final class CgVfxShape {
             keySlot += layouts[f].keys();
             key.append(f == 0 ? "|form:" : ",").append(form.module()).append('.').append(form.input()).append('=').append(formKey(c));
         }
-        spawnForms = emitter.spawnForms().stream().sorted(Comparator.comparing(CgVfxSpawnForm::target)).toArray(CgVfxSpawnForm[]::new);
+        spawnForms = givenSpawnForms.stream().sorted(Comparator.comparing(CgVfxSpawnForm::target)).toArray(CgVfxSpawnForm[]::new);
         spawnFormAt = new int[spawnForms.length];
         spawnLayouts = new CgVfxFormLayout[spawnForms.length];
         for (int f = 0; f < spawnForms.length; f++) {
@@ -462,8 +468,12 @@ public final class CgVfxShape {
         return publishes;
     }
 
-    /** A form's part of the key: what decides its kernel code. */
-    private static String formKey(CgVfxFormInput c) {
+    /** A form's part of the key: what decides its kernel code, its width among it, since a node reads up to its width. */
+    static String formKey(CgVfxFormInput c) {
+        return formClassKey(c) + "/" + c.components();
+    }
+
+    private static String formClassKey(CgVfxFormInput c) {
         if (c instanceof CgVfxFormInput.Range r) return "RANGE" + (r.perChannel() ? ":" + (r.locked() == null ? "c" : r.locked()) : "");
         if (c instanceof CgVfxFormInput.Curve curve) return "CURVE:" + curve.by();
         if (c instanceof CgVfxFormInput.Array array) return "ARRAY:" + array.by();
@@ -490,13 +500,7 @@ public final class CgVfxShape {
     /** {@code emitter}'s shape at feed {@code tier}: 0 for a root, 1 for a root's events' children, 2 for theirs. */
     public static CgVfxShape of(CgVfxGpuEmitter emitter, int tier) {
         if (tier < 0 || tier >= TIERS) return new CgVfxShape(emitter, tier);   // which throws, naming both
-        synchronized (SHAPES) {
-            CgVfxShape[] tiers = SHAPES.get(emitter);
-            if (tiers == null) SHAPES.put(emitter, tiers = new CgVfxShape[TIERS]);
-            CgVfxShape shape = tiers[tier];
-            if (shape == null) tiers[tier] = shape = new CgVfxShape(emitter, tier);
-            return shape;
-        }
+        return CgVfxShapeCoalescing.loaded().shape(emitter, tier);
     }
 
     /**

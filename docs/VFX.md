@@ -2091,9 +2091,9 @@ record Swirl(float strength, float height) implements CgVfxGpuModule {
 
 - **Particles cost the GPU, not the CPU**: a few stores per emitter per tick, the simulation on the GPU. The
   `vfx-blasts` harness scene runs 360,000 particles.
-- **Each shape is a pool with a fixed cost**: emitters whose module kinds and renderer differ step and draw in pools of
-  their own, about 25-45 µs of GPU a frame each on an RTX 4070 SUPER (`vfx-shapes`, 30 shapes). A move of 30 shapes
-  pays about a millisecond for the pools, on GL and Vulkan alike.
+- **Each shape is a pool with a fixed cost**: about 15.5 µs of GPU and 80 µs of render thread a frame while it plays, on
+  an RTX 4070 SUPER under Vulkan. Emitters differing only in how their inputs are given share one once coalesced:
+  [`vfx/performance.md`](vfx/performance.md).
 - **An effect's logic** runs on the CPU at 120 Hz, and its draws are built every frame. A bound value costs a vec4 in
   the effect's row, written once a frame per draw; a constant costs nothing per draw.
 - **A slot costs only the slot renderers on it**: a look without a kit draws none of it.

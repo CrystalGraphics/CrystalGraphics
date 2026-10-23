@@ -38,6 +38,8 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
+import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShapeCoalescing;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.path.CgVfxPathTexture;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxSortGroup;
@@ -62,6 +64,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -212,6 +215,8 @@ public final class CgVfxSystem {
     private final List<CgVfxEmitter> gpuWarming = new ArrayList<>();
     /** Each warming emitter's feed tier in the look it came from: one past its source's for a reader of particles. */
     private final Map<CgVfxEmitter, Integer> gpuWarmingTier = new IdentityHashMap<>();
+    /** Each emitter it prepared and its feed tier: warmed again when coalescing moves it to another shape. */
+    private final Map<CgVfxEmitter, Integer> preparedTier = new WeakHashMap<>();
     /** Emitters whose kernels failed to prepare: logged once and skipped, as Niagara disables an emitter that fails. */
     private final Set<CgVfxEmitter> unprepared = Collections.newSetFromMap(new IdentityHashMap<>());
     /** Looks {@link #prepare} queued whose materials are still to make, a placed layer a step under the budget. */
@@ -934,6 +939,18 @@ public final class CgVfxSystem {
     public void prepare(CgVfxLook... looks) {
         List<CgVfxLook> fresh = new ArrayList<>();
         List<CgMaterialShader> shaders = new ArrayList<>();
+        // Its emitters join the loaded shapes first, so they warm as they will play: raised where coalescing raises them.
+        Map<CgVfxEmitter, Integer> tiers = new LinkedHashMap<>();
+        for (CgVfxLook look : looks) {
+            if (gpuLooks.contains(look)) continue;
+            for (CgVfxEmitter e : look.emitters()) tiers.putIfAbsent(e, feedTier(look, e));
+        }
+        for (CgVfxGpuEmitter moved : CgVfxShapeCoalescing.loaded().include(tiers)) {
+            if (moved instanceof CgVfxEmitter e && preparedTier.containsKey(e) && !gpuWarming.contains(e)) {
+                gpuWarming.add(e);
+                gpuWarmingTier.put(e, preparedTier.get(e));
+            }
+        }
         for (CgVfxLook look : looks) {
             // Prepared here, its play only starts the window: its pools are sized once.
             if (!gpuLooks.add(look)) continue;
@@ -941,7 +958,8 @@ public final class CgVfxSystem {
             for (int k = 0; k < emitters.size(); k++) {
                 if (!gpuWarming.contains(emitters.get(k))) {
                     gpuWarming.add(emitters.get(k));
-                    gpuWarmingTier.put(emitters.get(k), feedTier(look, emitters.get(k)));
+                    gpuWarmingTier.put(emitters.get(k), tiers.get(emitters.get(k)));
+                    preparedTier.put(emitters.get(k), tiers.get(emitters.get(k)));
                 }
                 // The window fills only once played, but its kernels are the look's to build now.
                 if (readsWorld(emitters.get(k))) CgWorldVoxelWindow.get().prepare();

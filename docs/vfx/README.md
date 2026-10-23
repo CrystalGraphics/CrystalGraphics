@@ -12,6 +12,7 @@ the engine moves toward Unreal's (Niagara's) model; what it does not cover yet i
 | [`prefabs.md`](prefabs.md) | models made of parts: a node tree an effect plays, moving and fading its nodes |
 | [`sequences.md`](sequences.md) | a clip on every particle: a prefab moving over frames, events at its nodes, children's children |
 | [`networking.md`](networking.md) | gameplay tags: names a server and its clients agree on, parent matching, tag sets |
+| [`performance.md`](performance.md) | what a particle frame costs: pools, and the shapes that share one |
 
 Each page is written for someone who has never used the engine: every example is complete and checked against the
 code. Where the engine follows an Unreal feature, the page names it, so Niagara's documentation reads across.

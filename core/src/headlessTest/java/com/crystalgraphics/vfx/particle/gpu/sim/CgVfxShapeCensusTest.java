@@ -37,8 +37,8 @@ import java.util.TreeMap;
 
 /**
  * The kits' pool census: for each move (a sequence, with the systems its references reach), how many shapes its systems' emitters
- * take at every feed tier, and how many are left with the inputs' form classes set aside, which is the least shape
- * coalescing could reach. Writes {@code build/kit-gates/shape-census.txt}.
+ * take at every feed tier: as given, as {@link CgVfxShapeCoalescing} raises them, with the inputs' form classes set aside
+ * (the least raising could reach) and with module stacks set aside too. Writes {@code build/kit-gates/shape-census.txt}.
  *
  * <p>Runs over {@code -Pkits=<namespace>=<dir>;...}; {@code -Dcrystalgraphics.census.packs=<text>,...} keeps the
  * sequences whose id contains one, for a timed slice; {@code -Dcrystalgraphics.census.systems=<text>,...} adds the systems
@@ -107,7 +107,8 @@ public class CgVfxShapeCensusTest {
         java.util.Collections.sort(ids);
         StringBuilder failures = new StringBuilder();
         Map<String, Map<String, Integer>> detail = new TreeMap<>();
-        Map<String, Set<String>> systemFull = new HashMap<>(), systemCoalesced = new HashMap<>();
+        Map<String, Set<String>> systemFull = new HashMap<>(), systemCoalesced = new HashMap<>(), systemUnion = new HashMap<>();
+        Map<String, List<CgVfxEmitter>> systemEmitters = new HashMap<>();
         Map<String, Integer> splitBy = new TreeMap<>();
         int failed = 0;
         Map<String, Integer> why = new TreeMap<>();
@@ -132,27 +133,42 @@ public class CgVfxShapeCensusTest {
                     failures.append(ids.get(from + i)).append('\t').append(raw.replace('\n', ' ')).append('\n');
                     continue;
                 }
-                Set<String> f = new HashSet<>(), c = new HashSet<>();
-                for (CgVfxEmitter e : d.emitters()) shapes(e, 0, f, c, splitBy);
+                Set<String> f = new HashSet<>(), c = new HashSet<>(), u = new HashSet<>();
+                for (CgVfxEmitter e : d.emitters()) shapes(e, 0, f, c, u, splitBy);
                 systemFull.put(ids.get(from + i), f);
                 systemCoalesced.put(ids.get(from + i), c);
+                systemUnion.put(ids.get(from + i), u);
+                systemEmitters.put(ids.get(from + i), d.emitters());
             }
             System.out.printf("[census] %d of %d systems, %.0f s%n", Math.min(ids.size(), from + 500), ids.size(),
                     (System.nanoTime() - began) / 1e9);
         }
-        Map<String, Set<String>> full = new TreeMap<>(), coalesced = new TreeMap<>();
-        Set<String> kitFull = new HashSet<>(), kitCoalesced = new HashSet<>();
+        Map<String, Set<String>> full = new TreeMap<>(), coalesced = new TreeMap<>(), union = new TreeMap<>();
+        Set<String> kitFull = new HashSet<>(), kitCoalesced = new HashSet<>(), kitUnion = new HashSet<>();
         for (Map.Entry<String, Set<String>> m : moveSystems.entrySet()) {
-            Set<String> f = new HashSet<>(), c = new HashSet<>();
+            Set<String> f = new HashSet<>(), c = new HashSet<>(), u = new HashSet<>();
             for (String sys : m.getValue()) {
                 if (systemFull.containsKey(sys)) f.addAll(systemFull.get(sys));
                 if (systemCoalesced.containsKey(sys)) c.addAll(systemCoalesced.get(sys));
+                if (systemUnion.containsKey(sys)) u.addAll(systemUnion.get(sys));
             }
             full.put(m.getKey(), f);
             coalesced.put(m.getKey(), c);
+            union.put(m.getKey(), u);
         }
         for (Set<String> s : full.values()) kitFull.addAll(s);
         for (Set<String> s : coalesced.values()) kitCoalesced.addAll(s);
+        for (Set<String> s : union.values()) kitUnion.addAll(s);
+        // Raised as the engine raises them: each move on its own, then every system the kits hold together.
+        Map<String, Integer> raised = new TreeMap<>();
+        CgVfxShapeCoalescing kit = new CgVfxShapeCoalescing(0);
+        for (Map.Entry<String, Set<String>> m : moveSystems.entrySet()) {
+            CgVfxShapeCoalescing move = new CgVfxShapeCoalescing(0);
+            for (String sys : m.getValue()) if (systemEmitters.containsKey(sys)) move.include(systemEmitters.get(sys));
+            raised.put(m.getKey(), move.shapes());
+        }
+        for (List<CgVfxEmitter> emitters : systemEmitters.values()) kit.include(emitters);
+        int kitRaised = kit.shapes();
         List<Map.Entry<String, Set<String>>> worst = new ArrayList<>(full.entrySet());
         worst.sort((a, b) -> b.getValue().size() - a.getValue().size());
         StringBuilder report = new StringBuilder();
@@ -163,12 +179,17 @@ public class CgVfxShapeCensusTest {
             detail.get(e.getKey()).entrySet().stream().sorted((x, y) -> y.getValue() - x.getValue()).limit(6)
                     .forEach(d -> report.append(String.format("           %5d  %s%n", d.getValue(), d.getKey())));
         });
-        report.append(String.format("kit: %d shapes, %d with form classes set aside%n", kitFull.size(), kitCoalesced.size()));
-        report.append("moves by shapes (shapes, without form classes):\n");
+        report.append(String.format("kit: %d shapes, %d raised, %d with form classes set aside, %d with module stacks too%n",
+                kitFull.size(), kitRaised, kitCoalesced.size(), kitUnion.size()));
+        report.append("moves by shapes (shapes, raised, without form classes, without module stacks too):\n");
         for (int i = 0; i < Math.min(25, worst.size()); i++) {
             String move = worst.get(i).getKey();
-            report.append(String.format("  %-28s %4d %4d%n", move, worst.get(i).getValue().size(), coalesced.get(move).size()));
+            report.append(String.format("  %-28s %4d %4d %4d %4d%n", move, worst.get(i).getValue().size(),
+                    raised.get(move), coalesced.get(move).size(), union.get(move).size()));
         }
+        report.append("inputs still dividing a group once raised (kit-wide, groups):\n");
+        kit.splits().entrySet().stream().sorted((x, y) -> y.getValue() - x.getValue()).limit(30)
+                .forEach(e -> report.append(String.format("  %6d  %s%n", e.getValue(), e.getKey())));
         report.append("what splits a shape from its form-free key (key parts):\n");
         splitBy.entrySet().stream().sorted((a, b) -> b.getValue() - a.getValue()).limit(20)
                 .forEach(e -> report.append(String.format("  %6d  %s%n", e.getValue(), e.getKey())));
@@ -181,7 +202,8 @@ public class CgVfxShapeCensusTest {
     }
 
     /** {@code e}'s shape at {@code tier} and its events' children's at the tiers below, each key into {@code full}. */
-    private static void shapes(CgVfxEmitter e, int tier, Set<String> full, Set<String> coalesced, Map<String, Integer> splitBy) {
+    private static void shapes(CgVfxEmitter e, int tier, Set<String> full, Set<String> coalesced, Set<String> union,
+                               Map<String, Integer> splitBy) {
         if (tier >= CgVfxShape.TIERS) return;
         String key;
         try {
@@ -198,9 +220,20 @@ public class CgVfxShapeCensusTest {
             }
         }
         coalesced.add(stripped);
+        union.add(stripModules(stripped));
         for (CgVfxEvent ev : e.events()) {
-            if (ev.child() instanceof CgVfxEmitter child) shapes(child, tier + 1, full, coalesced, splitBy);
+            if (ev.child() instanceof CgVfxEmitter child) shapes(child, tier + 1, full, coalesced, union, splitBy);
         }
+    }
+
+    /** {@code key} without its module stack: the floor a pool merging its definitions' modules could reach. */
+    private static String stripModules(String key) {
+        StringBuilder out = new StringBuilder();
+        for (String part : key.split("\\|")) {
+            boolean module = part.matches("[a-z0-9_]+[:>][0-9]+.*") && !part.startsWith("drawn:") && !part.startsWith("beam:");
+            if (!module) out.append(out.length() == 0 ? "" : "|").append(part);
+        }
+        return out.toString();
     }
 
     /**

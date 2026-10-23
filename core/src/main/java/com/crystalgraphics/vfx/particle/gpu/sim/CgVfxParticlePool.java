@@ -243,6 +243,11 @@ public final class CgVfxParticlePool {
     private final float[] socketPoint = new float[3];
 
     private CgVfxGpuEmitter[] slotEmitter = new CgVfxGpuEmitter[0];
+    /**
+     * Per slot, its definition's shape as it was opened: its numbers' forms at this pool's places. Kept, since a raise
+     * by {@link CgVfxShapeCoalescing} may give the definition another shape while the slot lives.
+     */
+    private CgVfxShape[] slotShape = new CgVfxShape[0];
     /** Per slot: what played it ({@link #open(CgVfxGpuEmitter, int, Object)}), handed back with its event rows. */
     private Object[] slotOwner = new Object[0];
     private int[] slotCapacity = new int[0], slotRow = new int[0], slotBase = new int[0];
@@ -1202,14 +1207,13 @@ public final class CgVfxParticlePool {
     public int open(CgVfxGpuEmitter emitter, int capacity, @Nullable Object owner) {
         betweenSteps("open");
         if (capacity < 0) throw new IllegalArgumentException("capacity " + capacity);
-        String key = CgVfxShape.of(emitter, shape.tier()).key();
-        if (!key.equals(shape.key())) {
-            throw new IllegalArgumentException(emitter.name() + " has shape " + key + ", not this pool's " + shape.key());
+        CgVfxShape own = CgVfxShape.of(emitter, shape.tier());
+        if (!own.key().equals(shape.key())) {
+            throw new IllegalArgumentException(emitter.name() + " has shape " + own.key() + ", not this pool's " + shape.key());
         }
         int slot = 0;
         while (slot < slotCount && slotEmitter[slot] != null) slot++;
         if (slot == slotCount) growSlots(slotCount + 1);
-        CgVfxShape own = CgVfxShape.of(emitter, shape.tier());
         if (!takesTextures(own)) {
             throw new IllegalArgumentException(emitter.name() + "'s textures do not fit this pool's table: open it in the pool "
                     + "of(owner, emitter) answers");
@@ -1218,7 +1222,8 @@ public final class CgVfxParticlePool {
         slotOwner[slot] = owner;
         slotCapacity[slot] = capacity;
         takeTextures(slot, own);
-        slotRow[slot] = useRow(emitter);
+        slotShape[slot] = own;
+        slotRow[slot] = useRow(emitter, own);
         slotOpened[slot] = ++openings;
         slotScale[slot] = 1f;
         slotBindScale[slot] = 1f;
@@ -1250,6 +1255,7 @@ public final class CgVfxParticlePool {
         capacity -= slotCapacity[slot];
         if (beams != null) beams.close(slot);
         slotEmitter[slot] = null;
+        slotShape[slot] = null;
         slotOwner[slot] = null;
         slotCapacity[slot] = 0;
         slotGrid[slot] = null;
@@ -1285,7 +1291,8 @@ public final class CgVfxParticlePool {
         takeTextures(slot, own);
         releaseRow(was);
         slotEmitter[slot] = emitter;
-        slotRow[slot] = useRow(emitter);
+        slotShape[slot] = own;
+        slotRow[slot] = useRow(emitter, own);
     }
 
     /** Whether every texture {@code own}'s kinds sample is in this pool's table, or has a free entry to go in. */
@@ -1609,13 +1616,15 @@ public final class CgVfxParticlePool {
             }
             for (int w = base + bound; w < end; w++) instances[w] = 0;
         }
-        for (int b = 0; b < shape.formBindings(); b++) {
-            CgVfxFormInput.Binding u = shape.formBinding(b);
+        // The slot's own bindings: a lane's key is its place, never which parameter fills it.
+        CgVfxShape own = slotShape[slot];
+        for (int b = 0; b < own.formBindings(); b++) {
+            CgVfxFormInput.Binding u = own.formBinding(b);
             float[] fallback = u.fallback();
-            int base = at + shape.formBindingLane(b) * 4;
+            int base = at + own.formBindingLane(b) * 4;
             for (int c = 0; c < 4; c++) {
                 int k = Math.min(c, fallback.length - 1);
-                instances[base + c] = Float.floatToRawIntBits(u.apply(view.user(shape.formBindingName(b), k, fallback[k]), k));
+                instances[base + c] = Float.floatToRawIntBits(u.apply(view.user(own.formBindingName(b), k, fallback[k]), k));
             }
         }
         if (shape.drawnBindAt() >= 0) {
@@ -2346,7 +2355,8 @@ public final class CgVfxParticlePool {
         }
     }
 
-    private int useRow(CgVfxGpuEmitter emitter) {
+    /** {@code emitter}'s parameter row, written from {@code own}, its shape, on its first slot here. */
+    private int useRow(CgVfxGpuEmitter emitter, CgVfxShape own) {
         int[] row = rows.get(emitter);
         if (row != null) {
             row[1]++;
@@ -2439,10 +2449,11 @@ public final class CgVfxParticlePool {
         // Each roll's key, by its element's id and its input's name (core.md § Values): the kernel reads its word.
         int keys = at + shape.keysAt() * 4;
         System.arraycopy(emitter.rollKeys(), 0, params, keys, CgVfxGpuEmitter.ROLL_KEYS);
-        for (int f = 0; f < shape.forms(); f++) writeForm(shape.layout(f), at, keys);
-        for (int f = 0; f < shape.spawnForms(); f++) {
-            CgVfxSpawnForm form = shape.spawnForm(f);
-            CgVfxFormLayout layout = shape.spawnLayout(f);
+        // The definition's own forms: its numbers, at the places every shape of this key gives them.
+        for (int f = 0; f < own.forms(); f++) writeForm(own.layout(f), at, keys);
+        for (int f = 0; f < own.spawnForms(); f++) {
+            CgVfxSpawnForm form = own.spawnForm(f);
+            CgVfxFormLayout layout = own.spawnLayout(f);
             if (layout.node(layout.root()).top()) params[at + form.target().word()] = Float.floatToRawIntBits(form.firstEnd());
             writeForm(layout, at, keys);
         }
@@ -2557,6 +2568,7 @@ public final class CgVfxParticlePool {
         CgVfxTrace.count(TABLE_GROWS, 1);
         int size = Math.max(n, Math.max(4, slotEmitter.length * 2));
         slotEmitter = Arrays.copyOf(slotEmitter, size);
+        slotShape = Arrays.copyOf(slotShape, size);
         slotOwner = Arrays.copyOf(slotOwner, size);
         slotCapacity = Arrays.copyOf(slotCapacity, size);
         slotRow = Arrays.copyOf(slotRow, size);
