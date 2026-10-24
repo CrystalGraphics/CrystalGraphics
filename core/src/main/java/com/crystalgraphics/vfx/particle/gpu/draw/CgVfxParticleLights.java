@@ -96,6 +96,12 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
         }
     }
 
+    /** Niagara's light renderer makes simple lights: points (lights.compute). */
+    @Override
+    public boolean pointsOnly() {
+        return true;
+    }
+
     @Override
     public boolean append(CgComputePass pass, CgWorldLights lights) {
         Frame f = published;

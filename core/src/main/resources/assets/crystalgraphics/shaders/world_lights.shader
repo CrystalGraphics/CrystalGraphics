@@ -20,6 +20,10 @@
 #include "crystalgraphics:shaders/lib/color.glsl"
 #include "crystalgraphics:shaders/lib/lights.glsl"
 #include "crystalgraphics:shaders/lib/light_shadow.glsl"
+// A spot or a tube among the lights shaded here this frame (CgWorldLights picks the variant). Without it every light is a
+// point and the general path is not compiled: carried unused, its registers cost the loop half again on a floor of
+// particle lights, as Unreal compiles a deferred light's shader per type.
+#pragma cg_feature CG_LIGHTS_SHAPED
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" "Media" = "Off" "SceneColorMargin" = "0.01" }
 Queue = "Transparent"
@@ -121,9 +125,13 @@ Pass {
             vec4 reach = VIEWED(index).positionRadius;
             if (dot(reach.xyz - p, reach.xyz - p) >= reach.w * reach.w) continue;
             vec4 kind = VIEWED(index).kind;
+#ifdef CG_LIGHTS_SHAPED
             float lit = CG_VIEW_SPOT(kind) || CG_VIEW_TUBE(kind)
                     ? cg_light_surface(reach.xyz, reach.w, kind.y, VIEWED(index).spot, VIEWED(index).segment, kind.z, p, n)
                     : cg_light_point(reach.xyz, reach.w, kind.y, kind.z, p, n);
+#else
+            float lit = cg_light_point(reach.xyz, reach.w, kind.y, kind.z, p, n);
+#endif
             if (lit > 0.0) sum += VIEWED(index).radiance.rgb * lit;
         }
         if (shadows) sum += texelFetch(_Shadowed, px, 0).rgb;

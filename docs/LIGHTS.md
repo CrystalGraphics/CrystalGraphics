@@ -227,7 +227,10 @@ lights.add(x, y, z, 2f, 0xFFFFE080, 4f, 0f).shadowed(false).sampled(false);   //
   since each sample's weight is held to `r.MegaLights.MaxShadingWeight`'s 20: a firework burst's floor lost a fifth.
 - **A point's own path**: a light with no cone and no segment is shaded by `cg_light_point`, picked per light from the
   view record's shape bits (`CG_VIEW_SPOT`, `CG_VIEW_TUBE`), as Unreal compiles a deferred light shader per light
-  type. The same light, a fifth to a quarter cheaper than through the general `cg_light_surface`.
+  type. The same light, a fifth to a quarter cheaper than through the general `cg_light_surface`. While every light the
+  apply shades is a point (no CPU spot or tube among them, and every kernel appending them answers
+  `Appender.pointsOnly()`, as particle lights do), the apply runs a program without the general path at all
+  (`CG_LIGHTS_SHAPED` off): carried unused, its registers alone cost a floor of firework lights half again.
 - **Departures from Unreal**: a linear screen trace rather than a hierarchical one; no visible-light hash guiding the
   next frame's samples; the shading confidence is 1.
 - The gate is `--mode=lights-shadow`: a wall of blocks between a light and the floor, the light behind it gone and in the

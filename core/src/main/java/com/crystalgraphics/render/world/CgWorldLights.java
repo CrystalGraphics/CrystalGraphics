@@ -149,6 +149,14 @@ public final class CgWorldLights {
 
         /** Appends its lights: {@link #into} each dispatch that does; false when it appends none this firing. */
         boolean append(CgComputePass pass, CgWorldLights lights);
+
+        /**
+         * Whether every light it appends is a point, never a spot or a tube. While every light shaded exactly is, the
+         * apply runs a program without the spots' and tubes' path, a third cheaper on a floor of particle lights.
+         */
+        default boolean pointsOnly() {
+            return false;
+        }
     }
 
     /**
@@ -354,7 +362,9 @@ public final class CgWorldLights {
             "The light grid skips cells behind the scene and pulls each cell's far edge in to it.");
     private CgKernel view, coarse, cell, countCells, writeCells;
     private float tileU, tileV;
-    private CgMaterial apply, gbufferPass, sample, shade, temporal, denoise, tiles;
+    /** The apply, without and with the spots' and tubes' path ({@code CG_LIGHTS_SHAPED}). */
+    private CgMaterial applyPoints, applyShaped;
+    private CgMaterial gbufferPass, sample, shade, temporal, denoise, tiles;
     private CgGraphTexture gbuffer;
     private final Consumer<CgShaderBindings> gbufferValues = b -> this.gridValues.accept(b.sampler("_Normals", 0,
             this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1));
@@ -382,6 +392,11 @@ public final class CgWorldLights {
             .vec4("_Reach", ENTITY_TILES.get() ? this.rayReach : 1.0e9f, this.sunOn ? 1f : 0f, SUN_RAY, 0f).set1i("_Entities", this.entities);
     /** Lights added from the CPU this frame that cast shadows. */
     private int shadowedAdded;
+    /**
+     * Whether a spot or a tube may be among this frame's lights shaded exactly ({@code shapedExact}), or among all of
+     * them ({@code shapedAny}): the apply's program then carries their path ({@code CG_LIGHTS_SHAPED}).
+     */
+    private boolean shapedExact, shapedAny;
     /** Our meshes' distance fields, and this firing's casters: {@link #CASTER_FLOATS} floats each. */
     private final CgMeshDistanceFields meshFields = new CgMeshDistanceFields();
     private final float[] casterRows = new float[MOST_CASTERS * CASTER_FLOATS];
@@ -845,6 +860,7 @@ public final class CgWorldLights {
             binned = false;
             gridX = gridY = 1;
             shadowedAdded = 0;
+            shapedExact = shapedAny = false;
             casterCount = 0;
             sunCasterCount = 0;
             // Minecraft's light-giving blocks, only where something of ours can shadow them.
@@ -882,6 +898,11 @@ public final class CgWorldLights {
                         rayReach = Math.max(rayReach, light[l + 3] + 0.5f * (float) Math.sqrt(s0 * s0 + s1 * s1 + s2 * s2)
                                 + light[l + 18]);
                     }
+                    // lights.glsl's CG_VIEW_SPOT and CG_VIEW_TUBE; CG_LIGHT_SAMPLED.
+                    if (light[l + 11] > -1.5f || light[l + 12] != 0f || light[l + 13] != 0f || light[l + 14] != 0f) {
+                        shapedAny = true;
+                        if (light[l + 19] <= 0.5f && light[l + 22] <= 0.5f) shapedExact = true;
+                    }
                     staging.putFloat((float) (at[p] - cameraX)).putFloat((float) (at[p + 1] - cameraY))
                             .putFloat((float) (at[p + 2] - cameraZ));
                     for (int w = 3; w < FLOATS; w++) staging.putFloat(light[l + w]);
@@ -910,7 +931,11 @@ public final class CgWorldLights {
             // The scene's farthest depth per tile, for Unreal's HZB cull: built before the passes that read it open.
             pyramid = frame.depthPyramid();
             CgComputePass pass = recording.compute("world.lights", stage).timed(GPU_ZONE);
-            for (Appender a : appenders) appended |= a.append(pass, this);
+            for (Appender a : appenders) {
+                if (!a.append(pass, this)) continue;
+                appended = true;
+                if (!a.pointsOnly()) shapedExact = shapedAny = true;
+            }
             boolean binned = listed > 0 || appended;
             if (binned) bin(recording, stage, pass, view.projection(), toWorld, targetWidth, targetHeight,
                     frame.host().textures().lightmapTexture());
@@ -1130,17 +1155,21 @@ public final class CgWorldLights {
     void apply(CgStageFrame stage, CgRecording recording, boolean transparents) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_APPLY)) {
             localLights = null;
-            if (apply == null) {
-                apply = CgMaterial.newInstance(APPLY_SHADER);
+            if (applyPoints == null) {
+                applyPoints = CgMaterial.newInstance(APPLY_SHADER);
+                applyShaped = CgMaterial.newInstance(APPLY_SHADER);
+                applyShaped.enableKeyword("CG_LIGHTS_SHAPED");
                 gbufferPass = CgMaterial.newInstance(GBUFFER_SHADER);
             }
-            if (!apply.prepare() | !gbufferPass.prepare()) return;
+            // Both warmed, so a spot turning up never compiles in a frame.
+            if (!applyPoints.prepare() | !applyShaped.prepare() | !gbufferPass.prepare()) return;
             recordGBuffer(stage, recording);
             sunOn = sunWanted(stage);
             shadowsOn = SHADOWS.get() && (shadowedAdded > 0 || blockCount > 0 || sunOn) && recordShadows(stage, recording);
             if (transparents && binned && VOLUME.get()) recordVolume(stage, recording);
             if (!binned && !shadowsOn) return;
             CgGraphBuffer none = zeroes(recording);
+            CgMaterial apply = (shadowsOn ? shapedExact : shapedAny) ? applyShaped : applyPoints;
             apply.buffer("CELLS", binned ? cells : none)
                     .buffer("INDICES", binned ? indices : none).buffer("VIEWED", binned ? viewed : none)
                     .applyProperties(applyValues);
