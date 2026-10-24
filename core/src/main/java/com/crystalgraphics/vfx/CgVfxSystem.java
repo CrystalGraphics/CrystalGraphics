@@ -30,6 +30,8 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.look.CgVfxLook;
+import com.crystalgraphics.vfx.scalability.CgVfxBudget;
+import com.crystalgraphics.vfx.scalability.CgVfxScalability;
 import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
@@ -108,8 +110,6 @@ public final class CgVfxSystem {
     private static final CgVar.Text SKIP = CgVar.text("crystalgraphics.vfx.skip", "", CgVar.DEV,
             "Comma-separated: layers whose shader path (light/<id> for a slot's light) contains any of these draw nothing,"
                     + " to see what a frame's GPU time is spent on, one profile per group (light/,haze).");
-    private static final CgVar.Num CPU_BUDGET_MS = CgVar.number("crystalgraphics.vfx.cpuBudgetMs", 4f, 0.1f, 1000f, CgVar.DEV,
-            "CPU milliseconds a frame a system's updates and draws may take before its scalability shrinks every distance and cap.");
     private static final CgVar.Num SIM_BUDGET_MS = CgVar.number("crystalgraphics.vfx.simBudgetMs", 12f, 0f, 1000f, CgVar.DEV,
             "Wall milliseconds an update may spend catching up ticks before it drops the rest and effects slow down.");
     // Measurement switches: each is what one saving on the beams' GPU time would be worth.
@@ -151,7 +151,7 @@ public final class CgVfxSystem {
             WARM_ZONE = CgTrace.name("vfx.warm"), EFFECT_ZONE = CgTrace.name("vfx.effect.submit"),
             PATHS_ZONE = CgTrace.name("vfx.paths.upload"), MATERIALS_ZONE = CgTrace.name("vfx.prepare.materials"),
             PROGRAMS_ZONE = CgTrace.name("vfx.prepare.programs"), EMITTER_ZONE = CgTrace.name("vfx.prepare.emitter"),
-            CULLED = CgTrace.name("vfx.culled"), ASLEEP = CgTrace.name("vfx.asleep"), PRESSURE = CgTrace.name("vfx.pressure-percent"),
+            CULLED = CgTrace.name("vfx.culled"), ASLEEP = CgTrace.name("vfx.asleep"),
             TICKS = CgTrace.name("vfx.ticks"), CAPPED = CgTrace.name("vfx.ticks.capped"), HELD = CgTrace.name("vfx.ticks.held"),
             EMITTERS_ZONE = CgTrace.name("vfx.emitters"), EFFECT_TICK_ZONE = CgTrace.name("vfx.effect.tick"),
             WORKERS_ZONE = CgTrace.name("vfx.emitters.workers"), ADMIT_ZONE = CgTrace.name("vfx.emitters.admit"),
@@ -238,7 +238,13 @@ public final class CgVfxSystem {
     /** This tick's batches, parallel: the simulation, and the first of its due effects the batch books. */
     private CgVfxSystemSimulation[] batchSimulation = new CgVfxSystemSimulation[8];
     private int[] batchFrom = new int[8];
-    private final IntConsumer bookEach = i -> batchSimulation[i].book(batchFrom[i], BOOK_BATCH.get());
+    /** The thread splitting the books: what a batch takes elsewhere is the workers' time. */
+    private Thread booker;
+    private final IntConsumer bookEach = i -> {
+        long began = System.nanoTime();
+        batchSimulation[i].book(batchFrom[i], BOOK_BATCH.get());
+        if (Thread.currentThread() != booker) CgVfxBudget.WORKERS.add(System.nanoTime() - began);
+    };
 
     /** The owners whose effects it has played, for their counters. */
     private final List<CgVfxOwner> owners = new ArrayList<>();
@@ -258,9 +264,8 @@ public final class CgVfxSystem {
     private float density = 1f;
     private CgQuality quality = CgQuality.HIGH;
     private final CgVfxCulling culling = new CgVfxCulling();
-    /** Load on its budgets, smoothed: 1 at rest, above while over; and the CPU nanoseconds this frame's update took. */
-    private float pressure = 1f;
-    private long updateNanos, submitNanos;
+    /** The budget's adjusted usage as of its last scalability pass. */
+    private float usage;
 
     /**
      * {@code definition} played at {@code (x, y, z)} from its pool: an idle instance started again, or a new one, handed
@@ -373,7 +378,7 @@ public final class CgVfxSystem {
         try {
             updateTimed(seconds);
         } finally {
-            updateNanos = System.nanoTime() - began;
+            CgVfxBudget.FRAME.add(System.nanoTime() - began);
             CgTrace.allocationEnd(CgVfxTrace.CHANNEL, UPDATE_ALLOCATION, mark);
         }
     }
@@ -430,6 +435,7 @@ public final class CgVfxSystem {
                             int batches = batchesOf(booking);
                             if (batches > 1) {
                                 try (CgTrace.Zone ticking = CgTrace.zone(CgVfxTrace.CHANNEL, WORKERS_ZONE)) {
+                                    booker = Thread.currentThread();
                                     CgJob.forEach(batches, bookEach);
                                 }
                             } else {
@@ -644,10 +650,11 @@ public final class CgVfxSystem {
      * the world's latest camera, and what is culled put to sleep, stopped or killed as its scalability says.
      */
     private void cull(float passed) {
-        pressure += (load() - pressure) * 0.1f;
-        CgTrace.counter(CgVfxTrace.CHANNEL, PRESSURE, Math.round(pressure * 100f));
+        CgVfxBudget budget = CgVfxBudget.get();
+        budget.tick(quality);
+        usage = budget.worstAdjustedUsage();
         culling.view(CgRenderStage.WORLD_OPAQUE.host().view());
-        culling.run(effects, passed, CgEntityQueries.client().localPlayer(), reach());
+        culling.run(effects, passed, CgEntityQueries.client().localPlayer(), usage);
         int asleep = 0;
         for (int i = 0; i < effects.size(); i++) {
             CgVfxEffect<?> effect = effects.get(i);
@@ -676,11 +683,19 @@ public final class CgVfxSystem {
         CgTrace.counter(CgVfxTrace.CHANNEL, ASLEEP, asleep);
     }
 
-    /** A play the camera is past its scalability's distance from never starts, or starts asleep. */
+    /**
+     * A play the camera is past its scalability's distance from, or that its scalability culls at the budget's usage,
+     * never starts, or starts asleep.
+     */
     private void precull(CgVfxEffect<?> effect) {
         if (effect.authoritative() || !culling.viewed()) return;
         CgVfxScalability s = effect.scalability();
-        if (!s.culls() || culling.distanceTo(effect.originX, effect.originY, effect.originZ) <= s.maxDistance * reach()) return;
+        if (!s.culls()) return;
+        boolean far = culling.distanceTo(effect.originX, effect.originY, effect.originZ) > s.maxDistance() * s.distanceScale(usage);
+        if (!far && usage < s.cullUsage()) return;
+        // The local player's own are kept, as the scalability pass keeps them.
+        int local = CgEntityQueries.client().localPlayer();
+        if (local >= 0 && effect.followEntity == local) return;
         CgVfxTrace.count(CULLED, 1);
         if (s.reaction() == CgVfxScalability.Reaction.SLEEP) {
             effect.asleep = true;
@@ -688,19 +703,6 @@ public final class CgVfxSystem {
         } else {
             effect.culled(true);
         }
-    }
-
-    /**
-     * Its load: the CPU its last update and draw took against {@code cpuBudgetMs}. Never the GPU's time, as Niagara's
-     * budget is the game thread's: a GPU cost no spawn count removes (a device's fixed overhead) would starve every effect.
-     */
-    private float load() {
-        return Math.max(1f, (updateNanos + submitNanos) / 1.0e6f / CPU_BUDGET_MS.get());
-    }
-
-    /** How far every distance and cap reaches under the pressure: 1 at rest, a quarter at the most. */
-    float reach() {
-        return Math.max(0.25f, Math.min(1f, 1f / pressure));
     }
 
     /** Steps each effect played with a start age to it, ahead of this update's ticks. */
@@ -835,15 +837,12 @@ public final class CgVfxSystem {
 
     /** Draws every playing effect into {@code world}, interpolated between the last two ticks. Render thread. */
     public void submit(CgWorldRenderer world) {
-        if (effects.isEmpty()) {
-            submitNanos = 0L;
-            return;
-        }
+        if (effects.isEmpty()) return;
         long began = System.nanoTime(), mark = CgTrace.allocationBegin(CgVfxTrace.CHANNEL);
         try {
             submitTimed(world);
         } finally {
-            submitNanos = System.nanoTime() - began;
+            CgVfxBudget.FRAME.add(System.nanoTime() - began);
             CgTrace.allocationEnd(CgVfxTrace.CHANNEL, SUBMIT_ALLOCATION, mark);
         }
     }

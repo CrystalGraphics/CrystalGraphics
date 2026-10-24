@@ -285,11 +285,16 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.vfx.bindByName` | true, false | `true` | A layer's colour or palette property reads the look's colour of its name when nothing binds it; false takes values only through explicit binds, as the format's materials do. |
 | `crystalgraphics.vfx.bookBatch` | 1 to 2147483647 | `256` | Effects of one simulation a worker books in one task. |
+| `crystalgraphics.vfx.budget.concurrentMs` | 0.0 to 1000.0 | `0.0` | CPU milliseconds a frame every effect's work may take on the frame thread and the workers together; 0 for the quality tier's. |
+| `crystalgraphics.vfx.budget.debug.concurrentTime` | -1.0 to 1000.0 | `-1.0` | At 0 or more, the concurrent line's measured milliseconds. |
+| `crystalgraphics.vfx.budget.debug.frameTime` | -1.0 to 1000.0 | `-1.0` | At 0 or more, the frame line's measured milliseconds, to see what the scalabilities do under it. |
+| `crystalgraphics.vfx.budget.frameMs` | 0.0 to 1000.0 | `0.0` | CPU milliseconds a frame every effect's frame-thread work may take before the scalabilities scale down; 0 for the quality tier's. |
 | `crystalgraphics.vfx.coarseVolumes` | true, false | `false` | Measurement: volume layers on a 12 x 24 sphere instead of 48 x 96. Read at launch. |
-| `crystalgraphics.vfx.cpuBudgetMs` | 0.1 to 1000.0 | `4.0` | CPU milliseconds a frame a system's updates and draws may take before its scalability shrinks every distance and cap. |
+| `crystalgraphics.vfx.fuseLook` | true, false | `true` | On compute, each particle a Step keeps writes its drawn part as it appends it, the Look stage no dispatch of its own; false keeps the two dispatches, as below compute. |
 | `crystalgraphics.vfx.mergeParticles` | true, false | `true` | GPU particles one draw a pool and layer (indirectEach); false draws a slot a draw, sorted per effect: the comparison for overlaps. |
 | `crystalgraphics.vfx.orderedTies` | true, false | `false` | Break ties in the particle draw order by spawn id, so a capture repeats byte for byte: a dispatch per pool and a sort a frame. Capture runs only, beside crystalgraphics.fixedSeed. |
 | `crystalgraphics.vfx.parallelBooks` | 1 to 2147483647 | `4096` | Effects with emitters due a tick past which their books run on the workers, in batches of one simulation's effects; fewer book on the render thread alone. |
+| `crystalgraphics.vfx.poolBudget` | 0 to 2147483647 | `48` | Shapes the loaded bundles may take before coalescing raises their inputs; 0 raises every group that saves a pool, which the form gates run under. Read at launch. |
 | `crystalgraphics.vfx.sharedDistortion` | true, false | `false` | Measurement: distortion layers after every effect's draws, so they share one copy of the target. |
 | `crystalgraphics.vfx.simBudgetMs` | 0.0 to 1000.0 | `12.0` | Wall milliseconds an update may spend catching up ticks before it drops the rest and effects slow down. |
 | `crystalgraphics.vfx.skip` | text | empty | Comma-separated: layers whose shader path (light/<id> for a slot's light) contains any of these draw nothing, to see what a frame's GPU time is spent on, one profile per group (light/,haze). |

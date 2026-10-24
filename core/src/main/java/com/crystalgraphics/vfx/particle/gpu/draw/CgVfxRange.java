@@ -30,6 +30,7 @@ import com.crystalgraphics.vfx.particle.ribbon.CgVfxRibbonGeneration;
 import com.crystalgraphics.render.world.CgWorldVoxelWindow;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshFacing;
+import com.crystalgraphics.vfx.scalability.CgVfxBudget;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector4f;
@@ -215,7 +216,7 @@ public final class CgVfxRange {
             RANGES.put(pool, range = new CgVfxRange(pool));
             (pool.hidden() ? REHEARSED : REAL).add(range);
             if (registration == null) {
-                registration = CgRenderStage.WORLD_OPAQUE.register(ORDER, CgVfxRange::recordAll);
+                registration = CgRenderStage.WORLD_OPAQUE.register(ORDER, CgVfxBudget.charged(CgVfxRange::recordAll));
                 CgGraphicsLifecycle.addListener(CONTEXT);
             }
         }
@@ -577,7 +578,7 @@ public final class CgVfxRange {
         Matrix4fc projection = view.projection(), eye = view.view();
         Matrix4f vp = VIEW_PROJECTION;
 
-        CgComputePass pass = recording.compute("vfx.range").timed(GPU_RANGE);
+        CgComputePass pass = recording.compute("vfx.range").timed(GPU_RANGE).charged(CgVfxBudget.FRAME);
         boolean ordered = Ties.ordered();
         if (ordered) order(pass, kernels.kernel("Order"), keyBuffer, indices, keys);
         for (int i = 0, keyFirst = 0, slotFirst = 0; i < ALL.size(); i++) {

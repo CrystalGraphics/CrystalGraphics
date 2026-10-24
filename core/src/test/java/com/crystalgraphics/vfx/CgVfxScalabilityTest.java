@@ -1,10 +1,16 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.variable.CgVar;
+import com.crystalgraphics.variable.CgVars;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
+import com.crystalgraphics.vfx.scalability.CgVfxBudget;
+import com.crystalgraphics.vfx.scalability.CgVfxScalability;
 import org.joml.Matrix4f;
 import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -14,7 +20,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-/** Scalability: culled by distance to bounds, by count and out of view; put to sleep and woken at its true age. */
+/**
+ * Scalability: culled by distance to bounds, by count and out of view, and by the CPU's budget; put to sleep and woken at
+ * its true age.
+ */
 public class CgVfxScalabilityTest {
 
     private static final CgVfxSchema SCHEMA = CgVfxSchema.of("test:scalability");
@@ -44,13 +53,37 @@ public class CgVfxScalabilityTest {
         CgRenderStage.WORLD_OPAQUE.host().view().set(0, 0, z, new Matrix4f(), new Matrix4f().perspective(1.2f, 1f, 0.05f, 2000f));
     }
 
+    private static final CgVar.Num FRAME_TIME = budgetVar("crystalgraphics.vfx.budget.debug.frameTime"),
+            CONCURRENT_TIME = budgetVar("crystalgraphics.vfx.budget.debug.concurrentTime");
+
+    /** One of the budget's variables, declared once its class has loaded. */
+    private static CgVar.Num budgetVar(String id) {
+        CgVfxBudget.get();
+        return (CgVar.Num) CgVars.get(id);
+    }
+
+    /** The budget at rest, whatever this run's own updates cost. */
+    @Before
+    public void idleBudget() {
+        CgVfxBudget.get().reset();
+        FRAME_TIME.set(0f);
+        CONCURRENT_TIME.set(0f);
+    }
+
     @After
     public void noCamera() {
         CgRenderStage.WORLD_OPAQUE.host().view().set(0, 0, 0, new Matrix4f(), new Matrix4f().zero());
+        FRAME_TIME.set(-1f);
+        CONCURRENT_TIME.set(-1f);
+        CgVfxBudget.get().reset();
     }
 
+    /** {@code seconds} of updates at 60 a frame, each a host frame of its own. */
     private static void run(CgVfxSystem vfx, double from, double seconds) {
-        for (int f = 0; f <= Math.round(seconds * 60); f++) vfx.update(from + f / 60.0);
+        for (int f = 0; f <= Math.round(seconds * 60); f++) {
+            CgFrameClock.advance();
+            vfx.update(from + f / 60.0);
+        }
     }
 
     @Test
@@ -91,6 +124,24 @@ public class CgVfxScalabilityTest {
         run(vfx, 1.5 + 1 / 60.0, 1);
         assertTrue(behind.asleep());
         assertFalse(ahead.asleep());
+    }
+
+    @Test
+    public void overBudgetTheRampsShrinkCapsAndWhatOptsInIsCulled() {
+        camera(0);
+        CgVfxSystem vfx = new CgVfxSystem();
+        CgVfxScalability cullable = CgVfxScalability.builder("test:cullable").maxDistance(500f).cullByBudget(1.5f).build();
+        List<Dot> dots = new ArrayList<>();
+        for (int i = 0; i < 48; i++) dots.add(vfx.play(new Dot(-2 - i, CgVfxScalability.IMPACT)));
+        Dot gone = vfx.play(new Dot(-5, cullable)), hero = vfx.play(new Dot(-5, CgVfxScalability.HERO));
+        run(vfx, 0, 0.1);
+        assertFalse(gone.asleep());
+        // Past the most usage: the presets' caps at a quarter, and the budget's cull.
+        FRAME_TIME.set(1000f);
+        run(vfx, 0.1 + 1 / 60.0, 0.1);
+        for (int i = 0; i < 48; i++) assertEquals("dot " + i, i < 12, dots.get(i).state() != CgVfxEffect.State.DEAD);
+        assertTrue(gone.asleep());
+        assertFalse(hero.asleep());
     }
 
     @Test

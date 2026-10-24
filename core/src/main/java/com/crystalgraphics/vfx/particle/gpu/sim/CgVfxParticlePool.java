@@ -50,6 +50,7 @@ import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import com.crystalgraphics.render.world.CgWorldVoxelWindow;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
+import com.crystalgraphics.vfx.scalability.CgVfxBudget;
 import org.joml.Matrix4f;
 
 import javax.annotation.Nullable;
@@ -447,7 +448,7 @@ public final class CgVfxParticlePool {
             pool.hidden = HIDDEN.contains(owner);
             (pool.hidden ? REHEARSED : REAL).add(pool);
             if (recording == null) {
-                recording = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, CgVfxParticlePool::recordStage);
+                recording = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, CgVfxBudget.charged(CgVfxParticlePool::recordStage));
                 CgGraphicsLifecycle.addListener(CONTEXT);
             }
         }
@@ -757,7 +758,7 @@ public final class CgVfxParticlePool {
                 break;
             }
         }
-        CgComputePass pass = recording.compute("vfx.pool.step").timed(GPU_STEP).async();
+        CgComputePass pass = recording.compute("vfx.pool.step").timed(GPU_STEP).charged(CgVfxBudget.FRAME).async();
         clearCounts(pass);
         if (reportRows > 0) CgGpuOps.fill(pass, reportCounts, 0, CgGpuCount.of(maxSteps));
         for (int s = 0; s < maxSteps; s++) {

@@ -2,6 +2,8 @@ package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.render.CgViewFrustum;
 import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.vfx.scalability.CgVfxBudget;
+import com.crystalgraphics.vfx.scalability.CgVfxScalability;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
@@ -17,7 +19,7 @@ import java.util.Map;
  *
  * <pre>{@code
  * culling.view(view);                          // the camera the world last drew with
- * culling.run(effects, dt, localPlayer, pressure);
+ * culling.run(effects, dt, localPlayer, CgVfxBudget.get().worstAdjustedUsage());
  * // then each effect's wanted, lowered and distanceShare are set: the system reacts to each
  * }</pre>
  */
@@ -28,8 +30,9 @@ final class CgVfxCulling {
         CgVfxEffect<?>[] members = new CgVfxEffect<?>[8];
         long[] keys = new long[8];
         int count;
-        /** How many it keeps at rest. */
+        /** How many it keeps at rest, and its scalability's scale of that under the budget. */
         int most;
+        float scale;
 
         void add(CgVfxEffect<?> effect) {
             if (count == members.length) {
@@ -42,9 +45,12 @@ final class CgVfxCulling {
             count++;
         }
 
-        /** Culls all but the nearest {@link #most} times {@code reach}, keeping the local player's whatever the count. */
-        void keep(float reach, int localPlayer) {
-            int kept = Math.max(1, (int) (most * reach));
+        /**
+         * Culls all but the nearest {@link #most} times its scale, truncated as Niagara's scaled counts are, keeping the
+         * local player's whatever the count.
+         */
+        void keep(int localPlayer) {
+            int kept = (int) (most * scale);
             if (count > kept) {
                 Arrays.sort(keys, 0, count);
                 for (int i = kept; i < count; i++) {
@@ -88,9 +94,10 @@ final class CgVfxCulling {
 
     /**
      * Decides every effect's {@code wanted}, {@code lowered} and {@code distanceShare} for this update, {@code dt}
-     * seconds after the last, every distance and cap shrunk by {@code reach} (1 at rest, down to a quarter under load).
+     * seconds after the last, each scalability's distances and caps scaled by its ramps at the budget's {@code usage}
+     * and its effects culled past its budget usage.
      */
-    void run(List<CgVfxEffect<?>> effects, float dt, int localPlayer, float reach) {
+    void run(List<CgVfxEffect<?>> effects, float dt, int localPlayer, float usage) {
         for (int i = 0; i < effects.size(); i++) {
             CgVfxEffect<?> e = effects.get(i);
             if (e.state() == CgVfxEffect.State.DEAD) continue;
@@ -106,15 +113,16 @@ final class CgVfxCulling {
             e.unseenFor = seen ? 0f : e.unseenFor + dt;
             float d = e.cullDistance;
             boolean own = localPlayer >= 0 && e.followEntity == localPlayer;
-            e.wanted = own || d <= s.maxDistance * reach && e.unseenFor < s.unseen;
-            float lod = s.lodDistance * reach;
+            float reach = s.distanceScale(usage);
+            e.wanted = own || d <= s.maxDistance() * reach && e.unseenFor < s.unseen() && usage < s.cullUsage();
+            float lod = s.lodDistance();
             e.lowered = d > 2f * lod ? 2 : d > lod ? 1 : 0;
             e.distanceShare = e.lowered == 2 ? 0.25f : e.lowered == 1 ? 0.5f : 1f;
             if (!e.wanted) continue;
-            if (s.maxInstances < Integer.MAX_VALUE) cap(s, s.maxInstances).add(e);
-            if (s.maxPerLook < Integer.MAX_VALUE) cap(e.look(), s.maxPerLook).add(e);
+            if (s.maxInstances() < Integer.MAX_VALUE) cap(s, s.maxInstances(), s.instanceScale(usage)).add(e);
+            if (s.maxPerLook() < Integer.MAX_VALUE) cap(e.look(), s.maxPerLook(), s.perLookScale(usage)).add(e);
         }
-        for (int i = 0; i < capList.size(); i++) capList.get(i).keep(reach, localPlayer);
+        for (int i = 0; i < capList.size(); i++) capList.get(i).keep(localPlayer);
     }
 
     /**
@@ -135,14 +143,15 @@ final class CgVfxCulling {
         return frustum.testAabb(minX, minY, minZ, maxX, maxY, maxZ);
     }
 
-    /** {@code key}'s cap, keeping {@code most} at rest: a scalability's or a look's. */
-    private Cap cap(Object key, int most) {
+    /** {@code key}'s cap, keeping {@code most} at rest times {@code scale}: a scalability's or a look's. */
+    private Cap cap(Object key, int most, float scale) {
         Cap cap = caps.get(key);
         if (cap == null) {
             caps.put(key, cap = new Cap());
             capList.add(cap);
         }
         cap.most = most;
+        cap.scale = scale;
         return cap;
     }
 }

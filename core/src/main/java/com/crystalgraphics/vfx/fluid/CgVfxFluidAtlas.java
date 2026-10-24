@@ -33,6 +33,7 @@ import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.sparse.CgVfxTiles;
 import com.crystalgraphics.render.world.CgWorldVoxelWindow;
 import com.crystalgraphics.world.CgEntityQueries;
+import com.crystalgraphics.vfx.scalability.CgVfxBudget;
 
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
@@ -281,7 +282,7 @@ public final class CgVfxFluidAtlas {
             fluid.stepper.reset();
             fluid.owed = 0f;
             if (registration == null) {
-                registration = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, this::record);
+                registration = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, CgVfxBudget.charged(this::record));
                 CgGraphicsLifecycle.addListener(context);
                 CgWorldRenderer.get().media().add(media);
                 prepare();
@@ -420,7 +421,7 @@ public final class CgVfxFluidAtlas {
         CgWorldVoxelWindow window = CgWorldVoxelWindow.get().use();
         int iterations = Math.max(MIN_ITERATIONS, Math.round(ITERATIONS * GPU_BUDGET.scale()));
         if (most > 0) recording.fill(tiles.occupancy(), 0);
-        CgComputePass pass = recording.compute("vfx.fluid", stage.defaults(constants)).timed(GPU_ZONE).timed(GPU_BUDGET)
+        CgComputePass pass = recording.compute("vfx.fluid", stage.defaults(constants)).timed(GPU_ZONE).timed(GPU_BUDGET).charged(CgVfxBudget.FRAME)
                 .async();
         window.bind(bind(pass.dispatch(solids, LAYER * TILE, LAYER * TILE, tiles.usedLayers() * TILE), 0, 0))
                 .image("SOLID_OUT", solid);

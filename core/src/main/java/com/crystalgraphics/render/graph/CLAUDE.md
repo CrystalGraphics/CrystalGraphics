@@ -167,6 +167,10 @@ With `crystalgraphics.gpu.groups` on, the executor marks each batch's material i
 an untimed pass), so the pass's time also lands per material as `gpu:<zone>/<shader path>`; the target copy a batch
 needs is charged to it.
 
+**A pass charged to a CPU meter** (`CgComputePass.charged(meter)`, a `render.CgCpuMeter`): the executor adds the
+nanoseconds its execution takes on the render thread, its GPU timing and barriers included, so a consumer budgets its
+own passes' CPU as `timed(budget)` budgets their GPU.
+
 **Barriers are the executor's** (`CgHazards`): before each access it compares the storage's last accesses — per GL
 name, so pooled transients, a history's two versions and a buffer used across frames each come out right — and issues
 `cgBufferBarrier`/`cgImageBarrier` wherever a kernel takes part: exact on the tracked backend, the reader's

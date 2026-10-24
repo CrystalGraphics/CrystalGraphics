@@ -30,6 +30,7 @@ import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.sparse.CgVfxTiles;
+import com.crystalgraphics.vfx.scalability.CgVfxBudget;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -244,7 +245,7 @@ public final class CgVfxGridAtlas {
             grid.ticked = frame;
             starvedFor[b] = 0;
             if (registration == null) {
-                registration = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, this::record);
+                registration = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, CgVfxBudget.charged(this::record));
                 CgGraphicsLifecycle.addListener(context);
                 CgWorldRenderer.get().media().add(this::inject);
                 CgCompute file = CgCompute.load(KERNELS);
@@ -375,7 +376,7 @@ public final class CgVfxGridAtlas {
             recording.update(before, 0, 0, 0, 0, CgVfxTiles.PAGES, CgVfxTiles.PAGES, CgVfxTiles.PAGES, beforeBytes);
         }
         int used = tiles.usedLayers(), w = LAYER * TILE, d = used * TILE, aw = LAYER * APRON_TILE, ad = used * APRON_TILE;
-        CgComputePass pass = recording.compute("vfx.grid", stage.defaults(constants)).timed(GPU_ZONE).timed(GPU_BUDGET)
+        CgComputePass pass = recording.compute("vfx.grid", stage.defaults(constants)).timed(GPU_ZONE).timed(GPU_BUDGET).charged(CgVfxBudget.FRAME)
                 .async();
         CgGpuOps.fill(pass, splatSum, 0, CgGpuCount.of(used * LAYER * LAYER * TILE * TILE * TILE * 4));
         CgGpuOps.fill(pass, this.want, 0, CgGpuCount.of(CAPACITY * PAGE_TABLE));

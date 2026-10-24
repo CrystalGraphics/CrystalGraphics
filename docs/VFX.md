@@ -2091,7 +2091,7 @@ record Swirl(float strength, float height) implements CgVfxGpuModule {
 
 - **Particles cost the GPU, not the CPU**: a few stores per emitter per tick, the simulation on the GPU. The
   `vfx-blasts` harness scene runs 360,000 particles.
-- **Each shape is a pool with a fixed cost**: about 15.5 µs of GPU and 80 µs of render thread a frame while it plays, on
+- **Each shape is a pool with a fixed cost**: about 15.5 µs of GPU and 36 µs of render thread a frame while it plays, on
   an RTX 4070 SUPER under Vulkan. Emitters differing only in how their inputs are given share one once coalesced:
   [`vfx/performance.md`](vfx/performance.md).
 - **An effect's logic** runs on the CPU at 120 Hz, and its draws are built every frame. A bound value costs a vec4 in
@@ -2100,45 +2100,10 @@ record Swirl(float strength, float height) implements CgVfxGpuModule {
 - What tends to cost: overdraw from large soft materials (one banded draw where four stacked bands were four), many
   separate particle materials (each its own batch), and shaders compiling on first use (`prepare(look)`).
 
-### Scalability: what is too far, too many or out of view
+### Scalability and the CPU's budget
 
-Every look has a `CgVfxScalability`, `DEFAULT` unless it names one: when its effects are culled, drawn lower or put to
-sleep. Distance is from the camera to what the effect drew, not its origin, so a long beam stays while any of it is near.
-
-```java
-public static final CgVfxScalability IMPACTS = CgVfxScalability.builder("mymod:impacts")
-        .maxDistance(64).maxInstances(24).whenCulled(CgVfxScalability.Reaction.KILL).build();
-
-CgVfxLook.builder(SCHEMA).with(KIT).scalability(IMPACTS).build();
-VFX.play(new Aura(LOOK, x, y, z)).scalability(CgVfxScalability.HERO);   // one effect: the player's own
-```
-
-| Call | Means |
-|---|---|
-| `maxDistance(blocks)` | culled once the camera is farther than that from every part of it |
-| `maxInstances(n)`, `maxPerLook(n)` | at most `n` of every look sharing this object, or of one look; the nearest kept, the local player's always |
-| `unseen(seconds)` | culled once nothing of it has been in view that long |
-| `lodDistance(blocks)` | a quality tier lower past it (renderers of a higher `quality` drop, half the particles), two past twice it (a quarter) |
-| `whenCulled(SLEEP \| STOP \| KILL)` | asleep (the default): no ticks, no draws, its particles freed, and when wanted again it plays on from its true age, as `startAt` starts one; `STOP` ends it its own way; `KILL` at once |
-
-| Preset | For |
-|---|---|
-| `DEFAULT` | most effects: gone past 160 blocks, a tier lower past 48 |
-| `AMBIENT` | embers, mist, spray: past 64 blocks, or two seconds out of view; 64 at most |
-| `IMPACT` | hits, sparks, puffs: 48 at most, past 96 blocks, killed rather than kept asleep |
-| `FAR` | a blast on the horizon, a storm: to 512 blocks |
-| `HERO` | never culled, always full detail |
-
-- It is decided once an update against the world's latest camera, and when an effect is played: one past its distance
-  then never starts, or starts asleep.
-- A particle's bounds are a sphere round its source it cannot leave (its emitter's speed, life and pull), as Niagara gives
-  a GPU emitter fixed bounds: no readback, nothing late.
-- **Under load everything shrinks together**: past `crystalgraphics.vfx.cpuBudgetMs` (4) of CPU a frame, every
-  distance and cap shrinks, to a quarter at most. Counters `vfx.culled`, `vfx.asleep`, `vfx.pressure-percent`.
-- **Particles never thin by GPU time**, as Niagara's budget is the game thread's: an effect spawns what it asks, at
-  the player's density, on every device. Their GPU cost is the quality tier's and scalability's to bound.
-- Asleep past `MAX_SLEEP_SECONDS` (120) an effect is killed, so a one-off culled for good never lingers.
-- A server's copy of an authoritative effect is never culled.
+What is too far, too many or out of view, and what every effect may cost the CPU before the scalabilities scale down:
+[`vfx/performance.md`](vfx/performance.md) § *Scalability* and § *The CPU's budget*.
 
 ### Budgets on the GPU
 

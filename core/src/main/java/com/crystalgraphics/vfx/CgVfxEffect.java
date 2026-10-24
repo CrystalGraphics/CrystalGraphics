@@ -26,6 +26,7 @@ import com.crystalgraphics.vfx.look.CgVfxValues;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxSockets;
 import com.crystalgraphics.vfx.render.CgVfxSortGroup;
+import com.crystalgraphics.vfx.scalability.CgVfxScalability;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Quaternionf;

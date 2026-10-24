@@ -1,6 +1,7 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.gl.buffer.CgReadback;
+import com.crystalgraphics.render.CgCpuMeter;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgPipeline;
 
@@ -32,6 +33,9 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
     /** What its GPU time is charged to, or null. */
     @Nullable
     CgGpuBudget budget;
+    /** What its execution's CPU time is charged to, or null. */
+    @Nullable
+    CgCpuMeter meter;
     /**
      * Frames built with this pass and not yet recycled: a frame reads its passes when it executes, so its recording
      * reuses a pass only once no frame holds it. Any thread: a frame may be recycled on another.

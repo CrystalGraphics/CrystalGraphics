@@ -2,6 +2,7 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.render.CgCpuMeter;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -60,6 +61,7 @@ public final class CgComputePass extends CgPass {
         constants.write(this.constants, 0);
         gpuZone = -1;
         budget = null;
+        meter = null;
         dispatches.clear();
         shellsUsed = 0;
         again = false;
@@ -75,6 +77,7 @@ public final class CgComputePass extends CgPass {
         for (int i = 0; i < shellsUsed; i++) shells.get(i).clearReferences();
         shellsUsed = 0;
         budget = null;
+        meter = null;
     }
 
     int shellCount() {
@@ -137,6 +140,20 @@ public final class CgComputePass extends CgPass {
     public CgComputePass timed(CgGpuBudget budget) {
         requireOpen();
         this.budget = Objects.requireNonNull(budget, "budget");
+        return this;
+    }
+
+    /**
+     * Charges the CPU its execution takes to {@code meter}, whoever budgets it: the executor times the pass on the
+     * render thread as it runs.
+     *
+     * <pre>{@code
+     * recording.compute("sparks.step").charged(SPARKS_CPU).timed(SPARKS_GPU);   // both sides of its cost
+     * }</pre>
+     */
+    public CgComputePass charged(CgCpuMeter meter) {
+        requireOpen();
+        this.meter = Objects.requireNonNull(meter, "meter");
         return this;
     }
 
