@@ -128,6 +128,10 @@ public final class CgRenderDemo {
             CgVar.DEV | CgVar.RESTART, "Frames on the ground before the demo's profile starts.").get();
     private static final int BLASTS = CgVar.integer("crystalgraphics.demo.blasts", 120, 1, 100_000, CgVar.DEV | CgVar.RESTART,
             "Blasts in the demo's blasts scene; 120 keep about 360,000 particles alive.").get();
+    /** The scene's point {@code (x, z)} under the eye instead of the scene ahead of it, or null. */
+    private static final double[] UNDER = under(CgVar.text("crystalgraphics.demo.under", "", CgVar.DEV | CgVar.RESTART,
+            "x,z: the scene placed with its point (x, z) under the eye, for a profile looking down at one part of it"
+                    + " (lights: -11,4 the fireflies, -20,-12 a firework); empty, ahead of the eye.").get());
 
     /** Every scene plays on the world's system, as a mod's effects do. */
     private static final CgVfxOwner VFX = CgVfx.owner("crystalgraphics");
@@ -654,8 +658,8 @@ public final class CgRenderDemo {
         double level = Math.hypot(forward.x, forward.z);
         aheadX = level > 1.0e-3 ? forward.x / level : forward.x;
         aheadZ = level > 1.0e-3 ? forward.z / level : forward.z;
-        anchorX = (long) Math.floor(view.x() + eye.x + aheadX * ahead);
-        anchorZ = (long) Math.floor(view.z() + eye.z + aheadZ * ahead);
+        anchorX = (long) Math.floor(view.x() + eye.x + (UNDER != null ? -UNDER[0] : aheadX * ahead));
+        anchorZ = (long) Math.floor(view.z() + eye.z + (UNDER != null ? -UNDER[1] : aheadZ * ahead));
         eyeY = view.y() + eye.y;
         anchorY = Math.floor(eyeY + forward.y * ahead + up.y * ABOVE);
         anchored = true;
@@ -663,6 +667,12 @@ public final class CgRenderDemo {
         worldFrames = 0;
         LOGGER.info("[CgRenderDemo] {} around ({}, {}, {}), camera at ({}, {}, {})", kinds[current].name(),
                 anchorX, anchorY, anchorZ, view.x(), view.y(), view.z());
+    }
+
+    private static double[] under(String xz) {
+        if (xz.isEmpty()) return null;
+        String[] parts = xz.split(",");
+        return new double[] {Double.parseDouble(parts[0].trim()), Double.parseDouble(parts[1].trim())};
     }
 
     /** Stands the scene on the ground under it, once the world answers. */
