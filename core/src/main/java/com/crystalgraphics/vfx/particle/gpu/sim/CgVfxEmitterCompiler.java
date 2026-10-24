@@ -12,6 +12,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 
 import com.crystalgraphics.util.io.CgIO;
+import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -1042,7 +1043,7 @@ public final class CgVfxEmitterCompiler {
         s.replace(trailsAt, trailsAt + "@TRAILS@".length(), trailUpdate(shape).replace("@HEAD_UPDATE@", headUpdate(shape)));
         int burstsAt = s.indexOf("@BURSTS@");
         s.replace(burstsAt, burstsAt + "@BURSTS@".length(), bursts.toString());
-        String out = s.toString();
+        String out = withLook(shape, s.toString());
         // A text block's @NAME@ the code forgot to fill compiles as a syntax error far from its cause.
         Matcher left = PLACEHOLDER.matcher(out);
         if (left.find()) throw new IllegalStateException(shape.kernelKey() + ": " + left.group() + " left unfilled in its Step kernel");
@@ -1050,6 +1051,96 @@ public final class CgVfxEmitterCompiler {
     }
 
     private static final Pattern PLACEHOLDER = Pattern.compile("@[A-Z_]+@");
+
+    /** The Look kernel's file: its properties are the fused Step's too, declared there once. */
+    static final String LOOK_KERNELS = "crystalgraphics:shaders/env/compute/vfx/look.compute";
+    private static final String LOOK_LIBRARY = "crystalgraphics:shaders/lib/vfx/fx_look.glsl",
+            WORLD_LIBRARY = "crystalgraphics:shaders/lib/vfx/fx_world.glsl",
+            RECORD_LIBRARY = "crystalgraphics:shaders/lib/vfx/fx_record.glsl";
+    private static final String APPEND = "OUT_APPEND(step_pack(p, paramRow));";
+    private static volatile List<String> lookProperties;
+
+    /**
+     * {@code out}, a shape's Step kernel, with {@code StepLook} beside it: the same Step, each particle it keeps writing
+     * its drawn part as it appends it, so the Look stage is no dispatch of its own. Niagara's renderers read what its
+     * particle update wrote, with no stage between. Compute only (an append answers its element there alone): below
+     * compute the Step and the Look stay two, which keeps the Step's units.
+     */
+    private static String withLook(CgVfxShape shape, String out) {
+        if (count(out, "OUT_APPEND(") != 1 || !out.contains(APPEND)) {
+            throw new IllegalStateException(shape.kernelKey() + ": the Step appends other than once; StepLook needs one");
+        }
+        StringBuilder t = new StringBuilder(out.length() + 8192);
+        String pragma = "#pragma kernel Step append\n";
+        int at = out.indexOf(pragma) + pragma.length();
+        t.append(out, 0, at).append("#pragma kernel StepLook general\n#pragma compute_only StepLook\n");
+        int properties = out.indexOf("\nProperties {\n"), propertiesEnd = out.indexOf("\n}\n", properties);
+        String declared = out.substring(properties, propertiesEnd);
+        t.append(out, at, propertiesEnd + 1);
+        // Look's, but for those the Step declares already: its instance rows' base, a data interface's voxel window.
+        for (String line : lookProperties()) {
+            String name = line.trim().split("[\\s(]", 2)[0];
+            if (!Pattern.compile("\\n\\s*" + Pattern.quote(name) + "[\\s(]").matcher(declared).find()) t.append(line).append('\n');
+        }
+        int buffers = out.indexOf("\nBuffers {\n", propertiesEnd), buffersEnd = out.indexOf("\n}\n", buffers);
+        t.append(out, propertiesEnd + 1, buffers + 1);
+        if (!out.contains("struct FxDrawn")) t.append(CgVfxRecord.DRAWN_GLSL).append("\n\n");
+        t.append(out, buffers + 1, buffersEnd + 1);
+        t.append("    DRAWN         (\"Its drawn parts: StepLook's\", FxDrawn, writeonly)\n");
+        if (!out.contains("\n    CURVES ")) t.append("    CURVES        (\"Look's curve rows: StepLook's\", vec4, readonly)\n");
+        int step = out.indexOf("void Step() {"), end = closing(out, out.indexOf('{', step)) + 1;
+        t.append(out, buffersEnd + 1, step);
+        // The library reads the record it just packed; nothing below StepLook sees it.
+        String expanded = new CgShaderPreprocessor().process(out, key(shape));
+        t.append("#ifdef CG_KERNEL_StepLook\n");
+        t.append("uvec4 look_rec[").append(shape.record().vectors()).append("];\n#define LOOK_IN(k) look_rec[k]\n");
+        if (!expanded.contains("fx_world_light(")) t.append("#include \"").append(WORLD_LIBRARY).append("\"\n");
+        if (!expanded.contains("FX_RECORD_POSITION_AGE")) t.append("#include \"").append(RECORD_LIBRARY).append("\"\n");
+        t.append("#include \"").append(LOOK_LIBRARY).append("\"\n#endif\n\n");
+        String body = out.substring(step, end);
+        t.append(body);
+        StringBuilder tail = new StringBuilder("{\n        FxRecord look_r = step_pack(p, paramRow);\n"
+                + "        int look_at = OUT_APPEND(look_r);\n        if (look_at >= 0) {\n");
+        for (int v = 0; v < shape.record().vectors(); v++) {
+            tail.append("            look_rec[").append(v).append("] = look_r.w").append(v).append(";\n");
+        }
+        tail.append("            for (int part = 0; part < _DrawnStride; part++) DRAWN_STORE(look_at * _DrawnStride + part, "
+                + "look_part(part));\n        }\n    }");
+        t.append("\n").append(body.replace("void Step() {", "void StepLook() {\n    if (!CG_IN_RANGE) return;")
+                .replace(APPEND, tail.toString()));
+        t.append(out, end, out.length());
+        return t.toString();
+    }
+
+    /** look.compute's property lines, read once: what the fused Step declares beside its own. */
+    private static List<String> lookProperties() {
+        List<String> held = lookProperties;
+        if (held != null) return held;
+        String text = CgIO.loadSource(LOOK_KERNELS);
+        if (text == null) throw new IllegalStateException(LOOK_KERNELS + " did not load");
+        text = text.replace("\r\n", "\n");
+        int from = text.indexOf("\nProperties {\n") + "\nProperties {\n".length(), to = text.indexOf("\n}\n", from);
+        List<String> lines = new ArrayList<>();
+        for (String line : text.substring(from, to + 1).split("\n")) if (!line.isBlank()) lines.add(line);
+        lookProperties = held = List.copyOf(lines);
+        return held;
+    }
+
+    /** The index of the brace closing the one at {@code open}. */
+    private static int closing(String text, int open) {
+        for (int i = open, depth = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '{') depth++;
+            else if (c == '}' && --depth == 0) return i;
+        }
+        throw new IllegalStateException("an unclosed brace at " + open);
+    }
+
+    private static int count(String text, String of) {
+        int n = 0;
+        for (int i = text.indexOf(of); i >= 0; i = text.indexOf(of, i + 1)) n++;
+        return n;
+    }
 
     /**
      * {@code step_vector}: parameter-row vector {@code v} of the row at {@code row}, each word a user binding replaces

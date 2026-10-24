@@ -1,0 +1,19 @@
+// Every pool's live counts are entries of one buffer (CgVfxParticlePool), as Niagara's count manager keeps them: a
+// step appends into an entry it took zeroed and gives back the one it read. Clear zeroes the entries given back since
+// the last recording, in one dispatch at the next recording's start, before any step appends to one again (Niagara's
+// ClearCountsUIntCS).
+#pragma kernel Clear scatter
+
+Properties {
+    _EntriesAt ("Where the list starts in ENTRIES, in uints", int) = 0
+    _Stride    ("An entry's uints",                          int) = 64
+}
+
+Buffers {
+    COUNTS  ("Every pool's counts, an entry each", uint, writeonly)
+    ENTRIES ("The entries to zero",                uint, readonly)
+}
+
+void Clear() {
+    COUNTS_STORE(int(ENTRIES(_EntriesAt + CG_ELEMENT)) * _Stride, 0u);
+}

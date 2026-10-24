@@ -59,8 +59,11 @@ public final class CgDispatch {
     final CgGraphBuffer[] buffers;
     final long[] offsets, sizes;
     final int[] bufferAccess;
-    /** Per declared buffer: whether its writes skip the barrier against the pass's other skipping writes to it. */
-    final boolean[] skipBarrier;
+    /**
+     * Per declared buffer, and per append buffer's count: 1 + the group whose other skipping accesses in this pass it
+     * waits for none of, 0 where it waits as usual.
+     */
+    final int[] skipGroup, countSkipGroup;
     /** Per declared buffer and count: the executing pass whose start barriered it, so binding it issues none. */
     final int[] hoisted, counterHoisted;
     /** Per declared buffer: an append buffer's count, its offset, and the access to it; null where none. */
@@ -78,6 +81,17 @@ public final class CgDispatch {
     int bindings = -1;
     /** The kernel's, per declared buffer and image: a bit per accessor it uses. Shared; never written. */
     private final int[] bufferUse, imageUse;
+    /** Per declared buffer: what the kernel does to its elements, as {@link CgAccess} bits. */
+    private final int[] accessOf;
+    /**
+     * Per value and buffer call since the dispatch started, in order: the name it gave and what that resolved to. A
+     * shell reused for its kernel makes the same calls each frame, so a lookup is an identity test; a different name
+     * at a call looks it up again.
+     */
+    private String[] valueNames = new String[0], bufferNames = new String[0];
+    private int[] valueShapes = new int[0], valueOffsets = new int[0];
+    private CgBufferDecl[] bufferDecls = new CgBufferDecl[0];
+    private int valueCalls, bufferCalls;
 
     private static final CgBufferAccessor[] BUFFER_ACCESSORS = CgBufferAccessor.values();
     private static final CgImageAccessor[] IMAGE_ACCESSORS = CgImageAccessor.values();
@@ -96,7 +110,10 @@ public final class CgDispatch {
         offsets = new long[n];
         sizes = new long[n];
         bufferAccess = new int[n];
-        skipBarrier = new boolean[n];
+        accessOf = new int[n];
+        for (int i = 0; i < n; i++) accessOf[i] = access(bufferUse[i]);
+        skipGroup = new int[n];
+        countSkipGroup = new int[n];
         hoisted = new int[n];
         counterHoisted = new int[n];
         counters = new CgGraphBuffer[n];
@@ -126,7 +143,8 @@ public final class CgDispatch {
         Arrays.fill(offsets, 0L);
         Arrays.fill(sizes, 0L);
         Arrays.fill(bufferAccess, 0);
-        Arrays.fill(skipBarrier, false);
+        Arrays.fill(skipGroup, 0);
+        Arrays.fill(countSkipGroup, 0);
         Arrays.fill(counterAccess, 0);
         Arrays.fill(imageAccess, 0);
         if (values != null) kernel.compute().properties().defaultsInto(values);
@@ -150,12 +168,13 @@ public final class CgDispatch {
         this.z = z;
         this.args = args;
         this.argsOffset = argsOffset;
+        valueCalls = bufferCalls = 0;
         // A kernel some tier cannot run fails here, at the caller's line, on any machine; one this context cannot run
         // too, not in the frame that executes it.
         kernel.check();
         if (CgCapabilities.detected() != null) kernel.form();
         if (args != null) {
-            if (args.desc() != null && !args.desc().has(CgBufferUsage.INDIRECT)) {
+            if (!args.allows(CgBufferUsage.INDIRECT)) {
                 throw new IllegalArgumentException(args + " has no INDIRECT use, so it cannot size a dispatch");
             }
             if ((argsOffset & 3) != 0) throw new IllegalArgumentException("an indirect dispatch's arguments sit at a multiple of 4");
@@ -174,7 +193,7 @@ public final class CgDispatch {
         CgBufferDecl b = bufferDecl(name);
         int access = bufferAccess(b);
         checkHistory(buffer, access, name, "");
-        if (buffer.desc() != null && !buffer.desc().has(CgBufferUsage.STORAGE)) {
+        if (!buffer.allows(CgBufferUsage.STORAGE)) {
             throw new IllegalArgumentException(buffer + " has no STORAGE use, so a kernel cannot bind it as " + name);
         }
         buffers[b.index()] = buffer;
@@ -186,9 +205,9 @@ public final class CgDispatch {
     }
 
     /**
-     * Lets buffer {@code name}'s writes skip the barrier after the last dispatch of this pass that wrote the same
-     * storage through a skipping binding too: Unreal RDG's {@code SkipBarrier}, Niagara's UAV overlap. For dispatches
-     * that each write their own slice of one buffer, which would otherwise wait for each other one by one.
+     * Lets buffer {@code name}'s accesses skip the barrier against this pass's other skipping accesses to the same
+     * storage: Unreal RDG's {@code SkipBarrier}, Niagara's UAV overlap. For dispatches that each touch their own slice of
+     * one buffer, which would otherwise wait for each other one by one.
      *
      * <pre>{@code
      * for (Pool p : pools) {
@@ -198,19 +217,48 @@ public final class CgDispatch {
      * }</pre>
      *
      * <ul>
-     *   <li>The caller promises the writes touch disjoint words, and that no write reads what another wrote: nothing
+     *   <li>The caller promises the accesses touch disjoint words, and that none reads what another wrote: nothing
      *       checks it, and a race is silent. Synchronization validation reports overlapping words, so keep it clean.</li>
-     *   <li>An append buffer's count is never skipped: every append writes the same word.</li>
-     *   <li>Bind first: it names a binding already made. Any read of the storage, or a write without it, waits as
-     *       usual, and so does the first skipping write of each pass.</li>
+     *   <li>Bind first: it names a binding already made. An access without it waits as usual, and so does the first
+     *       skipping access of each pass.</li>
      * </ul>
      */
     public CgDispatch skipBarrier(String name) {
+        return skipBarrier(name, 0);
+    }
+
+    /**
+     * {@link #skipBarrier(String)} within group {@code group} (0 to 7) of the pass: a stage of many dispatches whose
+     * accesses overlap among themselves, and wait once for the stage before, of another group.
+     *
+     * <pre>{@code
+     * for (Pool p : pools) step(pass, p).bind("LIVE", counts, p.at(), 16).skipBarrier("LIVE", 1).skipCountBarrier("OUT", 1);
+     * for (Pool p : pools) look(pass, p).bind("LIVE", counts, p.at(), 16);   // waits once, for every step
+     * }</pre>
+     */
+    public CgDispatch skipBarrier(String name, int group) {
         pass.requireOpen();
         CgBufferDecl b = bufferDecl(name);
         if (buffers[b.index()] == null) throw new IllegalStateException(name + " is not bound yet");
-        skipBarrier[b.index()] = true;
+        skipGroup[b.index()] = 1 + group(group);
         return this;
+    }
+
+    /**
+     * {@link #skipBarrier(String, int)} for append buffer {@code name}'s count: only where every dispatch of the group
+     * appends to a word of its own, as each pool's count in one buffer. One count shared by them is never skipped.
+     */
+    public CgDispatch skipCountBarrier(String name, int group) {
+        pass.requireOpen();
+        CgBufferDecl b = bufferDecl(name);
+        if (counters[b.index()] == null) throw new IllegalStateException(name + "'s count is not bound yet");
+        countSkipGroup[b.index()] = 1 + group(group);
+        return this;
+    }
+
+    private static int group(int group) {
+        if (group < 0 || group > 7) throw new IllegalArgumentException("skip group " + group + ": 0 to 7");
+        return group;
     }
 
     /** Append buffer {@code name}'s count: the {@code uint} at {@code offset} in {@code counter}, which the caller zeroes. */
@@ -292,12 +340,12 @@ public final class CgDispatch {
     }
 
     public CgDispatch set(String name, float value) {
-        values()[offset(name, 1)] = value;
+        values()[offset(name, 1, false)] = value;
         return this;
     }
 
     public CgDispatch set(String name, float x, float y) {
-        int at = offset(name, 2);
+        int at = offset(name, 2, false);
         float[] v = values();
         v[at] = x;
         v[at + 1] = y;
@@ -305,7 +353,7 @@ public final class CgDispatch {
     }
 
     public CgDispatch set(String name, float x, float y, float z, float w) {
-        int at = offset(name, 4);
+        int at = offset(name, 4, false);
         float[] v = values();
         v[at] = x;
         v[at + 1] = y;
@@ -316,8 +364,7 @@ public final class CgDispatch {
 
     /** An int or bool property: 0 is false. */
     public CgDispatch set(String name, int value) {
-        if (!kernel.compute().properties().isInteger(name)) throw new IllegalArgumentException("'" + name + "' is no int or bool");
-        values()[offset(name, 1)] = Float.intBitsToFloat(value);
+        values()[offset(name, 1, true)] = Float.intBitsToFloat(value);
         return this;
     }
 
@@ -343,14 +390,26 @@ public final class CgDispatch {
     }
 
     private CgBufferDecl bufferDecl(String name) {
+        int k = bufferCalls++;
+        if (k < bufferNames.length && bufferNames[k] == name) return bufferDecls[k];
         CgBufferDecl b = source.buffer(name);
         if (b == null) throw new IllegalArgumentException(source.path() + " declares no buffer '" + name + "'");
+        if (k >= bufferNames.length) {
+            bufferNames = Arrays.copyOf(bufferNames, Math.max(8, k * 2));
+            bufferDecls = Arrays.copyOf(bufferDecls, bufferNames.length);
+        }
+        bufferNames[k] = name;
+        bufferDecls[k] = b;
         return b;
     }
 
-    /** What the kernel does to buffer {@code b}'s elements, from the accessors it uses. */
     private int bufferAccess(CgBufferDecl b) {
-        int access = 0, use = bufferUse[b.index()];
+        return accessOf[b.index()];
+    }
+
+    /** What the kernel does to elements through accessor bits {@code use}. */
+    private static int access(int use) {
+        int access = 0;
         for (CgBufferAccessor a : BUFFER_ACCESSORS) {
             if ((use & 1 << a.ordinal()) == 0) continue;
             access |= switch (a) {
@@ -381,13 +440,28 @@ public final class CgDispatch {
         if ((access & CgAccess.COMPUTE_WRITE) != 0) pass.recording.write(pass, resource, CgAccess.COMPUTE_WRITE);
     }
 
-    private int offset(String name, int components) {
+    /** Where value {@code name} starts, checked {@code components} wide and, with {@code integer}, an int or bool. */
+    private int offset(String name, int components, boolean integer) {
         pass.requireOpen();
+        int k = valueCalls++, shape = integer ? -components : components;
+        if (k < valueNames.length && valueNames[k] == name && valueShapes[k] == shape) return valueOffsets[k];
+        CgPropertyBlock properties = kernel.compute().properties();
+        if (integer && !properties.isInteger(name)) throw new IllegalArgumentException("'" + name + "' is no int or bool");
+        int at;
         try {
-            return kernel.compute().properties().offset(name, components);
+            at = properties.offset(name, components);
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(source.path() + ": " + e.getMessage(), e);
         }
+        if (k >= valueNames.length) {
+            valueNames = Arrays.copyOf(valueNames, Math.max(16, k * 2));
+            valueShapes = Arrays.copyOf(valueShapes, valueNames.length);
+            valueOffsets = Arrays.copyOf(valueOffsets, valueNames.length);
+        }
+        valueNames[k] = name;
+        valueShapes[k] = shape;
+        valueOffsets[k] = at;
+        return at;
     }
 
     private float[] values() {

@@ -313,18 +313,32 @@ public class CgComputeGraphTest {
     }
 
     @Test
-    public void barrierRule_writesOfOneOverlapSetWaitForNothingBetweenThem_butAnyOtherAccessWaitsForAll() {
+    public void barrierRule_accessesOfOneOverlapSetWaitForNothingBetweenThem_butAnyOtherAccessWaitsForAll() {
         CgHazards hazards = new CgHazards();
         long key = CgHazards.buffer(7);
         hazards.access(key, CgAccess.COMPUTE_READ);
         assertEquals(CgAccess.COMPUTE_READ, hazards.access(key, CgAccess.COMPUTE_WRITE, 5));   // the set's first waits
         assertEquals(0, hazards.access(key, CgAccess.COMPUTE_WRITE, 5));
         assertEquals(0, hazards.access(key, CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE, 5));
-        assertEquals(CgAccess.COMPUTE_WRITE, hazards.access(key, CgAccess.COMPUTE_WRITE, 6));   // another set
+        // Another set's write waits for the set's writes and for its read.
+        assertEquals(CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE, hazards.access(key, CgAccess.COMPUTE_WRITE, 6));
         assertEquals(CgAccess.COMPUTE_WRITE, hazards.access(key, CgAccess.COMPUTE_WRITE));      // no set
         hazards.access(key, CgAccess.COMPUTE_WRITE, 5);
         assertEquals(CgAccess.COMPUTE_WRITE, hazards.access(key, CgAccess.COMPUTE_READ));
         assertEquals(CgAccess.COMPUTE_READ, hazards.access(key, CgAccess.COMPUTE_WRITE, 5));    // a read broke the run
+    }
+
+    @Test
+    public void barrierRule_readsOfAnOverlapSetToo_asNiagarasCountsOverlapWithinAStage() {
+        CgHazards hazards = new CgHazards();
+        long key = CgHazards.buffer(7);
+        hazards.access(key, CgAccess.COMPUTE_WRITE);                                              // last stage's
+        assertEquals(CgAccess.COMPUTE_WRITE, hazards.access(key, CgAccess.COMPUTE_READ, 9));      // the stage waits once
+        assertEquals(0, hazards.access(key, CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE, 9));  // each pool's own count
+        assertEquals(0, hazards.access(key, CgAccess.COMPUTE_READ, 9));
+        assertEquals(0, hazards.access(key, CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE, 9));
+        assertEquals(CgAccess.COMPUTE_WRITE, hazards.access(key, CgAccess.COMPUTE_READ));         // the next stage waits for them
+        assertEquals(0, hazards.access(key, CgAccess.COMPUTE_READ));
     }
 
     @Test

@@ -386,9 +386,12 @@ public final class CgFrameBuilder {
         int[] map = internMap(table);
         List<CgDispatch> dispatches = pass.dispatches();
         packed.size(dispatches.size());
+        int constants = pass.constantsBinding;
+        if (map[constants] < 0) map[constants] = frame.bindings.copy(table, constants);
+        packed.constants = map[constants];
         for (int d = 0; d < dispatches.size(); d++) {
             int local = dispatches.get(d).bindings;
-            if (map[local] < 0) map[local] = frame.bindings.copy(table, local);
+            if (map[local] < 0) map[local] = frame.bindings.copyUnique(table, local);
             packed.bindings[d] = map[local];
         }
     }

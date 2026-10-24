@@ -269,9 +269,10 @@ public final class CgKernelEmitter {
                 else if (accessor == CgBufferAccessor.ADD && nativeFloatAdd) indexed(sb, "void", name, ", float v", "atomicAdd(" + a + "[i], v);", site, a);
                 else indexed(sb, "void", name, ", float v", "CG_ATOMIC_" + op.toUpperCase() + "_FLOAT(" + a + "_bits[i], v)", site, a);
             }
-            case APPEND -> sb.append("void ").append(name).append('(').append(e).append(" v) { uint at = atomicAdd(")
-                    .append(a).append("_count, 1u); if (at < uint(").append(a).append(".length())) ").append(a)
-                    .append("[at] = v; }\n");
+            // The element it took, or -1 once full: a compute kernel may write beside it (a lowered append answers none).
+            case APPEND -> sb.append("int ").append(name).append('(').append(e).append(" v) { uint at = atomicAdd(")
+                    .append(a).append("_count, 1u); if (at < uint(").append(a).append(".length())) { ").append(a)
+                    .append("[at] = v; return int(at); } return -1; }\n");
             case COUNT -> sb.append("int ").append(name).append("() { return int(min(").append(a).append("_count, uint(")
                     .append(a).append(".length()))); }\n");
             case INC -> indexed(sb, e, name, "", "return atomicAdd(" + a + "[i], " + e + "(1));", site, a);

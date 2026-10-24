@@ -4,8 +4,8 @@
 // key, its slot if it may be on screen (inside the view, and not behind the scene's depth) and _AllSlots if not, so
 // the culled sort past the end; and its index in its pool, which the sort carries. With _DepthBits 16 a slot that
 // sorts takes its view depth in the low bits, far first, or its distance or its age as its Sort says. CgGpuOps then sorts every pool's keys at once, counts each
-// slot's visible particles and scans the counts into each slot's start. Place, once per pool, writes the index of
-// each particle a slot draws into ORDER from the slot's list base: draws read the pool's records through it, whose
+// slot's visible particles and scans the counts into each slot's start. Place, once over every pool, writes the index
+// of each particle a slot draws into ORDER from the slot's list base: draws read the pool's records through it, whose
 // drawn part the Step wrote. Objects writes the same particles as object records, for a mesh drawn per particle. Under crystalgraphics.vfx.orderedTies, Order first sorts each pool's live particles by spawn
 // id, which the sort then keeps among equal keys: the atomics appending a pool's survivors order them anew each run.
 #pragma kernel Order map
@@ -85,7 +85,8 @@ Buffers {
     INDICES ("Indices, sorted by slot",                           uint,     readwrite)
     VISIBLE ("Each slot's visible particles",                     uint,     readonly)
     STARTS  ("Where each slot's run starts in INDICES",           uint,     readonly)
-    BASES   ("Where each slot's records start in its pool's DRAWN", uint,   readonly)
+    BASES   ("Where each slot's records start in ORDER, every pool's", uint,   readonly)
+    STRIDES ("Each slot's pool's drawn elements a particle",      uint,     readonly)
     ORIGINS ("Each slot's origin, absolute",                      FxOrigin, readonly)
     ORDER   ("Each drawn particle's record in its pool, -1 for none: a float, as a buffer texture reads it", float, writeonly)
     OBJECTS ("The particles a mesh draws",                        FxObject, writeonly)
@@ -161,11 +162,12 @@ int range_slot(int e, out int rank) {
     return lo;
 }
 
+// Over every pool's ORDER at once, _SlotFirst 0 and _Slots all of them: a pool's alignment past its last slot is -1.
 void Place() {
     int rank;
     int lo = range_slot(CG_ELEMENT, rank);
     // Its drawn part's element: a draw finds its drawn slots at the next.
-    ORDER_WRITE(rank < int(VISIBLE(lo)) ? float(int(INDICES(int(STARTS(lo)) + rank)) * _DrawnStride) : -1.0);
+    ORDER_WRITE(rank < int(VISIBLE(lo)) ? float(int(INDICES(int(STARTS(lo)) + rank)) * int(STRIDES(lo))) : -1.0);
 }
 
 // What a mesh particle at p from slot's origin rests against (CG_OBJECT_SPARE): the nearest solid's surface in the
@@ -272,7 +274,7 @@ mat3 range_facing(int lo, vec3 toEye, vec3 velocity, float spin, mat3 own, vec3 
 
 void Objects() {
     int rank;
-    int lo = range_slot(CG_ELEMENT, rank);
+    int lo = range_slot(_DrawnFirst + CG_ELEMENT, rank);
     FxObject o;
     o.model0 = vec4(0.0); o.model1 = vec4(0.0); o.model2 = vec4(0.0); o.model3 = vec4(0.0, 0.0, 0.0, 1.0);
     o.normal0 = vec4(0.0); o.normal1 = vec4(0.0); o.normal2 = vec4(0.0); o.normal3 = vec4(15.0, 15.0, 0.0, 1.0);

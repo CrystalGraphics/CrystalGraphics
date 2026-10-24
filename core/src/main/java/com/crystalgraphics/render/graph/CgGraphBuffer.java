@@ -56,6 +56,17 @@ public final class CgGraphBuffer extends CgGraphResource implements CgBufferHand
         this.storage = storage;
         this.of = of;
         this.versions = kind == Kind.HISTORY && of == null ? new int[2] : null;
+        int bits = desc == null ? -1 : 0;
+        if (desc != null) for (CgBufferUsage usage : desc.usages()) bits |= 1 << usage.ordinal();
+        this.usageBits = bits;
+    }
+
+    /** A bit per {@link CgBufferUsage} its desc has, every bit for an imported buffer: asked at every binding. */
+    private final int usageBits;
+
+    /** Whether it may be used as {@code usage}: its desc has it, or it is imported, which states none. */
+    boolean allows(CgBufferUsage usage) {
+        return (usageBits & 1 << usage.ordinal()) != 0;
     }
 
     /** Storage for this frame only, from the pool. */

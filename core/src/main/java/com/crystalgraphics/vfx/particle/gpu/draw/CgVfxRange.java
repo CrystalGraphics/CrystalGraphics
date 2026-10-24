@@ -118,7 +118,7 @@ public final class CgVfxRange {
     private static List<CgVfxRange> ALL = REAL;
     private static CgRenderStage.Registration registration;
 
-    private static CgGraphBuffer drawn, visible, slots, bases, objects, sorts, origins, facings;
+    private static CgGraphBuffer drawn, visible, slots, bases, strides, objects, sorts, origins, facings;
     private static final List<CgGraphBuffer> RETIRED = new ArrayList<>();
     private static boolean anySorted;
     /** Whether {@link #objects()} was asked for since the last recording. */
@@ -228,7 +228,7 @@ public final class CgVfxRange {
         public void onDestroy() {
             CgVfxRibbonGeneration.forgetAll();
             RETIRED.clear();
-            drawn = visible = slots = bases = objects = sorts = origins = null;
+            drawn = visible = slots = bases = strides = objects = sorts = origins = null;
         }
     };
 
@@ -266,7 +266,7 @@ public final class CgVfxRange {
         REHEARSED.clear();
         ALL = REAL;
         RETIRED.clear();
-        drawn = visible = slots = bases = objects = sorts = origins = null;
+        drawn = visible = slots = bases = strides = objects = sorts = origins = null;
         anySorted = objectsAsked = false;
         if (registration != null) {
             registration.close();
@@ -476,7 +476,7 @@ public final class CgVfxRange {
             CgVfxParticlePool p = ALL.get(i).pool;
             if (!keyed(p)) continue;
             keyFirst = align(keyFirst, KEY_ALIGN);
-            pass.dispatch(order, p.storage()).bind("RECORDS", p.records()).bind("LIVE", p.live())
+            pass.dispatch(order, p.storage()).bind("RECORDS", p.records()).bind("LIVE", p.liveBuffer(), p.liveOffset(), 16)
                     .set("_RecordVectors", p.record().vectors())
                     .bind("KEYS", keyBuffer, keyFirst * 4L, p.storage() * 4L)
                     .bind("INDICES", indices, keyFirst * 4L, p.storage() * 4L)
@@ -585,7 +585,7 @@ public final class CgVfxRange {
             if (p.isReleased()) continue;
             if (keyed(p)) {
                 keyFirst = align(keyFirst, KEY_ALIGN);
-                CgDispatch keyed = pass.dispatch(key, p.storage()).bind("RECORDS", p.records()).bind("LIVE", p.live())
+                CgDispatch keyed = pass.dispatch(key, p.storage()).bind("RECORDS", p.records()).bind("LIVE", p.liveBuffer(), p.liveOffset(), 16)
                         .set("_RecordVectors", p.record().vectors())
                         .bind("SLOTS", slots).bind("SORTS", sorts)
                         .bind("KEYS", keyBuffer, keyFirst * 4L, p.storage() * 4L)
@@ -615,18 +615,21 @@ public final class CgVfxRange {
         CgGpuOps.histogram(pass, keyBuffer, all, visible, allSlots + 1, depthBits);
         CgGpuOps.scan(pass, CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT, visible,
                 count(SLOT_COUNTS, allSlots + 1), starts);
+        // One Place over every pool, as Niagara's count manager writes every renderer's draw arguments in one dispatch
+        // (NiagaraGPUInstanceCountManager.cpp, UpdateDrawIndirectBuffers): a pool's dispatch each was a pool's CPU cost.
+        int allDrawn = 0;
+        for (int i = 0; i < ALL.size(); i++) if (!ALL.get(i).pool.isReleased()) allDrawn += align(ALL.get(i).pool.capacity(), RECORD_ALIGN);
+        if (allDrawn > 0) {
+            pass.dispatch(place, allDrawn).bind("INDICES", indices).bind("VISIBLE", visible).bind("STARTS", starts)
+                    .bind("BASES", bases).bind("STRIDES", strides).bind("ORDER", drawn, 0L, (long) allDrawn * DRAWN_BYTES)
+                    .set("_Slots", allSlots).set("_SlotFirst", 0);
+        }
         for (int i = 0, drawnFirst = 0, slotFirst = 0; i < ALL.size(); i++) {
             CgVfxRange range = ALL.get(i);
             CgVfxParticlePool p = range.pool;
             if (p.isReleased()) continue;
             int capacity = p.capacity();
             if (keyed(p) && capacity > 0) {
-                window.bind(pass.dispatch(place, capacity).bind("INDICES", indices)
-                        .bind("VISIBLE", visible).bind("STARTS", starts).bind("BASES", bases).bind("ORIGINS", origins)
-                        .bind("ORDER", drawn, (long) drawnFirst * DRAWN_BYTES, (long) capacity * DRAWN_BYTES).skipBarrier("ORDER")
-                        .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst)
-                        .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
-                        .set("_Floors", p.shape().floors() ? 1 : 0).set("_DrawnStride", p.shape().drawnStride()));
                 if (objects != null) {
                     long bytes = CgGpuOps.cullRecordBytes();
                     window.bind(pass.dispatch(objected, capacity).bind("RECORDS", p.records()).bind("DRAWN", p.drawn())
@@ -677,6 +680,7 @@ public final class CgVfxRange {
     private static void uploadSlots(CgRecording recording, CgHostView view, int allSlots) {
         slots = fit(recording, slots, "vfx.range.slots", allSlots * 16L);
         bases = fit(recording, bases, "vfx.range.bases", allSlots * 4L);
+        strides = fit(recording, strides, "vfx.range.strides", allSlots * 4L);
         sorts = fit(recording, sorts, "vfx.range.sorts", allSlots * 4L);
         origins = fit(recording, origins, "vfx.range.origins", allSlots * (long) ORIGIN_BYTES);
         if (staging.capacity() < allSlots * ORIGIN_BYTES) {
@@ -699,16 +703,26 @@ public final class CgVfxRange {
         staging.limit(allSlots * 16);
         recording.update(slots, 0, staging);
         staging.clear();
-        for (int i = 0, g = 0; i < ALL.size(); i++) {
+        // Every pool's in one list, from its first drawn element, so one Place serves them all.
+        for (int i = 0, g = 0, drawnFirst = 0; i < ALL.size(); i++) {
             CgVfxParticlePool p = ALL.get(i).pool;
             if (p.isReleased()) continue;
-            for (int s = 0, base = 0; s < p.slotCount(); s++, g++) {
+            for (int s = 0, base = drawnFirst; s < p.slotCount(); s++, g++) {
                 staging.putInt(g * 4, base);
                 if (p.isOpen(s)) base += p.capacity(s);
             }
+            drawnFirst += align(p.capacity(), RECORD_ALIGN);
         }
         staging.limit(allSlots * 4);
         recording.update(bases, 0, staging);
+        staging.clear();
+        for (int i = 0, g = 0; i < ALL.size(); i++) {
+            CgVfxParticlePool p = ALL.get(i).pool;
+            if (p.isReleased()) continue;
+            for (int s = 0; s < p.slotCount(); s++, g++) staging.putInt(g * 4, p.shape().drawnStride());
+        }
+        staging.limit(allSlots * 4);
+        recording.update(strides, 0, staging);
         staging.clear();
         for (int i = 0, g = 0; i < ALL.size(); i++) {
             CgVfxRange range = ALL.get(i);
@@ -757,9 +771,9 @@ public final class CgVfxRange {
     private static void release(CgRecording recording) {
         for (int i = 0; i < RETIRED.size(); i++) recording.release(RETIRED.get(i));
         RETIRED.clear();
-        CgGraphBuffer[] owned = {drawn, visible, slots, bases, objects, sorts, origins, facings};
+        CgGraphBuffer[] owned = {drawn, visible, slots, bases, strides, objects, sorts, origins, facings};
         for (CgGraphBuffer buffer : owned) if (buffer != null) recording.release(buffer);
-        drawn = visible = slots = bases = objects = sorts = origins = facings = null;
+        drawn = visible = slots = bases = strides = objects = sorts = origins = facings = null;
     }
 
     /** {@code buffer}, or one of the next size class in its place when it holds fewer than {@code bytes}. */

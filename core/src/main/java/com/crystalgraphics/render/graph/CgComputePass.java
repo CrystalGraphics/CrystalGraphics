@@ -37,6 +37,8 @@ public final class CgComputePass extends CgPass {
 
     final CgRecording recording;
     final float[] constants = new float[CgPassConstants.FLOATS];
+    /** The recording's snapshot of its constants, made when it ends: bound once for every dispatch, as a raster pass's. */
+    int constantsBinding = -1;
     private final List<CgDispatch> dispatches = new ArrayList<>();
     private final List<CgDispatch> dispatchView = Collections.unmodifiableList(dispatches);
     /** Dispatches made so far, refilled after a reset when they run the same kernel; the first {@link #shellsUsed} are this use's. */
@@ -63,6 +65,7 @@ public final class CgComputePass extends CgPass {
         again = false;
         async = false;
         ended = false;
+        constantsBinding = -1;
     }
 
     @Override
@@ -179,18 +182,20 @@ public final class CgComputePass extends CgPass {
     /** Ends the pass: every dispatch's bindings complete, its values and samplers captured. */
     public void end() {
         requireOpen();
+        constantsBinding = recording.bindings().begin()
+                .block(CgBindingPoints.FRAME_DATA_UBO, constants, 0, CgPassConstants.FLOATS).end();
         for (int d = 0; d < dispatches.size(); d++) {
             CgDispatch dispatch = dispatches.get(d);
             dispatch.requireBound();
             CgBindingTable table = recording.bindings().begin();
-            table.block(CgBindingPoints.FRAME_DATA_UBO, constants, 0, CgPassConstants.FLOATS);
             if (dispatch.values != null) {
                 table.block(CgBindingPoints.MATERIAL_PROPERTIES_UBO, dispatch.values, 0, dispatch.values.length);
             }
             for (int unit = 0; unit < dispatch.samplers.length; unit++) {
                 if (dispatch.samplers[unit] != null) table.texture(unit, dispatch.samplers[unit]);
             }
-            dispatch.bindings = table.end();
+            // Each dispatch's values are its own: interning would hash every float to find no equal.
+            dispatch.bindings = table.endUnique();
         }
         ended = true;
     }

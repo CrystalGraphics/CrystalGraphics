@@ -88,7 +88,7 @@ import java.util.function.IntConsumer;
  *   <li>Barriers come from each storage's accesses as executed, across frames and executions
  *       ({@code CgHazards}); {@code -Dcrystalgraphics.graph.barriers=false} records them and issues none, which
  *       synchronization validation must then report. A compute pass barriers each storage's first access before its
- *       first dispatch, and {@link CgDispatch#skipBarrier} writes of one pass wait for nothing between them.</li>
+ *       first dispatch, and {@link CgDispatch#skipBarrier} accesses of one group of a pass wait for nothing between them.</li>
  *   <li>A compute pass needs a context that runs compute shaders, and throws naming the tier where it does not; so
  *       does a raster pass holding an indirect draw, whose command a kernel writes before the pass begins.</li>
  *   <li>An {@code async()} compute pass goes to the device's compute queue, where it has one; the first later step
@@ -123,8 +123,8 @@ public final class CgExecutor {
     private static final CgBufferPool BUFFERS = new CgBufferPool();
     private static final CgHazards HAZARDS = new CgHazards();
     /**
-     * The compute pass executing, numbered: its overlap set ({@link CgDispatch#skipBarrier} writes skip barriers within
-     * one pass) and its claims on storage ({@link #prologue}).
+     * The compute pass executing, numbered: its overlap sets, one a skip group ({@link CgDispatch#skipBarrier}), and
+     * its claims on storage ({@link #prologue}).
      */
     private static int passSerial;
     private static final IntConsumer FORGET_BUFFER = CgExecutor::forget;
@@ -202,8 +202,10 @@ public final class CgExecutor {
      * Storage async passes touched that the frame's queue has not waited for, each with the point covering it: across
      * the frame's executions, and dropped at the next, whose start the device orders after all of it.
      */
-    private static long[] asyncKeys = new long[16], asyncPoints = new long[16];
+    private static long[] asyncKeys = new long[64], asyncPoints = new long[64];
+    /** {@link #asyncKeys} is open-addressed by {@link CgHazards} key, 0 a free entry (no key is 0); a pass names hundreds. */
     private static int asyncCount;
+    private static long[] keptKeys = new long[64], keptPoints = new long[64];
     private static long asyncLatest, asyncWaited, asyncFrame = -1;
     private static boolean asyncUnwaited;
     /** This execution's: the newest async point covering storage outside the graph, waited for at its end. */
@@ -311,7 +313,7 @@ public final class CgExecutor {
         HAZARDS.clear();
         CgBufferInspector.reset();
         // The next device's timelines start again at 0.
-        asyncCount = 0;
+        clearAsync();
         asyncLatest = asyncWaited = 0;
         asyncFrame = -1;
         asyncUnwaited = false;
@@ -327,7 +329,7 @@ public final class CgExecutor {
         asyncCompute = tier == ComputeTier.V && CgCapabilities.detect().asyncCompute();
         independentMasks = CgCapabilities.detect().independentBlend();
         if (asyncUnwaited && CgFrameRing.frame() != asyncFrame) {   // the last frame's end waited for all of it
-            asyncCount = 0;
+            clearAsync();
             asyncUnwaited = false;
         }
         asyncEnd = 0;
@@ -642,7 +644,7 @@ public final class CgExecutor {
 
     private void compute(CgFrame frame, CgComputePass pass, CgFrame.Compute packed) {
         List<CgDispatch> dispatches = pass.dispatches();
-        if (++passSerial == 0) passSerial = 1;
+        if (++passSerial == 1 << 28) passSerial = 1;   // a set keeps three bits for its group
         boolean draws = false;
         for (int d = 0; d < dispatches.size(); d++) draws |= dispatches.get(d).kernel.form().how() != CgKernelForm.How.COMPUTE;
         if (!draws) prologue(dispatches);
@@ -650,12 +652,14 @@ public final class CgExecutor {
         // A lowered dispatch is draws: what they bind must not reach the passes after, which draw into what is bound.
         try (CgTrace.Zone ignored = CgTrace.isEnabled(CgChannels.GL) ? CgTrace.zone(CgChannels.GL, CgTrace.name(pass.name())) : null;
              CgGlScope scope = draws ? CgLoweredKernel.scope() : null) {
+            frame.bindings.bind(packed.constants);
             for (int d = 0; d < dispatches.size(); d++) {
                 CgDispatch dispatch = dispatches.get(d);
                 switch (dispatch.kernel.form().how()) {
                     case COMPUTE -> dispatch(frame, dispatch, packed.bindings[d]);
                     case LOWERED -> {
                         lowered(frame, dispatch, packed.bindings[d]);
+                        frame.bindings.bind(packed.constants);   // its draws may have bound another frame block
                         lowered++;
                     }
                     case CPU -> {
@@ -681,18 +685,24 @@ public final class CgExecutor {
             // Claimed, never hoisted: a write later in the pass must not move ahead of this read.
             if (dispatch.args != null) HAZARDS.claim(CgHazards.buffer(bufferStorage(dispatch.args, false)), passSerial, d);
             for (int b = 0; b < dispatch.buffers.length; b++) {
-                hoist(d, dispatch.buffers[b], dispatch.bufferAccess[b], dispatch.skipBarrier[b], dispatch.hoisted, b);
-                hoist(d, dispatch.counters[b], dispatch.counterAccess[b], false, dispatch.counterHoisted, b);
+                hoist(d, dispatch.buffers[b], dispatch.bufferAccess[b], set(dispatch.skipGroup[b]), dispatch.hoisted, b);
+                hoist(d, dispatch.counters[b], dispatch.counterAccess[b], set(dispatch.countSkipGroup[b]),
+                        dispatch.counterHoisted, b);
             }
         }
     }
 
-    private static void hoist(int dispatch, @Nullable CgGraphBuffer buffer, int access, boolean skip, int[] hoisted, int b) {
+    private static void hoist(int dispatch, @Nullable CgGraphBuffer buffer, int access, int set, int[] hoisted, int b) {
         if (buffer == null || access == 0 || buffer.resource().kind() == CgGraphBuffer.Kind.HISTORY) return;
         int id = bufferStorage(buffer, (access & CgAccess.COMPUTE_WRITE) != 0);
         if (!HAZARDS.claim(CgHazards.buffer(id), passSerial, dispatch)) return;
-        barrier(id, access, skip ? passSerial : 0);
+        barrier(id, access, set);
         hoisted[b] = passSerial;
+    }
+
+    /** The overlap set of skip group {@code group1} (1 + the group, 0 for none) in the executing pass. */
+    private static int set(int group1) {
+        return group1 == 0 ? 0 : passSerial << 3 | (group1 - 1);
     }
 
     /** What {@code pass} bound, noted for {@link CgBufferInspector}, and the reads armed for it copied as it left them. */
@@ -774,9 +784,8 @@ public final class CgExecutor {
             for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
                 int n = keys(frame.accessView[i]);
                 for (int k = 0; k < n; k++) {
-                    for (int j = 0; j < asyncCount; j++) {
-                        if (asyncKeys[j] == keyScratch[k]) point = Math.max(point, asyncPoints[j]);
-                    }
+                    int j = asyncEntry(keyScratch[k]);
+                    if (asyncKeys[j] != 0) point = Math.max(point, asyncPoints[j]);
                 }
             }
         }
@@ -789,28 +798,46 @@ public final class CgExecutor {
         asyncWaited = point;
         CgTrace.add(CgChannels.GL, ASYNC_WAITS, 1);
         int kept = 0;
-        for (int j = 0; j < asyncCount; j++) {
-            if (asyncPoints[j] <= point) continue;
-            asyncKeys[kept] = asyncKeys[j];
-            asyncPoints[kept++] = asyncPoints[j];
+        if (keptKeys.length < asyncKeys.length) {
+            keptKeys = new long[asyncKeys.length];
+            keptPoints = new long[asyncKeys.length];
         }
-        asyncCount = kept;
+        for (int j = 0; j < asyncKeys.length; j++) {
+            if (asyncKeys[j] == 0 || asyncPoints[j] <= point) continue;
+            keptKeys[kept] = asyncKeys[j];
+            keptPoints[kept++] = asyncPoints[j];
+        }
+        clearAsync();
+        for (int j = 0; j < kept; j++) pend(keptKeys[j], keptPoints[j]);
         asyncUnwaited = point < asyncLatest;
     }
 
-    private void pend(long key, long point) {
-        for (int j = 0; j < asyncCount; j++) {
-            if (asyncKeys[j] == key) {
-                asyncPoints[j] = point;
-                return;
-            }
+    private static void clearAsync() {
+        if (asyncCount > 0) Arrays.fill(asyncKeys, 0L);
+        asyncCount = 0;
+    }
+
+    /** {@code key}'s entry in {@link #asyncKeys}, or the free entry where it would go. */
+    private static int asyncEntry(long key) {
+        int mask = asyncKeys.length - 1, j = (int) ((key * 0x9E3779B97F4A7C15L) >>> 40) & mask;
+        while (asyncKeys[j] != 0 && asyncKeys[j] != key) j = (j + 1) & mask;
+        return j;
+    }
+
+    private static void pend(long key, long point) {
+        if ((asyncCount + 1) * 2 > asyncKeys.length) {
+            long[] keys = asyncKeys, points = asyncPoints;
+            asyncKeys = new long[keys.length * 2];
+            asyncPoints = new long[keys.length * 2];
+            asyncCount = 0;
+            for (int j = 0; j < keys.length; j++) if (keys[j] != 0) pend(keys[j], points[j]);
         }
-        if (asyncCount == asyncKeys.length) {
-            asyncKeys = Arrays.copyOf(asyncKeys, asyncCount * 2);
-            asyncPoints = Arrays.copyOf(asyncPoints, asyncCount * 2);
+        int j = asyncEntry(key);
+        if (asyncKeys[j] == 0) {
+            asyncKeys[j] = key;
+            asyncCount++;
         }
-        asyncKeys[asyncCount] = key;
-        asyncPoints[asyncCount++] = point;
+        asyncPoints[j] = point;
     }
 
     /** The storage {@code view} names now, as {@link CgHazards} keys into {@link #keyScratch}: a history's both versions. */
@@ -933,12 +960,13 @@ public final class CgExecutor {
         for (int b = 0; b < d.buffers.length; b++) {
             if (d.buffers[b] != null) {
                 int access = d.hoisted[b] == passSerial ? 0 : d.bufferAccess[b];
-                bindStorage(b, d.buffers[b], d.offsets[b], d.sizes[b], access, d.skipBarrier[b] ? passSerial : 0);
+                bindStorage(b, d.buffers[b], d.offsets[b], d.sizes[b], access, set(d.skipGroup[b]));
             }
             if (d.counters[b] != null) {
                 long base = CgKernelProgram.counterBase(d.counterOffsets[b]);
                 int access = d.counterHoisted[b] == passSerial ? 0 : d.counterAccess[b];
-                bindStorage(program.counterPoint(b), d.counters[b], base, d.counterOffsets[b] - base + 4, access, 0);
+                bindStorage(program.counterPoint(b), d.counters[b], base, d.counterOffsets[b] - base + 4, access,
+                        set(d.countSkipGroup[b]));
                 program.counterWord(b, d.counterOffsets[b]);
             }
         }

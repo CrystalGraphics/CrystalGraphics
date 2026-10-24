@@ -10,6 +10,7 @@ import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.util.CgBoxedInts;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -94,6 +95,8 @@ public final class CgFrame {
         stepCount = 0;
         Arrays.fill(accessView, 0, accessCount, null);
         accessCount = 0;
+        accessIndex.clear();
+        indexedFrom = -1;
         kernels = false;
         readsCurrentDepth = rastersCurrent = rastersOther = false;
         bindings.reset();
@@ -158,23 +161,33 @@ public final class CgFrame {
     void accessFrom(int steps) {
         if (accessFrom.length < steps + 1) accessFrom = new int[Math.max(steps + 1, accessFrom.length * 2)];
         accessCount = 0;
+        accessIndex.clear();
+        indexedFrom = -1;
     }
 
     /** {@code bits} on {@code view} in the step whose list starts at {@code start}, joined with an earlier entry. */
     void access(int start, CgGraphResource view, int bits) {
-        for (int i = start; i < accessCount; i++) {
-            if (accessView[i] == view) {
-                accessBits[i] |= bits;
-                return;
-            }
+        if (start != indexedFrom) {
+            accessIndex.clear();
+            indexedFrom = start;
+        }
+        Integer at = accessIndex.get(view);
+        if (at != null) {
+            accessBits[at] |= bits;
+            return;
         }
         if (accessCount == accessView.length) {
             accessView = Arrays.copyOf(accessView, accessCount * 2);
             accessBits = Arrays.copyOf(accessBits, accessCount * 2);
         }
+        accessIndex.put(view, CgBoxedInts.of(accessCount));
         accessView[accessCount] = view;
         accessBits[accessCount++] = bits;
     }
+
+    /** The step being listed's entries by view, from {@link #indexedFrom}: a compute pass names hundreds. */
+    private final IdentityHashMap<CgGraphResource, Integer> accessIndex = new IdentityHashMap<>();
+    private int indexedFrom = -1;
 
     /** The packed form of compute step {@code s}, kept between frames. */
     Compute compute(int s) {
@@ -265,6 +278,8 @@ public final class CgFrame {
 
     /** A compute pass, packed: per dispatch, the frame's snapshot of its blocks and samplers. */
     static final class Compute {
+        /** The snapshot of its constants, bound before its first dispatch; then each dispatch's own. */
+        int constants;
         int[] bindings = new int[4];
         int count;
 

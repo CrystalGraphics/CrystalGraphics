@@ -393,7 +393,7 @@ public final class CgVfxGridAtlas {
             // Each pool's particles where Range draws them this frame: the same records, the same alpha.
             for (int i = 0; i < rasterizing.size(); i++) {
                 CgVfxParticlePool p = rasterizing.get(i);
-                bind(pass.dispatch(rasterize, p.storage())).bind("RECORDS", p.records()).bind("LIVE", p.live())
+                bind(pass.dispatch(rasterize, p.storage())).bind("RECORDS", p.records()).bind("LIVE", p.liveBuffer(), p.liveOffset(), 16)
                         .bind("CURVES", p.curves()).bind("RASTER", rasterRows.get(i)).bind("SPLAT_SUM", splatSum)
                         .bind("WANT", this.want).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
                         .set("_RecordVectors", p.record().vectors()).set("_RowVectors", p.shape().rowVectors());

@@ -24,6 +24,7 @@ import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
 import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
@@ -55,6 +56,7 @@ import javax.annotation.Nullable;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -197,6 +199,31 @@ public final class CgVfxParticlePool {
     private static final String EVENT_CAP_KERNELS = "crystalgraphics:shaders/env/compute/vfx/event_cap.compute";
     private static CgKernel capKeys, capRuns, capGather, capDirect;
     private static CgGraphBuffer reportStream, reportCounts, unfed;
+    /** Every stepping pool's instance rows and shared spawn rows, this recording's (uploadRows), and their staging. */
+    private static CgGraphBuffer sharedRows;
+    private static final boolean FUSE_LOOK = CgVar.bool("crystalgraphics.vfx.fuseLook", true, CgVar.DEV,
+            "On compute, each particle a Step keeps writes its drawn part as it appends it, the Look stage no dispatch of its "
+                    + "own; false keeps the two dispatches, as below compute.").get();
+    /**
+     * Every pool's live count, an entry of {@link #COUNT_STRIDE} bytes each, as Niagara's count manager keeps every
+     * emitter's in one buffer: a step appends into an entry it took zeroed and gives back the one it read, and the
+     * entries given back are zeroed by one dispatch at the next recording's start (counts.compute). A count a pool
+     * cost a fill dispatch a pool a step.
+     */
+    private static CgGraphBuffer countBuffer;
+    /** An entry's bytes: a binding offset is a whole 256 bytes. */
+    private static final int COUNT_STRIDE = 256;
+    /** The step stage's skip group: every pool reads and appends to its own entries, so none waits for another. */
+    private static final int STEP_GROUP = 1;
+    private static final String COUNT_KERNELS = "crystalgraphics:shaders/env/compute/vfx/counts.compute";
+    private static CgKernel clearCounts;
+    /** Entries the buffer holds, and those ever handed out; past those, every entry is zero. */
+    private static int countCapacity, countsMade;
+    /** Zeroed entries to take; entries given back since the last recording; this recording's to zero first. */
+    private static int[] freeCounts = new int[64], givenBack = new int[64], clearing = new int[64];
+    private static int freeCountN, givenBackN, clearingN, clearsAt;
+    private static ByteBuffer rowStaging = ByteBuffer.allocate(0);
+    private static IntBuffer rowWords = rowStaging.asIntBuffer();
     private static final ArrayDeque<Report> REPORTS = new ArrayDeque<>();
     private static int nextId;
     /** What the next recording's steps see of the scene's depth: none without a pyramid. */
@@ -218,9 +245,8 @@ public final class CgVfxParticlePool {
     private final int id = nextId++ & 0x1FFF;
     private final CgVfxWords words = new CgVfxWords();
     private final int paramWords, instanceWords;
-    private final String passName, recordsName, drawnName, paramsName, curvesName, instancesName, spawnsName,
+    private final String passName, recordsName, drawnName, paramsName, curvesName, spawnsName,
             gridKeysName, gridValuesName, gridRunsName;
-    private final String[] countNames;
 
     /** Each definition playing here: its row, and how many open slots use it. */
     private final IdentityHashMap<CgVfxGpuEmitter, int[]> rows = new IdentityHashMap<>();
@@ -342,19 +368,23 @@ public final class CgVfxParticlePool {
 
     // The GPU half: made at the first recording, grown as slots open.
     private CgKernel step, look, gridKeys, gridRuns;
+    /** The Step with the Look stage in it (CgVfxEmitterCompiler's StepLook): on compute, unless forced apart. */
+    private CgKernel stepLook;
     /** Its beams' noise points, where its shape draws beams with noise. */
     @Nullable
     private final CgVfxBeams beams;
-    private CgGraphBuffer records, drawn, paramBuffer, curveBuffer, instanceBuffer, spawnBuffer;
+    private CgGraphBuffer records, drawn, paramBuffer, curveBuffer, spawnBuffer;
+    /** Where its rows start in {@link #sharedRows} this recording, in words: its instance rows, and its spawn rows unless its own. */
+    private int rowsAt, spawnsAt;
     /** The neighbour grid (CgVfxDataInterfaces.NEIGHBOURS): each record's key and index, sorted; each hashed cell's run. */
     private CgGraphBuffer cellKeys, cellValues, cellRuns;
     /** Each slot's light row, CgVfxParticleLights's: fitted by the firing that uploads it. */
     private CgGraphBuffer lightSlots;
     private int cells;
     private float cellWidth = 1f;
-    /** Ping-ponged append counts: {@code counts[current]} is how many records the newest version holds. */
-    private final CgGraphBuffer[] counts = new CgGraphBuffer[2];
-    private int current, storage;
+    /** Its entry in {@link #countBuffer}: how many records the newest version holds; -1 before its storage. */
+    private int liveEntry = -1;
+    private int storage;
     private ByteBuffer staging = ByteBuffer.allocate(0);
     private boolean released;
     /** Per textured module, its table: each entry's textures and the open slots naming it; each slot's entry per module. */
@@ -379,9 +409,7 @@ public final class CgVfxParticlePool {
         drawnName = name + ".drawn";
         paramsName = name + ".params";
         curvesName = name + ".curves";
-        instancesName = name + ".instances";
         spawnsName = name + ".spawns";
-        countNames = new String[]{name + ".live0", name + ".live1"};
         gridKeysName = name + ".grid-keys";
         gridValuesName = name + ".grid-values";
         gridRunsName = name + ".grid-runs";
@@ -544,7 +572,8 @@ public final class CgVfxParticlePool {
             for (int i = 0; i < REAL.size(); i++) REAL.get(i).forgetStorage();
             for (int i = 0; i < REHEARSED.size(); i++) REHEARSED.get(i).forgetStorage();
             RELEASED.clear();
-            unfed = reportStream = reportCounts = null;
+            unfed = reportStream = reportCounts = sharedRows = countBuffer = null;
+            countCapacity = countsMade = freeCountN = givenBackN = clearingN = 0;
             Arrays.fill(SPAWN_STREAMS, null);
             Arrays.fill(SPAWN_COUNTS, null);
             Arrays.fill(SPAWN_REGIONS, null);
@@ -558,12 +587,13 @@ public final class CgVfxParticlePool {
     };
 
     private void forgetStorage() {
-        records = drawn = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = feedBuffer = counts[0] = counts[1] = null;
+        records = drawn = paramBuffer = curveBuffer = spawnBuffer = feedBuffer = null;
         lightSlots = trailBuffer = headBuffer = null;
         headsStale = true;
         cellKeys = cellValues = cellRuns = null;
         if (beams != null) beams.forget();
-        current = storage = 0;
+        liveEntry = -1;
+        storage = 0;
         paramsChanged = true;
     }
 
@@ -640,6 +670,10 @@ public final class CgVfxParticlePool {
     private static void recordPools(CgRecording recording, List<CgVfxParticlePool> pools) {
         recordings++;
         STEPPING.clear();
+        // Room for every count this recording's steps may take, before any pass holds the buffer.
+        int takes = 0;
+        for (int i = 0; i < pools.size(); i++) takes += pools.get(i).steps + 1;
+        fitCounts(recording, takes);
         int maxSteps = 0, reportRows = 0;
         Arrays.fill(SPAWN_ROWS, 0);
         Arrays.fill(REGION_COUNT, 0);
@@ -659,6 +693,12 @@ public final class CgVfxParticlePool {
             depthPyramid = null;
             return;
         }
+        // Given back since the last recording: zeroed first in this one's pass, then free for its steps.
+        int[] given = givenBack;
+        givenBack = clearing;
+        clearing = given;
+        clearingN = givenBackN;
+        givenBackN = 0;
         if (depthPyramid != null) {
             DEPTH_CLIP.set(DEPTH_VIEW.projection()).mul(DEPTH_VIEW.view());
             DEPTH_VIEW.view().invert(DEPTH_INVERSE);
@@ -706,6 +746,7 @@ public final class CgVfxParticlePool {
             pool.uploadFeeds(recording);
             if (pool.shape.spawnFrom() != null) pool.uploadReads(recording);
         }
+        uploadRows(recording);
         TAKEN.clear();
         for (int i = 0; i < STEPPING.size(); i++) take(STEPPING.get(i).shape);
         for (int d = 0; d < TAKEN.size(); d++) TAKEN.get(d).upload(recording);
@@ -717,6 +758,7 @@ public final class CgVfxParticlePool {
             }
         }
         CgComputePass pass = recording.compute("vfx.pool.step").timed(GPU_STEP).async();
+        clearCounts(pass);
         if (reportRows > 0) CgGpuOps.fill(pass, reportCounts, 0, CgGpuCount.of(maxSteps));
         for (int s = 0; s < maxSteps; s++) {
             // A tier's stream holds only this step's rows: cleared where a pool of that tier spawns this step.
@@ -733,10 +775,6 @@ public final class CgVfxParticlePool {
                 // Stage by stage across the tier's pools, as Niagara groups each instance's i-th dispatch with every
                 // other's (NiagaraGpuComputeDispatch.cpp, PrepareTicksForProxy): pools are independent, so a stage's
                 // dispatches share one barrier and a kernel's binding, not one each.
-                for (int i = 0; i < STEPPING.size(); i++) {
-                    CgVfxParticlePool pool = STEPPING.get(i);
-                    if (pool.shape.tier() == tier && s < pool.steps) pool.clearNext(pass);
-                }
                 // A tier's published rows are this step's alone: cleared before it publishes again.
                 boolean publishing = tier < BIN_SLOTS.length && BIN_SLOTS[tier] > 0;
                 if (publishing) {
@@ -824,14 +862,14 @@ public final class CgVfxParticlePool {
 
     /** After a step: the newest records' keys, sorted with their indices, and each hashed cell's run among them. */
     void buildGrid(CgComputePass pass) {
-        CgGraphBuffer live = counts[current];
-        pass.dispatch(gridKeys, storage).bind("RECORDS", records).bind("LIVE", live).bind("KEYS", cellKeys)
+        pass.dispatch(gridKeys, storage).bind("RECORDS", records).bind("LIVE", countBuffer, liveOffset(), 16)
+                .bind("KEYS", cellKeys)
                 .bind("VALUES", cellValues).set("_Cell", cellWidth).set("_Cells", cells)
                 .set("_RecordVectors", shape.record().vectors());
         CgGpuOps.sort(pass, Integer.numberOfTrailingZeros(cells), CgGpuOps.Order.ASCENDING, cellKeys, cellValues,
-                CgGpuCount.at(live, 0, storage));
+                CgGpuCount.at(countBuffer, (int) (liveOffset() / 4), storage));
         CgGpuOps.fill(pass, cellRuns, 0, CgGpuCount.of(cells * 2));
-        pass.dispatch(gridRuns, storage).bind("LIVE", live).bind("KEYS", cellKeys).bind("RUNS", cellRuns);
+        pass.dispatch(gridRuns, storage).bind("LIVE", countBuffer, liveOffset(), 16).bind("KEYS", cellKeys).bind("RUNS", cellRuns);
     }
 
     private static void loadCapKernels() {
@@ -935,9 +973,103 @@ public final class CgVfxParticlePool {
         put(recording, feedBuffer, feedWords, feeds * FEED_WORDS);
     }
 
-    /** The count the next step appends to, cleared: a step's first stage. */
-    private void clearNext(CgComputePass pass) {
-        CgGpuOps.fill(pass, counts[1 - current], 0, ONE);
+    /**
+     * Every stepping pool's instance rows, and the spawn rows of each whose spawns hold no indices into themselves, in one
+     * buffer by one update, as Niagara packs every instance's parameters into one upload a tick: an update a pool was a
+     * graph pass a pool. Each pool's kernels read theirs from its base.
+     */
+    private static void uploadRows(CgRecording recording) {
+        int words = 0;
+        for (int i = 0; i < STEPPING.size(); i++) {
+            CgVfxParticlePool pool = STEPPING.get(i);
+            pool.rowsAt = words;
+            words += pool.instanceEnd;
+            if (!pool.ownSpawns()) {
+                pool.spawnsAt = words;
+                words += pool.spawnEnd;
+            }
+        }
+        clearsAt = words;
+        words += clearingN;
+        if (words == 0) return;
+        sharedRows = fit(recording, sharedRows, "vfx.pool.rows", words);
+        if (rowStaging.capacity() < words * 4) {
+            rowStaging = ByteBuffer.allocate(Integer.highestOneBit(words * 4 - 1) << 1).order(ByteOrder.nativeOrder());
+            rowWords = rowStaging.asIntBuffer();
+        }
+        rowWords.clear();
+        for (int i = 0; i < STEPPING.size(); i++) {
+            CgVfxParticlePool pool = STEPPING.get(i);
+            rowWords.put(pool.instances, 0, pool.instanceEnd);
+            if (!pool.ownSpawns()) rowWords.put(pool.spawns, 0, pool.spawnEnd);
+        }
+        rowWords.put(clearing, 0, clearingN);
+        rowStaging.clear().limit(words * 4);
+        recording.update(sharedRows, 0, rowStaging);
+    }
+
+    /** Whether its spawn rows stay in a buffer of its own: a trail's and a head's name rows by index. */
+    private boolean ownSpawns() {
+        return shape.trails() || shape.heads();
+    }
+
+    /** Where step {@code s}'s spawn rows start in the buffer its kernels bind as SPAWNS, in vec4s. */
+    private int spawnAt(int s) {
+        return ((ownSpawns() ? 0 : spawnsAt) + stepSpawnAt[s]) / 4;
+    }
+
+    /** Where step {@code s}'s instance rows start in {@link #sharedRows}, in vec4s. */
+    private int instanceAt(int s) {
+        return (rowsAt + stepInstanceAt[s]) / 4;
+    }
+
+    private CgGraphBuffer spawnRows() {
+        return ownSpawns() ? spawnBuffer : sharedRows;
+    }
+
+    /** A zeroed entry of {@link #countBuffer}: one given back and cleared since, or one never handed out. */
+    private static int takeCount() {
+        return freeCountN > 0 ? freeCounts[--freeCountN] : countsMade++;
+    }
+
+    /** Gives {@code entry} back, to be zeroed at the next recording's start; nothing for -1. */
+    private static void giveBack(int entry) {
+        if (entry < 0) return;
+        if (givenBackN == givenBack.length) givenBack = Arrays.copyOf(givenBack, givenBackN * 2);
+        givenBack[givenBackN++] = entry;
+    }
+
+    /** Room for {@code more} entries past those handed out, zeroed: before any pass of the recording binds the buffer. */
+    private static void fitCounts(CgRecording recording, int more) {
+        int need = countsMade + more;
+        if (countBuffer != null && need <= countCapacity) return;
+        int capacity = Math.max(64, Integer.highestOneBit(Math.max(need, 2) - 1) << 1);
+        CgBufferDesc desc = CgBufferDesc.of((long) capacity * COUNT_STRIDE, CgBufferUsage.STORAGE, CgBufferUsage.COPY,
+                CgBufferUsage.INDIRECT);
+        if (countBuffer == null) {
+            countBuffer = CgGraphBuffer.persistent("vfx.pool.counts", desc);
+            recording.fill(countBuffer, 0);
+        } else {
+            countBuffer = recording.resize(countBuffer, desc);
+            recording.fill(countBuffer, (long) countCapacity * COUNT_STRIDE,
+                    (long) (capacity - countCapacity) * COUNT_STRIDE, 0);
+        }
+        countCapacity = capacity;
+    }
+
+    /**
+     * Zeroes the entries given back before this recording, first in {@code pass}, and frees them for its steps: the
+     * list rides in the shared rows (uploadRows), at {@link #clearsAt}.
+     */
+    private static void clearCounts(CgComputePass pass) {
+        if (clearingN == 0) return;
+        if (clearCounts == null) clearCounts = CgCompute.load(COUNT_KERNELS).kernel("Clear");
+        pass.dispatch(clearCounts, clearingN).bind("COUNTS", countBuffer).bind("ENTRIES", sharedRows)
+                .set("_EntriesAt", clearsAt).set("_Stride", COUNT_STRIDE / 4);
+        if (freeCounts.length < freeCountN + clearingN) freeCounts = Arrays.copyOf(freeCounts, (freeCountN + clearingN) * 2);
+        System.arraycopy(clearing, 0, freeCounts, freeCountN, clearingN);
+        freeCountN += clearingN;
+        clearingN = 0;
     }
 
     /** Step {@code s}'s dispatch, its children read from {@code spawnRows} rows of the tier before when its parents stepped. */
@@ -950,7 +1082,7 @@ public final class CgVfxParticlePool {
             if (shape.spawnFrom().selection() == CgVfxSpawnFrom.Selection.SEQUENTIAL) {
                 // Cascade's sequential selection first: each trail's source, in trail order.
                 if (picksKernel == null) picksKernel = CgVfxEmitterCompiler.compile(shape).kernel("Picks");
-                pass.dispatch(picksKernel, stepHeads[s]).bind("SPAWNS", spawnBuffer).bind("TRAILS", trailBuffer)
+                pass.dispatch(picksKernel, stepHeads[s]).bind("SPAWNS", spawnRows()).bind("TRAILS", trailBuffer)
                         .bind("HEADS", headBuffer).bind("READS", readsBuffer)
                         .bind("SOURCE_ROWS", published ? BIN_SORTED[from] : unfed)
                         .bind("SOURCE_RUNS", published ? BIN_RUNS[from] : unfed)
@@ -958,27 +1090,30 @@ public final class CgVfxParticlePool {
                         .bind("SOURCE_SLOTS", published ? BIN_DIRECT_SLOTS[from] : unfed)
                         .set("_HeadListAt", stepHeadListAt[s]).set("_HeadVecs", headVecs());
             }
-            pass.dispatch(headsKernel, stepHeads[s]).bind("SPAWNS", spawnBuffer).bind("TRAILS", trailBuffer)
-                    .bind("HEADS", headBuffer).bind("INSTANCES", instanceBuffer).bind("PARAMS", paramBuffer)
+            pass.dispatch(headsKernel, stepHeads[s]).bind("SPAWNS", spawnRows()).bind("TRAILS", trailBuffer)
+                    .bind("HEADS", headBuffer).bind("INSTANCES", sharedRows).bind("PARAMS", paramBuffer)
                     .bind("READS", readsBuffer).bind("SOURCE_ROWS", published ? BIN_SORTED[from] : unfed)
                     .bind("SOURCE_RUNS", published ? BIN_RUNS[from] : unfed)
                     .bind("SOURCE_DIRECT", published ? BIN_DIRECT[from] : unfed)
                     .bind("SOURCE_SLOTS", published ? BIN_DIRECT_SLOTS[from] : unfed)
-                    .set("_InstanceAt", stepInstanceAt[s] / 4).set("_HeadListAt", stepHeadListAt[s])
+                    .set("_InstanceAt", instanceAt(s)).set("_HeadListAt", stepHeadListAt[s])
                     .set("_HeadVecs", headVecs()).set("_HeadBlocks", headBlocks);
         }
-        CgGraphBuffer next = counts[1 - current];
+        int next = takeCount();
         boolean children = feeds > 0 && spawnRows > 0;
         int live = Math.min(storage, stepCapacity[s]);
-        CgDispatch stepping = pass.dispatch(step, live + stepSpawned[s] + (children ? spawnRows * childMax : 0))
-                .bind("IN", records).bind("OUT", records).counter("OUT", next, 0).bind("LIVE", counts[current])
-                .bind("PARAMS", paramBuffer).bind("INSTANCES", instanceBuffer).bind("SPAWNS", spawnBuffer)
+        boolean fused = fusesLook();
+        CgDispatch stepping = pass.dispatch(fused ? stepLook : step, live + stepSpawned[s] + (children ? spawnRows * childMax : 0))
+                .bind("IN", records).bind("OUT", records).counter("OUT", countBuffer, (long) next * COUNT_STRIDE)
+                .bind("LIVE", countBuffer, liveOffset(), 16).skipBarrier("LIVE", STEP_GROUP).skipCountBarrier("OUT", STEP_GROUP)
+                .bind("PARAMS", paramBuffer).bind("INSTANCES", sharedRows).bind("SPAWNS", spawnRows())
                 .set("_Step", stepBlock[s * 4], stepBlock[s * 4 + 1], stepBlock[s * 4 + 2], stepBlock[s * 4 + 3])
-                .set("_InstanceAt", stepInstanceAt[s] / 4).set("_SpawnAt", stepSpawnAt[s] / 4)
+                .set("_InstanceAt", instanceAt(s)).set("_SpawnAt", spawnAt(s))
                 .set("_SpawnRows", stepSpawnRows[s]).set("_Spawned", stepSpawned[s]).set("_PoolId", id)
                 .set("_ChildRows", children ? spawnRows : 0).set("_ChildMax", children ? childMax : 0)
                 .set("_Feeds", children ? feeds : 0);
-        if (shape.turnLifeAt() >= 0) stepping.bind("CURVES", curveBuffer);
+        if (shape.turnLifeAt() >= 0 || fused) stepping.bind("CURVES", curveBuffer);
+        if (fused) lookValues(stepping.bind("DRAWN", drawn));
         if (shape.trails()) stepping.bind("TRAILS", trailBuffer).set("_TrailAt", stepTrailAt[s] / 4);
         if (shape.heads()) stepping.bind("HEADS", headBuffer).set("_HeadVecs", headVecs());
         int tier = shape.tier();
@@ -1024,14 +1159,33 @@ public final class CgVfxParticlePool {
                 for (int t = 0; t < entry.length; t++) stepping.texture(CgVfxEmitterCompiler.texture(i, t, e), entry[t]);
             }
         }
-        current = 1 - current;
+        giveBack(liveEntry);
+        liveEntry = next;
     }
 
     /** Step {@code s}'s last stages, after {@link #dispatchStep}: the drawn record and the neighbour grid. */
     private void finishStep(CgComputePass pass, int s) {
-        // What draws read, written into the drawn buffer at each live record's index.
+        // What draws read, written into the drawn buffer at each live record's index: the Step's own where fused.
+        if (!fusesLook()) {
+            lookValues(pass.dispatch(look, storage * shape.drawnStride()).bind("IN", records).bind("DRAWN", drawn)
+                    .bind("LIVE", countBuffer, liveOffset(), 16).bind("INSTANCES", sharedRows).bind("CURVES", curveBuffer)
+                    .set("_InstanceAt", instanceAt(s)));
+        }
+        List<CgVfxDataInterface> interfaces = shape.dataInterfaces();
+        for (int d = 0; d < interfaces.size(); d++) interfaces.get(d).afterStep(pass, this);
+    }
+
+    /** Whether its Step writes its drawn parts itself: StepLook runs here, and nothing forces the two apart. */
+    private boolean fusesLook() {
+        if (!FUSE_LOOK) return false;
+        if (stepLook == null) stepLook = CgVfxEmitterCompiler.compile(shape).kernel("StepLook");
+        return stepLook.runs();
+    }
+
+    /** The Look stage's values, the Look kernel's or the fused Step's: this shape's layout and the voxel window. */
+    private void lookValues(CgDispatch d) {
         CgVfxRecord record = shape.record();
-        CgWorldVoxelWindow.get().bindBlocks(pass.dispatch(look, storage * shape.drawnStride()).bind("IN", records).bind("DRAWN", drawn)
+        CgWorldVoxelWindow.get().bindBlocks(d
                 .set("_DrawnStride", shape.drawnStride()).set("_Drawn", shape.drawnMask()).set("_RowVectors", shape.rowVectors())
                 .set("_LifeRollAt", shape.lifeRollAt()).set("_LifeRolls", shape.lifeRolls()).set("_LifeBindAt", shape.lifeBindAt())
                 .set("_DrawnBindAt", shape.drawnBindAt()).set("_LightAt", shape.lightAt()).set("_LightBindAt", shape.lightBindAt())
@@ -1039,11 +1193,8 @@ public final class CgVfxParticlePool {
                 .set("_ColorAt", record.word(CgVfxRecord.Tail.COLOR)).set("_ScaleAt", record.word(CgVfxRecord.Tail.SCALE))
                 .set("_TurnAt", record.word(CgVfxRecord.Tail.TURN)).set("_TurnRateAt", record.word(CgVfxRecord.Tail.TURN_RATE))
                 .set("_TurnStateAt", record.word(CgVfxRecord.Tail.TURN_STATE)).set("_OrbitAt", record.word(CgVfxRecord.Tail.ORBIT))
-                .bind("LIVE", counts[current]).bind("INSTANCES", instanceBuffer).bind("CURVES", curveBuffer)
-                .set("_InstanceAt", stepInstanceAt[s] / 4).set("_InstanceRow", shape.instanceRowVectors())
-                .set("_Floors", shape.floors() ? 1 : 0).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS));
-        List<CgVfxDataInterface> interfaces = shape.dataInterfaces();
-        for (int d = 0; d < interfaces.size(); d++) interfaces.get(d).afterStep(pass, this);
+                .set("_InstanceRow", shape.instanceRowVectors()).set("_Floors", shape.floors() ? 1 : 0)
+                .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS));
     }
 
     /** The neighbour grid the last step built, for {@code CgVfxDataInterfaces.NEIGHBOURS}' binding. */
@@ -1179,10 +1330,12 @@ public final class CgVfxParticlePool {
     private static int releases;
 
     private void releaseStorage(CgRecording recording) {
-        CgGraphBuffer[] owned = {records, drawn, counts[0], counts[1], paramBuffer, curveBuffer, instanceBuffer, spawnBuffer,
+        giveBack(liveEntry);
+        liveEntry = -1;
+        CgGraphBuffer[] owned = {records, drawn, paramBuffer, curveBuffer, spawnBuffer,
                 cellKeys, cellValues, cellRuns, lightSlots, trailBuffer, headBuffer};
         for (CgGraphBuffer buffer : owned) if (buffer != null) recording.release(buffer);
-        records = drawn = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = counts[0] = counts[1] = null;
+        records = drawn = paramBuffer = curveBuffer = spawnBuffer = null;
         lightSlots = trailBuffer = headBuffer = null;
         headsStale = true;
         cellKeys = cellValues = cellRuns = null;
@@ -1912,9 +2065,27 @@ public final class CgVfxParticlePool {
         return shape.record();
     }
 
-    /** How many records the newest version of {@link #records()} holds: a {@code uint} at word 0. */
-    public CgGraphBuffer live() {
-        return counts[current];
+    /**
+     * The buffer holding how many records the newest version of {@link #records()} holds: every pool's, each a
+     * {@code uint} at its own {@link #liveOffset()}.
+     *
+     * <pre>{@code
+     * pass.dispatch(kernel, pool.storage()).bind("LIVE", pool.liveBuffer(), pool.liveOffset(), 16);
+     * recording.readback(pool.liveBuffer(), pool.liveOffset(), 4, data -> live = data.getInt(0));
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Bound or read whole, it is another pool's count at offset 0: always give the offset.</li>
+     *   <li>Its entry moves every step, and the buffer when it grows: ask again after each recording.</li>
+     * </ul>
+     */
+    public CgGraphBuffer liveBuffer() {
+        return countBuffer;
+    }
+
+    /** Where this pool's count is in {@link #liveBuffer()}, in bytes: a whole 256, so a binding may start there. */
+    public long liveOffset() {
+        return (long) liveEntry * COUNT_STRIDE;
     }
 
     /** Each slot's parameter row: what its Step reads as {@code PARAMS}. */
@@ -2112,7 +2283,7 @@ public final class CgVfxParticlePool {
             bytes.limit(count * bytesEach);
             recording.update(records, 0, bytes);
         }
-        put(recording, counts[current], new int[]{count}, 1);
+        recording.update(countBuffer, liveOffset(), new int[]{count}, 0, 1);
     }
 
     /**
@@ -2139,11 +2310,8 @@ public final class CgVfxParticlePool {
             storage = sizeClass(need);
             records = CgGraphBuffer.history(recordsName, recordsDesc(storage));
             drawn = CgGraphBuffer.persistent(drawnName, drawnDesc(storage * shape.drawnStride()));
-            for (int c = 0; c < 2; c++) {
-                counts[c] = CgGraphBuffer.persistent(countNames[c],
-                        CgBufferDesc.of(16, CgBufferUsage.STORAGE, CgBufferUsage.COPY, CgBufferUsage.INDIRECT));
-                recording.fill(counts[c], 0);
-            }
+            fitCounts(recording, 1);
+            liveEntry = takeCount();
         } else if (need > storage) {
             storage = sizeClass(need);
             records = recording.resize(records, recordsDesc(storage));
@@ -2164,10 +2332,11 @@ public final class CgVfxParticlePool {
         paramBuffer = params;
         curveBuffer = rowCurves;
         paramsChanged = false;
-        instanceBuffer = fit(recording, instanceBuffer, instancesName, instanceEnd);
-        put(recording, instanceBuffer, instances, instanceEnd);
-        spawnBuffer = fit(recording, spawnBuffer, spawnsName, spawnEnd);
-        put(recording, spawnBuffer, spawns, spawnEnd);
+        // Instance rows, and spawn rows naming none of their own, go into the shared rows (uploadRows).
+        if (ownSpawns()) {
+            spawnBuffer = fit(recording, spawnBuffer, spawnsName, spawnEnd);
+            put(recording, spawnBuffer, spawns, spawnEnd);
+        }
         if (shape.trails()) {
             trailBuffer = fit(recording, trailBuffer, spawnsName + ".trails", trailEnd);
             put(recording, trailBuffer, trailWords, trailEnd);

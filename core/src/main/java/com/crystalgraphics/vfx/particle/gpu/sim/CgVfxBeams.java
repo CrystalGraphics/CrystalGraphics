@@ -122,7 +122,7 @@ final class CgVfxBeams {
         CgVfxShape shape = pool.shape();
         CgVfxRecord record = shape.record();
         int elements = pool.storage() * per;
-        pass.dispatch(noise, elements).bind("RECORDS", pool.records()).bind("LIVE", pool.live())
+        pass.dispatch(noise, elements).bind("RECORDS", pool.records()).bind("LIVE", pool.liveBuffer(), pool.liveOffset(), 16)
                 .bind("PARAMS", pool.params()).bind("RUNS", table).bind("LAST", last).bind("NEXT", runs)
                 .set("_RecordVectors", record.vectors()).set("_BeamAt", record.word(CgVfxRecord.Tail.BEAM))
                 .set("_ParamRow", shape.paramRowVectors()).set("_NoiseAt", shape.beamNoiseAt())

@@ -1118,7 +1118,7 @@ A `general` kernel keeps any std430 layout.
 | `readonly` | `NAME(i)` | |
 | `writeonly` | `NAME_WRITE(v)`, `NAME_STORE(i, v)` | |
 | `readwrite` | `NAME(i)`, `NAME_WRITE(v)`, `NAME_STORE(i, v)`, `NAME_ADD`/`_MIN`/`_MAX(i, v)` | the atomics on a `float`, `int` or `uint` element |
-| `append` | `NAME(i)`, `NAME_APPEND(v)`, `NAME_COUNT()` | the count is a separate `uint` the caller binds and zeroes |
+| `append` | `NAME(i)`, `NAME_APPEND(v)`, `NAME_COUNT()` | the count is a separate `uint` the caller binds and zeroes; on compute `NAME_APPEND` answers the element it took (-1 when full), which only a `compute_only` kernel may use |
 | `counter` | `NAME(i)`, `NAME_INC(i)`, `NAME_ADD(i, n)` | `uint` or `int`; each answers the value before |
 
 Every buffer has `NAME_LENGTH()`, and a `general` kernel `NAME_DATA[i]`, the array itself. Which accessor a shape

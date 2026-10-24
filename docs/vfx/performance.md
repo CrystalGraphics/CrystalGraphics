@@ -13,11 +13,15 @@ share a pool.
 
 | A live pool costs | Each frame |
 |---|---|
-| GPU | about 15.5 µs, from about 8 dispatches |
-| render thread | about 80 µs: recording, building the frame graph, executing |
+| GPU | about 15.5 µs |
+| render thread | about 36 µs: recording, building the frame graph, executing its two dispatches, a step and a sort key |
 
 - **An empty pool costs nothing.** What counts is the shapes alive at once: a move of 40 shapes pays about 0.6 ms of
-  GPU and 3 ms of render thread while all 40 play.
+  GPU and 1.4 ms of render thread while all 40 play.
+- **What every pool shares is done once**, as Niagara does it for its emitters: one upload of every pool's rows, every
+  pool's count in one buffer cleared by one dispatch, one placement of every pool's draw order. On compute the step
+  writes what the draws read as it keeps each particle (`crystalgraphics.vfx.fuseLook=false` keeps that a stage of its
+  own, as it is below compute).
 - **The particles' own work comes on top**: `vfx-blasts` steps 360,000 particles in about 2.9 ms.
 
 ## Shapes coalesce

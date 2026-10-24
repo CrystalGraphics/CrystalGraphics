@@ -107,7 +107,7 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
             if (kernel == null) kernel = CgCompute.load(KERNELS).kernel("Lights");
             CgVfxRecord record = pool.record();
             lights.into(pass.dispatch(kernel, pool.storage())).bind("RECORDS", pool.records()).bind("DRAWN", pool.drawn())
-                    .bind("LIVE", pool.live()).bind("SLOTS", pool.lightSlots())
+                    .bind("LIVE", pool.liveBuffer(), pool.liveOffset(), 16).bind("SLOTS", pool.lightSlots())
                     .set("_RecordVectors", record.vectors()).set("_DrawnStride", pool.shape().drawnStride())
                     .set("_LightTail", record.word(CgVfxRecord.Tail.LIGHT));
             any = true;

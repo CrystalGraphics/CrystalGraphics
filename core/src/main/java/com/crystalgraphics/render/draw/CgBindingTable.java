@@ -214,10 +214,40 @@ public final class CgBindingTable {
     }
 
     /**
+     * Ends the snapshot without interning it: an id of its own, though an equal snapshot may exist. For snapshots that
+     * almost never repeat, where hashing every float costs more than the duplicate would: a dispatch's values.
+     *
+     * <pre>{@code
+     * int values = table.begin().block(MATERIAL_PROPERTIES_UBO, dispatchValues, 0, n).endUnique();
+     * }</pre>
+     */
+    public int endUnique() {
+        int id = building;
+        building = -1;
+        hashes[id] = 0;
+        count++;
+        if (count * 2 > slots.length) rehash();
+        uploaded = false;
+        return id;
+    }
+
+    /** {@link #copy}, ended by {@link #endUnique()}. */
+    public int copyUnique(CgBindingTable from, int id) {
+        fill(from, id);
+        return endUnique();
+    }
+
+    /**
      * Snapshot {@code id} of {@code from}, interned here: how a frame builder gathers the snapshots of every recording
      * it packs into one table. Equal content answers the id an equal snapshot already has.
      */
     public int copy(CgBindingTable from, int id) {
+        fill(from, id);
+        return end();
+    }
+
+    /** A snapshot begun here and filled with {@code from}'s {@code id}, left open. */
+    private void fill(CgBindingTable from, int id) {
         begin();
         int e = id * ENTRY_INTS;
         int r = id * ENTRY_REFS;
@@ -233,7 +263,6 @@ public final class CgBindingTable {
             storage(from.entries[e + STORAGE_AT + b], (CgBufferHandle) from.refs[r + STORAGE_REFS + b]);
         }
         copyTexelBuffers(from, e, r);
-        return end();
     }
 
     private void copyTexelBuffers(CgBindingTable from, int e, int r) {
@@ -484,6 +513,7 @@ public final class CgBindingTable {
         slots = new int[slots.length * 2];
         int mask = slots.length - 1;
         for (int id = 0; id < count; id++) {
+            if (hashes[id] == 0) continue;   // endUnique's, or an interned one hashing to 0: no longer shared
             int s = hashes[id] & mask;
             while (slots[s] != 0) s = (s + 1) & mask;
             slots[s] = id + 1;

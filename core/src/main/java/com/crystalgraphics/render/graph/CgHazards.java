@@ -15,9 +15,10 @@ import java.util.Arrays;
  * if (from != 0) CgGL.cgBufferBarrier(buffer, from, CgAccess.COMPUTE_READ);
  * }</pre>
  *
- * <p>Writes may overlap: consecutive writes through one overlap set, a compute pass's {@code skipBarrier} bindings,
- * wait for nothing between them, Unreal RDG's {@code SkipBarrier} UAVs (the caller promises they touch disjoint words).
- * Any other access after them waits for all of them.</p>
+ * <p>Accesses may overlap: consecutive accesses through one overlap set, a compute pass's {@code skipBarrier}
+ * bindings of one group, wait for nothing between them, as Unreal RDG's {@code SkipBarrier} UAVs and Niagara's
+ * {@code BeginUAVOverlap} over its count buffer (the caller promises they touch disjoint words). The set's first access
+ * waits as any would; any access after the set, through another set or none, waits for all of it.</p>
  *
  * <p>Only a hazard a kernel takes part in answers a barrier. Between draws, copies and uploads the backend orders
  * everything itself, as it did before the graph had kernels; their accesses are still recorded, so the kernel after
@@ -30,7 +31,7 @@ final class CgHazards {
 
     /**
      * Open addressing over storage keys; per entry the last write's bits, reads since, reads made visible, and the
-     * overlap set the last write was made through (0 for none).
+     * overlap set the last access was made through (0 for none).
      */
     private long[] keys = new long[64];
     private int[] lastWrite = new int[64], reads = new int[64], visible = new int[64], overlap = new int[64];
@@ -58,18 +59,23 @@ final class CgHazards {
     }
 
     /**
-     * {@link #access(long, int)} through overlap set {@code set}, or 0 for none: a write following a write of the same
-     * set, with no read between, needs no barrier.
+     * {@link #access(long, int)} through overlap set {@code set}, or 0 for none: an access following one of the same
+     * set needs no barrier.
      */
     int access(long key, int bits, int set) {
         int e = entry(key);
         int write = bits & WRITES, read = bits & ~WRITES;
-        int from;
-        if (write != 0 && set != 0 && overlap[e] == set && reads[e] == 0) {
-            lastWrite[e] |= write;
+        if (set != 0 && overlap[e] == set) {
+            // Inside the set: its writes are seen by nothing until the next access outside it, which waits for them all.
+            if (write != 0) {
+                lastWrite[e] |= write;
+                visible[e] = 0;
+            }
+            reads[e] |= read;
             return 0;
         }
-        overlap[e] = write != 0 ? set : 0;
+        overlap[e] = set;
+        int from;
         if (write != 0) {
             // Readers that each waited for the last write carry it: waiting for them is enough.
             boolean chained = reads[e] != 0 && (visible[e] & reads[e]) == reads[e];

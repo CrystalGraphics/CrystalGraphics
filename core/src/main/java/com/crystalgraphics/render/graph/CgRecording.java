@@ -86,10 +86,12 @@ public final class CgRecording {
     private CgGraphResource[] eventViews = new CgGraphResource[64];
     private int eventCount;
 
-    /** Per pass, the (slot, write count, access) of each read it logged, so a read is logged once per version. */
-    private final List<int[]> readsSeen = new ArrayList<>();
-    /** Arrays {@link #readsSeen} held before the last {@link #reset()}, for the next passes. */
-    private final List<int[]> spareSeen = new ArrayList<>();
+    /**
+     * Per resource slot, the last read logged: its pass index + 1, the write count it read, what it named, and every
+     * access bit logged for them. A read adding no bit is not logged again, since the builder joins a pass's reads.
+     */
+    private int[] readPass = new int[16], readVersion = new int[16], readBits = new int[16];
+    private CgGraphResource[] readView = new CgGraphResource[16];
     /** Raster passes made so far, reused after a {@link #reset()}; the first {@link #rastersUsed} are this use's. */
     private final List<CgRasterPass> rasters = new ArrayList<>();
     private int rastersUsed;
@@ -680,12 +682,13 @@ public final class CgRecording {
     public void reset() {
         passes.clear();
         resources.clear();
+        int used = slots.size();
         slots.clear();
         Arrays.fill(writes, 0);
+        Arrays.fill(readPass, 0, used, 0);
+        Arrays.fill(readView, 0, used, null);
         Arrays.fill(eventViews, 0, eventCount, null);
         eventCount = 0;
-        for (int i = 0; i < readsSeen.size(); i++) spareSeen.add(readsSeen.get(i));
-        readsSeen.clear();
         recycle(rasters, rastersUsed);
         rastersUsed = 0;
         recycle(computes, computesUsed);
@@ -744,18 +747,15 @@ public final class CgRecording {
     void read(CgPass pass, CgGraphResource view, int access) {
         int slot = slot(view);
         int p = indexOf(pass);
-        int[] seen = readsSeen.get(p);
-        for (int i = 1; i < seen[0]; i += 3) {
-            if (seen[i] == slot && seen[i + 1] == writes[slot] && seen[i + 2] == access) return;   // this version, logged
+        if (readPass[slot] == p + 1 && readVersion[slot] == writes[slot] && readView[slot] == view) {
+            if ((access & ~readBits[slot]) == 0) return;   // this version, these bits, logged
+            readBits[slot] |= access;
+        } else {
+            readPass[slot] = p + 1;
+            readVersion[slot] = writes[slot];
+            readView[slot] = view;
+            readBits[slot] = access;
         }
-        if (seen[0] + 3 > seen.length) {
-            seen = Arrays.copyOf(seen, seen.length * 2);
-            readsSeen.set(p, seen);
-        }
-        seen[seen[0]] = slot;
-        seen[seen[0] + 1] = writes[slot];
-        seen[seen[0] + 2] = access;
-        seen[0] += 3;
         log(READ, p, slot, access, view);
     }
 
@@ -772,7 +772,7 @@ public final class CgRecording {
     }
 
     private static void requireUse(CgGraphBuffer buffer, CgBufferUsage usage) {
-        if (buffer.desc() != null && !buffer.desc().has(usage)) {
+        if (!buffer.allows(usage)) {
             throw new IllegalArgumentException(buffer + " has no " + usage + " use");
         }
     }
@@ -784,9 +784,6 @@ public final class CgRecording {
 
     private void add(CgPass pass) {
         passes.add(pass);
-        int[] seen = spareSeen.isEmpty() ? new int[7] : spareSeen.remove(spareSeen.size() - 1);
-        seen[0] = 1;
-        readsSeen.add(seen);
     }
 
     private int indexOf(CgPass pass) {
@@ -804,7 +801,13 @@ public final class CgRecording {
         int s = resources.size();
         resources.add(resource);
         slots.put(resource, CgBoxedInts.of(s));
-        if (s == writes.length) writes = Arrays.copyOf(writes, s * 2);
+        if (s == writes.length) {
+            writes = Arrays.copyOf(writes, s * 2);
+            readPass = Arrays.copyOf(readPass, s * 2);
+            readVersion = Arrays.copyOf(readVersion, s * 2);
+            readBits = Arrays.copyOf(readBits, s * 2);
+            readView = Arrays.copyOf(readView, s * 2);
+        }
         return s;
     }
 

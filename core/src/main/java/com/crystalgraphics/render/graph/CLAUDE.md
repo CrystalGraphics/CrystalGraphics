@@ -180,19 +180,33 @@ Two rules keep a pass of many small dispatches from waiting dispatch by dispatch
 - **A compute pass's prologue**: each storage's first access in the pass, by whichever dispatch touches it first, is
   barriered before the pass's first dispatch, so dispatches reading what earlier passes wrote wait once together. A
   history is left to its binding, since its version moves within the pass.
-- **Skip sets** (`CgDispatch.skipBarrier(name)`, RDG's `SkipBarrier`, Niagara's UAV overlap): writes through
-  skipping bindings of one pass to the same storage wait for nothing between them; any other access waits for all of
-  them. For dispatches writing disjoint slices of one buffer: the particle range's keys and draw order, a slice a pool.
+- **Skip sets** (`CgDispatch.skipBarrier(name, group)`, RDG's `SkipBarrier`, Niagara's `BeginUAVOverlap`):
+  accesses, reads or writes, through skipping bindings of one group of a pass to the same storage wait for nothing
+  between them; the group's first waits as any access would, and any access after the group, through another group or
+  none, waits for all of it. For dispatches each touching their own slice of one buffer: the particle range's keys and
+  draw order, and the pools' counts, an entry a pool, read and appended to through a stage of steps.
 
 ```java
 for (Pool p : pools) {
     pass.dispatch(key, p.size()).bind("KEYS", keys, p.first() * 4L, p.size() * 4L).skipBarrier("KEYS");
 }
 pass.dispatch(sort, all).bind("KEYS", keys);   // waits for every slice
+
+for (Pool p : pools) {   // one stage: each reads and appends to its own entries of one count buffer
+    pass.dispatch(p.step(), p.n()).bind("LIVE", counts, p.at(), 16).counter("OUT", counts, p.next())
+            .skipBarrier("LIVE", 1).skipCountBarrier("OUT", 1);
+}
+pass.dispatch(look, n).bind("LIVE", counts, p.at(), 16);   // the next stage: waits once, for every step
 ```
 
 - Nothing checks that the slices are disjoint; synchronization validation does, so a gate using one runs with it.
-- An append's count is never skipped: every append writes its one word, which validation reports.
+- An append's count skips only where every dispatch of the group appends to a word of its own
+  (`skipCountBarrier`). One count shared by them never is: every append writes that word, which validation reports.
+- A stage's group must differ from the stage before it in the pass, or the second would not wait for the first.
+
+**A compute pass's constants are one snapshot**, bound before its first dispatch (and again after a lowered one), as a
+raster pass's; each dispatch's snapshot holds its values and samplers alone, and is not interned: two dispatches
+rarely share values, so hashing them found nothing (`CgBindingTable.endUnique`).
 
 **Reading the target** (`CgRasterPass.sceneColor(unit)`, `sceneDepth(unit)`): a draw whose shader reads
 `cg_SceneColor` or `cg_DepthBuffer` samples a copy of the pass's own target (`CgTargetCopy`). The builder walks the
