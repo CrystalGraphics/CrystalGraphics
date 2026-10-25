@@ -171,11 +171,13 @@ float cg_LinearEyeDepth(float windowDepth) {
 #define CG_SHADING_MODEL_ID(uv) cg_shading_model_id_has_no_pass_writing_it_yet(uv)
 // The lights a draw is handed whole, for a program carrying its own lighting: the directional light's direction (toward
 // it) and colour, the sky light's colour, and the four point lights nearest the draw, i 0 to 3 (camera-relative
-// position, colour, the light's four attenuation parameters; intensity 0 where there is none). Either stage. No draw
-// writes them yet: a program reading one fails to link by name.
-#define CG_DIRECTIONAL_LIGHT_DIRECTION cg_directional_light_has_no_pass_writing_it_yet
-#define CG_DIRECTIONAL_LIGHT_COLOR cg_directional_light_has_no_pass_writing_it_yet
-#define CG_SKY_LIGHT_COLOR cg_sky_light_has_no_pass_writing_it_yet
+// position, colour, the light's four attenuation parameters; intensity 0 where there is none). Either stage. The
+// colours split the host's light at the draw's (CG_OBJECT_LIGHT): the sun takes CG_SUN_SHARE of what sky light adds by
+// day, and the sky the rest, block light included. Where no draw writes them yet, a program reading one fails to link
+// by name.
+#define CG_DIRECTIONAL_LIGHT_DIRECTION CG_SUN_DIRECTION
+#define CG_DIRECTIONAL_LIGHT_COLOR cg_DirectionalLightColor(CG_OBJECT_LIGHT)
+#define CG_SKY_LIGHT_COLOR (CG_LIGHTMAP(CG_OBJECT_LIGHT) - cg_DirectionalLightColor(CG_OBJECT_LIGHT))
 #define CG_DRAW_POINT_LIGHT_POSITION(i) cg_draw_point_light_has_no_pass_writing_it_yet(i)
 #define CG_DRAW_POINT_LIGHT_COLOR(i) cg_draw_point_light_has_no_pass_writing_it_yet(i)
 #define CG_DRAW_POINT_LIGHT_PARAMS(i) cg_draw_point_light_has_no_pass_writing_it_yet(i)
@@ -310,6 +312,12 @@ float cg_SceneCoverage(float a) {
 #define CG_DAYLIGHT      (cg_SunDirection.w)
 // The sun's direct share of a full day's sky light (crystalgraphics.world.sunShare): what its shadow takes away.
 #define CG_SUN_SHARE     (cg_FogParams.z)
+
+// The sun's part of the host's light at block and sky light (0 to 15 each): CG_DIRECTIONAL_LIGHT_COLOR's.
+vec3 cg_DirectionalLightColor(vec2 light) {
+    vec3 skyPart = max(CG_LIGHTMAP(light) - CG_LIGHTMAP(vec2(light.x, 0.0)), vec3(0.0));
+    return skyPart * CG_SUN_SHARE * clamp(CG_DAYLIGHT, 0.0, 1.0);
+}
 
 // -- The last frame -----------------------------------------------------------
 // What a temporal effect reprojects by (CgPassConstants.history): the host frame's index, whether last frame was one

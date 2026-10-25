@@ -182,14 +182,15 @@ in both stages unless said:
 
 | Name | Is |
 |---|---|
-| `CG_DIRECTIONAL_LIGHT_DIRECTION`, `CG_DIRECTIONAL_LIGHT_COLOR` | the directional light, toward it; its colour, linear, times intensity |
-| `CG_SKY_LIGHT_COLOR` | the sky light's colour: the ambient |
+| `CG_DIRECTIONAL_LIGHT_DIRECTION`, `CG_DIRECTIONAL_LIGHT_COLOR` | the directional light, toward it (`CG_SUN_DIRECTION`: the sun, or the moon while the sun is down); its colour, the sun's part of the lightmap at the draw's light |
+| `CG_SKY_LIGHT_COLOR` | the sky light's colour: the ambient, the lightmap at the draw's light less the directional's |
 | `CG_DRAW_POINT_LIGHT_POSITION(i)`, `_COLOR(i)`, `_PARAMS(i)` | the four point lights nearest the draw, `i` 0 to 3, camera-relative; `PARAMS` is (intensity, inner radius, radius, falloff: 0 linear, 1 inverse square); intensity 0 where there are fewer |
 | `CG_DIRECTIONAL_SHADOW(p)`, `_COLOR`, `_WRAP` | fragment only: the casting directional's visibility at `p`, 1 lit; the colour a shadow tints toward; a wrap of N.L |
 
-- In the host's world the directional is its sun and the sky its sky, split from the lightmap as the world's lights
-  split it for the sun's shadow; a playing sequence's own lights take their place.
-- **None is written yet**: each is a placeholder that fails to link naming itself
+- The directional and the sky split the lightmap at the draw's light (`CG_OBJECT_LIGHT`) as the world's lights split
+  it for the sun's shadow: the sun takes `CG_SUN_SHARE` of what sky light adds by day (`CG_DAYLIGHT`), and the sky
+  keeps the rest, block light included. By night the directional is black.
+- **The point lights and the shadow are not written yet**: each is a placeholder that fails to link naming itself
   (`..._has_no_pass_writing_it_yet`), so a port reading one is listed as waiting rather than drawing unlit.
 
 #### Per-Instance Object Data — SSBO / TBO Dual Path
