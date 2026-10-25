@@ -57,7 +57,43 @@ final class CgStructureParser {
         static final MaterialBuffers NONE = new MaterialBuffers(List.of(), "");
     }
 
+    /** The world's light, as the light list holds it ({@code lib/lights.glsl}). */
+    private static final String LIGHT_STRUCT = "vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; "
+            + "vec4 ambient; vec4 air;";
+
+    /** The light grid's buffers a program handed the world's lights reads ({@code handed_lights.glsl}). */
+    private static final String HANDED_BUFFERS = """
+            WORLD_LIGHTS ("The world's lights", CgLight, readonly)
+            WORLD_LIGHT_CELLS ("Each light-grid cell's count and where its list starts", uint, readonly)
+            WORLD_LIGHT_INDICES ("The cells' light indices", uint, readonly)
+            """;
+
     private CgStructureParser() {}
+
+    /** {@code authored} followed by the light grid's three buffers, for a program handed the world's lights. */
+    static MaterialBuffers withHandedLights(MaterialBuffers authored, String resourcePath) {
+        if (authored.structs().contains("struct CgLight")) {
+            throw new CgShaderParseException("[" + resourcePath + "] declares a struct CgLight, which the world's lights it"
+                    + " reads (cg_NearestLights, CG_DRAW_POINT_LIGHT_*) declare");
+        }
+        List<CgBufferDecl> out = new ArrayList<>(authored.buffers());
+        for (CgBufferDecl b : CgComputeParser.materialBuffers(HANDED_BUFFERS, Map.of("CgLight", LIGHT_STRUCT), resourcePath)) {
+            for (CgBufferDecl own : authored.buffers()) {
+                if (own.name().equals(b.name())) {
+                    throw new CgShaderParseException("[" + resourcePath + "] declares buffer '" + b.name()
+                            + "', which the world's lights it reads declare");
+                }
+            }
+            out.add(new CgBufferDecl(b.name(), b.display(), b.element(), b.access(), b.stride(), b.lowerable(), b.scalar(),
+                    out.size(), b.fields()));
+        }
+        if (out.size() > CgBindingPoints.MATERIAL_BUFFER_COUNT) {
+            throw new CgShaderParseException("[" + resourcePath + "] 'Buffers' declares " + authored.buffers().size()
+                    + " buffers, and the world's lights it reads take 3 more: a material reads at most "
+                    + CgBindingPoints.MATERIAL_BUFFER_COUNT);
+        }
+        return new MaterialBuffers(List.copyOf(out), authored.structs() + "struct CgLight { " + LIGHT_STRUCT + " };\n");
+    }
 
     /**
      * The material-level {@code Buffers { }}, read in a kernel's grammar ({@link CgComputeParser#materialBuffers}),

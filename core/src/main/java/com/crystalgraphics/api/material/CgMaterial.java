@@ -1534,6 +1534,16 @@ public final class CgMaterial {
     }
 
     /**
+     * Whether its shader reads the world's lights it is handed ({@code cg_NearestLights}, {@code CG_DRAW_POINT_LIGHT_*}):
+     * the world renderer binds the light grid to its draws. Parses it if nothing has: its first draw's capture needs
+     * the grid bound. False for a shader that cannot be parsed.
+     */
+    public boolean handedLights() {
+        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        return parsed != null && parsed.handedLights();
+    }
+
+    /**
      * Whether a pass of its shader names {@code identifier} as a whole word, in its declarations or its stages' code,
      * parsing it if it is not yet: what a renderer asks before writing a value only some shaders read.
      *

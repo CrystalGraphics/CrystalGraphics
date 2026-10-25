@@ -62,6 +62,10 @@ import java.util.Objects;
  *     {@code true} for {@code "Lighting" = "Surface"}: the world's lights reach its Forward colour by the normal its
  *     fragment names ({@code CG_SURFACE_NORMAL(n)}), Unreal's Surface translucency lighting, rather than the same from
  *     every side.
+ * @param handedLights
+ *     {@code true} where its source names {@code cg_NearestLights} or {@code CG_DRAW_POINT_LIGHT_*}: it carries its own
+ *     lighting and is handed the world's lights, its {@link #buffers} ending with the light grid's three and its
+ *     {@link #properties} with the grid's {@code _cg_Light*} ({@code handed_lights.glsl}).
  * @param unfogged
  *     {@code true} for {@code "Fog" = "Off"}: its Forward colour is not put behind the host's fog, as such a material's
  *     otherwise is, lit or not.
@@ -99,7 +103,7 @@ import java.util.Objects;
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties,
                               List<String> featureNames, List<String> engineBuffers, int renderQueue,
                               String renderType, float sceneColorMargin, boolean unlit, boolean surfaceLit,
-                              boolean unfogged, boolean linearColor, boolean unmediated, boolean emissiveOpacity,
+                              boolean handedLights, boolean unfogged, boolean linearColor, boolean unmediated, boolean emissiveOpacity,
                               DepthMode depthMode, @Nullable Tube tube,
                               List<CgParsedPass> passes, List<CgBufferDecl> buffers, String bufferStructs,
                               List<PostTarget> postTargets, @Nullable String emissionInput) {
@@ -218,7 +222,7 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
                     pass.v2fStructBody(), pass.globalDecls(), pass.vertexBody(), pass.fragmentBody(), pass.fragOutput()));
         }
         return new CgParsedShader(shaderType, properties, featureNames, engineBuffers, renderQueue, renderType,
-                sceneColorMargin, unlit, surfaceLit, unfogged, linearColor, unmediated, emissiveOpacity,
+                sceneColorMargin, unlit, surfaceLit, handedLights, unfogged, linearColor, unmediated, emissiveOpacity,
                 state.clip() ? DepthMode.CLIP : unclip ? DepthMode.NONE : depthMode, tube, Collections.unmodifiableList(out),
                 buffers, bufferStructs, postTargets, emissionInput);
     }

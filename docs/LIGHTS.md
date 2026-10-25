@@ -284,6 +284,10 @@ vec3 extra = cg_LocalLightAt(cg_FragmentPosition());     // the same light by ha
 - `crystalgraphics.world.lightsVolume=false` turns it off; `--mode=lights-volume` is the gate, the direction included
   (two Surface panes, one facing the light). `CgLightsDemo` shows it: glass round the carousel.
 
+- **Handed to a program carrying its own lighting** (`SHADERS.md` § *What a program carrying its own lighting
+  reads*): the four lights nearest a draw, or a point, read from the grid cell it falls in (`env/handed_lights.glsl`),
+  the grid bound to its draws by `CgWorldLights.hand`. `--mode=lights-volume` checks a pane handed the light.
+
 ## 9. In the air
 
 Smoke, gas and haze in the world's media (`CgWorldMedia`'s froxels: whatever an injector puts there) glow round the

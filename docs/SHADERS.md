@@ -184,13 +184,19 @@ in both stages unless said:
 |---|---|
 | `CG_DIRECTIONAL_LIGHT_DIRECTION`, `CG_DIRECTIONAL_LIGHT_COLOR` | the directional light, toward it (`CG_SUN_DIRECTION`: the sun, or the moon while the sun is down); its colour, the sun's part of the lightmap at the draw's light |
 | `CG_SKY_LIGHT_COLOR` | the sky light's colour: the ambient, the lightmap at the draw's light less the directional's |
-| `CG_DRAW_POINT_LIGHT_POSITION(i)`, `_COLOR(i)`, `_PARAMS(i)` | the four point lights nearest the draw, `i` 0 to 3, camera-relative; `PARAMS` is (intensity, inner radius, radius, falloff: 0 linear, 1 inverse square); intensity 0 where there are fewer |
+| `CG_DRAW_POINT_LIGHT_POSITION(i)`, `_COLOR(i)`, `_PARAMS(i)` | the four point lights nearest the draw's origin, `i` 0 to 3, nearest first, camera-relative; `COLOR` is linear times intensity, and `PARAMS` is (1, inner radius, radius, falloff: 0 linear, 1 inverse square); `PARAMS.x` 0 where there are fewer |
+| `int cg_NearestLights(vec3 p, out int idx[4])` | the same at any camera-relative `p`, as indices for `cg_LightPosition(i)`, `cg_LightColor(i)`, `cg_LightInnerRadius(i)`, `cg_LightRadius(i)` and `cg_LightFalloff(i)` (0 inverse square, else Unreal's exponent); answers how many, the rest of `idx` -1 |
 | `CG_DIRECTIONAL_SHADOW(p)`, `_COLOR`, `_WRAP` | fragment only: the casting directional's visibility at `p`, 1 lit; the colour a shadow tints toward; a wrap of N.L |
 
 - The directional and the sky split the lightmap at the draw's light (`CG_OBJECT_LIGHT`) as the world's lights split
   it for the sun's shadow: the sun takes `CG_SUN_SHARE` of what sky light adds by day (`CG_DAYLIGHT`), and the sky
   keeps the rest, block light included. By night the directional is black.
-- **The point lights and the shadow are not written yet**: each is a placeholder that fails to link naming itself
+- **The point lights are the world's light grid** (`env/handed_lights.glsl`): a program naming `cg_NearestLights` or
+  `CG_DRAW_POINT_LIGHT_*`, itself or in a file it includes, is handed the grid's three buffers after its own
+  `Buffers { }` (leaving it one) and the grid's placement as `_cg_Light*` properties. The lights reaching a point are
+  its grid cell's, less those that leave transparent surfaces unlit. A transparent firing reads this frame's grid, an
+  opaque one the last frame's: the grid is binned in the transparent firing. A particle's origin is its system's.
+- **The shadow is not written yet**: a placeholder that fails to link naming itself
   (`..._has_no_pass_writing_it_yet`), so a port reading one is listed as waiting rather than drawing unlit.
 
 #### Per-Instance Object Data — SSBO / TBO Dual Path

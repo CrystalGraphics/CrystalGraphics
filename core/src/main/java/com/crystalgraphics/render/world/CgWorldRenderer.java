@@ -1534,7 +1534,7 @@ public final class CgWorldRenderer {
             Arrays.fill(culled, 0, count, null);
             Arrays.fill(culledCounts, 0, count, null);
             cullPasses = 0;
-            boolean prepass = false, surfaceLit = false;
+            boolean prepass = false, surfaceLit = false, handed = false;
             int drawn = 0;
             for (int i = 0; i < count; i++) {
                 byte p = classify(i, which, view);
@@ -1542,8 +1542,9 @@ public final class CgWorldRenderer {
                 if (p == SKIP) continue;
                 drawn++;
                 prepass |= p == FORWARD_AND_PREPASS;
-                if (which == TRANSPARENT && !surfaceLit) {
-                    for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) surfaceLit |= link.surfaceLit();
+                for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+                    surfaceLit |= which == TRANSPARENT && link.surfaceLit();
+                    handed |= link.handedLights();
                 }
             }
             CgTrace.counter(CgChannels.WORLD, which == OPAQUE ? "world.opaqueDraws" : "world.transparentDraws", drawn);
@@ -1610,6 +1611,8 @@ public final class CgWorldRenderer {
             if (which == TRANSPARENT) casters();
             // Onto the opaque scene, before any transparent draw blends over it; the sun's shadows run with no light.
             if (which == TRANSPARENT) pointLights.apply(stage, recording, drawn > 0, surfaceLit);
+            // After the grid is binned in a transparent firing; an opaque one reads the last frame's.
+            if (handed) handLights(recording);
             // Something transparent reads the air, or a light may glow in it.
             mediaOut = which == TRANSPARENT && (drawn > 0 || media.holdsAny())
                     ? media.record(recording, stage.constants(), view, toWorld, targetWidth, targetHeight, pointLights) : null;
@@ -1635,6 +1638,16 @@ public final class CgWorldRenderer {
             }
             if (which == TRANSPARENT && overdraw && drawn > 0) recordOverdraw(stage, recording, view);
             if (which == TRANSPARENT && !CgRehearsal.active()) text.record(stage, view);
+        }
+    }
+
+    /** The light grid bound to every drawn material reading the world's lights it is handed. */
+    private void handLights(CgRecording recording) {
+        for (int i = 0; i < count; i++) {
+            if (phase[i] == SKIP) continue;
+            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+                if (link.handedLights()) pointLights.hand(link, recording);
+            }
         }
     }
 

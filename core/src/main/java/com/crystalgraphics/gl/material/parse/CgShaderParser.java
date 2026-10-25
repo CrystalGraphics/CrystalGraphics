@@ -2,6 +2,7 @@ package com.crystalgraphics.gl.material.parse;
 
 import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.api.material.CgRenderQueue;
+import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgCullState;
 import com.crystalgraphics.api.state.CgDepthState;
@@ -92,6 +93,21 @@ public final class CgShaderParser {
 
     /** A fragment naming the normal a {@code "Surface"}-lit material is lit by. */
     static final Pattern SURFACE_NORMAL = Pattern.compile("\\bCG_SURFACE_NORMAL\\b");
+
+    /** What a program reading the world's lights it is handed names, itself or in a file it includes. */
+    private static final String[] HANDED_LIGHTS = {"cg_NearestLights", "CG_DRAW_POINT_LIGHT_"};
+
+    /** Where the light grid a handed program reads lies this firing ({@code CgWorldLights.hand}). */
+    private static final String HANDED_PROPERTIES = """
+            _cg_LightGrid ("Cells across, up and deep, and 1 while the grid holds lights", vec4) = (1, 1, 1, 0)
+            _cg_LightTile ("A tile's share of the target across and up", vec4) = (1, 1, 0, 0)
+            _cg_LightZ ("The slices' B, O and S", vec4) = (1, 1, 1, 0)
+            _cg_LightRays ("Unit-depth view rays at the target's edges: left, bottom, right, top", vec4) = (-1, -1, 1, 1)
+            _cg_LightView0 ("Eye-relative world to the grid's view, the first row, its shift in w", vec4) = (1, 0, 0, 0)
+            _cg_LightView1 ("The second row", vec4) = (0, 1, 0, 0)
+            _cg_LightView2 ("The third row", vec4) = (0, 0, 1, 0)
+            _cg_LightEye ("The eye the lights are placed from, camera-relative", vec4) = (0, 0, 0, 0)
+            """;
 
     /** A single field parsed from the {@code struct v2f { }} block.
      * @param type  GLSL type (e.g. {@code "vec3"}). Only float-family types are valid.
@@ -211,6 +227,13 @@ public final class CgShaderParser {
         String uncommented = stripGlslComments(source);
         CgStructureParser.validateNoLooseCode(uncommented, resourcePath);
         CgStructureParser.MaterialBuffers buffers = CgStructureParser.parseBuffers(uncommented, resourcePath);
+        boolean handedLights = new CgShaderPreprocessor().mentions(uncommented, resourcePath, HANDED_LIGHTS);
+        if (handedLights) {
+            buffers = CgStructureParser.withHandedLights(buffers, resourcePath);
+            List<CgMaterialProperty> withGrid = new ArrayList<>(props);
+            withGrid.addAll(CgPropertiesParser.parseEngine(HANDED_PROPERTIES, "handed lights"));
+            props = Collections.unmodifiableList(withGrid);
+        }
         int renderQueue                = CgQueueParser.parse(source, resourcePath);
 
         // ── Step 3: top-level Tags block → RenderType and the rest ────────
@@ -460,7 +483,8 @@ public final class CgShaderParser {
 
         // ── Step 8: return assembled parsed shader ─────────────────────────
         return new CgParsedShader(shaderType, props, featureNames, engineBuffers, renderQueue,
-                renderType, sceneColorMargin, "Unlit".equals(lighting), "Surface".equals(lighting), "Off".equals(fog),
+                renderType, sceneColorMargin, "Unlit".equals(lighting), "Surface".equals(lighting), handedLights,
+                "Off".equals(fog),
                 "Linear".equals(colorSpace), "Off".equals(media), "EmissiveOpacity".equals(output), depthMode, tube,
                 Collections.unmodifiableList(passes),
                 buffers.buffers(),

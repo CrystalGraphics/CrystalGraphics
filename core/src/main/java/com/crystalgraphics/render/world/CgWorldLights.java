@@ -514,6 +514,16 @@ public final class CgWorldLights {
             .vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f).set1i("_Scale", lightScale)
             .sampler("_GBuffer", 5, this.gbuffer));
     private final Consumer<CgShaderBindings> applyWindow = b -> CgWorldVoxelWindow.get().bind(b, 2);
+    /** Whether {@link #hand} binds a grid holding lights. */
+    private boolean handLive;
+    /** Where the grid lay when it was last binned, for {@code handed_lights.glsl}. */
+    private final Consumer<CgShaderBindings> handValues = b -> b.vec4("_cg_LightGrid", gridX, gridY, SLICES, handLive ? 1f : 0f)
+            .vec4("_cg_LightTile", tileU, tileV, 0f, 0f).vec4("_cg_LightZ", zParams[0], zParams[1], zParams[2], 0f)
+            .vec4("_cg_LightRays", rays[0], rays[1], rays[2], rays[3])
+            .vec4("_cg_LightView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
+            .vec4("_cg_LightView1", toView.m01(), toView.m11(), toView.m21(), toView.m31())
+            .vec4("_cg_LightView2", toView.m02(), toView.m12(), toView.m22(), toView.m32())
+            .vec4("_cg_LightEye", eye.x, eye.y, eye.z, 0f);
     /** The grid's values onto the apply material, read from the fields this firing set. */
     private final Consumer<CgShaderBindings> gridValues = b -> b.vec4("_Grid", gridX, gridY, SLICES, 0f)
             .vec4("_Tile", tileU, tileV, 0f, 0f).vec4("_ZParams", zParams[0], zParams[1], zParams[2], 0f)
@@ -1447,6 +1457,18 @@ public final class CgWorldLights {
                 CgFrameBufferFormat.builder("cg_world_lights.casters").color(0, CgTextureType.RGBA32F).build()));
         casterStaging = ByteBuffer.allocateDirect(MOST_CASTERS * CASTER_FLOATS * 4).order(ByteOrder.nativeOrder());
         sunRowStaging = ByteBuffer.allocateDirect(CASCADES * 16 * 4).order(ByteOrder.nativeOrder());
+    }
+
+    /**
+     * Binds the light grid to {@code material}, a program handed the world's lights ({@code handed_lights.glsl}): the
+     * list, the cells and their indices as the last firing to bin lights left them, and where the grid lay. After
+     * {@link #record} in a transparent firing that is this firing's; in an opaque one, the last frame's.
+     */
+    void hand(CgMaterial material, CgRecording recording) {
+        handLive = binned && list != null && cells != null;
+        CgGraphBuffer none = zeroes(recording);
+        material.buffer("WORLD_LIGHTS", handLive ? list : none).buffer("WORLD_LIGHT_CELLS", handLive ? cells : none)
+                .buffer("WORLD_LIGHT_INDICES", handLive ? indices : none).applyProperties(handValues);
     }
 
     /** The world's lights on transparent surfaces this firing, for {@code LOCAL_LIGHTS_TEXTURE_UNIT}; null for none. */

@@ -102,6 +102,8 @@ public final class CgMaterialShaderCompiler {
     }
 
     private static final String ENV_INCLUDE = "crystalgraphics:shaders/env/cg_env.glsl";
+    /** The world's lights a program carrying its own lighting is handed: {@code CgParsedShader.handedLights()}. */
+    private static final String HANDED_LIGHTS_INCLUDE = "crystalgraphics:shaders/env/handed_lights.glsl";
 
     /**
      * The engine's keyword for a multi-draw's variant of any pass: {@code cg_env.glsl} takes a draw's bases from its
@@ -899,6 +901,8 @@ public final class CgMaterialShaderCompiler {
         }
         sb.append("// Buffers { }\n").append(shader.bufferStructs());
         for (CgBufferDecl b : shader.buffers()) CgLoweredEmitter.reader(sb, b, useSsbo);
+        // After the light grid's buffers, which the parser put last.
+        if (shader.handedLights()) sb.append("#include \"").append(HANDED_LIGHTS_INCLUDE).append("\"\n");
     }
 
     private static void appendAttachedBuffers(StringBuilder sb,
@@ -1027,6 +1031,7 @@ public final class CgMaterialShaderCompiler {
         if (CgParsedPass.LIGHT_MODE_DISTORTION.equals(pass.lightMode())) sb.append("#define CG_DISTORTION_PASS 1\n");
         // cg_env.glsl's cg_LitSurface exists only where it is called: it reads a volume no other material binds.
         if (shader.surfaceLit()) sb.append("#define CG_SURFACE_LIT 1\n");
+        if (shader.handedLights()) sb.append("#define CG_HANDED_LIGHTS 1\n");
         sb.append("#define CG_EMISSION (vec3(1.0)");
         if (hasProperty(shader, "_EmissionColor", 4)) sb.append(" * _EmissionColor.rgb");
         if (hasProperty(shader, "_EmissionStrength", 1)) sb.append(" * _EmissionStrength");
