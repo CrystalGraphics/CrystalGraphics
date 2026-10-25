@@ -165,9 +165,11 @@ float cg_LinearEyeDepth(float windowDepth) {
 }
 #define CG_SCENE_EYE_DEPTH(uv) cg_LinearEyeDepth(texture(cg_DepthBuffer, (uv)).r)
 
-// Unreal's CustomStencil and the shading-model id at a screen position: no pass writes them yet, so a material reading
-// either fails to link, naming the read, rather than drawing as if nothing were stencilled.
+// Unreal's CustomStencil, CustomDepth (as an eye distance, as CG_SCENE_EYE_DEPTH) and the shading-model id at a screen
+// position: no pass writes them yet, so a material reading one fails to link, naming the read, rather than drawing as if
+// nothing were stencilled.
 #define CG_CUSTOM_STENCIL(uv) cg_custom_stencil_has_no_pass_writing_it_yet(uv)
+#define CG_CUSTOM_EYE_DEPTH(uv) cg_custom_depth_has_no_pass_writing_it_yet(uv)
 #define CG_SHADING_MODEL_ID(uv) cg_shading_model_id_has_no_pass_writing_it_yet(uv)
 // The lights a draw is handed whole, for a program carrying its own lighting: the directional light's direction (toward
 // it) and colour, the sky light's colour, and the four point lights nearest the draw, i 0 to 3 (camera-relative
