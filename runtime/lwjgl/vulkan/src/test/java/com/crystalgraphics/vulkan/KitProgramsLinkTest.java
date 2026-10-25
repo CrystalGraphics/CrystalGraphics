@@ -471,6 +471,13 @@ public class KitProgramsLinkTest {
         Assume.assumeTrue("no -PkitShading given", kits != null && !kits.isBlank());
         CgAssetKinds.register();
         String portsRoot = System.getProperty("crystalgraphics.kits.portsRoot");
+        // Its ports read the kits' collections too, declared here whatever ran first in this JVM.
+        String namespaces = System.getProperty("crystalgraphics.kits.ports");
+        if (namespaces != null) {
+            for (String namespace : namespaces.split(";")) {
+                CgParameterCollections.declareAll(namespace, Paths.get(portsRoot, "assets", namespace, "parameters"));
+            }
+        }
         List<String> failures = new ArrayList<>(), unported = new ArrayList<>();
         int linked = 0;
         for (String pair : kits.split(";")) {
