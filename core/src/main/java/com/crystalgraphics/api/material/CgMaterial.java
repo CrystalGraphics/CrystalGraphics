@@ -1022,6 +1022,25 @@ public final class CgMaterial {
         return parsed == null ? Collections.emptyList() : parsed.postTargets();
     }
 
+    /**
+     * The name of its last Forward pass: a multi-pass post material's, the one drawing over the scene after every
+     * pass in {@link #postTargets()}. Null while the shader does not parse.
+     *
+     * <pre>{@code
+     * CgPipeline over = material.pipeline(material.lastForwardPass(), CgInstanceKind.OBJECT);
+     * }</pre>
+     */
+    @Nullable
+    public String lastForwardPass() {
+        checkNotDeleted();
+        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        if (parsed == null) return null;
+        String last = null;
+        String forward = CgRenderPassVariant.FORWARD.lightModeName();
+        for (CgParsedPass p : parsed.passes()) if (forward.equals(p.lightMode())) last = p.name();
+        return last;
+    }
+
     /** The {@code sampler2D} a post material reads what glows through ({@code "Emission"} tag); null for none. */
     @Nullable
     public String emissionInput() {

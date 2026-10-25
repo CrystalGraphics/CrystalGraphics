@@ -92,15 +92,17 @@ public final class CgPostMaterial implements CgPostEffect {
     private final int order;
     private volatile float weight = 1f;
 
-    // The parse its passes were resolved for, and per pass but the last its pipeline and texture.
+    // The parse its passes were resolved for, per pass but the last its pipeline and texture, and the last's pipeline.
     private List<CgParsedShader.PostTarget> resolved;
     private CgPipeline[] pipelines = new CgPipeline[0];
+    private CgPipeline over;
     private CgGraphTexture[] textures = new CgGraphTexture[0];
     private String emissionInput;
     // What the held binder sets: a sampler and its texture, so binding allocates nothing.
     private String bindName;
+    private int bindUnit;
     private CgGraphTexture bindTexture;
-    private final Consumer<CgShaderBindings> bind = b -> b.sampler(bindName, 0, bindTexture);
+    private final Consumer<CgShaderBindings> bind = b -> b.sampler(bindName, bindUnit, bindTexture);
 
     private CgPostMaterial(CgMaterial material, CgPostPoint point, int order) {
         this.material = Objects.requireNonNull(material, "material");
@@ -151,8 +153,10 @@ public final class CgPostMaterial implements CgPostEffect {
 
     @Override
     public void record(CgPostContext post) {
-        CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
-        if (pipeline == null || !resolve()) return;
+        if (!resolve()) return;
+        // One pass: the first Forward pass, under the material's state. Several: the last, which draws over the scene.
+        CgPipeline pipeline = over != null ? over : material.pipeline(CgInstanceKind.OBJECT);
+        if (pipeline == null) return;
         CgRecording recording = post.recording();
         if (emissionInput != null) {
             CgGraphTexture scene = post.resources().get(CgFrameKeys.SCENE);
@@ -161,10 +165,12 @@ public final class CgPostMaterial implements CgPostEffect {
             bind(emissionInput, emission);
         }
         CgGraphTexture screen = post.target();
+        // The host's size: an imported target's texture knows none until it executes.
+        int screenW = post.stage().host().width(), screenH = post.stage().host().height();
         for (int t = 0; t < textures.length; t++) {
             CgParsedShader.PostTarget target = resolved.get(t);
-            int w = Math.max(1, Math.round(screen.getWidth() * target.scale()));
-            int h = Math.max(1, Math.round(screen.getHeight() * target.scale()));
+            int w = Math.max(1, Math.round(screenW * target.scale()));
+            int h = Math.max(1, Math.round(screenH * target.scale()));
             CgGraphTexture into = textures[t];
             if (into == null || into.getWidth() != w || into.getHeight() != h) {
                 textures[t] = into = CgGraphTexture.transientTexture("cg_post_pass_" + t, new CgTextureDesc(w, h, TARGET, 1));
@@ -177,7 +183,10 @@ public final class CgPostMaterial implements CgPostEffect {
 
     private void draw(CgRecording recording, CgGraphTexture into, CgLoad load, CgPostContext post, CgPipeline pipeline) {
         CgRasterPass pass = recording.raster(into, load, post.constants(), null, CgOrder.SORTED);
-        if (material.readsSceneColor()) pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+        // A pass into a target of its own reads the scene, not the target it clears.
+        CgGraphTexture screen = post.target();
+        if (material.readsSceneColor() && into == screen) pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+        else if (material.readsSceneColor()) pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, screen);
         if (material.readsSceneDepth()) pass.sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT);
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(pipeline, material.captureBindings(recording.bindings()), FULLSCREEN);
@@ -187,7 +196,9 @@ public final class CgPostMaterial implements CgPostEffect {
     }
 
     private void bind(String name, CgGraphTexture texture) {
+        // Its own unit: a second input on unit 0 would take the first's.
         bindName = name;
+        bindUnit = material.samplerUnit(name);
         bindTexture = texture;
         material.applyProperties(bind);
     }
@@ -201,6 +212,13 @@ public final class CgPostMaterial implements CgPostEffect {
                 made[t] = material.pipeline(targets.get(t).pass(), CgInstanceKind.OBJECT);
                 if (made[t] == null) return false;
             }
+            CgPipeline last = null;
+            if (made.length > 0) {
+                String name = material.lastForwardPass();
+                last = name == null ? null : material.pipeline(name, CgInstanceKind.OBJECT);
+                if (last == null) return false;
+            }
+            over = last;
             pipelines = made;
             textures = new CgGraphTexture[made.length];
             emissionInput = material.emissionInput();
