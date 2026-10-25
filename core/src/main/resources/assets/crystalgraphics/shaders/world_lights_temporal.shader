@@ -32,7 +32,7 @@ Properties {
     _LastVis ("Last frame's accumulated visibility, then its squares", sampler2D) = "white"
     _Fresh   ("1 where the history holds no frame of this view",     float) = 1.0
     _Frames  ("MinFramesAccumulatedForHistoryMiss, MaxFramesAccumulated, NeighborhoodClampScale, HistoryDistanceThreshold", vec4) = (4, 12, 1, 0.03)
-    _Scale   ("Target pixels a texel spans each way: 1, or 2 at half resolution (crystalgraphics.world.lightsHalf)", int) = 1
+    _Scale   ("Target pixels a texel spans each way: 1, 2 or 4 (crystalgraphics.world.lightsShadeScale)", int) = 1
 }
 
 struct v2f { vec2 uv; };

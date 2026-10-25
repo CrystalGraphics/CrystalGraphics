@@ -56,7 +56,7 @@ Properties {
     _EyeY    ("y",                                                 int) = 0
     _EyeZ    ("z",                                                 int) = 0
     _EyeFrac ("The eye within its block",                          vec4) = (0, 0, 0, 0)
-    _Scale   ("Target pixels a shadow-pass texel spans each way: 1, or 2 at half resolution", int) = 1
+    _Scale   ("Target pixels a shadow-pass texel spans each way: 1, 2 or 4 (crystalgraphics.world.lightsShadeScale)", int) = 1
 }
 
 // light_grid.compute's: each light in the view with what it is shaded by, worked out once a light.
@@ -100,9 +100,9 @@ Pass {
         return vec3(mix(_Rays.xy, _Rays.zw, uv) * depth, -depth);
     }
 
-    // The shadow passes' lighting and visibility at pixel px: its own texel, or at half resolution the four round it
+    // The shadow passes' lighting and visibility at pixel px: its own texel, or when downsampled the four round it
     // weighed by distance and by how near the depth each stands for is to px's, the nearest in depth where none agrees
-    // (world_half_upsample's joint bilateral upsample). A texel stands for the first pixel of its 2x2.
+    // (world_half_upsample's joint bilateral upsample). A texel stands for the first pixel of its block.
     void shadowed_at(ivec2 px, out vec3 lighting, out vec2 vis) {
         if (_Scale <= 1) {
             lighting = texelFetch(_Shadowed, px, 0).rgb;

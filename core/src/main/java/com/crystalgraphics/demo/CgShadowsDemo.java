@@ -104,9 +104,10 @@ public final class CgShadowsDemo {
         mode.set((Math.round(mode.get()) + 1) % 3);
     }
 
-    /** The shadowed lights' shading, history and filter at half resolution or full ({@code CgWorldLights.HALF}). */
-    public static void toggleHalf() {
-        CgWorldLights.HALF.set(!CgWorldLights.HALF.get());
+    /** The shadowed lights' shading at full, half and quarter resolution ({@code CgWorldLights.SHADE_SCALE}). */
+    public static void cycleShadeScale() {
+        int at = Integer.highestOneBit(CgWorldLights.SHADE_SCALE.get());
+        CgWorldLights.SHADE_SCALE.set(at >= 4 ? 1 : at * 2);
     }
 
     /** The effects quality, Low to Ultra and round again: what each tier draws (the player's setting, saved). */
@@ -118,7 +119,11 @@ public final class CgShadowsDemo {
     /** The HUD's line for the switches every lit scene shares. */
     public static String lightingLine() {
         return "\nShadows [O]: " + (shadowsOn() ? "on" : "off")
-                + " | MegaLights resolution [R]: " + (CgWorldLights.HALF.get() ? "half" : "full")
+                + " | MegaLights resolution [R]: " + switch (Integer.highestOneBit(CgWorldLights.SHADE_SCALE.get())) {
+                    case 1 -> "full";
+                    case 2 -> "half";
+                    default -> "quarter";
+                }
                 + " | Quality [Z]: " + CgGraphicsSettings.QUALITY.get().name().charAt(0)
                 + CgGraphicsSettings.QUALITY.get().name().substring(1).toLowerCase(Locale.ROOT);
     }

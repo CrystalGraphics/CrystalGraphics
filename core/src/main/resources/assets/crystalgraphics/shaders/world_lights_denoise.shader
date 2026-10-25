@@ -25,7 +25,7 @@ Properties {
     _GBuffer  ("Each pixel's normal in the view (world_lights_gbuffer)", sampler2D) = "black"
     _Spatial ("KernelRadius, NumSamples, DepthWeightScale, MaxDisocclusionFrames", vec4) = (8, 4, 10000, 2)
     _Spread  ("DisocclusionDiffuseSpatialVarianceScale, HistorySpatialStdDevThreshold, MaxFramesAccumulated", vec4) = (2, 0.15, 12, 0)
-    _Scale   ("Target pixels a texel spans each way: 1, or 2 at half resolution (crystalgraphics.world.lightsHalf)", int) = 1
+    _Scale   ("Target pixels a texel spans each way: 1, 2 or 4 (crystalgraphics.world.lightsShadeScale)", int) = 1
 }
 
 struct v2f { vec2 uv; };

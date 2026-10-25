@@ -726,7 +726,7 @@ public final class CgRenderDemo {
             case CgKeyCodes.KEY_J -> CgShadowsDemo.toggleSpatial();
             case CgKeyCodes.KEY_U -> CgShadowsDemo.toggleScreenTrace();
             case CgKeyCodes.KEY_M -> CgShadowsDemo.cycleResolution();
-            case CgKeyCodes.KEY_R -> CgShadowsDemo.toggleHalf();
+            case CgKeyCodes.KEY_R -> CgShadowsDemo.cycleShadeScale();
             case CgKeyCodes.KEY_Z -> CgShadowsDemo.cycleQuality();
             default -> CgVfxDemoControls.get().press(key, shift);
         }

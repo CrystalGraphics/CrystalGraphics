@@ -26,7 +26,7 @@ Properties {
     _Samples ("The shadowed lights' samples, four a half-resolution pixel", sampler2D) = "black"
     _GBuffer ("Each pixel's normal in the view (world_lights_gbuffer)", sampler2D) = "black"
     _MaxWeight ("Unreal's r.MegaLights.MaxShadingWeight",          float) = 20.0
-    _Scale   ("Target pixels a written texel spans each way: 1, or 2 at half resolution (crystalgraphics.world.lightsHalf)", int) = 1
+    _Scale   ("Target pixels a written texel spans each way: 1, 2 or 4 (crystalgraphics.world.lightsShadeScale)", int) = 1
     _SampleGrid ("Unreal's NumSamplesPerPixel as a block of the samples texture: its width, height and count", vec4) = (2, 2, 4, 0)
 }
 

@@ -349,13 +349,13 @@ public final class CgWorldLights {
             "Unreal's r.MegaLights.DownsampleMode: 0 traces every pixel, 1 every other (2x1), 2 a quarter (2x2), Unreal's "
                     + "default. In the lights demo at 2560x1440 in game the sample pass took 1.9 ms at 0, 0.65 at 2.");
     /**
-     * MegaLights' shading, accumulation and filter at half resolution each way, a quarter of the pixels, the apply
-     * upsampling their result by depth: a departure from Unreal, which shades MegaLights at full resolution. On by
-     * default: the user saw no difference in the lights demo, at 280 fps on the fireflies' floor in game.
+     * Target pixels each way one texel of MegaLights' shading, accumulation and filter stands for: 1, 2 or 4, the apply
+     * upsampling their result by depth. A departure from Unreal, which shades MegaLights at full resolution. 2 by
+     * default: the user saw no difference from 1 in the lights demo, at 280 fps on the fireflies' floor in game.
      */
-    public static final CgVar.Bool HALF = CgVar.bool("crystalgraphics.world.lightsHalf", true, CgVar.DEV,
-            "The shadowed lights' shading, history and filter at half resolution, upsampled by depth; off shades every "
-                    + "pixel.");
+    public static final CgVar.Int SHADE_SCALE = CgVar.integer("crystalgraphics.world.lightsShadeScale", 2, 1, 4, CgVar.DEV,
+            "Target pixels each way one texel of the shadowed lights' shading, history and filter stands for: 1 full, 2 half,"
+                    + " 4 quarter resolution (3 reads as 2), upsampled by depth.");
 
     private static final CgVar.Num MAX_FRAMES = CgVar.number("crystalgraphics.world.lightsShadowFrames", 12f, 1f, 32f,
             CgVar.DEV, "Frames the shadowed lighting accumulates over: fewer ghost less and shimmer more.");
@@ -477,7 +477,7 @@ public final class CgWorldLights {
     };
     private float targetW, targetH;
     private CgGraphTexture samples, shaded, filtered, scratchHistory, history, accumulated;
-    /** Target pixels the shading, history and filter's texels span each way this firing: 1, or 2 under {@link #HALF}. */
+    /** Target pixels the shading, history and filter's texels span each way this firing: 1, 2 or 4, {@link #SHADE_SCALE}. */
     private int lightScale = 1;
     private long historyMade = -1;
     private boolean shadowsOn, freshHistory, binned, sunOn;
@@ -1312,8 +1312,8 @@ public final class CgWorldLights {
             if (samples == null || samples.getWidth() != sw || samples.getHeight() != sh) {
                 samples = CgGraphTexture.transientTexture("cg_world_lights.samples", new CgTextureDesc(sw, sh, SAMPLES_FORMAT));
             }
-            // Shading, history and filter at the target's size, or half it each way under HALF; the samples keep theirs.
-            lightScale = HALF.get() ? 2 : 1;
+            // Shading, history and filter at the target's size over SHADE_SCALE each way; the samples keep theirs.
+            lightScale = Integer.highestOneBit(SHADE_SCALE.get());
             int lw = (w + lightScale - 1) / lightScale, lh = (h + lightScale - 1) / lightScale;
             if (shaded == null || shaded.getWidth() != lw || shaded.getHeight() != lh) {
                 shaded = CgGraphTexture.transientTexture("cg_world_lights.shaded", new CgTextureDesc(lw, lh, LIGHTING_FORMAT));
