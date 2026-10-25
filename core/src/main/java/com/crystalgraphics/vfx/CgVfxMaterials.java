@@ -39,6 +39,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 
+import org.joml.Quaternionfc;
 import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
@@ -238,6 +239,10 @@ final class CgVfxMaterials {
             material.requireRow(BOUNDS, who);
             rowValues.put(BOUNDS, BOUNDS);
         }
+        if (placed.slotRenderer() == null && probe.names(LOCAL_TO_WORLD)) {
+            material.requireRow(SYSTEM_TURN, who);
+            rowValues.put(SYSTEM_TURN, SYSTEM_TURN);
+        }
         if (placed.slotRenderer() == null && probe.names(MACRO_UV)) {
             // Its system's macro UVs and its renderer's override, written per effect: each effect stands and turns apart.
             material.requireRow(MACRO_SYSTEM, who);
@@ -283,9 +288,9 @@ final class CgVfxMaterials {
                 entryFactors.add(factors.get(p.getName()));
                 entryFixed.add(null);
                 vec4s += param instanceof CgVfxParam.Palette ? ((CgVfxParam.Palette) param).count() : 1;
-            } else if (constant == BOUNDS || constant == MACRO_SYSTEM || constant == MACRO_OVERRIDE) {
+            } else if (constant == BOUNDS || constant == MACRO_SYSTEM || constant == MACRO_OVERRIDE || constant == SYSTEM_TURN) {
                 entries.add(new int[] {constant == BOUNDS ? FROM_BOUNDS : constant == MACRO_SYSTEM ? FROM_MACRO_SYSTEM
-                        : FROM_MACRO_OVERRIDE, 4});
+                        : constant == MACRO_OVERRIDE ? FROM_MACRO_OVERRIDE : FROM_SYSTEM_TURN, 4});
                 entryFactors.add(1f);
                 entryFixed.add(null);
                 vec4s += 1;
@@ -389,6 +394,9 @@ final class CgVfxMaterials {
     private static final String MACRO_SYSTEM = "_cg_MacroUVSystem", MACRO_OVERRIDE = "_cg_MacroUVOverride",
             MACRO_UV = "CG_PARTICLE_MACRO_UV";
     private static final int FROM_MACRO_SYSTEM = -3, FROM_MACRO_OVERRIDE = -4;
+    /** The factory's system turn, and the name that reads it: the effect's orientation, written per effect. */
+    private static final String SYSTEM_TURN = "_cg_SystemTurn", LOCAL_TO_WORLD = "CG_PARTICLE_LOCAL_TO_WORLD";
+    private static final int FROM_SYSTEM_TURN = -5;
     private final Vector3f turned = new Vector3f();
     private static final String FACING = "_cg_Facing", SUB_IMAGE = "_cg_SubImage", SUB_UV = "_cg_SubUV", DRAWN = "_cg_Drawn",
             PIVOT = "_cg_Pivot";
@@ -602,6 +610,13 @@ final class CgVfxMaterials {
             int floats = r.floats[i];
             if (r.source[i] == FROM_BOUNDS) {
                 writeBounds(effect, write);
+                write += 4;
+            } else if (r.source[i] == FROM_SYSTEM_TURN) {
+                Quaternionfc q = effect.orientation();
+                rows[write] = q.x();
+                rows[write + 1] = q.y();
+                rows[write + 2] = q.z();
+                rows[write + 3] = q.w();
                 write += 4;
             } else if (r.source[i] == FROM_MACRO_SYSTEM || r.source[i] == FROM_MACRO_OVERRIDE) {
                 writeMacroUv(effect, r, r.source[i] == FROM_MACRO_OVERRIDE, write);

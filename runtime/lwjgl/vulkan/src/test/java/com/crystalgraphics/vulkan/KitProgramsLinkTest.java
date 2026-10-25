@@ -240,6 +240,7 @@ public class KitProgramsLinkTest {
                     CgMaterialVertex v = cg_material_vertex();
                     o.uv = v.texCoords[0];
                     o.normal = v.tangentToWorld[2];
+                    v.worldPosition += CG_PARTICLE_LOCAL_TO_WORLD * (o.normal * 0.01);
                     o.position = v.worldPosition;
                     gl_Position = cg_material_project(v);
                 }
@@ -273,6 +274,7 @@ public class KitProgramsLinkTest {
                 }
                 void vertex(out v2f o) {
                     CgMaterialVertex v = cg_material_vertex();
+                    v.worldPosition += CG_PARTICLE_LOCAL_TO_WORLD * vec3(0.0, 0.01, 0.0);
                     o.colour = cg_material_particle().color;
                     gl_Position = cg_material_project(v);
                 }

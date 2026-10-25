@@ -151,6 +151,14 @@ void vertex(out v2f o) {
   static final CgVfxSystemDefinition ORB = CgVfxSystemDefinition.of("mymod:orb", ORB_LOOK)
           .withFixedBounds(new CgVfxSystemDefinition.FixedBounds(-4, -4, -4, 4, 4, 4));
   ```
+- **Local to world**: `CG_PARTICLE_LOCAL_TO_WORLD`, a `mat3` in the vertex stage, Unreal's `TransformVector` from
+  local to world as each factory means it: a sprite's and a ribbon's system's turn, a mesh particle's own instance
+  matrix (its turn and size). Not `mat3(CG_OBJECT_TO_WORLD)`, which on a sprite or ribbon draw holds the draw's place
+  alone.
+
+  ```glsl
+  v.worldPosition += CG_PARTICLE_LOCAL_TO_WORLD * (offset.xzy * 0.01);   // an Unreal local offset, in centimetres
+  ```
 - **Macro UVs**: `CG_PARTICLE_MACRO_UV`, Unreal's ParticleMacroUV parameters for this view, in either stage: the
   system's macro UV centre in NDC (y up) and the scales taking its radius on screen to one UV, worked out as Cascade does
   (`ParticleSystemRender.cpp`, `GetObjectPositionAndScale`). The centre and radius are the system's `macro_uv`, or the

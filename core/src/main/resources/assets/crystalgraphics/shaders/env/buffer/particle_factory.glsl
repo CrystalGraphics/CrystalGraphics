@@ -50,6 +50,14 @@ struct CgMaterialParticle {
 // where the radius is not positive or the extent degenerates. A material's UVs are (screen NDC - xy) * zw + 0.5.
 #define CG_PARTICLE_MACRO_UV _cg_macro_uv(_cg_MacroUVSystem, _cg_MacroUVOverride)
 
+// Quaternion q (x, y, z, w) as the matrix turning by it.
+mat3 _cg_quat_mat3(vec4 q) {
+    vec3 q2 = q.xyz * 2.0;
+    float xx = q.x * q2.x, yy = q.y * q2.y, zz = q.z * q2.z, xy = q.x * q2.y, xz = q.x * q2.z, yz = q.y * q2.z;
+    float wx = q.w * q2.x, wy = q.w * q2.y, wz = q.w * q2.z;
+    return mat3(1.0 - yy - zz, xy + wz, xz - wy, xy - wz, 1.0 - xx - zz, yz + wx, xz + wy, yz - wx, 1.0 - xx - yy);
+}
+
 vec4 _cg_macro_uv(vec4 system, vec4 override) {
     mat4 viewProjection = cg_ProjMatrix * cg_ViewMatrix;
     vec4 c = viewProjection * vec4(system.xyz - cg_WorldOrigin.xyz, 1.0);
@@ -460,6 +468,8 @@ CgMaterialParticle _cg_strip_particle(float cameraOffset, float drawnBits) {
 }
 
 #define cg_material_vertex() _cg_strip_vertex(_cg_CameraOffset, _cg_Drawn)
+// Unreal's local to world (TransformLocalVectorToWorld): a sprite's and a ribbon's are its system's, its turn alone.
+#define CG_PARTICLE_LOCAL_TO_WORLD _cg_quat_mat3(_cg_SystemTurn)
 #define cg_material_particle() _cg_strip_particle(_cg_CameraOffset, _cg_Drawn)
 #elif defined(CG_VERTEX_STAGE) && (defined(CG_TYPE_NONE) || defined(FX_ON_SPRITES))
 
@@ -538,6 +548,7 @@ CgMaterialParticle _cg_sprite_particle(float facing, vec4 facingVector, vec4 ali
     return p;
 }
 
+#define CG_PARTICLE_LOCAL_TO_WORLD _cg_quat_mat3(_cg_SystemTurn)
 #define cg_material_vertex() _cg_sprite_vertex(_cg_Facing, _cg_FacingVector, _cg_AlignmentVector, _cg_Stretch,         _cg_MaxStretch, _cg_CameraOffset, _cg_RotationBias, _cg_SubImage, _cg_SubUV, _cg_SubImages, _cg_Drawn, _cg_Pivot)
 #define cg_material_particle() _cg_sprite_particle(_cg_Facing, _cg_FacingVector, _cg_AlignmentVector, _cg_Stretch,         _cg_MaxStretch, _cg_CameraOffset, _cg_RotationBias, _cg_SubImage, _cg_SubUV, _cg_SubImages, _cg_Drawn, _cg_Pivot)
 #elif defined(CG_VERTEX_STAGE) && defined(CG_TYPE_SPATIAL)
@@ -588,6 +599,8 @@ CgMaterialParticle _cg_mesh_particle(vec4 subImage, vec4 subUv, sampler2D subIma
 }
 
 #define cg_material_vertex() _cg_mesh_vertex(_cg_CameraOffset, _cg_Drawn)
+// A mesh particle's local space is its own, as Unreal's mesh particle factory's is: its instance's turn and size.
+#define CG_PARTICLE_LOCAL_TO_WORLD mat3(CG_OBJECT_TO_WORLD)
 #define cg_material_particle() _cg_mesh_particle(_cg_SubImage, _cg_SubUV, _cg_SubImages, _cg_Drawn)
 #elif defined(CG_VERTEX_STAGE)
 // No factory for this #type: a port calling one fails here, by name.

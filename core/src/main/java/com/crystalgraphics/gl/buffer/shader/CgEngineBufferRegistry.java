@@ -88,6 +88,7 @@ public final class CgEngineBufferRegistry {
                     _cg_Bounds ("Its system's fixed bounds: absolute centre, sphere radius; written per effect", vec4) = (0, 0, 0, 0)
                     _cg_MacroUVSystem ("Its system's macro UV centre, absolute, and radius; written per effect", vec4) = (0, 0, 0, 0)
                     _cg_MacroUVOverride ("Its renderer's macro UV override: a turned vector and radius, w -1 for none", vec4) = (0, 0, 0, -1)
+                    _cg_SystemTurn ("Its system's turn as a quaternion (x, y, z, w); written per effect", vec4) = (0, 0, 0, 1)
                     _cg_SubImage ("CgVfxFlipbook: columns (a table's frames), rows (0: a table), blends, random start", vec4) = (1, 1, 1, 0)
                     _cg_SubUV ("CgVfxFlipbook: mode, first frame, last frame (-1: the last), rate", vec4) = (0, 0, -1, 0)
                     _cg_SubImages ("CgVfxFlipbook: a rect table, a rect a texel", sampler2D) = "white"
