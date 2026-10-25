@@ -174,6 +174,8 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
     providers.gradleProperty("censusMaterials").orNull?.let { systemProperty("crystalgraphics.census.materials", it) }
     // The kits' binaries (a field's FGA) read as a game reads them: -PkitRoots=<a folder holding assets/<kit>>
     providers.gradleProperty("kitRoots").orNull?.let { systemProperty("crystalgraphics.resourceOverrideDirs", it) }
+    // The kits' shading models, registered before their materials compile: -PkitShading=<namespace>=<kit dir>;...
+    providers.gradleProperty("kitShading").orNull?.let { systemProperty("crystalgraphics.kits.shading", it) }
 }
 
 tasks.named("check") { dependsOn(headlessTestTask) }
