@@ -6,6 +6,8 @@ import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.collision.debug.CgCollisionDebug;
 import com.crystalgraphics.render.world.CgWorldLights;
 import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.settings.CgGraphicsSettings;
+import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.trace.CgGpuTrace;
@@ -14,6 +16,8 @@ import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.variable.CgVars;
 import org.joml.Matrix4f;
+
+import java.util.Locale;
 
 /**
  * The world's shadows round a point, each kind of caster on each kind of receiver: a plaza of ours that receives from
@@ -105,10 +109,18 @@ public final class CgShadowsDemo {
         CgWorldLights.HALF.set(!CgWorldLights.HALF.get());
     }
 
+    /** The effects quality, Low to Ultra and round again: what each tier draws (the player's setting, saved). */
+    public static void cycleQuality() {
+        CgQuality[] tiers = CgQuality.values();
+        CgGraphicsSettings.QUALITY.set(tiers[(CgGraphicsSettings.QUALITY.get().ordinal() + 1) % tiers.length]);
+    }
+
     /** The HUD's line for the switches every lit scene shares. */
     public static String lightingLine() {
         return "\nShadows [O]: " + (shadowsOn() ? "on" : "off")
-                + " | MegaLights resolution [R]: " + (CgWorldLights.HALF.get() ? "half" : "full");
+                + " | MegaLights resolution [R]: " + (CgWorldLights.HALF.get() ? "half" : "full")
+                + " | Quality [Z]: " + CgGraphicsSettings.QUALITY.get().name().charAt(0)
+                + CgGraphicsSettings.QUALITY.get().name().substring(1).toLowerCase(Locale.ROOT);
     }
 
     public static boolean shadowsOn() {

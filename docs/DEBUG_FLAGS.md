@@ -63,7 +63,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.compute.checked` | true, false | `false` | Kernels run as compute bounds-check every buffer and image access: one out of range is skipped, and the first of each dispatch logged once with its .compute line. Every access tests its index. Read at launch. |
-| `crystalgraphics.compute.logCompiles` | true, false | `false` | Logs each kernel compiled at its first dispatch, each dispatch that waited on a compile, and each kernel prepared ahead: what a warm-up missed. |
+| `crystalgraphics.compute.logCompiles` | true, false | `false` | Log each kernel program compiled or started, by file and program key, with whether a dispatch waited. |
 | `crystalgraphics.compute.selfTest` | true, false | `false` | At the first frames, run a kernel of every shape and every GPU op on this context and check each result against Java; logs [crystalgraphics] compute self-test <tier>: PASS\|FAIL, which prodSmoke gathers. |
 | `crystalgraphics.compute.tier` | text | empty | V, G43, G40 or G33: kernels run as that tier would, where the context has what it needs, refused naming what is missing where not; empty for the best. Taken at each context's capability probe. |
 
@@ -71,7 +71,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
-| `crystalgraphics.demo` | text | empty | false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision) starts on it; empty on blasts. Read at launch. |
+| `crystalgraphics.demo` | text | empty | false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision, lights, shadows) starts on it; empty on blasts. Read at launch. |
 | `crystalgraphics.demo.blasts` | 1 to 100000 | `120` | Blasts in the demo's blasts scene; 120 keep about 360,000 particles alive. Read at launch. |
 | `crystalgraphics.demo.capture` | text | empty | A PNG path: the world, with no GUI over it, written there captureAt world frames after the demo was placed. Read at launch. |
 | `crystalgraphics.demo.captureAt` | 1 to 2147483647 | `300` | World frames after the demo was placed that its capture is written. Read at launch. |
@@ -81,6 +81,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.demo.sky` | true, false | `true` | The demo's beams scene under the showcase's sky; false keeps the world's own. Read at launch. |
 | `crystalgraphics.demo.station` | text | empty | The fluid demo shows only the stations whose titles hold these words, for measuring one alone. |
 | `crystalgraphics.demo.time` | text | empty | The VFX demos' time switch at start: the nearest of its rates to this one, for a run left unattended. |
+| `crystalgraphics.demo.under` | text | empty | x,z: the scene placed with its point (x, z) under the eye, for a profile looking down at one part of it (lights: -11,4 the fireflies, -20,-12 a firework); empty, ahead of the eye. Read at launch. |
 
 ## `crystalgraphics.fixedSeed`
 
@@ -283,7 +284,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
-| `crystalgraphics.vfx.bindByName` | true, false | `true` | A layer's colour or palette property reads the look's colour of its name when nothing binds it; false takes values only through explicit binds, as the format's materials do. |
 | `crystalgraphics.vfx.bookBatch` | 1 to 2147483647 | `256` | Effects of one simulation a worker books in one task. |
 | `crystalgraphics.vfx.budget.concurrentMs` | 0.0 to 1000.0 | `0.0` | CPU milliseconds a frame every effect's work may take on the frame thread and the workers together; 0 for the quality tier's. |
 | `crystalgraphics.vfx.budget.debug.concurrentTime` | -1.0 to 1000.0 | `-1.0` | At 0 or more, the concurrent line's measured milliseconds. |
@@ -320,10 +320,43 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
+| `crystalgraphics.world.blockShadowReach` | 0.0 to 64.0 | `48.0` | Blocks from the eye a torch, glowstone or any light-giving block is shadowed by our objects; 0 for none. |
 | `crystalgraphics.world.halfResolution` | true, false | `true` | What a new world renderer starts with: draws marked halfResolution() at half size; false at full size, in the transparent pass (H in the harness, halfResolution(boolean) live). |
 | `crystalgraphics.world.hdrScene` | text | empty | true or false forces the HDR scene for the run over the player's HDR setting, unsaved; empty follows the setting (G in the harness, hdrScene(boolean) live). |
+| `crystalgraphics.world.lightsAir` | true, false | `true` | Smoke, gas and haze in the air lit by the world's lights: Unreal's volumetric fog's light scattering. |
+| `crystalgraphics.world.lightsAirHistory` | true, false | `true` | Lit air jittered through each froxel and blended over the last frames: Unreal's r.VolumetricFog.TemporalReprojection. |
+| `crystalgraphics.world.lightsAirHistoryWeight` | 0.0 to 0.99 | `0.9` | How much of the lit air's last frames each frame keeps: Unreal's r.VolumetricFog.HistoryWeight. |
+| `crystalgraphics.world.lightsAirSamples` | 1 to 8 | `4` | Jittered points each froxel of lit air is lit at a frame: its noise falls with their square root, its cost rises with them. |
+| `crystalgraphics.world.lightsAirShadowRays` | 0 to 64 | `1` | Shadowed lights traced from each froxel of lit air; past them a froxel's lights shine unshadowed. |
+| `crystalgraphics.world.lightsDayFade` | 0.0 to 1.0 | `0.1` | A light's strength under a full day's open sky, where an eye adapted to the sun sees it faint; full at night and where no sky reaches. 1 never fades. |
+| `crystalgraphics.world.lightsDownsample` | 0.0 to 2.0 | `2.0` | Unreal's r.MegaLights.DownsampleMode: 0 traces every pixel, 1 every other (2x1), 2 a quarter (2x2), Unreal's default. In the lights demo at 2560x1440 in game the sample pass took 1.9 ms at 0, 0.65 at 2. |
+| `crystalgraphics.world.lightsEntityTiles` | true, false | `true` | A shadow ray tests only the entities its 16x16 tile can meet; off, every tile keeps every entity. |
+| `crystalgraphics.world.lightsHalf` | true, false | `true` | The shadowed lights' shading, history and filter at half resolution, upsampled by depth; off shades every pixel. |
+| `crystalgraphics.world.lightsHzb` | true, false | `false` | The light grid skips cells behind the scene and pulls each cell's far edge in to it. |
+| `crystalgraphics.world.lightsMeshShadows` | true, false | `true` | Our meshes withhold the lights through their distance fields; off, only blocks, entities and the screen do. |
+| `crystalgraphics.world.lightsMinScreenRadius` | 0.0 to 1.0 | `0.03` | A light whose bounding sphere is smaller than this share of the screen is not drawn; 0 keeps all. |
+| `crystalgraphics.world.lightsSampleSkip` | 0 to 127 | `0` | Parts of the shadow rays left out, to measure what each costs: 1 the sun, 2 Minecraft's block light, 4 the lights, 8 our meshes, 16 the screen trace, 32 the blocks, 64 the entities. |
+| `crystalgraphics.world.lightsSamplesPerPixel` | 1 to 4 | `1` | Unreal's r.MegaLights.NumSamplesPerPixel: 1, 2 or 4 shadow rays a pixel (or a downsampled one). Unreal's 4 fall on a 2x2 downsampled pixel, a ray a screen pixel; 1 at full resolution is the same budget. |
+| `crystalgraphics.world.lightsScreenSteps` | 4 to 64 | `24` | Steps a shadow ray takes across the screen's depth. |
+| `crystalgraphics.world.lightsScreenTrace` | 0.0 to 64.0 | `1.0` | Blocks a shadow ray is followed across the screen's depth before the world trace takes over: Unreal's r.MegaLights.ScreenTraces.MaxDistance, 100 cm. |
+| `crystalgraphics.world.lightsShadowFrames` | 1.0 to 32.0 | `12.0` | Frames the shadowed lighting accumulates over: fewer ghost less and shimmer more. |
+| `crystalgraphics.world.lightsShadowSpatial` | 0.0 to 32.0 | `8.0` | Pixels the shadowed lighting is filtered across where it is still noisy; 0 for none. |
+| `crystalgraphics.world.lightsShadows` | true, false | `true` | Lights that cast shadows are withheld by the blocks and entities between them and a surface. |
+| `crystalgraphics.world.lightsVolume` | true, false | `true` | Transparent surfaces and particles lit by the world's lights, through Unreal's translucency lighting volume. |
+| `crystalgraphics.world.lightsVolumeCells` | 8 to 64 | `64` | Cells a side of each of the translucency lighting volume's two cascades: Unreal's r.TranslucencyLightingVolume.Dim. |
+| `crystalgraphics.world.lightsVolumeInner` | 1.0 to 128.0 | `15.0` | Blocks from the eye the translucency lighting volume's first cascade reaches: Unreal's r.TranslucencyLightingVolume.InnerDistance, 15 m. |
+| `crystalgraphics.world.lightsVolumeOuter` | 2.0 to 256.0 | `50.0` | Blocks from the eye its second reaches: r.TranslucencyLightingVolume.OuterDistance, 50 m. |
+| `crystalgraphics.world.lightsVolumeShadowRays` | 0 to 64 | `4` | Shadowed lights traced from each cell of the translucency volume; past them a cell's lights shine unshadowed. |
+| `crystalgraphics.world.mediaPixels` | 4 to 32 | `16` | Pixels of the screen a froxel of the air's grid spans across: Unreal's High 16, Epic 8 (four times the froxels). |
 | `crystalgraphics.world.mergeEmission` | true, false | `true` | What a new world renderer starts with: a transparent draw's codeless Emissive pass written by its Forward draw beside the target; false draws every Emissive pass on its own (mergeEmission(boolean) live). |
+| `crystalgraphics.world.meshFieldFloats` | 65536 to 67108864 | `8388608` | Floats our meshes' distance fields share on the GPU; the least recently used are dropped past it. Read at launch. |
 | `crystalgraphics.world.skipUnready` | true, false | `false` | Skips a draw whose program is not built yet, counting it as world.unready-draws, rather than compiling at the draw (skipUnready(boolean) live). |
+| `crystalgraphics.world.sunCasterReach` | 0.0 to 128.0 | `48.0` | Blocks toward the sun past each shadow cascade its casters are taken from: their longest shadow. |
+| `crystalgraphics.world.sunShadowCascades` | 1 to 4 | `4` | Cascades of the sun's shadow map drawn, each 3 times the depth of the last. |
+| `crystalgraphics.world.sunShadowDistance` | 8.0 to 512.0 | `96.0` | Blocks from the eye the sun's shadow map reaches, in four cascades: Unreal's DynamicShadowDistanceMovableLight. |
+| `crystalgraphics.world.sunShadowResolution` | 256 to 2048 | `1024` | Texels a side of each of the sun's four shadow cascades, 8 bytes each: the atlas is twice it. |
+| `crystalgraphics.world.sunShadows` | true, false | `true` | The sun is withheld from our objects by blocks, entities and each other, and from Minecraft's world by our objects. |
+| `crystalgraphics.world.sunShare` | 0.0 to 1.0 | `0.6` | The sun's direct share of a full day's sky light: how dark its shadow is. 0 casts none. |
 
 ## `crystalgraphics.worldevents`
 

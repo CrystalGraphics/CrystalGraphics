@@ -34,6 +34,8 @@ import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.stage.CgWorldAtmosphere;
+import com.crystalgraphics.settings.CgGraphicsSettings;
+import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
@@ -178,7 +180,11 @@ public final class CgWorldLights {
      * the view, which light_volume.compute fills and every lit transparent pass reads ({@code cg_LocalLights}).
      */
     private static final String VOLUME_KERNELS = "crystalgraphics:shaders/env/compute/light_volume.compute";
-    private static final int VOLUME_CELLS = 64, GPU_VOLUME = CgGpuTrace.name("world.lightsVolume");
+    private static final int GPU_VOLUME = CgGpuTrace.name("world.lightsVolume");
+    /** Unreal's r.TranslucencyLightingVolume.Dim. */
+    private static final CgVar.Int VOLUME_CELLS = CgVar.integer("crystalgraphics.world.lightsVolumeCells", 64, 8, 64,
+            CgVar.DEV, "Cells a side of each of the translucency lighting volume's two cascades: Unreal's "
+                    + "r.TranslucencyLightingVolume.Dim.");
     private static final CgFrameBufferFormat VOLUME_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.volume")
             .color(0, CgTextureType.RGBA16F).build();
     private static final CgVar.Bool VOLUME = CgVar.bool("crystalgraphics.world.lightsVolume", true, CgVar.DEV,
@@ -259,6 +265,9 @@ public final class CgWorldLights {
      * 4 cascades, each 3 times the depth of the last, overlapping by a tenth of each for the blend into the next.
      */
     private static final int CASCADES = 4;
+    /** Unreal's r.Shadow.CSM.MaxCascades: the cascades drawn, the rest of the atlas left empty. */
+    private static final CgVar.Int SUN_CASCADES = CgVar.integer("crystalgraphics.world.sunShadowCascades", CASCADES, 1,
+            CASCADES, CgVar.DEV, "Cascades of the sun's shadow map drawn, each 3 times the depth of the last.");
     private static final float CASCADE_EXPONENT = 3f, CASCADE_TRANSITION = 0.1f, SUN_NEAR = 0.05f;
     /** Blocks the sun's ray through the blocks and entities runs: world_lights_sample.shader's sun_visibility. */
     private static final float SUN_RAY = 96f;
@@ -322,6 +331,12 @@ public final class CgWorldLights {
     private static final CgVar.Num SCREEN_TRACE = CgVar.number("crystalgraphics.world.lightsScreenTrace", 1f, 0f, 64f,
             CgVar.DEV, "Blocks a shadow ray is followed across the screen's depth before the world trace takes over: "
                     + "Unreal's r.MegaLights.ScreenTraces.MaxDistance, 100 cm.");
+    /** Unreal's r.MegaLights.ScreenTraces.Quality as a step count: its fast half-resolution traces as half the steps. */
+    private static final CgVar.Int SCREEN_STEPS = CgVar.integer("crystalgraphics.world.lightsScreenSteps", 24, 4, 64,
+            CgVar.DEV, "Steps a shadow ray takes across the screen's depth.");
+    /** Unreal's r.DistanceFieldShadowing: our meshes' distance fields in the lights' shadow rays. */
+    private static final CgVar.Bool MESH_SHADOWS = CgVar.bool("crystalgraphics.world.lightsMeshShadows", true, CgVar.DEV,
+            "Our meshes withhold the lights through their distance fields; off, only blocks, entities and the screen do.");
     /** Unreal's r.MegaLights.Temporal.MaxFramesAccumulated. */
     private static final CgVar.Int SAMPLE_SKIP = CgVar.integer("crystalgraphics.world.lightsSampleSkip", 0, 0, 127, CgVar.DEV,
             "Parts of the shadow rays left out, to measure what each costs: 1 the sun, 2 Minecraft's block light, 4 the "
@@ -372,6 +387,12 @@ public final class CgWorldLights {
     private static final CgVar.Bool HZB = CgVar.bool("crystalgraphics.world.lightsHzb", false, CgVar.DEV,
             "The light grid skips cells behind the scene and pulls each cell's far edge in to it.");
     private CgKernel view, coarse, cell, countCells, writeCells;
+    /** The tier {@link #quality} last set. */
+    private static CgQuality appliedTier;
+    /** Unreal's r.Shadow.DistanceScale and r.TranslucencyLightingVolume.Dim, by tier. */
+    private static final float[] SHADOW_DISTANCE_SCALE = {0.6f, 0.7f, 0.85f, 1f};
+    private static final int[] VOLUME_DIM = {24, 32, 48, 64};
+    private int volumeCells;
     private float tileU, tileV;
     /** The apply, without and with the spots' and tubes' path ({@code CG_LIGHTS_SHAPED}). */
     private CgMaterial applyPoints, applyShaped;
@@ -472,11 +493,11 @@ public final class CgWorldLights {
     private final float[] eyeFrac = new float[3];
     private final int[] eyeBlock = new int[3];
     private final Consumer<CgShaderBindings> sampleValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, this.downX, this.downY)
-            .vec4("_Trace", SCREEN_TRACE.get(), 24f, 0.02f, 0.005f).set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1])
+            .vec4("_Trace", SCREEN_TRACE.get(), SCREEN_STEPS.get(), 0.02f, 0.005f).set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1])
             .set1i("_EyeZ", eyeBlock[2]).vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f)
             .set1i("_Entities", this.entities).set1i("_Casters", this.casterCount)
             .vec4("_Sun", this.sunOn ? 1f : 0f, this.sunMapped ? 1f : 0f, 0f, 0f)
-            .set1f("_Own", this.ownPixels() ? 1f : 0f).set1i("_Skip", SAMPLE_SKIP.get())
+            .set1f("_Own", this.ownPixels() ? 1f : 0f).set1i("_Skip", skip())
             .vec4("_SampleGrid", this.sampleX, this.sampleY, this.sampleX * this.sampleY, 0f)
             .sampler("_HostDepth", 3, this.ownPixels() ? this.hostDepth : CgFallbackTextures.WHITE_1x1)
             .sampler("_CasterRows", 4, this.casterCount > 0 || this.sunMapped ? this.casters : CgFallbackTextures.BLACK_1x1)
@@ -877,11 +898,34 @@ public final class CgWorldLights {
     }
 
     /**
+     * The world lights' part of Unreal's scalability groups (BaseScalability.ini's ShadowQuality and EffectsQuality),
+     * Ultra today's look and each lower tier Unreal's step down from it, set as code's: a {@code -D} flag or the console
+     * still wins. Applied by {@link #record} when {@code CgGraphicsSettings.QUALITY} changes.
+     */
+    static void quality(CgQuality tier) {
+        int t = tier.ordinal();
+        boolean high = tier.atLeast(CgQuality.HIGH);
+        AIR.set(high);                                          // r.VolumetricFog 0 0 1 1
+        SCREEN_STEPS.set(high ? 24 : 12);                       // r.MegaLights.ScreenTraces.Quality 0 0 1 1
+        MESH_SHADOWS.set(high);                                 // r.DistanceFieldShadowing 0 0 1 1
+        SUN_CASCADES.set(high ? CASCADES : 1);                  // r.Shadow.CSM.MaxCascades 1 1 4 10
+        // r.Shadow.MaxCSMResolution 512 1024 2048 2048: ours is half Unreal's at High and up (it keeps a float copy),
+        // and 512 below, Unreal's Low: at 256 the caster bias, 10 texels, outgrew a box's height off the ground.
+        SUN_RESOLUTION.set(high ? 1024 : 512);
+        SUN_DISTANCE.set(96f * SHADOW_DISTANCE_SCALE[t]);       // r.Shadow.DistanceScale
+        BLOCK_REACH.set(high ? 48f : 24f);                      // r.LightMaxDrawDistanceScale 0.5 0.5 1 1
+        VOLUME_CELLS.set(VOLUME_DIM[t]);                        // r.TranslucencyLightingVolume.Dim
+        appliedTier = tier;
+    }
+
+    /**
      * The firing's list under {@code view}: the CPU's lights placed from its eye, then each appender's. False when it
      * holds none, and nothing is recorded.
      */
     boolean record(CgStageFrame frame, CgHostView view, Matrix4fc toWorld, float targetWidth, float targetHeight) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_RECORD)) {
+            CgQuality tier = CgGraphicsSettings.QUALITY.get();
+            if (tier != appliedTier) quality(tier);
             CgRecording recording = frame.recording();
             CgPassConstants stage = frame.constants();
             int cpu = addedFrame == CgFrameRing.frame() ? added : 0;
@@ -1375,11 +1419,17 @@ public final class CgWorldLights {
             float tanX = (rays[2] - rays[0]) * 0.5f, tanY = (rays[3] - rays[1]) * 0.5f;
             int binding = sunShadow.captureBindings(recording.bindings());
             float[] rows = sunRowData;
+            int count = SUN_CASCADES.get();
             for (int k = 0; k < CASCADES; k++) {
-                float splitNear = SUN_NEAR + accumulatedScale(k) * (distance - SUN_NEAR);
-                float splitFar = SUN_NEAR + accumulatedScale(k + 1) * (distance - SUN_NEAR);
+                if (k >= count) {
+                    // An empty range: no receiver's depth falls in it.
+                    Arrays.fill(rows, k * 16, k * 16 + 16, 0f);
+                    continue;
+                }
+                float splitNear = SUN_NEAR + accumulatedScale(k, count) * (distance - SUN_NEAR);
+                float splitFar = SUN_NEAR + accumulatedScale(k + 1, count) * (distance - SUN_NEAR);
                 float fade = (splitFar - splitNear) * CASCADE_TRANSITION, fadeStart, fadeEnd;
-                if (k < CASCADES - 1) {
+                if (k < count - 1) {
                     fadeStart = splitFar;
                     splitFar += fade;
                     fadeEnd = splitFar;
@@ -1457,6 +1507,11 @@ public final class CgWorldLights {
         }
     }
 
+    /** What the shadow rays leave out: {@link #SAMPLE_SKIP}'s parts, and our meshes without {@link #MESH_SHADOWS}. */
+    private static int skip() {
+        return SAMPLE_SKIP.get() | (MESH_SHADOWS.get() ? 0 : 8);
+    }
+
     /** The casters' rows, then the sun's cascades' ({@link #SUN_ROWS_AT}): made once. */
     private void casterTexture() {
         if (casters != null) return;
@@ -1507,14 +1562,16 @@ public final class CgWorldLights {
                 fill = CgCompute.load(VOLUME_KERNELS).kernel("Fill");
                 fill.prepare();
             }
-            if (volume == null) {
+            int cells = VOLUME_CELLS.get();
+            if (volume == null || volumeCells != cells) {
                 volume = CgGraphTexture.transientTexture("cg_world_lights.volume",
-                        CgTextureDesc.volume(VOLUME_CELLS + 1, VOLUME_CELLS, 2 * VOLUME_CELLS, VOLUME_FORMAT));
+                        CgTextureDesc.volume(cells + 1, cells, 2 * cells, VOLUME_FORMAT));
                 volumeDirectional = CgGraphTexture.transientTexture("cg_world_lights.volumeDirectional",
-                        CgTextureDesc.volume(VOLUME_CELLS + 1, VOLUME_CELLS, 4 * VOLUME_CELLS, VOLUME_FORMAT));
+                        CgTextureDesc.volume(cells + 1, cells, 4 * cells, VOLUME_FORMAT));
+                volumeCells = cells;
             }
             CgGraphTexture into = directional ? volumeDirectional : volume;
-            int depth = (directional ? 4 : 2) * VOLUME_CELLS;
+            int depth = (directional ? 4 : 2) * cells;
             // The view's forward in eye-relative world: the view's third row turned round.
             float fx = -toView.m02(), fy = -toView.m12(), fz = -toView.m22();
             float norm = (float) Math.sqrt(fx * fx + fy * fy + fz * fz);
@@ -1529,7 +1586,7 @@ public final class CgWorldLights {
                 float along = start / 11f + end / 1.1f;
                 float radius = (float) Math.max(Math.sqrt(2.0 * end * end + (end - along) * (end - along)),
                         Math.sqrt(2.0 * start * start + (along - start) * (along - start)));
-                double cell = 2.0 * radius / VOLUME_CELLS;
+                double cell = 2.0 * radius / cells;
                 cascades[c * 4] = (float) (Math.floor((cameraX + fx * along) / cell) * cell - cameraX) - radius;
                 cascades[c * 4 + 1] = (float) (Math.floor((cameraY + fy * along) / cell) * cell - cameraY) - radius;
                 cascades[c * 4 + 2] = (float) (Math.floor((cameraZ + fz * along) / cell) * cell - cameraZ) - radius;
@@ -1537,8 +1594,8 @@ public final class CgWorldLights {
             }
             CgTexture lightmap = stage.host().textures().lightmapTexture();
             CgComputePass pass = recording.compute("world.lightsVolume", stage.constants()).timed(GPU_VOLUME);
-            traceInputs(pass.dispatch(fill, VOLUME_CELLS + 1, VOLUME_CELLS, depth).image("LOCAL_LIGHTS", into)
-                    .set("_VolumeShadowRays", VOLUME_RAYS.get())
+            traceInputs(pass.dispatch(fill, cells + 1, cells, depth).image("LOCAL_LIGHTS", into)
+                    .set("_VolumeShadowRays", VOLUME_RAYS.get()).set("_Cells", cells)
                     .set("_Cascade0", cascades[0], cascades[1], cascades[2], cascades[3])
                     .set("_Cascade1", cascades[4], cascades[5], cascades[6], cascades[7])
                     .set("_EyeOffset", eye.x, eye.y, eye.z, 0f), lightmap != null ? lightmap : CgFallbackTextures.WHITE_1x1,
@@ -1605,7 +1662,7 @@ public final class CgWorldLights {
                 .set("_ToView2", toView.m02(), toView.m12(), toView.m22(), toView.m32())
                 .set("_DayFade", DAY_FADE.get()).set("_Shadows", traced ? 1f : 0f)
                 .texture("_Lightmap", lightmap)
-                .set("_Skip", SAMPLE_SKIP.get()).set("_EyeX", eyeBlock[0]).set("_EyeY", eyeBlock[1]).set("_EyeZ", eyeBlock[2])
+                .set("_Skip", skip()).set("_EyeX", eyeBlock[0]).set("_EyeY", eyeBlock[1]).set("_EyeZ", eyeBlock[2])
                 .set("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f)
                 .set("_Entities", traced && boxes != null ? entities : 0).set("_Casters", meshes ? casterCount : 0)
                 .texture("_CasterRows", meshes ? casters : CgFallbackTextures.BLACK_1x1)
@@ -1613,10 +1670,10 @@ public final class CgWorldLights {
         CgWorldVoxelWindow.get().bind(d);
     }
 
-    /** Unreal's ComputeAccumulatedScale: where split {@code index} of {@link #CASCADES} falls, 0 to 1. */
-    private static float accumulatedScale(int index) {
+    /** Unreal's ComputeAccumulatedScale: where split {@code index} of {@code count} falls, 0 to 1. */
+    private static float accumulatedScale(int index, int count) {
         float scale = 1f, total = 0f, at = 0f;
-        for (int i = 0; i < CASCADES; i++) {
+        for (int i = 0; i < count; i++) {
             if (i < index) at += scale;
             total += scale;
             scale *= CASCADE_EXPONENT;

@@ -214,7 +214,7 @@ public final class CgRenderDemo {
     private static final int[] KEYS = keys(new int[]{CgKeyCodes.KEY_H, CgKeyCodes.KEY_N, CgKeyCodes.KEY_C,
             CgKeyCodes.KEY_L, CgKeyCodes.KEY_V, CgKeyCodes.KEY_G, CgKeyCodes.KEY_LBRACKET, CgKeyCodes.KEY_RBRACKET,
             CgKeyCodes.KEY_MINUS, CgKeyCodes.KEY_EQUALS, CgKeyCodes.KEY_O, CgKeyCodes.KEY_K, CgKeyCodes.KEY_J,
-            CgKeyCodes.KEY_U, CgKeyCodes.KEY_M, CgKeyCodes.KEY_R},
+            CgKeyCodes.KEY_U, CgKeyCodes.KEY_M, CgKeyCodes.KEY_R, CgKeyCodes.KEY_Z},
             CgVfxDemoControls.KEYS);
     private final boolean[] held = new boolean[KEYS.length];
     private static float bloomIntensity = 1f;
@@ -727,6 +727,7 @@ public final class CgRenderDemo {
             case CgKeyCodes.KEY_U -> CgShadowsDemo.toggleScreenTrace();
             case CgKeyCodes.KEY_M -> CgShadowsDemo.cycleResolution();
             case CgKeyCodes.KEY_R -> CgShadowsDemo.toggleHalf();
+            case CgKeyCodes.KEY_Z -> CgShadowsDemo.cycleQuality();
             default -> CgVfxDemoControls.get().press(key, shift);
         }
         hudDirty = true;

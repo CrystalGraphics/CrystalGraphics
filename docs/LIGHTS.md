@@ -353,6 +353,29 @@ lights.add(x, y, z, 45f, 0xFFFFF4E0, 1800f, 0f).spot(dx, -0.3f, dz, 5f, 10f).sca
   media pass took 0.10 ms and the composite 0.02 (RTX 4070 Super); the grid grows with the screen. `CgLightsDemo` stands
   in a haze.
 
+## Quality tiers
+
+`CgGraphicsSettings.QUALITY` (the player's effects quality, Z in the render demo) sets the world lights' part of
+Unreal's scalability groups (`BaseScalability.ini`'s ShadowQuality and EffectsQuality): Ultra is the look tuned in game,
+each lower tier Unreal's step down from it. `CgWorldLights.quality` sets each as code's, so a `-D` flag or the console
+still wins.
+
+| Setting | Low | Medium | High | Ultra | Unreal |
+|---|---|---|---|---|---|
+| Lit air (`lightsAir`) | off | off | on | on | `r.VolumetricFog` |
+| Screen-trace steps (`lightsScreenSteps`) | 12 | 12 | 24 | 24 | `r.MegaLights.ScreenTraces.Quality` 0 0 1 1: its half-resolution traces as half the steps |
+| Our meshes shadowing the lights (`lightsMeshShadows`) | off | off | on | on | `r.DistanceFieldShadowing` |
+| Sun cascades (`sunShadowCascades`) | 1 | 1 | 4 | 4 | `r.Shadow.CSM.MaxCascades` 1 1 4 10 |
+| Sun map a cascade (`sunShadowResolution`) | 512 | 512 | 1024 | 1024 | `r.Shadow.MaxCSMResolution` 512 1024 2048 2048, ours half (a float copy beside its depth) at High and up |
+| Sun shadow distance (`sunShadowDistance`) | 58 | 67 | 82 | 96 | `r.Shadow.DistanceScale` 0.6 0.7 0.85 1 |
+| Block lights' shadow reach (`blockShadowReach`) | 24 | 24 | 48 | 48 | `r.LightMaxDrawDistanceScale` 0.5 0.5 1 1 |
+| Translucency volume cells (`lightsVolumeCells`) | 24 | 32 | 48 | 64 | `r.TranslucencyLightingVolume.Dim` |
+
+- Unreal's tables also scale MegaLights' samples a pixel (2 2 4 4): ours is already 1 a pixel at Ultra, Unreal's
+  budget at a quarter of the pixels, so the tiers leave it.
+- Nothing here scales the exact particle lights (the fireflies' apply), as nothing in Unreal's tables does: Niagara
+  scales them only through an effect type's spawn counts, which a system opts into.
+
 ## 10. What they do not do yet
 
 | Missing | Unreal's answer | Plan |

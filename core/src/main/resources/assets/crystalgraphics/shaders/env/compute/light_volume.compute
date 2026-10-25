@@ -9,9 +9,10 @@
 // what is written is a quarter of that light. Cells outside the view's frustum are black, as Unreal shades only the
 // cells a translucent pixel reads (MarkVoxels).
 //
-// The volume is 65 x 64 x 128: x the cells, then one column holding each cascade's placement at (64, 0, 64 * cascade),
-// its lowest corner from the view's position and its size; z cascade 0's 64 cells, then cascade 1's. In a firing that
-// draws a "Surface"-lit material it is 256 deep: behind them both cascades again, holding the SH's band 1 (Unreal's
+// The volume is N + 1 x N x 2N, N the cells a side (_Cells, Unreal's r.TranslucencyLightingVolume.Dim, 64 at Ultra): x
+// the cells, then one column holding each cascade's placement at (N, 0, N * cascade), its lowest corner from the view's
+// position and its size; z cascade 0's N cells, then cascade 1's. In a firing that draws a "Surface"-lit material it
+// is 4N deep: behind them both cascades again, holding the SH's band 1 (Unreal's
 // TranslucencyLightingVolumeDirectional, TranslucentLightInjectionShaders.usf): each light's luminance (Unreal 4's
 // weights) times the band-1 basis toward it, over pi, unread by the transfer. cg_LitSurface reads both.
 //
@@ -43,6 +44,7 @@
 struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; vec4 air; };
 
 Properties {
+    _Cells    ("Cells a side of each cascade",                      int) = 64
     _Cascade0 ("Cascade 0's lowest corner from the eye, and its cell's size", vec4) = (0, 0, 0, 1)
     _Cascade1 ("Cascade 1's",                                     vec4) = (0, 0, 0, 1)
     _EyeOffset ("The eye from the view's position: what the placement is written from", vec4) = (0, 0, 0, 0)
@@ -182,15 +184,15 @@ bool shadowed(CgLight light, vec3 w) {
 
 void Fill() {
     ivec3 t = CG_TEXEL;
-    // z 128 and up: the directional band's cascades, lit the same way, written as band 1.
-    bool directional = t.z >= 128;
-    int cascade = (t.z >> 6) & 1;
-    vec4 box = cascade == 0 ? _Cascade0 : _Cascade1;
-    if (t.x == 64) {
-        LOCAL_LIGHTS_WRITE((t.y == 0 && (t.z & 63) == 0 && !directional) ? vec4(box.xyz + _EyeOffset.xyz, box.w * 64.0) : vec4(0.0));
+    // z 2N and up: the directional band's cascades, lit the same way, written as band 1.
+    int n = _Cells, layer = t.z / n, z = t.z - layer * n;
+    bool directional = layer >= 2;
+    vec4 box = (layer & 1) == 0 ? _Cascade0 : _Cascade1;
+    if (t.x == n) {
+        LOCAL_LIGHTS_WRITE((t.y == 0 && z == 0 && !directional) ? vec4(box.xyz + _EyeOffset.xyz, box.w * float(n)) : vec4(0.0));
         return;
     }
-    vec3 w = box.xyz + (vec3(t.x, t.y, t.z & 63) + 0.5) * box.w;
+    vec3 w = box.xyz + (vec3(t.x, t.y, z) + 0.5) * box.w;
     vec3 p = to_view(w);
     // Outside the view's frustum, a cell's size of slack each way, nothing reads it.
     float depth = -p.z, slack = box.w * 1.75;

@@ -248,31 +248,33 @@ vec3 cg_MediaLight(vec2 uv, float eye) {
     return cg_MediaSample(vec3(uv, (k - 0.5) / CG_MEDIA_SLICES)).rgb * clamp(k, 0.0, 1.0);
 }
 #if !defined(CG_COMPUTE_STAGE)
-// cg_LocalLights: the world's lights on transparent surfaces (CgWorldLights' translucency lighting volume, Unreal's), 65 x
-// 64 x 128: two cascades of 64 cells round the view, cascade 1 behind cascade 0 in z, and a column at x 64 whose texel
-// (64, 0, 64 * cascade) holds the cascade's lowest corner from the camera and its size. 256 deep in a firing drawing a
+// cg_LocalLights: the world's lights on transparent surfaces (CgWorldLights' translucency lighting volume, Unreal's),
+// N + 1 x N x 2N for N cells a side (the tier's, 64 at Ultra): two cascades of N cells round the view, cascade 1 behind
+// cascade 0 in z, and a column at x N whose texel (N, 0, N * cascade) holds the cascade's lowest corner from the camera
+// and its size. 4N deep in a firing drawing a
 // "Surface"-lit material: both cascades' direction behind them (cg_LocalLightDirectional). Black, and 1 texel, in a
 // pass that binds none. Bound to CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT; do NOT use that unit in Properties.
 uniform sampler3D cg_LocalLights;
 
-// Layer 0 and 1 the cascades' light, 2 and 3 their direction.
-vec3 cg_local_light_cascade(vec3 u, float layer, float depth) {
-    vec3 t = clamp(u * 64.0, 0.5, 63.5);
-    return textureLod(cg_LocalLights, vec3(t.x / 65.0, t.y / 64.0, (t.z + 64.0 * layer) / depth), 0.0).rgb;
+// Layer 0 and 1 the cascades' light, 2 and 3 their direction; n the cells a side.
+vec3 cg_local_light_cascade(vec3 u, float layer, float n, float depth) {
+    vec3 t = clamp(u * n, 0.5, n - 0.5);
+    return textureLod(cg_LocalLights, vec3(t.x / (n + 1.0), t.y / n, (t.z + n * layer) / depth), 0.0).rgb;
 }
 
 // The cascades blended at camera-relative p, layer 0 the light and 2 its direction: the inner into the outer over its
 // edge (TranslucencyVolumeCommon.ush's ComputeVolumeUVs, TransitionScale 6); past the outer, nothing.
 vec3 cg_local_light_blend(vec3 p, float layer) {
     ivec3 size = textureSize(cg_LocalLights, 0);
-    if (size.x < 65 || size.z < int(64.0 * layer) + 128) return vec3(0.0);
-    vec4 c0 = texelFetch(cg_LocalLights, ivec3(64, 0, 0), 0), c1 = texelFetch(cg_LocalLights, ivec3(64, 0, 64), 0);
+    int cells = size.x - 1;
+    if (cells < 2 || size.z < cells * (int(layer) + 2)) return vec3(0.0);
+    vec4 c0 = texelFetch(cg_LocalLights, ivec3(cells, 0, 0), 0), c1 = texelFetch(cg_LocalLights, ivec3(cells, 0, cells), 0);
     vec3 u0 = (p - c0.xyz) / c0.w, u1 = (p - c1.xyz) / c1.w;
     if (any(lessThan(u1, vec3(0.0))) || any(greaterThan(u1, vec3(1.0)))) return vec3(0.0);
     vec3 edge = clamp((0.5 - abs(u0 - 0.5)) * 6.0, 0.0, 1.0);
-    float inner = edge.x * edge.y * edge.z, depth = float(size.z);
-    vec3 outer = cg_local_light_cascade(u1, layer + 1.0, depth);
-    return inner > 0.0 ? mix(outer, cg_local_light_cascade(u0, layer, depth), inner) : outer;
+    float inner = edge.x * edge.y * edge.z, depth = float(size.z), n = float(cells);
+    vec3 outer = cg_local_light_cascade(u1, layer + 1.0, n, depth);
+    return inner > 0.0 ? mix(outer, cg_local_light_cascade(u0, layer, n, depth), inner) : outer;
 }
 
 // What the world's lights add at camera-relative point p, non-directional: the light a particle or a pane takes, as
