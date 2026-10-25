@@ -171,6 +171,13 @@ float cg_LinearEyeDepth(float windowDepth) {
 #define CG_CUSTOM_STENCIL(uv) cg_custom_stencil_has_no_pass_writing_it_yet(uv)
 #define CG_CUSTOM_EYE_DEPTH(uv) cg_custom_depth_has_no_pass_writing_it_yet(uv)
 #define CG_SHADING_MODEL_ID(uv) cg_shading_model_id_has_no_pass_writing_it_yet(uv)
+// The rest of what Unreal's post materials sample, none written yet either: SceneTexture:WorldNormal, its ambient
+// occlusion, PostProcessInput1 (separate translucency), PostProcessInput2, and the velocity (PostProcessInput4).
+#define CG_SCENE_WORLD_NORMAL(uv) cg_scene_world_normal_has_no_pass_writing_it_yet(uv)
+#define CG_SCENE_AMBIENT_OCCLUSION(uv) cg_scene_ambient_occlusion_has_no_pass_writing_it_yet(uv)
+#define CG_SEPARATE_TRANSLUCENCY(uv) cg_separate_translucency_has_no_pass_writing_it_yet(uv)
+#define CG_POST_PROCESS_INPUT_2(uv) cg_post_process_input_2_has_no_pass_writing_it_yet(uv)
+#define CG_SCENE_VELOCITY(uv) cg_scene_velocity_has_no_pass_writing_it_yet(uv)
 // The lights a draw is handed whole, for a program carrying its own lighting: the directional light's direction (toward
 // it) and colour, the sky light's colour, and the four point lights nearest the draw, i 0 to 3 (camera-relative
 // position, colour, the light's four attenuation parameters; intensity 0 where there is none). Either stage. The
