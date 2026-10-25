@@ -399,6 +399,9 @@ wrote (§ *Async*).
   own `create` is what it calls.
 - **A `.hdr` is float colour** (Radiance RGBE, linear past 1, `util/io/CgRadianceHdr`), uploaded as half floats: give
   it `CgTextureSpec.RGBA16F_LINEAR`.
+- **An `.exr` is half floats kept bit for bit** (uncompressed single-part scanline OpenEXR, `util/io/CgOpenExr`):
+  signed values and alpha survive, which a vertex animation texture's offsets need. Give it
+  `CgTextureSpec.RGBA16F_LINEAR`; a compressed, tiled or non-HALF image fails at load naming the file and the reason.
 - **A material's textures are made as their `texture` asset says** (`CgMaterialRegistry.texture`, `looks.md`
   § Texture): sRGB unless `colour: linear`, mips unless `mips: false`, `cube: true` stacked faces. `compression`
   picks no format yet: every image loads uncompressed.
