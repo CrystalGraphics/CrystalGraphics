@@ -5,6 +5,7 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgMipmapConfig;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.gl.texture.CgTextureCubemap;
+import com.crystalgraphics.util.io.CgOpenExr;
 import com.crystalgraphics.util.io.CgRadianceHdr;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
@@ -154,17 +155,22 @@ public final class CgMaterialRegistry {
 
     private static CgTexture fromFile(String path) {
         Settings s = settings(path);
-        boolean hdr = CgRadianceHdr.is(path);
+        // A .hdr and a .exr are float data, linear: an .exr's signed halves (a vertex animation's offsets) as they are.
+        boolean hdr = CgRadianceHdr.is(path) || CgOpenExr.is(path);
         int dot = path.lastIndexOf('.');
         if (hdr || path.endsWith(".png")) {
-            String other = path.substring(0, dot) + (hdr ? ".png" : ".hdr");
-            if (exists(other)) throw new CgAssetException(path + " and " + other + " are two images at one path: keep one");
+            for (String ext : new String[] {".png", ".hdr", ".exr"}) {
+                String other = path.substring(0, dot) + ext;
+                if (!other.equals(path) && exists(other)) {
+                    throw new CgAssetException(path + " and " + other + " are two images at one path: keep one");
+                }
+            }
         }
         if (hdr && "srgb".equals(s.colour())) {
-            throw new CgAssetException(path + " is linear float colour, but its settings say colour: srgb");
+            throw new CgAssetException(path + " is linear float data, but its settings say colour: srgb");
         }
         if (!hdr && ("hdr".equals(s.compression()) || "hdr_compressed".equals(s.compression()))) {
-            throw new CgAssetException(path + " says compression: " + s.compression() + ", which is a .hdr's, not an 8-bit image's");
+            throw new CgAssetException(path + " says compression: " + s.compression() + ", which is a float image's, not an 8-bit one's");
         }
         CgMipmapConfig mips = s.mips() ? CgMipmapConfig.TRILINEAR : CgMipmapConfig.NONE;
         boolean srgb = !hdr && !"linear".equals(s.colour());

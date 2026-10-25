@@ -10,6 +10,7 @@ import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.util.io.CgBc7;
 import com.crystalgraphics.util.CgHalfFloat;
 import com.crystalgraphics.util.io.CgCookedTexture;
+import com.crystalgraphics.util.io.CgOpenExr;
 import com.crystalgraphics.util.io.CgRadianceHdr;
 import com.crystalgraphics.util.io.CgTextureIO;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
@@ -381,10 +382,29 @@ public final class CgTexture2D extends CgTextureAbstract {
 
     private boolean loadImage() {
         if (CgRadianceHdr.is(sourcePath)) return loadRadiance();
+        if (CgOpenExr.is(sourcePath)) return loadExr();
         CgImageData data = CgTextureIO.load(sourcePath);
         if (data == null) return false;
         cooked = false;
         upload(data);
+        return true;
+    }
+
+    /** An OpenEXR image's halves as they are: signed, alpha kept. Its spec must be {@code RGBA16F}, as a Radiance image's. */
+    private boolean loadExr() {
+        if (spec.getType() != CgTextureType.RGBA16F) {
+            throw new IllegalStateException(sourcePath + " is half-float data, but its texture is " + spec.getType()
+                    + ": make it with an RGBA16F spec");
+        }
+        CgOpenExr.Image image;
+        try {
+            image = CgOpenExr.read(sourcePath);
+        } catch (IOException e) {
+            LOGGER.log(Level.WARNING, "[CgTexture2D] " + e.getMessage());
+            return false;
+        }
+        cooked = false;
+        upload(image.width(), image.height(), image.halves(), GL_RGBA, CgGL.GL_HALF_FLOAT);
         return true;
     }
 
