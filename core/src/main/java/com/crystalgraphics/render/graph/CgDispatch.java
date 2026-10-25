@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.emit.CgPropertyBlock;
@@ -298,6 +299,13 @@ public final class CgDispatch {
             throw new IllegalArgumentException(name + " is " + image.dimension().token + ": it binds every layer");
         }
         if (texture.isArray()) throw new IllegalArgumentException(name + " binds " + texture + ", an array: raster passes draw arrays");
+        CgFrameBufferFormat format = texture.desc() != null ? texture.desc().format()
+                : texture.framebuffer() != null ? texture.framebuffer().getFormat() : null;
+        if (format != null && format.colorSlotCount() > 1) {
+            // Every backend binds the first attachment alone, so a kernel would write slot 0 whichever it meant.
+            throw new IllegalArgumentException(name + " binds " + texture + ", which has " + format.colorSlotCount()
+                    + " colour attachments: an image is one texture, so give each output its own");
+        }
         if ((image.dimension() == CgImageDimension.D3) != texture.isVolume()) {
             throw new IllegalArgumentException(name + " is a " + image.dimension().token + " image, and " + texture
                     + (texture.isVolume() ? " is a volume: declare the image 3d" : " is 2D: bind a CgTextureDesc.volume"));

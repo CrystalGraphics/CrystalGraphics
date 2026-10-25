@@ -15,6 +15,8 @@ import com.crystalgraphics.asset.kind.CgFieldKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
+import com.crystalgraphics.object.value.CgQuantity;
+import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import com.crystalgraphics.vfx.look.CgVfxKit;
 import com.crystalgraphics.vfx.look.CgVfxLayout;
@@ -213,6 +215,11 @@ public final class CgVfxSystemAssets {
             tree.put("pool_prime_size", definition.poolPrimeSize());
         }
         if (definition.maxPoolSize() != CgVfxSystemDefinition.MAX_POOL_SIZE) tree.put("max_pool_size", definition.maxPoolSize());
+        CgVfxSystemDefinition.FixedBounds b = definition.fixedBounds();
+        if (b != null) {
+            tree.put("fixed_bounds", List.of(List.of((double) b.minX(), (double) b.minY(), (double) b.minZ()),
+                    List.of((double) b.maxX(), (double) b.maxY(), (double) b.maxZ())));
+        }
         return tree;
     }
 
@@ -297,14 +304,36 @@ public final class CgVfxSystemAssets {
             if (effect == null) throw new IllegalArgumentException(id + ": effect " + name + " has no behaviour registered");
             if (effect.contract() != null) {
                 CgVfxLook look = contracted(id, name, effect.contract(), user, emitters.isEmpty() && !slotted ? null : kit.build());
-                return new CgVfxSystemDefinition(id, look, effect.factory(), emitters, prime(tree), max(tree), kills);
+                return new CgVfxSystemDefinition(id, look, effect.factory(), emitters, prime(tree), max(tree), kills,
+                        fixedBounds(id, tree, deps));
             }
         }
         CgVfxSchema schema = CgVfxSchema.of(id);
         for (Map.Entry<?, ?> e : user.entrySet()) param(id, schema, String.valueOf(e.getKey()), (Map<?, ?>) e.getValue());
         CgVfxLook look = CgVfxLook.builder(schema).with(kit.build()).build();
         return new CgVfxSystemDefinition(id, look, effect == null ? null : effect.factory(), emitters, prime(tree),
-                max(tree), kills);
+                max(tree), kills, fixedBounds(id, tree, deps));
+    }
+
+    /** Its {@code fixed_bounds}, its min and max corners in its namespace's units, as blocks; null when absent. */
+    @Nullable
+    private static CgVfxSystemDefinition.FixedBounds fixedBounds(String id, Map<Object, Object> tree,
+                                                                 @Nullable CgAssetCompiler.Dependencies deps) {
+        if (!(tree.get("fixed_bounds") instanceof List<?> corners)) return null;
+        if (corners.size() != 2) throw new IllegalArgumentException(id + ": fixed_bounds is [[min], [max]], not " + corners);
+        CgUnits units = deps == null ? CgUnits.HOST : deps.units();
+        float[] a = corner(id, units.toHost(corners.get(0), CgQuantity.POSITION));
+        float[] b = corner(id, units.toHost(corners.get(1), CgQuantity.POSITION));
+        // A host's axes may reorder a corner's components: each axis's least and most.
+        return new CgVfxSystemDefinition.FixedBounds(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.min(a[2], b[2]),
+                Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.max(a[2], b[2]));
+    }
+
+    private static float[] corner(String id, Object value) {
+        if (!(value instanceof List<?> v) || v.size() != 3) throw new IllegalArgumentException(id + ": a fixed_bounds corner is three numbers, not " + value);
+        float[] out = new float[3];
+        for (int i = 0; i < 3; i++) out[i] = ((Number) v.get(i)).floatValue();
+        return out;
     }
 
     private static int prime(Map<Object, Object> tree) {

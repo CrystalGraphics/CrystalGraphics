@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Public facade for parsing CrystalShader {@code .shader} source files.
@@ -89,6 +90,9 @@ public final class CgShaderParser {
     /** A Distortion pass with no RenderState block adds into the distortion target, which has no depth either. */
     private static final CgRenderState DISTORTION_STATE = EMISSIVE_STATE.withBlend(DISTORTION_BLEND);
 
+    /** A fragment naming the normal a {@code "Surface"}-lit material is lit by. */
+    static final Pattern SURFACE_NORMAL = Pattern.compile("\\bCG_SURFACE_NORMAL\\b");
+
     /** A single field parsed from the {@code struct v2f { }} block.
      * @param type  GLSL type (e.g. {@code "vec3"}). Only float-family types are valid.
      * @param name  Field name (e.g. {@code "worldPos"}). */
@@ -147,8 +151,7 @@ public final class CgShaderParser {
      * {@code '#type'}, {@code 'Blend'} — which makes one pattern enough for all of them and means no
      * throw site had to change.</p>
      */
-    private static final java.util.regex.Pattern QUOTED =
-            java.util.regex.Pattern.compile("'([^']{1,80})'");
+    private static final Pattern QUOTED = Pattern.compile("'([^']{1,80})'");
 
     private static CgShaderParseException locate(CgShaderParseException failed, String source) {
         if (failed.hasPosition() || source == null) return failed;
@@ -225,8 +228,8 @@ public final class CgShaderParser {
         }
         float sceneColorMargin = sceneColorMargin(topTags.get("SceneColorMargin"), resourcePath);
         String lighting = topTags.getOrDefault("Lighting", "Lit");
-        if (!"Lit".equals(lighting) && !"Unlit".equals(lighting)) {
-            throw new CgShaderParseException("[" + resourcePath + "] Lighting is \"Lit\" or \"Unlit\", not \""
+        if (!"Lit".equals(lighting) && !"Unlit".equals(lighting) && !"Surface".equals(lighting)) {
+            throw new CgShaderParseException("[" + resourcePath + "] Lighting is \"Lit\", \"Unlit\" or \"Surface\", not \""
                     + lighting + "\"");
         }
         String fog = topTags.getOrDefault("Fog", "On");
@@ -273,6 +276,7 @@ public final class CgShaderParser {
 
         // ── Step 7: parse each Pass block ─────────────────────────────────
         List<CgParsedPass> passes = new ArrayList<>();
+        List<CgParsedShader.PostTarget> postTargets = new ArrayList<>();
         // Track seen unique-only light modes (Depth, Emissive, Distortion) for dedup warning
         Set<String> seenUniqueLightModes = new HashSet<>();
         int forwardPassIndex = 0;
@@ -438,15 +442,104 @@ public final class CgShaderParser {
 
             passes.add(new CgParsedPass(lightMode, passName, renderState,
                     v2fBody, globalDecls, vertexBody, fragmentBody, fragOutput));
+            String target = passTags.get("Target");
+            if (target != null) {
+                if (!CgParsedPass.LIGHT_MODE_FORWARD.equals(lightMode)) {
+                    throw new CgShaderParseException("[" + resourcePath + "] Pass '" + passName + "' is a " + lightMode
+                            + " pass: only a Forward pass draws into a \"Target\"");
+                }
+                postTargets.add(new CgParsedShader.PostTarget(passName, target, targetScale(passTags, passName, resourcePath)));
+            } else if (passTags.containsKey("Scale")) {
+                throw new CgShaderParseException("[" + resourcePath + "] Pass '" + passName + "' has a \"Scale\" and no \"Target\"");
+            }
         }
+        validatePostTargets(props, passes, postTargets, resourcePath);
+        if ("Surface".equals(lighting)) validateSurfaceLit(passes, renderQueue, resourcePath);
+        String emissionInput = topTags.get("Emission");
+        if (emissionInput != null) requireSampler(props, emissionInput, "the \"Emission\" tag names", resourcePath);
 
         // ── Step 8: return assembled parsed shader ─────────────────────────
         return new CgParsedShader(shaderType, props, featureNames, engineBuffers, renderQueue,
-                renderType, sceneColorMargin, "Unlit".equals(lighting), "Off".equals(fog),
+                renderType, sceneColorMargin, "Unlit".equals(lighting), "Surface".equals(lighting), "Off".equals(fog),
                 "Linear".equals(colorSpace), "Off".equals(media), "EmissiveOpacity".equals(output), depthMode, tube,
                 Collections.unmodifiableList(passes),
                 buffers.buffers(),
-                buffers.structs());
+                buffers.structs(),
+                Collections.unmodifiableList(postTargets),
+                emissionInput);
+    }
+
+    /**
+     * A {@code "Surface"}-lit material is translucent, as Unreal's translucency lighting modes are, and every Forward
+     * fragment names the normal it is lit by.
+     */
+    private static void validateSurfaceLit(List<CgParsedPass> passes, int renderQueue, String resourcePath) {
+        if (renderQueue < CgRenderQueue.TRANSPARENT_THRESHOLD) {
+            throw new CgShaderParseException("[" + resourcePath + "] \"Lighting\" = \"Surface\" is for a transparent queue:"
+                    + " an opaque material is lit by the world's lights already");
+        }
+        for (CgParsedPass pass : passes) {
+            if (CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode())
+                    && !SURFACE_NORMAL.matcher(pass.fragmentBody()).find()) {
+                throw new CgShaderParseException("[" + resourcePath + "] \"Lighting\" = \"Surface\": pass '" + pass.name()
+                        + "' names no CG_SURFACE_NORMAL(n), the normal it is lit by");
+            }
+        }
+    }
+
+    /** {@code name} must be a declared {@code sampler2D}: what a target or the emission is bound to. */
+    private static void requireSampler(List<CgMaterialProperty> props, String name, String what, String resourcePath) {
+        for (CgMaterialProperty p : props) {
+            if (p.getName().equals(name) && p.getType() == CgMaterialProperty.Type.SAMPLER2D) return;
+        }
+        throw new CgShaderParseException("[" + resourcePath + "] " + what + " \"" + name + "\", which is no sampler2D property:"
+                + " declare it, e.g. " + name + " (\"...\", sampler2D) = \"black\"");
+    }
+
+    /** A target's {@code "Scale"}: its share of the post target on each side, in (0, 1], 1 when absent. */
+    private static float targetScale(Map<String, String> tags, String pass, String resourcePath) {
+        String raw = tags.get("Scale");
+        if (raw == null) return 1f;
+        float scale;
+        try {
+            scale = Float.parseFloat(raw);
+        } catch (NumberFormatException e) {
+            scale = Float.NaN;
+        }
+        if (!(scale > 0f && scale <= 1f)) {
+            throw new CgShaderParseException("[" + resourcePath + "] Pass '" + pass + "' has \"Scale\" = \"" + raw
+                    + "\": a share of the screen, above 0 and at most 1");
+        }
+        return scale;
+    }
+
+    /**
+     * A multi-pass post material's shape: each target a declared {@code sampler2D}, named once, and every Forward pass
+     * but the last drawing into one, the last into the scene.
+     */
+    private static void validatePostTargets(List<CgMaterialProperty> props, List<CgParsedPass> passes,
+                                            List<CgParsedShader.PostTarget> targets, String resourcePath) {
+        if (targets.isEmpty()) return;
+        List<String> named = new ArrayList<>();
+        for (CgParsedShader.PostTarget t : targets) {
+            requireSampler(props, t.property(), "Pass '" + t.pass() + "' draws into", resourcePath);
+            if (named.contains(t.property())) {
+                throw new CgShaderParseException("[" + resourcePath + "] two passes draw into \"" + t.property() + "\"");
+            }
+            named.add(t.property());
+        }
+        List<CgParsedPass> forward = new ArrayList<>();
+        for (CgParsedPass p : passes) if (CgParsedPass.LIGHT_MODE_FORWARD.equals(p.lightMode())) forward.add(p);
+        for (int i = 0; i < forward.size(); i++) {
+            boolean targeted = false;
+            for (CgParsedShader.PostTarget t : targets) targeted |= t.pass().equals(forward.get(i).name());
+            boolean last = i == forward.size() - 1;
+            if (targeted == last) {
+                throw new CgShaderParseException("[" + resourcePath + "] Pass '" + forward.get(i).name() + "': "
+                        + (last ? "the last Forward pass draws over the scene, so it takes no \"Target\""
+                        : "every Forward pass but the last draws into a \"Target\""));
+            }
+        }
     }
 
     /** The {@code "Depth"} tag: {@code "Clip"}, or {@code "Prepass"} for a transparent material; NONE when absent. */

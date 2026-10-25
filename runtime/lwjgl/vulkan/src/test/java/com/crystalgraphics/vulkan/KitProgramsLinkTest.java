@@ -297,7 +297,7 @@ public class KitProgramsLinkTest {
         List<String> failures = new ArrayList<>(), waiting = new ArrayList<>();
         int programs = 0, ports = 0;
         for (String namespace : namespaces.split(";")) {
-            declareCollections(namespace, root.resolve(namespace).resolve("parameters"));
+            CgParameterCollections.declareAll(namespace, root.resolve(namespace).resolve("parameters"));
         }
         for (String namespace : namespaces.split(";")) {
             Path shaders = root.resolve(namespace).resolve("shaders");
@@ -376,7 +376,8 @@ public class KitProgramsLinkTest {
                         continue;
                     }
                     if (program.getOrCompileForwardPass(new HashSet<>(d.permutation().keywords())) == null) {
-                        failures.add(id + " " + d.permutation().keywords() + ": did not link (see log)");
+                        failures.add(id + " " + d.permutation().keywords() + ": "
+                                + program.variantError(program.getLastParsed().passes().get(0).name(), new HashSet<>(d.permutation().keywords())));
                         continue;
                     }
                     linked++;
@@ -403,19 +404,6 @@ public class KitProgramsLinkTest {
         return asset;
     }
 
-    /** Each collection asset under {@code dir}, declared as its kit's load would. */
-    private static void declareCollections(String namespace, Path dir) throws IOException {
-        if (!Files.isDirectory(dir)) return;
-        try (Stream<Path> walk = Files.walk(dir)) {
-            for (Path file : walk.filter(f -> f.toString().endsWith(".yaml")).sorted().toList()) {
-                String name = dir.relativize(file).toString().replace(File.separatorChar, '/').replaceFirst("[.]yaml$", "");
-                Map<?, ?> tree = (Map<?, ?>) CgAssetYaml.read(Files.readString(file));
-                CgParameterCollections.compile(CgAssetData.of(namespace + ":parameters/" + name, CgLookKinds.PARAMETERS, tree, null),
-                        (kind, id) -> null);
-            }
-        }
-    }
-
     /**
      * Every pass with no keyword, each keyword alone and all of them, and a particle program on the strip factory a
      * ribbon or beam draws it with: the programs counted, the failures listed.
@@ -437,7 +425,7 @@ public class KitProgramsLinkTest {
             for (Set<String> keywords : variants) {
                 programs++;
                 if (shader.getOrCompile(pass.name(), keywords) == null) {
-                    failures.add(name + " pass " + pass.name() + " " + keywords + ": did not link (see log)");
+                    failures.add(name + " pass " + pass.name() + " " + keywords + ": " + shader.variantError(pass.name(), keywords));
                 }
             }
         }

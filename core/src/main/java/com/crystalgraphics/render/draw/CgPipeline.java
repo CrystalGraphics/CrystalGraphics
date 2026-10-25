@@ -16,6 +16,7 @@ import com.crystalgraphics.render.CgWarmBudget;
 import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
@@ -58,6 +59,9 @@ public final class CgPipeline {
     private final int id;
     private final CgMaterialShader shader;
     private final CgRenderPassVariant pass;
+    /** The Forward pass it draws by name, or null for its variant's own pass. */
+    @Nullable
+    private final String passName;
     private final Set<String> keywords;
     private final CgRenderState state;
     private final CgInstanceKind kind;
@@ -106,6 +110,7 @@ public final class CgPipeline {
         this.id = id;
         this.shader = key.shader;
         this.pass = key.pass;
+        this.passName = key.passName;
         this.keywords = key.keywords;
         this.state = key.state;
         this.kind = key.kind;
@@ -145,7 +150,18 @@ public final class CgPipeline {
         Set<String> variant = takesKeywords(pass) && !keywords.isEmpty()
                 ? Collections.unmodifiableSet(new TreeSet<>(keywords))
                 : Collections.emptySet();
-        return INTERNED.computeIfAbsent(new Key(shader, pass, variant, state, kind, 0), CgPipeline::register);
+        return INTERNED.computeIfAbsent(new Key(shader, pass, null, variant, state, kind, 0), CgPipeline::register);
+    }
+
+    /**
+     * The pipeline for the Forward pass named {@code passName}, its keywords, state and kind: one pass of a material
+     * drawing several in turn (a multi-pass post material), where {@link #of} reaches the first Forward pass alone.
+     */
+    public static CgPipeline pass(CgMaterialShader shader, String passName, Set<String> keywords, CgRenderState state,
+                                  CgInstanceKind kind) {
+        Set<String> variant = keywords.isEmpty() ? Collections.emptySet() : Collections.unmodifiableSet(new TreeSet<>(keywords));
+        return INTERNED.computeIfAbsent(new Key(shader, CgRenderPassVariant.FORWARD, Objects.requireNonNull(passName, "passName"),
+                variant, state, kind, 0), CgPipeline::register);
     }
 
     private static final int MULTI = 1, OVERDRAW = 2, EMISSION = 4, COVER = 8, FOLD = 16, DEPTH = 32, VOLUME = 64,
@@ -175,7 +191,7 @@ public final class CgPipeline {
     public CgPipeline multiDraw() {
         if (multiDraw) return this;
         if (multi == null) {
-            multi = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, state, kind, flags() | MULTI), CgPipeline::register);
+            multi = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, state, kind, flags() | MULTI), CgPipeline::register);
         }
         return multi;
     }
@@ -194,7 +210,7 @@ public final class CgPipeline {
         if (made == null) {
             CgRenderState counting = CgRenderState.builder().blend(ADD).depth(CgDepthState.NONE).cull(state.getCull())
                     .colorMask(CgColorMask.ALL).build();
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, counting, kind, (flags() | OVERDRAW) & ~(EMISSION | COVER | FOLD)),
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, counting, kind, (flags() | OVERDRAW) & ~(EMISSION | COVER | FOLD)),
                     CgPipeline::register);
             overdrawn = made;
         }
@@ -219,7 +235,7 @@ public final class CgPipeline {
         CgPipeline made = emitting;
         if (made == null) {
             if (shader.emissionMerge() == CgMaterialShaderCompiler.EmissionMerge.NONE) return null;
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, state, kind, flags() | EMISSION), CgPipeline::register);
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, state, kind, flags() | EMISSION), CgPipeline::register);
             emitting = made;
         }
         return made;
@@ -244,7 +260,7 @@ public final class CgPipeline {
         if (made == null) {
             CgParsedShader parsed = shader.ensureParsed();
             if (parsed == null || !CgMaterialShaderCompiler.sceneFolds(parsed)) return null;
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, state, kind, flags() | FOLD), CgPipeline::register);
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, state, kind, flags() | FOLD), CgPipeline::register);
             folding = made;
         }
         return made;
@@ -273,7 +289,7 @@ public final class CgPipeline {
             CgRenderState writing = CgRenderState.builder().blend(CgBlendState.DISABLED)
                     .depth(new CgDepthState(true, true, own != null && own.test() ? own.compareFunc() : CgGL.GL_LEQUAL))
                     .cull(state.getCull()).colorMask(CgColorMask.NONE).build();
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, writing, kind, flags() | DEPTH),
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, writing, kind, flags() | DEPTH),
                     CgPipeline::register);
             depthOnly = made;
         }
@@ -298,9 +314,9 @@ public final class CgPipeline {
         CgPipeline made = volumed;
         if (made == null) {
             CgParsedShader parsed = shader.ensureParsed();
-            CgParsedPass own = parsed == null ? null : parsed.getPassByLightMode(pass.lightModeName());
+            CgParsedPass own = ownPass(parsed);
             if (own == null || own.fragOutput().isMrt()) return null;
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, state, kind, flags() | VOLUME), CgPipeline::register);
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, state, kind, flags() | VOLUME), CgPipeline::register);
             volumed = made;
         }
         return made;
@@ -323,9 +339,9 @@ public final class CgPipeline {
         CgPipeline made = normalled;
         if (made == null) {
             CgParsedShader parsed = shader.ensureParsed();
-            CgParsedPass own = parsed == null ? null : parsed.getPassByLightMode(pass.lightModeName());
+            CgParsedPass own = ownPass(parsed);
             if (own == null || own.fragOutput().isMrt()) return null;
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, state, kind, flags() | NORMALS), CgPipeline::register);
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, state, kind, flags() | NORMALS), CgPipeline::register);
             normalled = made;
         }
         return made;
@@ -353,9 +369,9 @@ public final class CgPipeline {
         CgPipeline made = emitting;
         if (made == null) {
             CgParsedShader parsed = shader.ensureParsed();
-            CgParsedPass own = parsed == null ? null : parsed.getPassByLightMode(pass.lightModeName());
+            CgParsedPass own = ownPass(parsed);
             if (own == null || own.fragOutput().isMrt()) return null;
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, state, kind, flags() | EMISSION), CgPipeline::register);
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, state, kind, flags() | EMISSION), CgPipeline::register);
             emitting = made;
         }
         return made;
@@ -380,12 +396,12 @@ public final class CgPipeline {
         CgPipeline made = occluding;
         if (made == null) {
             CgParsedShader parsed = shader.ensureParsed();
-            CgParsedPass own = parsed == null ? null : parsed.getPassByLightMode(pass.lightModeName());
+            CgParsedPass own = ownPass(parsed);
             if (own == null || own.fragOutput().isMrt()) return null;
             // Unset is the transparent pass's alpha blend; the emission pass's own is ONE ONE.
             CgRenderState covering = CgRenderState.builder().blend(blend != null ? blend : CgBlendState.ALPHA)
                     .depth(CgDepthState.NONE).cull(state.getCull()).colorMask(CgColorMask.ALL).build();
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, covering, kind, flags() | COVER), CgPipeline::register);
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, covering, kind, flags() | COVER), CgPipeline::register);
             occluding = made;
         }
         return made;
@@ -403,7 +419,7 @@ public final class CgPipeline {
         int bits = 1;
         if (emission || volume || normals) bits |= 2;
         CgParsedShader parsed = shader.ensureParsed();
-        CgParsedPass own = parsed == null ? null : parsed.getPassByLightMode(pass.lightModeName());
+        CgParsedPass own = ownPass(parsed);
         if (own != null && own.fragOutput().isMrt()) {
             bits = 0;
             for (int location : own.fragOutput().locations()) bits |= 1 << location;
@@ -436,7 +452,7 @@ public final class CgPipeline {
         synchronized (this) {
             for (int i = 0; i < derivedCount; i++) if (derivedStates[i] == other) return derived[i];
         }
-        CgPipeline variant = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, other, kind, flags()),
+        CgPipeline variant = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, other, kind, flags()),
                 CgPipeline::register);
         synchronized (this) {
             if (derivedCount == derived.length) {
@@ -498,6 +514,13 @@ public final class CgPipeline {
         return pass;
     }
 
+    /** The parsed pass it draws: by its name where it has one, else its variant's. */
+    @Nullable
+    private CgParsedPass ownPass(@Nullable CgParsedShader parsed) {
+        if (parsed == null) return null;
+        return passName != null ? parsed.getPassByName(passName) : parsed.getPassByLightMode(pass.lightModeName());
+    }
+
     public Set<String> keywords() {
         return keywords;
     }
@@ -537,7 +560,8 @@ public final class CgPipeline {
             return false;
         }
         if (!shader.pollPending()) return false;
-        return shader.prepareVariant(pass == CgRenderPassVariant.FORWARD ? null : pass.lightModeName(), compiled);
+        return shader.prepareVariant(passName != null ? passName : pass == CgRenderPassVariant.FORWARD ? null : pass.lightModeName(),
+                compiled);
     }
 
     /**
@@ -550,8 +574,8 @@ public final class CgPipeline {
         if (shader.isDirty()) shader.recompile();
         int revision = shader.getRevisionNumber();
         if (program != null && programRevision == revision) return program;
-        program = pass == CgRenderPassVariant.FORWARD
-                ? shader.getOrCompileForwardPass(compiled)
+        program = passName != null ? shader.getOrCompile(passName, compiled)
+                : pass == CgRenderPassVariant.FORWARD ? shader.getOrCompileForwardPass(compiled)
                 : shader.getOrCompile(pass.lightModeName(), compiled);
         programRevision = revision;
         instanceBaseLocation = UNRESOLVED;
@@ -599,16 +623,17 @@ public final class CgPipeline {
 
     @Override
     public String toString() {
-        return "CgPipeline#" + id + "(" + pass + " " + keywords + " " + kind + (multiDraw ? " multi-draw" : "")
+        return "CgPipeline#" + id + "(" + (passName != null ? passName : pass) + " " + keywords + " " + kind + (multiDraw ? " multi-draw" : "")
                 + (overdraw ? " overdraw" : "") + (emission ? " emission" : "") + (depth ? " depth prepass" : "") + ")";
     }
 
     /** A shader and a render state by identity, since neither has value equality worth trusting. */
-    private record Key(CgMaterialShader shader, CgRenderPassVariant pass, Set<String> keywords, CgRenderState state,
-                       CgInstanceKind kind, int flags) {
+    private record Key(CgMaterialShader shader, CgRenderPassVariant pass, @Nullable String passName, Set<String> keywords,
+                       CgRenderState state, CgInstanceKind kind, int flags) {
         @Override
         public boolean equals(Object o) {
-            return o instanceof Key k && k.shader == shader && k.pass == pass && k.keywords.equals(keywords)
+            return o instanceof Key k && k.shader == shader && k.pass == pass && Objects.equals(k.passName, passName)
+                    && k.keywords.equals(keywords)
                     && k.state == state && k.kind == kind && k.flags == flags;
         }
 
@@ -616,6 +641,7 @@ public final class CgPipeline {
         public int hashCode() {
             int h = System.identityHashCode(shader);
             h = h * 31 + pass.ordinal();
+            h = h * 31 + Objects.hashCode(passName);
             h = h * 31 + keywords.hashCode();
             h = h * 31 + System.identityHashCode(state);
             h = h * 31 + kind.ordinal();

@@ -169,6 +169,25 @@ float cg_LinearEyeDepth(float windowDepth) {
 // either fails to link, naming the read, rather than drawing as if nothing were stencilled.
 #define CG_CUSTOM_STENCIL(uv) cg_custom_stencil_has_no_pass_writing_it_yet(uv)
 #define CG_SHADING_MODEL_ID(uv) cg_shading_model_id_has_no_pass_writing_it_yet(uv)
+// The world's lights' direction at camera-relative p, the translucency volume's second texture (Unreal's
+// TranslucencyLightingVolumeDirectional): nothing writes it yet, so a "Surface"-lit material fails to link by name.
+#define cg_LocalLightDirectional(p) cg_local_light_directional_has_no_pass_writing_it_yet(p)
+// The lights a draw is handed whole, for a program carrying its own lighting: the directional light's direction (toward
+// it) and colour, the sky light's colour, and the four point lights nearest the draw, i 0 to 3 (camera-relative
+// position, colour, the light's four attenuation parameters; intensity 0 where there is none). Either stage. No draw
+// writes them yet: a program reading one fails to link by name.
+#define CG_DIRECTIONAL_LIGHT_DIRECTION cg_directional_light_has_no_pass_writing_it_yet
+#define CG_DIRECTIONAL_LIGHT_COLOR cg_directional_light_has_no_pass_writing_it_yet
+#define CG_SKY_LIGHT_COLOR cg_sky_light_has_no_pass_writing_it_yet
+#define CG_DRAW_POINT_LIGHT_POSITION(i) cg_draw_point_light_has_no_pass_writing_it_yet(i)
+#define CG_DRAW_POINT_LIGHT_COLOR(i) cg_draw_point_light_has_no_pass_writing_it_yet(i)
+#define CG_DRAW_POINT_LIGHT_PARAMS(i) cg_draw_point_light_has_no_pass_writing_it_yet(i)
+// The casting directional light's shadow for a program composing its own (Unreal's modulated shadow): its visibility at
+// camera-relative p, 1 lit and faded out by distance; the colour a shadow tints toward; the program's wrap of N.L.
+// Fragment stage. No pass writes them yet: a program reading one fails to link by name.
+#define CG_DIRECTIONAL_SHADOW(p) cg_directional_shadow_has_no_pass_writing_it_yet(p)
+#define CG_DIRECTIONAL_SHADOW_COLOR cg_directional_shadow_has_no_pass_writing_it_yet
+#define CG_DIRECTIONAL_SHADOW_WRAP cg_directional_shadow_has_no_pass_writing_it_yet
 
 // cg_Media: the world's froxel transmittance (CgWorldMedia), a volume over the screen, each texel to its slice's far edge
 // the light the air scattered toward the eye (rgb) and what gets through (a); white in a pass that binds none. Bound to
@@ -323,6 +342,20 @@ vec4 cg_Lit(vec4 color) {
     vec3 gain = CG_LINEAR_SCENE ? pow(1.0 + local, vec3(1.0 / 2.4)) : 1.0 + local;
     return vec4(color.rgb * CG_LIGHTMAP(cg_Light) * gain, color.a);
 }
+
+#ifdef CG_SURFACE_LIT
+// cg_Lit for a "Surface"-lit material, lit by normal n: Unreal's GetVolumeLightingDirectional. The ambient is band 0
+// times its transfer, the direction band 1, coloured by the ambient's hue; 1.0233267 is the transfer's 2pi/3 times the
+// basis's 0.488603, and the luminance Unreal 4's.
+vec4 cg_LitSurface(vec4 color, vec3 n) {
+    vec3 p = cg_FragmentPosition();
+    vec3 ambient = cg_LocalLightAt(p);
+    vec3 hue = ambient / (dot(ambient, vec3(0.3, 0.59, 0.11)) + 1.0e-5);
+    vec3 local = max(ambient + 1.0233267 * dot(cg_LocalLightDirectional(p), n) * hue, vec3(0.0));
+    vec3 gain = CG_LINEAR_SCENE ? pow(1.0 + local, vec3(1.0 / 2.4)) : 1.0 + local;
+    return vec4(color.rgb * CG_LIGHTMAP(cg_Light) * gain, color.a);
+}
+#endif
 
 // What a colour becomes behind this fragment's fog, for the pass's blend (CG_FOG_MODE, set by the compiler): mixed
 // toward the fog colour (0), toward it times alpha for premultiplied output (1), or faded to nothing when added (2).

@@ -170,6 +170,8 @@ public final class CgMaterialShaderCompiler {
 
     /** A fragment naming its glow ({@code CG_GLOW(rgb)}), which then replaces the colour in every glow it makes. */
     private static final Pattern NAMES_GLOW = Pattern.compile("\\bCG_GLOW\\b");
+    /** A fragment naming its emissive ({@code CG_SURFACE_EMISSIVE(rgb)}), added to its colour after lighting. */
+    private static final Pattern SURFACE_EMISSIVE = Pattern.compile("\\bCG_SURFACE_EMISSIVE\\b");
 
     /** Whether, and how, a shader's Emissive pass folds into its Forward draw as a second output. */
     public enum EmissionMerge {
@@ -993,6 +995,12 @@ public final class CgMaterialShaderCompiler {
         if (NAMES_GLOW.matcher(pass.fragmentBody()).find()) {
             sb.append("vec3 _cg_glowRgb = vec3(0.0);\n#define CG_GLOW(rgb) _cg_glowRgb = (rgb)\n");
         }
+        if (CgShaderParser.SURFACE_NORMAL.matcher(pass.fragmentBody()).find()) {
+            sb.append("vec3 _cg_surfaceNormal = vec3(0.0, 1.0, 0.0);\n#define CG_SURFACE_NORMAL(n) _cg_surfaceNormal = (n)\n");
+        }
+        if (SURFACE_EMISSIVE.matcher(pass.fragmentBody()).find()) {
+            sb.append("vec3 _cg_surfaceEmissive = vec3(0.0);\n#define CG_SURFACE_EMISSIVE(rgb) _cg_surfaceEmissive = (rgb)\n");
+        }
         if (!pass.fragOutput().isMrt()) {
             sb.append("void fragment(in v2f i, out vec4 ")
               .append(pass.fragOutput().outParamName()).append(") {\n")
@@ -1017,6 +1025,8 @@ public final class CgMaterialShaderCompiler {
         sb.append("#define CG_TYPE_").append(shader.shaderType().toUpperCase(Locale.ROOT)).append(" 1\n");
         if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())) sb.append("#define CG_EMISSIVE_PASS 1\n");
         if (CgParsedPass.LIGHT_MODE_DISTORTION.equals(pass.lightMode())) sb.append("#define CG_DISTORTION_PASS 1\n");
+        // cg_env.glsl's cg_LitSurface exists only where it is called: it reads a volume no other material binds.
+        if (shader.surfaceLit()) sb.append("#define CG_SURFACE_LIT 1\n");
         sb.append("#define CG_EMISSION (vec3(1.0)");
         if (hasProperty(shader, "_EmissionColor", 4)) sb.append(" * _EmissionColor.rgb");
         if (hasProperty(shader, "_EmissionStrength", 1)) sb.append(" * _EmissionStrength");
@@ -1180,7 +1190,14 @@ public final class CgMaterialShaderCompiler {
             // A world material is lit and fogged as Minecraft's own things are, unless tagged otherwise. Emitted
             // light is not lit, only faded by the fog.
             boolean forward = CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode());
-            if (forward && shader.lit()) sb.append("  _cg_fragColor = cg_Lit(_cg_fragColor);\n");
+            if (forward && shader.lit()) {
+                sb.append(shader.surfaceLit() ? "  _cg_fragColor = cg_LitSurface(_cg_fragColor, _cg_surfaceNormal);\n"
+                        : "  _cg_fragColor = cg_Lit(_cg_fragColor);\n");
+            }
+            // Unreal's base pass adds the emissive after the lit colour, unlit (BasePassPixelShader.usf: Color += Emissive).
+            if (forward && SURFACE_EMISSIVE.matcher(pass.fragmentBody()).find()) {
+                sb.append("  _cg_fragColor.rgb += _cg_surfaceEmissive;\n");
+            }
             if ((forward || emissive) && shader.fogged()) sb.append("  _cg_fragColor = cg_Fog(_cg_fragColor);\n");
             if (merge == EmissionMerge.COVER) sb.append("  _cg_emission = vec4(0.0, 0.0, 0.0, _cg_fragColor.a);\n");
             if (cover) sb.append("  _cg_fragColor = vec4(0.0, 0.0, 0.0, _cg_fragColor.a);\n");

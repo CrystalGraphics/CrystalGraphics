@@ -482,6 +482,14 @@ public class CgComputeGraphTest {
                 () -> new CgRecording().raster(volume, CgLoad.load(), new CgPassConstants(), null, CgOrder.LOOKBACK));
         assertThrows(IllegalArgumentException.class, () -> CgTextureDesc.volume(8, 8, 1, r32f));
         assertThrows(IllegalArgumentException.class, () -> new CgTextureDesc(8, 8, 8, r32f, 2));
+
+        // An image is one texture: a target of several attachments would bind its first whichever was meant.
+        CgFrameBufferFormat mrt = CgFrameBufferFormat.builder("history").color(0, CgTextureType.R32F)
+                .color(1, CgTextureType.R32F).build();
+        CgGraphTexture history = CgGraphTexture.transientTexture("history", new CgTextureDesc(8, 8, mrt));
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> pass.dispatch(images.kernel("Flat"), 8, 8, 1).image("FLAT", history));
+        assertTrue(e.getMessage(), e.getMessage().contains("2 colour attachments"));
     }
 
     // ── The executor's walk, GL-free ──────────────────────────────────────────

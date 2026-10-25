@@ -5,6 +5,9 @@ import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import org.junit.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -48,6 +51,19 @@ public class CgParameterCollectionsTest {
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> CgParameterCollections.compile(asset("test:parameters/reload", moved, null), NO_DEPS));
         assertTrue(e.getMessage(), e.getMessage().contains("assetReload"));
+    }
+
+    @Test
+    public void aKitsFolderDeclaresEveryCollectionItsBaseFirst() throws IOException {
+        Path dir = Files.createTempDirectory("parameters");
+        // "a_hot" sorts before its base "b_grade": declared on demand all the same.
+        Files.writeString(dir.resolve("a_hot.yaml"), "_v: 1\nnamespace: folderHot\nbase: kit:parameters/b_grade\noverrides: { p1: 3 }\n");
+        Files.writeString(dir.resolve("b_grade.yaml"), "_v: 1\nnamespace: folderGrade\nscalars: [ { id: p1, name: power, default: 1 } ]\n");
+        CgParameterCollections.declareAll("kit", dir);
+        String glsl = CgParameterCollection.glsl();
+        assertTrue(glsl, glsl.contains("CG_GLOBAL_folderGrade_power"));
+        assertTrue(glsl, glsl.contains("CG_GLOBAL_folderHot_power"));
+        CgParameterCollections.declareAll("kit", dir.resolve("absent"));
     }
 
     private static float scalar(CgParameterCollection c, String name) {

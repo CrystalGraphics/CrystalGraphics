@@ -54,6 +54,11 @@ public final class CgVfxSystemPreparer implements CgAssetPreparer {
             CgVfxSystem vfx = system.get();
             if (!started[0]) {
                 started[0] = true;
+                // A material reading the system's bounds reads fixed ones only: refused here rather than at its first draw.
+                if (((CgVfxSystemDefinition) definition).fixedBounds() == null && vfx.readsBounds(look)) {
+                    throw new IllegalStateException(name + " draws a material reading its bounds (CG_OBJECT_POSITION,"
+                            + " CG_OBJECT_RADIUS) and has no fixed_bounds");
+                }
                 vfx.prepare(look);
             }
             return vfx.warmed();

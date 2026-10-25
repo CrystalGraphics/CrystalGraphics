@@ -1011,6 +1011,14 @@ public final class CgVfxSystem {
      * vfx.play(...);
      * }</pre>
      */
+    /**
+     * Whether a renderer of {@code look} draws a material reading its system's bounds ({@code CG_OBJECT_POSITION},
+     * {@code CG_OBJECT_RADIUS}): what a system with no fixed bounds is refused at load for. Render thread.
+     */
+    public boolean readsBounds(CgVfxLook look) {
+        return materials.readsBounds(look);
+    }
+
     public boolean warmed() {
         pollWarming(CgWorldRenderer.get());
         if (rehearsalFailure != null) throw new IllegalStateException("the rehearsal failed", rehearsalFailure);

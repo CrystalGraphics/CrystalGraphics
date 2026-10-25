@@ -1,13 +1,20 @@
 package com.crystalgraphics.api.material;
 
+import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
  * The parameter collection kind's compiler ({@code parameters/}, Unreal's {@code UMaterialParameterCollection}): a
@@ -89,6 +96,45 @@ public final class CgParameterCollections {
             else collection.vector(p.name, d[0], d[1], d[2], d[3]);
         }
         DECLARED.put(namespace, new Declared(collection, layout, params));
+        return collection;
+    }
+
+    /**
+     * Every collection asset under {@code dir}, a kit's {@code parameters/} folder, declared under {@code namespace}
+     * as the kit's load would: what a tool compiling the kit's {@code .shader} files without its materials needs
+     * first, since a {@code CG_GLOBAL_*} name exists only once its collection is declared.
+     *
+     * <pre>{@code
+     * CgParameterCollections.declareAll("kakarot_kit", root.resolve("assets/kakarot_kit/parameters"));
+     * CgMaterialShaderRegistry.getOrCreate("kakarot_kit:shaders/cell_tone.shader").recompile();
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A missing folder declares nothing.</li>
+     *   <li>A {@code base} in the same folder is declared first, whatever the files' order.</li>
+     * </ul>
+     */
+    public static void declareAll(String namespace, Path dir) throws IOException {
+        if (!Files.isDirectory(dir)) return;
+        Map<String, Map<?, ?>> trees = new LinkedHashMap<>();
+        try (Stream<Path> walk = Files.walk(dir)) {
+            for (Path file : walk.filter(f -> f.toString().endsWith(".yaml")).sorted().toList()) {
+                String name = dir.relativize(file).toString().replace(File.separatorChar, '/').replaceFirst("[.]yaml$", "");
+                trees.put(namespace + ":parameters/" + name, (Map<?, ?>) CgAssetYaml.read(Files.readString(file)));
+            }
+        }
+        Map<String, CgParameterCollection> made = new HashMap<>();
+        for (String id : trees.keySet()) declare(id, trees, made);
+    }
+
+    private static CgParameterCollection declare(String id, Map<String, Map<?, ?>> trees, Map<String, CgParameterCollection> made) {
+        CgParameterCollection had = made.get(id);
+        if (had != null) return had;
+        Map<?, ?> tree = trees.get(id);
+        if (tree == null) return null;
+        CgParameterCollection collection = compile(CgAssetData.of(id, CgLookKinds.PARAMETERS, tree, null),
+                (kind, dep) -> kind == CgLookKinds.PARAMETERS ? declare(dep, trees, made) : null);
+        made.put(id, collection);
         return collection;
     }
 

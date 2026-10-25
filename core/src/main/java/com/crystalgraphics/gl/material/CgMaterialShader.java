@@ -913,7 +913,7 @@ public final class CgMaterialShader implements CgReloadable {
             cached = programCache.get(key);
             if (cached != null) return cached;
         }
-        if (failedVariants.contains(key)) return remember(passName, activeKeywords, null);
+        if (failedVariants.containsKey(key)) return remember(passName, activeKeywords, null);
         CgMaterialShaderCompiler.CompiledSource compiled = variantSource(key);
         if (compiled == null) return remember(passName, activeKeywords, null);
         waited(key);
@@ -937,7 +937,7 @@ public final class CgMaterialShader implements CgReloadable {
             passName = forward.name();
         }
         ProgramKey key = new ProgramKey(passName, activeKeywords);
-        if (programCache.containsKey(key) || failedVariants.contains(key)) return true;
+        if (programCache.containsKey(key) || failedVariants.containsKey(key)) return true;
         CgShader submitted = pendingVariants.get(key);
         if (submitted != null) {
             if (!submitted.isReady()) return false;
@@ -969,7 +969,7 @@ public final class CgMaterialShader implements CgReloadable {
         }
         CgMaterialShaderCompiler.CompiledSource compiled = variantSource(key);
         if (compiled == null) {
-            failedVariants.add(key);
+            failedVariants.put(key, "pass '" + key.passName() + "' has no source for this variant");
             return true;
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.glSubmit")) {
@@ -1053,7 +1053,7 @@ public final class CgMaterialShader implements CgReloadable {
         if (!program.isCompiled()) {
             String err = program.getLastCompileError();
             program.delete();
-            failedVariants.add(key);
+            failedVariants.put(key, String.valueOf(err));
             LOGGER.error("Failed to compile keyword variant for '" + resourcePath + "' pass '" + key.passName() + "': " + err);
             return null;
         }
@@ -1074,8 +1074,21 @@ public final class CgMaterialShader implements CgReloadable {
 
     /** Variants {@link #prepareVariant} submitted, not yet kept. Dropped by a recompile, which clears the cache. */
     private final Map<ProgramKey, CgShader> pendingVariants = new HashMap<>();
-    /** Variants that failed since the last recompile: not tried again until the source changes. */
-    private final Set<ProgramKey> failedVariants = new HashSet<>();
+    /** Variants that failed since the last recompile, with why: not tried again until the source changes. */
+    private final Map<ProgramKey, String> failedVariants = new HashMap<>();
+
+    /**
+     * Why the variant of {@code passName} under {@code keywords} failed to compile since the last recompile, the
+     * driver's or shaderc's log; null when it compiled or was never tried. What a tool reports beside the log.
+     *
+     * <pre>{@code
+     * if (shader.getOrCompile("Pass0", Set.of("POINT_LIT")) == null) report(shader.variantError("Pass0", Set.of("POINT_LIT")));
+     * }</pre>
+     */
+    @Nullable
+    public String variantError(String passName, Set<String> keywords) {
+        return failedVariants.get(new ProgramKey(passName, keywords));
+    }
 
     /**
      * Convenience: finds the first Forward-lit pass and returns or compiles the keyword variant

@@ -50,9 +50,43 @@ import java.util.WeakHashMap;
  * @param emitters  what each instance plays from its origin
  * @param poolPrimeSize instances made ahead when it loads; its system primes at least one
  * @param maxPoolSize   finished instances kept for reuse; one past it is freed
+ * @param kills         emitters whose particles end when another's event fires
+ * @param fixedBounds   its bounds about its origin, or null where they follow its particles: what a material reading
+ *                      the system's bounds ({@code CG_OBJECT_POSITION}, {@code CG_OBJECT_RADIUS}) reads
  */
 public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfxBehaviour.Factory behaviour,
-                                    List<CgVfxEmitter> emitters, int poolPrimeSize, int maxPoolSize, List<Kill> kills) {
+                                    List<CgVfxEmitter> emitters, int poolPrimeSize, int maxPoolSize, List<Kill> kills,
+                                    @Nullable FixedBounds fixedBounds) {
+
+    /**
+     * A system's bounds fixed about its origin, in blocks: Unreal's fixed bounds (Niagara's {@code FixedBounds},
+     * Cascade's {@code FixedRelativeBoundingBox}), whose centre and sphere a material reads as the primitive's
+     * ({@code ObjectWorldPositionAndRadius}).
+     *
+     * <pre>{@code
+     * CgVfxSystemDefinition ORB = CgVfxSystemDefinition.of("mymod:orb", ORB_LOOK)
+     *         .withFixedBounds(new CgVfxSystemDefinition.FixedBounds(-4, -4, -4, 4, 4, 4));
+     * }</pre>
+     */
+    public record FixedBounds(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+
+        public FixedBounds {
+            if (!(minX <= maxX && minY <= maxY && minZ <= maxZ)) {
+                throw new IllegalArgumentException("fixed bounds' min passes their max: " + this);
+            }
+        }
+
+        /** Its centre's offset from the system's origin, on {@code axis} 0 to 2. */
+        public float centre(int axis) {
+            return axis == 0 ? (minX + maxX) * 0.5f : axis == 1 ? (minY + maxY) * 0.5f : (minZ + maxZ) * 0.5f;
+        }
+
+        /** The radius of the sphere round it: half its diagonal, as Unreal's box-sphere bounds take. */
+        public float radius() {
+            float x = maxX - minX, y = maxY - minY, z = maxZ - minZ;
+            return 0.5f * (float) Math.sqrt(x * x + y * y + z * z);
+        }
+    }
 
     /**
      * Emitter {@code receiver}'s particles all end when emitter {@code source}'s event {@code event} (its place in that
@@ -100,6 +134,12 @@ public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfx
                 throw new IllegalArgumentException(name + ": " + k + " names no emitter, or an event that reads no rows back");
             }
         }
+    }
+
+    /** Its bounds following its particles. */
+    public CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfxBehaviour.Factory behaviour,
+                                 List<CgVfxEmitter> emitters, int poolPrimeSize, int maxPoolSize, List<Kill> kills) {
+        this(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, null);
     }
 
     /** Killing nothing. */
@@ -163,11 +203,16 @@ public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfx
 
     /** This definition carrying {@code behaviour}, its emitters kept. */
     public CgVfxSystemDefinition withBehaviour(CgVfxBehaviour.Factory behaviour) {
-        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize);
+        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, fixedBounds);
     }
 
     /** This definition with its instance pool's sizes: {@code prime} made ahead when it loads, at most {@code max} kept. */
     public CgVfxSystemDefinition withPool(int prime, int max) {
-        return new CgVfxSystemDefinition(name, look, behaviour, emitters, prime, max);
+        return new CgVfxSystemDefinition(name, look, behaviour, emitters, prime, max, kills, fixedBounds);
+    }
+
+    /** This definition with its bounds fixed about its origin; null for bounds following its particles. */
+    public CgVfxSystemDefinition withFixedBounds(@Nullable FixedBounds bounds) {
+        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, bounds);
     }
 }

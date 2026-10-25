@@ -26,6 +26,7 @@ import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxSpriteRendererProperties;
+import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import com.crystalgraphics.vfx.look.CgVfxFlipbook;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
@@ -226,6 +227,12 @@ final class CgVfxMaterials {
                 rowValues.put(DRAWN, (float) bits);
             }
         }
+        boolean bounded = placed.slotRenderer() == null && (probe.names(OBJECT_POSITION) || probe.names(OBJECT_RADIUS));
+        if (bounded) {
+            // The system's bounds, written per effect: each effect of one look sits elsewhere.
+            material.requireRow(BOUNDS, who);
+            rowValues.put(BOUNDS, BOUNDS);
+        }
         CgVfxLayout layout = look.layout();
         Map<String, CgVfxParam> bound = new HashMap<>();
         Map<String, Float> factors = new HashMap<>();
@@ -264,6 +271,11 @@ final class CgVfxMaterials {
                 entryFactors.add(factors.get(p.getName()));
                 entryFixed.add(null);
                 vec4s += param instanceof CgVfxParam.Palette ? ((CgVfxParam.Palette) param).count() : 1;
+            } else if (constant == BOUNDS) {
+                entries.add(new int[] {FROM_BOUNDS, 4});
+                entryFactors.add(1f);
+                entryFixed.add(null);
+                vec4s += 1;
             } else {
                 float[] v = constant(who, p, constant);
                 entries.add(new int[] {-1, v.length});
@@ -357,6 +369,9 @@ final class CgVfxMaterials {
     /** The sprite factory's facing and flipbook settings, which a sprite renderer's fields write. */
     /** A renderer's drawn extent ({@code _cg_Size}), what it sets through its {@code values}: the draw's size. */
     private static final String DRAW_SIZE = "_cg_Size";
+    /** The factory's {@code _cg_Bounds}, and the names that read it; a row entry from it is written per effect. */
+    private static final String BOUNDS = "_cg_Bounds", OBJECT_POSITION = "CG_OBJECT_POSITION", OBJECT_RADIUS = "CG_OBJECT_RADIUS";
+    private static final int FROM_BOUNDS = -2;
     private static final String FACING = "_cg_Facing", SUB_IMAGE = "_cg_SubImage", SUB_UV = "_cg_SubUV", DRAWN = "_cg_Drawn",
             PIVOT = "_cg_Pivot";
 
@@ -567,7 +582,10 @@ final class CgVfxMaterials {
         int write = at * 4;
         for (int i = 0; i < r.source.length; i++) {
             int floats = r.floats[i];
-            if (r.source[i] < 0) {
+            if (r.source[i] == FROM_BOUNDS) {
+                writeBounds(effect, write);
+                write += 4;
+            } else if (r.source[i] < 0) {
                 System.arraycopy(r.fixed[i], 0, rows, write, floats);
                 write += floats;
             } else if (floats == 1) {
@@ -582,6 +600,32 @@ final class CgVfxMaterials {
         rowCount += r.vec4s;
         effect.rows[index] = at;
         return at;
+    }
+
+    /**
+     * {@code effect}'s system's bounds into the row at {@code write}: their centre, absolute (the factory subtracts the
+     * world origin, as the camera moves between the row and the draw), and their radius. Fixed bounds are the only
+     * kind a material may read; a system whose bounds follow its particles fails naming itself.
+     */
+    private void writeBounds(CgVfxEffect<?> effect, int write) {
+        CgVfxSystemDefinition.FixedBounds b = effect.definitionKey() instanceof CgVfxSystemDefinition d ? d.fixedBounds() : null;
+        if (b == null) {
+            throw new IllegalStateException(effect + " draws a material reading its system's bounds (CG_OBJECT_POSITION,"
+                    + " CG_OBJECT_RADIUS), and its system has no fixed bounds: give it fixed_bounds");
+        }
+        rows[write] = (float) (effect.originX + b.centre(0));
+        rows[write + 1] = (float) (effect.originY + b.centre(1));
+        rows[write + 2] = (float) (effect.originZ + b.centre(2));
+        rows[write + 3] = b.radius();
+    }
+
+    /** Whether an emitter renderer of {@code look} draws a material reading its system's bounds. */
+    boolean readsBounds(CgVfxLook look) {
+        for (CgVfxLook.Placed placed : look.placed()) {
+            if (placed.slotRenderer() != null || placed.renderer() instanceof CgVfxLightRendererProperties) continue;
+            for (int s : resolve(look, placed).source) if (s == FROM_BOUNDS) return true;
+        }
+        return false;
     }
 
     /** This frame's rows to the GPU: after every effect's submit. */

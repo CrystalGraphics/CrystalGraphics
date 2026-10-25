@@ -46,6 +46,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
@@ -1012,6 +1013,51 @@ public final class CgMaterial {
     }
 
     /**
+     * The passes of a multi-pass post material that draw into targets of their own, in order; empty for one pass, and
+     * while the shader does not parse. The same list until the shader parses again.
+     */
+    public List<CgParsedShader.PostTarget> postTargets() {
+        checkNotDeleted();
+        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        return parsed == null ? Collections.emptyList() : parsed.postTargets();
+    }
+
+    /** The {@code sampler2D} a post material reads what glows through ({@code "Emission"} tag); null for none. */
+    @Nullable
+    public String emissionInput() {
+        checkNotDeleted();
+        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        return parsed == null ? null : parsed.emissionInput();
+    }
+
+    /**
+     * As {@link #pipeline(CgInstanceKind)}, for the Forward pass named {@code pass} under its own render state: one
+     * pass of a material drawing several in turn, as a multi-pass post material does.
+     *
+     * <pre>{@code
+     * CgPipeline down = material.pipeline("Down", CgInstanceKind.OBJECT);   // Pass { Tags { "Name" = "Down" ... } }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Its keywords are the material's, as the first Forward pass's are; a {@code CgMaterialState} does not reach
+     *       it.</li>
+     *   <li>Each call makes a key: hold the answer for as long as the shader's revision holds.</li>
+     * </ul>
+     *
+     * @return null when the shader does not parse or has no such pass
+     */
+    @Nullable
+    public CgPipeline pipeline(String pass, CgInstanceKind kind) {
+        checkNotDeleted();
+        if (cgMaterialShader == null) return null;
+        CgParsedShader parsed = cgMaterialShader.ensureParsed();
+        if (parsed == null) return null;
+        CgParsedPass own = parsed.getPassByName(pass);
+        if (own == null) return null;
+        return CgPipeline.pass(cgMaterialShader, pass, enabledKeywords, own.renderState(), kind);
+    }
+
+    /**
      * As {@link #pipeline(CgInstanceKind)}, for any pass. Keywords apply to {@link CgRenderPassVariant#FORWARD},
      * {@link CgRenderPassVariant#EMISSIVE} and {@link CgRenderPassVariant#DISTORTION} only.
      *
@@ -1476,6 +1522,40 @@ public final class CgMaterial {
      */
     public boolean readsSceneDepth() {
         return cgMaterialShader == null || cgMaterialShader.readsSceneDepth();
+    }
+
+    /**
+     * Whether its shader is {@code "Lighting" = "Surface"}: lit by the direction of the world's lights at its normal,
+     * so the world's lights write their directional volume in a frame that draws it. False until it is parsed.
+     */
+    public boolean surfaceLit() {
+        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.getLastParsed();
+        return parsed != null && parsed.surfaceLit();
+    }
+
+    /**
+     * Whether a pass of its shader names {@code identifier} as a whole word, in its declarations or its stages' code,
+     * parsing it if it is not yet: what a renderer asks before writing a value only some shaders read.
+     *
+     * <pre>{@code
+     * boolean bounds = material.names("CG_OBJECT_POSITION") || material.names("CG_OBJECT_RADIUS");
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A name used only inside an included file is not seen: the shader's own code is searched.</li>
+     * </ul>
+     */
+    public boolean names(String identifier) {
+        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        if (parsed == null) return false;
+        Pattern word = Pattern.compile("\\b" + Pattern.quote(identifier) + "\\b");
+        for (CgParsedPass pass : parsed.passes()) {
+            if (word.matcher(pass.globalDecls()).find() || word.matcher(pass.vertexBody()).find()
+                    || word.matcher(pass.fragmentBody()).find()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** As {@link #readsSceneDepth()}, for the scene's colour ({@code cg_SceneColor}). */

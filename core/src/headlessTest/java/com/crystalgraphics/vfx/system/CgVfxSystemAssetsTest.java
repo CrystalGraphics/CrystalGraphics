@@ -19,6 +19,7 @@ import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -103,6 +104,18 @@ public class CgVfxSystemAssetsTest {
         assertEquals(CgVfxSystemAssets.effect("crystalgraphics:energy_wave"), d.behaviour());
         CgVfxParam.Scalar radius = (CgVfxParam.Scalar) CgEnergyWave.CONTRACT.look().layout().param("radius");
         assertEquals(0.8f, d.look().get(radius), 0f);
+    }
+
+    @Test
+    public void itsFixedBoundsAreItsCentreAndSphere() {
+        CgVfxSystemDefinition d = compile("mymod:orb", "_v: 1\nfixed_bounds: [[-4, -2, -4], [4, 6, 4]]\n");
+        CgVfxSystemDefinition.FixedBounds b = d.fixedBounds();
+        assertEquals(2f, b.centre(1), 0f);
+        assertEquals(0.5f * (float) Math.sqrt(8 * 8 * 3), b.radius(), 1e-5f);
+        assertNull(compile("mymod:loose", "_v: 1\n").fixedBounds());
+        roundTrips(d);
+        assertEquals(b, CgVfxSystemAssets.compile(CgAssetData.of(d.name(), CgParticleKinds.SYSTEM, CgVfxSystemAssets.write(d), null),
+                (kind, ref) -> null).fixedBounds());
     }
 
     /** Written, compiled and written again: the same tree, and the same emitters and values. */

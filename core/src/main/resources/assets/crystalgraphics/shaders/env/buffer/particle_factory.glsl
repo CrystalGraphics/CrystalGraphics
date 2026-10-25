@@ -39,6 +39,12 @@ struct CgMaterialParticle {
 };
 #define CG_MATERIAL_PARTICLE 1
 
+// The drawing system's bounds, Unreal's Primitive.ObjectWorldPositionAndRadius: its centre, camera-relative, and its
+// sphere's radius in blocks, either stage. The renderer writes its fixed bounds per effect, the centre absolute, since
+// the camera moves between the row and the draw. A system with no fixed bounds is refused when it loads.
+#define CG_OBJECT_POSITION (_cg_Bounds.xyz - cg_WorldOrigin.xyz)
+#define CG_OBJECT_RADIUS (_cg_Bounds.w)
+
 // Its dynamic parameter i (0 to 3), or d where its emitter sets none: Unreal's DynamicParameter node and its defaults.
 #define cg_dynamic_parameter(p, i, d) ((((p).dynamics >> (i)) & 1) != 0 ? (p).dynamicParameters[i] : (d))
 

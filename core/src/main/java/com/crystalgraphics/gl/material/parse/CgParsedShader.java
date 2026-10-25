@@ -58,6 +58,10 @@ import java.util.Objects;
  *     {@code true} when the material-level {@code Tags} block says {@code "Lighting" = "Unlit"}: its Forward colour is
  *     not multiplied by the host's lightmap, as a material drawn with an object record ({@link #readsObjectRecord})
  *     otherwise is.
+ * @param surfaceLit
+ *     {@code true} for {@code "Lighting" = "Surface"}: the world's lights reach its Forward colour by the normal its
+ *     fragment names ({@code CG_SURFACE_NORMAL(n)}), Unreal's Surface translucency lighting, rather than the same from
+ *     every side.
  * @param unfogged
  *     {@code true} for {@code "Fog" = "Off"}: its Forward colour is not put behind the host's fog, as such a material's
  *     otherwise is, lit or not.
@@ -84,14 +88,35 @@ import java.util.Objects;
  *     bound by {@code CgMaterial.buffer(name, buffer)}. Empty when there is none.
  * @param bufferStructs
  *     The structs those buffers' elements name, as declared, emitted ahead of them in every stage.
+ * @param postTargets
+ *     The Forward passes that draw into a target of their own, in order: a multi-pass post material's, each pass but
+ *     its last tagged {@code "Target"} and {@code "Scale"}. Empty for any other shader.
+ * @param emissionInput
+ *     The {@code sampler2D} property a post material reads what glows through, by its material-level
+ *     {@code "Emission"} tag; null when absent.
  */
 @Desugar
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties,
                               List<String> featureNames, List<String> engineBuffers, int renderQueue,
-                              String renderType, float sceneColorMargin, boolean unlit,
+                              String renderType, float sceneColorMargin, boolean unlit, boolean surfaceLit,
                               boolean unfogged, boolean linearColor, boolean unmediated, boolean emissiveOpacity,
                               DepthMode depthMode, @Nullable Tube tube,
-                              List<CgParsedPass> passes, List<CgBufferDecl> buffers, String bufferStructs) {
+                              List<CgParsedPass> passes, List<CgBufferDecl> buffers, String bufferStructs,
+                              List<PostTarget> postTargets, @Nullable String emissionInput) {
+
+    /**
+     * A post material's pass drawing into a texture of its own: {@code scale} of the post target on each side, bound to
+     * the {@code sampler2D} property {@code property} for every pass after it.
+     *
+     * <pre>{@code
+     * Pass { Tags { "Name" = "Down" "Target" = "_Half" "Scale" = "0.5" } ... }   // into _Half, half size
+     * Pass { Tags { "Name" = "Blur" "Target" = "_Blur" "Scale" = "0.5" } ... }   // reads _Half
+     * Pass { ... }                                                                // reads _Blur, draws over the scene
+     * }</pre>
+     */
+    @Desugar
+    public record PostTarget(String pass, String property, float scale) {
+    }
 
     /**
      * The geometry a shader needs on a tube slot, by its {@code "Tube"} tag; a material of one on any other slot fails
@@ -193,9 +218,9 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
                     pass.v2fStructBody(), pass.globalDecls(), pass.vertexBody(), pass.fragmentBody(), pass.fragOutput()));
         }
         return new CgParsedShader(shaderType, properties, featureNames, engineBuffers, renderQueue, renderType,
-                sceneColorMargin, unlit, unfogged, linearColor, unmediated, emissiveOpacity,
+                sceneColorMargin, unlit, surfaceLit, unfogged, linearColor, unmediated, emissiveOpacity,
                 state.clip() ? DepthMode.CLIP : unclip ? DepthMode.NONE : depthMode, tube, Collections.unmodifiableList(out),
-                buffers, bufferStructs);
+                buffers, bufferStructs, postTargets, emissionInput);
     }
 
     /**
