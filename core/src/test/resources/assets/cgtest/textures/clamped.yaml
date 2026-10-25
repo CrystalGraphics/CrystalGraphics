@@ -1,0 +1,4 @@
+_v: 1
+colour: linear
+mips: false
+sampler: { filter: nearest, wrap: [repeat, mirror] }

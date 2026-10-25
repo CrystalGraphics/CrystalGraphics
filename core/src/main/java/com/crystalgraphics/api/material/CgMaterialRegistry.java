@@ -14,6 +14,7 @@ import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.util.io.CgIO;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
+import com.crystalgraphics.platform.gl.CgGL;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
@@ -130,6 +131,9 @@ public final class CgMaterialRegistry {
      *   <li>with mips unless {@code mips: false}, as Unreal's texture group gives them;</li>
      *   <li>{@code cube: true}: the image is a cube's six faces stacked top to bottom, {@code w x 6w}, in Unreal's slice
      *       order ({@link CgTextureCubemap#createStacked}).</li>
+     *   <li>{@code sampler: { filter: bilinear, wrap: clamp }}: its own filter and wrap, as Unreal's {@code Filter} and
+     *       {@code AddressX}/{@code AddressY}, a binding's block's form; without one, trilinear (with mips) and
+     *       clamped. A binding's own {@code sampler} replaces it.</li>
      * </ul>
      *
      * <pre>{@code
@@ -137,7 +141,9 @@ public final class CgMaterialRegistry {
      * }</pre>
      *
      * @throws CgAssetException naming both, for a {@code .png} and a {@code .hdr} at one path, {@code colour: srgb} on a
-     *                          {@code .hdr}, or {@code compression: hdr} or {@code hdr_compressed} on a {@code .png}
+     *                          {@code .hdr}, or {@code compression: hdr} or {@code hdr_compressed} on a {@code .png};
+     *                          naming the file, for a {@code sampler} that is not a block or names anisotropy, which only
+     *                          a binding's sampler carries
      */
     public static CgTexture texture(String path) {
         Supplier<? extends CgTexture> provided = PROVIDED.get(path);
@@ -150,13 +156,13 @@ public final class CgMaterialRegistry {
      * yet: every image loads uncompressed, a {@code .hdr} as RGBA16F, which {@code hdr_compressed}'s BC6H falls back to
      * where a device has none ({@code Texture.cpp:1102-1104}); a cooked {@code .cgtex} carries its own blocks.
      */
-    private record Settings(@Nullable String colour, boolean mips, @Nullable String compression, boolean cube) {
+    private record Settings(@Nullable String colour, boolean mips, @Nullable String compression, boolean cube,
+                            @Nullable CgSampler sampler) {
     }
 
     private static CgTexture fromFile(String path) {
         Settings s = settings(path);
-        // A .hdr and a .exr are float data, linear: an .exr's signed halves (a vertex animation's offsets) as they are.
-        boolean hdr = CgRadianceHdr.is(path) || CgOpenExr.is(path);
+        boolean hdr = isFloat(path);
         int dot = path.lastIndexOf('.');
         if (hdr || path.endsWith(".png")) {
             for (String ext : new String[] {".png", ".hdr", ".exr"}) {
@@ -172,14 +178,43 @@ public final class CgMaterialRegistry {
         if (!hdr && ("hdr".equals(s.compression()) || "hdr_compressed".equals(s.compression()))) {
             throw new CgAssetException(path + " says compression: " + s.compression() + ", which is a float image's, not an 8-bit one's");
         }
-        CgMipmapConfig mips = s.mips() ? CgMipmapConfig.TRILINEAR : CgMipmapConfig.NONE;
-        boolean srgb = !hdr && !"linear".equals(s.colour());
-        CgTextureSpec spec = spec(hdr ? CgTextureType.RGBA16F : srgb ? CgTextureType.SRGB8_ALPHA8 : CgTextureType.RGBA8, mips);
+        CgTextureSpec spec = spec(path, s);
         return s.cube() ? CgTextureCubemap.createStacked(path, spec) : CgTextures.of(path, spec);
     }
 
-    private static CgTextureSpec spec(CgTextureType type, CgMipmapConfig mips) {
-        return type.toTextureSpec().toBuilder().mipmaps(mips).build();
+    /** What {@link #texture} makes {@code path} with, as its settings say. */
+    static CgTextureSpec textureSpec(String path) {
+        return spec(path, settings(path));
+    }
+
+    /** A .hdr and a .exr are float data, linear: an .exr's signed halves (a vertex animation's offsets) as they are. */
+    private static boolean isFloat(String path) {
+        return CgRadianceHdr.is(path) || CgOpenExr.is(path);
+    }
+
+    private static CgTextureSpec spec(String path, Settings s) {
+        boolean hdr = isFloat(path), srgb = !hdr && !"linear".equals(s.colour());
+        var b = (hdr ? CgTextureType.RGBA16F : srgb ? CgTextureType.SRGB8_ALPHA8 : CgTextureType.RGBA8).toTextureSpec().toBuilder();
+        CgSampler sampler = s.sampler();
+        if (sampler == null) return b.mipmaps(s.mips() ? CgMipmapConfig.TRILINEAR : CgMipmapConfig.NONE).build();
+        boolean nearest = sampler.filter() == CgSampler.Filter.NEAREST;
+        int mag = nearest ? CgGL.GL_NEAREST : CgGL.GL_LINEAR;
+        if (s.mips()) {
+            int min = nearest ? CgGL.GL_NEAREST_MIPMAP_NEAREST : sampler.filter() == CgSampler.Filter.BILINEAR
+                    ? CgGL.GL_LINEAR_MIPMAP_NEAREST : CgGL.GL_LINEAR_MIPMAP_LINEAR;
+            b.mipmaps(CgMipmapConfig.enabled(min, mag));
+        } else {
+            b.mipmaps(CgMipmapConfig.NONE).minFilter(mag);
+        }
+        return b.magFilter(mag).wrapS(wrap(sampler.u())).wrapT(wrap(sampler.v())).wrapR(wrap(sampler.w())).build();
+    }
+
+    private static int wrap(CgSampler.Address address) {
+        return switch (address) {
+            case WRAP -> CgGL.GL_REPEAT;
+            case MIRROR -> CgGL.GL_MIRRORED_REPEAT;
+            case CLAMP -> CgGL.GL_CLAMP_TO_EDGE;
+        };
     }
 
     private static boolean exists(String path) {
@@ -220,14 +255,22 @@ public final class CgMaterialRegistry {
     /** {@code image}'s settings file, or every default where it has none. */
     private static Settings settings(String image) {
         int dot = image.lastIndexOf('.');
-        if (dot < 0) return new Settings(null, true, null, false);
+        if (dot < 0) return new Settings(null, true, null, false, null);
         try (InputStream in = CgIO.openStream(image.substring(0, dot) + ".yaml")) {
-            if (in == null) return new Settings(null, true, null, false);
+            if (in == null) return new Settings(null, true, null, false, null);
             Object tree = CgAssetYaml.read(new String(in.readAllBytes(), StandardCharsets.UTF_8));
             Map<?, ?> m = tree instanceof Map<?, ?> map ? map : Map.of();
-            Object colour = m.get("colour"), compression = m.get("compression");
+            Object colour = m.get("colour"), compression = m.get("compression"), block = m.get("sampler");
+            if (block != null && !(block instanceof Map)) {
+                throw new CgAssetException(image + "'s sampler is " + block + ", not a block: { filter: ..., wrap: ... }");
+            }
+            @SuppressWarnings("unchecked")
+            CgSampler sampler = sampler((Map<Object, Object>) block);
+            if (sampler != null && sampler.anisotropy() > 1) {
+                throw new CgAssetException(image + "'s sampler names anisotropy, which only a binding's sampler carries");
+            }
             return new Settings(colour == null ? null : colour.toString(), !Boolean.FALSE.equals(m.get("mips")),
-                    compression == null ? null : compression.toString(), Boolean.TRUE.equals(m.get("cube")));
+                    compression == null ? null : compression.toString(), Boolean.TRUE.equals(m.get("cube")), sampler);
         } catch (IOException e) {
             throw new UncheckedIOException(image + "'s settings do not read", e);
         }

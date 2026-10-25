@@ -6,6 +6,7 @@ import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.gl.texture.CgTextureCubemap;
+import com.crystalgraphics.platform.gl.CgGL;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -45,6 +46,19 @@ public class CgMaterialTextureSettingsTest {
         CgTexture ramp = CgMaterialRegistry.texture(DIR + "ramp.hdr");
         assertTrue(ramp instanceof CgTexture2D);
         assertEquals(4, ramp.getWidth());   // decoded as half floats: another spec would throw
+    }
+
+    @Test
+    public void itsSamplerIsTheTexturesOwnFilterAndWrap() {
+        CgTextureSpec own = CgMaterialRegistry.textureSpec(DIR + "clamped.png");
+        assertEquals(CgGL.GL_NEAREST, own.getMinFilter());
+        assertEquals(CgGL.GL_NEAREST, own.getMagFilter());
+        assertEquals(CgGL.GL_REPEAT, own.getWrapS());
+        assertEquals(CgGL.GL_MIRRORED_REPEAT, own.getWrapT());
+        assertFalse(own.getMipmaps().isEnabled());
+        CgTextureSpec none = CgMaterialRegistry.textureSpec(DIR + "ramp.hdr");
+        assertEquals("trilinear with mips, clamped", CgGL.GL_LINEAR_MIPMAP_LINEAR, none.getMipmaps().getMinFilter());
+        assertEquals(CgGL.GL_CLAMP_TO_EDGE, none.getWrapS());
     }
 
     @Test
