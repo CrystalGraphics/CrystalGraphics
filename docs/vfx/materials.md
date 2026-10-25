@@ -130,6 +130,20 @@ void vertex(out v2f o) {
 - A sprite's facing, stretch, camera offset (blocks toward the eye) and flipbook are its renderer's (`_cg_Facing`,
   `_cg_CameraOffset`, `_cg_SubImage`, ...), or its particle's where its emitter sets them per particle: never declare a
   `_cg_` property in a material.
+- **The system's bounds**: `CG_OBJECT_POSITION` (their centre, camera-relative) and `CG_OBJECT_RADIUS` (their
+  sphere's radius, blocks), Unreal's object position and radius, in either stage. They are the system's fixed bounds,
+  its file's `fixed_bounds` or `withFixedBounds` in Java; a system drawing a material that reads them with none fails
+  to load, naming it.
+
+  ```glsl
+  float d = length(cg_FragmentPosition()) - length(CG_OBJECT_POSITION);   // camera-relative: the eye is at 0
+  float ring = clamp(0.5 - abs(d) / CG_OBJECT_RADIUS, 0.0, 1.0);
+  ```
+
+  ```java
+  static final CgVfxSystemDefinition ORB = CgVfxSystemDefinition.of("mymod:orb", ORB_LOOK)
+          .withFixedBounds(new CgVfxSystemDefinition.FixedBounds(-4, -4, -4, 4, 4, 4));
+  ```
 
 ### Emissive and opacity: `"Output" = "EmissiveOpacity"`
 

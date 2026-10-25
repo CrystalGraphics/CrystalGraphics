@@ -276,6 +276,10 @@ if (look != null) settings.impact(look, HIT.amount(sinceHit), HIT.seed(sinceHit)
 - **An effect that is only a material** is a `CgPostMaterial` (Unreal's post-process material): its `.shader` drawn over
   the screen at `AFTER_WORLD` or `AFTER_COMPOSITE`, at a weight its shader reads as `POST_WEIGHT`
   (`lib/post/post_material.glsl`); 0 draws nothing.
+- **A post material of several passes** draws them in order: each pass but the last tagged `"Target" = "_Name"
+  "Scale" = "0.5"` draws into an RGBA16F texture that share of the screen, bound to its `sampler2D` property `_Name` for
+  every pass after; the last draws over the scene. A material-level `"Emission" = "_Mask"` binds what glows (the
+  emission bent with the scene, or under the HDR scene the scene). `CgPostMaterial`'s javadoc has the example.
 - **A cut's crossfade**: `CgPostStack.get().crossfade(seconds)` on the old shot's last frame holds what that firing
   draws, and the frames after it show it over theirs, fading out linearly on the frame clock, before the HUD.
 

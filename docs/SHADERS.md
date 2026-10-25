@@ -148,6 +148,49 @@ void fragment(in v2f i, out vec4 fragColor) {
   what a look had to tune.
 - A shader writing `cg_Light` reads `CG_LIGHTMAP` with it too: a smoke billow mixes its fire glow out of the lightmap's reach.
 
+#### Lit by its normal: `"Lighting" = "Surface"`
+
+A transparent material lit by the direction of the world's lights at its normal, not the same from every side: Unreal's
+Surface translucency lighting (`TLM_Surface`). The fragment names its normal; the generated `main` lights the colour by
+it, then adds what the fragment names as emissive, unlit, before fog and the blend.
+
+```glsl
+Tags { "RenderType" = "Transparent" "Lighting" = "Surface" }
+Queue = "Transparent"
+void fragment(in v2f i, out vec4 fragColor) {
+    vec3 n = normalize(i.tangentToWorld * normalXy(texture(_Normal, i.uv).xy));
+    CG_SURFACE_NORMAL(n);                        // the normal it is lit by: required in every Forward pass
+    CG_SURFACE_EMISSIVE(i.color.rgb);            // optional: added after the lighting, never to bloom
+    fragColor = vec4(baseColour, opacity);
+}
+```
+
+- **Transparent queues only**: an opaque material is lit by the world's lights already. Either refusal fails to parse,
+  as does a Forward pass that never calls `CG_SURFACE_NORMAL`.
+- The light is Unreal's `GetVolumeLightingDirectional`: the translucency volume's light (`cg_LocalLightAt`) plus its
+  direction (`cg_LocalLightDirectional`) at the normal, times the lightmap as `cg_Lit`. Until the directional volume
+  exists, a Surface material fails to link naming it.
+- **`CG_SURFACE_EMISSIVE`** works in any lit Forward pass (Unreal's `Color += Emissive`). It is not `CG_GLOW`, which
+  feeds bloom.
+- `CgMaterial.surfaceLit()` says whether a material is one.
+
+#### What a program carrying its own lighting reads
+
+A ported program that keeps its game's lighting formulas reads the lights the engine hands each draw, in world passes,
+in both stages unless said:
+
+| Name | Is |
+|---|---|
+| `CG_DIRECTIONAL_LIGHT_DIRECTION`, `CG_DIRECTIONAL_LIGHT_COLOR` | the directional light, toward it; its colour, linear, times intensity |
+| `CG_SKY_LIGHT_COLOR` | the sky light's colour: the ambient |
+| `CG_DRAW_POINT_LIGHT_POSITION(i)`, `_COLOR(i)`, `_PARAMS(i)` | the four point lights nearest the draw, `i` 0 to 3, camera-relative; `PARAMS` is (intensity, inner radius, radius, falloff: 0 linear, 1 inverse square); intensity 0 where there are fewer |
+| `CG_DIRECTIONAL_SHADOW(p)`, `_COLOR`, `_WRAP` | fragment only: the casting directional's visibility at `p`, 1 lit; the colour a shadow tints toward; a wrap of N.L |
+
+- In the host's world the directional is its sun and the sky its sky, split from the lightmap as the world's lights
+  split it for the sun's shadow; a playing sequence's own lights take their place.
+- **None is written yet**: each is a placeholder that fails to link naming itself
+  (`..._has_no_pass_writing_it_yet`), so a port reading one is listed as waiting rather than drawing unlit.
+
 #### Per-Instance Object Data — SSBO / TBO Dual Path
 
 Every draw uses instancing. Per-object data lives in an engine-managed buffer. At startup, `CgCapabilities.detect().shaderBufferPath()` picks one of two hardware paths:

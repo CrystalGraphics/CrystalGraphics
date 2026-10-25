@@ -323,6 +323,21 @@ vfx.pool(SPARK).prime(4);                                         // by hand: wh
 - A spawned instance is a fresh one in every other way: set its ground, follow and values after `spawn`.
 - `spawn` and `pool` are the render thread's; a pool itself may be primed or taken from on any thread.
 
+### Fixed bounds
+
+A system's bounds fixed about its origin, Unreal's fixed bounds: what a material reading the system's bounds reads
+([materials](materials.md), `CG_OBJECT_POSITION`, `CG_OBJECT_RADIUS`).
+
+```yaml
+fixed_bounds: [[-400, -400, -400], [400, 400, 400]]   # min and max corners in the namespace's units: 4 blocks in centimetres
+```
+
+```java
+CgVfxSystemDefinition.of("mymod:orb", LOOK).withFixedBounds(new CgVfxSystemDefinition.FixedBounds(-4, -4, -4, 4, 4, 4));
+```
+
+- Absent, its bounds follow its particles, and a material reading them refuses the system when it loads.
+
 ## Checking an asset
 
 An asset is checked whole, with what it inherits, as Unreal's data validation checks an object: every key one its
