@@ -170,18 +170,23 @@ float cg_light_surface(vec3 position, float radius, float exponent, vec4 spotCos
 // centre, the line's irradiance is the point's 1 / (d² + bias).
 float cg_light_point(vec3 position, float radius, float exponent, float source, vec3 p, vec3 n) {
     vec3 toLight = position - p;
-    float d2 = dot(toLight, toLight), x = d2 / (radius * radius), falloff;
+    // One reciprocal root serves the falloff, N.L and the source's angle, which took a divide, a root and a divide and
+    // a root of their own: a tenth of a floor of particle lights.
+    float d2 = dot(toLight, toLight), x = d2 / (radius * radius), inv = inversesqrt(d2 + CG_LIGHT_BIAS), falloff;
     if (exponent == 0.0) {
         float fade = clamp(1.0 - x * x, 0.0, 1.0);
-        falloff = fade * fade / (d2 + CG_LIGHT_BIAS);
+        falloff = fade * fade * inv * inv;
     } else {
         // 2, Cascade's and the particle lights' usual exponent, squared: pow is two transcendentals a pixel and light.
         float s = 1.0 - clamp(x, 0.0, 1.0);
         falloff = exponent == 2.0 ? s * s : pow(s, exponent);
     }
-    if (falloff <= 0.0) return 0.0;
-    float nol = dot(n, toLight) * inversesqrt(max(d2, 1.0e-12));
-    if (source > 0.0) nol = cg_sphere_horizon_wrap(nol, clamp(source * source / (d2 + CG_LIGHT_BIAS), 0.0, 1.0));
+    // cg_sphere_horizon_wrap inlined, sin(alpha) = source / sqrt(d² + bias); no source wraps nothing.
+    float nol = dot(n, toLight) * inv, sinAlpha = min(source * inv, 1.0);
+    if (nol < sinAlpha) {
+        float m = max(nol, -sinAlpha);
+        nol = (sinAlpha + m) * (sinAlpha + m) / (4.0 * sinAlpha + 1.0e-30);
+    }
     return falloff * clamp(nol, 0.0, 1.0);
 }
 
