@@ -10,7 +10,10 @@
 // cells a translucent pixel reads (MarkVoxels).
 //
 // The volume is 65 x 64 x 128: x the cells, then one column holding each cascade's placement at (64, 0, 64 * cascade),
-// its lowest corner from the view's position and its size; z cascade 0's 64 cells, then cascade 1's.
+// its lowest corner from the view's position and its size; z cascade 0's 64 cells, then cascade 1's. In a firing that
+// draws a "Surface"-lit material it is 256 deep: behind them both cascades again, holding the SH's band 1 (Unreal's
+// TranslucencyLightingVolumeDirectional, TranslucentLightInjectionShaders.usf): each light's luminance (Unreal 4's
+// weights) times the band-1 basis toward it, over pi, unread by the transfer. cg_LitSurface reads both.
 //
 // Scatter lights the air the same way: each froxel of the world's media (CgWorldMedia) holding extinction takes its
 // light-grid cell's lights as Unreal's volumetric fog does (VolumetricFog.usf's LightScatteringCS, :1085-1169): colour
@@ -33,6 +36,9 @@
 #include "crystalgraphics:shaders/lib/light_shadow.glsl"
 #include "crystalgraphics:shaders/lib/world_light_trace.glsl"
 #include "crystalgraphics:shaders/lib/media.glsl"
+
+// Unreal 4's LuminanceFactors: what band 1 is weighted by, and cg_LitSurface's hue divides by.
+#define LUMINANCE_WEIGHTS vec3(0.3, 0.59, 0.11)
 
 struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; vec4 air; };
 
@@ -176,10 +182,12 @@ bool shadowed(CgLight light, vec3 w) {
 
 void Fill() {
     ivec3 t = CG_TEXEL;
-    int cascade = t.z >> 6;
+    // z 128 and up: the directional band's cascades, lit the same way, written as band 1.
+    bool directional = t.z >= 128;
+    int cascade = (t.z >> 6) & 1;
     vec4 box = cascade == 0 ? _Cascade0 : _Cascade1;
     if (t.x == 64) {
-        LOCAL_LIGHTS_WRITE((t.y == 0 && (t.z & 63) == 0) ? vec4(box.xyz + _EyeOffset.xyz, box.w * 64.0) : vec4(0.0));
+        LOCAL_LIGHTS_WRITE((t.y == 0 && (t.z & 63) == 0 && !directional) ? vec4(box.xyz + _EyeOffset.xyz, box.w * 64.0) : vec4(0.0));
         return;
     }
     vec3 w = box.xyz + (vec3(t.x, t.y, t.z & 63) + 0.5) * box.w;
@@ -196,7 +204,7 @@ void Fill() {
     // come one by one. The exact run after, with no shadow to trace.
     int e = cell_at(w), rays = 0;
     ivec2 sampled = run_in(e, CG_LIGHTS_SAMPLED(e)), exact = run_in(e, CG_LIGHTS_EXACT(e));
-    vec3 sum = vec3(0.0);
+    vec3 sum = vec3(0.0), band1 = vec3(0.0);
     for (int k = sampled.x; k < sampled.y; k++) {
         CgLight light = LIGHTS(int(INDICES(k)));
         if (CG_LIGHT_OPAQUE_ONLY(light)) continue;
@@ -207,16 +215,21 @@ void Fill() {
             rays++;
             if (shadowed(light, w)) continue;
         }
-        sum += light.colorExponent.rgb * (falloff * light_scale(light));
+        vec3 c = light.colorExponent.rgb * (falloff * light_scale(light));
+        sum += c;
+        band1 += dot(c, LUMINANCE_WEIGHTS) * normalize(light.positionRadius.xyz - w + vec3(0.0, 1.0e-6, 0.0));
     }
     for (int k = exact.x; k < exact.y; k++) {
         CgLight light = LIGHTS(int(INDICES(k)));
         if (CG_LIGHT_OPAQUE_ONLY(light)) continue;
-        sum += light.colorExponent.rgb * (cg_light_falloff(light.positionRadius.xyz, light.positionRadius.w,
+        vec3 c = light.colorExponent.rgb * (cg_light_falloff(light.positionRadius.xyz, light.positionRadius.w,
                 light.colorExponent.w, light.spotCos, light.segmentCone, w) * light_scale(light));
+        sum += c;
+        band1 += dot(c, LUMINANCE_WEIGHTS) * normalize(light.positionRadius.xyz - w + vec3(0.0, 1.0e-6, 0.0));
     }
-    // Over pi, then the ambient band read non-directionally: pi * 0.282095^2, a quarter.
-    LOCAL_LIGHTS_WRITE(vec4(sum * (0.25 / 3.14159265), 1.0));
+    // Over pi, then: the ambient band read non-directionally, pi * 0.282095^2, a quarter; band 1 its coefficient,
+    // 0.488603 times the way to each light, which cg_LitSurface multiplies by its transfer at the normal.
+    LOCAL_LIGHTS_WRITE(directional ? vec4(band1 * (0.488603 / 3.14159265), 1.0) : vec4(sum * (0.25 / 3.14159265), 1.0));
 }
 
 // Unreal's HenyeyGreensteinPhase, cos the angle between the light's way and the way to the eye.

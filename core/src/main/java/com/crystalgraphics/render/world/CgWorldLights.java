@@ -33,6 +33,7 @@ import com.crystalgraphics.render.graph.CgRehearsal;
 import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.render.stage.CgWorldAtmosphere;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
@@ -350,9 +351,6 @@ public final class CgWorldLights {
     private static final CgVar.Bool SUN = CgVar.bool("crystalgraphics.world.sunShadows", true, CgVar.DEV,
             "The sun is withheld from our objects by blocks, entities and each other, and from Minecraft's world by our"
                     + " objects.");
-    /** How much of Minecraft's sky light is the sun's own: what a shadow of it takes away. */
-    private static final CgVar.Num SUN_SHARE = CgVar.number("crystalgraphics.world.sunShare", 0.6f, 0f, 1f, CgVar.DEV,
-            "The sun's direct share of a full day's sky light: how dark its shadow is. 0 casts none.");
     /** How far toward the sun past a cascade its map takes casters from. */
     private static final CgVar.Num SUN_TRACE = CgVar.number("crystalgraphics.world.sunCasterReach", 48f, 0f, 128f,
             CgVar.DEV, "Blocks toward the sun past each shadow cascade its casters are taken from: their longest shadow.");
@@ -381,10 +379,13 @@ public final class CgWorldLights {
     private CgGraphTexture gbuffer;
     private final Consumer<CgShaderBindings> gbufferValues = b -> this.gridValues.accept(b.sampler("_Normals", 0,
             this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1));
-    /** The translucency lighting volume: this firing's, or null; each cascade's lowest corner from the eye and cell size. */
+    /**
+     * The translucency lighting volume, and the one twice as deep holding its direction too: this firing's, or null; each
+     * cascade's lowest corner from the eye and cell size.
+     */
     @Nullable
     private CgGraphTexture localLights;
-    private CgGraphTexture volume;
+    private CgGraphTexture volume, volumeDirectional;
     private CgKernel fill, scatterKernel;
     /** The air lit, this firing's and the last's, swapped each firing: each froxel's light scattered toward the eye. */
     private final CgGraphTexture[] air = new CgGraphTexture[2];
@@ -508,7 +509,7 @@ public final class CgWorldLights {
     private final Consumer<CgShaderBindings> applyValues = b -> this.gridValues.accept(b.set1f("_Shadows", shadowsOn ? 1f : 0f)
             .sampler("_Shadowed", 0, shadowsOn ? filtered : CgFallbackTextures.BLACK_1x1)
             .sampler("_Visibility", 1, shadowsOn ? filtered.attachment(1) : CgFallbackTextures.WHITE_1x1)
-            .vec4("_Sun", shadowsOn && sunOn ? 1f : 0f, SUN_SHARE.get(), 0f, 0f)
+            .vec4("_Sun", shadowsOn && sunOn ? 1f : 0f, CgWorldAtmosphere.SUN_SHARE.get(), 0f, 0f)
             .set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1]).set1i("_EyeZ", eyeBlock[2])
             .vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f).set1i("_Scale", lightScale)
             .sampler("_GBuffer", 5, this.gbuffer));
@@ -1168,8 +1169,9 @@ public final class CgWorldLights {
     /**
      * Adds this firing's lights onto the scene behind each pixel, after {@link #record} answered true: one full-screen
      * pass over the stage's target, Unreal's simple lights through the grid. Skipped while its program is unbuilt.
+     * {@code transparents} fills the translucency volume, and {@code directional} its direction too.
      */
-    void apply(CgStageFrame stage, CgRecording recording, boolean transparents) {
+    void apply(CgStageFrame stage, CgRecording recording, boolean transparents, boolean directional) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_APPLY)) {
             localLights = null;
             if (applyPoints == null) {
@@ -1183,7 +1185,7 @@ public final class CgWorldLights {
             recordGBuffer(stage, recording);
             sunOn = sunWanted(stage);
             shadowsOn = SHADOWS.get() && (shadowedAdded > 0 || blockCount > 0 || sunOn) && recordShadows(stage, recording);
-            if (transparents && binned && VOLUME.get()) recordVolume(stage, recording);
+            if (transparents && binned && VOLUME.get()) recordVolume(stage, recording, directional);
             if (!binned && !shadowsOn) return;
             CgGraphBuffer none = zeroes(recording);
             CgMaterial apply = (shadowsOn ? shapedExact : shapedAny) ? applyShaped : applyPoints;
@@ -1457,9 +1459,9 @@ public final class CgWorldLights {
      * Unreal's translucency lighting volume (TranslucentLighting.cpp:270-370): each cascade the sphere round its slice of
      * a fixed 45-degree, square view (r.TranslucencyLightingVolume.AdaptToPerspective 0), its centre weighted to the far
      * end and snapped to whole cells in absolute space; then light_volume.compute lights every cell, after the light
-     * grid and the shadows' inputs are this firing's.
+     * grid and the shadows' inputs are this firing's. With {@code directional}, each cell's direction too, behind them.
      */
-    private void recordVolume(CgStageFrame stage, CgRecording recording) {
+    private void recordVolume(CgStageFrame stage, CgRecording recording, boolean directional) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_VOLUME)) {
             if (fill == null) {
                 fill = CgCompute.load(VOLUME_KERNELS).kernel("Fill");
@@ -1468,7 +1470,11 @@ public final class CgWorldLights {
             if (volume == null) {
                 volume = CgGraphTexture.transientTexture("cg_world_lights.volume",
                         CgTextureDesc.volume(VOLUME_CELLS + 1, VOLUME_CELLS, 2 * VOLUME_CELLS, VOLUME_FORMAT));
+                volumeDirectional = CgGraphTexture.transientTexture("cg_world_lights.volumeDirectional",
+                        CgTextureDesc.volume(VOLUME_CELLS + 1, VOLUME_CELLS, 4 * VOLUME_CELLS, VOLUME_FORMAT));
             }
+            CgGraphTexture into = directional ? volumeDirectional : volume;
+            int depth = (directional ? 4 : 2) * VOLUME_CELLS;
             // The view's forward in eye-relative world: the view's third row turned round.
             float fx = -toView.m02(), fy = -toView.m12(), fz = -toView.m22();
             float norm = (float) Math.sqrt(fx * fx + fy * fy + fz * fz);
@@ -1491,14 +1497,14 @@ public final class CgWorldLights {
             }
             CgTexture lightmap = stage.host().textures().lightmapTexture();
             CgComputePass pass = recording.compute("world.lightsVolume", stage.constants()).timed(GPU_VOLUME);
-            traceInputs(pass.dispatch(fill, VOLUME_CELLS + 1, VOLUME_CELLS, 2 * VOLUME_CELLS).image("LOCAL_LIGHTS", volume)
+            traceInputs(pass.dispatch(fill, VOLUME_CELLS + 1, VOLUME_CELLS, depth).image("LOCAL_LIGHTS", into)
                     .set("_VolumeShadowRays", VOLUME_RAYS.get())
                     .set("_Cascade0", cascades[0], cascades[1], cascades[2], cascades[3])
                     .set("_Cascade1", cascades[4], cascades[5], cascades[6], cascades[7])
                     .set("_EyeOffset", eye.x, eye.y, eye.z, 0f), lightmap != null ? lightmap : CgFallbackTextures.WHITE_1x1,
                     zeroes(recording));
             pass.end();
-            localLights = volume;
+            localLights = into;
         }
     }
 
@@ -1616,7 +1622,7 @@ public final class CgWorldLights {
 
     /** Whether the sun's shadows run this firing: something of ours drawn, under a sun above the horizon. */
     private boolean sunWanted(CgStageFrame stage) {
-        if (!SHADOWS.get() || !SUN.get() || SUN_SHARE.get() <= 0f || !ownPixels()) return false;
+        if (!SHADOWS.get() || !SUN.get() || CgWorldAtmosphere.SUN_SHARE.get() <= 0f || !ownPixels()) return false;
         stage.host().environment().sunDirection(sunDirection);
         return sunDirection[1] > 0f;
     }

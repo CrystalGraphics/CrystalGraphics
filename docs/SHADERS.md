@@ -77,7 +77,7 @@ A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available
 | `cg_WorldOrigin` | `vec4` | Where world space's origin is in absolute coordinates: the camera, in a camera-relative world pass. Read through `CG_ABSOLUTE_WORLD_POS(p)` |
 | `cg_SunDirection` | `vec4` | `xyz` the direction toward the sun (the moon while it is down), `w` daylight 0..1. Read through `CG_SUN_DIRECTION`, `CG_DAYLIGHT` |
 | `cg_FogColor` | `vec4` | The world's fog colour, `a` 1 when there is fog |
-| `cg_FogParams` | `vec4` | `x` fog start, `y` fog end, in blocks from the eye. Read through `cg_FogAmount` |
+| `cg_FogParams` | `vec4` | `x` fog start, `y` fog end, in blocks from the eye. Read through `cg_FogAmount`. `z` the sun's direct share of a full day's sky light (`crystalgraphics.world.sunShare`, 0.6), read through `CG_SUN_SHARE` |
 | `cg_PrevViewProj` | `mat4` | This pass's camera-relative points to last frame's clip space, for a temporal effect. Read through `cg_PreviousClip(p)` |
 | `cg_FrameParams` | `vec4` | `x` the host frame's index (0 to 65535), `y` 1 while last frame was one of this view. Read through `CG_FRAME_INDEX`, `CG_HISTORY_VALID` |
 
@@ -168,8 +168,8 @@ void fragment(in v2f i, out vec4 fragColor) {
 - **Transparent queues only**: an opaque material is lit by the world's lights already. Either refusal fails to parse,
   as does a Forward pass that never calls `CG_SURFACE_NORMAL`.
 - The light is Unreal's `GetVolumeLightingDirectional`: the translucency volume's light (`cg_LocalLightAt`) plus its
-  direction (`cg_LocalLightDirectional`) at the normal, times the lightmap as `cg_Lit`. Until the directional volume
-  exists, a Surface material fails to link naming it.
+  direction (`cg_LocalLightDirectional`) at the normal, times the lightmap as `cg_Lit`. A firing drawing one fills
+  the volume's direction too, at twice the volume's cost (`LIGHTS.md` §8).
 - **`CG_SURFACE_EMISSIVE`** works in any lit Forward pass (Unreal's `Color += Emissive`). It is not `CG_GLOW`, which
   feeds bloom.
 - `CgMaterial.surfaceLit()` says whether a material is one.

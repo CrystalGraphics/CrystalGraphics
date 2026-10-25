@@ -1,9 +1,11 @@
 package com.crystalgraphics.render.stage;
 
 import com.crystalgraphics.render.draw.CgPassConstants;
+import com.crystalgraphics.variable.CgVar;
 
 /**
- * The world's sun and fog, as a pass's {@code cg_SunDirection}, {@code cg_FogColor} and {@code cg_FogParams}: what
+ * The world's sun and fog, as a pass's {@code cg_SunDirection}, {@code cg_FogColor} and {@code cg_FogParams} (with the
+ * sun's share of the sky light, {@code CG_SUN_SHARE}): what
  * {@link CgStageFrame#defaults} fills every stage's constants with, so a material lit by default fogs as Minecraft's
  * own things do.
  *
@@ -20,6 +22,10 @@ import com.crystalgraphics.render.draw.CgPassConstants;
  * </ul>
  */
 public final class CgWorldAtmosphere {
+
+    /** How much of Minecraft's sky light is the sun's own: what a shadow of it takes away ({@code CG_SUN_SHARE}). */
+    public static final CgVar.Num SUN_SHARE = CgVar.number("crystalgraphics.world.sunShare", 0.6f, 0f, 1f, CgVar.DEV,
+            "The sun's direct share of a full day's sky light: how dark its shadow is. 0 casts none.");
 
     // Render thread: one stage fills at a time.
     private static final float[] SUN = new float[3];
@@ -42,7 +48,7 @@ public final class CgWorldAtmosphere {
         float sign = SUN[1] < 0f ? -1f : 1f;   // the moon, opposite, while the sun is down
         float daylight = world.skyBrightness();
         if (Float.isNaN(daylight)) daylight = clamp(SUN[1] * 4f + 0.5f);
-        constants.sun(SUN[0] * sign, SUN[1] * sign, SUN[2] * sign, daylight);
+        constants.sun(SUN[0] * sign, SUN[1] * sign, SUN[2] * sign, daylight).sunShare(SUN_SHARE.get());
     }
 
     private static void fog(CgHostEnvironment world, CgPassConstants constants) {

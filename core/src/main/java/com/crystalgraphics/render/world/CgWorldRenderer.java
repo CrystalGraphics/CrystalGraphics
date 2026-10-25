@@ -1516,7 +1516,7 @@ public final class CgWorldRenderer {
                 targetHeight = stage.host().height();
                 prepare(view);
                 pointLights.record(stage, view, toWorld, targetWidth, targetHeight);
-                pointLights.apply(stage, stage.recording(), false);
+                pointLights.apply(stage, stage.recording(), false, false);
                 if (!CgRehearsal.active()) text.record(stage, view);
             }
             return;
@@ -1534,7 +1534,7 @@ public final class CgWorldRenderer {
             Arrays.fill(culled, 0, count, null);
             Arrays.fill(culledCounts, 0, count, null);
             cullPasses = 0;
-            boolean prepass = false;
+            boolean prepass = false, surfaceLit = false;
             int drawn = 0;
             for (int i = 0; i < count; i++) {
                 byte p = classify(i, which, view);
@@ -1542,6 +1542,9 @@ public final class CgWorldRenderer {
                 if (p == SKIP) continue;
                 drawn++;
                 prepass |= p == FORWARD_AND_PREPASS;
+                if (which == TRANSPARENT && !surfaceLit) {
+                    for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) surfaceLit |= link.surfaceLit();
+                }
             }
             CgTrace.counter(CgChannels.WORLD, which == OPAQUE ? "world.opaqueDraws" : "world.transparentDraws", drawn);
             int halfDrawn = 0, volumeDrawn = 0;
@@ -1606,7 +1609,7 @@ public final class CgWorldRenderer {
             lit = which == TRANSPARENT && pointLights.record(stage, view, toWorld, targetWidth, targetHeight);
             if (which == TRANSPARENT) casters();
             // Onto the opaque scene, before any transparent draw blends over it; the sun's shadows run with no light.
-            if (which == TRANSPARENT) pointLights.apply(stage, recording, drawn > 0);
+            if (which == TRANSPARENT) pointLights.apply(stage, recording, drawn > 0, surfaceLit);
             // Something transparent reads the air, or a light may glow in it.
             mediaOut = which == TRANSPARENT && (drawn > 0 || media.holdsAny())
                     ? media.record(recording, stage.constants(), view, toWorld, targetWidth, targetHeight, pointLights) : null;

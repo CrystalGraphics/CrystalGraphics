@@ -15,7 +15,7 @@ layout(std140) uniform CgFrameBlock {
     vec4 cg_WorldOrigin; // where world space's origin is in absolute coordinates: the camera, in a world pass
     vec4 cg_SunDirection; // xyz toward the sun, or the moon while the sun is down; w the daylight, 0 to 1
     vec4 cg_FogColor;     // the host's fog colour; a 1 while there is fog, 0 for none
-    vec4 cg_FogParams;    // x where the fog starts, y where it is whole, in blocks from the camera
+    vec4 cg_FogParams;    // x where the fog starts, y where it is whole, in blocks from the camera; z CG_SUN_SHARE
     mat4 cg_PrevViewProj; // this pass's camera-relative points to last frame's clip space: cg_PreviousClip
     vec4 cg_FrameParams;  // x the host frame's index, 0 to 65535; y 1 while last frame is one of this view
 };
@@ -169,9 +169,6 @@ float cg_LinearEyeDepth(float windowDepth) {
 // either fails to link, naming the read, rather than drawing as if nothing were stencilled.
 #define CG_CUSTOM_STENCIL(uv) cg_custom_stencil_has_no_pass_writing_it_yet(uv)
 #define CG_SHADING_MODEL_ID(uv) cg_shading_model_id_has_no_pass_writing_it_yet(uv)
-// The world's lights' direction at camera-relative p, the translucency volume's second texture (Unreal's
-// TranslucencyLightingVolumeDirectional): nothing writes it yet, so a "Surface"-lit material fails to link by name.
-#define cg_LocalLightDirectional(p) cg_local_light_directional_has_no_pass_writing_it_yet(p)
 // The lights a draw is handed whole, for a program carrying its own lighting: the directional light's direction (toward
 // it) and colour, the sky light's colour, and the four point lights nearest the draw, i 0 to 3 (camera-relative
 // position, colour, the light's four attenuation parameters; intensity 0 where there is none). Either stage. No draw
@@ -242,27 +239,42 @@ vec3 cg_MediaLight(vec2 uv, float eye) {
 #if !defined(CG_COMPUTE_STAGE)
 // cg_LocalLights: the world's lights on transparent surfaces (CgWorldLights' translucency lighting volume, Unreal's), 65 x
 // 64 x 128: two cascades of 64 cells round the view, cascade 1 behind cascade 0 in z, and a column at x 64 whose texel
-// (64, 0, 64 * cascade) holds the cascade's lowest corner from the camera and its size. Black, and 1 texel, in a pass
-// that binds none. Bound to CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT; do NOT use that unit in Properties.
+// (64, 0, 64 * cascade) holds the cascade's lowest corner from the camera and its size. 256 deep in a firing drawing a
+// "Surface"-lit material: both cascades' direction behind them (cg_LocalLightDirectional). Black, and 1 texel, in a
+// pass that binds none. Bound to CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT; do NOT use that unit in Properties.
 uniform sampler3D cg_LocalLights;
 
-vec3 cg_local_light_cascade(vec3 u, float cascade) {
+// Layer 0 and 1 the cascades' light, 2 and 3 their direction.
+vec3 cg_local_light_cascade(vec3 u, float layer, float depth) {
     vec3 t = clamp(u * 64.0, 0.5, 63.5);
-    return textureLod(cg_LocalLights, vec3(t.x / 65.0, t.y / 64.0, (t.z + 64.0 * cascade) / 128.0), 0.0).rgb;
+    return textureLod(cg_LocalLights, vec3(t.x / 65.0, t.y / 64.0, (t.z + 64.0 * layer) / depth), 0.0).rgb;
 }
 
-// What the world's lights add at camera-relative point p, non-directional: the light a particle or a pane takes, as
-// Unreal's Volumetric NonDirectional translucency does. The inner cascade blends into the outer over its edge
-// (TranslucencyVolumeCommon.ush's ComputeVolumeUVs, TransitionScale 6); past the outer, nothing.
-vec3 cg_LocalLightAt(vec3 p) {
-    if (textureSize(cg_LocalLights, 0).x < 65) return vec3(0.0);
+// The cascades blended at camera-relative p, layer 0 the light and 2 its direction: the inner into the outer over its
+// edge (TranslucencyVolumeCommon.ush's ComputeVolumeUVs, TransitionScale 6); past the outer, nothing.
+vec3 cg_local_light_blend(vec3 p, float layer) {
+    ivec3 size = textureSize(cg_LocalLights, 0);
+    if (size.x < 65 || size.z < int(64.0 * layer) + 128) return vec3(0.0);
     vec4 c0 = texelFetch(cg_LocalLights, ivec3(64, 0, 0), 0), c1 = texelFetch(cg_LocalLights, ivec3(64, 0, 64), 0);
     vec3 u0 = (p - c0.xyz) / c0.w, u1 = (p - c1.xyz) / c1.w;
     if (any(lessThan(u1, vec3(0.0))) || any(greaterThan(u1, vec3(1.0)))) return vec3(0.0);
     vec3 edge = clamp((0.5 - abs(u0 - 0.5)) * 6.0, 0.0, 1.0);
-    float inner = edge.x * edge.y * edge.z;
-    vec3 outer = cg_local_light_cascade(u1, 1.0);
-    return inner > 0.0 ? mix(outer, cg_local_light_cascade(u0, 0.0), inner) : outer;
+    float inner = edge.x * edge.y * edge.z, depth = float(size.z);
+    vec3 outer = cg_local_light_cascade(u1, layer + 1.0, depth);
+    return inner > 0.0 ? mix(outer, cg_local_light_cascade(u0, layer, depth), inner) : outer;
+}
+
+// What the world's lights add at camera-relative point p, non-directional: the light a particle or a pane takes, as
+// Unreal's Volumetric NonDirectional translucency does.
+vec3 cg_LocalLightAt(vec3 p) {
+    return cg_local_light_blend(p, 0.0);
+}
+
+// The world's lights' direction at camera-relative p (Unreal's TranslucencyLightingVolumeDirectional): band 1 of their
+// SH in world axes, luminance only, toward the lights. Read by cg_LitSurface; 0 in a firing drawing nothing
+// "Surface"-lit, where the volume holds no direction.
+vec3 cg_LocalLightDirectional(vec3 p) {
+    return cg_local_light_blend(p, 2.0);
 }
 #endif
 
@@ -296,6 +308,8 @@ float cg_SceneCoverage(float a) {
 // -- Sun and fog --------------------------------------------------------------
 #define CG_SUN_DIRECTION (cg_SunDirection.xyz)
 #define CG_DAYLIGHT      (cg_SunDirection.w)
+// The sun's direct share of a full day's sky light (crystalgraphics.world.sunShare): what its shadow takes away.
+#define CG_SUN_SHARE     (cg_FogParams.z)
 
 // -- The last frame -----------------------------------------------------------
 // What a temporal effect reprojects by (CgPassConstants.history): the host frame's index, whether last frame was one

@@ -58,6 +58,8 @@ public final class CgPassConstants {
 
     /** {@link #sun}'s direction until set: high, toward +x and +z. */
     private static final float SUN_X = 0.3f, SUN_Y = 0.906f, SUN_Z = 0.3f;
+    /** {@link #sunShare}'s until set: {@code crystalgraphics.world.sunShare}'s default. */
+    private static final float SUN_SHARE = 0.6f;
 
     public final Matrix4f view = new Matrix4f();
     public final Matrix4f projection = new Matrix4f();
@@ -77,7 +79,7 @@ public final class CgPassConstants {
     private float originX;
     private float originY;
     private float originZ;
-    private float sunX = SUN_X, sunY = SUN_Y, sunZ = SUN_Z, daylight = 1f;
+    private float sunX = SUN_X, sunY = SUN_Y, sunZ = SUN_Z, daylight = 1f, sunShare = SUN_SHARE;
     private float fogRed, fogGreen, fogBlue, fogStart, fogEnd;
     private boolean fog;
     private int frameIndex;
@@ -164,6 +166,13 @@ public final class CgPassConstants {
         sunY = SUN_Y;
         sunZ = SUN_Z;
         daylight = 1f;
+        sunShare = SUN_SHARE;
+        return this;
+    }
+
+    /** The sun's direct share of a full day's sky light, 0 to 1 ({@code CG_SUN_SHARE}): what its shadow takes away. */
+    public CgPassConstants sunShare(float share) {
+        sunShare = share;
         return this;
     }
 
@@ -226,6 +235,7 @@ public final class CgPassConstants {
         fog = block[at + 59] != 0f;
         fogStart = block[at + 60];
         fogEnd = block[at + 61];
+        sunShare = block[at + 62];
         previous.set(block, at + 64);
         frameIndex = (int) block[at + 80];
         historyValid = block[at + 81] != 0f;
@@ -276,7 +286,7 @@ public final class CgPassConstants {
         out[at + 59] = fog ? 1f : 0f;
         out[at + 60] = fogStart;
         out[at + 61] = fogEnd;
-        out[at + 62] = 0f;
+        out[at + 62] = sunShare;
         out[at + 63] = 0f;
         previous.get(out, at + 64);
         out[at + 80] = frameIndex & 0xFFFF;

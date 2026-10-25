@@ -273,10 +273,16 @@ vec3 extra = cg_LocalLightAt(cg_FragmentPosition());     // the same light by ha
   `1 + volume` beside the lightmap, as the deferred pass multiplies the scene, the inner cascade blending into the
   outer over its edge (`TransitionScale` 6). Bound at `CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT` (`cg_LocalLights`) on
   the world renderer's transparent passes; black elsewhere, so an opaque pass is lit by the deferred pass alone.
+- **Read by a normal**, as Unreal's `Volumetric Directional` (`"Lighting" = "Surface"`, `SHADERS.md`): a firing that
+  draws such a material fills the volume twice as deep, both cascades' band 1 behind them (Unreal's
+  `TranslucencyLightingVolumeDirectional`): each light's luminance (Unreal 4's weights) times 0.488603 toward it, over
+  pi. `cg_LocalLightDirectional(p)` reads it; `cg_LitSurface` adds it by the normal's transfer, coloured by the
+  ambient's hue. Those firings' volume costs twice its usual: the same cells lit again for the second band.
 - **Departures from Unreal**: every light of a cell traced every frame, where MegaLights samples a few and blends
-  frames; no marking of the cells a translucent pixel reads; the ambient band alone, until a directional consumer.
-- `crystalgraphics.world.lightsVolume=false` turns it off; `--mode=lights-volume` is the gate. `CgLightsDemo` shows it:
-  glass round the carousel.
+  frames; no marking of the cells a translucent pixel reads; the band-1 direction taken to the light's centre, a
+  tube's or a spot's too.
+- `crystalgraphics.world.lightsVolume=false` turns it off; `--mode=lights-volume` is the gate, the direction included
+  (two Surface panes, one facing the light). `CgLightsDemo` shows it: glass round the carousel.
 
 ## 9. In the air
 
