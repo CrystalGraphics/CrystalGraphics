@@ -30,6 +30,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.junit.Assert.*;
@@ -234,6 +235,13 @@ public class KitProgramsLinkTest {
             }
             """;
 
+    /** Whether failure {@code f} is a particle usage's variant alone, stopped by the port's own {@code #error}. */
+    private static boolean refusesAUsage(String f) {
+        return f.contains("'#error'") && USAGE_VARIANT.matcher(f).find();
+    }
+
+    private static final Pattern USAGE_VARIANT = Pattern.compile(" \\[FX_ON_(SPRITES|MESH_PARTICLES|RIBBONS)\\]: ");
+
     /** What a read of an output no pass writes yet fails naming. */
     private static final String NOT_WRITTEN = "_has_no_pass_writing_it_yet";
 
@@ -320,14 +328,16 @@ public class KitProgramsLinkTest {
 
     /**
      * Every port of each kit linked in every pass. One reading an output no pass writes yet (the stencil, the
-     * shading-model id) fails naming it and is listed apart: that is the failure it is owed, not a broken port.
+     * shading-model id) fails naming it and is listed apart: that is the failure it is owed, not a broken port. So is a
+     * particle usage's variant the port stops with {@code #error}: Unreal compiles a material only for the usages its
+     * flags name, and a material's {@code usage} keeps any other renderer from drawing it.
      */
     @Test
     public void everyKitPortLinksInEveryPass() throws IOException {
         String namespaces = System.getProperty("crystalgraphics.kits.ports");
         Assume.assumeTrue("no -PkitPorts given", namespaces != null && !namespaces.isBlank());
         Path root = Paths.get(System.getProperty("crystalgraphics.kits.portsRoot"), "assets");
-        List<String> failures = new ArrayList<>(), waiting = new ArrayList<>();
+        List<String> failures = new ArrayList<>(), waiting = new ArrayList<>(), refused = new ArrayList<>();
         int programs = 0, ports = 0;
         for (String namespace : namespaces.split(";")) {
             CgParameterCollections.declareAll(namespace, root.resolve(namespace).resolve("parameters"));
@@ -347,10 +357,13 @@ public class KitProgramsLinkTest {
                 } catch (RuntimeException e) {
                     own.add(path + ": " + e.getMessage());
                 }
+                for (String f : own) if (refusesAUsage(f)) refused.add(f);
+                own.removeIf(KitProgramsLinkTest::refusesAUsage);
                 (!own.isEmpty() && own.stream().allMatch(f -> f.contains(NOT_WRITTEN)) ? waiting : failures).addAll(own);
             }
         }
         if (!waiting.isEmpty()) System.out.println("[kit ports] waiting on an output no pass writes:\n" + String.join("\n", waiting));
+        if (!refused.isEmpty()) System.out.println("[kit ports] usages a port refuses by #error:\n" + String.join("\n", refused));
         assertTrue(String.join("\n", failures), failures.isEmpty());
         assertTrue("no port was found under " + namespaces, ports > 0);
         assertTrue("no program was linked", programs > 0);
