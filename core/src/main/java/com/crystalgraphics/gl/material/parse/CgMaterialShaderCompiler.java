@@ -398,7 +398,10 @@ public final class CgMaterialShaderCompiler {
                                                       CgUniformBuffer matPropsUbo,
                                                       CompileConfig config) {
         final String depthVertexBody;
-        if (isSimpleVertex(forwardPass) && !readsBuffers(shader, forwardPass)
+        // The shortcut transforms cg_Position: a type with no vertex data places its vertices in its own body.
+        CgVertexFormat format = CgVertexFormat.forShaderType(shader.shaderType());
+        boolean positioned = format != null && format.indexOf("cg_Position") >= 0;
+        if (positioned && isSimpleVertex(forwardPass) && !readsBuffers(shader, forwardPass)
                 && shader.depthMode() != CgParsedShader.DepthMode.PREPASS) {
             depthVertexBody =
                     "    // Auto-generated depth prepass -- minimal position transform\n"

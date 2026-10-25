@@ -165,6 +165,11 @@ float cg_LinearEyeDepth(float windowDepth) {
 }
 #define CG_SCENE_EYE_DEPTH(uv) cg_LinearEyeDepth(texture(cg_DepthBuffer, (uv)).r)
 
+// Unreal's CustomStencil and the shading-model id at a screen position: no pass writes them yet, so a material reading
+// either fails to link, naming the read, rather than drawing as if nothing were stencilled.
+#define CG_CUSTOM_STENCIL(uv) cg_custom_stencil_has_no_pass_writing_it_yet(uv)
+#define CG_SHADING_MODEL_ID(uv) cg_shading_model_id_has_no_pass_writing_it_yet(uv)
+
 // cg_Media: the world's froxel transmittance (CgWorldMedia), a volume over the screen, each texel to its slice's far edge
 // the light the air scattered toward the eye (rgb) and what gets through (a); white in a pass that binds none. Bound to
 // CgBindingPoints.MEDIA_TEXTURE_UNIT; do NOT use that unit in Properties.

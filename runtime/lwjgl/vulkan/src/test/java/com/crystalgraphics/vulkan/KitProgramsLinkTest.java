@@ -160,6 +160,28 @@ public class KitProgramsLinkTest {
             }
             """;
 
+    /** What a read of an output no pass writes yet fails naming. */
+    private static final String NOT_WRITTEN = "_has_no_pass_writing_it_yet";
+
+    /** A screen material reading the stencil, as a skill grade does. */
+    private static final String STENCIL_PORT = """
+            #type none
+
+            Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
+            Queue = "Transparent"
+
+            struct v2f { vec2 uv; };
+
+            Pass {
+                Tags { "LightMode" = "Forward" }
+                void vertex(out v2f o) {
+                    o.uv = vec2(CG_VERTEX_ID & 1, CG_VERTEX_ID >> 1);
+                    gl_Position = vec4(o.uv * 2.0 - 1.0, 0.0, 1.0);
+                }
+                void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(float(CG_CUSTOM_STENCIL(i.uv))); }
+            }
+            """;
+
     @BeforeClass
     public static void install() throws ClassNotFoundException {
         EngineOnTrackedBackendTest.install();
@@ -197,11 +219,23 @@ public class KitProgramsLinkTest {
     }
 
     @Test
+    public void aPortReadingTheStencilFailsNamingIt() {
+        CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreateGenerated(STENCIL_PORT);
+        shader.recompile();
+        assertTrue("a port read a stencil no pass writes", shader.hasCompileFailed());
+        assertTrue(shader.lastCompileError(), shader.lastCompileError().contains(NOT_WRITTEN));
+    }
+
+    /**
+     * Every port of each kit linked in every pass. One reading an output no pass writes yet (the stencil, the
+     * shading-model id) fails naming it and is listed apart: that is the failure it is owed, not a broken port.
+     */
+    @Test
     public void everyKitPortLinksInEveryPass() throws IOException {
         String namespaces = System.getProperty("crystalgraphics.kits.ports");
         Assume.assumeTrue("no -PkitPorts given", namespaces != null && !namespaces.isBlank());
         Path root = Paths.get(System.getProperty("crystalgraphics.kits.portsRoot"), "assets");
-        List<String> failures = new ArrayList<>();
+        List<String> failures = new ArrayList<>(), waiting = new ArrayList<>();
         int programs = 0, ports = 0;
         for (String namespace : namespaces.split(";")) {
             declareCollections(namespace, root.resolve(namespace).resolve("parameters"));
@@ -215,13 +249,16 @@ public class KitProgramsLinkTest {
             for (Path file : files) {
                 ports++;
                 String path = namespace + ":shaders/" + shaders.relativize(file).toString().replace(File.separatorChar, '/');
+                List<String> own = new ArrayList<>();
                 try {
-                    programs += link(path, CgMaterialShaderRegistry.get().getOrCreate(path), failures);
+                    programs += link(path, CgMaterialShaderRegistry.get().getOrCreate(path), own);
                 } catch (RuntimeException e) {
-                    failures.add(path + ": " + e.getMessage());
+                    own.add(path + ": " + e.getMessage());
                 }
+                (!own.isEmpty() && own.stream().allMatch(f -> f.contains(NOT_WRITTEN)) ? waiting : failures).addAll(own);
             }
         }
+        if (!waiting.isEmpty()) System.out.println("[kit ports] waiting on an output no pass writes:\n" + String.join("\n", waiting));
         assertTrue(String.join("\n", failures), failures.isEmpty());
         assertTrue("no port was found under " + namespaces, ports > 0);
         assertTrue("no program was linked", programs > 0);
