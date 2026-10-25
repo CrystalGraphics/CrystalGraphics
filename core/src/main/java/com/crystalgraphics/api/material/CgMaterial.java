@@ -1544,6 +1544,35 @@ public final class CgMaterial {
     }
 
     /**
+     * Whether its shader reads the sun's shadow it is handed ({@code CG_DIRECTIONAL_SHADOW}): the world renderer binds the
+     * sun's shadow map to its draws. Parses it if nothing has. False for a shader that cannot be parsed.
+     */
+    public boolean handedSun() {
+        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        return parsed != null && parsed.handedSun();
+    }
+
+    /**
+     * The texture unit sampler property {@code name} is wired to: its index among its shader's samplers, what
+     * {@code sampler(name, unit, texture)} takes. -1 where it declares none of that name.
+     *
+     * <pre>{@code
+     * material.applyProperties(b -> b.sampler("_Map", material.samplerUnit("_Map"), map));
+     * }</pre>
+     */
+    public int samplerUnit(String name) {
+        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        if (parsed == null) return -1;
+        int unit = 0;
+        for (CgMaterialProperty p : parsed.properties()) {
+            if (!p.getType().isSampler()) continue;
+            if (p.getName().equals(name)) return unit;
+            unit++;
+        }
+        return -1;
+    }
+
+    /**
      * Whether a pass of its shader names {@code identifier} as a whole word, in its declarations or its stages' code,
      * parsing it if it is not yet: what a renderer asks before writing a value only some shaders read.
      *

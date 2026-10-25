@@ -1544,7 +1544,7 @@ public final class CgWorldRenderer {
                 prepass |= p == FORWARD_AND_PREPASS;
                 for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
                     surfaceLit |= which == TRANSPARENT && link.surfaceLit();
-                    handed |= link.handedLights();
+                    handed |= link.handedLights() || link.handedSun();
                 }
             }
             CgTrace.counter(CgChannels.WORLD, which == OPAQUE ? "world.opaqueDraws" : "world.transparentDraws", drawn);
@@ -1612,7 +1612,7 @@ public final class CgWorldRenderer {
             // Onto the opaque scene, before any transparent draw blends over it; the sun's shadows run with no light.
             if (which == TRANSPARENT) pointLights.apply(stage, recording, drawn > 0, surfaceLit);
             // After the grid is binned in a transparent firing; an opaque one reads the last frame's.
-            if (handed) handLights(recording);
+            if (handed) handLights(recording, which == TRANSPARENT);
             // Something transparent reads the air, or a light may glow in it.
             mediaOut = which == TRANSPARENT && (drawn > 0 || media.holdsAny())
                     ? media.record(recording, stage.constants(), view, toWorld, targetWidth, targetHeight, pointLights) : null;
@@ -1641,12 +1641,13 @@ public final class CgWorldRenderer {
         }
     }
 
-    /** The light grid bound to every drawn material reading the world's lights it is handed. */
-    private void handLights(CgRecording recording) {
+    /** The light grid and the sun's map bound to every drawn material reading what it is handed of them. */
+    private void handLights(CgRecording recording, boolean transparent) {
         for (int i = 0; i < count; i++) {
             if (phase[i] == SKIP) continue;
             for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
                 if (link.handedLights()) pointLights.hand(link, recording);
+                if (link.handedSun()) pointLights.handSun(link, transparent);
             }
         }
     }

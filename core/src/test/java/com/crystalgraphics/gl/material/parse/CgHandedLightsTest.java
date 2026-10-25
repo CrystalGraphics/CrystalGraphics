@@ -78,6 +78,18 @@ public class CgHandedLightsTest {
     }
 
     @Test
+    public void aProgramNamingTheSunsShadowIsHandedItsMap() {
+        String source = shader("", "fragColor = vec4(vec3(CG_DIRECTIONAL_SHADOW(i.n)), 1.0);");
+        CgParsedShader parsed = CgShaderParser.parse(source, "test:sun");
+        assertTrue(parsed.handedSun());
+        assertFalse(parsed.handedLights());
+        assertTrue(parsed.properties().stream().anyMatch(p -> p.getName().equals("_cg_SunMap")));
+        String fragment = CgMaterialShaderCompiler.compile(parsed, Collections.emptyList()).fragmentSource();
+        assertTrue(fragment, fragment.contains("#define CG_HANDED_SUN 1"));
+        assertTrue(fragment, fragment.contains("handed_sun.glsl"));
+    }
+
+    @Test
     public void tooManyBuffersFailNamingTheLights() {
         String own = "Buffers {\n    A (\"A\", vec4, readonly)\n    B (\"B\", vec4, readonly)\n}\n";
         CgShaderParseException e = assertThrows(CgShaderParseException.class,

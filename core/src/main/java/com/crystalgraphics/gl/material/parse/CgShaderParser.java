@@ -97,6 +97,17 @@ public final class CgShaderParser {
     /** What a program reading the world's lights it is handed names, itself or in a file it includes. */
     private static final String[] HANDED_LIGHTS = {"cg_NearestLights", "CG_DRAW_POINT_LIGHT_"};
 
+    /** What a program reading the sun's shadow it is handed names, itself or in a file it includes. */
+    private static final String[] HANDED_SUN = {"CG_DIRECTIONAL_SHADOW"};
+
+    /** The sun's shadow map a handed program reads this firing ({@code CgWorldLights.hand}). */
+    private static final String HANDED_SUN_PROPERTIES = """
+            _cg_SunMap ("The sun's cascades, a quadrant each: our casters' depth from the light", sampler2D) = "white"
+            _cg_SunRows ("Each cascade's uv, depth and range rows", vec4[16]) = (0, 0, 0, 0)
+            _cg_Sun ("1 while the map holds this firing's casters", vec4) = (0, 0, 0, 0)
+            _cg_SunEye ("The eye the map is placed from, camera-relative", vec4) = (0, 0, 0, 0)
+            """;
+
     /** Where the light grid a handed program reads lies this firing ({@code CgWorldLights.hand}). */
     private static final String HANDED_PROPERTIES = """
             _cg_LightGrid ("Cells across, up and deep, and 1 while the grid holds lights", vec4) = (1, 1, 1, 0)
@@ -233,6 +244,12 @@ public final class CgShaderParser {
             List<CgMaterialProperty> withGrid = new ArrayList<>(props);
             withGrid.addAll(CgPropertiesParser.parseEngine(HANDED_PROPERTIES, "handed lights"));
             props = Collections.unmodifiableList(withGrid);
+        }
+        boolean handedSun = new CgShaderPreprocessor().mentions(uncommented, resourcePath, HANDED_SUN);
+        if (handedSun) {
+            List<CgMaterialProperty> withSun = new ArrayList<>(props);
+            withSun.addAll(CgPropertiesParser.parseEngine(HANDED_SUN_PROPERTIES, "handed sun"));
+            props = Collections.unmodifiableList(withSun);
         }
         int renderQueue                = CgQueueParser.parse(source, resourcePath);
 
@@ -483,7 +500,7 @@ public final class CgShaderParser {
 
         // ── Step 8: return assembled parsed shader ─────────────────────────
         return new CgParsedShader(shaderType, props, featureNames, engineBuffers, renderQueue,
-                renderType, sceneColorMargin, "Unlit".equals(lighting), "Surface".equals(lighting), handedLights,
+                renderType, sceneColorMargin, "Unlit".equals(lighting), "Surface".equals(lighting), handedLights, handedSun,
                 "Off".equals(fog),
                 "Linear".equals(colorSpace), "Off".equals(media), "EmissiveOpacity".equals(output), depthMode, tube,
                 Collections.unmodifiableList(passes),

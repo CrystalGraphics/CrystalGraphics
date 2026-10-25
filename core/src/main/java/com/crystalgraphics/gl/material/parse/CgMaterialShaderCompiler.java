@@ -104,6 +104,8 @@ public final class CgMaterialShaderCompiler {
     private static final String ENV_INCLUDE = "crystalgraphics:shaders/env/cg_env.glsl";
     /** The world's lights a program carrying its own lighting is handed: {@code CgParsedShader.handedLights()}. */
     private static final String HANDED_LIGHTS_INCLUDE = "crystalgraphics:shaders/env/handed_lights.glsl";
+    /** The sun's shadow handed to one: {@code CgParsedShader.handedSun()}. */
+    private static final String HANDED_SUN_INCLUDE = "crystalgraphics:shaders/env/handed_sun.glsl";
 
     /**
      * The engine's keyword for a multi-draw's variant of any pass: {@code cg_env.glsl} takes a draw's bases from its
@@ -576,6 +578,7 @@ public final class CgMaterialShaderCompiler {
         appendPropertyAccessors(sb, properties, shader.engineBuffers().contains(CgShaderParser.ROWS));
 
         appendMaterialBuffers(sb, shader, useSsbo);
+        appendHanded(sb, shader);
 
         // v2f struct
         appendV2fStruct(sb, pass.v2fStructBody());
@@ -670,6 +673,7 @@ public final class CgMaterialShaderCompiler {
         appendPropertyAccessors(sb, properties, shader.engineBuffers().contains(CgShaderParser.ROWS));
 
         appendMaterialBuffers(sb, shader, useSsbo);
+        appendHanded(sb, shader);
 
         // v2f struct
         appendV2fStruct(sb, pass.v2fStructBody());
@@ -901,8 +905,12 @@ public final class CgMaterialShaderCompiler {
         }
         sb.append("// Buffers { }\n").append(shader.bufferStructs());
         for (CgBufferDecl b : shader.buffers()) CgLoweredEmitter.reader(sb, b, useSsbo);
-        // After the light grid's buffers, which the parser put last.
+    }
+
+    /** What the world hands a program carrying its own lighting, after the buffers and properties it reads through. */
+    private static void appendHanded(StringBuilder sb, CgParsedShader shader) {
         if (shader.handedLights()) sb.append("#include \"").append(HANDED_LIGHTS_INCLUDE).append("\"\n");
+        if (shader.handedSun()) sb.append("#include \"").append(HANDED_SUN_INCLUDE).append("\"\n");
     }
 
     private static void appendAttachedBuffers(StringBuilder sb,
@@ -1032,6 +1040,7 @@ public final class CgMaterialShaderCompiler {
         // cg_env.glsl's cg_LitSurface exists only where it is called: it reads a volume no other material binds.
         if (shader.surfaceLit()) sb.append("#define CG_SURFACE_LIT 1\n");
         if (shader.handedLights()) sb.append("#define CG_HANDED_LIGHTS 1\n");
+        if (shader.handedSun()) sb.append("#define CG_HANDED_SUN 1\n");
         sb.append("#define CG_EMISSION (vec3(1.0)");
         if (hasProperty(shader, "_EmissionColor", 4)) sb.append(" * _EmissionColor.rgb");
         if (hasProperty(shader, "_EmissionStrength", 1)) sb.append(" * _EmissionStrength");

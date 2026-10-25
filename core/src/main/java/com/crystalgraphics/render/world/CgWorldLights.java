@@ -514,6 +514,13 @@ public final class CgWorldLights {
             .vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f).set1i("_Scale", lightScale)
             .sampler("_GBuffer", 5, this.gbuffer));
     private final Consumer<CgShaderBindings> applyWindow = b -> CgWorldVoxelWindow.get().bind(b, 2);
+    /** Whether {@link #handSun} binds this firing's map. */
+    private boolean handSunLive;
+    private int handSunUnit;
+    private final Consumer<CgShaderBindings> handSunValues = b -> b
+            .sampler("_cg_SunMap", this.handSunUnit, this.handSunLive ? this.sunMap : CgFallbackTextures.WHITE_1x1)
+            .array("_cg_SunRows", this.sunRowData).vec4("_cg_Sun", this.handSunLive ? 1f : 0f, 0f, 0f, 0f)
+            .vec4("_cg_SunEye", eye.x, eye.y, eye.z, 0f);
     /** Whether {@link #hand} binds a grid holding lights. */
     private boolean handLive;
     /** Where the grid lay when it was last binned, for {@code handed_lights.glsl}. */
@@ -1469,6 +1476,17 @@ public final class CgWorldLights {
         CgGraphBuffer none = zeroes(recording);
         material.buffer("WORLD_LIGHTS", handLive ? list : none).buffer("WORLD_LIGHT_CELLS", handLive ? cells : none)
                 .buffer("WORLD_LIGHT_INDICES", handLive ? indices : none).applyProperties(handValues);
+    }
+
+    /**
+     * Binds the sun's shadow map to {@code material}, a program composing its own ({@code handed_sun.glsl}): this
+     * firing's after {@link #apply} in a transparent firing, none in an opaque one, whose pixels the deferred pass
+     * shadows.
+     */
+    void handSun(CgMaterial material, boolean transparent) {
+        handSunLive = transparent && sunOn && sunMapped;
+        handSunUnit = material.samplerUnit("_cg_SunMap");
+        material.applyProperties(handSunValues);
     }
 
     /** The world's lights on transparent surfaces this firing, for {@code LOCAL_LIGHTS_TEXTURE_UNIT}; null for none. */

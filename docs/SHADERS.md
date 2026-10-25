@@ -196,8 +196,12 @@ in both stages unless said:
   `Buffers { }` (leaving it one) and the grid's placement as `_cg_Light*` properties. The lights reaching a point are
   its grid cell's, less those that leave transparent surfaces unlit. A transparent firing reads this frame's grid, an
   opaque one the last frame's: the grid is binned in the transparent firing. A particle's origin is its system's.
-- **The shadow is not written yet**: a placeholder that fails to link naming itself
-  (`..._has_no_pass_writing_it_yet`), so a port reading one is listed as waiting rather than drawing unlit.
+- **The shadow is the sun's cascaded shadow map of our casters** (`env/handed_sun.glsl`, `LIGHTS.md` §7): a program
+  naming `CG_DIRECTIONAL_SHADOW`, itself or in a file it includes, is handed the map as `_cg_SunMap` (a sampler of its
+  own) and its cascades as `_cg_Sun*` properties, read with the sample pass's PCF, the last cascade fading to lit.
+  Blocks shade it through the lightmap, as Minecraft's own pixels. Only a transparent firing has the map: in an opaque
+  one it reads 1, since the deferred pass shadows our opaque pixels already. `_COLOR` is what a shadow leaves of the
+  draw's light, its sky light over the whole; `_WRAP` is 0: Minecraft's sun lights nothing past the terminator.
 
 #### Per-Instance Object Data — SSBO / TBO Dual Path
 
