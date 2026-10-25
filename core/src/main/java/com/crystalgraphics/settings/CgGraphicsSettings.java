@@ -28,8 +28,8 @@ public final class CgGraphicsSettings {
 
     public static final CgSetting.Choice<CgQuality> QUALITY = FILE.choice("effects", "quality", "Quality",
             "How much each effect draws. Low drops distortion and optional layers, draws a cheaper bloom, and halves optional"
-                    + " particles. Chosen from your graphics card's speed at the first launch.",
-            CgQuality.HIGH);
+                    + " particles.",
+            CgQuality.ULTRA);
 
     public static final CgSetting.Toggle HDR = FILE.toggle("effects", "hdr", "HDR lighting",
             "Draws effects in linear light past white, so glows bloom where they are brightest. Off draws straight into"

@@ -294,8 +294,7 @@ until it gets there. This is how a player joining late sees a lasting cue.
   VFX.play(new Aura(look, x, y, z).clock(clock));             // or name the clock
   ```
 - **The player's settings apply by themselves**: particle density, quality tier, pause, tick rate. An effect never
-  reads them. A fresh install's quality tier comes from a timed pass at its first launch (`CgQualityDetect`: Unreal's
-  scalability auto-detect, on its thresholds), and the player's choice wins after.
+  reads them. The quality tier is Ultra until the player chooses another.
 
 ### A system of your own
 
