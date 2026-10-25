@@ -348,6 +348,29 @@ vec3 cg_FragmentPosition() {
     return transpose(mat3(cg_ViewMatrix)) * (v - cg_ViewMatrix[3].xyz);
 }
 
+// The window depth of eye distance eye in the pass's convention: cg_LinearEyeDepth's inverse.
+float cg_WindowDepth(float eye) {
+    float ndc;
+    if (cg_ProjMatrix[2][3] == 0.0) {
+        ndc = cg_ProjMatrix[3][2] - cg_ProjMatrix[2][2] * eye;
+    } else {
+        float p22 = -cg_ProjMatrix[2][2] / cg_ProjMatrix[2][3];
+        ndc = (cg_ProjMatrix[3][2] + p22 * cg_ProjMatrix[3][3]) / eye - p22;
+    }
+    return cg_DepthParams.y > 0.5 ? ndc : ndc * 0.5 + 0.5;
+}
+
+// Unreal's Pixel Depth Offset (ApplyPixelDepthOffsetToMaterialParameters): this fragment's depth pushed blocks farther
+// in view depth, never nearer, written to gl_FragDepth. Call it once on every path; what shades it still reads the
+// unpushed fragment.
+//
+//     CG_PIXEL_DEPTH_OFFSET(_DepthOffset * 0.01);   // a port's centimetres
+void cg_PixelDepthOffset(float blocks) {
+    float pushed = cg_WindowDepth(cg_LinearEyeDepth(gl_FragCoord.z) + max(blocks, 0.0));
+    gl_FragDepth = CG_DEPTH_REVERSED ? min(pushed, gl_FragCoord.z) : max(pushed, gl_FragCoord.z);
+}
+#define CG_PIXEL_DEPTH_OFFSET(blocks) cg_PixelDepthOffset(blocks)
+
 // What a lit material's colour becomes: times the lightmap at cg_Light, and lit by the world's lights as the opaque
 // scene is (world_lights.shader adds scene x light): in a transparent firing, at this fragment. In the linear scene the
 // colour is decoded after, so the gain is taken to the decode's inverse power.

@@ -99,6 +99,7 @@ Convenience macros over the frame block:
 | `CG_TIME_VEC4` | `cg_Time` | Full 4-component time vector |
 | `CG_RESOLUTION` | `cg_Resolution` | Viewport dimensions in pixels |
 | `CG_SCENE_EYE_DEPTH(uv)` | `cg_LinearEyeDepth(texture(cg_DepthBuffer, uv).r)` | Scene distance from the camera at `uv`, in eye units, under any depth convention |
+| `CG_PIXEL_DEPTH_OFFSET(blocks)` | `cg_PixelDepthOffset(blocks)` | Fragment stage. Unreal's Pixel Depth Offset: writes `gl_FragDepth` as this fragment pushed `blocks` farther in view depth, never nearer, under any depth convention (`cg_WindowDepth(eye)` is `cg_LinearEyeDepth`'s inverse). Call it once on every path, since a shader writing `gl_FragDepth` on some paths leaves the rest undefined |
 | `CG_SCENE_COLOR(uv)` | `texture(cg_SceneColor, uv)` | The scene's colour at `uv` (`gl_FragCoord.xy / CG_RESOLUTION` for the pixel behind) |
 | `CG_MATRIX_MVP` | `cg_ProjMatrix * cg_ViewMatrix * CG_OBJECT_TO_WORLD` | Standard MVP transform |
 

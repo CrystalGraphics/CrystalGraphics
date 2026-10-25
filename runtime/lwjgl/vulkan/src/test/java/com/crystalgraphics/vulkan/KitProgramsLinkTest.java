@@ -189,6 +189,30 @@ public class KitProgramsLinkTest {
             }
             """;
 
+    /** A masked mesh particle pushing its depth back, as an aura's inner shell does. */
+    private static final String DEPTH_OFFSET_PORT = """
+            #type spatial
+            #pragma cg_use particle
+
+            Tags { "RenderType" = "TransparentCutout" "Lighting" = "Unlit" }
+            Queue = "AlphaTest"
+
+            struct v2f { vec4 colour; };
+
+            Pass {
+                void vertex(out v2f o) {
+                    CgMaterialVertex v = cg_material_vertex();
+                    o.colour = cg_material_particle().color;
+                    gl_Position = cg_material_project(v);
+                }
+                void fragment(in v2f i, out vec4 fragColor) {
+                    cg_Clip(i.colour.a - 0.5);
+                    CG_PIXEL_DEPTH_OFFSET(i.colour.a * 0.25);
+                    fragColor = vec4(i.colour.rgb, 1.0);
+                }
+            }
+            """;
+
     /** A type with no factory: it must fail naming that, not draw something else. */
     private static final String UNFACTORED_PORT = """
             #type pos3_uv2_col4ub
@@ -265,6 +289,15 @@ public class KitProgramsLinkTest {
         CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreateGenerated(MESH_PORT);
         List<String> failures = new ArrayList<>();
         int programs = link("the mesh port", shader, failures);
+        assertTrue(String.join(System.lineSeparator(), failures), failures.isEmpty());
+        assertTrue("no program was linked", programs > 0);
+    }
+
+    @Test
+    public void aPortOffsettingItsDepthLinksInEveryPass() {
+        CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreateGenerated(DEPTH_OFFSET_PORT);
+        List<String> failures = new ArrayList<>();
+        int programs = link("the depth offset port", shader, failures);
         assertTrue(String.join(System.lineSeparator(), failures), failures.isEmpty());
         assertTrue("no program was linked", programs > 0);
     }
