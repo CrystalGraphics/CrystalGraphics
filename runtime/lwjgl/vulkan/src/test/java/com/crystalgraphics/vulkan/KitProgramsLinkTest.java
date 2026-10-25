@@ -307,12 +307,13 @@ public class KitProgramsLinkTest {
             }
             """;
 
-    /** Whether failure {@code f} is a particle usage's variant alone, stopped by the port's own {@code #error}. */
+    /** Whether failure {@code f} is a particle usage's variant, with or without other keywords, stopped by the port's own {@code #error}. */
     private static boolean refusesAUsage(String f) {
         return f.contains("'#error'") && USAGE_VARIANT.matcher(f).find();
     }
 
-    private static final Pattern USAGE_VARIANT = Pattern.compile(" \\[FX_ON_(SPRITES|MESH_PARTICLES|RIBBONS)\\]: ");
+    private static final Pattern USAGE_VARIANT =
+            Pattern.compile(" \\[[^\\]]*\\bFX_ON_(SPRITES|MESH_PARTICLES|RIBBONS)\\b[^\\]]*\\]: ");
 
     /** What a read of an output no pass writes yet fails naming. */
     private static final String NOT_WRITTEN = "_has_no_pass_writing_it_yet";
