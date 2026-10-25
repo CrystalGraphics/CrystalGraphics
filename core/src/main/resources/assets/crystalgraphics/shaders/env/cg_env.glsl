@@ -173,8 +173,8 @@ float cg_LinearEyeDepth(float windowDepth) {
 // it) and colour, the sky light's colour, and the four point lights nearest the draw, i 0 to 3 (camera-relative
 // position, colour, the light's four attenuation parameters; intensity 0 where there is none). Either stage. The
 // colours split the host's light at the draw's (CG_OBJECT_LIGHT): the sun takes CG_SUN_SHARE of what sky light adds by
-// day, and the sky the rest, block light included. Where no draw writes them yet, a program reading one fails to link
-// by name.
+// day, and the sky the rest, block light included. The point lights are env/handed_lights.glsl's, included for a
+// program naming them; these stand where it is not, failing to link by name.
 #define CG_DIRECTIONAL_LIGHT_DIRECTION CG_SUN_DIRECTION
 #define CG_DIRECTIONAL_LIGHT_COLOR cg_DirectionalLightColor(CG_OBJECT_LIGHT)
 #define CG_SKY_LIGHT_COLOR (CG_LIGHTMAP(CG_OBJECT_LIGHT) - cg_DirectionalLightColor(CG_OBJECT_LIGHT))
@@ -183,7 +183,7 @@ float cg_LinearEyeDepth(float windowDepth) {
 #define CG_DRAW_POINT_LIGHT_PARAMS(i) cg_draw_point_light_has_no_pass_writing_it_yet(i)
 // The casting directional light's shadow for a program composing its own (Unreal's modulated shadow): its visibility at
 // camera-relative p, 1 lit and faded out by distance; the colour a shadow tints toward; the program's wrap of N.L.
-// Fragment stage. No pass writes them yet: a program reading one fails to link by name.
+// Fragment stage. env/handed_sun.glsl's, included for a program naming them; these stand where it is not.
 #define CG_DIRECTIONAL_SHADOW(p) cg_directional_shadow_has_no_pass_writing_it_yet(p)
 #define CG_DIRECTIONAL_SHADOW_COLOR cg_directional_shadow_has_no_pass_writing_it_yet
 #define CG_DIRECTIONAL_SHADOW_WRAP cg_directional_shadow_has_no_pass_writing_it_yet
