@@ -101,6 +101,56 @@ public class KitProgramsLinkTest {
             }
             """;
 
+    /**
+     * A sprite port declaring the contract's outputs: emissive and opacity composed by the engine, fog off, a clipped
+     * depth, a Distortion pass beside its Forward pass; and the particle fields the sprite port leaves out.
+     */
+    private static final String DECLARING_PORT = """
+            #type none
+            #pragma cg_use particle
+
+            Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "Depth" = "Clip" "Output" = "EmissiveOpacity" }
+            Queue = "Transparent"
+
+            Properties {
+                _Mask ("Mask", sampler2D) = "white"
+            }
+
+            struct v2f { vec2 uv; vec4 colour; vec3 heading; float speed; vec2 size; };
+
+            Pass {
+                Tags { "LightMode" = "Forward" }
+                RenderState {
+                    Blend ONE ONE
+                    DepthWrite OFF
+                    Cull OFF
+                }
+                void vertex(out v2f o) {
+                    CgMaterialVertex v = cg_material_vertex();
+                    CgMaterialParticle p = cg_material_particle();
+                    o.uv = mix(p.subUVCoords0, p.subUVCoords1, p.subUVLerp);
+                    o.colour = p.color;
+                    o.heading = p.velocity.xyz;
+                    o.speed = p.velocity.w;
+                    o.size = p.size;
+                    gl_Position = cg_material_project(v);
+                }
+                void fragment(in v2f i, out vec4 fragColor) {
+                    float mask = texture(_Mask, i.uv).r;
+                    cg_Clip(mask);
+                    float behind = CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / CG_RESOLUTION) - cg_LinearEyeDepth(gl_FragCoord.z);
+                    fragColor = vec4(i.colour.rgb * (1.0 + i.speed * length(i.heading)) * min(i.size.x, 1.0), mask * clamp(behind, 0.0, 1.0));
+                }
+            }
+
+            Pass {
+                Tags { "LightMode" = "Distortion" }
+                void fragment(in v2f i, out vec4 distortion) {
+                    distortion = CG_DISTORTION(i.heading.xy * 0.01, 0.0, cg_LinearEyeDepth(gl_FragCoord.z));
+                }
+            }
+            """;
+
     /** A mesh port on the mesh factory: the mesh's own colour and UVs, the particle's colour, time and record. */
     private static final String MESH_PORT = """
             #type spatial
@@ -197,6 +247,15 @@ public class KitProgramsLinkTest {
         CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreateGenerated(SPRITE_PORT);
         List<String> failures = new ArrayList<>();
         int programs = link("the sprite port", shader, failures);
+        assertTrue(String.join("\n", failures), failures.isEmpty());
+        assertTrue("no program was linked", programs > 0);
+    }
+
+    @Test
+    public void aPortDeclaringTheContractsOutputsLinksInEveryPass() {
+        CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreateGenerated(DECLARING_PORT);
+        List<String> failures = new ArrayList<>();
+        int programs = link("the declaring port", shader, failures);
         assertTrue(String.join("\n", failures), failures.isEmpty());
         assertTrue("no program was linked", programs > 0);
     }
