@@ -198,6 +198,35 @@ o.colour = CG_PARTICLE_SUB_UV(_Sheet, p, true);
 float a = CG_DEPTH_FADE(i.colour.a, 0.5, gl_FragCoord.xy / CG_RESOLUTION);
 ```
 
+### Unreal's Default Lit: `default_lit.glsl`
+
+A solid lit as Unreal's Default Lit shading model does, Lambert and the GGX lobe under the sun, the four nearest point
+lights and the sky, for a ported material whose game lit it so (stage debris). It is drawn in the **transparent**
+firing as a solid, Blend off and depth written: there the deferred apply has run and leaves it alone, the light grid is
+this frame's and the sun's shadow map is bound. In the opaque firing it would be lit twice.
+
+```glsl
+#include "crystalgraphics:shaders/lib/material/default_lit.glsl"
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "ColorSpace" = "Linear" }
+Queue = "Transparent"
+Pass {
+    Tags { "LightMode" = "Forward" }
+    RenderState { Blend OFF DepthWrite ON }
+    ...
+    void fragment(in v2f i, out vec4 fragColor) {
+        vec3 orm = texture(_ORM, i.uv).rgb, lit;   // occlusion, roughness, metallic
+        CG_DEFAULT_LIT(lit, texture(_Color, i.uv).rgb, orm.b, 0.5, orm.g, orm.r, i.normal, i.position);
+        fragColor = vec4(CG_DEFAULT_LIT_OUTPUT(lit), 1.0);
+    }
+}
+```
+
+- `CG_DEFAULT_LIT(out, baseColor, metallic, specular, roughness, occlusion, n, p)`: linear base colour, Unreal's
+  specular (0.5 its default), occlusion of the sky's light alone, world normal and camera-relative position.
+- **Tag it `"ColorSpace" = "Linear"`** and write `CG_DEFAULT_LIT_OUTPUT`: linear into the HDR scene, encoded into any
+  other target.
+- It does not cast shadows yet: only opaque draws are casters.
+
 ### Easy to get wrong
 
 - **Include what you call**: `CG_DEPTH_FADE` with no `depth_fade.glsl` included fails as "no matching overloaded

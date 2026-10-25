@@ -214,6 +214,43 @@ public class KitProgramsLinkTest {
             }
             """;
 
+    /** A solid mesh particle lit as Unreal's Default Lit, as a stage's debris is: drawn in the transparent firing. */
+    private static final String DEFAULT_LIT_PORT = """
+            #type spatial
+            #pragma cg_use particle
+            #include "crystalgraphics:shaders/lib/material/default_lit.glsl"
+
+            Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "ColorSpace" = "Linear" }
+            Queue = "Transparent"
+
+            Properties {
+                _Color ("Base colour", sampler2D) = "white"
+                _ORM ("Occlusion, roughness, metallic", sampler2D) = "white"
+            }
+
+            struct v2f { vec2 uv; vec3 normal; vec3 position; };
+
+            Pass {
+                Tags { "LightMode" = "Forward" }
+                RenderState {
+                    Blend OFF
+                    DepthWrite ON
+                }
+                void vertex(out v2f o) {
+                    CgMaterialVertex v = cg_material_vertex();
+                    o.uv = v.texCoords[0];
+                    o.normal = v.tangentToWorld[2];
+                    o.position = v.worldPosition;
+                    gl_Position = cg_material_project(v);
+                }
+                void fragment(in v2f i, out vec4 fragColor) {
+                    vec3 orm = texture(_ORM, i.uv).rgb, lit;
+                    CG_DEFAULT_LIT(lit, texture(_Color, i.uv).rgb, orm.b, 0.5, orm.g, orm.r, i.normal, i.position);
+                    fragColor = vec4(CG_DEFAULT_LIT_OUTPUT(lit), 1.0);
+                }
+            }
+            """;
+
     /** A sprite whose texture is laid over its system on screen, as an aura's inner glow is (ParticleMacroUV). */
     private static final String MACRO_UV_PORT = """
             #type none
@@ -348,6 +385,15 @@ public class KitProgramsLinkTest {
         CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreateGenerated(MACRO_UV_PORT);
         List<String> failures = new ArrayList<>();
         int programs = link("the macro UV port", shader, failures);
+        assertTrue(String.join(System.lineSeparator(), failures), failures.isEmpty());
+        assertTrue("no program was linked", programs > 0);
+    }
+
+    @Test
+    public void aDefaultLitPortLinksInEveryPass() {
+        CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreateGenerated(DEFAULT_LIT_PORT);
+        List<String> failures = new ArrayList<>();
+        int programs = link("the default lit port", shader, failures);
         assertTrue(String.join(System.lineSeparator(), failures), failures.isEmpty());
         assertTrue("no program was linked", programs > 0);
     }
