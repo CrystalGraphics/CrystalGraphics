@@ -21,6 +21,7 @@ import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxSubUvAnimation;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxDynamicParameterIndex;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
@@ -222,6 +223,7 @@ final class CgVfxMaterials {
         if (placed.slotRenderer() == null && (renderer instanceof CgVfxSpriteRendererProperties
                 || renderer instanceof CgVfxMeshRendererProperties)) {
             int bits = drawnBits(placed.emitter());
+            if (renderer.common().dynamicParameterIndex() == CgVfxDynamicParameterIndex.FIRST) bits |= 128;
             if (bits != 0) {
                 material.requireRow(DRAWN, who);
                 rowValues.put(DRAWN, (float) bits);
@@ -377,7 +379,7 @@ final class CgVfxMaterials {
 
     /**
      * The factory's {@code _cg_Drawn} for {@code emitter}'s renderers: its dynamic parameter slots a bit each, then 32
-     * where it sets a sub-image index and 64 a camera offset.
+     * where it sets a sub-image index and 64 a camera offset; the renderer adds 128 for every index reading the first.
      */
     private static int drawnBits(CgVfxEmitter emitter) {
         int bits = CgVfxGpuEmitter.drawnMask(emitter) & 15;

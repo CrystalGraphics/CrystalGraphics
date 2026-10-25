@@ -49,9 +49,10 @@ struct CgMaterialParticle {
 #define cg_dynamic_parameter(p, i, d) ((((p).dynamics >> (i)) & 1) != 0 ? (p).dynamicParameters[i] : (d))
 
 // The renderer's _cg_Drawn: bits 0 to 3 the dynamic parameters its particles carry, then the sprite's sub-image index
-// and camera offset.
+// and camera offset, then every index reading the first.
 #define _CG_DRAWN_SUB_IMAGE 32
 #define _CG_DRAWN_CAMERA_OFFSET 64
+#define _CG_DRAWN_FIRST_DYNAMIC 128
 
 #define cg_material_project(v) (cg_ProjMatrix * cg_ViewMatrix * vec4((v).worldPosition, 1.0))
 
@@ -76,6 +77,13 @@ void _cg_dynamics(int n, int drawn, inout CgMaterialParticle p) {
         p.dynamicParameters[1] = CG_PARTICLE_DRAWN(n).motion;
         p.dynamicParameters[2] = CG_PARTICLE_DRAWN(n).state;
         p.dynamicParameters[3] = CG_PARTICLE_DRAWN(n).light;
+    }
+    if ((drawn & _CG_DRAWN_FIRST_DYNAMIC) != 0) {
+        // Cascade's factories (Unreal 4's GetDynamicParameter, MeshParticleVertexFactory.ush): every index reads the
+        // one parameter, (1, 1, 1, 1) where the emitter has none.
+        vec4 first = (p.dynamics & 1) != 0 ? p.dynamicParameters[0] : vec4(1.0);
+        p.dynamicParameters[0] = p.dynamicParameters[1] = p.dynamicParameters[2] = p.dynamicParameters[3] = first;
+        p.dynamics = 15;
     }
 }
 #endif

@@ -126,7 +126,14 @@ void vertex(out v2f o) {
 - `cg_dynamic_parameter(p, i, fallback)` is the particle's dynamic parameter `i` (0 to 3), set by its emitter's
   `dynamic_material_parameters` ([particles](particles.md) § *Values a particle carries for its material*), and
   `fallback` where its emitter sets none: Unreal's DynamicParameter node and its defaults. It reads `p`, so a fragment
-  stage gets it from what its vertex stage passes on.
+  stage gets it from what its vertex stage passes on. A renderer with `dynamic_parameter_index: first` (Cascade's
+  factories; `dynamicParameterIndex(CgVfxDynamicParameterIndex.FIRST)` in Java) reads parameter 0 at every index, and
+  (1, 1, 1, 1) where its emitter sets none, whatever the fallback:
+
+  ```yaml
+  renderers:
+    - { id: r1, kind: mesh, material: mymod:materials/pulse, dynamic_parameter_index: first }
+  ```
 - A sprite's facing, stretch, camera offset (blocks toward the eye) and flipbook are its renderer's (`_cg_Facing`,
   `_cg_CameraOffset`, `_cg_SubImage`, ...), or its particle's where its emitter sets them per particle: never declare a
   `_cg_` property in a material.

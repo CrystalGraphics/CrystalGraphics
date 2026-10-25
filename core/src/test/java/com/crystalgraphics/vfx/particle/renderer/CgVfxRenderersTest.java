@@ -155,4 +155,20 @@ public class CgVfxRenderersTest {
                 .validate(CgValidation.Usecase.LOAD);
         assertTrue("the renderers the builder wrote are the declaration's: " + v, v.valid());
     }
+
+    @Test
+    public void aCascadeRendererReadsItsFirstDynamicParameterAtEveryIndex() {
+        CgVfxRendererProperties cascade = CgVfxRenderers.sprite("r1").material("test:materials/spark")
+                .dynamicParameterIndex(CgVfxDynamicParameterIndex.FIRST).build();
+        CgVfxEmitter built = CgVfxEmitter.builder("sparks").renderer(cascade).renderer(CgVfxRenderers.sprite("r2").build()).build();
+        Map<String, Object> file = CgVfxEmitterAssets.write(built);
+        CgVfxEmitter loaded = CgVfxEmitterAssets.compile("sparks", file, null);
+        assertEquals(CgVfxDynamicParameterIndex.FIRST, loaded.renderers().get(0).common().dynamicParameterIndex());
+        assertEquals("Niagara's, unless told", CgVfxDynamicParameterIndex.BY_INDEX,
+                loaded.renderers().get(1).common().dynamicParameterIndex());
+        CgAssetKinds.register();
+        CgValidation v = CgAssetData.of("test:vfx/emitters/sparks", CgParticleKinds.EMITTER, file, null)
+                .validate(CgValidation.Usecase.LOAD);
+        assertTrue(v.toString(), v.valid());
+    }
 }

@@ -308,7 +308,10 @@ public final class CgParticleKinds {
                 .property("material", CgValueType.oneOf(hard("material"), VALUE)).flags(CgPropertyFlag.STRUCTURAL)
                 .property("bind", mapOfValues())
                 .property("values", mapOfValues())
-                .property("keywords", CgValueType.listOf(STRING)).flags(CgPropertyFlag.STRUCTURAL);
+                .property("keywords", CgValueType.listOf(STRING)).flags(CgPropertyFlag.STRUCTURAL)
+                // Unreal's GetDynamicParameter by vertex factory: first is Cascade's, every index reading the first.
+                .property("dynamic_parameter_index", CgValueType.enumOf("by_index", "first")).defaultValue("by_index")
+                        .flags(CgPropertyFlag.STRUCTURAL);
         return b.onRegister(t -> RENDERERS.member(kind, t));
     }
 

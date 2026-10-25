@@ -47,9 +47,10 @@ public sealed interface CgVfxRendererProperties permits CgVfxSpriteRendererPrope
      * @param bind            material parameter to the user parameter it reads per draw, {@code user.<name>}
      * @param values          material parameter to a constant, this renderer's alone
      * @param keywords        material keywords it enables
+     * @param dynamicParameterIndex which dynamic parameter each index of {@code cg_dynamic_parameter} reads
      */
     record Common(String id, boolean enabled, @Nullable CgQuality quality, int sortOrderHint, boolean motionVectors,
                   @Nullable String material, @Nullable CgMaterialDefinition definition, Map<String, Object> bind,
-                  Map<String, Object> values, List<String> keywords) {
+                  Map<String, Object> values, List<String> keywords, CgVfxDynamicParameterIndex dynamicParameterIndex) {
     }
 }

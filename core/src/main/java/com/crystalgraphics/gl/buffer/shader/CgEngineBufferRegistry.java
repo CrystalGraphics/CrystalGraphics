@@ -84,7 +84,7 @@ public final class CgEngineBufferRegistry {
                     _cg_CameraOffset ("Drawn this many blocks toward the eye, Niagara's Particles.CameraOffset", float) = 0
                     _cg_RotationBias ("Radians added to each sprite's rotation: Cascade's axis lock bias", float) = 0
                     _cg_Pivot ("Niagara's pivot in UV space: the point of the quad on the particle, and turned about", vec4) = (0.5, 0.5, 0, 0)
-                    _cg_Drawn ("Drawn slots its pool writes: dynamic parameters 0-3 a bit each, 32 sub-image, 64 camera offset", float) = 0
+                    _cg_Drawn ("Drawn slots its pool writes: dynamic parameters 0-3 a bit each, 32 sub-image, 64 camera offset, 128 every index reads the first", float) = 0
                     _cg_Bounds ("Its system's fixed bounds: absolute centre, sphere radius; written per effect", vec4) = (0, 0, 0, 0)
                     _cg_SubImage ("CgVfxFlipbook: columns (a table's frames), rows (0: a table), blends, random start", vec4) = (1, 1, 1, 0)
                     _cg_SubUV ("CgVfxFlipbook: mode, first frame, last frame (-1: the last), rate", vec4) = (0, 0, -1, 0)

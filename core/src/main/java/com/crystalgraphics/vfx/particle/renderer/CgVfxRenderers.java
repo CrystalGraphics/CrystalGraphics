@@ -46,7 +46,7 @@ import java.util.Map;
 public final class CgVfxRenderers {
 
     private static final String[] COMMON_KEYS = {"enabled", "quality", "sort_order_hint", "motion_vectors", "material",
-            "bind", "values", "keywords"};
+            "bind", "values", "keywords", "dynamic_parameter_index"};
 
     private CgVfxRenderers() {
     }
@@ -325,7 +325,8 @@ public final class CgVfxRenderers {
         if (tree.get("keywords") instanceof List<?> list) for (Object k : list) keywords.add(String.valueOf(k));
         return new Common(id, !Boolean.FALSE.equals(tree.get("enabled")), quality, integer(tree.get("sort_order_hint")),
                 Boolean.TRUE.equals(tree.get("motion_vectors")), material, definition, bind,
-                stringKeyed(tree.get("values")), Collections.unmodifiableList(keywords));
+                stringKeyed(tree.get("values")), Collections.unmodifiableList(keywords),
+                "first".equals(tree.get("dynamic_parameter_index")) ? CgVfxDynamicParameterIndex.FIRST : CgVfxDynamicParameterIndex.BY_INDEX);
     }
 
     /**
@@ -571,6 +572,13 @@ public final class CgVfxRenderers {
         /** Its place among its emitter's renderers. */
         public Builder sortOrderHint(int hint) {
             tree.put("sort_order_hint", hint);
+            return this;
+        }
+
+        /** Which dynamic parameter each index of {@code cg_dynamic_parameter} reads: {@code FIRST} for a Cascade emitter's. */
+        public Builder dynamicParameterIndex(CgVfxDynamicParameterIndex index) {
+            if (index == CgVfxDynamicParameterIndex.BY_INDEX) tree.remove("dynamic_parameter_index");
+            else tree.put("dynamic_parameter_index", index.name().toLowerCase(Locale.ROOT));
             return this;
         }
 
