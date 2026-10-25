@@ -1467,8 +1467,9 @@ public final class CgWorldRenderer {
     private void casters() {
         for (int i = 0; i < count; i++) {
             CgMesh mesh = lods[i] != null ? lods[i].finest() : meshes[i];
+            // A transparent draw writing depth is a solid drawn late (a program lighting itself): it casts as opaque ones do.
             if (mesh == null || sets[i] != null || counts[i] != null || halves[i] || culledOnGpu[i]
-                    || queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
+                    || queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD && !materials[i].writesDepth()) {
                 continue;
             }
             pointLights.caster(mesh, ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2], positions[i * 3],
