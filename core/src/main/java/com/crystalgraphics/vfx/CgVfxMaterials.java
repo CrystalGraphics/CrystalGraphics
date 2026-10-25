@@ -27,6 +27,7 @@ import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxSpriteRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxMacroUv;
 import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import com.crystalgraphics.vfx.look.CgVfxFlipbook;
@@ -37,6 +38,8 @@ import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
+
+import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -235,6 +238,13 @@ final class CgVfxMaterials {
             material.requireRow(BOUNDS, who);
             rowValues.put(BOUNDS, BOUNDS);
         }
+        if (placed.slotRenderer() == null && probe.names(MACRO_UV)) {
+            // Its system's macro UVs and its renderer's override, written per effect: each effect stands and turns apart.
+            material.requireRow(MACRO_SYSTEM, who);
+            material.requireRow(MACRO_OVERRIDE, who);
+            rowValues.put(MACRO_SYSTEM, MACRO_SYSTEM);
+            rowValues.put(MACRO_OVERRIDE, MACRO_OVERRIDE);
+        }
         CgVfxLayout layout = look.layout();
         Map<String, CgVfxParam> bound = new HashMap<>();
         Map<String, Float> factors = new HashMap<>();
@@ -273,8 +283,9 @@ final class CgVfxMaterials {
                 entryFactors.add(factors.get(p.getName()));
                 entryFixed.add(null);
                 vec4s += param instanceof CgVfxParam.Palette ? ((CgVfxParam.Palette) param).count() : 1;
-            } else if (constant == BOUNDS) {
-                entries.add(new int[] {FROM_BOUNDS, 4});
+            } else if (constant == BOUNDS || constant == MACRO_SYSTEM || constant == MACRO_OVERRIDE) {
+                entries.add(new int[] {constant == BOUNDS ? FROM_BOUNDS : constant == MACRO_SYSTEM ? FROM_MACRO_SYSTEM
+                        : FROM_MACRO_OVERRIDE, 4});
                 entryFactors.add(1f);
                 entryFixed.add(null);
                 vec4s += 1;
@@ -374,6 +385,11 @@ final class CgVfxMaterials {
     /** The factory's {@code _cg_Bounds}, and the names that read it; a row entry from it is written per effect. */
     private static final String BOUNDS = "_cg_Bounds", OBJECT_POSITION = "CG_OBJECT_POSITION", OBJECT_RADIUS = "CG_OBJECT_RADIUS";
     private static final int FROM_BOUNDS = -2;
+    /** The factory's macro UV row values, and the name that reads them; each a row entry written per effect. */
+    private static final String MACRO_SYSTEM = "_cg_MacroUVSystem", MACRO_OVERRIDE = "_cg_MacroUVOverride",
+            MACRO_UV = "CG_PARTICLE_MACRO_UV";
+    private static final int FROM_MACRO_SYSTEM = -3, FROM_MACRO_OVERRIDE = -4;
+    private final Vector3f turned = new Vector3f();
     private static final String FACING = "_cg_Facing", SUB_IMAGE = "_cg_SubImage", SUB_UV = "_cg_SubUV", DRAWN = "_cg_Drawn",
             PIVOT = "_cg_Pivot";
 
@@ -587,6 +603,9 @@ final class CgVfxMaterials {
             if (r.source[i] == FROM_BOUNDS) {
                 writeBounds(effect, write);
                 write += 4;
+            } else if (r.source[i] == FROM_MACRO_SYSTEM || r.source[i] == FROM_MACRO_OVERRIDE) {
+                writeMacroUv(effect, r, r.source[i] == FROM_MACRO_OVERRIDE, write);
+                write += 4;
             } else if (r.source[i] < 0) {
                 System.arraycopy(r.fixed[i], 0, rows, write, floats);
                 write += floats;
@@ -619,6 +638,26 @@ final class CgVfxMaterials {
         rows[write + 1] = (float) (effect.originY + b.centre(1));
         rows[write + 2] = (float) (effect.originZ + b.centre(2));
         rows[write + 3] = b.radius();
+    }
+
+    /**
+     * {@code effect}'s system's macro UVs into the row at {@code write} ({@code override} false): their centre,
+     * absolute, through the effect's place and turn, and their radius; or {@code r}'s renderer's override (true): its
+     * position turned as a vector, Cascade's {@code TransformVector}, and its radius, w -1 where it has none.
+     */
+    private void writeMacroUv(CgVfxEffect<?> effect, Resolved r, boolean override, int write) {
+        CgVfxMacroUv m = override ? r.placed.renderer().common().macroUv()
+                : effect.definitionKey() instanceof CgVfxSystemDefinition d ? d.macroUv() : CgVfxMacroUv.DEFAULT;
+        if (m == null) {
+            rows[write] = rows[write + 1] = rows[write + 2] = 0f;
+            rows[write + 3] = -1f;
+            return;
+        }
+        effect.orientation().transform(m.x(), m.y(), m.z(), turned);
+        rows[write] = (float) (override ? turned.x : effect.originX + turned.x);
+        rows[write + 1] = (float) (override ? turned.y : effect.originY + turned.y);
+        rows[write + 2] = (float) (override ? turned.z : effect.originZ + turned.z);
+        rows[write + 3] = m.radius();
     }
 
     /** Whether an emitter renderer of {@code look} draws a material reading its system's bounds. */

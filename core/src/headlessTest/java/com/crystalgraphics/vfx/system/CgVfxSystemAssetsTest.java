@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -15,8 +16,10 @@ import org.junit.Test;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
+import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import com.crystalgraphics.vfx.look.CgVfxParam;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxMacroUv;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -116,6 +119,23 @@ public class CgVfxSystemAssetsTest {
         roundTrips(d);
         assertEquals(b, CgVfxSystemAssets.compile(CgAssetData.of(d.name(), CgParticleKinds.SYSTEM, CgVfxSystemAssets.write(d), null),
                 (kind, ref) -> null).fixedBounds());
+    }
+
+    @Test
+    public void itsMacroUvsAreCascadesUnlessItSaysAndRoundTrip() {
+        assertEquals(CgVfxMacroUv.DEFAULT, compile("mymod:plain", "_v: 1\n").macroUv());
+        CgVfxSystemDefinition d = compile("mymod:aura", "_v: 1\nmacro_uv: { position: [0, 1.5, 0], radius: 3 }\n");
+        assertEquals(new CgVfxMacroUv(0f, 1.5f, 0f, 3f), d.macroUv());
+        roundTrips(d);
+        assertEquals(d.macroUv(), CgVfxSystemAssets.compile(CgAssetData.of(d.name(), CgParticleKinds.SYSTEM,
+                CgVfxSystemAssets.write(d), null), (kind, ref) -> null).macroUv());
+        // Unreal's centimetres, Z up: 50 cm up and a 300 cm radius are half a block up and three blocks.
+        CgVfxMacroUv unreal = CgVfxMacroUv.read("mymod:aura", Map.of("position", List.of(0, 0, 50), "radius", 300),
+                CgUnits.UNREAL, CgVfxMacroUv.DEFAULT);
+        assertEquals(0.5f, unreal.y(), 1e-6f);
+        assertEquals(3f, unreal.radius(), 1e-6f);
+        assertEquals("a radius alone keeps Cascade's centre", 0f,
+                CgVfxMacroUv.read("x", Map.of("radius", 100), CgUnits.UNREAL, CgVfxMacroUv.DEFAULT).y(), 0f);
     }
 
     /** Written, compiled and written again: the same tree, and the same emitters and values. */

@@ -112,6 +112,12 @@ public final class CgParticleKinds {
             .property("blend", BOOL).defaultValue(false)
             .register();
 
+    // Cascade's MacroUVPosition and MacroUVRadius, on a system and as a renderer's override; declared before either.
+    static final CgType MACRO_UV = CgTypes.struct("crystalgraphics:system.macro_uv")
+            .property("position", VEC3).quantity(CgQuantity.POSITION)
+            .property("radius", FLOAT).quantity(CgQuantity.LENGTH)
+            .register();
+
     static final CgType MESH_ENTRY = CgTypes.struct("crystalgraphics:renderer.mesh_entry")
             .property("mesh", CgValueType.binaryRef("models")).required()
             .property("scale", VEC3).quantity(CgQuantity.SCALE)
@@ -311,7 +317,8 @@ public final class CgParticleKinds {
                 .property("keywords", CgValueType.listOf(STRING)).flags(CgPropertyFlag.STRUCTURAL)
                 // Unreal's GetDynamicParameter by vertex factory: first is Cascade's, every index reading the first.
                 .property("dynamic_parameter_index", CgValueType.enumOf("by_index", "first")).defaultValue("by_index")
-                        .flags(CgPropertyFlag.STRUCTURAL);
+                        .flags(CgPropertyFlag.STRUCTURAL)
+                .property("macro_uv", CgValueType.struct(MACRO_UV));
         return b.onRegister(t -> RENDERERS.member(kind, t));
     }
 
@@ -416,6 +423,7 @@ public final class CgParticleKinds {
             .property("delay", FLOAT).quantity(CgQuantity.TIME).defaultValue(0.0)
             .property("determinism", CgValueType.struct(DETERMINISM))
             .property("fixed_bounds", CgValueType.listOf(VEC3)).quantity(CgQuantity.POSITION)
+            .property("macro_uv", CgValueType.struct(MACRO_UV))
             .property("effect", CgValueType.NAMESPACED_ID).flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
             .property("slots", CgValueType.idList(SLOT)).flags(CgPropertyFlag.STRUCTURAL)
             .property("pool_prime_size", INT).range(0, null).defaultValue(0)

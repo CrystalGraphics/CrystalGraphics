@@ -4,6 +4,7 @@ import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.material.CgMaterialUsage;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
+import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.look.CgVfxFlipbook;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties.Common;
@@ -46,7 +47,7 @@ import java.util.Map;
 public final class CgVfxRenderers {
 
     private static final String[] COMMON_KEYS = {"enabled", "quality", "sort_order_hint", "motion_vectors", "material",
-            "bind", "values", "keywords", "dynamic_parameter_index"};
+            "bind", "values", "keywords", "dynamic_parameter_index", "macro_uv"};
 
     private CgVfxRenderers() {
     }
@@ -326,7 +327,8 @@ public final class CgVfxRenderers {
         return new Common(id, !Boolean.FALSE.equals(tree.get("enabled")), quality, integer(tree.get("sort_order_hint")),
                 Boolean.TRUE.equals(tree.get("motion_vectors")), material, definition, bind,
                 stringKeyed(tree.get("values")), Collections.unmodifiableList(keywords),
-                "first".equals(tree.get("dynamic_parameter_index")) ? CgVfxDynamicParameterIndex.FIRST : CgVfxDynamicParameterIndex.BY_INDEX);
+                "first".equals(tree.get("dynamic_parameter_index")) ? CgVfxDynamicParameterIndex.FIRST : CgVfxDynamicParameterIndex.BY_INDEX,
+                CgVfxMacroUv.read(who, tree.get("macro_uv"), deps == null ? CgUnits.HOST : deps.units(), CgVfxMacroUv.DEFAULT));
     }
 
     /**
@@ -572,6 +574,12 @@ public final class CgVfxRenderers {
         /** Its place among its emitter's renderers. */
         public Builder sortOrderHint(int hint) {
             tree.put("sort_order_hint", hint);
+            return this;
+        }
+
+        /** Its own particle macro UVs over its system's: Cascade's required module with its override on. */
+        public Builder macroUv(CgVfxMacroUv macroUv) {
+            tree.put("macro_uv", macroUv.tree());
             return this;
         }
 

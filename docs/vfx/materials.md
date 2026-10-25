@@ -151,6 +151,18 @@ void vertex(out v2f o) {
   static final CgVfxSystemDefinition ORB = CgVfxSystemDefinition.of("mymod:orb", ORB_LOOK)
           .withFixedBounds(new CgVfxSystemDefinition.FixedBounds(-4, -4, -4, 4, 4, 4));
   ```
+- **Macro UVs**: `CG_PARTICLE_MACRO_UV`, Unreal's ParticleMacroUV parameters for this view, in either stage: the
+  system's macro UV centre in NDC (y up) and the scales taking its radius on screen to one UV, worked out as Cascade does
+  (`ParticleSystemRender.cpp`, `GetObjectPositionAndScale`). The centre and radius are the system's `macro_uv`, or the
+  renderer's ([assets](assets.md) § *Macro UVs*). A texture laid over the whole effect on screen:
+
+  ```glsl
+  vec4 macro = CG_PARTICLE_MACRO_UV;
+  vec2 uv = (gl_FragCoord.xy / CG_RESOLUTION * 2.0 - 1.0 - macro.xy) * macro.zw + 0.5;
+  ```
+
+  Its scales are 0 where the radius is not positive or its extent on screen is 0 or not finite: every pixel then reads
+  the centre.
 
 ### Emissive and opacity: `"Output" = "EmissiveOpacity"`
 

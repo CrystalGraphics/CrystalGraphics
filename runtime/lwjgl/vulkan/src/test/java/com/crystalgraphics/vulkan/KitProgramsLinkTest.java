@@ -214,6 +214,39 @@ public class KitProgramsLinkTest {
             }
             """;
 
+    /** A sprite whose texture is laid over its system on screen, as an aura's inner glow is (ParticleMacroUV). */
+    private static final String MACRO_UV_PORT = """
+            #type none
+            #pragma cg_use particle
+
+            Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
+            Queue = "Transparent"
+
+            Properties {
+                _Mask ("Mask", sampler2D) = "white"
+            }
+
+            struct v2f { vec4 colour; };
+
+            Pass {
+                Tags { "LightMode" = "Forward" }
+                RenderState {
+                    Blend ONE ONE
+                    DepthWrite OFF
+                }
+                void vertex(out v2f o) {
+                    CgMaterialVertex v = cg_material_vertex();
+                    o.colour = cg_material_particle().color;
+                    gl_Position = cg_material_project(v);
+                }
+                void fragment(in v2f i, out vec4 fragColor) {
+                    vec4 macro = CG_PARTICLE_MACRO_UV;
+                    vec2 uv = (gl_FragCoord.xy / CG_RESOLUTION * 2.0 - 1.0 - macro.xy) * macro.zw + 0.5;
+                    fragColor = vec4(i.colour.rgb * texture(_Mask, uv).r, 0.0);
+                }
+            }
+            """;
+
     /** A type with no factory: it must fail naming that, not draw something else. */
     private static final String UNFACTORED_PORT = """
             #type pos3_uv2_col4ub
@@ -306,6 +339,15 @@ public class KitProgramsLinkTest {
         CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreateGenerated(DEPTH_OFFSET_PORT);
         List<String> failures = new ArrayList<>();
         int programs = link("the depth offset port", shader, failures);
+        assertTrue(String.join(System.lineSeparator(), failures), failures.isEmpty());
+        assertTrue("no program was linked", programs > 0);
+    }
+
+    @Test
+    public void aPortReadingItsMacroUvsLinksInEveryPass() {
+        CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreateGenerated(MACRO_UV_PORT);
+        List<String> failures = new ArrayList<>();
+        int programs = link("the macro UV port", shader, failures);
         assertTrue(String.join(System.lineSeparator(), failures), failures.isEmpty());
         assertTrue("no program was linked", programs > 0);
     }

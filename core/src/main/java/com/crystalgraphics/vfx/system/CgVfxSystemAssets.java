@@ -31,6 +31,7 @@ import com.crystalgraphics.vfx.particle.CgVfxEventGenerator;
 import com.crystalgraphics.vfx.particle.CgVfxEventHandler;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxMacroUv;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 
@@ -220,6 +221,7 @@ public final class CgVfxSystemAssets {
             tree.put("fixed_bounds", List.of(List.of((double) b.minX(), (double) b.minY(), (double) b.minZ()),
                     List.of((double) b.maxX(), (double) b.maxY(), (double) b.maxZ())));
         }
+        if (!definition.macroUv().equals(CgVfxMacroUv.DEFAULT)) tree.put("macro_uv", definition.macroUv().tree());
         return tree;
     }
 
@@ -305,14 +307,21 @@ public final class CgVfxSystemAssets {
             if (effect.contract() != null) {
                 CgVfxLook look = contracted(id, name, effect.contract(), user, emitters.isEmpty() && !slotted ? null : kit.build());
                 return new CgVfxSystemDefinition(id, look, effect.factory(), emitters, prime(tree), max(tree), kills,
-                        fixedBounds(id, tree, deps));
+                        fixedBounds(id, tree, deps), macroUv(id, tree, deps));
             }
         }
         CgVfxSchema schema = CgVfxSchema.of(id);
         for (Map.Entry<?, ?> e : user.entrySet()) param(id, schema, String.valueOf(e.getKey()), (Map<?, ?>) e.getValue());
         CgVfxLook look = CgVfxLook.builder(schema).with(kit.build()).build();
         return new CgVfxSystemDefinition(id, look, effect == null ? null : effect.factory(), emitters, prime(tree),
-                max(tree), kills, fixedBounds(id, tree, deps));
+                max(tree), kills, fixedBounds(id, tree, deps), macroUv(id, tree, deps));
+    }
+
+    /** Its {@code macro_uv} in its namespace's units, as blocks; Cascade's default where absent. */
+    private static CgVfxMacroUv macroUv(String id, Map<Object, Object> tree, @Nullable CgAssetCompiler.Dependencies deps) {
+        CgVfxMacroUv read = CgVfxMacroUv.read(id, tree.get("macro_uv"), deps == null ? CgUnits.HOST : deps.units(),
+                CgVfxMacroUv.DEFAULT);
+        return read == null ? CgVfxMacroUv.DEFAULT : read;
     }
 
     /** Its {@code fixed_bounds}, its min and max corners in its namespace's units, as blocks; null when absent. */

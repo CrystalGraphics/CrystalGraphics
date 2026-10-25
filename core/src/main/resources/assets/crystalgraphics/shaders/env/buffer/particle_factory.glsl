@@ -45,6 +45,28 @@ struct CgMaterialParticle {
 #define CG_OBJECT_POSITION (_cg_Bounds.xyz - cg_WorldOrigin.xyz)
 #define CG_OBJECT_RADIUS (_cg_Bounds.w)
 
+// Unreal's ParticleMacroUV parameters, Cascade's GetObjectPositionAndScale (ParticleSystemRender.cpp) for this view:
+// the system's macro UV centre in NDC (y up), and the scales taking its radius on screen to one UV, (1/dx, -1/dy); 0
+// where the radius is not positive or the extent degenerates. A material's UVs are (screen NDC - xy) * zw + 0.5.
+#define CG_PARTICLE_MACRO_UV _cg_macro_uv(_cg_MacroUVSystem, _cg_MacroUVOverride)
+
+vec4 _cg_macro_uv(vec4 system, vec4 override) {
+    mat4 viewProjection = cg_ProjMatrix * cg_ViewMatrix;
+    vec4 c = viewProjection * vec4(system.xyz - cg_WorldOrigin.xyz, 1.0);
+    vec2 centre = c.xy / max(c.w, 1.0e-5);
+    bool overridden = override.w >= 0.0;
+    float radius = overridden ? override.w : system.w;
+    if (!(radius > 0.0)) return vec4(centre, 0.0, 0.0);
+    // An override's position is turned as a vector, so it stands by the world's origin: Cascade's TransformVector.
+    vec3 at = (overridden ? override.xyz : system.xyz) - cg_WorldOrigin.xyz;
+    mat3 viewToWorld = transpose(mat3(cg_ViewMatrix));
+    vec4 right = viewProjection * vec4(at + radius * viewToWorld[0], 1.0);
+    vec4 up = viewProjection * vec4(at + radius * viewToWorld[1], 1.0);
+    float dx = right.x / right.w - centre.x, dy = up.y / up.w - centre.y;
+    bool usable = dx != 0.0 && dy != 0.0 && !isnan(dx) && !isinf(dx) && !isnan(dy) && !isinf(dy);
+    return usable ? vec4(centre, 1.0 / dx, -1.0 / dy) : vec4(centre, 0.0, 0.0);
+}
+
 // Its dynamic parameter i (0 to 3), or d where its emitter sets none: Unreal's DynamicParameter node and its defaults.
 #define cg_dynamic_parameter(p, i, d) ((((p).dynamics >> (i)) & 1) != 0 ? (p).dynamicParameters[i] : (d))
 

@@ -157,15 +157,17 @@ public class CgVfxRenderersTest {
     }
 
     @Test
-    public void aCascadeRendererReadsItsFirstDynamicParameterAtEveryIndex() {
+    public void aCascadeRenderersFieldsRoundTrip() {
         CgVfxRendererProperties cascade = CgVfxRenderers.sprite("r1").material("test:materials/spark")
-                .dynamicParameterIndex(CgVfxDynamicParameterIndex.FIRST).build();
+                .dynamicParameterIndex(CgVfxDynamicParameterIndex.FIRST).macroUv(new CgVfxMacroUv(0f, 0.5f, 0f, 1.2f)).build();
         CgVfxEmitter built = CgVfxEmitter.builder("sparks").renderer(cascade).renderer(CgVfxRenderers.sprite("r2").build()).build();
         Map<String, Object> file = CgVfxEmitterAssets.write(built);
         CgVfxEmitter loaded = CgVfxEmitterAssets.compile("sparks", file, null);
         assertEquals(CgVfxDynamicParameterIndex.FIRST, loaded.renderers().get(0).common().dynamicParameterIndex());
         assertEquals("Niagara's, unless told", CgVfxDynamicParameterIndex.BY_INDEX,
                 loaded.renderers().get(1).common().dynamicParameterIndex());
+        assertEquals(new CgVfxMacroUv(0f, 0.5f, 0f, 1.2f), loaded.renderers().get(0).common().macroUv());
+        assertNull("the system's, unless overridden", loaded.renderers().get(1).common().macroUv());
         CgAssetKinds.register();
         CgValidation v = CgAssetData.of("test:vfx/emitters/sparks", CgParticleKinds.EMITTER, file, null)
                 .validate(CgValidation.Usecase.LOAD);

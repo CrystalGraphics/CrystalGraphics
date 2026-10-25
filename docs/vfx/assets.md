@@ -338,6 +338,28 @@ CgVfxSystemDefinition.of("mymod:orb", LOOK).withFixedBounds(new CgVfxSystemDefin
 
 - Absent, its bounds follow its particles, and a material reading them refuses the system when it loads.
 
+### Macro UVs
+
+Where a material's particle macro UVs centre and how far they reach, Cascade's `MacroUVPosition` and
+`MacroUVRadius`: what `CG_PARTICLE_MACRO_UV` places on screen ([materials](materials.md)). A renderer may carry its own,
+Cascade's required module with its override on.
+
+```yaml
+macro_uv: { position: [0, 0, 50], radius: 300 }    # in the namespace's units: half a block up, three blocks
+renderers:
+  - { id: r1, kind: sprite, material: mymod:materials/aura, macro_uv: { radius: 120 } }
+```
+
+```java
+CgVfxSystemDefinition aura = CgVfxSystemDefinition.of("mymod:aura", LOOK).withMacroUv(new CgVfxMacroUv(0f, 0.5f, 0f, 3f));
+CgVfxRenderers.sprite("r1").material(AURA).macroUv(new CgVfxMacroUv(0f, 0f, 0f, 1.2f)).build();
+```
+
+- Absent, it is Cascade's default: the system's origin and 200 cm (2 blocks). A field left out of a map is the
+  default's.
+- A renderer's override takes its own radius, and its position as a vector turned with the system, so it stands by the
+  world's origin: Cascade's own rule. The centre stays the system's.
+
 ## Checking an asset
 
 An asset is checked whole, with what it inherits, as Unreal's data validation checks an object: every key one its
