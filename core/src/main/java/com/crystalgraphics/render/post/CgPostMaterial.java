@@ -183,11 +183,12 @@ public final class CgPostMaterial implements CgPostEffect {
 
     private void draw(CgRecording recording, CgGraphTexture into, CgLoad load, CgPostContext post, CgPipeline pipeline) {
         CgRasterPass pass = recording.raster(into, load, post.constants(), null, CgOrder.SORTED);
-        // A pass into a target of its own reads the scene, not the target it clears.
+        // A pass into a target of its own reads the scene's colour and depth, not the target it clears.
         CgGraphTexture screen = post.target();
         if (material.readsSceneColor() && into == screen) pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
         else if (material.readsSceneColor()) pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, screen);
-        if (material.readsSceneDepth()) pass.sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT);
+        if (material.readsSceneDepth() && into == screen) pass.sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT);
+        else if (material.readsSceneDepth()) pass.sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, screen);
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(pipeline, material.captureBindings(recording.bindings()), FULLSCREEN);
         weighted(chunks, weight);
