@@ -19,7 +19,7 @@ import java.util.stream.Stream;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Every float and cube texture of a kit loads as its settings say (aaa-design 2.64): each {@code .hdr} as half floats,
+ * Every float and cube texture of a kit loads as its settings say: each {@code .hdr} and {@code .exr} as half floats,
  * each {@code cube: true} image as six stacked faces, with none refused. Runs over {@code -Pkits=<namespace>=<dir>;...};
  * skipped without, since the kits are private. The kits' 8-bit images are left out: they load as before, and decoding
  * every one would hold its pixels for an upload no context lands.
@@ -42,10 +42,10 @@ public class CgKitTexturesGateTest {
         }
     }
 
-    /** A {@code .hdr}, or an image whose settings say {@code cube: true}. */
+    /** A {@code .hdr} or {@code .exr}, or an image whose settings say {@code cube: true}. */
     private static boolean isNew(Path p) {
         String name = p.toString();
-        if (name.endsWith(".hdr")) return true;
+        if (name.endsWith(".hdr") || name.endsWith(".exr")) return true;
         if (!name.endsWith(".png")) return false;
         Path settings = Paths.get(name.substring(0, name.length() - 4) + ".yaml");
         try {
