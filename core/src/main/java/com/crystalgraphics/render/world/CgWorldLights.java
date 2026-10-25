@@ -224,14 +224,19 @@ public final class CgWorldLights {
             TEMPORAL_SHADER = "crystalgraphics:shaders/world_lights_temporal.shader",
             DENOISE_SHADER = "crystalgraphics:shaders/world_lights_denoise.shader",
             HOST_DEPTH_SHADER = "crystalgraphics:shaders/world_lights_host_depth.shader",
-            TILES_SHADER = "crystalgraphics:shaders/world_lights_tiles.shader";
+            TILES_SHADER = "crystalgraphics:shaders/world_lights_tiles.shader",
+            TILE_DEPTH_SHADER = "crystalgraphics:shaders/world_lights_tile_depth.shader";
     private static final int GPU_SAMPLE = CgGpuTrace.name("world.lightsSample"), GPU_SHADE = CgGpuTrace.name("world.lightsShade"),
             GPU_TEMPORAL = CgGpuTrace.name("world.lightsTemporal"), GPU_DENOISE = CgGpuTrace.name("world.lightsDenoise"),
-            GPU_HOST_DEPTH = CgGpuTrace.name("world.lightsHostDepth"), GPU_TILES = CgGpuTrace.name("world.lightsTiles");
+            GPU_HOST_DEPTH = CgGpuTrace.name("world.lightsHostDepth"), GPU_TILES = CgGpuTrace.name("world.lightsTiles"),
+            GPU_TILE_DEPTH = CgGpuTrace.name("world.lightsTileDepth");
     /** Unreal's capsule shadow tiles: a tile's entities, a bit each, 16 a channel. */
     private static final int ENTITY_TILE = 16;
     private static final CgFrameBufferFormat TILES_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.tiles")
             .color(0, CgTextureType.RGBA32F).build();
+    /** Each 4x4 pixels' least and most window depth, the tiles' first step. */
+    private static final CgFrameBufferFormat RANGES_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.tile-ranges")
+            .color(0, CgTextureType.RG32F).build();
     private static final CgVar.Bool ENTITY_TILES = CgVar.bool("crystalgraphics.world.lightsEntityTiles", true, CgVar.DEV,
             "A shadow ray tests only the entities its 16x16 tile can meet; off, every tile keeps every entity.");
     /** How far a kernel's light may reach, unknown here: what a tile keeps entities within while any appends. */
@@ -245,6 +250,11 @@ public final class CgWorldLights {
     /** The accumulated lighting and its frames; its luminance's moments, eye depth and confidence; the sun's and block light's visibility and their squares. */
     private static final CgFrameBufferFormat HISTORY_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.history")
             .color(0, CgTextureType.RGBA16F).color(1, CgTextureType.RGBA16F).color(2, CgTextureType.RGBA16F).build();
+    /** One of the history's three, where the temporal kernel writes each as an image. */
+    private static final CgFrameBufferFormat SLOT_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.history-slot")
+            .color(0, CgTextureType.RGBA16F).build();
+    /** MegaLights' temporal pass where compute runs ({@code world_lights_temporal.shader} below it). */
+    private static final String TEMPORAL_KERNELS = "crystalgraphics:shaders/world_lights_temporal.compute";
     /** The host's window depth before our opaque draws. */
     private static final CgFrameBufferFormat HOST_DEPTH_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.host-depth")
             .color(0, CgTextureType.R32F).build();
@@ -364,7 +374,7 @@ public final class CgWorldLights {
     private float tileU, tileV;
     /** The apply, without and with the spots' and tubes' path ({@code CG_LIGHTS_SHAPED}). */
     private CgMaterial applyPoints, applyShaped;
-    private CgMaterial gbufferPass, sample, shade, temporal, denoise, tiles;
+    private CgMaterial gbufferPass, sample, shade, temporal, denoise, tiles, tileDepth;
     private CgGraphTexture gbuffer;
     private final Consumer<CgShaderBindings> gbufferValues = b -> this.gridValues.accept(b.sampler("_Normals", 0,
             this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1));
@@ -380,9 +390,11 @@ public final class CgWorldLights {
     private long airFiring = -2;
     private final float[] cascades = new float[8];
     /** This firing's entities per tile, and the farthest a shadowed light's ray runs, blocks. */
-    private CgGraphTexture entityTiles;
+    private CgGraphTexture entityTiles, tileRanges;
     private float rayReach;
+    private final Consumer<CgShaderBindings> rangeValues = b -> b.vec4("_Screen", this.targetW, this.targetH, 0f, 0f);
     private final Consumer<CgShaderBindings> tileValues = b -> b.vec4("_Screen", this.targetW, this.targetH, 0f, 0f)
+            .sampler("_Ranges", 0, this.tileRanges)
             .vec4("_Rays", rays[0], rays[1], rays[2], rays[3])
             .vec4("_ToView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
             .vec4("_ToView1", toView.m01(), toView.m11(), toView.m21(), toView.m31())
@@ -440,6 +452,15 @@ public final class CgWorldLights {
     };
     private float targetW, targetH;
     private CgGraphTexture samples, shaded, filtered, scratchHistory, history, accumulated;
+    /**
+     * Where compute runs, the history as three single-slot textures the temporal kernel writes as images (lighting,
+     * moments, visibility), and a firing's scratch three; below it {@code history}'s three slots, drawn as one.
+     */
+    private final CgGraphTexture[] historySlots = new CgGraphTexture[3], scratchSlots = new CgGraphTexture[3];
+    /** What the temporal pass wrote this firing and what it read of the last, each lighting, moments, visibility. */
+    private final CgTexture[] accumulatedSlots = new CgTexture[3], lastSlots = new CgTexture[3];
+    private CgKernel temporalKernel;
+    private boolean temporalByKernel;
     private long historyMade = -1;
     private boolean shadowsOn, freshHistory, binned, sunOn;
     /** Zeros: the light list, cells and entities when none were made this firing. */
@@ -477,14 +498,12 @@ public final class CgWorldLights {
             .vec4("_SampleGrid", this.sampleX, this.sampleY, this.sampleX * this.sampleY, 0f)
             .sampler("_GBuffer", 1, this.gbuffer));
     private final Consumer<CgShaderBindings> temporalValues = b -> this.gridValues.accept(b.vec4("_Eye", eye.x, eye.y, eye.z, 0f)
-            .sampler("_Now", 0, shaded).sampler("_Last", 1, freshHistory ? shaded : history.previous())
-            .sampler("_LastMoments", 2, freshHistory ? shaded : history.previous().attachment(1))
-            .sampler("_NowVis", 3, shaded.attachment(1))
-            .sampler("_LastVis", 4, freshHistory ? shaded.attachment(1) : history.previous().attachment(2))
+            .sampler("_Now", 0, shaded).sampler("_Last", 1, lastSlots[0]).sampler("_LastMoments", 2, lastSlots[1])
+            .sampler("_NowVis", 3, shaded.attachment(1)).sampler("_LastVis", 4, lastSlots[2])
             .set1f("_Fresh", freshHistory ? 1f : 0f)
             .vec4("_Frames", Math.min(4f, MAX_FRAMES.get()), MAX_FRAMES.get(), 1f, 0.03f));
-    private final Consumer<CgShaderBindings> denoiseValues = b -> this.gridValues.accept(b.sampler("_Lighting", 0, accumulated)
-            .sampler("_Moments", 1, accumulated.attachment(1)).sampler("_Vis", 2, accumulated.attachment(2))
+    private final Consumer<CgShaderBindings> denoiseValues = b -> this.gridValues.accept(b.sampler("_Lighting", 0, accumulatedSlots[0])
+            .sampler("_Moments", 1, accumulatedSlots[1]).sampler("_Vis", 2, accumulatedSlots[2])
             .sampler("_GBuffer", 3, this.gbuffer)
             .vec4("_Spatial", SPATIAL_RADIUS.get(), 4f, 10000f, 2f)
             .vec4("_Spread", 2f, 0.15f, MAX_FRAMES.get(), 0f));
@@ -1212,11 +1231,15 @@ public final class CgWorldLights {
                 sample = CgMaterial.newInstance(SAMPLE_SHADER);
                 shade = CgMaterial.newInstance(SHADE_SHADER);
                 temporal = CgMaterial.newInstance(TEMPORAL_SHADER);
+                temporalKernel = CgCompute.load(TEMPORAL_KERNELS).kernel("Temporal").prepare();
+                temporalByKernel = temporalKernel.runs();
                 denoise = CgMaterial.newInstance(DENOISE_SHADER);
                 tiles = CgMaterial.newInstance(TILES_SHADER);
+                tileDepth = CgMaterial.newInstance(TILE_DEPTH_SHADER);
             }
             // Each started, whichever is not ready.
-            boolean ready = sample.prepare() & shade.prepare() & temporal.prepare() & denoise.prepare() & tiles.prepare();
+            boolean ready = sample.prepare() & shade.prepare() & temporal.prepare() & denoise.prepare() & tiles.prepare()
+                    & tileDepth.prepare();
             if (!ready) return false;
             int mode = Math.round(DOWNSAMPLE.get());
             downX = mode > 0 ? 2 : 1;
@@ -1234,19 +1257,52 @@ public final class CgWorldLights {
                 shaded = CgGraphTexture.transientTexture("cg_world_lights.shaded", new CgTextureDesc(w, h, LIGHTING_FORMAT));
                 filtered = CgGraphTexture.transientTexture("cg_world_lights.filtered", new CgTextureDesc(w, h, LIGHTING_FORMAT));
                 scratchHistory = CgGraphTexture.transientTexture("cg_world_lights.accumulated", new CgTextureDesc(w, h, HISTORY_FORMAT));
+                for (int k = 0; k < 3; k++) {
+                    scratchSlots[k] = CgGraphTexture.transientTexture("cg_world_lights.accumulated-" + k,
+                            new CgTextureDesc(w, h, SLOT_FORMAT));
+                }
             }
             // One history, the first firing's: a later firing of the frame (a second eye) accumulates nothing.
-            if (stage.ordinal() == 0 && !CgRehearsal.active()) {
-                if (history == null || history.getWidth() != w || history.getHeight() != h) {
-                    if (history != null) recording.release(history);
-                    history = CgGraphTexture.history("cg_world_lights.history", new CgTextureDesc(w, h, HISTORY_FORMAT));
+            boolean first = stage.ordinal() == 0 && !CgRehearsal.active();
+            if (first) {
+                CgGraphTexture sized = temporalByKernel ? historySlots[0] : history;
+                if (sized == null || sized.getWidth() != w || sized.getHeight() != h) {
+                    if (temporalByKernel) {
+                        for (int k = 0; k < 3; k++) {
+                            if (historySlots[k] != null) recording.release(historySlots[k]);
+                            historySlots[k] = CgGraphTexture.history("cg_world_lights.history-" + k, new CgTextureDesc(w, h, SLOT_FORMAT));
+                        }
+                    } else {
+                        if (history != null) recording.release(history);
+                        history = CgGraphTexture.history("cg_world_lights.history", new CgTextureDesc(w, h, HISTORY_FORMAT));
+                    }
                     historyMade = CgFrameRing.frame();
                 }
-                accumulated = history;
                 freshHistory = historyMade == CgFrameRing.frame() || !stage.historyValid();
             } else {
-                accumulated = scratchHistory;
                 freshHistory = true;
+            }
+            if (temporalByKernel) {
+                for (int k = 0; k < 3; k++) {
+                    accumulatedSlots[k] = first ? historySlots[k] : scratchSlots[k];
+                    if (!freshHistory) lastSlots[k] = historySlots[k].previous();
+                }
+            } else {
+                accumulated = first ? history : scratchHistory;
+                accumulatedSlots[0] = accumulated;
+                accumulatedSlots[1] = accumulated.attachment(1);
+                accumulatedSlots[2] = accumulated.attachment(2);
+                if (!freshHistory) {
+                    lastSlots[0] = history.previous();
+                    lastSlots[1] = history.previous().attachment(1);
+                    lastSlots[2] = history.previous().attachment(2);
+                }
+            }
+            // No history: this frame's own, which the pass takes as invalid.
+            if (freshHistory) {
+                lastSlots[0] = shaded;
+                lastSlots[1] = shaded;
+                lastSlots[2] = shaded.attachment(1);
             }
             eyeBlock[0] = (int) Math.floor(cameraX);
             eyeBlock[1] = (int) Math.floor(cameraY);
@@ -1277,7 +1333,11 @@ public final class CgWorldLights {
                 int tx = (w + ENTITY_TILE - 1) / ENTITY_TILE, ty = (h + ENTITY_TILE - 1) / ENTITY_TILE;
                 if (entityTiles == null || entityTiles.getWidth() != tx || entityTiles.getHeight() != ty) {
                     entityTiles = CgGraphTexture.transientTexture("cg_world_lights.tiles", new CgTextureDesc(tx, ty, TILES_FORMAT));
+                    tileRanges = CgGraphTexture.transientTexture("cg_world_lights.tile-ranges",
+                            new CgTextureDesc(tx * (ENTITY_TILE / 4), ty * (ENTITY_TILE / 4), RANGES_FORMAT));
                 }
+                tileDepth.applyProperties(rangeValues);
+                fullScreen(stage, recording, tileRanges, tileDepth, GPU_TILE_DEPTH);
                 tiles.buffer("ENTITIES", boxes).applyProperties(tileValues);
                 fullScreen(stage, recording, entityTiles, tiles, GPU_TILES);
             }
@@ -1288,8 +1348,12 @@ public final class CgWorldLights {
             fullScreen(stage, recording, samples, sample, GPU_SAMPLE);
             shade.buffer("LIGHTS", binned ? list : none).applyProperties(shadeValues);
             fullScreen(stage, recording, shaded, shade, GPU_SHADE);
-            temporal.applyProperties(temporalValues);
-            fullScreen(stage, recording, accumulated, temporal, GPU_TEMPORAL);
+            if (temporalByKernel) {
+                recordTemporal(stage, recording, w, h);
+            } else {
+                temporal.applyProperties(temporalValues);
+                fullScreen(stage, recording, accumulated, temporal, GPU_TEMPORAL);
+            }
             denoise.applyProperties(denoiseValues);
             fullScreen(stage, recording, filtered, denoise, GPU_DENOISE);
             return true;
@@ -1602,6 +1666,25 @@ public final class CgWorldLights {
             recording.fill(zeroes, 0);
         }
         return zeroes;
+    }
+
+    /**
+     * MegaLights' temporal pass as Unreal's DenoiserTemporalCS runs it, where compute runs: 8x8 groups, each loading this
+     * frame's lighting round it once into shared memory (world_lights_temporal.compute), into the history's three slots.
+     */
+    private void recordTemporal(CgStageFrame stage, CgRecording recording, int w, int h) {
+        CgComputePass pass = recording.compute("world.lightsTemporal", stage.constants()).timed(GPU_TEMPORAL);
+        pass.dispatch(temporalKernel, w, h, 1).image("LIGHTING", (CgGraphTexture) accumulatedSlots[0])
+                .image("MOMENTS", (CgGraphTexture) accumulatedSlots[1]).image("VIS", (CgGraphTexture) accumulatedSlots[2])
+                .texture("_GBuffer", gbuffer).texture("_Now", shaded).texture("_NowVis", shaded.attachment(1))
+                .texture("_Last", lastSlots[0]).texture("_LastMoments", lastSlots[1]).texture("_LastVis", lastSlots[2])
+                .set("_Rays", rays[0], rays[1], rays[2], rays[3])
+                .set("_ToView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
+                .set("_ToView1", toView.m01(), toView.m11(), toView.m21(), toView.m31())
+                .set("_ToView2", toView.m02(), toView.m12(), toView.m22(), toView.m32())
+                .set("_Eye", eye.x, eye.y, eye.z, 0f).set("_Fresh", freshHistory ? 1f : 0f)
+                .set("_Frames", Math.min(4f, MAX_FRAMES.get()), MAX_FRAMES.get(), 1f, 0.03f);
+        pass.end();
     }
 
     /** One full-screen draw of {@code material} into {@code target}, reading the stage's depth and the lightmap. */

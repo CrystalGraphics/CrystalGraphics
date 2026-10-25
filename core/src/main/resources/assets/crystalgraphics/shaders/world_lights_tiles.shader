@@ -20,6 +20,7 @@ Properties {
     _EyeFrac  ("The eye within its block",                           vec4) = (0, 0, 0, 0)
     _Reach    ("The farthest a light's ray runs, blocks; 1 with the sun; the sun's ray's length", vec4) = (0, 0, 96, 0)
     _Entities ("Entity boxes in ENTITIES, at most 64",               int) = 0
+    _Ranges   ("Each 4x4 pixels' window depth range (world_lights_tile_depth)", sampler2D) = "black"
 }
 
 Buffers {
@@ -64,17 +65,23 @@ Pass {
     void fragment(in v2f i, out vec4 fragColor) {
         fragColor = vec4(0.0);
         ivec2 tile = ivec2(gl_FragCoord.xy), size = ivec2(_Screen.xy), first = tile * TILE;
-        float near = 1.0e30, far = 0.0;
-        for (int y = 0; y < TILE; y++) {
-            for (int x = 0; x < TILE; x++) {
-                ivec2 px = first + ivec2(x, y);
-                if (px.x >= size.x || px.y >= size.y) continue;
-                float d = eye_depth_of(texelFetch(cg_DepthBuffer, px, 0).r);
-                if (d <= 0.0) continue;
-                near = min(near, d);
-                far = max(far, d);
+        // The window depths' range, the sky left out, from its 4x4 pixels' ranges: 16 fetches, where 256 in a row left
+        // the pass waiting on them. Eye depth rises with window depth (falls, reversed), so only the two ends are
+        // converted.
+        bool reversed = cg_DepthParams.x > 0.5;
+        float lo = 2.0, hi = -1.0;
+        ivec2 ranges = textureSize(_Ranges, 0);
+        for (int y = 0; y < TILE / 4; y++) {
+            for (int x = 0; x < TILE / 4; x++) {
+                ivec2 q = tile * (TILE / 4) + ivec2(x, y);
+                if (q.x >= ranges.x || q.y >= ranges.y) continue;
+                vec2 range = texelFetch(_Ranges, q, 0).xy;
+                lo = min(lo, range.x);
+                hi = max(hi, range.y);
             }
         }
+        if (hi < lo) return;
+        float near = eye_depth_of(reversed ? hi : lo), far = eye_depth_of(reversed ? lo : hi);
         if (far <= 0.0) return;
         // The tile's slice of the view between its nearest and farthest depth, and the sphere round its corners.
         vec2 uv0 = vec2(first) / _Screen.xy, uv1 = min(vec2(first + TILE) / _Screen.xy, vec2(1.0));
