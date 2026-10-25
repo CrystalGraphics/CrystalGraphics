@@ -88,6 +88,8 @@ tasks.test {
     // A kit's ported programs, linked when asked (KitProgramsLinkTest): staged under their namespace, as a kit loads them.
     if (kitPorts.isNotEmpty()) {
         dependsOn(stageKitPorts)
+        // The staged files are what it links: a port changed alone must run it again, not pass from the last run.
+        inputs.dir(kitPortsRoot).withPropertyName("kitPorts")
         systemProperty("crystalgraphics.kits.ports", kitPorts.keys.joinToString(";"))
         systemProperty("crystalgraphics.kits.portsRoot", kitPortsRoot.get().asFile.absolutePath)
         systemProperty("crystalgraphics.resourceOverrideDirs", kitPortsRoot.get().asFile.absolutePath)
