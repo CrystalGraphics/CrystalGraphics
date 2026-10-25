@@ -25,6 +25,7 @@ Properties {
     _GBuffer  ("Each pixel's normal in the view (world_lights_gbuffer)", sampler2D) = "black"
     _Spatial ("KernelRadius, NumSamples, DepthWeightScale, MaxDisocclusionFrames", vec4) = (8, 4, 10000, 2)
     _Spread  ("DisocclusionDiffuseSpatialVarianceScale, HistorySpatialStdDevThreshold, MaxFramesAccumulated", vec4) = (2, 0.15, 12, 0)
+    _Scale   ("Target pixels a texel spans each way: 1, or 2 at half resolution (crystalgraphics.world.lightsHalf)", int) = 1
 }
 
 struct v2f { vec2 uv; };
@@ -58,14 +59,16 @@ Pass {
                 : (_Depth.y - _Depth.x / _Depth.z * _Depth.w) / (ndc - _Depth.x / _Depth.z);
     }
 
+    // Texel px's surface and normal: the target pixel it stands for, its first at half resolution.
     vec3 surface(ivec2 px) {
+        px *= _Scale;
         float depth = eye_depth(px);
         vec2 uv = (vec2(clamp(px, ivec2(0), ivec2(CG_RESOLUTION) - 1)) + 0.5) / CG_RESOLUTION;
         return vec3(mix(_Rays.xy, _Rays.zw, uv) * depth, -depth);
     }
 
     // Pixel px's normal in the view, written once a firing (world_lights_gbuffer, Unreal's GBufferA in role).
-    vec3 normal_at(ivec2 px) { return texelFetch(_GBuffer, clamp(px, ivec2(0), ivec2(CG_RESOLUTION) - 1), 0).xyz; }
+    vec3 normal_at(ivec2 px) { return texelFetch(_GBuffer, clamp(px * _Scale, ivec2(0), ivec2(CG_RESOLUTION) - 1), 0).xyz; }
 
     void vertex(out v2f o) {
         vec2 p = vec2(float((CG_VERTEX_ID & 1) << 2) - 1.0, float((CG_VERTEX_ID & 2) << 1) - 1.0);

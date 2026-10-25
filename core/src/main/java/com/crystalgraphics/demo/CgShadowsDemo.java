@@ -100,6 +100,17 @@ public final class CgShadowsDemo {
         mode.set((Math.round(mode.get()) + 1) % 3);
     }
 
+    /** The shadowed lights' shading, history and filter at half resolution or full ({@code CgWorldLights.HALF}). */
+    public static void toggleHalf() {
+        CgWorldLights.HALF.set(!CgWorldLights.HALF.get());
+    }
+
+    /** The HUD's line for the switches every lit scene shares. */
+    public static String lightingLine() {
+        return "\nShadows [O]: " + (shadowsOn() ? "on" : "off")
+                + " | MegaLights resolution [R]: " + (CgWorldLights.HALF.get() ? "half" : "full");
+    }
+
     public static boolean shadowsOn() {
         return ((CgVar.Bool) CgVars.get(SHADOWS)).get();
     }
@@ -184,7 +195,7 @@ public final class CgShadowsDemo {
 
     /** What the HUD says under the scene's line. */
     public static String hud() {
-        return "\nShadows [O]: " + (shadowsOn() ? "on" : "off")
+        return lightingLine()
                 + " | temporal [K]: " + (((CgVar.Num) CgVars.get(FRAMES)).get() > 1f ? "on" : "off")
                 + " | spatial [J]: " + (((CgVar.Num) CgVars.get(SPATIAL)).get() > 0f ? "on" : "off")
                 + " | screen trace [U]: " + (((CgVar.Num) CgVars.get(SCREEN)).get() > 0f ? "on" : "off")

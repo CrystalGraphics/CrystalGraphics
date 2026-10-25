@@ -32,6 +32,7 @@ Properties {
     _LastVis ("Last frame's accumulated visibility, then its squares", sampler2D) = "white"
     _Fresh   ("1 where the history holds no frame of this view",     float) = 1.0
     _Frames  ("MinFramesAccumulatedForHistoryMiss, MaxFramesAccumulated, NeighborhoodClampScale, HistoryDistanceThreshold", vec4) = (4, 12, 1, 0.03)
+    _Scale   ("Target pixels a texel spans each way: 1, or 2 at half resolution (crystalgraphics.world.lightsHalf)", int) = 1
 }
 
 struct v2f { vec2 uv; };
@@ -71,11 +72,13 @@ Pass {
     }
 
     void fragment(in v2f i, out Accumulated o) {
+        // px in the lighting's texels; target, the pixel of the target it shades (its first, at half resolution).
         ivec2 px = ivec2(gl_FragCoord.xy), size = textureSize(_Now, 0);
+        ivec2 target = min(px * _Scale, ivec2(CG_RESOLUTION) - 1);
         o.lighting = vec4(0.0);
         o.moments = vec4(0.0, 0.0, 0.0, 1.0);
         o.visibility = vec4(1.0);
-        float depth = eye_depth(px);
+        float depth = eye_depth(target);
         if (depth <= 0.0) return;
         vec4 nowVis = texelFetch(_NowVis, px, 0);
         o.moments.z = depth;
@@ -89,7 +92,7 @@ Pass {
         float historyWeight = 0.0;
         vec4 historyVis = vec4(0.0);
         if (_Fresh < 0.5 && CG_HISTORY_VALID) {
-            vec2 uv = (vec2(px) + 0.5) / vec2(size);
+            vec2 uv = (vec2(target) + 0.5) / CG_RESOLUTION;
             vec3 p = vec3(mix(_Rays.xy, _Rays.zw, uv) * depth, -depth);
             vec3 w = to_world_dir(p - vec3(_ToView0.w, _ToView1.w, _ToView2.w)) + _Eye.xyz;
             vec4 then = cg_PreviousClip(w);

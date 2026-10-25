@@ -26,6 +26,7 @@ Properties {
     _Samples ("The shadowed lights' samples, four a half-resolution pixel", sampler2D) = "black"
     _GBuffer ("Each pixel's normal in the view (world_lights_gbuffer)", sampler2D) = "black"
     _MaxWeight ("Unreal's r.MegaLights.MaxShadingWeight",          float) = 20.0
+    _Scale   ("Target pixels a written texel spans each way: 1, or 2 at half resolution (crystalgraphics.world.lightsHalf)", int) = 1
     _SampleGrid ("Unreal's NumSamplesPerPixel as a block of the samples texture: its width, height and count", vec4) = (2, 2, 4, 0)
 }
 
@@ -107,7 +108,8 @@ Pass {
     }
 
     void fragment(in v2f i, out Shaded o) {
-        ivec2 px = ivec2(gl_FragCoord.xy);
+        // The target pixel this texel shades: its first, at half resolution.
+        ivec2 px = ivec2(gl_FragCoord.xy) * _Scale;
         o.lighting = vec4(0.0);
         o.visibility = vec4(1.0, 1.0, 0.0, 0.0);
         vec3 p = surface(px);

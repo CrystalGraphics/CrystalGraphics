@@ -208,6 +208,12 @@ lights.add(x, y, z, 2f, 0xFFFFE080, 4f, 0f).shadowed(false).sampled(false);   //
   few degrees toward it, so a face edge-on to the sun holds still.
 - **What does not**: a particle's light (Unreal's simple lights cast none), a slot light with `cast_shadows: false`,
   any light under `-Dcrystalgraphics.world.lightsShadows=false`.
+- **Half-resolution shading** (`crystalgraphics.world.lightsHalf`, `CgWorldLights.HALF`, on; R in the render demo): the
+  shade, temporal and denoise passes at half the target's size each way, each texel standing for the first pixel of its
+  2x2, and the apply upsampling their lighting and visibility as `world_half_upsample` does (bilinear weights times
+  depth agreement, the nearest in depth where none agrees). A departure from Unreal, which shades MegaLights at full
+  resolution: a quarter of those passes' pixels. In the lights demo in game no difference showed, and the fireflies'
+  floor went from 248 to 280 fps.
 - **Resolution and rays**: `crystalgraphics.world.lightsDownsample` is Unreal's `r.MegaLights.DownsampleMode`: 0 traces
   every pixel, 1 every other (2x1), 2 a quarter (2x2); `crystalgraphics.world.lightsSamplesPerPixel` its
   `NumSamplesPerPixel`, 1, 2 or 4 samples each. Unreal's default, 4 samples on a 2x2 pixel, is a ray a screen pixel and

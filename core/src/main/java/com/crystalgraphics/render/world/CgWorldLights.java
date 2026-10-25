@@ -332,6 +332,14 @@ public final class CgWorldLights {
     private static final CgVar.Num DOWNSAMPLE = CgVar.number("crystalgraphics.world.lightsDownsample", 2f, 0f, 2f, CgVar.DEV,
             "Unreal's r.MegaLights.DownsampleMode: 0 traces every pixel, 1 every other (2x1), 2 a quarter (2x2), Unreal's "
                     + "default. In the lights demo at 2560x1440 in game the sample pass took 1.9 ms at 0, 0.65 at 2.");
+    /**
+     * MegaLights' shading, accumulation and filter at half resolution each way, a quarter of the pixels, the apply
+     * upsampling their result by depth: a departure from Unreal, which shades MegaLights at full resolution. On by
+     * default: the user saw no difference in the lights demo, at 280 fps on the fireflies' floor in game.
+     */
+    public static final CgVar.Bool HALF = CgVar.bool("crystalgraphics.world.lightsHalf", true, CgVar.DEV,
+            "The shadowed lights' shading, history and filter at half resolution, upsampled by depth; off shades every "
+                    + "pixel.");
 
     private static final CgVar.Num MAX_FRAMES = CgVar.number("crystalgraphics.world.lightsShadowFrames", 12f, 1f, 32f,
             CgVar.DEV, "Frames the shadowed lighting accumulates over: fewer ghost less and shimmer more.");
@@ -447,6 +455,8 @@ public final class CgWorldLights {
     };
     private float targetW, targetH;
     private CgGraphTexture samples, shaded, filtered, scratchHistory, history, accumulated;
+    /** Target pixels the shading, history and filter's texels span each way this firing: 1, or 2 under {@link #HALF}. */
+    private int lightScale = 1;
     private long historyMade = -1;
     private boolean shadowsOn, freshHistory, binned, sunOn;
     /** Zeros: the light list, cells and entities when none were made this firing. */
@@ -482,25 +492,25 @@ public final class CgWorldLights {
     private final Consumer<CgShaderBindings> shadeValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, this.downX, this.downY)
             .sampler("_Samples", 0, samples).set1f("_MaxWeight", 20f)
             .vec4("_SampleGrid", this.sampleX, this.sampleY, this.sampleX * this.sampleY, 0f)
-            .sampler("_GBuffer", 1, this.gbuffer));
+            .sampler("_GBuffer", 1, this.gbuffer).set1i("_Scale", lightScale));
     private final Consumer<CgShaderBindings> temporalValues = b -> this.gridValues.accept(b.vec4("_Eye", eye.x, eye.y, eye.z, 0f)
             .sampler("_Now", 0, shaded).sampler("_Last", 1, freshHistory ? shaded : history.previous())
             .sampler("_LastMoments", 2, freshHistory ? shaded : history.previous().attachment(1))
             .sampler("_NowVis", 3, shaded.attachment(1))
             .sampler("_LastVis", 4, freshHistory ? shaded.attachment(1) : history.previous().attachment(2))
             .set1f("_Fresh", freshHistory ? 1f : 0f)
-            .vec4("_Frames", Math.min(4f, MAX_FRAMES.get()), MAX_FRAMES.get(), 1f, 0.03f));
+            .vec4("_Frames", Math.min(4f, MAX_FRAMES.get()), MAX_FRAMES.get(), 1f, 0.03f).set1i("_Scale", lightScale));
     private final Consumer<CgShaderBindings> denoiseValues = b -> this.gridValues.accept(b.sampler("_Lighting", 0, accumulated)
             .sampler("_Moments", 1, accumulated.attachment(1)).sampler("_Vis", 2, accumulated.attachment(2))
             .sampler("_GBuffer", 3, this.gbuffer)
-            .vec4("_Spatial", SPATIAL_RADIUS.get(), 4f, 10000f, 2f)
-            .vec4("_Spread", 2f, 0.15f, MAX_FRAMES.get(), 0f));
+            .vec4("_Spatial", SPATIAL_RADIUS.get() / lightScale, 4f, 10000f, 2f)
+            .vec4("_Spread", 2f, 0.15f, MAX_FRAMES.get(), 0f).set1i("_Scale", lightScale));
     private final Consumer<CgShaderBindings> applyValues = b -> this.gridValues.accept(b.set1f("_Shadows", shadowsOn ? 1f : 0f)
             .sampler("_Shadowed", 0, shadowsOn ? filtered : CgFallbackTextures.BLACK_1x1)
             .sampler("_Visibility", 1, shadowsOn ? filtered.attachment(1) : CgFallbackTextures.WHITE_1x1)
             .vec4("_Sun", shadowsOn && sunOn ? 1f : 0f, SUN_SHARE.get(), 0f, 0f)
             .set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1]).set1i("_EyeZ", eyeBlock[2])
-            .vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f)
+            .vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f).set1i("_Scale", lightScale)
             .sampler("_GBuffer", 5, this.gbuffer));
     private final Consumer<CgShaderBindings> applyWindow = b -> CgWorldVoxelWindow.get().bind(b, 2);
     /** The grid's values onto the apply material, read from the fields this firing set. */
@@ -1239,16 +1249,19 @@ public final class CgWorldLights {
             if (samples == null || samples.getWidth() != sw || samples.getHeight() != sh) {
                 samples = CgGraphTexture.transientTexture("cg_world_lights.samples", new CgTextureDesc(sw, sh, SAMPLES_FORMAT));
             }
-            if (shaded == null || shaded.getWidth() != w || shaded.getHeight() != h) {
-                shaded = CgGraphTexture.transientTexture("cg_world_lights.shaded", new CgTextureDesc(w, h, LIGHTING_FORMAT));
-                filtered = CgGraphTexture.transientTexture("cg_world_lights.filtered", new CgTextureDesc(w, h, LIGHTING_FORMAT));
-                scratchHistory = CgGraphTexture.transientTexture("cg_world_lights.accumulated", new CgTextureDesc(w, h, HISTORY_FORMAT));
+            // Shading, history and filter at the target's size, or half it each way under HALF; the samples keep theirs.
+            lightScale = HALF.get() ? 2 : 1;
+            int lw = (w + lightScale - 1) / lightScale, lh = (h + lightScale - 1) / lightScale;
+            if (shaded == null || shaded.getWidth() != lw || shaded.getHeight() != lh) {
+                shaded = CgGraphTexture.transientTexture("cg_world_lights.shaded", new CgTextureDesc(lw, lh, LIGHTING_FORMAT));
+                filtered = CgGraphTexture.transientTexture("cg_world_lights.filtered", new CgTextureDesc(lw, lh, LIGHTING_FORMAT));
+                scratchHistory = CgGraphTexture.transientTexture("cg_world_lights.accumulated", new CgTextureDesc(lw, lh, HISTORY_FORMAT));
             }
             // One history, the first firing's: a later firing of the frame (a second eye) accumulates nothing.
             if (stage.ordinal() == 0 && !CgRehearsal.active()) {
-                if (history == null || history.getWidth() != w || history.getHeight() != h) {
+                if (history == null || history.getWidth() != lw || history.getHeight() != lh) {
                     if (history != null) recording.release(history);
-                    history = CgGraphTexture.history("cg_world_lights.history", new CgTextureDesc(w, h, HISTORY_FORMAT));
+                    history = CgGraphTexture.history("cg_world_lights.history", new CgTextureDesc(lw, lh, HISTORY_FORMAT));
                     historyMade = CgFrameRing.frame();
                 }
                 accumulated = history;

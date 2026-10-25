@@ -56,6 +56,7 @@ Properties {
     _EyeY    ("y",                                                 int) = 0
     _EyeZ    ("z",                                                 int) = 0
     _EyeFrac ("The eye within its block",                          vec4) = (0, 0, 0, 0)
+    _Scale   ("Target pixels a shadow-pass texel spans each way: 1, or 2 at half resolution", int) = 1
 }
 
 // light_grid.compute's: each light in the view with what it is shaded by, worked out once a light.
@@ -99,6 +100,42 @@ Pass {
         return vec3(mix(_Rays.xy, _Rays.zw, uv) * depth, -depth);
     }
 
+    // The shadow passes' lighting and visibility at pixel px: its own texel, or at half resolution the four round it
+    // weighed by distance and by how near the depth each stands for is to px's, the nearest in depth where none agrees
+    // (world_half_upsample's joint bilateral upsample). A texel stands for the first pixel of its 2x2.
+    void shadowed_at(ivec2 px, out vec3 lighting, out vec2 vis) {
+        if (_Scale <= 1) {
+            lighting = texelFetch(_Shadowed, px, 0).rgb;
+            vis = texelFetch(_Visibility, px, 0).xy;
+            return;
+        }
+        ivec2 size = textureSize(_Shadowed, 0);
+        float depth = -surface(px).z;
+        vec2 at = vec2(px) / float(_Scale);
+        ivec2 base = ivec2(floor(at));
+        vec2 f = at - vec2(base);
+        vec3 sum = vec3(0.0), nearest = vec3(0.0);
+        vec2 visSum = vec2(0.0), visNearest = vec2(1.0);
+        float total = 0.0, best = 1.0e30;
+        for (int k = 0; k < 4; k++) {
+            ivec2 o = ivec2(k & 1, k >> 1), t = clamp(base + o, ivec2(0), size - 1);
+            float gap = abs(-surface(t * _Scale).z - depth) / max(depth, 1.0e-3);
+            vec3 c = texelFetch(_Shadowed, t, 0).rgb;
+            vec2 v = texelFetch(_Visibility, t, 0).xy;
+            if (gap < best) {
+                best = gap;
+                nearest = c;
+                visNearest = v;
+            }
+            float w = (o.x == 1 ? f.x : 1.0 - f.x) * (o.y == 1 ? f.y : 1.0 - f.y) * exp(-gap * 50.0);
+            sum += c * w;
+            visSum += v * w;
+            total += w;
+        }
+        lighting = total > 1.0e-4 ? sum / total : nearest;
+        vis = total > 1.0e-4 ? visSum / total : visNearest;
+    }
+
     void vertex(out v2f o) {
         vec2 p = vec2(float((CG_VERTEX_ID & 1) << 2) - 1.0, float((CG_VERTEX_ID & 2) << 1) - 1.0);
         o.uv = p * 0.5 + 0.5;
@@ -134,14 +171,19 @@ Pass {
 #endif
             if (lit > 0.0) sum += VIEWED(index).radiance.rgb * lit;
         }
-        if (shadows) sum += texelFetch(_Shadowed, px, 0).rgb;
+        vec3 shadowedLight = vec3(0.0);
+        vec2 shadowedVis = vec2(1.0);
+        if (shadows) {
+            shadowed_at(px, shadowedLight, shadowedVis);
+            sum += shadowedLight;
+        }
 
         // The sun withheld: the sky light at the block this face looks into, less the sun's direct share; the block
         // light less the share of it withheld.
         vec3 ratio = vec3(1.0);
         float window = texelFetch(cg_DepthBuffer, px, 0).r;
         bool sky = cg_DepthParams.x > 0.5 ? window <= 0.0 : window >= 1.0;
-        vec2 seen = shadows ? texelFetch(_Visibility, px, 0).xy : vec2(1.0);
+        vec2 seen = shadowedVis;
         float vis = _Sun.x > 0.5 ? seen.x : 1.0;
         if (!sky && min(vis, seen.y) < 0.999 && _WorldLive != 0) {
             vec3 w = to_world_dir(p + n * 0.5 - vec3(_ToView0.w, _ToView1.w, _ToView2.w)) + _EyeFrac.xyz;
