@@ -166,7 +166,35 @@ CgAnimation.client().remove(kurama);
   `CgBonePalettes.write`. Lower down, `clip.sample(pose, time)` into a `CgPose`, `pose.blend(...)`, `pose.resolve()`.
 - About 9 µs to pose a 228-bone puppet; past `crystalgraphics.animation.parallelAt` (8) instances, `POSE` splits them
   across workers.
-- `--mode=skinned-play` shows them: Goku and Kurama, Tab to pick, N/B clips, P pause, `,` `.` a frame, I/O rate.
+- `--mode=skinned-play` shows them: Goku and Kurama, Tab to pick, N/B clips, P pause, `,` `.` a frame, I/O rate,
+  K a Kamehameha charging on its right hand.
+
+## Sockets: attaching to a posed bone
+
+A socket is a named place on a bone (Unreal's `USkeletalMeshSocket`), and every bone is a socket by its own name. An
+effect following one rides the bone as `POSE` posed it that frame, so it never lags the mesh.
+
+```java
+CgSkeletalMesh goku = CgMeshLoader.skeletal(path)
+        .withSockets(List.of(CgSocket.of("right_hand", "hand_r", new Vector3f(0, -0.08f, 0.02f))));
+CgAnimInstance body = CgAnimation.client().add(new CgAnimInstance(goku)).place(x, y, z, turnAndScale);
+
+VFX.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z).follow(body, "right_hand"));   // or "hand_r"
+world.draw(body, skin).pad(2f).submit();                                                         // SUBMIT
+
+int hand = body.socket("right_hand");          // looked up once
+body.socket(hand, point, turn);                // this frame's, after POSE: absolute place and turn
+```
+
+- **Found as Unreal finds one**: the mesh's socket of that name, else the bone of that name, ignoring case; a name
+  that is neither stands where the instance does.
+- **Where it is**: `place(x, y, z, transform) × bone × socket`, the instance's placement being Unreal's
+  component-to-world. `world.draw(instance, material)` draws it there.
+- **An effect following a socket** takes its origin and turn each frame before it ticks; its named sockets
+  (`socket_location` spawning) are the instance's; it stops once the instance is removed from `CgAnimation`.
+- **Late attach**: after the effects tick and before they draw (`LATE_ATTACH`), every followed point is read again, an
+  entity's freshest mark included, so what draws at a point sits on it as it is drawn (Unreal's late update).
+- A loaded file carries no sockets: they come from the skeleton asset (`withSockets`) or `CgSkeletalMesh.Builder.socket`.
 
 ## Drawing one
 
@@ -214,4 +242,3 @@ byte[] mesh = CgCookedMesh.write(kurama), clips = CgCookedAnimation.write(kurama
 - **Tracks name their bones**, so a clip plays on any skeleton that has them. A bone a clip does not animate holds its
   rest pose.
 - **Names are kept as written**: what a socket or a sequence names a bone by.
-- Sockets on bones are their own section as they arrive.

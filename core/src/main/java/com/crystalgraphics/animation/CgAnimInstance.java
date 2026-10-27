@@ -2,8 +2,14 @@ package com.crystalgraphics.animation;
 
 import com.crystalgraphics.api.animation.CgAnimSection;
 import com.crystalgraphics.api.animation.CgPose;
+import com.crystalgraphics.api.animation.CgSocket;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
+import com.crystalgraphics.gl.buffer.CgFrameRing;
 import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import org.joml.Quaternionf;
+
+import javax.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -18,10 +24,11 @@ import java.util.Objects;
  *
  * <pre>{@code
  * CgAnimInstance kurama = CgAnimation.client().add(new CgAnimInstance(mesh));   // posed in POSE every frame
+ * kurama.place(x, y, z, turnAndScale);
  * kurama.play(CgAnimSection.of(mesh.sequence("idle")).until(Double.POSITIVE_INFINITY).build());
  *
- * // in SUBMIT, the same frame:
- * world.draw(mesh.mesh(), skin).bones(kurama.palette()).at(x, y, z).submit();
+ * owner.play(new Flame(look, x, y, z).follow(kurama, "hand_r"));   // rides the hand as posed this frame
+ * world.draw(kurama, skin).submit();                               // in SUBMIT, the same frame
  * }</pre>
  *
  * <p>Seeking: the pose is a pure function of the time, so a seek lands exactly where playing would.</p>
@@ -40,7 +47,17 @@ import java.util.Objects;
  */
 public final class CgAnimInstance {
 
+    /** {@link #socket(String)}'s answer for a name it has neither as a socket nor a bone: where the instance stands. */
+    public static final int NO_SOCKET = -1;
+    private static final int SOCKET = 1 << 30;
+    private static final Matrix4fc IDENTITY = new Matrix4f();
+
     private final CgSkeletalMesh mesh;
+    private double x, y, z;
+    private final Matrix4f transform = new Matrix4f();
+    private final Matrix4f socketScratch = new Matrix4f(), relativeScratch = new Matrix4f();
+    private long paletteFrame = -1;
+    private boolean posed;
     private final List<CgAnimSection> sections = new ArrayList<>();
     private final CgPose pose;
     private final Matrix4f[] skinning;
@@ -165,13 +182,99 @@ public final class CgAnimInstance {
         return skinning;
     }
 
-    /** Where its palette starts this frame, for its draw's {@code bones(base)}; -1 before {@code POSE} wrote one. */
+    /** Where its palette starts this frame, for its draw's {@code bones(base)}; -1 where {@code POSE} wrote none this frame. */
     public int palette() {
-        return palette;
+        return paletteFrame == CgFrameRing.frame() ? palette : -1;
     }
 
     void palette(int base) {
         palette = base;
+        paletteFrame = CgFrameRing.frame();
+    }
+
+    // ---- where it stands, and its sockets
+
+    /** Stands it at absolute {@code (x, y, z)}, unturned and unscaled. */
+    public CgAnimInstance place(double x, double y, double z) {
+        return place(x, y, z, IDENTITY);
+    }
+
+    /**
+     * Stands it at absolute {@code (x, y, z)}, turned and scaled by {@code transform} about that point: Unreal's
+     * component-to-world. Where it is drawn ({@code CgWorldRenderer.draw(instance, material)}) and where its sockets are.
+     */
+    public CgAnimInstance place(double x, double y, double z, Matrix4fc transform) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.transform.set(transform);
+        return this;
+    }
+
+    public double x() {
+        return x;
+    }
+
+    public double y() {
+        return y;
+    }
+
+    public double z() {
+        return z;
+    }
+
+    /** Its turn and scale about where it stands. */
+    public Matrix4fc transform() {
+        return transform;
+    }
+
+    /**
+     * The socket named {@code name}, as Unreal finds one (USkinnedMeshComponent::GetSocketTransform,
+     * SkinnedMeshComponent.cpp:3525-3587): its mesh's socket of that name, else the bone of that name, ignoring case;
+     * {@link #NO_SOCKET} for neither, which stands where the instance does. Look it up once and keep it.
+     *
+     * <pre>{@code
+     * int hand = kurama.socket("hand_r");
+     * kurama.socket(hand, point, turn);       // this frame's, once POSE has run
+     * }</pre>
+     */
+    public int socket(String name) {
+        List<CgSocket> sockets = mesh.sockets();
+        for (int i = 0; i < sockets.size(); i++) if (sockets.get(i).name().equalsIgnoreCase(name)) return SOCKET | i;
+        int bone = mesh.skeleton().indexOfIgnoringCase(name);
+        return bone >= 0 ? bone : NO_SOCKET;
+    }
+
+    /**
+     * Socket {@code socket}'s absolute place into {@code point} and its turn into {@code turn} (either may be null),
+     * from the pose {@link #evaluate()} last made: {@code where it stands × bone × socket}.
+     */
+    public void socket(int socket, @Nullable double[] point, @Nullable Quaternionf turn) {
+        Matrix4f m = socketScratch.set(transform);
+        if (socket != NO_SOCKET) {
+            if ((socket & SOCKET) != 0) {
+                CgSocket s = mesh.sockets().get(socket & ~SOCKET);
+                m.mul(pose.component(mesh.skeleton().indexOfIgnoringCase(s.bone()))).mul(s.relative(relativeScratch));
+            } else {
+                m.mul(pose.component(socket));
+            }
+        }
+        if (point != null) {
+            point[0] = x + m.m30();
+            point[1] = y + m.m31();
+            point[2] = z + m.m32();
+        }
+        // Unnormalized: the placement scales the columns, which getNormalizedRotation assumes unit.
+        if (turn != null) m.getUnnormalizedRotation(turn);
+    }
+
+    /** Whether {@code CgAnimation} poses it: false once removed, which ends what follows it. */
+    public boolean posed() {
+        return posed;
+    }
+
+    void posed(boolean posed) {
+        this.posed = posed;
     }
 
     @Override

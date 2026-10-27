@@ -29,6 +29,7 @@ import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
+import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.buffer.shader.CgBonePalettes;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -668,6 +669,23 @@ public final class CgWorldRenderer {
     /** Starts a draw of {@code mesh} under {@code material}: the shared scratch, so build and submit in one expression. */
     public Draw draw(CgMesh mesh, CgMaterial material) {
         return scratch.start(mesh, material);
+    }
+
+    /**
+     * Starts a draw of a skinned mesh posed this frame: its mesh, skinned by the palette {@code POSE} wrote, where the
+     * instance stands. Submit from {@code SUBMIT}, or another group after {@code POSE}.
+     *
+     * <pre>{@code
+     * world.draw(kurama, skin).pad(4f).submit();       // padded: a pose reaches past the bind pose's bounds
+     * }</pre>
+     *
+     * @throws IllegalStateException where {@code CgAnimation} has not posed it this frame
+     */
+    public Draw draw(CgAnimInstance instance, CgMaterial material) {
+        int palette = instance.palette();
+        if (palette < 0) throw new IllegalStateException(instance + " is not posed this frame: CgAnimation.add it, and draw after POSE");
+        return scratch.start(instance.mesh().mesh(), material).bones(palette)
+                .at(instance.x(), instance.y(), instance.z()).transform(instance.transform());
     }
 
     /**

@@ -80,6 +80,8 @@ public final class CgVfx {
         installed = true;
         CgTickFunction effects = CgWorld.client().schedule().add(CgTickGroup.EFFECTS, "crystalgraphics:vfx", dt -> effects())
                 .whilePaused(true);
+        CgWorld.client().schedule().add(CgTickGroup.LATE_ATTACH, "crystalgraphics:vfx.lateAttach", dt -> world().lateAttach())
+                .after(effects).whilePaused(true);
         CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "crystalgraphics:vfx.submit", dt -> submit())
                 .after(effects).whilePaused(true);
         CgVfxCueClient.install();

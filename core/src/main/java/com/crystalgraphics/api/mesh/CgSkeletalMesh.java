@@ -3,6 +3,7 @@ package com.crystalgraphics.api.mesh;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgMorphTargets;
 import com.crystalgraphics.api.animation.CgSkeleton;
+import com.crystalgraphics.api.animation.CgSocket;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
@@ -53,15 +54,54 @@ public final class CgSkeletalMesh {
     private final List<String> materials;
     private final CgMorphTargets morphTargets;
     private final List<CgAnimSequence> sequences;
+    private final List<CgSocket> sockets;
 
     private CgSkeletalMesh(CgMesh mesh, CgSkeleton skeleton, float[] inverseBinds, List<String> materials,
-                           CgMorphTargets morphTargets, List<CgAnimSequence> sequences) {
+                           CgMorphTargets morphTargets, List<CgAnimSequence> sequences, List<CgSocket> sockets) {
         this.mesh = mesh;
         this.skeleton = skeleton;
         this.inverseBinds = inverseBinds;
         this.materials = materials;
         this.morphTargets = morphTargets;
         this.sequences = sequences;
+        this.sockets = sockets;
+    }
+
+    /**
+     * This mesh with {@code sockets} in place of its own: those a skeleton asset declares, given to a mesh loaded from a
+     * file, which carries none.
+     *
+     * <pre>{@code
+     * CgSkeletalMesh goku = CgMeshLoader.skeletal(path).withSockets(List.of(CgSocket.of("right_hand", "hand_r", offset)));
+     * }</pre>
+     */
+    public CgSkeletalMesh withSockets(List<CgSocket> sockets) {
+        return new CgSkeletalMesh(mesh, skeleton, inverseBinds, materials, morphTargets, sequences, checkSockets(skeleton, sockets));
+    }
+
+    /** Its sockets, in the order given. */
+    public List<CgSocket> sockets() {
+        return sockets;
+    }
+
+    /** The socket named {@code name} ignoring case, or null. */
+    @Nullable
+    public CgSocket socket(String name) {
+        for (CgSocket s : sockets) if (s.name().equalsIgnoreCase(name)) return s;
+        return null;
+    }
+
+    private static List<CgSocket> checkSockets(CgSkeleton skeleton, List<CgSocket> sockets) {
+        for (int i = 0; i < sockets.size(); i++) {
+            CgSocket s = sockets.get(i);
+            if (skeleton.indexOfIgnoringCase(s.bone()) < 0) {
+                throw new IllegalArgumentException("socket " + s.name() + " is on bone " + s.bone() + ", which " + skeleton + " lacks");
+            }
+            for (int j = 0; j < i; j++) {
+                if (sockets.get(j).name().equalsIgnoreCase(s.name())) throw new IllegalArgumentException("two sockets named " + s.name());
+            }
+        }
+        return Collections.unmodifiableList(new ArrayList<>(sockets));
     }
 
     /** A skinned mesh of {@code mesh}, in {@link CgVertexFormat#skinned(int)}'s format for the skeleton, over {@code skeleton}. */
@@ -125,6 +165,7 @@ public final class CgSkeletalMesh {
         private final String[] materials;
         private CgMorphTargets morphTargets = CgMorphTargets.NONE;
         private final List<CgAnimSequence> sequences = new ArrayList<>();
+        private final List<CgSocket> sockets = new ArrayList<>();
 
         private Builder(CgMesh mesh, CgSkeleton skeleton) {
             if (!mesh.format().equals(CgVertexFormat.SKINNED) && !mesh.format().equals(CgVertexFormat.SKINNED_WIDE)) {
@@ -173,10 +214,16 @@ public final class CgSkeletalMesh {
             return this;
         }
 
+        /** A socket on one of its bones: Unreal's mesh socket. */
+        public Builder socket(CgSocket socket) {
+            sockets.add(socket);
+            return this;
+        }
+
         public CgSkeletalMesh build() {
             return new CgSkeletalMesh(mesh, skeleton, inverseBinds.clone(),
                     Collections.unmodifiableList(Arrays.asList(materials.clone())), morphTargets,
-                    Collections.unmodifiableList(new ArrayList<>(sequences)));
+                    Collections.unmodifiableList(new ArrayList<>(sequences)), checkSockets(skeleton, sockets));
         }
     }
 }

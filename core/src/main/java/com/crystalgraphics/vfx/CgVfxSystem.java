@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -383,6 +384,17 @@ public final class CgVfxSystem {
         }
     }
 
+    /**
+     * Re-reads every followed point as late as the frame allows, after the effects ticked and before they draw: an
+     * entity's freshest mark, a posed mesh's socket. What an effect draws at its origin then sits on the point as it is
+     * drawn this frame (Unreal's late update), while its logic ticked against the point before. The client world's
+     * system runs it in {@code LATE_ATTACH}; a system of the caller's own calls it between {@code update} and
+     * {@code submit}.
+     */
+    public void lateAttach() {
+        follow();
+    }
+
     private void updateTimed(double seconds) {
         CgHostEnvironment world = CgRenderStage.WORLD_OPAQUE.host().environment();
         readSettings(world);
@@ -619,7 +631,21 @@ public final class CgVfxSystem {
         float partialTick = 0f;
         for (int i = 0; i < effects.size(); i++) {
             CgVfxEffect<?> effect = effects.get(i);
-            if (effect.followEntity < 0 || effect.state() == CgVfxEffect.State.DEAD) continue;
+            if (effect.state() == CgVfxEffect.State.DEAD) continue;
+            CgAnimInstance instance = effect.followInstance;
+            if (instance != null) {
+                // Posed in POSE this frame, before EFFECTS: the socket as drawn, no lag.
+                if (instance.posed()) {
+                    instance.socket(effect.followSocket, point, turn);
+                    effect.moveToFollowed(point[0], point[1], point[2]);
+                    effect.turnToFollowed(turn);
+                } else {
+                    effect.followInstance = null;
+                    effect.stop();
+                }
+                continue;
+            }
+            if (effect.followEntity < 0) continue;
             if (entities == null) {
                 entities = CgEntityQueries.client();
                 partialTick = CgRenderStage.WORLD_OPAQUE.host().partialTick();

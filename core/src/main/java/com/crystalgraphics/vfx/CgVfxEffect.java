@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.asset.load.CgAssetFollower;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHit;
@@ -32,9 +33,12 @@ import org.apache.logging.log4j.Logger;
 import org.joml.Quaternionf;
 import org.joml.Quaternionfc;
 
+import javax.annotation.Nullable;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -95,6 +99,9 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     int ownerSlot = -1;
     /** The entity it follows and the attachment point on it ({@code CgEntityAttachments}); -1 for none. */
     int followEntity = -1, followPoint;
+    /** The skinned mesh posed here it follows, and its socket ({@link CgAnimInstance#socket(String)}); null for none. */
+    CgAnimInstance followInstance;
+    int followSocket;
     /** The character clock it runs on, or null for the world's; and the registry version it was looked up at. */
     private CgCharacterClock clock;
     private int clockVersion = -1;
@@ -321,8 +328,34 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     public final E follow(int entity, int point) {
         followEntity = entity;
         followPoint = point;
+        followInstance = null;
         followKeep = false;
         return self();
+    }
+
+    /**
+     * Follows socket {@code socket} of a skinned mesh posed here ({@link CgAnimInstance}): each frame, before it ticks,
+     * its origin and turn are the socket's as {@code POSE} posed it that frame, so it never lags the bone. A name the
+     * mesh has neither as a socket nor a bone follows where the instance stands, as Unreal's
+     * {@code GetSocketTransform} answers. Its named sockets ({@code socket_location} spawning) are the instance's too.
+     * It stops once {@code CgAnimation} no longer poses the instance.
+     *
+     * <pre>{@code
+     * owner.play(new Flame(look, x, y, z).follow(kurama, "hand_r"));
+     * }</pre>
+     */
+    public final E follow(CgAnimInstance instance, String socket) {
+        followInstance = Objects.requireNonNull(instance, "instance");
+        followSocket = instance.socket(socket);
+        followEntity = -1;
+        followKeep = false;
+        return self();
+    }
+
+    /** The skinned mesh posed here it follows, or null. */
+    @Nullable
+    public final CgAnimInstance followingInstance() {
+        return followInstance;
     }
 
     /**
@@ -712,6 +745,8 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         ownerSlot = -1;
         followEntity = -1;
         followPoint = 0;
+        followInstance = null;
+        followSocket = 0;
         clock = null;
         clockVersion = -1;
         timeRate = 1f;
@@ -1147,6 +1182,12 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
 
     /** Point {@code name} of the entity it follows, posed this frame; none while it follows nothing or nothing answers it. */
     private boolean socketPoint(String name, double[] out) {
+        if (followInstance != null) {
+            int socket = followInstance.socket(name);
+            if (socket == CgAnimInstance.NO_SOCKET) return false;
+            followInstance.socket(socket, out, null);
+            return true;
+        }
         if (followEntity < 0 || followPose == null) return false;
         int point = CgEntityAttachments.find(name);
         if (point < 0) return false;

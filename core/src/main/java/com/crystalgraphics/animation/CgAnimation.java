@@ -59,11 +59,13 @@ public final class CgAnimation extends CgWorldSubsystem {
     /** Poses {@code instance} every frame from now on; answers it. */
     public CgAnimInstance add(CgAnimInstance instance) {
         if (!instances.contains(instance)) instances.add(instance);
+        instance.posed(true);
         return instance;
     }
 
+    /** Stops posing {@code instance}: effects following one of its sockets stop. */
     public void remove(CgAnimInstance instance) {
-        instances.remove(instance);
+        if (instances.remove(instance)) instance.posed(false);
     }
 
     public int size() {
