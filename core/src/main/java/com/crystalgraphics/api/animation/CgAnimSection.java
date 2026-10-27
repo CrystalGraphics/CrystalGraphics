@@ -1,11 +1,16 @@
 package com.crystalgraphics.api.animation;
 
+import com.crystalgraphics.easing.CgEasing;
+import com.crystalgraphics.easing.CgEasings;
+
 import java.util.Objects;
 
 /**
  * A clip placed on a timeline: when it plays, how fast, which part of it, and how its weight eases in and out.
  * Unreal's skeletal animation section ({@code FMovieSceneSkeletalAnimationParams}): the same fields, mapped to the
- * clip's time and weighted as Sequencer maps and weighs one.
+ * clip's time and weighted as Sequencer maps and weighs one. Its easings are {@link CgEasings}': Unreal's
+ * {@code CubicInOut} is {@code IN_OUT_CUBIC}, {@code HermiteCubicInOut} is {@code cubicBezier(1/3, 0, 2/3, 1)}
+ * (MovieSceneEasingCurves.cpp:55-100).
  *
  * <pre>{@code
  * CgAnimSection roar = CgAnimSection.of(kurama.sequence("roar")).at(2.0).build();     // 2 s on, for its length
@@ -29,7 +34,7 @@ public final class CgAnimSection {
     private final double start, end;
     private final float playRate, startOffset, endOffset, firstLoopOffset, weight, easeIn, easeOut;
     private final boolean reverse, loop;
-    private final CgAnimEasing easeInCurve, easeOutCurve;
+    private final CgEasing easeInCurve, easeOutCurve;
 
     private CgAnimSection(Builder b) {
         this.sequence = b.sequence;
@@ -108,11 +113,11 @@ public final class CgAnimSection {
         float in = 1f, out = 1f;
         if (easeIn > 0f) {
             double x = (time - start) / easeIn;
-            in = x > 1 ? 1f : easeInCurve.evaluate((float) x);
+            in = x > 1 ? 1f : (float) easeInCurve.ease(x);
         }
         if (easeOut > 0f && !Double.isInfinite(end)) {
             double x = (time - (end - easeOut)) / easeOut;
-            out = x < 0 ? 1f : x > 1 ? 0f : 1f - easeOutCurve.evaluate((float) x);
+            out = x < 0 ? 1f : x > 1 ? 0f : 1f - (float) easeOutCurve.ease(x);
         }
         return weight * in * out;
     }
@@ -134,7 +139,7 @@ public final class CgAnimSection {
         private double start, end = Double.NaN;
         private float playRate = 1f, startOffset, endOffset, firstLoopOffset, weight = 1f, easeIn, easeOut;
         private boolean reverse, forceLoop;
-        private CgAnimEasing easeInCurve = CgAnimEasing.CUBIC_IN_OUT, easeOutCurve = CgAnimEasing.CUBIC_IN_OUT;
+        private CgEasing easeInCurve = CgEasings.IN_OUT_CUBIC, easeOutCurve = CgEasings.IN_OUT_CUBIC;
 
         private Builder(CgAnimSequence sequence) {
             this.sequence = sequence;
@@ -194,23 +199,23 @@ public final class CgAnimSection {
             return this;
         }
 
-        /** Its weight rises over its first {@code seconds}, along {@link CgAnimEasing#CUBIC_IN_OUT}. */
+        /** Its weight rises over its first {@code seconds}, along Cubic InOut ({@link CgEasings#IN_OUT_CUBIC}, Unreal's section default). */
         public Builder easeIn(float seconds) {
-            return easeIn(seconds, CgAnimEasing.CUBIC_IN_OUT);
+            return easeIn(seconds, CgEasings.IN_OUT_CUBIC);
         }
 
-        public Builder easeIn(float seconds, CgAnimEasing curve) {
+        public Builder easeIn(float seconds, CgEasing curve) {
             easeIn = Math.max(0f, seconds);
             easeInCurve = Objects.requireNonNull(curve, "curve");
             return this;
         }
 
-        /** Its weight falls over its last {@code seconds}, along {@link CgAnimEasing#CUBIC_IN_OUT}. */
+        /** Its weight falls over its last {@code seconds}, along Cubic InOut ({@link CgEasings#IN_OUT_CUBIC}, Unreal's section default). */
         public Builder easeOut(float seconds) {
-            return easeOut(seconds, CgAnimEasing.CUBIC_IN_OUT);
+            return easeOut(seconds, CgEasings.IN_OUT_CUBIC);
         }
 
-        public Builder easeOut(float seconds, CgAnimEasing curve) {
+        public Builder easeOut(float seconds, CgEasing curve) {
             easeOut = Math.max(0f, seconds);
             easeOutCurve = Objects.requireNonNull(curve, "curve");
             return this;

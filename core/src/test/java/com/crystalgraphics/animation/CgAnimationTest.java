@@ -1,6 +1,5 @@
 package com.crystalgraphics.animation;
 
-import com.crystalgraphics.api.animation.CgAnimEasing;
 import com.crystalgraphics.api.animation.CgAnimSection;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgPose;
@@ -9,6 +8,7 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.job.CgJob;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
@@ -126,7 +126,7 @@ public class CgAnimationTest {
 
     @Test
     public void aSectionWeighsByItsEasing() {
-        CgAnimSection s = CgAnimSection.of(bend()).at(0).until(4).easeIn(1f).easeOut(1f, CgAnimEasing.LINEAR).weight(0.8f).build();
+        CgAnimSection s = CgAnimSection.of(bend()).at(0).until(4).easeIn(1f).easeOut(1f, CgEasings.LINEAR).weight(0.8f).build();
         assertEquals(0f, s.weight(-0.1), 0f);
         assertEquals(0.8f * 0.0625f, s.weight(0.25), EPS);     // CubicInOut at 1/4: 0.5 * 0.5^3
         assertEquals(0.8f * 0.5f, s.weight(0.5), EPS);

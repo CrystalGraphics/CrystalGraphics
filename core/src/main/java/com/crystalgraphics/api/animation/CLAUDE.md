@@ -15,7 +15,7 @@ The mesh that follows the bones is `api/mesh`'s `CgSkeletalMesh`; files load thr
 | `CgSkeleton` | Unreal's `FReferenceSkeleton`: bones by name, a parent each (lower index; -1 for bone 0, the one root), a rest pose local to the parent (translation, unit rotation, scale). `builder().bone(name, parent, t[, r, s])`; `restGlobal(out)` composes parents first |
 | `CgAnimSequence` | Unreal's `UAnimSequence`: a frame rate, `frameCount` keys, a track per animated bone **named, not indexed**, each channel one key or every key, and float curves (morph weights). `builder(name, rate, keys).track(...).curve(...)`; `build()` applies Unreal's trivial-key filter |
 | `CgPose` | One skeleton's pose, mutable and reused: local TRS a bone, `sample` writes it, `blend` is Unreal's `BlendPosesTogether`, `resolve()` composes component space, `skinning(mesh, out)` multiplies the inverse binds. Allocates nothing after construction |
-| `CgAnimSection`, `CgAnimEasing` | A clip on a timeline, Unreal's skeletal animation section: `animationTime(t)` is `MakeTransform`'s mapping, `weight(t)` the weight times the easing. Immutable |
+| `CgAnimSection` | A clip on a timeline, Unreal's skeletal animation section: `animationTime(t)` is `MakeTransform`'s mapping, `weight(t)` the weight times its easing (a `CgEasing`: Unreal's Cubic InOut is `CgEasings.IN_OUT_CUBIC`). Immutable |
 | `CgSocket` | Unreal's `USkeletalMeshSocket`: a name, a bone, a relative transform; on `CgSkeletalMesh` (`Builder.socket`, `withSockets`), names compared ignoring case |
 | `CgMorphTargets` | per-vertex CSR of (target, position delta, normal delta); `builder(vertexCount).target(...).delta(...)`; `NONE` |
 | `CgCookedAnimation` | `.cganim`: sequences as columns, written and read |

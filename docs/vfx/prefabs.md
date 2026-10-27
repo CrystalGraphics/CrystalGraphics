@@ -155,7 +155,7 @@ CgAnimation.client().remove(kurama);
 | `playRate(r)` | clip seconds a timeline second; negative plays from the end |
 | `startOffset`, `endOffset`, `firstLoopOffset` | clip seconds cut from each loop's start and end, and how far into the clip the first loop starts |
 | `reverse()`, `loop()` | played backwards; looped however long it lasts |
-| `weight(w)`, `easeIn(s)`, `easeOut(s)` | its weight, rising and falling over those seconds along Cubic InOut (`CgAnimEasing`) |
+| `weight(w)`, `easeIn(s)`, `easeOut(s)` | its weight, rising and falling over those seconds along Cubic InOut (`CgEasings.IN_OUT_CUBIC`), or the `CgEasing` given |
 
 - **Sections cross-fade by their weights, normalised**: one easing in alone plays at full weight, as Sequencer's does;
   only two overlapping blend. Where none plays, the rest pose.
