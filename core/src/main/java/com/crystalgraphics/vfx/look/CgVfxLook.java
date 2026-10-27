@@ -4,6 +4,7 @@ import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.vfx.scalability.CgVfxScalability;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
@@ -83,9 +84,30 @@ public final class CgVfxLook {
             return slotRenderer;
         }
 
-        /** Its material definition; null where it compiled with no dependencies to ask. */
+        /**
+         * Its own material definition; null where it names none (a mesh renderer drawing only its sections'
+         * {@code material_overrides}, a light) or compiled with no dependencies to ask.
+         */
         public CgMaterialDefinition definition() {
             return renderer != null ? renderer.common().definition() : slotRenderer != null ? slotRenderer.definition() : null;
+        }
+
+        /**
+         * Every material definition it draws: its own, then a mesh renderer's section overrides, each once. What to
+         * parse, upload and warm ahead of its first draw.
+         *
+         * <pre>{@code
+         * for (CgMaterialDefinition d : placed.definitions()) warm(d);
+         * }</pre>
+         */
+        public List<CgMaterialDefinition> definitions() {
+            List<CgMaterialDefinition> all = new ArrayList<>(1);
+            CgMaterialDefinition own = definition();
+            if (own != null) all.add(own);
+            if (renderer instanceof CgVfxMeshRendererProperties mesh) {
+                for (CgMaterialDefinition d : mesh.overrideDefinitions()) if (d != null && !all.contains(d)) all.add(d);
+            }
+            return all;
         }
 
         /** The tier it draws from, its {@code quality}; null for every tier. */

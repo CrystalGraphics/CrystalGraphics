@@ -702,7 +702,8 @@ public final class CgVfxFrame {
                 rs.next(Shape.LIGHT, placed, null, null);
                 continue;
             }
-            CgVfxMaterials.Resolved r = materials.resolve(look, placed);
+            // A mesh renderer may name no material of its own, each section drawing its override.
+            CgVfxMaterials.Resolved r = renderer instanceof CgVfxMeshRendererProperties ? null : materials.resolve(look, placed);
             if (renderer instanceof CgVfxBeamRendererProperties beam) {
                 requireRenderer(renderer, def, CgVfxDrawLayout.QUADS);
                 beam(rs, placed, r, beam, tenant);
@@ -724,8 +725,14 @@ public final class CgVfxFrame {
                 int submeshes = lods.finest().submeshCount();
                 boolean bySection = submeshes > 1 || !m.materialOverrides().isEmpty();
                 int sections = bySection ? Math.max(submeshes, m.materialOverrides().size()) : 1;
+                CgVfxMaterials.Resolved own = m.common().material() != null ? materials.resolve(look, placed) : null;
                 for (int s = 0; s < sections; s++) {
-                    CgVfxMaterials.Resolved section = s < m.materialOverrides().size() ? materials.resolve(look, placed, s) : r;
+                    CgVfxMaterials.Resolved section = s < m.materialOverrides().size() ? materials.resolve(look, placed, s) : own;
+                    if (section == null) {
+                        // A section past its overrides would draw the mesh's own material, which a mesh file does not carry here.
+                        throw new IllegalStateException(who(def, renderer) + "'s section " + s + " of " + sections
+                                + " has no material: give the renderer a material, or an override for every section");
+                    }
                     Renderer rd = rs.next(Shape.MESHES, placed, section, materials.material(section, CgVfxSlot.Kind.PARTICLES));
                     rd.mesh = lods;
                     rd.meshRadius = m.meshes().isEmpty() ? 1f : lods.reach();

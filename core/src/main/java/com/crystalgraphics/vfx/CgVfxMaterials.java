@@ -679,9 +679,22 @@ final class CgVfxMaterials {
     boolean readsBounds(CgVfxLook look) {
         for (CgVfxLook.Placed placed : look.placed()) {
             if (placed.slotRenderer() != null || placed.renderer() instanceof CgVfxLightRendererProperties) continue;
-            for (int s : resolve(look, placed).source) if (s == FROM_BOUNDS) return true;
+            for (Resolved r : resolutions(look, placed)) for (int s : r.source) if (s == FROM_BOUNDS) return true;
         }
         return false;
+    }
+
+    /**
+     * Every resolution {@code placed} draws: its own material's, where it names one, then each of a mesh renderer's
+     * section overrides. Not a hot path: a look's load and warm-up.
+     */
+    private List<Resolved> resolutions(CgVfxLook look, CgVfxLook.Placed placed) {
+        List<Resolved> all = new ArrayList<>(1);
+        CgVfxRendererProperties renderer = placed.renderer();
+        if (!(renderer instanceof CgVfxMeshRendererProperties mesh)) return List.of(resolve(look, placed));
+        if (mesh.common().material() != null) all.add(resolve(look, placed));
+        for (int s = 0; s < mesh.materialOverrides().size(); s++) all.add(resolve(look, placed, s));
+        return all;
     }
 
     /** This frame's rows to the GPU: after every effect's submit. */
@@ -706,9 +719,11 @@ final class CgVfxMaterials {
         if (placed.renderer() instanceof CgVfxLightRendererProperties) return;
         if (placed.slotRenderer() != null && placed.slotRenderer().light() != null) return;
         CgVfxSlot.Kind kind = placed.slotRenderer() != null ? placed.slotRenderer().slot().kind() : CgVfxSlot.Kind.PARTICLES;
-        CgMaterial material = material(resolve(look, placed), kind);
-        if (!warming.contains(material)) warming.add(material);
-        if (halfResolution(placed, kind)) halved.add(material);
+        for (Resolved r : resolutions(look, placed)) {
+            CgMaterial material = material(r, kind);
+            if (!warming.contains(material)) warming.add(material);
+            if (halfResolution(placed, kind)) halved.add(material);
+        }
     }
 
     /** {@link #prepare}'s last step: a clip's parts, which draw their prefab's slot renderers on SEQUENCE materials. */
@@ -733,10 +748,10 @@ final class CgVfxMaterials {
     void shaders(CgVfxLook look, List<CgMaterialShader> out) {
         CgMaterialShaderRegistry registry = CgMaterialShaderRegistry.get();
         for (CgVfxLook.Placed placed : look.placed()) {
-            CgMaterialDefinition d = placed.definition();
-            if (d == null) continue;
-            CgMaterialShader shader = registry.getOrCreate(d.permutation().shader(), d.state());
-            if (!out.contains(shader)) out.add(shader);
+            for (CgMaterialDefinition d : placed.definitions()) {
+                CgMaterialShader shader = registry.getOrCreate(d.permutation().shader(), d.state());
+                if (!out.contains(shader)) out.add(shader);
+            }
         }
     }
 

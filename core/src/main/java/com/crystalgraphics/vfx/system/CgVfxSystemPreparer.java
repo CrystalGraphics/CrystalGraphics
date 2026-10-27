@@ -98,11 +98,11 @@ public final class CgVfxSystemPreparer implements CgAssetPreparer {
                 List<CgTexture> textures = new ArrayList<>();
                 for (List<CgVfxLook.Placed> drawn : List.of(look.placed())) {
                     for (CgVfxLook.Placed placed : drawn) {
-                        CgMaterialDefinition d = placed.definition();
-                        if (d == null) continue;
-                        for (CgMaterialDefinition.Texture t : d.textures().values()) {
-                            CgTexture texture = CgMaterialRegistry.texture(t.texture());
-                            if (seen.add(texture)) textures.add(texture);
+                        for (CgMaterialDefinition d : placed.definitions()) {
+                            for (CgMaterialDefinition.Texture t : d.textures().values()) {
+                                CgTexture texture = CgMaterialRegistry.texture(t.texture());
+                                if (seen.add(texture)) textures.add(texture);
+                            }
                         }
                     }
                 }
