@@ -21,6 +21,14 @@ public class CgUnitsTest {
     }
 
     @Test
+    public void cc2IsYUpAndKeepsItsEulerOrder() {
+        CgUnits nucc = CgUnits.of(Map.of("length", "m", "axes", "cc2", "angles", "radians",
+                "rotation", Map.of("order", "xyz", "intrinsic", true)), CgUnits.HOST);
+        assertEquals(List.of(0.0, -9.8, 0.0), nucc.toHost(List.of(0.0, -9.8, 0.0), CgQuantity.ACCELERATION));
+        assertEquals("euler:xyz:intrinsic", nucc.rotation());
+    }
+
+    @Test
     public void lengthsScaleAndATwoNumberSizeIsNotPermuted() {
         assertEquals(0.5, ((Number) CgUnits.UNREAL.toHost(50, CgQuantity.LENGTH)).doubleValue(), 1e-9);
         List<?> size = (List<?>) CgUnits.UNREAL.toHost(List.of(50, 20), CgQuantity.LENGTH);

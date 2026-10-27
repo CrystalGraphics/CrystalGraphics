@@ -114,7 +114,12 @@ public class CgRichCurveUnrealVectorsTest {
     }
 
     private static void agree(String what, K[] keys, boolean preLinear, boolean postLinear) {
+        agree(what, keys, preLinear, postLinear, false);
+    }
+
+    private static void agree(String what, K[] keys, boolean preLinear, boolean postLinear, boolean baked) {
         CgRichCurve c = curve(preLinear ? "linear" : null, postLinear ? "linear" : null, keys);
+        if (baked) c.bakeWeighted(1e-4f);
         double lo = keys[0].t - 0.5, hi = keys[keys.length - 1].t + 0.5;
         for (int i = 0; i <= 400; i++) {
             double t = lo + (hi - lo) * i / 400;
@@ -141,6 +146,17 @@ public class CgRichCurveUnrealVectorsTest {
         agree("both", new K[] {weighted(0, 0, 0, 2, 0, 0.5, 3), weighted(2, 3, -1, 0, 1.1, 0, 3)}, false, false);
         agree("neighbours", new K[] {weighted(0, 0, 0, 1, 0, 0.3, 2), weighted(1, 2, 1, 0.5, 0.4, 0.9, 3), cubic(3, 1, 0, 0)},
                 false, false);
+    }
+
+    @Test
+    public void weightedSegmentsBakedHoldAgainstTheSolve() {
+        agree("leave", new K[] {weighted(0, 0, 0, 1.2, 0, 0.8, 2), cubic(1, 1, 0.3, 0)}, false, false, true);
+        agree("arrive", new K[] {cubic(0, 0, 0, 1.2), weighted(1, 1, -0.6, 0, 0.7, 0, 1)}, false, false, true);
+        agree("both", new K[] {weighted(0, 0, 0, 2, 0, 0.5, 3), weighted(2, 3, -1, 0, 1.1, 0, 3)}, false, false, true);
+        // On a sequence's ticks: 0.4 s at 60,000 a second, tangents per tick, a weight in ticks.
+        agree("ticks", new K[] {weighted(0, 0, 0, 1e-4, 0, 8000, 2), weighted(24000, 2, -5e-5, 0, 6000, 0, 1)}, false, false, true);
+        CgRichCurve c = curve(null, null, weighted(0, 0, 0, 2, 0, 0.5, 3), weighted(2, 3, -1, 0, 1.1, 0, 3));
+        assertEquals(true, c.hasWeighted());
     }
 
     @Test

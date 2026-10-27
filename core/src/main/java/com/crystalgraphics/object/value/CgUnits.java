@@ -47,7 +47,8 @@ import com.crystalgraphics.object.CgValueType;
  * @param seconds  host seconds per one of its times
  * @param axes     host component {@code i} is {@code sign(axes[i]) * value[|axes[i]| - 1]}
  * @param radians  radians per one of its angles
- * @param rotation its rotations' convention: {@code unreal_rotator} or {@code quaternion}
+ * @param rotation its rotations' convention: {@code unreal_rotator}, {@code quaternion}, or Euler angles in an order,
+ *                 {@code euler:xyz:intrinsic}
  */
 public record CgUnits(double metres, double seconds, int[] axes, double radians, String rotation) {
 
@@ -85,8 +86,9 @@ public record CgUnits(double metres, double seconds, int[] axes, double radians,
     private static int[] axes(Object v) {
         return switch (String.valueOf(v)) {
             case "unreal" -> new int[] {1, 3, 2};
-            case "gltf", "minecraft" -> new int[] {1, 2, 3};
-            default -> throw new IllegalArgumentException("axes " + v + " are not read yet: unreal, gltf or minecraft");
+            // CC2's NUCC is Y up and right-handed, as the host is: its gravity is (0, -1, 0).
+            case "gltf", "minecraft", "cc2" -> new int[] {1, 2, 3};
+            default -> throw new IllegalArgumentException("axes " + v + " are not read yet: unreal, gltf, minecraft or cc2");
         };
     }
 
@@ -100,6 +102,14 @@ public record CgUnits(double metres, double seconds, int[] axes, double radians,
     }
 
     private static String rotation(Object v) {
+        // { order: xyz, intrinsic: true }: Euler angles in that order, kept as "euler:xyz:intrinsic" for the reader.
+        if (v instanceof Map<?, ?> m) {
+            String order = String.valueOf(m.get("order"));
+            if (!order.matches("[xyz]{3}") || order.chars().distinct().count() != 3) {
+                throw new IllegalArgumentException("a rotation order " + order + ": three distinct axes of x, y and z");
+            }
+            return "euler:" + order + (Boolean.FALSE.equals(m.get("intrinsic")) ? ":extrinsic" : ":intrinsic");
+        }
         String r = String.valueOf(v);
         if (!r.equals("unreal_rotator") && !r.equals("quaternion")) {
             throw new IllegalArgumentException("rotations as " + v + " are not read yet: unreal_rotator or quaternion");
@@ -210,6 +220,28 @@ public record CgUnits(double metres, double seconds, int[] axes, double radians,
             out.put("keys", k);
         }
         return out;
+    }
+
+    /**
+     * A sequence channel ({@code [[tick, value], ...]} or a channel map) of {@code q} in the host's units. Its keys sit
+     * on the sequence's ticks, so only values and slopes scale.
+     *
+     * <pre>{@code
+     * Object x = units.channelToHost(channels.get(units.axes()[0] - 1), CgQuantity.POSITION, 0);  // host x of a translation
+     * Object fov = units.channelToHost(channel, CgQuantity.ANGLE, -1);                              // one channel alone
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code hostAxis} is the host component a channel of a three-channel vector fills, 0 to 2, read from source
+     *       channel {@code |axes()[hostAxis]| - 1}; it takes that axis's sign. -1 for a channel alone.</li>
+     *   <li>A rotation's angles convert to radians and never permute: its convention ({@link #rotation()}) builds the
+     *       rotation, which the reader then turns through the axes.</li>
+     * </ul>
+     */
+    public Object channelToHost(Object channel, CgQuantity q, int hostAxis) {
+        double f = hostAxis < 0 || q == CgQuantity.ROTATION || !permutes(q) ? factor(q) : axisFactor(hostAxis, q);
+        if (channel instanceof List<?> keys) return ((Map<?, ?>) curve(Map.of("keys", keys), f, false)).get("keys");
+        return curve(channel, f, false);
     }
 
     private static List<Object> scaled(List<?> values, double f) {

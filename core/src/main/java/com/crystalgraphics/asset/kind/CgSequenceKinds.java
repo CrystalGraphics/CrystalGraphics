@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
+import com.crystalgraphics.object.CgProperty;
 import com.crystalgraphics.object.CgPropertyFlag;
 import com.crystalgraphics.object.CgPropertyPath;
 import com.crystalgraphics.object.CgType;
@@ -535,6 +536,47 @@ public final class CgSequenceKinds {
             .register();
 
     static void register() {
+    }
+
+    /** How a section's key holds channels, by its declaration. */
+    public enum ChannelForm {
+        /** Not a channel: a section field. */
+        NONE,
+        /** One channel, which may hold one per axis ({@code x}, {@code y}, {@code z}). */
+        ONE,
+        /** Three: a list {@code [x, y, z]}, or a map by axis or as one. */
+        AXES,
+        /** A map of single channels by name: a material's scalars. */
+        MAP_OF_ONE,
+        /** A map of three-channel vectors by name. */
+        MAP_OF_AXES
+    }
+
+    /** The section type of track kind {@code kind}, or null for a kind no track declares. */
+    public static CgType sectionType(String kind) {
+        CgType track = TRACKS.member(kind);
+        return track == null ? null : track.property("sections").type().type();
+    }
+
+    /**
+     * How {@code key} of a {@code section} holds channels: declared as one, as three or as a map of them; or, on an open
+     * section (a parameter's, a global's, a property's, a morph's), named by data and so a channel.
+     *
+     * <pre>{@code
+     * CgSequenceKinds.channelForm(CgSequenceKinds.sectionType("transform"), "translation");   // AXES
+     * CgSequenceKinds.channelForm(CgSequenceKinds.sectionType("material"), "scalars");         // MAP_OF_ONE
+     * CgSequenceKinds.channelForm(CgSequenceKinds.sectionType("system"), "age");               // NONE
+     * }</pre>
+     */
+    public static ChannelForm channelForm(CgType section, String key) {
+        CgProperty p = section.property(key);
+        if (p == null) return section.open() ? ChannelForm.ONE : ChannelForm.NONE;
+        CgValueType t = p.type();
+        if (t.equals(CHANNEL)) return ChannelForm.ONE;
+        if (t.equals(CHANNELS)) return ChannelForm.AXES;
+        if (t.kind() == CgValueType.Kind.MAP && CHANNEL.equals(t.element())) return ChannelForm.MAP_OF_ONE;
+        if (t.kind() == CgValueType.Kind.MAP && CHANNELS.equals(t.element())) return ChannelForm.MAP_OF_AXES;
+        return ChannelForm.NONE;
     }
 
     /** A spawnable holding no kind key, or more than one. */

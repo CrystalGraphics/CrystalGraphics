@@ -62,6 +62,10 @@ public final class CgModuleTypes {
             .property("random_selection", CgValueType.BOOL).defaultValue(false)
             .register();
 
+    /** Declares {@link #SEED}: a native type, so before the registry freezes. */
+    static void register() {
+    }
+
     /**
      * A module's declaration: where it may sit in a stack, and its inputs.
      *

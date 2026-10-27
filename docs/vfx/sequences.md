@@ -26,6 +26,67 @@ hits.place(CgFrameTime.frame(at.current()));                             // keys
 - **`evaluation: frame_locked`** steps whole display frames; without it, sub-frames are kept.
 - A rate is a whole number or an NTSC one (`29.97`, `23.976`); any other fails at load, naming the sequence.
 
+## A compiled sequence
+
+A sequence file loads once into a `CgSequenceDefinition` that every player of it shares: its tracks and sections, each
+channel's keys as flat columns, every binding resolved, and an **evaluation field** saying what is active at each tick.
+
+```yaml
+# mymod:sequences/beam.yaml
+_v: 1
+tick_resolution: 60000
+display_rate: 30
+range: [0, 90000]
+composite_sections:
+  - { id: q1, name: charge, range: [0, 30000], next: q2 }
+  - { id: q2, name: loop, range: [30000, 90000], next: q2 }
+roles:
+  - { id: b1, name: caster, kind: caster, seed: true }
+spawnables:
+  - { id: s1, name: ball, system: mymod:systems/ball, at: { role: caster, socket: hand_r } }
+tracks:
+  - id: t1
+    kind: system
+    binding: { spawnable: s1 }
+    sections: [ { id: x1, range: [6000, 90000], keys: [[6000, activate], [84000, deactivate]] } ]
+  - id: t2
+    kind: visibility
+    binding: { role: caster }
+    sections:
+      - { id: x2, range: [0, 60000], visible: [[0, true]] }
+      - { id: x3, range: [30000, 90000], overlap_priority: 1, visible: [[30000, false]] }
+```
+
+```java
+CgSequenceDefinition beam = ...;                                     // from the pipeline, or CgSequenceDefinition.compile
+int caster = beam.role("caster");                                    // roles and sections by name: the contract
+CgSequenceDefinition.CompositeSection loop = beam.compositeSection("loop");   // its range, and next: itself
+
+CgSequenceField field = beam.field();
+int segment = field.segmentAt(45000);
+for (int k = 0; k < field.entryCount(segment); k++) {
+    int e = field.entry(segment, k);
+    CgSequenceTrack track = beam.tracks().get(field.track(e));      // t1 (the whole track), t2's x3
+}
+CgSequenceChannel visible = beam.tracks().get(1).sections().get(1).channel("visible");
+boolean shown = visible.bool(45000);                                 // false
+```
+
+- **Overlapping sections resolve as Unreal's do.** In one row, where two sections overlap, the higher
+  `overlap_priority` plays alone, unless the kind blends (`transform`, `parameter`, `material`, `global`, `animation`,
+  a float `property`…), whose sections all play. Another `row` plays beside it. A `material` or `subsequence` track
+  plays every section; a `system` track plays over all time, its keys read as play crosses them.
+- **A range is `[from, to)` in ticks**; `null` leaves an end open.
+- **Channels are typed by their kind**: `visible` and `spawned` hold bools, a system's `keys` are `activate`,
+  `deactivate`, `trigger`, `kill`, an event's keys carry `{ event, args }`; any other channel is a curve, unless its keys
+  hold bools or strings. A held channel holds its key at or before the time, and its first key before that.
+- **Values arrive in the host's units**: a translation's three channels in metres, permuted through the asset's axes.
+  A rotation keeps its own angles, in radians, with `units()`' convention.
+- **What fails at load**, naming the sequence and the path: a binding naming no role, locator or spawnable; a
+  composite section's `next` naming no section; keys out of tick order; a condition on a section of an `rpg` event
+  track (a server never reads a condition, so it would never hear that event); subsequences nested more than four deep.
+- A muted track, an inactive section and a section an event starts (`start: { event }`) are never in the field.
+
 # A clip on every particle
 
 A particle may play a clip: a prefab ([`prefabs.md`](prefabs.md)) whose nodes move, fade and change their material's

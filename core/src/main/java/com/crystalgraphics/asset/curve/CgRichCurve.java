@@ -64,6 +64,9 @@ public final class CgRichCurve {
     /** A sampled curve: {@code values} evenly over {@code [sampleStart, sampleEnd]}; keys unused. */
     private final boolean sampled;
     private final float sampleStart, sampleEnd;
+    /** Per key, the weighted segment it starts as evenly spaced samples ({@link #bakeWeighted}); null where solved. */
+    private float[][] baked;
+    private float bakeTolerance;
 
     private CgRichCurve(int n, float defaultValue, Extrapolation pre, Extrapolation post, boolean sampled,
                         float sampleStart, float sampleEnd) {
@@ -193,6 +196,50 @@ public final class CgRichCurve {
     public void setValue(int key, float value) {
         values[key] = value;
         if (!sampled) autoSetTangents();
+        if (baked != null) bakeWeighted(bakeTolerance);
+    }
+
+    /** Whether any segment is weighted: evaluating it solves a cubic unless {@link #bakeWeighted baked}. */
+    public boolean hasWeighted() {
+        for (int k = 0; k + 1 < times.length; k++) {
+            if (interp[k] == CUBIC && ((weightMode[k] & WEIGHT_LEAVE) != 0 || (weightMode[k + 1] & WEIGHT_ARRIVE) != 0)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Replaces each weighted segment's solve by evenly spaced samples, linear between, as many as keep every midpoint
+     * within {@code tolerance} of the solved curve (relative to the segment's larger end, at least 1). The solve stays
+     * out of the frame: evaluating a baked segment is a table lookup.
+     *
+     * <pre>{@code
+     * CgRichCurve c = CgRichCurve.decode(tree);
+     * if (c.hasWeighted()) c.bakeWeighted(1e-4f);   // at compile
+     * }</pre>
+     */
+    public void bakeWeighted(float tolerance) {
+        bakeTolerance = tolerance;
+        float[][] out = new float[times.length][];
+        for (int a = 0; a + 1 < times.length; a++) {
+            int b = a + 1;
+            boolean lw = (weightMode[a] & WEIGHT_LEAVE) != 0, aw = (weightMode[b] & WEIGHT_ARRIVE) != 0;
+            float dt = times[b] - times[a];
+            if (interp[a] != CUBIC || !(lw || aw) || !(dt > 0f)) continue;
+            float limit = tolerance * Math.max(1f, Math.max(Math.abs(values[a]), Math.abs(values[b])));
+            float[] table = null;
+            for (int n = 8; n <= 4096; n *= 2) {
+                table = new float[n + 1];
+                for (int i = 0; i <= n; i++) table[i] = weighted(a, b, times[a] + dt * i / n, lw, aw);
+                float worst = 0f;
+                for (int i = 0; i < n; i++) {
+                    float mid = weighted(a, b, times[a] + dt * (i + 0.5f) / n, lw, aw);
+                    worst = Math.max(worst, Math.abs(mid - (table[i] + table[i + 1]) * 0.5f));
+                }
+                if (worst <= limit) break;
+            }
+            out[a] = table;
+        }
+        baked = out;
     }
 
     /** The value at {@code time}. */
@@ -263,6 +310,12 @@ public final class CgRichCurve {
         if (!leaveWeighted && !arriveWeighted) {
             float third = 1f / 3f;
             return bezier(p0, p0 + leave[a] * dt * third, p3 - arrive[b] * dt * third, p3, alpha);
+        }
+        float[] table = baked != null ? baked[a] : null;
+        if (table != null) {
+            float u = Math.min(1f, Math.max(0f, alpha)) * (table.length - 1);
+            int i = Math.min((int) u, table.length - 2);
+            return table[i] + (table[i + 1] - table[i]) * (u - i);
         }
         return weighted(a, b, time, leaveWeighted, arriveWeighted);
     }
