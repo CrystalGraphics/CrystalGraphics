@@ -1,14 +1,21 @@
 package com.crystalgraphics.sequence;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 import javax.annotation.Nullable;
 
+import org.joml.Quaternionf;
+
 import com.crystalgraphics.asset.tree.CgAssetException;
+import com.crystalgraphics.object.value.CgQuantity;
+import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.sequence.time.CgFrameTime;
 import com.crystalgraphics.sequence.time.CgSequenceEvaluationRange;
 import com.crystalgraphics.sequence.time.CgSequencePlaybackPosition;
+import com.crystalgraphics.world.CgAttachment;
 
 /**
  * One playing sequence: its definition, its clock, its rate, what its roles and spawnables are bound to, and the
@@ -38,6 +45,9 @@ public final class CgSequencePlayer {
     private final CgSequencePlaybackPosition position;
     private final CgSequenceTarget[] roles, spawnables;
     private final CgSequenceLocator[] locators;
+    /** Per spawnable, its {@code spawned} track's index, or -1 for one that lives for the whole play. */
+    private final int[] spawnedTrack;
+    private final CgSequencePlacement[] spawnablePlaces, locatorPlaces;
     /** Per track, per section (index + 1; 0 for the whole track): what its evaluator bound. */
     private final Object[][] data;
     private final boolean[][] bound;
@@ -66,8 +76,24 @@ public final class CgSequencePlayer {
             if (definition.role(name) < 0) throw new IllegalArgumentException(definition.id() + " has no role named " + name);
         }
         this.locators = new CgSequenceLocator[definition.locators().size()];
-        for (int i = 0; i < locators.length; i++) locators[i] = new CgSequenceLocator(definition.locators().get(i).id());
+        CgUnits units = definition.units();
+        for (int i = 0; i < locators.length; i++) {
+            Map<?, ?> tree = definition.locators().get(i).tree();
+            locators[i] = new CgSequenceLocator(definition.locators().get(i).id());
+            if ("quaternion".equals(units.rotation())) {
+                locators[i].restTurn(units.rotationToHost(tree.get("rotation"), new Quaternionf()));
+            }
+            locators[i].rest(vector(units, tree.get("location"), CgQuantity.POSITION, 0f), vector(units, tree.get("rotation"), CgQuantity.ROTATION, 0f),
+                    vector(units, tree.get("scale"), CgQuantity.SCALE, 1f));
+        }
         this.spawnables = new CgSequenceTarget[definition.spawnables().size()];
+        this.spawnedTrack = new int[spawnables.length];
+        Arrays.fill(spawnedTrack, -1);
+        for (CgSequenceTrack t : definition.tracks()) {
+            if (t.kind().equals("spawned") && !t.muted() && t.binding().subject() == CgSequenceBinding.Subject.SPAWNABLE) spawnedTrack[t.binding().index()] = t.index();
+        }
+        this.spawnablePlaces = new CgSequencePlacement[spawnables.length];
+        this.locatorPlaces = new CgSequencePlacement[locators.length];
         this.data = new Object[definition.tracks().size()][];
         this.bound = new boolean[data.length][];
         for (int t = 0; t < data.length; t++) {
@@ -143,6 +169,127 @@ public final class CgSequencePlayer {
     /** Locator {@code index}'s transform. */
     public CgSequenceLocator locator(int index) {
         return locators[index];
+    }
+
+    /**
+     * Where spawnable {@code index} stands each frame: its {@code at} under its parent, as an attachment. What a
+     * spawner's object follows.
+     */
+    public CgAttachment placement(int index) {
+        CgSequencePlacement p = spawnablePlaces[index];
+        if (p != null) return p;
+        CgSequenceDefinition.Spawnable s = definition.spawnables().get(index);
+        Map<?, ?> at = s.tree().get("at") instanceof Map<?, ?> m ? m : Map.of();
+        CgUnits units = definition.units();
+        Quaternionf turn = units.rotationToHost(at.get("rotation"), new Quaternionf());
+        p = new CgSequencePlacement(parent(s.at(), "spawnables." + s.id() + ".at"), definition,
+                vector(units, at.get("offset"), CgQuantity.OFFSET, 0f), turn);
+        return spawnablePlaces[index] = p;
+    }
+
+    /** Locator {@code index}'s place each frame, under its parent. */
+    public CgAttachment locatorPlacement(int index) {
+        CgSequencePlacement p = locatorPlaces[index];
+        if (p != null) return p;
+        CgSequenceDefinition.Locator l = definition.locators().get(index);
+        return locatorPlaces[index] = new CgSequencePlacement(parent(l.parent(), "locators." + l.id() + ".parent"), definition, locators[index]);
+    }
+
+    /** What a binding places under, resolved each frame; a role socket it cannot place fails here, naming it. */
+    private CgSequencePlacement.Parent parent(CgSequenceBinding b, String path) {
+        switch (b.subject()) {
+            case ROLE -> {
+                CgSequenceTarget target = roles[b.index()];
+                if (target == null) return () -> null;
+                if (!(target instanceof CgSequenceRole role)) {
+                    throw new CgAssetException(definition.id() + ": " + path + ": the role " + definition.roles().get(b.index()).name()
+                            + " places nothing: its target is not a CgSequenceRole");
+                }
+                CgAttachment a = role.attachment(b.part() == CgSequenceBinding.Part.SOCKET ? b.partName() : null);
+                if (a == null) throw new CgAssetException(definition.id() + ": " + path + ": " + role + " has no socket " + b.partName());
+                return () -> a;
+            }
+            case LOCATOR -> {
+                CgAttachment a = locatorPlacement(b.index());
+                return () -> a;
+            }
+            case SPAWNABLE -> {
+                int index = b.index();
+                String node = b.partName();
+                return () -> spawnables[index] instanceof CgSequenceSpawned s ? (node == null ? placement(index) : s.attachment(node)) : null;
+            }
+            default -> {
+                return () -> null;
+            }
+        }
+    }
+
+    private static float[] vector(CgUnits units, @Nullable Object v, CgQuantity q, float fill) {
+        float[] out = {fill, fill, fill};
+        if (!(v instanceof List<?> l) || l.size() != 3) return out;
+        Object host = units.toHost(l, q);
+        List<?> h = host instanceof List<?> hl ? hl : l;
+        for (int i = 0; i < 3; i++) out[i] = ((Number) h.get(i)).floatValue();
+        return out;
+    }
+
+    /**
+     * Spawn: each spawnable made or ended as its {@code spawned} track says at this tick; one with none lives for the
+     * whole play. Unreal's spawn phase, after import and before evaluation.
+     */
+    void spawnPhase() {
+        if (sequencer.server()) return;
+        int now = CgFrameTime.frame(position.lastRange().current());
+        for (int i = 0; i < spawnables.length; i++) {
+            boolean wanted = spawnedTrack[i] < 0 || spawnedAt(definition.tracks().get(spawnedTrack[i]), now);
+            if (wanted && spawnables[i] == null) {
+                CgSequenceDefinition.Spawnable s = definition.spawnables().get(i);
+                spawnable(i, sequencer.spawner(s.kind()).spawn(this, s, placement(i)));
+            } else if (!wanted && spawnables[i] instanceof CgSequenceSpawned obj) {
+                despawn(i, obj, true);
+            }
+        }
+    }
+
+    private static boolean spawnedAt(CgSequenceTrack track, int tick) {
+        for (CgSequenceSection s : track.sections()) {
+            if (!s.active() || !s.contains(tick)) continue;
+            CgSequenceChannel c = s.channel("spawned");
+            return c != null && c.bool(tick);
+        }
+        return false;
+    }
+
+    /** Ends spawnable {@code i}: its tracks unbind, to bind again to what is made next. */
+    private void despawn(int i, CgSequenceSpawned obj, boolean graceful) {
+        obj.destroy(graceful);
+        spawnables[i] = null;
+        for (CgSequenceTrack t : definition.tracks()) {
+            if (t.binding().subject() != CgSequenceBinding.Subject.SPAWNABLE || t.binding().index() != i) continue;
+            Arrays.fill(bound[t.index()], false);
+            Arrays.fill(data[t.index()], null);
+        }
+        segment = -1;
+    }
+
+    /** Ends every spawned object, as Unreal's spawn register does at a play's end ({@code CleanUp}). */
+    void cleanUp() {
+        for (int i = 0; i < spawnables.length; i++) {
+            if (spawnables[i] instanceof CgSequenceSpawned obj) despawn(i, obj, true);
+        }
+    }
+
+    /** Each spawned object's {@link CgSequenceSpawned#update}, after the frame's tracks are applied. */
+    void updateSpawned() {
+        for (CgSequenceTarget s : spawnables) {
+            if (s instanceof CgSequenceSpawned obj) obj.update();
+        }
+    }
+
+    /** The object spawnable {@code index} is now, or null. */
+    @Nullable
+    public CgSequenceTarget spawned(int index) {
+        return spawnables[index];
     }
 
     /**

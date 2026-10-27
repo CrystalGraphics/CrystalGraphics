@@ -92,6 +92,20 @@ public final class CgVfxPrefabInstance {
         return this;
     }
 
+    /** {@code node}'s own opacity as it stands, before its ancestors'. */
+    public float opacity(int node) {
+        return opacity[node];
+    }
+
+    /**
+     * {@code node}'s transform as it stands into {@code out} (10 floats, as {@link CgVfxPrefab#rest}): what a track
+     * keying it starts from. Answers {@code out}.
+     */
+    public float[] local(int node, float[] out) {
+        System.arraycopy(local, node * CgVfxPrefab.REST, out, 0, CgVfxPrefab.REST);
+        return out;
+    }
+
     /** Every node back at its rest. */
     public void reset() {
         System.arraycopy(prefab.rest(), 0, local, 0, local.length);

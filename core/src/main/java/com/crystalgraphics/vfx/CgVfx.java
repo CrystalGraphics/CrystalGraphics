@@ -11,6 +11,7 @@ import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.net.CgVfxCueClient;
+import com.crystalgraphics.vfx.prefab.CgVfxPrefabAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemPreparer;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
@@ -88,6 +89,7 @@ public final class CgVfx {
         // Characters' clocks the server sends, kept on the level's tick: the effects following them hold and slow.
         CgCharacterClockNet.install(() -> CgRenderStage.WORLD_OPAQUE.host().environment().gameTime());
         CgVfxSystemAssets.register();   // system assets compile to playable definitions
+        CgVfxPrefabAssets.register();
         // and are READY once the world's system has warmed what they draw: nothing compiles or uploads at a play
         CgVfxAssets.instance().preparer(CgParticleKinds.SYSTEM, new CgVfxSystemPreparer(CgVfx::world));
         // Every frame's end, the title screen's too: a logout clears before the next world.

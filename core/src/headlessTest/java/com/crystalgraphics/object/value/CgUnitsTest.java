@@ -8,6 +8,8 @@ import static org.junit.Assert.assertTrue;
 import java.util.List;
 import java.util.Map;
 
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 import org.junit.Test;
 
 public class CgUnitsTest {
@@ -26,6 +28,19 @@ public class CgUnitsTest {
                 "rotation", Map.of("order", "xyz", "intrinsic", true)), CgUnits.HOST);
         assertEquals(List.of(0.0, -9.8, 0.0), nucc.toHost(List.of(0.0, -9.8, 0.0), CgQuantity.ACCELERATION));
         assertEquals("euler:xyz:intrinsic", nucc.rotation());
+    }
+
+    @Test
+    public void anUnrealYawTurnsTheHostAboutY() {
+        // A yaw of 90 turns Unreal's forward (+X) to its right (+Y), which is the host's +Z.
+        Quaternionf q = CgUnits.UNREAL.rotationToHost(0f, 0f, (float) Math.toRadians(90), new Quaternionf());
+        Vector3f forward = q.transform(new Vector3f(1, 0, 0));
+        assertEquals(0f, forward.x, 1e-6f);
+        assertEquals(0f, forward.y, 1e-6f);
+        assertEquals(1f, forward.z, 1e-6f);
+        // A pitch of 90 turns forward to Unreal's up (+Z), the host's +Y.
+        forward = CgUnits.UNREAL.rotationToHost(0f, (float) Math.toRadians(90), 0f, q).transform(new Vector3f(1, 0, 0));
+        assertEquals(1f, forward.y, 1e-6f);
     }
 
     @Test

@@ -104,7 +104,6 @@ final class Camera implements CgSequenceTarget {
 
 CgSequencePlayer player = sequencer.play(beam, Map.of("caster", goku, "target", vegeta));
 player.rate(0.5f);                                               // half speed
-player.spawnable(0, chargeSystem);                               // a spawnable's tracks bind once it is made
 float x = player.locator(0).translation()[0];                    // the sequence's own points, after evaluation
 player.stop();
 ```
@@ -113,8 +112,8 @@ player.stop();
   `parameter` or `property` track its `parameter` or `property` (`user.Size`, `fov`); a material track or a global track
   each parameter by name (`scalars: { BG_Brightness: ... }` writes `BG_Brightness`). A global track writes its parameter
   collection itself.
-- **Binding happens at `play`**, and at `spawnable` for what waits on a spawnable: a slot a target lacks throws there,
-  naming both, never in the frame.
+- **Binding happens at `play`**, and as each spawnable is made for what waits on it: a slot a target lacks throws
+  there, naming both, never in the frame.
 - **`mask` says which components a frame writes**: a section keying only `x` leaves `y` and `z` as they are.
 - **Sections writing one slot blend**, across rows and across every playing sequence, as Unreal's blenders do. Absolute
   sections average by weight; a weight short of 1 ramps from the slot's value before the sequence (`get`). Relative
@@ -139,6 +138,55 @@ sequencer.register(new CgSequenceEvaluator() {
     }
 });
 ```
+
+## What a sequence spawns
+
+A sequence's `spawnables` are objects it makes and owns: a system, a prefab, a post volume. Each kind is made by a
+spawner registered on the sequencer by its kind, as Unreal's spawn register makes a spawnable's object.
+
+```java
+CgVfxSystemSpawner systems = new CgVfxSystemSpawner(CgVfx.world());
+sequencer.spawner("system", systems);
+CgVfxPrefabSpawner.install(sequencer, systems);       // its prefabs sort with its systems, one group a play
+CgPostVolumeSpawner.install(sequencer);
+sequencer.spawner("light", (player, spawnable, at) -> new MyLight(spawnable.tree(), at));   // a kind of your own
+```
+
+```yaml
+locators:
+  - { id: k1, name: palms, parent: { role: caster, socket: aim }, location: [0, 0, 0.6] }
+spawnables:
+  - { id: s1, name: charge, at: { locator: k1 }, system: novamod:nova_cannon/charge }
+  - { id: s2, name: shock, at: { role: caster, socket: root }, prefab: nsuns4_kit:1efcmn/1efc_shock08 }
+  - { id: s3, name: ring, at: { spawnable: s2, node: "1efc_shock08" }, system: nsuns4_kit:1efcmn/ring }
+  - { id: s4, name: flash, post: { bloom: 1.6, exposure: { flash: 1.5 } }, priority: 10, unbound: true }
+tracks:
+  - id: t1
+    kind: system
+    binding: { spawnable: s1 }
+    sections:
+      - { id: t1a, range: [0, 44], keys: [[0, activate], [42, deactivate]] }
+  - { id: t2, kind: property, binding: { spawnable: s2, node: "1efc_shock08" }, property: opacity, sections: [ ... ] }
+  - { id: t3, kind: property, binding: { spawnable: s4 }, property: weight, sections: [ ... ] }
+```
+
+- **When**: a spawnable with a `spawned` track lives where its track says true; one without lives for the whole play.
+  Each frame spawns before it binds and evaluates, so a spawnable's tracks act in the frame it is made. The play's end
+  ends everything it made.
+- **Where**: `at` places it at a locator, a role's socket, or a node of another spawnable, read every frame unless its
+  `follow` is false. A locator's own place is its parent's composed with its transform, keyed or at rest.
+- **A `system` track** drives a spawned system as Unreal does. A section with `keys` follows its last key at or before
+  the frame (`activate`, `deactivate`; a `trigger` fires only inside the frame), deactivates when played backwards, and
+  as play leaves it puts back whether the system was active before (unless it keeps its state). A section without keys
+  activates as play crosses its start and keeps it active, deactivates or ends it past its end (`end`), and with
+  `age: desired_age` holds the system at the sequence's time since its start. An activation after a deactivation plays
+  a new instance.
+- **A prefab's nodes** answer `translation`, `rotation`, `scale`, `rotationEulerDeg`, `opacity`, and each material value
+  a track keys on them (`scalars: { _U0_LocX: ... }`); a spawnable's `nodes` block sets their rest as it spawns.
+- **A post volume's** `weight` starts at 1. `unbound` applies it everywhere; otherwise it stands at its `at`, full
+  within `radius` and fading over `blend_radius`.
+- **What fails at play**, naming it: a kind no spawner makes; a prefab part drawing what is not built yet (several
+  materials, an overlay); an inline prefab; a fractional post priority. A dedicated server's sequencer spawns nothing.
 
 ## Notifies of your own
 

@@ -8,6 +8,8 @@ import java.util.Map;
 
 import javax.annotation.Nullable;
 
+import org.joml.Quaternionf;
+
 import com.crystalgraphics.object.CgProperty;
 import com.crystalgraphics.object.CgValueType;
 
@@ -242,6 +244,106 @@ public record CgUnits(double metres, double seconds, int[] axes, double radians,
         double f = hostAxis < 0 || q == CgQuantity.ROTATION || !permutes(q) ? factor(q) : axisFactor(hostAxis, q);
         if (channel instanceof List<?> keys) return ((Map<?, ?>) curve(Map.of("keys", keys), f, false)).get("keys");
         return curve(channel, f, false);
+    }
+
+    /**
+     * A rotation written in these units' convention, as three angles in radians in its written order, as a quaternion
+     * in the host's axes: its convention's own formula, then turned through the axes ({@code A R Aᵀ}: a rotation's axis
+     * is a pseudovector, so where the axes flip handedness its sense flips too).
+     *
+     * <pre>{@code
+     * Quaternionf q = CgUnits.UNREAL.rotationToHost(0, 0, (float) Math.toRadians(90), new Quaternionf());   // a yaw of 90
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code unreal_rotator}: {@code [roll, pitch, yaw]}, by Unreal's {@code FRotator::Quaternion}.</li>
+     *   <li>{@code euler:<order>:intrinsic} (or extrinsic): the three about x, y and z, composed in that order.</li>
+     *   <li>Allocates nothing: {@code out} is filled and returned.</li>
+     * </ul>
+     */
+    public Quaternionf rotationToHost(float a, float b, float c, Quaternionf out) {
+        if (rotation.equals("unreal_rotator")) {
+            // FRotator::Quaternion (UnrealMath.cpp:447-466), on roll a, pitch b, yaw c.
+            double hr = a * 0.5, hp = b * 0.5, hy = c * 0.5;
+            double sr = Math.sin(hr), cr = Math.cos(hr), sp = Math.sin(hp), cp = Math.cos(hp), sy = Math.sin(hy), cy = Math.cos(hy);
+            out.set((float) (cr * sp * sy - sr * cp * cy), (float) (-cr * sp * cy - sr * cp * sy),
+                    (float) (cr * cp * sy - sr * sp * cy), (float) (cr * cp * cy + sr * sp * sy));
+        } else if (rotation.startsWith("euler:")) {
+            String order = rotation.substring(6, 9);
+            boolean intrinsic = rotation.endsWith(":intrinsic");
+            out.identity();
+            for (int k = 0; k < 3; k++) {
+                char axis = order.charAt(intrinsic ? k : 2 - k);
+                switch (axis) {
+                    case 'x' -> out.rotateX(a);
+                    case 'y' -> out.rotateY(b);
+                    default -> out.rotateZ(c);
+                }
+            }
+        } else {
+            throw new IllegalArgumentException("a rotation as three angles in " + rotation + ": unreal_rotator or euler");
+        }
+        return throughAxes(out);
+    }
+
+    /**
+     * A rotation as written in these units: its convention's three angles, a quaternion's {@code x y z w} where its
+     * convention is {@code quaternion}, or Unreal's rotator by key ({@code { roll, pitch, yaw }}) where it is
+     * {@code unreal_rotator}; the identity for none. In the host's axes.
+     *
+     * <pre>{@code
+     * Quaternionf turn = units.rotationToHost(tree.get("rotation"), new Quaternionf());
+     * }</pre>
+     *
+     * @throws IllegalArgumentException for a shape or a count its convention does not write
+     */
+    public Quaternionf rotationToHost(@Nullable Object rotation, Quaternionf out) {
+        if (rotation == null) return out.identity();
+        if (rotation instanceof Map<?, ?> rotator) {
+            if (!this.rotation.equals("unreal_rotator")) {
+                throw new IllegalArgumentException("a rotation by key " + rotator.keySet() + " in " + this.rotation + ": a list");
+            }
+            return rotationToHost((float) (angle(rotator, "roll") * radians), (float) (angle(rotator, "pitch") * radians),
+                    (float) (angle(rotator, "yaw") * radians), out);
+        }
+        if (!(rotation instanceof List<?> written)) throw new IllegalArgumentException("a rotation as " + rotation + ": a list");
+        if (written.isEmpty()) return out.identity();
+        boolean quaternion = this.rotation.equals("quaternion");
+        if (quaternion && written.size() == 4) {
+            out.set(number(written, 0), number(written, 1), number(written, 2), number(written, 3)).normalize();
+            return throughAxes(out);
+        }
+        if (!quaternion && written.size() == 3) {
+            return rotationToHost((float) (number(written, 0) * radians), (float) (number(written, 1) * radians),
+                    (float) (number(written, 2) * radians), out);
+        }
+        throw new IllegalArgumentException("a rotation of " + written.size() + " values in " + this.rotation
+                + (quaternion ? ": x, y, z, w" : ": three angles"));
+    }
+
+    private static double angle(Map<?, ?> rotator, String key) {
+        Object v = rotator.get(key);
+        if (v == null) return 0;
+        if (!(v instanceof Number n)) throw new IllegalArgumentException("a rotator's " + key + " as " + v + ": a number");
+        return n.doubleValue();
+    }
+
+    private static float number(List<?> l, int i) {
+        return ((Number) l.get(i)).floatValue();
+    }
+
+    /** {@code out} turned through the axes: its vector part permutes and signs as a pseudovector does. */
+    private Quaternionf throughAxes(Quaternionf out) {
+        float sense = flipsHandedness() ? -1f : 1f;
+        float hx = component(out, 0) * sense, hy = component(out, 1) * sense, hz = component(out, 2) * sense;
+        return out.set(hx, hy, hz, out.w);
+    }
+
+    /** The source vector component host component {@code i} reads, with its axis's sign. */
+    private float component(Quaternionf q, int i) {
+        int from = Math.abs(axes[i]) - 1;
+        float v = from == 0 ? q.x : from == 1 ? q.y : q.z;
+        return Math.signum(axes[i]) * v;
     }
 
     private static List<Object> scaled(List<?> values, double f) {

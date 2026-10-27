@@ -1,6 +1,7 @@
 package com.crystalgraphics.sequence;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -9,6 +10,8 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorldSubsystem;
+import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.trace.CgTrace;
 
 /**
  * A world's sequences: every playing {@link CgSequencePlayer} and one evaluator a track kind, run over all of them
@@ -38,9 +41,14 @@ import com.crystalgraphics.frame.CgWorldSubsystem;
  */
 public final class CgSequencer extends CgWorldSubsystem {
 
+    /** Trace zones: the whole frame, its spawn and import phases, its tracks' evaluation, its spawned objects' updates. */
+    public static final String EVALUATE_ZONE = "sequence.evaluate", SPAWN_ZONE = "sequence.spawn", IMPORT_ZONE = "sequence.import",
+            TRACKS_ZONE = "sequence.tracks", SPAWNED_ZONE = "sequence.spawned";
+
     private final List<CgSequencePlayer> players = new ArrayList<>();
     private final List<CgSequenceEvaluator> evaluators = new ArrayList<>();
     private final CgSequenceBlender blender = new CgSequenceBlender();
+    private final Map<String, CgSequenceSpawner> spawners = new HashMap<>();
     private CgTickFunction tick;
     @Nullable
     private CgSequenceTarget environment;
@@ -49,6 +57,7 @@ public final class CgSequencer extends CgWorldSubsystem {
 
     public CgSequencer() {
         for (String kind : CgSequenceStateEvaluator.KINDS) evaluators.add(new CgSequenceStateEvaluator(kind, blender));
+        evaluators.add(new CgSequenceSystemEvaluator());
         evaluators.add(new CgNotifyEvaluator(this, blender));
     }
 
@@ -68,6 +77,14 @@ public final class CgSequencer extends CgWorldSubsystem {
      */
     public CgSequencePlayer play(CgSequenceDefinition definition, Map<String, ? extends CgSequenceTarget> roles) {
         CgSequencePlayer player = new CgSequencePlayer(this, definition, roles);
+        if (!server()) {
+            for (CgSequenceDefinition.Spawnable s : definition.spawnables()) {
+                if (!spawners.containsKey(s.kind())) {
+                    throw new IllegalArgumentException(definition.id() + ": spawnables." + s.id() + ": no spawner makes a " + s.kind() + " spawnable here");
+                }
+            }
+            for (int i = 0; i < definition.spawnables().size(); i++) player.placement(i);
+        }
         player.bindAll();
         players.add(player);
         return player;
@@ -88,6 +105,19 @@ public final class CgSequencer extends CgWorldSubsystem {
     public void register(CgSequenceEvaluator evaluator) {
         if (evaluatorIndex(evaluator.kind()) >= 0) throw new IllegalStateException("the " + evaluator.kind() + " kind already has an evaluator");
         evaluators.add(evaluator);
+    }
+
+    /** Makes {@code kind}'s spawnables ({@code system}, {@code prefab}, {@code post}...); replaces one already set. */
+    public CgSequencer spawner(String kind, CgSequenceSpawner spawner) {
+        spawners.put(kind, spawner);
+        return this;
+    }
+
+    /** {@code kind}'s spawner; throws, naming the kind, where none is set. */
+    CgSequenceSpawner spawner(String kind) {
+        CgSequenceSpawner s = spawners.get(kind);
+        if (s == null) throw new IllegalStateException("no spawner makes a " + kind + " spawnable: CgSequencer.spawner(\"" + kind + "\", ...)");
+        return s;
     }
 
     /** The viewer's significance tier, 0 (low) to 3 (ultra): a notify filtered above it does not fire. */
@@ -112,21 +142,35 @@ public final class CgSequencer extends CgWorldSubsystem {
 
     /** One frame: every player advanced {@code dt} seconds, then each kind evaluated over all of them. */
     public void evaluate(float dt) {
-        for (int i = players.size() - 1; i >= 0; i--) {
-            if (!players.get(i).stopped()) continue;
-            for (CgSequenceEvaluator e : evaluators) e.stopped(players.get(i));
-            players.remove(i);
+        try (CgTrace.Zone frame = CgTrace.zone(CgChannels.WORLD, EVALUATE_ZONE)) {
+            for (int i = players.size() - 1; i >= 0; i--) {
+                if (!players.get(i).stopped()) continue;
+                for (CgSequenceEvaluator e : evaluators) e.stopped(players.get(i));
+                players.get(i).cleanUp();
+                players.remove(i);
+            }
+            // Unreal's phases: spawn, then instantiation (import), then evaluation.
+            for (int i = 0; i < players.size(); i++) {
+                CgSequencePlayer p = players.get(i);
+                p.advance(dt);
+                try (CgTrace.Zone spawn = CgTrace.zone(CgChannels.WORLD, SPAWN_ZONE)) {
+                    p.spawnPhase();
+                }
+                try (CgTrace.Zone imports = CgTrace.zone(CgChannels.WORLD, IMPORT_ZONE)) {
+                    p.importEntries(this);
+                }
+            }
+            try (CgTrace.Zone tracks = CgTrace.zone(CgChannels.WORLD, TRACKS_ZONE)) {
+                for (int e = 0; e < evaluators.size(); e++) {
+                    for (int i = 0; i < players.size(); i++) players.get(i).evaluate(this, e);
+                }
+                blender.apply();
+                for (int e = 0; e < evaluators.size(); e++) evaluators.get(e).postEvaluation();
+            }
+            try (CgTrace.Zone spawned = CgTrace.zone(CgChannels.WORLD, SPAWNED_ZONE)) {
+                for (int i = 0; i < players.size(); i++) players.get(i).updateSpawned();
+            }
         }
-        for (int i = 0; i < players.size(); i++) {
-            CgSequencePlayer p = players.get(i);
-            p.advance(dt);
-            p.importEntries(this);
-        }
-        for (int e = 0; e < evaluators.size(); e++) {
-            for (int i = 0; i < players.size(); i++) players.get(i).evaluate(this, e);
-        }
-        blender.apply();
-        for (int e = 0; e < evaluators.size(); e++) evaluators.get(e).postEvaluation();
     }
 
     int evaluatorIndex(String kind) {

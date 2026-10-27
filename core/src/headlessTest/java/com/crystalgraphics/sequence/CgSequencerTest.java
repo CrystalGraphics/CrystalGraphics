@@ -32,10 +32,16 @@ public class CgSequencerTest {
             + " [700, 1, cubic, user, 0.0, 0.0, { arrive_weight: 30, leave_weight: 0, weight_mode: arrive }]]";
 
     /** A role with a few named slots, keeping what was last written. */
-    private static final class Role implements CgSequenceTarget {
+    private static final class Role implements CgSequenceSpawned {
         final List<String> names;
         final float[][] values;
         int writes;
+        boolean destroyed;
+
+        @Override
+        public void destroy(boolean graceful) {
+            destroyed = true;
+        }
 
         Role(String... names) {
             this.names = List.of(names);
@@ -146,24 +152,24 @@ public class CgSequencerTest {
                 + "      - { id: s1, range: [0, 800], value: [[0, 50]] }\n"
                 + "  - id: t2\n    kind: property\n    binding: { camera: c1 }\n    property: fov\n    sections:\n"
                 + "      - { id: s2, range: [0, 800], value: [[0, 60]] }\n", Map.of());
+        Role camera = new Role("fov");
         try {
-            sequencer().play(d, Map.of("caster", new Role("visible")));
+            sequencer().spawner("camera", (p, s, at) -> camera).play(d, Map.of("caster", new Role("visible")));
             fail("played with a slot its role lacks");
         } catch (CgAssetException e) {
             assertTrue(e.getMessage(), e.getMessage().startsWith("mymod:s: tracks.t1.sections.s1.value: role [visible] has no fov"));
         }
-        CgSequencer sequencer = sequencer();
-        Role caster = new Role("fov"), camera = new Role("fov");
+        CgSequencer sequencer = sequencer().spawner("camera", (p, s, at) -> camera);
+        Role caster = new Role("fov");
         CgSequencePlayer player = sequencer.play(d, Map.of("caster", caster));
+        assertEquals(0, camera.writes);                                  // made in the first frame's spawn phase
         sequencer.evaluate(0.1f);
         assertEquals(50f, caster.get("fov"), 0f);
-        assertEquals(0, camera.writes);                                  // not made yet: its track waits
-        player.spawnable(0, camera);
-        sequencer.evaluate(0.1f);
         assertEquals(60f, camera.get("fov"), 0f);
         player.stop();
         sequencer.evaluate(0.1f);
         assertEquals(0, sequencer.players().size());
+        assertTrue(camera.destroyed);
     }
 
     @Test

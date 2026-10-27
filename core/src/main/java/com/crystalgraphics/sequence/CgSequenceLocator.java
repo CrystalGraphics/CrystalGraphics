@@ -1,5 +1,9 @@
 package com.crystalgraphics.sequence;
 
+import javax.annotation.Nullable;
+
+import org.joml.Quaternionf;
+
 /**
  * A point a playing sequence owns: its locator's transform relative to its parent, as its transform tracks key it.
  * What a spawnable placed {@code at: { locator }} follows.
@@ -20,9 +24,30 @@ public final class CgSequenceLocator implements CgSequenceTarget {
 
     private final String id;
     private final float[] translation = new float[3], rotation = new float[3], scale = {1, 1, 1};
+    /** Its file's turn where its units write quaternions, which no track keys; null where its angles are its turn. */
+    @Nullable
+    private Quaternionf restTurn;
 
     CgSequenceLocator(String id) {
         this.id = id;
+    }
+
+    /** Its rest, from its file, in host units: where it stands until a transform track keys it. */
+    void rest(float[] t, float[] r, float[] s) {
+        System.arraycopy(t, 0, translation, 0, 3);
+        System.arraycopy(r, 0, rotation, 0, 3);
+        System.arraycopy(s, 0, scale, 0, 3);
+    }
+
+    /** Its turn fixed at {@code turn}, a quaternion its file wrote: its rotation is then keyed by no track. */
+    void restTurn(Quaternionf turn) {
+        restTurn = turn;
+    }
+
+    /** Its fixed turn, or null where its {@link #rotation()} angles are its turn. */
+    @Nullable
+    Quaternionf fixedTurn() {
+        return restTurn;
     }
 
     /** Its locator's id. */
@@ -47,7 +72,7 @@ public final class CgSequenceLocator implements CgSequenceTarget {
     public int slot(String name) {
         return switch (name) {
             case "translation" -> TRANSLATION;
-            case "rotation" -> ROTATION;
+            case "rotation" -> restTurn == null ? ROTATION : -1;
             case "scale" -> SCALE;
             default -> -1;
         };

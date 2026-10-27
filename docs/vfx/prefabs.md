@@ -33,6 +33,45 @@ static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(LENS_CORE.kit()).bu
 | `opacity(a)` | its own opacity, 0 to 1 |
 | `part(material, mesh)` | a mesh it draws with a material: a `CgMesh`, `CgMeshLods`, or a file or provided mesh's id loaded at its first draw; `part(material)` draws the unit sphere |
 
+## As a file
+
+A prefab is a `prefabs/` asset, compiled by `CgVfxPrefabAssets` (which `CgVfx.install` registers) and written back by
+it, so a prefab built in Java and its file are one model:
+
+```yaml
+# assets/mymod/prefabs/core.yaml
+_v: 1
+nodes:
+  - { id: n1, name: ball03 }
+  - id: n2
+    name: ball02
+    parent: ball03
+    location: [0, 1, 0]
+    values: { _Glare: 0.2 }
+    meshes: [ { mesh: mymod:models/core/ball02.glb, material: mymod:lens } ]
+```
+
+```java
+Map<String, Object> tree = CgVfxPrefabAssets.write(CORE);   // what CgAssetYaml writes as its file
+CgVfxPrefab core = CgVfxAssets.<CgVfxPrefab>ref(CgBodyKinds.PREFAB, "mymod:core").get();
+```
+
+- **A node's `values`** are material values of its own over each of its parts' materials: it draws a material derived
+  with them (`value(property, ...)` in Java), shared by every node with the same values.
+- **Its units convert**: a location and a scale through its file's axes, a rotation in its convention to a quaternion.
+- **A mesh slot is kept as written**: several `materials`, an `overlay`, `cast_shadow` compile, and are refused only
+  where a prefab would draw them (`requireDrawable`), naming the node.
+
+A sequence spawns one (`spawnables: - { prefab: mymod:core }`, `CgVfxPrefabSpawner`) and keys its nodes: their
+transforms, opacity and material values. A material value a sequence keys is a parameter of a variant made for it,
+starting at the node's value, else its material's, else its shader's default:
+
+```java
+CgVfxPrefab keyed = CORE.keyed(Map.of("ball01", List.of("_U0_LocX")));
+CgVfxPrefabEffect effect = VFX.play(new CgVfxPrefabEffect(keyed, x, y, z));   // its own look, the prefab's
+effect.set(keyed.param(keyed.node("ball01"), "_U0_LocX"), -0.5f);
+```
+
 ## Playing one
 
 ```java
@@ -69,7 +108,8 @@ public final class Shuriken extends CgVfxEffect<Shuriken> {
 - **A material is one slot renderer however many parts use it.** The kit holds a slot renderer per distinct material,
   on a slot of the prefab's own, so a prefab of hundreds of nodes and a few materials is a few draws: a look draws at
   most 256.
-- **Its materials read no user parameter**: a part's colour is its material's, and its node's opacity fades it.
+- **Its materials read no user parameter of yours**: a part's colour is its material's, its node's values, and the
+  values a `keyed` variant binds.
 - **Transforms multiply as matrices, as glTF's do**: a rotated child under a non-uniformly scaled parent shears, as it
   did in the game it came from.
 - Evaluating is CPU matrix work, about 8 microseconds for 458 nodes; nothing allocates once the instance is made.

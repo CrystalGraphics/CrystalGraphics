@@ -1,26 +1,38 @@
 package com.crystalgraphics.vfx.prefab;
 
+import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.material.CgMaterialDefinitions;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgMeshLods;
+import com.crystalgraphics.asset.tree.CgAssetException;
+import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.vfx.look.CgVfxKit;
+import com.crystalgraphics.vfx.look.CgVfxLook;
+import com.crystalgraphics.vfx.look.CgVfxParam;
+import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * A model made of parts, reused by many effects: a tree of nodes, each with a parent, a rest transform, an opacity and
- * the meshes it draws, each with a material. Unreal's actor and its component tree; CC2's clump. An effect plays one
- * through a {@link CgVfxPrefabInstance}, and its look takes the prefab's {@link #kit()}.
+ * A model made of parts, reused by many effects: a tree of nodes, each with a parent, a rest transform, an opacity,
+ * material values of its own and the meshes it draws, each with a material. Unreal's actor and its component tree; CC2's
+ * clump. An effect plays one through a {@link CgVfxPrefabInstance}, and its look takes the prefab's {@link #kit()}; a
+ * sequence spawns one through {@link CgVfxPrefabSpawner}. Its file is a {@code prefabs/} asset
+ * ({@link CgVfxPrefabAssets}).
  *
  * <pre>{@code
  * static final CgMaterialDefinition LENS = CgMaterialDefinition.of("mymod:materials/lens",
@@ -29,19 +41,28 @@ import java.util.Objects;
  * static final CgVfxPrefab CORE = CgVfxPrefab.builder("mymod:core")
  *         .node("ball03")
  *         .node("ball02").parent("ball03").at(0f, 1f, 0f).part(LENS, "mymod:models/core/ball02.glb")
- *         .node("ball01").parent("ball02").scale(0.5f).opacity(0.5f).part(LENS, "mymod:models/core/ball01.glb")
+ *         .node("ball01").parent("ball02").scale(0.5f).opacity(0.5f).value("_Glare", 0.2f)
+ *             .part(LENS, "mymod:models/core/ball01.glb")
  *         .build();
  *
  * static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(CORE.kit()).build();
  * }</pre>
  *
+ * <p>A node's material values keyed while it plays are parameters of a variant made for them:</p>
+ * <pre>{@code
+ * CgVfxPrefab keyed = CORE.keyed(Map.of("ball01", List.of("_U0_LocX")));
+ * effect.set(keyed.param(keyed.node("ball01"), "_U0_LocX"), -0.5f);   // what a material track writes
+ * }</pre>
+ *
  * <ul>
- *   <li>A material is one slot renderer however many parts draw with it: the kit holds one per distinct material, on
- *       a slot of the prefab's own. A look draws at most 256.</li>
+ *   <li>A material is one slot renderer however many parts draw with it; a node with values of its own draws a material
+ *       derived with them, shared by every node with the same. A look draws at most 256.</li>
  *   <li>A parent is named before its children: nodes are kept in that order, which is the order they evaluate in.</li>
  *   <li>Names are unique within a prefab. A node's opacity multiplies down its subtree: half a parent's and half its
  *       own draws a quarter.</li>
  *   <li>A mesh path loads at its first draw, so a server naming one loads nothing.</li>
+ *   <li>A mesh slot is kept as written ({@link #partMaterials}, {@link #partSettings}): one drawing several materials, or
+ *       setting an overlay or a shadow, compiles but is refused where it would be drawn ({@link #requireDrawable}).</li>
  * </ul>
  */
 public final class CgVfxPrefab {
@@ -50,55 +71,129 @@ public final class CgVfxPrefab {
     public static final float MIN_OPACITY = 1e-3f;
     /** Floats of a node's rest: location xyz, rotation as a quaternion xyzw, scale xyz. */
     static final int REST = 10;
+    private static final AtomicInteger VARIANTS = new AtomicInteger();
 
     private final String id;
-    private final String[] names;
+    private final String[] names, ids;
     private final int[] parents;
     private final float[] rest;
     private final float[] opacity;
-    /** Node i's parts are {@code partSlots[partStart[i]]} to {@code partStart[i + 1]}. */
+    private final List<Map<String, float[]>> values;
+    /** Node i's parts are {@code parts[partStart[i]]} to {@code partStart[i + 1]}. */
     private final int[] partStart;
+    private final Part[] parts;
     private final CgVfxSlot[] partSlots;
-    private final Mesh[] partMeshes;
     private final Map<String, Integer> byName;
+    private final CgVfxSchema schema;
+    /** Per node, its keyed material values' parameters by property; null where none is keyed. */
+    private final Map<String, CgVfxParam.Scalar>[] params;
+    /** Per node, its keyed properties in order: a slot's place. */
+    private final List<String>[] keyedNames;
     private final CgVfxKit kit;
+    /** What it was built from, for its variants. */
+    private final Builder builder;
+    @Nullable
+    private volatile CgVfxLook look;
 
-    private CgVfxPrefab(Builder b) {
+    @SuppressWarnings("unchecked")
+    private CgVfxPrefab(Builder b, @Nullable Map<String, ? extends Collection<String>> keyed) {
         int n = b.names.size();
         this.id = b.id;
+        this.builder = b;
         this.names = b.names.toArray(new String[0]);
+        this.ids = b.ids.toArray(new String[0]);
         this.parents = new int[n];
         this.rest = Arrays.copyOf(b.rest, n * REST);
         this.opacity = new float[n];
+        this.values = new ArrayList<>(b.values);
         this.byName = new HashMap<>(b.byName);
         this.partStart = new int[n + 1];
-        Map<CgMaterialDefinition, CgVfxSlot> materials = new IdentityHashMap<>();
+        this.schema = CgVfxSchema.of(id + "#" + VARIANTS.incrementAndGet());
+        this.params = new Map[n];
+        this.keyedNames = new List[n];
+        if (keyed != null) {
+            for (Map.Entry<String, ? extends Collection<String>> e : keyed.entrySet()) {
+                Integer node = byName.get(e.getKey());
+                if (node == null) throw new CgAssetException(id + " has no node " + e.getKey());
+                Map<String, CgVfxParam.Scalar> own = new LinkedHashMap<>();
+                for (String property : e.getValue()) {
+                    own.put(property, schema.scalar(e.getKey() + "/" + property, restValue(b, node, property)));
+                }
+                params[node] = own;
+                keyedNames[node] = List.copyOf(own.keySet());
+            }
+        }
+        Map<CgMaterialDefinition, CgVfxSlot> shared = new IdentityHashMap<>();
         CgVfxKit.Builder kit = CgVfxKit.of(id);
         List<CgVfxSlot> slots = new ArrayList<>();
-        List<Mesh> meshes = new ArrayList<>();
+        List<Part> all = new ArrayList<>();
+        int renderers = 0;
         for (int i = 0; i < n; i++) {
             parents[i] = b.parents.get(i);
             opacity[i] = b.opacity.get(i);
             partStart[i] = slots.size();
+            // A keyed node binds its own slot renderers; the rest share one a material.
+            Map<CgMaterialDefinition, CgVfxSlot> own = params[i] == null ? shared : new IdentityHashMap<>();
             for (Part part : b.parts.get(i)) {
-                CgVfxSlot slot = materials.get(part.material);
+                CgMaterialDefinition material = drawn(part.materials.get(0), values.get(i));
+                CgVfxSlot slot = own.get(material);
                 if (slot == null) {
-                    slot = CgVfxSlot.mesh(id + "#" + materials.size());
-                    kit.slot(CgVfxSlotRenderer.of("part" + materials.size(), slot).material(part.material).build());
-                    materials.put(part.material, slot);
+                    slot = CgVfxSlot.mesh(id + "#" + renderers);
+                    CgVfxSlotRenderer.Builder r = CgVfxSlotRenderer.of("part" + renderers, slot).material(material);
+                    if (params[i] != null) {
+                        for (Map.Entry<String, CgVfxParam.Scalar> p : params[i].entrySet()) r.bind(p.getKey(), p.getValue());
+                    }
+                    kit.slot(r.build());
+                    own.put(material, slot);
+                    renderers++;
                 }
                 slots.add(slot);
-                meshes.add(part.mesh);
+                all.add(part);
             }
         }
         partStart[n] = slots.size();
         this.partSlots = slots.toArray(new CgVfxSlot[0]);
-        this.partMeshes = meshes.toArray(new Mesh[0]);
-        this.kit = kit.build();
+        this.parts = all.toArray(new Part[0]);
+        this.kit = kit.params(schema).build();
+    }
+
+    /** {@code material} with a node's values over its own: the same definition for the same values. */
+    private static CgMaterialDefinition drawn(CgMaterialDefinition material, Map<String, float[]> values) {
+        if (values.isEmpty()) return material;
+        Map<String, Object> written = new LinkedHashMap<>();
+        for (Map.Entry<String, float[]> v : values.entrySet()) written.put(v.getKey(), CgVfxPrefabAssets.number(v.getValue()));
+        return CgMaterialDefinitions.derive(material, Map.of("values", written));
+    }
+
+    /** A keyed property's value before any track: the node's own, else its material's, else its shader's default. */
+    private static float restValue(Builder b, int node, String property) {
+        float[] own = b.values.get(node).get(property);
+        if (own != null) return own[0];
+        for (Part part : b.parts.get(node)) {
+            CgMaterialDefinition material = part.materials.get(0);
+            float[] constant = material.constants().get(property);
+            if (constant != null) return constant[0];
+            for (CgMaterialProperty p : CgMaterial.newInstance(material, null).properties()) {
+                if (p.getName().equals(property)) return p.getFloatValue()[0];
+            }
+            throw new CgAssetException(b.id + ": " + b.names.get(node) + " keys " + property + ", which " + material.id()
+                    + " does not declare");
+        }
+        throw new CgAssetException(b.id + ": " + b.names.get(node) + " keys material value " + property + " but draws nothing");
     }
 
     public static Builder builder(String id) {
         return new Builder(id);
+    }
+
+    /**
+     * This prefab with {@code keyed}'s material values (by node name, then property) as parameters of its look, each
+     * starting at its rest: what a sequence keying them plays. Built once per set; hold it.
+     *
+     * @throws CgAssetException naming a node it lacks, or a property neither the node, its material nor its shader gives
+     */
+    public CgVfxPrefab keyed(Map<String, ? extends Collection<String>> keyed) {
+        return keyed.isEmpty() ? this : new CgVfxPrefab(builder, keyed);
     }
 
     public String id() {
@@ -112,6 +207,11 @@ public final class CgVfxPrefab {
 
     public String name(int node) {
         return names[node];
+    }
+
+    /** {@code node}'s element id in its file: its name where it was built in Java. */
+    public String elementId(int node) {
+        return ids[node];
     }
 
     /** {@code node}'s parent, -1 for a root; always lower than {@code node}. */
@@ -139,6 +239,22 @@ public final class CgVfxPrefab {
         return opacity[node];
     }
 
+    /** {@code node}'s own material values, over each of its parts' materials. */
+    public Map<String, float[]> values(int node) {
+        return values.get(node);
+    }
+
+    /** The parameter {@code node}'s {@code property} is keyed through in a {@link #keyed} variant, or null. */
+    @Nullable
+    public CgVfxParam.Scalar param(int node, String property) {
+        return params[node] == null ? null : params[node].get(property);
+    }
+
+    /** The material values {@code node} keys through parameters in a {@link #keyed} variant, in order; empty for none. */
+    public List<String> keyedNames(int node) {
+        return keyedNames[node] == null ? List.of() : keyedNames[node];
+    }
+
     /** The first of {@code node}'s parts; its last is {@code firstPart(node + 1) - 1}. */
     public int firstPart(int node) {
         return partStart[node];
@@ -152,13 +268,59 @@ public final class CgVfxPrefab {
     /** Part {@code part}'s mesh, loaded the first time it is asked; null draws the unit sphere. */
     @Nullable
     public CgMeshLods partMesh(int part) {
-        Mesh mesh = partMeshes[part];
+        Mesh mesh = parts[part].mesh;
         return mesh == null ? null : mesh.lods();
     }
 
-    /** A slot renderer per material its parts draw with: what a look takes to draw it. */
+    /** Part {@code part}'s mesh path, or null for a mesh given in code or the unit sphere. */
+    @Nullable
+    public String partPath(int part) {
+        Mesh mesh = parts[part].mesh;
+        return mesh == null ? null : mesh.path;
+    }
+
+    /** Part {@code part}'s materials as written: one, or one a section of its mesh. */
+    public List<CgMaterialDefinition> partMaterials(int part) {
+        return parts[part].materials;
+    }
+
+    /** Part {@code part}'s mesh slot's other fields as written ({@code overlay}, {@code cast_shadow}...); empty for none. */
+    public Map<String, Object> partSettings(int part) {
+        return parts[part].settings;
+    }
+
+    /** A slot renderer per material its parts draw with, and its keyed parameters: what a look takes to draw it. */
     public CgVfxKit kit() {
         return kit;
+    }
+
+    /** A look of its kit alone: what an effect playing it by itself draws with. */
+    public CgVfxLook look() {
+        CgVfxLook l = look;
+        if (l == null) look = l = CgVfxLook.builder(schema).with(kit).build();
+        return l;
+    }
+
+    /**
+     * Throws, naming {@code who} and the part, where a part draws what is not built yet: several materials, one a
+     * section of its mesh (a character's), or an overlay, a shadow or a stencil its slot sets.
+     */
+    public void requireDrawable(String who) {
+        for (int node = 0; node < names.length; node++) {
+            for (int k = partStart[node]; k < partStart[node + 1]; k++) {
+                Part part = parts[k];
+                if (part.materials.size() != 1) {
+                    throw new CgAssetException(who + ": " + id + "'s node " + names[node] + " draws " + part.materials.size()
+                            + " materials, one a section of its mesh, which a prefab does not draw yet");
+                }
+                for (Map.Entry<String, Object> s : part.settings.entrySet()) {
+                    if (!Boolean.FALSE.equals(s.getValue())) {
+                        throw new CgAssetException(who + ": " + id + "'s node " + names[node] + "'s mesh sets " + s.getKey()
+                                + ", which a prefab does not draw yet");
+                    }
+                }
+            }
+        }
     }
 
     float[] rest() {
@@ -191,21 +353,26 @@ public final class CgVfxPrefab {
     }
 
     private static final class Part {
-        final CgMaterialDefinition material;
+        final List<CgMaterialDefinition> materials;
         final Mesh mesh;
+        final Map<String, Object> settings;
 
-        Part(CgMaterialDefinition material, Mesh mesh) {
-            this.material = Objects.requireNonNull(material, "material");
+        Part(List<CgMaterialDefinition> materials, Mesh mesh, Map<String, Object> settings) {
+            if (materials.isEmpty()) throw new IllegalArgumentException("a part draws a material");
+            for (CgMaterialDefinition m : materials) Objects.requireNonNull(m, "material");
+            this.materials = List.copyOf(materials);
             this.mesh = mesh;
+            this.settings = Map.copyOf(settings);
         }
     }
 
     /** Builds a prefab node by node; each call after {@link #node} sets that node. */
     public static final class Builder {
         private final String id;
-        private final List<String> names = new ArrayList<>();
+        private final List<String> names = new ArrayList<>(), ids = new ArrayList<>();
         private final List<Integer> parents = new ArrayList<>();
         private final List<Float> opacity = new ArrayList<>();
+        private final List<Map<String, float[]>> values = new ArrayList<>();
         private final List<List<Part>> parts = new ArrayList<>();
         private final Map<String, Integer> byName = new HashMap<>();
         private float[] rest = new float[16 * REST];
@@ -223,13 +390,21 @@ public final class CgVfxPrefab {
             at = names.size();
             byName.put(name, at);
             names.add(name);
+            ids.add(name);
             parents.add(-1);
             opacity.add(1f);
+            values.add(new LinkedHashMap<>());
             parts.add(new ArrayList<>());
             if (rest.length < (at + 1) * REST) rest = Arrays.copyOf(rest, rest.length * 2);
             int o = at * REST;
             rest[o + 6] = 1f;
             rest[o + 7] = rest[o + 8] = rest[o + 9] = 1f;
+            return this;
+        }
+
+        /** Its element id in a file, its name unless given. */
+        public Builder elementId(String elementId) {
+            ids.set(current(), Objects.requireNonNull(elementId, "elementId"));
             return this;
         }
 
@@ -282,9 +457,16 @@ public final class CgVfxPrefab {
             return this;
         }
 
+        /** A material value of its own, over each of its parts' materials: CC2's per-clump material values. */
+        public Builder value(String property, float... v) {
+            if (v.length == 0) throw new IllegalArgumentException(id + ": " + names.get(current()) + "'s " + property + " has no value");
+            values.get(current()).put(property, v.clone());
+            return this;
+        }
+
         /** A mesh it draws with {@code material}: one definition is one material in every part. */
         public Builder part(CgMaterialDefinition material, CgMeshLods mesh) {
-            parts.get(current()).add(new Part(material, new Mesh(Objects.requireNonNull(mesh, "mesh"))));
+            parts.get(current()).add(new Part(List.of(material), new Mesh(Objects.requireNonNull(mesh, "mesh")), Map.of()));
             return this;
         }
 
@@ -294,19 +476,27 @@ public final class CgVfxPrefab {
 
         /** As {@link #part(CgMaterialDefinition, CgMeshLods)}, a file or provided mesh loaded at its first draw. */
         public Builder part(CgMaterialDefinition material, String path) {
-            parts.get(current()).add(new Part(material, new Mesh(Objects.requireNonNull(path, "path"))));
+            return part(List.of(material), path, Map.of());
+        }
+
+        /**
+         * A mesh slot as its file writes it: its materials (one, or one a section of the mesh), and its other fields
+         * ({@code overlay}, {@code cast_shadow}...), kept for what draws them.
+         */
+        public Builder part(List<CgMaterialDefinition> materials, String path, Map<String, Object> settings) {
+            parts.get(current()).add(new Part(materials, new Mesh(Objects.requireNonNull(path, "path")), settings));
             return this;
         }
 
         /** The unit sphere. */
         public Builder part(CgMaterialDefinition material) {
-            parts.get(current()).add(new Part(material, null));
+            parts.get(current()).add(new Part(List.of(material), null, Map.of()));
             return this;
         }
 
         public CgVfxPrefab build() {
             if (names.isEmpty()) throw new IllegalStateException(id + " has no nodes");
-            return new CgVfxPrefab(this);
+            return new CgVfxPrefab(this, null);
         }
 
         private int current() {
