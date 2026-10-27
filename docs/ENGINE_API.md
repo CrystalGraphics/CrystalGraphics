@@ -56,7 +56,8 @@ CgHostView world = CgRenderStage.WORLD_OPAQUE.host().view();
   executes, so a hand-off across firings (opaque to transparent, 1.7.10's second anaglyph firing) needs a resource
   that outlives the frame. The engine's keys are `CgFrameKeys`: `EMISSION`, the world renderer's emission target;
   `DISTORTION`, its distortion field once applied (`CgDistortionField`: an array and how many layers hold offsets); `OVERDRAW`, its overdraw count while that view is on; `SCENE`, the HDR scene while it is on; `CUSTOM_DEPTH`, Unreal's
-  CustomDepth and CustomStencil of the draws marked `customDepth` (`render/world/CLAUDE.md`).
+  CustomDepth and CustomStencil of the draws marked `customDepth` (`render/world/CLAUDE.md`); `WORLD_NORMALS`, our
+  opaque surfaces' world normals, written in a frame whose opaque firing carries `WORLD_NORMALS_READ`.
 
 ```java
 public static final CgFrameKey<CgGraphTexture> MASK = CgFrameKey.of("mymod:mask", CgGraphTexture.class);

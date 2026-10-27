@@ -132,5 +132,9 @@
   `world_custom_stencil.shader`, each testing one stencil bit and adding it into the R8, since no device samples a
   stencil aspect. Published as `CgFrameKeys.CUSTOM_DEPTH`; a pass reads its depth with `sceneDepth(unit, it)` and its
   stencil as `round(r * 255)`. A set of instances refuses it. Its gate is `--mode=custom-depth`, exact on gl and vulkan.
+  `prepare(material)` starts the copy's program; each material's CustomDepth draw is its depth pipeline's program.
+- **World normals on demand**: the opaque pass writes `cg_world.normals` (`normalsFor`) while the lights cast shadows
+  or the opaque firing carries `CgFrameKeys.WORLD_NORMALS_READ`, and the transparent firing publishes it as
+  `WORLD_NORMALS`, the scene texture a post outline reads (Unreal's GBuffer normal). `--mode=custom-depth` checks it.
 - **The emissive state is ONE ONE, never `CgBlendState.ADDITIVE`** (SRC_ALPHA ONE): emission is written with an
   alpha of 0, which ADDITIVE multiplies away.

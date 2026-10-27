@@ -73,6 +73,26 @@ public final class CgFrameKeys {
      */
     public static final CgFrameKey<CgGraphTexture> CUSTOM_DEPTH = CgFrameKey.of("crystalgraphics:custom_depth", CgGraphTexture.class);
 
+    /**
+     * Our opaque surfaces' world normals this frame, Unreal's GBuffer normal (the scene texture a post outline reads):
+     * RGBA16F, {@code n * 0.5 + 0.5}, alpha the eye depth drawn at, negative where none of our draws is. Published at
+     * the end of {@code WORLD_TRANSPARENT} in a frame whose opaque firing wrote it: while the world lights cast shadows,
+     * or where {@link #WORLD_NORMALS_READ} was put. Host-drawn surfaces (terrain, entities) write none, so a reader
+     * rebuilds their normal from depth.
+     */
+    public static final CgFrameKey<CgGraphTexture> WORLD_NORMALS = CgFrameKey.of("crystalgraphics:world_normals", CgGraphTexture.class);
+
+    /**
+     * That something will read {@link #WORLD_NORMALS} this frame: put on {@code WORLD_OPAQUE} before the world
+     * renderer records, where the opaque pass then writes them. Only where the host's target is a framebuffer taking a
+     * second attachment; elsewhere none is published.
+     *
+     * <pre>{@code
+     * CgRenderStage.WORLD_OPAQUE.register(0, frame -> frame.resources().put(CgFrameKeys.WORLD_NORMALS_READ, Boolean.TRUE));
+     * }</pre>
+     */
+    public static final CgFrameKey<Boolean> WORLD_NORMALS_READ = CgFrameKey.of("crystalgraphics:world_normals_read", Boolean.class);
+
     private CgFrameKeys() {
     }
 }

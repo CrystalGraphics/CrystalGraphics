@@ -323,8 +323,11 @@ public final class CgWorldRenderer {
     /** 0 until set: the tier's share then. */
     private float emissionScale;
     private CgGraphTexture emissionTarget, subjectTarget;
-    /** Our opaque surfaces' normals, Unreal's G-buffer normal, for the world lights; this firing's, or null. */
-    private CgGraphTexture normalTarget, normalsInto;
+    /**
+     * Our opaque surfaces' normals, Unreal's G-buffer normal, for the world lights and a post material asking
+     * ({@link CgFrameKeys#WORLD_NORMALS_READ}); this firing's, or null; and the opaque firing's, for the transparent one.
+     */
+    private CgGraphTexture normalTarget, normalsInto, normalsWritten;
     private static final CgFrameBufferFormat NORMAL_FORMAT = CgFrameBufferFormat.builder("cg_world.normals")
             .color(0, CgTextureType.RGBA16F).build();
 
@@ -838,7 +841,7 @@ public final class CgWorldRenderer {
     /**
      * Starts compiling every program this renderer draws {@code material} with, without waiting, and says whether all
      * are built: each link of its chain's Forward pass, its depth pass, its Emissive and Distortion passes, each in
-     * the multi-draw form a joined run binds too, with the keywords enabled now. Poll it from a warm-up list, so no
+     * the multi-draw form a joined run binds too, with the keywords enabled now, and CustomDepth's stencil copy. Poll it from a warm-up list, so no
      * frame compiles a program the frame draws. Render thread.
      *
      * <pre>{@code
@@ -898,6 +901,10 @@ public final class CgWorldRenderer {
                 ready &= distortion.prepare();
             }
         }
+        // CustomDepth draws each material by its depth pipeline, started above, under a stencil state: only the
+        // stencil copy is a program of its own. One for every material, since a draw marks itself.
+        if (customStencil == null) customStencil = CgMaterial.newInstance(CUSTOM_STENCIL_SHADER);
+        ready &= prepared(customStencil.pipeline(CgInstanceKind.OBJECT), false);
         if (!halfResolution || !settings.halfResolution()) return ready;
         if (upsample == null) upsample = CgMaterial.newInstance(UPSAMPLE_SHADER);
         if (resolve == null) resolve = CgMaterial.newInstance(RESOLVE_SHADER);
@@ -1757,6 +1764,7 @@ public final class CgWorldRenderer {
 
             CgRecording recording = stage.recording();
             normalsInto = which == OPAQUE && drawn > 0 ? normalsFor(stage, recording) : null;
+            if (which == OPAQUE) normalsWritten = normalsInto;
             CgPassConstants constants = stage.constants().sceneGlow(sceneEmission);
             bindings.clear();
             // Before the opaque pass: its depth then holds the host's world and none of the draws below.
@@ -1818,6 +1826,10 @@ public final class CgWorldRenderer {
             }
             if (which == TRANSPARENT && overdraw && drawn > 0) recordOverdraw(stage, recording, view);
             if (which == TRANSPARENT) recordCustomDepth(stage, recording, view);
+            if (which == TRANSPARENT && normalsWritten != null) {
+                stage.resources().put(CgFrameKeys.WORLD_NORMALS, normalsWritten);
+                normalsWritten = null;
+            }
             if (which == TRANSPARENT && !CgRehearsal.active()) text.record(stage, view);
         }
     }
@@ -2283,12 +2295,14 @@ public final class CgWorldRenderer {
 
     /**
      * The normal target the opaque pass writes beside the host's target this firing, cleared, and handed to the world
-     * lights; null where they cast no shadows or the host's framebuffer takes no second attachment.
+     * lights; null where neither they (casting shadows) nor a reader ({@link CgFrameKeys#WORLD_NORMALS_READ}) asks, or
+     * the host's framebuffer takes no second attachment.
      */
     @Nullable
     private CgGraphTexture normalsFor(CgStageFrame stage, CgRecording recording) {
         int fb = stage.host().mainFramebuffer();
-        if (!pointLights.wantsNormals() || fb <= 0 || CgRasterPass.refusesAttachment(fb)) return null;
+        boolean asked = pointLights.wantsNormals() || stage.resources().has(CgFrameKeys.WORLD_NORMALS_READ);
+        if (!asked || fb <= 0 || CgRasterPass.refusesAttachment(fb)) return null;
         int w = Math.max(1, (int) targetWidth), h = Math.max(1, (int) targetHeight);
         if (normalTarget == null || normalTarget.getWidth() != w || normalTarget.getHeight() != h) {
             if (normalTarget != null) recording.release(normalTarget);
