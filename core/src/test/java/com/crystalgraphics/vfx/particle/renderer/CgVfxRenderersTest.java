@@ -203,4 +203,13 @@ public class CgVfxRenderersTest {
                 .renderer(CgVfxRenderers.sprite("r2").maxDrawCount(200).build()).build());
         assertTrue(e.getMessage(), e.getMessage().contains("sparks") && e.getMessage().contains("max_draw_count"));
     }
+
+    @Test
+    public void aGpuEmitterNamesNoDrawCap() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> CgVfxEmitter.builder("specks")
+                .spawning(CgVfxSpawning.CASCADE_GPU).renderer(CgVfxRenderers.sprite("r1").maxDrawCount(500).build()).build());
+        assertTrue(e.getMessage(), e.getMessage().contains("specks") && e.getMessage().contains("cascade_gpu"));
+        assertEquals("an unflagged emitter keeps its cap", 500, CgVfxEmitter.builder("sparks")
+                .renderer(CgVfxRenderers.sprite("r1").maxDrawCount(500).build()).build().maxDrawCount());
+    }
 }

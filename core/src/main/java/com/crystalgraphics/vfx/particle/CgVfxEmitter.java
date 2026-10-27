@@ -221,6 +221,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         spawning = b.spawning;
         legacyEmitterTime = b.legacyEmitterTime;
         maxDrawCount = maxDrawCount(b.name, renderers);
+        // Cascade's GPU sprites draw every particle (4.21's ParticleGpuSimulation.cpp never reads MaxDrawCount).
+        if (maxDrawCount >= 0 && spawning == CgVfxSpawning.CASCADE_GPU) {
+            throw new IllegalArgumentException(b.name + " spawns as cascade_gpu and names max_draw_count "
+                    + maxDrawCount + ": Cascade's GPU emitters draw every particle, so a cap is a CPU emitter's alone");
+        }
         meshFacing = CgVfxMeshFacing.of(b.name, renderers, b.local);
         state = b.state;
         capacity = b.capacity;
@@ -463,7 +468,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
     /**
      * The most of its particles drawn, the first in draw order, every one still simulated; -1 for all. Cascade's
-     * {@code MaxDrawCount}, one an emitter, so its renderers name one value or none.
+     * {@code MaxDrawCount}, one an emitter, so its renderers name one value or none. Refused on a
+     * {@link CgVfxSpawning#CASCADE_GPU} emitter, which Cascade draws whole.
      */
     public int maxDrawCount() {
         return maxDrawCount;

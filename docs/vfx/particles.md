@@ -56,7 +56,8 @@ CgVfxEmitter emitter = CgVfxEmitter.builder("sparks")
 - **`max_draw_count: n` draws the first `n` of its particles in draw order and simulates them all** (Cascade's
   `MaxDrawCount`); 0 draws none. They are counted before culling, so the ones off screen still use up the count. One
   emitter's particles draw from one list, so its renderers name one count or none, and two different counts fail at
-  build.
+  build. Cascade's GPU emitters draw every particle, so an emitter spawning as `cascade_gpu` with a count fails at
+  build too.
 
   ```yaml
   renderers:
