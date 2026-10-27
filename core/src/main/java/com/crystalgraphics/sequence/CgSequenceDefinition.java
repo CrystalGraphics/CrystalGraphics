@@ -11,6 +11,7 @@ import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.object.validate.CgIssue;
 import com.crystalgraphics.object.validate.CgValidation;
+import com.crystalgraphics.sequence.time.CgFrameRate;
 
 /**
  * A sequence asset compiled: its frame rates, playback range, evaluation, roles and tracks, as Unreal's
@@ -20,24 +21,26 @@ import com.crystalgraphics.object.validate.CgValidation;
  * CgSequenceDefinition.register();                                    // the pipeline compiles sequences so
  * CgSequenceDefinition s = CgSequenceDefinition.compile(asset);       // or directly, from a resolved asset
  * double seconds = s.seconds(s.end());                                 // ticks to seconds
+ * CgSequencePlaybackPosition clock = CgSequencePlaybackPosition.of(s);  // its clock: display rate in, ticks out
  * }</pre>
  *
  * <ul>
  *   <li>Fails naming the sequence and the path: the first validation error, or a {@code range} that is not two
- *       increasing ticks. Nothing is defaulted but {@code evaluation}, whose absence is Unreal's sub-frames.</li>
+ *       increasing ticks, or a rate {@link CgFrameRate#of} refuses. Nothing is defaulted but {@code evaluation}, whose
+ *       absence is Unreal's sub-frames.</li>
  *   <li>Tracks keep their resolved trees; their sections and channels compile in later steps.</li>
  * </ul>
  *
  * @param id             the asset's id
- * @param tickResolution ticks a second
- * @param displayRate    frames a second the editor shows
+ * @param tickResolution ticks a second: what keys and ranges are counted in
+ * @param displayRate    frames a second the editor shows, and the rate a frame-locked sequence steps at
  * @param start          the playback range's first tick
  * @param end            its last tick
  * @param evaluation     how a frame is evaluated
  * @param roles          what plays it, by id
  * @param tracks         its tracks, in order
  */
-public record CgSequenceDefinition(String id, double tickResolution, double displayRate, int start, int end,
+public record CgSequenceDefinition(String id, CgFrameRate tickResolution, CgFrameRate displayRate, int start, int end,
                                    Evaluation evaluation, List<Role> roles, List<Track> tracks) {
 
     /** {@code EMovieSceneEvaluationType}. */
@@ -61,7 +64,7 @@ public record CgSequenceDefinition(String id, double tickResolution, double disp
 
     /** {@code ticks} as seconds. */
     public double seconds(int ticks) {
-        return ticks / tickResolution;
+        return (double) ticks * tickResolution.denominator() / tickResolution.numerator();
     }
 
     /** {@code asset}, validated and compiled. */
@@ -74,7 +77,7 @@ public record CgSequenceDefinition(String id, double tickResolution, double disp
             }
         }
         Map<Object, Object> tree = asset.resolved();
-        double tick = number(id, tree, "tick_resolution"), display = number(id, tree, "display_rate");
+        CgFrameRate tick = rate(id, tree, "tick_resolution"), display = rate(id, tree, "display_rate");
         if (!(tree.get("range") instanceof List<?> range) || range.size() != 2
                 || !(range.get(0) instanceof Number a) || !(range.get(1) instanceof Number b) || b.intValue() < a.intValue()) {
             throw new CgAssetException(id + ": range: two increasing ticks, not " + tree.get("range"));
@@ -99,8 +102,12 @@ public record CgSequenceDefinition(String id, double tickResolution, double disp
                 Collections.unmodifiableList(roles), Collections.unmodifiableList(tracks));
     }
 
-    private static double number(String id, Map<?, ?> tree, String key) {
+    private static CgFrameRate rate(String id, Map<?, ?> tree, String key) {
         if (!(tree.get(key) instanceof Number n) || n.doubleValue() <= 0) throw new CgAssetException(id + ": " + key + ": a positive number, not " + tree.get(key));
-        return n.doubleValue();
+        try {
+            return CgFrameRate.of(n.doubleValue());
+        } catch (IllegalArgumentException e) {
+            throw new CgAssetException(id + ": " + key + ": " + e.getMessage());
+        }
     }
 }

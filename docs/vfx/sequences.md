@@ -1,4 +1,32 @@
-# Sequences: a clip on every particle
+# Sequences
+
+## A sequence's time
+
+A sequence counts in ticks at its `tick_resolution` (24,000 a second is common) and shows frames at its `display_rate`.
+Each update evaluates the span from where the last one stopped to where this one does, so a key inside a long frame is
+still crossed, once, as Unreal's Sequencer does.
+
+```java
+CgSequenceDefinition definition = ...;                                   // tick_resolution 24000, display_rate 30
+CgSequencePlaybackPosition clock = CgSequencePlaybackPosition.of(definition);
+CgSequenceEvaluationRange range = clock.playToSeconds(age);              // each update: seconds since it started
+range.sweep(hits, (tick, name) -> fire(name));                           // each event key in the span, once
+```
+
+A seek, or a player joining late, jumps instead: it lands on one point and crosses nothing.
+
+```java
+CgSequenceEvaluationRange at = clock.jumpToSeconds(1.5);
+hits.place(CgFrameTime.frame(at.current()));                             // keys before it count as played
+```
+
+- **Times are `CgFrameTime` longs**: a whole frame and a sub-frame, compared as longs. Keep the `CgFrameRate` beside one
+  and convert with `CgFrameRate.convert`.
+- **The same ticks fire at any frame rate**: 30, 60 or 144 frames a second, or one 200 ms frame, cross the same keys.
+- **`evaluation: frame_locked`** steps whole display frames; without it, sub-frames are kept.
+- A rate is a whole number or an NTSC one (`29.97`, `23.976`); any other fails at load, naming the sequence.
+
+# A clip on every particle
 
 A particle may play a clip: a prefab ([`prefabs.md`](prefabs.md)) whose nodes move, fade and change their material's
 numbers over frames, starting child emitters at clip times. A Rasen Shuriken's blades spin and its rings flash this way,
