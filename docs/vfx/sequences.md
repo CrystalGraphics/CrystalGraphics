@@ -355,7 +355,7 @@ Buffers { FX_CLIPS ("Baked clips", vec4, readonly) }
 void vertex(out v2f o) {
 #ifdef FX_ON_SEQUENCE
     vec4 world = FX_SEQUENCE_TO_WORLD * vec4(cg_Position, 1.0);     // the particle, then the node at its age
-    o.opacity = FX_SEQUENCE_OPACITY;                                 // the node's times its ancestors'
+    o.opacity = FX_SEQUENCE_OPACITY;                                 // the node's own
     o.u = FX_SEQ_SCALAR(0, _U0_LocX);                                // the clip's, else the material's
 #else
     vec4 world = CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);

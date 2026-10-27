@@ -746,7 +746,7 @@ UVs land.
 ### A model of parts: prefabs
 
 Meshes that move and fade together as one model (a lens of nested balls, a shuriken's rings and blades) are a
-`CgVfxPrefab`: a node tree, each node's meshes drawn with a material, a node's opacity fading its subtree. The look takes
+`CgVfxPrefab`: a node tree, each node's meshes drawn with a material, each node's opacity its own. The look takes
 its `kit()`, and an effect plays it through a `CgVfxPrefabInstance`: [`vfx/prefabs.md`](vfx/prefabs.md). A prefab
 moving over frames on every particle of an emitter is a clip: [`vfx/sequences.md`](vfx/sequences.md).
 

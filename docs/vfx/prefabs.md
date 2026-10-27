@@ -82,7 +82,7 @@ public final class Shuriken extends CgVfxEffect<Shuriken> {
 
     @Override protected void tick(float dt) {
         core.place(spin.rotationY(age * 6f));                 // its roots, from the effect's origin
-        core.opacity(ball01, 1f - age / 2f);                  // fades ball01 and everything under it
+        core.opacity(ball01, 1f - age / 2f);                  // fades ball01's parts; its children keep their own
     }
 
     @Override protected void submit(CgVfxFrame frame) {
@@ -97,13 +97,13 @@ public final class Shuriken extends CgVfxEffect<Shuriken> {
 | `location`, `rotation`, `scale`, `opacity(node, ...)` | a node's transform or opacity from now on, by its index (`prefab.node(name)`) |
 | `reset()` | every node back at its rest |
 | `evaluate()` | each node's matrix and presence, parents first; `submit` calls it |
-| `world(node)`, `presence(node)` | a node's matrix from the effect's origin, and its opacity times its ancestors' |
+| `world(node)`, `presence(node)` | a node's matrix from the effect's origin, and its own opacity |
 | `submit(effect, frame)` | evaluates, then draws each node's parts at its presence |
 
 ## Things to know
 
-- **A node's opacity multiplies down its subtree**: half a parent's and half its own draws a quarter, and 0 hides the
-  subtree. It reaches the shader as `FX_PRESENCE`, so a material fades only if it multiplies by it, as every engine
+- **A node's opacity is its own** (aaa-design C5, as an Unreal component's is its material's): a parent at 0 leaves its
+  children drawn. A game whose opacity passes down (CC2's) has it baked into each node at import. It reaches the shader as `FX_PRESENCE`, so a material fades only if it multiplies by it, as every engine
   shader does.
 - **A material is one slot renderer however many parts use it.** The kit holds a slot renderer per distinct material,
   on a slot of the prefab's own, so a prefab of hundreds of nodes and a few materials is a few draws: a look draws at

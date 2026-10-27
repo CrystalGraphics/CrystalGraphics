@@ -7,7 +7,7 @@
 //     Buffers { FX_CLIPS ("Baked clips", vec4, readonly) }
 //     ...
 //     vec4 world = FX_SEQUENCE_TO_WORLD * vec4(cg_Position, 1.0);     // CG_OBJECT_TO_WORLD on any other kind
-//     float opacity = FX_SEQUENCE_OPACITY;                             // the node's, times its ancestors'
+//     float opacity = FX_SEQUENCE_OPACITY;                             // the node's own
 //     vec2 window = vec2(FX_SEQ_SCALAR(0, _U0_LocX), FX_SEQ_SCALAR(1, _V0_LocY));   // the clip's, else the material's
 //
 // Its macros name CG_OBJECT_CUSTOM0 (w: the particle's age) and CUSTOM2 (the node's first vec4, its row's length, the
@@ -49,7 +49,7 @@ mat4 fx_sequence_matrix(vec4 r0, vec4 r1, vec4 r2) {
 // The part's model matrix: its particle's, then its node's at the particle's age.
 #define FX_SEQUENCE_TO_WORLD (CG_OBJECT_TO_WORLD * fx_sequence_matrix(FX_SEQUENCE_ROW(0), FX_SEQUENCE_ROW(1), FX_SEQUENCE_ROW(2)))
 
-// The node's opacity times its ancestors', at the particle's age.
+// The node's own opacity at the particle's age (aaa-design C5).
 #define FX_SEQUENCE_OPACITY (FX_SEQUENCE_ROW(3).x)
 
 // Material scalar i (CgVfxNodeClip.MATERIAL_SCALARS' order) at the particle's age where the clip gives it, else `own`:

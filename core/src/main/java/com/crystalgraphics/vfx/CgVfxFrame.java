@@ -391,7 +391,7 @@ public final class CgVfxFrame {
 
     /**
      * {@link #mesh(CgVfxEffect, CgVfxSlot, float, float, float, Matrix4fc, float, float, float, float)} at {@code presence}
-     * of the effect's own: what {@code FX_PRESENCE} reads is their product, so a prefab node fades with its subtree.
+     * of the effect's own: what {@code FX_PRESENCE} reads is their product, so a prefab node fades with its effect.
      */
     public void mesh(CgVfxEffect<?> effect, CgVfxSlot slot, float x, float y, float z, Matrix4fc transform,
                      float presence, float ex, float ey, float ez, float ew) {

@@ -17,7 +17,7 @@ import java.util.Arrays;
  * private final int ball01 = CORE.node("ball01");
  *
  * @Override protected void tick(float dt) {
- *     core.opacity(ball01, 1f - age);                  // fades ball01 and everything under it
+ *     core.opacity(ball01, 1f - age);                  // fades ball01's parts; its children keep their own
  * }
  *
  * @Override protected void submit(CgVfxFrame frame) {
@@ -86,13 +86,17 @@ public final class CgVfxPrefabInstance {
         return this;
     }
 
-    /** {@code node}'s own opacity, 0 to 1: it and its subtree draw at it times their ancestors'. */
+    /**
+     * {@code node}'s own opacity, 0 to 1, which its parts draw at: never its children's, as an Unreal component's
+     * opacity is its own material's (aaa-design C5). A game whose opacity passes down bakes it at import (blueprint 06
+     * §3.7, G0.12).
+     */
     public CgVfxPrefabInstance opacity(int node, float a) {
         opacity[node] = a;
         return this;
     }
 
-    /** {@code node}'s own opacity as it stands, before its ancestors'. */
+    /** {@code node}'s own opacity as it stands. */
     public float opacity(int node) {
         return opacity[node];
     }
@@ -112,14 +116,14 @@ public final class CgVfxPrefabInstance {
         System.arraycopy(prefab.restOpacity(), 0, opacity, 0, opacity.length);
     }
 
-    /** Each node's matrix and presence from its parent's, parents first. */
+    /** Each node's matrix from its parent's, parents first, and its presence: its own opacity. */
     public void evaluate() {
         for (int i = 0, o = 0; i < world.length; i++, o += CgVfxPrefab.REST) {
             node.translationRotateScale(local[o], local[o + 1], local[o + 2], local[o + 3], local[o + 4], local[o + 5],
                     local[o + 6], local[o + 7], local[o + 8], local[o + 9]);
             int p = prefab.parent(i);
             (p < 0 ? place : world[p]).mul(node, world[i]);
-            presence[i] = p < 0 ? opacity[i] : opacity[i] * presence[p];
+            presence[i] = opacity[i];
         }
     }
 
@@ -128,7 +132,7 @@ public final class CgVfxPrefabInstance {
         return world[node];
     }
 
-    /** {@code node}'s opacity times its ancestors', as of the last {@link #evaluate}. */
+    /** {@code node}'s opacity as of the last {@link #evaluate}: what its parts draw at. */
     public float presence(int node) {
         return presence[node];
     }

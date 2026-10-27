@@ -208,7 +208,7 @@ public final class CgVfxNodeClip {
         return out.scale(sx, sy, sz);
     }
 
-    /** {@code node}'s own opacity at {@code frame}, before its ancestors'. */
+    /** {@code node}'s own opacity at {@code frame}, which its parts draw at. */
     public float opacity(int node, float frame) {
         return or(node, Channel.OPACITY, frame, prefab.opacity(node));
     }

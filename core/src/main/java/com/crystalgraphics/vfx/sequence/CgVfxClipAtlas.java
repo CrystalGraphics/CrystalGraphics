@@ -23,7 +23,7 @@ import java.util.Map;
 /**
  * Every clip particles play, baked into one buffer of vec4s the Step and the node renderer read ({@code FX_CLIPS}):
  * per baked node, {@link #ROWS} rows of {@code frames + 1} vec4s, a vec4 a frame. Rows 0 to 2 are the node's matrix
- * from the clip's root (a 3x4, row by row), row 3 its opacity times its ancestors' and the material slots the clip
+ * from the clip's root (a 3x4, row by row), row 3 its own opacity (aaa-design C5) and the material slots the clip
  * gives it ({@link CgVfxNodeClip#keys}), rows 4 to 7 its sixteen material scalars. A clip is baked once, the first time
  * it is asked, and kept for the run: emitters' rows name it by place. Any thread bakes; the render thread uploads. The
  * buffer is made, or grown, by the bake, so {@link #buffer()} holds a clip's rows from its bake on, filled by the next
@@ -180,7 +180,7 @@ public final class CgVfxClipAtlas {
 
         Matrix4f[] world = new Matrix4f[nodes];
         for (int i = 0; i < nodes; i++) world[i] = new Matrix4f();
-        float[] presence = new float[nodes], rest = new float[10];
+        float[] rest = new float[10];
         Matrix4f local = new Matrix4f();
         Vector3f euler = new Vector3f(), column = new Vector3f();
         Quaternionf turn = new Quaternionf();
@@ -191,15 +191,13 @@ public final class CgVfxClipAtlas {
                 int p = prefab.parent(i);
                 if (p < 0) world[i].set(local);
                 else world[p].mul(local, world[i]);
-                float a = clip.opacity(i, f);
-                presence[i] = p < 0 ? a : a * presence[p];
                 if (base[i] < 0) continue;
                 Matrix4f m = world[i];
                 int at = base[i] * 4 + f * 4;
                 put(at, m.m00(), m.m10(), m.m20(), m.m30());
                 put(at + rowLength * 4, m.m01(), m.m11(), m.m21(), m.m31());
                 put(at + rowLength * 8, m.m02(), m.m12(), m.m22(), m.m32());
-                put(at + rowLength * 4 * OPACITY_ROW, presence[i], clip.keys(i), 0f, 0f);
+                put(at + rowLength * 4 * OPACITY_ROW, clip.opacity(i, f), clip.keys(i), 0f, 0f);
                 for (int r = 0; r < 4; r++) {
                     int slot = r * 4;
                     put(at + rowLength * 4 * (SCALAR_ROW + r), clip.material(i, slot, f), clip.material(i, slot + 1, f),
@@ -224,7 +222,7 @@ public final class CgVfxClipAtlas {
     private static int stepMask(CgVfxNodeClip clip, int node, int[] masks) {
         int mask = 0;
         int p = clip.prefab().parent(node);
-        if (p >= 0) mask = masks[p] & (0b111 | 1 << OPACITY_ROW);
+        if (p >= 0) mask = masks[p] & 0b111;   // a parent's matrix steps its children's; its opacity is its own
         for (CgVfxNodeClip.Channel c : CgVfxNodeClip.Channel.values()) {
             if (!clip.stepped(node, c.ordinal())) continue;
             mask |= c == CgVfxNodeClip.Channel.OPACITY ? 1 << OPACITY_ROW : 0b111;

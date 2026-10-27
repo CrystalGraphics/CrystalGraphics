@@ -58,7 +58,7 @@ public class CgVfxNodeClipTest {
     }
 
     @Test
-    public void theBakeComposesDownTheTreeAndBakesOnlyWhatDrawsOrSpawns() {
+    public void theBakeComposesTransformsDownTheTreeAndBakesOnlyWhatDrawsOrSpawns() {
         CgVfxPrefab prefab = chain();
         CgVfxNodeClip clip = CgVfxNodeClip.of(prefab, 30)
                 .channel("arm", Channel.ROTATION_Y, Interp.LINEAR, 0, 0f, 30, 90f)
@@ -78,7 +78,7 @@ public class CgVfxNodeClipTest {
         assertTranslation(s, tip, 30, 1f, 3f, -2f);
         assertTranslation(s, hand, 0, 2f, 2f, 0f);
         float opacity = CgVfxClipAtlas.read(s.base(hand) + CgVfxClipAtlas.OPACITY_ROW * s.rowLength() + 30, 0);
-        assertEquals(0.25f, opacity, 1e-6f);                       // its 0.5 times arm's rest 0.5
+        assertEquals(0.5f, opacity, 1e-6f);                        // its own, not times arm's rest 0.5 (C5)
         assertEquals(0, s.stepMask(hand));
     }
 

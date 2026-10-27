@@ -27,7 +27,7 @@ public class CgVfxPrefabTest {
     }
 
     @Test
-    public void childrenComposeWithTheirParentsAndOpacityMultipliesDown() {
+    public void childrenComposeWithTheirParentsAndKeepTheirOwnOpacity() {
         CgVfxPrefab prefab = chain();
         CgVfxPrefabInstance instance = new CgVfxPrefabInstance(prefab);
         instance.evaluate();
@@ -38,13 +38,14 @@ public class CgVfxPrefabTest {
         assertEquals(1f, at.x, 1e-5f);
         assertEquals(2f, at.y, 1e-5f);
         assertEquals(-2f, at.z, 1e-5f);
-        assertEquals(0.25f, instance.presence(hand), 1e-6f);
+        assertEquals("its own, not times arm's 0.5", 0.5f, instance.presence(hand), 1e-6f);
 
         instance.opacity(prefab.node("root"), 0f).evaluate();
-        assertEquals("a parent's opacity fades its subtree", 0f, instance.presence(hand), 0f);
-        instance.reset();
+        assertEquals("a parent at 0 leaves its child visible (C5)", 0.5f, instance.presence(hand), 0f);
+        assertEquals(0f, instance.presence(prefab.node("root")), 0f);
+        instance.opacity(hand, 0.1f).reset();
         instance.evaluate();
-        assertEquals(0.25f, instance.presence(hand), 1e-6f);
+        assertEquals(0.5f, instance.presence(hand), 1e-6f);
     }
 
     @Test
