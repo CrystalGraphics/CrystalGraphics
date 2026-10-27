@@ -137,7 +137,7 @@ referencing the token is parsed. Registering a duplicate token throws.
 
 **Generated GLSL** (`registerGenerated`, `globals`): a provider may carry GLSL made at each compile, appended after
 its env file, and a parse naming the token records its `generatedPath()` as read, so `CgAssetReloader.changed` on that
-path recompiles every shader using it. Such a buffer is **bound per draw** (`perDraw`): `CgMaterial.captureBindings`
+path recompiles every shader using it. Such a buffer, and `rows`, is **bound per draw** (`perDraw`): `CgMaterial.captureBindings`
 puts it in each snapshot from the parse. The other engine buffers are their executors', and on the SSBO path a FRAME
 upload re-binds its own; but a texture buffer is not re-bound by an upload, and a draw captured before its material's
 first compile has no attached buffers yet, so a buffer nothing else binds would read unit 0's nothing in that frame.
