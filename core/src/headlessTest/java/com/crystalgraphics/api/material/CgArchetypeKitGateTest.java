@@ -134,4 +134,27 @@ public class CgArchetypeKitGateTest {
         assertEquals(unnamed.size() > 0 ? unnamed.subList(0, Math.min(20, unnamed.size())).toString() : "", 0,
                 unnamed.size());
     }
+
+    /**
+     * Every material a list names compiles, none excused: a move's closure, under {@code -PkitMaterials=<file>}, one id
+     * a line. Skipped without.
+     */
+    @Test
+    public void everyListedMaterialCompiles() throws IOException {
+        String list = System.getProperty("crystalgraphics.kits.materials");
+        Assume.assumeTrue("no -PkitMaterials: the listed-material gate did not run", list != null && !list.isBlank());
+        List<String> ids = Files.readAllLines(Paths.get(list), StandardCharsets.UTF_8).stream()
+                .map(String::trim).filter(s -> !s.isEmpty()).toList();
+        List<String> failed = new ArrayList<>();
+        for (String id : ids) {
+            try {
+                CgMaterialDefinitions.compile(resolve(id), CgMaterialArchetypes.FILES);
+            } catch (RuntimeException | IOException e) {
+                failed.add(id + ": " + e.getMessage());
+            }
+        }
+        System.out.println("[listed gate] " + ids.size() + " materials: " + (ids.size() - failed.size()) + " compiled");
+        assertTrue("an empty list: " + list, !ids.isEmpty());
+        assertTrue(failed.size() + " of " + ids.size() + " failed:\n" + String.join("\n", failed), failed.isEmpty());
+    }
 }

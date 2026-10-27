@@ -176,6 +176,8 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
     providers.gradleProperty("kitRoots").orNull?.let { systemProperty("crystalgraphics.resourceOverrideDirs", it) }
     // The kits' shading models, registered before their materials compile: -PkitShading=<namespace>=<kit dir>;...
     providers.gradleProperty("kitShading").orNull?.let { systemProperty("crystalgraphics.kits.shading", it) }
+    // A move's materials, every one required to compile: -PkitMaterials=<file of ids, one a line>
+    providers.gradleProperty("kitMaterials").orNull?.let { systemProperty("crystalgraphics.kits.materials", it) }
 }
 
 tasks.named("check") { dependsOn(headlessTestTask) }
