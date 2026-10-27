@@ -325,7 +325,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.world.lightsDayFade` | 0.0 to 1.0 | `0.1` | A light's strength under a full day's open sky, where an eye adapted to the sun sees it faint; full at night and where no sky reaches. 1 never fades. |
 | `crystalgraphics.world.lightsDownsample` | 0.0 to 2.0 | `2.0` | Unreal's r.MegaLights.DownsampleMode: 0 traces every pixel, 1 every other (2x1), 2 a quarter (2x2), Unreal's default. In the lights demo at 2560x1440 in game the sample pass took 1.9 ms at 0, 0.65 at 2. |
 | `crystalgraphics.world.lightsEntityTiles` | true, false | `true` | A shadow ray tests only the entities its 16x16 tile can meet; off, every tile keeps every entity. |
-| `crystalgraphics.world.lightsHalf` | true, false | `true` | The shadowed lights' shading, history and filter at half resolution, upsampled by depth; off shades every pixel. |
 | `crystalgraphics.world.lightsHzb` | true, false | `false` | The light grid skips cells behind the scene and pulls each cell's far edge in to it. |
 | `crystalgraphics.world.lightsMeshShadows` | true, false | `true` | Our meshes withhold the lights through their distance fields; off, only blocks, entities and the screen do. |
 | `crystalgraphics.world.lightsMinScreenRadius` | 0.0 to 1.0 | `0.03` | A light whose bounding sphere is smaller than this share of the screen is not drawn; 0 keeps all. |
@@ -333,6 +332,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.world.lightsSamplesPerPixel` | 1 to 4 | `1` | Unreal's r.MegaLights.NumSamplesPerPixel: 1, 2 or 4 shadow rays a pixel (or a downsampled one). Unreal's 4 fall on a 2x2 downsampled pixel, a ray a screen pixel; 1 at full resolution is the same budget. |
 | `crystalgraphics.world.lightsScreenSteps` | 4 to 64 | `24` | Steps a shadow ray takes across the screen's depth. |
 | `crystalgraphics.world.lightsScreenTrace` | 0.0 to 64.0 | `1.0` | Blocks a shadow ray is followed across the screen's depth before the world trace takes over: Unreal's r.MegaLights.ScreenTraces.MaxDistance, 100 cm. |
+| `crystalgraphics.world.lightsShadeScale` | 1 to 4 | `2` | Target pixels each way one texel of the shadowed lights' shading, history and filter stands for: 1 full, 2 half, 4 quarter resolution (3 reads as 2), upsampled by depth. |
 | `crystalgraphics.world.lightsShadowFrames` | 1.0 to 32.0 | `12.0` | Frames the shadowed lighting accumulates over: fewer ghost less and shimmer more. |
 | `crystalgraphics.world.lightsShadowSpatial` | 0.0 to 32.0 | `8.0` | Pixels the shadowed lighting is filtered across where it is still noisy; 0 for none. |
 | `crystalgraphics.world.lightsShadows` | true, false | `true` | Lights that cast shadows are withheld by the blocks and entities between them and a surface. |
