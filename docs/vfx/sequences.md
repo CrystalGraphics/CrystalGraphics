@@ -140,6 +140,46 @@ sequencer.register(new CgSequenceEvaluator() {
 });
 ```
 
+## Notifies of your own
+
+A notify marks a moment or a span on a move's timeline that does something only your mod knows (Unreal's `AnimNotify`
+and `AnimNotifyState`). Register its kind once at init, its properties declared as data:
+
+```java
+static final CgType GLOW = CgTypes.global().declare("mymod:notify.glow", CgTypeKind.STRUCT)
+        .property("strength", CgValueType.FLOAT).required().register();
+
+CgNotifyKind.builder("mymod:glow").properties(GLOW).writes("tint")
+        .behaviour(new CgNotifyKind.Behaviour() {
+            @Override public void begin(CgNotifyContext c) {
+                float k = ((Number) c.properties().get("strength")).floatValue();
+                c.set(0, new float[] {k, k, k, 1}, 0b1111);      // "tint", held while the span lasts
+            }
+            @Override public void end(CgNotifyContext c) { }    // its tint is restored for it
+        })
+        .register();
+```
+
+```yaml
+- id: t9
+  kind: notify
+  binding: { role: caster }
+  sections:
+    - { id: n1, range: [6000, 30000], kind: "mymod:glow", properties: { strength: 2 } }   # a span: begin, tick, end
+    - { id: n2, at: 42000, kind: "mymod:puff", chance: 0.5 }                              # a trigger: notify, once
+```
+
+- **A span** begins as time enters it, ticks each frame inside, and ends as time leaves it, forwards, backwards or by
+  a jump. What it `set` on its kind's declared slots is restored as it ends, whether by playing past, a stop or a
+  seek back before it.
+- **A trigger** (`at`) fires once as play crosses its tick; a jump over it fires nothing.
+- **`chance`** draws from the player's seed, so every viewer of one play agrees; a span ignores it, as Unreal's
+  notify states do. **`filter: { significance }`** fires only where the sequencer's tier is at least that.
+- **Queued by default**: called after the frame's blend. **`branching_point: true`** calls it inside the evaluation.
+- **On the client only**: a dedicated server's sequencer runs no behaviour. Gameplay's moments are `event` sections of
+  side `rpg`.
+- **A kind no one registered fails at load**, naming the section; so do properties its type does not accept.
+
 # A clip on every particle
 
 A particle may play a clip: a prefab ([`prefabs.md`](prefabs.md)) whose nodes move, fade and change their material's

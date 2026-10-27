@@ -78,7 +78,7 @@ public record CgSequenceTrack(String id, int index, String kind, CgSequenceBindi
     public static Population populationOf(String kind) {
         return switch (kind) {
             case "material", "subsequence" -> Population.BLENDED;
-            case "system" -> Population.WHOLE_TRACK;
+            case "system", "notify" -> Population.WHOLE_TRACK;
             default -> Population.HIGH_PASS_PER_ROW;
         };
     }

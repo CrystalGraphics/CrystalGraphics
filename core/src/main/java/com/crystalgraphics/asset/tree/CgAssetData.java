@@ -196,6 +196,20 @@ public final class CgAssetData {
     }
 
     /**
+     * {@code tree} checked against the struct {@code type}, as an asset's values are: keys, required, shapes, forms and
+     * its validators. For values a kind holds by another type's declaration, a notify kind's properties.
+     *
+     * <pre>{@code
+     * CgValidation v = CgAssetData.validate("mymod:jab tracks.t1.sections.s1.properties", GLOW, properties, CgValidation.Usecase.LOAD);
+     * }</pre>
+     */
+    public static CgValidation validate(String path, CgType type, Map<?, ?> tree, CgValidation.Usecase usecase) {
+        CgValidation into = new CgValidation(usecase);
+        CgAssetValidation.run(path, type, tree, into);
+        return into;
+    }
+
+    /**
      * Checks the resolved asset: its declarations and its types' validators first (Unreal's {@code IsDataValid}), then,
      * only if those found no error, every registered {@link CgAssetValidator} that takes it. A child's issues include
      * what it inherits: an asset is valid only whole.

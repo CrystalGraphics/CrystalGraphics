@@ -44,9 +44,12 @@ public final class CgSequencer extends CgWorldSubsystem {
     private CgTickFunction tick;
     @Nullable
     private CgSequenceTarget environment;
+    /** The viewer's significance tier, low (0) to ultra (3): what a notify's {@code filter} reads. */
+    private int significance = 3;
 
     public CgSequencer() {
         for (String kind : CgSequenceStateEvaluator.KINDS) evaluators.add(new CgSequenceStateEvaluator(kind, blender));
+        evaluators.add(new CgNotifyEvaluator(this, blender));
     }
 
     @Override
@@ -87,6 +90,21 @@ public final class CgSequencer extends CgWorldSubsystem {
         evaluators.add(evaluator);
     }
 
+    /** The viewer's significance tier, 0 (low) to 3 (ultra): a notify filtered above it does not fire. */
+    public int significance() {
+        return significance;
+    }
+
+    public CgSequencer significance(int tier) {
+        this.significance = tier;
+        return this;
+    }
+
+    /** Whether its world is a dedicated server's, where presentation (a notify's behaviour) never runs. */
+    boolean server() {
+        return world() != null && world().server();
+    }
+
     /** The players now playing, in the order they started. */
     public List<CgSequencePlayer> players() {
         return players;
@@ -94,7 +112,11 @@ public final class CgSequencer extends CgWorldSubsystem {
 
     /** One frame: every player advanced {@code dt} seconds, then each kind evaluated over all of them. */
     public void evaluate(float dt) {
-        for (int i = players.size() - 1; i >= 0; i--) if (players.get(i).stopped()) players.remove(i);
+        for (int i = players.size() - 1; i >= 0; i--) {
+            if (!players.get(i).stopped()) continue;
+            for (CgSequenceEvaluator e : evaluators) e.stopped(players.get(i));
+            players.remove(i);
+        }
         for (int i = 0; i < players.size(); i++) {
             CgSequencePlayer p = players.get(i);
             p.advance(dt);
@@ -104,6 +126,7 @@ public final class CgSequencer extends CgWorldSubsystem {
             for (int i = 0; i < players.size(); i++) players.get(i).evaluate(this, e);
         }
         blender.apply();
+        for (int e = 0; e < evaluators.size(); e++) evaluators.get(e).postEvaluation();
     }
 
     int evaluatorIndex(String kind) {

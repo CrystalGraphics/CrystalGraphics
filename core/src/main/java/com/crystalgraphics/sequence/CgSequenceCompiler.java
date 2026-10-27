@@ -222,6 +222,7 @@ final class CgSequenceCompiler {
         for (Object o : t.get("sections") instanceof List<?> l ? l : List.of()) {
             Map<?, ?> s = (Map<?, ?>) o;
             CgSequenceSection section = section(kind, sectionType, s, sections.size(), path + ".sections." + s.get("id"));
+            if (kind.equals("notify")) notifyKind(section, path + ".sections." + section.id());
             if (section.condition() != null && kind.equals("event") && "rpg".equals(side)) {
                 throw fail(path + ".sections." + section.id() + ".condition", "an rpg event plays on the server, which"
                         + " never reads a condition: its section may not hold one");
@@ -328,6 +329,21 @@ final class CgSequenceCompiler {
             sections.set(i, new CgSequenceSection(cur.id(), cur.index(), cur.from(), cur.to(), cur.trigger(), cur.condition(),
                     cur.row(), cur.overlapPriority(), cur.blend(), new CgSequenceSection.Ease(in, out, e.inFunction(), e.outFunction(), true),
                     cur.completion(), cur.preRoll(), cur.postRoll(), cur.active(), cur.channels(), cur.fields()));
+        }
+    }
+
+    /** A notify section's kind is registered, and its properties are that kind's, checked as an asset's values are. */
+    private void notifyKind(CgSequenceSection s, String path) {
+        CgNotifyKind kind = CgNotifyKind.get(String.valueOf(s.fields().get("kind")));
+        if (kind == null) throw fail(path + ".kind", "no notify kind " + s.fields().get("kind") + " is registered");
+        Map<?, ?> properties = s.fields().get("properties") instanceof Map<?, ?> m ? m : Map.of();
+        if (kind.properties() == null) {
+            if (!properties.isEmpty()) throw fail(path + ".properties", kind.id() + " declares no properties");
+            return;
+        }
+        CgValidation v = CgAssetData.validate(id + " " + path + ".properties", kind.properties(), properties, CgValidation.Usecase.LOAD);
+        for (CgIssue issue : v.issues()) {
+            if (issue.severity() == CgIssue.Severity.ERROR) throw new CgAssetException(issue.path() + ": " + issue.message());
         }
     }
 

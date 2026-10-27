@@ -43,4 +43,12 @@ public interface CgSequenceEvaluator {
 
     /** Evaluates an active entry at {@code tick}. */
     void evaluate(CgSequencePlayer player, CgSequenceTrack track, @Nullable CgSequenceSection section, float tick);
+
+    /** After the frame's blend: Unreal's post-evaluation phase, where queued work runs. */
+    default void postEvaluation() {
+    }
+
+    /** {@code player} was stopped and leaves: end what it began. */
+    default void stopped(CgSequencePlayer player) {
+    }
 }

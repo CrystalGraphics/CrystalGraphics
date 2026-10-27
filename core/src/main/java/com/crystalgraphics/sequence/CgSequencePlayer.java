@@ -46,11 +46,13 @@ public final class CgSequencePlayer {
     private int activeCount, segment = -1;
     private double seconds;
     private float rate = 1f;
-    private boolean finished, stopped;
+    private long seed;
+    private boolean finished, stopped, jump;
 
     CgSequencePlayer(CgSequencer sequencer, CgSequenceDefinition definition, Map<String, ? extends CgSequenceTarget> roles) {
         this.sequencer = sequencer;
         this.definition = definition;
+        this.seed = definition.id().hashCode();
         this.position = CgSequencePlaybackPosition.of(definition);
         this.roles = new CgSequenceTarget[definition.roles().size()];
         for (int i = 0; i < this.roles.length; i++) {
@@ -98,9 +100,30 @@ public final class CgSequencePlayer {
         return this;
     }
 
+    /** Its seed: what a notify's chance draws from, the same for every viewer of one play. */
+    public long seed() {
+        return seed;
+    }
+
+    public CgSequencePlayer seed(long seed) {
+        this.seed = seed;
+        return this;
+    }
+
     /** Whether it has reached its range's end and holds there. */
     public boolean finished() {
         return finished;
+    }
+
+    /**
+     * Jumps to {@code seconds} at the next evaluation: Unreal's {@code JumpToFrame}. What it lands on is evaluated, what
+     * it skips over fires nothing, and sections it left end, restoring what they set.
+     */
+    public CgSequencePlayer jumpTo(double seconds) {
+        this.seconds = seconds;
+        this.jump = true;
+        this.finished = false;
+        return this;
     }
 
     /** Takes it out of its sequencer at the next evaluation. */
@@ -190,6 +213,10 @@ public final class CgSequencePlayer {
 
     /** Advance: its range from its last time to {@code dt} seconds on. */
     CgSequenceEvaluationRange advance(float dt) {
+        if (jump) {
+            jump = false;
+            return position.jumpToSeconds(seconds);
+        }
         seconds += dt * rate;
         double length = definition.seconds(definition.end() - definition.start());
         if (seconds >= length) {
