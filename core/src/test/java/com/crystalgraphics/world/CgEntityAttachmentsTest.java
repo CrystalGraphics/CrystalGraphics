@@ -7,6 +7,7 @@ import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.world.CgModelSpace;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.junit.Test;
 
@@ -142,6 +143,36 @@ public class CgEntityAttachmentsTest {
             CgPlatform.provide(CgModelSpace.SERVICE, null);
             CgPlatform.provide(CgLevels.SERVICE, null);
         }
+    }
+
+    /** A point as an attachment over a world that draws nothing (a server's): the proportions, the body's box, its id. */
+    @Test
+    public void anAttachmentOverAServersWorldIsTheProportions() {
+        CgEntityQuery server = new OnePlayer(player(90, 0));
+        CgAttachment chest = CgEntityAttachments.of(server, 7, CgEntityAttachments.CHEST);
+        double[] at = new double[3], box = new double[6];
+        assertTrue("nothing before its first place", !chest.bounds(box) && !chest.point("crystalgraphics:eyes", at));
+
+        Quaternionf turn = new Quaternionf();
+        assertTrue(chest.place(at, turn));
+        double[] expected = CgEntityAttachments.point(CgEntityAttachments.CHEST, player(90, 0), new double[3]);
+        assertEquals(expected[0], at[0], 0);
+        assertEquals(expected[1], at[1], 0);
+        assertEquals(expected[2], at[2], 0);
+        Quaternionf body = CgEntityAttachments.rotation(CgEntityAttachments.CHEST, player(90, 0), new Quaternionf());
+        assertEquals(body.w, turn.w, 0f);
+        assertEquals(body.y, turn.y, 0f);
+
+        assertTrue(chest.point("crystalgraphics:eyes", at));
+        assertEquals("another point of the same body", 64 + 1.62, at[1], 1e-9);
+        assertTrue(chest.bounds(box));
+        assertEquals(64.9, box[1], 1e-9);
+        assertEquals(0.3, box[3], 1e-9);
+        assertEquals(0.9, box[4], 1e-9);
+        assertEquals(7, chest.entity());
+        assertTrue("an undeclared name", !chest.point("test:none", at));
+
+        assertTrue("gone", !CgEntityAttachments.of(server, 8, CgEntityAttachments.CHEST).place(at, turn));
     }
 
     private static final class OnePlayer implements CgEntityQuery {

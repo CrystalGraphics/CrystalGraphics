@@ -8,6 +8,7 @@ import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.easing.CgEasing;
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.post.volume.CgPostVolume;
@@ -98,9 +99,12 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     CgVfxAuthority authority;
     /** Its index in its owner's list; -1 out of it. */
     int ownerSlot = -1;
-    /** The entity it follows and the attachment point on it ({@code CgEntityAttachments}); -1 for none. */
+    /**
+     * An entity and point {@link #follow(int, int)} asked for, -1 for none: made an attachment over its own world's
+     * entities when it is first placed ({@link #bindFollow}), since only then is its side known.
+     */
     int followEntity = -1, followPoint;
-    /** What it rides ({@link CgAttachment}: a mesh's socket, a sequence's locator); null for none. */
+    /** What it rides ({@link CgAttachment}: an entity's point, a mesh's socket, a sequence's locator); null for none. */
     CgAttachment followAttachment;
     /** The character clock it runs on, or null for the world's; and the registry version it was looked up at. */
     private CgCharacterClock clock;
@@ -110,13 +114,10 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     /** Keeps its offset from the point ({@link #followKeepingOffset}): NaN until its first placement measures it. */
     boolean followKeep;
     double followDx = Double.NaN, followDy, followDz;
-    /** The followed entity's box this frame: its centre in the world and half extents; halves 0 while it follows none. */
+    /** The box of the body it rides this frame: its centre in the world and half extents; halves 0 while it rides none. */
     double followBoxX, followBoxY, followBoxZ;
     float followHalfX, followHalfY, followHalfZ;
-    /** The followed entity's pose this frame and the partial tick it was taken at: what its skeleton points are read from. */
-    double[] followPose;
-    float followTick;
-    /** Its emitters' skeleton points, from the entity it follows ({@link CgVfxSockets}). */
+    /** Its emitters' skeleton points, from what it rides ({@link CgVfxSockets}). */
     private final CgVfxSockets.Source sockets = this::socketPoint;
     /** How the point it follows is turned this frame; the identity while it follows nothing. */
     final Quaternionf followTurn = new Quaternionf();
@@ -324,6 +325,9 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
      * owner.play(new Aura(look, x, y, z).follow(playerId, CgEntityAttachments.CENTRE));
      * owner.play(new Spark(look, x, y, z).follow(playerId, MyMod.RIGHT_PALM));   // a point of the mod's own
      * }</pre>
+     *
+     * <p>The entity's {@link CgEntityAttachments#of} over the world it plays in, made when it is first placed: one call
+     * for code that does not hold the world, and what a cue plays on each side.</p>
      */
     public final E follow(int entity, int point) {
         followEntity = entity;
@@ -369,6 +373,28 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         followKeep = true;
         followDx = Double.NaN;
         return self();
+    }
+
+    /** As {@link #follow(CgAttachment)}, keeping its offset from the attachment as {@link #followKeepingOffset(int, int)}. */
+    public final E followKeepingOffset(CgAttachment attachment) {
+        follow(attachment);
+        followKeep = true;
+        followDx = Double.NaN;
+        return self();
+    }
+
+    /** Makes an entity {@link #follow(int, int)} asked for an attachment over {@code entities}, its world's. */
+    final void bindFollow(CgEntityQuery entities) {
+        if (followAttachment != null || followEntity < 0) return;
+        followAttachment = CgEntityAttachments.of(entities, followEntity, followPoint);
+    }
+
+    /** It rode something now gone: it rides nothing, and stops. */
+    final void lostFollow() {
+        followAttachment = null;
+        followEntity = -1;
+        followHalfX = followHalfY = followHalfZ = 0f;
+        stop();
     }
 
     /** Places it at the point it follows, now at {@code (px, py, pz)}, or at its kept offset from it. */
@@ -520,22 +546,24 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
 
     /** Resolves {@link #timeRate} for this update; true if it runs on a character's clock. */
     final boolean resolveRate(float partialTick) {
-        if (clock == null && followEntity >= 0 && clockVersion != CgCharacterClock.version()) {
+        int entity = followingId();
+        if (clock == null && entity >= 0 && clockVersion != CgCharacterClock.version()) {
             clockVersion = CgCharacterClock.version();
-            clock = CgCharacterClock.find(followEntity);
+            clock = CgCharacterClock.find(entity);
         }
         timeRate = clock == null ? 1f : clock.pace(partialTick);
         return clock != null;
     }
 
-    /** The entity it follows by network id, or -1. */
+    /** The entity it rides by network id ({@link CgAttachment#entity}), or -1. */
     public final int followingId() {
-        return followEntity;
+        return followAttachment != null ? followAttachment.entity() : followEntity;
     }
 
-    /** The host's entity it follows, cast where it is asked, found in its {@link #world()}; null for none. */
+    /** The host's entity it rides, cast where it is asked, found in its {@link #world()}; null for none. */
     public final <V> V following() {
-        return followEntity < 0 ? null : world().entities().entity(followEntity);
+        int entity = followingId();
+        return entity < 0 ? null : world().entities().entity(entity);
     }
 
     /**
@@ -1177,14 +1205,9 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         due[dueCount++] = emitter;
     }
 
-    /** Point {@code name} of the entity it follows, posed this frame; none while it follows nothing or nothing answers it. */
+    /** Point {@code name} of what it rides, posed this frame; none while it rides nothing or nothing answers it. */
     private boolean socketPoint(String name, double[] out) {
-        if (followAttachment != null) return followAttachment.point(name, out);
-        if (followEntity < 0 || followPose == null) return false;
-        int point = CgEntityAttachments.find(name);
-        if (point < 0) return false;
-        CgEntityAttachments.point(followEntity, point, followTick, followPose, out);
-        return true;
+        return followAttachment != null && followAttachment.point(name, out);
     }
 
     /** Whether {@link #tick(CgVfxEmitterInstance, float)} queued emitters this tick. */

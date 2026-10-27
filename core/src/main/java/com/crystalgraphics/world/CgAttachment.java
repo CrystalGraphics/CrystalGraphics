@@ -12,6 +12,7 @@ import org.joml.Quaternionf;
  * <pre>{@code
  * owner.play(new Flame(look, x, y, z).follow(kurama.attachment("hand_r")));   // a socket, as posed this frame
  * owner.play(new Charge(look, x, y, z).follow(player.placement(0)));          // a sequence's spawnable, at its locator
+ * owner.play(new Aura(look, x, y, z).follow(CgEntityAttachments.of(entities, id, CgEntityAttachments.CENTRE)));   // an entity's
  *
  * CgAttachment fixed = (point, turn) -> {                                      // your own
  *     point[0] = 10; point[1] = 64; point[2] = -3;
@@ -35,5 +36,18 @@ public interface CgAttachment {
     /** Its point named {@code name} (a socket, a bone) into {@code out}, absolute; false if it has none. */
     default boolean point(String name, double[] out) {
         return false;
+    }
+
+    /**
+     * The box of the body it is on, this frame, into {@code out}: centre x, y, z, then half extents x, y, z, absolute.
+     * What an effect's {@code entity()} emitters spawn in. False for one with no body.
+     */
+    default boolean bounds(double[] out) {
+        return false;
+    }
+
+    /** The host entity it is on by network id, -1 for none: what a follower's casts skip, and whose clock it takes. */
+    default int entity() {
+        return -1;
     }
 }

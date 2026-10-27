@@ -249,6 +249,14 @@ VFX.play(new HitSpark(look, hitX, hitY, hitZ).followKeepingOffset(targetId, CgEn
 
 - `follow` moves the effect to the attachment point every frame; when the entity goes, the effect stops.
   `followKeepingOffset` keeps it where it was played, riding the point.
+- **One follow for anything it rides**: an entity's point, a skinned character's socket and a sequence's locator are
+  each a `CgAttachment` (Unreal's `AttachToComponent(parent, socket)`), and `follow(attachment)` takes any of them.
+  `follow(entityId, point)` is `CgEntityAttachments.of(entities, entityId, point)` over the world it plays in:
+
+  ```java
+  VFX.play(new Flame(look, x, y, z).follow(goku.attachment("hand_r_kameha_socket_02")));   // a posed socket
+  CgAttachment hands = CgEntityAttachments.of(CgEntityQueries.client(), playerId, CgEntityAttachments.HANDS_FORWARD);
+  ```
 - **Built-in points**: `FEET`, `CENTRE`, `CHEST`, `HEAD`, `EYES`, `RIGHT_HAND`, `LEFT_HAND`, `RIGHT_HAND_FORWARD`,
   `LEFT_HAND_FORWARD`, `HANDS_FORWARD` (names `crystalgraphics:feet` and so on).
 - **What follows and what stays**: particles stay where they were spawned unless their emitter is `.local()`; what

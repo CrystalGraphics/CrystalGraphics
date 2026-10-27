@@ -364,6 +364,97 @@ public final class CgEntityAttachments {
         return set(out, -Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
     }
 
+    /**
+     * Point {@code point} of {@code entity} as a {@link CgAttachment}, posed by {@code entities}: what an effect or a
+     * hitbox follows. Over the client's world it answers as {@link #point(int, int, float, double[], double[])} does,
+     * marks first, at the frame's partial tick; over any other (a server's) from the proportions alone, at the tick's
+     * end, since a server draws no model to mark.
+     *
+     * <pre>{@code
+     * CgAttachment hands = CgEntityAttachments.of(CgEntityQueries.client(), playerId, CgEntityAttachments.HANDS_FORWARD);
+     * owner.play(new Charge(look, x, y, z).follow(hands));
+     * hands.point("mymod:right_palm", out);   // any declared point of the same entity, as posed at its last place
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Render thread over the client's world, the server's thread over a server's; allocates nothing once made.</li>
+     *   <li>{@link CgAttachment#place} is false once the entity is gone; {@code point} and {@code bounds} answer from the
+     *       pose its last {@code place} took, and false before the first.</li>
+     * </ul>
+     */
+    public static synchronized CgAttachment of(CgEntityQuery entities, int entity, int point) {
+        if (point < 0 || point >= NAMES.size()) throw new IllegalArgumentException("undeclared point " + point);
+        return new Attached(entities, entity, point);
+    }
+
+    /** One entity's point, posed by one world's entities. */
+    private static final class Attached implements CgAttachment {
+        private final CgEntityQuery entities;
+        private final int entity, point;
+        private final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
+        private float partialTick;
+        private boolean posed;
+
+        Attached(CgEntityQuery entities, int entity, int point) {
+            this.entities = entities;
+            this.entity = entity;
+            this.point = point;
+        }
+
+        /** Marks and providers are the client's drawn models: only its world's entities have them. */
+        private boolean drawn() {
+            return entities == CgEntityQueries.client();
+        }
+
+        @Override
+        public boolean place(double[] out, Quaternionf turn) {
+            boolean drawn = drawn();
+            partialTick = drawn ? CgRenderStage.WORLD_OPAQUE.host().partialTick() : 1f;
+            posed = entities.pose(entity, partialTick, pose);
+            if (!posed) return false;
+            if (drawn) {
+                CgEntityAttachments.point(entity, point, partialTick, pose, out);
+                if (turn != null) rotation(entity, point, partialTick, pose, turn);
+            } else {
+                CgEntityAttachments.point(point, pose, out);
+                if (turn != null) rotation(point, pose, turn);
+            }
+            return true;
+        }
+
+        @Override
+        public boolean point(String name, double[] out) {
+            int which = find(name);
+            if (which < 0 || !posed) return false;
+            if (drawn()) CgEntityAttachments.point(entity, which, partialTick, pose, out);
+            else CgEntityAttachments.point(which, pose, out);
+            return true;
+        }
+
+        @Override
+        public boolean bounds(double[] out) {
+            if (!posed) return false;
+            double half = pose[CgEntityQuery.HEIGHT] * 0.5, width = pose[CgEntityQuery.WIDTH] * 0.5;
+            out[0] = pose[CgEntityQuery.X];
+            out[1] = pose[CgEntityQuery.Y] + half;
+            out[2] = pose[CgEntityQuery.Z];
+            out[3] = width;
+            out[4] = half;
+            out[5] = width;
+            return true;
+        }
+
+        @Override
+        public int entity() {
+            return entity;
+        }
+
+        @Override
+        public String toString() {
+            return "entity " + entity + " at " + name(point);
+        }
+    }
+
     private static long key(int entity, int point) {
         return ((long) entity << 32) | (point & 0xFFFFFFFFL);
     }

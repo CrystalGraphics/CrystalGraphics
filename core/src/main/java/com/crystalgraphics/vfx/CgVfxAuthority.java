@@ -2,10 +2,11 @@ package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.easing.CgEasing;
-import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.vfx.look.CgVfxEnding;
 import com.crystalgraphics.vfx.look.CgVfxParam;
+import com.crystalgraphics.world.CgAttachment;
 import com.crystalgraphics.world.CgEntityAttachments;
+import org.joml.Quaternionf;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -31,8 +32,8 @@ import java.util.function.Consumer;
  *
  * <ul>
  *   <li>One thread: the server's. The effect is never also played into a system.</li>
- *   <li>A followed effect is placed each advance at its attachment point's proportions
- *       ({@link CgEntityAttachments#point(int, double[], double[])}): a server has no model to mark the point.</li>
+ *   <li>A followed effect is placed each advance by its attachment over the server's world: an entity's point from its
+ *       proportions ({@link CgEntityAttachments#of}), since a server has no model to mark the point.</li>
  * </ul>
  */
 public final class CgVfxAuthority {
@@ -43,7 +44,8 @@ public final class CgVfxAuthority {
     /** What its effect's hitboxes and queries test ({@link CgVfxEffect#world}). */
     final CgCollisionWorld world;
     private final CgVfxEffect<?> effect;
-    private final double[] pose = new double[CgEntityQuery.POSE_LENGTH], point = new double[3];
+    private final double[] point = new double[3];
+    private final Quaternionf turn = new Quaternionf();
     private float pending;
     private boolean started;
     /** The numbers and colours set on the effect since {@link #drainSet} last ran. */
@@ -163,13 +165,14 @@ public final class CgVfxAuthority {
     }
 
     private void follow() {
-        if (effect.followEntity < 0) return;
-        if (!world.entities().pose(effect.followEntity, 1f, pose)) {
-            effect.followEntity = -1;
-            effect.stop();
+        effect.bindFollow(world.entities());
+        CgAttachment attachment = effect.followAttachment;
+        if (attachment == null) return;
+        if (!attachment.place(point, turn)) {
+            effect.lostFollow();
             return;
         }
-        CgEntityAttachments.point(effect.followPoint, pose, point);
         effect.moveToFollowed(point[0], point[1], point[2]);
+        effect.turnToFollowed(turn);
     }
 }

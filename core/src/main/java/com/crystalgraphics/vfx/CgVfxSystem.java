@@ -15,7 +15,6 @@ import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import java.util.concurrent.CompletableFuture;
-import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.render.graph.CgRehearsal;
@@ -52,7 +51,6 @@ import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 import com.crystalgraphics.vfx.system.CgVfxSystemInstancePool;
 import com.crystalgraphics.render.world.CgWorldVoxelWindow;
 import com.crystalgraphics.world.CgAttachment;
-import com.crystalgraphics.world.CgEntityAttachments;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgWorldQueries;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
@@ -249,7 +247,7 @@ public final class CgVfxSystem {
 
     /** The owners whose effects it has played, for their counters. */
     private final List<CgVfxOwner> owners = new ArrayList<>();
-    private final double[] pose = new double[CgEntityQuery.POSE_LENGTH], point = new double[3];
+    private final double[] point = new double[3], box = new double[6];
     private final Quaternionf turn = new Quaternionf();
     /** The world whose time dilation scales every effect's time; null for a system that runs on real pace alone. */
     private CgWorld world;
@@ -623,49 +621,30 @@ public final class CgVfxSystem {
     }
 
     /**
-     * Moves each effect following an entity to the entity's attachment point as drawn this frame; stops one whose entity
-     * is gone, where it was last.
+     * Places each effect on what it rides as it stands this frame (an entity's point as drawn, a mesh's socket as posed,
+     * a sequence's locator); stops one whose attachment is gone, where it was last.
      */
     private void follow() {
-        CgEntityQuery entities = null;
-        float partialTick = 0f;
         for (int i = 0; i < effects.size(); i++) {
             CgVfxEffect<?> effect = effects.get(i);
             if (effect.state() == CgVfxEffect.State.DEAD) continue;
+            effect.bindFollow(CgEntityQueries.client());
             CgAttachment attachment = effect.followAttachment;
-            if (attachment != null) {
-                // What moves it (a mesh posed in POSE, a sequence in SEQUENCES) has run this frame, before EFFECTS.
-                if (attachment.place(point, turn)) {
-                    effect.moveToFollowed(point[0], point[1], point[2]);
-                    effect.turnToFollowed(turn);
-                } else {
-                    effect.followAttachment = null;
-                    effect.stop();
-                }
+            if (attachment == null) continue;
+            // What moves it (a mesh posed in POSE, a sequence in SEQUENCES) has run this frame, before EFFECTS.
+            if (!attachment.place(point, turn)) {
+                effect.lostFollow();
                 continue;
             }
-            if (effect.followEntity < 0) continue;
-            if (entities == null) {
-                entities = CgEntityQueries.client();
-                partialTick = CgRenderStage.WORLD_OPAQUE.host().partialTick();
-            }
-            if (entities.pose(effect.followEntity, partialTick, pose)) {
-                CgEntityAttachments.point(effect.followEntity, effect.followPoint, partialTick, pose, point);
-                effect.moveToFollowed(point[0], point[1], point[2]);
-                effect.turnToFollowed(CgEntityAttachments.rotation(effect.followEntity, effect.followPoint, partialTick, pose, turn));
-                double half = pose[CgEntityQuery.HEIGHT] * 0.5;
-                effect.followBoxX = pose[CgEntityQuery.X];
-                effect.followBoxY = pose[CgEntityQuery.Y] + half;
-                effect.followBoxZ = pose[CgEntityQuery.Z];
-                effect.followHalfX = effect.followHalfZ = (float) (pose[CgEntityQuery.WIDTH] * 0.5);
-                effect.followHalfY = (float) half;
-                if (effect.followPose == null) effect.followPose = new double[CgEntityQuery.POSE_LENGTH];
-                System.arraycopy(pose, 0, effect.followPose, 0, CgEntityQuery.POSE_LENGTH);
-                effect.followTick = partialTick;
-            } else {
-                effect.followEntity = -1;
-                effect.followHalfX = effect.followHalfY = effect.followHalfZ = 0f;
-                effect.stop();
+            effect.moveToFollowed(point[0], point[1], point[2]);
+            effect.turnToFollowed(turn);
+            if (attachment.bounds(box)) {
+                effect.followBoxX = box[0];
+                effect.followBoxY = box[1];
+                effect.followBoxZ = box[2];
+                effect.followHalfX = (float) box[3];
+                effect.followHalfY = (float) box[4];
+                effect.followHalfZ = (float) box[5];
             }
         }
     }
@@ -720,7 +699,7 @@ public final class CgVfxSystem {
         if (!far && usage < s.cullUsage()) return;
         // The local player's own are kept, as the scalability pass keeps them.
         int local = CgEntityQueries.client().localPlayer();
-        if (local >= 0 && effect.followEntity == local) return;
+        if (local >= 0 && effect.followingId() == local) return;
         CgVfxTrace.count(CULLED, 1);
         if (s.reaction() == CgVfxScalability.Reaction.SLEEP) {
             effect.asleep = true;
