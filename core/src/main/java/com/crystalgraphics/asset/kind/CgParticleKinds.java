@@ -76,6 +76,9 @@ public final class CgParticleKinds {
             .property("simulation", CgValueType.enumOf("gpu", "analytic")).defaultValue("gpu").flags(CgPropertyFlag.STRUCTURAL)
             .property("bounds", CgValueType.oneOf(CgValueType.enumOf("dynamic"), CgValueType.struct(FIXED_BOUNDS))).defaultValue("dynamic")
             .property("interpolated_spawn", BOOL)
+            // Cascade's bUseLegacySpawningBehavior and bUseLegacyEmitterTime; absent, Niagara's spawning and LoopedAge
+            .property("legacy_spawning", BOOL).defaultValue(false).flags(CgPropertyFlag.STRUCTURAL)
+            .property("legacy_emitter_time", BOOL).defaultValue(false).flags(CgPropertyFlag.STRUCTURAL)
             .property("determinism", CgValueType.struct(DETERMINISM))
             .property("quality", CgValueType.listOf(TIER)).flags(CgPropertyFlag.STRUCTURAL)
             // UNiagaraEmitter::ScalabilityOverrides: an entry whose tiers hold replaces the effect type's; the last wins
@@ -311,14 +314,16 @@ public final class CgParticleKinds {
                 .property("quality", TIER)
                 .property("sort_order_hint", INT)
                 .property("motion_vectors", BOOL)
-                .property("material", CgValueType.oneOf(hard("material"), VALUE)).flags(CgPropertyFlag.STRUCTURAL)
-                .property("bind", mapOfValues())
-                .property("values", mapOfValues())
-                .property("keywords", CgValueType.listOf(STRING)).flags(CgPropertyFlag.STRUCTURAL)
                 // Unreal's GetDynamicParameter by vertex factory: first is Cascade's, every index reading the first.
                 .property("dynamic_parameter_index", CgValueType.enumOf("by_index", "first")).defaultValue("by_index")
                         .flags(CgPropertyFlag.STRUCTURAL)
-                .property("macro_uv", CgValueType.struct(MACRO_UV));
+                .property("macro_uv", CgValueType.struct(MACRO_UV))
+                // Cascade's MaxDrawCount: the first N in draw order are drawn, all simulated
+                .property("max_draw_count", INT).range(0, null)
+                .property("material", CgValueType.oneOf(hard("material"), VALUE)).flags(CgPropertyFlag.STRUCTURAL)
+                .property("bind", mapOfValues())
+                .property("values", mapOfValues())
+                .property("keywords", CgValueType.listOf(STRING)).flags(CgPropertyFlag.STRUCTURAL);
         return b.onRegister(t -> RENDERERS.member(kind, t));
     }
 
