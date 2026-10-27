@@ -84,6 +84,8 @@ public final class CgCameraKinds {
             .property("x", STRING)
             .property("y", STRING)
             .property("enabled", BOOL).defaultValue(true)
+            .property("vector", STRING)   // one vector parameter whose xy take the point, rather than x and y
+            .property("clamp", BOOL)      // held inside the viewport
             .register();
 
     static final CgType POST_MATERIAL = CgTypes.struct("crystalgraphics:post.material")

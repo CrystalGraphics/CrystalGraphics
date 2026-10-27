@@ -157,10 +157,15 @@ public final class CgSequenceKinds {
             .property("colour", CgValueType.COLOUR)
             .property("intensity", FLOAT)
             .property("radius", FLOAT).quantity(CgQuantity.LENGTH)
+            .property("inner_radius", FLOAT).quantity(CgQuantity.LENGTH)
+            .property("falloff", VALUE)   // inverse_square (Unreal's bUseInverseSquaredFalloff) or linear (NUCC's)
             .property("cone", FLOAT).quantity(CgQuantity.ANGLE)
             .property("cubemap", CgValueType.binaryRef("textures"))   // a sky's alone; without one, one colour: colour × intensity
             .property("cast_shadows", BOOL)
             .property("shadow_colour", CgValueType.COLOUR)
+            .property("shadow_wrap", FLOAT)
+            .property("shadow_distance", FLOAT).quantity(CgQuantity.LENGTH)
+            .property("shadow_fade_fraction", FLOAT)
             .register();
 
     static final CgType DECAL = CgTypes.struct("crystalgraphics:sequence.decal")

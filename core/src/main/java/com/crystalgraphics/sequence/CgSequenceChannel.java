@@ -47,8 +47,11 @@ public final class CgSequenceChannel {
         PARTICLE
     }
 
-    /** A {@code particle} key: Unreal's {@code EParticleKey} ({@code FMovieSceneParticleChannel}), and a kill. */
-    public enum Particle { ACTIVATE, DEACTIVATE, TRIGGER, KILL }
+    /**
+     * A {@code particle} key: Unreal's {@code EParticleKey} ({@code FMovieSceneParticleChannel}), a kill, and a detach:
+     * the system left where it is, in world space, playing on.
+     */
+    public enum Particle { ACTIVATE, DEACTIVATE, TRIGGER, KILL, DETACH }
 
     private final String name;
     private final Type type;

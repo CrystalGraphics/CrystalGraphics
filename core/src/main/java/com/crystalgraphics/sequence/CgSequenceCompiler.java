@@ -449,7 +449,7 @@ final class CgSequenceCompiler {
         try {
             return CgSequenceChannel.Particle.valueOf(String.valueOf(v).toUpperCase(Locale.ROOT)).ordinal();
         } catch (IllegalArgumentException e) {
-            throw fail(path, "a particle key is activate, deactivate, trigger or kill, not " + v);
+            throw fail(path, "a particle key is activate, deactivate, trigger, kill or detach, not " + v);
         }
     }
 
