@@ -117,7 +117,7 @@ public class CgSocketTest {
             CgAnimation animation = world.add(new CgAnimation());
             CgAnimInstance arm = animation.add(playing(mesh));
             CgVfxSystem vfx = new CgVfxSystem();
-            OnHand hand = vfx.play(new OnHand().follow(arm, "palm"));
+            OnHand hand = vfx.play(new OnHand().follow(arm.attachment("palm")));
             double[] clock = {0};
             world.schedule().add(CgTickGroup.EFFECTS, "test:vfx", dt -> vfx.update(clock[0]));
             CgAnimInstance reference = playing(mesh);

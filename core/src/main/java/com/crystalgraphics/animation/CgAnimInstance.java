@@ -5,6 +5,7 @@ import com.crystalgraphics.api.animation.CgPose;
 import com.crystalgraphics.api.animation.CgSocket;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
+import com.crystalgraphics.world.CgAttachment;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Quaternionf;
@@ -27,7 +28,7 @@ import java.util.Objects;
  * kurama.place(x, y, z, turnAndScale);
  * kurama.play(CgAnimSection.of(mesh.sequence("idle")).until(Double.POSITIVE_INFINITY).build());
  *
- * owner.play(new Flame(look, x, y, z).follow(kurama, "hand_r"));   // rides the hand as posed this frame
+ * owner.play(new Flame(look, x, y, z).follow(kurama.attachment("hand_r")));   // rides the hand as posed this frame
  * world.draw(kurama, skin).submit();                               // in SUBMIT, the same frame
  * }</pre>
  *
@@ -266,6 +267,35 @@ public final class CgAnimInstance {
         }
         // Unnormalized: the placement scales the columns, which getNormalizedRotation assumes unit.
         if (turn != null) m.getUnnormalizedRotation(turn);
+    }
+
+    /**
+     * Socket {@code name} as an attachment: what follows it rides the socket as {@code POSE} posed it this frame, and
+     * stops once this instance is no longer posed. A name the mesh has neither as a socket nor a bone places where the
+     * instance stands, as Unreal's {@code GetSocketTransform} answers. Its other sockets are its named points.
+     *
+     * <pre>{@code
+     * owner.play(new Flame(look, x, y, z).follow(kurama.attachment("hand_r")));
+     * }</pre>
+     */
+    public CgAttachment attachment(String name) {
+        int handle = socket(name);
+        return new CgAttachment() {
+            @Override
+            public boolean place(double[] point, @Nullable Quaternionf turn) {
+                if (!posed) return false;
+                socket(handle, point, turn);
+                return true;
+            }
+
+            @Override
+            public boolean point(String other, double[] out) {
+                int s = socket(other);
+                if (s == NO_SOCKET) return false;
+                socket(s, out, null);
+                return true;
+            }
+        };
     }
 
     /** Whether {@code CgAnimation} poses it: false once removed, which ends what follows it. */

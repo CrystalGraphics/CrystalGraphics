@@ -1,6 +1,5 @@
 package com.crystalgraphics.vfx;
 
-import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -52,6 +51,7 @@ import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
 import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 import com.crystalgraphics.vfx.system.CgVfxSystemInstancePool;
 import com.crystalgraphics.render.world.CgWorldVoxelWindow;
+import com.crystalgraphics.world.CgAttachment;
 import com.crystalgraphics.world.CgEntityAttachments;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgWorldQueries;
@@ -632,15 +632,14 @@ public final class CgVfxSystem {
         for (int i = 0; i < effects.size(); i++) {
             CgVfxEffect<?> effect = effects.get(i);
             if (effect.state() == CgVfxEffect.State.DEAD) continue;
-            CgAnimInstance instance = effect.followInstance;
-            if (instance != null) {
-                // Posed in POSE this frame, before EFFECTS: the socket as drawn, no lag.
-                if (instance.posed()) {
-                    instance.socket(effect.followSocket, point, turn);
+            CgAttachment attachment = effect.followAttachment;
+            if (attachment != null) {
+                // What moves it (a mesh posed in POSE, a sequence in SEQUENCES) has run this frame, before EFFECTS.
+                if (attachment.place(point, turn)) {
                     effect.moveToFollowed(point[0], point[1], point[2]);
                     effect.turnToFollowed(turn);
                 } else {
-                    effect.followInstance = null;
+                    effect.followAttachment = null;
                     effect.stop();
                 }
                 continue;

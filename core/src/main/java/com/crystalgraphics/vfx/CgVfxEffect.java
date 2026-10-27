@@ -14,6 +14,7 @@ import com.crystalgraphics.render.post.volume.CgPostVolume;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.util.CgRandom;
+import com.crystalgraphics.world.CgAttachment;
 import com.crystalgraphics.world.CgCharacterClock;
 import com.crystalgraphics.world.CgEntityAttachments;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
@@ -99,9 +100,8 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     int ownerSlot = -1;
     /** The entity it follows and the attachment point on it ({@code CgEntityAttachments}); -1 for none. */
     int followEntity = -1, followPoint;
-    /** The skinned mesh posed here it follows, and its socket ({@link CgAnimInstance#socket(String)}); null for none. */
-    CgAnimInstance followInstance;
-    int followSocket;
+    /** What it rides ({@link CgAttachment}: a mesh's socket, a sequence's locator); null for none. */
+    CgAttachment followAttachment;
     /** The character clock it runs on, or null for the world's; and the registry version it was looked up at. */
     private CgCharacterClock clock;
     private int clockVersion = -1;
@@ -328,34 +328,32 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     public final E follow(int entity, int point) {
         followEntity = entity;
         followPoint = point;
-        followInstance = null;
+        followAttachment = null;
         followKeep = false;
         return self();
     }
 
     /**
-     * Follows socket {@code socket} of a skinned mesh posed here ({@link CgAnimInstance}): each frame, before it ticks,
-     * its origin and turn are the socket's as {@code POSE} posed it that frame, so it never lags the bone. A name the
-     * mesh has neither as a socket nor a bone follows where the instance stands, as Unreal's
-     * {@code GetSocketTransform} answers. Its named sockets ({@code socket_location} spawning) are the instance's too.
-     * It stops once {@code CgAnimation} no longer poses the instance.
+     * Rides {@code attachment}: each frame, before it ticks, its origin and turn are the attachment's, so it never lags
+     * what it rides. Unreal's {@code AttachToComponent(parent, socket)}, whatever the parent: a skinned mesh's socket
+     * ({@link CgAnimInstance#attachment}), a sequence's locator. Its named points ({@code socket_location} spawning)
+     * are the attachment's. It stops, where it last was, once the attachment is gone.
      *
      * <pre>{@code
-     * owner.play(new Flame(look, x, y, z).follow(kurama, "hand_r"));
+     * owner.play(new Flame(look, x, y, z).follow(kurama.attachment("hand_r")));
      * }</pre>
      */
-    public final E follow(CgAnimInstance instance, String socket) {
-        followInstance = Objects.requireNonNull(instance, "instance");
-        followSocket = instance.socket(socket);
+    public final E follow(CgAttachment attachment) {
+        followAttachment = Objects.requireNonNull(attachment, "attachment");
         followEntity = -1;
         followKeep = false;
         return self();
     }
 
-    /** The skinned mesh posed here it follows, or null. */
+    /** What it rides, or null. */
     @Nullable
-    public final CgAnimInstance followingInstance() {
-        return followInstance;
+    public final CgAttachment followingAttachment() {
+        return followAttachment;
     }
 
     /**
@@ -745,8 +743,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         ownerSlot = -1;
         followEntity = -1;
         followPoint = 0;
-        followInstance = null;
-        followSocket = 0;
+        followAttachment = null;
         clock = null;
         clockVersion = -1;
         timeRate = 1f;
@@ -1182,12 +1179,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
 
     /** Point {@code name} of the entity it follows, posed this frame; none while it follows nothing or nothing answers it. */
     private boolean socketPoint(String name, double[] out) {
-        if (followInstance != null) {
-            int socket = followInstance.socket(name);
-            if (socket == CgAnimInstance.NO_SOCKET) return false;
-            followInstance.socket(socket, out, null);
-            return true;
-        }
+        if (followAttachment != null) return followAttachment.point(name, out);
         if (followEntity < 0 || followPose == null) return false;
         int point = CgEntityAttachments.find(name);
         if (point < 0) return false;
