@@ -8,6 +8,7 @@ import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.state.CgAlphaState;
 import com.crystalgraphics.api.state.CgColorMask;
+import com.crystalgraphics.api.state.CgStencilState;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.compute.CgDispatchBindings;
 import com.crystalgraphics.compute.CgKernelForm;
@@ -191,6 +192,11 @@ public final class CgExecutor {
      * beside the current target's depth.
      */
     private boolean composed, beside;
+    /**
+     * Whether a pipeline of the pass executing turned the stencil test on: turned off at its end, since a later pass's
+     * pipeline that declares no stencil would inherit it, into a target with a stencil of its own.
+     */
+    private boolean stencilled;
     /** The last sizes a {@link CgGraphTexture#besideCurrentDepth} target and its host disagreed at, logged once. */
     private static long besideMismatch;
     private final IntBuffer startViewport = ByteBuffer.allocateDirect(16 * 4).order(ByteOrder.nativeOrder()).asIntBuffer();
@@ -1198,6 +1204,8 @@ public final class CgExecutor {
             rasterBegin(frame, pass, packed, damage);
         }
         if (packed.count > 0) rasterBatches(frame, pass, packed, damage);
+        if (stencilled) CgStencilState.DISABLED.apply();
+        stencilled = false;
         if (composed) COMPOSED.detach();
         if (beside) BESIDE.detach();
         composed = beside = false;
@@ -1221,6 +1229,10 @@ public final class CgExecutor {
             if ((load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0) {
                 CgGL.glDepthMask(true);
                 CgGL.glClearDepth(load.depth());
+            }
+            if ((load.mask() & CgGL.GL_STENCIL_BUFFER_BIT) != 0) {
+                CgGL.glStencilMask(0xFF);
+                CgGL.glClearStencil(load.stencil());
             }
             CgGL.glClear(load.mask());
         }
@@ -1302,6 +1314,8 @@ public final class CgExecutor {
                                 && pipeline.state().getColorMasks().isEmpty()) {
                             CgColorMask.ALL.apply();
                         }
+                        CgStencilState stencil = pipeline.state().getStencil();
+                        stencilled |= stencil != null && stencil.enabled();
                         usable = pipeline.bind();
                         if (slots > 1 && independentMasks) maskSlots(pipeline, slots);
                     }

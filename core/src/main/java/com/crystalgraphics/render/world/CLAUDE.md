@@ -124,5 +124,13 @@
   adds 1 a fragment. Its gate is `--mode=overdraw-count`, exact on gl and vulkan. While the `crystalgraphics` trace
   channel records, the count is read back into counters a frame or two later: `world.overdraw-covered` (the share of
   pixels reached), and over those `-mean`, `-p95` and `-max`. Half-size draws count at full size.
+- **CustomDepth** (`recordCustomDepth`, after the overdraw view, Unreal's CustomDepthRendering.cpp): every draw in
+  view marked `Draw.customDepth(stencil, writeMask)` (or a `CgAnimInstance.customDepth`), opaque or writing depth,
+  drawn by its depth pipeline into a transient DEPTH32F_STENCIL8 + R8 target of the stage's size, **tested against that
+  target alone, never the scene's** (aaa-design §2.88: a mesh behind a wall is written), writing its stencil under its
+  mask, depth-fail kept under 0xFF and replaced under a partial mask. Then eight full-screen draws of
+  `world_custom_stencil.shader`, each testing one stencil bit and adding it into the R8, since no device samples a
+  stencil aspect. Published as `CgFrameKeys.CUSTOM_DEPTH`; a pass reads its depth with `sceneDepth(unit, it)` and its
+  stencil as `round(r * 255)`. A set of instances refuses it. Its gate is `--mode=custom-depth`, exact on gl and vulkan.
 - **The emissive state is ONE ONE, never `CgBlendState.ADDITIVE`** (SRC_ALPHA ONE): emission is written with an
   alpha of 0, which ADDITIVE multiplies away.

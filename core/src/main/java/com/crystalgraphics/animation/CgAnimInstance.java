@@ -80,10 +80,18 @@ public final class CgAnimInstance {
     /** Its bind pose's half diagonal in the mesh's units, and its placement's largest scale: what its bounds pad from. */
     private final float meshRadius;
     private float placedScale = 1f, boundsScale = 1f;
+    /** Unreal's {@code OverlayMaterial}, {@code MaterialSlotsOverlayMaterial} and {@code OverlayMaterialMaxDrawDistance}. */
+    @Nullable
+    private CgMaterial overlay;
+    private final CgMaterial[] slotOverlays;
+    private float overlayMaxDistance;
+    /** Its CustomDepth stencil value and write mask; -1 for not drawn there. */
+    private int customDepthStencil = -1, customDepthMask;
 
     public CgAnimInstance(CgSkeletalMesh mesh) {
         this.mesh = Objects.requireNonNull(mesh, "mesh");
         this.materials = new CgMaterial[mesh.mesh().submeshCount()];
+        this.slotOverlays = new CgMaterial[materials.length];
         CgAABB box = mesh.mesh().bounds(new CgAABB());
         this.meshRadius = (float) Math.sqrt(box.halfX() * box.halfX() + box.halfY() * box.halfY() + box.halfZ() * box.halfZ());
         this.pose = new CgPose(mesh.skeleton());
@@ -307,6 +315,76 @@ public final class CgAnimInstance {
     /** How many material slots it has: one a submesh of its mesh. */
     public int materialSlots() {
         return materials.length;
+    }
+
+    /**
+     * Draws every slot a second time in {@code material}, Unreal's {@code OverlayMaterial}: the inverted-hull outline's
+     * home, its material pushing the hull out and culling front faces. Null for none.
+     *
+     * <pre>{@code
+     * goku.overlay(outline).overlayMaxDistance(40f);   // every slot, culled past 40 m
+     * goku.overlay(3, eyeLine);                        // slot 3's own; null falls back to the mesh's
+     * }</pre>
+     */
+    public CgAnimInstance overlay(@Nullable CgMaterial material) {
+        overlay = material;
+        return this;
+    }
+
+    /** Slot {@code slot}'s overlay, Unreal's {@code MaterialSlotsOverlayMaterial}: null falls back to {@link #overlay(CgMaterial)}'s. */
+    public CgAnimInstance overlay(int slot, @Nullable CgMaterial material) {
+        slotOverlays[slot] = material;
+        return this;
+    }
+
+    /** The overlay slot {@code slot} draws in: its own, else the mesh's; null for none. */
+    @Nullable
+    public CgMaterial overlay(int slot) {
+        return slotOverlays[slot] != null ? slotOverlays[slot] : overlay;
+    }
+
+    /** How far from the camera its overlay draws, in metres; 0, the default, as far as the mesh draws. */
+    public CgAnimInstance overlayMaxDistance(float metres) {
+        if (!(metres >= 0f)) throw new IllegalArgumentException("overlay distance " + metres);
+        overlayMaxDistance = metres;
+        return this;
+    }
+
+    public float overlayMaxDistance() {
+        return overlayMaxDistance;
+    }
+
+    /**
+     * Draws it into CustomDepth too, writing {@code stencil} into the bits {@code writeMask} names: Unreal's
+     * {@code bRenderCustomDepth}, {@code CustomDepthStencilValue} and {@code CustomDepthStencilWriteMask}, what outline
+     * and stencil post materials read ({@code CgWorldRenderer.Draw.customDepth}).
+     *
+     * <pre>{@code
+     * goku.customDepth(1, 0xFF);   // stencil 1, every bit
+     * goku.noCustomDepth();
+     * }</pre>
+     */
+    public CgAnimInstance customDepth(int stencil, int writeMask) {
+        if (stencil < 0 || stencil > 255 || writeMask < 1 || writeMask > 255) {
+            throw new IllegalArgumentException("stencil " + stencil + " under write mask " + writeMask + ": both 0 to 255, the mask at least 1");
+        }
+        customDepthStencil = stencil;
+        customDepthMask = writeMask;
+        return this;
+    }
+
+    public CgAnimInstance noCustomDepth() {
+        customDepthStencil = -1;
+        return this;
+    }
+
+    /** Its CustomDepth stencil value, or -1 where it is not drawn there. */
+    public int customDepthStencil() {
+        return customDepthStencil;
+    }
+
+    public int customDepthWriteMask() {
+        return customDepthMask;
     }
 
     /**

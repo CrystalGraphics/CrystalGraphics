@@ -55,7 +55,8 @@ CgHostView world = CgRenderStage.WORLD_OPAQUE.host().view();
   and one recording later in the same firing reads it, as Filament's blackboard does. It empties when the firing
   executes, so a hand-off across firings (opaque to transparent, 1.7.10's second anaglyph firing) needs a resource
   that outlives the frame. The engine's keys are `CgFrameKeys`: `EMISSION`, the world renderer's emission target;
-  `DISTORTION`, its distortion field once applied (`CgDistortionField`: an array and how many layers hold offsets); `OVERDRAW`, its overdraw count while that view is on; `SCENE`, the HDR scene while it is on.
+  `DISTORTION`, its distortion field once applied (`CgDistortionField`: an array and how many layers hold offsets); `OVERDRAW`, its overdraw count while that view is on; `SCENE`, the HDR scene while it is on; `CUSTOM_DEPTH`, Unreal's
+  CustomDepth and CustomStencil of the draws marked `customDepth` (`render/world/CLAUDE.md`).
 
 ```java
 public static final CgFrameKey<CgGraphTexture> MASK = CgFrameKey.of("mymod:mask", CgGraphTexture.class);

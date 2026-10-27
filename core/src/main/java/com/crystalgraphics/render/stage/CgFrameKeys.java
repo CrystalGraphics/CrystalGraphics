@@ -59,6 +59,20 @@ public final class CgFrameKeys {
      */
     public static final CgFrameKey<Integer> SUBJECT_READ = CgFrameKey.of("crystalgraphics:subject_read", Integer.class);
 
+    /**
+     * Unreal's CustomDepth and CustomStencil, the stage's size: its depth (DEPTH32F_STENCIL8) is the nearest depth of the
+     * draws marked {@code customDepth}, tested against each other alone, read with {@code sceneDepth(unit, it)}; its
+     * colour (R8) is their stencil, the byte as a unorm. Published at the end of {@code WORLD_TRANSPARENT} in a firing
+     * where such a draw is in view.
+     *
+     * <pre>{@code
+     * CgGraphTexture mask = frame.resources().get(CgFrameKeys.CUSTOM_DEPTH);
+     * pass.sceneDepth(unit, mask);                                         // CustomDepth
+     * material.applyProperties(b -> b.sampler("_CustomStencil", 0, mask)); // round(texture(...).r * 255.0)
+     * }</pre>
+     */
+    public static final CgFrameKey<CgGraphTexture> CUSTOM_DEPTH = CgFrameKey.of("crystalgraphics:custom_depth", CgGraphTexture.class);
+
     private CgFrameKeys() {
     }
 }

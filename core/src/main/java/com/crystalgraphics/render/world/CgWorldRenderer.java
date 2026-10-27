@@ -13,6 +13,8 @@ import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgColorMask;
+import com.crystalgraphics.api.state.CgCullState;
+import com.crystalgraphics.api.state.CgStencilState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.text.CgShapedParagraph;
@@ -162,6 +164,27 @@ public final class CgWorldRenderer {
     private static final CgRenderState EMISSIVE_STATE = CgRenderState.builder()
             .depth(CgDepthState.NONE).blend(new CgBlendState(true, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE,
                     CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD)).build();
+    /** CustomDepth beside CustomStencil's copy (CgFrameKeys.CUSTOM_DEPTH): Unreal's PF_DepthStencil, cleared to far and 0. */
+    private static final CgFrameBufferFormat CUSTOM_DEPTH_FORMAT = CgFrameBufferFormat.builder("cg_custom_depth")
+            .color(0, CgTextureType.R8).depth(CgTextureType.DEPTH32F_STENCIL8).build();
+    private static final CgLoad CUSTOM_DEPTH_CLEAR = CgLoad.clear(0f, 0f, 0f, 0f).andDepth(1.0).andStencil(0);
+    private static final int GPU_CUSTOM_DEPTH = CgGpuTrace.name("world.customDepth");
+    static final String CUSTOM_STENCIL_SHADER = "crystalgraphics:shaders/world_custom_stencil.shader";
+    /**
+     * The stencil's copy, Unreal's on GL (CustomDepthRendering.cpp:436-450) by draws, since no device here samples a
+     * stencil: bit b's draw passes where the stencil holds it and adds 2^b/255 into the R8 colour.
+     */
+    private static final CgRenderState[] STENCIL_BIT_STATES = new CgRenderState[8];
+
+    static {
+        for (int b = 0; b < 8; b++) {
+            STENCIL_BIT_STATES[b] = CgRenderState.builder().depth(CgDepthState.NONE).cull(CgCullState.NONE)
+                    .blend(new CgBlendState(true, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD))
+                    .stencil(new CgStencilState(true, 1 << b, 1 << b, 0, CgGL.GL_EQUAL, CgGL.GL_KEEP, CgGL.GL_KEEP, CgGL.GL_KEEP))
+                    .colorMask(CgColorMask.ALL).build();
+        }
+    }
+
     private static final CgFrameBufferFormat EMISSION_FORMAT = CgFrameBufferFormat.builder("cg_emission")
             .color(0, CgTextureType.R11F_G11F_B10F).build();
     private static final int GPU_EMISSION = CgGpuTrace.name("world.emission");
@@ -234,6 +257,8 @@ public final class CgWorldRenderer {
     private String[] gpuGroups = new String[64];
     /** Per draw: the impact frame subject it belongs to ({@link Draw#subject}), 0 for none. */
     private int[] subjects = new int[64];
+    /** Per draw: drawn into CustomDepth ({@link Draw#customDepth}), its stencil value and its write mask << 8; -1 for not. */
+    private int[] customDepths = new int[64];
     private int[] queues = new int[64];
     private int[] orders = new int[64];
     private int[] batchKeys = new int[64];
@@ -269,6 +294,18 @@ public final class CgWorldRenderer {
     private final CgViewFrustum frustum = new CgViewFrustum();
     private final IdentityHashMap<CgMaterial, Integer> bindings = new IdentityHashMap<>();
     private final IdentityHashMap<CgRenderState, CgRenderState> depthOnly = new IdentityHashMap<>();
+    /** A depth pipeline's state's CustomDepth variants, by stencil value and write mask ({@link #customDepths}). */
+    private final IdentityHashMap<CgRenderState, StencilVariants> customDepthStates = new IdentityHashMap<>();
+    private boolean[] inCustomDepth = new boolean[64];
+    private CgGraphTexture customDepthTarget;
+    private CgMaterial customStencil;
+
+    /** A state's CustomDepth states, found by a scan: a state has a few. */
+    private static final class StencilVariants {
+        int[] keys = new int[4];
+        CgRenderState[] states = new CgRenderState[4];
+        int n;
+    }
 
     // Sets culled on the GPU: one cull, its values copied into each dispatch; per draw, the records and level counts its
     // cull wrote this stage, and where its own start in them. Every set one cull pass culls shares one records buffer
@@ -484,6 +521,8 @@ public final class CgWorldRenderer {
         clear();
         frame = -1;
         depthOnly.clear();
+        customDepthStates.clear();
+        customStencil = null;
         upsample = null;
         upsampleBound = null;
         resolve = null;
@@ -684,17 +723,22 @@ public final class CgWorldRenderer {
     public Draw draw(CgAnimInstance instance, CgMaterial material) {
         int palette = instance.palette();
         if (palette < 0) throw new IllegalStateException(instance + " is not posed this frame: CgAnimation.add it, and draw after POSE");
-        return scratch.start(instance.mesh().mesh(), material).bones(palette)
+        Draw d = scratch.start(instance.mesh().mesh(), material).bones(palette)
                 .at(instance.x(), instance.y(), instance.z()).transform(instance.transform()).pad(instance.boundsPad());
+        if (instance.customDepthStencil() >= 0) d.customDepth(instance.customDepthStencil(), instance.customDepthWriteMask());
+        return d;
     }
 
     /**
      * Draws a skinned mesh posed this frame, each submesh in its slot's material ({@link CgAnimInstance#material}):
      * Unreal's skinned mesh component drawing its sections, each with {@code GetMaterial(slot)}
-     * (SkinnedMeshComponentHelper.h:108-125). Submit from {@code SUBMIT}, or another group after {@code POSE}.
+     * (SkinnedMeshComponentHelper.h:108-125), into CustomDepth too where it is marked, and each again in its slot's
+     * overlay within its overlay distance (Unreal's {@code OverlayMaterial}). Submit from {@code SUBMIT}, or another
+     * group after {@code POSE}.
      *
      * <pre>{@code
      * goku.material(0, hair).material(1, head)...;   // or every slot from a prefab's materials
+     * goku.overlay(outline).customDepth(1, 0xFF);
      * world.draw(goku);
      * }</pre>
      *
@@ -704,16 +748,33 @@ public final class CgWorldRenderer {
     public void draw(CgAnimInstance instance) {
         int palette = instance.palette();
         if (palette < 0) throw new IllegalStateException(instance + " is not posed this frame: CgAnimation.add it, and draw after POSE");
+        boolean overlays = withinOverlayDistance(instance);
         for (int slot = 0; slot < instance.materialSlots(); slot++) {
             CgMaterial material = instance.material(slot);
             if (material == null) {
                 throw new IllegalStateException(instance + "'s slot " + slot + " (" + instance.mesh().material(slot)
                         + ") has no material: set it with material(slot, material)");
             }
-            scratch.start(instance.mesh().mesh(), material).bones(palette).submesh(slot)
-                    .at(instance.x(), instance.y(), instance.z()).transform(instance.transform()).pad(instance.boundsPad())
-                    .submit();
+            Draw d = scratch.start(instance.mesh().mesh(), material).bones(palette).submesh(slot)
+                    .at(instance.x(), instance.y(), instance.z()).transform(instance.transform()).pad(instance.boundsPad());
+            if (instance.customDepthStencil() >= 0) d.customDepth(instance.customDepthStencil(), instance.customDepthWriteMask());
+            d.submit();
+            CgMaterial overlay = overlays ? instance.overlay(slot) : null;
+            if (overlay != null) {
+                scratch.start(instance.mesh().mesh(), overlay).bones(palette).submesh(slot)
+                        .at(instance.x(), instance.y(), instance.z()).transform(instance.transform()).pad(instance.boundsPad())
+                        .submit();
+            }
         }
+    }
+
+    /** Whether {@code instance}'s overlay draws this frame: within its overlay distance of the world's camera, or no limit. */
+    private static boolean withinOverlayDistance(CgAnimInstance instance) {
+        float most = instance.overlayMaxDistance();
+        if (most <= 0f) return true;
+        CgHostView view = CgRenderStage.WORLD_OPAQUE.host().view();
+        double dx = instance.x() - view.x(), dy = instance.y() - view.y(), dz = instance.z() - view.z();
+        return dx * dx + dy * dy + dz * dz <= (double) most * most;
     }
 
     /**
@@ -895,6 +956,7 @@ public final class CgWorldRenderer {
         private boolean half, onGpu;
         private String gpuGroup;
         private int subject;
+        private int customDepth;
         /** Where its palette starts in the frame's bones; -1 for none. */
         private int bones;
 
@@ -930,7 +992,34 @@ public final class CgWorldRenderer {
             onGpu = false;
             gpuGroup = null;
             subject = 0;
+            customDepth = -1;
             bones = -1;
+            return this;
+        }
+
+        /**
+         * Draws it into CustomDepth as well, writing {@code stencil} into the bits {@code writeMask} names: Unreal's
+         * {@code bRenderCustomDepth}, {@code CustomDepthStencilValue} and {@code CustomDepthStencilWriteMask}. The pass
+         * runs after the transparent pass and is published as {@link CgFrameKeys#CUSTOM_DEPTH}, where outline and stencil
+         * post materials read it.
+         *
+         * <pre>{@code
+         * world.draw(goku.mesh(), skin).bones(base).at(x, y, z).customDepth(1, 0xFF).submit();
+         * world.draw(rock, stone).at(x, y, z).customDepth(0x10, 0x10).submit();   // bit 4 alone, other bits kept
+         * }</pre>
+         *
+         * <ul>
+         *   <li>Its depth is tested against CustomDepth alone, never the scene's: a mesh behind a wall is written, and a
+         *       post material compares it with the scene's depth.</li>
+         *   <li>A transparent material is drawn there only where it writes depth; a set of instances
+         *       ({@link #instances}) is refused.</li>
+         * </ul>
+         */
+        public Draw customDepth(int stencil, int writeMask) {
+            if (stencil < 0 || stencil > 255 || writeMask < 1 || writeMask > 255) {
+                throw new IllegalArgumentException("stencil " + stencil + " under write mask " + writeMask + ": both 0 to 255, the mask at least 1");
+            }
+            customDepth = stencil | writeMask << 8;
             return this;
         }
 
@@ -1391,6 +1480,7 @@ public final class CgWorldRenderer {
             }
             if (skinned && set != null) throw new IllegalStateException("a skinned mesh draws once a palette: not instances()");
             if (set != null) {
+                if (customDepth >= 0) throw new IllegalStateException("a set of instances is not drawn into CustomDepth: not customDepth() too");
                 if (indirect != null) throw new IllegalStateException("instances() takes its count from its cull: not indirect() too");
                 if ((lods != null ? lods.finest() : mesh).bounds(meshBox) == null) {
                     throw new IllegalArgumentException(mesh + " has no bounds to cull its instances by");
@@ -1432,6 +1522,7 @@ public final class CgWorldRenderer {
         culledOnGpu[count] = d.onGpu;
         gpuGroups[count] = d.gpuGroup;
         subjects[count] = d.subject;
+        customDepths[count] = d.customDepth;
         queues[count] = d.queue;
         orders[count] = d.order;
         batchKeys[count] = d.batchKey;
@@ -1509,6 +1600,7 @@ public final class CgWorldRenderer {
         culledOnGpu = Arrays.copyOf(culledOnGpu, n);
         gpuGroups = Arrays.copyOf(gpuGroups, n);
         subjects = Arrays.copyOf(subjects, n);
+        customDepths = Arrays.copyOf(customDepths, n);
         queues = Arrays.copyOf(queues, n);
         orders = Arrays.copyOf(orders, n);
         batchKeys = Arrays.copyOf(batchKeys, n);
@@ -1725,6 +1817,7 @@ public final class CgWorldRenderer {
                 recordSubject(stage, recording, view, stage.resources().get(CgFrameKeys.SUBJECT_READ));
             }
             if (which == TRANSPARENT && overdraw && drawn > 0) recordOverdraw(stage, recording, view);
+            if (which == TRANSPARENT) recordCustomDepth(stage, recording, view);
             if (which == TRANSPARENT && !CgRehearsal.active()) text.record(stage, view);
         }
     }
@@ -1981,6 +2074,77 @@ public final class CgWorldRenderer {
         }
         glow.add(chunks.end());
         glow.end();
+    }
+
+    /**
+     * Unreal's CustomDepth pass (CustomDepthRendering.cpp:216-326): every draw in view marked {@link Draw#customDepth}
+     * drawn depth-only into a target of its own, tested against it alone and writing its stencil value; then the
+     * stencil's copy into the target's R8 colour. Published as {@link CgFrameKeys#CUSTOM_DEPTH}. Transparent draws only
+     * where their material writes depth (UseDefaultMaterial, :560-591).
+     */
+    private void recordCustomDepth(CgStageFrame stage, CgRecording recording, CgHostView view) {
+        if (inCustomDepth.length < meshes.length) inCustomDepth = new boolean[meshes.length];
+        int marked = 0;
+        for (int i = 0; i < count; i++) {
+            int queue = queues[i];
+            boolean transparent = queue >= CgRenderQueue.TRANSPARENT_THRESHOLD;
+            boolean in = customDepths[i] >= 0 && (!transparent || materials[i].writesDepth())
+                    && classify(i, transparent ? TRANSPARENT : OPAQUE, view) != SKIP;
+            inCustomDepth[i] = in;
+            if (in) marked++;
+        }
+        if (marked == 0) return;
+        int w = Math.max(1, (int) targetWidth), h = Math.max(1, (int) targetHeight);
+        if (customDepthTarget == null || customDepthTarget.getWidth() != w || customDepthTarget.getHeight() != h) {
+            customDepthTarget = CgGraphTexture.transientTexture("cg_custom_depth", new CgTextureDesc(w, h, CUSTOM_DEPTH_FORMAT));
+        }
+        CgRasterPass pass = recording.raster(customDepthTarget, CUSTOM_DEPTH_CLEAR, stage.constants(), null, CgOrder.SORTED)
+                .timed(GPU_CUSTOM_DEPTH);
+        CgChunkBuilder chunks = recording.chunks().begin();
+        for (int i = 0; i < count; i++) {
+            if (!inCustomDepth[i]) continue;
+            CgPipeline depth = depthPipeline(materials[i]);
+            if (depth == null) continue;
+            modelOf(i, view);
+            model.normal(normal);
+            passDraw(chunks, customDepthPipeline(depth, customDepths[i]), materials[i], recording, i);
+        }
+        if (customStencil == null) customStencil = CgMaterial.newInstance(CUSTOM_STENCIL_SHADER);
+        CgPipeline copy = customStencil.pipeline(CgInstanceKind.OBJECT);
+        if (copy != null) {
+            int copyBindings = customStencil.captureBindings(recording.bindings());
+            for (int b = 0; b < 8; b++) {
+                chunks.draw(copy.withState(STENCIL_BIT_STATES[b]), copyBindings, FULLSCREEN).sortKey(Long.MAX_VALUE);
+                int at = chunks.instance();
+                chunks.data()[at + 32] = (1 << b) / 255f;
+            }
+        }
+        pass.add(chunks.end());
+        pass.end();
+        stage.resources().put(CgFrameKeys.CUSTOM_DEPTH, customDepthTarget);
+    }
+
+    /**
+     * {@code depth} writing CustomDepth: depth tested near-or-equal and written, the stencil set to the value in the
+     * mask's bits, kept where depth fails under the full mask and replaced under a partial one, as
+     * {@code GetCustomDepthStencilState} (CustomDepthRendering.cpp:534-557). Cached per state and value.
+     */
+    private CgPipeline customDepthPipeline(CgPipeline depth, int packed) {
+        CgRenderState own = depth.state();
+        StencilVariants v = customDepthStates.get(own);
+        if (v == null) customDepthStates.put(own, v = new StencilVariants());
+        for (int k = 0; k < v.n; k++) if (v.keys[k] == packed) return depth.withState(v.states[k]);
+        int value = packed & 0xFF, mask = packed >>> 8;
+        int depthFail = mask == 0xFF ? CgGL.GL_KEEP : CgGL.GL_REPLACE;
+        CgRenderState state = own.withDepth(CgDepthState.TEST_WRITE).withStencil(new CgStencilState(true, value, 0xFF, mask,
+                CgGL.GL_ALWAYS, CgGL.GL_REPLACE, CgGL.GL_KEEP, depthFail));
+        if (v.n == v.keys.length) {
+            v.keys = Arrays.copyOf(v.keys, v.n * 2);
+            v.states = Arrays.copyOf(v.states, v.n * 2);
+        }
+        v.keys[v.n] = packed;
+        v.states[v.n++] = state;
+        return depth.withState(state);
     }
 
     /**

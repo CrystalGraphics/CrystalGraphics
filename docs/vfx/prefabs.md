@@ -259,6 +259,19 @@ goku.boundsScale(1.5f);                 // Unreal's BoundsScale: culled by its b
 - **A slot with no material throws**, naming it: Unreal draws its default material there, and this engine has none.
 - Its bounds are the bind pose's, grown by `boundsScale` (1 unless set): a pose reaching far past them needs more.
 
+An overlay and CustomDepth, Unreal's `OverlayMaterial` and `bRenderCustomDepth`:
+
+```java
+goku.overlay(outline);                  // every slot again in it; overlay(slot, m) for one slot's own
+goku.overlayMaxDistance(40f);           // beyond 40 blocks the overlay is not drawn (0: as far as the mesh)
+goku.customDepth(1, 0xFF);              // into CgFrameKeys.CUSTOM_DEPTH with stencil 1, even behind a wall
+world.draw(goku);
+```
+
+- A slot's overlay replaces the mesh's for that slot; a slot with neither draws none.
+- CustomDepth is tested against itself, not the scene: a post material compares it with the scene's depth to outline
+  what is hidden (`render/world/CLAUDE.md`, *CustomDepth*).
+
 By hand, each frame, write the pose's skinning matrices, one a bone in the skeleton's order, then draw the mesh naming
 where they start. Any `#type spatial` material skins it with no code of its own: the mesh's format picks the material's skinned
 variant (Unreal's GPU skin vertex factory), in every pass the material draws.
