@@ -220,7 +220,10 @@ public final class CgVfxRange {
         CgVfxRange range = RANGES.get(pool);
         if (range == null) {
             RANGES.put(pool, range = new CgVfxRange(pool));
-            (pool.hidden() ? REHEARSED : REAL).add(range);
+            List<CgVfxRange> list = pool.hidden() ? REHEARSED : REAL;
+            list.add(range);
+            // A pool's first draw makes its range after the frame's layOut: laid out now, or its draws read word 0.
+            if (list == ALL) layOut();
             if (registration == null) {
                 registration = CgRenderStage.WORLD_OPAQUE.register(ORDER, CgVfxBudget.charged(CgVfxRange::recordAll));
                 CgGraphicsLifecycle.addListener(CONTEXT);
