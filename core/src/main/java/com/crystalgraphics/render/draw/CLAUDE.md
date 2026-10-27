@@ -48,7 +48,9 @@ if (p.bind()) { table.bind(bindings); p.instanceBase(first); /* draw */ }
   `CG_VOLUME_DEPTH(eye)` written at location 1 (`CG_VOLUME_TARGET`), composable with `sceneFold()`. `sceneFold()` is the HDR scene's: one output, the glow added to the colour
   (`CG_SCENE_FOLD`). `depthPrepass()` is a `"Depth" = "Prepass"` material's depth pass: the Forward pass compiled with
   `CG_DEPTH_PREPASS`, blend off, depth written, no colour. `normalTarget()` is an opaque Forward pipeline's sibling
-  writing its normal at location 1 (`CG_NORMAL_TARGET`) for the world lights; null for an MRT pass. `slotWrites()` is the colour
+  writing its normal at location 1 (`CG_NORMAL_TARGET`) for the world lights; null for an MRT pass. `skinned()` is
+  any pipeline compiled with `CG_SKINNED`, the skinned vertex factory; `CgChunkBuilder.draw` takes it for a mesh in a
+  skinned format, so a recorder never asks, and every sibling of a skinned pipeline stays skinned. `slotWrites()` is the colour
   attachments a pipeline's program writes, which a pass with more than one masks the rest off by.
 - A pipeline lives for the session, and is keyed by the *identity* of its render state: the first compile reuses the
   parse of unchanged source, so a key named before it is the one that draws after it.

@@ -131,6 +131,29 @@ CgAnimSequence wave = CgAnimSequence.builder("wave", 30, 31)       // 31 keys at
 CgSkeletalMesh mesh = CgSkeletalMesh.builder(sleeve, arm).material(0, "mymod:sleeve").sequence(wave).build();
 ```
 
+## Drawing one
+
+Each frame, write the pose's skinning matrices, one a bone in the skeleton's order, then draw the mesh naming where they
+start. Any `#type spatial` material skins it with no code of its own: the mesh's format picks the material's skinned
+variant (Unreal's GPU skin vertex factory), in every pass the material draws.
+
+```java
+Matrix4f[] skinning = ...;                                    // pose(bone) * inverseBind(bone), every bone
+int base = CgBonePalettes.write(skinning, kurama.skeleton().boneCount());
+world.draw(kurama.mesh(), skin).bones(base).at(x, y, z).submit();
+
+CgMesh posed = CgSkinning.skin(kurama.mesh(), skinning);      // the same pose on the CPU, as a static mesh
+```
+
+- **A base is this frame's**: write the palette and submit the draw in the same frame, from the client world's
+  schedule as any world draw.
+- **A skinned mesh must name its bones**, and only a skinned one may: either mistake throws at `submit()`.
+- **It is culled by its bind pose's bounds**: a pose reaching past them needs `.bounds(...)` or `.pad(r)`.
+- In the shader, `cg_Position` and `cg_Normal` are the skinned vertex: position by the weighted sum of its bones' 3×4
+  transforms, normal by the same matrix, renormalised. Then the draw's transform, as for any mesh.
+- About 0.1 ns a vertex a pass (RTX 4070 SUPER, Vulkan): a 30,000-vertex character costs microseconds.
+- `--mode=skinned-mesh` is the gate (the GPU's skinning against `CgSkinning`'s); `--mode=skinned-bench` measures it.
+
 ## Cooked
 
 A release ships meshes cooked: `.cgmesh` holds the vertices as the engine lays them out, read in one copy, and
@@ -154,4 +177,4 @@ byte[] mesh = CgCookedMesh.write(kurama), clips = CgCookedAnimation.write(kurama
 - **Tracks name their bones**, so a clip plays on any skeleton that has them. A bone a clip does not animate holds its
   rest pose.
 - **Names are kept as written**: what a socket or a sequence names a bone by.
-- Playing clips, posing, drawing skinned and sockets on bones are their own sections as they arrive.
+- Playing clips, posing and sockets on bones are their own sections as they arrive.

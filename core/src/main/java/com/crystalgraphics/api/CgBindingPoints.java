@@ -130,6 +130,14 @@ public final class CgBindingPoints {
      */
     public static Binding PARTICLE_BEAMS;
 
+    /**
+     * Reserved binding pair for {@code CgBonePalettes}, every skinned draw's bone matrices (one storage point below
+     * {@link #PARTICLE_BEAMS}'s). Read from the vertex stage of a skinned program. On the TBO path it shares
+     * {@link #PARTICLE_BEAMS}' texture unit: only a strip's program reads that, a strip is never skinned, and both are
+     * bound per draw.
+     */
+    public static Binding BONE_PALETTES;
+
     /** How many buffers a material's {@code Buffers { }} may declare. */
     public static final int MATERIAL_BUFFER_COUNT = 4;
 
@@ -277,6 +285,7 @@ public final class CgBindingPoints {
         GLOBALS = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         PARTICLE_ORDER = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         PARTICLE_BEAMS = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
+        BONE_PALETTES = new Binding(--maxSsboBindings, PARTICLE_BEAMS.tbo());
         maxSsboBindings -= MATERIAL_BUFFER_COUNT;
         MATERIAL_BUFFERS_SSBO = maxSsboBindings;
 

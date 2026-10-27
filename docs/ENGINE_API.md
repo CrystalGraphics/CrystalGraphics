@@ -510,8 +510,9 @@ CgMesh plain = CgMesh.build(CgVertexFormat.SPATIAL, m ->
 
 - Read its bytes through `CgVertexAttribute.read`, never `getFloat`: the normal and UVs are packed.
 - **A skinned mesh** is `CgVertexFormat.SKINNED`: `SPATIAL`, then four bone indices and four weights a vertex, written
-  with `CgMeshWriter.bone(index, weight)`; `SKINNED_WIDE` past 256 bones. Loading and building one:
-  [`vfx/prefabs.md`](vfx/prefabs.md) § *Skinned meshes*.
+  with `CgMeshWriter.bone(index, weight)`; `SKINNED_WIDE` past 256 bones. Drawn with `.bones(base)` from a palette
+  `CgBonePalettes.write` answered this frame, by any `#type spatial` material's skinned variant. Loading, building
+  and drawing one: [`vfx/prefabs.md`](vfx/prefabs.md) § *Skinned meshes*.
 - UVs are halves: steps of 1/2048 below 1, 1/16 at 64.
 
 **Per-instance data is never a vertex attribute**: it is an engine buffer's record (`CgInstanceKind` -- `OBJECT`, `QUAD`, `CURVE`), read through `CG_INSTANCE_ID`.

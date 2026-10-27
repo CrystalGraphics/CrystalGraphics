@@ -73,6 +73,7 @@ public final class CgPipeline {
     private final boolean depth;
     private final boolean volume;
     private final boolean normals;
+    private final boolean skinned;
     /** What the program is compiled with: the pass's keywords, and the multi-draw's. */
     private final Set<String> compiled;
     @Nullable
@@ -91,6 +92,8 @@ public final class CgPipeline {
     private CgPipeline volumed;
     @Nullable
     private CgPipeline normalled;
+    @Nullable
+    private CgPipeline skinnedTwin;
     /** {@link #slotWrites()}, for the shader revision {@link #slotsRevision}. */
     private int slots, slotsRevision = -1;
 
@@ -122,8 +125,9 @@ public final class CgPipeline {
         this.depth = (key.flags & DEPTH) != 0;
         this.volume = (key.flags & VOLUME) != 0;
         this.normals = (key.flags & NORMALS) != 0;
+        this.skinned = (key.flags & SKINNED) != 0;
         Set<String> passKeywords = takesKeywords(pass) ? keywords : Collections.emptySet();
-        if (multiDraw || overdraw || emission || cover || fold || depth || volume || normals) {
+        if (multiDraw || overdraw || emission || cover || fold || depth || volume || normals || skinned) {
             Set<String> more = new TreeSet<>(passKeywords);
             if (multiDraw) more.add(CgMaterialShaderCompiler.MULTI_DRAW);
             if (overdraw) more.add(CgMaterialShaderCompiler.DEBUG_OVERDRAW);
@@ -133,6 +137,7 @@ public final class CgPipeline {
             if (depth) more.add(CgMaterialShaderCompiler.DEPTH_PREPASS);
             if (volume) more.add(CgMaterialShaderCompiler.VOLUME_TARGET);
             if (normals) more.add(CgMaterialShaderCompiler.NORMAL_TARGET);
+            if (skinned) more.add(CgMaterialShaderCompiler.SKINNED);
             passKeywords = Collections.unmodifiableSet(more);
         }
         this.compiled = passKeywords;
@@ -165,11 +170,36 @@ public final class CgPipeline {
     }
 
     private static final int MULTI = 1, OVERDRAW = 2, EMISSION = 4, COVER = 8, FOLD = 16, DEPTH = 32, VOLUME = 64,
-            NORMALS = 128;
+            NORMALS = 128, SKINNED = 256;
 
     private int flags() {
         return (multiDraw ? MULTI : 0) | (overdraw ? OVERDRAW : 0) | (emission ? EMISSION : 0) | (cover ? COVER : 0)
-                | (fold ? FOLD : 0) | (depth ? DEPTH : 0) | (volume ? VOLUME : 0) | (normals ? NORMALS : 0);
+                | (fold ? FOLD : 0) | (depth ? DEPTH : 0) | (volume ? VOLUME : 0) | (normals ? NORMALS : 0)
+                | (skinned ? SKINNED : 0);
+    }
+
+    /**
+     * This pipeline on a skinned mesh: the same pass compiled with {@link CgMaterialShaderCompiler#SKINNED}, its
+     * vertices placed by their bones from the draw's palette (Unreal's GPU skin vertex factory). Every sibling of it
+     * stays skinned. A chunk picks it for a mesh in a skinned format, so a recorder never asks. Any thread.
+     *
+     * <pre>{@code
+     * chunks.draw(material.pipeline(CgInstanceKind.OBJECT), bindings, kurama);   // drawn through .skinned()
+     * }</pre>
+     */
+    public CgPipeline skinned() {
+        if (skinned) return this;
+        CgPipeline made = skinnedTwin;
+        if (made == null) {
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, state, kind, flags() | SKINNED), CgPipeline::register);
+            skinnedTwin = made;
+        }
+        return made;
+    }
+
+    /** Whether it skins its vertices: {@link #skinned()}. */
+    public boolean isSkinned() {
+        return skinned;
     }
 
     /** The passes a material's keywords reach: the ones a material authors for the frame it draws into. */

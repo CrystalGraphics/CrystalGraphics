@@ -21,6 +21,7 @@ import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.compute.lower.CgLoweredEmitter;
 import com.crystalgraphics.compute.source.CgBufferDecl;
+import com.crystalgraphics.gl.buffer.shader.CgBonePalettes;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
@@ -1673,6 +1674,8 @@ public final class CgMaterialShader implements CgReloadable {
         CgShaderBuffer.wireBlock(shader, CgInstanceKind.OBJECT_BLOCK_NAME, CgBindingPoints.OBJECT_DATA);
         if (matPropsUbo != null) matPropsUbo.wireShader(shader);
         for (CgAttachedBuffer ab : attachedBuffers) ab.getBuffer().wireShader(shader);
+        // Only a skinned program declares the palettes; any other leaves the block absent, which this skips.
+        CgShaderBuffer.wireBlock(shader, CgBonePalettes.BLOCK_NAME, CgBindingPoints.BONE_PALETTES);
     }
 
     /** The scene snapshots' and the lightmap's units, and each sampler property's: its index among the declared samplers. */

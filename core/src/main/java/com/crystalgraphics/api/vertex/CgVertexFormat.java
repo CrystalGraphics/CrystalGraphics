@@ -177,6 +177,11 @@ public final class CgVertexFormat {
         return bones <= 256 ? SKINNED : SKINNED_WIDE;
     }
 
+    /** Whether it is {@link #SKINNED} or {@link #SKINNED_WIDE}: a mesh in it draws through a material's skinned variant. */
+    public boolean isSkinned() {
+        return equals(SKINNED) || equals(SKINNED_WIDE);
+    }
+
     /**
      * Standard UI 2D vertex format for the CrystalShader material pipeline:
      * POSITION(vec2) + UV(vec2) + COLOR(ubyte4) = 20 bytes stride.

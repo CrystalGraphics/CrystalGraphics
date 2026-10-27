@@ -30,6 +30,7 @@ import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgReadback;
+import com.crystalgraphics.gl.buffer.shader.CgBonePalettes;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
@@ -219,6 +220,11 @@ public final class CgWorldRenderer {
     private float[] lights = new float[64 * 2];
     /** Per draw: its emission scale, CG_OBJECT_EMISSION. */
     private float[] emissions = new float[64];
+    /** Per draw: where its palette starts in the frame's bones, -1 for an unskinned draw. */
+    private int[] boneBases = new int[64];
+    /** The frame's bone palettes, recorded by its first world stage; {@link #palettesFrame} the ring frame it was. */
+    private CgGraphBuffer palettes;
+    private long palettesFrame = -1;
     /** Per draw: whether it asked to be drawn at half the target's size. */
     private boolean[] halves = new boolean[64];
     /** Per draw: whether its count holds only what a GPU cull kept, so no CPU bounds test runs. */
@@ -843,6 +849,8 @@ public final class CgWorldRenderer {
         private boolean half, onGpu;
         private String gpuGroup;
         private int subject;
+        /** Where its palette starts in the frame's bones; -1 for none. */
+        private int bones;
 
         private Draw start(CgMesh mesh, CgMaterial material) {
             this.mesh = mesh;
@@ -876,6 +884,27 @@ public final class CgWorldRenderer {
             onGpu = false;
             gpuGroup = null;
             subject = 0;
+            bones = -1;
+            return this;
+        }
+
+        /**
+         * Skins it by the palette starting at {@code base}: what {@link CgBonePalettes#write} answered this frame for
+         * its bones, in its skeleton's order. Required of a mesh in a skinned format, and only of one.
+         *
+         * <pre>{@code
+         * int base = CgBonePalettes.write(skinning, skeleton.boneCount());   // pose(bone) * inverseBind(bone)
+         * world.draw(goku.mesh(), skin).bones(base).at(x, y, z).submit();
+         * }</pre>
+         *
+         * <ul>
+         *   <li>Its bounds are the mesh's bind pose unless stated: a pose reaching past them needs {@link #bounds} or
+         *       {@link #pad}, or it is culled while still on screen.</li>
+         * </ul>
+         */
+        public Draw bones(int base) {
+            if (base < 0) throw new IllegalArgumentException("bone base " + base);
+            bones = base;
             return this;
         }
 
@@ -1309,6 +1338,12 @@ public final class CgWorldRenderer {
 
         public void submit() {
             if (each && records == 0) return;   // nothing to draw
+            boolean skinned = (lods != null ? lods.finest() : mesh).format().isSkinned();
+            if (skinned != (bones >= 0)) {
+                throw new IllegalStateException(skinned ? mesh + " is skinned: bones(base) names its palette"
+                        : "bones() on " + mesh + ", which is not in a skinned format");
+            }
+            if (skinned && set != null) throw new IllegalStateException("a skinned mesh draws once a palette: not instances()");
             if (set != null) {
                 if (indirect != null) throw new IllegalStateException("instances() takes its count from its cull: not indirect() too");
                 if ((lods != null ? lods.finest() : mesh).bounds(meshBox) == null) {
@@ -1346,6 +1381,7 @@ public final class CgWorldRenderer {
             lights[count * 2 + 1] = d.skyLight;
         }
         emissions[count] = d.emission;
+        boneBases[count] = d.bones;
         halves[count] = d.half;
         culledOnGpu[count] = d.onGpu;
         gpuGroups[count] = d.gpuGroup;
@@ -1422,6 +1458,7 @@ public final class CgWorldRenderer {
         customs = Arrays.copyOf(customs, n * 16);
         lights = Arrays.copyOf(lights, n * 2);
         emissions = Arrays.copyOf(emissions, n);
+        boneBases = Arrays.copyOf(boneBases, n);
         halves = Arrays.copyOf(halves, n);
         culledOnGpu = Arrays.copyOf(culledOnGpu, n);
         gpuGroups = Arrays.copyOf(gpuGroups, n);
@@ -1533,6 +1570,11 @@ public final class CgWorldRenderer {
             targetWidth = stage.host().width();
             targetHeight = stage.host().height();
             prepare(view);
+            if (palettesFrame != frame && CgBonePalettes.written() > 0) {
+                // Once a frame, in its first stage: a persistent buffer, so the later stage reads the same upload.
+                palettesFrame = frame;
+                palettes = CgBonePalettes.record(stage.recording());
+            }
             Arrays.fill(culled, 0, count, null);
             Arrays.fill(culledCounts, 0, count, null);
             cullPasses = 0;
@@ -2559,14 +2601,15 @@ public final class CgWorldRenderer {
         }
     }
 
-    /** Draw {@code i}'s range, count and object record into the draw just begun, under {@link #model} and {@link #normal}. */
-    /** Draw {@code i}'s buffers read in place of engine buffers, every slot. */
+    /** Draw {@code i}'s buffers read in place of engine buffers, every slot, and a skinned draw's palettes. */
     private void readBuffers(CgChunkBuilder chunks, int i) {
         for (int s = i * CgDrawChunk.BUFFERS, end = s + CgDrawChunk.BUFFERS; s < end; s++) {
             if (buffers[s] != null) chunks.buffer(bufferAt[s], buffers[s]);
         }
+        if (boneBases[i] >= 0) chunks.buffer(CgBindingPoints.BONE_PALETTES, palettes);
     }
 
+    /** Draw {@code i}'s range, count and object record into the draw just begun, under {@link #model} and {@link #normal}. */
     private void writeInstance(CgChunkBuilder chunks, int i) {
         if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
         if (recordCounts[i] > 0) {
@@ -2579,6 +2622,7 @@ public final class CgWorldRenderer {
         float[] data = chunks.data();
         model.get(data, at);
         normal.get(data, at + 16);
+        if (boneBases[i] >= 0) data[at + 19] = boneBases[i];   // CG_OBJECT_SPARE.x: the skinned factory's palette base
         data[at + 28] = lights[i * 2];   // CG_OBJECT_LIGHT: the normal matrix's unused column
         data[at + 29] = lights[i * 2 + 1];
         data[at + 30] = emissions[i] - 1f;   // CG_OBJECT_EMISSION, less 1 so a record left 0 means 1
@@ -2613,6 +2657,7 @@ public final class CgWorldRenderer {
             float[] data = chunks.data();
             recordModel.get(data, at);
             normal.get(data, at + 16);
+            if (boneBases[i] >= 0) data[at + 19] = boneBases[i];
             data[at + 28] = lights[i * 2];
             data[at + 29] = lights[i * 2 + 1];
             data[at + 30] = emissions[i] - 1f;

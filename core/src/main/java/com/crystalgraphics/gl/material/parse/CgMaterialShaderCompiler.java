@@ -3,6 +3,7 @@ package com.crystalgraphics.gl.material.parse;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.compute.lower.CgLoweredEmitter;
 import com.crystalgraphics.compute.source.CgBufferDecl;
+import com.crystalgraphics.gl.buffer.shader.CgBonePalettes;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
@@ -120,6 +121,17 @@ public final class CgMaterialShaderCompiler {
      * ported material with.
      */
     public static final String STRIP = "FX_ON_RIBBONS";
+
+    /**
+     * The engine's keyword for the skinned vertex factory's variant of any pass of a {@code #type spatial} shader: the
+     * vertex is skinned by its draw's bone palette ({@code env/buffer/bones.glsl}) before the material's code runs, which
+     * reads it as {@code cg_Position} and {@code cg_Normal}, as Unreal compiles a material for its GPU skin vertex
+     * factory. The world renderer asks for it for a {@code SKINNED} or {@code SKINNED_WIDE} mesh.
+     */
+    public static final String SKINNED = "CG_SKINNED";
+
+    /** The skinned factory's environment, after the bone palettes' declaration. */
+    private static final String BONES_ENV = "crystalgraphics:shaders/env/buffer/bones.glsl";
 
     /**
      * The engine's keyword for the overdraw view's variant of any pass: the pass's own vertex stage, depth test (as a
@@ -319,6 +331,14 @@ public final class CgMaterialShaderCompiler {
         // A sprite variant takes the sprite factory, which places quads from CG_VERTEX_ID: it draws CgMesh.quads, and a
         // vertex input it declared would be one no mesh provides (a Vulkan pipeline refuses it).
         if (spriteVariant(shader, config) || stripVariant(shader, config)) vertexFormat = CgVertexFormat.NONE;
+        // The skinned factory reads the skinned format's attributes; its indices are a uvec4 at either width.
+        if (skinnedVariant(config)) {
+            if (!vertexFormat.equals(CgVertexFormat.SPATIAL)) {
+                throw new IllegalArgumentException("[" + path + "] " + SKINNED + " skins a #type spatial shader, not #type "
+                        + shader.shaderType());
+            }
+            vertexFormat = CgVertexFormat.SKINNED;
+        }
 
         String vertexSource = buildVertexSource(shader, pass, properties, v2fFields, useSsbo,
                 path, attachedBuffers, requiredExtensions, matPropsEntry, config, vertexFormat);
@@ -331,6 +351,32 @@ public final class CgMaterialShaderCompiler {
     /** Whether this variant places its vertices with the strip factory, reading no vertex data. */
     private static boolean stripVariant(CgParsedShader shader, CompileConfig config) {
         return config.activeKeywords().contains(STRIP) && shader.engineBuffers().contains("particle");
+    }
+
+    /** Whether this variant skins its vertices: {@link #SKINNED}. */
+    private static boolean skinnedVariant(CompileConfig config) {
+        return config.activeKeywords().contains(SKINNED);
+    }
+
+    /**
+     * The skinned factory, after the engine buffers: the bone palettes' declaration and environment, then
+     * {@code cg_Position} and {@code cg_Normal} redefined as the vertex skinned by its bones. The function reading the
+     * attributes comes before the macros, so it reads the mesh's; {@code main} calls it first. Unreal's
+     * {@code SkinPosition} and {@code SkinTangents}: position by the blended 3x4, normal by its rotation, renormalised.
+     */
+    private static void appendSkinnedFactory(StringBuilder sb, CgCapabilities.ShaderBufferPath path) {
+        appendAttachedBuffers(sb, List.of(CgAttachedBuffer.of(CgBonePalettes.buffer(), CgBonePalettes.MACRO_NAME)), path);
+        sb.append("#include \"").append(BONES_ENV).append("\"\n");
+        sb.append("vec3 _cg_skinPosition;\nvec3 _cg_skinNormal;\n")
+          .append("void _cg_skin() {\n")
+          .append("  vec4 r0, r1, r2;\n")
+          .append("  cg_BoneBlend(cg_BoneIndices, cg_BoneWeights, r0, r1, r2);\n")
+          .append("  vec4 p = vec4(cg_Position, 1.0), n = vec4(cg_Normal, 0.0);\n")
+          .append("  _cg_skinPosition = vec3(dot(r0, p), dot(r1, p), dot(r2, p));\n")
+          .append("  vec3 skinned = vec3(dot(r0, n), dot(r1, n), dot(r2, n));\n")
+          .append("  _cg_skinNormal = dot(skinned, skinned) > 0.0 ? normalize(skinned) : cg_Normal;\n")
+          .append("}\n")
+          .append("#define cg_Position _cg_skinPosition\n#define cg_Normal _cg_skinNormal\n");
     }
 
     /** Whether this variant places its vertices with the particle sprite factory, reading no vertex data. */
@@ -576,6 +622,7 @@ public final class CgMaterialShaderCompiler {
         appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
 
         appendEngineBufferEnv(sb, shader.engineBuffers());
+        if (skinnedVariant(config)) appendSkinnedFactory(sb, shaderBufferPath);
         appendPropertyAccessors(sb, properties, shader.engineBuffers().contains(CgShaderParser.ROWS));
 
         appendMaterialBuffers(sb, shader, useSsbo);
@@ -605,6 +652,10 @@ public final class CgMaterialShaderCompiler {
 
         // Generated main()
         appendVertexMain(sb, v2fFields);
+        if (skinnedVariant(config)) {
+            int open = sb.indexOf("{", sb.lastIndexOf("void main()")) + 1;
+            sb.insert(open, "\n  _cg_skin();");
+        }
         if (normals) {
             // At the end of the generated main itself: a backend may rewrite main, so no macro renames it.
             String normal = vertexFormat.indexOf("cg_Normal") >= 0 ? "CG_NORMAL_MATRIX * cg_Normal" : "vec3(0.0)";
