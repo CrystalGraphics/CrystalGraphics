@@ -221,7 +221,7 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
 
     /** The body: its light, haze, skin, spirals, lightning and core along the path. */
     public static final CgVfxKit REALISTIC_BODY = CgVfxKit.of("crystalgraphics:wave/body").params(CgBeamBody.SCHEMA)
-            .slot(light("light", CgBeamBody.BODY, BODY_LIGHT, 10f, GLOW))
+            .slot(bodyLight())
             .slot(slot("haze", CgBeamBody.BODY, HAZE_TUBE, 4.5f).bind("_Cap", RADIUS, 4.5f).quality(CgQuality.MEDIUM).build())
             .slot(slot("shell", CgBeamBody.BODY, BODY_SHELL, 1.15f).bind("_Shell", SHELL).bind("_ShellHot", SHELL_HOT).build())
             .slot(slot("spiral", CgBeamBody.BODY, BODY_SPIRAL, 1.2f).bind("_Spiral", SPIRAL).bind("_Core", CORE).build())
@@ -277,7 +277,7 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
      */
     public static final CgVfxKit TOON = CgVfxKit.of("crystalgraphics:wave/toon")
             .params(TOON_SCHEMA, CgBeamBody.SCHEMA, CgVfxCharge.SCHEMA)
-            .slot(light("light", CgBeamBody.BODY, BODY_LIGHT, 10f, GLOW))
+            .slot(bodyLight())
             .slot(light("ball_light", CgVfxCharge.BALL, ORB_LIGHT, 9f, GLOW))
             .slot(light("head_light", CgBeamBody.HEAD, ORB_LIGHT, 9f, GLOW))
             .slot(slot("body", CgBeamBody.BODY, BANDED, 2.43f).bind("_Bands", BANDS).build())
@@ -303,6 +303,15 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
 
     private static CgVfxSlotRenderer.Builder slot(String id, CgVfxSlot slot, CgMaterialDefinition material, float size) {
         return CgVfxSlotRenderer.of(id, slot).material(material).size(size);
+    }
+
+    /**
+     * The body's light: a chain of tube lights along it, their source the core's surface (1.25 of a ring), so a shadow
+     * ray ends there rather than inside the core, whose depth it would meet.
+     */
+    private static CgVfxSlotRenderer bodyLight() {
+        return CgVfxSlotRenderer.light("light", CgBeamBody.BODY).intensity(BODY_LIGHT).attenuationRadius(10f)
+                .sourceRadius(1.25f).bind("light_color", GLOW).build();
     }
 
     /** A light on {@code slot} of {@code colour}, {@code intensity} bright, reaching {@code reach} times the slot's size. */

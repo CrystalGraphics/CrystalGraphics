@@ -9,6 +9,7 @@ import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.buffer.CgGpuType;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.compute.lower.CgLoweredEmitter;
@@ -1495,6 +1496,21 @@ public final class CgMaterial {
         CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
         CgDepthState depth = forward == null ? null : forward.renderState().getDepth();
         return depth != null && depth.write();
+    }
+
+    /**
+     * Whether its Forward draw is a solid: it writes depth and blends nothing (Unreal's opaque blend mode), whatever its
+     * queue. Such a draw casts shadows as an opaque one does; a translucent one never does. A parse, never a compile.
+     *
+     * <pre>{@code
+     * if (material.solid()) lights.caster(...);   // debris drawn late, lit in its own program
+     * }</pre>
+     */
+    public boolean solid() {
+        if (!writesDepth()) return false;
+        CgParsedPass forward = cgMaterialShader.ensureParsed().getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
+        CgBlendState blend = forward.renderState().getBlend();
+        return blend == null || !blend.enabled();
     }
 
     /**
