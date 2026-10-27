@@ -13,6 +13,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 
 import com.crystalgraphics.util.io.CgIO;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -752,18 +753,22 @@ public final class CgVfxEmitterCompiler {
                     vec4 when = uintBitsToFloat(SPAWNS(at + 1)), from = uintBitsToFloat(SPAWNS(at + 2));
                     vec4 to = uintBitsToFloat(SPAWNS(at + 3));
 @TRAIL_SPAWN@                    int bursts = int(when.z);
-                    float along = i >= bursts ? float(i - bursts + 1) / float(n - bursts) : 0.0;
-                    born = mix(when.x, when.y, along);
-                    float loop = mix(from.w, to.w, along);
+@ALONG@                    float loop = mix(from.w, to.w, along);
                     if (!step_launch(seed, k, k, row, inst, mix(from.xyz, to.xyz, along), vec3(0.0, 1.0, 0.0), step_instance(inst + 7),
                             @FRONT@, loop, p)) return false;
                     p.velocity += step_vector(row, inst, 2).z * (to.xyz - from.xyz) / when.w;
-@READ@                    p.id = k;
+@LEGACY@@READ@                    p.id = k;
                     p.slot = slot;
                     return true;
                 }
 
-                """.replace("@HEADS@", heads(shape)).replace("@SPEED@", spawnValue(shape, CgVfxSpawnInput.SPEED, "s0.x", "s0.x + (s0.y - s0.x) * " + roll(CgVfxGpuEmitter.KEY_SPEED), ""))
+                """.replace("@ALONG@", switch (shape.spawning()) {
+                    case INTERPOLATED -> ALONG;
+                    case CASCADE_LEGACY -> LEGACY_ALONG;
+                    case CASCADE_GPU -> GPU_ALONG;
+                })
+                .replace("@LEGACY@", shape.spawning() == CgVfxSpawning.CASCADE_LEGACY ? LEGACY_PLACE : "")
+                .replace("@HEADS@", heads(shape)).replace("@SPEED@", spawnValue(shape, CgVfxSpawnInput.SPEED, "s0.x", "s0.x + (s0.y - s0.x) * " + roll(CgVfxGpuEmitter.KEY_SPEED), ""))
                 .replace("@LIFE@", spawnValue(shape, CgVfxSpawnInput.LIFETIME, "s0.z", "s0.z + (s0.w - s0.z) * " + roll(CgVfxGpuEmitter.KEY_LIFE), ""))
                 .replace("@SIZE@", spawnValue(shape, CgVfxSpawnInput.SPRITE_SIZE, "s1.x", "s1.x + (s1.y - s1.x) * " + roll(CgVfxGpuEmitter.KEY_SIZE), ""))
                 .replace("@FRONT@", front(shape))
@@ -1385,6 +1390,44 @@ public final class CgVfxEmitterCompiler {
         String radius = "step_vector(row, inst, 7).y";
         return "(" + formExpr(shape.spawnLayout(f), shape.spawnForm(f).compiled(), 0, radius, "seed", "k", "loop") + " - " + radius + ")";
     }
+
+    /** Where along the tick a spawn is born: bursts at its start, rate spawns spread to its end. */
+    private static final String ALONG = """
+                    float along = i >= bursts ? float(i - bursts + 1) / float(n - bursts) : 0.0;
+                    born = mix(when.x, when.y, along);
+            """;
+
+    /**
+     * Cascade's GPU sprites ({@code ParticleGpuSimulation.cpp} 4.21, {@code BuildNewParticles}): as interpolated, but
+     * burst spawn i of a tick's n is placed i / n along the source's move, the first where the source was.
+     */
+    private static final String GPU_ALONG = """
+                    float along = i >= bursts ? float(i - bursts + 1) / float(n - bursts) : float(i) / float(bursts);
+                    born = i >= bursts ? mix(when.x, when.y, along) : when.x;
+            """;
+
+    /**
+     * Cascade's legacy spawning ({@code ParticleEmitterInstances.cpp} 4.21, {@code SpawnParticles}): bursts and rate
+     * spawns each spread along the source's move as {@code 1 - (i + 1) / n} of the way back, where it moved past a
+     * centimetre ({@code PostSpawn}); born at the tick's end, as its update modules ran before it spawned.
+     */
+    private static final String LEGACY_ALONG = """
+                    bool burst = i < bursts;
+                    float along = burst ? float(i + 1) / float(bursts) : float(i - bursts + 1) / float(n - bursts);
+                    if (distance(from.xyz, to.xyz) <= 0.01) along = 1.0;
+                    born = when.y;
+            """;
+
+    /**
+     * Legacy spawning's offset: a rate spawn moves by its velocity over the tick's shared start time (Cascade's
+     * {@code StartTime}, decremented in place of each spawn's), a burst over the tick's share a burst; then the spawn tick
+     * integrates it once more, its position and its rotation ({@code UpdateBoundingBox}, {@code bSkipDoubleSpawnUpdate}).
+     */
+    private static final String LEGACY_PLACE = """
+                    float since = burst ? when.w / float(bursts) : uintBitsToFloat(SPAWNS(at + 4).x);
+                    p.position += (since + when.w) * p.velocity;
+                    p.spin += when.w * p.spinRate;
+            """;
 
     /** A head's spawns in the Step, for a shape whose trails follow another emitter's particles. */
     private static final String HEAD_SPAWN = """

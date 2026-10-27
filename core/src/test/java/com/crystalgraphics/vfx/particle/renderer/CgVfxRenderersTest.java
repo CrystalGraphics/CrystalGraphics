@@ -13,6 +13,7 @@ import com.crystalgraphics.vfx.look.CgVfxFlipbook;
 import com.crystalgraphics.vfx.particle.CgVfxSubUvAnimation;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterAssets;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
 import org.junit.Test;
 
 import java.util.EnumSet;
@@ -172,5 +173,34 @@ public class CgVfxRenderersTest {
         CgValidation v = CgAssetData.of("test:vfx/emitters/sparks", CgParticleKinds.EMITTER, file, null)
                 .validate(CgValidation.Usecase.LOAD);
         assertTrue(v.toString(), v.valid());
+    }
+
+    @Test
+    public void cascadesEmitterFlagsRoundTrip() {
+        CgVfxEmitter built = CgVfxEmitter.builder("sparks").spawning(CgVfxSpawning.CASCADE_LEGACY).legacyEmitterTime()
+                .renderer(CgVfxRenderers.sprite("r1").material("test:materials/spark").maxDrawCount(500).build())
+                .build();
+        Map<String, Object> file = CgVfxEmitterAssets.write(built);
+        CgVfxEmitter loaded = CgVfxEmitterAssets.compile("sparks", file, null);
+        assertEquals(CgVfxSpawning.CASCADE_LEGACY, loaded.spawning());
+        assertTrue(loaded.legacyEmitterTime());
+        assertEquals(500, loaded.maxDrawCount());
+        CgVfxEmitter plain = CgVfxEmitterAssets.compile("plain",
+                CgVfxEmitterAssets.write(CgVfxEmitter.builder("plain").renderer(CgVfxRenderers.sprite("r1").build()).build()), null);
+        assertEquals("interpolated, unless told", CgVfxSpawning.INTERPOLATED, plain.spawning());
+        assertFalse(plain.legacyEmitterTime());
+        assertEquals("every particle drawn, unless capped", -1, plain.maxDrawCount());
+        CgAssetKinds.register();
+        CgValidation v = CgAssetData.of("test:vfx/emitters/sparks", CgParticleKinds.EMITTER, file, null)
+                .validate(CgValidation.Usecase.LOAD);
+        assertTrue(v.toString(), v.valid());
+    }
+
+    @Test
+    public void anEmittersRenderersNameOneDrawCap() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> CgVfxEmitter.builder("sparks")
+                .renderer(CgVfxRenderers.sprite("r1").maxDrawCount(500).build())
+                .renderer(CgVfxRenderers.sprite("r2").maxDrawCount(200).build()).build());
+        assertTrue(e.getMessage(), e.getMessage().contains("sparks") && e.getMessage().contains("max_draw_count"));
     }
 }

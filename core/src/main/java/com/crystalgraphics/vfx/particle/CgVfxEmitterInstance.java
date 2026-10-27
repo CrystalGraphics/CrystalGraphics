@@ -16,6 +16,7 @@ import com.crystalgraphics.vfx.particle.ribbon.CgVfxAnimTrailSource;
 import com.crystalgraphics.vfx.particle.ribbon.CgVfxTrailHeads;
 import com.crystalgraphics.vfx.particle.ribbon.CgVfxTrailRows;
 import com.crystalgraphics.vfx.particle.ribbon.CgVfxTrailSource;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -80,6 +81,8 @@ public final class CgVfxEmitterInstance {
     private float loopStart, loopLength;
     /** The loop's seconds at the last scheduled step's start and end: what a spawn form by the loop reads. */
     private float stepLoopFrom, stepLoopTo;
+    /** The last step's rate spawns' seconds since birth at its end under legacy spawning: Cascade's StartTime. */
+    private float stepStartTime;
     private boolean loopsOver;
     private float rateOwed, share = 1f;
     /** The distance its spawn per unit carries to the next step: Cascade's {@code CurrentDistanceTravelled}. */
@@ -653,13 +656,23 @@ public final class CgVfxEmitterInstance {
      * Fires every burst whose time in its loop has come, at this step's start, and moves on to the next loop once its
      * time has come: its delay and length picked, its bursts armed again. At most one loop a step, as Unreal steps an
      * emitter's loop once a tick, and a loop of no length never ends (Cascade's {@code bLooped},
-     * {@code ParticleEmitterInstances.cpp:947-982}).
+     * {@code ParticleEmitterInstances.cpp:947-982}). Under legacy emitter time a loop's age is the instance's age modulo
+     * its period instead, the duration and Cascade's delay, less that delay ({@code bUseLegacyEmitterTime}, :951-958).
      */
     private void fireBursts() {
         CgVfxEmitterState state = emitter.state;
         CgVfxSpawnBurst[] bursts = emitter.bursts;
         int loops = state.loops();
         for (boolean wrapped = false; !loopsOver && time < stoppedAt; wrapped = true) {
+            boolean legacyLooped = false;
+            if (emitter.legacyEmitterTime) {
+                // Cascade's EmitterDuration holds its delay even when only the first loop waits it (:2578-2582).
+                float delay = state.delayBefore(seed, emitter.delayKey, state.delaysFirstLoopOnly() ? 0 : loop);
+                float period = loopLength + delay, now = state.delaysFirstLoopOnly() && loop > 0 ? 0f : delay;
+                boolean periodic = period > 1e-4f;
+                loopStart = time - ((periodic ? time % period : time) - now);
+                legacyLooped = periodic && time - period * loop >= period;
+            }
             float age = time - loopStart, duration = loopLength;
             // A burst past the loop's end never fires; in the delay, age is negative and none does.
             while (burstsDone < bursts.length && bursts[burstsDone].time() <= Math.min(age, duration)) {
@@ -669,7 +682,8 @@ public final class CgVfxEmitterInstance {
                 for (int n = 0; n < fit; n++) scheduleOne(stepDt, 0f);
                 burstsDone++;
             }
-            if (wrapped || !(duration > 0f) || age < duration) {
+            boolean looped = emitter.legacyEmitterTime ? legacyLooped : duration > 0f && age >= duration;
+            if (wrapped || !looped) {
                 // Once its last loop's bursts are spent, one spawning by bursts alone has spawned everything.
                 if (loop + 1 >= loops && burstsDone == bursts.length && !emitter.spawnsContinuously()) loopsOver = true;
                 return;
@@ -679,7 +693,7 @@ public final class CgVfxEmitterInstance {
                 return;
             }
             loop++;
-            loopStart += duration + state.delayBefore(seed, emitter.delayKey, loop);
+            if (!emitter.legacyEmitterTime) loopStart += duration + state.delayBefore(seed, emitter.delayKey, loop);
             loopLength = state.durationOf(seed, emitter.durationKey, loop);
             burstsDone = 0;
         }
@@ -985,6 +999,7 @@ public final class CgVfxEmitterInstance {
             stepDt = dt;
             stepTime = time;
             stepFirst = spawned;
+            stepStartTime = 0f;
             retire(time);
             CgVfxEmitter e = emitter;
             fireBursts();
@@ -1027,6 +1042,8 @@ public final class CgVfxEmitterInstance {
                     rateOwed += byDistance * rateScale;
                 }
                 float rate = e.rate.at(age, u, v) * bound;
+                float perSecond = rate * rateScale;
+                if (e.spawning == CgVfxSpawning.CASCADE_LEGACY) stepStartTime = perSecond > 0f ? dt + (rateOwed - 1f) / perSecond : dt;
                 if (!(e.perUnit.ignoreRateWhenMoving() && moved)) rateOwed += rate * dt * rateScale;
                 int n = (int) rateOwed;
                 rateOwed -= n;
@@ -1133,6 +1150,14 @@ public final class CgVfxEmitterInstance {
         /** Its loop's seconds as that step ended: its last rate spawn's. */
         public float stepLoopTo() {
             return stepLoopTo;
+        }
+
+        /**
+         * Under legacy spawning, every rate spawn of {@link #schedule}'s last step is born this many seconds before its
+         * end: Cascade's {@code StartTime}, {@code dt + leftover / rate - 1 / rate} ({@code SpawnParticles}); 0 otherwise.
+         */
+        public float stepStartTime() {
+            return stepStartTime;
         }
 
         @Override

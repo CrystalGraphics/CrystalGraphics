@@ -23,6 +23,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxModuleWords;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -95,6 +96,8 @@ public final class CgVfxShape {
     private final boolean beams;
     /** Whether its particles are a Cascade trail's ({@code CgVfxRibbonRendererProperties.trail}), keeping its payload. */
     private final boolean trails;
+    /** How a tick's spawns are timed and placed ({@link CgVfxGpuEmitter#spawning}). */
+    private final CgVfxSpawning spawning;
     /** Every data interface it takes, its kinds' and what they require, in registration order; where each one's lanes start. */
     private final CgVfxDataInterface[] interfaces;
     private final List<CgVfxDataInterface> interfaceList;
@@ -233,6 +236,8 @@ public final class CgVfxShape {
         if (beams) key.append("|beam:").append(beamPoints);
         trails = emitter.cascadeTrail();
         if (trails) key.append("|trail");
+        spawning = emitter.spawning();
+        if (spawning != CgVfxSpawning.INTERPOLATED) key.append("|").append(spawning.key());
         lifeRolls = emitter.lifeRolls().size();
         int rollVectors = 0;
         StringBuilder rollKey = new StringBuilder();
@@ -709,6 +714,11 @@ public final class CgVfxShape {
     /** Whether its particles are a Cascade trail's: born by its trail source, keeping the trail payload. */
     public boolean trails() {
         return trails;
+    }
+
+    /** Whether it spawns as Cascade's legacy spawning does: its Step places a tick's spawns as Cascade's PostSpawn does. */
+    public CgVfxSpawning spawning() {
+        return spawning;
     }
 
     /** Noise points each beam of it keeps (a power of two), 0 without beam noise. */

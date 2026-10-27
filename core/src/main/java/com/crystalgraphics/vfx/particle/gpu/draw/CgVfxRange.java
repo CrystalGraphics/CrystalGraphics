@@ -122,6 +122,8 @@ public final class CgVfxRange {
     private static CgGraphBuffer drawn, visible, slots, bases, strides, objects, sorts, origins, facings;
     private static final List<CgGraphBuffer> RETIRED = new ArrayList<>();
     private static boolean anySorted;
+    /** Whether a slot was {@link #capped} since the last recording: Cap runs. */
+    private static boolean anyCapped;
     /** Whether {@link #objects()} was asked for since the last recording. */
     private static boolean objectsAsked;
     /** Whether each frame's visible counts are read back: from the first {@link #visibleCount()}. */
@@ -202,8 +204,12 @@ public final class CgVfxRange {
     private static ByteBuffer staging = ByteBuffer.allocate(0);
 
     private final CgVfxParticlePool pool;
-    /** Per slot, this frame's order: 0 the pool's, else its {@link Sort}'s mode. */
+    /**
+     * Per slot, this frame's order: its {@link Sort}'s mode in the low {@link #SORT_BITS} bits, 0 the pool's; above them
+     * its draw cap plus one ({@link #capped}), 0 for none. Range's {@code SORTS}.
+     */
     private int[] slotOrder = new int[8];
+    private static final int SORT_BITS = 3, SORT_MASK = (1 << SORT_BITS) - 1, MAX_CAP = (1 << 32 - SORT_BITS) - 1;
 
     private CgVfxRange(CgVfxParticlePool pool) {
         this.pool = pool;
@@ -246,6 +252,7 @@ public final class CgVfxRange {
     public static final List<Runnable> PREPARE_STEPS = List.of(
             () -> CgCompute.load(KERNELS).kernel("Key").prepare(),
             () -> CgCompute.load(KERNELS).kernel("Place").prepare(),
+            () -> CgCompute.load(KERNELS).kernel("Cap").prepare(),
             () -> CgCompute.load(KERNELS).kernel("Objects").prepare(),
             () -> CgGpuOps.prepareSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING),
             CgGpuOps::prepareHistogram,
@@ -268,7 +275,7 @@ public final class CgVfxRange {
         ALL = REAL;
         RETIRED.clear();
         drawn = visible = slots = bases = strides = objects = sorts = origins = null;
-        anySorted = objectsAsked = false;
+        anySorted = anyCapped = objectsAsked = false;
         if (registration != null) {
             registration.close();
             registration = null;
@@ -347,8 +354,25 @@ public final class CgVfxRange {
 
     private CgVfxRange order(int slot, int code) {
         if (slot >= slotOrder.length) slotOrder = Arrays.copyOf(slotOrder, Math.max(slot + 1, slotOrder.length * 2));
-        slotOrder[slot] = code;
+        slotOrder[slot] = slotOrder[slot] & ~SORT_MASK | code;
         anySorted = true;
+        return this;
+    }
+
+    /**
+     * Has this frame draw at most {@code count} of {@code slot}'s particles, the first in its order, as Cascade's
+     * {@code MaxDrawCount} clamps ({@code ParticleSystemRender.cpp} 4.21, {@code GetVertexAndIndexData}). Its particles
+     * are then not culled, so those off screen still take their place in the order. Each frame, before the world records.
+     *
+     * <pre>{@code
+     * if (emitter.maxDrawCount() >= 0) range.capped(slot, emitter.maxDrawCount());
+     * }</pre>
+     */
+    public CgVfxRange capped(int slot, int count) {
+        if (count < 0) throw new IllegalArgumentException("a cap of " + count);
+        if (slot >= slotOrder.length) slotOrder = Arrays.copyOf(slotOrder, Math.max(slot + 1, slotOrder.length * 2));
+        slotOrder[slot] = slotOrder[slot] & SORT_MASK | Math.min(count + 1, MAX_CAP) << SORT_BITS;
+        anyCapped = true;
         return this;
     }
 
@@ -616,6 +640,8 @@ public final class CgVfxRange {
         CgGpuOps.histogram(pass, keyBuffer, all, visible, allSlots + 1, depthBits);
         CgGpuOps.scan(pass, CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT, visible,
                 count(SLOT_COUNTS, allSlots + 1), starts);
+        // After the scan, so each slot's run keeps its place in INDICES and only its count is cut.
+        if (anyCapped) pass.dispatch(kernels.kernel("Cap"), allSlots).bind("VISIBLE", visible).bind("SORTS", sorts);
         // One Place over every pool, as Niagara's count manager writes every renderer's draw arguments in one dispatch
         // (NiagaraGPUInstanceCountManager.cpp, UpdateDrawIndirectBuffers): a pool's dispatch each was a pool's CPU cost.
         int allDrawn = 0;
@@ -669,9 +695,9 @@ public final class CgVfxRange {
     }
 
     private static void clearSorted() {
-        if (!anySorted) return;
+        if (!anySorted && !anyCapped) return;
         for (int i = 0; i < ALL.size(); i++) Arrays.fill(ALL.get(i).slotOrder, 0);
-        anySorted = false;
+        anySorted = anyCapped = false;
     }
 
     /**

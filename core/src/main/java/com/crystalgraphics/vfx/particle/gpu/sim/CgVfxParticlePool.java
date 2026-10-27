@@ -46,6 +46,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
 import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import com.crystalgraphics.render.world.CgWorldVoxelWindow;
@@ -1866,7 +1867,7 @@ public final class CgVfxParticlePool {
         int at = stepInstanceAt[steps] + slot * instanceWords + 4;
         float x = Float.intBitsToFloat(instances[at]), y = Float.intBitsToFloat(instances[at + 1]),
                 z = Float.intBitsToFloat(instances[at + 2]);
-        spawn(slot, firstSpawn, candidates, candidates, 0f, 1f, x, y, z, x, y, z, 0f, 0f);
+        spawn(slot, firstSpawn, candidates, candidates, 0f, 1f, x, y, z, x, y, z, 0f, 0f, 0f);
     }
 
     /**
@@ -1874,15 +1875,19 @@ public final class CgVfxParticlePool {
      * the first {@code bursts} born at {@code bornFrom} seconds into the step where the source was as the tick began
      * ({@code from}), the rest spread from there to {@code bornFrom + tickSeconds} and the source at its end ({@code to}),
      * each stepped for the rest of the step; its loop's seconds run from {@code loopFrom} to {@code loopTo} across it, what
-     * a spawn form by the loop reads. After the slot's {@link #instance} row; a row per tick that spawned.
+     * a spawn form by the loop reads. {@code startTime} is the tick's rate spawns' seconds since birth at its end under
+     * Cascade's legacy spawning ({@link CgVfxSpawning#CASCADE_LEGACY}); 0 otherwise. After the slot's {@link #instance} row; a row
+     * per tick that spawned.
      *
      * <pre>{@code
      * pool.spawn(slot, b.stepFirstSpawn(), b.stepCandidates(), b.stepBursts(), tickStart, TICK,
-     *         b.fromX(), b.fromY(), b.fromZ(), b.sourceX(), b.sourceY(), b.sourceZ(), b.stepLoopFrom(), b.stepLoopTo());
+     *         b.fromX(), b.fromY(), b.fromZ(), b.sourceX(), b.sourceY(), b.sourceZ(), b.stepLoopFrom(), b.stepLoopTo(),
+     *         b.stepStartTime());
      * }</pre>
      */
     public void spawn(int slot, int firstSpawn, int candidates, int bursts, float bornFrom, float tickSeconds,
-                      float fromX, float fromY, float fromZ, float toX, float toY, float toZ, float loopFrom, float loopTo) {
+                      float fromX, float fromY, float fromZ, float toX, float toY, float toZ, float loopFrom, float loopTo,
+                      float startTime) {
         inStep("spawn");
         openSlot(slot, "spawn");
         if (firstSpawn < 0 || candidates < 0 || bursts < 0 || bursts > candidates || !(tickSeconds > 0f) || !(bornFrom >= 0f)) {
@@ -1914,6 +1919,8 @@ public final class CgVfxParticlePool {
         w[at + 14] = Float.floatToRawIntBits(toZ);
         w[at + 15] = Float.floatToRawIntBits(loopTo);
         Arrays.fill(w, at + 16, at + SPAWN_ROW_WORDS, 0);
+        // A trail row's first word: an ordinary row's are free, so a legacy spawn's start time rides there.
+        w[at + 16] = Float.floatToRawIntBits(startTime);
         spawnEnd += SPAWN_ROW_WORDS;
         stepSpawnRows[s]++;
         stepSpawned[s] += candidates;

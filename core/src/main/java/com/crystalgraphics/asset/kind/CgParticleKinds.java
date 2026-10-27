@@ -76,8 +76,9 @@ public final class CgParticleKinds {
             .property("simulation", CgValueType.enumOf("gpu", "analytic")).defaultValue("gpu").flags(CgPropertyFlag.STRUCTURAL)
             .property("bounds", CgValueType.oneOf(CgValueType.enumOf("dynamic"), CgValueType.struct(FIXED_BOUNDS))).defaultValue("dynamic")
             .property("interpolated_spawn", BOOL)
-            // Cascade's bUseLegacySpawningBehavior and bUseLegacyEmitterTime; absent, Niagara's spawning and LoopedAge
-            .property("legacy_spawning", BOOL).defaultValue(false).flags(CgPropertyFlag.STRUCTURAL)
+            // Cascade's bUseLegacySpawningBehavior or GPU sprites, and bUseLegacyEmitterTime; absent, interpolated
+            // spawning and Niagara's LoopedAge
+            .property("spawning", CgValueType.enumOf("cascade_legacy", "cascade_gpu")).flags(CgPropertyFlag.STRUCTURAL)
             .property("legacy_emitter_time", BOOL).defaultValue(false).flags(CgPropertyFlag.STRUCTURAL)
             .property("determinism", CgValueType.struct(DETERMINISM))
             .property("quality", CgValueType.listOf(TIER)).flags(CgPropertyFlag.STRUCTURAL)

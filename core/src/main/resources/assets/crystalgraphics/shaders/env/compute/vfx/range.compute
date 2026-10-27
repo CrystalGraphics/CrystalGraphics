@@ -8,8 +8,10 @@
 // of each particle a slot draws into ORDER from the slot's list base: draws read the pool's records through it, whose
 // drawn part the Step wrote. Objects writes the same particles as object records, for a mesh drawn per particle. Under crystalgraphics.vfx.orderedTies, Order first sorts each pool's live particles by spawn
 // id, which the sort then keeps among equal keys: the atomics appending a pool's survivors order them anew each run.
+// A capped slot (Cascade's MaxDrawCount) is keyed whole, unculled, and Cap cuts its count after the scan.
 #pragma kernel Order map
 #pragma kernel Key map
+#pragma kernel Cap map
 #pragma kernel Place gather
 #pragma kernel Objects gather
 
@@ -80,10 +82,10 @@ Buffers {
     DRAWN   ("Their drawn parts, at the same index",              FxDrawn,  readonly)
     LIVE    ("How many are alive",                                uint,     readonly)
     SLOTS   ("Each slot's origin from the camera, and its reach (below 0: one sphere's)", vec4, readonly)
-    SORTS   ("Each slot's CgVfxRange.Sort: 1 far to near, 3 by distance, 4 oldest first, 5 newest first", uint, readonly)
+    SORTS   ("Each slot's CgVfxRange.Sort: 1 far to near, 3 by distance, 4 oldest first, 5 newest first; above 3 bits its cap + 1", uint, readonly)
     KEYS    ("Keys",                                              uint,     writeonly)
     INDICES ("Indices, sorted by slot",                           uint,     readwrite)
-    VISIBLE ("Each slot's visible particles",                     uint,     readonly)
+    VISIBLE ("Each slot's visible particles",                     uint,     readwrite)
     STARTS  ("Where each slot's run starts in INDICES",           uint,     readonly)
     BASES   ("Where each slot's records start in ORDER, every pool's", uint,   readonly)
     STRIDES ("Each slot's pool's drawn elements a particle",      uint,     readonly)
@@ -135,11 +137,12 @@ void Key() {
                 || range_outside(_Plane2, c, reach) || range_outside(_Plane3, c, reach)
                 || range_outside(_Plane4, c, reach) || range_outside(_Plane5, c, reach);
         vec3 lo = c - vec3(reach), hi = c + vec3(reach);
-        if (!outside && !cg_occluded(_Pyramid, _PyramidSize, _ClipX, _ClipY, _ClipZ, _ClipW, _Eye, lo, hi)) {
+        // The slot's order (CgVfxRange.Sort) in its low 3 bits, each drawn as Cascade sorts
+        // (ParticleSystemRender.cpp, SortSpriteParticles): the largest first. A capped slot counts what is off screen.
+        uint order = SORTS(int(owner)), mode = order & 7u;
+        bool capped = (order >> 3u) != 0u;
+        if (capped || !outside && !cg_occluded(_Pyramid, _PyramidSize, _ClipX, _ClipY, _ClipZ, _ClipW, _Eye, lo, hi)) {
             key = owner << _DepthBits;
-            // The slot's order (CgVfxRange.Sort) in its low 3 bits, each drawn as Cascade sorts
-            // (ParticleSystemRender.cpp, SortSpriteParticles): the largest first.
-            uint order = SORTS(int(owner)), mode = order & 7u;
             if (_DepthBits > 0 && mode == 1u) key |= 65535u - range_depth(p);
             else if (_DepthBits > 0 && mode == 3u) key |= 65535u - range_distance(p);
             else if (_DepthBits > 0 && mode == 4u) key |= 65535u - (heatId.y & 65535u);
@@ -148,6 +151,12 @@ void Key() {
     }
     KEYS_WRITE(key);
     INDICES_WRITE(e);
+}
+
+// A capped slot draws at most its cap, the first in its order (ParticleSystemRender.cpp 4.21, GetVertexAndIndexData).
+void Cap() {
+    uint cap = SORTS(CG_ELEMENT) >> 3u;
+    if (cap != 0u) VISIBLE_WRITE(min(VISIBLE(CG_ELEMENT), cap - 1u));
 }
 
 // The slot whose records hold element e of this pool's, numbered across every pool: the last base at or below it,

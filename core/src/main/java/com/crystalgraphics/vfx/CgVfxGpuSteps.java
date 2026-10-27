@@ -231,9 +231,9 @@ final class CgVfxGpuSteps {
     private final StepView view = new StepView();
     /**
      * This frame's booked spawns, a CPU tick's each: its tenant, (first, candidates, bursts), (born, from xyz, to xyz,
-     * the loop's seconds at the tick's start and end).
+     * the loop's seconds at the tick's start and end, the legacy start time).
      */
-    private static final int PENDING_FLOATS = 9;
+    private static final int PENDING_FLOATS = 10;
     private Tenant[] pendingTenant = new Tenant[0];
     private int[] pendingInts = new int[0];
     private float[] pendingFloats = new float[0];
@@ -463,6 +463,7 @@ final class CgVfxGpuSteps {
         pendingFloats[f + 6] = tenant.instance.sourceZ();
         pendingFloats[f + 7] = b.stepLoopFrom();
         pendingFloats[f + 8] = b.stepLoopTo();
+        pendingFloats[f + 9] = b.stepStartTime();
         pending++;
     }
 
@@ -497,7 +498,8 @@ final class CgVfxGpuSteps {
                 int i = k * 3, f = k * PENDING_FLOATS;
                 tenant.pool.spawn(tenant.slot, pendingInts[i], pendingInts[i + 1], pendingInts[i + 2], pendingFloats[f],
                         CgVfxSystem.TICK, pendingFloats[f + 1], pendingFloats[f + 2], pendingFloats[f + 3],
-                        pendingFloats[f + 4], pendingFloats[f + 5], pendingFloats[f + 6], pendingFloats[f + 7], pendingFloats[f + 8]);
+                        pendingFloats[f + 4], pendingFloats[f + 5], pendingFloats[f + 6], pendingFloats[f + 7], pendingFloats[f + 8],
+                        pendingFloats[f + 9]);
             }
         }
         dropPending();

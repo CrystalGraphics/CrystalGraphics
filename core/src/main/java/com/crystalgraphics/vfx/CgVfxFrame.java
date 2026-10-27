@@ -551,6 +551,7 @@ public final class CgVfxFrame {
         if (pool.records() == null) return;
         int slot = tenant.slot, capacity = pool.capacity(slot);
         CgVfxRange range = CgVfxRange.of(pool);
+        if (def.maxDrawCount() >= 0) range.capped(slot, def.maxDrawCount());
         if (def.drawLayout() == CgVfxDrawLayout.SEQUENCE) {
             sequence(effect, emitter, rs, pool, range, slot, capacity);
             return;

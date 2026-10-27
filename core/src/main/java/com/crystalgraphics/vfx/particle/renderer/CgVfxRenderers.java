@@ -47,7 +47,7 @@ import java.util.Map;
 public final class CgVfxRenderers {
 
     private static final String[] COMMON_KEYS = {"enabled", "quality", "sort_order_hint", "motion_vectors", "material",
-            "bind", "values", "keywords", "dynamic_parameter_index", "macro_uv"};
+            "bind", "values", "keywords", "dynamic_parameter_index", "macro_uv", "max_draw_count"};
 
     private CgVfxRenderers() {
     }
@@ -328,7 +328,8 @@ public final class CgVfxRenderers {
                 Boolean.TRUE.equals(tree.get("motion_vectors")), material, definition, bind,
                 stringKeyed(tree.get("values")), Collections.unmodifiableList(keywords),
                 "first".equals(tree.get("dynamic_parameter_index")) ? CgVfxDynamicParameterIndex.FIRST : CgVfxDynamicParameterIndex.BY_INDEX,
-                CgVfxMacroUv.read(who, tree.get("macro_uv"), deps == null ? CgUnits.HOST : deps.units(), CgVfxMacroUv.DEFAULT));
+                CgVfxMacroUv.read(who, tree.get("macro_uv"), deps == null ? CgUnits.HOST : deps.units(), CgVfxMacroUv.DEFAULT),
+                tree.get("max_draw_count") instanceof Number n ? n.intValue() : -1);
     }
 
     /**
@@ -587,6 +588,20 @@ public final class CgVfxRenderers {
         public Builder dynamicParameterIndex(CgVfxDynamicParameterIndex index) {
             if (index == CgVfxDynamicParameterIndex.BY_INDEX) tree.remove("dynamic_parameter_index");
             else tree.put("dynamic_parameter_index", index.name().toLowerCase(Locale.ROOT));
+            return this;
+        }
+
+        /**
+         * Draws at most {@code count} of its emitter's particles, the first in draw order, and simulates them all:
+         * Cascade's {@code MaxDrawCount}; 0 draws none. Every renderer of one emitter names the same count or none.
+         *
+         * <pre>{@code
+         * CgVfxRenderers.sprite("sparks").material(SPARK).maxDrawCount(500).build();
+         * }</pre>
+         */
+        public Builder maxDrawCount(int count) {
+            if (count < 0) throw new IllegalArgumentException("max_draw_count " + count);
+            tree.put("max_draw_count", count);
             return this;
         }
 

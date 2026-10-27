@@ -53,6 +53,19 @@ CgVfxEmitter emitter = CgVfxEmitter.builder("sparks")
   rect-table `sub_image`, a mesh prefab or a mesh's `pivot_offset`, a ribbon's `shape: custom` or its `max_ribbons`.
 - **Its renderers decide its draw layout**: a mesh renderer lays its particles out as meshes, an arc renderer as arcs,
   every other kind as quads, and an emitter whose renderers need two layouts fails at build.
+- **`max_draw_count: n` draws the first `n` of its particles in draw order and simulates them all** (Cascade's
+  `MaxDrawCount`); 0 draws none. They are counted before culling, so the ones off screen still use up the count. One
+  emitter's particles draw from one list, so its renderers name one count or none, and two different counts fail at
+  build.
+
+  ```yaml
+  renderers:
+    - { id: r1, kind: sprite, material: mymod:materials/spark, max_draw_count: 500 }
+  ```
+
+  ```java
+  CgVfxRenderers.sprite("r1").material(SPARK).maxDrawCount(500).build();
+  ```
 ### Mesh particles that face something
 
 A mesh renderer turns each mesh toward the camera, along its velocity, or about a locked axis, as Niagara's mesh
@@ -376,6 +389,33 @@ emitter_update:
   lasts a step, and a loop of no length (a duration rolled at 0) never ends, its bursts fired once.
 - **`sweep(speed)` needs a sphere, shell, cylinder or ring and a loop of finite length**: its front runs over each
   loop, the radius as a curve by the loop's seconds, its longest loop's length.
+
+### An emitter from Unreal 4: Cascade's spawning and emitter time
+
+An emitter imported from Cascade keeps how its game spawned and looped.
+
+```yaml
+properties: { capacity: 500, spawning: cascade_legacy, legacy_emitter_time: true }
+```
+
+```java
+CgVfxEmitter.builder("sparks").capacity(500).spawning(CgVfxSpawning.CASCADE_LEGACY).legacyEmitterTime()...
+```
+
+- **`spawning`** is how a tick's new particles are timed and placed along the emitter's move:
+  - absent (`CgVfxSpawning.INTERPOLATED`): bursts are born at the tick's start where the source was; rate spawns are
+    spread across the tick and along the source's move, each stepped with the forces for the rest of the tick;
+  - `cascade_legacy`, Cascade's `bUseLegacySpawningBehavior`:
+    - every rate spawn of a tick is born at the tick's shared start time and placed that far along its velocity;
+    - a burst is placed by its share of the tick;
+    - spawn `i` of `n` is placed `(i + 1) / n` along the source's move, once it moved past a centimetre;
+    - in the tick it spawns, each is moved by its velocity once more;
+  - `cascade_gpu`, Cascade's GPU sprites: as absent, except that burst spawn `i` of `n` is placed `i / n` along the
+    move, the first where the source was. A Cascade GPU emitter spawns this way whatever its legacy flag says.
+- **`legacy_emitter_time`** is Cascade's `bUseLegacyEmitterTime`: a loop's seconds are the instance's age modulo its
+  duration plus its delay. Without it, the loop's age carries its remainder over each loop (Niagara's looped age). The
+  two differ only where a duration or delay is rolled again each loop, or where only the first loop waits its delay:
+  Cascade's period still holds that delay.
 
 ## How each particle looks: colour and size per axis
 

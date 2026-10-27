@@ -49,10 +49,12 @@ public sealed interface CgVfxRendererProperties permits CgVfxSpriteRendererPrope
      * @param keywords        material keywords it enables
      * @param dynamicParameterIndex which dynamic parameter each index of {@code cg_dynamic_parameter} reads
      * @param macroUv         its own particle macro UVs over its system's (Cascade's required module's override), or null
+     * @param maxDrawCount    the most of its emitter's particles drawn, the first in draw order (Cascade's
+     *                        {@code MaxDrawCount}); -1 for all
      */
     record Common(String id, boolean enabled, @Nullable CgQuality quality, int sortOrderHint, boolean motionVectors,
                   @Nullable String material, @Nullable CgMaterialDefinition definition, Map<String, Object> bind,
                   Map<String, Object> values, List<String> keywords, CgVfxDynamicParameterIndex dynamicParameterIndex,
-                  @Nullable CgVfxMacroUv macroUv) {
+                  @Nullable CgVfxMacroUv macroUv, int maxDrawCount) {
     }
 }

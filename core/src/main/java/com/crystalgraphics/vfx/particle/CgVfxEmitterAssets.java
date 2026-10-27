@@ -49,6 +49,7 @@ import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnPerUnit;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnRate;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
 
 /**
  * An emitter as an {@code emitter} asset's tree, both ways: {@link #write} is what the Java builder writes, and
@@ -99,6 +100,8 @@ public final class CgVfxEmitterAssets {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("capacity", e.capacity);
         props.put("local_space", e.local);
+        if (e.spawning.key() != null) props.put("spawning", e.spawning.key());
+        if (e.legacyEmitterTime) props.put("legacy_emitter_time", true);
         // Unreal's emitter scalability override: the Low tier spawns half.
         if (e.optional) props.put("scalability", List.of(map("tiers", List.of("low"), "scale_spawn_count", true, "spawn_count_scale", 0.5)));
         tree.put("properties", props);
@@ -407,6 +410,7 @@ public final class CgVfxEmitterAssets {
         Map<?, ?> props = tree.get("properties") instanceof Map<?, ?> p ? p : Map.of();
         if (props.get("capacity") instanceof Number c) b.capacity(c.intValue());
         b.local(Boolean.TRUE.equals(props.get("local_space")));
+        b.spawning(CgVfxSpawning.of(props.get("spawning"))).legacyEmitterTime(Boolean.TRUE.equals(props.get("legacy_emitter_time")));
         if (props.get("scalability") != null) b.optional(halvedAtLow(name, props.get("scalability")));
         Map<?, ?> beam = beamRenderer(name, tree);
         if (beam != null) b.capacity(beam.get("max_beam_count") instanceof Number c && c.intValue() > 0 ? c.intValue() : 1);

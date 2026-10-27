@@ -8,6 +8,7 @@ import com.crystalgraphics.vfx.particle.CgVfxSockets;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshFacing;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 
 import javax.annotation.Nullable;
@@ -136,6 +137,14 @@ public interface CgVfxGpuEmitter {
      */
     default boolean cascadeTrail() {
         return false;
+    }
+
+    /**
+     * How a tick's spawns are timed and placed: Cascade's legacy spawning's rows carry the tick's start time, and its
+     * Step places them as Cascade's {@code PostSpawn}; Cascade's GPU sprites spread their bursts along the move.
+     */
+    default CgVfxSpawning spawning() {
+        return CgVfxSpawning.INTERPOLATED;
     }
 
     /** The trails a slot's heads keep where its trails follow another emitter's particles, else 0. */

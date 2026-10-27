@@ -29,6 +29,7 @@ import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxDataInterfaces;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnPerUnit;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnRate;
 import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
@@ -112,6 +113,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     /** Whether its beam refills every step its loops run ({@code always_on}), not only where nothing else spawns. */
     final boolean beamAlwaysOn;
     final boolean optional, local;
+    /** How a tick's spawns are timed and placed ({@link Builder#spawning}). */
+    final CgVfxSpawning spawning;
+    /** Cascade's {@code bUseLegacyEmitterTime} ({@link Builder#legacyEmitterTime}). */
+    final boolean legacyEmitterTime;
+    /** The most of its particles drawn, the first in draw order; -1 for all. Its renderers' {@code max_draw_count}. */
+    final int maxDrawCount;
     final CgVfxEmitterState state;
     final int capacity;
     /** Its bursts, by time, and each one's element id. */
@@ -211,6 +218,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         drawLayout = drawLayout(b.name, renderers, b.clip);
         optional = b.optional;
         local = b.local;
+        spawning = b.spawning;
+        legacyEmitterTime = b.legacyEmitterTime;
+        maxDrawCount = maxDrawCount(b.name, renderers);
         meshFacing = CgVfxMeshFacing.of(b.name, renderers, b.local);
         state = b.state;
         capacity = b.capacity;
@@ -438,6 +448,39 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     /** Whether the Low quality tier halves it ({@link Builder#optional}). */
     public boolean optional() {
         return optional;
+    }
+
+    /** How a tick's spawns are timed and placed ({@link Builder#spawning}). */
+    @Override
+    public CgVfxSpawning spawning() {
+        return spawning;
+    }
+
+    /** Whether its loops keep Cascade's legacy emitter time ({@link Builder#legacyEmitterTime}). */
+    public boolean legacyEmitterTime() {
+        return legacyEmitterTime;
+    }
+
+    /**
+     * The most of its particles drawn, the first in draw order, every one still simulated; -1 for all. Cascade's
+     * {@code MaxDrawCount}, one an emitter, so its renderers name one value or none.
+     */
+    public int maxDrawCount() {
+        return maxDrawCount;
+    }
+
+    private static int maxDrawCount(String name, List<CgVfxRendererProperties> renderers) {
+        int cap = -1;
+        for (CgVfxRendererProperties r : renderers) {
+            int n = r.common().maxDrawCount();
+            if (n < 0) continue;
+            if (cap >= 0 && cap != n) {
+                throw new IllegalArgumentException(name + "'s renderers draw at most " + cap + " and " + n
+                        + ": an emitter's particles are drawn from one list, so they name one max_draw_count");
+            }
+            cap = n;
+        }
+        return cap;
     }
 
     /** How its mesh particles face, from its mesh renderers. */
@@ -848,7 +891,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
         private String name;
         private final List<CgVfxRendererProperties> renderers = new ArrayList<>();
-        private boolean optional, local;
+        private boolean optional, local, legacyEmitterTime;
+        private CgVfxSpawning spawning = CgVfxSpawning.INTERPOLATED;
         private CgVfxEmitterState state = CgVfxEmitterState.DEFAULT;
         private int capacity = 256;
         private final List<CgVfxSpawnBurst> bursts = new ArrayList<>();
@@ -902,6 +946,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             renderers.addAll(e.renderers);
             optional = e.optional;
             local = e.local;
+            spawning = e.spawning;
+            legacyEmitterTime = e.legacyEmitterTime;
             state = e.state;
             capacity = e.capacity;
             bursts.addAll(Arrays.asList(e.bursts));
@@ -1020,6 +1066,34 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
          */
         public Builder local() {
             this.local = true;
+            return this;
+        }
+
+        /**
+         * How a tick's spawns are timed and placed: {@link CgVfxSpawning#INTERPOLATED} unless given. An emitter imported
+         * from Cascade keeps its own, legacy or GPU sprites.
+         *
+         * <pre>{@code
+         * CgVfxEmitter.builder("sparks").spawning(CgVfxSpawning.CASCADE_LEGACY).rate(350f).burst(0f, 90)...
+         * CgVfxEmitter.builder("glints").spawning(CgVfxSpawning.CASCADE_GPU).burst(0f, 40)...
+         * }</pre>
+         */
+        public Builder spawning(CgVfxSpawning spawning) {
+            this.spawning = Objects.requireNonNull(spawning, "spawning");
+            return this;
+        }
+
+        /**
+         * Keeps Cascade's legacy emitter time: a loop's seconds are the instance's age modulo its duration and delay,
+         * rather than Niagara's looped age carrying its remainder. Differs only where a loop's duration or delay is
+         * rolled again each loop, or where only the first loop waits its delay.
+         *
+         * <pre>{@code
+         * CgVfxEmitter.builder("flame").legacyEmitterTime().state(CgVfxEmitterState.infinite(0.3f))...
+         * }</pre>
+         */
+        public Builder legacyEmitterTime() {
+            this.legacyEmitterTime = true;
             return this;
         }
 
@@ -1647,6 +1721,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         /** Rides the effect or not, as an asset's {@code local_space} says. */
         Builder local(boolean local) {
             this.local = local;
+            return this;
+        }
+
+        /** Cascade's legacy emitter time or not, as an asset's properties say. */
+        Builder legacyEmitterTime(boolean legacy) {
+            this.legacyEmitterTime = legacy;
             return this;
         }
 
