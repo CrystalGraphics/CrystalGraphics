@@ -1,6 +1,7 @@
 package com.crystalgraphics.animation;
 
 import com.crystalgraphics.api.animation.CgAnimSection;
+import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgPose;
 import com.crystalgraphics.api.animation.CgSocket;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -66,6 +67,10 @@ public final class CgAnimInstance {
     private final Matrix4f[] skinning;
     private CgPose[] scratch = new CgPose[0];
     private float[] weights = new float[0];
+    /** This frame's slot entries, cleared by {@link #evaluate()}: Unreal's montage slot. */
+    private CgAnimSequence[] slotClips = new CgAnimSequence[0];
+    private float[] slotTimes = new float[0], slotWeights = new float[0];
+    private int slotCount;
     private double time;
     private float rate = 1f;
     private boolean playing = true;
@@ -86,6 +91,7 @@ public final class CgAnimInstance {
         for (int b = 0; b < skinning.length; b++) skinning[b] = new Matrix4f();
         pose.resolve();
         pose.skinning(mesh, skinning);
+        reserve();
     }
 
     public CgSkeletalMesh mesh() {
@@ -95,13 +101,45 @@ public final class CgAnimInstance {
     /** Adds a section to its timeline. */
     public CgAnimInstance play(CgAnimSection section) {
         sections.add(Objects.requireNonNull(section, "section"));
-        int n = sections.size();
-        if (scratch.length < n) {
-            scratch = Arrays.copyOf(scratch, n);
-            for (int i = 0; i < n; i++) if (scratch[i] == null) scratch[i] = new CgPose(mesh.skeleton());
-            weights = Arrays.copyOf(weights, n);
-        }
+        reserve();
         return this;
+    }
+
+    /**
+     * Plays {@code clip} at {@code position} seconds with {@code weight} over its own sections, this frame's pose only:
+     * a montage slot's entry, what a sequence's {@code animation} track sets every frame it is inside a section
+     * (Unreal's {@code UpdateAnimTrack}). Its sections keep {@code 1 - } the slot's total weight; past 1 the slot's
+     * entries are normalised and its sections are gone (AnimInstanceProxy.cpp:2170, 2021-2033).
+     *
+     * <pre>{@code
+     * body.slot(roar, 0.4f, 1f);        // this frame: roar at 0.4 s, whatever its sections play
+     * body.slot(roar, 0.4f, 0.25f);     // a quarter roar over three quarters of its sections
+     * }</pre>
+     *
+     * Entries are cleared by the next {@link #evaluate()}: set them every frame they should hold. Two set before it
+     * both count.
+     */
+    public CgAnimInstance slot(CgAnimSequence clip, float position, float weight) {
+        if (slotCount == slotClips.length) {
+            int n = Math.max(2, slotCount * 2);
+            slotClips = Arrays.copyOf(slotClips, n);
+            slotTimes = Arrays.copyOf(slotTimes, n);
+            slotWeights = Arrays.copyOf(slotWeights, n);
+        }
+        slotClips[slotCount] = Objects.requireNonNull(clip, "clip");
+        slotTimes[slotCount] = position;
+        slotWeights[slotCount++] = weight;
+        reserve();
+        return this;
+    }
+
+    /** A scratch pose and weight for every section, slot entry and the rest pose. */
+    private void reserve() {
+        int n = sections.size() + slotCount + 1;
+        if (scratch.length >= n) return;
+        scratch = Arrays.copyOf(scratch, n);
+        for (int i = 0; i < n; i++) if (scratch[i] == null) scratch[i] = new CgPose(mesh.skeleton());
+        weights = Arrays.copyOf(weights, n);
     }
 
     public CgAnimInstance remove(CgAnimSection section) {
@@ -158,24 +196,42 @@ public final class CgAnimInstance {
 
     /**
      * Poses it at its time: each section's clip sampled at its clip time, the sections blended by their weights
-     * normalised, then resolved and its skinning matrices made. What {@code POSE} runs; by hand for a tool or a test.
+     * normalised, under this frame's {@link #slot} entries; then resolved and its skinning matrices made. What
+     * {@code POSE} runs; by hand for a tool or a test.
      */
     public CgAnimInstance evaluate() {
+        float slotTotal = 0f;
+        for (int i = 0; i < slotCount; i++) slotTotal += Math.max(0f, slotWeights[i]);
+        float source = Math.min(1f, Math.max(0f, 1f - slotTotal));
         int n = 0;
-        float total = 0f;
-        for (int s = 0; s < sections.size(); s++) {
-            CgAnimSection section = sections.get(s);
-            float w = section.weight(time);
-            if (w <= 0f) continue;
-            CgPose into = scratch[n].rest();
-            section.sequence().sample(into, section.animationTime(time));
-            weights[n++] = w;
-            total += w;
+        if (source > 0f) {
+            float total = 0f;
+            for (int s = 0; s < sections.size(); s++) {
+                CgAnimSection section = sections.get(s);
+                float w = section.weight(time);
+                if (w <= 0f) continue;
+                section.sequence().sample(scratch[n].rest(), section.animationTime(time));
+                weights[n++] = w;
+                total += w;
+            }
+            if (n == 0) {
+                scratch[0].rest();
+                weights[n++] = source;
+            } else {
+                for (int i = 0; i < n; i++) weights[i] = weights[i] / total * source;
+            }
         }
+        float scale = slotTotal > 1f ? 1f / slotTotal : 1f;
+        for (int i = 0; i < slotCount; i++) {
+            if (slotWeights[i] <= 0f) continue;
+            slotClips[i].sample(scratch[n].rest(), slotTimes[i]);
+            weights[n++] = slotWeights[i] * scale;
+        }
+        Arrays.fill(slotClips, 0, slotCount, null);
+        slotCount = 0;
         if (n == 0) {
             pose.rest();
         } else {
-            for (int i = 0; i < n; i++) weights[i] /= total;
             pose.blend(scratch, weights, n);
         }
         pose.resolve();

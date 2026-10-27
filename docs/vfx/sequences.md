@@ -124,6 +124,20 @@ player.stop();
   puts the slot back to its value before the first sequence animated it. That waits until the last section animating
   it has ended: two sequences keying one global restore it only when both are done. `keep_state` leaves the last value.
 - **A role the sequence names and `play` is not given** fails, unless the role is `absent: skip`.
+- **An `animation` track plays clips on a role that is a `CgSequenceSkeletal`**: each section's `clip` on the role's
+  instance's montage slot (`CgAnimInstance.slot`), at the clip time its `start_offset` (ticks), `play_rate` and `loop`
+  map its time to, weighted by its ease and `weight`, every frame play is inside it. The role resolves a clip id to
+  one of its clips; one it lacks, or a role that is not skeletal, fails the play. Additive sections and
+  `interpolation: step` fail too: not played yet.
+
+```java
+final class Fighter implements CgSequenceRole, CgSequenceSkeletal {
+    @Override public CgAnimInstance instance() { return body; }
+    @Override public CgAnimSequence clip(String id) { return clips.get(id.substring(id.lastIndexOf('/') + 1)); }
+    ...
+}
+sequencer.play(kamehameha, Map.of("caster", goku));   // the charge montage's clips on Goku, its systems on his hand
+```
 - **At its end a player holds its last frame** (`finished()`) until stopped; what its ended sections restored stays
   restored.
 - **A kind of your own** is a `CgSequenceEvaluator`, registered on the sequencer: it binds each section once, then

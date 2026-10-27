@@ -202,6 +202,14 @@ CgAnimation.client().remove(kurama);
 - **A clip binds to the skeleton by bone name ignoring case**, so Goku's `Root` track moves his `root`.
 - **A pose is a pure function of the instance's time**: a seek, a replay or a late joiner lands on the same pose,
   bit for bit.
+- **A montage slot plays over its sections for one pose**: `slot(clip, position, weight)`, set every frame it should
+  hold and cleared by the next evaluation, Unreal's `DefaultSlot`. Its sections keep `1 -` the slot's total weight;
+  past 1 the slot's entries are normalised and its sections are gone. A sequence's `animation` track sets it on its
+  role (`sequences.md` § *Playing a sequence*).
+
+```java
+goku.slot(roar, 0.4f, 1f);      // this pose: roar at 0.4 s over whatever his sections play
+```
 - By hand, without `CgAnimation`: `instance.advance(dt).evaluate()`, then `instance.skinning()` into
   `CgBonePalettes.write`. Lower down, `clip.sample(pose, time)` into a `CgPose`, `pose.blend(...)`, `pose.resolve()`.
 - About 9 µs to pose a 228-bone puppet; past `crystalgraphics.animation.parallelAt` (8) instances, `POSE` splits them

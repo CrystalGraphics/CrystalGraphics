@@ -58,6 +58,7 @@ public final class CgSequencer extends CgWorldSubsystem {
     public CgSequencer() {
         for (String kind : CgSequenceStateEvaluator.KINDS) evaluators.add(new CgSequenceStateEvaluator(kind, blender));
         evaluators.add(new CgSequenceSystemEvaluator());
+        evaluators.add(new CgSequenceAnimationEvaluator());
         evaluators.add(new CgNotifyEvaluator(this, blender));
     }
 
