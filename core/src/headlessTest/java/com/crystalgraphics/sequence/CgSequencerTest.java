@@ -53,6 +53,11 @@ public class CgSequencerTest {
             for (int i = 0; i < 4; i++) if ((mask & 1 << i) != 0) values[slot][i] = v[i];
         }
 
+        @Override
+        public void get(int slot, float[] out) {
+            System.arraycopy(values[slot], 0, out, 0, 4);
+        }
+
         float get(String name) {
             return values[names.indexOf(name)][0];
         }
@@ -92,11 +97,13 @@ public class CgSequencerTest {
         assertEquals(2.75f, caster.get("fov"), 1e-4f);
 
         // Then at every frame, at a rate that is no divisor of the keys, the player writes what the curve evaluates.
-        while (!player.finished()) {
+        while (true) {
             sequencer.evaluate(1f / 37f);
+            if (player.finished()) break;
             assertEquals("at tick " + player.tick(), curve.eval(player.tick()), caster.get("fov"), 1e-4f);
         }
-        assertEquals(1f, caster.get("fov"), 1e-4f);                     // held at its last key past it
+        // At 800 its section has ended: restored to what it was before, as a completion it leaves to the project does.
+        assertEquals(0f, caster.get("fov"), 0f);
     }
 
     @Test

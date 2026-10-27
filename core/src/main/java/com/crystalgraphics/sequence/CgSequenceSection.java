@@ -5,6 +5,8 @@ import java.util.Map;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.easing.CgEasing;
+
 /**
  * A section of a track, compiled: Unreal's {@code UMovieSceneSection}, its range, row, priority, blend, ease and
  * completion, its channels as columns, and its kind's own fields as written.
@@ -61,9 +63,30 @@ public record CgSequenceSection(String id, int index, int from, int to, @Nullabl
 
     /**
      * {@code FMovieSceneEasingSettings}: ticks of ease in and out and their functions, or Unreal's automatic easing
-     * from overlaps.
+     * from overlaps. A function the file leaves out is Unreal's default, cubic in-out.
      */
-    public record Ease(int in, int out, @Nullable String inFunction, @Nullable String outFunction, boolean auto) {
+    public record Ease(int in, int out, CgEasing inFunction, CgEasing outFunction, boolean auto) {
+    }
+
+    /**
+     * Its weight at {@code tick}, what it blends with: its ease in and out, multiplied, times its {@code weight}
+     * channel. Unreal's {@code UMovieSceneSection::EvaluateEasing} times the manual weight. 1 with neither.
+     */
+    public float weight(float tick) {
+        double w = 1;
+        if (ease != null) {
+            if (ease.in() > 0 && from != OPEN_START) {
+                double t = (tick - from) / ease.in();
+                w *= t < 0 ? 0 : t > 1 ? 1 : ease.inFunction().ease(t);
+            }
+            if (ease.out() > 0 && to != OPEN_END) {
+                double t = (tick - to + ease.out()) / (double) ease.out();
+                w *= t < 0 ? 1 : t > 1 ? 0 : 1 - ease.outFunction().ease(t);
+            }
+        }
+        CgSequenceChannel weight = channel("weight");
+        if (weight != null && weight.hasValue()) w *= weight.eval(tick);
+        return (float) w;
     }
 
     /** The channel at {@code name} ({@code translation.x}, {@code scalars.near}), or null. */

@@ -99,6 +99,7 @@ final class Camera implements CgSequenceTarget {
     float fov = 70;
     @Override public int slot(String name) { return name.equals("fov") ? 0 : -1; }
     @Override public void set(int slot, float[] values, int mask) { fov = values[0]; }
+    @Override public void get(int slot, float[] out) { out[0] = fov; }   // before any sequence: what a restore puts back
 }
 
 CgSequencePlayer player = sequencer.play(beam, Map.of("caster", goku, "target", vegeta));
@@ -115,8 +116,17 @@ player.stop();
 - **Binding happens at `play`**, and at `spawnable` for what waits on a spawnable: a slot a target lacks throws there,
   naming both, never in the frame.
 - **`mask` says which components a frame writes**: a section keying only `x` leaves `y` and `z` as they are.
+- **Sections writing one slot blend**, across rows and across every playing sequence, as Unreal's blenders do. Absolute
+  sections average by weight; a weight short of 1 ramps from the slot's value before the sequence (`get`). Relative
+  sections add to that value; `additive` adds on top; `additive_from_base` adds what its channel moved since its
+  section began; `override` replaces what came before it, lerped by its weight. A section's weight is its ease (in and
+  out, through its functions, `cubic_in_out` unless named) times its `weight` channel.
+- **When a section ends**, `completion: restore_state` (and an absent completion, Unreal's default for a sequence)
+  puts the slot back to its value before the first sequence animated it. That waits until the last section animating
+  it has ended: two sequences keying one global restore it only when both are done. `keep_state` leaves the last value.
 - **A role the sequence names and `play` is not given** fails, unless the role is `absent: skip`.
-- **At its end a player holds its last frame** (`finished()`) until stopped.
+- **At its end a player holds its last frame** (`finished()`) until stopped; what its ended sections restored stays
+  restored.
 - **A kind of your own** is a `CgSequenceEvaluator`, registered on the sequencer: it binds each section once, then
   evaluates its kind's active sections across every player each frame.
 

@@ -27,8 +27,10 @@ import com.crystalgraphics.frame.CgWorldSubsystem;
  *   <li>Each frame, in order: <b>advance</b> each player's range; <b>import</b> where it crossed a segment, its
  *       entries changing; <b>evaluate</b> each kind's entries across every player, in the order the evaluators were
  *       registered (the built-in state kinds first).</li>
- *   <li>Two entries writing one slot: the later in entry order wins. Blending them comes with section rows and
- *       weights.</li>
+ *   <li>Then <b>blend</b>: what every section of every player wrote into one target slot combines by blend type
+ *       and weight (ease times {@code weight}), as Unreal's blenders do, and is written once. A slot's value before
+ *       any sequence animated it is kept, and put back when its last animator leaves, if one of them restores
+ *       state.</li>
  *   <li>A player that is {@linkplain CgSequencePlayer#stop() stopped} leaves at the next evaluation; one that
  *       finished holds its last frame.</li>
  *   <li>Evaluating allocates nothing; {@link #play} and the first entry of each section bind, once.</li>
@@ -38,12 +40,13 @@ public final class CgSequencer extends CgWorldSubsystem {
 
     private final List<CgSequencePlayer> players = new ArrayList<>();
     private final List<CgSequenceEvaluator> evaluators = new ArrayList<>();
+    private final CgSequenceBlender blender = new CgSequenceBlender();
     private CgTickFunction tick;
     @Nullable
     private CgSequenceTarget environment;
 
     public CgSequencer() {
-        for (String kind : CgSequenceStateEvaluator.KINDS) evaluators.add(new CgSequenceStateEvaluator(kind));
+        for (String kind : CgSequenceStateEvaluator.KINDS) evaluators.add(new CgSequenceStateEvaluator(kind, blender));
     }
 
     @Override
@@ -100,6 +103,7 @@ public final class CgSequencer extends CgWorldSubsystem {
         for (int e = 0; e < evaluators.size(); e++) {
             for (int i = 0; i < players.size(); i++) players.get(i).evaluate(this, e);
         }
+        blender.apply();
     }
 
     int evaluatorIndex(String kind) {

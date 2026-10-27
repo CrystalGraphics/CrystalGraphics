@@ -60,6 +60,11 @@ public final class CgSequenceLocator implements CgSequenceTarget {
     }
 
     @Override
+    public void get(int slot, float[] out) {
+        System.arraycopy(slot == TRANSLATION ? translation : slot == ROTATION ? rotation : scale, 0, out, 0, 3);
+    }
+
+    @Override
     public String toString() {
         return "locator " + id;
     }

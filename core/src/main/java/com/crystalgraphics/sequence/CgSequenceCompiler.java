@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import javax.annotation.Nullable;
 
@@ -18,6 +19,8 @@ import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
+import com.crystalgraphics.easing.CgEasing;
+import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.object.CgProperty;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.validate.CgIssue;
@@ -52,6 +55,8 @@ final class CgSequenceCompiler {
     private final Map<String, Integer> roleByName = new HashMap<>(), roleById = new HashMap<>();
     private final Map<String, Integer> locatorById = new HashMap<>(), spawnableById = new HashMap<>();
     private final List<String> spawnableKinds = new ArrayList<>();
+    /** The playback range: what a section of all time is measured by, for automatic easing. */
+    private int start, end;
 
     private CgSequenceCompiler(String id, CgAssetCompiler.Dependencies deps) {
         this.id = id;
@@ -75,6 +80,8 @@ final class CgSequenceCompiler {
                 || !(range.get(0) instanceof Number a) || !(range.get(1) instanceof Number b) || b.intValue() < a.intValue()) {
             throw fail("range", "two increasing ticks, not " + tree.get("range"));
         }
+        start = a.intValue();
+        end = b.intValue();
         CgSequenceDefinition.Evaluation evaluation = "frame_locked".equals(tree.get("evaluation"))
                 ? CgSequenceDefinition.Evaluation.FRAME_LOCKED : CgSequenceDefinition.Evaluation.SUB_FRAMES;
 
@@ -221,6 +228,7 @@ final class CgSequenceCompiler {
             }
             sections.add(section);
         }
+        autoEase(sections);
         return new CgSequenceTrack(tid, index, kind, binding, Boolean.TRUE.equals(t.get("muted")), side,
                 (String) t.get("handle"), (String) t.get("parameter"), (String) t.get("property"), (String) t.get("collection"),
                 t.get("collection") instanceof String c && deps.definition(CgLookKinds.PARAMETERS, c) instanceof CgParameterCollection pc ? pc : null,
@@ -273,8 +281,8 @@ final class CgSequenceCompiler {
         CgSequenceSection.Ease ease = null;
         if (s.get("ease") instanceof Map<?, ?> m) {
             ease = new CgSequenceSection.Ease(m.get("in") instanceof Number i ? i.intValue() : 0,
-                    m.get("out") instanceof Number o ? o.intValue() : 0, (String) m.get("in_fn"), (String) m.get("out_fn"),
-                    Boolean.TRUE.equals(m.get("auto")));
+                    m.get("out") instanceof Number o ? o.intValue() : 0, easing(m.get("in_fn"), path + ".ease.in_fn"),
+                    easing(m.get("out_fn"), path + ".ease.out_fn"), Boolean.TRUE.equals(m.get("auto")));
         }
         CgSequenceSection.Completion completion = "keep_state".equals(s.get("completion")) ? CgSequenceSection.Completion.KEEP_STATE
                 : "restore_state".equals(s.get("completion")) ? CgSequenceSection.Completion.RESTORE_STATE
@@ -284,6 +292,43 @@ final class CgSequenceCompiler {
                 s.get("overlap_priority") instanceof Number n ? n.intValue() : 0, blend, ease, completion,
                 s.get("pre_roll") instanceof Number n ? n.intValue() : 0, s.get("post_roll") instanceof Number n ? n.intValue() : 0,
                 !Boolean.FALSE.equals(s.get("active")), Collections.unmodifiableList(channels), Collections.unmodifiableMap(fields));
+    }
+
+    /**
+     * {@code ease: { auto: true }} takes its durations from where the sections of its row overlap it: Unreal's
+     * {@code UMovieSceneTrack::UpdateEasing} ({@code MovieSceneTrack.cpp:229-290}). A section's in eases over the
+     * longest overlap of one ending inside it, its out over the longest of one starting inside it; one lying wholly
+     * inside another eases a quarter of its length each way. A section of all time is measured by the playback range.
+     */
+    private void autoEase(List<CgSequenceSection> sections) {
+        for (int i = 0; i < sections.size(); i++) {
+            CgSequenceSection cur = sections.get(i);
+            if (cur.ease() == null || !cur.ease().auto()) continue;
+            int in = 0, out = 0;
+            boolean underlapped = false;
+            for (CgSequenceSection other : sections) {
+                if (other == cur || other.row() != cur.row()) continue;
+                int oFrom = other.from(), oTo = other.to();
+                if (oFrom == CgSequenceSection.OPEN_START && oTo == CgSequenceSection.OPEN_END) {
+                    oFrom = start;
+                    oTo = end;
+                }
+                underlapped |= oFrom <= cur.from() && cur.to() <= oTo;
+                boolean holdsUpper = oTo != CgSequenceSection.OPEN_END && cur.from() != CgSequenceSection.OPEN_START && cur.contains(oTo);
+                boolean holdsLower = oFrom != CgSequenceSection.OPEN_START && cur.to() != CgSequenceSection.OPEN_END && cur.contains(oFrom);
+                if (holdsUpper && !holdsLower) in = Math.max(in, oTo - cur.from());
+                if (holdsLower && !holdsUpper) out = Math.max(out, cur.to() - oFrom);
+            }
+            boolean finite = cur.from() != CgSequenceSection.OPEN_START && cur.to() != CgSequenceSection.OPEN_END;
+            int size = finite ? cur.to() - cur.from() : Integer.MAX_VALUE;
+            if (in == 0 && out == 0 && underlapped) in = out = size / 4;
+            in = Math.max(0, Math.min(in, size));
+            out = Math.max(0, Math.min(out, size));
+            CgSequenceSection.Ease e = cur.ease();
+            sections.set(i, new CgSequenceSection(cur.id(), cur.index(), cur.from(), cur.to(), cur.trigger(), cur.condition(),
+                    cur.row(), cur.overlapPriority(), cur.blend(), new CgSequenceSection.Ease(in, out, e.inFunction(), e.outFunction(), true),
+                    cur.completion(), cur.preRoll(), cur.postRoll(), cur.active(), cur.channels(), cur.fields()));
+        }
     }
 
     /** One channel, or one per axis where a map holds {@code x}, {@code y}, {@code z} (or a colour's channels). */
@@ -467,6 +512,31 @@ final class CgSequenceCompiler {
         } catch (IllegalArgumentException e) {
             throw fail(path, "a particle key is activate, deactivate, trigger, kill or detach, not " + v);
         }
+    }
+
+    /**
+     * Unreal's built-in easing names ({@code EMovieSceneBuiltInEasing}, {@code MovieSceneEasingCurves.cpp:55-100}) on
+     * the engine's easings, which are the same functions. Its {@code Cubic} and {@code HermiteCubicInOut} are both
+     * smoothstep: the Bezier with its handles at thirds.
+     */
+    private static final Map<String, CgEasing> EASINGS = Map.ofEntries(
+            Map.entry("linear", CgEasings.LINEAR),
+            Map.entry("sin_in", CgEasings.IN_SINE), Map.entry("sin_out", CgEasings.OUT_SINE), Map.entry("sin_in_out", CgEasings.IN_OUT_SINE),
+            Map.entry("quad_in", CgEasings.IN_QUAD), Map.entry("quad_out", CgEasings.OUT_QUAD), Map.entry("quad_in_out", CgEasings.IN_OUT_QUAD),
+            Map.entry("cubic", CgEasings.cubicBezier(1.0 / 3, 0, 2.0 / 3, 1)),
+            Map.entry("cubic_in", CgEasings.IN_CUBIC), Map.entry("cubic_out", CgEasings.OUT_CUBIC), Map.entry("cubic_in_out", CgEasings.IN_OUT_CUBIC),
+            Map.entry("hermite_cubic_in_out", CgEasings.cubicBezier(1.0 / 3, 0, 2.0 / 3, 1)),
+            Map.entry("quart_in", CgEasings.IN_QUART), Map.entry("quart_out", CgEasings.OUT_QUART), Map.entry("quart_in_out", CgEasings.IN_OUT_QUART),
+            Map.entry("quint_in", CgEasings.IN_QUINT), Map.entry("quint_out", CgEasings.OUT_QUINT), Map.entry("quint_in_out", CgEasings.IN_OUT_QUINT),
+            Map.entry("expo_in", CgEasings.IN_EXPO), Map.entry("expo_out", CgEasings.OUT_EXPO), Map.entry("expo_in_out", CgEasings.IN_OUT_EXPO),
+            Map.entry("circ_in", CgEasings.IN_CIRC), Map.entry("circ_out", CgEasings.OUT_CIRC), Map.entry("circ_in_out", CgEasings.IN_OUT_CIRC));
+
+    /** An ease's function by its name; absent, Unreal's default for a new section, cubic in-out. */
+    private CgEasing easing(Object name, String path) {
+        if (name == null) return CgEasings.IN_OUT_CUBIC;
+        CgEasing e = EASINGS.get(String.valueOf(name));
+        if (e == null) throw fail(path, "no easing " + name + ": " + new TreeSet<>(EASINGS.keySet()));
+        return e;
     }
 
     // ── Conditions and subsequences ──────────────────────────────────────────────────────

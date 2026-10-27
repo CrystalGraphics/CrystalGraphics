@@ -44,6 +44,12 @@ public interface CgSequenceTarget {
     void set(int slot, float[] values, int mask);
 
     /**
+     * Its value of slot {@code slot} into {@code out}, as it stands: read once as a sequence first animates the slot,
+     * so a blend can ramp from it and its end can put it back.
+     */
+    void get(int slot, float[] out);
+
+    /**
      * A part of it a binding names ({@code { role: caster, material: body }}, a node, a socket), or null if it has no
      * such part.
      */
