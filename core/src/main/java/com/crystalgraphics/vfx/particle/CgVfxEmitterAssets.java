@@ -137,7 +137,7 @@ public final class CgVfxEmitterAssets {
 
         List<Object> spawn = new ArrayList<>();
         Map<String, Object> init = map("lifetime", written(e, CgVfxSpawnInput.LIFETIME, range(e.lifeMin, e.lifeMax)),
-                "heat", (double) e.heat, "sprite_size", written(e, CgVfxSpawnInput.SPRITE_SIZE, spriteSize(e.sizeMin, e.sizeMax)));
+                "heat", (double) e.heat, "sprite_size", writtenSpriteSize(e));
         // Unreal starts a sprite unturned; ours turns it at random unless a file says otherwise.
         init.put("sprite_rotation", written(e, CgVfxSpawnInput.SPRITE_ROTATION, range(0f, (float) (2 * Math.PI))));
         if (!same(e.colorFrom, WHITE) || !same(e.colorTo, WHITE)) init.put("color", vector(e.colorFrom, e.colorTo));
@@ -1204,12 +1204,13 @@ public final class CgVfxEmitterAssets {
         Object size = in.get("sprite_size");
         CgVfxSpawnForm sized = spawnForm(CgVfxSpawnInput.SPRITE_SIZE, element, "sprite_size", size);
         if (sized != null) {
+            sized = widths(sized, SPRITE_SIZE_TO_OURS);
             float[] width = sized.bounds();
             b.size(width[0], width[1]);
             b.spawnForm(sized);
         } else if (size != null) {
             float[] width = spriteWidth(size);
-            b.size(width[0], width[1]);
+            b.size(width[0] * SPRITE_SIZE_TO_OURS, width[1] * SPRITE_SIZE_TO_OURS);
         }
         float alpha = in.get("alpha") instanceof Number a ? a.floatValue() : 1f;
         CgVfxSpawnForm colored = spawnForm(CgVfxSpawnInput.COLOR, element, "color", in.get("color"));
@@ -2706,6 +2707,29 @@ public final class CgVfxEmitterAssets {
     /** Two ends of a vector, rolled per channel: one where both agree. */
     private static Object vector(float[] from, float[] to) {
         return same(from, to) ? list(from) : map("range", List.of(list(from), list(to)), "per_channel", true);
+    }
+
+    /**
+     * A file's {@code sprite_size} to our size: Unreal's sprite size is the full width (its corners at Size times
+     * UV + pivot, the pivot at -0.5, ParticleSpriteVertexFactory.ush:505-507), ours a half width (a quad spans
+     * -size..size, fx_common.glsl's FX_QUAD_CORNER).
+     */
+    private static final float SPRITE_SIZE_TO_OURS = 0.5f;
+
+    /** {@code form} with every width times {@code s}: a bound value's {@code scale}, else each value's. */
+    private static CgVfxSpawnForm widths(CgVfxSpawnForm form, float s) {
+        if (!(form.value() instanceof Map<?, ?> m) || !m.containsKey("bind")) return form.scaled(s);
+        Map<String, Object> bound = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : m.entrySet()) bound.put(String.valueOf(e.getKey()), e.getValue());
+        bound.put("scale", (m.get("scale") instanceof Number n ? n.doubleValue() : 1.0) * s);
+        return CgVfxSpawnForm.of(form.target(), form.element(), form.input(), bound);
+    }
+
+    /** An emitter's starting size as its file writes it: Unreal's full width. */
+    private static Object writtenSpriteSize(CgVfxEmitter e) {
+        CgVfxSpawnForm f = e.spawnForm(CgVfxSpawnInput.SPRITE_SIZE);
+        if (f != null) return widths(f, 1f / SPRITE_SIZE_TO_OURS).value();
+        return spriteSize(e.sizeMin / SPRITE_SIZE_TO_OURS, e.sizeMax / SPRITE_SIZE_TO_OURS);
     }
 
     /** A sprite size, Niagara's vec2 of width and height: a square, or a range of two squares. */

@@ -483,6 +483,38 @@ public class CgVfxEmitterAssetsTest {
         return null;
     }
 
+    /** A file's sprite size is Unreal's full width and ours a half: halved as it is read, doubled as it is written. */
+    @Test
+    public void aSpriteSizeIsTheFullWidthInAFile() {
+        Object range = Map.of("range", List.of(List.of(1.0, 1.0), List.of(3.0, 3.0)));
+        CgVfxEmitter ranged = CgVfxEmitterAssets.compile("w", sized(range), null);
+        assertEquals(0.5f, ranged.sizeMin, 0f);
+        assertEquals(1.5f, ranged.sizeMax, 0f);
+        assertEquals(range, writtenSize(ranged));
+        Object pick = Map.of("pick", List.of(List.of(2.0, 2.0), List.of(4.0, 4.0)));
+        CgVfxEmitter picked = CgVfxEmitterAssets.compile("w", sized(pick), null);
+        assertEquals(1f, picked.sizeMin, 0f);
+        assertEquals(2f, picked.sizeMax, 0f);
+        CgVfxEmitter back = CgVfxEmitterAssets.compile("w", CgVfxEmitterAssets.write(picked), null);
+        assertEquals(picked.sizeMin, back.sizeMin, 0f);
+        assertEquals(picked.sizeMax, back.sizeMax, 0f);
+    }
+
+    private static Map<String, Object> sized(Object size) {
+        Map<String, Object> tree = burstTree(burstEntry("b1", 0.0), burstEntry("b2", 0.5), "init");
+        tree.put("particle_spawn", List.of(Map.of("id", "init", "module", "crystalgraphics:initialize_particle",
+                "inputs", Map.of("lifetime", 1.0, "sprite_size", size))));
+        return tree;
+    }
+
+    private static Object writtenSize(CgVfxEmitter e) {
+        for (Object entry : (List<?>) CgVfxEmitterAssets.write(e).get("particle_spawn")) {
+            Map<?, ?> m = (Map<?, ?>) entry;
+            if ("crystalgraphics:initialize_particle".equals(m.get("module"))) return ((Map<?, ?>) m.get("inputs")).get("sprite_size");
+        }
+        throw new AssertionError("no initialize_particle written");
+    }
+
     /** A sprite size rolled each tick between two curves by age: read as a curved roll, and written back alike. */
     @Test
     public void curvedLifeRollsRoundTrip() {
