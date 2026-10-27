@@ -1280,6 +1280,27 @@ public final class CgVfxSystem {
         return effects;
     }
 
+    /**
+     * The pool {@code instance}'s particles live in, for a probe reading them back beside {@link #slot}; null before its
+     * first step and once its slot closes. Render thread.
+     *
+     * <pre>{@code
+     * CgVfxParticlePool pool = vfx.pool(instance);
+     * if (pool != null) recording.readback(pool.records(), 0, bytes, sink);   // its slot's: heat-id word's z == vfx.slot(instance)
+     * }</pre>
+     */
+    @Nullable
+    public CgVfxParticlePool pool(CgVfxEmitterInstance instance) {
+        CgVfxGpuSteps.Tenant tenant = gpuSteps.of(instance);
+        return tenant == null ? null : tenant.pool;
+    }
+
+    /** {@code instance}'s slot in {@link #pool}, or -1 when it holds none. Render thread. */
+    public int slot(CgVfxEmitterInstance instance) {
+        CgVfxGpuSteps.Tenant tenant = gpuSteps.of(instance);
+        return tenant == null ? -1 : tenant.slot;
+    }
+
     /** Releases its meshes and frees the path texture; materials belong to the material registry. */
     public void delete() {
         if (rehearsal != null) endRehearsal();
