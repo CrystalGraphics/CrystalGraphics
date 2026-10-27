@@ -5,6 +5,7 @@ import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.api.vertex.CgVertexSemantic;
 
+import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 
@@ -40,6 +41,12 @@ import java.util.Arrays;
  * });
  * }</pre>
  *
+ * <p>A skinned vertex ({@link CgVertexFormat#SKINNED}) names the bones it follows, each with a weight:</p>
+ *
+ * <pre>{@code
+ * m.vertex().position(x, y, z).normal(0, 1, 0).uv(u, v).bone(spine, 0.75f).bone(chest, 0.25f).end();
+ * }</pre>
+ *
  * <ul>
  *   <li>A semantic setter for an attribute the format lacks does nothing, so one shape serves every format. A value
  *       for an attribute it has but the vertex was not given throws at {@link #end()}.</li>
@@ -55,7 +62,7 @@ public final class CgMeshWriter {
     private final CgVertexFormat format;
     private final int stride;
     private final CgVertexAttribute[] attributes;
-    private final int positionAttribute, normalAttribute, colorAttribute;
+    private final int positionAttribute, normalAttribute, colorAttribute, boneIndexAttribute, boneWeightAttribute;
     /** The attribute of each UV set by its index, -1 where the format has none. */
     private final int[] uvAttributes = {-1, -1, -1, -1};
     private final int required;
@@ -69,6 +76,14 @@ public final class CgMeshWriter {
     private final byte[] scratchBytes;
     private int given;
     private boolean open;
+
+    /** The open vertex's bones as given, merged by bone; at most {@link #MAX_GIVEN_BONES}. */
+    private static final int MAX_GIVEN_BONES = 8, INFLUENCES = 4, MAX_RAW_WEIGHT = 255;
+    /** Bones a vertex may name: 256 with 8-bit indices, 65,536 with 16-bit. */
+    private final int maxBones;
+    private final int[] givenBones = new int[MAX_GIVEN_BONES], rawWeights = new int[MAX_GIVEN_BONES];
+    private final float[] givenWeights = new float[MAX_GIVEN_BONES];
+    private int givenBoneCount;
 
     byte[] vertices;
     int vertexCount;
@@ -91,7 +106,7 @@ public final class CgMeshWriter {
         this.components = new int[n];
         this.sizes = new int[n];
         this.byteSizes = new int[n];
-        int position = -1, normal = -1, color = -1;
+        int position = -1, normal = -1, color = -1, boneIndices = -1, boneWeights = -1;
         for (int i = 0; i < attributes.length; i++) {
             CgVertexAttribute a = format.getAttribute(i);
             attributes[i] = a;
@@ -106,13 +121,21 @@ public final class CgMeshWriter {
                 case POSITION: position = i; break;
                 case NORMAL: normal = i; break;
                 case COLOR: color = i; break;
+                case BONE_INDICES: boneIndices = i; break;
+                case BONE_WEIGHTS: boneWeights = i; break;
                 default: break;
             }
         }
         if (attributes.length > 31) throw new IllegalArgumentException(format.getKey() + " has more than 31 attributes");
+        if ((boneIndices < 0) != (boneWeights < 0)) {
+            throw new IllegalArgumentException(format.getKey() + " has bone indices or weights without the other");
+        }
         this.positionAttribute = position;
         this.normalAttribute = normal;
         this.colorAttribute = color;
+        this.boneIndexAttribute = boneIndices;
+        this.boneWeightAttribute = boneWeights;
+        this.maxBones = boneIndices < 0 ? 0 : 1 << (8 * sizes[boneIndices]);
         this.required = (1 << attributes.length) - 1;
         this.scratchBytes = new byte[stride];
         this.vertices = new byte[Math.max(stride, 1) * 16];
@@ -150,6 +173,7 @@ public final class CgMeshWriter {
         if (open) throw new IllegalStateException("vertex() before the previous vertex's end()");
         open = true;
         given = 0;
+        givenBoneCount = 0;
         return this;
     }
 
@@ -160,19 +184,7 @@ public final class CgMeshWriter {
     public CgMeshWriter position(float x, float y, float z) {
         if (positionAttribute < 0) return this;
         floats(positionAttribute, x, y, z, 1f, 3);
-        if (!anyPosition) {
-            bounds[0] = bounds[3] = x;
-            bounds[1] = bounds[4] = y;
-            bounds[2] = bounds[5] = z;
-            anyPosition = true;
-        } else {
-            bounds[0] = Math.min(bounds[0], x);
-            bounds[1] = Math.min(bounds[1], y);
-            bounds[2] = Math.min(bounds[2], z);
-            bounds[3] = Math.max(bounds[3], x);
-            bounds[4] = Math.max(bounds[4], y);
-            bounds[5] = Math.max(bounds[5], z);
-        }
+        grow(x, y, z);
         return this;
     }
 
@@ -213,6 +225,41 @@ public final class CgMeshWriter {
 
     public CgMeshWriter color(float r, float g, float b, float a) {
         return colorAttribute < 0 ? this : floats(colorAttribute, r, g, b, a, 4);
+    }
+
+    /**
+     * A bone this vertex follows, by its index in the skeleton, and how much: call once a bone, up to four. Nothing where
+     * the format has no bones.
+     *
+     * <pre>{@code
+     * m.vertex().position(x, y, z).normal(nx, ny, nz).uv(u, v).bone(spine, 0.75f).bone(chest, 0.25f).end();
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Weights need not sum to 1: {@link #end()} normalises them, quantises each to 1/255 and carries the rounding
+     *       down from the heaviest, so the stored four sum to exactly 1 (Unreal's {@code FBoneWeights}).</li>
+     *   <li>A bone given twice keeps its larger weight; a weight that rounds to 0 is dropped.</li>
+     *   <li>More than four bones left after that, or no weight at all, throws at {@link #end()}; a bone past the
+     *       format's indices (255 for {@link CgVertexFormat#SKINNED}) throws here.</li>
+     * </ul>
+     */
+    public CgMeshWriter bone(int bone, float weight) {
+        if (boneIndexAttribute < 0) return this;
+        requireOpen(boneIndexAttribute);
+        if (bone < 0 || bone >= maxBones) throw new IllegalArgumentException("bone " + bone + " of vertex " + vertexCount
+                + ": a " + format.getKey() + " vertex names bones 0 to " + (maxBones - 1));
+        if (!(weight >= 0f)) throw new IllegalArgumentException("bone " + bone + " of vertex " + vertexCount + " weighs " + weight);
+        for (int i = 0; i < givenBoneCount; i++) {
+            if (givenBones[i] != bone) continue;
+            givenWeights[i] = Math.max(givenWeights[i], weight);
+            return this;
+        }
+        if (givenBoneCount == MAX_GIVEN_BONES) {
+            throw new IllegalStateException("vertex " + vertexCount + " names more than " + MAX_GIVEN_BONES + " bones");
+        }
+        givenBones[givenBoneCount] = bone;
+        givenWeights[givenBoneCount++] = weight;
+        return this;
     }
 
     public CgMeshWriter set(int attribute, float x) {
@@ -260,12 +307,101 @@ public final class CgMeshWriter {
             for (int b = 0; b < size; b++) scratchBytes[to + b] = scratchBytes[from + b];
             given |= 1 << at;
         }
+        if (givenBoneCount > 0) writeBones();
         if (given != required) throw new IllegalStateException(missing());
         int at = vertexCount * stride;
         if (at + stride > vertices.length) vertices = Arrays.copyOf(vertices, Math.max(at + stride, vertices.length * 2));
         System.arraycopy(scratchBytes, 0, vertices, at, stride);
         open = false;
         return vertexCount++ - submeshFirstVertex;
+    }
+
+    /**
+     * The open vertex's bones into its four slots, as Unreal's {@code FBoneWeights} stores them: each weight quantised
+     * ({@code SetWeight}), the zeros dropped, the rest sorted heaviest first and normalised in fixed point with the
+     * remainder carried down the list, so the stored weights sum to exactly the maximum ({@code NormalizeWeights}).
+     * Equal weights keep the lower bone first, where Unreal's sort leaves them unordered.
+     */
+    private void writeBones() {
+        int n = 0;
+        for (int i = 0; i < givenBoneCount; i++) {
+            int raw = (int) (Math.min(givenWeights[i], 1f) * MAX_RAW_WEIGHT + 0.5f);
+            if (raw < 1) continue;
+            givenBones[n] = givenBones[i];
+            rawWeights[n++] = raw;
+        }
+        if (n == 0) throw new IllegalStateException("vertex " + vertexCount + " has no bone weight of 1/255 or more");
+        sortHeaviestFirst(n);
+        if (n > INFLUENCES) {
+            throw new IllegalStateException("vertex " + vertexCount + " follows " + n + " bones; a skinned vertex follows at most "
+                    + INFLUENCES);
+        }
+        long sum = 0, carry = 0;
+        for (int i = 0; i < n; i++) sum += rawWeights[i];
+        if (sum != MAX_RAW_WEIGHT) {
+            for (int i = 0; i < n; i++) {
+                long scaled = (long) rawWeights[i] * MAX_RAW_WEIGHT + carry;
+                rawWeights[i] = (int) Math.min(scaled / sum, MAX_RAW_WEIGHT);
+                carry = scaled - (long) rawWeights[i] * sum;
+            }
+            sortHeaviestFirst(n);   // the carry can leave a later weight heavier, as Unreal re-sorts after it
+        }
+        int ib = offsets[boneIndexAttribute], iw = offsets[boneWeightAttribute], width = sizes[boneIndexAttribute];
+        for (int i = 0; i < INFLUENCES; i++) {
+            int bone = i < n ? givenBones[i] : 0;
+            if (width == 2) put16(ib + 2 * i, bone);
+            else scratchBytes[ib + i] = (byte) bone;
+            scratchBytes[iw + i] = (byte) (i < n ? rawWeights[i] : 0);
+        }
+        given |= (1 << boneIndexAttribute) | (1 << boneWeightAttribute);
+    }
+
+    private void sortHeaviestFirst(int n) {
+        for (int i = 1; i < n; i++) {
+            int bone = givenBones[i], raw = rawWeights[i], j = i - 1;
+            for (; j >= 0 && (rawWeights[j] < raw || rawWeights[j] == raw && givenBones[j] > bone); j--) {
+                givenBones[j + 1] = givenBones[j];
+                rawWeights[j + 1] = rawWeights[j];
+            }
+            givenBones[j + 1] = bone;
+            rawWeights[j + 1] = raw;
+        }
+    }
+
+    /**
+     * Appends {@code count} whole vertices already laid out in this writer's format, from {@code from} in {@code bytes}:
+     * a cooked mesh's vertices, copied as they are. Bounds follow their positions as {@link #position} would.
+     */
+    void copyVertices(byte[] bytes, int from, int count) {
+        if (open) throw new IllegalStateException("copyVertices inside a vertex");
+        int at = vertexCount * stride, length = count * stride;
+        if (at + length > vertices.length) vertices = Arrays.copyOf(vertices, Math.max(at + length, vertices.length * 2));
+        System.arraycopy(bytes, from, vertices, at, length);
+        if (positionAttribute >= 0) {
+            CgVertexAttribute p = attributes[positionAttribute];
+            ByteBuffer view = ByteBuffer.wrap(vertices).order(ByteOrder.nativeOrder());
+            for (int v = vertexCount; v < vertexCount + count; v++) {
+                int vertex = v * stride;
+                grow(p.read(view, vertex, 0), p.read(view, vertex, 1), p.getComponents() > 2 ? p.read(view, vertex, 2) : 0f);
+            }
+        }
+        vertexCount += count;
+    }
+
+    private void grow(float x, float y, float z) {
+        if (!anyPosition) {
+            bounds[0] = bounds[3] = x;
+            bounds[1] = bounds[4] = y;
+            bounds[2] = bounds[5] = z;
+            anyPosition = true;
+            return;
+        }
+        bounds[0] = Math.min(bounds[0], x);
+        bounds[1] = Math.min(bounds[1], y);
+        bounds[2] = Math.min(bounds[2], z);
+        bounds[3] = Math.max(bounds[3], x);
+        bounds[4] = Math.max(bounds[4], y);
+        bounds[5] = Math.max(bounds[5], z);
     }
 
     /** The index the next vertex will have in the current submesh. */

@@ -116,6 +116,68 @@ public final class CgVertexFormat {
             .build();
 
     /**
+     * The vertex of a skinned mesh: {@link #SPATIAL}'s 40 bytes, then the four bones it follows and how much, 48 bytes in
+     * all. Unreal's GPU skin vertex factory beside its local one: a format of its own, so skinned and static meshes never
+     * share a pool or a program. {@code #type skinned}.
+     *
+     * <pre>{@code
+     * CgMesh arm = CgMesh.build(CgVertexFormat.SKINNED, m -> {
+     *     int a = m.vertex().position(0, 0, 0).normal(0, 1, 0).uv(0, 0).bone(0, 1f).end();               // the shoulder
+     *     int b = m.vertex().position(0, 1, 0).normal(0, 1, 0).uv(0, 1).bone(0, 0.5f).bone(1, 0.5f).end(); // the elbow
+     *     ...
+     * });
+     * }</pre>
+     *
+     * <table>
+     *   <tr><th>Location</th><th>Shader reads</th><th>Stored</th><th>Unreal</th></tr>
+     *   <tr><td>0-6</td><td>as {@link #SPATIAL}</td><td>as {@link #SPATIAL}</td><td></td></tr>
+     *   <tr><td>7</td><td>{@code uvec4 cg_BoneIndices}</td><td>4 u8</td><td>{@code BlendIndices}</td></tr>
+     *   <tr><td>8</td><td>{@code vec4 cg_BoneWeights}</td><td>4 unorm8, summing to exactly 255</td><td>{@code BlendWeights}</td></tr>
+     * </table>
+     *
+     * <ul>
+     *   <li>Four bones a vertex (Unreal's {@code MAX_INFLUENCES_PER_STREAM}), of a skeleton of at most 256; a larger
+     *       skeleton's mesh is {@link #SKINNED_WIDE}.</li>
+     *   <li>Weights are written with {@code CgMeshWriter.bone}, which quantises them as Unreal's {@code FBoneWeights}
+     *       does: heaviest first, the rounding carried down so the four sum to exactly 1.</li>
+     * </ul>
+     */
+    public static final CgVertexFormat SKINNED = builder("skinned")
+            .add(CgVertexSemantic.POSITION, "cg_Position",  3, CgAttribType.FLOAT)
+            .add(CgVertexSemantic.NORMAL, 0, "cg_Normal",   4, 3, CgAttribType.SHORT, true)
+            .add(CgVertexSemantic.COLOR,    "cg_Color",     4, CgAttribType.UNSIGNED_BYTE, true)
+            .add(CgVertexSemantic.UV,       "cg_TexCoord0", 2, CgAttribType.HALF_FLOAT)
+            .add(CgVertexSemantic.UV, 1,    "cg_TexCoord1", 2, CgAttribType.HALF_FLOAT, false)
+            .add(CgVertexSemantic.UV, 2,    "cg_TexCoord2", 2, CgAttribType.HALF_FLOAT, false)
+            .add(CgVertexSemantic.UV, 3,    "cg_TexCoord3", 2, CgAttribType.HALF_FLOAT, false)
+            .add(CgVertexSemantic.BONE_INDICES, "cg_BoneIndices", 4, CgAttribType.UNSIGNED_BYTE, false)
+            .add(CgVertexSemantic.BONE_WEIGHTS, "cg_BoneWeights", 4, CgAttribType.UNSIGNED_BYTE, true)
+            .build();
+
+    /**
+     * {@link #SKINNED} with 16-bit bone indices, 52 bytes: the vertex of a mesh whose skeleton has more than 256 bones,
+     * Unreal's {@code bUse16BitBoneIndex}. {@code #type skinned_wide}; its shader reads the same {@code uvec4}.
+     * {@code CgMeshLoader.skeletal} picks it by the skeleton's size.
+     */
+    public static final CgVertexFormat SKINNED_WIDE = builder("skinned_wide")
+            .add(CgVertexSemantic.POSITION, "cg_Position",  3, CgAttribType.FLOAT)
+            .add(CgVertexSemantic.NORMAL, 0, "cg_Normal",   4, 3, CgAttribType.SHORT, true)
+            .add(CgVertexSemantic.COLOR,    "cg_Color",     4, CgAttribType.UNSIGNED_BYTE, true)
+            .add(CgVertexSemantic.UV,       "cg_TexCoord0", 2, CgAttribType.HALF_FLOAT)
+            .add(CgVertexSemantic.UV, 1,    "cg_TexCoord1", 2, CgAttribType.HALF_FLOAT, false)
+            .add(CgVertexSemantic.UV, 2,    "cg_TexCoord2", 2, CgAttribType.HALF_FLOAT, false)
+            .add(CgVertexSemantic.UV, 3,    "cg_TexCoord3", 2, CgAttribType.HALF_FLOAT, false)
+            .add(CgVertexSemantic.BONE_INDICES, "cg_BoneIndices", 4, CgAttribType.UNSIGNED_SHORT, false)
+            .add(CgVertexSemantic.BONE_WEIGHTS, "cg_BoneWeights", 4, CgAttribType.UNSIGNED_BYTE, true)
+            .build();
+
+    /** The skinned format for a skeleton of {@code bones}: {@link #SKINNED} to 256, {@link #SKINNED_WIDE} past it. */
+    public static CgVertexFormat skinned(int bones) {
+        if (bones > 65536) throw new IllegalArgumentException(bones + " bones: a skinned vertex names at most 65,536");
+        return bones <= 256 ? SKINNED : SKINNED_WIDE;
+    }
+
+    /**
      * Standard UI 2D vertex format for the CrystalShader material pipeline:
      * POSITION(vec2) + UV(vec2) + COLOR(ubyte4) = 20 bytes stride.
      *

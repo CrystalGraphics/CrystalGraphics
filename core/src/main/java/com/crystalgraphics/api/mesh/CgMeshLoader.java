@@ -1,5 +1,7 @@
 package com.crystalgraphics.api.mesh;
 
+import com.crystalgraphics.api.animation.CgAnimSequence;
+import com.crystalgraphics.api.animation.CgCookedAnimation;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.io.CgIO;
@@ -9,6 +11,7 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -17,8 +20,8 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Meshes from files: OBJ, glTF and GLB, by extension. Every OBJ material group and every glTF primitive is a submesh
- * of one mesh, in file order, so each part draws with its own material.
+ * Meshes from files: OBJ, glTF, GLB and cooked {@code .cgmesh}, by extension. Every OBJ material group and every glTF
+ * primitive is a submesh of one mesh, in file order, so each part draws with its own material.
  *
  * <pre>{@code
  * CgMeshLoader.Model ship = CgMeshLoader.model("mymod:models/ship.glb");   // SPATIAL
@@ -30,6 +33,14 @@ import java.util.function.Supplier;
  * CgMesh points = CgMeshLoader.load("mymod:models/cloud.glb", CgVertexFormat.POS3_UV2_COL4UB);   // a format named
  * }</pre>
  *
+ * <p>A skinned file loads as a {@link CgSkeletalMesh}, with its skeleton, morph targets and clips; a file of clips
+ * alone as sequences, to play on any skeleton with their bones:</p>
+ *
+ * <pre>{@code
+ * CgSkeletalMesh kurama = CgMeshLoader.skeletal("mymod:models/kurama.glb");     // or kurama.cgmesh, its .cganim beside
+ * List<CgAnimSequence> moves = CgMeshLoader.sequences("mymod:anims/moves.glb");  // or moves.cganim
+ * }</pre>
+ *
  * <ul>
  *   <li>Loaded once per path and format and shared, like a {@link CgMeshShapes} shape: edits and
  *       {@link CgMesh#release()} refuse.</li>
@@ -37,9 +48,12 @@ import java.util.function.Supplier;
  *   <li>Positions, normals, glTF's {@code COLOR_0} and {@code TEXCOORD_0} to {@code TEXCOORD_3} fill what the format has;
  *       colour is white and the second UV the first where the file has none. A format with other attributes needs a
  *       reader of its own.</li>
- *   <li>glTF is read in mesh space: node transforms are not applied, and a skinned primitive in its bind pose, its
- *       joints and weights unread. Strips, fans and loops become lists; a file mixing triangles with lines or points, or
- *       one with external buffers, throws.</li>
+ *   <li>{@link #model} reads glTF in mesh space: node transforms are not applied, and a skinned primitive stays in its
+ *       bind pose. Strips, fans and loops become lists; a file mixing triangles with lines or points, or one with
+ *       external buffers, throws.</li>
+ *   <li>{@link #skeletal} takes every node with both a mesh and a skin, in node order, a submesh per primitive. Its
+ *       skeleton is the skins' joints and their ancestors, one root; two bones of one name, a vertex following more
+ *       than four bones, or a clip animating a node that is no bone fails the load, naming it.</li>
  * </ul>
  */
 public final class CgMeshLoader {
@@ -59,6 +73,8 @@ public final class CgMeshLoader {
     }
 
     private static final Map<Key, Model> LOADED = new ConcurrentHashMap<>();
+    private static final Map<String, CgSkeletalMesh> SKELETAL = new ConcurrentHashMap<>();
+    private static final Map<String, List<CgAnimSequence>> SEQUENCES = new ConcurrentHashMap<>();
 
     private CgMeshLoader() {
     }
@@ -119,6 +135,26 @@ public final class CgMeshLoader {
     }
 
     /**
+     * The skinned mesh in {@code path}: a glTF or GLB, or a cooked {@code .cgmesh} with the {@code .cganim} beside it
+     * if there is one. Loaded once and shared.
+     *
+     * @throws UncheckedIOException if it cannot be read, or holds no skinned mesh
+     */
+    public static CgSkeletalMesh skeletal(String path) {
+        return SKELETAL.computeIfAbsent(path, CgMeshLoader::readSkeletal);
+    }
+
+    /**
+     * The clips in {@code path}, each track named by the bone it animates: a glTF or GLB (its skinned meshes, if any,
+     * not loaded), or a cooked {@code .cganim}. Loaded once and shared.
+     *
+     * @throws UncheckedIOException if it cannot be read
+     */
+    public static List<CgAnimSequence> sequences(String path) {
+        return SEQUENCES.computeIfAbsent(path, CgMeshLoader::readSequences);
+    }
+
+    /**
      * Reads {@code in} as {@code extension} ({@code obj}, {@code gltf} or {@code glb}) into a mesh of its own: not cached.
      * A null {@code format} is {@link CgVertexFormat#SPATIAL}.
      */
@@ -126,6 +162,7 @@ public final class CgMeshLoader {
         return switch (extension.toLowerCase(Locale.ROOT)) {
             case "obj" -> CgObjLoader.read(in, format, false);
             case "gltf", "glb" -> CgGltfLoader.read(in, format, false);
+            case "cgmesh" -> cooked(in.readAllBytes(), format, false);
             default -> throw new IllegalArgumentException("not a mesh file type: " + extension);
         };
     }
@@ -138,11 +175,55 @@ public final class CgMeshLoader {
             return switch (path.substring(dot + 1).toLowerCase(Locale.ROOT)) {
                 case "obj" -> CgObjLoader.read(in, format, true);
                 case "gltf", "glb" -> CgGltfLoader.read(in, format, true);
+                case "cgmesh" -> cooked(in.readAllBytes(), format, true);
                 default -> throw new IllegalArgumentException("not a mesh file type: " + path);
             };
         } catch (IOException e) {
             throw new UncheckedIOException("reading mesh " + path, e);
         }
+    }
+
+    /** A cooked static mesh, which must be in the format asked for, if one is. */
+    private static Model cooked(byte[] file, @Nullable CgVertexFormat format, boolean shared) {
+        Model model = CgCookedMesh.readModel(file, shared);
+        if (format != null && !format.equals(model.mesh().format())) {
+            throw new IllegalArgumentException("a cooked mesh of " + model.mesh().format().getKey() + ", asked for "
+                    + format.getKey());
+        }
+        return model;
+    }
+
+    private static CgSkeletalMesh readSkeletal(String path) {
+        try (CgTrace.Zone zone = CgTrace.zone(CgChannels.GL, "mesh.load"); InputStream in = CgIO.openStream(path)) {
+            if (in == null) throw new IOException("not found: " + path);
+            if (CgCookedMesh.is(path)) {
+                String clips = path.substring(0, path.length() - ".cgmesh".length()) + ".cganim";
+                List<CgAnimSequence> sequences;
+                try (InputStream beside = CgIO.openStream(clips)) {
+                    sequences = beside == null ? List.of() : CgCookedAnimation.read(beside.readAllBytes());
+                }
+                return CgCookedMesh.readSkeletal(in.readAllBytes(), sequences, true);
+            }
+            return CgGltfLoader.readSkeletal(in, assetName(path), true);
+        } catch (IOException e) {
+            throw new UncheckedIOException("reading skeletal mesh " + path, e);
+        }
+    }
+
+    private static List<CgAnimSequence> readSequences(String path) {
+        try (InputStream in = CgIO.openStream(path)) {
+            if (in == null) throw new IOException("not found: " + path);
+            return Collections.unmodifiableList(CgCookedAnimation.is(path) ? CgCookedAnimation.read(in.readAllBytes())
+                    : CgGltfLoader.readSequences(in, assetName(path)));
+        } catch (IOException e) {
+            throw new UncheckedIOException("reading sequences " + path, e);
+        }
+    }
+
+    /** The file's name without folder or extension: what Unreal prefixes the names of a file's unnamed objects with. */
+    private static String assetName(String path) {
+        int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf(':')), dot = path.lastIndexOf('.');
+        return path.substring(slash + 1, dot > slash ? dot : path.length());
     }
 
     /** A mesh {@code body} writes: shared when cached, the caller's own otherwise. */

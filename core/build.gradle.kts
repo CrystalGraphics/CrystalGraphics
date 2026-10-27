@@ -180,6 +180,11 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
     providers.gradleProperty("kitMaterials").orNull?.let { systemProperty("crystalgraphics.kits.materials", it) }
 }
 
+tasks.named<Test>("test") {
+    // Skinned glTFs loaded and cooked both ways: -PskinnedMeshes=<folder of .glb>,...
+    providers.gradleProperty("skinnedMeshes").orNull?.let { systemProperty("crystalgraphics.skinnedMeshes", it) }
+}
+
 tasks.named("check") { dependsOn(headlessTestTask) }
 
 // T5: the allocation proofs again on the Java 8 copies of core and platform, where a jvmdg stub on a hot path would

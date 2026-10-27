@@ -119,7 +119,8 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 ### Mesh
 | Path | What it covers |
 |---|---|
-| `api/mesh/CLAUDE.md` | `CgMesh` (a mesh as data), `CgMeshWriter`, `CgMeshShapes`, `CgMeshLoader`, `CgMeshLods`, `CgSubmesh`, `CgMeshChanges`, `CgMeshTopology` |
+| `api/mesh/CLAUDE.md` | `CgMesh` (a mesh as data), `CgMeshWriter`, `CgMeshShapes`, `CgMeshLoader`, `CgMeshLods`, `CgSubmesh`, `CgMeshChanges`, `CgMeshTopology`, `CgSkeletalMesh`, `CgCookedMesh` |
+| `api/animation/CLAUDE.md` | `CgSkeleton`, `CgAnimSequence`, `CgMorphTargets`, `CgCookedAnimation`: what a skinned model moves by, as data |
 
 ### Vertex / Instancing
 | Path | What it covers |

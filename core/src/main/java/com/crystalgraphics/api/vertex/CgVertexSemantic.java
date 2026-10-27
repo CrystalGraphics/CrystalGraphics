@@ -20,6 +20,10 @@ public enum CgVertexSemantic {
     COLOR,
     /** Surface normal. */
     NORMAL,
+    /** The bones a skinned vertex follows, as indices into its skeleton. */
+    BONE_INDICES,
+    /** How much the vertex follows each of its {@link #BONE_INDICES}, summing to 1. */
+    BONE_WEIGHTS,
     /** No specific semantic — custom or application-defined. */
     GENERIC
 }

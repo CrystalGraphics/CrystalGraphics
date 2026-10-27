@@ -76,3 +76,82 @@ public final class Shuriken extends CgVfxEffect<Shuriken> {
   Each node's part is a draw, and draws of one material batch.
 - Names are unique and a parent comes before its children; the builder throws otherwise.
 - `--mode=vfx-prefab` is the gate: 458 nodes, a subtree cut and a chain dimmed.
+
+# Skinned meshes: models with bones
+
+A skinned mesh is geometry whose vertices follow the bones of a skeleton: a character, a beast, a tail. Each vertex
+names up to four bones and how much it follows each; the skeleton names the bones and holds their rest pose; clips
+move the bones over time. Unreal calls them a skeletal mesh, a skeleton and anim sequences.
+
+## Loading one
+
+From a glTF or GLB, the format every engine exports:
+
+```java
+CgSkeletalMesh kurama = CgMeshLoader.skeletal("mymod:models/kurama.glb");
+CgSkeleton bones = kurama.skeleton();
+int pelvis = bones.indexOf("pelvis");                 // -1 if it has no bone by that name
+kurama.mesh();                                        // the geometry: a submesh per glTF primitive
+kurama.material(0);                                   // the material its first submesh names
+CgAnimSequence attack = kurama.sequence("atk010");    // a clip that came in the same file
+```
+
+Clips of their own, in a file of clips alone (an animation exported without its mesh):
+
+```java
+List<CgAnimSequence> moves = CgMeshLoader.sequences("mymod:anims/moves.glb");
+```
+
+| Type | What it is | Unreal |
+|---|---|---|
+| `CgSkeletalMesh` | the geometry, its skeleton, the bind pose tying them, its materials, morph targets and clips | `USkeletalMesh` |
+| `CgSkeleton` | bones by name, each with a parent and a rest pose; one root, parents before children | `FReferenceSkeleton` |
+| `CgAnimSequence` | each animated bone's translation, rotation and scale at evenly spaced frames, and float curves | `UAnimSequence` |
+| `CgMorphTargets` | named per-vertex offsets mixed in by weight | `UMorphTarget` |
+
+## Building one in Java
+
+```java
+CgSkeleton arm = CgSkeleton.builder()
+        .bone("shoulder", null, new Vector3f(0, 1.4f, 0))
+        .bone("elbow", "shoulder", new Vector3f(0, -0.3f, 0))
+        .build();
+
+CgMesh sleeve = CgMesh.build(CgVertexFormat.SKINNED, m -> {
+    int a = m.vertex().position(0, 1.4f, 0).normal(1, 0, 0).uv(0, 0).bone(0, 1f).end();
+    int b = m.vertex().position(0, 1.1f, 0).normal(1, 0, 0).uv(0, 1).bone(0, 0.5f).bone(1, 0.5f).end();
+    int c = m.vertex().position(0, 0.8f, 0).normal(1, 0, 0).uv(1, 1).bone(1, 1f).end();
+    m.triangle(a, b, c);
+});
+
+CgAnimSequence wave = CgAnimSequence.builder("wave", 30, 31)       // 31 keys at 30 a second: one second
+        .track("elbow", new float[]{0, -0.3f, 0}, elbowRotations, new float[]{1, 1, 1})
+        .build();
+
+CgSkeletalMesh mesh = CgSkeletalMesh.builder(sleeve, arm).material(0, "mymod:sleeve").sequence(wave).build();
+```
+
+## Cooked
+
+A release ships meshes cooked: `.cgmesh` holds the vertices as the engine lays them out, read in one copy, and
+`.cganim` beside it the clips as columns. `CgMeshLoader` reads them by extension, the same calls:
+
+```java
+CgSkeletalMesh kurama = CgMeshLoader.skeletal("mymod:cooked/kurama.cgmesh");   // kurama.cganim beside it, if any
+byte[] mesh = CgCookedMesh.write(kurama), clips = CgCookedAnimation.write(kurama.sequences());
+```
+
+## Things to know
+
+- **Four bones a vertex.** A vertex naming more fails the load, naming it. Weights are stored to 1/255, heaviest
+  first, summing to exactly 1: give them as they are, and a bone given twice keeps its larger weight.
+- **Up to 256 bones** a mesh in `CgVertexFormat.SKINNED`; a larger skeleton's mesh is `SKINNED_WIDE`, with 16-bit
+  indices. The loader picks; `CgVertexFormat.skinned(bones)` says which.
+- **The skeleton is the skins' joints and every node above one**, so an armature's own transform (which often stands
+  the model up) is a bone too. One root; two bones of one name fail the load.
+- **A clip is baked to evenly spaced frames** at the first of the usual rates (30, 24, 23.976, 25, 29.97, 48, 50, 60,
+  ...) its length lands on, as Unreal imports one. A channel that never moves keeps one key.
+- **Tracks name their bones**, so a clip plays on any skeleton that has them. A bone a clip does not animate holds its
+  rest pose.
+- **Names are kept as written**: what a socket or a sequence names a bone by.
+- Playing clips, posing, drawing skinned and sockets on bones are their own sections as they arrive.
