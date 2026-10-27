@@ -42,7 +42,6 @@ Properties {
     _Screen  ("The full target's width and height, then the downsample factor", vec4) = (1, 1, 2, 2)
     _Trace   ("Screen trace: blocks, steps, normal bias in blocks, relative depth thickness", vec4) = (8, 24, 0.02, 0.005)
     _Sun     ("The sun: 1 for its shadows, 1 where its map was drawn", vec4) = (0, 0, 0, 0)
-    _Own     ("1 where the host's depth before our opaque draws was taken this frame", float) = 0.0
     _SampleGrid ("Unreal's NumSamplesPerPixel as a block of the samples texture: its width, height and count", vec4) = (2, 2, 4, 0)
     _Skip    ("Parts left out, to measure each: 1 sun, 2 block light, 4 lights, 8 meshes, 16 screen, 32 blocks, 64 entities", int) = 0
     _EyeX    ("The eye's block: x",                                int) = 0
@@ -52,10 +51,9 @@ Properties {
     _World         ("The voxel window's blocks",                   sampler3D) = "black"
     _WorldSections ("Which of its sections are filled",            sampler3D) = "black"
     _WorldDistance ("Its distance to solid over FX_WORLD_FAR",      sampler3D) = "white"
-    _HostDepth     ("The host's window depth before our opaque draws", sampler2D) = "white"
     _CasterRows    ("Our meshes casting shadows, five texels each: eye-relative world to field voxels (three rows), the field's size and first float, its scales; from SUN_ROWS_AT the sun's cascades, four each: to uv, to depth, view depths and depth bias", sampler2D) = "black"
     _MeshFields    ("Every mesh's distance field in its own units, MESH_FIELD_ROW floats a row", sampler2D) = "black"
-    _GBuffer       ("Each pixel's normal in the view (world_lights_gbuffer)", sampler2D) = "black"
+    _GBuffer       ("Each pixel's normal in the view, alpha 1 where ours (world_lights_gbuffer)", sampler2D) = "black"
     _EntityTiles   ("Each 16x16 tile's entities a ray from it can meet: 16 bits a channel (world_lights_tiles.shader)", sampler2D) = "black"
     _SunMap        ("The sun's cascades, a quadrant each, nearest bottom left: our casters' depth from the light, blocks", sampler2D) = "white"
     _WorldBaseX    ("Its lowest block, absolute: x",               int) = 0
@@ -110,12 +108,8 @@ Pass {
         return eye_depth_of(texelFetch(cg_DepthBuffer, clamp(px, ivec2(0), ivec2(_Screen.xy) - 1), 0).r);
     }
 
-    // Whether pixel px is one of our objects': nearer than the host's depth was before our opaque draws.
-    bool own(ivec2 px, float depth) {
-        if (_Own < 0.5 || depth <= 0.0) return false;
-        float host = eye_depth_of(texelFetch(_HostDepth, clamp(px, ivec2(0), ivec2(_Screen.xy) - 1), 0).r);
-        return host <= 0.0 || depth < host - max(0.01, 0.002 * depth);
-    }
+    // Whether pixel px is one of our objects': drawn by our opaque pass and not covered since (world_lights_gbuffer).
+    bool own(ivec2 px) { return texelFetch(_GBuffer, clamp(px, ivec2(0), ivec2(_Screen.xy) - 1), 0).a > 0.5; }
 
     vec3 surface(ivec2 px) {
         float depth = eye_depth(px);
@@ -395,7 +389,7 @@ Pass {
         vec3 p = surface(px);
         if (p.z >= 0.0) return;
         vec3 n = normal_at(px);
-        bool ownPixel = own(px, -p.z);
+        bool ownPixel = own(px);
         entityTiles = uvec4(texelFetch(_EntityTiles, min(px / 16, textureSize(_EntityTiles, 0) - 1), 0));
         // The sun and Minecraft's block light take one ray a pixel, in its first sample: MegaLights spends a pixel's
         // four on every light together, and the frames average the rest.

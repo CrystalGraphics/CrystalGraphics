@@ -1575,8 +1575,6 @@ public final class CgWorldRenderer {
             }
 
             CgRecording recording = stage.recording();
-            // Before our opaque draws: a pixel nearer than this later is ours (the world lights' sun shadows).
-            if (which == OPAQUE && drawn > 0) pointLights.snapshotHostDepth(stage, recording);
             normalsInto = which == OPAQUE && drawn > 0 ? normalsFor(stage, recording) : null;
             CgPassConstants constants = stage.constants().sceneGlow(sceneEmission);
             bindings.clear();

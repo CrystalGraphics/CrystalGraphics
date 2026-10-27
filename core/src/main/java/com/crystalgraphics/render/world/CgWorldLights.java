@@ -230,12 +230,11 @@ public final class CgWorldLights {
             SHADE_SHADER = "crystalgraphics:shaders/world_lights_shade.shader",
             TEMPORAL_SHADER = "crystalgraphics:shaders/world_lights_temporal.shader",
             DENOISE_SHADER = "crystalgraphics:shaders/world_lights_denoise.shader",
-            HOST_DEPTH_SHADER = "crystalgraphics:shaders/world_lights_host_depth.shader",
             TILES_SHADER = "crystalgraphics:shaders/world_lights_tiles.shader",
             TILE_DEPTH_SHADER = "crystalgraphics:shaders/world_lights_tile_depth.shader";
     private static final int GPU_SAMPLE = CgGpuTrace.name("world.lightsSample"), GPU_SHADE = CgGpuTrace.name("world.lightsShade"),
             GPU_TEMPORAL = CgGpuTrace.name("world.lightsTemporal"), GPU_DENOISE = CgGpuTrace.name("world.lightsDenoise"),
-            GPU_HOST_DEPTH = CgGpuTrace.name("world.lightsHostDepth"), GPU_TILES = CgGpuTrace.name("world.lightsTiles"),
+            GPU_TILES = CgGpuTrace.name("world.lightsTiles"),
             GPU_TILE_DEPTH = CgGpuTrace.name("world.lightsTileDepth");
     /** Unreal's capsule shadow tiles: a tile's entities, a bit each, 16 a channel. */
     private static final int ENTITY_TILE = 16;
@@ -257,9 +256,6 @@ public final class CgWorldLights {
     /** The accumulated lighting and its frames; its luminance's moments, eye depth and confidence; the sun's and block light's visibility and their squares. */
     private static final CgFrameBufferFormat HISTORY_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.history")
             .color(0, CgTextureType.RGBA16F).color(1, CgTextureType.RGBA16F).color(2, CgTextureType.RGBA16F).build();
-    /** The host's window depth before our opaque draws. */
-    private static final CgFrameBufferFormat HOST_DEPTH_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.host-depth")
-            .color(0, CgTextureType.R32F).build();
     /**
      * The sun's cascaded shadow map, Unreal's for a movable directional light (DirectionalLightComponent.cpp:1043-1057):
      * 4 cascades, each 3 times the depth of the last, overlapping by a tenth of each for the blend into the next.
@@ -483,12 +479,9 @@ public final class CgWorldLights {
     private boolean shadowsOn, freshHistory, binned, sunOn;
     /** Zeros: the light list, cells and entities when none were made this firing. */
     private CgGraphBuffer zeroes;
-    private CgGraphTexture hostDepth;
-    private long hostDepthFrame = -1;
-    /** Our opaque surfaces' normals this frame (the world renderer's normal target), alpha 1 where one was drawn. */
+    /** Our opaque surfaces' normals this frame (the world renderer's normal target), alpha their eye depth. */
     private CgGraphTexture normals;
     private long normalsFrame = -1;
-    private CgMaterial hostDepthCopy;
     private final float[] sunDirection = new float[3];
     private final float[] eyeFrac = new float[3];
     private final int[] eyeBlock = new int[3];
@@ -497,9 +490,8 @@ public final class CgWorldLights {
             .set1i("_EyeZ", eyeBlock[2]).vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f)
             .set1i("_Entities", this.entities).set1i("_Casters", this.casterCount)
             .vec4("_Sun", this.sunOn ? 1f : 0f, this.sunMapped ? 1f : 0f, 0f, 0f)
-            .set1f("_Own", this.ownPixels() ? 1f : 0f).set1i("_Skip", skip())
+            .set1i("_Skip", skip())
             .vec4("_SampleGrid", this.sampleX, this.sampleY, this.sampleX * this.sampleY, 0f)
-            .sampler("_HostDepth", 3, this.ownPixels() ? this.hostDepth : CgFallbackTextures.WHITE_1x1)
             .sampler("_CasterRows", 4, this.casterCount > 0 || this.sunMapped ? this.casters : CgFallbackTextures.BLACK_1x1)
             .sampler("_MeshFields", 5, this.casterCount > 0 ? this.meshFields.atlas() : CgFallbackTextures.BLACK_1x1)
             .sampler("_GBuffer", 6, this.gbuffer)
@@ -945,7 +937,7 @@ public final class CgWorldLights {
             // Minecraft's light-giving blocks, only where something of ours can shadow them.
             blockCount = 0;
             blockReach = BLOCK_REACH.get();
-            if (SHADOWS.get() && blockReach > 0f && ownPixels()) {
+            if (SHADOWS.get() && blockReach > 0f && normalsNow()) {
                 CgWorldVoxelWindow window = CgWorldVoxelWindow.get();
                 window.useDistance();
                 window.emitters(gatherBlock);
@@ -1681,22 +1673,6 @@ public final class CgWorldLights {
         return at / total;
     }
 
-    /**
-     * The host's depth as it stands before our opaque draws, kept for this frame's transparent firing: a pixel nearer than
-     * it then is ours. The world renderer's opaque firing calls it before its passes, where it draws anything opaque.
-     */
-    void snapshotHostDepth(CgStageFrame stage, CgRecording recording) {
-        if (hostDepthCopy == null) hostDepthCopy = CgMaterial.newInstance(HOST_DEPTH_SHADER);
-        if (!hostDepthCopy.prepare()) return;
-        int w = Math.max(1, stage.host().width()), h = Math.max(1, stage.host().height());
-        if (hostDepth == null || hostDepth.getWidth() != w || hostDepth.getHeight() != h) {
-            if (hostDepth != null) recording.release(hostDepth);
-            hostDepth = CgGraphTexture.requested("cg_world_lights.host-depth", new CgTextureDesc(w, h, HOST_DEPTH_FORMAT));
-        }
-        fullScreen(stage, recording, hostDepth, hostDepthCopy, GPU_HOST_DEPTH);
-        hostDepthFrame = CgFrameRing.frame();
-    }
-
     /** Whether the world renderer should write our surfaces' normals: the shadow passes read them. */
     boolean wantsNormals() {
         return SHADOWS.get();
@@ -1712,14 +1688,10 @@ public final class CgWorldLights {
         return normalsFrame == CgFrameRing.frame() && normals != null;
     }
 
-    /** Whether this frame's opaque firing drew something of ours: the host's depth before it was kept. */
-    private boolean ownPixels() {
-        return hostDepthFrame == CgFrameRing.frame() && hostDepth != null;
-    }
 
     /** Whether the sun's shadows run this firing: something of ours drawn, under a sun above the horizon. */
     private boolean sunWanted(CgStageFrame stage) {
-        if (!SHADOWS.get() || !SUN.get() || CgWorldAtmosphere.SUN_SHARE.get() <= 0f || !ownPixels()) return false;
+        if (!SHADOWS.get() || !SUN.get() || CgWorldAtmosphere.SUN_SHARE.get() <= 0f || !normalsNow()) return false;
         stage.host().environment().sunDirection(sunDirection);
         return sunDirection[1] > 0f;
     }

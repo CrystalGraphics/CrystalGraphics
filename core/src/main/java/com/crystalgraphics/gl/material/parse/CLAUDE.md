@@ -188,7 +188,8 @@ Authoring: `docs/SHADERS.md` § *The Emissive pass*. What this package does with
   alpha over the decoded coverage, so it adds what the Emissive pass's own draw would have.
 - **The G-buffer normal**: compiled with `NORMAL_TARGET` (a single-output Forward pass, `writesNormals`), the v2f block
   carries `_cg_normalWs`, set at the end of the generated vertex `main`, and the fragment `main` writes it first, at
-  location 1, as `n * 0.5 + 0.5` with alpha 1, flipped for a back face; alpha 0 where the format has no normal. Both
+  location 1, as `n * 0.5 + 0.5` with the eye depth as alpha, flipped for a back face; `(0, 0, 0, -eye)` where the
+  format has no normal. Both
   are inserted into the generated `main`, never by renaming it: a backend rewrites `main`.
 - **A named glow**: a fragment body naming `CG_GLOW` gets `_cg_glowRgb` and the macro before `fragment()`
   (`appendFragmentUserFunction`), and every glow its `main` makes (merge, fold, its own Emissive draw) takes

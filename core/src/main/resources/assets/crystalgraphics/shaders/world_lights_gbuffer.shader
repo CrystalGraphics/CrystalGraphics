@@ -3,7 +3,8 @@
 // rebuilding it. Ours as the opaque pass drew it (_Normals); Minecraft's from depth, from whichever neighbour each way is
 // the nearer step, so a block's edge does not bend it (Wicked Engine's improved normal reconstruction, MIT), held to a
 // world axis within 10 degrees, as its blocks are. Half floats, so the normal is the one each pass rebuilt to a
-// thousandth. The sky has none: (0, 0, 0).
+// thousandth. The sky has none: (0, 0, 0). Alpha 1 where the pixel is ours: our opaque pass wrote its eye depth there
+// and nothing the host drew after it covers it (a player's translucent skin).
 #type none
 #include "crystalgraphics:shaders/lib/math.glsl"
 
@@ -16,7 +17,7 @@ Properties {
     _ToView1 ("The second row",                                    vec4) = (0, 1, 0, 0)
     _ToView2 ("The third row",                                     vec4) = (0, 0, 1, 0)
     _Depth   ("The perspective's m22, m32, m23 and m33: window depth to eye depth", vec4) = (1, 0, -1, 0)
-    _Normals ("Our surfaces' normals, world, n * 0.5 + 0.5, alpha 1 where drawn", sampler2D) = "black"
+    _Normals ("Our surfaces' normals, world, n * 0.5 + 0.5; alpha the eye depth drawn at, negative with no normal", sampler2D) = "black"
 }
 
 struct v2f { vec2 uv; };
@@ -65,10 +66,12 @@ Pass {
             fragColor = vec4(0.0);
             return;
         }
-        // Ours where the opaque pass wrote one (Unreal's G-buffer normal).
+        // Ours where the opaque pass drew at this depth (Unreal's G-buffer normal).
         vec4 drawn = texelFetch(_Normals, px, 0);
+        float depth = -p.z;
+        bool ours = drawn.a != 0.0 && abs(abs(drawn.a) - depth) < max(0.02, 0.004 * depth);
         vec3 n;
-        if (drawn.a > 0.5) {
+        if (ours && drawn.a > 0.0) {
             n = to_view_dir(normalize(drawn.xyz * 2.0 - 1.0));
             if (dot(n, p) > 0.0) n = -n;
         } else {
@@ -85,6 +88,6 @@ Pass {
             float most = max(size.x, max(size.y, size.z));
             if (most > 0.985) n = to_view_dir(sign(world) * step(vec3(most), size));
         }
-        fragColor = vec4(n, 1.0);
+        fragColor = vec4(n, ours ? 1.0 : 0.0);
     }
 }

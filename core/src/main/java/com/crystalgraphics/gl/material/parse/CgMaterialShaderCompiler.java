@@ -161,8 +161,9 @@ public final class CgMaterialShaderCompiler {
     /**
      * The engine's keyword for a Forward pass drawn into the world renderer's opaque pass with a normal target beside
      * it, Unreal's G-buffer normal: the vertex normal, through the normal matrix, written at location 1 as
-     * {@code n * 0.5 + 0.5} with alpha 1, flipped on a back face; alpha 0 for a mesh with no normals. What the world
-     * lights read in place of a normal rebuilt from depth.
+     * {@code n * 0.5 + 0.5} with the fragment's eye depth as alpha, flipped on a back face; (0, 0, 0, -eye depth) for a
+     * mesh with no normals. What the world lights read in place of a normal rebuilt from depth, and which pixels are
+     * ours: those whose depth still matches.
      */
     public static final String NORMAL_TARGET = "CG_NORMAL_TARGET";
 
@@ -714,7 +715,9 @@ public final class CgMaterialShaderCompiler {
             // First in the generated main, before any return in it: a pixel discarded later writes nothing anyway.
             int open = sb.indexOf("{", sb.lastIndexOf("void main()")) + 1;
             sb.insert(open, "\n  vec3 _cg_n = _cg_v2f._cg_normalWs;\n"
-                    + "  _cg_normalOut = dot(_cg_n, _cg_n) > 1.0e-12 ? vec4(normalize(gl_FrontFacing ? _cg_n : -_cg_n) * 0.5 + 0.5, 1.0) : vec4(0.0);\n");
+                    + "  float _cg_eye = cg_LinearEyeDepth(gl_FragCoord.z);\n"
+                    + "  _cg_normalOut = dot(_cg_n, _cg_n) > 1.0e-12 ? vec4(normalize(gl_FrontFacing ? _cg_n : -_cg_n) * 0.5 + 0.5, _cg_eye)"
+                    + " : vec4(0.0, 0.0, 0.0, -_cg_eye);\n");
         }
 
         return sb.toString();

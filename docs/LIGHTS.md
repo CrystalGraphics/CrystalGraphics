@@ -185,7 +185,8 @@ lights.add(x, y, z, 2f, 0xFFFFE080, 4f, 0f).shadowed(false).sampled(false);   //
   blocks and entities. So our objects receive its shadow from blocks, entities and each other; Minecraft's world
   receives it from our objects alone, its own blocks keeping the light Minecraft baked. A shadow takes the sun's
   direct share (`crystalgraphics.world.sunShare`, 0.6) out of the pixel's sky light, through Minecraft's own lightmap,
-  so the shade is Minecraft's. Our pixels are found from the host's depth snapshotted before our opaque pass.
+  so the shade is Minecraft's. Our pixels are those our opaque pass drew whose depth nothing the host drew after
+  covers: it writes its eye depth beside its normal, so a player's translucent skin over our ground is the host's.
   `crystalgraphics.world.sunShadows=false` turns it off; `--mode=lights-sun` is its gate.
 - **Minecraft's block light** is shadowed by our objects the same way. Each light-giving block the voxel window finds
   (a torch, glowstone, lava: a local maximum of block light the world says emits) within
