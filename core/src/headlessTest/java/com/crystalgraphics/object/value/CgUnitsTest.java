@@ -82,4 +82,22 @@ public class CgUnitsTest {
         assertFalse(CgUnits.HOST.flipsHandedness());
         assertEquals(Math.PI, ((Number) CgUnits.UNREAL.toHost(180, CgQuantity.ANGLE)).doubleValue(), 1e-9);
     }
+
+    @Test
+    public void aUserBindingConvertsItsResult() {
+        // Cascade's LocationDirect bound to the beam's CylinderLength: 600 to 50000 cm along Unreal's x.
+        Map<?, ?> written = Map.of("bind", "user.CylinderLength", "default", List.of(20000, 0, 0),
+                "remap", Map.of("in", List.of(List.of(0, 0, 0), List.of(100000, 0, 5)), "out", List.of(List.of(600, 0, 0), List.of(50000, 0, 7))));
+        Map<?, ?> host = (Map<?, ?>) CgUnits.UNREAL.toHost(written, CgQuantity.POSITION);
+        Map<?, ?> remap = (Map<?, ?>) host.get("remap");
+        assertEquals("in stays the parameter's numbers, in host channel order", List.of(100000, 5, 0), ((List<?>) remap.get("in")).get(1));
+        assertEquals(List.of(500.0, 0.07, 0.0), ((List<?>) remap.get("out")).get(1));
+        assertEquals("host y reads Unreal's z", List.of(0, 2, 1), host.get("channels"));
+        assertEquals("default stays the parameter's", List.of(20000, 0, 0), host.get("default"));
+        // Unmapped, the scale takes the factor; an engine binding is in host units already.
+        Map<?, ?> radius = (Map<?, ?>) CgUnits.UNREAL.toHost(Map.of("bind", "user.Radius", "scale", 2), CgQuantity.LENGTH);
+        assertEquals(0.02, ((Number) radius.get("scale")).doubleValue(), 1e-12);
+        Map<?, ?> age = Map.of("bind", "particles.age");
+        assertSame(age, CgUnits.UNREAL.toHost(age, CgQuantity.TIME));
+    }
 }

@@ -149,7 +149,8 @@ public record CgUnits(double metres, double seconds, int[] axes, double radians,
             if (q == CgQuantity.NONE) q = LENGTHS.containsKey(unit) ? CgQuantity.LENGTH : CgQuantity.ANGLE;
             return rest.size() == 1 && rest.containsKey("value") ? in.convert(rest.get("value"), q, vector) : in.form(rest, q, vector);
         }
-        if (q == CgQuantity.NONE || q == CgQuantity.COLOUR || m.containsKey("bind")) return m;
+        if (m.containsKey("bind")) return bound(m, q, vector);
+        if (q == CgQuantity.NONE || q == CgQuantity.COLOUR) return m;
         Map<Object, Object> out = new LinkedHashMap<>(m);
         boolean loop = "loop".equals(m.get("by"));
         for (String k : List.of("range", "pick", "array", "value")) if (m.containsKey(k)) out.put(k, convert(m.get(k), q, vector));
@@ -260,6 +261,63 @@ public record CgUnits(double metres, double seconds, int[] axes, double radians,
         double sense = q == CgQuantity.ANGULAR_SPEED && flipsHandedness() ? -1 : 1;
         double sign = q == CgQuantity.SCALE ? 1 : Math.signum(axes[i]);
         return factor(q) * sign * sense;
+    }
+
+    /**
+     * A binding converted as its input's constant would be: its result {@code scale × remap(value)} by the input's
+     * quantity, folded in at load since that is linear. {@code in}, {@code default} and the bound value stay the asset's
+     * numbers; a vector's per-channel parts permute through the axes, {@code out} (else {@code scale}) takes the factor
+     * and signs, and {@code channels} names the value's channel each host channel reads. Only a {@code user.} parameter
+     * holds the asset's numbers; what the engine binds ({@code particles.}, {@code engine.}) is in host units already.
+     */
+    private Map<?, ?> bound(Map<?, ?> m, CgQuantity q, boolean vector) {
+        if (q == CgQuantity.NONE || q == CgQuantity.COLOUR || !String.valueOf(m.get("bind")).startsWith("user.")) return m;
+        boolean axial = vector && permutes(q);
+        boolean identity = !axial || Arrays.equals(axes, HOST.axes);
+        if (factor(q) == 1 && identity) return m;
+        if (q == CgQuantity.ROTATION) {
+            throw new IllegalArgumentException("a bound " + q + " does not convert units yet: " + m.get("bind"));
+        }
+        Map<Object, Object> out = new LinkedHashMap<>(m);
+        if (m.get("remap") instanceof Map<?, ?> remap) {
+            Map<Object, Object> r = new LinkedHashMap<>(remap);
+            List<Object> in = new ArrayList<>(), to = new ArrayList<>();
+            for (Object end : (List<?>) remap.get("in")) in.add(axial ? permuted(end) : end);
+            for (Object end : (List<?>) remap.get("out")) {
+                to.add(axial ? vector(three(end), q) : convert(end, q, false));
+            }
+            r.put("in", in);
+            r.put("out", to);
+            out.put("remap", r);
+        } else {
+            // Unmapped, the factor rides on the scale: one number, so every channel must take the same.
+            double f = axial ? axisFactor(0, q) : factor(q);
+            if (axial) {
+                for (int i = 1; i < 3; i++) {
+                    if (axisFactor(i, q) != f) {
+                        throw new IllegalArgumentException("a bound " + q + " with no remap does not convert to axes that"
+                                + " flip a sign yet: " + m.get("bind"));
+                    }
+                }
+            }
+            out.put("scale", (m.get("scale") instanceof Number s ? s.doubleValue() : 1.0) * f);
+        }
+        if (axial && m.get("mode") instanceof List<?> modes && modes.size() == 3) out.put("mode", permuted(modes));
+        if (axial && !identity) out.put("channels", List.of(Math.abs(axes[0]) - 1, Math.abs(axes[1]) - 1, Math.abs(axes[2]) - 1));
+        return out;
+    }
+
+    /** {@code v}'s three channels in host order, unscaled: a number stands for all three. */
+    private Object permuted(Object v) {
+        List<?> list = three(v);
+        List<Object> out = new ArrayList<>(3);
+        for (int i = 0; i < 3; i++) out.add(list.get(Math.abs(axes[i]) - 1));
+        return out;
+    }
+
+    private static List<?> three(Object v) {
+        if (v instanceof List<?> list) return list;
+        return List.of(v, v, v);
     }
 
     private Object vector(List<?> v, CgQuantity q) {

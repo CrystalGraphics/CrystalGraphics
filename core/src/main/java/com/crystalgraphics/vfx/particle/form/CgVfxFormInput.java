@@ -200,10 +200,11 @@ public sealed interface CgVfxFormInput {
 
     /**
      * {@code { bind: path, scale, remap, mode, default }}: {@code scale × remap(value)}, computed per instance and
-     * written to a lane; a particle's own attribute ({@code particles.*}) is read in the kernel.
+     * written to a lane; a particle's own attribute ({@code particles.*}) is read in the kernel. Channel {@code c} reads
+     * the value's (and the default's) channel {@code channels[c]}, where the asset's axes differ from the host's.
      */
     record Binding(String name, String path, float scale, float[] inLo, float[] inHi, float[] outLo, float[] outHi,
-                   String[] modes, float[] fallback) implements CgVfxFormInput {
+                   String[] modes, float[] fallback, int[] channels) implements CgVfxFormInput {
         public CgValueForm form() {
             return CgValueForm.BINDING;
         }
@@ -222,7 +223,8 @@ public sealed interface CgVfxFormInput {
                 v = ctx.particleAge;
             } else {
                 float[] bound = ctx.parameter(path);
-                v = bound != null ? bound[Math.min(c, bound.length - 1)] : fallback[c];
+                int from = channels[c];
+                v = bound != null ? bound[Math.min(from, bound.length - 1)] : fallback[from];
             }
             return apply(v, c);
         }

@@ -179,7 +179,12 @@ public final class CgVfxFormCompiler {
         } else {
             modes = new String[]{mode == null ? "remap" : String.valueOf(mode)};
         }
-        return new CgVfxFormInput.Binding(name, path, scale, inLo, inHi, outLo, outHi, modes, fallback);
+        // CgUnits' conversion names the value's channel each host channel reads; as written, its own.
+        int[] channels = new int[n];
+        for (int c = 0; c < n; c++) {
+            channels[c] = m.get("channels") instanceof List<?> from ? ((Number) from.get(c)).intValue() : c;
+        }
+        return new CgVfxFormInput.Binding(name, path, scale, inLo, inHi, outLo, outHi, modes, fallback, channels);
     }
 
     /** {@code value} as {@code n} numbers: a number repeated, a list, a boolean as 0 or 1. */

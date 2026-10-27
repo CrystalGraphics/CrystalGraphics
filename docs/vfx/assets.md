@@ -61,6 +61,19 @@ engine keeps that engine's numbers. The engine converts once, on load. A child's
 units: { length: cm, axes: unreal, angles: degrees, rotation: unreal_rotator, time: { seconds: true, frames: 30 } }
 ```
 
+A binding converts like a constant: everything in it is the asset's numbers, and its result converts by its input.
+Here a user parameter in centimetres places particles in blocks:
+
+```yaml
+user:
+  CylinderLength: { type: vec3, default: [20000, 0, 0] }    # centimetres, as the asset holds them
+# a set_position module's input: 600 to 50000 cm along Unreal's x, so 6 to 500 blocks along the host's
+position: { bind: user.CylinderLength, remap: { in: [[0, 0, 0], [100000, 0, 0]], out: [[600, 0, 0], [50000, 0, 0]] } }
+```
+
+- Only `user.` parameters convert: what the engine binds (`particles.`, `engine.`) is in host units already.
+- A bound rotation fails at load: it does not convert yet.
+
 ## Inheritance
 
 A file with `parent:` is a child. It writes only what differs from its parent, and everything else comes through:

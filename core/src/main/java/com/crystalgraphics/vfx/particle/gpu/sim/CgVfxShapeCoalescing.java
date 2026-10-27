@@ -332,7 +332,9 @@ public final class CgVfxShapeCoalescing {
         }
         if (as instanceof CgVfxFormInput.Binding b && b.path().startsWith("user.")) {
             // A lane holding it: a parameter no instance has, so every instance writes its fallback.
-            return new CgVfxFormInput.Binding(name, "user.", 1f, null, null, null, null, new String[]{"direct"}, v.clone());
+            int[] own = new int[v.length];
+            for (int c = 0; c < own.length; c++) own[c] = c;
+            return new CgVfxFormInput.Binding(name, "user.", 1f, null, null, null, null, new String[]{"direct"}, v.clone(), own);
         }
         if (as instanceof CgVfxFormInput.Function fn) {
             float[] second = fn.fn().equals(BETWEEN) ? v : new float[v.length];
