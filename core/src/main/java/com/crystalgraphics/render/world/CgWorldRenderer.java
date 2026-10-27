@@ -685,7 +685,35 @@ public final class CgWorldRenderer {
         int palette = instance.palette();
         if (palette < 0) throw new IllegalStateException(instance + " is not posed this frame: CgAnimation.add it, and draw after POSE");
         return scratch.start(instance.mesh().mesh(), material).bones(palette)
-                .at(instance.x(), instance.y(), instance.z()).transform(instance.transform());
+                .at(instance.x(), instance.y(), instance.z()).transform(instance.transform()).pad(instance.boundsPad());
+    }
+
+    /**
+     * Draws a skinned mesh posed this frame, each submesh in its slot's material ({@link CgAnimInstance#material}):
+     * Unreal's skinned mesh component drawing its sections, each with {@code GetMaterial(slot)}
+     * (SkinnedMeshComponentHelper.h:108-125). Submit from {@code SUBMIT}, or another group after {@code POSE}.
+     *
+     * <pre>{@code
+     * goku.material(0, hair).material(1, head)...;   // or every slot from a prefab's materials
+     * world.draw(goku);
+     * }</pre>
+     *
+     * @throws IllegalStateException where it is not posed this frame, or a slot has no material: Unreal draws the
+     *         default material there, and this engine has none to draw, so it names the slot
+     */
+    public void draw(CgAnimInstance instance) {
+        int palette = instance.palette();
+        if (palette < 0) throw new IllegalStateException(instance + " is not posed this frame: CgAnimation.add it, and draw after POSE");
+        for (int slot = 0; slot < instance.materialSlots(); slot++) {
+            CgMaterial material = instance.material(slot);
+            if (material == null) {
+                throw new IllegalStateException(instance + "'s slot " + slot + " (" + instance.mesh().material(slot)
+                        + ") has no material: set it with material(slot, material)");
+            }
+            scratch.start(instance.mesh().mesh(), material).bones(palette).submesh(slot)
+                    .at(instance.x(), instance.y(), instance.z()).transform(instance.transform()).pad(instance.boundsPad())
+                    .submit();
+        }
     }
 
     /**

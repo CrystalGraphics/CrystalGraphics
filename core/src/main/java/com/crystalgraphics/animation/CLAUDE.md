@@ -5,7 +5,7 @@
 
 | Type | Role |
 |---|---|
-| `CgAnimInstance` | A skeletal mesh posed by the engine: sections on its own timeline, `seek`/`advance`/`rate`/`playing`, `evaluate()` (sample each live section, normalise their weights as Sequencer's `MultiWayBlend`, blend, resolve, skin), `palette()` for the draw (this ring frame's only), `place` (component-to-world), `socket(name)` and `socket(handle, point, turn)` as Unreal's `GetSocketTransform`. Drawn by `CgWorldRenderer.draw(instance, material)`; followed by `CgVfxEffect.follow(instance, socket)` |
+| `CgAnimInstance` | A skeletal mesh posed by the engine: sections on its own timeline, `seek`/`advance`/`rate`/`playing`, `evaluate()` (sample each live section, normalise their weights as Sequencer's `MultiWayBlend`, blend, resolve, skin), `palette()` for the draw (this ring frame's only), `place` (component-to-world), `socket(name)` and `socket(handle, point, turn)` as Unreal's `GetSocketTransform`, `material(slot, m)` (Unreal's `OverrideMaterials`) and `boundsScale`. Drawn by `CgWorldRenderer.draw(instance)`, each slot in its material, or `draw(instance, material)`; followed by `CgVfxEffect.follow(instance, socket)` |
 | `CgAnimation` | The world subsystem: in `POSE` advances every playing instance, evaluates them (split by `CgJob.forEach` from `PARALLEL_AT`), then writes each palette on the schedule's thread |
 
 ## Rules

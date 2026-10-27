@@ -3,8 +3,10 @@ package com.crystalgraphics.animation;
 import com.crystalgraphics.api.animation.CgAnimSection;
 import com.crystalgraphics.api.animation.CgPose;
 import com.crystalgraphics.api.animation.CgSocket;
+import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
+import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.world.CgAttachment;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
@@ -68,9 +70,17 @@ public final class CgAnimInstance {
     private float rate = 1f;
     private boolean playing = true;
     private int palette = -1;
+    /** Each submesh's material, Unreal's {@code OverrideMaterials}; null where none is set. */
+    private final CgMaterial[] materials;
+    /** Its bind pose's half diagonal in the mesh's units, and its placement's largest scale: what its bounds pad from. */
+    private final float meshRadius;
+    private float placedScale = 1f, boundsScale = 1f;
 
     public CgAnimInstance(CgSkeletalMesh mesh) {
         this.mesh = Objects.requireNonNull(mesh, "mesh");
+        this.materials = new CgMaterial[mesh.mesh().submeshCount()];
+        CgAABB box = mesh.mesh().bounds(new CgAABB());
+        this.meshRadius = (float) Math.sqrt(box.halfX() * box.halfX() + box.halfY() * box.halfY() + box.halfZ() * box.halfZ());
         this.pose = new CgPose(mesh.skeleton());
         this.skinning = new Matrix4f[mesh.skeleton().boneCount()];
         for (int b = 0; b < skinning.length; b++) skinning[b] = new Matrix4f();
@@ -209,7 +219,53 @@ public final class CgAnimInstance {
         this.y = y;
         this.z = z;
         this.transform.set(transform);
+        float sx = (float) Math.sqrt(transform.m00() * transform.m00() + transform.m01() * transform.m01() + transform.m02() * transform.m02());
+        float sy = (float) Math.sqrt(transform.m10() * transform.m10() + transform.m11() * transform.m11() + transform.m12() * transform.m12());
+        float sz = (float) Math.sqrt(transform.m20() * transform.m20() + transform.m21() * transform.m21() + transform.m22() * transform.m22());
+        placedScale = Math.max(sx, Math.max(sy, sz));
         return this;
+    }
+
+    // ---- what it is drawn with
+
+    /**
+     * Draws submesh {@code slot} with {@code material}, null to clear it: Unreal's {@code SetMaterial}
+     * (MeshComponent.cpp:63-99). {@code CgWorldRenderer.draw(instance)} draws each slot in its own.
+     *
+     * <pre>{@code
+     * for (int s = 0; s < goku.materialSlots(); s++) goku.material(s, CgMaterial.of(kitMaterials.get(s)));
+     * world.draw(goku);   // in SUBMIT: every slot, skinned, in its material
+     * }</pre>
+     */
+    public CgAnimInstance material(int slot, @Nullable CgMaterial material) {
+        materials[slot] = material;
+        return this;
+    }
+
+    /** Submesh {@code slot}'s material, or null where none is set. */
+    @Nullable
+    public CgMaterial material(int slot) {
+        return materials[slot];
+    }
+
+    /** How many material slots it has: one a submesh of its mesh. */
+    public int materialSlots() {
+        return materials.length;
+    }
+
+    /**
+     * Grows the bounds it is culled by, about their centre: Unreal's {@code BoundsScale} (SkinnedMeshComponent.cpp:2300),
+     * for a pose reaching past the bind pose's bounds. 1 unless set.
+     */
+    public CgAnimInstance boundsScale(float scale) {
+        if (!(scale >= 1f)) throw new IllegalArgumentException("bounds scale " + scale + " below 1");
+        boundsScale = scale;
+        return this;
+    }
+
+    /** What its draws pad their bounds by, in the world: the bind pose's radius grown by {@link #boundsScale}. */
+    public float boundsPad() {
+        return (boundsScale - 1f) * meshRadius * placedScale;
     }
 
     public double x() {

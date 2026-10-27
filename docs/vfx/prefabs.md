@@ -198,8 +198,21 @@ body.socket(hand, point, turn);                // this frame's, after POSE: abso
 
 ## Drawing one
 
-Each frame, write the pose's skinning matrices, one a bone in the skeleton's order, then draw the mesh naming where they
-start. Any `#type spatial` material skins it with no code of its own: the mesh's format picks the material's skinned
+A posed instance draws itself, each submesh in its slot's material, as Unreal's skinned mesh component draws its
+sections with `GetMaterial(slot)`:
+
+```java
+for (int s = 0; s < goku.materialSlots(); s++) goku.material(s, CgMaterial.of(kitMaterial(s)));   // its prefab's, in slot order
+world.draw(goku);                       // SUBMIT: every slot, skinned by this frame's palette, where it stands
+world.draw(kurama, skin).submit();      // or the whole mesh in one material
+goku.boundsScale(1.5f);                 // Unreal's BoundsScale: culled by its bind pose's bounds grown about their centre
+```
+
+- **A slot with no material throws**, naming it: Unreal draws its default material there, and this engine has none.
+- Its bounds are the bind pose's, grown by `boundsScale` (1 unless set): a pose reaching far past them needs more.
+
+By hand, each frame, write the pose's skinning matrices, one a bone in the skeleton's order, then draw the mesh naming
+where they start. Any `#type spatial` material skins it with no code of its own: the mesh's format picks the material's skinned
 variant (Unreal's GPU skin vertex factory), in every pass the material draws.
 
 ```java
