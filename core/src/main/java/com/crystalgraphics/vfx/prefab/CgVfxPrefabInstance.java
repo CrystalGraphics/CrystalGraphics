@@ -88,8 +88,7 @@ public final class CgVfxPrefabInstance {
 
     /**
      * {@code node}'s own opacity, 0 to 1, which its parts draw at: never its children's, as an Unreal component's
-     * opacity is its own material's (aaa-design C5). A game whose opacity passes down bakes it at import (blueprint 06
-     * §3.7, G0.12).
+     * opacity is its own material's. A game whose opacity passes down has it baked into each node at import.
      */
     public CgVfxPrefabInstance opacity(int node, float a) {
         opacity[node] = a;

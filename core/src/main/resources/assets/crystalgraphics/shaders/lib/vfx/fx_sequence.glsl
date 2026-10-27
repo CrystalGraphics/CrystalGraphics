@@ -49,7 +49,7 @@ mat4 fx_sequence_matrix(vec4 r0, vec4 r1, vec4 r2) {
 // The part's model matrix: its particle's, then its node's at the particle's age.
 #define FX_SEQUENCE_TO_WORLD (CG_OBJECT_TO_WORLD * fx_sequence_matrix(FX_SEQUENCE_ROW(0), FX_SEQUENCE_ROW(1), FX_SEQUENCE_ROW(2)))
 
-// The node's own opacity at the particle's age (aaa-design C5).
+// The node's own opacity at the particle's age.
 #define FX_SEQUENCE_OPACITY (FX_SEQUENCE_ROW(3).x)
 
 // Material scalar i (CgVfxNodeClip.MATERIAL_SCALARS' order) at the particle's age where the clip gives it, else `own`:

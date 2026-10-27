@@ -102,7 +102,7 @@ public final class Shuriken extends CgVfxEffect<Shuriken> {
 
 ## Things to know
 
-- **A node's opacity is its own** (aaa-design C5, as an Unreal component's is its material's): a parent at 0 leaves its
+- **A node's opacity is its own** (as an Unreal component's is its material's): a parent at 0 leaves its
   children drawn. A game whose opacity passes down (CC2's) has it baked into each node at import. It reaches the shader as `FX_PRESENCE`, so a material fades only if it multiplies by it, as every engine
   shader does.
 - **A material is one slot renderer however many parts use it.** The kit holds a slot renderer per distinct material,

@@ -23,7 +23,7 @@ import java.util.Map;
 /**
  * Every clip particles play, baked into one buffer of vec4s the Step and the node renderer read ({@code FX_CLIPS}):
  * per baked node, {@link #ROWS} rows of {@code frames + 1} vec4s, a vec4 a frame. Rows 0 to 2 are the node's matrix
- * from the clip's root (a 3x4, row by row), row 3 its own opacity (aaa-design C5) and the material slots the clip
+ * from the clip's root (a 3x4, row by row), row 3 its own opacity and the material slots the clip
  * gives it ({@link CgVfxNodeClip#keys}), rows 4 to 7 its sixteen material scalars. A clip is baked once, the first time
  * it is asked, and kept for the run: emitters' rows name it by place. Any thread bakes; the render thread uploads. The
  * buffer is made, or grown, by the bake, so {@link #buffer()} holds a clip's rows from its bake on, filled by the next
