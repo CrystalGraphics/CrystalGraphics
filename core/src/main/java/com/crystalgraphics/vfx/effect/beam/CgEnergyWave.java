@@ -199,7 +199,7 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
     private static final String BEAM = "crystalgraphics:shaders/vfx/beam/", AIR = "crystalgraphics:shaders/vfx/air/";
 
     /** Its lights' intensities: the body's, and the head's, charge's and contact's orbs'. */
-    private static final float BODY_LIGHT = 3f, ORB_LIGHT = 4f;
+    private static final float BODY_LIGHT = 10f, ORB_LIGHT = 4f;
 
     // Its materials, one a shader and its constants: the slots draw them, each with its own binds and size.
     private static final CgMaterialDefinition HAZE_TUBE = material("haze_tube", AIR, 2 * CgVfxLook.BAND, b -> b.value("_Core", 1.4f)),
@@ -306,8 +306,8 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
     }
 
     /**
-     * The body's light: a chain of tube lights along it, their source the core's surface (1.25 of a ring), so a shadow
-     * ray ends there rather than inside the core, whose depth it would meet.
+     * The body's light: a chain of tube lights along it, their source the core's surface (1.25 of a ring). Casts no
+     * shadow, as Niagara's lights default: dozens of faint tubes share MegaLights' few rays a pixel.
      */
     private static CgVfxSlotRenderer bodyLight() {
         return CgVfxSlotRenderer.light("light", CgBeamBody.BODY).intensity(BODY_LIGHT).attenuationRadius(10f)
