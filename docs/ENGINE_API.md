@@ -57,7 +57,9 @@ CgHostView world = CgRenderStage.WORLD_OPAQUE.host().view();
   that outlives the frame. The engine's keys are `CgFrameKeys`: `EMISSION`, the world renderer's emission target;
   `DISTORTION`, its distortion field once applied (`CgDistortionField`: an array and how many layers hold offsets); `OVERDRAW`, its overdraw count while that view is on; `SCENE`, the HDR scene while it is on; `CUSTOM_DEPTH`, Unreal's
   CustomDepth and CustomStencil of the draws marked `customDepth` (`render/world/CLAUDE.md`); `WORLD_NORMALS`, our
-  opaque surfaces' world normals, written in a frame whose opaque firing carries `WORLD_NORMALS_READ`.
+  opaque surfaces' world normals, written in a frame whose opaque firing carries `WORLD_NORMALS_READ`; `CUSTOM_DATA`,
+  their custom data and shading model, where `CUSTOM_DATA_READ` was put (`docs/SHADERS.md` § *What a post material
+  reads of the scene*).
 
 ```java
 public static final CgFrameKey<CgGraphTexture> MASK = CgFrameKey.of("mymod:mask", CgGraphTexture.class);

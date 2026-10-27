@@ -136,5 +136,10 @@
 - **World normals on demand**: the opaque pass writes `cg_world.normals` (`normalsFor`) while the lights cast shadows
   or the opaque firing carries `CgFrameKeys.WORLD_NORMALS_READ`, and the transparent firing publishes it as
   `WORLD_NORMALS`, the scene texture a post outline reads (Unreal's GBuffer normal). `--mode=custom-depth` checks it.
+- **Custom data** (`recordCustomData`, near the top of a transparent firing carrying `CgFrameKeys.CUSTOM_DATA_READ`):
+  every opaque draw in view whose material writes custom data or a shading model (`CgMaterial.writesCustomData`) drawn
+  again through `CgPipeline.customDataTarget()` into an RG32F texture beside the host's depth, tested and unwritten,
+  published as `CUSTOM_DATA`. Our forward passes have no G-buffer to carry Unreal's GBufferD, so this is one more draw
+  of each writer, only in a frame a post material reads it.
 - **The emissive state is ONE ONE, never `CgBlendState.ADDITIVE`** (SRC_ALPHA ONE): emission is written with an
   alpha of 0, which ADDITIVE multiplies away.

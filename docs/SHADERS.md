@@ -829,6 +829,33 @@ An opaque world material with one output gets a G-buffer normal without asking: 
 with `CG_NORMAL_TARGET`, which writes the vertex normal (`cg_Normal` through `CG_NORMAL_MATRIX`) at location 1 for the
 world lights (`docs/LIGHTS.md` §7). An MRT pass is left alone, so it gives up that normal.
 
+#### What a post material reads of the scene: Unreal's SceneTextures
+
+An opaque program may write Unreal's custom data (GBufferD) and its shading model beside its colour, and a post
+material reads them back with the stencil and the world normal. There is no G-buffer here: in a frame a post material
+reads them, the world renderer draws the writers again (`CG_CUSTOM_DATA_TARGET`) beside the host's depth, so only what
+shows lands.
+
+```glsl
+// an opaque program's Forward fragment: no-ops in every other draw
+CG_CUSTOM_DATA_OUT(vec4(outlineColour, outlineId));   // 0..1 each, stored as bytes
+CG_SHADING_MODEL_OUT(13u, outlineType);                // model 0..31, type 0..3
+
+// a post material (CgPostMaterial): naming one hands it all four
+vec2 uv = gl_FragCoord.xy / CG_RESOLUTION;
+if (CG_CUSTOM_STENCIL(uv) != 1) discard;              // CustomStencil, 0..255 (Draw.customDepth)
+vec3 n = CG_SCENE_WORLD_NORMAL(uv);                   // world space; 0 where no draw of ours wrote one
+vec4 data = CG_CUSTOM_DATA(uv);                       // as written
+uvec2 model = CG_SHADING_MODEL_ID(uv);                // (model, type)
+```
+
+- **Only in a post material** (`CgPostMaterial`), which binds them from the firing; the post stack asks the world for
+  the normals and custom data while one naming them is active. A firing that published none reads 0 throughout.
+- Each read is the pixel at `uv`, unfiltered.
+- `CG_CUSTOM_EYE_DEPTH` is not handed yet and still fails to link, naming the read.
+- Host-drawn pixels (terrain, entities) have no normal, data or model: rebuild their normal from depth.
+- `--mode=custom-depth` is the gate.
+
 ---
 
 ### Loading and Using a Material
