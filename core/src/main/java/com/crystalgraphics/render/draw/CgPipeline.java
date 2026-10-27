@@ -74,6 +74,7 @@ public final class CgPipeline {
     private final boolean volume;
     private final boolean normals;
     private final boolean skinned;
+    private final boolean customData;
     /** What the program is compiled with: the pass's keywords, and the multi-draw's. */
     private final Set<String> compiled;
     @Nullable
@@ -94,6 +95,8 @@ public final class CgPipeline {
     private CgPipeline normalled;
     @Nullable
     private CgPipeline skinnedTwin;
+    @Nullable
+    private CgPipeline customDataTwin;
     /** {@link #slotWrites()}, for the shader revision {@link #slotsRevision}. */
     private int slots, slotsRevision = -1;
 
@@ -126,8 +129,9 @@ public final class CgPipeline {
         this.volume = (key.flags & VOLUME) != 0;
         this.normals = (key.flags & NORMALS) != 0;
         this.skinned = (key.flags & SKINNED) != 0;
+        this.customData = (key.flags & CUSTOM_DATA) != 0;
         Set<String> passKeywords = takesKeywords(pass) ? keywords : Collections.emptySet();
-        if (multiDraw || overdraw || emission || cover || fold || depth || volume || normals || skinned) {
+        if (multiDraw || overdraw || emission || cover || fold || depth || volume || normals || skinned || customData) {
             Set<String> more = new TreeSet<>(passKeywords);
             if (multiDraw) more.add(CgMaterialShaderCompiler.MULTI_DRAW);
             if (overdraw) more.add(CgMaterialShaderCompiler.DEBUG_OVERDRAW);
@@ -138,6 +142,7 @@ public final class CgPipeline {
             if (volume) more.add(CgMaterialShaderCompiler.VOLUME_TARGET);
             if (normals) more.add(CgMaterialShaderCompiler.NORMAL_TARGET);
             if (skinned) more.add(CgMaterialShaderCompiler.SKINNED);
+            if (customData) more.add(CgMaterialShaderCompiler.CUSTOM_DATA_TARGET);
             passKeywords = Collections.unmodifiableSet(more);
         }
         this.compiled = passKeywords;
@@ -170,12 +175,12 @@ public final class CgPipeline {
     }
 
     private static final int MULTI = 1, OVERDRAW = 2, EMISSION = 4, COVER = 8, FOLD = 16, DEPTH = 32, VOLUME = 64,
-            NORMALS = 128, SKINNED = 256;
+            NORMALS = 128, SKINNED = 256, CUSTOM_DATA = 512;
 
     private int flags() {
         return (multiDraw ? MULTI : 0) | (overdraw ? OVERDRAW : 0) | (emission ? EMISSION : 0) | (cover ? COVER : 0)
                 | (fold ? FOLD : 0) | (depth ? DEPTH : 0) | (volume ? VOLUME : 0) | (normals ? NORMALS : 0)
-                | (skinned ? SKINNED : 0);
+                | (skinned ? SKINNED : 0) | (customData ? CUSTOM_DATA : 0);
     }
 
     /**
@@ -373,6 +378,32 @@ public final class CgPipeline {
             if (own == null || own.fragOutput().isMrt()) return null;
             made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, state, kind, flags() | NORMALS), CgPipeline::register);
             normalled = made;
+        }
+        return made;
+    }
+
+    /**
+     * This Forward pipeline writing, in place of its colour, the custom data and shading model its fragment names
+     * ({@link CgMaterialShaderCompiler#CUSTOM_DATA_TARGET}): what the world renderer draws an opaque draw again with, in
+     * a frame a post material reads {@code CG_CUSTOM_DATA} or {@code CG_SHADING_MODEL_ID}. Null for any other pass, or
+     * an MRT one. Any thread.
+     *
+     * <pre>{@code
+     * CgPipeline data = material.pipeline(CgInstanceKind.OBJECT).customDataTarget();
+     * if (data != null) chunks.draw(data.withState(ownState.withDepth(CgDepthState.TEST_ONLY)), bindings, mesh);
+     * }</pre>
+     */
+    @Nullable
+    public CgPipeline customDataTarget() {
+        if (customData) return this;
+        if (pass != CgRenderPassVariant.FORWARD || overdraw || emission || cover || fold || depth || volume || normals) return null;
+        CgPipeline made = customDataTwin;
+        if (made == null) {
+            CgParsedShader parsed = shader.ensureParsed();
+            CgParsedPass own = ownPass(parsed);
+            if (own == null || own.fragOutput().isMrt()) return null;
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, state, kind, flags() | CUSTOM_DATA), CgPipeline::register);
+            customDataTwin = made;
         }
         return made;
     }

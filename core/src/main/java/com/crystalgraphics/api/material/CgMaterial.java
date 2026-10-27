@@ -1569,6 +1569,22 @@ public final class CgMaterial {
     }
 
     /**
+     * Whether its shader writes custom data or a shading model ({@code CG_CUSTOM_DATA_OUT}, {@code CG_SHADING_MODEL_OUT}):
+     * the world renderer draws its opaque draws again into the custom data, in a frame a post material reads it. False
+     * until it is parsed.
+     */
+    public boolean writesCustomData() {
+        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.getLastParsed();
+        return parsed != null && parsed.writesCustomData();
+    }
+
+    /** Whether its shader reads the scene textures it is handed ({@code CG_CUSTOM_STENCIL(}, {@code CG_CUSTOM_DATA(}, ...). */
+    public boolean handedScene() {
+        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        return parsed != null && parsed.handedScene();
+    }
+
+    /**
      * Whether its shader reads the world's lights it is handed ({@code cg_NearestLights}, {@code CG_DRAW_POINT_LIGHT_*}):
      * the world renderer binds the light grid to its draws. Parses it if nothing has: its first draw's capture needs
      * the grid bound. False for a shader that cannot be parsed.

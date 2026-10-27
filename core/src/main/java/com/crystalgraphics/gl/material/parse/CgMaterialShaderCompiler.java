@@ -107,6 +107,8 @@ public final class CgMaterialShaderCompiler {
     private static final String HANDED_LIGHTS_INCLUDE = "crystalgraphics:shaders/env/handed_lights.glsl";
     /** The sun's shadow handed to one: {@code CgParsedShader.handedSun()}. */
     private static final String HANDED_SUN_INCLUDE = "crystalgraphics:shaders/env/handed_sun.glsl";
+    /** The scene textures handed to a post material: {@code CgParsedShader.handedScene()}. */
+    private static final String HANDED_SCENE_INCLUDE = "crystalgraphics:shaders/env/handed_scene.glsl";
 
     /**
      * The engine's keyword for a multi-draw's variant of any pass: {@code cg_env.glsl} takes a draw's bases from its
@@ -178,6 +180,14 @@ public final class CgMaterialShaderCompiler {
      * ours: those whose depth still matches.
      */
     public static final String NORMAL_TARGET = "CG_NORMAL_TARGET";
+
+    /**
+     * A single-output Forward pass writing, in place of its colour, what its fragment names with
+     * {@code CG_CUSTOM_DATA_OUT} and {@code CG_SHADING_MODEL_OUT}, packed into two exact floats (Unreal's GBufferD and
+     * GBufferB's shading model): what {@code CgWorldRenderer} draws custom data with, read back by
+     * {@code handed_scene.glsl}.
+     */
+    public static final String CUSTOM_DATA_TARGET = "CG_CUSTOM_DATA_TARGET";
 
     /** A fragment naming the depth it marched to ({@code CG_VOLUME_DEPTH(eye)}). */
     private static final Pattern NAMES_VOLUME_DEPTH = Pattern.compile("\\bCG_VOLUME_DEPTH\\b");
@@ -770,6 +780,15 @@ public final class CgMaterialShaderCompiler {
                     + "  _cg_normalOut = dot(_cg_n, _cg_n) > 1.0e-12 ? vec4(normalize(gl_FrontFacing ? _cg_n : -_cg_n) * 0.5 + 0.5, _cg_eye)"
                     + " : vec4(0.0, 0.0, 0.0, -_cg_eye);\n");
         }
+        if (config.activeKeywords().contains(CUSTOM_DATA_TARGET) && !normals && !volume && merge == EmissionMerge.NONE
+                && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) && !pass.fragOutput().isMrt()) {
+            // Last in the generated main, over the colour: x the ID byte and the model and type above it, y the base
+            // colour's three bytes, each an integer a float holds exactly.
+            int close = sb.lastIndexOf("}");
+            sb.insert(close, "  _cg_fragColor = vec4(round(clamp(_cg_customData.a, 0.0, 1.0) * 255.0)"
+                    + " + 256.0 * float(min(_cg_shadingModel.x, 31u) + 32u * min(_cg_shadingModel.y, 3u)),"
+                    + " dot(round(clamp(_cg_customData.rgb, 0.0, 1.0) * 255.0), vec3(65536.0, 256.0, 1.0)), 0.0, 1.0);\n");
+        }
 
         return sb.toString();
     }
@@ -859,6 +878,7 @@ public final class CgMaterialShaderCompiler {
         if (activeKeywords.contains(DEBUG_OVERDRAW)) sb.append("#define ").append(DEBUG_OVERDRAW).append(" 1\n");
         if (activeKeywords.contains(DEPTH_PREPASS)) sb.append("#define ").append(DEPTH_PREPASS).append(" 1\n");
         if (activeKeywords.contains(VOLUME_TARGET)) sb.append("#define ").append(VOLUME_TARGET).append(" 1\n");
+        if (activeKeywords.contains(CUSTOM_DATA_TARGET)) sb.append("#define ").append(CUSTOM_DATA_TARGET).append(" 1\n");
     }
 
     /**
@@ -965,6 +985,7 @@ public final class CgMaterialShaderCompiler {
     private static void appendHanded(StringBuilder sb, CgParsedShader shader) {
         if (shader.handedLights()) sb.append("#include \"").append(HANDED_LIGHTS_INCLUDE).append("\"\n");
         if (shader.handedSun()) sb.append("#include \"").append(HANDED_SUN_INCLUDE).append("\"\n");
+        if (shader.handedScene()) sb.append("#include \"").append(HANDED_SCENE_INCLUDE).append("\"\n");
     }
 
     private static void appendAttachedBuffers(StringBuilder sb,

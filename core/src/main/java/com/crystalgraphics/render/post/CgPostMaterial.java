@@ -6,8 +6,10 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -101,7 +103,7 @@ public final class CgPostMaterial implements CgPostEffect {
     // What the held binder sets: a sampler and its texture, so binding allocates nothing.
     private String bindName;
     private int bindUnit;
-    private CgGraphTexture bindTexture;
+    private CgTexture bindTexture;
     private final Consumer<CgShaderBindings> bind = b -> b.sampler(bindName, bindUnit, bindTexture);
 
     private CgPostMaterial(CgMaterial material, CgPostPoint point, int order) {
@@ -164,6 +166,15 @@ public final class CgPostMaterial implements CgPostEffect {
             if (emission == null) return;
             bind(emissionInput, emission);
         }
+        if (material.handedScene()) {
+            // Unreal's SceneTextures, from what this firing published; the fallbacks read stencil 0, no normal, no data.
+            CgGraphTexture stencil = post.resources().get(CgFrameKeys.CUSTOM_DEPTH);
+            CgGraphTexture normals = post.resources().get(CgFrameKeys.WORLD_NORMALS);
+            CgGraphTexture data = post.resources().get(CgFrameKeys.CUSTOM_DATA);
+            bind("_cg_CustomStencil", stencil != null ? stencil : CgFallbackTextures.BLACK_1x1);
+            bind("_cg_WorldNormal", normals != null ? normals : CgFallbackTextures.TRANSPARENT);
+            bind("_cg_CustomData", data != null ? data : CgFallbackTextures.TRANSPARENT);
+        }
         CgGraphTexture screen = post.target();
         // The host's size: an imported target's texture knows none until it executes.
         int screenW = post.stage().host().width(), screenH = post.stage().host().height();
@@ -196,7 +207,7 @@ public final class CgPostMaterial implements CgPostEffect {
         pass.end();
     }
 
-    private void bind(String name, CgGraphTexture texture) {
+    private void bind(String name, CgTexture texture) {
         // Its own unit: a second input on unit 0 would take the first's.
         bindName = name;
         bindUnit = material.samplerUnit(name);

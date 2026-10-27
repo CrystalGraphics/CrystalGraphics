@@ -165,19 +165,31 @@ float cg_LinearEyeDepth(float windowDepth) {
 }
 #define CG_SCENE_EYE_DEPTH(uv) cg_LinearEyeDepth(texture(cg_DepthBuffer, (uv)).r)
 
-// Unreal's CustomStencil, CustomDepth (as an eye distance, as CG_SCENE_EYE_DEPTH) and the shading-model id at a screen
-// position: no pass writes them yet, so a material reading one fails to link, naming the read, rather than drawing as if
-// nothing were stencilled.
-#define CG_CUSTOM_STENCIL(uv) cg_custom_stencil_has_no_pass_writing_it_yet(uv)
+// CG_CUSTOM_STENCIL, CG_SCENE_WORLD_NORMAL, CG_CUSTOM_DATA and CG_SHADING_MODEL_ID are handed to a post material naming
+// them (env/handed_scene.glsl). CustomDepth as an eye distance, and the rest of what Unreal's post materials sample, are
+// written by no pass yet: a material reading one fails to link, naming the read, rather than drawing as if nothing were
+// there. SceneTexture's ambient occlusion, PostProcessInput1 (separate translucency), PostProcessInput2, the velocity.
 #define CG_CUSTOM_EYE_DEPTH(uv) cg_custom_depth_has_no_pass_writing_it_yet(uv)
-#define CG_SHADING_MODEL_ID(uv) cg_shading_model_id_has_no_pass_writing_it_yet(uv)
-// The rest of what Unreal's post materials sample, none written yet either: SceneTexture:WorldNormal, its ambient
-// occlusion, PostProcessInput1 (separate translucency), PostProcessInput2, and the velocity (PostProcessInput4).
-#define CG_SCENE_WORLD_NORMAL(uv) cg_scene_world_normal_has_no_pass_writing_it_yet(uv)
 #define CG_SCENE_AMBIENT_OCCLUSION(uv) cg_scene_ambient_occlusion_has_no_pass_writing_it_yet(uv)
 #define CG_SEPARATE_TRANSLUCENCY(uv) cg_separate_translucency_has_no_pass_writing_it_yet(uv)
 #define CG_POST_PROCESS_INPUT_2(uv) cg_post_process_input_2_has_no_pass_writing_it_yet(uv)
 #define CG_SCENE_VELOCITY(uv) cg_scene_velocity_has_no_pass_writing_it_yet(uv)
+
+// What an opaque program writes beside its colour for a post material (Unreal's GBufferD custom data, and GBufferB's
+// shading model with a 2-bit type): kept only in the draw CgWorldRenderer makes of it for CG_CUSTOM_DATA_TARGET, in a
+// frame a post material reads them; a no-op in every other draw. Fragment stage.
+//
+//     CG_CUSTOM_DATA_OUT(vec4(outlineColour, outlineId));   // read back as CG_CUSTOM_DATA(uv)
+//     CG_SHADING_MODEL_OUT(13u, outlineType);                // read back as CG_SHADING_MODEL_ID(uv): uvec2(model, type)
+#if defined(CG_CUSTOM_DATA_TARGET) && !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
+vec4 _cg_customData = vec4(0.0);
+uvec2 _cg_shadingModel = uvec2(0u);
+#define CG_CUSTOM_DATA_OUT(data) _cg_customData = (data)
+#define CG_SHADING_MODEL_OUT(model, type) _cg_shadingModel = uvec2((model), (type))
+#else
+#define CG_CUSTOM_DATA_OUT(data)
+#define CG_SHADING_MODEL_OUT(model, type)
+#endif
 // The lights a draw is handed whole, for a program carrying its own lighting: the directional light's direction (toward
 // it) and colour, the sky light's colour, and the four point lights nearest the draw, i 0 to 3 (camera-relative
 // position, colour, the light's four attenuation parameters; intensity 0 where there is none). Either stage. The

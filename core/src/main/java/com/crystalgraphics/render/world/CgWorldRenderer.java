@@ -170,6 +170,10 @@ public final class CgWorldRenderer {
     private static final CgLoad CUSTOM_DEPTH_CLEAR = CgLoad.clear(0f, 0f, 0f, 0f).andDepth(1.0).andStencil(0);
     private static final int GPU_CUSTOM_DEPTH = CgGpuTrace.name("world.customDepth");
     static final String CUSTOM_STENCIL_SHADER = "crystalgraphics:shaders/world_custom_stencil.shader";
+    /** Custom data and the shading model, packed as {@code handed_scene.glsl} reads them: two exact floats. */
+    private static final CgFrameBufferFormat CUSTOM_DATA_FORMAT = CgFrameBufferFormat.builder("cg_custom_data")
+            .color(0, CgTextureType.RG32F).build();
+    private static final int GPU_CUSTOM_DATA = CgGpuTrace.name("world.customData");
     /**
      * The stencil's copy, Unreal's on GL (CustomDepthRendering.cpp:436-450) by draws, since no device here samples a
      * stencil: bit b's draw passes where the stencil holds it and adds 2^b/255 into the R8 colour.
@@ -299,6 +303,9 @@ public final class CgWorldRenderer {
     private boolean[] inCustomDepth = new boolean[64];
     private CgGraphTexture customDepthTarget;
     private CgMaterial customStencil;
+    /** A custom-data pipeline's state tested against the host's depth and writing none ({@link #recordCustomData}). */
+    private final IdentityHashMap<CgRenderState, CgRenderState> customDataStates = new IdentityHashMap<>();
+    private CgGraphTexture customDataTarget;
 
     /** A state's CustomDepth states, found by a scan: a state has a few. */
     private static final class StencilVariants {
@@ -525,6 +532,7 @@ public final class CgWorldRenderer {
         frame = -1;
         depthOnly.clear();
         customDepthStates.clear();
+        customDataStates.clear();
         customStencil = null;
         upsample = null;
         upsampleBound = null;
@@ -1793,6 +1801,7 @@ public final class CgWorldRenderer {
             volumeFolds = scene && mergeEmission;
             // Before any glow: a label's text then hides the glows behind it from the emission, as from the colour.
             if (which == TRANSPARENT && !CgRehearsal.active()) text.recordDepth(stage, view);
+            if (which == TRANSPARENT && stage.resources().has(CgFrameKeys.CUSTOM_DATA_READ)) recordCustomData(stage, recording, view);
             CgGraphTexture emission = which == TRANSPARENT && drawn > 0 ? mergedEmission(stage, recording) : null;
             // Lights fall on the opaque scene, so a firing with nothing transparent still lists them.
             lit = which == TRANSPARENT && pointLights.record(stage, view, toWorld, targetWidth, targetHeight);
@@ -2134,6 +2143,40 @@ public final class CgWorldRenderer {
         pass.add(chunks.end());
         pass.end();
         stage.resources().put(CgFrameKeys.CUSTOM_DEPTH, customDepthTarget);
+    }
+
+    /**
+     * Unreal's custom data and shading model (GBufferD, GBufferB's model), which our forward passes write nowhere: every
+     * opaque draw in view whose material writes them ({@link CgMaterial#writesCustomData}) drawn again through
+     * {@link CgPipeline#customDataTarget()} into an RG32F texture beside the host's depth, tested against it and writing
+     * none, so only what shows lands. Published as {@link CgFrameKeys#CUSTOM_DATA}; only in a firing asked for it.
+     */
+    private void recordCustomData(CgStageFrame stage, CgRecording recording, CgHostView view) {
+        int w = Math.max(1, (int) targetWidth), h = Math.max(1, (int) targetHeight);
+        if (customDataTarget == null || customDataTarget.getWidth() != w || customDataTarget.getHeight() != h) {
+            customDataTarget = CgGraphTexture.besideCurrentDepth("cg_custom_data", new CgTextureDesc(w, h, CUSTOM_DATA_FORMAT));
+        }
+        CgRasterPass pass = recording.raster(customDataTarget, CLEAR, stage.constants(), null, CgOrder.SORTED)
+                .timed(GPU_CUSTOM_DATA);
+        CgChunkBuilder chunks = recording.chunks().begin();
+        for (int i = 0; i < count; i++) {
+            if (queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD || !materials[i].writesCustomData()) continue;
+            if (classify(i, OPAQUE, view) == SKIP) continue;
+            CgPipeline forward = materials[i].pipeline(CgInstanceKind.OBJECT);
+            CgPipeline data = forward == null ? null : forward.customDataTarget();
+            if (data == null) continue;
+            CgRenderState own = data.state();
+            CgRenderState tested = customDataStates.get(own);
+            if (tested == null) {
+                customDataStates.put(own, tested = own.withDepth(CgDepthState.TEST_ONLY).withBlend(CgBlendState.DISABLED));
+            }
+            modelOf(i, view);
+            model.normal(normal);
+            passDraw(chunks, data.withState(tested), materials[i], recording, i);
+        }
+        pass.add(chunks.end());
+        pass.end();
+        stage.resources().put(CgFrameKeys.CUSTOM_DATA, customDataTarget);
     }
 
     /**

@@ -108,6 +108,20 @@ public final class CgShaderParser {
             _cg_SunEye ("The eye the map is placed from, camera-relative", vec4) = (0, 0, 0, 0)
             """;
 
+    /** What a post material reading the scene textures it is handed names, itself or in a file it includes. */
+    private static final String[] HANDED_SCENE = {"CG_CUSTOM_STENCIL(", "CG_SCENE_WORLD_NORMAL(", "CG_CUSTOM_DATA(",
+            "CG_SHADING_MODEL_ID("};
+
+    /** The scene textures a post material reads, bound by {@code CgPostMaterial} from the firing's keys. */
+    private static final String HANDED_SCENE_PROPERTIES = """
+            _cg_CustomStencil ("CustomStencil, the byte as a unorm", sampler2D) = "black"
+            _cg_WorldNormal ("Our opaque surfaces' world normals, n * 0.5 + 0.5, alpha the eye depth", sampler2D) = "black"
+            _cg_CustomData ("Custom data and the shading model, packed as handed_scene.glsl reads them", sampler2D) = "black"
+            """;
+
+    /** What a program writing Unreal's custom data or shading model names, itself or in a file it includes. */
+    private static final String[] WRITES_CUSTOM_DATA = {"CG_CUSTOM_DATA_OUT", "CG_SHADING_MODEL_OUT"};
+
     /** Where the light grid a handed program reads lies this firing ({@code CgWorldLights.hand}). */
     private static final String HANDED_PROPERTIES = """
             _cg_LightGrid ("Cells across, up and deep, and 1 while the grid holds lights", vec4) = (1, 1, 1, 0)
@@ -251,7 +265,14 @@ public final class CgShaderParser {
             withSun.addAll(CgPropertiesParser.parseEngine(HANDED_SUN_PROPERTIES, "handed sun"));
             props = Collections.unmodifiableList(withSun);
         }
-        int renderQueue                = CgQueueParser.parse(source, resourcePath);
+        boolean handedScene = new CgShaderPreprocessor().mentions(uncommented, resourcePath, HANDED_SCENE);
+        if (handedScene) {
+            List<CgMaterialProperty> withScene = new ArrayList<>(props);
+            withScene.addAll(CgPropertiesParser.parseEngine(HANDED_SCENE_PROPERTIES, "handed scene textures"));
+            props = Collections.unmodifiableList(withScene);
+        }
+        boolean writesCustomData = new CgShaderPreprocessor().mentions(uncommented, resourcePath, WRITES_CUSTOM_DATA);
+        int renderQueue               = CgQueueParser.parse(source, resourcePath);
 
         // ── Step 3: top-level Tags block → RenderType and the rest ────────
         Map<String, String> topTags = CgTagParser.parseTopLevelTags(source, resourcePath);
@@ -501,6 +522,7 @@ public final class CgShaderParser {
         // ── Step 8: return assembled parsed shader ─────────────────────────
         return new CgParsedShader(shaderType, props, featureNames, engineBuffers, renderQueue,
                 renderType, sceneColorMargin, "Unlit".equals(lighting), "Surface".equals(lighting), handedLights, handedSun,
+                handedScene, writesCustomData,
                 "Off".equals(fog),
                 "Linear".equals(colorSpace), "Off".equals(media), "EmissiveOpacity".equals(output), depthMode, tube,
                 Collections.unmodifiableList(passes),

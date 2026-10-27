@@ -138,14 +138,27 @@ public final class CgPostStack {
         resolve(stage);
         if (bloom.intensity() * settings.bloom() > 0f) stage.resources().put(CgFrameKeys.EMISSION_READ, Boolean.TRUE);
         if (looks.drawsImpact(settings)) stage.resources().put(CgFrameKeys.SUBJECT_READ, settings.impactSubject());
+        if (readsScene()) stage.resources().put(CgFrameKeys.CUSTOM_DATA_READ, Boolean.TRUE);
     }
 
-    /** At the opaque stage, a drawn impact frame's subject key: the world renderer draws a keyed subject there. */
+    /**
+     * At the opaque stage, a drawn impact frame's subject key: the world renderer draws a keyed subject there; and the
+     * world normals, which its opaque pass writes, while a post material reads the scene textures.
+     */
     private void demandSubject(CgStageFrame stage) {
         resolve(stage);
         if (looks.drawsImpact(settings) && settings.impactSubject() != 0) {
             stage.resources().put(CgFrameKeys.SUBJECT_READ, settings.impactSubject());
         }
+        if (readsScene()) stage.resources().put(CgFrameKeys.WORLD_NORMALS_READ, Boolean.TRUE);
+    }
+
+    /** Whether an active post material reads the scene textures it is handed ({@code handed_scene.glsl}). */
+    private boolean readsScene() {
+        for (CgPostEffect e : effects) {
+            if (e instanceof CgPostMaterial m && m.weight() > 0f && m.material().handedScene()) return true;
+        }
+        return false;
     }
 
     /** The built-in bloom, and its settings. */

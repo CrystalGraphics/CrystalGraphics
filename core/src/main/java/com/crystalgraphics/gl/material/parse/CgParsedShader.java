@@ -69,6 +69,14 @@ import java.util.Objects;
  * @param handedSun
  *     {@code true} where its source names {@code CG_DIRECTIONAL_SHADOW(}: it is handed the sun's shadow map, its
  *     {@link #properties} ending with {@code _cg_SunMap} and the cascades' rows ({@code handed_sun.glsl}).
+ * @param handedScene
+ *     {@code true} where its source reads a scene texture Unreal's post materials sample ({@code CG_CUSTOM_STENCIL(},
+ *     {@code CG_SCENE_WORLD_NORMAL(}, {@code CG_CUSTOM_DATA(}, {@code CG_SHADING_MODEL_ID(}): it is handed them, its
+ *     {@link #properties} ending with {@code _cg_CustomStencil}, {@code _cg_WorldNormal} and {@code _cg_CustomData}
+ *     ({@code handed_scene.glsl}).
+ * @param writesCustomData
+ *     {@code true} where its source names {@code CG_CUSTOM_DATA_OUT} or {@code CG_SHADING_MODEL_OUT}: its opaque draws
+ *     are drawn again into the custom data a post material reads, in a frame one does (Unreal's GBufferD).
  * @param unfogged
  *     {@code true} for {@code "Fog" = "Off"}: its Forward colour is not put behind the host's fog, as such a material's
  *     otherwise is, lit or not.
@@ -106,7 +114,8 @@ import java.util.Objects;
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties,
                               List<String> featureNames, List<String> engineBuffers, int renderQueue,
                               String renderType, float sceneColorMargin, boolean unlit, boolean surfaceLit,
-                              boolean handedLights, boolean handedSun, boolean unfogged, boolean linearColor, boolean unmediated, boolean emissiveOpacity,
+                              boolean handedLights, boolean handedSun, boolean handedScene, boolean writesCustomData,
+                              boolean unfogged, boolean linearColor, boolean unmediated, boolean emissiveOpacity,
                               DepthMode depthMode, @Nullable Tube tube,
                               List<CgParsedPass> passes, List<CgBufferDecl> buffers, String bufferStructs,
                               List<PostTarget> postTargets, @Nullable String emissionInput) {
@@ -225,7 +234,8 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
                     pass.v2fStructBody(), pass.globalDecls(), pass.vertexBody(), pass.fragmentBody(), pass.fragOutput()));
         }
         return new CgParsedShader(shaderType, properties, featureNames, engineBuffers, renderQueue, renderType,
-                sceneColorMargin, unlit, surfaceLit, handedLights, handedSun, unfogged, linearColor, unmediated, emissiveOpacity,
+                sceneColorMargin, unlit, surfaceLit, handedLights, handedSun, handedScene, writesCustomData,
+                unfogged, linearColor, unmediated, emissiveOpacity,
                 state.clip() ? DepthMode.CLIP : unclip ? DepthMode.NONE : depthMode, tube, Collections.unmodifiableList(out),
                 buffers, bufferStructs, postTargets, emissionInput);
     }

@@ -93,6 +93,20 @@ public final class CgFrameKeys {
      */
     public static final CgFrameKey<Boolean> WORLD_NORMALS_READ = CgFrameKey.of("crystalgraphics:world_normals_read", Boolean.class);
 
+    /**
+     * Unreal's custom data (GBufferD) and shading model of our opaque surfaces this firing, packed into RG32F as
+     * {@code handed_scene.glsl} reads them ({@code CG_CUSTOM_DATA}, {@code CG_SHADING_MODEL_ID}): the draws whose
+     * materials write them ({@code CG_CUSTOM_DATA_OUT}, {@code CG_SHADING_MODEL_OUT}), where they show. Published near
+     * the top of {@code WORLD_TRANSPARENT} where {@link #CUSTOM_DATA_READ} was put.
+     */
+    public static final CgFrameKey<CgGraphTexture> CUSTOM_DATA = CgFrameKey.of("crystalgraphics:custom_data", CgGraphTexture.class);
+
+    /**
+     * That something will read {@link #CUSTOM_DATA} this firing: put on {@code WORLD_TRANSPARENT} before the world
+     * renderer records. The post stack puts it while a post material reading it is active.
+     */
+    public static final CgFrameKey<Boolean> CUSTOM_DATA_READ = CgFrameKey.of("crystalgraphics:custom_data_read", Boolean.class);
+
     private CgFrameKeys() {
     }
 }
