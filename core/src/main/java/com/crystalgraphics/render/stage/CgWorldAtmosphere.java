@@ -18,7 +18,8 @@ import com.crystalgraphics.variable.CgVar;
  *   <li>Where the host hands its fog over (Minecraft 1.17.1 to 1.21.1) it is used as given. Elsewhere it is
  *       Minecraft's rule for terrain fog, from the render distance, coloured from the sky; in water, lava and powder
  *       snow, and while blind, the fog of each.</li>
- *   <li>No level, no render distance: no fog, and the sun {@link CgPassConstants}' default.</li>
+ *   <li>No level, no render distance: no fog, and the sun {@link CgPassConstants}' default, at the host's sky
+ *       brightness if it gives one: {@code environment().sun(Float.NaN, 0, 1f, 0f)} is a night with no sun.</li>
  * </ul>
  */
 public final class CgWorldAtmosphere {
@@ -42,6 +43,7 @@ public final class CgWorldAtmosphere {
     private static void sun(CgHostEnvironment world, CgPassConstants constants) {
         if (Float.isNaN(world.celestialAngle())) {
             constants.defaultSun();
+            if (!Float.isNaN(world.skyBrightness())) constants.daylight(world.skyBrightness());
             return;
         }
         world.sunDirection(SUN);

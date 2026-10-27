@@ -160,6 +160,12 @@ public final class CgPassConstants {
         return this;
     }
 
+    /** How bright daylight is, 0 to 1, the sun where it is. */
+    public CgPassConstants daylight(float daylight) {
+        this.daylight = daylight;
+        return this;
+    }
+
     /** The sun this pass started with: high, toward +x and +z, at full daylight. */
     public CgPassConstants defaultSun() {
         sunX = SUN_X;
