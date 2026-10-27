@@ -717,9 +717,12 @@ public final class CgVfxFrame {
                             + " built yet: give it one mesh");
                 }
                 CgMeshLods lods = m.meshes().isEmpty() ? system.particleSphere() : mesh(String.valueOf(m.meshes().get(0).get("mesh")));
-                // A draw a section where its materials are overridden: each section's override, past them the
-                // renderer's own (Cascade's mesh material module over its required material).
-                int sections = m.materialOverrides().isEmpty() ? 1 : Math.max(lods.finest().submeshCount(), m.materialOverrides().size());
+                // A draw a section, as Unreal's mesh particles draw a batch per section: each section's override,
+                // past them the renderer's own (Cascade's mesh material module over its required material). A mesh
+                // of one section with nothing overridden is one draw of the whole.
+                int submeshes = lods.finest().submeshCount();
+                boolean bySection = submeshes > 1 || !m.materialOverrides().isEmpty();
+                int sections = bySection ? Math.max(submeshes, m.materialOverrides().size()) : 1;
                 for (int s = 0; s < sections; s++) {
                     CgVfxMaterials.Resolved section = s < m.materialOverrides().size() ? materials.resolve(look, placed, s) : r;
                     Renderer rd = rs.next(Shape.MESHES, placed, section, materials.material(section, CgVfxSlot.Kind.PARTICLES));
@@ -727,7 +730,7 @@ public final class CgVfxFrame {
                     rd.meshRadius = m.meshes().isEmpty() ? 1f : lods.reach();
                     rd.unsorted = m.sort() == CgVfxSpriteRendererProperties.Sort.NONE;
                     rd.sort = rangeSort(m.sort());
-                    rd.submesh = m.materialOverrides().isEmpty() ? -1 : s;
+                    rd.submesh = bySection ? s : -1;
                 }
             } else if (renderer instanceof CgVfxSpriteRendererProperties sprite) {
                 requireRenderer(renderer, def, CgVfxDrawLayout.QUADS);

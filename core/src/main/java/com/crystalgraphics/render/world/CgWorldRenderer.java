@@ -2556,6 +2556,7 @@ public final class CgWorldRenderer {
             if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
             chunks.objects(culled[i], culledFirst[i] + CgGpuOps.cullFirst(l, capacity), capacity)
                     .indirect(culledCounts[i], (culledWord[i] + l) * 4L, CgIndirect.INSTANCES, 1);
+            readBuffers(chunks, i);
         }
     }
 

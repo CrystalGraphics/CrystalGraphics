@@ -72,7 +72,10 @@ public final class CgEngineBufferRegistry {
         register("particle_order", CgParticleOrderBuffer::buffer, CgParticleOrderBuffer.MACRO_NAME, null);
         // A beam draw's noise points, for the strip factory a particle program gets beside its own.
         register("particle_beams", CgParticleBeamBuffer::buffer, CgParticleBeamBuffer.MACRO_NAME, null);
-        // The sprite factory's settings, the renderer's to set per draw: a port never declares them.
+        register("rows", CgPropertyRows::buffer, CgPropertyRows.MACRO_NAME,
+                "crystalgraphics:shaders/env/buffer/rows.glsl");
+        // The sprite factory's settings, the renderer's to set per draw: a port never declares them, and the rows that
+        // carry them per draw come with the particle.
         registerWithProperties("particle", CgParticleBuffer::buffer, CgParticleBuffer.MACRO_NAME,
                 "crystalgraphics:shaders/env/buffer/particle.glsl", """
                     _cg_Facing ("FX_FACE_* + 8 * FX_ALIGN_*: Niagara's facing and alignment", float) = 0
@@ -92,9 +95,7 @@ public final class CgEngineBufferRegistry {
                     _cg_SubImage ("CgVfxFlipbook: columns (a table's frames), rows (0: a table), blends, random start", vec4) = (1, 1, 1, 0)
                     _cg_SubUV ("CgVfxFlipbook: mode, first frame, last frame (-1: the last), rate", vec4) = (0, 0, -1, 0)
                     _cg_SubImages ("CgVfxFlipbook: a rect table, a rect a texel", sampler2D) = "white"
-                    """, "particle_order", "particle_beams");
-        register("rows", CgPropertyRows::buffer, CgPropertyRows.MACRO_NAME,
-                "crystalgraphics:shaders/env/buffer/rows.glsl");
+                    """, "particle_order", "particle_beams", "rows");
         registerGenerated("globals", CgParameterCollectionBuffer::buffer, CgParameterCollectionBuffer.MACRO_NAME,
                 "crystalgraphics:shaders/env/buffer/globals.glsl", CgParameterCollection::glsl);
     }
