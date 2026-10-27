@@ -429,11 +429,11 @@ public final class CgParticleKinds {
             .property("delay", FLOAT).quantity(CgQuantity.TIME).defaultValue(0.0)
             .property("determinism", CgValueType.struct(DETERMINISM))
             .property("fixed_bounds", CgValueType.listOf(VEC3)).quantity(CgQuantity.POSITION)
-            .property("macro_uv", CgValueType.struct(MACRO_UV))
             .property("effect", CgValueType.NAMESPACED_ID).flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
             .property("slots", CgValueType.idList(SLOT)).flags(CgPropertyFlag.STRUCTURAL)
             .property("pool_prime_size", INT).range(0, null).defaultValue(0)
             .property("max_pool_size", INT).range(0, null).defaultValue(32)
+            .property("macro_uv", CgValueType.struct(MACRO_UV))
             .register();
 
     // ── Module, effect type, ending ──────────────────────────────────────────────────────
