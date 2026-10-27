@@ -82,6 +82,22 @@ public final class CgSkeleton {
         return i == null ? -1 : i;
     }
 
+    /**
+     * The bone named {@code name} ignoring case, as Unreal's {@code FName} compares (NameTypes.h:629, 806): an exact
+     * match first, else the first bone whose name differs only in case; -1 for none.
+     */
+    public int indexOfIgnoringCase(String name) {
+        int exact = indexOf(name);
+        if (exact >= 0) return exact;
+        for (int b = 0; b < names.length; b++) if (names[b].equalsIgnoreCase(name)) return b;
+        return -1;
+    }
+
+    /** The rest poses, {@link #REST} floats a bone: what a pose resets to. */
+    float[] rest() {
+        return rest;
+    }
+
     public Vector3f restTranslation(int bone, Vector3f out) {
         int r = bone * REST;
         return out.set(rest[r], rest[r + 1], rest[r + 2]);

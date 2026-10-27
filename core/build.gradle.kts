@@ -183,6 +183,8 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
 tasks.named<Test>("test") {
     // Skinned glTFs loaded and cooked both ways: -PskinnedMeshes=<folder of .glb>,...
     providers.gradleProperty("skinnedMeshes").orNull?.let { systemProperty("crystalgraphics.skinnedMeshes", it) }
+    // A mesh and a folder of clips of its own files, played on it: -PskinnedClips=<mesh.glb>=<folder>,...
+    providers.gradleProperty("skinnedClips").orNull?.let { systemProperty("crystalgraphics.skinnedClips", it) }
 }
 
 tasks.named("check") { dependsOn(headlessTestTask) }

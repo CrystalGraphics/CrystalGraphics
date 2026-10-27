@@ -161,6 +161,98 @@ public final class CgAnimSequence {
     }
 
     /**
+     * Writes the sequence's bones at {@code time} seconds into {@code pose}; a bone it does not animate keeps what the
+     * pose held. Unreal's sampling: the key pair and alpha of {@code AnimEncoding::TimeToIndex} (AnimEncoding.h:399-446),
+     * clamped to the first and last key, then {@code FTransform::Blend} (TransformVectorized.h:427-460): translation and
+     * scale lerped, rotation along the shortest path and renormalised.
+     *
+     * <pre>{@code
+     * pose.rest();
+     * attack.sample(pose, 0.4f);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Tracks bind to the pose's skeleton by bone name ignoring case, once a skeleton; a track naming a bone the
+     *       skeleton lacks is skipped.</li>
+     *   <li>Allocates nothing once bound; any thread, one pose per thread.</li>
+     * </ul>
+     */
+    public void sample(CgPose pose, float time) {
+        int[] bones = bind(pose.skeleton());
+        int a, b;
+        float alpha;
+        if (frameCount < 2 || time <= 0f) {
+            a = b = 0;
+            alpha = 0f;
+        } else if (time >= duration()) {
+            a = b = frameCount - 1;
+            alpha = 0f;
+        } else {
+            float key = time / duration() * (frameCount - 1);
+            a = Math.min((int) Math.floor(key), frameCount - 1);
+            b = Math.min(a + 1, frameCount - 1);
+            alpha = key - (float) Math.floor(key);
+        }
+        float[] out = pose.local;
+        for (int t = 0; t < bones.length; t++) {
+            int bone = bones[t];
+            if (bone < 0) continue;
+            int at = bone * CgSkeleton.REST;
+            lerp(translations[t], 3, a, b, alpha, out, at);
+            nlerp(rotations[t], a, b, alpha, out, at + 3);
+            lerp(scales[t], 3, a, b, alpha, out, at + 7);
+        }
+    }
+
+    /** A channel's value between keys {@code a} and {@code b}: a held channel's one key, else the lerp. */
+    private static void lerp(float[] keys, int n, int a, int b, float alpha, float[] out, int at) {
+        if (keys.length == n) {
+            System.arraycopy(keys, 0, out, at, n);
+            return;
+        }
+        if (alpha <= CgPose.ZERO_WEIGHT || a == b) {
+            System.arraycopy(keys, a * n, out, at, n);
+        } else if (alpha >= 1f - CgPose.ZERO_WEIGHT) {
+            System.arraycopy(keys, b * n, out, at, n);
+        } else {
+            for (int c = 0; c < n; c++) out[at + c] = keys[a * n + c] + (keys[b * n + c] - keys[a * n + c]) * alpha;
+        }
+    }
+
+    /** {@code FQuat::FastLerp} (Quat.h:1371-1377), then normalised. */
+    private static void nlerp(float[] keys, int a, int b, float alpha, float[] out, int at) {
+        if (keys.length == 4 || alpha <= CgPose.ZERO_WEIGHT || a == b) {
+            System.arraycopy(keys, keys.length == 4 ? 0 : a * 4, out, at, 4);
+            return;
+        }
+        if (alpha >= 1f - CgPose.ZERO_WEIGHT) {
+            System.arraycopy(keys, b * 4, out, at, 4);
+            return;
+        }
+        int pa = a * 4, pb = b * 4;
+        float dot = keys[pa] * keys[pb] + keys[pa + 1] * keys[pb + 1] + keys[pa + 2] * keys[pb + 2] + keys[pa + 3] * keys[pb + 3];
+        float bias = dot >= 0f ? 1f - alpha : alpha - 1f;
+        for (int c = 0; c < 4; c++) out[at + c] = keys[pb + c] * alpha + keys[pa + c] * bias;
+        CgPose.normalizeRotation(out, at);
+    }
+
+    /** Track to bone for {@code skeleton}, -1 where it lacks the bone; made once a skeleton. */
+    private int[] bind(CgSkeleton skeleton) {
+        Binding bound = binding;
+        if (bound != null && bound.skeleton == skeleton) return bound.bones;
+        int[] bones = new int[trackBones.length];
+        for (int t = 0; t < bones.length; t++) bones[t] = skeleton.indexOfIgnoringCase(trackBones[t]);
+        binding = new Binding(skeleton, bones);
+        return bones;
+    }
+
+    /** The last skeleton bound and its tracks' bones: one skeleton per sequence is the common case. */
+    private record Binding(CgSkeleton skeleton, int[] bones) {
+    }
+
+    private volatile Binding binding;
+
+    /**
      * What to divide a rotation by to make it unit length: its length, or exactly 1 where it is unit already to float
      * precision. Dividing a normalised quaternion by its length again moves its last bit, so a loaded value would
      * otherwise not read back equal from its own cook.

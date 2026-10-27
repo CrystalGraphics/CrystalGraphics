@@ -131,6 +131,43 @@ CgAnimSequence wave = CgAnimSequence.builder("wave", 30, 31)       // 31 keys at
 CgSkeletalMesh mesh = CgSkeletalMesh.builder(sleeve, arm).material(0, "mymod:sleeve").sequence(wave).build();
 ```
 
+## Playing clips
+
+A `CgAnimInstance` is a skinned mesh posed by the engine: clips placed as sections on a timeline of its own,
+evaluated every frame in `POSE` on workers by `CgAnimation`, and its palette written for the draw.
+
+```java
+CgAnimInstance kurama = CgAnimation.client().add(new CgAnimInstance(mesh));
+kurama.play(CgAnimSection.of(mesh.sequence("idle")).until(Double.POSITIVE_INFINITY).build());   // loops for ever
+kurama.play(CgAnimSection.of(mesh.sequence("roar")).at(2.0).easeIn(0.25f).easeOut(0.25f).build());
+
+// SUBMIT, the same frame: POSE has written this frame's palette
+world.draw(mesh.mesh(), skin).bones(kurama.palette()).at(x, y, z).submit();
+
+kurama.seek(3.25);              // the pose playing reaches at 3.25 s, exactly
+kurama.playing(false);          // held; kurama.rate(0.5f) plays at half speed
+CgAnimation.client().remove(kurama);
+```
+
+| Section setting | Does (Unreal's skeletal animation section) |
+|---|---|
+| `at(t)`, `until(t)` | when it plays on the instance's timeline; past the clip's length it loops, else it holds its last frame |
+| `playRate(r)` | clip seconds a timeline second; negative plays from the end |
+| `startOffset`, `endOffset`, `firstLoopOffset` | clip seconds cut from each loop's start and end, and how far into the clip the first loop starts |
+| `reverse()`, `loop()` | played backwards; looped however long it lasts |
+| `weight(w)`, `easeIn(s)`, `easeOut(s)` | its weight, rising and falling over those seconds along Cubic InOut (`CgAnimEasing`) |
+
+- **Sections cross-fade by their weights, normalised**: one easing in alone plays at full weight, as Sequencer's does;
+  only two overlapping blend. Where none plays, the rest pose.
+- **A clip binds to the skeleton by bone name ignoring case**, so Goku's `Root` track moves his `root`.
+- **A pose is a pure function of the instance's time**: a seek, a replay or a late joiner lands on the same pose,
+  bit for bit.
+- By hand, without `CgAnimation`: `instance.advance(dt).evaluate()`, then `instance.skinning()` into
+  `CgBonePalettes.write`. Lower down, `clip.sample(pose, time)` into a `CgPose`, `pose.blend(...)`, `pose.resolve()`.
+- About 9 µs to pose a 228-bone puppet; past `crystalgraphics.animation.parallelAt` (8) instances, `POSE` splits them
+  across workers.
+- `--mode=skinned-play` shows them: Goku and Kurama, Tab to pick, N/B clips, P pause, `,` `.` a frame, I/O rate.
+
 ## Drawing one
 
 Each frame, write the pose's skinning matrices, one a bone in the skeleton's order, then draw the mesh naming where they
@@ -177,4 +214,4 @@ byte[] mesh = CgCookedMesh.write(kurama), clips = CgCookedAnimation.write(kurama
 - **Tracks name their bones**, so a clip plays on any skeleton that has them. A bone a clip does not animate holds its
   rest pose.
 - **Names are kept as written**: what a socket or a sequence names a bone by.
-- Playing clips, posing and sockets on bones are their own sections as they arrive.
+- Sockets on bones are their own section as they arrive.
