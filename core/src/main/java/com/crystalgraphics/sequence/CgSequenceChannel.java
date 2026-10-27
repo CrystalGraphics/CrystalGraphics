@@ -82,10 +82,10 @@ public final class CgSequenceChannel {
         this.defaultString = defaultString;
     }
 
-    static CgSequenceChannel ofCurve(String name, CgRichCurve curve) {
+    static CgSequenceChannel ofCurve(String name, CgRichCurve curve, boolean hasDefault) {
         int[] ticks = new int[curve.size()];
         for (int i = 0; i < ticks.length; i++) ticks[i] = (int) curve.time(i);
-        return new CgSequenceChannel(name, Type.FLOAT, curve, ticks, new int[0], null, null, false, 0, null);
+        return new CgSequenceChannel(name, Type.FLOAT, curve, ticks, new int[0], null, null, hasDefault, 0, null);
     }
 
     static CgSequenceChannel ofKeys(String name, Type type, int[] ticks, int[] ints, @Nullable String[] strings,

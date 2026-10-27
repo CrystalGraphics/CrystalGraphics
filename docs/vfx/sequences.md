@@ -87,6 +87,49 @@ boolean shown = visible.bool(45000);                                 // false
   track (a server never reads a condition, so it would never hear that event); subsequences nested more than four deep.
 - A muted track, an inactive section and a section an event starts (`start: { event }`) are never in the field.
 
+## Playing a sequence
+
+A world's `CgSequencer` plays every sequence in it. What a sequence moves is given to it by role: anything that
+implements `CgSequenceTarget`, a set of named slots it writes each frame.
+
+```java
+CgSequencer sequencer = world.add(new CgSequencer());          // ticks in CgTickGroup.SEQUENCES
+
+final class Camera implements CgSequenceTarget {
+    float fov = 70;
+    @Override public int slot(String name) { return name.equals("fov") ? 0 : -1; }
+    @Override public void set(int slot, float[] values, int mask) { fov = values[0]; }
+}
+
+CgSequencePlayer player = sequencer.play(beam, Map.of("caster", goku, "target", vegeta));
+player.rate(0.5f);                                               // half speed
+player.spawnable(0, chargeSystem);                               // a spawnable's tracks bind once it is made
+float x = player.locator(0).translation()[0];                    // the sequence's own points, after evaluation
+player.stop();
+```
+
+- **Slots are named by the track**: a transform writes `translation`, `rotation` and `scale`; visibility `visible`; a
+  `parameter` or `property` track its `parameter` or `property` (`user.Size`, `fov`); a material track or a global track
+  each parameter by name (`scalars: { BG_Brightness: ... }` writes `BG_Brightness`). A global track writes its parameter
+  collection itself.
+- **Binding happens at `play`**, and at `spawnable` for what waits on a spawnable: a slot a target lacks throws there,
+  naming both, never in the frame.
+- **`mask` says which components a frame writes**: a section keying only `x` leaves `y` and `z` as they are.
+- **A role the sequence names and `play` is not given** fails, unless the role is `absent: skip`.
+- **At its end a player holds its last frame** (`finished()`) until stopped.
+- **A kind of your own** is a `CgSequenceEvaluator`, registered on the sequencer: it binds each section once, then
+  evaluates its kind's active sections across every player each frame.
+
+```java
+sequencer.register(new CgSequenceEvaluator() {
+    @Override public String kind() { return "morph"; }
+    @Override public void bind(CgSequencePlayer p, CgSequenceTrack t, CgSequenceSection s) { p.data(t, s, new Weights(s)); }
+    @Override public void evaluate(CgSequencePlayer p, CgSequenceTrack t, CgSequenceSection s, float tick) {
+        ((Weights) p.data(t, s)).sample(tick);
+    }
+});
+```
+
 # A clip on every particle
 
 A particle may play a clip: a prefab ([`prefabs.md`](prefabs.md)) whose nodes move, fade and change their material's

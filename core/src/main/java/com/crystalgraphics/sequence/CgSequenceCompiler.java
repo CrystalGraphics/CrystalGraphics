@@ -11,7 +11,9 @@ import java.util.Set;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.api.material.CgParameterCollection;
 import com.crystalgraphics.asset.curve.CgRichCurve;
+import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
@@ -221,6 +223,7 @@ final class CgSequenceCompiler {
         }
         return new CgSequenceTrack(tid, index, kind, binding, Boolean.TRUE.equals(t.get("muted")), side,
                 (String) t.get("handle"), (String) t.get("parameter"), (String) t.get("property"), (String) t.get("collection"),
+                t.get("collection") instanceof String c && deps.definition(CgLookKinds.PARAMETERS, c) instanceof CgParameterCollection pc ? pc : null,
                 !Boolean.FALSE.equals(t.get("fire_forwards")), Boolean.TRUE.equals(t.get("fire_backwards")),
                 CgSequenceTrack.populationOf(kind), Collections.unmodifiableList(sections), t);
     }
@@ -244,7 +247,14 @@ final class CgSequenceCompiler {
             CgQuantity q = p != null ? p.quantity() : CgQuantity.NONE;
             String at = path + "." + key;
             switch (CgSequenceKinds.channelForm(type, key)) {
-                case ONE -> one(kind, key, e.getValue(), q, at, channels);
+                case ONE -> {
+                    // An undeclared key holding named channels ({ scalars: { BG_Brightness: ... } }): a map of them.
+                    if (p == null && e.getValue() instanceof Map<?, ?> m && !m.isEmpty() && !isChannelMap(m)) {
+                        for (Map.Entry<?, ?> c : m.entrySet()) one(kind, key + "." + c.getKey(), c.getValue(), q, at + "." + c.getKey(), channels);
+                    } else {
+                        one(kind, key, e.getValue(), q, at, channels);
+                    }
+                }
                 case AXES -> axes(kind, key, e.getValue(), q, at, channels);
                 case MAP_OF_ONE -> {
                     for (Map.Entry<?, ?> c : asMap(e.getValue(), at).entrySet()) one(kind, key + "." + c.getKey(), c.getValue(), q, at + "." + c.getKey(), channels);
@@ -351,6 +361,12 @@ final class CgSequenceCompiler {
         }
     }
 
+    /** Whether {@code m} is one channel as a map: its keys, samples, default or extrapolation, or one per axis. */
+    private static boolean isChannelMap(Map<?, ?> m) {
+        for (String k : List.of("keys", "samples", "default", "pre", "post", "interp")) if (m.containsKey(k)) return true;
+        return hasAxes(m);
+    }
+
     private static boolean hasAxes(Map<?, ?> m) {
         for (String a : CHANNEL_AXES) if (m.containsKey(a)) return true;
         return false;
@@ -411,7 +427,7 @@ final class CgSequenceCompiler {
                 if (curve.time(i) < curve.time(i - 1)) throw fail(path, "key " + i + " at tick " + curve.time(i) + " comes before the one before it");
             }
             if (curve.hasWeighted()) curve.bakeWeighted(WEIGHTED_TOLERANCE);
-            return CgSequenceChannel.ofCurve(name, curve);
+            return CgSequenceChannel.ofCurve(name, curve, def != null);
         }
         int n = keys == null ? 0 : keys.size();
         int[] ticks = new int[n], ints = new int[n];

@@ -6,6 +6,8 @@ import java.util.Set;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.api.material.CgParameterCollection;
+
 /**
  * A track of a sequence, compiled: Unreal's {@code UMovieSceneTrack}, its kind, what it binds (resolved), its
  * track-level fields, and its sections.
@@ -34,6 +36,7 @@ import javax.annotation.Nullable;
  * @param parameter     a parameter track's {@code user.<name>}, or null
  * @param property      a property track's property name, or null
  * @param collection    a global track's parameter collection id, or null
+ * @param globals       that collection, compiled; null where compiled without its dependencies
  * @param fireForwards  an event track's: fires as play crosses a key forwards
  * @param fireBackwards an event track's: fires as play crosses a key backwards
  * @param population    how its sections fill the evaluation field
@@ -42,7 +45,8 @@ import javax.annotation.Nullable;
  */
 public record CgSequenceTrack(String id, int index, String kind, CgSequenceBinding binding, boolean muted,
                               @Nullable String side, @Nullable String handle, @Nullable String parameter,
-                              @Nullable String property, @Nullable String collection, boolean fireForwards,
+                              @Nullable String property, @Nullable String collection,
+                              @Nullable CgParameterCollection globals, boolean fireForwards,
                               boolean fireBackwards, Population population, List<CgSequenceSection> sections,
                               Map<?, ?> fields) {
 
