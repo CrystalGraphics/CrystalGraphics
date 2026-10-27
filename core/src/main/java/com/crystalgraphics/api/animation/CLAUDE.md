@@ -17,6 +17,7 @@ The mesh that follows the bones is `api/mesh`'s `CgSkeletalMesh`; files load thr
 | `CgPose` | One skeleton's pose, mutable and reused: local TRS a bone, `sample` writes it, `blend` is Unreal's `BlendPosesTogether`, `resolve()` composes component space, `skinning(mesh, out)` multiplies the inverse binds. Allocates nothing after construction |
 | `CgAnimSection` | A clip on a timeline, Unreal's skeletal animation section: `animationTime(t)` is `MakeTransform`'s mapping, `weight(t)` the weight times its easing (a `CgEasing`: Unreal's Cubic InOut is `CgEasings.IN_OUT_CUBIC`). Immutable |
 | `CgSocket` | Unreal's `USkeletalMeshSocket`: a name, a bone, a relative transform; on `CgSkeletalMesh` (`Builder.socket`, `withSockets`), names compared ignoring case |
+| `CgSkeletonDefinition` | A `skeleton` asset compiled (`CgBuiltInCompilers`): its `from: bone` sockets in the host's units, a bone's own space converted as CUE4Parse and Unreal's exporter convert bones (`CgUnits.UNREAL`); `compile(id, tree, units)` for a file read by hand. Gate: `CgSkeletonDefinitionTest` (`-Pkits=kakarot_kit=<dir>` for Goku's) |
 | `CgMorphTargets` | per-vertex CSR of (target, position delta, normal delta); `builder(vertexCount).target(...).delta(...)`; `NONE` |
 | `CgCookedAnimation` | `.cganim`: sequences as columns, written and read |
 
