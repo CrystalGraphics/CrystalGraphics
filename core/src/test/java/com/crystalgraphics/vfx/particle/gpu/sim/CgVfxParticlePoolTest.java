@@ -52,6 +52,14 @@ public class CgVfxParticlePoolTest {
             return "pull";
         }
 
+        public String gpuSource() {
+            return """
+                    void fx_pull(inout FxParticle p, inout FxForces f, FxStep s, vec4 m) {
+                        f.accel -= p.position * m.x;
+                    }
+                    """;
+        }
+
         public boolean afterSolve() {
             return false;
         }
