@@ -19,7 +19,7 @@ import java.util.Map;
  * <pre>{@code
  * CgSkeletonDefinition.register();                                            // once, at init
  * CgAssetLoad load = pipeline.request(CgBodyKinds.SKELETON, "kakarot_kit:Art/MDL/Cpl/Cpl001/Model/Cpl001p1_Skeleton");
- * CgSkeletalMesh goku = mesh.withSockets(((CgSkeletonDefinition) load.definition()).sockets());
+ * CgSkeletalMesh goku = mesh.withSockets(((CgSkeletonDefinition) load.definition()).socketsOn(mesh.skeleton()));
  *
  * // a file read by hand, in its kit's units:
  * CgSkeletonDefinition d = CgSkeletonDefinition.compile(id, tree, CgUnits.of(unitsYaml.get("units"), CgUnits.HOST));
@@ -43,6 +43,16 @@ public record CgSkeletonDefinition(String id, List<CgSocket> sockets) {
 
     public CgSkeletonDefinition {
         sockets = Collections.unmodifiableList(new ArrayList<>(sockets));
+    }
+
+    /**
+     * Its sockets on bones {@code skeleton} has: what a mesh takes. A skeleton asset is shared by every mesh built on it
+     * (Unreal's {@code USkeleton}), and one mesh may lack another's bones, a cane or a tail.
+     */
+    public List<CgSocket> socketsOn(CgSkeleton skeleton) {
+        List<CgSocket> out = new ArrayList<>(sockets.size());
+        for (CgSocket s : sockets) if (skeleton.indexOfIgnoringCase(s.bone()) >= 0) out.add(s);
+        return out;
     }
 
     /** Registers {@link #COMPILER} as the skeleton kind's. */
