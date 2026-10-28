@@ -142,9 +142,10 @@ public final class CgCameraSystem extends CgWorldSubsystem {
         return pose;
     }
 
-    /** Whether a rig or a modifier moved the camera from the host's own this frame. */
+    /** Whether a context above the host's, a rig or a modifier moved the camera from the host's own this frame. */
     public boolean controls() {
-        return stack.top() != null || stack.size() > 1 || !modifiers.isEmpty();
+        // A rigless context popped in leaves one entry with no rig, so the stack alone cannot tell it from the host.
+        return active != host || stack.top() != null || stack.size() > 1 || !modifiers.isEmpty();
     }
 
     /** Both phases at once, for a host or a test with no schedule: the rigs, then the modifiers. */

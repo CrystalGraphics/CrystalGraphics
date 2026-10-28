@@ -122,6 +122,22 @@ public class CgCameraSystemTest {
     }
 
     @Test
+    public void aContextWithNoRigControlsTheCamera() {
+        CgCameraSystem cameras = new CgCameraSystem();
+        cameras.host(pose -> pose.location(0, 0, 0).fov(70));
+        CgCameraContext cut = new CgCameraContext("test:cut");
+        cut.initial().location(3, 0, 0).fov(20);
+        cameras.push(cut);
+        cameras.update(0.1f);
+        assertTrue("popped in: the stack is one rigless entry, its pose the context's", cameras.controls());
+        assertEquals(3, cameras.pose().location().x, 1e-6);
+
+        cameras.remove(cut);
+        cameras.update(0.1f);
+        assertFalse("given back", cameras.controls());
+    }
+
+    @Test
     public void anExitInterruptingAnEnterTakesItsShareOfTime() {
         CgCameraSystem cameras = new CgCameraSystem();
         cameras.host(pose -> pose.location(0, 0, 0));
