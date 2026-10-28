@@ -409,7 +409,7 @@ wrote (§ *Async*).
 - **A material's textures are made as their `texture` asset says** (`CgMaterialRegistry.texture`, `looks.md`
   § Texture): sRGB unless `colour: linear`, mips unless `mips: false`, `cube: true` stacked faces, and
   `sampler: { filter: bilinear, wrap: clamp }` its own filter and wrap (Unreal's `Filter`, `AddressX`/`AddressY`;
-  trilinear and clamped without one), which a binding's `sampler` replaces. `compression` picks no format yet: every
+  trilinear and repeated without one or without its `wrap`, as Unreal's `TA_Wrap`), which a binding's `sampler` replaces. `compression` picks no format yet: every
   image loads uncompressed.
 - **`create` is cached by the paths and the spec**, and the spec's filter and wrap are the texture's own sampling. To
   sample one image two ways, load it once and give a binding a `CgSampler` (below). `createDirect` decodes

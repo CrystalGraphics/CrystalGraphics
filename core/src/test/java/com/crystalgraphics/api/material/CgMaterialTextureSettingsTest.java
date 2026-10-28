@@ -57,8 +57,9 @@ public class CgMaterialTextureSettingsTest {
         assertEquals(CgGL.GL_MIRRORED_REPEAT, own.getWrapT());
         assertFalse(own.getMipmaps().isEnabled());
         CgTextureSpec none = CgMaterialRegistry.textureSpec(DIR + "ramp.hdr");
-        assertEquals("trilinear with mips, clamped", CgGL.GL_LINEAR_MIPMAP_LINEAR, none.getMipmaps().getMinFilter());
-        assertEquals(CgGL.GL_CLAMP_TO_EDGE, none.getWrapS());
+        assertEquals("trilinear with mips", CgGL.GL_LINEAR_MIPMAP_LINEAR, none.getMipmaps().getMinFilter());
+        assertEquals("repeated, Unreal's TA_Wrap", CgGL.GL_REPEAT, none.getWrapS());
+        assertEquals(CgGL.GL_REPEAT, none.getWrapT());
     }
 
     @Test

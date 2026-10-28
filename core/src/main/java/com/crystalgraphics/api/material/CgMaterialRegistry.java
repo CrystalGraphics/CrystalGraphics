@@ -132,8 +132,8 @@ public final class CgMaterialRegistry {
      *   <li>{@code cube: true}: the image is a cube's six faces stacked top to bottom, {@code w x 6w}, in Unreal's slice
      *       order ({@link CgTextureCubemap#createStacked}).</li>
      *   <li>{@code sampler: { filter: bilinear, wrap: clamp }}: its own filter and wrap, as Unreal's {@code Filter} and
-     *       {@code AddressX}/{@code AddressY}, a binding's block's form; without one, trilinear (with mips) and
-     *       clamped. A binding's own {@code sampler} replaces it.</li>
+     *       {@code AddressX}/{@code AddressY}, a binding's block's form; without one, or without its {@code wrap},
+     *       trilinear (with mips) and repeated, as Unreal's {@code TA_Wrap}. A binding's own {@code sampler} replaces it.</li>
      * </ul>
      *
      * <pre>{@code
@@ -196,7 +196,10 @@ public final class CgMaterialRegistry {
         boolean hdr = isFloat(path), srgb = !hdr && !"linear".equals(s.colour());
         var b = (hdr ? CgTextureType.RGBA16F : srgb ? CgTextureType.SRGB8_ALPHA8 : CgTextureType.RGBA8).toTextureSpec().toBuilder();
         CgSampler sampler = s.sampler();
-        if (sampler == null) return b.mipmaps(s.mips() ? CgMipmapConfig.TRILINEAR : CgMipmapConfig.NONE).build();
+        if (sampler == null) {
+            return b.mipmaps(s.mips() ? CgMipmapConfig.TRILINEAR : CgMipmapConfig.NONE)
+                    .wrapS(CgGL.GL_REPEAT).wrapT(CgGL.GL_REPEAT).wrapR(CgGL.GL_REPEAT).build();
+        }
         boolean nearest = sampler.filter() == CgSampler.Filter.NEAREST;
         int mag = nearest ? CgGL.GL_NEAREST : CgGL.GL_LINEAR;
         if (s.mips()) {
@@ -340,8 +343,8 @@ public final class CgMaterialRegistry {
             CgSampler.Address u = address(axes.get(0)), v = axes.size() > 1 ? address(axes.get(1)) : u;
             if (axes.size() > 2) b.address(u, v, address(axes.get(2)));
             else b.address(u, v);
-        } else if (wrap != null) {
-            b.address(address(wrap));
+        } else {
+            b.address(wrap == null ? CgSampler.Address.WRAP : address(wrap));   // Unreal's TA_Wrap when unsaid
         }
         if (block.get("anisotropy") instanceof Number) b.anisotropy(((Number) block.get("anisotropy")).intValue());
         return b.build();
