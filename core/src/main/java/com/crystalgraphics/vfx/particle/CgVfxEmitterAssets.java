@@ -3072,6 +3072,10 @@ public final class CgVfxEmitterAssets {
                 for (CgProperty p : declared.inputs().properties()) {
                     if (in.containsKey(p.name())) in.put(p.name(), units.toHost(in.get(p.name()), p));
                 }
+                // scale_mesh_size's axes name the scale's channels, which the asset's units have just permuted.
+                if (in.get("axes") instanceof String axes && moduleId(entry).equals("scale_mesh_size")) {
+                    in.put("axes", units.hostAxes(axes));
+                }
                 // socket_location's points carry their own offsets, which the declaration's loose list does not type.
                 if (in.get("points") instanceof List<?> points && moduleId(entry).equals("socket_location")) {
                     List<Object> host = new ArrayList<>(points.size());

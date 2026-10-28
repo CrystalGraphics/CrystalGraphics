@@ -18,9 +18,12 @@ import org.junit.Test;
 
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
+import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.object.CgType;
+import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgCapsule;
 import com.crystalgraphics.shape.primitive.CgCone;
@@ -239,6 +242,30 @@ public class CgVfxEmitterAssetsTest {
     }
 
     /** A size range over life, rolled each step, with a locked pair: read, written back and read again alike. */
+    /** A mesh's scale in Unreal's axes reaches the host's permuted, unsigned: Unreal's Y is the host's Z. */
+    @Test
+    public void aMeshScaleInUnrealAxesIsPermutedToTheHosts() {
+        CgAssetCompiler.Dependencies unreal = new CgAssetCompiler.Dependencies() {
+            @Override public Object definition(CgType kind, String id) {
+                return null;
+            }
+            @Override public CgUnits units() {
+                return CgUnits.UNREAL;
+            }
+        };
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 64));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0))));
+        Object range = Map.of("range", List.of(List.of(1.0, 20.0, 40.0), List.of(1.0, 40.0, 50.0)), "per_channel", true);
+        tree.put("particle_update", List.of(Map.of("id", "rays", "module", "crystalgraphics:scale_mesh_size",
+                "inputs", Map.of("scale", range))));
+        CgVfxLifeRoll roll = CgVfxEmitterAssets.compile("rays", tree, null, unreal).lifeRolls().get(0);
+        assertArrayEquals(new float[]{1f, 40f, 20f}, roll.from(), 0f);
+        assertArrayEquals(new float[]{1f, 50f, 40f}, roll.to(), 0f);
+    }
+
     @Test
     public void lifeRollsRoundTrip() {
         Map<String, Object> tree = new LinkedHashMap<>();

@@ -42,7 +42,7 @@ modules:
       { name: clamp_alpha, type: bool, default: true },
       { name: intensity, type: float, default: 1 },
       { name: sprite_size, type: vec2, quantity: length, default: [50, 50] }, { name: uniform, type: bool, default: false },
-      { name: mesh_scale, type: vec3, rolls: draw, default: [1, 1, 1] }, { name: per_axis, type: bool, default: true },
+      { name: mesh_scale, type: vec3, quantity: scale, rolls: draw, default: [1, 1, 1] }, { name: per_axis, type: bool, default: true },
       { name: sprite_rotation, type: float, quantity: angle, default: 0 },
       { name: mass, type: float, default: 1 }, { name: heat, type: float, default: 0 } ] }
   - { id: shape_location, groups: [particle_spawn], seeded: true, order: spawn_place, analytic: true, unreal: { niagara: ShapeLocation, cascade: [Location, LocationWorldOffset, LocationPrimitiveSphere, LocationPrimitiveCylinder, LocationPrimitiveTriangle] }, inputs: [
@@ -233,7 +233,7 @@ modules:
       { name: scale, type: vec2, by: [age], default: [1, 1] },
       { name: mode, type: enum, values: [multiply, set], default: multiply }, { name: axes, type: string, default: xy } ] }
   - { id: scale_mesh_size, groups: [particle_update], analytic: true, unreal: { niagara: ScaleMeshSize, cascade: [SizeMultiplyLife, SizeScale] }, inputs: [
-      { name: scale, type: vec3, by: [age], default: [1, 1, 1] },
+      { name: scale, type: vec3, quantity: scale, by: [age], default: [1, 1, 1] },
       { name: mode, type: enum, values: [multiply, set], default: multiply }, { name: axes, type: string, default: xyz } ] }
   - { id: scale_size_by_speed, groups: [particle_update], unreal: { niagara: ScaleSpriteSizeBySpeed, cascade: [SizeScaleBySpeed] }, inputs: [
       { name: speed_scale, type: vec2, default: [0, 0] }, { name: max_scale, type: vec2, default: [1, 1] }, { name: curve, type: curve, forms: [curve, range, pick, binding], default: null } ] }
