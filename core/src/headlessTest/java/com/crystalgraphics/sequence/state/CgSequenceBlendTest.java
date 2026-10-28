@@ -131,6 +131,19 @@ public class CgSequenceBlendTest {
     }
 
     @Test
+    public void aScalarNamedLikeAComponentIsKeyedWhole() {
+        CgParameterCollection centre = CgParameterCollection.of("sqletter");
+        CgParameterCollection.Scalar x = centre.scalar("x", 0.25f);
+        CgSequenceDefinition a = compile2(HEAD + "tracks:\n  - id: t1\n    kind: global\n    collection: mymod:parameters/centre\n"
+                + "    sections:\n      - { id: s1, range: [0, 400], completion: keep_state, scalars: { x: [[0, 40]] } }\n",
+                Map.of("mymod:parameters/centre", centre));
+        CgSequencer sequencer = new CgWorld().add(new CgSequencer());
+        sequencer.play(a, Map.of("caster", new Camera()));
+        sequencer.evaluate(0.1f);
+        assertEquals(40f, x.get(), 1e-5f);
+    }
+
+    @Test
     public void keepStateLeavesTheLastValue() {
         CgParameterCollection grade = CgParameterCollection.of("sqkeep");
         CgParameterCollection.Scalar dark = grade.scalar("dark", 0.25f);

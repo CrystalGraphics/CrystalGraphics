@@ -77,7 +77,8 @@ public final class CgSequenceStateEvaluator implements CgSequenceEvaluator {
             }
             int dot = name.lastIndexOf('.'), component = 0;
             String slot = name;
-            if (dot > 0 && name.length() == dot + 2) {
+            // A scalar is whole whatever its name: scalars.x is the scalar x, never a component of scalars.
+            if (dot > 0 && name.length() == dot + 2 && !name.startsWith("scalars.")) {
                 char a = name.charAt(dot + 1);
                 int i = Math.max(COMPONENTS.indexOf(a), COLOUR.indexOf(a));
                 if (i >= 0) {
