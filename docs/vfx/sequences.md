@@ -195,7 +195,27 @@ CgVfxSystemSpawner systems = new CgVfxSystemSpawner(CgVfx.world());
 sequencer.spawner("system", systems);
 CgVfxPrefabSpawner.install(sequencer, systems);       // its prefabs sort with its systems, one group a play
 CgPostVolumeSpawner.install(sequencer);
-sequencer.spawner("light", (player, spawnable, at) -> new MyLight(spawnable.tree(), at));   // a kind of your own
+sequencer.spawner("camera", (player, spawnable, at) -> new MyCamera(spawnable.tree(), at));   // a kind of your own
+```
+
+- **A `light` spawnable is played already** (`CgSequenceLight`, the sequencer's default): a directional light that
+  travels along its node's forward axis, Unreal's +X. While it lives, the directional light with the highest
+  `priority` (Unreal's `ForwardShadingPriority`) lights the world, a tie going to the brighter, and the host's sun
+  counts as priority 0. Every pass's `cg_SunDirection` points toward that light, and materials read it as
+  `CG_GLOBAL_directional_light_direction` (toward it) and `CG_GLOBAL_directional_light_colour` (colour times
+  intensity). A point, spot or sky light fails as it spawns, naming its spawnable: not played yet.
+
+```yaml
+spawnables:
+  - { id: s2, name: cut_in, at: { spawnable: dmy, socket: EffPoint_01 },
+      light: { type: directional, colour: [1, 1, 1], intensity: 10, priority: 1 } }   # over the sun until it goes
+```
+
+```java
+// The same light from Java, outside any sequence: it lights the world until closed.
+try (CgDirectionalLights.Light cut = CgDirectionalLights.get().add(1).colour(0xFFFFFFFF, 10f).travel(0f, -1f, 0.3f)) {
+    ...
+}
 ```
 
 ```yaml

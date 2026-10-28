@@ -57,7 +57,7 @@ public final class CgPassConstants {
     public static final int FLOATS = 84;
 
     /** {@link #sun}'s direction until set: high, toward +x and +z. */
-    private static final float SUN_X = 0.3f, SUN_Y = 0.906f, SUN_Z = 0.3f;
+    public static final float SUN_X = 0.3f, SUN_Y = 0.906f, SUN_Z = 0.3f;
     /** {@link #sunShare}'s until set: {@code crystalgraphics.world.sunShare}'s default. */
     private static final float SUN_SHARE = 0.6f;
 

@@ -18,6 +18,7 @@ import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.sequence.event.CgSequenceEventEvaluator;
 import com.crystalgraphics.sequence.event.CgSequenceEventListener;
 import com.crystalgraphics.sequence.notify.CgNotifyEvaluator;
+import com.crystalgraphics.sequence.spawn.CgSequenceLight;
 import com.crystalgraphics.sequence.spawn.CgSequenceSpawner;
 import com.crystalgraphics.sequence.spawn.CgSequenceSystemEvaluator;
 import com.crystalgraphics.sequence.state.CgSequenceBlender;
@@ -83,6 +84,7 @@ public final class CgSequencer extends CgWorldSubsystem {
         evaluators.add(new CgSequenceAnimationEvaluator());
         evaluators.add(new CgNotifyEvaluator(this, blender));
         evaluators.add(new CgSequenceEventEvaluator(this));
+        spawners.put("light", CgSequenceLight.SPAWNER);
     }
 
     @Override

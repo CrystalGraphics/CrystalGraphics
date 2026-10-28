@@ -156,6 +156,7 @@ public final class CgSequenceKinds {
             .property("type", CgValueType.enumOf("point", "spot", "directional", "sky")).required()
             .property("colour", CgValueType.COLOUR)
             .property("intensity", FLOAT)
+            .property("priority", INT)   // a directional light's ForwardShadingPriority: the highest lights the world
             .property("radius", FLOAT).quantity(CgQuantity.LENGTH)
             .property("inner_radius", FLOAT).quantity(CgQuantity.LENGTH)
             .property("falloff", VALUE)   // inverse_square (Unreal's bUseInverseSquaredFalloff) or linear (NUCC's)

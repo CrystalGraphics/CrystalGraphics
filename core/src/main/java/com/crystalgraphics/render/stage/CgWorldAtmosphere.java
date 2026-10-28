@@ -5,7 +5,8 @@ import com.crystalgraphics.variable.CgVar;
 
 /**
  * The world's sun and fog, as a pass's {@code cg_SunDirection}, {@code cg_FogColor} and {@code cg_FogParams} (with the
- * sun's share of the sky light, {@code CG_SUN_SHARE}): what
+ * sun's share of the sky light, {@code CG_SUN_SHARE}); a directional light that outranks the sun
+ * ({@link CgDirectionalLights}) takes the sun's direction, and the chosen light is written to its collection: what
  * {@link CgStageFrame#defaults} fills every stage's constants with, so a material lit by default fogs as Minecraft's
  * own things do.
  *
@@ -41,16 +42,33 @@ public final class CgWorldAtmosphere {
     }
 
     private static void sun(CgHostEnvironment world, CgPassConstants constants) {
+        float daylight;
         if (Float.isNaN(world.celestialAngle())) {
             constants.defaultSun();
-            if (!Float.isNaN(world.skyBrightness())) constants.daylight(world.skyBrightness());
-            return;
+            daylight = Float.isNaN(world.skyBrightness()) ? 1f : world.skyBrightness();
+            constants.daylight(daylight);
+            SUN[0] = CgPassConstants.SUN_X;
+            SUN[1] = CgPassConstants.SUN_Y;
+            SUN[2] = CgPassConstants.SUN_Z;
+        } else {
+            world.sunDirection(SUN);
+            float sign = SUN[1] < 0f ? -1f : 1f;   // the moon, opposite, while the sun is down
+            for (int k = 0; k < 3; k++) SUN[k] *= sign;
+            daylight = world.skyBrightness();
+            if (Float.isNaN(daylight)) daylight = clamp(SUN[1] * 4f + 0.5f);
+            constants.sun(SUN[0], SUN[1], SUN[2], daylight).sunShare(SUN_SHARE.get());
         }
-        world.sunDirection(SUN);
-        float sign = SUN[1] < 0f ? -1f : 1f;   // the moon, opposite, while the sun is down
-        float daylight = world.skyBrightness();
-        if (Float.isNaN(daylight)) daylight = clamp(SUN[1] * 4f + 0.5f);
-        constants.sun(SUN[0] * sign, SUN[1] * sign, SUN[2] * sign, daylight).sunShare(SUN_SHARE.get());
+        CgDirectionalLights.Light light = CgDirectionalLights.get().active(daylight);
+        if (light != null) {
+            constants.sun(-light.dx(), -light.dy(), -light.dz(), daylight);
+            CgDirectionalLights.DIRECTION.set(-light.dx(), -light.dy(), -light.dz(), 0f);
+            CgDirectionalLights.COLOUR.set(light.red(), light.green(), light.blue(), 1f);
+        } else {
+            float length = (float) Math.sqrt(SUN[0] * SUN[0] + SUN[1] * SUN[1] + SUN[2] * SUN[2]);
+            float k = length > 0f ? 1f / length : 0f;
+            CgDirectionalLights.DIRECTION.set(SUN[0] * k, SUN[1] * k, SUN[2] * k, 0f);
+            CgDirectionalLights.COLOUR.set(daylight, daylight, daylight, 1f);
+        }
     }
 
     private static void fog(CgHostEnvironment world, CgPassConstants constants) {
