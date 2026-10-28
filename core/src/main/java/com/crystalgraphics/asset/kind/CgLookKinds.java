@@ -37,6 +37,7 @@ public final class CgLookKinds {
             .property("cull", CgValueType.enumOf("back", "front")).flags(CgPropertyFlag.STRUCTURAL)
             .property("shading", CgValueType.oneOf(CgValueType.enumOf("unlit", "lit", "subsurface"), STRING)).flags(CgPropertyFlag.STRUCTURAL)
             .property("depth_test", BOOL).flags(CgPropertyFlag.STRUCTURAL)
+            .property("separate_translucency", BOOL)
             .property("depth_write", BOOL).flags(CgPropertyFlag.STRUCTURAL)
             .register();
 

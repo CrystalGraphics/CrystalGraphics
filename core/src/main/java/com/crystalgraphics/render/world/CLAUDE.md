@@ -13,7 +13,7 @@
 | `CgMeshDistanceFields` | Unreal's mesh distance fields: one per mesh and submesh, built off the render thread on first ask (16 voxels a block, at most 48 an axis), in one R32F atlas 1024 floats a row. `CgWorldLights.caster` takes each opaque draw as a caster of its field, so our meshes shadow off screen too. `CgMeshDistanceFieldsTest` holds the field |
 | `CgWorldEntityBoxes` | The living entities nearest the camera, at most 64 within 64 blocks, gathered from `CgEntityQuery` at most once a frame a camera: the lights' shadow rays take each as a capsule, particle steps collide with them (`ENTITIES`). Items and projectiles are left out |
 | `CgSortKey` | Filament's key layout with a log-quantised distance: slot, sort layer, then opaque order, material, distance, mesh, or transparent group distance, solid bit, order, distance. No far plane |
-| `CgSortLayer` | Named sort layers, Unity's: a later one draws after an earlier whatever the distance. Built in `BACKGROUND`, `DEFAULT`, `EFFECTS`, `OVERLAY`; a mod defines its own `before`/`after` one in a static field; at most 128 |
+| `CgSortLayer` | Named sort layers, Unity's: a later one draws after an earlier whatever the distance. Built in `BACKGROUND`, `DEFAULT`, `EFFECTS`, `SEPARATE_TRANSLUCENCY` (where `add` lifts a translucent draw whose material state says `separateTranslucency`, its queue to `AFTER_DISTORTION` at least), `OVERLAY`; a mod defines its own `before`/`after` one in a static field; at most 128 |
 
 ## Rules
 

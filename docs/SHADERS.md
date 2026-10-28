@@ -912,7 +912,9 @@ CgMaterial ink = CgMaterial.newInstance("mymod:shaders/fx/ink.shader",
   masked master cuts nothing.
 - Refused at parse: `depthWrite` under a `"Depth"` tag (unless a blend without `clip()` dropped it) or with `clip()`;
   `clip()` on a `"Prepass"` shader.
-- The queue stays the shader's.
+- The queue stays the shader's, except under `separateTranslucency()` (Unreal's separate translucency): a translucent
+  draw of it is lifted to `AFTER_DISTORTION` and the `SEPARATE_TRANSLUCENCY` sort layer, so it draws after every other
+  translucent draw, still depth-tested. It compiles nothing.
 - In a look: a material asset's `state` ([`vfx/effects.md`](vfx/effects.md)).
 
 ### GLSL Standard Library

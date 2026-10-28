@@ -47,6 +47,9 @@ CgMaterialDefinition slow = CgMaterialDefinitions.derive(sparks, Map.of("values"
 - A name the shader does not declare fails at `build()`, or at load for a file, naming the material and the property.
 - A texture is a 2D image, its path the image's (`<namespace>:textures/....png`).
 - `depth_test: false` fails when it draws: no material state carries it yet.
+- `separate_translucency: true` (Unreal's `bEnableSeparateTranslucency`, `.separateTranslucency()`) draws a translucent
+  material after every other translucent draw, unbent by their distortion and still tested against the scene's depth:
+  it sorts in `CgRenderQueue.AFTER_DISTORTION` and up, in `CgSortLayer.SEPARATE_TRANSLUCENCY` or a later layer.
 
 ## A particle's material: the vertex factory
 

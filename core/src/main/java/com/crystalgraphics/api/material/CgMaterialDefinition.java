@@ -102,6 +102,7 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
         if (Boolean.TRUE.equals(draw.twoSided())) b.twoSided();
         else if ("front".equals(draw.cull())) b.cull(CgCullState.FRONT);
         else if ("back".equals(draw.cull())) b.cull(CgCullState.BACK);
+        if (Boolean.TRUE.equals(draw.separateTranslucency())) b.separateTranslucency();
         return b.build();
     }
 
@@ -141,10 +142,11 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
      * @param depthTest  whether it tests depth
      * @param depthWrite whether it writes depth
      * @param maskClip   a {@code masked} material's threshold
+     * @param separateTranslucency drawn after every other translucent draw, Unreal's separate translucency
      */
     @Desugar
     public record Draw(@Nullable Boolean twoSided, @Nullable String cull, @Nullable Boolean depthTest,
-                       @Nullable Boolean depthWrite, @Nullable Float maskClip) {
+                       @Nullable Boolean depthWrite, @Nullable Float maskClip, @Nullable Boolean separateTranslucency) {
     }
 
     /** Whether it draws with {@code other}'s programs: the same permutation. */
@@ -257,6 +259,12 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
         /** Whether it writes depth, over its blend's own. */
         public Builder depthWrite(boolean write) {
             state.put("depth_write", write);
+            return this;
+        }
+
+        /** Drawn after every other translucent draw, still depth-tested: Unreal's separate translucency. */
+        public Builder separateTranslucency() {
+            state.put("separate_translucency", true);
             return this;
         }
 

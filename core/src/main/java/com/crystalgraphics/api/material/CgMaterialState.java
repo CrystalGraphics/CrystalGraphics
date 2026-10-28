@@ -25,6 +25,13 @@ import java.util.Objects;
  * decal.applyProperties(b -> b.set1f("_Clip", 0.33f));
  * }</pre>
  *
+ * <p>Drawn after every other translucent draw, as Unreal's separate translucency, still tested against the scene's
+ * depth:</p>
+ *
+ * <pre>{@code
+ * CgMaterialState specks = CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).separateTranslucency().build();
+ * }</pre>
+ *
  * <ul>
  *   <li><b>A blend or clip compiles</b>: the generated fragment {@code main} is built from the blend (fog, the HDR
  *       scene's decode, smoke dimming, the Emissive merge), so each blend mode is a program of its own, made on first
@@ -32,12 +39,13 @@ import java.util.Objects;
  *   <li><b>Refused at load</b>, naming the shader: {@code depthWrite} with {@code clip()}, or on a shader whose
  *       {@code "Depth"} tag owns its depth; {@code clip()} on a {@code "Prepass"} shader.</li>
  *   <li>The queue stays the shader's: an additive mode on an opaque-queue shader still draws in the opaque pass.</li>
+ *   <li>Separate translucency orders a translucent draw only: on an opaque-queue shader it does nothing.</li>
  * </ul>
  */
 public final class CgMaterialState {
 
     /** Everything as the shader authors it. */
-    public static final CgMaterialState SHADER = new CgMaterialState(null, false, null, null);
+    public static final CgMaterialState SHADER = new CgMaterialState(null, false, null, null, false);
 
     @Nullable
     private final CgBlendMode blend;
@@ -46,13 +54,15 @@ public final class CgMaterialState {
     private final CgCullState cull;
     @Nullable
     private final Boolean depthWrite;
+    private final boolean separateTranslucency;
 
     private CgMaterialState(@Nullable CgBlendMode blend, boolean clip, @Nullable CgCullState cull,
-                            @Nullable Boolean depthWrite) {
+                            @Nullable Boolean depthWrite, boolean separateTranslucency) {
         this.blend = blend;
         this.clip = clip;
         this.cull = cull;
         this.depthWrite = depthWrite;
+        this.separateTranslucency = separateTranslucency;
     }
 
     public static Builder builder() {
@@ -82,7 +92,15 @@ public final class CgMaterialState {
         return depthWrite;
     }
 
-    /** Whether it changes what is compiled: a blend or a clip. Cull and depth write never do. */
+    /**
+     * Whether it draws after every other translucent draw: Unreal's {@code bEnableSeparateTranslucency}, its own
+     * translucent pass composited after the rest and unbent by their distortion.
+     */
+    public boolean separateTranslucency() {
+        return separateTranslucency;
+    }
+
+    /** Whether it changes what is compiled: a blend or a clip. Cull, depth write and separate translucency never do. */
     public boolean changesProgram() {
         return blend != null || clip;
     }
@@ -114,12 +132,13 @@ public final class CgMaterialState {
         if (this == o) return true;
         if (!(o instanceof CgMaterialState)) return false;
         CgMaterialState s = (CgMaterialState) o;
-        return clip == s.clip && blend == s.blend && Objects.equals(cull, s.cull) && Objects.equals(depthWrite, s.depthWrite);
+        return clip == s.clip && blend == s.blend && Objects.equals(cull, s.cull) && Objects.equals(depthWrite, s.depthWrite)
+                && separateTranslucency == s.separateTranslucency;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(blend, clip, cull, depthWrite);
+        return Objects.hash(blend, clip, cull, depthWrite, separateTranslucency);
     }
 
     @Override
@@ -127,7 +146,7 @@ public final class CgMaterialState {
         if (equals(SHADER)) return "CgMaterialState{shader's}";
         return "CgMaterialState{" + (blend == null ? "" : "blend " + blend) + (clip ? " clip" : "")
                 + (cull == null ? "" : " cull " + (cull.enabled() ? cull.face() : "none"))
-                + (depthWrite == null ? "" : " depthWrite " + depthWrite) + "}";
+                + (depthWrite == null ? "" : " depthWrite " + depthWrite) + (separateTranslucency ? " separate" : "") + "}";
     }
 
     /** Builds a {@link CgMaterialState}; anything unset stays the shader's. */
@@ -136,6 +155,7 @@ public final class CgMaterialState {
         private boolean clip;
         private CgCullState cull;
         private Boolean depthWrite;
+        private boolean separateTranslucency;
 
         private Builder() {}
 
@@ -171,11 +191,17 @@ public final class CgMaterialState {
             return this;
         }
 
+        /** Drawn after every other translucent draw, still depth-tested: Unreal's separate translucency. */
+        public Builder separateTranslucency() {
+            this.separateTranslucency = true;
+            return this;
+        }
+
         public CgMaterialState build() {
             if (clip && depthWrite != null) {
                 throw new IllegalStateException("A clipped material writes depth where it draws: drop depthWrite");
             }
-            CgMaterialState state = new CgMaterialState(blend, clip, cull, depthWrite);
+            CgMaterialState state = new CgMaterialState(blend, clip, cull, depthWrite, separateTranslucency);
             return state.equals(SHADER) ? SHADER : state;
         }
     }

@@ -160,7 +160,7 @@ public final class CgMaterialDefinitions {
                 state != null && state.get("cull") instanceof String ? (String) state.get("cull") : null,
                 bool(state, "depth_test"), bool(state, "depth_write"),
                 state != null && state.get("mask_clip") instanceof Number ? ((Number) state.get("mask_clip")).floatValue()
-                        : null);
+                        : null, bool(state, "separate_translucency"));
         if (permutation.clip() && draw.maskClip() != null && !constants.containsKey(CLIP)) {
             CgMaterialProperty clip = props.get(CLIP);
             if (clip == null) {

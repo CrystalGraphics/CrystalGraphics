@@ -1572,6 +1572,12 @@ public final class CgWorldRenderer {
         orders[count] = d.order;
         batchKeys[count] = d.batchKey;
         layers[count] = d.layer;
+        if (d.material.state().separateTranslucency()
+                && d.queue >= CgRenderQueue.TRANSPARENT_THRESHOLD && d.queue < CgRenderQueue.OVERLAY_THRESHOLD) {
+            // Unreal's separate translucency: after every other translucent draw, unbent by their distortion
+            queues[count] = Math.max(d.queue, CgRenderQueue.AFTER_DISTORTION);
+            if (d.layer.rank() < CgSortLayer.SEPARATE_TRANSLUCENCY.rank()) layers[count] = CgSortLayer.SEPARATE_TRANSLUCENCY;
+        }
         grouped[count] = d.inGroup;
         if (d.inGroup) {
             groupPositions[count * 3] = d.groupX;
