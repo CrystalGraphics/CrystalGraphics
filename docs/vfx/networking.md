@@ -209,9 +209,11 @@ beam.remove();                                                // removal plays; 
   means it never starts.
 - **Pooled.** A looping cue's effects are reused once a play ends, reset whole first. `cues.prewarm(cue, n)` grows a
   pool ahead; once warm, playing allocates nothing.
-- **A lens is a post volume for the cue's life.** Its `post` is a post block: `bloom`, `vignette`, `chromatic`, `exposure.flash`, `white_balance`. `in_world` places it at
-  the cue's point: full within `inner` of the camera, gone by `outer`, and everywhere where neither is set. Without
-  `in_world` it covers the whole screen, and only on the machine that controls the cue's target (`localControl`).
+- **A lens is a post volume for the cue's life.** Its `post` is a post block: `bloom`, `vignette`, `chromatic`,
+  `exposure.flash`, `white_balance`. It covers the whole screen at full strength, decided once as the cue starts.
+  With `in_world` it plays where the viewer stands within `outer` of the cue's point (within `inner` where `outer` is
+  not past it; anywhere where neither is set): `cues.viewer(out -> ...)` gives the local player's position, or the
+  camera's. Without `in_world` it plays only on the machine that controls the cue's target (`localControl`).
 - **Seeded.** An entry's `chance` is rolled from the parameters' `seed`, so every viewer plays the same entries.
 - **On a dedicated server** only `authoritative: true` cues play, with no effects.
 

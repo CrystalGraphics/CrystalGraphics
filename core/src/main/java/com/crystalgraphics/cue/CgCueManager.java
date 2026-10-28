@@ -49,6 +49,7 @@ import com.crystalgraphics.world.CgAttachment;
  * CgCueManager cues = world.add(new CgCueManager(CgVfxAssets.instance()));
  * cues.effects(new CgVfxCueEffects(vfx, cues));                    // a client's; a server keeps none
  * cues.localControl(a -> a.entity() == localPlayerId);             // for local_only and not_local conditions
+ * cues.viewer(out -> player.position(out));                        // for in-world lenses: the pawn, else the camera
  *
  * cues.execute(MYMOD_CUE_HIT, new CgCueParameters().at(x, y, z));  // a burst: Unreal's Execute
  * CgCuePlaying aura = cues.add(MYMOD_CUE_AURA, params);            // a looping cue: Add
@@ -155,6 +156,7 @@ public final class CgCueManager extends CgWorldSubsystem {
     private int queued;
     private CgCueEffects effects = CgCueEffects.NONE;
     private Predicate<CgAttachment> localControl = a -> false;
+    private Viewer viewer = out -> false;
     private IntFunction<CgAttachment> entities = id -> null;
     @Nullable
     private SequenceStarter sequences;
@@ -197,6 +199,27 @@ public final class CgCueManager extends CgWorldSubsystem {
     public CgCueManager localControl(Predicate<CgAttachment> localControl) {
         this.localControl = localControl;
         return this;
+    }
+
+    /** Where this machine's player stands, for the lenses that play in the world. */
+    @FunctionalInterface
+    public interface Viewer {
+        /** Writes the absolute position into {@code out}; false where there is no one to stand anywhere. */
+        boolean position(double[] out);
+    }
+
+    /**
+     * Where this machine's viewer stands: its pawn, or its camera where the host has none. An in-world lens plays
+     * only for a viewer within its reach as it starts; without a viewer, none plays.
+     */
+    public CgCueManager viewer(Viewer viewer) {
+        this.viewer = viewer;
+        return this;
+    }
+
+    /** This machine's viewer's position into {@code out}, by {@link #viewer(Viewer)}; false where there is none. */
+    public boolean viewerAt(double[] out) {
+        return viewer.position(out);
     }
 
     /** What an entity's network id is here, for the instigator and target a server sends; -1 is never asked. */

@@ -37,9 +37,9 @@ import com.crystalgraphics.world.CgEntityAttachments;
  * }</pre>
  *
  * <ul>
- *   <li>{@code particles} and a looping block's {@code lens} play here: the lens a post volume for the cue's life, at its
- *       point within {@code inner} fading to {@code outer} where it is {@code in_world}, else on the whole screen of
- *       the target's own machine ({@link CgCueManager#localControl}).
+ *   <li>{@code particles} and a looping block's {@code lens} play here. The lens is a post volume over the whole
+ *       screen for the cue's life. In the world it plays where the viewer ({@link CgCueManager#viewer}) stands within
+ *       its reach as it starts; otherwise only on the target's own machine ({@link CgCueManager#localControl}).
  *       Sounds, shakes, force feedback and decals are their own systems'.</li>
  *   <li>{@code attach_to_target} follows the target's socket where the target is an entity, else the target itself;
  *       {@code do_not_attach} spawns at the socket and stays.</li>
@@ -50,6 +50,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
     private final CgVfxSystem vfx;
     private final CgCueManager cues;
     private final double[] point = new double[3];
+    private final double[] viewer = new double[3];
     private final Quaternionf turn = new Quaternionf();
 
     public CgVfxCueEffects(CgVfxSystem vfx, CgCueManager cues) {
@@ -67,16 +68,27 @@ public final class CgVfxCueEffects implements CgCueEffects {
         return new Playing(cue);
     }
 
+    /** {@code lens}'s look over the whole screen, at full weight. */
+    static CgPostVolume openLens(CgPostStack stack, Lens lens) {
+        return stack.volume(0, CgPostBlock.settings(lens.post() == null ? Map.of() : lens.post()));
+    }
+
     /**
-     * A volume for {@code lens} at {@code (x, y, z)}: in the world, full within its {@code inner} and gone by its
-     * {@code outer} (a cliff at {@code inner} where {@code outer} is not past it, everywhere where neither is set);
-     * otherwise on the whole screen.
+     * Unreal's falloff of a world effect at {@code distance}: 1 where neither radius is set, falling linearly from
+     * {@code inner} to {@code outer}, or a cliff at {@code inner} where {@code outer} is not past it.
      */
-    static CgPostVolume openLens(CgPostStack stack, Lens lens, double x, double y, double z) {
-        CgPostVolume volume = stack.volume(0, CgPostBlock.settings(lens.post() == null ? Map.of() : lens.post()));
-        if (lens.inWorld() && (lens.inner() > 0f || lens.outer() > 0f))
-            volume.at(x, y, z).radius(lens.inner()).blend(Math.max(0f, lens.outer() - lens.inner()));
-        return volume;
+    static float falloff(double distance, float inner, float outer) {
+        if (inner <= 0f && outer <= 0f) return 1f;
+        if (inner < outer) return (float) (1.0 - Math.max(0.0, Math.min(1.0, (distance - inner) / (outer - inner))));
+        return distance < inner ? 1f : 0f;
+    }
+
+    /** Whether {@code lens} plays on this machine as its cue starts: once, at full strength for its life, as Unreal's. */
+    private boolean lensPlays(Lens lens, CgCueParameters at) {
+        if (!lens.inWorld()) return cues.locallyControlled(at.target());
+        if (!cues.viewerAt(viewer)) return false;
+        double dx = viewer[0] - at.x(), dy = viewer[1] - at.y(), dz = viewer[2] - at.z();
+        return falloff(Math.sqrt(dx * dx + dy * dy + dz * dz), lens.inner(), lens.outer()) > 0f;
     }
 
     /** Plays each of {@code block}'s systems that spawns here, into {@code into} when it is kept. */
@@ -137,9 +149,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
             play(cue.looping(), at, age, alive);
             for (int i = from; i < alive.size(); i++) loops.add(alive.get(i));
             Lens l = cue.looping().lens();
-            // Out of the world, a lens is the target's camera's alone.
-            if (l != null && cues.spawns(l.where().condition(), at, 0) && (l.inWorld() || cues.locallyControlled(at.target())))
-                lens = openLens(CgPostStack.get(), l, at.x(), at.y(), at.z());
+            if (l != null && cues.spawns(l.where().condition(), at, 0) && lensPlays(l, at)) lens = openLens(CgPostStack.get(), l);
         }
 
         private void closeLens() {
