@@ -16,8 +16,8 @@ import java.util.Objects;
  *   <li>Written from any thread, read on the render thread: floats, read at most a frame late.</li>
  *   <li>Neutral values are a look's absence: bloom 1, flash 0, vignette 0, chromatic 0, impact 0, fade 0, and no
  *       tonemapper. A firing with none is drawn as it was, a host's pixels back byte for byte.</li>
- *   <li>The tonemapper's film settings are Unreal's, at its defaults: a volume's values blend toward them by its
- *       weight, as Unreal blends post settings.</li>
+ *   <li>The tonemapper's film settings are Unreal's, at its defaults, each its own field: a volume setting one moves
+ *       that one alone, by its weight, as Unreal's {@code bOverride_} flags do.</li>
  *   <li>The focus (where chromatic aberration and speed lines centre) defaults to the volume's position on screen,
  *       or the screen's centre for a volume with none.</li>
  * </ul>
@@ -25,7 +25,8 @@ import java.util.Objects;
 public final class CgPostSettings {
 
     public static final int BLOOM = 1, FLASH = 1 << 1, VIGNETTE = 1 << 2, CHROMATIC = 1 << 3, IMPACT = 1 << 4, FOCUS = 1 << 5,
-            FADE = 1 << 6, TONEMAP = 1 << 7;
+            FADE = 1 << 6, TONEMAP = 1 << 7, FILM_CONTRAST = 1 << 8, FILM_DYNAMIC_RANGE = 1 << 9, FILM_TOE = 1 << 10,
+            FILM_HEAL = 1 << 11, FILM_SATURATION = 1 << 12, WHITE_BALANCE = 1 << 13;
 
     // Volatile: written on any thread, read on the render thread.
     volatile int overrides;
@@ -117,20 +118,21 @@ public final class CgPostSettings {
         filmContrast = contrast;
         filmDynamicRange = dynamicRange;
         filmToe = toe;
+        overrides |= FILM_CONTRAST | FILM_DYNAMIC_RANGE | FILM_TOE;
         return filmHeal(heal);
     }
 
     /** {@code FilmHealAmount}: how far toward white the shoulder heals, 0 to 1. */
     public CgPostSettings filmHeal(float heal) {
         filmHeal = heal;
-        overrides |= TONEMAP;
+        overrides |= FILM_HEAL;
         return this;
     }
 
     /** {@code FilmSaturation}, 0 to 2: 1 leaves colour as it is. */
     public CgPostSettings filmSaturation(float saturation) {
         filmSaturation = saturation;
-        overrides |= TONEMAP;
+        overrides |= FILM_SATURATION;
         return this;
     }
 
@@ -138,7 +140,7 @@ public final class CgPostSettings {
     public CgPostSettings whiteBalance(float temp, float tint) {
         whiteTemp = temp;
         whiteTint = tint;
-        overrides |= TONEMAP;
+        overrides |= WHITE_BALANCE;
         return this;
     }
 
@@ -304,12 +306,12 @@ public final class CgPostSettings {
         if ((o & FLASH) != 0) flash += (from.flash - flash) * weight;
         if ((o & VIGNETTE) != 0) vignette += (from.vignette - vignette) * weight;
         if ((o & CHROMATIC) != 0) chromatic += (from.chromatic - chromatic) * weight;
-        if ((o & TONEMAP) != 0) {
-            filmContrast += (from.filmContrast - filmContrast) * weight;
-            filmDynamicRange += (from.filmDynamicRange - filmDynamicRange) * weight;
-            filmToe += (from.filmToe - filmToe) * weight;
-            filmHeal += (from.filmHeal - filmHeal) * weight;
-            filmSaturation += (from.filmSaturation - filmSaturation) * weight;
+        if ((o & FILM_CONTRAST) != 0) filmContrast += (from.filmContrast - filmContrast) * weight;
+        if ((o & FILM_DYNAMIC_RANGE) != 0) filmDynamicRange += (from.filmDynamicRange - filmDynamicRange) * weight;
+        if ((o & FILM_TOE) != 0) filmToe += (from.filmToe - filmToe) * weight;
+        if ((o & FILM_HEAL) != 0) filmHeal += (from.filmHeal - filmHeal) * weight;
+        if ((o & FILM_SATURATION) != 0) filmSaturation += (from.filmSaturation - filmSaturation) * weight;
+        if ((o & WHITE_BALANCE) != 0) {
             whiteTemp += (from.whiteTemp - whiteTemp) * weight;
             whiteTint += (from.whiteTint - whiteTint) * weight;
         }

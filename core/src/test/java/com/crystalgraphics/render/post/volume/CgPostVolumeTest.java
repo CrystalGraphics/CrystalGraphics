@@ -32,6 +32,19 @@ public class CgPostVolumeTest {
     }
 
     @Test
+    public void filmSettings_areEachTheirOwnField() {
+        CgPostSettings resolved = new CgPostSettings();
+        resolved.reset();
+        resolved.blend(new CgPostSettings().tonemap().whiteBalance(5000f, 0.5f), 1f, 0.5f, 0.5f);
+        resolved.blend(new CgPostSettings().filmHeal(0.18f), 1f, 0.5f, 0.5f);
+        assertEquals(0.18f, resolved.filmHeal(), 1e-6f);
+        assertEquals("the heal's volume left the white balance alone", 5000f, resolved.whiteTemp(), 1e-3f);
+        assertEquals(0.5f, resolved.whiteTint(), 1e-6f);
+        assertEquals("and the film's other fields at Unreal's defaults", 4f, resolved.filmDynamicRange(), 0f);
+        assertEquals(true, resolved.tonemaps());
+    }
+
+    @Test
     public void focus_ofOneFadingVolume_staysItsOwn() {
         CgPostSettings resolved = new CgPostSettings();
         resolved.reset();

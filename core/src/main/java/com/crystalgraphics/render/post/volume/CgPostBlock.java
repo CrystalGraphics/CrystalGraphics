@@ -15,8 +15,8 @@ import java.util.Map;
  * }</pre>
  *
  * <ul>
- *   <li>Reads {@code bloom}, {@code vignette}, {@code chromatic} and {@code exposure.flash}: the fields the stack
- *       draws today. Other keys are not settings yet and are left out of both directions.</li>
+ *   <li>Reads {@code bloom}, {@code vignette}, {@code chromatic}, {@code exposure.flash} and {@code white_balance}:
+ *       the fields the stack draws today. Other keys are not settings yet and are left out of both directions.</li>
  * </ul>
  */
 public final class CgPostBlock {
@@ -33,7 +33,14 @@ public final class CgPostBlock {
         if (block.get("exposure") instanceof Map && ((Map<?, ?>) block.get("exposure")).get("flash") instanceof Number) {
             s.flash(((Number) ((Map<?, ?>) block.get("exposure")).get("flash")).floatValue());
         }
+        if (block.get("white_balance") instanceof Map<?, ?> wb) {
+            s.whiteBalance(number(wb.get("temperature"), 6500f), number(wb.get("tint"), 0f));
+        }
         return s;
+    }
+
+    private static float number(Object v, float fallback) {
+        return v instanceof Number n ? n.floatValue() : fallback;
     }
 
     /** The block {@code s} writes: a key for each field it overrides, in the format's order. */
@@ -47,6 +54,12 @@ public final class CgPostBlock {
         }
         if (s.overrides(CgPostSettings.VIGNETTE)) b.put("vignette", (double) s.vignette());
         if (s.overrides(CgPostSettings.CHROMATIC)) b.put("chromatic", (double) s.chromatic());
+        if (s.overrides(CgPostSettings.WHITE_BALANCE)) {
+            Map<String, Object> wb = new LinkedHashMap<>();
+            wb.put("temperature", (double) s.whiteTemp());
+            wb.put("tint", (double) s.whiteTint());
+            b.put("white_balance", wb);
+        }
         return b;
     }
 }

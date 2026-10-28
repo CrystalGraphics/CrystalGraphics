@@ -38,7 +38,8 @@ public class CgPostBlockTest {
 
     @Test
     public void theBlockRoundTripsExactly() {
-        Map<String, Object> b = block("bloom", 2.0, "exposure", block("flash", 1.5), "chromatic", 0.25);
+        Map<String, Object> b = block("bloom", 2.0, "exposure", block("flash", 1.5), "chromatic", 0.25,
+                "white_balance", block("temperature", 5000.0, "tint", 0.25));
         CgPostSettings s = CgPostBlock.settings(b);
         assertTrue(s.overrides(CgPostSettings.BLOOM) && s.overrides(CgPostSettings.FLASH));
         assertFalse(s.overrides(CgPostSettings.VIGNETTE));
