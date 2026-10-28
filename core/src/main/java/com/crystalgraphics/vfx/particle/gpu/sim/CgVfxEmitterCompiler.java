@@ -958,8 +958,10 @@ public final class CgVfxEmitterCompiler {
                     }
                     bool wasResting = p.resting;
                     int inst = _InstanceAt + int(p.slot) * STEP_INSTANCE_ROW;
-                    // A killed slot: its particles end here, firing nothing.
-                    if (step_instance(inst + 2).w > 0.0) return;
+                    // A killed slot: its particles end here, firing nothing. A slot's first step after it opens drops
+                    // what an earlier opening left in it (Niagara resets a new instance's GPU data), keeping its spawns.
+                    float killed = step_instance(inst + 2).w;
+                    if (killed > 1.5 ? CG_ELEMENT < live : killed > 0.0) return;
 @TRAILS@                    // A local slot's live particles turn with it about its origin (Niagara's Local Space); the identity
                     // for any other.
                     if (CG_ELEMENT < live) {

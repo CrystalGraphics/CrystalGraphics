@@ -28,6 +28,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -386,6 +387,41 @@ public class CgVfxParticlePoolTest {
         assertEquals(2, pool.paramRows());
         assertEquals(3, pool.open(b, 5));                               // b's row was freed: written again
         assertEquals(2, pool.paramRows());
+    }
+
+    @Test
+    public void aSlotsFirstStepDropsWhatAnEarlierOpeningLeft() {
+        Def def = new Def("a", CgVfxDrawLayout.QUADS, new Pull(1f));
+        CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, def);
+        int s0 = pool.open(def, 100), s1 = pool.open(def, 100);
+        // A step dropped for a missing row keeps s0 fresh for the step that replaces it.
+        pool.beginStep(0.01f, 1f, 0f, 0f);
+        pool.instance(s0, 0, 1f, 0f, new At(0, 0f));
+        assertThrows(IllegalStateException.class, pool::endStep);
+        step(pool, s0, false, s1, false);
+        assertEquals(CgVfxParticlePool.FRESH, killLane(pool, 0, s0));
+        assertEquals(CgVfxParticlePool.FRESH, killLane(pool, 0, s1));
+        step(pool, s0, false, s1, true);
+        assertEquals(0, killLane(pool, 1, s0));
+        assertEquals(Float.floatToRawIntBits(1f), killLane(pool, 1, s1));
+        pool.discardQueued();
+        pool.close(s1);
+        assertEquals(s1, pool.open(def, 100));
+        step(pool, s0, false, s1, false);
+        assertEquals(0, killLane(pool, 0, s0));
+        assertEquals(CgVfxParticlePool.FRESH, killLane(pool, 0, s1));
+    }
+
+    private static void step(CgVfxParticlePool pool, int a, boolean killA, int b, boolean killB) {
+        pool.beginStep(0.01f, 1f, 0f, 0f);
+        pool.instance(a, 0, 1f, 0f, new At(0, 0f), 1f, killA);
+        pool.instance(b, 0, 1f, 0f, new At(0, 0f), 1f, killB);
+        pool.endStep();
+    }
+
+    private static int killLane(CgVfxParticlePool pool, int step, int slot) {
+        return pool.instanceWords()[pool.stepInstanceAt(step) + slot * pool.shape().instanceRowVectors() * 4
+                + CgVfxParticlePool.FRESH_WORD];
     }
 
     @Test

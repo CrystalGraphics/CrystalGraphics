@@ -115,7 +115,7 @@ public final class CgVfxParticlePool {
 
     /**
      * An instance row's own vec4s ahead of its modules' lanes: {@code uvec4(param row, seed bits, slot, 0)},
-     * {@code vec4(source xyz, time)}, {@code vec4(share, ground height or NaN, step scale, 1 to kill)}, {@code ivec4(origin's whole
+     * {@code vec4(source xyz, time)}, {@code vec4(share, ground height or NaN, step scale, 1 to kill or 2 to drop what the slot held before this step)}, {@code ivec4(origin's whole
      * blocks, 0)}, {@code vec4(origin within its block, 0)}, {@code vec4(the followed entity's box's centre from the source, its loop's
      * seconds)},
      * {@code vec4(its half extents, 0)}, {@code vec4(its rotation, a quaternion)}, {@code vec4(its rotation's change since
@@ -287,6 +287,11 @@ public final class CgVfxParticlePool {
     /** Each open slot's opening, numbered from 1 in the pool's order; 0 once closed. */
     private long[] slotOpened = new long[0];
     private long openings;
+    /** Per slot: opened and not yet written a row, so its first step drops what an earlier opening of it left. */
+    private boolean[] slotFresh = new boolean[0];
+    /** Where an instance row holds its kill lane, and the value saying the slot is fresh. */
+    static final int FRESH_WORD = 11;
+    static final int FRESH = Float.floatToRawIntBits(2f);
     /** Per slot: its ground as its last step gave it, relative to its origin; NaN for none. */
     private float[] slotGround = new float[0];
     /** Each slot's loop seconds at its last instance row: what a child's count curve reads ({@link CgVfxEvent#countAt}). */
@@ -1380,6 +1385,7 @@ public final class CgVfxParticlePool {
         slotShape[slot] = own;
         slotRow[slot] = useRow(emitter, own);
         slotOpened[slot] = ++openings;
+        slotFresh[slot] = true;
         slotScale[slot] = 1f;
         slotBindScale[slot] = 1f;
         Arrays.fill(socketPrev, slot * CgVfxSockets.MAX * 4, (slot + 1) * CgVfxSockets.MAX * 4, 0);
@@ -1746,7 +1752,7 @@ public final class CgVfxParticlePool {
         double bx = Math.floor(ox), by = Math.floor(oy), bz = Math.floor(oz);
         words.uvec4(slotRow[slot], seedBits, slot, 0)
                 .vec4(view.sourceX(), view.sourceY(), view.sourceZ(), view.time())
-                .vec4(share, groundY, stepScale, kill ? 1f : 0f)
+                .vec4(share, groundY, stepScale, kill ? 1f : slotFresh[slot] ? 2f : 0f)
                 .ivec4((int) bx, (int) by, (int) bz, 0)
                 .vec4((float) (ox - bx), (float) (oy - by), (float) (oz - bz), 0f)
                 .vec4(view.boxX(), view.boxY(), view.boxZ(), view.loopSeconds())
@@ -1754,6 +1760,7 @@ public final class CgVfxParticlePool {
                 .vec4(view.rotationX(), view.rotationY(), view.rotationZ(), view.rotationW())
                 .vec4(view.turnX(), view.turnY(), view.turnZ(), view.turnW());
         words.finish("its instance row's header");
+        slotFresh[slot] = false;
         for (int i = 0; i < shape.modules(); i++) {
             int lanes = shape.laneCount(i);
             if (lanes == 0) continue;
@@ -2013,7 +2020,12 @@ public final class CgVfxParticlePool {
         inStep = false;
         for (int slot = 0; slot < stepSlots[s]; slot++) {
             if (slotEmitter[slot] != null && written[slot] != s + 1) {
-                // The step is dropped whole, so the queue holds only complete steps.
+                // The step is dropped whole, so the queue holds only complete steps; a slot's first row goes with it.
+                for (int w = 0; w < slotCount; w++) {
+                    if (written[w] == s + 1 && instances[stepInstanceAt[s] + w * instanceWords + FRESH_WORD] == FRESH) {
+                        slotFresh[w] = true;
+                    }
+                }
                 instanceEnd = stepInstanceAt[s];
                 spawnEnd = stepSpawnAt[s];
                 trailEnd = stepTrailAt[s];
@@ -2292,6 +2304,8 @@ public final class CgVfxParticlePool {
             recording.update(records, 0, bytes);
         }
         recording.update(countBuffer, liveOffset(), new int[]{count}, 0, 1);
+        // What it seeds is the pool's whole content, each slot's as it is now: nothing of an earlier opening to drop.
+        Arrays.fill(slotFresh, false);
     }
 
     /**
@@ -2762,6 +2776,7 @@ public final class CgVfxParticlePool {
         slotScale = Arrays.copyOf(slotScale, size);
         slotBindScale = Arrays.copyOf(slotBindScale, size);
         slotOpened = Arrays.copyOf(slotOpened, size);
+        slotFresh = Arrays.copyOf(slotFresh, size);
         slotGround = Arrays.copyOf(slotGround, size);
         slotLoop = Arrays.copyOf(slotLoop, size);
         socketPrev = Arrays.copyOf(socketPrev, size * CgVfxSockets.MAX * 4);
