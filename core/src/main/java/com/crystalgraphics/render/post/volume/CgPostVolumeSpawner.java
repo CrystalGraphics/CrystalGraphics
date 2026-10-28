@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 import javax.annotation.Nullable;
@@ -13,6 +14,7 @@ import org.joml.Vector4f;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.asset.tree.CgAssetException;
+import com.crystalgraphics.camera.CgCameraSystem;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgUnits;
@@ -24,6 +26,7 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.sequence.CgSequenceTarget;
 import com.crystalgraphics.sequence.definition.CgSequenceBinding;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
+import com.crystalgraphics.sequence.definition.CgSequenceTrack;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.spawn.CgSequenceSpawned;
 import com.crystalgraphics.sequence.spawn.CgSequenceSpawner;
@@ -45,7 +48,11 @@ import com.crystalgraphics.world.CgAttachment;
  * }</pre>
  *
  * <ul>
- *   <li>An {@code unbound} volume applies everywhere; otherwise it stands where its {@code at} places it, full within
+ *   <li>An {@code unbound} volume in a sequence with a camera ({@code camera_animation}, {@code camera_cut}) is that
+ *       camera's post settings: in a viewer's view at the weight its view goes through the camera
+ *       ({@link CgCameraSystem#weightOf}), so a viewer outside it never sees them. Installed without a camera
+ *       system, or in a sequence with none, it applies everywhere.</li>
+ *   <li>Otherwise it stands where its {@code at} places it, full within
  *       {@code radius} and fading over {@code blend_radius}, following that place each frame.</li>
  *   <li>Its weight starts at 1, as Unreal's; a track keys it from there.</li>
  *   <li>The stack orders volumes by whole priorities: a fractional {@code priority} fails at play, naming it.</li>
@@ -56,15 +63,39 @@ import com.crystalgraphics.world.CgAttachment;
  */
 public final class CgPostVolumeSpawner implements CgSequenceSpawner {
 
-    private final CgPostStack stack;
+    /** The track kinds that give a sequence a camera of its own, whose post settings its unbound volumes are. */
+    private static final Set<String> CAMERA_KINDS = Set.of("camera_animation", "camera_cut");
 
+    private final CgPostStack stack;
+    @Nullable
+    private final CgCameraSystem cameras;
+
+    /** Over {@code stack}, with no camera system: every unbound volume applies everywhere. */
     public CgPostVolumeSpawner(CgPostStack stack) {
-        this.stack = stack;
+        this(stack, null);
     }
 
-    /** Registers one for the {@code post} kind on {@code sequencer}, over the client's post stack. */
+    public CgPostVolumeSpawner(CgPostStack stack, @Nullable CgCameraSystem cameras) {
+        this.stack = stack;
+        this.cameras = cameras;
+    }
+
+    /** Registers one for the {@code post} kind on {@code sequencer}, over the client's post stack, with no camera system. */
     public static void install(CgSequencer sequencer) {
-        sequencer.spawner("post", new CgPostVolumeSpawner(CgPostStack.get()));
+        install(sequencer, null);
+    }
+
+    /**
+     * Registers one for the {@code post} kind on {@code sequencer}, over the client's post stack. A sequence with a
+     * camera of its own makes its unbound volumes that camera's post settings, weighed by {@code cameras}.
+     */
+    public static void install(CgSequencer sequencer, @Nullable CgCameraSystem cameras) {
+        sequencer.spawner("post", new CgPostVolumeSpawner(CgPostStack.get(), cameras));
+    }
+
+    private static boolean hasCamera(CgSequenceDefinition d) {
+        for (CgSequenceTrack t : d.tracks()) if (CAMERA_KINDS.contains(t.kind())) return true;
+        return false;
     }
 
     @Override
@@ -92,7 +123,10 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
                 blends.add(new Blend(b, post, stack.add(post), screen));
             }
         }
-        Spawned spawned = new Spawned(volume, bound && spawnable.follow() ? at : null, blends);
+        // Unbound in a sequence with a camera: that camera's post settings (UCameraComponent::PostProcessSettings), in a
+        // viewer's view only at the weight its view goes through that camera.
+        boolean camera = !bound && cameras != null && hasCamera(player.definition());
+        Spawned spawned = new Spawned(volume, bound && spawnable.follow() ? at : null, blends, camera ? cameras : null, player);
         spawned.weigh();
         return spawned;
     }
@@ -120,12 +154,18 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
         private final CgAttachment at;
         private final List<Blend> blends;
         private final double[] point = new double[3];
-        private float weight = 1f;
+        @Nullable
+        private final CgCameraSystem cameras;
+        private final Object owner;
+        private float weight = 1f, viewed = 1f;
 
-        Spawned(CgPostVolume volume, CgAttachment at, List<Blend> blends) {
+        Spawned(CgPostVolume volume, CgAttachment at, List<Blend> blends, @Nullable CgCameraSystem cameras, Object owner) {
             this.volume = volume;
             this.at = at;
             this.blends = blends;
+            this.cameras = cameras;
+            this.owner = owner;
+            if (cameras != null) viewed = 0f;   // not in a view until its camera is
         }
 
         @Override
@@ -136,7 +176,7 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
         @Override
         public void set(int slot, float[] values, int mask) {
             if (slot == WEIGHT && (mask & 1) != 0) {
-                volume.weight(weight = values[0]);
+                weight = values[0];
                 weigh();
             }
         }
@@ -146,9 +186,14 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
             if (slot == WEIGHT) out[0] = weight;
         }
 
-        /** Each post material at its own weight times the volume's, as Unreal blends a volume's weighted blendables. */
+        /**
+         * The volume at its weight, times its camera's in the view for a camera's; each post material at its own weight
+         * times that, as Unreal blends a volume's weighted blendables.
+         */
         void weigh() {
-            for (Blend b : blends) b.post.weight(b.blendable.enabled() ? b.blendable.weight() * weight : 0f);
+            float w = weight * viewed;
+            volume.weight(w);
+            for (Blend b : blends) b.post.weight(b.blendable.enabled() ? b.blendable.weight() * w : 0f);
         }
 
         @Override
@@ -161,6 +206,13 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
 
         @Override
         public void update() {
+            if (cameras != null) {
+                float v = cameras.weightOf(owner);
+                if (v != viewed) {
+                    viewed = v;
+                    weigh();
+                }
+            }
             if (at != null && at.place(point, null)) volume.at(point[0], point[1], point[2]);
             for (Blend b : blends) b.screen();
         }

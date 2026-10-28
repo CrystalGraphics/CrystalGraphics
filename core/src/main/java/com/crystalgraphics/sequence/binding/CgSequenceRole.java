@@ -38,6 +38,15 @@ public interface CgSequenceRole extends CgSequenceTarget {
     @Nullable
     CgAttachment attachment(@Nullable String socket);
 
+    /**
+     * Its prefab's node {@code name} as an attachment ({@code binding: { role: caster, node: Mesh }}): where that node
+     * stands and turns each frame. Null if it has no such node, which fails the play, naming it.
+     */
+    @Nullable
+    default CgAttachment node(String name) {
+        return null;
+    }
+
     /** Who it is, for a {@code crystalgraphics:character} condition; null for no one in particular. */
     @Nullable
     default String character() {

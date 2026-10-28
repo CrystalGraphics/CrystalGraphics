@@ -20,6 +20,7 @@ root; a new track kind is a subpackage of its own when it brings types besides i
 | `sequence.animation` | The `animation` kind: `CgSequenceAnimationEvaluator`, `CgSequenceSkeletal` (a target playing clips) |
 | `sequence.event` | The `event` kind and triggered sections: `CgSequenceEventEvaluator`, `CgSequenceEventListener` (sides `rpg`, `ours`), `CgEventChannel` (the sweep), `CgEventTrigger` |
 | `sequence.notify` | Notify kinds a mod registers: `CgNotifyKind`, `CgNotifyContext`, `CgNotifyEvaluator` |
+| `sequence.camera` | The camera kinds: `CgCineCamera` (the `camera` spawnable's pose), `CgCameraAnimationEvaluator` (`camera_animation`, an additive modifier on the viewer's camera; the camera system is `camera`'s) |
 | `sequence.net` | A play over the network: `CgSequenceNet` (the type `crystalgraphics:sequence`: its state sent on each `revision()`, viewers corrected to it, an owner's predicted jumps under a key) |
 
 ## Rules

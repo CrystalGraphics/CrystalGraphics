@@ -191,6 +191,22 @@ public final class CgCameraKinds {
             "location", BOOL).defaultValue(true),
             "rotation", BOOL).defaultValue(false));
 
+    /** A role or its socket a node follows: an attachment without a weight. */
+    static final CgType SOCKET_REF = CgTypes.struct("crystalgraphics:camera_node.socket_ref")
+            .property("role", STRING).required()
+            .property("socket", STRING)
+            .register();
+
+    /**
+     * Ours: part of the way from one role to another, the offset clamped ({@code max_distance} 0 for none); the
+     * rotation is {@code from}'s. Gameplay Cameras has no node that moves part of the way to a target.
+     */
+    static final CgType ATTACH_BETWEEN = done(param(param(node("attach_between")
+            .property("from", CgValueType.struct(SOCKET_REF)).required()
+            .property("to", CgValueType.struct(SOCKET_REF)).required(),
+            "share", FLOAT).defaultValue(0.0),
+            "max_distance", FLOAT).quantity(CgQuantity.LENGTH).defaultValue(0.0));
+
     static final CgType ATTACH_TO_GROUP = done(node("attach_to_group")
             .property("targets", CgValueType.listOf(CgValueType.struct(ATTACHMENT))));
 

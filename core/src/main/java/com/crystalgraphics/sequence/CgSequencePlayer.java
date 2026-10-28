@@ -401,8 +401,11 @@ public final class CgSequencePlayer {
                     throw new CgAssetException(definition.id() + ": " + path + ": the role " + definition.roles().get(b.index()).name()
                             + " places nothing: its target is not a CgSequenceRole");
                 }
-                CgAttachment a = role.attachment(b.part() == CgSequenceBinding.Part.SOCKET ? b.partName() : null);
-                if (a == null) throw new CgAssetException(definition.id() + ": " + path + ": " + role + " has no socket " + b.partName());
+                boolean node = b.part() == CgSequenceBinding.Part.NODE;
+                CgAttachment a = node ? role.node(b.partName()) : role.attachment(b.part() == CgSequenceBinding.Part.SOCKET ? b.partName() : null);
+                if (a == null) {
+                    throw new CgAssetException(definition.id() + ": " + path + ": " + role + " has no " + (node ? "node " : "socket ") + b.partName());
+                }
                 return () -> a;
             }
             case LOCATOR -> {

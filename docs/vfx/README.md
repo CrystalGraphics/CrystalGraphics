@@ -11,6 +11,7 @@ the engine moves toward Unreal's (Niagara's) model; what it does not cover yet i
 | [`materials.md`](materials.md) | a particle's material: the vertex and particle it reads on a sprite or a mesh, Unreal's expressions |
 | [`prefabs.md`](prefabs.md) | models made of parts: a node tree an effect plays, moving and fading its nodes |
 | [`sequences.md`](sequences.md) | a clip on every particle: a prefab moving over frames, events at its nodes, children's children |
+| [`camera.md`](camera.md) | the viewer's camera: rigs blending in and out, modifiers, a camera animation from a sequence |
 | [`networking.md`](networking.md) | gameplay tags: names a server and its clients agree on, parent matching, tag sets |
 | [`performance.md`](performance.md) | what a particle frame costs: pools, and the shapes that share one |
 
