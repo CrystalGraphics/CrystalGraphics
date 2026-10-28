@@ -11,17 +11,20 @@ import com.crystalgraphics.settings.CgGraphicsSettings;
 
 /**
  * The engine's screen-wide looks, from the firing's blended volumes ({@link CgPostContext#settings()}) into the
- * composite: a flash, a vignette, chromatic aberration, impact frames and a fade. Built in; nothing calls it but the
- * stack.
+ * composite: a flash, a vignette, chromatic aberration, impact frames, a fade and Unreal's tonemapper. Built in;
+ * nothing calls it but the stack.
  *
  * <ul>
  *   <li>Flash and impact frames are scaled by the player's {@code CgGraphicsSettings.FLASHES}: 0 shows neither. A fade
  *       is not: it is a cut, not a flash.</li>
  *   <li>A look at its neutral value records nothing, so a firing with no volume draws as before.</li>
  *   <li>A drawn impact frame reads the world renderer's subject ({@link CgFrameKeys#SUBJECT}), bent as the scene was.</li>
+ *   <li>The tonemapper's table is rebaked only when its film settings move ({@link CgFilmLut}).</li>
  * </ul>
  */
 public final class CgPostLooks implements CgPostEffect {
+
+    private final CgFilmLut lut = new CgFilmLut();
 
     @Override
     public CgPostPoint point() {
@@ -33,7 +36,7 @@ public final class CgPostLooks implements CgPostEffect {
         CgPostSettings s = post.settings();
         float flashes = CgGraphicsSettings.FLASHES.get();
         return s.flash() * flashes != 0f || s.vignette() > 0f || s.chromatic() > 0f || s.impact() * flashes > 0f
-                || s.fade() > 0f;
+                || s.fade() > 0f || s.tonemaps();
     }
 
     /** Whether {@code s} shows an impact frame that reads the subject: what the stack asks the world renderer for. */
@@ -56,5 +59,6 @@ public final class CgPostLooks implements CgPostEffect {
                     subject != null ? post.distorted(subject) : null);
         }
         if (s.fade() > 0f) composite.fade(s.fade(), s.fadeR(), s.fadeG(), s.fadeB());
+        if (s.tonemaps()) composite.tonemap(lut.texture(s));
     }
 }

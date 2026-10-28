@@ -7,7 +7,9 @@
 //   CHROMATIC  Unreal's colour fringe: red and green read in toward _Focus by _Chromatic percent, blue in place
 //   FLASH      the picture times _Exposure, in linear light; bloom is added after, unscaled
 //   BLOOM      the bloom chain's level 0, tinted, added in linear light; or mixed in, energy-conserving
-//   VIGNETTE   the corners darkened by _Vignette
+//   VIGNETTE   Unreal's vignette at _Vignette, its VignetteIntensity
+//   TONEMAP    Unreal 4.21's tonemap pass over the scene: bloom added, then exposure and the vignette, then _FilmLut, its
+//              combined colour table (CgFilmLut), read through the log shaper and scaled by 1.05, already encoded
 //   IMPACT     _Impact.x of the way to an impact frame, a CgImpactFrame: _Impact.y its kind (negative, black and white,
 //              lines over the picture, drawn), .z its seed, .w 1 on light paper; _ImpactDraw the subject filled in
 //              ink, focus lines, hatching's length, the star's size; _ImpactMore the cross and the jitter in pixels;
@@ -27,6 +29,7 @@
 #pragma cg_feature IMPACT
 #pragma cg_feature SUBJECT
 #pragma cg_feature FADE
+#pragma cg_feature TONEMAP
 #include "crystalgraphics:shaders/lib/post/impact.glsl"
 
 Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.02" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
@@ -49,6 +52,7 @@ Properties {
     _Subject   ("What the effect glows with", sampler2D) = "black"
     _Focus     ("xy: where aberration and focus lines centre, 0 to 1", vec4) = (0.5, 0.5, 0, 0)
     _Fade      ("rgb: the colour it fades to, in the target's encoding; a: how far", vec4) = (0, 0, 0, 0)
+    _FilmLut   ("The tonemapper's colour table, 32 a side: sRGB / 1.05 at each log-encoded corner", sampler3D) = "black"
 }
 
 struct v2f { vec2 uv; };
@@ -93,6 +97,22 @@ Pass {
         vec3 c = post_decode_srgb(scene.rgb);
 #endif
 #endif
+#ifdef TONEMAP
+        // 4.21's PostProcessTonemap.usf: the bloom is added to the scene, then the exposure and the vignette scale both.
+#ifdef BLOOM
+        c += textureLod(_Bloom, i.uv, 0.0).rgb * _Tint.rgb * _Intensity;
+#endif
+#ifdef FLASH
+        c *= _Exposure;
+#endif
+#ifdef VIGNETTE
+        c *= post_vignette(i.uv, CG_RESOLUTION, _Vignette);
+#endif
+        // LinToLog(c + LogToLin(0)), to the table's cell centres.
+        float zero = exp2(-444.0 / 1023.0 * 14.0) * 0.18;
+        vec3 at = clamp(log2(max(c, 0.0) + zero) / 14.0 - log2(0.18) / 14.0 + 444.0 / 1023.0, 0.0, 1.0) * (31.0 / 32.0) + 0.5 / 32.0;
+        vec3 encoded = textureLod(_FilmLut, at, 0.0).rgb * 1.05;
+#else
 #ifdef FLASH
         c *= _Exposure;
 #endif
@@ -111,6 +131,7 @@ Pass {
         if (peak > 1.0) c = mix(c / peak, vec3(1.0), (peak - 1.0) / (peak + 2.0));
 #endif
         vec3 encoded = post_encode_srgb(c);
+#endif
 #ifdef IMPACT
         vec3 impact;
         if (_Impact.y > 2.5) {
@@ -133,7 +154,7 @@ Pass {
 #ifdef FADE
         encoded = mix(encoded, _Fade.rgb, _Fade.a);
 #endif
-#ifdef SCENE
+#if defined(SCENE) && !defined(TONEMAP)
         vec3 e = clamp(encoded, 0.0, 1.0) * 255.0;
         vec3 code = floor(e + 0.5);
         if (all(lessThan(abs(e - code), vec3(0.1)))) {

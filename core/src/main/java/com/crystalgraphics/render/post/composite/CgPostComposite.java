@@ -5,6 +5,7 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.gl.texture.CgTexture3D;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -63,6 +64,7 @@ public final class CgPostComposite {
         if (inputs.scene != null) b.sampler("_Scene", 0, inputs.scene);
         if (inputs.bloom != null) b.sampler("_Bloom", 0, inputs.bloom);   // a look without bloom leaves it unread
         if (inputs.subject != null) b.sampler("_Subject", 0, inputs.subject);
+        if (inputs.lut != null) b.sampler("_FilmLut", 0, inputs.lut);
         CgImpactFrame f = inputs.frame;
         b.set1f("_Intensity", inputs.intensity).vec4("_Tint", inputs.r, inputs.g, inputs.b, 1f)
                 .set1f("_Conserve", inputs.conserve ? 1f : 0f).set1f("_Exposure", inputs.exposure)
@@ -79,6 +81,7 @@ public final class CgPostComposite {
     /** What the composite's properties hold. */
     private static final class Inputs {
         CgGraphTexture scene, bloom, subject;
+        CgTexture3D lut;
         float intensity = Float.NaN, r, g, b;
         boolean conserve;
         float exposure = 1f, vignette, chromatic, impact, focusX = 0.5f, focusY = 0.5f;
@@ -87,7 +90,7 @@ public final class CgPostComposite {
         int seed;
 
         boolean same(Inputs o) {
-            return scene == o.scene && bloom == o.bloom && subject == o.subject && intensity == o.intensity && r == o.r && g == o.g
+            return scene == o.scene && bloom == o.bloom && subject == o.subject && lut == o.lut && intensity == o.intensity && r == o.r && g == o.g
                     && b == o.b && conserve == o.conserve && exposure == o.exposure && vignette == o.vignette
                     && chromatic == o.chromatic && impact == o.impact && frame == o.frame && seed == o.seed
                     && focusX == o.focusX && focusY == o.focusY && fade == o.fade && fadeR == o.fadeR
@@ -98,6 +101,7 @@ public final class CgPostComposite {
             scene = o.scene;
             bloom = o.bloom;
             subject = o.subject;
+            lut = o.lut;
             frame = o.frame;
             seed = o.seed;
             intensity = o.intensity;
@@ -125,6 +129,7 @@ public final class CgPostComposite {
         inputs.scene = null;
         inputs.bloom = null;
         inputs.subject = null;
+        inputs.lut = null;
     }
 
     /**
@@ -203,6 +208,16 @@ public final class CgPostComposite {
         return on(CgCompositeFeature.FADE);
     }
 
+    /**
+     * Tonemaps the scene as Unreal 4.21's tonemap pass does: bloom added, then the exposure and the vignette, then
+     * {@code lut} ({@code CgFilmLut}) read through the log shaper, already in the target's encoding. Wants the HDR
+     * scene ({@link #scene}).
+     */
+    public CgPostComposite tonemap(CgTexture3D lut) {
+        inputs.lut = lut;
+        return on(CgCompositeFeature.TONEMAP);
+    }
+
     /** Composites this firing in linear light ({@link CgCompositeForm#COPY}), at the cost of a copy of the target. */
     public CgPostComposite linear() {
         copy = true;
@@ -268,6 +283,7 @@ public final class CgPostComposite {
             set[f].scene = null;
             set[f].bloom = null;
             set[f].subject = null;
+            set[f].lut = null;
             set[f].intensity = Float.NaN;
         }
     }

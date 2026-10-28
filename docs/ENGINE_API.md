@@ -246,9 +246,16 @@ burst.close();
 CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));   // an impact frame, everywhere
 ```
 
-- The looks: flash (exposure in stops), vignette, colour fringe toward the focus (Unreal's `SceneFringeIntensity`, in percent), impact frames, and a fade to a
+- The looks: flash (exposure in stops), Unreal's vignette (`VignetteIntensity`), colour fringe toward the focus (Unreal's `SceneFringeIntensity`, in percent), impact frames, Unreal 4.21's tonemapper (`tonemap()`, below), and a fade to a
   colour (`fade(0xFF000000, 1f)`, Unreal's camera fade: the composite's last step, in the target's encoding). Flash and
   impact frames are scaled by the player's `FLASHES` comfort setting; a fade is not.
+- **Unreal 4.21's tonemapper** over the HDR scene: bloom added, the exposure and vignette, then its colour table (the legacy
+  film curve; `CgFilmLut`, rebaked only when the film settings move), already in the target's encoding. Off until a
+  volume turns it on, so Minecraft's frames stay byte for byte without one:
+
+  ```java
+  CgPostStack.get().volume(0, new CgPostSettings().tonemap().filmHeal(0.18f).vignette(0.5f));   // a stage's look
+  ```
 - **An impact frame is a `CgImpactFrame`**: a look from the picture alone (negative, black and white, focus lines over
   it) or a drawn one: two-tone paper, the subject (what the effect glows with, `CgFrameKeys.SUBJECT`) filled in ink,
   focus lines, hatching off its edge, a flash star with a cross, and a jitter that redraws it per beat. `CgImpact`

@@ -36,9 +36,11 @@ vec3 post_encode_srgb(vec3 c) {
     return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
 }
 
-// What a vignette leaves of a pixel, 1 at the centre down to 1 - amount in the corners; round whatever the aspect.
-float post_vignette(vec2 uv, vec2 resolution, float amount) {
-    vec2 p = (uv - 0.5) * vec2(resolution.x / resolution.y, 1.0);
-    float r = length(p) / length(vec2(0.5 * resolution.x / resolution.y, 0.5));
-    return 1.0 - amount * smoothstep(0.35, 1.0, r);
+// Unreal's vignette (4.21 PostProcessCommon's VignetteSpace and ComputeVignetteMask): what is left of a pixel by the
+// cosine-fourth law at VignetteIntensity, in a space where the corners sit on one circle whatever the aspect.
+float post_vignette(vec2 uv, vec2 resolution, float intensity) {
+    float a = resolution.y / resolution.x;
+    vec2 p = (uv * 2.0 - 1.0) * vec2(1.0, a) * (sqrt(2.0) / sqrt(1.0 + a * a)) * intensity;
+    float k = 1.0 / (dot(p, p) + 1.0);
+    return k * k;
 }

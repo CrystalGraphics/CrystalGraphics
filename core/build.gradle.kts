@@ -165,6 +165,8 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
         systemProperty("crystalgraphics.kits", it)
         maxHeapSize = "3g"   // a batch of resolved kit assets and their closures
     }
+    // A game's tonemapper table, to check the film LUT's bake cell by cell: -PgameLut=<x,y,z,r,g,b csv>
+    providers.gradleProperty("gameLut").orNull?.let { systemProperty("crystalgraphics.gameLut", it) }
     // The shape census over a slice of the kits' moves: -PcensusPacks=<text>,...
     providers.gradleProperty("censusPacks").orNull?.let { systemProperty("crystalgraphics.census.packs", it) }
     // And systems whose id contains one, in a move or not: -PcensusSystems=<text>,...

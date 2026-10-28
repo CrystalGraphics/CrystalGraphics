@@ -9,11 +9,15 @@ import java.util.Objects;
  * <pre>{@code
  * CgPostSettings burst = new CgPostSettings().flash(1.5f).bloom(2f);        // a stop and a half brighter, twice the glow
  * CgPostSettings hit = new CgPostSettings().impact(CgImpact.LINES, 1f).chromatic(0.8f);
+ * CgPostSettings stage = new CgPostSettings().tonemap().filmHeal(0.18f).vignette(0.5f);   // Unreal 4.21's tonemapper
  * }</pre>
  *
  * <ul>
  *   <li>Written from any thread, read on the render thread: floats, read at most a frame late.</li>
- *   <li>Neutral values are a look's absence: bloom 1, flash 0, vignette 0, chromatic 0, impact 0, fade 0.</li>
+ *   <li>Neutral values are a look's absence: bloom 1, flash 0, vignette 0, chromatic 0, impact 0, fade 0, and no
+ *       tonemapper. A firing with none is drawn as it was, a host's pixels back byte for byte.</li>
+ *   <li>The tonemapper's film settings are Unreal's, at its defaults: a volume's values blend toward them by its
+ *       weight, as Unreal blends post settings.</li>
  *   <li>The focus (where chromatic aberration and speed lines centre) defaults to the volume's position on screen,
  *       or the screen's centre for a volume with none.</li>
  * </ul>
@@ -21,7 +25,7 @@ import java.util.Objects;
 public final class CgPostSettings {
 
     public static final int BLOOM = 1, FLASH = 1 << 1, VIGNETTE = 1 << 2, CHROMATIC = 1 << 3, IMPACT = 1 << 4, FOCUS = 1 << 5,
-            FADE = 1 << 6;
+            FADE = 1 << 6, TONEMAP = 1 << 7;
 
     // Volatile: written on any thread, read on the render thread.
     volatile int overrides;
@@ -30,6 +34,8 @@ public final class CgPostSettings {
     volatile CgImpactFrame impactLook = CgImpactFrame.NEGATIVE;
     volatile int impactSeed, impactSubject;
     volatile float focusX = 0.5f, focusY = 0.5f;
+    volatile float filmContrast = 0.03f, filmDynamicRange = 4f, filmToe = 1f, filmHeal = 1f, filmSaturation = 1f;
+    volatile float whiteTemp = 6500f, whiteTint;
     /** Resolved only: the weight behind the focus so far, which averages it rather than pulling it to the centre. */
     private float focusWeight;
 
@@ -47,7 +53,10 @@ public final class CgPostSettings {
         return this;
     }
 
-    /** Darkens the screen's corners, 0 to 1. */
+    /**
+     * Unreal's vignette ({@code VignetteIntensity}, 0 to 1): the screen darkened toward its corners by the lens's
+     * cosine-fourth law, alike at every aspect ratio.
+     */
     public CgPostSettings vignette(float amount) {
         vignette = clamp(amount);
         overrides |= VIGNETTE;
@@ -79,6 +88,57 @@ public final class CgPostSettings {
     public CgPostSettings chromatic(float amount) {
         chromatic = Math.max(0f, amount);
         overrides |= CHROMATIC;
+        return this;
+    }
+
+    /**
+     * Turns on Unreal 4.21's tonemapper over the HDR scene: the scene and bloom through its film curve and colour
+     * table into the target's encoding, the vignette and fringe inside it, as its tonemap pass runs.
+     *
+     * <pre>{@code
+     * CgPostStack.get().volume(0, new CgPostSettings().tonemap().filmHeal(0.18f).vignette(0.5f));   // a stage's look
+     * }</pre>
+     *
+     * <ul>
+     *   <li>It reads the HDR scene: with none it tonemaps the picture as decoded.</li>
+     *   <li>Its curve is the legacy one ({@code r.TonemapperFilm 0}), with its film settings below.</li>
+     * </ul>
+     */
+    public CgPostSettings tonemap() {
+        overrides |= TONEMAP;
+        return this;
+    }
+
+    /**
+     * The legacy film curve: {@code FilmContrast} (0 to 1, default 0.03), {@code FilmDynamicRange} (stops, 1 to 4,
+     * default 4), {@code FilmToeAmount} (0 to 1, default 1) and {@code FilmHealAmount} (0 to 1, default 1).
+     */
+    public CgPostSettings film(float contrast, float dynamicRange, float toe, float heal) {
+        filmContrast = contrast;
+        filmDynamicRange = dynamicRange;
+        filmToe = toe;
+        return filmHeal(heal);
+    }
+
+    /** {@code FilmHealAmount}: how far toward white the shoulder heals, 0 to 1. */
+    public CgPostSettings filmHeal(float heal) {
+        filmHeal = heal;
+        overrides |= TONEMAP;
+        return this;
+    }
+
+    /** {@code FilmSaturation}, 0 to 2: 1 leaves colour as it is. */
+    public CgPostSettings filmSaturation(float saturation) {
+        filmSaturation = saturation;
+        overrides |= TONEMAP;
+        return this;
+    }
+
+    /** Unreal's white balance: {@code WhiteTemp} in kelvin (6500 is none) and {@code WhiteTint} (-1 to 1). */
+    public CgPostSettings whiteBalance(float temp, float tint) {
+        whiteTemp = temp;
+        whiteTint = tint;
+        overrides |= TONEMAP;
         return this;
     }
 
@@ -185,6 +245,39 @@ public final class CgPostSettings {
         return focusY;
     }
 
+    /** Whether the tonemapper is on. */
+    public boolean tonemaps() {
+        return (overrides & TONEMAP) != 0;
+    }
+
+    public float filmContrast() {
+        return filmContrast;
+    }
+
+    public float filmDynamicRange() {
+        return filmDynamicRange;
+    }
+
+    public float filmToe() {
+        return filmToe;
+    }
+
+    public float filmHeal() {
+        return filmHeal;
+    }
+
+    public float filmSaturation() {
+        return filmSaturation;
+    }
+
+    public float whiteTemp() {
+        return whiteTemp;
+    }
+
+    public float whiteTint() {
+        return whiteTint;
+    }
+
     /** Back to no look at all, nothing overridden. */
     public void reset() {
         overrides = 0;
@@ -194,6 +287,11 @@ public final class CgPostSettings {
         impactSeed = impactSubject = 0;
         focusX = focusY = 0.5f;
         focusWeight = 0f;
+        filmContrast = 0.03f;
+        filmDynamicRange = 4f;
+        filmToe = filmHeal = filmSaturation = 1f;
+        whiteTemp = 6500f;
+        whiteTint = 0f;
     }
 
     /**
@@ -206,6 +304,15 @@ public final class CgPostSettings {
         if ((o & FLASH) != 0) flash += (from.flash - flash) * weight;
         if ((o & VIGNETTE) != 0) vignette += (from.vignette - vignette) * weight;
         if ((o & CHROMATIC) != 0) chromatic += (from.chromatic - chromatic) * weight;
+        if ((o & TONEMAP) != 0) {
+            filmContrast += (from.filmContrast - filmContrast) * weight;
+            filmDynamicRange += (from.filmDynamicRange - filmDynamicRange) * weight;
+            filmToe += (from.filmToe - filmToe) * weight;
+            filmHeal += (from.filmHeal - filmHeal) * weight;
+            filmSaturation += (from.filmSaturation - filmSaturation) * weight;
+            whiteTemp += (from.whiteTemp - whiteTemp) * weight;
+            whiteTint += (from.whiteTint - whiteTint) * weight;
+        }
         if ((o & FADE) != 0) {
             // Over no fade yet, the colour is this volume's outright, not a mix from black.
             float t = fade > 0f ? weight : 1f;

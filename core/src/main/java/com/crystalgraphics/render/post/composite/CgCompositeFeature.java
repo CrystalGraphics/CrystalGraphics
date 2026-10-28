@@ -11,14 +11,16 @@ public enum CgCompositeFeature {
     BLOOM("BLOOM", true),
     /** The picture brightened by an exposure ({@link CgPostComposite#flash}): brightening by multiplying needs the copy. */
     FLASH("FLASH", false),
-    /** The corners darkened ({@link CgPostComposite#vignette}): a multiply, so the copy until dual-source blending. */
+    /** Unreal's vignette ({@link CgPostComposite#vignette}): a multiply, so the copy until dual-source blending. */
     VIGNETTE("VIGNETTE", false),
-    /** Red and blue split from a focus ({@link CgPostComposite#chromatic}): it reads neighbours. */
+    /** Unreal's colour fringe toward a focus ({@link CgPostComposite#chromatic}): it reads neighbours. */
     CHROMATIC("CHROMATIC", false),
     /** An impact frame ({@link CgPostComposite#impact}): it reads the picture. */
     IMPACT("IMPACT", false),
     /** The picture faded toward a colour ({@link CgPostComposite#fade}), last: a mix the blend form draws as its alpha. */
-    FADE("FADE", true);
+    FADE("FADE", true),
+    /** Unreal 4.21's tonemapper over the scene ({@link CgPostComposite#tonemap}): it replaces the encode. */
+    TONEMAP("TONEMAP", false);
 
     final String keyword;
     final boolean blend;
