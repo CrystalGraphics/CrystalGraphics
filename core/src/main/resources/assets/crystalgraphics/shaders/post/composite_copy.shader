@@ -1,10 +1,10 @@
 // The post stack's composite, copy form: reads the target as drawn (cg_SceneColor), decodes it from sRGB, lays every
 // active look over it in linear light, and writes it back encoded and dithered. The correct form, and the one a look
 // that brightens by multiplying or reads its neighbours needs; it costs a copy of the target. Each look is a feature
-// keyword, as in composite.shader. Chromatic aberration reads up to 2% of the screen's height away, its margin.
+// keyword, as in composite.shader.
 // CgPostComposite draws it; nothing else should.
 //
-//   CHROMATIC  red and blue read apart from _Focus, the further the more
+//   CHROMATIC  Unreal's colour fringe: red and green read in toward _Focus by _Chromatic percent, blue in place
 //   FLASH      the picture times _Exposure, in linear light; bloom is added after, unscaled
 //   BLOOM      the bloom chain's level 0, tinted, added in linear light; or mixed in, energy-conserving
 //   VIGNETTE   the corners darkened by _Vignette
@@ -40,7 +40,7 @@ Properties {
     _Conserve  ("1 to mix the bloom in, keeping the picture's energy; 0 to add it", float) = 0.0
     _Exposure  ("The flash: what the picture is multiplied by", float) = 1.0
     _Vignette  ("How dark the corners go, 0 to 1", float) = 0.0
-    _Chromatic ("Chromatic aberration, 0 to 1", float) = 0.0
+    _Chromatic ("Colour fringe, Unreal's SceneFringeIntensity in percent", float) = 0.0
     _Impact    ("x: share of the impact frame; y: its kind; z: its seed; w: 1 on light paper", vec4) = (0, 0, 0, 0)
     _ImpactDraw ("x: subject in ink; y: focus lines; z: hatching's length; w: the star's size", vec4) = (0, 0, 0, 0)
     _ImpactMore ("x: the star's cross; y: jitter in pixels", vec4) = (0, 0, 0, 0)
@@ -72,17 +72,23 @@ Pass {
 #ifdef SCENE
         vec4 scene = texelFetch(_Scene, ivec2(gl_FragCoord.xy), 0);
 #ifdef CHROMATIC
-        vec2 d = (i.uv - _Focus.xy) * (_Chromatic * 0.02);
-        vec3 c = vec3(textureLod(_Scene, i.uv + d, 0.0).r, scene.g, textureLod(_Scene, i.uv - d, 0.0).b);
+        // Unreal's scene fringe (4.21 PostProcessTonemap.usf USE_COLOR_FRINGE, its .cpp's ChromaticAberrationParams): red
+        // and green read inward toward the focus by the primaries' wavelengths from blue's, blue in place. Start offset 0.
+        vec2 pull = sign(i.uv - _Focus.xy) * clamp(abs(i.uv - _Focus.xy) * 2.0, 0.0, 1.0) * 0.5 * (_Chromatic * 0.01 * 0.007);
+        vec2 uvR = i.uv - pull * (611.3 - 464.3), uvG = i.uv - pull * (549.1 - 464.3);
+        vec3 c = vec3(textureLod(_Scene, uvR, 0.0).r, textureLod(_Scene, uvG, 0.0).g, scene.b);
 #else
         vec3 c = scene.rgb;
 #endif
 #else
         vec4 scene = CG_SCENE_COLOR(i.uv);
 #ifdef CHROMATIC
-        vec2 d = (i.uv - _Focus.xy) * (_Chromatic * 0.02);
-        vec3 c = vec3(post_decode_srgb(CG_SCENE_COLOR(i.uv + d).rgb).r, post_decode_srgb(scene.rgb).g,
-                      post_decode_srgb(CG_SCENE_COLOR(i.uv - d).rgb).b);
+        // Unreal's scene fringe (4.21 PostProcessTonemap.usf USE_COLOR_FRINGE, its .cpp's ChromaticAberrationParams): red
+        // and green read inward toward the focus by the primaries' wavelengths from blue's, blue in place. Start offset 0.
+        vec2 pull = sign(i.uv - _Focus.xy) * clamp(abs(i.uv - _Focus.xy) * 2.0, 0.0, 1.0) * 0.5 * (_Chromatic * 0.01 * 0.007);
+        vec2 uvR = i.uv - pull * (611.3 - 464.3), uvG = i.uv - pull * (549.1 - 464.3);
+        vec3 c = vec3(post_decode_srgb(CG_SCENE_COLOR(uvR).rgb).r, post_decode_srgb(CG_SCENE_COLOR(uvG).rgb).g,
+                      post_decode_srgb(scene.rgb).b);
 #else
         vec3 c = post_decode_srgb(scene.rgb);
 #endif

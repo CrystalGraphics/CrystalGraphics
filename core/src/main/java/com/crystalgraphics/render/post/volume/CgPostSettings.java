@@ -72,9 +72,12 @@ public final class CgPostSettings {
         return this;
     }
 
-    /** Splits red and blue apart from the focus outward, 0 to 1: a shock front's aberration. */
+    /**
+     * Unreal's colour fringe ({@code SceneFringeIntensity}), in percent, 0 for none and 5 its usual most: red and green
+     * pulled in toward the focus, growing to the screen's edges.
+     */
     public CgPostSettings chromatic(float amount) {
-        chromatic = clamp(amount);
+        chromatic = Math.max(0f, amount);
         overrides |= CHROMATIC;
         return this;
     }

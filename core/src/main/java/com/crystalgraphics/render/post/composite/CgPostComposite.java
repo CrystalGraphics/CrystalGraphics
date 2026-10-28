@@ -163,7 +163,7 @@ public final class CgPostComposite {
         return on(CgCompositeFeature.VIGNETTE);
     }
 
-    /** Splits red and blue apart by {@code amount} (0 to 1) from {@code (x, y)}, 0 to 1 from the bottom left. */
+    /** Unreal's colour fringe, {@code amount} percent, toward {@code (x, y)}, 0 to 1 from the bottom left. */
     public CgPostComposite chromatic(float amount, float x, float y) {
         inputs.chromatic = amount;
         inputs.focusX = x;

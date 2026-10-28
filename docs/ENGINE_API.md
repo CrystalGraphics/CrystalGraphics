@@ -239,14 +239,14 @@ CgRenderStage.Registration fx = CgPostStack.get().add(myEffect);    // a mod's e
 fx.close();
 
 // An effect's look for its moment: a volume, blended by priority and distance, weighed over its life
-CgPostVolume burst = CgPostStack.get().volume(10, new CgPostSettings().flash(1.5f).bloom(2f).chromatic(0.6f))
+CgPostVolume burst = CgPostStack.get().volume(10, new CgPostSettings().flash(1.5f).bloom(2f).chromatic(1.2f))
         .at(x, y, z).radius(24f).blend(16f);
 burst.weight(1f - age / life);
 burst.close();
 CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));   // an impact frame, everywhere
 ```
 
-- The looks: flash (exposure in stops), vignette, chromatic aberration round the focus, impact frames, and a fade to a
+- The looks: flash (exposure in stops), vignette, colour fringe toward the focus (Unreal's `SceneFringeIntensity`, in percent), impact frames, and a fade to a
   colour (`fade(0xFF000000, 1f)`, Unreal's camera fade: the composite's last step, in the target's encoding). Flash and
   impact frames are scaled by the player's `FLASHES` comfort setting; a fade is not.
 - **An impact frame is a `CgImpactFrame`**: a look from the picture alone (negative, black and white, focus lines over

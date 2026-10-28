@@ -100,9 +100,9 @@ public final class CgVfxBlast extends CgVfxElement {
      * to the burst at its brightest.
      */
     public static final CgVfxParam.Scalar HOLD_AT = SCHEMA.time("holdAt", 0.02f);
-    /** The flash's peak: stops of exposure, red and blue split from the burst (0 to 1), and bloom's multiple. */
+    /** The flash's peak: stops of exposure, colour fringe toward the burst (Unreal's percent), and bloom's multiple. */
     public static final CgVfxParam.Scalar FLASH_STOPS = SCHEMA.scalar("flashStops", 2.5f);
-    public static final CgVfxParam.Scalar FLASH_CHROMATIC = SCHEMA.scalar("flashChromatic", 0.5f);
+    public static final CgVfxParam.Scalar FLASH_CHROMATIC = SCHEMA.scalar("flashChromatic", 1f);
     public static final CgVfxParam.Scalar FLASH_BLOOM = SCHEMA.scalar("flashBloom", 2f);
     /** The flash is full within this many radii of the burst, fading out over twice that beyond. */
     public static final CgVfxParam.Scalar FLASH_REACH = SCHEMA.scalar("flashReach", 3f);
