@@ -14,7 +14,7 @@ root; a new track kind is a subpackage of its own when it brings types besides i
 | `sequence.definition` | The compiled sequence, read-only once built: `CgSequenceDefinition`, its compiler `CgSequenceCompiler`, `CgSequenceTrack`, `CgSequenceSection`, `CgSequenceChannel` (keys as columns), `CgSequenceBinding`, `CgSequenceCondition`, `CgSequenceField` (what is active over which ticks) |
 | `sequence.time` | Ticks and sub-frames, frame rates, the playback position and each update's evaluation range |
 | `sequence.state` | The state kinds (`transform`, `parameter`, `material`, `property`, `visibility`, `global`): `CgSequenceStateEvaluator`, `CgSequenceBlender` (blend by type and weight, pre-animated state restored), `CgSequenceGlobals` |
-| `sequence.binding` | What tracks bind to and place by: `CgSequenceRole` (a host's character), `CgSequenceLocator`, `CgSequencePlacement` (an `at` resolved each frame) |
+| `sequence.binding` | What tracks bind to and place by: `CgSequenceRole` (a host's character), `CgRoleOutline` (its outline colour slot), `CgSequenceLocator`, `CgSequencePlacement` (an `at` resolved each frame) |
 | `sequence.spawn` | Spawnables: `CgSequenceSpawner` (a kind's maker), `CgSequenceSpawned`, and the `system` kind: `CgSequenceSystem`, `CgSequenceSystemEvaluator` |
 | `sequence.animation` | The `animation` kind: `CgSequenceAnimationEvaluator`, `CgSequenceSkeletal` (a target playing clips) |
 | `sequence.event` | The `event` kind and triggered sections: `CgSequenceEventEvaluator`, `CgSequenceEventListener` (sides `rpg`, `ours`), `CgEventChannel` (the sweep), `CgEventTrigger` |

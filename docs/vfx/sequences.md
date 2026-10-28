@@ -138,6 +138,14 @@ final class Fighter implements CgSequenceRole, CgSequenceSkeletal {
 }
 sequencer.play(kamehameha, Map.of("caster", goku));   // the charge montage's clips on Goku, its systems on his hand
 ```
+- **A role's outline colour** (the material contract's `outline`, a `material` track keying `colours.outline` on the
+  role) is a `CgRoleOutline` the role answers the slot through: a keyed colour switches the role's materials to its
+  colour slot of the outline post and writes the colour there; `restore_state` puts the materials' own back.
+
+```java
+outline = new CgRoleOutline(goku.instance(), gokuMaterials, battleOutline, 1, "OutlineColorType", "TypeColor1");
+@Override public int slot(String name) { return outline.slot(name); }   // set and get the same
+```
 - **At its end a player holds its last frame** (`finished()`) until stopped; what its ended sections restored stays
   restored.
 - **A kind of your own** is a `CgSequenceEvaluator`, registered on the sequencer: it binds each section once, then
