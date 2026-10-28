@@ -6,6 +6,7 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
@@ -21,7 +22,9 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -204,11 +207,27 @@ public final class CgPostMaterial implements CgPostEffect {
         if (material.readsSceneDepth() && into == screen) pass.sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT);
         else if (material.readsSceneDepth()) pass.sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, screen);
         CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(pipeline, material.captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.draw(depthless(pipeline), material.captureBindings(recording.bindings()), FULLSCREEN);
         weighted(chunks, weight);
         pass.add(chunks.end());
         pass.end();
     }
+
+    /**
+     * {@code pipeline} neither testing nor writing depth, as Unreal's post-process material pass: an opaque material's
+     * default depth write would otherwise stamp the full-screen triangle's depth over the scene, and before
+     * translucency hide every transparent draw behind it. Made once a pipeline.
+     */
+    private CgPipeline depthless(CgPipeline pipeline) {
+        CgPipeline made = depthless.get(pipeline);
+        if (made == null) {
+            made = pipeline.withState(pipeline.state().withDepth(CgDepthState.NONE));
+            depthless.put(pipeline, made);
+        }
+        return made;
+    }
+
+    private final Map<CgPipeline, CgPipeline> depthless = new IdentityHashMap<>();
 
     private void bind(String name, CgTexture texture) {
         // Its own unit: a second input on unit 0 would take the first's.
