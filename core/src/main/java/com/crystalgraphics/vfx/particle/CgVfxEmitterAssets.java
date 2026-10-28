@@ -7,6 +7,7 @@ import com.crystalgraphics.vfx.sequence.CgVfxClipBake;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
 import com.crystalgraphics.asset.kind.CgBodyKinds;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import org.apache.logging.log4j.LogManager;
@@ -145,7 +146,8 @@ public final class CgVfxEmitterAssets {
 
         List<Object> spawn = new ArrayList<>();
         Map<String, Object> init = map("lifetime", written(e, CgVfxSpawnInput.LIFETIME, range(e.lifeMin, e.lifeMax)),
-                "heat", (double) e.heat, "sprite_size", writtenSpriteSize(e));
+                "heat", (double) e.heat);
+        if (!drawsMeshesAlone(e)) init.put("sprite_size", writtenSpriteSize(e));
         // Unreal starts a sprite unturned; ours turns it at random unless a file says otherwise.
         init.put("sprite_rotation", written(e, CgVfxSpawnInput.SPRITE_ROTATION, range(0f, (float) (2 * Math.PI))));
         if (!same(e.colorFrom, WHITE) || !same(e.colorTo, WHITE)) init.put("color", vector(e.colorFrom, e.colorTo));
@@ -456,13 +458,15 @@ public final class CgVfxEmitterAssets {
             }
         }
         List<Map<?, ?>> beamEnds = new ArrayList<>();
+        boolean meshesAlone = drawsMeshesAlone(name, tree);
+        if (meshesAlone) b.size(1f, 1f);
         List<Map<?, ?>> spawnStack = entries(tree, "particle_spawn");
         for (Map<?, ?> entry : spawnStack) {
             if (Boolean.FALSE.equals(entry.get("enabled"))) continue;
             Map<?, ?> in = inputs(entry);
             switch (moduleId(entry)) {
                 case "beam_source", "beam_target" -> beamEnds.add(entry);
-                case "initialize_particle" -> initialize(name, b, in, spawnId(b, entry, "init"));
+                case "initialize_particle" -> initialize(name, b, in, spawnId(b, entry, "init"), meshesAlone);
                 case "add_velocity" -> velocity(name, b, in, spawnId(b, entry, "velocity"));
                 case "shape_location" -> shape(name, b, in, spawnId(b, entry, "shape"));
                 case "socket_location" -> sockets(name, b, in, spawnId(b, entry, "socket"));
@@ -1223,14 +1227,15 @@ public final class CgVfxEmitterAssets {
         return built;
     }
 
-    private static void initialize(String name, CgVfxEmitter.Builder b, Map<?, ?> in, String element) {
+    /** {@code meshesAlone}: its particles drawn as meshes alone, which no sprite size sizes. */
+    private static void initialize(String name, CgVfxEmitter.Builder b, Map<?, ?> in, String element, boolean meshesAlone) {
         CgVfxSpawnForm life = spawnForm(CgVfxSpawnInput.LIFETIME, element, "lifetime", in.get("lifetime"));
         float[] lives = life != null ? life.bounds() : rangeOf(in.get("lifetime"));
         b.life(lives[0], lives[1]);
         if (life != null) b.spawnForm(life);
         if (in.get("heat") instanceof Number h) b.heat(h.floatValue());
         if (in.get("sprite_rotation") != null) b.spawnForm(valueForm(CgVfxSpawnInput.SPRITE_ROTATION, element, in.get("sprite_rotation")));
-        Object size = in.get("sprite_size");
+        Object size = meshesAlone ? null : in.get("sprite_size");
         CgVfxSpawnForm sized = spawnForm(CgVfxSpawnInput.SPRITE_SIZE, element, "sprite_size", size);
         if (sized != null) {
             sized = widths(sized, SPRITE_SIZE_TO_OURS);
@@ -1371,6 +1376,37 @@ public final class CgVfxEmitterAssets {
         if (!(tree.get("renderers") instanceof List<?> renderers)) return false;
         for (Object r : renderers) if (r instanceof Map<?, ?> m && "mesh".equals(m.get("kind"))) return true;
         return false;
+    }
+
+    /**
+     * Whether {@code tree}'s enabled renderers draw meshes and nothing a sprite size sizes: its particles are then
+     * sized by their mesh scale alone, as Unreal's mesh factory sizes them (a sprite size is the sprite renderer's).
+     * A mesh beside a sprite, ribbon or beam is refused: one particle size cannot be both.
+     */
+    private static boolean drawsMeshesAlone(String name, Map<?, ?> tree) {
+        if (!(tree.get("renderers") instanceof List<?> renderers)) return false;
+        String mesh = null, sized = null;
+        for (Object r : renderers) {
+            if (!(r instanceof Map<?, ?> m) || Boolean.FALSE.equals(m.get("enabled"))) continue;
+            String kind = String.valueOf(m.get("kind"));
+            if (kind.equals("mesh")) mesh = kind;
+            else if (!kind.equals("light")) sized = kind;
+        }
+        if (mesh != null && sized != null) {
+            throw new IllegalArgumentException(name + " draws meshes and a " + sized + " renderer together, which is not read"
+                    + " yet: a mesh is sized by its scale alone, a " + sized + " by the sprite size");
+        }
+        return mesh != null;
+    }
+
+    /** Whether {@code e}'s renderers draw meshes and nothing a sprite size sizes: its file then writes no sprite size. */
+    private static boolean drawsMeshesAlone(CgVfxEmitter e) {
+        boolean mesh = false;
+        for (CgVfxRendererProperties r : e.renderers) {
+            if (r instanceof CgVfxMeshRendererProperties) mesh = true;
+            else if (!(r instanceof CgVfxLightRendererProperties)) return false;
+        }
+        return mesh;
     }
 
     /** {@code value} for a spawn input with no spawn-row word: a form whatever its form, a constant too. */

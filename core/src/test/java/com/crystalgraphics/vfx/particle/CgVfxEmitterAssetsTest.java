@@ -266,6 +266,31 @@ public class CgVfxEmitterAssetsTest {
         assertArrayEquals(new float[]{1f, 50f, 40f}, roll.to(), 0f);
     }
 
+    /** Unreal's mesh factory sizes a mesh by its scale alone: the sprite size's default (50 cm) never shrinks it. */
+    @Test
+    public void aMeshParticleIsSizedByItsMeshScaleAlone() {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 4));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0))));
+        tree.put("particle_spawn", List.of(Map.of("id", "init", "module", "crystalgraphics:initialize_particle",
+                "inputs", Map.of("lifetime", 1.0, "mesh_scale", List.of(0.2, 0.2, 0.2)))));
+        tree.put("renderers", List.of(Map.of("id", "ball", "kind", "mesh")));
+        CgVfxEmitter ball = CgVfxEmitterAssets.compile("ball", tree, null, null);
+        assertEquals(1f, ball.sizeMin, 0f);
+        assertEquals(0.2f, ball.largestSize(), 1e-6f);
+        assertNull("a mesh's file writes no sprite size", initInputs(CgVfxEmitterAssets.write(ball)).get("sprite_size"));
+    }
+
+    /** The inputs of {@code tree}'s initialize_particle. */
+    private static Map<?, ?> initInputs(Map<String, Object> tree) {
+        for (Object e : (List<?>) tree.get("particle_spawn")) {
+            if (e instanceof Map<?, ?> m && "crystalgraphics:initialize_particle".equals(m.get("module"))) return (Map<?, ?>) m.get("inputs");
+        }
+        throw new AssertionError("no initialize_particle in " + tree);
+    }
+
     @Test
     public void lifeRollsRoundTrip() {
         Map<String, Object> tree = new LinkedHashMap<>();
