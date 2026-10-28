@@ -183,6 +183,15 @@ public final class CgVfxFrame {
         }
     }
 
+    /**
+     * A GPU particle draw of {@code effect} placed where its system's merged draws sort, while they merge, so every
+     * particle layer of a look keeps its order against the others (a Cascade system's emitters draw in list order);
+     * in its effect's group otherwise.
+     */
+    private CgWorldRenderer.Draw placeParticles(CgWorldRenderer.Draw draw, CgVfxLook.Placed placed, CgVfxEffect<?> effect) {
+        return MERGED.get() ? CgVfxSystem.place(draw, placed, groupX, groupY, groupZ) : CgVfxSystem.place(draw, placed, effect);
+    }
+
     /** {@link CgVfxParticlePool#releases()} when its proxies were last checked for a released pool. */
     private int releasesSeen;
 
@@ -602,7 +611,7 @@ public final class CgVfxFrame {
                             .buffer(CgBindingPoints.PARTICLES, pool.drawn())
                             .buffer(CgBindingPoints.PARTICLE_ORDER, range.order());
                     if (rd.submesh >= 0) draw.submesh(rd.submesh);
-                    CgVfxSystem.place(draw, rd.placed, effect).submit();
+                    placeParticles(draw, rd.placed, effect).submit();
                 }
                 case MERGED -> {
                     if (!rd.unsorted && blendsInOrder(rd.material)) range.sorted(slot, rd.sort);
@@ -839,7 +848,7 @@ public final class CgVfxFrame {
                     .at(emitter.originX(), emitter.originY(), emitter.originZ())
                     .custom(2, section.base(rd.node), section.rowLength(), rate, section.stepMask(rd.node))
                     .custom(3, materials.row(effect, rd.r), effect.age, effect.seed, effect.presence());
-            CgVfxSystem.place(draw, rd.placed, effect).submit();
+            placeParticles(draw, rd.placed, effect).submit();
             CgVfxTrace.count(DRAWS_PARTICLE_GPU, 1);
         }
         if (reach > 0f) pool.cullScale(slot, reach);
@@ -985,7 +994,7 @@ public final class CgVfxFrame {
                 .custom(1, pool.beamFirst(slot), capacity, pool.beamRunVectors(), pool.shape().beamPoints())
                 .custom(2, b.interpolationPoints(), rd.beamFlags, tiles, rd.beamFrequency)
                 .custom(3, row, effect.age, effect.seed, effect.presence());
-        CgVfxSystem.place(draw, rd.placed, effect).submit();
+        placeParticles(draw, rd.placed, effect).submit();
     }
 
     /**
@@ -1017,7 +1026,7 @@ public final class CgVfxFrame {
                 .custom(1, shape.code(), shape.segments(), shape.planes(), shape.edges())
                 .custom(2, b.uv0().scaleV(), b.uv0().offsetV(), b.uv1().scaleV(), b.uv1().offsetV())
                 .custom(3, row, effect.age, effect.seed, effect.presence());
-        CgVfxSystem.place(draw, rd.placed, effect).submit();
+        placeParticles(draw, rd.placed, effect).submit();
     }
 
     /**
