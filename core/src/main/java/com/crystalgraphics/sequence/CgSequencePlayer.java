@@ -363,6 +363,14 @@ public final class CgSequencePlayer {
         return locatorPlaces[index] = new CgSequencePlacement(parent(l.parent(), "locators." + l.id() + ".parent"), definition, locators[index]);
     }
 
+    /**
+     * Where {@code binding} stands each frame, as an attachment: a role or its socket, a locator, a spawnable or its
+     * node. What a spawner follows besides its own {@code at} (a post material's {@code screen_point}).
+     */
+    public CgAttachment attachment(CgSequenceBinding binding, String path) {
+        return new CgSequencePlacement(parent(binding, path), definition, new float[3], null);
+    }
+
     /** What a binding places under, resolved each frame; a role socket it cannot place fails here, naming it. */
     private CgSequencePlacement.Parent parent(CgSequenceBinding b, String path) {
         switch (b.subject()) {

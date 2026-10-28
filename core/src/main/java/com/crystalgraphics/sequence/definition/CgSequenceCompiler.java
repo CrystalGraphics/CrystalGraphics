@@ -12,6 +12,7 @@ import java.util.TreeSet;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.material.CgParameterCollection;
 import com.crystalgraphics.asset.curve.CgRichCurve;
 import com.crystalgraphics.asset.kind.CgLookKinds;
@@ -113,9 +114,10 @@ final class CgSequenceCompiler {
             String kind = spawnableKinds.get(i);
             // The asset it names is a hard reference, compiled before the sequence.
             CgType named = s.get(kind) instanceof String ? CgTypes.get("crystalgraphics:" + kind) : null;
+            Object definition = named != null ? deps.definition(named, (String) s.get(kind))
+                    : kind.equals("post") && s.get("post") instanceof Map<?, ?> post ? blendables(post, "spawnables." + sid + ".post") : null;
             spawnables.add(new Spawnable(sid, (String) s.get("name"), kind, binding(at, "spawnables." + sid + ".at"),
-                    !(at instanceof Map<?, ?> m) || !Boolean.FALSE.equals(m.get("follow")), s,
-                    named == null ? null : deps.definition(named, (String) s.get(kind))));
+                    !(at instanceof Map<?, ?> m) || !Boolean.FALSE.equals(m.get("follow")), s, definition));
         }
 
         List<CompositeSection> composites = compositeSections(elements(tree, "composite_sections"));
@@ -146,6 +148,28 @@ final class CgSequenceCompiler {
                 Collections.unmodifiableList(spawnables), Collections.unmodifiableList(composites),
                 Collections.unmodifiableList(tracks), CgSequenceField.build(tracks), Collections.unmodifiableMap(triggered),
                 Collections.unmodifiableList(children), depth);
+    }
+
+    /** A post block's {@code materials}, each material a hard reference compiled before the sequence. */
+    private List<CgSequenceDefinition.Blendable> blendables(Map<?, ?> post, String path) {
+        if (!(post.get("materials") instanceof List<?> list)) return List.of();
+        List<CgSequenceDefinition.Blendable> out = new ArrayList<>();
+        for (int i = 0; i < list.size(); i++) {
+            Map<?, ?> m = asMap(list.get(i), path + ".materials[" + i + "]");
+            String at = path + ".materials[" + i + "]";
+            String id = (String) m.get("material");
+            Object d = deps.definition(CgLookKinds.MATERIAL, id);
+            if (d == null) throw fail(at + ".material", "no material " + id);
+            // Null where materials have no compiler (a dedicated server, a headless gate): it draws nothing there
+            CgMaterialDefinition material = d instanceof CgMaterialDefinition m2 ? m2 : null;
+            Map<?, ?> screen = m.get("screen_point") instanceof Map<?, ?> s && !Boolean.FALSE.equals(s.get("enabled")) ? s : null;
+            out.add(new CgSequenceDefinition.Blendable(m.get("name") instanceof String n ? n : id, material,
+                    m.get("weight") instanceof Number w ? w.floatValue() : 1f, !Boolean.FALSE.equals(m.get("enabled")),
+                    screen == null ? null : binding(screen.get("target"), at + ".screen_point.target"),
+                    screen == null ? null : (String) screen.get("vector"), screen == null ? null : (String) screen.get("x"),
+                    screen == null ? null : (String) screen.get("y"), screen != null && Boolean.TRUE.equals(screen.get("clamp"))));
+        }
+        return List.copyOf(out);
     }
 
     // ── Bindings ─────────────────────────────────────────────────────────────────────────
