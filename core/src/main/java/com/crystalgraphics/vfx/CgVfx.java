@@ -10,6 +10,7 @@ import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.net.CgVfxCueClient;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefabAssets;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefabPreparer;
@@ -81,6 +82,8 @@ public final class CgVfx {
     public static void install() {
         if (installed) return;
         installed = true;
+        CgWorld.client().schedule().add(CgTickGroup.SCALABILITY, "crystalgraphics:vfx.scalability",
+                dt -> world().scalability(CgFrameClock.seconds())).whilePaused(true);
         CgTickFunction effects = CgWorld.client().schedule().add(CgTickGroup.EFFECTS, "crystalgraphics:vfx", dt -> effects())
                 .whilePaused(true);
         CgWorld.client().schedule().add(CgTickGroup.LATE_ATTACH, "crystalgraphics:vfx.lateAttach", dt -> world().lateAttach())
@@ -88,6 +91,7 @@ public final class CgVfx {
         CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "crystalgraphics:vfx.submit", dt -> submit())
                 .after(effects).whilePaused(true);
         CgVfxCueClient.install();
+        CgCameraShake.schedule();
         // Characters' clocks the server sends, kept on the level's tick: the effects following them hold and slow.
         CgCharacterClockNet.install(() -> CgRenderStage.WORLD_OPAQUE.host().environment().gameTime());
         CgVfxSystemAssets.register();   // system assets compile to playable definitions

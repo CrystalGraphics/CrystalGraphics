@@ -284,8 +284,8 @@ public final class CgVfxBlast extends CgVfxElement {
                 start();
             }
         }
-        // A beat early, under the last beat: the host's camera takes an offset the frame after it is played.
-        if (!released && (hold == 0f || real >= cut - 1f / BEATS.fps())) {
+        // On the cut: shakes are summed in SHAKE, before the host takes this frame's camera.
+        if (!released && (hold == 0f || real >= cut)) {
             released = true;
             float scale = get(RADIUS);
             if (hold == 0f) {

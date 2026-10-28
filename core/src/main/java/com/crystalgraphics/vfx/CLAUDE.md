@@ -119,7 +119,7 @@ matters; that is what makes it debuggable at full speed.
   by the cut and nothing new arrives; eased up from slow motion, the burst deflates. Only the light runs on: the flash
   reaches its peak beneath the beats and holds, fading from the cut. **Never cut back to the framing the beats cut
   from**: that is a jump cut, and no brightness ramp hides it. The cut plays a negative FOV kick (`CgCameraShake.kick`), so the picture returns closer and pulls back, with the
-  shake, both a beat early since the host's camera takes an offset a frame late. The impact frame names the effect
+  shake, both on the cut: shakes are summed in `SHAKE`, before the host takes the frame's camera. The impact frame names the effect
   (`settings.subject(subject)`) so another effect's smoke cannot hide what is inked. `CgEnergyWave`'s blast
   (`CgVfxBlast.HOLD_AT`, `BEATS`, `RETURN`) is the example.
 - **Meshes are made in `CgVfxSystem` only**, so a change to how meshes are made is one edit.

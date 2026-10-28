@@ -1,11 +1,12 @@
 package com.crystalgraphics.vfx.camera;
 
+import com.crystalgraphics.frame.CgTickGroup;
+import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.world.CgCamera;
 import org.joml.Matrix4fc;
@@ -41,7 +42,7 @@ final class CgShakeRuntime {
     private static final double[] PUNCH = new double[PUNCHES * PUNCH_STRIDE];
     private static int punches;
 
-    private static boolean installed, moving;
+    private static boolean installed, scheduled, moving;
     static boolean enabled = true;
     private static double lastFrame = Double.NaN, cx, cy, cz;
     private static final Vector3f ORIGIN = new Vector3f(), FORWARD = new Vector3f(), RIGHT = new Vector3f();
@@ -56,7 +57,16 @@ final class CgShakeRuntime {
     static void install() {
         if (installed) return;
         installed = true;
-        CgRenderStage.WORLD_OPAQUE.register(Integer.MIN_VALUE, CgShakeRuntime::frame);
+        schedule();
+    }
+
+    /** Sums shakes in the client world's {@code SHAKE} from now on: after every effect ticked, before the host takes its camera. */
+    static void schedule() {
+        if (scheduled) return;
+        scheduled = true;
+        CgWorld.client().schedule().add(CgTickGroup.SHAKE, "crystalgraphics:shake", dt -> {
+            if (installed) frame(CgRenderStage.WORLD_OPAQUE.host());
+        }).whilePaused(true);
     }
 
     /** Starts {@code shake} at the point, felt at once or when its front reaches the camera. */
@@ -123,12 +133,11 @@ final class CgShakeRuntime {
     }
 
     /** Steps every shake against this frame's camera and hands the offset to the host for its next frame. */
-    private static void frame(CgStageFrame stage) {
+    private static void frame(CgHostFrame host) {
         double now = CgFrameClock.seconds();
         float dt = Double.isNaN(lastFrame) ? 0f : (float) Math.max(0.0, Math.min(now - lastFrame, 0.1));
         lastFrame = now;
         if (MODEL.still() && waiting == 0 && kicks == 0 && punches == 0 && !moving) return;
-        CgHostFrame host = stage.host();
         CgHostEnvironment world = host.environment();
         eye(host.view());
         arrive(now);

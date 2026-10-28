@@ -1,6 +1,8 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
 import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgWorldBegin;
+import net.minecraft.client.Minecraft;
 
 /**
  * {@link CgHostCamera} for the modern hosts: holds the last offset core gave and adds it where each loader sets its
@@ -53,15 +55,18 @@ public final class HostCameraModern implements CgHostCamera {
     }
 
     public static float yaw(float base) {
+        begin();
         applied |= ROTATION;
         return YAW.add(base, yaw);
     }
 
     public static float pitch(float base) {
+        begin();
         return PITCH.add(base, pitch);
     }
 
     public static float roll(float base) {
+        begin();
         applied |= ROLL;
         return eventRoll = ROLL_ANGLE.add(base, roll);
     }
@@ -89,12 +94,33 @@ public final class HostCameraModern implements CgHostCamera {
     }
 
     public static double fov(double base) {
+        begin();
         applied |= FOV;
         return base * fovScale;
     }
 
     public static float fov(float base) {
+        begin();
         applied |= FOV;
         return base * fovScale;
+    }
+
+    /**
+     * {@code WORLD_BEGIN}, at the first of a frame's camera hooks: the field of view is taken before the camera is set
+     * up, so core's shakes are summed before either uses its offset. Core runs once a frame however often it is called.
+     */
+    private static void begin() {
+        CgWorldBegin.fire(partialTick());
+    }
+
+    /** The frame's partial tick, pause-aware, as the render call has it. */
+    private static float partialTick() {
+        //? if >=1.21.3 {
+        /*return Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(true);
+        *///?} elif >=1.21 {
+        /*return Minecraft.getInstance().getTimer().getGameTimeDeltaPartialTick(true);
+        *///?} else {
+        return Minecraft.getInstance().getFrameTime();
+        //?}
     }
 }

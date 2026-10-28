@@ -171,7 +171,9 @@ public final class CgCueManager extends CgWorldSubsystem {
 
     @Override
     protected void initialize() {
-        tick = world().schedule().add(CgTickGroup.PLAYS, "crystalgraphics:cues", this::update);
+        // On a server, gameplay's calls of the tick played in AUTHORITY, before NET_OUT sends; on a client, in PLAYS.
+        tick = world().server() ? world().schedule().add(CgTickGroup.AUTHORITY, "crystalgraphics:cues", this::update).onServer(true)
+                : world().schedule().add(CgTickGroup.PLAYS, "crystalgraphics:cues", this::update);
         unlisten = assets.registry().onEvent(e -> {
             if (e.entry() == null || e.entry().kind() == CgGameplayKinds.CUE) routesDirty = true;
         });

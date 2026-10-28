@@ -80,7 +80,9 @@ public final class CgSequencer extends CgWorldSubsystem {
 
     @Override
     protected void initialize() {
-        tick = world().schedule().add(CgTickGroup.SEQUENCES, "crystalgraphics:sequencer", this::evaluate);
+        // On a server, headless evaluation each game tick (AUTHORITY); on a client, each frame.
+        tick = server() ? world().schedule().add(CgTickGroup.AUTHORITY, "crystalgraphics:sequencer", this::evaluate).onServer(true)
+                : world().schedule().add(CgTickGroup.SEQUENCES, "crystalgraphics:sequencer", this::evaluate);
     }
 
     @Override

@@ -2,10 +2,14 @@ package com.crystalgraphics.probe;
 
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHit;
+import com.crystalgraphics.frame.CgTickGroup;
+import com.crystalgraphics.frame.CgWorld;
+import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgWorldBegin;
 import com.crystalgraphics.platform.world.CgWorldEvents;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
@@ -84,6 +88,9 @@ public final class CgWorldProbe {
     private static long phaseNanos, settleNanos;
     private static int passed, failed, skipped, cameraFrames;
     private static int cameraBits, cameraStep;
+    /** The same-frame check: armed for the next SHAKE, then the ring frame it turned the camera in. */
+    private static volatile boolean sameFrameArmed;
+    private static long sameFrameAt = -1, lateAtStart;
     private static float baseFov;
     private static final Matrix3f baseView = new Matrix3f();
     private static long startGameTime;
@@ -99,6 +106,8 @@ public final class CgWorldProbe {
         if (!ENABLED || installed) return;
         installed = true;
         CgRenderStage.WORLD_OPAQUE.register(Integer.MAX_VALUE, CgWorldProbe::frame);
+        // Where a shake is summed: an offset set here must turn the camera of this same frame.
+        CgWorld.client().schedule().add(CgTickGroup.SHAKE, "crystalgraphics:world-probe", dt -> turnInShake()).whilePaused(true);
         LOGGER.info("world probe: armed");
     }
 
@@ -130,7 +139,16 @@ public final class CgWorldProbe {
                 startCamera(host, now);
                 break;
             case CAMERA:
+                if (cameraStep == 3) {
+                    if (sameFrameAt >= 0) checkSameFrame(host, now);
+                    break;
+                }
                 if (++cameraFrames < CAMERA_FRAMES) break;
+                if (cameraStep == 2) {
+                    sameFrameArmed = true;
+                    cameraStep = 3;
+                    break;
+                }
                 if (cameraStep == 0) {
                     checkTurn(host);
                     if (has(CgHostCamera.ROLL)) {
@@ -143,6 +161,13 @@ public final class CgWorldProbe {
                     checkRoll(host);
                 }
                 if (cameraBits != 0) CgCamera.offset(0f, 0f, 0f, 0f, 0f, 0f, 1f);
+                if (has(CgHostCamera.ROTATION)) {
+                    // Settle at zero, then turn from SHAKE and look in the same frame.
+                    cameraStep = 2;
+                    cameraFrames = 0;
+                    break;
+                }
+                skip("camera.same-frame", "no rotation applied on this version");
                 startEvents(now);
                 break;
             case EVENTS:
@@ -338,6 +363,8 @@ public final class CgWorldProbe {
         }
         cameraStep = 0;
         cameraFrames = 0;
+        sameFrameAt = -1;
+        lateAtStart = CgWorld.client().beganLate();
         next(Phase.CAMERA, now);
     }
 
@@ -364,6 +391,31 @@ public final class CgWorldProbe {
             skip("camera.yaw", "not applied on this version");
         }
         if (!has(CgHostCamera.ROLL)) skip("camera.roll", "not applied on this version");
+    }
+
+    /** In SHAKE, once armed: the base is the view BEGIN sees, last frame's, and the yaw goes to the host now. */
+    private static void turnInShake() {
+        if (!sameFrameArmed) return;
+        sameFrameArmed = false;
+        baseView.set(CgRenderStage.WORLD_OPAQUE.host().view().view());
+        CgCamera.offset(0f, 0f, 0f, YAW, 0f, 0f, 1f);
+        sameFrameAt = CgFrameRing.frame();
+    }
+
+    /** The opaque firing after that SHAKE: its frame's view carries the whole turn, or the offset landed a frame late. */
+    private static void checkSameFrame(CgHostFrame host, long now) {
+        boolean same = CgFrameRing.frame() == sameFrameAt;
+        float degrees = (float) Math.toDegrees(turnSinceBase(host.view().view()).angle);
+        check("camera.same-frame", same && Math.abs(degrees - YAW) < 1.5f, String.format(
+                "turned %.2f degrees in the frame the offset was set, %s", degrees, same ? "the same ring frame" : "a later ring frame"));
+        CgCamera.offset(0f, 0f, 0f, 0f, 0f, 0f, 1f);
+        if (CgWorldBegin.isAtStage()) {
+            skip("frame.begin", "this host has no camera hook");
+        } else {
+            long late = CgWorld.client().beganLate() - lateAtStart;
+            check("frame.begin", late == 0, late + " frames ran their world before the camera hook since the probe started");
+        }
+        startEvents(now);
     }
 
     private static void checkRoll(CgHostFrame host) {

@@ -1,7 +1,11 @@
 package com.crystalgraphics.frame;
 
+import com.crystalgraphics.net.CgNetwork;
+import com.crystalgraphics.platform.world.CgWorldBegin;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -24,8 +28,12 @@ import java.util.function.BooleanSupplier;
  * }</pre>
  *
  * <ul>
- *   <li>The client world runs its groups once a ring frame, at the top of the first world stage's firing, before
- *       any renderer records, so what a function submits reaches the renderers of the same firing.</li>
+ *   <li>The client world runs its groups once a frame in two parts: {@link CgTickGroup#BEGIN} through
+ *       {@link CgTickGroup#SHAKE} from the host's camera setup ({@link #begin}, {@code WORLD_BEGIN}), so a shake moves
+ *       this frame's camera; {@link CgTickGroup#LATE_ATTACH} and {@link CgTickGroup#SUBMIT} at the first world stage's
+ *       firing ({@link #frame(CgHostView, long)}), before any renderer records.</li>
+ *   <li>A firing with no {@code begin} this frame (a host whose hook is not wired, a mod drawing frames of its own)
+ *       runs the first part there, late, counted as {@code frame.begin-late}.</li>
  *   <li>A world runs on the render thread: its functions touch the GPU only in {@link CgTickGroup#SUBMIT}.</li>
  *   <li>{@link #paused} says what pause means for this world; a function runs while it holds only if it asked
  *       ({@link CgTickFunction#whilePaused}).</li>
@@ -33,7 +41,13 @@ import java.util.function.BooleanSupplier;
  */
 public final class CgWorld implements AutoCloseable {
 
+    private static final int BEGIN_LATE = CgTrace.name("frame.begin-late");
+    /** A game tick, the host's twentieth of a second. */
+    public static final double TICK_SECONDS = 0.05;
+
     private static CgWorld client;
+    /** The running server's: its tick thread's. */
+    private static CgWorld serverWorld;
 
     private final CgTickSchedule schedule = new CgTickSchedule(this);
     private final List<CgWorldSubsystem> subsystems = new ArrayList<>();
@@ -41,6 +55,10 @@ public final class CgWorld implements AutoCloseable {
     private BooleanSupplier paused = () -> false;
     private CgHostView view;
     private boolean closed;
+    /** The frame {@link #begin} last ran for; -1 for none. */
+    private long begun = -1;
+    private long beganLate;
+    private long ticks, frames;
     private volatile float timeDilation = 1f;
 
     /** A world for a client: a preview, a test. */
@@ -63,6 +81,45 @@ public final class CgWorld implements AutoCloseable {
             client.paused(() -> CgRenderStage.WORLD_OPAQUE.host().environment().paused());
         }
         return client;
+    }
+
+    /**
+     * The running server's world, dedicated or integrated, made on first ask and ticked by its server from then on; it
+     * ends with the session. Its functions run only if they say {@code onServer(true)}. Server thread.
+     *
+     * <pre>{@code
+     * CgWorld.serverWorld().schedule().add(CgTickGroup.AUTHORITY, "mymod:referee", dt -> referee.tick(dt)).onServer(true);
+     * }</pre>
+     */
+    public static synchronized CgWorld serverWorld() {
+        if (serverWorld == null) {
+            serverWorld = new CgWorld(true);
+            if (!driving) {
+                driving = true;
+                CgNetwork.onServerTick(CgWorld::tickServer);
+                CgNetwork.onSessionEnd(CgWorld::endServer);
+            }
+        }
+        return serverWorld;
+    }
+
+    private static boolean driving;
+
+    private static void tickServer() {
+        CgWorld w;
+        synchronized (CgWorld.class) {
+            w = serverWorld;
+        }
+        if (w != null) w.tick();
+    }
+
+    private static void endServer() {
+        CgWorld w;
+        synchronized (CgWorld.class) {
+            w = serverWorld;
+            serverWorld = null;
+        }
+        if (w != null) w.close();
     }
 
     /** Where functions are added. */
@@ -122,10 +179,63 @@ public final class CgWorld implements AutoCloseable {
         return null;
     }
 
-    /** Runs every group once, in order, under {@code view}: the host's camera for this frame. */
+    /** Runs every frame group once, in order, under {@code view}: the host's camera for this frame. A preview's, a test's. */
     public void frame(CgHostView view) {
         this.view = view;
+        frames++;
         schedule.run();
+    }
+
+    /**
+     * One game tick: the tick groups {@link CgTickGroup#NET_IN} through {@link CgTickGroup#NET_OUT}, each function's
+     * {@code dt} on the tick clock, a twentieth of a second a tick. A server's world is ticked by its server.
+     */
+    public void tick() {
+        ticks++;
+        schedule.run(CgTickGroup.NET_IN, CgTickGroup.NET_OUT, ticks * TICK_SECONDS);
+    }
+
+    /** Game ticks run. */
+    public long ticks() {
+        return ticks;
+    }
+
+    /** Frames whose groups ran; always 0 for a dedicated server's. */
+    public long frames() {
+        return frames;
+    }
+
+    /**
+     * {@code WORLD_BEGIN}: the groups {@link CgTickGroup#BEGIN} through {@link CgTickGroup#SHAKE}, once for
+     * {@code frame}, under {@code view} as it stands: last frame's camera, since the host has not taken this one yet.
+     */
+    public void begin(CgHostView view, long frame) {
+        if (frame == begun) return;
+        begun = frame;
+        frames++;
+        this.view = view;
+        schedule.run(CgTickGroup.BEGIN, CgTickGroup.SHAKE);
+    }
+
+    /**
+     * The first world stage's firing of {@code frame}: {@link CgTickGroup#LATE_ATTACH} and {@link CgTickGroup#SUBMIT}
+     * under this frame's {@code view}, after the first part if no camera hook ran it.
+     */
+    public void frame(CgHostView view, long frame) {
+        if (frame != begun) {
+            if (!CgWorldBegin.isAtStage()) {
+                beganLate++;
+                CgTrace.counter(CgChannels.WORLD, BEGIN_LATE, beganLate);
+            }
+            begin(view, frame);
+        }
+        this.view = view;
+        schedule.run(CgTickGroup.LATE_ATTACH, CgTickGroup.SUBMIT);
+    }
+
+    /** Frames whose first part ran at a stage, not at a camera hook, where the host has hooks. */
+    public long beganLate() {
+        return beganLate;
     }
 
     /** Deinitializes the subsystems, latest first. */

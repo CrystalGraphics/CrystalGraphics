@@ -125,6 +125,14 @@ public final class CgCameraShake {
         return CgShakeRuntime.enabled;
     }
 
+    /**
+     * Sums shakes in the client world's {@code SHAKE} group from now on, so even the first lands in the frame it
+     * starts. Once; {@code CgVfx.install} calls it.
+     */
+    public static void schedule() {
+        CgShakeRuntime.schedule();
+    }
+
     /** Whether anything has shaken: from then shakes own the host camera's offset, and write it every frame. */
     public static boolean active() {
         return CgShakeRuntime.installed();

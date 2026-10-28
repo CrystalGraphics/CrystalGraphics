@@ -14,11 +14,11 @@ public abstract class CameraHook {
 
     @Inject(method = "orientCamera", at = @At("HEAD"))
     private void crystalgraphics$orient(float partialTicks, CallbackInfo ci) {
-        HostCamera1710.rotate();
+        HostCamera1710.rotate(partialTicks);
     }
 
     @Inject(method = "getFOVModifier", at = @At("RETURN"), cancellable = true)
     private void crystalgraphics$fov(float partialTicks, boolean useFovSetting, CallbackInfoReturnable<Float> cir) {
-        cir.setReturnValue(HostCamera1710.fov(cir.getReturnValue()));
+        cir.setReturnValue(HostCamera1710.fov(cir.getReturnValue(), partialTicks));
     }
 }

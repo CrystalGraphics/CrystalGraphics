@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.legacy.platform.world;
 
 import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgWorldBegin;
 import net.minecraftforge.client.event.EntityViewRenderEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
@@ -39,6 +40,7 @@ public final class HostCameraLegacy implements CgHostCamera {
 
     @SubscribeEvent
     public void onCameraSetup(EntityViewRenderEvent.CameraSetup event) {
+        CgWorldBegin.fire(partialTicks(event));
         applied |= ROTATION | ROLL;
         //? if >=1.9 {
         event.setYaw(event.getYaw() + yaw);
@@ -53,7 +55,16 @@ public final class HostCameraLegacy implements CgHostCamera {
 
     @SubscribeEvent
     public void onFov(EntityViewRenderEvent.FOVModifier event) {
+        CgWorldBegin.fire(partialTicks(event));
         applied |= FOV;
         event.setFOV(event.getFOV() * fovScale);
+    }
+
+    private static float partialTicks(EntityViewRenderEvent event) {
+        //? if >=1.9 {
+        return (float) event.getRenderPartialTicks();
+        //?} else {
+        /*return (float) event.renderPartialTicks;
+        *///?}
     }
 }

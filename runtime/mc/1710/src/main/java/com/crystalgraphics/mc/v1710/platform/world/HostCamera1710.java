@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.v1710.platform.world;
 
 import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgWorldBegin;
 import org.lwjgl.opengl.GL11;
 
 /**
@@ -39,14 +40,16 @@ public final class HostCamera1710 implements CgHostCamera {
     }
 
     /** {@code CameraHook}, at the head of {@code orientCamera}: the offset as GL rotations on the modelview. */
-    public static void rotate() {
+    public static void rotate(float partialTicks) {
+        CgWorldBegin.fire(partialTicks);
         applied |= ROTATION | ROLL;
         if (roll != 0f) GL11.glRotatef(roll, 0f, 0f, 1f);
         if (pitch != 0f) GL11.glRotatef(pitch, 1f, 0f, 0f);
         if (yaw != 0f) GL11.glRotatef(yaw, 0f, 1f, 0f);
     }
 
-    public static float fov(float base) {
+    public static float fov(float base, float partialTicks) {
+        CgWorldBegin.fire(partialTicks);
         applied |= FOV;
         return base * fovScale;
     }

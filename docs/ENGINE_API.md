@@ -319,8 +319,16 @@ try (CgImmediate draw = CgImmediate.begin(camera)) {
 ## The world and its schedule
 
 Everything that runs once a frame, in order, is a **tick function** in a **group** of a `CgWorld`'s schedule
-(`com.crystalgraphics.frame`). The client's world is `CgWorld.client()`; `CgWorldRenderer` runs it once per ring frame,
-before the world draws.
+(`com.crystalgraphics.frame`). The client's world is `CgWorld.client()`; `CgWorldRenderer` runs it once a frame, in
+two parts:
+
+| Part | Where | Groups |
+|---|---|---|
+| `WORLD_BEGIN` | the host's camera setup (`CgWorldBegin.fire`), before it takes this frame's camera and FOV | `BEGIN` through `SHAKE` |
+| the first `WORLD_OPAQUE` firing | before any renderer records | `LATE_ATTACH`, `SUBMIT` |
+
+So a shake an effect starts this frame moves this frame's camera, terrain included, and a kick lands on its beat. The
+first part sees last frame's camera with this frame's partial tick, since the host has not taken this one yet.
 
 ```java
 CgWorld world = CgWorld.client();
@@ -345,8 +353,17 @@ final class Cutscenes extends CgWorldSubsystem {
 }
 ```
 
-- **Groups** run in order: `BEGIN, PLAYS, SEQUENCES, POSE, ATTACH, CAMERA, SCALABILITY, EFFECTS, SHAKE, LATE_ATTACH, SUBMIT`.
-  A play queued in `SEQUENCES` starts the same frame, in `EFFECTS`.
+- **Groups** run in order. Each frame: `BEGIN, PLAYS, SEQUENCES, POSE, ATTACH, CAMERA, SCALABILITY, EFFECTS, SHAKE,
+  LATE_ATTACH, SUBMIT`; a play queued in `SEQUENCES` starts the same frame, in `EFFECTS`. Each game tick, at the
+  host's 20 Hz (`world.tick()`): `NET_IN, GAMEPLAY, AUTHORITY, NET_OUT`, with `dt` on the tick clock.
+- **A server has a world too**, `CgWorld.serverWorld()`, ticked by its server and ended with the session. It runs only
+  the tick groups, and only functions that say `.onServer(true)`:
+
+  ```java
+  CgWorld.serverWorld().schedule().add(CgTickGroup.AUTHORITY, "mymod:referee", dt -> referee.tick(dt)).onServer(true);
+  ```
+
+  A sequencer or a cue manager added to it evaluates in `AUTHORITY`, headless.
 - **Order within a group** follows prerequisites, then name. Never registration order, so a name is
   `"<mod>:<function>"` and unique. A prerequisite in a later group moves the function there (Unreal's tick demotion); a
   cycle is logged and ignored.
@@ -355,6 +372,11 @@ final class Cutscenes extends CgWorldSubsystem {
 - **A function that throws is disabled** for that world and logged once with its name; the rest run.
 - `.onServer(true)` runs it in a dedicated server's world (`new CgWorld(true)`), which skips every other function.
 - Each group is a trace zone `frame.<group>`, with a zone per function inside.
+- **A frame whose camera hook never ran** (a node with no hook, a mod rendering frames of its own) runs both parts at
+  the stage, counted as `frame.begin-late`. A host with no camera at all, the harness, says so with
+  `CgWorldBegin.atStage()`, and is not counted.
+- **A world of your own** runs every group with `frame(view)`; the client world's split is `begin(view, frame)` then
+  `frame(view, frame)`.
 
 Easy to get wrong: `effectiveGroup()` is valid only after the schedule has run; a stage renderer
 (`CgRenderStage`) is still the way to draw, a tick function only prepares and submits.

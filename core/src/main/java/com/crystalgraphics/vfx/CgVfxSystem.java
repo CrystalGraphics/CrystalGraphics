@@ -263,6 +263,9 @@ public final class CgVfxSystem {
     private float density = 1f;
     private CgQuality quality = CgQuality.HIGH;
     private final CgVfxCulling culling = new CgVfxCulling();
+    /** The frame {@link #scalability} last ran for, and whether its clock had started then. */
+    private double scaledAt = Double.NaN;
+    private boolean stepping;
     /** The budget's adjusted usage as of its last scalability pass. */
     private float usage;
 
@@ -393,19 +396,33 @@ public final class CgVfxSystem {
         follow();
     }
 
-    private void updateTimed(double seconds) {
+    /**
+     * Its scalability pass for the frame at {@code seconds}: the settings read, followed points placed, the clock
+     * advanced, and every effect culled, lowered or woken against the view. The client world's system runs it in
+     * {@code SCALABILITY}, before any effect ticks; {@link #update} runs it itself where nothing did. Once per frame.
+     */
+    public void scalability(double seconds) {
+        if (seconds == scaledAt) return;
+        scaledAt = seconds;
         CgHostEnvironment world = CgRenderStage.WORLD_OPAQUE.host().environment();
         readSettings(world);
         follow();
         resolveRates();
         if (Double.isNaN(clock)) {
             clock = seconds;
+            stepping = false;
             return;
         }
         float passed = (float) (seconds - clock) * pace(world) * (this.world == null ? 1f : this.world.timeDilation());
         owed = Math.max(0f, owed + passed);
         clock = seconds;
         cull(passed);
+        stepping = true;
+    }
+
+    private void updateTimed(double seconds) {
+        scalability(seconds);
+        if (!stepping) return;
         // WORLD_OPAQUE records the GPU's one step a frame. While it has not, every effect holds, as Niagara and VFX
         // Graph pause what is not drawn: a second step would need recording, and a dropped one would leave particles
         // alive in a slot its books close as finished.

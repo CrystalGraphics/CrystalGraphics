@@ -40,6 +40,7 @@ import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.mc.compat.CgIrisCompat;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.world.CgWorldBegin;
 import javax.annotation.Nullable;
 import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -61,6 +62,7 @@ import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgTextureDesc;
+import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgFrameKeys;
@@ -434,6 +436,7 @@ public final class CgWorldRenderer {
         installed = true;
         // Before anything else records (camera shake apart), so what the schedule submits reaches the renderers below ORDER
         // that read it in the same firing: VFX pools and Range lay out slots from it.
+        CgWorldBegin.listen(this::worldBegin);
         CgRenderStage.WORLD_OPAQUE.register(FRAME_ORDER, stage -> beginFrame(stage.host().view()));
         CgRenderStage.WORLD_TRANSPARENT.register(FRAME_ORDER, stage -> beginFrame(stage.host().view()));
         CgRenderStage.WORLD_TRANSPARENT.register(CgSceneTarget.ORDER, sceneTarget::record);
@@ -456,6 +459,16 @@ public final class CgWorldRenderer {
         });
     }
 
+    /**
+     * {@code WORLD_BEGIN}, from a host's camera hook: this frame's partial tick into the opaque stage's host frame, whose
+     * camera is still last frame's, and the client world up to its shakes, once a ring frame.
+     */
+    private void worldBegin(float partialTick) {
+        CgHostFrame host = CgRenderStage.WORLD_OPAQUE.host();
+        host.set(partialTick, host.width(), host.height(), host.mainFramebuffer());
+        CgWorld.client().begin(host.view(), CgFrameRing.frame());
+    }
+
     /** Drops the previous ring frame's draws and runs the client world's schedule, once a ring frame. */
     private void beginFrame(CgHostView view) {
         long now = CgFrameRing.frame();
@@ -465,7 +478,7 @@ public final class CgWorldRenderer {
         }
         if (now != notified) {
             notified = now;
-            CgWorld.client().frame(view);
+            CgWorld.client().frame(view, now);
             CgParameterCollection.upload();   // after the schedule, where effects and sequences set them
             settle();
         }

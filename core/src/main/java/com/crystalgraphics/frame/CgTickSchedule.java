@@ -106,10 +106,20 @@ public final class CgTickSchedule {
 
     /** Runs every group once, in order. */
     void run() {
+        run(CgTickGroup.BEGIN, CgTickGroup.SUBMIT);
+    }
+
+    /** The groups {@code from} through {@code to}, in order, on the frame clock. */
+    void run(CgTickGroup from, CgTickGroup to) {
+        run(from, to, CgFrameClock.seconds());
+    }
+
+    /** The groups {@code from} through {@code to}, in order, at {@code now} seconds on the clock they run by. */
+    void run(CgTickGroup from, CgTickGroup to, double now) {
         CgTickFunction[][] groups = plan();
-        double now = CgFrameClock.seconds();
         boolean paused = world.paused(), server = world.server();
-        for (CgTickFunction[] group : groups) {
+        for (int g = from.ordinal(); g <= to.ordinal(); g++) {
+            CgTickFunction[] group = groups[g];
             if (group.length == 0) continue;
             long mark = CgTrace.allocationBegin(CgChannels.WORLD);
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, group[0].groupZoneId)) {
