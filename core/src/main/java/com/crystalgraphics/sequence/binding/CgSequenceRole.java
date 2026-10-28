@@ -1,5 +1,8 @@
 package com.crystalgraphics.sequence.binding;
 
+import java.util.Collection;
+import java.util.List;
+
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.world.CgAttachment;
@@ -34,4 +37,18 @@ public interface CgSequenceRole extends CgSequenceTarget {
     /** Its socket {@code socket} as an attachment, or where it stands for null; null if it cannot place it. */
     @Nullable
     CgAttachment attachment(@Nullable String socket);
+
+    /** Who it is, for a {@code crystalgraphics:character} condition; null for no one in particular. */
+    @Nullable
+    default String character() {
+        return null;
+    }
+
+    /**
+     * The variants it reports, for a {@code crystalgraphics:variant} condition: a form, a flight gear (Kakarot's
+     * {@code C001A_S_SKL003_3}); empty in its base form.
+     */
+    default Collection<String> variants() {
+        return List.of();
+    }
 }

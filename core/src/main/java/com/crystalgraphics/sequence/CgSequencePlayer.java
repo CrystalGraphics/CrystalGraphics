@@ -20,8 +20,10 @@ import com.crystalgraphics.world.CgAttachment;
 import com.crystalgraphics.sequence.binding.CgSequenceLocator;
 import com.crystalgraphics.sequence.binding.CgSequencePlacement;
 import com.crystalgraphics.sequence.binding.CgSequenceRole;
+import com.crystalgraphics.sequence.condition.CgConditionKinds;
 import com.crystalgraphics.sequence.definition.CgSequenceBinding;
 import com.crystalgraphics.sequence.definition.CgSequenceChannel;
+import com.crystalgraphics.sequence.definition.CgSequenceCondition;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.sequence.definition.CgSequenceField;
 import com.crystalgraphics.sequence.definition.CgSequenceSection;
@@ -63,6 +65,9 @@ public final class CgSequencePlayer {
     /** Per track, per section (index + 1; 0 for the whole track): what its evaluator bound. */
     private final Object[][] data;
     private final boolean[][] bound;
+    /** Per track, per section as {@link #data}: its condition's answer, tested at its first entry; 0 untested. */
+    private final byte[][] conditions;
+    private final CgSequenceCondition.Reader conditionReader;
     /** The active entries of the current segment, and each one's evaluator's index in the sequencer. */
     private final int[] active, activeEvaluator;
     private int activeCount, segment = -1;
@@ -122,10 +127,13 @@ public final class CgSequencePlayer {
         this.locatorPlaces = new CgSequencePlacement[locators.length];
         this.data = new Object[definition.tracks().size()][];
         this.bound = new boolean[data.length][];
+        this.conditions = new byte[data.length][];
         for (int t = 0; t < data.length; t++) {
             data[t] = new Object[definition.tracks().get(t).sections().size() + 1];
             bound[t] = new boolean[data[t].length];
+            conditions[t] = new byte[data[t].length];
         }
+        this.conditionReader = CgConditionKinds.reader(i -> this.roles[i]);
         int most = 0;
         CgSequenceField field = definition.field();
         for (int s = 0; s < field.segments(); s++) most = Math.max(most, field.entryCount(s));
@@ -601,9 +609,23 @@ public final class CgSequencePlayer {
             if (evaluator < 0) continue;
             // Not bound yet: a spawnable not made, or a skipped role.
             if (!bound[track.index()][field.section(e) + 1]) continue;
+            if (field.section(e) >= 0 && !conditionHolds(track, track.sections().get(field.section(e)))) continue;
             active[activeCount] = e;
             activeEvaluator[activeCount++] = evaluator;
         }
+    }
+
+    /**
+     * Whether {@code section}'s condition lets it play: tested at its first entry and kept for the play, as Unreal's
+     * {@code Once} conditions at import (FEntityLedger::CanImportEntity). A server plays no conditional section.
+     */
+    private boolean conditionHolds(CgSequenceTrack track, CgSequenceSection section) {
+        if (section.condition() == null) return true;
+        if (sequencer.server()) return false;
+        byte[] answers = conditions[track.index()];
+        int at = section.index() + 1;
+        if (answers[at] == 0) answers[at] = (byte) (section.condition().test(conditionReader) ? 1 : 2);
+        return answers[at] == 1;
     }
 
     /** Evaluate: each active entry of evaluator {@code evaluator}'s kind, then its triggered sections running. */
