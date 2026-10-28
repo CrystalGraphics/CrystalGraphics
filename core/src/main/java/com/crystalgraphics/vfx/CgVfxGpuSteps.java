@@ -62,6 +62,8 @@ final class CgVfxGpuSteps {
         boolean warm;
         /** Its particles end in the next step, and then its slot closes. */
         boolean killed;
+        /** Killed and stepped: its slot closes at the next step, once the step that ends its particles is recorded. */
+        boolean closing;
         /** Its particles end this step and it stays open, spawning nothing this step ({@link CgVfxEmitterInstance#killParticles}). */
         boolean cleared;
         /** The effect that stepped it, whose look draws it; null for an instance admitted without one (a test's). */
@@ -136,7 +138,7 @@ final class CgVfxGpuSteps {
             this.parent = parent;
             this.effect = effect;
             timeAfter = instance.books().stepTime();
-            warm = killed = false;
+            warm = killed = closing = false;
             trailRows = trailRefitCount = 0;
             stepTime = Float.NaN;
             turnX = turnY = turnZ = 0f;
@@ -510,11 +512,17 @@ final class CgVfxGpuSteps {
             if (i >= tenants.size()) continue;
             Tenant tenant = tenants.get(i);
             tenant.cleared = false;
-            // Killed: this step ended its particles, so its slot holds none to hand on. Started again, it asks anew.
+            // Killed: this step ends its particles once the pool records it, which it does only while the slot is open (a
+            // pool with no open slot drops its steps), so the slot closes at the next step. Its instance lets go now: started
+            // again, it asks anew for another slot.
             if (tenant.killed) {
-                CgVfxEmitterInstance instance = tenant.parent == null ? tenant.instance : null;
-                release(i);
-                if (instance != null) instance.books().slotLost();
+                if (!tenant.closing) {
+                    tenant.closing = true;
+                    if (byInstance.get(tenant.instance) == tenant) byInstance.remove(tenant.instance);
+                    if (tenant.parent == null) tenant.instance.books().slotLost();
+                } else {
+                    release(i);
+                }
                 continue;
             }
             // A parent finishes once its children have; a child alone may look finished before its parent spawns any.
@@ -547,7 +555,7 @@ final class CgVfxGpuSteps {
 
     private void release(int i) {
         Tenant tenant = tenants.remove(i);
-        byInstance.remove(tenant.instance);
+        if (byInstance.get(tenant.instance) == tenant) byInstance.remove(tenant.instance);
         CgVfxParticlePool pool = tenant.pool;
         pool.close(tenant.slot);
         tenant.close();

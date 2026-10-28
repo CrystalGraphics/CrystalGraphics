@@ -135,6 +135,10 @@ public class CgVfxGpuStepsTest {
         frame(steps, air);
         assertNull(steps.of(killed));
         assertNotNull(steps.of(kept));
+        // Its slot stays open for the step carrying its kill, or a pool left with no open slot would drop that step.
+        assertEquals(2, pool.openSlots());
+        kept.books().schedule(DT, 0.0, 0.0, 0.0);
+        frame(steps, air);
         assertEquals(1, pool.openSlots());
     }
 
@@ -172,7 +176,7 @@ public class CgVfxGpuStepsTest {
         assertTrue(aura.finished());
         play(steps, air, aura, 1);
         assertNull(steps.of(aura));
-        assertEquals(0, pool.openSlots());
+        assertEquals(1, pool.openSlots());
         aura.start(0f, 0f, 0f);
         assertFalse(aura.finished());
         play(steps, air, aura, 1);
@@ -223,6 +227,7 @@ public class CgVfxGpuStepsTest {
         assertNull(steps.of(stopped));
         assertNull(steps.of(dropped));
         assertTrue(dropped.finished());
+        frame(steps, air);
         assertEquals(0, CgVfxParticlePool.of(steps, core).openSlots());
     }
 
