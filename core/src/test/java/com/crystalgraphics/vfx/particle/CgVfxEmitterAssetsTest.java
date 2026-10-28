@@ -266,6 +266,37 @@ public class CgVfxEmitterAssetsTest {
         assertArrayEquals(new float[]{1f, 50f, 40f}, roll.to(), 0f);
     }
 
+    /** VectorFieldLocal's RelativeScale3D stretches the field's box and its centre about its origin, never its vectors. */
+    @Test
+    public void aVectorFieldsRelativeScaleStretchesItsVolumeAlone() {
+        CgVfxField vectors = CgVfxField.of(2, 2, 2, false, (x, y, z, out) -> {
+            out[0] = 1f;
+            out[1] = out[2] = 0f;
+        });
+        CgVfxGridField grid = new CgVfxGridField(vectors, new float[]{0f, -0.5f, 0f}, new float[]{2f, 1f, 3f}, 1f);
+        CgAssetCompiler.Dependencies deps = new CgAssetCompiler.Dependencies() {
+            @Override public Object definition(CgType kind, String id) {
+                return grid;
+            }
+            @Override public CgUnits units() {
+                return CgUnits.HOST;
+            }
+        };
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 4));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0))));
+        tree.put("particle_update", List.of(Map.of("id", "swirl", "module", "crystalgraphics:vector_field",
+                "inputs", Map.of("field", Map.of("field", "mymod:swirl"), "intensity", 2.0, "relative_scale", List.of(10.0, 30.0, 10.0)))));
+        CgVfxEmitter e = CgVfxEmitterAssets.compile("swirl", tree, null, deps);
+        CgVfxModule.VectorField field = (CgVfxModule.VectorField) e.modules().get(0);
+        assertArrayEquals(new float[]{20f, 30f, 30f}, new float[]{(float) field.box().halfX(), (float) field.box().halfY(),
+                (float) field.box().halfZ()}, 0f);
+        assertArrayEquals(new float[]{0f, -15f, 0f}, field.turn().pivot(), 0f);
+        assertEquals("its vectors keep their intensity", 2f, field.strength(), 0f);
+    }
+
     /** Unreal's mesh factory sizes a mesh by its scale alone: the sprite size's default (50 cm) never shrinks it. */
     @Test
     public void aMeshParticleIsSizedByItsMeshScaleAlone() {

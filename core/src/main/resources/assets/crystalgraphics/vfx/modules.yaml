@@ -179,7 +179,7 @@ modules:
       { name: field, type: field, forms: [data, constant] }, { name: global, type: bool, default: false },
       { name: intensity, type: float, default: 1 }, { name: scale, type: float, by: [age], default: 1 },
       { name: tightness, type: float, default: 0 },
-      { name: translation, type: vec3, quantity: offset, default: [0, 0, 0] }, { name: rotation, type: rotation, default: [0, 0, 0] },
+      { name: translation, type: vec3, quantity: offset, default: [0, 0, 0] }, { name: rotation, type: rotation, default: [0, 0, 0] }, { name: relative_scale, type: vec3, quantity: scale, default: [1, 1, 1] },
       { name: initial_rotation, type: rotation, rolls: instance, default: [0, 0, 0] },
       { name: rotation_rate, type: rotation, quantity: angular_speed, default: [0, 0, 0] },
       { name: tile, type: string, default: "" }, { name: ignore_component_transform, type: bool, default: false }, { name: use_fix_dt, type: bool, default: true },
