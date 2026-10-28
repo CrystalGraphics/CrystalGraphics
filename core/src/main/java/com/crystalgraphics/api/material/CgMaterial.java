@@ -762,19 +762,19 @@ public final class CgMaterial {
     private static final int DENSE_KEYWORDS = 8;
     /** {@code CgInstanceKind.values().length}, once: {@code values()} copies its array each call. */
     private static final int KINDS = CgInstanceKind.values().length;
-    /** The most keywords a shader declares (the parser's cap): a mask's width. */
-    private static final int MAX_KEYWORDS = 16;
+    /** The most keywords a shader declares (the parser's cap): a mask's width, an int's non-negative bits. */
+    private static final int MAX_KEYWORDS = 31;
 
     /**
-     * A sparse int-keyed cache of keyword variants: open addressing, so a lookup allocates nothing. For a shader past
+     * A sparse long-keyed cache of keyword variants: open addressing, so a lookup allocates nothing. For a shader past
      * {@link #DENSE_KEYWORDS}, whose 2^n table would be mostly empty.
      */
     private static final class SparseVariants {
-        private int[] keys = new int[16];
+        private long[] keys = new long[16];
         private Object[] values = new Object[16];
         private int size;
 
-        Object get(int key) {
+        Object get(long key) {
             int mask = keys.length - 1;
             for (int i = mix(key) & mask; ; i = (i + 1) & mask) {
                 if (values[i] == null) return null;
@@ -782,7 +782,7 @@ public final class CgMaterial {
             }
         }
 
-        void put(int key, Object value) {
+        void put(long key, Object value) {
             if ((size + 1) * 2 > keys.length) grow();
             int mask = keys.length - 1;
             for (int i = mix(key) & mask; ; i = (i + 1) & mask) {
@@ -800,24 +800,24 @@ public final class CgMaterial {
         }
 
         private void grow() {
-            int[] k = keys;
+            long[] k = keys;
             Object[] v = values;
-            keys = new int[k.length * 2];
+            keys = new long[k.length * 2];
             values = new Object[k.length * 2];
             size = 0;
             for (int i = 0; i < k.length; i++) if (v[i] != null) put(k[i], v[i]);
         }
 
-        private static int mix(int key) {
-            int h = key * 0x9E3779B9;
-            return h ^ (h >>> 16);
+        private static int mix(long key) {
+            long h = key * 0x9E3779B97F4A7C15L;
+            return (int) (h ^ (h >>> 32));
         }
     }
 
     @Nullable
     private SparseVariants sparseVariants, sparsePipelines;
 
-    /** The enabled keywords as bits over the declared features, or -1 past the sixteen a shader may declare. */
+    /** The enabled keywords as bits over the declared features, or -1 past the 31 a shader may declare. */
     private int keywordMask() {
         return keywordMask(getDeclaredFeatureNames());
     }
@@ -1103,7 +1103,7 @@ public final class CgMaterial {
                 sparsePipelines = new SparseVariants();
                 pipelinesParse = parsed;
             }
-            int key = (slot * kinds + kind.ordinal()) << MAX_KEYWORDS | mask;
+            long key = (long) (slot * kinds + kind.ordinal()) << MAX_KEYWORDS | mask;
             CgPipeline pipeline = (CgPipeline) sparsePipelines.get(key);
             if (pipeline == null) {
                 pipeline = CgPipeline.of(cgMaterialShader, pass, enabledKeywords, getPassRenderState(pass), kind);

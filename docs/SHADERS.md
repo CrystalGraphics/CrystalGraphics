@@ -19,7 +19,7 @@ Built-in types: `spatial` (`CgVertexFormat.SPATIAL` — position, normal, colour
 
 ```glsl
 #type spatial
-#pragma cg_feature NORMAL_MAP         // compile-time keyword; max 16 per shader
+#pragma cg_feature NORMAL_MAP         // compile-time keyword; max 31 per shader
 #pragma cg_feature FOG_ON
 #pragma cg_use quad                   // opt into an engine buffer (see below); omit if unused
 
@@ -329,12 +329,12 @@ Each `#pragma cg_feature` declares a compile-time flag. Enabling a keyword at ru
 
 ```glsl
 #pragma cg_feature FOG_ON
-#pragma cg_feature NORMAL_MAP   // max 16 per shader
+#pragma cg_feature NORMAL_MAP   // max 31 per shader
 ```
 
 | Rule | Detail |
 |---|---|
-| Max 16 per shader | Exceeding throws `CgShaderParseException` at parse time; past 8 a material resolves its program uncached |
+| Max 31 per shader | Exceeding throws `CgShaderParseException` at parse time; past 8 a material's variants sit in a sparse table |
 | Uppercase only | Names must match `[A-Z][A-Z0-9_]*` |
 | Declared names only | `enableKeyword()` throws `IllegalArgumentException` for undeclared names |
 | Lazy compilation | Variant compiled on first `bind()` with that keyword set, then cached under a flat `ProgramKey` |

@@ -160,26 +160,21 @@ public class CgShaderParserFeatureTest {
                 shader("#pragma cg_feature SHADOWS_ON", "#pragma cg_feature SHADOWS_ON"), "test");
     }
 
+    @Test
+    public void seventeenFeatures_parse() {
+        // Kakarot's CellShade_Tone port: its feature mask and a static switch.
+        assertEquals(17, CgShaderParser.parse(shader(features(17)), "test").featureNames().size());
+    }
+
     @Test(expected = CgShaderParseException.class)
-    public void seventeenFeaturesExceedsMax_throws() {
-        CgShaderParser.parse(shader(
-                "#pragma cg_feature A",
-                "#pragma cg_feature B",
-                "#pragma cg_feature C",
-                "#pragma cg_feature D",
-                "#pragma cg_feature E",
-                "#pragma cg_feature F",
-                "#pragma cg_feature G",
-                "#pragma cg_feature H",
-                "#pragma cg_feature I",
-                "#pragma cg_feature J",
-                "#pragma cg_feature K",
-                "#pragma cg_feature L",
-                "#pragma cg_feature M",
-                "#pragma cg_feature N",
-                "#pragma cg_feature O",
-                "#pragma cg_feature P",
-                "#pragma cg_feature Q"), "test");
+    public void thirtyTwoFeaturesExceedsMax_throws() {
+        CgShaderParser.parse(shader(features(32)), "test");
+    }
+
+    private static String[] features(int n) {
+        String[] lines = new String[n];
+        for (int i = 0; i < n; i++) lines[i] = "#pragma cg_feature F" + i;
+        return lines;
     }
 
     // ── Compiler integration — pragma never in generated GLSL ────────────────

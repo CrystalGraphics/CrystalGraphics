@@ -149,7 +149,7 @@ boolean on = material.isKeywordEnabled("FOG_ON");  // false by default
 ```
 
 **Rules and limits:**
-- Maximum **16 keywords** per shader (a game archetype carries its feature mask); past 8 a program is resolved uncached. Exceeding this throws `CgShaderParseException` at parse time.
+- Maximum **31 keywords** per shader (a game archetype carries its feature mask and its material's static switches); past 8 its variants sit in a sparse table. Exceeding this throws `CgShaderParseException` at parse time.
 - Keyword names must match `[A-Z][A-Z0-9_]*` — all uppercase, start with a letter.
 - Only names declared with `#pragma cg_feature` in that shader are accepted — `enableKeyword()`
   throws `IllegalArgumentException` for undeclared names.

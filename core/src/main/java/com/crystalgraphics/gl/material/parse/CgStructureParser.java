@@ -459,10 +459,11 @@ final class CgStructureParser {
      * @throws CgShaderParseException on any validation failure
      */
     /**
-     * The most keywords a shader declares: a kit's archetype carries a game's feature mask (CC2's effect family, 11).
-     * A material past 8 resolves its program uncached ({@code CgMaterial.keywordMask}).
+     * The most keywords a shader declares: a kit's archetype carries a game's feature mask (CC2's effect family, 11)
+     * and its material's static switches (Kakarot's CellShade_Tone, 17). A material's keyword mask is an int's 31
+     * bits ({@code CgMaterial.keywordMask}); past 8 its variants sit in a sparse table.
      */
-    static final int MAX_FEATURES = 16;
+    static final int MAX_FEATURES = 31;
 
     static List<String> parseFeaturePragmas(String source, String resourcePath) {
         List<String> names = new ArrayList<>();
