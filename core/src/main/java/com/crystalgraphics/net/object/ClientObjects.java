@@ -264,6 +264,7 @@ final class ClientObjects {
         Object[] refs = obj.refs.clone();
         obj.predicting = false;
         obj.predictionKey = 0;
+        if (obj.keyFirst) obj.key.accept();
         obj.kind = anchor;
         obj.dimension = dimension;
         obj.live(id, spawnTick);
@@ -541,10 +542,11 @@ final class ClientObjects {
             if (changed == changedFields.length) changedFields = Arrays.copyOf(changedFields, changed * 2);
             changedFields[changed++] = i;
         }
+        // A behaviour the prediction was given is its own: the type's client factory would make a second.
         Function<CgNetObject, CgNetBehaviour> factory = obj.type.client;
-        if (factory != null) {
+        if (obj.behaviour != null || factory != null) {
             try {
-                obj.behaviour = factory.apply(obj);
+                if (obj.behaviour == null) obj.behaviour = factory.apply(obj);
                 if (obj.behaviour != null) obj.behaviour.spawned(obj, 0);
             } catch (RuntimeException failed) {
                 LOGGER.error("[cg-net] the client behaviour of {} failed to spawn", obj, failed);
@@ -555,7 +557,15 @@ final class ClientObjects {
 
     private void refused(int key) {
         CgNetObject obj = pending.remove(key);
-        if (obj != null) end(obj, !obj.type.keepRefused);
+        if (obj != null) {
+            end(obj, !obj.type.keepRefused);
+            if (obj.keyFirst) obj.key.refuse();
+        }
+    }
+
+    /** A prediction its key's refusal ends, whatever its own answer would have been. */
+    void endPrediction(CgNetObject obj) {
+        if (pending.remove(obj.predictionKey) == obj) end(obj, !obj.type.keepRefused);
     }
 
     /** Its owner set a predicted field here: shown at once, and sent unless the object is still a prediction. */
@@ -623,13 +633,20 @@ final class ClientObjects {
     }
 
     private void tickPredictions() {
+        List<CgPredictionKey> timedOut = null;
         for (Iterator<CgNetObject> it = pending.values().iterator(); it.hasNext(); ) {
             CgNetObject obj = it.next();
             tick(obj);
             if (ticks - obj.predictedAt <= obj.type.predictionTimeout) continue;
             it.remove();
             end(obj, !obj.type.keepRefused);
+            if (obj.keyFirst) {
+                if (timedOut == null) timedOut = new ArrayList<>(2);
+                timedOut.add(obj.key);
+            }
         }
+        // After the loop: a refused key ends its other predictions, which are in the map being walked.
+        if (timedOut != null) for (CgPredictionKey key : timedOut) key.refuse();
     }
 
     private static void tick(CgNetObject obj) {

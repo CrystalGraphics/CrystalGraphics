@@ -29,6 +29,7 @@ import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorldSubsystem;
 import com.crystalgraphics.net.object.CgNetObject;
+import com.crystalgraphics.net.object.CgPredictionKey;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.tag.CgGameplayTag;
@@ -236,6 +237,32 @@ public final class CgCueManager extends CgWorldSubsystem {
         p.state = CgCuePlaying.State.PENDING;
         p.params.set(at);
         queue(Op.ADD, tag, p, null, at);
+        return p;
+    }
+
+    /**
+     * Starts {@code tag}'s looping cue on this client now, for its own input, and asks the server for it under
+     * {@code key}: GAS's predicted {@code Add}. Accepted, the server's play takes this one over and it is never sent
+     * here again; refused, or unanswered within the cue type's timeout, it is {@link CgCuePlaying#discarded()} with
+     * everything else under the key.
+     *
+     * <pre>{@code
+     * CgPredictionKey key = CgPredictionKey.open();
+     * CgCuePlaying beam = cues.predict(MYMOD_CUE_BEAM, new CgCueParameters().anchor(CgAnchor.onEntity(me)), key);
+     * montage.jumpToSection("fire", key);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code at} names its anchor; without one nothing is asked, and the key waits for another object.</li>
+     *   <li>The server says which predictions it takes: {@code CgCueNet.TYPE.acceptPredictionsFrom(...)}.</li>
+     * </ul>
+     */
+    public CgCuePlaying predict(CgGameplayTag tag, CgCueParameters at, CgPredictionKey key) {
+        CgCuePlaying p = add(tag, at);
+        p.key = key;
+        key.onRefused(() -> {
+            if (p.key == key && p.active() && !p.discarded) p.discarded();
+        });
         return p;
     }
 
@@ -467,6 +494,9 @@ public final class CgCueManager extends CgWorldSubsystem {
                 p.object = CgCueNet.spawn(cue, p.params);
                 if (p.object != null) p.object.start();
                 p.sends = p.object != null && cue.authoritative();
+            } else if (p.key != null && c.net == null) {
+                p.object = CgCueNet.predict(cue, p.params, this, p, p.key);
+                if (p.object != null) p.object.start();
             } else if (c.net != null) {
                 p.object = c.net;
                 if (cue.authoritative()) {

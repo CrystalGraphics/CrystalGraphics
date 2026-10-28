@@ -13,6 +13,7 @@ import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.frame.CgWorld;
+import com.crystalgraphics.net.object.CgPredictionKey;
 import com.crystalgraphics.sequence.event.CgSequenceEventListener.Side;
 import com.crystalgraphics.world.CgAttachment;
 import com.crystalgraphics.sequence.binding.CgSequenceRole;
@@ -154,6 +155,24 @@ public class CgSequenceSeekTest {
         assertEquals(List.of(), heard);
         sequencer.evaluate(0.15f);                                       // then plays on, crossing the burst at 90
         assertEquals(List.of("INSTANT mymod:burst"), heard);
+    }
+
+    @Test
+    public void aPredictedJumpIsUndoneWhenItsKeyIsRefused() {
+        CgSequencer sequencer = sequencer();
+        CgSequencePlayer refused = sequencer.play(compile(MONTAGE), Map.of("caster", new Caster()));
+        CgSequencePlayer kept = sequencer.play(compile(MONTAGE), Map.of("caster", new Caster()));
+        sequencer.evaluate(0.1f);
+        CgPredictionKey no = CgPredictionKey.open(), yes = CgPredictionKey.open();
+        refused.jumpToSection("release", no);
+        kept.jumpToSection("release", yes);
+        sequencer.evaluate(0f);
+        no.refuse();
+        yes.accept();
+        sequencer.evaluate(0f);
+        assertEquals("back where it jumped from", "charge", refused.section());
+        assertEquals(0.1, refused.seconds(), 1e-6);
+        assertEquals("release", kept.section());
     }
 
     @Test

@@ -14,6 +14,7 @@ import com.crystalgraphics.net.object.CgNetEvent;
 import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgNetType;
+import com.crystalgraphics.net.object.CgPredictionKey;
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.world.CgAttachment;
@@ -114,6 +115,23 @@ public final class CgCueNet {
         if (cue.writes().size() > WRITES) throw new IllegalStateException(cue.id() + ": writes " + cue.writes().size() + " names, past " + WRITES);
         CgNetObject obj = TYPE.spawn(anchor);
         obj.range(Float.isNaN(cue.range()) ? DEFAULT_RANGE : cue.range());
+        return fill(obj, cue, at);
+    }
+
+    /**
+     * {@code cue} as this client predicts it for its own input, under {@code key}, its view bound to {@code playing} so
+     * what the server later says of it reaches that play; null where {@code at} names no anchor.
+     */
+    @Nullable
+    static CgNetObject predict(CgCueDefinition cue, CgCueParameters at, CgCueManager cues, CgCuePlaying playing, CgPredictionKey key) {
+        CgAnchor anchor = at.anchor();
+        if (anchor == null) return null;
+        if (cue.writes().size() > WRITES) throw new IllegalStateException(cue.id() + ": writes " + cue.writes().size() + " names, past " + WRITES);
+        CgNetObject obj = TYPE.predict(anchor).within(key).behaviour(new View(cues, playing));
+        return fill(obj, cue, at);
+    }
+
+    private static CgNetObject fill(CgNetObject obj, CgCueDefinition cue, CgCueParameters at) {
         obj.set(CUE, cue.id()).setInt(SEED, (int) at.seed())
                 .setDouble(X, at.x()).setDouble(Y, at.y()).setDouble(Z, at.z())
                 .setFloat(NX, at.nx()).setFloat(NY, at.ny()).setFloat(NZ, at.nz())
@@ -172,8 +190,15 @@ public final class CgCueNet {
             this.cues = cues;
         }
 
+        /** A prediction's view: the play it already is. */
+        View(CgCueManager cues, CgCuePlaying playing) {
+            this.cues = cues;
+            this.playing = playing;
+        }
+
         @Override
         public void spawned(CgNetObject obj, float age) {
+            if (playing != null) return;   // a prediction: already playing
             read(obj, at, cues);
             playing = cues.received(obj, at, age * TICK);
         }
@@ -194,7 +219,8 @@ public final class CgCueNet {
         @Override
         public void despawned(CgNetObject obj, boolean killed) {
             if (playing == null || !playing.active()) return;
-            if (killed) playing.kill();
+            if (obj.isPredicted()) playing.discarded();
+            else if (killed) playing.kill();
             else playing.remove();
             playing = null;
         }

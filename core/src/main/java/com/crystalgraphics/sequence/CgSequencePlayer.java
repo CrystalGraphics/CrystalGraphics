@@ -10,6 +10,7 @@ import javax.annotation.Nullable;
 
 import org.joml.Quaternionf;
 
+import com.crystalgraphics.net.object.CgPredictionKey;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgUnits;
@@ -247,6 +248,24 @@ public final class CgSequencePlayer {
      * CgSequencePlayer late = sequencer.play(definition, roles).seek(serverSeconds);   // a late joiner
      * }</pre>
      */
+    /**
+     * {@link #jumpToSection(String)} predicted for an input: jumped now, and if {@code key} is refused, put back to the
+     * section and position it jumped from, as though the jump never ran.
+     *
+     * <pre>{@code
+     * CgPredictionKey key = CgPredictionKey.open();
+     * montage.jumpToSection("fire", key);
+     * }</pre>
+     */
+    public CgSequencePlayer jumpToSection(String name, CgPredictionKey key) {
+        double from = seconds();
+        jumpToSection(name);
+        key.onRefused(() -> {
+            if (!stopped()) seek(from);
+        });
+        return this;
+    }
+
     public CgSequencePlayer seek(double seconds) {
         jumpTo(seconds);
         this.seek = true;

@@ -16,6 +16,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 import javax.annotation.Nullable;
 
@@ -184,8 +185,17 @@ public final class CgNetObjects {
         return connection.attachment(ClientObjects.class, ClientObjects::new).holder(type, entityId);
     }
 
+    /** A test rig's client standing in for this process's, while a test predicts through a type. */
+    @Nullable
+    static Supplier<ClientObjects> local;
+
     /** This process's client, for a prediction. */
     static ClientObjects client() {
+        if (local != null) {
+            ClientObjects objects = local.get();
+            if (objects == null) throw new IllegalStateException("a prediction needs a connection to a server");
+            return objects;
+        }
         CgProtocolConnection<Object> connection = CgNetwork.client();
         if (connection == null) throw new IllegalStateException("a prediction needs a connection to a server");
         return connection.attachment(ClientObjects.class, ClientObjects::new);

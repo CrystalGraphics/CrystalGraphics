@@ -224,6 +224,7 @@ public final class CgNetTestRig implements AutoCloseable {
     @Override
     public void close() {
         clientConnections.closeAll("rig closed");
+        CgNetObjects.local = null;
         CgNetwork.resetForTesting();
         CgProtocols.resetForTesting();
         CgPlatform.provide(CgLevels.SERVICE, null);
@@ -250,6 +251,12 @@ public final class CgNetTestRig implements AutoCloseable {
         /** Its profile id: what {@link CgNetObject#owner} takes. */
         public UUID id() {
             return id;
+        }
+
+        /** Makes this client the game's own: what {@link CgNetType#predict} and the predictions under it reach. */
+        public Client local() {
+            CgNetObjects.local = this::objects;
+            return this;
         }
 
         /** Where its player stands, from the next tick. */

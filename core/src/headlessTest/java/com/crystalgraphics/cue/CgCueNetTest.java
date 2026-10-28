@@ -26,6 +26,7 @@ import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.job.CgJobLoop;
 import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgNetTestRig;
+import com.crystalgraphics.net.object.CgPredictionKey;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.sequence.binding.CgSequenceLocator;
@@ -123,6 +124,52 @@ public class CgCueNetTest {
         ticks(40, () -> seen.made.get(0).removes == 1 && seen.made.get(2).removes == 1);
         assertEquals(1, seen.made.get(0).removes);
         assertEquals(1, seen.made.get(2).removes);
+    }
+
+    /** The owner's client shows its input's beam at once; the server takes it, and it plays once, never twice. */
+    @Test
+    public void anAcceptedPredictionPlaysOnceAndIsKept() throws InterruptedException, IOException {
+        start(beamKit(), 1, false);
+        rig.client(0).local();
+        rig.latencyTicks(2);
+        CgCueNet.TYPE.acceptPredictionsFrom((peer, obj) -> true);
+        ready("cuenet:beam");
+        CgPredictionKey key = CgPredictionKey.open();
+        int[] rolledBack = {0};
+        key.onRefused(() -> rolledBack[0]++);
+        CgCuePlaying beam = client.predict(CgTagRegistry.global().require("cuenet:cue.beam"),
+                new CgCueParameters().at(0, 64, 0).anchor(rig.at(0, 64, 0)), key);
+        ticks(1, () -> false);
+        assertEquals("shown at once", 1, seen.made.size());
+        assertEquals(1, seen.made.get(0).starts);
+        ticks(40, () -> key.state() != CgPredictionKey.State.OPEN);
+        ticks(10, () -> false);
+        assertEquals(CgPredictionKey.State.ACCEPTED, key.state());
+        assertEquals("adopted, never a second play", 1, seen.made.size());
+        assertEquals(0, seen.made.get(0).kills);
+        assertEquals(0, rolledBack[0]);
+        assertTrue(beam.active());
+    }
+
+    /** Refused, the beam and everything else under its key roll back together. */
+    @Test
+    public void aRefusedPredictionRollsBackEverythingUnderItsKey() throws InterruptedException, IOException {
+        start(beamKit(), 1, false);
+        rig.client(0).local();
+        rig.latencyTicks(2);
+        CgCueNet.TYPE.acceptPredictionsFrom((peer, obj) -> false);
+        ready("cuenet:beam");
+        CgPredictionKey key = CgPredictionKey.open();
+        int[] rolledBack = {0};
+        key.onRefused(() -> rolledBack[0]++);
+        client.predict(CgTagRegistry.global().require("cuenet:cue.beam"),
+                new CgCueParameters().at(0, 64, 0).anchor(rig.at(0, 64, 0)), key);
+        ticks(40, () -> key.state() != CgPredictionKey.State.OPEN);
+        ticks(5, () -> false);
+        assertEquals(CgPredictionKey.State.REFUSED, key.state());
+        assertEquals("one play, ended", 1, seen.made.size());
+        assertEquals(1, seen.made.get(0).kills);
+        assertEquals("every rollback once", 1, rolledBack[0]);
     }
 
     private static void write(Path ns, String file, String text) throws IOException {

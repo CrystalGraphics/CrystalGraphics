@@ -100,6 +100,10 @@ public final class CgNetObject {
     int predictionKey;
     /** Client: the client tick its prediction was sent. */
     long predictedAt;
+    /** Client: the input's key this prediction belongs to; its verdict is the key's when it is the first. */
+    @Nullable
+    CgPredictionKey key;
+    boolean keyFirst;
 
     /** Server: by viewer slot, who has been sent its spawn. */
     long[] seenBy = new long[1];
@@ -171,7 +175,7 @@ public final class CgNetObject {
      * }</pre>
      */
     public CgNetObject behaviour(CgNetBehaviour behaviour) {
-        if (!server) throw new IllegalStateException("a server behaviour is the server's");
+        if (!server && !predicting) throw new IllegalStateException("a server behaviour is the server's");
         pending();
         this.behaviour = Objects.requireNonNull(behaviour, "behaviour");
         return this;
@@ -185,6 +189,31 @@ public final class CgNetObject {
         if (!(blocks > 0)) throw new IllegalArgumentException("range must be positive: " + blocks);
         pending();
         range = blocks;
+        return this;
+    }
+
+    /**
+     * A prediction's input: this object is accepted or refused with everything else under {@code key}. The key's first
+     * object carries the verdict, the server's answer to it settling the key; a later one is ended if the key is
+     * refused. Client, before {@code start()} or {@code fire()}.
+     *
+     * <pre>{@code
+     * CgPredictionKey key = CgPredictionKey.open();
+     * SPARK.predict(CgAnchor.at(x, y, z)).within(key).fire();
+     * }</pre>
+     */
+    public CgNetObject within(CgPredictionKey key) {
+        if (server || !predicting) throw new IllegalStateException("only a client's prediction is within a key");
+        pending();
+        this.key = Objects.requireNonNull(key, "key");
+        if (!key.answered) {
+            key.answered = true;
+            keyFirst = true;
+        } else {
+            key.onRefused(() -> {
+                if (client != null) client.endPrediction(this);
+            });
+        }
         return this;
     }
 

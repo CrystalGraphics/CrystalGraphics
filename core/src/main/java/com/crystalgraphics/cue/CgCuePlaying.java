@@ -6,6 +6,7 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.cue.CgCueDefinition.Write;
 import com.crystalgraphics.net.object.CgNetObject;
+import com.crystalgraphics.net.object.CgPredictionKey;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 
 /**
@@ -52,6 +53,9 @@ public final class CgCuePlaying {
     boolean sends;
     @Nullable
     CgSequencePlayer sequence;
+    /** The input's key it was predicted under, on its predicting client; null otherwise. */
+    @Nullable
+    CgPredictionKey key;
     private int[] slots = new int[8];
     private String[] names = new String[PROVIDERS];
     private Provider[] providers = new Provider[PROVIDERS];
@@ -200,6 +204,7 @@ public final class CgCuePlaying {
         definition = null;
         lasting = null;
         object = null;
+        key = null;
         sends = false;
         stopSequence();
         discarded = false;
