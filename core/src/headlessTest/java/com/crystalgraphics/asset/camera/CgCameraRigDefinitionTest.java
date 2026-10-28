@@ -2,10 +2,20 @@ package com.crystalgraphics.asset.camera;
 
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgCameraKinds;
+import com.crystalgraphics.asset.load.CgAssetLoad;
+import com.crystalgraphics.asset.load.CgAssetPipeline;
+import com.crystalgraphics.asset.load.CgAssetState;
+import com.crystalgraphics.asset.registry.CgAssetEntry;
+import com.crystalgraphics.asset.registry.CgAssetRegistry;
+import com.crystalgraphics.asset.registry.CgAssetSource;
 import com.crystalgraphics.asset.tree.CgAssetData;
+import com.crystalgraphics.job.CgJobLoop;
+import org.junit.Assume;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -65,5 +75,37 @@ public class CgCameraRigDefinitionTest {
         group.put("children", List.of(node("warp", "warp_drive")));
         RuntimeException e = assertThrows(RuntimeException.class, () -> rig(List.of(node("boom", "boom_arm"), group)));
         assertTrue(e.getMessage(), e.getMessage().contains("warp_drive"));
+    }
+
+    /** -Pkits=<ns>=<dir>;...: every kit rig compiles, its nodes resolved. */
+    @Test
+    public void everyKitRigCompiles() throws InterruptedException {
+        String kits = System.getProperty("crystalgraphics.kits");
+        Assume.assumeTrue("no -Pkits", kits != null && !kits.isEmpty());
+        CgCameraRigDefinition.register();
+        CgAssetRegistry registry = new CgAssetRegistry();
+        registry.registerEngine();
+        for (String kit : kits.split(";")) {
+            String[] nd = kit.split("=", 2);
+            registry.scan(nd[0], Paths.get(nd[1]), CgAssetSource.DEV);
+        }
+        CgAssetPipeline pipeline = new CgAssetPipeline(registry, CgJobLoop.create("rigs"));
+        List<CgAssetLoad> loads = new ArrayList<>();
+        for (String ns : registry.namespaces()) {
+            for (CgAssetEntry e : registry.entries(ns)) {
+                if (e.kind() == CgCameraKinds.CAMERA_RIG && e.redirect() == null) loads.add(pipeline.request(e.kind(), e.id()));
+            }
+        }
+        Assume.assumeFalse("no rig in the kits", loads.isEmpty());
+        for (int i = 0; i < 60_000 && !pipeline.idle(); i++) {
+            pipeline.drain();
+            Thread.sleep(1);
+        }
+        pipeline.drain();
+        for (CgAssetLoad l : loads) {
+            assertEquals(l + ": " + l.failure(), CgAssetState.COMPILED, l.state());
+            assertTrue(l.toString(), !((CgCameraRigDefinition) l.definition()).nodes().isEmpty());
+        }
+        System.out.println("[rigs] " + loads.size() + " kit rigs compiled");
     }
 }
