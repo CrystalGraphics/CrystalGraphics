@@ -97,6 +97,7 @@ public final class CgAnimInstance {
     private final boolean[] own;
     /** Per scalar name: which own slots declare it, and each one's default; made the first time the name is set. */
     private final Map<String, float[]> scalarDefaults = new HashMap<>();
+    private final Map<String, float[][]> vectorDefaults = new HashMap<>();
     private final CgMaterialCurves curves = new CgMaterialCurves();
     /** The clip and its time behind each of this frame's blended poses, for its curves. */
     private CgAnimSequence[] sampledClips = new CgAnimSequence[0];
@@ -336,6 +337,7 @@ public final class CgAnimInstance {
         materials[slot] = material;
         own[slot] = false;
         scalarDefaults.clear();
+        vectorDefaults.clear();
         return this;
     }
 
@@ -352,6 +354,7 @@ public final class CgAnimInstance {
         materials[slot] = CgMaterial.newInstance(definition, null);
         own[slot] = true;
         scalarDefaults.clear();
+        vectorDefaults.clear();
         return this;
     }
 
@@ -404,6 +407,53 @@ public final class CgAnimInstance {
         }
     }
 
+    /**
+     * Sets the vector {@code name} on each of its own materials that declares it: Unreal's
+     * {@code SetVectorParameterValueOnMaterials}. Client world's thread.
+     */
+    public void vector(String name, float x, float y, float z, float w) {
+        float[][] defaults = declaredVector(name);
+        writer.name = name;
+        writer.vector = true;
+        writer.x = x;
+        writer.y = y;
+        writer.z = z;
+        writer.w = w;
+        for (int s = 0; s < materials.length; s++) if (defaults[s] != null) materials[s].applyProperties(writer);
+        writer.vector = false;
+    }
+
+    /** Puts the vector {@code name} back to each own material's default. */
+    public void resetVector(String name) {
+        float[][] defaults = declaredVector(name);
+        writer.name = name;
+        writer.vector = true;
+        for (int s = 0; s < materials.length; s++) {
+            if (defaults[s] == null) continue;
+            writer.x = defaults[s][0];
+            writer.y = defaults[s][1];
+            writer.z = defaults[s][2];
+            writer.w = defaults[s][3];
+            materials[s].applyProperties(writer);
+        }
+        writer.vector = false;
+    }
+
+    /** Each slot's default vector for {@code name} where its own material declares it, null where not. */
+    private float[][] declaredVector(String name) {
+        float[][] defaults = vectorDefaults.get(name);
+        if (defaults != null) return defaults;
+        defaults = new float[materials.length][];
+        for (int s = 0; s < materials.length; s++) {
+            if (!own[s] || materials[s] == null) continue;
+            for (CgMaterialProperty p : materials[s].properties()) {
+                if (p.getName().equals(name) && !p.getType().isSampler()) defaults[s] = Arrays.copyOf(p.getFloatValue(), 4);
+            }
+        }
+        vectorDefaults.put(name, defaults);
+        return defaults;
+    }
+
     /** Each slot's default for {@code name} where its own material declares it, NaN where not: found once a name. */
     private float[] declared(String name) {
         float[] defaults = scalarDefaults.get(name);
@@ -425,14 +475,16 @@ public final class CgAnimInstance {
         curves.apply(this);
     }
 
-    /** Writes one scalar; reused, so setting one allocates nothing. */
+    /** Writes one scalar or vector; reused, so setting one allocates nothing. */
     private static final class ScalarWriter implements Consumer<CgShaderBindings> {
         String name;
-        float value;
+        float value, x, y, z, w;
+        boolean vector;
 
         @Override
         public void accept(CgShaderBindings b) {
-            b.set1f(name, value);
+            if (vector) b.vec4(name, x, y, z, w);
+            else b.set1f(name, value);
         }
     }
 
