@@ -91,10 +91,18 @@ final class CgSequenceSystemEvaluator implements CgSequenceEvaluator {
                 if (last < 0) continue;
                 CgSequenceChannel.Particle op = CgSequenceChannel.Particle.values()[channel.intValue(last)];
                 switch (op) {
-                    case ACTIVATE -> system.activate(false);
+                    case ACTIVATE -> {
+                        boolean was = system.active();
+                        system.activate(false);
+                        // Lasting: a seek starts it at its age in the section (a system by startAt), never from 0.
+                        if (range.jumped() && !was && keys.emitter() == null) {
+                            system.age((float) player.definition().seconds(now - channel.tick(last)));
+                        }
+                    }
                     case DEACTIVATE -> system.deactivate();
                     case TRIGGER -> {
-                        if (channel.tick(last) >= keyFrom && !range.jumped()) system.activate(true);
+                        int k = channel.tick(last);
+                        if (range.jumped() ? k >= player.oneShotFrom() && k <= now : k >= keyFrom) system.activate(true);
                     }
                     case KILL, DETACH -> {
                         if (keys.applied()[s.index()] != last) {

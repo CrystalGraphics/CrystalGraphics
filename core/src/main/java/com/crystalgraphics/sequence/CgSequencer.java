@@ -44,6 +44,9 @@ import com.crystalgraphics.trace.CgTrace;
 public final class CgSequencer extends CgWorldSubsystem {
 
     /** Trace zones: the whole frame, its spawn and import phases, its tracks' evaluation, its spawned objects' updates. */
+    /** The most passes a frame runs: montage sections shorter than a frame looping are cut there. */
+    static final int MAX_PASSES = 8;
+
     public static final String EVALUATE_ZONE = "sequence.evaluate", SPAWN_ZONE = "sequence.spawn", IMPORT_ZONE = "sequence.import",
             TRACKS_ZONE = "sequence.tracks", SPAWNED_ZONE = "sequence.spawned";
 
@@ -178,23 +181,35 @@ public final class CgSequencer extends CgWorldSubsystem {
                 players.get(i).cleanUp();
                 players.remove(i);
             }
-            // Unreal's phases: spawn, then instantiation (import), then evaluation.
-            for (int i = 0; i < players.size(); i++) {
-                CgSequencePlayer p = players.get(i);
-                p.advance(dt);
-                try (CgTrace.Zone spawn = CgTrace.zone(CgChannels.WORLD, SPAWN_ZONE)) {
-                    p.spawnPhase();
+            // A pass a montage section's end hands play on in: its rest from the next section's start, as Unreal's
+            // montage sub-steps, at most MAX_PASSES a frame.
+            boolean more = true;
+            for (int pass = 0; more && pass < MAX_PASSES; pass++) {
+                more = false;
+                // Unreal's phases: spawn, then instantiation (import), then evaluation.
+                for (int i = 0; i < players.size(); i++) {
+                    CgSequencePlayer p = players.get(i);
+                    if (pass == 0) p.advance(dt);
+                    else if (p.resumes()) p.resume();
+                    else continue;
+                    try (CgTrace.Zone spawn = CgTrace.zone(CgChannels.WORLD, SPAWN_ZONE)) {
+                        p.spawnPhase();
+                    }
+                    try (CgTrace.Zone imports = CgTrace.zone(CgChannels.WORLD, IMPORT_ZONE)) {
+                        p.importEntries(this);
+                    }
                 }
-                try (CgTrace.Zone imports = CgTrace.zone(CgChannels.WORLD, IMPORT_ZONE)) {
-                    p.importEntries(this);
+                try (CgTrace.Zone tracks = CgTrace.zone(CgChannels.WORLD, TRACKS_ZONE)) {
+                    for (int e = 0; e < evaluators.size(); e++) {
+                        for (int i = 0; i < players.size(); i++) players.get(i).evaluate(this, e);
+                    }
+                    blender.apply();
+                    for (int e = 0; e < evaluators.size(); e++) evaluators.get(e).postEvaluation();
                 }
-            }
-            try (CgTrace.Zone tracks = CgTrace.zone(CgChannels.WORLD, TRACKS_ZONE)) {
-                for (int e = 0; e < evaluators.size(); e++) {
-                    for (int i = 0; i < players.size(); i++) players.get(i).evaluate(this, e);
+                for (int i = 0; i < players.size(); i++) {
+                    players.get(i).endPass();
+                    more |= players.get(i).resumes();
                 }
-                blender.apply();
-                for (int e = 0; e < evaluators.size(); e++) evaluators.get(e).postEvaluation();
             }
             try (CgTrace.Zone spawned = CgTrace.zone(CgChannels.WORLD, SPAWNED_ZONE)) {
                 for (int i = 0; i < players.size(); i++) players.get(i).updateSpawned();

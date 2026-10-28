@@ -60,10 +60,19 @@ public final class CgSequencePlayer {
     private final CgEventTrigger[] triggers;
     private final int[] triggeredEvaluator;
     private final boolean[] running;
+    /** Per composite section, the section it plays next, -1 for none: the definition's, re-linked by {@link #nextSection}. */
+    private final int[] next;
+    /** The composite section play is in, or -1. */
+    private int composite = -1;
+    /** Seconds a montage section's end handed on to its next, played in a pass of their own; and whether play jumps there. */
+    private double carry;
+    private boolean resumes, resumeJumps, inPass;
+    /** The first tick a jump's one-shots fire from: past its point for a jump, the window before it for a seek. */
+    private int oneShotFrom = Integer.MAX_VALUE;
     private double seconds;
     private float rate = 1f;
     private long seed;
-    private boolean finished, stopped, jump;
+    private boolean finished, stopped, jump, seek;
 
     CgSequencePlayer(CgSequencer sequencer, CgSequenceDefinition definition, Map<String, ? extends CgSequenceTarget> roles) {
         this.sequencer = sequencer;
@@ -111,6 +120,8 @@ public final class CgSequencePlayer {
         for (int s = 0; s < field.segments(); s++) most = Math.max(most, field.entryCount(s));
         this.active = new int[most];
         this.activeEvaluator = new int[most];
+        this.next = new int[definition.compositeSections().size()];
+        for (int i = 0; i < next.length; i++) next[i] = definition.compositeSections().get(i).next();
         List<CgSequenceDefinition.SectionRef> refs = new ArrayList<>();
         for (List<CgSequenceDefinition.SectionRef> l : definition.triggered().values()) refs.addAll(l);
         this.triggered = refs.toArray(new CgSequenceDefinition.SectionRef[0]);
@@ -199,8 +210,76 @@ public final class CgSequencePlayer {
     public CgSequencePlayer jumpTo(double seconds) {
         this.seconds = seconds;
         this.jump = true;
+        this.seek = false;
         this.finished = false;
+        this.resumes = false;
         return this;
+    }
+
+    /** How long before a seek's point a one-shot still fires: a hit spark later than this is wrong, and is dropped. */
+    public static final double ONE_SHOT_WINDOW = 0.2;
+
+    /**
+     * Seeks to {@code seconds} at the next evaluation, as a late joiner or a scrub lands: state is evaluated there,
+     * what lasts (a system, a span) starts at its age in its section, and a one-shot fires only within
+     * {@link #ONE_SHOT_WINDOW} seconds before it. {@link #jumpTo} fires no one-shot at all.
+     *
+     * <pre>{@code
+     * CgSequencePlayer late = sequencer.play(definition, roles).seek(serverSeconds);   // a late joiner
+     * }</pre>
+     */
+    public CgSequencePlayer seek(double seconds) {
+        jumpTo(seconds);
+        this.seek = true;
+        return this;
+    }
+
+    /**
+     * Jumps to the start of the montage section named {@code name}, as {@code JumpToSectionName} does: a jump, firing
+     * nothing it skips. A name it has not throws, naming it.
+     */
+    public CgSequencePlayer jumpToSection(String name) {
+        CgSequenceDefinition.CompositeSection c = definition.compositeSection(name);
+        if (c == null) throw new IllegalArgumentException(definition.id() + " has no section " + name);
+        return jumpTo(definition.seconds(c.from() - definition.start()));
+    }
+
+    /**
+     * Makes the montage section {@code from} hand play to {@code to} at its end, or stop there for null: Unreal's
+     * {@code SetNextSectionName}, for this play alone. A loop ends when gameplay re-links its section elsewhere.
+     *
+     * <pre>{@code
+     * player.nextSection("loop", "release");   // the charge's loop runs out into its release
+     * }</pre>
+     */
+    public CgSequencePlayer nextSection(String from, @Nullable String to) {
+        int f = compositeIndex(from), t = to == null ? -1 : compositeIndex(to);
+        if (f < 0 || to != null && t < 0) throw new IllegalArgumentException(definition.id() + " has no section " + (f < 0 ? from : to));
+        next[f] = t;
+        return this;
+    }
+
+    /** The name of the montage section play is in, or null where the sequence has none there. */
+    @Nullable
+    public String section() {
+        return composite < 0 ? null : definition.compositeSections().get(composite).name();
+    }
+
+    /** The first tick a jump's one-shots fire from: past its point for a jump, {@link #ONE_SHOT_WINDOW} before it for a seek. */
+    public int oneShotFrom() {
+        return oneShotFrom;
+    }
+
+    private int compositeIndex(String name) {
+        List<CgSequenceDefinition.CompositeSection> cs = definition.compositeSections();
+        for (int i = 0; i < cs.size(); i++) if (cs.get(i).name().equals(name)) return i;
+        return -1;
+    }
+
+    private int compositeAt(int tick) {
+        List<CgSequenceDefinition.CompositeSection> cs = definition.compositeSections();
+        for (int i = 0; i < cs.size(); i++) if (tick >= cs.get(i).from() && tick < cs.get(i).to()) return i;
+        return -1;
     }
 
     /** Takes it out of its sequencer at the next evaluation. */
@@ -414,14 +493,74 @@ public final class CgSequencePlayer {
 
     // ── The sequencer's phases ───────────────────────────────────────────────────────────
 
-    /** Advance: its range from its last time to {@code dt} seconds on. */
+    /**
+     * Advance: its range from its last time to {@code dt} seconds on. Where a montage section ends inside the frame,
+     * play stops at its end and the rest is {@link #resumes() played on} from its next section's start in another
+     * pass, as Unreal's montage sub-steps: a section with none holds play at its end.
+     */
     CgSequenceEvaluationRange advance(float dt) {
+        inPass = true;
         if (jump) {
             jump = false;
-            return position.jumpToSeconds(seconds);
+            CgSequenceEvaluationRange r = position.jumpToSeconds(seconds);
+            int now = CgFrameTime.frame(r.current());
+            oneShotFrom = seek ? now - (int) Math.round(ONE_SHOT_WINDOW / definition.seconds(1)) + 1 : now + 1;
+            seek = false;
+            composite = compositeAt(now);
+            return r;
         }
-        seconds += dt * rate;
+        return play(seconds + dt * rate);
+    }
+
+    /** Whether a montage section handed play on this frame: the sequencer runs a pass for the rest. */
+    boolean resumes() {
+        return resumes;
+    }
+
+    /** The pass after a section's end: play from its next section's start for the seconds it handed on. */
+    CgSequenceEvaluationRange resume() {
+        inPass = true;
+        resumes = false;
+        if (resumeJumps) position.jumpToSeconds(seconds);
+        return play(seconds + carry);
+    }
+
+    /** Whether it plays in the sequencer's current pass. */
+    boolean inPass() {
+        return inPass;
+    }
+
+    void endPass() {
+        inPass = false;
+    }
+
+    private CgSequenceEvaluationRange play(double target) {
         double length = definition.seconds(definition.end() - definition.start());
+        int at = CgFrameTime.frame(position.lastRange().isSet() ? position.lastRange().current() : position.currentTicks());
+        // Held at a section's end, play is still in that section.
+        int in = compositeAt(at);
+        if (in >= 0 || !finished) composite = in;
+        if (composite >= 0 && rate > 0 && !finished) {
+            CgSequenceDefinition.CompositeSection c = definition.compositeSections().get(composite);
+            double end = definition.seconds(c.to() - definition.start());
+            if (target >= end) {
+                int n = next[composite];
+                if (n < 0) {
+                    // FAnimMontageInstance::Advance: no next section, so play stops at this one's end.
+                    seconds = end;
+                    finished = true;
+                    return position.playToSeconds(end);
+                }
+                CgSequenceDefinition.CompositeSection to = definition.compositeSections().get(n);
+                carry = target - end;
+                resumes = true;
+                resumeJumps = to.from() != c.to();
+                CgSequenceEvaluationRange r = position.playToSeconds(end);
+                seconds = definition.seconds(to.from() - definition.start());
+                return r;
+            }
+        }
+        seconds = target;
         if (seconds >= length) {
             seconds = length;
             finished = true;
@@ -458,6 +597,7 @@ public final class CgSequencePlayer {
 
     /** Evaluate: each active entry of evaluator {@code evaluator}'s kind, then its triggered sections running. */
     void evaluate(CgSequencer sequencer, int evaluator) {
+        if (!inPass) return;
         CgSequenceField field = definition.field();
         CgSequenceEvaluator e = sequencer.evaluator(evaluator);
         float tick = tick();

@@ -25,6 +25,8 @@ final class CgSequenceEventEvaluator implements CgSequenceEvaluator, CgEventChan
         final boolean[] open;
         /** Per triggered section, its run and the local tick its keys were swept to. */
         final int[] run, swept;
+        /** The tick after the last its keys were swept to: a range starting before it moved play back. */
+        int sweptEnd = Integer.MIN_VALUE;
 
         Track(Side side, int sections) {
             this.side = side;
@@ -99,20 +101,27 @@ final class CgSequenceEventEvaluator implements CgSequenceEvaluator, CgEventChan
         CgSequenceEvaluationRange range = player.range();
         if (!range.isSet()) return;
         int now = (int) Math.floor(tick);
+        // Play moved back without a jump: a montage section handing play to an earlier one, a loop.
+        boolean back = !range.jumped() && range.direction() == CgSequenceEvaluationRange.Direction.FORWARDS && range.keyFrom() < t.sweptEnd;
         for (CgSequenceSection s : track.sections()) {
             if (!s.active() || s.trigger() != null) continue;
             CgEventChannel keys = t.keys[s.index()];
             if (keys != null) {
+                begin(player, t, s);
                 if (range.jumped()) {
-                    keys.place(now);   // a jump fires nothing it skips
+                    // A jump fires nothing it skips; a seek, what falls in the one-shot window before it.
+                    int from = player.oneShotFrom();
+                    keys.place(Math.min(from, now + 1) - 1);
+                    if (from <= now) keys.sweep(from - 1, now, this);
                 } else {
-                    begin(player, t, s);
+                    if (back) keys.place(range.keyFrom() - 1);
                     range.sweep(keys, this);
                 }
                 continue;
             }
             span(player, t, s, s.contains(now));
         }
+        t.sweptEnd = range.jumped() ? now + 1 : range.keyEnd();
     }
 
     /** {@code s}, started by its event: its keys and span on its own ticks, from the event's tick. */

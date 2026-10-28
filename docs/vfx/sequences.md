@@ -272,6 +272,37 @@ CgEventTrigger run = player.trigger(track, section);   // its run count and seed
 - **State kinds and `event` play one**; a section of another kind started by an event fails at play, naming it.
 - A dedicated server's play ignores `event`, and a late joiner never starts one.
 
+## Montage sections, jumps and seeking
+
+A sequence's `composite_sections` are a montage's: named ranges play moves between. At a section's end play goes on
+to its `next`, the rest of the frame played from that section's start, so a section naming itself loops until the
+gameplay re-links it; a section with no `next` holds play at its end. Unreal's `FAnimMontageInstance`.
+
+```yaml
+composite_sections:
+  - { id: q1, name: charge, range: [0, 40], next: q1 }     # loops while the key is held
+  - { id: q2, name: fire, range: [40, 90], next: q3 }
+  - { id: q3, name: recover, range: [90, 110] }
+```
+
+```java
+player.nextSection("charge", "fire");   // the key let go: the loop runs out into fire at its end (SetNextSectionName)
+player.jumpToSection("fire");           // or at once (JumpToSectionName): fires nothing it skips
+String now = player.section();          // "fire"
+CgSequencePlayer late = sequencer.play(definition, roles).seek(serverSeconds);   // a late joiner
+```
+
+| What | State tracks | Lasting (a system, a span event) | One-shots (event keys, a system's trigger, a notify) |
+|---|---|---|---|
+| playing | evaluated at the time | active while play is in their section | fired as play crosses them |
+| `jumpTo`, `jumpToSection` | evaluated where it lands | kept where they span both times, else started or ended | none fire |
+| `seek` | evaluated where it lands | started at their age in the section: a system by `startAt` | only those within `ONE_SHOT_WINDOW` (0.2 s) before it |
+
+- **A frame longer than a looping section** plays each lap's keys, a pass a lap, up to eight a frame.
+- `nextSection` and a jump are this play's alone; the file keeps its links.
+- A section's `next` is followed forwards only; played backwards, play crosses sections as the timeline lays them.
+- One emitter of a system (`handle`) a seek lands inside starts from its beginning, not its age.
+
 ## Notifies of your own
 
 A notify marks a moment or a span on a move's timeline that does something only your mod knows (Unreal's `AnimNotify`

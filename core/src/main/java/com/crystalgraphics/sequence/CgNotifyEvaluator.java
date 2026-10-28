@@ -75,7 +75,9 @@ final class CgNotifyEvaluator implements CgSequenceEvaluator {
             if (s.fields().get("at") instanceof Number at) {
                 // A trigger: once, as play crosses it; a jump crosses nothing.
                 int t = at.intValue();
-                if (range.isSet() && !range.jumped() && t >= keyFrom && t < keyEnd && passesChance(player, c)) call(c, NOTIFY, 0f, branching);
+                // A seek's one-shots: only within the window before where it lands.
+                boolean crossed = range.jumped() ? t >= player.oneShotFrom() && t <= now : t >= keyFrom && t < keyEnd;
+                if (range.isSet() && crossed && passesChance(player, c)) call(c, NOTIFY, 0f, branching);
                 continue;
             }
             boolean inside = s.contains(now) && threshold(s) <= 1f;
