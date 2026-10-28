@@ -88,6 +88,7 @@ public final class CgSequencePlayer {
     private int oneShotFrom = Integer.MAX_VALUE;
     private double seconds;
     private float rate = 1f;
+    private int revision;
     private long seed;
     private boolean finished, stopped, jump, seek;
 
@@ -204,8 +205,17 @@ public final class CgSequencePlayer {
     }
 
     public CgSequencePlayer rate(float rate) {
+        if (rate != this.rate) revision++;
         this.rate = rate;
         return this;
+    }
+
+    /**
+     * How many times its time, rate or section links were set by hand ({@link #jumpTo}, {@link #seek}, {@link #rate},
+     * {@link #nextSection}): what a replica compares to know the play left the course its last state predicts.
+     */
+    public int revision() {
+        return revision;
     }
 
     /** Its seed: what a notify's chance draws from, the same for every viewer of one play. */
@@ -228,6 +238,7 @@ public final class CgSequencePlayer {
      * it skips over fires nothing, and sections it left end, restoring what they set.
      */
     public CgSequencePlayer jumpTo(double seconds) {
+        revision++;
         this.seconds = seconds;
         this.jump = true;
         this.seek = false;
@@ -248,6 +259,22 @@ public final class CgSequencePlayer {
      * CgSequencePlayer late = sequencer.play(definition, roles).seek(serverSeconds);   // a late joiner
      * }</pre>
      */
+    public CgSequencePlayer seek(double seconds) {
+        jumpTo(seconds);
+        this.seek = true;
+        return this;
+    }
+
+    /**
+     * Jumps to the start of the montage section named {@code name}, as {@code JumpToSectionName} does: a jump, firing
+     * nothing it skips. A name it has not throws, naming it.
+     */
+    public CgSequencePlayer jumpToSection(String name) {
+        CgSequenceDefinition.CompositeSection c = definition.compositeSection(name);
+        if (c == null) throw new IllegalArgumentException(definition.id() + " has no section " + name);
+        return jumpTo(definition.seconds(c.from() - definition.start()));
+    }
+
     /**
      * {@link #jumpToSection(String)} predicted for an input: jumped now, and if {@code key} is refused, put back to the
      * section and position it jumped from, as though the jump never ran.
@@ -266,22 +293,6 @@ public final class CgSequencePlayer {
         return this;
     }
 
-    public CgSequencePlayer seek(double seconds) {
-        jumpTo(seconds);
-        this.seek = true;
-        return this;
-    }
-
-    /**
-     * Jumps to the start of the montage section named {@code name}, as {@code JumpToSectionName} does: a jump, firing
-     * nothing it skips. A name it has not throws, naming it.
-     */
-    public CgSequencePlayer jumpToSection(String name) {
-        CgSequenceDefinition.CompositeSection c = definition.compositeSection(name);
-        if (c == null) throw new IllegalArgumentException(definition.id() + " has no section " + name);
-        return jumpTo(definition.seconds(c.from() - definition.start()));
-    }
-
     /**
      * Makes the montage section {@code from} hand play to {@code to} at its end, or stop there for null: Unreal's
      * {@code SetNextSectionName}, for this play alone. A loop ends when gameplay re-links its section elsewhere.
@@ -294,7 +305,16 @@ public final class CgSequencePlayer {
         int f = compositeIndex(from), t = to == null ? -1 : compositeIndex(to);
         if (f < 0 || to != null && t < 0) throw new IllegalArgumentException(definition.id() + " has no section " + (f < 0 ? from : to));
         next[f] = t;
+        revision++;
         return this;
+    }
+
+    /** What the montage section {@code from} hands play to at its end, for this play; null where it stops there. */
+    @Nullable
+    public String next(String from) {
+        int f = compositeIndex(from);
+        if (f < 0) throw new IllegalArgumentException(definition.id() + " has no section " + from);
+        return next[f] < 0 ? null : definition.compositeSections().get(next[f]).name();
     }
 
     /** The name of the montage section play is in, or null where the sequence has none there. */

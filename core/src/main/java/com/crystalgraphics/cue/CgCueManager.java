@@ -31,6 +31,7 @@ import com.crystalgraphics.frame.CgWorldSubsystem;
 import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgPredictionKey;
 import com.crystalgraphics.sequence.CgSequencePlayer;
+import com.crystalgraphics.sequence.net.CgSequenceNet;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.tag.CgGameplayTag;
 import com.crystalgraphics.tag.CgTagRegistry;
@@ -357,6 +358,16 @@ public final class CgCueManager extends CgWorldSubsystem {
         return p;
     }
 
+    /** The sequence the play of the cue object {@code id} runs as its timeline here; null until it starts. */
+    @Nullable
+    CgSequencePlayer sequenceOfCue(int id) {
+        for (int i = 0; i < playing.size(); i++) {
+            CgCuePlaying p = playing.get(i);
+            if (p.object != null && p.object.id() == id) return p.sequence;
+        }
+        return null;
+    }
+
     @Nullable
     CgAttachment entity(int id) {
         return id < 0 ? null : entities.apply(id);
@@ -511,6 +522,11 @@ public final class CgCueManager extends CgWorldSubsystem {
                 CgSequencePlayer player = sequences.start(cue, sequence.loaded(), p.params);
                 if (player != null && age > 0) player.seek(age);
                 p.sequence = player;
+                // Its jumps and section links reach every viewer; a viewer's copy is the play started just above.
+                if (player != null && server && p.object != null && p.params.anchor() != null) {
+                    CgSequenceNet.serveWith(p.object, player, p.params.anchor())
+                            .range(Float.isNaN(cue.range()) ? CgCueNet.DEFAULT_RANGE : cue.range()).start();
+                }
             }
             playing.add(p);
             return true;

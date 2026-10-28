@@ -14,6 +14,7 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.collision.debug.CgCollisionShow;
 import com.crystalgraphics.frame.CgFrameBoundary;
 import com.crystalgraphics.cue.CgCueNet;
+import com.crystalgraphics.sequence.net.CgSequenceNet;
 import com.crystalgraphics.tag.CgTagNet;
 import com.crystalgraphics.trace.CgThreadAllocation;
 import com.crystalgraphics.net.object.CgNetObjects;
@@ -159,6 +160,7 @@ public final class CgNetwork {
         CgCollisionShow.install();
         CgTagNet.install();
         CgCueNet.install();
+        CgSequenceNet.install();
         return true;
     }
 

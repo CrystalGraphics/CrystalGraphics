@@ -15,6 +15,7 @@ import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgNetType;
 import com.crystalgraphics.net.object.CgPredictionKey;
+import com.crystalgraphics.sequence.net.CgSequenceNet;
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.world.CgAttachment;
@@ -105,6 +106,7 @@ public final class CgCueNet {
      */
     public static void client(Function<CgNetObject, CgCueManager> managers) {
         TYPE.onClient(obj -> new View(managers.apply(obj)));
+        CgSequenceNet.cues((obj, sequence, roles, seed) -> managers.apply(obj).sequenceOfCue(CgSequenceNet.cueOf(obj)));
     }
 
     /** {@code cue} played with {@code at}, ready to fire or start; null where {@code at} names no anchor. */

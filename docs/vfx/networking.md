@@ -236,5 +236,43 @@ cues.onNetworked(play -> play.writes("BeamLength", ...));   // a cue that is not
 - **An authoritative cue's `writes`** are the server's: computed there and sent each tick in their `replication`
   mode. Any other cue's are each player's own.
 - **A cue's `sequence`** starts with it through `cues.sequences((cue, sequence, at) -> ...)`, where the host binds the
-  sequence's roles; without it, the sequence plays nowhere.
+  sequence's roles; without it, the sequence plays nowhere. The server's jumps and section links reach every viewer
+  (below).
+
+### A sequence over the network
+
+A sequence that plays on the server is shown on every viewer from its state: its time, rate, montage section and
+that section's next. The state is sent only when play leaves the course it predicts, a jump, a seek, a rate or a
+relinked section, never as it plays on. A cue's sequence is served for you. One played alone is served by hand:
+
+```java
+// server
+CgSequencePlayer shot = sequencer.play(definition, roles);
+CgSequenceNet.serve(shot, CgAnchor.onEntity(caster), caster).owner(player).start();
+shot.nextSection("charge", "fire");                          // every viewer's copy runs out into fire too
+
+// each client, once: how a sequence it is sent plays here
+CgSequenceNet.client((obj, sequence, roles, seed) -> {
+    CgSequenceDefinition d = definitions.loaded(sequence);
+    return d == null ? null : sequencer.play(d, rolesOf(d, roles));   // null while it loads: asked again next tick
+});
+```
+
+The owner's client jumps at once, under the input's prediction key, and the server says whether it takes it:
+
+```java
+// the owner's client, on an input
+CgPredictionKey key = CgPredictionKey.open();
+CgSequenceNet.jump(shot, "fire", key);                       // shown now; refused, it goes back where it was
+CgCuePlaying beam = cues.predict(MYMOD_CUE_BEAM, at, key);   // the same input's cue, kept or undone with it
+
+// server, at init: which jumps it takes (every one of the owner's, without a rule)
+CgSequenceNet.acceptJumps((player, section) -> !player.section().equals("recover"));
+```
+
+- **A player arriving later** lands on the server's time and section, laps of a loop included.
+- **A viewer** is put back on the server's time when it drifts 0.1 s or leaves the server's section, as Unreal
+  corrects a simulated montage. **The owner** keeps its own jumps and is never pulled back by the trip's delay.
+- **Stopping** the server's play ends every viewer's copy.
+- Time is in the server's game ticks, so it agrees across viewers. A viewer's copy trails the server by the trip there.
 - A cue sends at most 16 `writes`, 8 number or bool `fields` and 4 string ones.

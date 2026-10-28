@@ -311,6 +311,11 @@ CgSequencePlayer late = sequencer.play(definition, roles).seek(serverSeconds);  
 - `nextSection` and a jump are this play's alone; the file keeps its links.
 - A section's `next` is followed forwards only; played backwards, play crosses sections as the timeline lays them.
 - One emitter of a system (`handle`) a seek lands inside starts from its beginning, not its age.
+- **A jump predicted for an input** goes back where it jumped from if its key is refused:
+  `player.jumpToSection("fire", key)`. Over the network, `CgSequenceNet.jump` also asks the server
+  ([networking](networking.md#a-sequence-over-the-network)).
+- **On a dedicated server** a sequence plays its clock, sections and `rpg` events; tracks that draw (animation,
+  systems, state) are never bound there, so a montage's gameplay events fire on the server at their tick.
 
 ## Notifies of your own
 

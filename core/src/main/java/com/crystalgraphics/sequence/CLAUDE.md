@@ -20,6 +20,7 @@ root; a new track kind is a subpackage of its own when it brings types besides i
 | `sequence.animation` | The `animation` kind: `CgSequenceAnimationEvaluator`, `CgSequenceSkeletal` (a target playing clips) |
 | `sequence.event` | The `event` kind and triggered sections: `CgSequenceEventEvaluator`, `CgSequenceEventListener` (sides `rpg`, `ours`), `CgEventChannel` (the sweep), `CgEventTrigger` |
 | `sequence.notify` | Notify kinds a mod registers: `CgNotifyKind`, `CgNotifyContext`, `CgNotifyEvaluator` |
+| `sequence.net` | A play over the network: `CgSequenceNet` (the type `crystalgraphics:sequence`: its state sent on each `revision()`, viewers corrected to it, an owner's predicted jumps under a key) |
 
 ## Rules
 
@@ -28,5 +29,6 @@ root; a new track kind is a subpackage of its own when it brings types besides i
 - **The definition is shared and never changed by playing**: per-play state lives in the player (montage links,
   triggers, cursors) or an evaluator's bound data.
 - **What runs on a dedicated server**: the clock, sections, `rpg` events; nothing that draws (`CgSequencer.server()`).
+  A server binds only a kind whose evaluator is `headless()` (`event`, `notify`); any other is never bound there.
   The whole package's tests are headless (`core/src/headlessTest`), the `animation` kind's aside.
 - **Unreal decides behaviour**: each evaluator's javadoc cites the source file it follows.

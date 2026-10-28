@@ -30,6 +30,7 @@ import com.crystalgraphics.net.object.CgPredictionKey;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.sequence.binding.CgSequenceLocator;
+import com.crystalgraphics.sequence.net.CgSequenceNet;
 import com.crystalgraphics.tag.CgTagRegistry;
 
 import static org.junit.Assert.assertEquals;
@@ -263,6 +264,8 @@ public class CgCueNetTest {
         assertTrue("at its age: " + age, age > 1.9f);
         CgSequencePlayer late = sequences.get(sequences.size() - 1);
         assertEquals("its sequence sought to its age", age, late.seconds(), 0.06);
+        assertEquals("served beside its cue", 1, rig.client(1).visible(CgSequenceNet.TYPE).size());
+        assertEquals("its copy is the cue's own play: one on the server, one a viewer", 3, sequences.size());
         beam.kill();
         ticks(20, () -> seen.made.get(1).kills == 1);
         assertEquals(1, seen.made.get(1).kills);
