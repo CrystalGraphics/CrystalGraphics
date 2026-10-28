@@ -652,7 +652,10 @@ public final class CgMaterialShaderCompiler {
         appendGlobalDecls(sb, codeLines);
 
         // Its prepass and its colour are two programs over one vertex body: invariance lands them on the same depth.
-        if (shader.depthMode() == CgParsedShader.DepthMode.PREPASS) sb.append("invariant gl_Position;\n");
+        // A custom-data writer's redraw is tested against its colour draw's depth, so it needs the same.
+        if (shader.depthMode() == CgParsedShader.DepthMode.PREPASS || shader.writesCustomData()) {
+            sb.append("invariant gl_Position;\n");
+        }
 
         // User vertex function
         sb.append("// User vertex function\n");

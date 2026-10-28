@@ -139,7 +139,9 @@
 - **Custom data** (`recordCustomData`, near the top of a transparent firing carrying `CgFrameKeys.CUSTOM_DATA_READ`):
   every opaque draw in view whose material writes custom data or a shading model (`CgMaterial.writesCustomData`) drawn
   again through `CgPipeline.customDataTarget()` into an RG32F texture beside the host's depth, tested and unwritten,
-  published as `CUSTOM_DATA`. Our forward passes have no G-buffer to carry Unreal's GBufferD, so this is one more draw
+  published as `CUSTOM_DATA`. A host lending no depth (framebuffer 0) gets a target with its own depth, the host's
+  copied in first (`world_depth_in.shader`); untested, a hidden writer's data would show through what covers it. A
+  writer's redraw is compiled with `invariant gl_Position`, so its depth equals its colour draw's. Our forward passes have no G-buffer to carry Unreal's GBufferD, so this is one more draw
   of each writer, only in a frame a post material reads it.
 - **The emissive state is ONE ONE, never `CgBlendState.ADDITIVE`** (SRC_ALPHA ONE): emission is written with an
   alpha of 0, which ADDITIVE multiplies away.
