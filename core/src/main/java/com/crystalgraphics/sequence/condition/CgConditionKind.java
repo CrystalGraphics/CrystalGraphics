@@ -15,7 +15,7 @@ import com.crystalgraphics.sequence.definition.CgSequenceCondition;
  * }</pre>
  *
  * <ul>
- *   <li>Read presentation alone: it runs on a client, once a section is entered, and its answer holds for the play.</li>
+ *   <li>Read presentation alone: it runs on a client, once, as play binds its section, and its answer holds for the play.</li>
  *   <li>{@code role} is null where the leaf names none, or its role was skipped.</li>
  * </ul>
  */

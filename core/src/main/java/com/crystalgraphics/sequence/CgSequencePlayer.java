@@ -472,6 +472,8 @@ public final class CgSequencePlayer {
                     throw new CgAssetException(definition.id() + ": tracks." + track.id() + ".sections." + section.id()
                             + ": a " + track.kind() + " section started by an event is not played yet");
                 }
+                // One whose condition fails is never bound, so never entered: Unreal never imports it
+                if (section != null && !conditionHolds(track, section)) continue;
                 bound[track.index()][s + 1] = true;
                 sequencer.evaluator(evaluator).bind(this, track, s < 0 ? null : track.sections().get(s));
             }
@@ -607,17 +609,17 @@ public final class CgSequencePlayer {
             CgSequenceTrack track = definition.tracks().get(field.track(e));
             int evaluator = sequencer.evaluatorIndex(track.kind());
             if (evaluator < 0) continue;
-            // Not bound yet: a spawnable not made, or a skipped role.
+            // Not bound: a spawnable not made, a skipped role, or a condition that failed.
             if (!bound[track.index()][field.section(e) + 1]) continue;
-            if (field.section(e) >= 0 && !conditionHolds(track, track.sections().get(field.section(e)))) continue;
             active[activeCount] = e;
             activeEvaluator[activeCount++] = evaluator;
         }
     }
 
     /**
-     * Whether {@code section}'s condition lets it play: tested at its first entry and kept for the play, as Unreal's
-     * {@code Once} conditions at import (FEntityLedger::CanImportEntity). A server plays no conditional section.
+     * Whether {@code section}'s condition lets it play: tested once, when play binds it, and kept for the play, as
+     * Unreal's {@code Once} conditions at import (FEntityLedger::CanImportEntity); one that fails is never bound, so a
+     * clip only another form plays need not exist. A server plays no conditional section.
      */
     private boolean conditionHolds(CgSequenceTrack track, CgSequenceSection section) {
         if (section.condition() == null) return true;

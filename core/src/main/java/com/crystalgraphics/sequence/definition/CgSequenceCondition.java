@@ -5,8 +5,8 @@ import java.util.Map;
 
 /**
  * A section's {@code condition}, compiled: a predicate over presentation inputs, {@code all}, {@code any} and
- * {@code not} over leaves of a registered kind. A client evaluates it once, when its section is entered; a dedicated
- * server never does.
+ * {@code not} over leaves of a registered kind ({@code sequence.condition.CgConditionKinds}). A client evaluates it
+ * once, as play binds its section; a dedicated server never does.
  *
  * <pre>{@code
  * // condition: { all: [ { kind: crystalgraphics:character, role: caster, is: [Goku] },
