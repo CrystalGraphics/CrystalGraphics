@@ -33,12 +33,21 @@ import com.crystalgraphics.sequence.definition.CgSequenceTrack;
  *   <li>{@code evaluate} runs every frame an entry is active, on the frame thread: allocate nothing in it.</li>
  *   <li>{@code tick} is the sequence's time at its tick resolution, a sub-frame allowed; a triggered section's
  *       its own, from its event.</li>
+ *   <li>A dedicated server runs only a {@link #headless()} kind; any other is skipped there, never bound.</li>
  * </ul>
  */
 public interface CgSequenceEvaluator {
 
     /** The track kind it evaluates. */
     String kind();
+
+    /**
+     * Whether it runs on a dedicated server: a kind gameplay hears, as Unreal fires a notify there only when it says
+     * so. False for a kind that writes presentation (a pose, a material, an effect), which a server never binds.
+     */
+    default boolean headless() {
+        return false;
+    }
 
     /** Called once, the first time an entry of its kind becomes active in a player: resolve what it writes. */
     default void bind(CgSequencePlayer player, CgSequenceTrack track, @Nullable CgSequenceSection section) {

@@ -122,7 +122,7 @@ public final class CgSequencer extends CgWorldSubsystem {
 
     /** Adds {@code evaluator} for its kind; a kind already evaluated throws. */
     public void register(CgSequenceEvaluator evaluator) {
-        if (evaluatorIndex(evaluator.kind()) >= 0) throw new IllegalStateException("the " + evaluator.kind() + " kind already has an evaluator");
+        if (registered(evaluator.kind()) >= 0) throw new IllegalStateException("the " + evaluator.kind() + " kind already has an evaluator");
         evaluators.add(evaluator);
     }
 
@@ -228,7 +228,13 @@ public final class CgSequencer extends CgWorldSubsystem {
         }
     }
 
+    /** {@code kind}'s evaluator, or -1 for none: on a server, for any kind that is not {@link CgSequenceEvaluator#headless()}. */
     int evaluatorIndex(String kind) {
+        int i = registered(kind);
+        return i >= 0 && server() && !evaluators.get(i).headless() ? -1 : i;
+    }
+
+    private int registered(String kind) {
         for (int i = 0; i < evaluators.size(); i++) if (evaluators.get(i).kind().equals(kind)) return i;
         return -1;
     }

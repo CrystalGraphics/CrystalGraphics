@@ -50,6 +50,11 @@ public final class CgNotifyEvaluator implements CgSequenceEvaluator {
     }
 
     @Override
+    public boolean headless() {
+        return true;
+    }
+
+    @Override
     public void bind(CgSequencePlayer player, CgSequenceTrack track, @Nullable CgSequenceSection unused) {
         CgSequenceTarget target = player.target(track);
         CgNotifyContext[] contexts = new CgNotifyContext[track.sections().size()];

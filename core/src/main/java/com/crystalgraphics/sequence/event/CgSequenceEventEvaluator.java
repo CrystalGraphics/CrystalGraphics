@@ -68,6 +68,11 @@ public final class CgSequenceEventEvaluator implements CgSequenceEvaluator, CgEv
     }
 
     @Override
+    public boolean headless() {
+        return true;
+    }
+
+    @Override
     public boolean playsTriggered() {
         return true;
     }
