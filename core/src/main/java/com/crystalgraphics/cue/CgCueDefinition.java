@@ -15,6 +15,7 @@ import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.kind.CgGameplayKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
+import com.crystalgraphics.object.CgPropertyMeta;
 import com.crystalgraphics.tag.CgGameplayTag;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
@@ -247,11 +248,23 @@ public record CgCueDefinition(String id, @Nullable CgGameplayTag tag, Kind kind,
     }
 
     /**
-     * A {@code writes} name: what it means, and every user parameter it is written into.
+     * A {@code writes} name: what it means, every user parameter it is written into, and how an authoritative cue
+     * sends it to viewers.
      *
-     * @param slots each played system binding it, and its parameter there; empty where none does
+     * <pre>{@code
+     * writes:
+     *   BeamLength: { meaning: "the head's distance from the root", replication: goal }   # a spring toward it, ω 20
+     *   Glow: "how bright"                                                              # interpolated
+     * }</pre>
+     *
+     * @param slots       each played system binding it, and its parameter there; empty where none does
+     * @param replication as written, else {@code INTERPOLATE}: a {@code vec3} does not say whether it is a point, so a
+     *                    goal is always written
+     * @param rate        a goal's spring rate ω, in 1/s; {@link #DEFAULT_RATE} unwritten
      */
-    public record Write(String name, String meaning, List<Slot> slots) {
+    public record Write(String name, String meaning, List<Slot> slots, CgPropertyMeta.Replication replication, float rate) {
+        /** A goal's spring rate when its file names none. */
+        public static final float DEFAULT_RATE = 20f;
     }
 
     /** A played system's user parameter a {@code writes} name sets. */
@@ -342,9 +355,19 @@ public record CgCueDefinition(String id, @Nullable CgGameplayTag tag, Kind kind,
             return this;
         }
 
-        /** A name gameplay writes each frame, and what it means. */
+        /** A name gameplay writes each frame, and what it means; interpolated to viewers. */
         public Builder writes(String name, String meaning) {
             writes.put(name, meaning);
+            return this;
+        }
+
+        /** A name gameplay writes each frame, sent as {@code replication}; {@code rate} a goal's ω, NaN for the default. */
+        public Builder writes(String name, String meaning, CgPropertyMeta.Replication replication, float rate) {
+            Map<String, Object> w = new LinkedHashMap<>();
+            w.put("meaning", meaning);
+            w.put("replication", CgCueCompiler.name(replication));
+            if (!Float.isNaN(rate)) w.put("rate", (double) rate);
+            writes.put(name, w);
             return this;
         }
 

@@ -124,6 +124,13 @@ public final class CgGameplayKinds {
             .register();
 
     /** {@code cues/}: what gameplay's moments play. */
+    /** A {@code writes} name in full: what it means, and how an authoritative cue sends it ({@code goal}: a spring of ω {@code rate}). */
+    static final CgType WRITE = CgTypes.struct("crystalgraphics:cue.write")
+            .property("meaning", STRING).required()
+            .property("replication", CgValueType.enumOf("interpolate", "goal", "snap"))
+            .property("rate", FLOAT).range(0, null)
+            .register();
+
     public static final CgType CUE = CgTypes.kind("crystalgraphics:cue").folder("cues").version(1)
             .property("tag", CgValueType.NAMESPACED_ID).flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.SEARCHABLE)
             .property("kind", CgValueType.enumOf("burst", "looping")).required().flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
@@ -135,7 +142,7 @@ public final class CgGameplayKinds {
             .property("recurring", CgValueType.struct(EFFECTS))
             .property("removal", CgValueType.struct(EFFECTS))
             .property("events", CgValueType.idList(EVENT))
-            .property("writes", CgValueType.mapOf(STRING)).flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
+            .property("writes", CgValueType.mapOf(CgValueType.oneOf(STRING, CgValueType.struct(WRITE)))).flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
             .property("range", FLOAT).quantity(CgQuantity.LENGTH).flags(CgPropertyFlag.HEADLESS)
             .property("authoritative", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
             .property("persisted", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)

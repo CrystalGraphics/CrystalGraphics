@@ -146,6 +146,22 @@ user parameter of that name in **every** system the cue plays (`user:` in the sy
 keeps its own default; a name no played system has is reported once when the cue loads, and listed in
 `cue.unbound()`.
 
+A name may also say how an authoritative cue sends it to the other players:
+
+```yaml
+writes:
+  BeamLength: { meaning: the head's distance from the root, replication: goal }   # each viewer springs toward it
+  Glow: how bright                                                               # interpolated
+```
+
+| `replication` | For | Each viewer |
+|---|---|---|
+| `interpolate` (unwritten) | smooth values: a radius, a brightness, a colour | blends between the last two it received |
+| `goal` | a target the effect moves to: a beam's end | moves toward it on a critically damped spring, `rate` its ω in 1/s (20 unwritten) |
+| `snap` | discrete state: a phase, a count | takes it as it arrives |
+
+A beam's length as `goal` never slides back through an obstacle that stops it, as an interpolated one would.
+
 ### What fails at load
 
 - a `tag` nobody declared;

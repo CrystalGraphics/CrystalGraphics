@@ -31,6 +31,7 @@ import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.cue.CgCueDefinition.Placement;
 import com.crystalgraphics.cue.CgCueDefinition.SpawnCondition;
 import com.crystalgraphics.job.CgJobLoop;
+import com.crystalgraphics.object.CgPropertyMeta;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.tag.CgTagRegistry;
@@ -70,7 +71,7 @@ public class CgCueDefinitionTest {
             "    event: hit_world",
             "    particles: [ { system: cuetest:beam/hit } ]",
             "writes:",
-            "  BeamLength: the head's distance from the root",
+            "  BeamLength: { meaning: the head's distance from the root, replication: goal }",
             "  Wobble: nothing binds it",
             "fields: [ { name: charge, type: float, fallback: 0 } ]",
             "prediction: keyed",
@@ -154,6 +155,9 @@ public class CgCueDefinitionTest {
 
         CgCueDefinition.Write length = cue.writes().get("BeamLength");
         assertEquals("the head's distance from the root", length.meaning());
+        assertEquals(CgPropertyMeta.Replication.GOAL, length.replication());
+        assertEquals(CgCueDefinition.Write.DEFAULT_RATE, length.rate(), 0);
+        assertEquals(CgPropertyMeta.Replication.INTERPOLATE, cue.writes().get("Wobble").replication());
         assertEquals(List.of(new CgCueDefinition.Slot("cuetest:beam/body", bodyDef, bodyLength),
                 new CgCueDefinition.Slot("cuetest:beam/end", endDef, endLength)), length.slots());
         assertEquals(List.of("Wobble"), cue.unbound());
@@ -180,7 +184,8 @@ public class CgCueDefinitionTest {
                 .looping(e -> e.particles("cuetest:beam/body").sound("cuetest:beam_loop").shake("cuetest:rumble"))
                 .removal(e -> e.particles("cuetest:beam/end").decal("cuetest:scorch").sequence("cuetest:beam_end"))
                 .event("e1", "hit_world", e -> e.particles("cuetest:beam/hit"))
-                .writes("BeamLength", "the head's distance from the root")
+                .writes("BeamLength", "the head's distance from the root", CgPropertyMeta.Replication.GOAL, 30f)
+                .writes("Glow", "how bright")
                 .range(40).authoritative(true).prediction(CgCueDefinition.Prediction.ONE_OFF)
                 .field("charge", CgCueDefinition.Field.Type.FLOAT, 0.0)
                 .sequence("cuetest:beam_loop");

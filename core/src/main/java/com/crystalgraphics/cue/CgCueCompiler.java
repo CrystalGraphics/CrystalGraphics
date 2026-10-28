@@ -37,6 +37,7 @@ import com.crystalgraphics.cue.CgCueDefinition.Sound;
 import com.crystalgraphics.cue.CgCueDefinition.SpawnCondition;
 import com.crystalgraphics.cue.CgCueDefinition.Where;
 import com.crystalgraphics.cue.CgCueDefinition.Write;
+import com.crystalgraphics.object.CgPropertyMeta;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.object.validate.CgIssue;
@@ -137,7 +138,11 @@ final class CgCueCompiler {
                 if (param != null) slots.add(new Slot(p.system(), def, param));
             }
             if (compiled && slots.isEmpty()) unbound.add(name);
-            writes.put(name, new Write(name, String.valueOf(w.getValue()), List.copyOf(slots)));
+            Map<?, ?> full = w.getValue() instanceof Map<?, ?> m ? m : Map.of();
+            String meaning = full.isEmpty() ? String.valueOf(w.getValue()) : String.valueOf(full.get("meaning"));
+            CgPropertyMeta.Replication mode = full.get("replication") == null ? CgPropertyMeta.Replication.INTERPOLATE
+                    : CgPropertyMeta.Replication.valueOf(upper(full.get("replication")));
+            writes.put(name, new Write(name, meaning, List.copyOf(slots), mode, number(full.get("rate"), Write.DEFAULT_RATE)));
         }
         if (!unbound.isEmpty()) LOGGER.warn("{}: writes {} that no system it plays binds", id, unbound);
         return new CgCueDefinition(cue.id(), cue.tag(), cue.kind(), cue.burst(), cue.application(), cue.looping(),
