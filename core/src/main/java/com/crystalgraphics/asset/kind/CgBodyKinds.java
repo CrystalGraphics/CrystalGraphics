@@ -119,6 +119,9 @@ public final class CgBodyKinds {
             .property("post", hard("material"))
             .property("colour", CgValueType.COLOUR)
             .property("strength", FLOAT)
+            // the scalar a role's materials take its colour slot in, and the post's colour for slot n at n - 1
+            .property("slot_parameter", STRING)
+            .property("slot_colours", CgValueType.listOf(STRING))
             .register();
 
     /** {@code rigs/}: a skeleton read for retargeting ({@code UIKRigDefinition}). */
