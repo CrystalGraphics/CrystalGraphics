@@ -318,8 +318,8 @@ public class KitProgramsLinkTest {
     /** What a read of an output no pass writes yet fails naming. */
     private static final String NOT_WRITTEN = "_has_no_pass_writing_it_yet";
 
-    /** A screen material reading the stencil, as a skill grade does. */
-    private static final String STENCIL_PORT = """
+    /** A screen material reading custom depth, which no pass writes yet (the stencil and shading model are). */
+    private static final String UNWRITTEN_PORT = """
             #type none
 
             Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
@@ -333,7 +333,7 @@ public class KitProgramsLinkTest {
                     o.uv = vec2(CG_VERTEX_ID & 1, CG_VERTEX_ID >> 1);
                     gl_Position = vec4(o.uv * 2.0 - 1.0, 0.0, 1.0);
                 }
-                void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(float(CG_CUSTOM_STENCIL(i.uv))); }
+                void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(CG_CUSTOM_EYE_DEPTH(i.uv)); }
             }
             """;
 
@@ -410,10 +410,10 @@ public class KitProgramsLinkTest {
     }
 
     @Test
-    public void aPortReadingTheStencilFailsNamingIt() {
-        CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreateGenerated(STENCIL_PORT);
+    public void aPortReadingAnUnwrittenOutputFailsNamingIt() {
+        CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreateGenerated(UNWRITTEN_PORT);
         shader.recompile();
-        assertTrue("a port read a stencil no pass writes", shader.hasCompileFailed());
+        assertTrue("a port read custom depth, which no pass writes", shader.hasCompileFailed());
         assertTrue(shader.lastCompileError(), shader.lastCompileError().contains(NOT_WRITTEN));
     }
 
