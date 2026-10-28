@@ -575,7 +575,7 @@ final class CgSequenceCompiler {
         Map<Object, Object> fields = new LinkedHashMap<>(m);
         fields.keySet().removeAll(List.of("kind", "role", "is"));
         return new CgSequenceCondition.Leaf(kind, role, m.get("is") instanceof List<?> is ? is : List.of(),
-                Collections.unmodifiableMap(fields));
+                "any".equals(m.get("is")), Collections.unmodifiableMap(fields));
     }
 
     private List<CgSequenceCondition> conditions(List<?> list, String path) {

@@ -446,6 +446,7 @@ public final class CgSequenceKinds {
             .property("play_rate", FLOAT).defaultValue(1.0)
             .property("loop", CgValueType.oneOf(BOOL, INT))   // a montage segment's LoopingCount
             .property("slot", STRING)
+            .property("stop", BOOL)   // no clip: the slot plays nothing, its source showing (StopSlotAnimation)
             .property("interpolation", CgValueType.enumOf("smooth", "step")).defaultValue("smooth")
             .register());
 

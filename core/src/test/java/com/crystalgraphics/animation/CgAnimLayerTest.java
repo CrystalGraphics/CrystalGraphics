@@ -72,6 +72,13 @@ public class CgAnimLayerTest {
         assertEquals("the layer turns the jaw, under the body's spine", 1f, Math.abs(jaw.dot(quat(turn(70)))), 1e-5f);
         assertEquals("its curve on the instance's own material", 1.25f, scalar(goku.material(0), "_SoftDistance"), 1e-4f);
 
+        face.stop(1f);   // FacialOff: the body shows through, the face's curves gone with it
+        goku.evaluate().applyCurves();
+        assertEquals("a stop shows the body's branch", 1f, Math.abs(rotation(goku, 3).dot(quat(turn(30)))), 1e-5f);
+        assertEquals("and drops the layer's curves", 0.25f, scalar(goku.material(0), "_SoftDistance"), 1e-4f);
+        goku.evaluate().applyCurves();
+        assertEquals("for that frame only", 1f, Math.abs(rotation(goku, 3).dot(quat(turn(70)))), 1e-5f);
+
         face.clear();
         goku.evaluate().applyCurves();
         assertEquals("with nothing playing the branch is the body's", 1f, Math.abs(rotation(goku, 3).dot(quat(turn(30)))), 1e-5f);

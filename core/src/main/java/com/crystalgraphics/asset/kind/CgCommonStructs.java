@@ -108,7 +108,7 @@ public final class CgCommonStructs {
     public static final CgType CONDITION = CgTypes.struct("crystalgraphics:condition").open()
             .property("kind", STRING)
             .property("role", STRING)
-            .property("is", CgValueType.listOf(VALUE))
+            .property("is", CgValueType.oneOf(CgValueType.listOf(VALUE), CgValueType.enumOf("any")))
             .property("all", CgValueType.listOf(CgValueType.SELF))
             .property("any", CgValueType.listOf(CgValueType.SELF))
             .property("not", CgValueType.SELF)

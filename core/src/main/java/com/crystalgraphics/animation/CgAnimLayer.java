@@ -42,6 +42,8 @@ public final class CgAnimLayer {
     private CgAnimSequence[] slotClips = new CgAnimSequence[0];
     private float[] slotTimes = new float[0], slotWeights = new float[0];
     private int slotCount;
+    /** This frame's {@link #stop} weight. */
+    private float stopWeight;
     private final CgSkeleton skeleton;
     private boolean ownCurves = true;
 
@@ -91,6 +93,15 @@ public final class CgAnimLayer {
         return this;
     }
 
+    /**
+     * This frame only: the slot plays nothing at {@code weight}, the body showing through over its sections: Unreal's
+     * {@code StopSlotAnimation} (Kakarot's {@code FacialOff}).
+     */
+    public CgAnimLayer stop(float weight) {
+        stopWeight += Math.max(0f, weight);
+        return this;
+    }
+
     /** This frame only: {@code clip} at {@code position} with {@code weight}, over its sections: a montage on the slot. */
     public CgAnimLayer slot(CgAnimSequence clip, float position, float weight) {
         if (slotCount == slotClips.length) {
@@ -129,7 +140,8 @@ public final class CgAnimLayer {
             n = add(body, section.sequence(), section.animationTime(time), w, n);
             total += w;
         }
-        float slotTotal = 0f;
+        // A stop is a montage of the body itself: it weighs against the slot's montages and its own sections alike
+        float slotTotal = stopWeight;
         for (int i = 0; i < slotCount; i++) slotTotal += Math.max(0f, slotWeights[i]);
         float source = Math.min(1f, Math.max(0f, 1f - slotTotal));
         for (int i = 0; i < n; i++) weights[i] = weights[i] / total * source;
@@ -141,17 +153,19 @@ public final class CgAnimLayer {
         }
         Arrays.fill(slotClips, 0, slotCount, null);
         slotCount = 0;
-        if (n == 0) return;
-        if (fromSections == 0 && source > 0f) {
-            scratch[n].set(body);   // the slot over the body where no section plays under it
+        float bodyWeight = stopWeight * scale + (fromSections == 0 ? source : 0f);
+        stopWeight = 0f;
+        if (n == 0) return;   // only the body: nothing to blend
+        if (bodyWeight > 0f) {
+            scratch[n].set(body);   // the body showing through: stopped, or no section under the slot
             clips[n] = null;
-            weights[n++] = source;
+            weights[n++] = bodyWeight;
         }
         pose.blend(scratch, weights, n);
         body.blendBones(pose, boneWeights);
         if (ownCurves) {
             curves.beginLayer();
-            for (int i = 0; i < n; i++) if (clips[i] != null) curves.addLayer(clips[i], times[i], weights[i]);
+            for (int i = 0; i < n; i++) if (clips[i] != null && weights[i] > 0f) curves.addLayer(clips[i], times[i], weights[i]);
         }
         Arrays.fill(clips, 0, n, null);
     }

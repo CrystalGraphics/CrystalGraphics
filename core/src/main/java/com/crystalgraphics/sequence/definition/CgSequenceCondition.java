@@ -11,6 +11,7 @@ import java.util.Map;
  * <pre>{@code
  * // condition: { all: [ { kind: crystalgraphics:character, role: caster, is: [Goku] },
  * //                     { not: { kind: crystalgraphics:quality, is: [low] } } ] }
+ * // condition: { not: { kind: crystalgraphics:variant, role: caster, is: any } }   // the base form: no variant at all
  * boolean holds = condition.test(leaf -> reader.read(leaf));   // each leaf answered by its kind's reader
  * }</pre>
  *
@@ -58,9 +59,10 @@ public sealed interface CgSequenceCondition {
 
     /**
      * One reading: {@code kind} ({@code crystalgraphics:surface}, a mod's own) of the role at {@code role}, one of
-     * {@code is}; {@code fields} holds any other keys its kind reads.
+     * {@code is}, or with {@code anyValue} ({@code is: any}) any value at all, {@code is} empty; {@code fields} holds any
+     * other keys its kind reads.
      */
-    record Leaf(String kind, int role, List<?> is, Map<?, ?> fields) implements CgSequenceCondition {
+    record Leaf(String kind, int role, List<?> is, boolean anyValue, Map<?, ?> fields) implements CgSequenceCondition {
         @Override
         public boolean test(Reader reader) {
             return reader.holds(this);
