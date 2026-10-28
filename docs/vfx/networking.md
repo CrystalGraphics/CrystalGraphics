@@ -93,6 +93,7 @@ application: { particles: [ { system: mymod:beam/start } ] }
 looping:
   particles: [ { system: mymod:beam/body } ]
   sounds: [ { sound: mymod:beam_loop, fade_out: 0.3 } ]
+  lens: { post: { vignette: 0.6, chromatic: 2 }, in_world: true, inner: 8, outer: 24 }
 removal: { particles: [ { system: mymod:beam/end } ] }
 events:
   - { id: e1, event: hit_world, particles: [ { system: mymod:beam/hit } ] }
@@ -166,6 +167,7 @@ A beam's length as `goal` never slides back through an obstacle that stops it, a
 
 - a `tag` nobody declared;
 - a burst cue with a looping phase, or a looping cue with `burst`;
+- a `lens` anywhere but `looping`: it lasts as long as the cue, and a burst gives it no duration;
 - an entry missing what it plays (`system`, `sound`, `shake`, `material`, `sequence`);
 - a reference to an asset that does not exist.
 
@@ -207,6 +209,9 @@ beam.remove();                                                // removal plays; 
   means it never starts.
 - **Pooled.** A looping cue's effects are reused once a play ends, reset whole first. `cues.prewarm(cue, n)` grows a
   pool ahead; once warm, playing allocates nothing.
+- **A lens is a post volume for the cue's life.** Its `post` is a post block: `bloom`, `vignette`, `chromatic`, `exposure.flash`, `white_balance`. `in_world` places it at
+  the cue's point: full within `inner` of the camera, gone by `outer`, and everywhere where neither is set. Without
+  `in_world` it covers the whole screen, and only on the machine that controls the cue's target (`localControl`).
 - **Seeded.** An entry's `chance` is rolled from the parameters' `seed`, so every viewer plays the same entries.
 - **On a dedicated server** only `authoritative: true` cues play, with no effects.
 

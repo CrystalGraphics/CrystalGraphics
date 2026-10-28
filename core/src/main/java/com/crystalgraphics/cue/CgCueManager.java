@@ -275,6 +275,11 @@ public final class CgCueManager extends CgWorldSubsystem {
         while (spare.size() < count) spare.push(new Command());
     }
 
+    /** Whether {@code a} is controlled on this machine, by {@link #localControl}; false for null. */
+    public boolean locallyControlled(@Nullable CgAttachment a) {
+        return a != null && localControl.test(a);
+    }
+
     /**
      * Whether an entry under {@code condition} plays for this viewer, in {@code ShouldSpawn}'s order: local control,
      * then chance, then surfaces. The chance roll is the play's seed with the entry's index, the same on every viewer.

@@ -170,6 +170,7 @@ public class CgCueDefinitionTest {
         failsAt(BEAM.replace("kind: looping", "kind: burst"), "application");
         failsAt("_v: 1\nkind: looping\nburst: { particles: [ { system: cuetest:x } ] }\n", "burst");
         failsAt("_v: 1\nkind: burst\nburst: { particles: [ { cast_shadow: true } ] }\n", "system");
+        failsAt("_v: 1\nkind: burst\nburst: { lens: { post: { vignette: 0.5 } } }\n", "burst.lens");
     }
 
     @Test

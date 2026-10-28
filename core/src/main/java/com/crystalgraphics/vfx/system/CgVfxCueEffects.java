@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.system;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import javax.annotation.Nullable;
 
@@ -9,6 +10,7 @@ import org.joml.Quaternionf;
 
 import com.crystalgraphics.cue.CgCueDefinition;
 import com.crystalgraphics.cue.CgCueDefinition.Effects;
+import com.crystalgraphics.cue.CgCueDefinition.Lens;
 import com.crystalgraphics.cue.CgCueDefinition.Particles;
 import com.crystalgraphics.cue.CgCueDefinition.Placement;
 import com.crystalgraphics.cue.CgCueDefinition.Slot;
@@ -16,13 +18,16 @@ import com.crystalgraphics.cue.CgCueDefinition.Write;
 import com.crystalgraphics.cue.CgCueEffects;
 import com.crystalgraphics.cue.CgCueManager;
 import com.crystalgraphics.cue.CgCueParameters;
+import com.crystalgraphics.render.post.CgPostStack;
+import com.crystalgraphics.render.post.volume.CgPostBlock;
+import com.crystalgraphics.render.post.volume.CgPostVolume;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.world.CgAttachment;
 import com.crystalgraphics.world.CgEntityAttachments;
 
 /**
- * Plays a cue's systems on a client: the VFX engine's {@link CgCueEffects}. Each entry is placed as its
+ * Plays a cue's systems and its lens on a client: the VFX engine's {@link CgCueEffects}. Each entry is placed as its
  * {@code placement} says on the cue's target, if its {@code spawn_condition} passes for this viewer; a looping play's
  * {@code writes} reach the user parameters of the systems it is playing.
  *
@@ -32,7 +37,10 @@ import com.crystalgraphics.world.CgEntityAttachments;
  * }</pre>
  *
  * <ul>
- *   <li>Only {@code particles} play here; sounds, shakes, lenses, force feedback and decals are their own systems'.</li>
+ *   <li>{@code particles} and a looping block's {@code lens} play here: the lens a post volume for the cue's life, at its
+ *       point within {@code inner} fading to {@code outer} where it is {@code in_world}, else on the whole screen of
+ *       the target's own machine ({@link CgCueManager#localControl}).
+ *       Sounds, shakes, force feedback and decals are their own systems'.</li>
  *   <li>{@code attach_to_target} follows the target's socket where the target is an entity, else the target itself;
  *       {@code do_not_attach} spawns at the socket and stays.</li>
  * </ul>
@@ -57,6 +65,18 @@ public final class CgVfxCueEffects implements CgCueEffects {
     @Override
     public Lasting lasting(CgCueDefinition cue) {
         return new Playing(cue);
+    }
+
+    /**
+     * A volume for {@code lens} at {@code (x, y, z)}: in the world, full within its {@code inner} and gone by its
+     * {@code outer} (a cliff at {@code inner} where {@code outer} is not past it, everywhere where neither is set);
+     * otherwise on the whole screen.
+     */
+    static CgPostVolume openLens(CgPostStack stack, Lens lens, double x, double y, double z) {
+        CgPostVolume volume = stack.volume(0, CgPostBlock.settings(lens.post() == null ? Map.of() : lens.post()));
+        if (lens.inWorld() && (lens.inner() > 0f || lens.outer() > 0f))
+            volume.at(x, y, z).radius(lens.inner()).blend(Math.max(0f, lens.outer() - lens.inner()));
+        return volume;
     }
 
     /** Plays each of {@code block}'s systems that spawns here, into {@code into} when it is kept. */
@@ -103,6 +123,8 @@ public final class CgVfxCueEffects implements CgCueEffects {
     private final class Playing implements Lasting {
         private final List<CgVfxSystemInstance<?>> alive = new ArrayList<>(), loops = new ArrayList<>();
         private final CgCueDefinition cue;
+        @Nullable
+        private CgPostVolume lens;
 
         Playing(CgCueDefinition cue) {
             this.cue = cue;
@@ -114,6 +136,15 @@ public final class CgVfxCueEffects implements CgCueEffects {
             int from = alive.size();
             play(cue.looping(), at, age, alive);
             for (int i = from; i < alive.size(); i++) loops.add(alive.get(i));
+            Lens l = cue.looping().lens();
+            // Out of the world, a lens is the target's camera's alone.
+            if (l != null && cues.spawns(l.where().condition(), at, 0) && (l.inWorld() || cues.locallyControlled(at.target())))
+                lens = openLens(CgPostStack.get(), l, at.x(), at.y(), at.z());
+        }
+
+        private void closeLens() {
+            if (lens != null) lens.close();
+            lens = null;
         }
 
         @Override
@@ -136,6 +167,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
         public void remove(CgCueParameters at) {
             for (int i = 0; i < loops.size(); i++) loops.get(i).stop();
             loops.clear();
+            closeLens();
             play(cue.removal(), at, 0f, alive);
         }
 
@@ -150,12 +182,14 @@ public final class CgVfxCueEffects implements CgCueEffects {
         @Override
         public void kill() {
             for (int i = 0; i < alive.size(); i++) alive.get(i).kill();
+            closeLens();
         }
 
         @Override
         public void reset() {
             alive.clear();
             loops.clear();
+            closeLens();
         }
     }
 }

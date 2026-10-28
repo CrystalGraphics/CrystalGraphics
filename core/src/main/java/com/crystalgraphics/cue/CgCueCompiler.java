@@ -177,6 +177,8 @@ final class CgCueCompiler {
         }
         Lens lens = null;
         if (b.get("lens") instanceof Map<?, ?> l) {
+            // A lens lasts as long as what plays it: a looping block's, the cue's life. A burst names no duration.
+            if (!path.equals("looping")) throw fail(path + ".lens", "a lens in a burst has no duration yet: only looping plays one");
             lens = new Lens((Map<?, ?>) l.get("post"), Boolean.TRUE.equals(l.get("in_world")), length(l.get("inner"), 0f),
                     length(l.get("outer"), 0f), where(l, path + ".lens", blockWhere));
         }
