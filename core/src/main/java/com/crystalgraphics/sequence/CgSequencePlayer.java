@@ -17,6 +17,17 @@ import com.crystalgraphics.sequence.time.CgFrameTime;
 import com.crystalgraphics.sequence.time.CgSequenceEvaluationRange;
 import com.crystalgraphics.sequence.time.CgSequencePlaybackPosition;
 import com.crystalgraphics.world.CgAttachment;
+import com.crystalgraphics.sequence.binding.CgSequenceLocator;
+import com.crystalgraphics.sequence.binding.CgSequencePlacement;
+import com.crystalgraphics.sequence.binding.CgSequenceRole;
+import com.crystalgraphics.sequence.definition.CgSequenceBinding;
+import com.crystalgraphics.sequence.definition.CgSequenceChannel;
+import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
+import com.crystalgraphics.sequence.definition.CgSequenceField;
+import com.crystalgraphics.sequence.definition.CgSequenceSection;
+import com.crystalgraphics.sequence.definition.CgSequenceTrack;
+import com.crystalgraphics.sequence.event.CgEventTrigger;
+import com.crystalgraphics.sequence.spawn.CgSequenceSpawned;
 
 /**
  * One playing sequence: its definition, its clock, its rate, what its roles and spawnables are bound to, and the

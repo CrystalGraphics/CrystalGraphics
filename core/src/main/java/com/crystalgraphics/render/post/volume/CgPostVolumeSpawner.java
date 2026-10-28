@@ -6,10 +6,10 @@ import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.render.post.CgPostStack;
-import com.crystalgraphics.sequence.CgSequenceDefinition;
+import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.sequence.CgSequencePlayer;
-import com.crystalgraphics.sequence.CgSequenceSpawned;
-import com.crystalgraphics.sequence.CgSequenceSpawner;
+import com.crystalgraphics.sequence.spawn.CgSequenceSpawned;
+import com.crystalgraphics.sequence.spawn.CgSequenceSpawner;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.world.CgAttachment;
 

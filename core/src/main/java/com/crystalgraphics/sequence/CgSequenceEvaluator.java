@@ -1,6 +1,8 @@
 package com.crystalgraphics.sequence;
 
 import javax.annotation.Nullable;
+import com.crystalgraphics.sequence.definition.CgSequenceSection;
+import com.crystalgraphics.sequence.definition.CgSequenceTrack;
 
 /**
  * The work of one track kind, run by the {@link CgSequencer} over the active entries of that kind across every playing

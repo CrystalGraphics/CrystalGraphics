@@ -8,7 +8,7 @@ import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.value.CgUnits;
-import com.crystalgraphics.sequence.CgSequenceDefinition;
+import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;

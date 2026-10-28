@@ -12,6 +12,15 @@ import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorldSubsystem;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.sequence.animation.CgSequenceAnimationEvaluator;
+import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
+import com.crystalgraphics.sequence.event.CgSequenceEventEvaluator;
+import com.crystalgraphics.sequence.event.CgSequenceEventListener;
+import com.crystalgraphics.sequence.notify.CgNotifyEvaluator;
+import com.crystalgraphics.sequence.spawn.CgSequenceSpawner;
+import com.crystalgraphics.sequence.spawn.CgSequenceSystemEvaluator;
+import com.crystalgraphics.sequence.state.CgSequenceBlender;
+import com.crystalgraphics.sequence.state.CgSequenceStateEvaluator;
 
 /**
  * A world's sequences: every playing {@link CgSequencePlayer} and one evaluator a track kind, run over all of them
@@ -146,7 +155,7 @@ public final class CgSequencer extends CgWorldSubsystem {
     }
 
     /** Hands an event to {@code side}'s listeners. */
-    void hear(CgSequenceEventListener.Side side, CgSequencePlayer player, CgSequenceEventListener.Phase phase, String event,
+    public void hear(CgSequenceEventListener.Side side, CgSequencePlayer player, CgSequenceEventListener.Phase phase, String event,
               @Nullable Object args) {
         List<CgSequenceEventListener> to = side == CgSequenceEventListener.Side.RPG ? rpg : ours;
         for (int i = 0; i < to.size(); i++) to.get(i).heard(player, phase, event, args);
@@ -163,7 +172,7 @@ public final class CgSequencer extends CgWorldSubsystem {
     }
 
     /** Whether its world is a dedicated server's, where presentation (a notify's behaviour) never runs. */
-    boolean server() {
+    public boolean server() {
         return world() != null && world().server();
     }
 

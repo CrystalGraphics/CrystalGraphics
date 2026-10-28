@@ -1,6 +1,6 @@
 package com.crystalgraphics.sequence.time;
 
-import com.crystalgraphics.sequence.CgSequenceDefinition;
+import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 
 /**
  * Where a playing sequence is, and the span each update evaluates: Unreal's {@code FMovieScenePlaybackPosition}. Time is

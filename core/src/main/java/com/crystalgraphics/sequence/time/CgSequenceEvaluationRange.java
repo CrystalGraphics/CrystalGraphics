@@ -1,6 +1,6 @@
 package com.crystalgraphics.sequence.time;
 
-import com.crystalgraphics.sequence.CgEventChannel;
+import com.crystalgraphics.sequence.event.CgEventChannel;
 
 /**
  * The span of a sequence one update evaluates, Unreal's {@code FMovieSceneEvaluationRange}: from where the last update

@@ -1,6 +1,8 @@
 package com.crystalgraphics.sequence;
 
 import javax.annotation.Nullable;
+import com.crystalgraphics.sequence.definition.CgSequenceBinding;
+import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 
 /**
  * What a bound object takes from a sequence's state tracks: named slots of up to four numbers, resolved once when the

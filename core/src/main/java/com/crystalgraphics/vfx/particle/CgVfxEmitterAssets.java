@@ -8,7 +8,7 @@ import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
 import com.crystalgraphics.asset.kind.CgBodyKinds;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
-import com.crystalgraphics.sequence.CgSequenceDefinition;
+import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 

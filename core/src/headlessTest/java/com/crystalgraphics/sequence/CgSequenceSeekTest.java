@@ -13,8 +13,12 @@ import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.frame.CgWorld;
-import com.crystalgraphics.sequence.CgSequenceEventListener.Side;
+import com.crystalgraphics.sequence.event.CgSequenceEventListener.Side;
 import com.crystalgraphics.world.CgAttachment;
+import com.crystalgraphics.sequence.binding.CgSequenceRole;
+import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
+import com.crystalgraphics.sequence.event.CgSequenceEventListener;
+import com.crystalgraphics.sequence.spawn.CgSequenceSystem;
 
 /** Seeks landing on the state playing reaches, montage sections looping and jumping, and late joiners. */
 public class CgSequenceSeekTest {

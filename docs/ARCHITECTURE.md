@@ -164,6 +164,7 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 | Path | What it covers |
 |---|---|
 | `vfx/CLAUDE.md` | The VFX engine: effects, looks, particles on the GPU, cues; imports `docs/VFX.md` |
+| `sequence/CLAUDE.md` | Sequences played (Unreal's Sequencer and a montage's sections): the sequencer and its players at the root, the compiled definition, time, and a subpackage per track kind |
 | `net/CLAUDE.md` | Messages, requests, connections and networked objects; imports `docs/NETWORKING.md` |
 | `tag/CLAUDE.md` | Gameplay tags: `CgGameplayTag`, `CgTagRegistry`, `CgTagContainer`, and the index table clients agree on (`CgTagNet`) |
 | `object/CLAUDE.md` | Types declared once (Unreal's reflection): `CgType`, `CgProperty`, `CgTypes`, `CgValueType`, and `value`'s forms and quantities |

@@ -19,6 +19,8 @@ import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.object.CgType;
+import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
+import com.crystalgraphics.sequence.spawn.CgSequenceSpawned;
 
 public class CgSequencerTest {
 
@@ -76,7 +78,7 @@ public class CgSequencerTest {
 
     private static CgSequenceDefinition compile(String yaml, Map<String, Object> deps) {
         CgAssetCompiler.Dependencies d = (CgType kind, String id) -> deps.get(id);
-        return CgSequenceCompiler.compile(CgAssetData.of("mymod:s", CgSequenceKinds.SEQUENCE, (Map<?, ?>) CgAssetYaml.read(yaml), null), d);
+        return CgSequenceDefinition.COMPILER.compile(CgAssetData.of("mymod:s", CgSequenceKinds.SEQUENCE, (Map<?, ?>) CgAssetYaml.read(yaml), null), d);
     }
 
     private static CgSequencer sequencer() {

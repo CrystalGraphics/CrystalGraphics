@@ -10,8 +10,8 @@ import java.util.List;
 
 import org.junit.Test;
 
-import com.crystalgraphics.sequence.CgEventChannel;
-import com.crystalgraphics.sequence.CgSequenceDefinition;
+import com.crystalgraphics.sequence.event.CgEventChannel;
+import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 
 public class CgSequenceClockTest {
 

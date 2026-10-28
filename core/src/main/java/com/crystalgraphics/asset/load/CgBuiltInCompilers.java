@@ -5,7 +5,7 @@ import com.crystalgraphics.api.material.CgMaterialDefinitions;
 import com.crystalgraphics.api.material.CgParameterCollections;
 import com.crystalgraphics.asset.camera.CgCameraRigDefinition;
 import com.crystalgraphics.asset.curve.CgCurveDefinition;
-import com.crystalgraphics.sequence.CgSequenceDefinition;
+import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 
 /**
  * Registers the engine's own kind compilers: materials, parameter collections, curves, camera rigs, sequences and skeletons. Runs on both sides,
