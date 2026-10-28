@@ -270,8 +270,11 @@ public final class CgVfxRenderers {
             else if (s.cameraDistance() != null) unbuilt = "camera_distance";
             else if (s.castShadows()) unbuilt = "cast_shadows";
             else if (!Float.isNaN(s.softDepth())) unbuilt = "soft_depth";
+        } else if (r instanceof CgVfxMeshRendererProperties m && m.prefab() != null) {
+            // A prefab a particle draws as a clip at rest: what turns and sizes it is the particle's alone.
+            unbuilt = prefabWith(m);
         } else if (r instanceof CgVfxMeshRendererProperties m) {
-            if (m.prefab() != null || m.meshBinding() != null || m.meshes().size() > 1) unbuilt = "a prefab, a bound mesh or several meshes";
+            if (m.meshBinding() != null || m.meshes().size() > 1) unbuilt = "a bound mesh or several meshes";
             else if (m.sort() == CgVfxSpriteRendererProperties.Sort.SPAWN_ORDER) unbuilt = "sort " + m.sort();
             else if (!m.meshes().isEmpty() && (m.meshes().get(0).get("pivot_offset") != null
                     || m.meshes().get(0).get("pivot_space") != null)) unbuilt = "a mesh's pivot_offset";
@@ -287,6 +290,19 @@ public final class CgVfxRenderers {
             if (a.subdivisions() != 0) unbuilt = "subdivisions";
         }
         if (unbuilt != null) throw new IllegalArgumentException(who + " sets " + unbuilt + ", which is not built yet");
+    }
+
+    /** The first field a prefab-drawing mesh renderer sets beside its prefab, or null. */
+    @Nullable
+    private static String prefabWith(CgVfxMeshRendererProperties m) {
+        if (!m.materialOverrides().isEmpty()) return "a prefab with material_overrides";
+        if (m.facing() != CgVfxMeshRendererProperties.Facing.DEFAULT) return "a prefab with facing " + m.facing();
+        if (m.lockedAxis() != null || m.facingUp() != null || m.rollAbout() != null) return "a prefab with a locked axis, facing_up or roll_about";
+        if (m.preRotation() != null) return "a prefab with pre_rotation";
+        if (m.sort() != CgVfxSpriteRendererProperties.Sort.NONE) return "a prefab with sort " + m.sort();
+        if (m.subImage() != null || m.cameraDistance() != null || m.castShadows()) return "a prefab with sub_image, camera_distance or cast_shadows";
+        if (m.common().material() != null) return "a prefab with a material of its own";
+        return null;
     }
 
     private static Common common(String who, Map<String, Object> tree, @Nullable CgAssetCompiler.Dependencies deps) {

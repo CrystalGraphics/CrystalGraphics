@@ -716,6 +716,11 @@ public final class CgVfxEmitterInstance {
         }
     }
 
+    /** Whether it still spawns: started, and neither stopped, killed nor through its loops. */
+    public boolean spawning() {
+        return time >= 0f && !killed && !loopsOver && time < stoppedAt;
+    }
+
     /**
      * True once it has spawned everything it will and every particle has died: a step after its latest death. True at
      * once after a {@link #kill}.

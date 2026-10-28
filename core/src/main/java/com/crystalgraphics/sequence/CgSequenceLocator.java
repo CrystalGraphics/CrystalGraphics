@@ -20,7 +20,8 @@ import org.joml.Quaternionf;
  */
 public final class CgSequenceLocator implements CgSequenceTarget {
 
-    private static final int TRANSLATION = 0, ROTATION = 1, SCALE = 2;
+    private static final int TRANSLATION = 0, ROTATION = 1, SCALE = 2, EULER_DEGREES = 3;
+    private static final float TO_RADIANS = (float) (Math.PI / 180);
 
     private final String id;
     private final float[] translation = new float[3], rotation = new float[3], scale = {1, 1, 1};
@@ -73,6 +74,8 @@ public final class CgSequenceLocator implements CgSequenceTarget {
         return switch (name) {
             case "translation" -> TRANSLATION;
             case "rotation" -> restTurn == null ? ROTATION : -1;
+            // CC2's node rotation in degrees, as a prefab's node answers it.
+            case "rotationEulerDeg" -> restTurn == null ? EULER_DEGREES : -1;
             case "scale" -> SCALE;
             default -> -1;
         };
@@ -80,13 +83,15 @@ public final class CgSequenceLocator implements CgSequenceTarget {
 
     @Override
     public void set(int slot, float[] values, int mask) {
-        float[] to = slot == TRANSLATION ? translation : slot == ROTATION ? rotation : scale;
-        for (int i = 0; i < 3; i++) if ((mask & 1 << i) != 0) to[i] = values[i];
+        float[] to = slot == TRANSLATION ? translation : slot == ROTATION || slot == EULER_DEGREES ? rotation : scale;
+        float k = slot == EULER_DEGREES ? TO_RADIANS : 1f;
+        for (int i = 0; i < 3; i++) if ((mask & 1 << i) != 0) to[i] = values[i] * k;
     }
 
     @Override
     public void get(int slot, float[] out) {
-        System.arraycopy(slot == TRANSLATION ? translation : slot == ROTATION ? rotation : scale, 0, out, 0, 3);
+        System.arraycopy(slot == TRANSLATION ? translation : slot == ROTATION || slot == EULER_DEGREES ? rotation : scale, 0, out, 0, 3);
+        if (slot == EULER_DEGREES) for (int i = 0; i < 3; i++) out[i] /= TO_RADIANS;
     }
 
     @Override

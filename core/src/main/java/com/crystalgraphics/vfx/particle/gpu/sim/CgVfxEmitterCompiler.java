@@ -266,7 +266,7 @@ public final class CgVfxEmitterCompiler {
         if (shape.spawnFormOf(CgVfxSpawnInput.MESH_SCALE) >= 0) {
             first[CgVfxRecord.Tail.SCALE.ordinal()] = Math.min(first[CgVfxRecord.Tail.SCALE.ordinal()], code.length() + 3);
         }
-        if (shape.spawnFormOf(CgVfxSpawnInput.MESH_ORIENTATION) >= 0) {
+        if (shape.spawnFormOf(CgVfxSpawnInput.MESH_ORIENTATION) >= 0 || shape.turnsToward()) {
             first[CgVfxRecord.Tail.TURN.ordinal()] = Math.min(first[CgVfxRecord.Tail.TURN.ordinal()], code.length() + 4);
         }
         if (shape.spawnFormOf(CgVfxSpawnInput.MESH_ROTATION_RATE) >= 0) {
@@ -783,7 +783,10 @@ public final class CgVfxEmitterCompiler {
                 .replace("@COLOR@", colorStart(shape))
                 .replace("@HALF_HEIGHT@", spawnValue(shape, CgVfxSpawnInput.CYLINDER_HEIGHT, null, "step_vector(row, inst, 7).z", "0.5 * "))
                 .replace("@SCALE@", spawnValue(shape, CgVfxSpawnInput.MESH_SCALE, null, "vec3(1.0)", ""))
-                .replace("@TURN@", spawnValue(shape, CgVfxSpawnInput.MESH_ORIENTATION, null, "vec3(0.0)", ""))
+                // Turned toward its velocity at birth: that velocity in Unreal's axes (y and z swapped), which Look
+                // turns the mesh's axis onto.
+                .replace("@TURN@", shape.turnsToward() ? "p.velocity.xzy"
+                        : spawnValue(shape, CgVfxSpawnInput.MESH_ORIENTATION, null, "vec3(0.0)", ""))
                 .replace("@SPIN_RATE@", spawnValue(shape, CgVfxSpawnInput.SPRITE_ROTATION_RATE, null,
                         "s2.x + (s2.y - s2.x) * fx_rand(spinKey, k, 0u)", ""))
                 .replace("@TURN_RATE@", spawnValue(shape, CgVfxSpawnInput.MESH_ROTATION_RATE, null, "vec3(0.0)", ""))

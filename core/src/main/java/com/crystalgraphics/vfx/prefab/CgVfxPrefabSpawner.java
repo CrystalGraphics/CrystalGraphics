@@ -17,11 +17,13 @@ import com.crystalgraphics.sequence.CgSequenceTrack;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxSystem;
+import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.system.CgVfxSystemSpawner;
 import com.crystalgraphics.world.CgAttachment;
 import org.joml.Quaternionf;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -47,7 +49,8 @@ import java.util.Set;
  *   - { id: t1, kind: property, binding: { spawnable: s1, node: "1efc_shock08" }, property: opacity, sections: [ ... ] }
  * }</pre>
  *
- * <p>What a node answers: {@code translation}, {@code rotation} and {@code scale} (a transform track),
+ * <p>A material binding ({@code binding: { spawnable, material: blade }}) keys every node drawing it, named by its id
+ * or its id's last segment. What a node answers: {@code translation}, {@code rotation} and {@code scale} (a transform track),
  * {@code rotationEulerDeg} (CC2's node rotation, degrees), {@code opacity}, and each material value a track keys on
  * it.</p>
  *
@@ -106,14 +109,21 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
         for (CgSequenceTrack t : definition.tracks()) {
             CgSequenceBinding b = t.binding();
             if (!t.kind().equals("material") || b.subject() != CgSequenceBinding.Subject.SPAWNABLE || b.index() != index
-                    || b.part() != CgSequenceBinding.Part.NODE) {
+                    || b.part() != CgSequenceBinding.Part.NODE && b.part() != CgSequenceBinding.Part.MATERIAL) {
                 continue;
             }
+            // A material binding keys every node drawing it.
+            List<String> nodes = new ArrayList<>();
+            if (b.part() == CgSequenceBinding.Part.NODE) nodes.add(b.partName());
+            else for (int n : prefab.nodesDrawing(b.partName())) nodes.add(prefab.name(n));
             for (CgSequenceSection section : t.sections()) {
                 for (CgSequenceChannel c : section.channels()) {
                     String name = c.name();
-                    if (!name.startsWith("scalars.")) continue;   // a vector or colour finds no slot, and fails at bind
-                    keyed.computeIfAbsent(b.partName(), k -> new LinkedHashSet<>()).add(name.substring("scalars.".length()));
+                    // A vector or a colour keys a component a channel: its property is the name between.
+                    String property = name.startsWith("scalars.") ? name.substring("scalars.".length())
+                            : name.startsWith("vectors.") || name.startsWith("colours.")
+                            ? name.substring(name.indexOf('.') + 1, name.lastIndexOf('.')) : null;
+                    if (property != null) for (String n : nodes) keyed.computeIfAbsent(n, k -> new LinkedHashSet<>()).add(property);
                 }
             }
         }
@@ -135,6 +145,7 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
         private final CgVfxPrefab prefab;
         private final CgUnits units;
         private final Node[] nodes;
+        private final Map<String, Material> materials = new LinkedHashMap<>();
         @Nullable
         private CgAttachment[] attachments;
 
@@ -162,10 +173,17 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
                 if (rest.get("opacity") instanceof Number a) effect.instance().opacity(node.index, a.floatValue());
                 if (rest.get("values") instanceof Map<?, ?> values) {
                     for (Map.Entry<?, ?> p : values.entrySet()) {
-                        effect.set(prefab.param(node.index, (String) p.getKey()), ((Number) p.getValue()).floatValue());
+                        float[] value = p.getValue() instanceof List<?> l ? floats(l) : new float[] {((Number) p.getValue()).floatValue()};
+                        node.set(PARAMS + prefab.keyedNames(node.index).indexOf((String) p.getKey()), value, 15);
                     }
                 }
             }
+        }
+
+        private static float[] floats(List<?> l) {
+            float[] out = new float[4];
+            for (int i = 0; i < Math.min(4, l.size()); i++) out[i] = ((Number) l.get(i)).floatValue();
+            return out;
         }
 
         private static float[] three(Object list, float[] out) {
@@ -177,6 +195,15 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
         @Override
         @Nullable
         public CgSequenceTarget part(CgSequenceBinding.Part part, String name) {
+            if (part == CgSequenceBinding.Part.MATERIAL) {
+                int[] drawing = prefab.nodesDrawing(name);
+                if (drawing.length == 0) return null;
+                return materials.computeIfAbsent(name, m -> {
+                    Node[] of = new Node[drawing.length];
+                    for (int k = 0; k < of.length; k++) of[k] = (Node) part(CgSequenceBinding.Part.NODE, prefab.name(drawing[k]));
+                    return new Material(m, of);
+                });
+            }
             if (part != CgSequenceBinding.Part.NODE) return null;
             int i = prefab.node(name);
             if (i < 0) return null;
@@ -209,12 +236,53 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
             return "prefab " + prefab.id();
         }
 
+        /** A material as a target: each value it keys written to every node drawing it. */
+        private final class Material implements CgSequenceTarget {
+            final String name;
+            final Node[] nodes;
+            /** Each slot a section asked for, its slot on each node. */
+            private final List<int[]> slots = new ArrayList<>();
+
+            Material(String name, Node[] nodes) {
+                this.name = name;
+                this.nodes = nodes;
+            }
+
+            @Override
+            public int slot(String property) {
+                int[] on = new int[nodes.length];
+                for (int k = 0; k < nodes.length; k++) {
+                    on[k] = prefab.keyedNames(nodes[k].index).indexOf(property);
+                    if (on[k] < 0) return -1;
+                    on[k] += PARAMS;
+                }
+                slots.add(on);
+                return slots.size() - 1;
+            }
+
+            @Override
+            public void set(int slot, float[] values, int mask) {
+                int[] on = slots.get(slot);
+                for (int k = 0; k < nodes.length; k++) nodes[k].set(on[k], values, mask);
+            }
+
+            @Override
+            public void get(int slot, float[] out) {
+                nodes[0].get(slots.get(slot)[0], out);
+            }
+
+            @Override
+            public String toString() {
+                return "material " + name + " of prefab " + prefab.id();
+            }
+        }
+
         /** One node as a target. */
         private final class Node implements CgSequenceTarget {
             final int index;
             private final float[] local = new float[CgVfxPrefab.REST];
             /** The angles last keyed, by a transform track and by {@code rotationEulerDeg}. */
-            private final float[] angles = new float[3], degrees = new float[3];
+            private final float[] angles = new float[3], degrees = new float[3], vector = new float[4];
             private final Quaternionf turn = new Quaternionf();
 
             Node(int index) {
@@ -262,7 +330,14 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
                         if ((mask & 1) != 0) instance.opacity(index, values[0]);
                     }
                     default -> {
-                        if ((mask & 1) != 0) effect.set(prefab.param(index, prefab.keyedNames(index).get(slot - PARAMS)), values[0]);
+                        CgVfxParam p = prefab.param(index, prefab.keyedNames(index).get(slot - PARAMS));
+                        if (p instanceof CgVfxParam.Scalar s) {
+                            if ((mask & 1) != 0) effect.set(s, values[0]);
+                        } else {
+                            CgVfxParam.Color c = (CgVfxParam.Color) p;
+                            for (int i = 0; i < 4; i++) vector[i] = (mask & 1 << i) != 0 ? values[i] : effect.get(c, i);
+                            effect.set(c, vector[0], vector[1], vector[2], vector[3]);
+                        }
                     }
                 }
             }
@@ -278,7 +353,14 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
                     case ROTATION -> System.arraycopy(angles, 0, out, 0, 3);
                     case EULER_DEGREES -> System.arraycopy(degrees, 0, out, 0, 3);
                     case OPACITY -> out[0] = instance.opacity(index);
-                    default -> out[0] = effect.get(prefab.param(index, prefab.keyedNames(index).get(slot - PARAMS)));
+                    default -> {
+                        CgVfxParam p = prefab.param(index, prefab.keyedNames(index).get(slot - PARAMS));
+                        if (p instanceof CgVfxParam.Scalar s) {
+                            out[0] = effect.get(s);
+                        } else {
+                            for (int i = 0; i < Math.min(4, out.length); i++) out[i] = effect.get((CgVfxParam.Color) p, i);
+                        }
+                    }
                 }
             }
 

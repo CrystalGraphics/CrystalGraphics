@@ -414,7 +414,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         CgVfxDrawLayout layout = clip != null ? CgVfxDrawLayout.SEQUENCE : null;
         for (CgVfxRendererProperties r : renderers) {
             if (r instanceof CgVfxLightRendererProperties) continue;
-            CgVfxDrawLayout needs = r instanceof CgVfxSequenceRendererProperties ? CgVfxDrawLayout.SEQUENCE
+            CgVfxDrawLayout needs = r instanceof CgVfxSequenceRendererProperties
+                    || r instanceof CgVfxMeshRendererProperties m && m.prefab() != null ? CgVfxDrawLayout.SEQUENCE
                     : r instanceof CgVfxMeshRendererProperties ? CgVfxDrawLayout.MESHES
                     : r instanceof CgVfxArcRendererProperties ? CgVfxDrawLayout.ARCS : CgVfxDrawLayout.QUADS;
             if (layout != null && layout != needs) {
@@ -1943,6 +1944,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
+        /** Whether {@code k} strays from 1 over life. */
+        private static boolean varies(CgKeyframes k) {
+            for (int i = 0; i <= 8; i++) if (k.at(i / 8f) != 1f) return true;
+            return false;
+        }
+
         private static float[] rgba(int argb, float intensity) {
             return new float[]{(argb >> 16 & 0xFF) / 255f * intensity, (argb >> 8 & 0xFF) / 255f * intensity,
                     (argb & 0xFF) / 255f * intensity, (argb >>> 24) / 255f};
@@ -1977,6 +1984,13 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
                         throw new IllegalStateException(name + " plays a clip, so its particles read no world, but "
                                 + m.getClass().getSimpleName() + " takes " + Arrays.toString(m.dataInterfaces()));
                     }
+                }
+                // Its parts turn and size with the particle (Range's Objects); the Step places the clip's children at its
+                // node in the effect's frame at the particle's birth size.
+                if (!clip.spawns().isEmpty() && (meshRotation != null || varies(sizeOverLife) || varies(scaleX)
+                        || varies(scaleY) || varies(scaleZ) || !lifeRolls.isEmpty())) {
+                    throw new IllegalStateException(name + " turns or sizes its particles, so its clip's bursts and streams"
+                            + " would leave its parts behind; spawning from a turned clip is not built yet");
                 }
                 if (events.size() + clip.spawns().size() > CgVfxEvent.MAX_EVENTS) {
                     throw new IllegalStateException(name + " has " + events.size() + " events and its clip "

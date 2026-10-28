@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.easing.CgKeyframes;
+import javax.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,7 +33,17 @@ import java.util.List;
  *       Cascade resets the rate to its base every tick and runs its update modules on it
  *       ({@code ParticleEmitterInstances.cpp:3301}, {@code ParticleModules.cpp:1619-1742}).</li>
  *   <li>An emitter without one draws its meshes turned at random by its seed, as it always has.</li>
+ *   <li>{@code toward} turns its mesh's axis toward its velocity at birth, the turn between them added to its start's
+ *       rotator: Niagara's {@code OrientToAxis} with the vector bound to {@code Particles.Velocity}. A constant vector
+ *       needs none: {@link #between} of it is added to both ends.</li>
  * </ul>
+ *
+ * <pre>{@code
+ * // its +X (Unreal's) along its velocity at birth, rolled a turn about it as it is born
+ * float t = (float) (2 * Math.PI);
+ * new CgVfxMeshRotation(new float[3], new float[]{t, 0f, 0f}, new int[]{0, 1, 2}, new float[3], new float[3], new int[3],
+ *         false, List.of(), new float[]{1f, 0f, 0f});
+ * }</pre>
  *
  * @param from           the start's low end
  * @param to             its high end
@@ -42,9 +53,10 @@ import java.util.List;
  * @param rateRolls      which roll each axis of the rate takes
  * @param inheritParent  whether it turns with its instance as well ({@code bInheritParent})
  * @param steps          what its rate becomes over life, in order; empty for the rolled rate alone
+ * @param toward         the mesh axis turned toward its velocity at birth, Unreal's axes, a unit vector; null for none
  */
 public record CgVfxMeshRotation(float[] from, float[] to, int[] rolls, float[] rateFrom, float[] rateTo,
-                                int[] rateRolls, boolean inheritParent, List<Step> steps) {
+                                int[] rateRolls, boolean inheritParent, List<Step> steps, @Nullable float[] toward) {
 
     /** Unreal's default: unturned, still. */
     public static final CgVfxMeshRotation NONE = new CgVfxMeshRotation(new float[3], new float[3], new int[3], new float[3],
@@ -63,19 +75,56 @@ public record CgVfxMeshRotation(float[] from, float[] to, int[] rolls, float[] r
 
     public CgVfxMeshRotation(float[] from, float[] to, int[] rolls, float[] rateFrom, float[] rateTo, int[] rateRolls,
                              boolean inheritParent) {
-        this(from, to, rolls, rateFrom, rateTo, rateRolls, inheritParent, List.of());
+        this(from, to, rolls, rateFrom, rateTo, rateRolls, inheritParent, List.of(), null);
     }
 
     /** The same start with a rate of {@code from} to {@code to}, its steps kept. */
     public CgVfxMeshRotation rate(float[] from, float[] to, int[] rolls) {
-        return new CgVfxMeshRotation(this.from, this.to, this.rolls, from, to, rolls, inheritParent, steps);
+        return new CgVfxMeshRotation(this.from, this.to, this.rolls, from, to, rolls, inheritParent, steps, toward);
     }
 
     /** The same with {@code step} after its others. */
     public CgVfxMeshRotation over(Step step) {
         List<Step> more = new ArrayList<>(steps);
         more.add(step);
-        return new CgVfxMeshRotation(from, to, rolls, rateFrom, rateTo, rateRolls, inheritParent, more);
+        return new CgVfxMeshRotation(from, to, rolls, rateFrom, rateTo, rateRolls, inheritParent, more, toward);
+    }
+
+    /**
+     * The rotator (roll, pitch, yaw, radians) turning {@code axis} onto {@code vector}, both in Unreal's axes: Unreal's
+     * {@code FQuat::FindBetweenVectors} then {@code FQuat::Rotator} ({@code UnrealMath.cpp:1400-1452}, {@code :640-682}),
+     * which Niagara adds to an oriented mesh's rotator. Opposite vectors turn about an axis square to {@code axis}; a
+     * zero vector turns nothing.
+     */
+    public static float[] between(float[] axis, float[] vector) {
+        float ax = axis[0], ay = axis[1], az = axis[2], bx = vector[0], by = vector[1], bz = vector[2];
+        float norm = (float) Math.sqrt((ax * ax + ay * ay + az * az) * (bx * bx + by * by + bz * bz));
+        float w = norm + ax * bx + ay * by + az * bz, x, y, z;
+        if (w >= 1e-6f * norm) {
+            x = ay * bz - az * by;
+            y = az * bx - ax * bz;
+            z = ax * by - ay * bx;
+        } else {
+            // Opposite: about Y unless the axis lies nearest X, then about -X.
+            w = 0f;
+            boolean alongX = Math.abs(ax) > Math.abs(ay) && Math.abs(ax) > Math.abs(az);
+            float cx = alongX ? 0f : -1f, cy = alongX ? 1f : 0f;
+            x = -az * cy;
+            y = az * cx;
+            z = ax * cy - ay * cx;
+        }
+        float len = x * x + y * y + z * z + w * w;
+        if (len < 1e-8f) return new float[3];
+        float inv = (float) (1 / Math.sqrt(len));
+        x *= inv;
+        y *= inv;
+        z *= inv;
+        w *= inv;
+        float singular = z * x - w * y, half = (float) (Math.PI / 2);
+        if (singular < -0.4999995f) return new float[] {0f, -half, (float) (-2 * Math.atan2(x, w))};
+        if (singular > 0.4999995f) return new float[] {0f, half, (float) (2 * Math.atan2(x, w))};
+        return new float[] {(float) Math.atan2(-2 * (w * x + y * z), 1 - 2 * (x * x + y * y)), (float) Math.asin(2 * singular),
+                (float) Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))};
     }
 
     /** {@code rolls} as Look reads them from a vec4's w: {@code 1 + x + 3y + 9z}, each axis's roll. */

@@ -5,12 +5,14 @@ import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.value.CgUnits;
+import com.crystalgraphics.vfx.look.CgVfxParam;
 import org.joml.Quaternionf;
 import org.junit.Test;
 
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
@@ -50,11 +52,14 @@ public class CgVfxPrefabAssetsTest {
         int root = prefab.node("root"), ring = prefab.node("ring");
         assertNotSame(prefab.partSlot(prefab.firstPart(root)), prefab.partSlot(prefab.firstPart(ring)));
         assertNull(prefab.param(ring, "_V0_LocY"));
-        CgVfxPrefab keyed = prefab.keyed(Map.of("ring", List.of("_V0_LocY", "_U0_ScaleX", "_U0_LocX")));
-        assertEquals(0.25f, keyed.param(ring, "_V0_LocY").defaultValue(), 0f);    // the node's own
-        assertEquals(2f, keyed.param(ring, "_U0_ScaleX").defaultValue(), 0f);     // its material's
-        assertEquals(0f, keyed.param(ring, "_U0_LocX").defaultValue(), 0f);       // its shader's
-        assertEquals(List.of("_V0_LocY", "_U0_ScaleX", "_U0_LocX"), keyed.keyedNames(ring));
+        CgVfxPrefab keyed = prefab.keyed(Map.of("ring", List.of("_V0_LocY", "_U0_ScaleX", "_U0_LocX", "_Color")));
+        assertEquals(0.25f, ((CgVfxParam.Scalar) keyed.param(ring, "_V0_LocY")).defaultValue(), 0f);    // the node's own
+        assertEquals(2f, ((CgVfxParam.Scalar) keyed.param(ring, "_U0_ScaleX")).defaultValue(), 0f);     // its material's
+        assertEquals(0f, ((CgVfxParam.Scalar) keyed.param(ring, "_U0_LocX")).defaultValue(), 0f);       // its shader's
+        // A vector keys through a colour's four floats, its rest its shader's (1, 1, 1, 1).
+        assertTrue(keyed.param(ring, "_Color") instanceof CgVfxParam.Color);
+        assertArrayEquals(new float[] {1f, 1f, 1f, 1f}, keyed.keyedRest(ring, "_Color"), 0f);
+        assertEquals(List.of("_V0_LocY", "_U0_ScaleX", "_U0_LocX", "_Color"), keyed.keyedNames(ring));
         assertSame(prefab, prefab.keyed(Map.of()));
         assertThrows(CgAssetException.class, () -> prefab.keyed(Map.of("ring", List.of("_NoSuch"))));
     }

@@ -2,6 +2,13 @@ package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxSequenceRendererProperties;
+import com.crystalgraphics.vfx.sequence.CgVfxClipBake;
+import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
+import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
+import com.crystalgraphics.asset.kind.CgBodyKinds;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
+import com.crystalgraphics.sequence.CgSequenceDefinition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -23,6 +30,7 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.asset.curve.CgRichCurve;
 import com.crystalgraphics.asset.kind.CgFieldKinds;
+import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.kind.CgModuleTypes;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.easing.CgEasing;
@@ -152,8 +160,13 @@ public final class CgVfxEmitterAssets {
         if (e.spawnFrom != null && !e.spawnFrom.placeAfter()) spawn.add(spawnFromEntry(e));
         if (e.meshRotation != null) {
             CgVfxMeshRotation r = e.meshRotation;
-            Map<String, Object> turn = map("mode", "none", "rotation", written(e, CgVfxSpawnInput.MESH_ORIENTATION,
-                    rotatorValue(r.from(), r.to(), r.rolls())));
+            Map<String, Object> turn = map("mode", r.toward() != null ? "orient_to_vector" : "none", "rotation",
+                    written(e, CgVfxSpawnInput.MESH_ORIENTATION, rotatorValue(r.from(), r.to(), r.rolls())));
+            if (r.toward() != null) {
+                float[] axis = unrealAxes(r.toward());
+                turn.put("mesh_axis", list(axis[0], axis[1], axis[2]));
+                turn.put("orientation_vector", map("bind", "particles.velocity"));
+            }
             if (r.inheritParent()) turn.put("inherit_parent", true);
             spawn.add(entry(e.id("orientation"), "initial_mesh_orientation", turn));
         }
@@ -650,7 +663,23 @@ public final class CgVfxEmitterAssets {
             }
         }
         Object renderers = drawnBy(name, tree.get("renderers"), drawn, deps == null ? CgUnits.HOST : deps.units());
-        for (CgVfxRendererProperties r : CgVfxRenderers.compileAll(name, renderers, deps)) b.renderer(r);
+        for (CgVfxRendererProperties r : CgVfxRenderers.compileAll(name, renderers, deps)) {
+            b.renderer(r);
+            // A sequence on each particle: its compiled sequence baked into the clip the emitter plays.
+            if (r instanceof CgVfxSequenceRendererProperties seq) {
+                if (!(deps != null && deps.definition(CgSequenceKinds.SEQUENCE, seq.sequence()) instanceof CgSequenceDefinition d)) {
+                    throw new IllegalArgumentException(name + ": its sequence renderer's " + seq.sequence() + " is not compiled with it");
+                }
+                b.sequence(CgVfxClipBake.bake(name, d), seq.playRate());
+            }
+            // A prefab a particle, Niagara's mesh renderer on a static mesh: a clip of its rest, a frame long.
+            if (r instanceof CgVfxMeshRendererProperties mesh && mesh.prefab() != null) {
+                if (!(deps != null && deps.definition(CgBodyKinds.PREFAB, mesh.prefab()) instanceof CgVfxPrefab prefab)) {
+                    throw new IllegalArgumentException(name + ": its mesh renderer's prefab " + mesh.prefab() + " is not compiled with it");
+                }
+                b.sequence(CgVfxNodeClip.of(prefab, 1).build());
+            }
+        }
         // Its handlers name its system's handles: the system resolves them (CgVfxSystemAssets).
         for (Map<?, ?> entry : entries(tree, "events")) b.handler(CgVfxEventHandler.of(name, entry));
         return b.build();
@@ -1535,25 +1564,71 @@ public final class CgVfxEmitterAssets {
 
     /**
      * {@code initial_mesh_orientation}: Cascade's {@code MeshRotation}, Niagara's {@code InitialMeshOrientation}, its
-     * rotator rolled from the particle's seed ({@link CgVfxMeshRotation}).
+     * rotator rolled from the particle's seed ({@link CgVfxMeshRotation}), by Niagara's modes
+     * ({@code NiagaraStatelessModule_InitialMeshOrientation.cpp:22-47, 85-100}): {@code none} its rotation;
+     * {@code random} each axis over a whole turn, its rotation unread; {@code orient_to_vector} its rotation plus the
+     * turn from {@code mesh_axis} onto {@code orientation_vector}, a constant or {@code particles.velocity} at birth.
      */
     private static void meshOrientation(String name, CgVfxEmitter.Builder b, Map<?, ?> in, String element) {
-        if (!"none".equals(String.valueOf(in.get("mode")))) {
-            throw new IllegalArgumentException(name + ": initial_mesh_orientation's mode " + in.get("mode") + " is not read yet: none alone");
-        }
+        String mode = in.get("mode") == null ? "none" : String.valueOf(in.get("mode"));
         CgVfxMeshRotation was = b.meshRotation() != null ? b.meshRotation() : CgVfxMeshRotation.NONE;
-        Object rotation = in.get("rotation");
         Rotators r;
-        CgVfxSpawnForm stored = spawnForm(CgVfxSpawnInput.MESH_ORIENTATION, element, "rotation", rotation);
-        if (stored != null) {
-            // Stored at birth: the row's ends unread.
-            b.spawnForm(stored);
-            r = new Rotators(new float[3], new float[3], new int[3]);
+        float[] toward = null;
+        if (mode.equals("random")) {
+            float turn = (float) (2 * Math.PI);
+            r = new Rotators(new float[3], new float[] {turn, turn, turn}, new int[] {0, 1, 2});
+        } else if (mode.equals("none") || mode.equals("orient_to_vector")) {
+            Object rotation = in.get("rotation");
+            CgVfxSpawnForm stored = spawnForm(CgVfxSpawnInput.MESH_ORIENTATION, element, "rotation", rotation);
+            if (stored != null) {
+                // Stored at birth: the row's ends unread.
+                b.spawnForm(stored);
+                r = new Rotators(new float[3], new float[3], new int[3]);
+            } else {
+                r = rotators(name, "initial_mesh_orientation's rotation", rotation);
+                r = new Rotators(r.from().clone(), r.to().clone(), r.rolls());   // a constant's ends are one array
+            }
+            if (mode.equals("orient_to_vector")) {
+                float[] axis = unrealAxes(in.get("mesh_axis") == null ? new float[] {1f, 0f, 0f}
+                        : constantVector(name, "initial_mesh_orientation's mesh_axis", in.get("mesh_axis")));
+                Object vector = in.get("orientation_vector");
+                if (vector instanceof Map<?, ?> m && "particles.velocity".equals(m.get("bind")) && m.size() == 1) {
+                    if (stored != null) {
+                        throw new IllegalArgumentException(name + ": initial_mesh_orientation toward particles.velocity with a rotation "
+                                + rotation + " stored at birth is not read yet: a constant or a range");
+                    }
+                    toward = normalized(axis);
+                } else {
+                    float[] by = CgVfxMeshRotation.between(axis, unrealAxes(constantVector(name, "initial_mesh_orientation's orientation_vector",
+                            vector == null ? List.of(1.0, 0.0, 0.0) : vector)));
+                    for (int a = 0; a < 3; a++) {
+                        r.from()[a] += by[a];
+                        r.to()[a] += by[a];
+                    }
+                }
+            }
         } else {
-            r = rotators(name, "initial_mesh_orientation's rotation", rotation);
+            throw new IllegalArgumentException(name + ": initial_mesh_orientation's mode " + mode + " is not one of none, random, orient_to_vector");
         }
         b.meshRotation(new CgVfxMeshRotation(r.from(), r.to(), r.rolls(), was.rateFrom(), was.rateTo(), was.rateRolls(),
-                Boolean.TRUE.equals(in.get("inherit_parent")), was.steps()));
+                Boolean.TRUE.equals(in.get("inherit_parent")), was.steps(), toward));
+    }
+
+    /** A constant vec3, else a failure naming {@code what}. */
+    private static float[] constantVector(String name, String what, Object value) {
+        if (isVector(value, 3)) return vec(value, 3);
+        throw new IllegalArgumentException(name + ": " + what + " " + value + " is not read yet: a constant");
+    }
+
+    /** A host direction in Unreal's axes, which swap y and z with the host's (a swap its own inverse). */
+    private static float[] unrealAxes(float[] host) {
+        return new float[] {host[0], host[2], host[1]};
+    }
+
+    private static float[] normalized(float[] v) {
+        float len = (float) Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+        if (len < 1e-6f) return new float[] {1f, 0f, 0f};
+        return new float[] {v[0] / len, v[1] / len, v[2] / len};
     }
 
     /**

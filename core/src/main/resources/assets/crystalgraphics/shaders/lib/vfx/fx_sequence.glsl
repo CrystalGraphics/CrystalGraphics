@@ -8,7 +8,7 @@
 //     ...
 //     vec4 world = FX_SEQUENCE_TO_WORLD * vec4(cg_Position, 1.0);     // CG_OBJECT_TO_WORLD on any other kind
 //     float opacity = FX_SEQUENCE_OPACITY;                             // the node's own
-//     vec2 window = vec2(FX_SEQ_SCALAR(0, _U0_LocX), FX_SEQ_SCALAR(1, _V0_LocY));   // the clip's, else the material's
+//     vec2 offset = vec2(FX_SEQ_SCALAR(0, _UV0Window.x), FX_SEQ_SCALAR(1, _UV0Window.y));   // the clip's, else the material's
 //
 // Its macros name CG_OBJECT_CUSTOM0 (w: the particle's age) and CUSTOM2 (the node's first vec4, its row's length, the
 // clip's frames a second of age, its step mask), so they read in either stage.

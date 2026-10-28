@@ -7,6 +7,8 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 
 import javax.annotation.Nullable;
@@ -34,6 +36,7 @@ import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMacroUv;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
+import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
 
 /**
  * The {@code system} kind's compiler and writer: a system asset to the {@link CgVfxSystemDefinition} a
@@ -289,10 +292,12 @@ public final class CgVfxSystemAssets {
             readers(id, base);
             Map<String, CgVfxEmitter> done = new HashMap<>();
             List<HeardKill> heard = new ArrayList<>();
+            Set<CgVfxPrefab> clipped = Collections.newSetFromMap(new IdentityHashMap<>());
             for (String handle : base.keySet()) {
                 CgVfxEmitter e = resolve(id, handle, base, done, new ArrayList<>(), heard);
                 kit.emitter(e);
                 emitters.add(e);
+                clipKits(e, kit, clipped);
             }
             List<String> order = new ArrayList<>(base.keySet());
             for (HeardKill k : heard) {
@@ -406,6 +411,12 @@ public final class CgVfxSystemAssets {
      * Handle {@code handle}'s emitter with the events its system's handlers put on it, each spawning its handle resolved
      * the same way first: an emitter is final once its children are. A loop of spawns fails, naming it.
      */
+    /** The kit of every prefab {@code e} or its events' children play as a clip, once each: what draws their parts. */
+    private static void clipKits(CgVfxEmitter e, CgVfxKit.Builder kit, Set<CgVfxPrefab> clipped) {
+        if (e.clip() != null && clipped.add(e.clip().prefab())) kit.kit(e.clip().prefab().kit());
+        for (CgVfxEvent ev : e.events()) if (ev.child() instanceof CgVfxEmitter child) clipKits(child, kit, clipped);
+    }
+
     private static CgVfxEmitter resolve(String system, String handle, Map<String, CgVfxEmitter> base,
                                         Map<String, CgVfxEmitter> done, List<String> path, List<HeardKill> heard) {
         CgVfxEmitter ready = done.get(handle);

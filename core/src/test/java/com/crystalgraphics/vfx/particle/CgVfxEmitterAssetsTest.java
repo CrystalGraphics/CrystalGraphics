@@ -2,6 +2,8 @@ package com.crystalgraphics.vfx.particle;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -294,6 +296,50 @@ public class CgVfxEmitterAssetsTest {
         assertArrayEquals(scale, scaleBack, 1e-5f);
         assertArrayEquals(added, addedBack, 1e-5f);
         assertArrayEquals(turn.rateTo(), back.rateTo(), 0f);
+    }
+
+    /**
+     * Niagara's three orientation modes: {@code random} a whole turn rolled per axis, {@code orient_to_vector} a constant
+     * folded into both ends, or toward {@code particles.velocity} at birth, kept for the Step and written back.
+     */
+    @Test
+    public void meshOrientationModes() {
+        float turn = (float) (2 * Math.PI), half = (float) (Math.PI / 2);
+        CgVfxMeshRotation random = oriented(Map.of("mode", "random", "rotation", List.of(1.0, 1.0, 1.0)));
+        assertArrayEquals(new float[3], random.from(), 0f);
+        assertArrayEquals(new float[] {turn, turn, turn}, random.to(), 0f);
+        assertArrayEquals(new int[] {0, 1, 2}, random.rolls());
+        assertNull(random.toward());
+        // +X onto the host's +Y, Unreal's +Z: pitched up a quarter turn, after its own roll.
+        CgVfxMeshRotation up = oriented(Map.of("mode", "orient_to_vector", "orientation_vector", List.of(0.0, 1.0, 0.0),
+                "rotation", List.of(0.1, 0.0, 0.0)));
+        assertArrayEquals(new float[] {0.1f, half, 0f}, up.from(), 1e-5f);
+        assertArrayEquals(up.from(), up.to(), 0f);
+        assertNull(up.toward());
+        Map<String, Object> velocity = Map.of("mode", "orient_to_vector", "orientation_vector", Map.of("bind", "particles.velocity"),
+                "mesh_axis", List.of(0.0, 2.0, 0.0));
+        CgVfxMeshRotation along = oriented(velocity);
+        assertArrayEquals(new float[] {0f, 0f, 1f}, along.toward(), 0f);   // the host's +Y is Unreal's +Z
+        CgVfxMeshRotation back = CgVfxEmitterAssets.compile("o", CgVfxEmitterAssets.write(CgVfxEmitterAssets.compile("o",
+                orientedTree(velocity), null)), null).meshRotation();
+        assertArrayEquals(along.toward(), back.toward(), 0f);
+        // Opposite vectors turn half a turn; a zero vector, nothing.
+        assertEquals(Math.PI, Math.abs(CgVfxMeshRotation.between(new float[] {1f, 0f, 0f}, new float[] {-1f, 0f, 0f})[2]), 1e-5);
+        assertArrayEquals(new float[3], CgVfxMeshRotation.between(new float[] {1f, 0f, 0f}, new float[3]), 0f);
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> oriented(Map.of("mode", "spin")));
+        assertTrue(e.getMessage(), e.getMessage().contains("initial_mesh_orientation's mode spin"));
+    }
+
+    private static CgVfxMeshRotation oriented(Map<String, Object> inputs) {
+        return CgVfxEmitterAssets.compile("o", orientedTree(inputs), null).meshRotation();
+    }
+
+    private static Map<String, Object> orientedTree(Map<String, Object> inputs) {
+        Map<String, Object> tree = burstTree(burstEntry("b1", 0.0), burstEntry("b2", 0.5), "init");
+        tree.put("particle_spawn", List.of(Map.of("id", "init", "module", "crystalgraphics:initialize_particle",
+                "inputs", Map.of("lifetime", 1.0)), Map.of("id", "turn", "module", "crystalgraphics:initial_mesh_orientation",
+                "inputs", inputs)));
+        return tree;
     }
 
     /** A size and an alpha bound to user parameters, remapped: read on their targets, applied, and written back alike. */

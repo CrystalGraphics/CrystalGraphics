@@ -15,7 +15,8 @@ import com.crystalgraphics.sequence.time.CgSequenceEvaluationRange;
  * ({@code FActivePreAnimatedToken}, the same file). A section without is Niagara's spawn section
  * ({@code MovieSceneNiagaraSystemTrackTemplate.cpp:159-246}): activated as play crosses its start, kept active inside
  * ({@code evaluate: activate_if_inactive}), set inactive or deactivated after its end ({@code end}), its age the
- * sequence's where {@code age: desired_age}.
+ * sequence's where {@code age: desired_age}. A track naming a {@code handle} drives that emitter of the system alone
+ * ({@link CgSequenceSystem#emitter}).
  */
 final class CgSequenceSystemEvaluator implements CgSequenceEvaluator {
 
@@ -23,7 +24,7 @@ final class CgSequenceSystemEvaluator implements CgSequenceEvaluator {
      * Per section: its last applied key, so a kill or a detach is applied once; whether it has animated its system since
      * play entered it, and whether the system was active before.
      */
-    private record Keys(int[] applied, boolean[] animated, boolean[] wasActive) {
+    private record Keys(int[] applied, boolean[] animated, boolean[] wasActive, @Nullable CgSequenceSystem emitter) {
     }
 
     @Override
@@ -37,15 +38,28 @@ final class CgSequenceSystemEvaluator implements CgSequenceEvaluator {
         if (target != null && !(target instanceof CgSequenceSystem)) {
             throw new CgAssetException(player.definition().id() + ": tracks." + track.id() + ": " + target + " is not a system");
         }
+        CgSequenceSystem emitter = null;
+        if (track.handle() != null && target instanceof CgSequenceSystem system) {
+            String where = player.definition().id() + ": tracks." + track.id();
+            emitter = system.emitter(track.handle());
+            if (emitter == null) throw new CgAssetException(where + ": " + target + " has no emitter " + track.handle());
+            for (CgSequenceSection s : track.sections()) {
+                Object age = s.fields().get("age");
+                if ("desired_age".equals(age) || "desired_age_no_seek".equals(age)) {
+                    throw new CgAssetException(where + ".sections." + s.id() + ": a desired age on one emitter is not built yet");
+                }
+            }
+        }
         int[] applied = new int[track.sections().size()];
         Arrays.fill(applied, -1);
         int n = track.sections().size();
-        player.data(track, null, new Keys(applied, new boolean[n], new boolean[n]));
+        player.data(track, null, new Keys(applied, new boolean[n], new boolean[n], emitter));
     }
 
     @Override
     public void evaluate(CgSequencePlayer player, CgSequenceTrack track, @Nullable CgSequenceSection unused, float tick) {
-        if (!(player.target(track) instanceof CgSequenceSystem system) || !(player.data(track, null) instanceof Keys keys)) return;
+        if (!(player.target(track) instanceof CgSequenceSystem whole) || !(player.data(track, null) instanceof Keys keys)) return;
+        CgSequenceSystem system = keys.emitter() != null ? keys.emitter() : whole;
         CgSequenceEvaluationRange range = player.range();
         int keyFrom = range.keyFrom(), keyEnd = range.keyEnd(), now = (int) Math.floor(tick);
         boolean backwards = range.direction() == CgSequenceEvaluationRange.Direction.BACKWARDS;

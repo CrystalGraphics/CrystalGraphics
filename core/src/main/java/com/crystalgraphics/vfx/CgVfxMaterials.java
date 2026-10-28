@@ -23,6 +23,7 @@ import com.crystalgraphics.vfx.particle.CgVfxSubUvAnimation;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxDynamicParameterIndex;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxSequenceRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
@@ -691,6 +692,11 @@ final class CgVfxMaterials {
     private List<Resolved> resolutions(CgVfxLook look, CgVfxLook.Placed placed) {
         List<Resolved> all = new ArrayList<>(1);
         CgVfxRendererProperties renderer = placed.renderer();
+        // A clip draws its prefab's parts, each its kit's slot renderer: the renderer itself names no material.
+        if (renderer instanceof CgVfxSequenceRendererProperties
+                || renderer instanceof CgVfxMeshRendererProperties m && m.prefab() != null) {
+            return List.of();
+        }
         if (!(renderer instanceof CgVfxMeshRendererProperties mesh)) return List.of(resolve(look, placed));
         if (mesh.common().material() != null) all.add(resolve(look, placed));
         for (int s = 0; s < mesh.materialOverrides().size(); s++) all.add(resolve(look, placed, s));

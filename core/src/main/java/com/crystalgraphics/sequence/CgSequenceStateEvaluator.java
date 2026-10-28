@@ -71,6 +71,13 @@ final class CgSequenceStateEvaluator implements CgSequenceEvaluator {
                     component = i;
                     slot = name.substring(0, dot);
                 }
+            } else if (name.length() == 1 && (kind.equals("property") || kind.equals("parameter"))) {
+                // A vector property keyed by component (x, y, z): its track's property's.
+                int i = Math.max(COMPONENTS.indexOf(name.charAt(0)), COLOUR.indexOf(name.charAt(0)));
+                if (i >= 0) {
+                    component = i;
+                    slot = "value";
+                }
             }
             if (slot.equals("value")) slot = kind.equals("parameter") ? track.parameter() : track.property();
             else if (slot.indexOf('.') > 0) slot = slot.substring(slot.indexOf('.') + 1);

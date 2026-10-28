@@ -62,6 +62,28 @@ vec4 look_rotator(vec3 r) {
     return vec4(-x, -z, -y, w);
 }
 
+// The rotator (roll, pitch, yaw) turning a onto b, Unreal's axes: CgVfxMeshRotation.between, Unreal's FindBetweenVectors
+// then Rotator. Opposite vectors turn about an axis square to a; a zero vector turns nothing.
+vec3 look_between(vec3 a, vec3 b) {
+    float norm = sqrt(dot(a, a) * dot(b, b)), w = norm + dot(a, b);
+    vec3 v;
+    if (w >= 1e-6 * norm) {
+        v = cross(a, b);
+    } else {
+        w = 0.0;
+        vec3 q = abs(a);
+        v = cross(a, q.x > q.y && q.x > q.z ? vec3(0.0, 1.0, 0.0) : vec3(-1.0, 0.0, 0.0));
+    }
+    float len = dot(v, v) + w * w;
+    if (len < 1e-8) return vec3(0.0);
+    vec4 r = vec4(v, w) * inversesqrt(len);
+    float singular = r.z * r.x - r.w * r.y;
+    if (singular < -0.4999995) return vec3(0.0, -1.5707963, -2.0 * atan(r.x, r.w));
+    if (singular > 0.4999995) return vec3(0.0, 1.5707963, 2.0 * atan(r.x, r.w));
+    return vec3(atan(-2.0 * (r.w * r.x + r.y * r.z), 1.0 - 2.0 * (r.x * r.x + r.y * r.y)), asin(2.0 * singular),
+                atan(2.0 * (r.w * r.z + r.x * r.y), 1.0 - 2.0 * (r.y * r.y + r.z * r.z)));
+}
+
 // Three rolls picked per axis by a vec4's w, 1 + x + 3y + 9z (CgVfxMeshRotation.rollCode).
 vec3 look_rolls(vec3 roll, float w) {
     int code = int(w + 0.5) - 1;
@@ -115,11 +137,15 @@ FxDrawn look_part(int part) {
                 vec3 scale = vec3(look_word(_TurnStateAt + 3), look_word(_TurnStateAt + 4), look_word(_TurnStateAt + 5));
                 turned = rate * (base + scale * clock) + added;
             }
-            vec3 start = _TurnAt >= 0 ? vec3(look_word(_TurnAt), look_word(_TurnAt + 1), look_word(_TurnAt + 2))
-                    : mix(from.xyz, to.xyz, look_rolls(roll, from.w));
+            // The start's end's w: 1 inheriting, plus 2 turned toward its velocity at birth, which the stored turn then
+            // holds (Unreal's axes) and the row's vec4 after the rate's integrals its mesh's axis.
+            bool toward = to.w > 1.5;
+            vec3 stored = _TurnAt >= 0 ? vec3(look_word(_TurnAt), look_word(_TurnAt + 1), look_word(_TurnAt + 2)) : vec3(0.0);
+            vec3 start = _TurnAt >= 0 && !toward ? stored : mix(from.xyz, to.xyz, look_rolls(roll, from.w));
+            if (toward) start += look_between(CURVES(r + 4 + (overLife ? 2 * _Texels : 0)).xyz, stored);
             vec3 rotator = start + turned;
             vec4 q = look_rotator(rotator);
-            if (to.w > 0.5) {
+            if (mod(to.w, 2.0) > 0.5) {
                 int inst = _InstanceAt + int(LOOK_IN(FX_RECORD_HEAT_ID).z) * _InstanceRow;
                 q = look_mul(look_instance(inst + 7), q);
             }

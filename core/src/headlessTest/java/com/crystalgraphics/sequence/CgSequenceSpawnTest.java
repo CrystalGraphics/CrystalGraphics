@@ -7,6 +7,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -16,6 +17,7 @@ import org.junit.Test;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
+import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.world.CgAttachment;
 
@@ -100,6 +102,13 @@ public class CgSequenceSpawnTest {
         @Override public void destroy(boolean graceful) {
             destroyed = true;
         }
+
+        /** Emitters e01 and e02, each a stand-in of its own. */
+        final Map<String, System> emitters = new HashMap<>();
+
+        @Override public CgSequenceSystem emitter(String handle) {
+            return handle.equals("e01") || handle.equals("e02") ? emitters.computeIfAbsent(handle, h -> new System(at)) : null;
+        }
     }
 
     private final List<System> made = new ArrayList<>();
@@ -147,6 +156,35 @@ public class CgSequenceSpawnTest {
         player.stop();
         sequencer.evaluate(0f);
         assertTrue(charge.destroyed);                                // the play's end ends what it spawned
+    }
+
+    private static final String HANDLES = "_v: 1\ntick_resolution: 20\ndisplay_rate: 20\nrange: [0, 25]\n"
+            + "roles:\n  - { id: b1, name: caster, kind: caster }\n"
+            + "spawnables:\n  - { id: s1, name: shuriken, at: { role: caster, socket: aim }, system: mymod:shuriken }\n"
+            + "tracks:\n"
+            + "  - { id: t1, kind: system, binding: { spawnable: s1 }, handle: e01, sections: [ { id: a, range: [0, 25], keys: [[1, activate], [13, deactivate]] } ] }\n"
+            + "  - { id: t2, kind: system, binding: { spawnable: s1 }, handle: e02, sections: [ { id: b, range: [0, 25], keys: [[1, activate]] } ] }\n";
+
+    @Test
+    public void aTrackNamingAHandleDrivesThatEmitterAlone() {
+        CgSequencer sequencer = sequencer(false);
+        sequencer.play(CgSequenceDefinition.compile(CgAssetData.of("mymod:shuriken", CgSequenceKinds.SEQUENCE,
+                (Map<?, ?>) CgAssetYaml.read(HANDLES), null)), Map.of("caster", new Caster()));
+        for (int i = 0; i < 40; i++) sequencer.evaluate(0.1f);   // to its end at tick 25, then held there
+        System shuriken = made.get(0);
+        assertEquals(List.of(), shuriken.calls);
+        assertEquals(List.of("activate", "deactivate"), shuriken.emitters.get("e01").calls);
+        assertEquals(List.of("activate"), shuriken.emitters.get("e02").calls);
+
+        CgSequencer other = sequencer(false);
+        try {
+            other.play(CgSequenceDefinition.compile(CgAssetData.of("mymod:shuriken", CgSequenceKinds.SEQUENCE,
+                    (Map<?, ?>) CgAssetYaml.read(HANDLES.replace("handle: e02", "handle: e09")), null)), Map.of("caster", new Caster()));
+            other.evaluate(0.1f);
+            fail("bound a handle the system lacks");
+        } catch (CgAssetException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("tracks.t2") && e.getMessage().contains("no emitter e09"));
+        }
     }
 
     @Test

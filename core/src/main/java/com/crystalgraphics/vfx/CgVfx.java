@@ -12,8 +12,10 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.net.CgVfxCueClient;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefabAssets;
+import com.crystalgraphics.vfx.prefab.CgVfxPrefabPreparer;
 import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemPreparer;
+import com.crystalgraphics.asset.kind.CgBodyKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.world.CgWorldQueries;
@@ -92,6 +94,7 @@ public final class CgVfx {
         CgVfxPrefabAssets.register();
         // and are READY once the world's system has warmed what they draw: nothing compiles or uploads at a play
         CgVfxAssets.instance().preparer(CgParticleKinds.SYSTEM, new CgVfxSystemPreparer(CgVfx::world));
+        CgVfxAssets.instance().preparer(CgBodyKinds.PREFAB, new CgVfxPrefabPreparer(CgVfx::world));
         // Every frame's end, the title screen's too: a logout clears before the next world.
         CgGraphicsLifecycle.addListener(new CgLifecycleListener() {
             @Override

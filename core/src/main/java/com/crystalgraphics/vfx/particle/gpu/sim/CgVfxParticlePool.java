@@ -2577,14 +2577,18 @@ public final class CgVfxParticlePool {
         }
         CgVfxMeshRotation turn = emitter.meshRotation();
         if (turn != null) {
-            // look.compute's: each vec4's w, the start's and the rate's rolls, inheriting for the start's end.
+            // look.compute's: each vec4's w, the start's and the rate's rolls; the start's end's, 1 inheriting plus 2
+            // turned toward its velocity.
             orientation(curveScratch, slotAt, turn.from(), CgVfxMeshRotation.rollCode(turn.rolls()));
-            orientation(curveScratch, slotAt + 4, turn.to(), turn.inheritParent() ? 1f : 0f);
+            orientation(curveScratch, slotAt + 4, turn.to(), (turn.inheritParent() ? 1f : 0f) + (turn.toward() != null ? 2f : 0f));
             orientation(curveScratch, slotAt + 8, turn.rateFrom(), CgVfxMeshRotation.rollCode(turn.rateRolls()));
             orientation(curveScratch, slotAt + 12, turn.rateTo(), turn.steps().isEmpty() ? 0f : 1f);
+            int lives = slotAt + 4 * CgVfxShape.ORIENTATION_VECTORS;
             if (!turn.steps().isEmpty()) {
-                int lives = slotAt + 4 * CgVfxShape.ORIENTATION_VECTORS;
                 turn.integrals(curveScratch, lives, curveScratch, lives + 4 * CgVfxGpuEmitter.CURVE_TEXELS, CgVfxGpuEmitter.CURVE_TEXELS);
+            }
+            if (turn.toward() != null) {
+                orientation(curveScratch, lives + (turn.steps().isEmpty() ? 0 : 8 * CgVfxGpuEmitter.CURVE_TEXELS), turn.toward(), 0f);
             }
         }
         if (shape.lights()) writeBlock(emitter::light, curveScratch, shape.lightAt() * 4);

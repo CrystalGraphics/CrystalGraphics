@@ -84,13 +84,15 @@ public record CgSequenceDefinition(String id, CgFrameRate tickResolution, CgFram
     /**
      * An object the sequence makes and owns: Unreal's spawnable.
      *
-     * @param kind   its one kind key: {@code system}, {@code prefab}, {@code camera}…
-     * @param at     where it is placed; {@link CgSequenceBinding#NONE} where it says nothing
-     * @param follow whether it follows {@code at} every frame, or is placed and left
-     * @param tree   its keys as written
+     * @param kind       its one kind key: {@code system}, {@code prefab}, {@code camera}…
+     * @param at         where it is placed; {@link CgSequenceBinding#NONE} where it says nothing
+     * @param follow     whether it follows {@code at} every frame, or is placed and left
+     * @param tree       its keys as written
+     * @param definition the asset it names, compiled (a {@code CgVfxPrefab}, a system's definition); null where it
+     *                   names none or writes it inline
      */
     public record Spawnable(String id, @Nullable String name, String kind, CgSequenceBinding at, boolean follow,
-                            Map<?, ?> tree) {
+                            Map<?, ?> tree, @Nullable Object definition) {
     }
 
     /** A montage's named range, {@code [from, to)}, and the section it plays next: an index, or -1 for none. */

@@ -13,16 +13,16 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * What a particle plays: a prefab whose nodes move, fade and change their material scalars over a clip of frames,
- * starting child emitters at clip times. CC2's particle-played clip, as a Java builder: a {@code SEQUENCE} emitter
- * ({@code CgVfxEmitter.Builder.sequence}) draws it on each particle at the particle's age, and its bursts and streams
- * become that emitter's events, spawning on the GPU at the node's place.
+ * What a particle plays: a prefab whose nodes move, fade and change their material values over a clip of frames,
+ * starting child emitters at clip times. A {@code SEQUENCE} emitter ({@code CgVfxEmitter.Builder.sequence}) draws it on
+ * each particle at the particle's age, and its bursts and streams become that emitter's events, spawning on the GPU at
+ * the node's place. Built in Java, or baked from a sequence a {@code sequence} renderer names ({@link CgVfxClipBake}).
  *
  * <pre>{@code
  * static final CgVfxNodeClip SPINNER = CgVfxNodeClip.of(CORE, 60)                       // 60 frames, 30 a second
  *         .channel("blade", Channel.ROTATION_Y, Interp.LINEAR, 0, 0f, 60, 720f)          // frame, value pairs
  *         .channel("blade", Channel.OPACITY, Interp.LINEAR, 0, 1f, 45, 1f, 60, 0f)
- *         .material("blade", "_U0_LocX", Interp.CONSTANT, 0, 0f, 15, 0.25f, 30, 0.5f)   // a stepped UV window
+ *         .material("blade", "_UV0Window.x", Interp.CONSTANT, 0, 0f, 15, 0.25f, 30, 0.5f)   // a stepped UV window
  *         .burst("tip", SPARKS, 20, 8)                                                  // 8 sparks at the tip on frame 20
  *         .stream("tip", SMOKE, 10, 50, 30f)                                            // 30 a clip second, frames 10 to 50
  *         .build();
@@ -32,8 +32,9 @@ import java.util.Objects;
  *   <li>Rotations are Euler degrees in CC2's order, Rx·Ry·Rz intrinsic; a channel no track keys is the node's rest.</li>
  *   <li>Before its first key a channel holds that key's value, after its last the last's. {@code CONSTANT} keys step
  *       at each key's frame; {@code LINEAR} keys interpolate.</li>
- *   <li>A material scalar the clip neither keys nor sets at rest ({@link Builder#rest}) is the layer's own: its
+ *   <li>A material value the clip neither keys nor sets at rest ({@link Builder#rest}) is the layer's own: its
  *       material's value, which the bake leaves alone ({@link #keys(int)}).</li>
+ *   <li>A vector's components are slots of their own ({@code _UV0Window.x}): a shader reads each by its slot.</li>
  *   <li>A child is an emitter of its own: its shape, launch and modules decide its particles, the clip only where and
  *       when they are born. At most {@code CgVfxEvent.MAX_EVENTS} bursts and streams together.</li>
  * </ul>
@@ -42,12 +43,15 @@ public final class CgVfxNodeClip {
 
     /** Clip frames a second: CC2's tick resolution. */
     public static final int FRAMES_PER_SECOND = 30;
-    /** Material scalar slots a node has; CC2 names {@link #MATERIAL_SCALARS}. */
+    /** Material slots a node has, named by {@link #MATERIAL_SCALARS}. */
     public static final int MATERIAL_SLOTS = 16;
-    /** CC2's material scalars, by slot. */
+    /**
+     * The material values a clip keys, by slot: two UV windows' offsets then their scales, a component a slot, then
+     * scalars. A shader on a {@code SEQUENCE} slot reads slot {@code i} as {@code FX_SEQ_SCALAR(i, own)}.
+     */
     public static final List<String> MATERIAL_SCALARS = Collections.unmodifiableList(Arrays.asList(
-            "_U0_LocX", "_V0_LocY", "_U1_LocX", "_V1_LocY", "_U0_ScaleX", "_V0_ScaleY", "_U1_ScaleX", "_V1_ScaleY",
-            "_BlendRate1", "_BlendRate2", "_Glare", "_Clip", "_OutlineID", "_Falloff"));
+            "_UV0Window.x", "_UV0Window.y", "_UV1Window.x", "_UV1Window.y", "_UV0Window.z", "_UV0Window.w", "_UV1Window.z",
+            "_UV1Window.w", "_BlendRate1", "_BlendRate2", "_Glare", "_Clip", "_OutlineID", "_Falloff"));
     /** What a layer falls back to where neither the clip nor its material says: a window of (0, 0, 1, 1), OutlineID 1. */
     private static final float[] MATERIAL_DEFAULTS = {0f, 0f, 0f, 0f, 1f, 1f, 1f, 1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f};
 
@@ -247,11 +251,21 @@ public final class CgVfxNodeClip {
             return keys(node(node), channel.ordinal(), interp, keys, channel.name());
         }
 
-        /** {@code node}'s material scalar {@code name}, one of {@link #MATERIAL_SCALARS}, keyed as {@link #channel}. */
+        /** {@code node}'s material value {@code name}, one of {@link #MATERIAL_SCALARS}, keyed as {@link #channel}. */
         public Builder material(String node, String name, Interp interp, float... keys) {
+            return material(node(node), name, interp, keys);
+        }
+
+        /** {@link #material(String, String, Interp, float...)} on node index {@code node}. */
+        public Builder material(int node, String name, Interp interp, float... keys) {
             int slot = MATERIAL_SCALARS.indexOf(name);
-            if (slot < 0) throw new IllegalArgumentException(name + " is no material scalar: " + MATERIAL_SCALARS);
-            return keys(node(node), Channel.material(slot), interp, keys, name);
+            if (slot < 0) throw new IllegalArgumentException(name + " is no clip material slot: " + MATERIAL_SCALARS);
+            return keys(node, Channel.material(slot), interp, keys, name);
+        }
+
+        /** {@link #channel(String, Channel, Interp, float...)} on node index {@code node}. */
+        public Builder channel(int node, Channel channel, Interp interp, float... keys) {
+            return keys(node, channel.ordinal(), interp, keys, channel.name());
         }
 
         /** {@code node}'s material scalar {@code name} held at {@code value}: the node's rest {@code values:}, over its material's. */

@@ -61,7 +61,7 @@ public class CgVfxRenderersTest {
     @Test
     public void aFieldNotBuiltYetFailsAtLoadNamingIt() {
         for (Map<String, Object> entry : List.<Map<String, Object>>of(
-                Map.of("id", "r1", "kind", "mesh", "meshes", Map.of("prefab", "test:prefabs/rock")),
+                Map.of("id", "r1", "kind", "mesh", "meshes", Map.of("prefab", "test:prefabs/rock"), "facing", "velocity"),   // a prefab faces nothing
                 Map.of("id", "r1", "kind", "ribbon", "shape", "custom"),
                 Map.of("id", "r1", "kind", "sprite", "facing", "camera_distance_blend"),
                 Map.of("id", "r1", "kind", "sprite", "sort", "spawn_order"))) {

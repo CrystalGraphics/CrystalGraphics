@@ -87,7 +87,7 @@ public class CgVfxNodeClipTest {
         CgVfxPrefab prefab = chain();
         CgVfxNodeClip clip = CgVfxNodeClip.of(prefab, 10)
                 .channel("arm", Channel.LOCATION_Z, Interp.CONSTANT, 0, 0f, 5, 1f)
-                .material("hand", "_U0_LocX", Interp.CONSTANT, 0, 0f, 5, 0.5f)
+                .material("hand", "_UV0Window.x", Interp.CONSTANT, 0, 0f, 5, 0.5f)
                 .build();
         CgVfxClipAtlas.Section s = CgVfxClipAtlas.of(clip);
         assertEquals(0b111, s.stepMask(prefab.node("arm")));
@@ -98,14 +98,14 @@ public class CgVfxNodeClipTest {
     public void anUnkeyedScalarIsTheLayersOwn() {
         CgVfxPrefab prefab = chain();
         CgVfxNodeClip clip = CgVfxNodeClip.of(prefab, 10)
-                .material("hand", "_V0_LocY", Interp.LINEAR, 0, 0f, 10, 1f)
+                .material("hand", "_UV0Window.y", Interp.LINEAR, 0, 0f, 10, 1f)
                 .rest("hand", "_Glare", 2f)
                 .build();
         int hand = prefab.node("hand");
-        int slotV = CgVfxNodeClip.MATERIAL_SCALARS.indexOf("_V0_LocY"), glare = CgVfxNodeClip.MATERIAL_SCALARS.indexOf("_Glare");
+        int slotV = CgVfxNodeClip.MATERIAL_SCALARS.indexOf("_UV0Window.y"), glare = CgVfxNodeClip.MATERIAL_SCALARS.indexOf("_Glare");
         assertEquals(1 << slotV | 1 << glare, clip.keys(hand));
         assertEquals(0, clip.keys(prefab.node("arm")));
-        assertEquals(1f, clip.material(hand, CgVfxNodeClip.MATERIAL_SCALARS.indexOf("_U0_ScaleX"), 3f), 0f);
+        assertEquals(1f, clip.material(hand, CgVfxNodeClip.MATERIAL_SCALARS.indexOf("_UV0Window.z"), 3f), 0f);
         assertEquals(1f, clip.material(hand, CgVfxNodeClip.MATERIAL_SCALARS.indexOf("_OutlineID"), 3f), 0f);
         assertEquals(0f, clip.material(hand, CgVfxNodeClip.MATERIAL_SCALARS.indexOf("_Clip"), 3f), 0f);
         assertEquals(2f, clip.material(hand, glare, 7f), 0f);

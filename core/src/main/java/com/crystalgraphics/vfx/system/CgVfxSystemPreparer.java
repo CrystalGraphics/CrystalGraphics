@@ -46,8 +46,21 @@ public final class CgVfxSystemPreparer implements CgAssetPreparer {
 
     @Override
     public void plan(Object definition, Plan plan) {
-        CgVfxLook look = ((CgVfxSystemDefinition) definition).look();
-        String name = ((CgVfxSystemDefinition) definition).name();
+        CgVfxSystemDefinition d = (CgVfxSystemDefinition) definition;
+        planLook(d.name(), d.look(), d.fixedBounds() == null, system, plan);
+    }
+
+    /**
+     * Plans {@code look}'s warming on {@code system}: its textures decoded and uploaded, then the look prepared there.
+     * A preparer of another kind drawing through a look (a prefab's) plans with it.
+     *
+     * <pre>{@code
+     * CgVfxSystemPreparer.planLook(prefab.id(), prefab.look(), false, CgVfx::world, plan);
+     * }</pre>
+     *
+     * @param refuseBounds whether a material reading the drawer's bounds fails: a system's without fixed bounds
+     */
+    public static void planLook(String name, CgVfxLook look, boolean refuseBounds, Supplier<CgVfxSystem> system, Plan plan) {
         plan.warm("textures of " + name, new Textures(look)::attempt);
         boolean[] started = {false};
         plan.warm("look of " + name, () -> {
@@ -55,7 +68,7 @@ public final class CgVfxSystemPreparer implements CgAssetPreparer {
             if (!started[0]) {
                 started[0] = true;
                 // A material reading the system's bounds reads fixed ones only: refused here rather than at its first draw.
-                if (((CgVfxSystemDefinition) definition).fixedBounds() == null && vfx.readsBounds(look)) {
+                if (refuseBounds && vfx.readsBounds(look)) {
                     throw new IllegalStateException(name + " draws a material reading its bounds (CG_OBJECT_POSITION,"
                             + " CG_OBJECT_RADIUS) and has no fixed_bounds");
                 }

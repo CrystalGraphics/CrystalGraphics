@@ -195,8 +195,19 @@ tracks:
   activates as play crosses its start and keeps it active, deactivates or ends it past its end (`end`), and with
   `age: desired_age` holds the system at the sequence's time since its start. An activation after a deactivation plays
   a new instance.
+- **A `system` track naming a `handle`** drives that one emitter of the system, by its handle's name: its activate
+  starts that emitter alone (and the system, if it is not playing), its deactivate stops that emitter's spawning. Every
+  emitter a track drives so waits, stopped, until its own track activates it; the others play with the system. A handle
+  the system lacks fails at play, naming the track, and a `desired_age` on one emitter is not built yet:
+
+  ```yaml
+  tracks:
+    - { id: t1, kind: system, binding: { spawnable: s1 }, handle: e01, sections: [ { id: a, range: [0, 25], keys: [[1, activate], [13, deactivate]] } ] }
+    - { id: t2, kind: system, binding: { spawnable: s1 }, handle: e03, sections: [ { id: b, range: [0, 25], keys: [[13, activate], [24, deactivate]] } ] }
+  ```
 - **A prefab's nodes** answer `translation`, `rotation`, `scale`, `rotationEulerDeg`, `opacity`, and each material value
-  a track keys on them (`scalars: { _U0_LocX: ... }`); a spawnable's `nodes` block sets their rest as it spawns.
+  a track keys on them (`scalars: { _Glare: ... }`, a vector or colour by component: `colours: { _UV0Window: { r: ... } }`);
+  a spawnable's `nodes` block sets their rest as it spawns.
 - **A post volume's** `weight` starts at 1. `unbound` applies it everywhere; otherwise it stands at its `at`, full
   within `radius` and fading over `blend_radius`.
 - **What fails at play**, naming it: a kind no spawner makes; a prefab part drawing what is not built yet (several
@@ -267,7 +278,7 @@ static final CgVfxPrefab SPINNER = CgVfxPrefab.builder("mymod:spinner")
 static final CgVfxNodeClip SPIN = CgVfxNodeClip.of(SPINNER, 60)                     // 60 frames, 30 a second
         .channel("hub", Channel.ROTATION_Y, Interp.LINEAR, 0, 0f, 60, 720f)         // (frame, value) pairs
         .channel("blade", Channel.OPACITY, Interp.LINEAR, 0, 1f, 45, 1f, 60, 0f)
-        .material("blade", "_U0_LocX", Interp.CONSTANT, 0, 0f, 15, 0.25f, 30, 0.5f) // a UV window stepping on
+        .material("blade", "_UV0Window.x", Interp.CONSTANT, 0, 0f, 15, 0.25f, 30, 0.5f) // a UV window stepping on
         .rest("blade", "_Glare", 0.6f)                                               // held all clip long
         .burst("tip", SPARKS, 20, 8)                                                 // 8 sparks at the tip on frame 20
         .stream("tip", SMOKE, 10, 50, 30f)                                           // 30 a clip second, frames 10 to 50
@@ -277,7 +288,7 @@ static final CgVfxNodeClip SPIN = CgVfxNodeClip.of(SPINNER, 60)                 
 | Call | Keys |
 |---|---|
 | `channel(node, channel, interp, keys...)` | a transform channel (`LOCATION_X` to `SCALE_Z`, rotations in degrees) or `OPACITY` |
-| `material(node, scalar, interp, keys...)` | one of the material's numbers by CC2's name (`CgVfxNodeClip.MATERIAL_SCALARS`) |
+| `material(node, slot, interp, keys...)` | one of the material's numbers by its slot (`CgVfxNodeClip.MATERIAL_SCALARS`): a scalar (`_Glare`), or a vector's component (`_UV0Window.x`) |
 | `rest(node, scalar, value)` | a material number held for the whole clip |
 | `burst(node, child, frame, count)` | `count` children of `child` born at the node on `frame` |
 | `stream(node, child, from, until, perSecond)` | children born at the node from frame `from` to `until`, `perSecond` a clip second |
@@ -286,6 +297,49 @@ static final CgVfxNodeClip SPIN = CgVfxNodeClip.of(SPINNER, 60)                 
   the node's rest; before its first key a channel holds that key's value, after its last the last's.
 - **`LINEAR` keys interpolate, `CONSTANT` keys step** at each key's frame.
 - **A material number no key sets is the material's own**: its value, which the clip leaves alone.
+
+## A clip from a sequence file
+
+A `sequence` renderer names a sequence each particle plays, and the engine bakes it into the clip: Niagara's component
+renderer playing a sequence, compiled to GPU pieces. Each frame of the clip, 30 a second, is the sequence's own
+evaluation of its tracks at that tick, so the particle moves, fades and keys its material as the sequencer would play
+the sequence.
+
+```yaml
+# assets/mymod/sequences/spin.yaml
+_v: 1
+tick_resolution: 30
+display_rate: 30
+range: [0, 60]
+spawnables:
+  - { id: s1, name: spinner, prefab: mymod:spinner }
+tracks:
+  - { id: t1, kind: transform, binding: { spawnable: s1, node: hub }, sections: [ { id: a, range: [0, 60],
+      rotation: { y: { keys: [[0, 0, linear], [60, 12.566, linear]] } } } ] }
+  - { id: t2, kind: property, binding: { spawnable: s1, node: blade }, property: opacity, sections: [ { id: b,
+      range: [0, 60], value: { keys: [[0, 1, linear], [45, 1, linear], [60, 0, linear]] } } ] }
+  - { id: t3, kind: material, binding: { spawnable: s1, material: blade }, sections: [ { id: c, range: [0, 60],
+      colours: { _UV0Window: { r: { keys: [[0, 0, constant], [15, 0.25, constant], [30, 0.5, constant]] }, b: { default: 1 } } } } ] }
+```
+
+```yaml
+# in the emitter: each particle plays it, at its age times the rate
+renderers:
+  - { id: r1, kind: sequence, sequence: mymod:spin, play_rate: 1.0 }
+```
+
+```java
+CgSequenceDefinition spin = (CgSequenceDefinition) deps.definition(CgSequenceKinds.SEQUENCE, "mymod:spin");   // in a compiler
+CgVfxEmitter shurikens = CgVfxEmitter.builder("shurikens").sequence(CgVfxClipBake.bake("shurikens", spin))...build();
+```
+
+- **It holds one `prefab` spawnable**, and `transform`, `property` (opacity) and `material` tracks on its nodes or
+  materials. Any other spawnable or track fails at load, naming the sequence and the track.
+- **A material track bound to a material keys every node drawing it.** Each value it keys must have a clip slot
+  (`MATERIAL_SCALARS`), or no shader could read it: one without fails at load, by name.
+- **A rotation is the sequence's**, through its units (`rotation: { order: xyz, intrinsic: true }`, angles in its
+  `angles`); a channel keys whole frames, so a curve between two of them is sampled, never reshaped.
+- **A node a track binds must be its prefab's**: one the prefab lacks fails at load, naming both.
 
 ## Playing it on particles
 
@@ -307,8 +361,12 @@ VFX.play(new CgVfxSystemInstance<>(LOOK, x, y, z));
 
 - **The look draws the prefab's kit**: each part is drawn with its material on every particle, where its node is at the
   particle's age times the play rate, held at the clip's last frame.
-- **A part is placed from its particle**: at the particle's position, turned with its effect, sized by the particle's
-  size (its size curve and scales do not apply: the clip's own scale channels do).
+- **A part is placed from its particle**: at the particle's position, turned by its mesh orientation
+  (`initial_mesh_orientation`, `mesh_rotation_rate`) or else with its effect, sized by its size and scale over life as a
+  mesh particle is, then by the clip's own channels.
+- **A clip that spawns children takes neither turn nor size over life**: its children are born at the node where the
+  particle stands at its birth size, so an emitter that turns or scales its particles and plays such a clip fails at
+  build, by name.
 - **A clip particle is a pure function of its seed and age**: its emitter takes no module reading the world (a floor,
   blocks, depth, entities, neighbours, gas, a grid), and `build()` throws naming one. Its children take any: sparks the
   clip throws can bounce.

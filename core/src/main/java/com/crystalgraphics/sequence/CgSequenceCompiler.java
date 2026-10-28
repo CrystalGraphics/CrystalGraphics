@@ -23,6 +23,7 @@ import com.crystalgraphics.easing.CgEasing;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.object.CgProperty;
 import com.crystalgraphics.object.CgType;
+import com.crystalgraphics.object.CgTypes;
 import com.crystalgraphics.object.validate.CgIssue;
 import com.crystalgraphics.object.validate.CgValidation;
 import com.crystalgraphics.object.value.CgQuantity;
@@ -108,8 +109,12 @@ final class CgSequenceCompiler {
             Map<?, ?> s = spawnableTrees.get(i);
             String sid = string(s.get("id"));
             Object at = s.get("at");
-            spawnables.add(new Spawnable(sid, (String) s.get("name"), spawnableKinds.get(i),
-                    binding(at, "spawnables." + sid + ".at"), !(at instanceof Map<?, ?> m) || !Boolean.FALSE.equals(m.get("follow")), s));
+            String kind = spawnableKinds.get(i);
+            // The asset it names is a hard reference, compiled before the sequence.
+            CgType named = s.get(kind) instanceof String ? CgTypes.get("crystalgraphics:" + kind) : null;
+            spawnables.add(new Spawnable(sid, (String) s.get("name"), kind, binding(at, "spawnables." + sid + ".at"),
+                    !(at instanceof Map<?, ?> m) || !Boolean.FALSE.equals(m.get("follow")), s,
+                    named == null ? null : deps.definition(named, (String) s.get(kind))));
         }
 
         List<CompositeSection> composites = compositeSections(elements(tree, "composite_sections"));

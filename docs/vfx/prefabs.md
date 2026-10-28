@@ -36,7 +36,10 @@ static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(LENS_CORE.kit()).bu
 ## As a file
 
 A prefab is a `prefabs/` asset, compiled by `CgVfxPrefabAssets` (which `CgVfx.install` registers) and written back by
-it, so a prefab built in Java and its file are one model:
+it, so a prefab built in Java and its file are one model. On a client it is `READY` once `CgVfxPrefabPreparer` (also
+registered by `CgVfx.install`) has read its parts' meshes on a worker, uploaded their textures and prepared its look,
+so a sequence spawning it reads, uploads and compiles nothing; a preview of its own registers one over its system
+(`assets.preparer(CgBodyKinds.PREFAB, new CgVfxPrefabPreparer(() -> mySystem))`):
 
 ```yaml
 # assets/mymod/prefabs/core.yaml

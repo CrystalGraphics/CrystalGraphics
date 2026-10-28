@@ -37,7 +37,7 @@ CgVfxEmitter emitter = CgVfxEmitter.builder("sparks")
 | Kind | Draws | Its emitter |
 |---|---|---|
 | `sprite` | a quad a particle: `alignment` (`unaligned`, `velocity`), `facing` (`camera`, `camera_plane`, `camera_position`), `sort` (`none`, `view_depth`), `sub_image` (a grid flipbook) | quads |
-| `mesh` | one mesh a particle (`meshes: [{ mesh: <path>, rotation, scale }]`), the unit sphere with none; `facing`, `locked_axis`, `facing_up`, `roll_about`, `pre_rotation` ([below](#mesh-particles-that-face-something)) | `MESHES` |
+| `mesh` | one mesh a particle (`meshes: [{ mesh: <path>, rotation, scale }]`), the unit sphere with none; `facing`, `locked_axis`, `facing_up`, `roll_about`, `pre_rotation` ([below](#mesh-particles-that-face-something)); or a prefab a particle (`meshes: { prefab: <id> }`), its parts at rest, turned by the particle's mesh orientation and sized by its size and scale | `MESHES`; a prefab's, a clip |
 | `ribbon` | one strip through an instance's particles, newest first; with a `trail`, Cascade's trail ([below](#ribbons-and-trails-strips-through-particles)) | quads |
 | `anim_trail` | a sheet swept by an edge between two points the effect moves ([below](#cascades-anim-trail)) | quads |
 | `arc` | a stroke round the source | `ARCS` |
@@ -50,9 +50,11 @@ CgVfxEmitter emitter = CgVfxEmitter.builder("sparks")
   child material, shared by every renderer with the same overrides.
 - **What is not drawn yet fails at load by name**, rather than drawing as something else: the `system` kind, a
   material named by a user parameter, and fields such as a `camera_distance_blend` facing, a pivot off the middle, a
-  rect-table `sub_image`, a mesh prefab or a mesh's `pivot_offset`, a ribbon's `shape: custom` or its `max_ribbons`.
-- **Its renderers decide its draw layout**: a mesh renderer lays its particles out as meshes, an arc renderer as arcs,
-  every other kind as quads, and an emitter whose renderers need two layouts fails at build.
+  rect-table `sub_image`, a mesh's `pivot_offset`, a prefab with any other mesh field (`facing`, `sort`, overrides, a
+  material of its own), a ribbon's `shape: custom` or its `max_ribbons`.
+- **Its renderers decide its draw layout**: a mesh renderer lays its particles out as meshes (a prefab's and a
+  `sequence` renderer's as a clip), an arc renderer as arcs, every other kind as quads, and an emitter whose renderers
+  need two layouts fails at build.
 - **`max_draw_count: n` draws the first `n` of its particles in draw order and simulates them all** (Cascade's
   `MaxDrawCount`); 0 draws none. They are counted before culling, so the ones off screen still use up the count. One
   emitter's particles draw from one list, so its renderers name one count or none, and two different counts fail at
@@ -97,6 +99,41 @@ CgVfxRenderers.mesh("r1").material(RING).field("meshes", List.of(Map.of("mesh", 
 - **A locked axis turns only a facing mesh**; under `default` it does nothing, as in Niagara.
 - **All of an emitter's mesh renderers must face alike**: its particles are placed once for all of them, and renderers
   that differ fail at load.
+
+### A mesh's turn at birth
+
+A spawn module turns each mesh particle as it is born, Niagara's Initial Mesh Orientation, by one of three modes:
+
+```yaml
+particle_spawn:
+  - { id: t1, module: crystalgraphics:initial_mesh_orientation, inputs: { mode: random } }               # any way at all
+  - { id: t2, module: crystalgraphics:initial_mesh_orientation,
+      inputs: { mode: none, rotation: { range: [[0, 0, 0], [0, 0, 6.28319]], per_channel: true } } }   # a roll of yaw
+  - { id: t3, module: crystalgraphics:initial_mesh_orientation,
+      inputs: { mode: orient_to_vector, orientation_vector: { bind: particles.velocity }, mesh_axis: [1, 0, 0] } }
+```
+
+```java
+float turn = (float) (2 * Math.PI);
+int[] perChannel = {0, 1, 2};
+// random: every axis rolled over a whole turn
+new CgVfxMeshRotation(new float[3], new float[] {turn, turn, turn}, perChannel, new float[3], new float[3], new int[3], false);
+// toward its velocity at birth: Unreal's +X along it
+new CgVfxMeshRotation(new float[3], new float[3], new int[3], new float[3], new float[3], new int[3], false, List.of(),
+        new float[] {1f, 0f, 0f});
+```
+
+| Mode | Turns it by |
+|---|---|
+| `none` | its `rotation`: a rotator (roll, pitch, yaw) or a range of them |
+| `random` | every axis rolled over a whole turn; its `rotation` is unread |
+| `orient_to_vector` | its `rotation`, plus the turn that brings `mesh_axis` (+X unless given) onto `orientation_vector` |
+
+- **`orientation_vector` is a constant or `{ bind: particles.velocity }`**, the velocity it is born with. Any other
+  bind fails at load, by name.
+- **Toward its velocity, its `rotation` is a constant or a range**: one stored per particle in another form fails at
+  load.
+- A particle born at rest has no velocity to turn toward and keeps its `rotation` alone.
 
 - **A ribbon's tessellation** is Niagara's: `{ mode: disabled }` one quad between two particles, `{ mode: custom,
   factor: n }` n of them, `automatic` (or none) the engine's own.

@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.prefab;
 
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
+import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.world.CgAttachment;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
@@ -30,6 +31,15 @@ public final class CgVfxPrefabEffect extends CgVfxEffect<CgVfxPrefabEffect> {
     public CgVfxPrefabEffect(CgVfxPrefab prefab, double x, double y, double z) {
         super(prefab.look(), x, y, z);
         this.instance = new CgVfxPrefabInstance(prefab);
+        // A keyed vector's rest: a colour parameter declares none of its own.
+        for (int n = 0; n < prefab.nodes(); n++) {
+            for (String property : prefab.keyedNames(n)) {
+                if (prefab.param(n, property) instanceof CgVfxParam.Color c) {
+                    float[] r = prefab.keyedRest(n, property);
+                    set(c, r[0], r.length > 1 ? r[1] : 0f, r.length > 2 ? r[2] : 0f, r.length > 3 ? r[3] : 0f);
+                }
+            }
+        }
     }
 
     /** Its nodes as they stand: what to key. */

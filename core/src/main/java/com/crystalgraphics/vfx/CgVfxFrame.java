@@ -667,9 +667,10 @@ public final class CgVfxFrame {
         CgVfxParticlePool pool = tenant.pool;
         if (def.drawLayout() == CgVfxDrawLayout.SEQUENCE) {
             for (CgVfxLook.Placed placed : look.renderers(def)) {
-                if (!(placed.renderer() instanceof CgVfxSequenceRendererProperties)) {
+                if (!(placed.renderer() instanceof CgVfxSequenceRendererProperties
+                        || placed.renderer() instanceof CgVfxMeshRendererProperties m && m.prefab() != null)) {
                     throw new IllegalStateException(def.name() + "'s renderer " + placed.renderer().common().id()
-                            + " is not a sequence renderer, but " + def.name() + " plays a clip");
+                            + " is neither a sequence renderer nor a prefab's, but " + def.name() + " plays a clip");
                 }
             }
             CgVfxPrefab prefab = def.clip().prefab();

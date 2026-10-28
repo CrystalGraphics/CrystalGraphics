@@ -86,7 +86,7 @@ public final class CgVfxShape {
     private final CgVfxLane[][] lanes;
     private final CgVfxDataInterface[][] reads;
     private final int paramRow, instanceRow;
-    private final boolean floors, spawnsOnMesh, turnsOverLife;
+    private final boolean floors, spawnsOnMesh, turnsOverLife, turnsToward;
     private final int lifeRolls, lifeRollVectors;
     /** The drawn slots its particles carry after their drawn part ({@link CgVfxGpuEmitter#drawnMask}). */
     private final int drawnMask;
@@ -248,6 +248,8 @@ public final class CgVfxShape {
         lifeRollVectors = rollVectors;
         turnsOverLife = emitter.meshRotation() != null && !emitter.meshRotation().steps().isEmpty();
         if (turnsOverLife) key.append("|turnlife");
+        turnsToward = emitter.meshRotation() != null && emitter.meshRotation().toward() != null;
+        if (turnsToward) key.append("|toward");
         if (lifeRolls > 0) key.append("|liferoll:").append(rollKey);
         List<CgVfxEvent> events = emitter.events();
         if (events.size() > CgVfxEvent.MAX_EVENTS) {
@@ -749,6 +751,7 @@ public final class CgVfxShape {
         return CgVfxParticlePool.CURVE_VECTORS + 1 + slots * (2 * CgVfxGpuEmitter.CURVE_TEXELS + 1)
                 + ((drawnMask & 1 << CgVfxDrawnChannel.ORIENTATION) != 0 ? ORIENTATION_VECTORS : 0)
                 + (turnsOverLife ? 2 * CgVfxGpuEmitter.CURVE_TEXELS : 0)
+                + (turnsToward ? 1 : 0)
                 + (lights() ? LIGHT_VECTORS : 0)
                 + lifeRollVectors;
     }
@@ -772,6 +775,14 @@ public final class CgVfxShape {
         if (!turnsOverLife) return -1;
         int slots = Integer.bitCount(drawnMask & (1 << CgVfxDrawnChannel.SLOTS) - 1);
         return CgVfxParticlePool.CURVE_VECTORS + 1 + slots * (2 * CgVfxGpuEmitter.CURVE_TEXELS + 1) + ORIENTATION_VECTORS;
+    }
+
+    /**
+     * Whether its meshes turn toward their velocity at birth ({@code CgVfxMeshRotation.toward}): the Step stores that
+     * velocity's direction as the turn, and the row holds the mesh's axis after the rate's integrals.
+     */
+    public boolean turnsToward() {
+        return turnsToward;
     }
 
     /** A mesh orientation's vec4s in a parameter row: its start's two ends, then its rate's. */

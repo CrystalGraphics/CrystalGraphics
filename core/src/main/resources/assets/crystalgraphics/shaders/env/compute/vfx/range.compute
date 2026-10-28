@@ -32,7 +32,7 @@ Properties {
     _AllSlots  ("Every pool's slots: a culled particle's key",       int)   = 0
     _Texels ("Samples each curve of a row holds",                   int)   = 256
     _Floors ("1 when the pool's kinds land on a floor: Place writes it", int) = 0
-    _Sequence    ("1 for a SEQUENCE pool: objects turned with their slot, sized by their size alone", int) = 0
+    _Sequence    ("1 for a SEQUENCE pool: objects facing nothing, turned with their slot unless their mesh orientation says", int) = 0
     _DrawnFirst  ("Where the pool's records start in the order every draw reads",  int)       = 0
     _DepthBits   ("0, or 16 when a slot sorts by view depth",        int)       = 0
     _Ordered     ("1 when Order sorted INDICES by spawn id first",   int)       = 0
@@ -293,16 +293,16 @@ void Objects() {
         FxDrawn r = DRAWN(e * _DrawnStride);
         float t = r.motion.w;
         // CgVfxFrame.particleMeshes: turned by its seed and spin, or as its mesh orientation says (Look's quaternion),
-        // sized on each of its own axes by its size over life. A clip's particle plays in its effect's frame at its size
-        // at birth, as the Step places its events there.
+        // sized on each of its own axes by its size over life. A clip's particle turns as its mesh orientation says, else
+        // with its effect, and sizes as a mesh's does: a clip whose children the Step places takes neither
+        // (CgVfxEmitter's build refuses it), so they meet its parts.
         float turn = r.state.x * 6.2831853 + r.state.y;
         // A facing mesh turns by its own orientation alone: Niagara's, and Cascade's, which drops its rotation payload.
         bool faces = _Sequence == 0 && FACINGS(lo * 6).x > 0.5;
-        mat3 turned = _Sequence != 0 ? range_quat(ORIGINS(lo).turn)
-                : (_Drawn & 32) != 0 ? range_quat(DRAWN(e * _DrawnStride + 1).scale)
+        mat3 turned = (_Drawn & 32) != 0 ? range_quat(DRAWN(e * _DrawnStride + 1).scale)
+                : _Sequence != 0 ? range_quat(ORIGINS(lo).turn)
                 : faces ? mat3(1.0) : range_turn(turn * 1.7, turn * 2.3, turn);
-        vec3 size = _Sequence != 0 ? vec3(uintBitsToFloat(RECORDS(e * _RecordVectors + FX_RECORD_VELOCITY_SIZE).w))
-                : r.place.w * r.scale.xyz;
+        vec3 size = r.place.w * r.scale.xyz;
         mat3 model = _Sequence != 0 ? turned * mat3(vec3(size.x, 0.0, 0.0), vec3(0.0, size.y, 0.0), vec3(0.0, 0.0, size.z))
                 : range_facing(lo, -(SLOTS(lo).xyz + r.place.xyz), r.motion.xyz, r.state.y, turned, size,
                         RECORDS(e * _RecordVectors + FX_RECORD_LIFE_SEED).y);
