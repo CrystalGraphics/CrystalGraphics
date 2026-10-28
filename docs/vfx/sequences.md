@@ -211,6 +211,17 @@ spawnables:
       light: { type: directional, colour: [1, 1, 1], intensity: 10, priority: 1 } }   # over the sun until it goes
 ```
 
+- **A `puppet` spawnable is played too** (`CgSequencePuppet`, the default): its `model`'s skeleton posed by its
+  `animation` on the play's time, each bone answering `at: { spawnable, node }`, so a light or a system rides it.
+  Clip `ns:path/name` is looked for in `<the model's namespace>:models/path/name.glb`, then in the model's own file;
+  a host with clips elsewhere installs its own finder. It draws nothing yet: a puppet naming `meshes` fails.
+- **What a play cannot make fails as it starts**, naming the spawnable: a kind no spawner here makes, a puppet whose
+  model or clip does not load, in the sequence or in any it plays (a clip's notifies). Never mid-frame.
+
+```java
+CgSequencePuppet.install(sequencer, id -> myClips.get(id.substring(id.lastIndexOf('/') + 1)));
+```
+
 ```java
 // The same light from Java, outside any sequence: it lights the world until closed.
 try (CgDirectionalLights.Light cut = CgDirectionalLights.get().add(1).colour(0xFFFFFFFF, 10f).travel(0f, -1f, 0.3f)) {

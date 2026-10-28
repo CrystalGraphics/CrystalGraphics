@@ -172,6 +172,11 @@ public final class CgSequencePlayer {
         this.notifiesAt = new double[notifies.length];
     }
 
+    /** Whether its parent's section drives it: a clip's notify sequence. */
+    boolean driven() {
+        return drivenClip != null;
+    }
+
     /** Makes it a clip's notify sequence, driven by its parent's section; its own tracks of {@code clip} are not played. */
     CgSequencePlayer drivenFor(String clip) {
         drivenClip = clip;

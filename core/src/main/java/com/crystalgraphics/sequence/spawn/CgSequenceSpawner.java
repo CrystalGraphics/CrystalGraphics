@@ -19,6 +19,7 @@ import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
  *   <li>{@code at} is where its {@code at} places it, answering every frame; follow it, or read it once where the
  *       spawnable's {@code follow} is false.</li>
  *   <li>Called on the frame thread in the spawn phase: a section boundary can spawn many at once, so take from pools.</li>
+ *   <li>{@link #check} runs as the play starts, for this sequence's spawnables and those of every sequence it plays.</li>
  * </ul>
  */
 @FunctionalInterface
@@ -26,4 +27,11 @@ public interface CgSequenceSpawner {
 
     /** A new object for {@code spawnable} of {@code player}'s sequence, placed by {@code at}. */
     CgSequenceSpawned spawn(CgSequencePlayer player, CgSequenceDefinition.Spawnable spawnable, CgAttachment at);
+
+    /**
+     * Throws, naming {@code spawnable}, where it could never be made: asked of every spawnable of a sequence and of the
+     * sequences it plays as the play starts, so it fails there rather than mid-frame. Nothing by default.
+     */
+    default void check(CgSequenceDefinition definition, CgSequenceDefinition.Spawnable spawnable) {
+    }
 }

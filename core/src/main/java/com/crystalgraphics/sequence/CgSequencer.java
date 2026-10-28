@@ -19,6 +19,7 @@ import com.crystalgraphics.sequence.event.CgSequenceEventEvaluator;
 import com.crystalgraphics.sequence.event.CgSequenceEventListener;
 import com.crystalgraphics.sequence.notify.CgNotifyEvaluator;
 import com.crystalgraphics.sequence.spawn.CgSequenceLight;
+import com.crystalgraphics.sequence.spawn.CgSequencePuppet;
 import com.crystalgraphics.sequence.spawn.CgSequenceSpawner;
 import com.crystalgraphics.sequence.spawn.CgSequenceSystemEvaluator;
 import com.crystalgraphics.sequence.state.CgSequenceBlender;
@@ -85,6 +86,7 @@ public final class CgSequencer extends CgWorldSubsystem {
         evaluators.add(new CgNotifyEvaluator(this, blender));
         evaluators.add(new CgSequenceEventEvaluator(this));
         spawners.put("light", CgSequenceLight.SPAWNER);
+        spawners.put("puppet", CgSequencePuppet.DEFAULT);
     }
 
     @Override
@@ -118,16 +120,25 @@ public final class CgSequencer extends CgWorldSubsystem {
     private CgSequencePlayer start(CgSequencePlayer player) {
         CgSequenceDefinition definition = player.definition();
         if (!server()) {
-            for (CgSequenceDefinition.Spawnable s : definition.spawnables()) {
-                if (!spawners.containsKey(s.kind())) {
-                    throw new IllegalArgumentException(definition.id() + ": spawnables." + s.id() + ": no spawner makes a " + s.kind() + " spawnable here");
-                }
-            }
+            // A driven player's spawnables were checked as its parent started.
+            if (!player.driven()) check(definition);
             for (int i = 0; i < definition.spawnables().size(); i++) player.placement(i);
         }
         player.bindAll();
         players.add(player);
         return player;
+    }
+
+    /** Throws, naming it, for a spawnable of {@code definition} or a sequence it plays that no spawner here can make. */
+    private void check(CgSequenceDefinition definition) {
+        for (CgSequenceDefinition.Spawnable s : definition.spawnables()) {
+            CgSequenceSpawner spawner = spawners.get(s.kind());
+            if (spawner == null) {
+                throw new IllegalArgumentException(definition.id() + ": spawnables." + s.id() + ": no spawner makes a " + s.kind() + " spawnable here");
+            }
+            spawner.check(definition, s);
+        }
+        for (CgSequenceDefinition.Child c : definition.children()) check(c.definition());
     }
 
     /** What {@code environment} bindings write: the host world's fog, ambient light and grade. Null until a host sets it. */
