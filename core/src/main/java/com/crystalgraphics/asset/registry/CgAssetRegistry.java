@@ -40,6 +40,7 @@ import com.crystalgraphics.object.CgPropertyPath;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.object.value.CgUnits;
+import com.crystalgraphics.tag.CgTagRegistry;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -135,7 +136,8 @@ public final class CgAssetRegistry {
     /**
      * Registers every asset of {@code namespace} under {@code root}, its {@code assets/<namespace>/} folder, then
      * announces them: Unreal's gatherer. The listing is walked, each YAML file's redirect and references are read on
-     * the workers, or taken from the cache, and nothing is added unless every id is free.
+     * the workers, or taken from the cache, and nothing is added unless every id is free. Its {@code tags.yaml} is
+     * declared in {@code CgTagRegistry.global()}.
      *
      * @throws CgAssetException if an id is already registered from another file or by a builder
      */
@@ -197,6 +199,8 @@ public final class CgAssetRegistry {
         if (Files.isRegularFile(index)) contentIndex.put(namespace, readIndex(index));
         Path unitsFile = root.resolve("units.yaml");
         if (Files.isRegularFile(unitsFile)) units.put(namespace, readUnits(unitsFile));
+        // Before any cue compiles: a cue's tag must be declared.
+        CgTagRegistry.global().registerKit(namespace, root);
         List<CgAssetRegistryEvent> added = new ArrayList<>(found.size());
         for (CgAssetEntry e : found) {
             entries.put(key(e.kind(), e.id()), e);
