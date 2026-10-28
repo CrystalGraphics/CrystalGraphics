@@ -24,6 +24,7 @@ import com.crystalgraphics.sequence.definition.CgSequenceTrack;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxSystem;
+import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.render.CgVfxSortGroup;
@@ -55,7 +56,16 @@ import com.crystalgraphics.world.CgAttachment;
  *   <li>A track naming a {@code handle} drives that emitter alone: it waits, stopped, until its track activates it,
  *       and starts the system if it is not playing.</li>
  *   <li>Its system's asset loads at its first activation if it has not: load the sequence's bundle ahead.</li>
+ *   <li>Its {@code bind} sets each named {@code position} user parameter to where its point stands, every frame
+ *       before its instance ticks, as Niagara's component takes {@code SetVariablePosition}; to none (NaN) while
+ *       nothing places it. A bind naming no position parameter of the system fails as the play starts.</li>
  * </ul>
+ *
+ * <pre>{@code
+ * spawnables:
+ *   - { id: s5, name: arc, at: { locator: k1 }, system: mymod:arc,
+ *       bind: { point_0: { locator: k1 }, point_1: { role: target, socket: chest } } }   # its two ends, each frame
+ * }</pre>
  */
 public final class CgVfxSystemSpawner implements CgSequenceSpawner {
 
@@ -73,6 +83,26 @@ public final class CgVfxSystemSpawner implements CgSequenceSpawner {
     }
 
     @Override
+    public void check(CgSequenceDefinition definition, CgSequenceDefinition.Spawnable spawnable) {
+        bound(definition, spawnable);
+    }
+
+    /** Each bind's parameter in the system's look, in the bind's order; a name it lacks fails, naming the bind. */
+    private static CgVfxParam.Vector[] bound(CgSequenceDefinition definition, CgSequenceDefinition.Spawnable spawnable) {
+        CgVfxParam.Vector[] params = new CgVfxParam.Vector[spawnable.binds().size()];
+        if (params.length == 0 || !(spawnable.definition() instanceof CgVfxSystemDefinition system)) return params;
+        int i = 0;
+        for (String name : spawnable.binds().keySet()) {
+            if (!(system.look().layout().param(name) instanceof CgVfxParam.Vector v)) {
+                throw new CgAssetException(definition.id() + ": spawnables." + spawnable.id() + ".bind." + name + ": "
+                        + system.name() + " has no position user parameter " + name);
+            }
+            params[i++] = v;
+        }
+        return params;
+    }
+
+    @Override
     public CgSequenceSpawned spawn(CgSequencePlayer player, CgSequenceDefinition.Spawnable spawnable, CgAttachment at) {
         if (!(spawnable.tree().get("system") instanceof String id)) {
             throw new CgAssetException(player.definition().id() + ": spawnables." + spawnable.id() + ": names no system");
@@ -87,8 +117,14 @@ public final class CgVfxSystemSpawner implements CgSequenceSpawner {
                 held.add(t.handle());
             }
         }
+        CgVfxParam.Vector[] params = bound(player.definition(), spawnable);
+        CgAttachment[] points = new CgAttachment[params.length];
+        int i = 0;
+        for (Map.Entry<String, CgSequenceBinding> b : spawnable.binds().entrySet()) {
+            points[i++] = player.attachment(b.getValue(), "spawnables." + spawnable.id() + ".bind." + b.getKey());
+        }
         return new Spawned(vfx, CgVfxAssets.ref(CgParticleKinds.SYSTEM, id), at, spawnable.follow(),
-                (float) player.definition().seconds(1), group(player), held);
+                (float) player.definition().seconds(1), group(player), held, params, points);
     }
 
     /** The sort group every effect {@code player} spawns joins: its systems' and its prefabs'. */
@@ -110,11 +146,17 @@ public final class CgVfxSystemSpawner implements CgSequenceSpawner {
         private final Quaternionf turn = new Quaternionf();
         private final Set<String> held;
         private final Map<String, Emitter> emitters = new HashMap<>();
+        /** Its binds: each position parameter and the point it is set to. */
+        private final CgVfxParam.Vector[] params;
+        private final CgAttachment[] points;
+        private final double[] bound = new double[3];
         @Nullable
         private CgVfxSystemInstance<?> instance;
 
         Spawned(CgVfxSystem vfx, CgAssetRef<CgVfxSystemDefinition> ref, CgAttachment at, boolean follow, float seekDelta,
-                CgVfxSortGroup group, Set<String> held) {
+                CgVfxSortGroup group, Set<String> held, CgVfxParam.Vector[] params, CgAttachment[] points) {
+            this.params = params;
+            this.points = points;
             this.vfx = vfx;
             this.held = held;
             this.group = group;
@@ -141,6 +183,7 @@ public final class CgVfxSystemSpawner implements CgSequenceSpawner {
             else made.orient(turn);
             if (age > 0f) made.startAt(age);
             made.sortGroup(group);
+            bind(made);
             for (String h : held) {
                 CgVfxEmitterInstance e = made.emitter(h);
                 if (e != null) e.stop();
@@ -213,6 +256,19 @@ public final class CgVfxSystemSpawner implements CgSequenceSpawner {
             @Override
             public String toString() {
                 return "emitter " + handle + " of " + Spawned.this;
+            }
+        }
+
+        @Override
+        public void update() {
+            if (instance != null) bind(instance);
+        }
+
+        /** Its binds' points into {@code into}'s position parameters; none where nothing places one. */
+        private void bind(CgVfxSystemInstance<?> into) {
+            for (int i = 0; i < params.length; i++) {
+                if (points[i].place(bound, null)) into.setPoint(params[i], bound[0], bound[1], bound[2]);
+                else into.set(params[i], Float.NaN, Float.NaN, Float.NaN);
             }
         }
 

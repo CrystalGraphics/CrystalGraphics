@@ -268,6 +268,18 @@ tracks:
     - { id: t1, kind: system, binding: { spawnable: s1 }, handle: e01, sections: [ { id: a, range: [0, 25], keys: [[1, activate], [13, deactivate]] } ] }
     - { id: t2, kind: system, binding: { spawnable: s1 }, handle: e03, sections: [ { id: b, range: [0, 25], keys: [[13, activate], [24, deactivate]] } ] }
   ```
+- **A system's `bind`** sets its `position` user parameters to where points stand, every frame before it ticks, as
+  Niagara's component takes `SetVariablePosition`: an emitter spawning at `socket_location` points `user.<name>`
+  spawns there, and nowhere while nothing places the point. A bind naming no position parameter of the system fails as
+  the play starts; one on any other kind of spawnable, or a starting value, fails at load.
+
+  ```yaml
+  spawnables:
+    - { id: s5, name: sparks, at: { locator: k1 }, system: mymod:sparks,
+        bind: { point_0: { locator: k1 }, point_1: { role: target, socket: chest } } }
+  # mymod:sparks: user: { point_0: { type: position }, point_1: { type: position } }, and an emitter's
+  #   - { id: m1, module: crystalgraphics:socket_location, inputs: { points: [user.point_0, user.point_1], selection: random } }
+  ```
 - **A prefab's nodes** answer `translation`, `rotation`, `scale`, `rotationEulerDeg`, `opacity`, and each material value
   a track keys on them (`scalars: { _Glare: ... }`, a vector or colour by component: `colours: { _UV0Window: { r: ... } }`);
   a spawnable's `nodes` block sets their rest as it spawns.

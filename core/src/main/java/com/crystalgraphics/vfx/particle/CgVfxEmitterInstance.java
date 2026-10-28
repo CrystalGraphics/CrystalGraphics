@@ -142,6 +142,11 @@ public final class CgVfxEmitterInstance {
     /** Its effect's values, what its user parameters read: set each tick it is stepped. */
     @Nullable
     private CgVfxValues userValues;
+    /** Its user socket points' parameters in {@link #socketsFor}'s layout, resolved once per values. */
+    @Nullable
+    private CgVfxParam.Vector[] socketParams;
+    @Nullable
+    private CgVfxValues socketsFor;
     private final CgVfxTrailSource.Spawner trailSpawner = new CgVfxTrailSource.Spawner() {
         @Override
         public int spawn(float born, int key) {
@@ -1203,7 +1208,36 @@ public final class CgVfxEmitterInstance {
         @Override
         public boolean socket(int i, float[] out) {
             CgVfxSockets points = emitter.sockets();
-            return points != null && point(points.names().get(i), out);
+            if (points == null) return false;
+            if (!points.user(i)) return point(points.names().get(i), out);
+            CgVfxParam.Vector p = socketParam(points, i);
+            if (p == null) return false;
+            float x = userValues.get(p, 0), y = userValues.get(p, 1), z = userValues.get(p, 2);
+            if (Float.isNaN(x) || Float.isNaN(y) || Float.isNaN(z)) return false;
+            // The parameter is from the effect's origin; a placed instance's is where it was first stepped.
+            out[0] = local ? x : x + driftX;
+            out[1] = local ? y : y + driftY;
+            out[2] = local ? z : z + driftZ;
+            return true;
+        }
+
+        /** User point {@code i}'s parameter in its effect's values, or null with none set. */
+        @Nullable
+        private CgVfxParam.Vector socketParam(CgVfxSockets points, int i) {
+            if (userValues == null) return null;
+            if (socketsFor != userValues) {
+                if (socketParams == null) socketParams = new CgVfxParam.Vector[points.names().size()];
+                for (int k = 0; k < socketParams.length; k++) {
+                    if (!points.user(k)) continue;
+                    if (!(userValues.layout().param(points.names().get(k)) instanceof CgVfxParam.Vector v)) {
+                        throw new IllegalStateException(emitter.name() + ": socket point user." + points.names().get(k)
+                                + " is no vector parameter of its effect's look");
+                    }
+                    socketParams[k] = v;
+                }
+                socketsFor = userValues;
+            }
+            return socketParams[i];
         }
 
         @Override

@@ -118,7 +118,8 @@ final class CgSequenceCompiler {
             Object definition = named != null ? deps.definition(named, (String) s.get(kind))
                     : kind.equals("post") && s.get("post") instanceof Map<?, ?> post ? blendables(post, "spawnables." + sid + ".post") : null;
             spawnables.add(new Spawnable(sid, (String) s.get("name"), kind, binding(at, "spawnables." + sid + ".at"),
-                    !(at instanceof Map<?, ?> m) || !Boolean.FALSE.equals(m.get("follow")), s, definition));
+                    !(at instanceof Map<?, ?> m) || !Boolean.FALSE.equals(m.get("follow")), s, definition,
+                    binds(kind, s.get("bind"), "spawnables." + sid + ".bind")));
         }
 
         List<CompositeSection> composites = compositeSections(elements(tree, "composite_sections"));
@@ -174,6 +175,27 @@ final class CgSequenceCompiler {
     }
 
     // ── Bindings ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * A spawnable's {@code bind}: each user parameter a point sets every frame (a role or its socket, a locator, a
+     * spawnable or its node). A starting value or a role's velocity is not read yet and fails here, naming it.
+     */
+    private Map<String, CgSequenceBinding> binds(String kind, @Nullable Object b, String path) {
+        if (b == null) return Map.of();
+        if (!kind.equals("system")) throw fail(path, "a " + kind + " takes no bind: only a system's user parameters are bound");
+        if (!(b instanceof Map<?, ?> m)) throw fail(path, "a bind is a map of user parameters, not " + b);
+        Map<String, CgSequenceBinding> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : m.entrySet()) {
+            String name = String.valueOf(e.getKey()), at = path + "." + name;
+            CgSequenceBinding point = e.getValue() instanceof Map<?, ?> ? binding(e.getValue(), at) : CgSequenceBinding.NONE;
+            if (point == CgSequenceBinding.NONE || point.part() == CgSequenceBinding.Part.VELOCITY
+                    || point.part() == CgSequenceBinding.Part.MATERIAL) {
+                throw fail(at, e.getValue() + " is not read yet: a bind sets a position parameter from a point");
+            }
+            out.put(name.startsWith("user.") ? name.substring("user.".length()) : name, point);
+        }
+        return Collections.unmodifiableMap(out);
+    }
 
     /** A binding or a place as written: a map, {@code environment}, a bare id, or nothing. */
     private CgSequenceBinding binding(@Nullable Object b, String path) {

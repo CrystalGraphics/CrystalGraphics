@@ -31,6 +31,7 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitterAssets;
 import com.crystalgraphics.vfx.particle.CgVfxGridField;
 import com.crystalgraphics.vfx.particle.CgVfxEventGenerator;
 import com.crystalgraphics.vfx.particle.CgVfxEventHandler;
+import com.crystalgraphics.vfx.particle.CgVfxSockets;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMacroUv;
@@ -311,6 +312,7 @@ public final class CgVfxSystemAssets {
             if (effect == null) throw new IllegalArgumentException(id + ": effect " + name + " has no behaviour registered");
             if (effect.contract() != null) {
                 CgVfxLook look = contracted(id, name, effect.contract(), user, emitters.isEmpty() && !slotted ? null : kit.build());
+                userPoints(id, look, emitters);
                 return new CgVfxSystemDefinition(id, look, effect.factory(), emitters, prime(tree), max(tree), kills,
                         fixedBounds(id, tree, deps), macroUv(id, tree, deps));
             }
@@ -318,8 +320,23 @@ public final class CgVfxSystemAssets {
         CgVfxSchema schema = CgVfxSchema.of(id);
         for (Map.Entry<?, ?> e : user.entrySet()) param(id, schema, String.valueOf(e.getKey()), (Map<?, ?>) e.getValue());
         CgVfxLook look = CgVfxLook.builder(schema).with(kit.build()).build();
+        userPoints(id, look, emitters);
         return new CgVfxSystemDefinition(id, look, effect == null ? null : effect.factory(), emitters, prime(tree),
                 max(tree), kills, fixedBounds(id, tree, deps), macroUv(id, tree, deps));
+    }
+
+    /** Every emitter's user socket points name a vector user parameter of {@code look}, or the system fails here. */
+    private static void userPoints(String id, CgVfxLook look, List<CgVfxEmitter> emitters) {
+        for (CgVfxEmitter e : emitters) {
+            CgVfxSockets points = e.sockets();
+            if (points == null) continue;
+            for (int i = 0; i < points.names().size(); i++) {
+                if (points.user(i) && !(look.layout().param(points.names().get(i)) instanceof CgVfxParam.Vector)) {
+                    throw new IllegalArgumentException(id + ": emitter " + e.name() + ": socket_location's point user."
+                            + points.names().get(i) + " names no position user parameter of the system");
+                }
+            }
+        }
     }
 
     /** Its {@code macro_uv} in its namespace's units, as blocks; Cascade's default where absent. */

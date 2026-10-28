@@ -92,9 +92,11 @@ public record CgSequenceDefinition(String id, CgFrameRate tickResolution, CgFram
      * @param definition the asset it names, compiled (a {@code CgVfxPrefab}, a system's definition), or for a
      *                   {@code post} its post materials ({@code List<Blendable>}); null where it
      *                   names none or writes it inline
+     * @param binds      its {@code bind} block's points by the user parameter each sets every frame (a system's
+     *                   {@code position} parameters), in the order written; empty for none
      */
     public record Spawnable(String id, @Nullable String name, String kind, CgSequenceBinding at, boolean follow,
-                            Map<?, ?> tree, @Nullable Object definition) {
+                            Map<?, ?> tree, @Nullable Object definition, Map<String, CgSequenceBinding> binds) {
     }
 
     /**

@@ -176,9 +176,13 @@ public final class CgVfxEmitterAssets {
             List<Object> points = new ArrayList<>();
             for (int i = 0; i < e.sockets.names().size(); i++) {
                 float[] o = e.sockets.offsets()[i];
-                points.add(map("name", e.sockets.names().get(i), "offset", list(o[0], o[1], o[2])));
+                points.add(e.sockets.user(i) ? "user." + e.sockets.names().get(i)
+                        : map("name", e.sockets.names().get(i), "offset", list(o[0], o[1], o[2])));
             }
             Map<String, Object> socket = map("points", points, "selection", e.sockets.sequential() ? "sequential" : "random");
+            // User points carry the universal offset alone.
+            float[] u = e.sockets.offsets()[0];
+            if (e.sockets.users() != 0 && (u[0] != 0f || u[1] != 0f || u[2] != 0f)) socket.put("universal_offset", list(u[0], u[1], u[2]));
             if (e.sockets.follow()) socket.put("update_each_frame", true);
             if (e.sockets.inherit() != 0f) socket.put("inherit_velocity", (double) e.sockets.inherit());
             spawn.add(entry(e.id("socket"), "socket_location", socket));
@@ -1559,7 +1563,9 @@ public final class CgVfxEmitterAssets {
     /**
      * {@code socket_location}: Cascade's {@code LocationBoneSocket} ({@link CgVfxSockets}). Sockets and bones are both
      * points by name; its mesh is the entity the effect follows, whatever it binds. Its rotation is the identity, as
-     * Cascade's is ({@code ParticleModules_Location.cpp:1577-1580}), so {@code orient_meshes} changes nothing.
+     * Cascade's is ({@code ParticleModules_Location.cpp:1577-1580}), so {@code orient_meshes} changes nothing. A point
+     * {@code user.<name>} is that {@code position} user parameter, at the universal offset; its points are all users'
+     * or all named, since a user point has no offset of its own to write back.
      */
     private static void sockets(String name, CgVfxEmitter.Builder b, Map<?, ?> in, String element) {
         if (Boolean.TRUE.equals(in.get("segments"))) throw new IllegalArgumentException(name + ": socket_location's segments is not read yet");
@@ -1567,7 +1573,14 @@ public final class CgVfxEmitterAssets {
         float[] universal = in.get("universal_offset") != null ? vec(in.get("universal_offset"), 3) : new float[3];
         List<String> names = new ArrayList<>(points.size());
         float[][] offsets = new float[points.size()][];
+        int users = 0;
         for (int i = 0; i < points.size(); i++) {
+            if (points.get(i) instanceof String ref && ref.startsWith("user.") && ref.length() > "user.".length()) {
+                names.add(ref.substring("user.".length()));
+                offsets[i] = universal.clone();
+                users |= 1 << i;
+                continue;
+            }
             if (!(points.get(i) instanceof Map<?, ?> p) || !(p.get("name") instanceof String point)) {
                 throw new IllegalArgumentException(name + ": socket_location's point " + points.get(i) + " has no name");
             }
@@ -1576,9 +1589,12 @@ public final class CgVfxEmitterAssets {
             offsets[i] = new float[]{o[0] + universal[0], o[1] + universal[1], o[2] + universal[2]};
         }
         if (names.isEmpty()) throw new IllegalArgumentException(name + ": socket_location names no points");
+        if (users != 0 && Integer.bitCount(users) != names.size()) {
+            throw new IllegalArgumentException(name + ": socket_location's points mix user parameters and named points, which is not read yet");
+        }
         float inherit = in.get("inherit_velocity") instanceof Number v ? v.floatValue() : 0f;
         b.sockets(new CgVfxSockets(element, names, offsets, !"random".equals(in.get("selection")),
-                Boolean.TRUE.equals(in.get("update_each_frame")), inherit));
+                Boolean.TRUE.equals(in.get("update_each_frame")), inherit, users));
     }
 
     /** A rotator's two ends, and whether each axis rolls its own. */

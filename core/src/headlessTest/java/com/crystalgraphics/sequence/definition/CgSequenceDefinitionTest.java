@@ -108,6 +108,28 @@ public class CgSequenceDefinitionTest {
     }
 
     @Test
+    public void aSystemsBindSetsItsPositionParametersFromPointsAndAnythingElseFailsByPath() {
+        String locators = "locators:\n  - { id: k1, name: palms, parent: { role: caster, socket: aim } }\n";
+        CgSequenceDefinition d = compile("mymod:s", HEAD + locators + "spawnables:\n"
+                + "  - { id: s1, at: { locator: k1 }, system: mymod:sparks, bind: { point_0: { locator: k1 }, point_1: { role: caster, socket: chest } } }\n",
+                CgUnits.HOST, Map.of());
+        Map<String, CgSequenceBinding> binds = d.spawnables().get(0).binds();
+        assertEquals(List.of("point_0", "point_1"), List.copyOf(binds.keySet()));
+        assertEquals(CgSequenceBinding.Subject.LOCATOR, binds.get("point_0").subject());
+        assertEquals(CgSequenceBinding.Part.SOCKET, binds.get("point_1").part());
+        for (String bad : List.of("{ id: s1, system: mymod:sparks, bind: { point_0: [0, 1, 0] } }",
+                "{ id: s1, system: mymod:sparks, bind: { point_0: { role: caster, value: velocity } } }",
+                "{ id: s1, prefab: mymod:ring, bind: { point_0: { locator: k1 } } }")) {
+            try {
+                compile("mymod:s", HEAD + locators + "spawnables:\n  - " + bad + "\n", CgUnits.HOST, Map.of());
+                fail(bad);
+            } catch (CgAssetException expected) {
+                assertTrue(expected.getMessage(), expected.getMessage().contains("spawnables.s1.bind"));
+            }
+        }
+    }
+
+    @Test
     public void heldAndTriggeredChannelsTakeTheirKindsTypes() {
         CgSequenceDefinition d = compile("mymod:s", HEAD + "spawnables:\n  - { id: c1, camera: { cine: { fov: 40 } } }\n"
                 + "tracks:\n"

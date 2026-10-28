@@ -19,9 +19,15 @@ import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import com.crystalgraphics.vfx.look.CgVfxParam;
+import com.crystalgraphics.vfx.look.CgVfxValues;
+import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
+import com.crystalgraphics.vfx.particle.CgVfxSockets;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMacroUv;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -48,6 +54,47 @@ public class CgVfxSystemAssetsTest {
         assertEquals("mymod:puff", d.name());
         assertEquals(1, d.look().emitters().size());
         assertEquals("puff", d.look().emitters().get(0).name());
+    }
+
+    private static String pointed(String points) {
+        return "_v: 1\nuser:\n  point_0: { type: position }\n  point_1: { type: position }\n"
+                + "emitters:\n  - id: h1\n    name: e06\n    emitter:\n"
+                + "      properties: { capacity: 40 }\n"
+                + "      particle_spawn:\n"
+                + "        - { id: m1, module: crystalgraphics:socket_location, inputs: { points: " + points + ", selection: random } }\n";
+    }
+
+    @Test
+    public void socketPointsFromPositionUserParametersAreReadEachStepAndRoundTrip() {
+        CgVfxSystemDefinition d = compile("mymod:sparks", pointed("[user.point_0, user.point_1]"));
+        CgVfxEmitter e = d.look().emitters().get(0);
+        CgVfxSockets points = e.sockets();
+        assertEquals(List.of("point_0", "point_1"), points.names());
+        assertTrue(points.user(0) && points.user(1));
+        CgVfxEmitterInstance instance = new CgVfxEmitterInstance(e, 0.5f);
+        CgVfxValues values = d.look().copyValues();
+        instance.books().values(values);
+        float[] at = new float[3];
+        assertFalse("a point still at its NaN default answers nothing", instance.books().socket(1, at));
+        values.set((CgVfxParam.Vector) d.look().layout().param("point_1"), 1f, 2f, 3f);
+        assertTrue(instance.books().socket(1, at));
+        assertArrayEquals(new float[] {1f, 2f, 3f}, at, 0f);
+        CgVfxSockets back = compile("mymod:sparks", CgAssetYaml.write(CgVfxSystemAssets.write(d), CgParticleKinds.SYSTEM))
+                .look().emitters().get(0).sockets();
+        assertEquals(points.names(), back.names());
+        assertEquals(points.users(), back.users());
+    }
+
+    @Test
+    public void aSocketPointNamingNoPositionParameterOrMixedWithNamedPointsFailsAtLoad() {
+        for (String points : List.of("[user.point_2]", "[user.point_0, { name: hand_r }]")) {
+            try {
+                compile("mymod:sparks", pointed(points));
+                fail(points);
+            } catch (IllegalArgumentException expected) {
+                assertTrue(expected.getMessage(), expected.getMessage().contains("socket_location"));
+            }
+        }
     }
 
     @Test
