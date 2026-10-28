@@ -18,12 +18,20 @@ import com.crystalgraphics.platform.world.CgHostCamera;
  */
 public final class CgCamera {
 
+    private static int writes;
+
     private CgCamera() {
     }
 
     /** This frame's offset, holding until the next call: blocks along the world's axes, degrees, an FOV multiplier. */
     public static void offset(float x, float y, float z, float yaw, float pitch, float roll, float fovScale) {
+        writes++;
         camera().offset(x, y, z, yaw, pitch, roll, fovScale);
+    }
+
+    /** How many offsets have been set: a writer that reads it after its own call can tell when another replaced it. */
+    public static int writes() {
+        return writes;
     }
 
     /** The parts of an offset this host applies ({@link CgHostCamera#ROTATION}, {@code ROLL}, {@code FOV}). */

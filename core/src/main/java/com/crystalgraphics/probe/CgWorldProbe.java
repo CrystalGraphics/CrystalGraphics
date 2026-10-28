@@ -91,6 +91,8 @@ public final class CgWorldProbe {
     /** The same-frame check: armed for the next SHAKE, then the ring frame it turned the camera in. */
     private static volatile boolean sameFrameArmed;
     private static long sameFrameAt = -1, lateAtStart;
+    /** {@link CgCamera#writes()} after the probe's own last offset. */
+    private static int ownWrite;
     private static float baseFov;
     private static final Matrix3f baseView = new Matrix3f();
     private static long startGameTime;
@@ -152,7 +154,7 @@ public final class CgWorldProbe {
                 if (cameraStep == 0) {
                     checkTurn(host);
                     if (has(CgHostCamera.ROLL)) {
-                        CgCamera.offset(0f, 0f, 0f, 0f, 0f, ROLL, 1f);
+                        offset(0f, ROLL, 1f);
                         cameraStep = 1;
                         cameraFrames = 0;
                         break;
@@ -160,7 +162,7 @@ public final class CgWorldProbe {
                 } else {
                     checkRoll(host);
                 }
-                if (cameraBits != 0) CgCamera.offset(0f, 0f, 0f, 0f, 0f, 0f, 1f);
+                if (cameraBits != 0) offset(0f, 0f, 1f);
                 if (has(CgHostCamera.ROTATION)) {
                     // Settle at zero, then turn from SHAKE and look in the same frame.
                     cameraStep = 2;
@@ -359,7 +361,7 @@ public final class CgWorldProbe {
         } else {
             baseFov = host.environment().fov();
             baseView.set(host.view().view());
-            CgCamera.offset(0f, 0f, 0f, has(CgHostCamera.ROTATION) ? YAW : 0f, 0f, 0f, has(CgHostCamera.FOV) ? FOV_SCALE : 1f);
+            offset(has(CgHostCamera.ROTATION) ? YAW : 0f, 0f, has(CgHostCamera.FOV) ? FOV_SCALE : 1f);
         }
         cameraStep = 0;
         cameraFrames = 0;
@@ -371,7 +373,7 @@ public final class CgWorldProbe {
     // Yaw first, with the FOV, then roll alone: each is then one rotation between the views before and after, measured
     // whatever the player's pitch. A host may turn about the view's vertical or the world's; both pass.
     private static void checkTurn(CgHostFrame host) {
-        if (cameraBits == 0) return;
+        if (cameraBits == 0 || shakeTook("camera.fov", "camera.yaw")) return;
         int applied = CgCamera.applied();
         if (has(CgHostCamera.FOV)) {
             float ratio = host.environment().fov() / baseFov;
@@ -398,27 +400,39 @@ public final class CgWorldProbe {
         if (!sameFrameArmed) return;
         sameFrameArmed = false;
         baseView.set(CgRenderStage.WORLD_OPAQUE.host().view().view());
-        CgCamera.offset(0f, 0f, 0f, YAW, 0f, 0f, 1f);
+        offset(YAW, 0f, 1f);
         sameFrameAt = CgFrameRing.frame();
     }
 
     /** The opaque firing after that SHAKE: its frame's view carries the whole turn, or the offset landed a frame late. */
     private static void checkSameFrame(CgHostFrame host, long now) {
-        boolean same = CgFrameRing.frame() == sameFrameAt;
-        float degrees = (float) Math.toDegrees(turnSinceBase(host.view().view()).angle);
-        check("camera.same-frame", same && Math.abs(degrees - YAW) < 1.5f, String.format(
-                "turned %.2f degrees in the frame the offset was set, %s", degrees, same ? "the same ring frame" : "a later ring frame"));
-        CgCamera.offset(0f, 0f, 0f, 0f, 0f, 0f, 1f);
-        if (CgWorldBegin.isAtStage()) {
-            skip("frame.begin", "this host has no camera hook");
-        } else {
-            long late = CgWorld.client().beganLate() - lateAtStart;
-            check("frame.begin", late == 0, late + " frames ran their world before the camera hook since the probe started");
+        if (!shakeTook("camera.same-frame")) {
+            boolean same = CgFrameRing.frame() == sameFrameAt;
+            float degrees = (float) Math.toDegrees(turnSinceBase(host.view().view()).angle);
+            check("camera.same-frame", same && Math.abs(degrees - YAW) < 1.5f, String.format(
+                    "turned %.2f degrees in the frame the offset was set, %s", degrees, same ? "the same ring frame" : "a later ring frame"));
         }
+        offset(0f, 0f, 1f);
         startEvents(now);
     }
 
+    /**
+     * A shake playing, or one that started and ended since the probe's offset (its end writes zeros), leaves a view that
+     * measures the shake: skipped, not failed.
+     */
+    private static boolean shakeTook(String... names) {
+        if (!CgCameraShake.active() && CgCamera.writes() == ownWrite) return false;
+        for (String name : names) skip(name, "a shake took the camera during the check");
+        return true;
+    }
+
+    private static void offset(float yaw, float roll, float fovScale) {
+        CgCamera.offset(0f, 0f, 0f, yaw, 0f, roll, fovScale);
+        ownWrite = CgCamera.writes();
+    }
+
     private static void checkRoll(CgHostFrame host) {
+        if (shakeTook("camera.roll")) return;
         AxisAngle4f turn = turnSinceBase(host.view().view());
         float degrees = (float) Math.toDegrees(turn.angle);
         check("camera.roll", Math.abs(degrees - ROLL) < 1.5f && Math.abs(turn.z) > 0.98f, String.format(
@@ -505,6 +519,12 @@ public final class CgWorldProbe {
         check("world.epoch-stable", world.levelEpoch() == startEpoch, "epoch " + startEpoch + " to " + world.levelEpoch());
         check("textures.stable", host.textures().version() == startTextures,
                 "version " + startTextures + " to " + host.textures().version());
+        if (CgWorldBegin.isAtStage()) {
+            skip("frame.begin", "this host has no camera hook");
+        } else {
+            long late = CgWorld.client().beganLate() - lateAtStart;
+            check("frame.begin", late == 0, late + " frames ran their world before the camera hook since the probe started");
+        }
         boolean ok = failed == 0;
         LOGGER.info("world probe: {} ({} passed, {} failed, {} skipped)", ok, passed, failed, skipped);
         phase = Phase.DONE;
