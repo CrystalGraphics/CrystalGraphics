@@ -34,6 +34,8 @@ import com.crystalgraphics.trace.CgTrace;
  *       and weight (ease times {@code weight}), as Unreal's blenders do, and is written once. A slot's value before
  *       any sequence animated it is kept, and put back when its last animator leaves, if one of them restores
  *       state.</li>
+ *   <li>Then <b>events</b>: the frame's {@code event} keys crossed and spans begun or ended, heard by the listeners of
+ *       their side ({@link #listen}), as Unreal runs its event tokens after evaluation.</li>
  *   <li>A player that is {@linkplain CgSequencePlayer#stop() stopped} leaves at the next evaluation; one that
  *       finished holds its last frame.</li>
  *   <li>Evaluating allocates nothing; {@link #play} and the first entry of each section bind, once.</li>
@@ -49,6 +51,7 @@ public final class CgSequencer extends CgWorldSubsystem {
     private final List<CgSequenceEvaluator> evaluators = new ArrayList<>();
     private final CgSequenceBlender blender = new CgSequenceBlender();
     private final Map<String, CgSequenceSpawner> spawners = new HashMap<>();
+    private final List<CgSequenceEventListener> rpg = new ArrayList<>(), ours = new ArrayList<>();
     private CgTickFunction tick;
     @Nullable
     private CgSequenceTarget environment;
@@ -60,6 +63,7 @@ public final class CgSequencer extends CgWorldSubsystem {
         evaluators.add(new CgSequenceSystemEvaluator());
         evaluators.add(new CgSequenceAnimationEvaluator());
         evaluators.add(new CgNotifyEvaluator(this, blender));
+        evaluators.add(new CgSequenceEventEvaluator(this));
     }
 
     @Override
@@ -119,6 +123,30 @@ public final class CgSequencer extends CgWorldSubsystem {
         CgSequenceSpawner s = spawners.get(kind);
         if (s == null) throw new IllegalStateException("no spawner makes a " + kind + " spawnable: CgSequencer.spawner(\"" + kind + "\", ...)");
         return s;
+    }
+
+    /**
+     * Adds {@code listener} for every sequence's {@code event} tracks of {@code side}, from the next frame on.
+     *
+     * <pre>{@code
+     * sequencer.listen(Side.OURS, (player, phase, event, args) -> captions.show(event));
+     * }</pre>
+     */
+    public CgSequencer listen(CgSequenceEventListener.Side side, CgSequenceEventListener listener) {
+        (side == CgSequenceEventListener.Side.RPG ? rpg : ours).add(listener);
+        return this;
+    }
+
+    /** Removes {@code listener}, added for {@code side}. */
+    public void unlisten(CgSequenceEventListener.Side side, CgSequenceEventListener listener) {
+        (side == CgSequenceEventListener.Side.RPG ? rpg : ours).remove(listener);
+    }
+
+    /** Hands an event to {@code side}'s listeners. */
+    void hear(CgSequenceEventListener.Side side, CgSequencePlayer player, CgSequenceEventListener.Phase phase, String event,
+              @Nullable Object args) {
+        List<CgSequenceEventListener> to = side == CgSequenceEventListener.Side.RPG ? rpg : ours;
+        for (int i = 0; i < to.size(); i++) to.get(i).heard(player, phase, event, args);
     }
 
     /** The viewer's significance tier, 0 (low) to 3 (ultra): a notify filtered above it does not fire. */

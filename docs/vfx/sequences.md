@@ -213,6 +213,65 @@ tracks:
 - **What fails at play**, naming it: a kind no spawner makes; a prefab part drawing what is not built yet (several
   materials, an overlay); an inline prefab; a fractional post priority. A dedicated server's sequencer spawns nothing.
 
+## Events: out of a sequence and into it
+
+An `event` track says when something happens, for whoever hears its side: **`rpg`** is the gameplay (a hit window,
+super armour, a projectile's launch), **`ours`** the host's presentation (a caption, rumble). A section is an instant
+at each of its keys, or a span over its range, begun and ended. Unreal's event track, with a montage's notify states
+as spans.
+
+```yaml
+tracks:
+  - id: t1
+    kind: event
+    side: rpg
+    binding: { role: caster }
+    sections:
+      - { id: a, keys: [[1200, { event: mymod:release, args: { power: 3 } }], [2400, mymod:recover]] }
+      - { id: b, range: [1200, 3000], event: mymod:hit_window, args: { damage: 40 } }
+```
+
+```java
+sequencer.listen(CgSequenceEventListener.Side.RPG, (player, phase, event, args) -> {
+    if (event.equals("mymod:hit_window")) hitWindow(player, phase == CgSequenceEventListener.Phase.BEGIN, (Map<?, ?>) args);
+});
+sequencer.listen(CgSequenceEventListener.Side.OURS, (player, phase, event, args) -> captions.show(event));
+```
+
+- **A key fires once**, in the frame whose range crosses it, however long the frame: a 200 ms frame over it fires it
+  once, and the next frame not again. A jump fires nothing it skips. Backward play fires only a track with
+  `fire_backwards: true`; `fire_forwards: false` silences forward play.
+- **A span begins** in the frame play enters it, a jump landing inside it included, and **ends** as play leaves it or
+  the play stops.
+- **They are heard after the frame's tracks are applied**, in the order play crossed them: a listener sees the
+  frame's values.
+- **A dedicated server hears `rpg` alone**; a client hears both. An event track names its side, or it fails at play.
+- `args` are the file's, untouched: what the gameplay hearing the name expects.
+
+### Sections an event starts
+
+The gameplay's event into a play starts every section waiting for it, its range counted from that tick:
+
+```yaml
+  - id: t2
+    kind: property
+    binding: { role: caster }
+    property: opacity
+    sections:
+      - { id: c, start: { event: mymod:charge }, range: [0, 400], value: { keys: [[0, 0.0, linear], [400, 1.0, linear]] } }
+  - { id: t3, kind: event, side: ours, binding: { role: caster }, sections: [
+      { id: d, start: { event: mymod:charge }, range: [0, 500], keys: [[0, mymod:glow], [300, mymod:flash]] } ] }
+```
+
+```java
+player.event("mymod:charge");        // both play from this frame's tick; a second call starts them over
+CgEventTrigger run = player.trigger(track, section);   // its run count and seed, for randomness every replay agrees on
+```
+
+- **A second event restarts it**: its keys fire again from the start, its span ends and begins anew.
+- **State kinds and `event` play one**; a section of another kind started by an event fails at play, naming it.
+- A dedicated server's play ignores `event`, and a late joiner never starts one.
+
 ## Notifies of your own
 
 A notify marks a moment or a span on a move's timeline that does something only your mod knows (Unreal's `AnimNotify`

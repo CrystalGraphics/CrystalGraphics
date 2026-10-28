@@ -1,5 +1,6 @@
 package com.crystalgraphics.sequence;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -54,6 +55,11 @@ public final class CgSequencePlayer {
     /** The active entries of the current segment, and each one's evaluator's index in the sequencer. */
     private final int[] active, activeEvaluator;
     private int activeCount, segment = -1;
+    /** Its triggered sections, by place in the definition's lists: each one's clock and evaluator, and whether it runs. */
+    private final CgSequenceDefinition.SectionRef[] triggered;
+    private final CgEventTrigger[] triggers;
+    private final int[] triggeredEvaluator;
+    private final boolean[] running;
     private double seconds;
     private float rate = 1f;
     private long seed;
@@ -105,6 +111,51 @@ public final class CgSequencePlayer {
         for (int s = 0; s < field.segments(); s++) most = Math.max(most, field.entryCount(s));
         this.active = new int[most];
         this.activeEvaluator = new int[most];
+        List<CgSequenceDefinition.SectionRef> refs = new ArrayList<>();
+        for (List<CgSequenceDefinition.SectionRef> l : definition.triggered().values()) refs.addAll(l);
+        this.triggered = refs.toArray(new CgSequenceDefinition.SectionRef[0]);
+        this.triggers = new CgEventTrigger[triggered.length];
+        this.triggeredEvaluator = new int[triggered.length];
+        this.running = new boolean[triggered.length];
+        for (int i = 0; i < triggered.length; i++) {
+            CgSequenceSection s = definition.tracks().get(triggered[i].track()).sections().get(triggered[i].section());
+            triggers[i] = new CgEventTrigger(s.trigger(), s.to() == CgSequenceSection.OPEN_END ? Integer.MAX_VALUE : s.to());
+            triggeredEvaluator[i] = -1;
+        }
+    }
+
+    /**
+     * The gameplay's {@code event} into this play: every section with {@code start: { event: name }} starts now, its
+     * range from this tick, and one already running starts over. Ignored on a dedicated server, and by a section of a
+     * muted track.
+     *
+     * <pre>{@code
+     * player.event("dragonforge:energy_charge");     // its triggered sections play from this frame's tick
+     * }</pre>
+     *
+     * @return whether any section started
+     */
+    public boolean event(String name) {
+        if (sequencer.server()) return false;
+        int now = CgFrameTime.frame(position.lastRange().current());
+        boolean any = false;
+        for (int i = 0; i < triggered.length; i++) {
+            if (definition.tracks().get(triggered[i].track()).muted()) continue;
+            if (triggers[i].fire(name, now, seed)) {
+                running[i] = true;
+                any = true;
+            }
+        }
+        return any;
+    }
+
+    /** {@code section}'s clock, a triggered section of {@code track}: its run count and seed; null for another. */
+    @Nullable
+    public CgEventTrigger trigger(CgSequenceTrack track, CgSequenceSection section) {
+        for (int i = 0; i < triggered.length; i++) {
+            if (triggered[i].track() == track.index() && triggered[i].section() == section.index()) return triggers[i];
+        }
+        return null;
     }
 
     public CgSequenceDefinition definition() {
@@ -318,6 +369,11 @@ public final class CgSequencePlayer {
                 if (bound[track.index()][s + 1]) continue;
                 if (s < 0 && track.population() != CgSequenceTrack.Population.WHOLE_TRACK) continue;
                 if (s >= 0 && track.population() == CgSequenceTrack.Population.WHOLE_TRACK) continue;
+                CgSequenceSection section = s < 0 ? null : track.sections().get(s);
+                if (section != null && section.trigger() != null && !sequencer.evaluator(evaluator).playsTriggered()) {
+                    throw new CgAssetException(definition.id() + ": tracks." + track.id() + ".sections." + section.id()
+                            + ": a " + track.kind() + " section started by an event is not played yet");
+                }
                 bound[track.index()][s + 1] = true;
                 sequencer.evaluator(evaluator).bind(this, track, s < 0 ? null : track.sections().get(s));
             }
@@ -400,7 +456,7 @@ public final class CgSequencePlayer {
         }
     }
 
-    /** Evaluate: each active entry of evaluator {@code evaluator}'s kind. */
+    /** Evaluate: each active entry of evaluator {@code evaluator}'s kind, then its triggered sections running. */
     void evaluate(CgSequencer sequencer, int evaluator) {
         CgSequenceField field = definition.field();
         CgSequenceEvaluator e = sequencer.evaluator(evaluator);
@@ -410,6 +466,23 @@ public final class CgSequencePlayer {
             CgSequenceTrack track = definition.tracks().get(field.track(active[k]));
             int section = field.section(active[k]);
             e.evaluate(this, track, section < 0 ? null : track.sections().get(section), tick);
+        }
+        int now = (int) Math.floor(tick);
+        for (int i = 0; i < triggered.length; i++) {
+            if (!running[i]) continue;
+            CgSequenceTrack track = definition.tracks().get(triggered[i].track());
+            if (triggeredEvaluator[i] < 0) triggeredEvaluator[i] = sequencer.evaluatorIndex(track.kind());
+            if (triggeredEvaluator[i] != evaluator) continue;
+            CgSequenceSection s = track.sections().get(triggered[i].section());
+            // Bound with its track: a spawnable not made yet, or a skipped role, plays nothing.
+            if (!bound[track.index()][track.population() == CgSequenceTrack.Population.WHOLE_TRACK ? 0 : s.index() + 1]) continue;
+            int local = triggers[i].local(now);
+            if (s.to() != CgSequenceSection.OPEN_END && local >= s.to()) {
+                running[i] = false;
+                e.ended(this, track, s);
+            } else if (local >= s.from() || s.from() == CgSequenceSection.OPEN_START) {
+                e.evaluate(this, track, s, tick - (now - local));
+            }
         }
     }
 

@@ -111,6 +111,11 @@ final class CgSequenceStateEvaluator implements CgSequenceEvaluator {
     }
 
     @Override
+    public boolean playsTriggered() {
+        return true;
+    }
+
+    @Override
     public void evaluate(CgSequencePlayer player, CgSequenceTrack track, @Nullable CgSequenceSection section, float tick) {
         if (!(player.data(track, section) instanceof Bound b)) return;
         List<CgSequenceChannel> channels = section.channels();

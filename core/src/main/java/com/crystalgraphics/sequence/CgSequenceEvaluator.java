@@ -29,7 +29,8 @@ import javax.annotation.Nullable;
  *   <li>Register before a sequence of that kind plays: a kind with no evaluator is skipped, its entries never bound.</li>
  *   <li>{@code section} is null for a track that evaluates over all time ({@link CgSequenceTrack.Population#WHOLE_TRACK}).</li>
  *   <li>{@code evaluate} runs every frame an entry is active, on the frame thread: allocate nothing in it.</li>
- *   <li>{@code tick} is the sequence's time at its tick resolution, a sub-frame allowed.</li>
+ *   <li>{@code tick} is the sequence's time at its tick resolution, a sub-frame allowed; a triggered section's
+ *       its own, from its event.</li>
  * </ul>
  */
 public interface CgSequenceEvaluator {
@@ -50,5 +51,18 @@ public interface CgSequenceEvaluator {
 
     /** {@code player} was stopped and leaves: end what it began. */
     default void stopped(CgSequencePlayer player) {
+    }
+
+    /**
+     * Whether it plays a triggered section ({@link CgSequenceSection#trigger()}): evaluated with that section on its
+     * own ticks from its event, {@code tick} 0 the tick the event fired. A kind that does not fails at play, naming
+     * the section.
+     */
+    default boolean playsTriggered() {
+        return false;
+    }
+
+    /** A triggered {@code section} of {@code player} ran past its range: end what it began. */
+    default void ended(CgSequencePlayer player, CgSequenceTrack track, CgSequenceSection section) {
     }
 }
