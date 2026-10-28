@@ -374,7 +374,7 @@ public final class CgWorldRenderer {
     private CgGraphTexture emissionFull;
     private boolean[] merged = new boolean[64];
     private int mergedDraws;
-    private boolean mergeNoted;
+    private boolean mergeNoted, normalsRefusedNoted;
     private final float[] constantsBlock = new float[CgPassConstants.FLOATS];
 
     // Half resolution: the target half-size draws go into, its constants, and what adds it over the stage's target.
@@ -2407,13 +2407,22 @@ public final class CgWorldRenderer {
     /**
      * The normal target the opaque pass writes beside the host's target this firing, cleared, and handed to the world
      * lights; null where neither they (casting shadows) nor a reader ({@link CgFrameKeys#WORLD_NORMALS_READ}) asks, or
-     * the host's framebuffer takes no second attachment.
+     * the host's framebuffer takes no second attachment, which is warned once: the lights then rebuild normals from depth.
      */
     @Nullable
     private CgGraphTexture normalsFor(CgStageFrame stage, CgRecording recording) {
         int fb = stage.host().mainFramebuffer();
         boolean asked = pointLights.wantsNormals() || stage.resources().has(CgFrameKeys.WORLD_NORMALS_READ);
-        if (!asked || fb <= 0 || CgRasterPass.refusesAttachment(fb)) return null;
+        if (!asked) return null;
+        if (fb <= 0 || CgRasterPass.refusesAttachment(fb)) {
+            if (!normalsRefusedNoted) {
+                normalsRefusedNoted = true;
+                LOGGER.warn("Framebuffer {} takes no normal target: the world lights rebuild our surfaces' normals from depth,"
+                        + " snapped to world axes as blocks', so a curved mesh shades in facets. Draw the world into a"
+                        + " framebuffer of the host's own", fb);
+            }
+            return null;
+        }
         int w = Math.max(1, (int) targetWidth), h = Math.max(1, (int) targetHeight);
         if (normalTarget == null || normalTarget.getWidth() != w || normalTarget.getHeight() != h) {
             if (normalTarget != null) recording.release(normalTarget);
