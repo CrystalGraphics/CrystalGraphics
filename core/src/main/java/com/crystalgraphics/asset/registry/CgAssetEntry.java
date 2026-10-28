@@ -2,6 +2,7 @@ package com.crystalgraphics.asset.registry;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 import javax.annotation.Nullable;
@@ -40,10 +41,12 @@ import com.crystalgraphics.object.CgType;
  * @param references the assets its file names, hard and soft, its parent first: Unreal's package dependencies; empty
  *                   for a binary or a builder's asset
  * @param modified   its file's modification time, in milliseconds; 0 for a builder's asset
+ * @param searchable its kind's {@code SEARCHABLE} properties as its file writes them, read by the scan without loading
+ *                   it (Unreal's {@code FAssetData} tags): a cue's {@code tag}; empty for a binary or a builder's asset
  */
 public record CgAssetEntry(String id, @Nullable CgType kind, CgAssetSource source, @Nullable Path file,
         @Nullable String redirect, @Nullable Supplier<?> definition, List<CgAssetReferences.Reference> references,
-        long modified) {
+        long modified, Map<String, String> searchable) {
 
     /** The namespace before the id's colon. */
     public String namespace() {

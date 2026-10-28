@@ -26,7 +26,8 @@ edited there with undo, validated, and written back by one writer. The 20 kinds 
 - **An id is unique within its kind**, never across kinds: a cue and the sequence it plays may share one, since a
   reference's field declares the kind. Key anything by kind and id; a binary's id (folder and extension kept) alone.
 - **A scan reads each file once, on the workers, for its own references** (`CgAssetReferences.ofFile`, never
-  resolved) and its redirect, or takes them from the cache while the file's modification time holds. It adds all its
+  resolved), its redirect and its kind's `SEARCHABLE` values (`entry.searchable()`, Unreal's asset registry tags: a
+  cue's `tag`), or takes them from the cache while the file's modification time holds. It adds all its
   entries or none, then announces them: the batch, each alone, `SCANNED`. `registerEngine()` registers the engine's
   own assets (its built-in modules) as code with their definitions.
 - **A load's state changes only on its pipeline's loop**: workers parse, merge, validate and compile; `drain`

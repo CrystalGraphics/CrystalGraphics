@@ -30,6 +30,11 @@ public enum CgPropertyFlag {
     PER_INSTANCE,
     /** Carried by a cue's networked fields ({@code CPF_Net}). */
     NETWORKED,
+    /**
+     * Gathered by the asset registry's scan without loading the asset ({@code AssetRegistrySearchable}): a cue's
+     * {@code tag}, read as {@code entry.searchable().get("tag")}. A top-level scalar only.
+     */
+    SEARCHABLE,
     /** Named by a code contract: the editor refuses a rename or delete, naming the class. */
     LOCKED,
     /** Read and upgraded, never written ({@code CPF_Deprecated}). */

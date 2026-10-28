@@ -155,3 +155,43 @@ keeps its own default; a name no played system has is reported once when the cue
 
 Each names the cue and the path in it. On a dedicated server systems do not compile: a cue loads there with
 `definition()` null and its `writes` bound to nothing.
+
+## Playing cues
+
+A world's `CgCueManager` plays cues by tag. Gameplay calls it from its tick; it plays in the frame's `PLAYS` group.
+
+```java
+CgCueManager cues = world.add(new CgCueManager(CgVfxAssets.instance()));
+cues.effects(new CgVfxCueEffects(vfx, cues));                 // a client; a dedicated server keeps none
+cues.localControl(a -> a.entity() == localPlayerId);          // what local_only and not_local test
+
+CgCueParameters at = new CgCueParameters().at(x, y, z).target(victim).seed(hitId);
+cues.execute(MYMOD_CUE_HIT, at);                              // a burst, once
+```
+
+A looping cue returns its play, which gameplay feeds and ends:
+
+```java
+CgCuePlaying beam = cues.add(MYMOD_CUE_BEAM, at);
+beam.writes("BeamLength", (time, out) -> out[0] = projectile.lengthAt(time));  // pulled each frame
+beam.event("hit_world", hitAt);                               // the cue's event bursts
+beam.recur(at);                                               // its recurring block
+beam.remove();                                                // removal plays; it lingers until its effects end
+```
+
+- **By tag, falling back to parents.** `mymod:cue.hit.crit` with no cue of its own plays `mymod:cue.hit`'s. A cue that
+  does not handle the call (a burst sent `add`) passes it up too. A tag nothing answers is dropped and counted
+  (`cue.unrouted`).
+- **Routes come from the files.** The asset registry reads each cue's `tag` as it scans, without loading the cue. A cue
+  built in Java is routed by hand: `cues.route(tag, CgVfxAssets.ref(CgGameplayKinds.CUE, "mymod:hit"))`.
+- **A cue not yet loaded waits.** Asking for it starts its load. Once it is ready, a looping cue starts as old as it
+  would be, and a burst plays only if it is under 0.2 seconds late; later than that it is dropped and counted
+  (`cue.late-dropped`), since a hit spark two seconds late is wrong.
+- **Calls keep their order.** A `remove()` sent before the cue is ready waits behind its `add`; `kill()` before then
+  means it never starts.
+- **Pooled.** A looping cue's effects are reused once a play ends, reset whole first. `cues.prewarm(cue, n)` grows a
+  pool ahead; once warm, playing allocates nothing.
+- **Seeded.** An entry's `chance` is rolled from the parameters' `seed`, so every viewer plays the same entries.
+- **On a dedicated server** only `authoritative: true` cues play, with no effects.
+
+A handle is reused once `active()` is false: drop it then.

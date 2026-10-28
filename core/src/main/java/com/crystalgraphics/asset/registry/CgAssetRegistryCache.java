@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,10 +29,11 @@ import com.crystalgraphics.object.CgValueType;
  */
 final class CgAssetRegistryCache {
 
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
 
     /** One file's gathered data. */
-    record Record(long modified, String kind, @Nullable String redirect, List<CgAssetReferences.Reference> references) {
+    record Record(long modified, String kind, @Nullable String redirect, List<CgAssetReferences.Reference> references,
+                  Map<String, String> searchable) {
     }
 
     private final Map<String, Record> records = new ConcurrentHashMap<>();
@@ -73,7 +75,11 @@ final class CgAssetRegistryCache {
                     CgPropertyPath at = CgPropertyPath.parse(in.readUTF());
                     if (refKind != null) list.add(new CgAssetReferences.Reference(refKind, id, strength, at));
                 }
-                cache.records.put(key, new Record(modified, kind, redirect, Collections.unmodifiableList(list)));
+                int values = in.readInt();
+                Map<String, String> searchable = values == 0 ? Collections.emptyMap() : new LinkedHashMap<>();
+                for (int j = 0; j < values; j++) searchable.put(in.readUTF(), in.readUTF());
+                cache.records.put(key, new Record(modified, kind, redirect, Collections.unmodifiableList(list),
+                        Collections.unmodifiableMap(searchable)));
             }
         } catch (IOException | RuntimeException unreadable) {
             cache.records.clear();   // rebuilt by the next scan
@@ -102,6 +108,11 @@ final class CgAssetRegistryCache {
                     out.writeUTF(ref.id());
                     out.writeBoolean(ref.strength() == CgValueType.Strength.HARD);
                     out.writeUTF(ref.at().toString());
+                }
+                out.writeInt(r.searchable.size());
+                for (Map.Entry<String, String> v : r.searchable.entrySet()) {
+                    out.writeUTF(v.getKey());
+                    out.writeUTF(v.getValue());
                 }
             }
         }

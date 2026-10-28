@@ -217,10 +217,14 @@ public class CgCueDefinitionTest {
                 Thread.sleep(1);
             }
             pipeline.drain();
-            for (CgAssetLoad l : loads) {
+            for (int k = 0; k < loads.size(); k++) {
+                CgAssetLoad l = loads.get(k);
                 if (l.state() == CgAssetState.COMPILED) {
                     compiled++;
-                    if (!((CgCueDefinition) l.definition()).writes().isEmpty()) writing++;
+                    CgCueDefinition cue = (CgCueDefinition) l.definition();
+                    if (!cue.writes().isEmpty()) writing++;
+                    // What the cue manager routes by, gathered without loading, is the tag the cue compiles to.
+                    assertEquals(cue.id(), cue.tag() == null ? null : cue.tag().name(), all.get(from + k).searchable().get("tag"));
                 } else {
                     failed++;
                     assertEquals(l.toString(), CgAssetState.FAILED, l.state());

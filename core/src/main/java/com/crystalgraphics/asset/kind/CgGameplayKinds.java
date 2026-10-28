@@ -125,7 +125,7 @@ public final class CgGameplayKinds {
 
     /** {@code cues/}: what gameplay's moments play. */
     public static final CgType CUE = CgTypes.kind("crystalgraphics:cue").folder("cues").version(1)
-            .property("tag", CgValueType.NAMESPACED_ID).flags(CgPropertyFlag.HEADLESS)
+            .property("tag", CgValueType.NAMESPACED_ID).flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.SEARCHABLE)
             .property("kind", CgValueType.enumOf("burst", "looping")).required().flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
             .property("default_spawn_condition", CgValueType.struct(SPAWN_CONDITION))
             .property("default_placement", CgValueType.struct(PLACEMENT))

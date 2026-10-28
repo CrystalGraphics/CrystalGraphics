@@ -16,6 +16,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -36,6 +37,8 @@ import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.asset.tree.CgAssetReferences;
 import com.crystalgraphics.job.CgJob;
+import com.crystalgraphics.object.CgProperty;
+import com.crystalgraphics.object.CgPropertyFlag;
 import com.crystalgraphics.object.CgPropertyPath;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgValueType;
@@ -164,7 +167,7 @@ public final class CgAssetRegistry {
                         yaml.add(new Listed(id, kind, file, modified));
                     } else if (isBinary(rel)) {
                         found.add(new CgAssetEntry(namespace + ":" + rel, null, source, file, null, null,
-                                Collections.emptyList(), modified));
+                                Collections.emptyList(), modified, Collections.emptyMap()));
                     } else if (!(rel.indexOf('/') < 0 && ROOT_FILES.contains(rel))) {
                         strays.add(file);
                     }
@@ -239,7 +242,7 @@ public final class CgAssetRegistry {
      */
     public synchronized CgAssetEntry registerCode(String id, CgType kind, @Nullable Supplier<?> definition) {
         CgAssetEntry e = new CgAssetEntry(id, Objects.requireNonNull(kind), CgAssetSource.CODE, null, null, definition,
-                Collections.emptyList(), 0);
+                Collections.emptyList(), 0, Collections.emptyMap());
         CgAssetEntry was = entries.putIfAbsent(key(kind, id), e);
         if (was != null) throw new CgAssetException(key(kind, id) + " is registered twice: " + where(was) + " and " + where(e));
         fire(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.ADDED, e.namespace(), e, null));
@@ -293,7 +296,7 @@ public final class CgAssetRegistry {
         if (old == null) throw new CgAssetException("rename: " + from + " is not registered");
         if (entries.containsKey(key(kind, to))) throw new CgAssetException("rename: " + to + " is already registered");
         CgAssetEntry moved = new CgAssetEntry(to, old.kind(), old.source(), file, null, old.definition(), old.references(),
-                old.modified());
+                old.modified(), old.searchable());
         entries.remove(key(kind, from));
         link(old, false);
         entries.put(key(kind, to), moved);
@@ -512,7 +515,8 @@ public final class CgAssetRegistry {
             r = read(f);
             records.put(key, r);
         }
-        return new CgAssetEntry(f.id(), f.kind(), source, f.file(), r.redirect(), null, r.references(), f.modified());
+        return new CgAssetEntry(f.id(), f.kind(), source, f.file(), r.redirect(), null, r.references(), f.modified(),
+                r.searchable());
     }
 
     /** What {@code f} says of itself: a redirect, hard on where it points as Unreal's redirector is, or its references. */
@@ -531,15 +535,29 @@ public final class CgAssetRegistry {
                 if (to instanceof String) {
                     return new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), (String) to, Collections.singletonList(
                             new CgAssetReferences.Reference(f.kind(), (String) to, CgValueType.Strength.HARD,
-                                    CgPropertyPath.of(f.id()).key(REDIRECT))));
+                                    CgPropertyPath.of(f.id()).key(REDIRECT))), Collections.emptyMap());
                 }
                 return new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), null,
-                        Collections.unmodifiableList(CgAssetReferences.ofFile(f.id(), f.kind(), file)));
+                        Collections.unmodifiableList(CgAssetReferences.ofFile(f.id(), f.kind(), file)), searchable(f.kind(), file));
             }
         } catch (RuntimeException unreadable) {
             // validation names it when the asset loads
         }
-        return new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), null, Collections.emptyList());
+        return new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), null, Collections.emptyList(), Collections.emptyMap());
+    }
+
+    /** {@code kind}'s {@code SEARCHABLE} properties as {@code file} writes them: Unreal's asset registry tags. */
+    private static Map<String, String> searchable(CgType kind, Map<?, ?> file) {
+        Map<String, String> out = null;
+        for (CgProperty p : kind.properties()) {
+            if (!p.has(CgPropertyFlag.SEARCHABLE)) continue;
+            Object v = file.get(p.name());
+            if (v instanceof String || v instanceof Number || v instanceof Boolean) {
+                if (out == null) out = new LinkedHashMap<>();
+                out.put(p.name(), String.valueOf(v));
+            }
+        }
+        return out == null ? Collections.emptyMap() : Collections.unmodifiableMap(out);
     }
 
     private static CgUnits readUnits(Path file) {

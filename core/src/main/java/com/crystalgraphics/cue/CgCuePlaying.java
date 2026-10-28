@@ -1,0 +1,146 @@
+package com.crystalgraphics.cue;
+
+import java.util.Arrays;
+
+import javax.annotation.Nullable;
+
+import com.crystalgraphics.cue.CgCueDefinition.Write;
+
+/**
+ * One looping cue playing, from {@link CgCueManager#add}: what gameplay holds to feed it, fire its events and end it.
+ * Mirrors GAS's {@code WhileActive} to {@code Removed} on an instanced {@code AGameplayCueNotify_Looping}.
+ *
+ * <pre>{@code
+ * CgCuePlaying aura = cues.add(MYMOD_CUE_AURA, params);
+ * aura.writes("BeamLength", (time, out) -> out[0] = beam.lengthAt(time));   // pulled each frame, never pushed
+ * aura.event("hit_world", hitParams);                                       // the cue's events burst
+ * aura.remove();            // removal plays, then it lingers until its effects end
+ * }</pre>
+ *
+ * <ul>
+ *   <li>Every call is queued and played in {@code PLAYS}, in order, so a remove right after an add is never lost.</li>
+ *   <li>The handle is pooled: once {@link #active()} is false it may already be another play's. Drop it then.</li>
+ *   <li>A provider is called on the frame thread with the frame's time in seconds; it writes up to four floats.</li>
+ * </ul>
+ */
+public final class CgCuePlaying {
+
+    /** A {@code writes} value, pulled each frame. */
+    @FunctionalInterface
+    public interface Provider {
+        /** Writes the value at {@code time}, the frame's presented time in seconds, into {@code out}'s first floats. */
+        void write(double time, float[] out);
+    }
+
+    enum State { PENDING, PLAYING, REMOVING, KILLED, ENDED }
+
+    private static final int PROVIDERS = 8;
+
+    private final CgCueManager manager;
+    State state = State.ENDED;
+    @Nullable
+    CgCueDefinition definition;
+    @Nullable
+    CgCueEffects.Lasting lasting;
+    final CgCueParameters params = new CgCueParameters();
+    private String[] names = new String[PROVIDERS];
+    private Provider[] providers = new Provider[PROVIDERS];
+    private Write[] bound = new Write[PROVIDERS];
+    private int count;
+    boolean discarded;
+
+    CgCuePlaying(CgCueManager manager) {
+        this.manager = manager;
+    }
+
+    /** Binds {@code name}, one of the cue's {@code writes}, to {@code provider}; a name the cue does not write is kept unused. */
+    public CgCuePlaying writes(String name, Provider provider) {
+        for (int i = 0; i < count; i++) {
+            if (names[i].equals(name)) {
+                providers[i] = provider;
+                return this;
+            }
+        }
+        if (count == names.length) {
+            names = Arrays.copyOf(names, count * 2);
+            providers = Arrays.copyOf(providers, count * 2);
+            bound = Arrays.copyOf(bound, count * 2);
+        }
+        names[count] = name;
+        providers[count] = provider;
+        bound[count] = definition == null ? null : definition.writes().get(name);
+        count++;
+        return this;
+    }
+
+    /** Bursts the cue's event called {@code name} with {@code at}. */
+    public CgCuePlaying event(String name, CgCueParameters at) {
+        manager.queue(CgCueManager.Op.EVENT, null, this, name, at);
+        return this;
+    }
+
+    /** Bursts its {@code recurring} block with {@code at}. */
+    public CgCuePlaying recur(CgCueParameters at) {
+        manager.queue(CgCueManager.Op.RECUR, null, this, null, at);
+        return this;
+    }
+
+    /** Plays {@code removal} and stops {@code looping}; it lingers until what it played ends. */
+    public void remove() {
+        manager.queue(CgCueManager.Op.REMOVE, null, this, null, params);
+    }
+
+    /** Ends it now, playing no {@code removal}. */
+    public void kill() {
+        manager.queue(CgCueManager.Op.KILL, null, this, null, params);
+    }
+
+    /** A refused prediction's end: killed, and never counted as played. */
+    public void discarded() {
+        discarded = true;
+        kill();
+    }
+
+    /** Whether it is waiting to start, playing or lingering after its removal. */
+    public boolean active() {
+        return state == State.PENDING || state == State.PLAYING || state == State.REMOVING;
+    }
+
+    /** The cue handling it, once it started; null while it waits for its cue to load. */
+    @Nullable
+    public CgCueDefinition definition() {
+        return definition;
+    }
+
+    void started(CgCueDefinition cue, CgCueEffects.Lasting effects) {
+        definition = cue;
+        lasting = effects;
+        state = State.PLAYING;
+        for (int i = 0; i < count; i++) bound[i] = cue.writes().get(names[i]);
+    }
+
+    /** Each bound provider's value this frame, into its slots. */
+    void pull(double time, float[] scratch) {
+        CgCueEffects.Lasting l = lasting;
+        if (l == null) return;
+        for (int i = 0; i < count; i++) {
+            if (bound[i] == null || bound[i].slots().isEmpty()) continue;
+            scratch[0] = scratch[1] = scratch[2] = scratch[3] = 0;
+            providers[i].write(time, scratch);
+            l.write(bound[i], scratch);
+        }
+    }
+
+    /** Back to new, its providers unbound: a recycled handle inherits nothing. */
+    void clear() {
+        Arrays.fill(names, 0, count, null);
+        Arrays.fill(providers, 0, count, null);
+        Arrays.fill(bound, 0, count, null);
+        count = 0;
+        definition = null;
+        lasting = null;
+        discarded = false;
+        params.reset();
+        state = State.ENDED;
+    }
+}
