@@ -88,7 +88,10 @@ public final class CgRichCurve {
         this.sampleEnd = sampleEnd;
     }
 
-    /** A curve from its file form: {@code { keys: [...], default, pre, post }} or {@code { samples: { range, values } }}. */
+    /**
+     * A curve from its file form: {@code { keys: [...], default, pre, post, interp }} or
+     * {@code { samples: { range, values } }}. {@code interp} is the interpolation of every key that names none.
+     */
     public static CgRichCurve decode(Object tree) {
         if (!(tree instanceof Map<?, ?> map)) throw new IllegalArgumentException("a curve is a map, not " + tree);
         float def = map.get("default") instanceof Number d ? d.floatValue() : 0f;
@@ -103,20 +106,25 @@ public final class CgRichCurve {
         }
         List<?> keys = map.get("keys") instanceof List<?> l ? l : new ArrayList<>();
         CgRichCurve c = new CgRichCurve(keys.size(), def, pre, post, false, 0f, 0f);
-        for (int i = 0; i < keys.size(); i++) c.readKey(i, (List<?>) keys.get(i));
+        int all = map.get("interp") == null ? CUBIC : interp(String.valueOf(map.get("interp")));
+        for (int i = 0; i < keys.size(); i++) c.readKey(i, (List<?>) keys.get(i), all);
         c.autoSetTangents();
         return c;
     }
 
-    private void readKey(int i, List<?> key) {
+    private static int interp(String s) {
+        return s.equals("constant") ? CONSTANT : s.equals("linear") ? LINEAR : CUBIC;
+    }
+
+    private void readKey(int i, List<?> key, int all) {
         times[i] = num(key.get(0));
         values[i] = num(key.get(1));
-        interp[i] = CUBIC;
+        interp[i] = all;
         tangentMode[i] = AUTO;
         autoTangent[i] = true;
         int at = 2;
         if (key.size() > at && key.get(at) instanceof String s) {
-            interp[i] = s.equals("constant") ? CONSTANT : s.equals("linear") ? LINEAR : CUBIC;
+            interp[i] = interp(s);
             at++;
             if (interp[i] == CUBIC && key.size() > at && key.get(at) instanceof String mode) {
                 tangentMode[i] = mode.equals("smart_auto") ? SMART_AUTO : mode.equals("user") ? USER : mode.equals("break") ? BREAK : AUTO;

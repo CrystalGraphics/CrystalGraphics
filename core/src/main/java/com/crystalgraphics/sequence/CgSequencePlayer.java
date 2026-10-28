@@ -135,7 +135,7 @@ public final class CgSequencePlayer {
             bound[t] = new boolean[data[t].length];
             conditions[t] = new byte[data[t].length];
         }
-        this.conditionReader = CgConditionKinds.reader(i -> this.roles[i]);
+        this.conditionReader = CgConditionKinds.reader(i -> this.roles[i], sequencer::isViewer);
         int most = 0;
         CgSequenceField field = definition.field();
         for (int s = 0; s < field.segments(); s++) most = Math.max(most, field.entryCount(s));
@@ -466,9 +466,10 @@ public final class CgSequencePlayer {
         }
     }
 
-    private static boolean spawnedAt(CgSequenceTrack track, int tick) {
+    private boolean spawnedAt(CgSequenceTrack track, int tick) {
         for (CgSequenceSection s : track.sections()) {
-            if (!s.active() || !s.contains(tick)) continue;
+            // A section whose condition fails spawns nothing: relation self keeps a lens effect off another's screen.
+            if (!s.active() || !s.contains(tick) || !conditionHolds(track, s)) continue;
             CgSequenceChannel c = s.channel("spawned");
             return c != null && c.bool(tick);
         }

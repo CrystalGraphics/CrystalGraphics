@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 
 import javax.annotation.Nullable;
 
@@ -17,10 +18,12 @@ import org.apache.logging.log4j.Logger;
 /**
  * The condition kinds by id: what answers a section's {@code condition} leaves. Built in: {@code crystalgraphics:character}
  * and {@code crystalgraphics:variant}, read from the role ({@link CgSequenceRole#character()},
- * {@link CgSequenceRole#variants()}); a mod adds its own.
+ * {@link CgSequenceRole#variants()}), and {@code crystalgraphics:relation}, the role to the viewer
+ * ({@code CgSequencer.viewer}); a mod adds its own.
  *
  * <pre>{@code
  * // condition: { not: { kind: crystalgraphics:variant, role: caster, is: any } }   // the base form
+ * // condition: { kind: crystalgraphics:relation, role: caster, is: [self] }       // only on the caster's own screen
  * CgConditionKinds.register("mymod:weather", (leaf, role) -> leaf.is().contains(weather.name()));
  * boolean holds = section.condition().test(CgConditionKinds.reader(player::role));
  * }</pre>
@@ -28,12 +31,18 @@ import org.apache.logging.log4j.Logger;
  * <ul>
  *   <li>A leaf of a kind nobody registered does not hold, reported once per kind: its section is not played.</li>
  *   <li>Registering an id a second time replaces its reader.</li>
+ *   <li>{@code relation} plays {@code self} alone; {@code ally} and {@code enemy} fail at load. It is answered by the
+ *       reader's viewer, not by a registered kind.</li>
  * </ul>
  */
 public final class CgConditionKinds {
 
     private static final Logger LOGGER = LogManager.getLogger("CgConditionKinds");
-    public static final String CHARACTER = "crystalgraphics:character", VARIANT = "crystalgraphics:variant";
+    public static final String CHARACTER = "crystalgraphics:character", VARIANT = "crystalgraphics:variant",
+            RELATION = "crystalgraphics:relation";
+
+    /** The {@code relation} values played; the others the format names ({@code ally}, {@code enemy}) fail at load. */
+    public static final Set<String> RELATIONS = Set.of("self");
 
     private static final Map<String, CgConditionKind> KINDS = new ConcurrentHashMap<>();
     private static final Set<String> REPORTED = ConcurrentHashMap.newKeySet();
@@ -58,9 +67,19 @@ public final class CgConditionKinds {
         KINDS.put(Objects.requireNonNull(kind, "kind"), Objects.requireNonNull(reader, "reader"));
     }
 
-    /** What answers {@code roles}' leaves. */
+    /** What answers {@code roles}' leaves; every role is the viewer's own to a {@code relation} leaf. */
     public static CgSequenceCondition.Reader reader(Roles roles) {
+        return reader(roles, target -> true);
+    }
+
+    /** What answers {@code roles}' leaves, {@code viewer} telling whether a role is the viewer's own character. */
+    public static CgSequenceCondition.Reader reader(Roles roles, Predicate<? super CgSequenceTarget> viewer) {
         return leaf -> {
+            if (leaf.kind().equals(RELATION)) {
+                // self, the one value played: the role is the viewer's own character.
+                CgSequenceTarget role = roles.role(leaf.role());
+                return role != null && viewer.test(role);
+            }
             CgConditionKind kind = KINDS.get(leaf.kind());
             if (kind == null) {
                 if (REPORTED.add(leaf.kind())) LOGGER.warn("no condition kind {}: its sections are not played", leaf.kind());

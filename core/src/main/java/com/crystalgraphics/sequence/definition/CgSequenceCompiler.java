@@ -29,6 +29,7 @@ import com.crystalgraphics.object.validate.CgIssue;
 import com.crystalgraphics.object.validate.CgValidation;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgUnits;
+import com.crystalgraphics.sequence.condition.CgConditionKinds;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition.Child;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition.CompositeSection;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition.Locator;
@@ -596,6 +597,15 @@ final class CgSequenceCompiler {
             throw fail(path + ".kind", "a condition names its kind, namespaced: not " + m.get("kind"));
         }
         int role = m.get("role") instanceof String r ? lookup(roleByName, r, path + ".role", "role named") : -1;
+        if (kind.equals(CgConditionKinds.RELATION)) {
+            if (role < 0) throw fail(path + ".role", "a relation reads a role: name one");
+            if (!(m.get("is") instanceof List<?> is) || is.isEmpty()) throw fail(path + ".is", "a relation lists its values: self");
+            for (Object v : is) {
+                if (!CgConditionKinds.RELATIONS.contains(String.valueOf(v))) {
+                    throw fail(path + ".is", "relation " + v + " is not played yet; " + CgConditionKinds.RELATIONS + " is");
+                }
+            }
+        }
         Map<Object, Object> fields = new LinkedHashMap<>(m);
         fields.keySet().removeAll(List.of("kind", "role", "is"));
         return new CgSequenceCondition.Leaf(kind, role, m.get("is") instanceof List<?> is ? is : List.of(),

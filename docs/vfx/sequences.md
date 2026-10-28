@@ -550,6 +550,15 @@ player.involved();   // true when its caster or its target is the viewer's chara
 - Unset, every play involves the viewer: right with one player, or in a preview.
 - A role of kind `character` never involves the viewer.
 
+A section can play on the caster's own screen alone, as Kakarot's lens effects do:
+
+```yaml
+- { id: s1, range: [0, 2000], condition: { kind: crystalgraphics:relation, role: caster, is: [self] } }
+```
+
+- `self` holds when the role is the viewer's character, or for everyone with no viewer set.
+- `ally` and `enemy` fail at load: they are not played yet.
+
 An effect's flash is the viewer's too. It fades on through its character's hitstop, even though the effect itself
 holds. Weigh it by a timeline on the frame clock, never from `tick`:
 
