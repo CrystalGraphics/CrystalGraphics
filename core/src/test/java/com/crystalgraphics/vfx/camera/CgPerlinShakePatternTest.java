@@ -6,7 +6,7 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 
 /**
- * CA3: the Perlin pattern samples what Unreal's does for the same offsets and settings. The expected values are worked
+ * The Perlin pattern samples what Unreal's does for the same offsets and settings. The expected values are worked
  * by hand from {@code FMath::PerlinNoise1D}: its table's first entries 63, 9, 212 and the gradient scales k/8.
  */
 public class CgPerlinShakePatternTest {

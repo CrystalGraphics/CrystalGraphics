@@ -26,7 +26,7 @@ import java.util.SplittableRandom;
  *   <li>The blend in and out (Unreal's {@code State}) is the caller's weight on the result.</li>
  * </ul>
  */
-public final class CgPerlinShakePattern {
+public final class CgPerlinShakePattern implements CgShakePattern {
 
     public static final int X = 0, Y = 1, Z = 2, PITCH = 3, YAW = 4, ROLL = 5, FOV = 6, CHANNELS = 7;
 
@@ -76,6 +76,7 @@ public final class CgPerlinShakePattern {
     }
 
     /** Advances {@code dt} seconds and writes every channel's sample into {@code out}. */
+    @Override
     public void update(float dt, float[] out) {
         for (int c = 0; c < CHANNELS; c++) {
             boolean location = c <= Z, fov = c == FOV;

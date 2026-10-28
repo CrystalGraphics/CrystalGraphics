@@ -4,12 +4,13 @@ import com.crystalgraphics.api.animation.CgSkeletonDefinition;
 import com.crystalgraphics.api.material.CgMaterialDefinitions;
 import com.crystalgraphics.api.material.CgParameterCollections;
 import com.crystalgraphics.asset.camera.CgCameraRigDefinition;
+import com.crystalgraphics.asset.camera.CgCameraShakeDefinition;
 import com.crystalgraphics.asset.curve.CgCurveDefinition;
 import com.crystalgraphics.cue.CgCueDefinition;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 
 /**
- * Registers the engine's own kind compilers: materials, parameter collections, curves, camera rigs, sequences, skeletons and cues. Runs on both sides,
+ * Registers the engine's own kind compilers: materials, parameter collections, curves, camera rigs and shakes, sequences, skeletons and cues. Runs on both sides,
  * when the process's assets are made ({@link CgVfxAssets}), so a dedicated server compiles what a client does.
  *
  * <pre>{@code
@@ -33,6 +34,7 @@ public final class CgBuiltInCompilers {
         CgParameterCollections.register();
         CgCurveDefinition.register();
         CgCameraRigDefinition.register();
+        CgCameraShakeDefinition.register();
         CgSequenceDefinition.register();
         CgSkeletonDefinition.register();
         CgCueDefinition.register();

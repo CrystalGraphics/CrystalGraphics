@@ -9,6 +9,7 @@ import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.world.CgCamera;
+import java.util.Arrays;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
@@ -45,7 +46,13 @@ final class CgShakeRuntime {
     private static boolean installed, scheduled, moving;
     static boolean enabled = true;
     private static double lastFrame = Double.NaN, cx, cy, cz;
-    private static final Vector3f ORIGIN = new Vector3f(), FORWARD = new Vector3f(), RIGHT = new Vector3f();
+    private static final Vector3f ORIGIN = new Vector3f(), FORWARD = new Vector3f(), RIGHT = new Vector3f(), UP = new Vector3f();
+
+    private static final int PLAYS = 64;
+    private static final CgShakePlay[] PLAY = new CgShakePlay[PLAYS];
+    private static int plays;
+    private static final float[] RESULT = new float[CgShakePattern.CHANNELS], SUM = new float[CgShakePattern.CHANNELS + 1],
+            HOST = new float[6];
 
     private CgShakeRuntime() {
     }
@@ -67,6 +74,24 @@ final class CgShakeRuntime {
         CgWorld.client().schedule().add(CgTickGroup.SHAKE, "crystalgraphics:shake", dt -> {
             if (installed) frame(CgRenderStage.WORLD_OPAQUE.host());
         }).whilePaused(true);
+    }
+
+    /** Plays {@code play} from this frame until it ends; past {@value #PLAYS} at once, the oldest is ended. */
+    static void add(CgShakePlay play) {
+        install();
+        if (plays == PLAYS) {
+            PLAY[0].stop(true);
+            PLAY[0].live = false;
+            PLAY[0].source().give(PLAY[0]);
+            System.arraycopy(PLAY, 1, PLAY, 0, --plays);
+        }
+        PLAY[plays++] = play;
+    }
+
+    /** The play of {@code source} running, or null: a single-instance shake restarts it. */
+    static CgShakePlay playing(CgShakeSource source) {
+        for (int k = 0; k < plays; k++) if (PLAY[k].source() == source) return PLAY[k];
+        return null;
     }
 
     /** Starts {@code shake} at the point, felt at once or when its front reaches the camera. */
@@ -137,7 +162,7 @@ final class CgShakeRuntime {
         double now = CgFrameClock.seconds();
         float dt = Double.isNaN(lastFrame) ? 0f : (float) Math.max(0.0, Math.min(now - lastFrame, 0.1));
         lastFrame = now;
-        if (MODEL.still() && waiting == 0 && kicks == 0 && punches == 0 && !moving) return;
+        if (MODEL.still() && waiting == 0 && kicks == 0 && punches == 0 && plays == 0 && !moving) return;
         CgHostEnvironment world = host.environment();
         eye(host.view());
         arrive(now);
@@ -147,10 +172,22 @@ final class CgShakeRuntime {
         float fov = kicks(now);
         float s = shake * screen;
         float px = 0f, py = 0f, pz = 0f, pYaw = 0f, pPitch = 0f, pRoll = 0f;
+        Matrix4fc view = host.view().view();
+        view.positiveZ(FORWARD).negate();
+        view.positiveX(RIGHT);
+        view.positiveY(UP);
+        float fovScale = 1f;
+        if (plays > 0) {
+            patterns(dt, screen);
+            px += SUM[0];
+            py += SUM[1];
+            pz += SUM[2];
+            pYaw += SUM[3];
+            pPitch += SUM[4];
+            pRoll += SUM[5];
+            fovScale = fovScale(host.view().projection(), SUM[6]);
+        }
         if (punches > 0) {
-            Matrix4fc view = host.view().view();
-            view.positiveZ(FORWARD).negate();
-            view.positiveX(RIGHT);
             for (int k = punches - 1; k >= 0; k--) {
                 int i = k * PUNCH_STRIDE;
                 float since = (float) (now - PUNCH[i]);
@@ -185,9 +222,40 @@ final class CgShakeRuntime {
         CgCamera.offset(
                 px + SHIFT * s * bands(now, 3), py + SHIFT * s * bands(now, 4), pz + SHIFT * s * bands(now, 5),
                 pYaw + YAW * s * bands(now, 0), pPitch + PITCH * s * bands(now, 1), pRoll + ROLL * s * bands(now * 0.7, 2),
-                1f + fov * fovEffects);
+                (1f + fov * fovEffects) * fovScale);
         // One more frame of zeros once everything has settled, so the host lets the camera go.
-        moving = shake > 0f || kicks > 0 || punches > 0;
+        moving = shake > 0f || kicks > 0 || punches > 0 || plays > 0;
+    }
+
+    /** Steps every pattern play and sums its offset, in the host's terms, into {@code SUM}; the last channel the FOV change. */
+    private static void patterns(float dt, float screen) {
+        Arrays.fill(SUM, 0f);
+        for (int k = 0; k < plays; k++) {
+            CgShakePlay play = PLAY[k];
+            if (!play.step(dt, RESULT)) {
+                System.arraycopy(PLAY, k + 1, PLAY, k, --plays - k);
+                PLAY[plays] = null;
+                k--;
+                continue;
+            }
+            float w = screen;
+            if (play.outer > 0f) {
+                double ox = cx - play.x, oy = cy - play.y, oz = cz - play.z;
+                w *= CgShakeModel.falloff(Math.sqrt(ox * ox + oy * oy + oz * oz), play.inner, play.outer, play.falloff);
+            }
+            if (w == 0f) continue;
+            CgShakePlay.toHost(RESULT, play.world, play.source().axes(), FORWARD, RIGHT, UP, HOST);
+            for (int c = 0; c < 6; c++) SUM[c] += HOST[c] * w;
+            SUM[6] += RESULT[CgShakePattern.FOV] * w;
+        }
+    }
+
+    /** An FOV change in horizontal degrees as Unreal's, as a multiplier of the host's vertical FOV. */
+    static float fovScale(Matrix4fc projection, float degrees) {
+        if (degrees == 0f) return 1f;
+        double h = 2 * Math.atan(1 / projection.m00()), v = 2 * Math.atan(1 / projection.m11());
+        double turned = Math.max(Math.toRadians(1), Math.min(Math.toRadians(179), h + Math.toRadians(degrees)));
+        return (float) (2 * Math.atan(Math.tan(turned / 2) * projection.m00() / projection.m11()) / v);
     }
 
     /** Fires each waiting play whose front has reached the camera, or has run its course. */

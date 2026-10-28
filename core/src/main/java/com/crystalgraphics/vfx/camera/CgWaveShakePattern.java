@@ -19,7 +19,7 @@ import java.util.SplittableRandom;
  *   <li>A random phase is drawn from the seed in [0, 2pi), as Unreal's {@code FRand() * 2pi}; a zero one starts at 0.</li>
  * </ul>
  */
-public final class CgWaveShakePattern {
+public final class CgWaveShakePattern implements CgShakePattern {
 
     private static final float TWO_PI = (float) (2.0 * Math.PI);
     private final float[] amplitude = {1f, 1f, 1f, 1f, 1f, 1f, 0f};
@@ -58,6 +58,7 @@ public final class CgWaveShakePattern {
     }
 
     /** Advances {@code dt} seconds and writes every channel's sample into {@code out}. */
+    @Override
     public void update(float dt, float[] out) {
         for (int c = 0; c < initial.length; c++) {
             boolean location = c <= CgPerlinShakePattern.Z, fov = c == CgPerlinShakePattern.FOV;

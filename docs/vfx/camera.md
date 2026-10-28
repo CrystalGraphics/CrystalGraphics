@@ -110,6 +110,62 @@ cameras.add(new CgCameraModifier() {
 });
 ```
 
+## Shakes
+
+A shake is a file under `cameras/shakes/`: a pattern, and where it is felt. It works like Unreal's camera shakes:
+
+```yaml
+# assets/mymod/cameras/shakes/rumble.yaml
+_v: 1
+scale: 1
+single_instance: false
+pattern:
+  kind: perlin                    # or wave, sample_hold, trauma, composite
+  duration: 0.6
+  blend_in: 0.05
+  blend_out: 0.2
+  location: { z: { amplitude: 0.05, frequency: 12 } }
+  rotation: { pitch: { amplitude: 1.5, frequency: 9 }, roll: { amplitude: 0.8, frequency: 7 } }
+play: { inner: 4, outer: 24, falloff: 1, space: camera_local }
+```
+
+```java
+CgCameraShakeDefinition rumble = (CgCameraShakeDefinition) load.definition();
+CgShakePlay play = rumble.play(x, y, z, 1f, seed);   // felt from this frame
+play.stop(false);                                     // blends out; an endless shake needs this
+```
+
+Patterns:
+
+| `kind` | Does |
+|---|---|
+| `perlin` | smooth noise on each axis |
+| `wave` | a sine on each axis; `initial_offset: zero` starts it at 0 rather than a random phase |
+| `sample_hold` | every `interval`, each axis jumps to a new value within its amplitude and holds it |
+| `trauma` | `CgCameraShake`'s trauma, punch, tremor and kick, felt as it arrives |
+| `composite` | its `children` added together; it lasts as long as the longest |
+
+Play spaces:
+
+- `camera_local`: `x` forward, `y` right, `z` up from the camera, and the turn in the camera's own frame.
+- `world`: along the world's axes, in the asset's units. The turn is about the world's axes, so a world pitch is a
+  roll for a camera looking along `y`.
+
+Things to know:
+
+- Within `inner` of the point it is felt in full. From there it fades to nothing at `outer`, raised to `falloff`.
+  An `outer` of 0 is felt everywhere.
+- A `single_instance` shake that is already playing restarts where it is asked again, rather than playing twice.
+- The player's screen-effects setting scales every shake.
+- `sequence` patterns and the `user_defined` space fail at load: they are not played yet.
+
+Your mod's own pattern implements `CgShakePattern`, and its source implements `CgShakeSource`:
+
+```java
+CgShakePlay play = new CgShakePlay(mySource, myPattern, new CgCameraShakeState(0.1f, 0.3f, 1.5f));
+play.start(x, y, z, 1f);
+```
+
 ## A sequence's camera and its post
 
 A sequence that has a camera (a `camera_animation` or `camera_cut` track) makes its unbound `post` spawnables that
