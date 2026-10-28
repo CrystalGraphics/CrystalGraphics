@@ -89,11 +89,16 @@ public final class CgParameterCollections {
             }
             return had.collection;
         }
-        CgParameterCollection collection = CgParameterCollection.of(namespace);
-        for (Param p : params) {
-            float[] d = overrides.containsKey(p.id) ? Param.values(overrides.get(p.id)) : p.defaults;
-            if (p.scalar) collection.scalar(p.name, d[0]);
-            else collection.vector(p.name, d[0], d[1], d[2], d[3]);
+        CgParameterCollection collection;
+        // Whole under the lock placing collections: a worker compiles this while the render thread's upload places
+        // every collection defined, and one placed half-declared refuses the rest
+        synchronized (CgParameterCollection.class) {
+            collection = CgParameterCollection.of(namespace);
+            for (Param p : params) {
+                float[] d = overrides.containsKey(p.id) ? Param.values(overrides.get(p.id)) : p.defaults;
+                if (p.scalar) collection.scalar(p.name, d[0]);
+                else collection.vector(p.name, d[0], d[1], d[2], d[3]);
+            }
         }
         DECLARED.put(namespace, new Declared(collection, layout, params));
         return collection;
