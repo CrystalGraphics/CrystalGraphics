@@ -71,7 +71,7 @@ public class CgSequenceSpawnTest {
     private static final class System implements CgSequenceSystem {
         final List<String> calls = new ArrayList<>();
         final CgAttachment at;
-        boolean active, destroyed;
+        boolean active, destroyed, graceful;
 
         System(CgAttachment at) {
             this.at = at;
@@ -105,6 +105,7 @@ public class CgSequenceSpawnTest {
 
         @Override public void destroy(boolean graceful) {
             destroyed = true;
+            this.graceful = graceful;
         }
 
         /** Emitters e01 and e02, each a stand-in of its own. */
@@ -129,6 +130,26 @@ public class CgSequenceSpawnTest {
 
     private static CgSequenceDefinition compile() {
         return CgSequenceDefinition.compile(CgAssetData.of("mymod:nova", CgSequenceKinds.SEQUENCE, (Map<?, ?>) CgAssetYaml.read(SEQUENCE), null));
+    }
+
+    /** A stopped play's systems end their own way, as an interrupted montage's; a killed one's at once. */
+    @Test
+    public void aStoppedPlayEndsItsSystemsGracefullyAKilledOneAtOnce() {
+        CgSequencer sequencer = new CgWorld(false).add(new CgSequencer());
+        Map<CgSequencePlayer, System> charges = new HashMap<>();
+        sequencer.spawner("system", (player, spawnable, at) -> {
+            System s = new System(at);
+            if (spawnable.name().equals("charge")) charges.put(player, s);
+            return s;
+        });
+        CgSequencePlayer stopped = sequencer.play(compile(), Map.of("caster", new Caster()));
+        CgSequencePlayer killed = sequencer.play(compile(), Map.of("caster", new Caster()));
+        sequencer.evaluate(0.25f);
+        stopped.stop();
+        killed.kill();
+        sequencer.evaluate(0.05f);
+        assertTrue(charges.get(stopped).destroyed && charges.get(stopped).graceful);
+        assertTrue(charges.get(killed).destroyed && !charges.get(killed).graceful);
     }
 
     @Test

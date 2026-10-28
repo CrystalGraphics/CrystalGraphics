@@ -94,7 +94,7 @@ public final class CgSequencePlayer {
     private float rate = 1f;
     private int revision;
     private long seed;
-    private boolean finished, stopped, jump, seek;
+    private boolean finished, stopped, killed, jump, seek;
     /** Per child of the definition: an animation section's notifies playing now, else null; and its unwrapped clip time. */
     private final CgSequencePlayer[] notifies;
     private final double[] notifiesAt;
@@ -383,9 +383,18 @@ public final class CgSequencePlayer {
         return false;
     }
 
-    /** Takes it out of its sequencer at the next evaluation. */
+    /**
+     * Takes it out of its sequencer at the next evaluation; what it spawned ends its own way (a system's particles play
+     * out), as an interrupted montage's notifies end.
+     */
     public void stop() {
         stopped = true;
+    }
+
+    /** As {@link #stop()}, but what it and its notify sequences spawned ends at once: a restart that should start clean. */
+    public void kill() {
+        stopped = true;
+        killed = true;
     }
 
     public boolean stopped() {
@@ -518,11 +527,14 @@ public final class CgSequencePlayer {
     /** Ends every spawned object, as Unreal's spawn register does at a play's end ({@code CleanUp}). */
     void cleanUp() {
         for (int i = 0; i < notifies.length; i++) {
-            if (notifies[i] != null) notifies[i].stop();
+            if (notifies[i] != null) {
+                if (killed) notifies[i].kill();
+                else notifies[i].stop();
+            }
             notifies[i] = null;
         }
         for (int i = 0; i < spawnables.length; i++) {
-            if (spawnables[i] instanceof CgSequenceSpawned obj) despawn(i, obj, true);
+            if (spawnables[i] instanceof CgSequenceSpawned obj) despawn(i, obj, !killed);
         }
     }
 
