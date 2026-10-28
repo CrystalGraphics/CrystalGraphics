@@ -256,6 +256,21 @@ CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));  
   ```java
   CgPostStack.get().volume(0, new CgPostSettings().tonemap().filmHeal(0.18f).vignette(0.5f));   // a stage's look
   ```
+- **Unreal's colour grading**: saturation, contrast, gamma, gain and offset for the whole picture and for its shadows,
+  midtones and highlights, the white balance, and the scene tint, graded in ACEScg as Unreal's combined LUT grades
+  (`CgColorGrade`). Without the tonemapper the composite grades before the roll to white; with it, the table holds the
+  grade. A neutral grade switches the pass off, so a host's pixels stay byte for byte. Each control is its own field:
+
+  ```java
+  CgPostStack.get().volume(0, new CgPostSettings()
+          .grade(Region.SHADOWS, Control.GAIN, 0.8f, 0.9f, 1.2f, 1f)      // cool shadows
+          .grade(Region.GLOBAL, Control.SATURATION, 1f, 1f, 1f, 0.7f)    // the whole picture less saturated
+          .whiteBalance(5500f, 0f).tint(0xFFFFF0E0, 1f));
+  ```
+
+  ```yaml
+  post: { shadows: { gain: [0.8, 0.9, 1.2, 1] }, colour: { saturation: [1, 1, 1, 0.7], tint: [1, 0.94, 0.88] } }
+  ```
 - **An impact frame is a `CgImpactFrame`**: a look from the picture alone (negative, black and white, focus lines over
   it) or a drawn one: two-tone paper, the subject (what the effect glows with, `CgFrameKeys.SUBJECT`) filled in ink,
   focus lines, hatching off its edge, a flash star with a cross, and a jitter that redraws it per beat. `CgImpact`
