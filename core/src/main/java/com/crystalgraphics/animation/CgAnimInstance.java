@@ -5,7 +5,10 @@ import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgPose;
 import com.crystalgraphics.api.animation.CgSocket;
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
+import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.world.CgAttachment;
@@ -17,8 +20,11 @@ import javax.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * A skeletal mesh posed by this engine: the clips it plays as sections on a timeline of its own, and each frame the
@@ -87,11 +93,23 @@ public final class CgAnimInstance {
     private float overlayMaxDistance;
     /** Its CustomDepth stencil value and write mask; -1 for not drawn there. */
     private int customDepthStencil = -1, customDepthMask;
+    /** Which slots hold its own copy of a material (Unreal's dynamic material instances), what {@link #scalar} sets. */
+    private final boolean[] own;
+    /** Per scalar name: which own slots declare it, and each one's default; made the first time the name is set. */
+    private final Map<String, float[]> scalarDefaults = new HashMap<>();
+    private final CgMaterialCurves curves = new CgMaterialCurves();
+    /** The clip and its time behind each of this frame's blended poses, for its curves. */
+    private CgAnimSequence[] sampledClips = new CgAnimSequence[0];
+    private float[] sampledTimes = new float[0];
+    private final ScalarWriter writer = new ScalarWriter();
+    /** Its layered slots, blended over the body in the order added (Unreal's Layered blend per bone nodes). */
+    private final List<CgAnimLayer> layers = new ArrayList<>();
 
     public CgAnimInstance(CgSkeletalMesh mesh) {
         this.mesh = Objects.requireNonNull(mesh, "mesh");
         this.materials = new CgMaterial[mesh.mesh().submeshCount()];
         this.slotOverlays = new CgMaterial[materials.length];
+        this.own = new boolean[materials.length];
         CgAABB box = mesh.mesh().bounds(new CgAABB());
         this.meshRadius = (float) Math.sqrt(box.halfX() * box.halfX() + box.halfY() * box.halfY() + box.halfZ() * box.halfZ());
         this.pose = new CgPose(mesh.skeleton());
@@ -148,6 +166,8 @@ public final class CgAnimInstance {
         scratch = Arrays.copyOf(scratch, n);
         for (int i = 0; i < n; i++) if (scratch[i] == null) scratch[i] = new CgPose(mesh.skeleton());
         weights = Arrays.copyOf(weights, n);
+        sampledClips = Arrays.copyOf(sampledClips, n);
+        sampledTimes = Arrays.copyOf(sampledTimes, n);
     }
 
     public CgAnimInstance remove(CgAnimSection section) {
@@ -218,12 +238,16 @@ public final class CgAnimInstance {
                 CgAnimSection section = sections.get(s);
                 float w = section.weight(time);
                 if (w <= 0f) continue;
-                section.sequence().sample(scratch[n].rest(), section.animationTime(time));
+                float at = section.animationTime(time);
+                section.sequence().sample(scratch[n].rest(), at);
+                sampledClips[n] = section.sequence();
+                sampledTimes[n] = at;
                 weights[n++] = w;
                 total += w;
             }
             if (n == 0) {
                 scratch[0].rest();
+                sampledClips[n] = null;
                 weights[n++] = source;
             } else {
                 for (int i = 0; i < n; i++) weights[i] = weights[i] / total * source;
@@ -233,8 +257,14 @@ public final class CgAnimInstance {
         for (int i = 0; i < slotCount; i++) {
             if (slotWeights[i] <= 0f) continue;
             slotClips[i].sample(scratch[n].rest(), slotTimes[i]);
+            sampledClips[n] = slotClips[i];
+            sampledTimes[n] = slotTimes[i];
             weights[n++] = slotWeights[i] * scale;
         }
+        // Curves blend with the pose's weights (Unreal's BlendPosesTogether blends a pose's curves with it)
+        curves.begin();
+        for (int i = 0; i < n; i++) if (sampledClips[i] != null) curves.add(sampledClips[i], sampledTimes[i], weights[i]);
+        Arrays.fill(sampledClips, 0, n, null);
         Arrays.fill(slotClips, 0, slotCount, null);
         slotCount = 0;
         if (n == 0) {
@@ -242,6 +272,7 @@ public final class CgAnimInstance {
         } else {
             pose.blend(scratch, weights, n);
         }
+        for (int i = 0; i < layers.size(); i++) layers.get(i).apply(time, pose, curves);
         pose.resolve();
         pose.skinning(mesh, skinning);
         return this;
@@ -303,13 +334,106 @@ public final class CgAnimInstance {
      */
     public CgAnimInstance material(int slot, @Nullable CgMaterial material) {
         materials[slot] = material;
+        own[slot] = false;
+        scalarDefaults.clear();
         return this;
+    }
+
+    /**
+     * Draws submesh {@code slot} in a copy of {@code definition}'s material of its own, Unreal's dynamic material
+     * instance: what {@link #scalar} and its clips' material curves set, so they change this instance alone.
+     *
+     * <pre>{@code
+     * for (int s = 0; s < goku.materialSlots(); s++) goku.material(s, kitMaterials.get(s));   // his own copies
+     * goku.scalar("OutlineColorType", 1f);                                                     // on each that declares it
+     * }</pre>
+     */
+    public CgAnimInstance material(int slot, CgMaterialDefinition definition) {
+        materials[slot] = CgMaterial.newInstance(definition, null);
+        own[slot] = true;
+        scalarDefaults.clear();
+        return this;
+    }
+
+    /**
+     * A slot named {@code slot} blended over {@code bone}'s branch, the new one blended over those before it
+     * ({@link CgAnimLayer}). Kakarot's face: {@code layer("FacialSlot", "facialbase", 1)}.
+     *
+     * @throws IllegalArgumentException where the skeleton has no {@code bone}, or a layer of that slot exists
+     */
+    public CgAnimLayer layer(String slot, String bone, int blendDepth) {
+        if (layer(slot) != null) throw new IllegalArgumentException(this + " has a layer " + slot + " already");
+        CgAnimLayer layer = new CgAnimLayer(mesh.skeleton(), slot, bone, blendDepth);
+        layers.add(layer);
+        return layer;
+    }
+
+    /** Its layer for slot {@code slot}, or null: where a sequence's section on that slot plays. */
+    @Nullable
+    public CgAnimLayer layer(String slot) {
+        for (int i = 0; i < layers.size(); i++) if (layers.get(i).slot().equals(slot)) return layers.get(i);
+        return null;
     }
 
     /** Submesh {@code slot}'s material, or null where none is set. */
     @Nullable
     public CgMaterial material(int slot) {
         return materials[slot];
+    }
+
+    /**
+     * Sets the scalar {@code name} to {@code value} on each of its own materials that declares it: Unreal's
+     * {@code SetScalarParameterValueOnMaterials} (MeshComponent.cpp:621). A material set with {@link
+     * #material(int, CgMaterial)} is shared and left alone. Client world's thread.
+     */
+    public void scalar(String name, float value) {
+        float[] defaults = declared(name);
+        writer.name = name;
+        writer.value = value;
+        for (int s = 0; s < materials.length; s++) if (!Float.isNaN(defaults[s])) materials[s].applyProperties(writer);
+    }
+
+    /** Puts the scalar {@code name} back to each own material's default, as a curve no clip keys any more does. */
+    public void resetScalar(String name) {
+        float[] defaults = declared(name);
+        writer.name = name;
+        for (int s = 0; s < materials.length; s++) {
+            if (Float.isNaN(defaults[s])) continue;
+            writer.value = defaults[s];
+            materials[s].applyProperties(writer);
+        }
+    }
+
+    /** Each slot's default for {@code name} where its own material declares it, NaN where not: found once a name. */
+    private float[] declared(String name) {
+        float[] defaults = scalarDefaults.get(name);
+        if (defaults != null) return defaults;
+        defaults = new float[materials.length];
+        Arrays.fill(defaults, Float.NaN);
+        for (int s = 0; s < materials.length; s++) {
+            if (!own[s] || materials[s] == null) continue;
+            for (CgMaterialProperty p : materials[s].properties()) {
+                if (p.getName().equals(name) && !p.getType().isSampler()) defaults[s] = p.getFloatValue()[0];
+            }
+        }
+        scalarDefaults.put(name, defaults);
+        return defaults;
+    }
+
+    /** Applies this frame's material curves: after {@code POSE}, on the client world's thread ({@link CgAnimation}). */
+    void applyCurves() {
+        curves.apply(this);
+    }
+
+    /** Writes one scalar; reused, so setting one allocates nothing. */
+    private static final class ScalarWriter implements Consumer<CgShaderBindings> {
+        String name;
+        float value;
+
+        @Override
+        public void accept(CgShaderBindings b) {
+            b.set1f(name, value);
+        }
     }
 
     /** How many material slots it has: one a submesh of its mesh. */

@@ -15,11 +15,11 @@ import java.util.List;
  * }</pre>
  *
  * <pre>
- * "CGAN"  u16 version (1)  u16 0  u32 sequences
+ * "CGAN"  u16 version (2)  u16 0  u32 sequences
  * per sequence: string name, f64 frame rate, u32 keys, u32 tracks, u32 curves
  *   per track: string bone, u8 which channels hold every key (1 translation, 2 rotation, 4 scale),
  *              then translations, rotations, scales: f32, 3, 4 and 3 a key, one key or every key
- *   per curve: string name, u8 1 if it holds every key, then its f32 keys
+ *   per curve: string name, u8 what it drives (CgAnimSequence.DRIVES_*), u8 1 if it holds every key, then its f32 keys
  * little-endian; a string is u16 length and UTF-8
  * </pre>
  *
@@ -30,7 +30,7 @@ import java.util.List;
  */
 public final class CgCookedAnimation {
 
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
 
     private CgCookedAnimation() {
     }
@@ -51,7 +51,7 @@ public final class CgCookedAnimation {
                 out.floats(tr).floats(ro).floats(sc);
             }
             for (int c = 0; c < s.curveCount(); c++) {
-                out.string(s.curveName(c)).u8(s.curves[c].length > 1 ? 1 : 0).floats(s.curves[c]);
+                out.string(s.curveName(c)).u8(s.curveDrives(c)).u8(s.curves[c].length > 1 ? 1 : 0).floats(s.curves[c]);
             }
         }
         return out.toBytes();
@@ -73,6 +73,7 @@ public final class CgCookedAnimation {
             String[] bones = new String[tracks], curveNames = new String[curves];
             float[][] translations = new float[tracks][], rotations = new float[tracks][], scales = new float[tracks][],
                     curveKeys = new float[curves][];
+            int[] drives = new int[curves];
             for (int t = 0; t < tracks; t++) {
                 bones[t] = in.string();
                 int full = in.u8();
@@ -82,9 +83,10 @@ public final class CgCookedAnimation {
             }
             for (int c = 0; c < curves; c++) {
                 curveNames[c] = in.string();
+                drives[c] = in.u8();
                 curveKeys[c] = in.floats(in.u8() != 0 ? keys : 1);
             }
-            sequences.add(new CgAnimSequence(name, rate, keys, bones, translations, rotations, scales, curveNames, curveKeys));
+            sequences.add(new CgAnimSequence(name, rate, keys, bones, translations, rotations, scales, curveNames, curveKeys, drives));
         }
         if (!in.atEnd()) throw new IllegalArgumentException("bytes past the last of " + count + " sequences");
         return sequences;

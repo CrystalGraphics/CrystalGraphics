@@ -130,6 +130,37 @@ public final class CgPose {
         return this;
     }
 
+    /**
+     * Each bone moved toward {@code layer}'s by its weight in {@code boneWeights}, local to its parent: Unreal's layered
+     * blend per bone in local space ({@code FAnimationRuntime::BlendPosesPerBoneFilter}). A weight of 0 keeps this
+     * pose's bone, 1 takes the layer's.
+     *
+     * <pre>{@code
+     * body.blendBones(face, faceWeights);   // the face's bones from the face pose, the rest from the body
+     * }</pre>
+     */
+    public CgPose blendBones(CgPose layer, float[] boneWeights) {
+        requireSame(layer);
+        float[] other = layer.local;
+        for (int b = 0, at = 0; b < boneWeights.length; b++, at += REST) {
+            float w = boneWeights[b];
+            if (w <= ZERO_WEIGHT) continue;
+            if (w >= 1f - ZERO_WEIGHT) {
+                System.arraycopy(other, at, local, at, REST);
+                continue;
+            }
+            float keep = 1f - w;
+            for (int c = 0; c < 3; c++) local[at + c] = local[at + c] * keep + other[at + c] * w;
+            float dot = local[at + 3] * other[at + 3] + local[at + 4] * other[at + 4] + local[at + 5] * other[at + 5]
+                    + local[at + 6] * other[at + 6];
+            float sw = dot >= 0f ? w : -w;
+            for (int c = 3; c < 7; c++) local[at + c] = local[at + c] * keep + other[at + c] * sw;
+            normalizeRotation(local, at + 3);
+            for (int c = 7; c < 10; c++) local[at + c] = local[at + c] * keep + other[at + c] * w;
+        }
+        return this;
+    }
+
     /** Each bone's transform in the skeleton's space from the local pose, parents first (FillUpComponentSpaceTransforms). */
     public CgPose resolve() {
         for (int b = 0; b < component.length; b++) {

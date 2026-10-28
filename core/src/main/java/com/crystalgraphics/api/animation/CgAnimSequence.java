@@ -52,12 +52,24 @@ public final class CgAnimSequence {
     private final String[] trackBones;
     /** Per track: translations (3 a key), rotations (4: x, y, z, w), scales (3); each one key or every frame. */
     final float[][] translations, rotations, scales;
+    /** What a curve drives: a morph target's weight, the default. */
+    public static final int DRIVES_MORPH = 0;
+    /**
+     * What a curve drives: the material scalar of its name on every material of the mesh that declares it, as Unreal's
+     * material curves do ({@code USkeletalMeshComponent::ApplyAnimationCurvesToComponent}).
+     */
+    public static final int DRIVES_MATERIAL = 1;
+    /** What a curve drives: nothing the engine applies, a value the role's own logic may read. */
+    public static final int DRIVES_NONE = 2;
+
     private final String[] curveNames;
     final float[][] curves;
+    final int[] curveDrives;
     private final Map<String, Integer> trackIndex = new HashMap<>(), curveIndex = new HashMap<>();
 
     CgAnimSequence(String name, double frameRate, int frameCount, String[] trackBones, float[][] translations,
-                   float[][] rotations, float[][] scales, String[] curveNames, float[][] curves) {
+                   float[][] rotations, float[][] scales, String[] curveNames, float[][] curves, int[] curveDrives) {
+        this.curveDrives = curveDrives;
         this.name = name;
         this.frameRate = frameRate;
         this.frameCount = frameCount;
@@ -158,6 +170,39 @@ public final class CgAnimSequence {
     public float curveValue(int curve, int frame) {
         float[] k = curves[curve];
         return k[k.length == 1 ? 0 : frame];
+    }
+
+    /** What the curve drives: {@link #DRIVES_MORPH} or {@link #DRIVES_MATERIAL}. */
+    public int curveDrives(int curve) {
+        return curveDrives[curve];
+    }
+
+    /**
+     * This sequence with one more curve, {@code keys} one or {@link #frameCount()} values: what a loader adds from a
+     * clip's sidecar ({@code curves:} beside its glb).
+     *
+     * @throws IllegalArgumentException as {@link Builder#curve(String, float[], int)} does
+     */
+    public CgAnimSequence withCurve(String curve, float[] keys, int drives) {
+        if (curveIndex.containsKey(curve)) throw new IllegalArgumentException(name + " has curve " + curve + " twice");
+        Builder b = new Builder(name, frameRate, frameCount);
+        for (int c = 0; c < curveNames.length; c++) b.curve(curveNames[c], curves[c], curveDrives[c]);
+        b.curve(curve, keys, drives);
+        float[][] k = b.curves.toArray(new float[0][]);
+        int[] d = new int[b.drives.size()];
+        for (int i = 0; i < d.length; i++) d[i] = b.drives.get(i);
+        return new CgAnimSequence(name, frameRate, frameCount, trackBones, translations, rotations, scales,
+                b.curveNames.toArray(new String[0]), k, d);
+    }
+
+    /** The curve's value at {@code time} seconds: between its keys as {@link #sample} takes a bone's, clamped to its ends. */
+    public float curveAt(int curve, float time) {
+        float[] k = curves[curve];
+        if (k.length == 1 || frameCount < 2 || time <= 0f) return k[0];
+        if (time >= duration()) return k[frameCount - 1];
+        float key = time / duration() * (frameCount - 1);
+        int a = Math.min((int) Math.floor(key), frameCount - 1), b = Math.min(a + 1, frameCount - 1);
+        return k[a] + (k[b] - k[a]) * (key - (float) Math.floor(key));
     }
 
     /**
@@ -269,7 +314,8 @@ public final class CgAnimSequence {
         return name.equals(s.name) && frameRate == s.frameRate && frameCount == s.frameCount
                 && Arrays.equals(trackBones, s.trackBones) && Arrays.deepEquals(translations, s.translations)
                 && Arrays.deepEquals(rotations, s.rotations) && Arrays.deepEquals(scales, s.scales)
-                && Arrays.equals(curveNames, s.curveNames) && Arrays.deepEquals(curves, s.curves);
+                && Arrays.equals(curveNames, s.curveNames) && Arrays.deepEquals(curves, s.curves)
+                && Arrays.equals(curveDrives, s.curveDrives);
     }
 
     @Override
@@ -292,6 +338,7 @@ public final class CgAnimSequence {
         private final List<String> bones = new ArrayList<>(), curveNames = new ArrayList<>();
         private final List<float[]> translations = new ArrayList<>(), rotations = new ArrayList<>(), scales = new ArrayList<>(),
                 curves = new ArrayList<>();
+        private final List<Integer> drives = new ArrayList<>();
 
         private Builder(String name, double frameRate, int frameCount) {
             if (name == null) throw new IllegalArgumentException("a sequence has a name");
@@ -323,16 +370,32 @@ public final class CgAnimSequence {
 
         /** A float curve over the frames, one key or {@code frameCount}: a morph target's weight, by its name. */
         public Builder curve(String curve, float[] keys) {
+            return curve(curve, keys, DRIVES_MORPH);
+        }
+
+        /**
+         * A float curve over the frames driving {@code drives}: {@link #DRIVES_MORPH} a morph target's weight,
+         * {@link #DRIVES_MATERIAL} the material scalar of its name.
+         *
+         * <pre>{@code
+         * builder.curve("eye_l_v_scale", blinkKeys, CgAnimSequence.DRIVES_MATERIAL);   // the eye texture squashed shut
+         * }</pre>
+         */
+        public Builder curve(String curve, float[] keys, int drives) {
             if (curveNames.contains(curve)) throw new IllegalArgumentException(name + " has curve " + curve + " twice");
+            if (drives < DRIVES_MORPH || drives > DRIVES_NONE) throw new IllegalArgumentException(name + ": curve " + curve + " drives " + drives);
             curveNames.add(curve);
             curves.add(trivial(keys(curve, keys, 1).clone(), 1, 0f));
+            this.drives.add(drives);
             return this;
         }
 
         public CgAnimSequence build() {
+            int[] d = new int[drives.size()];
+            for (int i = 0; i < d.length; i++) d[i] = drives.get(i);
             return new CgAnimSequence(name, frameRate, frameCount, bones.toArray(new String[0]),
                     translations.toArray(new float[0][]), rotations.toArray(new float[0][]), scales.toArray(new float[0][]),
-                    curveNames.toArray(new String[0]), curves.toArray(new float[0][]));
+                    curveNames.toArray(new String[0]), curves.toArray(new float[0][]), d);
         }
 
         private float[] keys(String what, float[] keys, int width) {

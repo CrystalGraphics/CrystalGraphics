@@ -107,11 +107,19 @@ public final class CgLookKinds {
             .register();
 
     /** {@code models/}: the settings beside a glTF of the same path. */
+    /** A clip's float curve (Unreal's {@code FFloatCurve}): its keys, `[time, value, interp, arrive?, leave?]`. */
+    static final CgType CLIP_CURVE = CgTypes.struct("crystalgraphics:mesh.curve")
+            .property("name", STRING).required()
+            .property("drives", CgValueType.enumOf("material", "morph", "none"))
+            .property("keys", CgValueType.listOf(CgValueType.listOf(CgValueType.VALUE)))
+            .register();
+
     public static final CgType MESH = CgTypes.kind("crystalgraphics:mesh").folder("models").version(1)
             .property("lods", CgValueType.listOf(CgValueType.struct(LOD))).flags(CgPropertyFlag.STRUCTURAL)
             .property("bounds_scale", FLOAT).defaultValue(1.0)
             .property("skeleton", hard("skeleton"))
             .property("springs", hard("springs"))
+            .property("curves", CgValueType.listOf(CgValueType.struct(CLIP_CURVE)))
             .register();
 
     // ── Parameters, curve ────────────────────────────────────────────────────────────────

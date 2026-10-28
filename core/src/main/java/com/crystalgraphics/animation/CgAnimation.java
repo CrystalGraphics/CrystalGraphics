@@ -86,6 +86,7 @@ public final class CgAnimation extends CgWorldSubsystem {
         for (int i = 0; i < n; i++) {
             CgAnimInstance instance = instances.get(i);
             instance.palette(CgBonePalettes.write(instance.skinning(), instance.skinning().length));
+            instance.applyCurves();   // on this thread, as Unreal applies them after evaluation
         }
     }
 }

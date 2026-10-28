@@ -3,6 +3,7 @@ package com.crystalgraphics.api.mesh;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgCookedAnimation;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.io.CgIO;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -11,6 +12,7 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -213,11 +215,84 @@ public final class CgMeshLoader {
     private static List<CgAnimSequence> readSequences(String path) {
         try (InputStream in = CgIO.openStream(path)) {
             if (in == null) throw new IOException("not found: " + path);
-            return Collections.unmodifiableList(CgCookedAnimation.is(path) ? CgCookedAnimation.read(in.readAllBytes())
-                    : CgGltfLoader.readSequences(in, assetName(path)));
+            if (CgCookedAnimation.is(path)) return Collections.unmodifiableList(CgCookedAnimation.read(in.readAllBytes()));
+            return Collections.unmodifiableList(withSidecarCurves(path, CgGltfLoader.readSequences(in, assetName(path))));
         } catch (IOException e) {
             throw new UncheckedIOException("reading sequences " + path, e);
         }
+    }
+
+    /**
+     * The clip's float curves from its sidecar ({@code clip.yaml} beside {@code clip.glb}, a {@code mesh} asset's
+     * {@code curves}: Unreal's {@code FFloatCurve}s, which a glTF file cannot carry), baked at each sequence's frames.
+     */
+    private static List<CgAnimSequence> withSidecarCurves(String path, List<CgAnimSequence> sequences) throws IOException {
+        int dot = path.lastIndexOf('.');
+        String sidecar = path.substring(0, dot) + ".yaml";
+        String text = CgIO.loadSource(sidecar);
+        if (text == null || !(CgAssetYaml.read(text) instanceof Map<?, ?> tree) || !(tree.get("curves") instanceof List<?> curves)) {
+            return sequences;
+        }
+        List<CgAnimSequence> out = new ArrayList<>(sequences.size());
+        for (CgAnimSequence s : sequences) {
+            for (Object c : curves) {
+                if (!(c instanceof Map<?, ?> curve) || !(curve.get("name") instanceof String name)) continue;
+                int drives = switch (String.valueOf(curve.get("drives"))) {
+                    case "material" -> CgAnimSequence.DRIVES_MATERIAL;
+                    case "morph" -> CgAnimSequence.DRIVES_MORPH;
+                    default -> CgAnimSequence.DRIVES_NONE;
+                };
+                List<?> keys = curve.get("keys") instanceof List<?> k ? k : List.of();
+                if (keys.isEmpty() || s.curve(name) >= 0) continue;
+                s = s.withCurve(name, bake(keys, s.frameRate(), s.frameCount()), drives);
+            }
+            out.add(s);
+        }
+        return out;
+    }
+
+    /**
+     * A curve's keys ({@code [time, value, interp, arrive?, leave?]}) at each of {@code frames} frames: Unreal's
+     * {@code FRichCurve::Eval} (RichCurve.cpp): {@code constant} holds the key before, {@code linear} lerps, {@code cubic}
+     * is the Bezier whose inner points lie a third of the gap along the leave and arrive tangents; held past either end.
+     */
+    static float[] bake(List<?> keys, double rate, int frames) {
+        int n = keys.size();
+        float[] t = new float[n], v = new float[n], arrive = new float[n], leave = new float[n];
+        String[] interp = new String[n];
+        for (int i = 0; i < n; i++) {
+            List<?> k = (List<?>) keys.get(i);
+            t[i] = ((Number) k.get(0)).floatValue();
+            v[i] = ((Number) k.get(1)).floatValue();
+            interp[i] = k.size() > 2 ? String.valueOf(k.get(2)) : "linear";
+            arrive[i] = k.size() > 3 ? ((Number) k.get(3)).floatValue() : 0f;
+            leave[i] = k.size() > 4 ? ((Number) k.get(4)).floatValue() : 0f;
+        }
+        float[] out = new float[frames];
+        for (int f = 0; f < frames; f++) {
+            float time = (float) (f / rate);
+            if (time <= t[0]) {
+                out[f] = v[0];
+                continue;
+            }
+            if (time >= t[n - 1]) {
+                out[f] = v[n - 1];
+                continue;
+            }
+            int a = 0;
+            while (a + 1 < n && t[a + 1] <= time) a++;
+            int b = a + 1;
+            float gap = t[b] - t[a], alpha = (time - t[a]) / gap;
+            out[f] = switch (interp[a]) {
+                case "constant" -> v[a];
+                case "cubic" -> {
+                    float p1 = v[a] + leave[a] * gap / 3f, p2 = v[b] - arrive[b] * gap / 3f, u = 1f - alpha;
+                    yield u * u * u * v[a] + 3f * u * u * alpha * p1 + 3f * u * alpha * alpha * p2 + alpha * alpha * alpha * v[b];
+                }
+                default -> v[a] + (v[b] - v[a]) * alpha;
+            };
+        }
+        return out;
     }
 
     /** The file's name without folder or extension: what Unreal prefixes the names of a file's unnamed objects with. */

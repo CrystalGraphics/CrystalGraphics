@@ -4,6 +4,7 @@ import java.util.Locale;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.animation.CgAnimLayer;
 import com.crystalgraphics.api.animation.CgAnimSection;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.asset.tree.CgAssetException;
@@ -58,6 +59,9 @@ public final class CgSequenceAnimationEvaluator implements CgSequenceEvaluator {
         if (section == null || !(player.data(track, section) instanceof CgAnimSection clip)
                 || !(player.target(track) instanceof CgSequenceSkeletal skeletal)) return;
         double seconds = tick * player.definition().seconds(1);
-        skeletal.instance().slot(clip.sequence(), clip.animationTime(seconds), section.weight(tick));
+        // A section on a slot the instance layers (Kakarot's FacialSlot) plays there; any other in its montage slot
+        CgAnimLayer layer = section.fields().get("slot") instanceof String slot ? skeletal.instance().layer(slot) : null;
+        if (layer != null) layer.slot(clip.sequence(), clip.animationTime(seconds), section.weight(tick));
+        else skeletal.instance().slot(clip.sequence(), clip.animationTime(seconds), section.weight(tick));
     }
 }
