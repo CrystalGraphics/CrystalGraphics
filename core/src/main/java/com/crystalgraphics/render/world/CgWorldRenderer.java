@@ -173,6 +173,12 @@ public final class CgWorldRenderer {
             .color(0, CgTextureType.R8).depth(CgTextureType.DEPTH32F_STENCIL8).build();
     private static final CgLoad CUSTOM_DEPTH_CLEAR = CgLoad.clear(0f, 0f, 0f, 0f).andDepth(1.0).andStencil(0);
     private static final int GPU_CUSTOM_DEPTH = CgGpuTrace.name("world.customDepth");
+    /**
+     * Custom data cleared to DefaultLit's shading model (packed x = 256 * model): a pixel the host drew is a lit surface,
+     * as every world pixel is in Unreal's GBuffer, so a post material testing for Unlit grades the host's world too.
+     */
+    private static final CgLoad HOST_LIT_CLEAR = CgLoad.clear(256f, 0f, 0f, 0f);
+    private static final CgLoad HOST_LIT_DEPTH_CLEAR = CgLoad.clear(256f, 0f, 0f, 0f).andDepth(1.0).andStencil(0);
     static final String CUSTOM_STENCIL_SHADER = "crystalgraphics:shaders/world_custom_stencil.shader";
     /** Custom data and the shading model, packed as {@code handed_scene.glsl} reads them: two exact floats. */
     private static final CgFrameBufferFormat CUSTOM_DATA_FORMAT = CgFrameBufferFormat.builder("cg_custom_data")
@@ -2209,7 +2215,7 @@ public final class CgWorldRenderer {
                             .builder("cg_custom_data_depth").color(0, CgTextureType.RG32F).depth(depth).build()))
                     : CgGraphTexture.besideCurrentDepth("cg_custom_data", new CgTextureDesc(w, h, CUSTOM_DATA_FORMAT));
         }
-        CgRasterPass pass = recording.raster(customDataTarget, ownDepth ? CUSTOM_DEPTH_CLEAR : CLEAR, stage.constants(), null,
+        CgRasterPass pass = recording.raster(customDataTarget, ownDepth ? HOST_LIT_DEPTH_CLEAR : HOST_LIT_CLEAR, stage.constants(), null,
                 CgOrder.SORTED).timed(GPU_CUSTOM_DATA);
         CgChunkBuilder chunks = recording.chunks().begin();
         if (ownDepth) {

@@ -853,7 +853,9 @@ uvec2 model = CG_SHADING_MODEL_ID(uv);                // (model, type)
   the normals and custom data while one naming them is active. A firing that published none reads 0 throughout.
 - Each read is the pixel at `uv`, unfiltered.
 - `CG_CUSTOM_EYE_DEPTH` is not handed yet and still fails to link, naming the read.
-- Host-drawn pixels (terrain, entities) have no normal, data or model: rebuild their normal from depth.
+- Host-drawn pixels (terrain, entities, the sky) have no normal or data, and read as DefaultLit (model 1), as a lit
+  world pixel does in Unreal's GBuffer: a post material skipping Unlit pixels treats the host's world as lit.
+  Rebuild their normal from depth.
 - `--mode=custom-depth` is the gate.
 
 ---
