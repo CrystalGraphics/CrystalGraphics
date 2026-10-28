@@ -69,7 +69,9 @@ import java.util.function.Consumer;
  * }</pre>
  *
  * <ul>
- *   <li>{@code AFTER_WORLD} draws into the scene, before every look: linear HDR under {@code CgWorldRenderer.hdrScene}.
+ *   <li>{@code BEFORE_TRANSLUCENCY} draws into the lit opaque scene before any transparent draw, so a glow is drawn
+ *       over its result (Unreal's {@code BL_BeforeTranslucency}); it reads custom depth, normals and custom data.
+ *       {@code AFTER_WORLD} draws into the scene, before every look: linear HDR under {@code CgWorldRenderer.hdrScene}.
  *       {@code AFTER_COMPOSITE} draws over the final picture, in the target's encoding. {@code BEFORE_COMPOSITE} is
  *       refused: it feeds the composite.</li>
  *   <li>A shader reading {@code cg_SceneColor} or {@code cg_DepthBuffer} gets the target as it stands; tag it
@@ -110,7 +112,8 @@ public final class CgPostMaterial implements CgPostEffect {
         this.material = Objects.requireNonNull(material, "material");
         this.point = Objects.requireNonNull(point, "point");
         if (point == CgPostPoint.BEFORE_COMPOSITE) {
-            throw new IllegalArgumentException("a post material draws AFTER_WORLD or AFTER_COMPOSITE: BEFORE_COMPOSITE feeds the composite");
+            throw new IllegalArgumentException("a post material draws BEFORE_TRANSLUCENCY, AFTER_WORLD or AFTER_COMPOSITE: "
+                    + "BEFORE_COMPOSITE feeds the composite");
         }
         this.order = order;
     }

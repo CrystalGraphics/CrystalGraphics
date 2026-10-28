@@ -67,6 +67,7 @@ import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.render.stage.CgStageHook;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgGpuTrace;
@@ -1708,6 +1709,16 @@ public final class CgWorldRenderer {
         record(stage, TRANSPARENT);
     }
 
+    /**
+     * Onto the lit opaque scene, before any transparent draw: what the firing's blackboard hands to record there (the
+     * post stack's before-translucency materials, Unreal's {@code BL_BeforeTranslucency}). The renderer records nothing
+     * of the post stack's itself.
+     */
+    private static void beforeTranslucency(CgStageFrame stage) {
+        CgStageHook hook = stage.resources().get(CgFrameKeys.BEFORE_TRANSLUCENCY);
+        if (hook != null) hook.record(stage);
+    }
+
     private void record(CgStageFrame stage, int which) {
         if (!CgRehearsal.active()) {
             recordFiring(stage, which);
@@ -1732,6 +1743,7 @@ public final class CgWorldRenderer {
                 prepare(view);
                 pointLights.record(stage, view, toWorld, targetWidth, targetHeight);
                 pointLights.apply(stage, stage.recording(), false, false);
+                beforeTranslucency(stage);
                 if (!CgRehearsal.active()) text.record(stage, view);
             }
             return;
@@ -1825,6 +1837,13 @@ public final class CgWorldRenderer {
             // Before any glow: a label's text then hides the glows behind it from the emission, as from the colour.
             if (which == TRANSPARENT && !CgRehearsal.active()) text.recordDepth(stage, view);
             if (which == TRANSPARENT && stage.resources().has(CgFrameKeys.CUSTOM_DATA_READ)) recordCustomData(stage, recording, view);
+            // Custom depth and normals before the lights, as Unreal's after its base pass: what reads them before
+            // translucency needs them published
+            if (which == TRANSPARENT) recordCustomDepth(stage, recording, view);
+            if (which == TRANSPARENT && normalsWritten != null) {
+                stage.resources().put(CgFrameKeys.WORLD_NORMALS, normalsWritten);
+                normalsWritten = null;
+            }
             CgGraphTexture emission = which == TRANSPARENT && drawn > 0 ? mergedEmission(stage, recording) : null;
             // Lights fall on the opaque scene, so a firing with nothing transparent still lists them.
             lit = which == TRANSPARENT && pointLights.record(stage, view, toWorld, targetWidth, targetHeight);
@@ -1838,6 +1857,7 @@ public final class CgWorldRenderer {
                     ? media.record(recording, stage.constants(), view, toWorld, targetWidth, targetHeight, pointLights) : null;
             if (mediaOut != null) media.composite(stage, recording, mediaOut);
             if (scene) recordSceneGlows(stage, recording, view);
+            if (which == TRANSPARENT) beforeTranslucency(stage);
             if (drawn > 0) {
                 cullSets(stage, recording, view, false);
                 if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, false, view, null, false);
@@ -1857,11 +1877,6 @@ public final class CgWorldRenderer {
                 recordSubject(stage, recording, view, stage.resources().get(CgFrameKeys.SUBJECT_READ));
             }
             if (which == TRANSPARENT && overdraw && drawn > 0) recordOverdraw(stage, recording, view);
-            if (which == TRANSPARENT) recordCustomDepth(stage, recording, view);
-            if (which == TRANSPARENT && normalsWritten != null) {
-                stage.resources().put(CgFrameKeys.WORLD_NORMALS, normalsWritten);
-                normalsWritten = null;
-            }
             if (which == TRANSPARENT && !CgRehearsal.active()) text.record(stage, view);
         }
     }

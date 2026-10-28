@@ -124,7 +124,12 @@
   adds 1 a fragment. Its gate is `--mode=overdraw-count`, exact on gl and vulkan. While the `crystalgraphics` trace
   channel records, the count is read back into counters a frame or two later: `world.overdraw-covered` (the share of
   pixels reached), and over those `-mean`, `-p95` and `-max`. Half-size draws count at full size.
-- **CustomDepth** (`recordCustomDepth`, after the overdraw view, Unreal's CustomDepthRendering.cpp): every draw in
+- **Before translucency**: after its lights, media and scene glows and before any transparent pass, a transparent
+  firing runs the blackboard's `CgFrameKeys.BEFORE_TRANSLUCENCY` hook (the post stack's before-translucency
+  materials), also in a firing with nothing of ours to draw. Custom data, custom depth and the world normals are
+  published before it.
+- **CustomDepth** (`recordCustomDepth`, near the top of the transparent firing, after custom data, as Unreal's after
+  its base pass, CustomDepthRendering.cpp): every draw in
   view marked `Draw.customDepth(stencil, writeMask)` (or a `CgAnimInstance.customDepth`), opaque or writing depth,
   drawn by its depth pipeline into a transient DEPTH32F_STENCIL8 + R8 target of the stage's size, **tested against that
   target alone, never the scene's** (aaa-design §2.88: a mesh behind a wall is written), writing its stencil under its

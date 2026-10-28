@@ -107,6 +107,13 @@ public final class CgFrameKeys {
      */
     public static final CgFrameKey<Boolean> CUSTOM_DATA_READ = CgFrameKey.of("crystalgraphics:custom_data_read", Boolean.class);
 
+    /**
+     * What records before translucency (Unreal's {@code BL_BeforeTranslucency}): put on {@code WORLD_TRANSPARENT} by the
+     * post stack before the world renderer records, and run by the world renderer onto the lit opaque scene, after its
+     * custom depth, normals and custom data and before its transparent passes.
+     */
+    public static final CgFrameKey<CgStageHook> BEFORE_TRANSLUCENCY = CgFrameKey.of("crystalgraphics:before_translucency", CgStageHook.class);
+
     private CgFrameKeys() {
     }
 }

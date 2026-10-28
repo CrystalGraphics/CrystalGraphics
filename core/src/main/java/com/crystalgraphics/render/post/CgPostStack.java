@@ -15,6 +15,7 @@ import org.joml.Vector4f;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.render.stage.CgStageHook;
 import com.crystalgraphics.render.world.CgWorldPrograms;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgTrace;
@@ -139,6 +140,24 @@ public final class CgPostStack {
         if (bloom.intensity() * settings.bloom() > 0f) stage.resources().put(CgFrameKeys.EMISSION_READ, Boolean.TRUE);
         if (looks.drawsImpact(settings)) stage.resources().put(CgFrameKeys.SUBJECT_READ, settings.impactSubject());
         if (readsScene()) stage.resources().put(CgFrameKeys.CUSTOM_DATA_READ, Boolean.TRUE);
+        if (effects.length > 0 && effects[0].point() == CgPostPoint.BEFORE_TRANSLUCENCY) {
+            stage.resources().put(CgFrameKeys.BEFORE_TRANSLUCENCY, beforeTranslucency);
+        }
+    }
+
+    /** The world renderer's call at its before-translucency point: those effects, onto the HDR scene. */
+    private final CgStageHook beforeTranslucency = this::recordBeforeTranslucency;
+    /** Whether this firing's before-translucency effects were recorded by the world renderer's hook. */
+    private boolean recordedBefore;
+
+    private void recordBeforeTranslucency(CgStageFrame stage) {
+        // Without the HDR scene there is no linear scene to grade: they record with AFTER_WORLD (11's LDR rule).
+        if (!stage.resources().has(CgFrameKeys.SCENE)) return;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "post.beforeTranslucency")) {
+            context.begin(stage, settings);
+            recordAt(CgPostPoint.BEFORE_TRANSLUCENCY, effects, 0);
+            recordedBefore = true;
+        }
     }
 
     /**
@@ -246,7 +265,15 @@ public final class CgPostStack {
             context.begin(stage, settings);   // the volumes were blended at DEMAND_ORDER
             composite.begin();
             CgPostEffect[] current = effects;
-            int i = recordAt(CgPostPoint.AFTER_WORLD, current, 0);
+            // Before-translucency effects the world renderer recorded at its point are past; otherwise they record here
+            int i = 0;
+            if (recordedBefore) {
+                while (i < current.length && current[i].point() == CgPostPoint.BEFORE_TRANSLUCENCY) i++;
+            } else {
+                i = recordAt(CgPostPoint.BEFORE_TRANSLUCENCY, current, 0);
+            }
+            recordedBefore = false;
+            i = recordAt(CgPostPoint.AFTER_WORLD, current, i);
             i = recordAt(CgPostPoint.BEFORE_COMPOSITE, current, i);
             CgGraphTexture scene = stage.resources().get(CgFrameKeys.SCENE);
             if (scene != null) {

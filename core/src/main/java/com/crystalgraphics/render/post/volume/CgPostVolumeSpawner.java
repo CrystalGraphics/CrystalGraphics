@@ -86,7 +86,7 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
             for (Object o : list) {
                 CgSequenceDefinition.Blendable b = (CgSequenceDefinition.Blendable) o;
                 if (b.material() == null) continue;
-                CgPostMaterial post = CgPostMaterial.of(CgMaterial.newInstance(b.material(), null), CgPostPoint.AFTER_COMPOSITE, (int) priority);
+                CgPostMaterial post = CgPostMaterial.of(CgMaterial.newInstance(b.material(), null), point(b.material().post()), (int) priority);
                 CgAttachment screen = b.screen() == null ? null
                         : player.attachment(b.screen(), path + ".post.materials." + b.name() + ".screen_point.target");
                 blends.add(new Blend(b, post, stack.add(post), screen));
@@ -95,6 +95,19 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
         Spawned spawned = new Spawned(volume, bound && spawnable.follow() ? at : null, blends);
         spawned.weigh();
         return spawned;
+    }
+
+    /**
+     * Where a post material's {@code post.stage} draws (11 § post materials, after 4.27 PostProcessing.cpp's chains):
+     * before translucency onto the lit opaque scene, before tonemapping after the transparent passes, the rest after
+     * the composite. Unreal's default is after tonemapping. {@code replacing_tonemapper} draws after the composite until
+     * the composite takes one.
+     */
+    private static CgPostPoint point(@Nullable Map<?, ?> post) {
+        Object stage = post == null ? null : post.get("stage");
+        if ("before_translucency".equals(stage)) return CgPostPoint.BEFORE_TRANSLUCENCY;
+        if ("before_tonemapping".equals(stage)) return CgPostPoint.AFTER_WORLD;
+        return CgPostPoint.AFTER_COMPOSITE;
     }
 
     private static float length(CgUnits units, Object v) {

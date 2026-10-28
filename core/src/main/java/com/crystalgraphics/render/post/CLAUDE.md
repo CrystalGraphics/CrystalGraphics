@@ -45,7 +45,10 @@ the scene with linear colour is tagged `"ColorSpace" = "Linear"`, as every one h
 
 - **The world renderer produces, the post stack consumes.** No post pass is recorded from `render/world`, and no
   scene draw from `render/post`. What one hands the other goes through `CgStageFrame.resources()`
-  (`CgFrameKeys`), never a field read across classes.
+  (`CgFrameKeys`), never a field read across classes. The one crossing is `BEFORE_TRANSLUCENCY` (Unreal's
+  `BL_BeforeTranslucency`, 4.27 `PostProcessing.cpp:476`): the stack puts a `CgStageHook` on the blackboard at
+  `DEMAND_ORDER`, and the world renderer runs it onto the lit opaque scene before its transparent passes, custom
+  depth, normals and custom data published. Without the HDR scene those effects record with `AFTER_WORLD`.
 - **One composite pass a firing.** A new screen-wide look is a `CgCompositeFeature`, or an effect at a point; never a
   second full-screen add.
 - **A mod's effect cannot join the composite** (Unreal's blendables run as their own passes too): it records at a point.
