@@ -138,6 +138,29 @@ final class Fighter implements CgSequenceRole, CgSequenceSkeletal {
 }
 sequencer.play(kamehameha, Map.of("caster", goku));   // the charge montage's clips on Goku, its systems on his hand
 ```
+
+- **A clip's own notifies play with it.** An `animation` section's `notifies` names the clip's notify sequence: its
+  systems, lights and events on the clip's timeline. While the section plays, that sequence plays as a player of
+  its own, on the clip's time (its `start_offset`, `play_rate`, `loop`), ended with the section and jumped or
+  sought with it. Its roles are filled by name from the move's; a role left over that must be bound takes the
+  section's own target. Its own `animation` tracks of the same clip are skipped, since the section plays that clip.
+
+```yaml
+# assets/mymod/sequences/kamehameha.yaml: the cut's clip, with what its clip fires
+- id: t1
+  kind: animation
+  binding: { role: caster }
+  sections:
+    - { id: s1, range: [0, 240], clip: mymod:anim/cut, notifies: mymod:anim/cut_notifies }
+```
+
+```java
+// The same from Java: a section in the move's tree, its notifies a sequence like any other.
+Map<String, Object> cut = Map.of("id", "s1", "range", List.of(0, 240), "clip", "mymod:anim/cut",
+        "notifies", "mymod:anim/cut_notifies");
+```
+
+- On a dedicated server the notify sequence plays its `rpg` events on the clip's time too: no clip need load.
 - **A role's outline colour** (the material contract's `outline`, a `material` track keying `colours.outline` on the
   role) is a `CgRoleOutline` the role answers the slot through: a keyed colour sets the role's slot on its own materials
   (`CgAnimInstance.scalar`) and writes the colour into the outline post's slot; `restore_state` puts the materials' own

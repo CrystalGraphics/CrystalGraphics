@@ -102,7 +102,19 @@ public final class CgSequencer extends CgWorldSubsystem {
      * now: a slot a target lacks throws here, naming both.
      */
     public CgSequencePlayer play(CgSequenceDefinition definition, Map<String, ? extends CgSequenceTarget> roles) {
-        CgSequencePlayer player = new CgSequencePlayer(this, definition, roles);
+        return start(new CgSequencePlayer(this, definition, roles));
+    }
+
+    /**
+     * A clip's notify sequence, played on the clock its parent's animation section drives, skipping its own animation
+     * tracks of {@code clip}: the section already plays that clip. Its parent's.
+     */
+    CgSequencePlayer playNotifies(CgSequenceDefinition definition, Map<String, ? extends CgSequenceTarget> roles, String clip) {
+        return start(new CgSequencePlayer(this, definition, roles).drivenFor(clip));
+    }
+
+    private CgSequencePlayer start(CgSequencePlayer player) {
+        CgSequenceDefinition definition = player.definition();
         if (!server()) {
             for (CgSequenceDefinition.Spawnable s : definition.spawnables()) {
                 if (!spawners.containsKey(s.kind())) {

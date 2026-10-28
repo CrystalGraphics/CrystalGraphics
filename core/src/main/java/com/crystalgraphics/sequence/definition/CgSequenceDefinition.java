@@ -122,10 +122,13 @@ public record CgSequenceDefinition(String id, CgFrameRate tickResolution, CgFram
     }
 
     /**
-     * A subsequence a section plays: its definition, and for each of its roles the role of this sequence that fills
-     * it, or -1 for none.
+     * A sequence a section plays: a subsequence, or an {@code animation} section's clip notifies. Its definition, and
+     * for each of its roles the role of this sequence that fills it, {@link #SECTION} for the section's own target, or
+     * -1 for none.
      */
     public record Child(int track, int section, CgSequenceDefinition definition, int[] roles) {
+        /** A role filled by the target the section's track binds: its role, or its puppet. */
+        public static final int SECTION = -2;
     }
 
     /** The sequence kind's compiler. */

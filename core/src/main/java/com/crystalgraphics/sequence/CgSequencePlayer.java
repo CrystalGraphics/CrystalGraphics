@@ -2,6 +2,7 @@ package com.crystalgraphics.sequence;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -51,6 +52,9 @@ import com.crystalgraphics.sequence.spawn.CgSequenceSpawned;
  *   <li>A spawnable's tracks wait for {@link #spawnable} to say what it is.</li>
  *   <li>At its range's end it holds its last frame ({@link #finished()}) until stopped.</li>
  *   <li>Its time is its own: the seconds the sequencer has advanced it, times its rate, never dilated by what it keys.</li>
+ *   <li>An {@code animation} section naming its clip's {@code notifies} plays that sequence while it plays, on the
+ *       clip's time, as Unreal fires a montage segment's notifies: started and ended with the section, sought with
+ *       it, its own tracks of that clip skipped. It is a player of its own in the sequencer.</li>
  * </ul>
  */
 public final class CgSequencePlayer {
@@ -91,6 +95,16 @@ public final class CgSequencePlayer {
     private int revision;
     private long seed;
     private boolean finished, stopped, jump, seek;
+    /** Per child of the definition: an animation section's notifies playing now, else null; and its unwrapped clip time. */
+    private final CgSequencePlayer[] notifies;
+    private final double[] notifiesAt;
+    /** Whether the last advance jumped, and sought: what its notifies do too. */
+    private boolean jumped, sought;
+    /** A notify sequence's: the clip its parent's section plays, the seconds it plays to, and whether it wrapped. */
+    @Nullable
+    private String drivenClip;
+    private double drivenTo;
+    private boolean drivenWraps;
 
     CgSequencePlayer(CgSequencer sequencer, CgSequenceDefinition definition, Map<String, ? extends CgSequenceTarget> roles) {
         this.sequencer = sequencer;
@@ -154,6 +168,14 @@ public final class CgSequencePlayer {
             triggers[i] = new CgEventTrigger(s.trigger(), s.to() == CgSequenceSection.OPEN_END ? Integer.MAX_VALUE : s.to());
             triggeredEvaluator[i] = -1;
         }
+        this.notifies = new CgSequencePlayer[definition.children().size()];
+        this.notifiesAt = new double[notifies.length];
+    }
+
+    /** Makes it a clip's notify sequence, driven by its parent's section; its own tracks of {@code clip} are not played. */
+    CgSequencePlayer drivenFor(String clip) {
+        drivenClip = clip;
+        return this;
     }
 
     /**
@@ -490,6 +512,10 @@ public final class CgSequencePlayer {
 
     /** Ends every spawned object, as Unreal's spawn register does at a play's end ({@code CleanUp}). */
     void cleanUp() {
+        for (int i = 0; i < notifies.length; i++) {
+            if (notifies[i] != null) notifies[i].stop();
+            notifies[i] = null;
+        }
         for (int i = 0; i < spawnables.length; i++) {
             if (spawnables[i] instanceof CgSequenceSpawned obj) despawn(i, obj, true);
         }
@@ -524,7 +550,7 @@ public final class CgSequencePlayer {
     /** Binds every section whose target is known and that is not bound yet: at play, and as a spawnable arrives. */
     void bindAll() {
         for (CgSequenceTrack track : definition.tracks()) {
-            if (track.muted()) continue;
+            if (track.muted() || playsDrivenClip(track)) continue;
             int evaluator = sequencer.evaluatorIndex(track.kind());
             if (evaluator < 0) continue;
             boolean waits = track.binding().subject() == CgSequenceBinding.Subject.SPAWNABLE && spawnables[track.binding().index()] == null
@@ -545,6 +571,13 @@ public final class CgSequencePlayer {
                 sequencer.evaluator(evaluator).bind(this, track, s < 0 ? null : track.sections().get(s));
             }
         }
+    }
+
+    /** Whether {@code track} is an animation track of the clip its parent's section already plays. */
+    private boolean playsDrivenClip(CgSequenceTrack track) {
+        if (drivenClip == null || !track.kind().equals("animation")) return false;
+        for (CgSequenceSection s : track.sections()) if (drivenClip.equals(s.fields().get("clip"))) return true;
+        return false;
     }
 
     /** What an evaluator bound for {@code section} of {@code track} (null for the whole track). */
@@ -588,16 +621,114 @@ public final class CgSequencePlayer {
      */
     CgSequenceEvaluationRange advance(float dt) {
         inPass = true;
+        jumped = jump;
+        sought = seek;
+        CgSequenceEvaluationRange r;
         if (jump) {
             jump = false;
-            CgSequenceEvaluationRange r = position.jumpToSeconds(seconds);
+            r = position.jumpToSeconds(seconds);
             int now = CgFrameTime.frame(r.current());
             oneShotFrom = seek ? now - (int) Math.round(ONE_SHOT_WINDOW / definition.seconds(1)) + 1 : now + 1;
             seek = false;
             composite = compositeAt(now);
-            return r;
+        } else if (drivenClip != null) {
+            r = drivenWraps ? wrap() : play(drivenTo);
+        } else {
+            r = play(seconds + dt * rate);
         }
-        return play(seconds + dt * rate);
+        driveNotifies();
+        return r;
+    }
+
+    /** A looping clip passed its end this frame: played to the end, the rest from its start in a pass of its own. */
+    private CgSequenceEvaluationRange wrap() {
+        drivenWraps = false;
+        CgSequenceEvaluationRange r = position.playToSeconds(definition.seconds(definition.end() - definition.start()));
+        seconds = 0;
+        carry = drivenTo;
+        resumes = true;
+        resumeJumps = true;
+        return r;
+    }
+
+    /**
+     * Starts, drives and ends each animation section's notify sequence: playing while play is in its section, on the
+     * clip's time ({@code FAnimSegment::GetAnimNotifiesFromTrackPositions}: the start offset plus the section's time
+     * times its rate, wrapped while it loops).
+     */
+    private void driveNotifies() {
+        if (notifies.length == 0) return;
+        List<CgSequenceDefinition.Child> children = definition.children();
+        float tick = tick();
+        int now = (int) Math.floor(tick);
+        for (int i = 0; i < notifies.length; i++) {
+            CgSequenceDefinition.Child c = children.get(i);
+            CgSequenceTrack track = definition.tracks().get(c.track());
+            if (!track.kind().equals("animation")) continue;
+            CgSequenceSection s = track.sections().get(c.section());
+            boolean in = !stopped && !track.muted() && (s.from() == CgSequenceSection.OPEN_START || now >= s.from())
+                    && (s.to() == CgSequenceSection.OPEN_END || now < s.to());
+            CgSequencePlayer p = notifies[i];
+            if (!in) {
+                if (p != null) p.stop();
+                notifies[i] = null;
+                continue;
+            }
+            int from = s.from() == CgSequenceSection.OPEN_START ? definition.start() : s.from();
+            double rate = s.fields().get("play_rate") instanceof Number n ? n.doubleValue() : 1.0;
+            double offset = s.fields().get("start_offset") instanceof Number n ? definition.seconds(n.intValue()) : 0.0;
+            double raw = offset + definition.seconds(1) * (tick - from) * rate;
+            boolean entered = p == null;
+            if (entered) {
+                p = startNotifies(c, track, s);
+                if (p == null) continue;
+                notifies[i] = p;
+                notifiesAt[i] = offset;
+                // Entered by play it plays from the start offset; entered by a jump it lands where the section is.
+                if (!jumped && offset > 0) p.jumpTo(offset);
+            }
+            Object loop = s.fields().get("loop");
+            int loops = Boolean.TRUE.equals(loop) ? Integer.MAX_VALUE : loop instanceof Number n ? Math.max(1, n.intValue()) : 1;
+            double length = p.definition.seconds(p.definition.end() - p.definition.start());
+            double clip = raw;
+            boolean wraps = false;
+            if (loops > 1 && length > 0) {
+                long lap = (long) Math.floor(raw / length);
+                if (lap >= loops) {
+                    clip = length;
+                } else {
+                    clip = raw - lap * length;
+                    wraps = !jumped && lap > (long) Math.floor(notifiesAt[i] / length);
+                }
+            }
+            notifiesAt[i] = raw;
+            if (jumped) {
+                if (sought) p.seek(clip);
+                else p.jumpTo(clip);
+            } else {
+                p.drivenTo = clip;
+                p.drivenWraps = wraps;
+            }
+        }
+    }
+
+    /** A notify sequence's player for section {@code s}, its roles as the child fills them; null where its target is not here. */
+    @Nullable
+    private CgSequencePlayer startNotifies(CgSequenceDefinition.Child c, CgSequenceTrack track, CgSequenceSection s) {
+        if (!conditionHolds(track, s)) return null;
+        CgSequenceTarget own = switch (track.binding().subject()) {
+            case ROLE -> roles[track.binding().index()];
+            case SPAWNABLE -> spawnables[track.binding().index()];
+            default -> null;
+        };
+        Map<String, CgSequenceTarget> filled = new HashMap<>();
+        for (int r = 0; r < c.roles().length; r++) {
+            int from = c.roles()[r];
+            CgSequenceTarget t = from >= 0 ? roles[from] : from == CgSequenceDefinition.Child.SECTION ? own : null;
+            if (t == null && from == CgSequenceDefinition.Child.SECTION) return null;
+            if (t != null) filled.put(c.definition().roles().get(r).name(), t);
+        }
+        return sequencer.playNotifies(c.definition(), filled, String.valueOf(s.fields().get("clip")));
     }
 
     /** Whether a montage section handed play on this frame: the sequencer runs a pass for the rest. */
@@ -609,8 +740,12 @@ public final class CgSequencePlayer {
     CgSequenceEvaluationRange resume() {
         inPass = true;
         resumes = false;
+        jumped = sought = false;
         if (resumeJumps) position.jumpToSeconds(seconds);
-        return play(seconds + carry);
+        // A wrapped notify sequence carries where it plays to; a montage section, the seconds past its end.
+        CgSequenceEvaluationRange r = play(drivenClip != null ? carry : seconds + carry);
+        driveNotifies();
+        return r;
     }
 
     /** Whether it plays in the sequencer's current pass. */

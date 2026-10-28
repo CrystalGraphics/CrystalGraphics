@@ -132,8 +132,8 @@ final class CgSequenceCompiler {
             tracks.add(track);
             for (CgSequenceSection s : track.sections()) {
                 if (s.trigger() != null) triggered.computeIfAbsent(s.trigger(), k -> new ArrayList<>()).add(new SectionRef(track.index(), s.index()));
-                if (track.kind().equals("subsequence")) {
-                    Child child = child(track, s);
+                if (track.kind().equals("subsequence") || track.kind().equals("animation")) {
+                    Child child = track.kind().equals("animation") ? notifies(track, s) : child(track, s);
                     if (child != null) {
                         children.add(child);
                         depth = Math.max(depth, child.definition().depth() + 1);
@@ -637,6 +637,28 @@ final class CgSequenceCompiler {
         }
         for (Object k : map.keySet()) {
             if (child.role(String.valueOf(k)) < 0) throw fail(path + ".roles." + k, ref + " has no role named " + k);
+        }
+        return new Child(track.index(), s.index(), child, filled);
+    }
+
+    /**
+     * An animation section's clip notifies: its notify sequence, each role filled by name; one left over that must be
+     * bound takes the section's own target, and a second fails.
+     */
+    @Nullable
+    private Child notifies(CgSequenceTrack track, CgSequenceSection s) {
+        String path = "tracks." + track.id() + ".sections." + s.id() + ".notifies";
+        if (!(s.fields().get("notifies") instanceof String ref)) return null;
+        if (!(deps.definition(CgSequenceKinds.SEQUENCE, ref) instanceof CgSequenceDefinition child)) return null;
+        int[] filled = new int[child.roles().size()];
+        boolean sectionUsed = false;
+        for (int i = 0; i < filled.length; i++) {
+            CgSequenceDefinition.Role role = child.roles().get(i);
+            filled[i] = roleByName.getOrDefault(role.name(), -1);
+            if (filled[i] >= 0 || role.skip()) continue;
+            if (sectionUsed) throw fail(path, ref + "'s role " + role.name() + " matches no role here, and is not absent: skip");
+            filled[i] = Child.SECTION;
+            sectionUsed = true;
         }
         return new Child(track.index(), s.index(), child, filled);
     }

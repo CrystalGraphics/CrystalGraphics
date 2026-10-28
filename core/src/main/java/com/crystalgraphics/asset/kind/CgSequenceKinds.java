@@ -448,6 +448,7 @@ public final class CgSequenceKinds {
             .property("slot", STRING)
             .property("stop", BOOL)   // no clip: the slot plays nothing, its source showing (StopSlotAnimation)
             .property("interpolation", CgValueType.enumOf("smooth", "step")).defaultValue("smooth")
+            .property("notifies", hard("sequence")).flags(CgPropertyFlag.HEADLESS)   // the clip's own notify sequence
             .register());
 
     /** A {@code float} channel per morph target, by its name. */
