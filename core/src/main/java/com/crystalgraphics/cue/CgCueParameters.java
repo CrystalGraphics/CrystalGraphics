@@ -2,6 +2,7 @@ package com.crystalgraphics.cue;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.net.object.CgAnchor;
 import com.crystalgraphics.world.CgAttachment;
 
 /**
@@ -28,6 +29,8 @@ public final class CgCueParameters {
     private long seed;
     @Nullable
     private String surface;
+    @Nullable
+    private CgAnchor anchor;
 
     public CgCueParameters at(double x, double y, double z) {
         this.x = x;
@@ -78,6 +81,20 @@ public final class CgCueParameters {
         return this;
     }
 
+    /**
+     * Where a server's play lives on the network, which decides who sees it: {@code CgAnchor.at(level, x, y, z)},
+     * or {@code CgAnchor.on(entity)} to follow one. A server's play without one is not sent.
+     */
+    public CgCueParameters anchor(@Nullable CgAnchor anchor) {
+        this.anchor = anchor;
+        return this;
+    }
+
+    @Nullable
+    public CgAnchor anchor() {
+        return anchor;
+    }
+
     /** Becomes a copy of {@code other}. */
     public CgCueParameters set(CgCueParameters other) {
         x = other.x;
@@ -92,6 +109,7 @@ public final class CgCueParameters {
         normalizedMagnitude = other.normalizedMagnitude;
         seed = other.seed;
         surface = other.surface;
+        anchor = other.anchor;
         return this;
     }
 
@@ -104,6 +122,7 @@ public final class CgCueParameters {
         magnitude = normalizedMagnitude = 0;
         seed = 0;
         surface = null;
+        anchor = null;
         return this;
     }
 

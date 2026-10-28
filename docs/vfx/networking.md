@@ -211,3 +211,30 @@ beam.remove();                                                // removal plays; 
 - **On a dedicated server** only `authoritative: true` cues play, with no effects.
 
 A handle is reused once `active()` is false: drop it then.
+
+### Over the network
+
+A server's `CgCueManager` sends every play to the players who see it. Each player's own manager plays what it is
+sent, so gameplay calls the server's and nothing else:
+
+```java
+CgCuePlaying beam = cues.add(MYMOD_CUE_BEAM, new CgCueParameters().at(x, y, z).anchor(CgAnchor.on(caster)));
+beam.field("level", 3);                                     // one of the cue's own fields, to every viewer
+```
+
+```java
+// each client, once its world's manager exists
+CgCueNet.client(obj -> cues);
+cues.entities(id -> attachmentOf(id));                      // the instigator and target the server names
+cues.onNetworked(play -> play.writes("BeamLength", ...));   // a cue that is not authoritative: computed here
+```
+
+- **Who sees it** is the anchor's: the players tracking what it is on, or everyone within the cue's `range` of a point
+  (64 blocks unwritten). A play without an anchor is not sent.
+- **A burst** reaches whoever sees it as it plays; a player arriving later never sees it. **A looping cue** reaches a
+  player arriving later too, started at its age, with its sequence sought there.
+- **An authoritative cue's `writes`** are the server's: computed there and sent each tick in their `replication`
+  mode. Any other cue's are each player's own.
+- **A cue's `sequence`** starts with it through `cues.sequences((cue, sequence, at) -> ...)`, where the host binds the
+  sequence's roles; without it, the sequence plays nowhere.
+- A cue sends at most 16 `writes`, 8 number or bool `fields` and 4 string ones.

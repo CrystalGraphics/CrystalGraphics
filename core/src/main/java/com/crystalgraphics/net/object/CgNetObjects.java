@@ -661,9 +661,10 @@ public final class CgNetObjects {
         if (type.visibleTo != null) return type.visibleTo.test(obj, viewer.peer);
         switch (obj.kind) {
             case POINT: {
-                if (type.range < 0) return true;
+                double range = obj.range > 0 ? obj.range : type.range;
+                if (range < 0) return true;
                 double dx = viewer.x - obj.x, dy = viewer.y - obj.y, dz = viewer.z - obj.z;
-                return dx * dx + dy * dy + dz * dz <= type.range * type.range;
+                return dx * dx + dy * dy + dz * dz <= range * range;
             }
             case ENTITY:
             case CHUNK:

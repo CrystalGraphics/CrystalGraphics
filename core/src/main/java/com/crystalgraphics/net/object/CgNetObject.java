@@ -54,6 +54,8 @@ public final class CgNetObject {
     int chunkX, chunkZ;
     /** The network id of the entity or player it follows; -1 for none. */
     int entityId = -1;
+    /** Its own range round a point anchor, in blocks; -1 for its type's. */
+    double range = -1;
     /** Its player is away, or its chunk unloaded: kept, seen by nobody. */
     boolean dormant;
     /** Server: its key in its type's holder index, for a per-holder type. */
@@ -172,6 +174,17 @@ public final class CgNetObject {
         if (!server) throw new IllegalStateException("a server behaviour is the server's");
         pending();
         this.behaviour = Objects.requireNonNull(behaviour, "behaviour");
+        return this;
+    }
+
+    /**
+     * How far round its point it is seen, in place of its type's range: one type whose objects reach differently, as
+     * a cue's do. Before {@code start()}; a point anchor only.
+     */
+    public CgNetObject range(double blocks) {
+        if (!(blocks > 0)) throw new IllegalArgumentException("range must be positive: " + blocks);
+        pending();
+        range = blocks;
         return this;
     }
 

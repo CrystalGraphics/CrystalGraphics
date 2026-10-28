@@ -5,6 +5,8 @@ import java.util.Arrays;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.cue.CgCueDefinition.Write;
+import com.crystalgraphics.net.object.CgNetObject;
+import com.crystalgraphics.sequence.CgSequencePlayer;
 
 /**
  * One looping cue playing, from {@link CgCueManager#add}: what gameplay holds to feed it, fire its events and end it.
@@ -43,6 +45,14 @@ public final class CgCuePlaying {
     @Nullable
     CgCueEffects.Lasting lasting;
     final CgCueParameters params = new CgCueParameters();
+    /** What it travels as: the server's object, or the one it was sent as on a client. */
+    @Nullable
+    CgNetObject object;
+    /** Whether its {@code writes} go to viewers: an authoritative cue on the server. */
+    boolean sends;
+    @Nullable
+    CgSequencePlayer sequence;
+    private int[] slots = new int[8];
     private String[] names = new String[PROVIDERS];
     private Provider[] providers = new Provider[PROVIDERS];
     private Write[] bound = new Write[PROVIDERS];
@@ -65,10 +75,12 @@ public final class CgCuePlaying {
             names = Arrays.copyOf(names, count * 2);
             providers = Arrays.copyOf(providers, count * 2);
             bound = Arrays.copyOf(bound, count * 2);
+            slots = Arrays.copyOf(slots, count * 2);
         }
         names[count] = name;
         providers[count] = provider;
         bound[count] = definition == null ? null : definition.writes().get(name);
+        slots[count] = definition == null ? -1 : index(definition, name);
         count++;
         return this;
     }
@@ -101,6 +113,33 @@ public final class CgCuePlaying {
         kill();
     }
 
+    /**
+     * Sets one of the cue's own {@code fields} for every viewer: a server's call, queued like the rest. A number, a
+     * bool or a string, as the field's type.
+     */
+    public CgCuePlaying field(String name, Object value) {
+        manager.queueField(this, name, value);
+        return this;
+    }
+
+    /** The cue's own field {@code name} as this side last had it: a number field's value, a bool as 0 or 1. */
+    public double number(String name) {
+        if (object == null || definition == null) return 0;
+        int values = 0;
+        for (CgCueDefinition.Field f : definition.fields()) {
+            if (f.type() == CgCueDefinition.Field.Type.STRING) continue;
+            if (f.name().equals(name)) return object.getDouble(CgCueNet.V.get(values));
+            values++;
+        }
+        throw new IllegalArgumentException(definition.id() + " has no number field " + name);
+    }
+
+    /** The sequence it plays as its timeline, once started; null for none. */
+    @Nullable
+    public CgSequencePlayer sequence() {
+        return sequence;
+    }
+
     /** Whether it is waiting to start, playing or lingering after its removal. */
     public boolean active() {
         return state == State.PENDING || state == State.PLAYING || state == State.REMOVING;
@@ -116,7 +155,24 @@ public final class CgCuePlaying {
         definition = cue;
         lasting = effects;
         state = State.PLAYING;
-        for (int i = 0; i < count; i++) bound[i] = cue.writes().get(names[i]);
+        for (int i = 0; i < count; i++) {
+            bound[i] = cue.writes().get(names[i]);
+            slots[i] = index(cue, names[i]);
+        }
+    }
+
+    private static int index(CgCueDefinition cue, String name) {
+        int i = 0;
+        for (String n : cue.writes().keySet()) {
+            if (n.equals(name)) return i;
+            i++;
+        }
+        return -1;
+    }
+
+    void stopSequence() {
+        if (sequence != null) sequence.stop();
+        sequence = null;
     }
 
     /** Each bound provider's value this frame, into its slots. */
@@ -124,10 +180,14 @@ public final class CgCuePlaying {
         CgCueEffects.Lasting l = lasting;
         if (l == null) return;
         for (int i = 0; i < count; i++) {
-            if (bound[i] == null || bound[i].slots().isEmpty()) continue;
+            Write w = bound[i];
+            if (w == null) continue;
+            boolean draws = !w.slots().isEmpty(), send = sends && slots[i] >= 0;
+            if (!draws && !send) continue;
             scratch[0] = scratch[1] = scratch[2] = scratch[3] = 0;
             providers[i].write(time, scratch);
-            l.write(bound[i], scratch);
+            if (draws) l.write(w, scratch);
+            if (send) CgCueNet.write(object, slots[i], scratch);
         }
     }
 
@@ -139,6 +199,9 @@ public final class CgCuePlaying {
         count = 0;
         definition = null;
         lasting = null;
+        object = null;
+        sends = false;
+        stopSequence();
         discarded = false;
         params.reset();
         state = State.ENDED;

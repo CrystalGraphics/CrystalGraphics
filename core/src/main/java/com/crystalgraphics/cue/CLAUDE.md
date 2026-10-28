@@ -12,13 +12,17 @@ What a gameplay moment plays, routed by tag. Usage: `docs/vfx/networking.md` § 
 | `CgCueManager` | A world's router in `PLAYS` (`UGameplayCueManager`, `UGameplayCueSet`): tag to cue with parent fallback, the queue, bursts, pooled looping plays, spawn conditions |
 | `CgCuePlaying`, `CgCueParameters` | A looping play's handle (`writes` providers, events, removal); what a cue is played with (`FGameplayCueParameters`) |
 | `CgCueEffects` | The seam a client fills to draw and sound: `vfx.system.CgVfxCueEffects` plays the systems |
+| `CgCueNet` | Every cue on the wire: one type, `crystalgraphics:cue`, declared at network init; slot banks for a cue's `writes` and `fields`; the client view and the replicas (`interpolate`, `goal`, `snap`) |
 
 - **Placement and spawn condition override whole**, entry over block over the cue's defaults, as
   `FGameplayCueNotify_SpawnContext::GetPlacementInfo`; unwritten fields take Unreal's constructor defaults
   (`do_not_attach`, `keep_world`, the instigator, always).
 - **Routes come from the registry's gathered `tag`**, never from loading every cue; `route` adds a Java cue.
+- **One net type for every cue, never one per cue**, as GAS replicates a tag and its parameters: a cue loads after
+  players connect, and a type declared then reaches nobody (`docs/NETWORKING.md` § 3). An object names its cue by id.
 - **Everything goes through the queue**, in order: a remove sent before its cue is ready waits behind the add.
 - **Nothing allocates once warm**: commands, handles and each cue's `Lasting`s are pooled (`CgCueManagerTest`'s
   300 bursts a second). A new one is made only past a pool's peak; `prewarm` grows it ahead.
 - **Headless**: a cue compiles and routes on a dedicated server, where only authoritative cues play, with no
-  effects. Tests: `CgCueDefinitionTest` (`-Pkits` runs every kit cue), `CgCueManagerTest`, both `:core:headlessTest`.
+  effects. Tests: `CgCueDefinitionTest` (`-Pkits` runs every kit cue), `CgCueManagerTest`, `CgCueNetTest` (the rig; `-Pkits=novamod=...` runs the
+  Nova Cannon's), all `:core:headlessTest`.
