@@ -51,7 +51,8 @@ import com.crystalgraphics.world.CgAttachment;
  *   <li>Unbound, it plays on the viewer's camera, whatever rig is running. Bound to a role
  *       ({@code binding: { role: caster, node: Mesh }}), it is a camera of its own at that node, its keys in the
  *       node's space, cutting in and out with its section.</li>
- *   <li>Only for a viewer its play involves ({@link CgCameraSystem#involves}); its play's camera is then in the view
+ *   <li>Only for a viewer its play involves ({@link CgSequencePlayer#involved()}, then the host's own
+ *       {@link CgCameraSystem#involves}); its play's camera is then in the view
  *       at weight 1 ({@link CgCameraSystem#weightOf}).</li>
  *   <li>Not on a server: it draws nothing a server needs.</li>
  * </ul>
@@ -183,8 +184,8 @@ public final class CgCameraAnimationEvaluator implements CgSequenceEvaluator {
         /** The section is at {@code seconds}: starts the camera sequence, or keeps it on that time. */
         void at(double seconds) {
             if (sub == null) {
-                // A viewer the play's camera does not involve never takes it.
-                if (!cameras.involves(owner)) return;
+                // A viewer the play does not involve never takes its camera.
+                if (!owner.involved() || !cameras.involves(owner)) return;
                 // From its first key: the initial transform the keys are taken relative to (bRelativeToInitialTransform).
                 sub = sequencer.play(camera, Map.of());
                 haveInitial = false;

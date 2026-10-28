@@ -532,6 +532,32 @@ void vertex(out v2f o) {
 - `FX_SEQ_SCALAR(i, own)` takes the scalar's index in `MATERIAL_SCALARS` and the material's own value.
 - `CG_OBJECT_CUSTOM1` is the particle's (life 0 to 1, seed, opacity, heat), as for a `MESHES` particle.
 
+## Who sees it
+
+A move plays on every client that can see it. Its world plays for everyone: systems, prefabs, sounds, and post
+with a `radius`. What it does to a viewer's own screen applies only to the players it is about, its caster and its
+target, so a remote player's ultimate never takes your camera or darkens your shaders. That covers its camera
+(`camera_animation`), its unbound post, and its `global` and `environment` tracks.
+
+Tell the sequencer who the viewer is:
+
+```java
+sequencer.viewer(target -> target instanceof Fighter f && f.entityId() == localPlayerId);
+
+player.involved();   // true when its caster or its target is the viewer's character
+```
+
+- Unset, every play involves the viewer: right with one player, or in a preview.
+- A role of kind `character` never involves the viewer.
+
+An effect's flash is the viewer's too. It fades on through its character's hitstop, even though the effect itself
+holds. Weigh it by a timeline on the frame clock, never from `tick`:
+
+```java
+flash = openVolume(10, new CgPostSettings().flash(1.5f), 0, 0, 0).radius(24f);
+flash.timeline(s -> curve(FLASH).at(Math.min(s / 0.6f, 1f)));
+```
+
 ## Things to know
 
 - **The clip is baked once**, on the CPU, the first time an emitter plays it: each baked node's matrix from the clip's

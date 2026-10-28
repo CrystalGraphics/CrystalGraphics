@@ -246,6 +246,20 @@ public final class CgVfxBlast extends CgVfxElement {
             impactLook = new CgPostSettings().impact(CgImpact.SUBJECT, 1f).subject(subject());
             impact = openVolume(IMPACT_PRIORITY, impactLook, x, y, z).radius(radius * get(IMPACT_REACH));
         }
+        // The flash and the impact frame are the viewer's: they play on through the caster's hitstop, which holds this
+        // effect's own clock. The flash runs to its main pulse beneath the beats, holds, and fades from the cut.
+        boolean framed = impact != null;
+        float time = get(TIME), holdAt = framed ? get(HOLD_AT) : 0f, cut = holdAt + (framed ? BEATS.seconds() : 0f);
+        float peak = framed ? MAIN_PULSE * time : Float.POSITIVE_INFINITY;
+        flash.timeline(s -> curve(FLASH).at(Math.min((Math.min(s, peak) + Math.max(0f, s - Math.max(cut, peak))) / time, 1f)));
+        if (impact != null) {
+            impact.timeline(s -> {
+                CgImpactFrame look = BEATS.look(s - holdAt);
+                if (look != null) impactLook.impact(look, BEATS.amount(s - holdAt), BEATS.seed(s - holdAt));
+                showing = look != null && get(IMPACT) > 0f;
+                return showing ? 1f : 0f;
+            });
+        }
     }
 
     /**
@@ -269,8 +283,8 @@ public final class CgVfxBlast extends CgVfxElement {
 
     /**
      * The impact frame comes before the explosion: the clock runs to its ignition ({@link #HOLD_AT}), holds while the
-     * beats play, and runs on at full rate from the cut, where its emitters, front and shake start. The flash runs to
-     * its main pulse beneath the beats, holds, and fades from the cut.
+     * beats play, and runs on at full rate from the cut, where its emitters, front and shake start. The flash and the
+     * impact frame run on the viewer's clock, from {@link #ignite}.
      */
     private boolean timeline() {
         float real = age() - ignited;
@@ -294,15 +308,6 @@ public final class CgVfxBlast extends CgVfxElement {
                 playShake(CUT_SHAKE, x, y, z, scale);
                 playShake(RETURN, x, y, z, scale);
             }
-        }
-        float time = get(TIME), peak = framed ? MAIN_PULSE * time : Float.POSITIVE_INFINITY;
-        float flashSince = Math.min(real, peak) + Math.max(0f, real - Math.max(cut, peak));
-        flash.weight(curve(FLASH).at(Math.min(flashSince / time, 1f)));
-        if (impact != null) {
-            CgImpactFrame look = BEATS.look(real - holdAt);
-            if (look != null) impactLook.impact(look, BEATS.amount(real - holdAt), BEATS.seed(real - holdAt));
-            showing = look != null && get(IMPACT) > 0f;
-            impact.weight(showing ? 1f : 0f);
         }
         return now;
     }
@@ -351,7 +356,7 @@ public final class CgVfxBlast extends CgVfxElement {
         return burst;
     }
 
-    /** Whether its impact frame shows this tick. */
+    /** Whether its impact frame showed when the post stack last weighed it. */
     public boolean impactFrameShowing() {
         return showing;
     }

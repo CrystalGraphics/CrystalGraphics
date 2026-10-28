@@ -51,7 +51,8 @@ import com.crystalgraphics.world.CgAttachment;
  *   <li>An {@code unbound} volume in a sequence with a camera ({@code camera_animation}, {@code camera_cut}) is that
  *       camera's post settings: in a viewer's view at the weight its view goes through the camera
  *       ({@link CgCameraSystem#weightOf}), so a viewer outside it never sees them. Installed without a camera
- *       system, or in a sequence with none, it applies everywhere.</li>
+ *       system, or in a sequence with none, it applies to the whole screen of a viewer the play
+ *       {@linkplain CgSequencePlayer#involved() involves}, and to no one else's.</li>
  *   <li>Otherwise it stands where its {@code at} places it, full within
  *       {@code radius} and fading over {@code blend_radius}, following that place each frame.</li>
  *   <li>Its weight starts at 1, as Unreal's; a track keys it from there.</li>
@@ -126,7 +127,8 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
         // Unbound in a sequence with a camera: that camera's post settings (UCameraComponent::PostProcessSettings), in a
         // viewer's view only at the weight its view goes through that camera.
         boolean camera = !bound && cameras != null && hasCamera(player.definition());
-        Spawned spawned = new Spawned(volume, bound && spawnable.follow() ? at : null, blends, camera ? cameras : null, player);
+        Spawned spawned = new Spawned(volume, bound && spawnable.follow() ? at : null, blends, camera ? cameras : null, player,
+                !bound && !camera);
         spawned.weigh();
         return spawned;
     }
@@ -156,16 +158,21 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
         private final double[] point = new double[3];
         @Nullable
         private final CgCameraSystem cameras;
-        private final Object owner;
+        private final CgSequencePlayer owner;
+        /** Unbound with no camera: the whole screen of a viewer its play involves. */
+        private final boolean screen;
         private float weight = 1f, viewed = 1f;
 
-        Spawned(CgPostVolume volume, CgAttachment at, List<Blend> blends, @Nullable CgCameraSystem cameras, Object owner) {
+        Spawned(CgPostVolume volume, CgAttachment at, List<Blend> blends, @Nullable CgCameraSystem cameras, CgSequencePlayer owner,
+                boolean screen) {
             this.volume = volume;
             this.at = at;
             this.blends = blends;
             this.cameras = cameras;
             this.owner = owner;
+            this.screen = screen;
             if (cameras != null) viewed = 0f;   // not in a view until its camera is
+            else if (screen) viewed = owner.involved() ? 1f : 0f;
         }
 
         @Override
@@ -206,8 +213,8 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
 
         @Override
         public void update() {
-            if (cameras != null) {
-                float v = cameras.weightOf(owner);
+            if (cameras != null || screen) {
+                float v = cameras != null ? cameras.weightOf(owner) : owner.involved() ? 1f : 0f;
                 if (v != viewed) {
                     viewed = v;
                     weigh();

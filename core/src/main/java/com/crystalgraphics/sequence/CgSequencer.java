@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 import javax.annotation.Nullable;
 
@@ -48,6 +49,9 @@ import com.crystalgraphics.sequence.state.CgSequenceStateEvaluator;
  *   <li>A player that is {@linkplain CgSequencePlayer#stop() stopped} leaves at the next evaluation; one that
  *       finished holds its last frame.</li>
  *   <li>Evaluating allocates nothing; {@link #play} and the first entry of each section bind, once.</li>
+ *   <li>What a play shows on the viewer's own screen (its camera, its unbound post, its {@code global} and
+ *       {@code environment} tracks) applies only where the viewer is {@linkplain CgSequencePlayer#involved()
+ *       involved}: tell it who the viewer is with {@link #viewer}.</li>
  * </ul>
  */
 public final class CgSequencer extends CgWorldSubsystem {
@@ -69,6 +73,9 @@ public final class CgSequencer extends CgWorldSubsystem {
     private CgSequenceTarget environment;
     /** The viewer's significance tier, low (0) to ultra (3): what a notify's {@code filter} reads. */
     private int significance = 3;
+    /** Whether a role's target is the viewer's own character; null while every play involves the viewer. */
+    @Nullable
+    private Predicate<? super CgSequenceTarget> viewer;
 
     public CgSequencer() {
         for (String kind : CgSequenceStateEvaluator.KINDS) evaluators.add(new CgSequenceStateEvaluator(kind, blender));
@@ -118,6 +125,36 @@ public final class CgSequencer extends CgWorldSubsystem {
     public CgSequencer environment(@Nullable CgSequenceTarget environment) {
         this.environment = environment;
         return this;
+    }
+
+    /**
+     * Who watches: {@code mine} tells whether a role's target is this viewer's own character. A play then involves the
+     * viewer only when its caster or its target is, so a remote player's move never takes this viewer's camera, post
+     * or shaders.
+     *
+     * <pre>{@code
+     * sequencer.viewer(target -> target instanceof Fighter f && f.entityId() == localPlayerId);
+     * sequencer.viewer(null);   // every play involves the viewer: one player, a preview, the harness
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Unset, every play involves the viewer: right with one player, wrong for a client of many.</li>
+     *   <li>A role of kind {@code character} never involves the viewer: a bystander the move is not about.</li>
+     * </ul>
+     */
+    public CgSequencer viewer(@Nullable Predicate<? super CgSequenceTarget> mine) {
+        this.viewer = mine;
+        return this;
+    }
+
+    /** True if {@code target} is the viewer's own character, or no viewer is set. */
+    boolean isViewer(@Nullable CgSequenceTarget target) {
+        return viewer == null || target != null && viewer.test(target);
+    }
+
+    /** True with no viewer set: every play involves the viewer. */
+    boolean everyoneViews() {
+        return viewer == null;
     }
 
     /** Adds {@code evaluator} for its kind; a kind already evaluated throws. */

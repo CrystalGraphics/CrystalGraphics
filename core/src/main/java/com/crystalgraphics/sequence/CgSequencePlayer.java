@@ -340,6 +340,22 @@ public final class CgSequencePlayer {
         return -1;
     }
 
+    /**
+     * True if the viewer is involved in it: its caster or its target is the viewer's own character
+     * ({@link CgSequencer#viewer}). Its viewer-space tracks (a camera, unbound post, {@code global} and
+     * {@code environment} tracks) apply only then; its world (systems, prefabs, sounds, bounded post) plays for
+     * everyone.
+     */
+    public boolean involved() {
+        if (sequencer.everyoneViews()) return true;
+        List<CgSequenceDefinition.Role> declared = definition.roles();
+        for (int i = 0; i < roles.length; i++) {
+            String kind = declared.get(i).kind();
+            if ((kind.equals("caster") || kind.equals("target")) && roles[i] != null && sequencer.isViewer(roles[i])) return true;
+        }
+        return false;
+    }
+
     /** Takes it out of its sequencer at the next evaluation. */
     public void stop() {
         stopped = true;

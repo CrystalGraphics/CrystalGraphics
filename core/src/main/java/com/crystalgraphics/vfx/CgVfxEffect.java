@@ -823,12 +823,18 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
 
     /**
      * A post volume applying {@code settings} at {@code priority}, centred at {@code (x, y, z)} relative to the
-     * origin, at weight 0: size it, then weigh it each tick. It closes when the effect dies.
+     * origin, at weight 0: size it, then give it a timeline. It closes when the effect dies.
      *
      * <pre>{@code
      * flash = openVolume(10, new CgPostSettings().flash(1.5f), hitX, hitY, hitZ).radius(24f).blend(64f);
-     * flash.weight(curve(FLASH).at(t));   // each tick
+     * flash.timeline(s -> curve(FLASH).at(Math.min(s / 0.6f, 1f)));   // on the viewer's clock, through hitstop
      * }</pre>
+     *
+     * <ul>
+     *   <li>A flash or a screen look is the viewer's, never dilated: weigh it by {@link CgPostVolume#timeline}. A
+     *       weight set from {@link #tick} holds while the effect's character is frozen, since a frozen effect is not
+     *       ticked.</li>
+     * </ul>
      */
     protected final CgPostVolume openVolume(int priority, CgPostSettings settings, float x, float y, float z) {
         // On a server, one no stack applies: the effect weighs it as on a client.

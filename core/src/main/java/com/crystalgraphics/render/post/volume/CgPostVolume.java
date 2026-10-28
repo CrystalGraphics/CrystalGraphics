@@ -2,6 +2,10 @@ package com.crystalgraphics.render.post.volume;
 
 import java.util.function.Consumer;
 
+import javax.annotation.Nullable;
+
+import com.crystalgraphics.render.CgFrameClock;
+
 /**
  * Where and when a {@link CgPostSettings} applies, Unreal's Post Process Volume and Unity's Volume: everywhere, or
  * within a radius of a point with a blend distance beyond it, at a weight an effect moves over its life. Volumes blend
@@ -14,12 +18,17 @@ import java.util.function.Consumer;
  * burst.close();                   // when the effect ends
  *
  * CgPostVolume mood = CgPostStack.get().volume(0, new CgPostSettings().vignette(0.3f));   // global: no position
+ *
+ * // A flash on the viewer's clock: it fades on through its character's hitstop.
+ * flash.timeline(seconds -> FLASH_CURVE.at(Math.min(seconds / 0.6f, 1f)));
  * }</pre>
  *
  * <ul>
  *   <li>Any thread may make, move, weigh or close one; the stack reads it at the next firing.</li>
  *   <li>Its weight applies whatever the distance; the distance only lowers it, outside the radius.</li>
  *   <li>Nothing an effect does writes the global settings: an effect's look is always a volume.</li>
+ *   <li>A {@link #timeline} replaces {@link #weight} until it is cleared: an effect's flash runs on it, since an
+ *       effect is not stepped while its character is frozen.</li>
  * </ul>
  */
 public final class CgPostVolume implements AutoCloseable {
@@ -30,6 +39,15 @@ public final class CgPostVolume implements AutoCloseable {
     private volatile boolean placed;
     private volatile double x, y, z;
     private volatile float radius = Float.POSITIVE_INFINITY, blend, weight = 1f;
+    @Nullable
+    private volatile Timeline timeline;
+    private volatile double timelineStart;
+
+    /** A weight over the viewer's time: given the seconds since it was set, 0 to 1. */
+    @FunctionalInterface
+    public interface Timeline {
+        float weight(float seconds);
+    }
 
     /** The stack's. */
     public CgPostVolume(int priority, CgPostSettings settings, Consumer<CgPostVolume> closer) {
@@ -89,9 +107,20 @@ public final class CgPostVolume implements AutoCloseable {
         return z;
     }
 
-    /** Its weight for a camera at absolute {@code (cx, cy, cz)}: its own, lowered past its radius. */
+    /**
+     * Weighs it by {@code timeline} from now on the frame clock, the viewer's: never dilated, never held by a
+     * character's clock. Null goes back to {@link #weight}.
+     */
+    public CgPostVolume timeline(@Nullable Timeline timeline) {
+        this.timelineStart = CgFrameClock.seconds();
+        this.timeline = timeline;
+        return this;
+    }
+
+    /** Its weight for a camera at absolute {@code (cx, cy, cz)}: its own or its timeline's, lowered past its radius. */
     public float weightAt(double cx, double cy, double cz) {
-        float w = weight;
+        Timeline t = timeline;
+        float w = t == null ? weight : Math.max(0f, Math.min(1f, t.weight((float) (CgFrameClock.seconds() - timelineStart))));
         if (w <= 0f || !placed || radius == Float.POSITIVE_INFINITY) return w;
         double dx = cx - x, dy = cy - y, dz = cz - z;
         double d = Math.sqrt(dx * dx + dy * dy + dz * dz);

@@ -19,6 +19,11 @@ import com.crystalgraphics.sequence.definition.CgSequenceTrack;
  * The state kinds' evaluator: each channel sampled at the sequence's time and written into its target's slot. Unreal's
  * property systems (transform, float and vector properties, material and collection parameters), one slot a property,
  * its components gathered and handed to the blend phase.
+ *
+ * <ul>
+ *   <li>A {@code global} track, and any bound to the {@code environment}, writes the viewer's own shaders and world:
+ *       only for a play the viewer is {@linkplain CgSequencePlayer#involved() involved} in.</li>
+ * </ul>
  */
 public final class CgSequenceStateEvaluator implements CgSequenceEvaluator {
 
@@ -118,6 +123,11 @@ public final class CgSequenceStateEvaluator implements CgSequenceEvaluator {
         return target;
     }
 
+    /** Whether {@code track} writes the viewer's screen rather than the world: a collection or the environment. */
+    private boolean viewerSpace(CgSequenceTrack track) {
+        return kind.equals("global") || track.binding().subject() == CgSequenceBinding.Subject.ENVIRONMENT;
+    }
+
     @Override
     public boolean playsTriggered() {
         return true;
@@ -126,6 +136,7 @@ public final class CgSequenceStateEvaluator implements CgSequenceEvaluator {
     @Override
     public void evaluate(CgSequencePlayer player, CgSequenceTrack track, @Nullable CgSequenceSection section, float tick) {
         if (!(player.data(track, section) instanceof Bound b)) return;
+        if (viewerSpace(track) && !player.involved()) return;
         List<CgSequenceChannel> channels = section.channels();
         float weight = section.weight(tick);
         int channel = -1, mask = 0;
