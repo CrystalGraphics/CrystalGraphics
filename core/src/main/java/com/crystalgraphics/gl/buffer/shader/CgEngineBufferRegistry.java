@@ -6,6 +6,7 @@ import com.crystalgraphics.gl.render.CgShapeTable;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.render.CgVectorRenderer;
 import com.crystalgraphics.render.property.CgPalette;
+import com.crystalgraphics.render.stage.CgDirectionalLights;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -98,7 +99,11 @@ public final class CgEngineBufferRegistry {
                     _cg_SubImages ("CgVfxFlipbook: a rect table, a rect a texel", sampler2D) = "white"
                     """, "particle_order", "particle_beams", "rows");
         registerGenerated("globals", CgParameterCollectionBuffer::buffer, CgParameterCollectionBuffer.MACRO_NAME,
-                "crystalgraphics:shaders/env/buffer/globals.glsl", CgParameterCollection::glsl);
+                "crystalgraphics:shaders/env/buffer/globals.glsl", () -> {
+                    // The engine's own collections, declared before any material reads its globals.
+                    CgDirectionalLights.declare();
+                    return CgParameterCollection.glsl();
+                });
     }
 
     private CgEngineBufferRegistry() {}

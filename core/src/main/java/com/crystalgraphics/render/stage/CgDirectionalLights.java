@@ -46,6 +46,10 @@ public final class CgDirectionalLights {
         return INSTANCE;
     }
 
+    /** Declares {@link #COLLECTION}: the globals block calls it, so a material compiled first still finds it. */
+    public static void declare() {
+    }
+
     /** A new light at {@code priority} (0 and up): white, Unreal's intensity of 10, travelling straight down. */
     public synchronized Light add(int priority) {
         if (priority < 0) throw new IllegalArgumentException("a directional light's priority is 0 or more, not " + priority);
