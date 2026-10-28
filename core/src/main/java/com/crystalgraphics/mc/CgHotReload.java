@@ -31,7 +31,8 @@ import java.util.List;
  *       does not re-read every library from disk.</li>
  *   <li>Lost events (the platform's queue overflowed) reload everything, as F3+T does.</li>
  *   <li>{@code -Dcrystalgraphics.hotReload=false} keeps the override roots without watching them;
- *       {@code -Dcrystalgraphics.resourceOverrideDirs=<dirs>} adds folders the run does not load from.</li>
+ *       {@code -Dcrystalgraphics.resourceOverrideDirs=<dirs>} adds folders the run does not load from;
+ *       {@code -Dcrystalgraphics.hotReload.unwatched=<dirs>} reads those roots without watching them.</li>
  * </ul>
  */
 public final class CgHotReload {
@@ -40,6 +41,9 @@ public final class CgHotReload {
 
     private static final boolean ENABLED = CgVar.bool("crystalgraphics.hotReload", true, CgVar.DEV | CgVar.RESTART,
             "Watch each resource override root's assets/ and reload what an edited file reaches at the next frame.").get();
+    private static final CgVar.Text UNWATCHED = CgVar.text("crystalgraphics.hotReload.unwatched", "",
+            CgVar.DEV | CgVar.RESTART, "Override roots read but not watched, separated by the platform's path separator:"
+                    + " a tree of thousands of folders takes seconds to watch. Ctrl+R or F3+T still reloads them.");
 
     /** How long a file's events must be quiet before it is read. */
     public static final long QUIET_MILLIS = 120;
@@ -75,9 +79,17 @@ public final class CgHotReload {
     private static void start() {
         started = true;
         if (!ENABLED) return;
+        List<Path> unwatched = new ArrayList<>();
+        for (String dir : UNWATCHED.get().split(File.pathSeparator)) {
+            if (!dir.trim().isEmpty()) unwatched.add(new File(dir.trim()).getAbsoluteFile().toPath().normalize());
+        }
         for (File root : CgIO.overrideRoots()) {
             File assets = new File(root, "assets");
             if (!assets.isDirectory()) continue;
+            if (unwatched.contains(root.getAbsoluteFile().toPath().normalize())) {
+                LOGGER.info("[hot reload] not watching {} (crystalgraphics.hotReload.unwatched)", assets);
+                continue;
+            }
             try {
                 CgDirectoryWatcher watcher = CgDirectoryWatcher.open(assets.toPath(), QUIET_MILLIS);
                 ROOTS.add(new Root(watcher));

@@ -901,6 +901,8 @@ CgAssetReloader.addListener(new CgReloadListener() {        // or a cache keyed 
 - A texture made with `createDirect` is not cached, so no change finds it.
 - Per frame, with nothing edited, it allocates nothing and makes no system call. On macOS the JDK's watcher polls and
   can miss a change faster than its interval; Ctrl+R (harness) or F3+T reloads everything.
+- `-Dcrystalgraphics.hotReload.unwatched=<dirs>` reads those roots without watching them: a tree of thousands of
+  folders takes seconds to watch (the harness sets it to the vfx-aaa kit root). Ctrl+R or F3+T reloads them.
 - `-Dcrystalgraphics.hotReload=false` keeps the override roots without watching them;
   `-Dcrystalgraphics.resourceOverrideDirs=<dirs>` adds roots ahead of the found ones (a folder the run does not
   load from), and
