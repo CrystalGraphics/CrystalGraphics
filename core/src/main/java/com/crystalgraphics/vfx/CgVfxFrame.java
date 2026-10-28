@@ -539,8 +539,11 @@ public final class CgVfxFrame {
      */
     void particles() {
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, GPU_ZONE)) {
-            CgVfxRange.layOut();
             List<CgVfxGpuSteps.Tenant> tenants = system.gpuSteps().tenantList();
+            // Every pool's range before any draw takes Range's shared buffers: one made mid-walk could outgrow them, and
+            // Range releases the replaced ones before this frame's draws read them.
+            for (int i = 0; i < tenants.size(); i++) CgVfxRange.of(tenants.get(i).pool);
+            CgVfxRange.layOut();
             for (int i = 0; i < tenants.size(); i++) draw(tenants.get(i));
         }
     }
