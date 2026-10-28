@@ -17,12 +17,12 @@ import java.util.function.Consumer;
  *
  * <pre>{@code
  * // declared once, a static final beside what reads it
- * static final CgVar.Bool MERGE = CgVar.bool("crystalgraphics.vfx.mergeParticles", true, CgVar.DEV,
- *         "GPU particles a draw a pool and layer; false draws a slot a draw, sorted per effect.");
+ * static final CgVar.Bool ORDERED = CgVar.bool("crystalgraphics.vfx.orderedTies", false, CgVar.DEV,
+ *         "Break ties in the particle draw order by spawn id.");
  * static final CgVar.Int BATCH = CgVar.integer("crystalgraphics.vfx.bookBatch", 256, 1, 4096, CgVar.DEV,
  *         "Effects of one simulation a worker books in one task.");
  *
- * if (MERGE.get()) ...                              // a volatile read: fine in a hot path
+ * if (ORDERED.get()) ...                            // a volatile read: fine in a hot path
  * BATCH.onChange(n -> rebuild(n));                  // runs on the thread that changed it
  * BATCH.set(64);                                    // CODE: -D, the console and remote still win
  * BATCH.set(CgVar.Source.CONSOLE, 64);              // a dev tool's key: outranks -D

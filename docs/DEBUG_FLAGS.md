@@ -7,12 +7,12 @@ Every engine switch is a variable (`com.crystalgraphics.variable.CgVar`): typed,
 |---|---|
 | code | `VAR.set(value)`: a mod's own default, a screen previewing a value |
 | settings file | a player's setting (`CgSettings`); player settings are variables too, `<file>.<section>.<key>`, and are not listed below |
-| `-D` | `-Dcrystalgraphics.vfx.mergeParticles=false` at launch; a bare `-Dcrystalgraphics.state.verify` turns a bool on |
+| `-D` | `-Dcrystalgraphics.vfx.mergeParticlesFrom=0` at launch; a bare `-Dcrystalgraphics.state.verify` turns a bool on |
 | console | a person, live: the in-game console, a dev tool's key (the harness's H, L, G) |
 | remote | a remote tool |
 
 ```bash
-./gradlew :gl-debug-harness:runHarness --args="--mode=vfx-spheres" -Dcrystalgraphics.vfx.mergeParticles=false
+./gradlew :gl-debug-harness:runHarness --args="--mode=vfx-spheres" -Dcrystalgraphics.vfx.mergeParticlesFrom=0
 ./gradlew :runtime:mc:modern:forge:1.20.1:runClient -Dcrystalgraphics.state.roundTrip=true
 ```
 
@@ -122,6 +122,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.hotReload` | true, false | `true` | Watch each resource override root's assets/ and reload what an edited file reaches at the next frame. Read at launch. |
+| `crystalgraphics.hotReload.unwatched` | text | empty | Override roots read but not watched, separated by the platform's path separator: a tree of thousands of folders takes seconds to watch. Ctrl+R or F3+T still reloads them. Read at launch. |
 
 ## `crystalgraphics.job`
 
@@ -285,7 +286,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.vfx.budget.frameMs` | 0.0 to 1000.0 | `0.0` | CPU milliseconds a frame every effect's frame-thread work may take before the scalabilities scale down; 0 for the quality tier's. |
 | `crystalgraphics.vfx.coarseVolumes` | true, false | `false` | Measurement: volume layers on a 12 x 24 sphere instead of 48 x 96. Read at launch. |
 | `crystalgraphics.vfx.fuseLook` | true, false | `true` | On compute, each particle a Step keeps writes its drawn part as it appends it, the Look stage no dispatch of its own; false keeps the two dispatches, as below compute. |
-| `crystalgraphics.vfx.mergeParticles` | true, false | `true` | GPU particles one draw a pool and layer (indirectEach); false draws a slot a draw, sorted per effect: the comparison for overlaps. |
+| `crystalgraphics.vfx.mergeParticlesFrom` | 0 to 2147483647 | `64` | Effects playing from which GPU particles draw one draw a pool and layer (indirectEach), sorted as one group; below it a slot a draw, each effect sorted whole. Stops at three quarters of it. 0 always merges. |
 | `crystalgraphics.vfx.orderedTies` | true, false | `false` | Break ties in the particle draw order by spawn id, so a capture repeats byte for byte: a dispatch per pool and a sort a frame. Capture runs only, beside crystalgraphics.fixedSeed. |
 | `crystalgraphics.vfx.parallelBooks` | 1 to 2147483647 | `4096` | Effects with emitters due a tick past which their books run on the workers, in batches of one simulation's effects; fewer book on the render thread alone. |
 | `crystalgraphics.vfx.poolBudget` | 0 to 2147483647 | `48` | Shapes the loaded bundles may take before coalescing raises their inputs; 0 raises every group that saves a pool, which the form gates run under. Read at launch. |

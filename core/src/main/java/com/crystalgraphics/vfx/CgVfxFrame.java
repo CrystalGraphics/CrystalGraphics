@@ -88,13 +88,15 @@ public final class CgVfxFrame {
             DRAWS_PARTICLE_GPU = CgTrace.name("vfx.draws.particle-gpu"), DRAWS_PARTICLE_SETS = CgTrace.name("vfx.draws.particle-sets"),
             GPU_ZONE = CgTrace.name("vfx.particles.gpu");
     /**
-     * GPU particle slots drawn as one draw a pool and material ({@code Draw.indirectEach}), in one group for the system:
-     * each material's slots blend as one run over the others' rather than effect by effect. False draws a slot a draw,
-     * per effect.
+     * Effects past which GPU particle slots draw as one draw a pool and material ({@code Draw.indirectEach}), in one
+     * group for the system: each material's slots blend as one run over the others' rather than effect by effect, a
+     * crowd's cost traded for Unreal's order. Below it each effect sorts as a whole at its origin, its emitters in its
+     * look's order, as Unreal sorts a component (TranslucentRendering.cpp, CalculateTranslucentSortKey).
      */
-    private static final CgVar.Bool MERGED = CgVar.bool("crystalgraphics.vfx.mergeParticles", true, CgVar.DEV,
-            "GPU particles one draw a pool and layer (indirectEach); false draws a slot a draw, sorted per effect: the"
-                    + " comparison for overlaps.");
+    private static final CgVar.Int MERGE_FROM = CgVar.integer("crystalgraphics.vfx.mergeParticlesFrom", 64, 0,
+            Integer.MAX_VALUE, "Effects playing from which GPU particles draw one draw a pool and layer (indirectEach),"
+                    + " sorted as one group; below it a slot a draw, each effect sorted whole. Stops at three quarters of"
+                    + " it. 0 always merges.");
     /**
      * An emitter whose books rule out a live particle submits no draws. Niagara makes no render data for an emitter it
      * knows is empty (NiagaraRendererSprites.cpp GenerateDynamicData, NiagaraSystemRenderData.cpp for complete ones);
@@ -115,6 +117,8 @@ public final class CgVfxFrame {
     private static final float CUBE_REACH = 1.7320508f;
     private CgWorldRenderer world;
     private float alpha;
+    /** Whether this frame's GPU particles merge: see {@link #MERGE_FROM}. */
+    private boolean merged;
     /** Where the merged particle draws sort as one group: the middle of the system's effects. */
     private double groupX, groupY, groupZ;
     /** Every particle proxy made, by what it draws: a renderer finds its own once, when it is made. */
@@ -129,7 +133,13 @@ public final class CgVfxFrame {
         this.materials = materials;
     }
 
-    void begin(CgWorldRenderer world, float alpha, double groupX, double groupY, double groupZ) {
+    /**
+     * Starts a frame of {@code effects} playing effects. Merging starts at {@link #MERGE_FROM} and stops below three
+     * quarters of it, since each change remakes every tenant's renderers.
+     */
+    void begin(CgWorldRenderer world, float alpha, int effects, double groupX, double groupY, double groupZ) {
+        int from = MERGE_FROM.get();
+        merged = effects >= from || merged && effects >= from - from / 4;
         this.world = world;
         this.alpha = alpha;
         this.groupX = groupX;
@@ -189,7 +199,7 @@ public final class CgVfxFrame {
      * in its effect's group otherwise.
      */
     private CgWorldRenderer.Draw placeParticles(CgWorldRenderer.Draw draw, CgVfxLook.Placed placed, CgVfxEffect<?> effect) {
-        return MERGED.get() ? CgVfxSystem.place(draw, placed, groupX, groupY, groupZ) : CgVfxSystem.place(draw, placed, effect);
+        return merged ? CgVfxSystem.place(draw, placed, groupX, groupY, groupZ) : CgVfxSystem.place(draw, placed, effect);
     }
 
     /** {@link CgVfxParticlePool#releases()} when its proxies were last checked for a released pool. */
@@ -551,7 +561,7 @@ public final class CgVfxFrame {
         if (SKIP_IDLE.get() && !emitter.mayHaveParticles()) return;
         CgQuality quality = system.quality(effect.lowered);
         String[] skipped = CgVfxSystem.skippedParts();
-        if (rs.quality != quality || rs.skipped != skipped || rs.look != effect.look() || rs.merged != MERGED.get()) {
+        if (rs.quality != quality || rs.skipped != skipped || rs.look != effect.look() || rs.merged != merged) {
             build(rs, effect, tenant, quality, skipped);
         }
         if (rs.count == 0) return;
@@ -669,7 +679,7 @@ public final class CgVfxFrame {
         rs.quality = quality;
         rs.skipped = skipped;
         rs.look = effect.look();
-        rs.merged = MERGED.get();
+        rs.merged = merged;
         rs.count = 0;
         CgVfxEmitter def = tenant.instance.emitter();
         CgVfxLook look = effect.look();
@@ -767,7 +777,7 @@ public final class CgVfxFrame {
     /** A quad's or an arc's renderer: a record of its pool's merged draw, or a draw of its own when merging is off. */
     private void quads(Renderers rs, CgVfxLook.Placed placed, CgVfxMaterials.Resolved r, CgMaterial material,
                        CgVfxParticlePool pool, CgVfxEmitter def, boolean arcs) {
-        if (MERGED.get()) {
+        if (merged) {
             Renderer rd = rs.next(Shape.MERGED, placed, r, material);
             int factor = arcs ? CgVfxRibbons.VERTICES : 6;
             rd.proxy = proxy(probe.set(pool, material, def.drawLayout(), Strip.NONE, factor), placed,
@@ -799,7 +809,7 @@ public final class CgVfxFrame {
         rd.beamFrequency = noise != null ? noise.frequency() : 0;
         rd.beamFlags = (noise != null && noise.targetNoise() ? 1 : 0) | (beam.upVectorStepSize() == 1 ? 2 : 0)
                 | (beam.textureTileDistance() > 0f ? 4 : 0);
-        if (MERGED.get()) {
+        if (merged) {
             rd.proxy = proxy(probe.set(pool, rd.material, CgVfxDrawLayout.QUADS, Strip.BEAM, rd.per), placed,
                     CgIndirect.VERTICES);
         }
@@ -869,7 +879,7 @@ public final class CgVfxFrame {
 
     /**
      * An emitter instance's renderers, kept on its tenancy from its first drawn frame until its slot closes: Niagara's
-     * {@code FNiagaraRenderer}s. Remade when its tier, the skipped parts, its look or {@code mergeParticles} change.
+     * {@code FNiagaraRenderer}s. Remade when its tier, the skipped parts, its look or whether particles merge change.
      */
     static final class Renderers {
         /** The reach of its bounds sphere in still air, and what each block a second of wind adds: the emitter's. */

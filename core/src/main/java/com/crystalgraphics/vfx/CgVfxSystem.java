@@ -892,7 +892,7 @@ public final class CgVfxSystem {
             }
             int n = effects.size();
             materials.begin(CgFrameRing.frame());
-            frame.begin(world, alpha, gx / n, gy / n, gz / n);
+            frame.begin(world, alpha, n, gx / n, gy / n, gz / n);
             paths.begin();
             for (int i = 0; i < effects.size(); i++) {
                 CgVfxEffect<?> effect = effects.get(i);

@@ -1009,8 +1009,9 @@ sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debr
   speed, size, forces and a rate per block's spacing, keeping the timing.
 - **`.optional()`** marks detail: halved at the Low quality tier. The player's density setting thins every emitter.
 - **`sweep(speed)`** runs the shape outward, so particles are born on a moving front: a shell's, a ring's.
-- **Each renderer's material on particles draws as one batch for the whole system**, sorted far to near within
-  itself, so two materials order as wholes. A solid look writes depth (`"Depth" = "Clip"`); soft smoke a depth prepass where it is
+- **An effect's particles sort as a whole** at its origin, its renderers in its look's order, as Unreal sorts a
+  component. Past 64 effects playing (`crystalgraphics.vfx.mergeParticlesFrom`) each renderer's material draws as one
+  batch for the whole system instead, sorted far to near within itself, so two materials order as wholes. A solid look writes depth (`"Depth" = "Clip"`); soft smoke a depth prepass where it is
   solid (`"Depth" = "Prepass"`); only something soft throughout relies on blending
   ([`SHADERS.md`](SHADERS.md) § *Depth from a transparent material*).
 - Effects and their emitters' books tick 120 times a second; the GPU steps the particles once a frame, over the
