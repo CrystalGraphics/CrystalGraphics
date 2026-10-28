@@ -1,5 +1,5 @@
 // What both forms of the post composite share: noise for dithering onto an 8-bit target, sRGB's exact curve, and the
-// copy form's vignette; its impact frames are lib/post/impact.glsl. Nothing here names cg_*: a shader passes its pixel,
+// copy form's vignette and colour grading; its impact frames are lib/post/impact.glsl. Nothing here names cg_*: a shader passes its pixel,
 // size and frame.
 //
 //     float frame = floor(CG_TIME * 60.0);
@@ -43,4 +43,21 @@ float post_vignette(vec2 uv, vec2 resolution, float intensity) {
     vec2 p = (uv * 2.0 - 1.0) * vec2(1.0, a) * (sqrt(2.0) / sqrt(1.0 + a * a)) * intensity;
     float k = 1.0 / (dot(p, p) + 1.0);
     return k * k;
+}
+
+// ACEScg's luma: AP1 to XYZ's middle row.
+const vec3 POST_AP1_Y = vec3(0.2722287168, 0.6740817658, 0.0536895174);
+
+// Unreal's ColorCorrect (4.21 PostProcessCombineLUTs.usf) of ACEScg c at luma: saturation about luma, contrast about
+// 0.18, gamma, gain and offset; the scalars already applied and gamma inverted on the CPU (CgColorGrade).
+vec3 post_correct(vec3 c, float luma, vec3 saturation, vec3 contrast, vec3 invGamma, vec3 gain, vec3 offset) {
+    c = max(vec3(0.0), mix(vec3(luma), c, saturation));
+    c = pow(c * (1.0 / 0.18), contrast) * 0.18;
+    c = pow(c, invGamma);
+    return c * gain + offset;
+}
+
+// ColorCorrectAll's weights at luma: shadows to range.x, highlights from range.y; midtones are what is left.
+vec2 post_grade_weights(float luma, vec2 range) {
+    return vec2(1.0 - smoothstep(0.0, range.x, luma), smoothstep(range.y, 1.0, luma));
 }

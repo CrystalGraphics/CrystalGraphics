@@ -8,6 +8,7 @@
 //   FLASH      the picture times _Exposure, in linear light; bloom is added after, unscaled
 //   BLOOM      the bloom chain's level 0, tinted, added in linear light; or mixed in, energy-conserving
 //   VIGNETTE   Unreal's vignette at _Vignette, its VignetteIntensity
+//   GRADE      Unreal's white balance and colour grading, in ACEScg, before the roll; its scene tint after (CgColorGrade)
 //   TONEMAP    Unreal 4.21's tonemap pass over the scene: bloom added, then exposure and the vignette, then _FilmLut, its
 //              combined colour table (CgFilmLut), read through the log shaper and scaled by 1.05, already encoded
 //   IMPACT     _Impact.x of the way to an impact frame, a CgImpactFrame: _Impact.y its kind (negative, black and white,
@@ -30,6 +31,7 @@
 #pragma cg_feature SUBJECT
 #pragma cg_feature FADE
 #pragma cg_feature TONEMAP
+#pragma cg_feature GRADE
 #include "crystalgraphics:shaders/lib/post/impact.glsl"
 
 Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.02" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
@@ -53,6 +55,29 @@ Properties {
     _Focus     ("xy: where aberration and focus lines centre, 0 to 1", vec4) = (0.5, 0.5, 0, 0)
     _Fade      ("rgb: the colour it fades to, in the target's encoding; a: how far", vec4) = (0, 0, 0, 0)
     _FilmLut   ("The tonemapper's colour table, 32 a side: sRGB / 1.05 at each log-encoded corner", sampler3D) = "black"
+    _GradeIn0  ("Linear sRGB to white-balanced ACEScg, row 0", vec4) = (1, 0, 0, 0)
+    _GradeIn1  ("Row 1", vec4) = (0, 1, 0, 0)
+    _GradeIn2  ("Row 2", vec4) = (0, 0, 1, 0)
+    _GradeOut0 ("ACEScg to linear sRGB, row 0", vec4) = (1, 0, 0, 0)
+    _GradeOut1 ("Row 1", vec4) = (0, 1, 0, 0)
+    _GradeOut2 ("Row 2", vec4) = (0, 0, 1, 0)
+    _GradeS0   ("Shadows: saturation", vec4) = (1, 1, 1, 0)
+    _GradeS1   ("Shadows: contrast", vec4) = (1, 1, 1, 0)
+    _GradeS2   ("Shadows: 1 / gamma", vec4) = (1, 1, 1, 0)
+    _GradeS3   ("Shadows: gain", vec4) = (1, 1, 1, 0)
+    _GradeS4   ("Shadows: offset", vec4) = (0, 0, 0, 0)
+    _GradeM0   ("Midtones: saturation", vec4) = (1, 1, 1, 0)
+    _GradeM1   ("Midtones: contrast", vec4) = (1, 1, 1, 0)
+    _GradeM2   ("Midtones: 1 / gamma", vec4) = (1, 1, 1, 0)
+    _GradeM3   ("Midtones: gain", vec4) = (1, 1, 1, 0)
+    _GradeM4   ("Midtones: offset", vec4) = (0, 0, 0, 0)
+    _GradeH0   ("Highlights: saturation", vec4) = (1, 1, 1, 0)
+    _GradeH1   ("Highlights: contrast", vec4) = (1, 1, 1, 0)
+    _GradeH2   ("Highlights: 1 / gamma", vec4) = (1, 1, 1, 0)
+    _GradeH3   ("Highlights: gain", vec4) = (1, 1, 1, 0)
+    _GradeH4   ("Highlights: offset", vec4) = (0, 0, 0, 0)
+    _GradeRange ("x: where shadows end; y: where highlights begin", vec4) = (0.09, 0.5, 0, 0)
+    _GradeTint ("The scene tint, after the roll", vec4) = (1, 1, 1, 0)
 }
 
 struct v2f { vec2 uv; };
@@ -123,12 +148,25 @@ Pass {
 #ifdef VIGNETTE
         c *= post_vignette(i.uv, CG_RESOLUTION, _Vignette);
 #endif
+#ifdef GRADE
+        // Unreal grades the balanced colour in ACEScg (CombineLUTsCommon): each region corrected, weighted by luma.
+        vec3 ap1 = vec3(dot(_GradeIn0.xyz, c), dot(_GradeIn1.xyz, c), dot(_GradeIn2.xyz, c));
+        float luma = dot(ap1, POST_AP1_Y);
+        vec2 w = post_grade_weights(luma, _GradeRange.xy);
+        ap1 = post_correct(ap1, luma, _GradeS0.xyz, _GradeS1.xyz, _GradeS2.xyz, _GradeS3.xyz, _GradeS4.xyz) * w.x
+            + post_correct(ap1, luma, _GradeM0.xyz, _GradeM1.xyz, _GradeM2.xyz, _GradeM3.xyz, _GradeM4.xyz) * (1.0 - w.x - w.y)
+            + post_correct(ap1, luma, _GradeH0.xyz, _GradeH1.xyz, _GradeH2.xyz, _GradeH3.xyz, _GradeH4.xyz) * w.y;
+        c = vec3(dot(_GradeOut0.xyz, ap1), dot(_GradeOut1.xyz, ap1), dot(_GradeOut2.xyz, ap1));
+#endif
 #ifdef SCENE
         // Past white, the hue is kept and goes toward white the further past: a hot core with a coloured fringe, where
         // a clamp per channel bands. At or below 1 nothing changes, so the host's own pixels come back exact. Halfway
         // to white at 4x white: a saturated glow at 2x stays three quarters its colour (1 - 1 / peak washed it out).
         float peak = max(c.r, max(c.g, c.b));
         if (peak > 1.0) c = mix(c / peak, vec3(1.0), (peak - 1.0) / (peak + 2.0));
+#endif
+#ifdef GRADE
+        c *= _GradeTint.rgb;
 #endif
         vec3 encoded = post_encode_srgb(c);
 #endif

@@ -3,6 +3,7 @@ package com.crystalgraphics.render.post.look;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
+import java.util.Arrays;
 
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.texture.CgTexture3D;
@@ -23,9 +24,9 @@ import com.crystalgraphics.render.post.volume.CgPostSettings;
  * }</pre>
  *
  * <ul>
- *   <li>Each cell is the log-encoded colour at its corner, decoded, white-balanced, taken to ACEScg and back (the
- *       colour correction at its defaults), through the legacy film curve, sRGB-encoded and divided by 1.05, as 4.21's
- *       combine writes it.</li>
+ *   <li>Each cell is the log-encoded colour at its corner, decoded, white-balanced, graded in ACEScg
+ *       ({@link CgColorGrade}) and taken back, through the legacy film curve, tinted, sRGB-encoded and divided by
+ *       1.05, as 4.21's combine writes it.</li>
  *   <li>The ACES film tonemapper ({@code r.TonemapperFilm 1}) is not baked yet: only the legacy curve is.</li>
  *   <li>Colour science constants are the ACES and sRGB standards' (Academy aces-dev; IEC 61966-2-1), Bradford's and the
  *       legacy curve's construction as 4.21's renderer computes them.</li>
@@ -38,9 +39,9 @@ public final class CgFilmLut {
     /** What a cell is multiplied by when read: the combine divides by it so the table can hold a little past white. */
     public static final float SCALE = 1.05f;
 
-    private static final double[] SRGB_TO_XYZ = {0.4124564, 0.3575761, 0.1804375, 0.2126729, 0.7151522, 0.0721750,
+    static final double[] SRGB_TO_XYZ = {0.4124564, 0.3575761, 0.1804375, 0.2126729, 0.7151522, 0.0721750,
             0.0193339, 0.1191920, 0.9503041};
-    private static final double[] XYZ_TO_SRGB = {3.2409699419, -1.5373831776, -0.4986107603, -0.9692436363,
+    static final double[] XYZ_TO_SRGB = {3.2409699419, -1.5373831776, -0.4986107603, -0.9692436363,
             1.8759675015, 0.0415550574, 0.0556300797, -0.2039769589, 1.0569715142};
     private static final double[] XYZ_TO_AP1 = {1.6410233797, -0.3248032942, -0.2364246952, -0.6636628587,
             1.6153315917, 0.0167563477, 0.0117218943, -0.0082844420, 0.9883948585};
@@ -54,26 +55,28 @@ public final class CgFilmLut {
     private static final double[] BRADFORD = {0.8951, 0.2664, -0.1614, -0.7502, 1.7135, 0.0367, 0.0389, -0.0685, 1.0296};
     private static final double[] BRADFORD_INV = {0.9869929, -0.1470543, 0.1599627, 0.4323053, 0.5183603, 0.0492912,
             -0.0085287, 0.0400428, 0.9684867};
-    private static final double[] SRGB_TO_AP1 = mul(XYZ_TO_AP1, mul(D65_TO_D60, SRGB_TO_XYZ));
-    private static final double[] AP1_TO_SRGB = mul(XYZ_TO_SRGB, mul(D60_TO_D65, AP1_TO_XYZ));
+    static final double[] SRGB_TO_AP1 = mul(XYZ_TO_AP1, mul(D65_TO_D60, SRGB_TO_XYZ));
+    static final double[] AP1_TO_SRGB = mul(XYZ_TO_SRGB, mul(D60_TO_D65, AP1_TO_XYZ));
     /** The log encoding's range in stops, its grey and where grey sits (Unreal's LogToLin). */
     private static final double RANGE = 14, GREY = 0.18, GREY_AT = 444.0 / 1023.0;
 
     private final float[] cells = new float[CELLS * 3];
     private final ByteBuffer upload = ByteBuffer.allocateDirect(CELLS * 16).order(ByteOrder.nativeOrder());
-    private final float[] baked = new float[7];
+    private final float[] baked = new float[5];
+    private final CgColorGrade grading = new CgColorGrade();
+    private final double[] bakedGrade = new double[CgColorGrade.PACKED];
     private CgTexture3D texture;
 
-    /** The table for {@code s}'s film settings: rebaked and uploaded when they changed. Render thread. */
+    /** The table for {@code s}'s film settings and grade: rebaked and uploaded when they changed. Render thread. */
     public CgTexture3D texture(CgPostSettings s) {
-        if (texture != null && same(s)) return texture;
+        double[] grade = grading.update(s);
+        if (texture != null && same(s, grade)) return texture;
         baked[0] = s.filmContrast();
         baked[1] = s.filmDynamicRange();
         baked[2] = s.filmToe();
         baked[3] = s.filmHeal();
         baked[4] = s.filmSaturation();
-        baked[5] = s.whiteTemp();
-        baked[6] = s.whiteTint();
+        System.arraycopy(grade, 0, bakedGrade, 0, grade.length);
         bake(s, cells);
         FloatBuffer f = upload.clear().asFloatBuffer();
         for (int i = 0; i < CELLS; i++) f.put(cells[i * 3]).put(cells[i * 3 + 1]).put(cells[i * 3 + 2]).put(1f);
@@ -82,10 +85,9 @@ public final class CgFilmLut {
         return texture;
     }
 
-    private boolean same(CgPostSettings s) {
+    private boolean same(CgPostSettings s, double[] grade) {
         return baked[0] == s.filmContrast() && baked[1] == s.filmDynamicRange() && baked[2] == s.filmToe()
-                && baked[3] == s.filmHeal() && baked[4] == s.filmSaturation() && baked[5] == s.whiteTemp()
-                && baked[6] == s.whiteTint();
+                && baked[3] == s.filmHeal() && baked[4] == s.filmSaturation() && Arrays.equals(grade, bakedGrade);
     }
 
     /** Frees the table; the next {@link #texture} makes it again. */
@@ -129,8 +131,8 @@ public final class CgFilmLut {
 
     /** Bakes {@code s}'s table into {@code out}: {@link #CELLS} cells of r, g, b; r fastest, then g, then b. */
     public static void bake(CgPostSettings s, float[] out) {
-        double[] balance = mul(XYZ_TO_SRGB, mul(adaptation(s.whiteTemp(), s.whiteTint()), SRGB_TO_XYZ));
-        double[] toAp1 = mul(SRGB_TO_AP1, balance);
+        double[] grade = new double[CgColorGrade.PACKED];
+        CgColorGrade.pack(s, grade);
         Curve curve = new Curve(s.filmContrast(), s.filmDynamicRange(), s.filmToe(), s.filmHeal(), s.filmSaturation());
         double[] c = new double[3], t = new double[3];
         double zero = logToLin(0);
@@ -140,13 +142,13 @@ public final class CgFilmLut {
                     c[0] = logToLin(r / (SIZE - 1.0)) - zero;
                     c[1] = logToLin(g / (SIZE - 1.0)) - zero;
                     c[2] = logToLin(b / (SIZE - 1.0)) - zero;
-                    apply(toAp1, c, t);
-                    // The colour correction at its defaults leaves ACEScg as it is but for what is below zero.
-                    for (int k = 0; k < 3; k++) t[k] = Math.max(t[k], 0);
-                    apply(AP1_TO_SRGB, t, c);
-                    curve.apply(c);
+                    CgColorGrade.apply(grade, c, t);
+                    curve.apply(t);
                     int at = 3 * (r + SIZE * (g + SIZE * b));
-                    for (int k = 0; k < 3; k++) out[at + k] = (float) Math.min(1, srgb(Math.max(c[k], 0)) / SCALE);
+                    for (int k = 0; k < 3; k++) {
+                        double tinted = t[k] * grade[CgColorGrade.TINT + k];
+                        out[at + k] = (float) Math.min(1, srgb(Math.max(tinted, 0)) / SCALE);
+                    }
                 }
             }
         }
@@ -247,7 +249,7 @@ public final class CgFilmLut {
     }
 
     /** Row-major 3x3 {@code a · b}. */
-    private static double[] mul(double[] a, double[] b) {
+    static double[] mul(double[] a, double[] b) {
         double[] o = new double[9];
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 3; j++) o[i * 3 + j] = a[i * 3] * b[j] + a[i * 3 + 1] * b[3 + j] + a[i * 3 + 2] * b[6 + j];

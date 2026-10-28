@@ -10,12 +10,16 @@ import java.util.Objects;
  * CgPostSettings burst = new CgPostSettings().flash(1.5f).bloom(2f);        // a stop and a half brighter, twice the glow
  * CgPostSettings hit = new CgPostSettings().impact(CgImpact.LINES, 1f).chromatic(0.8f);
  * CgPostSettings stage = new CgPostSettings().tonemap().filmHeal(0.18f).vignette(0.5f);   // Unreal 4.21's tonemapper
+ * CgPostSettings cold = new CgPostSettings().grade(Region.SHADOWS, Control.GAIN, 0.8f, 0.9f, 1.2f, 1f)
+ *         .grade(Region.GLOBAL, Control.SATURATION, 1f, 1f, 1f, 0.7f);              // Unreal's colour grading
  * }</pre>
  *
  * <ul>
  *   <li>Written from any thread, read on the render thread: floats, read at most a frame late.</li>
- *   <li>Neutral values are a look's absence: bloom 1, flash 0, vignette 0, chromatic 0, impact 0, fade 0, and no
- *       tonemapper. A firing with none is drawn as it was, a host's pixels back byte for byte.</li>
+ *   <li>Neutral values are a look's absence: bloom 1, flash 0, vignette 0, chromatic 0, impact 0, fade 0, a neutral
+ *       grade and white balance, and no tonemapper. A firing with none is drawn as it was, a host's pixels back byte
+ *       for byte.</li>
+ *   <li>Each grading control of each region is its own field, as Unreal's {@code bOverride_} flags are.</li>
  *   <li>The tonemapper's film settings are Unreal's, at its defaults, each its own field: a volume setting one moves
  *       that one alone, by its weight, as Unreal's {@code bOverride_} flags do.</li>
  *   <li>The focus (where chromatic aberration and speed lines centre) defaults to the volume's position on screen,
@@ -28,6 +32,27 @@ public final class CgPostSettings {
             FADE = 1 << 6, TONEMAP = 1 << 7, FILM_CONTRAST = 1 << 8, FILM_DYNAMIC_RANGE = 1 << 9, FILM_TOE = 1 << 10,
             FILM_HEAL = 1 << 11, FILM_SATURATION = 1 << 12, WHITE_BALANCE = 1 << 13;
 
+    /** Where a grade applies: Unreal's global controls, then its Shadows, Midtones and Highlights. */
+    public enum Region { GLOBAL, SHADOWS, MIDTONES, HIGHLIGHTS }
+
+    /** A region's five controls, each an RGB and a scalar that multiplies it ({@code offset}'s adds). */
+    public enum Control {
+        SATURATION(1f), CONTRAST(1f), GAMMA(1f), GAIN(1f), OFFSET(0f);
+
+        /** Its neutral value, in every component. */
+        public final float neutral;
+
+        Control(float neutral) {
+            this.neutral = neutral;
+        }
+    }
+
+    private static final Control[] CONTROLS = Control.values();
+    /** Grade floats: four per control, five controls per region. */
+    static final int GRADE_FLOATS = 4 * 5 * 4;
+    /** The grade's override bit for {@code (region, control)}; {@link #TINT_BIT} for the scene tint. */
+    private static final int TINT_BIT = 1 << 20;
+
     // Volatile: written on any thread, read on the render thread.
     volatile int overrides;
     volatile float bloom = 1f, flash, vignette, chromatic, impact;
@@ -37,6 +62,10 @@ public final class CgPostSettings {
     volatile float focusX = 0.5f, focusY = 0.5f;
     volatile float filmContrast = 0.03f, filmDynamicRange = 4f, filmToe = 1f, filmHeal = 1f, filmSaturation = 1f;
     volatile float whiteTemp = 6500f, whiteTint;
+    volatile int gradeOverrides;
+    /** Each region's controls, {@code (region * 5 + control) * 4}: r, g, b, then the scalar. */
+    final float[] grade = neutralGrade();
+    volatile float tintR = 1f, tintG = 1f, tintB = 1f;
     /** Resolved only: the weight behind the focus so far, which averages it rather than pulling it to the centre. */
     private float focusWeight;
 
@@ -142,6 +171,43 @@ public final class CgPostSettings {
         whiteTint = tint;
         overrides |= WHITE_BALANCE;
         return this;
+    }
+
+    /**
+     * One of Unreal's colour grading controls ({@code ColorGainShadows}, {@code ColorSaturation}...): {@code (r, g, b)}
+     * and the scalar {@code w} that multiplies them, or for {@code OFFSET} adds to them.
+     *
+     * <ul>
+     *   <li>A region's control is multiplied by the global one, or for {@code OFFSET} added to it.</li>
+     *   <li>Shadows weigh fully below a luma of 0, none by 0.09; highlights from 0.5 to fully at 1; midtones the rest.</li>
+     *   <li>It grades the HDR scene before the roll to white, or inside the tonemapper's table where it is on.</li>
+     * </ul>
+     */
+    public CgPostSettings grade(Region region, Control control, float r, float g, float b, float w) {
+        int at = (region.ordinal() * 5 + control.ordinal()) * 4;
+        grade[at] = r;
+        grade[at + 1] = g;
+        grade[at + 2] = b;
+        grade[at + 3] = w;
+        gradeOverrides |= 1 << (region.ordinal() * 5 + control.ordinal());
+        return this;
+    }
+
+    /**
+     * Unreal's {@code SceneColorTint}: the picture multiplied by {@code (r, g, b)}, linear, after the tonemapper or
+     * the roll to white.
+     */
+    public CgPostSettings tint(float r, float g, float b) {
+        tintR = r;
+        tintG = g;
+        tintB = b;
+        gradeOverrides |= TINT_BIT;
+        return this;
+    }
+
+    /** {@link #tint(float, float, float)} from {@code 0xAARRGGBB}, times {@code intensity}; its alpha unused. */
+    public CgPostSettings tint(int argb, float intensity) {
+        return tint((argb >> 16 & 0xFF) / 255f * intensity, (argb >> 8 & 0xFF) / 255f * intensity, (argb & 0xFF) / 255f * intensity);
     }
 
     /** Turns the picture {@code amount} (0 to 1) of the way into preset {@code look}: an impact frame. */
@@ -280,6 +346,46 @@ public final class CgPostSettings {
         return whiteTint;
     }
 
+    /** {@code (region, control)}'s component {@code k}: r, g, b, then 3 for the scalar. */
+    public float grade(Region region, Control control, int k) {
+        return grade[(region.ordinal() * 5 + control.ordinal()) * 4 + k];
+    }
+
+    /** Whether {@code (region, control)} is set here. */
+    public boolean grades(Region region, Control control) {
+        return (gradeOverrides & 1 << (region.ordinal() * 5 + control.ordinal())) != 0;
+    }
+
+    /** Whether the scene tint is set here. */
+    public boolean tints() {
+        return (gradeOverrides & TINT_BIT) != 0;
+    }
+
+    public float tintR() {
+        return tintR;
+    }
+
+    public float tintG() {
+        return tintG;
+    }
+
+    public float tintB() {
+        return tintB;
+    }
+
+    /** Whether the grade, the white balance or the tint is anything but neutral: what turns the composite's grade on. */
+    public boolean grades() {
+        if (whiteTemp != 6500f || whiteTint != 0f || tintR != 1f || tintG != 1f || tintB != 1f) return true;
+        for (int i = 0; i < GRADE_FLOATS; i++) if (grade[i] != CONTROLS[i / 4 % 5].neutral) return true;
+        return false;
+    }
+
+    private static float[] neutralGrade() {
+        float[] g = new float[GRADE_FLOATS];
+        for (int i = 0; i < GRADE_FLOATS; i++) g[i] = CONTROLS[i / 4 % 5].neutral;
+        return g;
+    }
+
     /** Back to no look at all, nothing overridden. */
     public void reset() {
         overrides = 0;
@@ -294,6 +400,9 @@ public final class CgPostSettings {
         filmToe = filmHeal = filmSaturation = 1f;
         whiteTemp = 6500f;
         whiteTint = 0f;
+        gradeOverrides = 0;
+        for (int i = 0; i < GRADE_FLOATS; i++) grade[i] = CONTROLS[i / 4 % 5].neutral;
+        tintR = tintG = tintB = 1f;
     }
 
     /**
@@ -314,6 +423,19 @@ public final class CgPostSettings {
         if ((o & WHITE_BALANCE) != 0) {
             whiteTemp += (from.whiteTemp - whiteTemp) * weight;
             whiteTint += (from.whiteTint - whiteTint) * weight;
+        }
+        int go = from.gradeOverrides;
+        if (go != 0) {
+            for (int c = 0; c < 20; c++) {
+                if ((go & 1 << c) == 0) continue;
+                for (int k = c * 4; k < c * 4 + 4; k++) grade[k] += (from.grade[k] - grade[k]) * weight;
+            }
+            if ((go & TINT_BIT) != 0) {
+                tintR += (from.tintR - tintR) * weight;
+                tintG += (from.tintG - tintG) * weight;
+                tintB += (from.tintB - tintB) * weight;
+            }
+            gradeOverrides |= go;
         }
         if ((o & FADE) != 0) {
             // Over no fade yet, the colour is this volume's outright, not a mix from black.

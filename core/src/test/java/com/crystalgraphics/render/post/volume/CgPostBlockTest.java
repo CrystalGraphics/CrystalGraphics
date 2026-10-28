@@ -1,13 +1,18 @@
 package com.crystalgraphics.render.post.volume;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+
+import com.crystalgraphics.render.post.volume.CgPostSettings.Control;
+import com.crystalgraphics.render.post.volume.CgPostSettings.Region;
 
 /** Override bits per field: two volumes overriding different fields both apply in full; the block round-trips. */
 public class CgPostBlockTest {
@@ -45,5 +50,18 @@ public class CgPostBlockTest {
         assertFalse(s.overrides(CgPostSettings.VIGNETTE));
         assertEquals(b, CgPostBlock.block(s));
         assertEquals(block(), CgPostBlock.block(CgPostBlock.settings(block())));
+    }
+
+    @Test
+    public void theGradeRoundTripsExactly_eachControlItsOwnField() {
+        Map<String, Object> b = block("colour", block("saturation", List.of(1.0, 1.0, 1.0, 0.75), "tint", List.of(1.0, 0.5, 0.25)),
+                "shadows", block("gain", List.of(0.5, 0.75, 1.25, 1.0)), "highlights", block("offset", List.of(0.0, 0.0, 0.125, 0.0)));
+        CgPostSettings s = CgPostBlock.settings(b);
+        assertTrue(s.grades(Region.SHADOWS, Control.GAIN));
+        assertFalse(s.grades(Region.SHADOWS, Control.GAMMA));
+        assertFalse(s.grades(Region.MIDTONES, Control.GAIN));
+        assertEquals(1.25f, s.grade(Region.SHADOWS, Control.GAIN, 2), 0f);
+        assertEquals(b, CgPostBlock.block(s));
+        assertThrows(IllegalArgumentException.class, () -> CgPostBlock.settings(block("midtones", block("gamma", List.of(1.0, 1.0)))));
     }
 }

@@ -20,7 +20,9 @@ public enum CgCompositeFeature {
     /** The picture faded toward a colour ({@link CgPostComposite#fade}), last: a mix the blend form draws as its alpha. */
     FADE("FADE", true),
     /** Unreal 4.21's tonemapper over the scene ({@link CgPostComposite#tonemap}): it replaces the encode. */
-    TONEMAP("TONEMAP", false);
+    TONEMAP("TONEMAP", false),
+    /** Unreal's colour grading of the HDR scene before the roll ({@link CgPostComposite#grade}): it reads the picture. */
+    GRADE("GRADE", false);
 
     final String keyword;
     final boolean blend;

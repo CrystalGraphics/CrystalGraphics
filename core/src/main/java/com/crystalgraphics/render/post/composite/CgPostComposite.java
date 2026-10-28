@@ -20,6 +20,7 @@ import com.crystalgraphics.render.post.volume.CgImpactFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
 
 import javax.annotation.Nullable;
+import java.util.Arrays;
 import java.util.function.Consumer;
 
 /**
@@ -48,6 +49,10 @@ public final class CgPostComposite {
     private static final int GPU = CgGpuTrace.name("post.composite");
     private static final CgCompositeFeature[] FEATURES = CgCompositeFeature.values();
     private static final CgCompositeForm[] FORMS = CgCompositeForm.values();
+    /** The grade's vec4 properties, in the order {@code CgColorGrade} packs them. */
+    private static final String[] GRADE = {"_GradeIn0", "_GradeIn1", "_GradeIn2", "_GradeOut0", "_GradeOut1", "_GradeOut2",
+            "_GradeS0", "_GradeS1", "_GradeS2", "_GradeS3", "_GradeS4", "_GradeM0", "_GradeM1", "_GradeM2", "_GradeM3",
+            "_GradeM4", "_GradeH0", "_GradeH1", "_GradeH2", "_GradeH3", "_GradeH4", "_GradeRange", "_GradeTint"};
     /** The keyword set's bit for {@code SCENE}, above every feature's. */
     private static final int SCENE_KEY = 1 << 30, SUBJECT_KEY = 1 << 29;
 
@@ -76,6 +81,8 @@ public final class CgPostComposite {
                 .vec4("_ImpactDark", f.darkR(), f.darkG(), f.darkB(), 1f)
                 .vec4("_Focus", inputs.focusX, inputs.focusY, 0f, 0f)
                 .vec4("_Fade", inputs.fadeR, inputs.fadeG, inputs.fadeB, inputs.fade);
+        float[] g = inputs.grade;
+        for (int i = 0; i < GRADE.length; i++) b.vec4(GRADE[i], g[i * 4], g[i * 4 + 1], g[i * 4 + 2], g[i * 4 + 3]);
     };
 
     /** What the composite's properties hold. */
@@ -88,13 +95,14 @@ public final class CgPostComposite {
         float fade, fadeR, fadeG, fadeB;
         CgImpactFrame frame = CgImpactFrame.NEGATIVE;
         int seed;
+        final float[] grade = new float[GRADE.length * 4];
 
         boolean same(Inputs o) {
             return scene == o.scene && bloom == o.bloom && subject == o.subject && lut == o.lut && intensity == o.intensity && r == o.r && g == o.g
                     && b == o.b && conserve == o.conserve && exposure == o.exposure && vignette == o.vignette
                     && chromatic == o.chromatic && impact == o.impact && frame == o.frame && seed == o.seed
                     && focusX == o.focusX && focusY == o.focusY && fade == o.fade && fadeR == o.fadeR
-                    && fadeG == o.fadeG && fadeB == o.fadeB;
+                    && fadeG == o.fadeG && fadeB == o.fadeB && Arrays.equals(grade, o.grade);
         }
 
         void copyFrom(Inputs o) {
@@ -119,6 +127,7 @@ public final class CgPostComposite {
             fadeR = o.fadeR;
             fadeG = o.fadeG;
             fadeB = o.fadeB;
+            System.arraycopy(o.grade, 0, grade, 0, grade.length);
         }
     }
 
@@ -216,6 +225,16 @@ public final class CgPostComposite {
     public CgPostComposite tonemap(CgTexture3D lut) {
         inputs.lut = lut;
         return on(CgCompositeFeature.TONEMAP);
+    }
+
+    /**
+     * Grades the picture by {@code constants} ({@code CgColorGrade.constants}): Unreal's white balance and colour
+     * grading in ACEScg, before the roll to white, and its scene tint after. With the tonemapper on, its table holds
+     * the grade instead.
+     */
+    public CgPostComposite grade(float[] constants) {
+        System.arraycopy(constants, 0, inputs.grade, 0, inputs.grade.length);
+        return on(CgCompositeFeature.GRADE);
     }
 
     /** Composites this firing in linear light ({@link CgCompositeForm#COPY}), at the cost of a copy of the target. */

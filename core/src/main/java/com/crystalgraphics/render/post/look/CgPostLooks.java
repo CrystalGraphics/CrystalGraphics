@@ -11,7 +11,8 @@ import com.crystalgraphics.settings.CgGraphicsSettings;
 
 /**
  * The engine's screen-wide looks, from the firing's blended volumes ({@link CgPostContext#settings()}) into the
- * composite: a flash, a vignette, chromatic aberration, impact frames, a fade and Unreal's tonemapper. Built in;
+ * composite: a flash, a vignette, chromatic aberration, impact frames, a fade, Unreal's colour grading and its
+ * tonemapper. Built in;
  * nothing calls it but the stack.
  *
  * <ul>
@@ -19,12 +20,14 @@ import com.crystalgraphics.settings.CgGraphicsSettings;
  *       is not: it is a cut, not a flash.</li>
  *   <li>A look at its neutral value records nothing, so a firing with no volume draws as before.</li>
  *   <li>A drawn impact frame reads the world renderer's subject ({@link CgFrameKeys#SUBJECT}), bent as the scene was.</li>
- *   <li>The tonemapper's table is rebaked only when its film settings move ({@link CgFilmLut}).</li>
+ *   <li>The tonemapper's table is rebaked only when its film settings or the grade move ({@link CgFilmLut}); with it
+ *       on, the grade is in the table, and without it the composite grades ({@link CgColorGrade}).</li>
  * </ul>
  */
 public final class CgPostLooks implements CgPostEffect {
 
     private final CgFilmLut lut = new CgFilmLut();
+    private final CgColorGrade grading = new CgColorGrade();
 
     @Override
     public CgPostPoint point() {
@@ -36,7 +39,7 @@ public final class CgPostLooks implements CgPostEffect {
         CgPostSettings s = post.settings();
         float flashes = CgGraphicsSettings.FLASHES.get();
         return s.flash() * flashes != 0f || s.vignette() > 0f || s.chromatic() > 0f || s.impact() * flashes > 0f
-                || s.fade() > 0f || s.tonemaps();
+                || s.fade() > 0f || s.tonemaps() || s.grades();
     }
 
     /** Whether {@code s} shows an impact frame that reads the subject: what the stack asks the world renderer for. */
@@ -60,5 +63,6 @@ public final class CgPostLooks implements CgPostEffect {
         }
         if (s.fade() > 0f) composite.fade(s.fade(), s.fadeR(), s.fadeG(), s.fadeB());
         if (s.tonemaps()) composite.tonemap(lut.texture(s));
+        else if (s.grades()) composite.grade(grading.constants(s));
     }
 }

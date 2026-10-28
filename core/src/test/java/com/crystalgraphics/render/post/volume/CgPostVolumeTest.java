@@ -45,6 +45,23 @@ public class CgPostVolumeTest {
     }
 
     @Test
+    public void gradingControls_areEachTheirOwnField() {
+        CgPostSettings resolved = new CgPostSettings();
+        resolved.reset();
+        resolved.blend(new CgPostSettings().grade(CgPostSettings.Region.SHADOWS, CgPostSettings.Control.GAIN, 0.5f, 0.5f, 0.5f, 1f),
+                1f, 0.5f, 0.5f);
+        resolved.blend(new CgPostSettings().grade(CgPostSettings.Region.SHADOWS, CgPostSettings.Control.GAMMA, 2f, 2f, 2f, 1f)
+                .tint(0.5f, 1f, 1f), 0.5f, 0.5f, 0.5f);
+        assertEquals("the gamma's volume left the gain alone", 0.5f,
+                resolved.grade(CgPostSettings.Region.SHADOWS, CgPostSettings.Control.GAIN, 0), 0f);
+        assertEquals(1.5f, resolved.grade(CgPostSettings.Region.SHADOWS, CgPostSettings.Control.GAMMA, 0), 1e-6f);
+        assertEquals(0.75f, resolved.tintR(), 1e-6f);
+        assertEquals(true, resolved.grades());
+        resolved.reset();
+        assertEquals(false, resolved.grades());
+    }
+
+    @Test
     public void focus_ofOneFadingVolume_staysItsOwn() {
         CgPostSettings resolved = new CgPostSettings();
         resolved.reset();
