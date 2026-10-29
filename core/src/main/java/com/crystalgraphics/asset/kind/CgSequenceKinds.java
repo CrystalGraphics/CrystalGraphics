@@ -493,6 +493,12 @@ public final class CgSequenceKinds {
             .property("attenuation", VALUE)
             .register());
 
+    static final CgType SUBTITLE = track("subtitle", section("subtitle")
+            .property("text", STRING)
+            .property("speaker", STRING)
+            .property("sound", STRING)
+            .register());
+
     static final CgType EVENT = track("event", section("event")
             .property("keys", CHANNEL).flags(CgPropertyFlag.HEADLESS)
             .property("event", STRING).flags(CgPropertyFlag.HEADLESS)

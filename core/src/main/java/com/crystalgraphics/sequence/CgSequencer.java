@@ -26,6 +26,7 @@ import com.crystalgraphics.sequence.spawn.CgSequenceLight;
 import com.crystalgraphics.sequence.spawn.CgSequencePuppet;
 import com.crystalgraphics.sequence.spawn.CgSequenceSpawner;
 import com.crystalgraphics.sequence.sound.CgSequenceSoundEvaluator;
+import com.crystalgraphics.sequence.sound.CgSequenceSubtitleEvaluator;
 import com.crystalgraphics.sequence.spawn.CgSequenceSystemEvaluator;
 import com.crystalgraphics.sequence.state.CgSequenceBlender;
 import com.crystalgraphics.sequence.state.CgSequenceStateEvaluator;
@@ -90,6 +91,7 @@ public final class CgSequencer extends CgWorldSubsystem {
         for (String kind : CgSequenceStateEvaluator.KINDS) evaluators.add(new CgSequenceStateEvaluator(kind, blender));
         evaluators.add(new CgSequenceSystemEvaluator());
         evaluators.add(new CgSequenceSoundEvaluator(this));
+        evaluators.add(new CgSequenceSubtitleEvaluator(this));
         evaluators.add(new CgSequenceAnimationEvaluator());
         evaluators.add(new CgNotifyEvaluator(this, blender));
         evaluators.add(new CgSequenceEventEvaluator(this));

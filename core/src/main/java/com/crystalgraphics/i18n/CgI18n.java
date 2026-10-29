@@ -1,4 +1,6 @@
-package com.crystalgraphics.api.text;
+package com.crystalgraphics.i18n;
+
+import java.util.Locale;
 
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgHostI18n;
@@ -28,6 +30,11 @@ public final class CgI18n {
     @Nullable
     public static String translate(String key) {
         return CgPlatform.get(CgHostI18n.SERVICE).translate(key);
+    }
+
+    /** The player's language as a kit's string tables name it, a locale in lower case: {@code en_us}, {@code fr_fr}. */
+    public static String language() {
+        return CgPlatform.get(CgHostI18n.SERVICE).language().toLowerCase(Locale.ROOT);
     }
 
     /** {@code key}'s text in the player's language, or {@code fallback} where the host has none. */

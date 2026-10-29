@@ -22,7 +22,7 @@ import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.audio.CgHostDuck;
 import com.crystalgraphics.platform.audio.CgHostVolume;
-import com.crystalgraphics.api.text.CgI18n;
+import com.crystalgraphics.i18n.CgI18n;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.world.CgEntityQuery;

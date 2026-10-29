@@ -18,6 +18,16 @@ import javax.annotation.Nullable;
  *         List.of(new CgSubtitles.Cue("Kame...", 0f), new CgSubtitles.Cue("...hameha!", 1.4f)));
  * }</pre>
  *
+ * A sequence's {@code subtitle} section is a driven line: keyed by {@link #key()}, its time set by its owner each frame,
+ * so it follows the sequence's clock through a pause or a seek, and dropped by its owner when its section ends:
+ *
+ * <pre>{@code
+ * long key = audio.subtitles().key();
+ * audio.subtitles().queueDriven(key, "Kamehame...", "Goku", seconds);
+ * audio.subtitles().drive(key, secondsIntoSection);   // each frame it is active
+ * audio.subtitles().kill(key);                         // its section ended
+ * }</pre>
+ *
  * <ul>
  *   <li>Minecraft's own events queue theirs as {@link CgAudioEngine#playEvent} plays them, in the player's language.</li>
  *   <li>Shown only while {@code CgGraphicsSettings.SUBTITLES} is on; queued either way.</li>
@@ -42,19 +52,28 @@ public final class CgSubtitles {
         final long order;
         final String[] text;
         final double[] at;
+        @Nullable
+        final String speaker;
+        /** Its owner sets its time ({@link #drive}); else its sound's playback does. */
+        final boolean driven;
+        double time;
         int index;
 
-        Active(long id, float priority, long order, String[] text, double[] at) {
+        Active(long id, float priority, long order, String[] text, double[] at, @Nullable String speaker, boolean driven) {
             this.id = id;
             this.priority = priority;
             this.order = order;
             this.text = text;
             this.at = at;
+            this.speaker = speaker;
+            this.driven = driven;
         }
     }
 
     private final List<Active> active = new ArrayList<>();
     private long queued;
+    /** The last driven key handed out; negative, so never a sound's id. */
+    private long keys;
     @Nullable
     private Active shown;
 
@@ -65,6 +84,27 @@ public final class CgSubtitles {
 
     /** {@code cues} for a sound {@code duration} seconds long, each clamped to it, the last shown to its end. */
     public void queue(long id, float priority, double duration, List<Cue> cues) {
+        add(id, priority, duration, cues, null, false);
+    }
+
+    /** A fresh key for a driven line: never a sound's id, never one handed out before. */
+    public long key() {
+        return --keys;
+    }
+
+    /** {@code text} said by {@code speaker} (null for none) for {@code duration} seconds, its time driven by its owner. */
+    public void queueDriven(long key, String text, @Nullable String speaker, double duration) {
+        add(key, DEFAULT_PRIORITY, duration, List.of(new Cue(text, 0f)), speaker, true);
+    }
+
+    /** {@code key}'s line at {@code seconds} into it; past its duration it ends. */
+    public void drive(long key, double seconds) {
+        for (int i = 0; i < active.size(); i++) {
+            if (active.get(i).id == key) active.get(i).time = seconds;
+        }
+    }
+
+    private void add(long id, float priority, double duration, List<Cue> cues, @Nullable String speaker, boolean driven) {
         if (id == 0 || cues.isEmpty() || priority == 0f || !(duration > 0)) return;
         int n = cues.size();
         String[] text = new String[n + 1];
@@ -77,7 +117,7 @@ public final class CgSubtitles {
         text[n] = "";
         at[n] = duration;
         kill(id);
-        active.add(new Active(id, priority, queued++, text, at));
+        active.add(new Active(id, priority, queued++, text, at, speaker, driven));
     }
 
     /** Drops {@code id}'s subtitle: its sound stopped ({@code KillSubtitles}). */
@@ -104,7 +144,7 @@ public final class CgSubtitles {
         shown = null;
         for (int i = active.size() - 1; i >= 0; i--) {
             Active a = active.get(i);
-            double t = played.applyAsDouble(a.id);
+            double t = a.driven ? a.time : played.applyAsDouble(a.id);
             while (a.index < a.text.length - 1 && t >= a.at[a.index + 1]) a.index++;
             if (Double.isNaN(t) || a.index == a.text.length - 1) {
                 active.remove(i);
@@ -120,6 +160,12 @@ public final class CgSubtitles {
     @Nullable
     public String text() {
         return shown == null || shown.text[shown.index].isEmpty() ? null : shown.text[shown.index];
+    }
+
+    /** Who says the line shown; null for none, or no line. */
+    @Nullable
+    public String speaker() {
+        return text() == null ? null : shown.speaker;
     }
 
     /** The sound whose line is shown; 0 for none. */

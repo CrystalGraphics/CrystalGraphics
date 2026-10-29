@@ -30,6 +30,7 @@ import java.util.function.Supplier;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.i18n.CgKitStrings;
 import com.crystalgraphics.audio.CgKitSounds;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
@@ -92,9 +93,9 @@ public final class CgAssetRegistry {
 
     /** A namespace's files that are not assets: its units, content index and tags. */
     private static final Set<String> ROOT_FILES = new HashSet<>(Arrays.asList("units.yaml", "content.yaml", "tags.yaml",
-            "carried.json", "ruled.json"));
+            "carried.json", "ruled.json", "subtitle_style.yaml"));
     /** A namespace's folders that hold no assets: an importer's reports, a game's data kept for gameplay. */
-    private static final Set<String> NOT_ASSETS = new HashSet<>(Arrays.asList("import", "roles"));
+    private static final Set<String> NOT_ASSETS = new HashSet<>(Arrays.asList("import", "roles", "strings", "fonts"));
     /** Binary folders and the extensions they hold. */
     private static final Map<String, List<String>> BINARIES = new HashMap<>();
     private static final String REDIRECT = "redirect";
@@ -207,6 +208,8 @@ public final class CgAssetRegistry {
         CgTagRegistry.global().registerKit(namespace, root);
         // Before any cue or sequence compiles: a game's cue name resolves through its kit's table.
         CgKitSounds.registerKit(root);
+        // And a subtitle section's text through its kit's string tables.
+        CgKitStrings.registerKit(namespace, root);
         List<CgAssetRegistryEvent> added = new ArrayList<>(found.size());
         for (CgAssetEntry e : found) {
             entries.put(key(e.kind(), e.id()), e);

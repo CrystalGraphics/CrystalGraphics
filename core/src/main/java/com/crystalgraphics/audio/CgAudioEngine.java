@@ -16,7 +16,7 @@ import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorldSubsystem;
-import com.crystalgraphics.api.text.CgI18n;
+import com.crystalgraphics.i18n.CgI18n;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioOutput;
@@ -282,6 +282,19 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         if (!Double.isNaN(x)) activeSounds.at(id, x, y, z).attenuation(id, attenuation);
         if (r.kind() == CgSoundRef.Kind.EVENT) queueSubtitle(r.id(), id, sound.seconds() / (pitch * p));
         return id;
+    }
+
+    /** How long {@code ref} plays, picked from {@code seed} as {@link #play} picks it: a subtitle's open end. */
+    public double seconds(CgSoundRef ref, long seed) {
+        CgSoundRef r = ref.pick(seed);
+        return switch (r.kind()) {
+            case EVENT -> {
+                CgHostSoundEvents.Variant v = CgHostSoundEvents.current().pick(r.id());
+                yield sounds.load(v.path(), v.stream()).seconds() / Math.max(1e-3f, v.pitch());
+            }
+            case CUE -> sounds.load(r.id(), r.file(), r.stream()).seconds() / Math.max(1e-3f, r.pitch());
+            default -> sounds.load(r.id(), r.stream()).seconds() / Math.max(1e-3f, r.pitch());
+        };
     }
 
     /** A host event's subtitle, in the player's language, for the sound it played as {@code id}. */

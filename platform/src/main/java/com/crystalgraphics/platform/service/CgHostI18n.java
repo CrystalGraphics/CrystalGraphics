@@ -16,6 +16,7 @@ import com.crystalgraphics.platform.CgService;
  *
  * <ul>
  *   <li>Null where the host has no text for the key, never the key itself.</li>
+ *   <li>{@code language()} is the host's own code; core reads it as a language through {@code CgI18n.language()}.</li>
  *   <li>{@link #NONE} has none: the harness, a server. Render thread.</li>
  * </ul>
  */
@@ -24,6 +25,11 @@ public interface CgHostI18n {
 
     /** The text for {@code key}; null where the host has none. */
     String translate(String key);
+
+    /** The player's language as the host names it, a locale ({@code en_us}, {@code ja_jp}); {@code en_us} where it has none. */
+    default String language() {
+        return "en_us";
+    }
 
     CgHostI18n NONE = key -> null;
 
