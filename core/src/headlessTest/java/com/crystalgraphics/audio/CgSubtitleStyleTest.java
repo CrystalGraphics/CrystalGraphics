@@ -96,6 +96,20 @@ public class CgSubtitleStyleTest {
         assertEquals("no fade is whole", 1f, CgSubtitleStyle.Fade.NONE.text(0f), 0f);
     }
 
+    /** UMG's In: alpha and a slide on a rich curve, auto tangents. */
+    @Test
+    public void aCubicFadeIsARichCurvesAutoTangents() throws IOException {
+        CgSubtitleStyle s = CgSubtitleStyle.read(kit(STYLE.replaceAll("(?s)fade_in:.*", """
+                fade_in: { text: [[0, 0], [0.2, 1]], slide: [[0, 100], [0.2, 0]], interp: cubic }
+                fade_out: { text: [[0, 0], [1, 1], [2, 3]], interp: cubic }
+                """)).resolve("subtitle_style.yaml"));
+        assertEquals("two flat keys: a smoothstep, halfway", 50f, s.fadeIn().slide(0.1f), 1e-4f);
+        assertEquals("a quarter in: 3u^2 - 2u^3 of the way", 100f - 100f * 0.15625f, s.fadeIn().slide(0.05f), 1e-3f);
+        assertEquals("an inner key's slope is its neighbours' chord: 1.5", 0.3125f, s.fadeOut().text(0.5f), 1e-5f);
+        assertEquals("no slide keys: no slide", 0f, s.fadeOut().slide(0.5f), 0f);
+        assertEquals("the fade's end is its last key's", 2f, s.fadeOut().seconds(), 0f);
+    }
+
     @Test
     public void aStyleThatDoesNotValidateFailsByName() throws IOException {
         Path bad = kit(STYLE.replace("reference_height: 1080\n", "").replace("size: 20", "size: big"));

@@ -226,8 +226,8 @@ id) replaces the string's own.
 
 ### A game's look
 
-A kit's `subtitle_style.yaml` draws its lines as the game does: its own fonts, outline, band and fades, in its UI
-units scaled from `reference_height` with the screen. A kit without one draws in Unreal's canvas look (13 px, white, a
+A kit's `subtitle_style.yaml` draws its lines as the game does: its own fonts, outline, an optional band, and its
+widget's animations in and out, in its UI units scaled from `reference_height` with the screen. A kit without one draws in Unreal's canvas look (13 px, white, a
 1 px black outline, centred near the bottom).
 
 ```yaml
@@ -238,14 +238,23 @@ line: { font: mykit:fonts/Line.otf, size: 20, outline: { size: 3, colour: 0xFF00
         anchor: [0.5, 0.5], alignment: [0.5, 0], offset: [0, 328] }
 name: { font: mykit:fonts/Name.otf, size: 22, colour: 0xFF000000, outline: { size: 3, colour: 0xFFFFFFFF },
         anchor: [0.5, 0.5], offset: [-425, 273] }
+fade_in: { text: [[0, 0], [0.2, 1]], slide: [[0, 100], [0.2, 0]], interp: cubic }     # in from the right
+fade_out: { text: [[0, 1], [0.2, 0]], slide: [[0, 0], [0.2, -100]], interp: cubic }   # out to the left
+```
+
+A widget with a bar behind its text adds a `band`, and animates its alpha as the text's:
+
+```yaml
 band: { colour: 0x80030305, anchor: [0.5, 0.5], height: 200, offset: [0, 330] }
 fade_in: { band: [[0, 0], [0.067, 1]], text: [[0.167, 0], [0.3, 1]] }
-fade_out: { band: [[0.033, 1], [0.233, 0]], text: [[0, 1], [0.1, 0]] }
 ```
 
 - A size is in points at 96 DPI (Slate's); everything else in UI units. A text block sits at `anchor` on the screen
   (0 to 1), moved by `offset`, less `alignment` of its own size.
-- One line shows at a time: a new one waits for the last to fade out.
+- An animation's keys are `[seconds, value]`: `text` and `band` an alpha, `slide` a move along x in UI units.
+  `interp: cubic` eases them as Unreal's curves with automatic tangents (two keys are a smoothstep); `linear` by
+  default.
+- One line shows at a time: a new one waits for the last to animate out.
 - A file that does not validate fails the kit's registration, naming each issue.
 
 ## Submixes

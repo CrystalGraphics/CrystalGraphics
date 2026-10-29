@@ -26,7 +26,7 @@ import com.crystalgraphics.object.validate.CgValidation;
  * line: { font: kakarot_kit:fonts/Art/UI/Xcmn_Font/CMN/FOT-RodinNTLGPro-B.otf, size: 20,
  *         outline: { size: 3, colour: 0xFF000000 }, anchor: [0.5, 0.5], alignment: [0.5, 0], offset: [-10, 328] }
  * band: { colour: 0x80030305, anchor: [0.5, 0.5], height: 200, offset: [0, 330] }
- * fade_in: { band: [[0, 0], [0.067, 1]], text: [[0.167, 0], [0.3, 1]] }
+ * fade_in: { text: [[0, 0], [0.2, 1]], slide: [[0, 100], [0.2, 0]], interp: cubic }    # in from the right, eased
  * }</pre>
  *
  * <pre>{@code
@@ -60,37 +60,58 @@ public record CgSubtitleStyle(float referenceHeight, float uiScale, int lines, T
     public record Band(int colour, float anchorY, float height, float offsetY) {
     }
 
-    /** Alpha over seconds, linear between keys and held past the ends: {@code (t, alpha)} pairs, flattened. */
-    public record Fade(float[] band, float[] text) {
+    /**
+     * A widget animation over seconds, held past its ends: the band's alpha, the text's alpha and the text's slide along
+     * x in UI units, each {@code (t, value)} pairs, flattened. {@code cubic} eases as a rich curve with auto tangents
+     * ({@code FRichCurve::AutoSetTangents}, {@code EvalForTwoKeys}): its ends flat, an inner key's slope its neighbours'
+     * chord, so two keys are a smoothstep; else linear.
+     */
+    public record Fade(float[] band, float[] text, float[] slide, boolean cubic) {
 
-        static final Fade NONE = new Fade(new float[0], new float[0]);
+        static final Fade NONE = new Fade(new float[0], new float[0], new float[0], false);
 
         public float band(float seconds) {
-            return at(band, seconds);
+            return at(band, seconds, 1f);
         }
 
         public float text(float seconds) {
-            return at(text, seconds);
+            return at(text, seconds, 1f);
+        }
+
+        /** How far the text is moved along x, in UI units. */
+        public float slide(float seconds) {
+            return at(slide, seconds, 0f);
         }
 
         /** When its last key falls. */
         public float seconds() {
-            float end = 0f;
-            if (band.length > 0) end = band[band.length - 2];
-            if (text.length > 0) end = Math.max(end, text[text.length - 2]);
-            return end;
+            return Math.max(last(band), Math.max(last(text), last(slide)));
         }
 
-        private static float at(float[] keys, float t) {
-            if (keys.length == 0) return 1f;
+        private static float last(float[] keys) {
+            return keys.length > 0 ? keys[keys.length - 2] : 0f;
+        }
+
+        private float at(float[] keys, float t, float absent) {
+            if (keys.length == 0) return absent;
             if (t <= keys[0]) return keys[1];
             for (int i = 2; i < keys.length; i += 2) {
                 if (t < keys[i]) {
-                    float u = (t - keys[i - 2]) / (keys[i] - keys[i - 2]);
-                    return keys[i - 1] + u * (keys[i + 1] - keys[i - 1]);
+                    float t0 = keys[i - 2], v0 = keys[i - 1], t1 = keys[i], v1 = keys[i + 1], dt = t1 - t0;
+                    float u = (t - t0) / dt;
+                    if (!cubic) return v0 + u * (v1 - v0);
+                    float p1 = v0 + tangent(keys, i - 2) * dt / 3f, p2 = v1 - tangent(keys, i) * dt / 3f;
+                    float w = 1f - u;
+                    return w * w * w * v0 + 3f * w * w * u * p1 + 3f * w * u * u * p2 + u * u * u * v1;
                 }
             }
             return keys[keys.length - 1];
+        }
+
+        /** The auto tangent at key {@code i} (an index into the pairs): flat at the ends, else the neighbours' chord. */
+        private static float tangent(float[] keys, int i) {
+            if (i == 0 || i == keys.length - 2) return 0f;
+            return (keys[i + 3] - keys[i - 1]) / Math.max(1e-4f, keys[i + 2] - keys[i - 2]);
         }
     }
 
@@ -149,7 +170,7 @@ public record CgSubtitleStyle(float referenceHeight, float uiScale, int lines, T
 
     private static Fade fade(@Nullable Object o) {
         if (!(o instanceof Map<?, ?> m)) return Fade.NONE;
-        return new Fade(keys(m.get("band")), keys(m.get("text")));
+        return new Fade(keys(m.get("band")), keys(m.get("text")), keys(m.get("slide")), "cubic".equals(m.get("interp")));
     }
 
     private static float[] keys(@Nullable Object o) {

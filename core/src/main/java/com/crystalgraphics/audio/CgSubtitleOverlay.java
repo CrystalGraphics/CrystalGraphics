@@ -33,8 +33,8 @@ import org.apache.logging.log4j.Logger;
 /**
  * The shown subtitle over the HUD. A line whose game ships a {@link CgSubtitleStyle} is drawn in it, as its UMG widget
  * draws: Slate text blocks in canvas slots at 96 DPI, scaled with the screen's height, an outer outline
- * ({@code FSlateFontRenderer}'s round-joined stroke), a band behind, the speaker's name over an underline, faded in
- * and out on the style's keys, one line at a time. Any other line is drawn in Unreal's canvas look
+ * ({@code FSlateFontRenderer}'s round-joined stroke), a band behind where it has one, the speaker's name over an
+ * underline, faded and slid in and out on the style's keys, one line at a time. Any other line is drawn in Unreal's canvas look
  * ({@code FSubtitleManager::DisplaySubtitle}): 13 px (Roboto's 10 pt), white, a 1 px black outline drawn as four passes
  * at the diagonals ({@code FCanvasTextItem::bOutlined}), centred in the region a viewport gives (the bottom 90% of the
  * screen, trimmed to the 10-90% safe zone), a single line's top 24 px above its bottom and lines 1.1 apart.
@@ -197,17 +197,17 @@ final class CgSubtitleOverlay {
             bands.flush();
             bands.end();
         }
-        float alpha = fade.text(t);
+        float alpha = fade.text(t), slide = fade.slide(t) * k;
         renderer.beginBatch();
-        text(style.line(), shown.text, line, k, alpha);
+        text(style.line(), shown.text, line, k, alpha, slide);
         CgSubtitleStyle.Text named = style.name();
-        if (named != null && shown.speaker != null) text(named, shown.speaker, name, k, alpha);
+        if (named != null && shown.speaker != null) text(named, shown.speaker, name, k, alpha, slide);
         renderer.endBatch();
-        if (named != null && shown.speaker != null && named.underline() != null) underline(named, k, alpha);
+        if (named != null && shown.speaker != null && named.underline() != null) underline(named, k, alpha, slide);
     }
 
-    /** One Slate text block: placed by its slot's anchor, offset and alignment of its laid-out size. */
-    private void text(CgSubtitleStyle.Text block, String text, Laid laid, float k, float alpha) {
+    /** One Slate text block: placed by its slot's anchor, offset and alignment of its laid-out size, then {@code slide} px along x. */
+    private void text(CgSubtitleStyle.Text block, String text, Laid laid, float k, float alpha, float slide) {
         int px = Math.max(1, Math.round(block.size() * 96f / 72f * k));
         CgFont font = font(block.font(), px);
         float wrap = block.wrap() > 0f ? block.wrap() * k : width;
@@ -230,7 +230,7 @@ final class CgSubtitleOverlay {
             case "right" -> wrap - layout.totalWidth();
             default -> 0f;
         };
-        float x = block.anchorX() * width + block.offsetX() * k - block.alignmentX() * layout.totalWidth() - inset;
+        float x = block.anchorX() * width + block.offsetX() * k - block.alignmentX() * layout.totalWidth() - inset + slide;
         float y = block.anchorY() * height + block.offsetY() * k - block.alignmentY() * layout.totalHeight();
         CgTextRenderer.Draw draw = renderer.draw().layout(layout).font(font).at(x, y).color(argb(alpha, block.colour()));
         float outline = Math.round(block.outlineSize() * k);
@@ -238,13 +238,13 @@ final class CgSubtitleOverlay {
         draw.submit();
     }
 
-    private void underline(CgSubtitleStyle.Text named, float k, float alpha) {
+    private void underline(CgSubtitleStyle.Text named, float k, float alpha, float slide) {
         CgSubtitleStyle.Underline u = named.underline();
         CgTexture2D image = CgTextures.of(u.image());
         if (images == null) images = CgQuadRenderer.create().useMaterial(CgMaterial.load(IMAGE));
         images.bindTexture(0, image);
         images.begin();
-        images.quad().at(named.anchorX() * width + u.offsetX() * k, named.anchorY() * height + u.offsetY() * k)
+        images.quad().at(named.anchorX() * width + u.offsetX() * k + slide, named.anchorY() * height + u.offsetY() * k)
                 .size(u.width() * k, u.height() * k).uv(0f, 0f, 1f, 1f).color(argb(alpha, 0xFFFFFFFF)).submit();
         images.flush();
         images.end();

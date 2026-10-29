@@ -57,10 +57,15 @@ public final class CgKitFiles {
             .property("offset", VEC2)
             .register();
 
-    /** Alpha over seconds, linear between keys: the band's and the text's. */
+    /**
+     * A widget animation over seconds: the band's alpha, the text's alpha and its slide along x in UI units, keyed and
+     * eased as {@code interp} says (UMG's tracks: {@code cubic} is a rich curve's auto tangents).
+     */
     static final CgType FADE = CgTypes.struct("crystalgraphics:subtitle_style.fade")
             .property("band", CgValueType.listOf(VEC2))
             .property("text", CgValueType.listOf(VEC2))
+            .property("slide", CgValueType.listOf(VEC2))
+            .property("interp", CgValueType.enumOf("linear", "cubic"))
             .register();
 
     /** {@code subtitle_style.yaml}: how a game draws its subtitles, in its UI units. */
