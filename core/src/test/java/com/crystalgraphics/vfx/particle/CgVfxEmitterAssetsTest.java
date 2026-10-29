@@ -317,6 +317,27 @@ public class CgVfxEmitterAssetsTest {
         assertEquals("its vectors keep their intensity", 2f, field.strength(), 0f);
     }
 
+    /** A sprite_size wider than tall keeps its height, as the start scale's y; a per-channel range rolls each axis. */
+    @Test
+    public void aNonSquareSpriteSizeKeepsItsHeight() {
+        CgVfxEmitter streak = CgVfxEmitterAssets.compile("streak", sized(List.of(0.1, 0.7, 0.4)), null);
+        assertEquals(0.05f, streak.sizeMin, 1e-6f);
+        assertArrayEquals(new float[]{1f, 7f, 1f}, streak.scaleFrom, 1e-5f);
+        CgVfxEmitter rolled = CgVfxEmitterAssets.compile("rolled",
+                sized(Map.of("range", List.of(List.of(0.5, 4.0), List.of(1.0, 5.0)), "per_channel", true)), null);
+        assertEquals(0.5f, rolled.sizeMax, 1e-6f);
+        assertArrayEquals(new float[]{0.5f, 4f, 1f}, rolled.scaleFrom, 1e-6f);
+        assertArrayEquals(new float[]{1f, 5f, 1f}, rolled.scaleTo, 1e-6f);
+        CgVfxEmitter grown = CgVfxEmitterAssets.compile("grown",
+                sized(Map.of("range", List.of(List.of(0.5, 1.0), List.of(1.0, 2.0)))), null);
+        assertEquals(0.25f, grown.sizeMin, 1e-6f);
+        assertEquals(0.5f, grown.sizeMax, 1e-6f);
+        assertArrayEquals(new float[]{1f, 2f, 1f}, grown.scaleTo, 1e-6f);
+        CgVfxEmitter back = CgVfxEmitterAssets.compile("streak", CgVfxEmitterAssets.write(streak), null);
+        assertEquals(streak.sizeMin, back.sizeMin, 1e-6f);
+        assertArrayEquals(streak.scaleFrom, back.scaleFrom, 1e-5f);
+    }
+
     /** Unreal's mesh factory sizes a mesh by its scale alone: the sprite size's default (50 cm) never shrinks it. */
     @Test
     public void aMeshParticleIsSizedByItsMeshScaleAlone() {

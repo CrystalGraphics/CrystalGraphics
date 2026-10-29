@@ -1259,6 +1259,7 @@ public final class CgVfxEmitterAssets {
             b.size(width[0] * SPRITE_SIZE_TO_OURS, width[1] * SPRITE_SIZE_TO_OURS);
         }
         float alpha = in.get("alpha") instanceof Number a ? a.floatValue() : 1f;
+        float[][] wide = sized == null && size != null ? spriteScale(name, size) : null;
         CgVfxSpawnForm colored = spawnForm(CgVfxSpawnInput.COLOR, element, "color", in.get("color"));
         if (colored != null) {
             // Stored at birth; the row's starts keep the alpha an rgb form leaves to them.
@@ -1284,6 +1285,15 @@ public final class CgVfxEmitterAssets {
             b.scale(s[0][0], s[0][1], s[0][2], s[1][0], s[1][1], s[1][2]);
         }
     }
+        if (wide != null) {
+            // One start scale serves a quad and a mesh alike.
+            float[][] mesh = in.get("mesh_scale") != null ? ends(in.get("mesh_scale"), 3) : null;
+            if (scaled != null || mesh != null && (!same(mesh[0], UNIT) || !same(mesh[1], UNIT))) {
+                throw new IllegalArgumentException(name + ": a sprite_size wider than tall beside a mesh_scale, which is not read yet");
+            }
+            if (wide[0][0] != 1f || wide[1][0] != 1f) b.size(SPRITE_SIZE_TO_OURS, SPRITE_SIZE_TO_OURS);
+            b.scale(wide[0][0], wide[0][1], 1f, wide[1][0], wide[1][1], 1f);
+        }
 
     private static void velocity(String name, CgVfxEmitter.Builder b, Map<?, ?> in, String element) {
         CgVfxSpawnShape.Builder s = b.spawn();
@@ -2926,6 +2936,30 @@ public final class CgVfxEmitterAssets {
 
     private static float[] colourOf(Object value, float alpha) {
         if (value instanceof Map<?, ?> m && m.get("argb") instanceof Number) return rgba(m);
+    /**
+     * A sprite size that is no square, as a start scale's two ends of x and y; null for a square. Niagara's vec2 is
+     * width across and height up (along the velocity for a velocity-aligned sprite). Over its width as the size, the
+     * scale is 1 across and the height over the width up; a per-channel range rolls each axis on its own, so its scale
+     * is the sizes themselves, over a unit size (an x not 1 tells the caller).
+     */
+    private static float[][] spriteScale(String name, Object value) {
+        if (value instanceof List<?> v && v.size() >= 2) {
+            float x = num(v.get(0)), y = num(v.get(1));
+            return x == y || x == 0f ? null : new float[][]{{1f, y / x}, {1f, y / x}};
+        }
+        if (!(value instanceof Map<?, ?> m) || !(m.get("range") instanceof List<?> r)
+                || !(r.get(0) instanceof List<?> lo) || !(r.get(1) instanceof List<?> hi) || lo.size() < 2) return null;
+        float x0 = num(lo.get(0)), y0 = num(lo.get(1)), x1 = num(hi.get(0)), y1 = num(hi.get(1));
+        if (Boolean.TRUE.equals(m.get("per_channel"))) {
+            return x0 == y0 && x1 == y1 && x0 == x1 ? null : new float[][]{{x0, y0}, {x1, y1}};
+        }
+        if (x0 == y0 && x1 == y1) return null;
+        if (x0 == 0f || x1 == 0f) throw new IllegalArgumentException(name + ": sprite_size's range has no width at an end");
+        // A shape changing between the ends: the width's one roll is the size, the height's ratio rolled on its own
+        // between the ends' ratios, for the start scale's rolls are not the size's.
+        return new float[][]{{1f, y0 / x0}, {1f, y1 / x1}};
+    }
+
         if (!(value instanceof List<?> v) || v.size() < 2 || v.size() > 4) {
             throw new IllegalArgumentException("a colour of 2 to 4 floats, not " + value);
         }
