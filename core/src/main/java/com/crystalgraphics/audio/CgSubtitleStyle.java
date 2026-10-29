@@ -52,7 +52,7 @@ public record CgSubtitleStyle(float referenceHeight, float uiScale, int lines, T
                        float offsetX, float offsetY, @Nullable Underline underline) {
     }
 
-    /** An image under the name, its top left at {@code offset} from the name's anchor. */
+    /** An image under the name, centred {@code offset} from the name's anchor. */
     public record Underline(String image, float width, float height, float offsetX, float offsetY) {
     }
 

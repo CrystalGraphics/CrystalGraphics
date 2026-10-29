@@ -244,8 +244,10 @@ final class CgSubtitleOverlay {
         if (images == null) images = CgQuadRenderer.create().useMaterial(CgMaterial.load(IMAGE));
         images.bindTexture(0, image);
         images.begin();
-        images.quad().at(named.anchorX() * width + u.offsetX() * k + slide, named.anchorY() * height + u.offsetY() * k)
-                .size(u.width() * k, u.height() * k).uv(0f, 0f, 1f, 1f).color(argb(alpha, 0xFFFFFFFF)).submit();
+        // Centred on its offset, as the widget's image slot centres it.
+        float w = u.width() * k, h = u.height() * k;
+        images.quad().at(named.anchorX() * width + u.offsetX() * k - w / 2f + slide, named.anchorY() * height + u.offsetY() * k - h / 2f)
+                .size(w, h).uv(0f, 0f, 1f, 1f).color(argb(alpha, 0xFFFFFFFF)).submit();
         images.flush();
         images.end();
     }
