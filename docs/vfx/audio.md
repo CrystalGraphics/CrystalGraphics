@@ -33,10 +33,13 @@ and `UI` their own) and routes to a submix. `UI` plays on while the game is paus
 long hum = audio.play(engineHum, CgSoundClass.AMBIENT, 1f, 1f, true, Double.NaN);
 audio.activeSounds()
         .at(hum, x, y, z)                                            // placed in the world
-        .range(hum, 32)                                              // heard within 32 blocks
+        .attenuation(hum, new CgSoundAttenuation().inner(2).falloff(30))   // full within 2 blocks, gone by 32
         .priority(hum, 2f);                                          // weighed above an ordinary sound
-audio.listener(cameraX, cameraY, cameraZ);                           // once a frame
 ```
+
+The listener is the camera: each frame the engine moves it to the camera's final pose, shakes included, so a cut
+moves what you hear on the frame it happens. A test or a host without a camera system places it by hand with
+`audio.listener().set(...)`.
 
 At most 64 voices play at once. Each frame every sound is weighed by its priority times its volume, and the loudest
 take the voices. A looping sound that loses its voice, or leaves its range, goes virtual: its time runs on, and it
@@ -53,6 +56,30 @@ audio.activeSounds().group(shout, perPlayer).owner(shout, player);   // one shou
 ```
 
 The rules are `PREVENT_NEW`, `STOP_OLDEST`, `STOP_FARTHEST`, `STOP_QUIETEST` and `STOP_LOWEST_PRIORITY`.
+
+## Distance, direction and walls
+
+A placed sound's `CgSoundAttenuation` says what distance does to it, with Unreal's attenuation settings and
+defaults in blocks:
+
+```java
+CgSoundAttenuation blast = new CgSoundAttenuation()
+        .algorithm(CgSoundAttenuation.Algorithm.NATURAL_SOUND)        // or LINEAR, LOGARITHMIC, INVERSE, LOG_REVERSE
+        .inner(4).falloff(60)                                        // full within 4 blocks, the curve over 60 more
+        .lowPass(true).lowPassRange(20, 60).lowPassHz(20000, 2500)   // duller far off
+        .occlusion(true).occlusionLowPass(900).occlusionVolume(0.5f) // muffled behind blocks
+        .doppler(1f);                                                // pitch shifts as it moves; off by default
+audio.activeSounds().at(id, x, y, z).attenuation(id, blast);
+```
+
+- **Panning** is Unreal's for stereo: equal power between speakers at 30° right and 30° left. A sound ahead is
+  centred; one at your side leans that way, not fully; one behind is centred.
+- **Occlusion** traces a ray from the sound to the listener through the level's blocks, every tenth of a second of
+  play. Muffled, its low-pass and volume move to the settings' over a tenth of a second, and back once clear.
+- **Reverb**: each placed sound sends some of itself to the `reverb` submix, from 30% near to 95% at its falloff's
+  end (`reverbWet`, `reverbDistance`, `reverbSend(false)`). The submix runs a room reverb, `CgReverb`.
+- **Doppler** reads the sound's movement between frames and the listener's.
+- A sound with no attenuation, or not placed, is heard everywhere at full volume, unpanned.
 
 ## Mixes
 

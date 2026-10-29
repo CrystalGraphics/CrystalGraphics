@@ -41,6 +41,13 @@ public final class CgAudioMixer {
     private CgSubmix[] submixes;
     /** Each voice's due frame; NOW for one that is playing. */
     private final long[] due;
+    /** Per voice: panned by the listener, its left and right gains now and asked, its low-pass and its reverb send. */
+    private final boolean[] spatial;
+    private final float[] panL, panR, toL, toR, lowPass, send;
+    private final float[] filtered;
+    /** A voice rendered alone before it is filtered and panned: its format's frames x channels. */
+    private final float[] scratch;
+    private int reverb = -1;
     private static final long NOW = Long.MIN_VALUE;
     private float main = 1f;
     private boolean paused;
@@ -56,6 +63,15 @@ public final class CgAudioMixer {
         pausing = new boolean[maxVoices];
         due = new long[maxVoices];
         route = new int[maxVoices];
+        spatial = new boolean[maxVoices];
+        panL = new float[maxVoices];
+        panR = new float[maxVoices];
+        toL = new float[maxVoices];
+        toR = new float[maxVoices];
+        lowPass = new float[maxVoices];
+        send = new float[maxVoices];
+        filtered = new float[maxVoices];
+        scratch = new float[frames * channels];
         submixes(new CgSubmix[] {new CgSubmix("main", null, 0)});
     }
 
@@ -94,6 +110,10 @@ public final class CgAudioMixer {
             }
             due[i] = frame;
             route[i] = submix;
+            spatial[i] = false;
+            lowPass[i] = CgSoundAttenuation.MAX_FILTER_HZ;
+            send[i] = 0;
+            filtered[i] = 0;
             return true;
         }
         refused++;
@@ -112,6 +132,35 @@ public final class CgAudioMixer {
 
     public void gain(CgAudioSource source, float gain) {
         for (int i = 0; i < voices.length; i++) if (voices[i] == source) gains[i] = gain;
+    }
+
+    /**
+     * Pans {@code source} to left and right gains {@code l}, {@code r} (ramped over the next buffer, from the first
+     * call at once), low-passes it at {@code lowPassHz} and sends {@code reverbSend} of it to the reverb submix.
+     */
+    public void spatial(CgAudioSource source, float l, float r, float lowPassHz, float reverbSend) {
+        for (int i = 0; i < voices.length; i++) {
+            if (voices[i] != source) continue;
+            if (!spatial[i]) {
+                panL[i] = l;
+                panR[i] = r;
+            }
+            spatial[i] = true;
+            toL[i] = l;
+            toR[i] = r;
+            lowPass[i] = lowPassHz;
+            send[i] = reverbSend;
+        }
+    }
+
+    /** Scales {@code source}'s pitch from the next buffer: doppler. */
+    public void pitch(CgAudioSource source, float scale) {
+        for (int i = 0; i < voices.length; i++) if (voices[i] == source) source.pitch(scale);
+    }
+
+    /** The submix a voice's reverb send goes to, by index; -1 for none. */
+    public void reverb(int submix) {
+        reverb = submix;
     }
 
     /** The main submix's gain: the host's master slider. */
@@ -141,7 +190,16 @@ public final class CgAudioMixer {
                 offset = (int) Math.max(0, due[i] - rendered);
                 due[i] = NOW;
             }
-            if (!v.render(submixes[route[i]].buffer, offset, frames - offset, channels, sampleRate, gains[i])) free(i);
+            float[] into = submixes[route[i]].buffer;
+            boolean alive;
+            if (!spatial[i]) {
+                alive = v.render(into, offset, frames - offset, channels, sampleRate, gains[i]);
+            } else {
+                Arrays.fill(scratch, 0, n, 0f);
+                alive = v.render(scratch, offset, frames - offset, channels, sampleRate, gains[i]);
+                place(i, into, offset);
+            }
+            if (!alive) free(i);
         }
         // Leaf to root: each submix's chain on its buffer, then into its parent; the root into the output.
         Arrays.fill(out, 0, n, 0f);
@@ -157,6 +215,43 @@ public final class CgAudioMixer {
             out[i] = s > 1f ? 1f : s < -1f ? -1f : s;
         }
         rendered += frames;
+    }
+
+    /**
+     * Voice {@code i}'s scratch into {@code into} from {@code offset}: folded to mono, low-passed (a one-pole, as
+     * {@link CgLowPass}), panned with its gains ramped across the buffer, and sent to the reverb.
+     */
+    private void place(int i, float[] into, int offset) {
+        float hz = lowPass[i];
+        // 20 kHz is Unreal's open filter: bypassed, not a one-pole that still dulls the highs.
+        float a = hz >= CgSoundAttenuation.MAX_FILTER_HZ || hz >= sampleRate * 0.5f ? 0f : (float) Math.exp(-2 * Math.PI * hz / sampleRate);
+        float y = filtered[i];
+        float l0 = panL[i], r0 = panR[i], dl = toL[i] - l0, dr = toR[i] - r0;
+        float s = send[i];
+        float[] wet = reverb >= 0 && s > 0 ? submixes[reverb].buffer : null;
+        int span = frames - offset;
+        for (int f = offset; f < frames; f++) {
+            float m = 0;
+            for (int c = 0; c < channels; c++) m += scratch[f * channels + c];
+            m /= channels;
+            y = (1 - a) * m + a * y;
+            float t = (f - offset + 1f) / span;
+            float l = y * (l0 + dl * t), r = y * (r0 + dr * t);
+            if (channels == 1) {
+                into[f] += (l + r) * 0.5f;
+                if (wet != null) wet[f] += (l + r) * 0.5f * s;
+                continue;
+            }
+            into[f * channels] += l;
+            into[f * channels + 1] += r;
+            if (wet != null) {
+                wet[f * channels] += l * s;
+                wet[f * channels + 1] += r * s;
+            }
+        }
+        filtered[i] = y;
+        panL[i] = toL[i];
+        panR[i] = toR[i];
     }
 
     /** Voices playing now. */

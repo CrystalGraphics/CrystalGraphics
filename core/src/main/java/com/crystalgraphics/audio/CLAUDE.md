@@ -22,7 +22,8 @@ audio.play(new CgAudioTone(440, 0.25f, 1.0), 1f);
 | `CgActiveSounds` | every sound playing, on the frame thread (`FActiveSound`s): weighed by priority × volume, culled by group, the top 64 voiced, loops virtual (`FAudioVirtualLoop`). Talks to the engine only through its `Sink` |
 | `CgSoundClass`, `CgSoundMix` | the class chain (`USoundClass`), its host slider and submix; mixes that fade class adjustments in and out (`USoundMix`) |
 | `CgSoundConcurrency` | a cap per kind and the rule for what goes (`USoundConcurrency`) |
-| `CgSubmix`, `CgSubmixEffect`, `CgLowPass` | the submix tree the mixer renders leaf to root, its effect chains (`FMixerSubmix`), a one-pole low-pass |
+| `CgSubmix`, `CgSubmixEffect`, `CgLowPass`, `CgReverb` | the submix tree the mixer renders leaf to root, its effect chains (`FMixerSubmix`), a one-pole low-pass, a room reverb (Freeverb) on `reverb` |
+| `CgSoundAttenuation`, `CgAudioListener` | what distance does to a placed sound (`FSoundAttenuationSettings`); the listener, moved to the camera's final pose at `SUBMIT`, and the stereo pan law (`Get3DChannelMap`) |
 
 ## Rules
 

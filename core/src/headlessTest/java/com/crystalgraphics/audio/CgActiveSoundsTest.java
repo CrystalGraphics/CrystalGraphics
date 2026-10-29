@@ -23,6 +23,7 @@ public class CgActiveSoundsTest {
         final List<Double> offsets = new ArrayList<>();
         final Map<CgAudioSource, Float> gains = new IdentityHashMap<>();
         final List<CgAudioSource> stopped = new ArrayList<>();
+        float left, right, lowPassHz = -1, send, pitch = 1;
 
         @Override
         public CgAudioSource voice(CgSound sound, float pitch, boolean loop, double offset) {
@@ -49,7 +50,23 @@ public class CgActiveSoundsTest {
         public void stop(CgAudioSource voice) {
             stopped.add(voice);
         }
+
+        @Override
+        public void spatial(CgAudioSource voice, float l, float r, float hz, float reverbSend) {
+            left = l;
+            right = r;
+            lowPassHz = hz;
+            send = reverbSend;
+        }
+
+        @Override
+        public void pitch(CgAudioSource voice, float scale) {
+            pitch = scale;
+        }
     }
+
+    /** Heard within 20 blocks, fading linearly to nothing there. */
+    private static final CgSoundAttenuation TWENTY = new CgSoundAttenuation().inner(0).falloff(20);
 
     private static CgSound sound(double seconds) {
         int rate = 1000;
@@ -60,8 +77,10 @@ public class CgActiveSoundsTest {
         return a.play(sound(seconds), CgSoundClass.SFX, 1f, 1f, loop, Double.NaN);
     }
 
+    /** The listener at {@code (listenerX, 0, 0)}, looking along +x with +y up: +z is its right. */
     private static void update(CgActiveSounds a, double dt, double listenerX) {
-        a.update(dt, listenerX, 0, 0, false, CgHostVolume.NONE);
+        CgAudioListener ears = new CgAudioListener().set(listenerX, 0, 0, 1, 0, 0, 0, 1, 0, 0);
+        a.update(dt, ears, false, CgHostVolume.NONE);
     }
 
     /** A brawl's bursts, many and low in priority, never take a move's voices under a small limit. */
@@ -90,7 +109,7 @@ public class CgActiveSoundsTest {
         Recording sink = new Recording();
         CgActiveSounds a = new CgActiveSounds(64, sink);
         long hum = play(a, 2, true);
-        a.at(hum, 10, 0, 0).range(hum, 20);
+        a.at(hum, 10, 0, 0).attenuation(hum, TWENTY);
         update(a, 0.5, 0);
         CgAudioSource first = a.voice(hum);
         assertNotNull(first);
@@ -110,7 +129,7 @@ public class CgActiveSoundsTest {
     public void aOneShotOutOfRangeEnds() {
         CgActiveSounds a = new CgActiveSounds(64, new Recording());
         long boom = play(a, 2, false);
-        a.at(boom, 50, 0, 0).range(boom, 20);
+        a.at(boom, 50, 0, 0).attenuation(boom, TWENTY);
         update(a, 0.016, 0);
         assertFalse(a.playing(boom));
     }
@@ -169,5 +188,62 @@ public class CgActiveSoundsTest {
         assertFalse(a.playing(first));
         a.stop(first);
         assertTrue(a.playing(second));
+    }
+
+    /** A sound behind a wall is low-passed and lowered at once, and opens again over the interpolation once clear. */
+    @Test
+    public void aSoundBehindAWallIsLowPassed() {
+        Recording sink = new Recording();
+        CgActiveSounds a = new CgActiveSounds(64, sink);
+        boolean[] wall = {true};
+        a.occluder((sx, sy, sz, lx, ly, lz) -> wall[0]);
+        CgSoundAttenuation muffled = new CgSoundAttenuation().inner(50).falloff(10)
+                .occlusion(true).occlusionLowPass(800).occlusionVolume(0.5f);
+        long hum = play(a, 10, true);
+        a.at(hum, 10, 0, 0).attenuation(hum, muffled);
+        update(a, 0.05, 0);
+        assertEquals(800f, sink.lowPassHz, 1e-3f);
+        assertEquals(0.5f, sink.gains.get(a.voice(hum)), 1e-5f);
+        wall[0] = false;
+        for (int i = 0; i < 3; i++) update(a, 0.05, 0);
+        assertTrue("opening: " + sink.lowPassHz, sink.lowPassHz > 800f && sink.lowPassHz < 20000f);
+        for (int i = 0; i < 3; i++) update(a, 0.05, 0);
+        assertEquals(20000f, sink.lowPassHz, 1e-3f);
+        assertEquals(1f, sink.gains.get(a.voice(hum)), 1e-5f);
+    }
+
+    /** A placed sound fades by its curve and pans to where it is; its reverb send grows with distance. */
+    @Test
+    public void aPlacedSoundFadesPansAndSends() {
+        Recording sink = new Recording();
+        CgActiveSounds a = new CgActiveSounds(64, sink);
+        long boom = play(a, 10, false);
+        a.at(boom, 0, 0, 5).attenuation(boom, TWENTY);
+        update(a, 0.016, 0);
+        assertEquals("linear: 5 of 20 blocks", 0.75f, sink.gains.get(a.voice(boom)), 1e-5f);
+        // At 90 degrees, a fifth of the way from the right speaker (30) to the left (330) the long way round.
+        assertEquals((float) Math.cos(0.1 * Math.PI), sink.right, 1e-5f);
+        assertEquals((float) Math.sin(0.1 * Math.PI), sink.left, 1e-5f);
+        assertEquals("a quarter of the way from 0.3 to 0.95", 0.3f + 0.65f * 0.25f, sink.send, 1e-5f);
+        a.at(boom, -10, 0, 0);
+        update(a, 0.016, 0);
+        assertEquals("behind: centred", sink.left, sink.right, 1e-5f);
+    }
+
+    /** A sound flying at the listener rises in pitch; doppler is off unless asked. */
+    @Test
+    public void dopplerIsOptInAndRisesTowardTheListener() {
+        Recording sink = new Recording();
+        CgActiveSounds a = new CgActiveSounds(64, sink);
+        long jet = play(a, 10, true);
+        a.at(jet, 20, 0, 0).attenuation(jet, TWENTY);
+        update(a, 0.1, 0);
+        a.at(jet, 16.7, 0, 0);
+        update(a, 0.1, 0);
+        assertEquals("off", 1f, sink.pitch, 0);
+        a.attenuation(jet, new CgSoundAttenuation().inner(0).falloff(20).doppler(1f));
+        a.at(jet, 13.4, 0, 0);
+        update(a, 0.1, 0);
+        assertEquals("33 blocks a second toward it: 1 / (1 - 0.1)", 1 / 0.9f, sink.pitch, 1e-3f);
     }
 }

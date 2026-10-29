@@ -71,6 +71,27 @@ public class CgAudioMixerTest {
         assertEquals(0.25f, peak(out), 1e-3);
     }
 
+    /** A placed voice is folded to mono, low-passed on its own and panned: hard left leaves the right silent. */
+    @Test
+    public void aPlacedVoiceIsFilteredAndPanned() {
+        CgAudioMixer mixer = new CgAudioMixer(RATE, 2, FRAMES, 4);
+        CgAudioTone tone = new CgAudioTone(6000, 0.5f, 0);
+        mixer.start(tone, 1f, true);
+        mixer.spatial(tone, 1f, 0f, 20000f, 0f);
+        float[] out = new float[FRAMES * 2];
+        mixer.render(out);
+        float left = 0, right = 0;
+        for (int f = 0; f < FRAMES; f++) {
+            left = Math.max(left, Math.abs(out[f * 2]));
+            right = Math.max(right, Math.abs(out[f * 2 + 1]));
+        }
+        assertEquals(0.5f, left, 1e-3f);
+        assertEquals(0f, right, 0f);
+        mixer.spatial(tone, 1f, 1f, 200f, 0f);
+        for (int i = 0; i < 3; i++) mixer.render(out);
+        assertTrue("6 kHz through a 200 Hz low-pass: " + peak(out), peak(out) < 0.05f);
+    }
+
     /** Paused, a voice that pauses with the game is silent and holds; one that does not plays on. */
     @Test
     public void aPauseHoldsTheVoicesThatPauseWithTheGame() {

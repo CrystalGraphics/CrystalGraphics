@@ -29,7 +29,8 @@ public final class CgSoundStream implements CgAudioSource {
     private final int channels;
     private final int capacity;
     private final float[] ring;
-    private final double step;
+    private final double baseStep;
+    private double step;
     private final boolean loop;
     /** Frames decoded so far, written by the decode thread; the voice's place, by the audio thread. */
     private volatile long written;
@@ -45,7 +46,7 @@ public final class CgSoundStream implements CgAudioSource {
         channels = this.decoder.channels();
         capacity = (int) (RING_SECONDS * this.decoder.sampleRate());
         ring = new float[capacity * channels];
-        step = this.decoder.sampleRate() / (double) outputRate * pitch;
+        step = baseStep = this.decoder.sampleRate() / (double) outputRate * pitch;
         this.loop = loop;
         if (offset > 0) this.decoder.seek((long) (offset * this.decoder.sampleRate()));
         fill((int) (PRIME_SECONDS * this.decoder.sampleRate()));
@@ -127,5 +128,10 @@ public final class CgSoundStream implements CgAudioSource {
     /** Seconds of it played. */
     public double played() {
         return consumed / (double) decoder.sampleRate();
+    }
+
+    @Override
+    public void pitch(float scale) {
+        step = baseStep * scale;
     }
 }

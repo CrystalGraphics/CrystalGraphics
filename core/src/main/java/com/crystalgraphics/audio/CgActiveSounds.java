@@ -11,13 +11,14 @@ import com.crystalgraphics.platform.audio.CgHostVolume;
  * Every sound playing, on the frame thread: Unreal's active sounds. Each update weighs them (their gain, their class
  * chain, the sound mixes, the host's slider, whether they are in range), culls each concurrency group by its rule,
  * gives the voices to the loudest by priority ({@code GetSortedActiveWaveInstances}), and keeps a looping sound that
- * lost its voice or left its range virtual, its time running on, to take a voice back where it would be.
+ * lost its voice or left its range virtual, its time running on, to take a voice back where it would be. A placed
+ * sound with an attenuation fades, pans, dulls, sends to the reverb and shifts with doppler from the listener.
  *
  * <pre>{@code
  * CgActiveSounds sounds = new CgActiveSounds(64, sink);
  * long id = sounds.play(boom, CgSoundClass.SFX, 1f, 1f, false, Double.NaN);
- * sounds.at(id, x, y, z).range(id, 48);
- * sounds.update(dt, listenerX, listenerY, listenerZ, paused, hostVolume);   // once a frame
+ * sounds.at(id, x, y, z).attenuation(id, CgSoundAttenuation.DEFAULT);
+ * sounds.update(dt, listener, paused, hostVolume);   // once a frame
  * }</pre>
  *
  * <ul>
@@ -41,7 +42,21 @@ public final class CgActiveSounds {
 
         void gain(CgAudioSource voice, float gain);
 
+        /** Pans {@code voice} to left and right gains, low-passes it and sends some of it to the reverb. */
+        void spatial(CgAudioSource voice, float left, float right, float lowPassHz, float reverbSend);
+
+        /** Scales {@code voice}'s pitch: doppler. */
+        void pitch(CgAudioSource voice, float scale);
+
         void stop(CgAudioSource voice);
+    }
+
+    /** Whether a block stands between a sound and the listener: Unreal's occlusion trace. */
+    @FunctionalInterface
+    public interface Occluder {
+        Occluder NONE = (sx, sy, sz, lx, ly, lz) -> false;
+
+        boolean occluded(double sx, double sy, double sz, double lx, double ly, double lz);
     }
 
     public static final int MAX_SOUNDS = 512;
@@ -56,7 +71,22 @@ public final class CgActiveSounds {
     private final float[] gain = new float[MAX_SOUNDS], pitch = new float[MAX_SOUNDS], priority = new float[MAX_SOUNDS];
     private final boolean[] loop = new boolean[MAX_SOUNDS], placed = new boolean[MAX_SOUNDS];
     private final double[] x = new double[MAX_SOUNDS], y = new double[MAX_SOUNDS], z = new double[MAX_SOUNDS];
-    private final double[] range = new double[MAX_SOUNDS], time = new double[MAX_SOUNDS], startAt = new double[MAX_SOUNDS];
+    private final double[] time = new double[MAX_SOUNDS], startAt = new double[MAX_SOUNDS];
+    private final CgSoundAttenuation[] attenuation = new CgSoundAttenuation[MAX_SOUNDS];
+    /** Where each was last update, for its velocity. */
+    private final double[] lastX = new double[MAX_SOUNDS], lastY = new double[MAX_SOUNDS], lastZ = new double[MAX_SOUNDS];
+    private final boolean[] moved = new boolean[MAX_SOUNDS];
+    /** Occlusion, moved linearly from where it was to where it goes ({@code FDynamicParameter}). */
+    private final boolean[] checked = new boolean[MAX_SOUNDS];
+    private final double[] lastCheck = new double[MAX_SOUNDS];
+    private final float[] occHz = new float[MAX_SOUNDS], occHzFrom = new float[MAX_SOUNDS], occHzTo = new float[MAX_SOUNDS];
+    private final float[] occVol = new float[MAX_SOUNDS], occVolFrom = new float[MAX_SOUNDS], occVolTo = new float[MAX_SOUNDS];
+    private final float[] occElapsed = new float[MAX_SOUNDS], occDuration = new float[MAX_SOUNDS];
+    /** What was last posted of each voice's place: its gains, low-pass, send and pitch. */
+    private final float[] sentL = new float[MAX_SOUNDS], sentR = new float[MAX_SOUNDS], sentHz = new float[MAX_SOUNDS];
+    private final float[] sentSend = new float[MAX_SOUNDS], sentPitch = new float[MAX_SOUNDS];
+    private final float[] lr = new float[2];
+    private Occluder occluder = Occluder.NONE;
     private final CgSoundConcurrency[] group = new CgSoundConcurrency[MAX_SOUNDS];
     private final Object[] owner = new Object[MAX_SOUNDS];
     private final long[] order = new long[MAX_SOUNDS];
@@ -95,7 +125,12 @@ public final class CgActiveSounds {
             this.pitch[i] = pitch;
             this.loop[i] = loop;
             placed[i] = false;
-            range[i] = Double.NaN;
+            attenuation[i] = null;
+            moved[i] = false;
+            checked[i] = false;
+            occHz[i] = occHzTo[i] = CgSoundAttenuation.MAX_FILTER_HZ;
+            occVol[i] = occVolTo[i] = 1f;
+            occDuration[i] = 0;
             priority[i] = 1f;
             group[i] = null;
             owner[i] = null;
@@ -118,7 +153,7 @@ public final class CgActiveSounds {
         return slot(id) >= 0;
     }
 
-    /** Places {@code id} in the world: in range within its {@link #range}. */
+    /** Places {@code id} in the world: heard as its {@link #attenuation} says. */
     public CgActiveSounds at(long id, double px, double py, double pz) {
         int i = slot(id);
         if (i >= 0) {
@@ -130,11 +165,16 @@ public final class CgActiveSounds {
         return this;
     }
 
-    /** Audible within {@code max} blocks of the listener ({@code MaxDistance}); unplaced, always. */
-    public CgActiveSounds range(long id, double max) {
+    /** How {@code id} fades and pans with distance once placed; null, it is heard everywhere at full volume. */
+    public CgActiveSounds attenuation(long id, @Nullable CgSoundAttenuation a) {
         int i = slot(id);
-        if (i >= 0) range[i] = max;
+        if (i >= 0) attenuation[i] = a;
         return this;
+    }
+
+    /** What occlusion asks: the engine's traces a ray through the client's blocks. */
+    public void occluder(Occluder o) {
+        occluder = o;
     }
 
     /** Its priority: weighed by its volume for a voice, and by {@link CgSoundConcurrency.Rule#STOP_LOWEST_PRIORITY}. */
@@ -179,6 +219,12 @@ public final class CgActiveSounds {
     public boolean virtual(long id) {
         int i = slot(id);
         return i >= 0 && state[i] == VIRTUAL;
+    }
+
+    /** Its occlusion low-pass now, in hertz: 20 kHz while nothing stands between it and the listener. */
+    public float occlusionHz(long id) {
+        int i = slot(id);
+        return i >= 0 ? occHz[i] : CgSoundAttenuation.MAX_FILTER_HZ;
     }
 
     /** Seconds of it played, its loops counted. */
@@ -256,7 +302,8 @@ public final class CgActiveSounds {
     }
 
     /** Once a frame: the mixes faded, every sound weighed, the groups culled, the voices given. */
-    public void update(double dt, double lx, double ly, double lz, boolean paused, CgHostVolume host) {
+    public void update(double dt, CgAudioListener listener, boolean paused, CgHostVolume host) {
+        double lx = listener.x(), ly = listener.y(), lz = listener.z();
         for (int j = mixCount - 1; j >= 0; j--) {
             CgSoundMix m = mixes[j];
             boolean popping = mixPopping[j];
@@ -288,10 +335,13 @@ public final class CgActiveSounds {
                 end(i);
                 continue;
             }
-            volume[i] = gain[i] * classVolume(c, host);
             double dx = x[i] - lx, dy = y[i] - ly, dz = z[i] - lz;
             distance[i] = placed[i] ? Math.sqrt(dx * dx + dy * dy + dz * dz) : 0;
-            boolean audible = !placed[i] || Double.isNaN(range[i]) || distance[i] <= range[i];
+            CgSoundAttenuation a = placed[i] ? attenuation[i] : null;
+            if (a != null && a.occlusion()) occlude(i, a, lx, ly, lz, dt);
+            float fade = a == null ? 1f : a.gain(distance[i]) * occVol[i];
+            volume[i] = gain[i] * classVolume(c, host) * fade;
+            boolean audible = a == null || distance[i] <= a.maxDistance();
             weighted[i] = audible ? priority[i] * volume[i] : -1;
         }
         cullGroups();
@@ -316,10 +366,13 @@ public final class CgActiveSounds {
                     sink.start(voice[i], volume[i], soundClass[i], state[i] == NEW ? startAt[i] : Double.NaN);
                     posted[i] = volume[i];
                     state[i] = REAL;
+                    sentHz[i] = -1;
+                    sentPitch[i] = 1f;
                 } else if (Math.abs(volume[i] - posted[i]) > 1e-4f) {
                     sink.gain(voice[i], volume[i]);
                     posted[i] = volume[i];
                 }
+                if (placed[i] && attenuation[i] != null) place(i, attenuation[i], listener, dt);
             } else if (loop[i]) {
                 // A loop below the line or out of range: virtual, its time running on (FAudioVirtualLoop).
                 if (state[i] == REAL) sink.stop(voice[i]);
@@ -329,6 +382,66 @@ public final class CgActiveSounds {
                 end(i);
             }
         }
+        for (int i = 0; i < MAX_SOUNDS; i++) {
+            if (state[i] == FREE || !placed[i]) continue;
+            lastX[i] = x[i];
+            lastY[i] = y[i];
+            lastZ[i] = z[i];
+            moved[i] = true;
+        }
+    }
+
+    /** A voice's pan, low-pass, reverb send and doppler, posted where they moved. */
+    private void place(int i, CgSoundAttenuation a, CgAudioListener listener, double dt) {
+        if (a.spatialize()) {
+            listener.pan(x[i], y[i], z[i], lr);
+        } else {
+            lr[0] = lr[1] = 1f;
+        }
+        float hz = Math.min(a.lowPassHz(distance[i]), occHz[i]);
+        float s = a.reverbSend(distance[i]);
+        if (sentHz[i] < 0 || Math.abs(lr[0] - sentL[i]) > 1e-3f || Math.abs(lr[1] - sentR[i]) > 1e-3f
+                || Math.abs(hz - sentHz[i]) > 1f || Math.abs(s - sentSend[i]) > 1e-3f) {
+            sink.spatial(voice[i], lr[0], lr[1], hz, s);
+            sentL[i] = lr[0];
+            sentR[i] = lr[1];
+            sentHz[i] = hz;
+            sentSend[i] = s;
+        }
+        if (a.doppler() != 0) {
+            double vx = 0, vy = 0, vz = 0;
+            if (moved[i] && dt > 0) {
+                vx = (x[i] - lastX[i]) / dt;
+                vy = (y[i] - lastY[i]) / dt;
+                vz = (z[i] - lastZ[i]) / dt;
+            }
+            float p = listener.doppler(x[i], y[i], z[i], vx, vy, vz, a.doppler());
+            if (Math.abs(p - sentPitch[i]) > 1e-4f) {
+                sink.pitch(voice[i], p);
+                sentPitch[i] = p;
+            }
+        }
+    }
+
+    /** {@code CheckOcclusion}: traced every interval of play, its filter and volume moved over the interpolation. */
+    private void occlude(int i, CgSoundAttenuation a, double lx, double ly, double lz, double dt) {
+        if (!checked[i] || time[i] - lastCheck[i] > a.occlusionInterval()) {
+            boolean occluded = occluder.occluded(x[i], y[i], z[i], lx, ly, lz);
+            lastCheck[i] = time[i];
+            // The first check lands at once; later ones move over the interpolation time.
+            float duration = checked[i] ? a.occlusionInterpolation() : 0f;
+            checked[i] = true;
+            occHzFrom[i] = occHz[i];
+            occVolFrom[i] = occVol[i];
+            occHzTo[i] = occluded ? Math.min(occHzTo[i], a.occlusionLowPass()) : CgSoundAttenuation.MAX_FILTER_HZ;
+            occVolTo[i] = occluded ? Math.min(occVolTo[i], a.occlusionVolume()) : 1f;
+            occElapsed[i] = 0;
+            occDuration[i] = duration;
+        }
+        occElapsed[i] += (float) dt;
+        float k = occDuration[i] <= 0 ? 1f : Math.min(1f, occElapsed[i] / occDuration[i]);
+        occHz[i] = occHzFrom[i] + (occHzTo[i] - occHzFrom[i]) * k;
+        occVol[i] = occVolFrom[i] + (occVolTo[i] - occVolFrom[i]) * k;
     }
 
     /** Whether sound {@code a} ranks above {@code b} for a voice: weightier, or older at a tie. */

@@ -20,7 +20,7 @@ public final class CgSoundVoice implements CgAudioSource {
     private short[] pcm;
     private int channels;
     private long frames;
-    private double step;
+    private double step, baseStep;
     private boolean loop;
     private double pos;
     /** Off the audio thread's hands: never started, or ended there. */
@@ -40,11 +40,16 @@ public final class CgSoundVoice implements CgAudioSource {
         this.pcm = sound.pcm();
         this.channels = sound.channels();
         this.frames = sound.frames();
-        this.step = sound.sampleRate() / (double) outputRate * pitch;
+        this.step = baseStep = sound.sampleRate() / (double) outputRate * pitch;
         this.loop = loop;
         this.pos = offset * sound.sampleRate();
         idle = false;
         return this;
+    }
+
+    @Override
+    public void pitch(float scale) {
+        step = baseStep * scale;
     }
 
     /** Whether the audio thread is done with it: never started, or ended. */

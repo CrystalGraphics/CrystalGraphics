@@ -34,6 +34,10 @@ public interface CgAudioSource {
      */
     boolean render(float[] out, int offset, int frames, int channels, int sampleRate, float gain);
 
+    /** On the audio thread: its pitch scaled by {@code scale} from the next buffer, a doppler shift. Ignored by default. */
+    default void pitch(float scale) {
+    }
+
     /** On the audio thread, once its voice is freed: finished, or stopped. */
     default void ended() {
     }

@@ -3,6 +3,7 @@ package com.crystalgraphics.probe;
 import com.crystalgraphics.audio.CgAudioEngine;
 import com.crystalgraphics.audio.CgAudioTone;
 import com.crystalgraphics.audio.CgSound;
+import com.crystalgraphics.audio.CgSoundAttenuation;
 import com.crystalgraphics.audio.CgSoundClass;
 import com.crystalgraphics.audio.CgSoundStream;
 import com.crystalgraphics.camera.CgCameraModifier;
@@ -130,6 +131,12 @@ public final class CgWorldProbe {
     private static final String MUSIC = "minecraft:sounds/music/game/end/boss.ogg";
     private static final int STALL_MILLIS = 200;
     private static long musicId;
+    private static final String CLICK = "minecraft:sounds/random/click.ogg";
+    private static final float MUFFLED_HZ = 900;
+    private static final CgSoundAttenuation MUFFLED = new CgSoundAttenuation().occlusion(true).occlusionLowPass(MUFFLED_HZ);
+    /** Two quiet clicks, one a block into the ground under the camera and one six above it: the ground occludes one. */
+    private static long buried, open;
+    private static int occlusionFrames;
     private static CgSoundStream music;
     private static long musicStart;
     private static double stalledMillis = -1;
@@ -214,6 +221,7 @@ public final class CgWorldProbe {
                 // once a second, which can step it back across a shorter window.
                 events.watch();
                 stallOnce();
+                occlusionOnce();
                 double inEvents = seconds(now);
                 if ((events.complete() && inEvents >= MIN_EVENT_SECONDS) || inEvents >= EVENT_SECONDS) finish(host);
                 break;
@@ -357,6 +365,28 @@ public final class CgWorldProbe {
         }
     }
 
+    /** Once the listener is the camera: the clicks placed below and above it. */
+    private static void occlusionOnce() {
+        if (audio == null || buried != 0 || occlusionFrames++ < 2) return;
+        try {
+            CgSound click = audio.sounds().load(CLICK);
+            double x = audio.listener().x(), y = audio.listener().y(), z = audio.listener().z();
+            CgHit ground = new CgHit();
+            if (!CgCollisionWorld.client(1f).ray().at(x, y, z).along(0, -1, 0, 64).blocksOnly().first(ground)) {
+                skip("audio.occlusion", "no ground within 64 blocks under the camera");
+                buried = -1;
+                return;
+            }
+            buried = audio.play(click, CgSoundClass.SFX, 0.01f, 1f, true, Double.NaN);
+            open = audio.play(click, CgSoundClass.SFX, 0.01f, 1f, true, Double.NaN);
+            audio.activeSounds().at(buried, x, ground.y() - 1, z).attenuation(buried, MUFFLED);
+            audio.activeSounds().at(open, x, y + 6, z).attenuation(open, MUFFLED);
+        } catch (RuntimeException e) {
+            skip("audio.occlusion", "the click did not load: " + e.getMessage());
+            buried = -1;
+        }
+    }
+
     /** Once, a second into the stream: the render thread held, as a hitch holds it. */
     private static void stallOnce() {
         // Its voice is given on the frame after the play.
@@ -383,6 +413,8 @@ public final class CgWorldProbe {
         check("audio.underruns", audio.underruns() == 0, audio.underruns() + " underruns; the audio thread's longest stall "
                 + String.format("%.1f", audio.longestStallMillis()) + " ms against a queue of "
                 + String.format("%.0f", CgAudioEngine.FORMAT.buffers() * CgAudioEngine.FORMAT.bufferSeconds() * 1000) + " ms");
+        boolean stillPlaying = audio.activeSounds().playing(musicId), stillVirtual = audio.activeSounds().virtual(musicId);
+        boolean sameVoice = music != null && audio.activeSounds().voice(musicId) == music;
         if (music != null) {
             audio.activeSounds().stop(musicId);
             double streamed = (System.nanoTime() - musicStart) / 1.0e9;
@@ -390,6 +422,18 @@ public final class CgWorldProbe {
             check("audio.stream", music.starved() == 0 && music.played() >= streamed * 0.8 && stalledMillis >= STALL_MILLIS * 0.98,
                     String.format("%.1f s played of %.1f s; dry in %d buffers; the frame stalled %.0f ms", music.played(),
                             streamed, music.starved(), stalledMillis));
+            info("audio.stream-state", "id playing " + stillPlaying + ", virtual " + stillVirtual + ", same voice " + sameVoice);
+
+        }
+        if (buried > 0) {
+            float under = audio.activeSounds().occlusionHz(buried), over = audio.activeSounds().occlusionHz(open);
+            audio.activeSounds().stop(buried);
+            audio.activeSounds().stop(open);
+            // A camera with no ground six blocks under it, or a roof six above, cannot tell.
+            check("audio.occlusion", under <= MUFFLED_HZ + 1 && over >= CgSoundAttenuation.MAX_FILTER_HZ - 1,
+                    "a sound in the ground low-passed to " + String.format("%.0f", under) + " Hz, one in the air "
+                            + String.format("%.0f", over) + " Hz; the listener at " + String.format("%.1f, %.1f, %.1f",
+                            audio.listener().x(), audio.listener().y(), audio.listener().z()));
         }
         float master = CgPlatform.get(CgHostVolume.SERVICE).master();
         check("audio.follows-master", audio.main() == master, "main gain " + audio.main() + ", master slider " + master);

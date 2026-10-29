@@ -9,6 +9,8 @@ import javax.annotation.Nullable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.crystalgraphics.camera.CgCameraSystem;
+import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorldSubsystem;
@@ -63,7 +65,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     public static final CgAudioOutput.Format FORMAT = new CgAudioOutput.Format(48000, 2, 512, 8);
     public static final int MAX_VOICES = 64;
 
-    private static final int PLAY = 0, STOP = 1, GAIN = 2, MAIN = 3, PAUSE = 4;
+    private static final int PLAY = 0, STOP = 1, GAIN = 2, MAIN = 3, PAUSE = 4, SPATIAL = 5, PITCH = 6;
     /** A start with no due frame: the next buffer. */
     private static final long NOW = Long.MIN_VALUE;
     private static final int QUEUE = 1024;
@@ -81,7 +83,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     /** The submix tree, parents before children: {@code main}, {@code world}, {@code reverb}, {@code ui}, {@code music}. */
     private final CgSubmix[] submixes = new CgSubmix[5];
     private final CgSoundVoice[] voices = new CgSoundVoice[MAX_VOICES * 2];
-    private double listenerX, listenerY, listenerZ;
+    private final CgAudioListener listener = new CgAudioListener();
     private CgAudioDecoder decoder = CgAudioDecoder.NONE;
     /** The streams the decode thread keeps filled; the frame thread adds, the decode thread drops. */
     private final CgSoundStream[] streams = new CgSoundStream[MAX_STREAMS];
@@ -90,6 +92,8 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     private final int[] kinds = new int[QUEUE];
     private final CgAudioSource[] sources = new CgAudioSource[QUEUE];
     private final float[] values = new float[QUEUE];
+    /** A spatial command's right gain, low-pass and reverb send. */
+    private final float[] right = new float[QUEUE], lowPass = new float[QUEUE], sends = new float[QUEUE];
     private final boolean[] flags = new boolean[QUEUE];
     private final long[] frames = new long[QUEUE];
     private final int[] routes = new int[QUEUE];
@@ -142,8 +146,11 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         submixes[3] = new CgSubmix("ui", submixes[0], 3);
         submixes[4] = new CgSubmix("music", submixes[0], 4);
         mixer.submixes(submixes);
+        mixer.reverb(2);
+        submixes[2].effect(new CgReverb(FORMAT.sampleRate()));
         for (int i = 0; i < voices.length; i++) voices[i] = new CgSoundVoice();
         activeSounds = new CgActiveSounds(MAX_VOICES, new Sink());
+        activeSounds.occluder(CgAudioEngine::blocked);
         // Left alone within two buffers of the write head. A frame hears its events at its end, up to a frame after
         // they fell: a lead of the queue keeps their starts ahead of the head for frames up to the queue less the band.
         clock = new CgAudioClock(FORMAT.sampleRate(), (long) FORMAT.buffers() * FORMAT.frames(), 2L * FORMAT.frames(), () -> written);
@@ -227,11 +234,20 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         throw new IllegalArgumentException("No submix " + id);
     }
 
-    /** Where the listener stands this frame: what a placed sound's range is measured from. */
-    public void listener(double x, double y, double z) {
-        listenerX = x;
-        listenerY = y;
-        listenerZ = z;
+    /**
+     * Where the sounds are heard from. Each frame at {@code SUBMIT} it takes the camera system's final pose, so a cut
+     * moves it on its frame; with no camera system, place it by hand.
+     */
+    public CgAudioListener listener() {
+        return listener;
+    }
+
+    /** A block between a sound and the listener, by a ray through the client's level: Unreal's occlusion trace. */
+    private static boolean blocked(double sx, double sy, double sz, double lx, double ly, double lz) {
+        double dx = lx - sx, dy = ly - sy, dz = lz - sz;
+        double d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (d < 1e-3) return false;
+        return CgCollisionWorld.client(1f).ray().at(sx, sy, sz).along(dx, dy, dz, d).blocksOnly().any();
     }
 
     /** What the active sounds drive: pooled voices, and the command queue. */
@@ -263,6 +279,21 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         @Override
         public void stop(CgAudioSource voice) {
             post(STOP, voice, 0, false, NOW);
+        }
+
+        @Override
+        public void spatial(CgAudioSource voice, float l, float r, float lowPassHz, float reverbSend) {
+            int i = write(SPATIAL, voice, l, false, NOW, 0);
+            if (i < 0) return;
+            right[i] = r;
+            lowPass[i] = lowPassHz;
+            sends[i] = reverbSend;
+            head.lazySet(head.get() + 1);
+        }
+
+        @Override
+        public void pitch(CgAudioSource voice, float scale) {
+            post(PITCH, voice, scale, false, NOW);
         }
     }
 
@@ -344,7 +375,11 @@ public final class CgAudioEngine extends CgWorldSubsystem {
             postedPaused = paused;
             post(PAUSE, null, 0, paused, NOW);
         }
-        activeSounds.update(dt, listenerX, listenerY, listenerZ, paused, CgPlatform.get(CgHostVolume.SERVICE));
+        // After SHAKE: the camera system's pose where it has the camera, else the host's own view of this frame.
+        CgCameraSystem cameras = world().subsystem(CgCameraSystem.class);
+        if (cameras != null && cameras.controls()) listener.set(cameras.pose(), dt);
+        else if (world().view() != null) listener.set(world().view(), dt);
+        activeSounds.update(dt, listener, paused, CgPlatform.get(CgHostVolume.SERVICE));
     }
 
     private void post(int kind, @Nullable CgAudioSource source, float value, boolean flag, long frame) {
@@ -352,11 +387,17 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     }
 
     private void post(int kind, @Nullable CgAudioSource source, float value, boolean flag, long frame, int submix) {
-        if (!running) return;
+        if (kind == SPATIAL) throw new IllegalArgumentException("a spatial command is posted by the sink");
+        if (write(kind, source, value, flag, frame, submix) >= 0) head.lazySet(head.get() + 1);
+    }
+
+    /** Writes a command at the head and answers its slot, or -1 where the queue is full; the caller publishes it. */
+    private int write(int kind, @Nullable CgAudioSource source, float value, boolean flag, long frame, int submix) {
+        if (!running) return -1;
         int h = head.get();
         if (h - tail.get() >= QUEUE) {
             if (dropped++ == 0) LOGGER.warn("The audio command queue is full; commands are dropped");
-            return;
+            return -1;
         }
         int i = h & (QUEUE - 1);
         kinds[i] = kind;
@@ -365,7 +406,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         flags[i] = flag;
         frames[i] = frame;
         routes[i] = submix;
-        head.lazySet(h + 1);
+        return i;
     }
 
     /** The audio thread's: every command posted so far, applied to the mixer. */
@@ -381,6 +422,8 @@ public final class CgAudioEngine extends CgWorldSubsystem {
                 }
                 case STOP -> mixer.stop(s);
                 case GAIN -> mixer.gain(s, values[i]);
+                case SPATIAL -> mixer.spatial(s, values[i], right[i], lowPass[i], sends[i]);
+                case PITCH -> mixer.pitch(s, values[i]);
                 case MAIN -> mixer.main(values[i]);
                 case PAUSE -> mixer.paused(flags[i]);
                 default -> { }
