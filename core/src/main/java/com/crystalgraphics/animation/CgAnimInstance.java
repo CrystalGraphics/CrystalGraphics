@@ -661,6 +661,14 @@ public final class CgAnimInstance {
                 socket(s, out, null);
                 return true;
             }
+
+            @Override
+            public boolean point(String other, double[] out, @Nullable Quaternionf turn) {
+                int s = socket(other);
+                if (!posed || s == NO_SOCKET) return false;
+                socket(s, out, turn);
+                return true;
+            }
         };
     }
 

@@ -39,6 +39,19 @@ public interface CgAttachment {
     }
 
     /**
+     * Its point named {@code name} with that point's turn, Unreal's {@code GetSocketTransform}: what a cue spawns at.
+     * Unless overridden, the point's turn is its own ({@link #place}'s).
+     */
+    default boolean point(String name, double[] out, @Nullable Quaternionf turn) {
+        return place(out, turn) && point(name, out);
+    }
+
+    /** It seen from its point named {@code name}: what a system attached to that socket follows. */
+    default CgAttachment atSocket(String name) {
+        return (out, turn) -> point(name, out, turn);
+    }
+
+    /**
      * The box of the body it is on, this frame, into {@code out}: centre x, y, z, then half extents x, y, z, absolute.
      * What an effect's {@code entity()} emitters spawn in. False for one with no body.
      */

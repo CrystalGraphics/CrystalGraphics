@@ -111,23 +111,30 @@ public final class CgVfxCueEffects implements CgCueEffects {
         point[1] = at.y();
         point[2] = at.z();
         boolean attach = target != null && placement.attach() == Placement.Attach.ATTACH_TO_TARGET;
+        boolean turned = false;
         if (target != null && !attach) {
-            if (placement.socket() == null || !target.point(placement.socket(), point)) target.place(point, null);
+            // FindSpawnTransform: the target's socket transform, its turn included
+            turned = placement.socket() != null ? target.point(placement.socket(), point, turn) : target.place(point, turn);
+            if (!turned && placement.socket() != null) target.place(point, null);
         }
         CgVfxSystemInstance<?> made = new CgVfxSystemInstance<>(p.definition(), point[0], point[1], point[2]);
         if (attach) {
             int socket = placement.socket() == null ? -1 : CgEntityAttachments.find(placement.socket());
             boolean keep = placement.rule() == Placement.Rule.KEEP_WORLD;
+            // SpawnSystemAttached(TargetComponent, SocketName): the socket, whatever the target is
+            CgAttachment parent = placement.socket() == null || socket >= 0 && target.entity() >= 0 ? target
+                    : target.atSocket(placement.socket());
             if (target.entity() >= 0 && socket >= 0) {
                 if (keep) made.followKeepingOffset(target.entity(), socket);
                 else made.follow(target.entity(), socket);
             } else if (keep) {
-                made.followKeepingOffset(target);
+                made.followKeepingOffset(parent);
             } else {
-                made.follow(target);
+                made.follow(parent);
             }
         }
         if (placement.rotation() != null) made.orient(turn.set(placement.rotation()));
+        else if (turned) made.orient(turn);
         return made;
     }
 
