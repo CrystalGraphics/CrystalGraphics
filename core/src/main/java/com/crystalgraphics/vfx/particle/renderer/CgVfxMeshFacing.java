@@ -50,7 +50,7 @@ public record CgVfxMeshFacing(float[] words) {
 
     /**
      * {@code renderers}' mesh facing: their first mesh renderer's, every other mesh renderer's the same. {@code local}
-     * is the emitter's: a locked axis in simulation space then turns with its effect.
+     * is the emitter's: a locked axis in simulation space then turns with its effect, and so does a mesh facing nothing.
      */
     public static CgVfxMeshFacing of(String who, List<CgVfxRendererProperties> renderers, boolean local) {
         float[] words = null;
@@ -69,6 +69,8 @@ public record CgVfxMeshFacing(float[] words) {
     private static float[] words(String who, CgVfxMeshRendererProperties m, boolean local) {
         float[] w = defaults();
         w[0] = m.facing().ordinal();
+        // A local emitter's facing nothing turns with its effect: Cascade's OutTransformMat *= LocalToWorld
+        w[23] = local && m.facing() == CgVfxMeshRendererProperties.Facing.DEFAULT ? 1f : 0f;
         w[1] = m.facingUp() == null ? 0f : m.facingUp().ordinal() + 1;
         w[2] = m.rollAbout() == null ? 0f : m.rollAbout().ordinal() + 1;
         if (m.lockedAxis() != null) {
@@ -165,6 +167,7 @@ public record CgVfxMeshFacing(float[] words) {
             }
         }
         out.set(facing).mul(new Matrix3f().set(particle)).mul(new Matrix3f().set(new Quaternionf(words[8], words[9], words[10], words[11])));
+        if (words[23] != 0f) out.set(new Matrix3f().set(slotTurn).mul(out));
         if (mode != 0 && roll != 0) {
             Vector3f axis = roll == 2 ? eye : locked != null ? locked : faced;
             out.set(new Matrix3f().set(new Quaternionf().fromAxisAngleRad(axis, -spin)).mul(out));

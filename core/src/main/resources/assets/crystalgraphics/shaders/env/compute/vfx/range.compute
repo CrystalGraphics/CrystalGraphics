@@ -267,6 +267,8 @@ mat3 range_facing(int lo, vec3 toEye, vec3 velocity, float spin, mat3 own, vec3 
         }
     }
     mat3 m = facing * own * range_quat(FACINGS(lo * 6 + 2));
+    // A local emitter's facing nothing turns with its effect: Cascade's OutTransformMat *= LocalToWorld
+    if (f5.w > 0.5) m = range_quat(ORIGINS(lo).turn) * m;
     if (mode != 0 && roll != 0) {
         vec3 axis = roll == 2 ? eye : f0.w > 0.5 ? locked : faced;
         float h = -0.5 * spin;
