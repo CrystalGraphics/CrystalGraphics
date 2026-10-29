@@ -61,7 +61,9 @@ public final class CgGameplayKinds {
             .property("system", hard("system")).required().flags(CgPropertyFlag.STRUCTURAL)
             .property("cast_shadow", BOOL)
             .property("time_dilation", FLOAT)
-            .property("warmup", FLOAT).quantity(CgQuantity.TIME));
+            .property("warmup", FLOAT).quantity(CgQuantity.TIME)
+            .property("delay", FLOAT).quantity(CgQuantity.TIME)
+            .property("replace", BOOL));
 
     static final CgType SOUND = where(entry("sound")
             .property("sound", VALUE).required()

@@ -53,6 +53,7 @@ final class CgCueCompiler {
 
     private static final Logger LOGGER = LogManager.getLogger("CgCue");
     private static final String[] LOOPING_PHASES = {"application", "looping", "recurring", "removal"};
+    private static final List<String> LASTING_PHASES = List.of("application", "looping", "removal");
 
     private final String id;
     private final CgAssetCompiler.Dependencies deps;
@@ -159,8 +160,15 @@ final class CgCueCompiler {
         for (Map<?, ?> p : elements(b.get("particles"))) {
             String system = String.valueOf(p.get("system"));
             CgVfxSystemDefinition def = deps.definition(CgParticleKinds.SYSTEM, system) instanceof CgVfxSystemDefinition d ? d : null;
+            String at = path + ".particles[" + i++ + "]";
+            float delay = time(p.get("delay"), 0f);
+            boolean replace = Boolean.TRUE.equals(p.get("replace"));
+            // Only a looping play lives on to start them later, or holds what they replace
+            if ((delay != 0f || replace) && !LASTING_PHASES.contains(path)) {
+                throw fail(at, "delay and replace play only in application, looping and removal");
+            }
             particles.add(new Particles(system, def, Boolean.TRUE.equals(p.get("cast_shadow")), number(p.get("time_dilation"), 1f),
-                    time(p.get("warmup"), 0f), where(p, path + ".particles[" + i++ + "]", blockWhere)));
+                    time(p.get("warmup"), 0f), delay, replace, where(p, at, blockWhere)));
         }
         List<Sound> sounds = new ArrayList<>();
         i = 0;

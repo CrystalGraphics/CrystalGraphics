@@ -131,6 +131,17 @@ A particle entry's own clock, from its Unreal component:
 |---|---|
 | `time_dilation` | `CustomTimeDilation`: the system ages at this multiple of its clock, its particles too. 1 unless written |
 | `warmup` | `WarmupTime`, in seconds: it is simulated that far before it is first shown (`CgVfxEffect.startAt`). 0 unless written |
+| `delay` | Seconds after its phase starts that it plays: a projectile's loop after its start, as Kakarot's beam swaps to its loop after `DurationST`. Removed first, it never plays. 0 unless written |
+| `replace` | As it starts, what the play has on its `placement.socket` is cleared, particles and all: `SetTemplate` on one component. False unless written |
+
+`delay` and `replace` play only in `application`, `looping` and `removal`: a burst has no play to start them later
+or to hold what they replace.
+
+```yaml
+application: { particles: [ { system: mymod:beam/start, placement: { socket: root } } ] }
+looping:     { particles: [ { system: mymod:beam/body, placement: { socket: root }, delay: 0.3, replace: true } ] }
+removal:     { particles: [ { system: mymod:beam/end, placement: { socket: root }, replace: true } ] }   # the body ends as it starts
+```
 
 ### Where an effect goes, and who sees it
 

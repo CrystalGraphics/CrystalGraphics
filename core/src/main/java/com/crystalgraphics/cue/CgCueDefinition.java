@@ -206,9 +206,12 @@ public record CgCueDefinition(String id, @Nullable CgGameplayTag tag, Kind kind,
      *
      * @param timeDilation its component's {@code CustomTimeDilation}: it ages at this multiple of its clock, 1 unless set
      * @param warmup       seconds it is simulated before it is first shown ({@code WarmupTime}), 0 for none
+     * @param delay        seconds after its looping phase starts that it plays, 0 for at once; a looping cue's only
+     * @param replace      as it starts, what this play has on its {@code placement.socket} is cleared, as
+     *                     {@code SetTemplate} on one component; a looping cue's only
      */
     public record Particles(String system, @Nullable CgVfxSystemDefinition definition, boolean castShadow, float timeDilation,
-                            float warmup, Where where) {
+                            float warmup, float delay, boolean replace, Where where) {
     }
 
     /**

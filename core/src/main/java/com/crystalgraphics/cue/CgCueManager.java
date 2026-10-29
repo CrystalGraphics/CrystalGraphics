@@ -353,6 +353,9 @@ public final class CgCueManager extends CgWorldSubsystem {
             queued = kept;
             for (int i = playing.size() - 1; i >= 0; i--) {
                 CgCuePlaying p = playing.get(i);
+                if (p.lasting != null && (p.state == CgCuePlaying.State.PLAYING || p.state == CgCuePlaying.State.REMOVING)) {
+                    p.lasting.update(dt);
+                }
                 if (p.state == CgCuePlaying.State.PLAYING) p.pull(now, scratch);
                 else if (p.state == CgCuePlaying.State.REMOVING && p.lasting != null && p.lasting.finished()) end(i, p);
                 else if (p.state == CgCuePlaying.State.KILLED) end(i, p);

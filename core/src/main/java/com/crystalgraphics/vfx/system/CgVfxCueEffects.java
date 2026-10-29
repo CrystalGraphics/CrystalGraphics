@@ -3,6 +3,7 @@ package com.crystalgraphics.vfx.system;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import javax.annotation.Nullable;
 
@@ -60,7 +61,11 @@ public final class CgVfxCueEffects implements CgCueEffects {
 
     @Override
     public void burst(CgCueDefinition cue, Effects block, CgCueParameters at, float age) {
-        play(block, at, age, null);
+        List<Particles> particles = block.particles();
+        for (int i = 0; i < particles.size(); i++) {
+            Particles p = particles.get(i);
+            if (p.definition() != null && cues.spawns(p.where().condition(), at, i)) spawn(p, at, age);
+        }
     }
 
     @Override
@@ -91,19 +96,14 @@ public final class CgVfxCueEffects implements CgCueEffects {
         return falloff(Math.sqrt(dx * dx + dy * dy + dz * dz), lens.inner(), lens.outer()) > 0f;
     }
 
-    /** Plays each of {@code block}'s systems that spawns here, into {@code into} when it is kept. */
-    private void play(Effects block, CgCueParameters at, float age, @Nullable List<CgVfxSystemInstance<?>> into) {
-        List<Particles> particles = block.particles();
-        for (int i = 0; i < particles.size(); i++) {
-            Particles p = particles.get(i);
-            if (p.definition() == null || !cues.spawns(p.where().condition(), at, i)) continue;
-            CgVfxSystemInstance<?> made = place(p, at);
-            // Its component's CustomTimeDilation and WarmupTime: simulated that far before it is first shown
-            if (p.timeDilation() != 1f) made.timeDilation(p.timeDilation());
-            if (age + p.warmup() > 0f) made.startAt(age + p.warmup());
-            vfx.play(made);
-            if (into != null) into.add(made);
-        }
+    /** Plays {@code p}, {@code age} seconds into its life. */
+    private CgVfxSystemInstance<?> spawn(Particles p, CgCueParameters at, float age) {
+        CgVfxSystemInstance<?> made = place(p, at);
+        // Its component's CustomTimeDilation and WarmupTime: simulated that far before it is first shown
+        if (p.timeDilation() != 1f) made.timeDilation(p.timeDilation());
+        if (age + p.warmup() > 0f) made.startAt(age + p.warmup());
+        vfx.play(made);
+        return made;
     }
 
     private CgVfxSystemInstance<?> place(Particles p, CgCueParameters at) {
@@ -140,10 +140,19 @@ public final class CgVfxCueEffects implements CgCueEffects {
         return made;
     }
 
-    /** One looping play: what it started, and its {@code looping} systems apart, to stop them at removal. */
+    /**
+     * One looping play: what it started with the socket each is on, its {@code looping} systems apart to stop them at
+     * removal, and the entries still waiting out their {@code delay}.
+     */
     private final class Playing implements Lasting {
         private final List<CgVfxSystemInstance<?>> alive = new ArrayList<>(), loops = new ArrayList<>();
+        private final List<String> sockets = new ArrayList<>();
+        private final List<Particles> waiting = new ArrayList<>();
+        private final List<Boolean> waitingLoops = new ArrayList<>();
         private final CgCueDefinition cue;
+        @Nullable
+        private CgCueParameters at;
+        private float age;
         @Nullable
         private CgPostVolume lens;
 
@@ -153,12 +162,59 @@ public final class CgVfxCueEffects implements CgCueEffects {
 
         @Override
         public void start(CgCueParameters at, float age) {
-            play(cue.application(), at, age, alive);
-            int from = alive.size();
-            play(cue.looping(), at, age, alive);
-            for (int i = from; i < alive.size(); i++) loops.add(alive.get(i));
+            this.at = at;
+            this.age = age;
+            play(cue.application(), at, false);
+            play(cue.looping(), at, true);
             Lens l = cue.looping().lens();
             if (l != null && cues.spawns(l.where().condition(), at, 0) && lensPlays(l, at)) lens = openLens(CgPostStack.get(), l);
+        }
+
+        /** Each of {@code block}'s systems that spawns here, now or once its delay is out. */
+        private void play(Effects block, CgCueParameters at, boolean loop) {
+            List<Particles> particles = block.particles();
+            for (int i = 0; i < particles.size(); i++) {
+                Particles p = particles.get(i);
+                if (p.definition() == null || !cues.spawns(p.where().condition(), at, i)) continue;
+                if (p.delay() > age) {
+                    waiting.add(p);
+                    waitingLoops.add(loop);
+                } else {
+                    begin(p, at, loop);
+                }
+            }
+        }
+
+        private void begin(Particles p, CgCueParameters at, boolean loop) {
+            String socket = p.where().placement().socket();
+            // SetTemplate on the socket's one component: ResetParticles, then ActivateSystem (ParticleComponents.cpp 4.21, 5537-5558)
+            if (p.replace()) {
+                for (int i = alive.size() - 1; i >= 0; i--) {
+                    if (!Objects.equals(sockets.get(i), socket)) continue;
+                    CgVfxSystemInstance<?> old = alive.remove(i);
+                    sockets.remove(i);
+                    loops.remove(old);
+                    old.kill();
+                }
+            }
+            CgVfxSystemInstance<?> made = spawn(p, at, age - p.delay());            alive.add(made);
+            sockets.add(socket);
+            if (loop) loops.add(made);
+        }
+
+        @Override
+        public void update(float dt) {
+            age += dt;
+            for (int i = 0; i < waiting.size(); ) {
+                Particles p = waiting.get(i);
+                if (p.delay() > age) {
+                    i++;
+                    continue;
+                }
+                boolean loop = waitingLoops.remove(i);
+                waiting.remove(i);
+                begin(p, at, loop);
+            }
         }
 
         private void closeLens() {
@@ -184,14 +240,19 @@ public final class CgVfxCueEffects implements CgCueEffects {
 
         @Override
         public void remove(CgCueParameters at) {
+            // What still waits never starts; removal's own delays count from now
+            waiting.clear();
+            waitingLoops.clear();
             for (int i = 0; i < loops.size(); i++) loops.get(i).stop();
             loops.clear();
             closeLens();
-            play(cue.removal(), at, 0f, alive);
+            age = 0f;
+            play(cue.removal(), at, false);
         }
 
         @Override
         public boolean finished() {
+            if (!waiting.isEmpty()) return false;
             for (int i = 0; i < alive.size(); i++) {
                 if (alive.get(i).executionState() != CgVfxExecutionState.COMPLETE) return false;
             }
@@ -201,13 +262,20 @@ public final class CgVfxCueEffects implements CgCueEffects {
         @Override
         public void kill() {
             for (int i = 0; i < alive.size(); i++) alive.get(i).kill();
+            waiting.clear();
+            waitingLoops.clear();
             closeLens();
         }
 
         @Override
         public void reset() {
             alive.clear();
+            sockets.clear();
             loops.clear();
+            waiting.clear();
+            waitingLoops.clear();
+            at = null;
+            age = 0f;
             closeLens();
         }
     }

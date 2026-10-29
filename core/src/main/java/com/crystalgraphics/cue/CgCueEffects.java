@@ -32,6 +32,10 @@ public interface CgCueEffects {
         /** {@code application} plays and {@code looping} starts, {@code age} seconds in. */
         void start(CgCueParameters at, float age);
 
+        /** Each frame from its start until it ends, {@code dt} seconds on: starts what waits for its {@code delay}. */
+        default void update(float dt) {
+        }
+
         /** {@code write}'s value this frame, into every slot it reaches. {@code value} is the provider's four floats. */
         void write(Write write, float[] value);
 
