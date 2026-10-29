@@ -8,6 +8,9 @@ import java.util.function.Predicate;
 
 import javax.annotation.Nullable;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorldSubsystem;
@@ -49,7 +52,7 @@ import com.crystalgraphics.sequence.state.CgSequenceStateEvaluator;
  *   <li>Then <b>events</b>: the frame's {@code event} keys crossed and spans begun or ended, heard by the listeners of
  *       their side ({@link #listen}), as Unreal runs its event tokens after evaluation.</li>
  *   <li>A player that is {@linkplain CgSequencePlayer#stop() stopped} leaves at the next evaluation; one that
- *       finished holds its last frame.</li>
+ *       finished holds its last frame. One that throws is logged and killed; the others go on.</li>
  *   <li>Evaluating allocates nothing; {@link #play} and the first entry of each section bind, once.</li>
  *   <li>What a play shows on the viewer's own screen (its camera, its unbound post, its {@code global} and
  *       {@code environment} tracks) applies only where the viewer is {@linkplain CgSequencePlayer#involved()
@@ -61,6 +64,7 @@ public final class CgSequencer extends CgWorldSubsystem {
     /** Trace zones: the whole frame, its spawn and import phases, its tracks' evaluation, its spawned objects' updates. */
     /** The most passes a frame runs: montage sections shorter than a frame looping are cut there. */
     static final int MAX_PASSES = 8;
+    private static final Logger LOGGER = LogManager.getLogger("CgSequencer");
 
     public static final String EVALUATE_ZONE = "sequence.evaluate", SPAWN_ZONE = "sequence.spawn", IMPORT_ZONE = "sequence.import",
             TRACKS_ZONE = "sequence.tracks", SPAWNED_ZONE = "sequence.spawned";
@@ -262,19 +266,32 @@ public final class CgSequencer extends CgWorldSubsystem {
                 // Unreal's phases: spawn, then instantiation (import), then evaluation.
                 for (int i = 0; i < players.size(); i++) {
                     CgSequencePlayer p = players.get(i);
-                    if (pass == 0) p.advance(dt);
-                    else if (p.resumes()) p.resume();
-                    else continue;
-                    try (CgTrace.Zone spawn = CgTrace.zone(CgChannels.WORLD, SPAWN_ZONE)) {
-                        p.spawnPhase();
-                    }
-                    try (CgTrace.Zone imports = CgTrace.zone(CgChannels.WORLD, IMPORT_ZONE)) {
-                        p.importEntries(this);
+                    if (p.stopped()) continue;
+                    try {
+                        if (pass == 0) p.advance(dt);
+                        else if (p.resumes()) p.resume();
+                        else continue;
+                        try (CgTrace.Zone spawn = CgTrace.zone(CgChannels.WORLD, SPAWN_ZONE)) {
+                            p.spawnPhase();
+                        }
+                        try (CgTrace.Zone imports = CgTrace.zone(CgChannels.WORLD, IMPORT_ZONE)) {
+                            p.importEntries(this);
+                        }
+                    } catch (RuntimeException ex) {
+                        fail(p, ex);
                     }
                 }
                 try (CgTrace.Zone tracks = CgTrace.zone(CgChannels.WORLD, TRACKS_ZONE)) {
                     for (int e = 0; e < evaluators.size(); e++) {
-                        for (int i = 0; i < players.size(); i++) players.get(i).evaluate(this, e);
+                        for (int i = 0; i < players.size(); i++) {
+                            CgSequencePlayer p = players.get(i);
+                            if (p.stopped()) continue;
+                            try {
+                                p.evaluate(this, e);
+                            } catch (RuntimeException ex) {
+                                fail(p, ex);
+                            }
+                        }
                     }
                     blender.apply();
                     for (int e = 0; e < evaluators.size(); e++) evaluators.get(e).postEvaluation();
@@ -288,6 +305,15 @@ public final class CgSequencer extends CgWorldSubsystem {
                 for (int i = 0; i < players.size(); i++) players.get(i).updateSpawned();
             }
         }
+    }
+
+    /**
+     * Ends a play whose evaluation threw, every other play going on: one sequence a kind cannot play (a binding it lacks)
+     * never takes the world's sequences with it. Logged once, as the play leaves; {@link CgSequencePlayer#failure()} keeps it.
+     */
+    private static void fail(CgSequencePlayer p, RuntimeException e) {
+        LOGGER.error("{} failed and is stopped: {}", p.definition().id(), e.toString(), e);
+        p.fail(e);
     }
 
     /** {@code kind}'s evaluator, or -1 for none: on a server, for any kind that is not {@link CgSequenceEvaluator#headless()}. */

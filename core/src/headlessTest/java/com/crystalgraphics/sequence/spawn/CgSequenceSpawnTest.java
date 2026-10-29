@@ -201,15 +201,14 @@ public class CgSequenceSpawnTest {
         assertEquals(List.of("activate", "deactivate"), shuriken.emitters.get("e01").calls);
         assertEquals(List.of("activate"), shuriken.emitters.get("e02").calls);
 
+        // A handle the system lacks fails that play alone
         CgSequencer other = sequencer(false);
-        try {
-            other.play(CgSequenceDefinition.compile(CgAssetData.of("mymod:shuriken", CgSequenceKinds.SEQUENCE,
-                    (Map<?, ?>) CgAssetYaml.read(HANDLES.replace("handle: e02", "handle: e09")), null)), Map.of("caster", new Caster()));
-            other.evaluate(0.1f);
-            fail("bound a handle the system lacks");
-        } catch (CgAssetException e) {
-            assertTrue(e.getMessage(), e.getMessage().contains("tracks.t2") && e.getMessage().contains("no emitter e09"));
-        }
+        CgSequencePlayer bad = other.play(CgSequenceDefinition.compile(CgAssetData.of("mymod:shuriken", CgSequenceKinds.SEQUENCE,
+                (Map<?, ?>) CgAssetYaml.read(HANDLES.replace("handle: e02", "handle: e09")), null)), Map.of("caster", new Caster()));
+        other.evaluate(0.1f);
+        assertTrue(bad.stopped());
+        assertTrue(bad.failure() instanceof CgAssetException e && e.getMessage().contains("tracks.t2")
+                && e.getMessage().contains("no emitter e09"));
     }
 
     @Test

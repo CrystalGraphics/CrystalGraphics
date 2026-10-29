@@ -97,6 +97,8 @@ public final class CgSequencePlayer {
     private long seed;
     private CgSequencePlaybackSettings playbackSettings = CgSequencePlaybackSettings.DEFAULT;
     private boolean finished, stopped, killed, jump, seek;
+    @Nullable
+    private RuntimeException failure;
     /** Per child of the definition: an animation section's notifies playing now, else null; and its unwrapped clip time. */
     private final CgSequencePlayer[] notifies;
     private final double[] notifiesAt;
@@ -411,6 +413,17 @@ public final class CgSequencePlayer {
 
     public boolean stopped() {
         return stopped;
+    }
+
+    /** What its evaluation threw, which stopped it; null while it has not failed. */
+    @Nullable
+    public RuntimeException failure() {
+        return failure;
+    }
+
+    void fail(RuntimeException e) {
+        failure = e;
+        kill();
     }
 
     /** The span the last evaluation covered, at the tick resolution. */
