@@ -4,6 +4,8 @@ import com.crystalgraphics.asset.load.CgAssetFollower;
 import com.crystalgraphics.asset.load.CgAssetRef;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
+import com.crystalgraphics.vfx.field.CgFieldPlacement;
+import com.crystalgraphics.vfx.field.CgFieldWorld;
 import com.crystalgraphics.vfx.look.CgVfxEnding;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.net.CgVfxCue;
@@ -69,6 +71,9 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
     /** The standing request's source: the lowest until something asks. */
     private CgVfxExecutionSource source = CgVfxExecutionSource.SCALABILITY;
     private boolean grounded;
+    /** Its definition's fields as placed, from its first tick; null before. */
+    @Nullable
+    private CgFieldWorld.Instance[] fields;
     /** The pool it goes back to once it completes; null for one made by {@code new}. */
     @Nullable
     private CgVfxSystemInstancePool pool;
@@ -123,6 +128,7 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
     @SuppressWarnings("unchecked")
     void reuse(double x, double y, double z) {
         pooledReuse(x, y, z);
+        removeFields();
         requested = CgVfxExecutionState.ACTIVE;
         source = CgVfxExecutionSource.SCALABILITY;
         grounded = false;
@@ -322,6 +328,7 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
     @SuppressWarnings("unchecked")
     private void restart(CgVfxSystemDefinition next) {
         for (CgVfxEmitterInstance e : emitters) e.kill();
+        removeFields();
         definition = next;
         relook(next.look());
         emitters = emittersOf(next);
@@ -362,6 +369,8 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
             grounded = true;
             for (CgVfxEmitterInstance e : emitters) e.ground(groundHeight());
         }
+        // Fields are presentation: a server places none.
+        if (!authoritative()) placeFields();
         if (behaviour != null) behaviour.tick(this, dt);
         boolean done = true;
         for (CgVfxEmitterInstance e : emitters) {
@@ -372,6 +381,31 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
         if (done && age > 1f && (behaviour == null || behaviour.done(this))) {
             request(CgVfxExecutionState.COMPLETE, CgVfxExecutionSource.COMPLETION);
         }
+    }
+
+    /** Its definition's fields where it is now, added at its first tick; one placed elsewhere is not read yet, and fails. */
+    private void placeFields() {
+        List<CgFieldPlacement> placed = definition.fields();
+        if (placed.isEmpty()) return;
+        if (fields == null) {
+            CgFieldWorld.Instance[] made = new CgFieldWorld.Instance[placed.size()];
+            for (int i = 0; i < made.length; i++) {
+                CgFieldPlacement f = placed.get(i);
+                if (f.at() != null) {
+                    for (int k = 0; k < i; k++) made[k].remove();
+                    throw new IllegalStateException(definition.name() + ": fields." + f.id() + " is placed at " + f.at() + ", which is not read yet");
+                }
+                made[i] = CgFieldWorld.add(f, this);
+            }
+            fields = made;
+        }
+        for (CgFieldWorld.Instance f : fields) f.place(originX, originY, originZ, orientation(), age);
+    }
+
+    private void removeFields() {
+        if (fields == null) return;
+        for (CgFieldWorld.Instance f : fields) f.remove();
+        fields = null;
     }
 
     @Override

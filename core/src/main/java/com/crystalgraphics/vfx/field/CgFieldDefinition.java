@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import javax.annotation.Nullable;
 
@@ -79,6 +80,7 @@ public sealed interface CgFieldDefinition permits CgFieldDefinition.Grid, CgFiel
     record Target(String name, Output output, CgQuantity quantity) {
 
         private static final Map<String, Target> TARGETS = new ConcurrentHashMap<>();
+        private static final List<Target> ORDER = new CopyOnWriteArrayList<>();
 
         public static final Target LINEAR_FORCE = register(new Target("linear_force", Output.VECTOR, CgQuantity.ACCELERATION));
         public static final Target LINEAR_VELOCITY = register(new Target("linear_velocity", Output.VECTOR, CgQuantity.SPEED));
@@ -95,7 +97,18 @@ public sealed interface CgFieldDefinition permits CgFieldDefinition.Grid, CgFiel
         /** Registers {@code target} under its name. At init. */
         public static Target register(Target target) {
             if (TARGETS.putIfAbsent(target.name, target) != null) throw new IllegalArgumentException("a field target " + target.name + " is registered already");
+            ORDER.add(target);
             return target;
+        }
+
+        /** The target at {@code index} in registration order. */
+        public static Target at(int index) {
+            return ORDER.get(index);
+        }
+
+        /** Its place in registration order: what the GPU switches on, the engine's in their order above. */
+        public int index() {
+            return ORDER.indexOf(this);
         }
 
         /** The target registered as {@code name}, or null. */

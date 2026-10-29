@@ -1,16 +1,21 @@
 package com.crystalgraphics.demo;
 
 import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxOwner;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.element.CgVfxBlast;
 import com.crystalgraphics.vfx.element.CgVfxExplosion;
+import com.crystalgraphics.vfx.field.CgFieldDefinition;
+import com.crystalgraphics.vfx.field.CgFieldPlacement;
+import com.crystalgraphics.vfx.field.CgFieldWorld;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
+import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.world.CgWorldQueries;
 
 import java.util.ArrayList;
@@ -30,6 +35,9 @@ import java.util.List;
  * // once, when the context goes:
  * blasts.delete();
  * }</pre>
+ *
+ * <p>With {@code -Dcrystalgraphics.demo.blasts.fields=true} every burst places a radial pull its particles read
+ * through {@code physics_field}, all in one group: what fields cost a frame full of particles.</p>
  *
  * <p>Each burst's debris lands on the world's ground under it where the host answers {@link CgWorldQueries#groundUnder},
  * else on the floor at {@code y}. Moving the centre moves the bursts that follow; those in flight finish where they are.</p>
@@ -51,11 +59,35 @@ public final class CgVfxBlasts {
     private static final List<CgVfxEmitter> PLAYED = List.of(KIT.specks, KIT.sparkles, KIT.rays);
     /** In the Kamehameha's blue, the Final Flash's gold and the Galick Gun's violet. */
     private static final CgVfxLook BLUE = CgVfxLook.builder(SCHEMA).with(KIT.kit()).build();
+    private static final boolean FIELDS = CgVar.bool("crystalgraphics.demo.blasts.fields", false, CgVar.DEV | CgVar.RESTART,
+            "Every burst places a radial pull its particles read through physics_field, all in one group.").get();
+    private static final String GROUP = "crystalgraphics.demo.blasts";
+    /** A pull into each burst's middle, six blocks round it. */
+    private static final CgFieldPlacement PULL = FIELDS ? pull() : null;
     private static final CgVfxLook[] LOOKS = {
-            BLUE,
-            BLUE.derive().set(KIT.hot, 0xFFFFE04C).set(KIT.debris, 0xFF1A0803).build(),
-            BLUE.derive().set(KIT.hot, 0xFFFAA6FF).set(KIT.debris, 0xFF0F031A).build(),
+            fielded(BLUE),
+            fielded(BLUE.derive().set(KIT.hot, 0xFFFFE04C).set(KIT.debris, 0xFF1A0803).build()),
+            fielded(BLUE.derive().set(KIT.hot, 0xFFFAA6FF).set(KIT.debris, 0xFF0F031A).build()),
     };
+
+    private static CgFieldPlacement pull() {
+        CgFieldDefinition.Graph g = CgFieldDefinition.graph(CgFieldDefinition.Target.LINEAR_FORCE)
+                .node("v", "radial_vector", "magnitude", -8)
+                .node("r", "radial_falloff", "radius", 6, "default", 0)
+                .node("o", "operator", "op", "multiply", "left", "v", "right", "r").build();
+        return new CgFieldPlacement("pull", g, GROUP, 1f, true, false, Float.POSITIVE_INFINITY, g.bounds(), null);
+    }
+
+    /** {@code look}, its played emitters reading {@link #GROUP} where fields are on. */
+    private static CgVfxLook fielded(CgVfxLook look) {
+        if (!FIELDS) return look;
+        CgVfxLook.Builder b = look.derive();
+        for (CgVfxEmitter e : PLAYED) {
+            b.emitter(look.emitter(e.name()).toBuilder()
+                    .module(new CgVfxModule.PhysicsField(CgFieldWorld.group(GROUP), CgFieldDefinition.Target.LINEAR_FORCE, 1f)).build());
+        }
+        return b.build();
+    }
 
     private final CgVfxOwner vfx;
     /** A system of its own, updated and drawn by {@link #submit}; false on the world's. */
@@ -158,6 +190,7 @@ public final class CgVfxBlasts {
     /** One burst of {@link #PLAYED} at its origin, landing on a floor at {@code floorY}; dies when they all have. */
     private static final class Burst extends CgVfxEffect<Burst> {
         private final List<CgVfxEmitterInstance> emitters = new ArrayList<>();
+        private CgFieldWorld.Instance pull;
 
         Burst(CgVfxLook look, double x, double y, double z, double floorY) {
             super(look, x, y, z);
@@ -171,6 +204,10 @@ public final class CgVfxBlasts {
 
         @Override
         protected void tick(float dt) {
+            if (PULL != null) {
+                if (pull == null) pull = CgFieldWorld.add(PULL, this);
+                pull.place(originX, originY, originZ, orientation(), age);
+            }
             boolean done = true;
             for (int i = 0; i < emitters.size(); i++) {
                 tick(emitters.get(i), dt);

@@ -33,9 +33,11 @@ import com.crystalgraphics.object.value.CgUnits;
  * @param world   its vectors stay in the world's axes; false, they turn with what it rides
  * @param radius  the reach it is cut to, in blocks; infinite where it gives none
  * @param bounds  where it acts about its placement
+ * @param at      the place its {@code at} names (a locator, a socket, a spawnable's node), as written; null where it is
+ *                its system's own origin. Placing one is not read yet, and playing it fails naming it
  */
 public record CgFieldPlacement(String id, CgFieldDefinition field, String group, float weight, boolean enabled,
-                               boolean world, float radius, CgFieldBounds bounds) {
+                               boolean world, float radius, CgFieldBounds bounds, @Nullable String at) {
 
     /** The placement {@code tree} writes in a system's {@code fields:}, failing by {@code path}. */
     public static CgFieldPlacement read(String path, Map<?, ?> tree, @Nullable CgAssetCompiler.Dependencies deps) {
@@ -56,7 +58,8 @@ public record CgFieldPlacement(String id, CgFieldDefinition field, String group,
                 ? ((Number) units.toHost(n, CgQuantity.LENGTH)).floatValue() : Float.POSITIVE_INFINITY;
         CgFieldBounds bounds = Float.isFinite(radius) ? field.bounds().intersect(CgFieldBounds.sphere(0f, 0f, 0f, radius)) : field.bounds();
         float weight = tree.get("weight") instanceof Number w ? w.floatValue() : 1f;
+        String at = tree.get("at") instanceof Map<?, ?> m && !m.isEmpty() ? String.valueOf(m) : null;
         return new CgFieldPlacement(String.valueOf(tree.get("id")), field, group, weight,
-                !Boolean.FALSE.equals(tree.get("enabled")), "world".equals(tree.get("orient")), radius, bounds);
+                !Boolean.FALSE.equals(tree.get("enabled")), "world".equals(tree.get("orient")), radius, bounds, at);
     }
 }

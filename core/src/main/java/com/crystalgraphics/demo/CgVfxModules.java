@@ -28,6 +28,9 @@ import com.crystalgraphics.shape.primitive.CgShell;
 import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.variable.CgVar;
+import com.crystalgraphics.vfx.field.CgFieldDefinition;
+import com.crystalgraphics.vfx.field.CgFieldPlacement;
+import com.crystalgraphics.vfx.field.CgFieldWorld;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.CgVfx;
@@ -328,6 +331,8 @@ public final class CgVfxModules {
         sparks(COLUMNS[2] + 6f, ROWS[5]);
         streams(COLUMNS[3] + 10f, ROWS[5]);
         flocks(COLUMNS[0], ROWS[6]);
+        // A row of its own past the flocks.
+        fields(COLUMNS[0], ROWS[6] + 18f);
         String only = ONLY.get();
         if (!only.isEmpty()) stations.removeIf(s -> Arrays.stream(only.split(",")).noneMatch(s.name()::startsWith));
         floors = new float[stations.size()];
@@ -2098,6 +2103,70 @@ public final class CgVfxModules {
                         p.label(middle, 0.55f, 0.5f, 0.22f, "1 to 7 blocks a second, left to right", 0xFFB8D8FF);
                     }
                 }));
+    }
+
+    /**
+     * Force fields, Chaos's Physics Fields read by {@code physics_field}: four fountains alike, the first three each
+     * reading a group of its own and the fourth none. A radial pull (gold) draws its sparks into a ball over it, a
+     * uniform push (cyan) throws its sideways, a kill box (ember, its box drawn) ends its as they rise into it, and the
+     * neighbour (white) is untouched by all three.
+     */
+    private void fields(float x, float z) {
+        CgVfxEmitter plain = CgVfxEmitter.builder("plain").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(1200)
+                .rate(100f).direction(0, 1, 0, 12f).speed(6f, 7f).life(2.5f, 3f).size(0.08f, 0.12f, 1f).heat(1f)
+                .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0.3f, 0.3f, 0.5f)).opacity(FADE).build();
+        CgFieldDefinition.Graph pull = CgFieldDefinition.graph(CgFieldDefinition.Target.LINEAR_FORCE)
+                .node("v", "radial_vector", "magnitude", -30)
+                .node("r", "radial_falloff", "radius", 2.5, "default", 0)
+                .node("o", "operator", "op", "multiply", "left", "v", "right", "r").build();
+        CgFieldDefinition.Graph push = CgFieldDefinition.graph(CgFieldDefinition.Target.LINEAR_FORCE)
+                .node("v", "uniform_vector", "magnitude", 14, "direction", List.of(1, 0, 0)).build();
+        CgFieldDefinition.Graph kill = CgFieldDefinition.graph(CgFieldDefinition.Target.KILL)
+                .node("b", "box_falloff", "transform", Map.of("scale", List.of(2.5, 1, 2.5))).build();
+        String[] names = {"pulled", "pushed", "killed"};
+        CgFieldDefinition.Graph[] graphs = {pull, push, kill};
+        float[] columns = {-6f, -2f, 2f, 6f}, heights = {3.2f, 2f, 2.6f};
+        List<CgVfxEmitter> emitters = new ArrayList<>();
+        CgFieldPlacement[] placements = new CgFieldPlacement[3];
+        for (int i = 0; i < 3; i++) {
+            String group = "crystalgraphics.demo.fields." + names[i];
+            emitters.add(plain.toBuilder().name(names[i])
+                    .module(new CgVfxModule.PhysicsField(CgFieldWorld.group(group), graphs[i].target(), 1f)).build());
+            placements[i] = new CgFieldPlacement(names[i], graphs[i], group, 1f, true, false, Float.POSITIVE_INFINITY,
+                    graphs[i].bounds(), null);
+        }
+        emitters.add(plain);
+        CgVfxLook look = new Look().emitter(emitters.get(0)).emitter(emitters.get(1)).emitter(emitters.get(2)).emitter(plain)
+                .draw(spark(emitters.get(0), GOLD, WHITE)).draw(spark(emitters.get(1), CYAN, WHITE))
+                .draw(spark(emitters.get(2), EMBER, FLAME)).draw(spark(plain, WHITE, WHITE)).build();
+        float[][] sources = new float[4][];
+        for (int i = 0; i < 4; i++) sources[i] = new float[]{columns[i], 0.3f, 0f};
+        stations.add(new Station("fields: a radial pull, a uniform push, a kill box, and a neighbour none reach", x, z, look,
+                emitters, sources, p -> {
+                    p.sphere(columns[0], heights[0], 0f, 0.12f);
+                    transform.identity().scale(2.5f, 1f, 2.5f);
+                    p.box(columns[2], heights[2], 0f, transform);
+                    String[] labels = {"radial pull", "uniform push", "kill box", "no field"};
+                    for (int i = 0; i < 4; i++) p.label(columns[i], 5.4f, 0f, 0.36f, labels[i], 0xFFFFFFFF);
+                }, null, () -> new Show() {
+                    private CgFieldWorld.Instance[] placed;
+
+                    @Override
+                    public void draw(CgVfxEffect<?> effect, CgVfxFrame frame, float age) {
+                    }
+
+                    @Override
+                    public void tick(CgVfxEffect<?> effect, float dt, float age) {
+                        if (placed == null) {
+                            placed = new CgFieldWorld.Instance[3];
+                            for (int i = 0; i < 3; i++) placed[i] = CgFieldWorld.add(placements[i], effect);
+                        }
+                        for (int i = 0; i < 3; i++) {
+                            placed[i].place(effect.originX() + columns[i], effect.originY() + heights[i], effect.originZ(),
+                                    effect.orientation(), age);
+                        }
+                    }
+                }, null));
     }
 
     /** The damping station's columns a row, and how far apart. */

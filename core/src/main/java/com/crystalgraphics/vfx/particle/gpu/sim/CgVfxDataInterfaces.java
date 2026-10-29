@@ -6,6 +6,7 @@ import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.vfx.field.CgFieldWorld;
 import com.crystalgraphics.vfx.fluid.CgVfxFluid;
 import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
@@ -181,6 +182,40 @@ public final class CgVfxDataInterfaces {
         @Override public void upload(CgRecording recording) { CgWorldEntityBoxes.upload(recording); }
         @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { CgWorldEntityBoxes.bind(d); }
         @Override public void forget() { CgWorldEntityBoxes.forget(); }
+    });
+
+    /**
+     * The fields placed in the world this frame ({@code vfx.field.CgFieldWorld}), as an {@code FxFields} that
+     * {@code fx_field.glsl}'s {@code fx_field_apply} takes: every group's nearest instances, flattened once a frame.
+     * Its lane is the instance's origin from the fields' anchor block, written from doubles.
+     */
+    public static final CgVfxDataInterface FIELDS = register(new Engine("fields", "FxFields", "step_fields(inst)") {
+        @Override public boolean beforeSolver() { return true; }
+        @Override public List<String> libraries() { return List.of(SIM + "fx_field.glsl"); }
+        @Override public String properties() { return CgFieldWorld.PROPERTIES; }
+        @Override public String buffers() { return "    FIELDS        (\"Field instances and their nodes\", uvec4,   readonly)\n"; }
+        @Override public int instanceLanes() { return 1; }
+        @Override public String functions(int lanesAt) {
+            return "\n// The fields as a kind taking FIELDS reads them: this instance's origin from their anchor.\n"
+                    + "FxFields step_fields(int inst) {\n"
+                    + "    FxFields f;\n"
+                    + "    f.origin = step_instance(inst + " + lanesAt + ").xyz;\n"
+                    + "    return f;\n"
+                    + "}\n\n"
+                    + "uvec4 fx_field_word(int i) {\n"
+                    + "    return FIELDS(i);\n"
+                    + "}\n";
+        }
+        @Override public void writeInstance(CgVfxInstanceView view, double ox, double oy, double oz, CgVfxWords words) {
+            words.vec4((float) (ox - CgFieldWorld.anchor(0)), (float) (oy - CgFieldWorld.anchor(1)), (float) (oz - CgFieldWorld.anchor(2)), 0f);
+        }
+        @Override public void beforeFrame(CgStageFrame frame) {
+            CgHostView view = frame.host().view();
+            CgFieldWorld.around(view.x(), view.y(), view.z());
+        }
+        @Override public void upload(CgRecording recording) { CgFieldWorld.upload(recording); }
+        @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { CgFieldWorld.bind(d); }
+        @Override public void forget() { CgFieldWorld.forget(); }
     });
 
     /**

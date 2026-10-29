@@ -32,6 +32,7 @@ import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.vfx.effect.beam.CgBeamWake;
 import com.crystalgraphics.vfx.element.CgVfxExplosion;
 import com.crystalgraphics.vfx.field.CgFieldDefinition;
+import com.crystalgraphics.vfx.field.CgFieldWorld;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
@@ -147,6 +148,36 @@ public class CgVfxEmitterAssetsTest {
         tree.put("particle_spawn", List.of(Map.of("id", init, "module", "crystalgraphics:initialize_particle",
                 "inputs", Map.of("lifetime", Map.of("range", List.of(0.5, 1.0))))));
         return tree;
+    }
+
+    /** physics_field reads its group by name and its target, rolls its scale per particle, and writes them back. */
+    @Test
+    public void aPhysicsFieldReadsItsGroupAndTargetAndWritesThemBack() {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 64));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0))));
+        Object scale = Map.of("range", List.of(0.5, 1.0));
+        tree.put("particle_update", List.of(Map.of("id", "pull", "module", "crystalgraphics:physics_field",
+                "inputs", Map.of("group", "mymod.pull", "target", "linear_force", "scale", scale))));
+        CgVfxEmitter e = CgVfxEmitterAssets.compile("pulled", tree, null);
+        CgVfxModule.PhysicsField field = (CgVfxModule.PhysicsField) e.modules().get(0);
+        assertEquals(CgFieldWorld.group("mymod.pull"), field.group());
+        assertEquals(CgFieldDefinition.Target.LINEAR_FORCE.index(), field.target());
+        assertEquals(1, e.moduleForms().size());
+        Map<?, ?> written = (Map<?, ?>) ((Map<?, ?>) ((List<?>) CgVfxEmitterAssets.write(e).get("particle_update")).get(0)).get("inputs");
+        assertEquals("mymod.pull", written.get("group"));
+        assertEquals("linear_force", written.get("target"));
+        assertEquals(scale, written.get("scale"));
+        tree.put("particle_update", List.of(Map.of("id", "brake", "module", "crystalgraphics:physics_field",
+                "inputs", Map.of("group", "mymod.pull", "target", "speed_scale"))));
+        try {
+            CgVfxEmitterAssets.compile("braked", tree, null);
+            fail("compiled");
+        } catch (IllegalArgumentException ex) {
+            assertTrue(ex.getMessage(), ex.getMessage().startsWith("braked") && ex.getMessage().contains("speed_scale is not applied yet"));
+        }
     }
 
     /** A colour of three floats (the schema takes 2 to 4) takes its alpha from the module's {@code alpha}. */

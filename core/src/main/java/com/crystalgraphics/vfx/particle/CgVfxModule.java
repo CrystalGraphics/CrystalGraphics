@@ -6,6 +6,7 @@ import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgPlane;
 import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
+import com.crystalgraphics.vfx.field.CgFieldDefinition;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDataInterface;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
@@ -717,6 +718,57 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public CgVfxDataInterface[] dataInterfaces() {
             return GAS;
+        }
+    }
+
+    /**
+     * The fields its group places, applied for its target: Niagara's PhysicsField module reading Chaos's physics
+     * fields. Every field of the group whose bounds hold a particle adds its value, times its weight and the module's
+     * scale, to what the target moves; a file's scale rolled per particle is a form ({@code scale: { range: [a, b] }}).
+     *
+     * <pre>{@code
+     * .module(new CgVfxModule.PhysicsField(CgFieldWorld.group("mymod.pull"), CgFieldDefinition.Target.LINEAR_FORCE, 1f))
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code linear_force} adds to the acceleration; {@code linear_velocity} moves it by the value for the step,
+     *       never kept; {@code kill} ends it where the value is above 0; {@code orbit} turns it about the value's
+     *       direction through the field's place, the value's length a rate.</li>
+     *   <li>An emitter with none feels no field; a group's fields reach only its own modules.</li>
+     * </ul>
+     *
+     * @param group  its group's number, {@code CgFieldWorld.group(name)}
+     * @param target what the fields move: {@code CgFieldDefinition.Target}'s place, one of those above
+     */
+    record PhysicsField(int group, int target, float scale) implements CgVfxModule {
+        private static final CgVfxDataInterface[] FIELDS = {CgVfxDataInterfaces.FIELDS};
+
+        public PhysicsField(int group, CgFieldDefinition.Target target, float scale) {
+            this(group, applied(target), scale);
+        }
+
+        /** {@code target}'s place, where this module applies it; one it does not apply yet fails, naming it. */
+        public static int applied(CgFieldDefinition.Target target) {
+            if (target != CgFieldDefinition.Target.LINEAR_FORCE && target != CgFieldDefinition.Target.LINEAR_VELOCITY
+                    && target != CgFieldDefinition.Target.KILL && target != CgFieldDefinition.Target.ORBIT) {
+                throw new IllegalArgumentException("a physics_field of target " + target.name() + " is not applied yet");
+            }
+            return target.index();
+        }
+
+        @Override
+        public String gpuKind() {
+            return "physics_field";
+        }
+
+        @Override
+        public boolean afterSolve() {
+            return false;
+        }
+
+        @Override
+        public CgVfxDataInterface[] dataInterfaces() {
+            return FIELDS;
         }
     }
 

@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.vfx.field.CgFieldDefinition;
+import com.crystalgraphics.vfx.field.CgFieldWorld;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxSequenceRendererProperties;
@@ -1918,6 +1919,12 @@ public final class CgVfxEmitterAssets {
                 if (in.containsKey("size")) give(out, names, "entity_size", in, "size");
                 return new Mapped("collision", out, Set.of(), names);
             }
+            case "physics_field" -> {
+                out.put("group", CgFieldWorld.groupName(((Number) in.get("group")).intValue()));
+                out.put("target", CgFieldDefinition.Target.at(((Number) in.get("target")).intValue()).name());
+                give(out, names, "scale", in, "scale");
+                return new Mapped("physics_field", out, Set.of(), names);
+            }
             case "kill" -> {
                 shapeToFile(in, out);
                 give(out, names, "inside", in, "inside");
@@ -2196,6 +2203,20 @@ public final class CgVfxEmitterAssets {
                 take(in, read, out, names, "absolute", "absolute");
                 // The engine's frame is the world's: Cascade's bInWorldSpace.
                 if ("world".equals(in.get("space"))) read.add("space");
+            }
+            case "physics_field" -> {
+                kind = "physics_field";
+                read.add("group");
+                read.add("target");
+                CgFieldDefinition.Target target = CgFieldDefinition.Target.of(String.valueOf(in.get("target")));
+                if (target == null) throw new IllegalArgumentException(name + ": physics_field.target " + in.get("target") + " is no field target");
+                try {
+                    out.put("target", CgVfxModule.PhysicsField.applied(target));
+                } catch (IllegalArgumentException e) {
+                    throw new IllegalArgumentException(name + ": " + e.getMessage());
+                }
+                out.put("group", CgFieldWorld.group(String.valueOf(in.get("group"))));
+                take(in, read, out, names, "scale", "scale");
             }
             case "kill_volume" -> {
                 kind = "kill";

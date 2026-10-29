@@ -1033,15 +1033,24 @@ pull.bounds();                                       // a box 3 blocks each way:
 Map<String, Object> tree = pull.write();             // fields/rasengan_pull.yaml, or the inline graph
 ```
 
+An emitter feels the fields of a group through `physics_field`, its scale a number or a range rolled per particle:
+
+```yaml
+particle_update:
+  - { id: pulled, module: crystalgraphics:physics_field, inputs: { group: mymod.pull, target: linear_force, scale: { range: [0.5, 1] } } }
+```
+
+```java
+.module(new CgVfxModule.PhysicsField(CgFieldWorld.group("mymod.pull"), CgFieldDefinition.Target.LINEAR_FORCE, 1f))
+```
+
 | Target | Applied |
 |---|---|
 | `linear_force` | added to the acceleration |
-| `linear_velocity` | added to the velocity |
-| `angular_velocity` | added to its spin |
-| `orbit` | turned about the value's direction through the field's origin, its length an angular speed |
-| `speed_scale` | added to its speed multiplier |
-| `scale` | added to its scale per axis, a rate |
+| `linear_velocity` | moves it by the value for the step, never kept in its velocity |
+| `orbit` | turned about the value's direction through the field's place, its length a rate |
 | `kill` | the particle dies where the value is above 0 |
+| `angular_velocity`, `speed_scale`, `scale` | not applied yet: a `physics_field` naming one fails at load |
 
 - **Where it acts is Chaos's**: a radial or box falloff with a default of 0 bounds its graph to its radius or box, a
   multiply or divide to the smaller of its sides, an add or subtract to the larger. A graph bounded by nothing acts
@@ -1050,5 +1059,11 @@ Map<String, Object> tree = pull.write();             // fields/rasengan_pull.yam
   measures it (an acceleration, a speed).
 - **Fails at load, by path**: more than 16 nodes, a node reading one listed after it, an unknown kind or target, and a
   root whose value its target cannot take (a scalar for `linear_force`).
-- **Not built yet**: fields compile and are held by their system, but nothing applies them: the `physics_field` module,
-  their placing and their evaluation are to come.
+- **Each group evaluates its 16 nearest** fields that reach the camera, every frame (`CgFieldWorld`, Chaos's physics
+  field manager), each where its bounds hold the particle. A module reading one group feels only that group's.
+- **A field lives with its system**, at its origin and turned with it (`orient: anchor`). A placement whose `at` names
+  a locator, a socket or a spawnable is not placed yet: playing it fails, naming it.
+- **Not on the GPU yet**: a `noise` node fails as its field is placed.
+- **What the GPU computes is the Java mirror's** (`CgFieldEval`, Chaos's formulas); `--mode=vfx-fields` holds every
+  node, placement and target to it, and `vfx-modules`' `fields` station shows a pull, a push and a kill box beside a
+  fountain none reaches.

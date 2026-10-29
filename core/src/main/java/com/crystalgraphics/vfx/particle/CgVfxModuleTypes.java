@@ -288,6 +288,10 @@ public final class CgVfxModuleTypes {
                 (m, in) -> in.f("radius", m.radius()).f("separation", m.separation()).f("alignment", m.alignment())
                         .f("cohesion", m.cohesion()).f("apart", m.apart()).i("most", m.most()),
                 r -> new CgVfxModule.Flock(r.f("radius"), r.f("apart"), r.f("separation"), r.f("alignment"), r.f("cohesion"), r.i("most")));
+        kind("physics_field", CgVfxModule.PhysicsField.class,
+                t -> { t.property("group", CgValueType.INT).property("target", CgValueType.INT); fl(t, "scale"); },
+                (m, in) -> in.i("group", m.group()).i("target", m.target()).f("scale", m.scale()),
+                r -> new CgVfxModule.PhysicsField(r.i("group"), r.i("target"), r.f("scale")));
         kind("flow", CgVfxModule.Flow.class, t -> fl(t, "follow"),
                 (m, in) -> in.f("follow", m.follow()), r -> new CgVfxModule.Flow(r.f("follow")));
         kind("gas_feed", CgVfxModule.Feed.class, t -> fl(t, "density", "heat", "push"),
