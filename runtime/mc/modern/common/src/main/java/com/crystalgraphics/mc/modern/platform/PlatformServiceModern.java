@@ -23,7 +23,6 @@ import com.crystalgraphics.mc.modern.platform.world.ClientModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.modern.platform.world.HostDebugModern;
 import com.crystalgraphics.mc.modern.platform.world.HostVolumeModern;
-import com.crystalgraphics.mc.modern.platform.world.WorldSoundModern;
 import com.crystalgraphics.mc.modern.platform.world.WorldStimulusModern;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgPlatformService;
@@ -45,7 +44,6 @@ import com.crystalgraphics.platform.world.CgWorldEvents;
 import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioOutput;
 import com.crystalgraphics.platform.audio.CgHostVolume;
-import com.crystalgraphics.platform.world.CgWorldSound;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 
 import net.minecraft.client.Minecraft;
@@ -129,7 +127,6 @@ public final class PlatformServiceModern implements CgPlatformService {
             CgPlatform.provide(CgHostCamera.SERVICE, new HostCameraModern());
             CgPlatform.provide(CgHostDebug.SERVICE, new HostDebugModern());
             CgPlatform.provide(CgModelSpace.SERVICE, HostViewModern::modelSpace);
-            CgPlatform.provide(CgWorldSound.SERVICE, new WorldSoundModern());
             CgPlatform.provide(CgAudioOutput.SERVICE, new Lwjgl3AudioOutput(HostVolumeModern::device));
             CgPlatform.provide(CgHostVolume.SERVICE, new HostVolumeModern());
             CgPlatform.provide(CgAudioDecoder.SERVICE, new StbVorbisDecoder());

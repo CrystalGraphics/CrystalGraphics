@@ -18,7 +18,6 @@ import com.crystalgraphics.mc.v1710.platform.world.HostCamera1710;
 import com.crystalgraphics.mc.v1710.platform.world.HostDebug1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldEvents1710;
 import com.crystalgraphics.mc.v1710.platform.world.HostVolume1710;
-import com.crystalgraphics.mc.v1710.platform.world.WorldSound1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldStimulus1710;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgPlatformService;
@@ -33,7 +32,6 @@ import com.crystalgraphics.platform.world.CgWorldEvents;
 import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioOutput;
 import com.crystalgraphics.platform.audio.CgHostVolume;
-import com.crystalgraphics.platform.world.CgWorldSound;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 
 /**
@@ -143,7 +141,6 @@ public final class PlatformService1710 implements CgPlatformService {
             Client1710.install();
             CgPlatform.provide(CgHostCamera.SERVICE, new HostCamera1710());
             CgPlatform.provide(CgHostDebug.SERVICE, new HostDebug1710());
-            CgPlatform.provide(CgWorldSound.SERVICE, new WorldSound1710());
             CgPlatform.provide(CgAudioOutput.SERVICE, new Lwjgl2AudioOutput());
             CgPlatform.provide(CgHostVolume.SERVICE, new HostVolume1710());
             CgPlatform.provide(CgAudioDecoder.SERVICE, new JOrbisDecoder());

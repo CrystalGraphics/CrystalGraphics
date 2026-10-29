@@ -31,7 +31,6 @@ public class WorldServiceReadersTest {
         READERS.put("CgLevels", Arrays.asList("world/CgWorldQueries.java"));
         READERS.put("CgPlayerQuery", Arrays.asList("world/CgPlayers.java"));
         READERS.put("CgHostCamera", Arrays.asList("world/CgCamera.java"));
-        READERS.put("CgWorldSound", Arrays.asList("world/CgSounds.java"));
         READERS.put("CgModelSpace", Arrays.asList("world/CgEntityAttachments.java"));
         READERS.put("CgHostDebug", Arrays.asList("collision/debug/CgCollisionShow.java"));
         READERS.put("CgHostShapes", Arrays.asList("shape/CgShape.java", "shape/bounds/CgAABB.java"));

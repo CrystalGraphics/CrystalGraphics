@@ -46,7 +46,6 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `world/CgModelSpace` | Interface + slot | The camera and the rotation the world's entity pose stack starts from, read live during the level render: what turns a model's pose matrix into a world point (`CgEntityAttachments.mark`). Modern hosts from 1.15; absent before and elsewhere |
 | `world/CgHostCamera` | Interface + slot | The offset and FOV scale the host adds to its camera each frame; core sums every shake into it (`CgCameraShake`) |
 | `world/CgHostDebug` | Interface + slot | The host's own debug views: whether Minecraft's F3+B hitboxes are on, which `crystalgraphics.collision.show` follows |
-| `world/CgWorldSound` | Interface + slot | A sound at a point in the world, by resource location |
 | `audio/CgAudioOutput`, `CgAudioStream` | Interface + slot | Where the engine's mixed sound goes: a stream the audio thread opens and alone writes (`Lwjgl3AudioOutput`, a context of its own; `Lwjgl2AudioOutput`, a source in the host's). Client only; `NONE` opens nothing |
 | `audio/CgAudioDecoder` | Interface + slot | Ogg Vorbis from memory with the host's own decoder: `StbVorbisDecoder` (LWJGL 3), `JOrbisDecoder` (LWJGL 2 hosts' JOrbis), never bundled. Client only; `NONE` throws |
 | `audio/CgHostVolume` | Interface + slot | The host's volume sliders, master and by category, that the engine's sound follows. Client only; `NONE` answers 1 |
@@ -72,7 +71,7 @@ How a platform service is declared, provided and read. `CgLevels` and `CgPlayerQ
 1. **One SPI per concern**, an interface in `platform.<area>` (`platform.world`, ...), named for what it answers, with
    a `NONE` that answers nothing and a `SERVICE` slot. A concern never has two slots.
 2. **One static facade per SPI, in core, and only it reads the slot** (`CgWorldQueries`, `CgEntityQueries`,
-   `CgPlayers`, `CgCamera`, `CgSounds`); an SPI with a single reader in core is read by that class alone.
+   `CgPlayers`, `CgCamera`); an SPI with a single reader in core is read by that class alone.
    `WorldServiceReadersTest` holds it.
 3. **Per-level answers are bound views** (`of(level)`, `client()`), held while the level lives; hot paths hold the view.
 4. **Host objects cross as `Object` and ids**; a caller wanting the host's object asks a `<V> V` getter and casts at its
@@ -338,7 +337,7 @@ the other, coming up with a working GL backend and a dead keyboard, with nothing
 | `CgPlatform.sound()` | `play(String soundId)` |
 | `CgPlatform.get(CgCursorService.SERVICE)` | presenting a cursor picture; CrystalGUI decides which |
 | `CgWorldQueries.client()`, `CgEntityQueries.client()` (core) | the client level's blocks and entities, over `CgLevels`; `NONE` with no level, on a server and in the harness |
-| `CgCamera`, `CgSounds` (core) | writes a host opts into: a camera offset and a world sound; `NONE` ignores them |
+| `CgCamera` (core) | a write a host opts into: a camera offset; `NONE` ignores it |
 
 **The clipboard is on `CgInputService`, not a service of its own.** It is not conceptually input, but it
 is reached the same way — one loader-owned handle, needed by exactly the code that handles keys — and
