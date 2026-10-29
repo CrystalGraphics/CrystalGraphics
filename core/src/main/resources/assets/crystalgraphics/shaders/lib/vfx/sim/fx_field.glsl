@@ -9,7 +9,10 @@
 #define FX_FIELD_LINEAR_FORCE 0
 #define FX_FIELD_LINEAR_VELOCITY 1
 #define FX_FIELD_KILL 2
+#define FX_FIELD_ANGULAR_VELOCITY 3
 #define FX_FIELD_ORBIT 4
+#define FX_FIELD_SPEED_SCALE 5
+#define FX_FIELD_SCALE 6
 #define FX_FIELD_GROUPS 32
 
 // The flattened fields' n-th uvec4: defined by the data interface, after the buffer it reads.
@@ -143,6 +146,14 @@ void fx_field_apply(FxFields F, int group, int target, float scale, inout FxPart
                 if (target == FX_FIELD_LINEAR_FORCE) f.accel += out3;
                 else if (target == FX_FIELD_LINEAR_VELOCITY) p.position += out3 * s.dt;
                 else if (target == FX_FIELD_KILL) { if (v.x > 0.0) p.life = p.age; }
+                // Rates per 30 fps frame on what the particle keeps, never reset; in the field's own axes, unturned.
+                else if (target == FX_FIELD_SPEED_SCALE) {
+                    float k = v.x * s.dt * 30.0;
+                    p.speedScale += k;
+                    if (k < 0.0) p.speedScale = max(p.speedScale, 0.0);
+                }
+                else if (target == FX_FIELD_ANGULAR_VELOCITY) p.fieldTurn += v.xyz * (s.dt * 30.0);
+                else if (target == FX_FIELD_SCALE) p.fieldScale += v.xyz * (s.dt * 30.0);
                 else if (target == FX_FIELD_ORBIT) {
                     float rate = length(out3);
                     if (rate > 1e-8) {

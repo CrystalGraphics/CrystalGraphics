@@ -171,12 +171,12 @@ public class CgVfxEmitterAssetsTest {
         assertEquals("linear_force", written.get("target"));
         assertEquals(scale, written.get("scale"));
         tree.put("particle_update", List.of(Map.of("id", "brake", "module", "crystalgraphics:physics_field",
-                "inputs", Map.of("group", "mymod.pull", "target", "speed_scale"))));
+                "inputs", Map.of("group", "mymod.pull", "target", "strain"))));
         try {
             CgVfxEmitterAssets.compile("braked", tree, null);
             fail("compiled");
         } catch (IllegalArgumentException ex) {
-            assertTrue(ex.getMessage(), ex.getMessage().startsWith("braked") && ex.getMessage().contains("speed_scale is not applied yet"));
+            assertTrue(ex.getMessage(), ex.getMessage().startsWith("braked") && ex.getMessage().contains("strain acts on the stage"));
         }
     }
 

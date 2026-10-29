@@ -90,7 +90,13 @@ public final class CgVfxRecord {
          * breaks, and an anim trail's interpolation parameter: Cascade's {@code FRibbonTypeDataPayload} and
          * {@code FAnimTrailTypeDataPayload}, which the ribbon generation and the Step's refits read.
          */
-        RIBBON(12);
+        RIBBON(12),
+        /**
+         * What physics fields keep on it, each a rate added once a step ({@code fx_field.glsl}): a rotator added to its
+         * mesh turn, its scale per axis from 1 (none drawn at or below 0) and its speed scale from 1 (floored at 0), which
+         * multiplies the solve's motion.
+         */
+        FIELD(7);
 
         private final int components;
 

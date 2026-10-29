@@ -734,6 +734,10 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      *   <li>{@code linear_force} adds to the acceleration; {@code linear_velocity} moves it by the value for the step,
      *       never kept; {@code kill} ends it where the value is above 0; {@code orbit} turns it about the value's
      *       direction through the field's place, the value's length a rate.</li>
+     *   <li>{@code speed_scale}, {@code angular_velocity} and {@code scale} add the value, a rate per 30 fps frame, to
+     *       what the particle keeps: its speed scale from 1 (floored at 0, multiplying its motion), a rotator on its mesh
+     *       turn, its scale per axis from 1 (none drawn once an axis reaches 0).</li>
+     *   <li>{@code strain} acts on the stage, never a particle: it fails here, naming it.</li>
      *   <li>An emitter with none feels no field; a group's fields reach only its own modules.</li>
      * </ul>
      *
@@ -749,9 +753,8 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         /** {@code target}'s place, where this module applies it; one it does not apply yet fails, naming it. */
         public static int applied(CgFieldDefinition.Target target) {
-            if (target != CgFieldDefinition.Target.LINEAR_FORCE && target != CgFieldDefinition.Target.LINEAR_VELOCITY
-                    && target != CgFieldDefinition.Target.KILL && target != CgFieldDefinition.Target.ORBIT) {
-                throw new IllegalArgumentException("a physics_field of target " + target.name() + " is not applied yet");
+            if (target == CgFieldDefinition.Target.STRAIN) {
+                throw new IllegalArgumentException("a physics_field of target " + target.name() + " acts on the stage, not on particles");
             }
             return target.index();
         }

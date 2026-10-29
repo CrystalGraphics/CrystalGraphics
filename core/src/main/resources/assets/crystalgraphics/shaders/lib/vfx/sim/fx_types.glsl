@@ -34,6 +34,10 @@ struct FxParticle {
     // A Cascade trail's payload (CgVfxRecord.Tail.RIBBON): its tangent, trail + 1024 * spawned points; its up (an anim
     // trail's edge), the trail's distance at its birth; its chain, an anim trail's interpolation parameter.
     vec4 trailTangent, trailUp, trailExtra;
+    // What physics fields keep on it (CgVfxRecord.Tail.FIELD): a rotator added to its mesh turn, its scale from 1 and
+    // its speed scale from 1. Those defaults unless a field writes them.
+    vec3 fieldTurn, fieldScale;
+    float speedScale;
     uint id, slot, collisions, hitEntity;
     vec4 hit;
 };

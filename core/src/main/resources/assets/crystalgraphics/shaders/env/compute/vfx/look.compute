@@ -42,6 +42,7 @@ Properties {
     _TurnRateAt    ("Its stored rotation rate's word; -1 rolls the row's rate", int) = -1
     _TurnStateAt   ("Its stored turn age map's word; -1 turns by its age", int) = -1
     _OrbitAt       ("Its stored orbit's word; -1 for none",               int)       = -1
+    _FieldAt       ("What physics fields keep on it, its word; -1 for none", int)    = -1
 }
 
 // A particle's drawn part: CgVfxRecord.DRAWN_GLSL.

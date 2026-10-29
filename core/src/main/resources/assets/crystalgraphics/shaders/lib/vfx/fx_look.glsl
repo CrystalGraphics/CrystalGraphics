@@ -144,6 +144,7 @@ FxDrawn look_part(int part) {
             vec3 start = _TurnAt >= 0 && !toward ? stored : mix(from.xyz, to.xyz, look_rolls(roll, from.w));
             if (toward) start += look_between(CURVES(r + 4 + (overLife ? 2 * _Texels : 0)).xyz, stored);
             vec3 rotator = start + turned;
+            if (_FieldAt >= 0) rotator += vec3(look_word(_FieldAt), look_word(_FieldAt + 1), look_word(_FieldAt + 2));
             vec4 q = look_rotator(rotator);
             if (mod(to.w, 2.0) > 0.5) {
                 int inst = _InstanceAt + int(LOOK_IN(FX_RECORD_HEAT_ID).z) * _InstanceRow;
@@ -236,6 +237,11 @@ FxDrawn look_part(int part) {
         vec3 start = _ScaleAt >= 0 ? vec3(look_word(_ScaleAt), look_word(_ScaleAt + 1), look_word(_ScaleAt + 2))
                 : mix(CURVES(starts + 2).xyz, CURVES(starts + 3).xyz, scaleRoll);
         d.scale = vec4(start * shape.xyz * vec3(speedScale, 1.0), age);
+        if (_FieldAt >= 0) {
+            // A field's scale: none drawn where an axis has reached 0.
+            vec3 kept = vec3(look_word(_FieldAt + 3), look_word(_FieldAt + 4), look_word(_FieldAt + 5));
+            d.scale.xyz *= any(lessThanEqual(kept, vec3(0.0))) ? vec3(0.0) : kept;
+        }
         ivec3 base = ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ), wrap = ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ);
         ivec3 originBlock = ivec3(INSTANCES(inst + 3).xyz);
         vec3 originFrac = look_instance(inst + 4).xyz;

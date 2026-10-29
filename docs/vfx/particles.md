@@ -1050,7 +1050,10 @@ particle_update:
 | `linear_velocity` | moves it by the value for the step, never kept in its velocity |
 | `orbit` | turned about the value's direction through the field's place, its length a rate |
 | `kill` | the particle dies where the value is above 0 |
-| `angular_velocity`, `speed_scale`, `scale` | not applied yet: a `physics_field` naming one fails at load |
+| `speed_scale` | added, a rate per 30 fps frame, to a speed scale the particle keeps from 1, floored at 0, which multiplies how far its velocity moves it |
+| `angular_velocity` | added, radians per 30 fps frame, to a rotator the particle keeps on top of its mesh turn |
+| `scale` | added per axis, a rate per 30 fps frame, to a scale the particle keeps from 1; it is not drawn while an axis is at or below 0 |
+| `strain` | acts on the stage, never a particle: a `physics_field` naming it fails at load |
 
 - **Where it acts is Chaos's**: a radial or box falloff with a default of 0 bounds its graph to its radius or box, a
   multiply or divide to the smaller of its sides, an add or subtract to the larger. A graph bounded by nothing acts

@@ -82,6 +82,7 @@ public final class CgVfxEmitterCompiler {
         int orbit = record.word(CgVfxRecord.Tail.ORBIT);
         int turnState = record.word(CgVfxRecord.Tail.TURN_STATE);
         int ribbon = record.word(CgVfxRecord.Tail.RIBBON);
+        int field = record.word(CgVfxRecord.Tail.FIELD);
         s.append("\nFxParticle step_unpack(FxRecord r) {\n    FxParticle p;\n");
         unpack(s, "position", "uintBitsToFloat", CgVfxRecord.POSITION, 3);
         unpack(s, "age", "uintBitsToFloat", CgVfxRecord.AGE, 1);
@@ -122,6 +123,13 @@ public final class CgVfxEmitterCompiler {
             unpack(s, "turnScale", "uintBitsToFloat", turnState + 3, 3);
         } else {
             s.append("    p.turnBase = vec3(0.0);\n    p.turnScale = vec3(1.0);\n");
+        }
+        if (field >= 0) {
+            unpack(s, "fieldTurn", "uintBitsToFloat", field, 3);
+            unpack(s, "fieldScale", "uintBitsToFloat", field + 3, 3);
+            unpack(s, "speedScale", "uintBitsToFloat", field + 6, 1);
+        } else {
+            s.append("    p.fieldTurn = vec3(0.0);\n    p.fieldScale = vec3(1.0);\n    p.speedScale = 1.0;\n");
         }
         if (ribbon >= 0) {
             unpack(s, "trailTangent", "uintBitsToFloat", ribbon, 4);
@@ -168,6 +176,11 @@ public final class CgVfxEmitterCompiler {
         if (turnState >= 0) {
             pack(w, "p.turnBase", turnState, 3);
             pack(w, "p.turnScale", turnState + 3, 3);
+        }
+        if (field >= 0) {
+            pack(w, "p.fieldTurn", field, 3);
+            pack(w, "p.fieldScale", field + 3, 3);
+            pack(w, "p.speedScale", field + 6, 1);
         }
         if (ribbon >= 0) {
             pack(w, "p.trailTangent", ribbon, 4);
@@ -224,7 +237,8 @@ public final class CgVfxEmitterCompiler {
             Pattern.compile("\\bp\\.light\\s*([-+*]?=(?!=))"),
             Pattern.compile("\\bp\\.turn(Base|Scale)\\s*([-+*]?=(?!=))"),
             Pattern.compile("\\bp\\.orbit(Offset|Turn|Rate)\\s*([-+*]?=(?!=))"),
-            Pattern.compile("\\bp\\.trail(Tangent|Up|Extra)\\s*([-+*]?=(?!=))")};
+            Pattern.compile("\\bp\\.trail(Tangent|Up|Extra)\\s*([-+*]?=(?!=))"),
+            Pattern.compile("\\bp\\.(fieldTurn|fieldScale|speedScale)\\s*([-+*]?=(?!=))")};
     /** The {@code BEAM} tail's vec4s, in order: {@code FxParticle}'s fields. */
     private static final String[] BEAM_FIELDS = {"beamSource", "beamSourceTangent", "beamTarget", "beamTargetTangent", "beamNoise", "beamTurn"};
     private static final Pattern INCLUDE = Pattern.compile("#include\\s+\"([^\"]+)\"");
@@ -728,6 +742,9 @@ public final class CgVfxEmitterCompiler {
                     p.orbitOffset = @ORBIT_OFFSET@;
                     p.orbitTurn = @ORBIT_TURN@;
                     p.orbitRate = @ORBIT_RATE@;
+                    p.fieldTurn = vec3(0.0);
+                    p.fieldScale = vec3(1.0);
+                    p.speedScale = 1.0;
                     p.resting = false;
                     p.state = 0u;
                     p.turnBase = vec3(0.0);
@@ -1005,7 +1022,7 @@ public final class CgVfxEmitterCompiler {
                         vec3 v = p.velocity + f.accel * s.dt;
                         float keep = 1.0 / (1.0 + (f.drag + f.dragQuad * length(v)) * s.dt);
                         p.velocity = v * keep;
-                        p.position += (p.velocity * f.motionScale + f.motionSet) * s.dt;
+                        p.position += (p.velocity * f.motionScale * p.speedScale + f.motionSet) * s.dt;
                     }
                     if (!p.resting) p.spin += p.spinRate * s.dt;
 @FOLLOW@                    // What it struck with: a landing's and a collision's velocity.
