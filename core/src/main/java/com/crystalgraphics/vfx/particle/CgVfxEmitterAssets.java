@@ -1258,8 +1258,8 @@ public final class CgVfxEmitterAssets {
             float[] width = spriteWidth(size);
             b.size(width[0] * SPRITE_SIZE_TO_OURS, width[1] * SPRITE_SIZE_TO_OURS);
         }
-        float alpha = in.get("alpha") instanceof Number a ? a.floatValue() : 1f;
         float[][] wide = sized == null && size != null ? spriteScale(name, size) : null;
+        float alpha = in.get("alpha") instanceof Number a ? a.floatValue() : 1f;
         CgVfxSpawnForm colored = spawnForm(CgVfxSpawnInput.COLOR, element, "color", in.get("color"));
         if (colored != null) {
             // Stored at birth; the row's starts keep the alpha an rgb form leaves to them.
@@ -1284,7 +1284,6 @@ public final class CgVfxEmitterAssets {
             float[][] s = ends(in.get("mesh_scale"), 3);
             b.scale(s[0][0], s[0][1], s[0][2], s[1][0], s[1][1], s[1][2]);
         }
-    }
         if (wide != null) {
             // One start scale serves a quad and a mesh alike.
             float[][] mesh = in.get("mesh_scale") != null ? ends(in.get("mesh_scale"), 3) : null;
@@ -1294,6 +1293,7 @@ public final class CgVfxEmitterAssets {
             if (wide[0][0] != 1f || wide[1][0] != 1f) b.size(SPRITE_SIZE_TO_OURS, SPRITE_SIZE_TO_OURS);
             b.scale(wide[0][0], wide[0][1], 1f, wide[1][0], wide[1][1], 1f);
         }
+    }
 
     private static void velocity(String name, CgVfxEmitter.Builder b, Map<?, ?> in, String element) {
         CgVfxSpawnShape.Builder s = b.spawn();
@@ -2915,27 +2915,6 @@ public final class CgVfxEmitterAssets {
         return rangeOf(value);
     }
 
-    /** A vector's two ends: a constant both, a range its two; a colour in the engine's form decoded. */
-    private static float[][] ends(Object value, int n) {
-        if (value instanceof Map<?, ?> m && m.get("range") instanceof List<?> r) return new float[][]{endOf(r.get(0), n), endOf(r.get(1), n)};
-        float[] one = endOf(value, n);
-        return new float[][]{one, one.clone()};
-    }
-
-    /**
-     * A colour's two ends, each four floats: a colour is 2 to 4 floats ({@code core.md} § Colours, the schema's
-     * {@code colour}), the channels it leaves out 0 and its alpha {@code alpha} (the module's own input, else 1).
-     */
-    private static float[][] colourEnds(Object value, float alpha) {
-        if (value instanceof Map<?, ?> m && m.get("range") instanceof List<?> r) {
-            return new float[][]{colourOf(r.get(0), alpha), colourOf(r.get(1), alpha)};
-        }
-        float[] one = colourOf(value, alpha);
-        return new float[][]{one, one.clone()};
-    }
-
-    private static float[] colourOf(Object value, float alpha) {
-        if (value instanceof Map<?, ?> m && m.get("argb") instanceof Number) return rgba(m);
     /**
      * A sprite size that is no square, as a start scale's two ends of x and y; null for a square. Niagara's vec2 is
      * width across and height up (along the velocity for a velocity-aligned sprite). Over its width as the size, the
@@ -2960,6 +2939,27 @@ public final class CgVfxEmitterAssets {
         return new float[][]{{1f, y0 / x0}, {1f, y1 / x1}};
     }
 
+    /** A vector's two ends: a constant both, a range its two; a colour in the engine's form decoded. */
+    private static float[][] ends(Object value, int n) {
+        if (value instanceof Map<?, ?> m && m.get("range") instanceof List<?> r) return new float[][]{endOf(r.get(0), n), endOf(r.get(1), n)};
+        float[] one = endOf(value, n);
+        return new float[][]{one, one.clone()};
+    }
+
+    /**
+     * A colour's two ends, each four floats: a colour is 2 to 4 floats ({@code core.md} § Colours, the schema's
+     * {@code colour}), the channels it leaves out 0 and its alpha {@code alpha} (the module's own input, else 1).
+     */
+    private static float[][] colourEnds(Object value, float alpha) {
+        if (value instanceof Map<?, ?> m && m.get("range") instanceof List<?> r) {
+            return new float[][]{colourOf(r.get(0), alpha), colourOf(r.get(1), alpha)};
+        }
+        float[] one = colourOf(value, alpha);
+        return new float[][]{one, one.clone()};
+    }
+
+    private static float[] colourOf(Object value, float alpha) {
+        if (value instanceof Map<?, ?> m && m.get("argb") instanceof Number) return rgba(m);
         if (!(value instanceof List<?> v) || v.size() < 2 || v.size() > 4) {
             throw new IllegalArgumentException("a colour of 2 to 4 floats, not " + value);
         }
