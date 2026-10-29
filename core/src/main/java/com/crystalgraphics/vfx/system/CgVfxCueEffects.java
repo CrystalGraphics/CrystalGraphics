@@ -9,6 +9,8 @@ import javax.annotation.Nullable;
 
 import org.joml.Quaternionf;
 
+import com.crystalgraphics.audio.CgAudioEngine;
+import com.crystalgraphics.audio.CgSoundClass;
 import com.crystalgraphics.cue.CgCueDefinition;
 import com.crystalgraphics.cue.CgCueDefinition.Effects;
 import com.crystalgraphics.cue.CgCueDefinition.Lens;
@@ -16,9 +18,11 @@ import com.crystalgraphics.cue.CgCueDefinition.Particles;
 import com.crystalgraphics.cue.CgCueDefinition.Placement;
 import com.crystalgraphics.cue.CgCueDefinition.Slot;
 import com.crystalgraphics.cue.CgCueDefinition.Write;
+import com.crystalgraphics.cue.CgCueDefinition.Sound;
 import com.crystalgraphics.cue.CgCueEffects;
 import com.crystalgraphics.cue.CgCueManager;
 import com.crystalgraphics.cue.CgCueParameters;
+import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.volume.CgPostBlock;
 import com.crystalgraphics.render.post.volume.CgPostVolume;
@@ -41,7 +45,8 @@ import com.crystalgraphics.world.CgEntityAttachments;
  *   <li>{@code particles} and a looping block's {@code lens} play here. The lens is a post volume over the whole
  *       screen for the cue's life. In the world it plays where the viewer ({@link CgCueManager#viewer}) stands within
  *       its reach as it starts; otherwise only on the target's own machine ({@link CgCueManager#localControl}).
- *       Sounds, shakes, force feedback and decals are their own systems'.</li>
+ *       Its sounds play through the client world's {@link CgAudioEngine}, as Unreal's notify plays them beside its
+ *       particles; shakes, force feedback and decals are their own systems'.</li>
  *   <li>{@code attach_to_target} follows the target's socket where the target is an entity, else the target itself;
  *       {@code do_not_attach} spawns at the socket and stays.</li>
  * </ul>
@@ -66,6 +71,33 @@ public final class CgVfxCueEffects implements CgCueEffects {
             Particles p = particles.get(i);
             if (p.definition() != null && cues.spawns(p.where().condition(), at, i)) spawn(p, at, age);
         }
+        List<Sound> sounds = block.sounds();
+        for (int i = 0; i < sounds.size(); i++) {
+            Sound s = sounds.get(i);
+            if (cues.spawns(s.where().condition(), at, particles.size() + i)) sound(s, at, false);
+        }
+    }
+
+    /**
+     * {@code s} played where its placement puts it ({@code FGameplayCueNotify_SoundInfo::PlaySound}): its target's
+     * socket, the target, or the cue's point. Its id; 0 where this client plays no sound.
+     */
+    private long sound(Sound s, CgCueParameters at, boolean loop) {
+        CgAudioEngine audio = CgWorld.client().subsystem(CgAudioEngine.class);
+        if (audio == null || !audio.active()) return 0;
+        soundPoint(s, at);
+        return audio.play(s.sound(), CgSoundClass.SFX, point[0], point[1], point[2], 1f, 1f, loop, Double.NaN, at.seed());
+    }
+
+    /** Where {@code s} sounds now, into {@link #point}. */
+    private void soundPoint(Sound s, CgCueParameters at) {
+        point[0] = at.x();
+        point[1] = at.y();
+        point[2] = at.z();
+        CgAttachment target = at.target();
+        if (target == null) return;
+        String socket = s.where().placement().socket();
+        if (socket == null || !target.point(socket, point)) target.place(point, null);
     }
 
     @Override
@@ -149,6 +181,9 @@ public final class CgVfxCueEffects implements CgCueEffects {
         private final List<String> sockets = new ArrayList<>();
         private final List<Particles> waiting = new ArrayList<>();
         private final List<Boolean> waitingLoops = new ArrayList<>();
+        /** Its looping sounds' ids, faded at removal, and which entry each plays. */
+        private final List<Long> loopSounds = new ArrayList<>();
+        private final List<Sound> loopSoundEntries = new ArrayList<>();
         private final CgCueDefinition cue;
         @Nullable
         private CgCueParameters at;
@@ -166,8 +201,24 @@ public final class CgVfxCueEffects implements CgCueEffects {
             this.age = age;
             play(cue.application(), at, false);
             play(cue.looping(), at, true);
+            playSounds(cue.application(), at, false);
+            playSounds(cue.looping(), at, true);
             Lens l = cue.looping().lens();
             if (l != null && cues.spawns(l.where().condition(), at, 0) && lensPlays(l, at)) lens = openLens(CgPostStack.get(), l);
+        }
+
+        /** {@code block}'s sounds: looping ones kept to follow their target and fade at removal. */
+        private void playSounds(Effects block, CgCueParameters at, boolean loop) {
+            List<Sound> sounds = block.sounds();
+            for (int i = 0; i < sounds.size(); i++) {
+                Sound s = sounds.get(i);
+                if (!cues.spawns(s.where().condition(), at, block.particles().size() + i)) continue;
+                long id = sound(s, at, loop);
+                if (loop && id != 0) {
+                    loopSounds.add(id);
+                    loopSoundEntries.add(s);
+                }
+            }
         }
 
         /** Each of {@code block}'s systems that spawns here, now or once its delay is out. */
@@ -205,6 +256,14 @@ public final class CgVfxCueEffects implements CgCueEffects {
         @Override
         public void update(float dt) {
             age += dt;
+            CgAudioEngine audio = loopSounds.isEmpty() ? null : CgWorld.client().subsystem(CgAudioEngine.class);
+            if (audio != null && at != null) {
+                // SpawnSoundAttached: the sound moves with its target.
+                for (int i = 0; i < loopSounds.size(); i++) {
+                    soundPoint(loopSoundEntries.get(i), at);
+                    audio.activeSounds().at(loopSounds.get(i), point[0], point[1], point[2]);
+                }
+            }
             for (int i = 0; i < waiting.size(); ) {
                 Particles p = waiting.get(i);
                 if (p.delay() > age) {
@@ -245,9 +304,24 @@ public final class CgVfxCueEffects implements CgCueEffects {
             waitingLoops.clear();
             for (int i = 0; i < loops.size(); i++) loops.get(i).stop();
             loops.clear();
+            fadeSounds();
             closeLens();
             age = 0f;
             play(cue.removal(), at, false);
+            playSounds(cue.removal(), at, false);
+        }
+
+        /** {@code UAudioComponent::FadeOut(LoopingFadeOutDuration, LoopingFadeVolumeLevel)} on each looping sound. */
+        private void fadeSounds() {
+            CgAudioEngine audio = loopSounds.isEmpty() ? null : CgWorld.client().subsystem(CgAudioEngine.class);
+            if (audio != null) {
+                for (int i = 0; i < loopSounds.size(); i++) {
+                    Sound s = loopSoundEntries.get(i);
+                    audio.activeSounds().fadeOut(loopSounds.get(i), s.fadeOut(), s.fadeVolume());
+                }
+            }
+            loopSounds.clear();
+            loopSoundEntries.clear();
         }
 
         @Override
@@ -264,6 +338,10 @@ public final class CgVfxCueEffects implements CgCueEffects {
             for (int i = 0; i < alive.size(); i++) alive.get(i).kill();
             waiting.clear();
             waitingLoops.clear();
+            CgAudioEngine audio = loopSounds.isEmpty() ? null : CgWorld.client().subsystem(CgAudioEngine.class);
+            if (audio != null) for (int i = 0; i < loopSounds.size(); i++) audio.activeSounds().stop(loopSounds.get(i));
+            loopSounds.clear();
+            loopSoundEntries.clear();
             closeLens();
         }
 
@@ -274,6 +352,8 @@ public final class CgVfxCueEffects implements CgCueEffects {
             loops.clear();
             waiting.clear();
             waitingLoops.clear();
+            loopSounds.clear();
+            loopSoundEntries.clear();
             at = null;
             age = 0f;
             closeLens();

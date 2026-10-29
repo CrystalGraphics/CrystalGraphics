@@ -23,6 +23,7 @@ audio.play(new CgAudioTone(440, 0.25f, 1.0), 1f);
 | `CgSoundClass`, `CgSoundMix` | the class chain (`USoundClass`), its host slider and submix; mixes that fade class adjustments in and out (`USoundMix`) |
 | `CgSoundConcurrency` | a cap per kind and the rule for what goes (`USoundConcurrency`) |
 | `CgSubmix`, `CgSubmixEffect`, `CgLowPass`, `CgReverb` | the submix tree the mixer renders leaf to root, its effect chains (`FMixerSubmix`), a one-pole low-pass, a room reverb (Freeverb) on `reverb` |
+| `CgSoundRef`, `CgKitSounds`, `CgHostSoundEvents` | a sound as an asset names it, compiled at load; games' cue names through each kit's `sounds.yaml` and voice lines through its cast's sheets; the host's `sounds.json` merged across packs, each event flattened at its first pick |
 | `CgSoundAttenuation`, `CgAudioListener` | what distance does to a placed sound (`FSoundAttenuationSettings`); the listener, moved to the camera's final pose at `SUBMIT`, and the stereo pan law (`Get3DChannelMap`) |
 
 ## Rules
@@ -35,5 +36,7 @@ audio.play(new CgAudioTone(440, 0.25f, 1.0), 1f);
 - **The master slider is the mixer's main gain**, never a sound's: a class volume multiplies only its own slider.
 - **A sound's state is frame-thread arrays**, never an object per play: `CgActiveSounds` is sized once.
 - **A dedicated server plays nothing**: with no `CgAudioOutput` the engine starts no thread.
-- **The host's own sounds stay the host's**: nothing here calls a host's sound engine. Its sliders arrive through
-  `platform.audio.CgHostVolume`, its sound files through `CgResourceService`.
+- **Nothing here calls a host's sound engine**: even Minecraft's own sound events play through this mixer, read from
+  the packs' `sounds.json` through `CgResourceService`. The host's sliders arrive through `platform.audio.CgHostVolume`.
+- **Sequences and cues find the engine in their world**: `CgSequencer.audio()`, the client world's for cues. Nothing
+  adds one by default; whoever runs sequences adds it beside the sequencer.

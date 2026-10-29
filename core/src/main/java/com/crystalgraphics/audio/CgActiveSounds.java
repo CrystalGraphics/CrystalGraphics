@@ -86,6 +86,8 @@ public final class CgActiveSounds {
     private final float[] sentL = new float[MAX_SOUNDS], sentR = new float[MAX_SOUNDS], sentHz = new float[MAX_SOUNDS];
     private final float[] sentSend = new float[MAX_SOUNDS], sentPitch = new float[MAX_SOUNDS];
     private final float[] lr = new float[2];
+    /** A fade toward a level and then a stop ({@code UAudioComponent::FadeOut}): its multiplier, level and rate. */
+    private final float[] fade = new float[MAX_SOUNDS], fadeTo = new float[MAX_SOUNDS], fadeRate = new float[MAX_SOUNDS];
     private Occluder occluder = Occluder.NONE;
     private final CgSoundConcurrency[] group = new CgSoundConcurrency[MAX_SOUNDS];
     private final Object[] owner = new Object[MAX_SOUNDS];
@@ -131,6 +133,8 @@ public final class CgActiveSounds {
             occHz[i] = occHzTo[i] = CgSoundAttenuation.MAX_FILTER_HZ;
             occVol[i] = occVolTo[i] = 1f;
             occDuration[i] = 0;
+            fade[i] = fadeTo[i] = 1f;
+            fadeRate[i] = 0f;
             priority[i] = 1f;
             group[i] = null;
             owner[i] = null;
@@ -170,6 +174,21 @@ public final class CgActiveSounds {
         int i = slot(id);
         if (i >= 0) attenuation[i] = a;
         return this;
+    }
+
+    /**
+     * Fades {@code id} to {@code level} over {@code seconds}, then stops it: Unreal's {@code UAudioComponent::FadeOut},
+     * a looping cue sound's end. At once where {@code seconds} is 0.
+     */
+    public void fadeOut(long id, float seconds, float level) {
+        int i = slot(id);
+        if (i < 0) return;
+        if (seconds <= 0) {
+            end(i);
+            return;
+        }
+        fadeTo[i] = level;
+        fadeRate[i] = (fade[i] - level) / seconds;
     }
 
     /** What occlusion asks: the engine's traces a ray through the client's blocks. */
@@ -225,6 +244,33 @@ public final class CgActiveSounds {
     public float occlusionHz(long id) {
         int i = slot(id);
         return i >= 0 ? occHz[i] : CgSoundAttenuation.MAX_FILTER_HZ;
+    }
+
+    /** Starts {@code id} {@code seconds} in, before its first update gives it a voice: a lasting sound joined late. */
+    public CgActiveSounds startOffset(long id, double seconds) {
+        int i = slot(id);
+        if (i >= 0 && state[i] == NEW) time[i] = Math.max(0, seconds);
+        return this;
+    }
+
+    /** The newest sound still playing, or 0: for a test that did not start it itself. */
+    long latest() {
+        int best = -1;
+        for (int i = 0; i < MAX_SOUNDS; i++) if (state[i] != FREE && (best < 0 || order[i] > order[best])) best = i;
+        return best < 0 ? 0 : (long) generation[best] << 32 | best;
+    }
+
+    /** How many sounds are playing, voiced or virtual. */
+    int count() {
+        int n = 0;
+        for (int i = 0; i < MAX_SOUNDS; i++) if (state[i] != FREE) n++;
+        return n;
+    }
+
+    /** The audio time it was asked to start at; NaN for at once, or once it ended. */
+    public double startsAt(long id) {
+        int i = slot(id);
+        return i >= 0 ? startAt[i] : Double.NaN;
     }
 
     /** Seconds of it played, its loops counted. */
@@ -339,8 +385,15 @@ public final class CgActiveSounds {
             distance[i] = placed[i] ? Math.sqrt(dx * dx + dy * dy + dz * dz) : 0;
             CgSoundAttenuation a = placed[i] ? attenuation[i] : null;
             if (a != null && a.occlusion()) occlude(i, a, lx, ly, lz, dt);
-            float fade = a == null ? 1f : a.gain(distance[i]) * occVol[i];
-            volume[i] = gain[i] * classVolume(c, host) * fade;
+            if (fadeRate[i] > 0) {
+                fade[i] = Math.max(fadeTo[i], fade[i] - (float) dt * fadeRate[i]);
+                if (fade[i] <= fadeTo[i]) {
+                    end(i);
+                    continue;
+                }
+            }
+            float distanceGain = a == null ? 1f : a.gain(distance[i]) * occVol[i];
+            volume[i] = gain[i] * classVolume(c, host) * distanceGain * fade[i];
             boolean audible = a == null || distance[i] <= a.maxDistance();
             weighted[i] = audible ? priority[i] * volume[i] : -1;
         }
@@ -363,6 +416,7 @@ public final class CgActiveSounds {
                 if (state[i] != REAL) {
                     double offset = loop[i] ? time[i] % Math.max(1e-9, sound[i].seconds()) : time[i];
                     voice[i] = sink.voice(sound[i], pitch[i] * classPitch(soundClass[i]), loop[i], offset);
+                    System.out.println("DBG-AU voice " + sound[i].id() + " vol " + volume[i] + " dist " + distance[i] + " paused " + paused + " at " + startAt[i]);
                     sink.start(voice[i], volume[i], soundClass[i], state[i] == NEW ? startAt[i] : Double.NaN);
                     posted[i] = volume[i];
                     state[i] = REAL;

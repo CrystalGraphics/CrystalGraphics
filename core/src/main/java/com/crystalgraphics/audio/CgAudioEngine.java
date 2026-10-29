@@ -84,6 +84,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     private final CgSubmix[] submixes = new CgSubmix[5];
     private final CgSoundVoice[] voices = new CgSoundVoice[MAX_VOICES * 2];
     private final CgAudioListener listener = new CgAudioListener();
+    private static final CgSoundAttenuation[] MINECRAFT_FALLOFFS = new CgSoundAttenuation[513];
     private CgAudioDecoder decoder = CgAudioDecoder.NONE;
     /** The streams the decode thread keeps filled; the frame thread adds, the decode thread drops. */
     private final CgSoundStream[] streams = new CgSoundStream[MAX_STREAMS];
@@ -211,6 +212,63 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     /** As {@link #play(CgSound, CgSoundClass, float)} at {@code pitch}, looping or not, from audio time {@code at}. */
     public long play(CgSound sound, CgSoundClass soundClass, float gain, float pitch, boolean loop, double at) {
         return activeSounds.play(sound, soundClass, gain, pitch, loop, at);
+    }
+
+    /**
+     * Plays the host's sound event {@code event} at a point, as the host would: a variant rolled from its
+     * {@code sounds.json}, heard linearly to 16 blocks times the larger of 1 and {@code volume}, at {@code pitch}
+     * clamped to Minecraft's 0.5 to 2. Its id, 0 where every slot is taken.
+     */
+    public long playEvent(String event, double x, double y, double z, float volume, float pitch) {
+        return playEvent(event, CgSoundClass.SFX, x, y, z, volume, pitch);
+    }
+
+    /** As {@link #playEvent(String, double, double, double, float, float)} in {@code soundClass}. */
+    public long playEvent(String event, CgSoundClass soundClass, double x, double y, double z, float volume, float pitch) {
+        CgHostSoundEvents.Variant v = CgHostSoundEvents.current().pick(event);
+        CgSound sound = sounds.load(v.path(), v.stream());
+        float p = Math.max(0.5f, Math.min(2f, pitch)) * v.pitch();
+        long id = activeSounds.play(sound, soundClass, Math.min(1f, volume) * v.volume(), p, false, Double.NaN);
+        activeSounds.at(id, x, y, z).attenuation(id, minecraftAttenuation(v.distance() * Math.max(1f, volume)));
+        return id;
+    }
+
+    /**
+     * Plays {@code ref} at a point (or unplaced, where {@code x} is NaN) at {@code gain} and {@code pitch}, looping or
+     * not, from audio time {@code at} (NaN: at once); a pick rolled from {@code seed}. Its id, 0 where every slot is
+     * taken.
+     */
+    public long play(CgSoundRef ref, CgSoundClass soundClass, double x, double y, double z, float gain, float pitch,
+            boolean loop, double at, long seed) {
+        CgSoundRef r = ref.pick(seed);
+        if (r.kind() == CgSoundRef.Kind.EVENT && !Double.isNaN(x)) {
+            long id = playEvent(r.id(), soundClass, x, y, z, gain, pitch);
+            return id;
+        }
+        CgSound sound;
+        float volume = r.volume(), p = r.pitch();
+        CgSoundAttenuation attenuation = r.attenuation() != null ? r.attenuation() : CgSoundAttenuation.DEFAULT;
+        switch (r.kind()) {
+            case EVENT -> {
+                CgHostSoundEvents.Variant v = CgHostSoundEvents.current().pick(r.id());
+                sound = sounds.load(v.path(), v.stream());
+                volume = v.volume();
+                p = v.pitch();
+            }
+            case CUE -> sound = sounds.load(r.id(), r.file(), r.stream());
+            default -> sound = sounds.load(r.id(), r.stream());
+        }
+        long id = activeSounds.play(sound, soundClass, gain * volume, pitch * p, loop, at);
+        if (!Double.isNaN(x)) activeSounds.at(id, x, y, z).attenuation(id, attenuation);
+        return id;
+    }
+
+    /** Minecraft's linear falloff to {@code blocks}, one per whole block: a play makes none. */
+    private CgSoundAttenuation minecraftAttenuation(float blocks) {
+        int b = Math.max(1, Math.min(MINECRAFT_FALLOFFS.length - 1, Math.round(blocks)));
+        CgSoundAttenuation a = MINECRAFT_FALLOFFS[b];
+        if (a == null) MINECRAFT_FALLOFFS[b] = a = new CgSoundAttenuation().inner(0).falloff(b).reverbSend(false);
+        return a;
     }
 
     /** Every sound playing: what an id is placed, ranged, grouped, adjusted and stopped through. */

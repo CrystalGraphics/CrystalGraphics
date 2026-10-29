@@ -7,6 +7,10 @@ import net.minecraft.client.resources.IResourceManager;
 import net.minecraft.util.ResourceLocation;
 
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
 
 /**
  * MC 1.7.10 implementation of {@link CgResourceService}.
@@ -22,6 +26,29 @@ public final class ResourceService1710 implements CgResourceService {
             return res != null ? res.getInputStream() : null;
         } catch (Throwable ignored) {
             return null;
+        }
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public List<InputStream> openStack(String domain, String path) {
+        List<InputStream> out = new ArrayList<>();
+        try {
+            List<IResource> all = Minecraft.getMinecraft().getResourceManager().getAllResources(new ResourceLocation(domain, path));
+            for (IResource r : all) out.add(r.getInputStream());
+        } catch (Throwable absent) {
+            // getAllResources throws where no pack has it.
+        }
+        return out;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public Set<String> namespaces() {
+        try {
+            return Minecraft.getMinecraft().getResourceManager().getResourceDomains();
+        } catch (Throwable early) {
+            return Collections.emptySet();
         }
     }
 }

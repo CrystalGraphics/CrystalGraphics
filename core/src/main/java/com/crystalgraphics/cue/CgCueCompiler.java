@@ -13,6 +13,7 @@ import org.apache.logging.log4j.Logger;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
+import com.crystalgraphics.audio.CgSoundRef;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.kind.CgCameraKinds;
 import com.crystalgraphics.asset.kind.CgLookKinds;
@@ -173,8 +174,14 @@ final class CgCueCompiler {
         List<Sound> sounds = new ArrayList<>();
         i = 0;
         for (Map<?, ?> s : elements(b.get("sounds"))) {
-            sounds.add(new Sound(s.get("sound"), time(s.get("fade_out"), 0.5f), number(s.get("fade_volume"), 0f),
-                    where(s, path + ".sounds[" + i++ + "]", blockWhere)));
+            String at = path + ".sounds[" + i++ + "]";
+            CgSoundRef sound;
+            try {
+                sound = CgSoundRef.of(s.get("sound"), at + ".sound");
+            } catch (IllegalArgumentException e) {
+                throw fail(at, e.getMessage());
+            }
+            sounds.add(new Sound(sound, time(s.get("fade_out"), 0.5f), number(s.get("fade_volume"), 0f), where(s, at, blockWhere)));
         }
         Shake shake = null;
         if (b.get("shake") instanceof Map<?, ?> s) {

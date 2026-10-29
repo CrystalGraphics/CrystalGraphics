@@ -30,6 +30,7 @@ import java.util.function.Supplier;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.audio.CgKitSounds;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgModuleTypes;
@@ -204,6 +205,8 @@ public final class CgAssetRegistry {
         if (Files.isRegularFile(unitsFile)) units.put(namespace, readUnits(unitsFile));
         // Before any cue compiles: a cue's tag must be declared.
         CgTagRegistry.global().registerKit(namespace, root);
+        // Before any cue or sequence compiles: a game's cue name resolves through its kit's table.
+        CgKitSounds.registerKit(root);
         List<CgAssetRegistryEvent> added = new ArrayList<>(found.size());
         for (CgAssetEntry e : found) {
             entries.put(key(e.kind(), e.id()), e);

@@ -11,6 +11,7 @@ import javax.annotation.Nullable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.crystalgraphics.audio.CgAudioEngine;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorldSubsystem;
@@ -24,6 +25,7 @@ import com.crystalgraphics.sequence.notify.CgNotifyEvaluator;
 import com.crystalgraphics.sequence.spawn.CgSequenceLight;
 import com.crystalgraphics.sequence.spawn.CgSequencePuppet;
 import com.crystalgraphics.sequence.spawn.CgSequenceSpawner;
+import com.crystalgraphics.sequence.sound.CgSequenceSoundEvaluator;
 import com.crystalgraphics.sequence.spawn.CgSequenceSystemEvaluator;
 import com.crystalgraphics.sequence.state.CgSequenceBlender;
 import com.crystalgraphics.sequence.state.CgSequenceStateEvaluator;
@@ -87,6 +89,7 @@ public final class CgSequencer extends CgWorldSubsystem {
     public CgSequencer() {
         for (String kind : CgSequenceStateEvaluator.KINDS) evaluators.add(new CgSequenceStateEvaluator(kind, blender));
         evaluators.add(new CgSequenceSystemEvaluator());
+        evaluators.add(new CgSequenceSoundEvaluator(this));
         evaluators.add(new CgSequenceAnimationEvaluator());
         evaluators.add(new CgNotifyEvaluator(this, blender));
         evaluators.add(new CgSequenceEventEvaluator(this));
@@ -265,6 +268,14 @@ public final class CgSequencer extends CgWorldSubsystem {
     }
 
     /** Whether its world is a dedicated server's, where presentation (a notify's behaviour) never runs. */
+    /** Its world's audio, what its sound tracks play through; null on a server or where the host has no output. */
+    @Nullable
+    public CgAudioEngine audio() {
+        if (world() == null) return null;
+        CgAudioEngine audio = world().subsystem(CgAudioEngine.class);
+        return audio != null && audio.active() ? audio : null;
+    }
+
     public boolean server() {
         return world() != null && world().server();
     }

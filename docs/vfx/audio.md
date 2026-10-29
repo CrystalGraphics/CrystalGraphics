@@ -24,6 +24,68 @@ audio.activeSounds().stop(id);
 - Decoding uses the game's own decoder (stb_vorbis on 1.13 and later, JOrbis before), so the engine bundles none.
 - A path that is not found, or not Ogg Vorbis, fails naming it.
 
+## Minecraft's sounds, and a game's
+
+Minecraft's own sound events play through the engine too, read from every resource pack's `sounds.json` the way
+Minecraft merges them. Minecraft's sound engine is never called.
+
+```java
+long boom = audio.playEvent("minecraft:entity.generic.explode", x, y, z, 4f, 1f);   // volume 4: heard to 64 blocks
+```
+
+- A variant is picked by its weight, an event that names another event followed to its file.
+- It falls off linearly to 16 blocks times the larger of 1 and the volume, as Minecraft's do, with no reverb.
+- The table is read at first use and again after a resource reload, so a resource pack's sounds are heard at once.
+- An unknown event fails, naming it.
+
+A sound an asset names is a `CgSoundRef`: a host event, a file with its settings, a game's cue name, or a pick.
+
+```java
+CgSoundRef boom = CgSoundRef.of("minecraft:entity.generic.explode", "mymod:boom");
+CgSoundRef beam = CgSoundRef.of(Map.of("path", "mymod:sounds/beam_loop.ogg", "stream", true,
+        "attenuation", Map.of("inner", 4, "outer", 48, "falloff", "linear")), "mymod:beam");
+CgSoundRef punch = CgSoundRef.of("kakarot:sound/S_battle_punch_sw", "mymod:hit");   // through the kit's table
+CgSoundRef line = CgSoundRef.of(Map.of("cue", "kakarot:sound/V_PL_SKL_01", "speaker", "Goku"), "mymod:shout");
+long id = audio.play(punch, CgSoundClass.SFX, x, y, z, 1f, 1f, false, Double.NaN, seed);
+```
+
+- **A game's cue name** resolves through its kit's `sounds.yaml`: the game's `namespace`, and each cue's file. A
+  kit's scan reads it.
+- **A voice line** names its speaker. The speaker's `voice:` sheet in the kit's `cast.yaml` finds it in the table as
+  `<sheet>/<cue>`.
+- **A pick**, `{ pick: [a, b, c] }`, is rolled from the play's seed, so every client hears the same one.
+- A cue name no table holds, or a speaker no cast holds, fails where its asset loads, naming it: a cue fails to load.
+  A sequence skips that section instead (below).
+
+## In cues and sequences
+
+A cue's `sounds` play as Unreal's gameplay cue notifies play them. One in its application or removal plays once. One
+in its looping block starts with the cue, follows its target, and fades at removal over its `fade_out` to its
+`fade_volume`:
+
+```yaml
+looping:
+  particles: [ ... ]
+  sounds: [ { sound: mymod:sounds/beam_loop.ogg, fade_out: 0.5, fade_volume: 0 } ]
+```
+
+A sequence's `sound` track plays each section's sound as Unreal's audio track does:
+
+```yaml
+- { id: t1, kind: sound, binding: { role: caster }, sections: [
+    { id: shout, range: [150, 900], sound: { cue: kakarot:sound/V_PL_SKL_01, speaker: Goku } },
+    { id: hum, range: [300, 1800], sound: mymod:sounds/beam_loop.ogg, looping: true, start_offset: 0 } ] }
+```
+
+- A section's sound starts where its tick fell in the frame, on its sample, and stops at the section's end unless
+  it has `play_until_finished`.
+- A looping one joined late, by a seek or a late joiner, starts at its age in the section. A one-shot already passed
+  is not played.
+- Bound to a role, it plays at the role and moves with it; unbound, it is heard everywhere.
+- A `volume` channel scales it as it plays.
+- A section the engine cannot play (a `pitch` channel, a cue or speaker no kit holds) is skipped with one warning
+  naming it, and the rest of the sequence plays: a missing voice line never stops a cut.
+
 ## Classes, places and voices
 
 Every sound plays in a class. A class follows its Minecraft slider (`SFX` the players', `MUSIC`, `AMBIENT`, `VOICE`

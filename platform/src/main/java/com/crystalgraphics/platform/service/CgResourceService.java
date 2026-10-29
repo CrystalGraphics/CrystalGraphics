@@ -1,6 +1,8 @@
 package com.crystalgraphics.platform.service;
 
 import java.io.InputStream;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Platform abstraction for loading game assets. Replaces direct IResourceManager coupling
@@ -17,4 +19,13 @@ public interface CgResourceService {
      * @return an open {@link InputStream}, or {@code null} if not found
      */
     InputStream openStream(String domain, String path);
+
+    /**
+     * Every pack's copy of {@code domain:path}, the lowest pack first: what a file merged across packs is read from,
+     * as Minecraft merges {@code sounds.json}. Empty where none has it; the caller closes each.
+     */
+    List<InputStream> openStack(String domain, String path);
+
+    /** The namespaces the host's resources hold; empty where it cannot say. */
+    Set<String> namespaces();
 }

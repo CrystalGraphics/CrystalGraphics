@@ -1,7 +1,12 @@
 package com.crystalgraphics.probe;
 
+import java.nio.file.Paths;
+
 import com.crystalgraphics.audio.CgAudioEngine;
 import com.crystalgraphics.audio.CgAudioTone;
+import com.crystalgraphics.audio.CgHostSoundEvents;
+import com.crystalgraphics.audio.CgKitSounds;
+import com.crystalgraphics.audio.CgSoundRef;
 import com.crystalgraphics.audio.CgSound;
 import com.crystalgraphics.audio.CgSoundAttenuation;
 import com.crystalgraphics.audio.CgSoundClass;
@@ -37,7 +42,6 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.world.CgCamera;
 import com.crystalgraphics.world.CgEntityQueries;
-import com.crystalgraphics.world.CgSounds;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -131,6 +135,8 @@ public final class CgWorldProbe {
     private static final String MUSIC = "minecraft:sounds/music/game/end/boss.ogg";
     private static final int STALL_MILLIS = 200;
     private static long musicId;
+    /** Frames the game was paused while the music streamed: it holds through them. */
+    private static int musicPausedFrames;
     private static final String CLICK = "minecraft:sounds/random/click.ogg";
     private static final float MUFFLED_HZ = 900;
     private static final CgSoundAttenuation MUFFLED = new CgSoundAttenuation().occlusion(true).occlusionLowPass(MUFFLED_HZ);
@@ -333,18 +339,10 @@ public final class CgWorldProbe {
         startTextures = textures.version();
         startGameTime = env.gameTime();
 
-        boolean played = true;
-        try {
-            CgSounds.play("minecraft:ui.button.click", px, py, pz, 0.2f, 1f);
-        } catch (RuntimeException e) {
-            played = false;
-            LOGGER.warn("world probe sound threw", e);
-        }
-        check("sound.play", played, "played without an error; whether it was heard is not checked");
-        startAudio();
+        startAudio(px, py, pz);
     }
 
-    private static void startAudio() {
+    private static void startAudio(double px, double py, double pz) {
         audio = CgWorld.client().subsystem(CgAudioEngine.class);
         if (audio == null) audio = CgWorld.client().add(new CgAudioEngine());
         if (!audio.active()) {
@@ -353,6 +351,8 @@ public final class CgWorldProbe {
             return;
         }
         audio.play(TONE, 1f);
+        hostEvent(px, py, pz);
+        kitCue(px, py, pz);
         audioStart = System.nanoTime();
         try {
             CgSound track = audio.sounds().load(MUSIC, true);
@@ -362,6 +362,46 @@ public final class CgWorldProbe {
                     + track.sampleRate() + " Hz, " + track.channels() + " channel(s)");
         } catch (RuntimeException e) {
             skip("audio.stream", "the track did not load: " + e.getMessage());
+        }
+    }
+
+    /** Minecraft's explosion through our mixer: its {@code sounds.json} read, a variant picked, loaded and placed. */
+    private static void hostEvent(double px, double py, double pz) {
+        CgHostSoundEvents events = CgHostSoundEvents.current();
+        String event = events.has("minecraft:entity.generic.explode") ? "minecraft:entity.generic.explode" : "minecraft:random.explode";
+        int count = 0;
+        for (String ignored : events.events()) count++;
+        try {
+            CgHostSoundEvents.Variant v = events.pick(event);
+            long id = audio.playEvent(event, px, py, pz, 0.05f, 1f);
+            CgSound file = audio.sounds().load(v.path(), v.stream());
+            check("audio.host-event", id != 0 && file.seconds() > 0, count + " events read; " + event + " played "
+                    + v.path() + ", " + String.format("%.2f", file.seconds()) + " s");
+        } catch (RuntimeException e) {
+            check("audio.host-event", false, count + " events read; " + event + " threw " + e);
+        }
+    }
+
+    /**
+     * A game's sound by its cue name, through its kit's table, where {@code -Dcrystalgraphics.worldprobe.kitCue} names
+     * {@code <kit folder>|<cue>}: the table read, the cue resolved to its file, decoded and played.
+     */
+    private static void kitCue(double px, double py, double pz) {
+        String spec = System.getProperty("crystalgraphics.worldprobe.kitCue");
+        if (spec == null || spec.indexOf('|') < 0) {
+            skip("audio.kit-cue", "no -Dcrystalgraphics.worldprobe.kitCue=<kit folder>|<cue>");
+            return;
+        }
+        String folder = spec.substring(0, spec.indexOf('|')), cue = spec.substring(spec.indexOf('|') + 1);
+        try {
+            CgKitSounds.registerKit(Paths.get(folder));
+            CgSoundRef ref = CgSoundRef.of(cue, "the probe's kit cue");
+            long id = audio.play(ref, CgSoundClass.SFX, px, py, pz, 0.05f, 1f, false, Double.NaN, 0);
+            CgSound file = audio.sounds().load(ref.id(), ref.file(), ref.stream());
+            check("audio.kit-cue", id != 0 && file.seconds() > 0, cue + " played " + ref.file().getFileName() + ", "
+                    + String.format("%.2f", file.seconds()) + " s at " + file.sampleRate() + " Hz");
+        } catch (RuntimeException e) {
+            check("audio.kit-cue", false, cue + " threw " + e);
         }
     }
 
@@ -389,6 +429,7 @@ public final class CgWorldProbe {
 
     /** Once, a second into the stream: the render thread held, as a hitch holds it. */
     private static void stallOnce() {
+        if (music != null && CgWorld.client().paused()) musicPausedFrames++;
         // Its voice is given on the frame after the play.
         if (music == null && musicId != 0) music = (CgSoundStream) audio.activeSounds().voice(musicId);
         if (music == null || stalledMillis >= 0 || (System.nanoTime() - musicStart) / 1.0e9 < 1) return;
@@ -415,7 +456,10 @@ public final class CgWorldProbe {
                 + String.format("%.0f", CgAudioEngine.FORMAT.buffers() * CgAudioEngine.FORMAT.bufferSeconds() * 1000) + " ms");
         boolean stillPlaying = audio.activeSounds().playing(musicId), stillVirtual = audio.activeSounds().virtual(musicId);
         boolean sameVoice = music != null && audio.activeSounds().voice(musicId) == music;
-        if (music != null) {
+        if (music != null && musicPausedFrames > 0) {
+            audio.activeSounds().stop(musicId);
+            skip("audio.stream", "the game paused for " + musicPausedFrames + " frames while it streamed, and music holds through a pause");
+        } else if (music != null) {
             audio.activeSounds().stop(musicId);
             double streamed = (System.nanoTime() - musicStart) / 1.0e9;
             // A sleep on Windows can wake a millisecond early.

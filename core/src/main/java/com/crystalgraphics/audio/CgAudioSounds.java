@@ -1,5 +1,8 @@
 package com.crystalgraphics.audio;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -50,6 +53,23 @@ public final class CgAudioSounds {
         if (s != null && (s.streamed() || !stream)) return s;
         s = decode(path, read(path), stream);
         loaded.put(path, s);
+        return s;
+    }
+
+    /** The file at {@code file} as the sound {@code id} (a kit's decoded cue), read and decoded once. */
+    public CgSound load(String id, Path file, boolean stream) {
+        CgSound s = loaded.get(id);
+        if (s != null && (s.streamed() || !stream)) return s;
+        byte[] bytes;
+        try {
+            bytes = Files.readAllBytes(file);
+        } catch (IOException e) {
+            throw new CgAssetException(id + ": " + file + " could not be read: " + e.getMessage());
+        }
+        ByteBuffer ogg = ByteBuffer.allocateDirect(bytes.length);
+        ogg.put(bytes).flip();
+        s = decode(id, ogg, stream);
+        loaded.put(id, s);
         return s;
     }
 

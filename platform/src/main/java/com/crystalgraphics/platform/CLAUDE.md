@@ -29,7 +29,7 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `device/CgDevice`, `CgDeviceInfo`, `CgDeviceObject` | Interfaces, records | What a GPU device does: buffers, textures, SPIR-V modules, pipelines, passes, frames |
 | `device/format/`, `resource/`, `pipeline/`, `command/`, `shader/` | Interfaces, records | Its types, by what they describe: formats; buffers, textures, samplers, views, timers; pipelines and bindings; encoders and passes; modules and `CgGlslCompiler` |
 | `device/recording/CgRecordingDevice` | Class | A device that logs every command and throws on misuse — for tests |
-| `service/CgResourceService` | Interface | `openStream(domain, path)` — `null` on not-found |
+| `service/CgResourceService` | Interface | `openStream(domain, path)` — `null` on not-found; `openStack(domain, path)`, every pack's copy lowest first (what `sounds.json` merges from); `namespaces()` |
 | `service/CgRenderingService` | Interface | Viewport size and the legacy single-call frame |
 | `service/CgLifecycleService` | Interface | Context init, destroy, resize, and the frame tick |
 | `service/CgReloadService` | Interface | `onReload()` — F3+T and resource-pack changes |

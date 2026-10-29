@@ -11,6 +11,7 @@ import javax.annotation.Nullable;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
+import com.crystalgraphics.audio.CgSoundRef;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.kind.CgGameplayKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
@@ -215,12 +216,12 @@ public record CgCueDefinition(String id, @Nullable CgGameplayTag tag, Kind kind,
     }
 
     /**
-     * A sound, as written until sounds compile.
+     * A sound, compiled: {@code FGameplayCueNotify_SoundInfo}.
      *
      * @param fadeOut    a looping sound's fade at removal, in seconds
      * @param fadeVolume the volume it fades to, 0 to 1
      */
-    public record Sound(Object sound, float fadeOut, float fadeVolume, Where where) {
+    public record Sound(CgSoundRef sound, float fadeOut, float fadeVolume, Where where) {
     }
 
     /**
