@@ -160,7 +160,8 @@ void fx_field_apply(FxFields F, int group, int target, float scale, inout FxPart
                         vec3 axis = out3 / rate, from = w - place.xyz;
                         float angle = rate * s.dt;
                         vec4 turn = vec4(axis * sin(angle * 0.5), cos(angle * 0.5));
-                        p.position += fx_field_turn(turn, from) - from;
+                        // CC2 moves it by this displacement times the speed scale too.
+                        p.position += (fx_field_turn(turn, from) - from) * p.speedScale;
                     }
                 }
             }

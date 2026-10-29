@@ -26,6 +26,7 @@ import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
+import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxRecord;
 import com.crystalgraphics.vfx.particle.ribbon.CgVfxRibbonGeneration;
 import com.crystalgraphics.render.world.CgWorldVoxelWindow;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
@@ -671,6 +672,7 @@ public final class CgVfxRange {
                             .set("_Sequence", p.shape().drawLayout() == CgVfxDrawLayout.SEQUENCE ? 1 : 0)
                             .set("_DrawnFirst", drawnFirst).set("_DrawnStride", p.shape().drawnStride())
                             .set("_Drawn", p.shape().drawnMask())
+                            .set("_FieldAt", p.record().word(CgVfxRecord.Tail.FIELD))
                             .bind("SLOTS", slots).bind("FACINGS", facings)
                             .set("_CamForward", -eye.m02(), -eye.m12(), -eye.m22(), 0f)
                             .set("_CamUp", eye.m01(), eye.m11(), eye.m21(), 0f));

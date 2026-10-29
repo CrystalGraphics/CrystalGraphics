@@ -41,6 +41,7 @@ Properties {
     _RecordVectors ("A record's uvec4s: the pool's layout",          int)       = 4
     _DrawnStride ("Drawn elements a particle: its drawn part, then its drawn slots", int) = 1
     _Drawn       ("Its drawn slots, a bit each; 32 a mesh orientation in the slots' scale", int) = 0
+    _FieldAt     ("What physics fields keep on it, its record's word; -1 for none", int) = -1
     _ClipX       ("Projection times view: row 0",                    vec4)      = (1, 0, 0, 0)
     _ClipY       ("Row 1",                                           vec4)      = (0, 1, 0, 0)
     _ClipZ       ("Row 2",                                           vec4)      = (0, 0, 1, 0)
@@ -296,15 +297,29 @@ void Objects() {
         // sized on each of its own axes by its size over life. A clip's particle turns as its mesh orientation says, else
         // with its effect, and sizes as a mesh's does: a clip whose children the Step places takes neither
         // (CgVfxEmitter's build refuses it), so they meet its parts.
-        float turn = r.state.x * 6.2831853 + r.state.y;
+        // What fields keep on it reaches meshes alone: its turn on all three angles (Look added the y to the spin for
+        // a sprite's screen angle) and its scale, none drawn once an axis reaches 0.
+        vec3 fieldTurn = vec3(0.0), fieldScale = vec3(1.0);
+        if (_FieldAt >= 0) {
+            int w = e * _RecordVectors * 4 + _FieldAt;
+            for (int c = 0; c < 3; c++) {
+                fieldTurn[c] = uintBitsToFloat(RECORDS((w + c) >> 2)[(w + c) & 3]);
+                fieldScale[c] = uintBitsToFloat(RECORDS((w + 3 + c) >> 2)[(w + 3 + c) & 3]);
+            }
+            if (any(lessThanEqual(fieldScale, vec3(0.0)))) fieldScale = vec3(0.0);
+        }
+        float spin = r.state.y - fieldTurn.y;
+        float turn = r.state.x * 6.2831853 + spin;
         // A facing mesh turns by its own orientation alone: Niagara's, and Cascade's, which drops its rotation payload.
         bool faces = _Sequence == 0 && FACINGS(lo * 6).x > 0.5;
         mat3 turned = (_Drawn & 32) != 0 ? range_quat(DRAWN(e * _DrawnStride + 1).scale)
                 : _Sequence != 0 ? range_quat(ORIGINS(lo).turn)
                 : faces ? mat3(1.0) : range_turn(turn * 1.7, turn * 2.3, turn);
-        vec3 size = r.place.w * r.scale.xyz;
+        // A mesh orientation's quaternion already holds the field's turn (Look).
+        if (_FieldAt >= 0 && (_Drawn & 32) == 0) turned = turned * range_quat(range_rotator(fieldTurn));
+        vec3 size = r.place.w * r.scale.xyz * fieldScale;
         mat3 model = _Sequence != 0 ? turned * mat3(vec3(size.x, 0.0, 0.0), vec3(0.0, size.y, 0.0), vec3(0.0, 0.0, size.z))
-                : range_facing(lo, -(SLOTS(lo).xyz + r.place.xyz), r.motion.xyz, r.state.y, turned, size,
+                : range_facing(lo, -(SLOTS(lo).xyz + r.place.xyz), r.motion.xyz, spin, turned, size,
                         RECORDS(e * _RecordVectors + FX_RECORD_LIFE_SEED).y);
         o.model0 = vec4(model[0], 0.0);
         o.model1 = vec4(model[1], 0.0);

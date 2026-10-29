@@ -229,7 +229,9 @@ FxDrawn look_part(int part) {
         color *= tint;
         d.place = vec4(position, size * shape.w);
         d.motion = vec4(velocity, t);
-        d.state = vec4(seed, spin, heat, color.a);
+        // A field's turn: its y a sprite's screen angle, which Range takes back out for a mesh.
+        float fieldSpin = _FieldAt >= 0 ? look_word(_FieldAt + 1) : 0.0;
+        d.state = vec4(seed, spin + fieldSpin, heat, color.a);
         d.color = color;
         // Cascade's size by speed: x and y times clamp(speed * scale, 1, max).
         vec4 bySpeed = CURVES(starts + 5);
@@ -237,11 +239,6 @@ FxDrawn look_part(int part) {
         vec3 start = _ScaleAt >= 0 ? vec3(look_word(_ScaleAt), look_word(_ScaleAt + 1), look_word(_ScaleAt + 2))
                 : mix(CURVES(starts + 2).xyz, CURVES(starts + 3).xyz, scaleRoll);
         d.scale = vec4(start * shape.xyz * vec3(speedScale, 1.0), age);
-        if (_FieldAt >= 0) {
-            // A field's scale: none drawn where an axis has reached 0.
-            vec3 kept = vec3(look_word(_FieldAt + 3), look_word(_FieldAt + 4), look_word(_FieldAt + 5));
-            d.scale.xyz *= any(lessThanEqual(kept, vec3(0.0))) ? vec3(0.0) : kept;
-        }
         ivec3 base = ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ), wrap = ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ);
         ivec3 originBlock = ivec3(INSTANCES(inst + 3).xyz);
         vec3 originFrac = look_instance(inst + 4).xyz;
