@@ -31,7 +31,7 @@ import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.sequence.binding.CgSequenceRole;
-import com.crystalgraphics.sequence.camera.CgCameraAnimationEvaluator;
+import com.crystalgraphics.sequence.camera.CgSequenceCameras;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.world.CgAttachment;
 
@@ -40,6 +40,8 @@ public class CgCameraSystemTest {
 
     private static final CgUnits KIT = CgUnits.of(Map.of("length", "cm", "axes", "unreal", "angles", "degrees",
             "rotation", "unreal_rotator"), CgUnits.HOST);
+    /** The host's units with angles in degrees, as a rig written by hand reads. */
+    private static final CgUnits DEGREES = CgUnits.of(Map.of("angles", "degrees"), CgUnits.HOST);
 
     @BeforeClass
     public static void kinds() {
@@ -98,7 +100,7 @@ public class CgCameraSystemTest {
     public void aRigBlendsInOverTheHostAndBackOutOnUnrealsCurve() {
         CgCameraSystem cameras = new CgCameraSystem();
         cameras.host(pose -> pose.location(0, 0, 0).fov(70));
-        CgCameraContext move = new CgCameraContext("test:move").director(CgCameraDirector.single(new CgCameraRig(rig(LOOK, CgUnits.HOST))));
+        CgCameraContext move = new CgCameraContext("test:move").director(CgCameraDirector.single(new CgCameraRig(rig(LOOK, DEGREES))));
         cameras.update(0.1f);
         assertFalse("the host's own camera", cameras.controls());
 
@@ -141,7 +143,7 @@ public class CgCameraSystemTest {
     public void anExitInterruptingAnEnterTakesItsShareOfTime() {
         CgCameraSystem cameras = new CgCameraSystem();
         cameras.host(pose -> pose.location(0, 0, 0));
-        CgCameraContext move = new CgCameraContext("test:move").director(CgCameraDirector.single(new CgCameraRig(rig(LOOK, CgUnits.HOST))));
+        CgCameraContext move = new CgCameraContext("test:move").director(CgCameraDirector.single(new CgCameraRig(rig(LOOK, DEGREES))));
         cameras.push(move);
         cameras.update(0f);
         cameras.update(0.5f);                                   // half in: x 5
@@ -199,7 +201,7 @@ public class CgCameraSystemTest {
         });
         Map<String, CgSequenceDefinition> loaded = new HashMap<>();
         loaded.put("test:cam", sequence("test:cam", CAM, KIT));
-        CgCameraAnimationEvaluator.install(sequencer, cameras, loaded::get);
+        CgSequenceCameras.install(sequencer, cameras, loaded::get);
         CgSequencePlayer cut = sequencer.play(sequence("test:cut", CUT, KIT), Map.of());
         for (int i = 0; i < 3; i++) frame(sequencer, cameras, 0f);
         frame(sequencer, cameras, 0.5f);
@@ -249,7 +251,7 @@ public class CgCameraSystemTest {
         cameras.host(pose -> pose.location(100, 100, 100).fov(70));
         Map<String, CgSequenceDefinition> loaded = new HashMap<>();
         loaded.put("test:cam", sequence("test:cam", CAM, KIT));
-        CgCameraAnimationEvaluator.install(sequencer, cameras, loaded::get);
+        CgSequenceCameras.install(sequencer, cameras, loaded::get);
         Quaternionf facing = new Quaternionf().rotationY((float) Math.toRadians(90));
         CgSequenceRole caster = new CgSequenceRole() {
             @Override public CgAttachment attachment(String socket) {
@@ -290,7 +292,7 @@ public class CgCameraSystemTest {
         cameras.host(pose -> pose.location(1, 2, 3).fov(70)).involved(owner -> false);
         Map<String, CgSequenceDefinition> loaded = new HashMap<>();
         loaded.put("test:cam", sequence("test:cam", CAM, KIT));
-        CgCameraAnimationEvaluator.install(sequencer, cameras, loaded::get);
+        CgSequenceCameras.install(sequencer, cameras, loaded::get);
         CgSequencePlayer cut = sequencer.play(sequence("test:cut", CUT, KIT), Map.of());
         for (int i = 0; i < 3; i++) frame(sequencer, cameras, 0f);
         frame(sequencer, cameras, 0.5f);
@@ -314,7 +316,7 @@ public class CgCameraSystemTest {
         }
         Assume.assumeTrue("no -Pkits=kakarot_kit=...", kit != null);
         String yaml = new String(Files.readAllBytes(kit.resolve("cameras/rigs/skill_camera.yaml")), StandardCharsets.UTF_8);
-        CgCameraRig skill = new CgCameraRig(rig(yaml, KIT)).parameter("centre", 0.5).parameter("fov", 50);
+        CgCameraRig skill = new CgCameraRig(rig(yaml, KIT)).parameter("centre", 0.5).parameter("fov", Math.toRadians(50));
         CgAttachment caster = (p, t) -> {
             p[0] = 0; p[1] = 64; p[2] = 0;
             return true;
@@ -352,7 +354,7 @@ public class CgCameraSystemTest {
         CgSequencer sequencer = world.add(new CgSequencer());
         CgCameraSystem cameras = world.add(new CgCameraSystem());
         cameras.host(pose -> pose.location(0, 64, 0).fov(70).rotation().identity());
-        CgCameraAnimationEvaluator.install(sequencer, cameras, Map.of(id, sequence(id, yaml, KIT))::get);
+        CgSequenceCameras.install(sequencer, cameras, Map.of(id, sequence(id, yaml, KIT))::get);
         String cut = "_v: 1\ntick_resolution: 60000\ndisplay_rate: 30\nrange: [0, 300000]\n"
                 + "tracks:\n  - { id: k1, kind: camera_animation, sections: [ { id: s1, range: [0, 259939], animation: " + id + " } ] }\n";
         sequencer.play(sequence("test:cut", cut, KIT), Map.of());

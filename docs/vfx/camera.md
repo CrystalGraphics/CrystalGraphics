@@ -43,7 +43,7 @@ exit_transitions:  [ { conditions: [], blend: { kind: linear, time: 0.3 }, to: h
 Play it by pushing a context whose director runs it:
 
 ```java
-CgCameraRig rig = new CgCameraRig(definition).parameter("fov", 45);
+CgCameraRig rig = new CgCameraRig(definition).parameter("fov", Math.toRadians(45));   // host units: radians, blocks, seconds
 CgCameraContext move = new CgCameraContext("mymod:ultimate")
         .director(CgCameraDirector.single(rig))
         .roles(role -> role.equals("caster") ? casterAttachment : null);
@@ -220,6 +220,44 @@ cameras.involved(play -> involvesMe(play));          // the viewers a play's cam
 float w = cameras.weightOf(play);                    // 0 to 1: how much of my view is that play's camera
 ```
 
+## A sequence's camera cut
+
+A `camera_cut` track makes its viewer look through one of the sequence's cameras for its section. A camera spawnable is
+either a cine camera, keyed by its `transform` and `fov`, or a rig camera, which runs a rig with the sequence's roles
+and keys its parameters, `rig.<name>`:
+
+```yaml
+# the move's sequence
+roles:
+  - { id: r1, name: caster, kind: caster }
+  - { id: r2, name: target, kind: target }
+spawnables:
+  - { id: cam, name: skill_camera, camera: { rig: mymod:skill_camera } }
+tracks:
+  - { id: fov, kind: property, binding: { camera: cam }, property: rig.fov,
+      sections: [ { id: f, range: [6600, 138600], value: { keys: [[6600, 60.0]] } } ] }
+  - { id: boom, kind: property, binding: { camera: cam }, property: rig.boom,
+      sections: [ { id: b, range: [6600, 138600], value: { x: { keys: [[6600, -400.0]] }, "y": { keys: [[6600, 0.0]] }, z: { keys: [[6600, 0.0]] } } } ] }
+  - { id: cut, kind: camera_cut, sections: [ { id: c, range: [6600, 138600], camera: { camera: cam } } ] }
+```
+
+A cut onto a cine camera is the same track naming a `camera: { cine: { fov: 25 } }` spawnable.
+
+```java
+// a client, once: the camera spawner, camera_animation and camera_cut, and where camera sequences come from
+CgSequenceCameras.install(sequencer, cameras, id -> loadedSequence(id));
+```
+
+- A rig camera cuts in by its rig's enter transition and back out by its exit, so a rig whose blend times are
+  parameters (`time: { bind: rig.blend_in }`) blends as its keys say.
+- Its roles are the sequence's, by name: a rig's `{ role: caster }` follows the play's caster.
+- A `rig.<name>` track is keyed in the sequence's units, in the parameter's own quantity: a kit in centimetres and
+  degrees keys `rig.boom` in centimetres and `rig.fov` in degrees. A name the rig does not declare fails at load.
+- A cut onto a cine camera cuts in and out at once.
+- Only a viewer the play involves cuts (`cameras.involved`). A cut past its play's end holds until the play stops.
+- Not played yet, and failing by name when a play binds them: a track's `can_blend`, a section's `ease`,
+  `lock_previous` and `panels`, and a camera in a subsequence.
+
 ## A camera animation in a sequence
 
 A `camera_animation` track plays another sequence's camera on the viewer's camera, for its section. It is an
@@ -248,8 +286,7 @@ tracks:
 ```
 
 ```java
-// a client, once: the kind, the camera spawner, and where camera sequences come from
-CgCameraAnimationEvaluator.install(sequencer, cameras, id -> loadedSequence(id));
+CgSequenceCameras.install(sequencer, cameras, id -> loadedSequence(id));   // where camera sequences come from
 ```
 
 - The camera's moves count from its first key. At its first key the viewer's camera is where it was. After that it

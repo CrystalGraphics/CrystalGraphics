@@ -64,8 +64,9 @@ public final class CgCameraNodes {
         register("boom_arm", CgCameraNodes::boomArm);
         register("field_of_view", (node, rig) -> {
             CgCameraRig.Value fov = rig.value(node, "fov");
+            // An angle in host units is radians; the pose's FOV is degrees.
             return (run, pose) -> {
-                if (fov != null) pose.fov((float) fov.number());
+                if (fov != null) pose.fov((float) Math.toDegrees(fov.number()));
             };
         });
     }

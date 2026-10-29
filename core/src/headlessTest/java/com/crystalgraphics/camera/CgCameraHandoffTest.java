@@ -92,7 +92,7 @@ public class CgCameraHandoffTest {
 
     private static CgCameraContext move(String yaml) {
         CgCameraRigDefinition d = CgCameraRigDefinition.compile(CgAssetData.of("test:rig", CgCameraKinds.CAMERA_RIG,
-                (Map<?, ?>) CgAssetYaml.read(yaml), null), CgUnits.HOST);
+                (Map<?, ?>) CgAssetYaml.read(yaml), null), CgUnits.of(Map.of("angles", "degrees"), CgUnits.HOST));
         return new CgCameraContext("test:move").director(CgCameraDirector.single(new CgCameraRig(d)));
     }
 

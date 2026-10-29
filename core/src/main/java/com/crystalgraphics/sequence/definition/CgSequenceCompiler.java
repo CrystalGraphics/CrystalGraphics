@@ -14,7 +14,9 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.material.CgParameterCollection;
+import com.crystalgraphics.asset.camera.CgCameraRigDefinition;
 import com.crystalgraphics.asset.curve.CgRichCurve;
+import com.crystalgraphics.asset.kind.CgCameraKinds;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
@@ -59,6 +61,7 @@ final class CgSequenceCompiler {
     private final Map<String, Integer> roleByName = new HashMap<>(), roleById = new HashMap<>();
     private final Map<String, Integer> locatorById = new HashMap<>(), spawnableById = new HashMap<>();
     private final List<String> spawnableKinds = new ArrayList<>();
+    private final List<Object> spawnableDefinitions = new ArrayList<>();
     /** The playback range: what a section of all time is measured by, for automatic easing. */
     private int start, end;
 
@@ -116,7 +119,10 @@ final class CgSequenceCompiler {
             // The asset it names is a hard reference, compiled before the sequence.
             CgType named = s.get(kind) instanceof String ? CgTypes.get("crystalgraphics:" + kind) : null;
             Object definition = named != null ? deps.definition(named, (String) s.get(kind))
-                    : kind.equals("post") && s.get("post") instanceof Map<?, ?> post ? blendables(post, "spawnables." + sid + ".post") : null;
+                    : kind.equals("post") && s.get("post") instanceof Map<?, ?> post ? blendables(post, "spawnables." + sid + ".post")
+                    : kind.equals("camera") && s.get("camera") instanceof Map<?, ?> camera && camera.get("rig") instanceof String rig
+                    ? rig(rig, "spawnables." + sid + ".camera.rig") : null;
+            spawnableDefinitions.add(definition);
             spawnables.add(new Spawnable(sid, (String) s.get("name"), kind, binding(at, "spawnables." + sid + ".at"),
                     !(at instanceof Map<?, ?> m) || !Boolean.FALSE.equals(m.get("follow")), s, definition,
                     binds(kind, s.get("bind"), "spawnables." + sid + ".bind")));
@@ -274,7 +280,8 @@ final class CgSequenceCompiler {
         List<CgSequenceSection> sections = new ArrayList<>();
         for (Object o : t.get("sections") instanceof List<?> l ? l : List.of()) {
             Map<?, ?> s = (Map<?, ?>) o;
-            CgSequenceSection section = section(kind, sectionType, s, sections.size(), path + ".sections." + s.get("id"));
+            CgSequenceSection section = section(kind, sectionType, s, sections.size(), path + ".sections." + s.get("id"),
+                    rigQuantity(kind, binding, (String) t.get("property"), path));
             if (kind.equals("notify")) notifyKind(section, path + ".sections." + section.id());
             if (section.condition() != null && kind.equals("event") && "rpg".equals(side)) {
                 throw fail(path + ".sections." + section.id() + ".condition", "an rpg event plays on the server, which"
@@ -290,7 +297,33 @@ final class CgSequenceCompiler {
                 CgSequenceTrack.populationOf(kind), Collections.unmodifiableList(sections), t);
     }
 
-    private CgSequenceSection section(String kind, CgType type, Map<?, ?> s, int index, String path) {
+    /** A camera spawnable's rig, a hard reference compiled before the sequence. */
+    private CgCameraRigDefinition rig(String rig, String path) {
+        if (!(deps.definition(CgCameraKinds.CAMERA_RIG, rig) instanceof CgCameraRigDefinition d)) throw fail(path, rig + " is not compiled");
+        return d;
+    }
+
+    /**
+     * The quantity a {@code property} track's keys are written in where it keys a rig camera's {@code rig.<name>}: the
+     * parameter's own, as the rig reads it. Null for any other track, whose section declares the quantities. A
+     * rotation is left as written: its target turns it, by the sequence's rotation convention.
+     */
+    @Nullable
+    private CgQuantity rigQuantity(String kind, CgSequenceBinding binding, @Nullable String property, String path) {
+        if (!kind.equals("property") || property == null || binding.subject() != CgSequenceBinding.Subject.SPAWNABLE
+                || !(spawnableDefinitions.get(binding.index()) instanceof CgCameraRigDefinition rig)) {
+            return null;
+        }
+        if (!property.startsWith("rig.")) throw fail(path + ".property", "a rig camera keys rig.<name>, not " + property);
+        String name = property.substring(4);
+        for (CgCameraRigDefinition.Parameter p : rig.parameters()) {
+            if (!p.name().equals(name)) continue;
+            return p.type().equals("rotation") ? CgQuantity.NONE : CgQuantity.bySpecName(p.quantity());
+        }
+        throw fail(path + ".property", rig.id() + " has no parameter " + name);
+    }
+
+    private CgSequenceSection section(String kind, CgType type, Map<?, ?> s, int index, String path, @Nullable CgQuantity value) {
         String trigger = s.get("start") instanceof Map<?, ?> start ? string(start.get("event")) : null;
         int[] range;
         if (s.containsKey("range")) range = range(s.get("range"), path + ".range");
@@ -306,7 +339,7 @@ final class CgSequenceCompiler {
             String key = String.valueOf(e.getKey());
             if (SECTION_KEYS.contains(key)) continue;
             CgProperty p = type.property(key);
-            CgQuantity q = p != null ? p.quantity() : CgQuantity.NONE;
+            CgQuantity q = value != null && key.equals("value") ? value : p != null ? p.quantity() : CgQuantity.NONE;
             String at = path + "." + key;
             switch (CgSequenceKinds.channelForm(type, key)) {
                 case ONE -> {

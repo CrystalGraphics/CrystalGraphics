@@ -28,7 +28,7 @@ import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.CgSequenceTarget;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.sequence.binding.CgSequenceRole;
-import com.crystalgraphics.sequence.camera.CgCameraAnimationEvaluator;
+import com.crystalgraphics.sequence.camera.CgSequenceCameras;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.world.CgAttachment;
 
@@ -90,7 +90,7 @@ public class CgSequenceViewerTest {
             sequencer = world.add(new CgSequencer());
             cameras = world.add(new CgCameraSystem());
             cameras.host(pose -> pose.location(0, 64, 0).fov(70));
-            CgCameraAnimationEvaluator.install(sequencer, cameras, loaded::get);
+            CgSequenceCameras.install(sequencer, cameras, loaded::get);
             sequencer.viewer(target -> target instanceof Fighter f && f.entity() == me);
         }
     }

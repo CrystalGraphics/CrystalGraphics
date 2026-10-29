@@ -33,8 +33,8 @@ import com.crystalgraphics.world.CgAttachment;
  * viewer's camera and added there, and its FOV's change from its first key added to the viewer's.
  *
  * <pre>{@code
- * // a client, once its sequencer and camera system exist
- * CgCameraAnimationEvaluator.install(sequencer, cameras, id -> assets.loadedSequence(id));
+ * // a client, with the other camera kinds: CgSequenceCameras installs it
+ * CgSequenceCameras.install(sequencer, cameras, id -> assets.loadedSequence(id));
  * }</pre>
  *
  * <pre>{@code
@@ -71,18 +71,6 @@ public final class CgCameraAnimationEvaluator implements CgSequenceEvaluator {
         this.sequencer = Objects.requireNonNull(sequencer, "sequencer");
         this.cameras = Objects.requireNonNull(cameras, "cameras");
         this.animations = Objects.requireNonNull(animations, "animations");
-    }
-
-    /**
-     * Registers the kind on {@code sequencer} and the {@code camera} spawner its camera sequences need, playing on
-     * {@code cameras}; {@code animations} answers a camera sequence by its id, null while it is not loaded.
-     */
-    public static CgCameraAnimationEvaluator install(CgSequencer sequencer, CgCameraSystem cameras,
-                                                     Function<String, CgSequenceDefinition> animations) {
-        CgCameraAnimationEvaluator e = new CgCameraAnimationEvaluator(sequencer, cameras, animations);
-        sequencer.spawner("camera", CgCineCamera::spawn);
-        sequencer.register(e);
-        return e;
     }
 
     @Override

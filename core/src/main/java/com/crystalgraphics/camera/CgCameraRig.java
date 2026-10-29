@@ -25,31 +25,69 @@ import com.crystalgraphics.object.value.CgUnits;
  *
  * <pre>{@code
  * CgCameraRig skill = new CgCameraRig(definition)
- *         .parameter("fov", 45)                         // a float
+ *         .parameter("fov", Math.toRadians(45))         // a float: an angle is in radians
  *         .parameter("boom", 0, 1.5, -4)                // a vector, in blocks along the host's axes
  *         .parameter("rotation", turn);                 // a turn
  * context.director(CgCameraDirector.single(skill));
  * }</pre>
  *
+ * Set every frame, by index, which allocates nothing:
+ *
+ * <pre>{@code
+ * int boom = skill.indexOf("boom");                     // once
+ * skill.set(boom, 0, 1.5, -4 - pull);                   // each frame
+ * }</pre>
+ *
  * <ul>
  *   <li>A node kind with no evaluator fails here, naming it: a rig never plays a node as something else.</li>
  *   <li>A parameter it does not declare throws; a value set holds until set again.</li>
+ *   <li>Values are in host units: blocks, seconds, radians. The node turns an angle into the pose's degrees.</li>
  *   <li>One instance a viewer: its nodes keep state from frame to frame.</li>
  * </ul>
  */
 public final class CgCameraRig {
 
+    private static final int FLOAT = 0, BOOL = 1, VEC3 = 2, ROTATION = 3;
+
     private final CgCameraRigDefinition definition;
-    private final Map<String, Object> parameters = new HashMap<>();
-    private final Map<String, String> types = new HashMap<>();
+    private final Map<String, Integer> indices = new HashMap<>();
+    private final String[] names;
+    private final int[] types;
+    private final double[] numbers;
+    private final Vector3d[] vectors;
+    private final Quaternionf[] turns;
     private final CgCameraNode[] nodes;
 
     public CgCameraRig(CgCameraRigDefinition definition) {
         this.definition = Objects.requireNonNull(definition, "definition");
         CgUnits units = definition.units();
-        for (CgCameraRigDefinition.Parameter p : definition.parameters()) {
-            types.put(p.name(), p.type());
-            parameters.put(p.name(), host(units, p.defaultValue(), p.type(), CgQuantity.bySpecName(p.quantity())));
+        List<CgCameraRigDefinition.Parameter> params = definition.parameters();
+        int n = params.size();
+        names = new String[n];
+        types = new int[n];
+        numbers = new double[n];
+        vectors = new Vector3d[n];
+        turns = new Quaternionf[n];
+        for (int i = 0; i < n; i++) {
+            CgCameraRigDefinition.Parameter p = params.get(i);
+            names[i] = p.name();
+            indices.put(p.name(), i);
+            Object value = host(units, p.defaultValue(), p.type(), CgQuantity.bySpecName(p.quantity()));
+            switch (p.type()) {
+                case "rotation" -> {
+                    types[i] = ROTATION;
+                    turns[i] = (Quaternionf) value;
+                }
+                case "vec3", "position" -> {
+                    types[i] = VEC3;
+                    vectors[i] = (Vector3d) value;
+                }
+                case "bool" -> {
+                    types[i] = BOOL;
+                    numbers[i] = Boolean.TRUE.equals(value) ? 1 : 0;
+                }
+                default -> numbers[i] = (Double) value;
+            }
         }
         List<CgCameraRigDefinition.Node> list = definition.nodes();
         nodes = new CgCameraNode[list.size()];
@@ -61,37 +99,79 @@ public final class CgCameraRig {
     }
 
     public CgCameraRig parameter(String name, double value) {
-        return put(name, value);
+        set(require(name), value);
+        return this;
     }
 
     public CgCameraRig parameter(String name, double x, double y, double z) {
-        Object v = parameters.get(require(name));
-        if (v instanceof Vector3d to) to.set(x, y, z);
-        else throw new IllegalArgumentException(definition.id() + ": rig." + name + " is not a vector");
+        set(require(name), x, y, z);
         return this;
     }
 
     public CgCameraRig parameter(String name, Quaternionfc turn) {
-        Object v = parameters.get(require(name));
-        if (v instanceof Quaternionf to) to.set(turn);
-        else throw new IllegalArgumentException(definition.id() + ": rig." + name + " is not a rotation");
+        set(require(name), turn);
         return this;
     }
 
     /** {@code rig.<name>}'s value now: a {@code Double}, a {@code Boolean}, a {@link Vector3d} or a {@link Quaternionf}. */
     public Object parameter(String name) {
-        return parameters.get(require(name));
+        int i = require(name);
+        return switch (types[i]) {
+            case ROTATION -> turns[i];
+            case VEC3 -> vectors[i];
+            case BOOL -> numbers[i] != 0;
+            default -> numbers[i];
+        };
     }
 
-    private CgCameraRig put(String name, Object value) {
-        require(name);
-        parameters.put(name, value);
-        return this;
+    /** {@code rig.<name>}'s index, for the setters by index; -1 for a name the rig does not declare. */
+    public int indexOf(String name) {
+        Integer i = indices.get(name);
+        return i == null ? -1 : i;
     }
 
-    private String require(String name) {
-        if (!types.containsKey(name)) throw new IllegalArgumentException(definition.id() + " has no parameter " + name);
-        return name;
+    /** How many parameters it declares: the indices are {@code 0} to this, less one. */
+    public int parameters() {
+        return names.length;
+    }
+
+    public String parameterName(int index) {
+        return names[index];
+    }
+
+    /** Whether parameter {@code index} is a vector ({@code vec3}) or a turn ({@code rotation}), not a number. */
+    public boolean isVector(int index) {
+        return types[index] == VEC3;
+    }
+
+    public boolean isRotation(int index) {
+        return types[index] == ROTATION;
+    }
+
+    /** A float or bool parameter (a bool: non-zero is true). */
+    public void set(int index, double value) {
+        if (types[index] == VEC3 || types[index] == ROTATION) throw new IllegalArgumentException(where(index) + " is not a number");
+        numbers[index] = value;
+    }
+
+    public void set(int index, double x, double y, double z) {
+        if (types[index] != VEC3) throw new IllegalArgumentException(where(index) + " is not a vector");
+        vectors[index].set(x, y, z);
+    }
+
+    public void set(int index, Quaternionfc turn) {
+        if (types[index] != ROTATION) throw new IllegalArgumentException(where(index) + " is not a rotation");
+        turns[index].set(turn);
+    }
+
+    private String where(int index) {
+        return definition.id() + ": rig." + names[index];
+    }
+
+    private int require(String name) {
+        int i = indexOf(name);
+        if (i < 0) throw new IllegalArgumentException(definition.id() + " has no parameter " + name);
+        return i;
     }
 
     /** Runs every node in order on {@code pose}. */
@@ -123,11 +203,11 @@ public final class CgCameraRig {
     public Value valueOf(String where, Object written, String type, CgQuantity quantity) {
         if (written instanceof Map<?, ?> m && m.get("bind") instanceof String bind) {
             if (!bind.startsWith("rig.")) throw new IllegalArgumentException(where + ": binds " + bind + ", not a rig.<name>");
-            String name = bind.substring(4);
-            if (!types.containsKey(name)) throw new IllegalArgumentException(where + ": binds rig." + name + ", which the rig does not declare");
-            return new Value(null, name, remap(where, m.get("remap")));
+            int i = indexOf(bind.substring(4));
+            if (i < 0) throw new IllegalArgumentException(where + ": binds " + bind + ", which the rig does not declare");
+            return new Value(null, i, remap(where, m.get("remap")));
         }
-        return new Value(host(definition.units(), written, type, quantity), null, null);
+        return new Value(host(definition.units(), written, type, quantity), -1, null);
     }
 
     @Nullable
@@ -196,40 +276,38 @@ public final class CgCameraRig {
     public final class Value {
         @Nullable
         private final Object constant;
-        @Nullable
-        private final String parameter;
+        private final int parameter;
         @Nullable
         private final double[] remap;
 
-        Value(@Nullable Object constant, @Nullable String parameter, @Nullable double[] remap) {
+        Value(@Nullable Object constant, int parameter, @Nullable double[] remap) {
             this.constant = constant;
             this.parameter = parameter;
             this.remap = remap;
         }
 
-        private Object raw() {
-            return parameter == null ? constant : parameters.get(parameter);
-        }
-
         public double number() {
-            Object v = raw();
-            double x = v instanceof Number n ? n.doubleValue() : v instanceof Boolean b && b ? 1 : 0;
+            double x;
+            if (parameter >= 0) x = numbers[parameter];
+            else x = constant instanceof Number n ? n.doubleValue() : constant instanceof Boolean b && b ? 1 : 0;
             if (remap == null) return x;
             double span = remap[1] - remap[0];
             return remap[2] + (span == 0 ? 0 : (x - remap[0]) / span) * (remap[3] - remap[2]);
         }
 
         public boolean bool() {
-            Object v = raw();
-            return v instanceof Boolean b ? b : number() != 0;
+            if (parameter < 0 && constant instanceof Boolean b) return b;
+            return number() != 0;
         }
 
         public Vector3d vector(Vector3d out) {
-            return raw() instanceof Vector3d v ? out.set(v) : out.zero();
+            Object v = parameter >= 0 ? vectors[parameter] : constant;
+            return v instanceof Vector3d d ? out.set(d) : out.zero();
         }
 
         public Quaternionf rotation(Quaternionf out) {
-            return raw() instanceof Quaternionf q ? out.set(q) : out.identity();
+            Object v = parameter >= 0 ? turns[parameter] : constant;
+            return v instanceof Quaternionf q ? out.set(q) : out.identity();
         }
     }
 }

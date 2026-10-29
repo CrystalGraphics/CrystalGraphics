@@ -17,7 +17,7 @@ import com.crystalgraphics.world.CgAttachment;
  * its {@code fov} property keys are read here as a pose, which a camera cut or a camera animation then uses.
  *
  * <pre>{@code
- * sequencer.spawner("camera", CgCineCamera::spawn);
+ * CgSequenceCameras.install(sequencer, cameras, animations);   // the camera spawner makes one per cine: camera
  * CgCineCamera cam = (CgCineCamera) player.spawned(index);
  * cam.pose(pose);                           // this frame's, in the host's units and axes
  * }</pre>
@@ -46,8 +46,8 @@ public final class CgCineCamera implements CgSequenceSpawned {
         this.fov = fov;
     }
 
-    /** The spawner for {@code camera} spawnables: its settings' FOV, in degrees, until a track keys one. */
-    public static CgCineCamera spawn(CgSequencePlayer player, CgSequenceDefinition.Spawnable spawnable, CgAttachment at) {
+    /** The {@code camera} spawner's cine branch: its settings' FOV, in degrees, until a track keys one. */
+    static CgCineCamera spawn(CgSequencePlayer player, CgSequenceDefinition.Spawnable spawnable, CgAttachment at) {
         float fov = CgCameraPose.DEFAULT_FOV;
         if (spawnable.tree().get("camera") instanceof Map<?, ?> camera && camera.get("cine") instanceof Map<?, ?> cine
                 && cine.get("fov") instanceof Number n) {
