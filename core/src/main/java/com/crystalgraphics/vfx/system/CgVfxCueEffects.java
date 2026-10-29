@@ -98,7 +98,9 @@ public final class CgVfxCueEffects implements CgCueEffects {
             Particles p = particles.get(i);
             if (p.definition() == null || !cues.spawns(p.where().condition(), at, i)) continue;
             CgVfxSystemInstance<?> made = place(p, at);
-            if (age > 0f) made.startAt(age);
+            // Its component's CustomTimeDilation and WarmupTime: simulated that far before it is first shown
+            if (p.timeDilation() != 1f) made.timeDilation(p.timeDilation());
+            if (age + p.warmup() > 0f) made.startAt(age + p.warmup());
             vfx.play(made);
             if (into != null) into.add(made);
         }

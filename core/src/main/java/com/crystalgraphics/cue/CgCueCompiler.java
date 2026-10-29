@@ -159,8 +159,8 @@ final class CgCueCompiler {
         for (Map<?, ?> p : elements(b.get("particles"))) {
             String system = String.valueOf(p.get("system"));
             CgVfxSystemDefinition def = deps.definition(CgParticleKinds.SYSTEM, system) instanceof CgVfxSystemDefinition d ? d : null;
-            particles.add(new Particles(system, def, Boolean.TRUE.equals(p.get("cast_shadow")),
-                    where(p, path + ".particles[" + i++ + "]", blockWhere)));
+            particles.add(new Particles(system, def, Boolean.TRUE.equals(p.get("cast_shadow")), number(p.get("time_dilation"), 1f),
+                    time(p.get("warmup"), 0f), where(p, path + ".particles[" + i++ + "]", blockWhere)));
         }
         List<Sound> sounds = new ArrayList<>();
         i = 0;

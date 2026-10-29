@@ -626,12 +626,12 @@ public final class CgVfxSystem {
         effect.kill();
     }
 
-    /** Each effect's pace this update: its character's clock, else 1. */
+    /** Each effect's pace this update: its character's clock, else 1, times its own dilation. */
     private void resolveRates() {
         float partialTick = Float.NaN;
         for (int i = 0; i < effects.size(); i++) {
             CgVfxEffect<?> effect = effects.get(i);
-            if (effect.followingId() < 0 && !effect.hasClock()) continue;
+            if (effect.followingId() < 0 && !effect.hasClock() && !effect.dilated()) continue;
             if (Float.isNaN(partialTick)) partialTick = CgRenderStage.WORLD_OPAQUE.host().partialTick();
             effect.resolveRate(partialTick);
         }

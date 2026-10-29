@@ -201,8 +201,14 @@ public record CgCueDefinition(String id, @Nullable CgGameplayTag tag, Kind kind,
         public enum Rule { KEEP_RELATIVE, KEEP_WORLD, SNAP_TO_TARGET }
     }
 
-    /** A system played: its compiled definition where systems compile, else null. */
-    public record Particles(String system, @Nullable CgVfxSystemDefinition definition, boolean castShadow, Where where) {
+    /**
+     * A system played: its compiled definition where systems compile, else null.
+     *
+     * @param timeDilation its component's {@code CustomTimeDilation}: it ages at this multiple of its clock, 1 unless set
+     * @param warmup       seconds it is simulated before it is first shown ({@code WarmupTime}), 0 for none
+     */
+    public record Particles(String system, @Nullable CgVfxSystemDefinition definition, boolean castShadow, float timeDilation,
+                            float warmup, Where where) {
     }
 
     /**

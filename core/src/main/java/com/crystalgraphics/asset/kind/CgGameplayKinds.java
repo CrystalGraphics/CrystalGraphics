@@ -59,7 +59,9 @@ public final class CgGameplayKinds {
 
     static final CgType PARTICLES = where(entry("particles")
             .property("system", hard("system")).required().flags(CgPropertyFlag.STRUCTURAL)
-            .property("cast_shadow", BOOL));
+            .property("cast_shadow", BOOL)
+            .property("time_dilation", FLOAT)
+            .property("warmup", FLOAT).quantity(CgQuantity.TIME));
 
     static final CgType SOUND = where(entry("sound")
             .property("sound", VALUE).required()

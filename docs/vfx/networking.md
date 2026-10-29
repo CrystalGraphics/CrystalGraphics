@@ -94,7 +94,7 @@ looping:
   particles: [ { system: mymod:beam/body } ]
   sounds: [ { sound: mymod:beam_loop, fade_out: 0.3 } ]
   lens: { post: { vignette: 0.6, chromatic: 2 }, in_world: true, inner: 8, outer: 24 }
-removal: { particles: [ { system: mymod:beam/end } ] }
+removal: { particles: [ { system: mymod:beam/end, time_dilation: 2 } ] }   # collapses twice as fast
 events:
   - { id: e1, event: hit_world, particles: [ { system: mymod:beam/hit } ] }
 writes:
@@ -124,6 +124,13 @@ for (CgCueDefinition.Particles p : cue.looping().particles()) {
 }
 cue.writes().get("BeamLength").slots();   // every played system's BeamLength user parameter
 ```
+
+A particle entry's own clock, from its Unreal component:
+
+| Field | Means |
+|---|---|
+| `time_dilation` | `CustomTimeDilation`: the system ages at this multiple of its clock, its particles too. 1 unless written |
+| `warmup` | `WarmupTime`, in seconds: it is simulated that far before it is first shown (`CgVfxEffect.startAt`). 0 unless written |
 
 ### Where an effect goes, and who sees it
 

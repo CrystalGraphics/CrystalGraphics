@@ -111,6 +111,8 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     private int clockVersion = -1;
     /** This frame's pace of its time, set by the system: 1 on the world's clock, 0 held. */
     float timeRate = 1f;
+    /** Its own multiple of its clock's pace ({@link #timeDilation(float)}). */
+    private float timeDilation = 1f;
     /** Keeps its offset from the point ({@link #followKeepingOffset}): NaN until its first placement measures it. */
     boolean followKeep;
     double followDx = Double.NaN, followDy, followDz;
@@ -533,8 +535,21 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     }
 
     /**
-     * The pace of this effect's time against the world's: 1 normally, 0 held by its character's freeze. Set once an
-     * update, before its ticks.
+     * Ages it at {@code rate} times its clock: Unreal's component {@code CustomTimeDilation}, which a cue's particle entry
+     * sets ({@code time_dilation}). Its ticks and its particles both; under its character's freeze it still holds.
+     *
+     * <pre>{@code
+     * VFX.play(new CgVfxSystemInstance<>(END, x, y, z).timeDilation(2f));   // a beam's end, played twice as fast
+     * }</pre>
+     */
+    public final E timeDilation(float rate) {
+        timeDilation = Math.max(0f, rate);
+        return self();
+    }
+
+    /**
+     * The pace of this effect's time against the world's: 1 normally, 0 held by its character's freeze, times its
+     * {@link #timeDilation(float)}. Set once an update, before its ticks.
      */
     public final float timeRate() {
         return timeRate;
@@ -544,6 +559,10 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         return clock != null;
     }
 
+    final boolean dilated() {
+        return timeDilation != 1f;
+    }
+
     /** Resolves {@link #timeRate} for this update; true if it runs on a character's clock. */
     final boolean resolveRate(float partialTick) {
         int entity = followingId();
@@ -551,7 +570,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
             clockVersion = CgCharacterClock.version();
             clock = CgCharacterClock.find(entity);
         }
-        timeRate = clock == null ? 1f : clock.pace(partialTick);
+        timeRate = (clock == null ? 1f : clock.pace(partialTick)) * timeDilation;
         return clock != null;
     }
 
@@ -775,6 +794,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         clock = null;
         clockVersion = -1;
         timeRate = 1f;
+        timeDilation = 1f;
         followKeep = false;
         followDx = Double.NaN;
         followDy = followDz = 0;
