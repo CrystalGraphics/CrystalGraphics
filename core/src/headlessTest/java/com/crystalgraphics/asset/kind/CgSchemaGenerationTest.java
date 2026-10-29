@@ -27,7 +27,7 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 
 /**
- * The bible gate, step 2: each kind's schema generated from its declaration ({@link CgSchemaWriter}) against the
+ * The bible gate, step 2: each kind's schema, and each kit file's, generated from its declaration ({@link CgSchemaWriter}) against the
  * checked-in one, key for key, descriptions aside. The checked-in kind schemas are this output with their descriptions,
  * so a difference is a declaration changed without its spec change (an {@code aaa-design} entry); the differences are
  * printed, grouped by what each expected.
@@ -55,7 +55,9 @@ public class CgSchemaGenerationTest {
     public void generatedSchemasEqualTheCheckedInOnes() throws IOException {
         List<String> diffs = new ArrayList<>();
         Map<String, Integer> byShape = new TreeMap<>();
-        for (CgType kind : CgAssetKinds.all()) {
+        List<CgType> declared = new ArrayList<>(CgAssetKinds.all());
+        declared.add(CgKitFiles.SUBTITLE_STYLE);
+        for (CgType kind : declared) {
             String name = kind.id().substring(kind.id().indexOf(':') + 1);
             Map<String, Object> generated = CgSchemaWriter.kind(kind);
             Files.createDirectories(OUT);

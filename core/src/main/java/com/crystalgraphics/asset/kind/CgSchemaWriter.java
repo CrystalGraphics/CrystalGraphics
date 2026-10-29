@@ -88,7 +88,8 @@ public final class CgSchemaWriter {
         for (CgProperty p : type.properties()) {
             if (type.kind() == CgTypeKind.KIND && (p.name().equals(CgType.VERSION) || p.name().equals(CgType.PARENT)
                     || p.name().equals(CgType.UNITS))) continue;
-            out.put(p.name(), property(type, p));
+            // A kit file versions itself as a kind does.
+            out.put(p.name(), p.name().equals(CgType.VERSION) ? map("type", "integer", "minimum", 1) : property(type, p));
         }
         return out;
     }

@@ -12,6 +12,7 @@ import org.apache.logging.log4j.Logger;
 
 import com.crystalgraphics.audio.CgAudioEngine;
 import com.crystalgraphics.audio.CgSoundRef;
+import com.crystalgraphics.audio.CgSubtitleStyle;
 import com.crystalgraphics.audio.CgSubtitles;
 import com.crystalgraphics.i18n.CgKitStrings;
 import com.crystalgraphics.sequence.CgSequenceEvaluator;
@@ -24,7 +25,7 @@ import com.crystalgraphics.sequence.definition.CgSequenceTrack;
 /**
  * The {@code subtitle} kind: a line shown while its section is active, in the kit's {@code subtitle_style}. Its
  * {@code text} is a string id ({@code <ns>:text/<id>}) the kit's {@code strings/<locale>.yaml} holds, read in the player's
- * language, its speaker the string's own unless the section names one; an open end
+ * language, its speaker the string's own unless the section names one, drawn in its kit's {@code subtitle_style}; an open end
  * lasts as long as the {@code sound} section it names. A lasting kind: active while play is in its section, and joined
  * by a seek at its age there, the line driven by the sequence's own clock ({@link CgSubtitles#drive}).
  *
@@ -51,15 +52,19 @@ public final class CgSequenceSubtitleEvaluator implements CgSequenceEvaluator {
         final double length;
         @Nullable
         final CgSoundRef sound;
+        @Nullable
+        final CgSubtitleStyle style;
         long key;
         long touched = -1;
 
-        Line(CgSequencePlayer player, String text, @Nullable String speaker, double length, @Nullable CgSoundRef sound) {
+        Line(CgSequencePlayer player, String text, @Nullable String speaker, double length, @Nullable CgSoundRef sound,
+             @Nullable CgSubtitleStyle style) {
             this.player = player;
             this.text = text;
             this.speaker = speaker;
             this.length = length;
             this.sound = sound;
+            this.style = style;
         }
     }
 
@@ -101,7 +106,8 @@ public final class CgSequenceSubtitleEvaluator implements CgSequenceEvaluator {
             sound = soundOf(d, linked, where);
             if (sound == null) return;
         }
-        player.data(track, section, new Line(player, entry.text(), speaker, length, sound));
+        player.data(track, section, new Line(player, entry.text(), speaker, length, sound,
+                CgSubtitleStyle.of(CgKitStrings.kitOf(id))));
     }
 
     /** The sound of the {@code sound} section {@code id}, for an open end's length; null, skipped, where none is. */
@@ -142,7 +148,7 @@ public final class CgSequenceSubtitleEvaluator implements CgSequenceEvaluator {
                 length = line.sound != null ? audio.seconds(line.sound, player.seed()) : d.seconds(d.end() - from);
             }
             line.key = audio.subtitles().key();
-            audio.subtitles().queueDriven(line.key, line.text, line.speaker, length);
+            audio.subtitles().queueDriven(line.key, line.text, line.speaker, line.style, length);
             if (!live.contains(line)) live.add(line);
         }
         audio.subtitles().drive(line.key, into);

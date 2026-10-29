@@ -2,6 +2,7 @@ package com.crystalgraphics.audio;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -15,6 +16,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.crystalgraphics.asset.codec.CgAssetYaml;
+import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.frame.CgWorld;
@@ -60,8 +62,15 @@ public class CgSequenceSubtitleTest {
                 strings:
                   Line_01: { text: Kaméhamé..., speaker: subtest:text/Speaker_Goku }
                 """.getBytes(StandardCharsets.UTF_8));
+        Files.write(kit.resolve("subtitle_style.yaml"), """
+                _v: 1
+                reference_height: 1080
+                line: { font: subsub:fonts/line.otf, size: 20 }
+                """.getBytes(StandardCharsets.UTF_8));
+        CgAssetKinds.register();
         CgKitSounds.registerKit(kit);
         CgKitStrings.registerKit("subsub", kit);
+        CgSubtitleStyle.registerKit("subsub", kit);
     }
 
     @After
@@ -123,6 +132,7 @@ public class CgSequenceSubtitleTest {
         step(0.2f);
         assertEquals("Kamehame...", audio.subtitles().text());
         assertEquals("the speaker, the string's own", "Goku", audio.subtitles().speaker());
+        assertSame("drawn in its game's kit's style", CgSubtitleStyle.of("subsub"), audio.subtitles().style());
         step(2.8f);                                                  // 3.4 s: 2.9 s into the 3 s voice
         assertEquals("Kamehame...", audio.subtitles().text());
         step(0.2f);                                                  // 3.6 s: the voice is over

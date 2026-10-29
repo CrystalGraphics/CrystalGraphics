@@ -41,6 +41,7 @@ public final class CgAssetKinds {
         CgGameplayKinds.register();
         CgFieldKinds.register();
         CgModuleTypes.register();
+        CgKitFiles.register();
         all = Collections.unmodifiableList(Arrays.asList(
                 CgParticleKinds.SYSTEM, CgParticleKinds.EMITTER, CgParticleKinds.MODULE, CgParticleKinds.EFFECT_TYPE,
                 CgParticleKinds.ENDING, CgFieldKinds.FIELD, CgLookKinds.MATERIAL, CgLookKinds.TEXTURE, CgLookKinds.MESH,

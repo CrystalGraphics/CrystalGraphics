@@ -13,6 +13,7 @@ against `object`'s model. `CgAssetKinds.register()` declares them all; `all()` a
 | `CgGameplayKinds` | `cue` and its effects block |
 | `CgFieldKinds` | `field`; graph nodes (`NODES`) |
 | `CgCommonStructs` | what several kinds share: placement, binding, condition, socket, mesh slot, transform, input declaration |
+| `CgKitFiles` | the files at a kit's root that are not assets: `subtitle_style.yaml` (`SUBTITLE_STYLE`) |
 | `CgModuleTypes` | the built-in modules, read from the shipped `vfx/modules.yaml` (a byte copy of the format's) into a struct of inputs each |
 
 **The bible gate** is `CgBibleGateTest` (`:core:headlessTest`): every declaration against the format's JSON schemas both

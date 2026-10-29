@@ -52,6 +52,8 @@ public final class CgKitStrings {
 
     /** Per game namespace, per language, the strings by id. */
     private static final Map<String, Map<String, Map<String, Entry>>> BY_GAME = new ConcurrentHashMap<>();
+    /** The kit that registered each game's strings: where its subtitle style and fonts are. */
+    private static final Map<String, String> KIT_OF_GAME = new ConcurrentHashMap<>();
 
     private CgKitStrings() {
     }
@@ -66,6 +68,7 @@ public final class CgKitStrings {
                 String name = file.getFileName().toString();
                 Map<?, ?> root = root(file);
                 String game = root.get("namespace") instanceof String g ? g : kitGame;
+                KIT_OF_GAME.put(game, namespace);
                 BY_GAME.computeIfAbsent(game, g -> new ConcurrentHashMap<>())
                         .put(name.substring(0, name.length() - ".yaml".length()).toLowerCase(), entries(file, root));
             }
@@ -121,6 +124,13 @@ public final class CgKitStrings {
         if (entry != null) return entry;
         Map<String, Entry> fallback = languages.get(FALLBACK);
         return fallback != null ? fallback.get(id) : null;
+    }
+
+    /** The kit holding {@code ref}'s strings, a {@code <ns>:text/<id>}; null where none registered its game. */
+    @Nullable
+    public static String kitOf(String ref) {
+        int at = ref.indexOf(TEXT);
+        return at <= 0 ? null : KIT_OF_GAME.get(ref.substring(0, at));
     }
 
     /** The text of {@code ref}, a {@code <ns>:text/<id>}; null where no table holds it, or {@code ref} is null. */

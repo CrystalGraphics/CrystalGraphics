@@ -30,8 +30,9 @@ import java.util.function.Supplier;
 
 import javax.annotation.Nullable;
 
-import com.crystalgraphics.i18n.CgKitStrings;
 import com.crystalgraphics.audio.CgKitSounds;
+import com.crystalgraphics.audio.CgSubtitleStyle;
+import com.crystalgraphics.i18n.CgKitStrings;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgModuleTypes;
@@ -210,6 +211,7 @@ public final class CgAssetRegistry {
         CgKitSounds.registerKit(root);
         // And a subtitle section's text through its kit's string tables.
         CgKitStrings.registerKit(namespace, root);
+        CgSubtitleStyle.registerKit(namespace, root);
         List<CgAssetRegistryEvent> added = new ArrayList<>(found.size());
         for (CgAssetEntry e : found) {
             entries.put(key(e.kind(), e.id()), e);

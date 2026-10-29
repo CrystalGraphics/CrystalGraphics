@@ -195,6 +195,53 @@ engine reads *Explosion*, where the version's `sounds.json` names one (1.9 and l
   Minecraft's *Show Subtitles*); queued either way, so turning it on mid-move shows the line under way.
 - Drawn over the HUD (`CgRenderStage.HUD`), never Minecraft's own subtitle box.
 
+### Lines in a sequence
+
+A sequence captions its voices with a `subtitle` track. A section's `text` is a string id, `<ns>:text/<id>`, held by
+the kit's `strings/<locale>.yaml`: one file per language, read in the player's (`en_us`, `fr_fr`), with `en_us` behind
+it. A line may name its speaker, a string of its own. An open end lasts the `sound` section it names:
+
+```yaml
+# strings/en_us.yaml
+_v: 1
+strings:
+  Cpl001A: Goku
+  V_C001A_skl_01_Msg: { text: Kamehame..., speaker: kakarot:text/Cpl001A }
+```
+
+```yaml
+# a sequence's tracks
+- { id: voice, kind: sound, sections: [ { id: v1, range: [35189, null], sound: kakarot:sound/V_C001A_skl_01 } ] }
+- { id: lines, kind: subtitle, sections: [ { id: l1, range: [35189, 125189], text: kakarot:text/V_C001A_skl_01_Msg, sound: v1 } ] }
+```
+
+The line follows the sequence's clock: a pause holds it, a seek joins it at its age. A section's `speaker` (a string
+id) replaces the string's own.
+
+### A game's look
+
+A kit's `subtitle_style.yaml` draws its lines as the game does: its own fonts, outline, band and fades, in its UI
+units scaled from `reference_height` with the screen. A kit without one draws in Unreal's canvas look (13 px, white, a
+1 px black outline, centred near the bottom).
+
+```yaml
+# subtitle_style.yaml
+_v: 1
+reference_height: 1080
+line: { font: mykit:fonts/Line.otf, size: 20, outline: { size: 3, colour: 0xFF000000 },
+        anchor: [0.5, 0.5], alignment: [0.5, 0], offset: [0, 328] }
+name: { font: mykit:fonts/Name.otf, size: 22, colour: 0xFF000000, outline: { size: 3, colour: 0xFFFFFFFF },
+        anchor: [0.5, 0.5], offset: [-425, 273] }
+band: { colour: 0x80030305, anchor: [0.5, 0.5], height: 200, offset: [0, 330] }
+fade_in: { band: [[0, 0], [0.067, 1]], text: [[0.167, 0], [0.3, 1]] }
+fade_out: { band: [[0.033, 1], [0.233, 0]], text: [[0, 1], [0.1, 0]] }
+```
+
+- A size is in points at 96 DPI (Slate's); everything else in UI units. A text block sits at `anchor` on the screen
+  (0 to 1), moved by `offset`, less `alignment` of its own size.
+- One line shows at a time: a new one waits for the last to fade out.
+- A file that does not validate fails the kit's registration, naming each issue.
+
 ## Submixes
 
 Every voice mixes into a submix, and the submixes into each other: `world` (with `reverb` inside it), `ui` and

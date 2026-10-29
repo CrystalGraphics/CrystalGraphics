@@ -23,7 +23,7 @@ import javax.annotation.Nullable;
  *
  * <pre>{@code
  * long key = audio.subtitles().key();
- * audio.subtitles().queueDriven(key, "Kamehame...", "Goku", seconds);
+ * audio.subtitles().queueDriven(key, "Kamehame...", "Goku", style, seconds);   // style null: the canvas look
  * audio.subtitles().drive(key, secondsIntoSection);   // each frame it is active
  * audio.subtitles().kill(key);                         // its section ended
  * }</pre>
@@ -54,18 +54,22 @@ public final class CgSubtitles {
         final double[] at;
         @Nullable
         final String speaker;
+        @Nullable
+        final CgSubtitleStyle style;
         /** Its owner sets its time ({@link #drive}); else its sound's playback does. */
         final boolean driven;
         double time;
         int index;
 
-        Active(long id, float priority, long order, String[] text, double[] at, @Nullable String speaker, boolean driven) {
+        Active(long id, float priority, long order, String[] text, double[] at, @Nullable String speaker,
+               @Nullable CgSubtitleStyle style, boolean driven) {
             this.id = id;
             this.priority = priority;
             this.order = order;
             this.text = text;
             this.at = at;
             this.speaker = speaker;
+            this.style = style;
             this.driven = driven;
         }
     }
@@ -84,7 +88,7 @@ public final class CgSubtitles {
 
     /** {@code cues} for a sound {@code duration} seconds long, each clamped to it, the last shown to its end. */
     public void queue(long id, float priority, double duration, List<Cue> cues) {
-        add(id, priority, duration, cues, null, false);
+        add(id, priority, duration, cues, null, null, false);
     }
 
     /** A fresh key for a driven line: never a sound's id, never one handed out before. */
@@ -92,9 +96,12 @@ public final class CgSubtitles {
         return --keys;
     }
 
-    /** {@code text} said by {@code speaker} (null for none) for {@code duration} seconds, its time driven by its owner. */
-    public void queueDriven(long key, String text, @Nullable String speaker, double duration) {
-        add(key, DEFAULT_PRIORITY, duration, List.of(new Cue(text, 0f)), speaker, true);
+    /**
+     * {@code text} said by {@code speaker} (null for none) for {@code duration} seconds in its game's {@code style} (null
+     * for Unreal's canvas look), its time driven by its owner.
+     */
+    public void queueDriven(long key, String text, @Nullable String speaker, @Nullable CgSubtitleStyle style, double duration) {
+        add(key, DEFAULT_PRIORITY, duration, List.of(new Cue(text, 0f)), speaker, style, true);
     }
 
     /** {@code key}'s line at {@code seconds} into it; past its duration it ends. */
@@ -104,7 +111,8 @@ public final class CgSubtitles {
         }
     }
 
-    private void add(long id, float priority, double duration, List<Cue> cues, @Nullable String speaker, boolean driven) {
+    private void add(long id, float priority, double duration, List<Cue> cues, @Nullable String speaker,
+                     @Nullable CgSubtitleStyle style, boolean driven) {
         if (id == 0 || cues.isEmpty() || priority == 0f || !(duration > 0)) return;
         int n = cues.size();
         String[] text = new String[n + 1];
@@ -117,7 +125,7 @@ public final class CgSubtitles {
         text[n] = "";
         at[n] = duration;
         kill(id);
-        active.add(new Active(id, priority, queued++, text, at, speaker, driven));
+        active.add(new Active(id, priority, queued++, text, at, speaker, style, driven));
     }
 
     /** Drops {@code id}'s subtitle: its sound stopped ({@code KillSubtitles}). */
@@ -166,6 +174,12 @@ public final class CgSubtitles {
     @Nullable
     public String speaker() {
         return text() == null ? null : shown.speaker;
+    }
+
+    /** How the line shown is drawn; null for Unreal's canvas look, or no line. */
+    @Nullable
+    public CgSubtitleStyle style() {
+        return text() == null ? null : shown.style;
     }
 
     /** The sound whose line is shown; 0 for none. */
