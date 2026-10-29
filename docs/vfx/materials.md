@@ -131,7 +131,8 @@ void vertex(out v2f o) {
   `fallback` where its emitter sets none: Unreal's DynamicParameter node and its defaults. It reads `p`, so a fragment
   stage gets it from what its vertex stage passes on. A renderer with `dynamic_parameter_index: first` (Cascade's
   factories; `dynamicParameterIndex(CgVfxDynamicParameterIndex.FIRST)` in Java) reads parameter 0 at every index, and
-  (1, 1, 1, 1) where its emitter sets none, whatever the fallback:
+  (1, 1, 1, 1) where its emitter sets none, whatever the fallback; on a sprite renderer of a `spawning: cascade_gpu`
+  emitter every index reads (0, 0, 0, 0), as Cascade's GPU sprites carry none:
 
   ```yaml
   renderers:

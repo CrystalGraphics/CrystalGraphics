@@ -29,6 +29,7 @@ import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxSpriteRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMacroUv;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
 import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import com.crystalgraphics.vfx.look.CgVfxFlipbook;
@@ -228,7 +229,12 @@ final class CgVfxMaterials {
         if (placed.slotRenderer() == null && (renderer instanceof CgVfxSpriteRendererProperties
                 || renderer instanceof CgVfxMeshRendererProperties)) {
             int bits = drawnBits(placed.emitter());
-            if (renderer.common().dynamicParameterIndex() == CgVfxDynamicParameterIndex.FIRST) bits |= 128;
+            if (renderer.common().dynamicParameterIndex() == CgVfxDynamicParameterIndex.FIRST) {
+                bits |= 128;
+                // Cascade's GPU sprite factory sets no dynamic parameter, so its materials read 0
+                // (ParticleGPUSpriteVertexFactory.ush; MaterialTemplate.ush's PARTICLE_FACTORY branch).
+                if (renderer instanceof CgVfxSpriteRendererProperties && placed.emitter().spawning() == CgVfxSpawning.CASCADE_GPU) bits |= 256;
+            }
             if (bits != 0) {
                 material.requireRow(DRAWN, who);
                 rowValues.put(DRAWN, (float) bits);
@@ -404,7 +410,8 @@ final class CgVfxMaterials {
 
     /**
      * The factory's {@code _cg_Drawn} for {@code emitter}'s renderers: its dynamic parameter slots a bit each, then 32
-     * where it sets a sub-image index and 64 a camera offset; the renderer adds 128 for every index reading the first.
+     * where it sets a sub-image index and 64 a camera offset; the renderer adds 128 for every index reading the first,
+     * and 256 where those are Cascade's GPU sprites, which read 0.
      */
     private static int drawnBits(CgVfxEmitter emitter) {
         int bits = CgVfxGpuEmitter.drawnMask(emitter) & 15;

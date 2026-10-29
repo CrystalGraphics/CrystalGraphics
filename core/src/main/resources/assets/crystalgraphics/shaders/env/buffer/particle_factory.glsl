@@ -79,10 +79,11 @@ vec4 _cg_macro_uv(vec4 system, vec4 override) {
 #define cg_dynamic_parameter(p, i, d) ((((p).dynamics >> (i)) & 1) != 0 ? (p).dynamicParameters[i] : (d))
 
 // The renderer's _cg_Drawn: bits 0 to 3 the dynamic parameters its particles carry, then the sprite's sub-image index
-// and camera offset, then every index reading the first.
+// and camera offset, then every index reading the first, then Cascade's GPU sprites, whose every index reads 0.
 #define _CG_DRAWN_SUB_IMAGE 32
 #define _CG_DRAWN_CAMERA_OFFSET 64
 #define _CG_DRAWN_FIRST_DYNAMIC 128
+#define _CG_DRAWN_GPU_SPRITES 256
 
 #define cg_material_project(v) (cg_ProjMatrix * cg_ViewMatrix * vec4((v).worldPosition, 1.0))
 
@@ -110,8 +111,10 @@ void _cg_dynamics(int n, int drawn, inout CgMaterialParticle p) {
     }
     if ((drawn & _CG_DRAWN_FIRST_DYNAMIC) != 0) {
         // Cascade's factories (Unreal 4's GetDynamicParameter, MeshParticleVertexFactory.ush): every index reads the
-        // one parameter, (1, 1, 1, 1) where the emitter has none.
-        vec4 first = (p.dynamics & 1) != 0 ? p.dynamicParameters[0] : vec4(1.0);
+        // one parameter, (1, 1, 1, 1) where the emitter has none (ParticleHelper.h's null buffer); 0 under the GPU
+        // sprite factory, which sets none at all (ParticleGPUSpriteVertexFactory.ush).
+        vec4 first = (drawn & _CG_DRAWN_GPU_SPRITES) != 0 ? vec4(0.0)
+                : (p.dynamics & 1) != 0 ? p.dynamicParameters[0] : vec4(1.0);
         p.dynamicParameters[0] = p.dynamicParameters[1] = p.dynamicParameters[2] = p.dynamicParameters[3] = first;
         p.dynamics = 15;
     }

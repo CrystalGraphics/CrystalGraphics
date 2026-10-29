@@ -17,6 +17,8 @@ package com.crystalgraphics.vfx.particle.renderer;
  *   <li>Only sprite and mesh renderers read it; the others have no dynamic parameters.</li>
  *   <li>Under {@link #FIRST}, an emitter carrying no dynamic parameters reads (1, 1, 1, 1) at every index, not the
  *       material's default.</li>
+ *   <li>Under {@link #FIRST}, a sprite renderer of a {@code spawning: cascade_gpu} emitter reads (0, 0, 0, 0) at every
+ *       index, whatever the emitter carries: Cascade's GPU sprites have none.</li>
  * </ul>
  */
 public enum CgVfxDynamicParameterIndex {
