@@ -68,7 +68,7 @@ modules:
       { name: offset, type: vec3, quantity: offset, by: [loop], default: [0, 0, 0] },
       { name: space, type: enum, values: [emitter, world], default: emitter },
       { name: mesh, type: mesh, forms: [data], visible_when: { shape: mesh } }, { name: vertices, type: bool, default: false, visible_when: { shape: mesh } },
-      { name: add_velocity, type: struct, default: { outward: 0 } } ] }
+      { name: add_velocity, type: struct, default: { outward: 0, radial: false } } ] }
   - { id: socket_location, groups: [particle_spawn], order: spawn_place, unreal: { niagara: SkeletalMeshLocation, cascade: [LocationBoneSocket] }, inputs: [
       { name: points, type: array, default: [] }, { name: source, type: enum, values: [sockets, bones], default: sockets },
       { name: mesh, type: struct, forms: [constant, binding], default: { bind: user.BoneSocketActor } },

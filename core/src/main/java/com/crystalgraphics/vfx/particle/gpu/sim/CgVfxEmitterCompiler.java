@@ -705,7 +705,7 @@ public final class CgVfxEmitterCompiler {
                     float speed = @SPEED@;
                     p.position = at + step_orient(step_rotate(turn, place + outward * front), n);
                     p.previous = p.position;
-                    p.velocity = step_orient(step_rotate(turn, dir), n) * speed@VELOCITY@;
+                    p.velocity = step_orient(step_rotate(turn, dir), n) * speed@VELOCITY@@SHAPE_VELOCITY@;
                     p.age = 0.0;
                     {
                         // Its life and size rolled as spawn lifeK's: a Cascade trail's first particle's, every one of its
@@ -780,6 +780,11 @@ public final class CgVfxEmitterCompiler {
                 .replace("@OFFSET@", spawnValue(shape, CgVfxSpawnInput.OFFSET, null, "step_vector(row, inst, 9).xyz", ""))
                 .replace("@VELOCITY@", shape.spawnFormOf(CgVfxSpawnInput.VELOCITY) < 0 ? ""
                         : " + step_orient(step_rotate(turn, " + spawnValue(shape, CgVfxSpawnInput.VELOCITY, null, null, "") + "), n)")
+                // Cascade's location bVelocity: the place from the shape's middle times a rate, its axis left out
+                // where s4.z says radial (ParticleModules_Location.cpp:1116-1132, 1366-1376).
+                .replace("@SHAPE_VELOCITY@", shape.spawnFormOf(CgVfxSpawnInput.SHAPE_VELOCITY) < 0 ? ""
+                        : "\n                            + step_orient(step_rotate(turn, step_rotate(q, local * vec3(1.0, 1.0 - s4.z, 1.0)) * "
+                        + spawnValue(shape, CgVfxSpawnInput.SHAPE_VELOCITY, null, null, "") + "), n)")
                 .replace("@COLOR@", colorStart(shape))
                 .replace("@HALF_HEIGHT@", spawnValue(shape, CgVfxSpawnInput.CYLINDER_HEIGHT, null, "step_vector(row, inst, 7).z", "0.5 * "))
                 .replace("@SCALE@", spawnValue(shape, CgVfxSpawnInput.MESH_SCALE, null, "vec3(1.0)", ""))

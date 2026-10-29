@@ -360,6 +360,13 @@ public final class CgVfxEmitterAssets {
         if (q[0] != 0f || q[1] != 0f || q[2] != 0f || q[3] != 1f) in.put("rotation", list(q[0], q[1], q[2], q[3]));
         if (e.spawnForm(CgVfxSpawnInput.OFFSET) != null) in.put("offset", e.spawnForm(CgVfxSpawnInput.OFFSET).value());
         else if (o[0] != 0f || o[1] != 0f || o[2] != 0f) in.put("offset", list(o[0], o[1], o[2]));
+        CgVfxSpawnForm outward = e.spawnForm(CgVfxSpawnInput.SHAPE_VELOCITY);
+        if (outward != null || s.radial) {
+            Map<String, Object> velocity = new LinkedHashMap<>();
+            velocity.put("outward", outward != null ? outward.value() : 0.0);
+            if (s.radial) velocity.put("radial", true);
+            in.put("add_velocity", velocity);
+        }
         return in.size() == 1 && "point".equals(in.get("shape")) ? null : in;
     }
 
@@ -1544,6 +1551,17 @@ public final class CgVfxEmitterAssets {
             default -> throw new IllegalArgumentException(name + ": shape_location's shape " + shape + " is not read yet");
         }
         s.hemisphere = Boolean.TRUE.equals(in.get("hemisphere"));
+        s.radial = false;
+        if (in.get("add_velocity") instanceof Map<?, ?> v) {
+            Object outward = v.get("outward");
+            if (outward != null && !(outward instanceof Number n && n.floatValue() == 0f)) {
+                b.spawnForm(valueForm(CgVfxSpawnInput.SHAPE_VELOCITY, element, outward));
+            }
+            s.radial = Boolean.TRUE.equals(v.get("radial"));
+        } else if (in.get("add_velocity") != null) {
+            throw new IllegalArgumentException(name + ": shape_location's add_velocity " + in.get("add_velocity")
+                    + " is not read yet: { outward, radial }");
+        }
         s.arc = in.get("arc") instanceof Number a ? a.floatValue() : CgVfxSpawnShape.TAU;
         s.ordered = in.get("ordered") instanceof Number n ? n.intValue() : 0;
         Object r = in.get("rotation");

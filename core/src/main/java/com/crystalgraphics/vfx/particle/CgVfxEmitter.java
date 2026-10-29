@@ -1411,6 +1411,22 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
+        /**
+         * Adds its place from the shape's middle times {@code rate} a second to each launch: Cascade's location
+         * primitive {@code bVelocity}, so a sphere's particles leave faster the farther out they are born. {@code radial}
+         * leaves out the axis (a cylinder's {@code RadialVelocity}). {@code rate} is a number or a value form by the
+         * loop's seconds.
+         *
+         * <pre>{@code
+         * .shape(CgSphere.of(0.12)).surface().shapeVelocity(Map.of("range", List.of(2, 5)), false)
+         * }</pre>
+         */
+        public Builder shapeVelocity(Object rate, boolean radial) {
+            spawnForm(CgVfxSpawnForm.of(CgVfxSpawnInput.SHAPE_VELOCITY, "shape", CgVfxSpawnInput.SHAPE_VELOCITY.input(), rate));
+            spawn.radial = radial;
+            return this;
+        }
+
         /** Launched toward the shape's middle: a gathering, an implosion. */
         public Builder inward() {
             spawn.mode = CgVfxSpawnShape.INWARD;

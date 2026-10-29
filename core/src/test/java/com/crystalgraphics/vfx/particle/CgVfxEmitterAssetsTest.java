@@ -266,6 +266,25 @@ public class CgVfxEmitterAssetsTest {
         assertArrayEquals(new float[]{1f, 50f, 40f}, roll.to(), 0f);
     }
 
+    /** shape_location's add_velocity is read into the launch, not dropped, and written back as it was. */
+    @Test
+    public void aShapesAddVelocityIsReadAndWrittenBack() {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 4));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0))));
+        tree.put("particle_spawn", List.of(Map.of("id", "place", "module", "crystalgraphics:shape_location",
+                "inputs", Map.of("shape", "cylinder", "add_velocity", Map.of("outward", Map.of("range", List.of(2.0, 5.0)), "radial", true)))));
+        CgVfxEmitter e = CgVfxEmitterAssets.compile("flung", tree, null);
+        assertEquals(Map.of("range", List.of(2.0, 5.0)), e.spawnForm(CgVfxSpawnInput.SHAPE_VELOCITY).value());
+        assertTrue(e.spawn.given().radial);
+        Map<?, ?> place = (Map<?, ?>) ((List<?>) CgVfxEmitterAssets.write(e).get("particle_spawn")).stream()
+                .filter(m -> "crystalgraphics:shape_location".equals(((Map<?, ?>) m).get("module"))).findFirst().orElseThrow();
+        assertEquals(Map.of("outward", Map.of("range", List.of(2.0, 5.0)), "radial", true),
+                ((Map<?, ?>) place.get("inputs")).get("add_velocity"));
+    }
+
     /** VectorFieldLocal's RelativeScale3D stretches the field's box and its centre about its origin, never its vectors. */
     @Test
     public void aVectorFieldsRelativeScaleStretchesItsVolumeAlone() {

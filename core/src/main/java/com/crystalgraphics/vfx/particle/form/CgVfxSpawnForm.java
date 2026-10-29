@@ -8,6 +8,9 @@ import java.util.Map;
 import com.crystalgraphics.asset.kind.CgModuleTypes;
 import com.crystalgraphics.object.CgProperty;
 import com.crystalgraphics.object.CgPropertyMeta;
+import com.crystalgraphics.object.CgType;
+import com.crystalgraphics.object.CgTypes;
+import com.crystalgraphics.object.CgValueType;
 
 /**
  * One spawn value an emitter gives in a form (a pick, a curve by random, id or the loop's seconds) rather than a plain
@@ -36,12 +39,21 @@ public record CgVfxSpawnForm(CgVfxSpawnInput target, String element, String inpu
     private static final String NS = "crystalgraphics:";
     /** Samples a skewed size's curve takes. */
     private static final int SKEW_SAMPLES = 17;
+    /**
+     * {@code shape_location}'s {@code add_velocity}: the spec declares it a struct and names its members in
+     * {@code modules.md}, so they are declared here.
+     */
+    private static final CgType ADD_VELOCITY = CgTypes.struct(NS + "shape_location.add_velocity")
+            .property("outward", CgValueType.FLOAT)
+            .property("radial", CgValueType.BOOL)
+            .register();
 
     /** {@code value} for {@code input} of the element {@code element}, {@code target}'s module, compiled against its spec declaration. */
     public static CgVfxSpawnForm of(CgVfxSpawnInput target, String element, String input, Object value) {
         String module = NS + target.module();
         CgProperty property = null;
-        for (CgProperty p : CgModuleTypes.builtIn().get(module).inputs().properties()) if (p.name().equals(input)) property = p;
+        if (target == CgVfxSpawnInput.SHAPE_VELOCITY) property = ADD_VELOCITY.property(input);
+        else for (CgProperty p : CgModuleTypes.builtIn().get(module).inputs().properties()) if (p.name().equals(input)) property = p;
         if (property == null) throw new IllegalArgumentException(module + " has no input " + input);
         // A start Look rolls at draw is rolled at birth once stored: one roll a particle either way.
         CgPropertyMeta.Rolls rolls = property.meta().rolls() == CgPropertyMeta.Rolls.DRAW ? CgPropertyMeta.Rolls.PARTICLE

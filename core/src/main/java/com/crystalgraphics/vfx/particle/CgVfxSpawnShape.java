@@ -80,12 +80,13 @@ final class CgVfxSpawnShape {
     }
 
     /**
-     * Its six vec4s from the parameter row's fifth: (cone's inner and outer half angle, 0, direction mode), (direction
-     * xyz, 0), (kind, placement | 4 for the upper half, arc, ordered), (numbers by kind), rotation, (offset xyz, 0).
+     * Its six vec4s from the parameter row's fifth: (cone's inner and outer half angle, 1 where its velocity from the
+     * shape is radial, direction mode), (direction xyz, 0), (kind, placement | 4 for the upper half, arc, ordered),
+     * (numbers by kind), rotation, (offset xyz, 0).
      */
     void write(CgVfxWords out) {
         Builder s = given;
-        out.vec4(s.innerSpread, s.spread, 0f, s.mode)
+        out.vec4(s.innerSpread, s.spread, s.radial ? 1f : 0f, s.mode)
            .vec4(s.dirX, s.dirY, s.dirZ, 0f)
            .vec4(s.kind, s.placement | (s.hemisphere ? 4 : 0), s.arc, s.ordered);
         if (s.kind == MESH) {
@@ -156,6 +157,8 @@ final class CgVfxSpawnShape {
 
         int kind = POINT, placement = VOLUME, ordered, mode = OUTWARD;
         boolean hemisphere;
+        /** Its velocity from the shape (CgVfxSpawnInput.SHAPE_VELOCITY) leaves out the axis: Cascade's RadialVelocity. */
+        boolean radial;
         /** Its numbers by kind: a sphere's inner and outer radius, a box's half extents, a cylinder's inner and outer
          * radius and half height, a cone's range and half angle, a capsule's half length and radius, a mesh's scale, a
          * triangle's height, apex angle (radians) and thickness. */
@@ -334,6 +337,7 @@ final class CgVfxSpawnShape {
             ordered = s.ordered;
             mode = s.mode;
             hemisphere = s.hemisphere;
+            radial = s.radial;
             a = s.a;
             b = s.b;
             c = s.c;

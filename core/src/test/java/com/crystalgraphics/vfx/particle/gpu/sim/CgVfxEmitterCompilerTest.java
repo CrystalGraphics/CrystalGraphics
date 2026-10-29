@@ -22,6 +22,7 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
@@ -126,6 +127,18 @@ public class CgVfxEmitterCompilerTest {
         // A rate's periods count from its window's start, from birth unless given.
         assertTrue(glsl.contains("floor(((p.age - step_param(row + " + (shape.eventsAt() + CgVfxShape.EVENT_FROM)
                 + ")[1]) - s.dt) / step_param(row + " + shape.eventsAt() + ")[1])"));
+        CgVfxEmitterCompiler.compile(shape).kernel("Step").check();
+    }
+
+    /** Cascade's location bVelocity: the birth's place from the shape's middle times a rate, rolled per particle. */
+    @Test
+    public void aShapesVelocityAddsItsPlaceTimesARate() {
+        CgVfxEmitter flung = CgVfxEmitter.builder("flung").state(CgVfxEmitterState.ONCE).capacity(64).burst(0f, 64)
+                .life(1f, 2f).shape(CgSphere.of(0.12)).surface().shapeVelocity(Map.of("range", List.of(2.0, 5.0)), false)
+                .build();
+        CgVfxShape shape = CgVfxShape.of(flung);
+        assertTrue(CgVfxEmitterCompiler.source(shape).contains("step_rotate(q, local * vec3(1.0, 1.0 - s4.z, 1.0)) * "));
+        assertTrue(!CgVfxEmitterCompiler.source(CgVfxShape.of(EVERY_KIND)).contains("1.0 - s4.z"));
         CgVfxEmitterCompiler.compile(shape).kernel("Step").check();
     }
 

@@ -29,6 +29,10 @@ package com.crystalgraphics.vfx.particle.form;
  *       payload, taken at birth ({@code ParticleModules_Orbit.cpp:111-165}), which Look turns into the place drawn.</li>
  *   <li>{@link #SPRITE_ROTATION_RATE} is the launch's spin rate in radians a second, read by the emitter's time as
  *       Cascade's {@code RotationRate} reads its distribution ({@code ParticleModules.cpp:1908}).</li>
+ *   <li>{@link #SHAPE_VELOCITY} is {@code shape_location}'s {@code add_velocity.outward}: a rate a second, the birth's
+ *       place from the shape's middle times it added to the launch's velocity, without the axis where the shape says
+ *       {@code radial} (Cascade's {@code bVelocity}, {@code ParticleModules_Location.cpp:1116-1132} and
+ *       {@code 1366-1376}). Unitless: the place carries the length.</li>
  *   <li>{@link #scales()} says whether {@code CgVfxEmitter.scaled} scales it: lengths and speeds do, a lifetime or an
  *       angle does not.</li>
  * </ul>
@@ -52,7 +56,8 @@ public enum CgVfxSpawnInput {
     ORBIT_OFFSET("orbit", "offset", 3, -1, true),
     ORBIT_ROTATION("orbit", "rotation", 3, -1, false),
     ORBIT_RATE("orbit", "rotation_rate", 3, -1, false),
-    SPRITE_ROTATION_RATE("sprite_rotation_rate", "rate", 1, -1, false);
+    SPRITE_ROTATION_RATE("sprite_rotation_rate", "rate", 1, -1, false),
+    SHAPE_VELOCITY("shape_location", "outward", 1, -1, false);
 
     private final String module, input;
     private final int components, word;
@@ -71,7 +76,10 @@ public enum CgVfxSpawnInput {
         return module;
     }
 
-    /** Its input's name; null for {@link #RADIUS}, which is the shape's own ({@code sphere_radius}, {@code cylinder_radius}). */
+    /**
+     * Its input's name; null for {@link #RADIUS}, which is the shape's own ({@code sphere_radius}, {@code cylinder_radius});
+     * for {@link #SHAPE_VELOCITY} the member of {@code shape_location}'s {@code add_velocity} struct.
+     */
     public String input() {
         return input;
     }

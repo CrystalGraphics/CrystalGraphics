@@ -238,6 +238,7 @@ file alone is the one that wrote it:
 | `state`, `rate` (and its scale curve), `burst`, `ratePerBlock`, `maxStep` | `emitter_update`: `emitter_state`, `spawn_rate { rate, scale: { curve, by: loop } }`, `spawn_burst`, `spawn_per_unit` |
 | `life`, `heat`, `size`, `color`, `scale` | `initialize_particle`: `lifetime`, `heat`, `sprite_size`, `color`, `mesh_scale`. A size's skew is `sprite_size` as a curve by a random draw (below) |
 | `shape` and its placement, `pointing`, `at`, `mesh`, `entity` | `shape_location`: the shape's own inputs, `surface_only` (with `surface_thickness` for a shell or a ring), `edge_only`, `hemisphere`, `arc`, `ordered`, `rotation` (a quaternion), `offset`. A sweep is the radius as a curve by loop (below) |
+| `shapeVelocity(rate, radial)` | `shape_location`'s `add_velocity: { outward, radial }`: Cascade's location `bVelocity`, the birth's place from the shape's middle times `outward` a second (a rate, never converted: a number, a range or a curve by loop), its axis left out where `radial` |
 | `outward`, `inward`, `direction`, `speed`, `inherit` | `add_velocity`: `mode` (`outward`, `inward`, `in_cone` with `cone_axis`, `cone_angle` and `inner_cone`, Unreal's apex angles) |
 | `size(curve)`, `scaleOverLife`, `colorOverLife`, `opacity`, `intensityOverLife` | `scale_sprite_size`, `scale_mesh_size`, `scale_color { scale, alpha, intensity }`, curves by age |
 | `spin`, `rasterize` | `sprite_rotation_rate` (its rate `crystalgraphics:random_sign` of a range), `grid_rasterize { density }` |
