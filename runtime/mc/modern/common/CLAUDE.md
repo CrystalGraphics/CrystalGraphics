@@ -36,8 +36,8 @@ has no world pass at all.
 | Fabric | node mixin `FrameEndHook`, `GameRenderer.render` TAIL — Fabric has no frame event |
 
 On 26.1+ `onFrame` is also **the last point to draw over the host's picture**: the GUI is extracted
-before the level renders, so anything painted from a GUI hook lands under the world. CrystalGUI paints
-its desktop and HUD from there on those nodes.
+before the level renders, so anything painted from a GUI hook lands under the world. The GUI stages (`HUD`,
+`SCREEN`) fire there on those nodes, before `onFrame`'s listeners: the hooks only note that they ran.
 
 ## 26.1+: the main target, and 26.2 under Vulkan
 

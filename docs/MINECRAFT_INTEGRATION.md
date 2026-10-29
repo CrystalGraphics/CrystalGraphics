@@ -234,6 +234,18 @@ the world's depth is gone once the graph has run, and a depth reader (the showca
 | Fabric 1.16.5–1.21.8 · 1.21.9–1.21.11 | `WorldRenderEvents.AFTER_ENTITIES` · `BEFORE_TRANSLUCENT` | `LAST` · node mixin `TransparentPassHook` (`renderLevel`/`method_22710` tail) |
 | Fabric 26.1+ | `LevelRenderEvents.BEFORE_TRANSLUCENT_TERRAIN` | node mixin `TransparentPassHook`: `renderLevel` tail on 26.1.2, `WorldBorderRenderer.render` return on 26.2, `executeOit`/`executeClassicTransparency` tail on 26.3 |
 
+**The GUI stages** (`CgRenderStage.HUD`, `SCREEN`) fire through `LifecycleModern.hud()`/`screen()`, once a frame
+each; from 26.1 they are noted at the hook and fired at the frame end, since 26.1 extracts the GUI before the level:
+
+| Loader | HUD | Screen |
+|---|---|---|
+| Forge 1.13.2–1.18.2 | `RenderGameOverlayEvent.Post`, `ElementType.ALL` | `GuiScreenEvent`/`ScreenEvent.DrawScreenEvent.Post` |
+| Forge 1.19–1.20.4 | `RenderGuiEvent.Post` | `ScreenEvent.Render.Post` |
+| Forge 1.20.6–1.21.5 · 1.21.6–1.21.7 · 1.21.8+ | a layer, `AddGuiOverlayLayersEvent` · node mixin `HudHook` (`Gui.render` TAIL) · a layer | `ScreenEvent.Render.Post` |
+| NeoForge | `RenderGuiEvent.Post` | `ScreenEvent.Render.Post` |
+| Fabric 1.14.4 · 1.15.2 · 1.16.5+ · 26.1+ | node mixin `HudHook` · `HudRenderCallback` · the same · `HudElementRegistry` | none · none · `ScreenEvents.afterRender` · `afterExtract` |
+| Legacy Forge, 1.7.10 | `RenderGameOverlayEvent.Post`, `ALL` (`OverlayStagesLegacy`, `OverlayStages1710`) | `GuiScreenEvent.DrawScreenEvent.Post` |
+
 The exact version splits are in each loader branch's `AGENTS.md`. **The frame ends after the GUI**, from
 a loader frame event or, on Fabric, a mixin — `runtime/mc/modern/common/CLAUDE.md` § *The frame end*,
 which also covers 26.1's own main-target framebuffer and 26.2 under Vulkan.

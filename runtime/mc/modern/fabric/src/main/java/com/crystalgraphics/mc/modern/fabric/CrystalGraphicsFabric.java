@@ -20,6 +20,14 @@ import net.minecraft.client.Minecraft;
 *///?} elif >=1.16 {
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 //?}
+//? if >=26.1 {
+/*import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+*///?} elif >=1.15 {
+import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
+//?}
+//? if >=1.16 {
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+//?}
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
 import net.minecraft.resources.ResourceLocation;
@@ -66,6 +74,7 @@ public final class CrystalGraphicsFabric implements VariantEntry {
         static void register() {
             registerReload();
             registerRenderFrame();
+            registerGui();
             registerShutdown();
             // The world events, once a client tick and as entities join and leave the client level.
             ClientTickEvents.END_CLIENT_TICK.register(client -> LifecycleModern.clientTick());
@@ -119,6 +128,28 @@ public final class CrystalGraphicsFabric implements VariantEntry {
             /*// Fabric API for 1.15 has no WorldRenderEvents: a node mixin runs both passes.
             // @see com.crystalgraphics.mc.modern.fabric.mixin.WorldPassHook
             *///?}
+        }
+
+        // -- The GUI stages ---------------------------------------------------------
+
+        private static void registerGui() {
+            // The HUD once a frame: Fabric API for 26.1 replaced the callback with HUD elements (one, added last, so on
+            // top); 1.15's callback has the tick delta alone; 1.14's API has none, and mixin/HudHook fires it there.
+            //? if >=26.1 {
+            /*HudElementRegistry.addLast(ResourceIds.of(MODID, "hud"), (graphics, delta) -> LifecycleModern.hud());
+            *///?} elif >=1.16 {
+            HudRenderCallback.EVENT.register((graphics, tickDelta) -> LifecycleModern.hud());
+            //?} elif >=1.15 {
+            /*HudRenderCallback.EVENT.register(tickDelta -> LifecycleModern.hud());
+            *///?}
+            // Each screen once it has drawn. Fabric API below 1.16 has no screen events: no SCREEN stage there.
+            //? if >=26.1 {
+            /*ScreenEvents.AFTER_INIT.register((client, screen, width, height) ->
+                    ScreenEvents.afterExtract(screen).register((s, g, mx, my, td) -> LifecycleModern.screen()));
+            *///?} elif >=1.16 {
+            ScreenEvents.AFTER_INIT.register((client, screen, width, height) ->
+                    ScreenEvents.afterRender(screen).register((s, g, mx, my, td) -> LifecycleModern.screen()));
+            //?}
         }
 
         // -- Shutdown ---------------------------------------------------------------

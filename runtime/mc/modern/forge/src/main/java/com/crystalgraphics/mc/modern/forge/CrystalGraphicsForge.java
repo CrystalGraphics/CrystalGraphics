@@ -77,6 +77,22 @@ import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.client.event.RenderLivingEvent;
 //?}
 import net.minecraftforge.client.event.RenderHandEvent;
+//? if >=1.21.8 {
+/*import net.minecraftforge.client.event.AddGuiOverlayLayersEvent;
+*///?} elif >=1.21.6 {
+/*// Forge 56-57: no HUD event, the HudHook node mixin
+*///?} elif >=1.20.6 {
+/*import net.minecraftforge.client.event.AddGuiOverlayLayersEvent;
+*///?} elif >=1.19 {
+import net.minecraftforge.client.event.RenderGuiEvent;
+//?} else {
+/*import net.minecraftforge.client.event.RenderGameOverlayEvent;
+*///?}
+//? if >=1.18 {
+import net.minecraftforge.client.event.ScreenEvent;
+//?} else {
+/*import net.minecraftforge.client.event.GuiScreenEvent;
+*///?}
 //? if >=1.17 {
 import net.minecraftforge.fml.CrashReportCallables;
 //?} else {
@@ -274,6 +290,23 @@ public final class CrystalGraphicsForge implements VariantEntry {
             //? if >=1.21.3 {
             /*CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN);
             *///?}
+            // The GUI stages: the HUD once a frame, from a layer where Forge offers one (Forge 56-57 offer none, and the
+            // HudHook node mixin fires it), and a screen once it has drawn.
+            //? if >=26.1 {
+            /*AddGuiOverlayLayersEvent.BUS.addListener(Events::onAddGuiLayers);
+            ScreenEvent.Render.Post.BUS.addListener(Events::onScreenRender);
+            *///?} elif >=1.21.8 {
+            /*AddGuiOverlayLayersEvent.getBus(context.getModBusGroup()).addListener(Events::onAddGuiLayers);
+            ScreenEvent.Render.Post.BUS.addListener(Events::onScreenRender);
+            *///?} elif >=1.21.6 {
+            /*ScreenEvent.Render.Post.BUS.addListener(Events::onScreenRender);
+            *///?} elif >=1.20.6 {
+            /*context.getModEventBus().addListener(Events::onAddGuiLayers);
+            MinecraftForge.EVENT_BUS.addListener(Events::onScreenRender);
+            *///?} else {
+            MinecraftForge.EVENT_BUS.addListener(Events::onRenderGui);
+            MinecraftForge.EVENT_BUS.addListener(Events::onScreenRender);
+            //?}
             // Forge 53 (1.21.3) removed the render-stage event; from there the passes are a mixin's.
             // @see com.crystalgraphics.mc.modern.forge.mixin.OpaquePassHook
             //? if >=1.21.3 {
@@ -462,6 +495,44 @@ public final class CrystalGraphicsForge implements VariantEntry {
                 else NetworkModern.clientDisconnected();
             }
             LifecycleModern.clientTick();
+        }
+        *///?}
+
+        // RenderGuiOverlayEvent is posted per vanilla element (hotbar, crosshair, chat...), and below 1.19 the overlay
+        // event too, ALL being the once-a-frame one.
+        //? if >=1.21.8 {
+        /*private static void onAddGuiLayers(AddGuiOverlayLayersEvent event) {
+            event.getLayeredDraw().add(ResourceIds.of(CrystalGraphics.MODID, "hud"),
+                    (graphics, partialTick) -> LifecycleModern.hud());
+        }
+        *///?} elif >=1.21.6 {
+        /*// Forge 56-57: the HudHook node mixin
+        *///?} elif >=1.20.6 {
+        /*private static void onAddGuiLayers(AddGuiOverlayLayersEvent event) {
+            event.getLayeredDraw().add(ResourceIds.of(CrystalGraphics.MODID, "hud"),
+                    (graphics, partialTick) -> LifecycleModern.hud());
+        }
+        *///?} elif >=1.19 {
+        private static void onRenderGui(RenderGuiEvent.Post event) {
+            LifecycleModern.hud();
+        }
+        //?} else {
+        /*private static void onRenderGui(RenderGameOverlayEvent.Post event) {
+            if (event.getType() == RenderGameOverlayEvent.ElementType.ALL) LifecycleModern.hud();
+        }
+        *///?}
+
+        //? if >=1.19 {
+        private static void onScreenRender(ScreenEvent.Render.Post event) {
+            LifecycleModern.screen();
+        }
+        //?} elif >=1.18 {
+        /*private static void onScreenRender(ScreenEvent.DrawScreenEvent.Post event) {
+            LifecycleModern.screen();
+        }
+        *///?} else {
+        /*private static void onScreenRender(GuiScreenEvent.DrawScreenEvent.Post event) {
+            LifecycleModern.screen();
         }
         *///?}
 

@@ -142,6 +142,51 @@ public final class LifecycleModern {
     }
 
     /**
+     * Minecraft has drawn its HUD: fire {@link CgRenderStage#HUD}. Once a frame, from a hook that fires once (never
+     * Forge's per-element overlay event).
+     *
+     * <pre>{@code
+     * // Fabric: HudRenderCallback (HUD elements from 26.1); Forge: RenderGuiEvent.Post, a GUI layer from 1.20.6;
+     * // NeoForge: RenderGuiEvent.Post
+     * LifecycleModern.hud();
+     * }</pre>
+     */
+    public static void hud() {
+        overlay(CgRenderStage.HUD);
+    }
+
+    /** A screen has drawn: fire {@link CgRenderStage#SCREEN}. From each loader's screen-render event, after it. */
+    public static void screen() {
+        overlay(CgRenderStage.SCREEN);
+    }
+
+    /** 26.1+ GUI stages owed to the frame end. */
+    private static boolean hudAtFrameEnd, screenAtFrameEnd;
+
+    private static void overlay(CgRenderStage stage) {
+        // 26.1 extracts the GUI before it renders the level: drawn from its hooks, a GUI stage lands under the world.
+        //? if >=26.1 {
+        /*if (stage == CgRenderStage.HUD) hudAtFrameEnd = true;
+        else screenAtFrameEnd = true;
+        *///?} else {
+        fireOverlay(stage);
+        //?}
+    }
+
+    private static void fireOverlay(CgRenderStage stage) {
+        if (!canRender()) return;
+        Minecraft mc = Minecraft.getInstance();
+        CgGL.fromHost();
+        try {
+            int mainFbo = bindMainTarget(mc);
+            stage.fireOverlay(Windows.of(mc).getWidth(), Windows.of(mc).getHeight(),
+                    (float) Windows.of(mc).getGuiScale(), mainFbo);
+        } finally {
+            CgGL.toHost();
+        }
+    }
+
+    /**
      * The level's view and projection, from a node mixin at the head of {@code LevelRenderer.renderLevel} on
      * 1.21.6–1.21.11: the only place Minecraft hands the projection over on the CPU there.
      */
@@ -173,6 +218,15 @@ public final class LifecycleModern {
      */
     public static void frameEnd() {
         if (!canRender()) return;
+        // Before onFrame's listeners, which draw over everything (CrystalGUI's desktop on 26.1+).
+        if (hudAtFrameEnd) {
+            hudAtFrameEnd = false;
+            fireOverlay(CgRenderStage.HUD);
+        }
+        if (screenAtFrameEnd) {
+            screenAtFrameEnd = false;
+            fireOverlay(CgRenderStage.SCREEN);
+        }
         FrameHooks.endFrame();
     }
 

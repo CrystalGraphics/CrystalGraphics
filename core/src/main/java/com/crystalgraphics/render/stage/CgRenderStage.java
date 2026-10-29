@@ -13,6 +13,8 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.render.graph.CgRehearsal;
 
+import org.joml.Matrix4f;
+
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -81,6 +83,23 @@ public final class CgRenderStage {
 
     /** Translucent terrain and particles are drawn. */
     public static final CgRenderStage WORLD_TRANSPARENT = define("crystalgraphics:world.transparent");
+
+    /**
+     * Over the in-game HUD, once it has drawn: under any screen. A GUI stage: its frame's camera is orthographic over
+     * the GUI's logical pixels, origin top left ({@link #fireOverlay}). Not fired while the HUD is hidden (F1).
+     *
+     * <pre>{@code
+     * CgRenderStage.HUD.register(0, frame -> frame.callback("mymod:badge", this::drawBadge));
+     * }</pre>
+     */
+    public static final CgRenderStage HUD = define("crystalgraphics:hud");
+
+    /** Over a screen, once it has drawn: an inventory, a menu, another mod's. A GUI stage, as {@link #HUD}. */
+    public static final CgRenderStage SCREEN = define("crystalgraphics:screen");
+
+    /** The GUI stages' projection, refilled each firing. Render thread. */
+    private static final Matrix4f OVERLAY_PROJECTION = new Matrix4f();
+    private static final Matrix4f OVERLAY_VIEW = new Matrix4f();
 
     /** A renderer registered on a stage; closing it unregisters it. */
     @FunctionalInterface
@@ -245,6 +264,22 @@ public final class CgRenderStage {
         } finally {
             CgGL.toHost();
         }
+    }
+
+    /**
+     * Fills this stage's frame as a GUI's and fires it: the world's partial tick, the host's {@code mainFramebuffer} of
+     * {@code width x height} device pixels, and a camera orthographic over {@code width / scale x height / scale}
+     * logical pixels, origin top left. What a host's GUI hook calls for {@link #HUD} and {@link #SCREEN}.
+     *
+     * <pre>{@code
+     * CgRenderStage.HUD.fireOverlay(window.getWidth(), window.getHeight(), (float) window.getGuiScale(), mainFbo);
+     * }</pre>
+     */
+    public void fireOverlay(int width, int height, float scale, int mainFramebuffer) {
+        float logical = Math.max(1e-3f, scale);
+        host.set(WORLD_OPAQUE.host.partialTick(), width, height, mainFramebuffer).view().set(0d, 0d, 0d,
+                OVERLAY_VIEW.identity(), OVERLAY_PROJECTION.setOrtho(0f, width / logical, height / logical, 0f, -1f, 1f));
+        fire();
     }
 
     /**

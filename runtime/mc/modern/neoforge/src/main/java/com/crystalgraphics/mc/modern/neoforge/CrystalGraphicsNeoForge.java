@@ -53,6 +53,8 @@ import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.client.event.RenderGuiEvent;
+import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.client.event.ViewportEvent;
 import net.neoforged.neoforge.client.event.RenderHandEvent;
 //? if >=1.20.6 {
@@ -116,6 +118,9 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             NeoForge.EVENT_BUS.addListener(Events::onRenderLevelOpaque);
             NeoForge.EVENT_BUS.addListener(Events::onRenderLevelTransparent);
             NeoForge.EVENT_BUS.addListener(Events::onFrameEnd);
+            // The GUI stages: RenderGuiEvent.Post once a frame (never the per-layer event), and each screen once drawn.
+            NeoForge.EVENT_BUS.addListener(Events::onRenderGui);
+            NeoForge.EVENT_BUS.addListener(Events::onScreenRender);
             NeoForge.EVENT_BUS.addListener(Events::onGameShuttingDown);
 
             // The connection lifecycle's server half: a dedicated server opens connections too.
@@ -370,6 +375,14 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             if (event.phase == TickEvent.Phase.END) LifecycleModern.frameEnd();
         }
         //?}
+
+        private static void onRenderGui(RenderGuiEvent.Post event) {
+            LifecycleModern.hud();
+        }
+
+        private static void onScreenRender(ScreenEvent.Render.Post event) {
+            LifecycleModern.screen();
+        }
 
         private static void onGameShuttingDown(GameShuttingDownEvent event) {
             LifecycleModern.shutdown();

@@ -6,7 +6,17 @@ Moved from [`AGENTS.md`](../AGENTS.md), which keeps the rules every session need
 
 `CgRenderStage` is a point in a host's frame. A renderer registers on one and records into the stage's frame
 each time it fires; the frame executes on the host's target at once. CrystalGraphics defines
-`WORLD_OPAQUE` and `WORLD_TRANSPARENT` and every host fires them; a mod defines its own.
+`WORLD_OPAQUE` and `WORLD_TRANSPARENT`, and the GUI stages `HUD` (over the in-game HUD) and `SCREEN` (over a screen,
+once it has drawn), and every host fires them; a mod defines its own.
+
+```java
+// Over the HUD: the frame's camera is orthographic over the GUI's logical pixels, origin top left
+CgRenderStage.HUD.register(0, frame -> frame.callback("mymod:badge", () -> drawBadge(frame.constants())));
+```
+
+- A GUI stage fires once a frame from a hook that fires once, never per HUD element; not while the HUD is hidden (F1),
+  and never on a server. Fabric below 1.16 has no `SCREEN`. From 26.1 both fire at the frame's end, after the GUI.
+- `fireOverlay(width, height, scale, mainFramebuffer)` is what a host calls: it fills the camera and fires.
 
 ```java
 // Drawing at a stage

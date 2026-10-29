@@ -97,6 +97,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
     }
 
     @Override public CgGLBackend gl() {
+        MinecraftForge.EVENT_BUS.register(new OverlayStagesLegacy());
         if (glBackend == null) {
             glBackend = new GlStateManagerGLBackend();
             HostStateLegacy.install();
