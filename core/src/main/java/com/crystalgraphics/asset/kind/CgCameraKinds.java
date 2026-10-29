@@ -375,7 +375,7 @@ public final class CgCameraKinds {
             .property("root", CgValueType.idList(NODES)).required().flags(CgPropertyFlag.STRUCTURAL)
             .property("enter_transitions", CgValueType.listOf(CgValueType.struct(TRANSITION)))
             .property("exit_transitions", CgValueType.listOf(CgValueType.struct(TRANSITION)))
-            .property("requires", CgValueType.listOf(STRING))
+            .property("requires", CgValueType.listOf(CgValueType.enumOf("rotation", "roll", "fov", "position", "lock")))
             .property("on_missing", CgValueType.enumOf("refuse", "drop_roll", "offset_only"))
             .register();
 

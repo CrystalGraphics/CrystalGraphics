@@ -1,5 +1,7 @@
 package com.crystalgraphics.probe;
 
+import com.crystalgraphics.camera.CgCameraModifier;
+import com.crystalgraphics.camera.CgCameraSystem;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.frame.CgTickGroup;
@@ -79,9 +81,12 @@ public final class CgWorldProbe {
     private static final int SETTLE_SECONDS = 3, MIN_EVENT_SECONDS = 4, EVENT_SECONDS = 12, PAUSED_SECONDS = 15;
     private static final float FOV_SCALE = 1.25f, YAW = 10f, ROLL = 10f;
     private static final int CAMERA_FRAMES = 4;
+    /** The hold: frames held, the frame the probe turns and presses, the frame it measures, frames to release. */
+    private static final int HOLD_FRAMES = 40, HOLD_EARLY = 3, HOLD_STIMULUS = 10, HOLD_MEASURE = 20, HOLD_RELEASE = 4;
+    private static final float HOLD_TURN = 30f;
     private static final Matrix4fc IDENTITY = new Matrix4f();
 
-    private enum Phase { WAITING, SETTLING, CAMERA, EVENTS, DONE }
+    private enum Phase { WAITING, SETTLING, CAMERA, HOLD, EVENTS, DONE }
 
     private static boolean installed;
     private static Phase phase = Phase.WAITING;
@@ -98,6 +103,17 @@ public final class CgWorldProbe {
     private static long startGameTime;
     private static int startTextures, startEpoch;
     private static final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
+    private static final double[] holdAt = new double[3];
+    private static final Vector3f holdLook = new Vector3f();
+    private static int holdFrames, holdPerspective;
+    private static float holdYaw;
+    private static boolean holdPressed;
+    private static CgCameraSystem holdCameras;
+    /** The probe's hold: a modifier setting the whole pose, through the camera system's own hand-off. */
+    private static final CgCameraModifier HOLD = (p, dt) -> {
+        p.location(holdAt[0], holdAt[1], holdAt[2]).fov(70f);
+        p.rotation().rotationTo(1f, 0f, 0f, holdLook.x, holdLook.y, holdLook.z);
+    };
     private static final Events events = new Events();
 
     private CgWorldProbe() {
@@ -170,7 +186,10 @@ public final class CgWorldProbe {
                     break;
                 }
                 skip("camera.same-frame", "no rotation applied on this version");
-                startEvents(now);
+                startHold(host, now);
+                break;
+            case HOLD:
+                hold(host, now);
                 break;
             case EVENTS:
                 // At least a few seconds, though the events land sooner: the server corrects the client's game time
@@ -413,7 +432,99 @@ public final class CgWorldProbe {
                     "turned %.2f degrees in the frame the offset was set, %s", degrees, same ? "the same ring frame" : "a later ring frame"));
         }
         offset(0f, 0f, 1f);
-        startEvents(now);
+        startHold(host, now);
+    }
+
+    // ── The camera hold ──────────────────────────────────────────────────────────
+
+    /** Holds a pose 6 blocks up and 4 ahead of the player, turned 30 degrees from its look. */
+    private static void startHold(CgHostFrame host, long now) {
+        int bits = CgCamera.capabilities();
+        info("camera-hold.capabilities", Integer.toBinaryString(bits));
+        CgEntityQuery entities = CgEntityQueries.client();
+        int player = entities.localPlayer();
+        if ((bits & CgHostCamera.POSITION) == 0 || !entities.pose(player, host.partialTick(), pose)) {
+            skip("camera-hold", (bits & CgHostCamera.POSITION) == 0 ? "this version holds no camera" : "no player pose");
+            startEvents(now);
+            return;
+        }
+        holdYaw = (float) pose[CgEntityQuery.YAW];
+        double yaw = Math.toRadians(holdYaw), turned = Math.toRadians(holdYaw + HOLD_TURN);
+        // Minecraft's yaw: 0 faces +z, growing to the west.
+        holdAt[0] = pose[CgEntityQuery.X] - Math.sin(yaw) * 4.0;
+        holdAt[1] = pose[CgEntityQuery.Y] + pose[CgEntityQuery.EYE_HEIGHT] + 6.0;
+        holdAt[2] = pose[CgEntityQuery.Z] + Math.cos(yaw) * 4.0;
+        holdLook.set((float) -Math.sin(turned), 0f, (float) Math.cos(turned));
+        holdPerspective = host.environment().perspective();
+        holdCameras = CgWorld.client().subsystem(CgCameraSystem.class);
+        if (holdCameras == null) holdCameras = CgWorld.client().add(new CgCameraSystem());
+        holdCameras.add(HOLD);
+        holdFrames = 0;
+        holdPressed = false;
+        next(Phase.HOLD, now);
+    }
+
+    private static void hold(CgHostFrame host, long now) {
+        holdFrames++;
+        CgWorldStimulus stimulus = CgPlatform.get(CgWorldStimulus.SERVICE);
+        CgEntityQuery entities = CgEntityQueries.client();
+        int player = entities.localPlayer();
+        if (holdFrames == HOLD_EARLY) {
+            // Inside the first ticks, while the host's camera eases its eye height toward the held entity's.
+            CgHostView view = host.view();
+            double dx = view.x() - holdAt[0], dy = view.y() - holdAt[1], dz = view.z() - holdAt[2];
+            boolean flat = Math.abs(dx) < 1e-3 && Math.abs(dz) < 1e-3;
+            check("camera-hold.position-at-take", flat && (Math.abs(dy) < 1e-3 || dy < -0.5 && dy > -2.0),
+                    String.format("view %.4f %.4f %.4f, pose %.4f %.4f %.4f, %.4f in height", view.x(), view.y(), view.z(),
+                            holdAt[0], holdAt[1], holdAt[2], dy));
+        } else if (holdFrames == HOLD_STIMULUS) {
+            stimulus.turnLook(20f);
+            holdPressed = stimulus.pressJump();
+        } else if (holdFrames == HOLD_MEASURE) {
+            CgHostView view = host.view();
+            double dx = view.x() - holdAt[0], dy = view.y() - holdAt[1], dz = view.z() - holdAt[2];
+            // 1.13 puts the view at the camera entity's feet and its eye in the matrix: a whole eye height below the pose.
+            boolean flat = Math.abs(dx) < 1e-3 && Math.abs(dz) < 1e-3;
+            boolean atEye = Math.abs(dy) < 1e-3, atFeet = dy < -0.5 && dy > -2.0;
+            check("camera-hold.position", flat && (atEye || atFeet), String.format(
+                    "view %.4f %.4f %.4f, pose %.4f %.4f %.4f, %s", view.x(), view.y(), view.z(), holdAt[0], holdAt[1], holdAt[2],
+                    !flat ? "off across" : atEye ? "at the eye" : atFeet ? "eye in the matrix" : "off in height"));
+            // A shake's offset turns a held camera on top of its pose, as it should: the turn is measured without one.
+            if (!shakeTook("camera-hold.turn")) {
+                Matrix4fc m = view.view();
+                Vector3f forward = new Vector3f(-m.m02(), -m.m12(), -m.m22()).normalize();
+                float apart = (float) Math.toDegrees(forward.angle(holdLook));
+                check("camera-hold.turn", apart < 0.5f, String.format("the rendered forward is %.3f degrees from the pose's, "
+                        + "no shake playing", apart));
+                // A wrong turn either way: where it was drawn against the pose, the player and the camera entity, in
+                // Minecraft's yaw (0 faces +z).
+                if (apart >= 0.5f) {
+                    double cameraYaw = entities.pose(entities.cameraEntity(), host.partialTick(), pose) ? pose[CgEntityQuery.YAW] : Double.NaN;
+                    double playerYaw = entities.pose(player, host.partialTick(), pose) ? pose[CgEntityQuery.YAW] : Double.NaN;
+                    info("camera-hold.turn-yaws", String.format("drawn %.2f, pose %.2f, player %.2f, camera entity %.2f",
+                            Math.toDegrees(Math.atan2(-forward.x, forward.z)), Math.toDegrees(Math.atan2(-holdLook.x, holdLook.z)),
+                            playerYaw, cameraYaw));
+                }
+            }
+            if (entities.pose(player, host.partialTick(), pose)) {
+                float yaw = (float) pose[CgEntityQuery.YAW];
+                check("camera-hold.look-locked", Math.abs(yaw - holdYaw) < 1e-3f,
+                        String.format("the player's yaw %.3f, %.3f when the hold began", yaw, holdYaw));
+            }
+            if (holdPressed) {
+                check("camera-hold.keys-locked", !stimulus.jumpDown(), "jump pressed during the hold, read at a later tick");
+            } else {
+                skip("camera-hold.keys-locked", "this version presses no key for the probe");
+            }
+        } else if (holdFrames == HOLD_FRAMES) {
+            holdCameras.remove(HOLD);
+        } else if (holdFrames == HOLD_FRAMES + HOLD_RELEASE) {
+            check("camera-hold.released", entities.cameraEntity() == player && !CgCamera.held()
+                    && host.environment().perspective() == holdPerspective, String.format("camera entity %d, player %d, held %b, "
+                    + "perspective %d, %d before", entities.cameraEntity(), player, CgCamera.held(),
+                    host.environment().perspective(), holdPerspective));
+            startEvents(now);
+        }
     }
 
     /**

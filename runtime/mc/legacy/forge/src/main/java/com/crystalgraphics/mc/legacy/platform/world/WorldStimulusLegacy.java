@@ -2,6 +2,7 @@ package com.crystalgraphics.mc.legacy.platform.world;
 
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.server.integrated.IntegratedServer;
 
@@ -84,6 +85,30 @@ public final class WorldStimulusLegacy implements CgWorldStimulus {
     public boolean clear(double x, double y, double z, double radius) {
         return run(String.format(Locale.ROOT, "kill @e[type=!%s,x=%d,y=%d,z=%d,r=%d]", PLAYER,
                 (int) Math.floor(x), (int) Math.floor(y), (int) Math.floor(z), (int) Math.ceil(radius)));
+    }
+
+    @Override
+    public boolean turnLook(float degrees) {
+        EntityPlayerSP player = player();
+        if (player == null) return false;
+        // As the mouse turns it: the entity scales what it is given by 0.15.
+        //? if >=1.10 {
+        player.turn(degrees / 0.15f, 0f);
+        //?} else {
+        /*player.setAngles(degrees / 0.15f, 0f);
+        *///?}
+        return true;
+    }
+
+    @Override
+    public boolean pressJump() {
+        KeyBinding.setKeyBindState(Minecraft.getMinecraft().gameSettings.keyBindJump.getKeyCode(), true);
+        return true;
+    }
+
+    @Override
+    public boolean jumpDown() {
+        return Minecraft.getMinecraft().gameSettings.keyBindJump.isKeyDown();
     }
 
     private static EntityPlayerSP player() {

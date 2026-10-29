@@ -6,6 +6,7 @@ import com.crystalgraphics.lwjgl2.Lwjgl2InputService;
 import com.crystalgraphics.mc.v1710.CrystalGraphicsVersion;
 import com.crystalgraphics.mc.v1710.platform.gl.GLBackend1710;
 import com.crystalgraphics.mc.v1710.platform.service.*;
+import net.minecraftforge.common.MinecraftForge;
 import cpw.mods.fml.common.FMLCommonHandler;
 
 import com.crystalgraphics.mc.v1710.platform.state.AngelicaStateProvider;
@@ -143,6 +144,8 @@ public final class PlatformService1710 implements CgPlatformService {
             CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN | CgWorldEvents.ENTITY_HURT
                     | CgWorldEvents.ENTITY_DIED | CgWorldEvents.LIGHTNING);
             FMLCommonHandler.instance().bus().register(new WorldEvents1710.Ticks());
+            FMLCommonHandler.instance().bus().register(new HostCamera1710.Ticks());
+            MinecraftForge.EVENT_BUS.register(new HostCamera1710.Renders());
         }
 
         // Prefer Angelica's mirror over the driver for GL state reads.

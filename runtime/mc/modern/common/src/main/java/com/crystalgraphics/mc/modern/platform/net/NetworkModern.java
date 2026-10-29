@@ -6,6 +6,7 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
 import com.crystalgraphics.mc.modern.platform.world.HostFormatsModern;
+import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.modern.platform.world.HostShapesModern;
 import com.crystalgraphics.mc.modern.platform.world.LevelsModern;
 import com.crystalgraphics.mc.modern.platform.world.MirrorHostModern;
@@ -74,6 +75,8 @@ public final class NetworkModern {
 
     public static void clientDisconnected() {
         CgNetwork.clientDisconnected();
+        // A camera held as the connection goes is given back: its perspective, HUD and keys with it.
+        HostCameraModern.levelGone();
     }
 
     @Nullable

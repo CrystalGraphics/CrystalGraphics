@@ -69,7 +69,14 @@ import net.minecraftforge.event.GameShuttingDownEvent;
 //?}
 //? if <1.21.6 {
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.eventbus.api.EventPriority;
+//?} else {
+/*import net.minecraftforge.eventbus.api.listener.Priority;
+*///?}
+//? if <1.21.3 {
+import net.minecraftforge.client.event.RenderLivingEvent;
 //?}
+import net.minecraftforge.client.event.RenderHandEvent;
 //? if >=1.17 {
 import net.minecraftforge.fml.CrashReportCallables;
 //?} else {
@@ -114,6 +121,7 @@ import net.minecraftforge.event.entity.EntityLeaveWorldEvent;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.BiConsumer;
+import java.util.function.Predicate;
 //? if <1.20.2 {
 import java.util.function.Supplier;
 //?}
@@ -214,6 +222,12 @@ public final class CrystalGraphicsForge implements VariantEntry {
             *///?} else {
             MinecraftForge.EVENT_BUS.addListener(Events::onClientTick);
             //?}
+            // Its head, before the game reads its keys: ClientTickEvent at START, a Pre of its own from 1.20.4.
+            //? if >=1.21.6 {
+            /*TickEvent.ClientTickEvent.Pre.BUS.addListener(Events::onClientTickStart);
+            *///?} elif >=1.20.4 {
+            /*MinecraftForge.EVENT_BUS.addListener(Events::onClientTickStart);
+            *///?}
             // The client connection. Forge 25-27 have no ClientPlayerNetworkEvent: onClientTick polls it there.
             //? if >=1.21.6 {
             /*ClientPlayerNetworkEvent.LoggingIn.BUS.addListener(Events::onLoggedIn);
@@ -232,13 +246,26 @@ public final class CrystalGraphicsForge implements VariantEntry {
             //?} else {
             /*MinecraftForge.EVENT_BUS.addListener(Events::onEntityJoin);
             *///?}
-            // The camera hooks a shake and an FOV kick are added at (HostCameraModern).
+            // The camera hooks a shake and an FOV kick are added at (HostCameraModern): last, so a held camera's
+            // angles and field of view are written after every other mod's.
             //? if >=1.21.6 {
-            /*ViewportEvent.ComputeCameraAngles.BUS.addListener(Events::onCameraAngles);
-            ViewportEvent.ComputeFov.BUS.addListener(Events::onFov);
+            /*ViewportEvent.ComputeCameraAngles.BUS.addListener(Priority.LOWEST, Events::onCameraAngles);
+            ViewportEvent.ComputeFov.BUS.addListener(Priority.LOWEST, Events::onFov);
             *///?} else {
-            MinecraftForge.EVENT_BUS.addListener(Events::onCameraAngles);
-            MinecraftForge.EVENT_BUS.addListener(Events::onFov);
+            MinecraftForge.EVENT_BUS.addListener(EventPriority.LOWEST, Events::onCameraAngles);
+            MinecraftForge.EVENT_BUS.addListener(EventPriority.LOWEST, Events::onFov);
+            //?}
+            // The first-person hands, which Minecraft draws from the local player whatever its camera entity: not
+            // while a camera is held. A cancelling listener is a Predicate from EventBus 7.
+            //? if >=1.21.6 {
+            /*RenderHandEvent.BUS.addListener((Predicate<RenderHandEvent>) event -> HostCameraModern.held());
+            *///?} else {
+            MinecraftForge.EVENT_BUS.addListener(Events::onRenderHand);
+            //?}
+            // A held play's player hidden: the entity render event carries the entity to 1.21.1.
+            //? if <1.21.3 {
+            MinecraftForge.EVENT_BUS.addListener(Events::onRenderLiving);
+            HostCameraModern.declare(CgHostCamera.HIDES_PLAYER);
             //?}
             // Forge 26.1.1 to 26.2 post the camera-angle event after renderLevel has taken the view: their angles
             // come from the CameraHook node mixin instead.
@@ -410,16 +437,24 @@ public final class CrystalGraphicsForge implements VariantEntry {
         /*private static void onClientTick(TickEvent.ClientTickEvent.Post event) {
             LifecycleModern.clientTick();
         }
+
+        private static void onClientTickStart(TickEvent.ClientTickEvent.Pre event) {
+            LifecycleModern.clientTickStart();
+        }
         *///?} elif >=1.14.4 {
         private static void onClientTick(TickEvent.ClientTickEvent event) {
             if (event.phase == TickEvent.Phase.END) LifecycleModern.clientTick();
+            else LifecycleModern.clientTickStart();
         }
         //?} else {
         /*private static boolean connected;
 
         // getConnection() is the player's, so it appears where a logged-in event would fire.
         private static void onClientTick(TickEvent.ClientTickEvent event) {
-            if (event.phase != TickEvent.Phase.END) return;
+            if (event.phase != TickEvent.Phase.END) {
+                LifecycleModern.clientTickStart();
+                return;
+            }
             boolean now = Minecraft.getInstance().getConnection() != null;
             if (now != connected) {
                 connected = now;
@@ -439,6 +474,22 @@ public final class CrystalGraphicsForge implements VariantEntry {
             event.setPitch(HostCameraModern.pitch(event.getPitch()));
             event.setRoll(HostCameraModern.roll(event.getRoll()));
         }
+
+        //? if <1.21.6 {
+        private static void onRenderHand(RenderHandEvent event) {
+            if (HostCameraModern.held()) event.setCanceled(true);
+        }
+        //?}
+
+        //? if <1.21.3 {
+        //? if >=1.14 {
+        private static void onRenderLiving(RenderLivingEvent.Pre<?, ?> event) {
+        //?} else {
+        /*private static void onRenderLiving(RenderLivingEvent.Pre<?> event) {
+        *///?}
+            if (HostCameraModern.hides(event.getEntity())) event.setCanceled(true);
+        }
+        //?}
 
         // The FOV is a double to 1.21.1 and a float after; HostCameraModern.fov takes either.
         //? if >=1.19 {

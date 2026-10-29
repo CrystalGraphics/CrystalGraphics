@@ -142,6 +142,12 @@ public final class CgCameraAnimationEvaluator implements CgSequenceEvaluator {
      */
     private final class Animation implements CgCameraModifier {
         final CgSequencePlayer owner;
+
+        @Override
+        public int flags() {
+            return owner.playbackSettings().flags();
+        }
+
         final CgSequenceSection section;
         final CgSequenceDefinition camera;
         final int spawnable;
@@ -193,7 +199,7 @@ public final class CgCameraAnimationEvaluator implements CgSequenceEvaluator {
                 if (base == null) {
                     cameras.add(this);
                 } else {
-                    context = new CgCameraContext(owner.definition().id()).owner(owner);
+                    context = new CgCameraContext(owner.definition().id()).owner(owner).flags(owner.playbackSettings().flags());
                     cameras.push(context);
                 }
                 return;

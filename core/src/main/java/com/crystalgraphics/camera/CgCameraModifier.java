@@ -40,4 +40,9 @@ public interface CgCameraModifier {
     default float weight() {
         return 1f;
     }
+
+    /** What it asks of the viewer while it moves the view: {@code CgHostCamera.HIDE_HUD}, {@code HIDE_PLAYER}; 0. */
+    default int flags() {
+        return 0;
+    }
 }

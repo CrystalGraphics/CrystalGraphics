@@ -144,6 +144,38 @@ fires on every loader, Forge's new `executeOit` hooks included.
 
 ---
 
+### The camera a hold takes (every version, 2026-10-29)
+
+What a held camera (`CgHostCamera.hold`) has to work around, found holding one on every era:
+
+- **The first-person hands are the local player's whatever the camera entity**: every version draws them from
+  `player`, never the view entity. A hold cancels them: Forge's and NeoForge's `RenderHandEvent`, Fabric's `HandHook`
+  (`renderHandsWithItems`, `render` on 1.14.4, `submitHandsWithItems` from 26.2, on `FirstPersonHandsAndItemsRenderer`
+  from 26.3), 1.7.10's `CameraHook` at `renderHand`.
+- **The camera eases its eye height toward its entity's**, half the way a tick (`Camera.tick`, 1.14.3+). A new camera
+  entity with another eye height drifts the view for its first ticks. The prodSmoke sweep measured 1 to 16 cm at the
+  take on Forge and NeoForge 1.15.2–1.21.4. The host mirrors the easing for a node with no camera mixin (Forge 1.13.2,
+  a NeoForge dev run).
+- **The camera is set up before our entity is posed on some nodes**: from 1.21.11 always (`GameRenderer.updateCamera`;
+  26.x `Camera.update`), and on NeoForge 1.20.6 and 1.21.4 on the frame a hold begins. An entity posed at the frame's
+  first event is then read a frame late. So the held position is written into the camera at the end of its setup
+  (26.x: at `extractRenderState`), on every loader and node that applies a mixin (`CameraHook`).
+- **A living entity's view yaw is its head's** (`LivingEntity.getViewYRot` reads `yHeadRot`): a camera entity's head
+  turns with its body, or a node with no camera hook (Fabric 1.14.4) renders it facing its spawn.
+- **1.12.2's `renderWorldPass` (and 1.13.2's) chooses the block outline before it sets up the camera.** The choice is
+  made for a player view entity. The outline then casts the view entity, ours by then, to a player, which crashes.
+  While held, the hit result is cleared at the camera hook on every version: nothing is targeted during a cinematic.
+- **1.13's camera-setup event counts yaw as the entity's plus 180**, as legacy Forge's does. A held yaw written
+  there adds the 180; an offset added to the event's own yaw needs nothing.
+- **1.14 ends `GameRenderer.render(float, long)` with a depth clear and the hand, on an identity model-view.** A world
+  pass at the tail of `renderLevel` reads no camera rotation and no world depth. Fabric 1.14.4's passes run at its
+  read of `renderHand`, after the clouds on either side of the camera.
+- **Ticks catch up after a slow frame**, several in a row with no frame between. A watchdog judged in a tick ends a
+  hold that every frame still refreshes, so it is judged at the camera hook only.
+- **1.13 and older and 1.7.10 put the view at the entity's feet** and the eye in the matrix; 1.7.10's eye is
+  `posY - yOffset + 1.62` whatever the entity.
+- **1.7.10 orients vanilla's particles from `thePlayer`**, not the view entity: they face the player's look while held.
+
 ## 3. Open
 
 - **Row 40, Forge 26.3 on default settings.** Improved Transparency is off by default, so both world passes

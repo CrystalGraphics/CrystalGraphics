@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 import javax.annotation.Nullable;
 
@@ -94,6 +95,7 @@ public final class CgSequencePlayer {
     private float rate = 1f;
     private int revision;
     private long seed;
+    private CgSequencePlaybackSettings playbackSettings = CgSequencePlaybackSettings.DEFAULT;
     private boolean finished, stopped, killed, jump, seek;
     /** Per child of the definition: an animation section's notifies playing now, else null; and its unwrapped clip time. */
     private final CgSequencePlayer[] notifies;
@@ -252,6 +254,16 @@ public final class CgSequencePlayer {
 
     public CgSequencePlayer seed(long seed) {
         this.seed = seed;
+        return this;
+    }
+
+    /** What the viewer's HUD and player do while its camera holds the view; {@link CgSequencePlaybackSettings#DEFAULT}. */
+    public CgSequencePlaybackSettings playbackSettings() {
+        return playbackSettings;
+    }
+
+    public CgSequencePlayer playbackSettings(CgSequencePlaybackSettings settings) {
+        this.playbackSettings = Objects.requireNonNull(settings, "settings");
         return this;
     }
 

@@ -35,6 +35,7 @@ public class CgCameraContext {
     private Function<String, CgAttachment> roles = role -> null;
     @Nullable
     private Object owner;
+    private int flags;
 
     public CgCameraContext(String name) {
         this.name = Objects.requireNonNull(name, "name");
@@ -73,6 +74,16 @@ public class CgCameraContext {
     @Nullable
     public Object owner() {
         return owner;
+    }
+
+    /** What it asks of the viewer while it holds the view: {@code CgHostCamera.HIDE_HUD}, {@code HIDE_PLAYER}; 0. */
+    public CgCameraContext flags(int flags) {
+        this.flags = flags;
+        return this;
+    }
+
+    public int flags() {
+        return flags;
     }
 
     @Nullable

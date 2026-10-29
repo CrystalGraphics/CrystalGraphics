@@ -3,6 +3,7 @@ package com.crystalgraphics.mc.modern.platform;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgHostFrame;
+import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.modern.platform.world.EnvironmentModern;
 import com.crystalgraphics.mc.modern.platform.world.TexturesModern;
 import com.crystalgraphics.mc.modern.platform.world.WorldEventsModern;
@@ -188,6 +189,19 @@ public final class LifecycleModern {
     public static void clientTick() {
         WorldEventsModern.tick(Minecraft.getInstance());
         CgNetwork.clientTick();
+    }
+
+    /**
+     * The head of a client tick, before the game reads its keys: a held camera releases them all here.
+     *
+     * <pre>{@code
+     * // Forge: TickEvent.ClientTickEvent at START (Pre from 1.20.4); NeoForge: ClientTickEvent.Pre (TickEvent before
+     * // 1.20.6); Fabric: ClientTickEvents.START_CLIENT_TICK
+     * LifecycleModern.clientTickStart();
+     * }</pre>
+     */
+    public static void clientTickStart() {
+        HostCameraModern.tickStart();
     }
 
     /**

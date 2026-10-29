@@ -166,6 +166,48 @@ CgShakePlay play = new CgShakePlay(mySource, myPattern, new CgCameraShakeState(0
 play.start(x, y, z, 1f);
 ```
 
+## Holding the camera
+
+While anything above the host's camera moves the view (a context with a rig, a modifier, a sequence's camera), the
+composed pose is handed to the game every frame after `SHAKE`, and the camera is **yours alone** until it lets go:
+
+- the game renders from your pose (position, turn, field of view), its culling and sound with it;
+- the player's mouse look, movement and every key binding are locked out, and the hotbar cannot scroll;
+- the first-person hands are not drawn, and the view is first person;
+- nothing is targeted: no block outline, no block or entity under the crosshair;
+- a pause keeps the camera held, frozen on its last pose until the game resumes;
+- every other mod's camera changes are overridden: yours are written last;
+- Escape and any open screen keep working.
+
+The frame nothing moves the view, the camera is given back exactly as it was: the player's view, perspective, HUD and
+the keys still held. If your mod stops updating the camera system (a crash, a stalled play), the game takes it back
+by itself within a quarter of a second.
+
+What else the viewer sees is the play's, as Unreal's playback settings: both off unless the caller asks.
+
+```java
+CgSequencePlayer move = sequencer.play(ultimate, roles);                         // a move in battle: HUD and player stay
+CgSequencePlayer cut = sequencer.play(intro, roles)
+        .playbackSettings(new CgSequencePlaybackSettings(true, false));        // a story cut: the HUD hidden
+if (cut.playbackSettings().hideHud()) myHud.hide();                            // your mod's own HUD follows the flag
+```
+
+A context or modifier of your own asks the same with flags:
+
+```java
+cameras.push(new CgCameraContext("mymod:intro").director(director).flags(CgHostCamera.HIDE_HUD));
+```
+
+- `hide_hud` hides the game's HUD alone. Your mod's HUD is yours to hide, from the same flag.
+- `hide_player` needs a host that can hide the player (`CgCamera.capabilities()` has `HIDES_PLAYER`); elsewhere the
+  log says so once and the player stays drawn.
+- A rig's `requires` names what it cannot play without (`rotation`, `roll`, `fov`, `position`, `lock`), and its
+  `on_missing` what a host without them gets: `refuse` (the host keeps its camera), `drop_roll` (played level),
+  `offset_only` (the host's own position, your turn and field of view).
+- The game only has the world around the player, as far as its render distance. A held position stays horizontally
+  within that distance, less one chunk, of the player's view. A rig that flies further is held at the edge, and the
+  log says so once. Keep a shot within the render distance of the player it frames.
+
 ## A sequence's camera and its post
 
 A sequence that has a camera (a `camera_animation` or `camera_cut` track) makes its unbound `post` spawnables that
@@ -234,3 +276,7 @@ cut-in framed on its caster is written like this:
 - Everything runs on the viewer's clock, never a character's: hitstop does not stop a blend.
 - Rigs run in `CAMERA` and modifiers in `SHAKE`; the pose is ready after `SHAKE`.
 - The camera system is a client world's. A server schedules nothing for it.
+- Holding the camera locks the player's input on the client only. Refusing a locked player's moves on the server,
+  or keeping them safe during a move, is your gameplay's to decide.
+- Controller mods that read raw input rather than key bindings are not locked.
+- On Minecraft 1.7.10, vanilla's own particles face the player's look rather than the held camera's.

@@ -49,10 +49,12 @@ import net.minecraft.server.packs.resources.ResourceManager;
 /*import net.minecraft.client.Minecraft;
 *///?}
 import com.crystalgraphics.mc.shared.FmlSide;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.event.ViewportEvent;
+import net.neoforged.neoforge.client.event.RenderHandEvent;
 //? if >=1.20.6 {
 /*import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
@@ -170,11 +172,17 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
                 modBus.addListener(ModBus::onRegisterReloadListeners);
                 // The camera hooks a shake and an FOV kick are added at (HostCameraModern): game-bus events, but
                 // client-only types, so they live here.
-                NeoForge.EVENT_BUS.addListener(ModBus::onCameraAngles);
-                NeoForge.EVENT_BUS.addListener(ModBus::onFov);
+                // Last, so a held camera's angles and field of view are written after every other mod's.
+                NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, ModBus::onCameraAngles);
+                NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, ModBus::onFov);
+                // The first-person hands, which Minecraft draws from the local player whatever its camera entity.
+                NeoForge.EVENT_BUS.addListener(ModBus::onRenderHand);
                 HostCameraModern.declare(CgHostCamera.ROTATION | CgHostCamera.ROLL | CgHostCamera.FOV);
                 // The world events, once a client tick and as entities join and leave the client level.
                 NeoForge.EVENT_BUS.addListener(ModBus::onClientTick);
+                //? if >=1.20.6 {
+                /*NeoForge.EVENT_BUS.addListener(ModBus::onClientTickStart);
+                *///?}
                 NeoForge.EVENT_BUS.addListener(ModBus::onLoggedIn);
                 NeoForge.EVENT_BUS.addListener(ModBus::onLoggedOut);
                 // NeoForge 21.7 refuses a clientbound payload with no client-side handler, and the common
@@ -200,6 +208,10 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
                 event.setYaw(HostCameraModern.yaw(event.getYaw()));
                 event.setPitch(HostCameraModern.pitch(event.getPitch()));
                 event.setRoll(HostCameraModern.roll(event.getRoll()));
+            }
+
+            private static void onRenderHand(RenderHandEvent event) {
+                if (HostCameraModern.held()) event.setCanceled(true);
             }
 
             // A double to 1.21.1 and a float after; HostCameraModern.fov takes either.
@@ -235,9 +247,14 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             /*private static void onClientTick(ClientTickEvent.Post event) {
                 LifecycleModern.clientTick();
             }
+
+            private static void onClientTickStart(ClientTickEvent.Pre event) {
+                LifecycleModern.clientTickStart();
+            }
             *///?} else {
             private static void onClientTick(TickEvent.ClientTickEvent event) {
                 if (event.phase == TickEvent.Phase.END) LifecycleModern.clientTick();
+                else LifecycleModern.clientTickStart();
             }
             //?}
 

@@ -4,16 +4,22 @@ package com.crystalgraphics.mc.modern.fabric.mixin;
 /*import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
+import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// 1.14 renders the level from GameRenderer; LevelRenderer.renderLevel arrived in 1.15.
+// 1.14 renders the level from GameRenderer; LevelRenderer.renderLevel arrived in 1.15. At the read of renderHand in
+// render(float, long), after the clouds on either side of the camera and before the hand: the depth clear and the
+// hand that follow load the identity into the model-view, which the passes read as the world's view, and drop the
+// world's depth. Each name in both namespaces, as there is no refmap.
 @Mixin(value = GameRenderer.class, remap = false)
 public abstract class WorldPassHook {
 
-    @Inject(method = {"renderLevel", "method_3188"}, at = @At("TAIL"), require = 1)
+    @Inject(method = {"render(FJ)V", "method_3178"}, at = {
+            @At(value = "FIELD", opcode = Opcodes.GETFIELD, target = "Lnet/minecraft/client/renderer/GameRenderer;renderHand:Z"),
+            @At(value = "FIELD", opcode = Opcodes.GETFIELD, target = "Lnet/minecraft/class_757;field_3992:Z")}, require = 1)
     private void crystalgraphics$worldPasses(CallbackInfo ci) {
         LifecycleModern.opaquePass(Minecraft.getInstance().getFrameTime());
         LifecycleModern.transparentPass();

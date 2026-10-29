@@ -6,6 +6,7 @@ import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityClientPlayerMP;
+import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.effect.EntityLightningBolt;
 import net.minecraft.entity.item.EntityPainting;
@@ -60,6 +61,26 @@ public final class WorldStimulus1710 implements CgWorldStimulus {
     public boolean explode(double x, double y, double z) {
         return run(command(String.format(Locale.ROOT, "summon Pig %.2f %.2f %.2f", x, y, z)),
                 command(String.format(Locale.ROOT, "summon PrimedTnt %.2f %.2f %.2f {Fuse:0}", x, y, z)));
+    }
+
+    @Override
+    public boolean turnLook(float degrees) {
+        EntityClientPlayerMP player = Minecraft.getMinecraft().thePlayer;
+        if (player == null) return false;
+        // As the mouse turns it: setAngles scales what it is given by 0.15.
+        player.setAngles(degrees / 0.15f, 0f);
+        return true;
+    }
+
+    @Override
+    public boolean pressJump() {
+        KeyBinding.setKeyBindState(Minecraft.getMinecraft().gameSettings.keyBindJump.getKeyCode(), true);
+        return true;
+    }
+
+    @Override
+    public boolean jumpDown() {
+        return Minecraft.getMinecraft().gameSettings.keyBindJump.getIsKeyPressed();
     }
 
     // 1.7.10's /kill takes no target: this is what it does to its sender.

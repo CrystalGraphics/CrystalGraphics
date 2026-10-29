@@ -13,11 +13,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 // (HostCameraModern) once it has aligned with its entity -- at the end of setup to 1.21.11, and from 26.1 just before
 // the frame's render state is taken from it. Roll from 1.21.11, where Minecraft renders from the camera's quaternion:
 // vanilla's setRotation takes two angles. No refmap, so each name in both namespaces.
-@Mixin(value = Camera.class, remap = false)
+// Priority 2000: applied after other mods' mixins on the camera, so a held pose is written last.
+@Mixin(value = Camera.class, priority = 2000, remap = false)
 public abstract class CameraHook {
 
     @Shadow(aliases = "method_19325")
     protected abstract void setRotation(float yRot, float xRot);
+
+    @Shadow(aliases = "method_19327")
+    protected abstract void setPosition(double x, double y, double z);
 
     //? if >=26.1 {
     /*@Inject(method = "extractRenderState", at = @At("HEAD"), require = 1)
@@ -37,5 +41,7 @@ public abstract class CameraHook {
         *///?} else {
         setRotation(HostCameraModern.yaw(camera.getYRot()), HostCameraModern.pitch(camera.getXRot()));
         //?}
+        // A held pose's position, written here too: from 1.21.11 the camera is set up before our entity is posed.
+        if (HostCameraModern.holding()) setPosition(HostCameraModern.heldX(), HostCameraModern.heldY(), HostCameraModern.heldZ());
     }
 }

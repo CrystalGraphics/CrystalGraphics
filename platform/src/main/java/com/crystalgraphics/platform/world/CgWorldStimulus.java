@@ -23,6 +23,14 @@ import com.crystalgraphics.platform.CgService;
  * stimulus.respawn();                 // its Respawn button; works connected to a server too
  * }</pre>
  *
+ * Input, as the player's mouse and keyboard would give it, for a probe of a camera hold's lock:
+ *
+ * <pre>{@code
+ * stimulus.turnLook(20f);             // the player turned as the mouse turns it
+ * stimulus.pressJump();               // the jump key pressed, never released
+ * boolean down = stimulus.jumpDown(); // read at a later tick
+ * }</pre>
+ *
  * Things to hit, for a probe of collision, and the way to be rid of them:
  *
  * <pre>{@code
@@ -64,6 +72,21 @@ public interface CgWorldStimulus {
      * smoke run, would otherwise pause and stop its server. This call writes nothing to the options file.
      */
     void keepRunning();
+
+    /** The local player turned by {@code degrees} of yaw, as the mouse turns it; false where there is no player. */
+    default boolean turnLook(float degrees) {
+        return false;
+    }
+
+    /** The jump key pressed, as the keyboard presses it, and left down; false where this version presses none. */
+    default boolean pressJump() {
+        return false;
+    }
+
+    /** Whether the jump key reads down now. */
+    default boolean jumpDown() {
+        return false;
+    }
 
     /** A lightning bolt at the point. */
     boolean lightning(double x, double y, double z);
