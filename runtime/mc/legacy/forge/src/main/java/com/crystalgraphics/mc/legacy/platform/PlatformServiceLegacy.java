@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.legacy.platform;
 
+import com.crystalgraphics.lwjgl2.Lwjgl2AudioOutput;
 import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
 import com.crystalgraphics.lwjgl2.Lwjgl2GLContext;
 import com.crystalgraphics.lwjgl2.Lwjgl2InputService;
@@ -13,6 +14,7 @@ import com.crystalgraphics.mc.legacy.platform.world.ClientLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.HostCameraLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.HostDebugLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldEventsLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.HostVolumeLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldSoundLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldStimulusLegacy;
 import com.crystalgraphics.platform.CgPlatform;
@@ -30,6 +32,8 @@ import com.crystalgraphics.platform.service.CgSoundService;
 import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.platform.world.CgHostDebug;
 import com.crystalgraphics.platform.world.CgWorldEvents;
+import com.crystalgraphics.platform.audio.CgAudioOutput;
+import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.world.CgWorldSound;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 import net.minecraftforge.common.MinecraftForge;
@@ -74,6 +78,8 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgCursorService.SERVICE, new Lwjgl2CursorService());
         ClientLegacy.install();
         CgPlatform.provide(CgWorldSound.SERVICE, new WorldSoundLegacy());
+        CgPlatform.provide(CgAudioOutput.SERVICE, new Lwjgl2AudioOutput());
+        CgPlatform.provide(CgHostVolume.SERVICE, new HostVolumeLegacy());
         CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusLegacy());
         CgPlatform.provide(CgGameDirectory.SERVICE, new GameDirectoryService());
         // WorldEventsLegacy polls the hurts, deaths and lightning; ExplosionHook and LevelEventHook the rest.

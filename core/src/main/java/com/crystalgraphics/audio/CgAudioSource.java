@@ -1,0 +1,31 @@
+package com.crystalgraphics.audio;
+
+/**
+ * What a voice plays: samples rendered on the audio thread, a buffer at a time. Unreal's source buffer, as a voice of
+ * {@code FMixerSourceManager} pulls it.
+ *
+ * <pre>{@code
+ * final class Click implements CgAudioSource {
+ *     private int left = 480;                                 // 10 ms at 48 kHz
+ *     public boolean render(float[] out, int frames, int channels, int sampleRate, float gain) {
+ *         for (int f = 0; f < frames && left > 0; f++, left--) {
+ *             for (int c = 0; c < channels; c++) out[f * channels + c] += gain;
+ *         }
+ *         return left > 0;
+ *     }
+ * }
+ * engine.play(new Click(), 0.5f);
+ * }</pre>
+ *
+ * <ul>
+ *   <li>Add into {@code out}, never overwrite it: other voices are already in it.</li>
+ *   <li>Audio thread only, and allocate nothing.</li>
+ *   <li>Answer false once finished: its voice is freed after this buffer.</li>
+ * </ul>
+ */
+@FunctionalInterface
+public interface CgAudioSource {
+
+    /** Adds {@code frames} interleaved frames of {@code channels} into {@code out} at {@code gain}; false once done. */
+    boolean render(float[] out, int frames, int channels, int sampleRate, float gain);
+}

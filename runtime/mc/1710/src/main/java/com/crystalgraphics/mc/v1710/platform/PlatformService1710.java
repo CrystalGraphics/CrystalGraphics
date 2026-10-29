@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.v1710.platform;
 
+import com.crystalgraphics.lwjgl2.Lwjgl2AudioOutput;
 import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
 import com.crystalgraphics.lwjgl2.Lwjgl2GLContext;
 import com.crystalgraphics.lwjgl2.Lwjgl2InputService;
@@ -15,6 +16,7 @@ import com.crystalgraphics.mc.v1710.platform.world.Client1710;
 import com.crystalgraphics.mc.v1710.platform.world.HostCamera1710;
 import com.crystalgraphics.mc.v1710.platform.world.HostDebug1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldEvents1710;
+import com.crystalgraphics.mc.v1710.platform.world.HostVolume1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldSound1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldStimulus1710;
 import com.crystalgraphics.platform.CgPlatform;
@@ -27,6 +29,8 @@ import com.crystalgraphics.platform.service.*;
 import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.platform.world.CgHostDebug;
 import com.crystalgraphics.platform.world.CgWorldEvents;
+import com.crystalgraphics.platform.audio.CgAudioOutput;
+import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.world.CgWorldSound;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 
@@ -138,6 +142,8 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgHostCamera.SERVICE, new HostCamera1710());
             CgPlatform.provide(CgHostDebug.SERVICE, new HostDebug1710());
             CgPlatform.provide(CgWorldSound.SERVICE, new WorldSound1710());
+            CgPlatform.provide(CgAudioOutput.SERVICE, new Lwjgl2AudioOutput());
+            CgPlatform.provide(CgHostVolume.SERVICE, new HostVolume1710());
             CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulus1710());
             CgPlatform.provide(CgGameDirectory.SERVICE, new GameDirectoryService1710());
             // WorldEvents1710 polls the hurts, deaths and lightning; ExplosionHook and LevelEventHook the rest.

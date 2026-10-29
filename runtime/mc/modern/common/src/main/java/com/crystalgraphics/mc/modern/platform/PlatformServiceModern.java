@@ -10,6 +10,7 @@ import com.crystalgraphics.sdl.SdlInputService;
 import com.crystalgraphics.lwjgl3.GlfwCursorService;
 import com.crystalgraphics.lwjgl3.GlfwInputService;
 //?}
+import com.crystalgraphics.lwjgl3.Lwjgl3AudioOutput;
 import com.crystalgraphics.lwjgl3.Lwjgl3GLContext;
 
 import com.crystalgraphics.mc.modern.platform.service.LifecycleService;
@@ -20,6 +21,7 @@ import com.crystalgraphics.mc.modern.platform.service.SoundService;
 import com.crystalgraphics.mc.modern.platform.world.ClientModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.modern.platform.world.HostDebugModern;
+import com.crystalgraphics.mc.modern.platform.world.HostVolumeModern;
 import com.crystalgraphics.mc.modern.platform.world.WorldSoundModern;
 import com.crystalgraphics.mc.modern.platform.world.WorldStimulusModern;
 import com.crystalgraphics.platform.CgPlatform;
@@ -39,6 +41,8 @@ import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.platform.world.CgHostDebug;
 import com.crystalgraphics.platform.world.CgModelSpace;
 import com.crystalgraphics.platform.world.CgWorldEvents;
+import com.crystalgraphics.platform.audio.CgAudioOutput;
+import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.world.CgWorldSound;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 
@@ -124,6 +128,8 @@ public final class PlatformServiceModern implements CgPlatformService {
             CgPlatform.provide(CgHostDebug.SERVICE, new HostDebugModern());
             CgPlatform.provide(CgModelSpace.SERVICE, HostViewModern::modelSpace);
             CgPlatform.provide(CgWorldSound.SERVICE, new WorldSoundModern());
+            CgPlatform.provide(CgAudioOutput.SERVICE, new Lwjgl3AudioOutput(HostVolumeModern::device));
+            CgPlatform.provide(CgHostVolume.SERVICE, new HostVolumeModern());
             CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusModern());
             CgPlatform.provide(CgGameDirectory.SERVICE, () -> Minecraft.getInstance().gameDirectory.toPath());
             // What WorldEventsModern.poll reports; the explosion and the broken block are the loaders' mixins'.

@@ -1,5 +1,7 @@
 package com.crystalgraphics.probe;
 
+import com.crystalgraphics.audio.CgAudioEngine;
+import com.crystalgraphics.audio.CgAudioTone;
 import com.crystalgraphics.camera.CgCameraModifier;
 import com.crystalgraphics.camera.CgCameraSystem;
 import com.crystalgraphics.collision.CgCollisionWorld;
@@ -8,6 +10,7 @@ import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgHostCamera;
@@ -115,6 +118,10 @@ public final class CgWorldProbe {
         p.rotation().rotationTo(1f, 0f, 0f, holdLook.x, holdLook.y, holdLook.z);
     };
     private static final Events events = new Events();
+    /** The audio check: a quiet tone through the engine's own output, from the static checks to the result. */
+    private static CgAudioEngine audio;
+    private static final CgAudioTone TONE = new CgAudioTone(440, 0.05f, 0);
+    private static long audioStart;
 
     private CgWorldProbe() {
     }
@@ -314,6 +321,35 @@ public final class CgWorldProbe {
             LOGGER.warn("world probe sound threw", e);
         }
         check("sound.play", played, "played without an error; whether it was heard is not checked");
+        startAudio();
+    }
+
+    private static void startAudio() {
+        audio = CgWorld.client().subsystem(CgAudioEngine.class);
+        if (audio == null) audio = CgWorld.client().add(new CgAudioEngine());
+        if (!audio.active()) {
+            skip("audio.plays", "no audio output on this host");
+            audio = null;
+            return;
+        }
+        audio.play(TONE, 1f);
+        audioStart = System.nanoTime();
+    }
+
+    private static void audioChecks() {
+        if (audio == null) return;
+        audio.stop(TONE);
+        double seconds = (System.nanoTime() - audioStart) / 1.0e9;
+        long expected = (long) (seconds / CgAudioEngine.FORMAT.bufferSeconds());
+        check("audio.plays", audio.opens() >= 1 && audio.buffers() >= expected * 8 / 10,
+                audio.buffers() + " buffers in " + String.format("%.1f", seconds) + " s, " + expected + " at real time, "
+                        + audio.opens() + " stream(s) opened; whether it was heard is not checked");
+        // Ordinary play's pauses, not a forced collection: the queue is sized to what play does.
+        check("audio.underruns", audio.underruns() == 0, audio.underruns() + " underruns; the audio thread's longest stall "
+                + String.format("%.1f", audio.longestStallMillis()) + " ms against a queue of "
+                + String.format("%.0f", CgAudioEngine.FORMAT.buffers() * CgAudioEngine.FORMAT.bufferSeconds() * 1000) + " ms");
+        float master = CgPlatform.get(CgHostVolume.SERVICE).master();
+        check("audio.follows-master", audio.main() == master, "main gain " + audio.main() + ", master slider " + master);
     }
 
     private static void environmentChecks(CgHostEnvironment env, CgHostView view) {
@@ -636,6 +672,7 @@ public final class CgWorldProbe {
             long late = CgWorld.client().beganLate() - lateAtStart;
             check("frame.begin", late == 0, late + " frames ran their world before the camera hook since the probe started");
         }
+        audioChecks();
         boolean ok = failed == 0;
         LOGGER.info("world probe: {} ({} passed, {} failed, {} skipped)", ok, passed, failed, skipped);
         phase = Phase.DONE;
