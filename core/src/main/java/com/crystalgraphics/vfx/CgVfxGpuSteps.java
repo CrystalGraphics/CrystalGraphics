@@ -511,6 +511,8 @@ final class CgVfxGpuSteps {
         for (int i = tenants.size() - 1; i >= 0; i--) {
             if (i >= tenants.size()) continue;
             Tenant tenant = tenants.get(i);
+            // A prewarm holds every other slot still: its kill and close wait for a step its pool records between
+            if (warmOnly && !tenant.warm) continue;
             tenant.cleared = false;
             // Killed: this step ends its particles once the pool records it, which it does only while the slot is open (a
             // pool with no open slot drops its steps), so the slot closes at the next step. Its instance lets go now: started
