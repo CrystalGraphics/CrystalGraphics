@@ -976,7 +976,9 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      */
     record VectorField(CgVfxField field, CgBox box, float x, float y, float z, float strength, float attenuation,
                        float tightness, CgVfxFieldTurn turn) implements CgVfxModule {
-        private static final CgVfxLane[] LANES = {CgVfxLane.VEC4, CgVfxLane.VEC4};
+        /** Its origin, then the rows taking a world offset into the grid's space, then the rows turning its vectors. */
+        private static final CgVfxLane[] LANES = {CgVfxLane.VEC4, CgVfxLane.VEC4, CgVfxLane.VEC4, CgVfxLane.VEC4,
+                CgVfxLane.VEC4, CgVfxLane.VEC4, CgVfxLane.VEC4};
         /** Its turn's roll once an instance, keyed as a form's roll is by its module and input. */
         private static final int TURN_KEY = CgVfxFormCompiler.key("vector_field", "initial_rotation");
 
@@ -1016,10 +1018,14 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
-            CgVfxShapeRows.writeCentre(box, x, y, z, instance, out);
-            float[] q = TURNED.get();
-            turn.at(CgVfxEmitterInstance.rand(instance.seed() ^ TURN_KEY, 0, 0), instance.time(), q);
-            out.vec4(q[0], q[1], q[2], q[3]);
+            // Cascade's VectorFieldToWorld: its translation and frame ride the instance's turn (ComponentToWorld)
+            float qx = instance.rotationX(), qy = instance.rotationY(), qz = instance.rotationZ(), qw = instance.rotationW();
+            float tx = 2f * (qy * z - qz * y), ty = 2f * (qz * x - qx * z), tz = 2f * (qx * y - qy * x);
+            out.vec4(instance.sourceX() + x + qw * tx + (qy * tz - qz * ty), instance.sourceY() + y + qw * ty + (qz * tx - qx * tz),
+                    instance.sourceZ() + z + qw * tz + (qx * ty - qy * tx), 0f);
+            float[] f = FRAME.get();
+            turn.frame(CgVfxEmitterInstance.rand(instance.seed() ^ TURN_KEY, 0, 0), instance.time(), qx, qy, qz, qw, f);
+            for (int row = 0; row < 6; row++) out.vec4(f[row * 3], f[row * 3 + 1], f[row * 3 + 2], 0f);
         }
 
         @Override
@@ -1027,8 +1033,8 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
             return field.textures();
         }
 
-        /** A turn being written, a thread's own: instances write on the render thread and the books' workers. */
-        private static final ThreadLocal<float[]> TURNED = ThreadLocal.withInitial(() -> new float[4]);
+        /** A frame being written, a thread's own: instances write on the render thread and the books' workers. */
+        private static final ThreadLocal<float[]> FRAME = ThreadLocal.withInitial(() -> new float[18]);
     }
 
     /**

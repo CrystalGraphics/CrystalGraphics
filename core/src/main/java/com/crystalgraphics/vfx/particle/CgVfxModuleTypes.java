@@ -321,7 +321,7 @@ public final class CgVfxModuleTypes {
                 r -> new CgVfxModule.VectorField((CgVfxField) r.o("field"), CgBox.of(r.f("volume", 0), r.f("volume", 1), r.f("volume", 2)),
                         r.f("offset", 0), r.f("offset", 1), r.f("offset", 2), r.f("strength"), r.f("attenuation"), r.f("tightness"),
                         new CgVfxFieldTurn(new float[]{r.f("pivot", 0), r.f("pivot", 1), r.f("pivot", 2)}, new float[]{0f, 0f, 0f, 1f},
-                                new float[3], new float[3], new float[3])));
+                                new float[3], new float[3], new float[3], new float[]{1f, 1f, 1f})));
         kind("set_position", CgVfxModule.SetPosition.class,
                 t -> { v3(t, "position"); v3(t, "offset"); v3(t, "scale"); },
                 (m, in) -> in.v3("position", m.x(), m.y(), m.z()).v3("offset", m.ox(), m.oy(), m.oz()).v3("scale", m.share(), 1f, 1f),

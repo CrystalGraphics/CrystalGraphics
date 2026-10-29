@@ -1361,15 +1361,11 @@ public final class CgVfxEmitterAssets {
             throw new IllegalArgumentException(name + ": vector_field's initial_rotation rolls once for every axis, as Cascade's: no per_channel");
         }
         float[] rate = in.get("rotation_rate") != null ? vec(in.get("rotation_rate"), 3) : new float[3];
-        // VectorFieldLocal's RelativeScale3D stretches the volume about the field's origin, never its vectors
-        // (VectorField.cpp:87-96, ParticleGpuSimulation.cpp:4634-4635).
+        // VectorFieldLocal's RelativeScale3D stretches the volume after its roll, never its vectors
+        // (ParticleGpuSimulation.cpp:3326-3331, 4634-4635; VectorField.cpp:87-96): the turn's, the box the grid's own.
         float[] stretch = in.get("relative_scale") != null ? vec(in.get("relative_scale"), 3) : new float[]{1f, 1f, 1f};
-        float[] centre = new float[3], half = new float[3];
-        for (int a = 0; a < 3; a++) {
-            centre[a] = grid.centre()[a] * stretch[a];
-            half[a] = grid.half()[a] * Math.abs(stretch[a]);
-        }
-        CgVfxFieldTurn turn = new CgVfxFieldTurn(centre, place, start.from(), start.to(), rate);
+        float[] half = grid.half().clone();
+        CgVfxFieldTurn turn = new CgVfxFieldTurn(grid.centre().clone(), place, start.from(), start.to(), rate, stretch);
         String tile = in.get("tile") == null ? "" : String.valueOf(in.get("tile"));
         if (!tile.matches("[xyz]*")) throw new IllegalArgumentException(name + ": vector_field's tile " + tile + ": axis letters");
         // Cascade's bTileX/Y/Z, its axes the asset's, named in the host's.

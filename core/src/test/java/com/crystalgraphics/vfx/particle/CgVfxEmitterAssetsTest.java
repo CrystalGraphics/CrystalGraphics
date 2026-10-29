@@ -338,7 +338,7 @@ public class CgVfxEmitterAssetsTest {
         assertArrayEquals(streak.scaleFrom, back.scaleFrom, 1e-5f);
     }
 
-    /** VectorFieldLocal's RelativeScale3D stretches the field's box and its centre about its origin, never its vectors. */
+    /** VectorFieldLocal's RelativeScale3D stretches the field's box and its centre in its frame, never its vectors. */
     @Test
     public void aVectorFieldsRelativeScaleStretchesItsVolumeAlone() {
         CgVfxField vectors = CgVfxField.of(2, 2, 2, false, (x, y, z, out) -> {
@@ -363,9 +363,15 @@ public class CgVfxEmitterAssetsTest {
                 "inputs", Map.of("field", Map.of("field", "mymod:swirl"), "intensity", 2.0, "relative_scale", List.of(10.0, 30.0, 10.0)))));
         CgVfxEmitter e = CgVfxEmitterAssets.compile("swirl", tree, null, deps);
         CgVfxModule.VectorField field = (CgVfxModule.VectorField) e.modules().get(0);
-        assertArrayEquals(new float[]{20f, 30f, 30f}, new float[]{(float) field.box().halfX(), (float) field.box().halfY(),
+        assertArrayEquals(new float[]{2f, 1f, 3f}, new float[]{(float) field.box().halfX(), (float) field.box().halfY(),
                 (float) field.box().halfZ()}, 0f);
-        assertArrayEquals(new float[]{0f, -15f, 0f}, field.turn().pivot(), 0f);
+        assertArrayEquals(new float[]{0f, -0.5f, 0f}, field.turn().pivot(), 0f);
+        float[] frame = new float[18];
+        field.turn().frame(0f, 0f, 0f, 0f, 0f, 1f, frame);
+        assertArrayEquals("20 blocks along x reach 2 of the grid's", new float[]{0.1f, 0f, 0f, 0f, 1f / 30f, 0f, 0f, 0f, 0.1f},
+                Arrays.copyOf(frame, 9), 1e-6f);
+        assertArrayEquals("its vectors turn unstretched", new float[]{1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f},
+                Arrays.copyOfRange(frame, 9, 18), 1e-6f);
         assertEquals("its vectors keep their intensity", 2f, field.strength(), 0f);
     }
 
