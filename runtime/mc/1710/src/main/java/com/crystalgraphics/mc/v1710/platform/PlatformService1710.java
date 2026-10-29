@@ -155,10 +155,10 @@ public final class PlatformService1710 implements CgPlatformService {
             FMLCommonHandler.instance().bus().register(new WorldEvents1710.Ticks());
             FMLCommonHandler.instance().bus().register(new HostCamera1710.Ticks());
             MinecraftForge.EVENT_BUS.register(new HostCamera1710.Renders());
+            MinecraftForge.EVENT_BUS.register(new OverlayStages1710());
         }
 
         // Prefer Angelica's mirror over the driver for GL state reads.
-            MinecraftForge.EVENT_BUS.register(new OverlayStages1710());
         //
         // Angelica redirects ~200 GL call sites process-wide, so its mirror observes writes from Minecraft
         // and every other mod — coverage we could not obtain ourselves, and the reason our own redirector
