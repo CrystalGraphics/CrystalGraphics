@@ -36,6 +36,8 @@ import com.crystalgraphics.platform.world.CgWorldEvents;
 import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioOutput;
 import com.crystalgraphics.platform.audio.CgHostDuck;
+import com.crystalgraphics.platform.service.CgHostI18n;
+import com.crystalgraphics.mc.legacy.platform.service.HostI18nLegacy;
 import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 import net.minecraftforge.common.MinecraftForge;
@@ -82,6 +84,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgAudioOutput.SERVICE, new Lwjgl2AudioOutput());
         CgPlatform.provide(CgHostVolume.SERVICE, new HostVolumeLegacy());
         CgPlatform.provide(CgHostDuck.SERVICE, new HostDuckLegacy());
+        CgPlatform.provide(CgHostI18n.SERVICE, new HostI18nLegacy());
         CgPlatform.provide(CgAudioDecoder.SERVICE, new JOrbisDecoder());
         CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusLegacy());
         CgPlatform.provide(CgGameDirectory.SERVICE, new GameDirectoryService());

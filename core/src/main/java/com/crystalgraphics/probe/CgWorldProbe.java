@@ -22,6 +22,8 @@ import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.audio.CgHostDuck;
 import com.crystalgraphics.platform.audio.CgHostVolume;
+import com.crystalgraphics.api.text.CgI18n;
+import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgHostCamera;
@@ -149,6 +151,14 @@ public final class CgWorldProbe {
     private static final CgSoundMix HUSH = new CgSoundMix(0f, 0f).duckHost(CgHostVolume.Category.BLOCKS, 0.25f);
     private static int hushFrames = -1;
     private static float hushHeld = Float.NaN;
+    /** The explosion's subtitle: the host's, where its event has one, else one the probe queues; then what showed. */
+    private static String subtitleWanted, subtitleSource, subtitleShown;
+    private static int subtitleDrawn = -1;
+    private static long explosionId;
+    private static String subtitleState = "";
+    /** How often the HUD stage fired: none while a screen hides the HUD (CrystalGUI's desktop does from 1.21.6). */
+    private static int hudFirings;
+    private static CgRenderStage.Registration hudCount;
     private static CgSoundStream music;
     private static long musicStart;
     private static double stalledMillis = -1;
@@ -358,6 +368,11 @@ public final class CgWorldProbe {
             return;
         }
         audio.play(TONE, 1f);
+        // The HUD fires from the first frame; the probe's own frames may begin after a short sound has ended.
+        if (hudCount == null) hudCount = CgRenderStage.HUD.register(0, frame -> {
+            hudFirings++;
+            if (subtitleShown == null && audio != null) subtitleShown = audio.subtitles().text();
+        });
         hostEvent(px, py, pz);
         audio.push(HUSH);
         hushFrames = 0;
@@ -383,7 +398,16 @@ public final class CgWorldProbe {
         try {
             CgHostSoundEvents.Variant v = events.pick(event);
             long id = audio.playEvent(event, px, py, pz, 0.05f, 1f);
+            explosionId = id;
             CgSound file = audio.sounds().load(v.path(), v.stream());
+            String key = events.subtitle(event);
+            subtitleWanted = key != null ? CgI18n.translate(key) : null;
+            subtitleSource = key != null ? "the host's " + key : "queued by the probe (this version's sounds.json has none)";
+            if (subtitleWanted == null) {
+                subtitleWanted = "Probe explosion";
+                audio.subtitles().queue(id, subtitleWanted, file.seconds());
+            }
+            subtitleState = audio.subtitles().count() + " queued at the play of " + String.format("%.2f", file.seconds()) + " s";
             check("audio.host-event", id != 0 && file.seconds() > 0, count + " events read; " + event + " played "
                     + v.path() + ", " + String.format("%.2f", file.seconds()) + " s");
         } catch (RuntimeException e) {
@@ -416,7 +440,18 @@ public final class CgWorldProbe {
 
     /** Thirty frames into the hush: what the host holds for its blocks, then the hush popped. */
     private static void hushOnce() {
-        if (audio == null || hushFrames < 0 || ++hushFrames != 30) return;
+        if (audio == null || hushFrames < 0) return;
+        hushFrames++;
+        // The first line shown, on whichever frame: a world's first frames can take seconds, a short sound's whole life.
+        if (subtitleShown == null && hushFrames <= 30) {
+            subtitleShown = audio.subtitles().text();
+            if (subtitleShown != null || hushFrames == 1) {
+                subtitleState += ", " + audio.subtitles().count() + " at frame " + hushFrames + " (the explosion "
+                        + (audio.activeSounds().playing(explosionId) ? "at " + String.format("%.2f",
+                        audio.activeSounds().time(explosionId)) + " s" : "stopped") + ")";
+            }
+        }
+        if (hushFrames != 30) return;
         hushHeld = CgPlatform.get(CgHostDuck.SERVICE).factor(CgHostVolume.Category.BLOCKS);
         audio.pop(HUSH);
     }
@@ -502,6 +537,16 @@ public final class CgWorldProbe {
                     + CgPlatform.get(CgHostVolume.SERVICE).category(CgHostVolume.Category.BLOCKS));
         } else {
             skip("audio.host-duck", "the probe ended " + hushFrames + " frames into the hush");
+        }
+        if (hushFrames < 1) {
+            skip("audio.subtitles", "the probe ended before the subtitle was read");
+        } else {
+            subtitleDrawn = audio.subtitleFramesDrawn();
+            boolean drawn = !CgGraphicsSettings.SUBTITLES.get() || hudFirings == 0 || subtitleDrawn > 0;
+            check("audio.subtitles", subtitleWanted != null && subtitleWanted.equals(subtitleShown) && drawn, "showing '" + subtitleShown
+                    + "', wanted '" + subtitleWanted + "', " + subtitleSource + "; " + subtitleState + "; drawn over the HUD on " + subtitleDrawn
+                    + " frames of the HUD stage's " + hudFirings + (CgGraphicsSettings.SUBTITLES.get() ? "" : " (subtitles off: not drawn)")
+                    + (hudFirings == 0 ? " (the HUD hidden: a screen is up)" : ""));
         }
         float master = CgPlatform.get(CgHostVolume.SERVICE).master();
         check("audio.follows-master", audio.main() == master, "main gain " + audio.main() + ", master slider " + master);

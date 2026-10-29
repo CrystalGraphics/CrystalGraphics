@@ -45,6 +45,10 @@ public final class CgGraphicsSettings {
     public static final CgSetting.Number FLASHES = FILE.number("comfort", "flashes", "Screen flashes",
             "Scales full-screen flashes and impact frames; 0 for none, for sensitivity to flashing light.", 1f, 0f, 1f, 0.05f);
 
+    public static final CgSetting.Toggle SUBTITLES = FILE.toggle("comfort", "subtitles", "Subtitles",
+            "Shows what the effects' sounds are at the bottom of the screen, with an arrow toward where they come from.",
+            false);
+
     private CgGraphicsSettings() {
     }
 }

@@ -33,6 +33,8 @@ import com.crystalgraphics.platform.world.CgWorldEvents;
 import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioOutput;
 import com.crystalgraphics.platform.audio.CgHostDuck;
+import com.crystalgraphics.platform.service.CgHostI18n;
+import com.crystalgraphics.mc.v1710.platform.service.HostI18n1710;
 import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 
@@ -146,6 +148,7 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgAudioOutput.SERVICE, new Lwjgl2AudioOutput());
             CgPlatform.provide(CgHostVolume.SERVICE, new HostVolume1710());
             CgPlatform.provide(CgHostDuck.SERVICE, new HostDuck1710());
+            CgPlatform.provide(CgHostI18n.SERVICE, new HostI18n1710());
             CgPlatform.provide(CgAudioDecoder.SERVICE, new JOrbisDecoder());
             CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulus1710());
             CgPlatform.provide(CgGameDirectory.SERVICE, new GameDirectoryService1710());

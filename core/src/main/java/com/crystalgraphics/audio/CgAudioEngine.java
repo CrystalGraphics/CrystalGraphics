@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.LongToDoubleFunction;
 
 import javax.annotation.Nullable;
 
@@ -15,6 +16,7 @@ import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorldSubsystem;
+import com.crystalgraphics.api.text.CgI18n;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioOutput;
@@ -86,6 +88,11 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     private final CgSubmix[] submixes = new CgSubmix[5];
     private final CgSoundVoice[] voices = new CgSoundVoice[MAX_VOICES * 2];
     private final CgAudioListener listener = new CgAudioListener();
+    private final CgSubtitles subtitles = new CgSubtitles();
+    /** Seconds each sound has played, NaN once it stopped: what a subtitle's cue follows. */
+    private final LongToDoubleFunction played = id -> activeSounds.playing(id) ? activeSounds.time(id) : Double.NaN;
+    @Nullable
+    private CgSubtitleOverlay overlay;
     /** What the host was last told of each category's duck. */
     private final float[] postedDuck = new float[CgHostVolume.Category.values().length];
     private static final CgSoundAttenuation[] MINECRAFT_FALLOFFS = new CgSoundAttenuation[513];
@@ -163,6 +170,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         begin = world().schedule().add(CgTickGroup.BEGIN, "crystalgraphics:audio.clock", dt -> clock.advance(dt)).whilePaused(true);
         submit = world().schedule().add(CgTickGroup.SUBMIT, "crystalgraphics:audio", this::submit).whilePaused(true);
         running = true;
+        overlay = new CgSubtitleOverlay(this);
         // A thread of its own, as Unreal's render thread: a job worker would wait behind the frame's jobs.
         thread = new Thread(this::run, "crystalgraphics-audio");
         thread.setDaemon(true);
@@ -182,6 +190,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
             if (postedDuck[c.ordinal()] != 1f) host.duck(c, 1f);
         }
         running = false;
+        if (overlay != null) overlay.close();
         if (submit != null) submit.close();
         if (begin != null) begin.close();
         if (decodeThread != null) LockSupport.unpark(decodeThread);
@@ -240,6 +249,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         float p = Math.max(0.5f, Math.min(2f, pitch)) * v.pitch();
         long id = activeSounds.play(sound, soundClass, Math.min(1f, volume) * v.volume(), p, false, Double.NaN);
         activeSounds.at(id, x, y, z).attenuation(id, minecraftAttenuation(v.distance() * Math.max(1f, volume)));
+        queueSubtitle(event, id, sound.seconds() / p);
         return id;
     }
 
@@ -270,7 +280,39 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         }
         long id = activeSounds.play(sound, soundClass, gain * volume, pitch * p, loop, at);
         if (!Double.isNaN(x)) activeSounds.at(id, x, y, z).attenuation(id, attenuation);
+        if (r.kind() == CgSoundRef.Kind.EVENT) queueSubtitle(r.id(), id, sound.seconds() / (pitch * p));
         return id;
+    }
+
+    /** A host event's subtitle, in the player's language, for the sound it played as {@code id}. */
+    private void queueSubtitle(String event, long id, double seconds) {
+        if (id == 0) return;
+        String key = CgHostSoundEvents.current().subtitle(event);
+        String text = key != null ? CgI18n.translate(key) : null;
+        if (text != null) subtitles.queue(id, text, seconds);
+    }
+
+    /**
+     * The sounds' subtitles: queue one for a sound you play, and the engine shows the highest priority at the bottom of
+     * the screen while {@code CgGraphicsSettings.SUBTITLES} is on. Minecraft's events queue their own.
+     *
+     * <pre>{@code
+     * long id = audio.play(line, CgSoundClass.VOICE, 1f);
+     * audio.subtitles().queue(id, "Kamehameha!", line.seconds());
+     * }</pre>
+     */
+    public CgSubtitles subtitles() {
+        return subtitles;
+    }
+
+    /** Where the shown subtitle's sound is around the listener (0 ahead, 90 right); NaN where it is not placed. */
+    double subtitleAzimuth() {
+        return activeSounds.azimuth(subtitles.id(), listener);
+    }
+
+    /** Frames the subtitle overlay has drawn a line: what a probe asks to know the HUD stage drew it. */
+    public int subtitleFramesDrawn() {
+        return overlay != null ? overlay.drawn() : 0;
     }
 
     /** Minecraft's linear falloff to {@code blocks}, one per whole block: a play makes none. */
@@ -449,6 +491,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         else if (world().view() != null) listener.set(world().view(), dt);
         activeSounds.update(dt, listener, paused, CgPlatform.get(CgHostVolume.SERVICE));
         duckHost();
+        subtitles.update(played);
     }
 
     /** The mixes' hush on the host's own sounds, posted where it moved. */
