@@ -170,7 +170,7 @@ The player's sliders are never touched: the game's sounds come back when the mix
 
 ## Subtitles
 
-A sound can say what it is at the bottom of the screen, with an arrow toward where it comes from. Queue a line for a
+A sound can say what it is at the bottom of the screen. Queue a line for a
 sound as you play it:
 
 ```java

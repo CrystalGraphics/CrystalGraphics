@@ -24,7 +24,7 @@ audio.play(new CgAudioTone(440, 0.25f, 1.0), 1f);
 | `CgSoundConcurrency` | a cap per kind and the rule for what goes (`USoundConcurrency`) |
 | `CgSubmix`, `CgSubmixEffect`, `CgLowPass`, `CgReverb` | the submix tree the mixer renders leaf to root, its effect chains (`FMixerSubmix`), a one-pole low-pass, a room reverb (Freeverb) on `reverb` |
 | `CgSoundRef`, `CgKitSounds`, `CgHostSoundEvents` | a sound as an asset names it, compiled at load; games' cue names through each kit's `sounds.yaml` and voice lines through its cast's sheets; the host's `sounds.json` merged across packs, each event flattened at its first pick |
-| `CgSubtitles`, `CgSubtitleOverlay` | the sounds' subtitles (`FSubtitleManager`): queued per sound id over its duration, the highest priority shown; drawn over the HUD stage with an arrow toward the sound |
+| `CgSubtitles`, `CgSubtitleOverlay` | the sounds' subtitles (`FSubtitleManager`): queued per sound id over its duration, the highest priority shown; drawn over the HUD stage in Unreal's canvas look |
 | `CgSoundAttenuation`, `CgAudioListener` | what distance does to a placed sound (`FSoundAttenuationSettings`); the listener, moved to the camera's final pose at `SUBMIT`, and the stereo pan law (`Get3DChannelMap`) |
 
 ## Rules

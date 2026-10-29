@@ -274,7 +274,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
                 sound = sounds.load(v.path(), v.stream());
                 volume = v.volume();
                 p = v.pitch();
-            }
+            } 
             case CUE -> sound = sounds.load(r.id(), r.file(), r.stream());
             default -> sound = sounds.load(r.id(), r.stream());
         }
@@ -303,11 +303,6 @@ public final class CgAudioEngine extends CgWorldSubsystem {
      */
     public CgSubtitles subtitles() {
         return subtitles;
-    }
-
-    /** Where the shown subtitle's sound is around the listener (0 ahead, 90 right); NaN where it is not placed. */
-    double subtitleAzimuth() {
-        return activeSounds.azimuth(subtitles.id(), listener);
     }
 
     /** Frames the subtitle overlay has drawn a line: what a probe asks to know the HUD stage drew it. */

@@ -243,12 +243,6 @@ public final class CgActiveSounds {
         return i >= 0 && state[i] == VIRTUAL;
     }
 
-    /** Where {@code id} is around {@code listener}, as {@link CgAudioListener#azimuth}; NaN where it is not placed. */
-    public double azimuth(long id, CgAudioListener listener) {
-        int i = slot(id);
-        return i >= 0 && placed[i] ? listener.azimuth(x[i], y[i], z[i]) : Double.NaN;
-    }
-
     /** Its occlusion low-pass now, in hertz: 20 kHz while nothing stands between it and the listener. */
     public float occlusionHz(long id) {
         int i = slot(id);
