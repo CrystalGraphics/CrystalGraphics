@@ -400,13 +400,12 @@ public final class CgWorldProbe {
             long id = audio.playEvent(event, px, py, pz, 0.05f, 1f);
             explosionId = id;
             CgSound file = audio.sounds().load(v.path(), v.stream());
+            // Subtitles are only ever queued by their author: the probe queues the host's own caption for its event.
             String key = events.subtitle(event);
-            subtitleWanted = key != null ? CgI18n.translate(key) : null;
-            subtitleSource = key != null ? "the host's " + key : "queued by the probe (this version's sounds.json has none)";
-            if (subtitleWanted == null) {
-                subtitleWanted = "Probe explosion";
-                audio.subtitles().queue(id, subtitleWanted, file.seconds());
-            }
+            String host = key != null ? CgI18n.translate(key) : null;
+            subtitleWanted = host != null ? host : "Probe explosion";
+            subtitleSource = host != null ? "the host's " + key + ", queued by the probe" : "queued by the probe (this version's sounds.json has none)";
+            audio.subtitles().queue(id, subtitleWanted, file.seconds());
             subtitleState = audio.subtitles().count() + " queued at the play of " + String.format("%.2f", file.seconds()) + " s";
             check("audio.host-event", id != 0 && file.seconds() > 0, count + " events read; " + event + " played "
                     + v.path() + ", " + String.format("%.2f", file.seconds()) + " s");

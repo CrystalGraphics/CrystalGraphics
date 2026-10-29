@@ -46,8 +46,8 @@ public final class CgGraphicsSettings {
             "Scales full-screen flashes and impact frames; 0 for none, for sensitivity to flashing light.", 1f, 0f, 1f, 0.05f);
 
     public static final CgSetting.Toggle SUBTITLES = FILE.toggle("comfort", "subtitles", "Subtitles",
-            "Shows what the effects' sounds are at the bottom of the screen, with an arrow toward where they come from.",
-            false);
+            "Shows the lines moves and mods give their sounds at the bottom of the screen.",
+            true);
 
     private CgGraphicsSettings() {
     }

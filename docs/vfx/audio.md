@@ -185,14 +185,20 @@ audio.subtitles().queue(id, CgSubtitles.DEFAULT_PRIORITY, line.seconds(),
         List.of(new CgSubtitles.Cue("Kame...", 0f), new CgSubtitles.Cue("...hameha!", 1.4f)));
 ```
 
-Minecraft's own sounds bring their subtitles with them, in the player's language: an explosion played through the
-engine reads *Explosion*, where the version's `sounds.json` names one (1.9 and later).
+Nothing is captioned for you, Minecraft's own sounds included: a line shows only when you queue it. For a Minecraft
+event, its pack's own caption, in the player's language, is a key away (1.9 and later name one in `sounds.json`):
+
+```java
+long id = audio.playEvent("entity.generic.explode", x, y, z, 1f, 1f);
+String key = CgHostSoundEvents.current().subtitle("entity.generic.explode");   // "subtitles.entity.generic.explode"
+if (key != null) audio.subtitles().queue(id, CgI18n.translate(key), seconds);
+```
 
 - One line shows at a time: the highest priority (`CgSubtitles.DEFAULT_PRIORITY` unless you say), the latest queued
   among equals. A line goes when its sound ends or is stopped, and follows the sound's own playback: a pause or a
   hitch never puts it out of step.
-- Shown only while the player's **Subtitles** setting is on (`CgGraphicsSettings.SUBTITLES`, off by default, as
-  Minecraft's *Show Subtitles*); queued either way, so turning it on mid-move shows the line under way.
+- Shown while the player's **Subtitles** setting is on (`CgGraphicsSettings.SUBTITLES`, on by default); queued
+  either way, so turning it back on mid-move shows the line under way.
 - Drawn over the HUD (`CgRenderStage.HUD`), never Minecraft's own subtitle box.
 
 ### Lines in a sequence

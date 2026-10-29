@@ -29,7 +29,8 @@ import javax.annotation.Nullable;
  * }</pre>
  *
  * <ul>
- *   <li>Minecraft's own events queue theirs as {@link CgAudioEngine#playEvent} plays them, in the player's language.</li>
+ *   <li>Nothing is queued for you: a sound shows a line only when its author queues one, Minecraft's own events
+ *       included ({@code CgHostSoundEvents.subtitle(event)} is the caption key the host's pack gives it).</li>
  *   <li>Shown only while {@code CgGraphicsSettings.SUBTITLES} is on; queued either way.</li>
  *   <li>A cue follows its sound's own playback, so a hitch, a pause or a sound joined late reads the cue it is at.</li>
  *   <li>A second queue for one id replaces the first. Priority 0, no cues or no duration queue nothing.</li>

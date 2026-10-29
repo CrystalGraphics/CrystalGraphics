@@ -16,7 +16,6 @@ import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorldSubsystem;
-import com.crystalgraphics.i18n.CgI18n;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioOutput;
@@ -249,7 +248,6 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         float p = Math.max(0.5f, Math.min(2f, pitch)) * v.pitch();
         long id = activeSounds.play(sound, soundClass, Math.min(1f, volume) * v.volume(), p, false, Double.NaN);
         activeSounds.at(id, x, y, z).attenuation(id, minecraftAttenuation(v.distance() * Math.max(1f, volume)));
-        queueSubtitle(event, id, sound.seconds() / p);
         return id;
     }
 
@@ -280,7 +278,6 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         }
         long id = activeSounds.play(sound, soundClass, gain * volume, pitch * p, loop, at);
         if (!Double.isNaN(x)) activeSounds.at(id, x, y, z).attenuation(id, attenuation);
-        if (r.kind() == CgSoundRef.Kind.EVENT) queueSubtitle(r.id(), id, sound.seconds() / (pitch * p));
         return id;
     }
 
@@ -297,17 +294,9 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         };
     }
 
-    /** A host event's subtitle, in the player's language, for the sound it played as {@code id}. */
-    private void queueSubtitle(String event, long id, double seconds) {
-        if (id == 0) return;
-        String key = CgHostSoundEvents.current().subtitle(event);
-        String text = key != null ? CgI18n.translate(key) : null;
-        if (text != null) subtitles.queue(id, text, seconds);
-    }
-
     /**
      * The sounds' subtitles: queue one for a sound you play, and the engine shows the highest priority at the bottom of
-     * the screen while {@code CgGraphicsSettings.SUBTITLES} is on. Minecraft's events queue their own.
+     * the screen while {@code CgGraphicsSettings.SUBTITLES} is on. Nothing is queued for you, Minecraft's events included.
      *
      * <pre>{@code
      * long id = audio.play(line, CgSoundClass.VOICE, 1f);
