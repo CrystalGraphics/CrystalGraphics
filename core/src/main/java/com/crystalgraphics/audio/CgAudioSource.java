@@ -33,4 +33,8 @@ public interface CgAudioSource {
      * {@code gain}; false once done.
      */
     boolean render(float[] out, int offset, int frames, int channels, int sampleRate, float gain);
+
+    /** On the audio thread, once its voice is freed: finished, or stopped. */
+    default void ended() {
+    }
 }

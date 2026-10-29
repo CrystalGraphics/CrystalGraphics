@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.legacy.platform;
 
+import com.crystalgraphics.lwjgl2.JOrbisDecoder;
 import com.crystalgraphics.lwjgl2.Lwjgl2AudioOutput;
 import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
 import com.crystalgraphics.lwjgl2.Lwjgl2GLContext;
@@ -32,6 +33,7 @@ import com.crystalgraphics.platform.service.CgSoundService;
 import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.platform.world.CgHostDebug;
 import com.crystalgraphics.platform.world.CgWorldEvents;
+import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioOutput;
 import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.world.CgWorldSound;
@@ -80,6 +82,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgWorldSound.SERVICE, new WorldSoundLegacy());
         CgPlatform.provide(CgAudioOutput.SERVICE, new Lwjgl2AudioOutput());
         CgPlatform.provide(CgHostVolume.SERVICE, new HostVolumeLegacy());
+        CgPlatform.provide(CgAudioDecoder.SERVICE, new JOrbisDecoder());
         CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusLegacy());
         CgPlatform.provide(CgGameDirectory.SERVICE, new GameDirectoryService());
         // WorldEventsLegacy polls the hurts, deaths and lightning; ExplosionHook and LevelEventHook the rest.

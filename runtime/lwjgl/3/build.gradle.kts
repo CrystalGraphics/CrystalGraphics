@@ -43,6 +43,8 @@ dependencies {
     compileOnly("org.lwjgl:lwjgl-opengl:$lwjgl3Version")
     // The audio output: only what LWJGL 3.1.6's OpenAL already has (Minecraft 1.13).
     compileOnly("org.lwjgl:lwjgl-openal:$lwjgl3Version")
+    // The Ogg Vorbis decoder: stb_vorbis, which every LWJGL 3 client ships.
+    compileOnly("org.lwjgl:lwjgl-stb:$lwjgl3Version")
 }
 
 // Lwjgl31GLBackend: Lwjgl3GLBackend without the core-profile GLxxC classes, which LWJGL added in 3.2 --

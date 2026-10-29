@@ -11,6 +11,7 @@ import com.crystalgraphics.lwjgl3.GlfwCursorService;
 import com.crystalgraphics.lwjgl3.GlfwInputService;
 //?}
 import com.crystalgraphics.lwjgl3.Lwjgl3AudioOutput;
+import com.crystalgraphics.lwjgl3.StbVorbisDecoder;
 import com.crystalgraphics.lwjgl3.Lwjgl3GLContext;
 
 import com.crystalgraphics.mc.modern.platform.service.LifecycleService;
@@ -41,6 +42,7 @@ import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.platform.world.CgHostDebug;
 import com.crystalgraphics.platform.world.CgModelSpace;
 import com.crystalgraphics.platform.world.CgWorldEvents;
+import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioOutput;
 import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.world.CgWorldSound;
@@ -130,6 +132,7 @@ public final class PlatformServiceModern implements CgPlatformService {
             CgPlatform.provide(CgWorldSound.SERVICE, new WorldSoundModern());
             CgPlatform.provide(CgAudioOutput.SERVICE, new Lwjgl3AudioOutput(HostVolumeModern::device));
             CgPlatform.provide(CgHostVolume.SERVICE, new HostVolumeModern());
+            CgPlatform.provide(CgAudioDecoder.SERVICE, new StbVorbisDecoder());
             CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusModern());
             CgPlatform.provide(CgGameDirectory.SERVICE, () -> Minecraft.getInstance().gameDirectory.toPath());
             // What WorldEventsModern.poll reports; the explosion and the broken block are the loaders' mixins'.

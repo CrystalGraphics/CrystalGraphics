@@ -4,7 +4,27 @@ The engine plays its own sound: a mixer on an audio thread of its own, writing t
 host's. On Minecraft it opens its own output on the device the game plays to, follows the game's master volume
 slider, and holds while the game is paused. Minecraft's own sounds are left exactly as they are.
 
-## Playing a sound
+## Playing a sound file
+
+Sounds are Ogg Vorbis files, loaded by path and kept: each is read and decoded once.
+
+```java
+CgSound click = audio.sounds().load("mymod:sounds/click.ogg");          // short: decoded once, kept in memory
+CgSound theme = audio.sounds().load("mymod:sounds/theme.ogg", true);    // streamed
+CgAudioSource playing = audio.play(click, 1f);
+audio.play(theme, 0.8f, 1f, true, audio.clock().now());                 // gain, pitch, looping, on its sample
+audio.stop(playing);
+```
+
+- A sound longer than 10 seconds streams whether asked or not. Its compressed bytes stay in memory, and the engine's
+  decode thread keeps a second of it decoded ahead of the voice, so a hitch on the game's thread never cuts it.
+- A short sound is decoded to 16-bit samples when it loads. Load ahead of play: loading reads and decodes on the
+  calling thread.
+- A sound plays at its own pitch and length whatever its sample rate: each voice resamples it to the output's 48 kHz.
+- Decoding uses the game's own decoder (stb_vorbis on 1.13 and later, JOrbis before), so the engine bundles none.
+- A path that is not found, or not Ogg Vorbis, fails naming it.
+
+## Playing a sound you make
 
 ```java
 CgAudioEngine audio = CgWorld.client().add(new CgAudioEngine());   // once, on a client

@@ -17,12 +17,16 @@ audio.play(new CgAudioTone(440, 0.25f, 1.0), 1f);
 | `CgAudioClock` | the frame's audio time (Quartz's clock): a start at a time lands on its sample |
 | `CgAudioSource` | what a voice plays: samples added into the buffer, from a frame offset, on the audio thread |
 | `CgAudioTone` | a sine: the test signal |
+| `CgSound`, `CgAudioSounds` | a loaded sound (`USoundWave`: resident 16-bit samples, or compressed bytes it streams from) and the loader that reads and decodes each path once |
+| `CgSoundVoice`, `CgSoundStream` | a resident sound playing, resampled linearly; a streamed one, played from a ring the engine's decode thread keeps a second ahead |
 
 ## Rules
 
 - **Unreal decides behaviour**: each piece cites the `AudioMixer` source it follows.
 - **The frame thread never touches the mixer**: it posts commands, and the audio thread drains them each buffer.
 - **The audio thread allocates nothing and never blocks** on I/O or a lock: what it plays is ready before it asks.
+- **Decoding is never on the audio thread or the frame's**: streams fill on the engine's decode thread. A `CgJob`
+  starts only on a loop's thread, and the audio thread is none.
 - **A dedicated server plays nothing**: with no `CgAudioOutput` the engine starts no thread.
 - **The host's own sounds stay the host's**: nothing here calls a host's sound engine. Its sliders arrive through
   `platform.audio.CgHostVolume`, its sound files through `CgResourceService`.

@@ -38,6 +38,8 @@ dependencies {
     // compileOnly because the game supplies LWJGL — bundling it would put a second copy of
     // org.lwjgl on a classpath that already has the one the loader booted with.
     compileOnly("org.lwjgl.lwjgl:lwjgl:${providers.gradleProperty("dep.lwjgl").getOrElse("2.9.4-nightly-20150209")}")
+    // The Ogg Vorbis decoder these clients ship for their own sounds: called, never bundled.
+    compileOnly("org.jcraft:jorbis:0.0.17")
 }
 
 // The tier boundary, enforced rather than described (F4). Everything above LWJGL is what the

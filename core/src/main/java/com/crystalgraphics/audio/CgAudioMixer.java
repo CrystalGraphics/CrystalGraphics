@@ -77,7 +77,13 @@ public final class CgAudioMixer {
     }
 
     public void stop(CgAudioSource source) {
-        for (int i = 0; i < voices.length; i++) if (voices[i] == source) voices[i] = null;
+        for (int i = 0; i < voices.length; i++) if (voices[i] == source) free(i);
+    }
+
+    private void free(int i) {
+        CgAudioSource v = voices[i];
+        voices[i] = null;
+        v.ended();
     }
 
     public void gain(CgAudioSource source, float gain) {
@@ -110,7 +116,7 @@ public final class CgAudioMixer {
                 offset = (int) Math.max(0, due[i] - rendered);
                 due[i] = NOW;
             }
-            if (!v.render(out, offset, frames - offset, channels, sampleRate, gains[i])) voices[i] = null;
+            if (!v.render(out, offset, frames - offset, channels, sampleRate, gains[i])) free(i);
         }
         for (int i = 0, n = frames * channels; i < n; i++) {
             float s = out[i] * main;

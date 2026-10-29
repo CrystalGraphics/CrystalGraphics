@@ -2,6 +2,8 @@ package com.crystalgraphics.probe;
 
 import com.crystalgraphics.audio.CgAudioEngine;
 import com.crystalgraphics.audio.CgAudioTone;
+import com.crystalgraphics.audio.CgSound;
+import com.crystalgraphics.audio.CgSoundStream;
 import com.crystalgraphics.camera.CgCameraModifier;
 import com.crystalgraphics.camera.CgCameraSystem;
 import com.crystalgraphics.collision.CgCollisionWorld;
@@ -122,6 +124,13 @@ public final class CgWorldProbe {
     private static CgAudioEngine audio;
     private static final CgAudioTone TONE = new CgAudioTone(440, 0.05f, 0);
     private static long audioStart;
+    /** The stream check: a long vanilla track streamed through the host's decoder, the frame stalled once. */
+    /** The one long track in every era's assets, 1.7.10 to 26.x. */
+    private static final String MUSIC = "minecraft:sounds/music/game/end/boss.ogg";
+    private static final int STALL_MILLIS = 200;
+    private static CgSoundStream music;
+    private static long musicStart;
+    private static double stalledMillis = -1;
 
     private CgWorldProbe() {
     }
@@ -202,6 +211,7 @@ public final class CgWorldProbe {
                 // At least a few seconds, though the events land sooner: the server corrects the client's game time
                 // once a second, which can step it back across a shorter window.
                 events.watch();
+                stallOnce();
                 double inEvents = seconds(now);
                 if ((events.complete() && inEvents >= MIN_EVENT_SECONDS) || inEvents >= EVENT_SECONDS) finish(host);
                 break;
@@ -334,6 +344,27 @@ public final class CgWorldProbe {
         }
         audio.play(TONE, 1f);
         audioStart = System.nanoTime();
+        try {
+            CgSound track = audio.sounds().load(MUSIC, true);
+            music = (CgSoundStream) audio.play(track, 0.05f);
+            musicStart = System.nanoTime();
+            info("audio.stream-source", track.id() + ", " + String.format("%.1f", track.seconds()) + " s at "
+                    + track.sampleRate() + " Hz, " + track.channels() + " channel(s)");
+        } catch (RuntimeException e) {
+            skip("audio.stream", "the track did not load: " + e.getMessage());
+        }
+    }
+
+    /** Once, a second into the stream: the render thread held, as a hitch holds it. */
+    private static void stallOnce() {
+        if (music == null || stalledMillis >= 0 || (System.nanoTime() - musicStart) / 1.0e9 < 1) return;
+        long t = System.nanoTime();
+        try {
+            Thread.sleep(STALL_MILLIS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        stalledMillis = (System.nanoTime() - t) / 1.0e6;
     }
 
     private static void audioChecks() {
@@ -348,6 +379,13 @@ public final class CgWorldProbe {
         check("audio.underruns", audio.underruns() == 0, audio.underruns() + " underruns; the audio thread's longest stall "
                 + String.format("%.1f", audio.longestStallMillis()) + " ms against a queue of "
                 + String.format("%.0f", CgAudioEngine.FORMAT.buffers() * CgAudioEngine.FORMAT.bufferSeconds() * 1000) + " ms");
+        if (music != null) {
+            audio.stop(music);
+            double streamed = (System.nanoTime() - musicStart) / 1.0e9;
+            check("audio.stream", music.starved() == 0 && music.played() >= streamed * 0.8 && stalledMillis >= STALL_MILLIS,
+                    String.format("%.1f s played of %.1f s; dry in %d buffers; the frame stalled %.0f ms", music.played(),
+                            streamed, music.starved(), stalledMillis));
+        }
         float master = CgPlatform.get(CgHostVolume.SERVICE).master();
         check("audio.follows-master", audio.main() == master, "main gain " + audio.main() + ", master slider " + master);
     }

@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.v1710.platform;
 
+import com.crystalgraphics.lwjgl2.JOrbisDecoder;
 import com.crystalgraphics.lwjgl2.Lwjgl2AudioOutput;
 import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
 import com.crystalgraphics.lwjgl2.Lwjgl2GLContext;
@@ -29,6 +30,7 @@ import com.crystalgraphics.platform.service.*;
 import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.platform.world.CgHostDebug;
 import com.crystalgraphics.platform.world.CgWorldEvents;
+import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioOutput;
 import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.world.CgWorldSound;
@@ -144,6 +146,7 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgWorldSound.SERVICE, new WorldSound1710());
             CgPlatform.provide(CgAudioOutput.SERVICE, new Lwjgl2AudioOutput());
             CgPlatform.provide(CgHostVolume.SERVICE, new HostVolume1710());
+            CgPlatform.provide(CgAudioDecoder.SERVICE, new JOrbisDecoder());
             CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulus1710());
             CgPlatform.provide(CgGameDirectory.SERVICE, new GameDirectoryService1710());
             // WorldEvents1710 polls the hurts, deaths and lightning; ExplosionHook and LevelEventHook the rest.

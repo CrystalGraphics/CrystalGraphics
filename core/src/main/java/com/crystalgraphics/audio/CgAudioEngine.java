@@ -13,6 +13,7 @@ import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorldSubsystem;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioOutput;
 import com.crystalgraphics.platform.audio.CgAudioStream;
 import com.crystalgraphics.platform.audio.CgHostVolume;
@@ -31,12 +32,21 @@ import com.crystalgraphics.platform.audio.CgHostVolume;
  * audio.play(click, 1f, audio.clock().now() + 0.25);              // a quarter second on, to the sample
  * }</pre>
  *
+ * A sound from a file, resident or streamed:
+ *
+ * <pre>{@code
+ * CgSound theme = audio.sounds().load("mymod:sounds/theme.ogg", true);
+ * CgAudioSource playing = audio.play(theme, 0.8f);
+ * audio.stop(playing);
+ * }</pre>
+ *
  * <ul>
  *   <li>Frame thread only for {@link #play}, {@link #stop} and {@link #gain}: they are queued, not applied, and land
  *       within one buffer.</li>
  *   <li>Where the output is {@link CgAudioOutput#NONE} (a dedicated server) it starts no thread and plays nothing.</li>
  *   <li>A stream that cannot open, or whose device goes, is tried again every second; sounds wait meanwhile.</li>
  *   <li>A full queue drops the command and counts it ({@link #dropped()}).</li>
+ *   <li>A streamed sound decodes on the engine's decode thread, never the frame's or the audio thread's.</li>
  * </ul>
  */
 public final class CgAudioEngine extends CgWorldSubsystem {
@@ -56,8 +66,19 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     private static final int QUEUE = 1024;
     private static final long RETRY_NANOS = TimeUnit.SECONDS.toNanos(1);
 
+    /** At most this many streams play at once. */
+    public static final int MAX_STREAMS = 32;
+
     @Nullable
     private final CgAudioOutput given;
+    @Nullable
+    private final CgAudioDecoder givenDecoder;
+    private CgAudioSounds sounds;
+    private CgAudioDecoder decoder = CgAudioDecoder.NONE;
+    /** The streams the decode thread keeps filled; the frame thread adds, the decode thread drops. */
+    private final CgSoundStream[] streams = new CgSoundStream[MAX_STREAMS];
+    @Nullable
+    private Thread decodeThread;
     private final int[] kinds = new int[QUEUE];
     private final CgAudioSource[] sources = new CgAudioSource[QUEUE];
     private final float[] values = new float[QUEUE];
@@ -83,20 +104,28 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     private float postedMain = -1f;
     private boolean postedPaused;
 
-    /** On the host's {@link CgAudioOutput}. */
+    /** On the host's {@link CgAudioOutput} and {@link CgAudioDecoder}. */
     public CgAudioEngine() {
-        this(null);
+        this(null, null);
     }
 
-    /** On {@code output}: the harness's device, or a test's. */
+    /** On {@code output}, and the host's decoder. */
     public CgAudioEngine(@Nullable CgAudioOutput output) {
+        this(output, null);
+    }
+
+    /** On {@code output} and {@code decoder}: the harness's device, or a test's. */
+    public CgAudioEngine(@Nullable CgAudioOutput output, @Nullable CgAudioDecoder decoder) {
         this.given = output;
+        this.givenDecoder = decoder;
     }
 
     @Override
     protected void initialize() {
         output = given != null ? given : CgPlatform.get(CgAudioOutput.SERVICE);
         if (output == CgAudioOutput.NONE) return;
+        decoder = givenDecoder != null ? givenDecoder : CgPlatform.get(CgAudioDecoder.SERVICE);
+        sounds = new CgAudioSounds(decoder);
         mixer = new CgAudioMixer(FORMAT.sampleRate(), FORMAT.channels(), FORMAT.frames(), MAX_VOICES);
         // Left alone within two buffers of the write head. A frame hears its events at its end, up to a frame after
         // they fell: a lead of the queue keeps their starts ahead of the head for frames up to the queue less the band.
@@ -109,6 +138,10 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         thread.setDaemon(true);
         thread.setPriority(Thread.MAX_PRIORITY - 1);
         thread.start();
+        // Unreal decodes on audio tasks of its own: a CgJob starts only on a loop thread, which the audio thread is not.
+        decodeThread = new Thread(this::decode, "crystalgraphics-audio-decode");
+        decodeThread.setDaemon(true);
+        decodeThread.start();
     }
 
     @Override
@@ -116,6 +149,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         running = false;
         if (submit != null) submit.close();
         if (begin != null) begin.close();
+        if (decodeThread != null) LockSupport.unpark(decodeThread);
         if (thread != null) {
             LockSupport.unpark(thread);
             try {
@@ -138,6 +172,41 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     /** Plays {@code source} starting at audio time {@code seconds} ({@link #clock()}), on its sample. */
     public void play(CgAudioSource source, float gain, double seconds) {
         post(PLAY, source, gain, true, clock.frameAt(seconds));
+    }
+
+    /** Where sounds are loaded from, decoded by the host's decoder. Null where it is not {@link #active()}. */
+    public CgAudioSounds sounds() {
+        return sounds;
+    }
+
+    /** Plays {@code sound} from the next buffer; the voice it answers stops it. */
+    public CgAudioSource play(CgSound sound, float gain) {
+        CgAudioSource v = voice(sound, 1f, false);
+        play(v, gain);
+        return v;
+    }
+
+    /** Plays {@code sound} at {@code pitch}, looping or not, from audio time {@code seconds}, on its sample. */
+    public CgAudioSource play(CgSound sound, float gain, float pitch, boolean loop, double seconds) {
+        CgAudioSource v = voice(sound, pitch, loop);
+        play(v, gain, seconds);
+        return v;
+    }
+
+    private CgAudioSource voice(CgSound sound, float pitch, boolean loop) {
+        if (!sound.streamed()) return new CgSoundVoice(sound, FORMAT.sampleRate(), pitch, loop);
+        CgSoundStream s = new CgSoundStream(sound, decoder, FORMAT.sampleRate(), pitch, loop);
+        synchronized (streams) {
+            int free = -1;
+            for (int i = 0; i < streams.length && free < 0; i++) if (streams[i] == null) free = i;
+            if (free < 0) {
+                s.close();
+                throw new IllegalStateException("More than " + MAX_STREAMS + " streams at once: " + sound);
+            }
+            streams[free] = s;
+        }
+        LockSupport.unpark(decodeThread);
+        return s;
     }
 
     /** Plays a sound the game's pause leaves playing: a menu's. */
@@ -240,6 +309,38 @@ public final class CgAudioEngine extends CgWorldSubsystem {
                 default -> { }
             }
             tail.lazySet(t + 1);
+        }
+    }
+
+    /** The decode thread: every stream's ring filled ahead of its voice; a finished one closed and dropped. */
+    private void decode() {
+        // A tenth of the ring a wake: with the ring a second long, a stall of half a second is still covered.
+        long wait = TimeUnit.MILLISECONDS.toNanos(20);
+        while (running) {
+            for (int i = 0; i < streams.length; i++) {
+                CgSoundStream s = streams[i];
+                if (s == null) continue;
+                if (s.done()) {
+                    s.close();
+                    synchronized (streams) {
+                        streams[i] = null;
+                    }
+                    continue;
+                }
+                try {
+                    if (s.needs()) s.fill(Integer.MAX_VALUE);
+                } catch (RuntimeException e) {
+                    LOGGER.error("A sound stream failed to decode; it plays no more", e);
+                    s.stopDecoding();
+                }
+            }
+            LockSupport.parkNanos(wait);
+        }
+        synchronized (streams) {
+            for (int i = 0; i < streams.length; i++) {
+                if (streams[i] != null) streams[i].close();
+                streams[i] = null;
+            }
         }
     }
 
