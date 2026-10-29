@@ -10,6 +10,7 @@ import com.crystalgraphics.audio.CgSoundRef;
 import com.crystalgraphics.audio.CgSound;
 import com.crystalgraphics.audio.CgSoundAttenuation;
 import com.crystalgraphics.audio.CgSoundClass;
+import com.crystalgraphics.audio.CgSoundMix;
 import com.crystalgraphics.audio.CgSoundStream;
 import com.crystalgraphics.camera.CgCameraModifier;
 import com.crystalgraphics.camera.CgCameraSystem;
@@ -19,6 +20,7 @@ import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.audio.CgHostDuck;
 import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.world.CgEntityQuery;
@@ -143,6 +145,10 @@ public final class CgWorldProbe {
     /** Two quiet clicks, one a block into the ground under the camera and one six above it: the ground occludes one. */
     private static long buried, open;
     private static int occlusionFrames;
+    /** A cinematic's hush on the host's blocks, pushed with the audio, popped 30 frames on. */
+    private static final CgSoundMix HUSH = new CgSoundMix(0f, 0f).duckHost(CgHostVolume.Category.BLOCKS, 0.25f);
+    private static int hushFrames = -1;
+    private static float hushHeld = Float.NaN;
     private static CgSoundStream music;
     private static long musicStart;
     private static double stalledMillis = -1;
@@ -228,6 +234,7 @@ public final class CgWorldProbe {
                 events.watch();
                 stallOnce();
                 occlusionOnce();
+                hushOnce();
                 double inEvents = seconds(now);
                 if ((events.complete() && inEvents >= MIN_EVENT_SECONDS) || inEvents >= EVENT_SECONDS) finish(host);
                 break;
@@ -352,6 +359,8 @@ public final class CgWorldProbe {
         }
         audio.play(TONE, 1f);
         hostEvent(px, py, pz);
+        audio.push(HUSH);
+        hushFrames = 0;
         kitCue(px, py, pz);
         audioStart = System.nanoTime();
         try {
@@ -403,6 +412,13 @@ public final class CgWorldProbe {
         } catch (RuntimeException e) {
             check("audio.kit-cue", false, cue + " threw " + e);
         }
+    }
+
+    /** Thirty frames into the hush: what the host holds for its blocks, then the hush popped. */
+    private static void hushOnce() {
+        if (audio == null || hushFrames < 0 || ++hushFrames != 30) return;
+        hushHeld = CgPlatform.get(CgHostDuck.SERVICE).factor(CgHostVolume.Category.BLOCKS);
+        audio.pop(HUSH);
     }
 
     /** Once the listener is the camera: the clicks placed below and above it. */
@@ -478,6 +494,14 @@ public final class CgWorldProbe {
                     "a sound in the ground low-passed to " + String.format("%.0f", under) + " Hz, one in the air "
                             + String.format("%.0f", over) + " Hz; the listener at " + String.format("%.1f, %.1f, %.1f",
                             audio.listener().x(), audio.listener().y(), audio.listener().z()));
+        }
+        if (hushFrames >= 30) {
+            float now = CgPlatform.get(CgHostDuck.SERVICE).factor(CgHostVolume.Category.BLOCKS);
+            check("audio.host-duck", Math.abs(hushHeld - 0.25f) < 1e-3f && now == 1f, "the host's blocks held at "
+                    + hushHeld + " while hushed, " + now + " after; its sliders untouched at "
+                    + CgPlatform.get(CgHostVolume.SERVICE).category(CgHostVolume.Category.BLOCKS));
+        } else {
+            skip("audio.host-duck", "the probe ended " + hushFrames + " frames into the hush");
         }
         float master = CgPlatform.get(CgHostVolume.SERVICE).master();
         check("audio.follows-master", audio.main() == master, "main gain " + audio.main() + ", master slider " + master);

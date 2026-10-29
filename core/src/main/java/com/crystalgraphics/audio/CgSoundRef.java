@@ -1,9 +1,11 @@
 package com.crystalgraphics.audio;
 
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 import javax.annotation.Nullable;
 
@@ -162,6 +164,20 @@ public final class CgSoundRef {
         z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
         z ^= z >>> 31;
         return picks[(int) Math.floorMod(z, (long) picks.length)].pick(seed * 31 + 7);
+    }
+
+    /** Equal where it names the same sound with the same settings: a cue built in Java equals its file's. */
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof CgSoundRef r)) return false;
+        return kind == r.kind && id.equals(r.id) && volume == r.volume && pitch == r.pitch && stream == r.stream
+                && Objects.equals(attenuation, r.attenuation) && Objects.equals(file, r.file) && Arrays.equals(picks, r.picks);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(kind, id, volume, pitch, stream, file) * 31 + Arrays.hashCode(picks);
     }
 
     @Override

@@ -19,7 +19,7 @@ import com.crystalgraphics.platform.audio.CgHostVolume;
 public class CgActiveSoundsTest {
 
     /** Records what the active sounds asked of the engine. */
-    private static final class Recording implements CgActiveSounds.Sink {
+    static final class Recording implements CgActiveSounds.Sink {
         final List<Double> offsets = new ArrayList<>();
         final Map<CgAudioSource, Float> gains = new IdentityHashMap<>();
         final List<CgAudioSource> stopped = new ArrayList<>();

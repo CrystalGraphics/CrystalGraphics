@@ -24,7 +24,7 @@ import com.crystalgraphics.platform.CgService;
 public interface CgHostVolume {
 
     /** The sliders a host may have, by what they hold. */
-    enum Category { PLAYERS, VOICE, MUSIC, AMBIENT, BLOCKS, UI }
+    enum Category { PLAYERS, VOICE, MUSIC, AMBIENT, BLOCKS, UI, HOSTILE, NEUTRAL, WEATHER, RECORDS }
 
     float master();
 

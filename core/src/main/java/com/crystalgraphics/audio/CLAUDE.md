@@ -37,6 +37,7 @@ audio.play(new CgAudioTone(440, 0.25f, 1.0), 1f);
 - **A sound's state is frame-thread arrays**, never an object per play: `CgActiveSounds` is sized once.
 - **A dedicated server plays nothing**: with no `CgAudioOutput` the engine starts no thread.
 - **Nothing here calls a host's sound engine**: even Minecraft's own sound events play through this mixer, read from
-  the packs' `sounds.json` through `CgResourceService`. The host's sliders arrive through `platform.audio.CgHostVolume`.
+  the packs' `sounds.json` through `CgResourceService`. The host's sliders arrive through `platform.audio.CgHostVolume`;
+  a mix's hush on the host's own sounds leaves through `CgHostDuck`, posted only where it moved.
 - **Sequences and cues find the engine in their world**: `CgSequencer.audio()`, the client world's for cues. Nothing
   adds one by default; whoever runs sequences adds it beside the sequencer.

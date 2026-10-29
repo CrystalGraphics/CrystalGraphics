@@ -103,6 +103,8 @@ public final class CgActiveSounds {
     private final float[] mixWeight = new float[MAX_MIXES];
     private final boolean[] mixPopping = new boolean[MAX_MIXES];
     private int mixCount;
+    /** Each host category's duck now: every pushed mix's, faded by its weight, multiplied. */
+    private final float[] hostDuck = new float[CgHostVolume.Category.values().length];
     private long plays;
     private int refused, culled;
 
@@ -111,6 +113,7 @@ public final class CgActiveSounds {
         this.sink = sink;
         // From 1, so no id is 0, the refused play's.
         Arrays.fill(generation, 1);
+        Arrays.fill(hostDuck, 1f);
     }
 
     /**
@@ -298,6 +301,11 @@ public final class CgActiveSounds {
         for (int j = 0; j < mixCount; j++) if (mixes[j] == mix) mixPopping[j] = true;
     }
 
+    /** The host's own sounds of {@code category} are lowered to this now, by the pushed mixes; 1 for none. */
+    public float hostDuck(CgHostVolume.Category category) {
+        return hostDuck[category.ordinal()];
+    }
+
     /** Plays refused for want of a slot. */
     public int refused() {
         return refused;
@@ -364,6 +372,15 @@ public final class CgActiveSounds {
                 continue;
             }
             mixWeight[j] = Math.min(1f, w);
+        }
+        // The host's categories, as the classes: each mix's duck faded by its weight.
+        Arrays.fill(hostDuck, 1f);
+        for (int j = 0; j < mixCount; j++) {
+            List<CgSoundMix.HostDuck> ducks = mixes[j].hostDucks();
+            for (int k = 0; k < ducks.size(); k++) {
+                CgSoundMix.HostDuck d = ducks.get(k);
+                hostDuck[d.category().ordinal()] *= 1 + (d.volume() - 1) * mixWeight[j];
+            }
         }
         for (int i = 0; i < MAX_SOUNDS; i++) {
             grouped[i] = chosen[i] = false;

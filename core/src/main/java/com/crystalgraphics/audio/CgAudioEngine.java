@@ -1,5 +1,6 @@
 package com.crystalgraphics.audio;
 
+import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
@@ -18,6 +19,7 @@ import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioOutput;
 import com.crystalgraphics.platform.audio.CgAudioStream;
+import com.crystalgraphics.platform.audio.CgHostDuck;
 import com.crystalgraphics.platform.audio.CgHostVolume;
 
 /**
@@ -84,6 +86,8 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     private final CgSubmix[] submixes = new CgSubmix[5];
     private final CgSoundVoice[] voices = new CgSoundVoice[MAX_VOICES * 2];
     private final CgAudioListener listener = new CgAudioListener();
+    /** What the host was last told of each category's duck. */
+    private final float[] postedDuck = new float[CgHostVolume.Category.values().length];
     private static final CgSoundAttenuation[] MINECRAFT_FALLOFFS = new CgSoundAttenuation[513];
     private CgAudioDecoder decoder = CgAudioDecoder.NONE;
     /** The streams the decode thread keeps filled; the frame thread adds, the decode thread drops. */
@@ -151,6 +155,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         submixes[2].effect(new CgReverb(FORMAT.sampleRate()));
         for (int i = 0; i < voices.length; i++) voices[i] = new CgSoundVoice();
         activeSounds = new CgActiveSounds(MAX_VOICES, new Sink());
+        Arrays.fill(postedDuck, 1f);
         activeSounds.occluder(CgAudioEngine::blocked);
         // Left alone within two buffers of the write head. A frame hears its events at its end, up to a frame after
         // they fell: a lead of the queue keeps their starts ahead of the head for frames up to the queue less the band.
@@ -171,6 +176,11 @@ public final class CgAudioEngine extends CgWorldSubsystem {
 
     @Override
     protected void deinitialize() {
+        // The host's own sounds back as the player set them.
+        CgHostDuck host = CgPlatform.get(CgHostDuck.SERVICE);
+        for (CgHostVolume.Category c : CATEGORIES) {
+            if (postedDuck[c.ordinal()] != 1f) host.duck(c, 1f);
+        }
         running = false;
         if (submit != null) submit.close();
         if (begin != null) begin.close();
@@ -438,7 +448,21 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         if (cameras != null && cameras.controls()) listener.set(cameras.pose(), dt);
         else if (world().view() != null) listener.set(world().view(), dt);
         activeSounds.update(dt, listener, paused, CgPlatform.get(CgHostVolume.SERVICE));
+        duckHost();
     }
+
+    /** The mixes' hush on the host's own sounds, posted where it moved. */
+    private void duckHost() {
+        CgHostDuck host = CgPlatform.get(CgHostDuck.SERVICE);
+        for (CgHostVolume.Category c : CATEGORIES) {
+            float d = activeSounds.hostDuck(c);
+            if (Math.abs(d - postedDuck[c.ordinal()]) < 1e-3f && (d != 1f || postedDuck[c.ordinal()] == 1f)) continue;
+            postedDuck[c.ordinal()] = d;
+            host.duck(c, d);
+        }
+    }
+
+    private static final CgHostVolume.Category[] CATEGORIES = CgHostVolume.Category.values();
 
     private void post(int kind, @Nullable CgAudioSource source, float value, boolean flag, long frame) {
         post(kind, source, value, flag, frame, 0);

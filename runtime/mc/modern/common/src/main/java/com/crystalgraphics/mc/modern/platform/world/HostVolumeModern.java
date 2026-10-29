@@ -4,6 +4,8 @@ import com.crystalgraphics.platform.audio.CgHostVolume;
 import net.minecraft.client.Minecraft;
 import net.minecraft.sounds.SoundSource;
 
+import javax.annotation.Nullable;
+
 /**
  * {@link CgHostVolume} from Minecraft's sound options, 1.13.2 to 26.3. Client only: constructed by
  * {@code PlatformServiceModern.gl()}.
@@ -17,21 +19,30 @@ public final class HostVolumeModern implements CgHostVolume {
 
     @Override
     public float category(Category category) {
-        SoundSource source;
+        SoundSource source = source(category);
+        return source == null ? 1f : Minecraft.getInstance().options.getSoundSourceVolume(source);
+    }
+
+    /** {@code category}'s sound source, or null where this version has none (UI before 1.21.6). */
+    @Nullable
+    public static SoundSource source(Category category) {
         switch (category) {
-            case PLAYERS: source = SoundSource.PLAYERS; break;
-            case VOICE: source = SoundSource.VOICE; break;
-            case MUSIC: source = SoundSource.MUSIC; break;
-            case AMBIENT: source = SoundSource.AMBIENT; break;
-            case BLOCKS: source = SoundSource.BLOCKS; break;
+            case PLAYERS: return SoundSource.PLAYERS;
+            case VOICE: return SoundSource.VOICE;
+            case MUSIC: return SoundSource.MUSIC;
+            case AMBIENT: return SoundSource.AMBIENT;
+            case BLOCKS: return SoundSource.BLOCKS;
+            case HOSTILE: return SoundSource.HOSTILE;
+            case NEUTRAL: return SoundSource.NEUTRAL;
+            case WEATHER: return SoundSource.WEATHER;
+            case RECORDS: return SoundSource.RECORDS;
             default:
                 //? if >=1.21.6 {
-                /*source = SoundSource.UI;
+                /*return SoundSource.UI;
                 *///?} else {
-                return 1f;
+                return null;
                 //?}
         }
-        return Minecraft.getInstance().options.getSoundSourceVolume(source);
     }
 
     /** The output device the player chose, or null for the system's default: 1.18.2 on. */

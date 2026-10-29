@@ -157,6 +157,17 @@ audio.pop(duck);
 
 An adjustment applies to the class and every class within it. Two mixes on one class multiply.
 
+A mix can hush Minecraft's own sounds too, by their category in the game's sound settings, faded with the mix:
+
+```java
+CgSoundMix cinematic = new CgSoundMix(0.3f, 1f)
+        .duckHost(CgHostVolume.Category.BLOCKS, 0.2f)                // the game's block sounds to 20%
+        .duckHost(CgHostVolume.Category.HOSTILE, 0.2f)
+        .duckHost(CgHostVolume.Category.WEATHER, 0.3f);
+```
+
+The player's sliders are never touched: the game's sounds come back when the mix pops, and when the engine closes.
+
 ## Submixes
 
 Every voice mixes into a submix, and the submixes into each other: `world` (with `reverb` inside it), `ui` and

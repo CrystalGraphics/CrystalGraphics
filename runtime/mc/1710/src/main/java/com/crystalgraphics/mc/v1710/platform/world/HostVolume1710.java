@@ -14,14 +14,22 @@ public final class HostVolume1710 implements CgHostVolume {
 
     @Override
     public float category(Category category) {
-        SoundCategory c;
+        SoundCategory c = host(category);
+        return c == null ? 1f : Minecraft.getMinecraft().gameSettings.getSoundLevel(c);
+    }
+
+    /** {@code category}'s sound category, or null where 1.7.10 has none (voice, UI). */
+    public static SoundCategory host(Category category) {
         switch (category) {
-            case PLAYERS: c = SoundCategory.PLAYERS; break;
-            case MUSIC: c = SoundCategory.MUSIC; break;
-            case AMBIENT: c = SoundCategory.AMBIENT; break;
-            case BLOCKS: c = SoundCategory.BLOCKS; break;
-            default: return 1f;
+            case PLAYERS: return SoundCategory.PLAYERS;
+            case MUSIC: return SoundCategory.MUSIC;
+            case AMBIENT: return SoundCategory.AMBIENT;
+            case BLOCKS: return SoundCategory.BLOCKS;
+            case WEATHER: return SoundCategory.WEATHER;
+            case RECORDS: return SoundCategory.RECORDS;
+            case HOSTILE: return SoundCategory.MOBS;
+            case NEUTRAL: return SoundCategory.ANIMALS;
+            default: return null;
         }
-        return Minecraft.getMinecraft().gameSettings.getSoundLevel(c);
     }
 }

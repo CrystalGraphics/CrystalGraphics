@@ -9,6 +9,6 @@ public final class CrystalGraphicsLegacyMixins extends VariantMixins {
 
     public CrystalGraphicsLegacyMixins() {
         super("crystalgraphics", new String[]{"ChunkWriteHook"}, "CgRenderHook", "MixinMinecraft", "ActiveRenderInfoAccessor", "EntityRendererAccessor",
-                "ExplosionHook", "LevelEventHook");
+                "ExplosionHook", "LevelEventHook", "SoundVolumeHook");
     }
 }
