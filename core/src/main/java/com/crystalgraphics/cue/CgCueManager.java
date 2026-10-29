@@ -356,9 +356,15 @@ public final class CgCueManager extends CgWorldSubsystem {
                 if (p.lasting != null && (p.state == CgCuePlaying.State.PLAYING || p.state == CgCuePlaying.State.REMOVING)) {
                     p.lasting.update(dt);
                 }
-                if (p.state == CgCuePlaying.State.PLAYING) p.pull(now, scratch);
-                else if (p.state == CgCuePlaying.State.REMOVING && p.lasting != null && p.lasting.finished()) end(i, p);
-                else if (p.state == CgCuePlaying.State.KILLED) end(i, p);
+                // Removing, its writes still reach what it plays here: an actor writes its components until destroyed
+                if (p.state == CgCuePlaying.State.PLAYING) {
+                    p.pull(now, scratch, true);
+                } else if (p.state == CgCuePlaying.State.REMOVING) {
+                    if (p.lasting != null && p.lasting.finished()) end(i, p);
+                    else p.pull(now, scratch, false);
+                } else if (p.state == CgCuePlaying.State.KILLED) {
+                    end(i, p);
+                }
             }
         }
     }

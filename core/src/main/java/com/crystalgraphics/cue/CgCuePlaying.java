@@ -24,6 +24,7 @@ import com.crystalgraphics.sequence.CgSequencePlayer;
  *   <li>Every call is queued and played in {@code PLAYS}, in order, so a remove right after an add is never lost.</li>
  *   <li>The handle is pooled: once {@link #active()} is false it may already be another play's. Drop it then.</li>
  *   <li>A provider is called on the frame thread with the frame's time in seconds; it writes up to four floats.</li>
+ *   <li>It is still called while removal lingers, for what plays on this machine, and no longer sent to viewers.</li>
  * </ul>
  */
 public final class CgCuePlaying {
@@ -179,14 +180,14 @@ public final class CgCuePlaying {
         sequence = null;
     }
 
-    /** Each bound provider's value this frame, into its slots. */
-    void pull(double time, float[] scratch) {
+    /** Each bound provider's value this frame, into its slots; to viewers too while {@code live}. */
+    void pull(double time, float[] scratch, boolean live) {
         CgCueEffects.Lasting l = lasting;
         if (l == null) return;
         for (int i = 0; i < count; i++) {
             Write w = bound[i];
             if (w == null) continue;
-            boolean draws = !w.slots().isEmpty(), send = sends && slots[i] >= 0;
+            boolean draws = !w.slots().isEmpty(), send = live && sends && slots[i] >= 0;
             if (!draws && !send) continue;
             scratch[0] = scratch[1] = scratch[2] = scratch[3] = 0;
             providers[i].write(time, scratch);

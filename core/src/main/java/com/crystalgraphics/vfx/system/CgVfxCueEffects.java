@@ -248,7 +248,8 @@ public final class CgVfxCueEffects implements CgCueEffects {
                     old.kill();
                 }
             }
-            CgVfxSystemInstance<?> made = spawn(p, at, age - p.delay());            alive.add(made);
+            CgVfxSystemInstance<?> made = spawn(p, at, age - p.delay());
+            alive.add(made);
             sockets.add(socket);
             if (loop) loops.add(made);
         }
@@ -302,13 +303,27 @@ public final class CgVfxCueEffects implements CgCueEffects {
             // What still waits never starts; removal's own delays count from now
             waiting.clear();
             waitingLoops.clear();
-            for (int i = 0; i < loops.size(); i++) loops.get(i).stop();
+            // A loop removal replaces on its socket is reset by the replace, not deactivated first, as SetTemplate
+            for (int i = 0; i < loops.size(); i++) {
+                CgVfxSystemInstance<?> loop = loops.get(i);
+                if (!replacedAtRemoval(sockets.get(alive.indexOf(loop)))) loop.stop();
+            }
             loops.clear();
             fadeSounds();
             closeLens();
             age = 0f;
             play(cue.removal(), at, false);
             playSounds(cue.removal(), at, false);
+        }
+
+        /** Whether a removal entry that starts at once replaces what plays on {@code socket}. */
+        private boolean replacedAtRemoval(@Nullable String socket) {
+            List<Particles> ends = cue.removal().particles();
+            for (int i = 0; i < ends.size(); i++) {
+                Particles p = ends.get(i);
+                if (p.replace() && p.delay() <= 0f && Objects.equals(p.where().placement().socket(), socket)) return true;
+            }
+            return false;
         }
 
         /** {@code UAudioComponent::FadeOut(LoopingFadeOutDuration, LoopingFadeVolumeLevel)} on each looping sound. */
