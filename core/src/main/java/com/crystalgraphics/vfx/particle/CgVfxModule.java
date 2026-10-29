@@ -966,8 +966,9 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * A {@link CgVfxField} over a box (Godot's vector field attractor): each particle pushed by the field where it is,
      * {@code strength} blocks a second squared for a unit vector, a longer one as {@code length^attenuation}. Outside the
      * box nothing pushes, unless the field tiles. The box is centred on the source, or {@link #at} a point from it.
-     * {@code tightness} draws each particle's velocity toward the field's own each step, Cascade's vector field
-     * tightness ({@code ParticleSimulationShader.usf:236-245, 584-585}): 0 pushes alone, 1 moves with the field.
+     * {@code tightness} draws each particle's velocity toward the field's own by that share every thirtieth of a second
+     * whatever the step, Cascade's vector field tightness under its fixed 1/30 s steps
+     * ({@code ParticleSimulationShader.usf:236-245, 584-585}): 0 pushes alone, 1 moves with the field.
      *
      * <pre>{@code
      * new CgVfxModule.VectorField(swirl, CgBox.of(4, 4, 4), 3f, 1f).at(0f, 4f, 0f)

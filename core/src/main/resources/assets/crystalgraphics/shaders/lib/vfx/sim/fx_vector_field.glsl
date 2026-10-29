@@ -42,8 +42,12 @@ void fx_vector_field(inout FxParticle p, inout FxForces f, FxStep s, vec4 m0, ve
     if ((past.x > 0.0 && !tiles.x) || (past.y > 0.0 && !tiles.y) || (past.z > 0.0 && !tiles.z)) return;
     vec3 v = fx_field_turn(turn, fx_field_sample(field, uvw, tiles));
     // Cascade's tightness: the velocity drawn toward the field's own, its value times its intensity, by tightness each
-    // step (ParticleSimulationShader.usf:236-245, 584-585).
-    if (m1.z > 0.0) p.velocity = mix(p.velocity, v * m1.x * (m1.z / (m1.z + 0.001)), m1.z);
+    // of its fixed 1/30 s steps (ParticleSimulationShader.usf:236-245, 584-585; r.GPUParticle.FixDeltaSeconds), so as
+    // often a second whatever our step.
+    if (m1.z > 0.0) {
+        float pull = 1.0 - pow(1.0 - min(m1.z, 1.0), s.dt * 30.0);
+        p.velocity = mix(p.velocity, v * m1.x * (m1.z / (m1.z + 0.001)), pull);
+    }
     float l = length(v);
     if (l <= 0.0) return;
     f.accel += v / l * (pow(l, m1.y) * m1.x);
