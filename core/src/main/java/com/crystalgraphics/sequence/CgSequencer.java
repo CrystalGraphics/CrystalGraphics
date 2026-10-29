@@ -241,7 +241,7 @@ public final class CgSequencer extends CgWorldSubsystem {
      *
      * <pre>{@code
      * sequencer.listen(Side.OURS, (player, phase, event, args) ->
-     *         audio.play(click, 1f, audio.clock().now() - sequencer.heardSecondsAgo()));
+     *         audio.play(click, CgSoundClass.SFX, 1f, 1f, false, audio.clock().now() - sequencer.heardSecondsAgo()));
      * }</pre>
      *
      * <ul>

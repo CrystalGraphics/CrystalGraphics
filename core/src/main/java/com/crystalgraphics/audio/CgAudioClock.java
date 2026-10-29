@@ -10,9 +10,10 @@ import java.util.function.LongSupplier;
  *
  * <pre>{@code
  * CgAudioClock clock = audio.clock();
- * audio.play(click, 1f, clock.now());                                 // as soon as it can, on its own sample
- * audio.play(click, 1f, clock.now() + 0.5);                           // half a second later, to the sample
- * audio.play(click, 1f, clock.now() - sequencer.heardSecondsAgo());   // where a sequence's event fell this frame
+ * audio.play(click, CgSoundClass.SFX, 1f, 1f, false, clock.now());         // as soon as it can, on its own sample
+ * audio.play(click, CgSoundClass.SFX, 1f, 1f, false, clock.now() + 0.5);   // half a second later, to the sample
+ * audio.play(click, CgSoundClass.SFX, 1f, 1f, false,
+ *         clock.now() - sequencer.heardSecondsAgo());                      // where a sequence's event fell this frame
  * }</pre>
  *
  * <ul>

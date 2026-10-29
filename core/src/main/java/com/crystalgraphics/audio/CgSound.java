@@ -12,7 +12,7 @@ import javax.annotation.Nullable;
  * <pre>{@code
  * CgSound boom = audio.sounds().load("mymod:sounds/boom.ogg");          // short: resident
  * CgSound theme = audio.sounds().load("mymod:sounds/theme.ogg", true);  // streamed
- * audio.play(boom, 1f);
+ * audio.play(boom, CgSoundClass.SFX, 1f);
  * }</pre>
  *
  * <ul>

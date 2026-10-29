@@ -54,6 +54,23 @@ public class CgAudioMixerTest {
         assertEquals(0.4f, peak(out), 1e-3);
     }
 
+    /** A voice routed to a submix goes through its effects and its volume, then into its parent. */
+    @Test
+    public void aSubmixFiltersAndScalesWhatIsRoutedToIt() {
+        CgSubmix main = new CgSubmix("main", null, 0), world = new CgSubmix("world", main, 1);
+        CgAudioMixer mixer = new CgAudioMixer(RATE, 2, FRAMES, 4);
+        mixer.submixes(new CgSubmix[] {main, world});
+        CgLowPass muffle = new CgLowPass(200);
+        world.effect(muffle);
+        mixer.start(new CgAudioTone(6000, 0.5f, 0), 1f, true, Long.MIN_VALUE, 1);
+        float[] out = new float[FRAMES * 2];
+        for (int i = 0; i < 3; i++) mixer.render(out);
+        assertTrue("6 kHz through a 200 Hz low-pass: " + peak(out), peak(out) < 0.05f);
+        world.remove(muffle).volume(0.5f);
+        mixer.render(out);
+        assertEquals(0.25f, peak(out), 1e-3);
+    }
+
     /** Paused, a voice that pauses with the game is silent and holds; one that does not plays on. */
     @Test
     public void aPauseHoldsTheVoicesThatPauseWithTheGame() {

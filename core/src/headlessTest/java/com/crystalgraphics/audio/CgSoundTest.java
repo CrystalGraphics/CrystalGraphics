@@ -109,13 +109,20 @@ public class CgSoundTest {
         };
     }
 
+    /** {@code sound} played as music: its voice is given on the next frame. */
+    private static CgSoundStream stream(CgWorld world, CgAudioEngine audio, CgSound sound) {
+        long id = audio.play(sound, CgSoundClass.MUSIC, 1f);
+        world.frame(null);
+        return (CgSoundStream) audio.activeSounds().voice(id);
+    }
+
     /** A long stream plays in real time with its ring never dry, decoded on the decode thread while the frame stalls. */
     @Test
     public void aStreamPlaysInRealTimeFedByTheDecodeThread() throws InterruptedException {
         CgWorld world = new CgWorld();
         CgAudioEngine audio = world.add(new CgAudioEngine(realTime(), sines(0)));
         CgSound long30 = audio.sounds().decode("test:long", sine(44100, 30, 220), false);
-        CgSoundStream s = (CgSoundStream) audio.play(long30, 1f);
+        CgSoundStream s = stream(world, audio, long30);
         // The frame thread stalls; the decode thread keeps the stream fed.
         Thread.sleep(200);
         long until = System.currentTimeMillis() + 3000;
@@ -131,7 +138,7 @@ public class CgSoundTest {
         CgWorld world = new CgWorld();
         CgAudioEngine audio = world.add(new CgAudioEngine(realTime(), sines(400)));
         CgSound long30 = audio.sounds().decode("test:slow", sine(44100, 30, 220), false);
-        CgSoundStream s = (CgSoundStream) audio.play(long30, 1f);
+        CgSoundStream s = stream(world, audio, long30);
         long until = System.currentTimeMillis() + 3000;
         while (s.starved() == 0 && System.currentTimeMillis() < until) Thread.sleep(10);
         assertTrue("starved " + s.starved(), s.starved() > 0);

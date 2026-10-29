@@ -5,31 +5,61 @@ package com.crystalgraphics.audio;
  * reads a source's frames. Mono plays on every channel.
  *
  * <pre>{@code
- * CgAudioSource v = audio.play(click, 1f);    // the engine makes one for a resident sound
- * audio.stop(v);
+ * long id = audio.play(click, CgSoundClass.SFX, 1f);   // the engine gives a resident sound a pooled one
+ * audio.activeSounds().stop(id);
  * }</pre>
  *
  * <ul>
- *   <li>One voice, one playthrough: make another to play the sound again.</li>
+ *   <li>One voice, one playthrough; the engine pools them, {@link #reset} making one play again once
+ *       {@link #idle()}.</li>
  *   <li>Looping, it wraps to its start; else it ends at its last frame.</li>
  * </ul>
  */
 public final class CgSoundVoice implements CgAudioSource {
 
-    private final short[] pcm;
-    private final int channels;
-    private final long frames;
-    private final double step;
-    private final boolean loop;
+    private short[] pcm;
+    private int channels;
+    private long frames;
+    private double step;
+    private boolean loop;
     private double pos;
+    /** Off the audio thread's hands: never started, or ended there. */
+    private volatile boolean idle = true;
+
+    /** An idle voice, for a pool. */
+    public CgSoundVoice() {
+    }
 
     public CgSoundVoice(CgSound sound, int outputRate, float pitch, boolean loop) {
+        reset(sound, outputRate, pitch, loop, 0);
+    }
+
+    /** Plays {@code sound} from {@code offset} seconds in. Only while {@link #idle()}. */
+    public CgSoundVoice reset(CgSound sound, int outputRate, float pitch, boolean loop, double offset) {
         if (sound.streamed()) throw new IllegalArgumentException(sound + " streams: play it through a CgSoundStream");
         this.pcm = sound.pcm();
         this.channels = sound.channels();
         this.frames = sound.frames();
         this.step = sound.sampleRate() / (double) outputRate * pitch;
         this.loop = loop;
+        this.pos = offset * sound.sampleRate();
+        idle = false;
+        return this;
+    }
+
+    /** Whether the audio thread is done with it: never started, or ended. */
+    public boolean idle() {
+        return idle;
+    }
+
+    @Override
+    public void ended() {
+        idle = true;
+    }
+
+    /** Its place, in the sound's frames. */
+    public double position() {
+        return pos;
     }
 
     @Override

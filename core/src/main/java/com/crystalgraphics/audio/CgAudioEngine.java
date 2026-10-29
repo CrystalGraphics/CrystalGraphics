@@ -32,12 +32,13 @@ import com.crystalgraphics.platform.audio.CgHostVolume;
  * audio.play(click, 1f, audio.clock().now() + 0.25);              // a quarter second on, to the sample
  * }</pre>
  *
- * A sound from a file, resident or streamed:
+ * A sound from a file, resident or streamed, in its class, weighed for a voice with every other:
  *
  * <pre>{@code
  * CgSound theme = audio.sounds().load("mymod:sounds/theme.ogg", true);
- * CgAudioSource playing = audio.play(theme, 0.8f);
- * audio.stop(playing);
+ * long id = audio.play(theme, CgSoundClass.MUSIC, 0.8f);
+ * audio.activeSounds().at(id, x, y, z).range(id, 48);
+ * audio.activeSounds().stop(id);
  * }</pre>
  *
  * <ul>
@@ -47,6 +48,8 @@ import com.crystalgraphics.platform.audio.CgHostVolume;
  *   <li>A stream that cannot open, or whose device goes, is tried again every second; sounds wait meanwhile.</li>
  *   <li>A full queue drops the command and counts it ({@link #dropped()}).</li>
  *   <li>A streamed sound decodes on the engine's decode thread, never the frame's or the audio thread's.</li>
+ *   <li>A {@code CgAudioSource} played as itself skips the voice limit and the classes: a test tone's way. A sound
+ *       goes through {@link #play(CgSound, CgSoundClass, float)}.</li>
  * </ul>
  */
 public final class CgAudioEngine extends CgWorldSubsystem {
@@ -74,6 +77,11 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     @Nullable
     private final CgAudioDecoder givenDecoder;
     private CgAudioSounds sounds;
+    private CgActiveSounds activeSounds;
+    /** The submix tree, parents before children: {@code main}, {@code world}, {@code reverb}, {@code ui}, {@code music}. */
+    private final CgSubmix[] submixes = new CgSubmix[5];
+    private final CgSoundVoice[] voices = new CgSoundVoice[MAX_VOICES * 2];
+    private double listenerX, listenerY, listenerZ;
     private CgAudioDecoder decoder = CgAudioDecoder.NONE;
     /** The streams the decode thread keeps filled; the frame thread adds, the decode thread drops. */
     private final CgSoundStream[] streams = new CgSoundStream[MAX_STREAMS];
@@ -84,6 +92,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     private final float[] values = new float[QUEUE];
     private final boolean[] flags = new boolean[QUEUE];
     private final long[] frames = new long[QUEUE];
+    private final int[] routes = new int[QUEUE];
     /** The frame thread writes at head, the audio thread reads at tail. */
     private final AtomicInteger head = new AtomicInteger(), tail = new AtomicInteger();
 
@@ -127,6 +136,14 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         decoder = givenDecoder != null ? givenDecoder : CgPlatform.get(CgAudioDecoder.SERVICE);
         sounds = new CgAudioSounds(decoder);
         mixer = new CgAudioMixer(FORMAT.sampleRate(), FORMAT.channels(), FORMAT.frames(), MAX_VOICES);
+        submixes[0] = new CgSubmix("main", null, 0);
+        submixes[1] = new CgSubmix("world", submixes[0], 1);
+        submixes[2] = new CgSubmix("reverb", submixes[1], 2);
+        submixes[3] = new CgSubmix("ui", submixes[0], 3);
+        submixes[4] = new CgSubmix("music", submixes[0], 4);
+        mixer.submixes(submixes);
+        for (int i = 0; i < voices.length; i++) voices[i] = new CgSoundVoice();
+        activeSounds = new CgActiveSounds(MAX_VOICES, new Sink());
         // Left alone within two buffers of the write head. A frame hears its events at its end, up to a frame after
         // they fell: a lead of the queue keeps their starts ahead of the head for frames up to the queue less the band.
         clock = new CgAudioClock(FORMAT.sampleRate(), (long) FORMAT.buffers() * FORMAT.frames(), 2L * FORMAT.frames(), () -> written);
@@ -179,23 +196,78 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         return sounds;
     }
 
-    /** Plays {@code sound} from the next buffer; the voice it answers stops it. */
-    public CgAudioSource play(CgSound sound, float gain) {
-        CgAudioSource v = voice(sound, 1f, false);
-        play(v, gain);
-        return v;
+    /** Plays {@code sound} in {@code soundClass} from the next update; its id, 0 where every slot is taken. */
+    public long play(CgSound sound, CgSoundClass soundClass, float gain) {
+        return activeSounds.play(sound, soundClass, gain, 1f, false, Double.NaN);
     }
 
-    /** Plays {@code sound} at {@code pitch}, looping or not, from audio time {@code seconds}, on its sample. */
-    public CgAudioSource play(CgSound sound, float gain, float pitch, boolean loop, double seconds) {
-        CgAudioSource v = voice(sound, pitch, loop);
-        play(v, gain, seconds);
-        return v;
+    /** As {@link #play(CgSound, CgSoundClass, float)} at {@code pitch}, looping or not, from audio time {@code at}. */
+    public long play(CgSound sound, CgSoundClass soundClass, float gain, float pitch, boolean loop, double at) {
+        return activeSounds.play(sound, soundClass, gain, pitch, loop, at);
     }
 
-    private CgAudioSource voice(CgSound sound, float pitch, boolean loop) {
-        if (!sound.streamed()) return new CgSoundVoice(sound, FORMAT.sampleRate(), pitch, loop);
-        CgSoundStream s = new CgSoundStream(sound, decoder, FORMAT.sampleRate(), pitch, loop);
+    /** Every sound playing: what an id is placed, ranged, grouped, adjusted and stopped through. */
+    public CgActiveSounds activeSounds() {
+        return activeSounds;
+    }
+
+    /** Fades {@code mix} in over its classes. */
+    public void push(CgSoundMix mix) {
+        activeSounds.push(mix);
+    }
+
+    /** Fades {@code mix} out. */
+    public void pop(CgSoundMix mix) {
+        activeSounds.pop(mix);
+    }
+
+    /** {@code id}'s submix: {@code main}, {@code world}, {@code reverb}, {@code ui} or {@code music}. */
+    public CgSubmix submix(String id) {
+        for (CgSubmix s : submixes) if (s.id().equals(id)) return s;
+        throw new IllegalArgumentException("No submix " + id);
+    }
+
+    /** Where the listener stands this frame: what a placed sound's range is measured from. */
+    public void listener(double x, double y, double z) {
+        listenerX = x;
+        listenerY = y;
+        listenerZ = z;
+    }
+
+    /** What the active sounds drive: pooled voices, and the command queue. */
+    private final class Sink implements CgActiveSounds.Sink {
+        @Override
+        public CgAudioSource voice(CgSound sound, float pitch, boolean loop, double offset) {
+            if (sound.streamed()) return stream(sound, pitch, loop, offset);
+            for (CgSoundVoice v : voices) if (v.idle()) return v.reset(sound, FORMAT.sampleRate(), pitch, loop, offset);
+            // Every pooled voice still in the mixer's hands: the limit was passed, a new one made.
+            return new CgSoundVoice().reset(sound, FORMAT.sampleRate(), pitch, loop, offset);
+        }
+
+        @Override
+        public boolean ended(CgAudioSource voice) {
+            return voice instanceof CgSoundVoice v ? v.idle() : voice instanceof CgSoundStream s && s.done();
+        }
+
+        @Override
+        public void start(CgAudioSource voice, float gain, CgSoundClass soundClass, double at) {
+            post(PLAY, voice, gain, soundClass.pausesWithGame(), Double.isNaN(at) ? NOW : clock.frameAt(at),
+                    submix(soundClass.submix()).index);
+        }
+
+        @Override
+        public void gain(CgAudioSource voice, float gain) {
+            post(GAIN, voice, gain, false, NOW);
+        }
+
+        @Override
+        public void stop(CgAudioSource voice) {
+            post(STOP, voice, 0, false, NOW);
+        }
+    }
+
+    private CgAudioSource stream(CgSound sound, float pitch, boolean loop, double offset) {
+        CgSoundStream s = new CgSoundStream(sound, decoder, FORMAT.sampleRate(), pitch, loop, offset);
         synchronized (streams) {
             int free = -1;
             for (int i = 0; i < streams.length && free < 0; i++) if (streams[i] == null) free = i;
@@ -272,9 +344,14 @@ public final class CgAudioEngine extends CgWorldSubsystem {
             postedPaused = paused;
             post(PAUSE, null, 0, paused, NOW);
         }
+        activeSounds.update(dt, listenerX, listenerY, listenerZ, paused, CgPlatform.get(CgHostVolume.SERVICE));
     }
 
     private void post(int kind, @Nullable CgAudioSource source, float value, boolean flag, long frame) {
+        post(kind, source, value, flag, frame, 0);
+    }
+
+    private void post(int kind, @Nullable CgAudioSource source, float value, boolean flag, long frame, int submix) {
         if (!running) return;
         int h = head.get();
         if (h - tail.get() >= QUEUE) {
@@ -287,6 +364,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         values[i] = value;
         flags[i] = flag;
         frames[i] = frame;
+        routes[i] = submix;
         head.lazySet(h + 1);
     }
 
@@ -299,8 +377,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
             sources[i] = null;
             switch (kinds[i]) {
                 case PLAY -> {
-                    if (frames[i] == NOW) mixer.start(s, values[i], flags[i]);
-                    else mixer.start(s, values[i], flags[i], frames[i]);
+                    mixer.start(s, values[i], flags[i], frames[i] == NOW ? Long.MIN_VALUE : frames[i], routes[i]);
                 }
                 case STOP -> mixer.stop(s);
                 case GAIN -> mixer.gain(s, values[i]);

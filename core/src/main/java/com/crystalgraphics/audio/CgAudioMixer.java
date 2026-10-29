@@ -35,6 +35,10 @@ public final class CgAudioMixer {
     private final CgAudioSource[] voices;
     private final float[] gains;
     private final boolean[] pausing;
+    /** Each voice's submix, by index into {@link #submixes}. */
+    private final int[] route;
+    /** Parents before children: processed from the last, each into its parent. */
+    private CgSubmix[] submixes;
     /** Each voice's due frame; NOW for one that is playing. */
     private final long[] due;
     private static final long NOW = Long.MIN_VALUE;
@@ -51,6 +55,8 @@ public final class CgAudioMixer {
         gains = new float[maxVoices];
         pausing = new boolean[maxVoices];
         due = new long[maxVoices];
+        route = new int[maxVoices];
+        submixes(new CgSubmix[] {new CgSubmix("main", null, 0)});
     }
 
     /** Plays {@code source} at {@code gain} from the next buffer; false where every voice is taken. */
@@ -58,8 +64,25 @@ public final class CgAudioMixer {
         return start(source, gain, pausesWithGame, NOW);
     }
 
+    /**
+     * Its submix tree, parents before children, each one's index its place here. Before it renders; a test's or the
+     * engine's.
+     */
+    public void submixes(CgSubmix[] tree) {
+        for (int i = 0; i < tree.length; i++) {
+            if (tree[i].index != i) throw new IllegalArgumentException(tree[i] + " is not at its index " + tree[i].index);
+            tree[i].buffer = new float[frames * channels];
+        }
+        submixes = tree;
+    }
+
     /** Plays {@code source} at {@code gain} from mixer frame {@code frame} ({@link #rendered()} counts them). */
     public boolean start(CgAudioSource source, float gain, boolean pausesWithGame, long frame) {
+        return start(source, gain, pausesWithGame, frame, 0);
+    }
+
+    /** As {@link #start(CgAudioSource, float, boolean, long)}, into submix {@code submix}. */
+    public boolean start(CgAudioSource source, float gain, boolean pausesWithGame, long frame, int submix) {
         for (int i = 0; i < voices.length; i++) {
             if (voices[i] != null) continue;
             voices[i] = source;
@@ -70,6 +93,7 @@ public final class CgAudioMixer {
                 frame = NOW;
             }
             due[i] = frame;
+            route[i] = submix;
             return true;
         }
         refused++;
@@ -101,7 +125,8 @@ public final class CgAudioMixer {
 
     /** Fills {@code out} with the next buffer: its format's frames × channels floats. */
     public void render(float[] out) {
-        Arrays.fill(out, 0, frames * channels, 0f);
+        int n = frames * channels;
+        for (CgSubmix s : submixes) Arrays.fill(s.buffer, 0, n, 0f);
         for (int i = 0; i < voices.length; i++) {
             CgAudioSource v = voices[i];
             if (v == null) continue;
@@ -116,9 +141,18 @@ public final class CgAudioMixer {
                 offset = (int) Math.max(0, due[i] - rendered);
                 due[i] = NOW;
             }
-            if (!v.render(out, offset, frames - offset, channels, sampleRate, gains[i])) free(i);
+            if (!v.render(submixes[route[i]].buffer, offset, frames - offset, channels, sampleRate, gains[i])) free(i);
         }
-        for (int i = 0, n = frames * channels; i < n; i++) {
+        // Leaf to root: each submix's chain on its buffer, then into its parent; the root into the output.
+        Arrays.fill(out, 0, n, 0f);
+        for (int k = submixes.length - 1; k >= 0; k--) {
+            CgSubmix s = submixes[k];
+            for (CgSubmixEffect e : s.chain()) e.process(s.buffer, frames, channels, sampleRate);
+            float[] into = s.parent() == null ? out : s.parent().buffer;
+            float v = s.volume();
+            for (int i = 0; i < n; i++) into[i] += s.buffer[i] * v;
+        }
+        for (int i = 0; i < n; i++) {
             float s = out[i] * main;
             out[i] = s > 1f ? 1f : s < -1f ? -1f : s;
         }

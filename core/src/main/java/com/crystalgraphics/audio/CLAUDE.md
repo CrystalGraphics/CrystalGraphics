@@ -18,7 +18,11 @@ audio.play(new CgAudioTone(440, 0.25f, 1.0), 1f);
 | `CgAudioSource` | what a voice plays: samples added into the buffer, from a frame offset, on the audio thread |
 | `CgAudioTone` | a sine: the test signal |
 | `CgSound`, `CgAudioSounds` | a loaded sound (`USoundWave`: resident 16-bit samples, or compressed bytes it streams from) and the loader that reads and decodes each path once |
-| `CgSoundVoice`, `CgSoundStream` | a resident sound playing, resampled linearly; a streamed one, played from a ring the engine's decode thread keeps a second ahead |
+| `CgSoundVoice`, `CgSoundStream` | a resident sound playing, resampled linearly (pooled); a streamed one, played from a ring the engine's decode thread keeps a second ahead |
+| `CgActiveSounds` | every sound playing, on the frame thread (`FActiveSound`s): weighed by priority × volume, culled by group, the top 64 voiced, loops virtual (`FAudioVirtualLoop`). Talks to the engine only through its `Sink` |
+| `CgSoundClass`, `CgSoundMix` | the class chain (`USoundClass`), its host slider and submix; mixes that fade class adjustments in and out (`USoundMix`) |
+| `CgSoundConcurrency` | a cap per kind and the rule for what goes (`USoundConcurrency`) |
+| `CgSubmix`, `CgSubmixEffect`, `CgLowPass` | the submix tree the mixer renders leaf to root, its effect chains (`FMixerSubmix`), a one-pole low-pass |
 
 ## Rules
 
@@ -27,6 +31,8 @@ audio.play(new CgAudioTone(440, 0.25f, 1.0), 1f);
 - **The audio thread allocates nothing and never blocks** on I/O or a lock: what it plays is ready before it asks.
 - **Decoding is never on the audio thread or the frame's**: streams fill on the engine's decode thread. A `CgJob`
   starts only on a loop's thread, and the audio thread is none.
+- **The master slider is the mixer's main gain**, never a sound's: a class volume multiplies only its own slider.
+- **A sound's state is frame-thread arrays**, never an object per play: `CgActiveSounds` is sized once.
 - **A dedicated server plays nothing**: with no `CgAudioOutput` the engine starts no thread.
 - **The host's own sounds stay the host's**: nothing here calls a host's sound engine. Its sliders arrive through
   `platform.audio.CgHostVolume`, its sound files through `CgResourceService`.

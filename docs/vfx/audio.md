@@ -11,9 +11,9 @@ Sounds are Ogg Vorbis files, loaded by path and kept: each is read and decoded o
 ```java
 CgSound click = audio.sounds().load("mymod:sounds/click.ogg");          // short: decoded once, kept in memory
 CgSound theme = audio.sounds().load("mymod:sounds/theme.ogg", true);    // streamed
-CgAudioSource playing = audio.play(click, 1f);
-audio.play(theme, 0.8f, 1f, true, audio.clock().now());                 // gain, pitch, looping, on its sample
-audio.stop(playing);
+long id = audio.play(click, CgSoundClass.SFX, 1f);                      // its id: what it is placed and stopped by
+long music = audio.play(theme, CgSoundClass.MUSIC, 0.8f, 1f, true, audio.clock().now());  // pitch, looping, on its sample
+audio.activeSounds().stop(id);
 ```
 
 - A sound longer than 10 seconds streams whether asked or not. Its compressed bytes stay in memory, and the engine's
@@ -23,6 +23,64 @@ audio.stop(playing);
 - A sound plays at its own pitch and length whatever its sample rate: each voice resamples it to the output's 48 kHz.
 - Decoding uses the game's own decoder (stb_vorbis on 1.13 and later, JOrbis before), so the engine bundles none.
 - A path that is not found, or not Ogg Vorbis, fails naming it.
+
+## Classes, places and voices
+
+Every sound plays in a class. A class follows its Minecraft slider (`SFX` the players', `MUSIC`, `AMBIENT`, `VOICE`
+and `UI` their own) and routes to a submix. `UI` plays on while the game is paused.
+
+```java
+long hum = audio.play(engineHum, CgSoundClass.AMBIENT, 1f, 1f, true, Double.NaN);
+audio.activeSounds()
+        .at(hum, x, y, z)                                            // placed in the world
+        .range(hum, 32)                                              // heard within 32 blocks
+        .priority(hum, 2f);                                          // weighed above an ordinary sound
+audio.listener(cameraX, cameraY, cameraZ);                           // once a frame
+```
+
+At most 64 voices play at once. Each frame every sound is weighed by its priority times its volume, and the loudest
+take the voices. A looping sound that loses its voice, or leaves its range, goes virtual: its time runs on, and it
+comes back where it would have been. A one-shot that loses its voice ends.
+
+A concurrency group caps how many of a kind play at once, and says which go:
+
+```java
+CgSoundConcurrency sparks = new CgSoundConcurrency(8, CgSoundConcurrency.Rule.STOP_OLDEST);
+long id = audio.play(spark, CgSoundClass.SFX, 0.6f);
+audio.activeSounds().group(id, sparks);
+CgSoundConcurrency perPlayer = new CgSoundConcurrency(1, CgSoundConcurrency.Rule.STOP_OLDEST).limitToOwner(true);
+audio.activeSounds().group(shout, perPlayer).owner(shout, player);   // one shout per player
+```
+
+The rules are `PREVENT_NEW`, `STOP_OLDEST`, `STOP_FARTHEST`, `STOP_QUIETEST` and `STOP_LOWEST_PRIORITY`.
+
+## Mixes
+
+A sound mix adjusts classes, fading in when pushed and out when popped:
+
+```java
+CgSoundMix duck = new CgSoundMix(0.3f, 1f)                           // fade in over 0.3 s, out over 1 s
+        .adjust(CgSoundClass.MUSIC, 0.3f, 1f)                        // music to 30%, pitch unchanged
+        .adjust(CgSoundClass.AMBIENT, 0.5f, 1f);
+audio.push(duck);
+audio.pop(duck);
+```
+
+An adjustment applies to the class and every class within it. Two mixes on one class multiply.
+
+## Submixes
+
+Every voice mixes into a submix, and the submixes into each other: `world` (with `reverb` inside it), `ui` and
+`music`, all into `main`. A submix runs its effects over what reached it:
+
+```java
+CgLowPass muffle = new CgLowPass(800);                               // hertz
+audio.submix("world").effect(muffle);                                // the world's sounds, muffled
+muffle.cutoff(20000);                                                // open again
+audio.submix("world").remove(muffle).volume(0.5f);
+```
+
+An effect is a `CgSubmixEffect`: it runs on the audio thread, in place over the buffer, and allocates nothing.
 
 ## Playing a sound you make
 
@@ -58,7 +116,7 @@ at a time lands on its exact sample, however the frames fall:
 
 ```java
 CgAudioClock clock = audio.clock();
-audio.play(click, 1f, clock.now() + 0.5);                            // half a second from this frame, to the sample
+audio.play(click, CgSoundClass.SFX, 1f, 1f, false, clock.now() + 0.5);   // half a second from this frame, to the sample
 ```
 
 A sequence's events are heard together at the end of the frame that crossed them. Each knows how long before the
@@ -66,7 +124,7 @@ frame's end it fell, so its sound starts where the event was, not where the fram
 
 ```java
 sequencer.listen(CgSequenceEventListener.Side.OURS, (player, phase, event, args) ->
-        audio.play(click, 1f, audio.clock().now() - sequencer.heardSecondsAgo()));
+        audio.play(click, CgSoundClass.SFX, 1f, 1f, false, audio.clock().now() - sequencer.heardSecondsAgo()));
 ```
 
 - A timed start plays about 85 ms after its time, the length of the output's queue, and stays exact to the sample.
@@ -88,10 +146,13 @@ mixer.start(click, 1f, true, mixer.rendered() + 1000);               // 1000 fra
 
 ## Things to know
 
-- `play`, `stop` and `gain` are called on the frame thread. They are queued and land within one buffer (about 11 ms).
+- Everything here is called on the frame thread. A play takes its voice at the next frame's update, and lands within
+  one buffer of it (about 11 ms). Until then `activeSounds().voice(id)` is null.
+- An id stays valid until its sound ends; a stale id is ignored. A play past 512 sounds at once returns 0.
 - `render` runs on the audio thread: add into the buffer from its `offset`, never overwrite it, and allocate
   nothing.
-- At most 64 voices play at once; a start past that is refused.
+- At most 64 voices play at once. A `CgAudioSource` played directly skips the classes and the weighing: it is
+  refused past the 64th.
 - The output holds 85 ms of sound, so a garbage collection pause does not cut it.
 - If the output device goes, the engine opens it again every second. Sounds wait meanwhile.
 - A dedicated server plays nothing: `CgAudioEngine.active()` is false there.

@@ -8,7 +8,8 @@ import com.crystalgraphics.platform.audio.CgAudioDecoder;
  * ones before, never on the game thread.
  *
  * <pre>{@code
- * CgAudioSource theme = audio.play(sounds.load("mymod:sounds/theme.ogg", true), 1f);
+ * long id = audio.play(sounds.load("mymod:sounds/theme.ogg", true), CgSoundClass.MUSIC, 1f);
+ * CgSoundStream theme = (CgSoundStream) audio.activeSounds().voice(id);   // after the next frame
  * }</pre>
  *
  * <ul>
@@ -38,7 +39,7 @@ public final class CgSoundStream implements CgAudioSource {
     private double pos;
     private int starved;
 
-    CgSoundStream(CgSound sound, CgAudioDecoder decoder, int outputRate, float pitch, boolean loop) {
+    CgSoundStream(CgSound sound, CgAudioDecoder decoder, int outputRate, float pitch, boolean loop, double offset) {
         this.decoder = decoder.open(sound.ogg().duplicate());
         if (this.decoder == null) throw new IllegalStateException(sound + ": its bytes no longer decode");
         channels = this.decoder.channels();
@@ -46,6 +47,7 @@ public final class CgSoundStream implements CgAudioSource {
         ring = new float[capacity * channels];
         step = this.decoder.sampleRate() / (double) outputRate * pitch;
         this.loop = loop;
+        if (offset > 0) this.decoder.seek((long) (offset * this.decoder.sampleRate()));
         fill((int) (PRIME_SECONDS * this.decoder.sampleRate()));
     }
 

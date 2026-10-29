@@ -3,6 +3,7 @@ package com.crystalgraphics.probe;
 import com.crystalgraphics.audio.CgAudioEngine;
 import com.crystalgraphics.audio.CgAudioTone;
 import com.crystalgraphics.audio.CgSound;
+import com.crystalgraphics.audio.CgSoundClass;
 import com.crystalgraphics.audio.CgSoundStream;
 import com.crystalgraphics.camera.CgCameraModifier;
 import com.crystalgraphics.camera.CgCameraSystem;
@@ -128,6 +129,7 @@ public final class CgWorldProbe {
     /** The one long track in every era's assets, 1.7.10 to 26.x. */
     private static final String MUSIC = "minecraft:sounds/music/game/end/boss.ogg";
     private static final int STALL_MILLIS = 200;
+    private static long musicId;
     private static CgSoundStream music;
     private static long musicStart;
     private static double stalledMillis = -1;
@@ -346,7 +348,7 @@ public final class CgWorldProbe {
         audioStart = System.nanoTime();
         try {
             CgSound track = audio.sounds().load(MUSIC, true);
-            music = (CgSoundStream) audio.play(track, 0.05f);
+            musicId = audio.play(track, CgSoundClass.MUSIC, 0.05f);
             musicStart = System.nanoTime();
             info("audio.stream-source", track.id() + ", " + String.format("%.1f", track.seconds()) + " s at "
                     + track.sampleRate() + " Hz, " + track.channels() + " channel(s)");
@@ -357,6 +359,8 @@ public final class CgWorldProbe {
 
     /** Once, a second into the stream: the render thread held, as a hitch holds it. */
     private static void stallOnce() {
+        // Its voice is given on the frame after the play.
+        if (music == null && musicId != 0) music = (CgSoundStream) audio.activeSounds().voice(musicId);
         if (music == null || stalledMillis >= 0 || (System.nanoTime() - musicStart) / 1.0e9 < 1) return;
         long t = System.nanoTime();
         try {
@@ -380,9 +384,10 @@ public final class CgWorldProbe {
                 + String.format("%.1f", audio.longestStallMillis()) + " ms against a queue of "
                 + String.format("%.0f", CgAudioEngine.FORMAT.buffers() * CgAudioEngine.FORMAT.bufferSeconds() * 1000) + " ms");
         if (music != null) {
-            audio.stop(music);
+            audio.activeSounds().stop(musicId);
             double streamed = (System.nanoTime() - musicStart) / 1.0e9;
-            check("audio.stream", music.starved() == 0 && music.played() >= streamed * 0.8 && stalledMillis >= STALL_MILLIS,
+            // A sleep on Windows can wake a millisecond early.
+            check("audio.stream", music.starved() == 0 && music.played() >= streamed * 0.8 && stalledMillis >= STALL_MILLIS * 0.98,
                     String.format("%.1f s played of %.1f s; dry in %d buffers; the frame stalled %.0f ms", music.played(),
                             streamed, music.starved(), stalledMillis));
         }

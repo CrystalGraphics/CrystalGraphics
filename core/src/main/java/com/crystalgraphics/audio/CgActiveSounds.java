@@ -1,0 +1,382 @@
+package com.crystalgraphics.audio;
+
+import java.util.Arrays;
+import java.util.List;
+
+import javax.annotation.Nullable;
+
+import com.crystalgraphics.platform.audio.CgHostVolume;
+
+/**
+ * Every sound playing, on the frame thread: Unreal's active sounds. Each update weighs them (their gain, their class
+ * chain, the sound mixes, the host's slider, whether they are in range), culls each concurrency group by its rule,
+ * gives the voices to the loudest by priority ({@code GetSortedActiveWaveInstances}), and keeps a looping sound that
+ * lost its voice or left its range virtual, its time running on, to take a voice back where it would be.
+ *
+ * <pre>{@code
+ * CgActiveSounds sounds = new CgActiveSounds(64, sink);
+ * long id = sounds.play(boom, CgSoundClass.SFX, 1f, 1f, false, Double.NaN);
+ * sounds.at(id, x, y, z).range(id, 48);
+ * sounds.update(dt, listenerX, listenerY, listenerZ, paused, hostVolume);   // once a frame
+ * }</pre>
+ *
+ * <ul>
+ *   <li>Frame thread only. Ids stay valid until their sound ends; a stale id is ignored.</li>
+ *   <li>Pooled: a play allocates nothing but the voice of a streamed sound.</li>
+ *   <li>A one-shot that loses its voice, or starts out of range, stops; a loop goes virtual.</li>
+ * </ul>
+ */
+public final class CgActiveSounds {
+
+    /** What the active sounds drive: voices made and started, their gains and their stops. The engine's command queue. */
+    public interface Sink {
+        /** A voice for {@code sound} from {@code offset} seconds in. */
+        CgAudioSource voice(CgSound sound, float pitch, boolean loop, double offset);
+
+        /** Whether {@code voice} has ended on the audio thread. */
+        boolean ended(CgAudioSource voice);
+
+        /** Starts {@code voice} in {@code soundClass}'s submix at audio time {@code at}, or at once where NaN. */
+        void start(CgAudioSource voice, float gain, CgSoundClass soundClass, double at);
+
+        void gain(CgAudioSource voice, float gain);
+
+        void stop(CgAudioSource voice);
+    }
+
+    public static final int MAX_SOUNDS = 512;
+    private static final byte FREE = 0, NEW = 1, REAL = 2, VIRTUAL = 3;
+
+    private final int maxVoices;
+    private final Sink sink;
+    private final byte[] state = new byte[MAX_SOUNDS];
+    private final int[] generation = new int[MAX_SOUNDS];
+    private final CgSound[] sound = new CgSound[MAX_SOUNDS];
+    private final CgSoundClass[] soundClass = new CgSoundClass[MAX_SOUNDS];
+    private final float[] gain = new float[MAX_SOUNDS], pitch = new float[MAX_SOUNDS], priority = new float[MAX_SOUNDS];
+    private final boolean[] loop = new boolean[MAX_SOUNDS], placed = new boolean[MAX_SOUNDS];
+    private final double[] x = new double[MAX_SOUNDS], y = new double[MAX_SOUNDS], z = new double[MAX_SOUNDS];
+    private final double[] range = new double[MAX_SOUNDS], time = new double[MAX_SOUNDS], startAt = new double[MAX_SOUNDS];
+    private final CgSoundConcurrency[] group = new CgSoundConcurrency[MAX_SOUNDS];
+    private final Object[] owner = new Object[MAX_SOUNDS];
+    private final long[] order = new long[MAX_SOUNDS];
+    private final CgAudioSource[] voice = new CgAudioSource[MAX_SOUNDS];
+    private final float[] volume = new float[MAX_SOUNDS], posted = new float[MAX_SOUNDS], weighted = new float[MAX_SOUNDS];
+    private final double[] distance = new double[MAX_SOUNDS];
+    private final boolean[] grouped = new boolean[MAX_SOUNDS], chosen = new boolean[MAX_SOUNDS];
+    private final int[] members = new int[MAX_SOUNDS], ranked = new int[MAX_SOUNDS];
+    /** At most this many sound mixes pushed at once. */
+    public static final int MAX_MIXES = 16;
+    private final CgSoundMix[] mixes = new CgSoundMix[MAX_MIXES];
+    private final float[] mixWeight = new float[MAX_MIXES];
+    private final boolean[] mixPopping = new boolean[MAX_MIXES];
+    private int mixCount;
+    private long plays;
+    private int refused, culled;
+
+    public CgActiveSounds(int maxVoices, Sink sink) {
+        this.maxVoices = maxVoices;
+        this.sink = sink;
+        // From 1, so no id is 0, the refused play's.
+        Arrays.fill(generation, 1);
+    }
+
+    /**
+     * Starts {@code s} in {@code cls} at {@code gain} and {@code pitch}, looping or not, at audio time {@code at} (NaN:
+     * at once). Its id, or 0 where every slot is taken.
+     */
+    public long play(CgSound s, CgSoundClass cls, float gain, float pitch, boolean loop, double at) {
+        for (int i = 0; i < MAX_SOUNDS; i++) {
+            if (state[i] != FREE) continue;
+            state[i] = NEW;
+            sound[i] = s;
+            soundClass[i] = cls;
+            this.gain[i] = gain;
+            this.pitch[i] = pitch;
+            this.loop[i] = loop;
+            placed[i] = false;
+            range[i] = Double.NaN;
+            priority[i] = 1f;
+            group[i] = null;
+            owner[i] = null;
+            time[i] = 0;
+            startAt[i] = at;
+            order[i] = ++plays;
+            return (long) generation[i] << 32 | i;
+        }
+        refused++;
+        return 0;
+    }
+
+    /** The slot {@code id} names, or -1 for one that ended. */
+    private int slot(long id) {
+        int i = (int) id;
+        return id != 0 && i >= 0 && i < MAX_SOUNDS && state[i] != FREE && generation[i] == (int) (id >>> 32) ? i : -1;
+    }
+
+    public boolean playing(long id) {
+        return slot(id) >= 0;
+    }
+
+    /** Places {@code id} in the world: in range within its {@link #range}. */
+    public CgActiveSounds at(long id, double px, double py, double pz) {
+        int i = slot(id);
+        if (i >= 0) {
+            placed[i] = true;
+            x[i] = px;
+            y[i] = py;
+            z[i] = pz;
+        }
+        return this;
+    }
+
+    /** Audible within {@code max} blocks of the listener ({@code MaxDistance}); unplaced, always. */
+    public CgActiveSounds range(long id, double max) {
+        int i = slot(id);
+        if (i >= 0) range[i] = max;
+        return this;
+    }
+
+    /** Its priority: weighed by its volume for a voice, and by {@link CgSoundConcurrency.Rule#STOP_LOWEST_PRIORITY}. */
+    public CgActiveSounds priority(long id, float p) {
+        int i = slot(id);
+        if (i >= 0) priority[i] = p;
+        return this;
+    }
+
+    public CgActiveSounds group(long id, @Nullable CgSoundConcurrency g) {
+        int i = slot(id);
+        if (i >= 0) group[i] = g;
+        return this;
+    }
+
+    /** Whose it is, for a group limited to its owner. */
+    public CgActiveSounds owner(long id, @Nullable Object o) {
+        int i = slot(id);
+        if (i >= 0) owner[i] = o;
+        return this;
+    }
+
+    public CgActiveSounds gain(long id, float g) {
+        int i = slot(id);
+        if (i >= 0) gain[i] = g;
+        return this;
+    }
+
+    public void stop(long id) {
+        int i = slot(id);
+        if (i >= 0) end(i);
+    }
+
+    /** Its voice now; null while it is virtual or not yet started. */
+    @Nullable
+    public CgAudioSource voice(long id) {
+        int i = slot(id);
+        return i >= 0 ? voice[i] : null;
+    }
+
+    /** Whether it holds no voice now, its time running on. */
+    public boolean virtual(long id) {
+        int i = slot(id);
+        return i >= 0 && state[i] == VIRTUAL;
+    }
+
+    /** Seconds of it played, its loops counted. */
+    public double time(long id) {
+        int i = slot(id);
+        return i >= 0 ? time[i] : 0;
+    }
+
+    /** Fades {@code mix} in; pushed again while it fades out, it fades back in. */
+    public void push(CgSoundMix mix) {
+        for (int j = 0; j < mixCount; j++) {
+            if (mixes[j] == mix) {
+                mixPopping[j] = false;
+                return;
+            }
+        }
+        if (mixCount == MAX_MIXES) throw new IllegalStateException("More than " + MAX_MIXES + " sound mixes at once");
+        mixes[mixCount] = mix;
+        mixWeight[mixCount] = mix.fadeIn() > 0 ? 0f : 1f;
+        mixPopping[mixCount++] = false;
+    }
+
+    /** Fades {@code mix} out, then drops it. */
+    public void pop(CgSoundMix mix) {
+        for (int j = 0; j < mixCount; j++) if (mixes[j] == mix) mixPopping[j] = true;
+    }
+
+    /** Plays refused for want of a slot. */
+    public int refused() {
+        return refused;
+    }
+
+    /** Sounds stopped by their concurrency groups. */
+    public int culled() {
+        return culled;
+    }
+
+    private void end(int i) {
+        if (voice[i] != null) sink.stop(voice[i]);
+        voice[i] = null;
+        sound[i] = null;
+        owner[i] = null;
+        group[i] = null;
+        state[i] = FREE;
+        generation[i]++;
+    }
+
+    /** Its class chain, its host slider and the mixes: the master slider is the mixer's main gain, not here. */
+    private float classVolume(CgSoundClass c, CgHostVolume host) {
+        float v = 1f;
+        if (c.host() != null) v *= host.category(c.host());
+        for (CgSoundClass k = c; k != null; k = k.parent()) v *= k.volume();
+        return v * mixAdjust(c, true);
+    }
+
+    private float classPitch(CgSoundClass c) {
+        float p = 1f;
+        for (CgSoundClass k = c; k != null; k = k.parent()) p *= k.pitch();
+        return p * mixAdjust(c, false);
+    }
+
+    /** The mixes' adjustment of {@code c}, each faded by its weight, multiplied. */
+    private float mixAdjust(CgSoundClass c, boolean ofVolume) {
+        float m = 1f;
+        for (int j = 0; j < mixCount; j++) {
+            float w = mixWeight[j];
+            List<CgSoundMix.Adjuster> adjusters = mixes[j].adjusters();
+            for (int k = 0; k < adjusters.size(); k++) {
+                CgSoundMix.Adjuster a = adjusters.get(k);
+                if (!c.within(a.soundClass())) continue;
+                m *= 1 + ((ofVolume ? a.volume() : a.pitch()) - 1) * w;
+            }
+        }
+        return m;
+    }
+
+    /** Once a frame: the mixes faded, every sound weighed, the groups culled, the voices given. */
+    public void update(double dt, double lx, double ly, double lz, boolean paused, CgHostVolume host) {
+        for (int j = mixCount - 1; j >= 0; j--) {
+            CgSoundMix m = mixes[j];
+            boolean popping = mixPopping[j];
+            float fade = popping ? m.fadeOut() : m.fadeIn();
+            float w = fade <= 0 ? (popping ? 0f : 1f) : mixWeight[j] + (float) (dt / fade) * (popping ? -1 : 1);
+            if (popping && w <= 0) {
+                mixCount--;
+                System.arraycopy(mixes, j + 1, mixes, j, mixCount - j);
+                System.arraycopy(mixWeight, j + 1, mixWeight, j, mixCount - j);
+                System.arraycopy(mixPopping, j + 1, mixPopping, j, mixCount - j);
+                mixes[mixCount] = null;
+                continue;
+            }
+            mixWeight[j] = Math.min(1f, w);
+        }
+        for (int i = 0; i < MAX_SOUNDS; i++) {
+            grouped[i] = chosen[i] = false;
+            if (state[i] == FREE) continue;
+            if (state[i] == REAL && !loop[i] && sink.ended(voice[i])) {
+                voice[i] = null;
+                end(i);
+                continue;
+            }
+            CgSoundClass c = soundClass[i];
+            if ((state[i] == REAL || state[i] == VIRTUAL) && !(paused && c.pausesWithGame())) {
+                time[i] += dt * pitch[i] * classPitch(c);
+            }
+            if (state[i] == VIRTUAL && !loop[i] && time[i] >= sound[i].seconds()) {
+                end(i);
+                continue;
+            }
+            volume[i] = gain[i] * classVolume(c, host);
+            double dx = x[i] - lx, dy = y[i] - ly, dz = z[i] - lz;
+            distance[i] = placed[i] ? Math.sqrt(dx * dx + dy * dy + dz * dz) : 0;
+            boolean audible = !placed[i] || Double.isNaN(range[i]) || distance[i] <= range[i];
+            weighted[i] = audible ? priority[i] * volume[i] : -1;
+        }
+        cullGroups();
+        // GetSortedActiveWaveInstances: the loudest by priority take the voices.
+        int n = 0;
+        for (int i = 0; i < MAX_SOUNDS; i++) {
+            if (state[i] == FREE || weighted[i] < 0) continue;
+            int k = n++;
+            while (k > 0 && before(i, ranked[k - 1])) {
+                ranked[k] = ranked[k - 1];
+                k--;
+            }
+            ranked[k] = i;
+        }
+        for (int k = 0; k < Math.min(n, maxVoices); k++) chosen[ranked[k]] = true;
+        for (int i = 0; i < MAX_SOUNDS; i++) {
+            if (state[i] == FREE) continue;
+            if (chosen[i]) {
+                if (state[i] != REAL) {
+                    double offset = loop[i] ? time[i] % Math.max(1e-9, sound[i].seconds()) : time[i];
+                    voice[i] = sink.voice(sound[i], pitch[i] * classPitch(soundClass[i]), loop[i], offset);
+                    sink.start(voice[i], volume[i], soundClass[i], state[i] == NEW ? startAt[i] : Double.NaN);
+                    posted[i] = volume[i];
+                    state[i] = REAL;
+                } else if (Math.abs(volume[i] - posted[i]) > 1e-4f) {
+                    sink.gain(voice[i], volume[i]);
+                    posted[i] = volume[i];
+                }
+            } else if (loop[i]) {
+                // A loop below the line or out of range: virtual, its time running on (FAudioVirtualLoop).
+                if (state[i] == REAL) sink.stop(voice[i]);
+                voice[i] = null;
+                state[i] = VIRTUAL;
+            } else {
+                end(i);
+            }
+        }
+    }
+
+    /** Whether sound {@code a} ranks above {@code b} for a voice: weightier, or older at a tie. */
+    private boolean before(int a, int b) {
+        return weighted[a] != weighted[b] ? weighted[a] > weighted[b] : order[a] < order[b];
+    }
+
+    /** Each concurrency group over its count, culled by its rule. */
+    private void cullGroups() {
+        for (int i = 0; i < MAX_SOUNDS; i++) {
+            if (state[i] == FREE || group[i] == null || grouped[i]) continue;
+            CgSoundConcurrency g = group[i];
+            int n = 0;
+            for (int j = i; j < MAX_SOUNDS; j++) {
+                if (state[j] == FREE || group[j] != g || grouped[j]) continue;
+                if (g.limitToOwner() && owner[j] != owner[i]) continue;
+                grouped[j] = true;
+                // Kept first: insertion by the rule's order, so the tail is what goes.
+                int k = n++;
+                while (k > 0 && keeps(g.rule(), j, members[k - 1])) {
+                    members[k] = members[k - 1];
+                    k--;
+                }
+                members[k] = j;
+            }
+            for (int k = g.maxCount(); k < n; k++) {
+                culled++;
+                end(members[k]);
+            }
+        }
+    }
+
+    /** Whether, under {@code rule}, sound {@code a} is kept before {@code b}. */
+    private boolean keeps(CgSoundConcurrency.Rule rule, int a, int b) {
+        switch (rule) {
+            case PREVENT_NEW:
+                return order[a] < order[b];
+            case STOP_FARTHEST:
+                if (distance[a] != distance[b]) return distance[a] < distance[b];
+                return order[a] > order[b];
+            case STOP_QUIETEST:
+                // At equal volume a newer sound goes first, so a loop does not ping-pong.
+                return volume[a] != volume[b] ? volume[a] > volume[b] : order[a] < order[b];
+            case STOP_LOWEST_PRIORITY:
+                return priority[a] != priority[b] ? priority[a] > priority[b] : order[a] > order[b];
+            case STOP_OLDEST:
+            default:
+                return order[a] > order[b];
+        }
+    }
+}
