@@ -28,10 +28,10 @@ public final class CgAudioTone implements CgAudioSource {
     }
 
     @Override
-    public boolean render(float[] out, int frames, int channels, int sampleRate, float gain) {
+    public boolean render(float[] out, int offset, int frames, int channels, int sampleRate, float gain) {
         long total = seconds > 0 ? (long) (seconds * sampleRate) : Long.MAX_VALUE;
         double step = 2 * Math.PI * hertz / sampleRate;
-        for (int f = 0; f < frames && played < total; f++, played++) {
+        for (int f = offset; f < offset + frames && played < total; f++, played++) {
             float s = (float) Math.sin(phase) * amplitude * gain;
             phase += step;
             if (phase > 2 * Math.PI) phase -= 2 * Math.PI;

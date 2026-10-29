@@ -14,10 +14,18 @@ import java.util.Arrays;
  * mixer.render(buffer);                                  // 512 interleaved stereo frames
  * }</pre>
  *
+ * Started on a sample: Quartz's quantized start, the voice beginning part way through the buffer it is due in.
+ *
+ * <pre>{@code
+ * mixer.start(click, 1f, true, mixer.rendered() + 1000);   // 1000 frames after the next buffer starts
+ * }</pre>
+ *
  * <ul>
  *   <li>One thread renders it: the audio thread, or a test's. {@link CgAudioEngine} posts to it from the frame.</li>
  *   <li>A voice that pauses with the game is silent and holds its place while {@link #paused(boolean)}.</li>
  *   <li>A start past the voice limit is refused and counted ({@link #refused()}).</li>
+ *   <li>A start due before the next buffer plays at once and is counted late ({@link #late()}).</li>
+ *   <li>A voice waiting for its frame that pauses with the game waits longer while paused: its due frame moves on.</li>
  *   <li>Allocates nothing once made.</li>
  * </ul>
  */
@@ -27,9 +35,12 @@ public final class CgAudioMixer {
     private final CgAudioSource[] voices;
     private final float[] gains;
     private final boolean[] pausing;
+    /** Each voice's due frame; NOW for one that is playing. */
+    private final long[] due;
+    private static final long NOW = Long.MIN_VALUE;
     private float main = 1f;
     private boolean paused;
-    private int refused;
+    private int refused, late;
     private long rendered;
 
     public CgAudioMixer(int sampleRate, int channels, int frames, int maxVoices) {
@@ -39,15 +50,26 @@ public final class CgAudioMixer {
         voices = new CgAudioSource[maxVoices];
         gains = new float[maxVoices];
         pausing = new boolean[maxVoices];
+        due = new long[maxVoices];
     }
 
-    /** Plays {@code source} at {@code gain}; false where every voice is taken. */
+    /** Plays {@code source} at {@code gain} from the next buffer; false where every voice is taken. */
     public boolean start(CgAudioSource source, float gain, boolean pausesWithGame) {
+        return start(source, gain, pausesWithGame, NOW);
+    }
+
+    /** Plays {@code source} at {@code gain} from mixer frame {@code frame} ({@link #rendered()} counts them). */
+    public boolean start(CgAudioSource source, float gain, boolean pausesWithGame, long frame) {
         for (int i = 0; i < voices.length; i++) {
             if (voices[i] != null) continue;
             voices[i] = source;
             gains[i] = gain;
             pausing[i] = pausesWithGame;
+            if (frame != NOW && frame < rendered) {
+                late++;
+                frame = NOW;
+            }
+            due[i] = frame;
             return true;
         }
         refused++;
@@ -76,8 +98,19 @@ public final class CgAudioMixer {
         Arrays.fill(out, 0, frames * channels, 0f);
         for (int i = 0; i < voices.length; i++) {
             CgAudioSource v = voices[i];
-            if (v == null || paused && pausing[i]) continue;
-            if (!v.render(out, frames, channels, sampleRate, gains[i])) voices[i] = null;
+            if (v == null) continue;
+            if (paused && pausing[i]) {
+                if (due[i] != NOW) due[i] += frames;
+                continue;
+            }
+            int offset = 0;
+            if (due[i] != NOW) {
+                // TickInternal: due within this buffer, it starts at its frame there; later, it waits.
+                if (due[i] >= rendered + frames) continue;
+                offset = (int) Math.max(0, due[i] - rendered);
+                due[i] = NOW;
+            }
+            if (!v.render(out, offset, frames - offset, channels, sampleRate, gains[i])) voices[i] = null;
         }
         for (int i = 0, n = frames * channels; i < n; i++) {
             float s = out[i] * main;
@@ -96,6 +129,11 @@ public final class CgAudioMixer {
     /** Starts refused at the voice limit. */
     public int refused() {
         return refused;
+    }
+
+    /** Starts due before the buffer they reached the mixer in, played at once. */
+    public int late() {
+        return late;
     }
 
     /** Frames rendered since it was made. */

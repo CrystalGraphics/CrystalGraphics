@@ -28,6 +28,7 @@ import com.crystalgraphics.platform.audio.CgHostVolume;
  * CgAudioTone tone = new CgAudioTone(440, 0.25f, 0);
  * audio.play(tone, 1f);
  * audio.stop(tone);
+ * audio.play(click, 1f, audio.clock().now() + 0.25);              // a quarter second on, to the sample
  * }</pre>
  *
  * <ul>
@@ -50,6 +51,8 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     public static final int MAX_VOICES = 64;
 
     private static final int PLAY = 0, STOP = 1, GAIN = 2, MAIN = 3, PAUSE = 4;
+    /** A start with no due frame: the next buffer. */
+    private static final long NOW = Long.MIN_VALUE;
     private static final int QUEUE = 1024;
     private static final long RETRY_NANOS = TimeUnit.SECONDS.toNanos(1);
 
@@ -59,12 +62,16 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     private final CgAudioSource[] sources = new CgAudioSource[QUEUE];
     private final float[] values = new float[QUEUE];
     private final boolean[] flags = new boolean[QUEUE];
+    private final long[] frames = new long[QUEUE];
     /** The frame thread writes at head, the audio thread reads at tail. */
     private final AtomicInteger head = new AtomicInteger(), tail = new AtomicInteger();
 
     private CgAudioOutput output = CgAudioOutput.NONE;
     private CgAudioMixer mixer;
-    private CgTickFunction submit;
+    private CgTickFunction submit, begin;
+    private CgAudioClock clock;
+    /** Frames the mixer has rendered: the write head the clock follows. */
+    private volatile long written;
     @Nullable
     private Thread thread;
     private volatile boolean running;
@@ -91,6 +98,10 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         output = given != null ? given : CgPlatform.get(CgAudioOutput.SERVICE);
         if (output == CgAudioOutput.NONE) return;
         mixer = new CgAudioMixer(FORMAT.sampleRate(), FORMAT.channels(), FORMAT.frames(), MAX_VOICES);
+        // Left alone within two buffers of the write head. A frame hears its events at its end, up to a frame after
+        // they fell: a lead of the queue keeps their starts ahead of the head for frames up to the queue less the band.
+        clock = new CgAudioClock(FORMAT.sampleRate(), (long) FORMAT.buffers() * FORMAT.frames(), 2L * FORMAT.frames(), () -> written);
+        begin = world().schedule().add(CgTickGroup.BEGIN, "crystalgraphics:audio.clock", dt -> clock.advance(dt)).whilePaused(true);
         submit = world().schedule().add(CgTickGroup.SUBMIT, "crystalgraphics:audio", this::submit).whilePaused(true);
         running = true;
         // A thread of its own, as Unreal's render thread: a job worker would wait behind the frame's jobs.
@@ -104,6 +115,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     protected void deinitialize() {
         running = false;
         if (submit != null) submit.close();
+        if (begin != null) begin.close();
         if (thread != null) {
             LockSupport.unpark(thread);
             try {
@@ -120,20 +132,30 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     }
 
     public void play(CgAudioSource source, float gain) {
-        post(PLAY, source, gain, true);
+        post(PLAY, source, gain, true, NOW);
+    }
+
+    /** Plays {@code source} starting at audio time {@code seconds} ({@link #clock()}), on its sample. */
+    public void play(CgAudioSource source, float gain, double seconds) {
+        post(PLAY, source, gain, true, clock.frameAt(seconds));
     }
 
     /** Plays a sound the game's pause leaves playing: a menu's. */
     public void playUnpaused(CgAudioSource source, float gain) {
-        post(PLAY, source, gain, false);
+        post(PLAY, source, gain, false, NOW);
     }
 
     public void stop(CgAudioSource source) {
-        post(STOP, source, 0, false);
+        post(STOP, source, 0, false, NOW);
     }
 
     public void gain(CgAudioSource source, float gain) {
-        post(GAIN, source, gain, false);
+        post(GAIN, source, gain, false, NOW);
+    }
+
+    /** The frame's audio time, what a timed {@link #play} is on. Null where it is not {@link #active()}. */
+    public CgAudioClock clock() {
+        return clock;
     }
 
     /** Underruns since the engine started, over every stream it opened. */
@@ -174,16 +196,16 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         float main = CgPlatform.get(CgHostVolume.SERVICE).master();
         if (main != postedMain) {
             postedMain = main;
-            post(MAIN, null, main, false);
+            post(MAIN, null, main, false, NOW);
         }
         boolean paused = world().paused();
         if (paused != postedPaused) {
             postedPaused = paused;
-            post(PAUSE, null, 0, paused);
+            post(PAUSE, null, 0, paused, NOW);
         }
     }
 
-    private void post(int kind, @Nullable CgAudioSource source, float value, boolean flag) {
+    private void post(int kind, @Nullable CgAudioSource source, float value, boolean flag, long frame) {
         if (!running) return;
         int h = head.get();
         if (h - tail.get() >= QUEUE) {
@@ -195,6 +217,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         sources[i] = source;
         values[i] = value;
         flags[i] = flag;
+        frames[i] = frame;
         head.lazySet(h + 1);
     }
 
@@ -206,7 +229,10 @@ public final class CgAudioEngine extends CgWorldSubsystem {
             CgAudioSource s = sources[i];
             sources[i] = null;
             switch (kinds[i]) {
-                case PLAY -> mixer.start(s, values[i], flags[i]);
+                case PLAY -> {
+                    if (frames[i] == NOW) mixer.start(s, values[i], flags[i]);
+                    else mixer.start(s, values[i], flags[i], frames[i]);
+                }
                 case STOP -> mixer.stop(s);
                 case GAIN -> mixer.gain(s, values[i]);
                 case MAIN -> mixer.main(values[i]);
@@ -251,6 +277,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
                 while (running && stream.free() > 0) {
                     drain();
                     mixer.render(buffer);
+                    written = mixer.rendered();
                     if (!stream.write(buffer)) {
                         LOGGER.info("The audio output went ({}); opening it again", stream);
                         underruns = before + stream.underruns();

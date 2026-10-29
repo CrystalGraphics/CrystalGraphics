@@ -88,6 +88,8 @@ public final class CgSequencePlayer {
     private int composite = -1;
     /** Seconds a montage section's end handed on to its next, played in a pass of their own; and whether play jumps there. */
     private double carry;
+    /** Where this pass's evaluation ended on its timeline, and the seconds of the frame's step still to play after it. */
+    private double passEnd, passRemaining;
     private boolean resumes, resumeJumps, inPass;
     /** The first tick a jump's one-shots fire from: past its point for a jump, the window before it for a seek. */
     private int oneShotFrom = Integer.MAX_VALUE;
@@ -228,6 +230,20 @@ public final class CgSequencePlayer {
     /** Seconds played, times its rate, since it started. */
     public double seconds() {
         return seconds;
+    }
+
+    /**
+     * Where the pass just evaluated ended on its timeline, in seconds: a montage section's end where play handed on
+     * from it, the sequence's end where it finished. With {@link #passRemainingSeconds()}, what places an event of this
+     * pass within the frame.
+     */
+    public double passEndSeconds() {
+        return passEnd;
+    }
+
+    /** The seconds of the frame's step still to play after the pass just evaluated: a section's carry, or past the end. */
+    public double passRemainingSeconds() {
+        return passRemaining;
     }
 
     /** Its play rate: 1 as authored, 0.5 half speed. */
@@ -669,6 +685,8 @@ public final class CgSequencePlayer {
         if (jump) {
             jump = false;
             r = position.jumpToSeconds(seconds);
+            passEnd = seconds;
+            passRemaining = 0;
             int now = CgFrameTime.frame(r.current());
             oneShotFrom = seek ? now - (int) Math.round(ONE_SHOT_WINDOW / definition.seconds(1)) + 1 : now + 1;
             seek = false;
@@ -685,7 +703,10 @@ public final class CgSequencePlayer {
     /** A looping clip passed its end this frame: played to the end, the rest from its start in a pass of its own. */
     private CgSequenceEvaluationRange wrap() {
         drivenWraps = false;
-        CgSequenceEvaluationRange r = position.playToSeconds(definition.seconds(definition.end() - definition.start()));
+        double length = definition.seconds(definition.end() - definition.start());
+        CgSequenceEvaluationRange r = position.playToSeconds(length);
+        passEnd = length;
+        passRemaining = drivenTo;
         seconds = 0;
         carry = drivenTo;
         resumes = true;
@@ -810,6 +831,8 @@ public final class CgSequencePlayer {
             double end = definition.seconds(c.to() - definition.start());
             if (target >= end) {
                 int n = next[composite];
+                passEnd = end;
+                passRemaining = target - end;
                 if (n < 0) {
                     // FAnimMontageInstance::Advance: no next section, so play stops at this one's end.
                     seconds = end;
@@ -832,6 +855,8 @@ public final class CgSequencePlayer {
         } else if (seconds < 0) {
             seconds = 0;
         }
+        passEnd = seconds;
+        passRemaining = Math.max(0, target - seconds);
         return position.playToSeconds(seconds);
     }
 

@@ -14,7 +14,8 @@ audio.play(new CgAudioTone(440, 0.25f, 1.0), 1f);
 |---|---|
 | `CgAudioEngine` | the client world's sound: the audio thread (`FMixerDevice`'s render thread), the command queue, the host's master slider and the game's pause, posted each `SUBMIT` |
 | `CgAudioMixer` | one buffer at a time: voices summed, the main gain, the clamp (`OnProcessAudioStream`). Plain Java: tests render it into an array |
-| `CgAudioSource` | what a voice plays: samples added into the buffer on the audio thread |
+| `CgAudioClock` | the frame's audio time (Quartz's clock): a start at a time lands on its sample |
+| `CgAudioSource` | what a voice plays: samples added into the buffer, from a frame offset, on the audio thread |
 | `CgAudioTone` | a sine: the test signal |
 
 ## Rules

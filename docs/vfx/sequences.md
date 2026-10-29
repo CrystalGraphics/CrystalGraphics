@@ -319,7 +319,13 @@ sequencer.listen(CgSequenceEventListener.Side.OURS, (player, phase, event, args)
 - **A span begins** in the frame play enters it, a jump landing inside it included, and **ends** as play leaves it or
   the play stops.
 - **They are heard after the frame's tracks are applied**, in the order play crossed them: a listener sees the
-  frame's values.
+  frame's values. `sequencer.heardSecondsAgo()` says how long before the frame's end the key fell, so a sound starts
+  on its own sample rather than the frame's ([audio](audio.md)):
+
+  ```java
+  sequencer.listen(CgSequenceEventListener.Side.OURS, (player, phase, event, args) ->
+          audio.play(click, 1f, audio.clock().now() - sequencer.heardSecondsAgo()));
+  ```
 - **A dedicated server hears `rpg` alone**; a client hears both. An event track names its side, or it fails at play.
 - `args` are the file's, untouched: what the gameplay hearing the name expects.
 

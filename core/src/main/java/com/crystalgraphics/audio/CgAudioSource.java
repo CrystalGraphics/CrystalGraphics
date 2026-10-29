@@ -7,8 +7,8 @@ package com.crystalgraphics.audio;
  * <pre>{@code
  * final class Click implements CgAudioSource {
  *     private int left = 480;                                 // 10 ms at 48 kHz
- *     public boolean render(float[] out, int frames, int channels, int sampleRate, float gain) {
- *         for (int f = 0; f < frames && left > 0; f++, left--) {
+ *     public boolean render(float[] out, int offset, int frames, int channels, int sampleRate, float gain) {
+ *         for (int f = offset; f < offset + frames && left > 0; f++, left--) {
  *             for (int c = 0; c < channels; c++) out[f * channels + c] += gain;
  *         }
  *         return left > 0;
@@ -19,6 +19,8 @@ package com.crystalgraphics.audio;
  *
  * <ul>
  *   <li>Add into {@code out}, never overwrite it: other voices are already in it.</li>
+ *   <li>Start at frame {@code offset} of the buffer: a sound due part way through a buffer starts there, on its
+ *       sample.</li>
  *   <li>Audio thread only, and allocate nothing.</li>
  *   <li>Answer false once finished: its voice is freed after this buffer.</li>
  * </ul>
@@ -26,6 +28,9 @@ package com.crystalgraphics.audio;
 @FunctionalInterface
 public interface CgAudioSource {
 
-    /** Adds {@code frames} interleaved frames of {@code channels} into {@code out} at {@code gain}; false once done. */
-    boolean render(float[] out, int frames, int channels, int sampleRate, float gain);
+    /**
+     * Adds {@code frames} interleaved frames of {@code channels} into {@code out} from frame {@code offset}, at
+     * {@code gain}; false once done.
+     */
+    boolean render(float[] out, int offset, int frames, int channels, int sampleRate, float gain);
 }

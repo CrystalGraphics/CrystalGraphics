@@ -12,6 +12,7 @@ import com.crystalgraphics.sequence.CgSequenceEvaluator;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.sequence.definition.CgSequenceChannel;
+import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.sequence.definition.CgSequenceSection;
 import com.crystalgraphics.sequence.definition.CgSequenceTrack;
 
@@ -50,6 +51,8 @@ public final class CgSequenceEventEvaluator implements CgSequenceEvaluator, CgEv
     private String[] names = new String[16];
     private Object[] args = new Object[16];
     private Side[] sides = new Side[16];
+    /** Each event's tick on its play's timeline, or NaN where it has none: a span's edge, a triggered section's key. */
+    private float[] ticks = new float[16];
     private int count;
     /** What a key crossing queues for: the section being swept. */
     private CgSequencePlayer sweeping;
@@ -193,31 +196,45 @@ public final class CgSequenceEventEvaluator implements CgSequenceEvaluator, CgEv
         // Keys outside their section's range are never in its evaluation, as Unreal sweeps a section's range alone.
         if (sweepSection.trigger() == null && !sweepSection.contains(tick)) return;
         int key = sweepKeys.heldIndex(tick);
-        enqueue(sweeping, sweepSide, Phase.INSTANT, name, key >= 0 ? sweepKeys.args(key) : null);
+        enqueue(sweeping, sweepSide, Phase.INSTANT, name, key >= 0 ? sweepKeys.args(key) : null,
+                sweepSection.trigger() == null ? tick : Float.NaN);
     }
 
     private void queue(CgSequencePlayer player, Side side, Phase phase, CgSequenceSection s) {
-        enqueue(player, side, phase, (String) s.fields().get("event"), s.fields().get("args"));
+        enqueue(player, side, phase, (String) s.fields().get("event"), s.fields().get("args"), Float.NaN);
     }
 
-    private void enqueue(CgSequencePlayer player, Side side, Phase phase, String name, @Nullable Object arg) {
+    private void enqueue(CgSequencePlayer player, Side side, Phase phase, String name, @Nullable Object arg, float tick) {
         if (count == players.length) {
             players = Arrays.copyOf(players, count * 2);
             phases = Arrays.copyOf(phases, count * 2);
             names = Arrays.copyOf(names, count * 2);
             args = Arrays.copyOf(args, count * 2);
             sides = Arrays.copyOf(sides, count * 2);
+            ticks = Arrays.copyOf(ticks, count * 2);
         }
         players[count] = player;
         phases[count] = phase;
         names[count] = name;
         args[count] = arg;
+        ticks[count] = tick;
         sides[count++] = side;
+    }
+
+    /**
+     * How long before the frame's end the key at {@code tick} fell, in the viewer's seconds: from its pass's end, plus
+     * what the frame played after that pass. 0 where it has no tick.
+     */
+    private static double secondsAgo(CgSequencePlayer player, float tick) {
+        if (Float.isNaN(tick) || player.rate() <= 0) return 0;
+        CgSequenceDefinition d = player.definition();
+        double at = (tick - d.start()) * d.seconds(1);
+        return Math.max(0, (player.passEndSeconds() - at + player.passRemainingSeconds()) / player.rate());
     }
 
     @Override
     public void postEvaluation() {
-        for (int i = 0; i < count; i++) sequencer.hear(sides[i], players[i], phases[i], names[i], args[i]);
+        for (int i = 0; i < count; i++) sequencer.hear(sides[i], players[i], phases[i], names[i], args[i], secondsAgo(players[i], ticks[i]));
         Arrays.fill(players, 0, count, null);
         Arrays.fill(args, 0, count, null);
         count = 0;

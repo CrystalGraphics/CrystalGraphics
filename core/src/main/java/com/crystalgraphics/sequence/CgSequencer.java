@@ -74,6 +74,7 @@ public final class CgSequencer extends CgWorldSubsystem {
     private final CgSequenceBlender blender = new CgSequenceBlender();
     private final Map<String, CgSequenceSpawner> spawners = new HashMap<>();
     private final List<CgSequenceEventListener> rpg = new ArrayList<>(), ours = new ArrayList<>();
+    private double heardAgo;
     private CgTickFunction tick;
     @Nullable
     private CgSequenceTarget environment;
@@ -222,11 +223,35 @@ public final class CgSequencer extends CgWorldSubsystem {
         (side == CgSequenceEventListener.Side.RPG ? rpg : ours).remove(listener);
     }
 
-    /** Hands an event to {@code side}'s listeners. */
+    /**
+     * Hands an event to {@code side}'s listeners; {@code secondsAgo} is how long before the frame's end it
+     * fell, which they read through {@link #heardSecondsAgo()}.
+     */
     public void hear(CgSequenceEventListener.Side side, CgSequencePlayer player, CgSequenceEventListener.Phase phase, String event,
-              @Nullable Object args) {
+              @Nullable Object args, double secondsAgo) {
         List<CgSequenceEventListener> to = side == CgSequenceEventListener.Side.RPG ? rpg : ours;
+        heardAgo = secondsAgo;
         for (int i = 0; i < to.size(); i++) to.get(i).heard(player, phase, event, args);
+        heardAgo = 0;
+    }
+
+    /**
+     * While a listener hears an event: how long before the frame's end the event fell, in the viewer's
+     * seconds. A frame hears every event it crossed at once, at its end; a sound starts on its own time by this.
+     *
+     * <pre>{@code
+     * sequencer.listen(Side.OURS, (player, phase, event, args) ->
+     *         audio.play(click, 1f, audio.clock().now() - sequencer.heardSecondsAgo()));
+     * }</pre>
+     *
+     * <ul>
+     *   <li>0 for a span's begin or end, and for a key of a section an event started: they have no time on the play's
+     *       timeline.</li>
+     *   <li>0 outside {@code heard}.</li>
+     * </ul>
+     */
+    public double heardSecondsAgo() {
+        return heardAgo;
     }
 
     /** The viewer's significance tier, 0 (low) to 3 (ultra): a notify filtered above it does not fire. */
