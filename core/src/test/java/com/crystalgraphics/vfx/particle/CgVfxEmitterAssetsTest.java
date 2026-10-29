@@ -31,6 +31,7 @@ import com.crystalgraphics.shape.primitive.CgPlane;
 import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.vfx.effect.beam.CgBeamWake;
 import com.crystalgraphics.vfx.element.CgVfxExplosion;
+import com.crystalgraphics.vfx.field.CgFieldDefinition;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
@@ -292,7 +293,7 @@ public class CgVfxEmitterAssetsTest {
             out[0] = 1f;
             out[1] = out[2] = 0f;
         });
-        CgVfxGridField grid = new CgVfxGridField(vectors, new float[]{0f, -0.5f, 0f}, new float[]{2f, 1f, 3f}, 1f);
+        CgFieldDefinition.Grid grid = new CgFieldDefinition.Grid(vectors, new float[]{0f, -0.5f, 0f}, new float[]{2f, 1f, 3f}, 1f);
         CgAssetCompiler.Dependencies deps = new CgAssetCompiler.Dependencies() {
             @Override public Object definition(CgType kind, String id) {
                 return grid;

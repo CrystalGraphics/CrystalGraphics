@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.system;
 
+import com.crystalgraphics.vfx.field.CgFieldPlacement;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
@@ -56,10 +57,11 @@ import java.util.WeakHashMap;
  *                      the system's bounds ({@code CG_OBJECT_POSITION}, {@code CG_OBJECT_RADIUS}) reads
  * @param macroUv       where its renderers' particle macro UVs centre and how far they reach ({@code CG_PARTICLE_MACRO_UV});
  *                      null is Cascade's default
+ * @param fields        the fields it places, which live and follow with each instance (Chaos's field commands)
  */
 public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfxBehaviour.Factory behaviour,
                                     List<CgVfxEmitter> emitters, int poolPrimeSize, int maxPoolSize, List<Kill> kills,
-                                    @Nullable FixedBounds fixedBounds, CgVfxMacroUv macroUv) {
+                                    @Nullable FixedBounds fixedBounds, CgVfxMacroUv macroUv, List<CgFieldPlacement> fields) {
 
     /**
      * A system's bounds fixed about its origin, in blocks: Unreal's fixed bounds (Niagara's {@code FixedBounds},
@@ -131,6 +133,7 @@ public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfx
         }
         if (poolPrimeSize < 0 || maxPoolSize < 0) throw new IllegalArgumentException(name + ": a pool size is negative");
         kills = List.copyOf(kills);
+        fields = List.copyOf(fields);
         for (Kill k : kills) {
             if (k.source() < 0 || k.source() >= emitters.size() || k.receiver() < 0 || k.receiver() >= emitters.size()
                     || k.event() < 0 || k.event() >= emitters.get(k.source()).events().size()
@@ -138,6 +141,13 @@ public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfx
                 throw new IllegalArgumentException(name + ": " + k + " names no emitter, or an event that reads no rows back");
             }
         }
+    }
+
+    /** Placing no fields. */
+    public CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfxBehaviour.Factory behaviour,
+                                 List<CgVfxEmitter> emitters, int poolPrimeSize, int maxPoolSize, List<Kill> kills,
+                                 @Nullable FixedBounds fixedBounds, CgVfxMacroUv macroUv) {
+        this(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, fixedBounds, macroUv, List.of());
     }
 
     /** Its bounds following its particles. */
@@ -207,21 +217,26 @@ public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfx
 
     /** This definition carrying {@code behaviour}, its emitters kept. */
     public CgVfxSystemDefinition withBehaviour(CgVfxBehaviour.Factory behaviour) {
-        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, fixedBounds, macroUv);
+        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, fixedBounds, macroUv, fields);
     }
 
     /** This definition with its instance pool's sizes: {@code prime} made ahead when it loads, at most {@code max} kept. */
     public CgVfxSystemDefinition withPool(int prime, int max) {
-        return new CgVfxSystemDefinition(name, look, behaviour, emitters, prime, max, kills, fixedBounds, macroUv);
+        return new CgVfxSystemDefinition(name, look, behaviour, emitters, prime, max, kills, fixedBounds, macroUv, fields);
     }
 
     /** This definition with its bounds fixed about its origin; null for bounds following its particles. */
     public CgVfxSystemDefinition withFixedBounds(@Nullable FixedBounds bounds) {
-        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, bounds, macroUv);
+        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, bounds, macroUv, fields);
     }
 
     /** This definition with its particle macro UVs centred and sized by {@code macroUv}. */
     public CgVfxSystemDefinition withMacroUv(CgVfxMacroUv macroUv) {
-        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, fixedBounds, macroUv);
+        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, fixedBounds, macroUv, fields);
+    }
+
+    /** This definition placing {@code fields}. */
+    public CgVfxSystemDefinition withFields(List<CgFieldPlacement> fields) {
+        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, fixedBounds, macroUv, fields);
     }
 }

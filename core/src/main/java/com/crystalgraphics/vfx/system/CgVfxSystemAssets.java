@@ -20,6 +20,8 @@ import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
+import com.crystalgraphics.vfx.field.CgFieldDefinition;
+import com.crystalgraphics.vfx.field.CgFieldPlacement;
 import com.crystalgraphics.vfx.look.CgVfxKit;
 import com.crystalgraphics.vfx.look.CgVfxLayout;
 import com.crystalgraphics.vfx.look.CgVfxLook;
@@ -28,7 +30,6 @@ import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.look.CgVfxUnit;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterAssets;
-import com.crystalgraphics.vfx.particle.CgVfxGridField;
 import com.crystalgraphics.vfx.particle.CgVfxEventGenerator;
 import com.crystalgraphics.vfx.particle.CgVfxEventHandler;
 import com.crystalgraphics.vfx.particle.CgVfxSockets;
@@ -69,7 +70,7 @@ import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
  *   <li>Runs on a worker: reads only the asset and its dependencies.</li>
  *   <li>{@link #write} writes a contracted system's values only where they differ from its contract's look, and its
  *       contract's required names always: the file is the delta. Emitters are written inline. Curves, palettes and
- *       shakes are not user parameters yet, and are not written.</li>
+ *       shakes are not user parameters yet, and are not written; nor are its fields, whose places are not read yet.</li>
  * </ul>
  */
 public final class CgVfxSystemAssets {
@@ -93,12 +94,12 @@ public final class CgVfxSystemAssets {
     /**
      * Sets {@link #COMPILER} as the system kind's, and the emitter kind's: an emitter file compiles against its own
      * hard references (its renderers' materials, its vector fields' grids), which a system referencing it does not hold;
-     * and the field kind's ({@link CgVfxGridField}).
+     * and the field kind's ({@link CgFieldDefinition}).
      */
     public static void register() {
         CgAssetCompiler.register(CgParticleKinds.SYSTEM, COMPILER);
         CgAssetCompiler.register(CgParticleKinds.EMITTER, CgVfxEmitterAssets.compiler(id -> null));
-        CgAssetCompiler.register(CgFieldKinds.FIELD, CgVfxGridField.COMPILER);
+        CgAssetCompiler.register(CgFieldKinds.FIELD, CgFieldDefinition.COMPILER);
     }
 
     /** Names {@code factory} as the behaviour a system's {@code effect: id} plays with, drawing the file's look. At init. */
@@ -314,7 +315,7 @@ public final class CgVfxSystemAssets {
                 CgVfxLook look = contracted(id, name, effect.contract(), user, emitters.isEmpty() && !slotted ? null : kit.build());
                 userPoints(id, look, emitters);
                 return new CgVfxSystemDefinition(id, look, effect.factory(), emitters, prime(tree), max(tree), kills,
-                        fixedBounds(id, tree, deps), macroUv(id, tree, deps));
+                        fixedBounds(id, tree, deps), macroUv(id, tree, deps), fields(id, tree, deps));
             }
         }
         CgVfxSchema schema = CgVfxSchema.of(id);
@@ -322,7 +323,18 @@ public final class CgVfxSystemAssets {
         CgVfxLook look = CgVfxLook.builder(schema).with(kit.build()).build();
         userPoints(id, look, emitters);
         return new CgVfxSystemDefinition(id, look, effect == null ? null : effect.factory(), emitters, prime(tree),
-                max(tree), kills, fixedBounds(id, tree, deps), macroUv(id, tree, deps));
+                max(tree), kills, fixedBounds(id, tree, deps), macroUv(id, tree, deps), fields(id, tree, deps));
+    }
+
+    /** Its {@code fields:}, each compiled with its field; one that fails fails the system by its path. */
+    private static List<CgFieldPlacement> fields(String id, Map<Object, Object> tree, @Nullable CgAssetCompiler.Dependencies deps) {
+        if (!(tree.get("fields") instanceof List<?> placed)) return List.of();
+        List<CgFieldPlacement> out = new ArrayList<>(placed.size());
+        for (Object o : placed) {
+            Map<?, ?> f = (Map<?, ?>) o;
+            out.add(CgFieldPlacement.read(id + ": fields." + f.get("id"), f, deps));
+        }
+        return out;
     }
 
     /** Every emitter's user socket points name a vector user parameter of {@code look}, or the system fails here. */

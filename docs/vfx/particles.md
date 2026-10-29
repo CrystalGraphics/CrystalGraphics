@@ -998,3 +998,57 @@ static final CgVfxEmitter CORE = CgVfxEmitter.builder("core").capacity(64)
   after.
 - **`CgVfxEffect.kill()` is the whole effect**: every emitter of it, and the effect itself. `instance.kill()` is one
   emitter's particles, and the effect plays on.
+
+## Force fields: a push every opted-in emitter feels
+
+A force field is Chaos's Physics Field: a graph of nodes (falloffs, vectors, operators) whose root's value a target
+applies to a particle. A system places fields; the emitters whose `physics_field` module reads a field's group feel
+it. A field is presentation only: it never moves a character and a server runs none.
+
+```yaml
+# vfx/systems/rasengan.yaml
+fields:
+  - id: f1
+    group: mymod.pull                    # who reads it: physics_field modules of this group
+    orient: world                        # its vectors keep the world's axes; anchor (the default) turns them with it
+    field:
+      kind: graph
+      target: linear_force               # added to each particle's acceleration
+      root: out
+      nodes:
+        - { id: v, kind: radial_vector, magnitude: -5 }
+        - { id: r, kind: radial_falloff, radius: 3, default: 0 }
+        - { id: out, kind: operator, op: multiply, left: v, right: r }
+```
+
+The same graph built in Java, exactly what the file loads:
+
+```java
+CgFieldDefinition.Graph pull = CgFieldDefinition.graph(CgFieldDefinition.Target.LINEAR_FORCE)
+        .node("v", "radial_vector", "magnitude", -5)
+        .node("r", "radial_falloff", "radius", 3, "default", 0)
+        .node("out", "operator", "op", "multiply", "left", "v", "right", "r")
+        .build();                                    // the root is the last node
+pull.bounds();                                       // a box 3 blocks each way: where it acts
+Map<String, Object> tree = pull.write();             // fields/rasengan_pull.yaml, or the inline graph
+```
+
+| Target | Applied |
+|---|---|
+| `linear_force` | added to the acceleration |
+| `linear_velocity` | added to the velocity |
+| `angular_velocity` | added to its spin |
+| `orbit` | turned about the value's direction through the field's origin, its length an angular speed |
+| `speed_scale` | added to its speed multiplier |
+| `scale` | added to its scale per axis, a rate |
+| `kill` | the particle dies where the value is above 0 |
+
+- **Where it acts is Chaos's**: a radial or box falloff with a default of 0 bounds its graph to its radius or box, a
+  multiply or divide to the smaller of its sides, an add or subtract to the larger. A graph bounded by nothing acts
+  everywhere, centred where it is placed; a placement's `radius` bounds it.
+- **Its numbers are in your units** (`assets.md`): lengths convert as declared, and the root's value as its target
+  measures it (an acceleration, a speed).
+- **Fails at load, by path**: more than 16 nodes, a node reading one listed after it, an unknown kind or target, and a
+  root whose value its target cannot take (a scalar for `linear_force`).
+- **Not built yet**: fields compile and are held by their system, but nothing applies them: the `physics_field` module,
+  their placing and their evaluation are to come.

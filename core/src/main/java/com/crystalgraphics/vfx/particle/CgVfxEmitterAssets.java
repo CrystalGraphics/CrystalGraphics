@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.particle;
 
+import com.crystalgraphics.vfx.field.CgFieldDefinition;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxSequenceRendererProperties;
@@ -1331,7 +1332,7 @@ public final class CgVfxEmitterAssets {
     }
 
     /**
-     * {@code vector_field}: Cascade's {@code VectorFieldLocal}, its grid a field asset ({@link CgVfxGridField}) placed at
+     * {@code vector_field}: Cascade's {@code VectorFieldLocal}, its grid a field asset ({@link CgFieldDefinition.Grid}) placed at
      * its translation and scaled by its intensity and the grid's, its velocity drawn toward the field's by tightness.
      * {@code global} adds the scene's global fields, of which the host has none; {@code use_fix_dt} is the GPU's step,
      * which ours is.
@@ -1340,7 +1341,7 @@ public final class CgVfxEmitterAssets {
         if (!(in.get("field") instanceof Map<?, ?> ref) || !(ref.get("field") instanceof String id)) {
             throw new IllegalArgumentException(name + ": vector_field's field is { field: <id> }, not " + in.get("field"));
         }
-        if (!(deps != null && deps.definition(CgFieldKinds.FIELD, id) instanceof CgVfxGridField grid)) {
+        if (!(deps != null && deps.definition(CgFieldKinds.FIELD, id) instanceof CgFieldDefinition.Grid grid)) {
             throw new IllegalArgumentException(name + ": vector_field's field " + id + " is no grid that loaded");
         }
         float[] place = vectorFieldPlacement(name, in.get("rotation"), deps == null ? CgUnits.HOST : deps.units());
