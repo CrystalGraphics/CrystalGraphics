@@ -181,7 +181,8 @@ public final class CgVfxFluid extends CgVfxElement {
     /** Its steps on its effect's clock, Flow's {@code TimeStepper}; the atlas frame of its last tick; seconds simulated. */
     final CgVfxTimeStepper stepper = new CgVfxTimeStepper().configure(60f, 2);
     float owed;
-    long ticked;
+    /** The atlas's time ({@link CgVfxFluidAtlas#now()}) at its last tick. */
+    int ticked;
     float clock;
     private float quiet;
     private final double[] wanted = new double[MAX_WANTED * 4];
@@ -291,7 +292,7 @@ public final class CgVfxFluid extends CgVfxElement {
                 worldZ = originZ() + placeZ;
             }
         }
-        ticked = atlas.frame();
+        ticked = atlas.now();
         owed += dt;
         for (int i = 0; i < blastCount; i++) blasts[i * BLAST + 6] += dt;
         for (int i = blastCount - 1; i >= 0; i--) {

@@ -9,6 +9,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Where {@code FRAME} meshes' bytes go: pages of frame-ring storage, each mapped once a frame and written straight
@@ -27,7 +28,7 @@ import java.util.Collection;
  * <ul>
  *   <li>A page committed this frame takes nothing more until the next: a later placement opens another page.</li>
  *   <li>Pages open in order, so the ones a frame no longer needs are at the end, and are freed after
- *       {@link #IDLE_FRAMES} frames unopened.</li>
+ *       {@link #IDLE_NANOS} unopened.</li>
  *   <li>Render thread only.</li>
  * </ul>
  */
@@ -35,7 +36,8 @@ final class CgMeshRing {
 
     private static final int FIRST_PAGE = 256 << 10;
     private static final int MAX_PAGE = 16 << 20;
-    static final int IDLE_FRAMES = 600;
+    /** Five minutes, whatever the frame rate: a page remade is new storage, a wait for a threaded driver (T10). */
+    static final long IDLE_NANOS = TimeUnit.MINUTES.toNanos(5);
     private static final int PAGES = CgTrace.name("mesh.ring-pages");
 
     static final class Page {
@@ -45,6 +47,8 @@ final class CgMeshRing {
         /** Where the mapped region starts in the buffer, and how much of it this frame wrote. */
         int base, used;
         long openFrame = -1, committedFrame = -1;
+        /** {@link System#nanoTime()} of the frame that last opened it. */
+        long openedAt = System.nanoTime();
 
         Page(int bytes) {
             this.bytes = bytes;
@@ -56,7 +60,7 @@ final class CgMeshRing {
     /** Every format's pool, whose vertex array over a page goes with the page. */
     private final Collection<CgMeshPool> pools;
     private int open = -1;
-    private long frame = Long.MIN_VALUE;
+    private long frame = Long.MIN_VALUE, frameNanos;
 
     CgMeshRing(Collection<CgMeshPool> pools) {
         this.pools = pools;
@@ -107,6 +111,7 @@ final class CgMeshRing {
     private int openPage(int i) {
         Page p = pages.get(i);
         p.openFrame = frame;
+        p.openedAt = frameNanos;
         p.out = p.buffer.map(p.bytes);
         p.base = p.buffer.mappedOffset();
         p.used = 0;
@@ -140,10 +145,11 @@ final class CgMeshRing {
     private void beginFrame(long now) {
         commit();   // a frame that ended without its upload still unmaps
         frame = now;
+        frameNanos = System.nanoTime();
         while (!pages.isEmpty()) {
             int last = pages.size() - 1;
             Page p = pages.get(last);
-            if (now - p.openFrame < IDLE_FRAMES) break;
+            if (frameNanos - p.openedAt < IDLE_NANOS) break;
             p.buffer.delete();
             pages.remove(last);
             CgTrace.marker(CgChannels.GL, "mesh.ringPage", "freed, " + (p.bytes >> 10) + " KB");

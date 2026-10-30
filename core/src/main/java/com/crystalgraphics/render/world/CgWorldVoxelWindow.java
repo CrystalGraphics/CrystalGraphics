@@ -24,6 +24,7 @@ import com.crystalgraphics.world.CgWorldQueries;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The host world around the camera as volumes the GPU reads (vfx-gpu §4.8): per block, which octants are solid, its
@@ -58,7 +59,7 @@ import java.util.Arrays;
  *       Nothing outside the window is known.</li>
  *   <li>With no level ({@code _WorldLive} 0) nothing in it means anything: a reader takes its fixed values.</li>
  *   <li>A broken block refills its section first; the rest refresh in turn, oldest first, a placed block or a light
- *       change reaching it within {@link #REFRESH_FRAMES}.</li>
+ *       change reaching it within {@link #REFRESH_NANOS}.</li>
  *   <li>Render thread.</li>
  * </ul>
  */
@@ -72,10 +73,13 @@ public final class CgWorldVoxelWindow {
     public static final int ORDER = CgWorldRenderer.ORDER - 150;
     /** Fill time a frame, at least one section. */
     public static final long BUDGET_NANOS = 500_000L;
-    /** Frames between refills of one section once every section is known. */
-    public static final int REFRESH_FRAMES = 1800;
-    /** Frames without a {@link #use} after which it stops filling. */
-    public static final int IDLE_FRAMES = 120;
+    /** Time between refills of one section once every section is known. */
+    public static final long REFRESH_NANOS = TimeUnit.SECONDS.toNanos(10);
+    /**
+     * Time without a {@link #use} after which it stops filling: five minutes, so a move played again finds it filled and
+     * flooded rather than flooding the whole window on its first frame.
+     */
+    public static final long IDLE_NANOS = TimeUnit.MINUTES.toNanos(5);
     /** Frames at least between two floods of the distance field while the solid octants keep changing. */
     public static final int DISTANCE_FRAMES = 10;
     /** The distance field's reach in blocks: {@code FX_WORLD_FAR}. */
@@ -83,7 +87,9 @@ public final class CgWorldVoxelWindow {
 
     private static final int SLOTS = SECTIONS_X * SECTIONS_Y * SECTIONS_Z;
     private static final byte UNKNOWN = 0, FILLED = 1, UNLOADED = 2;
-    private static final int UNLOADED_RETRY = 20;
+    private static final long UNLOADED_RETRY = TimeUnit.MILLISECONDS.toNanos(330);
+    /** What its times count from, so they stay positive: {@link #nanos()}. */
+    private static final long ORIGIN = System.nanoTime();
     private static final int FILL_ZONE = CgTrace.name("world.voxels.fill");
     private static final int SECTIONS_FILLED = CgTrace.name("world.voxels.sections-filled");
     private static final int GPU_DISTANCE = CgGpuTrace.name("world.voxels.distance");
@@ -131,7 +137,7 @@ public final class CgWorldVoxelWindow {
     private boolean distanceDirty, floodWhole = true;
     private long distanceAt = Long.MIN_VALUE / 2, distanceUsedAt = Long.MIN_VALUE / 2;
 
-    /** Per slot: the absolute section it holds (x, y, z), its state, and the frame it was filled or last tried. */
+    /** Per slot: the absolute section it holds (x, y, z), its state, and when it was filled or last tried. */
     private final int[] heldX = new int[SLOTS], heldY = new int[SLOTS], heldZ = new int[SLOTS];
     private final byte[] state = new byte[SLOTS];
     /** Per slot: its light-giving blocks, x, y, z absolute and their light level, four ints each, and how many. */
@@ -146,7 +152,8 @@ public final class CgWorldVoxelWindow {
     private int brokenCount;
     private int baseX, baseY, baseZ, epoch;
     private boolean live, knownChanged = true;
-    private long frame, usedAt = Long.MIN_VALUE / 2;
+    /** Frames recorded, for {@link #DISTANCE_FRAMES}; {@link #now}, the time this frame's record began. */
+    private long frame, now, usedAt = Long.MIN_VALUE / 2;
     private CgRenderStage.Registration registration;
 
     private CgWorldVoxelWindow() {
@@ -171,7 +178,7 @@ public final class CgWorldVoxelWindow {
 
     /** Keeps it filling: call it each frame something reads the window. The first call registers its recording. */
     public CgWorldVoxelWindow use() {
-        usedAt = frame;
+        usedAt = nanos();
         if (registration == null) {
             registration = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER,
                     stage -> record(stage.recording(), stage.host().view()));
@@ -203,12 +210,17 @@ public final class CgWorldVoxelWindow {
 
     /**
      * Keeps the distance field flooding: call it, besides {@link #use}, each frame something reads {@code _WorldDistance}.
-     * Unused, the field floods nothing; used again after {@link #IDLE_FRAMES}, it floods the whole window first.
+     * Unused, the field floods nothing; used again after {@link #IDLE_NANOS}, it floods the whole window first.
      */
     public CgWorldVoxelWindow useDistance() {
-        if (frame - distanceUsedAt > IDLE_FRAMES) floodWhole = distanceDirty = true;
-        distanceUsedAt = frame;
+        long at = nanos();
+        if (at - distanceUsedAt > IDLE_NANOS) floodWhole = distanceDirty = true;
+        distanceUsedAt = at;
         return use();
+    }
+
+    private static long nanos() {
+        return System.nanoTime() - ORIGIN;
     }
 
     /** The volume, its distance field and where it sits, on a dispatch of a kernel declaring {@link #PROPERTIES}. */
@@ -279,7 +291,8 @@ public final class CgWorldVoxelWindow {
      */
     public void record(CgRecording recording, CgHostView view) {
         frame++;
-        if (frame - usedAt > IDLE_FRAMES) return;
+        now = nanos();
+        if (now - usedAt > IDLE_NANOS) return;
         CgWorldQuery world = CgWorldQueries.client();
         int now = world.levelEpoch();
         if (now != epoch) {
@@ -301,7 +314,7 @@ public final class CgWorldVoxelWindow {
             recording.update(sections, 0, 0, 0, 0, SECTIONS_X, SECTIONS_Y, SECTIONS_Z, known);
             knownChanged = false;
         }
-        if (live && distanceDirty && frame - distanceUsedAt <= IDLE_FRAMES && frame - distanceAt >= DISTANCE_FRAMES) {
+        if (live && distanceDirty && now - distanceUsedAt <= IDLE_NANOS && frame - distanceAt >= DISTANCE_FRAMES) {
             flood(recording);
         }
     }
@@ -428,7 +441,7 @@ public final class CgWorldVoxelWindow {
                 if (slot < 0) break;
                 int s = CgWorldVoxels.SECTION;
                 section.clear();
-                filledAt[slot] = frame;
+                filledAt[slot] = now;
                 stale[slot] = false;
                 if (!CgWorldVoxels.pack(world, heldX[slot] * s, heldY[slot] * s, heldZ[slot] * s, section, boxes)) {
                     if (state[slot] == FILLED) {
@@ -518,18 +531,18 @@ public final class CgWorldVoxelWindow {
 
     /**
      * The slot to fill next: the nearest to the camera not known yet (an unloaded one once it has waited), else the
-     * nearest with a broken block, else the oldest past {@link #REFRESH_FRAMES}; -1 for none.
+     * nearest with a broken block, else the oldest past {@link #REFRESH_NANOS}; -1 for none.
      */
     private int next(CgHostView view) {
         int best = -1, bestRank = Integer.MAX_VALUE;
         double s = CgWorldVoxels.SECTION;
         for (int slot = 0; slot < SLOTS; slot++) {
             int rank;
-            if (state[slot] == UNKNOWN || state[slot] == UNLOADED && frame - filledAt[slot] >= UNLOADED_RETRY) {
+            if (state[slot] == UNKNOWN || state[slot] == UNLOADED && now - filledAt[slot] >= UNLOADED_RETRY) {
                 rank = 0;
             } else if (stale[slot]) {
                 rank = 1;
-            } else if (state[slot] == FILLED && frame - filledAt[slot] >= REFRESH_FRAMES) {
+            } else if (state[slot] == FILLED && now - filledAt[slot] >= REFRESH_NANOS) {
                 rank = 2;
             } else {
                 continue;

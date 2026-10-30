@@ -9,17 +9,16 @@ import java.util.Map;
 
 /**
  * Framebuffers for transient graph textures, kept between frames by description: a layer the same size as last
- * frame's reuses its storage, and one idle for {@value #IDLE_FRAMES} frames is freed. Render thread only; a steady
+ * frame's reuses its storage, and one idle for {@link CgBufferPool#IDLE_NANOS} is freed. Render thread only; a steady
  * frame allocates nothing.
  */
 final class CgTexturePool {
 
-    static final int IDLE_FRAMES = 120;
-
     private final Map<CgTextureDesc, Bucket> free = new HashMap<>();
     /** Every bucket made, kept when empty, so the idle sweep walks them by index. */
     private final List<Bucket> buckets = new ArrayList<>();
-    private long frame;
+    /** {@link System#nanoTime()} at the last frame's end: a framebuffer remade is names and storage, driver waits. */
+    private long now = System.nanoTime();
     private int created;
 
     CgFrameBuffer acquire(CgTextureDesc desc) {
@@ -41,15 +40,15 @@ final class CgTexturePool {
             free.put(desc, bucket = new Bucket());
             buckets.add(bucket);
         }
-        bucket.add(framebuffer, frame);
+        bucket.add(framebuffer, now);
     }
 
-    /** Frees what has sat unused for {@link #IDLE_FRAMES} frames. Once a frame. */
+    /** Frees what has sat unused for {@link CgBufferPool#IDLE_NANOS}. Once a frame. */
     void endFrame() {
-        frame++;
+        now = System.nanoTime();
         for (int i = 0; i < buckets.size(); i++) {
             Bucket bucket = buckets.get(i);
-            while (bucket.size > 0 && frame - bucket.oldestAt() > IDLE_FRAMES) bucket.takeOldest().delete();
+            while (bucket.size > 0 && now - bucket.oldestAt() > CgBufferPool.IDLE_NANOS) bucket.takeOldest().delete();
         }
     }
 

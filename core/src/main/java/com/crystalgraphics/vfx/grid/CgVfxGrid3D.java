@@ -125,9 +125,9 @@ public final class CgVfxGrid3D extends CgVfxElement {
     float cell;
     int level;
     double worldX, worldY, worldZ;
-    /** Seconds ticked that no frame has stepped yet; the atlas frame of its last tick. */
+    /** Seconds ticked that no frame has stepped yet; the atlas's time ({@link CgVfxGridAtlas#now()}) at its last tick. */
     float owed;
-    long ticked;
+    int ticked;
     /** The box round its tiles, from its middle in blocks, as of the atlas's last frame; whether it holds any. */
     private final float[] box = new float[6];
     private boolean boxed;
@@ -194,7 +194,7 @@ public final class CgVfxGrid3D extends CgVfxElement {
         worldX = originX() + placeX;
         worldY = originY() + placeY;
         worldZ = originZ() + placeZ;
-        ticked = atlas.frame();
+        ticked = atlas.now();
         owed += dt;
     }
 

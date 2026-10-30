@@ -110,7 +110,8 @@ public final class CgVfxFluidAtlas {
     public static final int MAX_ENTITIES = 16;
     /** How fast an entity drags the fluid in its box to its velocity, a second. */
     private static final float ENTITY_COUPLE = 12f;
-    static final int STALE_FRAMES = 120;
+    /** Milliseconds a fluid's effect may go unticked before its tiles are given back (VFX.md: two seconds). */
+    static final int STALE_MILLIS = 2000;
     /** Flow's divergence and burn channels' damping and fade a second (its defaults: 0.01 and 1 cm, 0 and 0). */
     private static final float DIVERGENCE_DAMPING = 0.01f, DIVERGENCE_FADE = 0.01f;
 
@@ -135,7 +136,9 @@ public final class CgVfxFluidAtlas {
 
     @Nullable
     private CgQuality quality;
-    private long frame;
+    /** Milliseconds since {@link #ORIGIN} as this frame's record began: the tiles' clock, and what a tick stamps. */
+    private int now;
+    private static final long ORIGIN = System.nanoTime();
     /** Which of each pair is current: velocity, density, pressure, UV grids. */
     private int vel, den, pressure, rest;
     @Nullable
@@ -277,7 +280,7 @@ public final class CgVfxFluidAtlas {
         for (int b = 0; b < CAPACITY; b++) {
             if (tenants[b] != null) continue;
             tenants[b] = fluid;
-            fluid.ticked = frame;
+            fluid.ticked = now;
             fluid.cell = fluid.cellSetting() * cellScale(CgGraphicsSettings.QUALITY.get());
             fluid.stepper.reset();
             fluid.owed = 0f;
@@ -299,8 +302,9 @@ public final class CgVfxFluidAtlas {
         tiles.freeAll(b);
     }
 
-    long frame() {
-        return frame;
+    /** The atlas's time in milliseconds: what a fluid's tick stamps, so one left unticked is found. */
+    int now() {
+        return now;
     }
 
     void wantSphere(int b, float x, float y, float z, float radius, int now) {
@@ -385,12 +389,12 @@ public final class CgVfxFluidAtlas {
     }
 
     private void record(CgStageFrame stage) {
-        frame++;
+        now = (int) ((System.nanoTime() - ORIGIN) / 1_000_000L);
         int live = 0;
         for (int b = 0; b < CAPACITY; b++) {
             CgVfxFluid fluid = tenants[b];
             if (fluid == null) continue;
-            if (fluid.effect().state() == CgVfxEffect.State.DEAD || frame - fluid.ticked > STALE_FRAMES) {
+            if (fluid.effect().state() == CgVfxEffect.State.DEAD || now - fluid.ticked > STALE_MILLIS) {
                 fluid.lost();
                 tenants[b] = null;
                 filled[b] = null;
@@ -512,7 +516,6 @@ public final class CgVfxFluidAtlas {
 
     /** Each fluid's tiles for this frame, then its box, which its layers draw. */
     private void grow(int live) {
-        int now = (int) frame;
         int alive = 0;
         for (int b = 0; b < live; b++) if (tenants[b] != null) alive |= 1 << b;
         tiles.live(alive);

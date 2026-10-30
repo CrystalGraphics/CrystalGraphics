@@ -42,8 +42,9 @@ import java.util.Arrays;
  * <ul>
  *   <li>A slot's tile is fresh from {@link #want} until {@link #stepped}: its kernels read nothing of what the pool held
  *       there before.</li>
- *   <li>A tile nothing asks for, and the GPU found nothing in, goes after {@link #FREE_AFTER} frames.</li>
- *   <li>Free tiles go to whoever asks, until a volume is refused one; for {@link #FREE_AFTER} frames after, only to a
+ *   <li>{@code now} is milliseconds on the owner's clock (its atlas's {@code now()}), never a frame count.</li>
+ *   <li>A tile nothing asks for, and the GPU found nothing in, goes after {@link #FREE_AFTER} ms.</li>
+ *   <li>Free tiles go to whoever asks, until a volume is refused one; for {@link #FREE_AFTER} ms after, only to a
  *       volume under its even share among those alive ({@link #live}). Once the pool is full, a volume under its share
  *       takes a tile of the volume furthest past its own, an empty one first, else the least recently needed, whose
  *       cells there are lost: one spreading without end never starves the rest, and one alone may take the whole pool.
@@ -61,8 +62,11 @@ public final class CgVfxTiles {
     public static final int APRON_TILE = TILE + 4;
     /** Each slot's flags in {@link #occupancy()}: something in it, then something near its -x, +x, -y, +y, -z, +z face. */
     public static final int FLAGS = 8;
-    /** Frames a tile stays once nothing asks for it. */
-    public static final int FREE_AFTER = 30;
+    /**
+     * Milliseconds a tile stays once nothing asks for it. Every {@code now} handed in is its owner's clock in milliseconds,
+     * so a tile lasts as long at 60 fps as at 300.
+     */
+    public static final int FREE_AFTER = 500;
 
     private static final Logger LOG = LogManager.getLogger("CgVfxTiles");
     private static final CgFrameBufferFormat R32F = CgFrameBufferFormat.builder("vfx.tiles.r32f")
@@ -80,13 +84,13 @@ public final class CgVfxTiles {
     /** A coarsened owner's page table before ({@link #coarsen}); the slots it held, while it does. */
     private final int[] previous = new int[PAGES * PAGES * PAGES];
     private int[] mine = new int[0];
-    /** Each slot's owner (-1 free), its tile's place in that page table, the frame last asked for, fresh. */
+    /** Each slot's owner (-1 free), its tile's place in that page table, when last asked for, fresh. */
     private int[] slotOwner = new int[0], slotPage = new int[0], slotSeen = new int[0];
     private boolean[] slotFresh = new boolean[0];
     /** What the GPU found, FLAGS a slot, as the last readback delivered it. */
     private int[] occupied = new int[0];
     private int poolTiles, usedLayers, readSlots, full, share, inUse;
-    /** The frame a volume was last refused a tile: the pool is contended until FREE_AFTER past it. */
+    /** When a volume was last refused a tile: the pool is contended until FREE_AFTER past it. */
     private int contended = Integer.MIN_VALUE / 2;
     private final ByteBuffer pageBytes = ByteBuffer.allocate(PAGES * PAGES * PAGES * 4).order(ByteOrder.nativeOrder());
     private ByteBuffer staging = ByteBuffer.allocate(0);
@@ -299,7 +303,7 @@ public final class CgVfxTiles {
         return false;
     }
 
-    /** Frees every tile nothing asked for in {@link #FREE_AFTER} frames, and sets {@link #usedLayers}. */
+    /** Frees every tile nothing asked for in {@link #FREE_AFTER} ms, and sets {@link #usedLayers}. */
     public void finish(int now) {
         int highest = -1;
         for (int s = 0; s < poolTiles; s++) {
