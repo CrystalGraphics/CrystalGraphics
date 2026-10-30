@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 import javax.annotation.Nullable;
 
@@ -153,6 +154,15 @@ public final class CgSoundRef {
     @Nullable
     public Path file() {
         return file;
+    }
+
+    /** Every sound it may play: itself, or each of a pick's in turn. What a preload walks. */
+    public void forEachSound(Consumer<CgSoundRef> each) {
+        if (kind != Kind.PICK) {
+            each.accept(this);
+            return;
+        }
+        for (CgSoundRef p : picks) p.forEachSound(each);
     }
 
     /** The one a pick rolls from {@code seed}; itself for any other kind. */

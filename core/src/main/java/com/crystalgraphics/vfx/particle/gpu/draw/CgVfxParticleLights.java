@@ -49,6 +49,11 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
     private CgVfxParticleLights() {
     }
 
+    /** Builds the kernel that appends particles' lights, ahead of the first pool with a light renderer. */
+    public static void prepare() {
+        CgCompute.load(KERNELS).kernel("Lights").prepare();
+    }
+
     /** The one instance, added to {@link CgWorldRenderer#lights()} at its first ask. */
     public static CgVfxParticleLights get() {
         CgVfxParticleLights lights = instance;

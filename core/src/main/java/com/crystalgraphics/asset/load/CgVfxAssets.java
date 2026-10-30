@@ -164,9 +164,12 @@ public final class CgVfxAssets {
         return (CgAssetRef<D>) ref;
     }
 
-    /** Sets {@code kind}'s GPU work. Register before the first load of the kind. */
+    /**
+     * Adds {@code preparer} to {@code kind}'s GPU work, after any registered before it ({@link CgAssetPreparer#then}).
+     * Register before the first load of the kind.
+     */
     public CgVfxAssets preparer(CgType kind, CgAssetPreparer preparer) {
-        preparers.put(kind, preparer);
+        preparers.merge(kind, preparer, CgAssetPreparer::then);
         return this;
     }
 

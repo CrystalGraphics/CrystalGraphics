@@ -45,6 +45,30 @@ public interface CgAssetPreparer {
         plan(definition, plan);
     }
 
+    /**
+     * This preparer's steps, then {@code next}'s: what {@link CgVfxAssets#preparer} makes of a second preparer of a kind.
+     *
+     * <pre>{@code
+     * CgAssetPreparer sequence = new CgSequenceSoundPreparer(audio).then(new CgPostVolumePreparer());
+     * }</pre>
+     */
+    default CgAssetPreparer then(CgAssetPreparer next) {
+        CgAssetPreparer first = this;
+        return new CgAssetPreparer() {
+            @Override
+            public void plan(Object definition, Plan plan) {
+                first.plan(definition, plan);
+                next.plan(definition, plan);
+            }
+
+            @Override
+            public void plan(CgAssetRef<?> ref, Object definition, Plan plan) {
+                first.plan(ref, definition, plan);
+                next.plan(ref, definition, plan);
+            }
+        };
+    }
+
     /** What an asset needs before it is READY, in the order it runs. */
     interface Plan {
         /** {@code bytes} uploaded through {@code sink}, a piece at a time. */

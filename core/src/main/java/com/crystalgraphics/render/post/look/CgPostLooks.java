@@ -4,10 +4,13 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.CgPostEffect;
 import com.crystalgraphics.render.post.CgPostPoint;
+import com.crystalgraphics.render.post.composite.CgCompositeFeature;
 import com.crystalgraphics.render.post.composite.CgPostComposite;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 import com.crystalgraphics.settings.CgGraphicsSettings;
+
+import java.util.EnumSet;
 
 /**
  * The engine's screen-wide looks, from the firing's blended volumes ({@link CgPostContext#settings()}) into the
@@ -40,6 +43,27 @@ public final class CgPostLooks implements CgPostEffect {
         float flashes = CgGraphicsSettings.FLASHES.get();
         return s.flash() * flashes != 0f || s.vignette() > 0f || s.chromatic() > 0f || s.impact() * flashes > 0f
                 || s.fade() > 0f || s.tonemaps() || s.grades();
+    }
+
+    /**
+     * The composite features {@code s} switches on, as {@link #record} switches them: what a preparer compiles the
+     * composite for before a volume of {@code s} plays.
+     *
+     * <pre>{@code
+     * CgPostLooks.features(new CgPostSettings().chromatic(3f));   // [CHROMATIC]
+     * }</pre>
+     */
+    public static EnumSet<CgCompositeFeature> features(CgPostSettings s) {
+        EnumSet<CgCompositeFeature> on = EnumSet.noneOf(CgCompositeFeature.class);
+        float flashes = CgGraphicsSettings.FLASHES.get();
+        if (s.flash() * flashes != 0f) on.add(CgCompositeFeature.FLASH);
+        if (s.vignette() > 0f) on.add(CgCompositeFeature.VIGNETTE);
+        if (s.chromatic() > 0f) on.add(CgCompositeFeature.CHROMATIC);
+        if (s.impact() * flashes > 0f) on.add(CgCompositeFeature.IMPACT);
+        if (s.fade() > 0f) on.add(CgCompositeFeature.FADE);
+        if (s.tonemaps()) on.add(CgCompositeFeature.TONEMAP);
+        else if (s.grades()) on.add(CgCompositeFeature.GRADE);
+        return on;
     }
 
     /** Whether {@code s} shows an impact frame that reads the subject: what the stack asks the world renderer for. */

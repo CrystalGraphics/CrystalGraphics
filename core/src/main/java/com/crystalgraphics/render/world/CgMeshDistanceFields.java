@@ -6,6 +6,7 @@ import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.job.CgJob;
+import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.render.graph.CgGraphTexture;
@@ -121,7 +122,7 @@ final class CgMeshDistanceFields {
             }
         }
         if (mesh.usage() == CgMesh.Usage.FRAME || mesh.format() == CgVertexFormat.NONE
-                || mesh.topology() != CgMeshTopology.TRIANGLES) {
+                || mesh.topology() != CgMeshTopology.TRIANGLES || skinned(mesh)) {
             return null;
         }
         Entry e = new Entry(mesh, submesh, first, count, revision);
@@ -137,7 +138,11 @@ final class CgMeshDistanceFields {
             return null;
         }
         pending.add(e);
-        CgJob.run(() -> {
+        if (CgTrace.isEnabled(CgChannels.WORLD)) {
+            CgTrace.marker(CgChannels.WORLD, "world.mesh-field", mesh + " submesh " + submesh + ", "
+                    + positions.length / 3 + " vertices, " + triangles.length / 3 + " triangles, revision " + revision);
+        }
+        CgJob.lane(CgJobLane.BACKGROUND).run(() -> {
             try {
                 e.made = generate(positions, triangles);
             } catch (RuntimeException ex) {
@@ -145,6 +150,14 @@ final class CgMeshDistanceFields {
             }
         });
         return null;
+    }
+
+    /**
+     * A skinned mesh has no field, as a skeletal mesh has none in Unreal (static meshes only): its field would be of its
+     * bind pose, wrong once it moves, and a character's took seconds of a worker's CPU during a move's play (T10).
+     */
+    private static boolean skinned(CgMesh mesh) {
+        return mesh.format() == CgVertexFormat.SKINNED || mesh.format() == CgVertexFormat.SKINNED_WIDE;
     }
 
     /** Uploads the fields made since the last firing; drops the least recently used where they do not fit. */
@@ -271,9 +284,10 @@ final class CgMeshDistanceFields {
         Grid grid = new Grid(positions, triangles, origin, voxel * CELL, n);
         float band = BAND * voxel;
         float[] out = new float[n[0] * n[1] * n[2]];
-        // A slice a task, across the workers: the grid is read only, each slice's scratch its own.
-        CgJob.forEach(n[2], z -> {
-            float[] q = new float[3], scratch = new float[3];
+        // On its one worker: a field is background work nobody waits for in a frame, and split across the forEach pool it
+        // took the frame's helpers (T10: three fields at the X cut's opening held all 8 cores).
+        float[] q = new float[3], scratch = new float[3];
+        for (int z = 0; z < n[2]; z++) {
             for (int y = 0; y < n[1]; y++) {
                 for (int x = 0; x < n[0]; x++) {
                     q[0] = origin[0] + x * voxel;
@@ -283,7 +297,7 @@ final class CgMeshDistanceFields {
                     out[(z * n[1] + y) * n[0] + x] = grid.inside(q) ? -d : d;
                 }
             }
-        });
+        }
         return new Field(n[0], n[1], n[2], origin[0], origin[1], origin[2], voxel, out);
     }
 

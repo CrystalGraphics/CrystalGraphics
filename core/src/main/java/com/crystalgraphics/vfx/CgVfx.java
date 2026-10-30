@@ -17,11 +17,16 @@ import com.crystalgraphics.vfx.prefab.CgVfxPrefabPreparer;
 import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemPreparer;
 import com.crystalgraphics.asset.kind.CgBodyKinds;
+import com.crystalgraphics.asset.kind.CgSequenceKinds;
+import com.crystalgraphics.audio.CgAudioEngine;
+import com.crystalgraphics.sequence.sound.CgSequenceSoundPreparer;
+import com.crystalgraphics.render.post.volume.CgPostVolumePreparer;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.world.CgWorldQueries;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Supplier;
 
 /**
  * The client world's VFX: one {@link CgVfxSystem} every mod plays into, through an owner handle. The engine updates and
@@ -78,6 +83,25 @@ public final class CgVfx {
         return world;
     }
 
+    /**
+     * Registers on {@code assets} what makes a client's assets READY with nothing left for a play to build: systems and
+     * prefabs warmed on {@code vfx}, sequences' sounds decoded into the client world's audio and their post materials'
+     * textures and programs made ready. {@link #install} does it
+     * for the process's assets; an assets instance of a tool's or a scene's own does it too.
+     *
+     * <pre>{@code
+     * CgVfxAssets assets = new CgVfxAssets(registry);
+     * CgVfx.preparers(assets, () -> myVfx);
+     * }</pre>
+     */
+    public static void preparers(CgVfxAssets assets, Supplier<CgVfxSystem> vfx) {
+        assets.preparer(CgParticleKinds.SYSTEM, new CgVfxSystemPreparer(vfx));
+        assets.preparer(CgBodyKinds.PREFAB, new CgVfxPrefabPreparer(vfx));
+        assets.preparer(CgSequenceKinds.SEQUENCE,
+                new CgSequenceSoundPreparer(() -> CgWorld.client().subsystem(CgAudioEngine.class)));
+        assets.preparer(CgSequenceKinds.SEQUENCE, new CgPostVolumePreparer());
+    }
+
     /** Updates and draws the world's system each world frame from now on, and clears it with the level. Once. */
     public static void install() {
         if (installed) return;
@@ -97,8 +121,7 @@ public final class CgVfx {
         CgVfxSystemAssets.register();   // system assets compile to playable definitions
         CgVfxPrefabAssets.register();
         // and are READY once the world's system has warmed what they draw: nothing compiles or uploads at a play
-        CgVfxAssets.instance().preparer(CgParticleKinds.SYSTEM, new CgVfxSystemPreparer(CgVfx::world));
-        CgVfxAssets.instance().preparer(CgBodyKinds.PREFAB, new CgVfxPrefabPreparer(CgVfx::world));
+        preparers(CgVfxAssets.instance(), CgVfx::world);
         // Every frame's end, the title screen's too: a logout clears before the next world.
         CgGraphicsLifecycle.addListener(new CgLifecycleListener() {
             @Override

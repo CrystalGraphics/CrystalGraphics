@@ -98,6 +98,8 @@ public final class CgPostMaterial implements CgPostEffect {
     private final CgPostPoint point;
     private final int order;
     private volatile float weight = 1f;
+    /** Whether its programs are built; polled from {@link #active} until they are. */
+    private boolean warm;
 
     // The parse its passes were resolved for, per pass but the last its pipeline and texture, and the last's pipeline.
     private List<CgParsedShader.PostTarget> resolved;
@@ -156,6 +158,13 @@ public final class CgPostMaterial implements CgPostEffect {
 
     @Override
     public boolean active(CgPostContext post) {
+        // Built while it waits at 0, within the warm budget: a darkening first raised at a cut compiles nothing there.
+        // The shader first, then the one full-screen pipeline it draws: the world's prepare would build its draw forms
+        // too (multi-draw, depth, normals), compiled for nothing at a cut that spawns it.
+        if (!warm && material.prepare()) {
+            CgPipeline p = material.pipeline(CgInstanceKind.OBJECT);
+            warm = p == null || p.prepare();
+        }
         return weight > 0f;
     }
 

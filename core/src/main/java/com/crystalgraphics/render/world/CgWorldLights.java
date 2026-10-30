@@ -404,6 +404,8 @@ public final class CgWorldLights {
     private CgGraphTexture localLights;
     private CgGraphTexture volume, volumeDirectional;
     private CgKernel fill, scatterKernel;
+    /** Whether {@link #warm} has built what the first light records. */
+    private boolean warmed;
     /** The air lit, this firing's and the last's, swapped each firing: each froxel's light scattered toward the eye. */
     private final CgGraphTexture[] air = new CgGraphTexture[2];
     private int airNewest;
@@ -943,7 +945,10 @@ public final class CgWorldLights {
                 window.emitters(gatherBlock);
             }
             rayReach = appenders.isEmpty() ? 0f : KERNEL_REACH;
-            if (cpu == 0 && blockCount == 0 && appenders.isEmpty()) return false;
+            if (cpu == 0 && blockCount == 0 && appenders.isEmpty()) {
+                warm();
+                return false;
+            }
             if (list == null) {
                 list = CgGraphBuffer.persistent("cg_world_lights",
                         CgBufferDesc.of((long) CAPACITY * FLOATS * 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
@@ -1034,6 +1039,26 @@ public final class CgWorldLights {
      * each cell from its parent's list. The grid is sized to the target, {@link #TILE} pixels a cell
      * (LightGridInjection.cpp:659-670).
      */
+    /** The light grid's kernels, made and started once: the two-level bin where compute runs, else the scan's. */
+    private void binKernels() {
+        if (view != null) return;
+        CgCompute kernels = CgCompute.load(KERNELS);
+        view = kernels.kernel("View");
+        coarse = kernels.kernel("Coarse");
+        cell = kernels.kernel("Cell");
+        countCells = kernels.kernel("Count");
+        writeCells = kernels.kernel("Write");
+        view.prepare();
+        if (coarse.runs()) {
+            coarse.prepare();
+            cell.prepare();
+        } else {
+            countCells.prepare();
+            writeCells.prepare();
+            CgGpuOps.prepareScan(CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT);
+        }
+    }
+
     private void bin(CgRecording recording, CgPassConstants stage, CgComputePass pass, Matrix4fc projection,
                      Matrix4fc toWorld, float targetWidth, float targetHeight, CgTexture lightmap) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_BIN)) {
@@ -1041,23 +1066,7 @@ public final class CgWorldLights {
             gridX = gx;
             gridY = gy;
             binned = true;
-            if (view == null) {
-                CgCompute kernels = CgCompute.load(KERNELS);
-                view = kernels.kernel("View");
-                coarse = kernels.kernel("Coarse");
-                cell = kernels.kernel("Cell");
-                countCells = kernels.kernel("Count");
-                writeCells = kernels.kernel("Write");
-                view.prepare();
-                if (coarse.runs()) {
-                    coarse.prepare();
-                    cell.prepare();
-                } else {
-                    countCells.prepare();
-                    writeCells.prepare();
-                    CgGpuOps.prepareScan(CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT);
-                }
-            }
+            binKernels();
             // Below compute, every cell reads every light: the same lists, by the longer route.
             boolean twoLevel = coarse.runs();
             int px = (gx + PARENT - 1) / PARENT, py = (gy + PARENT - 1) / PARENT, pz = SLICES / PARENT;
@@ -1224,17 +1233,22 @@ public final class CgWorldLights {
      * pass over the stage's target, Unreal's simple lights through the grid. Skipped while its program is unbuilt.
      * {@code transparents} fills the translucency volume, and {@code directional} its direction too.
      */
+    /** The apply's and the G-buffer's programs, made once; whether all three are built, polling those still compiling. */
+    private boolean applyPrepared() {
+        if (applyPoints == null) {
+            applyPoints = CgMaterial.newInstance(APPLY_SHADER);
+            applyShaped = CgMaterial.newInstance(APPLY_SHADER);
+            applyShaped.enableKeyword("CG_LIGHTS_SHAPED");
+            gbufferPass = CgMaterial.newInstance(GBUFFER_SHADER);
+        }
+        return applyPoints.prepare() & applyShaped.prepare() & gbufferPass.prepare();
+    }
+
     void apply(CgStageFrame stage, CgRecording recording, boolean transparents, boolean directional) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_APPLY)) {
             localLights = null;
-            if (applyPoints == null) {
-                applyPoints = CgMaterial.newInstance(APPLY_SHADER);
-                applyShaped = CgMaterial.newInstance(APPLY_SHADER);
-                applyShaped.enableKeyword("CG_LIGHTS_SHAPED");
-                gbufferPass = CgMaterial.newInstance(GBUFFER_SHADER);
-            }
             // Both warmed, so a spot turning up never compiles in a frame.
-            if (!applyPoints.prepare() | !applyShaped.prepare() | !gbufferPass.prepare()) return;
+            if (!applyPrepared()) return;
             recordGBuffer(stage, recording);
             sunOn = sunWanted(stage);
             shadowsOn = SHADOWS.get() && (shadowedAdded > 0 || blockCount > 0 || sunOn) && recordShadows(stage, recording);
@@ -1548,12 +1562,27 @@ public final class CgWorldLights {
      * end and snapped to whole cells in absolute space; then light_volume.compute lights every cell, after the light
      * grid and the shadows' inputs are this firing's. With {@code directional}, each cell's direction too, behind them.
      */
+    /**
+     * Builds what the first light records, while there is none: Unreal compiles its light grid's shaders with the
+     * engine's globals, not on the first light. Polled each empty firing until done; the warm budget spreads it.
+     */
+    private void warm() {
+        if (warmed) return;
+        binKernels();
+        volumeKernel();
+        warmed = applyPrepared();
+    }
+
+    /** The translucency volume's fill kernel, made and started once. */
+    private void volumeKernel() {
+        if (fill != null) return;
+        fill = CgCompute.load(VOLUME_KERNELS).kernel("Fill");
+        fill.prepare();
+    }
+
     private void recordVolume(CgStageFrame stage, CgRecording recording, boolean directional) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_VOLUME)) {
-            if (fill == null) {
-                fill = CgCompute.load(VOLUME_KERNELS).kernel("Fill");
-                fill.prepare();
-            }
+            volumeKernel();
             int cells = VOLUME_CELLS.get();
             if (volume == null || volumeCells != cells) {
                 volume = CgGraphTexture.transientTexture("cg_world_lights.volume",

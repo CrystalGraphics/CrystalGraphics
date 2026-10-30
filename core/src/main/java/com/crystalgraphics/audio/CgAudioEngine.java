@@ -22,6 +22,8 @@ import com.crystalgraphics.platform.audio.CgAudioOutput;
 import com.crystalgraphics.platform.audio.CgAudioStream;
 import com.crystalgraphics.platform.audio.CgHostDuck;
 import com.crystalgraphics.platform.audio.CgHostVolume;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 /**
  * The engine's sound, for a client world: a mixer on an audio thread of its own, fed from the frame by a command
@@ -60,6 +62,7 @@ import com.crystalgraphics.platform.audio.CgHostVolume;
 public final class CgAudioEngine extends CgWorldSubsystem {
 
     private static final Logger LOGGER = LogManager.getLogger("CgAudio");
+    private static final int LOAD_ZONE = CgTrace.name("audio.load"), START_ZONE = CgTrace.name("audio.start");
 
     /**
      * Stereo at 48 kHz, 512 frames a buffer, 8 queued: 85 ms, longer than a client's G1 pauses, since a
@@ -266,19 +269,44 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         CgSound sound;
         float volume = r.volume(), p = r.pitch();
         CgSoundAttenuation attenuation = r.attenuation() != null ? r.attenuation() : CgSoundAttenuation.DEFAULT;
-        switch (r.kind()) {
-            case EVENT -> {
-                CgHostSoundEvents.Variant v = CgHostSoundEvents.current().pick(r.id());
-                sound = sounds.load(v.path(), v.stream());
-                volume = v.volume();
-                p = v.pitch();
-            } 
-            case CUE -> sound = sounds.load(r.id(), r.file(), r.stream());
-            default -> sound = sounds.load(r.id(), r.stream());
+        try (CgTrace.Zone loading = CgTrace.zone(CgChannels.MISC, LOAD_ZONE)) {
+            switch (r.kind()) {
+                case EVENT -> {
+                    CgHostSoundEvents.Variant v = CgHostSoundEvents.current().pick(r.id());
+                    sound = sounds.load(v.path(), v.stream());
+                    volume = v.volume();
+                    p = v.pitch();
+                }
+                case CUE -> sound = sounds.load(r.id(), r.file(), r.stream());
+                default -> sound = sounds.load(r.id(), r.stream());
+            }
         }
-        long id = activeSounds.play(sound, soundClass, gain * volume, pitch * p, loop, at);
+        long id;
+        try (CgTrace.Zone starting = CgTrace.zone(CgChannels.MISC, START_ZONE)) {
+            id = activeSounds.play(sound, soundClass, gain * volume, pitch * p, loop, at);
+        }
         if (!Double.isNaN(x)) activeSounds.at(id, x, y, z).attenuation(id, attenuation);
         return id;
+    }
+
+    /**
+     * Reads and decodes every sound {@code ref} may play now, so its first {@link #play} decodes nothing on the frame.
+     * A host event's variants are left to their first pick. Any thread: a worker, ahead of play.
+     *
+     * <pre>{@code
+     * CgJob.executor(CgJobLane.LATENCY).execute(() -> audio.preload(ref));   // at load
+     * }</pre>
+     */
+    public void preload(CgSoundRef ref) {
+        CgAudioSounds loader = sounds;
+        if (loader == null) return;
+        ref.forEachSound(r -> {
+            switch (r.kind()) {
+                case EVENT -> { }
+                case CUE -> loader.load(r.id(), r.file(), r.stream());
+                default -> loader.load(r.id(), r.stream());
+            }
+        });
     }
 
     /** How long {@code ref} plays, picked from {@code seed} as {@link #play} picks it: a subtitle's open end. */

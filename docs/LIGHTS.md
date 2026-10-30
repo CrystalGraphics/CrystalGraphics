@@ -197,7 +197,8 @@ lights.add(x, y, z, 2f, 0xFFFFE080, 4f, 0f).shadowed(false).sampled(false);   //
   refresh; `--mode=lights-torch` is the gate.
 - **What casts**: Minecraft's blocks within the window, its living entities within 64 blocks, anything on screen, and
   our meshes through their **mesh distance fields** (Unreal's `MeshDistanceFieldUtilities.cpp`, traced as
-  `DistanceFieldShadowingShared.ush` does). `CgMeshDistanceFields` builds one per mesh and submesh on first draw: 16
+  `DistanceFieldShadowingShared.ush` does), static meshes only as in Unreal: a skinned mesh has no field, and casts
+  no shadow of ours from it. `CgMeshDistanceFields` builds one per mesh and submesh on first draw: 16
   voxels a block, at most 48 an axis, the nearest triangle's distance, inside by a back-face vote. Each frame the
   opaque draws within 96 blocks, at most 256, become casters (of the sun's map too, taken from
   `crystalgraphics.world.sunCasterReach` blocks, 48, toward the sun past each cascade); a ray

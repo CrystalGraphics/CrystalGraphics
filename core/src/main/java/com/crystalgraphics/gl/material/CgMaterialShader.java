@@ -363,7 +363,7 @@ public final class CgMaterialShader implements CgReloadable {
         }
         // Read and parsed outside the lock: a worker parsing ahead must not hold up the render thread's compile.
         String source;
-        try {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.loadSource")) {
             source = isGenerated() ? generatedSource : CgIO.loadSource(resourcePath);
         } catch (Exception e) {
             source = null;
@@ -848,6 +848,7 @@ public final class CgMaterialShader implements CgReloadable {
 
     /** A program from sources already preprocessed: submitted while {@link #deferring}, compiled otherwise. */
     private CgShader build(String vert, String frag, CgVertexFormat format) {
+        CgTrace.marker(CgChannels.GL, "material.compile", resourcePath);   // which program a frame compiled
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, deferring ? "material.glSubmit" : "material.glCompile")) {
             return deferring ? CgShaderFactory.submit(vert, frag, format) : CgShaderFactory.fromSource(vert, frag, format);
         }
@@ -960,6 +961,7 @@ public final class CgMaterialShader implements CgReloadable {
             if (made != null && ahead.parsed() == lastParsed && ahead.ubo() == matPropsUbo
                     && ahead.buffers().equals(attachedBuffers)) {
                 for (String read : ahead.reads()) CgIO.noteRead(read);
+                CgTrace.marker(CgChannels.GL, "material.compile", resourcePath + " " + key.keywords());
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.glSubmit")) {
                     pendingVariants.put(key, CgShaderFactory.submit(made.vertex(), made.fragment(),
                             made.compiled().vertexFormat()));
@@ -973,6 +975,7 @@ public final class CgMaterialShader implements CgReloadable {
             failedVariants.put(key, "pass '" + key.passName() + "' has no source for this variant");
             return true;
         }
+        CgTrace.marker(CgChannels.GL, "material.compile", resourcePath + " " + key.keywords());
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.glSubmit")) {
             String vert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
             String frag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
@@ -1690,6 +1693,9 @@ public final class CgMaterialShader implements CgReloadable {
         if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.MEDIA_TEXTURE_UNIT);
         loc = shader.getUniformLocation(CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIFORM);
         if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT);
+        // Cached now, after the link: asked first at the program's first draw, the query waits for the driver's queue.
+        shader.getUniformLocation("cg_InstanceBase");
+        shader.getUniformLocation("cg_VertexBase");
         CgParsedShader parsed = lastParsed;
         if (parsed == null) return;
         int unit = 0;

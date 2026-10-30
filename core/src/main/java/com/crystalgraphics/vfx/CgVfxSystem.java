@@ -3,6 +3,7 @@ package com.crystalgraphics.vfx;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
@@ -36,8 +37,12 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
+import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxParticleLights;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
+import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxRecord;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShapeCoalescing;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
@@ -146,9 +151,11 @@ public final class CgVfxSystem {
 
     /** What {@link #update} and {@link #submit} allocate on their thread, reported per frame under these groups. */
     private static final int UPDATE_ALLOCATION = CgTrace.name("vfx.update"), SUBMIT_ALLOCATION = CgTrace.name("vfx.submit");
+    private static final int SCALABILITY_ZONE = CgTrace.name("vfx.scalability"), ADOPT_ZONE = CgTrace.name("vfx.adopt");
     private static final int TICK_ZONE = CgTrace.name("vfx.tick"), SUBMIT_ZONE = CgTrace.name("vfx.submit"),
             WARM_ZONE = CgTrace.name("vfx.warm"), EFFECT_ZONE = CgTrace.name("vfx.effect.submit"),
-            PATHS_ZONE = CgTrace.name("vfx.paths.upload"), MATERIALS_ZONE = CgTrace.name("vfx.prepare.materials"),
+            PATHS_ZONE = CgTrace.name("vfx.paths.upload"), PARTICLES_ZONE = CgTrace.name("vfx.frame.particles"),
+            FRAME_END_ZONE = CgTrace.name("vfx.frame.end"), ROWS_ZONE = CgTrace.name("vfx.rows.upload"), MATERIALS_ZONE = CgTrace.name("vfx.prepare.materials"),
             PROGRAMS_ZONE = CgTrace.name("vfx.prepare.programs"), EMITTER_ZONE = CgTrace.name("vfx.prepare.emitter"),
             CULLED = CgTrace.name("vfx.culled"), ASLEEP = CgTrace.name("vfx.asleep"),
             TICKS = CgTrace.name("vfx.ticks"), CAPPED = CgTrace.name("vfx.ticks.capped"), HELD = CgTrace.name("vfx.ticks.held"),
@@ -218,6 +225,8 @@ public final class CgVfxSystem {
     private final Map<CgVfxEmitter, Integer> preparedTier = new WeakHashMap<>();
     /** Emitters whose kernels failed to prepare: logged once and skipped, as Niagara disables an emitter that fails. */
     private final Set<CgVfxEmitter> unprepared = Collections.newSetFromMap(new IdentityHashMap<>());
+    /** Pools a prepare expected into, allocated once {@link #gpuWarming} drains. */
+    private final Set<CgVfxParticlePool> expected = Collections.newSetFromMap(new IdentityHashMap<>());
     /** Looks {@link #prepare} queued whose materials are still to make, a placed layer a step under the budget. */
     private final List<CgVfxLook> drawWarming = new ArrayList<>();
     /** The first look of {@link #drawWarming}'s next placed layer; its count means its clips are next. */
@@ -421,7 +430,9 @@ public final class CgVfxSystem {
     }
 
     private void updateTimed(double seconds) {
-        scalability(seconds);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, SCALABILITY_ZONE)) {
+            scalability(seconds);
+        }
         if (!stepping) return;
         // WORLD_OPAQUE records the GPU's one step a frame. While it has not, every effect holds, as Niagara and VFX
         // Graph pause what is not drawn: a second step would need recording, and a dropped one would leave particles
@@ -431,8 +442,10 @@ public final class CgVfxSystem {
             CgVfxTrace.count(HELD, 1);
             return;
         }
-        adoptDefinitions();
-        startLate();
+        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, ADOPT_ZONE)) {
+            adoptDefinitions();
+            startLate();
+        }
         int ticks = 0;
         long budget = (long) (SIM_BUDGET_MS.get() * 1_000_000L), start = System.nanoTime();
         boolean overBudget = false;
@@ -906,9 +919,15 @@ public final class CgVfxSystem {
                     fail(effect, e);
                 }
             }
-            frame.particles();
-            frame.end();
-            materials.upload();
+            try (CgTrace.Zone particles = CgTrace.zone(CgVfxTrace.CHANNEL, PARTICLES_ZONE)) {
+                frame.particles();
+            }
+            try (CgTrace.Zone ending = CgTrace.zone(CgVfxTrace.CHANNEL, FRAME_END_ZONE)) {
+                frame.end();
+            }
+            try (CgTrace.Zone rows = CgTrace.zone(CgVfxTrace.CHANNEL, ROWS_ZONE)) {
+                materials.upload();
+            }
             try (CgTrace.Zone upload = CgTrace.zone(CgVfxTrace.CHANNEL, PATHS_ZONE)) {
                 paths.upload();
                 bindPaths();
@@ -927,12 +946,26 @@ public final class CgVfxSystem {
             if (!effect.gpuPrepared) {
                 effect.gpuPrepared = true;
                 // A look this system prepared already only starts the window: a cast prepares nothing twice.
-                if (gpuLooks.add(effect.look())) prepareGpu(effect.look(), true);
-                else useWindow(effect.look());
+                if (gpuLooks.add(effect.look())) {
+                    // Not in any prepare: its kernels and storage are made on this frame.
+                    CgTrace.marker(CgVfxTrace.CHANNEL, "vfx.warm-late", effect.getClass().getSimpleName() + " " + effect.definitionKey());
+                    prepareGpu(effect.look(), true);
+                } else {
+                    useWindow(effect.look());
+                }
             }
             if (effect.warmed) continue;
             effect.warmed = true;
-            if (drawLooks.add(effect.look())) prepareDraws(effect.look());
+            int queued = drawWarming.indexOf(effect.look());
+            if (drawLooks.add(effect.look()) || queued >= 0) {
+                // Never prepared, or played before its warm-up reached it: its draws are made on this frame.
+                CgTrace.marker(CgVfxTrace.CHANNEL, "vfx.warm-late-draws", effect.getClass().getSimpleName() + " " + effect.definitionKey());
+                prepareDraws(effect.look());
+                if (queued >= 0) {
+                    drawWarming.remove(queued);
+                    if (queued == 0) drawPlaced = 0;
+                }
+            }
         }
         pollWarming(world);
     }
@@ -985,6 +1018,7 @@ public final class CgVfxSystem {
                 if (readsWorld(emitters.get(k))) CgWorldVoxelWindow.get().prepare();
             }
             drawWarming.add(look);
+            drawLooks.add(look);   // warmed by the queue: its first play finishes only what the queue has not reached
             materials.shaders(look, shaders);
             fresh.add(look);
         }
@@ -1000,21 +1034,25 @@ public final class CgVfxSystem {
     /**
      * What preparing {@code looks} reads and generates, made on a worker so the queued steps find it cached: their
      * shaders parsed, Range's and the ops' kernel files and each emitter's Step kernel (its children's at their tiers),
-     * the particle sphere. A failure here is left for the step that hits it, which reports it as it always has.
+     * the meshes its mesh renderers draw. A failure here is left for the step that hits it, which reports it as it
+     * always has.
      */
     private static void loadAhead(List<CgVfxLook> looks, List<CgMaterialShader> shaders) {
         for (CgMaterialShader shader : shaders) shader.ensureParsed();
         CgVfxRange.loadAhead();
         for (CgVfxLook look : looks) {
-            for (CgVfxEmitter emitter : look.emitters()) {
-                loadAhead(emitter, 0);
-                if (emitter.drawLayout() == CgVfxDrawLayout.MESHES) CgMeshShapes.sphereLods();
-            }
+            for (CgVfxEmitter emitter : look.emitters()) loadAhead(emitter, 0);
         }
     }
 
     private static void loadAhead(CgVfxEmitter emitter, int tier) {
         CgVfxParticlePool.loadAhead(emitter, tier);
+        for (CgVfxRendererProperties renderer : emitter.renderers()) {
+            if (!(renderer instanceof CgVfxMeshRendererProperties m)) continue;
+            // CgVfxFrame's draw reads the same cache: the particle sphere where it names none, else its one mesh
+            if (m.meshes().isEmpty()) CgMeshShapes.sphereLods();
+            else CgMeshLoader.lods(String.valueOf(m.meshes().get(0).get("mesh")));
+        }
         for (int e = 0; e < emitter.events().size(); e++) {
             CgVfxEmitter child = (CgVfxEmitter) emitter.events().get(e).child();
             if (child != null) loadAhead(child, tier + 1);
@@ -1186,7 +1224,10 @@ public final class CgVfxSystem {
         if (unprepared.contains(emitter)) return;
         try {
             CgVfxParticlePool.prepare(emitter, tier);
-            CgVfxParticlePool.of(gpuSteps, emitter, tier).expect(emitter, emitter.peakAlive());
+            CgVfxParticlePool pool = CgVfxParticlePool.of(gpuSteps, emitter, tier);
+            pool.expect(emitter, emitter.peakAlive());
+            expected.add(pool);
+            if (pool.record().has(CgVfxRecord.Tail.LIGHT)) CgVfxParticleLights.prepare();
             CgVfxFrame.slotMesh(emitter.drawLayout(), emitter.peakAlive());
             prepareChildren(emitter, -1, tier + 1);
         } catch (RuntimeException e) {
@@ -1217,7 +1258,10 @@ public final class CgVfxSystem {
             if (child == null) continue;
             int alive = parent.peakChildren(e, fedAlive);
             CgVfxParticlePool.prepare(child, tier);
-            CgVfxParticlePool.of(gpuSteps, child, tier).expect(child, alive);
+            CgVfxParticlePool pool = CgVfxParticlePool.of(gpuSteps, child, tier);
+            pool.expect(child, alive);
+            expected.add(pool);
+            if (pool.record().has(CgVfxRecord.Tail.LIGHT)) CgVfxParticleLights.prepare();
             CgVfxFrame.slotMesh(child.drawLayout(), alive);
             prepareChildren(child, alive, tier + 1);
         }
@@ -1279,6 +1323,13 @@ public final class CgVfxSystem {
                     prepareEmitter(next, tier != null ? tier : 0);
                 }
             }
+            CgWarmBudget.spend(System.nanoTime() - start);
+        }
+        if (gpuWarming.isEmpty() && !expected.isEmpty() && CgWarmBudget.allows()) {
+            long start = System.nanoTime();
+            // Every emitter queued has expected: their pools' storage made now, not by the first step.
+            for (CgVfxParticlePool pool : expected) if (!pool.isReleased()) pool.allocate();
+            expected.clear();
             CgWarmBudget.spend(System.nanoTime() - start);
         }
         for (int i = warming.size() - 1; i >= 0; i--) {

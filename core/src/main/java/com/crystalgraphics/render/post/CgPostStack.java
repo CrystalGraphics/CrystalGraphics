@@ -1,6 +1,8 @@
 package com.crystalgraphics.render.post;
 
+import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.render.post.bloom.CgBloom;
+import com.crystalgraphics.render.post.composite.CgCompositeFeature;
 import com.crystalgraphics.render.post.composite.CgPostComposite;
 import com.crystalgraphics.render.post.distortion.CgPostDistortion;
 import com.crystalgraphics.render.post.debug.CgPostDebug;
@@ -21,7 +23,10 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -97,7 +102,7 @@ public final class CgPostStack {
      * Karis on the first step, the composite's blend form (the HDR scene off) and copy form with {@code SCENE} (on), each
      * with bloom and a fade or without; the HDR scene's way in, with depth and without; and the bend bloom's emission
      * takes through the distortion, which a tier below Medium never draws. The looks' keywords follow volumes, not
-     * settings, and are not among them.
+     * settings: a volume's preparer warms them ({@link #lookPrograms}).
      */
     private static void warmVariants(CgWorldPrograms programs) {
         String bloom = "crystalgraphics:shaders/post/bloom/", post = "crystalgraphics:shaders/post/";
@@ -119,6 +124,34 @@ public final class CgPostStack {
             programs.add(post + "composite_copy.shader", with(fade, "SCENE", "BLOOM"));
             programs.add(post + "composite_copy.shader", with(fade, "BLOOM"));
         }
+    }
+
+    /** The composite's keyword sets a look is laid over: bloom and the HDR scene each on and off, as warmed above. */
+    private static final String[][] LOOK_BASES = {{}, {"BLOOM"}, {"SCENE"}, {"SCENE", "BLOOM"}};
+
+    /**
+     * Probe materials for the composite programs a volume of {@code settings} draws with: its looks over each keyword
+     * set {@link #warmVariants} keeps warm. A preparer prepares them before the volume plays, so the frame it turns a
+     * look on compiles nothing; empty for settings that switch no look on.
+     *
+     * <pre>{@code
+     * for (CgMaterial m : CgPostStack.get().lookPrograms(CgPostBlock.settings(block))) pending.add(m);
+     * // each frame: m.prepare(), then m.pipeline(CgInstanceKind.OBJECT).prepare(); m.delete() once both are true
+     * // (the programs are the shader's). Not the world's prepare: the composite is one pass, never a world draw.
+     * }</pre>
+     */
+    public List<CgMaterial> lookPrograms(CgPostSettings settings) {
+        EnumSet<CgCompositeFeature> on = CgPostLooks.features(settings);
+        if (on.isEmpty()) return List.of();
+        List<CgMaterial> probes = new ArrayList<>(LOOK_BASES.length);
+        for (String[] base : LOOK_BASES) {
+            CgMaterial m = CgMaterial.newInstance("crystalgraphics:shaders/post/composite_copy.shader");
+            for (String k : base) m.enableKeyword(k);
+            for (CgCompositeFeature f : on) m.enableKeyword(f.keyword());
+            if (looks.drawsImpact(settings)) m.enableKeyword("SUBJECT");
+            probes.add(m);
+        }
+        return probes;
     }
 
     private static String[] with(String extra, String... keywords) {
