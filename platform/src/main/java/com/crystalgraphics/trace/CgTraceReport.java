@@ -185,6 +185,20 @@ public final class CgTraceReport {
         return out.toString();
     }
 
+    /** The {@code count} frames with the most GPU time, each in full: a spike the CPU pays frames later. */
+    public String worstGpu(int count) {
+        StringBuilder out = new StringBuilder(4096);
+        Analysis a = analysis();
+        header(out, a);
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < a.frames.size(); i++) if (a.frames.get(i).hasGpu()) order.add(i);
+        order.sort(Comparator.comparingLong((Integer i) -> a.frames.get(i).gpuNanos()).reversed().thenComparing(i -> i));
+        for (int i = 0; i < Math.min(Math.max(1, count), order.size()); i++) {
+            frameBlock(out, a, order.get(i), "slow by gpu #" + (i + 1), 40);
+        }
+        return out.toString();
+    }
+
     /** Every instance of one zone across the ring: how many, how long, how it is spread. */
     public String zone(String name) {
         StringBuilder out = new StringBuilder(512);

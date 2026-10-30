@@ -155,6 +155,11 @@ public final class CgWorldRenderer {
             "Skips a draw whose program is not built yet, counting it as world.unready-draws, rather than compiling at"
                     + " the draw (skipUnready(boolean) live).");
     private static final int UNREADY_DRAWS = CgTrace.name("world.unready-draws");
+    /** A firing's record, step by step. */
+    private static final int REC_PREPARE = CgTrace.name("world.record.prepare"), REC_CLASSIFY = CgTrace.name("world.record.classify"),
+            REC_TOP = CgTrace.name("world.record.top"), REC_MEDIA = CgTrace.name("world.record.media"),
+            REC_CULL = CgTrace.name("world.record.cull"), REC_PASSES = CgTrace.name("world.record.passes"),
+            REC_AFTER = CgTrace.name("world.record.after");
     private static final CgWorldRenderer INSTANCE = new CgWorldRenderer();
 
     private static final CgRenderState OPAQUE_STATE = CgRenderState.builder()
@@ -1769,12 +1774,15 @@ public final class CgWorldRenderer {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, which == OPAQUE ? "world.recordOpaque" : "world.recordTransparent")) {
             targetWidth = stage.host().width();
             targetHeight = stage.host().height();
-            prepare(view);
-            if (palettesFrame != frame && CgBonePalettes.written() > 0) {
-                // Once a frame, in its first stage: a persistent buffer, so the later stage reads the same upload.
-                palettesFrame = frame;
-                palettes = CgBonePalettes.record(stage.recording());
+            try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, REC_PREPARE)) {
+                prepare(view);
+                if (palettesFrame != frame && CgBonePalettes.written() > 0) {
+                    // Once a frame, in its first stage: a persistent buffer, so the later stage reads the same upload.
+                    palettesFrame = frame;
+                    palettes = CgBonePalettes.record(stage.recording());
+                }
             }
+            CgTrace.Zone classifying = CgTrace.zone(CgChannels.WORLD, REC_CLASSIFY);
             Arrays.fill(culled, 0, count, null);
             Arrays.fill(culledCounts, 0, count, null);
             cullPasses = 0;
@@ -1816,6 +1824,8 @@ public final class CgWorldRenderer {
                 }
                 for (int i = 0; i < count; i++) prepass |= prepassed(i);
             }
+            classifying.close();
+            CgTrace.Zone top = CgTrace.zone(CgChannels.WORLD, REC_TOP);
 
             CgRecording recording = stage.recording();
             normalsInto = which == OPAQUE && drawn > 0 ? normalsFor(stage, recording) : null;
@@ -1857,6 +1867,7 @@ public final class CgWorldRenderer {
                 normalsWritten = null;
             }
             CgGraphTexture emission = which == TRANSPARENT && drawn > 0 ? mergedEmission(stage, recording) : null;
+            top.close();
             // Lights fall on the opaque scene, so a firing with nothing transparent still lists them.
             lit = which == TRANSPARENT && pointLights.record(stage, view, toWorld, targetWidth, targetHeight);
             if (which == TRANSPARENT) casters();
@@ -1865,13 +1876,18 @@ public final class CgWorldRenderer {
             // After the grid is binned in a transparent firing; an opaque one reads the last frame's.
             if (handed) handLights(recording, which == TRANSPARENT);
             // Something transparent reads the air, or a light may glow in it.
-            mediaOut = which == TRANSPARENT && (drawn > 0 || media.holdsAny())
-                    ? media.record(recording, stage.constants(), view, toWorld, targetWidth, targetHeight, pointLights) : null;
-            if (mediaOut != null) media.composite(stage, recording, mediaOut);
-            if (scene) recordSceneGlows(stage, recording, view);
+            try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, REC_MEDIA)) {
+                mediaOut = which == TRANSPARENT && (drawn > 0 || media.holdsAny())
+                        ? media.record(recording, stage.constants(), view, toWorld, targetWidth, targetHeight, pointLights) : null;
+                if (mediaOut != null) media.composite(stage, recording, mediaOut);
+                if (scene) recordSceneGlows(stage, recording, view);
+            }
             if (which == TRANSPARENT) beforeTranslucency(stage);
             if (drawn > 0) {
-                cullSets(stage, recording, view, false);
+                try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, REC_CULL)) {
+                    cullSets(stage, recording, view, false);
+                }
+                CgTrace.Zone passes = CgTrace.zone(CgChannels.WORLD, REC_PASSES);
                 if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, false, view, null, false);
                 if (halfDrawn > 0) recordHalf(stage, recording, view);
                 volumeOut = volumeDrawn > 0 ? recordVolumes(stage, recording, view) : null;
@@ -1883,13 +1899,16 @@ public final class CgWorldRenderer {
                 }
                 if (distorting > 0) distortion.recordFinal(stage, recording, hazes);
                 if (afterDrawn > 0) recordPass(stage, recording, constants, TRANSPARENT_STATE, false, true, view, emission, scene);
+                passes.close();
             }
+            CgTrace.Zone after = CgTrace.zone(CgChannels.WORLD, REC_AFTER);
             if (which == TRANSPARENT && !scene) recordEmission(stage, recording, view, emission, emission != null ? EMIT_AFTER : EMIT_ALL);
             if (which == TRANSPARENT && stage.resources().has(CgFrameKeys.SUBJECT_READ)) {
                 recordSubject(stage, recording, view, stage.resources().get(CgFrameKeys.SUBJECT_READ));
             }
             if (which == TRANSPARENT && overdraw && drawn > 0) recordOverdraw(stage, recording, view);
             if (which == TRANSPARENT && !CgRehearsal.active()) text.record(stage, view);
+            after.close();
         }
     }
 

@@ -239,6 +239,18 @@ final class CgTraceZones {
     }
 
     /**
+     * Grown to its ceiling now, before it has wrapped, so no zone written later reallocates: the owner, between zones.
+     * A store that has wrapped is at its ceiling already.
+     */
+    void reserveAll() {
+        while (store.capacity < maxCapacity) {
+            Store grown = store.grown();
+            store.retiredAt = written;
+            store = grown;
+        }
+    }
+
+    /**
      * The store the next zone goes into — grown first if full and allowed to — or null when a
      * keep-first arena is full and the zone must be dropped.
      */

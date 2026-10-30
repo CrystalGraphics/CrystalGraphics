@@ -98,6 +98,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.gl.debugStacks.limit` | 1 to 1048576 | `5` | GL errors debugStacks logs a stack for. Read at launch. |
 | `crystalgraphics.gl.disableExtensions` | text | empty | Extensions treated as absent, by name, separated by commas or spaces: a driver whose implementation misbehaves, and the harness's downlevel contexts. A feature core in the context's version stays; force a tier for that. Read at launch. |
 | `crystalgraphics.gl.keepHostDebugOutput` | true, false | `false` | Keep the GL debug output Minecraft enables at its default glDebugVerbosity; modern GL nodes turn it off at the first host section (on NVIDIA it slowed every call several times). debugStacks and debugPerf keep it too. Read at launch. |
+| `crystalgraphics.gl.countCalls` | true, false | `false` | Counts each frame's calls to the GL backend (`gl.calls`) and state setters asked of the shadow (`gl.state-sets`) as trace counters on `crystalgraphics.gl`. Slow: a thread-local add per call, as much again as a busy frame. Read at launch. |
 | `crystalgraphics.gl.threadCheck` | true, false | `false` | Log each CgGL call site inside a GL-free section (a UI paint recording) or off the context's thread, once, with its stack; every site and its count to stderr at exit. Read at launch. |
 
 ## `crystalgraphics.graph`
@@ -255,6 +256,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.texture.bc7` | true, false | `true` | Cooked BC7 textures uploaded as their blocks where the context has BPTC; false decodes them to RGBA8 as they load. Taken at each context's capability probe. |
+| `crystalgraphics.texture.logFirstUse` | true, false | `false` | Log each texture from files loaded at its first use: its source, the thread that paid for it and how long. On the render thread, a texture nothing loaded ahead. |
 
 ## `crystalgraphics.trace`
 

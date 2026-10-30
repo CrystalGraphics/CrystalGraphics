@@ -79,7 +79,10 @@ public final class CgTrace {
     private static final CgVar.Int ZONE_CAPACITY = CgVar.integer("crystalgraphics.trace.zones", 1 << 16, 1, 1 << 28,
             CgVar.DEV | CgVar.RESTART, "Zones a thread keeps at most, for each of the newest and the first frames;"
                     + " raise it when a report warns of dropped zones.");
-    private static final CgVar.Int COUNTER_CAPACITY = CgVar.integer("crystalgraphics.trace.countersPerFrame", 1024, 32, 1 << 20,
+    private static final CgVar.Bool ZONES_AHEAD = CgVar.bool("crystalgraphics.trace.zonesAhead", false,
+            CgVar.DEV | CgVar.RESTART, "The frame thread's zones grown to their ceiling at a frame's start, rather"
+                    + " than doubled while it records: a doubling is tens of MB in one frame.");
+    private static final CgVar.Int COUNTER_CAPACITY =CgVar.integer("crystalgraphics.trace.countersPerFrame", 1024, 32, 1 << 20,
             CgVar.DEV | CgVar.RESTART, "Counter values a frame may hold: a ceiling, the store growing as it is written.");
 
     private CgTrace() {
@@ -1012,6 +1015,7 @@ public final class CgTrace {
         CgGpuTrace.closeLeaked();
         CgTraceZones local = local();
         frameThread = Thread.currentThread();
+        if (ZONES_AHEAD.get()) local.reserveAll();
         if (openBegin >= 0L) {
             openLeaked += local.closeOpen(now);
             commit(now, local);

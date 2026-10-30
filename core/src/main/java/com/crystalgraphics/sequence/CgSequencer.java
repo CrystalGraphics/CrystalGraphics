@@ -1,6 +1,7 @@
 package com.crystalgraphics.sequence;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,10 +71,13 @@ public final class CgSequencer extends CgWorldSubsystem {
     private static final Logger LOGGER = LogManager.getLogger("CgSequencer");
 
     public static final String EVALUATE_ZONE = "sequence.evaluate", SPAWN_ZONE = "sequence.spawn", IMPORT_ZONE = "sequence.import",
-            TRACKS_ZONE = "sequence.tracks", SPAWNED_ZONE = "sequence.spawned";
+            TRACKS_ZONE = "sequence.tracks", SPAWNED_ZONE = "sequence.spawned", ADVANCE_ZONE = "sequence.advance",
+            STOPPED_ZONE = "sequence.stopped", END_PASS_ZONE = "sequence.endPass";
 
     private final List<CgSequencePlayer> players = new ArrayList<>();
     private final List<CgSequenceEvaluator> evaluators = new ArrayList<>();
+    /** Each evaluator's trace zone, {@code sequence.tracks/<kind>}, named at its first evaluation. */
+    private int[] evaluatorZones = new int[0];
     private final CgSequenceBlender blender = new CgSequenceBlender();
     private final Map<String, CgSequenceSpawner> spawners = new HashMap<>();
     private final List<CgSequenceEventListener> rpg = new ArrayList<>(), ours = new ArrayList<>();
@@ -292,8 +296,10 @@ public final class CgSequencer extends CgWorldSubsystem {
         try (CgTrace.Zone frame = CgTrace.zone(CgChannels.WORLD, EVALUATE_ZONE)) {
             for (int i = players.size() - 1; i >= 0; i--) {
                 if (!players.get(i).stopped()) continue;
-                for (CgSequenceEvaluator e : evaluators) e.stopped(players.get(i));
-                players.get(i).cleanUp();
+                try (CgTrace.Zone stopped = CgTrace.zone(CgChannels.WORLD, STOPPED_ZONE)) {
+                    for (CgSequenceEvaluator e : evaluators) e.stopped(players.get(i));
+                    players.get(i).cleanUp();
+                }
                 players.remove(i);
             }
             // A pass a montage section's end hands play on in: its rest from the next section's start, as Unreal's
@@ -306,9 +312,11 @@ public final class CgSequencer extends CgWorldSubsystem {
                     CgSequencePlayer p = players.get(i);
                     if (p.stopped()) continue;
                     try {
-                        if (pass == 0) p.advance(dt);
-                        else if (p.resumes()) p.resume();
-                        else continue;
+                        try (CgTrace.Zone advance = CgTrace.zone(CgChannels.WORLD, ADVANCE_ZONE)) {
+                            if (pass == 0) p.advance(dt);
+                            else if (p.resumes()) p.resume();
+                            else continue;
+                        }
                         try (CgTrace.Zone spawn = CgTrace.zone(CgChannels.WORLD, SPAWN_ZONE)) {
                             p.spawnPhase();
                         }
@@ -321,22 +329,28 @@ public final class CgSequencer extends CgWorldSubsystem {
                 }
                 try (CgTrace.Zone tracks = CgTrace.zone(CgChannels.WORLD, TRACKS_ZONE)) {
                     for (int e = 0; e < evaluators.size(); e++) {
-                        for (int i = 0; i < players.size(); i++) {
-                            CgSequencePlayer p = players.get(i);
-                            if (p.stopped()) continue;
-                            try {
-                                p.evaluate(this, e);
-                            } catch (RuntimeException ex) {
-                                fail(p, ex);
+                        if (evaluatorZones.length <= e) evaluatorZones = Arrays.copyOf(evaluatorZones, evaluators.size());
+                        if (evaluatorZones[e] == 0) evaluatorZones[e] = CgTrace.name(TRACKS_ZONE + "/" + evaluators.get(e).kind());
+                        try (CgTrace.Zone kind = CgTrace.zone(CgChannels.WORLD, evaluatorZones[e])) {
+                            for (int i = 0; i < players.size(); i++) {
+                                CgSequencePlayer p = players.get(i);
+                                if (p.stopped()) continue;
+                                try {
+                                    p.evaluate(this, e);
+                                } catch (RuntimeException ex) {
+                                    fail(p, ex);
+                                }
                             }
                         }
                     }
                     blender.apply();
                     for (int e = 0; e < evaluators.size(); e++) evaluators.get(e).postEvaluation();
                 }
-                for (int i = 0; i < players.size(); i++) {
-                    players.get(i).endPass();
-                    more |= players.get(i).resumes();
+                try (CgTrace.Zone end = CgTrace.zone(CgChannels.WORLD, END_PASS_ZONE)) {
+                    for (int i = 0; i < players.size(); i++) {
+                        players.get(i).endPass();
+                        more |= players.get(i).resumes();
+                    }
                 }
             }
             try (CgTrace.Zone spawned = CgTrace.zone(CgChannels.WORLD, SPAWNED_ZONE)) {

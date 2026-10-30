@@ -6,6 +6,8 @@ import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.frame.CgWorldSubsystem;
 import com.crystalgraphics.gl.buffer.shader.CgBonePalettes;
 import com.crystalgraphics.job.CgJob;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +36,8 @@ public final class CgAnimation extends CgWorldSubsystem {
 
     /** Instances from which a frame's evaluation is split across workers. */
     public static final int PARALLEL_AT = Integer.getInteger("crystalgraphics.animation.parallelAt", 8);
+    private static final int EVALUATE = CgTrace.name("animation.evaluate"), PALETTES = CgTrace.name("animation.palettes"),
+            CURVES = CgTrace.name("animation.curves");
 
     private final List<CgAnimInstance> instances = new ArrayList<>();
     private final IntConsumer evaluateEach = i -> instances.get(i).evaluate();
@@ -78,15 +82,21 @@ public final class CgAnimation extends CgWorldSubsystem {
             CgAnimInstance instance = instances.get(i);
             if (instance.playing()) instance.advance(dt);
         }
-        if (n >= PARALLEL_AT) {
-            CgJob.forEach(n, evaluateEach);
-        } else {
-            for (int i = 0; i < n; i++) instances.get(i).evaluate();
+        try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, EVALUATE)) {
+            if (n >= PARALLEL_AT) {
+                CgJob.forEach(n, evaluateEach);
+            } else {
+                for (int i = 0; i < n; i++) instances.get(i).evaluate();
+            }
         }
-        for (int i = 0; i < n; i++) {
-            CgAnimInstance instance = instances.get(i);
-            instance.palette(CgBonePalettes.write(instance.skinning(), instance.skinning().length));
-            instance.applyCurves();   // on this thread, as Unreal applies them after evaluation
+        try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, PALETTES)) {
+            for (int i = 0; i < n; i++) {
+                CgAnimInstance instance = instances.get(i);
+                instance.palette(CgBonePalettes.write(instance.skinning(), instance.skinning().length));
+            }
+        }
+        try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, CURVES)) {
+            for (int i = 0; i < n; i++) instances.get(i).applyCurves();   // on this thread, as Unreal applies them after evaluation
         }
     }
 }

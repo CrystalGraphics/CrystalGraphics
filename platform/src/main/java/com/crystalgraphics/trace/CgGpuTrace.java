@@ -132,6 +132,12 @@ public final class CgGpuTrace {
     /** Apart from the timers: GL fixes a query's target at its first use. */
     private static int[] freeStamps = new int[16];
     private static int freeStampCount;
+    /**
+     * Queries kept in hand, made at a frame boundary in a batch: {@code glGenQueries} answers a name, so on a threaded
+     * driver it waits for the queue, and a frame with the GPU behind (results late, the pool empty) paid it per timer,
+     * 4 ms for 44 (T10).
+     */
+    private static final int TIMER_RESERVE = 256, STAMP_RESERVE = 64;
     private static int[] open = new int[8];
     private static int[] openBudget = new int[8];
     private static int openDepth;
@@ -337,6 +343,14 @@ public final class CgGpuTrace {
             CgTrace.setGpu(index, sum);
             it.remove();
         }
+        reserve();
+    }
+
+    /** Tops the pools up to their reserve once either is below a quarter of it: one wait for the queue, not one a timer. */
+    private static void reserve() {
+        if (4 * freeCount >= TIMER_RESERVE && 4 * freeStampCount >= STAMP_RESERVE) return;
+        while (freeCount < TIMER_RESERVE) release(CgGL.glGenQuery());
+        while (freeStampCount < STAMP_RESERVE) releaseStamp(CgGL.glGenQuery());
     }
 
     /**

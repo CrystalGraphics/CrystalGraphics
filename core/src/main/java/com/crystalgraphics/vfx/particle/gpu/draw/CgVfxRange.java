@@ -22,6 +22,8 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
@@ -85,6 +87,10 @@ public final class CgVfxRange {
 
     /** Where ranges record on {@link CgRenderStage#WORLD_OPAQUE}: after the pools' steps, before the world renderer. */
     public static final int ORDER = CgWorldRenderer.ORDER - 50;
+    /** The record's steps, on the frame thread. */
+    private static final int REC_PYRAMID = CgTrace.name("vfx.range.pyramid"), REC_UPLOAD = CgTrace.name("vfx.range.upload"),
+            REC_KEY = CgTrace.name("vfx.range.key"), REC_SORT = CgTrace.name("vfx.range.sort"),
+            REC_PLACE = CgTrace.name("vfx.range.place"), REC_END = CgTrace.name("vfx.range.end");
 
     private static final String KERNELS = "crystalgraphics:shaders/env/compute/vfx/range.compute";
     private static final String[] PLANES = {"_Plane0", "_Plane1", "_Plane2", "_Plane3", "_Plane4", "_Plane5"};
@@ -535,7 +541,11 @@ public final class CgVfxRange {
         }
         boolean any = false;
         for (int i = 0; i < ALL.size(); i++) any |= keyed(ALL.get(i).pool);
-        record(frame.recording(), frame.host().view(), any ? frame.depthPyramid() : null);
+        CgGraphTexture pyramid;
+        try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, REC_PYRAMID)) {
+            pyramid = any ? frame.depthPyramid() : null;
+        }
+        record(frame.recording(), frame.host().view(), pyramid);
     }
 
     /**
@@ -584,6 +594,7 @@ public final class CgVfxRange {
             clearSorted();
             return;
         }
+        CgTrace.Zone uploading = CgTrace.zone(CgChannels.WORLD, REC_UPLOAD);
         uploadSlots(recording, view, allSlots);
         for (int i = 0, slotFirst = 0; i < ALL.size(); i++) {
             CgVfxParticlePool p = ALL.get(i).pool;
@@ -595,6 +606,8 @@ public final class CgVfxRange {
             }
             slotFirst += p.slotCount();
         }
+        uploading.close();
+        CgTrace.Zone keying = CgTrace.zone(CgChannels.WORLD, REC_KEY);
         CgWorldVoxelWindow window = CgWorldVoxelWindow.get().use();
         VIEW_PROJECTION.set(view.projection()).mul(view.view());
         CgCompute kernels = CgCompute.load(KERNELS);
@@ -638,6 +651,8 @@ public final class CgVfxRange {
             }
             slotFirst += p.slotCount();
         }
+        keying.close();
+        CgTrace.Zone sorting = CgTrace.zone(CgChannels.WORLD, REC_SORT);
         CgGpuCount all = count(KEY_COUNTS, keys);
         CgGpuOps.sort(pass, 32 - Integer.numberOfLeadingZeros(allSlots) + depthBits, CgGpuOps.Order.ASCENDING, keyBuffer,
                 indices, all);
@@ -648,6 +663,8 @@ public final class CgVfxRange {
         if (anyCapped) pass.dispatch(kernels.kernel("Cap"), allSlots).bind("VISIBLE", visible).bind("SORTS", sorts);
         // One Place over every pool, as Niagara's count manager writes every renderer's draw arguments in one dispatch
         // (NiagaraGPUInstanceCountManager.cpp, UpdateDrawIndirectBuffers): a pool's dispatch each was a pool's CPU cost.
+        sorting.close();
+        CgTrace.Zone placing = CgTrace.zone(CgChannels.WORLD, REC_PLACE);
         int allDrawn = 0;
         for (int i = 0; i < ALL.size(); i++) if (!ALL.get(i).pool.isReleased()) allDrawn += align(ALL.get(i).pool.capacity(), RECORD_ALIGN);
         if (allDrawn > 0) {
@@ -686,7 +703,10 @@ public final class CgVfxRange {
         }
         objectsAsked = false;
         clearSorted();
-        pass.end();
+        placing.close();
+        try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, REC_END)) {
+            pass.end();
+        }
         if (counting && allSlots > 0) {
             synchronized (COUNT_FRAMES) {
                 // Full means sinks stopped arriving: drop the oldest rather than misfile the next.

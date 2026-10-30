@@ -114,13 +114,18 @@ public final class CgRenderStage {
         final long sequence;
         final CgStageRenderer renderer;
         final boolean oncePerFrame;
+        /** Its record's zone: the stage, the class that made the renderer (a lambda's declaring class) and its order. */
+        final int zone;
         long lastFrame = -1;
 
-        Entry(int order, long sequence, CgStageRenderer renderer, boolean oncePerFrame) {
+        Entry(String stage, int order, long sequence, CgStageRenderer renderer, boolean oncePerFrame) {
             this.order = order;
             this.sequence = sequence;
             this.renderer = renderer;
             this.oncePerFrame = oncePerFrame;
+            String type = renderer.getClass().getSimpleName();
+            int lambda = type.indexOf("$$");
+            this.zone = CgTrace.name(stage + ".record/" + (lambda > 0 ? type.substring(0, lambda) : type) + "@" + order);
         }
     }
 
@@ -205,7 +210,7 @@ public final class CgRenderStage {
     private Registration add(int order, CgStageRenderer renderer, boolean oncePerFrame) {
         Entry entry;
         synchronized (this) {
-            entry = new Entry(order, sequence++, renderer, oncePerFrame);
+            entry = new Entry(path, order, sequence++, renderer, oncePerFrame);
             List<Entry> next = new ArrayList<>(renderers);
             next.add(entry);
             next.sort(Comparator.comparingInt((Entry e) -> e.order).thenComparingLong(e -> e.sequence));
@@ -339,7 +344,9 @@ public final class CgRenderStage {
                 if (entry.lastFrame == hostFrame) continue;
                 entry.lastFrame = hostFrame;
             }
-            entry.renderer.render(frame);
+            try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, entry.zone)) {
+                entry.renderer.render(frame);
+            }
         }
     }
 

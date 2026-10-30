@@ -5,6 +5,7 @@ import com.crystalgraphics.platform.device.command.CgAccess;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceChannel;
+import com.crystalgraphics.variable.CgVar;
 
 import java.lang.ref.WeakReference;
 import java.nio.ByteBuffer;
@@ -85,13 +86,24 @@ public final class CgGL {
 
     private static CgGlStateManager state() {
         if (CgGLAudit.ON) CgGLAudit.check(backend);
+        if (COUNT_CALLS) CgTrace.add(TRACE, STATE_SETS, 1);
         return CgGlState.manager();
     }
 
     private static CgGLBackend gl() {
         if (CgGLAudit.ON) CgGLAudit.check(backend);
+        if (COUNT_CALLS) CgTrace.add(TRACE, CALLS, 1);
         return backend;
     }
+
+    /**
+     * Calls a frame handed to the backend, and state setters asked of the shadow (some it skips as unchanged): a
+     * threaded driver's thread takes each, and falling behind starves the GPU (T10). Off unless asked: counted, the
+     * cut's ~6,000 a frame cost as much as the frame.
+     */
+    private static final boolean COUNT_CALLS = CgVar.bool("crystalgraphics.gl.countCalls", false, CgVar.DEV | CgVar.RESTART,
+            "Counts gl.calls and gl.state-sets each frame: slow, a thread-local add per GL call.").get();
+    private static final int CALLS = CgTrace.name("gl.calls"), STATE_SETS = CgTrace.name("gl.state-sets");
 
     /**
      * Marks this thread as recording, until {@link #exitGlFree()}: nothing in between may reach GL. Under
