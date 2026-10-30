@@ -104,7 +104,6 @@ public final class CgSequenceSoundEvaluator implements CgSequenceEvaluator {
         }
         CgAttachment at = track.binding() == null ? null : player.attachment(track.binding(), where);
         double offset = section.fields().get("start_offset") instanceof Number n ? player.definition().seconds(n.intValue()) : 0;
-        System.out.println("DBG-AU bind " + where + " -> " + sound);
         player.data(track, section, new Playing(player, sound, at, offset, Boolean.TRUE.equals(section.fields().get("looping")),
                 Boolean.TRUE.equals(section.fields().get("play_until_finished"))));
     }
@@ -117,7 +116,7 @@ public final class CgSequenceSoundEvaluator implements CgSequenceEvaluator {
     public void evaluate(CgSequencePlayer player, CgSequenceTrack track, @Nullable CgSequenceSection s, float tick) {
         if (s == null || !(player.data(track, s) instanceof Playing p)) return;
         CgAudioEngine audio = sequencer.audio();
-        if (audio == null) { System.out.println("DBG-AU no audio for " + s.id()); return; }
+        if (audio == null) return;
         p.touched = pass;
         if (p.at != null) p.at.place(point, null);
         if (p.id != 0 && audio.activeSounds().playing(p.id)) {
@@ -152,7 +151,6 @@ public final class CgSequenceSoundEvaluator implements CgSequenceEvaluator {
         if (p.at != null && p.sound.attenuation() == null && p.sound.kind() != CgSoundRef.Kind.EVENT) {
             audio.activeSounds().attenuation(p.id, CgSoundAttenuation.DEFAULT);
         }
-        System.out.println("DBG-AU start " + p.sound + " tick " + tick + " id " + p.id + " crossed " + crossed + " at " + (p.at != null ? point[0] + "," + point[1] + "," + point[2] : "unplaced") + " listener " + audio.listener().x() + "," + audio.listener().y() + "," + audio.listener().z());
         if (!p.looping) p.done = true;
         if (!live.contains(p)) live.add(p);
     }

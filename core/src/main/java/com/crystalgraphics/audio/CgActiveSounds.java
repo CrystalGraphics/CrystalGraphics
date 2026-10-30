@@ -433,7 +433,6 @@ public final class CgActiveSounds {
                 if (state[i] != REAL) {
                     double offset = loop[i] ? time[i] % Math.max(1e-9, sound[i].seconds()) : time[i];
                     voice[i] = sink.voice(sound[i], pitch[i] * classPitch(soundClass[i]), loop[i], offset);
-                    System.out.println("DBG-AU voice " + sound[i].id() + " vol " + volume[i] + " dist " + distance[i] + " paused " + paused + " at " + startAt[i]);
                     sink.start(voice[i], volume[i], soundClass[i], state[i] == NEW ? startAt[i] : Double.NaN);
                     posted[i] = volume[i];
                     state[i] = REAL;
