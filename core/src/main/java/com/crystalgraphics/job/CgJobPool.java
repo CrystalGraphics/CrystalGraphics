@@ -26,7 +26,8 @@ final class CgJobPool {
         }
     }
 
-    private static final class JobThread extends Thread implements CgWorkerThread {
+    /** A job worker: {@code CgWorkers} gives its {@code forEach} the background helpers. */
+    static final class JobThread extends Thread implements CgWorkerThread {
         JobThread(int index) {
             super("crystalgraphics-job-" + index);
             setDaemon(true);

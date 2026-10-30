@@ -409,7 +409,9 @@ CgJob.forEach(shards.length, stepEach);               // indices 0..n-1, allocat
 - **Inside a job's work**, split with `forEach` (never start a job there). A `forEach` inside a `forEach` item runs
   inline.
 - **It has its own pool** (`crystalgraphics-each-*`), apart from jobs': a helper waiting behind a long job would hold
-  your frame.
+  your frame. Inside a job's work it splits onto a pool of its own (`crystalgraphics-each-bg-*`), below normal as the
+  job is, so background work never takes the frame's helpers.
+- **It waits only for items already running**: a helper not yet scheduled when the items run out holds nobody.
 - With a single item, or one thread configured, it all runs on your thread.
 
 ---
@@ -660,7 +662,8 @@ public void aBurstOfEditsParsesOnce() {
 
 Both are read at launch (`-Dcrystalgraphics.job.threads=4`; [`DEBUG_FLAGS.md`](DEBUG_FLAGS.md)).
 
-- **Workers run a step below normal priority**, so the game's own threads come first. Both pools are daemon threads,
+- **Workers run a step below normal priority**, `forEach`'s helpers too (`crystalgraphics.job.forEachPriority`), so
+  the game's own threads and the GL driver's come first. Both pools are daemon threads,
   started at their first use: a server that never runs a job starts none.
 - **`drain()` and `forEach` allocate nothing.** `run` allocates its job and its reply: fine for an occasional job, not
   for one per tick. A per-tick job is a `repeat`.

@@ -1,12 +1,17 @@
 package com.crystalgraphics.job;
 
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.RecursiveAction;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 
@@ -17,8 +22,11 @@ import java.util.function.IntConsumer;
  * <ul>
  *   <li>{@code -Dcrystalgraphics.job.forEachThreads=N} sets how many threads in all, the caller one of them; 1 runs
  *       everything on the caller. The default is two fewer than the cores, leaving room for the host's own threads.</li>
- *   <li>A pool of its own, apart from jobs' work: {@link #run} joins every helper it queued, so a helper waiting behind a
- *       long job would hold the caller's frame.</li>
+ *   <li>A pool of its own, apart from jobs' work, so a helper never waits behind a long job; and a second for a job
+ *       worker's {@code forEach}, below normal as the job is, so background work never takes the frame's helpers.</li>
+ *   <li>The caller waits only for items a helper has claimed and not finished, never for a helper that claimed none:
+ *       one not yet scheduled when the items run out holds nobody (Unreal's {@code ParallelFor}). An item that throws
+ *       is rethrown on the caller once every claimed item has finished.</li>
  *   <li>The pool is made on the first run with two items or more, so a server starts no thread.</li>
  *   <li>One per thread ({@link #mine}): runs on different threads share the pool, not a runner.</li>
  * </ul>
@@ -32,24 +40,53 @@ final class CgWorkers {
             : Math.max(1, Runtime.getRuntime().availableProcessors() - 2);
 
     private static final ThreadLocal<CgWorkers> MINE = ThreadLocal.withInitial(CgWorkers::new);
+    /** The caller blocked on items helpers still run, after its own share: a wait, kept out of the cost tables. */
+    private static final int JOIN = CgTrace.waitName("forEach.join");
+    private static final int IDLE_HELPERS = CgTrace.name("forEach.idle-helpers");
+
+    /** The frame's helpers: what a game, render or UI thread's {@code forEach} runs on. */
+    /**
+     * Below normal: at the GL driver's own priority the helpers took its core, and the GPU starved inside passes for
+     * milliseconds (T10: GPU frames over 3.3 ms 29 to 5-11). Unreal keeps its submission thread above its workers.
+     */
+    private static final CgVar.Int PRIORITY = CgVar.integer("crystalgraphics.job.forEachPriority", Thread.NORM_PRIORITY - 1,
+            Thread.MIN_PRIORITY, Thread.MAX_PRIORITY, CgVar.DEV | CgVar.RESTART,
+            "The frame's forEach helpers' Java thread priority: below normal leaves the GL driver's thread its core.");
 
     private static final class Pool {
-        static final ForkJoinPool POOL = new ForkJoinPool(Math.max(1, THREADS - 1), EachThread::new, null, false);
+        static final ForkJoinPool POOL = new ForkJoinPool(Math.max(1, THREADS - 1),
+                p -> new EachThread(p, "crystalgraphics-each-", PRIORITY.get()), null, false);
+    }
+
+    /**
+     * A job worker's helpers, below normal as the job is: background work split with {@code forEach} never takes the
+     * frame's helpers nor outranks the frame (T10: three distance fields on the frame's pool held all 8 cores).
+     */
+    private static final class BackgroundPool {
+        static final ForkJoinPool POOL = new ForkJoinPool(Math.max(1, THREADS - 1),
+                p -> new EachThread(p, "crystalgraphics-each-bg-", Thread.NORM_PRIORITY - 1), null, false);
     }
 
     private static final class EachThread extends ForkJoinWorkerThread implements CgWorkerThread {
-        EachThread(ForkJoinPool pool) {
+        EachThread(ForkJoinPool pool, String prefix, int priority) {
             super(pool);
-            setName("crystalgraphics-each-" + getPoolIndex());
+            setName(prefix + getPoolIndex());
             setDaemon(true);
+            setPriority(priority);
         }
     }
 
-    /** A worker's share of one run, reused across runs. */
+    /** Whether this runner's thread is a job worker: its helpers are the background pool's. */
+    private final boolean background = Thread.currentThread() instanceof CgJobPool.JobThread;
+
+    /** A worker's share of the run it was queued for, reused across runs; nobody waits for it. */
     private final class Helper extends RecursiveAction {
+        /** The run it was queued for: started later, it finds that run over and returns. */
+        long run;
+
         @Override
         protected void compute() {
-            drain();
+            if (drain(run) == 0) CgTrace.add(CgChannels.ASYNC, IDLE_HELPERS, 1);
         }
     }
 
@@ -64,11 +101,18 @@ final class CgWorkers {
         }
     }
 
-    private final AtomicInteger next = new AtomicInteger();
+    /** The run in the high 32 bits, the next item to claim in the low: a claim is a CAS on both, so no helper takes another run's item. */
+    private final AtomicLong next = new AtomicLong();
+    /** Items of the current run finished, by anyone. */
+    private final AtomicInteger finished = new AtomicInteger();
     private final EachOf eachOf = new EachOf();
     private Helper[] helpers = new Helper[0];
-    private IntConsumer job;
-    private int count;
+    /** Written before the run is opened in {@link #next}, unchanged until every item claimed has finished. */
+    private volatile IntConsumer job;
+    private volatile int count;
+    private volatile Throwable failure;
+    private volatile Thread caller;
+    private long runs;
     private boolean running;
 
     static CgWorkers mine() {
@@ -84,23 +128,48 @@ final class CgWorkers {
             return;
         }
         running = true;
+        long run = ++runs;
+        // Closed while the run's fields change: a helper of the last run that read them now fails its claim.
+        next.set(run << 32 | 0xFFFF_FFFFL);
         this.job = job;
         this.count = count;
-        next.set(0);
+        failure = null;
+        caller = Thread.currentThread();
+        finished.set(0);
+        next.set(run << 32);
         if (helpers.length < extra) {
-            helpers = new Helper[extra];
-            for (int i = 0; i < extra; i++) helpers[i] = new Helper();
+            Helper[] grown = Arrays.copyOf(helpers, extra);
+            for (int i = helpers.length; i < extra; i++) grown[i] = new Helper();
+            helpers = grown;
         }
         for (int i = 0; i < extra; i++) {
-            helpers[i].reinitialize();
-            Pool.POOL.execute(helpers[i]);
+            Helper h = helpers[i];
+            // Still queued from a run before: not queued again, and that run's claim fails when it starts. Under load the
+            // caller does more of the items itself rather than waiting for a thread to be scheduled.
+            if (h.run != 0 && !h.isDone()) continue;
+            h.run = run;
+            h.reinitialize();
+            (background ? BackgroundPool.POOL : Pool.POOL).execute(h);
         }
         try {
-            drain();
+            drain(run);
         } finally {
-            for (int i = 0; i < extra; i++) helpers[i].join();
+            // Only items a helper has claimed and not finished are waited for, never a helper that claimed none.
+            if (finished.get() < count) {
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.ASYNC, JOIN)) {
+                    while (finished.get() < count) LockSupport.park(this);
+                }
+            }
             this.job = null;
+            caller = null;
             running = false;
+        }
+        Throwable failed = failure;
+        if (failed != null) {
+            failure = null;
+            if (failed instanceof RuntimeException r) throw r;
+            if (failed instanceof Error e) throw e;
+            throw new RuntimeException(failed);
         }
     }
 
@@ -120,9 +189,29 @@ final class CgWorkers {
         }
     }
 
-    private void drain() {
-        IntConsumer j = job;
-        int n = count;
-        for (int i = next.getAndIncrement(); i < n; i = next.getAndIncrement()) j.accept(i);
+    /** Takes items of {@code run} until none is left; answers how many it ran. */
+    private int drain(long run) {
+        int ran = 0;
+        while (true) {
+            long v = next.get();
+            if (v >>> 32 != run) return ran;
+            IntConsumer j = job;
+            int n = count, i = (int) v;
+            if (i < 0 || i >= n || !next.compareAndSet(v, v + 1)) {
+                if (i < 0 || i >= n) return ran;
+                continue;
+            }
+            try {
+                j.accept(i);
+            } catch (Throwable t) {
+                if (failure == null) failure = t;
+            } finally {
+                ran++;
+                if (finished.incrementAndGet() == n) {
+                    Thread waiting = caller;
+                    if (waiting != null) LockSupport.unpark(waiting);
+                }
+            }
+        }
     }
 }

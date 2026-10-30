@@ -360,7 +360,8 @@ public final class CgJob<T> extends CgJobBase implements CgReply<T> {
 
         @Override
         void runQueued() {
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.ASYNC, "job.task")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.ASYNC, "job.task");
+                 CgTrace.Zone named = CgTrace.zone(CgChannels.ASYNC, CgJobBase.nameOf(task))) {
                 task.run();
             }
         }

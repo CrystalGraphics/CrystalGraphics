@@ -21,6 +21,23 @@ abstract class CgJobBase extends CgJobQueue.Entry {
     static final int WAITING = 0, READING = 1, QUEUED = 2, RUNNING = 3, DONE = 4, FAILED = 5,
             CANCELLED = 6, SUPERSEDED = 7, FINISHED = 8;
 
+    private static final int WORK = CgTrace.name("job.work");
+    /** A job's zone inside {@code job.work}, named by the class its lambda was written in: {@code job.CgAssetLoader}. */
+    private static final ClassValue<Integer> WORK_NAMES = new ClassValue<Integer>() {
+        @Override
+        protected Integer computeValue(Class<?> type) {
+            String n = type.getName();
+            int lambda = n.indexOf("$$Lambda");
+            String declared = lambda >= 0 ? n.substring(0, lambda) : n;
+            return CgTrace.name("job." + declared.substring(declared.lastIndexOf('.') + 1));
+        }
+    };
+
+    /** The trace name of {@code work}'s zone. */
+    static int nameOf(Object work) {
+        return WORK_NAMES.get(work.getClass());
+    }
+
     volatile int state;
     /** Set before claiming the run, cleared after it: a superseded job still running blocks its key's successor. */
     private volatile boolean working;
@@ -114,7 +131,8 @@ abstract class CgJobBase extends CgJobQueue.Entry {
         working = true;
         try {
             if (!STATE.compareAndSet(this, QUEUED, RUNNING)) return;
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.ASYNC, "job.work")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.ASYNC, WORK);
+                 CgTrace.Zone named = origin != null ? CgTrace.zone(CgChannels.ASYNC, nameOf(origin)) : null) {
                 compute();
                 STATE.compareAndSet(this, RUNNING, DONE);
             } catch (CgJobContext.CancelledException e) {
