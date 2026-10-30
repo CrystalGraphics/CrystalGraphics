@@ -15,6 +15,7 @@ import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDispatch;
+import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
@@ -215,6 +216,8 @@ public final class CgVfxParticlePool {
     private static CgGraphBuffer countBuffer;
     /** An entry's bytes: a binding offset is a whole 256 bytes. */
     private static final int COUNT_STRIDE = 256;
+    /** The count buffer's first size, 256 KB: each growth is new storage, whose zeroing waited 18-20 ms mid-cut (T10). */
+    private static final int MIN_COUNTS = 1024;
     /** The step stage's skip group: every pool reads and appends to its own entries, so none waits for another. */
     private static final int STEP_GROUP = 1;
     private static final String COUNT_KERNELS = "crystalgraphics:shaders/env/compute/vfx/counts.compute";
@@ -252,6 +255,12 @@ public final class CgVfxParticlePool {
 
     /** Each definition playing here: its row, and how many open slots use it. */
     private final IdentityHashMap<CgVfxGpuEmitter, int[]> rows = new IdentityHashMap<>();
+    /**
+     * Rows no open slot uses, kept built: a replay takes its row back rather than evaluating its curves again (T10:
+     * 1.5-2.3 ms of a cut's admission). At most {@link #IDLE_ROWS}; the clip atlas's bases die with the context.
+     */
+    private final IdentityHashMap<CgVfxGpuEmitter, int[]> idleRows = new IdentityHashMap<>();
+    private static final int IDLE_ROWS = 64;
     private int[] params = new int[0];
     private int rowCount;
     private int[] freeRows = new int[0];
@@ -486,9 +495,15 @@ public final class CgVfxParticlePool {
     /** As {@link #prepare(CgVfxGpuEmitter)}, for {@code emitter} spawned at feed {@code tier}. */
     public static void prepare(CgVfxGpuEmitter emitter, int tier) {
         CgVfxShape shape = CgVfxShape.of(emitter, tier);
-        CgVfxEmitterCompiler.compile(shape).kernel("Step").prepare();
-        CgCompute.load(LOOK_KERNELS).kernel("Look").prepare();
+        CgKernel stepLook = fusedLook(shape);
+        if (stepLook != null) {
+            stepLook.prepare();   // what its steps dispatch: Step and Look alone are never run
+        } else {
+            CgVfxEmitterCompiler.compile(shape).kernel("Step").prepare();
+            CgCompute.load(LOOK_KERNELS).kernel("Look").prepare();
+        }
         CgGpuOps.prepareFill();
+        CgCompute.load(COUNT_KERNELS).kernel("Clear").prepare();   // the first slot given back clears its count
         if (shape.spawns() || shape.publishes()) {
             CgCompute.load(EVENT_CAP_KERNELS).kernel("Keys").prepare();
             CgCompute.load(EVENT_CAP_KERNELS).kernel("Runs").prepare();
@@ -602,6 +617,8 @@ public final class CgVfxParticlePool {
         liveEntry = -1;
         storage = 0;
         paramsChanged = true;
+        for (int[] row : idleRows.values()) freeRow(row);
+        idleRows.clear();
     }
 
     /** Forgets every pool and stops recording. Tests. */
@@ -1050,7 +1067,7 @@ public final class CgVfxParticlePool {
     private static void fitCounts(CgRecording recording, int more) {
         int need = countsMade + more;
         if (countBuffer != null && need <= countCapacity) return;
-        int capacity = Math.max(64, Integer.highestOneBit(Math.max(need, 2) - 1) << 1);
+        int capacity = Math.max(MIN_COUNTS, Integer.highestOneBit(Math.max(need, 2) - 1) << 1);
         CgBufferDesc desc = CgBufferDesc.of((long) capacity * COUNT_STRIDE, CgBufferUsage.STORAGE, CgBufferUsage.COPY,
                 CgBufferUsage.INDIRECT);
         if (countBuffer == null) {
@@ -1187,6 +1204,13 @@ public final class CgVfxParticlePool {
         if (!FUSE_LOOK) return false;
         if (stepLook == null) stepLook = CgVfxEmitterCompiler.compile(shape).kernel("StepLook");
         return stepLook.runs();
+    }
+
+    /** {@code shape}'s StepLook where its steps run it ({@link #fusesLook}), else null: what {@link #prepare} builds. */
+    private static @Nullable CgKernel fusedLook(CgVfxShape shape) {
+        if (!FUSE_LOOK) return null;
+        CgKernel stepLook = CgVfxEmitterCompiler.compile(shape).kernel("StepLook");
+        return stepLook.runs() ? stepLook : null;
     }
 
     /** The Look stage's values, the Look kernel's or the fused Step's: this shape's layout and the voxel window. */
@@ -1510,11 +1534,16 @@ public final class CgVfxParticlePool {
         int[] row = rows.get(emitter);
         if (--row[1] == 0) {
             rows.remove(emitter);
-            if (freeRows.length == freeRowCount) freeRows = Arrays.copyOf(freeRows, Math.max(4, freeRowCount * 2));
-            freeRows[freeRowCount++] = row[0];
-            if (spareEntries.length == spareCount) spareEntries = Arrays.copyOf(spareEntries, Math.max(4, spareCount * 2));
-            spareEntries[spareCount++] = row;
+            if (idleRows.size() >= IDLE_ROWS) freeRow(idleRows.remove(idleRows.keySet().iterator().next()));
+            idleRows.put(emitter, row);
         }
+    }
+
+    private void freeRow(int[] row) {
+        if (freeRows.length == freeRowCount) freeRows = Arrays.copyOf(freeRows, Math.max(4, freeRowCount * 2));
+        freeRows[freeRowCount++] = row[0];
+        if (spareEntries.length == spareCount) spareEntries = Arrays.copyOf(spareEntries, Math.max(4, spareCount * 2));
+        spareEntries[spareCount++] = row;
     }
 
     /**
@@ -2326,6 +2355,45 @@ public final class CgVfxParticlePool {
         recordPools(recording, pools);
     }
 
+    /**
+     * Makes its records' and drawn parts' storage now, at what {@link #expect} sized: a prepare's last step, so the
+     * frame that first steps it allocates nothing. Made again larger while it has never stepped, as a later look
+     * expects more of it. Render thread, between steps.
+     *
+     * <pre>{@code
+     * pool.expect(EMBERS, EMBERS.peakAlive());
+     * pool.allocate();   // once every look sharing it has expected
+     * }</pre>
+     */
+    public void allocate() {
+        betweenSteps("allocate");
+        if (expectedCapacity == 0 || liveEntry >= 0) return;   // stepped: its steps grow it
+        int want = sizeClass(expectedCapacity);
+        if (records != null) {
+            if (want <= storage) return;
+            CgExecutor.freeStorage(records);
+            CgExecutor.freeStorage(drawn);
+        }
+        storage = want;
+        records = CgGraphBuffer.history(recordsName, recordsDesc(storage));
+        drawn = CgGraphBuffer.persistent(drawnName, drawnDesc(storage * shape.drawnStride()));
+        CgExecutor.makeStorage(records);
+        CgExecutor.makeStorage(drawn);
+        // The row tables too: made at first upload they were new storage on a cut's opening frame (T10).
+        int rows = rowCount + expectedRows.size();
+        paramBuffer = ahead(paramBuffer, paramsName, rows * paramWords);
+        curveBuffer = ahead(curveBuffer, curvesName, rows * rowWords());
+    }
+
+    /** {@link #fit}'s buffer for {@code words}, its storage made now; never stepped, so nothing reads the one it replaces. */
+    private static CgGraphBuffer ahead(CgGraphBuffer buffer, String name, int words) {
+        CgGraphBuffer fitted = fit(null, buffer, name, words);
+        if (fitted == buffer) return buffer;
+        if (buffer != null) CgExecutor.freeStorage(buffer);
+        CgExecutor.makeStorage(fitted);
+        return fitted;
+    }
+
     /** Makes the records and counts the first time, and grows the records to hold {@code need}. */
     private void reserve(CgRecording recording, int need) {
         need = Math.max(need, expectedCapacity);
@@ -2333,9 +2401,12 @@ public final class CgVfxParticlePool {
             storage = sizeClass(need);
             records = CgGraphBuffer.history(recordsName, recordsDesc(storage));
             drawn = CgGraphBuffer.persistent(drawnName, drawnDesc(storage * shape.drawnStride()));
+        }
+        if (liveEntry < 0) {
             fitCounts(recording, 1);
             liveEntry = takeCount();
-        } else if (need > storage) {
+        }
+        if (need > storage) {
             storage = sizeClass(need);
             records = recording.resize(records, recordsDesc(storage));
             // The step's last stage rewrites every live particle's drawn part before a draw reads it.
@@ -2394,11 +2465,14 @@ public final class CgVfxParticlePool {
         return lightSlots;
     }
 
-    /** {@code buffer}, or one of the next size class in its place when it holds fewer than {@code words}. */
-    private static CgGraphBuffer fit(CgRecording recording, CgGraphBuffer buffer, String name, int words) {
+    /**
+     * {@code buffer}, or one of the next size class in its place when it holds fewer than {@code words}, the old one
+     * released through {@code recording} (null: the caller frees it).
+     */
+    private static CgGraphBuffer fit(@Nullable CgRecording recording, CgGraphBuffer buffer, String name, int words) {
         long bytes = Math.max(256L, words * 4L);
         if (buffer != null && buffer.size() >= bytes) return buffer;
-        if (buffer != null) recording.release(buffer);
+        if (buffer != null && recording != null) recording.release(buffer);
         return CgGraphBuffer.persistent(name, CgBufferDesc.of(Long.highestOneBit(bytes - 1) << 1,
                 CgBufferUsage.STORAGE, CgBufferUsage.COPY));
     }
@@ -2552,6 +2626,12 @@ public final class CgVfxParticlePool {
         int[] row = rows.get(emitter);
         if (row != null) {
             row[1]++;
+            return row[0];
+        }
+        row = idleRows.remove(emitter);
+        if (row != null) {
+            row[1] = 1;
+            rows.put(emitter, row);
             return row[0];
         }
         int index = freeRowCount > 0 ? freeRows[--freeRowCount] : rowCount++;

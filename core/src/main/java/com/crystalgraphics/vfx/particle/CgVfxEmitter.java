@@ -719,8 +719,24 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         return f == null ? otherwise : f.bounds()[1];
     }
 
+    /**
+     * The row {@link #writeCurves} writes, made once: a pool writes it at each emitter's first slot, every play, and
+     * evaluating its 2 x 256 texels was most of a slot's admission (T10).
+     */
+    private volatile float[] curveRow;
+
     @Override
     public void writeCurves(float[] out, int at, int texels) {
+        float[] row = curveRow;
+        if (row == null || row.length != 8 * texels + 16) {
+            row = new float[8 * texels + 16];
+            evaluateCurves(row, 0, texels);
+            curveRow = row;
+        }
+        System.arraycopy(row, 0, out, at, row.length);
+    }
+
+    private void evaluateCurves(float[] out, int at, int texels) {
         int tint = at + 4 * texels, starts = at + 8 * texels;
         for (int i = 0; i < texels; i++) {
             float progress = texels > 1 ? (float) i / (texels - 1) : 0f, k = intensity.at(progress);
