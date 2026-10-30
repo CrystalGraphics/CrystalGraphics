@@ -168,7 +168,7 @@ public final class CgPose {
             Matrix4f m = component[b].translationRotateScale(local[at], local[at + 1], local[at + 2], local[at + 3],
                     local[at + 4], local[at + 5], local[at + 6], local[at + 7], local[at + 8], local[at + 9]);
             int parent = skeleton.parent(b);
-            if (parent >= 0) component[parent].mul(m, m);
+            if (parent >= 0) component[parent].mulAffine(m, m);   // TRS both: the bottom row is (0, 0, 0, 1)
         }
         return this;
     }
@@ -192,7 +192,7 @@ public final class CgPose {
             throw new IllegalArgumentException(mesh + " is not of this pose's skeleton");
         }
         if (out.length < component.length) throw new IllegalArgumentException(out.length + " matrices for " + component.length + " bones");
-        for (int b = 0; b < component.length; b++) component[b].mul(mesh.inverseBind(b, scratch), out[b]);
+        for (int b = 0; b < component.length; b++) component[b].mulAffine(mesh.inverseBind(b, scratch), out[b]);   // both affine
         return out;
     }
 
