@@ -1,6 +1,5 @@
 package com.crystalgraphics.frame;
 
-import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import org.apache.logging.log4j.LogManager;
@@ -102,16 +101,6 @@ public final class CgTickSchedule {
             function.closed = true;
             plan = null;
         }
-    }
-
-    /** Runs every group once, in order. */
-    void run() {
-        run(CgTickGroup.BEGIN, CgTickGroup.SUBMIT);
-    }
-
-    /** The groups {@code from} through {@code to}, in order, on the frame clock. */
-    void run(CgTickGroup from, CgTickGroup to) {
-        run(from, to, CgFrameClock.seconds());
     }
 
     /** The groups {@code from} through {@code to}, in order, at {@code now} seconds on the clock they run by. */

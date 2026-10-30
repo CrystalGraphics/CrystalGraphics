@@ -399,7 +399,9 @@ final class Cutscenes extends CgWorldSubsystem {
 - **Order within a group** follows prerequisites, then name. Never registration order, so a name is
   `"<mod>:<function>"` and unique. A prerequisite in a later group moves the function there (Unreal's tick demotion); a
   cycle is logged and ignored.
-- **`dt`** is the seconds since the function last ran (0 on the first run), from `CgFrameClock`. `.interval(s)` runs it
+- **`dt`** is the seconds since the function last ran (0 on the first run), on the world's time: `CgFrameClock`'s
+  step each frame held between 0.0005 and 0.4 s, as Unreal's `FixupDeltaSeconds`, so a stall reaches every function
+  as one slow frame. `.interval(s)` runs it
   at most every `s` seconds.
 - **A function that throws is disabled** for that world and logged once with its name; the rest run.
 - `.onServer(true)` runs it in a dedicated server's world (`new CgWorld(true)`), which skips every other function.
@@ -770,8 +772,9 @@ overlap would save nothing.
 
 ### Readbacks
 
-Nothing reads the GPU back with a stall: a readback copies into memory the CPU maps, behind a fence, and its sink runs on
-the render thread once the GPU is done, two or three frames later.
+Nothing reads the GPU back with a stall: a readback copies into memory the CPU maps, and its sink runs on the render
+thread once the frame ring has retired the frame it was issued in, about three frames later. Nothing is queried per
+readback: a fence query or a map waits for a threaded driver to drain its queue.
 
 ```java
 CgReadback.buffer(counts, 0, 4, data -> alive = data.getInt(0));                     // render thread

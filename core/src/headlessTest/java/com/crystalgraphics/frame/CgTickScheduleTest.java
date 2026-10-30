@@ -76,20 +76,31 @@ public class CgTickScheduleTest {
     }
 
     @Test
+    public void aStallReachesFunctionsAsOneSlowFrame() {
+        List<Float> dts = new ArrayList<>();
+        world.schedule().add(CgTickGroup.PLAYS, "t:play", dts::add);
+        frame(1);
+        frame(5);          // a 4 s hitch: Unreal's MaxUndilatedFrameTime
+        frame(5.25);
+        assertEquals(CgWorld.MAX_FRAME_SECONDS, dts.get(1), 1e-6f);
+        assertEquals(0.25f, dts.get(2), 1e-6f);
+    }
+
+    @Test
     public void anOverrunIsCreditedAndAPauseDoesNotConsumeTheCooldown() {
         List<Float> dts = new ArrayList<>();
         boolean[] paused = {false};
         world.paused(() -> paused[0]);
         world.schedule().add(CgTickGroup.PLAYS, "t:slow", dts::add).interval(0.5);
         frame(1);          // runs, due 1.5
+        frame(1.25);
         frame(1.6);        // runs 0.1 late, due 2.0 not 2.1
         frame(1.9);
         assertEquals(2, dts.size());
         frame(2.0);
         assertEquals(3, dts.size());
         paused[0] = true;  // due 2.5; 10 s paused push it to 12.5
-        frame(7);
-        frame(12);
+        for (int i = 1; i <= 40; i++) frame(2.0 + 0.25 * i);
         paused[0] = false;
         frame(12.4);
         assertEquals(3, dts.size());

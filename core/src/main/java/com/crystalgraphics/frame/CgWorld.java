@@ -2,6 +2,7 @@ package com.crystalgraphics.frame;
 
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.world.CgWorldBegin;
+import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.trace.CgTrace;
@@ -60,6 +61,11 @@ public final class CgWorld implements AutoCloseable {
     private long beganLate;
     private long ticks, frames;
     private volatile float timeDilation = 1f;
+    /** The frame clock's reading last seen, and this world's time, which a frame advances by its clamped step. */
+    private double clockSeen = Double.NaN, time;
+
+    /** Unreal's {@code MinUndilatedFrameTime} and {@code MaxUndilatedFrameTime} (4.21 BaseGame.ini): 2000 and 2.5 fps. */
+    static final double MIN_FRAME_SECONDS = 0.0005, MAX_FRAME_SECONDS = 0.4;
 
     /** A world for a client: a preview, a test. */
     public CgWorld() {
@@ -183,7 +189,23 @@ public final class CgWorld implements AutoCloseable {
     public void frame(CgHostView view) {
         this.view = view;
         frames++;
-        schedule.run();
+        schedule.run(CgTickGroup.BEGIN, CgTickGroup.SUBMIT, frameTime());
+    }
+
+    /**
+     * This world's time for the frame clock's current frame: last frame's plus the step since, clamped as Unreal's
+     * {@code AWorldSettings::FixupDeltaSeconds} clamps a world's delta, so a stall (a hitch, a breakpoint, a save)
+     * reaches its functions as one slow frame rather than seconds skipped.
+     */
+    private double frameTime() {
+        double now = CgFrameClock.seconds();
+        if (Double.isNaN(clockSeen)) {
+            time = now;
+        } else if (now > clockSeen) {
+            time += Math.min(Math.max(now - clockSeen, MIN_FRAME_SECONDS), MAX_FRAME_SECONDS);
+        }
+        clockSeen = now;
+        return time;
     }
 
     /**
@@ -214,7 +236,7 @@ public final class CgWorld implements AutoCloseable {
         begun = frame;
         frames++;
         this.view = view;
-        schedule.run(CgTickGroup.BEGIN, CgTickGroup.SHAKE);
+        schedule.run(CgTickGroup.BEGIN, CgTickGroup.SHAKE, frameTime());
     }
 
     /**
@@ -230,7 +252,7 @@ public final class CgWorld implements AutoCloseable {
             begin(view, frame);
         }
         this.view = view;
-        schedule.run(CgTickGroup.LATE_ATTACH, CgTickGroup.SUBMIT);
+        schedule.run(CgTickGroup.LATE_ATTACH, CgTickGroup.SUBMIT, frameTime());
     }
 
     /** Frames whose first part ran at a stage, not at a camera hook, where the host has hooks. */
