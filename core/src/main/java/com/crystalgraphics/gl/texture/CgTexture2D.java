@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.texture;
 
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgMipmapConfig;
 import com.crystalgraphics.api.texture.CgTextureSpec;
@@ -322,7 +323,7 @@ public final class CgTexture2D extends CgTextureAbstract {
     private void whole(int width, int height, @Nullable ByteBuffer pixels, @Nullable CgUploadLease lease,
                        int pixelFormat, int pixelType) {
         boolean made = textureId == 0;
-        if (made) textureId = CgGL.glGenTextures();
+        if (made) textureId = CgGlNames.texture();
         try {
             texImage(width, height, pixels, lease, pixelFormat, pixelType);
         } catch (RuntimeException e) {
@@ -365,6 +366,11 @@ public final class CgTexture2D extends CgTextureAbstract {
     }
 
     // ── Files ─────────────────────────────────────────────────────────
+
+    @Override
+    protected String source() {
+        return sourcePath != null ? sourcePath : super.source();
+    }
 
     @Override
     protected void load() {
@@ -467,7 +473,7 @@ public final class CgTexture2D extends CgTextureAbstract {
 
     private void landCooked(CgUploadLease lease, int internal, boolean blocks, int[] at, int[] lengths) {
         boolean made = textureId == 0;
-        if (made) textureId = CgGL.glGenTextures();
+        if (made) textureId = CgGlNames.texture();
         CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
         try (CgTightUnpack ignored = CgTightUnpack.begin()) {
             for (int l = 0; l < at.length; l++) {

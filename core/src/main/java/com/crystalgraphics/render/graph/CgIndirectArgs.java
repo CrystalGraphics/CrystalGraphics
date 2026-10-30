@@ -48,9 +48,10 @@ final class CgIndirectArgs {
     private int capacity;
     private CgKernel kernel;
     private CgKernel many;
-    private CgStreamBuffer params;
     /** Queued rows as float bits, for {@link CgStreamBuffer#uploadFloats}; {@link #rowsCount} the count buffer they read. */
     private float[] table = new float[64 * ROW];
+    /** Made with its executor, as the executor's own rings are: made at the first indirect draw, a map waits mid-frame. */
+    private final CgStreamBuffer params = CgStreamBuffer.createFrameLocal(CgGL.GL_SHADER_STORAGE_BUFFER, table.length * 4);
     private int rows;
     private int rowsCount;
     /** The queued rows' first and last slots: the span their dispatch binds of the buffer. */
@@ -145,7 +146,6 @@ final class CgIndirectArgs {
             int slot = Float.floatToRawIntBits(table[at]);
             table[at] = Float.intBitsToFloat((int) ((offset(slot) - base) >>> 2));
         }
-        if (params == null) params = CgStreamBuffer.createFrameLocal(CgGL.GL_SHADER_STORAGE_BUFFER, table.length * 4);
         int at = params.uploadFloats(table, rows * ROW);
         CgKernelProgram program = many();
         program.use();
@@ -188,10 +188,7 @@ final class CgIndirectArgs {
     /** At context teardown; the GL name is answered to {@code freed}. */
     void delete(IntConsumer freed) {
         rows = 0;
-        if (params != null) {
-            params.delete();
-            params = null;
-        }
+        params.delete();   // its executor goes with it (CgExecutor.destroyAll)
         if (buffer == 0) return;
         freed.accept(buffer);
         CgGL.glDeleteBuffers(buffer);

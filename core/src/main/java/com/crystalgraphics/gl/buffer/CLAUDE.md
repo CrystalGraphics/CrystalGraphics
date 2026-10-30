@@ -61,7 +61,8 @@ FrameRingStreamBuffer (PERSISTENT and RING)
 │   map/unmap pair
 ├── commit() → the offset, which the caller binds (a range for a shader buffer)
 ├── an offset is valid only in the frame that committed it: FRAMES later its bytes are overwritten
-├── a frame that outgrows its region gets fresh storage and the next frame's region doubles, to 64 MB —
+├── a frame that outgrows its region gets fresh storage at once, every region doubled, to 64 MB (only once:
+│   new storage waits for a threaded driver to drain its queue) —
 │   counted as frameRing.overflow. RING orphans under the same name; PERSISTENT storage is immutable, so it
 │   takes a new buffer and bumps getGeneration(), which the bindings compare alongside the offset
 └── a host that never ends a frame fills one region and renews storage: correct, unpipelined
@@ -120,7 +121,7 @@ CgQuadIndexBuffer (global singleton)
 | `SubDataStreamBuffer.java` | The subdata tier: CPU staging + `glBufferSubData`. |
 | `CgQuadIndexBuffer.java` | Global shared quad IBO. Pattern `[0,1,2,2,3,0,...]`. Max 16384 quads. Doubling growth. |
 | `CgBufferTextures.java` | One buffer texture per texture unit, pointed at whatever buffer a material or a lowered kernel reads there; 0 reads 16 zero bytes. Freed by `CgGraphicsLifecycle.destroyContext()`. |
-| `CgReadback.java` | A buffer range, a framebuffer region or a 3D texture's box (`slices`, each slice attached in turn to one framebuffer bound for reading) read back without a stall: copied on the GPU into pooled `GL_STREAM_READ` staging behind a fence, handed to a sink from `poll()` in `tickFrame`. What `CgRecording.readback` and `CgPixelReadback` use. In-flight reads are dropped at teardown, beside `CgBufferTextures` |
+| `CgReadback.java` | A buffer range, a framebuffer region or a 3D texture's box (`slices`, each slice attached in turn to one framebuffer bound for reading) read back without a stall: copied on the GPU into pooled staging, handed to a sink from `poll()` in `tickFrame` once `CgFrameRing` has retired the frame it was issued in (its own fence is queried only where the host has ended no frame: a query of a young fence waits for a threaded driver to drain). On the `PERSISTENT` tier the staging is mapped once, coherent, and read with no GL call; below it each delivery maps it, which on a threaded driver waits for the queue to drain. What `CgRecording.readback` and `CgPixelReadback` use. In-flight reads are dropped at teardown, beside `CgBufferTextures` |
 | `CgBufferReadback.java` | A buffer's words read now, a stall: for a count a draw needs this frame (G33) and the CPU tier's copies |
 
 ---

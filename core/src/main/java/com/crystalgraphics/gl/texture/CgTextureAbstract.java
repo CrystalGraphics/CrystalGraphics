@@ -8,6 +8,9 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.variable.CgVar;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * Shared base for all owned GL texture implementations.
@@ -150,6 +153,14 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
     }
 
     private static final int LOADS = CgTrace.name("texture.loads");
+    private static final Logger LOGGER = LogManager.getLogger("CgTexture");
+    private static final CgVar.Bool LOG_FIRST_USE = CgVar.bool("crystalgraphics.texture.logFirstUse", false, CgVar.DEV,
+            "Log each texture from files loaded at its first use: its source, the thread that paid for it and how long.");
+
+    /** What it was made from, for a log line: its file where it has one. */
+    protected String source() {
+        return getClass().getSimpleName();
+    }
     private static volatile long loads;
 
     /**
@@ -167,8 +178,14 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
             if (!unloaded) return;
             unloaded = false;
             if (deleted) return;
+            long started = LOG_FIRST_USE.get() ? System.nanoTime() : 0L;
+            CgTrace.marker(CgChannels.GL, "texture.first-use", source());   // which, on which frame
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texture.load")) {
                 load();
+            }
+            if (started != 0L) {
+                LOGGER.info("texture loaded at first use on {}: {} ({} ms)", Thread.currentThread().getName(), source(),
+                        (System.nanoTime() - started) / 1_000_000L);
             }
             synchronized (CgTextureAbstract.class) {
                 loads++;

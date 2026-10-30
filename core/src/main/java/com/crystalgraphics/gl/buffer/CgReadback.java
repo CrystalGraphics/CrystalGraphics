@@ -1,6 +1,9 @@
 package com.crystalgraphics.gl.buffer;
 
 import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.gl.CgGlNames;
+import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgCapabilities.StreamBufferTier;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
@@ -19,9 +22,9 @@ import java.util.List;
 import static com.crystalgraphics.platform.gl.state.CgGlSlot.FBO;
 
 /**
- * Reads a buffer range or a framebuffer region back without a stall: copied on the GPU into a buffer the CPU maps,
- * behind a fence, and handed to a sink on the render thread once the GPU has finished, typically two or three frames
- * later. Unity's {@code AsyncGPUReadback}. In a frame graph, {@code CgRecording.readback} records one, ordered after
+ * Reads a buffer range or a framebuffer region back without a stall: copied on the GPU into a buffer the CPU maps
+ * (once, persistently, where buffer storage is), and handed to a sink on the render thread once
+ * {@link CgFrameRing} has retired the frame it was issued in, about {@link CgFrameRing#FRAMES} frames later. Unity's {@code AsyncGPUReadback}. In a frame graph, {@code CgRecording.readback} records one, ordered after
  * whatever writes what it reads.
  *
  * <pre>{@code
@@ -65,13 +68,27 @@ public final class CgReadback {
     private static final int BYTES = CgTrace.name("readback.bytes");
     private static final int DELIVERED = CgTrace.name("readback.delivered");
     private static final int FRAMES = CgTrace.name("readback.frames");
+    private static final int FENCE = CgTrace.name("readback.fence"), DELIVER = CgTrace.name("readback.deliver");
+    /** A sink's zone, {@code readback.sink.<the class its lambda was written in>}. */
+    private static final ClassValue<Integer> SINK_NAMES = new ClassValue<Integer>() {
+        @Override
+        protected Integer computeValue(Class<?> type) {
+            String n = type.getName();
+            int lambda = n.indexOf("$$Lambda");
+            String declared = lambda >= 0 ? n.substring(0, lambda) : n;
+            return CgTrace.name("readback.sink." + declared.substring(declared.lastIndexOf('.') + 1));
+        }
+    };
     /** The frame's queue's time copying into staging, on {@code gl.detail}: what a copy queue could take. */
     private static final int GPU_COPY = CgGpuTrace.name("readback.copy");
 
     /** Staging kept between readbacks; one past this is deleted when its readback lands. */
     private static final int KEPT = 16;
-    /** The smallest staging buffer, so small reads share a size. */
-    private static final long SMALLEST = 256;
+    /**
+     * The smallest staging buffer, so small reads share a size and reuse kept staging: new staging waits for a
+     * threaded driver to drain its queue (its storage and its map), 20 ms on a cut's opening frame.
+     */
+    private static final long SMALLEST = 64 * 1024;
 
     private static final ArrayDeque<CgReadback> PENDING = new ArrayDeque<>();
     private static final List<CgReadback> IDLE = new ArrayList<>();
@@ -79,13 +96,20 @@ public final class CgReadback {
     /** The framebuffer {@link #slices} attaches each slice to, made at first use. */
     private static int sliceReader;
 
+    /** Staging mapped once, coherent, where buffer storage is: a map is a sync on a threaded driver (Dolphin's OGL staging). */
+    private static final int PERSISTENT_FLAGS = CgGL.GL_MAP_READ_BIT | CgGL.GL_MAP_PERSISTENT_BIT | CgGL.GL_MAP_COHERENT_BIT;
+
     private int buffer;
     private long capacity;
     private long bytes;
     private long fence;
     private long requestedAt;
+    /** The {@link CgFrameRing} frame it was issued in: its fence covers this copy. */
+    private long ringFrame;
     private Sink sink;
     private ByteBuffer view;
+    /** The whole staging, mapped for its life; null where each delivery maps it. */
+    private ByteBuffer persistent;
 
     private CgReadback() {}
 
@@ -191,18 +215,36 @@ public final class CgReadback {
         return components * size;
     }
 
-    /** Hands what the GPU has finished to its sink, oldest first, and never waits. Once a frame, render thread. */
+    /**
+     * Hands what the GPU has finished to its sink, oldest first. Once a frame, render thread. Where the host ends
+     * frames, a readback is done once {@link CgFrameRing} has retired the frame it was issued in, so nothing is
+     * queried: a fence query waits for a threaded driver to drain its queue. The ring's wait for the frame
+     * {@link CgFrameRing#FRAMES} back is the only one, as a ring's first upload would take it anyway.
+     */
     public static void poll() {
         polls++;
+        long frame = CgFrameRing.frame();
+        if (frame >= CgFrameRing.FRAMES && !PENDING.isEmpty()) CgFrameRing.awaitRetired(frame - CgFrameRing.FRAMES);
         while (!PENDING.isEmpty()) {
             CgReadback r = PENDING.peekFirst();
-            int state = CgGL.glClientWaitSync(r.fence, 0, 0L);
+            int state;
+            if (r.fence == 0L) {
+                if (r.ringFrame > CgFrameRing.retired()) return;
+                state = CgGL.GL_ALREADY_SIGNALED;
+            } else {
+                // A host that has ended no frame: only the readback's own fence can say.
+                try (CgTrace.Zone z = CgTrace.zone(CgChannels.GL, FENCE)) {
+                    state = CgGL.glClientWaitSync(r.fence, 0, 0L);
+                }
+            }
             if (state == CgGL.GL_TIMEOUT_EXPIRED) return;   // fences signal in order: nothing newer is done either
             PENDING.pollFirst();
-            CgGL.glDeleteSync(r.fence);
+            if (r.fence != 0L) CgGL.glDeleteSync(r.fence);
             r.fence = 0L;
-            if (state == CgGL.GL_WAIT_FAILED) r.fail("its fence failed");
-            else r.deliver();
+            try (CgTrace.Zone z = CgTrace.zone(CgChannels.GL, DELIVER)) {
+                if (state == CgGL.GL_WAIT_FAILED) r.fail("its fence failed");
+                else r.deliver();
+            }
             r.recycle();
         }
     }
@@ -215,7 +257,7 @@ public final class CgReadback {
     /** Drops what is in flight, telling each sink, and frees every staging buffer. At context teardown. */
     public static void releaseAll() {
         for (CgReadback r : PENDING) {
-            CgGL.glDeleteSync(r.fence);
+            if (r.fence != 0L) CgGL.glDeleteSync(r.fence);
             r.fail("the context was torn down");
             CgGL.glDeleteBuffers(r.buffer);
         }
@@ -234,9 +276,16 @@ public final class CgReadback {
         }
         CgReadback r = new CgReadback();
         r.capacity = capacity;
-        r.buffer = CgGL.glGenBuffers();
+        r.buffer = CgGlNames.buffer();
         CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, r.buffer);
-        CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, capacity, CgGL.GL_STREAM_READ);
+        if (CgCapabilities.detect().vertexStreamTier() == StreamBufferTier.PERSISTENT) {
+            CgGL.glBufferStorage(CgGL.GL_COPY_WRITE_BUFFER, capacity, PERSISTENT_FLAGS);
+            r.persistent = CgGL.glMapBufferRange(CgGL.GL_COPY_WRITE_BUFFER, 0, capacity, PERSISTENT_FLAGS, null);
+            if (r.persistent == null) throw new IllegalStateException("persistent glMapBufferRange returned null (size=" + capacity + ")");
+            r.persistent.order(ByteOrder.nativeOrder());
+        } else {
+            CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, capacity, CgGL.GL_STREAM_READ);
+        }
         CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
         return r;
     }
@@ -245,13 +294,21 @@ public final class CgReadback {
         this.bytes = size;
         this.sink = sink;
         this.requestedAt = polls;
-        fence = CgGL.glFenceSync(CgGL.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        this.ringFrame = CgFrameRing.frame();
+        // Only a host that has ended no frame reads it (poll): glFenceSync answers a handle, so on a threaded driver
+        // it waits for the queue, 2-5 ms a readback mid-move (T10).
+        fence = ringFrame > 0 ? 0L : CgGL.glFenceSync(CgGL.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
         PENDING.addLast(this);
         CgTrace.add(CgChannels.GL, REQUESTS, 1);
         CgTrace.add(CgChannels.GL, BYTES, size);
     }
 
     private void deliver() {
+        if (persistent != null) {
+            persistent.clear().limit((int) bytes);
+            accept(persistent);
+            return;
+        }
         CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, buffer);
         try {
             ByteBuffer mapped = CgGL.glMapBufferRange(CgGL.GL_COPY_READ_BUFFER, 0, bytes, CgGL.GL_MAP_READ_BIT, view);
@@ -261,17 +318,24 @@ public final class CgReadback {
             }
             view = mapped;
             try {
-                sink.accept(mapped.order(ByteOrder.nativeOrder()));
-                CgTrace.add(CgChannels.GL, DELIVERED, 1);
-                CgTrace.add(CgChannels.GL, FRAMES, polls - requestedAt);
-            } catch (RuntimeException e) {
-                LOGGER.error("A readback's sink threw", e);
-                fail("its sink threw " + e);
+                accept(mapped.order(ByteOrder.nativeOrder()));
             } finally {
                 CgGL.glUnmapBuffer(CgGL.GL_COPY_READ_BUFFER);
             }
         } finally {
             CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, 0);
+        }
+    }
+
+    private void accept(ByteBuffer data) {
+        // A zone per sink, named by the class its lambda was written in: a slow one names its owner.
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, SINK_NAMES.get(sink.getClass()))) {
+            sink.accept(data);
+            CgTrace.add(CgChannels.GL, DELIVERED, 1);
+            CgTrace.add(CgChannels.GL, FRAMES, polls - requestedAt);
+        } catch (RuntimeException e) {
+            LOGGER.error("A readback's sink threw", e);
+            fail("its sink threw " + e);
         }
     }
 

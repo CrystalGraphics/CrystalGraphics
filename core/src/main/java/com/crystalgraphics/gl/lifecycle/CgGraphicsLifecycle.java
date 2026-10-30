@@ -25,6 +25,7 @@ import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.api.CgBindingPoints;
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.gl.buffer.CgBufferTextures;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
@@ -216,6 +217,7 @@ public final class CgGraphicsLifecycle {
 
         CgGL.fromHost();
         try {
+            CgGlState.manager().adoptCapturedPoints();   // the queue is short here; a first compute pass mid-frame is not
             inOwnDepthConvention(() -> {
                 // One scope for everything built below: pipeline targets, fallback textures, the text
                 // material's first bind. It runs inside the host's world pass, and left its bindings and
@@ -345,6 +347,7 @@ public final class CgGraphicsLifecycle {
     }
 
     private static void resizeTargets(int width, int height) {
+        CgExecutor.forgetHostTargets();
         CgFrameBufferRegistry.get().onResize(width, height);
         CgTextRendererRegistry.get().onResize(width, height);
 
@@ -426,6 +429,7 @@ public final class CgGraphicsLifecycle {
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, UPLOADS)) {
                     CgUploads.tick();
                 }
+                CgGlNames.refill();   // between frames, where a threaded driver's queue is short
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, BUDGET)) {
                     CgGpuBudget.tick();
                 }
@@ -586,6 +590,9 @@ public final class CgGraphicsLifecycle {
 
         // Upload staging, once every texture above has given back its queued leases.
         CgUploads.releaseAll();
+
+        // Names generated ahead and unused.
+        CgGlNames.release();
 
         // Its fences name the dying context.
         CgFrameRing.reset();

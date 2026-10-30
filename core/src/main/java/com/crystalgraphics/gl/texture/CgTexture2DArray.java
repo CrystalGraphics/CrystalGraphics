@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.texture;
 
 
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgUploadLease;
@@ -155,7 +156,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
 
         CgTexture2DArray tex = new CgTexture2DArray(width, height, layers, spec, null);
         tex.gpu.run(() -> {
-            tex.textureId = CgGL.glGenTextures();
+            tex.textureId = CgGlNames.texture();
             tex.reallocateStorage(layers);
             tex.storageDepth = layers;
         });
@@ -511,7 +512,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
 
     private void uploadLayers(int w, int h, int format, ByteBuffer[] layers) {
         boolean made = textureId == 0;
-        if (made) textureId = CgGL.glGenTextures();
+        if (made) textureId = CgGlNames.texture();
         CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
         try {
             CgGL.glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, spec.getGlInternalFormat(), w, h, layers.length, 0, format,

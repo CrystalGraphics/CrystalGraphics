@@ -1024,6 +1024,20 @@ public final class CgGlStateManager {
         }
     }
 
+    /**
+     * Reads every point of the captured domains the host never binds, now, so none is read at its first write: each
+     * read waits for a threaded driver to drain, and a scene's first compute pass writes a dozen at once, mid-frame.
+     * Once read they stay known (the host never touches them). Call where the queue is short: context init.
+     */
+    public void adoptCapturedPoints() {
+        if (recording != null) return;
+        for (CgGlSlot slot : CAPTURED) {
+            if (provider.hostBinds(slot)) continue;
+            int d = captured(slot);
+            for (int i = 0; i < POINTS[d]; i++) if ((known[d] & (1 << i)) == 0) adoptBinding(slot, i);
+        }
+    }
+
     private void adoptBinding(CgGlSlot slot, int index) {
         adopting = true;
         long t = CgTrace.stamp(GL);

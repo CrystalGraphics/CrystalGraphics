@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.texture;
 
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
@@ -224,7 +225,7 @@ public final class CgTextureCubemap extends CgTextureAbstract {
     /** Level 0 of every face at {@code size}, the texture made first if it has no id yet. */
     private void storage(int size) {
         boolean made = textureId == 0;
-        if (made) textureId = CgGL.glGenTextures();
+        if (made) textureId = CgGlNames.texture();
         CgGL.glBindTexture(CgGL.GL_TEXTURE_CUBE_MAP, textureId);
         try {
             for (int face : FACE_TARGETS) {

@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.framebuffer;
 
 
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
@@ -17,7 +18,9 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.CgBufferUtils;
 import com.crystalgraphics.util.trace.CgChannels;
 import java.nio.IntBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.TreeMap;
 import javax.annotation.Nullable;
 import lombok.Getter;
@@ -457,10 +460,7 @@ public class CgFrameBuffer {
                 for (int layer = 0; layer < arrayLayers; layer++) {
                     if (layer > 0) doBindFbo(CgGL.GL_FRAMEBUFFER, layerFbos[layer - 1] = doGenFramebuffer());
                     doFramebufferTextureLayer(type.glAttachmentPoint(0), tex.getId(), layer);
-                    int status = doCheckFramebufferStatus();
-                    if (status != CgGL.GL_FRAMEBUFFER_COMPLETE) {
-                        throw new IllegalStateException("FBO '" + name + "' layer " + layer + " incomplete: 0x" + Integer.toHexString(status));
-                    }
+                    requireComplete(fmt, LAYER, " layer " + layer);
                 }
                 return;
             }
@@ -538,10 +538,7 @@ public class CgFrameBuffer {
             }
             drawEveryColorSlot();
 
-            // ── Completeness check ─────────────────────────────────────────────
-            int status = doCheckFramebufferStatus();
-            if (status != CgGL.GL_FRAMEBUFFER_COMPLETE)
-                throw new IllegalStateException("FBO '" + name + "' incomplete: 0x" + Integer.toHexString(status));
+            requireComplete(fmt, BASE, "");
 
         } catch (RuntimeException e) {
             // Cleanup on failure. The binding is the enclosing scope's to restore, not ours to zero.
@@ -621,12 +618,30 @@ public class CgFrameBuffer {
                         CgGL.GL_TEXTURE_2D, a.getTexture().getId(), level);
             }
             drawEveryColorSlot();
-            int status = doCheckFramebufferStatus();
-            if (status != CgGL.GL_FRAMEBUFFER_COMPLETE) {
-                throw new IllegalStateException("FBO '" + name + "' level " + level + " incomplete: 0x" + Integer.toHexString(status));
-            }
+            requireComplete(format, LEVEL, " level " + level);
         }
         return id;
+    }
+
+    /** Which framebuffer of a format a completeness check was for: the base, a mip level's, an array layer's. */
+    private static final int BASE = 0, LEVEL = 1, LAYER = 2;
+    /** Formats found complete, by {@link #BASE}, {@link #LEVEL} and {@link #LAYER}. Render thread. */
+    @SuppressWarnings("unchecked")
+    private static final List<CgFrameBufferFormat>[] COMPLETE = new List[] {new ArrayList<>(), new ArrayList<>(), new ArrayList<>()};
+
+    /**
+     * Throws unless the bound framebuffer is complete, checked once a format's attachments (and once each for its levels
+     * and layers): completeness rests on the attachments' formats alone, and on a threaded driver each
+     * {@code glCheckFramebufferStatus} drains its queue, a frame graph's first use of a transient taking milliseconds.
+     */
+    private void requireComplete(CgFrameBufferFormat fmt, int kind, String which) {
+        List<CgFrameBufferFormat> checked = COMPLETE[kind];
+        for (int i = 0; i < checked.size(); i++) if (checked.get(i).sameAttachments(fmt)) return;
+        int status = doCheckFramebufferStatus();
+        if (status != CgGL.GL_FRAMEBUFFER_COMPLETE) {
+            throw new IllegalStateException("FBO '" + name + "'" + which + " incomplete: 0x" + Integer.toHexString(status));
+        }
+        checked.add(fmt);
     }
 
     /**
@@ -1036,7 +1051,7 @@ public class CgFrameBuffer {
      * Called once from {@link #initGl}.
      */
     protected int doGenFramebuffer() {
-        return CgGL.glGenFramebuffers();
+        return CgGlNames.framebuffer();
     }
 
     /**

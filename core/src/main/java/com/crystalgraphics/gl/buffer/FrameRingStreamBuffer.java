@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.buffer;
 
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.trace.CgTrace;
@@ -25,7 +26,7 @@ import java.nio.IntBuffer;
  * binding.rebindPointersIfNeeded(offset);
  * }</pre>
  *
- * <p>A frame that outgrows its region gets fresh storage and the next frame's region doubles: an orphan on
+ * <p>A frame that outgrows its region gets fresh storage with every region doubled, once: an orphan on
  * the mapped ring, keeping the buffer's name; a new buffer on the persistent ring, whose storage is immutable,
  * which bumps {@link #getGeneration()} so bindings re-point. Nothing here waits inside a frame: the only wait
  * is {@link CgFrameRing#awaitRetired} at a frame's first upload, for the frame {@link CgFrameRing#FRAMES} back.</p>
@@ -55,7 +56,6 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
     private int regionBase;
     private int cursor;
     private int mappedAt;
-    private boolean overflowed;
 
     FrameRingStreamBuffer(int target, int capacityBytes, boolean persistent) {
         super(target, capacityBytes);
@@ -159,9 +159,11 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
         } else if (cursor + need > regionBytes) {
             // Doubled now, not only at the next frame: a block uploaded per draw from a small start would
             // otherwise take fresh storage at every upload that overflows, all frame long.
-            overflowed = true;
             CgTrace.add(CgChannels.GL, "frameRing.overflow", 1);
             regionBytes = alignUp(Math.min(regionBytes * 2, Math.max(regionBytes, MAX_REGION_BYTES)));
+            if (CgTrace.isEnabled(CgChannels.GL)) {
+                CgTrace.marker(CgChannels.GL, "frameRing.overflow", target + " to " + regionBytes + " B a region");
+            }
             allocate();
         }
 
@@ -185,18 +187,15 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
         return mappedAt;
     }
 
+    /**
+     * No second re-store after an overflow: the overflow already doubled the regions, and new storage waits for a
+     * threaded driver to drain its queue (T10: 23 ms on a cut's opening frame).
+     */
     private void beginFrame(long now) {
         frame = now;
-        if (overflowed) {
-            // Last frame did not fit. Fresh storage at twice the size needs no wait: nothing reads it.
-            overflowed = false;
-            regionBytes = alignUp(Math.min(regionBytes * 2, Math.max(regionBytes, MAX_REGION_BYTES)));
-            allocate();
-        } else {
-            CgFrameRing.awaitRetired(now - CgFrameRing.FRAMES);
-            cursor = 0;
-            regionBase = CgFrameRing.region(now) * regionBytes;
-        }
+        CgFrameRing.awaitRetired(now - CgFrameRing.FRAMES);
+        cursor = 0;
+        regionBase = CgFrameRing.region(now) * regionBytes;
     }
 
     /** New storage, sized for every region; the old storage lives on until the draws reading it finish. */
@@ -207,7 +206,7 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
                 // Immutable storage cannot be respecified. GL keeps the old buffer alive for the draws
                 // still reading it; the name goes back to the pool, which is why bindings watch generation.
                 CgGL.glDeleteBuffers(glBuffer);
-                glBuffer = CgGL.glGenBuffers();
+                glBuffer = CgGlNames.buffer();
                 generation++;
             }
             bind();

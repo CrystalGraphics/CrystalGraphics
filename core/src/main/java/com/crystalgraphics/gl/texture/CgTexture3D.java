@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.texture;
 
 
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgUploadLease;
@@ -131,7 +132,7 @@ public final class CgTexture3D extends CgTextureAbstract {
         CgTexture3D tex = new CgTexture3D(0, width, height, depth, spec, null);
         tex.levels = levels;
         tex.gpu.run(() -> {
-            int id = CgGL.glGenTextures();
+            int id = CgGlNames.texture();
             tex.textureId = id;
             try {
                 tex.allocate();
@@ -274,7 +275,7 @@ public final class CgTexture3D extends CgTextureAbstract {
 
     /** Level 0 at its size, the texture made first if it has no id yet. */
     private void make() {
-        if (textureId == 0) textureId = CgGL.glGenTextures();
+        if (textureId == 0) textureId = CgGlNames.texture();
         CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
         try {
             CgGL.glTexImage3D(GL_TEXTURE_3D, 0, spec.getGlInternalFormat(), width, height, depth, 0, spec.getGlBaseFormat(),

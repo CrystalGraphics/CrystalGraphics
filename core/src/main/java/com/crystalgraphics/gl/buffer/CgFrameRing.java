@@ -47,6 +47,14 @@ public final class CgFrameRing {
         return frame;
     }
 
+    /**
+     * The newest frame the GPU is known to have finished, -1 for none: whatever was issued in it or before has
+     * finished too, known with no query.
+     */
+    public static long retired() {
+        return retired;
+    }
+
     /** Which of a ring's {@link #FRAMES} regions belongs to {@code frame}. */
     public static int region(long frame) {
         return (int) (frame % FRAMES);

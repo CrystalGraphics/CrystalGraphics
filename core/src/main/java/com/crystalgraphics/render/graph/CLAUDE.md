@@ -29,7 +29,9 @@ them as from a raster pass's; `fill`, `update` and `copy` on buffers are passes 
 its bytes when recorded; its `float[]` form reads the caller's array when the frame executes, for a buffer rewritten
 every frame, so that array must not change until then.
 `resize(buffer, desc)` is copies of each version into a new handle and a release of the old: a pool outgrowing its
-capacity.
+capacity. A persistent or history buffer's storage is made at its first use, unless `CgExecutor.makeStorage(buffer)`
+made it ahead (a prepare, so the frame that first uses it allocates nothing). Buffer, texture and framebuffer names
+come from `gl.CgGlNames`, refilled between frames, since each `glGen*` waits for a threaded driver to drain its queue.
 
 ```java
 CgGraphBuffer state = CgGraphBuffer.history("particles", CgBufferDesc.elements(n, 32, CgBufferUsage.STORAGE));

@@ -234,6 +234,13 @@ public final class CgFrameBufferFormat {
                 && (depthType == that.depthType);
     }
 
+    /** Whether {@code o} has the same attachments as this, whatever its name: what completeness depends on. */
+    public boolean sameAttachments(CgFrameBufferFormat o) {
+        return this == o || depthRenderbuffer == o.depthRenderbuffer && samples == o.samples && maxSamples == o.maxSamples
+                && Arrays.equals(colorSlots, o.colorSlots) && Arrays.equals(colorRenderbuffer, o.colorRenderbuffer)
+                && depthType == o.depthType;
+    }
+
     @Override
     public int hashCode() {
         int h = name.hashCode();
