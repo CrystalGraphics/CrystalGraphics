@@ -87,12 +87,14 @@ public final class CgGL {
     private static CgGlStateManager state() {
         if (CgGLAudit.ON) CgGLAudit.check(backend);
         if (COUNT_CALLS) CgTrace.add(TRACE, STATE_SETS, 1);
+        if (CgGlCallSites.ON) CgGlCallSites.set();
         return CgGlState.manager();
     }
 
     private static CgGLBackend gl() {
         if (CgGLAudit.ON) CgGLAudit.check(backend);
         if (COUNT_CALLS) CgTrace.add(TRACE, CALLS, 1);
+        if (CgGlCallSites.ON) CgGlCallSites.call();
         return backend;
     }
 
@@ -902,6 +904,10 @@ public final class CgGL {
     }
 
     public static void glUseProgram(int program) {
+        if (CgGlCallSites.ON) {
+            CgGlCallSites.value("glUseProgram", 0, program);
+            CgGlCallSites.program(program);
+        }
         if (state().programChanged(program)) gl().glUseProgram(program);
     }
 
@@ -915,6 +921,7 @@ public final class CgGL {
     }
 
     public static void glUniform1i(int location, int v0) {
+        if (CgGlCallSites.ON) CgGlCallSites.value("glUniform1i", location, v0);
         gl().glUniform1i(location, v0);
     }
 
@@ -973,11 +980,13 @@ public final class CgGL {
 
     /** Sets a float-array uniform ({@code glUniform1fv} semantics). */
     public static void glUniform1(int location, FloatBuffer values) {
+        if (CgGlCallSites.ON) CgGlCallSites.value("glUniform1", location, values.hashCode());
         gl().glUniform1(location, values);
     }
 
     /** Sets an int-array uniform ({@code glUniform1iv} semantics). */
     public static void glUniform1(int location, IntBuffer values) {
+        if (CgGlCallSites.ON) CgGlCallSites.value("glUniform1", location, values.hashCode());
         gl().glUniform1(location, values);
     }
 
@@ -1030,12 +1039,16 @@ public final class CgGL {
     public static void glBindBufferBase(int target, int index, int buffer) {
         if (target == GL_SHADER_STORAGE_BUFFER && !state().storageBindingChanged(index, buffer, 0, 0)) return;
         if (target == GL_TRANSFORM_FEEDBACK_BUFFER && !state().feedbackBindingChanged(index, buffer, 0, 0)) return;
+        if (CgGlCallSites.ON && target == GL_UNIFORM_BUFFER) CgGlCallSites.value("glBindBufferRange(UNIFORM)", index, (long) buffer * 961);
         gl().glBindBufferBase(target, index, buffer);
     }
 
     public static void glBindBufferRange(int target, int index, int buffer, long offset, long size) {
         if (target == GL_SHADER_STORAGE_BUFFER && !state().storageBindingChanged(index, buffer, offset, size)) return;
         if (target == GL_TRANSFORM_FEEDBACK_BUFFER && !state().feedbackBindingChanged(index, buffer, offset, size)) return;
+        if (CgGlCallSites.ON && target == GL_UNIFORM_BUFFER) {
+            CgGlCallSites.value("glBindBufferRange(UNIFORM)", index, (((long) buffer * 31 + offset) * 31) + size);
+        }
         gl().glBindBufferRange(target, index, buffer, offset, size);
     }
 
@@ -1786,6 +1799,7 @@ public final class CgGL {
 
     /** Binds a sampler object to a texture unit (ARB_sampler_objects / GL 3.3). */
     public static void glBindSampler(int unit, int sampler) {
+        if (CgGlCallSites.ON) CgGlCallSites.value("glBindSampler", unit, sampler);
         gl().glBindSampler(unit, sampler);
     }
 
@@ -1961,6 +1975,7 @@ public final class CgGL {
     }
 
     public static void glBindFramebuffer(int target, int fbo) {
+        if (CgGlCallSites.ON) CgGlCallSites.value("glBindFramebuffer", target, fbo);
         if (state().fboChanged(target, fbo)) gl().bindFramebuffer(target, fbo);
     }
 

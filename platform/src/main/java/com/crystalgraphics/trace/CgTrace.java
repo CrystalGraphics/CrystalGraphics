@@ -535,6 +535,19 @@ public final class CgTrace {
         return handle().owner;
     }
 
+    /**
+     * Appends this thread's open zones, outermost first, joined by {@code separator}: where a diagnostic says the
+     * thread is. Nothing when none is open or the trace is not recording. Allocates; diagnostics only.
+     */
+    public static void openZones(StringBuilder into, String separator) {
+        CgTraceZones zones = local();
+        int depth = Math.min(zones.depth(), CgTraceZones.MAX_DEPTH);
+        for (int i = 0; i < depth; i++) {
+            if (i > 0) into.append(separator);
+            into.append(CgTraceNames.nameOf(zones.openName(i)));
+        }
+    }
+
     /** Interns {@code name} and returns its id — the form a hot call site should hold in a constant. */
     public static int name(String name) {
         return CgTraceNames.intern(name);

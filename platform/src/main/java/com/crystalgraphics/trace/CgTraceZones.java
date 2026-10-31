@@ -31,7 +31,7 @@ final class CgTraceZones {
     static final long OPEN = Long.MIN_VALUE;
 
     /** Deep enough for any real call tree; past it the tree is a recursion bug, not instrumentation. */
-    private static final int MAX_DEPTH = 64;
+    static final int MAX_DEPTH = 64;
 
     /** A push that could not be recorded. Kept on the stack so the matching pop still balances. */
     private static final int DROPPED = -1;
@@ -175,6 +175,8 @@ final class CgTraceZones {
             AtomicLongFieldUpdater.newUpdater(CgTraceZones.class, "written");
 
     private final int[] stack = new int[MAX_DEPTH];
+    /** The open zones' names, beside {@link #stack}: what {@link CgTrace#openZones} reads. */
+    private final int[] names = new int[MAX_DEPTH];
     private int depth;
 
     /** Zones lost to a full arena or to a call tree deeper than {@link #MAX_DEPTH}. Reported, never hidden. */
@@ -287,8 +289,14 @@ final class CgTraceZones {
         return depth;
     }
 
+    /** The name of the zone open at {@code level}, 0 outermost; below {@link #depth()} and {@link #MAX_DEPTH}. */
+    int openName(int level) {
+        return names[level];
+    }
+
     /** Opens a zone. The caller has already checked the channel. */
     void push(int name, int channelIndex, long now) {
+        if (depth < names.length) names[depth] = name;
         if (depth >= MAX_DEPTH) {
             dropped++;
             // NOT a silent return: the matching pop must still find something, or every zone after it
