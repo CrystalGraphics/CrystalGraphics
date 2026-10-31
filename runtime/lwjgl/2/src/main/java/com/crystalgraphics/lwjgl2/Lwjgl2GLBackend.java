@@ -1,8 +1,10 @@
 package com.crystalgraphics.lwjgl2;
 
 import com.crystalgraphics.platform.gl.CgGLBackend;
+import com.crystalgraphics.platform.gl.CgGLWorkerContext;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import org.lwjgl.BufferUtils;
+import org.lwjgl.LWJGLException;
 import org.lwjgl.opengl.*;
 
 import java.nio.ByteBuffer;
@@ -173,6 +175,43 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     @Override
     public int glGetProgrami(int program, int pname) {
         return GL20.glGetProgrami(program, pname);
+    }
+
+    /** LWJGL 2.9 predates the extension and binds no entry point: the driver keeps its own thread count. */
+    @Override
+    public void glMaxShaderCompilerThreads(int count) {
+    }
+
+    /** A {@link SharedDrawable} of the Display's: what LWJGL 2 shares a context through. Null before the Display exists. */
+    @Override
+    public CgGLWorkerContext createWorkerContext() {
+        if (!Display.isCreated()) return null;
+        try {
+            SharedDrawable shared = new SharedDrawable(Display.getDrawable());
+            return new CgGLWorkerContext() {
+                @Override public void makeCurrent() {
+                    try {
+                        shared.makeCurrent();
+                    } catch (LWJGLException e) {
+                        throw new IllegalStateException("worker context not made current", e);
+                    }
+                }
+
+                @Override public void release() {
+                    try {
+                        shared.releaseContext();
+                    } catch (LWJGLException ignored) {
+                        // Destroyed next.
+                    }
+                }
+
+                @Override public void destroy() {
+                    shared.destroy();
+                }
+            };
+        } catch (LWJGLException e) {
+            return null;
+        }
     }
 
     @Override

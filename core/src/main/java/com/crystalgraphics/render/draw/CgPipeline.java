@@ -12,6 +12,11 @@ import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgWarmBudget;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.variable.CgVar;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -48,6 +53,16 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class CgPipeline {
 
+    private static final Logger LOGGER = LogManager.getLogger("CgPipeline");
+    private static final int SUBMIT_ZONE = CgTrace.name("pipeline.prepare.submit"),
+            POLL_ZONE = CgTrace.name("pipeline.prepare.poll"), VARIANT_ZONE = CgTrace.name("pipeline.prepare.variant");
+    private static final int PRECACHED = CgTrace.name("pipeline.precached"), MISSED = CgTrace.name("pipeline.missed"),
+            TOO_LATE = CgTrace.name("pipeline.too-late"), HITCHES = CgTrace.name("pipeline.hitches");
+    private static final CgVar.Bool LOG_MISSES = CgVar.bool("crystalgraphics.pipeline.logMisses", false, CgVar.DEV,
+            "Log each pipeline a draw found unbuilt (pipeline.missed, pipeline.too-late), with its shader, pass and keywords.");
+    /** Unreal's {@code r.PSO.RuntimeCreationHitchThreshold}. */
+    private static final long HITCH_NANOS = 20_000_000L;
+    private static long missed, tooLate, hitches;
     private static final ConcurrentHashMap<Key, CgPipeline> INTERNED = new ConcurrentHashMap<>();
     private static final Object REGISTERING = new Object();
     private static volatile CgPipeline[] byId = new CgPipeline[64];
@@ -105,6 +120,8 @@ public final class CgPipeline {
     private int programRevision = -1;
     /** The shader revision {@link #prepare} last answered true at: a built pipeline spends no warming budget. */
     private int preparedRevision = -1;
+    /** The shader revision {@link #prepare} was last asked at: a draw finding it unbuilt is too late, not missed. */
+    private int requestedRevision = -1;
     private int instanceBaseLocation = UNRESOLVED, vertexBaseLocation = UNRESOLVED;
 
     /** {@link #withState} answers, by state identity. */
@@ -603,6 +620,7 @@ public final class CgPipeline {
     public boolean prepare() {
         if (preparedRevision == shader.getRevisionNumber() && !shader.isDirty()) return true;
         preparedRevision = -1;
+        requestedRevision = shader.getRevisionNumber();
         if (!CgWarmBudget.allows()) return false;
         long start = System.nanoTime();
         boolean ready;
@@ -615,14 +633,25 @@ public final class CgPipeline {
         return ready;
     }
 
+    /** Whether {@link #prepare()} last answered true for the shader as it is now: asks and starts nothing. */
+    public boolean isPrepared() {
+        return preparedRevision == shader.getRevisionNumber() && !shader.isDirty();
+    }
+
     private boolean startOrPoll() {
         if (shader.isDirty()) {
-            shader.submitRecompile(pass == CgRenderPassVariant.FORWARD);
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, SUBMIT_ZONE)) {
+                shader.submitRecompile(pass == CgRenderPassVariant.FORWARD);
+            }
             return false;
         }
-        if (!shader.pollPending()) return false;
-        return shader.prepareVariant(passName != null ? passName : pass == CgRenderPassVariant.FORWARD ? null : pass.lightModeName(),
-                compiled);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, POLL_ZONE)) {
+            if (!shader.pollPending()) return false;
+        }
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, VARIANT_ZONE)) {
+            return shader.prepareVariant(passName != null ? passName : pass == CgRenderPassVariant.FORWARD ? null
+                    : pass.lightModeName(), compiled);
+        }
     }
 
     /**
@@ -631,22 +660,80 @@ public final class CgPipeline {
      */
     @Nullable
     public CgShader program() {
+        return resolved() ? program : resolve();
+    }
+
+    /** Whether {@link #program()} answers its kept program, building and waiting for nothing. */
+    private boolean resolved() {
+        return program != null && programRevision == shader.getRevisionNumber() && !shader.isDirty() && !shader.isPending();
+    }
+
+    /** The program looked up or built at the draw, classified as Unreal classifies a PSO its draw asks for. */
+    @Nullable
+    private CgShader resolve() {
+        int before = shader.getRevisionNumber();
+        boolean dirty = shader.isDirty();
+        boolean prepared = preparedRevision == before && !dirty;
+        boolean asked = requestedRevision == before;
+        long waitsBefore = CgMaterialShader.compileWaits();
+        long start = System.nanoTime();
         shader.awaitPending();
         if (shader.isDirty()) shader.recompile();
         int revision = shader.getRevisionNumber();
-        if (program != null && programRevision == revision) return program;
-        program = passName != null ? shader.getOrCompile(passName, compiled)
-                : pass == CgRenderPassVariant.FORWARD ? shader.getOrCompileForwardPass(compiled)
-                : shader.getOrCompile(pass.lightModeName(), compiled);
-        programRevision = revision;
-        instanceBaseLocation = UNRESOLVED;
-        vertexBaseLocation = UNRESOLVED;
+        if (program == null || programRevision != revision) {
+            program = passName != null ? shader.getOrCompile(passName, compiled)
+                    : pass == CgRenderPassVariant.FORWARD ? shader.getOrCompileForwardPass(compiled)
+                    : shader.getOrCompile(pass.lightModeName(), compiled);
+            programRevision = revision;
+            instanceBaseLocation = UNRESOLVED;
+            vertexBaseLocation = UNRESOLVED;
+        }
+        long took = System.nanoTime() - start;
+        // Built by another pipeline of the same program (a state of its own, a sibling) is built all the same.
+        if (prepared || !dirty && CgMaterialShader.compileWaits() == waitsBefore) {
+            CgTrace.add(CgChannels.GL, PRECACHED, 1);
+        } else {
+            if (asked) tooLate++;
+            else missed++;
+            CgTrace.add(CgChannels.GL, asked ? TOO_LATE : MISSED, 1);
+            if (LOG_MISSES.get()) LOGGER.warn("pipeline {}: {} at its draw, {} ms", asked ? "too late" : "missed", this, took / 1_000_000);
+        }
+        if (took > HITCH_NANOS) {
+            hitches++;
+            CgTrace.add(CgChannels.GL, HITCHES, 1);
+        }
         return program;
     }
 
     /**
+     * How many pipelines a draw found unbuilt this session, never asked for ({@link #prepare()}) or asked for and not
+     * yet built: Unreal's Missed and TooLate. Each built at its draw. Also the trace counters {@code pipeline.missed}
+     * and {@code pipeline.too-late}, beside {@code pipeline.precached}.
+     *
+     * <pre>{@code
+     * long before = CgPipeline.misses();
+     * // ... a scene's first frames, everything it draws prepared ...
+     * assert CgPipeline.misses() == before;
+     * }</pre>
+     */
+    public static long misses() {
+        return missed + tooLate;
+    }
+
+    /** How many of {@link #misses()} were never asked for. */
+    public static long missedUnasked() {
+        return missed;
+    }
+
+    /** How many times a draw's program took over 20 ms to resolve ({@code pipeline.hitches}): Unreal's runtime-creation hitch. */
+    public static long hitches() {
+        return hitches;
+    }
+
+    /**
      * Applies the declared render state and binds the program; false, binding nothing, when there is no program.
-     * The pass's own state goes first.
+     * The pass's own state goes first. A program not built is built here, classified and counted ({@link #misses()}); a
+     * world draw is held instead until its pipelines are ({@code CgWorldRenderer.skipUnready}).
      */
     public boolean bind() {
         CgShader bound = program();
@@ -684,8 +771,11 @@ public final class CgPipeline {
 
     @Override
     public String toString() {
-        return "CgPipeline#" + id + "(" + (passName != null ? passName : pass) + " " + keywords + " " + kind + (multiDraw ? " multi-draw" : "")
-                + (overdraw ? " overdraw" : "") + (emission ? " emission" : "") + (depth ? " depth prepass" : "") + ")";
+        return "CgPipeline#" + id + "(" + shader.getResourcePath() + " " + (passName != null ? passName : pass) + " " + keywords
+                + " " + kind + (multiDraw ? " multi-draw" : "")
+                + (overdraw ? " overdraw" : "") + (emission ? " emission" : "") + (depth ? " depth prepass" : "")
+                + (fold ? " fold" : "") + (cover ? " cover" : "") + (volume ? " volume" : "") + (normals ? " normals" : "")
+                + (skinned ? " skinned" : "") + (customData ? " custom data" : "") + ")";
     }
 
     /** A shader and a render state by identity, since neither has value equality worth trusting. */

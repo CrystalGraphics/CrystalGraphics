@@ -1,6 +1,7 @@
 package com.crystalgraphics.api.shader;
 
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.gl.shader.CgLinkWorker;
 import com.crystalgraphics.gl.shader.CgProgramBinaryCache;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -68,8 +69,13 @@ public final class CgShaderProgram {
     /** Links submitted where the driver links on the calling thread: each is a stall of that thread. */
     private static final int BLOCKING_LINKS = CgTrace.name("shader.blocking-links");
 
-    private final int programId;
+    private static final int LINK_WAIT = CgTrace.name("shader.linkWait"), LINK_WAITS = CgTrace.name("shader.link-waits");
+
+    /** 0 until a link on the {@link CgLinkWorker} lands: the worker makes the program. */
+    private int programId;
     private boolean deleted;
+    /** A link on the worker this program has not taken yet. */
+    @Nullable private WorkerLink link;
 
     /** The shader objects of a link not yet finished; 0 when nothing is pending. */
     private int pendingVert;
@@ -127,7 +133,7 @@ public final class CgShaderProgram {
      */
     public static CgShaderProgram compileCapture(String vertex, @Nullable String geometry, @Nullable String fragment,
                                                  @Nullable String[] varyings) {
-        CgShaderProgram program = create();
+        CgShaderProgram program = new CgShaderProgram(CgGL.glCreateProgram());
         int id = program.programId;
         int[] stages = new int[3];
         try {
@@ -165,9 +171,12 @@ public final class CgShaderProgram {
         return shader;
     }
 
-    /** A program with nothing linked yet, for a {@link #submitLink} to fill. */
+    /**
+     * A program with nothing linked yet, for a {@link #submitLink} to fill. Where the {@link CgLinkWorker} runs, it has
+     * no id until that link is finished: the worker makes it.
+     */
     public static CgShaderProgram create() {
-        return new CgShaderProgram(CgGL.glCreateProgram());
+        return new CgShaderProgram(CgLinkWorker.on() ? 0 : CgGL.glCreateProgram());
     }
 
     // ── Binding and lifetime ───────────────────────────────────────────────
@@ -190,6 +199,10 @@ public final class CgShaderProgram {
     /** Releases the GL program, and any shader objects a pending link still holds. A second call does nothing. */
     public void delete() {
         if (deleted) return;
+        if (link != null) {
+            if (link.discard()) programId = link.program;   // landed already: ours to delete
+            link = null;
+        }
         if (pendingVert != 0) {
             CgGL.glDeleteShader(pendingVert);
             CgGL.glDeleteShader(pendingFrag);
@@ -200,7 +213,7 @@ public final class CgShaderProgram {
             CgGL.glDeleteShader(pendingCompute);
             pendingCompute = 0;
         }
-        CgGL.glDeleteProgram(programId);
+        if (programId != 0) CgGL.glDeleteProgram(programId);
         deleted = true;
     }
 
@@ -230,12 +243,13 @@ public final class CgShaderProgram {
      */
     public void submitLink(String vertexSource, String fragmentSource, CgVertexFormat format) {
         finishPendingQuietly();
-        detachAll();
         String[] parts = new String[2 + (format != null ? format.getAttributeCount() : 0)];
         parts[0] = vertexSource;
         parts[1] = fragmentSource;
         for (int i = 2; i < parts.length; i++) parts[i] = format.getAttribute(i - 2).getName();
         String key = CgProgramBinaryCache.key(parts);
+        if (onWorker(new WorkerLink(vertexSource, fragmentSource, null, parts, key))) return;
+        detachAll();
         if (key != null && CgProgramBinaryCache.load(programId, key)) return;
         pendingKey = key;
 
@@ -260,8 +274,9 @@ public final class CgShaderProgram {
     /** {@link #submitLink} for a compute program: one compute shader, linked alone. */
     public void submitComputeLink(String computeSource) {
         finishPendingQuietly();
-        detachAll();
         String key = CgProgramBinaryCache.key(computeSource);
+        if (onWorker(new WorkerLink(null, null, computeSource, null, key))) return;
+        detachAll();
         if (key != null && CgProgramBinaryCache.load(programId, key)) return;
         pendingKey = key;
         pendingCompute = CgGL.glCreateShader(CgGL.GL_COMPUTE_SHADER);
@@ -291,6 +306,7 @@ public final class CgShaderProgram {
 
     /** Whether {@link #finishLink} would return without waiting. True wherever the driver cannot say. */
     public boolean isLinkDone() {
+        if (link != null) return link.isDone();
         return pendingVert == 0 && pendingCompute == 0 || !CgCapabilities.detect().isParallelShaderCompile()
                 || CgGL.glGetProgrami(programId, CgGL.GL_COMPLETION_STATUS_KHR) == CgGL.GL_TRUE;
     }
@@ -300,6 +316,10 @@ public final class CgShaderProgram {
      * when nothing is pending.
      */
     public void finishLink() {
+        if (link != null) {
+            takeLink();
+            return;
+        }
         if (pendingCompute != 0) {
             finishComputeLink();
             return;
@@ -346,6 +366,125 @@ public final class CgShaderProgram {
         } finally {
             CgGL.glDetachShader(programId, computeId);
             CgGL.glDeleteShader(computeId);
+        }
+    }
+
+    /**
+     * Hands a link of a program never linked to the {@link CgLinkWorker}; false where it runs on this thread instead.
+     * A program already linked keeps its id and relinks here: draws may be reading it.
+     */
+    private boolean onWorker(WorkerLink work) {
+        if (programId != 0) return false;
+        if (CgLinkWorker.submit(work)) {
+            link = work;
+            return true;
+        }
+        programId = CgGL.glCreateProgram();
+        return false;
+    }
+
+    /** The worker's link, waited for if it has not landed: its program becomes this one's, or its failure is thrown. */
+    private void takeLink() {
+        WorkerLink taken = link;
+        link = null;
+        if (!taken.isDone()) {
+            CgLinkWorker.boost(taken);
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, LINK_WAIT)) {
+                taken.await();
+            }
+            CgTrace.add(CgChannels.GL, LINK_WAITS, 1);
+        }
+        programId = taken.program;
+        String error = taken.error != null ? taken.error : taken.failure();
+        if (error != null) {
+            if (programId != 0) CgGL.glDeleteProgram(programId);
+            programId = 0;
+            throw new IllegalStateException(error);
+        }
+    }
+
+    /**
+     * One link on the {@link CgLinkWorker}: the program made, compiled and linked there, its binary loaded or kept, its
+     * status and log read there. Vertex and fragment sources, or a compute source.
+     */
+    private static final class WorkerLink extends CgLinkWorker.Job {
+        @Nullable private final String vertex, fragment, compute;
+        @Nullable private final String[] attributes;
+        @Nullable private final String key;
+        private int vert, frag, comp;
+        /** Read by the render thread once {@link #isDone()}. */
+        private int program;
+        @Nullable private String error;
+
+        WorkerLink(@Nullable String vertex, @Nullable String fragment, @Nullable String compute,
+                   @Nullable String[] attributes, @Nullable String key) {
+            this.vertex = vertex;
+            this.fragment = fragment;
+            this.compute = compute;
+            this.attributes = attributes;
+            this.key = key;
+        }
+
+        @Override
+        protected boolean start() {
+            program = CgGL.glCreateProgram();
+            if (key != null && CgProgramBinaryCache.load(program, key)) return true;
+            if (compute != null) {
+                comp = shader(CgGL.GL_COMPUTE_SHADER, compute);
+            } else {
+                vert = shader(CgGL.GL_VERTEX_SHADER, vertex);
+                frag = shader(CgGL.GL_FRAGMENT_SHADER, fragment);
+                // The parts after the two sources are the attribute names, in location order.
+                for (int i = 2; i < attributes.length; i++) CgGL.glBindAttribLocation(program, i - 2, attributes[i]);
+            }
+            CgProgramBinaryCache.retrievable(program, key);
+            CgGL.glLinkProgram(program);
+            return false;
+        }
+
+        private int shader(int type, String source) {
+            int shader = CgGL.glCreateShader(type);
+            CgGL.glShaderSource(shader, source);
+            CgGL.glCompileShader(shader);
+            CgGL.glAttachShader(program, shader);
+            return shader;
+        }
+
+        @Override
+        protected boolean linked() {
+            return CgGL.glGetProgrami(program, CgGL.GL_COMPLETION_STATUS_KHR) == CgGL.GL_TRUE;
+        }
+
+        @Override
+        protected void finish() {
+            long began = System.nanoTime();
+            try {
+                if (comp != 0 && CgGL.glGetShaderi(comp, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
+                    error = "Compute shader compile failed: " + CgGL.glGetShaderInfoLog(comp, 4096);
+                } else if (vert != 0 && CgGL.glGetShaderi(vert, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
+                    error = "Vertex shader compile failed: " + CgGL.glGetShaderInfoLog(vert, 4096);
+                } else if (frag != 0 && CgGL.glGetShaderi(frag, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
+                    error = "Fragment shader compile failed: " + CgGL.glGetShaderInfoLog(frag, 4096);
+                } else if (CgGL.glGetProgrami(program, CgGL.GL_LINK_STATUS) != CgGL.GL_TRUE) {
+                    error = (comp != 0 ? "Compute program" : "Shader program") + " link failed: "
+                            + CgGL.glGetProgramInfoLog(program, 4096);
+                } else {
+                    CgProgramBinaryCache.store(program, key);
+                }
+            } finally {
+                for (int shader : new int[]{vert, frag, comp}) {
+                    if (shader == 0) continue;
+                    CgGL.glDetachShader(program, shader);
+                    CgGL.glDeleteShader(shader);
+                }
+                CgTrace.marker(CgChannels.GL, "shader.link.size", (compute != null ? "c " + compute.length()
+                        : "v " + vertex.length() + " f " + fragment.length()) + " ms " + (System.nanoTime() - began) / 1_000_000);
+            }
+        }
+
+        @Override
+        protected int program() {
+            return program;
         }
     }
 

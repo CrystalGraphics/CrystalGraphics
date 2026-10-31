@@ -155,6 +155,8 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     boolean warmed;
     /** Its emitters' GPU programs have been started. */
     boolean gpuPrepared;
+    /** Its look's kernels are built, so it ticks: until then it holds at age 0 (Niagara's delayed activation). */
+    boolean activated;
     private CgVfxLook look;
     private CgVfxValues values;
     private State state = State.PLAYING;
@@ -308,6 +310,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         values = carried;
         warmed = false;
         gpuPrepared = false;
+        activated = false;
     }
 
     /** Plays it again from its start, fast-forwarded to its age now by its system's next update: a structural reload. */

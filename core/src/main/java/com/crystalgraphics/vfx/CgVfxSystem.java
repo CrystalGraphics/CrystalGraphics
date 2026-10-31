@@ -16,6 +16,8 @@ import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import java.util.concurrent.CompletableFuture;
+import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.render.graph.CgRehearsal;
@@ -43,6 +45,8 @@ import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxRecord;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxRibbonRendererProperties;
+import com.crystalgraphics.vfx.particle.ribbon.CgVfxRibbonGeneration;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShapeCoalescing;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
@@ -157,8 +161,10 @@ public final class CgVfxSystem {
             PATHS_ZONE = CgTrace.name("vfx.paths.upload"), PARTICLES_ZONE = CgTrace.name("vfx.frame.particles"),
             FRAME_END_ZONE = CgTrace.name("vfx.frame.end"), ROWS_ZONE = CgTrace.name("vfx.rows.upload"), MATERIALS_ZONE = CgTrace.name("vfx.prepare.materials"),
             PROGRAMS_ZONE = CgTrace.name("vfx.prepare.programs"), EMITTER_ZONE = CgTrace.name("vfx.prepare.emitter"),
+            ALLOCATE_ZONE = CgTrace.name("vfx.warm.allocate"), POLL_ZONE = CgTrace.name("vfx.warm.poll"),
             CULLED = CgTrace.name("vfx.culled"), ASLEEP = CgTrace.name("vfx.asleep"),
             TICKS = CgTrace.name("vfx.ticks"), CAPPED = CgTrace.name("vfx.ticks.capped"), HELD = CgTrace.name("vfx.ticks.held"),
+            EFFECTS_HELD = CgTrace.name("vfx.effects-held"),
             EMITTERS_ZONE = CgTrace.name("vfx.emitters"), EFFECT_TICK_ZONE = CgTrace.name("vfx.effect.tick"),
             WORKERS_ZONE = CgTrace.name("vfx.emitters.workers"), ADMIT_ZONE = CgTrace.name("vfx.emitters.admit"),
             GPU_STEPS_ZONE = CgTrace.name("vfx.gpu.steps"),
@@ -457,7 +463,8 @@ public final class CgVfxSystem {
                     air.tick(simulated);
                     for (int i = 0; i < effects.size(); i++) {
                         CgVfxEffect<?> effect = effects.get(i);
-                        if (effect.state() != CgVfxEffect.State.DEAD && !effect.asleep && effect.timeRate > 0f) {
+                        if (effect.state() != CgVfxEffect.State.DEAD && !effect.asleep && effect.timeRate > 0f
+                                && activated(effect)) {
                             int zone = effect.owner != null ? effect.owner.tickZone : EFFECT_TICK_ZONE;
                             try (CgTrace.Zone stepping = CgTrace.zone(CgVfxTrace.CHANNEL, zone)) {
                                 effect.step(TICK * effect.timeRate);
@@ -910,7 +917,7 @@ public final class CgVfxSystem {
             for (int i = 0; i < effects.size(); i++) {
                 CgVfxEffect<?> effect = effects.get(i);
                 // Killed since the update: cleared by its owner, or failed.
-                if (effect.state() == CgVfxEffect.State.DEAD || effect.asleep) continue;
+                if (effect.state() == CgVfxEffect.State.DEAD || effect.asleep || !effect.activated) continue;
                 int zone = effect.owner != null ? effect.owner.submitZone : EFFECT_ZONE;
                 try (CgTrace.Zone submitting = CgTrace.zone(CgVfxTrace.CHANNEL, zone)) {
                     effect.clearBounds();
@@ -1228,6 +1235,7 @@ public final class CgVfxSystem {
             pool.expect(emitter, emitter.peakAlive());
             expected.add(pool);
             if (pool.record().has(CgVfxRecord.Tail.LIGHT)) CgVfxParticleLights.prepare();
+            prepareRibbons(emitter);
             CgVfxFrame.slotMesh(emitter.drawLayout(), emitter.peakAlive());
             prepareChildren(emitter, -1, tier + 1);
         } catch (RuntimeException e) {
@@ -1252,6 +1260,67 @@ public final class CgVfxSystem {
         return tier;
     }
 
+    /**
+     * Whether {@code effect} may tick: its look's kernels are built, so its first step compiles and waits for nothing.
+     * Until then it holds at age 0, drawing nothing, as Niagara delays a system's activation until its PSOs are
+     * precached ({@code ENiagaraSystemPSOPrecachingDelayMode}, NiagaraScalabilitySettings.h:21). Its draws' programs are
+     * the world renderer's to hold. Counted as {@code vfx.effects-held}.
+     */
+    private boolean activated(CgVfxEffect<?> effect) {
+        if (effect.activated) return true;
+        CgVfxLook look = effect.look();
+        // A server's copy, or a system with no GL on its thread (a test), has no kernels to wait for.
+        if (!effect.authoritative() && CgGL.mayIssueGl() && !readyLooks.contains(look)) {
+            List<CgKernel> kernels = lookKernels.computeIfAbsent(look, l -> {
+                try {
+                    return CgKernel.collect(() -> prepareKernels(l));
+                } catch (RuntimeException e) {
+                    return List.of();   // it fails at its own step, alone, as a look that will not prepare does
+                }
+            });
+            for (int i = 0; i < kernels.size(); i++) {
+                if (!kernels.get(i).isReady()) {
+                    CgVfxTrace.count(EFFECTS_HELD, 1);
+                    return false;
+                }
+            }
+            readyLooks.add(look);
+        }
+        effect.activated = true;
+        return true;
+    }
+
+    /** Every kernel a look's emitters dispatch, prepared: Range's, each pool's Step and Look, ribbons and sorts. */
+    private static void prepareKernels(CgVfxLook look) {
+        CgVfxRange.prepare();
+        List<CgVfxEmitter> emitters = look.emitters();
+        for (int k = 0; k < emitters.size(); k++) prepareKernels(emitters.get(k), feedTier(look, emitters.get(k)));
+    }
+
+    private static void prepareKernels(CgVfxEmitter emitter, int tier) {
+        CgVfxParticlePool.prepare(emitter, tier);
+        prepareRibbons(emitter);
+        for (int e = 0; e < emitter.events().size(); e++) {
+            CgVfxEmitter child = (CgVfxEmitter) emitter.events().get(e).child();
+            if (child != null && tier + 1 < CgVfxShape.TIERS) prepareKernels(child, tier + 1);
+        }
+    }
+
+    /** Looks whose kernels were found built, and each look's kernels, gathered once. */
+    private final Set<CgVfxLook> readyLooks = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Map<CgVfxLook, List<CgKernel>> lookKernels = new IdentityHashMap<>();
+
+    /** The ribbon generation's kernels and sorts, for an emitter a ribbon renderer draws: else its first ribbon builds them. */
+    private static void prepareRibbons(CgVfxEmitter emitter) {
+        List<CgVfxRendererProperties> renderers = emitter.renderers();
+        for (int i = 0; i < renderers.size(); i++) {
+            if (renderers.get(i) instanceof CgVfxRibbonRendererProperties) {
+                CgVfxRibbonGeneration.prepare();
+                return;
+            }
+        }
+    }
+
     private void prepareChildren(CgVfxEmitter parent, int fedAlive, int tier) {
         for (int e = 0; e < parent.events().size(); e++) {
             CgVfxEmitter child = (CgVfxEmitter) parent.events().get(e).child();
@@ -1262,6 +1331,7 @@ public final class CgVfxSystem {
             pool.expect(child, alive);
             expected.add(pool);
             if (pool.record().has(CgVfxRecord.Tail.LIGHT)) CgVfxParticleLights.prepare();
+            prepareRibbons(child);
             CgVfxFrame.slotMesh(child.drawLayout(), alive);
             prepareChildren(child, alive, tier + 1);
         }
@@ -1327,16 +1397,20 @@ public final class CgVfxSystem {
         }
         if (gpuWarming.isEmpty() && !expected.isEmpty() && CgWarmBudget.allows()) {
             long start = System.nanoTime();
-            // Every emitter queued has expected: their pools' storage made now, not by the first step.
-            for (CgVfxParticlePool pool : expected) if (!pool.isReleased()) pool.allocate();
+            try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, ALLOCATE_ZONE)) {
+                // Every emitter queued has expected: their pools' storage made now, not by the first step.
+                for (CgVfxParticlePool pool : expected) if (!pool.isReleased()) pool.allocate();
+            }
             expected.clear();
             CgWarmBudget.spend(System.nanoTime() - start);
         }
-        for (int i = warming.size() - 1; i >= 0; i--) {
-            CgMaterial material = warming.get(i);
-            if (world.prepare(material, halved.contains(material))) {
-                warming.remove(i);
-                halved.remove(material);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, POLL_ZONE)) {
+            for (int i = warming.size() - 1; i >= 0; i--) {
+                CgMaterial material = warming.get(i);
+                if (world.prepare(material, halved.contains(material))) {
+                    warming.remove(i);
+                    halved.remove(material);
+                }
             }
         }
     }

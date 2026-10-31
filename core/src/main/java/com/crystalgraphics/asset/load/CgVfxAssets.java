@@ -77,7 +77,8 @@ import com.crystalgraphics.util.trace.CgChannels;
 public final class CgVfxAssets {
 
     private static final Logger LOGGER = LogManager.getLogger("CgVfxAssets");
-    private static final int SYNC_LOADS = CgTrace.name("asset.sync-loads");
+    private static final int SYNC_LOADS = CgTrace.name("asset.sync-loads"), LOADING = CgTrace.name("asset.loading"),
+            PREPARING = CgTrace.name("asset.preparing");
     private static final long SYNC_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(30);
     private static final CgLoadPriority[] PRIORITIES = CgLoadPriority.values();
 
@@ -270,6 +271,8 @@ public final class CgVfxAssets {
             if (!h.planned) markPlanned(h);
             if (h.fireIfReady()) removeAt(handles, i);
         }
+        CgTrace.counter(CgChannels.MISC, LOADING, loading.size());
+        CgTrace.counter(CgChannels.MISC, PREPARING, preparing.size());
     }
 
     /**

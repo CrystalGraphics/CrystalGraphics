@@ -9,6 +9,7 @@ import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.render.graph.CgBufferDesc;
@@ -493,7 +494,11 @@ public final class CgVfxParticlePool {
 
     /** As {@link #prepare(CgVfxGpuEmitter)}, for {@code emitter} spawned at feed {@code tier}. */
     public static void prepare(CgVfxGpuEmitter emitter, int tier) {
-        CgVfxShape shape = CgVfxShape.of(emitter, tier);
+        prepare(CgVfxShape.of(emitter, tier));
+    }
+
+    /** The kernels a pool of {@code shape} dispatches, started. */
+    private static void prepare(CgVfxShape shape) {
         CgKernel stepLook = fusedLook(shape);
         if (stepLook != null) {
             stepLook.prepare();   // what its steps dispatch: Step and Look alone are never run
@@ -682,6 +687,14 @@ public final class CgVfxParticlePool {
     static void recordAll(CgRecording recording) {
         for (int i = 0; i < RELEASED.size(); i++) RELEASED.get(i).releaseStorage(recording);
         RELEASED.clear();
+        // A pool whose kernels are still linking holds every pool's steps, so no dispatch waits for a link: the steps
+        // stay queued and the systems hold their effects meanwhile, as they do while a step is unrecorded.
+        for (int i = 0; i < ALL.size(); i++) {
+            if (!ALL.get(i).kernelsReady()) {
+                CgTrace.add(CgVfxTrace.CHANNEL, STEPS_HELD, 1);
+                return;
+            }
+        }
         recordPools(recording, ALL);
     }
 
@@ -841,6 +854,21 @@ public final class CgVfxParticlePool {
     }
 
     /** Readies this pool to step: its kernel, storage and rows. False, its steps taken, when it has nothing to step. */
+    /**
+     * Whether a step would dispatch only built kernels: true with nothing queued. The kernels are gathered from its
+     * shape's prepare once, and started if nothing has. Render thread.
+     */
+    private boolean kernelsReady() {
+        if (kernelsReady || steps == 0 || openSlots == 0 || !CgGL.mayIssueGl()) return true;
+        if (kernels == null) kernels = CgKernel.collect(() -> prepare(shape));
+        for (int i = 0; i < kernels.size(); i++) if (!kernels.get(i).isReady()) return false;
+        kernelsReady = true;
+        return true;
+    }
+
+    @Nullable private List<CgKernel> kernels;
+    private boolean kernelsReady;
+
     private boolean begin(CgRecording recording) {
         betweenSteps("record");
         if (steps == 0) return false;
@@ -2591,7 +2619,8 @@ public final class CgVfxParticlePool {
      * Counts of a pool outgrowing what it was sized for: its record storage, its slot and row tables. Preparing sizes them
      * ahead, so a move playing never grows one; a nonzero count in a frame is a hitch named.
      */
-    private static final int STORAGE_GROWS = CgTrace.name("vfx.pool.storage-grows"), TABLE_GROWS = CgTrace.name("vfx.pool.table-grows");
+    private static final int STORAGE_GROWS = CgTrace.name("vfx.pool.storage-grows"), TABLE_GROWS = CgTrace.name("vfx.pool.table-grows"),
+            STEPS_HELD = CgTrace.name("vfx.pool.steps-held");
     /** What {@link #expect} sized it for: slots, records, and the definitions given rows. */
     private int expectedSlots, expectedCapacity;
     private final Set<CgVfxGpuEmitter> expectedRows = Collections.newSetFromMap(new IdentityHashMap<>());

@@ -2,6 +2,7 @@ package com.crystalgraphics.lwjgl3;
 
 import com.crystalgraphics.platform.gl.CgDisabledExtensions;
 import com.crystalgraphics.platform.gl.CgGLBackend;
+import com.crystalgraphics.platform.gl.CgGLWorkerContext;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.glfw.GLFW;
@@ -194,6 +195,17 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     @Override
     public int glGetProgrami(int program, int pname) {
         return GL20C.glGetProgrami(program, pname);
+    }
+
+    @Override
+    public void glMaxShaderCompilerThreads(int count) {
+        if (GL.getCapabilities().GL_KHR_parallel_shader_compile) KHRParallelShaderCompile.glMaxShaderCompilerThreadsKHR(count);
+        else ARBParallelShaderCompile.glMaxShaderCompilerThreadsARB(count);
+    }
+
+    @Override
+    public CgGLWorkerContext createWorkerContext() {
+        return Lwjgl3WorkerContext.create();
     }
 
     @Override

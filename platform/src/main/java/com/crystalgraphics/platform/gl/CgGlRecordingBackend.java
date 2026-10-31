@@ -517,6 +517,8 @@ final class CgGlRecordingBackend extends CgGLBackend {
     @Override public void glAttachShader(int program, int shader) { throw refused("glAttachShader", COMPILES); }
     @Override public void glLinkProgram(int program) { throw refused("glLinkProgram", COMPILES); }
     @Override public int glGetProgrami(int program, int pname) { throw refused("glGetProgrami", COMPILES); }
+    @Override public void glMaxShaderCompilerThreads(int count) { throw refused("glMaxShaderCompilerThreads", COMPILES); }
+    @Override public CgGLWorkerContext createWorkerContext() { throw refused("createWorkerContext", COMPILES); }
     @Override public int glGetProgramBinary(int program, ByteBuffer binary) { throw refused("glGetProgramBinary", COMPILES); }
     @Override public void glProgramBinary(int program, int binaryFormat, ByteBuffer binary) {
         throw refused("glProgramBinary", COMPILES);

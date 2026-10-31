@@ -897,6 +897,28 @@ public final class CgGL {
         return gl().glGetProgrami(program, pname);
     }
 
+    /**
+     * How many threads of its own the driver may compile and link on: {@code 0xFFFFFFFF} for as many as it likes.
+     * Without it NVIDIA links on its driver thread, and the first query of the program waits for the whole link. Only
+     * where {@code CgCapabilities.isParallelShaderCompile()}.
+     *
+     * <pre>{@code
+     * if (CgCapabilities.detect().isParallelShaderCompile()) CgGL.glMaxShaderCompilerThreads(0xFFFFFFFF);
+     * }</pre>
+     */
+    public static void glMaxShaderCompilerThreads(int count) {
+        gl().glMaxShaderCompilerThreads(count);
+    }
+
+    /**
+     * A context sharing the current one's objects, for a worker thread to compile and link programs on; null where the
+     * backend has none (the tracked backend, which compiles on a worker of its own). Render thread, its context current.
+     * Its use is {@link CgGLWorkerContext}'s javadoc.
+     */
+    public static CgGLWorkerContext createWorkerContext() {
+        return gl().createWorkerContext();
+    }
+
     public static String glGetProgramInfoLog(int program, int maxLength) {
         return gl().glGetProgramInfoLog(program, maxLength);
     }

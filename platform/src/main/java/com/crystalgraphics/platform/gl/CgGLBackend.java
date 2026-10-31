@@ -144,6 +144,10 @@ public abstract class CgGLBackend {
     public abstract void glLinkProgram(int program);
     public abstract int glGetProgrami(int program, int pname);
     public abstract String glGetProgramInfoLog(int program, int maxLength);
+    /** {@code KHR_parallel_shader_compile} or the ARB's. @see CgGL#glMaxShaderCompilerThreads */
+    public abstract void glMaxShaderCompilerThreads(int count);
+    /** A context sharing this one's objects for a worker, or null where the backend has none. @see CgGL#createWorkerContext */
+    public abstract CgGLWorkerContext createWorkerContext();
 
     /** GL 4.1 or {@code ARB_get_program_binary}. @see CgGL#glGetProgramBinary */
     public abstract int glGetProgramBinary(int program, ByteBuffer binary);

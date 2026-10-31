@@ -32,6 +32,7 @@ import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialShader;
+import com.crystalgraphics.gl.shader.CgLinkWorker;
 import com.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.render.mesh.CgMeshStore;
@@ -175,6 +176,12 @@ public final class CgGraphicsLifecycle {
         // call, and a fixed-function call that beat the first probe would see false and reach a
         // backend that refuses it. Cached, so this costs one probe.
         CgCapabilities.detect();
+        // Before the first link: without it NVIDIA links on its driver thread, and the next query of any program
+        // waits for the whole link (cold vfx-modules 113 s -> 58 s).
+        if (CgCapabilities.detect().isParallelShaderCompile()) CgGL.glMaxShaderCompilerThreads(0xFFFFFFFF);
+        // Links on a shared context of their own: under a threaded driver, every status query on this one waits for
+        // the compiles queued before it.
+        CgLinkWorker.start();
 
         CgGL.fromHost();
         try {
@@ -191,8 +198,6 @@ public final class CgGraphicsLifecycle {
                     CgWaveletNoise.install();
                     warmUpDeferredStartupCosts();
                 }
-                // From here warm-ups spread over frames: the demo's first scene took the first frame 0.7-10 s on 1.7.10.
-                CgWarmBudget.start();
                 CgWorldRenderer.get().install();
                 CgPostStack.get().install();
                 CgRenderDemo.INSTANCE.install();
@@ -200,6 +205,10 @@ public final class CgGraphicsLifecycle {
                 CgVfx.install();
                 CgCollisionDebug.install();
                 CgWorldProbe.installIfEnabled();
+                // The engine's own passes, built together now rather than each at its first draw.
+                CgWorldRenderer.get().awaitPrograms();
+                // From here warm-ups spread over frames: the demo's first scene took the first frame 0.7-10 s on 1.7.10.
+                CgWarmBudget.start();
 
                 initialized = true;
                 destroyed = false;   // an explicit init is what makes a context live again
@@ -476,6 +485,8 @@ public final class CgGraphicsLifecycle {
         try (CgGlScope ignored = CgGlState.saveAll()) {
             CgEngineLifecycle.contextDestroying();
         }
+        // Every link in flight lands before the sweeps below delete its program.
+        CgLinkWorker.stop();
 
         // Step 1: Meshes: the store's slabs, each slab's VAO, then its buffers. Meshes keep their data.
         CgMeshStore.get().releaseAll();

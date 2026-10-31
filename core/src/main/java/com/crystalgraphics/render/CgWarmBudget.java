@@ -1,5 +1,7 @@
 package com.crystalgraphics.render;
 
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
 
 /**
@@ -28,8 +30,11 @@ public final class CgWarmBudget {
     private static final CgVar.Num MILLIS = CgVar.number("crystalgraphics.warmBudget", 4f, 0f, 1000f, CgVar.DEV,
             "Milliseconds a frame may spend starting programs, kernels and meshes ahead of their first use; 0 for no limit.");
 
+    private static final int SPENT = CgTrace.name("warm.spent-us"), REFUSED = CgTrace.name("warm.refused");
+
     private static boolean started;
     private static long spent;
+    private static int refused;
     /** What a start costs: the largest lately, decaying by an eighth a frame, so many small starts never hide a large one. */
     private static long estimate;
 
@@ -39,7 +44,9 @@ public final class CgWarmBudget {
     public static boolean allows() {
         if (!started || spent == 0) return true;
         float millis = MILLIS.get();
-        return millis <= 0f || spent + estimate <= (long) (millis * 1_000_000L);
+        if (millis <= 0f || spent + estimate <= (long) (millis * 1_000_000L)) return true;
+        refused++;
+        return false;
     }
 
     /** What is left of this frame's budget, in nanoseconds: 0 once it is spent, unlimited before a context starts it. */
@@ -64,7 +71,10 @@ public final class CgWarmBudget {
 
     /** A frame's start, before anything warms in it: its whole budget. The lifecycle's. */
     public static void nextFrame() {
+        CgTrace.counter(CgChannels.MISC, SPENT, spent / 1000);
+        CgTrace.counter(CgChannels.MISC, REFUSED, refused);
         spent = 0;
+        refused = 0;
         estimate -= estimate >> 3;
     }
 }

@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.locks.LockSupport;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialManifest;
@@ -137,6 +138,27 @@ public final class CgWorldPrograms {
     }
 
     private final Map<String, CgMaterial> variants = new HashMap<>();
+
+    /**
+     * Requests everything on the list under {@code settings} and waits until it is built or {@code timeoutNanos} pass:
+     * the graphics start's, so the engine's own passes compile in parallel before the first frame rather than one by one
+     * at their draws (Unreal's global PSO collectors, waited for while loading). Answers how many are still pending.
+     * Render thread, before {@code CgWarmBudget.start()}: nothing here is budgeted.
+     */
+    int await(Settings settings, long timeoutNanos) {
+        warmedFor = settings;
+        for (CgMaterial m : list) pending.put(m, Boolean.TRUE);
+        long end = System.nanoTime() + timeoutNanos;
+        while (!pending.isEmpty()) {
+            for (int i = 0; i < list.size(); i++) {
+                CgMaterial m = list.get(i);
+                if (pending.containsKey(m) && preparer.prepare(m, halves.get(m), settings)) pending.remove(m);
+            }
+            if (pending.isEmpty() || System.nanoTime() > end) break;
+            LockSupport.parkNanos(200_000L);
+        }
+        return pending.size();
+    }
 
     /** How many materials are not yet built under the settings in force. */
     public int pending() {

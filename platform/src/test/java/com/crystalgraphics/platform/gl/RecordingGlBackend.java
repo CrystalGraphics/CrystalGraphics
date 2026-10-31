@@ -90,6 +90,8 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glAttachShader(int program, int shader) { record("glAttachShader"); }
     @Override public void glLinkProgram(int program) { record("glLinkProgram"); }
     @Override public int glGetProgrami(int program, int pname) { record("glGetProgrami"); return 0; }
+    @Override public void glMaxShaderCompilerThreads(int count) { record("glMaxShaderCompilerThreads"); }
+    @Override public CgGLWorkerContext createWorkerContext() { record("createWorkerContext"); return null; }
     @Override public int glGetProgramBinary(int program, ByteBuffer binary) { record("glGetProgramBinary"); return 0; }
     @Override public void glProgramBinary(int program, int binaryFormat, ByteBuffer binary) { record("glProgramBinary"); }
     @Override public void glProgramParameteri(int program, int pname, int value) { record("glProgramParameteri"); }

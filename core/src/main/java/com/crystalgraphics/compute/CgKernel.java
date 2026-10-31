@@ -16,8 +16,10 @@ import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgCapabilities.ComputeTier;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -165,6 +167,8 @@ public final class CgKernel {
      */
     public CgKernel prepare() {
         check();
+        List<CgKernel> collecting = COLLECT.get();
+        if (collecting != null) collecting.add(this);
         CgKernelForm f = form();
         if (AHEAD.get()) {
             if (f.how() == CgKernelForm.How.COMPUTE) compute.loadAhead(this);
@@ -176,6 +180,41 @@ public final class CgKernel {
     }
 
     private static final ThreadLocal<Boolean> AHEAD = ThreadLocal.withInitial(() -> false);
+    private static final ThreadLocal<List<CgKernel>> COLLECT = new ThreadLocal<>();
+
+    /**
+     * Whether a dispatch of it now would compile and wait for nothing, starting its program if nothing has: what work
+     * held until its kernels are built polls each frame, Niagara's activation delayed until its PSOs are precached.
+     * Render thread.
+     *
+     * <pre>{@code
+     * List<CgKernel> kernels = CgKernel.collect(() -> MyEffect.prepareKernels());   // once
+     * boolean go = true;
+     * for (CgKernel k : kernels) go &= k.isReady();                                // each frame until true
+     * }</pre>
+     */
+    public boolean isReady() {
+        check();
+        CgKernelForm f = form();
+        if (f.how() == CgKernelForm.How.COMPUTE) return compute.isReady(this);
+        if (f.how() == CgKernelForm.How.LOWERED) lowered();
+        return true;
+    }
+
+    /**
+     * Every kernel {@code prepares} {@link #prepare}s, in order, prepared as well: the list to poll {@link #isReady}
+     * over, gathered from a prepare that already names them. Render thread.
+     */
+    public static List<CgKernel> collect(Runnable prepares) {
+        List<CgKernel> outer = COLLECT.get(), collected = new ArrayList<>();
+        COLLECT.set(collected);
+        try {
+            prepares.run();
+        } finally {
+            COLLECT.set(outer);
+        }
+        return collected;
+    }
 
     /**
      * Runs {@code prepares} with every {@link #prepare} in it making that kernel's sources rather than its program: on a

@@ -12,6 +12,7 @@ import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.device.shader.CgShaderModule;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGLBackend;
+import com.crystalgraphics.platform.gl.CgGLWorkerContext;
 import com.crystalgraphics.platform.gl.tracked.gl.GlEnums;
 import com.crystalgraphics.platform.gl.tracked.gl.GlNames;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedBuffers;
@@ -484,6 +485,12 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     @Override public void glLinkProgram(int program) { programs.link(program); }
 
     @Override public int glGetProgrami(int program, int pname) { return programs.programi(program, pname); }
+
+    /** Links already run on a worker of our own ({@link #compileInBackground()}). */
+    @Override public void glMaxShaderCompilerThreads(int count) { }
+
+    /** None: its links run on a worker of its own already. */
+    @Override public CgGLWorkerContext createWorkerContext() { return null; }
 
     @Override
     public int glGetProgramBinary(int program, ByteBuffer binary) {

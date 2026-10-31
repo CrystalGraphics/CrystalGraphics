@@ -81,10 +81,13 @@ import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Draws meshes into a host's world at its two world stages, under the host's own camera: submitted at absolute
@@ -151,9 +154,9 @@ public final class CgWorldRenderer {
     private static final CgVar.Text HDR_SCENE = CgVar.text("crystalgraphics.world.hdrScene", "", CgVar.DEV,
             "true or false forces the HDR scene for the run over the player's HDR setting, unsaved; empty follows the"
                     + " setting (G in the harness, hdrScene(boolean) live).");
-    private static final CgVar.Bool SKIP_UNREADY = CgVar.bool("crystalgraphics.world.skipUnready", false, CgVar.DEV,
-            "Skips a draw whose program is not built yet, counting it as world.unready-draws, rather than compiling at"
-                    + " the draw (skipUnready(boolean) live).");
+    private static final CgVar.Bool SKIP_UNREADY = CgVar.bool("crystalgraphics.world.skipUnready", true, CgVar.DEV,
+            "Holds a draw whose programs are not built yet, starting them and counting it as world.unready-draws; false"
+                    + " compiles at the draw (skipUnready(boolean) live).");
     private static final int UNREADY_DRAWS = CgTrace.name("world.unready-draws");
     /** A firing's record, step by step. */
     private static final int REC_PREPARE = CgTrace.name("world.record.prepare"), REC_CLASSIFY = CgTrace.name("world.record.classify"),
@@ -455,6 +458,30 @@ public final class CgWorldRenderer {
         CgRenderStage.WORLD_OPAQUE.register(ORDER, this::recordOpaque);
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::recordTransparent);
         parsePassesAhead();
+        // The renderer's own programs no material brings in: the GPU cull's depth pyramid and the labels' text.
+        programs.add(PYRAMID_SHADER);
+        programs.add(TEXT_SHADER, "WORLD_LABEL");
+        programs.add(TEXT_SHADER, "WORLD_LABEL", "MSDF_MODE");
+    }
+
+    private static final String PYRAMID_SHADER = "crystalgraphics:shaders/depth_pyramid.shader",
+            TEXT_SHADER = "crystalgraphics:shaders/text.shader";
+    private static final int BOOT_ZONE = CgTrace.name("world.programs.boot");
+    private static final long BOOT_TIMEOUT_NANOS = 60_000_000_000L;
+
+    /**
+     * Builds the program list (the engine's own passes, and anything added before) under the settings asked for, in
+     * parallel, waiting for all of it: the graphics start's, before the first frame draws, so no frame compiles a pass
+     * of the engine's. Logs what is left after a minute and goes on. The lifecycle's.
+     */
+    public void awaitPrograms() {
+        long start = System.nanoTime();
+        int left;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, BOOT_ZONE)) {
+            left = programs.await(requestedSettings(), BOOT_TIMEOUT_NANOS);
+        }
+        LOGGER.info("{} engine programs built in {} ms{}", programs.size(), (System.nanoTime() - start) / 1_000_000,
+                left > 0 ? ", " + left + " still compiling" : "");
     }
 
     /**
@@ -505,6 +532,7 @@ public final class CgWorldRenderer {
             hdrApplied = requested.hdrScene();
             mergeEmission = mergeRequested;
         }
+        prepareHeld();
     }
 
     /** The settings asked for now: what the next frames draw under once the program list is warm. */
@@ -539,11 +567,13 @@ public final class CgWorldRenderer {
     }
 
     /**
-     * Whether a draw whose program is not built is skipped and counted ({@link #unreadyDraws()}, trace counter
-     * {@code world.unready-draws}) rather than compiled at the draw, off by default. A draw skipped starts its compile.
+     * Whether a draw whose programs are not built is held and counted ({@link #unreadyDraws()}, trace counter
+     * {@code world.unready-draws}) rather than compiled at the draw: on by default, as Unreal delays a primitive's
+     * proxy until its PSOs are built ({@code r.PSOPrecache.ProxyCreationStrategy} 1, PSOPrecache.cpp:36). A held draw
+     * starts its compiles, in the frame's warm budget, and draws in the frame they finish.
      *
      * <pre>{@code
-     * CgWorldRenderer.get().skipUnready(true);   // a move warmed through a manifest: a miss is a cook bug, counted
+     * CgWorldRenderer.get().skipUnready(false);   // compile at the draw: the control a prepare gate measures against
      * }</pre>
      */
     public void skipUnready(boolean on) {
@@ -563,6 +593,8 @@ public final class CgWorldRenderer {
     public void release() {
         clear();
         frame = -1;
+        held.clear();
+        heldSet.clear();
         depthOnly.clear();
         customDepthStates.clear();
         customDataStates.clear();
@@ -2869,11 +2901,31 @@ public final class CgWorldRenderer {
      * and its compile started. Every pass a material draws in asks it: forward, emission, distortion, half size, volumes.
      */
     private boolean unready(CgPipeline pipeline) {
+        if (!skipUnready) return false;
         // Its joined form too: a draw that joins a multi-draw runs that program.
-        if (!skipUnready || prepared(pipeline, applied != null && applied.joins())) return false;
+        boolean joins = applied != null && applied.joins();
+        if (pipeline.isPrepared() && (!joins || pipeline.multiDraw().isPrepared())) return false;
+        // Asked for here, started in settle(): a pipeline held by a thousand draws spends the warm budget once a frame.
+        if (heldSet.add(pipeline)) held.add(pipeline);
         unreadyDraws++;
         CgTrace.add(CgChannels.GL, UNREADY_DRAWS, 1);
         return true;
+    }
+
+    /** Pipelines a held draw asked for, polled once a frame until built: Unreal's precache requests. */
+    private final List<CgPipeline> held = new ArrayList<>();
+    private final Set<CgPipeline> heldSet = Collections.newSetFromMap(new IdentityHashMap<>());
+
+    /** Starts or polls each held pipeline once, dropping those built. */
+    private void prepareHeld() {
+        boolean joins = applied != null && applied.joins();
+        for (int i = held.size() - 1; i >= 0; i--) {
+            CgPipeline p = held.get(i);
+            if (!prepared(p, joins)) continue;
+            heldSet.remove(p);
+            held.set(i, held.get(held.size() - 1));
+            held.remove(held.size() - 1);
+        }
     }
 
     /** Draw {@code i} through {@code pipeline} into a world pass, at its key and within its screen rect. */

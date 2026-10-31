@@ -218,6 +218,16 @@ public final class CgCompute implements CgReloadable {
         }
     }
 
+    /** Whether {@code kernel}'s program is linked or done linking, starting it if nothing has. Render thread. */
+    synchronized boolean isReady(CgKernel kernel) {
+        String key = kernel.programKey;
+        CgKernelProgram program = programs.get(key);
+        if (program != null && !program.isDeleted()) return true;
+        if (!preparing.containsKey(key)) prepare(kernel);
+        CgKernelProgram.Pending pending = preparing.get(key);
+        return pending == null || pending.isDone();
+    }
+
     /** Starts {@code kernel}'s program without waiting, unless it is compiled or started. Render thread. */
     synchronized void prepare(CgKernel kernel) {
         for (CgCompute retired; (retired = RETIRED.poll()) != null; ) retired.release();
