@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * An emitter's renderers, compiled from its file's {@code renderers:} and built in Java to the same tree.
@@ -119,16 +120,19 @@ public final class CgVfxRenderers {
 
     /**
      * The usage a renderer draws its material as: sprites and arcs {@code sprites}, meshes and clips' parts {@code
-     * mesh_particles}, ribbons, trails and beams {@code ribbons} (Unreal's beam-and-trail usage).
+     * mesh_particles}, ribbons, anim trails and beams {@code ribbons} (Unreal's beam-and-trail usage).
      */
     public static CgMaterialUsage usage(CgVfxRendererProperties r) {
-        if (r instanceof CgVfxMeshRendererProperties || r instanceof CgVfxSequenceRendererProperties) {
-            return CgMaterialUsage.MESH_PARTICLES;
-        }
-        if (r instanceof CgVfxRibbonRendererProperties || r instanceof CgVfxBeamRendererProperties) {
-            return CgMaterialUsage.RIBBONS;
-        }
-        return CgMaterialUsage.SPRITES;
+        return usageOf(String.valueOf(r.tree().get("kind")));
+    }
+
+    /** The usage a renderer of {@code kind} draws its material as, as {@link #usage(CgVfxRendererProperties)}. */
+    static CgMaterialUsage usageOf(String kind) {
+        return switch (kind) {
+            case "mesh", "sequence" -> CgMaterialUsage.MESH_PARTICLES;
+            case "ribbon", "anim_trail", "beam" -> CgMaterialUsage.RIBBONS;
+            default -> CgMaterialUsage.SPRITES;
+        };
     }
 
     private static CgVfxRibbonRendererProperties ribbon(String who, Common common, Map<String, Object> tree) {
@@ -531,9 +535,21 @@ public final class CgVfxRenderers {
      * Writes a {@code renderers:} entry as a file would hold it, then compiles it: a renderer built in Java is the
      * renderer its file loads.
      *
+     * <p>Its material is a file's ({@link #material(String)}), shared ({@link #material(CgMaterialDefinition)}), or made
+     * here from a shader ({@link #shader}), its usage this renderer's kind's:
+     *
+     * <pre>{@code
+     * CgVfxRenderers.sprite("sparks").shader("mymod:shaders/vfx/spark.shader")       // mymod:shaders/vfx/spark/sparks
+     *         .bind("_Color", EMBER).sortOrderHint(CgVfxLook.SURFACE).build();
+     * CgVfxRenderers.sprite("dust").shader(DUST).material(b -> b.value("_Boil", 1.8f)) // a constant of the material
+     *         .build("mymod:blast");                                                     // mymod:blast/dust
+     * }</pre>
+     *
      * <ul>
      *   <li>{@link #field} sets any of the kind's fields by its file key; the named setters are the common ones.</li>
      *   <li>A key the kind does not declare is refused when the emitter's asset validates.</li>
+     *   <li>{@link #value} and {@link #keyword} are the renderer's own, over its material; {@code material(b -> ...)} sets
+     *       the material made here.</li>
      * </ul>
      */
     public static final class Builder {
@@ -543,6 +559,8 @@ public final class CgVfxRenderers {
         private final List<String> keywords = new ArrayList<>();
         private CgMaterialDefinition definition;
         private final List<CgMaterialDefinition> overrides = new ArrayList<>();
+        @Nullable private String shader;
+        private final List<Consumer<CgMaterialDefinition.Builder>> made = new ArrayList<>();
 
         private Builder(String id, String kind) {
             tree.put("id", id);
@@ -555,8 +573,23 @@ public final class CgVfxRenderers {
             return this;
         }
 
+        /** Its material, made here from {@code shader}, its usage this renderer's kind's. */
+        public Builder shader(String shader) {
+            if (definition != null) throw new IllegalStateException(tree.get("id") + " draws " + definition.id());
+            this.shader = shader;
+            return this;
+        }
+
+        /** Anything of the material made here from its {@link #shader}: its constants, textures, blend, keywords. */
+        public Builder material(Consumer<CgMaterialDefinition.Builder> step) {
+            if (shader == null) throw new IllegalStateException(tree.get("id") + " sets its material: name its shader() first");
+            made.add(step);
+            return this;
+        }
+
         /** Its material, compiled: its id is written, and {@link Common#definition()} is it. */
         public Builder material(CgMaterialDefinition material) {
+            if (shader != null) throw new IllegalStateException(tree.get("id") + " makes its material from " + shader);
             definition = material;
             return material(material.id());
         }
@@ -680,8 +713,21 @@ public final class CgVfxRenderers {
             return this;
         }
 
-        /** The renderer, compiled from the entry written. */
+        /** The renderer; a material made here is named {@code <shader>/<id>}. */
         public CgVfxRendererProperties build() {
+            return build(null);
+        }
+
+        /** The renderer, a material made here named {@code <owner>/<id>}: a kit built per name gives its own. */
+        public CgVfxRendererProperties build(@Nullable String owner) {
+            if (shader != null) {
+                String stem = shader.endsWith(".shader") ? shader.substring(0, shader.length() - ".shader".length()) : shader;
+                CgMaterialDefinition.Builder b = CgMaterialDefinition.of((owner != null ? owner : stem) + "/" + tree.get("id"),
+                        shader).usage(usageOf(String.valueOf(tree.get("kind"))));
+                for (Consumer<CgMaterialDefinition.Builder> step : made) step.accept(b);
+                definition = b.build();
+                tree.put("material", definition.id());
+            }
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("id", tree.get("id"));
             entry.put("kind", tree.get("kind"));

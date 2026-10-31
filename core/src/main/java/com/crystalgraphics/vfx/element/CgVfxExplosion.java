@@ -1,7 +1,5 @@
 package com.crystalgraphics.vfx.element;
 
-import com.crystalgraphics.api.material.CgMaterialDefinition;
-import com.crystalgraphics.api.material.CgMaterialUsage;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.settings.CgQuality;
@@ -231,24 +229,23 @@ public final class CgVfxExplosion {
         dust = schema.color("dust", 0x99999187);
         sparkCore = schema.color("sparkCore", 0xFFFFFFFF);
         // Each part's renderer: its material named for the kit, its colours bound from the kit's schema.
-        billows = named(BILLOWS, name, CgVfxRenderers.mesh("billow").material(material(name, "billow",
-                SMOKE + "billow.shader", CgMaterialUsage.MESH_PARTICLES)).bind("_Color", body).bind("_Hot", hot).build());
-        surge = named(SURGE, name, dust(name, "surge", 0.6f, 1.6f).bind("_Hot", hot).build());
-        puffs = named(DUST, name, CgVfxRenderers.sprite("dust").material(CgMaterialDefinition.of(name + "/puffs",
-                PARTICLE + "dust.shader").usage(CgMaterialUsage.SPRITES).value("_Glow", 0f).build())
-                .bind("_Color", dust).bind("_Hot", hot).quality(CgQuality.MEDIUM).build());
-        specks = named(SPECKS, name, CgVfxRenderers.sprite("speck").material(material(name, "speck",
-                PARTICLE + "speck.shader", CgMaterialUsage.SPRITES)).bind("_Color", debris).build()).toBuilder()
+        billows = named(BILLOWS, name, CgVfxRenderers.mesh("billow").shader(SMOKE + "billow.shader")
+                .bind("_Color", body).bind("_Hot", hot).build(name));
+        surge = named(SURGE, name, dust("surge", 0.6f, 1.6f).bind("_Hot", hot).build(name));
+        puffs = named(DUST, name, CgVfxRenderers.sprite("dust").shader(PARTICLE + "dust.shader")
+                .material(b -> b.value("_Glow", 0f))
+                .bind("_Color", dust).bind("_Hot", hot).quality(CgQuality.MEDIUM).build(name));
+        specks = named(SPECKS, name, CgVfxRenderers.sprite("speck").shader(PARTICLE + "speck.shader")
+                .bind("_Color", debris).build(name)).toBuilder()
                 .event(CgVfxEvent.onLanding().spawn(puffs, 1).inherit(0.15f)).build();
-        sparkles = named(SPARKLES, name, glow(name, "spark", CgVfxRenderers.sprite("spark")));
-        ink = named(INK, name, CgVfxRenderers.arc("ink").material(material(name, "ink", PARTICLE + "arc.shader",
-                CgMaterialUsage.SPRITES)).bind("_Color", debris).build());
-        rays = named(RAYS, name, glow(name, "ray", CgVfxRenderers.arc("ray")));
-        rings = named(RINGS, name, CgVfxRenderers.mesh("shock").material(material(name, "shock_ring",
-                        "crystalgraphics:shaders/vfx/air/shock_ring.shader", CgMaterialUsage.MESH_PARTICLES))
-                        .sortOrderHint(CgVfxLook.SURFACE - CgVfxLook.BAND).quality(CgQuality.MEDIUM).build(),
-                glow(name, "ring", CgVfxRenderers.mesh("ring")));
-        skirt = named(SKIRT, name, dust(name, "skirt", 0.55f, 1.8f).bind("_Hot", hot).build());
+        sparkles = named(SPARKLES, name, glow(name, CgVfxRenderers.sprite("spark"), "spark"));
+        ink = named(INK, name, CgVfxRenderers.arc("ink").shader(PARTICLE + "arc.shader").bind("_Color", debris)
+                .build(name));
+        rays = named(RAYS, name, glow(name, CgVfxRenderers.arc("ray"), "ray"));
+        rings = named(RINGS, name, CgVfxRenderers.mesh("shock").shader("crystalgraphics:shaders/vfx/air/shock_ring.shader")
+                        .sortOrderHint(CgVfxLook.SURFACE - CgVfxLook.BAND).quality(CgQuality.MEDIUM).build(name),
+                glow(name, CgVfxRenderers.mesh("ring"), "ring"));
+        skirt = named(SKIRT, name, dust("skirt", 0.55f, 1.8f).bind("_Hot", hot).build(name));
         kit = CgVfxKit.of(name).params(schema)
                 .emitter(billows).emitter(surge).emitter(specks).emitter(sparkles).emitter(ink).emitter(rays)
                 .emitter(rings).emitter(skirt)
@@ -273,20 +270,15 @@ public final class CgVfxExplosion {
         return emitter.name().equals(ink.name());
     }
 
-    private static CgMaterialDefinition material(String kit, String part, String shader, CgMaterialUsage usage) {
-        return CgMaterialDefinition.of(kit + "/" + part, shader).usage(usage).build();
+    private CgVfxRenderers.Builder dust(String part, float aspect, float boil) {
+        return CgVfxRenderers.sprite(part).shader(PARTICLE + "dust.shader")
+                .material(b -> b.value("_Aspect", aspect).value("_Boil", boil)).bind("_Color", dust);
     }
 
-    private CgVfxRenderers.Builder dust(String kit, String part, float aspect, float boil) {
-        return CgVfxRenderers.sprite(part).material(CgMaterialDefinition.of(kit + "/" + part, PARTICLE + "dust.shader")
-                .usage(CgMaterialUsage.SPRITES).value("_Aspect", aspect).value("_Boil", boil).build()).bind("_Color", dust);
-    }
-
-    /** A glowing part, drawn after its effect's distortion: the surface band. */
-    private CgVfxRendererProperties glow(String kit, String shader, CgVfxRenderers.Builder renderer) {
-        CgMaterialUsage usage = shader.equals("ring") ? CgMaterialUsage.MESH_PARTICLES : CgMaterialUsage.SPRITES;
-        return renderer.material(material(kit, shader, PARTICLE + shader + ".shader", usage)).bind("_Color", hot)
-                .bind("_Hot", sparkCore).sortOrderHint(CgVfxLook.SURFACE).build();
+    /** A glowing part drawn by a particle shader, after its effect's distortion: the surface band. */
+    private CgVfxRendererProperties glow(String kit, CgVfxRenderers.Builder renderer, String shader) {
+        return renderer.shader(PARTICLE + shader + ".shader").bind("_Color", hot).bind("_Hot", sparkCore).sortOrderHint(CgVfxLook.SURFACE)
+                .build(kit);
     }
 
     private static CgVfxEmitter named(CgVfxEmitter emitter, String kit, CgVfxRendererProperties... renderers) {

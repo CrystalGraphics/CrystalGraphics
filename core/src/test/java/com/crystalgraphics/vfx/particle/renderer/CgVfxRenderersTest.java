@@ -48,6 +48,21 @@ public class CgVfxRenderersTest {
     }
 
     @Test
+    public void aRendererMakesItsOwnMaterialFromAShader() {
+        CgAssetKinds.register();
+        CgVfxRendererProperties r = CgVfxRenderers.ribbon("trail").shader("crystalgraphics:shaders/vfx/trail/glow.shader")
+                .material(b -> b.value("_Fade", 0.5f)).build("test:sparks");
+        CgMaterialDefinition made = r.common().definition();
+        assertEquals("test:sparks/trail", made.id());
+        assertEquals(made.id(), r.common().material());
+        assertEquals("its usage its kind's", EnumSet.of(CgMaterialUsage.RIBBONS), made.usage());
+        assertThrows(IllegalStateException.class, () -> CgVfxRenderers.sprite("r1").material(b -> { }));
+        CgMaterialDefinition shared = CgMaterialDefinition.of("test:materials/spark", SPRITE).usage(CgMaterialUsage.SPRITES)
+                .build();
+        assertThrows(IllegalStateException.class, () -> CgVfxRenderers.sprite("r1").shader(SPRITE).material(shared));
+    }
+
+    @Test
     public void aSubImageIsItsFlipbook() {
         CgVfxSpriteRendererProperties sprite = (CgVfxSpriteRendererProperties) CgVfxRenderers.sprite("r1")
                 .subImage(Map.of("size", List.of(4, 2), "blend", true)).build();

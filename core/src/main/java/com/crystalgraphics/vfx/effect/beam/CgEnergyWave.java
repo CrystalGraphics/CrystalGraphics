@@ -1,7 +1,6 @@
 package com.crystalgraphics.vfx.effect.beam;
 
 import com.crystalgraphics.api.material.CgMaterialDefinition;
-import com.crystalgraphics.api.material.CgMaterialUsage;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
@@ -37,7 +36,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
-import java.util.function.Consumer;
 
 /**
  * An energy wave: charged at a muzzle, then a beam that flows outward, bends where its source turns, homes on a target
@@ -201,66 +199,76 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
     /** Its lights' intensities: the body's, and the head's, charge's and contact's orbs'. */
     private static final float BODY_LIGHT = 10f, ORB_LIGHT = 4f;
 
-    // Its materials, one a shader and its constants: the slots draw them, each with its own binds and size.
-    private static final CgMaterialDefinition HAZE_TUBE = material("haze_tube", AIR, 2 * CgVfxLook.BAND, b -> b.value("_Core", 1.4f)),
-            BODY_SHELL = material("body_shell", BEAM, CgVfxLook.SURFACE),
-            BODY_SPIRAL = material("body_spiral", BEAM, CgVfxLook.SURFACE),
-            BODY_ARCS = material("body_arcs", BEAM, CgVfxLook.SURFACE),
-            BODY_CORE = material("body_core", BEAM, CgVfxLook.SURFACE),
-            ORB_SHELL = material("orb_shell", BEAM, CgVfxLook.SURFACE),
-            ORB_CORE = material("orb_core", BEAM, CgVfxLook.SURFACE),
-            ORB_PLASMA = material("orb_plasma", BEAM, CgVfxLook.SURFACE),
-            HAZE_ORB = material("haze_orb", AIR, 2 * CgVfxLook.BAND),
-            CHARGE_STREAKS = material("charge_streaks", BEAM, CgVfxLook.SURFACE),
-            CHARGE_ARCS = material("charge_arcs", BEAM, CgVfxLook.SURFACE),
-            DISC_SHOCK = material("disc_shock", BEAM, CgVfxLook.SURFACE),
-            IMPACT_SPLASH = material("impact_splash", BEAM, CgVfxLook.SURFACE),
+    // The materials several slots share; a slot's own material is made by its renderer from its shader.
+    private static final CgMaterialDefinition ORB_PLASMA = CgMaterialDefinition.of("crystalgraphics:wave/orb_plasma",
+                    BEAM + "orb_plasma.shader").order(CgVfxLook.SURFACE).build(),
+            HAZE_ORB = CgMaterialDefinition.of("crystalgraphics:wave/haze_orb", AIR + "haze_orb.shader")
+                    .order(2 * CgVfxLook.BAND).build(),
+            DISC_SHOCK = CgMaterialDefinition.of("crystalgraphics:wave/disc_shock", BEAM + "disc_shock.shader")
+                    .order(CgVfxLook.SURFACE).build(),
             // The halo's edge 2.43 times the body: the bands at 1, 1.4 and 1.8 of it.
-            BANDED = material("banded", "crystalgraphics:shaders/vfx/toon/", CgVfxLook.SURFACE,
-                    b -> b.value("_Edges", 1f / 2.43f, 1.4f / 2.43f, 1.8f / 2.43f, 0f));
+            BANDED = CgMaterialDefinition.of("crystalgraphics:wave/banded", "crystalgraphics:shaders/vfx/toon/banded.shader")
+                    .order(CgVfxLook.SURFACE).value("_Edges", 1f / 2.43f, 1.4f / 2.43f, 1.8f / 2.43f, 0f).build();
 
     /** The body: its light, haze, skin, spirals, lightning and core along the path. */
     public static final CgVfxKit REALISTIC_BODY = CgVfxKit.of("crystalgraphics:wave/body").params(CgBeamBody.SCHEMA)
             .slot(bodyLight())
-            .slot(slot("haze", CgBeamBody.BODY, HAZE_TUBE, 4.5f).bind("_Cap", RADIUS, 4.5f).quality(CgQuality.MEDIUM).build())
-            .slot(slot("shell", CgBeamBody.BODY, BODY_SHELL, 1.15f).bind("_Shell", SHELL).bind("_ShellHot", SHELL_HOT).build())
-            .slot(slot("spiral", CgBeamBody.BODY, BODY_SPIRAL, 1.2f).bind("_Spiral", SPIRAL).bind("_Core", CORE).build())
-            .slot(slot("arcs", CgBeamBody.ARCS, BODY_ARCS, 1f).bind("_Spiral", SPIRAL).bind("_Core", CORE).build())
-            .slot(slot("core", CgBeamBody.BODY, BODY_CORE, 1.25f).bind("_Core", CORE).bind("_Shell", SHELL).build())
+            .slot(CgVfxSlotRenderer.of("haze", CgBeamBody.BODY).shader(AIR + "haze_tube.shader").value("_Core", 1.4f)
+                    .size(4.5f).bind("_Cap", RADIUS, 4.5f).quality(CgQuality.MEDIUM))
+            .slot(CgVfxSlotRenderer.of("shell", CgBeamBody.BODY).shader(BEAM + "body_shell.shader")
+                    .size(1.15f).bind("_Shell", SHELL).bind("_ShellHot", SHELL_HOT))
+            .slot(CgVfxSlotRenderer.of("spiral", CgBeamBody.BODY).shader(BEAM + "body_spiral.shader")
+                    .size(1.2f).bind("_Spiral", SPIRAL).bind("_Core", CORE))
+            .slot(CgVfxSlotRenderer.of("arcs", CgBeamBody.ARCS).shader(BEAM + "body_arcs.shader")
+                    .bind("_Spiral", SPIRAL).bind("_Core", CORE))
+            .slot(CgVfxSlotRenderer.of("core", CgBeamBody.BODY).shader(BEAM + "body_core.shader")
+                    .size(1.25f).bind("_Core", CORE).bind("_Shell", SHELL))
             .build();
     /** The head: its light, skin and white core. */
     public static final CgVfxKit REALISTIC_HEAD = CgVfxKit.of("crystalgraphics:wave/head").params(CgBeamBody.SCHEMA)
             .slot(light("light", CgBeamBody.HEAD, ORB_LIGHT, 9f, GLOW))
-            .slot(slot("shell", CgBeamBody.HEAD, ORB_SHELL, 1.15f).bind("_Shell", SHELL).bind("_ShellHot", SHELL_HOT).build())
-            .slot(slot("core", CgBeamBody.HEAD, ORB_CORE, 0.75f).bind("_Core", CORE).bind("_CoreRim", CORE_RIM).build())
+            .slot(CgVfxSlotRenderer.of("shell", CgBeamBody.HEAD).shader(BEAM + "orb_shell.shader")
+                    .size(1.15f).bind("_Shell", SHELL).bind("_ShellHot", SHELL_HOT))
+            .slot(CgVfxSlotRenderer.of("core", CgBeamBody.HEAD).shader(BEAM + "orb_core.shader")
+                    .size(0.75f).bind("_Core", CORE).bind("_CoreRim", CORE_RIM))
             .build();
     /** The charge: the plasma ball and its light and haze, streaks, arcs, the release's flash and shock ring. */
     public static final CgVfxKit REALISTIC_CHARGE = CgVfxKit.of("crystalgraphics:wave/charge").params(CgVfxCharge.SCHEMA)
             .slot(light("light", CgVfxCharge.BALL, ORB_LIGHT, 9f, GLOW))
             .slot(light("glare_light", CgVfxCharge.GLARE, ORB_LIGHT, 7f, CORE_RIM))
-            .slot(slot("haze", CgVfxCharge.HAZE, HAZE_ORB, 4.2f).quality(CgQuality.MEDIUM).build())
-            .slot(slot("streaks", CgVfxCharge.STREAKS, CHARGE_STREAKS, 1f).bind("_ShellHot", SHELL_HOT).bind("_Core", CORE).build())
-            .slot(slot("arcs", CgVfxCharge.ARCS, CHARGE_ARCS, 1f).bind("_Spiral", SPIRAL).bind("_Core", CORE).build())
-            .slot(slot("shock", CgVfxCharge.SHOCK, DISC_SHOCK, 1f).bind("_CoreRim", CORE_RIM).bind("_Shell", SHELL).build())
-            .slot(slot("ball", CgVfxCharge.BALL, ORB_PLASMA, 1f).bind("_Core", CORE).bind("_Shell", SHELL).build())
-            .slot(slot("glare", CgVfxCharge.GLARE, ORB_PLASMA, 1f).bind("_Shell", CORE_RIM).bind("_Core", CORE).build())
+            .slot(CgVfxSlotRenderer.of("haze", CgVfxCharge.HAZE).material(HAZE_ORB)
+                    .size(4.2f).quality(CgQuality.MEDIUM))
+            .slot(CgVfxSlotRenderer.of("streaks", CgVfxCharge.STREAKS).shader(BEAM + "charge_streaks.shader")
+                    .bind("_ShellHot", SHELL_HOT).bind("_Core", CORE))
+            .slot(CgVfxSlotRenderer.of("arcs", CgVfxCharge.ARCS).shader(BEAM + "charge_arcs.shader")
+                    .bind("_Spiral", SPIRAL).bind("_Core", CORE))
+            .slot(CgVfxSlotRenderer.of("shock", CgVfxCharge.SHOCK).material(DISC_SHOCK)
+                    .bind("_CoreRim", CORE_RIM).bind("_Shell", SHELL))
+            .slot(CgVfxSlotRenderer.of("ball", CgVfxCharge.BALL).material(ORB_PLASMA)
+                    .bind("_Core", CORE).bind("_Shell", SHELL))
+            .slot(CgVfxSlotRenderer.of("glare", CgVfxCharge.GLARE).material(ORB_PLASMA)
+                    .bind("_Shell", CORE_RIM).bind("_Core", CORE))
             .build();
     /** Where it hits: the contact orb and its light and haze, sparks and rings. */
     public static final CgVfxKit REALISTIC_CONTACT = CgVfxKit.of("crystalgraphics:wave/contact").params(CgBeamContact.SCHEMA)
             .slot(light("light", CgBeamContact.ORB, ORB_LIGHT, 9f, GLOW))
-            .slot(slot("haze", CgBeamContact.HAZE, HAZE_ORB, 4.2f).quality(CgQuality.MEDIUM).build())
-            .slot(slot("splash", CgBeamContact.SPLASH, IMPACT_SPLASH, 1f).bind("_ShellHot", SHELL_HOT).bind("_Core", CORE).build())
-            .slot(slot("rings", CgBeamContact.RINGS, DISC_SHOCK, 1f).bind("_CoreRim", CORE_RIM).bind("_Shell", SHELL).build())
-            .slot(slot("orb", CgBeamContact.ORB, ORB_PLASMA, 1f).bind("_Core", CORE).bind("_Shell", SHELL).build())
+            .slot(CgVfxSlotRenderer.of("haze", CgBeamContact.HAZE).material(HAZE_ORB)
+                    .size(4.2f).quality(CgQuality.MEDIUM))
+            .slot(CgVfxSlotRenderer.of("splash", CgBeamContact.SPLASH).shader(BEAM + "impact_splash.shader")
+                    .bind("_ShellHot", SHELL_HOT).bind("_Core", CORE))
+            .slot(CgVfxSlotRenderer.of("rings", CgBeamContact.RINGS).material(DISC_SHOCK)
+                    .bind("_CoreRim", CORE_RIM).bind("_Shell", SHELL))
+            .slot(CgVfxSlotRenderer.of("orb", CgBeamContact.ORB).material(ORB_PLASMA)
+                    .bind("_Core", CORE).bind("_Shell", SHELL))
             .build();
     /** The dust torn off the ground under the body, in the blast's dust colour, warmed by the body. */
     public static final CgVfxKit WAKE = CgVfxKit.of("crystalgraphics:wave/wake").params(CgVfxBlast.EXPLOSION.schema)
             .scalesWith(RADIUS, 0.8f)
             .emitter(CgBeamWake.EMITTER.toBuilder().renderer(CgVfxRenderers.sprite("dust")
-                    .material(CgMaterialDefinition.of("crystalgraphics:wave/wake_dust",
-                            "crystalgraphics:shaders/vfx/particle/dust.shader").usage(CgMaterialUsage.SPRITES)
-                            .value("_Aspect", 0.55f).value("_Boil", 1.8f).build())
-                    .bind("_Color", CgVfxBlast.EXPLOSION.dust).bind("_Hot", SHELL_HOT).build()).build())
+                    .shader("crystalgraphics:shaders/vfx/particle/dust.shader")
+                    .material(b -> b.value("_Aspect", 0.55f).value("_Boil", 1.8f))
+                    .bind("_Color", CgVfxBlast.EXPLOSION.dust).bind("_Hot", SHELL_HOT)
+                    .build("crystalgraphics:wave/wake")).build())
             .build();
     /** What {@link #TOON} reads: its bands' palette. */
     public static final CgVfxSchema TOON_SCHEMA = CgVfxSchema.of("crystalgraphics:wave/toon");
@@ -280,30 +288,13 @@ public final class CgEnergyWave extends CgVfxElement implements CgVfxBehaviour, 
             .slot(bodyLight())
             .slot(light("ball_light", CgVfxCharge.BALL, ORB_LIGHT, 9f, GLOW))
             .slot(light("head_light", CgBeamBody.HEAD, ORB_LIGHT, 9f, GLOW))
-            .slot(slot("body", CgBeamBody.BODY, BANDED, 2.43f).bind("_Bands", BANDS).build())
-            .slot(slot("ball", CgVfxCharge.BALL, BANDED, 2.43f).bind("_Bands", BANDS).build())
-            .slot(slot("head", CgBeamBody.HEAD, BANDED, 2.43f).bind("_Bands", BANDS).build())
+            .slot(CgVfxSlotRenderer.of("body", CgBeamBody.BODY).material(BANDED).size(2.43f).bind("_Bands", BANDS))
+            .slot(CgVfxSlotRenderer.of("ball", CgVfxCharge.BALL).material(BANDED).size(2.43f).bind("_Bands", BANDS))
+            .slot(CgVfxSlotRenderer.of("head", CgBeamBody.HEAD).material(BANDED).size(2.43f).bind("_Bands", BANDS))
             .build();
     /** A band per block, sectors around and the frame's normal as a line: add it to a look to check the path. */
-    public static final CgVfxSlotRenderer DEBUG = slot("debug", CgBeamBody.BODY,
-            material("debug", BEAM, CgVfxLook.SURFACE), 1f).build();
-
-    /** A wave material: {@code shader}'s file in {@code folder}, at {@code order} among its effect's draws. */
-    private static CgMaterialDefinition material(String shader, String folder, int order) {
-        return material(shader, folder, order, b -> {});
-    }
-
-    private static CgMaterialDefinition material(String shader, String folder, int order,
-                                                 Consumer<CgMaterialDefinition.Builder> values) {
-        CgMaterialDefinition.Builder b = CgMaterialDefinition.of("crystalgraphics:wave/" + shader,
-                folder + shader + ".shader").order(order);
-        values.accept(b);
-        return b.build();
-    }
-
-    private static CgVfxSlotRenderer.Builder slot(String id, CgVfxSlot slot, CgMaterialDefinition material, float size) {
-        return CgVfxSlotRenderer.of(id, slot).material(material).size(size);
-    }
+    public static final CgVfxSlotRenderer DEBUG = CgVfxSlotRenderer.of("debug", CgBeamBody.BODY)
+            .shader(BEAM + "debug.shader").build("crystalgraphics:wave");
 
     /**
      * The body's light: a chain of tube lights along it, their source the core's surface (1.25 of a ring). Casts no

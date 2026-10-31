@@ -34,6 +34,22 @@ CgVfxEmitter emitter = CgVfxEmitter.builder("sparks")
         .build();
 ```
 
+A material only this renderer draws is made by the renderer from its shader, with nothing declared beside it: its
+usage is the renderer's kind's, and it is named `<owner>/<id>` by `build(owner)` (a kit's name), else
+`<shader>/<id>`.
+
+```java
+static final CgVfxRendererProperties SPARKS = CgVfxRenderers.sprite("sparks")
+        .shader("crystalgraphics:shaders/vfx/particle/spark.shader")
+        .material(b -> b.value("_SoftDistance", 0.25f))           // anything of the material it makes
+        .bind("_Color", EMBER).sortOrderHint(CgVfxLook.SURFACE)
+        .build("mymod:sparks");                                    // its material mymod:sparks/sparks
+```
+
+- **Several renderers drawing one material** share a `CgMaterialDefinition` through `material(definition)`: two
+  materials made from one shader are two materials, and never batch together.
+- `shader` and `material(definition)` are either/or; `material(b -> ...)` needs a `shader` first.
+
 | Kind | Draws | Its emitter |
 |---|---|---|
 | `sprite` | a quad a particle: `alignment` (`unaligned`, `velocity`), `facing` (`camera`, `camera_plane`, `camera_position`), `sort` (`none`, `view_depth`), `sub_image` (a grid flipbook) | quads |

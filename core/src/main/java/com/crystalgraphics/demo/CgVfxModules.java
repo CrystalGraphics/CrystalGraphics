@@ -4,7 +4,6 @@ import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
-import com.crystalgraphics.api.material.CgMaterialUsage;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgMeshLods;
@@ -68,7 +67,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -2324,7 +2322,6 @@ public final class CgVfxModules {
     private static final String BILLOW = "crystalgraphics:shaders/vfx/smoke/billow.shader";
     /** Where a draw ranks in its look, by {@link CgVfxLook}'s bands: smoke, then haze, then the surface. */
     private static final int SMOKE_HINT = 0, HAZE = 2 * CgVfxLook.BAND, SURFACE = CgVfxLook.SURFACE;
-    private static final AtomicInteger MADE = new AtomicInteger();
     private static final Map<String, CgMeshLods> MESHES = new ConcurrentHashMap<>();
 
     /** One draw of a station: an emitter's renderer, or a slot renderer. */
@@ -2397,17 +2394,6 @@ public final class CgVfxModules {
         return b.build();
     }
 
-    /** A material of one draw's own: {@code shader}, ranked at {@code order}, serving {@code usage} (null: a mesh's). */
-    private static CgMaterialDefinition material(String shader, int order, CgMaterialUsage usage,
-                                                 Consumer<CgMaterialDefinition.Builder> values) {
-        String name = shader.substring(shader.lastIndexOf('/') + 1, shader.lastIndexOf('.'));
-        CgMaterialDefinition.Builder b = CgMaterialDefinition.of(MATERIALS + name + "#" + MADE.getAndIncrement(),
-                shader).order(order);
-        if (usage != null) b.usage(usage);
-        if (values != null) values.accept(b);
-        return b.build();
-    }
-
     /**
      * {@code e} drawn by a shared particle shader, {@code _Color} {@code a} and, but on the one-colour sprite and speck,
      * {@code _Hot} {@code b}; {@code size} times its particles' size. A ray is an arc renderer, every other a sprite.
@@ -2415,8 +2401,8 @@ public final class CgVfxModules {
     private static Draw particle(String shader, CgVfxEmitter e, CgVfxParam.Color a, CgVfxParam.Color b, float size,
                                  Consumer<CgMaterialDefinition.Builder> values, Consumer<CgVfxRenderers.Builder> more) {
         CgVfxRenderers.Builder r = (shader.equals("ray") ? CgVfxRenderers.arc(shader) : CgVfxRenderers.sprite(shader))
-                .material(material(PARTICLE + shader + ".shader", 0, CgMaterialUsage.SPRITES, values))
-                .bind("_Color", a).sortOrderHint(SURFACE);
+                .shader(PARTICLE + shader + ".shader").bind("_Color", a).sortOrderHint(SURFACE);
+        if (values != null) r.material(values);
         if (!shader.equals("sprite") && !shader.equals("speck")) r.bind("_Hot", b);
         if (size != 1f) r.value("_cg_Size", size);
         if (more != null) more.accept(r);
@@ -2483,10 +2469,10 @@ public final class CgVfxModules {
     private static CgVfxRendererProperties stripRenderer(String shader, int order, int trails, int points,
                                                          Consumer<CgMaterialDefinition.Builder> values,
                                                          Consumer<CgVfxRenderers.Builder> more) {
-        CgVfxRenderers.Builder r = CgVfxRenderers.ribbon(shader)
-                .material(material(TRAIL + shader + ".shader", order, CgMaterialUsage.RIBBONS, values))
+        CgVfxRenderers.Builder r = CgVfxRenderers.ribbon(shader).shader(TRAIL + shader + ".shader")
                 .field("trail", Map.of("max_trails", trails, "max_particles", points, "tiling_distance", 1.0))
                 .sortOrderHint(order);
+        if (values != null) r.material(values);
         if (more != null) more.accept(r);
         return r.build();
     }
@@ -2495,8 +2481,8 @@ public final class CgVfxModules {
     private static Draw sweep(CgVfxEmitter e, String shader, int order, CgVfxParam.Vector first, CgVfxParam.Vector second,
                               Consumer<CgMaterialDefinition.Builder> values, Consumer<CgVfxRenderers.Builder> more) {
         CgVfxRenderers.Builder r = CgVfxRenderers.animTrail(shader, first.name(), second.name())
-                .material(material(TRAIL + shader + ".shader", order, CgMaterialUsage.RIBBONS, values))
-                .field("tiling_distance", 1.0).sortOrderHint(order);
+                .shader(TRAIL + shader + ".shader").field("tiling_distance", 1.0).sortOrderHint(order);
+        if (values != null) r.material(values);
         if (more != null) more.accept(r);
         return new Draw(e, r.build());
     }
@@ -2528,13 +2514,15 @@ public final class CgVfxModules {
     /** A mesh slot's draw of {@code mesh} through the flow shader, coloured {@code a} into {@code b}. */
     private static CgVfxSlotRenderer.Builder flow(CgVfxSlot slot, CgMesh mesh, CgVfxParam.Color a, CgVfxParam.Color b,
                                                   Consumer<CgMaterialDefinition.Builder> values) {
-        return CgVfxSlotRenderer.of("flow." + part(slot), slot).material(material(FLOW, SURFACE, null, values))
+        CgVfxSlotRenderer.Builder r = CgVfxSlotRenderer.of("flow." + part(slot), slot).shader(FLOW)
                 .mesh(mesh(slot.name() + "/mesh", mesh)).bind("_Color", a).bind("_Hot", b);
+        if (values != null) r.material(values);
+        return r;
     }
 
     /** {@code e}'s particles each a billow of {@code mesh}, ranked with smoke. */
     private static Draw billow(CgVfxEmitter e, CgMesh mesh, CgVfxParam.Color a, CgVfxParam.Color b) {
-        return new Draw(e, CgVfxRenderers.mesh("billow").material(material(BILLOW, 0, CgMaterialUsage.MESH_PARTICLES, null))
+        return new Draw(e, CgVfxRenderers.mesh("billow").shader(BILLOW)
                 .field("meshes", List.of(Map.of("mesh", mesh(MATERIALS + e.name() + "/mesh", mesh))))
                 .bind("_Color", a).bind("_Hot", b)
                 .sortOrderHint(SMOKE_HINT).build());
@@ -2543,10 +2531,10 @@ public final class CgVfxModules {
     /** One ribbon through {@code e}'s particles, newest first, {@code size} its width. */
     private static Draw ribbon(CgVfxEmitter e, CgVfxParam.Color colour, CgVfxParam.Color core, float size,
                                Consumer<CgMaterialDefinition.Builder> values, Consumer<CgVfxRenderers.Builder> more) {
-        CgVfxRenderers.Builder r = CgVfxRenderers.ribbon("ribbon")
-                .material(material(TRAIL + "glow.shader", SURFACE, CgMaterialUsage.RIBBONS, values)).bind("_Color", colour)
+        CgVfxRenderers.Builder r = CgVfxRenderers.ribbon("ribbon").shader(TRAIL + "glow.shader").bind("_Color", colour)
                 .bind("_Core", core).value("_cg_Size", size).sortOrderHint(SURFACE)
                 .field("uv1", Map.of("distribution", "tiled_over_ribbon_length", "tiling_length", 1.0));
+        if (values != null) r.material(values);
         if (more != null) more.accept(r);
         return new Draw(e, r.build());
     }

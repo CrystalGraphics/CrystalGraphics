@@ -2,7 +2,6 @@ package com.crystalgraphics.demo;
 
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
-import com.crystalgraphics.api.material.CgMaterialUsage;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.render.world.CgWorldRenderer;
@@ -41,7 +40,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
@@ -90,7 +88,6 @@ public final class CgVfxFluidDemo {
     private static final String GRID_GLOW = "crystalgraphics:shaders/vfx/grid/glow.shader";
     private static final String GRID_SMOKE = "crystalgraphics:shaders/vfx/grid/smoke.shader";
     private static final String MATERIALS = "crystalgraphics:demo/fluid/";
-    private static final AtomicInteger MADE = new AtomicInteger();
     private static final CgKeyframes FADE = CgKeyframes.start(0f, 0f).to(0.08f, 1f, CgEasings.OUT_QUAD)
             .to(0.8f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build();
     /** Flow's editor overrides its fire map's colour scale to 1 for every stage ({@code editorFlowStage_applyOverrides}). */
@@ -556,7 +553,7 @@ public final class CgVfxFluidDemo {
         // Opaque in its core, so it shades as a body: the sun bright on its crown, its middle and underside dark.
         CgVfxLook volume = CgVfxLook.builder(SCHEMA).params(CgVfxGrid3D.SCHEMA).emitter(puffs)
                 .slot(CgVfxSlotRenderer.of("smoke", CgVfxGrid3D.SLOT)
-                        .material(material(GRID_SMOKE, 0, null, m -> m.value("_Detail", 0f))).build())
+                        .shader(GRID_SMOKE).order(0).value("_Detail", 0f))
                 .set(CgVfxGrid3D.CELL, 0.28f).set(CgVfxGrid3D.EXTINCTION, 4f)
                 .set(CgVfxGrid3D.SMOKE_COLOR, 0xFFC9C6C2).build();
         stations.add(new Station("smoke made of particles", "one lit, self-shadowed body they splat", volumeX, z, volume,
@@ -587,13 +584,12 @@ public final class CgVfxFluidDemo {
                 .module(new CgVfxModule.Splat(0.1f, 0.4f, 0f, 0f)).opacity(FADE).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).params(CgVfxGrid3D.SCHEMA)
                 .emitter(drawn(stars, spark(STARLIGHT, WHITE, 0.7f)))
-                .slot(CgVfxSlotRenderer.of("gas", CgVfxGrid3D.SLOT).material(material(GRID_GLOW, CgVfxLook.SURFACE, null,
-                                m -> m.value("_Channel", 0f).value("_Gain", 0.5f).value("_HotAt", 3f).value("_Detail", 0.75f)
-                                        .value("_DetailSize", 0.8f)))
-                        .bind("_Glow", NEBULA).bind("_Hot", NEBULA_HOT).build())
-                .slot(CgVfxSlotRenderer.of("starlight", CgVfxGrid3D.SLOT).material(material(GRID_GLOW, CgVfxLook.SURFACE,
-                                null, m -> m.value("_Channel", 1f).value("_Gain", 0.25f).value("_HotAt", 2f).value("_Absorb", 0f)))
-                        .bind("_Glow", STARLIGHT).bind("_Hot", WHITE).build())
+                .slot(CgVfxSlotRenderer.of("gas", CgVfxGrid3D.SLOT).shader(GRID_GLOW)
+                        .value("_Channel", 0f).value("_Gain", 0.5f).value("_HotAt", 3f).value("_Detail", 0.75f)
+                        .value("_DetailSize", 0.8f).bind("_Glow", NEBULA).bind("_Hot", NEBULA_HOT))
+                .slot(CgVfxSlotRenderer.of("starlight", CgVfxGrid3D.SLOT).shader(GRID_GLOW)
+                        .value("_Channel", 1f).value("_Gain", 0.25f).value("_HotAt", 2f).value("_Absorb", 0f)
+                        .bind("_Glow", STARLIGHT).bind("_Hot", WHITE))
                 .set(CgVfxGrid3D.CELL, 0.32f).build();
         stations.add(new Station("nebula", "stars wheeling round a core, splatting gas and starlight", x, z, look, 10f, 24f,
                 List.of(stars), new float[][] {{0f, 5f, 0f}},
@@ -735,21 +731,10 @@ public final class CgVfxFluidDemo {
         return b.build();
     }
 
-    /** A material of one draw's own: {@code shader}, ranked at {@code order}, serving {@code usage} (null: a slot's). */
-    private static CgMaterialDefinition material(String shader, int order, CgMaterialUsage usage,
-                                                 Consumer<CgMaterialDefinition.Builder> values) {
-        String name = shader.substring(shader.lastIndexOf('/') + 1, shader.lastIndexOf('.'));
-        CgMaterialDefinition.Builder b = CgMaterialDefinition.of(MATERIALS + name + "#" + MADE.getAndIncrement(),
-                shader).order(order);
-        if (usage != null) b.usage(usage);
-        if (values != null) values.accept(b);
-        return b.build();
-    }
-
     /** A glowing spark each, {@code colour} into {@code hot}, {@code size} times its particle's size. */
     private static CgVfxRendererProperties spark(CgVfxParam.Color colour, CgVfxParam.Color hot, float size) {
         CgVfxRenderers.Builder r = CgVfxRenderers.sprite("spark")
-                .material(material(PARTICLE + "spark.shader", 0, CgMaterialUsage.SPRITES, null))
+                .shader(PARTICLE + "spark.shader")
                 .bind("_Color", colour).bind("_Hot", hot).sortOrderHint(CgVfxLook.SURFACE);
         if (size != 1f) r.value("_cg_Size", size);
         return r.build();
@@ -765,7 +750,7 @@ public final class CgVfxFluidDemo {
                                         CgVfxParam.Color colour, CgVfxParam.Color core) {
         int points = (int) Math.ceil(life * fastest / spacing) + 4;
         CgVfxRendererProperties r = CgVfxRenderers.ribbon("glow")
-                .material(material(TRAIL + "glow.shader", 0, CgMaterialUsage.RIBBONS, null))
+                .shader(TRAIL + "glow.shader")
                 .field("trail", Map.of("max_trails", trails, "max_particles", points, "tiling_distance", 1.0))
                 .bind("_Color", colour).bind("_Core", core).sortOrderHint(CgVfxLook.SURFACE).build();
         return CgVfxEmitter.builder(source.name() + "Trails").state(CgVfxEmitterState.once(LIFE)).capacity(trails * points)
@@ -777,7 +762,7 @@ public final class CgVfxFluidDemo {
     /** A hot streak along each particle's velocity, {@code size} times its size: Niagara's velocity-aligned spark. */
     private static CgVfxRendererProperties ray(CgVfxParam.Color colour, CgVfxParam.Color hot, float size) {
         CgVfxRenderers.Builder r = CgVfxRenderers.arc("ray")
-                .material(material(PARTICLE + "ray.shader", 0, CgMaterialUsage.SPRITES, null))
+                .shader(PARTICLE + "ray.shader")
                 .bind("_Color", colour).bind("_Hot", hot).sortOrderHint(CgVfxLook.SURFACE);
         if (size != 1f) r.value("_cg_Size", size);
         return r.build();
@@ -785,7 +770,7 @@ public final class CgVfxFluidDemo {
 
     /** Soft ground dust each, ranked with smoke, its colour and shape {@code values}' constants. */
     private static CgVfxRendererProperties dust(Consumer<CgMaterialDefinition.Builder> values) {
-        return CgVfxRenderers.sprite("dust").material(material(PARTICLE + "dust.shader", 0, CgMaterialUsage.SPRITES, values))
+        return CgVfxRenderers.sprite("dust").shader(PARTICLE + "dust.shader").material(values)
                 .sortOrderHint(0).build();
     }
 }
