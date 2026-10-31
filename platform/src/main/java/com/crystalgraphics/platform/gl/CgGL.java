@@ -48,7 +48,10 @@ public final class CgGL {
      * or {@link CgCapabilities#detect()} takes the platform's. A harness or test that uses {@code CgGL} before
      * either installs its own.
      */
-    public static void init(CgGLBackend dispatch){ backend = dispatch; }
+    public static void init(CgGLBackend dispatch){
+        backend = dispatch;
+        CgGlUniforms.reset();
+    }
 
     /** Whether a backend is installed: never on a dedicated server, and on a client from its first host section. */
     public static boolean isInstalled() {
@@ -885,6 +888,7 @@ public final class CgGL {
     }
 
     public static void glLinkProgram(int program) {
+        CgGlUniforms.forget(program);
         gl().glLinkProgram(program);
     }
 
@@ -915,6 +919,7 @@ public final class CgGL {
      * be compiled from source.
      */
     public static void glProgramBinary(int program, int binaryFormat, ByteBuffer binary) {
+        CgGlUniforms.forget(program);
         gl().glProgramBinary(program, binaryFormat, binary);
     }
 
@@ -932,6 +937,7 @@ public final class CgGL {
     }
 
     public static void glDeleteProgram(int program) {
+        CgGlUniforms.forget(program);
         gl().glDeleteProgram(program);
         state().programDeleted(program);
     }
@@ -942,6 +948,7 @@ public final class CgGL {
 
     public static void glUniform1i(int location, int v0) {
         if (CgGlCallSites.ON) CgGlCallSites.value("glUniform1i", location, v0);
+        if (shadowsUniforms() && !CgGlUniforms.scalar(state().program(), location, v0)) return;
         gl().glUniform1i(location, v0);
     }
 
@@ -1001,13 +1008,20 @@ public final class CgGL {
     /** Sets a float-array uniform ({@code glUniform1fv} semantics). */
     public static void glUniform1(int location, FloatBuffer values) {
         if (CgGlCallSites.ON) CgGlCallSites.value("glUniform1", location, values.hashCode());
+        if (shadowsUniforms() && !CgGlUniforms.array(state().program(), location, values)) return;
         gl().glUniform1(location, values);
     }
 
     /** Sets an int-array uniform ({@code glUniform1iv} semantics). */
     public static void glUniform1(int location, IntBuffer values) {
         if (CgGlCallSites.ON) CgGlCallSites.value("glUniform1", location, values.hashCode());
+        if (shadowsUniforms() && !CgGlUniforms.array(state().program(), location, values)) return;
         gl().glUniform1(location, values);
+    }
+
+    /** {@link CgGlUniforms} answers only where the state shadow may skip writes at all. */
+    private static boolean shadowsUniforms() {
+        return CgGlUniforms.ON && state().dedups();
     }
 
     public static void glUniformMatrix3(int location, boolean transpose, FloatBuffer value) {

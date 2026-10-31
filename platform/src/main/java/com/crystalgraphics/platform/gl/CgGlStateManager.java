@@ -321,6 +321,16 @@ public final class CgGlStateManager {
         return false;
     }
 
+    /** The program our last {@code glUseProgram} or restore bound. */
+    public int program() {
+        return current.programId;
+    }
+
+    /** Whether writes may be skipped at all now: not while recording, forcing, verifying or under {@code noDedup}. */
+    public boolean dedups() {
+        return !NO_DEDUP && !forcing && !verifying && recording == null;
+    }
+
     private boolean mustIssue(CgGlSlot slot) {
         // `verifying`: the read in verify() steps the active texture unit through CgGL, and those calls must
         // reach the driver rather than be judged against the shadow being checked.
