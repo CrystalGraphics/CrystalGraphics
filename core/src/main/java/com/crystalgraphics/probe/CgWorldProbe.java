@@ -94,7 +94,7 @@ public final class CgWorldProbe {
 
     private static final Logger LOGGER = LogManager.getLogger("CgWorldProbe");
     private static final int SETTLE_SECONDS = 3, MIN_EVENT_SECONDS = 4, EVENT_SECONDS = 12, PAUSED_SECONDS = 15;
-    private static final float FOV_SCALE = 1.25f, YAW = 10f, ROLL = 10f;
+    private static final float FOV_SCALE = 1.25f, YAW = 10f, ROLL = 10f, RISE = 0.5f;
     private static final int CAMERA_FRAMES = 4;
     /** The hold: frames held, the frame the probe turns and presses, the frame it measures, frames to release. */
     private static final int HOLD_FRAMES = 40, HOLD_EARLY = 3, HOLD_STIMULUS = 10, HOLD_MEASURE = 20, HOLD_RELEASE = 4;
@@ -115,6 +115,10 @@ public final class CgWorldProbe {
     private static int ownWrite;
     private static float baseFov;
     private static final Matrix3f baseView = new Matrix3f();
+    /** The eye's world height the frame before the offset, and scratch for reading a frame's eye. */
+    private static double baseEyeY;
+    private static final Matrix4f eyeInverse = new Matrix4f();
+    private static final Vector3f eyeAt = new Vector3f();
     private static long startGameTime;
     private static int startTextures, startEpoch;
     private static final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
@@ -617,7 +621,9 @@ public final class CgWorldProbe {
         } else {
             baseFov = host.environment().fov();
             baseView.set(host.view().view());
-            offset(has(CgHostCamera.ROTATION) ? YAW : 0f, 0f, has(CgHostCamera.FOV) ? FOV_SCALE : 1f);
+            baseEyeY = eyeY(host);
+            offset(has(CgHostCamera.ROTATION) ? YAW : 0f, 0f, has(CgHostCamera.FOV) ? FOV_SCALE : 1f,
+                    has(CgHostCamera.TRANSLATION) ? RISE : 0f);
         }
         cameraStep = 0;
         cameraFrames = 0;
@@ -649,6 +655,20 @@ public final class CgWorldProbe {
             skip("camera.yaw", "not applied on this version");
         }
         if (!has(CgHostCamera.ROLL)) skip("camera.roll", "not applied on this version");
+        if (has(CgHostCamera.TRANSLATION)) {
+            double rose = eyeY(host) - baseEyeY;
+            check("camera.translation", Math.abs(rose - RISE) < 0.05, String.format(
+                    "the eye rose %.3f blocks for an offset of %.2f, %s", rose, RISE, ran(applied, CgHostCamera.TRANSLATION)));
+        } else {
+            skip("camera.translation", "not applied on this version");
+        }
+    }
+
+    /** Where the frame is seen from, in world blocks: the view's position plus its own eye offset (1.13 and older). */
+    private static double eyeY(CgHostFrame host) {
+        CgHostView view = host.view();
+        eyeInverse.set(view.view()).invert().transformPosition(eyeAt.zero());
+        return view.y() + eyeAt.y;
     }
 
     /** In SHAKE, once armed: the base is the view BEGIN sees, last frame's, and the yaw goes to the host now. */
@@ -775,7 +795,11 @@ public final class CgWorldProbe {
     }
 
     private static void offset(float yaw, float roll, float fovScale) {
-        CgCamera.offset(0f, 0f, 0f, yaw, 0f, roll, fovScale);
+        offset(yaw, roll, fovScale, 0f);
+    }
+
+    private static void offset(float yaw, float roll, float fovScale, float rise) {
+        CgCamera.offset(0f, rise, 0f, yaw, 0f, roll, fovScale);
         ownWrite = CgCamera.writes();
     }
 

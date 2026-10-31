@@ -34,9 +34,10 @@ public interface CgHostCamera {
 
     /**
      * What a host applies, as bits of {@link #capabilities()}: yaw and pitch, roll, the field of view, the position of a
-     * held pose, the lock of the player's input while one is held, and the player hidden where a held play asks.
+     * held pose, the lock of the player's input while one is held, the player hidden where a held play asks, and an
+     * offset's translation (a shake's location, Unreal's {@code POV.Location} offset).
      */
-    int ROTATION = 1, ROLL = 2, FOV = 4, POSITION = 8, LOCK = 16, HIDES_PLAYER = 32;
+    int ROTATION = 1, ROLL = 2, FOV = 4, POSITION = 8, LOCK = 16, HIDES_PLAYER = 32, TRANSLATION = 64;
 
     /** What a held pose asks of the viewer, as bits of {@link #hold}'s {@code flags}: the host's HUD and player hidden. */
     int HIDE_HUD = 1, HIDE_PLAYER = 2;
@@ -46,6 +47,10 @@ public interface CgHostCamera {
 
     CgService<CgHostCamera> SERVICE = CgService.of("crystalgraphics:host_camera", NONE);
 
+    /**
+     * This frame's offset: {@code x, y, z} blocks along the world's axes, added to wherever the camera is (the held pose
+     * included); {@code yaw, pitch, roll} degrees added to its angles; {@code fovScale} multiplying its field of view.
+     */
     void offset(float x, float y, float z, float yaw, float pitch, float roll, float fovScale);
 
     /**
@@ -59,7 +64,7 @@ public interface CgHostCamera {
     default void release() {
     }
 
-    /** The parts this host applies ({@link #ROTATION}, {@link #ROLL}, {@link #FOV}, {@link #POSITION}, {@link #LOCK}); 0 for none. */
+    /** The parts this host applies, as the bits above ({@link #ROTATION}, {@link #TRANSLATION}, ...); 0 for none. */
     default int capabilities() {
         return 0;
     }

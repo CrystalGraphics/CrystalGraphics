@@ -2,6 +2,7 @@ package com.crystalgraphics.mc.modern.fabric.mixin;
 
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import net.minecraft.client.Camera;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -41,7 +42,15 @@ public abstract class CameraHook {
         *///?} else {
         setRotation(HostCameraModern.yaw(camera.getYRot()), HostCameraModern.pitch(camera.getXRot()));
         //?}
-        // A held pose's position, written here too: from 1.21.11 the camera is set up before our entity is posed.
-        if (HostCameraModern.holding()) setPosition(HostCameraModern.heldX(), HostCameraModern.heldY(), HostCameraModern.heldZ());
+        // A held pose's position and the offset's translation, written here: from 1.21.11 the camera is set up before
+        // our entity is posed.
+        if (HostCameraModern.moving()) {
+            //? if >=1.21.6 {
+            /*Vec3 at = camera.position();
+            *///?} else {
+            Vec3 at = camera.getPosition();
+            //?}
+            setPosition(HostCameraModern.x(at.x), HostCameraModern.y(at.y), HostCameraModern.z(at.z));
+        }
     }
 }

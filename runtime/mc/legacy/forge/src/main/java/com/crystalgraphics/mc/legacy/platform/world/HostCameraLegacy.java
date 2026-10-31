@@ -4,6 +4,7 @@ import com.crystalgraphics.platform.world.CgHeldCamera;
 import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.platform.world.CgWorldBegin;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.Entity;
@@ -27,7 +28,8 @@ import org.lwjgl.input.Mouse;
  * registers this instance on Forge's event bus and {@link Ticks} on FML's.
  *
  * <ul>
- *   <li>An offset's translation is dropped: no event offers the camera's position. A held pose's is the view entity's.</li>
+ *   <li>An offset's translation is a GL translation at the tail of {@code orientCamera} ({@code CameraHook}). A held
+ *       pose's position is the view entity's.</li>
  *   <li>While held: every key binding released each tick, the player's look and hotbar slot put back each frame, the
  *       view first person, the hands not drawn, the HUD and the player hidden where the play asks; all of it restored when
  *       the hold ends, by core or by the watchdog ({@link CgHeldCamera}).</li>
@@ -37,7 +39,9 @@ import org.lwjgl.input.Mouse;
 public final class HostCameraLegacy implements CgHostCamera {
 
     private float yaw, pitch, roll, fovScale = 1f;
-    private int applied;
+    /** The offset's translation, world blocks: static, for the mixin at the tail of {@code orientCamera}. */
+    private static float offX, offY, offZ;
+    private static int applied;
 
     private static final CgHeldCamera HELD = new CgHeldCamera();
     private static EntityArmorStand camera;
@@ -48,6 +52,9 @@ public final class HostCameraLegacy implements CgHostCamera {
 
     @Override
     public void offset(float x, float y, float z, float yaw, float pitch, float roll, float fovScale) {
+        offX = x;
+        offY = y;
+        offZ = z;
         this.yaw = yaw;
         this.pitch = pitch;
         this.roll = roll;
@@ -69,7 +76,7 @@ public final class HostCameraLegacy implements CgHostCamera {
 
     @Override
     public int capabilities() {
-        return ROTATION | ROLL | FOV | POSITION | LOCK | HIDES_PLAYER;
+        return ROTATION | ROLL | FOV | POSITION | LOCK | HIDES_PLAYER | TRANSLATION;
     }
 
     @Override
@@ -92,6 +99,15 @@ public final class HostCameraLegacy implements CgHostCamera {
         event.pitch = (held ? HELD.pitch : event.pitch) + pitch;
         event.roll = (held ? HELD.roll : event.roll) + roll;
         *///?}
+    }
+
+    /**
+     * {@code CameraHook}, at the tail of {@code orientCamera}: the offset's translation, after the view entity's turn, so
+     * it moves the eye along the world's axes. The host view's modelview carries it, so our passes move with the world.
+     */
+    public static void translate() {
+        applied |= TRANSLATION;
+        if (offX != 0f || offY != 0f || offZ != 0f) GlStateManager.translate(-offX, -offY, -offZ);
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)

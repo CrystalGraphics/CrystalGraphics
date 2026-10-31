@@ -5,3 +5,4 @@ pattern:
   blend_in: 0.05
   blend_out: 0.2
   location: { y: { amplitude: 0.02, frequency: 6 } }
+  rotation: { pitch: { amplitude: 0.5, frequency: 5 }, yaw: { amplitude: 0.5, frequency: 4 } }

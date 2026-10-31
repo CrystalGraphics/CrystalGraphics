@@ -9,7 +9,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Where {@code HostCamera1710} adds core's camera offset: the head of {@code orientCamera} and the field of view; and the
+ * Where {@code HostCamera1710} adds core's camera offset: the head of {@code orientCamera} (its turn), its tail (its
+ * translation) and the field of view; and the
  * first-person hands, not drawn while a camera is held. Priority 2000: applied after other mods' mixins here.
  */
 @Mixin(value = EntityRenderer.class, priority = 2000)
@@ -18,6 +19,11 @@ public abstract class CameraHook {
     @Inject(method = "orientCamera", at = @At("HEAD"))
     private void crystalgraphics$orient(float partialTicks, CallbackInfo ci) {
         HostCamera1710.rotate(partialTicks);
+    }
+
+    @Inject(method = "orientCamera", at = @At("TAIL"))
+    private void crystalgraphics$translate(float partialTicks, CallbackInfo ci) {
+        HostCamera1710.translate();
     }
 
     @Inject(method = "renderHand", at = @At("HEAD"), cancellable = true)

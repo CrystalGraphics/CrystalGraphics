@@ -157,6 +157,9 @@ Things to know:
   An `outer` of 0 is felt everywhere.
 - A `single_instance` shake that is already playing restarts where it is asked again, rather than playing twice.
 - The player's screen-effects setting scales every shake.
+- A shake moves the camera's position (`location`) and turns it (`rotation`) on every version and loader, the held
+  camera of a rig included. A host that cannot move the position (`CgCamera.capabilities()` lacks `TRANSLATION`) plays
+  only the turn and the field of view, and the log says so once.
 - `sequence` patterns and the `user_defined` space fail at load: they are not played yet.
 
 Your mod's own pattern implements `CgShakePattern`, and its source implements `CgShakeSource`:

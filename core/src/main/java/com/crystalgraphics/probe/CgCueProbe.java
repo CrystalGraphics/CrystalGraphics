@@ -11,14 +11,21 @@ import com.crystalgraphics.cue.CgCueDefinition;
 import com.crystalgraphics.cue.CgCueManager;
 import com.crystalgraphics.cue.CgCueParameters;
 import com.crystalgraphics.net.object.CgAnchor;
+import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.tag.CgGameplayTag;
 import com.crystalgraphics.tag.CgTagRegistry;
 import com.crystalgraphics.vfx.camera.CgShakePlay;
+import com.crystalgraphics.world.CgCamera;
 import com.crystalgraphics.world.CgEntityQueries;
+
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 /**
  * The world probe's cue: a mod jar's cue, mounted on both sides, executed by its tag on the single-player server, and
- * its shake felt on this client. Named by {@code -Dcrystalgraphics.worldprobe.cue=<cue id>|<tag>}, the probe mod's
+ * its shake seen on this client: the frame's view turned and, where the host applies an offset's translation, moved. Named by {@code -Dcrystalgraphics.worldprobe.cue=<cue id>|<tag>}, the probe mod's
  * {@code cgprobe:shake|cgprobe:cue.shake}.
  */
 final class CgCueProbe {
@@ -33,6 +40,15 @@ final class CgCueProbe {
     private static CgAssetRef<CgCueDefinition> ref;
     private static int startGeneration;
     private static boolean fromSource;
+
+    /** A frame's view moved or turned at least this much, and twice the baseline's, counts as the shake's. */
+    private static final double MIN_MOVE = 1e-4, MIN_TURN = 1e-3;
+    /** More than this in one frame is another check moving the camera, not a shake. */
+    private static final double MAX_MOVE = 0.25, MAX_TURN = 3.0;
+    private static final Matrix4f INVERSE = new Matrix4f();
+    private static final Vector3f EYE = new Vector3f(), FACING = new Vector3f(), LAST_FACING = new Vector3f();
+    private static double lastX, lastY, lastZ, shakeMove, shakeTurn, baseMove, baseTurn;
+    private static boolean hasLast, lastHeld;
 
     private CgCueProbe() {
     }
@@ -90,12 +106,43 @@ final class CgCueProbe {
         }
     }
 
-    /** Each frame of the probe's events: whether the cue's shake plays here yet. */
+    /**
+     * Each frame of the probe's events: whether the cue's shake plays here yet, and how far the frame's view moved and
+     * turned since the last, while it plays and while nothing does (the baseline). A held camera's frames, and the free
+     * frames either side of a hold, are not read.
+     */
     static void watch() {
-        if (ref == null || felt) return;
+        if (ref == null) return;
         CgCueDefinition cue = ref.loaded();
-        if (cue == null || cue.burst().shake() == null) return;
-        if (cue.burst().shake().definition() instanceof CgCameraShakeDefinition d && CgShakePlay.playing(d) != null) felt = true;
+        boolean playing = cue != null && cue.burst().shake() != null
+                && cue.burst().shake().definition() instanceof CgCameraShakeDefinition d && CgShakePlay.playing(d) != null;
+        if (playing) felt = true;
+        CgHostView view = CgRenderStage.WORLD_OPAQUE.host().view();
+        INVERSE.set(view.view()).invert();
+        INVERSE.transformPosition(EYE.zero());
+        double ex = view.x() + EYE.x, ey = view.y() + EYE.y, ez = view.z() + EYE.z;
+        INVERSE.transformDirection(FACING.set(0f, 0f, -1f)).normalize();
+        boolean held = CgCamera.held();
+        // A hold's first and last frames jump the camera: only a frame whose neighbour was free too is read.
+        if (hasLast && !held && !lastHeld) {
+            double moved = Math.sqrt((ex - lastX) * (ex - lastX) + (ey - lastY) * (ey - lastY) + (ez - lastZ) * (ez - lastZ));
+            double turned = Math.toDegrees(FACING.angle(LAST_FACING));
+            // A bigger jump is another check moving the camera (a hold, the probe's own offset), not a shake.
+            boolean shakeSized = moved <= MAX_MOVE && turned <= MAX_TURN;
+            if (shakeSized && playing) {
+                shakeMove = Math.max(shakeMove, moved);
+                shakeTurn = Math.max(shakeTurn, turned);
+            } else if (shakeSized && !felt) {
+                baseMove = Math.max(baseMove, moved);
+                baseTurn = Math.max(baseTurn, turned);
+            }
+        }
+        lastX = ex;
+        lastY = ey;
+        lastZ = ez;
+        LAST_FACING.set(FACING);
+        lastHeld = held;
+        hasLast = true;
     }
 
     /** At the probe's end: the server executed it, this client felt its shake, and an edit to its file reloaded it. */
@@ -115,9 +162,23 @@ final class CgCueProbe {
         CgCueManager client = CgCueManager.client();
         CgCueDefinition cue = ref.loaded();
         Object shake = cue == null || cue.burst().shake() == null ? null : cue.burst().shake().definition();
-        CgWorldProbe.check("cue.played", felt, felt ? ref.id() + "'s shake felt here after the server played it"
+        CgWorldProbe.check("cue.played", felt, felt ? ref.id() + "'s shake played here after the server played it"
                 : ref.id() + " played on the server, its shake never felt here (" + ref.state() + "; client unrouted "
                 + client.unrouted() + ", late-dropped " + client.lateDropped() + "; " + serverCounts + "; shake "
                 + (shake == null ? "none" : shake.getClass().getSimpleName()) + ")");
+        if (!felt) return;
+        // What the frame renders from, not only that the play ran: its view turned and moved past the baseline's jitter.
+        boolean turned = shakeTurn > Math.max(MIN_TURN, 2 * baseTurn);
+        CgWorldProbe.check("cue.view-turned", turned, String.format("the view turned up to %.4f° a frame under the shake,"
+                + " %.4f° without", shakeTurn, baseTurn));
+        if ((CgCamera.capabilities() & CgHostCamera.TRANSLATION) == 0) {
+            CgWorldProbe.skip("cue.view-moved", "this host does not apply an offset's translation");
+        } else {
+            boolean moved = shakeMove > Math.max(MIN_MOVE, 2 * baseMove);
+            boolean ran = (CgCamera.applied() & CgHostCamera.TRANSLATION) != 0;
+            CgWorldProbe.check("cue.view-moved", moved, String.format("the eye moved up to %.5f blocks a frame under the"
+                    + " shake, %.5f without; the host's translation hook %s", shakeMove, baseMove,
+                    ran ? "ran" : "never ran (a Forge or NeoForge dev run applies no CrystalGraphics mixin)"));
+        }
     }
 }

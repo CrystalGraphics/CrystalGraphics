@@ -29,8 +29,8 @@ import net.minecraft.client.CameraType;
  * }</pre>
  *
  * <ul>
- *   <li>An offset's translation is dropped: no modern hook offers the camera's position. A held pose's is the camera
- *       entity's. Fabric rolls from 1.21.11, where Minecraft renders from the camera's quaternion; Forge 26.1.1 to 26.2
+ *   <li>An offset's translation and a held pose's position are written into the camera by the loaders' camera node
+ *       mixins ({@link #moving}), at the end of its setup. Fabric rolls from 1.21.11, where Minecraft renders from the camera's quaternion; Forge 26.1.1 to 26.2
  *       turn the camera in a node mixin, their angle event coming after the view is taken.</li>
  *   <li>While held: every key mapping is released each tick, the player's look and hotbar slot are put back each frame,
  *       the view is first person, the HUD hidden where the play asks. All of it is restored when the hold ends: by core,
@@ -41,8 +41,10 @@ import net.minecraft.client.CameraType;
 public final class HostCameraModern implements CgHostCamera {
 
     private static float yaw, pitch, roll, fovScale = 1f, eventRoll;
+    /** The offset's translation, world blocks: added where the camera mixin writes the position. */
+    private static float offX, offY, offZ;
     private static final Angle YAW = new Angle(), PITCH = new Angle(), ROLL_ANGLE = new Angle();
-    private static volatile int capabilities = POSITION | LOCK;
+    private static volatile int capabilities = POSITION | LOCK | TRANSLATION;
     /** The parts whose hook has run: render thread only, like the hooks. */
     private static int applied;
 
@@ -77,6 +79,9 @@ public final class HostCameraModern implements CgHostCamera {
 
     @Override
     public void offset(float x, float y, float z, float yaw, float pitch, float roll, float fovScale) {
+        offX = x;
+        offY = y;
+        offZ = z;
         HostCameraModern.yaw = yaw;
         HostCameraModern.pitch = pitch;
         HostCameraModern.roll = roll;
@@ -191,6 +196,36 @@ public final class HostCameraModern implements CgHostCamera {
         begin();
         applied |= FOV;
         return (HELD.held() ? HELD.fov : base) * fovScale;
+    }
+
+    /**
+     * {@code WORLD_BEGIN} if this frame has not had it, then whether the camera's position moves this frame: a held pose,
+     * or an offset's translation. A camera node mixin then writes {@link #x}, {@link #y}, {@link #z} of where it is.
+     *
+     * <pre>{@code
+     * if (HostCameraModern.moving()) {
+     *     Vec3 at = camera.getPosition();
+     *     setPosition(HostCameraModern.x(at.x), HostCameraModern.y(at.y), HostCameraModern.z(at.z));
+     * }
+     * }</pre>
+     */
+    public static boolean moving() {
+        boolean held = holding();
+        applied |= TRANSLATION;
+        return held || offX != 0f || offY != 0f || offZ != 0f;
+    }
+
+    /** Where the camera's eye goes from {@code x}, where setup put it: the held pose's if one is held, plus the offset. */
+    public static double x(double x) {
+        return (HELD.held() ? HELD.x : x) + offX;
+    }
+
+    public static double y(double y) {
+        return (HELD.held() ? HELD.y : y) + offY;
+    }
+
+    public static double z(double z) {
+        return (HELD.held() ? HELD.z : z) + offZ;
     }
 
     /** The held pose as the camera's own, for a node mixin writing the camera directly: x, y, z of the eye. */

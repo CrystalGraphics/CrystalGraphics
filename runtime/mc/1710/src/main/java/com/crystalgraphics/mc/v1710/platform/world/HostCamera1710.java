@@ -24,7 +24,8 @@ import org.lwjgl.opengl.GL11;
  * <ul>
  *   <li>The rotation is applied in view space ahead of the camera's own, so yaw turns about the view's vertical rather
  *       than the world's: the same at a level gaze, and indistinguishable in a shake.</li>
- *   <li>An offset has no translation: the hook has no position to move. A held pose's is the view entity's.</li>
+ *   <li>An offset's translation is a GL translation at the tail of {@code orientCamera}. A held pose's position is the
+ *       view entity's.</li>
  *   <li>While held: every key binding released each tick, the player's look and hotbar slot put back each frame, the
  *       view first person, the hands not drawn, the HUD and the player hidden where the play asks; all of it restored
  *       when the hold ends, by core or by the watchdog ({@link CgHeldCamera}).</li>
@@ -35,6 +36,8 @@ import org.lwjgl.opengl.GL11;
 public final class HostCamera1710 implements CgHostCamera {
 
     private static float yaw, pitch, roll, fovScale = 1f;
+    /** The offset's translation, world blocks. */
+    private static float offX, offY, offZ;
     private static int applied;
 
     private static final CgHeldCamera HELD = new CgHeldCamera();
@@ -48,6 +51,9 @@ public final class HostCamera1710 implements CgHostCamera {
 
     @Override
     public void offset(float x, float y, float z, float yaw, float pitch, float roll, float fovScale) {
+        offX = x;
+        offY = y;
+        offZ = z;
         HostCamera1710.yaw = yaw;
         HostCamera1710.pitch = pitch;
         HostCamera1710.roll = roll;
@@ -69,7 +75,7 @@ public final class HostCamera1710 implements CgHostCamera {
 
     @Override
     public int capabilities() {
-        return ROTATION | ROLL | FOV | POSITION | LOCK | HIDES_PLAYER;
+        return ROTATION | ROLL | FOV | POSITION | LOCK | HIDES_PLAYER | TRANSLATION;
     }
 
     @Override
@@ -86,6 +92,15 @@ public final class HostCamera1710 implements CgHostCamera {
         if (r != 0f) GL11.glRotatef(r, 0f, 0f, 1f);
         if (pitch != 0f) GL11.glRotatef(pitch, 1f, 0f, 0f);
         if (yaw != 0f) GL11.glRotatef(yaw, 0f, 1f, 0f);
+    }
+
+    /**
+     * {@code CameraHook}, at the tail of {@code orientCamera}: the offset's translation, after the view entity's turn, so
+     * it moves the eye along the world's axes. The host view's modelview carries it, so our passes move with the world.
+     */
+    public static void translate() {
+        applied |= TRANSLATION;
+        if (offX != 0f || offY != 0f || offZ != 0f) GL11.glTranslatef(-offX, -offY, -offZ);
     }
 
     public static float fov(float base, float partialTicks) {

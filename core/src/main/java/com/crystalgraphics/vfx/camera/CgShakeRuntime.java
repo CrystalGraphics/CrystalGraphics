@@ -8,8 +8,11 @@ import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.settings.CgGraphicsSettings;
+import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.world.CgCamera;
 import java.util.Arrays;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
@@ -43,7 +46,8 @@ final class CgShakeRuntime {
     private static final double[] PUNCH = new double[PUNCHES * PUNCH_STRIDE];
     private static int punches;
 
-    private static boolean installed, scheduled, moving;
+    private static boolean installed, scheduled, moving, warnedTranslation;
+    private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
     static boolean enabled = true;
     private static double lastFrame = Double.NaN, cx, cy, cz;
     private static final Vector3f ORIGIN = new Vector3f(), FORWARD = new Vector3f(), RIGHT = new Vector3f(), UP = new Vector3f();
@@ -219,8 +223,15 @@ final class CgShakeRuntime {
                 pRoll += side * a * PUNCH_ANGLE * 0.6f;
             }
         }
+        float tx = px + SHIFT * s * bands(now, 3), ty = py + SHIFT * s * bands(now, 4), tz = pz + SHIFT * s * bands(now, 5);
+        if (!warnedTranslation && (tx != 0f || ty != 0f || tz != 0f)
+                && (CgCamera.capabilities() & CgHostCamera.TRANSLATION) == 0) {
+            warnedTranslation = true;
+            LOGGER.warn("[cg] a camera shake moves the camera's position, which this host cannot apply: only its rotation"
+                    + " and field of view play here");
+        }
         CgCamera.offset(
-                px + SHIFT * s * bands(now, 3), py + SHIFT * s * bands(now, 4), pz + SHIFT * s * bands(now, 5),
+                tx, ty, tz,
                 pYaw + YAW * s * bands(now, 0), pPitch + PITCH * s * bands(now, 1), pRoll + ROLL * s * bands(now * 0.7, 2),
                 (1f + fov * fovEffects) * fovScale);
         // One more frame of zeros once everything has settled, so the host lets the camera go.
