@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.modern.fabric;
 
-import com.crystalgraphics.asset.load.CgAssetMounts;
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
@@ -54,8 +54,8 @@ public final class CrystalGraphicsFabricCommon implements VariantEntry {
                 CrashVariant.report(CrystalGraphicsFabricCommon.class));
         CgPlatform.register(PlatformServiceModern.getInstance());
         CgPlatform.provide(CgModLoader.HOST, ModLoaderFabric.INSTANCE);
+        CgEngineLifecycle.preInit();
         NetworkModern.install(Network.get());
-        CgAssetMounts.mount();   // every mod's assets, both sides, before anything compiles
         Network.registerServerReceiver();
         registerServerEvents();
     }

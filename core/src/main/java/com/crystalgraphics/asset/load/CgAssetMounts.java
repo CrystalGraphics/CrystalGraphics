@@ -28,13 +28,17 @@ import com.crystalgraphics.util.io.CgIO;
 /**
  * Mounts every loaded mod's assets into the process's registry, as Unreal mounts each content plugin and its asset
  * registry gathers the mount point: a dev run's source folders first, then each mod's {@code assets/<ns>/} from its jar.
- * A host calls it once, on both sides, as the game initialises; a mod registers nothing. What it mounts then starts
- * loading at the asset loop's next drain, as Unreal's cue manager loads its runtime library at startup.
+ * The engine's lifecycle runs it on both sides as the game initialises ({@code CgEngineLifecycle}): {@link #mount} at
+ * pre-init, {@link #loadAhead} once every mod has initialised, as Unreal's cue manager loads its runtime library at
+ * startup. A mod registers nothing.
  *
  * <pre>{@code
- * CgPlatform.register(platform);
- * CgPlatform.provide(CgModLoader.HOST, ModLoaderForge.INSTANCE);
- * CgAssetMounts.mount();      // every mod's cues, shakes, systems and tags.yaml, before anything compiles
+ * // CgEngineLifecycle, never a host:
+ * CgAssetMounts.mount();      // pre-init: every mod's cues, shakes, systems and tags.yaml, before anything compiles
+ * CgAssetMounts.loadAhead();  // post-init: all of it starts loading
+ *
+ * // a tool or a test, over a registry of its own:
+ * CgAssetMounts.Result r = CgAssetMounts.mount(registry, List.of(sourceFolder), List.of(modJar));
  * }</pre>
  *
  * <ul>
@@ -44,7 +48,7 @@ import com.crystalgraphics.util.io.CgIO;
  *   <li>A namespace mounts from the first source that has it, so a dev run's source folder wins over its own build
  *       output, and edits there reload.</li>
  *   <li>A jar the loader has not opened is opened here and kept open for the session, a mounted pak.</li>
- *   <li>A second call mounts nothing; one in the harness or a test mounts only what its dev roots hold.</li>
+ *   <li>A second call mounts nothing.</li>
  * </ul>
  */
 public final class CgAssetMounts {
@@ -54,15 +58,15 @@ public final class CgAssetMounts {
     /** Kind folders Minecraft's own namespaces use too: holding one says nothing. */
     private static final Set<String> SHARED = new HashSet<>(Arrays.asList("textures", "models"));
 
-    private static boolean mounted;
+    private static boolean mounted, loaded;
+    private static List<String> namespaces = List.of();
 
     private CgAssetMounts() {
     }
 
     /**
      * Mounts the dev roots and {@link CgModLoader#roots()}' mods into {@link CgVfxAssets#instance()}'s registry, once,
-     * logs what it mounted and how long it took, and loads every asset it mounted ahead
-     * ({@link CgVfxAssets#prefetch}).
+     * and logs what it mounted and how long it took.
      */
     public static synchronized void mount() {
         if (mounted) return;
@@ -70,10 +74,19 @@ public final class CgAssetMounts {
         // The roots hot reload watches: crystalgraphics.resourceOverrideDirs, then a dev run's source folders
         List<Path> dev = new ArrayList<>();
         for (File f : CgIO.overrideRoots()) dev.add(f.toPath());
+        namespaces = mount(CgVfxAssets.instance().registry(), dev, CgModLoader.roots()).mounted();
+    }
+
+    /**
+     * Loads every asset {@link #mount} mounted ahead ({@link CgVfxAssets#prefetch}): asked from any thread, started at the
+     * asset loop's next drain. Once.
+     */
+    public static synchronized void loadAhead() {
+        if (loaded) return;
+        loaded = true;
         CgVfxAssets assets = CgVfxAssets.instance();
-        Result r = mount(assets.registry(), dev, CgModLoader.roots());
         List<CgAssetRef<?>> ahead = new ArrayList<>();
-        for (String ns : r.mounted()) {
+        for (String ns : namespaces) {
             for (CgAssetEntry e : assets.registry().entries(ns)) {
                 if (!e.binary() && e.redirect() == null) ahead.add(CgVfxAssets.ref(e.kind(), e.id()));
             }

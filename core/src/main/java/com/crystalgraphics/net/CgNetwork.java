@@ -17,6 +17,7 @@ import com.crystalgraphics.cue.CgCueNet;
 import com.crystalgraphics.sequence.net.CgSequenceNet;
 import com.crystalgraphics.tag.CgTagNet;
 import com.crystalgraphics.trace.CgThreadAllocation;
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.object.CgNetObjects;
 import com.crystalgraphics.net.object.CgNetProbe;
 import com.crystalgraphics.net.object.CgNetStress;
@@ -336,6 +337,7 @@ public final class CgNetwork {
     public static void serverStarting(@Nullable Object server) {
         serverThread = Thread.currentThread();
         CgNetObjects.serverStarting(server);
+        CgEngineLifecycle.postInit();   // every mod has initialised by a server's start
     }
 
     public static void serverTick() {

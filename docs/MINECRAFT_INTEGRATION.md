@@ -4,6 +4,12 @@ Moved from [`AGENTS.md`](../AGENTS.md), which keeps the rules every session need
 
 ## Minecraft Integration Glue
 
+**Core starts itself; a host says when.** Each host registers the platform and fills its slots, then calls
+`lifecycle.CgEngineLifecycle`: `preInit()` as its loader constructs or pre-initialises CrystalGraphics (every mod's
+assets mounted, their tags declared), and `init(channel)` where it registers its network channel, its world slots
+provided first (the network installed). Post-init is the engine's own, at its first client graphics start or server
+start. Anything core must load or start as the game starts goes into the lifecycle, never into a host.
+
 The layer that wires CrystalGraphics into each Minecraft. Read it when debugging frame timing, hot
 reload, or GL state shared with Minecraft and other mods. Each host's classes: its own `CLAUDE.md`.
 

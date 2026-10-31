@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.v1710;
 
-import com.crystalgraphics.asset.load.CgAssetMounts;
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.mc.v1710.platform.PlatformService1710;
 import com.crystalgraphics.mc.v1710.platform.net.Network1710;
@@ -72,6 +72,7 @@ public final class CrystalGraphics{
             }
         });
         PlatformService1710.onPreInit();
+        CgEngineLifecycle.preInit();   // every mod's assets mounted, its tags declared
     }
 
     /**
@@ -85,7 +86,6 @@ public final class CrystalGraphics{
         PlatformService1710.onInit();
         // Both sides, and at init rather than preInit: a channel registered at preInit delivered nothing.
         Network1710.install();
-        CgAssetMounts.mount();   // every mod's assets, both sides, before anything compiles
 
         if (!FMLCommonHandler.instance().getSide().isClient()) return;
 

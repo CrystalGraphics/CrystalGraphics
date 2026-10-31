@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.modern.forge;
 
-import com.crystalgraphics.asset.load.CgAssetMounts;
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.modern.platform.CrystalGraphics;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
@@ -185,8 +185,8 @@ public final class CrystalGraphicsForge implements VariantEntry {
         *///?}
         CgPlatform.register(PlatformServiceModern.getInstance());
         CgPlatform.provide(CgModLoader.HOST, ModLoaderForge.INSTANCE);
+        CgEngineLifecycle.preInit();
         NetworkModern.install(Network.register());
-        CgAssetMounts.mount();   // every mod's assets, both sides, before anything compiles
         ServerEvents.register();
 
         // EVERY subscription here is a render hook, so the whole of Events is client-only -- guarded

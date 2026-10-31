@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.lifecycle;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.collision.debug.CgCollisionDebug;
 import com.crystalgraphics.mc.CgHotReload;
 import com.crystalgraphics.compute.CgCompute;
@@ -237,6 +238,8 @@ public final class CgGraphicsLifecycle {
                 CgRenderDemo.INSTANCE.install();
                 // The demo plays in PLAYS, ahead of the VFX system's EFFECTS: what it plays starts the same frame.
                 CgVfx.install();
+                // Every mod has initialised by the first context: what was mounted starts loading, its preparers registered
+                CgEngineLifecycle.postInit();
                 CgCollisionDebug.install();
                 CgWorldProbe.installIfEnabled();
 

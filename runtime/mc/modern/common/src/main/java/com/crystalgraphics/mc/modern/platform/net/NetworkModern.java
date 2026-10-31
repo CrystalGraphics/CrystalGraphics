@@ -4,6 +4,7 @@ import java.util.UUID;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
 import com.crystalgraphics.mc.modern.platform.world.HostFormatsModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
@@ -34,12 +35,12 @@ public final class NetworkModern {
 
     /** Mod init, both sides. */
     public static void install(CgNetworkChannel channel) {
-        CgNetwork.install(channel, player -> player instanceof ServerPlayer ? idOf((ServerPlayer) player) : null);
         CgPlatform.provide(CgLevels.SERVICE, LevelsModern.INSTANCE);
         CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQueryModern.INSTANCE);
         CgPlatform.provide(CgHostShapes.SERVICE, new HostShapesModern());
         CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHostModern());
         CgPlatform.provide(CgHostFormats.SERVICE, new HostFormatsModern());
+        CgEngineLifecycle.init(channel);   // after the slots: it reads player ids through them
     }
 
     public static void playerJoined(@Nullable ServerPlayer player) {

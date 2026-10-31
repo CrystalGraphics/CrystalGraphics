@@ -4,6 +4,7 @@ import java.util.UUID;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
 import com.crystalgraphics.mc.v1710.platform.world.HostFormats1710;
 import com.crystalgraphics.mc.v1710.platform.world.HostShapes1710;
@@ -45,13 +46,12 @@ public final class Network1710 {
     public static synchronized void install() {
         if (installed) return;
         installed = true;
-        CgNetwork.install(NetworkChannel1710.create(),
-                player -> player instanceof EntityPlayer ? idOf((EntityPlayer) player) : null);
         CgPlatform.provide(CgLevels.SERVICE, Levels1710.INSTANCE);
         CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQuery1710.INSTANCE);
         CgPlatform.provide(CgHostShapes.SERVICE, new HostShapes1710());
         CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHost1710());
         CgPlatform.provide(CgHostFormats.SERVICE, new HostFormats1710());
+        CgEngineLifecycle.init(NetworkChannel1710.create());   // after the slots: it reads player ids through them
         // FML traps a mod's own Runtime.halt.
         CgPlatform.provide(CgProcessExit.SERVICE, status -> FMLCommonHandler.instance().exitJava(status, true));
         FMLCommonHandler.instance().bus().register(new Handler());
