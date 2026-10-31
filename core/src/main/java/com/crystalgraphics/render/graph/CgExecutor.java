@@ -1024,7 +1024,12 @@ public final class CgExecutor {
             program.use();
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, DISPATCH_BIND)) {
-            bindDispatch(d, program, frame, bindings);
+            CgGL.cgBeginBarriers();   // its bindings' barriers as one glMemoryBarrier on GL, before the dispatch
+            try {
+                bindDispatch(d, program, frame, bindings);
+            } finally {
+                CgGL.cgEndBarriers();
+            }
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, DISPATCH_ISSUE)) {
             switch (d.form) {
@@ -1250,17 +1255,22 @@ public final class CgExecutor {
      */
     private static void barriers(CgFrame frame, int s) {
         if (!kernelsSeen) return;
-        for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
-            int bits = frame.accessBits[i];
-            if (bits == 0) continue;   // a release
-            if (frame.accessView[i] instanceof CgGraphBuffer buffer) {
-                barrier(true, bufferStorage(buffer, (bits & CgHazards.WRITES) != 0), bits);
-            } else {
-                CgGraphTexture texture = (CgGraphTexture) frame.accessView[i];
-                CgFrameBuffer storage = texture.framebuffer();
-                CgTexture color = storage == null ? null : storage.getColorTexture(0);
-                if (color != null) barrier(false, color.getId(), bits);
+        CgGL.cgBeginBarriers();   // one glMemoryBarrier for the step on GL
+        try {
+            for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
+                int bits = frame.accessBits[i];
+                if (bits == 0) continue;   // a release
+                if (frame.accessView[i] instanceof CgGraphBuffer buffer) {
+                    barrier(true, bufferStorage(buffer, (bits & CgHazards.WRITES) != 0), bits);
+                } else {
+                    CgGraphTexture texture = (CgGraphTexture) frame.accessView[i];
+                    CgFrameBuffer storage = texture.framebuffer();
+                    CgTexture color = storage == null ? null : storage.getColorTexture(0);
+                    if (color != null) barrier(false, color.getId(), bits);
+                }
             }
+        } finally {
+            CgGL.cgEndBarriers();
         }
     }
 

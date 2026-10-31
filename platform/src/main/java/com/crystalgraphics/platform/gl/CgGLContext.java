@@ -58,6 +58,9 @@ public interface CgGLContext {
     /** @return {@code true} if {@code GL_ARB_buffer_storage} is supported */
     boolean GL_ARB_buffer_storage();
 
+    /** @return {@code true} if the context is 4.5 or has {@code GL_ARB_direct_state_access}: objects worked on unbound */
+    boolean GL_ARB_direct_state_access();
+
     /**
      * @return {@code true} if {@code GL_ARB_shader_storage_buffer_object} is supported
      *         (independently of core GL 4.3 — {@link #OpenGL43()} covers the core path)

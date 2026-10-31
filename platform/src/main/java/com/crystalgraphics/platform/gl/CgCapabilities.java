@@ -57,7 +57,9 @@ public final class CgCapabilities {
     public static final CgVar.Bool BC7 = CgVar.bool("crystalgraphics.texture.bc7", true, CgVar.DEV,
             "Cooked BC7 textures uploaded as their blocks where the context has BPTC; false decodes them to RGBA8 as they"
                     + " load. Taken at each context's capability probe.");
-    public static final CgVar.Bool MULTI_DRAW = CgVar.bool("crystalgraphics.mesh.multiDraw", true, CgVar.DEV,
+    public static final CgVar.Bool DSA = CgVar.bool("crystalgraphics.gl.dsa", true, CgVar.DEV,
+            "Blits between framebuffers by name where the context has direct state access, binding neither; false binds them.");
+    public static final CgVar.Bool MULTI_DRAW =CgVar.bool("crystalgraphics.mesh.multiDraw", true, CgVar.DEV,
             "Runs of draws sharing pipeline, bindings and a slab joined into one multi-draw; false draws a call a draw, for"
                     + " a picture that must not change. Taken at each context's capability probe.");
     
@@ -184,6 +186,8 @@ public final class CgCapabilities {
      * implementation.</p>
      */
     @Getter(AccessLevel.NONE) boolean copyImageSubData;
+    /** GL 4.5 or ARB_direct_state_access, on a GL driver: framebuffers blitted by name ({@link CgGL#cgBlitFramebuffer}). */
+    @Getter(AccessLevel.NONE) boolean directStateAccess;
 
     // ── Streaming — what CgStreamBuffer's waterfall picks a tier from ─────────
     /** Whether fence sync is available (Core GL32 or {@code GL_ARB_sync}). */
@@ -353,6 +357,7 @@ public final class CgCapabilities {
 
         // ── Texture copy ──────────────────────────────────────────────────────
         caps.copyImageSubData = gl.OpenGL43();
+        caps.directStateAccess = !(CgGL.backend() instanceof CgTrackedGLBackend) && gl.GL_ARB_direct_state_access() && DSA.get();
 
         // ── Streaming ─────────────────────────────────────────────────────────
         caps.arbSync           = gl.OpenGL32() || gl.GL_ARB_sync();
@@ -487,6 +492,9 @@ public final class CgCapabilities {
 
     /** @see #copyImageSubData */
     public boolean isCopyImageSubDataSupported() { return copyImageSubData; }
+
+    /** @see #directStateAccess */
+    public boolean directStateAccess() { return directStateAccess; }
 
     /** Whether {@code glMapBufferRange} is supported (Core GL30 or {@code GL_ARB_map_buffer_range}). */
     public boolean isMapBufferRangeSupported() { return hasMapBufferRange; }

@@ -54,6 +54,8 @@ public final class Lwjgl2GLContext implements CgGLContext {
     @Override public boolean GL_ARB_map_buffer_range() { return caps().GL_ARB_map_buffer_range; }
     @Override public boolean GL_ARB_sync()             { return caps().GL_ARB_sync; }
     @Override public boolean GL_ARB_buffer_storage()   { return caps().GL_ARB_buffer_storage; }
+    /** False: the backend here has no named calls, so its hosts bind to edit, as they always have. */
+    @Override public boolean GL_ARB_direct_state_access() { return false; }
 
     // ── Shader buffer extensions ──────────────────────────────────────────────
 

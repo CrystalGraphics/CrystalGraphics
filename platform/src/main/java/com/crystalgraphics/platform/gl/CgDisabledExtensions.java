@@ -73,6 +73,9 @@ public final class CgDisabledExtensions {
         @Override public boolean GL_ARB_map_buffer_range() { return on(gl.GL_ARB_map_buffer_range(), "GL_ARB_map_buffer_range"); }
         @Override public boolean GL_ARB_sync() { return on(gl.GL_ARB_sync(), "GL_ARB_sync"); }
         @Override public boolean GL_ARB_buffer_storage() { return on(gl.GL_ARB_buffer_storage(), "GL_ARB_buffer_storage"); }
+        @Override public boolean GL_ARB_direct_state_access() {
+            return on(gl.GL_ARB_direct_state_access(), "GL_ARB_direct_state_access");
+        }
         @Override public boolean GL_ARB_shader_storage_buffer_object() {
             return on(gl.GL_ARB_shader_storage_buffer_object(), "GL_ARB_shader_storage_buffer_object");
         }

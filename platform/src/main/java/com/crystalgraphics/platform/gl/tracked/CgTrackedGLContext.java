@@ -32,6 +32,8 @@ public final class CgTrackedGLContext implements CgGLContext {
     @Override public boolean GL_ARB_sync() { return true; }
 
     @Override public boolean GL_ARB_buffer_storage() { return true; }
+    /** False: the tracked backend answers GL's bind-to-edit calls, and implements none of the named ones. */
+    @Override public boolean GL_ARB_direct_state_access() { return false; }
 
     @Override public boolean GL_ARB_shader_storage_buffer_object() { return true; }
 

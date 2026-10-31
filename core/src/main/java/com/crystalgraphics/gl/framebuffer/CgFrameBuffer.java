@@ -790,12 +790,16 @@ public class CgFrameBuffer {
     }
 
     /**
-     * Raw blit between two arbitrary FBO ids with full source and destination rect control.
-     * Saves and restores the FBO binding.
+     * Raw blit between two arbitrary FBO ids with full source and destination rect control. Leaves the FBO binding as
+     * it found it: by name where the context can ({@link CgGL#blitsByName}), else bound and restored.
      */
     public static void blitFrom(int src, int dst, int srcX0, int srcY0, int srcX1, int srcY1,
                                 int dstX0, int dstY0, int dstX1, int dstY1,
                                 int mask, int filter) {
+        if (CgGL.blitsByName()) {
+            CgGL.cgBlitNamedFramebuffer(src, dst, srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
+            return;
+        }
         try (CgGlScope scope = CgGlState.save(FBO_ONLY)) {
             CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, src);
             CgGL.glBindFramebuffer(CgGL.GL_DRAW_FRAMEBUFFER, dst);

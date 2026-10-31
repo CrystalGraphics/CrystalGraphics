@@ -60,6 +60,17 @@ public abstract class CgGLBackend {
     // -------------------------------------------------------------------------
 
     public abstract void bindFramebuffer(int target, int fbo);
+    /** Whether {@link #blitNamedFramebuffer} is implemented here; the context must have direct state access too. */
+    public boolean blitsByName() {
+        return false;
+    }
+
+    /** {@code glBlitNamedFramebuffer}: GL 4.5 or ARB_direct_state_access, binding neither framebuffer. */
+    public void blitNamedFramebuffer(int src, int dst, int srcX0, int srcY0, int srcX1, int srcY1,
+                                     int dstX0, int dstY0, int dstX1, int dstY1, int mask, int filter) {
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " blits by binding");
+    }
+
     public abstract void blitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1,
                                           int dstX0, int dstY0, int dstX1, int dstY1,
                                           int mask, int filter);
@@ -325,7 +336,39 @@ public abstract class CgGLBackend {
      */
     public void cgBufferBarrier(int buffer, int from, int to) {
         int bits = (from & CgAccess.COMPUTE_WRITE) == 0 ? 0 : glBarrierBits(to, false);
-        if (bits != 0) glMemoryBarrier(bits);
+        if (bits != 0) memoryBarrier(bits);
+    }
+
+    private int barrierBatch, batchedBits;
+
+    /**
+     * Gathers the barriers asked until {@link #cgEndBarriers} into one {@code glMemoryBarrier} there: GL's barrier is
+     * global, and on a threaded driver each costs about 1.3 µs (T11 P0.3). A device-backed backend records each barrier
+     * as it is asked, as before. Brackets nest; the outermost end issues.
+     */
+    public void cgBeginBarriers() {
+        barrierBatch++;
+    }
+
+    /** Ends what {@link #cgBeginBarriers} began, issuing what it gathered. */
+    public void cgEndBarriers() {
+        if (barrierBatch == 0) throw new IllegalStateException("cgEndBarriers without cgBeginBarriers");
+        if (--barrierBatch > 0 || batchedBits == 0) return;
+        int bits = batchedBits;
+        batchedBits = 0;
+        memoryBarrier(bits);
+    }
+
+    private static final boolean GATHER = CgVar.bool("crystalgraphics.gl.gatherBarriers", true, CgVar.DEV | CgVar.RESTART,
+            "Joins the barriers between cgBeginBarriers and cgEndBarriers into one glMemoryBarrier on GL; off, one each.").get();
+
+    private void memoryBarrier(int bits) {
+        if (barrierBatch > 0 && GATHER) {
+            batchedBits |= bits;
+            return;
+        }
+        if (CgGlCallSites.ON) CgGlCallSites.issued("glMemoryBarrier");
+        glMemoryBarrier(bits);
     }
 
     /**
@@ -385,7 +428,7 @@ public abstract class CgGLBackend {
     /** {@link #cgBufferBarrier} for a texture. */
     public void cgImageBarrier(int texture, int from, int to) {
         int bits = (from & CgAccess.COMPUTE_WRITE) == 0 ? 0 : glBarrierBits(to, true);
-        if (bits != 0) glMemoryBarrier(bits);
+        if (bits != 0) memoryBarrier(bits);
     }
 
     /** The {@code glMemoryBarrier} bits that make a kernel's writes visible to {@code to}. */

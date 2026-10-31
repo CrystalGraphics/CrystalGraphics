@@ -707,6 +707,26 @@ public final class CgGL {
         gl().blitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
     }
 
+    /**
+     * Whether {@link #cgBlitNamedFramebuffer} may be called: a GL driver with direct state access (4.5 or the ARB
+     * extension). A blit by name binds neither framebuffer, so nothing has to be bound back after it: a framebuffer
+     * bind costs a threaded driver about 4 µs (T11 P0.3).
+     *
+     * <pre>{@code
+     * if (CgGL.blitsByName()) CgGL.cgBlitNamedFramebuffer(src, dst, 0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+     * else { bind src for reading and dst for drawing, glBlitFramebuffer, bind back }
+     * }</pre>
+     */
+    public static boolean blitsByName() {
+        return backend.blitsByName() && CgCapabilities.detect().directStateAccess();
+    }
+
+    /** {@code glBlitNamedFramebuffer}, where {@link #blitsByName}: {@code src} to {@code dst}, 0 the default framebuffer. */
+    public static void cgBlitNamedFramebuffer(int src, int dst, int srcX0, int srcY0, int srcX1, int srcY1,
+                                              int dstX0, int dstY0, int dstX1, int dstY1, int mask, int filter) {
+        gl().blitNamedFramebuffer(src, dst, srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
+    }
+
     public static int glGenFramebuffers() {
         return gl().genFramebuffers();
     }
@@ -1417,6 +1437,28 @@ public final class CgGL {
      * CgGL.cgBufferBarrier(args, CgAccess.COMPUTE_WRITE, CgAccess.INDIRECT);
      * }</pre>
      */
+    /**
+     * Gathers the barriers asked until {@link #cgEndBarriers} into one on GL, where a barrier is global; each stays its
+     * own on a device. Always paired, the end in a {@code finally}:
+     *
+     * <pre>{@code
+     * CgGL.cgBeginBarriers();
+     * try {
+     *     for (int buffer : read) CgGL.cgBufferBarrier(buffer, CgAccess.COMPUTE_WRITE, CgAccess.COMPUTE_READ);
+     * } finally {
+     *     CgGL.cgEndBarriers();   // one glMemoryBarrier on GL, before the dispatch that reads them
+     * }
+     * }</pre>
+     */
+    public static void cgBeginBarriers() {
+        backend.cgBeginBarriers();
+    }
+
+    /** Ends {@link #cgBeginBarriers}: issues on GL what it gathered. */
+    public static void cgEndBarriers() {
+        backend.cgEndBarriers();
+    }
+
     public static void cgBufferBarrier(int buffer, int from, int to) {
         gl().cgBufferBarrier(buffer, from, to);
     }

@@ -61,6 +61,7 @@ public final class Lwjgl3GLContext implements CgGLContext {
     @Override public boolean GL_ARB_map_buffer_range() { return caps().GL_ARB_map_buffer_range; }
     @Override public boolean GL_ARB_sync()             { return caps().GL_ARB_sync; }
     @Override public boolean GL_ARB_buffer_storage()   { return caps().GL_ARB_buffer_storage; }
+    @Override public boolean GL_ARB_direct_state_access() { return caps().OpenGL45 || caps().GL_ARB_direct_state_access; }
 
     // ── Shader buffer extensions ──────────────────────────────────────────────
 
