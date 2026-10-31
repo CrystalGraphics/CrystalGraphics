@@ -117,7 +117,7 @@ final class CgAssetValidation {
                 else if (!REF.matcher((String) v).matches()) into.error(at, CgIssue.REF, "'" + v + "' is not namespace:path");
                 return;
             case BINARY_REF:
-                if (!(v instanceof String)) shape(at, "a path", v);
+                if (!(v instanceof String || v instanceof CgBinaryAsset)) shape(at, "a path", v);
                 return;
             case CURVE:
                 if (v instanceof String && !REF.matcher((String) v).matches()) {
@@ -253,7 +253,9 @@ final class CgAssetValidation {
                 return alt.enumValues().contains(v);
             case STRING:
                 return v instanceof String && (alt.pattern() == null || matches(alt, (String) v));
-            case REF: case BINARY_REF: case ELEMENT_REF:
+            case BINARY_REF:
+                return v instanceof String || v instanceof CgBinaryAsset;
+            case REF: case ELEMENT_REF:
                 return v instanceof String;
             case BOOL:
                 return v instanceof Boolean;

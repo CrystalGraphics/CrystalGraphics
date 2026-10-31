@@ -1,7 +1,6 @@
 package com.crystalgraphics.vfx.system;
 
 import com.crystalgraphics.api.material.CgMaterialDefinition;
-import com.crystalgraphics.api.material.CgMaterialRegistry;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -113,7 +112,7 @@ public final class CgVfxSystemPreparer implements CgAssetPreparer {
                     for (CgVfxLook.Placed placed : drawn) {
                         for (CgMaterialDefinition d : placed.definitions()) {
                             for (CgMaterialDefinition.Texture t : d.textures().values()) {
-                                CgTexture texture = CgMaterialRegistry.texture(t.texture());
+                                CgTexture texture = t.resolve();
                                 if (seen.add(texture)) textures.add(texture);
                             }
                         }

@@ -4,6 +4,8 @@ import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgMipmapConfig;
 import com.crystalgraphics.asset.tree.CgAssetException;
+import com.crystalgraphics.gl.texture.CgTexture2DArray;
+import com.crystalgraphics.gl.texture.CgTexture3D;
 import com.crystalgraphics.gl.texture.CgTextureCubemap;
 import com.crystalgraphics.util.io.CgOpenExr;
 import com.crystalgraphics.util.io.CgRadianceHdr;
@@ -28,7 +30,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Supplier;
 
 /**
  * Singleton load/reload/delete lifecycle manager for {@link CgMaterial} instances.
@@ -137,7 +138,7 @@ public final class CgMaterialRegistry {
      * </ul>
      *
      * <pre>{@code
-     * for (CgMaterialDefinition.Texture t : definition.textures().values()) CgMaterialRegistry.texture(t.texture()).getWidth();
+     * for (CgMaterialDefinition.Texture t : definition.textures().values()) t.resolve().getWidth();   // or one made in code
      * }</pre>
      *
      * @throws CgAssetException naming both, for a {@code .png} and a {@code .hdr} at one path, {@code colour: srgb} on a
@@ -146,8 +147,6 @@ public final class CgMaterialRegistry {
      *                          a binding's sampler carries
      */
     public static CgTexture texture(String path) {
-        Supplier<? extends CgTexture> provided = PROVIDED.get(path);
-        if (provided != null) return provided.get();
         return TEXTURES.computeIfAbsent(path, CgMaterialRegistry::fromFile);
     }
 
@@ -228,33 +227,6 @@ public final class CgMaterialRegistry {
         }
     }
 
-    /** Every texture made in code, by the id a material's binding names it by. */
-    private static final Map<String, Supplier<? extends CgTexture>> PROVIDED = new ConcurrentHashMap<>();
-
-    /**
-     * Names a texture made in code, so a material binds it as it binds an image file: a render target, a lookup table,
-     * a procedural sheet. Unreal's renderer texture parameters set to a texture object rather than a file. Any kind
-     * the sampler declares: 2D, an array, a volume.
-     *
-     * <pre>{@code
-     * CgMaterialRegistry.provide("mymod:textures/fx/fire_ramp", FIRE::texture);    // made at its first bind
-     * CgMaterialDefinition.of("mymod:materials/fire", SHADER).texture("_Ramp", "mymod:textures/fx/fire_ramp")
-     * }</pre>
-     *
-     * <ul>
-     *   <li>Provide it before the first material naming it draws; a binding of an id nothing provides is read as a file.</li>
-     *   <li>One supplier an id: providing another under it throws.</li>
-     * </ul>
-     */
-    public static void provide(String id, Supplier<? extends CgTexture> texture) {
-        Supplier<? extends CgTexture> had = PROVIDED.putIfAbsent(id, texture);
-        if (had != null && had != texture) throw new IllegalStateException(id + " is provided already");
-    }
-
-    private static boolean provided(String id) {
-        return PROVIDED.containsKey(id);
-    }
-
     /** {@code image}'s settings file, or every default where it has none. */
     private static Settings settings(String image) {
         int dot = image.lastIndexOf('.');
@@ -285,6 +257,14 @@ public final class CgMaterialRegistry {
         if (byKeyword != null) for (CgMaterial m : byKeyword.values()) m.delete();
     }
 
+    /** The sampler type a texture of {@code texture}'s kind binds to. */
+    private static CgMaterialProperty.Type samplerFor(CgTexture texture) {
+        if (texture instanceof CgTextureCubemap) return CgMaterialProperty.Type.SAMPLER_CUBE;
+        if (texture instanceof CgTexture2DArray) return CgMaterialProperty.Type.SAMPLER2D_ARRAY;
+        if (texture instanceof CgTexture3D) return CgMaterialProperty.Type.SAMPLER3D;
+        return CgMaterialProperty.Type.SAMPLER2D;
+    }
+
     static CgMaterial make(CgMaterialDefinition d, @Nullable String drawKeyword) {
         if (Boolean.FALSE.equals(d.draw().depthTest())) {
             throw new IllegalStateException(d.id() + " turns depth_test off, which no material state carries yet");
@@ -296,18 +276,16 @@ public final class CgMaterialRegistry {
         for (CgMaterialProperty p : m.properties()) if (p.getType().isSampler()) samplers.put(p.getName(), p);
         for (Map.Entry<String, CgMaterialDefinition.Texture> t : d.textures().entrySet()) {
             CgMaterialProperty p = samplers.get(t.getKey());
-            String path = t.getValue().texture();
+            String what = t.getValue().describe();
             if (p == null || !p.getType().isSampler()) {
-                throw new IllegalStateException(d.id() + " binds " + path + " to " + t.getKey() + ", a "
+                throw new IllegalStateException(d.id() + " binds " + what + " to " + t.getKey() + ", a "
                         + (p == null ? "missing sampler" : p.getType().getPropertyTypeName()));
             }
-            if (provided(path)) continue;
-            boolean cube = texture(path) instanceof CgTextureCubemap;
-            CgMaterialProperty.Type wants = cube ? CgMaterialProperty.Type.SAMPLER_CUBE : CgMaterialProperty.Type.SAMPLER2D;
+            CgMaterialProperty.Type wants = samplerFor(t.getValue().resolve());
             if (p.getType() != wants) {
-                throw new CgAssetException(d.id() + " binds " + path + ", a " + (cube ? "cube" : "2D") + " texture, to "
-                        + t.getKey() + ", a " + p.getType().getPropertyTypeName() + ": a cube takes a texture with cube: true,"
-                        + " a sampler2D one without; any other kind is provided (CgMaterialRegistry.provide)");
+                throw new CgAssetException(d.id() + " binds " + what + ", a " + wants.getPropertyTypeName() + "'s texture, to "
+                        + t.getKey() + ", a " + p.getType().getPropertyTypeName() + ": a file is 2D, or a cube with cube: true;"
+                        + " an array or a volume is made in code and bound as the object");
             }
         }
         m.applyProperties(b -> {
@@ -321,7 +299,7 @@ public final class CgMaterialRegistry {
             int unit = 0;
             for (Map.Entry<String, CgMaterialDefinition.Texture> t : d.textures().entrySet()) {
                 CgSampler sampler = sampler(t.getValue().sampler());
-                CgTexture texture = texture(t.getValue().texture());
+                CgTexture texture = t.getValue().resolve();
                 if (sampler == null) b.sampler(t.getKey(), unit++, texture);
                 else b.sampler(t.getKey(), unit++, texture, sampler);
             }

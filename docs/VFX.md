@@ -543,10 +543,10 @@ static final CgMaterialDefinition FLAT = CgMaterialDefinition.of("mymod:material
         "mymod:shaders/vfx/flat.shader").order(CgVfxLook.SURFACE).build();
 
 public static final CgVfxKit BANDS = CgVfxKit.of("mymod:wave/bands")
-        .slot(CgVfxSlotRenderer.of("outer", CgBeamBody.BODY).material(FLAT).size(1.8f)
-                .bind("_Color", CgEnergyWave.SPIRAL).build())
+        .slot(CgVfxSlotRenderer.of("outer", CgBeamBody.BODY).material(FLAT).size(1.8f)   // one material, two slots
+                .bind("_Color", CgEnergyWave.SPIRAL))
         .slot(CgVfxSlotRenderer.of("inner", CgBeamBody.BODY).material(FLAT).size(1.4f)
-                .bind("_Color", CgEnergyWave.SHELL).build())
+                .bind("_Color", CgEnergyWave.SHELL))
         .build();
 
 CgVfxLook mine = CgEnergyWave.kamehameha().derive()
@@ -569,24 +569,24 @@ CgVfxLook quieter = CgEnergyWave.kamehameha().derive().without(CgVfxBlast.SHOCKW
 ### A slot renderer
 
 ```java
-static final CgMaterialDefinition SHELL = CgMaterialDefinition.of("mymod:materials/shell",
-        "crystalgraphics:shaders/vfx/beam/body_shell.shader").value("_Flow", 22f).order(CgVfxLook.SURFACE).build();
-
-CgVfxSlotRenderer shell = CgVfxSlotRenderer.of("shell", CgBeamBody.BODY)   // the slot it draws on
-        .material(SHELL)
-        .size(1.15f)                                       // times the slot's own size
-        .bind("_Shell", CgEnergyWave.SHELL)                // a colour, read every draw
-        .bind("_Radius", CgEnergyWave.RADIUS, 2.6f)        // a number times 2.6: it shrinks as the wave fades
+public static final CgVfxKit SHELLS = CgVfxKit.of("mymod:wave/shells")
+        .slot(CgVfxSlotRenderer.of("shell", CgBeamBody.BODY)           // the slot it draws on
+                .shader("crystalgraphics:shaders/vfx/beam/body_shell.shader")   // its material, mymod:wave/shells/shell
+                .value("_Flow", 22f)                                   // a constant of it
+                .size(1.15f)                                           // times the slot's own size
+                .bind("_Shell", CgEnergyWave.SHELL)                    // a colour, read every draw
+                .bind("_Radius", CgEnergyWave.RADIUS, 2.6f))           // a number times 2.6: it shrinks as the wave fades
         .build();
 ```
 
 | Call | Does |
 |---|---|
 | `of(id, slot)` | the slot it draws on, and its id in the look |
-| `material(definition)` | the material asset it draws: its shader, constants, textures, state and `order` |
+| `shader(path)`, then `value`, `color`, `texture`, `keyword`, `order` | its own material, made from that shader: named by the kit, ordered by the shader (the distortion band for a Distortion pass, else the surface) unless `order` says ([`vfx/effects.md`](vfx/effects.md) § *A material on a behaviour's slot*) |
+| `material(definition)` | a material built once and shared by several slots |
 | `size(times)` | its size, times its slot's own |
 | `bind(property, param)`, `bind(property, param, factor)` | read from the effect's own values every draw |
-| `mesh(id)` | a mesh slot only: a file or provided mesh drawn in place of the unit sphere ([§8](#8-meshes)) |
+| `mesh(path)`, `mesh(CgMesh)`, `mesh(CgMeshLods)` | a mesh slot only: a file's, or one made in code, drawn in place of the unit sphere ([§8](#8-meshes)) |
 | `quality(CgQuality.MEDIUM)` | drawn only at that quality tier and above: detail a lower tier drops |
 
 - **Nothing binds by name**: a property reads a user parameter only where it is bound. A bind the look does not
@@ -653,7 +653,7 @@ most 256.
 A slot renderer draws on what its slot gives it: a tube along a path, the unit sphere at a transform. Give it a mesh
 and it draws that instead: a sword slash's crescent, a shield's dome; a mesh renderer draws one for every particle of
 debris. A mesh is data (`CgMesh`, [`ENGINE_API.md`](ENGINE_API.md) § *Meshes*): built on any thread, from a file or
-from a few numbers, and named for a renderer by its file's path or an id it is provided under.
+from a few numbers, and given to a renderer as its file's path or as the mesh itself.
 
 ### On a mesh slot
 
@@ -661,13 +661,11 @@ from a few numbers, and named for a renderer by its file's path or an id it is p
 public static final CgVfxSlot SLASH = CgVfxSlot.mesh("mymod:slash");
 static final CgMesh CRESCENT = CgProceduralMesh.revolve(CgProceduralMesh.cylinder(1.25f, 1.6f, 0.06f))
         .angles(-75f, 75f).divisions(48, 3).build();
-static { CgMeshLoader.provide("mymod:models/crescent", () -> CgMeshLods.of(CRESCENT)); }
-
-static final CgMaterialDefinition FLOW = CgMaterialDefinition.of("mymod:materials/slash",
-        "crystalgraphics:shaders/vfx/mesh/flow.shader").value("_Scroll", 2.5f, 0f, 0f, 0f).order(CgVfxLook.SURFACE).build();
 
 public static final CgVfxKit KIT = CgVfxKit.of("mymod:slash")
-        .slot(CgVfxSlotRenderer.of("slash", SLASH).material(FLOW).mesh("mymod:models/crescent").bind("_Color", KI).build())
+        .slot(CgVfxSlotRenderer.of("slash", SLASH).mesh(CRESCENT)            // the mesh itself
+                .shader("crystalgraphics:shaders/vfx/mesh/flow.shader").value("_Scroll", 2.5f, 0f, 0f, 0f)
+                .bind("_Color", KI))
         .build();
 
 // in submit: placed by the slot's transform, as the sphere would be. flow.shader's four numbers are how far its
@@ -675,8 +673,9 @@ public static final CgVfxKit KIT = CgVfxKit.of("mymod:slash")
 frame.mesh(this, SLASH, 0f, 1.2f, 0f, transform, reveal, 1f, 0.3f, 0f);
 ```
 
-- **Two ways to name it**: a path, an OBJ or glTF file loaded at its first draw, so a constant in common code costs a
-  server nothing; or an id `CgMeshLoader.provide`s a mesh made in code under, once.
+- **Two ways to give it**: a path, an OBJ or glTF file loaded at its first draw, so a constant in common code costs a
+  server nothing; or a mesh made in code (`CgMesh`, `CgMeshLods`), held as it is. A mesh renderer's `meshes` entry
+  takes either too: `Map.of("mesh", ROCK)`.
 - **Only a mesh slot takes one**; on any other slot it fails at load.
 - **`shaders/vfx/mesh/flow.shader`** is the engine's look for one: energy flowing over its UVs (Effekseer's UV-scroll
   and erosion material), white-hot where a reveal sweeps along it, added. `_Scroll`, `_Tiling`, `_Erosion`, `_Edges`
@@ -1800,11 +1799,9 @@ public final class Bolt extends CgVfxEffect<Bolt> {
     public static final CgVfxParam.Color CORE = SCHEMA.color("core", 0xFFFFE9A0, 1.5f);
     public static final CgVfxSlot ORB = CgVfxSlot.mesh("mymod:bolt/orb");
 
-    static final CgMaterialDefinition BODY = CgMaterialDefinition.of("mymod:materials/bolt_orb",
-            "mymod:shaders/vfx/bolt_orb.shader").order(CgVfxLook.SURFACE).build();
     public static final CgVfxKit KIT = CgVfxKit.of("mymod:bolt")
-            .slot(CgVfxSlotRenderer.light("light", ORB).intensity(4f).attenuationRadius(6f).bind("light_color", CORE).build())
-            .slot(CgVfxSlotRenderer.of("orb", ORB).material(BODY).bind("_Core", CORE).build())
+            .slot(CgVfxSlotRenderer.light("light", ORB).intensity(4f).attenuationRadius(6f).bind("light_color", CORE))
+            .slot(CgVfxSlotRenderer.of("orb", ORB).shader("mymod:shaders/vfx/bolt_orb.shader").bind("_Core", CORE))
             .build();
     public static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(KIT).build();
 

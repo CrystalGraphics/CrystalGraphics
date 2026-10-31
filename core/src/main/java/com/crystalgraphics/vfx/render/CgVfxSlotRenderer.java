@@ -2,23 +2,30 @@ package com.crystalgraphics.vfx.render;
 
 import com.crystalgraphics.api.material.CgMaterialArchetypes;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgMeshLods;
+import com.crystalgraphics.api.texture.CgSampler;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.render.world.CgWorldLights;
 import com.crystalgraphics.settings.CgQuality;
+import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.look.CgVfxLayout;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * What a native behaviour's slot draws: a material on the slot, fed by user parameters, or a light where the slot
@@ -82,12 +89,13 @@ public final class CgVfxSlotRenderer {
     @Nullable private final Light light;
     private final Map<String, Object> bind;
     private final float size;
-    @Nullable private final String meshPath;
+    /** A file's path, or a {@link CgMeshLods} made in code. */
+    @Nullable private final Object mesh;
     @Nullable private final CgQuality quality;
     private final Map<String, Object> tree;
 
     private CgVfxSlotRenderer(String id, CgVfxSlot slot, @Nullable String material, @Nullable CgMaterialDefinition definition,
-                              @Nullable Light light, Map<String, Object> bind, float size, @Nullable String meshPath,
+                              @Nullable Light light, Map<String, Object> bind, float size, @Nullable Object mesh,
                               @Nullable CgQuality quality, Map<String, Object> tree) {
         this.id = id;
         this.slot = slot;
@@ -96,7 +104,7 @@ public final class CgVfxSlotRenderer {
         this.light = light;
         this.bind = bind;
         this.size = size;
-        this.meshPath = meshPath;
+        this.mesh = mesh;
         this.quality = quality;
         this.tree = tree;
     }
@@ -187,16 +195,15 @@ public final class CgVfxSlotRenderer {
             }
         }
         float size = tree.get("size") instanceof Number n ? n.floatValue() : 1f;
-        String meshPath = null;
-        if (tree.get("mesh") instanceof String path) {
+        Object mesh = tree.get("mesh");
+        if (mesh instanceof String || mesh instanceof CgMeshLods) {
             if (slot.kind() != CgVfxSlot.Kind.MESH) throw new IllegalArgumentException(who + " gives a mesh to " + slot + ", which takes none");
-            meshPath = path;
-        } else if (tree.get("mesh") != null) {
-            throw new IllegalArgumentException(who + "'s mesh is a path; a bound mesh is not built yet");
+        } else if (mesh != null) {
+            throw new IllegalArgumentException(who + "'s mesh is a path or a mesh made in code; a bound mesh is not built yet");
         }
         CgQuality quality = tree.get("quality") instanceof String q ? CgQuality.valueOf(q.toUpperCase(Locale.ROOT)) : null;
         return new CgVfxSlotRenderer(id, slot, material, definition, light, Collections.unmodifiableMap(bind), size,
-                meshPath, quality, Collections.unmodifiableMap(tree));
+                mesh, quality, Collections.unmodifiableMap(tree));
     }
 
     public String id() {
@@ -250,10 +257,10 @@ public final class CgVfxSlotRenderer {
         return definition == null ? null : definition.tube();
     }
 
-    /** Its mesh on a mesh slot, loaded at its first ask and kept; null for the slot's sphere. */
+    /** Its mesh on a mesh slot: one made in code, or a file's, loaded at its first ask and kept; null for the slot's sphere. */
     @Nullable
     public CgMeshLods mesh() {
-        return meshPath == null ? null : CgMeshLoader.lods(meshPath);
+        return mesh == null ? null : CgMeshLoader.resolve(mesh);
     }
 
     /** The entry as its file holds it. */
@@ -355,12 +362,38 @@ public final class CgVfxSlotRenderer {
         }
     }
 
-    /** Writes a {@code slots:} entry as a file would hold it, then compiles it. */
+    /**
+     * Writes a {@code slots:} entry as a file would hold it, then compiles it. Its material is made here from a shader
+     * ({@link #shader}), Unreal's dynamic material instance on a parent, or shared ({@link #material}).
+     *
+     * <pre>{@code
+     * CgVfxKit.of("mymod:wave/sleeves")
+     *         .slot(CgVfxSlotRenderer.of("body", CgBeamBody.BODY).shader("mymod:shaders/vfx/sleeves.shader")
+     *                 .value("_Spacing", 1.6f).texture("_Strip", STRIP)            // STRIP: a CgTexture of its own
+     *                 .bind("_Color", CgEnergyWave.SHELL).size(1.5f))               // the kit builds it
+     *         .build();
+     *
+     * CgMaterialDefinition flat = CgMaterialDefinition.of("mymod:materials/flat", FLAT).order(CgVfxLook.SURFACE).build();
+     * kit.slot(CgVfxSlotRenderer.of("ball", CgVfxCharge.BALL).material(flat))          // one material on many slots
+     *    .slot(CgVfxSlotRenderer.of("head", CgBeamBody.HEAD).material(flat));
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A material made here is named by its owner: {@code <kit>/<id>} inside a kit, {@code <shader>/<id>} built
+     *       alone.</li>
+     *   <li>It draws in the distortion band ({@code 2 * CgVfxLook.BAND}) when its shader has a Distortion pass, else as a
+     *       surface ({@code CgVfxLook.SURFACE}), unless {@link #order} says.</li>
+     *   <li>{@link #shader} and {@link #material} exclude each other, and a light takes neither.</li>
+     * </ul>
+     */
     public static final class Builder {
         private final Map<String, Object> tree = new LinkedHashMap<>();
         private final Map<String, Object> bind = new LinkedHashMap<>();
         @Nullable private final Map<String, Object> light;
         private CgMaterialDefinition definition;
+        @Nullable private String shader;
+        @Nullable private Integer order;
+        private final List<Consumer<CgMaterialDefinition.Builder>> made = new ArrayList<>();
 
         private Builder(String id, CgVfxSlot slot, boolean light) {
             tree.put("id", id);
@@ -368,10 +401,78 @@ public final class CgVfxSlotRenderer {
             this.light = light ? new LinkedHashMap<>() : null;
         }
 
-        /** Its material, compiled: its id is written. */
+        /** Its material, compiled and shared: its id is written. */
         public Builder material(CgMaterialDefinition material) {
+            if (shader != null) throw new IllegalStateException(tree.get("id") + " makes its material from " + shader);
             definition = material;
             tree.put("material", material.id());
+            return this;
+        }
+
+        /** Its material, made here from {@code shader} and the values given after it. */
+        public Builder shader(String shader) {
+            if (light != null) throw new IllegalStateException(tree.get("id") + " is a light: it draws no material");
+            if (definition != null) throw new IllegalStateException(tree.get("id") + " draws " + definition.id());
+            this.shader = shader;
+            return this;
+        }
+
+        /** A constant of its material: a float, a vec2 or a vec4. */
+        public Builder value(String property, float... v) {
+            return made(b -> b.value(property, v));
+        }
+
+        /** A colour constant of its material, {@code 0xAARRGGBB}. */
+        public Builder color(String property, int argb) {
+            return made(b -> b.color(property, argb));
+        }
+
+        /** A colour constant of its material, {@code 0xAARRGGBB}, its rgb times {@code intensity}. */
+        public Builder color(String property, int argb, float intensity) {
+            return made(b -> b.color(property, argb, intensity));
+        }
+
+        /** A texture of its material, by its asset's id. */
+        public Builder texture(String property, String texture) {
+            return made(b -> b.texture(property, texture));
+        }
+
+        /** A texture of its material made in code, held as it is: a frame array, a strip, a lookup table. */
+        public Builder texture(String property, CgTexture texture) {
+            return made(b -> b.texture(property, texture));
+        }
+
+        /** A texture of its material made in code at its first bind: nothing is made on a dedicated server. */
+        public Builder texture(String property, Supplier<? extends CgTexture> texture) {
+            return made(b -> b.texture(property, texture));
+        }
+
+        /** A texture of its material made in code, sampled with {@code filter} and {@code address}. */
+        public Builder texture(String property, CgTexture texture, CgSampler.Filter filter, CgSampler.Address address) {
+            return made(b -> b.texture(property, texture, filter, address));
+        }
+
+        /** A keyword of its material's shader turned on. */
+        public Builder keyword(String keyword) {
+            return made(b -> b.keyword(keyword));
+        }
+
+        /** Its material's order among its effect's draws, 0 to 255, in place of the one its shader implies. */
+        public Builder order(int order) {
+            this.order = order;
+            return made(b -> {});
+        }
+
+        /** Anything else of its material: its blend, its cull, its usages. */
+        public Builder material(Consumer<CgMaterialDefinition.Builder> more) {
+            return made(more);
+        }
+
+        private Builder made(Consumer<CgMaterialDefinition.Builder> step) {
+            if (shader == null) {
+                throw new IllegalStateException(tree.get("id") + " sets its material's values: name its shader() first");
+            }
+            made.add(step);
             return this;
         }
 
@@ -453,10 +554,21 @@ public final class CgVfxSlotRenderer {
             return this;
         }
 
-        /** A mesh slot's mesh, by path or {@link CgMeshLoader#provide}d id, in place of the sphere. */
+        /** A mesh slot's mesh, a file's path, in place of the sphere. */
         public Builder mesh(String path) {
             tree.put("mesh", path);
             return this;
+        }
+
+        /** A mesh slot's mesh made in code, at falling detail, held as it is. */
+        public Builder mesh(CgMeshLods mesh) {
+            tree.put("mesh", mesh);
+            return this;
+        }
+
+        /** A mesh slot's mesh made in code, at every height. */
+        public Builder mesh(CgMesh mesh) {
+            return mesh(CgMeshLods.of(mesh));
         }
 
         /** Drawn from {@code quality} up. */
@@ -465,8 +577,27 @@ public final class CgVfxSlotRenderer {
             return this;
         }
 
-        /** The slot renderer, compiled from the entry written, in the declaration's key order. */
+        /** The slot renderer, compiled from the entry written; a material made here is named {@code <shader>/<id>}. */
         public CgVfxSlotRenderer build() {
+            return build(null);
+        }
+
+        /**
+         * The slot renderer, a material made here named {@code <owner>/<id>}: what a kit calls with its own id.
+         *
+         * @throws IllegalStateException for a renderer that is neither a light nor names a material or a shader
+         */
+        public CgVfxSlotRenderer build(@Nullable String owner) {
+            if (shader != null) {
+                String stem = shader.endsWith(".shader") ? shader.substring(0, shader.length() - ".shader".length()) : shader;
+                CgMaterialDefinition.Builder b = CgMaterialDefinition.of((owner != null ? owner : stem) + "/" + tree.get("id"),
+                        shader);
+                b.order(order != null ? order : CgMaterialArchetypes.FILES.parse(shader).getPassByLightMode("Distortion") != null
+                        ? 2 * CgVfxLook.BAND : CgVfxLook.SURFACE);
+                for (Consumer<CgMaterialDefinition.Builder> step : made) step.accept(b);
+                definition = b.build();
+                tree.put("material", definition.id());
+            }
             Map<String, Object> entry = new LinkedHashMap<>();
             for (String key : List.of("id", "slot", "material")) if (tree.containsKey(key)) entry.put(key, tree.get(key));
             if (light != null) {

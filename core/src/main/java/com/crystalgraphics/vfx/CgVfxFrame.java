@@ -741,7 +741,7 @@ public final class CgVfxFrame {
                     throw new IllegalStateException(who(def, renderer) + " draws a prefab, a bound mesh or several meshes, which are not"
                             + " built yet: give it one mesh");
                 }
-                CgMeshLods lods = m.meshes().isEmpty() ? system.particleSphere() : mesh(String.valueOf(m.meshes().get(0).get("mesh")));
+                CgMeshLods lods = m.meshes().isEmpty() ? system.particleSphere() : mesh(m.meshes().get(0).get("mesh"));
                 // A draw a section, as Unreal's mesh particles draw a batch per section: each section's override,
                 // past them the renderer's own (Cascade's mesh material module over its required material). A mesh
                 // of one section with nothing overridden is one draw of the whole.
@@ -834,8 +834,9 @@ public final class CgVfxFrame {
     /** Every mesh a mesh renderer named, provided or loaded once and kept: a mesh uploaded stays. */
     private final Map<String, CgMeshLods> meshes = new HashMap<>();
 
-    private CgMeshLods mesh(String path) {
-        return meshes.computeIfAbsent(path, CgMeshLoader::lods);
+    /** A mesh renderer's mesh: one made in code as it is, a file's levels cached by its path. */
+    private CgMeshLods mesh(Object mesh) {
+        return mesh instanceof CgMeshLods lods ? lods : meshes.computeIfAbsent(String.valueOf(mesh), CgMeshLoader::lods);
     }
 
     /**

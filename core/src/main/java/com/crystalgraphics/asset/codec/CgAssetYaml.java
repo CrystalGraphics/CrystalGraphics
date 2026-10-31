@@ -16,6 +16,7 @@ import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.asset.kind.CgAssetKinds;
+import com.crystalgraphics.asset.tree.CgBinaryAsset;
 import com.crystalgraphics.asset.tree.CgShape;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgValueType;
@@ -271,6 +272,10 @@ public final class CgAssetYaml {
         if (v instanceof Boolean) return (Boolean) v ? "true" : "false";
         if (v instanceof Double || v instanceof Float) return floating(((Number) v).doubleValue());
         if (v instanceof Number) return v.toString();
+        if (v instanceof CgBinaryAsset) {
+            throw new IllegalArgumentException((key == null ? "a value" : key) + " is a "
+                    + v.getClass().getSimpleName() + " made in code, which has no path to write");
+        }
         String s = v.toString();
         if (PLAIN.matcher(s).matches() && !reserved(s)) return s;
         return quoted(s);

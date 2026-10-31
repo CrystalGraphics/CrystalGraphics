@@ -7,8 +7,6 @@ import com.crystalgraphics.vfx.look.CgVfxKit;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
-import com.crystalgraphics.api.material.CgMaterialDefinition;
-import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 
 /**
@@ -211,15 +209,12 @@ public final class CgVfxFluid extends CgVfxElement {
      * }</pre>
      */
     public static CgVfxKit kit(String name, CgVfxColormap colormap) {
-        // The colour map is made in code: provided under the kit's name, so its material names it as a texture.
-        String map = name + "/colormap";
-        CgMaterialRegistry.provide(map, colormap::texture);
         return CgVfxKit.of(name).params(SCHEMA)
-                .slot(CgVfxSlotRenderer.of("fluid", SLOT).material(CgMaterialDefinition.of(name + "/fluid", SHADER)
-                                .texture("_Colormap", map).build())
+                // the smoke band: under the effect's other draws
+                .slot(CgVfxSlotRenderer.of("fluid", SLOT).shader(SHADER).order(0).texture("_Colormap", colormap::texture)
                         .bind("_Attenuation", ATTENUATION).bind("_ShadowFactor", SHADOW_FACTOR)
                         .bind("_ColormapMin", COLORMAP_MIN).bind("_ColormapMax", COLORMAP_MAX)
-                        .bind("_Scattering", SCATTERING).bind("_Detail", DETAIL).bind("_DetailSize", DETAIL_SIZE).build())
+                        .bind("_Scattering", SCATTERING).bind("_Detail", DETAIL).bind("_DetailSize", DETAIL_SIZE))
                 .build();
     }
 

@@ -40,7 +40,7 @@ public final class CgTextures {
      * <pre>{@code
      * static final CgTexture2D ICON = CgTextures.of("mymod:textures/gui/icon.png");
      *
-     * layer.texture("_Icon", ICON);   // sampler2D: texture(_Icon, uv)
+     * material.texture("_Icon", ICON);   // sampler2D: texture(_Icon, uv)
      * }</pre>
      */
     public static CgTexture2D of(String path) {
@@ -66,7 +66,7 @@ public final class CgTextures {
      * // flame_0.png, flame_1.png, flame_2.png -> layers 0, 1, 2 of one sampler2DArray
      * static final CgTexture2DArray FLAMES = CgTextures.frames("mymod:textures/vfx/flame_%d.png", 3);
      *
-     * layer.texture("_Flames", FLAMES);   // a shader picks one: texture(_Flames, vec3(uv, frame))
+     * material.texture("_Flames", FLAMES);   // a shader picks one: texture(_Flames, vec3(uv, frame))
      * }</pre>
      *
      * <p>{@code pattern} is a {@link String#format} pattern taking one int: {@code %02d} names {@code flame_00.png}.</p>
@@ -94,7 +94,7 @@ public final class CgTextures {
      * static final CgTexture2DArray PAINTINGS = CgTextures.array(CgTextureSpec.RGBA8_LINEAR,
      *         "mymod:textures/vfx/dash_wide.png", "mymod:textures/vfx/dash_thin.png", "mymod:textures/vfx/dash_curl.png");
      *
-     * layer.texture("_Dashes", PAINTINGS);   // sampler2DArray: texture(_Dashes, vec3(uv, 2.0)) reads dash_curl
+     * material.texture("_Dashes", PAINTINGS);   // sampler2DArray: texture(_Dashes, vec3(uv, 2.0)) reads dash_curl
      * }</pre>
      */
     public static CgTexture2DArray array(CgTextureSpec spec, String... paths) {
@@ -109,7 +109,7 @@ public final class CgTextures {
      * static final CgTexture3D LUT = CgTextures.volume(CgTextureSpec.RGBA8_LINEAR,
      *         "mymod:textures/lut/0.png", "mymod:textures/lut/1.png", "mymod:textures/lut/2.png", "mymod:textures/lut/3.png");
      *
-     * layer.texture("_Lut", LUT);   // sampler3D: texture(_Lut, colour.rgb), w blended between slices
+     * material.texture("_Lut", LUT);   // sampler3D: texture(_Lut, colour.rgb), w blended between slices
      * }</pre>
      *
      * <p>A slice of another size, or one that will not load, leaves a clear 1x1x1 volume: {@link CgTexture#isMissing()}.</p>
@@ -150,7 +150,7 @@ public final class CgTextures {
      *         "mymod:textures/sky/py.png", "mymod:textures/sky/ny.png",
      *         "mymod:textures/sky/pz.png", "mymod:textures/sky/nz.png");
      *
-     * layer.texture("_Sky", SKY);   // samplerCube: texture(_Sky, direction)
+     * material.texture("_Sky", SKY);   // samplerCube: texture(_Sky, direction)
      * }</pre>
      *
      * <p>A face that will not load, or is not square and the first's size, leaves a clear 1x1 cube:

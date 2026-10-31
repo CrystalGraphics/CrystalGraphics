@@ -2,7 +2,6 @@ package com.crystalgraphics.render.post.volume;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
-import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.asset.load.CgAssetPreparer;
 import com.crystalgraphics.job.CgJob;
@@ -68,7 +67,7 @@ public final class CgPostVolumePreparer implements CgAssetPreparer {
             if (decoded[0] == null) {
                 List<CgTexture> textures = new ArrayList<>();
                 for (CgMaterialDefinition m : materials) {
-                    for (CgMaterialDefinition.Texture t : m.textures().values()) textures.add(CgMaterialRegistry.texture(t.texture()));
+                    for (CgMaterialDefinition.Texture t : m.textures().values()) textures.add(t.resolve());
                 }
                 // Its size decodes it on the asking thread and queues the upload, which lands before the next frame.
                 decoded[0] = CompletableFuture.runAsync(() -> {

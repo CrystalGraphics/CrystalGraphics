@@ -31,7 +31,7 @@ static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(LENS_CORE.kit()).bu
 | `parent(name)` | its parent, a node named before it |
 | `at(x, y, z)`, `rotation(x, y, z, w)`, `scale(...)` | its rest transform in its parent's space; the rotation a quaternion |
 | `opacity(a)` | its own opacity, 0 to 1 |
-| `part(material, mesh)` | a mesh it draws with a material: a `CgMesh`, `CgMeshLods`, or a file or provided mesh's id loaded at its first draw; `part(material)` draws the unit sphere |
+| `part(material, mesh)` | a mesh it draws with a material: a `CgMesh`, `CgMeshLods`, or a file's path loaded at its first draw; `part(material)` draws the unit sphere |
 
 ## As a file
 

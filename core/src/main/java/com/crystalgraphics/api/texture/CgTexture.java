@@ -1,6 +1,7 @@
 package com.crystalgraphics.api.texture;
 
 
+import com.crystalgraphics.asset.tree.CgBinaryAsset;
 import com.crystalgraphics.gl.texture.CgTextureManager;
 import com.crystalgraphics.platform.gl.CgGL;
 
@@ -20,7 +21,7 @@ import com.crystalgraphics.platform.gl.CgGL;
  * <h3>Thread Safety</h3>
  * <p>Not thread-safe. All operations must occur on the GL context thread.</p>
  */
-public interface CgTexture {
+public interface CgTexture extends CgBinaryAsset {
 
     /**
      * Binds this texture to its native GL target on the currently active

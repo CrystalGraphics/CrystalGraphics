@@ -1051,7 +1051,7 @@ public final class CgVfxSystem {
             if (!(renderer instanceof CgVfxMeshRendererProperties m)) continue;
             // CgVfxFrame's draw reads the same cache: the particle sphere where it names none, else its one mesh
             if (m.meshes().isEmpty()) CgMeshShapes.sphereLods();
-            else CgMeshLoader.lods(String.valueOf(m.meshes().get(0).get("mesh")));
+            else CgMeshLoader.resolve(m.meshes().get(0).get("mesh"));
         }
         for (int e = 0; e < emitter.events().size(); e++) {
             CgVfxEmitter child = (CgVfxEmitter) emitter.events().get(e).child();

@@ -15,6 +15,7 @@ import java.util.WeakHashMap;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
@@ -152,8 +153,16 @@ public final class CgMaterialDefinitions {
                 }
                 Map<Object, Object> binding = map(e.getValue());
                 Object texture = binding == null ? null : binding.get("texture");
-                if (!(texture instanceof String)) throw new CgAssetException(id + ": textures." + name + " names no texture");
-                textures.put(name, new CgMaterialDefinition.Texture((String) texture, map(binding.get("sampler"))));
+                Map<Object, Object> sampler = binding == null ? null : map(binding.get("sampler"));
+                if (texture instanceof String path) {
+                    textures.put(name, new CgMaterialDefinition.Texture(path, null, sampler));
+                } else if (texture instanceof CgTexture made) {
+                    textures.put(name, new CgMaterialDefinition.Texture(null, () -> made, sampler));
+                } else if (texture instanceof CgMaterialDefinition.MadeTexture made) {
+                    textures.put(name, new CgMaterialDefinition.Texture(null, made, sampler));
+                } else {
+                    throw new CgAssetException(id + ": textures." + name + " names no texture");
+                }
             }
         }
         CgMaterialDefinition.Draw draw = new CgMaterialDefinition.Draw(bool(state, "two_sided"),

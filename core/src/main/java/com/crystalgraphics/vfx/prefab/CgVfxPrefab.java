@@ -515,7 +515,7 @@ public final class CgVfxPrefab {
             return part(material, CgMeshLods.of(Objects.requireNonNull(mesh, "mesh")));
         }
 
-        /** As {@link #part(CgMaterialDefinition, CgMeshLods)}, a file or provided mesh loaded at its first draw. */
+        /** As {@link #part(CgMaterialDefinition, CgMeshLods)}, a file's mesh loaded at its first draw. */
         public Builder part(CgMaterialDefinition material, String path) {
             return part(List.of(material), path, Map.of());
         }

@@ -16,7 +16,8 @@ import java.util.Objects;
  * <pre>{@code
  * public static final CgVfxKit BANDS = CgVfxKit.of("mymod:wave/bands")
  *         .params(BANDS_SCHEMA)                                 // the parameters its renderers bind
- *         .slot(CgVfxSlotRenderer.of("flat", CgBeamBody.BODY).material(FLAT).bind("_Color", TOP).build())
+ *         .slot(CgVfxSlotRenderer.of("flat", CgBeamBody.BODY)   // its material, mymod:wave/bands/flat, made here
+ *                 .shader("mymod:shaders/vfx/flat.shader").value("_Glow", 0.4f).bind("_Color", TOP))
  *         .emitter(SPARKLES)                                    // drawn by its own renderers
  *         .build();
  *
@@ -129,6 +130,11 @@ public final class CgVfxKit {
         public Builder slot(CgVfxSlotRenderer renderer) {
             parts.add(Objects.requireNonNull(renderer, "renderer"));
             return this;
+        }
+
+        /** A slot renderer built here: a material it makes from its shader is named {@code <kit>/<id>}. */
+        public Builder slot(CgVfxSlotRenderer.Builder renderer) {
+            return slot(renderer.build(name));
         }
 
         /** An emitter its effect plays, drawn by its own renderers. */

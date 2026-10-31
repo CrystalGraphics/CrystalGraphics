@@ -16,7 +16,7 @@ import java.util.Arrays;
  * 1 where it glows, and its alpha scales the smoke's opacity.
  *
  * <pre>{@code
- * layer.texture("_Colormap", CgVfxColormap.FIRE::texture);         // Flow's fire, made at the layer's first draw
+ * material.texture("_Colormap", CgVfxColormap.FIRE::texture);      // Flow's fire, made at its first bind
  * CgVfxKit kit = CgVfxFluid.kit("mymod:fluid/fire", CgVfxColormap.FIRE.withColorScale(1f));   // dimmer
  *
  * static final CgVfxColormap EMBERS = CgVfxColormap.builder()      // a map of your own: points by temperature

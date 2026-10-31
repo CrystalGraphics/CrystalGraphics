@@ -476,6 +476,11 @@ public final class CgVfxLook {
             return this;
         }
 
+        /** A slot renderer of the look's own, built here: a material it makes is named {@code <schema>/<id>}. */
+        public Builder slot(CgVfxSlotRenderer.Builder renderer) {
+            return slot(renderer.build(primary.name()));
+        }
+
         /** Adds an emitter, or replaces the one of its name where it is: how a look changes one element's physics. */
         public Builder emitter(CgVfxEmitter emitter) {
             for (int i = 0; i < entries.size(); i++) {

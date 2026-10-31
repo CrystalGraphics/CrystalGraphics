@@ -129,14 +129,19 @@ CgVfxSlotRenderer.of("streak", STREAK).material(TRAIL)
 
 ## Textures and samplers
 
-A material's texture is an image file, or one made in code and **provided** under an id:
+A material's texture is an image file by its path, or a texture made in code, held as it is (Unreal's texture
+parameter holding the `UTexture` itself):
 
 ```java
-CgMaterialDefinition.of(id, SHADER).texture("_Sheet", "mymod:textures/vfx/smoke_8x8.png")
+CgMaterialDefinition.of(id, SHADER).texture("_Sheet", "mymod:textures/vfx/smoke_8x8.png")    // a file
 
-CgMaterialRegistry.provide("mymod:textures/vfx/fire_ramp", FIRE_RAMP::texture);     // a texture made in code
-CgMaterialDefinition.of(id, SHADER).texture("_Ramp", "mymod:textures/vfx/fire_ramp")
+static final CgTexture2DArray FLAMES = CgTextures.frames("mymod:textures/vfx/flame_%d.png", 3);
+CgMaterialDefinition.of(id, SHADER).texture("_Flames", FLAMES)                               // a sampler2DArray
+CgMaterialDefinition.of(id, SHADER).texture("_Ramp", FIRE_RAMP::texture)                     // made at its first bind
 ```
+
+The same calls sit on a slot renderer that makes its own material ([below](#a-material-on-a-behaviours-slot-slot-renderers)):
+`CgVfxSlotRenderer.of("flames", SLOT).shader(SHADER).texture("_Flames", FLAMES)`.
 
 A texture samples as its spec says. A material can sample it another way instead, so one image is loaded once and
 used clamped by one material and tiled by another. Unreal calls this a material's sampler source.
@@ -157,7 +162,11 @@ CgMaterialDefinition.of("mymod:materials/scroll", SCROLL_SHADER)
 | `MIRROR` | the texture again, every other copy flipped | Mirror |
 
 - **An image decodes as sRGB** unless its settings file says `colour: linear` (below).
-- **A provided id is provided once**; a second supplier under it throws. Provide it before the first draw naming it.
+- **A texture's kind is its sampler's**: a file is 2D, or a cube with `cube: true`; an array (`frames`, `array`) or a
+  volume is made in code and bound as the object. A mismatch fails as the material is made, naming both.
+- **A texture made in code has no file**: a material holding one cannot be written out. Its holder keeps it alive.
+- **Pass a supplier** (`FIRE_RAMP::texture`) where the material is declared in common code: a dedicated server then
+  makes nothing.
 - **On a texture with no mips**, `BILINEAR` and `TRILINEAR` sample its base level.
 - **Anisotropy is clamped** to what the player's GPU has.
 
@@ -204,10 +213,8 @@ void vertex(out v2f o) {
 ```
 
 ```java
-CgVfxSlotRenderer.of("slash", SLASH).mesh("mymod:models/slash.glb")
-        .material(CgMaterialDefinition.of("mymod:materials/slash", LAYERED).keyword("SECOND_LAYER").build()).build();
-
-CgMeshLoader.provide("mymod:models/crescent", () -> CgMeshLods.of(CRESCENT));   // a mesh made in code, by id
+kit.slot(CgVfxSlotRenderer.of("slash", SLASH).mesh("mymod:models/slash.glb").shader(LAYERED).keyword("SECOND_LAYER"));
+kit.slot(CgVfxSlotRenderer.of("crescent", SLASH).mesh(CRESCENT).shader(FLOW));   // a CgMesh made in code, held as it is
 ```
 
 ## Flipbooks: which frame of a sheet a particle shows
@@ -363,14 +370,44 @@ slots:
     quality: medium                          # drawn from Medium up
 ```
 
-In Java, the same entry:
+In Java, the same entry. A slot renderer makes its own material from a shader, as Unreal makes a dynamic material
+instance on a parent, and the kit or look it is given to builds it:
 
 ```java
-CgVfxSlotRenderer shell = CgVfxSlotRenderer.of("shell", CgBeamBody.BODY).material(SHELL)
-        .bind("_Shell", CgEnergyWave.SHELL).size(1.15f).build();
-CgVfxLook look = CgEnergyWave.kamehameha().derive().slot(shell).build();
+static final CgMeshLods ROCK = CgMeshLods.of(CgProceduralMesh.revolve(CgProceduralMesh.sphere(1f, -1f, 1f)).build());
+
+public static final CgVfxKit BLUE = CgVfxKit.of("mymod:wave/blue")      // its materials: mymod:wave/blue/<id>
+        .slot(CgVfxSlotRenderer.of("shell", CgBeamBody.BODY).shader("mymod:shaders/vfx/shell.shader")
+                .value("_Flow", 22f).bind("_Shell", CgEnergyWave.SHELL).size(1.15f))
+        .slot(CgVfxSlotRenderer.of("rock", CgBeamBody.HEAD).shader("mymod:shaders/vfx/rock.shader")
+                .mesh(ROCK).quality(CgQuality.MEDIUM))                   // a mesh made in code, held as it is
+        .build();
+CgVfxLook look = CgEnergyWave.kamehameha().derive().with(BLUE).build();
 ```
 
+One material on several slots is built once and given to each:
+
+```java
+static final CgMaterialDefinition PLASMA = CgMaterialDefinition.of("mymod:materials/plasma", PLASMA_SHADER)
+        .order(CgVfxLook.SURFACE).build();
+kit.slot(CgVfxSlotRenderer.of("ball", CgVfxCharge.BALL).material(PLASMA).bind("_Core", CORE))
+   .slot(CgVfxSlotRenderer.of("orb", CgBeamContact.ORB).material(PLASMA).bind("_Core", CORE));
+```
+
+| On the slot renderer | Is its material's |
+|---|---|
+| `shader(path)` | parent: the shader it is made from |
+| `value(name, v...)`, `color(name, argb[, intensity])` | constants |
+| `texture(name, path)`, `texture(name, CgTexture)`, `texture(name, supplier)` | textures: a file, one made in code, one made at its first bind |
+| `keyword(name)` | a `#pragma cg_feature` turned on |
+| `order(n)` | order, in place of the one its shader implies |
+| `material(b -> b.blend(...).twoSided())` | anything else of the material's |
+
+- **A material made here is named by its owner**: `<kit>/<id>` in a kit, `<schema>/<id>` loose in a look,
+  `<shader>/<id>` built alone. Nothing is registered by hand.
+- **It draws in the distortion band** (`2 * CgVfxLook.BAND`) when its shader has a Distortion pass, else as a surface
+  (`CgVfxLook.SURFACE`), unless `order` says.
+- `shader` and `material` exclude each other; a light takes neither.
 - **They draw by their material's `order`**, then in their list order.
 - **A tube slot draws the geometry its material's shader names**: `Tags { "Tube" = "Volume" }` draws each chunk on a
   sphere round it (a shader summing its own chunk's light), `"Closed"` caps each chunk (a shader tracing the view ray

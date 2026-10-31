@@ -19,7 +19,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 /**
  * Meshes from files: OBJ, glTF, GLB and cooked {@code .cgmesh}, by extension. Every OBJ material group and every glTF
@@ -91,39 +90,33 @@ public final class CgMeshLoader {
         return LOADED.computeIfAbsent(new Key(path, null), k -> read(k.path(), null));
     }
 
-    /** Every mesh made in code, by the id a renderer names it by. */
-    private static final Map<String, Supplier<CgMeshLods>> PROVIDED = new ConcurrentHashMap<>();
     private static final Map<String, CgMeshLods> LODS = new ConcurrentHashMap<>();
 
     /**
-     * Names a mesh made in code, so a renderer draws it as it draws a file: Unreal's mesh asset, here made from a few
-     * numbers rather than imported.
+     * The file at {@code path} at every height, loaded at its first ask and kept.
      *
-     * <pre>{@code
-     * CgMeshLoader.provide("mymod:models/slash", () -> CgMeshLods.of(CgProceduralMesh.revolve(...).build()));
-     * CgVfxSlotRenderer.of("slash", SLASH).material(FLOW).mesh("mymod:models/slash").build();
-     * }</pre>
-     *
-     * <ul>
-     *   <li>Made at its first ask ({@link #lods}) and kept; provide it before anything draws it.</li>
-     *   <li>One supplier an id: providing another under it throws.</li>
-     * </ul>
+     * @throws UncheckedIOException if it cannot be read
      */
-    public static void provide(String id, Supplier<CgMeshLods> mesh) {
-        Supplier<CgMeshLods> had = PROVIDED.putIfAbsent(id, mesh);
-        if (had != null && had != mesh) throw new IllegalStateException(id + " is provided already");
+    public static CgMeshLods lods(String path) {
+        return LODS.computeIfAbsent(path, p -> CgMeshLods.of(load(p)));
     }
 
     /**
-     * The mesh {@code id} names at falling detail: one {@link #provide}d, else the file at that path at every height.
+     * What an asset tree's {@code mesh} names: a path, as {@link #lods(String)}, or the {@link CgMeshLods} made in code
+     * that a tree built in Java holds in its place.
      *
-     * @throws UncheckedIOException if it is neither provided nor a file that reads
+     * <pre>{@code
+     * static final CgMeshLods SLASH = CgMeshLods.of(CgProceduralMesh.revolve(...).build());
+     * CgVfxSlotRenderer.of("slash", SLOT).shader(FLOW).mesh(SLASH);   // the tree holds SLASH itself
+     * CgMeshLods drawn = CgMeshLoader.resolve(entry.get("mesh"));
+     * }</pre>
+     *
+     * @throws IllegalArgumentException for anything else
      */
-    public static CgMeshLods lods(String id) {
-        return LODS.computeIfAbsent(id, i -> {
-            Supplier<CgMeshLods> provided = PROVIDED.get(i);
-            return provided != null ? provided.get() : CgMeshLods.of(load(i));
-        });
+    public static CgMeshLods resolve(Object mesh) {
+        if (mesh instanceof CgMeshLods lods) return lods;
+        if (mesh instanceof String path) return lods(path);
+        throw new IllegalArgumentException("a mesh is a path or a CgMeshLods, not " + mesh);
     }
 
     /** The mesh in {@code path}. @throws UncheckedIOException if it cannot be read */

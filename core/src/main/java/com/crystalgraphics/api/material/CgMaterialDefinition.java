@@ -6,14 +6,18 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Supplier;
 
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.state.CgCullState;
 import com.crystalgraphics.api.texture.CgSampler;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
+import com.crystalgraphics.asset.tree.CgBinaryAsset;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.object.CgType;
@@ -124,13 +128,46 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
     }
 
     /**
-     * A texture binding: a {@code textures} asset's id and the sampler it is read with.
+     * A texture binding: a {@code textures} asset's id, or a texture made in code, and the sampler it is read with.
      *
-     * @param texture its texture asset's id
+     * @param texture its texture asset's id; null where {@code made} is the texture
+     * @param made    a texture made in code, or made at its first bind; null for an asset
      * @param sampler its {@code sampler} block, null for the texture's own
      */
     @Desugar
-    public record Texture(String texture, @Nullable Map<Object, Object> sampler) {
+    public record Texture(@Nullable String texture, @Nullable Supplier<? extends CgTexture> made,
+                          @Nullable Map<Object, Object> sampler) {
+
+        /** The texture it binds: the one made in code, else the registry's of {@code texture}. */
+        public CgTexture resolve() {
+            return made != null ? made.get() : CgMaterialRegistry.texture(texture);
+        }
+
+        /** What it binds, for a message: its id, or the texture made in code. */
+        public String describe() {
+            return made != null ? "a texture made in code" : texture;
+        }
+    }
+
+    /** A texture made in code at its first bind, held in a material's tree where a file holds its path. */
+    static final class MadeTexture implements CgBinaryAsset, Supplier<CgTexture> {
+        private final Supplier<? extends CgTexture> make;
+        @Nullable private volatile CgTexture texture;
+
+        MadeTexture(Supplier<? extends CgTexture> make) {
+            this.make = Objects.requireNonNull(make, "texture");
+        }
+
+        @Override
+        public CgTexture get() {
+            CgTexture t = texture;
+            if (t == null) {
+                synchronized (this) {
+                    if ((t = texture) == null) texture = t = Objects.requireNonNull(make.get(), "made texture");
+                }
+            }
+            return t;
+        }
     }
 
     /**
@@ -309,23 +346,52 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
                     (argb & 0xFF) / 255f * intensity, (argb >>> 24) / 255f);
         }
 
-        /** A sampler property's texture, sampled as the texture says. */
+        /** A sampler property's texture asset, by id, sampled as the texture says. */
         public Builder texture(String property, String texture) {
+            return bindTexture(property, texture);
+        }
+
+        /** A sampler property's texture asset, by id, sampled with {@code filter} and {@code address} on every axis. */
+        public Builder texture(String property, String texture, CgSampler.Filter filter, CgSampler.Address address) {
+            return sampled(bindTexture(property, texture), property, filter, address);
+        }
+
+        /**
+         * A sampler property's texture made in code, held as it is (a frame array, a lookup table, a render target).
+         * Its kind must be the sampler's: a {@code sampler2DArray} takes a {@code CgTexture2DArray}. A material holding
+         * one cannot be written to a file.
+         */
+        public Builder texture(String property, CgTexture texture) {
+            return bindTexture(property, Objects.requireNonNull(texture, "texture"));
+        }
+
+        /** A sampler property's texture made in code, sampled with {@code filter} and {@code address} on every axis. */
+        public Builder texture(String property, CgTexture texture, CgSampler.Filter filter, CgSampler.Address address) {
+            return sampled(texture(property, texture), property, filter, address);
+        }
+
+        /**
+         * A sampler property's texture made in code at its first bind, so a material declared in common code makes
+         * nothing on a dedicated server: {@code texture("_Colormap", colormap::texture)}.
+         */
+        public Builder texture(String property, Supplier<? extends CgTexture> texture) {
+            return bindTexture(property, new MadeTexture(texture));
+        }
+
+        private Builder bindTexture(String property, Object texture) {
             Map<String, Object> binding = new LinkedHashMap<>();
             binding.put("texture", texture);
             textures.put(property, binding);
             return this;
         }
 
-        /** A sampler property's texture, sampled with {@code filter} and {@code address} on every axis. */
-        public Builder texture(String property, String texture, CgSampler.Filter filter, CgSampler.Address address) {
-            texture(property, texture);
+        private Builder sampled(Builder b, String property, CgSampler.Filter filter, CgSampler.Address address) {
             Map<String, Object> sampler = new LinkedHashMap<>();
             sampler.put("filter", filter.name().toLowerCase(Locale.ROOT));
             sampler.put("wrap", address == CgSampler.Address.WRAP ? "repeat" : address.name().toLowerCase(Locale.ROOT));
             @SuppressWarnings("unchecked") Map<String, Object> binding = (Map<String, Object>) textures.get(property);
             binding.put("sampler", sampler);
-            return this;
+            return b;
         }
 
         /** Its order among its effect's draws, 0 to 255. */

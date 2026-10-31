@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.mesh;
 
+import com.crystalgraphics.asset.tree.CgBinaryAsset;
 import com.crystalgraphics.shape.bounds.CgAABB;
 
 import javax.annotation.Nullable;
@@ -29,7 +30,7 @@ import java.util.List;
  *   <li>Immutable, and safe to share between draws and threads.</li>
  * </ul>
  */
-public final class CgMeshLods {
+public final class CgMeshLods implements CgBinaryAsset {
 
     private final CgMesh[] levels;
     private final float[] heights;

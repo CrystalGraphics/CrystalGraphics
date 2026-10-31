@@ -1,6 +1,9 @@
 package com.crystalgraphics.vfx.render;
 
 import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.mesh.CgMeshLods;
+import com.crystalgraphics.api.mesh.CgMeshShapes;
+import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
@@ -9,6 +12,7 @@ import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.render.world.CgWorldLights;
 import com.crystalgraphics.vfx.effect.beam.CgBeamBody;
+import com.crystalgraphics.vfx.look.CgVfxKit;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
@@ -24,6 +28,7 @@ public class CgVfxSlotRendererTest {
 
     private static final String VOLUME = "cgtest:shaders/tube_volume.shader";
     private static final String SHELL = "crystalgraphics:shaders/vfx/beam/body_shell.shader";
+    private static final String HAZE = "crystalgraphics:shaders/vfx/air/haze_tube.shader";
 
     private static CgMaterialDefinition material(String id, String shader) {
         CgAssetKinds.register();
@@ -66,6 +71,35 @@ public class CgVfxSlotRendererTest {
         }
         assertTrue(system.look().draws(CgBeamBody.BODY));
         assertEquals(tree.get("slots"), CgVfxSystemAssets.write(system).get("slots"));
+    }
+
+    @Test
+    public void aKitNamesAndOrdersTheMaterialItsRendererMakes() {
+        CgAssetKinds.register();
+        CgVfxKit kit = CgVfxKit.of("test:wave/inline")
+                .slot(CgVfxSlotRenderer.of("shell", CgBeamBody.BODY).shader(SHELL).value("_Flow", 22f)
+                        .bind("_Shell", "user.shell"))
+                .slot(CgVfxSlotRenderer.of("haze", CgBeamBody.BODY).shader(HAZE))
+                .slot(CgVfxSlotRenderer.of("late", CgBeamBody.BODY).shader(SHELL).order(7))
+                .build();
+        List<CgVfxSlotRenderer> slots = kit.slots();
+        assertEquals("test:wave/inline/shell", slots.get(0).definition().id());
+        assertEquals(slots.get(0).definition().id(), slots.get(0).tree().get("material"));
+        assertEquals("a surface", CgVfxLook.SURFACE, slots.get(0).definition().order());
+        assertEquals("a Distortion pass: the distortion band", 2 * CgVfxLook.BAND, slots.get(1).definition().order());
+        assertEquals(7, slots.get(2).definition().order());
+        assertThrows(IllegalStateException.class, () -> CgVfxSlotRenderer.of("x", CgBeamBody.BODY).value("_Flow", 1f));
+    }
+
+    @Test
+    public void aMeshMadeInCodeIsHeldAndNeverWritten() {
+        CgMaterialDefinition shell = material("test:materials/shell", SHELL);
+        CgMeshLods ball = CgMeshLods.of(CgMeshShapes.sphere(8, 12));
+        CgVfxSlotRenderer r = CgVfxSlotRenderer.of("ball", CgBeamBody.HEAD).material(shell).mesh(ball).build();
+        assertSame(ball, r.mesh());
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> CgAssetYaml.write(Map.of("slots", List.of(r.tree())), CgParticleKinds.SYSTEM));
+        assertTrue(e.getMessage(), e.getMessage().contains("made in code"));
     }
 
     @Test

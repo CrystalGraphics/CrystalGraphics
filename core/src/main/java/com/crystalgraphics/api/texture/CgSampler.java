@@ -10,7 +10,7 @@ import java.util.Objects;
  * static final CgTexture2D NOISE = CgTextures.of("mymod:textures/fx/noise.png");
  *
  * material.applyProperties(b -> b.sampler("_Mask", 0, NOISE, CgSampler.BILINEAR_CLAMP));    // a soft edge, clamped
- * layer.texture("_Scroll", NOISE, CgSampler.BILINEAR_WRAP);                                 // the same image, tiled
+ * material.applyProperties(b -> b.sampler("_Scroll", 1, NOISE, CgSampler.BILINEAR_WRAP));   // the same image, tiled
  * }</pre>
  *
  * <p>Your own, axis by axis:</p>

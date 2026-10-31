@@ -200,8 +200,6 @@ public final class CgVfxModules {
     private final boolean drives;
     private final List<Station> stations = new ArrayList<>();
     private final List<CgTexture> sheets = new ArrayList<>();
-    /** This demo's run, naming its sheets: a texture is provided under one id once. */
-    private final int instance = INSTANCES.getAndIncrement();
     /** Each sheet's texels, waiting for {@link #fillSheets()}'s worker; and whether {@link #delete()} has run. */
     private final List<Runnable> fills = new ArrayList<>();
     private volatile boolean deleted;
@@ -290,14 +288,14 @@ public final class CgVfxModules {
         cube = CgMeshShapes.cube();
         mercury = CgMaterial.load("crystalgraphics:shaders/demo/vfx_mercury.shader");
         copper = CgMaterial.load("crystalgraphics:shaders/demo/vfx_copper.shader");
-        String smokeSheet = sheet(8, 8, 128, CgVfxModules::smokeFrame);
-        String fireSheet = sheet(4, 4, 128, CgVfxModules::fireFrame);
-        String dot = sheet(1, 1, 64, (f, u, v, out) -> dot(u, v, out));
-        String wispSheet = sheet(4, 4, 128, CgVfxModules::wispFrame);
-        String star = sheet(1, 1, 128, (f, u, v, out) -> star(u, v, out));
-        String rune = sheet(1, 1, 128, (f, u, v, out) -> rune(u, v, out));
-        String ring = sheet(1, 1, 128, (f, u, v, out) -> ring(u, v, out));
-        String shard = sheet(1, 1, 64, (f, u, v, out) -> shard(u, v, out));
+        CgTexture2D smokeSheet = sheet(8, 8, 128, CgVfxModules::smokeFrame);
+        CgTexture2D fireSheet = sheet(4, 4, 128, CgVfxModules::fireFrame);
+        CgTexture2D dot = sheet(1, 1, 64, (f, u, v, out) -> dot(u, v, out));
+        CgTexture2D wispSheet = sheet(4, 4, 128, CgVfxModules::wispFrame);
+        CgTexture2D star = sheet(1, 1, 128, (f, u, v, out) -> star(u, v, out));
+        CgTexture2D rune = sheet(1, 1, 128, (f, u, v, out) -> rune(u, v, out));
+        CgTexture2D ring = sheet(1, 1, 128, (f, u, v, out) -> ring(u, v, out));
+        CgTexture2D shard = sheet(1, 1, 64, (f, u, v, out) -> shard(u, v, out));
         fillSheets();
 
         gather(COLUMNS[0], ROWS[0]);
@@ -665,7 +663,7 @@ public final class CgVfxModules {
      * to 23 blocks a second, a white-hot wake behind it with the air bent round it, a thin streak off each hand and foot,
      * sparks shed as it flies; where the loop skims the ground, a scorch torn into it and dust thrown up behind.
      */
-    private void dash(float x, float z, String smokeSheet) {
+    private void dash(float x, float z, CgTexture smokeSheet) {
         CgVfxSlot auraSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/dash_aura");
         CgMesh shell = CgProceduralMesh.revolve(CgProceduralMesh.sphere(1f, -1f, 1f)).divisions(32, 16)
                 .curl(1.4f, 0.12f).noiseSeed(5).build();
@@ -942,7 +940,7 @@ public final class CgVfxModules {
      * a blazing ball with a hot streak and a thin smoke trail behind it shedding sparks; each landing in a burst of sparks,
      * a puff of dust and a shock ring along the ground.
      */
-    private void volley(float x, float z, String smokeSheet) {
+    private void volley(float x, float z, CgTexture smokeSheet) {
         CgVfxSlot ringSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/volley_ring");
         CgMesh ring = CgProceduralMesh.revolve(CgProceduralMesh.cylinder(1f, 1f, 0.1f)).divisions(64, 2).build();
         int n = 5;
@@ -1184,7 +1182,7 @@ public final class CgVfxModules {
      * flash, a shock ring, thrown rocks and sparks and a wall of dust, skids to a stop gouging a glowing scorch, and lies
      * there cooling and smoking.
      */
-    private void meteor(float x, float z, String smokeSheet) {
+    private void meteor(float x, float z, CgTexture smokeSheet) {
         CgVfxSlot rockSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/meteor_rock");
         CgVfxSlot ringSlot = CgVfxSlot.mesh("crystalgraphics:demo/modules/meteor_ring");
         CgMesh rock = CgProceduralMesh.revolve(CgProceduralMesh.sphere(1f, -1f, 1f)).divisions(20, 12).curl(1.2f, 0.3f)
@@ -1642,7 +1640,7 @@ public final class CgVfxModules {
      * the smoke traces the funnel; turbulence makes it wander. Debris, held loosely, is flung round its foot and falls
      * back, under a skirt of dust.
      */
-    private void tornado(float x, float z, String smokeSheet) {
+    private void tornado(float x, float z, CgTexture smokeSheet) {
         // A particle follows air turning at w radians a second only while w / drag stays well under 1: the funnel's
         // drag holds its smoke to the wall above the foot; the debris's lets it fly off.
         float drag = 8f;
@@ -1720,7 +1718,7 @@ public final class CgVfxModules {
      * whole field slowly twisting. Its poles pulse and crackle, and a pulse rings out from its middle. The air is a
      * {@link CgVfxField} of the two poles' field, and drag holds each streak to its line.
      */
-    private void field(float x, float z, String dot, String ring) {
+    private void field(float x, float z, CgTexture dot, CgTexture ring) {
         float drag = 10f;
         // Source-relative, from the north pole: the field's box round the magnet, and the south pole under it.
         CgBox box = CgBox.of(MAGNET_HALF, MAGNET_HALF_Y, MAGNET_HALF);
@@ -1828,7 +1826,7 @@ public final class CgVfxModules {
      * bevy_hanabi's conform to sphere: a shield taking shape, its motes drawn onto the surface and carried over it by
      * curl-noise currents, which flow and part as one field, round a slow drift.
      */
-    private void shield(float x, float z, String dot) {
+    private void shield(float x, float z, CgTexture dot) {
         CgVfxEmitter motes = CgVfxEmitter.builder("shield").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(2500)
                 .rate(520f).shape(CgCylinder.of(5.5f, 2.75f)).speed(0.3f, 1.5f).life(2.6f, 3.4f)
                 .size(0.06f, 0.14f, 1.5f).heat(0.7f)
@@ -1918,7 +1916,7 @@ public final class CgVfxModules {
      * An avalanche down a plane collider tilted into a ramp: glowing ice shards tumble onto it, cooling from white to
      * ice blue, each impact kicking up a puff of snow, and slide off onto the floor, killed past a box.
      */
-    private void slope(float x, float z, String shard, String smokeSheet) {
+    private void slope(float x, float z, CgTexture shard, CgTexture smokeSheet) {
         // The plane stands top blocks over the floor at the station's centre; ramp is its length, end to end, from as
         // high again down to the floor.
         float nx = 0.35f, ny = 1f, length = (float) Math.sqrt(nx * nx + ny * ny), top = 1.5f, source = 6.5f;
@@ -1963,7 +1961,7 @@ public final class CgVfxModules {
      * Neon rain on Godot's box collider: streaked drops pelt a block and the floor round it, each splashing into droplets
      * and a ripple ring flat on what it struck, and dying there.
      */
-    private void block(float x, float z, String dot, String ring) {
+    private void block(float x, float z, CgTexture dot, CgTexture ring) {
         float source = 8f;
         CgVfxEmitter splash = CgVfxEmitter.builder("blockSplash").capacity(2000)
                 .direction(0, 1, 0, 60f).speed(1.5f, 3f).life(0.25f, 0.45f).size(0.02f, 0.035f, 1f).heat(0.5f)
@@ -2198,7 +2196,7 @@ public final class CgVfxModules {
      * rolled by slow curl noise as it spreads; and a fire (right), upright flames on a looping sheet, lofted by their
      * heat and reddening as they cool, with embers and its own smoke rising off it.
      */
-    private void flipbooks(float x, float z, String smokeSheet, String fireSheet) {
+    private void flipbooks(float x, float z, CgTexture smokeSheet, CgTexture fireSheet) {
         CgVfxEmitter puffs = CgVfxEmitter.builder("puffs").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(300)
                 .rate(18f).shape(CgSphere.of(0.5f)).hemisphere().direction(0, 1, 0, 36.87f).speed(0.8f, 1.5f).life(3f, 4f)
                 .size(0.7f, 1.1f, 1f).spin(0.05f, 0.35f).heat(0.7f)
@@ -2253,8 +2251,8 @@ public final class CgVfxModules {
      * (camera position), spirit flames that stay standing seen from above (aligned to up), a fountain of sparks streaked
      * along their arcs (velocity), and shockwaves flat on the floor (facing up).
      */
-    private void facings(float x, float z, String star, String rune, String wisp, String dot,
-                         String ring) {
+    private void facings(float x, float z, CgTexture star, CgTexture rune, CgTexture wisp, CgTexture dot,
+                         CgTexture ring) {
         CgVfxEmitter glints = CgVfxEmitter.builder("faceCamera").state(CgVfxEmitterState.once(PERIOD - 3f)).capacity(120)
                 .rate(16f).shape(CgSphere.of(1f)).speed(0.05f, 0.2f).life(1.5f, 2.5f).size(0.2f, 0.45f, 1.5f)
                 .spin(0.3f, 1.2f).heat(1f)
@@ -2326,8 +2324,8 @@ public final class CgVfxModules {
     private static final String BILLOW = "crystalgraphics:shaders/vfx/smoke/billow.shader";
     /** Where a draw ranks in its look, by {@link CgVfxLook}'s bands: smoke, then haze, then the surface. */
     private static final int SMOKE_HINT = 0, HAZE = 2 * CgVfxLook.BAND, SURFACE = CgVfxLook.SURFACE;
-    private static final AtomicInteger MADE = new AtomicInteger(), INSTANCES = new AtomicInteger();
-    private static final Map<String, Supplier<CgMeshLods>> MESHES = new ConcurrentHashMap<>();
+    private static final AtomicInteger MADE = new AtomicInteger();
+    private static final Map<String, CgMeshLods> MESHES = new ConcurrentHashMap<>();
 
     /** One draw of a station: an emitter's renderer, or a slot renderer. */
     private record Draw(CgVfxEmitter on, CgVfxRendererProperties renderer, CgVfxSubUvAnimation subUv) {
@@ -2430,7 +2428,7 @@ public final class CgVfxModules {
     }
 
     /** {@code e} as smoke, a frame of the 8x8 {@code sheet} over its life, ranked with smoke. */
-    private static Draw smoke(CgVfxEmitter e, CgVfxParam.Color colour, String sheet) {
+    private static Draw smoke(CgVfxEmitter e, CgVfxParam.Color colour, CgTexture sheet) {
         return particle("sprite", e, colour, colour, 1f, m -> m.texture("_Sheet", sheet),
                 r -> r.subImage(GRID_8).sortOrderHint(SMOKE_HINT)).played(OVER_LIFE);
     }
@@ -2446,7 +2444,7 @@ public final class CgVfxModules {
      * (across {@code _cg_FacingVector}); {@code unaligned}, {@code velocity} or {@code custom} (along
      * {@code _cg_AlignmentVector}).
      */
-    private static Draw facing(CgVfxEmitter e, CgVfxParam.Color cool, CgVfxParam.Color hot, String sheet, String facing,
+    private static Draw facing(CgVfxEmitter e, CgVfxParam.Color cool, CgVfxParam.Color hot, CgTexture sheet, String facing,
                                String alignment, Consumer<CgMaterialDefinition.Builder> values,
                                Consumer<CgVfxRenderers.Builder> more) {
         return particle("sprite_glow", e, cool, hot, 1f, m -> {
@@ -2558,10 +2556,9 @@ public final class CgVfxModules {
         return slot.name().substring(slot.name().lastIndexOf('/') + 1);
     }
 
-    /** {@code mesh} provided under {@code id}: once for every run of the demo, made into levels at its first draw. */
-    private static String mesh(String id, CgMesh mesh) {
-        CgMeshLoader.provide(id, MESHES.computeIfAbsent(id, i -> () -> CgMeshLods.of(mesh)));
-        return id;
+    /** {@code mesh}'s levels, made once for every run of the demo under {@code id}. */
+    private static CgMeshLods mesh(String id, CgMesh mesh) {
+        return MESHES.computeIfAbsent(id, i -> CgMeshLods.of(mesh));
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
@@ -2582,11 +2579,9 @@ public final class CgVfxModules {
      * A {@code columns} x {@code rows} sheet of {@code cell}-texel frames, frame 0 at the top left: made empty here, its
      * texels computed by {@link #fillSheets()}.
      */
-    private String sheet(int columns, int rows, int cell, Texel texel) {
+    private CgTexture2D sheet(int columns, int rows, int cell, Texel texel) {
         int w = columns * cell, h = rows * cell;
         CgTexture2D texture = CgTexture2D.createEmpty(w, h, CgTextureSpec.RGBA8_LINEAR);
-        String id = MATERIALS + "sheets/" + instance + "/" + sheets.size();
-        CgMaterialRegistry.provide(id, () -> texture);
         sheets.add(texture);
         fills.add(() -> {
             ByteBuffer pixels = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder());
@@ -2604,7 +2599,7 @@ public final class CgVfxModules {
                 if (!deleted) texture.uploadRegion(0, 0, 0, w, h, pixels, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE);
             }
         });
-        return id;
+        return texture;
     }
 
     /**
