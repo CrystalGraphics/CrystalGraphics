@@ -121,9 +121,6 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             NeoForge.EVENT_BUS.addListener(Events::onRenderLevelOpaque);
             NeoForge.EVENT_BUS.addListener(Events::onRenderLevelTransparent);
             NeoForge.EVENT_BUS.addListener(Events::onFrameEnd);
-            // The GUI stages: RenderGuiEvent.Post once a frame (never the per-layer event), and each screen once drawn.
-            NeoForge.EVENT_BUS.addListener(Events::onRenderGui);
-            NeoForge.EVENT_BUS.addListener(Events::onScreenRender);
             NeoForge.EVENT_BUS.addListener(Events::onGameShuttingDown);
 
             // The connection lifecycle's server half: a dedicated server opens connections too.
@@ -178,6 +175,10 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
 
             static void register(IEventBus modBus) {
                 modBus.addListener(ModBus::onRegisterReloadListeners);
+                // The GUI stages: RenderGuiEvent.Post once a frame (never the per-layer event), and each screen once
+                // drawn. Client-only types: NeoForge 1.20.4 refuses ScreenEvent on a dedicated server.
+                NeoForge.EVENT_BUS.addListener(ModBus::onRenderGui);
+                NeoForge.EVENT_BUS.addListener(ModBus::onScreenRender);
                 // The camera hooks a shake and an FOV kick are added at (HostCameraModern): game-bus events, but
                 // client-only types, so they live here.
                 // Last, so a held camera's angles and field of view are written after every other mod's.
@@ -210,6 +211,14 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
                         texture -> texture instanceof ValidationGpuTexture wrapped ? wrapped.getRealTexture() : texture,
                         device -> device instanceof ValidationGpuDevice wrapped ? wrapped.getRealDevice() : device);
                 *///?}
+            }
+
+            private static void onRenderGui(RenderGuiEvent.Post event) {
+                LifecycleModern.hud();
+            }
+
+            private static void onScreenRender(ScreenEvent.Render.Post event) {
+                LifecycleModern.screen();
             }
 
             private static void onCameraAngles(ViewportEvent.ComputeCameraAngles event) {
@@ -378,14 +387,6 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             if (event.phase == TickEvent.Phase.END) LifecycleModern.frameEnd();
         }
         //?}
-
-        private static void onRenderGui(RenderGuiEvent.Post event) {
-            LifecycleModern.hud();
-        }
-
-        private static void onScreenRender(ScreenEvent.Render.Post event) {
-            LifecycleModern.screen();
-        }
 
         private static void onGameShuttingDown(GameShuttingDownEvent event) {
             LifecycleModern.shutdown();
