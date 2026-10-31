@@ -7,7 +7,7 @@ import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gl.buffer.CgReadback;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -248,7 +248,7 @@ public final class CgVfxGridAtlas {
             starvedSince[b] = -1;
             if (registration == null) {
                 registration = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, CgVfxBudget.charged(this::record));
-                CgGraphicsLifecycle.addListener(context);
+                CgEngineLifecycle.addListener(context);
                 CgWorldRenderer.get().media().add(this::inject);
                 CgCompute file = CgCompute.load(KERNELS);
                 splat = file.kernel("Splat");
@@ -313,7 +313,7 @@ public final class CgVfxGridAtlas {
     /** A dying context frees the volumes: every grid starts again empty in the next one's. */
     private final CgLifecycleListener context = new CgLifecycleListener() {
         @Override
-        public void onDestroy() {
+        public void onContextDestroy() {
             view = light = before = null;
             coarsened = -1;
             Arrays.fill(state, null);

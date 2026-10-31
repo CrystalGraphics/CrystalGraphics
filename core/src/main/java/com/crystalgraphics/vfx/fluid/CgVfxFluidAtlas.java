@@ -6,7 +6,7 @@ import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.gl.texture.CgEngineTextures;
 import com.crystalgraphics.noise.CgWaveletNoise;
@@ -286,7 +286,7 @@ public final class CgVfxFluidAtlas {
             fluid.owed = 0f;
             if (registration == null) {
                 registration = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, CgVfxBudget.charged(this::record));
-                CgGraphicsLifecycle.addListener(context);
+                CgEngineLifecycle.addListener(context);
                 CgWorldRenderer.get().media().add(media);
                 prepare();
             }
@@ -347,7 +347,7 @@ public final class CgVfxFluidAtlas {
 
     private final CgLifecycleListener context = new CgLifecycleListener() {
         @Override
-        public void onDestroy() {
+        public void onContextDestroy() {
             shade = flow = restA = restB = predict = curl = lowpass = solid = interpolated = fills = null;
             deposits = depositCount = depositGrid = fluidRows = emitterBuffer = carveBuffer = mediaRows = null;
             Arrays.fill(velocity, null);

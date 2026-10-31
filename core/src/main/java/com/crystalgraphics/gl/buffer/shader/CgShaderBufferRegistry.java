@@ -5,7 +5,6 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 
 import javax.annotation.Nullable;
 import java.util.HashMap;
@@ -40,7 +39,7 @@ import java.util.Map;
  * {@link CgBufferLifetime}: two lifetimes at one binding is a conflict, and throws.</p>
  *
  * <p>All registered buffers are deleted by {@link #deleteAll()}, which is called from
- * {@link CgGraphicsLifecycle#destroyContext()}.</p>
+ * {@code CgEngineLifecycle.destroyContext()}.</p>
  */
 public final class CgShaderBufferRegistry {
 
@@ -226,7 +225,7 @@ public final class CgShaderBufferRegistry {
 
     /**
      * Deletes all registered buffers and clears both caches.
-     * Called by {@link CgGraphicsLifecycle#destroyContext()}.
+     * Called by {@code CgEngineLifecycle.destroyContext()}.
      * Must be called on the GL thread.
      */
     public void deleteAll() {

@@ -18,7 +18,7 @@ import com.crystalgraphics.variable.CgVar;
  * <ul>
  *   <li>{@code CgPipeline.prepare} and {@code CgVfxSystem}'s warming ask it, so {@code CgWorldRenderer.prepare} and
  *       {@code CgVfxOwner.prepare} spread by themselves.</li>
- *   <li>Unlimited until {@code CgGraphicsLifecycle.initContext} starts it: a process with no context (a test) warms at
+ *   <li>Unlimited until {@code CgEngineLifecycle.ensureGraphicsContext} starts it: a process with no context (a test) warms at
  *       once.</li>
  *   <li>Render thread.</li>
  * </ul>

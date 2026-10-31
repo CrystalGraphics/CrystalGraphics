@@ -11,7 +11,7 @@ import static com.crystalgraphics.api.buffer.CgBufferFormat.MemoryLayout.STD430;
  * {@code CgParameterCollection}'s storage. Uploaded once a frame by the world renderer; nothing else writes it.
  *
  * <ul>
- *   <li>Render thread only. The class makes its buffer when first touched, after {@code CgGraphicsLifecycle.initContext}.</li>
+ *   <li>Render thread only. The class makes its buffer when first touched, after {@code CgEngineLifecycle.ensureGraphicsContext}.</li>
  * </ul>
  */
 public final class CgParameterCollectionBuffer {

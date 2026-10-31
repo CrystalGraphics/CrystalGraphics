@@ -6,6 +6,7 @@ import java.util.List;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class CgEngineLifecycleTest {
@@ -15,17 +16,17 @@ public class CgEngineLifecycleTest {
         final List<String> phases = new ArrayList<>();
 
         @Override
-        public void onEnginePreInit() {
+        public void onPreInit() {
             phases.add("pre");
         }
 
         @Override
-        public void onEngineInit() {
+        public void onInit() {
             phases.add("init");
         }
 
         @Override
-        public void onEnginePostInit() {
+        public void onPostInit() {
             phases.add("post");
         }
     }
@@ -46,11 +47,14 @@ public class CgEngineLifecycleTest {
     }
 
     @Test
-    public void aListenerAddedThroughTheGraphicsLifecycleHearsTheEnginePhasesToo() {
+    public void aRemovedListenerIsGoneAndReAddingCatchesItUpAgain() {
         CgEngineLifecycle.preInit();
         Heard heard = new Heard();
-        CgGraphicsLifecycle.addListener(heard);
-        assertEquals("pre", heard.phases.get(0));
-        assertTrue("removed from both lifecycles", CgGraphicsLifecycle.removeListener(heard));
+        CgEngineLifecycle.addListener(heard);
+        assertTrue(CgEngineLifecycle.removeListener(heard));
+        assertFalse("removed once", CgEngineLifecycle.removeListener(heard));
+        CgEngineLifecycle.addListener(heard);
+        assertEquals("each registration is caught up", 2, heard.phases.stream().filter("pre"::equals).count());
+        assertTrue(CgEngineLifecycle.removeListener(heard));
     }
 }

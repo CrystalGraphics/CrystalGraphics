@@ -76,7 +76,7 @@ import java.util.logging.Logger;
  * <p>The default-config registry is a shared singleton, accessed via {@link #get()} —
  * matching {@code CgTextureManager}, {@code CgMaterialRegistry}
  * and every other GPU-resource-owning registry in this codebase. It is torn down by
- * {@code CgGraphicsLifecycle.destroyContext()} calling {@link #releaseAll()}, and
+ * {@code CgEngineLifecycle.destroyContext()} calling {@link #releaseAll()}, and
  * remains usable immediately afterward (a fresh GL context can initialize right away —
  * see {@link #releaseAll()}'s javadoc for how the background executor survives that).
  * Consumers needing a non-default atlas page size or {@link CgMsdfAtlasConfig} (e.g.
@@ -232,7 +232,7 @@ public class CgFontRegistry {
      * The shared default-config registry, matching every other GPU-resource registry
      * in this codebase ({@code CgTextureManager}, {@code CgMaterialRegistry}, etc.)
      * — accessed via {@link #get()}, torn down via
-     * {@code CgGraphicsLifecycle.destroyContext()} calling {@link #releaseAll()}.
+     * {@code CgEngineLifecycle.destroyContext()} calling {@link #releaseAll()}.
      *
      * <p>Consumers that need a <em>differently configured</em> registry (custom atlas
      * page size or {@link CgMsdfAtlasConfig} — used by harness scenes to test atlas
@@ -1464,7 +1464,7 @@ public class CgFontRegistry {
      * Releases all atlas resources across all fonts and resets the registry back to
      * a freshly-constructed, immediately reusable state.
      *
-     * <p>Called by {@code CgGraphicsLifecycle.destroyContext()} for the shared
+     * <p>Called by {@code CgEngineLifecycle.destroyContext()} for the shared
      * {@link #get()} instance. Since that instance is a permanent static singleton
      * (unlike the old per-caller construction model, where a fresh
      * {@code new CgFontRegistry()} naturally came with a fresh executor), this method

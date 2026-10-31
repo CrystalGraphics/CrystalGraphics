@@ -20,7 +20,7 @@ import com.crystalgraphics.platform.gl.CgCapabilities;
  * ({@code USER_START_*}) and grow upward.</p>
  *
  * <h3>Lifecycle</h3>
- * <p>{@link #init(CgCapabilities)} must be called (by {@code CgGraphicsLifecycle.initContext})
+ * <p>{@link #init(CgCapabilities)} must be called (by {@code CgEngineLifecycle.ensureGraphicsContext})
  * before any engine buffer is constructed. The runtime {@link Binding} fields are {@code null}
  * and the runtime {@code int} fields are {@code -1} until then; {@link #isInitialized()} returns
  * {@code false} in that state.</p>
@@ -258,7 +258,7 @@ public final class CgBindingPoints {
 
     /**
      * Resolves the three runtime engine-buffer slots from the detected hardware limits.
-     * Must be called once — by {@code CgGraphicsLifecycle.initContext} — before any engine
+     * Must be called once — by {@code CgEngineLifecycle.ensureGraphicsContext} — before any engine
      * buffer is constructed.
      *
      * @param caps detected capabilities; must not be null

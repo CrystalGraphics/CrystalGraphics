@@ -5,7 +5,7 @@ import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.platform.world.CgWorldEvents;
 import com.crystalgraphics.platform.world.CgWorldQuery;
@@ -182,10 +182,10 @@ public final class CgWorldVoxelWindow {
         if (registration == null) {
             registration = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER,
                     stage -> record(stage.recording(), stage.host().view()));
-            CgGraphicsLifecycle.addListener(new CgLifecycleListener() {
+            CgEngineLifecycle.addListener(new CgLifecycleListener() {
                 // A dying context frees its volumes: every section is filled again into the next one's, and flooded.
                 @Override
-                public void onDestroy() {
+                public void onContextDestroy() {
                     Arrays.fill(state, UNKNOWN);
                     Arrays.fill(heldY, Integer.MIN_VALUE);
                     Arrays.fill(solids, UNHASHED);

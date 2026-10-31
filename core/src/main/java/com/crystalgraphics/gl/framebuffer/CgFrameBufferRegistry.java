@@ -2,7 +2,6 @@ package com.crystalgraphics.gl.framebuffer;
 
 import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -18,7 +17,7 @@ import java.util.Map;
  * remains valid and can be cached safely.</p>
  *
  * <p>All owned FBOs are deleted by {@link #deleteAll()}, called from
- * {@link CgGraphicsLifecycle#destroyContext()}.</p>
+ * {@code CgEngineLifecycle.destroyContext()}.</p>
  *
  * @see CgFrameBuffer#create(String, int, int, CgFrameBufferFormat)
  * @see CgFrameBuffer#createScreenSized(String, CgFrameBufferFormat)
@@ -98,7 +97,7 @@ public final class CgFrameBufferRegistry {
 
     /**
      * Deletes all owned FBOs and clears the registry.
-     * Called by {@link CgGraphicsLifecycle#destroyContext()}.
+     * Called by {@code CgEngineLifecycle.destroyContext()}.
      */
     public void deleteAll() {
         for (CgFrameBuffer fbo : framebuffers.values())

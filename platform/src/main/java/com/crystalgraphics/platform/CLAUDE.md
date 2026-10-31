@@ -194,7 +194,7 @@ device-backed backend starts recording against the host's current target, and `t
 pass, leaves the host's images as it expects, and hands our command buffers to its submit
 (`HostedVulkanHost`). `CgGL.fromHost`'s javadoc has the full account.
 
-- **Every host entry brackets itself**: `CgGraphicsLifecycle`'s `initContext`, `onResize` and `tickFrame`,
+- **Every host entry brackets itself**: `CgGraphicsLifecycle`'s `init`, `onResize` and `tickFrame`,
   and `CgRenderStage.fire`; the modern tree's world passes in `LifecycleModern`, around the target
   and depth convention they set; and CrystalGUI's `HostSession.PaintHost.enter`/`leave` on every loader.
 - **Brackets nest**, and only the outermost pair reaches the backend, so a host's bracket may wrap a lifecycle
@@ -232,7 +232,7 @@ CgTrackedGLBackend gl = new CgTrackedGLBackend(device, new ShadercGlslCompiler()
 CgGL.init(gl);
 CgCapabilities.init(new CgTrackedGLContext());
 CgGlState.setProvider(new CgTrackedStateProvider(gl));
-CgGraphicsLifecycle.initContext(w, h);   // and anything else that creates objects: after the backend is in
+CgEngineLifecycle.ensureGraphicsContext(w, h);   // and anything else that creates objects: after the backend is in
 // ... the engine draws through CgGL, as on GL ...
 gl.endFrame();                      // once a frame: ends the open pass and the device's frame
 ```

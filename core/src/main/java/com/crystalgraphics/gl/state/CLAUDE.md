@@ -168,8 +168,8 @@ It changes no behaviour and reads no GL. What it buys is the declaration: `-Dcry
 reports every write outside an open scope as a leak, and a handed-over write is not one.
 
 **Every entry from the host is a scope.** The round trip found the gaps as lazy construction on first use —
-`initContext`, `onResize`, the paint context's constructor, the glyph drain at frame end, a listener's
-`onDestroy`. A resource built on first use binds what it builds, and nothing puts the host's binding back.
+`CgGraphicsLifecycle.init`, `onResize`, the paint context's constructor, the glyph drain at frame end, a listener's
+`onContextDestroy`. A resource built on first use binds what it builds, and nothing puts the host's binding back.
 Open the scope at the entry point, and where the entry runs every frame, only once there is work (the
 glyph drain opens it on the first commit).
 

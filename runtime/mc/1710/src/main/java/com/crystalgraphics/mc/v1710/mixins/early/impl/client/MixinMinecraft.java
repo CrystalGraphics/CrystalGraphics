@@ -35,14 +35,14 @@ public class MixinMinecraft {
      * <b>Frees the GL context's resources at game exit.</b>
      *
      * <p>{@code onContextDestroy} was implemented on every loader's lifecycle service and <b>called by
-     * none of them</b>, so {@code CgGraphicsLifecycle.destroyContext()} never ran on 1.7.10 — every
+     * none of them</b>, so {@code CgEngineLifecycle.destroyContext()} never ran on 1.7.10 — every
      * registry's {@code deleteAll}, every glyph atlas, every framebuffer, and CrystalGUI's own
      * {@code UiGpu.destroy()} with its {@code createOwned} targets that no registry sweep can
      * reach. The process was exiting anyway, which is why nobody noticed; that is a reason it did not
      * hurt, not a reason it was right.</p>
      *
      * <p><b>HEAD, not TAIL.</b> The one window in which a listener can release its own GL objects is
-     * while the context is still whole — {@code onDestroy}'s own contract says so — and by the tail of
+     * while the context is still whole — {@code onContextDestroy}'s own contract says so — and by the tail of
      * this method Minecraft has torn the display down. A free after that is undefined rather than
      * merely late.</p>
      *

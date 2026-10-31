@@ -90,7 +90,7 @@ public class EngineOnTrackedBackendTest {
         CgCapabilities.clearCache();
         CgGlState.reset();
         CgGlState.setProvider(new CgTrackedStateProvider(gl));
-        // CgGraphicsLifecycle.initContext's own steps, less the platform it would ask for a context.
+        // CgEngineLifecycle.ensureGraphicsContext's own steps, less the platform it would ask for a context.
         CgBindingPoints.init(CgCapabilities.detect());
         CgFallbackTextures.init();
         // text.shader's material is only complete once the text renderer has attached its UBO.

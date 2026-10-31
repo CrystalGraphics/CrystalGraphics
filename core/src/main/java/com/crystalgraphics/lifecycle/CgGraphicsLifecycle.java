@@ -1,6 +1,5 @@
 package com.crystalgraphics.lifecycle;
 
-import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.collision.debug.CgCollisionDebug;
 import com.crystalgraphics.mc.CgHotReload;
 import com.crystalgraphics.compute.CgCompute;
@@ -8,7 +7,6 @@ import com.crystalgraphics.compute.CgComputeSelfTest;
 import com.crystalgraphics.compute.ops.CgGpuOpsCheck;
 import com.crystalgraphics.compute.program.CgComputeCheck;
 import com.crystalgraphics.frame.CgFrameBoundary;
-import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.demo.CgRenderDemo;
@@ -48,7 +46,6 @@ import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.NativeLoader;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.text.render.CgTextRendererRegistry;
-import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import java.util.logging.Level;
@@ -58,10 +55,12 @@ import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.shadergraph.CgPreviewPool;
 
 /**
- * Coordinates teardown of all CrystalGraphics GL resources in the correct order.
+ * The engine's graphics context: what it builds once a context is current, its frame tick and resize, and teardown
+ * of every CrystalGraphics GL resource in the correct order.
  *
- * <p>Call {@link #destroyContext()} exactly once when the OpenGL context is being
- * destroyed (e.g. game shutdown, render context reset).</p>
+ * <p>Its start and stop are issued by {@link CgEngineLifecycle}, the engine's lifecycle:
+ * {@code CgEngineLifecycle.ensureGraphicsContext}, {@code destroyContext} and {@code shutdown}. A
+ * host calls {@link #tickFrame()} and {@link #onResize} here directly, through {@code CgLifecycleService}.</p>
  *
  * <h3>Teardown order, geometry first</h3>
  * <ol>
@@ -79,7 +78,7 @@ public final class CgGraphicsLifecycle {
     private static volatile boolean initialized = false;
 
     /**
-     * Set by {@link #destroyContext()}, cleared only by an EXPLICIT {@link #initContext}.
+     * Set by {@link #destroyContext()}, cleared only by an EXPLICIT {@link #init}.
      *
      * <p>The lazy init in {@link #ensureContext}, which a host's frame end and a stage's firing call, exists for a
      * host that never announced its context.
@@ -112,49 +111,7 @@ public final class CgGraphicsLifecycle {
             BUDGET = CgTrace.name("lifecycle.budget"), HOT_RELOAD = CgTrace.name("lifecycle.hotReload"), LISTENERS = CgTrace.name("lifecycle.listeners"),
             SELF_TESTS = CgTrace.name("lifecycle.selfTests"), RING = CgTrace.name("lifecycle.frameRing");
 
-    // ── External lifecycle listeners ────────────────────────────────────────
-    /**
-     * Listeners owned by code outside CrystalGraphics — see {@link CgLifecycleListener}.
-     *
-     * <p>Storage, iteration order and failure isolation all live in
-     * {@link CgLifecycleListener.Registry}; what stays here is the policy that only this class can
-     * know — when a context becomes live, when it is torn down, and that a late registrant must be
-     * caught up.</p>
-     */
-    private static final CgLifecycleListener.Registry listeners = new CgLifecycleListener.Registry();
-
-    /**
-     * Registers a lifecycle listener. Idempotent — registering the same instance twice does not
-     * make it fire twice, since a double-fire of {@code onDestroy} would mean a double free.
-     *
-     * <p>Registration order is dispatch order for init/frame, and reverse dispatch order for
-     * destroy.</p>
-     *
-     * <h3>Late registration still receives {@code onInit}</h3>
-     * <p>If a context is already live ({@link #isInitialized()}), {@link CgLifecycleListener#onInit}
-     * fires <b>immediately, from this call</b>, with the current viewport size. The guarantee a
-     * listener can rely on is therefore "{@code onInit} exactly once per context, whether I
-     * registered before or after that context existed" — not "only if I happened to register early
-     * enough".</p>
-     *
-     * <p>Removing and re-adding a listener while a context is live will therefore deliver
-     * {@code onInit} again — which is the intended reading of re-subscribing.</p>
-     *
-     * <p>It registers for {@link CgEngineLifecycle}'s phases too, caught up first, as
-     * {@link CgEngineLifecycle#addListener} does.</p>
-     */
-    public static void addListener(CgLifecycleListener listener) {
-        CgEngineLifecycle.register(listener);
-        if (!listeners.add(listener)) return;
-        if (initialized) listeners.fire(listener, "onInit", l -> l.onInit(currentWidth, currentHeight));
-    }
-
-    /** Unregisters a listener from both lifecycles. Safe to call from inside a callback. */
-    public static boolean removeListener(CgLifecycleListener listener) {
-        return CgEngineLifecycle.unregister(listener) | listeners.remove(listener);
-    }
-
-    /** Whether a GL context is currently initialised. See {@link #addListener} for why this matters. */
+    /** Whether a GL context is currently initialised: what {@code CgEngineLifecycle.addListener} catches a listener up to. */
     public static boolean isInitialized() {
         return initialized;
     }
@@ -209,7 +166,7 @@ public final class CgGraphicsLifecycle {
      * Must be called once on the GL thread after context creation,
      * before any material or fallback-texture usage.
      */
-    public static void initContext(int width, int height) {
+    private static void init(int width, int height) {
         if (stoodDown) return;
         CgPlatform.gl().initContext();
 
@@ -241,8 +198,6 @@ public final class CgGraphicsLifecycle {
                 CgRenderDemo.INSTANCE.install();
                 // The demo plays in PLAYS, ahead of the VFX system's EFFECTS: what it plays starts the same frame.
                 CgVfx.install();
-                // Every mod has initialised by the first context: what was mounted starts loading, its preparers registered
-                CgEngineLifecycle.postInit();
                 CgCollisionDebug.install();
                 CgWorldProbe.installIfEnabled();
 
@@ -252,7 +207,7 @@ public final class CgGraphicsLifecycle {
                 // Last, and after `initialized` is set: a listener may legitimately touch anything the
                 // engine just brought up (pipeline, fallback textures, capability probes), and may call back
                 // into isInitialized().
-                listeners.dispatch("onInit", l -> l.onInit(width, height));
+                CgEngineLifecycle.contextInitialized(width, height);
             });
         } finally {
             CgGL.toHost();
@@ -324,7 +279,7 @@ public final class CgGraphicsLifecycle {
         // Every registry below is gone after a teardown, and a host forwards its window events until
         // the process actually exits. @see CgRenderStage#fire
         if (destroyed || stoodDown) return;
-        // Nothing is built yet, and initContext applies its own size. Returning also keeps a splash-thread
+        // Nothing is built yet, and init applies its own size. Returning also keeps a splash-thread
         // resize from claiming the state manager before the client thread's first frame does.
         if (!initialized) return;
 
@@ -334,7 +289,7 @@ public final class CgGraphicsLifecycle {
         // write; the state manager throws, the splash thread dies holding the context, and the game
         // goes down in `SplashProgress.finish` with nothing naming the resize.
         //
-        // Returning WITHOUT recording the size is what makes this a deferral: a stage's `ensureContext` compares
+        // Returning WITHOUT recording the size is what makes this a deferral: a stage's `ensureGraphicsContext` compares
         // the frame's dimensions against `currentWidth`/`currentHeight` and calls back here on the
         // owning thread, so the next real frame applies it.
         if (!CgGlState.manager().ownedByCurrentThread()) return;
@@ -369,17 +324,12 @@ public final class CgGraphicsLifecycle {
      * end calls it too: a UI that checks {@link #isInitialized()} before painting would otherwise draw
      * nothing.</p>
      *
-     * <pre>{@code
-     * // in a Screen's render(), before painting:
-     * CgGraphicsLifecycle.ensureContext(window.getWidth(), window.getHeight());
-     * }</pre>
-     *
      * <p>Safe to call every frame: it initialises once, resizes when the viewport changed, and does
      * nothing at all after {@link #destroyContext()}. GL thread only, like everything else here.</p>
      */
-    public static void ensureContext(int w, int h) {
+    static void ensureContext(int w, int h) {
         if (destroyed || stoodDown) return;
-        if (!initialized) initContext(w, h);
+        if (!initialized) init(w, h);
         else if (w != currentWidth || h != currentHeight) onResize(w, h);
     }
 
@@ -447,7 +397,7 @@ public final class CgGraphicsLifecycle {
                 CgMaterialShader.advanceSubmits();
             }
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, LISTENERS)) {
-                listeners.dispatch("onFrame", l -> l.onFrame(CgFrameClock.frameIndex()));
+                CgEngineLifecycle.frame();
             }
             if (initialized) {
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, SELF_TESTS)) {
@@ -492,7 +442,7 @@ public final class CgGraphicsLifecycle {
      *
      * <h3>This is a shutdown path, not a recycle path</h3>
      * <p><strong>Call this once, when the process is going away.</strong> There is no supported
-     * destroy-then-{@link #initContext} cycle inside a running game, and calling {@code initContext}
+     * destroy-then-{@link #init} cycle inside a running game, and calling {@code init}
      * again after this would not work: several singletons latch a {@code deleted} flag that nothing
      * resets. {@link CgMaterialRegistry} is the clearest case — its
      * {@code INSTANCE} is {@code static final} and its {@code checkNotDeleted()} throws
@@ -506,7 +456,7 @@ public final class CgGraphicsLifecycle {
      * correction here rather than a quiet deletion. Supporting genuine context recreation means
      * giving every latching singleton a real reset path first; until then, treat this as terminal.</p>
      */
-    public static void destroyContext() {
+    static void destroyContext() {
         // Nothing was ever built, and the sweeps below would call into nothing: a stood-down host has no GL
         // context, and with no backend installed no host section ever opened, as on a client quitting
         // before its first frame.
@@ -524,7 +474,7 @@ public final class CgGraphicsLifecycle {
         // listener holds of engine-owned resources (fonts, textures, materials) is silently stale.
         // Scoped: a listener releasing its renderers unbinds their materials behind the host.
         try (CgGlScope ignored = CgGlState.saveAll()) {
-            listeners.dispatchReverse("onDestroy", CgLifecycleListener::onDestroy);
+            CgEngineLifecycle.contextDestroying();
         }
 
         // Step 1: Meshes: the store's slabs, each slab's VAO, then its buffers. Meshes keep their data.
@@ -622,13 +572,13 @@ public final class CgGraphicsLifecycle {
      * case exactly.</p>
      *
      * <p>Prefer {@link #destroyContext()} where rendering has definitively stopped and the resources
-     * should be released. Both are terminal: neither supports a later {@link #initContext}.</p>
+     * should be released. Both are terminal: neither supports a later {@link #init}.</p>
      */
-    public static void shutdown() {
+    static void shutdown() {
         boolean first = !destroyed;
         destroyed = true;
         initialized = false;
-        if (first) listeners.dispatch("onShutdown", CgLifecycleListener::onShutdown);
+        if (first) CgEngineLifecycle.stopped();
     }
 
 }

@@ -7,17 +7,17 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Hears the engine's moments from outside CrystalGraphics: its start on both sides
- * ({@link CgEngineLifecycle}) and its graphics context ({@link CgGraphicsLifecycle}). For a consuming
- * library (CrystalGUI), a mod's own renderer or a harness scene, which need the same moments but must not
- * be hard-wired into the engine.
+ * Hears the engine's lifecycle from outside CrystalGraphics: its start on both sides, then its graphics context's.
+ * For a consuming library (CrystalGUI), a mod's own renderer or a harness scene, which need the same moments but must
+ * not be hard-wired into the engine. Registered with {@link CgEngineLifecycle#addListener}, which dispatches every
+ * moment.
  *
  * <pre>{@code
  * CgEngineLifecycle.addListener(new CgLifecycleListener() {
- *     @Override public void onEngineInit() {
+ *     @Override public void onInit() {
  *         CgNetwork.onServerTick(MyMod::tick);          // the network is installed by now
  *     }
- *     @Override public void onEnginePostInit() {
+ *     @Override public void onPostInit() {
  *         HIT = CgTagRegistry.global().require("mymod:cue.hit");   // every mod's tags are declared
  *     }
  * });
@@ -25,71 +25,65 @@ import java.util.logging.Logger;
  *
  * <pre>{@code
  * // a renderer: GL objects made with the context and freed before it goes
- * CgGraphicsLifecycle.addListener(new CgLifecycleListener() {
- *     @Override public void onInit(int width, int height) {
+ * CgEngineLifecycle.addListener(new CgLifecycleListener() {
+ *     @Override public void onContextInit(int width, int height) {
  *         target = CgFrameBuffer.createOwned("mymod:glow", width, height, CgFrameBufferFormat.RGBA8_WITH_DEPTH);
  *     }
- *     @Override public void onDestroy() { target.delete(); }
+ *     @Override public void onContextDestroy() { target.delete(); }
  * });
  * }</pre>
  *
- * <p>Every method is a default no-op, so an implementer overrides only the moments it cares about.
- * Either {@code addListener} registers for every moment of both lifecycles.</p>
+ * <p>Every method is a default no-op, so an implementer overrides only the moments it cares about.</p>
  *
  * <h3>Ordering guarantees</h3>
  * <ul>
- *   <li>{@link #onEnginePreInit}, {@link #onEngineInit} and {@link #onEnginePostInit} fire on both sides,
- *       each <b>after</b> the engine's own work in that phase, and each <b>exactly once</b>: a listener
- *       registered after a phase hears it from {@code addListener}, in phase order. They run on the
- *       loader's thread, which on Forge may be a mod-loading worker.</li>
- *   <li>{@link #onInit} fires <b>after</b> CrystalGraphics has finished initialising, so the render
- *       pipeline, fallback textures and capability probes are all usable from it. It fires
- *       <b>exactly once per context</b> regardless of when you registered: register before the
- *       context exists and it arrives during {@code initContext}; register while one is already live
- *       and {@code CgGraphicsLifecycle.addListener} delivers it immediately. Lazily-loaded consumers
- *       depend on that second path — see {@code CgGraphicsLifecycle#addListener}.</li>
- *   <li>{@link #onDestroy} fires <b>before</b> CrystalGraphics tears anything down, while every GL
+ *   <li>{@link #onPreInit}, {@link #onInit} and {@link #onPostInit} fire on both sides, each <b>after</b> the
+ *       engine's own work in that phase. They run on the loader's thread, which on Forge may be a mod-loading
+ *       worker.</li>
+ *   <li>{@link #onContextInit} fires <b>after</b> CrystalGraphics has finished building its context, so the render
+ *       pipeline, fallback textures and capability probes are all usable from it. On a client, {@link #onPostInit}
+ *       follows it.</li>
+ *   <li>{@link #onContextDestroy} fires <b>before</b> CrystalGraphics tears anything down, while every GL
  *       object is still valid. This is the only point at which a listener can safely delete its own
  *       framebuffers, renderers and buffers — afterwards the registries have swept the context and a
  *       listener's handles refer to objects that no longer exist.</li>
+ *   <li><b>Each fires exactly once</b>, whenever you registered: a listener added after a phase, or while a context
+ *       is live, hears what it missed from {@code addListener}, in order. Lazily-loaded consumers depend on it.</li>
  * </ul>
- *
- * <p>Because both are guaranteed per-context, a listener that survives a destroy/recreate cycle sees
- * a clean {@code onDestroy} → {@code onInit} pair and can rebuild against the new context.</p>
  *
  * <h3>Failure isolation</h3>
  * <p>An exception thrown by one listener is logged and swallowed: it must not prevent the other
  * listeners from running, and it must never abort engine teardown partway through, which would leak
  * the entire remainder of the GL context.</p>
  *
- * <p>Registration order is dispatch order for {@link #onInit}/{@link #onFrame}. {@link #onDestroy}
- * dispatches in <b>reverse</b> registration order, so a listener registered later — and therefore
- * potentially built on top of an earlier one — releases first.</p>
+ * <p>Registration order is dispatch order, except {@link #onContextDestroy}, which dispatches in <b>reverse</b>
+ * registration order, so a listener registered later — and therefore potentially built on top of an earlier one —
+ * releases first.</p>
  */
 public interface CgLifecycleListener {
 
     /** Every mod discovered and its assets mounted, its tags declared: {@link CgEngineLifecycle#preInit}. */
-    default void onEnginePreInit() {
+    default void onPreInit() {
     }
 
     /** The network installed over the host's channel: {@link CgEngineLifecycle#init}. */
-    default void onEngineInit() {
+    default void onInit() {
     }
 
     /**
      * Every mod initialised, and what was mounted loading: {@link CgEngineLifecycle#postInit}, at the first client
      * graphics start or server start. Mirrors Unreal's {@code FCoreDelegates::OnPostEngineInit}.
      */
-    default void onEnginePostInit() {
+    default void onPostInit() {
     }
 
     /**
-     * The GL context has been created and CrystalGraphics is fully initialised.
+     * The graphics context has been created and CrystalGraphics is fully initialised on it. GL thread.
      *
      * @param width  viewport width in pixels
      * @param height viewport height in pixels
      */
-    default void onInit(int width, int height) {
+    default void onContextInit(int width, int height) {
     }
 
     /**
@@ -99,7 +93,7 @@ public interface CgLifecycleListener {
      * invalidated, so whatever the host left bound is not trusted.
      *
      * <pre>{@code
-     * CgGraphicsLifecycle.addListener(new CgLifecycleListener() {
+     * CgEngineLifecycle.addListener(new CgLifecycleListener() {
      *     @Override public void onFrame(long frame) {
      *         if (overlayUp) paintOverlay();   // lands over the host's GUI, inside this frame
      *     }
@@ -115,18 +109,18 @@ public interface CgLifecycleListener {
     }
 
     /**
-     * The GL context is about to be destroyed. Release GL resources you own here.
+     * The graphics context is about to be destroyed. Release GL resources you own here.
      *
      * <p>Fires while everything is still valid — see the ordering guarantees above. Do not assume
      * anything about whether a new context will follow; implementations should leave themselves in a
-     * state where a subsequent {@link #onInit} works.</p>
+     * state where a subsequent {@link #onContextInit} works.</p>
      */
-    default void onDestroy() {
+    default void onContextDestroy() {
     }
 
     /**
      * The engine has stopped for good: the game is closing. Once, on the thread that stopped it, and after
-     * {@link #onDestroy} when there was one.
+     * {@link #onContextDestroy} when there was one.
      *
      * <p>For work a JVM shutdown hook cannot do: on a mod loader the class loader closes before those hooks
      * run, so anything that loads a class then fails. Writing a report is the case. Nothing here may draw.</p>
@@ -139,8 +133,8 @@ public interface CgLifecycleListener {
      *
      * <p>Owns the <em>mechanism</em> — holding listeners, iterating them in the right direction, and
      * isolating a failing one — and deliberately none of the <em>policy</em>. It does not know what
-     * {@code onInit} means, when a context becomes live, or that late registrants need catching up;
-     * that all stays in {@link CgGraphicsLifecycle}, which owns the lifecycle it is dispatching for.
+     * a moment means, when a context becomes live, or that late registrants need catching up;
+     * that all stays in {@link CgEngineLifecycle}, which owns the lifecycle it is dispatching for.
      * The split is what keeps this reusable: any subsystem wanting its own listener set can hold a
      * {@code Registry} without inheriting the engine's context semantics.</p>
      *
@@ -158,9 +152,9 @@ public interface CgLifecycleListener {
          * Adds {@code listener} unless it is null or already present.
          *
          * @return {@code true} if it was actually added — lets the caller run one-time
-         *         just-registered work (e.g. delivering a late {@code onInit}) without having to
+         *         just-registered work (e.g. delivering a late {@code onContextInit}) without having to
          *         re-check membership, and without doing it twice for a duplicate registration.
-         *         A double-fire of {@code onDestroy} would be a double free.
+         *         A double-fire of {@code onContextDestroy} would be a double free.
          */
         public boolean add(CgLifecycleListener listener) {
             if (listener == null || listeners.contains(listener)) return false;
@@ -181,7 +175,7 @@ public interface CgLifecycleListener {
          * Invokes one listener, isolating failure.
          *
          * <p>A listener that throws is logged and skipped rather than propagating: during teardown an
-         * escaping exception would abort the rest of {@link CgGraphicsLifecycle#destroyContext()}
+         * escaping exception would abort the rest of {@link CgEngineLifecycle#destroyContext()}
          * partway through and leak everything after it, which is far worse than whatever the listener
          * got wrong.</p>
          *

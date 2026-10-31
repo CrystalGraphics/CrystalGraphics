@@ -41,12 +41,12 @@ import java.util.function.Supplier;
  * seeded with {@code CgQuadRenderer::instanceBuffer}. A method reference does <em>not</em> trigger
  * that class's static initialization, and {@code MACRO_NAME} is a compile-time constant that gets
  * inlined — so seeding the token costs nothing and, crucially, does not allocate
- * {@code CgQuadRenderer}'s shared buffer, which is only valid once {@code CgGraphicsLifecycle.initContext}
+ * {@code CgQuadRenderer}'s shared buffer, which is only valid once {@code CgEngineLifecycle.ensureGraphicsContext}
  * has run. The supplier is invoked at attach time, when a GL context exists.</p>
  *
  * <p>That laziness is why the table lives here rather than each provider registering from its own
  * static initializer. Self-registration only takes effect once something has touched the provider
- * class, which nothing guarantees before a shader naming the token is parsed — {@code initContext}
+ * class, which nothing guarantees before a shader naming the token is parsed — {@code CgGraphicsLifecycle.init}
  * itself compiles {@code text.shader}, which declares {@code cg_use quad}. Fixing that needs an
  * explicit "initialize this class now" call at exactly the right point in startup, i.e. correctness
  * coupled to init order. Seeding here has no ordering requirement at all: this class initializes on

@@ -10,8 +10,8 @@ import java.nio.ByteBuffer;
  * Engine-managed 1×1 fallback textures covering the four most common "unset sampler" cases.
  *
  * <p>Must be initialised once on the GL thread via {@link #init()} (typically called from
- * {@code CgGraphicsLifecycle.initContext()}), and freed via {@link #destroy()} during
- * context teardown (called automatically by {@code CgGraphicsLifecycle.destroyContext()}).</p>
+ * {@code CgEngineLifecycle.ensureGraphicsContext()}), and freed via {@link #destroy()} during
+ * context teardown (called automatically by {@code CgEngineLifecycle.destroyContext()}).</p>
  *
  * <p>Fields are {@code null} before {@link #init()} and after {@link #destroy()}.</p>
  */
@@ -63,7 +63,7 @@ public final class CgFallbackTextures {
 
     /**
      * Frees the fallback textures and sets the fields to {@code null}.
-     * Called automatically by {@code CgGraphicsLifecycle.destroyContext()}.
+     * Called automatically by {@code CgEngineLifecycle.destroyContext()}.
      */
     public static void destroy() {
         deleteAndNull(WHITE_1x1);

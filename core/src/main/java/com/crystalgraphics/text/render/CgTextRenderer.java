@@ -481,7 +481,7 @@ public class CgTextRenderer {
      *
      * <p>Material variants compile lazily on first {@code bind()} with a given keyword set, so
      * without this the first string drawn pays for it — measured at ~134 ms on a frame that had
-     * already started rendering. Called from {@code CgGraphicsLifecycle.initContext}, where a stall
+     * already started rendering. Called from {@code CgEngineLifecycle.ensureGraphicsContext}, where a stall
      * costs nothing.
      *
      * <p>Compiles <strong>both</strong> keyword states. {@code MSDF_MODE} on and off are separate
@@ -1348,7 +1348,7 @@ public class CgTextRenderer {
         if (deleted) return;
         // AN OPEN BATCH IS ABANDONED, NOT ENDED. endBatch() flushes and then runs postBatchRestore, and
         // both BIND A MATERIAL -- this renderer's for the flush, the caller's own for the restore. During
-        // CgGraphicsLifecycle.destroyContext both are already gone, because materials are swept before
+        // CgEngineLifecycle.destroyContext both are already gone, because materials are swept before
         // this registry is. Deleting a renderer is not a request to draw with it, and a caller being
         // torn down has no state worth restoring; doing either threw "CgMaterial has been deleted" out
         // of teardown on every harness run that had text on screen.

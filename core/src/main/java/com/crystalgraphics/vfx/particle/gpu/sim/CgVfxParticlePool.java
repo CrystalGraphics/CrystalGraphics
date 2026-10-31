@@ -9,7 +9,7 @@ import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
@@ -463,7 +463,7 @@ public final class CgVfxParticlePool {
             (pool.hidden ? REHEARSED : REAL).add(pool);
             if (recording == null) {
                 recording = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, CgVfxBudget.charged(CgVfxParticlePool::recordStage));
-                CgGraphicsLifecycle.addListener(CONTEXT);
+                CgEngineLifecycle.addListener(CONTEXT);
             }
         }
         return pool;
@@ -589,7 +589,7 @@ public final class CgVfxParticlePool {
     /** A dying context frees every pool's storage (CgExecutor.destroyAll): each makes it again, empty, at its next step. */
     private static final CgLifecycleListener CONTEXT = new CgLifecycleListener() {
         @Override
-        public void onDestroy() {
+        public void onContextDestroy() {
             for (int i = 0; i < REAL.size(); i++) REAL.get(i).forgetStorage();
             for (int i = 0; i < REHEARSED.size(); i++) REHEARSED.get(i).forgetStorage();
             RELEASED.clear();

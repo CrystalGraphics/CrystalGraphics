@@ -8,6 +8,7 @@ import com.crystalgraphics.mc.modern.platform.world.EnvironmentModern;
 import com.crystalgraphics.mc.modern.platform.world.TexturesModern;
 import com.crystalgraphics.mc.modern.platform.world.WorldEventsModern;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -401,7 +402,7 @@ public final class LifecycleModern {
                 stencil ? GL30.GL_DEPTH_STENCIL_ATTACHMENT : GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, name(depth), 0);
         mainColor = color;
         mainDepth = depth;
-        CgGraphicsLifecycle.addListener(MAIN_FBO_OWNER);
+        CgEngineLifecycle.addListener(MAIN_FBO_OWNER);
         return mainFbo;
     }
 
@@ -413,7 +414,7 @@ public final class LifecycleModern {
     // Idempotent to register; releases the framebuffer while the context is still whole.
     private static final CgLifecycleListener MAIN_FBO_OWNER = new CgLifecycleListener() {
         @Override
-        public void onDestroy() {
+        public void onContextDestroy() {
             deleteMainFbo();
         }
     };
@@ -483,10 +484,10 @@ public final class LifecycleModern {
      *
      * <p>Stops the engine and frees nothing: Minecraft keeps dispatching render stages after its
      * shutdown signal. Under Vulkan our device then closes from Blaze3D's destroy queue, before Minecraft's
-     * own device goes. @see CgGraphicsLifecycle#shutdown</p>
+     * own device goes. @see CgEngineLifecycle#shutdown</p>
      */
     public static void shutdown() {
-        CgGraphicsLifecycle.shutdown();
+        CgEngineLifecycle.shutdown();
         //? if >=26.2 {
         /*if (GraphicsApi.vulkan()) Blaze3dVulkanHost.shutdown();
         *///?}

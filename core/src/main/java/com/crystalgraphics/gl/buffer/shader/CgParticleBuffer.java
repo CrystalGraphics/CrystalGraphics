@@ -45,7 +45,7 @@ public final class CgParticleBuffer {
 
     private static final String NAME = "CgParticleBuffer";
 
-    /** Allocates against {@link CgBindingPoints#PARTICLES}: only valid after {@code CgGraphicsLifecycle.initContext}. */
+    /** Allocates against {@link CgBindingPoints#PARTICLES}: only valid after {@code CgEngineLifecycle.ensureGraphicsContext}. */
     private static final CgShaderBuffer BUFFER = CgShaderBufferRegistry.get()
             .getOrCreateInternal(NAME, FORMAT, CgBindingPoints.PARTICLES, CgBufferLifetime.FRAME);
 

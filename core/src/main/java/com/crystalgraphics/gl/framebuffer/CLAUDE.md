@@ -118,7 +118,7 @@ CgGraphicsLifecycle.onResize(newWidth, newHeight);
 - `getOrCreate(name, w, h, format)` — returns cached FBO or creates at given dimensions on miss.
 - `acquireScreenSized(name, format)` — like `getOrCreate` but sets `fbo.screenSized = true`. The returned reference is stable.
 - `onResize(w, h)` — calls `fbo.resize(w, h)` in-place on all screen-sized FBOs. Java references remain valid.
-- `deleteAll()` — deletes all owned FBOs and clears `framebuffers`. Called by `CgGraphicsLifecycle.destroyContext()`.
+- `deleteAll()` — deletes all owned FBOs and clears `framebuffers`. Called by `CgEngineLifecycle.destroyContext()`.
 
 **Do not cache screen-sized FBOs across frames** — re-query each frame; the registry
 replaces the internal FBO on every resize.

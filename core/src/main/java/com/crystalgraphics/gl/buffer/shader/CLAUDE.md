@@ -62,7 +62,7 @@ without casts.
 | `CgUniformBuffer` | UBO for a uniform block, with a `CgBufferLifetime`: `FRAME` for every engine block — material properties (`CgMaterial` uploads at every bind), the text block (`getOrCreateUboInternal`) — or `RETAINED`, the default for `getOrCreateUbo(format, name, index)`. `upload()` passes `CgShaderBuffer.uploadData`'s skip. Constructors `(name, format, bindingLocation[, lifetime])`. `getName()` is the GLSL block name. `wireShader` calls `glUniformBlockBinding(programId, blockIndex, bindingLocation)`. Uses unified `endRecord()` from parent. |
 | `CgParameterCollectionBuffer` | The `globals` engine buffer: every `CgParameterCollection`'s values, a vec4 each (`GLOBAL_DATA`), FRAME lifetime, at `CgBindingPoints.GLOBALS`. Uploaded once a frame by `CgParameterCollection.upload()`, which the world renderer calls |
 | `CgBonePalettes` | Every skinned draw's bones for a ring frame: `write(skinning, count)` answers a draw's base (three vec4 rows a bone, a 3×4 transform), and the world renderer `record`s the frame's palettes once, into a persistent graph buffer each skinned draw binds at `CgBindingPoints.BONE_PALETTES` (`Draw.bones(base)` puts the base in `CG_OBJECT_SPARE.x`). Its registered `CgShaderBuffer`, one identity bone, is only the skinned program's declaration and what the binding holds between skinned draws |
-| `CgShaderBufferRegistry` | Singleton registry for user-created SSBO/TBO/UBO buffers. Two caches: `ShaderBufferKey(name, format, bindingPoint)` (covers both SSBO and TBO) and `UboKey(name, format, bindingPoint)`. `getOrCreate(String name, CgBufferFormat format, int userIndex)` and `getOrCreateUbo(CgBufferFormat format, String name, int userIndex)` take 0-based `userIndex`; per-type USER_START is added internally. `deleteAll()` called by `CgGraphicsLifecycle.destroyContext()`. Engine-internal pipeline buffers bypass this registry. |
+| `CgShaderBufferRegistry` | Singleton registry for user-created SSBO/TBO/UBO buffers. Two caches: `ShaderBufferKey(name, format, bindingPoint)` (covers both SSBO and TBO) and `UboKey(name, format, bindingPoint)`. `getOrCreate(String name, CgBufferFormat format, int userIndex)` and `getOrCreateUbo(CgBufferFormat format, String name, int userIndex)` take 0-based `userIndex`; per-type USER_START is added internally. `deleteAll()` called by `CgEngineLifecycle.destroyContext()`. Engine-internal pipeline buffers bypass this registry. |
 
 ## Binding Point and Texture Unit Namespaces
 
@@ -83,7 +83,7 @@ Reserved engine SSBO/TBO pairs are `CgBindingPoints.Binding(ssbo, tbo)` records,
 already-detected capability path, so a consumer needing one reserved pair
 (`CgShaderBufferRegistry.getOrCreateInternal(name, format, binding)`) passes a single object.
 
-`CgBindingPoints.init(CgCapabilities)` must be called (by `CgGraphicsLifecycle.initContext`) before
+`CgBindingPoints.init(CgCapabilities)` must be called (by `CgEngineLifecycle.ensureGraphicsContext`) before
 any engine buffer is constructed.
 
 ## Two-Phase Buffer Usage: Wire vs Bind
@@ -145,7 +145,7 @@ first compile has no attached buffers yet, so a buffer nothing else binds would 
 
 **Built-ins are seeded in this class's own static block**, not by the provider registering itself.
 That was tried: self-registration only takes effect once something touches the provider class, which
-nothing guarantees before a shader naming the token is parsed — `initContext` itself compiles
+nothing guarantees before a shader naming the token is parsed — `CgGraphicsLifecycle.init` itself compiles
 `text.shader`, which declares `cg_use quad`. Making it work needs an explicit "initialize this class
 now" call at exactly the right point in startup, which couples correctness to init order and broke
 the headless parser tests. Seeding here has no ordering requirement: the registry initializes on the
@@ -234,4 +234,4 @@ table.endWrite();                 // a lease now, the buffer's before the next f
 - **`CgBindingPoints.OBJECT_DATA`, `FRAME_DATA`, `USER_START`, `TBO_ENGINE_UNIT`, `toTboUnit()` were removed** — use the new per-type constants (`OBJECT_DATA_SSBO`, `OBJECT_DATA_TBO`, `FRAME_DATA_UBO`, `USER_START_SSBO`, `USER_START_TBO`, `USER_START_UBO`).
 - **Engine blocks bypass the registry** — the frame block and object buffer use high-end binding slots resolved at runtime; the executor owns the object buffer and binds the frame block from each pass's constants.
 - **The frame ring only through `CgBufferLifetime.FRAME`** — it binds by range at each upload's offset. A `RETAINED` buffer and every TBO stay at offset 0, which `glBindBufferBase`/`glTexBuffer` read.
-- **`CgBindingPoints.init()` must run before any engine buffer construction** — `CgGraphicsLifecycle.initContext` calls it first.
+- **`CgBindingPoints.init()` must run before any engine buffer construction** — `CgEngineLifecycle.ensureGraphicsContext` calls it first.

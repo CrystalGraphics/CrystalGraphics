@@ -1,22 +1,18 @@
 package com.crystalgraphics.mc.modern.platform.service;
 
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 
 /**
- * Modern implementation of {@link CgLifecycleService}.
- * Delegates directly to {@link CgGraphicsLifecycle} — no callback registration needed.
+ * Modern implementation of {@link CgLifecycleService}: context destroy to {@link CgEngineLifecycle},
+ * resize and the frame to {@link CgGraphicsLifecycle}.
  */
 public final class LifecycleService implements CgLifecycleService {
 
     @Override
-    public void onContextInit(int width, int height) {
-        CgGraphicsLifecycle.initContext(width, height);
-    }
-
-    @Override
     public void onContextDestroy() {
-        CgGraphicsLifecycle.destroyContext();
+        CgEngineLifecycle.destroyContext();
     }
 
     @Override

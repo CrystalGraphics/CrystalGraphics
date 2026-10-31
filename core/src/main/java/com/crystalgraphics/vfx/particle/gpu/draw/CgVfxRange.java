@@ -6,7 +6,7 @@ import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgReadback;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.render.graph.CgBufferDesc;
@@ -231,7 +231,7 @@ public final class CgVfxRange {
             if (list == ALL) layOut();
             if (registration == null) {
                 registration = CgRenderStage.WORLD_OPAQUE.register(ORDER, CgVfxBudget.charged(CgVfxRange::recordAll));
-                CgGraphicsLifecycle.addListener(CONTEXT);
+                CgEngineLifecycle.addListener(CONTEXT);
             }
         }
         return range;
@@ -240,7 +240,7 @@ public final class CgVfxRange {
     /** A dying context frees the shared buffers (CgExecutor.destroyAll): they are made again at the next frame's asking. */
     private static final CgLifecycleListener CONTEXT = new CgLifecycleListener() {
         @Override
-        public void onDestroy() {
+        public void onContextDestroy() {
             CgVfxRibbonGeneration.forgetAll();
             RETIRED.clear();
             drawn = visible = slots = bases = strides = objects = sorts = origins = null;

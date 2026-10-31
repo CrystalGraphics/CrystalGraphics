@@ -12,7 +12,7 @@ import com.crystalgraphics.demo.collision.CgCollisionDemo;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.gl.buffer.CgReadback;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -265,7 +265,7 @@ public final class CgRenderDemo {
         // The shown scene alone: building all three cost the first world frame a quarter second (26.2, Vulkan). The rest
         // are prewarmed a frame each, after it, from every frame's end: the title screen's too, so a world finds them warm.
         build(wanted);
-        CgGraphicsLifecycle.addListener(new CgLifecycleListener() {
+        CgEngineLifecycle.addListener(new CgLifecycleListener() {
             @Override
             public void onFrame(long frame) {
                 warmAhead();

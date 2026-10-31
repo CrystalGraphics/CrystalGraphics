@@ -978,11 +978,14 @@ The checkerboard drawn for a texture that will not load is `CgTexture2D.missing(
 
 ### CgGraphicsLifecycle
 
-The single coordination point for GL context init and teardown. **Call these and nothing else** — do not free individual registries manually.
+The engine's graphics context: what it builds once a context is current, the frame tick, resize, and the teardown.
+Its start and stop are issued through `CgEngineLifecycle`, the engine's lifecycle; resize and the frame tick are
+called here. **Call these and nothing else** — do not free individual registries manually.
 
 ```java
-// On GL context creation (GL thread):
-CgGraphicsLifecycle.initContext(viewportWidth, viewportHeight);
+// At each frame's end, and before drawing outside a world pass — a menu, a title screen, any GUI (GL thread):
+// the graphics start once, then the engine's post-init; a resize if the viewport moved; nothing after destroyContext()
+CgEngineLifecycle.ensureGraphicsContext(viewportWidth, viewportHeight);
 // Initialises: CgBindingPoints, CgFrameBufferRegistry, CgFallbackTextures, and installs CgWorldRenderer
 
 // On window resize (GL thread):
@@ -990,15 +993,11 @@ CgGraphicsLifecycle.onResize(newWidth, newHeight);
 // Triggers recreation of all screen-sized FBOs in CgFrameBufferRegistry
 
 // On GL context destruction (GL thread):
-CgGraphicsLifecycle.destroyContext();
+CgEngineLifecycle.destroyContext();
 // Runs the canonical teardown sequence (see below)
-
-// About to draw OUTSIDE a world pass — a menu, a title screen, any GUI (GL thread):
-CgGraphicsLifecycle.ensureContext(width, height);
-// Initialises once, resizes if the viewport moved, no-ops after destroyContext()
 ```
 
-> **`ensureContext` exists because the engine initialises on the first WORLD render**, which is right
+> **`ensureGraphicsContext` exists because the engine initialises on the first WORLD render**, which is right
 > for anything drawn in a world and wrong for everything else. On a title screen no world pass ever
 > runs, so `isInitialized()` stayed false for the life of the process and a UI that politely checked
 > before painting drew nothing at all — and because Minecraft only clears the colour buffer when it

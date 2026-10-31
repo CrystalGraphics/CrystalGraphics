@@ -26,7 +26,7 @@ import static com.crystalgraphics.api.buffer.CgBufferFormat.MemoryLayout.STD430;
  * <ul>
  *   <li>Write it every frame any row-reading draw draws: a FRAME buffer read in a frame that did not write it reads
  *       another frame's bytes, silently.</li>
- *   <li>Render thread only. The class makes its buffer when first touched, after {@code CgGraphicsLifecycle.initContext}.</li>
+ *   <li>Render thread only. The class makes its buffer when first touched, after {@code CgEngineLifecycle.ensureGraphicsContext}.</li>
  * </ul>
  */
 public final class CgPropertyRows {

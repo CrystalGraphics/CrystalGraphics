@@ -36,7 +36,7 @@ per overlay frame and `CgFontDemo.INSTANCE.onMouseWheel(delta)` on scroll input.
 
 ## Platform Wiring — CgRenderDemo
 
-No host names it. `CgGraphicsLifecycle.initContext` calls `install()`, which does nothing when
+No host names it. `CgEngineLifecycle.ensureGraphicsContext` calls `install()`, which does nothing when
 `-Dcrystalgraphics.demo=false`, and `destroyContext` calls `dispose()`. Installed, it submits its scene from a
 `PLAYS` tick function of `CgWorld.client()` and draws its HUD from `WORLD_TRANSPARENT` after the post stack's composite; with a
 capture asked for, it also registers there just after the composite and reads the target back once. Both sit after the

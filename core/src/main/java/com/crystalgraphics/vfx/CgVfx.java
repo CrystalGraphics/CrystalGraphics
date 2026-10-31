@@ -4,6 +4,7 @@ import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.net.object.CgCharacterClockNet;
 import com.crystalgraphics.platform.world.CgWorldQuery;
@@ -126,7 +127,7 @@ public final class CgVfx {
         // The client world's cue manager: what the server's cues and gameplay's tags play through
         CgVfxCueEffects.installClient(world());
         // Every frame's end, the title screen's too: a logout clears before the next world.
-        CgGraphicsLifecycle.addListener(new CgLifecycleListener() {
+        CgEngineLifecycle.addListener(new CgLifecycleListener() {
             @Override
             public void onFrame(long frame) {
                 if (world != null) followLevel();

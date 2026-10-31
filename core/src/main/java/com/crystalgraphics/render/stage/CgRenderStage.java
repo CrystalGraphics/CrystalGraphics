@@ -5,6 +5,7 @@ import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlCensus;
 import com.crystalgraphics.platform.gl.state.CgGlState;
@@ -256,7 +257,7 @@ public final class CgRenderStage {
         CgGL.fromHost();
         try {
             // The engine starts on the first stage a host fires if the host never announced its context.
-            CgGraphicsLifecycle.ensureContext(host.width(), host.height());
+            CgEngineLifecycle.ensureGraphicsContext(host.width(), host.height());
             if (renderers.isEmpty() || !CgGraphicsLifecycle.isInitialized()) return;
             CgGpuTrace.begin(gpuName);
             firing++;

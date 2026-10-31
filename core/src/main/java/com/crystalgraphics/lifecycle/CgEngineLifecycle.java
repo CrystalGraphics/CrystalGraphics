@@ -1,14 +1,17 @@
 package com.crystalgraphics.lifecycle;
 
+import java.util.function.Consumer;
+
 import com.crystalgraphics.asset.load.CgAssetMounts;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
+import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.world.CgPlayers;
 
 /**
- * The engine's start, on both sides, in the phases every loader has: what core loads and starts as the game
- * initialises, in one place, so a host only says when each phase is. Graphics, which need a context, start later in
- * {@link CgGraphicsLifecycle}.
+ * The engine's lifecycle, and the one place a host starts and stops it: core's start on both sides, in the phases every
+ * loader has, then its graphics context's start and stop ({@link CgGraphicsLifecycle}'s work, issued from here). A
+ * host only says when each moment is; the frame tick and resize go to {@code CgGraphicsLifecycle} directly.
  *
  * <pre>{@code
  * // a host, as its loader constructs or pre-initialises CrystalGraphics
@@ -25,7 +28,7 @@ import com.crystalgraphics.world.CgPlayers;
  *
  * <pre>{@code
  * CgEngineLifecycle.addListener(new CgLifecycleListener() {
- *     @Override public void onEnginePostInit() {
+ *     @Override public void onPostInit() {
  *         HIT = CgTagRegistry.global().require("mymod:cue.hit");
  *     }
  * });
@@ -53,7 +56,7 @@ public final class CgEngineLifecycle {
         if (preInit) return;
         preInit = true;
         CgAssetMounts.mount();
-        listeners.dispatch("onEnginePreInit", CgLifecycleListener::onEnginePreInit);
+        listeners.dispatch("onPreInit", CgLifecycleListener::onPreInit);
     }
 
     /** The host's channel registered and its world slots provided: the network installed over {@code channel}. */
@@ -62,7 +65,7 @@ public final class CgEngineLifecycle {
         if (init) return;
         init = true;
         CgNetwork.install(channel, CgPlayers::idOf);
-        listeners.dispatch("onEngineInit", CgLifecycleListener::onEngineInit);
+        listeners.dispatch("onInit", CgLifecycleListener::onInit);
     }
 
     /** Every mod initialised: what was mounted starts loading. The engine runs it at its first client or server start. */
@@ -70,36 +73,107 @@ public final class CgEngineLifecycle {
         if (postInit) return;
         postInit = true;
         CgAssetMounts.loadAhead();
-        listeners.dispatch("onEnginePostInit", CgLifecycleListener::onEnginePostInit);
+        listeners.dispatch("onPostInit", CgLifecycleListener::onPostInit);
     }
 
     /**
-     * Registers {@code listener} for every moment of the engine's start and of its graphics context: the same as
-     * {@link CgGraphicsLifecycle#addListener}. Idempotent.
+     * Makes sure there is a graphics context to draw into: the engine's graphics start once, then {@link #postInit}, and a
+     * resize when the viewport changed. Safe every frame; GL thread only.
+     *
+     * <pre>{@code
+     * // a host, at each frame's end, the title screen's included: the engine starts before a world exists
+     * CgEngineLifecycle.ensureGraphicsContext(window.getWidth(), window.getHeight());
+     *
+     * // a UI drawing before that first frame end, in its render() before painting
+     * CgEngineLifecycle.ensureGraphicsContext(width, height);
+     * }</pre>
      *
      * <ul>
-     *   <li>A phase already run is delivered from this call, in phase order, so each fires exactly once.</li>
-     *   <li>Phases run on the loader's thread: what a listener touches there must be safe from it.</li>
+     *   <li>Does nothing after {@link #destroyContext} or {@link #shutdown}, or once the engine stood down.</li>
+     *   <li>Post-init follows the graphics start on a client because what loads is prepared by the effects it installs.</li>
      * </ul>
      */
-    public static void addListener(CgLifecycleListener listener) {
-        CgGraphicsLifecycle.addListener(listener);
+    public static void ensureGraphicsContext(int width, int height) {
+        boolean was = CgGraphicsLifecycle.isInitialized();
+        CgGraphicsLifecycle.ensureContext(width, height);
+        if (!was && CgGraphicsLifecycle.isInitialized()) postInit();
     }
 
-    /** Unregisters {@code listener} from both lifecycles. Safe from inside a callback. */
-    public static boolean removeListener(CgLifecycleListener listener) {
-        return CgGraphicsLifecycle.removeListener(listener);
+    /**
+     * Frees every GL resource the engine holds, listeners' first, then stops it: for a host whose rendering has stopped
+     * for good. Terminal: no context starts again in this process. GL thread only.
+     *
+     * <pre>{@code
+     * CgEngineLifecycle.destroyContext();   // the game window closing
+     * }</pre>
+     */
+    public static void destroyContext() {
+        CgGraphicsLifecycle.destroyContext();
     }
 
-    // The engine phases' half of a registration; CgGraphicsLifecycle.addListener calls it first, since these come first.
-    static synchronized void register(CgLifecycleListener listener) {
+    /**
+     * Stops the engine and frees nothing: for a host still dispatching frames after its shutdown signal, as Minecraft
+     * does. Every engine entry becomes a no-op; listeners hear {@code onShutdown} once. Terminal.
+     *
+     * <pre>{@code
+     * CgEngineLifecycle.shutdown();   // the game is closing
+     * }</pre>
+     */
+    public static void shutdown() {
+        CgGraphicsLifecycle.shutdown();
+    }
+
+    /**
+     * Registers {@code listener} for every moment of the engine's lifecycle: its start on both sides and its graphics
+     * context. Idempotent: a listener added twice still hears each moment once.
+     *
+     * <pre>{@code
+     * CgEngineLifecycle.addListener(new CgLifecycleListener() {
+     *     @Override public void onContextDestroy() { myTarget.delete(); }
+     * });
+     * }</pre>
+     *
+     * <ul>
+     *   <li>What it missed is delivered from this call, in order: the phases already run, then
+     *       {@code onContextInit} if a context is live. So each fires exactly once, whenever it registered.</li>
+     *   <li>Phases run on the loader's thread, the context's moments on the GL thread: what a listener touches in
+     *       each must be safe from it.</li>
+     * </ul>
+     */
+    public static synchronized void addListener(CgLifecycleListener listener) {
         if (!listeners.add(listener)) return;
-        if (preInit) listeners.fire(listener, "onEnginePreInit", CgLifecycleListener::onEnginePreInit);
-        if (init) listeners.fire(listener, "onEngineInit", CgLifecycleListener::onEngineInit);
-        if (postInit) listeners.fire(listener, "onEnginePostInit", CgLifecycleListener::onEnginePostInit);
+        if (preInit) listeners.fire(listener, "onPreInit", CgLifecycleListener::onPreInit);
+        if (init) listeners.fire(listener, "onInit", CgLifecycleListener::onInit);
+        if (postInit) listeners.fire(listener, "onPostInit", CgLifecycleListener::onPostInit);
+        if (CgGraphicsLifecycle.isInitialized()) {
+            int w = CgGraphicsLifecycle.getCurrentWidth(), h = CgGraphicsLifecycle.getCurrentHeight();
+            listeners.fire(listener, "onContextInit", l -> l.onContextInit(w, h));
+        }
     }
 
-    static boolean unregister(CgLifecycleListener listener) {
+    /** Unregisters {@code listener}. Safe from inside a callback. */
+    public static boolean removeListener(CgLifecycleListener listener) {
         return listeners.remove(listener);
     }
+
+    // The graphics context's moments, signalled by CgGraphicsLifecycle at the point each belongs in its work.
+
+    static void contextInitialized(int width, int height) {
+        listeners.dispatch("onContextInit", l -> l.onContextInit(width, height));
+    }
+
+    static void frame() {
+        listeners.dispatch("onFrame", FRAME);
+    }
+
+    static void contextDestroying() {
+        listeners.dispatchReverse("onContextDestroy", CgLifecycleListener::onContextDestroy);
+    }
+
+    static void stopped() {
+        listeners.dispatch("onShutdown", CgLifecycleListener::onShutdown);
+    }
+
+    // Non-capturing, so a frame's dispatch allocates nothing.
+    private static final Consumer<CgLifecycleListener> FRAME = l -> l.onFrame(CgFrameClock.frameIndex());
 }
