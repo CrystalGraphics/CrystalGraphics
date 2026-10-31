@@ -137,7 +137,7 @@ worker. Both sides (`VariantMixins`' common list): an integrated server runs on 
 | 1.7.10 | `Chunk.func_150807_a` and `setBlockMetadata` | `onChunkUnload` | the same |
 
 - **No mirror where the hook did not apply**: a client's level, Forge 1.13.2 and 1.14.3 (no loaded-chunk lookup that
-  never loads), and Forge and NeoForge dev runs, which apply no CrystalGraphics mixin. There `snapshot` copies the area
+  never loads). There `snapshot` copies the area
   on the spot, as `copyBlocks` below.
 - The mirror publishes at `CgEngineLifecycle.onServerTick`, the END phase on every loader.
 - **A write past the hook** (a mod setting a section's states directly) is found by an audit that compares each

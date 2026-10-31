@@ -178,7 +178,7 @@ final class CgCueProbe {
             boolean ran = (CgCamera.applied() & CgHostCamera.TRANSLATION) != 0;
             CgWorldProbe.check("cue.view-moved", moved, String.format("the eye moved up to %.5f blocks a frame under the"
                     + " shake, %.5f without; the host's translation hook %s", shakeMove, baseMove,
-                    ran ? "ran" : "never ran (a Forge or NeoForge dev run applies no CrystalGraphics mixin)"));
+                    ran ? "ran" : "never ran"));
         }
     }
 }
