@@ -5,6 +5,7 @@ import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.variable.CgVar;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -44,6 +45,15 @@ final class CgComposedTargets {
     private int readHost, readWidth, readHeight;
     /** Its colour's type, name and level, then its depth's and its stencil's type and name. */
     private final int[] hostAttachments = new int[7];
+    private static final int COLOR0 = 0, COLOR1 = 1, DEPTH = 2, STENCIL = 3;
+    /**
+     * What each point of our framebuffer holds, as {@link #key}; 0 for nothing. A bind attaches only what differs: on a
+     * threaded driver an attach costs about 2 µs and a framebuffer bind 4 (T11 P0.3), and a frame made ~50 of them.
+     */
+    private final long[] attached = new long[4];
+    /** Off: every bind attaches everything and each pass detaches, as before T11, to compare. */
+    static final boolean KEEP = CgVar.bool("crystalgraphics.graph.keepComposed", true, CgVar.DEV | CgVar.RESTART,
+            "Keeps a composed framebuffer's attachments across an execution's passes; off, attached each pass.").get();
 
     /** With {@code hostColor}, the host's colour at slot 0 and ours at 1; without, ours at 0 and no host colour. */
     CgComposedTargets(boolean hostColor) {
@@ -61,12 +71,14 @@ final class CgComposedTargets {
 
     /**
      * Binds our framebuffer with {@code host}'s depth and stencil, its colour in the form that takes it, and
-     * {@code texture} (of {@code type}) as colour attachment 1 (or 0), and answers null; or, binding nothing of ours,
-     * why {@code host} takes none. {@code host} must be bound for drawing when called.
+     * {@code texture} (of {@code type}) as colour attachment 1 (or 0), and answers null; or, with {@code host} bound and
+     * nothing of ours, why {@code host} takes none. Binds {@code host} itself where it must read its attachments.
      */
     String bind(int host, int width, int height, int texture, CgTextureType type) {
         if (host == 0) return "the default framebuffer lends no attachment to a framebuffer of ours";
+        if (!KEEP) CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
         if (readHost != host || readWidth != width || readHeight != height) {
+            CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.GL_DETAIL, READ)) {
                 readAttachments(host);
             }
@@ -79,28 +91,30 @@ final class CgComposedTargets {
         if (hostColor) {
             colorType = a[0];
             if (colorType != GL_TEXTURE && colorType != CgGL.GL_RENDERBUFFER) {
-                return "framebuffer " + host + " has no colour attachment 0 to draw beside";
+                return refusal(host, "framebuffer " + host + " has no colour attachment 0 to draw beside");
             }
             colorName = a[1];
             colorLevel = a[2];
         }
         int depthType = a[3], depthName = a[4], stencilType = a[5], stencilName = a[6];
-        if (!hostColor && depthName == 0) return "framebuffer " + host + " has no depth to draw beside";
+        if (!hostColor && depthName == 0) return refusal(host, "framebuffer " + host + " has no depth to draw beside");
         boolean made = fbo == 0;
         if (made) fbo = CgGlNames.framebuffer();
         CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, fbo);
-        // Attached at every bind and detached after (detach): a host that deletes its target and makes another gets
-        // the same names back, and a framebuffer still holding the deleted objects would draw into them.
-        if (colorType == GL_TEXTURE) {
-            CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, CgGL.GL_TEXTURE_2D, colorName, colorLevel);
-        } else {
-            CgGL.glFramebufferRenderbuffer(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, CgGL.GL_RENDERBUFFER, colorName);
-        }
+        // Attached where they differ, and detached at the execution's end (detach): between executions a host that
+        // deletes its target and makes another gets the same names back, and a framebuffer still holding the deleted
+        // objects would draw into them. Within one execution the host draws nothing.
+        point(COLOR0, CgGL.GL_COLOR_ATTACHMENT0, colorType, colorName, colorLevel, false);
         boolean depthStencil = depthName != 0 && stencilName == depthName;
-        attach(depthStencil ? CgGL.GL_DEPTH_STENCIL_ATTACHMENT : CgGL.GL_DEPTH_ATTACHMENT, depthType, depthName);
-        if (!depthStencil) attach(CgGL.GL_STENCIL_ATTACHMENT, stencilType, stencilName);
+        if (depthStencil) {
+            point(DEPTH, CgGL.GL_DEPTH_STENCIL_ATTACHMENT, depthType, depthName, 0, true);
+            attached[STENCIL] = attached[DEPTH];
+        } else {
+            point(DEPTH, CgGL.GL_DEPTH_ATTACHMENT, depthType, depthName, 0, false);
+            point(STENCIL, CgGL.GL_STENCIL_ATTACHMENT, stencilType, stencilName, 0, false);
+        }
         if (hostColor) {
-            CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT1, CgGL.GL_TEXTURE_2D, texture, 0);
+            point(COLOR1, CgGL.GL_COLOR_ATTACHMENT1, GL_TEXTURE, texture, 0, false);
             if (made) CgGL.glDrawBuffers(drawBuffers);
         }
         if (checked[type.ordinal()]) return null;
@@ -119,23 +133,35 @@ final class CgComposedTargets {
     }
 
     /**
-     * Detaches everything from the framebuffer, which is left bound: at the end of each pass, so it never holds the
-     * host's images past it.
+     * Detaches everything from the framebuffer, which is left bound, if anything is attached: at the end of each
+     * execution (and a callback's), so it never holds the host's images past it. Whether it bound it.
      */
-    void detach() {
-        if (fbo == 0) return;
+    boolean detach() {
+        if (fbo == 0 || (attached[COLOR0] | attached[COLOR1] | attached[DEPTH] | attached[STENCIL]) == 0) return false;
         CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, fbo);
         // Slot 1 first: a draw buffer left after an empty one is refused on a device.
-        CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT1, CgGL.GL_TEXTURE_2D, 0, 0);
-        CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, CgGL.GL_TEXTURE_2D, 0, 0);
-        CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_DEPTH_ATTACHMENT, CgGL.GL_TEXTURE_2D, 0, 0);
-        CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_STENCIL_ATTACHMENT, CgGL.GL_TEXTURE_2D, 0, 0);
+        if (attached[COLOR1] != 0) CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT1, CgGL.GL_TEXTURE_2D, 0, 0);
+        if (attached[COLOR0] != 0) CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, CgGL.GL_TEXTURE_2D, 0, 0);
+        if (attached[DEPTH] != 0) CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_DEPTH_ATTACHMENT, CgGL.GL_TEXTURE_2D, 0, 0);
+        if (attached[STENCIL] != 0) CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_STENCIL_ATTACHMENT, CgGL.GL_TEXTURE_2D, 0, 0);
+        Arrays.fill(attached, 0L);
+        return true;
     }
 
-    /** {@code name} of {@code type} at {@code point}, or nothing there. */
-    private static void attach(int point, int type, int name) {
+    /** {@code why}, with {@code host} bound: a refusal leaves the host's framebuffer bound, as it was asked with. */
+    private static String refusal(int host, String why) {
+        CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
+        return why;
+    }
+
+    /** {@code name} (level {@code level}) of {@code type} at {@code point}, or nothing there, unless it holds it already. */
+    private void point(int slot, int point, int type, int name, int level, boolean depthStencil) {
+        long key = type == GL_TEXTURE || type == CgGL.GL_RENDERBUFFER
+                ? (long) type << 40 | (long) level << 32 | name & 0xFFFFFFFFL | (depthStencil ? 1L << 62 : 0) : 0;
+        if (KEEP && attached[slot] == key) return;
+        attached[slot] = key;
         if (type == CgGL.GL_RENDERBUFFER) CgGL.glFramebufferRenderbuffer(CgGL.GL_FRAMEBUFFER, point, CgGL.GL_RENDERBUFFER, name);
-        else CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, point, CgGL.GL_TEXTURE_2D, type == GL_TEXTURE ? name : 0, 0);
+        else CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, point, CgGL.GL_TEXTURE_2D, type == GL_TEXTURE ? name : 0, level);
     }
 
     /** {@code host}'s attachments, read from the driver; {@code host} is bound for drawing. */
@@ -170,6 +196,7 @@ final class CgComposedTargets {
     void delete() {
         if (fbo != 0) CgGL.glDeleteFramebuffers(fbo);
         fbo = 0;
+        Arrays.fill(attached, 0L);
         readHost = 0;
         REFUSED.clear();
     }

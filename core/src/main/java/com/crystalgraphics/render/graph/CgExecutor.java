@@ -282,7 +282,12 @@ public final class CgExecutor {
             // declaring AlphaTest means one: 1.7.10 leaves GREATER 0.1 on, which drops every faint additive draw.
             if (restoreState) CgAlphaState.DISABLED.apply();
             CgSamplers.forget();   // the host may have bound samplers of its own since
-            executor.run(frame);
+            try {
+                executor.run(frame);
+            } finally {
+                int bound = CgGlState.drawFramebuffer();   // what the last pass left, as before the detach moved here
+                if (COMPOSED.detach() | BESIDE.detach()) CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, bound);
+            }
         } finally {
             CgSamplers.unbindOwn();   // ours never reach the host's textures, nor an outer execution's next draw
             depth--;
@@ -1302,9 +1307,11 @@ public final class CgExecutor {
         if (packed.count > 0) rasterBatches(frame, pass, packed, damage);
         if (stencilled) CgStencilState.DISABLED.apply();
         stencilled = false;
-        if (composed) COMPOSED.detach();
-        if (beside) BESIDE.detach();
-        composed = beside = false;
+        if (!CgComposedTargets.KEEP) {
+            if (composed) COMPOSED.detach();
+            if (beside) BESIDE.detach();
+        }
+        composed = beside = false;   // detached at the execution's end: an attach a pass cost 2 µs on a threaded driver
     }
 
     /** {@code pass}'s target bound and cleared, and what every batch shares bound. */
@@ -1940,7 +1947,6 @@ public final class CgExecutor {
             refused = pass.attachment() + " is " + extra.getWidth() + "x" + extra.getHeight() + ", beside a target of "
                     + w + "x" + h + " at " + x + "," + y;
         } else {
-            CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
             refused = COMPOSED.bind(host, w, h, extra.getColorTexture(0).getId(), extra.getFormat().getColorSlot(0));
         }
         if (refused != null) {
@@ -1973,7 +1979,6 @@ public final class CgExecutor {
             }
             return false;
         }
-        CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, startFramebuffer);
         String refused = BESIDE.bind(startFramebuffer, w, h, scene.getColorTexture(0).getId(), scene.getFormat().getColorSlot(0));
         if (refused != null) {
             if (!CgComposedTargets.refused(startFramebuffer)) LOGGER.warn("{} draws without the host's depth: {}", target, refused);

@@ -130,9 +130,9 @@ int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()),
 
 **A second attachment beside a target** (`CgRasterPass.attachment(texture)`): the pass draws into `texture` as slot 1
 beside a target it may not own, the current one included, keeping what it holds. Beside the current target the executor
-binds a framebuffer of ours with the host's colour and depth attached (`CgComposedTargets`): attached at each bind and
-detached at the pass's end, so the host's own framebuffer is never changed and a target the host remade under the same
-names is never drawn through stale. The world's merged emission is the user (`render/world/CLAUDE.md`).
+binds a framebuffer of ours with the host's colour and depth attached (`CgComposedTargets`): what differs attached at
+each bind, everything detached at the execution's end, so the host's own framebuffer is never changed and a target the
+host remade under the same names (between executions, never within one) is never drawn through stale. The world's merged emission is the user (`render/world/CLAUDE.md`).
 
 ```java
 recording.raster(emission, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED).end();   // cleared first
