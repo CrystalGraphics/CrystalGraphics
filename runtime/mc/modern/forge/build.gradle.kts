@@ -16,6 +16,7 @@
 //   - There is no Gradle 9 property to suppress the exclusive-lock requirement.
 
 import cgbuildlogic.commonNode
+import cgbuildlogic.graphicsDevMixinArgs
 import cgbuildlogic.devRunSourceSet
 import cgbuildlogic.registerSrgReobf
 import cgbuildlogic.registerThinRename
@@ -91,6 +92,7 @@ legacyForge?.apply {
             server()
             gameDirectory = project.file("runs/server")
         }
+        configureEach { programArguments.addAll(graphicsDevMixinArgs(rootDir)) }
     }
 
     mods {

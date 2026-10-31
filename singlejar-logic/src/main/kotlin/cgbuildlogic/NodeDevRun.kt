@@ -35,7 +35,8 @@ val DEV_DESCRIPTORS = listOf("META-INF/mods.toml", "META-INF/neoforge.mods.toml"
  * - Every `-D` system property on the Gradle command line starting with one of [forwardProperties] reaches
  *   the game.
  * - The mods it depends on are the caller's to put on the run: `com.crystalgui` puts CrystalGUI's and
- *   CrystalGraphics' there.
+ *   CrystalGraphics' there. On Forge that includes CrystalGraphics' mixin config: [graphicsDevMixinArgs].
+ * - On Forge this node's own mixin config is passed as `--mixin.config`, which a manifest carries in a jar.
  * - The thin jar excludes [DEV_DESCRIPTORS], or a node's dev copy wins over the merged one.
  */
 fun Project.registerNodeDevRun(descriptor: ModDescriptor, bundled: List<Project> = emptyList(),
@@ -72,6 +73,7 @@ fun Project.registerNodeDevRun(descriptor: ModDescriptor, bundled: List<Project>
     val moddev = extensions.findByType(ModDevExtension::class.java) ?: return
     val fromParts = findProperty("neoform.version") != null
     if (fromParts) return
+    val mixinArgs = forgeDevMixinArgs(descriptor.variants.singleOrNull { it.node == path }?.mixinConfigs.orEmpty())
     moddev.mods.create(descriptor.id) {
         sourceSet(main)
         sourceSet(devRunSourceSet(commonNode))
@@ -82,6 +84,7 @@ fun Project.registerNodeDevRun(descriptor: ModDescriptor, bundled: List<Project>
             if (side == "client") client() else server()
             gameDirectory.set(layout.projectDirectory.dir("runs/$side"))
             forwarded.forEach { (key, value) -> systemProperty(key, value) }
+            programArguments.addAll(mixinArgs)
         }
     }
 }
