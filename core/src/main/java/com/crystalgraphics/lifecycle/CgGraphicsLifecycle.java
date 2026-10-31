@@ -139,16 +139,19 @@ public final class CgGraphicsLifecycle {
      *
      * <p>Removing and re-adding a listener while a context is live will therefore deliver
      * {@code onInit} again — which is the intended reading of re-subscribing.</p>
+     *
+     * <p>It registers for {@link CgEngineLifecycle}'s phases too, caught up first, as
+     * {@link CgEngineLifecycle#addListener} does.</p>
      */
     public static void addListener(CgLifecycleListener listener) {
+        CgEngineLifecycle.register(listener);
         if (!listeners.add(listener)) return;
         if (initialized) listeners.fire(listener, "onInit", l -> l.onInit(currentWidth, currentHeight));
-        
     }
 
-    /** Unregisters a listener. Safe to call from inside a callback. */
+    /** Unregisters a listener from both lifecycles. Safe to call from inside a callback. */
     public static boolean removeListener(CgLifecycleListener listener) {
-        return listeners.remove(listener);
+        return CgEngineLifecycle.unregister(listener) | listeners.remove(listener);
     }
 
     /** Whether a GL context is currently initialised. See {@link #addListener} for why this matters. */

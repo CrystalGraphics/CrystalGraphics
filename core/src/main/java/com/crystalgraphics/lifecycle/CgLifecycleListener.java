@@ -7,18 +7,41 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Hook for code that owns GL resources but lives <em>outside</em> CrystalGraphics, so it can be
- * driven by the same context lifecycle {@link CgGraphicsLifecycle} already coordinates.
+ * Hears the engine's moments from outside CrystalGraphics: its start on both sides
+ * ({@link CgEngineLifecycle}) and its graphics context ({@link CgGraphicsLifecycle}). For a consuming
+ * library (CrystalGUI), a mod's own renderer or a harness scene, which need the same moments but must not
+ * be hard-wired into the engine.
  *
- * <p>CrystalGraphics' own subsystems are enumerated directly inside {@code CgGraphicsLifecycle} —
- * they are known at compile time and their teardown order is load-bearing. This interface exists for
- * everything the engine cannot know about: a consuming library (CrystalGUI), a mod's own renderer, a
- * harness scene. Those need the same three moments, but must not be hard-wired into the engine.</p>
+ * <pre>{@code
+ * CgEngineLifecycle.addListener(new CgLifecycleListener() {
+ *     @Override public void onEngineInit() {
+ *         CgNetwork.onServerTick(MyMod::tick);          // the network is installed by now
+ *     }
+ *     @Override public void onEnginePostInit() {
+ *         HIT = CgTagRegistry.global().require("mymod:cue.hit");   // every mod's tags are declared
+ *     }
+ * });
+ * }</pre>
  *
- * <p>Every method is a default no-op, so an implementer overrides only the moments it cares about.</p>
+ * <pre>{@code
+ * // a renderer: GL objects made with the context and freed before it goes
+ * CgGraphicsLifecycle.addListener(new CgLifecycleListener() {
+ *     @Override public void onInit(int width, int height) {
+ *         target = CgFrameBuffer.createOwned("mymod:glow", width, height, CgFrameBufferFormat.RGBA8_WITH_DEPTH);
+ *     }
+ *     @Override public void onDestroy() { target.delete(); }
+ * });
+ * }</pre>
+ *
+ * <p>Every method is a default no-op, so an implementer overrides only the moments it cares about.
+ * Either {@code addListener} registers for every moment of both lifecycles.</p>
  *
  * <h3>Ordering guarantees</h3>
  * <ul>
+ *   <li>{@link #onEnginePreInit}, {@link #onEngineInit} and {@link #onEnginePostInit} fire on both sides,
+ *       each <b>after</b> the engine's own work in that phase, and each <b>exactly once</b>: a listener
+ *       registered after a phase hears it from {@code addListener}, in phase order. They run on the
+ *       loader's thread, which on Forge may be a mod-loading worker.</li>
  *   <li>{@link #onInit} fires <b>after</b> CrystalGraphics has finished initialising, so the render
  *       pipeline, fallback textures and capability probes are all usable from it. It fires
  *       <b>exactly once per context</b> regardless of when you registered: register before the
@@ -44,6 +67,21 @@ import java.util.logging.Logger;
  * potentially built on top of an earlier one — releases first.</p>
  */
 public interface CgLifecycleListener {
+
+    /** Every mod discovered and its assets mounted, its tags declared: {@link CgEngineLifecycle#preInit}. */
+    default void onEnginePreInit() {
+    }
+
+    /** The network installed over the host's channel: {@link CgEngineLifecycle#init}. */
+    default void onEngineInit() {
+    }
+
+    /**
+     * Every mod initialised, and what was mounted loading: {@link CgEngineLifecycle#postInit}, at the first client
+     * graphics start or server start. Mirrors Unreal's {@code FCoreDelegates::OnPostEngineInit}.
+     */
+    default void onEnginePostInit() {
+    }
 
     /**
      * The GL context has been created and CrystalGraphics is fully initialised.

@@ -7,5 +7,7 @@ start) loads what was mounted.
 
 - **Core's starting work goes here**, never into a host: a host registers the platform, fills its slots, and calls the
   phases (`docs/MINECRAFT_INTEGRATION.md`).
-- Graphics, which need a context, are `CgGraphicsLifecycle`'s, beside it; features hear it through
-  `CgLifecycleListener`.
+- Graphics, which need a context, are `CgGraphicsLifecycle`'s, beside it.
+- Code outside the engine hears both through one `CgLifecycleListener`: `onEnginePreInit`/`onEngineInit`/
+  `onEnginePostInit`, then `onInit`/`onFrame`/`onDestroy`/`onShutdown`. Either `addListener` registers for all of
+  them, and a late listener is caught up, so each fires once. A listener's phase runs after the engine's own work in it.
