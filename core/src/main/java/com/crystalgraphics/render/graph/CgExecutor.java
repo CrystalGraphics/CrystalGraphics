@@ -210,6 +210,11 @@ public final class CgExecutor {
      * pipeline that declares no stencil would inherit it, into a target with a stencil of its own.
      */
     private boolean stencilled;
+    /**
+     * Whether a raster pass left a slab's vertex array bound: kept for the next raster pass, unbound before any other
+     * step and at the execution's end, since an element-buffer bind under it would rewrite the vertex array.
+     */
+    private boolean vaoHeld;
     /** The last sizes a {@link CgGraphTexture#besideCurrentDepth} target and its host disagreed at, logged once. */
     private static long besideMismatch;
     private final IntBuffer startViewport = ByteBuffer.allocateDirect(16 * 4).order(ByteOrder.nativeOrder()).asIntBuffer();
@@ -285,6 +290,7 @@ public final class CgExecutor {
             try {
                 executor.run(frame);
             } finally {
+                executor.releaseVertexArray();
                 int bound = CgGlState.drawFramebuffer();   // what the last pass left, as before the detach moved here
                 if (COMPOSED.detach() | BESIDE.detach()) CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, bound);
             }
@@ -572,6 +578,7 @@ public final class CgExecutor {
     }
 
     private void run(CgFrame frame, int s, CgPass pass) {
+        if (!(pass instanceof CgRasterPass)) releaseVertexArray();
         try {
             boolean async = pass instanceof CgComputePass compute && runsAsync(compute);
             if (asyncUnwaited && !async) {
@@ -1542,8 +1549,19 @@ public final class CgExecutor {
             if (pass.depthFromCopy() != null) pass.depthFromCopy().release(POOL);
             if (pass.colorFromCopy() != null) pass.colorFromCopy().release(POOL);
         }
+        vaoHeld = true;
+        if (!KEEP_VAO) releaseVertexArray();
+    }
+
+    /** Unbinds what {@link #vaoHeld} says a raster pass left bound. */
+    private void releaseVertexArray() {
+        if (!vaoHeld) return;
+        vaoHeld = false;
         CgGL.glBindVertexArray(0);
     }
+
+    private static final boolean KEEP_VAO = CgVar.bool("crystalgraphics.graph.keepVertexArray", true,
+            CgVar.DEV | CgVar.RESTART, "Raster passes in a row keep the vertex array bound; off, each unbinds it.").get();
 
     private static final int BATCH_PIPELINE = CgTrace.name("graph.batch.pipeline"),
             BATCH_BINDINGS = CgTrace.name("graph.batch.bindings"), BATCH_DRAW = CgTrace.name("graph.batch.draw"),

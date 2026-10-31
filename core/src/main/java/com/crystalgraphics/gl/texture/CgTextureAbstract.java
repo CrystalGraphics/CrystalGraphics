@@ -89,9 +89,17 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
     public void bind(int unit) {
         checkUsable();
         gpu.flush();
+        if (SKIP_HELD) {
+            CgGL.cgBindTexture(unit, getTarget(), textureId);
+            return;
+        }
         CgTexture.active(unit);
         CgTexture.bind(getTarget(),textureId);
     }
+
+    /** A bind to a unit already holding the texture issues nothing, its unit switch included (T11 A). */
+    private static final boolean SKIP_HELD = CgVar.bool("crystalgraphics.texture.skipHeld", true,
+            CgVar.DEV | CgVar.RESTART, "Binding a texture to a unit that holds it switches no unit; off, as before.").get();
 
     // ── CgTexture — accessors ───────────────────────────────────────
 

@@ -56,6 +56,7 @@ public final class CgSamplers {
     /** What is bound is unknown from here: the host had control, or something unbound behind us. */
     public static void forget() {
         Arrays.fill(BOUND, -1);
+        CgGL.cgForgetSamplers();
     }
 
     /** Unbinds every sampler bound here, so what draws next samples its textures as their own. */

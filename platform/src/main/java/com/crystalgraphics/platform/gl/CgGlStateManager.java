@@ -321,6 +321,11 @@ public final class CgGlStateManager {
         return false;
     }
 
+    /** The active texture unit, or -1 where it is not known. */
+    public int activeUnit() {
+        return (unknownFields & F_ACTIVE_TEXTURE) != 0 ? -1 : current.activeTextureUnit;
+    }
+
     /** The program our last {@code glUseProgram} or restore bound. */
     public int program() {
         return current.programId;
@@ -833,6 +838,19 @@ public final class CgGlStateManager {
         if (!stale(CgGlSlot.TEXTURES, F_ACTIVE_TEXTURE) && current.activeTextureUnit == unit) return skip();
         current.activeTextureUnit = unit;
         return issue(F_ACTIVE_TEXTURE);
+    }
+
+    /**
+     * Whether {@code unit} is known to hold {@code texture} at {@code target}, so binding it there may be skipped with
+     * its unit switch. False wherever a write would be issued anyway: another target than {@code GL_TEXTURE_2D}, a unit
+     * not known, a recording.
+     */
+    public boolean holds(int unit, int target, int texture) {
+        assertOwner();
+        if (target != CgGL.GL_TEXTURE_2D || unit < 0 || unit >= CgGlStateShadow.MAX_TEXTURE_UNITS) return false;
+        if (staleUnit(unit) || current.boundTexture2D[unit] != texture) return false;
+        skip();
+        return true;
     }
 
     public boolean textureChanged(int target, int texture) {

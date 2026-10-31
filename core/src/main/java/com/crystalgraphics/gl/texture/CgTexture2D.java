@@ -512,7 +512,9 @@ public final class CgTexture2D extends CgTextureAbstract {
     @Override
     public void bind(int unit) {
         super.bind(unit);
-        if (pinned) sampleLevels(0, getLevels() - 1, false);
+        if (!pinned) return;
+        CgTexture.active(unit);   // a held bind switched no unit, and the parameters go to the active one
+        sampleLevels(0, getLevels() - 1, false);
     }
 
     /**

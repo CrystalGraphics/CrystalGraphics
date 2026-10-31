@@ -51,6 +51,7 @@ public final class CgGL {
     public static void init(CgGLBackend dispatch){
         backend = dispatch;
         CgGlUniforms.reset();
+        CgGlSamplers.forget();
     }
 
     /** Whether a backend is installed: never on a dedicated server, and on a client from its first host section. */
@@ -1132,6 +1133,7 @@ public final class CgGL {
     }
 
     public static void glBindTexture(int target, int texture) {
+        if (texture != 0) clearHostSampler(state().activeUnit());
         if (state().textureChanged(target, texture)) gl().glBindTexture(target, texture);
     }
 
@@ -1204,6 +1206,22 @@ public final class CgGL {
         long t = CgTrace.stamp(TRACE);
         gl().glGenerateMipmap(target);
         CgTrace.zoneDone(TRACE, MIPMAPS, t);
+    }
+
+    /**
+     * Binds {@code texture} at {@code unit}, switching the active unit only when the unit does not already hold it:
+     * Unreal's {@code CachedSetupTextureStageInner}. Leaves the active unit wherever it was when nothing is issued, so
+     * an edit after it binds its own texture first.
+     *
+     * <pre>{@code
+     * CgGL.cgBindTexture(3, CgGL.GL_TEXTURE_2D, id);   // nothing when unit 3 holds id
+     * }</pre>
+     */
+    public static void cgBindTexture(int unit, int target, int texture) {
+        clearHostSampler(unit);
+        if (state().holds(unit, target, texture)) return;
+        glActiveTexture(GL_TEXTURE0 + unit);
+        glBindTexture(target, texture);
     }
 
     public static void glActiveTexture(int texture) {
@@ -1856,7 +1874,26 @@ public final class CgGL {
     /** Binds a sampler object to a texture unit (ARB_sampler_objects / GL 3.3). */
     public static void glBindSampler(int unit, int sampler) {
         if (CgGlCallSites.ON) CgGlCallSites.value("glBindSampler", unit, sampler);
+        if (!CgGlSamplers.changed(unit, sampler) && state().dedups()) return;
         gl().glBindSampler(unit, sampler);
+    }
+
+    /**
+     * Every unit's sampler is unknown from here: the host may have bound its own. Each unit we then bind a texture on
+     * is cleared once, at that bind ({@link CgGlSamplers}).
+     */
+    public static void cgForgetSamplers() {
+        CgGlSamplers.forget();
+    }
+
+    /** Whether {@link #cgForgetSamplers()} is all a park needs: units are cleared as textures are bound on them. */
+    public static boolean cgParksLazily() {
+        return CgGlSamplers.LAZY;
+    }
+
+    /** Clears a sampler the host may have left on {@code unit} before a texture of ours is bound there. */
+    private static void clearHostSampler(int unit) {
+        if (CgGlSamplers.LAZY && CgGlSamplers.unknown(unit)) glBindSampler(unit, 0);
     }
 
     /** Makes a sampler object (GL 3.3), at GL's default parameters. */
@@ -2105,6 +2142,7 @@ public final class CgGL {
             installIfAbsent();
             gl().fromHost();
             CgGlState.invalidateAllIfPresent();
+            CgGlSamplers.forget();
         }
         fromHostDepth++;
     }
