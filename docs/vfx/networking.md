@@ -262,7 +262,7 @@ A handle is reused once `active()` is false: drop it then.
 ### Over the network
 
 A server's `CgCueManager` sends every play to the players who see it, and each player's own manager plays what it is
-sent, so gameplay calls the server's and nothing else. **A server's play needs an anchor**, or it is sent to no one:
+sent, so gameplay calls the server's and nothing else. **A server's play needs an anchor**, and one without throws, naming its cue:
 
 ```java
 CgCuePlaying beam = cues.add(MYMOD_CUE_BEAM, new CgCueParameters().at(x, y, z).anchor(CgAnchor.on(caster)));
@@ -275,7 +275,8 @@ CgCueManager.client().onNetworked(play -> play.writes("BeamLength", ...));   // 
 ```
 
 - **Who sees it** is the anchor's: the players tracking what it is on, or everyone within the cue's `range` of a point
-  (64 blocks unwritten). A play without an anchor is not sent.
+  (64 blocks unwritten). `CgAnchor.on(entity)` for an actor, `CgAnchor.at(level, x, y, z)` for a place; a client's
+  `predict` needs one too, since the server is asked through it.
 - **A burst** reaches whoever sees it as it plays; a player arriving later never sees it. **A looping cue** reaches a
   player arriving later too, started at its age, with its sequence sought there.
 - **An authoritative cue's `writes`** are the server's: computed there and sent each tick in their `replication`

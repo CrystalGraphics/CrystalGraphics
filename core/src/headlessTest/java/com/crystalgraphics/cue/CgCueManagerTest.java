@@ -25,6 +25,7 @@ import com.crystalgraphics.cue.CgCueDefinition.SpawnCondition;
 import com.crystalgraphics.cue.CgCueDefinition.Write;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.job.CgJobLoop;
+import com.crystalgraphics.net.object.CgPredictionKey;
 import com.crystalgraphics.tag.CgGameplayTag;
 import com.crystalgraphics.tag.CgTagRegistry;
 import com.crystalgraphics.world.CgAttachment;
@@ -221,6 +222,26 @@ public class CgCueManagerTest {
         ready("cuemgr:aura");
         cues.update(0f);
         assertTrue(effects.made.isEmpty());
+    }
+
+    @Test
+    public void aNetworkedPlayWithoutAnAnchorThrowsNamingItsCue() {
+        CgCueManager server = new CgWorld(true).add(new CgCueManager(assets)).effects(effects);
+        CgCueParameters at = new CgCueParameters().at(1, 2, 3);
+        assertThrows(hit, () -> server.execute(hit, at));
+        assertThrows(aura, () -> server.add(aura, at));
+        assertThrows(aura, () -> cues.predict(aura, at, CgPredictionKey.open()));
+        cues.execute(hit, at);   // a client's own play is sent nowhere and needs none
+    }
+
+    private static void assertThrows(CgGameplayTag tag, Runnable play) {
+        try {
+            play.run();
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage(), e.getMessage().startsWith(tag + ": "));
+            return;
+        }
+        throw new AssertionError("no throw for " + tag);
     }
 
     @Test

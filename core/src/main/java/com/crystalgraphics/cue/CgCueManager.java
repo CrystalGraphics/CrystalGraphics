@@ -48,7 +48,7 @@ import com.crystalgraphics.world.CgAttachment;
  *
  * <pre>{@code
  * CgCueManager cues = CgCueManager.server();                       // the server world's; client() on a client
- * cues.execute(MYMOD_CUE_HIT, new CgCueParameters().at(x, y, z));  // a burst: Unreal's Execute
+ * cues.execute(MYMOD_CUE_HIT, new CgCueParameters().at(x, y, z).anchor(CgAnchor.on(caster)));  // a burst: Execute
  * CgCuePlaying aura = cues.add(MYMOD_CUE_AURA, params);            // a looping cue: Add
  * aura.remove();                                                   // Remove
  * }</pre>
@@ -67,6 +67,8 @@ import com.crystalgraphics.world.CgAttachment;
  *       and counted ({@code cue.late-dropped}).</li>
  *   <li>A cue that does not handle the call (a burst sent {@code add}) passes it to its parent tag's cue, as Unreal's
  *       notifies do; a tag no cue answers is dropped and counted ({@code cue.unrouted}).</li>
+ *   <li>On a server every play needs an anchor, {@link CgCueParameters#anchor}: {@code CgAnchor.on(entity)} for an
+ *       actor, {@code CgAnchor.at(level, x, y, z)} for a place. Without one it throws.</li>
  *   <li>On a server every play is sent to the players who see it ({@link CgCueNet}), and an {@code authoritative}
  *       cue's {@code writes} with it; a client plays what it is sent through its own manager, a late joiner at the
  *       play's age. Gameplay binds a non-authoritative cue's {@code writes} on each client, from
@@ -277,13 +279,18 @@ public final class CgCueManager extends CgWorldSubsystem {
         return this;
     }
 
-    /** Plays {@code tag}'s burst cue once: GAS's {@code Execute}. */
+    /** Plays {@code tag}'s burst cue once: GAS's {@code Execute}. On a server, {@code at} must name an anchor. */
     public void execute(CgGameplayTag tag, CgCueParameters at) {
+        if (world().server()) requireAnchor(tag, at);
         queue(Op.EXECUTE, tag, null, null, at);
     }
 
-    /** Starts {@code tag}'s looping cue: GAS's {@code Add}. The handle is live at once; the cue starts when ready. */
+    /**
+     * Starts {@code tag}'s looping cue: GAS's {@code Add}. The handle is live at once; the cue starts when ready. On a
+     * server, {@code at} must name an anchor.
+     */
     public CgCuePlaying add(CgGameplayTag tag, CgCueParameters at) {
+        if (world().server()) requireAnchor(tag, at);
         CgCuePlaying p = handle();
         p.state = CgCuePlaying.State.PENDING;
         p.params.set(at);
@@ -304,17 +311,27 @@ public final class CgCueManager extends CgWorldSubsystem {
      * }</pre>
      *
      * <ul>
-     *   <li>{@code at} names its anchor; without one nothing is asked, and the key waits for another object.</li>
+     *   <li>{@code at} must name its anchor, or it throws: the server is asked through it.</li>
      *   <li>The server says which predictions it takes: {@code CgCueNet.TYPE.acceptPredictionsFrom(...)}.</li>
      * </ul>
      */
     public CgCuePlaying predict(CgGameplayTag tag, CgCueParameters at, CgPredictionKey key) {
+        requireAnchor(tag, at);
         CgCuePlaying p = add(tag, at);
         p.key = key;
         key.onRefused(() -> {
             if (p.key == key && p.active() && !p.discarded) p.discarded();
         });
         return p;
+    }
+
+    // Unreal's replicated cue always rides an actor whose relevancy picks the receivers; a play with no anchor would
+    // reach no one. The parameters' position is no stand-in: it has no dimension, and 0,0,0 reads as unset.
+    private static void requireAnchor(CgGameplayTag tag, CgCueParameters at) {
+        if (at.anchor() == null) {
+            throw new IllegalArgumentException(tag + ": a networked play needs an anchor: CgAnchor.at(level, x, y, z) "
+                    + "for a place, CgAnchor.on(entity) for an actor");
+        }
     }
 
     /** Grows {@code cue}'s pool to {@code count} looping plays, so the first that many allocate nothing. */
