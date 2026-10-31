@@ -1,4 +1,4 @@
-package com.crystalgraphics.gl.lifecycle;
+package com.crystalgraphics.lifecycle;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;

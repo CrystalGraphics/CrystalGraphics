@@ -2,7 +2,7 @@ package com.crystalgraphics.gl.framebuffer;
 
 import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

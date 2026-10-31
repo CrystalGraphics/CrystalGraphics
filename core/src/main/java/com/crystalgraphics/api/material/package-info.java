@@ -21,6 +21,6 @@
  * <p>{@code CgMaterial}, {@link com.crystalgraphics.gl.buffer.shader.CgUniformBuffer},
  * and {@link com.crystalgraphics.gl.buffer.shader.CgShaderBuffer} are
  * caller-owned objects. The caller must call {@code delete()} on each before
- * {@link com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle#destroyContext()}.</p>
+ * {@link com.crystalgraphics.lifecycle.CgGraphicsLifecycle#destroyContext()}.</p>
  */
 package com.crystalgraphics.api.material;

@@ -1,6 +1,6 @@
 package com.crystalgraphics.text.render;
 
-import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.text.render.context.CgTextRenderContext;
 
 import java.util.ArrayList;
@@ -18,7 +18,7 @@ import java.util.Set;
  * {@code CgFontDemo}, harness scenes, etc.) remain responsible for calling
  * {@link CgTextRenderer#delete()} promptly when they're done with a renderer — this
  * registry is a <strong>backstop</strong>, not the primary release path. {@link #deleteAll()}
- * (called from {@link com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle#destroyContext()})
+ * (called from {@link CgGraphicsLifecycle#destroyContext()})
  * sweeps any renderer still alive at GL context teardown, exactly like every other
  * GPU-resource registry in this codebase.</p>
  *

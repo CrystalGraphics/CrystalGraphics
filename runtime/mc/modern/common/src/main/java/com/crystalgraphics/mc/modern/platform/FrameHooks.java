@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.modern.platform;
 
-import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 
 import net.minecraft.client.Minecraft;
 //? if >=26.2 {

@@ -1,4 +1,4 @@
-package com.crystalgraphics.gl.lifecycle;
+package com.crystalgraphics.lifecycle;
 
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.collision.debug.CgCollisionDebug;

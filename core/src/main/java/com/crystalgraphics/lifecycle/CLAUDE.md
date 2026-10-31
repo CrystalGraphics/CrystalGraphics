@@ -7,4 +7,5 @@ start) loads what was mounted.
 
 - **Core's starting work goes here**, never into a host: a host registers the platform, fills its slots, and calls the
   phases (`docs/MINECRAFT_INTEGRATION.md`).
-- Graphics, which need a context, are `gl.lifecycle.CgGraphicsLifecycle`'s.
+- Graphics, which need a context, are `CgGraphicsLifecycle`'s, beside it; features hear it through
+  `CgLifecycleListener`.

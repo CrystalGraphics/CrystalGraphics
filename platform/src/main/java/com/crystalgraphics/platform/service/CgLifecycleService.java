@@ -22,7 +22,7 @@ public interface CgLifecycleService {
      * {@code Minecraft.runGameLoop()}, which covers both cases uniformly).
      *
      * <p>Implementations should delegate to
-     * {@code com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle.tickFrame()} — this is
+     * {@code com.crystalgraphics.lifecycle.CgGraphicsLifecycle.tickFrame()} — this is
      * the only place per-frame engine bookkeeping (currently {@code CgFontRegistry}'s
      * frame clock) should be triggered from. Feature-level code
      * ({@code CgUiPaintContext}, demo overlays, etc.) must not call

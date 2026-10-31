@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.legacy.platform.service;
 
-import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 
 /** Forge 1.8–1.12.2's {@link CgLifecycleService}: {@link CgGraphicsLifecycle}, called from the mixins. */

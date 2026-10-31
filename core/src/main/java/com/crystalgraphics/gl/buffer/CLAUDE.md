@@ -108,7 +108,7 @@ CgQuadIndexBuffer (global singleton)
 | Package | Relationship |
 |---------|-------------|
 | `gl/buffer/shader/` | `CgShaderBuffer` owns one shader-buffer storage |
-| `gl/lifecycle/` | `CgGraphicsLifecycle.tickFrame()` ends the ring's frame |
+| `lifecycle/` | `CgGraphicsLifecycle.tickFrame()` ends the ring's frame |
 
 ## File Map
 

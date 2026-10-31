@@ -6,7 +6,7 @@ import com.crystalgraphics.mc.v1710.platform.world.Environment1710;
 import com.crystalgraphics.mc.v1710.platform.world.Textures1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldEvents1710;
 import com.crystalgraphics.render.stage.CgHostFrame;
-import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.CgPlatform;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.EntityRenderer;

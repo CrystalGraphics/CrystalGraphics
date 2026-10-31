@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.modern.platform.service;
 
-import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 
 /**

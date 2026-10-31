@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.v1710.platform.service;
 
-import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.mc.v1710.mixins.early.impl.client.MixinMinecraft;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 
