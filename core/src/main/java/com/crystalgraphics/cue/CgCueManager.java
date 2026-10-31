@@ -27,6 +27,7 @@ import com.crystalgraphics.cue.CgCueDefinition.Event;
 import com.crystalgraphics.cue.CgCueDefinition.SpawnCondition;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
+import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.frame.CgWorldSubsystem;
 import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgPredictionKey;
@@ -46,11 +47,7 @@ import com.crystalgraphics.world.CgAttachment;
  * a looping cue's effects are pooled per cue.
  *
  * <pre>{@code
- * CgCueManager cues = world.add(new CgCueManager(CgVfxAssets.instance()));
- * cues.effects(new CgVfxCueEffects(vfx, cues));                    // a client's; a server keeps none
- * cues.localControl(a -> a.entity() == localPlayerId);             // for local_only and not_local conditions
- * cues.viewer(out -> player.position(out));                        // for in-world lenses: the pawn, else the camera
- *
+ * CgCueManager cues = CgCueManager.server();                       // the server world's; client() on a client
  * cues.execute(MYMOD_CUE_HIT, new CgCueParameters().at(x, y, z));  // a burst: Unreal's Execute
  * CgCuePlaying aura = cues.add(MYMOD_CUE_AURA, params);            // a looping cue: Add
  * aura.remove();                                                   // Remove
@@ -171,6 +168,36 @@ public final class CgCueManager extends CgWorldSubsystem {
     /** A router over {@code assets}' registry: every {@code cue} asset declaring a tag answers it. */
     public CgCueManager(CgVfxAssets assets) {
         this.assets = assets;
+    }
+
+    /**
+     * {@code world}'s manager, made over {@link CgVfxAssets#instance()} on first ask, as Unreal's
+     * {@code UAbilitySystemGlobals::GetGameplayCueManager}: gameplay plays by tag through it and never makes one.
+     *
+     * <pre>{@code
+     * CgCueManager.of(CgWorld.serverWorld()).execute(GROUND_BREAK, params);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A client's is wired by the engine when it starts: effects, local control, the viewer, entities by id.</li>
+     *   <li>A server world ends with its session, so each session's manager is new.</li>
+     * </ul>
+     */
+    public static CgCueManager of(CgWorld world) {
+        synchronized (world) {
+            CgCueManager m = world.subsystem(CgCueManager.class);
+            return m != null ? m : world.add(new CgCueManager(CgVfxAssets.instance()));
+        }
+    }
+
+    /** The client world's manager: {@link #of(CgWorld)} of {@link CgWorld#client()}. */
+    public static CgCueManager client() {
+        return of(CgWorld.client());
+    }
+
+    /** The running server's manager: {@link #of(CgWorld)} of {@link CgWorld#serverWorld()}. Server thread. */
+    public static CgCueManager server() {
+        return of(CgWorld.serverWorld());
     }
 
     @Override
@@ -336,7 +363,6 @@ public final class CgCueManager extends CgWorldSubsystem {
 
     /** The frame's work, in {@code PLAYS}: the queue played in order, then each looping play's {@code writes}. */
     public void update(float dt) {
-        now += dt;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, UPDATE_ZONE)) {
             if (routesDirty) rebuildRoutes();
             int kept = 0;
@@ -351,6 +377,9 @@ public final class CgCueManager extends CgWorldSubsystem {
             }
             Arrays.fill(queue, kept, queued, null);
             queued = kept;
+            // After the queue: what arrived during the frame is judged at the clock it arrived at, so a hitch's whole step
+            // never makes a burst that came at its end late
+            now += dt;
             for (int i = playing.size() - 1; i >= 0; i--) {
                 CgCuePlaying p = playing.get(i);
                 if (p.lasting != null && (p.state == CgCuePlaying.State.PLAYING || p.state == CgCuePlaying.State.REMOVING)) {
@@ -664,3 +693,4 @@ public final class CgCueManager extends CgWorldSubsystem {
         return (z >>> 40) * 0x1.0p-24f;
     }
 }
+

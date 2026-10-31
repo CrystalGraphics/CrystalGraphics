@@ -37,6 +37,31 @@ emitters:
 | `parameters` | `parameters` | | `field` | `fields` |
 | `curve` | `curves` | | `cue` | `cues` |
 
+### Shipping them in your mod
+
+Put the files in your mod's jar under `assets/<your namespace>/`, by kind folder, and register nothing. As the game
+starts, on the client and on the server, the engine looks at every loaded mod, mounts each namespace that holds
+assets of the format, and starts loading all of them, so a cue gameplay plays a minute later is already there.
+
+```
+assets/rpgcore/tags.yaml                        # _v: 1, then tags: [ rpgcore:cue.ground_break ]
+assets/rpgcore/cues/ground_break.yaml           # tag: rpgcore:cue.ground_break, kind: burst, burst: { shake: ... }
+assets/rpgcore/cameras/shakes/ground_break.yaml
+```
+
+```java
+CgCueManager.server().execute(TAGS.require("rpgcore:cue.ground_break"), new CgCueParameters().at(x, y, z));
+```
+
+- **A namespace counts** where it holds `tags.yaml`, `units.yaml` or `content.yaml`, or a kind's folder other than
+  `textures` and `models`, which every Minecraft namespace has. A mod with only Minecraft's own assets is left alone.
+- **In a dev run** your source folder (`src/main/resources`) is mounted instead of the built copy, so a saved edit
+  reloads while the game runs.
+- **Ask what is loaded** with `CgModLoader`: `CgModLoader.isLoaded("geckolib")`, `CgModLoader.mod("rpgcore")`, the
+  loader's `name()` and `version()`, and `development()` for a dev run.
+- The log line `[crystalgraphics] assets: [rpgcore] mounted, 3 assets from 140 roots (0 jars opened) in 90 ms` says
+  what was found and what it cost.
+
 ### Values
 
 A number is a constant, or a map that names how it varies, so any number can become a range or a curve without its

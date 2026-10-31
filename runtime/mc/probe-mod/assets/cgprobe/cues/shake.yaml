@@ -1,0 +1,5 @@
+_v: 1
+tag: cgprobe:cue.shake
+kind: burst
+burst:
+  shake: { shake: cgprobe:probe, in_world: true, inner: 4, outer: 64 }

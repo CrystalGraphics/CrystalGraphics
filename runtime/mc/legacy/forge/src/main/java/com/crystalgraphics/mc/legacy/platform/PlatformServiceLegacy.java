@@ -5,6 +5,7 @@ import com.crystalgraphics.lwjgl2.Lwjgl2AudioOutput;
 import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
 import com.crystalgraphics.lwjgl2.Lwjgl2GLContext;
 import com.crystalgraphics.lwjgl2.Lwjgl2InputService;
+import com.crystalgraphics.mc.legacy.platform.service.ModLoaderLegacy;
 import com.crystalgraphics.mc.legacy.platform.service.GameDirectoryService;
 import com.crystalgraphics.mc.legacy.platform.service.LifecycleService;
 import com.crystalgraphics.mc.legacy.platform.service.ReloadService;
@@ -19,6 +20,7 @@ import com.crystalgraphics.mc.legacy.platform.world.HostDuckLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.HostVolumeLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldStimulusLegacy;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.CgGLContext;
@@ -78,6 +80,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
     /** Registers the bundle, and on a client fills the cursor and world slots. */
     public static void register(boolean client) {
         CgPlatform.register(getInstance());
+        CgPlatform.provide(CgModLoader.HOST, new ModLoaderLegacy());
         if (!client) return;
         CgPlatform.provide(CgCursorService.SERVICE, new Lwjgl2CursorService());
         ClientLegacy.install();

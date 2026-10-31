@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.neoforge;
 
+import com.crystalgraphics.asset.load.CgAssetMounts;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
@@ -7,6 +8,7 @@ import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.platform.world.CgWorldEvents;
@@ -102,7 +104,9 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
         LogUtils.getLogger().info("[cg] {}: {}", CrashVariant.LABEL,
                 CrashVariant.report(CrystalGraphicsNeoForge.class));
         CgPlatform.register(PlatformServiceModern.getInstance());
+        CgPlatform.provide(CgModLoader.HOST, ModLoaderNeoForge.INSTANCE);
         NetworkModern.install(Network.get());
+        CgAssetMounts.mount();   // every mod's assets, both sides, before anything compiles
         Events.register((IEventBus) context);
     }
 

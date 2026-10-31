@@ -21,6 +21,7 @@ import com.crystalgraphics.mc.v1710.platform.world.HostDuck1710;
 import com.crystalgraphics.mc.v1710.platform.world.HostVolume1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldStimulus1710;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.CgService;
 import com.crystalgraphics.platform.gl.*;
@@ -34,6 +35,7 @@ import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioOutput;
 import com.crystalgraphics.platform.audio.CgHostDuck;
 import com.crystalgraphics.platform.service.CgHostI18n;
+import com.crystalgraphics.mc.v1710.platform.service.ModLoader1710;
 import com.crystalgraphics.mc.v1710.platform.service.HostI18n1710;
 import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
@@ -127,6 +129,7 @@ public final class PlatformService1710 implements CgPlatformService {
      */
     public static void onPreInit() {
         CgPlatform.register(PlatformService1710.getInstance());
+        CgPlatform.provide(CgModLoader.HOST, new ModLoader1710());
 
         // The cursor, filled here so no consumer has to. It is a CgService SLOT rather than a bundle
         // method because an unpresented cursor is cosmetic and this engine runs where there is nothing

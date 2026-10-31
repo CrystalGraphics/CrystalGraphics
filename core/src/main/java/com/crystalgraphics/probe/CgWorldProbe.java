@@ -186,6 +186,7 @@ public final class CgWorldProbe {
         CgHostFrame host = CgRenderStage.WORLD_OPAQUE.host();
         CgEntityQuery entities = CgEntityQueries.client();
         long now = System.nanoTime();
+        CgCueProbe.watch();   // every frame from the play: its shake lasts seconds, ending before the events
         switch (phase) {
             case WAITING:
                 if (entities.localPlayer() < 0) break;
@@ -377,6 +378,7 @@ public final class CgWorldProbe {
         audio.push(HUSH);
         hushFrames = 0;
         kitCue(px, py, pz);
+        CgCueProbe.start(px, py, pz);
         audioStart = System.nanoTime();
         try {
             CgSound track = audio.sounds().load(MUSIC, true);
@@ -872,6 +874,7 @@ public final class CgWorldProbe {
             check("frame.begin", late == 0, late + " frames ran their world before the camera hook since the probe started");
         }
         audioChecks();
+        CgCueProbe.report();
         boolean ok = failed == 0;
         LOGGER.info("world probe: {} ({} passed, {} failed, {} skipped)", ok, passed, failed, skipped);
         phase = Phase.DONE;
@@ -1021,13 +1024,13 @@ public final class CgWorldProbe {
 
     // ── Reporting ────────────────────────────────────────────────────────────────
 
-    private static void check(String name, boolean ok, String detail) {
+    static void check(String name, boolean ok, String detail) {
         if (ok) passed++;
         else failed++;
         LOGGER.info("world probe {}: {} ({})", name, ok, detail);
     }
 
-    private static void skip(String name, String reason) {
+    static void skip(String name, String reason) {
         skipped++;
         LOGGER.info("world probe {}: skipped ({})", name, reason);
     }

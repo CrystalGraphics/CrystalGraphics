@@ -194,15 +194,23 @@ Each names the cue and the path in it. On a dedicated server systems do not comp
 
 ## Playing cues
 
-A world's `CgCueManager` plays cues by tag. Gameplay calls it from its tick; it plays in the frame's `PLAYS` group.
+Each world has one `CgCueManager`, the engine's, made on first ask: `CgCueManager.server()` on the server,
+`CgCueManager.client()` on a client, `CgCueManager.of(world)` for a world of your own. Gameplay plays cues by tag
+through it from its tick; it plays them in the frame's `PLAYS` group. The client's is wired as the game starts: its
+effects, the local player for `local_only` and `not_local`, the viewer for in-world shakes and lenses, entities by
+network id, and the cues the server sends.
+
+```java
+CgCueManager cues = CgCueManager.server();
+CgCueParameters at = new CgCueParameters().at(x, y, z).target(victim).seed(hitId).anchor(CgAnchor.on(victim));
+cues.execute(MYMOD_CUE_HIT, at);                              // a burst, once
+```
+
+A scene of your own (a preview, a test) keeps its own manager and wires it:
 
 ```java
 CgCueManager cues = world.add(new CgCueManager(CgVfxAssets.instance()));
-cues.effects(new CgVfxCueEffects(vfx, cues));                 // a client; a dedicated server keeps none
-cues.localControl(a -> a.entity() == localPlayerId);          // what local_only and not_local test
-
-CgCueParameters at = new CgCueParameters().at(x, y, z).target(victim).seed(hitId);
-cues.execute(MYMOD_CUE_HIT, at);                              // a burst, once
+cues.effects(new CgVfxCueEffects(vfx, cues)).localControl(a -> a.entity() == localPlayerId);
 ```
 
 A looping cue returns its play, which gameplay feeds and ends:
@@ -220,9 +228,11 @@ beam.remove();                                                // removal plays; 
   (`cue.unrouted`).
 - **Routes come from the files.** The asset registry reads each cue's `tag` as it scans, without loading the cue. A cue
   built in Java is routed by hand: `cues.route(tag, CgVfxAssets.ref(CgGameplayKinds.CUE, "mymod:hit"))`.
-- **A cue not yet loaded waits.** Asking for it starts its load. Once it is ready, a looping cue starts as old as it
-  would be, and a burst plays only if it is under 0.2 seconds late; later than that it is dropped and counted
-  (`cue.late-dropped`), since a hit spark two seconds late is wrong.
+- **Your mod's cues load as the game starts** ([`assets.md`](assets.md) § *Shipping them in your mod*), so a play
+  finds them ready. One not yet loaded (built in Java and routed by hand) waits: asking for it starts its load. Once it
+  is ready, a looping cue starts as old as it would be, and a burst plays only if it is under 0.2 seconds late; later
+  than that it is dropped and counted (`cue.late-dropped`), since a hit spark two seconds late is wrong. A burst is
+  judged at the time it arrived, so a hitch after it never makes it late.
 - **Calls keep their order.** A `remove()` sent before the cue is ready waits behind its `add`; `kill()` before then
   means it never starts.
 - **Pooled.** A looping cue's effects are reused once a play ends, reset whole first. `cues.prewarm(cue, n)` grows a
@@ -251,8 +261,8 @@ A handle is reused once `active()` is false: drop it then.
 
 ### Over the network
 
-A server's `CgCueManager` sends every play to the players who see it. Each player's own manager plays what it is
-sent, so gameplay calls the server's and nothing else:
+A server's `CgCueManager` sends every play to the players who see it, and each player's own manager plays what it is
+sent, so gameplay calls the server's and nothing else. **A server's play needs an anchor**, or it is sent to no one:
 
 ```java
 CgCuePlaying beam = cues.add(MYMOD_CUE_BEAM, new CgCueParameters().at(x, y, z).anchor(CgAnchor.on(caster)));
@@ -260,10 +270,8 @@ beam.field("level", 3);                                     // one of the cue's 
 ```
 
 ```java
-// each client, once its world's manager exists
-CgCueNet.client(obj -> cues);
-cues.entities(id -> attachmentOf(id));                      // the instigator and target the server names
-cues.onNetworked(play -> play.writes("BeamLength", ...));   // a cue that is not authoritative: computed here
+// each client: the engine's manager already plays what the server sends
+CgCueManager.client().onNetworked(play -> play.writes("BeamLength", ...));   // a cue that is not authoritative: computed here
 ```
 
 - **Who sees it** is the anchor's: the players tracking what it is on, or everyone within the cue's `range` of a point

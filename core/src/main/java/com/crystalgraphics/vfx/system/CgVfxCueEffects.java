@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.system;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -23,8 +24,12 @@ import com.crystalgraphics.cue.CgCueDefinition.Write;
 import com.crystalgraphics.cue.CgCueDefinition.Sound;
 import com.crystalgraphics.cue.CgCueEffects;
 import com.crystalgraphics.cue.CgCueManager;
+import com.crystalgraphics.cue.CgCueNet;
 import com.crystalgraphics.cue.CgCueParameters;
 import com.crystalgraphics.frame.CgWorld;
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.volume.CgPostBlock;
 import com.crystalgraphics.render.post.volume.CgPostVolume;
@@ -33,6 +38,8 @@ import com.crystalgraphics.vfx.camera.CgShakePlay;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.world.CgAttachment;
 import com.crystalgraphics.world.CgEntityAttachments;
+import com.crystalgraphics.world.CgEntityQueries;
+import com.crystalgraphics.world.CgWorldQueries;
 
 /**
  * Plays a cue's systems, sounds, shake and lens on a client: the VFX engine's {@link CgCueEffects}. Each entry is placed as its
@@ -40,6 +47,9 @@ import com.crystalgraphics.world.CgEntityAttachments;
  * {@code writes} reach the user parameters of the systems it is playing.
  *
  * <pre>{@code
+ * CgVfxCueEffects.installClient(CgVfx.world());   // the engine's, as a client starts: the client world's manager wired
+ *
+ * // a scene's own manager
  * CgCueManager cues = world.add(new CgCueManager(CgVfxAssets.instance()));
  * cues.effects(new CgVfxCueEffects(vfx, cues));
  * }</pre>
@@ -69,6 +79,58 @@ public final class CgVfxCueEffects implements CgCueEffects {
     public CgVfxCueEffects(CgVfxSystem vfx, CgCueManager cues) {
         this.vfx = vfx;
         this.cues = cues;
+    }
+
+    /** The client level's entities by network id, as attachments at their middle (Unreal's actor location). */
+    private static final Map<Integer, CgAttachment> TARGETS = new HashMap<>();
+    private static final double[] POSE = new double[CgEntityQuery.POSE_LENGTH];
+    private static int targetsEpoch;
+
+    /**
+     * Wires the client world's {@link CgCueManager}: its effects played on {@code vfx}, the local player as local
+     * control, the viewer the local player (else the camera), entities by network id, and the cues the server sends.
+     * The engine calls it once as a client starts.
+     */
+    public static void installClient(CgVfxSystem vfx) {
+        CgCueManager cues = CgCueManager.client();
+        cues.effects(new CgVfxCueEffects(vfx, cues))
+                .localControl(a -> a.entity() >= 0 && a.entity() == CgEntityQueries.client().localPlayer())
+                .viewer(CgVfxCueEffects::viewer)
+                .entities(CgVfxCueEffects::target);
+        CgCueNet.client(obj -> CgCueManager.client());
+    }
+
+    /** The local player's feet, else the camera: where an in-world shake or lens is felt from. */
+    private static boolean viewer(double[] out) {
+        CgEntityQuery entities = CgEntityQueries.client();
+        int player = entities.localPlayer();
+        if (player >= 0 && entities.pose(player, 1f, POSE)) {
+            out[0] = POSE[CgEntityQuery.X];
+            out[1] = POSE[CgEntityQuery.Y];
+            out[2] = POSE[CgEntityQuery.Z];
+            return true;
+        }
+        if (CgWorldQueries.client().levelEpoch() == 0) return false;
+        CgHostView view = CgRenderStage.WORLD_OPAQUE.host().view();
+        out[0] = view.x();
+        out[1] = view.y();
+        out[2] = view.z();
+        return true;
+    }
+
+    /** Entity {@code id} of the client level, one attachment an entity while the level lasts. */
+    private static CgAttachment target(int id) {
+        int epoch = CgWorldQueries.client().levelEpoch();
+        if (epoch != targetsEpoch) {
+            TARGETS.clear();
+            targetsEpoch = epoch;
+        }
+        CgAttachment a = TARGETS.get(id);
+        if (a == null) {
+            a = CgEntityAttachments.of(CgEntityQueries.client(), id, CgEntityAttachments.CENTRE);
+            TARGETS.put(id, a);
+        }
+        return a;
     }
 
     @Override
@@ -103,8 +165,9 @@ public final class CgVfxCueEffects implements CgCueEffects {
         } else if (!cues.locallyControlled(at.target())) {
             return null;
         }
-        return d.play(point[0], point[1], point[2], scale, at.seed(), 0f, 0f, 1f,
+        CgShakePlay dbg = d.play(point[0], point[1], point[2], scale, at.seed(), 0f, 0f, 1f,
                 CgCameraShakeDefinition.worldSpace(s.space(), "space"));
+        return dbg;
     }
 
     /**

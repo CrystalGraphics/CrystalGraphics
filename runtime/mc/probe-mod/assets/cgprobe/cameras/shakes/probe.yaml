@@ -1,0 +1,7 @@
+_v: 1
+pattern:
+  kind: wave
+  duration: 3
+  blend_in: 0.05
+  blend_out: 0.2
+  location: { y: { amplitude: 0.02, frequency: 6 } }

@@ -51,6 +51,7 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `audio/CgHostVolume` | Interface + slot | The host's volume sliders, master and by category, that the engine's sound follows. Client only; `NONE` answers 1 |
 | `audio/CgHostDuck` | Interface + slot | Scales the host's own playing and new sounds by category, never its sliders: a mix's `duckHost`. Client only; `NONE` ignores it |
 | `service/CgHostI18n` | Interface + slot | A translation key's text in the player's language (`I18n`): what a Minecraft sound event's subtitle reads as. Read in core through `i18n.CgI18n` alone. Client only; `NONE` and a missing key answer null |
+| `service/CgModLoader` | Static owner + `Host` slot | The mod loader: its name, version and dev flag, every loaded mod (`Mod`: id, version, name, roots), `isLoaded`, and each mod's root, which `asset.load.CgAssetMounts` mounts. Both sides; `ModLoaderForge`, `ModLoaderNeoForge`, `ModLoaderFabric`, `ModLoaderLegacy`, `ModLoader1710`. The new SPI shape (§ *The wiring standard*) |
 | `service/CgGameDirectory` | Interface + slot | The client's game directory, where `config/` lives: what CrystalGraphics' settings file (`com.crystalgraphics.settings`) is kept under. Absent: the working directory |
 | `service/CgCacheDirectory` | Final class | `of(name)`: a folder under `<game>/crystalgraphics/cache/` for what can be rebuilt — the SPIR-V (`spirv`) and pipeline (`vulkan`) caches a host passes its compiler and device, and GL program binaries (`glprogram`, `CgProgramBinaryCache`). Null where `-Dcrystalgraphics.cache=false` or it cannot be made; `-Dcrystalgraphics.cache.dir` moves it |
 | `world/CgWorldEvents` | Final class | What the client learns happens in the world (explosion, block broken, entity hurt or killed, lightning), pushed by hosts to listeners, on the render thread |
@@ -68,13 +69,50 @@ Minecraft.
 
 ## The wiring standard
 
-How a platform service is declared, provided and read. `CgLevels` and `CgPlayerQuery` are the worked example.
+How a platform service is declared, provided and read. **`CgModLoader` (`platform.service`) is the shape every new
+`CgService` SPI takes** (the user, 2026-10-31): a final class named for the concern is its static owner, as `CgGL`
+owns `CgGLBackend`; its nested `Host` interface is what a host implements, with a `NONE`; its slot is `HOST`; records
+it answers are nested too (`CgModLoader.Mod`). Callers use the owner's static calls and never the slot. The older
+slots (`CgLevels`, `CgGameDirectory`, the audio ones, ...) are the previous shape, a bare interface with `SERVICE` and
+a facade in core, and are to be rewritten to this one.
 
-1. **One SPI per concern**, an interface in `platform.<area>` (`platform.world`, ...), named for what it answers, with
-   a `NONE` that answers nothing and a `SERVICE` slot. A concern never has two slots.
-2. **One static facade per SPI, in core, and only it reads the slot** (`CgWorldQueries`, `CgEntityQueries`,
-   `CgPlayers`, `CgCamera`); an SPI with a single reader in core is read by that class alone.
-   `WorldServiceReadersTest` holds it.
+```java
+public final class CgModLoader {
+    public interface Host {                       // a host's answer, one class per era: ModLoaderForge, ModLoader1710
+        String name();
+        List<Mod> mods();
+        Host NONE = new Host() { /* answers "none" and no mods */ };
+    }
+    public record Mod(String id, String version, String name, List<Path> roots) { }
+    public static final CgService<Host> HOST = CgService.of("crystalgraphics:mod_loader", Host.NONE);
+    public static boolean isLoaded(String id) { ... CgPlatform.get(HOST) ... }   // callers: CgModLoader.isLoaded(id)
+}
+CgPlatform.provide(CgModLoader.HOST, ModLoaderForge.INSTANCE);   // a host, once
+```
+
+**The owner caches its host**, so a call is a field read rather than a slot lookup: a static volatile field set the
+first time the slot answers something other than `NONE`. **Never cache `NONE`, or anything built from its answer**: a
+call made before the host provides the slot (a class initialised early in mod loading) would pin the absent value for
+the session. The same holds for what the owner derives once (`CgModLoader.mods()`'s list).
+
+```java
+private static volatile Host host;
+private static Host host() {
+    Host h = host;
+    if (h != null) return h;
+    h = CgPlatform.get(HOST);
+    if (h != Host.NONE) host = h;   // asked before the host provides it: NONE's answer, asked again next time
+    return h;
+}
+```
+
+The rules, for both shapes. `CgLevels` and `CgPlayerQuery` are the worked example of the older one.
+
+1. **One SPI per concern**, in `platform.<area>` (`platform.world`, ...), named for what it answers, with a `NONE`
+   that answers nothing and one slot. A concern never has two slots.
+2. **One static owner per SPI, and only it reads the slot**: the SPI's own outer class in the new shape; in the older
+   one a facade in core (`CgWorldQueries`, `CgEntityQueries`, `CgPlayers`, `CgCamera`), an SPI with a single reader in
+   core read by that class alone. `WorldServiceReadersTest` holds it.
 3. **Per-level answers are bound views** (`of(level)`, `client()`), held while the level lives; hot paths hold the view.
 4. **Host objects cross as `Object` and ids**; a caller wanting the host's object asks a `<V> V` getter and casts at its
    own call site (`hit.entity()`, `CgPlayers.player(id)`).

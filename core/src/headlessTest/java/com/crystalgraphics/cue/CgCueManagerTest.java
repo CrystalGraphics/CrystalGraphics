@@ -174,11 +174,11 @@ public class CgCueManagerTest {
         assertEquals(1, cues.lateDropped());
         assertEquals(1, effects.made.get(0).starts);
         assertEquals(1f, effects.made.get(0).startAge, 1e-6);
-        // Ready now: a burst within the window plays with its age.
+        // Ready now: a burst plays at the clock it arrived at, so a hitch's whole step after it never makes it late.
         cues.execute(hit, at);
-        cues.update(0.05f);
+        cues.update(0.4f);
         assertEquals(1, effects.bursts);
-        assertEquals(0.05f, effects.lastAge, 1e-6);
+        assertEquals(0f, effects.lastAge, 1e-6);
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.forge;
 
+import com.crystalgraphics.asset.load.CgAssetMounts;
 import com.crystalgraphics.mc.modern.platform.CrystalGraphics;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
@@ -9,6 +10,7 @@ import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.mc.shared.VariantEntry;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.platform.world.CgWorldEvents;
@@ -182,7 +184,9 @@ public final class CrystalGraphicsForge implements VariantEntry {
                 })));
         *///?}
         CgPlatform.register(PlatformServiceModern.getInstance());
+        CgPlatform.provide(CgModLoader.HOST, ModLoaderForge.INSTANCE);
         NetworkModern.install(Network.register());
+        CgAssetMounts.mount();   // every mod's assets, both sides, before anything compiles
         ServerEvents.register();
 
         // EVERY subscription here is a render hook, so the whole of Events is client-only -- guarded

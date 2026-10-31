@@ -1,0 +1,8 @@
+# A resource-only mod holding the world probe's cue: what a mod's jar ships, mounted by the engine (A10's gate).
+modLoader="lowcodefml"
+loaderVersion="[1,)"
+license="MIT"
+[[mods]]
+modId="cgprobe"
+version="1"
+displayName="CrystalGraphics probe assets"

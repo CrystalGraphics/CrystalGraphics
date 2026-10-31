@@ -99,6 +99,8 @@ public final class CgVfxAssets {
     private final CgJobLoop loop;
     /** Files saved since the last drain, as {@code ns:path}. */
     private final Queue<String> saved = new ConcurrentLinkedQueue<>();
+    /** Refs asked ahead from any thread, loaded at the next drain. */
+    private final Queue<CgAssetRef<?>> prefetched = new ConcurrentLinkedQueue<>();
     private int compiling;
     private long syncLoads;
 
@@ -220,10 +222,27 @@ public final class CgVfxAssets {
     }
 
     /**
+     * Loads {@code refs} ahead, at {@link CgLoadPriority#PREFETCH}: asked from any thread, started at the next
+     * {@link #drain}, on the loop's thread. What the engine loads as the game starts.
+     *
+     * <pre>{@code
+     * assets.prefetch(List.of(CgVfxAssets.ref(CgGameplayKinds.CUE, "mymod:hit")));   // at init, mod loading's thread
+     * }</pre>
+     */
+    public void prefetch(List<? extends CgAssetRef<?>> refs) {
+        prefetched.addAll(refs);
+    }
+
+    /**
      * The frame boundary's drain: the pipeline's finished steps taken, compiled assets planned, prepare work run within
      * the frame's budgets, handles that became ready told. Allocates nothing when nothing finished.
      */
     public void drain() {
+        if (!prefetched.isEmpty()) {
+            List<CgAssetRef<?>> refs = new ArrayList<>();
+            for (CgAssetRef<?> r; (r = prefetched.poll()) != null; ) refs.add(r);
+            load(refs, CgLoadPriority.PREFETCH);
+        }
         if (!saved.isEmpty()) {
             for (String id; (id = saved.poll()) != null; ) reread(id);
         }

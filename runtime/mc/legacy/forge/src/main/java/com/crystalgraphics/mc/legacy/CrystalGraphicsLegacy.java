@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.legacy;
 
+import com.crystalgraphics.asset.load.CgAssetMounts;
 import com.crystalgraphics.mc.legacy.platform.PlatformServiceLegacy;
 import com.crystalgraphics.mc.legacy.platform.net.NetworkLegacy;
 import com.crystalgraphics.mc.shared.CrashVariant;
@@ -25,7 +26,10 @@ public final class CrystalGraphicsLegacy implements VariantEntry {
             });
             PlatformServiceLegacy.register(FMLCommonHandler.instance().getSide().isClient());
         });
-        events.on("FMLInitializationEvent", event -> NetworkLegacy.install());
+        events.on("FMLInitializationEvent", event -> {
+            NetworkLegacy.install();
+            CgAssetMounts.mount();   // every mod's assets, both sides, before anything compiles
+        });
         events.on("FMLServerStartingEvent", event -> NetworkLegacy.serverStarting());
         events.on("FMLServerStoppingEvent", event -> NetworkLegacy.serverStopping());
     }
