@@ -8,6 +8,10 @@ mounted. Then the graphics context: `ensureGraphicsContext` (the one way to star
 
 - **Core's starting work goes here**, never into a host: a host registers the platform, fills its slots, and calls the
   phases (`docs/MINECRAFT_INTEGRATION.md`).
+- **The game's ticks and the server's start and stop are the engine's**: `serverStarting`, `serverTick`,
+  `serverStopping`, `clientTick`, which hosts call, and `onServerTick`/`onClientTick`, which a subsystem subscribes
+  to (never `CgNetwork`). Each tick runs its listeners, then the network's share; the client's runs with no
+  connection too.
 - `CgGraphicsLifecycle` does the graphics work: what a context builds, the teardown order, and the two calls a host
   makes on it directly, `tickFrame` and `onResize` (through `CgLifecycleService`).
 - On a client, post-init follows the graphics start: what loads is prepared by the effects it installs.

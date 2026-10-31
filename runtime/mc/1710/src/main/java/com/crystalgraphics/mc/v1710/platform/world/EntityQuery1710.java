@@ -11,7 +11,7 @@ import java.util.function.IntConsumer;
 
 /**
  * {@link LevelEntityQuery1710} over the client's level, with its local and camera entity, and a box walk over the
- * loaded list and each entity's parts that allocates nothing. Client only: provided by {@code PlatformService1710.onPreInit}. Render thread.
+ * loaded list and each entity's parts that allocates nothing. Client only: provided by {@code PlatformService1710.install}. Render thread.
  */
 public final class EntityQuery1710 extends LevelEntityQuery1710 {
 

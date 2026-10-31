@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.fabric;
 
+import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
@@ -48,6 +49,7 @@ public final class CrystalGraphicsFabric implements VariantEntry {
     /** @param context null — Fabric hands an entry point nothing. */
     @Override
     public void start(Object context) {
+        PlatformServiceModern.installClient();
         Events.register();
         // What the node mixins apply and report: CameraHook from 1.15 (1.14.4 turns its view from elsewhere, so the hook
         // changes nothing seen) with roll from 1.21.11, FovHook on every version, ExplosionHook on every version,
@@ -84,7 +86,7 @@ public final class CrystalGraphicsFabric implements VariantEntry {
             // The client connection; its tick is LifecycleModern.clientTick's.
             CrystalGraphicsFabricCommon.Network.registerClientReceiver();
             ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> NetworkModern.clientConnected());
-            ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> NetworkModern.clientDisconnected());
+            ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> LifecycleModern.clientDisconnected());
         }
 
         // -- Asset reload -----------------------------------------------------------

@@ -4,6 +4,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.job.reply.CgPendingReply;
 import com.crystalgraphics.job.reply.CgReplyError;
 import com.crystalgraphics.net.protocol.CgProtocolErrors;
@@ -59,8 +60,8 @@ public class CgRequestTest {
 
     private static void settle() {
         for (int i = 0; i < 12; i++) {
-            CgNetwork.serverTick();
-            CgNetwork.clientTick();
+            CgEngineLifecycle.serverTick();
+            CgEngineLifecycle.clientTick();
         }
     }
 

@@ -10,6 +10,7 @@ import com.sun.management.ThreadMXBean;
 import org.junit.After;
 import org.junit.Test;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.CgAudience;
 import com.crystalgraphics.net.CgMessage;
 import com.crystalgraphics.net.CgNetwork;
@@ -156,10 +157,10 @@ public class CgNetStressTest {
         long[] objectLag = {0, 0}, pingLag = {0, 0};
         int[] bulks = {0};
         TRACKER.onChange(HEAT, (obj, heat) -> {
-            if (heat > 0) objectLag[0] = Math.max(objectLag[0], CgNetwork.serverTicks() - heat.longValue());
+            if (heat > 0) objectLag[0] = Math.max(objectLag[0], CgEngineLifecycle.serverTicks() - heat.longValue());
         });
         PING.onReceive(sent -> {
-            pingLag[0] = Math.max(pingLag[0], CgNetwork.serverTicks() - sent);
+            pingLag[0] = Math.max(pingLag[0], CgEngineLifecycle.serverTicks() - sent);
             pingLag[1]++;
         });
         BULK.onReceive(text -> bulks[0]++);
@@ -173,9 +174,9 @@ public class CgNetStressTest {
         for (int t = 0; t < 120; t++) {
             if (t == 0) {
                 for (int b = 0; b < 4; b++) BULK.send(CgAudience.player(rig.client(0).id()), payload);
-                for (int p = 0; p < 300; p++) PING.send(CgAudience.player(rig.client(0).id()), (int) CgNetwork.serverTicks() + 1);
+                for (int p = 0; p < 300; p++) PING.send(CgAudience.player(rig.client(0).id()), (int) CgEngineLifecycle.serverTicks() + 1);
             }
-            tracker.setFloat(HEAT, CgNetwork.serverTicks() + 1);
+            tracker.setFloat(HEAT, CgEngineLifecycle.serverTicks() + 1);
             rig.tick(1);
             if (deliveredAt < 0 && bulks[0] == 4) deliveredAt = t;
         }

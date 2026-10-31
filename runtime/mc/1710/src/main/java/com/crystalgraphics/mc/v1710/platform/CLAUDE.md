@@ -9,7 +9,7 @@ by `GLBackend1710`, for Angelica.
 
 | Class | Implements | What it does |
 |---|---|---|
-| `PlatformService1710` | `CgPlatformService` | The bundle: tier 1's backend, context and input, plus the services below, each built lazily. `onPreInit()` registers it and fills the cursor slot on a client; `onInit()` checks GL requirements and attaches the reload listener, client only |
+| `PlatformService1710` | `CgPlatformService` | The bundle: tier 1's backend, context and input, plus the services below, each built lazily. `install(client)` registers it, fills every slot (the world slots and process exit on both sides, the cursor and the rest on a client) and registers `Ticks1710`; `onInit()` checks GL requirements and attaches the reload listener, client only |
 | `gl/GLBackend1710` | `CgGLBackend` | Tier 1's `Lwjgl2GLBackend`, with the ten calls Angelica rewrites into methods its `GLStateManager` lacks routed through ones it has. Here and not in tier 1, because Angelica exists only on 1.7.10. Under lwjgl3ify it still runs, through lwjgl3ify's LWJGL 2 layer |
 | `service/ResourceService1710` | `CgResourceService` | `openStream(domain, path)` over `IResourceManager`; `null` on not-found, never throws |
 | `service/RenderingService1710` | `CgRenderingService` | The legacy single-call path; the frame is driven by `CgRenderHook` instead |
@@ -22,8 +22,9 @@ by `GLBackend1710`, for Angelica.
 
 ```
 CrystalGraphics (the @Mod)
-  onPreInit → PlatformService1710.onPreInit()
+  onPreInit → PlatformService1710.install(client)
                 ├─ CgPlatform.register(PlatformService1710.getInstance())
+                ├─ the mod loader, the world slots, process exit, Ticks1710   both sides
                 ├─ CgPlatform.provide(CgCursorService.SERVICE, …)   client only
                 └─ CgGlState.setProvider(AngelicaStateProvider)       if Angelica is present
   onInit    → PlatformService1710.onInit()                           client only

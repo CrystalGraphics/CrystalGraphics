@@ -4,13 +4,12 @@ import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.modern.platform.CrystalGraphics;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
+import com.crystalgraphics.mc.modern.platform.ServerModern;
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.mc.shared.VariantEntry;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.platform.world.CgWorldEvents;
@@ -183,10 +182,10 @@ public final class CrystalGraphicsForge implements VariantEntry {
                     }
                 })));
         *///?}
-        CgPlatform.register(PlatformServiceModern.getInstance());
-        CgPlatform.provide(CgModLoader.HOST, ModLoaderForge.INSTANCE);
+        PlatformServiceModern.install(ModLoaderForge.INSTANCE);
+        if (FMLEnvironment.dist == Dist.CLIENT) PlatformServiceModern.installClient();
         CgEngineLifecycle.preInit();
-        NetworkModern.install(Network.register());
+        CgEngineLifecycle.init(Network.register());
         ServerEvents.register();
 
         // EVERY subscription here is a render hook, so the whole of Events is client-only -- guarded
@@ -458,7 +457,7 @@ public final class CrystalGraphicsForge implements VariantEntry {
         }
 
         private static void onLoggedOut(ClientPlayerNetworkEvent.LoggingOut event) {
-            NetworkModern.clientDisconnected();
+            LifecycleModern.clientDisconnected();
         }
         //?} elif >=1.14.4 {
         /*private static void onLoggedIn(ClientPlayerNetworkEvent.LoggedInEvent event) {
@@ -466,7 +465,7 @@ public final class CrystalGraphicsForge implements VariantEntry {
         }
 
         private static void onLoggedOut(ClientPlayerNetworkEvent.LoggedOutEvent event) {
-            NetworkModern.clientDisconnected();
+            LifecycleModern.clientDisconnected();
         }
         *///?}
 
@@ -496,7 +495,7 @@ public final class CrystalGraphicsForge implements VariantEntry {
             if (now != connected) {
                 connected = now;
                 if (now) NetworkModern.clientConnected();
-                else NetworkModern.clientDisconnected();
+                else LifecycleModern.clientDisconnected();
             }
             LifecycleModern.clientTick();
         }
@@ -596,9 +595,9 @@ public final class CrystalGraphicsForge implements VariantEntry {
 
         static void register() {
             //? if >=1.21.6 {
-            /*ServerAboutToStartEvent.BUS.addListener(event -> NetworkModern.serverStarting(event.getServer()));
-            ServerStoppingEvent.BUS.addListener(event -> NetworkModern.serverStopping());
-            TickEvent.ServerTickEvent.Post.BUS.addListener(event -> NetworkModern.serverTick());
+            /*ServerAboutToStartEvent.BUS.addListener(event -> ServerModern.serverStarting(event.getServer()));
+            ServerStoppingEvent.BUS.addListener(event -> ServerModern.serverStopping());
+            TickEvent.ServerTickEvent.Post.BUS.addListener(event -> ServerModern.serverTick());
             PlayerEvent.PlayerLoggedInEvent.BUS.addListener(ServerEvents::onPlayerJoin);
             PlayerEvent.PlayerLoggedOutEvent.BUS.addListener(ServerEvents::onPlayerLeave);
             *///?} else {
@@ -612,25 +611,25 @@ public final class CrystalGraphicsForge implements VariantEntry {
 
         //? if >=1.18 {
         private static void onServerStarting(ServerAboutToStartEvent event) {
-            NetworkModern.serverStarting(event.getServer());
+            ServerModern.serverStarting(event.getServer());
         }
 
         private static void onServerStopping(ServerStoppingEvent event) {
-            NetworkModern.serverStopping();
+            ServerModern.serverStopping();
         }
         //?} else {
         /*private static void onServerStarting(FMLServerAboutToStartEvent event) {
-            NetworkModern.serverStarting(event.getServer());
+            ServerModern.serverStarting(event.getServer());
         }
 
         private static void onServerStopping(FMLServerStoppingEvent event) {
-            NetworkModern.serverStopping();
+            ServerModern.serverStopping();
         }
         *///?}
 
         //? if <1.21.6 {
         private static void onServerTick(TickEvent.ServerTickEvent event) {
-            if (event.phase == TickEvent.Phase.END) NetworkModern.serverTick();
+            if (event.phase == TickEvent.Phase.END) ServerModern.serverTick();
         }
         //?}
 

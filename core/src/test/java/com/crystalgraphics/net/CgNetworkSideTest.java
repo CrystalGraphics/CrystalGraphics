@@ -1,5 +1,6 @@
 package com.crystalgraphics.net;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import org.junit.After;
 import org.junit.Test;
 
@@ -17,10 +18,10 @@ public class CgNetworkSideTest {
 
     @Test
     public void theServersThreadIsTheServerAndTheClientsTheClient() throws InterruptedException {
-        CgNetwork.clientTick();
+        CgEngineLifecycle.clientTick();
         AtomicReference<CgNetwork.Side> onServer = new AtomicReference<>();
         Thread server = new Thread(() -> {
-            CgNetwork.serverStarting(null);
+            CgEngineLifecycle.serverStarting(null);
             onServer.set(CgNetwork.side());
         });
         server.start();

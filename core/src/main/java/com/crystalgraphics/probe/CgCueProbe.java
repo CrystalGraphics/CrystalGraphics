@@ -1,5 +1,6 @@
 package com.crystalgraphics.probe;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.asset.camera.CgCameraShakeDefinition;
 import com.crystalgraphics.asset.kind.CgGameplayKinds;
 import com.crystalgraphics.asset.load.CgAssetRef;
@@ -9,7 +10,6 @@ import com.crystalgraphics.asset.registry.CgAssetSource;
 import com.crystalgraphics.cue.CgCueDefinition;
 import com.crystalgraphics.cue.CgCueManager;
 import com.crystalgraphics.cue.CgCueParameters;
-import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.object.CgAnchor;
 import com.crystalgraphics.tag.CgGameplayTag;
 import com.crystalgraphics.tag.CgTagRegistry;
@@ -60,7 +60,7 @@ final class CgCueProbe {
         armed = true;
         if (!listening) {
             listening = true;
-            CgNetwork.onServerTick(CgCueProbe::serverTick);
+            CgEngineLifecycle.onServerTick(CgCueProbe::serverTick);
         }
     }
 

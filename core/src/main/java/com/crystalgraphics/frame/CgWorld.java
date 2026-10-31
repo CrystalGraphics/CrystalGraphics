@@ -1,5 +1,6 @@
 package com.crystalgraphics.frame;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.world.CgWorldBegin;
 import com.crystalgraphics.render.CgFrameClock;
@@ -102,7 +103,7 @@ public final class CgWorld implements AutoCloseable {
             serverWorld = new CgWorld(true);
             if (!driving) {
                 driving = true;
-                CgNetwork.onServerTick(CgWorld::tickServer);
+                CgEngineLifecycle.onServerTick(CgWorld::tickServer);
                 CgNetwork.onSessionEnd(CgWorld::endServer);
             }
         }

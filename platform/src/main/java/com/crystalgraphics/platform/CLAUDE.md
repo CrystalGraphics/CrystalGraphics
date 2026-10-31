@@ -116,9 +116,11 @@ The rules, for both shapes. `CgLevels` and `CgPlayerQuery` are the worked exampl
 3. **Per-level answers are bound views** (`of(level)`, `client()`), held while the level lives; hot paths hold the view.
 4. **Host objects cross as `Object` and ids**; a caller wanting the host's object asks a `<V> V` getter and casts at its
    own call site (`hit.entity()`, `CgPlayers.player(id)`).
-5. **Side is declared in the SPI's javadoc** and decides where a host provides it: both-sides slots from `Network*` at
-   init, client-only ones from `PlatformService*`. A both-sides SPI's client half is handed over by a client-only class
-   (`ClientModern.install()`), never by a lambda in a class a server loads.
+5. **Side is declared in the SPI's javadoc**, and every slot is provided from the era's one install, before
+   `CgEngineLifecycle.preInit`: `PlatformService<Era>.install` for both sides, its client branch (modern:
+   `installClient()`, from the loader's client side) for client-only ones. Never from a backend getter, which runs
+   only at the first frame, nor from the network's installer, which owns the channel alone. A both-sides SPI's client
+   half is handed over by a client-only class (`ClientModern.install()`), never by a lambda in a class a server loads.
 6. **One host class per SPI per era**, named `<SPI without Cg><Era>` (`LevelsModern`, `PlayerQuery1710`); a client
    extra is a subclass, never a second slot.
 
@@ -127,9 +129,9 @@ The rules, for both shapes. `CgLevels` and `CgPlayerQuery` are the worked exampl
 CgEntityQuery here = CgEntityQueries.client();        // never CgPlatform.get(CgLevels.SERVICE)
 ServerPlayer p = CgPlayers.player(profileId);
 
-// a host, at init, both sides
+// a host, in PlatformServiceModern.install, both sides
 CgPlatform.provide(CgLevels.SERVICE, LevelsModern.INSTANCE);
-// and on a client
+// and in installClient
 ClientModern.install();
 ```
 
@@ -160,6 +162,7 @@ there is `NoClassDefFoundError` on LWJGL. `CgGL` takes `gl()` at the first `CgGL
 reaches either, on its render thread. `serverSmoke` fails if a backend was installed.
 
 ```java
+// a host's install, once per era: the bundle, then its slots (PlatformServiceModern.install, installClient)
 CgPlatform.register(PlatformServiceModern.getInstance());                            // the bundle
 CgPlatform.provide(CgCursorService.SERVICE, new GlfwCursorService(windowHandle));    // a slot, client only
 
@@ -336,8 +339,8 @@ in every variant, and a frame through the pipeline, quad and vector renderers.
 
 ## `CgLifecycleService` — the frame tick
 
-`onContextInit(w, h)`, `onContextDestroy()`, `onResize(w, h)`, `onFrameRendered()`, all on the GL
-thread. **`onFrameRendered()` is the only sanctioned per-frame tick** for engine singletons
+`onContextDestroy()`, `onResize(w, h)`, `onFrameRendered()`, all on the GL thread; the context starts from
+`CgEngineLifecycle.ensureGraphicsContext` at a frame's end. **`onFrameRendered()` is the only sanctioned per-frame tick** for engine singletons
 (`CgGraphicsLifecycle.tickFrame()` → `CgFontRegistry.tickFrame()`); feature code never calls
 `tickFrame()` itself. It must fire once per rendered frame, GUI-only frames included:
 

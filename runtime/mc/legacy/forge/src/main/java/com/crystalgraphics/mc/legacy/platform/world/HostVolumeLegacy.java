@@ -10,7 +10,7 @@ import net.minecraft.util.SoundCategory;
 
 /**
  * {@link CgHostVolume} from Minecraft's sound options on Forge 1.8.9 to 1.12.2; voice from 1.10.2. Client only:
- * constructed by {@code PlatformServiceLegacy.register}.
+ * constructed by {@code PlatformServiceLegacy.install}.
  */
 public final class HostVolumeLegacy implements CgHostVolume {
 

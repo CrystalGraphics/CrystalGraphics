@@ -1,5 +1,6 @@
 package com.crystalgraphics.job;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.job.progress.CgProgressState;
 import com.crystalgraphics.net.CgNetwork;
 
@@ -55,8 +56,8 @@ public final class CgJobLoop {
     private static final AtomicInteger SESSION = new AtomicInteger();
 
     static {
-        CgNetwork.onServerTick(CgJob::drain);
-        CgNetwork.onClientTick(CgJob::drain);
+        CgEngineLifecycle.onServerTick(CgJob::drain);
+        CgEngineLifecycle.onClientTick(CgJob::drain);
         CgNetwork.onSessionEnd(SESSION::incrementAndGet);
     }
 

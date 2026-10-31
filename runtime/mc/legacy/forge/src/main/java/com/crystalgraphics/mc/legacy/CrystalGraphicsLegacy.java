@@ -24,11 +24,11 @@ public final class CrystalGraphicsLegacy implements VariantEntry {
                 @Override public String getLabel() { return CrashVariant.LABEL; }
                 @Override public String call() { return CrashVariant.report(CrystalGraphicsLegacy.class); }
             });
-            PlatformServiceLegacy.register(FMLCommonHandler.instance().getSide().isClient());
+            PlatformServiceLegacy.install(FMLCommonHandler.instance().getSide().isClient());
             CgEngineLifecycle.preInit();
         });
         events.on("FMLInitializationEvent", event -> NetworkLegacy.install());
-        events.on("FMLServerStartingEvent", event -> NetworkLegacy.serverStarting());
-        events.on("FMLServerStoppingEvent", event -> NetworkLegacy.serverStopping());
+        events.on("FMLServerStartingEvent", event -> CgEngineLifecycle.serverStarting(null));
+        events.on("FMLServerStoppingEvent", event -> CgEngineLifecycle.serverStopping());
     }
 }

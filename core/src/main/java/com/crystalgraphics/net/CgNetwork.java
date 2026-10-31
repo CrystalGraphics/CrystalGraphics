@@ -32,7 +32,8 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * The connections of this process: one per player on a server, one to the server on a client. A loader host
- * forwards its join, leave, tick and connection events here; everything else asks for a connection.
+ * forwards its join, leave and connection events here; the ticks and the server's start and stop reach it through
+ * {@code CgEngineLifecycle}. Everything else asks for a connection.
  *
  * <p><b>Using a connection.</b> Register a contributor once, at init; it is bound onto every connection that opens
  * afterwards. Reach one directly with {@link #forPlayer} or {@link #client}:</p>
@@ -47,18 +48,16 @@ import org.apache.logging.log4j.Logger;
  * <p><b>Hosting it</b> (a loader host, once per era):</p>
  *
  * <pre>{@code
- * CgNetwork.install(channel, player -> ((ServerPlayer) player).getGameProfile().getId());   // mod init, both sides
+ * CgEngineLifecycle.init(channel);                            // mod init, both sides: installs it
  *
  * CgNetwork.playerJoined(id, name, () -> listener.player);   // join; the supplier resolves the live entity
  * CgNetwork.playerLeft(id);                                  // leave, by id: the entity may be a new one
- * CgNetwork.serverTick();  CgNetwork.clientTick();           // once a tick each
  * CgNetwork.clientConnected();  CgNetwork.clientDisconnected();
- * CgNetwork.closeAll("server stopping");
  * }</pre>
  *
  * <ul>
  *   <li>A connection opens on a lifecycle event, never on traffic: a frame for a peer that has gone is dropped.</li>
- *   <li>Single player holds both tables in one process; each is ticked by its own side's event.</li>
+ *   <li>Single player holds both tables in one process; each is ticked by its own side's engine tick.</li>
  *   <li>With no channel, {@link #install} warns and nothing opens; {@link #forPlayer} and {@link #client} answer
  *       null, which is also what every consumer must handle for a peer that has left.</li>
  *   <li>{@link CgProtocolConnection#peer()} is a {@link CgPeer} on a server and null on a client.</li>
@@ -75,12 +74,8 @@ public final class CgNetwork {
     private static final String CONTRIBUTOR = "cg";
 
     private static final List<Consumer<CgPeer>> CLOSED = new CopyOnWriteArrayList<>();
-    private static final List<Runnable> SERVER_TICK = new CopyOnWriteArrayList<>();
-    private static final List<Runnable> CLIENT_TICK = new CopyOnWriteArrayList<>();
     private static final List<Runnable> SESSION_END = new CopyOnWriteArrayList<>();
 
-    /** Server ticks since this process started a server: what an age on the wire is measured in. */
-    private static volatile long serverTicks;
     /** The threads the server and the client last ticked on, each written from its own: what {@link #side()} reads. */
     private static volatile Thread serverThread, clientThread;
 
@@ -200,29 +195,11 @@ public final class CgNetwork {
     }
 
     /**
-     * Runs {@code listener} once a server tick, on the server thread, before networked objects send the tick's
-     * changes: a change made here reaches clients this tick. At init.
-     */
-    public static void onServerTick(Runnable listener) {
-        SERVER_TICK.add(listener);
-    }
-
-    /** Runs {@code listener} once a client tick, on the client thread, while connected to a server. At init. */
-    public static void onClientTick(Runnable listener) {
-        CLIENT_TICK.add(listener);
-    }
-
-    /**
      * Runs {@code listener} when this process leaves its world: the client disconnects, or the server stops. On the
      * thread that left; state kept per world elsewhere is dropped here. At init.
      */
     public static void onSessionEnd(Runnable listener) {
         SESSION_END.add(listener);
-    }
-
-    /** Server ticks counted since this process first ticked a server; a server thread's clock. */
-    public static long serverTicks() {
-        return serverTicks;
     }
 
     /**
@@ -337,22 +314,24 @@ public final class CgNetwork {
     public static void serverStarting(@Nullable Object server) {
         serverThread = Thread.currentThread();
         CgNetObjects.serverStarting(server);
-        CgEngineLifecycle.postInit();   // every mod has initialised by a server's start
     }
 
+    /**
+     * The engine's tick on {@code side} is starting, on its thread: what {@link #side()} reads from then on.
+     * {@code CgEngineLifecycle}'s ticks call it first, before their listeners.
+     */
+    public static void tickStarted(Side side) {
+        if (side == Side.SERVER) serverThread = Thread.currentThread();
+        else clientThread = Thread.currentThread();
+    }
+
+    /**
+     * The network's share of a server tick: networked objects' changes, then every connection's sending. Called by
+     * {@code CgEngineLifecycle.serverTick}, after the tick's listeners.
+     */
     public static void serverTick() {
         CgConnections table = server;
         if (table == null) return;
-        serverThread = Thread.currentThread();
-        serverTicks++;
-        // Indexed: a copy-on-write list's iterator is an allocation every tick.
-        for (int i = 0; i < SERVER_TICK.size(); i++) {
-            try {
-                SERVER_TICK.get(i).run();
-            } catch (RuntimeException failed) {
-                LOGGER.error("[cg-net] a server-tick listener failed", failed);
-            }
-        }
         long started = System.nanoTime();
         long allocated = measureAllocation ? CgThreadAllocation.current() : 0;
         CgNetObjects.serverTick();
@@ -367,17 +346,10 @@ public final class CgNetwork {
         }
     }
 
+    /** The network's share of a client tick: what arrived, handled. Called by {@code CgEngineLifecycle.clientTick}. */
     public static void clientTick() {
-        clientThread = Thread.currentThread();
         CgConnections table = client;
         if (table == null) return;
-        for (int i = 0; i < CLIENT_TICK.size(); i++) {
-            try {
-                CLIENT_TICK.get(i).run();
-            } catch (RuntimeException failed) {
-                LOGGER.error("[cg-net] a client-tick listener failed", failed);
-            }
-        }
         long started = System.nanoTime();
         table.tick();
         clientTickNanos = System.nanoTime() - started;
@@ -411,7 +383,7 @@ public final class CgNetwork {
         measureAllocation = on && CgThreadAllocation.available();
     }
 
-    /** The last client tick's network work, receiving and every listener it ran, in nanoseconds. Client thread. */
+    /** The last client tick's network work, receiving what arrived, in nanoseconds. Client thread. */
     public static long clientTickNanos() {
         return clientTickNanos;
     }
@@ -461,9 +433,7 @@ public final class CgNetwork {
         CgNetObjects.resetForTesting();
         CgTagNet.resetForTesting();
         CLOSED.clear();
-        SERVER_TICK.clear();
-        CLIENT_TICK.clear();
-        serverTicks = 0;
+        CgEngineLifecycle.resetTicksForTesting();
         serverThread = clientThread = null;
         channel = null;
         idOf = null;

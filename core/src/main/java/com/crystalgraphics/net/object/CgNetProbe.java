@@ -10,6 +10,7 @@ import java.util.UUID;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.CgAudience;
 import com.crystalgraphics.net.CgMessage;
 import com.crystalgraphics.net.CgNetwork;
@@ -93,7 +94,7 @@ public final class CgNetProbe {
         if (installed) return;
         installed = true;
         Server server = new Server();
-        CgNetwork.onServerTick(server::tick);
+        CgEngineLifecycle.onServerTick(server::tick);
         Net.SEEN.onReceiveFrom(server::seen);
         client.install();
         LOGGER.info("net probe: armed, waiting for {} player(s)", PLAYERS);
@@ -347,7 +348,7 @@ public final class CgNetProbe {
             });
             Net.SOIL.onClient(obj -> new Arrivals("soil"));
             Net.POOL.onClient(obj -> new Arrivals("pool"));
-            CgNetwork.onClientTick(this::tick);
+            CgEngineLifecycle.onClientTick(this::tick);
         }
 
         /** When a holder's object comes into this client's view and leaves it: what a report alone cannot say. */

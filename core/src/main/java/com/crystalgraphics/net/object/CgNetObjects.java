@@ -23,6 +23,7 @@ import javax.annotation.Nullable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
@@ -326,7 +327,7 @@ public final class CgNetObjects {
     public static void serverStarting(@Nullable Object server) {
         started = true;
         startedServer = server;
-        tick = CgNetwork.serverTicks();
+        tick = CgEngineLifecycle.serverTicks();
         Path world = CgWorldQueries.saveDirectory(server);
         if (world == null) return;
         for (CgNetType type : CgNetType.REGISTERED) if (type.persisted) load(type, world);
@@ -356,7 +357,7 @@ public final class CgNetObjects {
 
     /** Sends this tick's spawns, changes, moves and despawns, one frame per player. Server thread. */
     public static void serverTick() {
-        tick = CgNetwork.serverTicks();
+        tick = CgEngineLifecycle.serverTicks();
         List<CgNetType> types = CgNetType.REGISTERED;
         for (int t = 0; t < types.size(); t++) {
             CgNetType type = types.get(t);

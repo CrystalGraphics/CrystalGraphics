@@ -21,6 +21,17 @@ import com.crystalgraphics.mc.v1710.platform.world.HostDuck1710;
 import com.crystalgraphics.mc.v1710.platform.world.HostVolume1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldStimulus1710;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.mc.v1710.platform.world.HostFormats1710;
+import com.crystalgraphics.mc.v1710.platform.world.HostShapes1710;
+import com.crystalgraphics.mc.v1710.platform.world.Levels1710;
+import com.crystalgraphics.mc.v1710.platform.world.MirrorHost1710;
+import com.crystalgraphics.mc.v1710.platform.world.PlayerQuery1710;
+import com.crystalgraphics.platform.service.CgProcessExit;
+import com.crystalgraphics.platform.world.CgHostShapes;
+import com.crystalgraphics.platform.world.CgLevels;
+import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.collision.mirror.CgMirrorHost;
+import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
 import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.CgService;
@@ -124,12 +135,26 @@ public final class PlatformService1710 implements CgPlatformService {
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     /**
-     * FML preInit phase. Constructs and registers all platform services with {@link CgPlatform}.
-     * Safe to call before any GL context exists.
+     * Installs 1.7.10's platform at preInit, before {@code CgEngineLifecycle.preInit}: the bundle, the mod loader, the
+     * world slots and process exit on both sides, the engine's ticks, the GL state provider, and on a client its own
+     * slots. Safe before any GL context exists.
+     *
+     * <pre>{@code
+     * PlatformService1710.install(FMLCommonHandler.instance().getSide().isClient());
+     * CgEngineLifecycle.preInit();
+     * }</pre>
      */
-    public static void onPreInit() {
+    public static void install(boolean client) {
         CgPlatform.register(PlatformService1710.getInstance());
         CgPlatform.provide(CgModLoader.HOST, new ModLoader1710());
+        CgPlatform.provide(CgLevels.SERVICE, Levels1710.INSTANCE);
+        CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQuery1710.INSTANCE);
+        CgPlatform.provide(CgHostShapes.SERVICE, new HostShapes1710());
+        CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHost1710());
+        CgPlatform.provide(CgHostFormats.SERVICE, new HostFormats1710());
+        // FML traps a mod's own Runtime.halt.
+        CgPlatform.provide(CgProcessExit.SERVICE, status -> FMLCommonHandler.instance().exitJava(status, true));
+        FMLCommonHandler.instance().bus().register(new Ticks1710());
 
         // The cursor, filled here so no consumer has to. It is a CgService SLOT rather than a bundle
         // method because an unpresented cursor is cosmetic and this engine runs where there is nothing
@@ -142,7 +167,7 @@ public final class PlatformService1710 implements CgPlatformService {
         // which errors every mod that depends on this one. CgPlatform.register builds no GL backend for
         // the same reason. The slot's absent value is CursorService.NONE, so a
         // server that never fills it is the supported case rather than a degraded one.
-        if (FMLCommonHandler.instance().getSide().isClient()) {
+        if (client) {
             CgPlatform.provide(CgCursorService.SERVICE, new Lwjgl2CursorService());
             // The client's levels and player, client only for the same reason.
             Client1710.install();

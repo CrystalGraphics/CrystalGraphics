@@ -20,10 +20,11 @@ Nothing on GL; the platform guide's *Host sections* has the rules.
 ### Connections — `CgNetwork`
 
 Every host installs one channel, `crystalgraphics:wire` (`crystalgraphics` on 1.7.10 and legacy Forge), and
-forwards join, leave, both ticks, the client's connect and disconnect, and server stopping into
-`com.crystalgraphics.net.CgNetwork`, which holds one connection per player by profile UUID and one to the server.
-The forwards are `NetworkModern` (each loader's entry class), `NetworkLegacy` and `Network1710`, registered at init
-on both sides. A peer without the mod is accepted; what may be sent to it is the protocol's. Anything that
+forwards join, leave and the client's connect and disconnect into `com.crystalgraphics.net.CgNetwork`, which holds
+one connection per player by profile UUID and one to the server. The forwards are `NetworkModern` (each loader's
+entry class), `NetworkLegacy` and `Network1710`, registered at init on both sides; they own the channel and nothing
+else. Both ticks and the server's start and stop go to `CgEngineLifecycle` instead (`ServerModern`, `TicksLegacy`,
+`Ticks1710`, each mod class's server events), which runs the network's share of each after its tick listeners. A peer without the mod is accepted; what may be sent to it is the protocol's. Anything that
 talks over a connection contributes to `CgProtocols` at init and asks `CgNetwork.forPlayer`/`client`.
 Using all of it from a mod: [`docs/NETWORKING.md`](NETWORKING.md). This section is how the hosts carry it.
 
@@ -31,8 +32,8 @@ Using all of it from a mod: [`docs/NETWORKING.md`](NETWORKING.md). This section 
 Each connection opens with `cg/hello`: the client says which message namespaces it declared, until the server
 answers with its own, and a send to a peer lacking the namespace, on another version, or silent (no mod) is
 skipped and counted rather than sent. **A send leaves at once**, flushed in order with the game's packets that tick,
-so send from the game thread; networked objects' changes still coalesce to the tick's end. `CgNetwork.onServerTick` runs a
-listener each server tick before those changes go out, and `serverTicks()` counts the ticks.
+so send from the game thread; networked objects' changes still coalesce to the tick's end. `CgEngineLifecycle.onServerTick` runs a
+listener each server tick before those changes go out, and `CgEngineLifecycle.serverTicks()` counts the ticks.
 
 **Audiences** are `player`, `all`, `dimension`, `near`, `tracking` (an entity, or a chunk), `trackingAndSelf` and
 `except`. All but the first two and the last ask the host's levels and players (`platform.world`), which each host
@@ -138,7 +139,7 @@ worker. Both sides (`VariantMixins`' common list): an integrated server runs on 
 - **No mirror where the hook did not apply**: a client's level, Forge 1.13.2 and 1.14.3 (no loaded-chunk lookup that
   never loads), and Forge and NeoForge dev runs, which apply no CrystalGraphics mixin. There `snapshot` copies the area
   on the spot, as `copyBlocks` below.
-- The mirror publishes at `CgNetwork.onServerTick`, the END phase on every loader.
+- The mirror publishes at `CgEngineLifecycle.onServerTick`, the END phase on every loader.
 - **A write past the hook** (a mod setting a section's states directly) is found by an audit that compares each
   mirrored column with its chunk about once a minute, a few columns a tick, and the section is copied again. Legacy
   and 1.7.10, which resolve every block where it stands, are not audited.
@@ -147,7 +148,7 @@ worker. Both sides (`VariantMixins`' common list): an integrated server runs on 
   included as above.
 - **Nothing per call allocates beyond Minecraft's own**: one `AABB` per `within` on 1.8–26.3 (its fields are final),
   nothing on 1.7.10; host-box conversions write into the caller's box (`CgBoxSink`), 2.5 ns each.
-- **Started hitboxes tick on the forwarded ticks** (`CgNetwork.onServerTick`, `onClientTick`), after the level's own,
+- **Started hitboxes tick on the forwarded ticks** (`CgEngineLifecycle.onServerTick`, `onClientTick`), after the level's own,
   on its thread; job loops (`CgJob`, `docs/JOBS.md`) drain on the same ticks, and `CgNetwork.onSessionEnd` cancels
   every job a game thread started. A level's epoch changing stops the hitboxes of the level that went.
 - **The collision show** (`crystalgraphics.collision.show`, or F3+B through `CgHostDebug`) rides the channel: a
@@ -168,8 +169,8 @@ worker. Both sides (`VariantMixins`' common list): an integrated server runs on 
 ### 1.7.10 — `runtime/mc/1710`
 
 `CrystalGraphics` is the `@Mod` class (`modid = "crystalgraphics"`) and does **no GL work**: mod loading
-runs on the splash screen's shared context (§ *GL objects during mod loading* below). It registers the platform
-(`PlatformService1710.onPreInit`/`onInit`) and the crash-report variant line. Other mods declare
+runs on the splash screen's shared context (§ *GL objects during mod loading* below). It installs the platform
+(`PlatformService1710.install`/`onInit`) and the crash-report variant line. Other mods declare
 `required-after:crystalgraphics`. **There is no coremod** — the GL-redirect layer was deleted on
 2026-07-31; see [GL state](#gl-state--cgglstatemanager).
 

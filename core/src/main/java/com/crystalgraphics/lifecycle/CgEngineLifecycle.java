@@ -1,6 +1,13 @@
 package com.crystalgraphics.lifecycle;
 
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
+
+import javax.annotation.Nullable;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import com.crystalgraphics.asset.load.CgAssetMounts;
 import com.crystalgraphics.net.CgNetwork;
@@ -10,18 +17,18 @@ import com.crystalgraphics.world.CgPlayers;
 
 /**
  * The engine's lifecycle, and the one place a host starts and stops it: core's start on both sides, in the phases every
- * loader has, then its graphics context's start and stop ({@link CgGraphicsLifecycle}'s work, issued from here). A
- * host only says when each moment is; the frame tick and resize go to {@code CgGraphicsLifecycle} directly.
+ * loader has; the game's ticks and its server's start and stop; then its graphics context's start and stop
+ * ({@link CgGraphicsLifecycle}'s work, issued from here). A host only says when each moment is; the frame tick and
+ * resize go to {@code CgGraphicsLifecycle} directly.
  *
  * <pre>{@code
- * // a host, as its loader constructs or pre-initialises CrystalGraphics
- * CgPlatform.register(platform);
- * CgPlatform.provide(CgModLoader.HOST, ModLoaderForge.INSTANCE);
+ * // a host, as its loader constructs or pre-initialises CrystalGraphics: its platform and every slot installed first
+ * PlatformServiceModern.install(ModLoaderForge.INSTANCE);
  * CgEngineLifecycle.preInit();                 // every mod's assets mounted, its tags declared
+ * CgEngineLifecycle.init(channel);             // connections and networked objects, over the host's channel
  *
- * // where the host's network channel is registered, its world slots provided first
- * CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQueryModern.INSTANCE);
- * CgEngineLifecycle.init(channel);             // connections and networked objects
+ * // the host's game events
+ * CgEngineLifecycle.serverStarting(server);    // and serverTick(), serverStopping(); clientTick() on a client
  * }</pre>
  *
  * <p>Code outside the engine hears each phase through a {@link CgLifecycleListener}:</p>
@@ -45,6 +52,7 @@ import com.crystalgraphics.world.CgPlayers;
  */
 public final class CgEngineLifecycle {
 
+    private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
     private static final CgLifecycleListener.Registry listeners = new CgLifecycleListener.Registry();
     private static boolean preInit, init, postInit;
 
@@ -121,6 +129,84 @@ public final class CgEngineLifecycle {
      */
     public static void shutdown() {
         CgGraphicsLifecycle.shutdown();
+    }
+    
+    // -- The game's ticks, and its server's start and stop ---------------------------------------------------------
+
+    private static final List<Runnable> SERVER_TICK = new CopyOnWriteArrayList<>(), CLIENT_TICK = new CopyOnWriteArrayList<>();
+    private static volatile long serverTicks;
+
+    /**
+     * Runs {@code listener} once a server tick, on the server thread, before networked objects send the tick's changes:
+     * a change made here reaches clients this tick. At init.
+     *
+     * <pre>{@code
+     * CgEngineLifecycle.onServerTick(MyMachines::tickAll);
+     * }</pre>
+     */
+    public static void onServerTick(Runnable listener) {
+        SERVER_TICK.add(listener);
+    }
+
+    /**
+     * Runs {@code listener} once a client tick, on the client thread, before the tick's arrivals are handled; on the
+     * title screen too, with no server to talk to. At init.
+     */
+    public static void onClientTick(Runnable listener) {
+        CLIENT_TICK.add(listener);
+    }
+
+    /** Server ticks since this process first ticked a server: a server thread's clock, and what an age on the wire is in. */
+    public static long serverTicks() {
+        return serverTicks;
+    }
+
+    /**
+     * The server is starting, its worlds loaded: persisted networked objects are loaded before any player, and post-init
+     * runs if it has not, since every mod has initialised by then. {@code server} is anything
+     * {@code CgWorldQueries.saveDirectory} accepts, or null.
+     */
+    public static void serverStarting(@Nullable Object server) {
+        CgNetwork.serverStarting(server);
+        postInit();
+    }
+
+    /** The server's tick has run: the tick's listeners, then the network's sending. At its end, on the server thread. */
+    public static void serverTick() {
+        CgNetwork.tickStarted(CgNetwork.Side.SERVER);
+        serverTicks++;
+        run(SERVER_TICK, "server");
+        CgNetwork.serverTick();
+    }
+
+    /** The server is stopping: every connection closed and the persisted networked objects saved. */
+    public static void serverStopping() {
+        CgNetwork.closeAll("server stopping");
+    }
+
+    /** The client's tick has run: the tick's listeners, then what arrived. At its end, on the client thread. */
+    public static void clientTick() {
+        CgNetwork.tickStarted(CgNetwork.Side.CLIENT);
+        run(CLIENT_TICK, "client");
+        CgNetwork.clientTick();
+    }
+
+    private static void run(List<Runnable> listeners, String side) {
+        // Indexed: a copy-on-write list's iterator is an allocation every tick.
+        for (int i = 0; i < listeners.size(); i++) {
+            try {
+                listeners.get(i).run();
+            } catch (RuntimeException failed) {
+                LOGGER.error("[cg] a {}-tick listener failed", side, failed);
+            }
+        }
+    }
+
+    /** The tick listeners and the server tick count back to none. Tests only. */
+    public static void resetTicksForTesting() {
+        SERVER_TICK.clear();
+        CLIENT_TICK.clear();
+        serverTicks = 0;
     }
 
     /**

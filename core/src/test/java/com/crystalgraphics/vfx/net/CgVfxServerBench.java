@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.net;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.collision.CollisionFakes;
 import com.crystalgraphics.net.CgNetTesting;
 import com.crystalgraphics.net.CgNetwork;
@@ -99,7 +100,7 @@ public class CgVfxServerBench {
         CgPlatform.provide(CgLevels.SERVICE, new Levels());
         CgPlatform.provide(CgPlayerQuery.SERVICE, new Players());
         CgNetwork.install(new Loopback(), player -> ((Body) player).id);
-        CgNetwork.serverStarting(null);
+        CgEngineLifecycle.serverStarting(null);
         CgVfxCueClient.install();
     }
 
@@ -112,8 +113,8 @@ public class CgVfxServerBench {
     }
 
     private static void tick() {
-        CgNetwork.serverTick();
-        CgNetwork.clientTick();
+        CgEngineLifecycle.serverTick();
+        CgEngineLifecycle.clientTick();
     }
 
     @Test
@@ -138,10 +139,10 @@ public class CgVfxServerBench {
         for (int t = 0; t < MEASURED_TICKS; t++) {
             long memory = threads.getThreadAllocatedBytes(thread);
             long start = System.nanoTime();
-            CgNetwork.serverTick();
+            CgEngineLifecycle.serverTick();
             nanos[t] = System.nanoTime() - start;
             bytes[t] = threads.getThreadAllocatedBytes(thread) - memory;
-            CgNetwork.clientTick();
+            CgEngineLifecycle.clientTick();
         }
 
         String line = String.format(Locale.ROOT, "[bench-server] %d waves: server tick median %.3f ms, p99 %.3f ms, max %.3f ms;"

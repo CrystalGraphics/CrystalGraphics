@@ -15,7 +15,7 @@ import net.minecraft.world.biome.BiomeGenBase;
 
 /**
  * {@link LevelWorldQueryLegacy} over the client's level, with what only a client has: the tint, biome colours and the
- * particle sprite. Client only: provided by {@code PlatformServiceLegacy.register}. Render thread.
+ * particle sprite. Client only: provided by {@code PlatformServiceLegacy.install}. Render thread.
  *
  * <ul>
  *   <li>No per-biome fog or water-fog colour exists before 1.13: those answer 0. The sky colour is the biome's

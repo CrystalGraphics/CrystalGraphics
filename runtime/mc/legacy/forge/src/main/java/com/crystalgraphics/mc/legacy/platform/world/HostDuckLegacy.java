@@ -14,7 +14,7 @@ import java.util.Arrays;
 /**
  * {@link CgHostDuck} on Forge 1.8.9 to 1.12.2: a factor per sound category that {@code SoundVolumeHook} multiplies into
  * the volume Minecraft computes, the playing sounds then recomputed by {@code SoundHandler.setSoundLevel}, which writes
- * no setting. Client only: constructed by {@code PlatformServiceLegacy.register}.
+ * no setting. Client only: constructed by {@code PlatformServiceLegacy.install}.
  */
 public final class HostDuckLegacy implements CgHostDuck {
 

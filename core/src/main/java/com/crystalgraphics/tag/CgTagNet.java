@@ -1,5 +1,6 @@
 package com.crystalgraphics.tag;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.object.CgAnchor;
 import com.crystalgraphics.net.object.CgNetField;
@@ -41,7 +42,7 @@ public final class CgTagNet {
     /** Hooks the table's exchange. From {@code CgNetwork.install}, once for each time the network is installed. */
     public static synchronized void install() {
         TYPE.onChange(TABLE, (obj, sent) -> fromServer().agree(sent));
-        CgNetwork.onServerTick(CgTagNet::publish);
+        CgEngineLifecycle.onServerTick(CgTagNet::publish);
         CgNetwork.onSessionEnd(() -> {
             synchronized (CgTagNet.class) {
                 fromServer = null;

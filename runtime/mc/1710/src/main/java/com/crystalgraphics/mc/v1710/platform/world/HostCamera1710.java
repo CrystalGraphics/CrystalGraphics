@@ -19,7 +19,7 @@ import org.lwjgl.opengl.GL11;
  * entity renderer orients its camera and computes its field of view. 1.7.10's Forge has no camera-angle event, and its
  * FOV event is the player's smoothed modifier, so both are mixins here. A held pose is ours alone: a living entity of
  * ours, never in the world, is the render view entity, so the camera, the frustum and the chunk order follow it. Client
- * only: provided by {@code PlatformService1710.onPreInit}, which registers {@link Ticks} and {@link Renders}.
+ * only: provided by {@code PlatformService1710.install}, which registers {@link Ticks} and {@link Renders}.
  *
  * <ul>
  *   <li>The rotation is applied in view space ahead of the camera's own, so yaw turns about the view's vertical rather

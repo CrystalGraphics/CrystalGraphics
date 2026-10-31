@@ -1,5 +1,6 @@
 package com.crystalgraphics.collision.debug;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHit;
@@ -159,7 +160,7 @@ public final class CgCollisionShow {
         SERVE.onChange(on -> follow());
         follow();
         ASK.onReceiveFrom(CgCollisionShow::asked);
-        CgNetwork.onServerTick(CgCollisionShow::serve);
+        CgEngineLifecycle.onServerTick(CgCollisionShow::serve);
         CgNetwork.onPeerClosed(peer -> {
             WATCHERS.remove(peer.id());
             follow();
@@ -171,7 +172,7 @@ public final class CgCollisionShow {
         install();
         if (client) return;
         client = true;
-        CgNetwork.onClientTick(CgCollisionShow::ask);
+        CgEngineLifecycle.onClientTick(CgCollisionShow::ask);
         LINES.onReceive(pack -> {
             serverLines = pack;
             serverAt = System.nanoTime();
@@ -334,7 +335,7 @@ public final class CgCollisionShow {
             WATCHERS.remove(peer.id());
         } else {
             Watcher w = WATCHERS.computeIfAbsent(peer.id(), id -> new Watcher(peer));
-            w.asked = CgNetwork.serverTicks();
+            w.asked = CgEngineLifecycle.serverTicks();
             w.faces = want == ASK_FACES;
         }
         follow();
@@ -348,7 +349,7 @@ public final class CgCollisionShow {
         }
         long nanos = System.nanoTime();
         SERVER_LINES.expire(nanos);
-        long now = CgNetwork.serverTicks();
+        long now = CgEngineLifecycle.serverTicks();
         boolean faces = false;
         for (Watcher w : WATCHERS.values()) faces |= w.faces;
         serverFaces = faces;

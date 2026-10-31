@@ -110,8 +110,8 @@ harness's `--device=vulkan`, a recording device in tests. Three additions live i
 CgGL.glBindFramebuffer(target, id);
 CgPlatform.reload().onReload();
 
-// A host, once, from an entry point that runs on both sides:
-CgPlatform.register(PlatformServiceModern.getInstance());   // or PlatformService1710, PlatformServiceLegacy
+// A host, once, from an entry point that runs on both sides: the bundle and every platform slot
+PlatformServiceModern.install(ModLoaderForge.INSTANCE);     // or PlatformService1710.install(client), PlatformServiceLegacy.install(client)
 ```
 
 **Registration builds no graphics**: a dedicated server has none. `CgGL` takes the bundle's backend at the

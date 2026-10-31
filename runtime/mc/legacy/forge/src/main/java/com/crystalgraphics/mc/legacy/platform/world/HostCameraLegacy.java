@@ -23,7 +23,7 @@ import org.lwjgl.input.Mouse;
  * {@link CgHostCamera} on Forge 1.8.9 to 1.12.2: holds the last offset core gave and adds it in Forge's camera-setup
  * and field-of-view events. A held pose is ours alone: an armour stand of ours, never in the world, is the render view
  * entity, so the frustum and the chunk order follow it, and the events, at the lowest priority, write its angles and
- * field of view after every other mod's. Client only: provided by {@code PlatformServiceLegacy.register}, which also
+ * field of view after every other mod's. Client only: provided by {@code PlatformServiceLegacy.install}, which also
  * registers this instance on Forge's event bus and {@link Ticks} on FML's.
  *
  * <ul>

@@ -1,5 +1,6 @@
 package com.crystalgraphics.collision.mirror;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.collision.entity.CgEntitySnapshot;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
@@ -168,7 +169,7 @@ public final class CgLevelMirror {
         if (!host.mirrors(level)) return null;
         if (!hooked) {
             hooked = true;
-            CgNetwork.onServerTick(CgLevelMirror::publishAll);
+            CgEngineLifecycle.onServerTick(CgLevelMirror::publishAll);
             CgNetwork.onSessionEnd(CgLevelMirror::clearAll);
         }
         m = new CgLevelMirror(host, level, world, entities, freezer);

@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.net;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.collision.CollisionFakes;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.easing.CgEasings;
@@ -220,7 +221,7 @@ public class CgVfxCueTest {
         CgPlatform.provide(CgLevels.SERVICE, levels);
         CgPlatform.provide(CgPlayerQuery.SERVICE, new Players());
         CgNetwork.install(new Loopback(), player -> ((Body) player).id);
-        CgNetwork.serverStarting(null);
+        CgEngineLifecycle.serverStarting(null);
         CgVfxCueClient.install();
     }
 
@@ -248,8 +249,8 @@ public class CgVfxCueTest {
 
     private static void ticks(int n) {
         for (int i = 0; i < n; i++) {
-            CgNetwork.serverTick();
-            CgNetwork.clientTick();
+            CgEngineLifecycle.serverTick();
+            CgEngineLifecycle.clientTick();
         }
     }
 
@@ -341,7 +342,7 @@ public class CgVfxCueTest {
         CgNetwork.closeAll("server stopping");
         assertEquals(0, KEPT.type().size());
 
-        CgNetwork.serverStarting(null);
+        CgEngineLifecycle.serverStarting(null);
         assertEquals(1, KEPT.type().size());
         join();
         assertEquals(1, BUILT.size());

@@ -5,19 +5,7 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
-import com.crystalgraphics.collision.mirror.CgMirrorHost;
-import com.crystalgraphics.mc.legacy.platform.world.HostFormatsLegacy;
-import com.crystalgraphics.mc.legacy.platform.world.HostShapesLegacy;
-import com.crystalgraphics.mc.legacy.platform.world.LevelsLegacy;
-import com.crystalgraphics.mc.legacy.platform.world.MirrorHostLegacy;
-import com.crystalgraphics.mc.legacy.platform.world.PlayerQueryLegacy;
 import com.crystalgraphics.net.CgNetwork;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgProcessExit;
-import com.crystalgraphics.platform.world.CgHostShapes;
-import com.crystalgraphics.platform.world.CgLevels;
-import com.crystalgraphics.platform.world.CgPlayerQuery;
-import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -25,15 +13,12 @@ import net.minecraft.network.NetHandlerPlayServer;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.PlayerEvent;
-import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 
 /**
- * FML's lifecycle on Forge 1.8–1.12.2, turned into {@link CgNetwork} calls. Both sides, from init: the channel
- * registered at preInit on 1.7.10 delivered nothing in either direction.
- *
- * <p>Ticks at {@code END}, as every other host does: what arrived during the tick is taken in it, and what the world
- * changed in it goes out at once.</p>
+ * FML's players and connections on Forge 1.8–1.12.2, turned into {@link CgNetwork} calls. Both sides, from init:
+ * the channel registered at preInit on 1.7.10 delivered nothing in either direction. The ticks and the server's start
+ * and stop are the engine's, not the network's.
  */
 public final class NetworkLegacy {
 
@@ -42,29 +27,12 @@ public final class NetworkLegacy {
     private NetworkLegacy() {
     }
 
-    /** Registers the channel and the lifecycle. Idempotent. */
+    /** Registers the channel, installs the network over it, and hears players and connections. Idempotent. */
     public static synchronized void install() {
         if (installed) return;
         installed = true;
-        CgPlatform.provide(CgLevels.SERVICE, LevelsLegacy.INSTANCE);
-        CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQueryLegacy.INSTANCE);
-        CgPlatform.provide(CgHostShapes.SERVICE, new HostShapesLegacy());
-        CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHostLegacy());
-        CgPlatform.provide(CgHostFormats.SERVICE, new HostFormatsLegacy());
-        CgEngineLifecycle.init(NetworkChannelLegacy.create());   // after the slots: it reads player ids through them
-        // FML traps a mod's own Runtime.halt.
-        CgPlatform.provide(CgProcessExit.SERVICE, status -> FMLCommonHandler.instance().exitJava(status, true));
+        CgEngineLifecycle.init(NetworkChannelLegacy.create());   // after the platform's slots: it reads player ids through them
         FMLCommonHandler.instance().bus().register(new Handler());
-    }
-
-    /** The server is starting, its worlds loaded. A mod-lifecycle event, from the mod's own handler. */
-    public static void serverStarting() {
-        CgNetwork.serverStarting(null);
-    }
-
-    /** The server is stopping. A mod-lifecycle event, so it arrives from the mod's own handler. */
-    public static void serverStopping() {
-        CgNetwork.closeAll("server stopping");
     }
 
     @Nullable
@@ -117,16 +85,6 @@ public final class NetworkLegacy {
         @SubscribeEvent
         public void onClientDisconnected(FMLNetworkEvent.ClientDisconnectionFromServerEvent event) {
             CgNetwork.clientDisconnected();
-        }
-
-        @SubscribeEvent
-        public void onServerTick(TickEvent.ServerTickEvent event) {
-            if (event.phase == TickEvent.Phase.END) CgNetwork.serverTick();
-        }
-
-        @SubscribeEvent
-        public void onClientTick(TickEvent.ClientTickEvent event) {
-            if (event.phase == TickEvent.Phase.END) CgNetwork.clientTick();
         }
     }
 }

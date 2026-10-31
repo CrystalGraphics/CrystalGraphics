@@ -6,6 +6,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
 import com.crystalgraphics.net.protocol.CgProtocols;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
@@ -96,8 +97,8 @@ public class CgNetworkTest {
 
     private static void settle() {
         for (int i = 0; i < 8; i++) {
-            CgNetwork.serverTick();
-            CgNetwork.clientTick();
+            CgEngineLifecycle.serverTick();
+            CgEngineLifecycle.clientTick();
         }
     }
 

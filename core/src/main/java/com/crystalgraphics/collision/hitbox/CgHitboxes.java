@@ -1,8 +1,8 @@
 package com.crystalgraphics.collision.hitbox;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHitPart;
-import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
 
@@ -132,8 +132,8 @@ public final class CgHitboxes {
     private static synchronized void hook() {
         if (hooked) return;
         hooked = true;
-        CgNetwork.onServerTick(CgHitboxes::tickThread);
-        CgNetwork.onClientTick(CgHitboxes::tickThread);
+        CgEngineLifecycle.onServerTick(CgHitboxes::tickThread);
+        CgEngineLifecycle.onClientTick(CgHitboxes::tickThread);
     }
 
     private void tick() {

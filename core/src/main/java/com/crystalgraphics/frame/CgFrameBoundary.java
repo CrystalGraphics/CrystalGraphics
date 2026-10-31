@@ -8,8 +8,8 @@ import java.util.Locale;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.asset.load.CgVfxAssets;
-import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -112,7 +112,7 @@ public final class CgFrameBoundary {
     public static synchronized void installServerTick() {
         if (serverTickInstalled) return;
         serverTickInstalled = true;
-        CgNetwork.onServerTick(CgFrameBoundary::serverTick);
+        CgEngineLifecycle.onServerTick(CgFrameBoundary::serverTick);
     }
 
     /** The server tick's boundary: nothing once a host frame has run one. */

@@ -3,12 +3,11 @@ package com.crystalgraphics.mc.modern.neoforge;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
+import com.crystalgraphics.mc.modern.platform.ServerModern;
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.shared.CrashVariant;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.platform.world.CgWorldEvents;
@@ -103,10 +102,10 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
         // register with, and `latest.log` is the file a report is attached with anyway. @see CrashVariant
         LogUtils.getLogger().info("[cg] {}: {}", CrashVariant.LABEL,
                 CrashVariant.report(CrystalGraphicsNeoForge.class));
-        CgPlatform.register(PlatformServiceModern.getInstance());
-        CgPlatform.provide(CgModLoader.HOST, ModLoaderNeoForge.INSTANCE);
+        PlatformServiceModern.install(ModLoaderNeoForge.INSTANCE);
+        if (FmlSide.isClient(FMLLoader.class)) PlatformServiceModern.installClient();
         CgEngineLifecycle.preInit();
-        NetworkModern.install(Network.get());
+        CgEngineLifecycle.init(Network.get());
         Events.register((IEventBus) context);
     }
 
@@ -145,21 +144,21 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
         }
 
         private static void onServerStarting(ServerAboutToStartEvent event) {
-            NetworkModern.serverStarting(event.getServer());
+            ServerModern.serverStarting(event.getServer());
         }
 
         private static void onServerStopping(ServerStoppingEvent event) {
-            NetworkModern.serverStopping();
+            ServerModern.serverStopping();
         }
 
         // 1.20.5 split the tick events by phase into classes of their own.
         //? if >=1.20.5 {
         /*private static void onServerTick(ServerTickEvent.Post event) {
-            NetworkModern.serverTick();
+            ServerModern.serverTick();
         }
         *///?} else {
         private static void onServerTick(TickEvent.ServerTickEvent event) {
-            if (event.phase == TickEvent.Phase.END) NetworkModern.serverTick();
+            if (event.phase == TickEvent.Phase.END) ServerModern.serverTick();
         }
         //?}
 
@@ -242,7 +241,7 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             }
 
             private static void onLoggedOut(ClientPlayerNetworkEvent.LoggingOut event) {
-                NetworkModern.clientDisconnected();
+                LifecycleModern.clientDisconnected();
             }
 
             //? if >=1.21.7 {

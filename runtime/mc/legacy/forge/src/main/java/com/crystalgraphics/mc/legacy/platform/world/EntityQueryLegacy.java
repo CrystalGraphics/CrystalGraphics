@@ -15,7 +15,7 @@ import java.util.function.IntConsumer;
 
 /**
  * {@link LevelEntityQueryLegacy} over the client's level, with its local and camera entity, and a box walk over the
- * loaded list and each entity's parts that allocates nothing. Client only: provided by {@code PlatformServiceLegacy.register}. Render thread.
+ * loaded list and each entity's parts that allocates nothing. Client only: provided by {@code PlatformServiceLegacy.install}. Render thread.
  */
 public final class EntityQueryLegacy extends LevelEntityQueryLegacy {
 

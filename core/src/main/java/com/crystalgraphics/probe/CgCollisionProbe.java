@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
@@ -81,8 +82,8 @@ public final class CgCollisionProbe {
     public static synchronized void install() {
         if (installed) return;
         installed = true;
-        CgNetwork.onClientTick(CgCollisionProbe::clientTick);
-        CgNetwork.onServerTick(CgCollisionProbe::serverTick);
+        CgEngineLifecycle.onClientTick(CgCollisionProbe::clientTick);
+        CgEngineLifecycle.onServerTick(CgCollisionProbe::serverTick);
         LOGGER.info("collision probe: armed");
     }
 

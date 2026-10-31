@@ -8,6 +8,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
 import com.crystalgraphics.net.protocol.CgProtocols;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
@@ -91,8 +92,8 @@ public class CgMessageTest {
 
     private static void settle() {
         for (int i = 0; i < 12; i++) {
-            CgNetwork.serverTick();
-            CgNetwork.clientTick();
+            CgEngineLifecycle.serverTick();
+            CgEngineLifecycle.clientTick();
         }
     }
 
@@ -219,7 +220,7 @@ public class CgMessageTest {
         CgNetwork.playerJoined(id, "Vanilla", () -> id);   // no client connection: nobody says hello
 
         play.send(CgAudience.all(), new Blast("blast", 5L));
-        for (int i = 0; i < CgHello.SILENT_TICKS + 1; i++) CgNetwork.serverTick();
+        for (int i = 0; i < CgHello.SILENT_TICKS + 1; i++) CgEngineLifecycle.serverTick();
         play.send(CgAudience.all(), new Blast("blast", 6L));
 
         assertTrue(CgHello.state(CgNetwork.forPlayer(id)).absent());

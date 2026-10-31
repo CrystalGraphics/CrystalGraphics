@@ -15,6 +15,7 @@ import java.util.function.IntConsumer;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.protocol.CgConnections;
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
@@ -110,7 +111,7 @@ public final class CgNetTestRig implements AutoCloseable {
         CgPlatform.provide(CgLevels.SERVICE, rig.levels);
         CgPlatform.provide(CgPlayerQuery.SERVICE, rig.new Players());
         CgNetwork.install(rig.new Channel(), player -> ((Client) player).id);
-        CgNetwork.serverStarting(null);
+        CgEngineLifecycle.serverStarting(null);
         for (int i = 0; i < clients; i++) rig.clients.add(rig.new Client(i));
         for (Client client : rig.clients) client.connect();
         return rig;
@@ -183,7 +184,7 @@ public final class CgNetTestRig implements AutoCloseable {
             now++;
             long start = System.nanoTime();
             deliver(toServer, toServerSink);
-            CgNetwork.serverTick();
+            CgEngineLifecycle.serverTick();
             long served = System.nanoTime();
             deliver(toClients, toClientSink);
             clientConnections.tick();
@@ -216,7 +217,7 @@ public final class CgNetTestRig implements AutoCloseable {
         CgNetwork.closeAll("restart");
         toClients.clear();
         toServer.clear();
-        CgNetwork.serverStarting(null);
+        CgEngineLifecycle.serverStarting(null);
         for (Client client : clients) client.connect();
         return this;
     }

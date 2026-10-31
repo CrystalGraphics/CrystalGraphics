@@ -20,6 +20,7 @@ import javax.management.ObjectName;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.CgAudience;
 import com.crystalgraphics.net.CgMessage;
 import com.crystalgraphics.net.CgNetwork;
@@ -100,7 +101,7 @@ public final class CgNetStress {
         Server server = new Server(Integer.getInteger(PROPERTY + ".players", 2),
                 Paths.get(System.getProperty(PROPERTY + ".report", "net-stress.txt")));
         CgNetwork.measureAllocation(true);
-        CgNetwork.onServerTick(server::tick);
+        CgEngineLifecycle.onServerTick(server::tick);
         REPORT.onReceiveFrom(server::received);
         RICH.onCommand(POKE, server::poked);
         SMALL.acceptPredictionsFrom((peer, spark) -> ++server.predictionsAccepted > 0);

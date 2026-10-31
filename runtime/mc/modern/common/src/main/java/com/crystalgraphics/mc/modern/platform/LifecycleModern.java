@@ -1,8 +1,8 @@
 package com.crystalgraphics.mc.modern.platform;
 
-import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgHostFrame;
+import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.modern.platform.world.EnvironmentModern;
 import com.crystalgraphics.mc.modern.platform.world.TexturesModern;
@@ -243,7 +243,7 @@ public final class LifecycleModern {
      */
     public static void clientTick() {
         WorldEventsModern.tick(Minecraft.getInstance());
-        CgNetwork.clientTick();
+        CgEngineLifecycle.clientTick();
     }
 
     /**
@@ -257,6 +257,20 @@ public final class LifecycleModern {
      */
     public static void clientTickStart() {
         HostCameraModern.tickStart();
+    }
+
+    /**
+     * The client has left its server, or its singleplayer world: the connection closes, and a camera held as it goes is
+     * given back, its perspective, HUD and keys with it.
+     *
+     * <pre>{@code
+     * // Forge, NeoForge: ClientPlayerNetworkEvent.LoggingOut; Fabric: ClientPlayConnectionEvents.DISCONNECT
+     * LifecycleModern.clientDisconnected();
+     * }</pre>
+     */
+    public static void clientDisconnected() {
+        NetworkModern.clientDisconnected();
+        HostCameraModern.levelGone();
     }
 
     /**

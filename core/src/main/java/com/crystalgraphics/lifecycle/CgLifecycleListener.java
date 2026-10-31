@@ -15,7 +15,7 @@ import java.util.logging.Logger;
  * <pre>{@code
  * CgEngineLifecycle.addListener(new CgLifecycleListener() {
  *     @Override public void onInit() {
- *         CgNetwork.onServerTick(MyMod::tick);          // the network is installed by now
+ *         CgEngineLifecycle.onServerTick(MyMod::tick);          // the network is installed by now
  *     }
  *     @Override public void onPostInit() {
  *         HIT = CgTagRegistry.global().require("mymod:cue.hit");   // every mod's tags are declared

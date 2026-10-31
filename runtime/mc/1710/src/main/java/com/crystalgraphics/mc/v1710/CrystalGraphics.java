@@ -71,7 +71,7 @@ public final class CrystalGraphics{
                 return CrashVariant.report(CrystalGraphics.class);
             }
         });
-        PlatformService1710.onPreInit();
+        PlatformService1710.install(FMLCommonHandler.instance().getSide().isClient());
         CgEngineLifecycle.preInit();   // every mod's assets mounted, its tags declared
     }
 
@@ -117,13 +117,13 @@ public final class CrystalGraphics{
     /** Loads what persists with the world, its worlds now loaded. */
     @Mod.EventHandler
     public void onServerStarting(FMLServerStartingEvent event) {
-        Network1710.serverStarting();
+        CgEngineLifecycle.serverStarting(null);
     }
 
     /** Closes every connection, so no caller is left waiting out a timeout for a stopped server. */
     @Mod.EventHandler
     public void onServerStopping(FMLServerStoppingEvent event) {
-        Network1710.serverStopping();
+        CgEngineLifecycle.serverStopping();
     }
 
 }

@@ -17,10 +17,21 @@ import com.crystalgraphics.mc.legacy.platform.world.HostCameraLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.HostDebugLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldEventsLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.HostDuckLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.HostFormatsLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.HostShapesLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.HostVolumeLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.LevelsLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.MirrorHostLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.PlayerQueryLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldStimulusLegacy;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgModLoader;
+import com.crystalgraphics.platform.service.CgProcessExit;
+import com.crystalgraphics.platform.world.CgHostShapes;
+import com.crystalgraphics.platform.world.CgLevels;
+import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.collision.mirror.CgMirrorHost;
+import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.CgGLContext;
@@ -50,7 +61,7 @@ import net.minecraftforge.fml.common.FMLCommonHandler;
  * this era's Minecraft-facing services.
  *
  * <pre>
- * PlatformServiceLegacy.register(client);   // preInit, both sides
+ * PlatformServiceLegacy.install(client);    // preInit, both sides
  * </pre>
  *
  * <ul>
@@ -77,10 +88,26 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         return instance;
     }
 
-    /** Registers the bundle, and on a client fills the cursor and world slots. */
-    public static void register(boolean client) {
+    /**
+     * Installs Forge 1.8–1.12.2's platform at preInit, before {@code CgEngineLifecycle.preInit}: the bundle, the mod
+     * loader, the world slots and process exit on both sides, the engine's ticks, and on a client its own slots.
+     *
+     * <pre>{@code
+     * PlatformServiceLegacy.install(FMLCommonHandler.instance().getSide().isClient());
+     * CgEngineLifecycle.preInit();
+     * }</pre>
+     */
+    public static void install(boolean client) {
         CgPlatform.register(getInstance());
         CgPlatform.provide(CgModLoader.HOST, new ModLoaderLegacy());
+        CgPlatform.provide(CgLevels.SERVICE, LevelsLegacy.INSTANCE);
+        CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQueryLegacy.INSTANCE);
+        CgPlatform.provide(CgHostShapes.SERVICE, new HostShapesLegacy());
+        CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHostLegacy());
+        CgPlatform.provide(CgHostFormats.SERVICE, new HostFormatsLegacy());
+        // FML traps a mod's own Runtime.halt.
+        CgPlatform.provide(CgProcessExit.SERVICE, status -> FMLCommonHandler.instance().exitJava(status, true));
+        FMLCommonHandler.instance().bus().register(new TicksLegacy());
         if (!client) return;
         CgPlatform.provide(CgCursorService.SERVICE, new Lwjgl2CursorService());
         ClientLegacy.install();

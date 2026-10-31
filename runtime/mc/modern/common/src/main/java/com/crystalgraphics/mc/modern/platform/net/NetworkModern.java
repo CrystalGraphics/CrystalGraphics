@@ -4,43 +4,19 @@ import java.util.UUID;
 
 import javax.annotation.Nullable;
 
-import com.crystalgraphics.lifecycle.CgEngineLifecycle;
-import com.crystalgraphics.collision.mirror.CgMirrorHost;
-import com.crystalgraphics.mc.modern.platform.world.HostFormatsModern;
-import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
-import com.crystalgraphics.mc.modern.platform.world.HostShapesModern;
-import com.crystalgraphics.mc.modern.platform.world.LevelsModern;
-import com.crystalgraphics.mc.modern.platform.world.MirrorHostModern;
-import com.crystalgraphics.mc.modern.platform.world.PlayerQueryModern;
 import com.crystalgraphics.net.CgNetwork;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgNetworkChannel;
-import com.crystalgraphics.platform.world.CgHostShapes;
-import com.crystalgraphics.platform.world.CgLevels;
-import com.crystalgraphics.platform.world.CgPlayerQuery;
-import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
 
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 
 /**
- * Minecraft's players turned into {@link CgNetwork} calls, for all three modern loaders. Server-safe: it names no
- * client class. Each loader forwards its own events here.
+ * Minecraft's players and connections turned into {@link CgNetwork} calls, for all three modern loaders. Server-safe:
+ * it names no client class. Each loader forwards its own events here; the server's start, stop and tick go to
+ * {@code ServerModern}.
  */
 public final class NetworkModern {
 
     private NetworkModern() {
-    }
-
-    /** Mod init, both sides. */
-    public static void install(CgNetworkChannel channel) {
-        CgPlatform.provide(CgLevels.SERVICE, LevelsModern.INSTANCE);
-        CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQueryModern.INSTANCE);
-        CgPlatform.provide(CgHostShapes.SERVICE, new HostShapesModern());
-        CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHostModern());
-        CgPlatform.provide(CgHostFormats.SERVICE, new HostFormatsModern());
-        CgEngineLifecycle.init(channel);   // after the slots: it reads player ids through them
     }
 
     public static void playerJoined(@Nullable ServerPlayer player) {
@@ -56,28 +32,12 @@ public final class NetworkModern {
         if (id != null) CgNetwork.playerLeft(id);
     }
 
-    public static void serverStarting(MinecraftServer server) {
-        PlayerQueryModern.INSTANCE.server(server);
-        CgNetwork.serverStarting(server);
-    }
-
-    public static void serverTick() {
-        CgNetwork.serverTick();
-    }
-
-    public static void serverStopping() {
-        CgNetwork.closeAll("server stopping");
-        PlayerQueryModern.INSTANCE.server(null);
-    }
-
     public static void clientConnected() {
         CgNetwork.clientConnected();
     }
 
     public static void clientDisconnected() {
         CgNetwork.clientDisconnected();
-        // A camera held as the connection goes is given back: its perspective, HUD and keys with it.
-        HostCameraModern.levelGone();
     }
 
     @Nullable

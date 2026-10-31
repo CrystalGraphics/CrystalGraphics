@@ -23,10 +23,17 @@ import com.crystalgraphics.mc.modern.platform.world.ClientModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.modern.platform.world.HostDebugModern;
 import com.crystalgraphics.mc.modern.platform.world.HostDuckModern;
+import com.crystalgraphics.mc.modern.platform.world.HostFormatsModern;
+import com.crystalgraphics.mc.modern.platform.world.HostShapesModern;
 import com.crystalgraphics.mc.modern.platform.world.HostVolumeModern;
+import com.crystalgraphics.mc.modern.platform.world.LevelsModern;
+import com.crystalgraphics.mc.modern.platform.world.MirrorHostModern;
+import com.crystalgraphics.mc.modern.platform.world.PlayerQueryModern;
 import com.crystalgraphics.mc.modern.platform.world.WorldStimulusModern;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgPlatformService;
+import com.crystalgraphics.collision.mirror.CgMirrorHost;
+import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.CgGLContext;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLContext;
@@ -34,12 +41,16 @@ import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.platform.service.CgLifecycleService;
+import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.platform.service.CgReloadService;
 import com.crystalgraphics.platform.service.CgRenderingService;
 import com.crystalgraphics.platform.service.CgResourceService;
 import com.crystalgraphics.platform.service.CgSoundService;
 import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.platform.world.CgHostDebug;
+import com.crystalgraphics.platform.world.CgHostShapes;
+import com.crystalgraphics.platform.world.CgLevels;
+import com.crystalgraphics.platform.world.CgPlayerQuery;
 import com.crystalgraphics.platform.world.CgModelSpace;
 import com.crystalgraphics.platform.world.CgWorldEvents;
 import com.crystalgraphics.platform.audio.CgAudioDecoder;
@@ -57,7 +68,8 @@ import net.minecraft.client.Minecraft;
 
 /**
  * The modern platform bundle. Implements {@link CgPlatformService} by composing
- * the modern service adapters. Register via {@code CgPlatform.register(PlatformServiceModern.getInstance())}.
+ * the modern service adapters. A loader installs it, with every platform slot, through {@link #install} and
+ * {@link #installClient}.
  *
  * <p><b>Every service is built on demand and every field is typed as its SPI interface.</b> This used
  * to read "no GL calls are made in the constructor or static initializer" — true about what the code
@@ -83,6 +95,64 @@ public final class PlatformServiceModern implements CgPlatformService {
     public static synchronized PlatformServiceModern getInstance() {
         if (instance == null) instance = new PlatformServiceModern();
         return instance;
+    }
+
+    /**
+     * Installs the modern platform, both sides, as the loader constructs CrystalGraphics: the bundle, the loader's
+     * {@code CgModLoader} host, and the world slots every side reads (levels, players, host shapes, the collision
+     * mirror, host formats). Before {@code CgEngineLifecycle.preInit}.
+     *
+     * <pre>{@code
+     * PlatformServiceModern.install(ModLoaderForge.INSTANCE);
+     * if (client) PlatformServiceModern.installClient();
+     * CgEngineLifecycle.preInit();
+     * }</pre>
+     */
+    public static void install(CgModLoader.Host loader) {
+        CgPlatform.register(getInstance());
+        CgPlatform.provide(CgModLoader.HOST, loader);
+        CgPlatform.provide(CgLevels.SERVICE, LevelsModern.INSTANCE);
+        CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQueryModern.INSTANCE);
+        CgPlatform.provide(CgHostShapes.SERVICE, new HostShapesModern());
+        CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHostModern());
+        CgPlatform.provide(CgHostFormats.SERVICE, new HostFormatsModern());
+    }
+
+    /**
+     * Installs the client's slots, after {@link #install}, from the loader's client side only: the client halves of the
+     * levels and players, the camera, debug view, audio, language, stimulus, game directory and cursor. They name client
+     * and LWJGL classes a dedicated server does not ship, so nothing on a server path may call it.
+     */
+    public static void installClient() {
+        ClientModern.install();
+        CgPlatform.provide(CgHostCamera.SERVICE, new HostCameraModern());
+        CgPlatform.provide(CgHostDebug.SERVICE, new HostDebugModern());
+        CgPlatform.provide(CgModelSpace.SERVICE, HostViewModern::modelSpace);
+        CgPlatform.provide(CgAudioOutput.SERVICE, new Lwjgl3AudioOutput(HostVolumeModern::device));
+        CgPlatform.provide(CgHostVolume.SERVICE, new HostVolumeModern());
+        CgPlatform.provide(CgHostDuck.SERVICE, new HostDuckModern());
+        CgPlatform.provide(CgHostI18n.SERVICE, new HostI18nModern());
+        CgPlatform.provide(CgAudioDecoder.SERVICE, new StbVorbisDecoder());
+        CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusModern());
+        CgPlatform.provide(CgGameDirectory.SERVICE, () -> Minecraft.getInstance().gameDirectory.toPath());
+        // What WorldEventsModern.poll reports; the explosion and the broken block are the loaders' mixins'.
+        //? if >=1.14 {
+        CgWorldEvents.declare(CgWorldEvents.ENTITY_HURT | CgWorldEvents.ENTITY_DIED);
+        //?}
+        //? if >=1.16.5 {
+        CgWorldEvents.declare(CgWorldEvents.LIGHTNING);
+        //?}
+
+        // The window arrives as a SUPPLIER, not a handle: GLFW's window outlives no recreation and
+        // is not open yet when the backend is first built, so a captured long would be stale
+        // exactly when it mattered. That supplier is the only Minecraft fact the adapter needs,
+        // which is what lets it sit in tier 1 knowing nothing about this era.
+        //? if >=26.3 {
+        /*CgPlatform.provide(CgCursorService.SERVICE, new SdlCursorService());
+        *///?} else {
+        CgPlatform.provide(CgCursorService.SERVICE,
+                new GlfwCursorService(PlatformServiceModern::windowHandle));
+        //?}
     }
 
     // BUILT ON DEMAND, and typed as the SPI interfaces rather than the implementations.
@@ -125,42 +195,6 @@ public final class PlatformServiceModern implements CgPlatformService {
                 glBackend = new Blaze3dGLBackend();
                 HostStateModern.install();
             }
-
-            // The client's halves of the levels and players: client only, as the cursor below (they read the client level).
-            ClientModern.install();
-            CgPlatform.provide(CgHostCamera.SERVICE, new HostCameraModern());
-            CgPlatform.provide(CgHostDebug.SERVICE, new HostDebugModern());
-            CgPlatform.provide(CgModelSpace.SERVICE, HostViewModern::modelSpace);
-            CgPlatform.provide(CgAudioOutput.SERVICE, new Lwjgl3AudioOutput(HostVolumeModern::device));
-            CgPlatform.provide(CgHostVolume.SERVICE, new HostVolumeModern());
-            CgPlatform.provide(CgHostDuck.SERVICE, new HostDuckModern());
-            CgPlatform.provide(CgHostI18n.SERVICE, new HostI18nModern());
-            CgPlatform.provide(CgAudioDecoder.SERVICE, new StbVorbisDecoder());
-            CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusModern());
-            CgPlatform.provide(CgGameDirectory.SERVICE, () -> Minecraft.getInstance().gameDirectory.toPath());
-            // What WorldEventsModern.poll reports; the explosion and the broken block are the loaders' mixins'.
-            //? if >=1.14 {
-            CgWorldEvents.declare(CgWorldEvents.ENTITY_HURT | CgWorldEvents.ENTITY_DIED);
-            //?}
-            //? if >=1.16.5 {
-            CgWorldEvents.declare(CgWorldEvents.LIGHTNING);
-            //?}
-
-            // The cursor slot, filled here so no consumer has to -- and HERE rather than in
-            // getInstance() for the reason the note above gives: getInstance() runs on both sides, and
-            // GlfwCursorService names org.lwjgl.glfw, which a dedicated server does not ship. This
-            // method is a client event by construction, which is the same protection Blaze3D gets.
-            //
-            // The window arrives as a SUPPLIER, not a handle: GLFW's window outlives no recreation and
-            // is not open yet when the backend is first built, so a captured long would be stale
-            // exactly when it mattered. That supplier is the only Minecraft fact the adapter needs,
-            // which is what lets it sit in tier 1 knowing nothing about this era.
-            //? if >=26.3 {
-            /*CgPlatform.provide(CgCursorService.SERVICE, new SdlCursorService());
-            *///?} else {
-            CgPlatform.provide(CgCursorService.SERVICE,
-                    new GlfwCursorService(PlatformServiceModern::windowHandle));
-            //?}
         }
         return glBackend;
     }

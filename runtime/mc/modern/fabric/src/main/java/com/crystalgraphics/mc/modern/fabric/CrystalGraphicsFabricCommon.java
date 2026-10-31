@@ -3,10 +3,9 @@ package com.crystalgraphics.mc.modern.fabric;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
+import com.crystalgraphics.mc.modern.platform.ServerModern;
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.mc.shared.CrashVariant;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 
 import com.crystalgraphics.mc.shared.VariantEntry;
@@ -52,19 +51,18 @@ public final class CrystalGraphicsFabricCommon implements VariantEntry {
         // callable, so unlike Forge and 1.7.10 there is nothing to register with. @see CrashVariant
         LogManager.getLogger("CrystalGraphics").info("[cg] {}: {}", CrashVariant.LABEL,
                 CrashVariant.report(CrystalGraphicsFabricCommon.class));
-        CgPlatform.register(PlatformServiceModern.getInstance());
-        CgPlatform.provide(CgModLoader.HOST, ModLoaderFabric.INSTANCE);
+        PlatformServiceModern.install(ModLoaderFabric.INSTANCE);
         CgEngineLifecycle.preInit();
-        NetworkModern.install(Network.get());
+        CgEngineLifecycle.init(Network.get());
         Network.registerServerReceiver();
         registerServerEvents();
     }
 
     /** The connection lifecycle's server half. Both sides: a dedicated server opens connections too. */
     private static void registerServerEvents() {
-        ServerLifecycleEvents.SERVER_STARTING.register(NetworkModern::serverStarting);
-        ServerLifecycleEvents.SERVER_STOPPING.register(server -> NetworkModern.serverStopping());
-        ServerTickEvents.END_SERVER_TICK.register(server -> NetworkModern.serverTick());
+        ServerLifecycleEvents.SERVER_STARTING.register(ServerModern::serverStarting);
+        ServerLifecycleEvents.SERVER_STOPPING.register(server -> ServerModern.serverStopping());
+        ServerTickEvents.END_SERVER_TICK.register(server -> ServerModern.serverTick());
         // getPlayer() arrived in 1.17; before it the handler exposes the field.
         //? if >=1.17 {
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> NetworkModern.playerJoined(handler.getPlayer()));

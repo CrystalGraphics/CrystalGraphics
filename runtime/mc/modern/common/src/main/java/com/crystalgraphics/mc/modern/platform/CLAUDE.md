@@ -6,11 +6,17 @@ through Stonecutter directives. No Forge, NeoForge or Fabric type appears here.
 ## Entry points
 
 **`PlatformServiceModern`** implements `CgPlatformService` over tier 1 (`runtime/lwjgl/3`). A loader
-registers it once, from an entry point that runs on both sides:
+installs it once, with every platform slot, before the engine's phases:
 
 ```java
-CgPlatform.register(PlatformServiceModern.getInstance());
+PlatformServiceModern.install(ModLoaderForge.INSTANCE);              // both sides: the bundle, the loader, the world slots
+if (client) PlatformServiceModern.installClient();                   // the client's slots; Fabric: its client entrypoint
+CgEngineLifecycle.preInit();
+CgEngineLifecycle.init(channel);
 ```
+
+**`ServerModern`** carries the server's start, tick and stop to `CgEngineLifecycle` (and the player query's server);
+`NetworkModern` only the players and connections.
 
 **`LifecycleModern`** is everything a loader forwards to: the opaque and transparent passes, the reload,
 the shutdown. A loader decides only which event (or node mixin) reaches it.
