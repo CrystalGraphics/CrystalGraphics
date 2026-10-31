@@ -15,6 +15,7 @@ import org.joml.Vector3f;
 
 import com.crystalgraphics.audio.CgSoundRef;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.asset.camera.CgCameraShakeDefinition;
 import com.crystalgraphics.asset.kind.CgCameraKinds;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
@@ -186,6 +187,11 @@ final class CgCueCompiler {
         Shake shake = null;
         if (b.get("shake") instanceof Map<?, ?> s) {
             String ref = String.valueOf(s.get("shake"));
+            try {
+                CgCameraShakeDefinition.worldSpace(s.get("space"), "space");
+            } catch (IllegalArgumentException e) {
+                throw fail(path + ".shake", e.getMessage());
+            }
             shake = new Shake(ref, deps.definition(CgCameraKinds.SHAKE, ref), number(s.get("scale"), 1f), s.get("space"),
                     Boolean.TRUE.equals(s.get("in_world")), length(s.get("inner"), 0f), length(s.get("outer"), 0f),
                     number(s.get("falloff"), 1f), where(s, path + ".shake", blockWhere));

@@ -9,6 +9,7 @@ import javax.annotation.Nullable;
 
 import org.joml.Quaternionf;
 
+import com.crystalgraphics.asset.camera.CgCameraShakeDefinition;
 import com.crystalgraphics.audio.CgAudioEngine;
 import com.crystalgraphics.audio.CgSoundClass;
 import com.crystalgraphics.cue.CgCueDefinition;
@@ -16,6 +17,7 @@ import com.crystalgraphics.cue.CgCueDefinition.Effects;
 import com.crystalgraphics.cue.CgCueDefinition.Lens;
 import com.crystalgraphics.cue.CgCueDefinition.Particles;
 import com.crystalgraphics.cue.CgCueDefinition.Placement;
+import com.crystalgraphics.cue.CgCueDefinition.Shake;
 import com.crystalgraphics.cue.CgCueDefinition.Slot;
 import com.crystalgraphics.cue.CgCueDefinition.Write;
 import com.crystalgraphics.cue.CgCueDefinition.Sound;
@@ -27,12 +29,13 @@ import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.volume.CgPostBlock;
 import com.crystalgraphics.render.post.volume.CgPostVolume;
 import com.crystalgraphics.vfx.CgVfxSystem;
+import com.crystalgraphics.vfx.camera.CgShakePlay;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.world.CgAttachment;
 import com.crystalgraphics.world.CgEntityAttachments;
 
 /**
- * Plays a cue's systems and its lens on a client: the VFX engine's {@link CgCueEffects}. Each entry is placed as its
+ * Plays a cue's systems, sounds, shake and lens on a client: the VFX engine's {@link CgCueEffects}. Each entry is placed as its
  * {@code placement} says on the cue's target, if its {@code spawn_condition} passes for this viewer; a looping play's
  * {@code writes} reach the user parameters of the systems it is playing.
  *
@@ -46,7 +49,11 @@ import com.crystalgraphics.world.CgEntityAttachments;
  *       screen for the cue's life. In the world it plays where the viewer ({@link CgCueManager#viewer}) stands within
  *       its reach as it starts; otherwise only on the target's own machine ({@link CgCueManager#localControl}).
  *       Its sounds play through the client world's {@link CgAudioEngine}, as Unreal's notify plays them beside its
- *       particles; shakes, force feedback and decals are their own systems'.</li>
+ *       particles. Force feedback and decals are their own systems'.</li>
+ *   <li>A {@code shake} plays its shake asset as {@code FGameplayCueNotify_CameraShakeInfo::PlayCameraShake} does:
+ *       {@code in_world}, on this viewer at {@code scale} times Unreal's falloff from where it is placed, taken once
+ *       as it starts; otherwise at {@code scale} on the target's own machine alone. A looping block's shake blends out
+ *       at removal. A cue's magnitude scales none of it, as in Unreal: a stronger hit is another cue.</li>
  *   <li>{@code attach_to_target} follows the target's socket where the target is an entity, else the target itself;
  *       {@code do_not_attach} spawns at the socket and stays.</li>
  * </ul>
@@ -76,6 +83,28 @@ public final class CgVfxCueEffects implements CgCueEffects {
             Sound s = sounds.get(i);
             if (cues.spawns(s.where().condition(), at, particles.size() + i)) sound(s, at, false);
         }
+        shake(block, at);
+    }
+
+    /** {@code block}'s shake, started if it plays on this machine; null where it does not. */
+    @Nullable
+    private CgShakePlay shake(Effects block, CgCueParameters at) {
+        Shake s = block.shake();
+        if (s == null || s.scale() <= 0f || !(s.definition() instanceof CgCameraShakeDefinition d)) return null;
+        if (!cues.spawns(s.where().condition(), at, block.particles().size() + block.sounds().size())) return null;
+        placedPoint(s.where().placement(), at);
+        float scale = s.scale();
+        if (s.inWorld()) {
+            // Felt by this viewer at its distance as it starts, then held: StartCameraShake takes no source
+            if (!cues.viewerAt(viewer)) return null;
+            double dx = viewer[0] - point[0], dy = viewer[1] - point[1], dz = viewer[2] - point[2];
+            scale *= falloff(Math.sqrt(dx * dx + dy * dy + dz * dz), s.inner(), s.outer(), s.falloff());
+            if (scale <= 0f) return null;
+        } else if (!cues.locallyControlled(at.target())) {
+            return null;
+        }
+        return d.play(point[0], point[1], point[2], scale, at.seed(), 0f, 0f, 1f,
+                CgCameraShakeDefinition.worldSpace(s.space(), "space"));
     }
 
     /**
@@ -91,12 +120,17 @@ public final class CgVfxCueEffects implements CgCueEffects {
 
     /** Where {@code s} sounds now, into {@link #point}. */
     private void soundPoint(Sound s, CgCueParameters at) {
+        placedPoint(s.where().placement(), at);
+    }
+
+    /** Where {@code placement} puts an entry on the cue's target now (its socket, else the target), else the cue's point. */
+    private void placedPoint(Placement placement, CgCueParameters at) {
         point[0] = at.x();
         point[1] = at.y();
         point[2] = at.z();
         CgAttachment target = at.target();
         if (target == null) return;
-        String socket = s.where().placement().socket();
+        String socket = placement.socket();
         if (socket == null || !target.point(socket, point)) target.place(point, null);
     }
 
@@ -111,12 +145,15 @@ public final class CgVfxCueEffects implements CgCueEffects {
     }
 
     /**
-     * Unreal's falloff of a world effect at {@code distance}: 1 where neither radius is set, falling linearly from
-     * {@code inner} to {@code outer}, or a cliff at {@code inner} where {@code outer} is not past it.
+     * Unreal's falloff of a world effect at {@code distance} ({@code CalculateFalloffIntensity}): 1 where neither
+     * radius is set, falling from {@code inner} to {@code outer} as the linear share to the power {@code exponent},
+     * or a cliff at {@code inner} where {@code outer} is not past it.
      */
-    static float falloff(double distance, float inner, float outer) {
+    static float falloff(double distance, float inner, float outer, float exponent) {
         if (inner <= 0f && outer <= 0f) return 1f;
-        if (inner < outer) return (float) (1.0 - Math.max(0.0, Math.min(1.0, (distance - inner) / (outer - inner))));
+        if (inner < outer) {
+            return (float) Math.pow(1.0 - Math.max(0.0, Math.min(1.0, (distance - inner) / (outer - inner))), exponent);
+        }
         return distance < inner ? 1f : 0f;
     }
 
@@ -125,7 +162,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
         if (!lens.inWorld()) return cues.locallyControlled(at.target());
         if (!cues.viewerAt(viewer)) return false;
         double dx = viewer[0] - at.x(), dy = viewer[1] - at.y(), dz = viewer[2] - at.z();
-        return falloff(Math.sqrt(dx * dx + dy * dy + dz * dz), lens.inner(), lens.outer()) > 0f;
+        return falloff(Math.sqrt(dx * dx + dy * dy + dz * dz), lens.inner(), lens.outer(), 1f) > 0f;
     }
 
     /** Plays {@code p}, {@code age} seconds into its life. */
@@ -190,6 +227,9 @@ public final class CgVfxCueEffects implements CgCueEffects {
         private float age;
         @Nullable
         private CgPostVolume lens;
+        /** The looping block's shake, blended out at removal. */
+        @Nullable
+        private CgShakePlay loopShake;
 
         Playing(CgCueDefinition cue) {
             this.cue = cue;
@@ -203,6 +243,8 @@ public final class CgVfxCueEffects implements CgCueEffects {
             play(cue.looping(), at, true);
             playSounds(cue.application(), at, false);
             playSounds(cue.looping(), at, true);
+            shake(cue.application(), at);
+            loopShake = shake(cue.looping(), at);
             Lens l = cue.looping().lens();
             if (l != null && cues.spawns(l.where().condition(), at, 0) && lensPlays(l, at)) lens = openLens(CgPostStack.get(), l);
         }
@@ -282,6 +324,12 @@ public final class CgVfxCueEffects implements CgCueEffects {
             lens = null;
         }
 
+        /** {@code StopShake(bStopImmediately)} on the looping shake, if it is still the one this play started. */
+        private void stopShake(boolean immediately) {
+            if (loopShake != null && loopShake.playing()) loopShake.stop(immediately);
+            loopShake = null;
+        }
+
         @Override
         public void write(Write write, float[] value) {
             List<Slot> slots = write.slots();
@@ -311,9 +359,11 @@ public final class CgVfxCueEffects implements CgCueEffects {
             loops.clear();
             fadeSounds();
             closeLens();
+            stopShake(false);
             age = 0f;
             play(cue.removal(), at, false);
             playSounds(cue.removal(), at, false);
+            shake(cue.removal(), at);
         }
 
         /** Whether a removal entry that starts at once replaces what plays on {@code socket}. */
@@ -358,6 +408,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
             loopSounds.clear();
             loopSoundEntries.clear();
             closeLens();
+            stopShake(true);
         }
 
         @Override
@@ -372,6 +423,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
             at = null;
             age = 0f;
             closeLens();
+            loopShake = null;
         }
     }
 }

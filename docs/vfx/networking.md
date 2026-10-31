@@ -232,6 +232,18 @@ beam.remove();                                                // removal plays; 
   With `in_world` it plays where the viewer stands within `outer` of the cue's point (within `inner` where `outer` is
   not past it; anywhere where neither is set): `cues.viewer(out -> ...)` gives the local player's position, or the
   camera's. Without `in_world` it plays only on the machine that controls the cue's target (`localControl`).
+- **A shake plays its shake asset** ([`camera.md`](camera.md) § *Shakes*) where its placement puts it, in `space`
+  (`camera_local`, unless it says `world`). With `in_world` every viewer within `outer` feels it at `scale` times its
+  distance's falloff, `((outer - d) / (outer - inner)) ^ falloff`, decided as it starts and then held; without it,
+  only the machine controlling the cue's target feels it, at `scale`. A `looping` block's shake blends out at removal.
+  Nothing scales it per play, magnitude included: a harder hit is another cue.
+
+  ```yaml
+  # cues/ground_break_heavy.yaml: a light one is the same at scale 0.4, outer 10
+  kind: burst
+  burst:
+    shake: { shake: mymod:ground_break, scale: 1, in_world: true, inner: 2, outer: 18, falloff: 2 }
+  ```
 - **Seeded.** An entry's `chance` is rolled from the parameters' `seed`, so every viewer plays the same entries.
 - **On a dedicated server** only `authoritative: true` cues play, with no effects.
 

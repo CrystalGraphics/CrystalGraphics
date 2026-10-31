@@ -85,15 +85,29 @@ public final class CgCameraShakeDefinition implements CgShakeSource {
         String at = asset.id();
         Spec pattern = spec(at + ": pattern", tree.get("pattern"), units);
         Map<?, ?> play = tree.get("play") instanceof Map<?, ?> p ? p : Map.of();
-        Object space = play.get("space") == null ? "camera_local" : play.get("space");
-        boolean world = switch (String.valueOf(space)) {
-            case "camera_local" -> false;
-            case "world" -> true;
-            default -> throw new IllegalArgumentException(at + ": play.space " + space + " is not played yet");
-        };
+        boolean world = worldSpace(play.get("space"), at + ": play.space");
         return new CgCameraShakeDefinition(at, pattern, number(tree.get("scale"), 1f), Boolean.TRUE.equals(tree.get("single_instance")),
                 length(units, play.get("inner")), length(units, play.get("outer")), number(play.get("falloff"), 1f), world,
                 units.axes().clone());
+    }
+
+    /**
+     * Whether a play space plays on the world's axes: {@code world} does, {@code camera_local} (or none written) the
+     * camera's own, as Unreal's {@code ECameraShakePlaySpace}.
+     *
+     * <pre>{@code
+     * boolean world = CgCameraShakeDefinition.worldSpace(entry.get("space"), "mymod:cues/hit's shake.space");
+     * }</pre>
+     *
+     * @throws IllegalArgumentException naming {@code who} for any other space, {@code user_defined} included
+     */
+    public static boolean worldSpace(@Nullable Object space, String who) {
+        if (space == null) return false;
+        return switch (String.valueOf(space)) {
+            case "camera_local" -> false;
+            case "world" -> true;
+            default -> throw new IllegalArgumentException(who + " " + space + " is not played yet");
+        };
     }
 
     // A pattern as compiled; built into a CgShakePattern once a pooled play needs one.
