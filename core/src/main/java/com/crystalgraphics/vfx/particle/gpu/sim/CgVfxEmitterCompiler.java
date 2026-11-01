@@ -15,6 +15,7 @@ import com.crystalgraphics.util.io.CgIO;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -346,6 +347,7 @@ public final class CgVfxEmitterCompiler {
                     _RegionBase ("This pool's first region in its tier", int) = 0
                     _ChildMax   ("Children an event spawns at most", int)  = 0
                     _Feeds      ("Feed rows",                        int)  = 0
+                    _One        ("1, which the driver cannot see: a run of one kind's modules loops to it", int) = 1
                 """);
         if (shape.publishes()) s.append("    _BinKeyBase (\"This pool's first published slot in its tier\", int) = 0\n");
         if (shape.trails()) s.append("    _TrailAt    (\"This step's trail table: two headers a slot\", int) = 0\n");
@@ -574,23 +576,13 @@ public final class CgVfxEmitterCompiler {
                     bool upper = (flags & 4) != 0;
                     float u1 = fx_rand(seed, k, 11u), u2 = fx_rand(seed, k, 12u), u3 = fx_rand(seed, k, 13u);
                     float u4 = fx_rand(seed, k, 14u);
-                    if (kind <= 1) {
-                        // A point or a sphere: born along a direction drawn evenly, at a heading its arc and order allow.
-                        float up = fx_rand(seed, k, 0u) * 2.0 - 1.0;
-                        if (upper) up = abs(up);
-                        if (placement == 2) up = 0.0;
-                        float h = step_heading(seed, k, 1u, s6), across = sqrt(max(1.0 - up * up, 0.0));
-                        way = vec3(across * cos(h), up, across * sin(h));
-                        float r = kind == 0 ? 0.0 : placement == 0
-                                ? pow(mix(n.x * n.x * n.x, n.y * n.y * n.y, fx_rand(seed, k, 2u)), 1.0 / 3.0) : n.y;
-                        pos = way * r;
-                        return;
-                    }
-                    if (kind == 2) {
-                        step_box(n.xyz, placement, upper, u1, u2, u3, u4, pos, way);
-                        return;
-                    }
-                    if (kind == 8) {
+                    // One exit and each helper reached from one place: the driver inlines a copy per call, and an early
+                    // return in an inlined function costs it more again. A box, or the followed entity's box from the
+                    // instance row: its centre, its halves.
+                    if (kind == 2 || kind == 7) {
+                        step_box(kind == 2 ? n.xyz : step_instance(inst + 6).xyz, placement, upper, u1, u2, u3, u4, pos, way);
+                        if (kind == 7) pos += step_instance(inst + 5).xyz;
+                    } else if (kind == 8) {
                         // Cascade's triangle (LocationPrimitiveTriangle::SpawnEx): height, half base, thickness; its
                         // corners weighted by three uniforms over their sum, launched out of its middle.
                         float hx = n.x * 0.5, sum = max(u1 + u2 + u3, 1e-4);
@@ -599,96 +591,96 @@ public final class CgVfxEmitterCompiler {
                         vec3 from = pos - vec3(-n.x / 6.0, 0.0, 0.0);
                         float d = dot(from, from);
                         way = d > 1e-12 ? from * inversesqrt(d) : vec3(0.0, 1.0, 0.0);
-                        return;
-                    }
-                    if (kind == 7) {
-                        // The followed entity's box, from the instance row: its centre from the source, its halves.
-                        step_box(step_instance(inst + 6).xyz, placement, upper, u1, u2, u3, u4, pos, way);
-                        pos += step_instance(inst + 5).xyz;
-                        return;
-                    }
                 """);
         if (shape.spawnsOnMesh()) s.append("""
-                    if (kind == 6) {
+                    } else if (kind == 6) {
                         step_mesh(k, n, placement, s6, u1, u2, u3, u4, pos, way);
-                        return;
-                    }
                 """);
         s.append("""
-                    float h = step_heading(seed, k, 11u, s6);
-                    vec3 ring = vec3(cos(h), 0.0, sin(h));
-                    if (kind == 3) {
-                        // A cylinder or ring: inner and outer radius, half height.
-                        float r, y, hz = halfHeight;
-                        if (placement == 0) {
-                            r = sqrt(mix(n.x * n.x, n.y * n.y, u2));
-                            y = (u3 * 2.0 - 1.0) * hz;
-                        } else if (placement == 1) {
-                            float outer = n.y * 2.0 * hz, inner = n.x * 2.0 * hz, caps = n.y * n.y - n.x * n.x;
-                            float t = u2 * (outer + inner + caps);
-                            if (t < outer + inner) {
-                                r = t < outer ? n.y : n.x;
+                    } else {
+                        float h = step_heading(seed, k, kind <= 1 ? 1u : 11u, s6);
+                        vec3 ring = vec3(cos(h), 0.0, sin(h));
+                        // The one cube root a sphere's, a cone's or a capsule's volume takes.
+                        float cube = pow(kind <= 1 ? mix(n.x * n.x * n.x, n.y * n.y * n.y, fx_rand(seed, k, 2u))
+                                : kind == 4 ? u3 : u4, 1.0 / 3.0);
+                        if (kind <= 1) {
+                            // A point or a sphere: born along a direction drawn evenly, at a heading its arc and order allow.
+                            float up = fx_rand(seed, k, 0u) * 2.0 - 1.0;
+                            if (upper) up = abs(up);
+                            if (placement == 2) up = 0.0;
+                            float across = sqrt(max(1.0 - up * up, 0.0));
+                            way = vec3(ring.x * across, up, ring.z * across);
+                            pos = way * (kind == 0 ? 0.0 : placement == 0 ? cube : n.y);
+                        } else if (kind == 3) {
+                            // A cylinder or ring: inner and outer radius, half height.
+                            float r, y, hz = halfHeight;
+                            if (placement == 0) {
+                                r = sqrt(mix(n.x * n.x, n.y * n.y, u2));
                                 y = (u3 * 2.0 - 1.0) * hz;
+                            } else if (placement == 1) {
+                                float outer = n.y * 2.0 * hz, inner = n.x * 2.0 * hz, caps = n.y * n.y - n.x * n.x;
+                                float t = u2 * (outer + inner + caps);
+                                if (t < outer + inner) {
+                                    r = t < outer ? n.y : n.x;
+                                    y = (u3 * 2.0 - 1.0) * hz;
+                                } else {
+                                    r = sqrt(mix(n.x * n.x, n.y * n.y, u3));
+                                    y = u4 < 0.5 ? -hz : hz;
+                                }
                             } else {
-                                r = sqrt(mix(n.x * n.x, n.y * n.y, u3));
-                                y = u4 < 0.5 ? -hz : hz;
+                                r = n.y;
+                                y = hz == 0.0 ? 0.0 : u3 < 0.5 ? -hz : hz;
                             }
-                        } else {
-                            r = n.y;
-                            y = hz == 0.0 ? 0.0 : u3 < 0.5 ? -hz : hz;
-                        }
-                        pos = vec3(ring.x * r, upper ? abs(y) : y, ring.z * r);
-                        way = ring;
-                        return;
-                    }
-                    if (kind == 4) {
-                        // A cone from its apex: range, half angle; a spherical sector, its cap and its side by area.
-                        float ca = cos(n.y), ct, r;
-                        if (placement == 0) {
-                            ct = 1.0 - u2 * (1.0 - ca);
-                            r = n.x * pow(u3, 1.0 / 3.0);
-                        } else if (placement == 1) {
-                            float cap = 2.0 * (1.0 - ca), side = sin(n.y);
-                            if (u2 * (cap + side) < cap) {
-                                ct = 1.0 - u3 * (1.0 - ca);
-                                r = n.x;
+                            pos = vec3(ring.x * r, upper ? abs(y) : y, ring.z * r);
+                            way = ring;
+                        } else if (kind == 4) {
+                            // A cone from its apex: range, half angle; a spherical sector, its cap and its side by area.
+                            float ca = cos(n.y), ct, r;
+                            if (placement == 0) {
+                                ct = 1.0 - u2 * (1.0 - ca);
+                                r = n.x * cube;
+                            } else if (placement == 1) {
+                                float cap = 2.0 * (1.0 - ca), side = sin(n.y);
+                                if (u2 * (cap + side) < cap) {
+                                    ct = 1.0 - u3 * (1.0 - ca);
+                                    r = n.x;
+                                } else {
+                                    ct = ca;
+                                    r = n.x * sqrt(u3);
+                                }
                             } else {
                                 ct = ca;
-                                r = n.x * sqrt(u3);
+                                r = n.x;
                             }
+                            float st = sqrt(max(1.0 - ct * ct, 0.0));
+                            way = vec3(ring.x * st, ct, ring.z * st);
+                            pos = way * r;
+                        } else if (placement == 2) {
+                            // A capsule along its segment: half length, radius; its side and its ends by volume or area.
+                            float L = n.x;
+                            int count = int(s6.w);
+                            float y = count > 1 ? -L + 2.0 * L * float(k % uint(count)) / float(count - 1)
+                                    : count == 1 ? 0.0 : (u3 * 2.0 - 1.0) * L;
+                            float h2 = u1 * STEP_TAU;
+                            pos = vec3(0.0, upper ? abs(y) : y, 0.0);
+                            way = vec3(cos(h2), 0.0, sin(h2));
                         } else {
-                            ct = ca;
-                            r = n.x;
+                            float L = n.x, rr = n.y;
+                            bool side = placement == 0 ? u2 * (2.0 * L + 4.0 / 3.0 * rr) < 2.0 * L : u2 * (L + rr) < L;
+                            float rho = placement == 0 ? rr * (side ? sqrt(u4) : cube) : rr;
+                            if (side) {
+                                pos = vec3(ring.x * rho, (u3 * 2.0 - 1.0) * L, ring.z * rho);
+                                way = ring;
+                            } else {
+                                float e = u3 * 2.0 - 1.0, across = sqrt(max(1.0 - e * e, 0.0));
+                                way = vec3(ring.x * across, e, ring.z * across);
+                                pos = way * rho + vec3(0.0, e >= 0.0 ? L : -L, 0.0);
+                            }
+                            if (upper && pos.y < 0.0) {
+                                pos.y = -pos.y;
+                                way.y = -way.y;
+                            }
                         }
-                        float st = sqrt(max(1.0 - ct * ct, 0.0));
-                        way = vec3(ring.x * st, ct, ring.z * st);
-                        pos = way * r;
-                        return;
-                    }
-                    // A capsule along its segment: half length, radius; its side and its ends by volume or area.
-                    float L = n.x, rr = n.y;
-                    if (placement == 2) {
-                        int count = int(s6.w);
-                        float y = count > 1 ? -L + 2.0 * L * float(k % uint(count)) / float(count - 1)
-                                : count == 1 ? 0.0 : (u3 * 2.0 - 1.0) * L;
-                        float h2 = fx_rand(seed, k, 11u) * STEP_TAU;
-                        pos = vec3(0.0, upper ? abs(y) : y, 0.0);
-                        way = vec3(cos(h2), 0.0, sin(h2));
-                        return;
-                    }
-                    bool side = placement == 0 ? u2 * (2.0 * L + 4.0 / 3.0 * rr) < 2.0 * L : u2 * (L + rr) < L;
-                    float rho = placement == 0 ? rr * (side ? sqrt(u4) : pow(u4, 1.0 / 3.0)) : rr;
-                    if (side) {
-                        pos = vec3(ring.x * rho, (u3 * 2.0 - 1.0) * L, ring.z * rho);
-                        way = ring;
-                    } else {
-                        float e = u3 * 2.0 - 1.0, across = sqrt(max(1.0 - e * e, 0.0));
-                        way = vec3(ring.x * across, e, ring.z * across);
-                        pos = way * rho + vec3(0.0, e >= 0.0 ? L : -L, 0.0);
-                    }
-                    if (upper && pos.y < 0.0) {
-                        pos.y = -pos.y;
-                        way.y = -way.y;
                     }
                 }
 
@@ -1010,7 +1002,7 @@ public final class CgVfxEmitterCompiler {
                     f.motionScale = vec3(1.0);
                     f.motionSet = vec3(0.0);
                 """.replace("@TURN_CLOCK@", shape.turnLifeAt() >= 0 ? "step_turn_clock(p, paramRow)" : "vec3(p.age)"));
-        for (int i = 0; i < shape.modules(); i++) if (!shape.afterSolve(i)) call(s, shape, i);
+        calls(s, shape, false);
         s.append("""
                     // The solve: forces into velocity, drag implicit, then position
                     // Held still, it keeps the step it is drawn between.
@@ -1029,7 +1021,7 @@ public final class CgVfxEmitterCompiler {
                     p.hit = vec4(0.0);
                     p.hitEntity = 0u;
                 """.replace("@FOLLOW@", follow(shape)));
-        for (int i = 0; i < shape.modules(); i++) if (shape.afterSolve(i)) call(s, shape, i);
+        calls(s, shape, true);
         s.append("""
                     p.age += s.dt;
                 """).append(directUpdate(shape));
@@ -1149,11 +1141,21 @@ public final class CgVfxEmitterCompiler {
      * entry: each call passes fixed samplers, which every tier and Vulkan's GLSL take.
      */
     private static void call(StringBuilder out, CgVfxShape shape, int i) {
+        call(out, shape, i, 1);
+    }
+
+    /**
+     * Modules {@code i} to {@code i + count - 1}, a run {@link #runs} allows, as one call in a loop the driver cannot
+     * unroll ({@code _One}): it inlines a copy of a kind per call, and a collision's response is most of a Step.
+     */
+    private static void call(StringBuilder out, CgVfxShape shape, int i, int count) {
+        String c = count > 1 ? " + " + shape.paramVectors(i) + " * c" : "";
+        String lc = count > 1 ? " + " + shape.lanes(i).length + " * c" : "";
         StringBuilder s = new StringBuilder();
         s.append("fx_").append(shape.kind(i)).append(shape.afterSolve(i) ? "(p, s" : "(p, f, s");
         for (int j = 0, at = shape.paramAt(i); j < shape.paramVectors(i); j++) {
             int v = at + j;
-            String base = shape.userBound(v) ? "step_vector(row, inst, " + v + ")" : "step_param(row + " + v + ")";
+            String base = shape.userBound(v) ? "step_vector(row, inst, " + v + ")" : "step_param(row + " + v + c + ")";
             boolean formed = false;
             for (int l = 0; l < 4; l++) formed |= shape.formAtWord(v * 4 + l) != null;
             if (!formed) {
@@ -1174,12 +1176,16 @@ public final class CgVfxEmitterCompiler {
         CgVfxLane[] lanes = shape.lanes(i);
         for (int l = 0, at = shape.lanesAt(i); l < lanes.length; l++) {
             switch (lanes[l]) {
-                case VEC4 -> s.append(", step_instance(inst + ").append(at + l).append(')');
-                case IVEC4 -> s.append(", ivec4(INSTANCES(inst + ").append(at + l).append("))");
-                case UVEC4 -> s.append(", INSTANCES(inst + ").append(at + l).append(')');
+                case VEC4 -> s.append(", step_instance(inst + ").append(at + l).append(lc).append(')');
+                case IVEC4 -> s.append(", ivec4(INSTANCES(inst + ").append(at + l).append(lc).append("))");
+                case UVEC4 -> s.append(", INSTANCES(inst + ").append(at + l).append(lc).append(')');
             }
         }
         for (CgVfxDataInterface di : shape.dataInterfaces(i)) s.append(", ").append(di.call());
+        if (count > 1) {
+            out.append("    for (int c = 0; c < ").append(count).append(" * _One; c++) ").append(s).append(");\n");
+            return;
+        }
         int textures = shape.textureCount(i);
         if (textures == 0) {
             out.append("    ").append(s).append(");\n");
@@ -1196,6 +1202,48 @@ public final class CgVfxEmitterCompiler {
     }
 
     private static final String XYZW = "xyzw";
+
+    /** The modules before the solver, or after it, in stack order: each run of one kind as one loop ({@link #runs}). */
+    private static void calls(StringBuilder out, CgVfxShape shape, boolean afterSolve) {
+        for (int i = 0; i < shape.modules(); ) {
+            if (shape.afterSolve(i) != afterSolve) {
+                i++;
+                continue;
+            }
+            int n = runs(shape, i);
+            call(out, shape, i, n);
+            i += n;
+        }
+    }
+
+    /**
+     * How many modules from {@code i} run as one loop: those after it of its kind, its side of the solver and its call,
+     * each a fixed stride on in the parameter and instance rows, with no texture, form or user binding.
+     */
+    private static int runs(CgVfxShape shape, int i) {
+        int n = 1;
+        while (i + n < shape.modules() && sameCall(shape, i, i + n, n)) n++;
+        return n;
+    }
+
+    private static boolean sameCall(CgVfxShape shape, int a, int b, int steps) {
+        if (!shape.kind(a).equals(shape.kind(b)) || shape.afterSolve(a) != shape.afterSolve(b)) return false;
+        if (shape.paramVectors(a) != shape.paramVectors(b) || !Arrays.equals(shape.lanes(a), shape.lanes(b))) return false;
+        if (shape.textureCount(a) != 0 || shape.textureCount(b) != 0) return false;
+        if (!Arrays.equals(shape.dataInterfaces(a), shape.dataInterfaces(b))) return false;
+        if (shape.paramAt(b) != shape.paramAt(a) + steps * shape.paramVectors(a)) return false;
+        if (shape.lanesAt(b) != shape.lanesAt(a) + steps * shape.lanes(a).length) return false;
+        return plain(shape, a) && plain(shape, b);
+    }
+
+    /** Whether module {@code i}'s numbers are all the parameter row's own: none bound by a user or filled by a form. */
+    private static boolean plain(CgVfxShape shape, int i) {
+        for (int j = 0, at = shape.paramAt(i); j < shape.paramVectors(i); j++) {
+            if (shape.userBound(at + j)) return false;
+            for (int l = 0; l < 4; l++) if (shape.formAtWord((at + j) * 4 + l) != null) return false;
+        }
+        return true;
+    }
 
     /** Spawn k's draw of the launch's roll {@code key} ({@code CgVfxGpuEmitter.KEY_*}). */
     private static String roll(int key) {

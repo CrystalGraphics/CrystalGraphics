@@ -130,8 +130,9 @@ float fx_collision_most(FxParticle p, FxCollision c) {
 vec3 fx_collision_rolls(FxParticle p, float code, uint first) {
     vec3 r = vec3(fx_rand(p.id, FX_COLLISION_KEY, first), fx_rand(p.id, FX_COLLISION_KEY, first + 1u),
             fx_rand(p.id, FX_COLLISION_KEY, first + 2u));
+    // Selects, not r[c % 2] and r[c / 2]: a vector indexed at run time costs NVIDIA's compiler more than the rest.
     int c = int(code + 0.5) - 1;
-    return vec3(r.x, r[c % 2], r[c / 2]);
+    return vec3(r.x, (c & 1) == 0 ? r.x : r.y, c < 2 ? r.x : c < 4 ? r.y : r.z);
 }
 
 // Whether a hit along n spends the count: every one, or with c.most.w at 0 or above only one whose normal's vertical

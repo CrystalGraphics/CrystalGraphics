@@ -11,24 +11,30 @@ void fx_collide_world(inout FxParticle p, FxStep s, vec4 m0, vec4 m1, vec4 m2, v
                       FxWorld world) {
     FxCollision c = FxCollision(m1, m2, m3, m4, m5);
     if (fx_collision_skips(p, c) || near.x == 0.0) return;
+    // One fx_contact_respond for both contacts: the driver inlines a copy per call, and it is most of the kernel.
+    vec3 n;
+    float depth, what;
     if (!world.live) {
         if (isnan(world.floorY) || p.position.y >= world.floorY) return;
-        fx_contact_respond(p, vec3(0.0, 1.0, 0.0), world.floorY - p.position.y + FX_CONTACT_EPSILON, m0.xyz, c,
-                FX_HIT_GROUND);
-        return;
+        n = vec3(0.0, 1.0, 0.0);
+        depth = world.floorY - p.position.y + FX_CONTACT_EPSILON;
+        what = FX_HIT_GROUND;
+    } else {
+        float speed = length(p.velocity);
+        vec3 probe = c.most.z > 0.0 && speed > 0.0 ? p.position + p.velocity / speed * (c.most.z * p.size) : p.position;
+        if (!fx_world_solid(world, probe)) return;
+        vec3 g;
+        fx_world_sdf(world, probe, g);
+        if (dot(g, g) == 0.0) g = vec3(0.0, 1.0, 0.0);
+        vec3 a = abs(g);
+        // The axis as a mask, not an index: a vector indexed at run time is costly to compile.
+        vec3 axis = a.x >= a.y && a.x >= a.z ? vec3(1.0, 0.0, 0.0) : a.y >= a.z ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+        float sg = dot(g, axis) > 0.0 ? 1.0 : -1.0;
+        n = axis * sg;
+        float halves = dot(world.originFrac + probe, axis) * 2.0;
+        float cell = floor(halves);
+        depth = (sg > 0.0 ? cell + 1.0 - halves : halves - cell) * 0.5 + FX_CONTACT_EPSILON;
+        what = FX_HIT_BLOCK;
     }
-    float speed = length(p.velocity);
-    vec3 probe = c.most.z > 0.0 && speed > 0.0 ? p.position + p.velocity / speed * (c.most.z * p.size) : p.position;
-    if (!fx_world_solid(world, probe)) return;
-    vec3 g;
-    fx_world_sdf(world, probe, g);
-    if (dot(g, g) == 0.0) g = vec3(0.0, 1.0, 0.0);
-    vec3 a = abs(g);
-    int axis = a.x >= a.y && a.x >= a.z ? 0 : a.y >= a.z ? 1 : 2;
-    vec3 n = vec3(0.0);
-    n[axis] = g[axis] > 0.0 ? 1.0 : -1.0;
-    float halves = (world.originFrac[axis] + probe[axis]) * 2.0;
-    float cell = floor(halves);
-    float depth = (n[axis] > 0.0 ? cell + 1.0 - halves : halves - cell) * 0.5 + FX_CONTACT_EPSILON;
-    fx_contact_respond(p, n, depth, m0.xyz, c, FX_HIT_BLOCK);
+    fx_contact_respond(p, n, depth, m0.xyz, c, what);
 }
