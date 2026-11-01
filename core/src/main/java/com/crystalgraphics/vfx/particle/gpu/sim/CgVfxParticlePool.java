@@ -494,7 +494,12 @@ public final class CgVfxParticlePool {
 
     /** The kernels a pool of {@code shape} dispatches, started. */
     private static void prepare(CgVfxShape shape) {
-        CgVfxEmitterCompiler.compile(shape).kernel("Step").prepare();
+        CgCompute step = CgVfxEmitterCompiler.compile(shape);
+        step.kernel("Step").prepare();
+        if (shape.heads()) {
+            step.kernel("Heads").prepare();
+            if (shape.spawnFrom().selection() == CgVfxSpawnFrom.Selection.SEQUENTIAL) step.kernel("Picks").prepare();
+        }
         CgCompute.load(LOOK_KERNELS).kernel("Look").prepare();
         CgGpuOps.prepareFill();
         CgCompute.load(COUNT_KERNELS).kernel("Clear").prepare();   // the first slot given back clears its count
