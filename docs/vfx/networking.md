@@ -283,6 +283,20 @@ beam.remove();                                                // removal plays; 
     shake: { shake: mymod:ground_break, scale: 1, in_world: true, inner: 2, outer: 18, falloff: 2 }
   ```
 - **Seeded.** An entry's `chance` is rolled from the parameters' `seed`, so every viewer plays the same entries.
+  The systems a cue spawns roll their own seed per instance, as Unreal's do, so each viewer's differs. A system whose
+  layout must match on every viewer fixes it in its file, as Niagara's `bDeterminism` does: the same layout everywhere,
+  on every play.
+
+  ```yaml
+  # vfx/systems/vanish.yaml
+  determinism: { seed: 7 }                       # every instance: its behaviour's seed(), its emitters' rolls
+  emitters:
+    - id: cards
+      emitter:
+        properties: { capacity: 12, determinism: { seed: 3 } }   # or one emitter alone
+  ```
+
+  In Java: `definition.withRandomSeed(7)`, `CgVfxEmitter.builder("cards").determinism(3)`.
 - **On a dedicated server** only `authoritative: true` cues play, with no effects.
 
 A handle is reused once `active()` is false: drop it then.

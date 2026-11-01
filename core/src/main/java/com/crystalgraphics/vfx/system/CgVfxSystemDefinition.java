@@ -58,10 +58,13 @@ import java.util.WeakHashMap;
  * @param macroUv       where its renderers' particle macro UVs centre and how far they reach ({@code CG_PARTICLE_MACRO_UV});
  *                      null is Cascade's default
  * @param fields        the fields it places, which live and follow with each instance (Chaos's field commands)
+ * @param randomSeed    its fixed seed, the same for every instance on every viewer (Niagara's {@code bDeterminism} and
+ *                      {@code RandomSeed}); null for a seed rolled per instance
  */
 public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfxBehaviour.Factory behaviour,
                                     List<CgVfxEmitter> emitters, int poolPrimeSize, int maxPoolSize, List<Kill> kills,
-                                    @Nullable FixedBounds fixedBounds, CgVfxMacroUv macroUv, List<CgFieldPlacement> fields) {
+                                    @Nullable FixedBounds fixedBounds, CgVfxMacroUv macroUv, List<CgFieldPlacement> fields,
+                                    @Nullable Integer randomSeed) {
 
     /**
      * A system's bounds fixed about its origin, in blocks: Unreal's fixed bounds (Niagara's {@code FixedBounds},
@@ -143,6 +146,13 @@ public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfx
         }
     }
 
+    /** Its seed rolled per instance. */
+    public CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfxBehaviour.Factory behaviour,
+                                 List<CgVfxEmitter> emitters, int poolPrimeSize, int maxPoolSize, List<Kill> kills,
+                                 @Nullable FixedBounds fixedBounds, CgVfxMacroUv macroUv, List<CgFieldPlacement> fields) {
+        this(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, fixedBounds, macroUv, fields, null);
+    }
+
     /** Placing no fields. */
     public CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfxBehaviour.Factory behaviour,
                                  List<CgVfxEmitter> emitters, int poolPrimeSize, int maxPoolSize, List<Kill> kills,
@@ -217,26 +227,43 @@ public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfx
 
     /** This definition carrying {@code behaviour}, its emitters kept. */
     public CgVfxSystemDefinition withBehaviour(CgVfxBehaviour.Factory behaviour) {
-        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, fixedBounds, macroUv, fields);
+        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, fixedBounds, macroUv, fields, randomSeed);
     }
 
     /** This definition with its instance pool's sizes: {@code prime} made ahead when it loads, at most {@code max} kept. */
     public CgVfxSystemDefinition withPool(int prime, int max) {
-        return new CgVfxSystemDefinition(name, look, behaviour, emitters, prime, max, kills, fixedBounds, macroUv, fields);
+        return new CgVfxSystemDefinition(name, look, behaviour, emitters, prime, max, kills, fixedBounds, macroUv, fields, randomSeed);
     }
 
     /** This definition with its bounds fixed about its origin; null for bounds following its particles. */
     public CgVfxSystemDefinition withFixedBounds(@Nullable FixedBounds bounds) {
-        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, bounds, macroUv, fields);
+        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, bounds, macroUv, fields, randomSeed);
     }
 
     /** This definition with its particle macro UVs centred and sized by {@code macroUv}. */
     public CgVfxSystemDefinition withMacroUv(CgVfxMacroUv macroUv) {
-        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, fixedBounds, macroUv, fields);
+        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, fixedBounds, macroUv, fields, randomSeed);
+    }
+
+    /**
+     * This definition with every instance seeded by {@code seed}, the same on every viewer and every play: Niagara's
+     * system {@code bDeterminism} with its {@code RandomSeed}. Null rolls a seed per instance.
+     *
+     * <pre>{@code
+     * CgVfxSystemDefinition VANISH = new CgVfxSystemDefinition("mymod:vanish", LOOK, Streaks.FACTORY).withRandomSeed(7);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Its behaviour reads it as {@code instance.seed()}; its emitters roll from it unless their own
+     *       {@code determinism} fixes theirs.</li>
+     * </ul>
+     */
+    public CgVfxSystemDefinition withRandomSeed(@Nullable Integer seed) {
+        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, fixedBounds, macroUv, fields, seed);
     }
 
     /** This definition placing {@code fields}. */
     public CgVfxSystemDefinition withFields(List<CgFieldPlacement> fields) {
-        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, fixedBounds, macroUv, fields);
+        return new CgVfxSystemDefinition(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, kills, fixedBounds, macroUv, fields, randomSeed);
     }
 }

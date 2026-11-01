@@ -74,6 +74,23 @@ public final class CgRandom {
         return (nextInt() >>> 8) * (1f / 16777216f);
     }
 
+    /**
+     * The float in [0, 1) a fixed seed stands for, the same on every machine: what an effect playing a deterministic
+     * asset takes as its seed.
+     *
+     * <pre>{@code
+     * float s = CgRandom.unit(7);    // a system file's determinism: { seed: 7 }, on every viewer
+     * }</pre>
+     */
+    public static float unit(int seed) {
+        // SplitMix64's finalizer: neighbouring seeds land far apart
+        long z = (seed & 0xFFFFFFFFL) + 0x9E3779B97F4A7C15L;
+        z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
+        z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
+        z ^= z >>> 31;
+        return (int) (z >>> 40) * (1f / 16777216f);
+    }
+
     private static final class Stream {
         long state;
         int generation = -1;

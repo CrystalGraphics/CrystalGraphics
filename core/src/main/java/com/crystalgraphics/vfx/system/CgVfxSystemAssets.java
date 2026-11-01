@@ -230,6 +230,7 @@ public final class CgVfxSystemAssets {
             tree.put("pool_prime_size", definition.poolPrimeSize());
         }
         if (definition.maxPoolSize() != CgVfxSystemDefinition.MAX_POOL_SIZE) tree.put("max_pool_size", definition.maxPoolSize());
+        if (definition.randomSeed() != null) tree.put("determinism", Map.of("seed", definition.randomSeed()));
         CgVfxSystemDefinition.FixedBounds b = definition.fixedBounds();
         if (b != null) {
             tree.put("fixed_bounds", List.of(List.of((double) b.minX(), (double) b.minY(), (double) b.minZ()),
@@ -385,7 +386,7 @@ public final class CgVfxSystemAssets {
                 CgVfxLook look = contracted(id, name, effect.contract(), user, emitters.isEmpty() && !slotted ? null : kit.build());
                 userPoints(id, look, emitters);
                 return new CgVfxSystemDefinition(id, look, effect.factory(), emitters, prime(tree), max(tree), kills,
-                        fixedBounds(id, tree, deps), macroUv(id, tree, deps), fields(id, tree, deps));
+                        fixedBounds(id, tree, deps), macroUv(id, tree, deps), fields(id, tree, deps), randomSeed(tree));
             }
         }
         CgVfxSchema schema = CgVfxSchema.of(id);
@@ -393,7 +394,13 @@ public final class CgVfxSystemAssets {
         CgVfxLook look = CgVfxLook.builder(schema).with(kit.build()).build();
         userPoints(id, look, emitters);
         return new CgVfxSystemDefinition(id, look, effect == null ? null : effect.factory(), emitters, prime(tree),
-                max(tree), kills, fixedBounds(id, tree, deps), macroUv(id, tree, deps), fields(id, tree, deps));
+                max(tree), kills, fixedBounds(id, tree, deps), macroUv(id, tree, deps), fields(id, tree, deps), randomSeed(tree));
+    }
+
+    /** Its {@code determinism}'s seed: every instance seeded by it (Niagara's {@code bDeterminism}); null for none. */
+    @Nullable
+    private static Integer randomSeed(Map<Object, Object> tree) {
+        return tree.get("determinism") instanceof Map<?, ?> d && d.get("seed") instanceof Number n ? n.intValue() : null;
     }
 
     /** Its {@code fields:}, each compiled with its field; one that fails fails the system by its path. */

@@ -9,6 +9,7 @@ import com.crystalgraphics.vfx.field.CgFieldWorld;
 import com.crystalgraphics.vfx.look.CgVfxEnding;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.net.CgVfxCue;
+import com.crystalgraphics.util.CgRandom;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventRows;
@@ -96,6 +97,7 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
         super(definition.look(), x, y, z);
         this.definition = definition;
         this.follower = follower;
+        if (definition.randomSeed() != null) seed = CgRandom.unit(definition.randomSeed());
         emitters = emittersOf(definition);
         behaviour = definition.behaviour() == null ? null : (B) definition.behaviour().make(this);
     }
@@ -104,7 +106,7 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
         List<CgVfxEmitter> kinds = d.emitters();
         CgVfxEmitterInstance[] made = new CgVfxEmitterInstance[kinds.size()];
         for (int i = 0; i < made.length; i++) {
-            made[i] = new CgVfxEmitterInstance(kinds.get(i), seed + i * 0.137f);
+            made[i] = new CgVfxEmitterInstance(kinds.get(i), emitterSeed(kinds.get(i), i));
             made[i].start(0f, 0f, 0f);
         }
         // A reader born on its sibling's particles, which its definition checked.
@@ -112,6 +114,11 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
             if (kinds.get(i).spawnFrom() != null) made[i].bornOn(made[CgVfxSystemDefinition.sourceOf(d.name(), kinds, i)]);
         }
         return made;
+    }
+
+    /** Emitter {@code i}'s seed: its own fixed one (its {@code determinism}), else rolled from this instance's. */
+    private float emitterSeed(CgVfxEmitter emitter, int i) {
+        return emitter.randomSeed() != null ? CgRandom.unit(emitter.randomSeed()) : seed + i * 0.137f;
     }
 
     /** Made by {@code pool}, which takes it back once it completes. */
@@ -132,8 +139,9 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
         requested = CgVfxExecutionState.ACTIVE;
         source = CgVfxExecutionSource.SCALABILITY;
         grounded = false;
+        if (definition.randomSeed() != null) seed = CgRandom.unit(definition.randomSeed());
         for (int i = 0; i < emitters.length; i++) {
-            emitters[i].reuse(seed + i * 0.137f);
+            emitters[i].reuse(emitterSeed(definition.emitters().get(i), i));
             emitters[i].start(0f, 0f, 0f);
         }
         behaviour = definition.behaviour() == null ? null : (B) definition.behaviour().make(this);

@@ -113,6 +113,7 @@ public final class CgVfxEmitterAssets {
         props.put("local_space", e.local);
         if (e.spawning.key() != null) props.put("spawning", e.spawning.key());
         if (e.legacyEmitterTime) props.put("legacy_emitter_time", true);
+        if (e.randomSeed != null) props.put("determinism", map("seed", e.randomSeed));
         // Unreal's emitter scalability override: the Low tier spawns half.
         if (e.optional) props.put("scalability", List.of(map("tiers", List.of("low"), "scale_spawn_count", true, "spawn_count_scale", 0.5)));
         tree.put("properties", props);
@@ -440,6 +441,7 @@ public final class CgVfxEmitterAssets {
         b.local(Boolean.TRUE.equals(props.get("local_space")));
         b.spawning(CgVfxSpawning.of(props.get("spawning"))).legacyEmitterTime(Boolean.TRUE.equals(props.get("legacy_emitter_time")));
         if (props.get("scalability") != null) b.optional(halvedAtLow(name, props.get("scalability")));
+        b.determinism(props.get("determinism") instanceof Map<?, ?> d && d.get("seed") instanceof Number n ? n.intValue() : null);
         Map<?, ?> beam = beamRenderer(name, tree);
         if (beam != null) b.capacity(beam.get("max_beam_count") instanceof Number c && c.intValue() > 0 ? c.intValue() : 1);
 

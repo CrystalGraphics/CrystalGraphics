@@ -113,6 +113,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     /** Whether its beam refills every step its loops run ({@code always_on}), not only where nothing else spawns. */
     final boolean beamAlwaysOn;
     final boolean optional, local;
+    /** Its fixed seed ({@link Builder#determinism}); null for its system's. */
+    @Nullable
+    final Integer randomSeed;
     /** How a tick's spawns are timed and placed ({@link Builder#spawning}). */
     final CgVfxSpawning spawning;
     /** Cascade's {@code bUseLegacyEmitterTime} ({@link Builder#legacyEmitterTime}). */
@@ -218,6 +221,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         drawLayout = drawLayout(b.name, renderers, b.clip);
         optional = b.optional;
         local = b.local;
+        randomSeed = b.randomSeed;
         spawning = b.spawning;
         legacyEmitterTime = b.legacyEmitterTime;
         maxDrawCount = maxDrawCount(b.name, renderers);
@@ -499,6 +503,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     /** Whether its particles ride the effect rather than stay in the world ({@link Builder#local}). */
     public boolean local() {
         return local;
+    }
+
+    /** Its fixed seed ({@link Builder#determinism}); null where its system's seed rolls it. */
+    @Nullable
+    public Integer randomSeed() {
+        return randomSeed;
     }
 
     /** Its life cycle: loops, their duration and delay, and its inactive response ({@link Builder#state}). */
@@ -915,6 +925,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private String name;
         private final List<CgVfxRendererProperties> renderers = new ArrayList<>();
         private boolean optional, local, legacyEmitterTime;
+        @Nullable
+        private Integer randomSeed;
         private CgVfxSpawning spawning = CgVfxSpawning.INTERPOLATED;
         private CgVfxEmitterState state = CgVfxEmitterState.DEFAULT;
         private int capacity = 256;
@@ -969,6 +981,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             renderers.addAll(e.renderers);
             optional = e.optional;
             local = e.local;
+            randomSeed = e.randomSeed;
             spawning = e.spawning;
             legacyEmitterTime = e.legacyEmitterTime;
             state = e.state;
@@ -1089,6 +1102,25 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
          */
         public Builder local() {
             this.local = true;
+            return this;
+        }
+
+        /**
+         * Its random rolls fixed by {@code seed}, the same on every viewer and every play: Niagara's emitter
+         * {@code bDeterminism} with its {@code RandomSeed}. Unset, they follow its system's seed.
+         *
+         * <pre>{@code
+         * CgVfxEmitter.builder("cards").determinism(7).burst(0f, 12)...   // the same twelve cards everywhere
+         * }</pre>
+         */
+        public Builder determinism(int seed) {
+            this.randomSeed = seed;
+            return this;
+        }
+
+        /** Its fixed seed, or null for its system's: what a file's {@code determinism} gives. */
+        Builder determinism(@Nullable Integer seed) {
+            this.randomSeed = seed;
             return this;
         }
 

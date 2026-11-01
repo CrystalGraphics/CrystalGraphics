@@ -17,6 +17,7 @@ import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.object.value.CgUnits;
+import com.crystalgraphics.util.CgRandom;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxValues;
@@ -196,6 +197,33 @@ public class CgVfxSystemAssetsTest {
         for (int i = 0; i < d.emitters().size(); i++) {
             assertEquals(d.name(), Arrays.toString(d.emitters().get(i).moduleWords()), Arrays.toString(back.emitters().get(i).moduleWords()));
         }
+    }
+
+    /** Niagara's bDeterminism: a fixed seed gives every instance, on every viewer and play, the same rolls. */
+    @Test
+    public void aDeterministicSystemSeedsEveryInstanceAlikeAndRoundTrips() {
+        CgVfxSystemDefinition d = compile("mymod:cards", "_v: 1\ndeterminism: { seed: 7 }\n"
+                + "emitters:\n  - id: h1\n    name: cards\n    emitter:\n"
+                + "      properties: { capacity: 12, determinism: { seed: 3 } }\n"
+                + "      emitter_update:\n"
+                + "        - { id: s0, module: crystalgraphics:emitter_state, inputs: { loop: once, duration: 1 } }\n"
+                + "        - { id: s1, module: crystalgraphics:spawn_burst, inputs: { time: 0, count: 12 } }\n"
+                + "  - id: h2\n    name: dust\n    emitter:\n"
+                + "      properties: { capacity: 8 }\n"
+                + "      emitter_update:\n"
+                + "        - { id: s0, module: crystalgraphics:emitter_state, inputs: { loop: once, duration: 1 } }\n"
+                + "        - { id: s1, module: crystalgraphics:spawn_burst, inputs: { time: 0, count: 8 } }\n");
+        assertEquals(Integer.valueOf(7), d.randomSeed());
+        assertEquals(Integer.valueOf(3), d.emitters().get(0).randomSeed());
+        assertNull(d.emitters().get(1).randomSeed());
+        CgVfxSystemInstance<?> a = new CgVfxSystemInstance<>(d, 0, 64, 0), b = new CgVfxSystemInstance<>(d, 9, 64, 9);
+        assertEquals("every instance the same seed", a.seed(), b.seed(), 0f);
+        assertEquals(CgRandom.unit(7), a.seed(), 0f);
+        CgVfxSystemDefinition rolled = d.withRandomSeed(null);
+        assertNull(rolled.randomSeed());
+        Map<String, Object> tree = CgVfxSystemAssets.write(d);
+        assertEquals(Map.of("seed", 7), tree.get("determinism"));
+        roundTrips(d);
     }
 
     @Test
