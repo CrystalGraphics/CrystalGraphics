@@ -3,19 +3,17 @@ package com.crystalgraphics.vfx;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.mesh.CgMesh;
-import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.asset.load.CgAssetFollower;
 import com.crystalgraphics.asset.load.CgAssetRef;
+import com.crystalgraphics.asset.load.CgPreload;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.job.CgJob;
-import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.gl.material.CgMaterialShader;
-import java.util.concurrent.CompletableFuture;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.frame.CgWorld;
@@ -23,6 +21,7 @@ import com.crystalgraphics.render.graph.CgRehearsal;
 import com.crystalgraphics.frame.CgFrameBoundary;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.render.world.CgPipelineList;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldRenderer;
@@ -160,7 +159,7 @@ public final class CgVfxSystem {
             WARM_ZONE = CgTrace.name("vfx.warm"), EFFECT_ZONE = CgTrace.name("vfx.effect.submit"),
             PATHS_ZONE = CgTrace.name("vfx.paths.upload"), PARTICLES_ZONE = CgTrace.name("vfx.frame.particles"),
             FRAME_END_ZONE = CgTrace.name("vfx.frame.end"), ROWS_ZONE = CgTrace.name("vfx.rows.upload"), MATERIALS_ZONE = CgTrace.name("vfx.precache.materials"),
-            PROGRAMS_ZONE = CgTrace.name("vfx.precache.programs"), EMITTER_ZONE = CgTrace.name("vfx.precache.emitter"),
+            EMITTER_ZONE = CgTrace.name("vfx.precache.emitter"),
             ALLOCATE_ZONE = CgTrace.name("vfx.warm.allocate"), POLL_ZONE = CgTrace.name("vfx.warm.poll"),
             CULLED = CgTrace.name("vfx.culled"), ASLEEP = CgTrace.name("vfx.asleep"),
             TICKS = CgTrace.name("vfx.ticks"), CAPPED = CgTrace.name("vfx.ticks.capped"), HELD = CgTrace.name("vfx.ticks.held"),
@@ -219,28 +218,20 @@ public final class CgVfxSystem {
     private final CgVfxFrame frame = new CgVfxFrame(this, materials);
     /** How many of {@link #materials}' materials have the path texture bound. */
     private int pathsBound;
-    /** The materials a warm step just named, requested and cleared by {@link #requestDraws}. */
+    /** The materials a draw step just named, scratch for {@link #addWarming}. */
     private final List<CgMaterial> warming = new ArrayList<>();
     /** Those of them drawn at half size, whose half-size passes are requested too. */
     private final Set<CgMaterial> halved = Collections.newSetFromMap(new IdentityHashMap<>());
-    /** Requests for looks' materials not yet built, so a layer that appears late does not stall its frame. */
-    private final List<CgPipelinePrecache.Request> drawRequests = new ArrayList<>();
-    /** Emitters {@link #precache} queued whose kernels and slot meshes are still to start, one a step under the budget. */
-    private final List<CgVfxEmitter> gpuWarming = new ArrayList<>();
-    /** Each warming emitter's feed tier in the look it came from: one past its source's for a reader of particles. */
-    private final Map<CgVfxEmitter, Integer> gpuWarmingTier = new IdentityHashMap<>();
+    /** Each look's precache request, and each re-warm a coalesce asked, until built. */
+    private final List<CgPipelinePrecache.Request> lookRequests = new ArrayList<>();
+    /** Each look's meshes read ahead, until read. */
+    private final List<CgPreload.Request> preloads = new ArrayList<>();
     /** Each emitter it precached and its feed tier: warmed again when coalescing moves it to another shape. */
     private final Map<CgVfxEmitter, Integer> precachedTier = new WeakHashMap<>();
     /** Emitters whose kernels failed to precache: logged once and skipped, as Niagara disables an emitter that fails. */
     private final Set<CgVfxEmitter> unprecached = Collections.newSetFromMap(new IdentityHashMap<>());
-    /** Pools a precache expected into, allocated once {@link #gpuWarming} drains. */
+    /** Pools a precache expected into, allocated once every look's request is built. */
     private final Set<CgVfxParticlePool> expected = Collections.newSetFromMap(new IdentityHashMap<>());
-    /** Looks {@link #precache} queued whose materials are still to make, a placed layer a step under the budget. */
-    private final List<CgVfxLook> drawWarming = new ArrayList<>();
-    /** The first look of {@link #drawWarming}'s next placed layer; its count means its clips are next. */
-    private int drawPlaced;
-    /** What a worker reads and generates for the looks {@link #precache}d, which the queues wait for; null when none. */
-    private CompletableFuture<Void> loading;
     private CgTexture2D boundTexture;
     // The tube is this system's own; the ribbons, sphere and quads are shared.
     private CgMesh tubeMesh, closedTubeMesh, ribbonMesh, sphereMesh, volumeMesh;
@@ -269,12 +260,10 @@ public final class CgVfxSystem {
     /** The world whose time dilation scales every effect's time; null for a system that runs on real pace alone. */
     private CgWorld world;
     private final CgVfxGpuSteps gpuSteps = new CgVfxGpuSteps();
-    private boolean rangePrecached;
-    /** The next of {@link CgVfxRange#PRECACHE_STEPS} the warm-up runs. */
-    private int rangeStep;
-    /** Looks whose kernels and slot meshes, and whose materials, this system has queued: held weakly. */
-    private final Set<CgVfxLook> gpuLooks = Collections.newSetFromMap(new WeakHashMap<>()),
-            drawLooks = Collections.newSetFromMap(new WeakHashMap<>());
+    /** Whether a look's request has named Range's kernels: once a system. */
+    private boolean rangeRequested;
+    /** Looks this system has requested: held weakly. */
+    private final Set<CgVfxLook> precachedLooks = Collections.newSetFromMap(new WeakHashMap<>());
     private double clock = Double.NaN;
     private float owed, simulated;
     private float density = 1f;
@@ -902,7 +891,7 @@ public final class CgVfxSystem {
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, SUBMIT_ZONE)) {
             try (CgTrace.Zone warming = CgTrace.zone(CgVfxTrace.CHANNEL, WARM_ZONE)) {
-                warm(world);
+                warm();
             }
             float alpha = Math.min(owed / TICK, 1f);
             double gx = 0, gy = 0, gz = 0;
@@ -945,38 +934,22 @@ public final class CgVfxSystem {
     }
 
     /**
-     * Starts compiling every material a newly playing effect's look can draw, and polls what is still compiling: an
-     * effect's last layers (a blast, its cloud) appear seconds after it starts, and compiling them then stalls that
-     * frame.
+     * Requests a newly playing effect's look if nothing precached it, and polls what is still warming: an effect's last
+     * layers (a blast, its cloud) appear seconds after it starts, and compiling them then stalls that frame.
      */
-    private void warm(CgWorldRenderer world) {
+    private void warm() {
         for (int i = 0; i < effects.size(); i++) {
             CgVfxEffect<?> effect = effects.get(i);
-            if (!effect.gpuPrecached) {
-                effect.gpuPrecached = true;
-                // A look this system precached already only starts the window: a cast precaches nothing twice.
-                if (gpuLooks.add(effect.look())) {
-                    // Not in any precache: its kernels and storage are made on this frame.
-                    CgTrace.marker(CgVfxTrace.CHANNEL, "vfx.warm-late", effect.getClass().getSimpleName() + " " + effect.definitionKey());
-                    precacheGpu(effect.look(), true);
-                } else {
-                    useWindow(effect.look());
-                }
+            if (effect.gpuPrecached) continue;
+            effect.gpuPrecached = true;
+            if (precachedLooks.add(effect.look())) {
+                // Not in any precache: its kernels, storage and draws are requested now, its activation held for them.
+                CgTrace.marker(CgVfxTrace.CHANNEL, "vfx.warm-late", effect.getClass().getSimpleName() + " " + effect.definitionKey());
+                request(effect.look());
             }
-            if (effect.warmed) continue;
-            effect.warmed = true;
-            int queued = drawWarming.indexOf(effect.look());
-            if (drawLooks.add(effect.look()) || queued >= 0) {
-                // Never precached, or played before its warm-up reached it: its draws are made on this frame.
-                CgTrace.marker(CgVfxTrace.CHANNEL, "vfx.warm-late-draws", effect.getClass().getSimpleName() + " " + effect.definitionKey());
-                precacheDraws(effect.look());
-                if (queued >= 0) {
-                    drawWarming.remove(queued);
-                    if (queued == 0) drawPlaced = 0;
-                }
-            }
+            useWindow(effect.look());
         }
-        pollWarming(world);
+        pollWarming();
     }
 
     /**
@@ -999,86 +972,117 @@ public final class CgVfxSystem {
      * }</pre>
      */
     public void precache(CgVfxLook... looks) {
-        List<CgVfxLook> fresh = new ArrayList<>();
-        List<CgMaterialShader> shaders = new ArrayList<>();
         // Its emitters join the loaded shapes first, so they warm as they will play: raised where coalescing raises them.
         Map<CgVfxEmitter, Integer> tiers = new LinkedHashMap<>();
         for (CgVfxLook look : looks) {
-            if (gpuLooks.contains(look)) continue;
+            if (precachedLooks.contains(look)) continue;
             for (CgVfxEmitter e : look.emitters()) tiers.putIfAbsent(e, feedTier(look, e));
         }
         for (CgVfxGpuEmitter moved : CgVfxShapeCoalescing.loaded().include(tiers)) {
-            if (moved instanceof CgVfxEmitter e && precachedTier.containsKey(e) && !gpuWarming.contains(e)) {
-                gpuWarming.add(e);
-                gpuWarmingTier.put(e, precachedTier.get(e));
+            if (moved instanceof CgVfxEmitter e && precachedTier.containsKey(e)) {
+                int tier = precachedTier.get(e);
+                lookRequests.add(CgPipelinePrecache.steps("vfx " + e.name() + ", moved by coalescing")
+                        .step(p -> emitterStep(p, e, tier)).start());
             }
         }
         for (CgVfxLook look : looks) {
             // Precached here, its play only starts the window: its pools are sized once.
-            if (!gpuLooks.add(look)) continue;
-            List<CgVfxEmitter> emitters = look.emitters();
-            for (int k = 0; k < emitters.size(); k++) {
-                if (!gpuWarming.contains(emitters.get(k))) {
-                    gpuWarming.add(emitters.get(k));
-                    gpuWarmingTier.put(emitters.get(k), tiers.get(emitters.get(k)));
-                    precachedTier.put(emitters.get(k), tiers.get(emitters.get(k)));
-                }
-                // The window fills only once played, but its kernels are the look's to build now.
-                if (readsWorld(emitters.get(k))) requestKernels(CgWorldVoxelWindow.get()::precache);
-            }
-            drawWarming.add(look);
-            drawLooks.add(look);   // warmed by the queue: its first play finishes only what the queue has not reached
-            materials.shaders(look, shaders);
-            fresh.add(look);
+            if (precachedLooks.add(look)) request(look);
         }
-        if (!fresh.isEmpty()) {
-            CompletableFuture<Void> next = CompletableFuture.runAsync(() -> loadAhead(fresh, shaders),
-                    CgJob.executor(CgJobLane.LATENCY));
-            CompletableFuture<Void> before = loading;
-            loading = before == null ? next : CompletableFuture.allOf(before, next);
-        }
-        pollWarming(CgWorldRenderer.get());
+        pollWarming();
     }
 
     /**
-     * What precaching {@code looks} reads and generates, made on a worker so the queued steps find it cached: their
-     * shaders parsed, Range's and the ops' kernel files and each emitter's Step kernel (its children's at their tiers),
-     * the meshes its mesh renderers draw. A failure here is left for the step that hits it, which reports it as it
-     * always has.
+     * {@code look}'s precache request: on a worker its shaders parsed and its Step sources generated, then a step for
+     * each placed draw's materials, one for its clips' parts, Range's kernels in the first look a system requests, and
+     * a step per emitter (its kernels, its pools expected, its slot mesh); and its meshes read ahead.
      */
-    private static void loadAhead(List<CgVfxLook> looks, List<CgMaterialShader> shaders) {
+    private void request(CgVfxLook look) {
+        List<CgMaterialShader> shaders = new ArrayList<>();
+        materials.shaders(look, shaders);
+        CgPipelinePrecache.Steps steps = CgPipelinePrecache.steps("vfx look").ahead(() -> loadAhead(look, shaders));
+        for (int i = 0; i < look.placed().size(); i++) {
+            int placed = i;
+            steps.step(p -> {
+                try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, MATERIALS_ZONE)) {
+                    materials.precache(look, placed, warming, halved);
+                    addWarming(p);
+                }
+            });
+        }
+        steps.step(p -> {
+            materials.precacheParticles(look, warming);
+            addWarming(p);
+        });
+        if (!rangeRequested) {
+            rangeRequested = true;
+            for (Runnable range : CgVfxRange.PRECACHE_STEPS) steps.step(p -> p.kernels(range));
+        }
+        List<CgVfxEmitter> emitters = look.emitters();
+        for (int k = 0; k < emitters.size(); k++) {
+            CgVfxEmitter e = emitters.get(k);
+            int tier = feedTier(look, e);
+            precachedTier.put(e, tier);
+            steps.step(p -> emitterStep(p, e, tier));
+            // The window fills only once played, but its kernels are the look's to build now.
+            if (readsWorld(e)) steps.step(p -> p.kernels(CgWorldVoxelWindow.get()::precache));
+        }
+        lookRequests.add(steps.start());
+        preloads.add(CgPreload.request(l -> meshes(look, l)));
+    }
+
+    /** An emitter's step: its kernels, children's included, named while it sizes its pools and slot meshes. */
+    private void emitterStep(CgPipelineList pipelines, CgVfxEmitter emitter, int tier) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, EMITTER_ZONE)) {
+            pipelines.kernels(() -> precacheEmitter(emitter, tier));
+        }
+    }
+
+    /** The materials a draw step named, kept built by the precache: a settings change rebuilds them before it applies. */
+    private void addWarming(CgPipelineList pipelines) {
+        for (int i = 0; i < warming.size(); i++) pipelines.add(warming.get(i), halved.contains(warming.get(i)));
+        warming.clear();
+        halved.clear();
+    }
+
+    /**
+     * What precaching {@code look} reads and generates, made on a worker so its steps find it cached: its shaders
+     * parsed, Range's and the ops' kernel files and each emitter's Step kernel (its children's at their tiers). A failure
+     * here is left for the step that hits it, which reports it as it always has.
+     */
+    private static void loadAhead(CgVfxLook look, List<CgMaterialShader> shaders) {
         for (CgMaterialShader shader : shaders) shader.ensureParsed();
         CgVfxRange.loadAhead();
-        for (CgVfxLook look : looks) {
-            for (CgVfxEmitter emitter : look.emitters()) loadAhead(emitter, 0);
-        }
+        for (CgVfxEmitter emitter : look.emitters()) loadAhead(emitter, 0);
     }
 
     private static void loadAhead(CgVfxEmitter emitter, int tier) {
         CgVfxParticlePool.loadAhead(emitter, tier);
-        for (CgVfxRendererProperties renderer : emitter.renderers()) {
-            if (!(renderer instanceof CgVfxMeshRendererProperties m)) continue;
-            // CgVfxFrame's draw reads the same cache: the particle sphere where it names none, else its one mesh
-            if (m.meshes().isEmpty()) CgMeshShapes.sphereLods();
-            else CgMeshLoader.resolve(m.meshes().get(0).get("mesh"));
-        }
         for (int e = 0; e < emitter.events().size(); e++) {
             CgVfxEmitter child = (CgVfxEmitter) emitter.events().get(e).child();
             if (child != null) loadAhead(child, tier + 1);
         }
     }
 
-    /**
-     * Whether every program the looks {@link #precache}d or played draw with is built, polling those still compiling, and
-     * the world renderer's own list with them (the post stack's variants a look's glow and haze draw through). Hold
-     * a scene's first submit on it and its first frames wait on no compile. Render thread.
-     *
-     * <pre>{@code
-     * vfx.precache(look);                  // at install
-     * if (!vfx.ready()) return;          // each frame, until it answers true
-     * vfx.play(...);
-     * }</pre>
-     */
+    /** The meshes {@code look}'s particles draw: the particle sphere's levels, or each mesh renderer's first mesh. */
+    private static void meshes(CgVfxLook look, CgPreload.Loads into) {
+        for (CgVfxEmitter emitter : look.emitters()) meshes(emitter, into);
+    }
+
+    private static void meshes(CgVfxEmitter emitter, CgPreload.Loads into) {
+        if (emitter.drawLayout() == CgVfxDrawLayout.MESHES) into.read(CgMeshShapes::sphereLods);
+        for (CgVfxRendererProperties renderer : emitter.renderers()) {
+            if (!(renderer instanceof CgVfxMeshRendererProperties m)) continue;
+            // CgVfxFrame's draw reads the same cache: the particle sphere where it names none, else its one mesh
+            if (m.meshes().isEmpty()) into.read(CgMeshShapes::sphereLods);
+            else into.mesh(m.meshes().get(0).get("mesh"));
+        }
+        for (int e = 0; e < emitter.events().size(); e++) {
+            CgVfxEmitter child = (CgVfxEmitter) emitter.events().get(e).child();
+            if (child != null) meshes(child, into);
+        }
+    }
+
     /**
      * Whether a renderer of {@code look} draws a material reading its system's bounds ({@code CG_OBJECT_POSITION},
      * {@code CG_OBJECT_RADIUS}): what a system with no fixed bounds is refused at load for. Render thread.
@@ -1087,11 +1091,27 @@ public final class CgVfxSystem {
         return materials.readsBounds(look);
     }
 
+    /**
+     * Whether every look {@link #precache}d or played is warm: its pipelines built (its request ready), its meshes read
+     * and its pools' storage made, and no rehearsal running. Hold a scene's first submit on it and its first frames wait
+     * on no compile. Render thread.
+     *
+     * <pre>{@code
+     * vfx.precache(look);                  // at install
+     * if (!vfx.ready()) return;            // each frame, until it answers true
+     * vfx.play(...);
+     * }</pre>
+     */
     public boolean ready() {
-        pollWarming(CgWorldRenderer.get());
+        pollWarming();
         if (rehearsalFailure != null) throw new IllegalStateException("the rehearsal failed", rehearsalFailure);
         if (rehearsal != null && rehearsal.done()) endRehearsal();
-        return loading == null && drawWarming.isEmpty() && drawRequests.isEmpty() && gpuWarming.isEmpty() && rehearsal == null;
+        return warmed() && rehearsal == null;
+    }
+
+    /** Whether every request and read is done and every expected pool allocated. */
+    private boolean warmed() {
+        return lookRequests.isEmpty() && preloads.isEmpty() && expected.isEmpty();
     }
 
     /**
@@ -1142,7 +1162,7 @@ public final class CgVfxSystem {
     /** The boundary's step: once the programs are built, a frame's passes. */
     private void stepRehearsal() {
         if (rehearsal == null || rehearsal.done() || rehearsalFailure != null) return;
-        if (loading != null || !drawWarming.isEmpty() || !drawRequests.isEmpty() || !gpuWarming.isEmpty()) return;
+        if (!warmed()) return;
         try {
             rehearsal.step();
         } catch (RuntimeException e) {
@@ -1197,32 +1217,12 @@ public final class CgVfxSystem {
         owed = 0f;
     }
 
-    /** {@code look}'s kernels and slot meshes; the voxel window's too when {@code useWindow}, which starts it filling. */
-    private void precacheGpu(CgVfxLook look, boolean useWindow) {
-        requestKernels(() -> {
-            precacheRange();
-            List<CgVfxEmitter> emitters = look.emitters();
-            for (int k = 0; k < emitters.size(); k++) {
-                CgVfxEmitter emitter = emitters.get(k);
-                precacheEmitter(emitter, feedTier(look, emitter));
-            }
-        });
-        if (useWindow) useWindow(look);
-    }
-
     /** The window's first use starts its kernels and its filling: at play, not on the first landing. */
     private static void useWindow(CgVfxLook look) {
         List<CgVfxEmitter> emitters = look.emitters();
         for (int k = 0; k < emitters.size(); k++) {
             if (readsWorld(emitters.get(k))) CgWorldVoxelWindow.get().use();
         }
-    }
-
-    /** Range and Place's kernels: below compute each is several lowered programs, which would stall the first burst. */
-    private void precacheRange() {
-        if (rangePrecached) return;
-        rangePrecached = true;
-        CgVfxRange.precache();
     }
 
     /**
@@ -1338,91 +1338,27 @@ public final class CgVfxSystem {
         }
     }
 
-    /** Queues {@code look}'s materials for {@link #pollWarming}, and builds the particle sphere if it draws one. */
-    private void precacheDraws(CgVfxLook look) {
-        List<CgVfxEmitter> looked = look.emitters();
-        for (int k = 0; k < looked.size(); k++) {
-            // The particle sphere's levels are built on first ask: here, not in the first burst's frame.
-            if (looked.get(k).drawLayout() == CgVfxDrawLayout.MESHES) particleSphere();
-        }
-        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, MATERIALS_ZONE)) {
-            materials.precache(look, warming, halved);
-        }
-        requestDraws();
-    }
-
     /**
-     * Requests the materials a warm step named into {@link #warming}: kept built by the precache from then on, so a
-     * settings change (the HDR scene, half size) rebuilds them before it applies.
+     * Polls each look's request and read, its steps collected while the frame's {@link CgWarmBudget} lasts; then, once
+     * every look's emitters have expected, their pools' storage under the same budget.
      */
-    private void requestDraws() {
-        if (warming.isEmpty()) return;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, PROGRAMS_ZONE)) {
-            drawRequests.add(CgPipelinePrecache.request(pipelines -> {
-                for (int i = 0; i < warming.size(); i++) pipelines.add(warming.get(i), halved.contains(warming.get(i)));
-            }));
-        }
-        warming.clear();
-        halved.clear();
-    }
-
-    /** Requests the kernels {@code precaches} starts, run now with whatever else it does (a pool's expectations, meshes). */
-    private static void requestKernels(Runnable precaches) {
-        CgPipelinePrecache.request(pipelines -> pipelines.kernels(precaches));
-    }
-
-    /**
-     * The queued emitters, one a step while the frame's {@link CgWarmBudget} lasts; then every pass the world draws each
-     * warming material with (depth, emissive, distortion, the joined form), not Forward alone.
-     */
-    private void pollWarming(CgWorldRenderer world) {
-        if (loading != null) {
-            if (!loading.isDone()) return;
-            loading = null;
-        }
-        while (!drawWarming.isEmpty() && CgWarmBudget.allows()) {
-            long start = System.nanoTime();
-            CgVfxLook look = drawWarming.get(0);
-            try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, MATERIALS_ZONE)) {
-                if (drawPlaced < look.placed().size()) {
-                    materials.precache(look, drawPlaced++, warming, halved);
-                } else {
-                    materials.precacheParticles(look, warming);
-                    drawWarming.remove(0);
-                    drawPlaced = 0;
-                }
+    private void pollWarming() {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, POLL_ZONE)) {
+            for (int i = lookRequests.size() - 1; i >= 0; i--) {
+                if (lookRequests.get(i).ready()) lookRequests.remove(i);
             }
-            requestDraws();
-            CgWarmBudget.spend(System.nanoTime() - start);
-        }
-        while (drawWarming.isEmpty() && !gpuWarming.isEmpty() && CgWarmBudget.allows()) {
-            long start = System.nanoTime();
-            try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, EMITTER_ZONE)) {
-                if (!rangePrecached) {
-                    requestKernels(CgVfxRange.PRECACHE_STEPS.get(rangeStep++));
-                    rangePrecached = rangeStep == CgVfxRange.PRECACHE_STEPS.size();
-                }
-                else {
-                    CgVfxEmitter next = gpuWarming.remove(0);
-                    Integer tier = gpuWarmingTier.remove(next);
-                    requestKernels(() -> precacheEmitter(next, tier != null ? tier : 0));
-                }
+            for (int i = preloads.size() - 1; i >= 0; i--) {
+                if (preloads.get(i).ready()) preloads.remove(i);
             }
-            CgWarmBudget.spend(System.nanoTime() - start);
         }
-        if (gpuWarming.isEmpty() && !expected.isEmpty() && CgWarmBudget.allows()) {
+        if (lookRequests.isEmpty() && !expected.isEmpty() && CgWarmBudget.allows()) {
             long start = System.nanoTime();
             try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, ALLOCATE_ZONE)) {
-                // Every emitter queued has expected: their pools' storage made now, not by the first step.
+                // Every look's emitters have expected: their pools' storage made now, not by the first step.
                 for (CgVfxParticlePool pool : expected) if (!pool.isReleased()) pool.allocate();
             }
             expected.clear();
             CgWarmBudget.spend(System.nanoTime() - start);
-        }
-        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, POLL_ZONE)) {
-            for (int i = drawRequests.size() - 1; i >= 0; i--) {
-                if (drawRequests.get(i).ready()) drawRequests.remove(i);
-            }
         }
     }
 
@@ -1486,11 +1422,8 @@ public final class CgVfxSystem {
         pathsBound = 0;
         warming.clear();
         halved.clear();
-        drawRequests.clear();
-        gpuWarming.clear();
-        gpuWarmingTier.clear();
-        drawWarming.clear();
-        drawPlaced = 0;
+        lookRequests.clear();
+        preloads.clear();
     }
 
     CgVfxPathTexture paths() {

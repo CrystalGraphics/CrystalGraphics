@@ -1,18 +1,15 @@
 package com.crystalgraphics.vfx.prefab;
 
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
 import com.crystalgraphics.asset.load.CgAssetPreparer;
-import com.crystalgraphics.job.CgJob;
-import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.system.CgVfxSystemPreparer;
 
 /**
- * A prefab asset's work before it is {@code READY}: its parts' meshes read on a worker, their textures decoded and
- * uploaded, then its look prepared on a VFX system, as a system's are ({@link CgVfxSystemPreparer}). A sequence spawning it once its bundle is ready
- * then uploads and compiles nothing.
+ * A prefab asset's work before it is {@code READY}: its parts' meshes read on a worker ({@code plan.preload}), their
+ * textures decoded, then its look precached on a VFX system, as a system's are ({@link CgVfxSystemPreparer}). A
+ * sequence spawning it once its bundle is ready then reads, uploads and compiles nothing.
  *
  * <pre>{@code
  * CgVfxAssets.instance().preparer(CgBodyKinds.PREFAB, new CgVfxPrefabPreparer(CgVfx::world));   // the client's
@@ -34,15 +31,12 @@ public final class CgVfxPrefabPreparer implements CgAssetPreparer {
     @Override
     public void plan(Object definition, Plan plan) {
         CgVfxPrefab prefab = (CgVfxPrefab) definition;
-        CompletableFuture<?>[] meshes = {null};
         // Its parts' mesh files read on a worker: a part asked for its mesh at its first draw would read it there.
-        plan.warm("meshes of " + prefab.id(), () -> {
-            if (meshes[0] == null) {
-                meshes[0] = CompletableFuture.runAsync(() -> {
-                    for (int k = 0; k < prefab.firstPart(prefab.nodes()); k++) prefab.partMesh(k);
-                }, CgJob.executor(CgJobLane.LATENCY));
+        plan.preload(l -> {
+            for (int k = 0; k < prefab.firstPart(prefab.nodes()); k++) {
+                int part = k;
+                l.read(() -> prefab.partMesh(part));
             }
-            return meshes[0].isDone();
         });
         CgVfxSystemPreparer.planLook(prefab.id(), prefab.look(), false, system, plan);
     }

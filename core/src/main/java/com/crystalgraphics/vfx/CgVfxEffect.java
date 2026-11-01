@@ -151,9 +151,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     int lowered;
     /** The share of its emitters' particles its distance leaves. */
     float distanceShare = 1f;
-    /** Its look's materials have been handed to the system to compile ahead of use. */
-    boolean warmed;
-    /** Its emitters' GPU programs have been started. */
+    /** Its look has been requested, by a precache or its first frame. */
     boolean gpuPrecached;
     /** Its look's kernels are built, so it ticks: until then it holds at age 0 (Niagara's delayed activation). */
     boolean activated;
@@ -308,7 +306,6 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         carried.keep(values, look);
         look = next;
         values = carried;
-        warmed = false;
         gpuPrecached = false;
         activated = false;
     }

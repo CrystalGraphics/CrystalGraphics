@@ -1,26 +1,18 @@
 package com.crystalgraphics.vfx.system;
 
-import com.crystalgraphics.api.material.CgMaterialDefinition;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
-import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.load.CgAssetPreparer;
 import com.crystalgraphics.asset.load.CgAssetRef;
-import com.crystalgraphics.job.CgJob;
-import com.crystalgraphics.job.CgJobLane;
+import com.crystalgraphics.asset.load.CgPreload;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 
 /**
- * A system asset's GPU work before it is {@code READY}: its layers' textures decoded on a worker and uploaded, then its
- * look precached on a VFX system ({@link CgVfxSystem#precache}: kernels, pools, slot meshes, every program its draws
- * take), and its pool there primed ({@link CgVfxSystem#pool}). A system played once its bundle is ready then uploads
+ * A system asset's GPU work before it is {@code READY}: its layers' textures decoded on a worker
+ * ({@code plan.preload}), then its look precached on a VFX system ({@link CgVfxSystem#precache}: kernels, pools, slot
+ * meshes, every program its draws take), and its pool there primed ({@link CgVfxSystem#pool}). A system played once its bundle is ready then uploads
  * and compiles nothing, and {@link CgVfxSystem#spawn} takes a primed instance.
  *
  * <pre>{@code
@@ -60,7 +52,7 @@ public final class CgVfxSystemPreparer implements CgAssetPreparer {
      * @param refuseBounds whether a material reading the drawer's bounds fails: a system's without fixed bounds
      */
     public static void planLook(String name, CgVfxLook look, boolean refuseBounds, Supplier<CgVfxSystem> system, Plan plan) {
-        plan.warm("textures of " + name, new Textures(look)::attempt);
+        plan.preload(l -> textures(look, l));
         boolean[] started = {false};
         plan.warm("look of " + name, () -> {
             CgVfxSystem vfx = system.get();
@@ -94,37 +86,12 @@ public final class CgVfxSystemPreparer implements CgAssetPreparer {
         });
     }
 
-    /** A look's layers' textures: made on the render thread, decoded on a worker, which queues their upload. */
-    private static final class Textures {
-        private final CgVfxLook look;
-        private CompletableFuture<Void> decoded;
-
-        Textures(CgVfxLook look) {
-            this.look = look;
-        }
-
-        boolean attempt() {
-            if (decoded == null) {
-                // A renderer's material samples the registry's texture of each binding's path.
-                Set<CgTexture> seen = Collections.newSetFromMap(new IdentityHashMap<>());
-                List<CgTexture> textures = new ArrayList<>();
-                for (List<CgVfxLook.Placed> drawn : List.of(look.placed())) {
-                    for (CgVfxLook.Placed placed : drawn) {
-                        for (CgMaterialDefinition d : placed.definitions()) {
-                            for (CgMaterialDefinition.Texture t : d.textures().values()) {
-                                CgTexture texture = t.resolve();
-                                if (seen.add(texture)) textures.add(texture);
-                            }
-                        }
-                    }
-                }
-                // Its size decodes it on the asking thread and queues the upload, which lands before the next frame.
-                decoded = CompletableFuture.runAsync(() -> {
-                    for (CgTexture t : textures) t.getWidth();
-                }, CgJob.executor(CgJobLane.LATENCY));
-                return false;
+    /** A look's layers' textures, each the registry's for its binding's path, which a renderer's material samples. */
+    private static void textures(CgVfxLook look, CgPreload.Loads into) {
+        for (CgVfxLook.Placed placed : look.placed()) {
+            for (CgMaterialDefinition d : placed.definitions()) {
+                for (CgMaterialDefinition.Texture t : d.textures().values()) into.texture(t.resolve());
             }
-            return decoded.isDone();
         }
     }
 }

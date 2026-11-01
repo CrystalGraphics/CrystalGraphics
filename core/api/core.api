@@ -2670,6 +2670,8 @@ com/crystalgraphics/asset/load/CgAssetPreparer
 com/crystalgraphics/asset/load/CgAssetPreparer$Plan
   access public,abstract,interface
   extends java/lang/Object
+  method public,abstract pipelines (Lcom/crystalgraphics/render/world/CgPipelinePrecache$Collector;)Lcom/crystalgraphics/asset/load/CgAssetPreparer$Plan;
+  method public,abstract preload (Lcom/crystalgraphics/asset/load/CgPreload$Collector;)Lcom/crystalgraphics/asset/load/CgAssetPreparer$Plan;
   method public,abstract upload (JLcom/crystalgraphics/asset/load/CgAssetPreparer$Upload;)Lcom/crystalgraphics/asset/load/CgAssetPreparer$Plan;
   method public,abstract warm (Ljava/lang/String;Ljava/util/function/BooleanSupplier;)Lcom/crystalgraphics/asset/load/CgAssetPreparer$Plan;
 com/crystalgraphics/asset/load/CgAssetPreparer$Upload
@@ -2763,6 +2765,24 @@ com/crystalgraphics/asset/load/CgPatchable
   extends java/lang/Object
   method public,abstract patch (Lcom/crystalgraphics/asset/load/CgPatchTable$Entry;D)V
   method public,abstract patches ()Lcom/crystalgraphics/asset/load/CgPatchTable;
+com/crystalgraphics/asset/load/CgPreload
+  access public,final
+  extends java/lang/Object
+  method public,static request (Lcom/crystalgraphics/asset/load/CgPreload$Collector;)Lcom/crystalgraphics/asset/load/CgPreload$Request;
+com/crystalgraphics/asset/load/CgPreload$Collector
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract collect (Lcom/crystalgraphics/asset/load/CgPreload$Loads;)V
+com/crystalgraphics/asset/load/CgPreload$Loads
+  access public,final
+  extends java/lang/Object
+  method public mesh (Ljava/lang/Object;)Lcom/crystalgraphics/asset/load/CgPreload$Loads;
+  method public read (Ljava/lang/Runnable;)Lcom/crystalgraphics/asset/load/CgPreload$Loads;
+  method public texture (Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/asset/load/CgPreload$Loads;
+com/crystalgraphics/asset/load/CgPreload$Request
+  access public,final
+  extends java/lang/Object
+  method public ready ()Z
 com/crystalgraphics/asset/load/CgPrepareBudget
   access public,final
   extends java/lang/Object
@@ -10167,6 +10187,7 @@ com/crystalgraphics/render/world/CgPipelinePrecache
   field public,static,final MAX_PENDING I
   method public,static register (Ljava/lang/String;Lcom/crystalgraphics/render/world/CgPipelinePrecache$Collector;)V
   method public,static request (Lcom/crystalgraphics/render/world/CgPipelinePrecache$Collector;)Lcom/crystalgraphics/render/world/CgPipelinePrecache$Request;
+  method public,static steps (Ljava/lang/String;)Lcom/crystalgraphics/render/world/CgPipelinePrecache$Steps;
 com/crystalgraphics/render/world/CgPipelinePrecache$Collector
   access public,abstract,interface
   extends java/lang/Object
@@ -10174,7 +10195,14 @@ com/crystalgraphics/render/world/CgPipelinePrecache$Collector
 com/crystalgraphics/render/world/CgPipelinePrecache$Request
   access public,final
   extends java/lang/Object
+  method public collected ()Z
   method public ready ()Z
+com/crystalgraphics/render/world/CgPipelinePrecache$Steps
+  access public,final
+  extends java/lang/Object
+  method public ahead (Ljava/lang/Runnable;)Lcom/crystalgraphics/render/world/CgPipelinePrecache$Steps;
+  method public start ()Lcom/crystalgraphics/render/world/CgPipelinePrecache$Request;
+  method public step (Lcom/crystalgraphics/render/world/CgPipelinePrecache$Collector;)Lcom/crystalgraphics/render/world/CgPipelinePrecache$Steps;
 com/crystalgraphics/render/world/CgSortLayer
   access public,final
   extends java/lang/Object

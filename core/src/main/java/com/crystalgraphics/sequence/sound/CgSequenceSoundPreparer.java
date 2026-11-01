@@ -3,15 +3,12 @@ package com.crystalgraphics.sequence.sound;
 import com.crystalgraphics.asset.load.CgAssetPreparer;
 import com.crystalgraphics.audio.CgAudioEngine;
 import com.crystalgraphics.audio.CgSoundRef;
-import com.crystalgraphics.job.CgJob;
-import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.sequence.definition.CgSequenceSection;
 import com.crystalgraphics.sequence.definition.CgSequenceTrack;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
 /**
@@ -53,16 +50,10 @@ public final class CgSequenceSoundPreparer implements CgAssetPreparer {
             }
         }
         if (sounds.isEmpty()) return;
-        CompletableFuture<?>[] loading = new CompletableFuture<?>[1];
-        plan.warm("sounds of " + sequence.id(), () -> {
-            if (loading[0] == null) {
-                CgAudioEngine engine = audio.get();
-                if (engine == null) return true;
-                loading[0] = CompletableFuture.runAsync(() -> {
-                    for (CgSoundRef sound : sounds) engine.preload(sound);
-                }, CgJob.executor(CgJobLane.LATENCY));
-            }
-            return loading[0].isDone();
+        plan.preload(l -> {
+            CgAudioEngine engine = audio.get();
+            if (engine == null) return;
+            for (CgSoundRef sound : sounds) l.read(() -> engine.preload(sound));
         });
     }
 }
