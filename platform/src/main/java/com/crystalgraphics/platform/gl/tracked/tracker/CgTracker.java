@@ -73,7 +73,9 @@ public final class CgTracker {
     private static final Logger LOGGER = LogManager.getLogger("CgTracker");
     private static final CgVar.Bool LOG_PIPELINES = CgVar.bool("crystalgraphics.tracker.logPipelines", false, CgVar.DEV,
             "Log each pipeline the device built at a draw (tracker.pipelines-built), with its program and how long it took.");
-    private static final int PIPELINE_ZONE = CgTrace.name("tracker.pipeline"), PIPELINES = CgTrace.name("tracker.pipelines-built");
+    private static final CgVar.Bool RECORDED = CgVar.bool("crystalgraphics.tracker.recordedPipelines", true, CgVar.DEV,
+            "Build a program's recorded pipelines as it links (CgPipelineRecipes); false builds each at its first draw.");
+    private static final int PIPELINE_ZONE =CgTrace.name("tracker.pipeline"), PIPELINES = CgTrace.name("tracker.pipelines-built");
     /** Recorded pipelines started on a builder as their program linked, those a draw took built, and its waits for one. */
     private static final int AHEAD_ZONE = CgTrace.name("tracker.pipelineAhead"), AHEAD_WAIT = CgTrace.name("tracker.pipelineWait"),
             AHEAD = CgTrace.name("tracker.pipelines-ahead"), AHEAD_HITS = CgTrace.name("tracker.pipelines-ahead-hits");
@@ -467,7 +469,7 @@ public final class CgTracker {
      * precache). Any thread; the owner adopts the answer ({@link #adoptAhead}) when it installs the link.
      */
     public Map<CgPipelineDesc, Future<CgPipeline>> startRecorded(CgTrackedProgram program) {
-        if (program.key == 0 || !device.createsOnAnyThread()) return Map.of();
+        if (program.key == 0 || !device.createsOnAnyThread() || !RECORDED.get()) return Map.of();
         Map<CgPipelineDesc, Future<CgPipeline>> started = new HashMap<>();
         for (CgPipelineRecipes.Recipe recipe : recipes().of(program.key)) {
             CgPipelineDesc desc = recipe.desc(program);

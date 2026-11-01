@@ -293,6 +293,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.tracker.logPipelines` | true, false | `false` | Log each pipeline the device built at a draw (tracker.pipelines-built), with its program and how long it took. |
+| `crystalgraphics.tracker.recordedPipelines` | true, false | `true` | Build a program's recorded pipelines as it links (CgPipelineRecipes); false builds each at its first draw. |
 
 ## `crystalgraphics.uploads`
 
