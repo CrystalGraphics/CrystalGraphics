@@ -1,6 +1,7 @@
 package com.crystalgraphics.vulkan;
 
 import com.crystalgraphics.platform.device.CgDevice;
+import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.platform.device.CgDeviceInfo;
 import com.crystalgraphics.platform.device.CgDeviceObject;
 import com.crystalgraphics.platform.device.command.CgCommandEncoder;
@@ -74,9 +75,11 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -750,19 +753,33 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     /**
      * The kept pipeline cache, where its header names this driver: the vendor, the device and the cache UUID, which a
      * driver changes with every version. Null where there is none, or it is another driver's.
+     *
+     * <p>Past {@code CgCacheDirectory.MOST} it is deleted and the cache starts empty: Vulkan evicts nothing from a
+     * pipeline cache, so it keeps every pipeline ever built, and this is its prune. The recorded list rebuilds what
+     * draws while loading (538 MB read at every launch cost more than that rebuild).
      */
     private ByteBuffer readPipelineCache(VkPhysicalDeviceProperties props) {
         if (pipelineCacheFile == null || !Files.isRegularFile(pipelineCacheFile)) return null;
-        byte[] bytes;
-        try {
-            bytes = Files.readAllBytes(pipelineCacheFile);
+        ByteBuffer data;
+        try (FileChannel in = FileChannel.open(pipelineCacheFile, StandardOpenOption.READ)) {
+            long size = in.size();
+            if (size > CgCacheDirectory.MOST) {
+                in.close();
+                Files.deleteIfExists(pipelineCacheFile);
+                LOG.info("Pipeline cache {} past {} MB ({} MB): started empty", pipelineCacheFile,
+                        CgCacheDirectory.MOST >> 20, size >> 20);
+                return null;
+            }
+            data = memAlloc((int) size).order(ByteOrder.LITTLE_ENDIAN);
+            while (data.hasRemaining() && in.read(data) >= 0) {
+                // until the whole file is in
+            }
+            data.flip();
         } catch (IOException e) {
             LOG.warn("Pipeline cache {} unread: {}", pipelineCacheFile, e.toString());
             return null;
         }
-        ByteBuffer data = memAlloc(bytes.length).order(ByteOrder.LITTLE_ENDIAN);
-        data.put(bytes).flip();
-        boolean ours = bytes.length >= 32 && data.getInt(0) >= 32 && data.getInt(4) == VK_PIPELINE_CACHE_HEADER_VERSION_ONE
+        boolean ours = data.limit() >= 32 && data.getInt(0) >= 32 && data.getInt(4) == VK_PIPELINE_CACHE_HEADER_VERSION_ONE
                 && data.getInt(8) == props.vendorID() && data.getInt(12) == props.deviceID();
         for (int i = 0; ours && i < VK_UUID_SIZE; i++) ours = data.get(16 + i) == props.pipelineCacheUUID().get(i);
         if (ours) return data;
@@ -779,10 +796,11 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
             ByteBuffer data = memAlloc((int) size.get(0));
             try {
                 check(vkGetPipelineCacheData(device, pipelineCache, size, data), "vkGetPipelineCacheData");
-                byte[] bytes = new byte[(int) size.get(0)];
-                data.duplicate().get(bytes);
                 Path temp = pipelineCacheFile.resolveSibling(pipelineCacheFile.getFileName() + ".tmp");
-                Files.write(temp, bytes);
+                try (FileChannel out = FileChannel.open(temp, StandardOpenOption.CREATE, StandardOpenOption.WRITE,
+                        StandardOpenOption.TRUNCATE_EXISTING)) {
+                    while (data.hasRemaining()) out.write(data);
+                }
                 Files.move(temp, pipelineCacheFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             } catch (IOException e) {
                 LOG.warn("Pipeline cache {} unwritten: {}", pipelineCacheFile, e.toString());
