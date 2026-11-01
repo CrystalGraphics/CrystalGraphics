@@ -15,6 +15,7 @@ import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.shape.primitive.CgCylinder;
@@ -2853,15 +2854,17 @@ public final class CgVfxModules {
         CgVfxLook[] looks = new CgVfxLook[stations.size()];
         for (int i = 0; i < looks.length; i++) looks[i] = stations.get(i).look();
         vfx.prepare(looks);
-        CgWorldRenderer world = CgWorldRenderer.get();
-        world.prepare(mercury);
-        world.prepare(copper);
+        stagePipelines = CgPipelinePrecache.request(pipelines -> {
+            pipelines.add(mercury, false);
+            pipelines.add(copper, false);
+        });
     }
+
+    private CgPipelinePrecache.Request stagePipelines;
 
     /** Whether everything {@link #prepare} started compiling is built. */
     public boolean warmed() {
-        CgWorldRenderer world = CgWorldRenderer.get();
-        return vfx.warmed() & world.prepare(mercury) & world.prepare(copper);
+        return vfx.warmed() & stagePipelines != null && stagePipelines.ready();
     }
 
     /** Ends every station's play at once; the next {@link #submit} plays them all again. */

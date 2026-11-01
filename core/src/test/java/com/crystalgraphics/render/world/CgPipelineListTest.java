@@ -21,25 +21,25 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-/** The program list: warmed under the settings asked for, re-warmed before a toggle applies, never held for ever. */
-public class CgWorldProgramsTest {
+/** The pipeline list: a request ready once its entries are built, re-warmed before a toggle applies, never held for ever. */
+public class CgPipelineListTest {
 
     private static final String SOURCE = String.join(System.lineSeparator(), "#type spatial", "#pragma cg_feature FOG_ON",
             "#pragma cg_feature NORMAL_MAP", "Properties { _Color (\"Color\", color) = (1, 1, 1, 1) }",
             "Pass {", "    void vertex(out v2f o) { }",
             "    void fragment(in v2f i, out vec4 fragColor) { fragColor = _Color; }", "}");
     private static String shader;
-    private static final CgWorldPrograms.Settings HDR = new CgWorldPrograms.Settings(true, true, true, true);
-    private static final CgWorldPrograms.Settings LDR = new CgWorldPrograms.Settings(false, true, true, true);
+    private static final CgPipelineList.Settings HDR = new CgPipelineList.Settings(true, true, true, true);
+    private static final CgPipelineList.Settings LDR = new CgPipelineList.Settings(false, true, true, true);
 
     /** Builds a material the second time it is asked under the same settings. */
-    private static final class Fake implements CgWorldPrograms.Preparer {
+    private static final class Fake implements CgPipelineList.Preparer {
         final Set<Object> seen = new HashSet<>();
-        final List<CgWorldPrograms.Settings> asked = new ArrayList<>();
+        final List<CgPipelineList.Settings> asked = new ArrayList<>();
         boolean never;
 
         @Override
-        public boolean prepare(CgMaterial material, boolean half, boolean skinned, CgWorldPrograms.Settings settings) {
+        public boolean prepare(CgMaterial material, boolean half, boolean skinned, CgPipelineList.Settings settings) {
             asked.add(settings);
             return !never && !seen.add(Arrays.asList(material, settings));
         }
@@ -58,50 +58,50 @@ public class CgWorldProgramsTest {
         return CgMaterialManifest.builder().add(p, null, false).add(p, null, false).add(p, "NORMAL_MAP", true).build();
     }
 
+    private static CgPipelineList list(Fake fake) {
+        return new CgPipelineList(fake, () -> HDR);
+    }
+
     @Test
-    public void aManifestWarmsEachUseOnceAndAnswersWhenBuilt() {
-        Fake fake = new Fake();
-        CgWorldPrograms programs = new CgWorldPrograms(fake);
-        CgWorldPrograms.Warming move = programs.warm(manifest());
-        assertEquals(2, programs.size());
-        assertFalse(move.ready());
-        assertTrue(programs.frame(HDR, HDR));
-        assertFalse(move.ready());
-        programs.frame(HDR, HDR);
-        assertTrue(move.ready());
-        programs.warm(manifest());
-        assertEquals("a second manifest naming them shares the materials", 2, programs.size());
+    public void aRequestIsReadyOnceWhatItNamedIsBuilt() {
+        CgPipelineList pipelines = list(new Fake());
+        CgPipelinePrecache.Request move = new CgPipelinePrecache.Request();
+        pipelines.collect(p -> p.add(manifest()), move);
+        assertEquals(2, pipelines.size());
+        assertFalse("its first poll starts them", pipelines.ready(move));
+        assertTrue(pipelines.ready(move));
+        pipelines.collect(p -> p.add(manifest()), null);
+        assertEquals("a second manifest naming them shares the materials", 2, pipelines.size());
     }
 
     @Test
     public void aToggleWaitsForTheListWarmedUnderIt() {
         Fake fake = new Fake();
-        CgWorldPrograms programs = new CgWorldPrograms(fake);
-        programs.warm(manifest());
-        programs.frame(HDR, HDR);
-        programs.frame(HDR, HDR);
-        assertEquals(0, programs.pending());
+        CgPipelineList pipelines = list(fake);
+        pipelines.collect(p -> p.add(manifest()), null);
+        pipelines.frame(HDR, HDR);
+        pipelines.frame(HDR, HDR);
+        assertEquals(0, pipelines.pending());
         fake.asked.clear();
-        assertFalse("the list re-warms before the toggle applies", programs.frame(LDR, HDR));
+        assertFalse("the list re-warms before the toggle applies", pipelines.frame(LDR, HDR));
         assertEquals(Arrays.asList(LDR, LDR), fake.asked);
-        assertTrue(programs.frame(LDR, HDR));
-        assertTrue(programs.frame(LDR, LDR));
+        assertTrue(pipelines.frame(LDR, HDR));
+        assertTrue(pipelines.frame(LDR, LDR));
     }
 
     @Test
     public void aToggleNeverWaitsForEver() {
         Fake fake = new Fake();
         fake.never = true;
-        CgWorldPrograms programs = new CgWorldPrograms(fake);
-        programs.warm(manifest());
+        CgPipelineList pipelines = list(fake);
+        pipelines.collect(p -> p.add(manifest()), null);
         int frames = 1;
-        while (!programs.frame(LDR, HDR)) frames++;
-        assertEquals(CgWorldPrograms.MAX_WAIT_FRAMES + 1, frames);
+        while (!pipelines.frame(LDR, HDR)) frames++;
+        assertEquals(CgPipelineList.MAX_WAIT_FRAMES + 1, frames);
     }
 
     @Test
     public void anEmptyListAppliesAtOnce() {
-        CgWorldPrograms programs = new CgWorldPrograms(new Fake());
-        assertTrue(programs.frame(LDR, HDR));
+        assertTrue(list(new Fake()).frame(LDR, HDR));
     }
 }

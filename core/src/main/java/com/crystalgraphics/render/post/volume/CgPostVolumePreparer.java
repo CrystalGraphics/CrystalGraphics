@@ -7,8 +7,7 @@ import com.crystalgraphics.asset.load.CgAssetPreparer;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.render.post.CgPostStack;
-import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 
 import java.util.ArrayList;
@@ -21,9 +20,9 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * A sequence asset's post materials made ready before it is {@code READY}: every post volume it spawns, in it and in
- * every sequence it plays, its blendables' textures decoded on a worker and their programs compiled, and the
- * composite's program for its looks ({@code CgPostStack.lookPrograms}), so the frame its cut starts loads and compiles
- * nothing. Unreal loads a level sequence's post-process materials with it.
+ * every sequence it plays, its blendables' textures decoded on a worker and their passes requested through
+ * {@code CgPipelinePrecache}, and the composite's passes for its looks ({@code CgPostStack.lookPasses}), so the frame
+ * its cut starts loads and compiles nothing. Unreal loads a level sequence's post-process materials with it.
  *
  * <pre>{@code
  * assets.preparer(CgSequenceKinds.SEQUENCE, new CgPostVolumePreparer());
@@ -31,7 +30,7 @@ import java.util.concurrent.CompletableFuture;
  *
  * <ul>
  *   <li>Each play still makes its own material instance ({@link CgPostVolumeSpawner}); their programs are the shader
- *       asset's, shared, so the instance prepared here warms every later one.</li>
+ *       asset's, shared, so the instance requested here warms every later one.</li>
  *   <li>A dedicated server registers none: it draws no post material.</li>
  * </ul>
  */
@@ -45,19 +44,14 @@ public final class CgPostVolumePreparer implements CgAssetPreparer {
         collect(sequence, materials, looks, Collections.newSetFromMap(new IdentityHashMap<>()));
         if (!looks.isEmpty()) {
             // The composite's variant for each volume's looks: a chromatic fringe first shown at its cut compiled there.
-            List<CgMaterial> probes = new ArrayList<>();
+            CgPipelinePrecache.Request[] requested = new CgPipelinePrecache.Request[1];
             plan.warm("post looks of " + sequence.id(), () -> {
-                if (probes.isEmpty() && !looks.isEmpty()) {
-                    for (CgPostSettings s : looks) probes.addAll(CgPostStack.get().lookPrograms(s));
-                    looks.clear();
+                if (requested[0] == null) {
+                    requested[0] = CgPipelinePrecache.request(p -> {
+                        for (CgPostSettings s : looks) CgPostStack.get().lookPasses(s, p);
+                    });
                 }
-                for (int i = probes.size() - 1; i >= 0; i--) {
-                    CgMaterial m = probes.get(i);
-                    if (!m.prepare()) continue;
-                    CgPipeline p = m.pipeline(CgInstanceKind.OBJECT);   // the composite's one pass, no draw forms
-                    if (p == null || p.prepare()) probes.remove(i).delete();
-                }
-                return probes.isEmpty();
+                return requested[0].ready();
             });
         }
         if (materials.isEmpty()) return;
@@ -77,17 +71,14 @@ public final class CgPostVolumePreparer implements CgAssetPreparer {
             return decoded[0].isDone();
         });
 
-        List<CgMaterial> pending = new ArrayList<>();
+        CgPipelinePrecache.Request[] passes = new CgPipelinePrecache.Request[1];
         plan.warm("post materials of " + sequence.id(), () -> {
-            if (pending.isEmpty() && !materials.isEmpty()) {
-                for (CgMaterialDefinition m : materials) pending.add(CgMaterial.newInstance(m, null));
-                materials.clear();
+            if (passes[0] == null) {
+                passes[0] = CgPipelinePrecache.request(p -> {
+                    for (CgMaterialDefinition m : materials) p.addPass(CgMaterial.newInstance(m, null));
+                });
             }
-            for (int i = pending.size() - 1; i >= 0; i--) {
-                if (!pending.get(i).prepare()) continue;
-                pending.remove(i).delete();
-            }
-            return pending.isEmpty();
+            return passes[0].ready();
         });
     }
 

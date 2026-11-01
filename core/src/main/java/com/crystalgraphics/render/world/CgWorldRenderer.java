@@ -44,7 +44,6 @@ import com.crystalgraphics.platform.world.CgWorldBegin;
 import javax.annotation.Nullable;
 import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.render.CgPipelinePrecache;
 import com.crystalgraphics.render.CgViewFrustum;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -375,8 +374,8 @@ public final class CgWorldRenderer {
     /** The HDR scene as drawn: {@link #hdrScene()}, once the program list is warm under it. */
     private boolean hdrApplied;
     @Nullable
-    private CgWorldPrograms.Settings applied;
-    private final CgWorldPrograms programs = new CgWorldPrograms(this::prepare);
+    private CgPipelineList.Settings applied;
+    private final CgPipelineList pipelines = new CgPipelineList(this::prepare, this::requestedSettings);
     private boolean skipUnready = SKIP_UNREADY.get();
     private long unreadyDraws;
     /** The target-sized emission those passes write into, and per draw whether its glows were drawn there. */
@@ -483,9 +482,9 @@ public final class CgWorldRenderer {
         long start = System.nanoTime();
         int left;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, BOOT_ZONE)) {
-            left = programs.await(requestedSettings(), BOOT_TIMEOUT_NANOS);
+            left = pipelines.await(requestedSettings(), BOOT_TIMEOUT_NANOS);
         }
-        LOGGER.info("{} engine programs built in {} ms{}", programs.size(), (System.nanoTime() - start) / 1_000_000,
+        LOGGER.info("{} engine programs built in {} ms{}", pipelines.size(), (System.nanoTime() - start) / 1_000_000,
                 left > 0 ? ", " + left + " still compiling" : "");
     }
 
@@ -530,9 +529,9 @@ public final class CgWorldRenderer {
 
     /** Warms the program list under the settings asked for, and applies them once it is warm. */
     private void settle() {
-        CgWorldPrograms.Settings requested = requestedSettings();
+        CgPipelineList.Settings requested = requestedSettings();
         if (applied == null) applied = requested;
-        if (programs.frame(requested, applied)) {
+        if (pipelines.frame(requested, applied)) {
             applied = requested;
             hdrApplied = requested.hdrScene();
             mergeEmission = mergeRequested;
@@ -541,29 +540,23 @@ public final class CgWorldRenderer {
     }
 
     /** The settings asked for now: what the next frames draw under once the program list is warm. */
-    public CgWorldPrograms.Settings requestedSettings() {
+    public CgPipelineList.Settings requestedSettings() {
         boolean hdr = hdrScene(), merge = mergeRequested && CgCapabilities.detect().independentBlend();
         boolean joins = CgCapabilities.detect().multiDraw() && CgMeshStore.get().multiDraw();
-        CgWorldPrograms.Settings r = requested;
+        CgPipelineList.Settings r = requested;
         if (r == null || r.hdrScene() != hdr || r.mergeEmission() != merge || r.joins() != joins
                 || r.halfResolution() != halfResolution) {
-            requested = r = new CgWorldPrograms.Settings(hdr, merge, joins, halfResolution);
+            requested = r = new CgPipelineList.Settings(hdr, merge, joins, halfResolution);
         }
         return r;
     }
 
     @Nullable
-    private CgWorldPrograms.Settings requested;
+    private CgPipelineList.Settings requested;
 
-    /**
-     * The program list: every material kept warm under the settings in force, re-warmed before a change applies.
-     *
-     * <pre>{@code
-     * CgWorldPrograms.Warming move = CgWorldRenderer.get().programs().warm(manifest);
-     * }</pre>
-     */
-    public CgWorldPrograms programs() {
-        return programs;
+    /** The precache's list: every pipeline kept built under the settings in force. {@link CgPipelinePrecache}'s. */
+    CgPipelineList pipelines() {
+        return pipelines;
     }
 
     /** Whether the HDR scene is drawn now: {@link #hdrScene()}, applied once the program list is warm under it. */
@@ -919,49 +912,15 @@ public final class CgWorldRenderer {
     }
 
     /**
-     * Starts compiling every program this renderer draws {@code material} with, without waiting, and says whether all
-     * are built: each link of its chain's Forward pass, its depth pass, its Emissive and Distortion passes, each in
-     * the multi-draw form a joined run binds too, with the keywords enabled now, and CustomDepth's stencil copy. Poll it from a warm-up list, so no
-     * frame compiles a program the frame draws. Render thread.
-     *
-     * <pre>{@code
-     * warming.add(material);              // when a look starts playing, before its first draw
-     * warming.removeIf(world::prepare);   // each frame: dropped once built
-     * }</pre>
-     *
-     * <ul>
-     *   <li>The mesh and the draw's form ({@code instances}, {@code indirect}, a {@code buffer}) choose no program, so
-     *       the material is all it takes. A GPU-culled set's kernels are {@code CgGpuOps.prepareCull}'s.</li>
-     *   <li>A keyword enabled after it answered true is a program it never built.</li>
-     * </ul>
+     * Starts every program this renderer draws {@code material} with under {@code settings}, without waiting, and says
+     * whether all are built: each link of its chain's Forward pass, its depth pass, its Emissive and Distortion passes,
+     * each in the multi-draw form a joined run binds, the half-size passes where {@code halfResolution}, the skinned
+     * vertex factory's forms where {@code skinned} (the precache key's vertex factory, as Unreal's), with the keywords
+     * enabled now. Only the variants those settings draw: under the HDR scene a glow folded into its colour
+     * ({@code sceneFold}); without it, the merged glow and its cover or, unmerged, the occluder. {@link CgPipelineList}'s
+     * preparer: a caller requests its materials through {@link CgPipelinePrecache}.
      */
-    public boolean prepare(CgMaterial material) {
-        return prepare(material, false, requestedSettings());
-    }
-
-    /**
-     * {@link #prepare(CgMaterial)}, for a material drawn {@code .halfResolution()} as well: the half-size passes that
-     * lay it over the target (the upsample, the volume resolve and composite) are started too.
-     */
-    public boolean prepare(CgMaterial material, boolean halfResolution) {
-        return prepare(material, halfResolution, requestedSettings());
-    }
-
-    /**
-     * {@link #prepare(CgMaterial, boolean)} for {@code settings} rather than those asked for now: only the variants
-     * those settings draw. Under the HDR scene, a glow folded into its colour ({@code sceneFold}); without it, the
-     * merged glow and what covers it ({@code emissionTarget}, {@code emissionCover}) or, unmerged, what hides the glows
-     * behind a transparent draw ({@code emissionOccluder}). What {@link CgWorldPrograms} re-warms a toggle by.
-     */
-    public boolean prepare(CgMaterial material, boolean halfResolution, CgWorldPrograms.Settings settings) {
-        return prepare(material, halfResolution, false, settings);
-    }
-
-    /**
-     * {@link #prepare(CgMaterial, boolean, CgWorldPrograms.Settings)} for a material a skinned mesh draws: every form
-     * in its skinned vertex factory ({@code CgPipeline.skinned()}), the precache key's vertex factory as Unreal's.
-     */
-    public boolean prepare(CgMaterial material, boolean halfResolution, boolean skinned, CgWorldPrograms.Settings settings) {
+    boolean prepare(CgMaterial material, boolean halfResolution, boolean skinned, CgPipelineList.Settings settings) {
         boolean joins = settings.joins();
         boolean ready = true;
         for (CgMaterial link = material; link != null; link = link.getNextPass()) {

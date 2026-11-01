@@ -214,17 +214,6 @@ lights.add(x, y, z, 4f, 0xFFFFC080, 10f, 0f).shadowed(false);                   
   `world.distortion` and `world.distortionApply`; a frame with no distortion records neither. The field is published
   as `CgFrameKeys.DISTORTION`, and a post effect bends a side input by it with `post.distorted(texture)`: bloom
   bends the emission so the glow moves with the scene beneath it.
-- **Warming**: `world.prepare(material)` starts every program the renderer will draw a material with (each pass of its
-  chain, its depth, Emissive and Distortion passes, and the multi-draw form of each) without waiting, and answers true
-  once all are built. Poll it from a warm-up list before a material's first draw: a program compiled at its first
-  draw is 7-110 ms of that frame on GL. Warm-ups share `CgWarmBudget`, a few milliseconds a frame
-  (`crystalgraphics.warmBudget`): one that would pass it waits for the next frame, so a scene's warm-up spreads over
-  frames rather than taking the first one. A draw never waits on the budget. It starts the renderer's own passes a
-  material brings in too: the distortion apply for a Distortion pass, and with `prepare(material, true)`, for a draw
-  marked `.halfResolution()`, the half-size upsample and the volume resolve and composite. A program a draw had to
-  wait for anyway is counted, `CgMaterialShader.compileWaits()` and the trace counter `material.compile-waits`.
-  A material a skinned mesh draws is warmed in its skinned forms, `prepare(material, half, true, settings)`;
-  `CgAnimInstance.material` registers that with `CgPipelinePrecache` itself.
 - **A draw whose programs are not built is held** (`world.skipUnready`, on; Unreal's proxy delay): skipped and counted
   (`world.unready-draws`), its programs started, drawn in the frame they finish. A `CgPostMaterial` is held the same
   way, until every pass is built. A gate that checks pixels from its first frames turns it off:
@@ -232,23 +221,32 @@ lights.add(x, y, z, 4f, 0xFFFFC080, 10f, 0f).shadowed(false);                   
   ```java
   CgWorldRenderer.get().skipUnready(false);   // compile at the draw; the frame waits, but draws what it was given
   ```
-- **Built while loading: `CgPipelinePrecache`** (Unreal's global PSO collectors). Whatever a renderer draws or dispatches
-  outside a material's own warm-up (a pass of its own, a keyword set a setting switches to, a kernel) is registered as
-  a collector, the engine's and a mod's alike, before the graphics start; the start builds all of it at once, in
-  parallel, inside the host's loading screen, and the world renderer keeps it built under every setting after.
+- **Built ahead of use: `CgPipelinePrecache`** (Unreal's PSO precaching), the one way to warm pipelines. What is always
+  known registers a collector at load (its global collectors), built at the graphics start, in parallel, inside the
+  host's loading screen. What is known later (a scene, a look, an asset bundle) requests at runtime (a component's
+  `PrecachePSOs`): started at once and built over frames inside `CgWarmBudget` (`crystalgraphics.warmBudget`, a few
+  milliseconds a frame), polled with `ready()`. Both land in one list (`CgPipelineList`) the world renderer keeps built
+  under every setting: a toggle of the HDR scene, merging or half size rebuilds it before it applies.
 
   ```java
-  CgPipelinePrecache.register("mymod:runes", programs -> {                    // a mod's constructor
-      programs.add("mymod:shaders/rune.shader", "GLOW");               // a shader and a keyword set
-      programs.add(RUNE_MATERIAL, false);                              // a material, every pass the world draws it with
-      programs.add(CgCompute.load("mymod:shaders/runes.compute").kernel("Step"));
-      programs.kernels(MyOps::prepare);                                // every kernel a preparer starts
+  CgPipelinePrecache.register("mymod:runes", pipelines -> {             // a mod's constructor
+      pipelines.add(RUNE_MATERIAL, false);                              // a material, every pass the world draws it with
+      pipelines.add("mymod:shaders/rune.shader", "GLOW");               // a keyword set a setting switches to
+      pipelines.add(CgCompute.load("mymod:shaders/runes.compute").kernel("Step"));
+      pipelines.kernels(MyOps::prepare);                                // every kernel a preparer starts
   });
+
+  CgPipelinePrecache.Request scene = CgPipelinePrecache.request(p -> p.add(FLOOR, false));   // when it is known
+  if (scene.ready()) draw();                                            // each frame until true
   ```
 
-  A collector registered after the start is collected at the next world frame and built over frames under the warm
-  budget. A set no collector names compiles at its first draw, counted as `pipeline.missed`
-  (`-Dcrystalgraphics.pipeline.logMisses=true` names it).
+  - A material entry covers each pass of its chain, its depth, Emissive and Distortion passes, the multi-draw form of
+    each, and the renderer passes it brings in (the distortion apply; with `half` true the upsample and the volume
+    resolve and composite). `add(material, half, true)` is a skinned mesh's forms; `CgAnimInstance.material` requests
+    them itself.
+  - `addPass(shader, keywords...)` is a renderer's own full-screen pass: its Forward program alone.
+  - A set nothing names compiles at its first draw, counted as `pipeline.missed`
+    (`-Dcrystalgraphics.pipeline.logMisses=true` names it), and `material.compile-waits` if the frame waited.
 - **GPU time by group**: under `crystalgraphics.gpu.groups` a pass's GPU time lands per material
   (`gpu:world.transparent/<shader path>`); `.gpuGroup(label)` charges a draw to a label of its own instead
   (`docs/PROFILING.md`).

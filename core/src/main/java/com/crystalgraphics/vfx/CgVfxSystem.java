@@ -16,7 +16,6 @@ import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import java.util.concurrent.CompletableFuture;
-import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.frame.CgWorld;
@@ -24,6 +23,7 @@ import com.crystalgraphics.render.graph.CgRehearsal;
 import com.crystalgraphics.frame.CgFrameBoundary;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.settings.CgGraphicsSettings;
@@ -219,10 +219,12 @@ public final class CgVfxSystem {
     private final CgVfxFrame frame = new CgVfxFrame(this, materials);
     /** How many of {@link #materials}' materials have the path texture bound. */
     private int pathsBound;
-    /** Materials compiling ahead of their first draw, so a layer that appears late does not stall its frame. */
+    /** The materials a warm step just named, requested and cleared by {@link #requestDraws}. */
     private final List<CgMaterial> warming = new ArrayList<>();
-    /** Those of them drawn at half size, whose half-size passes warm too. */
+    /** Those of them drawn at half size, whose half-size passes are requested too. */
     private final Set<CgMaterial> halved = Collections.newSetFromMap(new IdentityHashMap<>());
+    /** Requests for looks' materials not yet built, so a layer that appears late does not stall its frame. */
+    private final List<CgPipelinePrecache.Request> drawRequests = new ArrayList<>();
     /** Emitters {@link #prepare} queued whose kernels and slot meshes are still to start, one a step under the budget. */
     private final List<CgVfxEmitter> gpuWarming = new ArrayList<>();
     /** Each warming emitter's feed tier in the look it came from: one past its source's for a reader of particles. */
@@ -1022,7 +1024,7 @@ public final class CgVfxSystem {
                     preparedTier.put(emitters.get(k), tiers.get(emitters.get(k)));
                 }
                 // The window fills only once played, but its kernels are the look's to build now.
-                if (readsWorld(emitters.get(k))) CgWorldVoxelWindow.get().prepare();
+                if (readsWorld(emitters.get(k))) requestKernels(CgWorldVoxelWindow.get()::prepare);
             }
             drawWarming.add(look);
             drawLooks.add(look);   // warmed by the queue: its first play finishes only what the queue has not reached
@@ -1089,8 +1091,7 @@ public final class CgVfxSystem {
         pollWarming(CgWorldRenderer.get());
         if (rehearsalFailure != null) throw new IllegalStateException("the rehearsal failed", rehearsalFailure);
         if (rehearsal != null && rehearsal.done()) endRehearsal();
-        return loading == null && drawWarming.isEmpty() && warming.isEmpty() && gpuWarming.isEmpty() && rehearsal == null
-                && CgWorldRenderer.get().programs().pending() == 0;
+        return loading == null && drawWarming.isEmpty() && drawRequests.isEmpty() && gpuWarming.isEmpty() && rehearsal == null;
     }
 
     /**
@@ -1141,7 +1142,7 @@ public final class CgVfxSystem {
     /** The boundary's step: once the programs are built, a frame's passes. */
     private void stepRehearsal() {
         if (rehearsal == null || rehearsal.done() || rehearsalFailure != null) return;
-        if (loading != null || !drawWarming.isEmpty() || !warming.isEmpty() || !gpuWarming.isEmpty()) return;
+        if (loading != null || !drawWarming.isEmpty() || !drawRequests.isEmpty() || !gpuWarming.isEmpty()) return;
         try {
             rehearsal.step();
         } catch (RuntimeException e) {
@@ -1198,12 +1199,14 @@ public final class CgVfxSystem {
 
     /** {@code look}'s kernels and slot meshes; the voxel window's too when {@code useWindow}, which starts it filling. */
     private void prepareGpu(CgVfxLook look, boolean useWindow) {
-        prepareRange();
-        List<CgVfxEmitter> emitters = look.emitters();
-        for (int k = 0; k < emitters.size(); k++) {
-            CgVfxEmitter emitter = emitters.get(k);
-            prepareEmitter(emitter, feedTier(look, emitter));
-        }
+        requestKernels(() -> {
+            prepareRange();
+            List<CgVfxEmitter> emitters = look.emitters();
+            for (int k = 0; k < emitters.size(); k++) {
+                CgVfxEmitter emitter = emitters.get(k);
+                prepareEmitter(emitter, feedTier(look, emitter));
+            }
+        });
         if (useWindow) useWindow(look);
     }
 
@@ -1271,18 +1274,16 @@ public final class CgVfxSystem {
         CgVfxLook look = effect.look();
         // A server's copy, or a system with no GL on its thread (a test), has no kernels to wait for.
         if (!effect.authoritative() && CgGL.mayIssueGl() && !readyLooks.contains(look)) {
-            List<CgKernel> kernels = lookKernels.computeIfAbsent(look, l -> {
+            CgPipelinePrecache.Request kernels = lookKernels.computeIfAbsent(look, l -> CgPipelinePrecache.request(p -> {
                 try {
-                    return CgKernel.collect(() -> prepareKernels(l));
+                    p.kernels(() -> prepareKernels(l));
                 } catch (RuntimeException e) {
-                    return List.of();   // it fails at its own step, alone, as a look that will not prepare does
+                    // it fails at its own step, alone, as a look that will not prepare does
                 }
-            });
-            for (int i = 0; i < kernels.size(); i++) {
-                if (!kernels.get(i).isReady()) {
-                    CgVfxTrace.count(EFFECTS_HELD, 1);
-                    return false;
-                }
+            }));
+            if (!kernels.ready()) {
+                CgVfxTrace.count(EFFECTS_HELD, 1);
+                return false;
             }
             readyLooks.add(look);
         }
@@ -1308,7 +1309,7 @@ public final class CgVfxSystem {
 
     /** Looks whose kernels were found built, and each look's kernels, gathered once. */
     private final Set<CgVfxLook> readyLooks = Collections.newSetFromMap(new IdentityHashMap<>());
-    private final Map<CgVfxLook, List<CgKernel>> lookKernels = new IdentityHashMap<>();
+    private final Map<CgVfxLook, CgPipelinePrecache.Request> lookKernels = new IdentityHashMap<>();
 
     /** The ribbon generation's kernels and sorts, for an emitter a ribbon renderer draws: else its first ribbon builds them. */
     private static void prepareRibbons(CgVfxEmitter emitter) {
@@ -1347,11 +1348,27 @@ public final class CgVfxSystem {
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, MATERIALS_ZONE)) {
             materials.prepare(look, warming, halved);
         }
-        // Kept warm by the world renderer too, so a settings change (the HDR scene, half size) re-warms them first.
-        CgWorldRenderer world = CgWorldRenderer.get();
+        requestDraws();
+    }
+
+    /**
+     * Requests the materials a warm step named into {@link #warming}: kept built by the precache from then on, so a
+     * settings change (the HDR scene, half size) rebuilds them before it applies.
+     */
+    private void requestDraws() {
+        if (warming.isEmpty()) return;
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, PROGRAMS_ZONE)) {
-            for (int i = 0; i < warming.size(); i++) world.programs().add(warming.get(i), halved.contains(warming.get(i)));
+            drawRequests.add(CgPipelinePrecache.request(pipelines -> {
+                for (int i = 0; i < warming.size(); i++) pipelines.add(warming.get(i), halved.contains(warming.get(i)));
+            }));
         }
+        warming.clear();
+        halved.clear();
+    }
+
+    /** Requests the kernels {@code prepares} starts, run now with whatever else it does (a pool's expectations, meshes). */
+    private static void requestKernels(Runnable prepares) {
+        CgPipelinePrecache.request(pipelines -> pipelines.kernels(prepares));
     }
 
     /**
@@ -1366,7 +1383,6 @@ public final class CgVfxSystem {
         while (!drawWarming.isEmpty() && CgWarmBudget.allows()) {
             long start = System.nanoTime();
             CgVfxLook look = drawWarming.get(0);
-            int before = warming.size();
             try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, MATERIALS_ZONE)) {
                 if (drawPlaced < look.placed().size()) {
                     materials.prepare(look, drawPlaced++, warming, halved);
@@ -1376,21 +1392,20 @@ public final class CgVfxSystem {
                     drawPlaced = 0;
                 }
             }
-            // Kept warm by the world renderer too, so a settings change (the HDR scene, half size) re-warms them first.
-            for (int i = before; i < warming.size(); i++) world.programs().add(warming.get(i), halved.contains(warming.get(i)));
+            requestDraws();
             CgWarmBudget.spend(System.nanoTime() - start);
         }
         while (drawWarming.isEmpty() && !gpuWarming.isEmpty() && CgWarmBudget.allows()) {
             long start = System.nanoTime();
             try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, EMITTER_ZONE)) {
                 if (!rangePrepared) {
-                    CgVfxRange.PREPARE_STEPS.get(rangeStep++).run();
+                    requestKernels(CgVfxRange.PREPARE_STEPS.get(rangeStep++));
                     rangePrepared = rangeStep == CgVfxRange.PREPARE_STEPS.size();
                 }
                 else {
                     CgVfxEmitter next = gpuWarming.remove(0);
                     Integer tier = gpuWarmingTier.remove(next);
-                    prepareEmitter(next, tier != null ? tier : 0);
+                    requestKernels(() -> prepareEmitter(next, tier != null ? tier : 0));
                 }
             }
             CgWarmBudget.spend(System.nanoTime() - start);
@@ -1405,12 +1420,8 @@ public final class CgVfxSystem {
             CgWarmBudget.spend(System.nanoTime() - start);
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, POLL_ZONE)) {
-            for (int i = warming.size() - 1; i >= 0; i--) {
-                CgMaterial material = warming.get(i);
-                if (world.prepare(material, halved.contains(material))) {
-                    warming.remove(i);
-                    halved.remove(material);
-                }
+            for (int i = drawRequests.size() - 1; i >= 0; i--) {
+                if (drawRequests.get(i).ready()) drawRequests.remove(i);
             }
         }
     }
@@ -1475,6 +1486,7 @@ public final class CgVfxSystem {
         pathsBound = 0;
         warming.clear();
         halved.clear();
+        drawRequests.clear();
         gpuWarming.clear();
         gpuWarmingTier.clear();
         drawWarming.clear();

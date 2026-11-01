@@ -13,8 +13,7 @@ import com.github.bsideup.jabel.Desugar;
 /**
  * The permutations a move (or any set of assets) draws, known before it plays: each material's
  * {@link CgMaterialPermutation} times the slot kinds its renderers draw it on. What warming reads, so a move's first
- * frame compiles nothing; the world renderer multiplies in its own variants for the settings in force
- * ({@code CgWorldRenderer.prepare}).
+ * frame compiles nothing; the precache multiplies in the world renderer's own forms for the settings in force.
  *
  * <pre>{@code
  * CgMaterialManifest manifest = CgMaterialManifest.builder()
@@ -22,7 +21,7 @@ import com.github.bsideup.jabel.Desugar;
  *         .add(spark, "FX_ON_PARTICLES", false)        // on a particle slot: that keyword where the archetype has it
  *         .add(smoke, "FX_ON_FLUID", true)             // drawn at half size
  *         .build();
- * CgWorldRenderer.get().programs().warm(manifest);     // at READY; poll the answer's ready()
+ * CgPipelinePrecache.Request move = CgPipelinePrecache.request(p -> p.add(manifest));   // at READY; poll ready()
  * }</pre>
  *
  * <p>A permutation no manifest listed is a cook bug: drawn cold, it is skipped and counted where the world renderer

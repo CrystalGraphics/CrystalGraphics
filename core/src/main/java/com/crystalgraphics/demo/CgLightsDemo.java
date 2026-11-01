@@ -12,6 +12,7 @@ import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.render.world.CgWorldHaze;
 import com.crystalgraphics.render.world.CgWorldLights;
+import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.primitive.CgBox;
@@ -160,11 +161,13 @@ public final class CgLightsDemo {
     public void prepare() {
         vfx.prepare(particles);
         glass = CgMaterial.load("crystalgraphics:shaders/demo/demo_glass.shader");
-        CgWorldRenderer.get().prepare(glass);
+        programs = CgPipelinePrecache.request(pipelines -> pipelines.add(glass, false));
     }
 
+    private CgPipelinePrecache.Request programs;
+
     public boolean warmed() {
-        return vfx.warmed() && glass != null && CgWorldRenderer.get().prepare(glass);
+        return vfx.warmed() && programs != null && programs.ready();
     }
 
     /** The show round a ground point {@code (x, y, z)} as it is at {@code seconds}. */

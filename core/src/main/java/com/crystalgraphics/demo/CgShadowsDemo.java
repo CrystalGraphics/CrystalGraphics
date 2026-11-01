@@ -5,6 +5,7 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.collision.debug.CgCollisionDebug;
 import com.crystalgraphics.render.world.CgWorldLights;
+import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.settings.CgQuality;
@@ -134,11 +135,13 @@ public final class CgShadowsDemo {
 
     public void prepare() {
         if (material == null) material = CgMaterial.load(MATERIAL);
-        CgWorldRenderer.get().prepare(material);
+        programs = CgPipelinePrecache.request(pipelines -> pipelines.add(material, false));
     }
 
+    private CgPipelinePrecache.Request programs;
+
     public boolean warmed() {
-        return material != null && CgWorldRenderer.get().prepare(material);
+        return programs != null && programs.ready();
     }
 
     /** The scene round a ground point {@code (x, y, z)} as it is at {@code seconds}. */

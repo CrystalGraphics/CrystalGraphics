@@ -5,6 +5,7 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.render.world.CgSortLayer;
+import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxTrace;
@@ -320,24 +321,21 @@ public final class CgVfxShowcase {
     /** Makes the spheres' meshes and materials and warms every program the showcase draws with. On the render thread. */
     public void prepare() {
         ensureResources();
-        CgWorldRenderer world = CgWorldRenderer.get();
-        for (CgMaterial material : materials) world.prepare(material);
-        for (CgMaterial material : new CgMaterial[]{glow, corona, bolt, sky, horizon, seal, floorMaterial}) {
-            world.prepare(material);
-        }
+        stage = CgPipelinePrecache.request(pipelines -> {
+            for (CgMaterial material : materials) pipelines.add(material, false);
+            for (CgMaterial material : new CgMaterial[]{glow, corona, bolt, sky, horizon, seal, floorMaterial}) {
+                pipelines.add(material, false);
+            }
+        });
         for (Lane lane : lanes) vfx.prepare(lane.look);
         vfx.prepare(CgVfxHeatHaze.standard());
     }
 
+    private CgPipelinePrecache.Request stage;
+
     /** Whether everything {@link #prepare} started compiling is built. */
     public boolean warmed() {
-        CgWorldRenderer world = CgWorldRenderer.get();
-        boolean built = vfx.warmed();
-        for (CgMaterial material : materials) built &= world.prepare(material);
-        for (CgMaterial material : new CgMaterial[]{glow, corona, bolt, sky, horizon, seal, floorMaterial}) {
-            built &= world.prepare(material);
-        }
-        return built;
+        return vfx.warmed() & stage != null && stage.ready();
     }
 
     /** Ends every wave and the haze at once; the next {@link #submit} starts the loop over. */
