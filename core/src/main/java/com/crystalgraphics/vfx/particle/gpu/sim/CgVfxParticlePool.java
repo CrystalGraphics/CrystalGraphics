@@ -2479,6 +2479,25 @@ public final class CgVfxParticlePool {
         return lightSlots;
     }
 
+    /**
+     * {@link #lightSlots(CgRecording, int)} for a pool a precache sized and that has never stepped: its storage made now,
+     * so a move's first frame makes none. Between steps.
+     */
+    public void lightSlotsAhead(int words) {
+        betweenSteps("lightSlotsAhead");
+        if (liveEntry < 0 && words > 0) lightSlots = ahead(lightSlots, "vfx.pool.lights", words);
+    }
+
+    /** The slots {@link #expect} sized it for. */
+    public int expectedSlots() {
+        return expectedSlots;
+    }
+
+    /** The records {@link #expect} sized it for. */
+    public int expectedCapacity() {
+        return expectedCapacity;
+    }
+
     /** Each slot's light row as last fitted; null before. */
     public CgGraphBuffer lightSlots() {
         return lightSlots;

@@ -1439,6 +1439,9 @@ public final class CgVfxSystem {
             try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, ALLOCATE_ZONE)) {
                 // Every look's emitters have expected: their pools' storage made now, not by the first step.
                 for (CgVfxParticlePool pool : expected) if (!pool.isReleased()) pool.allocate();
+                // And what their draws share, sized for all of them playing at once: a move's first frame makes none.
+                CgVfxParticleLights.ahead(expected);
+                CgVfxRange.ahead();
             }
             expected.clear();
             CgWarmBudget.spend(System.nanoTime() - start);

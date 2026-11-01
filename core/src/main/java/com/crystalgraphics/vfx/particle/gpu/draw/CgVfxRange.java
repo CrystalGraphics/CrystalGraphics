@@ -13,6 +13,7 @@ import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDispatch;
+import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
@@ -110,6 +111,10 @@ public final class CgVfxRange {
     }
     /** A slot's ORIGINS entry: its block, where within it with its ground, its rotation. */
     private static final int ORIGIN_BYTES = 48;
+    /** A slot's FACINGS entry. */
+    private static final int FACING_BYTES = CgVfxMeshFacing.VECTORS * 16;
+    /** Every real pool's slots and records as a precache sized them ({@link #ahead}): a floor under the shared buffers. */
+    private static int aheadSlots, aheadDrawn;
     /** The low key bits a sorting slot's view depth takes. */
     private static final int DEPTH_BITS = 16;
     /** Each pool's records start at a multiple of this in the shared buffers: a binding offset is a whole 256 bytes. */
@@ -248,7 +253,7 @@ public final class CgVfxRange {
         public void onContextDestroy() {
             CgVfxRibbonGeneration.forgetAll();
             RETIRED.clear();
-            drawn = visible = slots = bases = strides = objects = sorts = origins = null;
+            drawn = visible = slots = bases = strides = objects = sorts = origins = facings = null;
         }
     };
 
@@ -275,6 +280,41 @@ public final class CgVfxRange {
             () -> CgGpuOps.precacheCull(true)   // MESHES slots, drawn through the world renderer's cull
     );
 
+    /**
+     * Sizes the shared buffers for every pool a precache sized, as if each played all it expects at once, and makes their
+     * storage now: a move's first frame then makes none, and a rehearsal draws into them. After the pools'
+     * {@link CgVfxParticlePool#allocate}; render thread, outside a rehearsal.
+     *
+     * <pre>{@code
+     * for (CgVfxParticlePool pool : expected) pool.allocate();
+     * CgVfxRange.ahead();
+     * }</pre>
+     */
+    public static void ahead() {
+        List<CgVfxParticlePool> pools = CgVfxParticlePool.pools();
+        int slotTotal = 0, drawnTotal = 0;
+        for (int i = 0; i < pools.size(); i++) {
+            CgVfxParticlePool p = pools.get(i);
+            if (p.hidden() || p.isReleased()) continue;
+            slotTotal += Math.max(p.slotCount(), p.expectedSlots());
+            drawnTotal += align(Math.max(p.capacity(), p.expectedCapacity()), RECORD_ALIGN);
+        }
+        if (slotTotal <= aheadSlots && drawnTotal <= aheadDrawn) return;
+        aheadSlots = Math.max(aheadSlots, slotTotal);
+        aheadDrawn = Math.max(aheadDrawn, drawnTotal);
+        CgExecutor.makeStorage(fitOrder());
+        CgExecutor.makeStorage(fitVisible());
+        visibleZeroed = false;
+        if (objects != null) CgExecutor.makeStorage(fitObjects());
+        fitSlots(null, 0);
+        CgExecutor.makeStorage(slots);
+        CgExecutor.makeStorage(bases);
+        CgExecutor.makeStorage(strides);
+        CgExecutor.makeStorage(sorts);
+        CgExecutor.makeStorage(origins);
+        CgExecutor.makeStorage(facings);
+    }
+
     /** {@link #precache}'s files read and parsed, and nothing built: CPU only, any thread. */
     public static void loadAhead() {
         CgKernel.ahead(CgVfxRange::precache);
@@ -287,7 +327,8 @@ public final class CgVfxRange {
         REHEARSED.clear();
         ALL = REAL;
         RETIRED.clear();
-        drawn = visible = slots = bases = strides = objects = sorts = origins = null;
+        drawn = visible = slots = bases = strides = objects = sorts = origins = facings = null;
+        aheadSlots = aheadDrawn = 0;
         anySorted = anyCapped = objectsAsked = false;
         if (registration != null) {
             registration.close();
@@ -297,9 +338,12 @@ public final class CgVfxRange {
 
     /** The particle records every pool's draws read, {@code CgParticleBuffer}'s layout, a slot's from {@link #base}. */
     public CgGraphBuffer order() {
-        int need = Math.max(1, drawnBefore(ALL.size()));
-        if (drawn == null || drawn.size() < (long) need * DRAWN_BYTES) {
-            if (drawn != null) RETIRED.add(drawn);
+        return fitOrder();
+    }
+
+    private static CgGraphBuffer fitOrder() {
+        int need = Math.max(Math.max(1, drawnBefore(ALL.size())), aheadDrawn);
+        if (drawn == null || drawn.size() < (long) need * DRAWN_BYTES) {            if (drawn != null) RETIRED.add(drawn);
             drawn = CgGraphBuffer.persistent("vfx.range.order",
                     CgBufferDesc.elements(sizeClass(need), DRAWN_BYTES, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
         }
@@ -313,7 +357,11 @@ public final class CgVfxRange {
      */
     public CgGraphBuffer objects() {
         objectsAsked = true;
-        int need = Math.max(1, drawnBefore(ALL.size()));
+        return fitObjects();
+    }
+
+    private static CgGraphBuffer fitObjects() {
+        int need = Math.max(Math.max(1, drawnBefore(ALL.size())), aheadDrawn);
         if (objects == null || objects.size() < (long) need * CgGpuOps.cullRecordBytes()) {
             if (objects != null) RETIRED.add(objects);
             objects = CgGraphBuffer.persistent("vfx.range.objects",
@@ -394,7 +442,11 @@ public final class CgVfxRange {
      * draw's indirect count.
      */
     public CgGraphBuffer visible() {
-        int need = slotsBefore(ALL.size()) + 1;
+        return fitVisible();
+    }
+
+    private static CgGraphBuffer fitVisible() {
+        int need = Math.max(slotsBefore(ALL.size()), aheadSlots) + 1;
         if (visible == null || visible.size() < need * 4L) {
             if (visible != null) RETIRED.add(visible);
             visible = CgGraphBuffer.persistent("vfx.range.visible",
@@ -738,14 +790,7 @@ public final class CgVfxRange {
      * its origin in whole blocks and within one, with its ground and its rotation.
      */
     private static void uploadSlots(CgRecording recording, CgHostView view, int allSlots) {
-        slots = fit(recording, slots, "vfx.range.slots", allSlots * 16L);
-        bases = fit(recording, bases, "vfx.range.bases", allSlots * 4L);
-        strides = fit(recording, strides, "vfx.range.strides", allSlots * 4L);
-        sorts = fit(recording, sorts, "vfx.range.sorts", allSlots * 4L);
-        origins = fit(recording, origins, "vfx.range.origins", allSlots * (long) ORIGIN_BYTES);
-        if (staging.capacity() < allSlots * ORIGIN_BYTES) {
-            staging = ByteBuffer.allocate(Math.max(allSlots * ORIGIN_BYTES, staging.capacity() * 2)).order(ByteOrder.nativeOrder());
-        }
+        fitSlots(recording, allSlots);
         staging.clear();
         for (int i = 0, g = 0; i < ALL.size(); i++) {
             CgVfxParticlePool p = ALL.get(i).pool;
@@ -809,11 +854,7 @@ public final class CgVfxRange {
         }
         staging.limit(allSlots * ORIGIN_BYTES);
         recording.update(origins, 0, staging);
-        int facingBytes = CgVfxMeshFacing.VECTORS * 16;
-        facings = fit(recording, facings, "vfx.range.facings", allSlots * (long) facingBytes);
-        if (staging.capacity() < allSlots * facingBytes) {
-            staging = ByteBuffer.allocate(Math.max(allSlots * facingBytes, staging.capacity() * 2)).order(ByteOrder.nativeOrder());
-        }
+        int facingBytes = FACING_BYTES;
         staging.clear();
         for (int i = 0, g = 0; i < ALL.size(); i++) {
             CgVfxParticlePool p = ALL.get(i).pool;
@@ -827,20 +868,39 @@ public final class CgVfxRange {
         recording.update(facings, 0, staging);
     }
 
-    /** The shared buffers, once no pool is left. */
+    /** The shared buffers, once no pool is left; those {@link #ahead} sized are kept for the moves it sized them for. */
     private static void release(CgRecording recording) {
         for (int i = 0; i < RETIRED.size(); i++) recording.release(RETIRED.get(i));
         RETIRED.clear();
+        if (aheadSlots > 0) return;
         CgGraphBuffer[] owned = {drawn, visible, slots, bases, strides, objects, sorts, origins, facings};
         for (CgGraphBuffer buffer : owned) if (buffer != null) recording.release(buffer);
         drawn = visible = slots = bases = strides = objects = sorts = origins = facings = null;
     }
 
-    /** {@code buffer}, or one of the next size class in its place when it holds fewer than {@code bytes}. */
-    private static CgGraphBuffer fit(CgRecording recording, CgGraphBuffer buffer, String name, long bytes) {
+    /** The per-slot buffers and the staging that fills them, for {@code allSlots} or {@link #aheadSlots}, the larger. */
+    private static void fitSlots(@Nullable CgRecording recording, int allSlots) {
+        int room = Math.max(allSlots, aheadSlots);
+        slots = fit(recording, slots, "vfx.range.slots", room * 16L);
+        bases = fit(recording, bases, "vfx.range.bases", room * 4L);
+        strides = fit(recording, strides, "vfx.range.strides", room * 4L);
+        sorts = fit(recording, sorts, "vfx.range.sorts", room * 4L);
+        origins = fit(recording, origins, "vfx.range.origins", room * (long) ORIGIN_BYTES);
+        facings = fit(recording, facings, "vfx.range.facings", room * (long) FACING_BYTES);
+        int bytes = room * Math.max(ORIGIN_BYTES, FACING_BYTES);
+        if (staging.capacity() < bytes) {
+            staging = ByteBuffer.allocate(Math.max(bytes, staging.capacity() * 2)).order(ByteOrder.nativeOrder());
+        }
+    }
+
+    /** {@code buffer}, or a larger one in its place, the old released through {@code recording}, or the next one. */
+    private static CgGraphBuffer fit(@Nullable CgRecording recording, CgGraphBuffer buffer, String name, long bytes) {
         long size = Math.max(256L, Long.highestOneBit(Math.max(bytes, 1L) - 1) << 1);
         if (buffer != null && buffer.size() >= bytes) return buffer;
-        if (buffer != null) recording.release(buffer);
+        if (buffer != null) {
+            if (recording != null) recording.release(buffer);
+            else RETIRED.add(buffer);
+        }
         return CgGraphBuffer.persistent(name, CgBufferDesc.of(size, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
     }
 

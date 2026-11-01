@@ -54,6 +54,17 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
         CgCompute.load(KERNELS).kernel("Lights").precache();
     }
 
+    /**
+     * Makes the light rows of each pool a precache sized whose shape gives light, for the slots it expects, so a move's
+     * first frame makes none. After {@link CgVfxParticlePool#allocate}; render thread, between steps.
+     */
+    public static void ahead(Iterable<CgVfxParticlePool> pools) {
+        for (CgVfxParticlePool pool : pools) {
+            if (pool.isReleased() || !pool.shape().lights()) continue;
+            pool.lightSlotsAhead(Math.max(pool.slotCount(), pool.expectedSlots()) * SLOT_FLOATS);
+        }
+    }
+
     /** The one instance, added to {@link CgWorldRenderer#lights()} at its first ask. */
     public static CgVfxParticleLights get() {
         CgVfxParticleLights lights = instance;
