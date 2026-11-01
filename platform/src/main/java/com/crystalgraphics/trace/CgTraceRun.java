@@ -3,15 +3,19 @@ package com.crystalgraphics.trace;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.DoubleSupplier;
 
 import com.crystalgraphics.platform.service.CgCacheDirectory;
 
 /**
  * A run's trace files on disk, for any host of the engine: the run directory ({@code <game>/crystalgraphics/cache/
- * trace/latest/}, the previous runs rotated beside it), its log, and on shutdown {@code meta.json} and
- * {@code report.txt}. With {@code -Dcrystalgraphics.trace.hitchDumpMs=<ms>}, the frames before each frame slower than
- * that are written as they happen: a rare hitch in a hand-driven session, caught.
+ * trace/latest/}, the previous runs rotated beside it), its log, and on shutdown {@code meta.json}, {@code report.txt}
+ * (the whole run), {@code play-report.txt} and {@code slow.txt} (play alone: from {@value #HITCH_FRAMES} frames past
+ * the first world frame). With {@code -Dcrystalgraphics.trace.hitchDumpMs=<ms>}, the frames before each frame of play
+ * slower than that are written as they happen, on a thread of their own: a rare hitch in a hand-driven session, caught.
  *
  * <pre>{@code
  * // a dev run or an installed client, nothing else to set up:
@@ -29,7 +33,9 @@ import com.crystalgraphics.platform.service.CgCacheDirectory;
  *       written.</li>
  *   <li>{@code report.txt} only when something recorded; its tier is {@code -Dcrystalgraphics.trace.report}
  *       ({@code verdict}, {@code breakdown}, the default, or {@code full}).</li>
- *   <li>A hitch dump holds {@value #HITCH_FRAMES} frames, after the run's first {@value #HITCH_FRAMES}, at most
+ *   <li>To see a whole session, size the ring to hold it ({@code trace.frames}, {@code trace.zones}) and read
+ *       {@code slow.txt}: hitch dumps are for sessions too long to hold.</li>
+ *   <li>A hitch dump holds {@value #HITCH_FRAMES} frames, from the play range's start, at most
  *       {@code -Dcrystalgraphics.trace.hitchDumps} (5) a run; it sizes the ring to them, and records
  *       {@code crystalgraphics} if no channel was asked for.</li>
  * </ul>
@@ -46,8 +52,12 @@ public final class CgTraceRun {
 
     private static volatile DoubleSupplier budget = () -> 1000d / 60d;
     private static boolean opened, exitWritten, hooked;
-    private static long lastFrameNanos, framesSeen, hitchFrame = -1L, quietUntil = -1L;
+    private static long lastFrameNanos, hitchFrame = -1L, quietUntil = -1L;
+    /** The first frame of play: {@value #HITCH_FRAMES} past the first world frame. -1 until a world draws. */
+    private static volatile long playFrom = -1L;
     private static int hitchDumps;
+    /** Writes dumps off the render thread: a snapshot of the ring and its reports cost 100 ms and more. */
+    private static ExecutorService dumper;
 
     private CgTraceRun() {
     }
@@ -67,7 +77,8 @@ public final class CgTraceRun {
             Runtime.getRuntime().addShutdownHook(new Thread(CgTraceRun::writeExitFiles, "crystalgraphics-trace-exit"));
         }
         if (HITCH_NANOS > 0L) {
-            CgTrace.configure(0, HITCH_FRAMES + 8, ZONES_PER_FRAME);
+            // Twice a dump: the frames it copies off-thread are not overwritten while it copies them.
+            CgTrace.configure(0, 2 * HITCH_FRAMES, ZONES_PER_FRAME);
             CgTrace.stopAfterHitch(0L, 0);
             if (CgTrace.enabledNames().isEmpty()) CgTrace.enable("crystalgraphics");
         }
@@ -85,27 +96,50 @@ public final class CgTraceRun {
         budget = millis;
     }
 
+    /** Once a world frame: the first starts the play range, {@value #HITCH_FRAMES} frames on, past joining the world. */
+    public static void worldFrame() {
+        if (playFrom < 0L) playFrom = CgTrace.currentFrameIndex() + HITCH_FRAMES;
+    }
+
+    /** The first frame of play: past the first world frame's settling, else past the run's first frames. */
+    public static long playStart() {
+        long from = playFrom;
+        return from >= 0L ? from : HITCH_FRAMES;
+    }
+
     /**
-     * Once a host frame, after it closed: a frame slower than {@code hitchDumpMs} is dumped two frames later, so a wait
-     * booked to the frame after it is in. Render thread; nothing unless hitch dumps are on.
+     * Once a host frame, after it closed: a frame of play slower than {@code hitchDumpMs} is dumped two frames later,
+     * so a wait booked to the frame after it is in, on a thread of its own. Render thread; nothing unless hitch dumps
+     * are on.
      */
     public static void frame() {
         if (HITCH_NANOS <= 0L || hitchDumps >= HITCH_DUMPS || CgTraceLog.dir() == null) return;
         long now = System.nanoTime(), took = lastFrameNanos == 0L ? 0L : now - lastFrameNanos;
         lastFrameNanos = now;
-        framesSeen++;
         long frame = CgTrace.currentFrameIndex();
-        if (hitchFrame < 0L && framesSeen > HITCH_FRAMES && frame > quietUntil && took > HITCH_NANOS) {
+        if (hitchFrame < 0L && frame > playStart() && frame > quietUntil && took > HITCH_NANOS) {
             hitchFrame = frame - 1;
             CgTraceLog.line("hitch: a " + took / 1_000_000L + " ms frame at " + hitchFrame);
         } else if (hitchFrame >= 0L && frame >= hitchFrame + 3) {
-            Path dir = dump("hitch-" + hitchFrame, frame - HITCH_FRAMES, frame);
-            CgTraceLog.line("hitch at " + hitchFrame + ": " + dir);
+            String label = "hitch-" + hitchFrame;
+            long from = frame - HITCH_FRAMES;
+            dumper().execute(() -> CgTraceLog.line("hitch at " + label + ": " + dump(label, from, frame)));
             hitchDumps++;
             hitchFrame = -1L;
             // A burst of slow frames is one dump, not five copies of it.
             quietUntil = frame + HITCH_FRAMES / 4;
         }
+    }
+
+    private static synchronized ExecutorService dumper() {
+        if (dumper == null) {
+            dumper = Executors.newSingleThreadExecutor(task -> {
+                Thread thread = new Thread(task, "crystalgraphics-trace-dump");
+                thread.setDaemon(true);
+                return thread;
+            });
+        }
+        return dumper;
     }
 
     /**
@@ -125,19 +159,48 @@ public final class CgTraceRun {
     }
 
     /**
-     * Writes {@code meta.json} and, when anything recorded, {@code report.txt} and any split, then closes the log.
-     * Once. The engine's shutdown calls it; the JVM's exit is the fallback, too late on a mod loader whose class
-     * loader has closed.
+     * Writes {@code meta.json} and, when anything recorded, {@code report.txt}, the play's own reports and any split,
+     * then closes the log. Once, after any hitch dump still being written. The engine's shutdown calls it; the JVM's
+     * exit is the fallback, too late on a mod loader whose class loader has closed.
      */
     public static synchronized void writeExitFiles() {
         if (exitWritten || CgTraceLog.dir() == null) return;
         exitWritten = true;
+        finishDumps();
         writeMeta();
         if (CgTrace.frameCount() > 0) {
             writeReport(tier());
+            writePlay();
             writeSplitIfAsked();
         }
         CgTraceLog.stop();
+    }
+
+    private static void finishDumps() {
+        ExecutorService pending;
+        synchronized (CgTraceRun.class) {
+            pending = dumper;
+            dumper = null;
+        }
+        if (pending == null) return;
+        pending.shutdown();
+        try {
+            pending.awaitTermination(30, TimeUnit.SECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * The frames of play alone, loading and joining the world left out: {@code play-report.txt} at the exit report's
+     * tier, and {@code slow.txt}, its 20 slowest frames in full.
+     */
+    private static void writePlay() {
+        CgTraceSnapshot play = CgTrace.snapshot().between(playStart(), Long.MAX_VALUE);
+        if (play.frames().isEmpty() || play.frames().get(0).index() < playStart()) return;
+        CgTraceReport report = CgTraceReport.of(play).budget(budget.getAsDouble());
+        CgTraceLog.write("play-report.txt", report.render(tier()));
+        CgTraceLog.write("slow.txt", report.worst(20));
     }
 
     /** The tier {@code -Dcrystalgraphics.trace.report} names: the breakdown unless it names another. */
@@ -221,7 +284,7 @@ public final class CgTraceRun {
         opened = false;
         exitWritten = false;
         lastFrameNanos = 0L;
-        framesSeen = 0L;
+        playFrom = -1L;
         hitchFrame = -1L;
         quietUntil = -1L;
         hitchDumps = 0;

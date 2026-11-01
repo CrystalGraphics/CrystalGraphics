@@ -4025,8 +4025,10 @@ com/crystalgraphics/trace/CgTraceRun
   method public,static dump (Ljava/lang/String;JJ)Ljava/nio/file/Path;
   method public,static frame ()V
   method public,static open ()V
+  method public,static playStart ()J
   method public,static resetForTesting ()V
   method public,static root ()Ljava/nio/file/Path;
+  method public,static worldFrame ()V
   method public,static writeExitFiles ()V
   method public,static writeMeta ()V
   method public,static writeReport (Lcom/crystalgraphics/trace/CgTraceReport$Tier;)Ljava/nio/file/Path;

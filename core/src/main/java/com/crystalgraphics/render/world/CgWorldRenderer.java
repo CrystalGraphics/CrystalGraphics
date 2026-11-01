@@ -73,6 +73,7 @@ import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTraceRun;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.render.graph.CgRehearsal;
 import org.apache.logging.log4j.LogManager;
@@ -524,6 +525,7 @@ public final class CgWorldRenderer {
         }
         if (now != notified) {
             notified = now;
+            CgTraceRun.worldFrame();
             CgWorld.client().frame(view, now);
             CgParameterCollection.upload();   // after the schedule, where effects and sequences set them
             settle();

@@ -237,11 +237,19 @@ On an installed client, put the same `-D` in the instance's JVM arguments. ModDe
 Gradle's `-D`: a consumer mod's dev run sets them in its run config (`runs { client { systemProperty ... } }`).
 
 Every run writes `<game>/crystalgraphics/cache/trace/latest/` (`CgTraceRun`, opened by the engine's pre-init; the
-previous runs rotate beside it): `trace.log` as it goes, `meta.json` and `report.txt` at shutdown.
-`-Dcrystalgraphics.trace.dir=<path>` moves it; with the cache off and no dir, nothing is written.
+previous runs rotate beside it): `trace.log` as it goes, and at shutdown `meta.json`, `report.txt` (the whole run)
+and the play alone, from 240 frames past the first world frame: `play-report.txt` and `slow.txt` (its 20 slowest
+frames in full). `-Dcrystalgraphics.trace.dir=<path>` moves it; with the cache off and no dir, nothing is written.
 
-**A hitch you cannot script** — the first hit of a move, a stutter on entering a chunk:
-`-Dcrystalgraphics.trace.hitchDumpMs=50` writes, for each frame slower than that after the run's first 240,
+**A whole session, hand-played**: size the ring to hold it and read `slow.txt`. Add JFR for the host's own time,
+which no zone of ours covers; give it a directory, so each JVM of a Gradle run writes its own file:
+
+```bash
+JAVA_TOOL_OPTIONS="-Dcrystalgraphics.trace.channels=crystalgraphics,crystalgraphics.vfx,gpu -Dcrystalgraphics.trace.frames=12000 -Dcrystalgraphics.trace.zones=16777216 -Dcrystalgraphics.trace.report=full -XX:StartFlightRecording=filename=<dir>,settings=profile"
+```
+
+**A hitch in a session too long to hold**: `-Dcrystalgraphics.trace.hitchDumpMs=50` writes, off the render thread,
+for each frame of play slower than that,
 `latest/hitch-<frame>/` with the 240 frames before it: `report.txt` (the breakdown), `report-full.txt` and
 `slow.txt` (the 20 slowest, each in full; the hitch is the first). At most `-Dcrystalgraphics.trace.hitchDumps` (5)
 a run, one per burst; it sizes the ring itself and records `crystalgraphics` if no channel is named.
