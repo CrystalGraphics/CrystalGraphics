@@ -151,8 +151,8 @@ public final class CgVfxParticlePool {
     private static final Map<Object, Map<String, List<CgVfxParticlePool>>> POOLS = new IdentityHashMap<>();
     /**
      * The most sets of a textured kind's textures a pool keeps: a slot names its entry, so emitters differing only in
-     * their textures share a pool. A pool keeps as many as its prepared definitions sample ({@link CgVfxShape#textureSets},
-     * one for a definition never prepared); past them a pool of the same shape is made beside it, its kernel the same.
+     * their textures share a pool. A pool keeps as many as its precached definitions sample ({@link CgVfxShape#textureSets},
+     * one for a definition never precached); past them a pool of the same shape is made beside it, its kernel the same.
      */
     public static final int TEXTURE_ENTRIES = 4;
     private static final List<CgVfxParticlePool> RELEASED = new ArrayList<>();
@@ -470,55 +470,55 @@ public final class CgVfxParticlePool {
      * kernel is several lowered programs, otherwise built on the frame the first burst plays. Render thread.
      *
      * <pre>{@code
-     * CgVfxParticlePool.prepare(EMBERS);      // as a look is made, or on a loading screen
-     * CgVfxParticlePool.prepare(SPARKS, 1);   // EMBERS' events' children, at their tier
-     * CgVfxRange.prepare();                   // and what draws it
+     * CgVfxParticlePool.precache(EMBERS);      // as a look is made, or on a loading screen
+     * CgVfxParticlePool.precache(SPARKS, 1);   // EMBERS' events' children, at their tier
+     * CgVfxRange.precache();                   // and what draws it
      * }</pre>
      */
-    public static void prepare(CgVfxGpuEmitter emitter) {
-        prepare(emitter, 0);
+    public static void precache(CgVfxGpuEmitter emitter) {
+        precache(emitter, 0);
     }
 
     /**
-     * {@link #prepare(CgVfxGpuEmitter, int)}'s CPU half: the Step kernel generated and parsed, the shared kernel files
-     * read, nothing built. Any thread: a worker, so the prepare that follows takes them from the cache.
+     * {@link #precache(CgVfxGpuEmitter, int)}'s CPU half: the Step kernel generated and parsed, the shared kernel files
+     * read, nothing built. Any thread: a worker, so the precache that follows takes them from the cache.
      */
     public static void loadAhead(CgVfxGpuEmitter emitter, int tier) {
-        CgKernel.ahead(() -> prepare(emitter, tier));
+        CgKernel.ahead(() -> precache(emitter, tier));
     }
 
-    /** As {@link #prepare(CgVfxGpuEmitter)}, for {@code emitter} spawned at feed {@code tier}. */
-    public static void prepare(CgVfxGpuEmitter emitter, int tier) {
-        prepare(CgVfxShape.of(emitter, tier));
+    /** As {@link #precache(CgVfxGpuEmitter)}, for {@code emitter} spawned at feed {@code tier}. */
+    public static void precache(CgVfxGpuEmitter emitter, int tier) {
+        precache(CgVfxShape.of(emitter, tier));
     }
 
     /** The kernels a pool of {@code shape} dispatches, started. */
-    private static void prepare(CgVfxShape shape) {
+    private static void precache(CgVfxShape shape) {
         CgCompute step = CgVfxEmitterCompiler.compile(shape);
-        step.kernel("Step").prepare();
+        step.kernel("Step").precache();
         if (shape.heads()) {
-            step.kernel("Heads").prepare();
-            if (shape.spawnFrom().selection() == CgVfxSpawnFrom.Selection.SEQUENTIAL) step.kernel("Picks").prepare();
+            step.kernel("Heads").precache();
+            if (shape.spawnFrom().selection() == CgVfxSpawnFrom.Selection.SEQUENTIAL) step.kernel("Picks").precache();
         }
-        CgCompute.load(LOOK_KERNELS).kernel("Look").prepare();
-        CgGpuOps.prepareFill();
-        CgCompute.load(COUNT_KERNELS).kernel("Clear").prepare();   // the first slot given back clears its count
+        CgCompute.load(LOOK_KERNELS).kernel("Look").precache();
+        CgGpuOps.precacheFill();
+        CgCompute.load(COUNT_KERNELS).kernel("Clear").precache();   // the first slot given back clears its count
         if (shape.spawns() || shape.publishes()) {
-            CgCompute.load(EVENT_CAP_KERNELS).kernel("Keys").prepare();
-            CgCompute.load(EVENT_CAP_KERNELS).kernel("Runs").prepare();
-            CgCompute.load(EVENT_CAP_KERNELS).kernel("Gather").prepare();
-            CgCompute.load(EVENT_CAP_KERNELS).kernel("Direct").prepare();
-            CgGpuOps.prepareSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING);
+            CgCompute.load(EVENT_CAP_KERNELS).kernel("Keys").precache();
+            CgCompute.load(EVENT_CAP_KERNELS).kernel("Runs").precache();
+            CgCompute.load(EVENT_CAP_KERNELS).kernel("Gather").precache();
+            CgCompute.load(EVENT_CAP_KERNELS).kernel("Direct").precache();
+            CgGpuOps.precacheSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING);
         }
         List<CgVfxDataInterface> interfaces = shape.dataInterfaces();
-        for (int d = 0; d < interfaces.size(); d++) interfaces.get(d).prepare();
+        for (int d = 0; d < interfaces.size(); d++) interfaces.get(d).precache();
     }
 
-    /** The neighbour grid's kernels, for {@code CgVfxDataInterfaces.NEIGHBOURS}' {@code prepare}. */
-    static void prepareGrid() {
-        CgCompute.load(NEIGHBOUR_KERNELS).kernel("Keys").prepare();
-        CgCompute.load(NEIGHBOUR_KERNELS).kernel("Runs").prepare();
-        CgGpuOps.prepareSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING);
+    /** The neighbour grid's kernels, for {@code CgVfxDataInterfaces.NEIGHBOURS}' {@code precache}. */
+    static void precacheGrid() {
+        CgCompute.load(NEIGHBOUR_KERNELS).kernel("Keys").precache();
+        CgCompute.load(NEIGHBOUR_KERNELS).kernel("Runs").precache();
+        CgGpuOps.precacheSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING);
     }
 
     /**
@@ -851,11 +851,11 @@ public final class CgVfxParticlePool {
     /** Readies this pool to step: its kernel, storage and rows. False, its steps taken, when it has nothing to step. */
     /**
      * Whether a step would dispatch only built kernels: true with nothing queued. The kernels are gathered from its
-     * shape's prepare once, and started if nothing has. Render thread.
+     * shape's precache once, and started if nothing has. Render thread.
      */
     private boolean kernelsReady() {
         if (kernelsReady || steps == 0 || openSlots == 0 || !CgGL.mayIssueGl()) return true;
-        if (kernels == null) kernels = CgKernel.collect(() -> prepare(shape));
+        if (kernels == null) kernels = CgKernel.collect(() -> precache(shape));
         for (int i = 0; i < kernels.size(); i++) if (!kernels.get(i).isReady()) return false;
         kernelsReady = true;
         return true;
@@ -2151,7 +2151,7 @@ public final class CgVfxParticlePool {
 
     /**
      * Where this pool's count is in {@link #liveBuffer()}, in bytes: a whole 256, so a binding may start there.
-     * Negative until its first step: a prepared pool holds its records before it counts anything.
+     * Negative until its first step: a precached pool holds its records before it counts anything.
      */
     public long liveOffset() {
         return (long) liveEntry * COUNT_STRIDE;
@@ -2375,7 +2375,7 @@ public final class CgVfxParticlePool {
     }
 
     /**
-     * Makes its records' and drawn parts' storage now, at what {@link #expect} sized: a prepare's last step, so the
+     * Makes its records' and drawn parts' storage now, at what {@link #expect} sized: a precache's last step, so the
      * frame that first steps it allocates nothing. Made again larger while it has never stepped, as a later look
      * expects more of it. Render thread, between steps.
      *
@@ -2608,7 +2608,7 @@ public final class CgVfxParticlePool {
     }
 
     /**
-     * Counts of a pool outgrowing what it was sized for: its record storage, its slot and row tables. Preparing sizes them
+     * Counts of a pool outgrowing what it was sized for: its record storage, its slot and row tables. Precaching sizes them
      * ahead, so a move playing never grows one; a nonzero count in a frame is a hitch named.
      */
     private static final int STORAGE_GROWS = CgTrace.name("vfx.pool.storage-grows"), TABLE_GROWS = CgTrace.name("vfx.pool.table-grows"),
@@ -2619,7 +2619,7 @@ public final class CgVfxParticlePool {
 
     /**
      * Sizes this pool for a slot of {@code emitter} at {@code capacity} that a move will open: its slot table, its row
-     * tables and its record storage, so the move's first frame grows none of them. Called as a look is prepared, once
+     * tables and its record storage, so the move's first frame grows none of them. Called as a look is precached, once
      * per slot it will hold; between steps.
      *
      * <pre>{@code

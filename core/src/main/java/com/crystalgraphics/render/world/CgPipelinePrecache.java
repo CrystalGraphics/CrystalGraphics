@@ -32,7 +32,7 @@ import com.github.bsideup.jabel.Desugar;
  * CgPipelinePrecache.Request scene = CgPipelinePrecache.request(pipelines -> {
  *     pipelines.add(FLOOR, false);
  *     pipelines.add(ARMOUR, false, true);                               // a material a skinned mesh draws
- *     pipelines.kernels(MyOps::prepare);                                // every kernel a preparer starts
+ *     pipelines.kernels(MyOps::precache);                                // every kernel it precaches
  * });
  * if (scene.ready()) draw();                                            // each frame until true
  * }</pre>
@@ -51,7 +51,7 @@ import com.github.bsideup.jabel.Desugar;
  *       counted as {@code pipeline.missed} and logged under {@code crystalgraphics.pipeline.logMisses}.</li>
  *   <li>Name what draws, not every file: a shader's base variant is rarely the one a draw binds (keywords, skinned,
  *       half size, multi-draw), and every variant of a directory is thousands of programs.</li>
- *   <li>An effect's look requests its own through {@code CgVfxOwner.prepare}; a skinned mesh's materials are requested
+ *   <li>An effect's look requests its own through {@code CgVfxOwner.precache}; a skinned mesh's materials are requested
  *       by its {@code CgAnimInstance} as they are set.</li>
  * </ul>
  */

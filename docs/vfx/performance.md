@@ -48,13 +48,13 @@ particle_update:
 ```
 
 ```java
-// The same in Java: a system prepared before it plays takes part, as every asset readied for play is.
-VFX.prepare(GUST_LOOK, SQUALL_LOOK);
+// The same in Java: a system precached before it plays takes part, as every asset readied for play is.
+VFX.precache(GUST_LOOK, SQUALL_LOOK);
 CgVfxShapeCoalescing.loaded().shapes();   // how many shapes the loaded systems take now
 ```
 
-- **Prepare before playing.** A system joins when it is prepared (`VFX.prepare`, or its asset readied for play). One
-  played unprepared keeps its own shape, and one prepared later can move an earlier system into a new pool, which
+- **Precache before playing.** A system joins when it is precached (`VFX.precache`, or its asset readied for play). One
+  played unprecached keeps its own shape, and one precached later can move an earlier system into a new pool, which
   then compiles its kernel.
 - **What never coalesces**: a word bound to a user parameter (its value is each instance's), two classes nothing
   covers (a per-channel range beside a curve, a pick beside a range), different widths (an rgb colour beside an rgba
@@ -66,7 +66,7 @@ CgVfxShapeCoalescing.loaded().shapes();   // how many shapes the loaded systems 
 
 ## Module stacks share a kernel
 
-Whatever the budget, an emitter whose modules are, in order, some of another prepared emitter's runs in that one's
+Whatever the budget, an emitter whose modules are, in order, some of another precached emitter's runs in that one's
 kernel and pool, the modules it lacks switched off for it: Niagara's lightweight emitters, one shader for all of them,
 each module doing nothing where the emitter leaves it off. Its particles are the same (`--mode=vfx-stack` matches every
 one with stacking off), and each stack is one kernel to compile and one pool a frame. `vfx-modules`' 54 Step kernels
@@ -96,11 +96,11 @@ kind). One shape where four were costs `vfx-modules`' Steps 4.8 s cold rather th
 
 A module sampling textures (a vector field, a heightfield) is compiled once for each set of textures its pool holds,
 since each call takes fixed samplers; Niagara binds each emitter's textures per dispatch and compiles the module once. A
-pool holds as many sets as the definitions prepared into it sample (`CgVfxShape.textureSets`, the key's `|tex:` part),
-at most four; one never prepared holds its own alone. The usual pool of one set compiles one call: `vfx-modules`'
+pool holds as many sets as the definitions precached into it sample (`CgVfxShape.textureSets`, the key's `|tex:` part),
+at most four; one never precached holds its own alone. The usual pool of one set compiles one call: `vfx-modules`'
 vector-field Steps halve, its Steps 3.9 s cold rather than 4.8.
 
-- **Prepare definitions that differ only in their textures together** to share a pool; past four sets, the next opens
+- **Precache definitions that differ only in their textures together** to share a pool; past four sets, the next opens
   a pool of the same shape beside it, its kernel already compiled.
 
 ## Scalability: what is too far, too many or out of view

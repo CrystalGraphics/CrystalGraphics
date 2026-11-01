@@ -121,7 +121,7 @@ public final class CgVfx {
         CgVfxCueClient.install();
         CgCameraShake.schedule();
         // Range and Place draw every pool's particles: built while loading, not at the first burst.
-        CgPipelinePrecache.register("crystalgraphics:vfx", pipelines -> pipelines.kernels(CgVfxRange::prepare));
+        CgPipelinePrecache.register("crystalgraphics:vfx", pipelines -> pipelines.kernels(CgVfxRange::precache));
         // Characters' clocks the server sends, kept on the level's tick: the effects following them hold and slow.
         CgCharacterClockNet.install(() -> CgRenderStage.WORLD_OPAQUE.host().environment().gameTime());
         CgVfxSystemAssets.register();   // system assets compile to playable definitions

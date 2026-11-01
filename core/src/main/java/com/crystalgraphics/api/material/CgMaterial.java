@@ -861,7 +861,7 @@ public final class CgMaterial {
     // ── Draw-time API ─────────────────────────────────────────────────────────
 
     /**
-     * {@code -Dcrystalgraphics.shader.parallelCompile=false} makes {@link #prepare} answer ready at once, so the
+     * {@code -Dcrystalgraphics.shader.parallelCompile=false} makes {@link #precache} answer ready at once, so the
      * first bind compiles on the spot: the escape hatch for a driver that misreports completion.
      */
     private static final boolean PARALLEL_COMPILE = CgVar.bool("crystalgraphics.shader.parallelCompile", true,
@@ -875,7 +875,7 @@ public final class CgMaterial {
      * <pre>{@code
      * CgMaterial next = CgMaterial.fromSource(source);
      * // each frame:
-     * if (next.prepare()) {        // compiled, or failed: next.lastCompileError() says which
+     * if (next.precache()) {        // compiled, or failed: next.lastCompileError() says which
      *     current.delete();
      *     current = next;
      * }
@@ -884,13 +884,13 @@ public final class CgMaterial {
      *
      * <p>False on the frame it starts a compile, always: where the driver cannot report progress, that frame is
      * the head start its own compile threads get. False too while the frame's {@link CgWarmBudget} is spent, so
-     * many materials prepared at once spread over frames. Binding before it answers true waits for the compile, as
-     * a material that was never prepared does.</p>
+     * many materials precached at once spread over frames. Binding before it answers true waits for the compile, as
+     * a material that was never precached does.</p>
      *
      * <p>It compiles what {@link #bind} needs, the Forward pass. A shadow or depth program the shader does not
      * author is generated the first time {@link #bindForPass} or {@link #hasCompiledDepthPass} asks for it.</p>
      */
-    public boolean prepare() {
+    public boolean precache() {
         checkNotDeleted();
         if (cgMaterialShader == null || !PARALLEL_COMPILE) return true;
         if (!cgMaterialShader.isDirty() && !cgMaterialShader.isPending()) return true;

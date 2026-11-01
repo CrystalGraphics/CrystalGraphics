@@ -98,7 +98,7 @@ public final class CgEngineLifecycle {
      *
      * <ul>
      *   <li>Does nothing after {@link #destroyContext} or {@link #shutdown}, or once the engine stood down.</li>
-     *   <li>Post-init follows the graphics start on a client because what loads is prepared by the effects it installs.</li>
+     *   <li>Post-init follows the graphics start on a client because what loads is precached by the effects it installs.</li>
      * </ul>
      */
     public static void ensureGraphicsContext(int width, int height) {

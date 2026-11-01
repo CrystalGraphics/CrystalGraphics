@@ -54,7 +54,7 @@ public final class CgVfxEmitterCompiler {
     private CgVfxEmitterCompiler() {
     }
 
-    /** Each kernel key's kernels, so a cast that prepares its shape again writes no source. */
+    /** Each kernel key's kernels, so a cast that precaches its shape again writes no source. */
     private static final Map<String, CgCompute> COMPILED = new ConcurrentHashMap<>();
 
     /** {@code shape}'s kernels, parsed once per shape. Any thread; its programs are the render thread's. */

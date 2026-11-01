@@ -107,7 +107,7 @@ public final class CgRehearsal {
 
     /**
      * Passes it always runs, however quiet the JIT: 3,000 unless given, where a move's first cast matched its tenth
-     * ({@code vfx-prepare}): a JIT compiling in the background can look quiet for a window well before C2 has caught up.
+     * ({@code vfx-precache}): a JIT compiling in the background can look quiet for a window well before C2 has caught up.
      */
     public CgRehearsal minPasses(int passes) {
         this.minPasses = passes;

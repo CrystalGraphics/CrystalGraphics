@@ -319,7 +319,7 @@ public final class CgVfxShowcase {
     }
 
     /** Makes the spheres' meshes and materials and warms every program the showcase draws with. On the render thread. */
-    public void prepare() {
+    public void precache() {
         ensureResources();
         stage = CgPipelinePrecache.request(pipelines -> {
             for (CgMaterial material : materials) pipelines.add(material, false);
@@ -327,15 +327,15 @@ public final class CgVfxShowcase {
                 pipelines.add(material, false);
             }
         });
-        for (Lane lane : lanes) vfx.prepare(lane.look);
-        vfx.prepare(CgVfxHeatHaze.standard());
+        for (Lane lane : lanes) vfx.precache(lane.look);
+        vfx.precache(CgVfxHeatHaze.standard());
     }
 
     private CgPipelinePrecache.Request stage;
 
-    /** Whether everything {@link #prepare} started compiling is built. */
-    public boolean warmed() {
-        return vfx.warmed() & stage != null && stage.ready();
+    /** Whether everything {@link #precache} started compiling is built. */
+    public boolean ready() {
+        return vfx.ready() & stage != null && stage.ready();
     }
 
     /** Ends every wave and the haze at once; the next {@link #submit} starts the loop over. */

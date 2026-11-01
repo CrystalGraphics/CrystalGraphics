@@ -104,8 +104,8 @@ public interface CgVfxDataInterface {
     default void writeInstance(CgVfxInstanceView view, double ox, double oy, double oz, CgVfxWords words) {
     }
 
-    /** Compiles its own kernels, with a shape's Step ({@code CgVfxParticlePool.prepare}), so no frame waits on them. */
-    default void prepare() {
+    /** Compiles its own kernels, with a shape's Step ({@code CgVfxParticlePool.precache}), so no frame waits on them. */
+    default void precache() {
     }
 
     /** The context is gone: drops what it kept on the GPU, made again at its next use. */

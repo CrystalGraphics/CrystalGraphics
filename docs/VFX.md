@@ -220,16 +220,16 @@ VFX.stop();             // every effect of this mod, gracefully: nothing new spa
 VFX.clear();            // every effect of this mod at once, particles and all
 VFX.enabled(false);     // a dev switch: ends them, and play() does nothing until enabled again
 VFX.playing();          // how many of this mod's effects are alive
-VFX.prepare(LOOK);      // builds a look's shaders, meshes and kernels ahead of its first play
-VFX.prepare(SPIRAL, SHOCKWAVE, FLASH);   // every look a move plays, before the move
+VFX.precache(LOOK);      // builds a look's shaders, meshes and kernels ahead of its first play
+VFX.precache(SPIRAL, SHOCKWAVE, FLASH);   // every look a move plays, before the move
 ```
 
 - **An effect plays once.** Playing the same object again, or into a second system, throws. Make a new one.
 - **An effect that throws is killed and logged under your mod**; every other effect keeps playing.
-- A look played cold compiles on its first frame and can hitch: `prepare` spreads the work over frames within
-  `crystalgraphics.warmBudget`, and `VFX.warmed()` says when it is done. Once it is, the looks' first frames compile
+- A look played cold compiles on its first frame and can hitch: `precache` spreads the work over frames within
+  `crystalgraphics.warmBudget`, and `VFX.ready()` says when it is done. Once it is, the looks' first frames compile
   nothing: `CgMaterialShader.compileWaits()` (the trace counter `material.compile-waits`) counts every program a draw
-  had to wait for, and `--mode=vfx-prepare` holds a move to 0.
+  had to wait for, and `--mode=vfx-precache` holds a move to 0.
 - On a dedicated server, or a client with no world yet, `play` plays nothing.
 
 ### Ending an effect
@@ -631,7 +631,7 @@ public static final CgVfxSlot ARCS = CgVfxSlot.pathRibbons("crystalgraphics:wave
 | `SEQUENCE` | a prefab's part on each particle of a `sequence(clip)` emitter, where its node is at the particle's age ([`vfx/sequences.md`](vfx/sequences.md)) | the system |
 
 - **A frame draws a slot**: every slot renderer of the look on that slot draws, in the look's order. A slot nothing
-  draws on costs nothing, and `frame.draws(this, slot)` skips the work of preparing it.
+  draws on costs nothing, and `frame.draws(this, slot)` skips the work of precaching it.
 - **One shader on several kinds**: its material is made per kind, enabling the kind's keyword (`FX_ON_TUBE`,
   `FX_ON_MESH`, ...) where the shader declares it.
 - **Every draw of a slot carries four numbers of its element's choosing** (`ex ey ez ew` above: the head's half width,
@@ -2103,7 +2103,7 @@ record Swirl(float strength, float height) implements CgVfxGpuModule {
   the effect's row, written once a frame per draw; a constant costs nothing per draw.
 - **A slot costs only the slot renderers on it**: a look without a kit draws none of it.
 - What tends to cost: overdraw from large soft materials (one banded draw where four stacked bands were four), many
-  separate particle materials (each its own batch), and shaders compiling on first use (`prepare(look)`).
+  separate particle materials (each its own batch), and shaders compiling on first use (`precache(look)`).
 
 ### Scalability and the CPU's budget
 

@@ -50,10 +50,10 @@ final class CgVfxBeams {
     }
 
     /** Compiles its kernels ahead, with the pool's Step. */
-    static void prepare() {
+    static void precache() {
         CgCompute file = CgCompute.load(KERNELS);
-        file.kernel("Noise").prepare();
-        file.kernel("Keep").prepare();
+        file.kernel("Noise").precache();
+        file.kernel("Keep").precache();
     }
 
     /** Gives slot {@code slot} its runs: one a beam of {@code capacity}. */

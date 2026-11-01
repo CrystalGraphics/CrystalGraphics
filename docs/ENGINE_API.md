@@ -233,7 +233,7 @@ lights.add(x, y, z, 4f, 0xFFFFC080, 10f, 0f).shadowed(false);                   
       pipelines.add(RUNE_MATERIAL, false);                              // a material, every pass the world draws it with
       pipelines.add("mymod:shaders/rune.shader", "GLOW");               // a keyword set a setting switches to
       pipelines.add(CgCompute.load("mymod:shaders/runes.compute").kernel("Step"));
-      pipelines.kernels(MyOps::prepare);                                // every kernel a preparer starts
+      pipelines.kernels(MyOps::precache);                                // every kernel it precaches
   });
 
   CgPipelinePrecache.Request scene = CgPipelinePrecache.request(p -> p.add(FLOOR, false));   // when it is known
@@ -437,7 +437,7 @@ final class Cutscenes extends CgWorldSubsystem {
   `frame(view, frame)`.
 
 Easy to get wrong: `effectiveGroup()` is valid only after the schedule has run; a stage renderer
-(`CgRenderStage`) is still the way to draw, a tick function only prepares and submits.
+(`CgRenderStage`) is still the way to draw, a tick function only precaches and submits.
 
 ## Core Framework Systems
 
@@ -670,7 +670,7 @@ Two kinds, independent of each other:
 | Compute passes | recorded with the frame | executed with it | an `async()` pass, on the compute queue |
 | Readbacks | `CgRecording.readback`, recorded with the frame | `CgReadback` asked for here; every sink runs here, frames later | — |
 | `.shader` and `.compute` files | parsed on any thread | — | — |
-| Shader compiles | Vulkan: shaderc on a worker where the host turned on `compileInBackground()` | GL: the driver, at the first draw, or started by `prepare()`; Vulkan: modules and pipelines | — |
+| Shader compiles | Vulkan: shaderc on a worker where the host turned on `compileInBackground()` | GL: the driver, at the first draw, or started by `precache()`; Vulkan: modules and pipelines | — |
 | Framebuffers, materials' programs, kernels' programs | no | yes | — |
 
 ### Objects from any thread: `CgDeferral`
@@ -817,7 +817,7 @@ CgPixelReadback thumbnails = new CgPixelReadback(3);                            
 | Copies into a texture the frame's queue already uses (a glyph page filling) | at most 0.01 ms a frame, and a transfer copy would need two cross-queue waits |
 | Readback copies, on the frame's queue | at most 0.3 ms a frame, for a debug view |
 | `FRAME` shader buffers | written by the frame that reads them, by definition |
-| A shader variant's compile, at its first draw: 7-110 ms on GL | `render-shader-compile`, proposed. Meanwhile `CgMaterial.prepare()` and `CgKernel.prepare()` start one early, and a program linked once loads from its kept binary in later launches where the driver gives binaries (`CgProgramBinaryCache`; not macOS, which lists none) |
+| A shader variant's compile, at its first draw: 7-110 ms on GL | `render-shader-compile`, proposed. Meanwhile `CgMaterial.precache()` and `CgKernel.precache()` start one early, and a program linked once loads from its kept binary in later launches where the driver gives binaries (`CgProgramBinaryCache`; not macOS, which lists none) |
 | Framebuffers and programs: made on the render thread | — |
 
 Measured by: `deferral.apply`, the workers' `upload.lease-copy`, and the GPU zones `upload.deferred` and `upload.meshes`

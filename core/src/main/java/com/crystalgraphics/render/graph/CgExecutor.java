@@ -661,7 +661,7 @@ public final class CgExecutor {
                 callback.request.complete();
             } else if (pass instanceof CgPass.Compile compile) {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STEP_COMPILE)) {
-                    if (compile.pipeline.prepare()) {
+                    if (compile.pipeline.precache()) {
                         if (compile.pipeline.program() != null) compile.request.complete();
                         else compile.request.fail(String.valueOf(compile.pipeline.shader().lastCompileError()));
                     }
@@ -1214,12 +1214,12 @@ public final class CgExecutor {
     }
 
     /**
-     * Makes a persistent or history buffer's storage now rather than at its first use: what a prepare calls so the
+     * Makes a persistent or history buffer's storage now rather than at its first use: what a precache calls so the
      * frame that first steps it allocates nothing. Render thread.
      *
      * <pre>{@code
      * CgGraphBuffer records = CgGraphBuffer.history("particles", CgBufferDesc.elements(n, 80, CgBufferUsage.STORAGE));
-     * CgExecutor.makeStorage(records);   // at prepare; its first pass finds it made
+     * CgExecutor.makeStorage(records);   // at precache; its first pass finds it made
      * }</pre>
      */
     public static void makeStorage(CgGraphBuffer buffer) {
@@ -1231,7 +1231,7 @@ public final class CgExecutor {
     }
 
     /**
-     * Frees storage {@link #makeStorage} made for a buffer no recorded pass has used yet, at once: a prepare resizing
+     * Frees storage {@link #makeStorage} made for a buffer no recorded pass has used yet, at once: a precache resizing
      * what it made. A buffer a pass has used goes through {@code CgRecording.release}, which waits for its passes.
      */
     public static void freeStorage(CgGraphBuffer buffer) {

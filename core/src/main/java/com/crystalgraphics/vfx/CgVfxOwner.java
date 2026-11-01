@@ -237,16 +237,16 @@ public final class CgVfxOwner {
     }
 
     /**
-     * Warms what {@code looks} draw and simulate before they first play (as {@link CgVfxSystem#prepare}): one look, or
+     * Warms what {@code looks} draw and simulate before they first play (as {@link CgVfxSystem#precache}): one look, or
      * every look a move plays. Render thread.
      */
-    public void prepare(CgVfxLook... looks) {
-        system().prepare(looks);
+    public void precache(CgVfxLook... looks) {
+        system().precache(looks);
     }
 
-    /** Whether every look prepared or played has built (as {@link CgVfxSystem#warmed}). Render thread. */
-    public boolean warmed() {
-        return system().warmed();
+    /** Whether every look precached or played has built (as {@link CgVfxSystem#ready}). Render thread. */
+    public boolean ready() {
+        return system().ready();
     }
 
     /**

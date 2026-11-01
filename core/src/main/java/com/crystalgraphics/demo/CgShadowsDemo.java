@@ -34,7 +34,7 @@ import java.util.Locale;
  *
  * <pre>{@code
  * CgShadowsDemo demo = new CgShadowsDemo();
- * demo.prepare();                                         // then nothing until demo.warmed()
+ * demo.precache();                                         // then nothing until demo.ready()
  * demo.submit(CgWorldRenderer.get(), x, y, z, seconds);   // each frame, before the world records
  * CgShadowsDemo.toggleShadows();                          // every world shadow off and on, to compare
  * CgShadowsDemo.toggleTemporal();                         // the shadows' accumulation over frames off and on
@@ -133,14 +133,14 @@ public final class CgShadowsDemo {
         return ((CgVar.Bool) CgVars.get(SHADOWS)).get();
     }
 
-    public void prepare() {
+    public void precache() {
         if (material == null) material = CgMaterial.load(MATERIAL);
         programs = CgPipelinePrecache.request(pipelines -> pipelines.add(material, false));
     }
 
     private CgPipelinePrecache.Request programs;
 
-    public boolean warmed() {
+    public boolean ready() {
         return programs != null && programs.ready();
     }
 

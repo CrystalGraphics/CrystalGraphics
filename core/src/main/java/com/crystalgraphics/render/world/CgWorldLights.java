@@ -1049,14 +1049,14 @@ public final class CgWorldLights {
         cell = kernels.kernel("Cell");
         countCells = kernels.kernel("Count");
         writeCells = kernels.kernel("Write");
-        view.prepare();
+        view.precache();
         if (coarse.runs()) {
-            coarse.prepare();
-            cell.prepare();
+            coarse.precache();
+            cell.precache();
         } else {
-            countCells.prepare();
-            writeCells.prepare();
-            CgGpuOps.prepareScan(CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT);
+            countCells.precache();
+            writeCells.precache();
+            CgGpuOps.precacheScan(CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT);
         }
     }
 
@@ -1235,21 +1235,21 @@ public final class CgWorldLights {
      * {@code transparents} fills the translucency volume, and {@code directional} its direction too.
      */
     /** The apply's and the G-buffer's programs, made once; whether all three are built, polling those still compiling. */
-    private boolean applyPrepared() {
+    private boolean applyBuilt() {
         if (applyPoints == null) {
             applyPoints = CgMaterial.newInstance(APPLY_SHADER);
             applyShaped = CgMaterial.newInstance(APPLY_SHADER);
             applyShaped.enableKeyword("CG_LIGHTS_SHAPED");
             gbufferPass = CgMaterial.newInstance(GBUFFER_SHADER);
         }
-        return applyPoints.prepare() & applyShaped.prepare() & gbufferPass.prepare();
+        return applyPoints.precache() & applyShaped.precache() & gbufferPass.precache();
     }
 
     void apply(CgStageFrame stage, CgRecording recording, boolean transparents, boolean directional) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_APPLY)) {
             localLights = null;
             // Both warmed, so a spot turning up never compiles in a frame.
-            if (!applyPrepared()) return;
+            if (!applyBuilt()) return;
             recordGBuffer(stage, recording);
             sunOn = sunWanted(stage);
             shadowsOn = SHADOWS.get() && (shadowedAdded > 0 || blockCount > 0 || sunOn) && recordShadows(stage, recording);
@@ -1304,8 +1304,8 @@ public final class CgWorldLights {
                 tileDepth = CgMaterial.newInstance(TILE_DEPTH_SHADER);
             }
             // Each started, whichever is not ready.
-            boolean ready = sample.prepare() & shade.prepare() & temporal.prepare() & denoise.prepare() & tiles.prepare()
-                    & tileDepth.prepare();
+            boolean ready = sample.precache() & shade.precache() & temporal.precache() & denoise.precache() & tiles.precache()
+                    & tileDepth.precache();
             if (!ready) return false;
             int mode = Math.round(DOWNSAMPLE.get());
             downX = mode > 0 ? 2 : 1;
@@ -1401,11 +1401,11 @@ public final class CgWorldLights {
     private boolean recordSun(CgStageFrame stage, CgRecording recording) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_SUN)) {
             if (sunShadow == null) sunShadow = CgMaterial.newInstance(SUN_SHADOW_SHADER);
-            if (!sunShadow.prepare()) return false;
+            if (!sunShadow.precache()) return false;
             CgPipeline pipeline = sunShadow.pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) return false;
             // Its casters join into multi-draws: that form is a program of its own.
-            if (CgCapabilities.detect().multiDraw() && !pipeline.multiDraw().prepare()) return false;
+            if (CgCapabilities.detect().multiDraw() && !pipeline.multiDraw().precache()) return false;
             int res = SUN_RESOLUTION.get();
             casterTexture();
             if (sunMap == null || sunMap.getWidth() != 2 * res) {
@@ -1573,14 +1573,14 @@ public final class CgWorldLights {
         if (warmed) return;
         binKernels();
         volumeKernel();
-        warmed = applyPrepared();
+        warmed = applyBuilt();
     }
 
     /** The translucency volume's fill kernel, made and started once. */
     private void volumeKernel() {
         if (fill != null) return;
         fill = CgCompute.load(VOLUME_KERNELS).kernel("Fill");
-        fill.prepare();
+        fill.precache();
     }
 
     private void recordVolume(CgStageFrame stage, CgRecording recording, boolean directional) {
@@ -1639,7 +1639,7 @@ public final class CgWorldLights {
         if (!binned || !AIR.get()) return null;
         if (scatterKernel == null) {
             scatterKernel = CgCompute.load(VOLUME_KERNELS).kernel("Scatter");
-            scatterKernel.prepare();
+            scatterKernel.precache();
         }
         if (air[0] == null || air[0].getWidth() != media.width() || air[0].getHeight() != media.height()) {
             for (int k = 0; k < 2; k++) {

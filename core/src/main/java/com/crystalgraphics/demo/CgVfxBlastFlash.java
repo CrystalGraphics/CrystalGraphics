@@ -20,7 +20,7 @@ import java.util.List;
  *
  * <pre>{@code
  * CgVfxBlastFlash blast = new CgVfxBlastFlash();
- * blast.prepare();                                 // and draw nothing until blast.warmed()
+ * blast.precache();                                 // and draw nothing until blast.ready()
  *
  * // each frame: the target on the ground, the view's horizontal direction (the wave fires across it), and the
  * // scene's seconds through the time switch
@@ -55,12 +55,12 @@ public final class CgVfxBlastFlash {
         vfx = drives ? CgVfx.owner("crystalgraphics", new CgVfxSystem()) : owner;
     }
 
-    public void prepare() {
-        vfx.prepare(CgEnergyWave.kamehameha());
+    public void precache() {
+        vfx.precache(CgEnergyWave.kamehameha());
     }
 
-    public boolean warmed() {
-        return vfx.warmed();
+    public boolean ready() {
+        return vfx.ready();
     }
 
     /** Plays the scene round the target {@code (x, y, z)} at {@code seconds}, firing across the view's horizontal {@code forward}. */

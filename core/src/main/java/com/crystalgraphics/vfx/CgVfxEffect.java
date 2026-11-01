@@ -154,7 +154,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     /** Its look's materials have been handed to the system to compile ahead of use. */
     boolean warmed;
     /** Its emitters' GPU programs have been started. */
-    boolean gpuPrepared;
+    boolean gpuPrecached;
     /** Its look's kernels are built, so it ticks: until then it holds at age 0 (Niagara's delayed activation). */
     boolean activated;
     private CgVfxLook look;
@@ -309,7 +309,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         look = next;
         values = carried;
         warmed = false;
-        gpuPrepared = false;
+        gpuPrecached = false;
         activated = false;
     }
 

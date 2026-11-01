@@ -267,7 +267,7 @@ public final class CgVfxDataInterfaces {
                     }
                     """;
         }
-        @Override public void prepare() { CgVfxParticlePool.prepareGrid(); }
+        @Override public void precache() { CgVfxParticlePool.precacheGrid(); }
         @Override public void reserve(CgRecording recording, CgVfxParticlePool pool) { pool.reserveGrid(recording); }
         @Override public void afterStep(CgComputePass pass, CgVfxParticlePool pool) { pool.buildGrid(pass); }
         @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { pool.bindGrid(d); }
@@ -469,7 +469,7 @@ public final class CgVfxDataInterfaces {
                     }
                     """;
         }
-        @Override public void prepare() { CgVfxBeams.prepare(); }
+        @Override public void precache() { CgVfxBeams.precache(); }
         @Override public void reserve(CgRecording recording, CgVfxParticlePool pool) { pool.reserveBeams(recording); }
         @Override public void afterStep(CgComputePass pass, CgVfxParticlePool pool) { pool.stepBeams(pass); }
         @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { }

@@ -2849,11 +2849,11 @@ public final class CgVfxModules {
     }
 
     /** Warms every station's kernels and programs, so its first play stalls no frame. On the render thread. */
-    public void prepare() {
-        // Every station at once, as a move prepares its looks: each shape stacks where it will play before any warms.
+    public void precache() {
+        // Every station at once, as a move precaches its looks: each shape stacks where it will play before any warms.
         CgVfxLook[] looks = new CgVfxLook[stations.size()];
         for (int i = 0; i < looks.length; i++) looks[i] = stations.get(i).look();
-        vfx.prepare(looks);
+        vfx.precache(looks);
         stagePipelines = CgPipelinePrecache.request(pipelines -> {
             pipelines.add(mercury, false);
             pipelines.add(copper, false);
@@ -2862,9 +2862,9 @@ public final class CgVfxModules {
 
     private CgPipelinePrecache.Request stagePipelines;
 
-    /** Whether everything {@link #prepare} started compiling is built. */
-    public boolean warmed() {
-        return vfx.warmed() & stagePipelines != null && stagePipelines.ready();
+    /** Whether everything {@link #precache} started compiling is built. */
+    public boolean ready() {
+        return vfx.ready() & stagePipelines != null && stagePipelines.ready();
     }
 
     /** Ends every station's play at once; the next {@link #submit} plays them all again. */

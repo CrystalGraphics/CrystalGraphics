@@ -7,7 +7,7 @@ recorder will run on a UI document's own thread (`render-graph` §3.1); GL happe
 
 | Type | Is | Thread |
 |---|---|---|
-| `CgPipeline` | a key: shader asset + pass + keyword set + render state + instance kind, interned to an `int` | `of`/`byId` any thread; `prepare`/`program`/`bind`/`instanceBase` render thread |
+| `CgPipeline` | a key: shader asset + pass + keyword set + render state + instance kind, interned to an `int` | `of`/`byId` any thread; `precache`/`program`/`bind`/`instanceBase` render thread |
 | `CgBindingTable` | a recording's binding snapshots: block bytes copied, textures, storage buffers and buffer textures as handles, interned by content | filled by one recorder; `upload`/`bind` on the render thread after handover |
 | `CgInstanceKind` | what instances are: `QUAD`, `CURVE`, `OBJECT`, and the record stride each writes | — |
 | `CgPassConstants` | the pass block (`CgFrameBlock`'s layout) as a value, one per pass | any |

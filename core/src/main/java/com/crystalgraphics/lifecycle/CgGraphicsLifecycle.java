@@ -406,7 +406,7 @@ public final class CgGraphicsLifecycle {
                     CgHotReload.tick();   // before the dispatches and binds that take what it refreshed
                 }
                 CgFrameBoundary.run();        // after hot reload queued its saves; swaps land between frames
-                CgCompute.finishPrepared();   // ahead of the dispatches that take them
+                CgCompute.finishPrecached();   // ahead of the dispatches that take them
                 CgMaterialShader.advanceSubmits();
             }
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, LISTENERS)) {

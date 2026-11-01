@@ -726,16 +726,16 @@ final class CgVfxMaterials {
     }
 
     /** Warms {@code look}'s materials: one per draw and kind; those drawn at half size also in {@code halved}. */
-    void prepare(CgVfxLook look, List<CgMaterial> warming, Set<CgMaterial> halved) {
-        for (int i = 0; i < look.placed().size(); i++) prepare(look, i, warming, halved);
-        prepareParticles(look, warming);
+    void precache(CgVfxLook look, List<CgMaterial> warming, Set<CgMaterial> halved) {
+        for (int i = 0; i < look.placed().size(); i++) precache(look, i, warming, halved);
+        precacheParticles(look, warming);
     }
 
     /**
-     * {@link #prepare}'s step for {@code look}'s {@code i}th draw, a warm-up's unit of work: a slot renderer on its
+     * {@link #precache}'s step for {@code look}'s {@code i}th draw, a warm-up's unit of work: a slot renderer on its
      * slot's kind, an emitter's renderer on its particles' (a clip's emitter is drawn by its parts).
      */
-    void prepare(CgVfxLook look, int i, List<CgMaterial> warming, Set<CgMaterial> halved) {
+    void precache(CgVfxLook look, int i, List<CgMaterial> warming, Set<CgMaterial> halved) {
         CgVfxLook.Placed placed = look.placed().get(i);
         if (placed.slotRenderer() == null && placed.emitter().drawLayout() == CgVfxDrawLayout.SEQUENCE) return;
         // A light renderer draws no material: its particles join the world's light list.
@@ -749,8 +749,8 @@ final class CgVfxMaterials {
         }
     }
 
-    /** {@link #prepare}'s last step: a clip's parts, which draw their prefab's slot renderers on SEQUENCE materials. */
-    void prepareParticles(CgVfxLook look, List<CgMaterial> warming) {
+    /** {@link #precache}'s last step: a clip's parts, which draw their prefab's slot renderers on SEQUENCE materials. */
+    void precacheParticles(CgVfxLook look, List<CgMaterial> warming) {
         for (CgVfxEmitter emitter : look.emitters()) {
             CgVfxNodeClip clip = emitter.clip();
             if (clip == null) continue;
@@ -765,7 +765,7 @@ final class CgVfxMaterials {
     }
 
     /**
-     * The shader assets {@link #prepare} would make {@code look}'s materials from, added to {@code out}: made here, on the
+     * The shader assets {@link #precache} would make {@code look}'s materials from, added to {@code out}: made here, on the
      * render thread, so a worker can parse them ahead ({@link CgMaterialShader#ensureParsed}).
      */
     void shaders(CgVfxLook look, List<CgMaterialShader> out) {

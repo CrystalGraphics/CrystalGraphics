@@ -52,7 +52,7 @@ public final class CgWorldHaze implements CgWorldMedia.Injector {
         if (density <= 0f || maxX <= minX || maxY <= minY || maxZ <= minZ) return false;
         if (kernel == null) {
             kernel = CgCompute.load(KERNELS).kernel("Haze");
-            kernel.prepare();
+            kernel.precache();
         }
         double cx = media.cameraX(), cy = media.cameraY(), cz = media.cameraZ();
         media.dispatch(pass, kernel).set("_HazeMin", (float) (minX - cx), (float) (minY - cy), (float) (minZ - cz), 0f)

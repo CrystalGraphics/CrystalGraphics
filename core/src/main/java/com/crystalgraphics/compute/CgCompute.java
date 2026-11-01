@@ -74,12 +74,12 @@ public final class CgCompute implements CgReloadable {
             "Log each kernel program compiled or started, by file and program key, with whether a dispatch waited.");
     /** Of {@link #COMPILES}, those whose sources a worker made ahead ({@link CgKernel#ahead}). */
     private static final int AHEAD_HITS = CgTrace.name("compute.compiles-ahead");
-    private static final int PREPARE = CgTrace.name("compute.prepare"), COMPILE_WAIT = CgTrace.name("compute.compileWait");
+    private static final int PRECACHE = CgTrace.name("compute.precache"), COMPILE_WAIT = CgTrace.name("compute.compileWait");
     private static final int COMPILE_WAITS = CgTrace.name("compute.compile-waits");
-    private static final int FINISH = CgTrace.name("compute.finishPrepared");
-    /** Files holding a program {@link CgKernel#prepare} started that nothing has finished yet. */
-    private static final Set<CgCompute> PREPARING = ConcurrentHashMap.newKeySet();
-    /** What {@link #finishPrepared} spends a frame at most, and at least whatever the warm budget has left. */
+    private static final int FINISH = CgTrace.name("compute.finishPrecached");
+    /** Files holding a program {@link CgKernel#precache} started that nothing has finished yet. */
+    private static final Set<CgCompute> PRECACHING = ConcurrentHashMap.newKeySet();
+    /** What {@link #finishPrecached} spends a frame at most, and at least whatever the warm budget has left. */
     private static final long FINISH_NANOS = 1_000_000L, FINISH_LEAST = 200_000L;
 
     private final String path;
@@ -90,8 +90,8 @@ public final class CgCompute implements CgReloadable {
     /** Counts every release: a kernel holding a program from before asks again. */
     private volatile int generation;
     private final Map<String, CgKernelProgram> programs = new HashMap<>();
-    /** Programs {@link CgKernel#prepare} started and no dispatch has taken yet. */
-    private final Map<String, CgKernelProgram.Pending> preparing = new HashMap<>();
+    /** Programs {@link CgKernel#precache} started and no dispatch has taken yet. */
+    private final Map<String, CgKernelProgram.Pending> precaching = new HashMap<>();
     private final Map<String, CgLoweredKernel> lowered = new HashMap<>();
     /** Java bodies by kernel name, kept across reloads. */
     private final Map<String, CgCpuBody> bodies = new ConcurrentHashMap<>();
@@ -180,7 +180,7 @@ public final class CgCompute implements CgReloadable {
         String key = kernel.programKey;
         CgKernelProgram program = programs.get(key);
         if (program == null || program.isDeleted()) {
-            CgKernelProgram.Pending pending = preparing.remove(key);
+            CgKernelProgram.Pending pending = precaching.remove(key);
             if (pending != null && pending.isDone()) {
                 program = pending.finish();
             } else if (pending != null) {
@@ -201,13 +201,13 @@ public final class CgCompute implements CgReloadable {
         return program;
     }
 
-    /** Sources a worker made for {@link #prepare}, by program key, with what making them read. */
+    /** Sources a worker made for {@link #precache}, by program key, with what making them read. */
     private final Map<String, Ahead> ahead = new ConcurrentHashMap<>();
 
     private record Ahead(CgKernelProgram.Sources sources, Set<String> reads) {
     }
 
-    /** {@code kernel}'s sources for the current target, made for the {@link #prepare} that follows. CPU only, any thread. */
+    /** {@code kernel}'s sources for the current target, made for the {@link #precache} that follows. CPU only, any thread. */
     void loadAhead(CgKernel kernel) {
         String key = kernel.programKey;
         CgComputeSource now = source;
@@ -227,49 +227,49 @@ public final class CgCompute implements CgReloadable {
         String key = kernel.programKey;
         CgKernelProgram program = programs.get(key);
         if (program != null && !program.isDeleted()) return true;
-        if (!preparing.containsKey(key)) prepare(kernel);
-        CgKernelProgram.Pending pending = preparing.get(key);
+        if (!precaching.containsKey(key)) precache(kernel);
+        CgKernelProgram.Pending pending = precaching.get(key);
         if (pending == null) return true;
-        // Finished only between links: during one, NVIDIA makes its program calls wait for it (compute.finishPrepared).
+        // Finished only between links: during one, NVIDIA makes its program calls wait for it (compute.finishPrecached).
         if (!pending.isDone() || CgLinkWorker.linking()) return false;
-        preparing.remove(key);
+        precaching.remove(key);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, FINISH)) {
             programs.put(key, pending.finish());
         } catch (IllegalStateException e) {
             // Its dispatch builds it again, and throws there with the log.
-            LOGGER.warn("[{}] a prepared kernel failed: {}", path, e.getMessage());
+            LOGGER.warn("[{}] a precached kernel failed: {}", path, e.getMessage());
         }
         return true;
     }
 
     /** Starts {@code kernel}'s program without waiting, unless it is compiled or started. Render thread. */
-    synchronized void prepare(CgKernel kernel) {
+    synchronized void precache(CgKernel kernel) {
         for (CgCompute retired; (retired = RETIRED.poll()) != null; ) retired.release();
         String key = kernel.programKey;
         CgKernelProgram program = programs.get(key);
-        if (program != null && !program.isDeleted() || preparing.containsKey(key)) return;
+        if (program != null && !program.isDeleted() || precaching.containsKey(key)) return;
         Ahead made = ahead.remove(key);
         if (made != null && made.sources().source() == source && made.sources().target().equals(CgKernelTarget.current())) {
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, PREPARE)) {
-                preparing.put(key, CgKernelProgram.submit(made.sources(), decl(kernel), kernel.keywords()));
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, PRECACHE)) {
+                precaching.put(key, CgKernelProgram.submit(made.sources(), decl(kernel), kernel.keywords()));
             }
             addReads(made.reads());
-            PREPARING.add(this);
+            PRECACHING.add(this);
             CgTrace.add(CgChannels.GL, COMPILES, 1);
             CgTrace.add(CgChannels.GL, AHEAD_HITS, 1);
-            if (LOG_COMPILES.get()) LOGGER.info("compute prepared: {} {}", path, key);
+            if (LOG_COMPILES.get()) LOGGER.info("compute precached: {} {}", path, key);
             return;
         }
         CgIO.Reads recorded = CgIO.recordReads();
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, PREPARE)) {
-            preparing.put(key, CgKernelProgram.submit(source, decl(kernel), kernel.keywords(), CgKernelTarget.current()));
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, PRECACHE)) {
+            precaching.put(key, CgKernelProgram.submit(source, decl(kernel), kernel.keywords(), CgKernelTarget.current()));
         } finally {
             recorded.close();
             addReads(recorded.paths());
         }
-        PREPARING.add(this);
+        PRECACHING.add(this);
         CgTrace.add(CgChannels.GL, COMPILES, 1);
-        if (LOG_COMPILES.get()) LOGGER.info("compute prepared: {} {}", path, key);
+        if (LOG_COMPILES.get()) LOGGER.info("compute precached: {} {}", path, key);
     }
 
     private CgKernelDecl decl(CgKernel kernel) {
@@ -324,7 +324,7 @@ public final class CgCompute implements CgReloadable {
     /**
      * Parses its text again (read again from its file, unless generated) and rebuilds each program it had compiled
      * before taking any of it: a file that no longer parses or a program that no longer compiles throws, and it keeps
-     * everything it had. Lowered forms and programs being prepared are dropped, and built again at their next use.
+     * everything it had. Lowered forms and programs being precached are dropped, and built again at their next use.
      * Render thread: what {@link CgAssetReloader} calls when a file it read changes.
      */
     @Override
@@ -393,28 +393,28 @@ public final class CgCompute implements CgReloadable {
     public synchronized void release() {
         for (CgKernelProgram program : programs.values()) program.delete();
         programs.clear();
-        for (CgKernelProgram.Pending pending : preparing.values()) pending.delete();
-        preparing.clear();
+        for (CgKernelProgram.Pending pending : precaching.values()) pending.delete();
+        precaching.clear();
         for (CgLoweredKernel kernel : lowered.values()) kernel.delete();
         lowered.clear();
         generation++;
     }
 
     /**
-     * Makes each prepared program the driver has linked into the program a dispatch takes, about a millisecond's worth a
+     * Makes each precached program the driver has linked into the program a dispatch takes, about a millisecond's worth a
      * frame: the link's result read, its blocks wired and its first bind, which on NVIDIA is where the driver finishes a
      * program, up to 1.6 ms each. Without it the first dispatch of each pays that. Render thread, between frames.
      */
-    public static void finishPrepared() {
+    public static void finishPrecached() {
         // Between links only: during one, NVIDIA makes the finish's program calls wait for it, up to half a second.
-        if (PREPARING.isEmpty() || CgLinkWorker.linking()) return;
+        if (PRECACHING.isEmpty() || CgLinkWorker.linking()) return;
         long start = System.nanoTime();
         // Inside the frame's warm budget, with a floor so finishing never starves while warming spends it.
         long until = start + Math.max(FINISH_LEAST, Math.min(FINISH_NANOS, CgWarmBudget.remaining()));
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, FINISH)) {
-            for (Iterator<CgCompute> it = PREPARING.iterator(); it.hasNext(); ) {
+            for (Iterator<CgCompute> it = PRECACHING.iterator(); it.hasNext(); ) {
                 CgCompute compute = it.next();
-                if (compute.finishPrepared(until)) it.remove();
+                if (compute.finishPrecached(until)) it.remove();
                 if (System.nanoTime() > until) return;
             }
         } finally {
@@ -422,9 +422,9 @@ public final class CgCompute implements CgReloadable {
         }
     }
 
-    /** Whether nothing it prepared is left unfinished. */
-    private synchronized boolean finishPrepared(long until) {
-        for (Iterator<Map.Entry<String, CgKernelProgram.Pending>> it = preparing.entrySet().iterator(); it.hasNext(); ) {
+    /** Whether nothing it precached is left unfinished. */
+    private synchronized boolean finishPrecached(long until) {
+        for (Iterator<Map.Entry<String, CgKernelProgram.Pending>> it = precaching.entrySet().iterator(); it.hasNext(); ) {
             if (System.nanoTime() > until) return false;
             Map.Entry<String, CgKernelProgram.Pending> entry = it.next();
             if (!entry.getValue().isDone()) continue;
@@ -433,10 +433,10 @@ public final class CgCompute implements CgReloadable {
                 programs.put(entry.getKey(), entry.getValue().finish());
             } catch (IllegalStateException e) {
                 // Its first dispatch builds it again, and throws there with the log.
-                LOGGER.warn("[{}] a prepared kernel failed: {}", path, e.getMessage());
+                LOGGER.warn("[{}] a precached kernel failed: {}", path, e.getMessage());
             }
         }
-        return preparing.isEmpty();
+        return precaching.isEmpty();
     }
 
     /** Every loaded file read again: what F3+T does. A file that no longer parses keeps its last good version. */

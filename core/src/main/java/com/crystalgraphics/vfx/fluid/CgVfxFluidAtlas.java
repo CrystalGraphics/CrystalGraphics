@@ -288,7 +288,7 @@ public final class CgVfxFluidAtlas {
                 registration = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, CgVfxBudget.charged(this::record));
                 CgEngineLifecycle.addListener(context);
                 CgWorldRenderer.get().media().add(media);
-                prepare();
+                precache();
             }
             return b;
         }
@@ -362,7 +362,7 @@ public final class CgVfxFluidAtlas {
         }
     };
 
-    private void prepare() {
+    private void precache() {
         CgCompute file = CgCompute.load(KERNELS);
         solids = file.kernel("Solids");
         advectDensity1 = file.kernel("AdvectDensity1");
@@ -384,7 +384,7 @@ public final class CgVfxFluidAtlas {
         for (CgKernel k : new CgKernel[] {solids, advectDensity1, advectDensity2, emitDensity, advectVelocity1, advectVelocity2,
                 emitVelocity, vorticity1, vorticity2, divergence, jacobi, subtract, restKernel, shadeKernel, detailKernel,
                 occupancyKernel, depositKernel}) {
-            k.prepare();
+            k.precache();
         }
     }
 

@@ -375,7 +375,7 @@ public final class CgWorldRenderer {
     private boolean hdrApplied;
     @Nullable
     private CgPipelineList.Settings applied;
-    private final CgPipelineList pipelines = new CgPipelineList(this::prepare, this::requestedSettings);
+    private final CgPipelineList pipelines = new CgPipelineList(this::precache, this::requestedSettings);
     private boolean skipUnready = SKIP_UNREADY.get();
     private long unreadyDraws;
     /** The target-sized emission those passes write into, and per draw whether its glows were drawn there. */
@@ -536,7 +536,7 @@ public final class CgWorldRenderer {
             hdrApplied = requested.hdrScene();
             mergeEmission = mergeRequested;
         }
-        prepareHeld();
+        precacheHeld();
     }
 
     /** The settings asked for now: what the next frames draw under once the program list is warm. */
@@ -571,7 +571,7 @@ public final class CgWorldRenderer {
      * starts its compiles, in the frame's warm budget, and draws in the frame they finish.
      *
      * <pre>{@code
-     * CgWorldRenderer.get().skipUnready(false);   // compile at the draw: the control a prepare gate measures against
+     * CgWorldRenderer.get().skipUnready(false);   // compile at the draw: the control a precache gate measures against
      * }</pre>
      */
     public void skipUnready(boolean on) {
@@ -918,62 +918,62 @@ public final class CgWorldRenderer {
      * vertex factory's forms where {@code skinned} (the precache key's vertex factory, as Unreal's), with the keywords
      * enabled now. Only the variants those settings draw: under the HDR scene a glow folded into its colour
      * ({@code sceneFold}); without it, the merged glow and its cover or, unmerged, the occluder. {@link CgPipelineList}'s
-     * preparer: a caller requests its materials through {@link CgPipelinePrecache}.
+     * precacher: a caller requests its materials through {@link CgPipelinePrecache}.
      */
-    boolean prepare(CgMaterial material, boolean halfResolution, boolean skinned, CgPipelineList.Settings settings) {
+    boolean precache(CgMaterial material, boolean halfResolution, boolean skinned, CgPipelineList.Settings settings) {
         boolean joins = settings.joins();
         boolean ready = true;
         for (CgMaterial link = material; link != null; link = link.getNextPass()) {
-            ready &= preparedAs(skinned, link.pipeline(CgInstanceKind.OBJECT), joins);
-            if (link.hasDepthPass()) ready &= preparedAs(skinned, link.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT), joins);
+            ready &= builtAs(skinned, link.pipeline(CgInstanceKind.OBJECT), joins);
+            if (link.hasDepthPass()) ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT), joins);
             CgPipeline forward = link.pipeline(CgInstanceKind.OBJECT);
-            if (forward != null) ready &= preparedAs(skinned, forward.depthPrepass(), joins);
+            if (forward != null) ready &= builtAs(skinned, forward.depthPrepass(), joins);
             // The normals and custom data an opaque draw writes whenever the lights or a post material ask: warm
             // whether or not they ask now, so the frame that starts asking compiles nothing.
             if (forward != null && link.getRenderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD) {
-                ready &= preparedAs(skinned, forward.normalTarget(), joins);
-                if (link.writesCustomData()) ready &= preparedAs(skinned, forward.customDataTarget(), joins);
+                ready &= builtAs(skinned, forward.normalTarget(), joins);
+                if (link.writesCustomData()) ready &= builtAs(skinned, forward.customDataTarget(), joins);
             }
             if (link.hasEmissivePass()) {
-                ready &= preparedAs(skinned, link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), joins);
+                ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), joins);
                 if (forward != null && settings.mergeEmission()) {
-                    ready &= preparedAs(skinned, settings.hdrScene() ? forward.sceneFold() : forward.emissionTarget(), joins);
+                    ready &= builtAs(skinned, settings.hdrScene() ? forward.sceneFold() : forward.emissionTarget(), joins);
                 }
             }
             if (forward != null && !settings.hdrScene() && link.getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
                 // The merged emission's cover; the occluder where the emission is drawn on its own, which a host
                 // framebuffer taking no second attachment falls back to as well.
-                if (settings.mergeEmission()) ready &= preparedAs(skinned, forward.emissionCover(), joins);
-                ready &= preparedAs(skinned, forward.emissionOccluder(), joins);
+                if (settings.mergeEmission()) ready &= builtAs(skinned, forward.emissionCover(), joins);
+                ready &= builtAs(skinned, forward.emissionOccluder(), joins);
             }
             if (link.hasDistortionPass()) {
-                ready &= preparedAs(skinned, link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT), joins);
-                ready &= distortion.prepare();
+                ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT), joins);
+                ready &= distortion.precache();
             }
         }
         // CustomDepth draws each material by its depth pipeline, started above, under a stencil state: only the
         // stencil copy is a program of its own. One for every material, since a draw marks itself.
         if (customStencil == null) customStencil = CgMaterial.newInstance(CUSTOM_STENCIL_SHADER);
-        ready &= prepared(customStencil.pipeline(CgInstanceKind.OBJECT), false);
+        ready &= built(customStencil.pipeline(CgInstanceKind.OBJECT), false);
         if (!halfResolution || !settings.halfResolution()) return ready;
         if (upsample == null) upsample = CgMaterial.newInstance(UPSAMPLE_SHADER);
         if (resolve == null) resolve = CgMaterial.newInstance(RESOLVE_SHADER);
         if (composite == null) composite = CgMaterial.newInstance(COMPOSITE_SHADER);
-        ready &= prepared(upsample.pipeline(CgInstanceKind.OBJECT), false);
-        ready &= prepared(resolve.pipeline(CgInstanceKind.OBJECT), false);
-        return prepared(composite.pipeline(CgInstanceKind.OBJECT), false) & ready;
+        ready &= built(upsample.pipeline(CgInstanceKind.OBJECT), false);
+        ready &= built(resolve.pipeline(CgInstanceKind.OBJECT), false);
+        return built(composite.pipeline(CgInstanceKind.OBJECT), false) & ready;
     }
 
-    /** {@link #prepared} of {@code pipeline}'s skinned form where {@code skinned}. */
-    private static boolean preparedAs(boolean skinned, @Nullable CgPipeline pipeline, boolean joins) {
-        return prepared(pipeline == null || !skinned ? pipeline : pipeline.skinned(), joins);
+    /** {@link #precached} of {@code pipeline}'s skinned form where {@code skinned}. */
+    private static boolean builtAs(boolean skinned, @Nullable CgPipeline pipeline, boolean joins) {
+        return built(pipeline == null || !skinned ? pipeline : pipeline.skinned(), joins);
     }
 
     /** {@code pipeline} and, where draws join, its multi-draw form, both started; whether both are built. */
-    private static boolean prepared(@Nullable CgPipeline pipeline, boolean joins) {
+    private static boolean built(@Nullable CgPipeline pipeline, boolean joins) {
         if (pipeline == null) return true;
-        boolean ready = pipeline.prepare();
-        return joins ? pipeline.multiDraw().prepare() & ready : ready;
+        boolean ready = pipeline.precache();
+        return joins ? pipeline.multiDraw().precache() & ready : ready;
     }
 
     /** One draw being built. Never hold it: the next {@link #draw} reuses it. */
@@ -1852,7 +1852,7 @@ public final class CgWorldRenderer {
                 if (distorts.length < meshes.length) distorts = new boolean[meshes.length];
                 for (int i = 0; i < count; i++) distorts[i] = phase[i] != SKIP && !halfSize(i) && distortsScene(materials[i]);
                 // The apply is a pass of the renderer's own: skipped while unbuilt, its hazes with it, each counted.
-                if (skipUnready && !distortion.prepare()) {
+                if (skipUnready && !distortion.precache()) {
                     for (int i = 0; i < count; i++) {
                         if (!distorts[i]) continue;
                         distorts[i] = false;
@@ -2886,7 +2886,7 @@ public final class CgWorldRenderer {
         if (skinnedDraw(i)) pipeline = pipeline.skinned();
         // Its joined form too: a draw that joins a multi-draw runs that program.
         boolean joins = applied != null && applied.joins();
-        if (pipeline.isPrepared() && (!joins || pipeline.multiDraw().isPrepared())) return false;
+        if (pipeline.isBuilt() && (!joins || pipeline.multiDraw().isBuilt())) return false;
         // Asked for here, started in settle(): a pipeline held by a thousand draws spends the warm budget once a frame.
         if (heldSet.add(pipeline)) held.add(pipeline);
         unreadyDraws++;
@@ -2905,11 +2905,11 @@ public final class CgWorldRenderer {
     private final Set<CgPipeline> heldSet = Collections.newSetFromMap(new IdentityHashMap<>());
 
     /** Starts or polls each held pipeline once, dropping those built. */
-    private void prepareHeld() {
+    private void precacheHeld() {
         boolean joins = applied != null && applied.joins();
         for (int i = held.size() - 1; i >= 0; i--) {
             CgPipeline p = held.get(i);
-            if (!prepared(p, joins)) continue;
+            if (!built(p, joins)) continue;
             heldSet.remove(p);
             held.set(i, held.get(held.size() - 1));
             held.remove(held.size() - 1);

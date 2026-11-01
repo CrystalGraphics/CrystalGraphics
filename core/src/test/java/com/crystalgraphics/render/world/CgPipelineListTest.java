@@ -33,13 +33,13 @@ public class CgPipelineListTest {
     private static final CgPipelineList.Settings LDR = new CgPipelineList.Settings(false, true, true, true);
 
     /** Builds a material the second time it is asked under the same settings. */
-    private static final class Fake implements CgPipelineList.Preparer {
+    private static final class Fake implements CgPipelineList.Precacher {
         final Set<Object> seen = new HashSet<>();
         final List<CgPipelineList.Settings> asked = new ArrayList<>();
         boolean never;
 
         @Override
-        public boolean prepare(CgMaterial material, boolean half, boolean skinned, CgPipelineList.Settings settings) {
+        public boolean precache(CgMaterial material, boolean half, boolean skinned, CgPipelineList.Settings settings) {
             asked.add(settings);
             return !never && !seen.add(Arrays.asList(material, settings));
         }

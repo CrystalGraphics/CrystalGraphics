@@ -261,7 +261,7 @@ public final class CgVfxGridAtlas {
                 coarsenKernel = file.kernel("Coarsen");
                 for (CgKernel k : new CgKernel[] {splat, rasterize, wantedKernel, step, shade, lightKernel, occupancyKernel,
                         coarsenKernel}) {
-                    k.prepare();
+                    k.precache();
                 }
             }
             return b;

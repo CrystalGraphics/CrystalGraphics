@@ -149,13 +149,13 @@ public final class CgVfxBlasts {
     }
 
     /** Warms every look's kernels and programs, so the first bursts stall no frame. On the render thread. */
-    public void prepare() {
-        for (CgVfxLook look : LOOKS) vfx.prepare(look);
+    public void precache() {
+        for (CgVfxLook look : LOOKS) vfx.precache(look);
     }
 
-    /** Whether everything {@link #prepare} started compiling is built. */
-    public boolean warmed() {
-        return vfx.warmed();
+    /** Whether everything {@link #precache} started compiling is built. */
+    public boolean ready() {
+        return vfx.ready();
     }
 
     /** Ends every burst at once; from the next {@link #submit} each spot fires at its next turn. */

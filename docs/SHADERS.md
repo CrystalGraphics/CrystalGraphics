@@ -1405,21 +1405,21 @@ CgGL.cgBufferBarrier(stateBuffer, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);
 
 #### Before the first dispatch
 
-A kernel compiles at its first dispatch, on the render thread. `prepare()` starts it earlier — at load, on a loading
+A kernel compiles at its first dispatch, on the render thread. `precache()` starts it earlier — at load, on a loading
 screen — so that frame finds it compiled:
 
 ```java
 CgCompute particles = CgCompute.load("mymod:shaders/particles.compute");
-particles.kernel("Simulate").prepare();                 // each kernel and keyword set the effect dispatches
-particles.kernel("Simulate").withKeywords("WIND").prepare();
+particles.kernel("Simulate").precache();                 // each kernel and keyword set the effect dispatches
+particles.kernel("Simulate").withKeywords("WIND").precache();
 ```
 
 - Where the driver links on its own threads (`KHR_parallel_shader_compile`), the link runs while frames go on; the
   dispatch that takes the program waits for what is left (`compute.compileWait`, counted by `compute.compile-waits`).
-- Once the driver has linked it, a frame boundary makes it ready and binds it once (`compute.finishPrepared`, about
+- Once the driver has linked it, a frame boundary makes it ready and binds it once (`compute.finishPrecached`, about
   1 ms a frame at most), **only while the link worker has no link with the driver** (`CgLinkWorker.linking()`): during
   one, NVIDIA makes the render thread's program calls wait for it, up to half a second. `kernel.isReady()` answers
-  true only once that is done, so a prepared kernel a pool waits for never finishes at its dispatch. A material's
+  true only once that is done, so a precached kernel a pool waits for never finishes at its dispatch. A material's
   commit and its variants keep the same rule.
 - A lowered kernel's passes are built at once; a Java body needs nothing.
 - On a Vulkan device a host keeps shaderc's output and the pipeline cache across launches

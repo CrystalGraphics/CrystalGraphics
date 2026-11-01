@@ -194,7 +194,7 @@ Bind steps (in order):
 3. `shader.bind()` — activates GL program and flushes all bindings
 4. `objectBuffer.bind(shader)` — binds SSBO/TBO and wires it (TBO: sets samplerBuffer uniform)
 
-### CgMaterial.prepare() — compiling without stalling a frame
+### CgMaterial.precache() — compiling without stalling a frame
 
 The first `bind()` compiles and links on the spot, which is tens of milliseconds a program. A caller that
 swaps materials while drawing every frame (the shader graph's previews) polls instead, and keeps drawing the
@@ -203,19 +203,19 @@ old material until the new one is ready:
 ```java
 CgMaterial next = CgMaterial.fromSource(source);
 // each frame:
-if (next.prepare()) {          // compiled, or failed: next.lastCompileError() says which
+if (next.precache()) {          // compiled, or failed: next.lastCompileError() says which
     current.delete();
     current = next;
 }
 current.bind();
 ```
 
-- `prepare()` submits every program of the material (`CgMaterialShader.submitRecompile`) and answers false
+- `precache()` submits every program of the material (`CgMaterialShader.submitRecompile`) and answers false
   on that frame, always; after that it polls `GL_COMPLETION_STATUS_KHR` where the driver has
   `KHR`/`ARB_parallel_shader_compile` (`CgCapabilities.isParallelShaderCompile()`), and answers true where it
   does not — the driver has had one frame of its own threads.
-- A `bind()` before it answers true waits for the compile there, exactly as an unprepared material does.
-- It answers false without submitting while `CgWarmBudget` is spent for the frame, so many materials prepared at
+- A `bind()` before it answers true waits for the compile there, exactly as an unprecached material does.
+- It answers false without submitting while `CgWarmBudget` is spent for the frame, so many materials precached at
   once spread over frames.
 - It compiles the Forward pass only. The auto-generated depth program is built, synchronously,
   the first time `bindForPass(DEPTH)` or `hasCompiledDepthPass()` asks — a preview never does, and they
@@ -237,7 +237,7 @@ CgPipeline glow = material.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind
   frame allocates nothing; any other pass is built on each call, with no keywords.
 
 - The program behind `p` is compiled on the render thread when a batch first draws with it (`p.bind()`), or
-  polled with `p.prepare()`.
+  polled with `p.precache()`.
 - `captureBindings` puts a sampler's texture at its **index among the declared samplers**, the unit every
   program is wired with at compile — whatever unit `sampler(name, unit, texture)` was given.
 - Equal snapshots intern to one id; a property changed after the capture does not change what it holds.

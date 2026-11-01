@@ -97,7 +97,7 @@ public final class CgMaterialShader implements CgReloadable {
 
     /**
      * How many times this session a program was asked for before it was built, so its thread compiled it on the spot
-     * or waited for the driver: what a material's first draw costs unless something prepared it. A prepared material's
+     * or waited for the driver: what a material's first draw costs unless something precached it. A precached material's
      * draws add none. Also the trace counter {@code material.compile-waits}.
      *
      * <pre>{@code
@@ -937,7 +937,7 @@ public final class CgMaterialShader implements CgReloadable {
      * built, or has failed. Polled frame to frame by a caller warming what it will draw; a generated pass is built by
      * the commit, never here. Render thread, once the shader has compiled.
      */
-    public boolean prepareVariant(@Nullable String passName, Set<String> activeKeywords) {
+    public boolean precacheVariant(@Nullable String passName, Set<String> activeKeywords) {
         if (isDirty() || !pollPending()) return false;
         if (lastParsed == null) return true;
         if (passName == null) {
@@ -998,7 +998,7 @@ public final class CgMaterialShader implements CgReloadable {
                                 Set<String> reads, CompletableFuture<Sources> sources) {
     }
 
-    /** Variants whose sources a worker is making for {@link #prepareVariant}. */
+    /** Variants whose sources a worker is making for {@link #precacheVariant}. */
     private final Map<ProgramKey, VariantAhead> variantsAhead = new HashMap<>();
 
     /** {@code key}'s sources on a worker, from a snapshot of what {@link #variantSource} reads. Render thread. */
@@ -1085,7 +1085,7 @@ public final class CgMaterialShader implements CgReloadable {
         cacheVersion++;
     }
 
-    /** Variants {@link #prepareVariant} submitted, not yet kept. Dropped by a recompile, which clears the cache. */
+    /** Variants {@link #precacheVariant} submitted, not yet kept. Dropped by a recompile, which clears the cache. */
     private final Map<ProgramKey, CgShader> pendingVariants = new HashMap<>();
     /** Variants that failed since the last recompile, with why: not tried again until the source changes. */
     private final Map<ProgramKey, String> failedVariants = new HashMap<>();
@@ -1198,7 +1198,7 @@ public final class CgMaterialShader implements CgReloadable {
 
     /**
      * Carries each submit whose sources a worker is making one hop on, and submits those made, inside the frame's
-     * {@link CgWarmBudget}: a caller that asked once ({@code prepare()} on a loading screen) gets its programs
+     * {@link CgWarmBudget}: a caller that asked once ({@code precache()} on a loading screen) gets its programs
      * submitted without asking again. Once a frame, from {@code tickFrame}; allocates nothing.
      */
     public static void advanceSubmits() {

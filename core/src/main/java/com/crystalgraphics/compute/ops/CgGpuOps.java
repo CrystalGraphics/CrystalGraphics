@@ -390,81 +390,81 @@ public final class CgGpuOps {
      * frame does not build them: below compute a sort is a dozen lowered programs. Render thread.
      *
      * <pre>{@code
-     * CgGpuOps.prepareSort(Element.UINT, Order.ASCENDING);       // on a loading screen, or as the effect is made
-     * CgGpuOps.prepareScan(Scan.EXCLUSIVE, Fold.SUM, Element.UINT);
-     * CgGpuOps.prepareHistogram();
+     * CgGpuOps.precacheSort(Element.UINT, Order.ASCENDING);       // on a loading screen, or as the effect is made
+     * CgGpuOps.precacheScan(Scan.EXCLUSIVE, Fold.SUM, Element.UINT);
+     * CgGpuOps.precacheHistogram();
      * }</pre>
      *
      * A sort by bits ({@link #sort(CgComputePass, int, Order, CgGraphBuffer, CgGraphBuffer, CgGpuCount)}) is
      * {@code Element.UINT}'s.
      */
-    public static void prepareSort(Element element, Order order) {
+    public static void precacheSort(Element element, Order order) {
         boolean grouped = sortKernel(SORT_COUNT, element, order).runs();
         int[] kernels = grouped
                 ? new int[]{SORT_COUNT, SORT_REDUCE, SORT_SCAN, SORT_SCAN_ADD, SORT_SCATTER, SORT_SCATTER_KEYS}
                 : new int[]{RADIX_COUNT, RADIX_SCATTER, RADIX_SCATTER_KEYS};
-        for (int k : kernels) prepare(sortKernel(k, element, order));
-        if (!grouped) prepareScan(Scan.EXCLUSIVE, Fold.SUM, Element.UINT);
-        prepare(Files.fill().kernel("Copy"));
+        for (int k : kernels) precache(sortKernel(k, element, order));
+        if (!grouped) precacheScan(Scan.EXCLUSIVE, Fold.SUM, Element.UINT);
+        precache(Files.fill().kernel("Copy"));
     }
 
-    /** {@link #prepareSort}, for a scan. */
-    public static void prepareScan(Scan scan, Fold fold, Element element) {
-        prepare(scanKernel(REDUCE_STEP, fold, element, false, false));
-        prepare(scanKernel(SCAN_BLOCK, fold, element, false, scan == Scan.INCLUSIVE));
+    /** {@link #precacheSort}, for a scan. */
+    public static void precacheScan(Scan scan, Fold fold, Element element) {
+        precache(scanKernel(REDUCE_STEP, fold, element, false, false));
+        precache(scanKernel(SCAN_BLOCK, fold, element, false, scan == Scan.INCLUSIVE));
     }
 
-    /** {@link #prepareSort}, for {@link #fill}, {@link #iota} and {@link #copy}. */
-    public static void prepareFill() {
-        prepare(Files.fill().kernel("Fill"));
-        prepare(Files.fill().kernel("Iota"));
-        prepare(Files.fill().kernel("Copy"));
+    /** {@link #precacheSort}, for {@link #fill}, {@link #iota} and {@link #copy}. */
+    public static void precacheFill() {
+        precache(Files.fill().kernel("Fill"));
+        precache(Files.fill().kernel("Iota"));
+        precache(Files.fill().kernel("Copy"));
     }
 
-    /** {@link #prepareSort}, for a histogram. */
-    public static void prepareHistogram() {
-        prepare(Files.fill().kernel("Fill"));
-        prepare(Files.histogram().kernel("HistogramGroups"));
-        prepare(Files.histogram().kernel("Histogram"));
+    /** {@link #precacheSort}, for a histogram. */
+    public static void precacheHistogram() {
+        precache(Files.fill().kernel("Fill"));
+        precache(Files.histogram().kernel("HistogramGroups"));
+        precache(Files.histogram().kernel("Histogram"));
     }
 
     /**
-     * {@link #prepareSort}, for the kernels writing every indirect draw's command: what a draw's {@code .indirect} or
+     * {@link #precacheSort}, for the kernels writing every indirect draw's command: what a draw's {@code .indirect} or
      * {@code .instances} costs at its first frame otherwise. As compute a pass's commands are one {@code DrawArgsMany}
      * dispatch; lowered, a {@code DrawArgs} each.
      */
-    public static void prepareIndirect() {
+    public static void precacheIndirect() {
         CgKernel each = CgCompute.load(INDIRECT_ARGS).kernel("DrawArgs");
-        prepare(each.form().how() == CgKernelForm.How.COMPUTE ? CgCompute.load(INDIRECT_ARGS).kernel("DrawArgsMany") : each);
+        precache(each.form().how() == CgKernelForm.How.COMPUTE ? CgCompute.load(INDIRECT_ARGS).kernel("DrawArgsMany") : each);
     }
 
-    /** {@link #prepareSort}, for {@link #cull}; with {@code ordered}, its {@link CgCull#ordered} form too. */
-    public static void prepareCull(boolean ordered) {
-        prepareIndirect();
-        prepare(Files.fill().kernel("FillAt"));
-        prepare(Files.cull().kernel("Cull"));
-        prepare(Files.cull().kernel("CullKey"));
-        prepare(Files.cull().kernel("CullGather"));
-        prepareSort(Element.UINT, Order.ASCENDING);
-        prepareHistogram();
-        prepareScan(Scan.EXCLUSIVE, Fold.SUM, Element.UINT);
+    /** {@link #precacheSort}, for {@link #cull}; with {@code ordered}, its {@link CgCull#ordered} form too. */
+    public static void precacheCull(boolean ordered) {
+        precacheIndirect();
+        precache(Files.fill().kernel("FillAt"));
+        precache(Files.cull().kernel("Cull"));
+        precache(Files.cull().kernel("CullKey"));
+        precache(Files.cull().kernel("CullGather"));
+        precacheSort(Element.UINT, Order.ASCENDING);
+        precacheHistogram();
+        precacheScan(Scan.EXCLUSIVE, Fold.SUM, Element.UINT);
         if (!ordered) return;
-        prepare(Files.cull().kernel("CullFlags"));
-        prepare(Files.cull().kernel("CullPlace"));
+        precache(Files.cull().kernel("CullFlags"));
+        precache(Files.cull().kernel("CullPlace"));
         for (int k : new int[]{REDUCE_STEP, SCAN_BLOCK, COMPACT_INDICES, COMPACT_COUNT}) {
-            prepare(scanKernel(k, Fold.SUM, Element.UINT, k == REDUCE_STEP || k == SCAN_BLOCK, false));
+            precache(scanKernel(k, Fold.SUM, Element.UINT, k == REDUCE_STEP || k == SCAN_BLOCK, false));
         }
-        prepareScan(Scan.EXCLUSIVE, Fold.SUM, Element.UINT);
+        precacheScan(Scan.EXCLUSIVE, Fold.SUM, Element.UINT);
     }
 
-    /** {@link #prepareSort}, for {@link #depthPyramid}: its seed material and its chain's kernel. */
-    public static void prepareDepthPyramid() {
-        if (!CgKernel.isAhead()) CgMaterial.load(PYRAMID_SHADER).prepare();
-        prepare(downsampleKernel(IMAGE_TYPES.indexOf(PYRAMID_FORMAT.getColorSlot(0)), Filter.MAX));
+    /** {@link #precacheSort}, for {@link #depthPyramid}: its seed material and its chain's kernel. */
+    public static void precacheDepthPyramid() {
+        if (!CgKernel.isAhead()) CgMaterial.load(PYRAMID_SHADER).precache();
+        precache(downsampleKernel(IMAGE_TYPES.indexOf(PYRAMID_FORMAT.getColorSlot(0)), Filter.MAX));
     }
 
-    private static void prepare(CgKernel kernel) {
-        if (kernel.runs()) kernel.prepare();
+    private static void precache(CgKernel kernel) {
+        if (kernel.runs()) kernel.precache();
     }
 
     // ── Culling ──────────────────────────────────────────────────────────────

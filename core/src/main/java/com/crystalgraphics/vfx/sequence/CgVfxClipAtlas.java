@@ -233,7 +233,7 @@ public final class CgVfxClipAtlas {
         return mask;
     }
 
-    /** Counts a clip baked: a move playing finds its clips baked by its preparing, so a nonzero count is a hitch named. */
+    /** Counts a clip baked: a move playing finds its clips baked by its precache, so a nonzero count is a hitch named. */
     private static final int BAKES = CgTrace.name("vfx.clips.bakes");
 
     private static void grow(int need) {

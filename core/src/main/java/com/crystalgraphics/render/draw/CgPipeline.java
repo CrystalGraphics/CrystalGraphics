@@ -41,21 +41,21 @@ import java.util.concurrent.ConcurrentHashMap;
  * }
  * }</pre>
  *
- * <p>A caller that must not wait on the driver asks {@link #prepare()} first, frame by frame, and draws once it
+ * <p>A caller that must not wait on the driver asks {@link #precache()} first, frame by frame, and draws once it
  * answers true.</p>
  *
  * <ul>
  *   <li>The render state's unset domains are the pass's: an executor applies its pass's state, then this one's.</li>
  *   <li>A shader reloaded in place keeps its pipelines: {@link #program()} follows the shader's revision.</li>
  *   <li>Lives for the session. Interning is thread-safe; {@link #program()}, {@link #bind()},
- *       {@link #prepare()}, {@link #instanceBase} and {@link #vertexBase} are render thread only.</li>
+ *       {@link #precache()}, {@link #instanceBase} and {@link #vertexBase} are render thread only.</li>
  * </ul>
  */
 public final class CgPipeline {
 
     private static final Logger LOGGER = LogManager.getLogger("CgPipeline");
-    private static final int SUBMIT_ZONE = CgTrace.name("pipeline.prepare.submit"),
-            POLL_ZONE = CgTrace.name("pipeline.prepare.poll"), VARIANT_ZONE = CgTrace.name("pipeline.prepare.variant");
+    private static final int SUBMIT_ZONE = CgTrace.name("pipeline.precache.submit"),
+            POLL_ZONE = CgTrace.name("pipeline.precache.poll"), VARIANT_ZONE = CgTrace.name("pipeline.precache.variant");
     private static final int PRECACHED = CgTrace.name("pipeline.precached"), MISSED = CgTrace.name("pipeline.missed"),
             TOO_LATE = CgTrace.name("pipeline.too-late"), HITCHES = CgTrace.name("pipeline.hitches");
     private static final CgVar.Bool LOG_MISSES = CgVar.bool("crystalgraphics.pipeline.logMisses", false, CgVar.DEV,
@@ -118,9 +118,9 @@ public final class CgPipeline {
     @Nullable
     private CgShader program;
     private int programRevision = -1;
-    /** The shader revision {@link #prepare} last answered true at: a built pipeline spends no warming budget. */
-    private int preparedRevision = -1;
-    /** The shader revision {@link #prepare} was last asked at: a draw finding it unbuilt is too late, not missed. */
+    /** The shader revision {@link #precache} last answered true at: a built pipeline spends no warming budget. */
+    private int builtRevision = -1;
+    /** The shader revision {@link #precache} was last asked at: a draw finding it unbuilt is too late, not missed. */
     private int requestedRevision = -1;
     private int instanceBaseLocation = UNRESOLVED, vertexBaseLocation = UNRESOLVED;
 
@@ -617,9 +617,9 @@ public final class CgPipeline {
      * on the driver. False on a frame that starts one, or once the frame's {@link CgWarmBudget} is spent; poll it frame
      * to frame.
      */
-    public boolean prepare() {
-        if (preparedRevision == shader.getRevisionNumber() && !shader.isDirty()) return true;
-        preparedRevision = -1;
+    public boolean precache() {
+        if (builtRevision == shader.getRevisionNumber() && !shader.isDirty()) return true;
+        builtRevision = -1;
         requestedRevision = shader.getRevisionNumber();
         if (!CgWarmBudget.allows()) return false;
         long start = System.nanoTime();
@@ -629,13 +629,13 @@ public final class CgPipeline {
         } finally {
             CgWarmBudget.spend(System.nanoTime() - start);
         }
-        if (ready) preparedRevision = shader.getRevisionNumber();
+        if (ready) builtRevision = shader.getRevisionNumber();
         return ready;
     }
 
-    /** Whether {@link #prepare()} last answered true for the shader as it is now: asks and starts nothing. */
-    public boolean isPrepared() {
-        return preparedRevision == shader.getRevisionNumber() && !shader.isDirty();
+    /** Whether {@link #precache()} last answered true for the shader as it is now: asks and starts nothing. */
+    public boolean isBuilt() {
+        return builtRevision == shader.getRevisionNumber() && !shader.isDirty();
     }
 
     private boolean startOrPoll() {
@@ -649,7 +649,7 @@ public final class CgPipeline {
             if (!shader.pollPending()) return false;
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, VARIANT_ZONE)) {
-            return shader.prepareVariant(passName != null ? passName : pass == CgRenderPassVariant.FORWARD ? null
+            return shader.precacheVariant(passName != null ? passName : pass == CgRenderPassVariant.FORWARD ? null
                     : pass.lightModeName(), compiled);
         }
     }
@@ -673,7 +673,7 @@ public final class CgPipeline {
     private CgShader resolve() {
         int before = shader.getRevisionNumber();
         boolean dirty = shader.isDirty();
-        boolean prepared = preparedRevision == before && !dirty;
+        boolean precached = builtRevision == before && !dirty;
         boolean asked = requestedRevision == before;
         long waitsBefore = CgMaterialShader.compileWaits();
         long start = System.nanoTime();
@@ -690,7 +690,7 @@ public final class CgPipeline {
         }
         long took = System.nanoTime() - start;
         // Built by another pipeline of the same program (a state of its own, a sibling) is built all the same.
-        if (prepared || !dirty && CgMaterialShader.compileWaits() == waitsBefore) {
+        if (precached || !dirty && CgMaterialShader.compileWaits() == waitsBefore) {
             CgTrace.add(CgChannels.GL, PRECACHED, 1);
         } else {
             if (asked) tooLate++;
@@ -706,13 +706,13 @@ public final class CgPipeline {
     }
 
     /**
-     * How many pipelines a draw found unbuilt this session, never asked for ({@link #prepare()}) or asked for and not
+     * How many pipelines a draw found unbuilt this session, never asked for ({@link #precache()}) or asked for and not
      * yet built: Unreal's Missed and TooLate. Each built at its draw. Also the trace counters {@code pipeline.missed}
      * and {@code pipeline.too-late}, beside {@code pipeline.precached}.
      *
      * <pre>{@code
      * long before = CgPipeline.misses();
-     * // ... a scene's first frames, everything it draws prepared ...
+     * // ... a scene's first frames, everything it draws precached ...
      * assert CgPipeline.misses() == before;
      * }</pre>
      */

@@ -23,7 +23,7 @@ import com.github.bsideup.jabel.Desugar;
 
 /**
  * Every pipeline the engine keeps built: what a {@link CgPipelinePrecache} collector or request names. A material is
- * kept in every form the world renderer draws it with ({@link CgWorldRenderer#prepare}), for the settings in force; a
+ * kept in every form the world renderer draws it with ({@link CgWorldRenderer#precache}), for the settings in force; a
  * kernel's program once. A settings change (the HDR scene, merged emission, half size) re-warms every material under
  * the new settings before the renderer applies them, so the first frame after a toggle compiles nothing. Unreal's PSO
  * precache, by material and vertex factory ({@code UMaterialInstance::PrecachePSOs}, MaterialInstance.cpp:2918).
@@ -35,7 +35,7 @@ import com.github.bsideup.jabel.Desugar;
  *     pipelines.add("mymod:shaders/rune.shader", "GLOW");
  *     pipelines.add(manifest);                   // an asset bundle's permutations
  *     pipelines.add(stepKernel);
- *     pipelines.kernels(MyOps::prepare);         // every kernel a preparer starts
+ *     pipelines.kernels(MyOps::precache);         // every kernel it precaches
  * });
  * }</pre>
  *
@@ -65,11 +65,11 @@ public final class CgPipelineList {
 
     /** Starts or polls a material's pipelines under settings; whether all are built. */
     @FunctionalInterface
-    interface Preparer {
-        boolean prepare(CgMaterial material, boolean half, boolean skinned, Settings settings);
+    interface Precacher {
+        boolean precache(CgMaterial material, boolean half, boolean skinned, Settings settings);
     }
 
-    private final Preparer preparer;
+    private final Precacher precacher;
     private final Supplier<Settings> requested;
     private final List<CgMaterial> list = new ArrayList<>();
     private final Map<CgMaterial, Boolean> halves = new IdentityHashMap<>();
@@ -87,8 +87,8 @@ public final class CgPipelineList {
     /** The request whose collector is adding, which records what it names. */
     private CgPipelinePrecache.Request capturing;
 
-    CgPipelineList(Preparer preparer, Supplier<Settings> requested) {
-        this.preparer = preparer;
+    CgPipelineList(Precacher precacher, Supplier<Settings> requested) {
+        this.precacher = precacher;
         this.requested = requested;
     }
 
@@ -163,9 +163,9 @@ public final class CgPipelineList {
 
     /** Its program committed, then its Forward pipeline built: a pass's program follows no setting. */
     private static boolean passBuilt(CgMaterial material) {
-        if (!material.prepare()) return false;
+        if (!material.precache()) return false;
         CgPipeline p = material.pipeline(CgInstanceKind.OBJECT);
-        return p == null || p.prepare();
+        return p == null || p.precache();
     }
 
     /**
@@ -202,9 +202,9 @@ public final class CgPipelineList {
         unbuilt.add(kernel);
     }
 
-    /** Every kernel {@code prepare} starts, kept built: the kernels behind an op (a sort, Range, a pool), named by its preparer. */
-    public void kernels(Runnable prepare) {
-        for (CgKernel k : CgKernel.collect(prepare)) add(k);
+    /** Every kernel {@code precache} starts, kept built: the kernels behind an op (a sort, Range, a pool), named by its precacher. */
+    public void kernels(Runnable precache) {
+        for (CgKernel k : CgKernel.collect(precache)) add(k);
     }
 
     /** Runs {@code collector} into the list, recording what it names in {@code into} where given. */
@@ -225,7 +225,7 @@ public final class CgPipelineList {
         for (int i = 0; i < request.materials.size(); i++) {
             CgMaterial m = request.materials.get(i);
             if (!pending.containsKey(m)) continue;
-            if (preparer.prepare(m, halves.get(m), skinned.containsKey(m), settings)) pending.remove(m);
+            if (precacher.precache(m, halves.get(m), skinned.containsKey(m), settings)) pending.remove(m);
             else ready = false;
         }
         for (int i = 0; i < request.kernels.size(); i++) {
@@ -268,7 +268,7 @@ public final class CgPipelineList {
         while (true) {
             for (int i = 0; i < list.size(); i++) {
                 CgMaterial m = list.get(i);
-                if (pending.containsKey(m) && preparer.prepare(m, halves.get(m), skinned.containsKey(m), settings)) pending.remove(m);
+                if (pending.containsKey(m) && precacher.precache(m, halves.get(m), skinned.containsKey(m), settings)) pending.remove(m);
             }
             boolean kernelsBuilt = pollKernels();
             if (pending.isEmpty() && kernelsBuilt || System.nanoTime() > end) break;
@@ -301,7 +301,7 @@ public final class CgPipelineList {
         if (!pending.isEmpty()) {
             for (int i = 0; i < list.size(); i++) {
                 CgMaterial m = list.get(i);
-                if (pending.containsKey(m) && preparer.prepare(m, halves.get(m), skinned.containsKey(m), requested)) pending.remove(m);
+                if (pending.containsKey(m) && precacher.precache(m, halves.get(m), skinned.containsKey(m), requested)) pending.remove(m);
             }
         }
         if (requested.equals(applied)) {

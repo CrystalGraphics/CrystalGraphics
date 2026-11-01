@@ -14,7 +14,7 @@ mounted. Then the graphics context: `ensureGraphicsContext` (the one way to star
   connection too.
 - `CgGraphicsLifecycle` does the graphics work: what a context builds, the teardown order, and the two calls a host
   makes on it directly, `tickFrame` and `onResize` (through `CgLifecycleService`).
-- On a client, post-init follows the graphics start: what loads is prepared by the effects it installs.
+- On a client, post-init follows the graphics start: what loads is precached by the effects it installs.
 - **One listener registry, `CgEngineLifecycle`'s.** Code outside the engine hears every moment through a
   `CgLifecycleListener` added with `CgEngineLifecycle.addListener`: `onPreInit`/`onInit`/`onPostInit`, then
   `onContextInit`/`onFrame`/`onContextDestroy`/`onShutdown`. A late listener is caught up, so each fires once, and a

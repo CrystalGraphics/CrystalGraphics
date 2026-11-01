@@ -114,7 +114,7 @@ public interface CgVfxGpuModule {
      * Textures it samples, passed after its data interfaces as {@code sampler2D} or {@code sampler3D} by each one's kind:
      * a vector field (Unity's Vector Field Force, Niagara's Sample Vector Field), a heightfield (Godot's). Which texture
      * is not part of the pool's identity: a pool keeps a table of each kind's textures and every slot names its entry, so
-     * definitions prepared together sampling different ones share a pool, up to {@code CgVfxParticlePool.TEXTURE_ENTRIES}
+     * definitions precached together sampling different ones share a pool, up to {@code CgVfxParticlePool.TEXTURE_ENTRIES}
      * distinct ones a kind, the Step compiling the kind's call once a set it holds; numbers placing it stay in its declared
      * inputs and the lanes.
      *

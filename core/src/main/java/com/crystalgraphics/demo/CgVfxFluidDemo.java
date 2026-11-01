@@ -697,12 +697,12 @@ public final class CgVfxFluidDemo {
     }
 
     /** Warms every station's programs and kernels, so its first play stalls no frame. On the render thread. */
-    public void prepare() {
-        for (Station s : stations) vfx.prepare(s.look());
+    public void precache() {
+        for (Station s : stations) vfx.precache(s.look());
     }
 
-    public boolean warmed() {
-        return vfx.warmed();
+    public boolean ready() {
+        return vfx.ready();
     }
 
     /** Ends every play at once; the next {@link #submit} plays them all again. */

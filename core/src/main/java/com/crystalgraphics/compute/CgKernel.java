@@ -52,7 +52,7 @@ public final class CgKernel {
     private final CgCompute compute;
     private final String name;
     private final Set<String> keywords;
-    /** Its file's key for its program, name then keywords: built once, since a prepare looks it up each frame. */
+    /** Its file's key for its program, name then keywords: built once, since a precache looks it up each frame. */
     final String programKey;
     /** The program last answered, while its file has not released it. */
     private volatile CgKernelProgram program;
@@ -160,12 +160,12 @@ public final class CgKernel {
      * passes are built now; a Java body needs nothing. Render thread.
      *
      * <pre>{@code
-     * CgKernel simulate = CgCompute.load("mymod:shaders/particles.compute").kernel("Simulate").prepare();   // at load
+     * CgKernel simulate = CgCompute.load("mymod:shaders/particles.compute").kernel("Simulate").precache();   // at load
      * }</pre>
      *
      * @throws IllegalStateException as {@link #program()} does, for a kernel some tier or this context cannot run
      */
-    public CgKernel prepare() {
+    public CgKernel precache() {
         check();
         List<CgKernel> collecting = COLLECT.get();
         if (collecting != null) collecting.add(this);
@@ -174,7 +174,7 @@ public final class CgKernel {
             if (f.how() == CgKernelForm.How.COMPUTE) compute.loadAhead(this);
             return this;
         }
-        if (f.how() == CgKernelForm.How.COMPUTE) compute.prepare(this);
+        if (f.how() == CgKernelForm.How.COMPUTE) compute.precache(this);
         else if (f.how() == CgKernelForm.How.LOWERED) lowered();
         return this;
     }
@@ -188,7 +188,7 @@ public final class CgKernel {
      * Render thread.
      *
      * <pre>{@code
-     * List<CgKernel> kernels = CgKernel.collect(() -> MyEffect.prepareKernels());   // once
+     * List<CgKernel> kernels = CgKernel.collect(() -> MyEffect.precacheKernels());   // once
      * boolean go = true;
      * for (CgKernel k : kernels) go &= k.isReady();                                // each frame until true
      * }</pre>
@@ -202,14 +202,14 @@ public final class CgKernel {
     }
 
     /**
-     * Every kernel {@code prepares} {@link #prepare}s, in order, prepared as well: the list to poll {@link #isReady}
-     * over, gathered from a prepare that already names them. Render thread.
+     * Every kernel {@code precaches} runs {@link #precache} on, in order, precached as well: the list to poll {@link #isReady}
+     * over, gathered from a precache that already names them. Render thread.
      */
-    public static List<CgKernel> collect(Runnable prepares) {
+    public static List<CgKernel> collect(Runnable precaches) {
         List<CgKernel> outer = COLLECT.get(), collected = new ArrayList<>();
         COLLECT.set(collected);
         try {
-            prepares.run();
+            precaches.run();
         } finally {
             COLLECT.set(outer);
         }
@@ -217,26 +217,26 @@ public final class CgKernel {
     }
 
     /**
-     * Runs {@code prepares} with every {@link #prepare} in it making that kernel's sources rather than its program: on a
-     * worker ahead of a warm-up, whose own {@code prepare} then only submits. A lowered kernel is left to it whole.
+     * Runs {@code precaches} with every {@link #precache} in it making that kernel's sources rather than its program: on a
+     * worker ahead of a warm-up, whose own {@code precache} then only submits. A lowered kernel is left to it whole.
      *
      * <pre>{@code
-     * CgJob.executor(CgJobLane.LATENCY).execute(() -> CgKernel.ahead(CgVfxRange::prepare));   // a worker
-     * CgVfxRange.prepare();                                                                   // later, the render thread
+     * CgJob.executor(CgJobLane.LATENCY).execute(() -> CgKernel.ahead(CgVfxRange::precache));   // a worker
+     * CgVfxRange.precache();                                                                   // later, the render thread
      * }</pre>
      */
-    public static void ahead(Runnable prepares) {
+    public static void ahead(Runnable precaches) {
         AHEAD.set(true);
         try {
-            prepares.run();
+            precaches.run();
         } finally {
             AHEAD.set(false);
         }
     }
 
     /**
-     * Whether this thread is inside {@link #ahead}: a prepare step that also starts a material skips it there, since
-     * a material's prepare drives the device and the render thread's pass after starts it.
+     * Whether this thread is inside {@link #ahead}: a precache step that also starts a material skips it there, since
+     * a material's precache drives the device and the render thread's pass after starts it.
      */
     public static boolean isAhead() {
         return AHEAD.get();

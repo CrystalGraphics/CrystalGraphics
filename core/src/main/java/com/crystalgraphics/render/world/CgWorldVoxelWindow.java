@@ -192,7 +192,7 @@ public final class CgWorldVoxelWindow {
                     knownChanged = floodWhole = true;
                 }
             });
-            prepare();
+            precache();
         }
         return this;
     }
@@ -201,11 +201,11 @@ public final class CgWorldVoxelWindow {
      * Starts its distance kernels without filling anything: what a look reading the world warms at load, so its first
      * {@link #use} compiles nothing. Render thread.
      */
-    public void prepare() {
+    public void precache() {
         CgCompute kernels = CgCompute.load(DISTANCE_KERNELS);
-        kernels.kernel("Seed").prepare();
-        kernels.kernel("Jump").prepare();
-        kernels.kernel("Settle").prepare();
+        kernels.kernel("Seed").precache();
+        kernels.kernel("Jump").precache();
+        kernels.kernel("Settle").precache();
     }
 
     /**

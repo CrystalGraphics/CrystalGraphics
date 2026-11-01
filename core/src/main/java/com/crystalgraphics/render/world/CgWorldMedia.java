@@ -283,7 +283,7 @@ public final class CgWorldMedia {
                 CgKernel columns = CgCompute.load(KERNELS).kernel("IntegrateColumns");
                 byColumn = columns.runs();
                 integrate = byColumn ? columns : CgCompute.load(KERNELS).kernel("Integrate");
-                integrate.prepare();
+                integrate.precache();
             }
             current = null;
             first = true;
@@ -313,7 +313,7 @@ public final class CgWorldMedia {
     void composite(CgStageFrame stage, CgRecording recording, CgGraphTexture media) {
         if (!lit) return;
         if (light == null) light = CgMaterial.newInstance(LIGHT_SHADER);
-        if (!light.prepare()) return;
+        if (!light.precache()) return;
         CgPipeline pipeline = light.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         CgRasterPass pass = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED)

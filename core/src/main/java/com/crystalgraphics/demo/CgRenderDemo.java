@@ -143,10 +143,10 @@ public final class CgRenderDemo {
     /** A scene of the demo: built when first shown, ended when switched away from, kept for the next switch. */
     private interface Scene {
         /** Warms every program and kernel it draws or simulates with. */
-        void prepare();
+        void precache();
 
-        /** Whether what {@link #prepare} started compiling is built: it draws nothing until then. */
-        boolean warmed();
+        /** Whether what {@link #precache} started compiling is built: it draws nothing until then. */
+        boolean ready();
 
         void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds);
 
@@ -277,7 +277,7 @@ public final class CgRenderDemo {
     private void build(int i) {
         long start = System.nanoTime();
         scenes[i] = kinds[i].make().get();
-        scenes[i].prepare();
+        scenes[i].precache();
         warmFrames[i] = 0;
         LOGGER.info("[CgRenderDemo] {} built in {} ms", kinds[i].name(), (System.nanoTime() - start) / 1_000_000);
     }
@@ -306,13 +306,13 @@ public final class CgRenderDemo {
             }
 
             @Override
-            public void prepare() {
-                blasts.prepare();
+            public void precache() {
+                blasts.precache();
             }
 
             @Override
-            public boolean warmed() {
-                return blasts.warmed();
+            public boolean ready() {
+                return blasts.ready();
             }
 
             @Override
@@ -337,13 +337,13 @@ public final class CgRenderDemo {
             }
 
             @Override
-            public void prepare() {
-                showcase.prepare();
+            public void precache() {
+                showcase.precache();
             }
 
             @Override
-            public boolean warmed() {
-                return showcase.warmed();
+            public boolean ready() {
+                return showcase.ready();
             }
 
             @Override
@@ -373,13 +373,13 @@ public final class CgRenderDemo {
             }
 
             @Override
-            public void prepare() {
-                fluid.prepare();
+            public void precache() {
+                fluid.precache();
             }
 
             @Override
-            public boolean warmed() {
-                return fluid.warmed();
+            public boolean ready() {
+                return fluid.ready();
             }
 
             @Override
@@ -404,13 +404,13 @@ public final class CgRenderDemo {
             }
 
             @Override
-            public void prepare() {
-                modules.prepare();
+            public void precache() {
+                modules.precache();
             }
 
             @Override
-            public boolean warmed() {
-                return modules.warmed();
+            public boolean ready() {
+                return modules.ready();
             }
 
             @Override
@@ -434,13 +434,13 @@ public final class CgRenderDemo {
             }
 
             @Override
-            public void prepare() {
-                blast.prepare();
+            public void precache() {
+                blast.precache();
             }
 
             @Override
-            public boolean warmed() {
-                return blast.warmed();
+            public boolean ready() {
+                return blast.ready();
             }
 
             @Override
@@ -470,11 +470,11 @@ public final class CgRenderDemo {
             }
 
             @Override
-            public void prepare() {
+            public void precache() {
             }
 
             @Override
-            public boolean warmed() {
+            public boolean ready() {
                 return true;
             }
 
@@ -499,13 +499,13 @@ public final class CgRenderDemo {
             }
 
             @Override
-            public void prepare() {
-                lights.prepare();
+            public void precache() {
+                lights.precache();
             }
 
             @Override
-            public boolean warmed() {
-                return lights.warmed();
+            public boolean ready() {
+                return lights.ready();
             }
 
             @Override
@@ -534,13 +534,13 @@ public final class CgRenderDemo {
             }
 
             @Override
-            public void prepare() {
-                shadows.prepare();
+            public void precache() {
+                shadows.precache();
             }
 
             @Override
-            public boolean warmed() {
-                return shadows.warmed();
+            public boolean ready() {
+                return shadows.ready();
             }
 
             @Override
@@ -592,7 +592,7 @@ public final class CgRenderDemo {
     /** Whether scene {@code i}'s programs are built, polling them and counting the frames it waits. */
     private boolean warm(int i) {
         if (warmFrames[i] < 0) return true;
-        if (!scenes[i].warmed()) {
+        if (!scenes[i].ready()) {
             warmFrames[i]++;
             return false;
         }

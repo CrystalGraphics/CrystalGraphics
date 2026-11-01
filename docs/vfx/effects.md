@@ -99,7 +99,7 @@ static final CgMaterialDefinition INK = CgMaterialDefinition.of("mymod:materials
 ### What it costs
 
 - **Each blend mode, and a clip, compiles once**: the shader's programs under that mode, made the first time a material
-  draws with it, and shared by every material asking for it. Warm them with the look (`VFX.prepare(LOOK)`).
+  draws with it, and shared by every material asking for it. Warm them with the look (`VFX.precache(LOOK)`).
 - **Cull and depth write compile nothing**: they are the draw's pipeline state, on the same programs.
 
 ## Constants, binds and keywords

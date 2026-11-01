@@ -114,11 +114,11 @@ public final class CgVfxRibbonGeneration {
     }
 
     /** Starts its kernels' programs and the sorts it runs, ahead of the first ribbon. Render thread. */
-    public static void prepare() {
+    public static void precache() {
         CgCompute file = CgCompute.load(KERNELS);
-        for (String k : new String[] {"Keys", "Links", "Init", "Propagate", "Finish", "Ribbons", "Args"}) file.kernel(k).prepare();
-        CgGpuOps.prepareSort(CgGpuOps.Element.FLOAT, CgGpuOps.Order.ASCENDING);
-        CgGpuOps.prepareSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING);
+        for (String k : new String[] {"Keys", "Links", "Init", "Propagate", "Finish", "Ribbons", "Args"}) file.kernel(k).precache();
+        CgGpuOps.precacheSort(CgGpuOps.Element.FLOAT, CgGpuOps.Order.ASCENDING);
+        CgGpuOps.precacheSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING);
     }
 
     /**

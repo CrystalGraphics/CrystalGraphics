@@ -250,29 +250,29 @@ public final class CgVfxRange {
     /**
      * Starts the programs every range dispatches, ahead of the first frame that draws a GPU particle: below compute
      * they are some twenty lowered programs, otherwise built on that frame. Render thread, beside
-     * {@link CgVfxParticlePool#prepare}.
+     * {@link CgVfxParticlePool#precache}.
      */
-    public static void prepare() {
-        for (int i = 0; i < PREPARE_STEPS.size(); i++) PREPARE_STEPS.get(i).run();
+    public static void precache() {
+        for (int i = 0; i < PRECACHE_STEPS.size(); i++) PRECACHE_STEPS.get(i).run();
     }
 
-    /** {@link #prepare} as steps, a kernel or an op's few each, for a warm-up that runs one at a time under its budget. */
-    public static final List<Runnable> PREPARE_STEPS = List.of(
-            () -> CgCompute.load(KERNELS).kernel("Key").prepare(),
-            () -> CgCompute.load(KERNELS).kernel("Place").prepare(),
-            () -> CgCompute.load(KERNELS).kernel("Cap").prepare(),
-            () -> CgCompute.load(KERNELS).kernel("Objects").prepare(),
-            () -> CgGpuOps.prepareSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING),
-            CgGpuOps::prepareHistogram,
-            () -> CgGpuOps.prepareScan(CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT),
-            CgGpuOps::prepareDepthPyramid,
-            CgGpuOps::prepareIndirect,      // every slot draws indirect
-            () -> CgGpuOps.prepareCull(true)   // MESHES slots, drawn through the world renderer's cull
+    /** {@link #precache} as steps, a kernel or an op's few each, for a warm-up that runs one at a time under its budget. */
+    public static final List<Runnable> PRECACHE_STEPS = List.of(
+            () -> CgCompute.load(KERNELS).kernel("Key").precache(),
+            () -> CgCompute.load(KERNELS).kernel("Place").precache(),
+            () -> CgCompute.load(KERNELS).kernel("Cap").precache(),
+            () -> CgCompute.load(KERNELS).kernel("Objects").precache(),
+            () -> CgGpuOps.precacheSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING),
+            CgGpuOps::precacheHistogram,
+            () -> CgGpuOps.precacheScan(CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT),
+            CgGpuOps::precacheDepthPyramid,
+            CgGpuOps::precacheIndirect,      // every slot draws indirect
+            () -> CgGpuOps.precacheCull(true)   // MESHES slots, drawn through the world renderer's cull
     );
 
-    /** {@link #prepare}'s files read and parsed, and nothing built: CPU only, any thread. */
+    /** {@link #precache}'s files read and parsed, and nothing built: CPU only, any thread. */
     public static void loadAhead() {
-        CgKernel.ahead(CgVfxRange::prepare);
+        CgKernel.ahead(CgVfxRange::precache);
     }
 
     /** Forgets every range and stops recording. Tests. */

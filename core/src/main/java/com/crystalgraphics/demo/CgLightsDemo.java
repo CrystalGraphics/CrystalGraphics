@@ -47,7 +47,7 @@ import org.joml.Matrix4f;
  *
  * <pre>{@code
  * CgLightsDemo demo = new CgLightsDemo(CgVfx.owner("crystalgraphics"));
- * demo.prepare();                                         // then nothing until demo.warmed()
+ * demo.precache();                                         // then nothing until demo.ready()
  * demo.submit(CgWorldRenderer.get(), x, y, z, seconds);   // each frame, before the world records
  * }</pre>
  *
@@ -158,16 +158,16 @@ public final class CgLightsDemo {
                 .build();
     }
 
-    public void prepare() {
-        vfx.prepare(particles);
+    public void precache() {
+        vfx.precache(particles);
         glass = CgMaterial.load("crystalgraphics:shaders/demo/demo_glass.shader");
         programs = CgPipelinePrecache.request(pipelines -> pipelines.add(glass, false));
     }
 
     private CgPipelinePrecache.Request programs;
 
-    public boolean warmed() {
-        return vfx.warmed() && programs != null && programs.ready();
+    public boolean ready() {
+        return vfx.ready() && programs != null && programs.ready();
     }
 
     /** The show round a ground point {@code (x, y, z)} as it is at {@code seconds}. */

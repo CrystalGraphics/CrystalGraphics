@@ -19,7 +19,7 @@ import com.crystalgraphics.vfx.look.CgVfxLook;
 
 /**
  * A system asset's GPU work before it is {@code READY}: its layers' textures decoded on a worker and uploaded, then its
- * look prepared on a VFX system ({@link CgVfxSystem#prepare}: kernels, pools, slot meshes, every program its draws
+ * look precached on a VFX system ({@link CgVfxSystem#precache}: kernels, pools, slot meshes, every program its draws
  * take), and its pool there primed ({@link CgVfxSystem#pool}). A system played once its bundle is ready then uploads
  * and compiles nothing, and {@link CgVfxSystem#spawn} takes a primed instance.
  *
@@ -29,8 +29,8 @@ import com.crystalgraphics.vfx.look.CgVfxLook;
  * }</pre>
  *
  * <ul>
- *   <li>It prepares on the system {@code system} answers when the step first runs, on the render thread.</li>
- *   <li>Its last step answers {@link CgVfxSystem#warmed}, the whole system's: an asset waits for everything warming
+ *   <li>It precaches on the system {@code system} answers when the step first runs, on the render thread.</li>
+ *   <li>Its last step answers {@link CgVfxSystem#ready}, the whole system's: an asset waits for everything warming
  *       there, never less.</li>
  *   <li>A dedicated server registers no preparer: a system is ready there once it compiled.</li>
  * </ul>
@@ -50,7 +50,7 @@ public final class CgVfxSystemPreparer implements CgAssetPreparer {
     }
 
     /**
-     * Plans {@code look}'s warming on {@code system}: its textures decoded and uploaded, then the look prepared there.
+     * Plans {@code look}'s warming on {@code system}: its textures decoded and uploaded, then the look precached there.
      * A preparer of another kind drawing through a look (a prefab's) plans with it.
      *
      * <pre>{@code
@@ -71,9 +71,9 @@ public final class CgVfxSystemPreparer implements CgAssetPreparer {
                     throw new IllegalStateException(name + " draws a material reading its bounds (CG_OBJECT_POSITION,"
                             + " CG_OBJECT_RADIUS) and has no fixed_bounds");
                 }
-                vfx.prepare(look);
+                vfx.precache(look);
             }
-            return vfx.warmed();
+            return vfx.ready();
         });
     }
 

@@ -13,13 +13,13 @@ import com.crystalgraphics.variable.CgVar;
  * <pre>{@code
  * if (!CgWarmBudget.allows()) return false;     // this frame's time is spent: ask again next frame
  * long start = System.nanoTime();
- * kernel.prepare();
+ * kernel.precache();
  * CgWarmBudget.spend(System.nanoTime() - start);
  * }</pre>
  *
  * <ul>
- *   <li>{@code CgPipeline.prepare} and {@code CgVfxSystem}'s warming ask it, so {@code CgWorldRenderer.prepare} and
- *       {@code CgVfxOwner.prepare} spread by themselves.</li>
+ *   <li>{@code CgPipeline.precache} and {@code CgVfxSystem}'s warming ask it, so {@code CgWorldRenderer.precache} and
+ *       {@code CgVfxOwner.precache} spread by themselves.</li>
  *   <li>Unlimited until {@code CgEngineLifecycle.ensureGraphicsContext} starts it: a process with no context (a test) warms at
  *       once.</li>
  *   <li>Render thread.</li>
