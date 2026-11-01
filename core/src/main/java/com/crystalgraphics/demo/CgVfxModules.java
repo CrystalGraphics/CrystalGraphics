@@ -2849,7 +2849,10 @@ public final class CgVfxModules {
 
     /** Warms every station's kernels and programs, so its first play stalls no frame. On the render thread. */
     public void prepare() {
-        for (Station s : stations) vfx.prepare(s.look());
+        // Every station at once, as a move prepares its looks: each shape stacks where it will play before any warms.
+        CgVfxLook[] looks = new CgVfxLook[stations.size()];
+        for (int i = 0; i < looks.length; i++) looks[i] = stations.get(i).look();
+        vfx.prepare(looks);
         CgWorldRenderer world = CgWorldRenderer.get();
         world.prepare(mercury);
         world.prepare(copper);

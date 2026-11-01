@@ -987,7 +987,7 @@ public final class CgVfxEmitterCompiler {
                     }
                     uint paramRow = INSTANCES(inst).x;
                     int row = int(paramRow) * STEP_PARAM_ROW;
-                    p.turnClock = @TURN_CLOCK@;
+@PRESENT@                    p.turnClock = @TURN_CLOCK@;
                     // What a form's rolls key on, with its module and input: the instance's seed.
                     uint formSeed = INSTANCES(inst).y;
                     FxStep s;
@@ -1001,7 +1001,9 @@ public final class CgVfxEmitterCompiler {
                     f.dragQuad = 0.0;
                     f.motionScale = vec3(1.0);
                     f.motionSet = vec3(0.0);
-                """.replace("@TURN_CLOCK@", shape.turnLifeAt() >= 0 ? "step_turn_clock(p, paramRow)" : "vec3(p.age)"));
+                """.replace("@TURN_CLOCK@", shape.turnLifeAt() >= 0 ? "step_turn_clock(p, paramRow)" : "vec3(p.age)")
+                // A stacked shape's modules its definition runs (CgVfxShape.stacked): the rest are off for it.
+                .replace("@PRESENT@", shape.stacked() ? "    uint present = PARAMS(row + " + shape.stackAt() + ").x;\n" : ""));
         calls(s, shape, false);
         s.append("""
                     // The solve: forces into velocity, drag implicit, then position
@@ -1182,17 +1184,21 @@ public final class CgVfxEmitterCompiler {
             }
         }
         for (CgVfxDataInterface di : shape.dataInterfaces(i)) s.append(", ").append(di.call());
+        // In a stacked shape, a module runs where its definition has it (the row's mask, `present`).
         if (count > 1) {
-            out.append("    for (int c = 0; c < ").append(count).append(" * _One; c++) ").append(s).append(");\n");
+            String on = shape.stacked() ? "if (((present >> uint(" + i + " + c)) & 1u) != 0u) " : "";
+            out.append("    for (int c = 0; c < ").append(count).append(" * _One; c++) ").append(on).append(s).append(");\n");
             return;
         }
+        String on = shape.stacked() ? "if ((present & " + (1L << i) + "u) != 0u) " : "";
         int textures = shape.textureCount(i);
         if (textures == 0) {
-            out.append("    ").append(s).append(");\n");
+            out.append("    ").append(on).append(s).append(");\n");
             return;
         }
         int word = shape.textureEntryWord(i);
-        out.append("    switch (int(INSTANCES(inst + ").append(word / 4).append(").").append(XYZW.charAt(word % 4)).append(")) {\n");
+        out.append("    ").append(on).append("switch (int(INSTANCES(inst + ").append(word / 4).append(").")
+                .append(XYZW.charAt(word % 4)).append(")) {\n");
         for (int e = 0; e < CgVfxParticlePool.TEXTURE_ENTRIES; e++) {
             out.append(e == 0 ? "    default: " : "    case " + e + ": ").append(s);
             for (int t = 0; t < textures; t++) out.append(", ").append(texture(i, t, e));

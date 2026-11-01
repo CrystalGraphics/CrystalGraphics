@@ -9,11 +9,15 @@ import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
 import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDataInterface;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -34,7 +38,14 @@ import java.util.WeakHashMap;
  * count changes. It raises only once the included definitions' shapes pass the pool budget, the groups saving most
  * pools first.
  *
- * <p>No Unreal counterpart: Niagara dispatches each emitter instance on its own and has no pools to share.</p>
+ * <p>Then, always, it stacks: a shape whose modules are, in order, some of a wider shape's, the rest of its key alike,
+ * runs in the widest such shape's kernel and pool, its parameter row's mask switching off the modules it lacks
+ * ({@link CgVfxShape#stacked}). Niagara's lightweight emitters are the model: one shader for every one of them, each module
+ * always run and doing nothing where the emitter's parameters leave it off. It draws the same particles
+ * ({@code --mode=vfx-stack}), and each stack is one kernel to compile and one pool a frame instead of several.</p>
+ *
+ * <p>Raising has no Unreal counterpart: Niagara dispatches each stateful emitter instance on its own and has no pools to
+ * share.</p>
  *
  * <pre>{@code
  * CgVfxShapeCoalescing.loaded().include(look.emitters());   // at READY: what the loaded bundles hold
@@ -46,9 +57,10 @@ import java.util.WeakHashMap;
  * }</pre>
  *
  * <ul>
- *   <li>Include a definition before its first play: a later include that changes its group's raise gives it another
- *       shape, and so another pool and kernel, from its next slot. {@link #include} answers the definitions so moved,
- *       for their kernels to be warmed.</li>
+ *   <li>Include a definition before its first play, and a move's together: a later include that changes its group's raise
+ *       or its stack gives it another shape, and so another pool and kernel, from its next slot. {@link #include} answers
+ *       the definitions so moved, for their kernels to be warmed. One never included plays its own shape.</li>
+ *   <li>A module it lacks may sample textures (its slot takes no entry) but never be a beam's.</li>
  *   <li>A word bound to a user parameter is never raised: its value is the instance's, not the definition's.</li>
  *   <li>Without a form, a start colour or mesh scale is rolled between two: it is raised from absence only where the two
  *       agree. A mesh turn and a light are never raised from absence. An orbit so raised stores its zeros in each
@@ -67,12 +79,17 @@ public final class CgVfxShapeCoalescing {
             POOL_BUDGET, 0, Integer.MAX_VALUE, CgVar.DEV | CgVar.RESTART,
             "Shapes the loaded bundles may take before coalescing raises their inputs; 0 raises every group that saves a pool, "
                     + "which the form gates run under.").get());
+    private static final CgVar.Bool STACK = CgVar.bool("crystalgraphics.vfx.stackShapes", true, CgVar.DEV | CgVar.RESTART,
+            "Shapes whose modules are some of a wider shape's run in its kernel and pool, what they lack switched off; false "
+                    + "keeps every shape its own, to compare.");
     private static final String BETWEEN = "crystalgraphics:random_range";
     private static final float TURN = 6.2831853f;
     /** Every definition's shape as given, per tier, made once: tables share them. Held weakly. */
     private static final Map<CgVfxGpuEmitter, CgVfxShape[]> BASE = new WeakHashMap<>();
     /** Each definition's raised shapes, by its tier and the choices that raised it: tables share them. Held weakly. */
     private static final Map<CgVfxGpuEmitter, Map<String, CgVfxShape>> RAISED = new WeakHashMap<>();
+    /** Each definition's stacked shapes, by what it was stacked from and into. Held weakly. */
+    private static final Map<CgVfxGpuEmitter, Map<String, CgVfxShape>> STACKED = new WeakHashMap<>();
 
     private final int budget;
     /** Included definitions by form-free key. */
@@ -107,25 +124,19 @@ public final class CgVfxShapeCoalescing {
      * emitter's particles, which plays a tier after its source.
      */
     public synchronized List<CgVfxGpuEmitter> include(Map<? extends CgVfxGpuEmitter, Integer> atTiers) {
-        Set<Group> touched = new HashSet<>();
         Map<Member, String> before = new HashMap<>();
-        for (Map.Entry<? extends CgVfxGpuEmitter, Integer> e : atTiers.entrySet()) include(e.getKey(), e.getValue(), touched, before);
+        for (Group g : groups.values()) for (Member m : g.members) before.put(m, m.shape().key());
+        Set<Group> touched = new HashSet<>();
+        for (Map.Entry<? extends CgVfxGpuEmitter, Integer> e : atTiers.entrySet()) include(e.getKey(), e.getValue(), touched);
         if (touched.isEmpty()) return List.of();
-        Map<Group, Boolean> wasRaised = new HashMap<>();
-        for (Group g : groups.values()) wasRaised.put(g, g.raised);
         for (Group g : touched) g.plan();
         choose();
-        // Only a group planned again or raised otherwise can move a definition.
+        if (STACK.get()) stack();
+        shapes.clear();
         List<CgVfxGpuEmitter> changed = new ArrayList<>();
-        for (Group g : groups.values()) {
-            boolean flipped = wasRaised.get(g) != g.raised;
-            if (!flipped && !touched.contains(g)) continue;
-            for (Member m : g.members) {
-                shapes.remove(m.emitter);
-                String was = before.get(m);
-                if (was == null && flipped) was = (wasRaised.get(g) ? m.raised : m.base).key();
-                if (was != null && !was.equals(m.shape().key()) && !changed.contains(m.emitter)) changed.add(m.emitter);
-            }
+        for (Map.Entry<Member, String> was : before.entrySet()) {
+            Member m = was.getKey();
+            if (!was.getValue().equals(m.shape().key()) && !changed.contains(m.emitter)) changed.add(m.emitter);
         }
         return changed;
     }
@@ -196,8 +207,8 @@ public final class CgVfxShapeCoalescing {
         return out;
     }
 
-    /** Includes {@code e} at {@code tier}, noting in {@code before} the shapes of the groups it touches first. */
-    private void include(CgVfxGpuEmitter e, int tier, Set<Group> touched, Map<Member, String> before) {
+    /** Includes {@code e} at {@code tier} and its events' children, noting the groups it adds to. */
+    private void include(CgVfxGpuEmitter e, int tier, Set<Group> touched) {
         if (tier >= CgVfxShape.TIERS) return;
         Member[] in = members.get(e);
         if (in == null || in[tier] == null) {
@@ -208,15 +219,130 @@ public final class CgVfxShapeCoalescing {
                 return;   // its play throws, naming why
             }
             Group g = groups.computeIfAbsent(formFree(base.key()), k -> new Group());
-            if (touched.add(g)) for (Member m : g.members) before.put(m, m.shape().key());
+            touched.add(g);
             Member m = new Member(e, tier, base, g);
             g.members.add(m);
             if (in == null) members.put(e, in = new Member[CgVfxShape.TIERS]);
             in[tier] = m;
         }
         for (CgVfxEvent ev : e.events()) {
-            if (ev.child() != null) include(ev.child(), tier + 1, touched, before);
+            if (ev.child() != null) include(ev.child(), tier + 1, touched);
         }
+    }
+
+    /**
+     * Stacks shapes into wider ones, Niagara's lightweight emitters' rule (one shader, a module an emitter lacks off by
+     * its parameters): a shape whose modules are, in order, some of another's and the rest of whose key is that one's
+     * runs in the widest such shape's kernel and pool, its row's mask switching off what it lacks. Each tier apart.
+     */
+    private void stack() {
+        Map<String, List<Member>> byKey = new LinkedHashMap<>();
+        for (Group g : groups.values()) {
+            for (Member m : g.members) {
+                m.stacked = null;
+                byKey.computeIfAbsent(m.unstacked().key(), k -> new ArrayList<>()).add(m);
+            }
+        }
+        Map<String, String[]> sigs = new HashMap<>();
+        Map<String, String> rests = new HashMap<>();
+        for (Map.Entry<String, List<Member>> k : byKey.entrySet()) {
+            CgVfxShape s = k.getValue().get(0).unstacked();
+            String[] sig = new String[s.modules()];
+            for (int i = 0; i < sig.length; i++) sig[i] = signature(s, i);
+            sigs.put(k.getKey(), sig);
+            rests.put(k.getKey(), rest(s));
+        }
+        // Each key's widest container, if any.
+        Map<String, List<String>> under = new LinkedHashMap<>();
+        for (String k : byKey.keySet()) {
+            String target = null;
+            for (String t : byKey.keySet()) {
+                if (t.equals(k) || !rests.get(t).equals(rests.get(k)) || sigs.get(t).length <= sigs.get(k).length) continue;
+                if (placement(sigs.get(k), sigs.get(t)) == null) continue;
+                if (target == null || sigs.get(t).length > sigs.get(target).length) target = t;
+            }
+            if (target != null) under.computeIfAbsent(target, x -> new ArrayList<>()).add(k);
+        }
+        // A widest container is under none: anything wider holding it would hold what it holds, and be chosen first.
+        for (Map.Entry<String, List<String>> e : under.entrySet()) {
+            String target = e.getKey();
+            Member owner = byKey.get(target).get(0);
+            List<? extends CgVfxGpuModule> prototypes = owner.emitter.modules();
+            String[] wide = sigs.get(target);
+            CgVfxShape ownerStacked = stacked(owner, prototypes, placement(wide, wide));
+            if (ownerStacked == null) continue;
+            List<String> keys = new ArrayList<>(e.getValue());
+            keys.add(0, target);
+            int joined = 0;
+            for (String k : keys) {
+                int[] at = placement(sigs.get(k), wide);
+                if (at == null) continue;
+                for (Member m : byKey.get(k)) {
+                    CgVfxShape s = stacked(m, prototypes, at);
+                    if (s == null || !s.key().equals(ownerStacked.key())) continue;
+                    m.stacked = s;
+                    if (!k.equals(target)) joined++;
+                }
+            }
+            // Nothing joined: the owner keeps its own shape, no mask to read.
+            if (joined == 0) for (Member m : byKey.get(target)) m.stacked = null;
+        }
+    }
+
+    /** {@code m}'s shape over {@code prototypes}, its modules at {@code at}; cached; null where it cannot be. */
+    private static CgVfxShape stacked(Member m, List<? extends CgVfxGpuModule> prototypes, int[] at) {
+        CgVfxShape from = m.unstacked();
+        String key = m.tier + "|" + from.key() + "|" + Arrays.toString(at) + "|" + System.identityHashCode(prototypes);
+        synchronized (STACKED) {
+            CgVfxShape known = STACKED.computeIfAbsent(m.emitter, k -> new HashMap<>()).get(key);
+            if (known != null) return known;
+        }
+        List<CgVfxModuleForm> forms = new ArrayList<>();
+        for (int f = 0; f < from.forms(); f++) forms.add(from.form(f));
+        List<CgVfxSpawnForm> spawns = new ArrayList<>();
+        for (int f = 0; f < from.spawnForms(); f++) spawns.add(from.spawnForm(f));
+        CgVfxShape shape;
+        try {
+            shape = new CgVfxShape(m.emitter, m.tier, forms, spawns, new CgVfxShape.Stack(prototypes, at));
+        } catch (RuntimeException refused) {
+            return null;
+        }
+        synchronized (STACKED) {
+            STACKED.get(m.emitter).put(key, shape);
+        }
+        return shape;
+    }
+
+    /** Where each of {@code some} lies in {@code all}, in order; null where they are not, in order, among them. */
+    private static int[] placement(String[] some, String[] all) {
+        int[] at = new int[some.length];
+        int j = 0;
+        for (int i = 0; i < some.length; i++) {
+            while (j < all.length && !all[j].equals(some[i])) j++;
+            if (j == all.length) return null;
+            at[i] = j++;
+        }
+        return at;
+    }
+
+    /** Module {@code i}'s part of {@code s}'s key: what a module in its place must be for one kernel to run both. */
+    private static String signature(CgVfxShape s, int i) {
+        StringBuilder b = new StringBuilder(s.kind(i)).append(s.afterSolve(i) ? '>' : ':').append(s.paramVectors(i));
+        for (CgVfxLane l : s.lanes(i)) b.append(',').append(l.name());
+        for (CgVfxDataInterface di : s.dataInterfaces(i)) b.append('@').append(di.id());
+        for (int t = 0; t < s.textureCount(i); t++) b.append('#').append(s.volume(i, t) ? "3d" : "2d");
+        return b.toString();
+    }
+
+    /** {@code s}'s key less its modules and what names their places: what a stack must share besides them. */
+    private static String rest(CgVfxShape s) {
+        String[] parts = s.key().split("\\|");
+        StringBuilder out = new StringBuilder(parts[0]);
+        for (int p = 1 + s.modules(); p < parts.length; p++) {
+            if (parts[p].startsWith("form:") || parts[p].startsWith("user:")) continue;
+            out.append('|').append(parts[p]);
+        }
+        return out.toString();
     }
 
     /** Raises the groups saving most until the shapes fit the budget. */
@@ -371,6 +497,8 @@ public final class CgVfxShapeCoalescing {
         CgVfxShape raised;
         /** The group's choices its raised shape was made under: the same choices make the same shape. */
         String raisedUnder;
+        /** Its shape stacked into a wider one ({@link #stack}), or null. */
+        CgVfxShape stacked;
         private int[] spawnWords;
         private float[] curveRow;
 
@@ -382,6 +510,11 @@ public final class CgVfxShapeCoalescing {
         }
 
         CgVfxShape shape() {
+            return stacked != null ? stacked : unstacked();
+        }
+
+        /** Its shape raised where its group is, before any stacking. */
+        CgVfxShape unstacked() {
             return group.raised && raised != null ? raised : base;
         }
 

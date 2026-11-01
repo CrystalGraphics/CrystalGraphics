@@ -77,6 +77,9 @@ public final class CgVfxShape {
     private static final Map<String, String> SOURCES = new ConcurrentHashMap<>();
 
     private final String key;
+    /** Each stack module's place among its emitter's own, -1 where it lacks it; which it runs, a bit each; the mask's vec4. */
+    private final int[] ownModule;
+    private final int presentMask, stackAt;
     private final CgTexture[][] textures;
     private final boolean[][] volumes;
     private final CgVfxDrawLayout drawLayout;
@@ -155,10 +158,32 @@ public final class CgVfxShape {
 
     /** {@code emitter}'s shape at {@code tier} with {@code moduleForms} and {@code givenSpawnForms} for its own. */
     CgVfxShape(CgVfxGpuEmitter emitter, int tier, List<CgVfxModuleForm> moduleForms, List<CgVfxSpawnForm> givenSpawnForms) {
+        this(emitter, tier, moduleForms, givenSpawnForms, null);
+    }
+
+    /**
+     * A stack wider than an emitter's own ({@link CgVfxShapeCoalescing}): {@code modules} in stack order, the emitter's
+     * among them, and where each of the emitter's lies in it ({@code at[j]} for its module {@code j}). The others are off
+     * for it, as a Niagara lightweight emitter's modules are off by their parameters in its one shader.
+     */
+    record Stack(List<? extends CgVfxGpuModule> modules, int[] at) {
+    }
+
+    /** As above, its modules placed in {@code stack} where given. */
+    CgVfxShape(CgVfxGpuEmitter emitter, int tier, List<CgVfxModuleForm> moduleForms, List<CgVfxSpawnForm> givenSpawnForms,
+               @Nullable Stack stack) {
         if (tier < 0 || tier >= TIERS) throw new IllegalArgumentException(emitter.name() + " at feed tier " + tier);
         this.tier = tier;
-        List<? extends CgVfxGpuModule> modules = emitter.modules();
+        List<? extends CgVfxGpuModule> own = emitter.modules();
+        List<? extends CgVfxGpuModule> modules = stack == null ? own : stack.modules();
         int n = modules.size();
+        if (stack != null && n > 32) throw new IllegalArgumentException(emitter.name() + " stacked into " + n + " modules, past 32");
+        ownModule = new int[n];
+        Arrays.fill(ownModule, -1);
+        for (int j = 0; j < own.size(); j++) ownModule[stack == null ? j : stack.at()[j]] = j;
+        int mask = 0;
+        for (int i = 0; i < n; i++) if (ownModule[i] >= 0) mask |= 1 << i;
+        presentMask = mask;
         drawLayout = emitter.drawLayout();
         kinds = new String[n];
         sources = new String[n];
@@ -174,7 +199,8 @@ public final class CgVfxShape {
         StringBuilder key = new StringBuilder(drawLayout.name());
         int param = CgVfxGpuEmitter.SPAWN_VECTORS, lane = CgVfxParticlePool.INSTANCE_HEADER;
         for (int i = 0; i < n; i++) {
-            CgVfxGpuModule m = modules.get(i);
+            boolean present = ownModule[i] >= 0;
+            CgVfxGpuModule m = present ? own.get(ownModule[i]) : modules.get(i);
             String kind = m.gpuKind();
             if (kind == null || !KIND.matcher(kind).matches()) {
                 throw new IllegalArgumentException(emitter.name() + ": module " + m.getClass().getSimpleName() + "'s gpuKind '"
@@ -208,14 +234,22 @@ public final class CgVfxShape {
             key.append('|').append(kind).append(afterSolve[i] ? ">" : ":").append(params[i]);
             for (int l = 0; l < lanes[i].length; l++) key.append(l == 0 ? ':' : ',').append(lanes[i][l].name());
             for (int w = 0; w < reads[i].length; w++) key.append(w == 0 ? '@' : ',').append(reads[i][w].id());
-            textures[i] = m.textures().clone();
-            volumes[i] = new boolean[textures[i].length];
-            for (int t = 0; t < textures[i].length; t++) {
-                CgTexture texture = textures[i][t];
+            // A module it lacks samples nothing of its own: its pool's entries are its definitions'.
+            CgTexture[] given = m.textures();
+            textures[i] = present ? given.clone() : new CgTexture[given.length];
+            volumes[i] = new boolean[given.length];
+            for (int t = 0; t < given.length; t++) {
+                CgTexture texture = given[t];
                 if (texture == null) throw new IllegalArgumentException(emitter.name() + ": fx_" + kind + "'s texture " + t + " is null");
                 volumes[i][t] = texture instanceof CgGraphTexture graph ? graph.isVolume() : texture.getTarget() == CgGL.GL_TEXTURE_3D;
                 key.append(t == 0 ? '#' : ',').append(volumes[i][t] ? "3d" : "2d");
             }
+        }
+        // Which of the stack's modules its definitions run: one vec4 of the row, its x the mask.
+        stackAt = stack == null ? -1 : param;
+        if (stack != null) {
+            param++;
+            key.append("|stack");
         }
         spawnsOnMesh = emitter.spawnsOnMesh();
         if (spawnsOnMesh) key.append("|mesh");
@@ -224,8 +258,13 @@ public final class CgVfxShape {
         int noisePoints = 0, noiseAt = -1;
         boolean beam = false;
         for (int i = 0; i < n; i++) {
-            for (CgVfxDataInterface di : reads[i]) beam |= di == CgVfxDataInterfaces.BEAM;
-            if (!(modules.get(i) instanceof CgVfxModule.BeamNoise noise)) continue;
+            for (CgVfxDataInterface di : reads[i]) {
+                if (di == CgVfxDataInterfaces.BEAM && ownModule[i] < 0) {
+                    throw new IllegalArgumentException(emitter.name() + " stacked under a beam module it lacks");
+                }
+                beam |= di == CgVfxDataInterfaces.BEAM;
+            }
+            if (ownModule[i] < 0 || !(own.get(ownModule[i]) instanceof CgVfxModule.BeamNoise noise)) continue;
             if (noiseAt >= 0) throw new IllegalArgumentException(emitter.name() + " has two beam_noise modules: Cascade reads one");
             noisePoints = Integer.highestOneBit(noise.frequency()) << 1;
             noiseAt = paramAt[i];
@@ -295,13 +334,14 @@ public final class CgVfxShape {
         int keySlot = CgVfxGpuEmitter.ROLL_KEYS;
         for (int f = 0; f < forms.length; f++) {
             CgVfxModuleForm form = forms[f];
-            if (form.module() >= n) throw new IllegalArgumentException(emitter.name() + " gives module " + form.module() + " a form; it lacks it");
+            if (form.module() >= own.size()) throw new IllegalArgumentException(emitter.name() + " gives module " + form.module() + " a form; it lacks it");
+            int placed = stack == null ? form.module() : stack.at()[form.module()];
             CgVfxFormInput c = form.compiled();
-            CgVfxModuleWords words = CgVfxModuleTypes.of(modules.get(form.module())).words();
+            CgVfxModuleWords words = CgVfxModuleTypes.of(own.get(form.module())).words();
             formWords[f] = new int[c.components()];
             for (int k = 0; k < c.components(); k++) {
                 try {
-                    formWords[f][k] = paramAt[form.module()] * 4 + words.lane(form.input(), k);
+                    formWords[f][k] = paramAt[placed] * 4 + words.lane(form.input(), k);
                 } catch (IllegalArgumentException e) {
                     throw new IllegalArgumentException(emitter.name() + "'s module " + form.module() + ": " + e.getMessage(), e);
                 }
@@ -311,7 +351,7 @@ public final class CgVfxShape {
                     param, keySlot);
             param += layouts[f].vectors();
             keySlot += layouts[f].keys();
-            key.append(f == 0 ? "|form:" : ",").append(form.module()).append('.').append(form.input()).append('=').append(formKey(c));
+            key.append(f == 0 ? "|form:" : ",").append(placed).append('.').append(form.input()).append('=').append(formKey(c));
         }
         spawnForms = givenSpawnForms.stream().sorted(Comparator.comparing(CgVfxSpawnForm::target)).toArray(CgVfxSpawnForm[]::new);
         spawnFormAt = new int[spawnForms.length];
@@ -354,10 +394,11 @@ public final class CgVfxShape {
             if (u.module() == CgVfxUserBinding.SPAWN) {
                 userWords[b] = u.index();
             } else {
-                if (u.module() >= n) throw new IllegalArgumentException(emitter.name() + " binds module " + u.module() + ", which it lacks");
-                CgVfxGpuModule m = modules.get(u.module());
+                if (u.module() >= own.size()) throw new IllegalArgumentException(emitter.name() + " binds module " + u.module() + ", which it lacks");
+                CgVfxGpuModule m = own.get(u.module());
+                int placed = stack == null ? u.module() : stack.at()[u.module()];
                 try {
-                    userWords[b] = paramAt[u.module()] * 4 + CgVfxModuleTypes.of(m).words().lane(u.input(), u.index());
+                    userWords[b] = paramAt[placed] * 4 + CgVfxModuleTypes.of(m).words().lane(u.input(), u.index());
                 } catch (IllegalArgumentException e) {
                     throw new IllegalArgumentException(emitter.name() + " binds module " + u.module() + ": " + e.getMessage(), e);
                 }
@@ -531,6 +572,29 @@ public final class CgVfxShape {
     /** How many modules the stack has. */
     public int modules() {
         return kinds.length;
+    }
+
+    /**
+     * Whether its stack is wider than its emitter's ({@link CgVfxShapeCoalescing}): its row then says which modules run
+     * ({@link #stackAt()}), and its kernel skips the rest.
+     */
+    public boolean stacked() {
+        return stackAt >= 0;
+    }
+
+    /** Where its row's mask of the modules it runs lies, in vec4s: the x word; -1 where it is not {@link #stacked()}. */
+    public int stackAt() {
+        return stackAt;
+    }
+
+    /** The modules its definition runs, bit {@code i} for module {@code i}. */
+    public int presentMask() {
+        return presentMask;
+    }
+
+    /** Module {@code i}'s place in its emitter's own modules, or -1 where its emitter lacks it. */
+    public int ownModule(int i) {
+        return ownModule[i];
     }
 
     /** Module {@code i}'s {@code <kind>}. */

@@ -1194,7 +1194,9 @@ public final class CgVfxParticlePool {
             for (int e = 0; e < TEXTURE_ENTRIES; e++) if (textureEntries[i][e] != null) any = textureEntries[i][e];
             for (int e = 0; e < TEXTURE_ENTRIES; e++) {
                 CgTexture[] entry = textureEntries[i][e] != null ? textureEntries[i][e] : any;   // an empty entry: one bound
-                for (int t = 0; t < entry.length; t++) stepping.texture(CgVfxEmitterCompiler.texture(i, t, e), entry[t]);
+                for (int t = 0; t < entry.length; t++) {
+                    if (entry[t] != null) stepping.texture(CgVfxEmitterCompiler.texture(i, t, e), entry[t]);   // null: no slot gave one
+                }
             }
         }
         giveBack(liveEntry);
@@ -1483,7 +1485,7 @@ public final class CgVfxParticlePool {
     /** Whether every texture {@code own}'s kinds sample is in this pool's table, or has a free entry to go in. */
     private boolean takesTextures(CgVfxShape own) {
         for (int i = 0; i < shape.modules(); i++) {
-            if (textureEntries[i] == null) continue;
+            if (textureEntries[i] == null || own.ownModule(i) < 0) continue;
             if (entryOf(i, own) < 0 && freeEntry(i) < 0) return false;
         }
         return true;
@@ -1510,6 +1512,10 @@ public final class CgVfxParticlePool {
     private void takeTextures(int slot, CgVfxShape own) {
         for (int i = 0; i < shape.modules(); i++) {
             if (textureEntries[i] == null) continue;
+            if (own.ownModule(i) < 0) {
+                slotTexture[slot * shape.modules() + i] = -1;   // a module it lacks: off, sampling nothing
+                continue;
+            }
             int e = entryOf(i, own);
             if (e < 0) {
                 e = freeEntry(i);
@@ -1525,7 +1531,7 @@ public final class CgVfxParticlePool {
         for (int i = 0; i < shape.modules(); i++) {
             if (textureEntries[i] == null) continue;
             int e = slotTexture[slot * shape.modules() + i];
-            if (--textureUses[i][e] == 0) textureEntries[i][e] = null;
+            if (e >= 0 && --textureUses[i][e] == 0) textureEntries[i][e] = null;
         }
     }
 
@@ -1790,11 +1796,12 @@ public final class CgVfxParticlePool {
                 .vec4(view.turnX(), view.turnY(), view.turnZ(), view.turnW());
         words.finish("its instance row's header");
         slotFresh[slot] = false;
+        CgVfxShape own = slotShape[slot];
         for (int i = 0; i < shape.modules(); i++) {
             int lanes = shape.laneCount(i);
-            if (lanes == 0) continue;
+            if (lanes == 0 || own.ownModule(i) < 0) continue;   // a module it lacks is off: its lanes go unread
             words.target(instances, at + shape.lanesAt(i) * 4, lanes, who, shape.kind(i));
-            emitter.modules().get(i).writeInstance(view, words);
+            emitter.modules().get(own.ownModule(i)).writeInstance(view, words);
             words.finish("its instance lanes");
         }
         int bound = shape.userBindings();
@@ -1808,7 +1815,6 @@ public final class CgVfxParticlePool {
             for (int w = base + bound; w < end; w++) instances[w] = 0;
         }
         // The slot's own bindings: a lane's key is its place, never which parameter fills it.
-        CgVfxShape own = slotShape[slot];
         for (int b = 0; b < own.formBindings(); b++) {
             CgVfxFormInput.Binding u = own.formBinding(b);
             float[] fallback = u.fallback();
@@ -2644,13 +2650,21 @@ public final class CgVfxParticlePool {
         emitter.writeSpawn(words);
         words.finish("its spawn numbers");
         int[] moduleWords = emitter.moduleWords();
-        int last = shape.modules() - 1;
-        int expected = last < 0 ? 0 : (shape.paramAt(last) + shape.paramVectors(last) - CgVfxGpuEmitter.SPAWN_VECTORS) * 4;
+        int expected = 0;
+        for (int i = 0; i < own.modules(); i++) if (own.ownModule(i) >= 0) expected += own.paramVectors(i) * 4;
         if (moduleWords.length != expected) {
             throw new IllegalStateException(emitter.name() + "'s module words are " + moduleWords.length + " long; its modules'"
                     + " declarations lay out " + expected);
         }
-        System.arraycopy(moduleWords, 0, params, at + CgVfxGpuEmitter.SPAWN_VECTORS * 4, expected);
+        // Each of its modules where its stack places it; a module it lacks is off (its mask) and its words zero.
+        Arrays.fill(params, at + CgVfxGpuEmitter.SPAWN_VECTORS * 4, at + paramWords, 0);
+        for (int i = 0, from = 0; i < own.modules(); i++) {
+            if (own.ownModule(i) < 0) continue;
+            int n = own.paramVectors(i) * 4;
+            System.arraycopy(moduleWords, from, params, at + own.paramAt(i) * 4, n);
+            from += n;
+        }
+        if (own.stacked()) params[at + own.stackAt() * 4] = own.presentMask();
         int rowWords = rowWords();
         if (curves.length < (index + 1) * rowWords) {
             curves = Arrays.copyOf(curves, Math.max((index + 1) * rowWords, curves.length * 2));

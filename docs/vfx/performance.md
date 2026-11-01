@@ -58,11 +58,29 @@ CgVfxShapeCoalescing.loaded().shapes();   // how many shapes the loaded systems 
   then compiles its kernel.
 - **What never coalesces**: a word bound to a user parameter (its value is each instance's), two classes nothing
   covers (a per-channel range beside a curve, a pick beside a range), different widths (an rgb colour beside an rgba
-  one), a mesh's turn and a light left out, and different module stacks.
+  one), a mesh's turn and a light left out.
 - **To keep pools few**: give an input across your emitters in the same form where you can, and keep module stacks
   alike. A flat value written as a one-key curve costs a pool nothing beside curves.
 - `-Dcrystalgraphics.vfx.poolBudget=0` raises every group that saves a pool, whatever the count: how the form gates
   check that a raise draws what was given.
+
+## Module stacks share a kernel
+
+Whatever the budget, an emitter whose modules are, in order, some of another prepared emitter's runs in that one's
+kernel and pool, the modules it lacks switched off for it: Niagara's lightweight emitters, one shader for all of them,
+each module doing nothing where the emitter leaves it off. Its particles are the same (`--mode=vfx-stack` matches every
+one with stacking off), and each stack is one kernel to compile and one pool a frame. `vfx-modules`' 54 Step kernels
+are 34 stacked; cold, they compile in 5.8 s rather than 8.5 on the reference machine.
+
+| Stack | Runs with it |
+|---|---|
+| gravity, drag, collide, kill | drag; gravity; gravity, collide; drag, kill; none at all |
+
+- **Only order matters, not count**: gravity then drag runs drag then gravity only in a stack holding both orders.
+- **The rest of the shape must match**: its layout, events, forms, spawn values in forms and feed tier.
+- **A module it lacks costs a branch a particle**, never its work. A beam module is never lacked: its particles would be
+  beams.
+- `-Dcrystalgraphics.vfx.stackShapes=false` keeps every stack its own kernel, to compare.
 
 ## Scalability: what is too far, too many or out of view
 

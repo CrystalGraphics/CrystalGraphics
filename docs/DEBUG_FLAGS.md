@@ -314,6 +314,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.vfx.simBudgetMs` | 0.0 to 1000.0 | `12.0` | Wall milliseconds an update may spend catching up ticks before it drops the rest and effects slow down. |
 | `crystalgraphics.vfx.skip` | text | empty | Comma-separated: layers whose shader path (light/<id> for a slot's light) contains any of these draw nothing, to see what a frame's GPU time is spent on, one profile per group (light/,haze). |
 | `crystalgraphics.vfx.skipIdleEmitters` | true, false | `true` | An emitter before its first spawn or after its last death submits no draws. |
+| `crystalgraphics.vfx.stackShapes` | true, false | `true` | Shapes whose modules are some of a wider shape's run in its kernel and pool, what they lack switched off; false keeps every shape its own, to compare. Read at launch. |
 | `crystalgraphics.vfx.traceAuthority` | true, false | `false` | Logs each cast a server's wave makes for its beam: from where, along what, what it met, and every entity its level lists along the first 32 blocks. |
 
 ## `crystalgraphics.vulkan`
