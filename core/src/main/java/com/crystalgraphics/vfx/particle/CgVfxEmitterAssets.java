@@ -2707,7 +2707,8 @@ public final class CgVfxEmitterAssets {
                 points.add(new double[]{t, v, s, s});
             }
         }
-        for (double[] p : points) keys.add(List.of(p[0], p[1], "cubic", "break", p[2], p[3]));
+        // Tangents at a curve's own float precision, as it reads them back
+        for (double[] p : points) keys.add(List.of(p[0], p[1], "cubic", "break", (double) (float) p[2], (double) (float) p[3]));
         return map("keys", keys);
     }
 
@@ -2777,6 +2778,9 @@ public final class CgVfxEmitterAssets {
                 float span = t1 - t0, rise = v1 - v0;
                 boolean hermite = !c.weighted(i - 1) && !c.weighted(i);
                 k.to(t1, v1, new Cubic(c, t0, span, v0, rise, hermite ? c.leave(i - 1) : Double.NaN, hermite ? c.arrive(i) : Double.NaN));
+            } else if (c.leave(i - 1) == 0f && c.arrive(i) == 0f) {
+                // Flat tangents between equal values: a hold, which a builder's linear key writes as
+                k.to(t1, v1, CgEasings.LINEAR);
             } else {
                 // A cubic between equal values bulges: eased pieces would divide by nothing, so straight ones.
                 for (int j = 1; j <= EASE_STEPS; j++) {

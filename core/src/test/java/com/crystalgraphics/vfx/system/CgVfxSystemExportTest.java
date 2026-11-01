@@ -61,8 +61,8 @@ public class CgVfxSystemExportTest {
         CgVfxSystemDefinition back = CgVfxSystemAssets.compile(
                 CgAssetData.of("test:spark", CgParticleKinds.SYSTEM, read(files.get(0)), null),
                 (kind, id) -> id.equals(materialId) ? material : null);
-        assertEquals(1, back.emitters().size());
-        assertEquals("sparks", back.emitters().get(0).name());
+        assertEquals("loaded back, it writes the tree it was exported from",
+                CgVfxSystemAssets.write(spark), CgVfxSystemAssets.write(back));
         assertEquals("its renderer draws the exported material", material,
                 back.emitters().get(0).renderers().get(0).common().definition());
 
