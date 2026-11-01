@@ -104,6 +104,15 @@ public class CgSequenceSubsequenceTest {
     }
 
     @Test
+    public void itsRolesMapOntoTheOutersRoles() {
+        String inner = INNER.replace("name: caster, kind: caster", "name: user, kind: caster").replace("role: caster", "role: user");
+        String yaml = "_v: 1\ntick_resolution: 1000\ndisplay_rate: 50\nrange: [0, 2000]\n" + ROLES
+                + "tracks:\n  - { id: t1, kind: subsequence, sections: [ { id: s1, sequence: mymod:inner, range: [200, 1200], roles: { user: caster } } ] }\n";
+        play(compile("mymod:outer", yaml, Map.of("mymod:inner", compile("mymod:inner", inner, Map.of()))), 1.3);
+        assertEquals(List.of("mymod:early@300", "mymod:late@600"), heard);
+    }
+
+    @Test
     public void aTimeScaleThatChangesFailsAtLoadNamingIt() {
         try {
             outer("range: [0, 1000], time_scale: { curve: { keys: [[0, 1, linear], [1, 2, linear]] } }");

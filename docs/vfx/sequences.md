@@ -164,7 +164,8 @@ Map<String, Object> cut = Map.of("id", "s1", "range", List.of(0, 240), "clip", "
 
 ### Subsequences
 
-A `subsequence` section plays another sequence inside this one, with the same roles. Its keys land on this
+A `subsequence` section plays another sequence inside this one. Its roles are this one's of the same name, or those its
+`roles: { child_role: parent_role }` maps them to. Its keys land on this
 sequence's time as Unreal's subsequence sections place them:
 
 ```yaml
@@ -183,6 +184,7 @@ tracks:
 - **`loop: true`** wraps the inner time over its range less `start_offset` and `end_offset`, again each lap, until
   the section ends. Without it, the inner sequence plays on past its end and holds there.
 - **`time_scale` is a number.** A curve that changes the rate over the section fails at load, naming the path.
+- **A `roles` key the inner sequence has no role for fails at load**, as does a parent role this one lacks.
 - **Nested subsequences compose**: a key three deep lands where each section's start and scale put it.
 - **On a server** the inner sequence's `rpg` events fire as play crosses them, like any of the outer's.
 
