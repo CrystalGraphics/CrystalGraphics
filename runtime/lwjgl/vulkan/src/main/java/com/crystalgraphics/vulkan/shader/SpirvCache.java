@@ -1,5 +1,6 @@
 package com.crystalgraphics.vulkan.shader;
 
+import com.crystalgraphics.platform.service.CgCacheDirectory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.Version;
@@ -11,13 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.stream.Stream;
 
 /**
  * shaderc's output kept on disk by what went into it, so a launch compiles only what no launch before it did. One file
@@ -56,7 +52,7 @@ final class SpirvCache {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
-        prune();
+        CgCacheDirectory.prune(dir, MOST, KEEP);
     }
 
     /** The module compiled from {@code source} as {@code kind} by a launch before, or null. */
@@ -69,7 +65,7 @@ final class SpirvCache {
                 return null;
             }
             bytes = Files.readAllBytes(file);
-            Files.setLastModifiedTime(file, FileTime.fromMillis(System.currentTimeMillis()));
+            CgCacheDirectory.used(file);
         } catch (IOException e) {
             warn("read", e);
             misses++;
@@ -111,40 +107,6 @@ final class SpirvCache {
         StringBuilder hex = new StringBuilder(digest.length * 2 + 4);
         for (byte b : digest) hex.append(Character.forDigit(b >> 4 & 15, 16)).append(Character.forDigit(b & 15, 16));
         return hex.append(".spv").toString();
-    }
-
-    /** Least recently read first, down to {@link #KEEP}, once the folder holds more than {@link #MOST}. */
-    private void prune() {
-        List<Path> files = new ArrayList<>();
-        try (Stream<Path> listed = Files.list(dir)) {
-            listed.filter(Files::isRegularFile).forEach(files::add);
-        } catch (IOException e) {
-            warn("list", e);
-            return;
-        }
-        long total = 0;
-        long[] sizes = new long[files.size()], times = new long[files.size()];
-        for (int i = 0; i < files.size(); i++) {
-            try {
-                sizes[i] = Files.size(files.get(i));
-                times[i] = Files.getLastModifiedTime(files.get(i)).toMillis();
-            } catch (IOException e) {
-                sizes[i] = 0;
-            }
-            total += sizes[i];
-        }
-        if (total <= MOST) return;
-        Integer[] order = new Integer[files.size()];
-        for (int i = 0; i < order.length; i++) order[i] = i;
-        Arrays.sort(order, (a, b) -> Long.compare(times[a], times[b]));
-        for (int i = 0; i < order.length && total > KEEP; i++) {
-            try {
-                Files.deleteIfExists(files.get(order[i]));
-                total -= sizes[order[i]];
-            } catch (IOException e) {
-                warn("prune", e);
-            }
-        }
     }
 
     private void warn(String what, IOException e) {

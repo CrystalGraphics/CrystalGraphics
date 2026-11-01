@@ -45,11 +45,16 @@ import java.util.stream.Stream;
  *   <li>{@link #key} is null where nothing is kept: the driver lists no binary formats (macOS, the tracked backend),
  *       {@code -Dcrystalgraphics.shader.binaryCache=false}, or {@code -Dcrystalgraphics.cache=false}.</li>
  *   <li>A binary the driver refuses is deleted, and the program compiles as if there had been none.</li>
+ *   <li>Every source change is a new key, so the folder is bounded: past {@link #MOST} bytes as it opens, the least
+ *       recently loaded go ({@code CgCacheDirectory.prune}).</li>
  * </ul>
  */
 public final class CgProgramBinaryCache {
 
-    public static final CgVar.Bool ENABLED = CgVar.bool("crystalgraphics.shader.binaryCache", true, CgVar.DEV,
+    /** Past this many bytes of binaries when the cache opens, the least recently loaded go until it holds {@link #KEEP}. */
+    static final long MOST = 512L << 20, KEEP = 384L << 20;
+
+    public static final CgVar.Bool ENABLED =CgVar.bool("crystalgraphics.shader.binaryCache", true, CgVar.DEV,
             "Keep linked GL programs' binaries across launches where the driver gives them; false compiles every"
                     + " program from source.");
 
@@ -100,6 +105,7 @@ public final class CgProgramBinaryCache {
             CgGL.glProgramBinary(program, format, binary);
             if (CgGL.glGetProgrami(program, CgGL.GL_LINK_STATUS) != CgGL.GL_TRUE) return refused(file);
         }
+        CgCacheDirectory.used(file);
         CgTrace.add(CgChannels.GL, HITS, 1);
         return true;
     }
@@ -162,6 +168,7 @@ public final class CgProgramBinaryCache {
             return null;
         }
         CgJob.run(() -> deleteOthers(root, driver));
+        CgCacheDirectory.prune(dir, MOST, KEEP);
         return dir;
     }
 
