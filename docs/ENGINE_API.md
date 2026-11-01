@@ -223,6 +223,23 @@ lights.add(x, y, z, 4f, 0xFFFFC080, 10f, 0f).shadowed(false);                   
   material brings in too: the distortion apply for a Distortion pass, and with `prepare(material, true)`, for a draw
   marked `.halfResolution()`, the half-size upsample and the volume resolve and composite. A program a draw had to
   wait for anyway is counted, `CgMaterialShader.compileWaits()` and the trace counter `material.compile-waits`.
+- **Built while loading: `CgPrecache`** (Unreal's global PSO collectors). Whatever a renderer draws or dispatches
+  outside a material's own warm-up (a pass of its own, a keyword set a setting switches to, a kernel) is registered as
+  a collector, the engine's and a mod's alike, before the graphics start; the start builds all of it at once, in
+  parallel, inside the host's loading screen, and the world renderer keeps it built under every setting after.
+
+  ```java
+  CgPrecache.register("mymod:runes", programs -> {                    // a mod's constructor
+      programs.add("mymod:shaders/rune.shader", "GLOW");               // a shader and a keyword set
+      programs.add(RUNE_MATERIAL, false);                              // a material, every pass the world draws it with
+      programs.add(CgCompute.load("mymod:shaders/runes.compute").kernel("Step"));
+      programs.kernels(MyOps::prepare);                                // every kernel a preparer starts
+  });
+  ```
+
+  A collector registered after the start is collected at the next world frame and built over frames under the warm
+  budget. A set no collector names compiles at its first draw, counted as `pipeline.missed`
+  (`-Dcrystalgraphics.pipeline.logMisses=true` names it).
 - **GPU time by group**: under `crystalgraphics.gpu.groups` a pass's GPU time lands per material
   (`gpu:world.transparent/<shader path>`); `.gpuGroup(label)` charges a draw to a label of its own instead
   (`docs/PROFILING.md`).

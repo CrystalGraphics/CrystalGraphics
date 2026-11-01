@@ -44,6 +44,7 @@ import com.crystalgraphics.platform.world.CgWorldBegin;
 import javax.annotation.Nullable;
 import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.render.CgPrecache;
 import com.crystalgraphics.render.CgViewFrustum;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -458,10 +459,14 @@ public final class CgWorldRenderer {
         CgRenderStage.WORLD_OPAQUE.register(ORDER, this::recordOpaque);
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::recordTransparent);
         parsePassesAhead();
-        // The renderer's own programs no material brings in: the GPU cull's depth pyramid and the labels' text.
-        programs.add(PYRAMID_SHADER);
-        programs.add(TEXT_SHADER, "WORLD_LABEL");
-        programs.add(TEXT_SHADER, "WORLD_LABEL", "MSDF_MODE");
+        // The renderer's own programs no material brings in: the GPU cull's depth pyramid, and text, on screen and as labels.
+        CgPrecache.register("crystalgraphics:world", list -> {
+            list.add(PYRAMID_SHADER);
+            list.add(TEXT_SHADER);
+            list.add(TEXT_SHADER, "MSDF_MODE");
+            list.add(TEXT_SHADER, "WORLD_LABEL");
+            list.add(TEXT_SHADER, "WORLD_LABEL", "MSDF_MODE");
+        });
     }
 
     private static final String PYRAMID_SHADER = "crystalgraphics:shaders/depth_pyramid.shader",

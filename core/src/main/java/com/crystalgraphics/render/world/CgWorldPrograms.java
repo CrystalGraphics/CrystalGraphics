@@ -10,6 +10,9 @@ import java.util.concurrent.locks.LockSupport;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialManifest;
 import com.crystalgraphics.api.material.CgMaterialPermutation;
+import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.render.CgPrecache;
+import com.crystalgraphics.render.CgWarmBudget;
 import com.github.bsideup.jabel.Desugar;
 
 /**
@@ -140,34 +143,63 @@ public final class CgWorldPrograms {
     private final Map<String, CgMaterial> variants = new HashMap<>();
 
     /**
+     * Keeps {@code kernel}'s program built from now on: a dispatch of the engine's own, or a mod's, that would otherwise
+     * compile on the frame of its first dispatch. A kernel's program follows no setting, so it is built once.
+     */
+    public void add(CgKernel kernel) {
+        if (kernels.contains(kernel)) return;
+        kernels.add(kernel);
+        unbuilt.add(kernel);
+    }
+
+    /** Every kernel {@code prepare} starts, kept built: the kernels behind an op (a sort, Range), named by its preparer. */
+    public void kernels(Runnable prepare) {
+        for (CgKernel k : CgKernel.collect(prepare)) add(k);
+    }
+
+    private final List<CgKernel> kernels = new ArrayList<>();
+    /** Kernels not yet built. */
+    private final List<CgKernel> unbuilt = new ArrayList<>();
+
+    /** Polls the unbuilt kernels, each started if nothing has; whether all are built. */
+    private boolean pollKernels() {
+        for (int i = unbuilt.size() - 1; i >= 0; i--) {
+            if (unbuilt.get(i).isReady()) unbuilt.remove(i);
+        }
+        return unbuilt.isEmpty();
+    }
+
+    /**
      * Requests everything on the list under {@code settings} and waits until it is built or {@code timeoutNanos} pass:
      * the graphics start's, so the engine's own passes compile in parallel before the first frame rather than one by one
      * at their draws (Unreal's global PSO collectors, waited for while loading). Answers how many are still pending.
      * Render thread, before {@code CgWarmBudget.start()}: nothing here is budgeted.
      */
     int await(Settings settings, long timeoutNanos) {
+        CgPrecache.collect(this);
         warmedFor = settings;
         for (CgMaterial m : list) pending.put(m, Boolean.TRUE);
         long end = System.nanoTime() + timeoutNanos;
-        while (!pending.isEmpty()) {
+        while (true) {
             for (int i = 0; i < list.size(); i++) {
                 CgMaterial m = list.get(i);
                 if (pending.containsKey(m) && preparer.prepare(m, halves.get(m), settings)) pending.remove(m);
             }
-            if (pending.isEmpty() || System.nanoTime() > end) break;
+            boolean kernelsBuilt = pollKernels();
+            if (pending.isEmpty() && kernelsBuilt || System.nanoTime() > end) break;
             LockSupport.parkNanos(200_000L);
         }
-        return pending.size();
+        return pending();
     }
 
-    /** How many materials are not yet built under the settings in force. */
+    /** How many materials and kernels are not yet built under the settings in force. */
     public int pending() {
-        return pending.size();
+        return pending.size() + unbuilt.size();
     }
 
-    /** How many materials it keeps warm. */
+    /** How many materials and kernels it keeps built. */
     public int size() {
-        return list.size();
+        return list.size() + kernels.size();
     }
 
     /**
@@ -175,6 +207,8 @@ public final class CgWorldPrograms {
      * was warmed for. Answers whether {@code requested} may apply: the list is built under it, or the wait is spent.
      */
     boolean frame(Settings requested, Settings applied) {
+        CgPrecache.collect(this);
+        if (!unbuilt.isEmpty() && CgWarmBudget.allows()) pollKernels();
         if (!requested.equals(warmedFor)) {
             warmedFor = requested;
             for (CgMaterial m : list) pending.put(m, Boolean.TRUE);
